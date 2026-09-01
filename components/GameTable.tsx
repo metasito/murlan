@@ -15,7 +15,6 @@ import {
   View,
   StyleSheet,
   Platform,
-  Pressable,
   useWindowDimensions,
   type AccessibilityProps,
   type ViewProps,
@@ -75,8 +74,6 @@ import {
   seatDirection,
   straightTopRankChar,
   turnTimerActive,
-  urgentThresholdSeconds,
-  URGENT_TICK_SECONDS,
   viewerOwnsSeat,
   type FlyDirection,
   type OpponentSide,
@@ -97,10 +94,13 @@ import {
   useHandLift,
   RailKnob,
   sharedTableStyles,
+  StartCardBanner,
   StartReasonBanner,
   TableChip,
 } from "@/components/table/chrome";
+import { TurnTimer } from "@/components/table/turnTimer";
 import { GiocaButton, PassaButton } from "@/components/table/actions";
+import { RematchPromptPanel, type RematchAnswers } from "@/components/table/rematchPrompt";
 import { FeltPool } from "@/components/table/felt";
 import { StraightHand } from "@/components/table/hand";
 import { RotateOverlay } from "@/components/table/rotateOverlay";
@@ -118,14 +118,13 @@ import {
   playCardPlay,
   playRoundStart,
   playRoundWin,
-  playUrgentTick,
   playDeal,
   preloadSounds,
   unloadSounds,
 } from "@/lib/sounds";
 import { hapticError, hapticLight, hapticMedium, hapticSelection } from "@/lib/haptics";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
-import { Colors, FontSize, Motion, Radius, Scrim, Spacing, TOUCH_TARGET_MIN, Type } from "@/lib/theme";
+import { Colors, FontSize, Motion, Radius, Scrim, Spacing } from "@/lib/theme";
 import { useTableFelt } from "@/lib/cosmetics";
 import { A11yStatus, a11yGroup, a11yHidden, a11yVeiled } from "@/lib/a11y";
 
@@ -136,8 +135,6 @@ const ROUND_WINNER_MS = 1800;
 // text labels, and React Native rasterises text before transforming it, so a
 // fractional offset resamples the glyphs. 2px down is the smallest offset
 // that still reads as a press.
-/** The rematch question's own column down the side of the table. */
-const REMATCH_PANEL_W = 86;
 
 /**
  * The hand runs past the bottom edge on purpose, and the side fans lean out
@@ -251,13 +248,8 @@ export interface TurnTimerConfig {
  * closing manche is still being played. Majority decides; a seat that never
  * answers counts as a no.
  */
-export interface RematchPromptSlot {
+export interface RematchPromptSlot extends RematchAnswers {
   visible: boolean;
-  /** null until this player has answered. */
-  myAnswer: boolean | null;
-  yesCount: number;
-  seatCount: number;
-  onAnswer: (wants: boolean) => void;
 }
 
 export interface ExchangeAnnouncementSlot {
@@ -314,170 +306,6 @@ export interface GameTableProps {
    * withdraws what is under it, and not the slot it is rendered in.
    */
   tableCovered?: boolean;
-}
-
-// ─── Turn countdown ───────────────────────────────────────────────────────────
-//
-// Its own component so the once-a-second tick re-renders a single <TableText> and
-// not the whole board — which, with hands of up to 18 cards, matters.
-
-function TurnTimer({
-  seconds,
-  active,
-  resetKey,
-  onExpire,
-  scale,
-}: {
-  seconds: number;
-  active: boolean;
-  /** Restarts the countdown whenever it changes — one full clock per turn. */
-  resetKey: string;
-  onExpire?: () => void;
-  scale: number;
-}) {
-  const { tn } = useTranslation();
-  const [timeLeft, setTimeLeft] = useState(seconds);
-  // Written after commit, never during render: the only reader is the interval
-  // below, which fires a second later at the earliest.
-  const onExpireRef = useRef(onExpire);
-  useEffect(() => {
-    onExpireRef.current = onExpire;
-  });
-
-  useEffect(() => {
-    if (!active) {
-      setTimeLeft(seconds);
-      return;
-    }
-    let remaining = seconds;
-    setTimeLeft(remaining);
-    const id = setInterval(() => {
-      remaining -= 1;
-      setTimeLeft(remaining);
-      if (remaining <= URGENT_TICK_SECONDS && remaining >= 0) playUrgentTick();
-      if (remaining <= 0) {
-        clearInterval(id);
-        onExpireRef.current?.();
-      }
-    }, 1000);
-    return () => clearInterval(id);
-  }, [active, resetKey, seconds]);
-
-  if (!active) return null;
-  const urgent = timeLeft <= urgentThresholdSeconds(seconds);
-  return (
-    <ChipText
-      scale={scale}
-      strong
-      urgent={urgent}
-      accessibilityLiveRegion="polite"
-      accessibilityLabel={tn("gameTable.a11ySecondsLeft", timeLeft)}
-    >
-      {timeLeft}
-    </ChipText>
-  );
-}
-
-// ─── Rematch prompt ───────────────────────────────────────────────────────────
-//
-// Deliberately a side panel rather than a modal: it is asked while the closing
-// manche is still being played, so it must never take the table away from the
-// player. Once answered it shrinks to the running tally.
-
-function RematchPromptPanel({
-  prompt,
-  top,
-  left,
-  veiled,
-}: {
-  prompt: RematchPromptSlot;
-  top: number;
-  left: number;
-  veiled: AccessibilityProps;
-}) {
-  const { t } = useTranslation();
-  const reduceMotion = usePrefersReducedMotion();
-  const answered = prompt.myAnswer !== null;
-  const tally = t("gameTable.rematchTally", {
-    yes: prompt.yesCount,
-    total: prompt.seatCount,
-  });
-
-  return (
-    <Animated.View
-      entering={reduceMotion ? undefined : FadeIn.duration(Motion.duration.travel)}
-      style={[styles.rematchPanel, { top, left }]}
-      {...veiled}
-    >
-      {answered ? (
-        <TableText style={styles.rematchTally} accessibilityLiveRegion="polite">
-          {tally}
-        </TableText>
-      ) : (
-        <>
-          <TableText style={styles.rematchTitle}>{t("gameTable.rematchPromptTitle")}</TableText>
-          <TableText style={styles.rematchSubtitle}>{t("gameTable.rematchPromptSubtitle")}</TableText>
-          <View style={styles.rematchButtons}>
-            <Pressable
-              testID="btn-rematch-yes"
-              onPress={() => {
-                hapticSelection();
-                prompt.onAnswer(true);
-              }}
-              style={[styles.rematchChoice, styles.rematchChoiceYes]}
-              accessibilityRole="button"
-              accessibilityLabel={t("gameTable.rematchYesA11yLabel")}
-            >
-              <TableText style={styles.rematchChoiceYesLabel} {...a11yHidden()}>{t("gameTable.rematchYes")}</TableText>
-            </Pressable>
-            <Pressable
-              testID="btn-rematch-no"
-              onPress={() => {
-                hapticLight();
-                prompt.onAnswer(false);
-              }}
-              style={styles.rematchChoice}
-              accessibilityRole="button"
-              accessibilityLabel={t("gameTable.rematchNoA11yLabel")}
-            >
-              <TableText style={styles.rematchChoiceLabel} {...a11yHidden()}>{t("gameTable.rematchNo")}</TableText>
-            </Pressable>
-          </View>
-          <TableText style={styles.rematchTally}>{tally}</TableText>
-        </>
-      )}
-    </Animated.View>
-  );
-}
-
-/**
- * The pre-first-play banner naming who opens and with what card. A component
- * of its own rather than inline JSX: `card` is only read here, so `rank` and
- * `suit` derive once instead of once per interpolation.
- */
-function StartCardBanner({
-  card,
-  starterIsViewer,
-  starterName,
-  t,
-}: {
-  card: Card;
-  starterIsViewer: boolean;
-  starterName: string;
-  t: TFn;
-}) {
-  const rank = getCardDisplayRank(card.rank);
-  const suit = getSuitSymbol(card.suit);
-  return (
-    <View style={styles.startCardBanner}>
-      <TableText style={styles.startCardGlyph}>{suit}</TableText>
-      <TableText style={styles.startCardText}>
-        {starterIsViewer
-          ? t("gameTable.startCardBannerSelf", { rank, suit })
-          : t("gameTable.startCardBannerOther", { name: starterName, rank, suit })}
-      </TableText>
-    </View>
-  );
 }
 
 // ─── GameTable ────────────────────────────────────────────────────────────────
@@ -1523,7 +1351,6 @@ export function GameTable({
                   card={gameState.startCard!}
                   starterIsViewer={isMyTurn}
                   starterName={players[gameState.currentTurnIndex]?.name ?? ""}
-                  t={t}
                 />
               ) : (
                 <PlayedPile
@@ -1753,17 +1580,6 @@ const styles = StyleSheet.create({
   hudRight: { position: "absolute", alignItems: "flex-end", zIndex: 10 },
   handSectionReversed: { flexDirection: "row-reverse" },
 
-  startCardBanner: {
-    alignItems: "center", gap: Spacing.slim,
-    paddingHorizontal: Spacing.md, paddingVertical: Spacing.snug, borderRadius: Radius.md,
-    backgroundColor: Scrim.medium,
-    borderWidth: 1, borderColor: Colors.goldSoft,
-  },
-  startCardGlyph: { fontSize: FontSize.xxl, color: Colors.text },
-  startCardText: {
-    fontFamily: "Rajdhani_600SemiBold", fontSize: FontSize.sm,
-    color: Colors.text, textAlign: "center", letterSpacing: 0.5,
-  },
 
   finishedRow: { flex: 1, flexDirection: "row", alignItems: "center", gap: Spacing.sm },
   finishedText: {
@@ -1792,59 +1608,5 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   rejectHintTextMirrored: { textAlign: "left" },
-  rematchPanel: {
-    position: "absolute",
-    width: REMATCH_PANEL_W,
-    zIndex: 20,
-    gap: Spacing.xs,
-    paddingVertical: Spacing.sm,
-    paddingHorizontal: Spacing.xs + 2,
-    borderRadius: Radius.md,
-    backgroundColor: Scrim.heavy,
-    borderWidth: 1,
-    borderColor: Colors.goldBorder,
-    alignItems: "center",
-  },
-  rematchTitle: {
-    fontFamily: "Rajdhani_700Bold",
-    fontSize: FontSize.sm,
-    color: Colors.gold,
-    letterSpacing: 1,
-  },
-  rematchSubtitle: {
-    ...Type.caption,
-    fontSize: FontSize.xs - 2,
-    textAlign: "center",
-  },
-  rematchButtons: { alignSelf: "stretch", gap: Spacing.xs },
-  rematchChoice: {
-    minHeight: TOUCH_TARGET_MIN,
-    borderRadius: Radius.sm,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: Colors.bgSurface,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  rematchChoiceYes: {
-    backgroundColor: Colors.goldMuted,
-    borderColor: Colors.goldStrong,
-  },
-  rematchChoiceLabel: {
-    fontFamily: "Rajdhani_700Bold",
-    fontSize: FontSize.sm,
-    color: Colors.textSecondary,
-    letterSpacing: 1,
-  },
-  rematchChoiceYesLabel: {
-    fontFamily: "Rajdhani_700Bold",
-    fontSize: FontSize.sm,
-    color: Colors.goldLight,
-    letterSpacing: 1,
-  },
-  rematchTally: {
-    ...Type.caption,
-    fontSize: FontSize.xs - 2,
-  },
 
 });
