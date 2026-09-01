@@ -39,6 +39,9 @@ const SETTLE_CEILING_MS = 8_000;
 /** Past `SWEEP_MS` (components/table/moments.tsx), the longest of the moment overlays. */
 const MOMENT_CEILING_MS = 1_600;
 
+/** How far the two tables' seat-to-hand gaps may differ, as a fraction of a hand card. */
+const PARITY_TOLERANCE = 0.02;
+
 interface Measurement {
   table: { width: number; height: number };
   /**
@@ -47,7 +50,14 @@ interface Measurement {
    * which is a card on the felt at its own size.
    */
   handSlot: { width: number; height: number };
-  /** The gap between the lowest seat plate and the top of the hand zone, as `table.txt` reports it. */
+  /**
+   * The gap between the lowest seat plate and the top of the hand zone.
+   *
+   * Unrounded, unlike everything else here, because it is the one number two
+   * measurements are subtracted from each other: rounding first makes the
+   * comparison depend on which side of a boundary each landed on, which is a
+   * property of the boundary rather than of either table.
+   */
   emptyBand: number;
   /** Content that reaches past the viewport's own width, named. */
   wide: string[];
@@ -129,7 +139,7 @@ function readTable(page: Page): Promise<Measurement> {
       return {
         table: { width: round(tableBox.width), height: round(tableBox.height) },
         handSlot: { width: round(cardBox.width), height: round(cardBox.height) },
-        emptyBand: round(handTop - plateBottom),
+        emptyBand: handTop - plateBottom,
         wide,
         cards: cards.length,
         hand: hand
@@ -152,7 +162,7 @@ function line(kind: "ONLINE" | "OFFLINE", vp: (typeof VIEWPORTS)[number], m: Mea
     `vp=${vp.width}x${vp.height}`,
     `table=${m.table.width}x${m.table.height}`,
     `handSlot=${m.handSlot.width}x${m.handSlot.height}`,
-    `emptyBand=${m.emptyBand}`,
+    `emptyBand=${m.emptyBand.toFixed(3)}`,
     `cards=${m.cards}`,
     `hand=${m.hand.width}x${m.hand.height}@${m.hand.top}`,
     `wide=${m.wide.join(" | ")}`,
@@ -214,17 +224,18 @@ test.describe("the online table, at the audit's viewports", () => {
       // the seats sit where the scale says they do, which is the half of the
       // table neither of them measures.
       //
-      // Within a pixel, not to the pixel. The plate's y is a laid-out box under
-      // a name the two tables do not share — the server calls its bots Drita 1,
-      // the seed calls them Luan — so a fraction of a pixel between them is not
-      // a claim about the layout, and it rounds to one. A band that is
-      // genuinely a different size is not off by one. Seen on CI, at 844x390:
-      // 115 against 114.
+      // Both lengths come out of the same scale, so the tolerance is taken from
+      // it too: a fiftieth of a card is below what the design distinguishes at
+      // any viewport, and a table whose seats sit differently is out by a card
+      // or more. A pixel count would be one thing on a phone and another on a
+      // tablet, where every length is two and a half times larger.
+      const tolerance = online.handSlot.height * PARITY_TOLERANCE;
       expect(
         Math.abs(online.emptyBand - offline.emptyBand),
-        `the online table leaves ${online.emptyBand}px between the lowest seat and the hand ` +
-          `where the offline one leaves ${offline.emptyBand}px`
-      ).toBeLessThanOrEqual(1);
+        `the online table leaves ${online.emptyBand.toFixed(3)}px between the lowest seat and ` +
+          `the hand where the offline one leaves ${offline.emptyBand.toFixed(3)}px, a difference ` +
+          `of more than the ${tolerance.toFixed(3)}px this viewport allows`
+      ).toBeLessThanOrEqual(tolerance);
 
       // The floor: a table that laid out as an empty box would satisfy every
       // equality above having drawn nothing.
