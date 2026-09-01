@@ -78,9 +78,9 @@ export function GameOverOverlay({
     };
   });
 
-  const { name: celebratedName } = celebration(
+  const celebratedName = celebration(
     gameState.players,
-    [match.over ? match.winners[0] : undefined, gameState.rankings[0]],
+    [match.over ? match.winners[0] : undefined, gameState.rankings[0], rows[0]?.id],
     isTeamMode ? (team) => t("lobby.team", { team }) : null
   );
 

@@ -16,20 +16,23 @@ export interface MatchVerdict {
 }
 
 /**
- * Who the results board celebrates, and what it calls them.
+ * What the results board calls the seat it celebrates.
  *
- * `candidates` is ordered best-first and holes are skipped: a match can be
- * over with no winners, because a client that rejoins a finished table never
- * receives `game:over`. An id that names no seat yields the empty string —
- * never the id itself, which would read as `player_0` on the celebration.
+ * `candidates` is ordered best-first, and one naming no seat is passed over
+ * rather than accepted empty: a match can be over with no winners, because a
+ * client that rejoins a finished table never receives `game:over`, and a
+ * winner id can outlive the seat it named. The empty string where none of them
+ * names a seat — never an id, which reaches the screen as `player_0`.
  */
 export function celebration(
   players: readonly { id: string; name: string; team?: string }[],
   candidates: readonly (string | undefined)[],
   teamLabel: ((team: string) => string) | null
-): { id: string | undefined; name: string } {
-  const id = candidates.find((c) => c !== undefined);
-  const seat = players.find((p) => p.id === id);
-  if (!seat) return { id, name: "" };
-  return { id, name: teamLabel && seat.team ? teamLabel(seat.team) : seat.name };
+): string {
+  for (const id of candidates) {
+    const seat = id === undefined ? undefined : players.find((p) => p.id === id);
+    if (!seat) continue;
+    return teamLabel && seat.team ? teamLabel(seat.team) : seat.name;
+  }
+  return "";
 }

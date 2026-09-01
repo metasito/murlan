@@ -285,8 +285,7 @@ for (const size of SIZES) {
 
     await page.getByRole("button", { name: /classifica/i }).first().click();
     await settled(page, 2500);
-    // One: the header's back control. The screen used to carry a second back
-    // button at the foot of the list, which went the same place.
+    // One: the header's back control, which is the screen's only way out.
     await expectNoBuriedControls(page, "leaderboard", 1);
   });
 }

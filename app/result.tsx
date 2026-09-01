@@ -49,7 +49,7 @@ export default function ResultScreen() {
     points: row.points,
   }));
 
-  const { name: celebratedName } = celebration(
+  const celebratedName = celebration(
     gameState.players,
     [match.over ? match.winners[0] : undefined, lastHand?.rankings[0], rows[0]?.id],
     isTeamMode ? (team) => t("lobby.team", { team }) : null
