@@ -97,7 +97,8 @@ export function GameOverOverlay({
   const viewerCelebrated = celebratesViewer(
     gameState.players,
     celebrationCandidates,
-    gameState.players[mySeatIndex]?.id
+    gameState.players[mySeatIndex]?.id,
+    isTeamMode
   );
 
   // A match the table voted down offers no way to restart it.

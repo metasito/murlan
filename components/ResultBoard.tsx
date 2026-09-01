@@ -5,7 +5,7 @@
 // Every glyph is a literal here rather than a prop the callers pass: the icon
 // subset resolver follows a prop back to its call sites, and a name it cannot
 // resolve ships as a blank box with no error (tests/iconSubset.test.ts).
-import React, { useEffect } from "react";
+import React, { useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -172,10 +172,16 @@ function WinnerCelebration({
   const opacity = useSharedValue(0);
   const glow = useSharedValue(0.5);
   const glowScale = useSharedValue(1.0);
-  // The verdict lands once. Kept off the motion effect below, which re-runs
-  // when `usePrefersReducedMotion` settles asynchronously after first paint.
+  // The verdict lands once, even though `viewerCelebrated` itself can flip
+  // false-to-true after mount — the team's win arriving after this seat's own
+  // placement did. Kept off the motion effect below, which re-runs whenever
+  // `usePrefersReducedMotion` settles asynchronously after first paint.
+  const celebrated = useRef(false);
   useEffect(() => {
-    if (viewerCelebrated) hapticSuccess();
+    if (viewerCelebrated && !celebrated.current) {
+      celebrated.current = true;
+      hapticSuccess();
+    }
   }, [viewerCelebrated]);
 
   useEffect(() => {

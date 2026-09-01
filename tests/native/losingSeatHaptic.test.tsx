@@ -95,7 +95,7 @@ describe('the success haptic goes only to the celebrated seat', () => {
     );
     await act(async () => {});
 
-    expect(firedSuccess()).toBe(false);
+    expect(notificationAsync.mock.calls).toEqual([]);
     await view.unmount();
   });
 
@@ -178,7 +178,7 @@ describe('the success haptic goes only to the celebrated seat', () => {
     );
     await act(async () => {});
 
-    expect(firedSuccess()).toBe(false);
+    expect(notificationAsync.mock.calls).toEqual([]);
     await view.unmount();
   });
 
@@ -267,6 +267,100 @@ describe('the success haptic goes only to the celebrated seat', () => {
     await act(async () => {});
 
     expect(firedSuccess()).toBe(true);
+    await view.unmount();
+  });
+
+  it('offline pass-and-play: buzzes when the seat that wins is not the first one checked', async () => {
+    mockState = {
+      players: [
+        seat('player_0', 'P0', 'human'),
+        seat('player_1', 'P1', 'human'),
+        seat('player_2', 'P2', 'human'),
+        seat('player_3', 'P3', 'human'),
+      ],
+      currentTurnIndex: 0,
+      lastPlayedCombination: null,
+      lastPlayedBy: 0,
+      passCount: 0,
+      gameMode: 'free_for_all',
+      roundWinner: null,
+      gameOver: true,
+      rankings: ['player_2', 'player_0', 'player_1', 'player_3'],
+      firstPlayMade: true,
+    };
+    mockMatch = {
+      length: 'match',
+      target: 21,
+      scores: { player_0: 0, player_1: 0, player_2: 3, player_3: 0 },
+      hands: [
+        {
+          rankings: ['player_2', 'player_0', 'player_1', 'player_3'],
+          pointsAwarded: { player_0: 0, player_1: 0, player_2: 3, player_3: 0 },
+        },
+      ],
+      over: false,
+      winners: [],
+      isDraw: false,
+    };
+
+    const view = await render(
+      <SafeAreaProvider initialMetrics={METRICS}>
+        <ResultScreen />
+      </SafeAreaProvider>
+    );
+    await act(async () => {});
+
+    expect(firedSuccess()).toBe(true);
+    await view.unmount();
+  });
+
+  // A device holding every human seat cannot exercise a silent "this device
+  // lost" case: `rows[0]` always names a real, human seat to celebrate, so
+  // some human on the shared device is always the one being celebrated. The
+  // silent case pass-and-play still owes is the one human seat losing to
+  // seats nobody is passing the device to — bots, same as the offline test
+  // above, at a seat other than the first.
+  it('offline pass-and-play: the sole human seat stays silent losing from seat 2, not seat 0', async () => {
+    mockState = {
+      players: [
+        seat('player_0', 'Bot A', 'ai'),
+        seat('player_1', 'Bot B', 'ai'),
+        seat('player_2', 'You', 'human'),
+        seat('player_3', 'Bot C', 'ai'),
+      ],
+      currentTurnIndex: 0,
+      lastPlayedCombination: null,
+      lastPlayedBy: 0,
+      passCount: 0,
+      gameMode: 'free_for_all',
+      roundWinner: null,
+      gameOver: true,
+      rankings: ['player_0', 'player_1', 'player_3', 'player_2'],
+      firstPlayMade: true,
+    };
+    mockMatch = {
+      length: 'match',
+      target: 21,
+      scores: { player_0: 3, player_1: 0, player_2: 0, player_3: 0 },
+      hands: [
+        {
+          rankings: ['player_0', 'player_1', 'player_3', 'player_2'],
+          pointsAwarded: { player_0: 3, player_1: 0, player_2: 0, player_3: 0 },
+        },
+      ],
+      over: false,
+      winners: [],
+      isDraw: false,
+    };
+
+    const view = await render(
+      <SafeAreaProvider initialMetrics={METRICS}>
+        <ResultScreen />
+      </SafeAreaProvider>
+    );
+    await act(async () => {});
+
+    expect(notificationAsync.mock.calls).toEqual([]);
     await view.unmount();
   });
 });

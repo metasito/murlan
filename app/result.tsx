@@ -59,10 +59,12 @@ export default function ResultScreen() {
     celebrationCandidates,
     isTeamMode ? (team) => t("lobby.team", { team }) : null
   );
-  const viewerCelebrated = celebratesViewer(
-    gameState.players,
-    celebrationCandidates,
-    gameState.players.find((p) => p.type === "human")?.id
+  // Pass-and-play seats every human at the same device, so a win by any one
+  // of them — not only the first — is this device's win.
+  const viewerCelebrated = gameState.players.some(
+    (p) =>
+      p.type === "human" &&
+      celebratesViewer(gameState.players, celebrationCandidates, p.id, isTeamMode)
   );
 
   const handleHome = () => {
