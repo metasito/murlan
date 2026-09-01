@@ -1,11 +1,12 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 // Relative and extensioned, not `@/`: `tests/sharedGameFlow.test.ts` loads this
 // under `node --test`, which type-strips plain .ts and resolves nothing a
 // bundler would. A type-only import is erased before resolution and may use the
 // alias; a runtime one may not.
 import { EXCHANGE_FLIGHT_MS, exchangeAnnounceMs } from "./exchangeCeremony.ts";
-import type { Card } from "@/lib/gameEngine";
+import { matchIsClosing } from "./gameEngine.ts";
+import type { Card, MatchLength } from "@/lib/gameEngine";
 
 export interface ExchangeAnnounceData {
   winnerName: string;
@@ -55,7 +56,7 @@ export function buildExchangeAnnounce(
  * in this file: the online and the offline table run the same ceremony, and two
  * clocks for it are two clocks that can disagree.
  */
-export function useExchangeCeremonyExpiry(
+function useExchangeCeremonyExpiry(
   announcing: boolean,
   bothJokersException: boolean | undefined,
   end: () => void
@@ -65,6 +66,61 @@ export function useExchangeCeremonyExpiry(
     const done = setTimeout(end, exchangeAnnounceMs(bothJokersException ?? false));
     return () => clearTimeout(done);
   }, [announcing, bothJokersException, end]);
+}
+
+/**
+ * Whether to ask the table about another match. Not a hook: the two providers
+ * hold these inputs in different objects, so each memoises on its own and only
+ * the answer is shared.
+ *
+ * The hand counts come in already read, because only the caller knows whether
+ * a seat's hand is the hand or a count the server sent in place of one.
+ */
+export function rematchPromptOpen(
+  game: { gameOver: boolean; handCounts: number[] } | null,
+  match: { length: MatchLength; target: number; over: boolean },
+  cumulative: Record<string, number>
+): boolean {
+  if (!game || game.gameOver || match.over) return false;
+  return matchIsClosing({
+    length: match.length,
+    target: match.target,
+    cumulative,
+    handCounts: game.handCounts,
+    playerCount: game.handCounts.length,
+  });
+}
+
+export interface ExchangeAnnouncement {
+  announcing: boolean;
+  data: ExchangeAnnounceData | null;
+  /**
+   * Opens the ceremony on this announce. One call, because the flag and the
+   * data are one fact: set apart, a render between them draws the ceremony
+   * from the previous trade.
+   */
+  announce: (data: ExchangeAnnounceData) => void;
+  /** Closes it — the clock running out and the viewer saying so are one close. */
+  end: () => void;
+}
+
+/**
+ * The whole ceremony: what is being announced, whether it still is, and the
+ * clock that ends it. Both providers run this one, so a table cannot be under a
+ * ceremony on one transport and not the other.
+ */
+export function useExchangeAnnouncement(): ExchangeAnnouncement {
+  const [announcing, setAnnouncing] = useState(false);
+  const [data, setData] = useState<ExchangeAnnounceData | null>(null);
+
+  const announce = useCallback((next: ExchangeAnnounceData) => {
+    setData(next);
+    setAnnouncing(true);
+  }, []);
+  const end = useCallback(() => setAnnouncing(false), []);
+
+  useExchangeCeremonyExpiry(announcing, data?.bothJokersException, end);
+  return { announcing, data, announce, end };
 }
 
 /**

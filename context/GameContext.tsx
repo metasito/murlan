@@ -19,7 +19,6 @@ import {
   initializeRematch,
   nextDealFirstSeat,
   isMajority,
-  matchIsClosing,
   processExchangeChoice,
   processPlay,
   processPass,
@@ -38,9 +37,11 @@ import {
 } from "@/lib/offlineSave";
 import {
   buildExchangeAnnounce,
-  useExchangeCeremonyExpiry,
+  rematchPromptOpen as isRematchPromptOpen,
+  useExchangeAnnouncement,
   type ExchangeAnnounceData,
 } from "@/lib/sharedGameFlow";
+import { handCountOf } from "@/components/gameTableModel";
 import type { BotPersonalityId } from "@/lib/botPersonalities";
 
 export interface PlayerSetupConfig {
@@ -172,15 +173,12 @@ export function GameProvider({ children }: { children: ReactNode }) {
   const [hasSavedGame, setHasSavedGame] = useState(false);
   const savedRef = useRef<ReturnType<typeof decodeOfflineSave>>(null);
 
-  const [exchangeAnnouncing, setExchangeAnnouncing] = useState(false);
-  const [exchangeAnnounceData, setExchangeAnnounceData] = useState<ExchangeAnnounceData | null>(null);
-
-  const endAnnouncing = useCallback(() => setExchangeAnnouncing(false), []);
-  useExchangeCeremonyExpiry(
-    exchangeAnnouncing,
-    exchangeAnnounceData?.bothJokersException,
-    endAnnouncing
-  );
+  const {
+    announcing: exchangeAnnouncing,
+    data: exchangeAnnounceData,
+    announce,
+    end: acknowledgeExchange,
+  } = useExchangeAnnouncement();
 
   /**
    * The single write path for engine output: a manche that has just ended is
@@ -216,14 +214,13 @@ export function GameProvider({ children }: { children: ReactNode }) {
       setDealFirstSeat(nextFirstSeat);
 
       if (state.exchangePhase?.bothJokersException) {
-        setExchangeAnnounceData(buildExchangeAnnounce(state.players, state.exchangePhase));
-        setExchangeAnnouncing(true);
+        announce(buildExchangeAnnounce(state.players, state.exchangePhase));
       }
 
       setGameState(state);
       setSelectedCards([]);
     },
-    [savedPlayerConfigs, savedGameMode, dealFirstSeat]
+    [savedPlayerConfigs, savedGameMode, dealFirstSeat, announce]
   );
 
   const startNextHand = useCallback(() => {
@@ -238,16 +235,18 @@ export function GameProvider({ children }: { children: ReactNode }) {
     dealFrom(gameState.rankings);
   }, [gameState, match.length, dealFrom]);
 
-  const rematchPromptOpen = useMemo(() => {
-    if (!gameState || gameState.gameOver || match.over) return false;
-    return matchIsClosing({
-      length: match.length,
-      target: match.target,
-      cumulative: match.scores,
-      handCounts: gameState.players.map((p) => p.hand.length),
-      playerCount: gameState.players.length,
-    });
-  }, [gameState, match]);
+  const rematchPromptOpen = useMemo(
+    () =>
+      isRematchPromptOpen(
+        gameState && {
+          gameOver: gameState.gameOver,
+          handCounts: gameState.players.map(handCountOf),
+        },
+        match,
+        match.scores
+      ),
+    [gameState, match]
+  );
 
   const answerRematch = useCallback((wants: boolean) => {
     const human = gameState?.players.find((p) => p.type === "human");
@@ -259,13 +258,12 @@ export function GameProvider({ children }: { children: ReactNode }) {
     (cardId: string) => {
       if (gameState?.exchangePhase?.active) {
         const ep = gameState.exchangePhase;
-        setExchangeAnnounceData(
+        announce(
           buildExchangeAnnounce(gameState.players, ep, {
             given: gameState.players[ep.winnerIdx]?.hand.find((c) => c.id === cardId),
             received: ep.cardFromLoser,
           })
         );
-        setExchangeAnnouncing(true);
       }
       setGameState((prev) => {
         if (!prev) return prev;
@@ -273,12 +271,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
       });
       setSelectedCards([]);
     },
-    [gameState]
+    [gameState, announce]
   );
-
-  const acknowledgeExchange = useCallback(() => {
-    setExchangeAnnouncing(false);
-  }, []);
 
   const selectCard = useCallback(
     (cardId: string) => {
