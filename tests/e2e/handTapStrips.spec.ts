@@ -22,15 +22,17 @@ import { HAND_CARDS, TABLE } from "./helpers/selectors";
 const VIEWPORT = { width: 844, height: 390 };
 
 /**
- * Enough cards that the row's step is solved rather than clamped.
+ * A hand whose step actually moves when a card leaves it.
  *
- * `computeHandLayout` bounds the step at both ends, and at this viewport a hand
- * of 13 sits on `MAX_STEP_RATIO` while one of 20 sits on `MIN_READABLE_STEP` —
- * at either stop, playing a card moves nothing, and a strip left at the
- * previous hand's width is indistinguishable from a correct one. Only the
- * compressed middle can fail.
+ * Playing a card does two opposing things: it drops the count, which widens the
+ * step, and it puts a card on the pile, which takes room from the hand and
+ * narrows every card. Across most of the range those nearly cancel — measured
+ * at this viewport, a hand of 11, 13, 14 or 16 moves the step by a pixel or
+ * none, which is `TOLERANCE_PX` itself, so a strip left at the previous hand's
+ * width still tiles and the second measurement below asserts nothing. At nine
+ * the step goes 52 to 47.
  */
-const HAND_SIZE = 16;
+const HAND_SIZE = 9;
 
 interface Strip {
   label: string;
@@ -64,9 +66,6 @@ async function strips(page: Page): Promise<Strip[]> {
 
 /** The step is fractional and the browser rounds every offset it reports. */
 const TOLERANCE_PX = 1;
-
-/** How far the row reaches, first strip to last. */
-const span = (row: Strip[]) => row[row.length - 1].left - row[0].left;
 
 function gaps(row: Strip[]): string[] {
   const wrong: string[] = [];
@@ -121,16 +120,16 @@ test.describe("the hand's tap strips", () => {
       "after a play the strips no longer tile — a card is keeping the width the row had " +
         "before it, so presses near its right edge go to its neighbour"
     ).toEqual([]);
-    // The span, not the step. The step moves about a pixel per play, which is
-    // `TOLERANCE_PX` itself — but it moves every slot after it, so the distance
-    // from the first strip to the last moves by far more than one card's worth.
-    // That is both what makes the case above a second measurement rather than a
-    // repeat of the first, and the shape the defect takes: the error is with
-    // the row, not the card.
+    // The step, and by more than the tolerance the tiling above allows: a step
+    // that moved by less than that would tile whether or not the strips were
+    // rebuilt, which is the whole of what the case above claims to test. The
+    // row's span is not the check — it moves whenever the count does, so it
+    // says nothing about whether the step moved with it.
     expect(
-      Math.abs(span(after) - span(dealt)),
-      `the row spans ${span(dealt)}px before the play and ${span(after)}px after — the layout ` +
-        "did not move, so tiling after it is the same claim as tiling before"
+      Math.abs(after[0].width - dealt[0].width),
+      `the step went ${dealt[0].width} to ${after[0].width} across the play, inside the ` +
+        `${TOLERANCE_PX}px a stale strip would tile through anyway — so tiling after the play ` +
+        "is the same claim as tiling before it, and HAND_SIZE needs revisiting"
     ).toBeGreaterThan(TOLERANCE_PX);
   });
 });
