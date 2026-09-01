@@ -24,8 +24,9 @@ import { CARD_W, CARD_H, FIELD_SCALE } from "@/components/cardFaceModel";
 import {
   COMBO_MAX_TILT,
   FLIGHT_MS,
-  LANDING_FRACTION,
   cardTilt,
+  impactDelayMs,
+  landingHoldMs,
   type FlyDirection,
 } from "@/components/gameTableModel";
 import { FIELD_ARC, solveArc } from "@/components/tableArc";
@@ -129,8 +130,11 @@ export function FlyingCards({
       withTiming(-ARC_PEAK, { duration: FLIGHT_MS * 0.5, easing: Easing.out(Easing.quad) }),
       withTiming(0, { duration: FLIGHT_MS * 0.5, easing: Easing.in(Easing.quad) })
     );
+    // The card is down at `impactDelayMs()`, then the table sits still for the
+    // hold before the settle — and the pile bounce riding its callback — runs.
+    // `reduceMotion` returned above, so this branch is always the full flight.
     settle.value = withDelay(
-      FLIGHT_MS * LANDING_FRACTION,
+      impactDelayMs(reduceMotion) + landingHoldMs(reduceMotion),
       withSequence(
         withTiming(1, { duration: Motion.duration.flash }),
         withSpring(0, Motion.spring.land, (finished) => {

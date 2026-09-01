@@ -457,3 +457,19 @@ export const Reading = {
   /** An invitation, which is acted on rather than read, so it outlasts its own sentence. */
   invite: 6000,
 } as const;
+
+/**
+ * Stillness, which is not motion and so is not a `Motion` step.
+ *
+ * A beat where nothing moves at all, inserted into a chain that is already
+ * running. `Reading` is the precedent: a duration the app spends not animating.
+ */
+export const Hold = {
+  /**
+   * The table at a card's contact with the felt — Nijman's *sleep*
+   * (*Art of Screenshake*, INDIGO 2013). Three frames at 60fps. A card whose
+   * aftermath begins on the same frame it stops moving reads as having been
+   * placed; the beat is what makes it read as having hit.
+   */
+  land: 50,
+} as const;

@@ -19,7 +19,7 @@ import {
   BASE_SHORT_EDGE,
 } from "./cardFaceModel.ts";
 import { arcBounds, solveArc, SEAT_ARC } from "./tableArc.ts";
-import { Spacing } from "../lib/tokens.ts";
+import { Hold, Spacing } from "../lib/tokens.ts";
 
 // ─── Layout constants ─────────────────────────────────────────────────────────
 //
@@ -347,6 +347,23 @@ export function impactDelayMs(reduceMotion: boolean): number {
   // Under reduced motion FlyingCards skips the flight, so there is nothing to
   // wait for and the feedback fires immediately.
   return reduceMotion ? 0 : Math.round(FLIGHT_MS * LANDING_FRACTION);
+}
+
+/**
+ * The beat the table sits still on at contact, before the aftermath — the
+ * settle spring, and with it the pile's own bounce — is allowed to run.
+ *
+ * Clamped by the landing rather than branched on `reduceMotion`: a hold can
+ * never outlast the flight that produced it, and under reduced motion that
+ * flight is `0`, so the same clamp is what makes the hold disappear there.
+ * `impactDelayMs()` stays the one place the landing is derived.
+ *
+ * One value, not a tier. A bomb should sit longer than an ordinary play, but
+ * the ladder of beats belongs to #101's escalation table, and a second tier
+ * invented here is a number that table would have to contradict.
+ */
+export function landingHoldMs(reduceMotion: boolean): number {
+  return Math.min(Hold.land, impactDelayMs(reduceMotion));
 }
 
 // ─── Bomb burst ────────────────────────────────────────────────────────────────

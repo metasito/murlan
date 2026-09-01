@@ -7,7 +7,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { CARD_H, CARD_W, BACK_SCALE } from "../components/cardFaceModel.ts";
-import { TOUCH_TARGET_MIN } from "../lib/tokens.ts";
+import { Hold, TOUCH_TARGET_MIN } from "../lib/tokens.ts";
 import type { Card, Combination } from "../lib/gameEngine.ts";
 import {
   ROTATE_SETTLED,
@@ -61,6 +61,7 @@ import {
   INACTIVE_EXCHANGE,
   describeTableForA11y,
   impactDelayMs,
+  landingHoldMs,
   FLIGHT_MS,
   LANDING_FRACTION,
   passedSeats,
@@ -1377,6 +1378,35 @@ describe("impact feedback is timed to the card landing, not to the throw", () =>
     // setTimeout truncates, and a fractional delay would drift against the
     // animation it is supposed to match.
     assert.equal(impactDelayMs(false) % 1, 0);
+  });
+});
+
+describe("the table holds still at the landing frame", () => {
+  test("a landed card gets a beat before its aftermath runs", () => {
+    assert.equal(landingHoldMs(false), Hold.land);
+  });
+
+  test("under reduced motion there is nothing to hold on", () => {
+    // No branch on `reduceMotion` produces this — the hold is clamped by the
+    // landing, and the landing is 0 here. A hold that survived would be a beat
+    // of nothing before a card that never flew.
+    assert.equal(landingHoldMs(true), 0);
+  });
+
+  test("the hold can never outlast the flight that produced it", () => {
+    assert.ok(landingHoldMs(false) <= impactDelayMs(false));
+  });
+
+  test("the hold is derived, not written down a second time", () => {
+    const src = readFileSync(path.join(repoRoot, "components", "table", "pile.tsx"), "utf8");
+    // The settle is what the hold delays, and the file that draws the flight
+    // used to re-derive the landing as `FLIGHT_MS * LANDING_FRACTION` — the
+    // same number as impactDelayMs(), free to drift from it.
+    assert.ok(
+      !/FLIGHT_MS\s*\*\s*LANDING_FRACTION/.test(src),
+      "pile.tsx must call impactDelayMs(), not recompute the landing"
+    );
+    assert.match(src, /landingHoldMs\(/, "the flight must actually wait out the hold");
   });
 });
 
