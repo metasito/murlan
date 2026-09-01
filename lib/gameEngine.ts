@@ -1672,6 +1672,13 @@ export function foldHandIntoMatch(input: FoldHandInput): FoldHandResult {
  */
 export type MatchLength = "match" | "single";
 
+/** The target a match of this many seats opens on — the first rung of `targetsFor`. */
+export function firstTargetFor(playerCount: number): number {
+  const [target] = targetsFor(playerCount);
+  if (target === undefined) throw new Error(`targetsFor(${playerCount}) returned no targets`);
+  return target;
+}
+
 /** Cards left in the shortest hand at or below which a manche counts as closing. */
 export const CLOSING_HAND_CARDS = 5;
 

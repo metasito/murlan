@@ -5,6 +5,10 @@
 // size — every tap then lands on nothing. Only the game table may force an
 // orientation, and only to landscape, because it is the one screen that needs
 // the width.
+//
+// The prop used to be declared at each modal, which is one place per modal to
+// forget it. components/AppModal.tsx is now the only <Modal> in the app, and
+// what this pins is that it stays the only one.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";

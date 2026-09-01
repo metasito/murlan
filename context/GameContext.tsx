@@ -13,7 +13,7 @@ import {
   GameMode,
   PlayerType,
   MatchLength,
-  targetsFor,
+  firstTargetFor,
   foldHandIntoMatch,
   initializeGame,
   initializeRematch,
@@ -22,12 +22,11 @@ import {
   processExchangeChoice,
   processPlay,
   processPass,
-  aiChoosePlay,
-  opponentsOf,
   buildCombination,
   tallyRematchAnswers,
   canPlay,
 } from "@/lib/gameEngine";
+import { autoMoveForSeat, resolveStuckExchange } from "@/lib/autoMove";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   OFFLINE_SAVE_KEY,
@@ -42,6 +41,7 @@ import {
   type ExchangeAnnounceData,
 } from "@/lib/sharedGameFlow";
 import { handCountOf } from "@/components/gameTableModel";
+import type { MatchVerdict } from "@/lib/matchState";
 import type { BotPersonalityId } from "@/lib/botPersonalities";
 
 export interface PlayerSetupConfig {
@@ -62,28 +62,19 @@ export interface HandResult {
  * `OnlineGameState` match fields, folded forward by the same
  * `lib/gameEngine` function, so the two modes cannot drift apart.
  */
-export interface MatchState {
-  length: MatchLength;
-  /** Current point target. Escalates 21 → 31 → 41 → 51 on a tie at the target. */
-  target: number;
+export interface MatchState extends MatchVerdict {
   /** Engine player id -> cumulative match points. */
   scores: Record<string, number>;
   hands: HandResult[];
-  over: boolean;
-  /** Engine player ids. Empty until the match ends. */
-  winners: string[];
-  isDraw: boolean;
 }
 
 /** Each seat's answer to the rematch question, by engine player id. */
 export type RematchAnswers = Record<string, boolean>;
 
 function freshMatch(length: MatchLength, playerCount: number): MatchState {
-  const [target] = targetsFor(playerCount);
-  if (target === undefined) throw new Error(`targetsFor(${playerCount}) returned no targets`);
   return {
     length,
-    target,
+    target: firstTargetFor(playerCount),
     scores: {},
     hands: [],
     over: false,
@@ -148,6 +139,8 @@ interface GameContextValue {
   passTurn: () => void;
   resetGame: () => void;
   runAITurn: () => void;
+  /** Closes an exchange nobody at the table holds a legal card for. */
+  releaseStuckExchange: () => void;
   /** A match the app was killed in the middle of, waiting to be picked up. */
   hasSavedGame: boolean;
   /** Restores that match. False if there was nothing worth restoring. */
@@ -323,33 +316,15 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
   const runAITurn = useCallback(() => {
     if (!gameState) return;
-    const currentPlayer = gameState.players[gameState.currentTurnIndex];
-    if (!currentPlayer || currentPlayer.type !== "ai") return;
+    const seat = gameState.currentTurnIndex;
+    if (gameState.players[seat]?.type !== "ai") return;
+    const next = autoMoveForSeat(gameState, seat, true, {});
+    if (next) commitState(next, gameState);
+  }, [gameState, commitState]);
 
-    const isNewRound = gameState.lastPlayedCombination === null;
-    const opponents = opponentsOf(gameState, gameState.currentTurnIndex);
-
-    const requireCard = !gameState.firstPlayMade && gameState.startCard
-      ? currentPlayer.hand.find((c) => c.id === gameState.startCard!.id)
-      : undefined;
-
-    const play = aiChoosePlay(
-      currentPlayer,
-      isNewRound ? null : gameState.lastPlayedCombination,
-      isNewRound,
-      opponents.handCounts,
-      requireCard,
-      undefined,
-      opponents.partnerHoldsTop,
-      gameState.playedRanks
-    );
-
-    if (play) {
-      commitState(processPlay(gameState, play), gameState);
-    } else if (!isNewRound) {
-      const newState = processPass(gameState);
-      commitState(newState, gameState);
-    }
+  const releaseStuckExchange = useCallback(() => {
+    if (!gameState?.exchangePhase?.active) return;
+    commitState(resolveStuckExchange(gameState), gameState);
   }, [gameState, commitState]);
 
   const clearSavedGame = useCallback(() => {
@@ -453,6 +428,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       passTurn,
       resetGame,
       runAITurn,
+      releaseStuckExchange,
       hasSavedGame,
       resumeGame,
     }),
@@ -477,6 +453,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       passTurn,
       resetGame,
       runAITurn,
+      releaseStuckExchange,
       hasSavedGame,
       resumeGame,
     ]

@@ -11,41 +11,18 @@ import { router } from "expo-router";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useQuery } from "@tanstack/react-query";
 import { Colors, FontSize, Radius, Spacing, TOUCH_TARGET_MIN } from "@/lib/theme";
-import { useTranslation, type TranslationKey } from "@/lib/i18n";
+import { useTranslation } from "@/lib/i18n";
 import { a11yGroup, a11yHidden } from "@/lib/a11y";
 import { recentForm } from "@/lib/profileStats";
 import { bombsPlayedBy } from "@/lib/replay";
 import type { ReplayDto } from "@/lib/replay";
-import type { MatchHistoryDto } from "@/components/HistoryRow";
+
 import { PROVISIONAL_GAMES } from "@/lib/rating";
+import { placementColor, positionLabelKey } from "@/lib/placement";
+import type { UserStatsDto, RatingDto, MatchHistoryDto } from "@/lib/wire";
 
-// Wire shapes as JSON delivers them — `finishedAt` is an ISO string here, not
-// the `Date` shared/schema.ts carries. Same shapes app/profile.tsx
-// reads, declared again rather than reached for across a screen boundary.
-interface UserStatsDto {
-  currentStreak: number;
-  bestStreak: number;
-}
 
-interface RatingDto {
-  rating: number;
-  games: number;
-  provisional: boolean;
-}
 
-const POSITION_LABEL_KEYS: TranslationKey[] = [
-  "gameOverOverlay.position1",
-  "gameOverOverlay.position2",
-  "gameOverOverlay.position3",
-  "gameOverOverlay.position4",
-];
-const PLACEMENT_COLORS = [
-  Colors.podiumGold,
-  Colors.podiumSilver,
-  Colors.podiumBronze,
-  Colors.textMuted,
-];
-const placementColor = (placement: number) => PLACEMENT_COLORS[placement - 1] ?? Colors.textMuted;
 
 /** How many finishes the form strip shows here — the overlay is shorter than the profile. */
 const FORM_LIMIT = 8;
@@ -210,7 +187,7 @@ export function HandBreakdown({
           icon="flag"
           label={t("handBreakdown.placementLabel")}
           value={t("handBreakdown.placementValue", {
-            position: t(POSITION_LABEL_KEYS[thisHand.placement - 1] ?? "gameOverOverlay.position4"),
+            position: t(positionLabelKey(thisHand.placement) ?? "result.position4"),
             players: thisHand.playerCount,
             points: thisHand.points,
           })}

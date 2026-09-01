@@ -29,6 +29,8 @@ export interface OnlineGameState {
   maxPlayers: number;
   matchTarget: number;
   matchLength: MatchLength;
+  /** Manches decided on this match so far. Zero on the one being dealt. */
+  handsPlayed: number;
   matchOver: boolean;
   /**
    * seat -> combination flags for the *current hand* only, reset whenever one

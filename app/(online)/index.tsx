@@ -8,11 +8,11 @@ import {
   ScrollView,
   useWindowDimensions,
   KeyboardAvoidingView,
-  Modal,
   ActivityIndicator,
 } from "react-native";
 import { router } from "expo-router";
 import { hapticMedium, hapticSelection } from "@/lib/haptics";
+import { ScreenHeader } from "@/components/ScreenHeader";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import {
   useOnlineConnection,
@@ -28,11 +28,10 @@ import { MenuCard } from "@/components/MenuCard";
 import { MenuButton } from "@/components/MenuButton";
 import { useTranslation } from "@/lib/i18n";
 import { A11yStatus, a11yHidden, a11yState, useA11yHint } from "@/lib/a11y";
-import { usePrefersReducedMotion } from "@/lib/accessibility";
+import { AppModal } from "@/components/AppModal";
 
 export default function OnlineLobbyScreen() {
   const { t } = useTranslation();
-  const reduceMotion = usePrefersReducedMotion();
   const roomCodeHint = useA11yHint(t("onlineLobby.roomCodeA11yHint"));
   const watchHint = useA11yHint(t("onlineLobby.watchA11yHint"));
   const { width: W, height: H } = useWindowDimensions();
@@ -220,19 +219,7 @@ export default function OnlineLobbyScreen() {
 
   return (
     <MenuLayout scrollable={false} centered={false} avoidsKeyboard={false} style={{ paddingBottom: 0 }}>
-      <View style={styles.topBar}>
-        <Pressable
-          onPress={() => router.back()}
-          style={styles.backBtn}
-          accessibilityRole="button"
-          accessibilityLabel={t("common.back")}
-          hitSlop={12}
-        >
-          <Ionicons name="chevron-back" size={22} color={Colors.gold} {...a11yHidden()} />
-        </Pressable>
-        <Text style={styles.screenTitle}>{t("onlineLobby.title")}</Text>
-        <View style={{ width: 38 }} />
-      </View>
+      <ScreenHeader title={t("onlineLobby.title")} />
 
       {/* Same slot as the error, and mutually exclusive with it: the join either
           is still happening or has failed. Without this the player taps Join on
@@ -349,15 +336,9 @@ export default function OnlineLobbyScreen() {
         </ScrollView>
       )}
 
-      <Modal
+      <AppModal
         visible={joinModalVisible}
-        transparent
-        animationType={reduceMotion ? "none" : "fade"}
         onRequestClose={closeJoin}
-        statusBarTranslucent
-        // iOS defaults this to portrait only, which rotates the whole app when the
-        // modal opens in landscape and leaves the screen behind it mis-laid-out.
-        supportedOrientations={["portrait", "landscape"]}
         accessibilityLabel={t("onlineLobby.joinModalTitle")}
       >
         <KeyboardAvoidingView
@@ -429,34 +410,12 @@ export default function OnlineLobbyScreen() {
             </View>
           </ScrollView>
         </KeyboardAvoidingView>
-      </Modal>
+      </AppModal>
     </MenuLayout>
   );
 }
 
 const styles = StyleSheet.create({
-  topBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    width: "100%",
-    paddingBottom: Spacing.sm,
-    marginBottom: Spacing.xs,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-  },
-  backBtn: {
-    width: TOUCH_TARGET_MIN,
-    height: TOUCH_TARGET_MIN,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  screenTitle: {
-    flex: 1,
-    textAlign: "center",
-    ...Type.heading,
-    fontSize: FontSize.xl,
-    letterSpacing: 3,
-  },
   errorBanner: {
     flexDirection: "row",
     alignItems: "center",

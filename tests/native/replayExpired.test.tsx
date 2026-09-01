@@ -64,8 +64,11 @@ describe('a replay that no longer exists', () => {
     const view = await show();
     await act(async () => {});
 
-    expect(view.getByText(t('replay.loadErrorTitle'))).toBeTruthy();
-    expect(view.getByText(t('replay.loadErrorBody'))).toBeTruthy();
+    // By the group's label, not by its words: the block is one accessible
+    // node with its own text hidden, so a text query cannot see inside it.
+    expect(
+      view.getByLabelText(`${t('replay.loadErrorTitle')}. ${t('replay.loadErrorBody')}`)
+    ).toBeTruthy();
   });
 
   it('offers the way back out, and it works', async () => {
@@ -87,7 +90,7 @@ describe('a replay that no longer exists', () => {
     const view = await show();
     await act(async () => {});
 
-    expect(view.queryByText(t('replay.loadErrorTitle'))).toBeNull();
+    expect(view.queryByLabelText(new RegExp(t('replay.loadErrorTitle')))).toBeNull();
     expect(view.getByLabelText(t('replay.loadingA11yLabel'))).toBeTruthy();
   });
 
@@ -111,7 +114,7 @@ describe('a replay that no longer exists', () => {
     const view = await show();
     await act(async () => {});
 
-    expect(view.getByText(t('replay.loadErrorTitle'))).toBeTruthy();
+    expect(view.getByLabelText(new RegExp(t('replay.loadErrorTitle')))).toBeTruthy();
     expect(view.getByLabelText(t('replay.back'))).toBeTruthy();
   });
 });

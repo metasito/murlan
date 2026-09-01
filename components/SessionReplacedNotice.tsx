@@ -1,9 +1,10 @@
 import React from "react";
-import { Modal, StyleSheet, View, Text } from "react-native";
+import { StyleSheet, View, Text } from "react-native";
 import Feather from "@expo/vector-icons/Feather";
 import { Colors, Spacing, Radius, FontSize, Type } from "@/lib/theme";
 import { MenuButton } from "@/components/MenuButton";
 import { useTranslation, type ServerPayload } from "@/lib/i18n";
+import { AppModal } from "./AppModal";
 
 // Local to this one screen: a round badge sized to the icon it holds, and the
 // leading the body copy is set at.
@@ -31,17 +32,9 @@ export function SessionReplacedNotice({
   const { t, translateServerPayload } = useTranslation();
 
   return (
-    <Modal
-      transparent
-      visible
-      accessibilityLabel={t("sessionReplaced.title")}
-      // iOS defaults this to portrait only, which rotates the whole app when the
-      // modal opens in landscape and leaves the screen behind it mis-laid-out.
-      supportedOrientations={["portrait", "landscape"]}
-      // Nothing to close to: the connection is gone and Reconnect is the only way
-      // out, so Escape and the Android back gesture are answered and ignored.
-      onRequestClose={() => {}}
-    >
+    // Nothing to close to: the connection is gone and Reconnect is the only way
+    // out, so Escape and the Android back gesture are answered and ignored.
+    <AppModal accessibilityLabel={t("sessionReplaced.title")} onRequestClose={() => {}}>
       <View style={styles.overlay} accessibilityViewIsModal accessibilityRole="alert">
         <View style={styles.content}>
           <View style={styles.iconBadge}>
@@ -59,7 +52,7 @@ export function SessionReplacedNotice({
           </View>
         </View>
       </View>
-    </Modal>
+    </AppModal>
   );
 }
 

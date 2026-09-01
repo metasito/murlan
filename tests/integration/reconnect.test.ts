@@ -465,7 +465,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
       assert.equal(sent.length, snapshot.matchLength);
       assert.deepEqual(
         Object.keys(sent.scores).sort(),
-        manche.players.map((p) => p.name).sort(),
+        manche.players.map((p) => p.id).sort(),
         "every seat must appear on the scoreboard the rejoining client is sent"
       );
       assert.equal(

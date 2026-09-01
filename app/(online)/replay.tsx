@@ -5,13 +5,13 @@
 // seat and no hand, so every seat draws face-down and no action button exists.
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Text, StyleSheet, ActivityIndicator } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { GameTable } from "@/components/GameTable";
 import { MenuLayout } from "@/components/MenuLayout";
 import { MenuCard } from "@/components/MenuCard";
 import { MenuButton } from "@/components/MenuButton";
+import { LoadingBlock, TerminalErrorBlock } from "@/components/StateBlock";
 import {
   ReplayTransport,
   ReplayMoveList,
@@ -24,7 +24,7 @@ import {
   nextMoment,
   type ReplayDto,
 } from "@/lib/replay";
-import { Colors, Motion, Spacing, Type } from "@/lib/theme";
+import { Motion } from "@/lib/theme";
 import { hapticSelection } from "@/lib/haptics";
 import { useTranslation } from "@/lib/i18n";
 
@@ -130,7 +130,7 @@ export default function ReplayScreen() {
     return (
       <MenuLayout>
         <MenuCard title={t("replay.title")}>
-          <ActivityIndicator color={Colors.gold} accessibilityLabel={t("replay.loadingA11yLabel")} />
+          <LoadingBlock label={t("replay.loadingA11yLabel")} />
           {back}
         </MenuCard>
       </MenuLayout>
@@ -142,8 +142,7 @@ export default function ReplayScreen() {
     return (
       <MenuLayout>
         <MenuCard title={t("replay.title")}>
-          <Text style={styles.errorTitle}>{t("replay.loadErrorTitle")}</Text>
-          <Text style={styles.errorBody}>{t("replay.loadErrorBody")}</Text>
+          <TerminalErrorBlock title={t("replay.loadErrorTitle")} body={t("replay.loadErrorBody")} />
           {back}
         </MenuCard>
       </MenuLayout>
@@ -210,15 +209,3 @@ export default function ReplayScreen() {
     />
   );
 }
-
-const styles = StyleSheet.create({
-  errorTitle: {
-    ...Type.heading,
-    textAlign: "center",
-  },
-  errorBody: {
-    ...Type.body,
-    textAlign: "center",
-    marginTop: Spacing.sm,
-  },
-});

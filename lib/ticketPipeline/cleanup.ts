@@ -1,6 +1,7 @@
 // lib/ticketPipeline/cleanup.ts
 import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
+import { shellQuote } from "./shell.ts";
 
 export interface RunState {
   worktreePath: string | null;
@@ -8,10 +9,6 @@ export interface RunState {
   localBranch: string | null;
   merged: boolean;
   ports?: number[];
-}
-
-function shellQuote(value: string): string {
-  return `'${value.replace(/'/g, "'\\''")}'`;
 }
 
 // A worktree path arrives from an agent in whichever form it happened to print — `C:\x\y` from

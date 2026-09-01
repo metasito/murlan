@@ -1,5 +1,5 @@
-import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
-import { usePrefersReducedMotion } from "@/lib/accessibility";
+import { Pressable, StyleSheet, Text, View } from "react-native";
+import { AppModal } from "@/components/AppModal";
 import { a11yHidden } from "@/lib/a11y";
 import { Colors, FontSize, Radius, Shadow, Spacing, TOUCH_TARGET_MIN, Type } from "@/lib/theme";
 
@@ -28,19 +28,14 @@ export function ConfirmDialog({
   request: ConfirmRequest | null;
   onClose: () => void;
 }) {
-  const reduceMotion = usePrefersReducedMotion();
   const dismissable = request?.cancelLabel !== undefined;
 
   return (
-    <Modal
+    // A notice the player can only acknowledge answers Escape and ignores it:
+    // there is no cancel to fall back to.
+    <AppModal
       visible={request !== null}
-      transparent
-      animationType={reduceMotion ? "none" : "fade"}
-      onRequestClose={dismissable ? onClose : undefined}
-      statusBarTranslucent
-      // iOS defaults this to portrait only, which rotates the whole app when the
-      // modal opens in landscape and leaves the screen behind it mis-laid-out.
-      supportedOrientations={["portrait", "landscape"]}
+      onRequestClose={dismissable ? onClose : () => {}}
     >
       {request && (
         <View style={styles.backdrop}>
@@ -95,7 +90,7 @@ export function ConfirmDialog({
           </View>
         </View>
       )}
-    </Modal>
+    </AppModal>
   );
 }
 

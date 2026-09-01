@@ -5,7 +5,7 @@ import { scoreKeyForSeat } from "./gameRoom.ts";
 import type { OnlineGameState } from "./gameRoom.ts";
 import { resolveHandEnd } from "./onlineGameLogic.ts";
 import { replaySeatsOf } from "./replayShape.ts";
-import { isMajority, tallyRematchAnswers, targetsFor } from "../lib/gameEngine.ts";
+import { isMajority, tallyRematchAnswers, firstTargetFor } from "../lib/gameEngine.ts";
 import type { GameMode } from "../lib/gameEngine.ts";
 import type { GameResult } from "../lib/achievements.ts";
 import type { ReplayMove, ReplaySeat } from "../lib/replay.ts";
@@ -76,10 +76,11 @@ export async function handleGameOver(
     handFlags: game.handFlags,
     abandonedSeats: game.abandonedSeats,
   });
-  const { handByKey, matchWinners, isDraw, detailed, byName, winnerNames } = result;
+  const { handByKey, matchWinners, isDraw, detailed, winnerEngineIds } = result;
   game.cumulativeScores = result.cumulativeScores;
   game.matchTarget = result.matchTarget;
   game.matchOver = result.matchOver;
+  game.handsPlayed += 1;
 
   const matchContinues = game.matchOver ? tableWantsRematch(game) : false;
 
@@ -106,12 +107,12 @@ export async function handleGameOver(
 
   io.to(roomId).emit("game:over", {
     rankings: state.rankings,
-    cumulativeScores: byName,
     scores: detailed,
     matchTarget: game.matchTarget,
     matchLength: game.matchLength,
+    handsPlayed: game.handsPlayed,
     matchOver: game.matchOver,
-    matchWinners: winnerNames,
+    matchWinnerIds: winnerEngineIds,
     matchContinues,
     isDraw,
     // Keyed by user id, and absent for a table that earns no rating — an
@@ -213,12 +214,10 @@ export async function handleGameOver(
 /** Between hands: a finished match starts over, an unfinished one carries on. */
 export function rollMatchForward(game: OnlineGameState) {
   if (game.matchOver) {
-    const [target] = targetsFor(game.gameState.players.length);
-    if (target === undefined) {
-      throw new Error(`targetsFor(${game.gameState.players.length}) returned no targets`);
-    }
+    const target = firstTargetFor(game.gameState.players.length);
     game.cumulativeScores = {};
     game.matchTarget = target;
+    game.handsPlayed = 0;
     game.matchOver = false;
     game.rematchIntents.clear();
   }
@@ -240,15 +239,16 @@ export function countRematchAnswers(game: OnlineGameState): { yes: number; total
 }
 
 /**
- * Cumulative match points keyed by display name — the one wire shape clients
- * read, matching what `game:over` ships.
+ * Cumulative match points keyed by engine player id — the identity `rankings`,
+ * the match winners and the `game:over` scoreboard are all stated in. Keying
+ * it by display name collapsed two seats sharing one, silently.
  */
-export function scoresByName(game: OnlineGameState): Record<string, number> {
-  const byName: Record<string, number> = {};
+export function scoresByEngineId(game: OnlineGameState): Record<string, number> {
+  const byId: Record<string, number> = {};
   game.gameState.players.forEach((p, seat) => {
-    byName[p.name] = game.cumulativeScores[scoreKeyForSeat(game, seat)] ?? 0;
+    byId[p.id] = game.cumulativeScores[scoreKeyForSeat(game, seat)] ?? 0;
   });
-  return byName;
+  return byId;
 }
 
 export function tableWantsRematch(game: OnlineGameState): boolean {

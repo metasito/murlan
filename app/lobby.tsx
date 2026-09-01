@@ -12,11 +12,12 @@ import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { hapticSelection, hapticSuccess } from "@/lib/haptics";
+import { ScreenHeader } from "@/components/ScreenHeader";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import type { PlayerSetupConfig } from "@/context/GameContext";
 import { useLocalSession } from "@/context/gameHooks";
 import { useAuth } from "@/context/AuthContext";
-import { GameMode, MatchLength, targetsFor, teamForSeat } from "@/lib/gameEngine";
+import { GameMode, MatchLength, firstTargetFor, teamForSeat } from "@/lib/gameEngine";
 import { BOT_PERSONALITIES, botBlurbKey, botSeatNames, getBotPersonality } from "@/lib/botPersonalities";
 import { Colors, Spacing, Radius, FontSize, TOUCH_TARGET_MIN, Type } from '@/lib/theme';
 import { MenuLayout } from "@/components/MenuLayout";
@@ -143,7 +144,7 @@ export default function LobbyScreen() {
 
   const formatCopy = (length: MatchLength) =>
     length === "match"
-      ? { title: t("lobby.formatMatch"), detail: t("lobby.formatMatchSub", { target: targetsFor(playerCount)[0] }) }
+      ? { title: t("lobby.formatMatch"), detail: t("lobby.formatMatchSub", { target: firstTargetFor(playerCount) }) }
       : { title: t("lobby.formatSingle"), detail: t("lobby.formatSingleSub") };
 
   /** An AI seat is called after its personality; humans keep the name they were given. */
@@ -298,19 +299,7 @@ export default function LobbyScreen() {
 
   return (
     <MenuLayout scrollable={false} centered={false} maxWidth={isLandscape ? null : undefined} style={{ paddingBottom: 0 }}>
-      <View style={styles.topBar}>
-        <Pressable
-          onPress={() => router.back()}
-          style={styles.backBtn}
-          accessibilityRole="button"
-          accessibilityLabel={t("common.back")}
-          hitSlop={12}
-        >
-          <Ionicons name="chevron-back" size={22} color={Colors.gold} {...a11yHidden()} />
-        </Pressable>
-        <Text style={styles.screenTitle}>{isAI ? t("lobby.titleVsAI") : t("lobby.titlePassPlay")}</Text>
-        <View style={{ width: 38 }} />
-      </View>
+      <ScreenHeader title={isAI ? t("lobby.titleVsAI") : t("lobby.titlePassPlay")} />
 
       {isLandscape ? (
         <View style={styles.landscapeBody}>
@@ -362,28 +351,6 @@ const styles = StyleSheet.create({
     borderTopColor: Colors.border,
   },
 
-  topBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    width: "100%",
-    paddingBottom: Spacing.sm,
-    marginBottom: Spacing.xs,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-  },
-  backBtn: {
-    width: TOUCH_TARGET_MIN,
-    height: TOUCH_TARGET_MIN,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  screenTitle: {
-    flex: 1,
-    textAlign: "center",
-    ...Type.heading,
-    fontSize: FontSize.xl,
-    letterSpacing: 3,
-  },
   scroll: {
     paddingTop: Spacing.xs,
     gap: Spacing.lg,

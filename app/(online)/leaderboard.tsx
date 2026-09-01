@@ -3,33 +3,20 @@
 // screen with a back action — the exit sits in a fixed top bar rather than
 // only past however much of the board is on screen.
 import React from "react";
-import { View, Text, StyleSheet, Pressable, ActivityIndicator } from "react-native";
-import { router } from "expo-router";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { View, Text, StyleSheet } from "react-native";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/context/AuthContext";
 import { MenuLayout, takesSlack } from "@/components/MenuLayout";
+import { ScreenHeader } from "@/components/ScreenHeader";
 import { MenuCard } from "@/components/MenuCard";
-import { MenuButton } from "@/components/MenuButton";
-import { Colors, FontSize, Radius, Spacing, TOUCH_TARGET_MIN, Type } from "@/lib/theme";
+import { LoadingBlock, ErrorBlock, EmptyBlock } from "@/components/StateBlock";
+import { Colors, FontSize, Radius, Spacing, Type } from "@/lib/theme";
 import { PROVISIONAL_GAMES, formatSeason } from "@/lib/rating";
 import { useTranslation } from "@/lib/i18n";
 import { a11yGroup, a11yHidden } from "@/lib/a11y";
+import type { LeaderboardEntryDto, RatingDto } from "@/lib/wire";
 
-interface LeaderboardEntryDto {
-  rank: number;
-  userId: string;
-  username: string;
-  rating: number;
-  games: number;
-}
 
-interface RatingDto {
-  season: string;
-  rating: number;
-  games: number;
-  provisional: boolean;
-}
 
 /** Gold, silver and bronze for the top three; everyone else takes the plain ink. */
 const RANK_COLORS = [Colors.podiumGold, Colors.podiumSilver, Colors.podiumBronze];
@@ -53,19 +40,7 @@ export default function LeaderboardScreen() {
 
   return (
     <MenuLayout scrollable centered={false}>
-      <View style={styles.topBar}>
-        <Pressable
-          onPress={() => router.back()}
-          style={styles.backBtn}
-          accessibilityRole="button"
-          accessibilityLabel={t("common.back")}
-          hitSlop={12}
-        >
-          <Ionicons name="chevron-back" size={22} color={Colors.gold} {...a11yHidden()} />
-        </Pressable>
-        <Text style={styles.screenTitle}>{t("ladder.title")}</Text>
-        <View style={{ width: 38 }} />
-      </View>
+      <ScreenHeader title={t("ladder.title")} />
 
       <MenuCard grow>
         {me && (
@@ -82,36 +57,21 @@ export default function LeaderboardScreen() {
         )}
 
         <View style={styles.board}>
-        {boardQuery.isLoading && (
-          <View style={styles.stateBlock}>
-            <ActivityIndicator color={Colors.gold} accessibilityLabel={t("ladder.loadingA11yLabel")} />
-          </View>
-        )}
+        {boardQuery.isLoading && <LoadingBlock label={t("ladder.loadingA11yLabel")} />}
 
         {boardQuery.isError && (
-          <View style={styles.stateBlock}>
-            <Ionicons name="alert-circle-outline" size={28} color={Colors.textMuted} />
-            <Text style={styles.stateTitle}>{t("ladder.errorTitle")}</Text>
-            <MenuButton
-              label={t("ladder.errorRetry")}
-              onPress={() => boardQuery.refetch()}
-              variant="secondary"
-              size="sm"
-              fullWidth={false}
-              accessibilityLabel={t("ladder.errorRetry")}
-            />
-          </View>
+          <ErrorBlock
+            title={t("ladder.errorTitle")}
+            retry={{ label: t("ladder.errorRetry"), a11yLabel: t("ladder.errorRetry"), onPress: () => boardQuery.refetch() }}
+          />
         )}
 
         {boardQuery.isSuccess && board.length === 0 && (
-          <View
-            style={styles.stateBlock}
-            {...a11yGroup(`${t("ladder.emptyTitle")}. ${t("ladder.emptyBody", { n: PROVISIONAL_GAMES })}`)}
-          >
-            <Ionicons name="trophy-outline" size={28} color={Colors.textMuted} {...a11yHidden()} />
-            <Text style={styles.stateTitle} {...a11yHidden()}>{t("ladder.emptyTitle")}</Text>
-            <Text style={styles.stateBody} {...a11yHidden()}>{t("ladder.emptyBody", { n: PROVISIONAL_GAMES })}</Text>
-          </View>
+          <EmptyBlock
+            icon="trophy-outline"
+            title={t("ladder.emptyTitle")}
+            body={t("ladder.emptyBody", { n: PROVISIONAL_GAMES })}
+          />
         )}
 
         {board.length > 0 && (
@@ -146,41 +106,12 @@ export default function LeaderboardScreen() {
         </View>
 
         <Text style={styles.note}>{t("ladder.rankedOnlyNote")}</Text>
-        <MenuButton
-          label={t("common.back")}
-          onPress={() => router.back()}
-          variant="secondary"
-          size="sm"
-          accessibilityLabel={t("common.back")}
-        />
       </MenuCard>
     </MenuLayout>
   );
 }
 
 const styles = StyleSheet.create({
-  topBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    width: "100%",
-    paddingBottom: Spacing.sm,
-    marginBottom: Spacing.xs,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-  },
-  backBtn: {
-    width: TOUCH_TARGET_MIN,
-    height: TOUCH_TARGET_MIN,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  screenTitle: {
-    flex: 1,
-    textAlign: "center",
-    ...Type.heading,
-    fontSize: FontSize.xl,
-    letterSpacing: 3,
-  },
 
   selfBlock: {
     alignItems: "center",
@@ -199,10 +130,6 @@ const styles = StyleSheet.create({
   // the back button below it keep their own heights, so a taller window shows
   // more of the ladder rather than more felt under it.
   board: { ...takesSlack, justifyContent: "center" },
-  stateBlock: { alignItems: "center", gap: Spacing.sm, paddingVertical: Spacing.lg },
-  stateTitle: { ...Type.subheading },
-  stateBody: { ...Type.caption, textAlign: "center" },
-
   list: { gap: Spacing.xs },
   row: {
     flexDirection: "row",

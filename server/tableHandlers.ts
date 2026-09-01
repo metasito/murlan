@@ -66,7 +66,7 @@ import {
   processExchangeChoice,
   processPass,
   processPlay,
-  targetsFor,
+  firstTargetFor,
   teamForSeat,
 } from "../lib/gameEngine.ts";
 import type { GameState } from "../lib/gameEngine.ts";
@@ -125,7 +125,8 @@ export async function rehydrateGame(
     return "unrestorable";
   }
 
-  const { playerMap, scores, gameMode, matchLength, matchTarget, maxPlayers } = restored.match;
+  const { playerMap, scores, gameMode, matchLength, matchTarget, maxPlayers, handsPlayed } =
+    restored.match;
   if (forUserId !== null && !Object.values(playerMap).includes(forUserId)) return "not_seated";
   const restoredState = restored.gameState;
   const restoredPlayers = restoredState.players;
@@ -141,6 +142,7 @@ export async function rehydrateGame(
     maxPlayers,
     matchTarget,
     matchLength,
+    handsPlayed,
     matchOver: restoredMatchOver({
       matchLength,
       gameMode,
@@ -583,10 +585,7 @@ async function startMatchAction(
     if (!r.isBot) playerMap[idx] = r.userId;
   });
 
-  const [firstTarget] = targetsFor(roster.length);
-  if (firstTarget === undefined) {
-    throw new Error(`targetsFor(${roster.length}) returned no targets`);
-  }
+  const firstTarget = firstTargetFor(roster.length);
 
   const newGame: OnlineGameState = {
     gameState,
@@ -600,6 +599,7 @@ async function startMatchAction(
     maxPlayers: room.maxPlayers,
     matchTarget: previous?.matchTarget ?? firstTarget,
     matchLength: matchLength ?? previous?.matchLength ?? "match",
+    handsPlayed: previous?.handsPlayed ?? 0,
     matchOver: previous?.matchOver ?? false,
     handFlags: {},
     abandonedSeats: new Map<number, string>(),

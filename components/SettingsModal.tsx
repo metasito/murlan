@@ -1,6 +1,5 @@
 import React, { useState } from "react";
 import {
-  Modal,
   View,
   Text,
   ScrollView,
@@ -23,7 +22,6 @@ import { Toggle } from "@/components/Toggle";
 import { ConfirmDialog, type ConfirmRequest } from "@/components/ConfirmDialog";
 import { apiRequest, queryClient } from "@/lib/query-client";
 import { hapticSelection } from "@/lib/haptics";
-import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { Colors, Spacing, Radius, FontSize, Type, Shadow, TOUCH_TARGET_MIN } from "@/lib/theme";
 import { keyboardBehavior } from "@/lib/keyboard";
 import { useTranslation, type Locale, type TranslationKey } from "@/lib/i18n";
@@ -31,6 +29,7 @@ import { registerForPush } from "@/lib/pushRegistration";
 import type { MotionPreference } from "@/lib/accessibility";
 import { a11yHidden, a11yState, useA11yHint } from "@/lib/a11y";
 import Constants from "expo-constants";
+import { AppModal } from "./AppModal";
 
 interface Props {
   visible: boolean;
@@ -136,7 +135,6 @@ export function SettingsModal({ visible, onClose }: Props) {
   const { notification, showNotification, dismissNotification } = useNotification();
   const [confirming, setConfirming] = useState<ConfirmRequest | null>(null);
   const router = useRouter();
-  const reduceMotion = usePrefersReducedMotion();
   const [deleting, setDeleting] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const { t, locale, setLocale, locales, localeLabels } = useTranslation();
@@ -268,16 +266,7 @@ export function SettingsModal({ visible, onClose }: Props) {
   }
 
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType={reduceMotion ? "none" : "fade"}
-      onRequestClose={onClose}
-      statusBarTranslucent
-      // iOS defaults this to portrait only, which rotates the whole app when the
-      // modal opens in landscape and leaves the screen behind it mis-laid-out.
-      supportedOrientations={["portrait", "landscape"]}
-    >
+    <AppModal visible={visible} onRequestClose={onClose}>
       {/* A Modal renders in its own native window, outside the root view the
           gesture handler attaches to, so the volume sliders need their own. */}
       <GestureHandlerRootView style={styles.backdrop}>
@@ -502,7 +491,7 @@ export function SettingsModal({ visible, onClose }: Props) {
         <ConfirmDialog request={confirming} onClose={() => setConfirming(null)} />
         <OfflineBanner />
       </GestureHandlerRootView>
-    </Modal>
+    </AppModal>
   );
 }
 

@@ -21,6 +21,7 @@ import Animated, {
 import { LinearGradient } from "expo-linear-gradient";
 import Svg, { Path } from "react-native-svg";
 import { getLattice } from "@/components/cardFaceModel";
+import { Avatar } from "@/components/Avatar";
 import { DEFAULT_CARD_BACK } from "@/lib/cosmetics";
 import { CardBacks } from "@/lib/tokens";
 import {
@@ -361,7 +362,6 @@ function HomeQuietRow({
 const QUIET_ICON = 16;
 const QUIET_CHEVRON = 14;
 const ACCOUNT_ICON = 20;
-const AVATAR_SIZE = 52;
 
 /** A place you land on rather than pass through, which is why it has no chevron. */
 function HomeAccountButton({
@@ -525,9 +525,7 @@ function HomePlayerUnit({ onSettings }: { onSettings: () => void }) {
         style={({ pressed }) => [styles.avatarBtn, pressed && { opacity: 0.85 }]}
         testID="home-account-avatar"
       >
-        <View style={styles.avatar} {...a11yHidden()}>
-          <Text style={styles.avatarText}>{user.username.charAt(0).toUpperCase()}</Text>
-        </View>
+        <Avatar name={user.username} size="xl" ring />
         <Text {...a11yHidden()} style={styles.playerName} numberOfLines={1}>
           {user.username}
         </Text>
@@ -1091,17 +1089,6 @@ const styles = StyleSheet.create({
 
   playerUnit: { alignItems: "center", gap: Spacing.sm, alignSelf: "stretch" },
   avatarBtn: { alignItems: "center", gap: Spacing.xs, minHeight: TOUCH_TARGET_MIN },
-  avatar: {
-    width: AVATAR_SIZE,
-    height: AVATAR_SIZE,
-    borderRadius: Radius.full,
-    backgroundColor: Colors.felt,
-    borderWidth: HAIRLINE,
-    borderColor: Colors.gold,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  avatarText: { fontFamily: "Rajdhani_700Bold", fontSize: FontSize.xl, color: Colors.gold },
   playerName: { ...Type.bodyStrong, maxWidth: "100%" },
 
   pillPair: { flexDirection: "row", gap: Spacing.sm, alignSelf: "stretch" },

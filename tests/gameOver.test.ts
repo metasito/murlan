@@ -123,6 +123,7 @@ function makeGame(overrides: Partial<OnlineGameState> = {}): OnlineGameState {
     maxPlayers: 2,
     matchTarget: 21,
     matchLength: "match",
+    handsPlayed: 0,
     matchOver: false,
     handFlags: {},
     abandonedSeats: new Map(),
@@ -177,15 +178,28 @@ describe("handleGameOver — the broadcast", () => {
     assert.equal(payload.matchOver, game.matchOver);
     assert.equal(payload.matchLength, "match");
     assert.equal(payload.isDraw, false);
-    assert.deepEqual(payload.cumulativeScores, {
-      Alice: game.cumulativeScores.u_alice,
-      Bob: game.cumulativeScores.u_bob,
-    });
-    assert.equal(
-      (payload.scores as unknown[]).length,
-      2,
-      "one scoreboard row per seat"
-    );
+    assert.equal(payload.handsPlayed, 1, "the manche just decided is counted");
+    // One row per seat carries every identity: the totals used to ride
+    // alongside as a name -> total map, where two seats sharing a name
+    // collapsed into one entry.
+    assert.deepEqual(payload.scores, [
+      {
+        seatIndex: 0,
+        engineId: "player_0",
+        userId: "u_alice",
+        username: "Alice",
+        points: 1,
+        total: game.cumulativeScores.u_alice,
+      },
+      {
+        seatIndex: 1,
+        engineId: "player_1",
+        userId: "u_bob",
+        username: "Bob",
+        points: 0,
+        total: game.cumulativeScores.u_bob,
+      },
+    ]);
   });
 
   test("a single-manche game names the manche winner as the match winner", async () => {
@@ -196,7 +210,7 @@ describe("handleGameOver — the broadcast", () => {
 
     const payload = s.emitted[0].payload as Record<string, unknown>;
     assert.equal(payload.matchOver, true, "one manche is the whole match");
-    assert.deepEqual(payload.matchWinners, ["Alice"], "Alice emptied her hand first");
+    assert.deepEqual(payload.matchWinnerIds, ["player_0"], "Alice emptied her hand first");
     assert.equal(payload.isDraw, false);
     assert.equal(game.matchOver, true, "the game carries the same verdict");
   });

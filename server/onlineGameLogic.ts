@@ -206,6 +206,10 @@ export const persistedMatchSchema = z.object({
     .number({ required_error: "max players missing", invalid_type_error: "max players missing" })
     .int("max players missing")
     .min(1, "max players missing"),
+  // Defaulted rather than required: a row written before the field existed
+  // restores as a match with no manches behind it, which costs the results
+  // board one number and never the hand.
+  handsPlayed: z.number().int().min(0).catch(0).default(0),
 }, { required_error: "no match state", invalid_type_error: "no match state" });
 
 export type PersistedMatch = z.infer<typeof persistedMatchSchema>;
@@ -423,6 +427,8 @@ export interface ResolveHandEndInput {
 
 export interface ScoreboardRow {
   seatIndex: number;
+  /** The engine player id the rankings and the match winners are stated in. */
+  engineId: string;
   userId: string | null;
   username: string;
   points: number;
@@ -437,8 +443,8 @@ export interface ResolveHandEndResult {
   matchWinners: string[];
   isDraw: boolean;
   detailed: ScoreboardRow[];
-  byName: Record<string, number>;
-  winnerNames: string[];
+  /** The match winners as engine player ids — the space `rankings` is in. */
+  winnerEngineIds: string[];
   gameResults: GameResult[];
   /** Whether the table was contested by enough real people to record. */
   recordable: boolean;
@@ -487,24 +493,24 @@ export function resolveHandEnd(input: ResolveHandEndInput): ResolveHandEndResult
     teamOf,
   });
 
-  // Wire format: the clients index the scoreboard by display name.
-  const byName: Record<string, number> = {};
+  // One row per seat, carrying every identity the clients index it by. It was
+  // once also sent as a name -> total map alongside; two seats sharing a name
+  // collapsed into one entry there, silently.
   const detailed: ScoreboardRow[] = state.players.map((p, seat) => {
     const key = scoreKeyForSeat(playerMap, seat);
-    const total = cumulativeScores[key] ?? 0;
-    byName[p.name] = total;
     return {
       seatIndex: seat,
+      engineId: p.id,
       userId: playerMap[seat] ?? null,
       username: p.name,
       points: handByKey[key] ?? 0,
-      total,
+      total: cumulativeScores[key] ?? 0,
     };
   });
 
-  const winnerNames = matchWinners
-    .map((key) => detailed.find((d) => scoreKeyForSeat(playerMap, d.seatIndex) === key)?.username)
-    .filter((n): n is string => !!n);
+  const winnerEngineIds = matchWinners
+    .map((key) => detailed.find((d) => scoreKeyForSeat(playerMap, d.seatIndex) === key)?.engineId)
+    .filter((id): id is string => id !== undefined);
 
   // Every seat carries a placement by the time a hand ends — the engine fills
   // the remaining positions for anyone still holding cards, in both modes —
@@ -573,8 +579,7 @@ export function resolveHandEnd(input: ResolveHandEndInput): ResolveHandEndResult
     matchWinners,
     isDraw,
     detailed,
-    byName,
-    winnerNames,
+    winnerEngineIds,
     gameResults,
     recordable: isContestedTable(humanSeats, botSeats),
   };

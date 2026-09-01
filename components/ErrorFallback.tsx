@@ -6,7 +6,6 @@ import {
   Pressable,
   ScrollView,
   Text,
-  Modal,
   Platform,
 } from "react-native";
 import { SafeAreaInsetsContext } from "react-native-safe-area-context";
@@ -16,6 +15,7 @@ import { Colors, Spacing, Radius, FontSize, Shadow, TOUCH_TARGET_MIN } from "@/l
 import { MenuButton } from "@/components/MenuButton";
 import { useTranslation } from "@/lib/i18n";
 import { a11yHidden } from "@/lib/a11y";
+import { AppModal } from "./AppModal";
 
 export type ErrorFallbackProps = {
   error: Error;
@@ -107,15 +107,10 @@ export function ErrorFallback({ error, resetError }: ErrorFallbackProps) {
       </View>
 
       {__DEV__ ? (
-        <Modal
+        <AppModal
           visible={isModalVisible}
-          animationType="slide"
-          transparent
+          animation="slide"
           onRequestClose={() => setIsModalVisible(false)}
-          // iOS defaults this to portrait only, which rotates the whole app when
-          // the modal opens in landscape and leaves the screen behind it
-          // mis-laid-out.
-          supportedOrientations={["portrait", "landscape"]}
         >
           <View style={styles.modalOverlay}>
             <View style={styles.modalContainer}>
@@ -151,7 +146,7 @@ export function ErrorFallback({ error, resetError }: ErrorFallbackProps) {
               </ScrollView>
             </View>
           </View>
-        </Modal>
+        </AppModal>
       ) : null}
     </View>
   );

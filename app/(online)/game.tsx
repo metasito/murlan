@@ -375,14 +375,7 @@ export default function OnlineGameScreen() {
                 cumulativeScores={cumulativeScores}
                 handScores={handScores}
                 ratingDelta={ratingDeltas[user?.id ?? ""] ?? null}
-              match={{
-                target: matchState.target,
-                length: matchState.length,
-                over: matchState.over,
-                winners: matchState.winners,
-                isDraw: matchState.isDraw,
-                continues: matchState.continues,
-              }}
+                match={matchState}
               />
             )}
           </View>

@@ -130,7 +130,7 @@ describe('the profile trend panels', () => {
 
     expect(view.getByText(t('profile.formByPlayersLabel'))).toBeTruthy();
     expect(view.getByLabelText(t('profile.formPlacementRowA11yLabel', {
-      position: t('gameOverOverlay.position1'),
+      position: t('result.position1'),
       n: 1,
       total: 3,
     }))).toBeTruthy();

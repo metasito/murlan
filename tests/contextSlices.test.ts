@@ -77,6 +77,7 @@ const LOCAL: Record<string, string[]> = {
   ],
   useLocalExchange: [
     "exchangeAnnouncing", "exchangeAnnounceData", "chooseExchangeCard", "acknowledgeExchange",
+    "releaseStuckExchange",
   ],
 };
 

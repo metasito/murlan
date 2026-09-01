@@ -12,6 +12,8 @@ import {
 import { router } from "expo-router";
 import Animated, { FadeIn } from "react-native-reanimated";
 import { hapticMedium, hapticSelection, hapticSuccess } from "@/lib/haptics";
+import { ScreenHeader } from "@/components/ScreenHeader";
+import { Avatar } from "@/components/Avatar";
 import * as Clipboard from "expo-clipboard";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useQuery } from "@tanstack/react-query";
@@ -24,7 +26,7 @@ import { useNotification } from "@/context/NotificationContext";
 import { useAuth } from "@/context/AuthContext";
 import { useSocket } from "@/context/SocketContext";
 import { Colors, Spacing, Radius, FontSize, Motion, TOUCH_TARGET_MIN, Type } from '@/lib/theme';
-import { targetsFor, TEAMS_PLAYER_COUNT } from "@/lib/gameEngine";
+import { firstTargetFor, teamForSeat, TEAMS_PLAYER_COUNT } from "@/lib/gameEngine";
 import type { MatchLength } from "@/lib/gameEngine";
 import { BOT_PERSONALITIES, DEFAULT_BOT_PERSONALITY, botBlurbKey } from "@/lib/botPersonalities";
 import type { BotPersonalityId } from "@/lib/botPersonalities";
@@ -36,7 +38,11 @@ import { ConfirmDialog, type ConfirmRequest } from "@/components/ConfirmDialog";
 import { useTranslation } from "@/lib/i18n";
 import { A11yStatus, a11yHidden, a11yState } from "@/lib/a11y";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
+import type { FriendInfo } from "@/lib/wire";
 
+const CODE_ICON = 15;
+const MODE_ICON = 13;
+const TEAM_STRIPE = 3;
 const TEAM_COLORS = { A: Colors.gold, B: Colors.info };
 
 /** Long enough to read as a confirmation rather than as a flicker. */
@@ -125,7 +131,7 @@ function MatchLengthControls({
   const { t } = useTranslation();
   const copy = (length: MatchLength) =>
     length === "match"
-      ? { title: t("lobby.formatMatch"), detail: t("lobby.formatMatchSub", { target: targetsFor(seats)[0] }) }
+      ? { title: t("lobby.formatMatch"), detail: t("lobby.formatMatchSub", { target: firstTargetFor(seats) }) }
       : { title: t("lobby.formatSingle"), detail: t("lobby.formatSingleSub") };
 
   return (
@@ -197,11 +203,6 @@ const formatStyles = StyleSheet.create({
   optionDetailActive: { color: Colors.goldLight },
 });
 
-interface FriendInfo {
-  id: string;
-  username: string;
-  lastSeen: string | null;
-}
 
 function InviteFriendsPanel({
   roomCode,
@@ -285,12 +286,7 @@ function InviteFriendsPanel({
                 accessibilityLabel={sent ? t("room.inviteSentA11yLabel", { username: friend.username }) : t("room.inviteA11yLabel", { username: friend.username })}
                 {...a11yState({ role: "button", disabled: sent })}
               >
-                <View style={inviteStyles.avatar} {...a11yHidden()}>
-                  <Text style={inviteStyles.avatarInitial}>
-                    {friend.username.charAt(0).toUpperCase()}
-                  </Text>
-                  <View style={inviteStyles.onlineDot} />
-                </View>
+                <Avatar name={friend.username} size="sm" online />
                 <Text style={inviteStyles.friendName} numberOfLines={1} {...a11yHidden()}>
                   {friend.username}
                 </Text>
@@ -461,22 +457,106 @@ export default function RoomScreen() {
     </View>
   );
 
+  // Built once and placed by each orientation, rather than written out in
+  // both: the two branches differ in where these sit and how tightly they are
+  // packed, never in what they are.
+  const codeCard = (
+    <Animated.View
+      entering={entering}
+      style={isLandscape ? styles.codeSectionCompact : styles.codeSection}
+    >
+      <Text style={styles.codeLabel}>{t("room.codeLabel")}</Text>
+      <Text style={isLandscape ? styles.codeTextCompact : styles.codeText}>{room.code}</Text>
+      <View style={styles.codeActions}>
+        <Pressable
+          onPress={handleCopyCode}
+          style={styles.codeBtn}
+          accessibilityRole="button"
+          accessibilityLabel={t("common.copy")}
+          hitSlop={Spacing.sm}
+        >
+          <Ionicons name="copy-outline" size={CODE_ICON} color={Colors.gold} {...a11yHidden()} />
+          <Text style={styles.codeBtnText} {...a11yHidden()}>{copyFace}</Text>
+        </Pressable>
+        <A11yStatus label={copied ? t("common.copied") : ""} />
+        <Pressable
+          onPress={handleShare}
+          style={styles.codeBtn}
+          accessibilityRole="button"
+          accessibilityLabel={t("room.share")}
+          hitSlop={Spacing.sm}
+        >
+          <Ionicons name="share-outline" size={CODE_ICON} color={Colors.gold} {...a11yHidden()} />
+          <Text style={styles.codeBtnText} {...a11yHidden()}>{t("room.share")}</Text>
+        </Pressable>
+      </View>
+      <RoomKindNote visibility={room.visibility} />
+    </Animated.View>
+  );
+
+  const modePill = (
+    <View style={styles.modePill}>
+      <Ionicons name={modeIcon} size={MODE_ICON} color={Colors.textMuted} {...a11yHidden()} />
+      <Text style={styles.modePillText}>
+        {t("room.modeAndPlayers", { mode: modeLabel, n: room.maxPlayers })}
+      </Text>
+    </View>
+  );
+
+  const seatList = (
+    <View style={{ gap: playerListGap }}>
+      {Array.from({ length: maxSeats }, (_, i) => {
+        const player = room.players.find((p) => p.seatIndex === i);
+        // The engine's own rule rather than a copy of it: a teams room of
+        // anything but four seats has no 2-v-2 to split into.
+        const team = teamForSeat(i, maxSeats, room.gameMode);
+        const gap = isLandscape ? Spacing.sm : Spacing.cosy;
+        return (
+          <View
+            key={i}
+            style={[
+              styles.seatRow,
+              { height: playerItemHeight, paddingVertical: playerItemPaddingVertical },
+              team ? { borderLeftColor: TEAM_COLORS[team], borderLeftWidth: TEAM_STRIPE } : undefined,
+            ]}
+          >
+            <Avatar name={player?.username} size={isLandscape ? "sm" : "md"} />
+            {player ? (
+              <>
+                <View style={[styles.slotInfo, { marginLeft: gap }]}>
+                  <Text style={styles.slotName} numberOfLines={1}>
+                    {player.username}
+                    {player.userId === user?.id ? t("room.youSuffix") : ""}
+                  </Text>
+                  {room.hostUserId === player.userId && (
+                    <Text style={[styles.hostBadge, isLandscape && styles.hostBadgeCompact]}>
+                      {t("room.hostBadge")}
+                    </Text>
+                  )}
+                </View>
+                {team && (
+                  <Text style={[styles.teamBadge, { color: TEAM_COLORS[team] }]}>{team}</Text>
+                )}
+              </>
+            ) : (
+              <Text style={[styles.slotWaiting, { marginLeft: gap }]}>
+                {t("room.waitingSeat")}
+              </Text>
+            )}
+          </View>
+        );
+      })}
+    </View>
+  );
+
   if (isLandscape) {
     return (
       <MenuLayout scrollable={false} centered={false} maxWidth={null} style={{ paddingBottom: 0 }}>
-        <View style={styles.topBar}>
-          <Pressable
-            onPress={handleLeave}
-            style={styles.backBtn}
-            accessibilityRole="button"
-            accessibilityLabel={t("room.leaveA11yLabel")}
-            hitSlop={8}
-          >
-            <Ionicons name="chevron-back" size={22} color={Colors.gold} {...a11yHidden()} />
-          </Pressable>
-          <Text style={styles.screenTitle}>{t("room.title")}</Text>
-          <View style={{ width: 38 }} />
-        </View>
+        <ScreenHeader
+          title={t("room.title")}
+          onBack={handleLeave}
+          backLabel={t("room.leaveA11yLabel")}
+        />
 
         <View style={styles.landscapeBody}>
           {/* LEFT: code card, mode pill, start button */}
@@ -490,41 +570,9 @@ export default function RoomScreen() {
               contentContainerStyle={styles.landscapeLeftScrollContent}
               showsVerticalScrollIndicator={false}
             >
-              <Animated.View entering={entering} style={styles.codeSectionCompact}>
-                <Text style={styles.codeLabel}>{t("room.codeLabel")}</Text>
-                <Text style={styles.codeTextCompact}>{room.code}</Text>
-                <View style={styles.codeActions}>
-                  <Pressable
-                    onPress={handleCopyCode}
-                    style={styles.codeBtn}
-                    accessibilityRole="button"
-                    accessibilityLabel={t("common.copy")}
-                    hitSlop={8}
-                  >
-                    <Ionicons name="copy-outline" size={15} color={Colors.gold} {...a11yHidden()} />
-                    <Text style={styles.codeBtnText} {...a11yHidden()}>{copyFace}</Text>
-                  </Pressable>
-                  <A11yStatus label={copied ? t("common.copied") : ""} />
-                  <Pressable
-                    onPress={handleShare}
-                    style={styles.codeBtn}
-                    accessibilityRole="button"
-                    accessibilityLabel={t("room.share")}
-                    hitSlop={8}
-                  >
-                    <Ionicons name="share-outline" size={15} color={Colors.gold} {...a11yHidden()} />
-                    <Text style={styles.codeBtnText} {...a11yHidden()}>{t("room.share")}</Text>
-                  </Pressable>
-                </View>
-                <RoomKindNote visibility={room.visibility} />
-              </Animated.View>
+              {codeCard}
 
-              <View style={styles.modePill}>
-                <Ionicons name={modeIcon} size={13} color={Colors.textMuted} />
-                <Text style={styles.modePillText}>
-                  {t("room.modeAndPlayers", { mode: modeLabel, n: room.maxPlayers })}
-                </Text>
-              </View>
+              {modePill}
 
               {formatControls}
               {botFillControls}
@@ -543,60 +591,7 @@ export default function RoomScreen() {
               <Text style={[styles.slotsSectionTitle, { marginBottom: Spacing.xxs }]}>
                 {t("room.playersCount", { current: room.players.length, max: maxSeats })}
               </Text>
-              <View style={{ gap: playerListGap }}>
-                {Array.from({ length: maxSeats }, (_, i) => {
-                  const player = room.players.find((p) => p.seatIndex === i);
-                  const team = room.gameMode === "teams" ? (i % 2 === 0 ? "A" : "B") : null;
-                  return (
-                    <View
-                      key={i}
-                      style={[
-                        {
-                          height: playerItemHeight,
-                          paddingVertical: playerItemPaddingVertical,
-                          paddingHorizontal: Spacing.cosy,
-                          backgroundColor: Colors.bgCard,
-                          borderRadius: Radius.sm,
-                          flexDirection: "row",
-                          alignItems: "center",
-                        },
-                        team ? { borderLeftColor: TEAM_COLORS[team as "A" | "B"], borderLeftWidth: 3 } : undefined,
-                      ]}
-                    >
-                      {player ? (
-                        <>
-                          <View style={[styles.slotAvatar, styles.slotAvatarCompact]}>
-                            <Text style={[styles.slotInitial, styles.slotInitialCompact]}>
-                              {player.username.charAt(0).toUpperCase()}
-                            </Text>
-                          </View>
-                          <View style={[styles.slotInfo, { marginLeft: Spacing.sm }]}>
-                            <Text style={styles.slotName} numberOfLines={1}>
-                              {player.username}
-                              {player.userId === user?.id ? t("room.youSuffix") : ""}
-                            </Text>
-                            {room.hostUserId === player.userId && (
-                              <Text style={[styles.hostBadge, styles.hostBadgeCompact]}>{t("room.hostBadge")}</Text>
-                            )}
-                          </View>
-                          {team && (
-                            <Text style={[styles.teamBadge, { color: TEAM_COLORS[team as "A" | "B"] }]}>
-                              {team}
-                            </Text>
-                          )}
-                        </>
-                      ) : (
-                        <>
-                          <View style={[styles.slotAvatar, styles.slotAvatarEmpty, styles.slotAvatarCompact]}>
-                            <Ionicons name="person-add-outline" size={14} color={Colors.textMuted} />
-                          </View>
-                          <Text style={[styles.slotWaiting, { marginLeft: Spacing.sm }]}>{t("room.waitingSeat")}</Text>
-                        </>
-                      )}
-                    </View>
-                  );
-                })}
-              </View>
+              {seatList}
             </View>
 
             {showInvitePanel && (
@@ -617,60 +612,20 @@ export default function RoomScreen() {
 
   return (
     <MenuLayout scrollable={false} centered={false} style={{ paddingBottom: 0 }}>
-      <View style={styles.topBar}>
-        <Pressable
-          onPress={handleLeave}
-          style={styles.backBtn}
-          accessibilityRole="button"
-          accessibilityLabel={t("room.leaveA11yLabel")}
-          hitSlop={8}
-        >
-          <Ionicons name="chevron-back" size={22} color={Colors.gold} {...a11yHidden()} />
-        </Pressable>
-        <Text style={styles.screenTitle}>{t("room.title")}</Text>
-        <View style={{ width: 38 }} />
-      </View>
+      <ScreenHeader
+        title={t("room.title")}
+        onBack={handleLeave}
+        backLabel={t("room.leaveA11yLabel")}
+      />
 
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={{ paddingHorizontal: Spacing.roomy, paddingTop: Spacing.md, paddingBottom: Spacing.sm, gap: Spacing.cosy }}
         showsVerticalScrollIndicator={false}
       >
-        <Animated.View entering={entering} style={styles.codeSection}>
-          <Text style={styles.codeLabel}>{t("room.codeLabel")}</Text>
-          <Text style={styles.codeText}>{room.code}</Text>
-          <View style={styles.codeActions}>
-            <Pressable
-              onPress={handleCopyCode}
-              style={styles.codeBtn}
-              accessibilityRole="button"
-              accessibilityLabel={t("common.copy")}
-              hitSlop={Spacing.sm}
-            >
-              <Ionicons name="copy-outline" size={16} color={Colors.gold} {...a11yHidden()} />
-              <Text style={styles.codeBtnText} {...a11yHidden()}>{copyFace}</Text>
-            </Pressable>
-            <A11yStatus label={copied ? t("common.copied") : ""} />
-            <Pressable
-              onPress={handleShare}
-              style={styles.codeBtn}
-              accessibilityRole="button"
-              accessibilityLabel={t("room.share")}
-              hitSlop={Spacing.sm}
-            >
-              <Ionicons name="share-outline" size={16} color={Colors.gold} {...a11yHidden()} />
-              <Text style={styles.codeBtnText} {...a11yHidden()}>{t("room.share")}</Text>
-            </Pressable>
-          </View>
-          <RoomKindNote visibility={room.visibility} />
-        </Animated.View>
+        {codeCard}
 
-        <View style={styles.modePill}>
-          <Ionicons name={modeIcon} size={13} color={Colors.textMuted} />
-          <Text style={styles.modePillText}>
-            {t("room.modeAndPlayers", { mode: modeLabel, n: room.maxPlayers })}
-          </Text>
-        </View>
+        {modePill}
 
         {formatControls}
         {botFillControls}
@@ -679,60 +634,7 @@ export default function RoomScreen() {
           <Text style={[styles.slotsSectionTitle, { marginBottom: Spacing.xxs }]}>
             {t("room.playersCount", { current: room.players.length, max: maxSeats })}
           </Text>
-          <View style={{ gap: playerListGap }}>
-            {Array.from({ length: maxSeats }, (_, i) => {
-              const player = room.players.find((p) => p.seatIndex === i);
-              const team = room.gameMode === "teams" ? (i % 2 === 0 ? "A" : "B") : null;
-              return (
-                <View
-                  key={i}
-                  style={[
-                    {
-                      height: playerItemHeight,
-                      paddingVertical: playerItemPaddingVertical,
-                      paddingHorizontal: Spacing.cosy,
-                      backgroundColor: Colors.bgCard,
-                      borderRadius: Radius.sm,
-                      flexDirection: "row",
-                      alignItems: "center",
-                    },
-                    team ? { borderLeftColor: TEAM_COLORS[team as "A" | "B"], borderLeftWidth: 3 } : undefined,
-                  ]}
-                >
-                  {player ? (
-                    <>
-                      <View style={styles.slotAvatar}>
-                        <Text style={styles.slotInitial}>
-                          {player.username.charAt(0).toUpperCase()}
-                        </Text>
-                      </View>
-                      <View style={[styles.slotInfo, { marginLeft: Spacing.cosy }]}>
-                        <Text style={styles.slotName} numberOfLines={1}>
-                          {player.username}
-                          {player.userId === user?.id ? t("room.youSuffix") : ""}
-                        </Text>
-                        {room.hostUserId === player.userId && (
-                          <Text style={styles.hostBadge}>{t("room.hostBadge")}</Text>
-                        )}
-                      </View>
-                      {team && (
-                        <Text style={[styles.teamBadge, { color: TEAM_COLORS[team as "A" | "B"] }]}>
-                          {team}
-                        </Text>
-                      )}
-                    </>
-                  ) : (
-                    <>
-                      <View style={[styles.slotAvatar, styles.slotAvatarEmpty]}>
-                        <Ionicons name="person-add-outline" size={18} color={Colors.textMuted} />
-                      </View>
-                      <Text style={[styles.slotWaiting, { marginLeft: Spacing.cosy }]}>{t("room.waitingSeat")}</Text>
-                    </>
-                  )}
-                </View>
-              );
-            })}
-          </View>
+          {seatList}
         </View>
 
         {showInvitePanel && (
@@ -827,32 +729,6 @@ const inviteStyles = StyleSheet.create({
     gap: Spacing.snug,
     paddingHorizontal: Spacing.cosy,
   },
-  avatar: {
-    width: 30,
-    height: 30,
-    borderRadius: Radius.full,
-    backgroundColor: Colors.felt,
-    alignItems: "center",
-    justifyContent: "center",
-    position: "relative",
-    flexShrink: 0,
-  },
-  avatarInitial: {
-    fontFamily: "Rajdhani_700Bold",
-    fontSize: FontSize.sm,
-    color: Colors.gold,
-  },
-  onlineDot: {
-    position: "absolute",
-    bottom: 0,
-    right: 0,
-    width: 9,
-    height: 9,
-    borderRadius: Radius.full,
-    backgroundColor: Colors.success,
-    borderWidth: 1.5,
-    borderColor: Colors.bgSurface,
-  },
   friendName: {
     fontFamily: "Inter_400Regular",
     fontSize: FontSize.sm,
@@ -875,24 +751,14 @@ const inviteStyles = StyleSheet.create({
 });
 
 const styles = StyleSheet.create({
-  topBar: {
+
+  seatRow: {
+    paddingHorizontal: Spacing.cosy,
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.sm,
     flexDirection: "row",
     alignItems: "center",
-    width: "100%",
-    paddingBottom: Spacing.sm,
-    marginBottom: Spacing.xs,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
   },
-  backBtn: { width: TOUCH_TARGET_MIN, height: TOUCH_TARGET_MIN, alignItems: "center", justifyContent: "center" },
-  screenTitle: {
-    flex: 1,
-    textAlign: "center",
-    ...Type.heading,
-    fontSize: FontSize.xl,
-    letterSpacing: 3,
-  },
-
   landscapeBody: {
     flex: 1,
     flexDirection: "row",
@@ -991,22 +857,6 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     letterSpacing: 2,
   },
-  slotAvatar: {
-    width: 36,
-    height: 36,
-    borderRadius: Radius.full,
-    backgroundColor: Colors.felt,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  slotAvatarCompact: {
-    width: 28,
-    height: 28,
-    borderRadius: Radius.full,
-  },
-  slotAvatarEmpty: { backgroundColor: Colors.bgCard },
-  slotInitial: { fontFamily: "Rajdhani_700Bold", fontSize: FontSize.md, color: Colors.gold },
-  slotInitialCompact: { fontSize: FontSize.sm },
   slotInfo: { flex: 1, gap: Spacing.xxs },
   slotName: { fontFamily: "Inter_500Medium", fontSize: FontSize.sm, color: Colors.text },
   hostBadge: {

@@ -285,7 +285,8 @@ for (const size of SIZES) {
 
     await page.getByRole("button", { name: /classifica/i }).first().click();
     await settled(page, 2500);
-    await expectNoBuriedControls(page, "leaderboard", 2);
+    // One: the header's back control, which is the screen's only way out.
+    await expectNoBuriedControls(page, "leaderboard", 1);
   });
 }
 

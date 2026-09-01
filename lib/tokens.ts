@@ -247,6 +247,40 @@ export const Spacing = {
 // own box is the whole target.
 export const TOUCH_TARGET_MIN = 44;
 
+/**
+ * How dim a control goes while it is held, and while it is refusing.
+ *
+ * Two values, not a range: a press is feedback and a disabled control is a
+ * statement, and a scale with a step between them invites a third.
+ */
+export const Opacity = {
+  pressed: 0.8,
+  disabled: 0.4,
+};
+
+/**
+ * Which band a view paints in.
+ *
+ * Named because sibling order is not a statement: web and Android paint in
+ * tree order and iOS does not, so anything sharing a stacking context says
+ * where it sits or finds out on a device (#209). Every band is a role, so two
+ * views at the same number are deliberately peers.
+ */
+export const Layer = {
+  felt: 0,
+  table: 1,
+  moment: 10,
+  rail: 20,
+  hint: 30,
+  band: 50,
+  sheet: 60,
+  held: 100,
+  overlay: 300,
+  banner: 9999,
+  /** Nothing may cover this: the app has stopped and is saying so. */
+  blocking: 10001,
+};
+
 // The game table is built from fixed boxes — CARD_W/CARD_H, TOP_BAR_H, the
 // avatar discs — and React Native scales `fontSize` by the OS text setting
 // (up to ~3.1x on iOS) while leaving `width`, `height` and `lineHeight` alone.

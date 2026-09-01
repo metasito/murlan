@@ -7,38 +7,12 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { Colors, FontSize, Radius, Spacing, TOUCH_TARGET_MIN, Type } from "@/lib/theme";
 import { useTranslation } from "@/lib/i18n";
 import { relativeTime } from "@/lib/relativeTime";
-import type { TranslationKey } from "@/lib/i18n";
 import { a11yGroup, a11yHidden } from "@/lib/a11y";
-import type { GameMode } from "@/lib/gameEngine";
+import { positionLabelKey } from "@/lib/placement";
+import type { MatchHistoryDto } from "@/lib/wire";
 
-/** Wire shapes as JSON delivers them — `finishedAt` is an ISO string here,
- * not the `Date` server/matchHistoryView.ts holds. */
-export interface HistoryParticipantDto {
-  name: string | null;
-  bot: boolean;
-}
 
-export interface MatchHistoryDto {
-  id: string;
-  userId: string;
-  finishedAt: string;
-  gameMode: GameMode;
-  placement: number;
-  playerCount: number;
-  points: number;
-  opponents: unknown[];
-  participants: HistoryParticipantDto[];
-  replayId: string | null;
-  /** Null for a hand the ladder did not rate — never 0, which is a rated hand that moved nobody. */
-  ratingDelta: number | null;
-}
 
-const POSITION_LABEL_KEYS: TranslationKey[] = [
-  "gameOverOverlay.position1",
-  "gameOverOverlay.position2",
-  "gameOverOverlay.position3",
-  "gameOverOverlay.position4",
-];
 
 const PLAY_ICON = 28;
 
@@ -50,21 +24,21 @@ const PLAY_ICON = 28;
 export function HistoryRow({ hand }: { hand: MatchHistoryDto }) {
   const { t, tn } = useTranslation();
 
-  const labelKey = POSITION_LABEL_KEYS[hand.placement - 1];
+  const labelKey = positionLabelKey(hand.placement);
   const posText = labelKey ? t(labelKey) : `${hand.placement}°`;
   const modeText =
     hand.gameMode === "teams"
-      ? t("gameOverOverlay.modeTeams")
-      : t("gameOverOverlay.modeFreeForAll");
+      ? t("result.modeTeams")
+      : t("result.modeFreeForAll");
   const timeText = relativeTime(hand.finishedAt, t, tn);
-  const pointsText = t("gameOverOverlay.pointsAbbrev", { n: hand.points });
-  const playersText = tn("profile.historyPlayers", hand.playerCount);
+  const pointsText = t("common.pointsAbbrev", { n: hand.points });
+  const playersText = tn("history.players", hand.playerCount);
   const names = hand.participants
-    .map((p) => p.name ?? t(p.bot ? "profile.historyBotSeat" : "profile.historyUnknownSeat"))
+    .map((p) => p.name ?? t(p.bot ? "history.botSeat" : "history.unknownSeat"))
     .join(", ");
-  const withText = names ? t("profile.historyWith", { names }) : "";
+  const withText = names ? t("history.with", { names }) : "";
   const summary = [
-    t("profile.historyRowA11yLabel", {
+    t("history.rowA11yLabel", {
       position: posText,
       mode: modeText,
       players: playersText,
@@ -112,7 +86,7 @@ export function HistoryRow({ hand }: { hand: MatchHistoryDto }) {
         router.push({ pathname: "/(online)/replay", params: { id: hand.replayId! } })
       }
       accessibilityRole="button"
-      accessibilityLabel={t("profile.historyWatchA11yLabel", { summary })}
+      accessibilityLabel={t("history.watchA11yLabel", { summary })}
     >
       {body}
       <Ionicons name="play-circle" size={PLAY_ICON} color={Colors.gold} {...a11yHidden()} />

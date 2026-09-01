@@ -19,6 +19,7 @@ import { MATCH_TARGETS } from "@/lib/gameEngine";
 import { handCountOf } from "@/components/gameTableModel";
 import { clearReactions, pushReaction } from "@/lib/reactions";
 import type { GameState, MatchLength } from "@/lib/gameEngine";
+import type { MatchVerdict } from "@/lib/matchState";
 import {
   buildExchangeAnnounce,
   rematchPromptOpen as isRematchPromptOpen,
@@ -44,13 +45,9 @@ export interface RematchVoteState {
 }
 
 /** The running match, as the server reports it. */
-export interface OnlineMatchState {
-  target: number;
-  length: MatchLength;
-  over: boolean;
-  /** Display names, empty until the match ends. */
-  winners: string[];
-  isDraw: boolean;
+export interface OnlineMatchState extends MatchVerdict {
+  /** Manches decided on this match so far. */
+  handsPlayed: number;
   /** Verdict of the rematch question once the match is over. */
   continues: boolean;
 }
@@ -68,6 +65,7 @@ if (initialTarget === undefined) throw new Error("MATCH_TARGETS must not be empt
 const INITIAL_MATCH: OnlineMatchState = {
   target: initialTarget,
   length: "match",
+  handsPlayed: 0,
   over: false,
   winners: [],
   isDraw: false,
@@ -493,8 +491,18 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       }
     };
 
-    const onMatchState = ({ target, length, scores }: { target: number; length: MatchLength; scores: Record<string, number> }) => {
-      setMatchState({ ...INITIAL_MATCH, target, length });
+    const onMatchState = ({
+      target,
+      length,
+      handsPlayed,
+      scores,
+    }: {
+      target: number;
+      length: MatchLength;
+      handsPlayed?: number;
+      scores: Record<string, number>;
+    }) => {
+      setMatchState({ ...INITIAL_MATCH, target, length, handsPlayed: handsPlayed ?? 0 });
       setCumulativeScores(scores);
       // No manche has been played on this match yet, so nothing has been
       // awarded — carrying the last match's deltas over would print them
@@ -507,22 +515,23 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     const onRematchIntents = (state: RematchIntentState) => setRematchIntents(state);
 
     const onGameOver = ({
-      cumulativeScores: cs,
       scores,
       matchTarget,
       matchLength,
+      handsPlayed,
       matchOver,
-      matchWinners,
+      matchWinnerIds,
       matchContinues,
       isDraw,
       ratingDeltas,
     }: {
-      cumulativeScores?: Record<string, number>;
-      scores?: { username: string; points: number }[];
+      /** One row per seat, carrying every identity the scoreboard indexes by. */
+      scores?: { engineId: string; points: number; total: number }[];
       matchTarget?: number;
       matchLength?: MatchLength;
+      handsPlayed?: number;
       matchOver?: boolean;
-      matchWinners?: string[];
+      matchWinnerIds?: string[];
       matchContinues?: boolean;
       isDraw?: boolean;
       /**
@@ -532,19 +541,20 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
        */
       ratingDeltas?: Record<string, number>;
     }) => {
-      if (cs) setCumulativeScores(cs);
       // Kept whole and keyed by user id: this context has no identity of its
       // own, and the overlay that shows the number already knows whose it is.
       // Undefined and empty are the same answer — the hand rated nobody.
       setRatingDeltas(ratingDeltas ?? {});
       if (scores) {
-        setHandScores(Object.fromEntries(scores.map((r) => [r.username, r.points])));
+        setCumulativeScores(Object.fromEntries(scores.map((r) => [r.engineId, r.total])));
+        setHandScores(Object.fromEntries(scores.map((r) => [r.engineId, r.points])));
       }
       setMatchState((prev) => ({
         target: matchTarget ?? prev.target,
         length: matchLength ?? prev.length,
+        handsPlayed: handsPlayed ?? prev.handsPlayed,
         over: matchOver ?? false,
-        winners: matchWinners ?? [],
+        winners: matchWinnerIds ?? [],
         isDraw: isDraw ?? false,
         continues: matchContinues ?? false,
       }));
