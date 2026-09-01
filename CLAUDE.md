@@ -87,7 +87,20 @@ Verify against source before changing any.
   from the web design rather than a fit for it. The safe area is the layout's job — the rail
   absorbs the cutout (`railWidth`), the hand zone carries the home indicator (`HAND_ZONE_H`).
 - **Design tokens are used in the role they were named for.** A fill or border token used as
-  a text colour renders as almost nothing, silently. Pinned by `tests/tokenRoles.test.ts`.
+  a text colour renders as almost nothing, silently. Pinned by `tests/tokenRoles.test.ts`,
+  which covers colour; `Opacity` and `Layer` are convention.
+- **An icon name reaches `<Ionicons>` as a literal, or as a ternary between two literals.**
+  `scripts/iconSubsetChars.mjs` follows a `name` prop back to its call sites and cannot see
+  through a JSX spread, so `<IconButton {...props} />` ships a blank box with no error. Every
+  wrapper passes props by name. Pinned by `tests/iconSubset.test.ts`.
+- **A winner is stated as an engine player id (`player_N`)**, the space `rankings` is in — the
+  only identity every client holds a complete mapping for at every moment `game:over` can
+  arrive, and the only one that survives a vacated seat (whose score key becomes `bot:<seat>`,
+  which no client can name). Offline uses it too, so `MatchVerdict` costs offline nothing.
+- **One module chooses a bot's move.** `lib/autoMove.ts` is it, for the server and the offline
+  table both. It once landed with only the server calling it and every check stayed green,
+  because each mode's tests exercised its own copy. Pinned by `tests/matchState.test.ts`,
+  which counts the callers of the engine's move chooser.
 - **A labelled control exposes one accessible node** — hide its own words and glyphs with
   `a11yHidden()`. This is a web defect and only a web one: `Pressable`'s `accessible` default
   becomes `isAccessibilityElement` on iOS, which makes the view a UIKit leaf, and
@@ -107,8 +120,11 @@ Verify against source before changing any.
   grouped at all: on iOS the control is sealed inside the leaf. Pinned by
   `tests/a11yLabels.test.ts`, `tests/a11yOneNode.test.ts`'s `sealedControls`, and
   `tests/e2e/oneAccessibleNode.spec.ts` (no name on a `generic` node; a group keeps its).
-- **Every `<Modal>` declares `supportedOrientations` including landscape**, or iOS rotates
-  the app to portrait behind it. Pinned by `tests/orientation.test.ts`.
+- **`components/AppModal.tsx` is the app's only `<Modal>`.** React Native's Modal defaults
+  to `supportedOrientations={["portrait"]}` on iOS, so one opened in landscape rotates the
+  app and leaves the screen underneath laid out for the old size — every tap then lands on
+  nothing. The shell declares the prop once; `tests/orientation.test.ts` pins that no second
+  `<Modal>` exists, which is stronger than pinning the prop at each site.
 - **`NotificationBanner`** never returns null, and animates by callback chain — parallel
   `withTiming` calls overwrite the slide-in.
 - **`OfflineBanner`** flags offline only on `state.isConnected === false`; `null` is unknown.
@@ -144,13 +160,19 @@ lines is explaining itself instead of being clear.
 - Gold is a five-step alpha scale (`goldGhost` … `goldStrong`). Pick by role; don't add a
   sixth to split the difference.
 - Menu screens use `MenuLayout` / `MenuCard` / `MenuButton`; `app/lobby.tsx` is the
-  reference. The game tables, `app/index.tsx` and `app/result.tsx` are deliberately exempt.
-  **A local
-  component must not share a name with a shared one** — a duplicate `MenuButton` once hid a
-  bug in plain sight.
+  reference. The game tables and `app/index.tsx` are deliberately exempt; `app/result.tsx` is
+  a thin caller of `ResultBoard`. **A local component must not share a name with a shared
+  one** — a duplicate `MenuButton` once hid a bug in plain sight.
+- **Reach for the shared piece before writing one.** `ScreenHeader` (every top bar),
+  `StateBlock` (loading / error / empty), `IconButton` (a glyph-only control), `Avatar`,
+  `ResultBoard` (end of manche, both modes), `AppModal` (every modal), and
+  `useIsLandscape()`. A second copy of any of these is what #671 removed.
+- **A `zIndex` is a `Layer` role, never a number.** Only iOS reorders siblings, so a bare
+  number is a claim nobody can check against the one three files away. Pinned by
+  `tests/tokenRoles.test.ts`.
 - **Every user-facing string goes through `t()`**, keyed in all three locales.
 - `Shadow.*` is platform-aware. Game screens are landscape-locked; menus do both via
-  `useWindowDimensions`. Use `useSafeAreaInsets()` in game and layout components.
+  `useIsLandscape()`. Use `useSafeAreaInsets()` in game and layout components.
 
 ## Working agreement
 

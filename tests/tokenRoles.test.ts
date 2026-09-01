@@ -250,3 +250,32 @@ describe("design tokens are used in the role they were designed for", () => {
     );
   });
 });
+
+// A `zIndex` is only ever a claim about a sibling somewhere else, and iOS is
+// the one renderer that does not paint in tree order (#209). A bare number
+// cannot be checked against the one three files away; a `Layer` role can.
+describe("stacking order is stated as a role", () => {
+  const BARE_Z = /zIndex\s*[:=]\s*(-?\d+)/g;
+
+  test("no view picks its own z-index", () => {
+    const offenders: string[] = [];
+    for (const [file, source] of sourceFiles()) {
+      for (const [whole, n] of source.matchAll(BARE_Z)) {
+        // 0 is not a band: it is the absence of one, and RN's own default.
+        if (n === "0") continue;
+        offenders.push(`${file}: ${whole}`);
+      }
+    }
+    assert.deepEqual(
+      offenders,
+      [],
+      "give each a Layer role from lib/tokens.ts — two views at one number are " +
+        `peers only if they say so: ${offenders.join(", ")}`
+    );
+  });
+
+  test("the scanner reads a number and passes a role", () => {
+    assert.deepEqual([...("zIndex: 50".matchAll(BARE_Z))].map((m) => m[1]), ["50"]);
+    assert.deepEqual([...("zIndex: Layer.band".matchAll(BARE_Z))].map((m) => m[1]), []);
+  });
+});
