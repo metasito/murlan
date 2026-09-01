@@ -12,8 +12,9 @@
 //
 // The captures and `online-table.txt` land in `docs/design/57-polish-audit/`
 // beside the rest of the survey, so a finding can be re-measured rather than
-// re-argued.
-import { mkdirSync, writeFileSync } from "node:fs";
+// re-argued — and the run is held to that record, so a table that lays out
+// differently has to say so rather than leaving the audit quietly wrong.
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
@@ -35,6 +36,26 @@ const VIEWPORTS = [
 const SEATS = 4;
 
 const AUDIT_DIR = path.resolve(__dirname, "../../docs/design/57-polish-audit");
+const RECORD = path.join(AUDIT_DIR, "online-table.txt");
+/** Set to rewrite the record instead of being held to it. */
+const UPDATING = process.env.AUDIT_UPDATE === "1";
+
+const keyOf = (row: string) => row.split("\t").slice(0, 2).join("\t");
+
+/**
+ * The record by `MODE\tviewport`, so a shard is held to the rows it measured.
+ * CI does write a whole one — the split is by spec file, so one shard runs all
+ * four — but onto a runner nothing commits from, so the checked-in copy only
+ * ever moves when someone runs the survey locally.
+ */
+function recorded(): Map<string, string> {
+  try {
+    const lines = readFileSync(RECORD, "utf8").split("\n").filter(Boolean);
+    return new Map(lines.map((l) => [keyOf(l), l]));
+  } catch {
+    return new Map();
+  }
+}
 const SETTLE_CEILING_MS = 8_000;
 /** Past `SWEEP_MS` (components/table/moments.tsx), the longest of the moment overlays. */
 const MOMENT_CEILING_MS = 1_600;
@@ -255,7 +276,23 @@ test.describe("the online table, at the audit's viewports", () => {
       // Last, never before the assertions: a red run's numbers are printed
       // above but must not replace the record, which exists to say that the
       // two tables agreed.
-      rows.push(line("ONLINE", vp, online), line("OFFLINE", vp, offline));
+      const measured = [line("ONLINE", vp, online), line("OFFLINE", vp, offline)];
+      rows.push(...measured);
+
+      if (!UPDATING) {
+        const record = recorded();
+        for (const row of measured) {
+          const was = record.get(keyOf(row));
+          if (was === undefined) continue;
+          expect(
+            row,
+            `the table no longer lays out the way docs/design/57-polish-audit/ records it ` +
+              `at ${vp.name}. If that is the intended change, say so on the ticket that made ` +
+              `it and regenerate the record with AUDIT_UPDATE=1 (a whole run, not a shard), ` +
+              `correcting the numbers README.md quotes.`
+          ).toBe(was);
+        }
+      }
     });
   }
 
@@ -265,6 +302,6 @@ test.describe("the online table, at the audit's viewports", () => {
     // as the rest having stopped being true.
     if (rows.length !== VIEWPORTS.length * 2) return;
     mkdirSync(AUDIT_DIR, { recursive: true });
-    writeFileSync(path.join(AUDIT_DIR, "online-table.txt"), rows.join("\n") + "\n", "utf8");
+    writeFileSync(RECORD, rows.join("\n") + "\n", "utf8");
   });
 });
