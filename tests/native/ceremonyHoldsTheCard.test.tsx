@@ -192,6 +192,34 @@ describe('the hand leaves a place for the card still in the air', () => {
     await r.unmount();
   });
 
+  /**
+   * The row's own width, which `computeHandLayout` solves from the number of
+   * slots. It is the one number that says whether the row stepped for the hand
+   * *including* the card still in the air.
+   */
+  const rowWidth = () => {
+    const style = screen.getByTestId('hand-row').props.style as
+      | { width?: number }[]
+      | { width?: number };
+    const flat = Array.isArray(style) ? Object.assign({}, ...style) : style;
+    return (flat as { width?: number }).width;
+  };
+
+  // Option A's whole thesis: the eye is told *where* before it is told *what*.
+  // A row still stepped for the cards it draws would close over the slot and
+  // the card would arrive on top of a fan that never moved.
+  it('steps the row for the card in the air, not for the cards it draws', async () => {
+    const during = await render(table({ viewerSeat: WINNER_SEAT, visible: true }));
+    const holdingASlot = rowWidth();
+    await during.unmount();
+
+    const after = await render(table({ viewerSeat: WINNER_SEAT, visible: false }));
+    const withTheCard = rowWidth();
+    await after.unmount();
+
+    expect(holdingASlot).toBe(withTheCard);
+  });
+
   // A spectated hand is synthetic — `hidden-N` ids standing in for cards the
   // watcher may not be shown — so there is nothing to hold back and no id that
   // could match the one arriving. The claim is that the ceremony changes

@@ -89,3 +89,14 @@ export function cardAtX(x: number, n: number, step: number, cardW: number): numb
   // Every card before the last owns exactly one step, so which one is division.
   return step > 0 ? Math.floor(x / step) : 0;
 }
+
+/**
+ * Which slot a drawn card takes when the row is holding one open for a card
+ * still arriving. Everything from the waiting slot onward steps past it, so the
+ * gap is where the card will actually land rather than at an end of the row.
+ *
+ * `undefined` means nothing is arriving and the row is its own length.
+ */
+export function slotForCard(i: number, arrivingIndex: number | undefined): number {
+  return arrivingIndex === undefined || i < arrivingIndex ? i : i + 1;
+}

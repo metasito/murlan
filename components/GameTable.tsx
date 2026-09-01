@@ -914,14 +914,33 @@ export function GameTable({
     exchangeAnnouncement?.visible === true,
     exchangeAnnouncement?.data?.bothJokersException
   );
-  const arriving = tradedCardsLanded
+  //
+  // Nothing is held back under reduced motion: with no flight to wait for,
+  // the row would step for a card that is already there and hold an empty slot
+  // open for a frame nobody asked to see.
+  const arriving =
+    tradedCardsLanded || reduceMotion
+      ? undefined
+      : arrivingCard(
+          exchangeAnnouncement?.visible ? exchangeAnnouncement.data : null,
+          spectating ? null : viewerSeat
+        );
+  const handOnTable =
+    arriving === undefined ? shownHand : shownHand.filter((c) => c.id !== arriving.id);
+  // Where the card ends up, so the row parts *there* rather than at an end.
+  // `shownHand` is the player's own arrangement over the engine's sort, and the
+  // card's place in it is the place it will take.
+  const arrivingIndex =
+    arriving === undefined ? undefined : shownHand.findIndex((c) => c.id === arriving.id);
+  // The same card once it has landed. Naming it for the rest of the ceremony
+  // costs nothing — it mounts on the one render it lands, and that is the
+  // render this has to reach it on.
+  const descendingId = reduceMotion
     ? undefined
     : arrivingCard(
         exchangeAnnouncement?.visible ? exchangeAnnouncement.data : null,
         spectating ? null : viewerSeat
-      );
-  const handOnTable =
-    arriving === undefined ? shownHand : shownHand.filter((c) => c.id !== arriving.id);
+      )?.id;
   // Where the last move put a card. A drag shows its own answer; the discrete
   // actions behind it (WCAG 2.5.7) move a card with nothing on screen changing
   // for whoever asked, so the live region below says where it went.
@@ -1959,6 +1978,8 @@ export function GameTable({
                   // drop during the flight would land a slot from where the
                   // finger let go.
                   onReorder={spectating || arriving !== undefined ? undefined : arrange}
+                  arrivingIndex={arrivingIndex}
+                  descendingId={descendingId}
                 />
               </View>
             )}

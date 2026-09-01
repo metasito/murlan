@@ -10,6 +10,7 @@ import {
   MIN_READABLE_STEP,
   cardAtX,
   computeHandLayout,
+  slotForCard,
   hitWidth,
 } from "../components/handLayout.ts";
 import { HAND_ARC } from "../components/tableArc.ts";
@@ -219,5 +220,46 @@ describe("which card a tap belongs to", () => {
     assert.equal(cardAtX(0, 1, one.step, CW), 0);
     assert.equal(cardAtX(CW - 1e-6, 1, one.step, CW), 0);
     assert.equal(cardAtX(CW, 1, one.step, CW), null);
+  });
+});
+
+// The gap #650's arrival descends into. The row is stepped for the hand
+// *including* the card still in the air, and the slot it is coming to is left
+// empty — so the card lands in a space already waiting rather than over a fan
+// that has not moved.
+describe("slotForCard", () => {
+  test("nothing arriving leaves every card where it is", () => {
+    for (let i = 0; i < 14; i++) assert.equal(slotForCard(i, undefined), i);
+  });
+
+  test("cards before the waiting slot are untouched", () => {
+    for (let i = 0; i < 5; i++) assert.equal(slotForCard(i, 5), i);
+  });
+
+  test("cards from the waiting slot onward step past it", () => {
+    for (let i = 5; i < 14; i++) assert.equal(slotForCard(i, 5), i + 1);
+  });
+
+  // The two ends of the row, where an off-by-one is a card drawn on top of its
+  // neighbour rather than a gap in the middle.
+  test("a card arriving at the low end pushes the whole hand along", () => {
+    for (let i = 0; i < 14; i++) assert.equal(slotForCard(i, 0), i + 1);
+  });
+
+  test("a card arriving past the last card leaves the hand alone", () => {
+    const n = 14;
+    for (let i = 0; i < n; i++) assert.equal(slotForCard(i, n), i);
+  });
+
+  // The whole point: no two cards share a slot, and exactly one slot is free.
+  test("every hand and every waiting slot leaves exactly one gap", () => {
+    for (let n = 1; n <= 18; n++) {
+      for (let gap = 0; gap <= n; gap++) {
+        const taken = Array.from({ length: n }, (_, i) => slotForCard(i, gap));
+        assert.equal(new Set(taken).size, n, `n=${n} gap=${gap}: two cards share a slot`);
+        const free = Array.from({ length: n + 1 }, (_, s) => s).filter((s) => !taken.includes(s));
+        assert.deepEqual(free, [gap], `n=${n} gap=${gap}: the free slot is not the one waiting`);
+      }
+    }
   });
 });
