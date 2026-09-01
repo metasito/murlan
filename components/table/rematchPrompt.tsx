@@ -19,8 +19,7 @@ import {
   Scrim,
   Spacing,
   TOUCH_TARGET_MIN,
-  Type,
-} from "@/lib/theme";
+  Type, Layer, } from "@/lib/theme";
 
 /** The rematch question's own column down the side of the table. */
 const REMATCH_PANEL_W = 86;
@@ -109,7 +108,7 @@ const styles = StyleSheet.create({
   rematchPanel: {
     position: "absolute",
     width: REMATCH_PANEL_W,
-    zIndex: 20,
+    zIndex: Layer.rail,
     gap: Spacing.xs,
     paddingVertical: Spacing.sm,
     paddingHorizontal: Spacing.xs + 2,

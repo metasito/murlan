@@ -5,7 +5,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import Animated, { FadeIn } from "react-native-reanimated";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { hapticError, hapticLight, hapticSelection, hapticSuccess } from "@/lib/haptics";
-import { Colors, Spacing, Radius, FontSize, Type, Motion } from "@/lib/theme";
+import { Colors, Spacing, Radius, FontSize, Type, Motion, TOUCH_TARGET_MIN } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { markTutorialSeen } from "@/lib/tutorialSeen";
 import { useAuth } from "@/context/AuthContext";
@@ -723,8 +723,8 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.md,
   },
   headerBtn: {
-    width: 40,
-    height: 40,
+    width: TOUCH_TARGET_MIN,
+    height: TOUCH_TARGET_MIN,
     alignItems: "center",
     justifyContent: "center",
   },

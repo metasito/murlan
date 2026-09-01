@@ -1,7 +1,7 @@
 import React from "react";
 import { StyleSheet, View, Text } from "react-native";
 import Feather from "@expo/vector-icons/Feather";
-import { Colors, Spacing, Radius, FontSize, Type } from "@/lib/theme";
+import { Colors, Spacing, Radius, FontSize, Type, Layer } from "@/lib/theme";
 import { MenuButton } from "@/components/MenuButton";
 import { useTranslation, type ServerPayload } from "@/lib/i18n";
 import { AppModal } from "./AppModal";
@@ -61,7 +61,7 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     // Above the notification banner and the offline banner, both of which
     // report a connection this screen has already ruled on.
-    zIndex: 10001,
+    zIndex: Layer.blocking,
     backgroundColor: Colors.overlayOpaque,
     alignItems: "center",
     justifyContent: "center",

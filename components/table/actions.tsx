@@ -21,7 +21,7 @@ import { a11yHidden, a11yState } from "@/lib/a11y";
 import { useTranslation } from "@/lib/i18n";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { cardSpokenName } from "@/lib/cardNames";
-import { Colors, Garnet, Highlight, makeShadow, Motion, Shadow, Spacing } from "@/lib/theme";
+import { Colors, Garnet, Highlight, makeShadow, Motion, Shadow, Spacing, Layer } from "@/lib/theme";
 import type { Card } from "@/lib/gameEngine";
 
 const BTN_PRESS_SCALE = 0.94;
@@ -343,12 +343,12 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     backgroundColor: Colors.gold,
-    zIndex: 0,
+    zIndex: Layer.felt,
   },
   // The one lit object on the table, and only on the player's own turn.
   playBtnFace: { borderWidth: 1, borderColor: Colors.goldLit },
   // Over the glow, which fills this button and paints.
-  playBtnFront: { zIndex: 1 },
+  playBtnFront: { zIndex: Layer.table },
   playBtnLabel: { color: Colors.bgCard },
   playBtnSub: {
     fontFamily: "Rajdhani_500Medium",

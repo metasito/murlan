@@ -6,12 +6,10 @@
 // fetches — nothing new is stored, and nothing reads further back than the
 // server already sends.
 
-/** A finished match, as `GET /api/stats/history` sends it. */
-export interface MatchRecord {
-  finishedAt: string;
-  placement: number;
-  playerCount: number;
-}
+import type { MatchHistoryDto } from "./wire";
+
+/** The three fields of a history row these trends read. */
+export type MatchRecord = Pick<MatchHistoryDto, "finishedAt" | "placement" | "playerCount">;
 
 export interface PlacementSlice {
   placement: number;

@@ -11,7 +11,7 @@ import {
 import { SafeAreaInsetsContext } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import Feather from "@expo/vector-icons/Feather";
-import { Colors, Spacing, Radius, FontSize, Shadow, TOUCH_TARGET_MIN } from "@/lib/theme";
+import { Colors, Spacing, Radius, FontSize, Shadow, TOUCH_TARGET_MIN, Layer } from "@/lib/theme";
 import { MenuButton } from "@/components/MenuButton";
 import { useTranslation } from "@/lib/i18n";
 import { a11yHidden } from "@/lib/a11y";
@@ -211,7 +211,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    zIndex: 10,
+    zIndex: Layer.moment,
   },
   modalOverlay: {
     flex: 1,

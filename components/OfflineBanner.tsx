@@ -7,7 +7,7 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
-import { Colors, Type, Motion, Shadow } from "@/lib/theme";
+import { Colors, Type, Motion, Shadow, Layer } from "@/lib/theme";
 import { useTranslation } from "@/lib/i18n";
 import { a11yHidden } from "@/lib/a11y";
 
@@ -58,7 +58,7 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    zIndex: 10000,
+    zIndex: Layer.alert,
     height: BANNER_H,
     backgroundColor: Colors.danger,
     alignItems: "center",

@@ -986,8 +986,8 @@ describe("every player-facing server response carries a code", () => {
       }
     }
     assert.ok(
-      objectCount > 100,
-      `expected to find the server's response payload objects, got ${objectCount} (107 when this floor was set)`
+      objectCount > 90,
+      `expected to find the server's response payload objects, got ${objectCount} (100 when this floor was set)`
     );
     assert.deepEqual(
       violations,

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { View, Text, StyleSheet, Pressable, useWindowDimensions } from "react-native";
+import { useIsLandscape } from "@/lib/orientation";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -15,7 +16,7 @@ import {
   notificationTopOffset,
   surplusHeight,
 } from "@/components/gameTableModel";
-import { Colors, Reading, Spacing, Radius, Type, Shadow, TOUCH_TARGET_MIN } from "@/lib/theme";
+import { Colors, Reading, Spacing, Radius, Type, Shadow, TOUCH_TARGET_MIN, Layer } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
 import type { NotificationType, NotificationData } from "@/context/NotificationContext";
@@ -87,6 +88,7 @@ export default function NotificationBanner({ notification, onDismiss, onMeasure 
   const [pressed, setPressed] = useState(false);
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
+  const isLandscape = useIsLandscape();
   const translateY = useSharedValue(-120);
   const opacity = useSharedValue(0);
   const reduceMotion = usePrefersReducedMotion();
@@ -95,7 +97,7 @@ export default function NotificationBanner({ notification, onDismiss, onMeasure 
   const scale = cardScale(Math.min(width, height));
   const topOffset = notificationTopOffset({
     topPad,
-    landscape: width > height,
+    landscape: isLandscape,
     scale,
     surplus: surplusHeight(width, height, scale) / 2,
   });
@@ -213,7 +215,7 @@ const styles = StyleSheet.create({
     position: "absolute",
     left: Spacing.sm + 4,
     right: Spacing.sm + 4,
-    zIndex: 9999,
+    zIndex: Layer.banner,
   },
   banner: {
     flexDirection: "row",

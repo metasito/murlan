@@ -1,6 +1,7 @@
 import type { Server as SocketServer } from "socket.io";
 import { storage } from "./storage.ts";
-import { rollMatchForward, scoresByEngineId } from "./gameOver.ts";
+import { rollMatchForward } from "./gameOver.ts";
+import { emitMatchState } from "./emit.ts";
 import { broadcastGameState, persistGameState } from "./gamePersistence.ts";
 import { armTurn } from "./gameTurn.ts";
 import { startReplayLog } from "./replayShape.ts";
@@ -32,12 +33,7 @@ export async function dealManche(
 
   broadcastGameState(io, game);
   io.to(game.roomId).emit("game:started");
-  io.to(game.roomId).emit("game:match_state", {
-    target: game.matchTarget,
-    length: game.matchLength,
-    handsPlayed: game.handsPlayed,
-    scores: scoresByEngineId(game),
-  });
+  emitMatchState(io, game.roomId, game);
 
   persistGameState(game.roomId, game);
   armTurn(io, game.roomId);

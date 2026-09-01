@@ -8,6 +8,7 @@ import {
   useWindowDimensions,
   ActivityIndicator,
 } from "react-native";
+import { useIsLandscape } from "@/lib/orientation";
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -82,7 +83,7 @@ export default function QuickmatchScreen() {
   const insets = useSafeAreaInsets();
   const { t } = useTranslation();
   const MODES = React.useMemo(() => buildModes(t), [t]);
-  const { width: W, height: H } = useWindowDimensions();
+  const { width: W } = useWindowDimensions();
   const { quickmatch, leaveRoom, room } = useOnlineRoom();
   const { error, clearError } = useOnlineConnection();
   const navigation = useNavigation();
@@ -93,7 +94,7 @@ export default function QuickmatchScreen() {
   const pulse = useSharedValue(1);
   const reduceMotion = usePrefersReducedMotion();
 
-  const isLandscape = W > H;
+  const isLandscape = useIsLandscape();
 
   // The id, not the room: every field update would otherwise replace the route again.
   const roomId = room?.roomId;

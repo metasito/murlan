@@ -277,6 +277,8 @@ export const Layer = {
   held: 100,
   overlay: 300,
   banner: 9999,
+  /** Above an ordinary banner: the connection itself is the news. */
+  alert: 10000,
   /** Nothing may cover this: the app has stopped and is saying so. */
   blocking: 10001,
 };
