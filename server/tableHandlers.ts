@@ -457,8 +457,6 @@ async function rejoinAction(
   const { roomId, userId, username } = action;
   const seat = seatOfUser(game, userId);
   if (seat === null) {
-    // Two different answers: this table gave the seat up while they were
-    // away, or they never had one here.
     const code = game.releasedSeats.has(userId) ? "SEAT_RELEASED" : "UNAUTHORIZED";
     return { ok: false, code };
   }

@@ -72,7 +72,7 @@ export const en = {
   "server.CANNOT_PASS": "You can't pass",
   "server.REMATCH_DECLINED": "The table chose not to play again",
   "server.UNAUTHORIZED": "Unauthorized",
-  "server.SEAT_RELEASED": "You were away too long and the table gave your seat up. The match carried on without you.",
+  "server.SEAT_RELEASED": "The table gave your seat up, and the match carried on without you.",
   "server.GAME_NOT_FOUND": "Game not found",
   "server.GAME_NO_LONGER_VALID": "Game no longer valid",
   "server.SERVER_ERROR": "Server error",

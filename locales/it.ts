@@ -65,7 +65,7 @@ export const it: Record<keyof typeof en, string> = {
   "server.CANNOT_PASS": "Non puoi passare",
   "server.REMATCH_DECLINED": "Il tavolo ha rifiutato la rivincita",
   "server.UNAUTHORIZED": "Accesso non consentito",
-  "server.SEAT_RELEASED": "Il tavolo ha liberato il tuo posto dopo troppa attesa. La partita è andata avanti senza di te.",
+  "server.SEAT_RELEASED": "Il tavolo ha liberato il tuo posto e la partita è andata avanti senza di te.",
   "server.GAME_NOT_FOUND": "Partita non trovata",
   "server.GAME_NO_LONGER_VALID": "Partita non più valida",
   "server.SERVER_ERROR": "Errore del server",
