@@ -66,40 +66,76 @@ function packagerBlock(rel: string): string {
   return found[0];
 }
 
+const DEVICE_JOBS = [".github/workflows/ios.yml", ".github/workflows/maestro.yml"];
+
+/**
+ * The one workflow step whose `run:` reaches the Maestro installer.
+ *
+ * Scoped to the step rather than the file, because an environment variable
+ * does not survive one: an `export` in a step of its own and the `curl` in the
+ * next reads as "the pin comes first" against the whole file, and installs
+ * latest on the runner.
+ */
+function installStep(rel: string): string {
+  const steps = code(rel).split(/^ {6}- /m);
+  const found = steps.filter((s) => s.includes("get.maestro.mobile.dev"));
+  assert.equal(found.length, 1, `${rel} should install Maestro from exactly one step`);
+  return found[0];
+}
+
+/** The version each device job asks for, or undefined where it asks for none. */
+const pinnedVersion = (rel: string) =>
+  installStep(rel).match(/export MAESTRO_VERSION=(\d+\.\d+\.\d+)/)?.[1];
+
 describe("both device jobs pin the tool that reads the screen", () => {
   // Maestro decides what "the app rendered" means, and installed unpinned it
   // was the one thing in either job that could change between two runs of the
-  // same commit. 2.7.0 rewrote the iOS hierarchy retrieval and arrived with no
-  // commit to bisect against (#701).
-  for (const rel of [".github/workflows/ios.yml", ".github/workflows/maestro.yml"]) {
+  // same commit (#701).
+  for (const rel of DEVICE_JOBS) {
     test(`${rel} asks for a version, before it fetches`, () => {
-      const install = code(rel);
-      const pin = install.search(/export MAESTRO_VERSION=\d+\.\d+\.\d+/);
-      const fetch = install.indexOf("get.maestro.mobile.dev");
+      const step = installStep(rel);
+      const pin = step.search(/export MAESTRO_VERSION=\d+\.\d+\.\d+/);
       assert.notEqual(pin, -1, `${rel} takes whatever version is current`);
-      assert.notEqual(fetch, -1, `${rel} no longer installs Maestro at all`);
-      // The install script reads the variable from its environment, so a pin
-      // written below the pipe sets nothing and installs latest in silence.
-      assert.ok(pin < fetch, `${rel} names the version after fetching, which pins nothing`);
+      // The install script reads the variable from its own environment, so a
+      // pin written below the pipe sets nothing and installs latest in silence.
+      assert.ok(
+        pin < step.indexOf("get.maestro.mobile.dev"),
+        `${rel} names the version after fetching, which pins nothing`,
+      );
+    });
+
+    test(`${rel} reads the pin back off the binary that arrived`, () => {
+      // Asking is not getting. A tag that does not resolve leaves the
+      // installer exiting 0 with nothing installed, so the check is what turns
+      // a typo - or a retagged release - into a named failure rather than a
+      // run driven by whatever is on the box.
+      assert.match(
+        installStep(rel),
+        /--version[^\n]*grep -q "\$MAESTRO_VERSION"/,
+        `${rel} never checks which Maestro it actually installed`,
+      );
     });
   }
 
   test("both jobs pin the same version", () => {
-    const version = (rel: string) => code(rel).match(/MAESTRO_VERSION=(\d+\.\d+\.\d+)/)?.[1];
+    // Asserted present first: two jobs that have both lost the pin compare
+    // undefined to undefined, and this passes while nothing is pinned at all.
+    for (const rel of DEVICE_JOBS) assert.ok(pinnedVersion(rel), `${rel} pins no version`);
     assert.equal(
-      version(".github/workflows/ios.yml"),
-      version(".github/workflows/maestro.yml"),
+      pinnedVersion(DEVICE_JOBS[0]),
+      pinnedVersion(DEVICE_JOBS[1]),
       "the two loops would be reading the screen with different tools",
     );
   });
 
-  test("each run states the version it actually used", () => {
-    // The pin is what was asked for; this is what arrived. They differ if the
-    // release is ever retagged, and a run that cannot say which it ran is a
-    // run whose evidence cannot be trusted later.
-    for (const rel of [".github/workflows/ios.yml", ".github/workflows/maestro.yml"]) {
-      assert.match(code(rel), /maestro" --version/, `${rel}'s log does not name its Maestro`);
-    }
+  test("the machine a developer reproduces on runs the same version", () => {
+    // `maestro.yml` holds both jobs to "a failure here and a failure locally
+    // mean the same thing". A CI pin that local does not share moves the drift
+    // rather than removing it.
+    assert.ok(
+      read("docs/TESTING.md").includes(`export MAESTRO_VERSION=${pinnedVersion(DEVICE_JOBS[0])}`),
+      "docs/TESTING.md installs a different Maestro than CI drives",
+    );
   });
 });
 

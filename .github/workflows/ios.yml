@@ -189,18 +189,18 @@ jobs:
 
       - name: Install Maestro
         run: |
-          # Pinned, because this is the tool that decides what "the app
-          # rendered" means and it was the only thing in either job that could
-          # change between two runs of the same commit. 2.7.0 rewrote the iOS
-          # hierarchy retrieval ("direct snapshot traversal") and arrived here
-          # with no commit to bisect against; #685 was chased against a moving
-          # driver for a day because of it. Raise this deliberately, and read
-          # the changelog when you do (#701).
+          # This is the tool that decides what "the app rendered" means, and
+          # unpinned it was the only thing in either job that could change
+          # between two runs of the same commit. Raise it deliberately, and
+          # read the changelog when you do (#701).
           export MAESTRO_VERSION=2.10.0
           curl -Ls "https://get.maestro.mobile.dev" | bash
           echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
-          # Stated in the log, so a run's own record says what drove it.
-          "$HOME/.maestro/bin/maestro" --version
+          # Checked rather than echoed. A tag that does not resolve leaves the
+          # installer's own `exit` returning the status of the echo before it,
+          # which is 0 with nothing installed - so the pin has to be read back
+          # off the binary that arrived.
+          "$HOME/.maestro/bin/maestro" --version 2>&1 | tee /dev/stderr | grep -q "$MAESTRO_VERSION"
 
       # Both flows, named rather than globbed: the order is the thing being
       # relied on. `clearState` makes each start from the same place, so either
