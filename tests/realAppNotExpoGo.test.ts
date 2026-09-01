@@ -66,6 +66,43 @@ function packagerBlock(rel: string): string {
   return found[0];
 }
 
+describe("both device jobs pin the tool that reads the screen", () => {
+  // Maestro decides what "the app rendered" means, and installed unpinned it
+  // was the one thing in either job that could change between two runs of the
+  // same commit. 2.7.0 rewrote the iOS hierarchy retrieval and arrived with no
+  // commit to bisect against (#701).
+  for (const rel of [".github/workflows/ios.yml", ".github/workflows/maestro.yml"]) {
+    test(`${rel} asks for a version, before it fetches`, () => {
+      const install = code(rel);
+      const pin = install.search(/export MAESTRO_VERSION=\d+\.\d+\.\d+/);
+      const fetch = install.indexOf("get.maestro.mobile.dev");
+      assert.notEqual(pin, -1, `${rel} takes whatever version is current`);
+      assert.notEqual(fetch, -1, `${rel} no longer installs Maestro at all`);
+      // The install script reads the variable from its environment, so a pin
+      // written below the pipe sets nothing and installs latest in silence.
+      assert.ok(pin < fetch, `${rel} names the version after fetching, which pins nothing`);
+    });
+  }
+
+  test("both jobs pin the same version", () => {
+    const version = (rel: string) => code(rel).match(/MAESTRO_VERSION=(\d+\.\d+\.\d+)/)?.[1];
+    assert.equal(
+      version(".github/workflows/ios.yml"),
+      version(".github/workflows/maestro.yml"),
+      "the two loops would be reading the screen with different tools",
+    );
+  });
+
+  test("each run states the version it actually used", () => {
+    // The pin is what was asked for; this is what arrived. They differ if the
+    // release is ever retagged, and a run that cannot say which it ran is a
+    // run whose evidence cannot be trusted later.
+    for (const rel of [".github/workflows/ios.yml", ".github/workflows/maestro.yml"]) {
+      assert.match(code(rel), /maestro" --version/, `${rel}'s log does not name its Maestro`);
+    }
+  });
+});
+
 describe("the iOS job drives this app, not Expo Go", () => {
   const workflow = code(".github/workflows/ios.yml");
 
