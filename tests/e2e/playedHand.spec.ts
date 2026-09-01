@@ -14,16 +14,6 @@
 // Neither press catches a stale tap strip (#683), and no press can: one aimed at
 // an element is delivered to that element whatever its box says. That is read as
 // a layout box in `tests/e2e/handTapStrips.spec.ts` (#720), not here.
-//
-// The hand size is load-bearing anyway, and it is why thirteen is written down
-// rather than left to taste. `computeHandLayout` clamps the step between
-// `MIN_READABLE_STEP` and `cardW * MAX_STEP_RATIO`, and what a play does to the
-// fan is the difference between the step before and the step after — so a clamp
-// hides that only when *both* sides of the play sit on the same stop, never
-// merely because one of them does. At this viewport that is a hand of nine or
-// fewer (upper stop) or twenty-one or more (lower): drift exactly zero, and any
-// assertion about the fan's geometry green by construction. Twenty leaves the
-// floor and drifts 0.9. Thirteen drifts 3.4, the widest any hand here does.
 import { expect, test } from "./fixtures";
 import type { Page } from "@playwright/test";
 import { resumeSaved } from "./helpers/offlineSeed";
@@ -77,8 +67,9 @@ const spread = (ranks: readonly Rank[]) =>
 const PILE_CARD = card("3_clubs", "3", "clubs");
 
 /**
- * Thirteen cards, because that is what a seat is dealt and what the fan has to
- * lay out with real overlap.
+ * Thirteen cards: a hand partway through a manche rather than a fresh deal,
+ * which is twenty-one at two seats (`dealCards`), and enough of them that the
+ * fan overlaps, which is what the presses below are aimed at.
  *
  * Every viewer card beats the pile and loses to every bot card, against Murlan's
  * order (3…10, J, Q, K, A, 2). That is what makes both moves below legal by
