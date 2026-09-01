@@ -34,10 +34,10 @@ export interface MatchHistoryDto {
 }
 
 const POSITION_LABEL_KEYS: TranslationKey[] = [
-  "gameOverOverlay.position1",
-  "gameOverOverlay.position2",
-  "gameOverOverlay.position3",
-  "gameOverOverlay.position4",
+  "result.position1",
+  "result.position2",
+  "result.position3",
+  "result.position4",
 ];
 
 const PLAY_ICON = 28;
@@ -54,10 +54,10 @@ export function HistoryRow({ hand }: { hand: MatchHistoryDto }) {
   const posText = labelKey ? t(labelKey) : `${hand.placement}°`;
   const modeText =
     hand.gameMode === "teams"
-      ? t("gameOverOverlay.modeTeams")
-      : t("gameOverOverlay.modeFreeForAll");
+      ? t("result.modeTeams")
+      : t("result.modeFreeForAll");
   const timeText = relativeTime(hand.finishedAt, t, tn);
-  const pointsText = t("gameOverOverlay.pointsAbbrev", { n: hand.points });
+  const pointsText = t("common.pointsAbbrev", { n: hand.points });
   const playersText = tn("history.players", hand.playerCount);
   const names = hand.participants
     .map((p) => p.name ?? t(p.bot ? "history.botSeat" : "history.unknownSeat"))

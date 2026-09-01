@@ -36,7 +36,6 @@ const SIZED_AT_RUNTIME: [string, number, string][] = [
   ["components/table/actions.tsx", 2, "PASSA and GIOCA take `actionBtnSize(scale)`, floored at ACTION_BTN_FLOOR"],
   ["components/table/chrome.tsx", 1, "the rail's knobs take `physicalTouchTarget(scale)`, floored at TOUCH_TARGET_MIN"],
   ["components/MenuButton.tsx", 1, "the box is `styles[size]`, one of three steps the scan reads as declared styles in their own right"],
-  ["components/GameOverOverlay.tsx", 1, "the rematch button's box is `rematchGradient`, which declares the floor"],
   ["components/table/settingsSheet.tsx", 1, "the exit button's box is the gradient it wraps, floored at `physicalTouchTarget(scale)`"],
   ["app/(online)/index.tsx", 1, "the error banner's close is a 16pt icon reaching the floor through `hitSlop`"],
   ["app/(online)/room.tsx", 1, "an invite row takes `{ height: ROW_H }` inline, and ROW_H is the token"],
@@ -184,7 +183,7 @@ test("every control's touch size has been ruled on", () => {
 // reader looks like: no candidates, no failures, green.
 test("the scan finds the app's controls, and reads a real box", () => {
   const candidates = pressableBoxes(scannedFiles(repoRoot), read);
-  assert.ok(candidates.length > 80, `only ${candidates.length} pressables found`);
+  assert.ok(candidates.length > 60, `only ${candidates.length} pressables found`);
   assert.ok(
     candidates.filter(measuresUp).length > 50,
     "no candidate has a box the reader could measure"

@@ -26,6 +26,7 @@ const match: PersistedMatch = {
   matchLength: "match",
   matchTarget: 21,
   maxPlayers: 4,
+  handsPlayed: 2,
 };
 
 const JOIN_CODE = "QW3RTY";

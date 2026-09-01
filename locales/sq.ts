@@ -32,6 +32,7 @@ export const sq: Record<keyof typeof en, string> = {
   "common.retry": "Provo përsëri",
   "common.copy": "Kopjo",
   "common.copied": "U kopjua!",
+  "common.pointsAbbrev": "{{n}}p",
 
   // ------------------------------------------------------------- server.*
   "server.AUTH_RATE_LIMITED": "Shumë përpjekje, provo përsëri pas 15 minutash.",
@@ -244,28 +245,19 @@ export const sq: Record<keyof typeof en, string> = {
   "exchangeAnnouncement.noSwapText": "Pa shkëmbim — Xhola të dyfishtë 🃏",
 
   // ------------------------------------------------------- gameOverOverlay.*
-  "gameOverOverlay.position1": "1°",
-  "gameOverOverlay.position2": "2°",
-  "gameOverOverlay.position3": "3°",
-  "gameOverOverlay.position4": "4°",
-  "gameOverOverlay.handWinnerSubtitle": "FITON DORËN",
-  "gameOverOverlay.matchWinnerSubtitle": "FITON NDESHJEN",
-  "gameOverOverlay.drawSubtitle": "NDESHJE BARAZIM",
-  "gameOverOverlay.matchProgress": "Ndeshje deri në {{target}} pikë",
-  "gameOverOverlay.singleHandFormat": "Një dorë",
-  "gameOverOverlay.nextHand": "Dora tjetër",
+  "result.position1": "1°",
+  "result.position2": "2°",
+  "result.position3": "3°",
+  "result.position4": "4°",
   "gameOverOverlay.nextHandWaiting": "{{count}}/{{total}} gati",
   "gameOverOverlay.nextHandA11yLabel": "Gati për dorën tjetër",
   "gameOverOverlay.waitingA11yLabel": "Në pritje të të tjerëve: {{count}} nga {{total}} gati",
-  "gameOverOverlay.newMatch": "Ndeshje e re",
   "gameOverOverlay.newMatchA11yLabel": "Fillo një ndeshje të re",
-  "gameOverOverlay.tableStops": "Tavolina ndalon këtu",
-  "gameOverOverlay.modeTeams": "Çifte",
-  "gameOverOverlay.modeFreeForAll": "I lirë",
-  "gameOverOverlay.rankingsTitle": "RENDITJA",
+  "result.modeTeams": "Çifte",
+  "result.modeFreeForAll": "I lirë",
+  "result.rankingsTitle": "RENDITJA",
   "gameOverOverlay.leave": "Dil",
   "gameOverOverlay.leaveA11yLabel": "Dil nga loja",
-  "gameOverOverlay.pointsAbbrev": "{{n}}p",
 
   // -------------------------------------------------------------- cardView.*
   "cardView.jokerColored": "Xholi i kuq",
@@ -575,7 +567,6 @@ export const sq: Record<keyof typeof en, string> = {
 
   // ----------------------------------------------------------------- result.*
   "result.pointsDelta": "+{{n}}",
-  "result.winnerDefault": "Fituesi",
   "result.handOverTitle": "Dora Mbaroi",
   "result.matchOverTitle": "Ndeshja Mbaroi",
   "result.matchDrawTitle": "Ndeshje Barazim",

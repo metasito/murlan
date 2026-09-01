@@ -104,6 +104,7 @@ function rematchGame(overrides: {
     maxPlayers: overrides.seats,
     matchTarget: 21,
     matchLength: "match" as const,
+    handsPlayed: 1,
     matchOver: true,
     handFlags: {},
     abandonedSeats: new Map<number, string>(),

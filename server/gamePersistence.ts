@@ -130,6 +130,7 @@ export function persistGameState(roomId: string, game: OnlineGameState): Promise
       matchLength: game.matchLength,
       matchTarget: game.matchTarget,
       maxPlayers: game.maxPlayers,
+      handsPlayed: game.handsPlayed,
     }),
     updatedAt: new Date(),
   };

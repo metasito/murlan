@@ -73,7 +73,7 @@ describe("resolveHandEnd — free-for-all", () => {
     assert.equal(result.matchOver, true);
     assert.equal(result.isDraw, false);
     assert.deepEqual(result.matchWinners, ["alice"]);
-    assert.deepEqual(result.winnerNames, ["Alice"]);
+    assert.deepEqual(result.winnerEngineIds, ["p0"]);
   });
 
   test("two crossing the target at once escalates instead of ending", () => {

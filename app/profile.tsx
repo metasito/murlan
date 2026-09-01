@@ -87,10 +87,10 @@ const placementColor = (placement: number) => PLACEMENT_COLORS[placement - 1] ??
 // Shared with app/result.tsx / components/GameOverOverlay.tsx — same "1°"/
 // "2°"/"3°"/"4°" badge text, one source of truth.
 const POSITION_LABEL_KEYS: TranslationKey[] = [
-  "gameOverOverlay.position1",
-  "gameOverOverlay.position2",
-  "gameOverOverlay.position3",
-  "gameOverOverlay.position4",
+  "result.position1",
+  "result.position2",
+  "result.position3",
+  "result.position4",
 ];
 
 function StatTile({ icon, value, label }: { icon: IconName; value: string; label: string }) {
@@ -407,7 +407,7 @@ export default function ProfileScreen() {
                   {...a11yGroup(
                     t("profile.formRecentA11yLabel", {
                       results: recentForm(history)
-                        .map((p) => t(POSITION_LABEL_KEYS[p - 1] ?? "gameOverOverlay.position4"))
+                        .map((p) => t(POSITION_LABEL_KEYS[p - 1] ?? "result.position4"))
                         .join(", "),
                     })
                   )}
@@ -423,7 +423,7 @@ export default function ProfileScreen() {
                 <Text style={styles.formLabel}>{t("profile.formDistributionLabel")}</Text>
                 {placementDistribution(history).map((slice) => {
                   const posText = t(
-                    POSITION_LABEL_KEYS[slice.placement - 1] ?? "gameOverOverlay.position4"
+                    POSITION_LABEL_KEYS[slice.placement - 1] ?? "result.position4"
                   );
                   return (
                     <View

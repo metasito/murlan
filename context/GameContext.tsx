@@ -42,6 +42,7 @@ import {
   type ExchangeAnnounceData,
 } from "@/lib/sharedGameFlow";
 import { handCountOf } from "@/components/gameTableModel";
+import type { MatchVerdict } from "@/lib/matchState";
 import type { BotPersonalityId } from "@/lib/botPersonalities";
 
 export interface PlayerSetupConfig {
@@ -62,17 +63,10 @@ export interface HandResult {
  * `OnlineGameState` match fields, folded forward by the same
  * `lib/gameEngine` function, so the two modes cannot drift apart.
  */
-export interface MatchState {
-  length: MatchLength;
-  /** Current point target. Escalates 21 → 31 → 41 → 51 on a tie at the target. */
-  target: number;
+export interface MatchState extends MatchVerdict {
   /** Engine player id -> cumulative match points. */
   scores: Record<string, number>;
   hands: HandResult[];
-  over: boolean;
-  /** Engine player ids. Empty until the match ends. */
-  winners: string[];
-  isDraw: boolean;
 }
 
 /** Each seat's answer to the rematch question, by engine player id. */

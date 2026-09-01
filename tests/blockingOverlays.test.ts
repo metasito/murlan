@@ -25,7 +25,7 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."
  * — a `<Modal>` somewhere else in the same file says nothing about this one.
  */
 const BLOCKING_OVERLAYS: [string, string][] = [
-  ["components/GameOverOverlay.tsx", "styles.innerCol"],
+  ["components/GameOverOverlay.tsx", "<ResultBoard"],
   ["components/ConfirmDialog.tsx", "StyleSheet.absoluteFill"],
   ["components/SettingsModal.tsx", "StyleSheet.absoluteFill"],
   ["components/ErrorFallback.tsx", "styles.modalOverlay"],

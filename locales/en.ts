@@ -23,6 +23,7 @@ export const en = {
   "common.retry": "Retry",
   "common.copy": "Copy",
   "common.copied": "Copied!",
+  "common.pointsAbbrev": "{{n}}pt",
 
   // ------------------------------------------------------------- server.*
   "server.AUTH_RATE_LIMITED": "Too many attempts, try again in 15 minutes.",
@@ -244,28 +245,19 @@ export const en = {
   "exchangeAnnouncement.noSwapText": "No exchange — double Joker 🃏",
 
   // ------------------------------------------------------- gameOverOverlay.*
-  "gameOverOverlay.position1": "1st",
-  "gameOverOverlay.position2": "2nd",
-  "gameOverOverlay.position3": "3rd",
-  "gameOverOverlay.position4": "4th",
-  "gameOverOverlay.handWinnerSubtitle": "WINS THE HAND",
-  "gameOverOverlay.matchWinnerSubtitle": "WINS THE MATCH",
-  "gameOverOverlay.drawSubtitle": "MATCH DRAWN",
-  "gameOverOverlay.matchProgress": "Match to {{target}} points",
-  "gameOverOverlay.singleHandFormat": "Single hand",
-  "gameOverOverlay.nextHand": "Next hand",
+  "result.position1": "1st",
+  "result.position2": "2nd",
+  "result.position3": "3rd",
+  "result.position4": "4th",
   "gameOverOverlay.nextHandWaiting": "{{count}}/{{total}} ready",
   "gameOverOverlay.nextHandA11yLabel": "Ready for the next hand",
   "gameOverOverlay.waitingA11yLabel": "Waiting for the others: {{count}} of {{total}} ready",
-  "gameOverOverlay.newMatch": "New match",
   "gameOverOverlay.newMatchA11yLabel": "Start a new match",
-  "gameOverOverlay.tableStops": "The table stops here",
-  "gameOverOverlay.modeTeams": "Teams",
-  "gameOverOverlay.modeFreeForAll": "Free-for-all",
-  "gameOverOverlay.rankingsTitle": "STANDINGS",
+  "result.modeTeams": "Teams",
+  "result.modeFreeForAll": "Free-for-all",
+  "result.rankingsTitle": "STANDINGS",
   "gameOverOverlay.leave": "Leave",
   "gameOverOverlay.leaveA11yLabel": "Leave the game",
-  "gameOverOverlay.pointsAbbrev": "{{n}}pt",
 
   // -------------------------------------------------------------- cardView.*
   "cardView.jokerColored": "Red Joker",
@@ -575,7 +567,6 @@ export const en = {
 
   // ----------------------------------------------------------------- result.*
   "result.pointsDelta": "+{{n}}",
-  "result.winnerDefault": "Winner",
   "result.handOverTitle": "Hand Over",
   "result.matchOverTitle": "Match Over",
   "result.matchDrawTitle": "Match Drawn",

@@ -23,7 +23,7 @@ import {
   clearAllTimersForUser,
 } from "./gameTimers.ts";
 import { sendGameStateTo } from "./gamePersistence.ts";
-import { scoresByName } from "./gameOver.ts";
+import { scoresByEngineId } from "./gameOver.ts";
 import { armTurnIfIdle } from "./gameTurn.ts";
 import { TEAMS_PLAYER_COUNT } from "../lib/gameEngine.ts";
 import type { EventOutcome } from "./socketSafety.ts";
@@ -175,7 +175,8 @@ export async function announceRejoin(
     io.to(userRoom(userId)).emit("game:match_state", {
       target: game.matchTarget,
       length: game.matchLength,
-      scores: scoresByName(game),
+      handsPlayed: game.handsPlayed,
+      scores: scoresByEngineId(game),
     });
   }
   io.to(roomId).emit("game:player_reconnected", {

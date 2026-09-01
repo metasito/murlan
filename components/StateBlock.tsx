@@ -24,9 +24,10 @@ export function LoadingBlock({ label }: { label: string }) {
 }
 
 /**
- * Grouped only when there is nothing to retry: a group holding a control seals
- * that control inside a leaf on iOS, so the retrying form has to stay a plain
- * container with its own text left readable.
+ * A failure with a way out of it. Not grouped, unlike the other blocks in this
+ * file: it holds a control, and a group holding a control seals that control
+ * inside a leaf on iOS. Two shapes rather than one branching on `retry` — a
+ * conditional group is a group the source scan cannot rule on.
  */
 export function ErrorBlock({
   title,
@@ -35,41 +36,47 @@ export function ErrorBlock({
 }: {
   title: string;
   body?: string;
-  /** Absent where the failure is terminal — a replay that will not parse. */
-  retry?: { label: string; a11yLabel: string; onPress: () => void };
+  retry: { label: string; a11yLabel: string; onPress: () => void };
 }) {
-  const grouped = retry === undefined;
-  const hide = grouped ? a11yHidden() : {};
   return (
-    <View
-      style={styles.block}
-      {...(grouped ? a11yGroup(body ? `${title}. ${body}` : title) : {})}
-    >
+    <View style={styles.block}>
       <Ionicons
         name="alert-circle-outline"
         size={STATE_ICON}
         color={Colors.textMuted}
         {...a11yHidden()}
       />
-      <Text style={styles.title} {...hide}>
+      <Text style={styles.title}>{title}</Text>
+      {body !== undefined && <Text style={styles.body}>{body}</Text>}
+      <MenuButton
+        label={retry.label}
+        onPress={retry.onPress}
+        variant="secondary"
+        size="sm"
+        fullWidth={false}
+        accessibilityLabel={retry.a11yLabel}
+        icon={<Ionicons name="refresh" size={RETRY_ICON} color={Colors.gold} />}
+      />
+    </View>
+  );
+}
+
+/** A failure there is no way out of — a replay that will not parse. */
+export function TerminalErrorBlock({ title, body }: { title: string; body: string }) {
+  return (
+    <View style={styles.block} {...a11yGroup(`${title}. ${body}`)}>
+      <Ionicons
+        name="alert-circle-outline"
+        size={STATE_ICON}
+        color={Colors.textMuted}
+        {...a11yHidden()}
+      />
+      <Text style={styles.title} {...a11yHidden()}>
         {title}
       </Text>
-      {body !== undefined && (
-        <Text style={styles.body} {...hide}>
-          {body}
-        </Text>
-      )}
-      {retry && (
-        <MenuButton
-          label={retry.label}
-          onPress={retry.onPress}
-          variant="secondary"
-          size="sm"
-          fullWidth={false}
-          accessibilityLabel={retry.a11yLabel}
-          icon={<Ionicons name="refresh" size={RETRY_ICON} color={Colors.gold} />}
-        />
-      )}
+      <Text style={styles.body} {...a11yHidden()}>
+        {body}
+      </Text>
     </View>
   );
 }

@@ -11,7 +11,7 @@ import { GameTable } from "@/components/GameTable";
 import { MenuLayout } from "@/components/MenuLayout";
 import { MenuCard } from "@/components/MenuCard";
 import { MenuButton } from "@/components/MenuButton";
-import { LoadingBlock, ErrorBlock } from "@/components/StateBlock";
+import { LoadingBlock, TerminalErrorBlock } from "@/components/StateBlock";
 import {
   ReplayTransport,
   ReplayMoveList,
@@ -142,7 +142,7 @@ export default function ReplayScreen() {
     return (
       <MenuLayout>
         <MenuCard title={t("replay.title")}>
-          <ErrorBlock title={t("replay.loadErrorTitle")} body={t("replay.loadErrorBody")} />
+          <TerminalErrorBlock title={t("replay.loadErrorTitle")} body={t("replay.loadErrorBody")} />
           {back}
         </MenuCard>
       </MenuLayout>

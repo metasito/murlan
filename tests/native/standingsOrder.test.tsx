@@ -122,6 +122,7 @@ describe('a standings row is explained by the number beside it', () => {
           match={{
             target: 14,
             length: 'match',
+            handsPlayed: 3,
             over: true,
             winners: ['shtiz7'],
             isDraw: false,
@@ -158,6 +159,7 @@ describe('a standings row is explained by the number beside it', () => {
           match={{
             target: 14,
             length: 'match',
+            handsPlayed: 3,
             over: false,
             winners: [],
             isDraw: false,

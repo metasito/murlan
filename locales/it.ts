@@ -16,6 +16,7 @@ export const it: Record<keyof typeof en, string> = {
   "common.retry": "Riprova",
   "common.copy": "Copia",
   "common.copied": "Copiato!",
+  "common.pointsAbbrev": "{{n}}pt",
 
   // ------------------------------------------------------------- server.*
   "server.AUTH_RATE_LIMITED": "Troppi tentativi, riprova tra 15 minuti.",
@@ -232,28 +233,19 @@ export const it: Record<keyof typeof en, string> = {
   "exchangeAnnouncement.noSwapText": "Nessuno scambio — Jolly doppio 🃏",
 
   // ------------------------------------------------------- gameOverOverlay.*
-  "gameOverOverlay.position1": "1°",
-  "gameOverOverlay.position2": "2°",
-  "gameOverOverlay.position3": "3°",
-  "gameOverOverlay.position4": "4°",
-  "gameOverOverlay.handWinnerSubtitle": "VINCE LA MANCHE",
-  "gameOverOverlay.matchWinnerSubtitle": "VINCE LA PARTITA",
-  "gameOverOverlay.drawSubtitle": "PARTITA PARI",
-  "gameOverOverlay.matchProgress": "Partita a {{target}} punti",
-  "gameOverOverlay.singleHandFormat": "Manche secca",
-  "gameOverOverlay.nextHand": "Prossima manche",
+  "result.position1": "1°",
+  "result.position2": "2°",
+  "result.position3": "3°",
+  "result.position4": "4°",
   "gameOverOverlay.nextHandWaiting": "{{count}}/{{total}} pronti",
   "gameOverOverlay.nextHandA11yLabel": "Pronto per la prossima manche",
   "gameOverOverlay.waitingA11yLabel": "In attesa degli altri: {{count}} su {{total}} pronti",
-  "gameOverOverlay.newMatch": "Nuova partita",
   "gameOverOverlay.newMatchA11yLabel": "Inizia una nuova partita",
-  "gameOverOverlay.tableStops": "Il tavolo si ferma qui",
-  "gameOverOverlay.modeTeams": "Coppie",
-  "gameOverOverlay.modeFreeForAll": "Libero",
-  "gameOverOverlay.rankingsTitle": "CLASSIFICA",
+  "result.modeTeams": "Coppie",
+  "result.modeFreeForAll": "Libero",
+  "result.rankingsTitle": "CLASSIFICA",
   "gameOverOverlay.leave": "Esci",
   "gameOverOverlay.leaveA11yLabel": "Esci dalla partita",
-  "gameOverOverlay.pointsAbbrev": "{{n}}pt",
 
   // -------------------------------------------------------------- cardView.*
   "cardView.jokerColored": "Jolly rosso",
@@ -568,7 +560,6 @@ export const it: Record<keyof typeof en, string> = {
 
   // ----------------------------------------------------------------- result.*
   "result.pointsDelta": "+{{n}}",
-  "result.winnerDefault": "Vincitore",
   "result.handOverTitle": "Manche Finita",
   "result.matchOverTitle": "Partita Finita",
   "result.matchDrawTitle": "Partita Pari",

@@ -34,10 +34,10 @@ interface RatingDto {
 }
 
 const POSITION_LABEL_KEYS: TranslationKey[] = [
-  "gameOverOverlay.position1",
-  "gameOverOverlay.position2",
-  "gameOverOverlay.position3",
-  "gameOverOverlay.position4",
+  "result.position1",
+  "result.position2",
+  "result.position3",
+  "result.position4",
 ];
 const PLACEMENT_COLORS = [
   Colors.podiumGold,
@@ -210,7 +210,7 @@ export function HandBreakdown({
           icon="flag"
           label={t("handBreakdown.placementLabel")}
           value={t("handBreakdown.placementValue", {
-            position: t(POSITION_LABEL_KEYS[thisHand.placement - 1] ?? "gameOverOverlay.position4"),
+            position: t(POSITION_LABEL_KEYS[thisHand.placement - 1] ?? "result.position4"),
             players: thisHand.playerCount,
             points: thisHand.points,
           })}

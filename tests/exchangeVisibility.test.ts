@@ -216,6 +216,7 @@ describe("visibleExchangePhase", () => {
           scores: { u: 0 },
           gameMode: "free_for_all",
           matchLength: "match",
+          handsPlayed: 0,
           matchTarget: 1,
           maxPlayers: 4,
         });
