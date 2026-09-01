@@ -13,6 +13,12 @@
 // the design, not a defect. What is never legitimate is a control covered at
 // its own centre by something inert: a label, a divider, a decorative gradient.
 // That is always either a layout mistake or a dead control.
+//
+// Every `settled` below is deliberately unscoped. Its default reading is the
+// interactive controls, which is exactly what this measures, so passing a
+// `within` here would widen the wait to elements no assertion reads. That is
+// the opposite of the fix other specs in this directory needed, and the reason
+// it is written down: a sweep that scopes them all is making this one worse.
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { openApp, registerNewAccount, startOfflineGame } from "./helpers/navigation";
