@@ -66,6 +66,79 @@ function packagerBlock(rel: string): string {
   return found[0];
 }
 
+const DEVICE_JOBS = [".github/workflows/ios.yml", ".github/workflows/maestro.yml"];
+
+/**
+ * The one workflow step whose `run:` reaches the Maestro installer.
+ *
+ * Scoped to the step rather than the file, because an environment variable
+ * does not survive one: an `export` in a step of its own and the `curl` in the
+ * next reads as "the pin comes first" against the whole file, and installs
+ * latest on the runner.
+ */
+function installStep(rel: string): string {
+  const steps = code(rel).split(/^ {6}- /m);
+  const found = steps.filter((s) => s.includes("get.maestro.mobile.dev"));
+  assert.equal(found.length, 1, `${rel} should install Maestro from exactly one step`);
+  return found[0];
+}
+
+/** The version each device job asks for, or undefined where it asks for none. */
+const pinnedVersion = (rel: string) =>
+  installStep(rel).match(/export MAESTRO_VERSION=(\d+\.\d+\.\d+)/)?.[1];
+
+describe("both device jobs pin the tool that reads the screen", () => {
+  // Maestro decides what "the app rendered" means, and installed unpinned it
+  // was the one thing in either job that could change between two runs of the
+  // same commit (#701).
+  for (const rel of DEVICE_JOBS) {
+    test(`${rel} asks for a version, before it fetches`, () => {
+      const step = installStep(rel);
+      const pin = step.search(/export MAESTRO_VERSION=\d+\.\d+\.\d+/);
+      assert.notEqual(pin, -1, `${rel} takes whatever version is current`);
+      // The install script reads the variable from its own environment, so a
+      // pin written below the pipe sets nothing and installs latest in silence.
+      assert.ok(
+        pin < step.indexOf("get.maestro.mobile.dev"),
+        `${rel} names the version after fetching, which pins nothing`,
+      );
+    });
+
+    test(`${rel} reads the pin back off the binary that arrived`, () => {
+      // Asking is not getting. A tag that does not resolve leaves the
+      // installer exiting 0 with nothing installed, so the check is what turns
+      // a typo - or a retagged release - into a named failure rather than a
+      // run driven by whatever is on the box.
+      assert.match(
+        installStep(rel),
+        /--version[^\n]*grep -q "\$MAESTRO_VERSION"/,
+        `${rel} never checks which Maestro it actually installed`,
+      );
+    });
+  }
+
+  test("both jobs pin the same version", () => {
+    // Asserted present first: two jobs that have both lost the pin compare
+    // undefined to undefined, and this passes while nothing is pinned at all.
+    for (const rel of DEVICE_JOBS) assert.ok(pinnedVersion(rel), `${rel} pins no version`);
+    assert.equal(
+      pinnedVersion(DEVICE_JOBS[0]),
+      pinnedVersion(DEVICE_JOBS[1]),
+      "the two loops would be reading the screen with different tools",
+    );
+  });
+
+  test("the machine a developer reproduces on runs the same version", () => {
+    // `maestro.yml` holds both jobs to "a failure here and a failure locally
+    // mean the same thing". A CI pin that local does not share moves the drift
+    // rather than removing it.
+    assert.ok(
+      read("docs/TESTING.md").includes(`export MAESTRO_VERSION=${pinnedVersion(DEVICE_JOBS[0])}`),
+      "docs/TESTING.md installs a different Maestro than CI drives",
+    );
+  });
+});
+
 describe("the iOS job drives this app, not Expo Go", () => {
   const workflow = code(".github/workflows/ios.yml");
 

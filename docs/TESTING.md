@@ -152,7 +152,7 @@ Verified on the development machine, not assumed:
 | Android SDK | **installed** — `commandlinetools` + `platform-tools` + `platforms;android-34` + `system-images;android-34;google_apis;x86_64` + `emulator`, at `C:\Android\sdk` (outside the repo, gitignored if it were inside it) |
 | `adb` | **present** — `C:\Android\sdk\platform-tools\adb.exe`, version 37.0.1 |
 | Android emulator (AVD) | **present** — `murlan_test`, Pixel 6 profile, Android 14 (API 34), boots and runs |
-| Maestro | **present** — `~/.maestro/bin`, CLI 2.8.0, runs natively on Windows (no WSL needed — see below) |
+| Maestro | **present** — `~/.maestro/bin`, runs natively on Windows (no WSL needed). Pin it to the version CI drives — see below |
 | Gradle | absent — not needed; Expo Go is the whole point |
 | Hardware virtualization | present (WHPX), the emulator is accelerated |
 | WSL 2 | present, Ubuntu 24.04, **not used** — see below |
@@ -267,13 +267,25 @@ as `Apri|Open`.
 
 **Maestro.** The documented WSL2 route was a dead end anyone would hit first —
 **it is unnecessary on this machine**. Maestro is a Java CLI; the standard
-installer (`curl -Ls "https://get.maestro.mobile.dev" | bash`) is a bash
-script, and Git Bash on Windows has bash, curl, unzip and (via the JDK
-already on this machine) java — everything the installer checks for. It runs
-natively there, installs to `~/.maestro`, and talks to the *same* Windows
-`adb` server the emulator is already registered with, so there is no
-cross-VM port-forwarding to set up at all. Confirmed with `maestro --version`
-→ `2.8.0`.
+installer is a bash script, and Git Bash on Windows has bash, curl, unzip and
+(via the JDK already on this machine) java — everything the installer checks
+for. It runs natively there, installs to `~/.maestro`, and talks to the *same*
+Windows `adb` server the emulator is already registered with, so there is no
+cross-VM port-forwarding to set up at all.
+
+Install the version CI drives, not whatever is current:
+
+```
+export MAESTRO_VERSION=2.10.0
+curl -Ls "https://get.maestro.mobile.dev" | bash
+```
+
+The variable is read from the installer's own environment, so it has to be
+exported above the pipe. Both device jobs pin the same number for the reason
+this section exists at all: a failure here and a failure in CI have to mean
+the same thing, and Maestro is what decides whether the app rendered. Change
+it in all three places together — `tests/realAppNotExpoGo.test.ts` fails if
+they disagree (#701).
 
 **The app on the emulator.** Expo Go, not a dev build — the whole reason
 `react-native-keyboard-controller` was removed was to keep this path open:
