@@ -27,10 +27,9 @@ import {
   getValidGivebackCards,
   processExchangeChoice,
 } from "@/lib/gameEngine";
-import { useTranslation, type TranslationKey, type TranslationParams } from "@/lib/i18n";
+import { useTranslation, type TFn, type TranslationKey } from "@/lib/i18n";
 import { a11yHidden } from "@/lib/a11y";
 
-type TFn = (key: TranslationKey, params?: TranslationParams) => string;
 
 // ─── Storage keys ──────────────────────────────────────────────────────────
 // "Has the tutorial ever been offered" is lib/tutorialSeen.ts's question, and

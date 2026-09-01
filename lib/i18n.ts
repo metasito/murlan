@@ -139,6 +139,10 @@ export function tn(base: string, count: number, params?: TranslationParams): str
   return t(key, { count, ...params });
 }
 
+/** Their shapes, for the many functions that take a translator as a parameter. */
+export type TFn = typeof t;
+export type TnFn = typeof tn;
+
 export interface ServerPayload {
   code?: string;
   message?: string;

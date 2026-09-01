@@ -8,9 +8,7 @@
 // `t` is a parameter rather than a hook call so this stays pure and testable.
 
 import type { Card } from "@/lib/gameEngine";
-import type { TranslationKey, TranslationParams } from "@/lib/i18n";
-
-export type TFn = (key: TranslationKey, params?: TranslationParams) => string;
+import type { TFn, TranslationKey } from "@/lib/i18n";
 
 // Only the ranks whose spoken word differs from the glyph printed on the card.
 // Numbers speak as themselves.
