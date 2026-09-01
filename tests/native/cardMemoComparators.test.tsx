@@ -45,6 +45,8 @@ const VALUES: Record<string, [unknown, unknown]> = {
   noLift: [false, true],
   hitWidth: [40, 90],
   hitW: [40, 90],
+  testID: ["card-plain", "card-start"],
+  isStartCard: [false, true],
   decorative: [false, true],
   hint: ["give this card", "play this card"],
   light: ["standing", "flat"],
