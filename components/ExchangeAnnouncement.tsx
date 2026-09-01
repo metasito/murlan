@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef } from "react";
 import { StyleSheet, View } from "react-native";
 import type { Card } from "@/lib/gameEngine";
 import { useTranslation } from "@/lib/i18n";
@@ -6,7 +6,8 @@ import { cardSpokenName } from "@/lib/cardNames";
 import { A11yStatus, a11yHidden } from "@/lib/a11y";
 import { Colors, FontSize, Radius, Scrim, Spacing } from "@/lib/theme";
 import { TableText } from "@/components/table/TableText";
-import { EXCHANGE_FLIGHT_MS, exchangeAnnounceMs } from "@/lib/exchangeCeremony";
+import { exchangeAnnounceMs } from "@/lib/exchangeCeremony";
+import { useTradedCardsLanded } from "@/lib/sharedGameFlow";
 import type { ExchangeFlight as Trip } from "@/components/gameTableModel";
 import { ExchangeFlyingCard, ExchangeSeatTag } from "@/components/table/ExchangeFlight";
 
@@ -50,26 +51,16 @@ export function ExchangeAnnouncement({
   onDismiss,
 }: ExchangeAnnouncementProps) {
   const { t } = useTranslation();
-  const [landed, setLanded] = useState(false);
+  const landed = useTradedCardsLanded(visible, bothJokersException);
   const dismissRef = useRef(onDismiss);
   useEffect(() => {
     dismissRef.current = onDismiss;
   });
 
   useEffect(() => {
-    if (!visible) {
-      setLanded(false);
-      return;
-    }
-    // Nothing flies when both Jokers cancelled the exchange, so the notice is
-    // readable from the first frame rather than after a flight that never runs.
-    const flight = bothJokersException ? 0 : EXCHANGE_FLIGHT_MS;
-    const land = setTimeout(() => setLanded(true), flight);
+    if (!visible) return;
     const done = setTimeout(() => dismissRef.current(), exchangeAnnounceMs(bothJokersException));
-    return () => {
-      clearTimeout(land);
-      clearTimeout(done);
-    };
+    return () => clearTimeout(done);
   }, [visible, bothJokersException]);
 
   if (!visible) return null;

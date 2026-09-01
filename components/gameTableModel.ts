@@ -7,7 +7,8 @@
 // relative and carry its .ts extension; `@/` is safe only in a type-only import,
 // which is erased before resolution.
 
-import type { Combination, GameState, Player } from "@/lib/gameEngine";
+import type { Card, Combination, GameState, Player } from "@/lib/gameEngine";
+import type { ExchangeAnnounceData } from "@/lib/sharedGameFlow";
 import {
   CARD_H,
   CARD_W,
@@ -316,6 +317,26 @@ export const EMPTY_PILE: PileState = { prev: null, current: null, playedBy: null
 //
 // FlyingCards (components/table/pile.tsx) owns the animation; these are the numbers both it
 // and the table's feedback read, so the two cannot drift apart.
+
+/**
+ * The card on its way *into* this seat's hand.
+ *
+ * The exchange ends its phase, hands the card over and raises its ceremony in
+ * one tick, so the hand holds the card before the flight carrying it has left
+ * (#672). The two ends are not symmetric: each seat is receiving what the other
+ * gave, never what it gave away, which really has left the hand.
+ *
+ * Nothing flies when both Jokers cancelled the exchange, so nothing arrives.
+ */
+export function arrivingCard(
+  announce: ExchangeAnnounceData | null | undefined,
+  viewerSeat: number | null
+): Card | undefined {
+  if (!announce || announce.bothJokersException || viewerSeat === null) return undefined;
+  if (viewerSeat === announce.winnerIdx) return announce.cardReceived;
+  if (viewerSeat === announce.loserIdx) return announce.cardGiven;
+  return undefined;
+}
 
 export const FLIGHT_MS = 380;
 /** Fraction of the flight after which the card is on the felt and settling. */

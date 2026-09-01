@@ -12,6 +12,7 @@ import {
   ROTATE_SETTLED,
   ROTATE_UPRIGHT,
   rotateGlyphAngle,
+  arrivingCard,
   actionBtnSize,
   HAND_ZONE_GAP,
   CHIP_H,
@@ -1903,5 +1904,57 @@ describe("exchangeFlight", () => {
       width(trip(120, 168)) > width(trip(40, 56)),
       "the clearance is a fixed distance rather than the card's own reach"
     );
+  });
+});
+
+// What the table leaves a place for while the flight carrying it is still on
+// screen (#672).
+describe("arrivingCard", () => {
+  const GIVEN = { id: "6_clubs", suit: "clubs", rank: "6", isJoker: false } as const;
+  const RECEIVED = { id: "2_spades", suit: "spades", rank: "2", isJoker: false } as const;
+  const announce = {
+    winnerName: "Ana",
+    loserName: "Bea",
+    winnerIdx: 1,
+    loserIdx: 3,
+    bothJokersException: false,
+    cardGiven: GIVEN,
+    cardReceived: RECEIVED,
+  };
+
+  // The two ends are not symmetric: each seat is receiving the other's card.
+  test("the winner is receiving what was taken off the loser", () => {
+    assert.deepEqual(arrivingCard(announce, 1), RECEIVED);
+  });
+
+  test("the loser is receiving what the winner chose", () => {
+    assert.deepEqual(arrivingCard(announce, 3), GIVEN);
+  });
+
+  test("a seat outside the trade receives nothing", () => {
+    for (const seat of [0, 2]) {
+      assert.equal(arrivingCard(announce, seat), undefined, `seat ${seat} was given a card`);
+    }
+  });
+
+  test("a spectator receives nothing", () => {
+    assert.equal(arrivingCard(announce, null), undefined);
+  });
+
+  test("both Jokers cancelling the exchange delivers nothing to either seat", () => {
+    const cancelled = { ...announce, bothJokersException: true };
+    for (const seat of [1, 3]) {
+      assert.equal(arrivingCard(cancelled, seat), undefined, `seat ${seat} was given a card`);
+    }
+  });
+
+  test("no ceremony, nothing arriving", () => {
+    assert.equal(arrivingCard(null, 1), undefined);
+    assert.equal(arrivingCard(undefined, 1), undefined);
+  });
+
+  test("neither seat is told the card it is giving away", () => {
+    assert.notDeepEqual(arrivingCard(announce, 1), GIVEN);
+    assert.notDeepEqual(arrivingCard(announce, 3), RECEIVED);
   });
 });
