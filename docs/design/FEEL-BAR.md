@@ -62,7 +62,30 @@ casino product, not an afterthought.
 
 ## Card landing
 
-**1. Android haptics design principles**
+**1. Balatro's own `juice_up`/`move_juice` (shipped source, read directly)**
+`https://raw.githubusercontent.com/GladdonT/balatro-source-code/main/engine/moveable.lua`
+Balatro ships as an unencrypted LÖVE2D `.love` archive — unzipping the Steam build gives
+its literal Lua source, mirrored at this repository and verified here by direct fetch. This
+is Balatro's own contact-feedback primitive, called on essentially every card event
+(`self:juice_up(0.3, 0.5)` on seals, `juice_up(1, 0.5)` on editions — verified in
+`card.lua` at the same repository, same fetch pass).
+- Numbers, quoted from `Moveable:juice_up`/`Moveable:move_juice`: default `amount = 0.4`;
+  effect duration `end_time = G.TIMERS.REAL + 0.4` (400ms); resting scale offset during the
+  effect is `1 - 0.6*amount`; rotation amplitude is `0.6*amount`; the oscillation itself is
+  `math.sin(50.8*t)` for scale and `math.sin(40.8*t)` for rotation, decaying by the
+  remaining-time fraction cubed (scale) and squared (rotation); the whole function returns
+  immediately, doing nothing, when `G.SETTINGS.reduced_motion` is true — the same
+  reduced-motion gate this repo's own `impactDelayMs()` implements, independently arrived
+  at by a different shipped game.
+- What it does that a translate-and-stop doesn't: the card doesn't just arrive, it wobbles
+  down to rest on two independent decaying sine waves (scale and rotation) rather than
+  easing once — "landing" is oscillation settling, not a single tween completing.
+- Frame check: sampling the card's scale at 1/60s intervals across the 400ms window after
+  landing shows at least two direction changes (the sine crossing its own decay envelope
+  twice), not a monotonic approach to rest — a landing that only ever moves toward its
+  final scale, once, is the thing this reference argues against.
+
+**2. Android haptics design principles**
 `https://developer.android.com/develop/ui/views/haptics/haptics-principles`
 Google's own haptics guidance for touch feedback, verified by direct fetch — not a card
 game, but the floor for how short a *landing's* haptic pulse can be before the actuator's
@@ -78,45 +101,54 @@ own physics, not the design, decides how long it reads.
   (within one frame, ~16ms, of `impactDelayMs()`), and no second haptic pulse fires before
   the first one's own 50ms ring-out tail has had time to finish.
 
-**2. "Juice It or Lose It" (Jonasson & Purho, GDC Europe 2012)**
-`https://www.gdcvault.com/play/1016487/Juice-It-or-Lose`
-No numeric figures are published in the fetchable abstract — the talk itself is
-video-only and this page is metadata plus a synopsis, not a transcript, so it is cited for
-the technique it named rather than for a number: layering multiple simultaneous small
-effects (screen shake, particles, squash) onto a single event reads as one bigger effect
-than any of them alone. `Hold` (`lib/tokens.ts`) already credits this school of thought.
-- What it does that a translate-and-stop doesn't: stacks feedback channels rather than
-  picking one.
-- Frame check: at the landing frame, at least two independent visual channels change in the
-  same frame (e.g. scale via `Motion.spring.land` and the hold via `Hold.land`) — a landing
-  that only moves the card is the thing this reference argues against.
-
 ## Bomb
 
-**1. "Math for Game Programmers: Juicing Your Cameras With Math" (Squirrel Eiserloh, GDC 2016)**
+**1. Balatro's blind-defeat juice, and a checked absence (shipped source, read directly)**
+`https://raw.githubusercontent.com/GladdonT/balatro-source-code/main/functions/state_events.lua`
+and `https://raw.githubusercontent.com/GladdonT/balatro-source-code/main/engine/moveable.lua`
+Balatro's biggest single moment — defeating a blind — calls `G.GAME.blind:juice_up()` with
+no arguments (so the default `amount = 0.4` from `Moveable:juice_up`, see **Card landing**),
+alongside `effects[ii].card:juice_up(0.7)` for a triggering joker — verified by direct
+fetch of both files. Also checked and confirmed absent: **no camera-shake or screen-shake
+system exists anywhere in Balatro's engine source** (`engine/particles.lua` was read in
+full for it) — the game's escalation for its biggest moment is delivered entirely through
+each object's own `juice_up` wobble (scale + rotation, see Card landing's numbers) and
+sound, never by moving the camera or the table itself.
+- Numbers: default `juice_up` amount 0.4 (blind defeat) vs. 0.7 (a triggering joker) — a
+  real, shipped escalation-by-amount rather than a new mechanism per tier; 0 instances of
+  screen/camera shake in the source, confirmed by reading `engine/particles.lua` in full.
+- What it does that a flat shake-and-stop doesn't: escalates a moment without ever moving
+  the camera — a real, shipped counter-example to "bigger moment, more shake" worth
+  weighing against grammar C's own trauma-based shake before assuming shake is required.
+- Frame check: at the blind-defeat frame, the felt/table container's own position is
+  unchanged from the frame before it (0px offset) while the triggering card's scale and
+  rotation are both mid-oscillation — the escalation is legible entirely from what individual
+  objects do, checkable independently of whatever the table itself is doing.
+
+**2. "Math for Game Programmers: Juicing Your Cameras With Math" (Squirrel Eiserloh, GDC 2016)**
 `https://archive.org/stream/GDC2016Eiserloh/GDC2016-Eiserloh_djvu.txt`
 The full talk transcript, verified by direct fetch — this is the origin of the trauma
-formulation `#763`'s own ticket names, with the actual math behind it.
-- Numbers: trauma is kept in `[0,1]`; an event adds trauma directly ("+= 0.2 or 0.5"); the
-  shake magnitude the talk works through as its own example uses trauma **cubed**, not
-  squared — "trauma .30, .60, .90 means 3%, 22%, 73% shake" (0.3³≈2.7%, 0.6³≈21.6%,
-  0.9³≈72.9% — the math behind that quote, confirmed by hand). **This is a real, checkable
-  divergence from our own spec**: #763 decays by trauma², which is a *gentler* curve at low
-  trauma than the talk's own worked example (trauma² at 0.3 is 9%, more than triple trauma³'s
-  3% at the same input) — worth knowing before anyone "fixes" #763's exponent to match this
-  talk, since matching it would make the bomb's low end noticeably softer, not just
-  differently sourced.
+formulation `#763`'s own ticket names, with the actual math behind it. Not a shipped card
+game; kept because it's the technique's own primary source and the ticket names it.
+- Numbers: trauma is kept in `[0,1]`; an event adds trauma directly ("+= 0.2 or 0.5"); on
+  the exponent, the transcript itself hedges rather than picking one — "Camera shake is
+  trauma 2 or trauma 3" — and separately works a numeric example at "trauma .30, .60, .90
+  means 3%, 22%, 73% shake," which is the cubed reading (0.3³≈2.7%, 0.6³≈21.6%,
+  0.9³≈72.9%, confirmed by hand); the squared reading of the same trauma values gives 9%,
+  36%, 81% instead. **Both readings are the talk's own**, not a single prescribed curve —
+  #763 picks trauma² (the gentler of the two at low trauma), which is one of the two
+  options this source itself offers, not a departure from it.
 - What it does that a flat shake-and-stop doesn't: trauma decreases linearly while the
-  *visible* shake decreases by trauma's square or cube, so the shake's perceptible collapse
-  outpaces its underlying trauma value — the "sudden, not sliding" quality a linear shake
-  lacks. The talk also recommends **Perlin noise** over pure randomness for the shake's
-  own jitter, "because it automagically works with pause and slow-motion" and stays
-  reproducible on replay.
+  *visible* shake decreases by trauma's square or cube (the talk offers both), so the
+  shake's perceptible collapse outpaces its underlying trauma value — the "sudden, not
+  sliding" quality a linear shake lacks. The talk also recommends **Perlin noise** over
+  pure randomness for the shake's own jitter, "because it automagically works with pause
+  and slow-motion" and stays reproducible on replay.
 - Frame check: sampling the table's offset across the shake window shows the amplitude at
   75% of the decay window under ~10% of peak (consistent with trauma² decay from 0.55), not
   the ~25% a linear decay across the same window would give at the same point.
 
-**2. "The Art of Screenshake" (Nijman, INDIGO Classes 2013)**
+**3. "The Art of Screenshake" (Nijman, INDIGO Classes 2013)**
 `https://archive.org/details/the-art-of-screenshake`
 No numeric figures are published in the fetchable page text — it is an interactive
 presentation whose content is the video itself; the archive.org listing confirms the talk's
@@ -155,18 +187,36 @@ quality:
 
 ## Pass
 
-**Material Design 3 motion duration tokens (as a floor, not a case study)**
+**1. Balatro's discard — the closest shipped equivalent, checked for what it withholds**
+`https://raw.githubusercontent.com/GladdonT/balatro-source-code/main/functions/state_events.lua`
+Balatro has no "pass," but its discard is the same shape: a frequent, low-stakes action a
+player takes often and that must not compete with the game's bigger moments. Read directly
+from `G.FUNCS.discard_cards_from_highlighted()`: each discarded card's own draw-out
+animation is staggered by `i*100/highlighted_count` (a percentage delay scaled by how many
+cards are discarded at once) via `ease_discard(-1)`, and — checked directly against the
+same `juice_up` call sites documented under **Card landing** and **Bomb** — **no
+`juice_up` call appears anywhere in the discard path**. The game's own frequent, unremarkable
+action gets movement and nothing else.
+- Numbers: stagger step `100/highlighted_count` percent per card (e.g. 5 discarded cards →
+  20% steps); 0 `juice_up` calls in the discard function, against 8+ distinct call sites
+  elsewhere in the source for events the game *does* want to sell (editions, seals, sold
+  cards, blind defeat — see **Card landing**, **Bomb**).
+- What it does that an unremarkable action might do by accident: proves restraint is a
+  real shipped choice, not an oversight — Balatro's own discard has a small, functional
+  stagger and deliberately no wobble, on a game that reaches for `juice_up` on almost
+  everything else.
+- Frame check: across a pass's full sequence, no frame shows a non-monotonic scale or
+  rotation change (the oscillation signature **Card landing** and **Bomb** both show) —
+  position may move, nothing wobbles.
+
+**2. Material Design 3 motion duration tokens (as a floor, not a case study)**
 `https://www.mdui.org/en/docs/2/styles/design-tokens`
-No shipped card game documents "pass" specifically with numbers — it is deliberately the
-least-decorated action in every game surveyed (Hearthstone has no pass at all; Slay the
-Spire's end-turn is covered only qualitatively in every source found, see **Turn hand-off**
-below). That absence is itself the finding: #101's research (quoted on #101 by `rotonmeta`)
-already established that turn-frequency actions must be the calmest in the game because
-every effect spent on them is subtracted from what a bomb can spend. The reference here is
-therefore a floor, not a target: pass should sit inside Material's own `short` tier —
-`short1` 50ms, `short2` 100ms, `short3` 150ms — the band Material reserves for a state
-simply registering, and never reach `short4` (200ms), which Material already treats as the
-tier's own upper edge.
+Pass should sit inside Material's own `short` tier — `short1` 50ms, `short2` 100ms,
+`short3` 150ms — the band Material reserves for a state simply registering, and never
+reach `short4` (200ms), which Material already treats as the tier's own upper edge. #101's
+research (quoted on #101 by `rotonmeta`) already established that turn-frequency actions
+must be the calmest in the game because every effect spent on them is subtracted from what
+a bomb can spend — this is the numeric floor for that finding, not a case study of it.
 - Frame check: from tap to the card returning to hand's rest position, no frame in the
   sequence exceeds 100ms, and no frame shows a scale, shake, or particle change — a "state
   registering" motion signature, distinguishable in a capture from every other moment in
@@ -174,46 +224,54 @@ tier's own upper edge.
 
 ## Turn hand-off
 
-**1. WSOP Main Event shot clock (2026 rule change)**
+**1. Hearthstone's own turn timer (shipped game, mechanic verified against live behaviour)**
+`https://hearthstone.wiki.gg/wiki/Turn`
+Not a developer document, but a documentation of Hearthstone's actual live mechanic —
+verified by direct fetch, and the numbers describe the shipped client's real behaviour, not
+a design intent.
+- Numbers: each turn lasts a maximum of **75 seconds**; a burning-rope fuse visual appears
+  once **around 20 seconds remain**; a missed turn's next turn starts with a faster fuse
+  giving only **around 7 seconds**.
+- What it does that a static "your turn" label doesn't: stays silent and static for the
+  first ~55 of 75 seconds, and escalates (visual fuse, urgency) only in the closing ~20 —
+  exactly the calm-by-default, urgent-only-near-deadline shape #101's research asked turn
+  cues to have, verified against a shipped game rather than argued for.
+- Frame check: at any point before the final ~20 seconds of a turn, the active seat's
+  indicator shows no burning/urgency element at all — only past that threshold does a
+  visibly different (accelerating) state appear, so a capture from early and late in the
+  same turn must show two qualitatively different indicator states, not the same element
+  scaled.
+
+**2. WSOP Main Event shot clock (2026 rule change)**
 `https://www.pokernews.com/news/2026/07/wsop-main-event-shot-clock-debate-51856.htm`
 - Numbers: 20 seconds to act before a hand is ruled dead or auto-checked; a time-extension
   chip adds 30 seconds; each player starts the day with 6 chips.
 - What it does that a static "your turn" label doesn't: makes the countdown itself the
-  turn-hand-off signal, legible without reading any text — exactly the property #101's
-  research asked for (a calm, high-frequency cue).
+  turn-hand-off signal, legible without reading any text.
 - Frame check: the active seat's turn indicator shows a continuously-depleting element
   (not a binary on/off) across the whole turn duration, so a capture at any two points in
   the same turn shows a measurably different indicator state.
 
-**2. Timer-based rounds in live-dealer games**
-`https://www.nerdly.co.uk/2026/02/17/understanding-timer-based-rounds-in-live-dealer-games/`
-- Numbers: a fixed betting/decision window, reported as "often between 10 and 20 seconds,"
-  after which no further input is accepted for that round.
-- What it does that a static label doesn't: the same countdown-as-signal property as the
-  WSOP reference, from a live-table rather than tournament-poker context — closer to our
-  own always-on turn structure than a once-a-day shot clock is.
-- Frame check: at the countdown's final ~2 seconds (however the total window is set), the
-  indicator's rate of visual change increases relative to its rate earlier in the window —
-  urgency communicated by an accelerating cue, not a constant one, checkable by comparing
-  frame-to-frame delta near zero versus near the window's midpoint.
-
 ## Win
 
-**1. Eiserloh's trauma math, applied to our own manche/partita values**
-`https://archive.org/stream/GDC2016Eiserloh/GDC2016-Eiserloh_djvu.txt`
-No shipped-game source with a "you won this round" screen documented in numbers turned up
-in this pass — reported rather than papered over. What the same transcript cited under
-**Bomb** gives for free is the actual visible-shake percentage grammar C's own manche
-(trauma 0.40) and partita (trauma 0.50) rows produce, since we already know the exponent
-(#763: trauma²).
-- Numbers: trauma² at 0.40 → 16% visible shake; trauma² at 0.50 → 25% — both under the
-  bomb's 30% (0.55²), and the four-tier sequence (ordinary win 0%, manche 16%, partita 25%,
-  bomb 30%) is not evenly spaced — it compresses toward the top, which is #101's own
-  deliberate inversion (a bomb outranks a manche) restated as a measurable curve rather
-  than an ordering.
-- Frame check: measuring peak table offset across the four non-zero tiers gives a
-  monotonically increasing but non-linear sequence (0%, 16%, 25%, 30%) — a capture set that
-  shows equal steps between tiers has drifted from the spec's own math.
+**1. Balatro's own round-win sequence (shipped source, read directly)**
+`https://raw.githubusercontent.com/GladdonT/balatro-source-code/main/functions/state_events.lua`
+No shipped card game's own "you won this round" *screen* is documented anywhere with
+numbers — but Balatro's own win/round-evaluation event chain is the actual code that runs
+it, verified by direct fetch of `state_events.lua`'s `end_round()` and win-state handling.
+- Numbers: hand highlight/emphasis holds for `delay(0.2)`; the hand-name label updates
+  after `delay = 0.4`; the chip/mult total eases in over `delay = 0.5`; results finalize
+  after `delay(0.3)`; on an outright game win, `play_sound('win')` fires immediately, the
+  game pauses, and the win-screen character (Jimbo) appears only after `delay = 2.5` —
+  a staged sequence, not one cut.
+- What it does that a static "You win" banner doesn't: nothing appears all at once — a win
+  is presented as roughly a 1-second chain of small reveals (highlight → name → total →
+  finalize) before an even longer 2.5s beat for the biggest win state, so the eye tracks a
+  sequence of distinct events rather than reading one screen.
+- Frame check: sampling frames across the first 500ms after a manche is won shows at least
+  three visually distinct states (hand highlighted only; hand name shown; chip/mult total
+  mid-count) — a capture set with only two states (before/after) has collapsed a staged
+  reveal into a cut.
 
 **2. WCAG 2.2.2 Pause, Stop, Hide**
 `https://www.w3.org/WAI/WCAG21/Understanding/pause-stop-hide.html`
@@ -232,13 +290,30 @@ auto-playing celebration may run before it needs a pause control.
 
 ## Loss
 
-**Material Design 3 motion duration tokens (as a floor, not a case study)**
+**1. Balatro's own game-over transition — a checked absence (shipped source, read directly)**
+`https://raw.githubusercontent.com/GladdonT/balatro-source-code/main/functions/state_events.lua`
+No shipped card or casino game documents a loss/defeat *screen's* own timing with numbers
+in any developer write-up I could fetch and verify. What is fetchable and checkable is
+Balatro's own `end_round()` code path on a loss, read directly: the moment `game_over` is
+true, `G.STATE = G.STATES.GAME_OVER` fires with **no `delay()` and no `juice_up()` call in
+the transition itself** — contrast this with the same file's win path (see **Win**), which
+stages four separate delayed beats before showing a result.
+- Numbers: 0 `delay()` calls and 0 `juice_up()` calls in the `GAME_OVER` state transition,
+  against 4+ staged `delay()` calls in the same file's win path — a real, checked asymmetry
+  in a shipped game between how a win and a loss are paced.
+- What it does that our own design intent needs to answer rather than copy: Balatro's own
+  loss is instant, no choreography at all — which is exactly the "the losing side should
+  not be faster than the winning side" question #101's rank-10 finding raises, with a real
+  shipped counter-example on the record rather than an assumption of what shipped games do.
+- Frame check: measured against our own decided intent (#101 rank-10, option 1: gate the
+  celebration's escalation rather than remove the loss beat), the losing seats' acknowledgment
+  must NOT collapse to zero frames the way Balatro's does — at least one frame between the
+  loss becoming certain and the result screen settling must differ from both its start and
+  end state, the same staged-reveal property **Win**'s frame check asks of a win.
+
+**2. Material Design 3 motion duration tokens (as a floor, not a case study)**
 `https://www.mdui.org/en/docs/2/styles/design-tokens`
-No shipped card or casino game documents a loss/defeat screen's timing with numbers in any
-source I could fetch and verify — game-over-screen writing (searched separately) is
-uniformly qualitative ("emotional punctuation," "deliberate design choice") with no
-duration figures. That gap is reported rather than papered over. What we do have is a
-duration floor: a loss beat should sit in Material's `long` tier — `long1` 450ms,
+A duration floor: a loss beat should sit in Material's `long` tier — `long1` 450ms,
 `long2` 500ms, `long3` 550ms, `long4` 600ms — or beyond, into `extra-long` (up to 1000ms),
 rather than `short`/`medium`, since it is not a state registering but the end of something,
 and the tier table already treats "manche won" (120ms hold) as faster than "partita won"
@@ -251,14 +326,22 @@ side of it.
 
 ## Reconnect / recovery
 
-No shipped card game's own reconnect UX turned up with numbers in this pass — the closest,
-Clash Royale, is documented only qualitatively (hide the disconnected opponent's state
-rather than announce it, to stop players exploiting a disconnect and to reduce anxiety —
-the same principle `OfflineBanner`'s `null`-is-unknown state already follows) with no
-published latency figure. Reported rather than papered over; the reference below is a
-general technical guide, not a game, cited because it is the only source found with real
-numbers for the actual question — how long "still trying" may run before it must become
-"recovery failed."
+**Tried and dead-ended, named rather than silently dropped:** PokerStars' own disconnect
+policy (the one shipped casino/poker product most likely to document this) has numbers
+reported second-hand by press coverage (10 seconds minimum to act on reconnection, a
+"Disconnect Extra Time" system, Rule 18 governing it), but every PokerStars-branded page
+that might state Rule 18 directly no longer resolves: `pokerstars.bet/help/articles/…`
+redirects to FanDuel's own support portal, `pokerstarsnj.com/poker/tournaments/rules/`
+redirects to `poker.fanduel.com` (which returns HTTP 403), and `pokerstars.com`'s FAQ
+redirects to a `pokerstars.ch` marketing homepage with no rules content — all four fetched
+directly and confirmed dead or content-free. No shipped card game's own reconnect UX turned
+up with numbers either — the closest, Clash Royale, is documented only qualitatively (hide
+the disconnected opponent's state rather than announce it, to stop players exploiting a
+disconnect and to reduce anxiety — the same principle `OfflineBanner`'s `null`-is-unknown
+state already follows) with no published latency figure. Reported rather than papered
+over; the reference below is a general technical guide, not a game or casino product,
+cited because it is the only source found with real numbers for the actual question — how
+long "still trying" may run before it must become "recovery failed."
 
 **WebSocket reconnection strategy guide**
 `https://websocket.org/guides/reconnection/`
@@ -278,8 +361,30 @@ numbers for the actual question — how long "still trying" may run before it mu
 
 ## Idle table
 
-**1. Idle animation design guide (game-dev, character/loop authoring)**
+**1. Evolution's own Live Roulette product page (shipped casino product)**
+`https://games.evolution.com/live-casino/live-roulette/`
+Evolution's own marketing/product page for its live tables, verified by direct fetch — not
+a card game, but a shipped, real-money casino product describing exactly this moment: what
+a live table does between rounds while waiting for the next one to start.
+- Numbers: Speed Roulette rounds run "just 25 seconds from spin to spin," stated as "around
+  50% of the duration" of standard Live Roulette (so standard ≈ 50s spin-to-spin); Speed
+  Auto Roulette runs "2,500 games per day"; VIP Auto Roulette tables deliver "60–80 game
+  rounds per hour" (≈45–60s/round) — three different real cadences for "table between
+  hands," all from the same shipped vendor, none of them ever fully stopped.
+- What it does that a frozen table doesn't: a live table is never simply waiting — it is
+  always mid-cycle at some point in a named, marketed cadence, and that cadence is a
+  product decision publicly stated in seconds and rounds-per-hour, not an implementation
+  afterthought.
+- Frame check: at any point sampled during an idle wait between hands, the elapsed time
+  since the last hand ended is under the table's own between-round cadence (translated to
+  our own pace, comfortably under Evolution's fastest published 25s) — an idle wait longer
+  than a real product's own full round-to-round cycle has drifted from "a lull" into
+  "stalled."
+
+**2. Idle animation design guide (game-dev, character/loop authoring)**
 `https://mocaponline.com/blogs/mocap-news/idle-animation-game-dev-guide`
+Not a shipped product — kept as a secondary, technique-level source for the ambient-loop
+shape itself, since Evolution's page states cadence but not loop construction.
 - Numbers: a simple idle loop cycles every 2–4 seconds; a more complex loop (with a weight
   shift) cycles every 8–12 seconds; a secondary weight-transfer motion runs on its own
   4–8 second cycle; blend-in from any other state takes 0.2–0.4 seconds; a one-shot "fidget"
@@ -291,18 +396,6 @@ numbers for the actual question — how long "still trying" may run before it mu
 - Frame check: sampling the table at two points 10 seconds apart during idle shows a
   different phase of the primary ambient loop (not byte-identical frames), and no single
   30-second window contains two identical fidget events.
-
-**2. Timer-based rounds in live-dealer games**
-`https://www.nerdly.co.uk/2026/02/17/understanding-timer-based-rounds-in-live-dealer-games/`
-- Numbers: the 10–20 second betting/decision window (same figure as **Turn hand-off**
-  above) is also what a live table shows *between* hands while waiting for the next round —
-  the table is never simply frozen, it is always inside some visible countdown.
-- What it does that a frozen table doesn't: even "nothing is happening" carries a visible,
-  legible countdown to the next thing that will happen, rather than an absence of
-  information.
-- Frame check: at no point during an idle wait (for players, for the next hand) does the
-  screen contain zero moving or counting elements — there is always at least one visibly
-  live element, even if it is only a clock.
 
 ---
 
