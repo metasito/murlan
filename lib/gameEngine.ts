@@ -69,6 +69,14 @@ export interface ExchangePhase {
    */
   cardToLoser?: Card;
   bothJokersException: boolean;
+  /**
+   * When the phase closed, in epoch ms. Stamped by the server on the broadcast
+   * that closes it and never sent to a client — it exists so the sanitizer can
+   * bound `cardToLoser` to the ceremony that reads it (#704). The engine never
+   * writes it: a clock inside the rules would make every engine test a
+   * different game each run.
+   */
+  settledAt?: number;
 }
 
 export interface StartReason {

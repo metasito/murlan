@@ -25,6 +25,7 @@ import {
 import {
   findViewerSeat,
   visibleExchangePhase,
+  markExchangeSettled,
   packPersistedState,
 } from "./onlineGameLogic.ts";
 import type { GameState, Card } from "../lib/gameEngine.ts";
@@ -181,6 +182,9 @@ export function sendGameStateTo(io: SocketServer, uid: string, game: OnlineGameS
 }
 
 export function broadcastGameState(io: SocketServer, game: OnlineGameState) {
+  // Before the first seat is served, so the broadcast that closes an exchange
+  // is inside its own ceremony window rather than one tick outside it.
+  markExchangeSettled(game.gameState.exchangePhase);
   Object.values(game.playerMap).forEach((uid) => sendGameStateTo(io, uid, game));
   // Spectators go through the same sanitiser. findViewerSeat returns null for
   // a userId that holds no seat, and every hand is blanked on that basis, so a

@@ -6,6 +6,7 @@ import type { BotPersonalityId } from "../lib/botPersonalities.ts";
 import { foldHandIntoMatch, resolveMatchFor } from "../lib/gameEngine.ts";
 import type { GameState, GameMode, MatchLength } from "../lib/gameEngine.ts";
 import type { GameResult } from "../lib/achievements.ts";
+import { exchangeAnnounceMs } from "../lib/exchangeCeremony.ts";
 import { z } from "zod";
 
 /** seat -> userId from the persisted map, dropping any entry that is not one. */
@@ -69,6 +70,38 @@ export interface VisibleExchangePhaseInput {
   bothJokersException: boolean;
   cardFromLoser: unknown;
   cardToLoser?: unknown;
+  /** Epoch ms the phase closed — `markExchangeSettled` stamps it. */
+  settledAt?: number;
+}
+
+/**
+ * Whether the ceremony that reads `cardToLoser` is still on screen.
+ *
+ * An unstamped closed phase reads as over rather than as running: a row
+ * persisted before the stamp existed, or a phase that closed without a
+ * broadcast, has no window to be inside, and a card nobody watched cross is
+ * exactly what this bounds.
+ */
+function ceremonyRunning(phase: VisibleExchangePhaseInput, now: number): boolean {
+  if (phase.active || phase.settledAt === undefined) return false;
+  return now - phase.settledAt < exchangeAnnounceMs(phase.bothJokersException);
+}
+
+/**
+ * Stamps the moment an exchange closed, on the state itself so it survives a
+ * restart the way the phase does.
+ *
+ * Called from `broadcastGameState` rather than from each of the three places
+ * that close a phase — a settle nobody broadcasts is not one any seat can be
+ * shown, and one funnel cannot be half-updated the way three call sites can.
+ */
+export function markExchangeSettled(
+  phase: { active: boolean; settledAt?: number } | undefined,
+  now: number = Date.now()
+): void {
+  if (!phase) return;
+  if (phase.active) delete phase.settledAt;
+  else phase.settledAt ??= now;
 }
 
 /**
@@ -82,15 +115,19 @@ export interface VisibleExchangePhaseInput {
  *
  * `cardToLoser` is the opposite: a card the winner *chose* out of their own
  * hand, which no rule determines, so while the phase is open sending it would
- * leak that hand. Closing the phase is what lifts that — and only that, which
- * is why the gate is the flag rather than the card's own presence.
+ * leak that hand. Closing the phase lifts that, but only for as long as the
+ * ceremony is on screen: `exchangePhase` is never cleared, so an unbounded gate
+ * would put the card in every broadcast for the rest of the manche and hand it
+ * to seats that connect long after the trade (#704). The two participants keep
+ * it either way — it came out of one's hand and into the other's.
  *
  * Every seat also gets the two seat indices and the both-jokers flag — all the
  * announcement banner reads from them.
  */
 export function visibleExchangePhase(
   phase: VisibleExchangePhaseInput | undefined,
-  viewerSeatIndex: number | null
+  viewerSeatIndex: number | null,
+  now: number = Date.now()
 ): Record<string, unknown> | undefined {
   if (!phase) return undefined;
 
@@ -105,7 +142,7 @@ export function visibleExchangePhase(
     viewerSeatIndex !== null &&
     (viewerSeatIndex === phase.winnerIdx || viewerSeatIndex === phase.loserIdx);
 
-  const maySeeChosenCard = isParticipant || !phase.active;
+  const maySeeChosenCard = isParticipant || ceremonyRunning(phase, now);
 
   if (phase.active) visible.cardFromLoser = phase.cardFromLoser;
   if (maySeeChosenCard && phase.cardToLoser !== undefined) {
