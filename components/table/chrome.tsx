@@ -12,7 +12,7 @@ import { Colors, FontSize, makeShadow, Radius, Scrim, Spacing, Type } from "@/li
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
 import { a11yState } from "@/lib/a11y";
-import type { StartReason } from "@/lib/gameEngine";
+import type { Card, StartReason } from "@/lib/gameEngine";
 import { getCardDisplayRank, getSuitSymbol } from "@/lib/gameEngine";
 import { CHIP_H, SIDE_SECTION_W, type RailSide } from "@/components/gameTableModel";
 
@@ -477,3 +477,45 @@ export function useHandLift(active: boolean, scale: number) {
   return useAnimatedStyle(() => ({ transform: [{ translateY: lift.value }] }));
 }
 
+/**
+ * The pre-first-play banner naming who opens and with what card. A component
+ * of its own rather than inline JSX: `card` is only read here, so `rank` and
+ * `suit` derive once instead of once per interpolation.
+ */
+export function StartCardBanner({
+  card,
+  starterIsViewer,
+  starterName,
+}: {
+  card: Card;
+  starterIsViewer: boolean;
+  starterName: string;
+}) {
+  const { t } = useTranslation();
+  const rank = getCardDisplayRank(card.rank);
+  const suit = getSuitSymbol(card.suit);
+  return (
+    <View style={startCardStyles.banner}>
+      <TableText style={startCardStyles.glyph}>{suit}</TableText>
+      <TableText style={startCardStyles.text}>
+        {starterIsViewer
+          ? t("gameTable.startCardBannerSelf", { rank, suit })
+          : t("gameTable.startCardBannerOther", { name: starterName, rank, suit })}
+      </TableText>
+    </View>
+  );
+}
+
+const startCardStyles = StyleSheet.create({
+  banner: {
+    alignItems: "center", gap: Spacing.slim,
+    paddingHorizontal: Spacing.md, paddingVertical: Spacing.snug, borderRadius: Radius.md,
+    backgroundColor: Scrim.medium,
+    borderWidth: 1, borderColor: Colors.goldSoft,
+  },
+  glyph: { fontSize: FontSize.xxl, color: Colors.text },
+  text: {
+    fontFamily: "Rajdhani_600SemiBold", fontSize: FontSize.sm,
+    color: Colors.text, textAlign: "center", letterSpacing: 0.5,
+  },
+});
