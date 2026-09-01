@@ -6,10 +6,10 @@ import {
   Pressable,
   TextInput,
   ScrollView,
-  useWindowDimensions,
   KeyboardAvoidingView,
   ActivityIndicator,
 } from "react-native";
+import { useIsLandscape } from "@/lib/orientation";
 import { router } from "expo-router";
 import { hapticMedium, hapticSelection } from "@/lib/haptics";
 import { ScreenHeader } from "@/components/ScreenHeader";
@@ -34,7 +34,6 @@ export default function OnlineLobbyScreen() {
   const { t } = useTranslation();
   const roomCodeHint = useA11yHint(t("onlineLobby.roomCodeA11yHint"));
   const watchHint = useA11yHint(t("onlineLobby.watchA11yHint"));
-  const { width: W, height: H } = useWindowDimensions();
   const { user } = useAuth();
   const { createRoom, joinRoom, spectateRoom, room, isSpectator } = useOnlineRoom();
   const { gameState } = useOnlineTable();
@@ -46,7 +45,7 @@ export default function OnlineLobbyScreen() {
   const [createMode, setCreateMode] = useState<"free_for_all" | "teams">("free_for_all");
   const [createPlayers, setCreatePlayers] = useState(4);
 
-  const isLandscape = W > H;
+  const isLandscape = useIsLandscape();
 
   // The id, not the room: every field update would otherwise push the route again.
   const roomId = room?.roomId;

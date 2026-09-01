@@ -21,7 +21,7 @@ import { a11yHidden, a11yState } from "@/lib/a11y";
 import { useTranslation } from "@/lib/i18n";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { cardSpokenName } from "@/lib/cardNames";
-import { Colors, Garnet, Highlight, makeShadow, Motion, Shadow, Spacing } from "@/lib/theme";
+import { Colors, Garnet, Gradient, Highlight, Layer, makeShadow, Motion, Shadow, Spacing, TopEdgeLight } from "@/lib/theme";
 import type { Card } from "@/lib/gameEngine";
 
 const BTN_PRESS_SCALE = 0.94;
@@ -31,11 +31,11 @@ const BTN_SUB_FS = 10;
 const BTN_TRACKING = 1.9;
 const BTN_GLOW = 26;
 
-// Raked light across the gold surface — bright at the top-left corner,
-// dropping to goldDark at the bottom-right — same treatment and same rake
-// angle as components/MenuButton.tsx's primary variant, so the table's most-
-// pressed control reads as struck metal like every other primary action.
-const GIOCA_GRADIENT = [Colors.goldLit, Colors.gold, Colors.goldDark] as const;
+// Raked light across the gold surface: bright at the top-left corner, dropping
+// to goldDark at the bottom-right. The table's most-pressed control is lit a
+// step harder than a menu's (goldLit, not goldLight) because the felt behind it
+// is darker than a menu's ground.
+const GIOCA_GRADIENT = Gradient.playButton;
 const GIOCA_GRADIENT_PRESSED = [Colors.gold, Colors.goldDark, Colors.goldDim] as const;
 const GIOCA_GRADIENT_LOCATIONS = [0, 0.48, 1] as const;
 
@@ -43,7 +43,7 @@ const GIOCA_GRADIENT_LOCATIONS = [0, 0.48, 1] as const;
 // downward, a seated shadow — at lower luminance with the hue pulled to
 // garnet, and no glow. Glow is reserved for the primary action, which is the
 // whole reason red can sit here without shouting.
-const PASS_GRADIENT = [Garnet.lip, Garnet.face, Garnet.deep, Garnet.base] as const;
+const PASS_GRADIENT = Gradient.garnet;
 const PASS_GRADIENT_PRESSED = [Garnet.face, Garnet.deep, Garnet.base, Garnet.base] as const;
 const PASS_GRADIENT_LOCATIONS = [0, 0.22, 0.6, 1] as const;
 
@@ -318,14 +318,7 @@ const styles = StyleSheet.create({
     fontFamily: "Rajdhani_700Bold",
     textTransform: "uppercase",
   },
-  // One hairline of light along the top edge — the cue that the surface has a
-  // thickness and is facing up. Same treatment as MenuButton's topHighlight.
-  btnTopHighlight: {
-    position: "absolute",
-    top: 0, left: "12%", right: "12%",
-    height: 1,
-    backgroundColor: Highlight.clear,
-  },
+  btnTopHighlight: TopEdgeLight,
   // Sits behind the label, never over it: a wash on top of text would eat the
   // very contrast the flash is meant to draw attention to.
   btnFlash: { backgroundColor: Highlight.clear },
@@ -343,12 +336,12 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     backgroundColor: Colors.gold,
-    zIndex: 0,
+    zIndex: Layer.felt,
   },
   // The one lit object on the table, and only on the player's own turn.
   playBtnFace: { borderWidth: 1, borderColor: Colors.goldLit },
   // Over the glow, which fills this button and paints.
-  playBtnFront: { zIndex: 1 },
+  playBtnFront: { zIndex: Layer.table },
   playBtnLabel: { color: Colors.bgCard },
   playBtnSub: {
     fontFamily: "Rajdhani_500Medium",

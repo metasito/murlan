@@ -6,8 +6,8 @@ import {
   Pressable,
   ScrollView,
   TextInput,
-  useWindowDimensions,
 } from "react-native";
+import { useIsLandscape } from "@/lib/orientation";
 import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
@@ -107,7 +107,7 @@ function PlayerRow({ index, config, onChange, isHuman, lobbyMode }: PlayerRowPro
             name: personality.name,
             style: t(botBlurbKey(personality.id)),
           })}
-          hitSlop={8}
+          hitSlop={Spacing.sm}
         >
           <Text {...a11yHidden()} style={styles.personalityText} numberOfLines={1}>
             {t(botBlurbKey(personality.id))}
@@ -129,8 +129,7 @@ export default function LobbyScreen() {
   // browsers) env(safe-area-inset-*) is genuinely 0, and content flush
   // against the browser's raw edge is not a safe area, it's a missing margin.
   const bottomInset = Math.max(insets.bottom, Spacing.roomy);
-  const { width: W, height: H } = useWindowDimensions();
-  const isLandscape = W > H;
+  const isLandscape = useIsLandscape();
   const { mode } = useLocalSearchParams<{ mode: LobbyMode }>();
   const { setupGame } = useLocalSession();
   const { user } = useAuth();

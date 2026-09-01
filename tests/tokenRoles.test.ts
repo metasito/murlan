@@ -250,3 +250,59 @@ describe("design tokens are used in the role they were designed for", () => {
     );
   });
 });
+
+// A `zIndex` is only ever a claim about a sibling somewhere else, and iOS is
+// the one renderer that does not paint in tree order (#209). A bare number
+// cannot be checked against the one three files away; a `Layer` role can.
+describe("stacking order is stated as a role", () => {
+  const BARE = /^-?\d+$/;
+  const DECLARED = /^[ \t]*const ([A-Za-z_$][\w$]*)[ \t]*=[ \t]*([^;\r\n]+);/gm;
+  const USED = /zIndex\s*[:=]\s*\{?\s*([A-Za-z_$][\w$]*|-?\d+)/g;
+
+  /**
+   * Every `zIndex` in `source` as [what is written, what it resolves to],
+   * following one hop through a module constant.
+   *
+   * The hop is the point. Reading the property alone sees `zIndex: BURST_Z`
+   * and calls it named, while `const BURST_Z = 50` a hundred lines above is
+   * the same unanchored number wearing a label — which is how three unrelated
+   * layers each came to claim 50.
+   */
+  function stackingValues(source: string): [string, string][] {
+    const declared = new Map<string, string>();
+    for (const [, name, rhs] of source.matchAll(DECLARED)) declared.set(name, rhs.trim());
+    return [...source.matchAll(USED)].map(([, expr]): [string, string] => [
+      expr,
+      BARE.test(expr) ? expr : (declared.get(expr) ?? expr),
+    ]);
+  }
+
+  test("no view picks its own z-index", () => {
+    const offenders: string[] = [];
+    for (const [file, source] of sourceFiles()) {
+      for (const [written, resolved] of stackingValues(source)) {
+        if (!BARE.test(resolved)) continue;
+        offenders.push(
+          written === resolved ? `${file}: zIndex ${written}` : `${file}: ${written} = ${resolved}`
+        );
+      }
+    }
+    assert.deepEqual(
+      offenders,
+      [],
+      "give each a Layer role from lib/tokens.ts, or derive it from the band below — " +
+        `two views at one number are peers only if they say so: ${offenders.join(", ")}`
+    );
+  });
+
+  test("the scanner follows a constant, and 0 is not an exemption", () => {
+    assert.deepEqual(stackingValues("const B_Z = 50;\nx = { zIndex: B_Z };"), [["B_Z", "50"]]);
+    assert.deepEqual(stackingValues("const B_Z = Layer.band;\nx = { zIndex: B_Z };"), [
+      ["B_Z", "Layer.band"],
+    ]);
+    // `0` is a role (Layer.felt), not the absence of one: a view falling back
+    // to a bare 0 is the regression this scan exists to refuse.
+    assert.deepEqual(stackingValues("x = { zIndex: 0 };"), [["0", "0"]]);
+    assert.deepEqual(stackingValues("x = { zIndex: Layer.felt };"), [["Layer", "Layer"]]);
+  });
+});

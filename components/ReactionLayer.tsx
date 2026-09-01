@@ -14,13 +14,16 @@ import Animated, {
   withSequence,
   SlideInLeft,
 } from "react-native-reanimated";
-import { Colors, FontSize, Motion, Radius, Scrim, Spacing, TOUCH_TARGET_MIN } from "@/lib/theme";
+import { Colors, FontSize, Layer, Motion, Radius, Scrim, Spacing, TOUCH_TARGET_MIN } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTableReactions, type TableReaction } from "@/lib/reactions";
 import { useTranslation } from "@/lib/i18n";
 import { a11yHidden } from "@/lib/a11y";
 
 export const EMOJIS = ["😂", "🔥", "😤", "👏", "😱", "🤡", "💣", "👑"];
+
+/** Above the picker it flies out of; the gap itself carries no meaning. */
+const EMOJI_Z = Layer.held + 1;
 
 /** How long a reaction stays on screen as it rises. */
 const RISE_MS = 1800;
@@ -79,7 +82,7 @@ export function ReactionTrigger({ onPress }: { onPress: () => void }) {
     <Pressable
       onPress={onPress}
       style={({ pressed }) => [styles.trigger, pressed && styles.triggerPressed]}
-      hitSlop={12}
+      hitSlop={Spacing.cosy}
       accessibilityRole="button"
       accessibilityLabel={t("reactionLayer.triggerA11yLabel")}
     >
@@ -150,7 +153,7 @@ const styles = StyleSheet.create({
     padding: Spacing.sm,
     gap: Spacing.xs,
     width: 208,
-    zIndex: 100,
+    zIndex: Layer.held,
   },
   emojiBtn: {
     width: TOUCH_TARGET_MIN,
@@ -167,7 +170,7 @@ const styles = StyleSheet.create({
     position: "absolute",
     bottom: "35%",
     alignItems: "center",
-    zIndex: 200,
+    zIndex: EMOJI_Z,
   },
   floatingEmojiText: { fontSize: FontSize.hero },
   floatingEmojiName: {

@@ -23,7 +23,7 @@ import {
   clearAllTimersForUser,
 } from "./gameTimers.ts";
 import { sendGameStateTo } from "./gamePersistence.ts";
-import { scoresByEngineId } from "./gameOver.ts";
+import { emitMatchState } from "./emit.ts";
 import { armTurnIfIdle } from "./gameTurn.ts";
 import { TEAMS_PLAYER_COUNT } from "../lib/gameEngine.ts";
 import type { EventOutcome } from "./socketSafety.ts";
@@ -172,12 +172,7 @@ export async function announceRejoin(
   // only right while one is running — at the results screen `game:over` and
   // `game:rematch_intents` own those.
   if (!game.gameState.gameOver) {
-    io.to(userRoom(userId)).emit("game:match_state", {
-      target: game.matchTarget,
-      length: game.matchLength,
-      handsPlayed: game.handsPlayed,
-      scores: scoresByEngineId(game),
-    });
+    emitMatchState(io, userRoom(userId), game);
   }
   io.to(roomId).emit("game:player_reconnected", {
     userId,

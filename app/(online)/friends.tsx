@@ -332,7 +332,7 @@ export default function FriendsScreen() {
                     style={styles.iconBtn}
                     accessibilityRole="button"
                     accessibilityLabel={t("friends.removeA11yLabel", { username: item.username })}
-                    hitSlop={12}
+                    hitSlop={Spacing.cosy}
                   >
                     <Ionicons name="person-remove-outline" size={16} color={Colors.textMuted} {...a11yHidden()} />
                   </Pressable>
@@ -361,7 +361,7 @@ export default function FriendsScreen() {
                       style={styles.declineBtn}
                       accessibilityRole="button"
                       accessibilityLabel={t("friends.dismissInviteA11yLabel", { username: invite.from })}
-                      hitSlop={8}
+                      hitSlop={Spacing.sm}
                     >
                       <Ionicons name="close" size={16} color={Colors.textMuted} {...a11yHidden()} />
                     </Pressable>
@@ -412,7 +412,7 @@ export default function FriendsScreen() {
                       style={styles.declineBtn}
                       accessibilityRole="button"
                       accessibilityLabel={t("friends.declineRequestA11yLabel", { username: r.username })}
-                      hitSlop={8}
+                      hitSlop={Spacing.sm}
                     >
                       <Ionicons name="close" size={16} color={Colors.textMuted} {...a11yHidden()} />
                     </Pressable>
@@ -421,7 +421,7 @@ export default function FriendsScreen() {
                       style={styles.acceptBtn}
                       accessibilityRole="button"
                       accessibilityLabel={t("friends.acceptRequestA11yLabel", { username: r.username })}
-                      hitSlop={8}
+                      hitSlop={Spacing.sm}
                     >
                       <Ionicons name="checkmark" size={16} color={Colors.bgCard} {...a11yHidden()} />
                     </Pressable>
@@ -450,7 +450,7 @@ export default function FriendsScreen() {
                     style={styles.iconBtn}
                     accessibilityRole="button"
                     accessibilityLabel={t("friends.cancelRequestA11yLabel", { username: r.username })}
-                    hitSlop={12}
+                    hitSlop={Spacing.cosy}
                   >
                     <Ionicons name="close-circle-outline" size={18} color={Colors.textMuted} {...a11yHidden()} />
                   </Pressable>

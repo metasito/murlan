@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { View, Text, StyleSheet, Pressable, useWindowDimensions } from "react-native";
+import { IconButton } from "@/components/IconButton";
+import { useIsLandscape } from "@/lib/orientation";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -15,7 +17,7 @@ import {
   notificationTopOffset,
   surplusHeight,
 } from "@/components/gameTableModel";
-import { Colors, Reading, Spacing, Radius, Type, Shadow, TOUCH_TARGET_MIN } from "@/lib/theme";
+import { Colors, Reading, Spacing, Radius, Type, Shadow, TOUCH_TARGET_MIN, Layer } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
 import type { NotificationType, NotificationData } from "@/context/NotificationContext";
@@ -65,6 +67,7 @@ const COLOR_MAP: Record<NotificationType, string> = {
 // same span: two numbers here would be a way for the two halves of one movement
 // to drift apart.
 export const SLIDE_DURATION = 320;
+const GLYPH = 20;
 const DEFAULT_VISIBLE_DURATION = Reading.notice;
 /**
  * Slack on the floor that ends a banner whose animation chain never reported
@@ -87,6 +90,7 @@ export default function NotificationBanner({ notification, onDismiss, onMeasure 
   const [pressed, setPressed] = useState(false);
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
+  const isLandscape = useIsLandscape();
   const translateY = useSharedValue(-120);
   const opacity = useSharedValue(0);
   const reduceMotion = usePrefersReducedMotion();
@@ -95,7 +99,7 @@ export default function NotificationBanner({ notification, onDismiss, onMeasure 
   const scale = cardScale(Math.min(width, height));
   const topOffset = notificationTopOffset({
     topPad,
-    landscape: width > height,
+    landscape: isLandscape,
     scale,
     surplus: surplusHeight(width, height, scale) / 2,
   });
@@ -187,22 +191,21 @@ export default function NotificationBanner({ notification, onDismiss, onMeasure 
         >
           {dismissHint.node}
           <View style={[styles.iconCircle, { backgroundColor: color + "22" }]} {...a11yHidden()}>
-            <Ionicons name={icon} size={20} color={color} />
+            <Ionicons name={icon} size={GLYPH} color={color} />
           </View>
           <View style={styles.textGroup} {...a11yHidden()}>
             <Text style={styles.title} numberOfLines={1}>{notification?.title ?? ""}</Text>
             <Text style={styles.message} numberOfLines={2}>{notification?.message ?? ""}</Text>
           </View>
         </Pressable>
-        <Pressable
+        <IconButton
+          name="close"
+          label={t("notificationBanner.closeA11yLabel")}
           onPress={handlePress}
-          hitSlop={Spacing.md}
+          size={GLYPH}
+          color={Colors.textMuted}
           style={styles.closeBtn}
-          accessibilityRole="button"
-          accessibilityLabel={t("notificationBanner.closeA11yLabel")}
-        >
-          <Ionicons name="close" size={20} color={Colors.textMuted} {...a11yHidden()} />
-        </Pressable>
+        />
       </View>
     </Animated.View>
   );
@@ -213,7 +216,7 @@ const styles = StyleSheet.create({
     position: "absolute",
     left: Spacing.sm + 4,
     right: Spacing.sm + 4,
-    zIndex: 9999,
+    zIndex: Layer.banner,
   },
   banner: {
     flexDirection: "row",
@@ -257,8 +260,6 @@ const styles = StyleSheet.create({
     lineHeight: 16,
   },
   closeBtn: {
-    width: TOUCH_TARGET_MIN,
-    height: TOUCH_TARGET_MIN,
     marginVertical: -Spacing.cosy,
     marginRight: -Spacing.sm,
     alignItems: "center",

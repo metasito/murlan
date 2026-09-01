@@ -8,7 +8,7 @@ import {
   withTiming,
   cancelAnimation,
 } from "react-native-reanimated";
-import { Colors, FontSize, makeShadow, Radius, Scrim, Spacing, Type } from "@/lib/theme";
+import { Colors, FontSize, makeShadow, Radius, Scrim, Spacing, Type, Layer } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
 import { a11yState } from "@/lib/a11y";
@@ -71,7 +71,7 @@ export function StartReasonBanner({
 }
 
 /** Over the felt and the flying cards, under the exchange and the overlays. */
-const START_REASON_Z = 50;
+const START_REASON_Z = Layer.band;
 const START_REASON_MAX_W = 420;
 
 const startReasonStyles = StyleSheet.create({
@@ -331,7 +331,7 @@ export function RailKnob({
 }
 
 /** Over the felt and the seats, under the banners and the overlays. */
-const RAIL_Z = 20;
+const RAIL_Z = Layer.rail;
 
 const railStyles = StyleSheet.create({
   // No horizontal edge here: `side` sets the one it is against, and a `left: 0`
@@ -363,7 +363,7 @@ export const portraitOverlayStyles = StyleSheet.create({
     backgroundColor: Colors.overlayOpaque,
     alignItems: "center",
     justifyContent: "center",
-    zIndex: 999,
+    zIndex: Layer.held,
   },
   card: {
     alignItems: "center",
@@ -419,7 +419,7 @@ export const sharedTableStyles = StyleSheet.create({
   // Above both side seats: a combination thrown from a side seat crosses that
   // seat's own column on its way in, and the flight is drawn in here so that it
   // lands on the pile's centre rather than the screen's.
-  centerSection: { flex: 1, alignItems: "center", justifyContent: "center", zIndex: 1 },
+  centerSection: { flex: 1, alignItems: "center", justifyContent: "center", zIndex: Layer.table },
   // Bottom-aligned, not centred: the row's headroom is there for a selected
   // card's lift, which is above it. Centred, half that headroom sits *under*
   // the row and lifts the hand off the safe line, so the crop the cards are

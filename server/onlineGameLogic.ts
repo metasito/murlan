@@ -2,6 +2,7 @@
 // without pulling storage/db/session — and the pg pool they build at import —
 // onto a path that needs none of it.
 import { botSeatKey, isBotSeatKey } from "./botSeat.ts";
+import type { ScoreLine } from "../lib/matchState.ts";
 import { botSeatNames, getBotPersonality } from "../lib/botPersonalities.ts";
 import type { BotPersonalityId } from "../lib/botPersonalities.ts";
 import { foldHandIntoMatch, resolveMatchFor } from "../lib/gameEngine.ts";
@@ -425,15 +426,7 @@ export interface ResolveHandEndInput {
   abandonedSeats: Map<number, string>;
 }
 
-export interface ScoreboardRow {
-  seatIndex: number;
-  /** The engine player id the rankings and the match winners are stated in. */
-  engineId: string;
-  userId: string | null;
-  username: string;
-  points: number;
-  total: number;
-}
+export type ScoreboardRow = ScoreLine;
 
 export interface ResolveHandEndResult {
   handByKey: Record<string, number>;

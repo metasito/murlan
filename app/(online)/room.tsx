@@ -7,8 +7,8 @@ import {
   ScrollView,
   Share,
   FlatList,
-  useWindowDimensions,
 } from "react-native";
+import { useIsLandscape } from "@/lib/orientation";
 import { router } from "expo-router";
 import Animated, { FadeIn } from "react-native-reanimated";
 import { hapticMedium, hapticSelection, hapticSuccess } from "@/lib/haptics";
@@ -313,7 +313,6 @@ export default function RoomScreen() {
   const { t } = useTranslation();
   const reduceMotion = usePrefersReducedMotion();
   const entering = reduceMotion ? undefined : FadeIn.duration(Motion.duration.travel);
-  const { width: W, height: H } = useWindowDimensions();
   const { user } = useAuth();
   const { room, leaveRoom, startGame, entrySource } = useOnlineRoom();
   const { gameState } = useOnlineTable();
@@ -328,7 +327,7 @@ export default function RoomScreen() {
   const copiedTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => () => clearTimeout(copiedTimer.current), []);
 
-  const isLandscape = W > H;
+  const isLandscape = useIsLandscape();
 
   const playerItemHeight = isLandscape ? 36 : 44;
   const playerItemPaddingVertical = isLandscape ? 4 : 8;

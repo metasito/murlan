@@ -10,7 +10,7 @@ import Animated, {
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated';
-import { Colors, Spacing, Radius, FontSize, Highlight, Motion, Shadow, TOUCH_TARGET_MIN } from '@/lib/theme';
+import { Colors, Spacing, Radius, FontSize, Gradient, Motion, Shadow, TopEdgeLight, TOUCH_TARGET_MIN } from '@/lib/theme';
 import { usePrefersReducedMotion } from '@/lib/accessibility';
 import { a11yHidden, a11yState, useA11yHint } from "@/lib/a11y";
 
@@ -118,7 +118,7 @@ export function MenuButton({
 // A solid gold pill reads as a flat swatch. Raking the light across it — bright
 // at the top-left corner, dropping to goldDark at the bottom-right — is what
 // makes it read as a struck metal surface instead.
-const PRIMARY_GRADIENT = [Colors.goldLight, Colors.gold, Colors.goldDark] as const;
+const PRIMARY_GRADIENT = Gradient.menuButton;
 const PRIMARY_GRADIENT_PRESSED = [Colors.gold, Colors.goldDark, Colors.goldDim] as const;
 
 const styles = StyleSheet.create({
@@ -134,14 +134,7 @@ const styles = StyleSheet.create({
   },
   fullWidth: { width: '100%' },
   label: {},
-  // One hairline of light along the top edge: the cue that the surface has a
-  // thickness and is facing up.
-  topHighlight: {
-    position: 'absolute',
-    top: 0, left: '12%', right: '12%',
-    height: 1,
-    backgroundColor: Highlight.clear,
-  },
+  topHighlight: TopEdgeLight,
 
   primary: { backgroundColor: Colors.gold, ...Shadow.gold },
   secondary: { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: Colors.gold },

@@ -19,7 +19,7 @@ import { MATCH_TARGETS } from "@/lib/gameEngine";
 import { handCountOf } from "@/components/gameTableModel";
 import { clearReactions, pushReaction } from "@/lib/reactions";
 import type { GameState, MatchLength } from "@/lib/gameEngine";
-import type { MatchVerdict } from "@/lib/matchState";
+import type { GameOverPayload, MatchVerdict } from "@/lib/matchState";
 import {
   buildExchangeAnnounce,
   rematchPromptOpen as isRematchPromptOpen,
@@ -524,23 +524,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       matchContinues,
       isDraw,
       ratingDeltas,
-    }: {
-      /** One row per seat, carrying every identity the scoreboard indexes by. */
-      scores?: { engineId: string; points: number; total: number }[];
-      matchTarget?: number;
-      matchLength?: MatchLength;
-      handsPlayed?: number;
-      matchOver?: boolean;
-      matchWinnerIds?: string[];
-      matchContinues?: boolean;
-      isDraw?: boolean;
-      /**
-       * By user id, and absent for a hand that earns no rating. The server
-       * reads this before it writes the ladder, because the inputs stop
-       * existing once that write lands (server/ratings.ts).
-       */
-      ratingDeltas?: Record<string, number>;
-    }) => {
+    }: GameOverPayload) => {
       // Kept whole and keyed by user id: this context has no identity of its
       // own, and the overlay that shows the number already knows whose it is.
       // Undefined and empty are the same answer — the hand rated nobody.

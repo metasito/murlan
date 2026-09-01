@@ -1,5 +1,6 @@
 import type { Server as SocketServer } from "socket.io";
 import { storage } from "./storage.ts";
+import { emitVoteState } from "./emit.ts";
 import { logger } from "./logger.ts";
 import { DEFAULT_LOCALE, translate } from "../shared/i18n.ts";
 import { activeGames, seatOfUser } from "./gameRoom.ts";
@@ -317,12 +318,7 @@ export async function vacateSeat(
       message: translate(DEFAULT_LOCALE, "server.PLAYER_LEFT_BOT_TAKEOVER", { username }),
       params: { username },
     });
-    // `total` is the seated-seat count, which is what the `game:rematch_vote`
-    // gate compares `rematchVotes.size` against.
-    io.to(roomId).emit("game:vote_state", {
-      votes: Array.from(game.rematchVotes),
-      total: remaining,
-    });
+    emitVoteState(io, roomId, game);
     if (remaining === 0) {
       await storage
         .updateRoomStatus(roomId, "finished")

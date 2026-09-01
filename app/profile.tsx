@@ -23,6 +23,7 @@ import {
   RECENT_FORM_LIMIT,
 } from "@/lib/profileStats";
 import { MenuButton } from "@/components/MenuButton";
+import { IconButton } from "@/components/IconButton";
 import { LoadingBlock, ErrorBlock, EmptyBlock } from "@/components/StateBlock";
 import { LookPicker } from "@/components/LookPicker";
 import { useTranslation } from "@/lib/i18n";
@@ -43,7 +44,8 @@ type IconName = React.ComponentProps<typeof Ionicons>["name"];
 
 /** How many hands the card lists before the door out to the rest. */
 const HISTORY_ROWS_SHOWN = 5;
-const DOOR_CHEVRON = 18;
+/** Every glyph on this screen is one size; only the avatar is not. */
+const GLYPH = 18;
 
 
 /** The floor a stat tile and an achievement row read at. Neither takes a press. */
@@ -55,7 +57,7 @@ const FORM_VALUE_W = 28;
 function StatTile({ icon, value, label }: { icon: IconName; value: string; label: string }) {
   return (
     <View style={styles.statTile} {...a11yGroup(`${label}: ${value}`)}>
-      <Ionicons name={icon} size={18} color={Colors.gold} {...a11yHidden()} />
+      <Ionicons name={icon} size={GLYPH} color={Colors.gold} {...a11yHidden()} />
       <Text style={styles.statValue} {...a11yHidden()}>{value}</Text>
       <Text style={styles.statLabel} {...a11yHidden()}>{label}</Text>
     </View>
@@ -128,16 +130,13 @@ function UserCard({ user }: { user: { username: string } }) {
             {user.username}
           </Text>
         </View>
-        <Pressable
+        <IconButton
+          name="pencil"
+          label={t("profile.renameA11yLabel")}
           onPress={open}
-          style={styles.renameBtn}
-          accessibilityRole="button"
-          accessibilityLabel={t("profile.renameA11yLabel")}
-          hitSlop={12}
+          size={GLYPH}
           testID="btn-rename"
-        >
-          <Ionicons name="pencil" size={18} color={Colors.gold} {...a11yHidden()} />
-        </Pressable>
+        />
       </View>
     );
   }
@@ -475,7 +474,7 @@ export default function ProfileScreen() {
                       </Text>
                       <Ionicons
                         name="chevron-forward"
-                        size={DOOR_CHEVRON}
+                        size={GLYPH}
                         color={Colors.gold}
                         {...a11yHidden()}
                       />
@@ -517,7 +516,7 @@ export default function ProfileScreen() {
                         >
                           <Ionicons
                             name={a.unlocked ? "trophy" : "lock-closed"}
-                            size={18}
+                            size={GLYPH}
                             color={a.unlocked ? Colors.bgCard : Colors.textMuted}
                           />
                         </View>
@@ -571,12 +570,6 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.xs,
   },
   userIdentity: { flex: 1, flexDirection: "row", alignItems: "center", gap: Spacing.sm },
-  renameBtn: {
-    width: TOUCH_TARGET_MIN,
-    height: TOUCH_TARGET_MIN,
-    alignItems: "center",
-    justifyContent: "center",
-  },
   renameCard: {
     gap: Spacing.sm,
     paddingVertical: Spacing.sm,

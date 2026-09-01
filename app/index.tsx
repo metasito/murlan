@@ -4,9 +4,9 @@ import {
   Text,
   StyleSheet,
   Pressable,
-  useWindowDimensions,
   ScrollView,
 } from "react-native";
+import { useIsLandscape } from "@/lib/orientation";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, {
@@ -670,8 +670,7 @@ export default function HomeScreen() {
   const { hasSavedGame, resumeGame } = useLocalSession();
   const { gameInvites } = useSocket();
   const { t } = useTranslation();
-  const { width: W, height: H } = useWindowDimensions();
-  const isLandscape = W > H;
+  const isLandscape = useIsLandscape();
   const [settingsVisible, setSettingsVisible] = useState(false);
 
   const reduceMotion = usePrefersReducedMotion();

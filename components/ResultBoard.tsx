@@ -12,8 +12,8 @@ import {
   StyleSheet,
   Pressable,
   ScrollView,
-  useWindowDimensions,
 } from "react-native";
+import { useIsLandscape } from "@/lib/orientation";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -274,8 +274,7 @@ export function ResultBoard({
   rightPad?: number;
 }) {
   const { t } = useTranslation();
-  const { width: W, height: H } = useWindowDimensions();
-  const isLandscape = W > H;
+  const isLandscape = useIsLandscape();
 
   const header = (
     <View style={styles.headerMulti}>

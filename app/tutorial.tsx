@@ -5,7 +5,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import Animated, { FadeIn } from "react-native-reanimated";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { hapticError, hapticLight, hapticSelection, hapticSuccess } from "@/lib/haptics";
-import { Colors, Spacing, Radius, FontSize, Type, Motion } from "@/lib/theme";
+import { Colors, Spacing, Radius, FontSize, Type, Motion, TOUCH_TARGET_MIN } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { markTutorialSeen } from "@/lib/tutorialSeen";
 import { useAuth } from "@/context/AuthContext";
@@ -28,6 +28,7 @@ import {
   processExchangeChoice,
 } from "@/lib/gameEngine";
 import { useTranslation, type TFn, type TranslationKey } from "@/lib/i18n";
+import { IconButton } from "@/components/IconButton";
 import { a11yHidden } from "@/lib/a11y";
 
 
@@ -515,16 +516,7 @@ export default function TutorialScreen() {
 
   const header = (
     <View style={styles.header}>
-      <Pressable onPress={goBack} style={styles.headerBtn} hitSlop={Spacing.sm} accessibilityRole="button" accessibilityLabel={t("tutorial.backA11yLabel")}>
-        {/* The glyph is the button's visual content, not a second control:
-            left exposed it focuses separately from the button naming it. */}
-        <Ionicons
-          name="chevron-back"
-          size={22}
-          color={Colors.gold}
-          {...a11yHidden()}
-        />
-      </Pressable>
+      <IconButton name="chevron-back" label={t("tutorial.backA11yLabel")} onPress={goBack} />
       <View style={styles.progressWrap}>
         <View style={styles.progressTrack}>
           <View style={[styles.progressFill, { width: `${((stepIndex + 1) / BEATS.length) * 100}%` }]} />
@@ -533,7 +525,7 @@ export default function TutorialScreen() {
           {t("tutorial.progressText", { current: stepIndex + 1, total: BEATS.length })}
         </Text>
       </View>
-      <Pressable onPress={handleSkip} style={styles.headerBtn} hitSlop={Spacing.sm} accessibilityRole="button" accessibilityLabel={t("tutorial.skipA11yLabel")}>
+      <Pressable onPress={handleSkip} style={styles.skipBtn} accessibilityRole="button" accessibilityLabel={t("tutorial.skipA11yLabel")}>
         <Text
           style={styles.skipText}
           {...a11yHidden()}
@@ -722,9 +714,11 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
     marginBottom: Spacing.md,
   },
-  headerBtn: {
-    width: 40,
-    height: 40,
+  // Its own box is the target, matching IconButton opposite it: react-native-web
+  // reads hitSlop on nothing but the legacy Touchable.
+  skipBtn: {
+    minWidth: TOUCH_TARGET_MIN,
+    minHeight: TOUCH_TARGET_MIN,
     alignItems: "center",
     justifyContent: "center",
   },

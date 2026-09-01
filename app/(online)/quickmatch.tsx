@@ -8,6 +8,7 @@ import {
   useWindowDimensions,
   ActivityIndicator,
 } from "react-native";
+import { useIsLandscape } from "@/lib/orientation";
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -25,9 +26,8 @@ import { MenuLayout, CONTENT_H_PAD } from "@/components/MenuLayout";
 import { MenuCard } from "@/components/MenuCard";
 import { MenuButton } from "@/components/MenuButton";
 import { useTranslation } from "@/lib/i18n";
+import type { GameMode } from "@/lib/gameEngine";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
-
-type GameMode = "free_for_all" | "teams";
 
 interface ModeOption {
   maxPlayers: number;
@@ -82,7 +82,7 @@ export default function QuickmatchScreen() {
   const insets = useSafeAreaInsets();
   const { t } = useTranslation();
   const MODES = React.useMemo(() => buildModes(t), [t]);
-  const { width: W, height: H } = useWindowDimensions();
+  const { width: W } = useWindowDimensions();
   const { quickmatch, leaveRoom, room } = useOnlineRoom();
   const { error, clearError } = useOnlineConnection();
   const navigation = useNavigation();
@@ -93,7 +93,7 @@ export default function QuickmatchScreen() {
   const pulse = useSharedValue(1);
   const reduceMotion = usePrefersReducedMotion();
 
-  const isLandscape = W > H;
+  const isLandscape = useIsLandscape();
 
   // The id, not the room: every field update would otherwise replace the route again.
   const roomId = room?.roomId;

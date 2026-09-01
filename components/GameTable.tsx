@@ -123,7 +123,7 @@ import {
 } from "@/lib/sounds";
 import { hapticError, hapticLight, hapticMedium, hapticSelection } from "@/lib/haptics";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
-import { Colors, FontSize, Motion, Radius, Scrim, Spacing } from "@/lib/theme";
+import { Colors, FontSize, Motion, Radius, Scrim, Spacing, Layer } from "@/lib/theme";
 import { useTableFelt } from "@/lib/cosmetics";
 import { A11yStatus, a11yGroup, a11yHidden, a11yVeiled } from "@/lib/a11y";
 
@@ -150,17 +150,17 @@ const WEB_CLIP =
 const REJECT_HINT_MS = 2600;
 const REJECT_HINT_MAX_W = 260;
 /** Above the top bar and the rematch panel: the reason must not be covered. */
-const REJECT_HINT_Z = 30;
+const REJECT_HINT_Z = Layer.hint;
 /** The banner band sits over the felt, under the reject hint. */
-const BANNER_BAND_Z = 50;
+const BANNER_BAND_Z = Layer.band;
 /**
  * The felt is decoration and everything else is the game, so the game is
  * always on top. Stated rather than left to sibling order: the pool paints
  * over the seats, the pile and the hand on the iOS renderer, which draws that
  * subtree above them however the tree is written (#209).
  */
-const FELT_Z = { zIndex: 0 } as const;
-const TABLE_Z = { zIndex: 1 } as const;
+const FELT_Z = { zIndex: Layer.felt } as const;
+const TABLE_Z = { zIndex: Layer.table } as const;
 
 /**
  * A sentence the browser harness reads, as `data-<hyphenated key>`. `dataSet` is
@@ -1491,8 +1491,8 @@ const styles = StyleSheet.create({
     pointerEvents: "box-none",
   },
 
-  hudLeft: { position: "absolute", zIndex: 10 },
-  hudRight: { position: "absolute", alignItems: "flex-end", zIndex: 10 },
+  hudLeft: { position: "absolute", zIndex: Layer.moment },
+  hudRight: { position: "absolute", alignItems: "flex-end", zIndex: Layer.moment },
   handSectionReversed: { flexDirection: "row-reverse" },
 
 

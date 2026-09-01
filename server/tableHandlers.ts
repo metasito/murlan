@@ -13,6 +13,7 @@ import type { Server as SocketServer } from "socket.io";
 import { eq } from "drizzle-orm";
 import { db } from "./db.ts";
 import { storage } from "./storage.ts";
+import { emitVoteState } from "./emit.ts";
 import { logger } from "./logger.ts";
 import { trackEvent } from "./events.ts";
 import { DEFAULT_LOCALE, translate } from "../shared/i18n.ts";
@@ -324,15 +325,8 @@ function exchangeAction(
   return OK;
 }
 
-/**
- * `total` is the seated-seat count: bots and seats whose player left hold no
- * vote, exactly as countRematchAnswers counts them.
- */
 function broadcastRematchVotes(io: SocketServer, game: OnlineGameState, roomId: string) {
-  io.to(roomId).emit("game:vote_state", {
-    votes: Array.from(game.rematchVotes),
-    total: Object.keys(game.playerMap).length,
-  });
+  emitVoteState(io, roomId, game);
 }
 
 function rematchAnswered(game: OnlineGameState): boolean {
@@ -513,10 +507,7 @@ async function startMatchAction(
     // answer and is not counted.
     if (seatOfUser(previous, userId) !== null) previous.rematchVotes.add(userId);
     const seatedIds = Object.values(previous.playerMap);
-    io.to(roomId).emit("game:vote_state", {
-      votes: Array.from(previous.rematchVotes),
-      total: seatedIds.length,
-    });
+    emitVoteState(io, roomId, previous);
     if (!seatedIds.every((uid) => previous.rematchVotes.has(uid))) {
       roomError(io, userId, {
         message: "Every player must be ready before a new match starts",

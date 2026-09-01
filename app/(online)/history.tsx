@@ -105,5 +105,4 @@ const styles = StyleSheet.create({
     paddingTop: Spacing.md,
   },
   pageText: { ...Type.label, color: Colors.textSecondary },
-  countText: { ...Type.caption, textAlign: "center", paddingTop: Spacing.xs },
 });

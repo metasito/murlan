@@ -36,3 +36,40 @@ export function celebration(
   }
   return "";
 }
+
+/** One seat's line on the end-of-manche scoreboard, in every identity it is indexed by. */
+export interface ScoreLine {
+  seatIndex: number;
+  /** The engine player id the rankings and the match winners are stated in. */
+  engineId: string;
+  userId: string | null;
+  username: string;
+  points: number;
+  total: number;
+}
+
+/**
+ * `game:over`, as the server states it and the client reads it.
+ *
+ * Declared once and with no optional field: both halves were writing their own
+ * copy, and the client's had every field optional, which makes a server that
+ * stops sending one indistinguishable from one that never did.
+ */
+export interface GameOverPayload {
+  /** Finish order, as engine player ids. */
+  rankings: string[];
+  scores: ScoreLine[];
+  matchTarget: number;
+  matchLength: MatchLength;
+  handsPlayed: number;
+  matchOver: boolean;
+  matchWinnerIds: string[];
+  matchContinues: boolean;
+  isDraw: boolean;
+  /**
+   * By user id, and empty for a hand that earns no rating. The server reads
+   * this before it writes the ladder, because the inputs stop existing once
+   * that write lands (server/ratings.ts).
+   */
+  ratingDeltas: Record<string, number>;
+}

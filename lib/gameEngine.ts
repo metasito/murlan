@@ -2,7 +2,6 @@ import { getBotPersonality } from "./botPersonalities.ts";
 import type { BotPersonalityId } from "./botPersonalities.ts";
 
 export type Suit = "hearts" | "diamonds" | "clubs" | "spades";
-export type JokerType = "colored" | "bw";
 
 export type Rank =
   | "3"

@@ -29,7 +29,7 @@ import {
 } from "@/components/ReactionLayer";
 import { GameOverOverlay } from "@/components/GameOverOverlay";
 import { MenuButton } from "@/components/MenuButton";
-import { Colors, FontSize, Radius, Spacing, Type } from "@/lib/theme";
+import { Colors, FontSize, Radius, Spacing, Type, Layer } from "@/lib/theme";
 import { hapticLight, hapticMedium } from "@/lib/haptics";
 import { useTranslation } from "@/lib/i18n";
 
@@ -53,7 +53,7 @@ const ERROR_TOAST_MS = 3000;
  * therefore has to state its own place above them, rather than inherit one
  * from where it sits in the tree.
  */
-const OVERLAY_LAYER_Z = 300;
+const OVERLAY_LAYER_Z = Layer.overlay;
 
 export default function OnlineGameScreen() {
   const insets = useSafeAreaInsets();
@@ -437,7 +437,7 @@ const styles = StyleSheet.create({
     borderRadius: Radius.md,
     paddingHorizontal: Spacing.wide,
     paddingVertical: Spacing.sm,
-    zIndex: 300,
+    zIndex: Layer.overlay,
     maxWidth: 340,
   },
   errorText: {

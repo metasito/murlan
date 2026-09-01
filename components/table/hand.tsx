@@ -14,7 +14,7 @@ import Animated, {
 } from "react-native-reanimated";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { CardView } from "@/components/CardView";
-import { Colors, FontSize, Motion, motionMs, Radius, Scrim, Shadow, Spacing } from "@/lib/theme";
+import { Colors, FontSize, Layer, Motion, motionMs, Radius, Scrim, Shadow, Spacing } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
 import type { Card } from "@/lib/gameEngine";
@@ -104,8 +104,11 @@ const MOVE_LEFT = "moveCardLeft";
 const MOVE_RIGHT = "moveCardRight";
 /** The same two moves from a keyboard, which is the whole of them on web. */
 const MOVE_KEYS = { ArrowLeft: MOVE_LEFT, ArrowRight: MOVE_RIGHT };
+/** Directly over the cards it dims, so it is derived from their band rather than guessed. */
+const VEIL_Z = Layer.table + 1;
+
 /** Past every card's own `zIndex`, which is its index in a hand of at most 18. */
-const HELD_Z = 100;
+const HELD_Z = Layer.held;
 
 interface CardItemProps {
   card: Card;
@@ -981,12 +984,12 @@ const handStyles = StyleSheet.create({
   cardGlow: {
     position: "absolute",
     top: 2, left: 2, right: 2, bottom: 2,
-    zIndex: 0,
+    zIndex: Layer.felt,
     borderRadius: Radius.sm,
     backgroundColor: Colors.gold,
     ...Shadow.goldSoft,
   },
-  cardLayer: { zIndex: 1 },
+  cardLayer: { zIndex: Layer.table },
   handRow: {
     position: "relative",
     alignSelf: "center",
@@ -995,7 +998,7 @@ const handStyles = StyleSheet.create({
   ungiveableVeil: {
     position: "absolute",
     top: 0, left: 0, right: 0, bottom: 0,
-    zIndex: 2,
+    zIndex: VEIL_Z,
     backgroundColor: UNGIVEABLE_DIM,
   },
   // A halo around the card, on the same principle as the selection bloom above
@@ -1011,7 +1014,7 @@ const handStyles = StyleSheet.create({
   giveableGlow: {
     position: "absolute",
     top: 0, left: 0, right: 0, bottom: 0,
-    zIndex: 0,
+    zIndex: Layer.felt,
     backgroundColor: Colors.gold,
     ...Shadow.gold,
   },

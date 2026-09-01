@@ -181,9 +181,28 @@ test("every control's touch size has been ruled on", () => {
 
 // Without this the suite above passes on a scan that finds nothing, which is what a broken
 // reader looks like: no candidates, no failures, green.
+//
+// A floor against the reader breaking, never a census: it sits far below the
+// real count on purpose. Consolidating controls onto a shared component removes
+// candidates — #671 removed several — so a floor set near the count reds the
+// suite on an improvement, and the cheapest fix in that moment is to lower it
+// again, until the guard means nothing. Keep the slack.
+const PRESSABLE_FLOOR = 60;
+
 test("the scan finds the app's controls, and reads a real box", () => {
   const candidates = pressableBoxes(scannedFiles(repoRoot), read);
-  assert.ok(candidates.length > 60, `only ${candidates.length} pressables found`);
+  assert.ok(
+    candidates.length > PRESSABLE_FLOOR,
+    `only ${candidates.length} pressables found, against a floor of ${PRESSABLE_FLOOR}`
+  );
+  // The count is what a consolidation moves; the spread is not. A reader that
+  // has stopped parsing returns nothing, or everything from one lucky file, and
+  // this catches both without moving when controls are shared out.
+  const filesWithControls = new Set(candidates.map((c) => c.file));
+  assert.ok(
+    filesWithControls.size > 10,
+    `controls found in only ${filesWithControls.size} files — the reader has stopped parsing`
+  );
   assert.ok(
     candidates.filter(measuresUp).length > 50,
     "no candidate has a box the reader could measure"

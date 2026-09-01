@@ -16,7 +16,7 @@ import Animated, {
 import { scheduleOnRN } from "react-native-worklets";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { CardView } from "@/components/CardView";
-import { Colors, FontSize, Motion, Radius, Scrim, Shadow, Spacing } from "@/lib/theme";
+import { Colors, FontSize, Motion, Radius, Scrim, Shadow, Spacing, Layer } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
 import type { Card, Combination } from "@/lib/gameEngine";
@@ -437,7 +437,7 @@ const pileStyles = StyleSheet.create({
     bottom: 0,
     alignItems: "center",
     justifyContent: "center",
-    zIndex: 60,
+    zIndex: Layer.sheet,
   },
   flyingInner: {
     alignItems: "center",
@@ -455,12 +455,12 @@ const pileStyles = StyleSheet.create({
   catchGlow: {
     position: "absolute",
     top: 2, left: 2, right: 2, bottom: 2,
-    zIndex: 0,
+    zIndex: Layer.felt,
     borderRadius: Radius.sm,
     backgroundColor: Colors.gold,
     ...Shadow.goldSoft,
   },
-  caughtCard: { zIndex: 1 },
+  caughtCard: { zIndex: Layer.table },
   // A dark plate, not a gold wash: gold on gold over the felt clears AA at no
   // stop of any felt. The border is where the chip's identity lives.
   winnerTag: {
@@ -475,7 +475,7 @@ const pileStyles = StyleSheet.create({
     paddingVertical: Spacing.xs,
     borderWidth: 1,
     borderColor: Colors.goldDark,
-    zIndex: 20,
+    zIndex: Layer.rail,
   },
   winnerText: {
     fontFamily: "Rajdhani_600SemiBold",
