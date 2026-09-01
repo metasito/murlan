@@ -7,7 +7,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { CARD_H, CARD_W, BACK_SCALE } from "../components/cardFaceModel.ts";
-import { TOUCH_TARGET_MIN } from "../lib/tokens.ts";
+import { Hold, TOUCH_TARGET_MIN } from "../lib/tokens.ts";
 import type { Card, Combination } from "../lib/gameEngine.ts";
 import {
   ROTATE_SETTLED,
@@ -61,6 +61,7 @@ import {
   INACTIVE_EXCHANGE,
   describeTableForA11y,
   impactDelayMs,
+  landingHoldMs,
   FLIGHT_MS,
   LANDING_FRACTION,
   passedSeats,
@@ -1377,6 +1378,44 @@ describe("impact feedback is timed to the card landing, not to the throw", () =>
     // setTimeout truncates, and a fractional delay would drift against the
     // animation it is supposed to match.
     assert.equal(impactDelayMs(false) % 1, 0);
+  });
+});
+
+describe("the table holds still at the landing frame", () => {
+  test("a landed card gets a beat before its aftermath runs", () => {
+    assert.equal(landingHoldMs(false), Hold.land);
+  });
+
+  test("no landing, no hold", () => {
+    // The contract, not the shipped path: `FlyingCards` returns before it ever
+    // reaches the hold under reduced motion. What this pins is that a caller
+    // reaching it anyway is answered from the landing rather than from a second
+    // reading of the flag, which is the pair that could drift.
+    assert.equal(impactDelayMs(true), 0);
+    assert.equal(landingHoldMs(true), 0);
+  });
+
+  test("the settle waits out the landing and then the hold", () => {
+    const src = readFileSync(path.join(repoRoot, "components", "table", "pile.tsx"), "utf8");
+    assert.ok(
+      !/FLIGHT_MS\s*\*\s*LANDING_FRACTION/.test(src),
+      "pile.tsx must call impactDelayMs(), not recompute the landing"
+    );
+    // Both terms, in one expression: a call that reaches the hold and discards
+    // it leaves the aftermath running on the frame of contact, which is the
+    // whole defect.
+    assert.ok(
+      src.includes("impactDelayMs(reduceMotion) + landingHoldMs(reduceMotion)"),
+      "the settle must be delayed by the landing plus the hold"
+    );
+  });
+
+  test("the flight's safety floor clears the hold it now delays", () => {
+    // `FLIGHT_LIMIT_MS` also calls `onDone`. If a longer hold pushed the settle
+    // spring past it — which #101's bomb tier is meant to do — the floor would
+    // fire first and the pile would advance twice.
+    const src = readFileSync(path.join(repoRoot, "components", "table", "pile.tsx"), "utf8");
+    assert.match(src, /const FLIGHT_LIMIT_MS = .*Hold\.land/);
   });
 });
 

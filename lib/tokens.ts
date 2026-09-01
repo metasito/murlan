@@ -457,3 +457,17 @@ export const Reading = {
   /** An invitation, which is acted on rather than read, so it outlasts its own sentence. */
   invite: 6000,
 } as const;
+
+/**
+ * Stillness: a beat where nothing moves at all, inserted into a chain that is
+ * already running. `Reading` is the precedent — a duration the app spends not
+ * animating — and the reason these are not `Motion` steps: `motionMs()` and
+ * `Motion.reduced` shorten travel, and there is no travel here to shorten.
+ *
+ * Counted in frames rather than taken off the `Motion` scale, because that is
+ * the unit the effect is described and felt in.
+ */
+export const Hold = {
+  /** The table at a card's contact — Nijman's *sleep* (*Art of Screenshake*, INDIGO 2013). Three frames at 60fps. */
+  land: 50,
+} as const;

@@ -19,7 +19,7 @@ import {
   BASE_SHORT_EDGE,
 } from "./cardFaceModel.ts";
 import { arcBounds, solveArc, SEAT_ARC } from "./tableArc.ts";
-import { Spacing } from "../lib/tokens.ts";
+import { Hold, Spacing } from "../lib/tokens.ts";
 
 // ─── Layout constants ─────────────────────────────────────────────────────────
 //
@@ -347,6 +347,18 @@ export function impactDelayMs(reduceMotion: boolean): number {
   // Under reduced motion FlyingCards skips the flight, so there is nothing to
   // wait for and the feedback fires immediately.
   return reduceMotion ? 0 : Math.round(FLIGHT_MS * LANDING_FRACTION);
+}
+
+/**
+ * The beat the table sits still on at contact, before the aftermath — the
+ * settle spring, and the pile bounce riding its callback — runs.
+ *
+ * A hold marks a landing, so it is asked of the landing rather than of
+ * `reduceMotion`: reading the flag here as well is the second derivation the
+ * two could drift apart on. One value; the ladder of beats is #101's.
+ */
+export function landingHoldMs(reduceMotion: boolean): number {
+  return impactDelayMs(reduceMotion) === 0 ? 0 : Hold.land;
 }
 
 // ─── Bomb burst ────────────────────────────────────────────────────────────────
