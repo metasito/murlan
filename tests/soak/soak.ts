@@ -67,7 +67,7 @@ function makeRng(seed: number): () => number {
  * path reads the room, may rehydrate the game from Postgres, and re-seats the
  * socket before it answers.
  */
-const REJOIN_BUDGET_MS = 5_000 * DEADLINE_SCALE;
+export const REJOIN_BUDGET_MS = 5_000 * DEADLINE_SCALE;
 
 /**
  * How long a dropped seat stays away, and why it may not grow.
@@ -108,26 +108,24 @@ export function rejoinFailure(
     lastRefusalCode: string | null;
     gaveUpItsOwnSeat: boolean;
   },
-  budgetMs: number,
-  graceMs: number
+  awayMs: number
 ): Violation {
   const waited =
     `${seat.username} reconnected and emitted game:rejoin, and was sent no state within ` +
-    `${budgetMs}ms`;
+    `${REJOIN_BUDGET_MS}ms`;
 
   // Not on the code alone: a deliberate leave and a deleted account reach the same
   // code through `vacateSeat` without a grace being involved at all, and reporting
   // one of those as the window breaking sends the reader to the server for a defect
   // that is in neither place.
   if (seat.lastRefusalCode === "SEAT_RELEASED" && !seat.gaveUpItsOwnSeat) {
-    const longest = AWAY_WINDOW_MS.floor + AWAY_WINDOW_MS.spread;
     return {
       kind: "away-window-outran-grace",
       detail:
-        `${waited} — the table had already given the seat up, and this harness never asked ` +
-        `it to. The seat may stay away ${longest}ms and the grace holding it is ${graceMs}ms, ` +
-        `so on this run something took longer than the numbers allow: the server released it ` +
-        `correctly and the rejoin is right to fail. Look at what stalled, not at the rejoin.`,
+        `${waited} — the table had already given the seat up, and this harness never asked it ` +
+        `to. It was away ${awayMs}ms and the grace holding the seat is ${heldSeatGraceMs()}ms. ` +
+        `Away the longer of the two, the release is correct and the question is what stalled; ` +
+        `away the shorter, the seat was released early and the question is the server.`,
     };
   }
 
@@ -321,6 +319,14 @@ export class Seat {
       ack?.();
       this.state = state;
       this.version += 1;
+      // Being dealt a seat index is the table saying this client holds a seat
+      // again, which is the one event that makes an earlier leave stop
+      // explaining a later `SEAT_RELEASED`. Not the reconnect: the refusal for a
+      // leave arrives on the rejoin that follows it, so clearing this when the
+      // socket is adopted would clear it just before the answer it explains.
+      if (typeof state?.viewerSeatIndex === "number" && state.viewerSeatIndex >= 0) {
+        this.gaveUpItsOwnSeat = false;
+      }
     });
     for (const event of REFUSAL_EVENTS) {
       this.socket.on(event, (payload: { code?: string; message?: string } | undefined) => {
@@ -593,6 +599,10 @@ export async function runSoak(opts: Options, log = console.log): Promise<SoakRes
         const victim = seats[Math.floor(rng() * seats.length)];
         const victimSeat = seats.indexOf(victim);
         moveLog.push({ at: moves, kind: "drop", seat: victimSeat, username: victim.username });
+        // Measured, not the window that was asked for. What breaks the reading
+        // below is precisely the run where the two differ, so quoting the plan
+        // would print the one number known to be wrong.
+        const leftAt = Date.now();
         victim.socket.close();
         await sleep(AWAY_WINDOW_MS.floor + Math.floor(rng() * AWAY_WINDOW_MS.spread));
         const back = await reconnectWith(server, victim.cookie);
@@ -600,13 +610,14 @@ export async function runSoak(opts: Options, log = console.log): Promise<SoakRes
         victim.adopt(back);
         moveLog.push({ at: moves, kind: "rejoin", seat: victimSeat, username: victim.username });
         back.emit("game:rejoin", { roomId: room.roomId });
+        const awayMs = Date.now() - leftAt;
         // A reconnecting client that is never sent the table sits on a screen
         // that will not correct itself. Waiting also keeps the oracle honest:
         // without it, an unanswered rejoin reads as a stale view instead.
         const answeredBy = Date.now() + REJOIN_BUDGET_MS;
         while (victim.version === before && Date.now() < answeredBy) await sleep(100);
         if (victim.version === before) {
-          violations.push(rejoinFailure(victim, REJOIN_BUDGET_MS, heldSeatGraceMs()));
+          violations.push(rejoinFailure(victim, awayMs));
         }
       }
     }
