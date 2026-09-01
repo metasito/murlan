@@ -13,6 +13,7 @@
  * Exit 0 allows. Exit 2 blocks and returns the message on stderr to the agent.
  */
 import { readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 
 // A command actually runs only at the start of the line or after a separator. Without this the
 // guard fires on the same text quoted inside an argument — a grep pattern, a heredoc, a message —
@@ -31,6 +32,77 @@ function withoutQuotedBodies(command) {
   return command
     .replace(/@(['"])[\s\S]*?\1@/g, (m) => " ".repeat(m.length)) // PowerShell @'…'@ / @"…"@
     .replace(/<<-?\s*(['"]?)(\w+)\1[\s\S]*?^\t*\2$/gm, (m) => " ".repeat(m.length)); // sh <<EOF
+}
+
+/**
+ * Both device workflows are named for Maestro, and a new one will be, so a workflow's name
+ * is the answer once something asks for it.
+ */
+const DEVICE_WORKFLOW = /maestro/i;
+
+/** Arguments belong to the command that carries them, and a newline ends one as surely as `;`. */
+function eachCommand(line) {
+  return line.split(/[|;&\n]+/);
+}
+
+/** The only `gh run rerun` flags that consume the token after them. */
+const TAKES_A_VALUE = /^(-j|--job|-R|--repo)$/;
+const JOB_FLAG = /^(?:--job|-j)$/;
+
+/**
+ * What one `gh run rerun` would re-dispatch: a run, a single job, or — when the id is a
+ * variable, or absent, or something this cannot read — nothing identifiable.
+ *
+ * A job id is not a run id: `gh run view <job-id>` answers 404, so reading one as the other
+ * resolves to nothing and waves through the ~25 minute simulator job it names.
+ */
+function target(args) {
+  const tokens = args.trim().split(/\s+/).filter(Boolean);
+  for (let i = 0; i < tokens.length; i++) {
+    const inlineJob = /^(?:--job|-j)=(.+)$/.exec(tokens[i]);
+    if (inlineJob) return { job: inlineJob[1] };
+    if (TAKES_A_VALUE.test(tokens[i])) {
+      if (JOB_FLAG.test(tokens[i])) return tokens[i + 1] ? { job: tokens[i + 1] } : {};
+      i += 1;
+      continue;
+    }
+    if (tokens[i].startsWith("-")) continue;
+    return /^\d+$/.test(tokens[i]) ? { run: tokens[i] } : {};
+  }
+  return {};
+}
+
+/** Every rerun on the line — all of them, because any one of them can be the device run. */
+function rerunTargets(command) {
+  const targets = [];
+  for (const one of eachCommand(command)) {
+    const rerun = new RegExp(AT_COMMAND_START + String.raw`gh\s+run\s+rerun\b(.*)$`, "m").exec(one);
+    if (rerun) targets.push(target(rerun[1]));
+  }
+  return targets;
+}
+
+/**
+ * The workflow a target belongs to, or null when `gh` cannot say.
+ *
+ * Silence here allows: `gh` is also how the rerun would be dispatched, so a guard that blocked
+ * on it would forbid the honest path and protect nothing. That reasoning covers a `gh` which
+ * cannot answer — never a question this asked wrongly, which is why an unreadable id is
+ * refused before it gets here rather than resolved to null.
+ */
+function askGitHub({ run, job }) {
+  const which = job ? [`--job=${job}`] : [run];
+  try {
+    return (
+      execFileSync("gh", ["run", "view", ...which, "--json", "workflowName", "-q", ".workflowName"], {
+        encoding: "utf8",
+        timeout: 15_000,
+        stdio: ["ignore", "pipe", "ignore"],
+      }).trim() || null
+    );
+  } catch {
+    return null;
+  }
 }
 
 const RULES = [
@@ -92,12 +164,15 @@ const RULES = [
     // captured: the flow gated its opening move on the 3 of Spades, the deal held the 3 of
     // Hearts, and every later tap went into a button that cannot enable until someone opens.
     // Reading the artefact is the rule; this is the only thing that has ever made it happen.
-    test: (c) =>
-      new RegExp(
-        AT_COMMAND_START +
-          String.raw`gh\s+(workflow\s+run\s+\S*(ios|maestro)|run\s+rerun)\b(?![^|;&]*MAESTRO_EVIDENCE_READ)`,
+    test: (c, workflowOfRun) =>
+      !/MAESTRO_EVIDENCE_READ=1/.test(c) &&
+      (new RegExp(
+        AT_COMMAND_START + String.raw`gh\s+workflow\s+run\s+\S*(ios|maestro)\b`,
         "m"
-      ).test(c) && !/MAESTRO_EVIDENCE_READ=1/.test(c),
+      ).test(c) ||
+        rerunTargets(c)
+          .filter((t) => t.run || t.job)
+          .some((t) => DEVICE_WORKFLOW.test(workflowOfRun(t) ?? ""))),
     message:
       "Dispatching a device run is blocked until you have read the last failure's own pixels.\n" +
       "A run is ~25 minutes; the artefact is already on disk and usually holds the answer.\n" +
@@ -109,6 +184,21 @@ const RULES = [
       "Having actually done that, re-run the same command with the marker:\n" +
       "  MAESTRO_EVIDENCE_READ=1 <your command>\n" +
       "The marker is a claim that you looked. Do not set it to get past this message.",
+  },
+  {
+    // The rule above allows a rerun once GitHub says the run is not a device one. A target it
+    // cannot read is not an answer, and defaulting to allow there would make `$RUN` the way
+    // past the rule rather than a way to write it.
+    test: (c) =>
+      !/MAESTRO_EVIDENCE_READ=1/.test(c) && rerunTargets(c).some((t) => !t.run && !t.job),
+    message:
+      "This rerun does not name a run this guard can look up, and a rerun it cannot identify " +
+      "might be the ~25 minute device job.\n" +
+      "Name the run by its literal id so the workflow can be read:\n" +
+      "  gh run list -w ci.yml --limit 1 --json databaseId -q '.[0].databaseId'\n" +
+      "  gh run rerun <that id> --failed\n" +
+      "Rerunning one job? `--job <job-id>` is read too. If you meant a device run, the rule " +
+      "above applies: read the last failure's artefact, then add MAESTRO_EVIDENCE_READ=1.",
   },
   {
     // A sweep rooted at /, a mounted drive root (/c/, /mnt/c/) or a Windows drive root.
@@ -126,9 +216,9 @@ const RULES = [
   },
 ];
 
-export function check(command) {
+export function check(command, workflowOfRun = askGitHub) {
   const runnable = withoutQuotedBodies(command);
-  for (const rule of RULES) if (rule.test(runnable)) return rule.message;
+  for (const rule of RULES) if (rule.test(runnable, workflowOfRun)) return rule.message;
   return null;
 }
 
