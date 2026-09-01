@@ -40,19 +40,18 @@ const RECORD = path.join(AUDIT_DIR, "online-table.txt");
 /** Set to rewrite the record instead of being held to it. */
 const UPDATING = process.env.AUDIT_UPDATE === "1";
 
+const keyOf = (row: string) => row.split("\t").slice(0, 2).join("\t");
+
 /**
- * The record, by `MODE\tviewport`, so a shard can be held to the rows it
- * measured rather than to the whole file.
- *
- * Only a whole survey rewrites the record, and CI never runs a whole one — the
- * spec is sharded, so every CI run measured some of the four and wrote nothing.
- * Left at that, the record says whatever the last full local run said, and a
- * deliberate change to the table lands with no one asked to confirm it (#716).
+ * The record by `MODE\tviewport`, so a shard is held to the rows it measured.
+ * CI does write a whole one — the split is by spec file, so one shard runs all
+ * four — but onto a runner nothing commits from, so the checked-in copy only
+ * ever moves when someone runs the survey locally.
  */
 function recorded(): Map<string, string> {
   try {
     const lines = readFileSync(RECORD, "utf8").split("\n").filter(Boolean);
-    return new Map(lines.map((l) => [l.split("\t").slice(0, 2).join("\t"), l]));
+    return new Map(lines.map((l) => [keyOf(l), l]));
   } catch {
     return new Map();
   }
@@ -283,8 +282,7 @@ test.describe("the online table, at the audit's viewports", () => {
       if (!UPDATING) {
         const record = recorded();
         for (const row of measured) {
-          const key = row.split("\t").slice(0, 2).join("\t");
-          const was = record.get(key);
+          const was = record.get(keyOf(row));
           if (was === undefined) continue;
           expect(
             row,

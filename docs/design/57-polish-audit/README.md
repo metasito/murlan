@@ -80,9 +80,10 @@ in `tests/e2e/onlineTableSurvey.spec.ts` holds them to. That check compares the 
 against the offline one, and nothing else: the two can drift together, and the band did,
 because a fix landed for it. What pins the band itself is `tests/tableProportions.test.ts`.
 
-`online-table.txt` is rewritten by every run of that spec, so it always reports the app as it
-is now. The `emptyBand` column below is the audit's own figure, kept because it is what
-finding 3 was raised on.
+`online-table.txt` is rewritten by every whole run of that spec, so it reports the app as it
+is now — but only a local run reaches this repository, since CI writes it onto a runner
+nothing commits from. The run is held to it either way. The `emptyBand` column below is the
+audit's own figure, kept because it is what finding 3 was raised on.
 
 `handSlot` is the box the fan gives one hand card — full height, and only the width the card
 beside it leaves uncovered. It is not `table.txt`'s `card`, which is a card on the felt.
@@ -98,7 +99,7 @@ beside it leaves uncovered. It is not `table.txt`'s `card`, which is a card on t
   between the lowest seat and the hand, against 94px of 309px on the smallest phone. It is
   the same table, so it is the same finding, and fixing it fixes both. #586 did, and the
   right-hand column is that fix: the tablet band falls to 31.6% of its table against the
-  phones' 29.8–30.6%, where it was 33.5% against the same 30.4%.
+  phones' 29.8–30.6%, where it was 33.5% against their 30.2–30.6%.
 - **The stretch class does not.** The six menu screens render the same content height at 390
   and 834 because nothing asks how much height there is. The table asks: its felt, its cards
   and its bands all grow with the window (309 → 806, 90 → 233). The void on a tablet table is
