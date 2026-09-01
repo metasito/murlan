@@ -67,7 +67,7 @@ function makeRng(seed: number): () => number {
  * path reads the room, may rehydrate the game from Postgres, and re-seats the
  * socket before it answers.
  */
-const REJOIN_BUDGET_MS = 5_000 * DEADLINE_SCALE;
+export const REJOIN_BUDGET_MS = 5_000 * DEADLINE_SCALE;
 
 /**
  * How long a dropped seat stays away, and why it may not grow.
@@ -87,6 +87,57 @@ export const AWAY_WINDOW_MS = { floor: 200, spread: 600 };
  * lived in. Whichever is shorter is the one that can expire first.
  */
 export const heldSeatGraceMs = () => Math.min(disconnectGraceMs(), lobbyGraceMs());
+
+/**
+ * What an unanswered `game:rejoin` is evidence of, read off the refusal that came
+ * back with it.
+ *
+ * `awayWindowOutsideGrace` makes the same claim before the run and cannot see it:
+ * it compares two constants, so a stalled runner, a paused container or a grace
+ * lowered by a config this harness never reads all break the premise while that
+ * check still passes. A `SEAT_RELEASED` is that break observed.
+ *
+ * One-directional. `releasedSeats` is memory-only, so a server restart mid-match
+ * downgrades the code back to `UNAUTHORIZED`: its presence means the window broke,
+ * its absence never means the window held.
+ */
+export function rejoinFailure(
+  seat: {
+    username: string;
+    lastRefusal: string | null;
+    lastRefusalCode: string | null;
+    gaveUpItsOwnSeat: boolean;
+  },
+  awayMs: number
+): Violation {
+  const waited =
+    `${seat.username} reconnected and emitted game:rejoin, and was sent no state within ` +
+    `${REJOIN_BUDGET_MS}ms`;
+
+  // Not on the code alone: a deliberate leave and a deleted account reach the same
+  // code through `vacateSeat` without a grace being involved at all, and reporting
+  // one of those as the window breaking sends the reader to the server for a defect
+  // that is in neither place.
+  if (seat.lastRefusalCode === "SEAT_RELEASED" && !seat.gaveUpItsOwnSeat) {
+    return {
+      kind: "away-window-outran-grace",
+      detail:
+        `${waited} — the table had already given the seat up, and this harness never asked it ` +
+        `to. It was away ${awayMs}ms and the grace holding the seat is ${heldSeatGraceMs()}ms. ` +
+        `Away the longer of the two, the release is correct and the question is what stalled; ` +
+        `away the shorter, the seat was released early and the question is the server.`,
+    };
+  }
+
+  return {
+    kind: "rejoin-unanswered",
+    detail:
+      `${waited} — ` +
+      (seat.lastRefusal
+        ? `the server refused it with ${seat.lastRefusal}`
+        : "and the server said nothing at all"),
+  };
+}
 
 /**
  * How far under the grace the window has to sit.
@@ -231,6 +282,19 @@ export class Seat {
    */
   lastRefusal: string | null = null;
   /**
+   * The code of that refusal on its own. Read rather than parsed back out of
+   * `lastRefusal`: what the oracle branches on is the code, and recovering it
+   * from a sentence assembled for a human is a second definition of it.
+   */
+  lastRefusalCode: string | null = null;
+  /**
+   * Whether this client gave its own seat up. `SEAT_RELEASED` says the table
+   * took the seat back, not why: a grace expiring and a deliberate leave reach
+   * it through the same `vacateSeat`. Only the harness knows which, so it
+   * carries the answer rather than the oracle assuming it.
+   */
+  gaveUpItsOwnSeat = false;
+  /**
    * Every refusal this seat collected all run, keyed `event code`. A throttled
    * or rejected client is not playing the game it thinks it is, and its view
    * goes stale for a reason the oracle would read as disagreement — so this is
@@ -255,20 +319,52 @@ export class Seat {
       ack?.();
       this.state = state;
       this.version += 1;
+      // Being dealt a seat index is the table saying this client holds a seat
+      // again, which is the one event that makes an earlier leave stop
+      // explaining a later `SEAT_RELEASED`. Not the reconnect: the refusal for a
+      // leave arrives on the rejoin that follows it, so clearing this when the
+      // socket is adopted would clear it just before the answer it explains.
+      if (typeof state?.viewerSeatIndex === "number" && state.viewerSeatIndex >= 0) {
+        this.gaveUpItsOwnSeat = false;
+      }
     });
     for (const event of REFUSAL_EVENTS) {
       this.socket.on(event, (payload: { code?: string; message?: string } | undefined) => {
         const code = payload?.code ?? "?";
         this.lastRefusal = `${event} ${code}: ${payload?.message ?? ""}`.trim();
+        this.lastRefusalCode = payload?.code ?? null;
         const key = `${event} ${code}`;
         this.refusals.set(key, (this.refusals.get(key) ?? 0) + 1);
       });
     }
   }
 
+  /**
+   * The only place this harness gives a seat up. The emit and the record are one
+   * call because apart they drift: a leave the seat does not know about turns
+   * every later `SEAT_RELEASED` into a false report of the away window
+   * outrunning the grace, and the run stays green while saying it.
+   */
+  leave(roomId: string) {
+    this.gaveUpItsOwnSeat = true;
+    this.socket.emit("room:leave", { roomId });
+  }
+
+  /**
+   * Forgets the last refusal, so what the oracle reads is the answer to the
+   * attempt it is judging. Both fields together, and never at a call site: the
+   * pair clearing by hand is how a `SEAT_RELEASED` from an earlier drop
+   * survives into a later one and reports a window that never broke.
+   */
+  clearRefusal() {
+    this.lastRefusal = null;
+    this.lastRefusalCode = null;
+  }
+
   /** Re-attached after a reconnect, because the socket object is new. */
   adopt(socket: Socket) {
     this.socket = socket;
+    this.clearRefusal();
     this.listen();
   }
 
@@ -503,29 +599,25 @@ export async function runSoak(opts: Options, log = console.log): Promise<SoakRes
         const victim = seats[Math.floor(rng() * seats.length)];
         const victimSeat = seats.indexOf(victim);
         moveLog.push({ at: moves, kind: "drop", seat: victimSeat, username: victim.username });
+        // Measured, not the window that was asked for. What breaks the reading
+        // below is precisely the run where the two differ, so quoting the plan
+        // would print the one number known to be wrong.
+        const leftAt = Date.now();
         victim.socket.close();
         await sleep(AWAY_WINDOW_MS.floor + Math.floor(rng() * AWAY_WINDOW_MS.spread));
         const back = await reconnectWith(server, victim.cookie);
         const before = victim.version;
         victim.adopt(back);
-        victim.lastRefusal = null;
         moveLog.push({ at: moves, kind: "rejoin", seat: victimSeat, username: victim.username });
         back.emit("game:rejoin", { roomId: room.roomId });
+        const awayMs = Date.now() - leftAt;
         // A reconnecting client that is never sent the table sits on a screen
         // that will not correct itself. Waiting also keeps the oracle honest:
         // without it, an unanswered rejoin reads as a stale view instead.
         const answeredBy = Date.now() + REJOIN_BUDGET_MS;
         while (victim.version === before && Date.now() < answeredBy) await sleep(100);
         if (victim.version === before) {
-          violations.push({
-            kind: "rejoin-unanswered",
-            detail:
-              `${victim.username} reconnected and emitted game:rejoin, and was sent no ` +
-              `state within ${REJOIN_BUDGET_MS}ms — ` +
-              (victim.lastRefusal
-                ? `the server refused it with ${victim.lastRefusal}`
-                : "and the server said nothing at all"),
-          });
+          violations.push(rejoinFailure(victim, awayMs));
         }
       }
     }
