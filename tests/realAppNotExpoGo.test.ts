@@ -243,20 +243,30 @@ describe("the landscape screen is read on a landscape device", () => {
   // a screenshot, which is why it took an artefact to find and a guard to keep.
   const flow = ".maestro/offline-game.yaml";
 
-  test("the device is rotated before the table is read", () => {
+  test("the device is in landscape before the table is read", () => {
+    // One assertion rather than "a rotation happens" plus "landscape appears
+    // somewhere", which two flows satisfy together while forbidding neither:
+    // `PORTRAIT` before the table and `LANDSCAPE_LEFT` after it passes both
+    // and reintroduces the truncation exactly.
     const body = flowBody(flow, code);
-    const rotate = body.search(/^- setOrientation:/m);
+    const landscape = body.search(/^- setOrientation: LANDSCAPE_(LEFT|RIGHT)$/m);
     const table = body.indexOf('id: "game-table"');
-    assert.notEqual(rotate, -1, `${flow} never rotates the device`);
+    assert.notEqual(landscape, -1, `${flow} never rotates the device to landscape`);
     assert.notEqual(table, -1, `${flow} no longer waits for the table`);
-    assert.ok(rotate < table, `${flow} rotates after reading the table, which is too late`);
+    assert.ok(landscape < table, `${flow} reaches the table before rotating, which is too late`);
   });
 
-  test("it rotates to landscape, which is the orientation the screen locks to", () => {
-    assert.match(
-      flowBody(flow, code),
-      /^- setOrientation: LANDSCAPE_(LEFT|RIGHT)$/m,
-      `${flow} rotates somewhere other than landscape`,
+  test("a flow that reads the menus asks for portrait rather than inheriting it", () => {
+    // Device orientation outlives a flow: `clearState` resets the app, not the
+    // simulator, and a flow that fails never reaches a step that would restore
+    // it. So the flow needing portrait declares it, rather than depending on
+    // the one before it having tidied up.
+    const body = flowBody(".maestro/smoke.yaml", code);
+    const portrait = body.search(/^- setOrientation: PORTRAIT$/m);
+    assert.notEqual(portrait, -1, "smoke.yaml reads the menus on whatever orientation it inherits");
+    assert.ok(
+      portrait < body.search(/^- assertVisible:/m),
+      "smoke.yaml asserts before it has settled the orientation those assertions depend on",
     );
   });
 });

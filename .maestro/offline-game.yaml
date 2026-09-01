@@ -146,8 +146,10 @@ env:
 # button, all of them painted in the same run's screenshot. Rotating the device
 # so the two agree returns 345 nodes reaching 848 (#685).
 #
-# Here rather than at launch: the menus are portrait, and rotating under them
-# would fail this flow for a reason that has nothing to do with the table.
+# Here rather than at launch because this is the last point before the only
+# screen that is locked to landscape. The menus render either way, so rotating
+# earlier would work - it would just leave every assertion above this line
+# reading a layout no other flow reads.
 - setOrientation: LANDSCAPE_LEFT
 
 # The game table is landscape-locked and the screen physically

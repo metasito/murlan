@@ -47,6 +47,14 @@ env:
     arguments:
       AppleLanguages: "(it-IT)"
       AppleLocale: "it_IT"
+# Declared, not inherited. `offline-game.yaml` rotates the device to landscape
+# to be able to read its own screen (#685), and `clearState` above resets the
+# app rather than the device - so a flow that assumed portrait would be reading
+# the menus' landscape branch, where the mode tiles sit in a `ScrollView` and
+# `assertVisible` does not scroll to what is below the fold. Asked for here
+# rather than restored by the other flow, because a flow that fails never
+# reaches its own last step.
+- setOrientation: PORTRAIT
 # Only Expo Go has to be reached through a packager. The real app carries its
 # own bundle, so `launchApp` above has already put it on screen, and everything
 # in here would ask the device to open a scheme nothing handles.
