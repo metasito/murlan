@@ -299,11 +299,26 @@ describe("a tap strip left at the previous hand's width", () => {
     }
   });
 
-  test("cannot, where the step is already against a stop", () => {
-    // Clamped at MIN_READABLE_STEP, and clamped at MAX_STEP_RATIO: playing a
-    // card moves neither, so the stale strip is the fresh one. The defect
-    // needs the compressed middle, which is what the case above uses.
-    assert.equal(firstMisrouted(18, 320), -1, "against the finger floor");
-    assert.equal(firstMisrouted(13, 900), -1, "against the widest step a card takes");
+  test("cannot, only where both hands land on the same stop", () => {
+    // `MIN_READABLE_STEP` holds both of these, and `cardW * MAX_STEP_RATIO`
+    // both of those: the step the play would have moved is the step it already
+    // had, so the stale strip is the fresh one and there is nothing to drift.
+    assert.equal(firstMisrouted(18, 320), -1, "both against the finger floor");
+    assert.equal(firstMisrouted(13, 900), -1, "both against the widest step a card takes");
+  });
+
+  test("still does, where the stop holds only one of them", () => {
+    // Being against a stop is not itself safety, and a fixture picked for
+    // "clamped" rather than for "clamped on both sides" is green for a reason
+    // it does not hold. Here the hand is on the floor at 24.00 and the hand it
+    // becomes is off it at 25.60, which is the same 1.6px per slot as any
+    // other pair — accumulated, it reaches card 7 of 11.
+    assert.equal(computeHandLayout(12, 320, CW).step, MIN_READABLE_STEP);
+    assert.ok(computeHandLayout(11, 320, CW).step > MIN_READABLE_STEP);
+    assert.notEqual(
+      firstMisrouted(12, 320),
+      -1,
+      "a step leaving a stop moves like any other, and the strips must move with it"
+    );
   });
 });

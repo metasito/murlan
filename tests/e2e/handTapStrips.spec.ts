@@ -62,12 +62,17 @@ async function strips(page: Page): Promise<Strip[]> {
   return measured.sort((a, b) => a.left - b.left);
 }
 
+/** The step is fractional and the browser rounds every offset it reports. */
+const TOLERANCE_PX = 1;
+
+/** How far the row reaches, first strip to last. */
+const span = (row: Strip[]) => row[row.length - 1].left - row[0].left;
+
 function gaps(row: Strip[]): string[] {
   const wrong: string[] = [];
   for (let i = 0; i < row.length - 1; i++) {
     const end = row[i].left + row[i].width;
-    // Sub-pixel: the step is fractional and the browser rounds the offsets.
-    if (Math.abs(end - row[i + 1].left) > 1) {
+    if (Math.abs(end - row[i + 1].left) > TOLERANCE_PX) {
       wrong.push(
         `${row[i].label} ends at ${end.toFixed(1)} but ${row[i + 1].label} starts at ` +
           `${row[i + 1].left.toFixed(1)}`
@@ -116,10 +121,16 @@ test.describe("the hand's tap strips", () => {
       "after a play the strips no longer tile — a card is keeping the width the row had " +
         "before it, so presses near its right edge go to its neighbour"
     ).toEqual([]);
+    // The span, not the step. The step moves about a pixel per play, which is
+    // `TOLERANCE_PX` itself — but it moves every slot after it, so the distance
+    // from the first strip to the last moves by far more than one card's worth.
+    // That is both what makes the case above a second measurement rather than a
+    // repeat of the first, and the shape the defect takes: the error is with
+    // the row, not the card.
     expect(
-      after[0].width,
-      "the row's step did not move when a card left, so the strips above would tile whether " +
-        "or not they were rebuilt, and the case proves nothing"
-    ).not.toBe(dealt[0].width);
+      Math.abs(span(after) - span(dealt)),
+      `the row spans ${span(dealt)}px before the play and ${span(after)}px after — the layout ` +
+        "did not move, so tiling after it is the same claim as tiling before"
+    ).toBeGreaterThan(TOLERANCE_PX);
   });
 });
