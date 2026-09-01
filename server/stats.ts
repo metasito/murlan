@@ -1,7 +1,13 @@
-import { and, desc, eq, notInArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, notInArray, sql } from "drizzle-orm";
 import { db } from "./db.ts";
 import { logger } from "./logger.ts";
-import { userStats, matchHistory, userAchievements } from "../shared/schema.ts";
+import {
+  userStats,
+  matchHistory,
+  matchReplays,
+  userAchievements,
+  users,
+} from "../shared/schema.ts";
 import type { UserStats, MatchHistory } from "../shared/schema.ts";
 import { evaluateAchievements, ACHIEVEMENTS } from "../lib/achievements.ts";
 import type { GameResult } from "../lib/achievements.ts";
@@ -51,6 +57,13 @@ function pointsForPlacement(placement: number, playerCount: number): number {
 export async function recordGameResult(
   results: GameResult[],
   gameMode: GameMode,
+  /**
+   * The hand's one end time, shared with the replay written beside this. It is
+   * required rather than defaulted so that `(userId, finishedAt)` pairs the two
+   * exactly — a caller falling back to `defaultNow()` would leave the pairing
+   * to whichever write the database served first.
+   */
+  finishedAt: Date,
   /**
    * What this hand did to each seat's ladder rating, read before the hand was
    * written (server/ratings.ts `previewRatedDeltas`). Absent for every seat a
@@ -112,6 +125,7 @@ export async function recordGameResult(
 
         await tx.insert(matchHistory).values({
           userId,
+          finishedAt,
           gameMode,
           placement,
           playerCount,
@@ -214,6 +228,95 @@ export async function getMatchHistory(userId: string): Promise<MatchHistory[]> {
     orderBy: desc(matchHistory.finishedAt),
     limit: MAX_HISTORY_ROWS_PER_USER,
   });
+}
+
+/** One of the other seats at a hand the reader played. */
+export interface HistoryParticipant {
+  /**
+   * Null where nothing stored can name the seat: a bot at a hand whose replay
+   * has expired, or an account deleted since. The two are different sentences
+   * to a reader, which is what `bot` is for — the server does not pick either,
+   * because it does not know the reader's language.
+   */
+  name: string | null;
+  bot: boolean;
+}
+
+export interface MatchHistoryRow extends MatchHistory {
+  /** The other seats, in the order `opponents` holds them. */
+  participants: HistoryParticipant[];
+  /** This hand's replay, while one still exists to watch. */
+  replayId: string | null;
+}
+
+/** `bot:<seat>`'s seat index, which is the only thing the id carries. */
+function botSeatIndex(userId: string): number | null {
+  const seat = Number(userId.slice("bot:".length));
+  return Number.isInteger(seat) ? seat : null;
+}
+
+/**
+ * The history list as the profile reads it: every row named, and watchable
+ * where its replay survives.
+ *
+ * The two tables share no key. They do share the hand's one `finishedAt`,
+ * written by both since #739, so `(userId, finishedAt)` pairs them exactly —
+ * rows written before that carry no replay, which is what an expired replay
+ * looks like anyway.
+ *
+ * A bot's stored id is `bot:<seat>` and holds no personality, so its name can
+ * only come from the replay's own seats. That makes a bot nameable for exactly
+ * as long as its hand is watchable, and anonymous afterwards.
+ */
+export async function getMatchHistoryView(userId: string): Promise<MatchHistoryRow[]> {
+  const rows = await getMatchHistory(userId);
+  if (rows.length === 0) return [];
+
+  const [replays, humans] = await Promise.all([
+    db
+      .select({
+        id: matchReplays.id,
+        finishedAt: matchReplays.finishedAt,
+        seats: matchReplays.seats,
+      })
+      .from(matchReplays)
+      .where(
+        and(
+          sql`${matchReplays.playerIds} @> ${JSON.stringify([userId])}::jsonb`,
+          inArray(
+            matchReplays.finishedAt,
+            rows.map((r) => r.finishedAt)
+          )
+        )
+      ),
+    namesOf(
+      rows.flatMap((r) => (r.opponents as string[]).filter((id) => !isBotId(id)))
+    ),
+  ]);
+
+  const replayByTime = new Map(replays.map((r) => [r.finishedAt.getTime(), r]));
+
+  return rows.map((row) => {
+    const replay = replayByTime.get(row.finishedAt.getTime()) ?? null;
+    const participants = (row.opponents as string[]).map((id) => {
+      if (!isBotId(id)) return { name: humans.get(id) ?? null, bot: false };
+      const seat = botSeatIndex(id);
+      const named = replay?.seats.find((s) => s.seatIndex === seat);
+      return { name: named?.name ?? null, bot: true };
+    });
+    return { ...row, participants, replayId: replay?.id ?? null };
+  });
+}
+
+/** Display names for the account ids given, skipping any that no longer exist. */
+async function namesOf(ids: string[]): Promise<Map<string, string>> {
+  const unique = [...new Set(ids)];
+  if (unique.length === 0) return new Map();
+  const rows = await db
+    .select({ id: users.id, username: users.username })
+    .from(users)
+    .where(inArray(users.id, unique));
+  return new Map(rows.map((r) => [r.id, r.username]));
 }
 
 export interface AchievementStatus {

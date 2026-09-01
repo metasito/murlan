@@ -383,15 +383,7 @@ export const en = {
 
   // ----------------------------------------------------------------- replay.*
   "replay.title": "Replay",
-  "replay.cardTitle": "Review your hands",
-  "replay.emptyTitle": "No replays yet",
-  "replay.emptyBody": "Online hands stay replayable for {{days}} days.",
   "replay.loadingA11yLabel": "Loading replays",
-  "replay.errorTitle": "Replays unavailable",
-  "replay.errorRetry": "Retry",
-  "replay.rowA11yLabel": "Watch: {{mode}}, {{players}}, {{time}}, {{moves}}",
-  "replay.moves_one": "{{count}} move",
-  "replay.moves_other": "{{count}} moves",
   "replay.moveOf": "Move {{n}} of {{total}}",
   "replay.start": "Start",
   "replay.prevA11yLabel": "Previous move",
@@ -869,6 +861,10 @@ export const en = {
   "profile.historyPlayers_one": "{{count}} player",
   "profile.historyPlayers_other": "{{count}} players",
   "profile.historyRowA11yLabel": "{{position}} place, {{mode}}, {{players}}, {{points}} points, {{time}}",
+  "profile.historyWith": "with {{names}}",
+  "profile.historyBotSeat": "an AI",
+  "profile.historyUnknownSeat": "a deleted account",
+  "profile.historyWatchA11yLabel": "Watch: {{summary}}",
 
   "profile.achievementsTitle": "Achievements",
   "profile.achievementsLoadingA11yLabel": "Loading achievements",

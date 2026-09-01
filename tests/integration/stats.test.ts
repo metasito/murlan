@@ -108,6 +108,97 @@ describe("stats persistence (Task 8)", { skip: hasDatabase() ? false : skipMessa
   });
 
   /**
+   * The profile's one card reads through `getMatchHistoryView`, which pairs a
+   * history row to its replay on `(userId, finishedAt)` — the two tables share
+   * no key, and before #739 the only correlation available was "written within
+   * a few milliseconds of each other".
+   */
+  test("the history view names the table and pairs each hand to its replay", async () => {
+    const cara = await connectAs(server, "view_cara");
+    const dan = await connectAs(server, "view_dan");
+    try {
+      const created = waitFor<RoomState>(cara.socket, "room:state");
+      cara.socket.emit("room:create", { gameMode: "free_for_all", maxPlayers: 3 });
+      const room = await created;
+
+      const joined = waitFor<RoomState>(dan.socket, "room:state");
+      dan.socket.emit("room:join", { code: room.code });
+      await joined;
+
+      const payload = await driveHumansToGameOver([cara.socket, dan.socket], () => {
+        cara.socket.emit("room:start", { fillWithBots: true, botPersonality: "luan" });
+      });
+      assert.ok(payload, "game:over must fire");
+
+      const { getMatchHistoryView } = await import("../../server/stats.ts");
+      const rows = await waitForRow(async () => {
+        const view = await getMatchHistoryView(cara.user.id);
+        return view.length > 0 && view[0].replayId !== null ? view : null;
+      });
+
+      assert.equal(rows.length, 1);
+      const [hand] = rows;
+      assert.equal(
+        hand.participants.length,
+        2,
+        "the other two seats, the bot included — `opponents` holds both"
+      );
+
+      const human = hand.participants.find((p) => !p.bot);
+      assert.equal(human?.name, dan.user.username, "a human seat reads as their account name");
+
+      const bot = hand.participants.find((p) => p.bot);
+      assert.ok(bot, "the bot seat must still be listed");
+      assert.ok(
+        bot.name && !bot.name.startsWith("bot:"),
+        `a bot seat must read as its name, got ${JSON.stringify(bot.name)}`
+      );
+
+      // Asked of Postgres rather than of two Dates in here: drizzle and the raw
+      // pg client parse `timestamp without time zone` against different zones,
+      // so equal columns read back as Dates an offset apart. The claim is about
+      // the stored values, which is where it can be asked without that.
+      const paired = await dbPool.query(
+        `SELECT r.id FROM match_replays r
+           JOIN match_history h ON h.finished_at = r.finished_at
+          WHERE r.id = $1 AND h.user_id = $2 AND h.id = $3`,
+        [hand.replayId, cara.user.id, hand.id]
+      );
+      assert.equal(
+        paired.rows.length,
+        1,
+        "the pairing is one shared instant across both tables, not proximity"
+      );
+    } finally {
+      cara.socket.close();
+      dan.socket.close();
+    }
+  });
+
+  /**
+   * Every row written before #739 has a `finishedAt` of its own, so it pairs
+   * with no replay however recently it was played. That is the same shape as a
+   * replay that has expired, which is what the card already has to render.
+   */
+  test("a hand with no paired replay is listed, unwatchable, with its bot seats unnamed", async () => {
+    const { user } = await register(server, "view_unpaired");
+    await dbPool.query(
+      `INSERT INTO match_history (user_id, finished_at, game_mode, placement, player_count, points, opponents)
+       VALUES ($1, now() - interval '30 days', 'free_for_all', 2, 3, 1, $2::jsonb)`,
+      [user.id, JSON.stringify(["bot:1", "bot:2"])]
+    );
+
+    const { getMatchHistoryView } = await import("../../server/stats.ts");
+    const [hand] = await getMatchHistoryView(user.id);
+
+    assert.equal(hand.replayId, null, "no replay pairs it, so nothing offers to play it");
+    assert.deepEqual(hand.participants, [
+      { name: null, bot: true },
+      { name: null, bot: true },
+    ]);
+  });
+
+  /**
    * Leaving a hand in progress used to produce no record at all for the
    * leaver: their seat drops out of `playerMap`, after which it scores as
    * `bot:<seat>` and every write here filters it out. A losing hand cost
@@ -306,8 +397,16 @@ describe("stats persistence (Task 8)", { skip: hasDatabase() ? false : skipMessa
     // 52 separate hands for the same user — well past the 50-row cap, and
     // repeated enough that a non-idempotent achievement insert would throw
     // on the composite primary key long before this loop finishes.
+    // A distinct end time per hand, as real play gives them: the prune keeps
+    // the newest 50 by `finishedAt`, so 52 rows sharing one instant would
+    // leave which two go entirely to the database's discretion.
+    const firstFinishedAt = Date.now() - 52 * 60_000;
     for (let i = 0; i < 52; i++) {
-      await recordGameResult([result, botResult], gameMode);
+      await recordGameResult(
+        [result, botResult],
+        gameMode,
+        new Date(firstFinishedAt + i * 60_000)
+      );
     }
 
     const botRows = await dbPool.query(

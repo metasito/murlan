@@ -27,8 +27,6 @@ import { useTranslation } from "@/lib/i18n";
 import type { TFn, TnFn, TranslationKey } from "@/lib/i18n";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import type { GameMode } from "@/lib/gameEngine";
-import type { ReplaySummary } from "@/lib/replay";
-import { REPLAY_RETENTION_DAYS } from "@/lib/replay";
 import { PROVISIONAL_GAMES, formatSeason } from "@/lib/rating";
 import { a11yGroup, a11yHidden } from "@/lib/a11y";
 import { serverErrorMessage } from "@/lib/apiError";
@@ -58,6 +56,11 @@ interface RatingDto {
   provisional: boolean;
 }
 
+interface HistoryParticipantDto {
+  name: string | null;
+  bot: boolean;
+}
+
 interface MatchHistoryDto {
   id: string;
   userId: string;
@@ -67,7 +70,12 @@ interface MatchHistoryDto {
   playerCount: number;
   points: number;
   opponents: unknown[];
+  participants: HistoryParticipantDto[];
+  replayId: string | null;
 }
+
+/** How many hands the card lists. The door out to the rest is #678's slice. */
+const HISTORY_ROWS_SHOWN = 5;
 
 interface AchievementStatusDto {
   id: string;
@@ -362,13 +370,11 @@ export default function ProfileScreen() {
     queryKey: ["/api/stats/achievements"],
     enabled: signedIn,
   });
-  const replaysQuery = useQuery<ReplaySummary[]>({ queryKey: ["/api/replays"], enabled: signedIn });
   const ratingQuery = useQuery<RatingDto>({ queryKey: ["/api/ratings/me"], enabled: signedIn });
 
   const stats = statsQuery.data;
   const history = historyQuery.data ?? [];
   const achievements = achievementsQuery.data ?? [];
-  const replays = replaysQuery.data ?? [];
   const rating = ratingQuery.data;
   const unlockedCount = achievements.filter((a) => a.unlocked).length;
   const winRate = stats && stats.gamesPlayed > 0 ? Math.round((stats.gamesWon / stats.gamesPlayed) * 100) : 0;
@@ -588,22 +594,31 @@ export default function ProfileScreen() {
               )}
               {history.length > 0 && (
                 <View style={styles.listBlock}>
-                  {history.map((h) => {
+                  {history.slice(0, HISTORY_ROWS_SHOWN).map((h) => {
                     const labelKey = POSITION_LABEL_KEYS[h.placement - 1];
                     const posText = labelKey ? t(labelKey) : `${h.placement}°`;
                     const modeText = h.gameMode === "teams" ? t("gameOverOverlay.modeTeams") : t("gameOverOverlay.modeFreeForAll");
                     const timeText = relativeTime(h.finishedAt, t, tn);
                     const pointsText = t("gameOverOverlay.pointsAbbrev", { n: h.points });
                     const playersText = tn("profile.historyPlayers", h.playerCount);
-                    const rowLabel = t("profile.historyRowA11yLabel", {
-                      position: posText,
-                      mode: modeText,
-                      players: playersText,
-                      points: h.points,
-                      time: timeText,
-                    });
-                    return (
-                      <View key={h.id} style={styles.row} {...a11yGroup(rowLabel)}>
+                    const names = h.participants
+                      .map((p) => p.name ?? t(p.bot ? "profile.historyBotSeat" : "profile.historyUnknownSeat"))
+                      .join(", ");
+                    const withText = names ? t("profile.historyWith", { names }) : "";
+                    const summary = [
+                      t("profile.historyRowA11yLabel", {
+                        position: posText,
+                        mode: modeText,
+                        players: playersText,
+                        points: h.points,
+                        time: timeText,
+                      }),
+                      withText,
+                    ]
+                      .filter(Boolean)
+                      .join(", ");
+                    const body = (
+                      <>
                         <View
                           style={[styles.posBadge, h.placement === 1 && styles.posBadgeWinner]}
                           {...a11yHidden()}
@@ -615,68 +630,30 @@ export default function ProfileScreen() {
                         <View style={styles.rowInfo} {...a11yHidden()}>
                           <Text style={styles.rowName}>{modeText} · {playersText}</Text>
                           <Text style={styles.rowSub}>{timeText}</Text>
+                          {withText !== "" && (
+                            <Text style={styles.rowSub} numberOfLines={1}>{withText}</Text>
+                          )}
                         </View>
                         <Text style={styles.rowPoints} {...a11yHidden()}>{pointsText}</Text>
-                      </View>
+                      </>
                     );
-                  })}
-                </View>
-              )}
-            </MenuCard>
-          </Animated.View>
-
-          {/* ── Replay ── */}
-          <Animated.View entering={entering}>
-            <MenuCard title={t("replay.cardTitle")}>
-              {replaysQuery.isLoading && <LoadingBlock label={t("replay.loadingA11yLabel")} />}
-              {replaysQuery.isError && (
-                <ErrorBlock
-                  title={t("replay.errorTitle")}
-                  retryLabel={t("replay.errorRetry")}
-                  retryA11yLabel={t("replay.errorRetry")}
-                  onRetry={() => replaysQuery.refetch()}
-                />
-              )}
-              {replaysQuery.isSuccess && replays.length === 0 && (
-                <EmptyBlock
-                  icon="play-circle-outline"
-                  title={t("replay.emptyTitle")}
-                  body={t("replay.emptyBody", { days: REPLAY_RETENTION_DAYS })}
-                />
-              )}
-              {replays.length > 0 && (
-                <View style={styles.listBlock}>
-                  {replays.map((r) => {
-                    const modeText = r.gameMode === "teams" ? t("gameOverOverlay.modeTeams") : t("gameOverOverlay.modeFreeForAll");
-                    const playersText = tn("profile.historyPlayers", r.playerCount);
-                    const timeText = relativeTime(r.finishedAt, t, tn);
-                    const movesText = tn("replay.moves", r.moveCount);
-                    return (
+                    // A watchable row is a control, so it carries its label as a
+                    // button rather than as a group: a group holding a control
+                    // seals that control inside a leaf on iOS.
+                    return h.replayId === null ? (
+                      <View key={h.id} style={styles.row} {...a11yGroup(summary)}>{body}</View>
+                    ) : (
                       <Pressable
-                        key={r.id}
+                        key={h.id}
                         style={styles.row}
-                        onPress={() => router.push({ pathname: "/(online)/replay", params: { id: r.id } })}
+                        onPress={() =>
+                          router.push({ pathname: "/(online)/replay", params: { id: h.replayId! } })
+                        }
                         accessibilityRole="button"
-                        accessibilityLabel={t("replay.rowA11yLabel", {
-                          mode: modeText,
-                          players: playersText,
-                          time: timeText,
-                          moves: movesText,
-                        })}
+                        accessibilityLabel={t("profile.historyWatchA11yLabel", { summary })}
                       >
-                        <Ionicons
-                          name="play-circle"
-                          size={28}
-                          color={Colors.gold}
-                          {...a11yHidden()}
-                        />
-                        <View style={styles.rowInfo} {...a11yHidden()}>
-                          <Text style={styles.rowName}>{modeText} · {playersText}</Text>
-                          <Text style={styles.rowSub}>{timeText}</Text>
-                        </View>
-                        <Text style={styles.rowPoints} {...a11yHidden()}>
-                          {movesText}
-                        </Text>
+                        {body}
+                        <Ionicons name="play-circle" size={28} color={Colors.gold} {...a11yHidden()} />
                       </Pressable>
                     );
                   })}

@@ -66,6 +66,8 @@ const match = (id: string, daysAgo: number, placement: number, playerCount = 4) 
   playerCount,
   points: 3,
   opponents: [],
+  participants: [],
+  replayId: null,
 });
 
 function show(history: unknown[]) {

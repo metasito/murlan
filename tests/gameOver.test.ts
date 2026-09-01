@@ -243,9 +243,10 @@ describe("handleGameOver — the writes", () => {
     assert.equal(persisted[0], ROOM);
     assert.equal(persisted[1], game, "the row is written from the game as resolved");
 
-    const [results, mode] = s.of("recordGameResult")[0].args as [
+    const [results, mode, historyFinishedAt] = s.of("recordGameResult")[0].args as [
       { userId: string; placement: number }[],
       string,
+      Date,
     ];
     assert.equal(mode, "free_for_all");
     assert.deepEqual(
@@ -261,8 +262,20 @@ describe("handleGameOver — the writes", () => {
     assert.equal(rated[1], "free_for_all");
     assert.ok(rated[2] instanceof Date);
 
+    // The history row and the replay are paired on `(userId, finishedAt)` and
+    // nothing else, so one instant reaching all three writes is the whole of
+    // what makes that pairing exact rather than approximate (#739).
+    assert.ok(historyFinishedAt instanceof Date);
+    assert.equal(historyFinishedAt, rated[2], "the ladder is stamped with the hand's own clock");
+    assert.equal(
+      (s.of("saveReplay")[0].args[0] as { finishedAt: Date }).finishedAt,
+      historyFinishedAt,
+      "the replay is stamped with it too, or nothing can pair the two tables"
+    );
+
     assert.deepEqual(s.of("saveReplay")[0].args[0], {
       roomId: ROOM,
+      finishedAt: historyFinishedAt,
       gameMode: "free_for_all",
       seats: [
         { seatIndex: 0, userId: "u_alice", name: "Alice" },
