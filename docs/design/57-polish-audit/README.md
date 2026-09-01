@@ -76,22 +76,29 @@ and `/quickmatch` reflow (368→798, 358→802, 366→810) and the rest do not.
 
 Measured, not assumed from the offline one. At all four viewports the two tables lay out to
 byte-identical numbers — same felt box, same card, same empty band — which is what the check
-in `tests/e2e/onlineTableSurvey.spec.ts` now holds them to, so the online screen cannot drift
-away unwatched.
+in `tests/e2e/onlineTableSurvey.spec.ts` holds them to. That check compares the online table
+against the offline one, and nothing else: the two can drift together, and the band did,
+because a fix landed for it. What pins the band itself is `tests/tableProportions.test.ts`.
+
+`online-table.txt` is rewritten by every run of that spec, so it always reports the app as it
+is now. The `emptyBand` column below is the audit's own figure, kept because it is what
+finding 3 was raised on.
 
 `handSlot` is the box the fan gives one hand card — full height, and only the width the card
 beside it leaves uncovered. It is not `table.txt`'s `card`, which is a card on the felt.
 
-| Viewport | Table | `handSlot` | `emptyBand` |
-| --- | --- | --- | --- |
-| 568×320 | 496×309 | 30×90 | 94 |
-| 844×390 | 769×377 | 44×111 | 114 |
-| 956×440 | 878×425 | 49×125 | 130 |
-| 1112×834 | 964×806 | 50×233 | 270 |
+| Viewport | Table | `handSlot` | `emptyBand` at the audit | after #586 |
+| --- | --- | --- | --- | --- |
+| 568×320 | 496×309 | 30×90 | 94 | 94.5 |
+| 844×390 | 769×377 | 44×111 | 114 | 112.4 |
+| 956×440 | 878×425 | 49×125 | 130 | 126.7 |
+| 1112×834 | 964×806 | 50×233 | 270 | 254.8 |
 
 - **Finding 3 applies to the online table.** 270px of the tablet's 806px table is the band
   between the lowest seat and the hand, against 94px of 309px on the smallest phone. It is
-  the same table, so it is the same finding, and fixing it fixes both.
+  the same table, so it is the same finding, and fixing it fixes both. #586 did, and the
+  right-hand column is that fix: the tablet band falls to 31.6% of its table against the
+  phones' 29.8–30.6%, where it was 33.5% against the same 30.4%.
 - **The stretch class does not.** The six menu screens render the same content height at 390
   and 834 because nothing asks how much height there is. The table asks: its felt, its cards
   and its bands all grow with the window (309 → 806, 90 → 233). The void on a tablet table is
