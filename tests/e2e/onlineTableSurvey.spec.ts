@@ -47,8 +47,22 @@ interface Measurement {
    * which is a card on the felt at its own size.
    */
   handSlot: { width: number; height: number };
-  /** The gap between the lowest seat plate and the top of the hand zone, as `table.txt` reports it. */
+  /**
+   * The gap between the lowest seat plate and the top of the hand zone.
+   *
+   * Unrounded, unlike everything else here. Rounding it at capture turns a
+   * sub-pixel difference into a whole-pixel one whenever the two land on
+   * opposite sides of a boundary, and the parity assertion below then compares
+   * two roundings rather than two layouts (#690).
+   */
   emptyBand: number;
+  /**
+   * The page's own device pixel ratio, which is what the browser snaps a
+   * laid-out box to. It is the unit `emptyBand` can actually differ in, and it
+   * is read rather than assumed so a runner that reports something other than
+   * 1 is compared against its own grid.
+   */
+  pixelRatio: number;
   /** Content that reaches past the viewport's own width, named. */
   wide: string[];
   cards: number;
@@ -129,7 +143,8 @@ function readTable(page: Page): Promise<Measurement> {
       return {
         table: { width: round(tableBox.width), height: round(tableBox.height) },
         handSlot: { width: round(cardBox.width), height: round(cardBox.height) },
-        emptyBand: round(handTop - plateBottom),
+        emptyBand: handTop - plateBottom,
+        pixelRatio: window.devicePixelRatio || 1,
         wide,
         cards: cards.length,
         hand: hand
@@ -152,7 +167,7 @@ function line(kind: "ONLINE" | "OFFLINE", vp: (typeof VIEWPORTS)[number], m: Mea
     `vp=${vp.width}x${vp.height}`,
     `table=${m.table.width}x${m.table.height}`,
     `handSlot=${m.handSlot.width}x${m.handSlot.height}`,
-    `emptyBand=${m.emptyBand}`,
+    `emptyBand=${m.emptyBand.toFixed(3)}`,
     `cards=${m.cards}`,
     `hand=${m.hand.width}x${m.hand.height}@${m.hand.top}`,
     `wide=${m.wide.join(" | ")}`,
@@ -214,17 +229,25 @@ test.describe("the online table, at the audit's viewports", () => {
       // the seats sit where the scale says they do, which is the half of the
       // table neither of them measures.
       //
-      // Within a pixel, not to the pixel. The plate's y is a laid-out box under
-      // a name the two tables do not share — the server calls its bots Drita 1,
-      // the seed calls them Luan — so a fraction of a pixel between them is not
-      // a claim about the layout, and it rounds to one. A band that is
-      // genuinely a different size is not off by one. Seen on CI, at 844x390:
-      // 115 against 114.
+      // Compared unrounded, against the grid the browser snaps a box to. A
+      // laid-out length cannot differ by less than one physical pixel, so that
+      // is the tolerance — read off the page rather than picked, which makes it
+      // mean the same thing at every viewport and on a runner whose ratio is
+      // not 1. Measured, both tables agree exactly at all four viewports
+      // (94.469, 112.391, 126.734, 254.813), so this is not absorbing a known
+      // difference; it is refusing to invent one.
+      //
+      // The previous form rounded each band at capture and allowed a difference
+      // of 1. Two lengths a third of a pixel apart could then round to 96 and
+      // 94 and fail by 2, which is how byte-identical application code produced
+      // a red run and a green one (#690).
+      const grid = 1 / Math.max(online.pixelRatio, offline.pixelRatio);
       expect(
         Math.abs(online.emptyBand - offline.emptyBand),
-        `the online table leaves ${online.emptyBand}px between the lowest seat and the hand ` +
-          `where the offline one leaves ${offline.emptyBand}px`
-      ).toBeLessThanOrEqual(1);
+        `the online table leaves ${online.emptyBand.toFixed(3)}px between the lowest seat and ` +
+          `the hand where the offline one leaves ${offline.emptyBand.toFixed(3)}px, which is ` +
+          `more than the ${grid.toFixed(3)}px physical pixel they are both snapped to`
+      ).toBeLessThan(grid);
 
       // The floor: a table that laid out as an empty box would satisfy every
       // equality above having drawn nothing.
