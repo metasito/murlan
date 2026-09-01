@@ -3,10 +3,37 @@ import { test, describe, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
 import { connect, createServer, type AddressInfo } from "node:net";
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, sep } from "node:path";
 import { buildCleanupCommands } from "../lib/ticketPipeline/cleanup.ts";
+
+/**
+ * The shell the cleanup commands are written in.
+ *
+ * Found through git rather than through PATH. PATH carries `sh` under Git Bash
+ * and on CI, and not in a PowerShell session — which is where every agent on
+ * this project actually runs `agent:check`, so the six cases that exercise a
+ * real command spent their lives erroring with `spawnSync sh ENOENT` on the one
+ * machine that runs them outside CI. A checkout cannot exist without git, and
+ * Git for Windows ships the shell beside it, so finding nothing is a broken
+ * install rather than a platform these cases do not apply to.
+ */
+function posixShell(): string {
+  if (process.platform !== "win32") return "sh";
+  const gitCore = execFileSync("git", ["--exec-path"], { encoding: "utf8" }).trim();
+  let dir = gitCore;
+  for (let up = 0; up < 5 && dir !== dirname(dir); up++, dir = dirname(dir)) {
+    const shell = join(dir, "bin", "sh.exe");
+    if (existsSync(shell)) return shell;
+  }
+  throw new Error(
+    `no sh.exe beside git (searched up from ${gitCore}); the cleanup commands are POSIX shell ` +
+      `and cannot run without one`
+  );
+}
+
+const SHELL = posixShell();
 
 // A run whose implement agent died leaves the tree it built uncommitted, and `--force` throws it
 // away without a word. #278's died after thirty-one file edits and no `git add`; the teardown
@@ -191,7 +218,7 @@ describe("running the branch-delete guard", () => {
       localBranch: branch,
       merged: false,
     }).find((c) => c.includes("git branch -D"))!;
-    execFileSync("sh", ["-c", guard], { cwd: repo, encoding: "utf8" });
+    execFileSync(SHELL, ["-c", guard], { cwd: repo, encoding: "utf8" });
     return git("branch", "--list");
   }
 
@@ -228,9 +255,8 @@ describe("running the port-freeing command", () => {
     }).find((c) => c.includes("reap.mjs"))!;
   }
 
-  /** The command is bash, and Git Bash supplies `sh` on Windows too, so it runs as written. */
   function runCommandFor(port: number): void {
-    execFileSync("sh", ["-c", commandFor(port)], { encoding: "utf8", cwd: repoRoot });
+    execFileSync(SHELL, ["-c", commandFor(port)], { encoding: "utf8", cwd: repoRoot });
   }
 
   function unusedPort(): Promise<number> {
@@ -323,4 +349,25 @@ describe("running the port-freeing command", () => {
       client.kill("SIGKILL");
     }
   });
+});
+
+// Spawning a shell by bare name resolves against PATH, which carries `sh` under
+// bash and on CI and not under PowerShell — so the case runs everywhere it is
+// watched and nowhere it is read.
+test("no test spawns a shell by bare name", () => {
+  const dir = new URL(".", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1");
+  const bare = readdirSync(dir, { recursive: true, encoding: "utf8" })
+    .filter((f) => f.endsWith(".ts") || f.endsWith(".tsx"))
+    .flatMap((f) => {
+      const source = readFileSync(join(dir, f), "utf8");
+      return [
+        ...source.matchAll(/(?:execFileSync|execFile|spawnSync|spawn)\(\s*"(sh|bash|cmd|powershell)"/g),
+      ].map((m) => `${f.split(sep).join("/")} — ${m[1]}`);
+    });
+  assert.deepEqual(
+    bare,
+    [],
+    "resolve the shell instead (posixShell() here), so the case fails on a missing shell rather " +
+      "than on the platform it is being read on"
+  );
 });
