@@ -31,10 +31,10 @@ const BTN_SUB_FS = 10;
 const BTN_TRACKING = 1.9;
 const BTN_GLOW = 26;
 
-// Raked light across the gold surface — bright at the top-left corner,
-// dropping to goldDark at the bottom-right — same treatment and same rake
-// angle as components/MenuButton.tsx's primary variant, so the table's most-
-// pressed control reads as struck metal like every other primary action.
+// Raked light across the gold surface: bright at the top-left corner, dropping
+// to goldDark at the bottom-right. The table's most-pressed control is lit a
+// step harder than a menu's (goldLit, not goldLight) because the felt behind it
+// is darker than a menu's ground.
 const GIOCA_GRADIENT = Gradient.playButton;
 const GIOCA_GRADIENT_PRESSED = [Colors.gold, Colors.goldDark, Colors.goldDim] as const;
 const GIOCA_GRADIENT_LOCATIONS = [0, 0.48, 1] as const;

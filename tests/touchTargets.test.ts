@@ -181,9 +181,22 @@ test("every control's touch size has been ruled on", () => {
 
 // Without this the suite above passes on a scan that finds nothing, which is what a broken
 // reader looks like: no candidates, no failures, green.
+//
+// A floor against the reader breaking, never a census: it sits below the real
+// count on purpose, so adding a control does not redden it. It has moved down
+// once — #671 replaced hand-rolled controls with shared components, which
+// genuinely removes Pressables — and a move down is the direction that weakens
+// this, so it is stated rather than quietly re-fitted. 70 of the 80 the scan
+// reads today; anything that halves the count is the broken reader this exists
+// to catch.
+const PRESSABLE_FLOOR = 70;
+
 test("the scan finds the app's controls, and reads a real box", () => {
   const candidates = pressableBoxes(scannedFiles(repoRoot), read);
-  assert.ok(candidates.length > 60, `only ${candidates.length} pressables found`);
+  assert.ok(
+    candidates.length > PRESSABLE_FLOOR,
+    `only ${candidates.length} pressables found, against a floor of ${PRESSABLE_FLOOR}`
+  );
   assert.ok(
     candidates.filter(measuresUp).length > 50,
     "no candidate has a box the reader could measure"

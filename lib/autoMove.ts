@@ -132,7 +132,3 @@ export function autoMoveForSeat(
   return logged(null, processPass(state));
 }
 
-/** Whether a seat with nobody behind it owes the exchange a card right now. */
-export function awaitsGiveback(state: GameState, seat: number): boolean {
-  return state.exchangePhase?.active === true && state.exchangePhase.winnerIdx === seat;
-}

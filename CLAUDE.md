@@ -88,7 +88,7 @@ Verify against source before changing any.
   absorbs the cutout (`railWidth`), the hand zone carries the home indicator (`HAND_ZONE_H`).
 - **Design tokens are used in the role they were named for.** A fill or border token used as
   a text colour renders as almost nothing, silently. Pinned by `tests/tokenRoles.test.ts`,
-  which covers colour; `Opacity` and `Layer` are convention.
+  which covers colour, and `Layer` (see the stacking rule below). `Opacity` is convention.
 - **An icon name reaches `<Ionicons>` as a literal, or as a ternary between two literals.**
   `scripts/iconSubsetChars.mjs` follows a `name` prop back to its call sites and cannot see
   through a JSX spread, so `<IconButton {...props} />` ships a blank box with no error. Every
@@ -159,10 +159,11 @@ lines is explaining itself instead of being clear.
   `Motion.reduced` via `motionMs()`, never from the call site's own judgement.
 - Gold is a five-step alpha scale (`goldGhost` … `goldStrong`). Pick by role; don't add a
   sixth to split the difference.
-- Menu screens use `MenuLayout` / `MenuCard` / `MenuButton`; `app/lobby.tsx` is the
-  reference. The game tables and `app/index.tsx` are deliberately exempt; `app/result.tsx` is
-  a thin caller of `ResultBoard`. **A local component must not share a name with a shared
-  one** — a duplicate `MenuButton` once hid a bug in plain sight.
+- Menu screens use `MenuLayout` / `MenuCard` / `MenuButton`; `app/profile.tsx` is the
+  reference — it is the only screen that uses all three at depth. The game tables and
+  `app/index.tsx` are deliberately exempt; `app/result.tsx` is a thin caller of
+  `ResultBoard`. **A local component must not share a name with a shared one** — a duplicate
+  `MenuButton` once hid a bug in plain sight.
 - **Reach for the shared piece before writing one.** `ScreenHeader` (every top bar),
   `StateBlock` (loading / error / empty), `IconButton` (a glyph-only control), `Avatar`,
   `ResultBoard` (end of manche, both modes), `AppModal` (every modal), and
@@ -179,8 +180,10 @@ lines is explaining itself instead of being clear.
 ## Working agreement
 
 **Every rule an agent follows lives in `docs/agents/RULES.md`** — numbered, one screen, no
-rationale. It is the only normative list; nothing here or in a prompt restates it, and
-`tests/rulesAreSingleSourced.test.ts` fails if something does.
+rationale. It is the only normative list; nothing here or in a prompt restates it.
+`tests/rulesAreSingleSourced.test.ts` catches a restatement only where someone has written
+the rule's own distinctive phrase into its watchlist — it is a set of tripwires over the
+instruction files, not a proof that no rule is written twice.
 
 The *why* behind a rule, and the commands it refers to, live in the reference docs:
 

@@ -228,8 +228,8 @@ collapsed:
   reactions, and connection-loss banners online). It contains no `isOnline &&` branching.
 - **`components/table/`** — the table's own components, grouped by what they draw:
   `seats.tsx`, `pile.tsx`, `hand.tsx` and `chrome.tsx`. `GameTable.tsx` is their only
-  screen-level consumer; `components/useTableFeedback.ts` also imports `useTurnPulse` from
-  `chrome.tsx`, and three `tests/native/` cases mount `seats.tsx` and `hand.tsx` directly.
+  screen-level consumer, and three `tests/native/` cases mount `seats.tsx` and `hand.tsx`
+  directly.
 - **`components/useTableFeedback.ts`** — the shared values, the effects that answer a state
   change with a sound, a haptic or a wobble, and the animated styles they drive. `GameTable`
   still schedules the impact itself, against `impactDelayMs()`,
@@ -241,6 +241,32 @@ collapsed:
 Both adapters call out, in a comment at the top of their component, the same guard: **every
 hook runs unconditionally before the `if (!gameState) return null` guard.** This is not
 decorative — it is the fix for a bug that was live until this refactor landed (see §7).
+
+### 6a. What offline and online share below the table
+
+The presentational table unified what the two modes *draw*. The modules below unify what
+they *decide*, so a rule cannot hold in one mode and not the other:
+
+- **`lib/autoMove.ts`** — the one chooser of a bot's move, called by `server/` and by
+  `context/GameContext.tsx`. It also owns `resolveStuckExchange`, the valve for an exchange
+  no seat can satisfy.
+- **`lib/matchState.ts`** — the `game:over` wire shape (`GameOverPayload`, `ScoreLine`,
+  `MatchVerdict`) and `celebration()`, which picks the name the results board shouts. A
+  winner travels as an **engine player id** (`player_N`), never a username or a seat index:
+  it is the only identity every client can map at every moment `game:over` can arrive, and
+  the only one that survives a vacated seat. `matchWinnerIds` may be empty on a match that
+  *is* over — a client rejoining a finished table never receives the event — so
+  `celebration()` takes an ordered candidate list and passes over any id naming no seat.
+- **`lib/standings.ts`**, **`lib/placement.ts`**, **`lib/exchangeCeremony.ts`** — scoring
+  order, placement colours and labels, and the ceremony's own clock.
+- **`components/ResultBoard.tsx`** — the end-of-manche screen for both modes; `app/result.tsx`
+  and the online `GameOverOverlay` are thin callers.
+- **`server/emit.ts`** — every `game:match_state` and `game:vote_state` broadcast, so the
+  vote total is derived once rather than at each call site.
+
+A module here that the server bundles (`autoMove`, `matchState`, `standings`,
+`exchangeCeremony`) imports with a relative path and an explicit `.ts`, and touches nothing
+from `react-native`. `lib/wire.ts` and `lib/placement.ts` are client-only.
 
 ## 7. Fixed bug: "Rendered fewer hooks than expected" in `OnlineGameScreen`
 

@@ -26,9 +26,8 @@ import { MenuLayout, CONTENT_H_PAD } from "@/components/MenuLayout";
 import { MenuCard } from "@/components/MenuCard";
 import { MenuButton } from "@/components/MenuButton";
 import { useTranslation } from "@/lib/i18n";
+import type { GameMode } from "@/lib/gameEngine";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
-
-type GameMode = "free_for_all" | "teams";
 
 interface ModeOption {
   maxPlayers: number;
