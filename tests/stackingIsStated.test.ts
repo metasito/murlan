@@ -125,7 +125,7 @@ test("the scan reaches the styles it exists for", () => {
     "components/table/hand.tsx: handStyles.ungiveableVeil",
     "components/table/hand.tsx: handStyles.giveableGlow",
     "components/table/hand.tsx: handStyles.cardGlow",
-    "components/GameTable.tsx: styles.playBtnGlow",
+    "components/table/actions.tsx: styles.playBtnGlow",
   ]) {
     assert.ok(names.includes(name), `${name} is the case this scan exists for, and it missed it`);
   }

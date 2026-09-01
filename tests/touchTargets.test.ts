@@ -33,7 +33,7 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."
  * off a style the scan does see, one indirection away.
  */
 const SIZED_AT_RUNTIME: [string, number, string][] = [
-  ["components/GameTable.tsx", 2, "PASSA and GIOCA take `actionBtnSize(scale)`, floored at ACTION_BTN_FLOOR"],
+  ["components/table/actions.tsx", 2, "PASSA and GIOCA take `actionBtnSize(scale)`, floored at ACTION_BTN_FLOOR"],
   ["components/table/chrome.tsx", 1, "the rail's knobs take `physicalTouchTarget(scale)`, floored at TOUCH_TARGET_MIN"],
   ["components/MenuButton.tsx", 1, "the box is `styles[size]`, one of three steps the scan reads as declared styles in their own right"],
   ["components/GameOverOverlay.tsx", 1, "the rematch button's box is `rematchGradient`, which declares the floor"],
@@ -313,11 +313,14 @@ test("the rail's knobs are sized by physicalTouchTarget, at the HIG floor", () =
 // The floor is the part that matters — on an iPhone SE the table's scale is
 // 0.82, which would put a scaled key at 46pt.
 test("the action buttons are square, scale up, and never fall below a thumb", () => {
-  const source = read("components/GameTable.tsx");
-  assert.match(source, /const actionBtn = actionBtnSize\(scale\)/);
-  // Both buttons take the same box, and take it as a square.
-  assert.equal((source.match(/size=\{actionBtn\}/g) ?? []).length, 2);
-  assert.match(source, /width: size, height: size/);
+  // The number is the table's; the square is the buttons' own. Read from the
+  // two files that hold them, so neither half can move without saying so.
+  const table = read("components/GameTable.tsx");
+  assert.match(table, /const actionBtn = actionBtnSize\(scale\)/);
+  // Both buttons take the same box.
+  assert.equal((table.match(/size=\{actionBtn\}/g) ?? []).length, 2);
+  const buttons = read("components/table/actions.tsx");
+  assert.equal((buttons.match(/width: size, height: size/g) ?? []).length, 2);
 
   assert.equal(actionBtnSize(0.82), ACTION_BTN_FLOOR);
   assert.equal(actionBtnSize(1), 56);
