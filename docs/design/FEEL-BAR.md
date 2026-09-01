@@ -38,15 +38,37 @@ a run of arriving elements should sit inside.
   `t = 42ms × n` the n-th card (0-indexed) has just started its own travel, matching
   `Motion.stagger.deal`, and no two cards' travel windows are byte-identical in start time.
 
-**2. Balatro's digit-stagger, as the closest documented escalating-delay case**
+**2. Casino dealing pace, as a real-product ceiling on how long a deal may take**
+`https://wizardofodds.com/ask-the-wizard/136/` and
+`https://www.evolution.com/news/evolution-launches-super-fast-speed-blackjack`
+Wizard of Odds publishes Jim Kilby's *Casino Operations Management* table of blackjack
+hands dealt per hour by seat count: 209 (1 player), 139 (2), 105 (3), **84 (4)**, 70 (5),
+60 (6), 52 (7) — verified by direct fetch, table intact. At murlan's four seats, 84
+hands/hour is one full deal-play-resolve cycle every ~42.9s on a real table, which is the
+outer ceiling our own hand (dealt in 13×42ms ≈ 546ms, played over a few more seconds) sits
+nowhere near — we have room, not a deadline. Evolution's own Speed Blackjack product page
+(verified by direct fetch) states it runs "30–40% faster" than their standard Live
+Blackjack, confirming that dealing pace is itself a tunable, marketed dial in a shipped
+casino product, not an afterthought.
+- Numbers: 84 hands/hour at 4 seats (≈42.9s/hand); 30–40% pace delta between two shipped
+  products from the same vendor.
+- What it does that a flat translate-in doesn't: proves pace is a deliberate lever real
+  money-facing products tune and advertise, which argues against treating `stagger.deal`
+  as a fixed constant nobody revisits.
+- Frame check: the full 13-card deal (first card's `t=0` to the 13th card's landing at
+  roughly `t = 12×42ms + 312ms ≈ 816ms`) completes in under 1 second — nowhere near the
+  ~42.9s/hand pace a real table tolerates, which is the point: our deal can afford to be
+  unhurried relative to the casino floor, not raced against it.
+
+**3. Balatro's digit-stagger, as the closest documented fixed-step stagger case**
 `https://blakecrosley.com/guides/design/balatro`
 A design-analysis write-up of Balatro's scoring sequence, not its deal — Balatro's own
 dealing animation isn't covered anywhere I could verify — but it is the only shipped-game
 source with real numbers for staggering a run of same-type elements one after another,
 which is the mechanism a hand of cards being dealt needs too.
 - Numbers: score-digit reveal stagger at 0ms, 50ms, 100ms, 150ms (four elements, 50ms
-  apart); digit roll itself 0.4s with `cubic-bezier(0.34, 1.56, 0.64, 1)` (an overshoot
-  ease, not a linear one).
+  apart, verified by direct fetch); digit roll itself 0.4s with
+  `cubic-bezier(0.34, 1.56, 0.64, 1)` (an overshoot ease, not a linear one).
 - What it does that a flat translate-in doesn't: each element's stagger delay is a fixed
   step (50ms) rather than a fraction of total count, so adding a fifth element doesn't
   compress the first four — the run reads as one gesture at any hand size, which is
@@ -58,8 +80,10 @@ which is the mechanism a hand of cards being dealt needs too.
 
 **1. Balatro's contact feedback**
 `https://blakecrosley.com/guides/design/balatro`
-- Numbers: card hover lift −12px translateY at 1.05× scale; selected state −24px at 1.08×;
-  hover transition 0.15s ease-out; scanline overlay period 2px transparent / 2px at
+The same source's card-hover/select treatment, verified by direct fetch — the shipped
+reference closest to a card's own landing feel, rather than a system-level floor.
+- Numbers: card hover lift −12px `translateY` at 1.05× scale; selected state −24px at
+  1.08×; hover transition 0.15s ease-out; scanline overlay period 2px transparent / 2px at
   `rgba(0,0,0,0.15)`.
 - What it does that a translate-and-stop doesn't: the card's scale and vertical offset both
   move together, so contact reads as a physical lift-then-drop rather than a position swap.
@@ -68,7 +92,23 @@ which is the mechanism a hand of cards being dealt needs too.
   geometry — never a uniform scale-down — consistent with `Motion.spring.land`'s single
   ~7% overshoot.
 
-**2. "Juice It or Lose It" (Jonasson & Purho, GDC Europe 2012)**
+**2. Android haptics design principles**
+`https://developer.android.com/develop/ui/views/haptics/haptics-principles`
+Google's own haptics guidance for touch feedback, verified by direct fetch — not a card
+game, but the floor for how short a *landing's* haptic pulse can be before the actuator's
+own physics, not the design, decides how long it reads.
+- Numbers: "a good keyclick haptic feedback signal should last between 10 to 20
+  milliseconds"; the actuator itself "may continue to ring for another 20 to 50
+  milliseconds after a 20-millisecond input has ended" — a physical tail past the intended
+  pulse.
+- What it does that a translate-and-stop doesn't: names the gap between the pulse a design
+  requests and the pulse a phone's actuator physically produces, so a landing's haptic can
+  be authored short (10–20ms) with the knowledge its felt length will run longer regardless.
+- Frame check: the landing's haptic trigger fires at the same frame `Hold.land` begins
+  (within one frame, ~16ms, of `impactDelayMs()`), and no second haptic pulse fires before
+  the first one's own 50ms ring-out tail has had time to finish.
+
+**3. "Juice It or Lose It" (Jonasson & Purho, GDC Europe 2012)**
 `https://www.gdcvault.com/play/1016487/Juice-It-or-Lose`
 No numeric figures are published in the fetchable abstract — the talk itself is
 video-only and this page is metadata plus a synopsis, not a transcript, so it is cited for
@@ -83,17 +123,28 @@ than any of them alone. `Hold` (`lib/tokens.ts`) already credits this school of 
 
 ## Bomb
 
-**1. Balatro's screen-shake tiers**
-`https://blakecrosley.com/guides/design/balatro`
-- Numbers: small shake 0.2s ease-out, medium 0.3s ease-out, large 0.5s ease-out; large-shake
-  translation range −8px to 8px, small-shake range −4px to 4px.
-- What it does that ours (pre-#763) doesn't: ties shake amplitude *and* duration to event
-  size as one escalation, not amplitude alone — a large event shakes longer as well as
-  harder.
-- Frame check: sampling the table's translateX across the shake window shows the bomb
-  tier's envelope (trauma 0.55, decaying as trauma², ~260ms) crossing zero more times than
-  the flush/straight tier's, which shows none — an escalation visible in the number of
-  zero-crossings, not just peak amplitude.
+**1. "Math for Game Programmers: Juicing Your Cameras With Math" (Squirrel Eiserloh, GDC 2016)**
+`https://archive.org/stream/GDC2016Eiserloh/GDC2016-Eiserloh_djvu.txt`
+The full talk transcript, verified by direct fetch — this is the origin of the trauma
+formulation `#763`'s own ticket names, with the actual math behind it.
+- Numbers: trauma is kept in `[0,1]`; an event adds trauma directly ("+= 0.2 or 0.5"); the
+  shake magnitude the talk works through as its own example uses trauma **cubed**, not
+  squared — "trauma .30, .60, .90 means 3%, 22%, 73% shake" (0.3³≈2.7%, 0.6³≈21.6%,
+  0.9³≈72.9% — the math behind that quote, confirmed by hand). **This is a real, checkable
+  divergence from our own spec**: #763 decays by trauma², which is a *gentler* curve at low
+  trauma than the talk's own worked example (trauma² at 0.3 is 9%, more than triple trauma³'s
+  3% at the same input) — worth knowing before anyone "fixes" #763's exponent to match this
+  talk, since matching it would make the bomb's low end noticeably softer, not just
+  differently sourced.
+- What it does that a flat shake-and-stop doesn't: trauma decreases linearly while the
+  *visible* shake decreases by trauma's square or cube, so the shake's perceptible collapse
+  outpaces its underlying trauma value — the "sudden, not sliding" quality a linear shake
+  lacks. The talk also recommends **Perlin noise** over pure randomness for the shake's
+  own jitter, "because it automagically works with pause and slow-motion" and stays
+  reproducible on replay.
+- Frame check: sampling the table's offset across the shake window shows the amplitude at
+  75% of the decay window under ~10% of peak (consistent with trauma² decay from 0.55), not
+  the ~25% a linear decay across the same window would give at the same point.
 
 **2. "The Art of Screenshake" (Nijman, INDIGO Classes 2013)**
 `https://archive.org/details/the-art-of-screenshake`
@@ -109,6 +160,20 @@ repo's own comments already credit it for (`Hold.land`'s doc comment cites Nijma
   at 75% of the decay window is under 10% of peak, not ~25% (which is what linear decay
   would give at the same point).
 
+**3. Balatro's screen-shake tiers**
+`https://blakecrosley.com/guides/design/balatro`
+A shipped card game's own tiered-shake implementation, verified by direct fetch — concrete
+duration and amplitude numbers to sit beside Eiserloh's math above.
+- Numbers: small shake 0.2s ease-out, medium 0.3s ease-out, large 0.5s ease-out; large-shake
+  translation range −8px to 8px, small-shake range −4px to 4px.
+- What it does that ours (pre-#763) doesn't: ties shake amplitude *and* duration to event
+  size as one escalation, not amplitude alone — a large event shakes longer as well as
+  harder, which our own decay-only spec (fixed ~260ms across tiers) does not yet vary.
+- Frame check: sampling the table's translateX across the shake window shows the bomb
+  tier's envelope (trauma 0.55, decaying as trauma², ~260ms) crossing zero more times than
+  the flush/straight tier's, which shows none — an escalation visible in the number of
+  zero-crossings, not just peak amplitude.
+
 ### Beyond the references
 
 Ideas past anything cited above, each a checkable frame property rather than a claim of
@@ -122,10 +187,11 @@ quality:
   distribution with at least three distinct radii (not one radius repeated ~24 times) —
   uniform-sized particles read as a sprite sheet, not a burst.
 - Within the bomb's shake window, the table's rotation (not just translation) carries a
-  component under 1.5° peak — Nijman's own talk (per its listed topic tags) treats rotation
-  as part of "trauma," and our current #763 spec is translation-only; a frame capture at
-  the shake's peak should show a visible, sub-2° tilt on the felt if this is adopted, and
-  none if it is not — either is checkable, only "not decided" is not.
+  component under 1.5° peak — Eiserloh's talk recommends combining translational and
+  rotational shake ("Translational + Rotational = Awesome"), and #763's own body specifies
+  a trauma value but not which axes it drives; a frame capture at the shake's peak should
+  show a visible, sub-2° tilt on the felt if rotation is included, and none if it is
+  translation-only — either is checkable, only "unspecified" is not.
 - At the bomb's aftermath frame (`t ≈ 260ms` after landing), the lamp's flare (#765) casts
   a visibly brighter highlight on the *nearest* seat's card backs than on the *farthest*
   seat's — a directional light rather than a flat overlay, checkable by sampling luminance
@@ -141,8 +207,10 @@ Spire's end-turn is covered only qualitatively in every source found, see **Turn
 below). That absence is itself the finding: #101's research (quoted on #101 by `rotonmeta`)
 already established that turn-frequency actions must be the calmest in the game because
 every effect spent on them is subtracted from what a bomb can spend. The reference here is
-therefore a floor, not a target: pass should sit at or below Material's `short1`/`short2`
-band (50–100ms), the same band Material reserves for a state simply registering.
+therefore a floor, not a target: pass should sit inside Material's own `short` tier —
+`short1` 50ms, `short2` 100ms, `short3` 150ms — the band Material reserves for a state
+simply registering, and never reach `short4` (200ms), which Material already treats as the
+tier's own upper edge.
 - Frame check: from tap to the card returning to hand's rest position, no frame in the
   sequence exceeds 100ms, and no frame shows a scale, shake, or particle change — a "state
   registering" motion signature, distinguishable in a capture from every other moment in
@@ -175,7 +243,7 @@ band (50–100ms), the same band Material reserves for a state simply registerin
 
 ## Win
 
-**Balatro's scoring reveal**
+**1. Balatro's scoring reveal**
 `https://blakecrosley.com/guides/design/balatro`
 This is Balatro's win-adjacent moment — the sequence that plays when a hand's score is
 revealed, which is the closest documented shipped analogue to a manche won, since no
@@ -191,6 +259,21 @@ source found documents a "you won this round" screen specifically with numbers.
   and end state (e.g. a count mid-roll, an opacity between 0 and 1 with the lamp-lift still
   completing), so the hand-off from lamp to banner is visible as a sequence, not a cut.
 
+**2. WCAG 2.2.2 Pause, Stop, Hide**
+`https://www.w3.org/WAI/WCAG21/Understanding/pause-stop-hide.html`
+The official criterion, verified by direct fetch — a hard ceiling on how long any
+auto-playing celebration may run before it needs a pause control.
+- Numbers: "five seconds" is the exact threshold — chosen, per the criterion's own intent
+  section, because it is "long enough to get a user's attention, but not so long that a
+  user cannot wait out the distraction."
+- What it does that an untimed celebration doesn't: draws a hard line between "brief enough
+  to need no control" and "needs one," which our own `Reading.notice` (4000ms) already sits
+  inside — worth stating as a found consistency, not a new constraint.
+- Frame check: from the manche-won banner's first visible frame to its last, no more than
+  4000ms elapses (our own budget, itself under the 5000ms line) — and no auto-playing
+  celebration frame sequence in this document should be authored past 5000ms without a
+  pause affordance appearing in the same capture.
+
 ## Loss
 
 **Material Design 3 motion duration tokens (as a floor, not a case study)**
@@ -199,7 +282,8 @@ No shipped card or casino game documents a loss/defeat screen's timing with numb
 source I could fetch and verify — game-over-screen writing (searched separately) is
 uniformly qualitative ("emotional punctuation," "deliberate design choice") with no
 duration figures. That gap is reported rather than papered over. What we do have is a
-duration floor: a loss beat should sit in Material's `long`–`extra-long` band (450–1000ms)
+duration floor: a loss beat should sit in Material's `long` tier — `long1` 450ms,
+`long2` 500ms, `long3` 550ms, `long4` 600ms — or beyond, into `extra-long` (up to 1000ms),
 rather than `short`/`medium`, since it is not a state registering but the end of something,
 and the tier table already treats "manche won" (120ms hold) as faster than "partita won"
 (180ms hold) — the losing side of the same event should not be faster than the winning
@@ -210,6 +294,15 @@ side of it.
   wall-clock impression.
 
 ## Reconnect / recovery
+
+No shipped card game's own reconnect UX turned up with numbers in this pass — the closest,
+Clash Royale, is documented only qualitatively (hide the disconnected opponent's state
+rather than announce it, to stop players exploiting a disconnect and to reduce anxiety —
+the same principle `OfflineBanner`'s `null`-is-unknown state already follows) with no
+published latency figure. Reported rather than papered over; the reference below is a
+general technical guide, not a game, cited because it is the only source found with real
+numbers for the actual question — how long "still trying" may run before it must become
+"recovery failed."
 
 **WebSocket reconnection strategy guide**
 `https://websocket.org/guides/reconnection/`
@@ -256,6 +349,52 @@ side of it.
   live element, even if it is only a clock.
 
 ---
+
+## Beyond the references — the rest of the table
+
+Bomb's own ideas are above, closest to its references. These are for the other eight
+moments, each a checkable frame property rather than a claim of quality:
+
+- **Deal.** At `t = -40ms` relative to the first card's own travel start (`Motion.anticipate`'s
+  own duration, already spent elsewhere in this token set but never on the table itself), the
+  felt's own scale departs from 1.0 by a small, named amount and returns to 1.0 by `t = 0`
+  — a single symmetric "breath" so the whole hand's arrival reads as one gesture starting
+  before the first card moves, not only once the first card is already in flight.
+- **Card landing.** The card's drop-shadow length at the frame nearest `impactDelayMs()`
+  (312ms) is measurably longer than its length 50ms later (`Hold.land`'s own span) — the
+  shadow itself contracts in sync with the squash, rather than staying a fixed-length
+  decoration under a card that is otherwise settling.
+- **Turn hand-off.** At the single frame nearest the midpoint of a hand-off, the outgoing
+  seat's indicator and the incoming seat's indicator never both measure at full opacity —
+  their combined opacity at that frame stays under a named ceiling (e.g. 140%) — so the
+  table never shows two simultaneously "current" seats even mid-transition.
+- **Win.** The manche-won and partita-won tiers currently share one shape (hold, then shake,
+  then lamp/flare) at different magnitudes. A frame capture at the partita tier's peak
+  should show at least one channel absent from the manche tier entirely (not merely
+  larger) — e.g. the flare (#765 is partita/bomb-only already) — so the top tier is
+  distinguishable from a "louder manche" even with the sound off and a still frame.
+- **Loss.** Per #101's own rank-10 finding (a celebration tuned purely for the winner is,
+  from the other seats, the game being pleased about your loss) and its recommended option
+  1 (gate the escalation to the winning seat, keep the hold and squash for everyone): a
+  frame captured from a losing seat's device at the same tier and same timestamp as a
+  winning seat's capture must differ in at least one channel (shake amplitude or flare
+  presence) — a side-by-side of the two captures that is pixel-identical has not
+  implemented the gating at all.
+- **Reconnect.** The first frame rendered after a resync shows every card already at a
+  valid resting geometry — on the felt, in a hand fan, or in the pile — never mid-flight
+  with no spring in progress. A reconnect that "pops" a card into place produces a frame
+  that could not have existed under normal play; one that replays the shortest applicable
+  spring (`Motion.spring.land` compressed to its own settle, not skipped) never does.
+- **Idle table.** Past some idle threshold, the ambient loop's own period should vary by a
+  small, named amount from one cycle to the next (not repeat one exact interval verbatim)
+  — sampling three consecutive idle cycles should show three different measured periods,
+  not one period repeated three times, so a stationary table never becomes a detectably
+  looping clip under close observation.
+- **Pass.** A frame-diff between a pass's own peak frame and an ordinary win's peak frame
+  (the land spring's own overshoot, per grammar C's own first row) should rank pass's
+  amplitude strictly lower on every channel both moments share (scale, opacity,
+  displacement) — pass is not merely shorter than the calmest win, it is smaller on every
+  axis a critic can measure.
 
 ## What this file is not
 
