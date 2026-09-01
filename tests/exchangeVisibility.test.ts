@@ -125,17 +125,32 @@ describe("visibleExchangePhase", () => {
     // public for the rest of the manche — and hand it to anyone connecting long
     // after the trade, having never watched it cross.
     describe("is bounded to the ceremony that reads it", () => {
-      const OVER = SETTLED_AT + exchangeAnnounceMs(false) + STATE_ACK_TIMEOUT_MS;
+      const OVER = SETTLED_AT + exchangeAnnounceMs(false);
 
-      // `sendGameStateTo` owes one resend to a client that never acknowledged
-      // the settle, and it re-derives from live state when it fires. Answering
-      // that with half a trade is what the ack timeout is inside the window for.
-      test("the one resend a client is owed still carries the card", () => {
-        const resent = SETTLED_AT + exchangeAnnounceMs(false) + STATE_ACK_TIMEOUT_MS - 1;
-        assert.deepEqual(visibleExchangePhase(settled, 0, resent)?.cardToLoser, RETURNED);
+      /**
+       * `sendGameStateTo` owes one resend to a client that never acknowledged
+       * the settle, and that resend re-derives from live state when it fires.
+       * If the ack timeout ever outgrew the window it would be answered with
+       * half a trade, and `OnlineGameContext`'s `cardReceived || cardGiven`
+       * guard raises that as a one-legged ceremony rather than refusing it.
+       *
+       * Asserted here rather than added to the window in `onlineGameLogic.ts`:
+       * `gameTimers` reads `process.env` at module scope, and importing it into
+       * that module puts it in the static graph of every integration test that
+       * sets one of those variables in its own body — where the imports have
+       * already run. Doing exactly that made `MURLAN_DISCONNECT_GRACE_MS` take
+       * its 60s default and hung `sessionReplaced.test.ts`.
+       *
+       * The two-Joker window is shorter than the ack timeout and does not need
+       * to be: that exception cancels the trade, so no card is ever chosen and
+       * `cardToLoser` stays absent.
+       */
+      test("the resend a client is owed lands inside the window", () => {
         assert.ok(
-          STATE_ACK_TIMEOUT_MS > 0,
-          "the ack timeout is zero, so this case is the ceremony's own end"
+          STATE_ACK_TIMEOUT_MS < exchangeAnnounceMs(false),
+          `the state-ack resend (${STATE_ACK_TIMEOUT_MS}ms) now fires after the ceremony ` +
+            `(${exchangeAnnounceMs(false)}ms), so a client that missed the settle is re-sent ` +
+            `half a trade`
         );
       });
 
@@ -175,7 +190,7 @@ describe("visibleExchangePhase", () => {
       // is the ceremony's own clock rather than a number of its own.
       test("the two-joker ceremony closes on its own shorter clock", () => {
         const cancelled = { ...settled, bothJokersException: true };
-        const shorter = SETTLED_AT + exchangeAnnounceMs(true) + STATE_ACK_TIMEOUT_MS;
+        const shorter = SETTLED_AT + exchangeAnnounceMs(true);
         assert.deepEqual(visibleExchangePhase(cancelled, 0, shorter - 1)?.cardToLoser, RETURNED);
         assert.equal("cardToLoser" in visibleExchangePhase(cancelled, 0, shorter)!, false);
         assert.ok(

@@ -7,7 +7,6 @@ import { foldHandIntoMatch, resolveMatchFor } from "../lib/gameEngine.ts";
 import type { GameState, GameMode, MatchLength } from "../lib/gameEngine.ts";
 import type { GameResult } from "../lib/achievements.ts";
 import { exchangeAnnounceMs } from "../lib/exchangeCeremony.ts";
-import { STATE_ACK_TIMEOUT_MS } from "./gameTimers.ts";
 import { z } from "zod";
 
 /** seat -> userId from the persisted map, dropping any entry that is not one. */
@@ -79,18 +78,18 @@ export interface VisibleExchangePhaseInput {
  * unstamped closed phase reads as over: with no window to be inside, a seat
  * that never watched the trade cross is told nothing.
  *
- * The ack timeout is part of the window rather than slack around it.
- * `sendGameStateTo` owes one resend to a client that never acknowledged the
- * settle, and that resend re-derives from live state — so a window ending at
- * the ceremony alone would answer it with half a trade, which
- * `OnlineGameContext`'s `cardReceived || cardGiven` guard raises as a one-legged
- * ceremony rather than refusing. Written as the sum so neither constant can be
- * changed into the other.
+ * The window has to outlast `STATE_ACK_TIMEOUT_MS`, because `sendGameStateTo`
+ * owes one resend to a client that never acknowledged the settle and that
+ * resend re-derives from live state — answering it after the window would hand
+ * over half a trade, which `OnlineGameContext`'s `cardReceived || cardGiven`
+ * guard raises as a one-legged ceremony rather than refusing. That ordering is
+ * asserted in `tests/exchangeVisibility.test.ts` rather than read from here:
+ * `gameTimers` builds its values from `process.env` at module scope, and this
+ * module is in the static import graph of every integration test that sets one.
  */
 function ceremonyRunning(phase: VisibleExchangePhaseInput, now: number): boolean {
   if (phase.active || phase.settledAt === undefined) return false;
-  const window = exchangeAnnounceMs(phase.bothJokersException) + STATE_ACK_TIMEOUT_MS;
-  return now - phase.settledAt < window;
+  return now - phase.settledAt < exchangeAnnounceMs(phase.bothJokersException);
 }
 
 /**
