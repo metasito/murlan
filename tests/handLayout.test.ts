@@ -265,14 +265,14 @@ describe("slotForCard", () => {
 });
 
 /**
- * #683: `cardViewPropsEqual` skipped `hitWidth`, so a card kept the strip width
- * of the hand before the play while its slot moved to the new one. The drift is
- * the difference between the two steps, accumulated across the row, which is
- * why it was reported as taps landing further off with every card played.
+ * A card's strip carries the step of the hand it is in *now*. One holding the
+ * hand's previous step is off by the difference between the two, and that error
+ * accumulates along the row rather than staying with the card.
  *
- * Stated here because a press cannot state it (#720): the strip is ~3px narrow
- * after one play and a card's art centre sits ~25px inside it, so a coordinate
- * press lands on the right card either way. It takes the whole row to show.
+ * Only the arithmetic can say so. A strip a few pixels narrow still contains
+ * the centre of its own card's art by a wide margin, so a coordinate press
+ * lands on the right card either way, and an element-aimed one cannot miss at
+ * all. `tests/e2e/handTapStrips.spec.ts` is the other half, on the DOM's boxes.
  */
 describe("a tap strip left at the previous hand's width", () => {
   /** Where the press goes: the middle of the strip the *current* hand draws. */

@@ -5,8 +5,7 @@
 // card `i`'s strip runs from where it starts to where card `i + 1` starts.
 // `cardAtX` (`tests/handLayout.test.ts`) does the same arithmetic on the other
 // side of the DOM. What only the browser can say is whether the element the
-// finger actually lands on carries the width that arithmetic computed — which
-// is what #683 broke, by memoising the width away while the row's step moved.
+// finger actually lands on carries the width that arithmetic computed.
 //
 // Read as a *layout* box. The fan rotates each card, so `boundingBox()` reports
 // the rotated envelope, which varies along the row with the tilt — 28.8 to 38.9
@@ -28,9 +27,8 @@ const VIEWPORT = { width: 844, height: 390 };
  * `computeHandLayout` bounds the step at both ends, and at this viewport a hand
  * of 13 sits on `MAX_STEP_RATIO` while one of 20 sits on `MIN_READABLE_STEP` —
  * at either stop, playing a card moves nothing, and a strip left at the
- * previous hand's width is indistinguishable from a correct one. The defect
- * lives in the compressed middle, which is also why it went unnoticed on a
- * short hand.
+ * previous hand's width is indistinguishable from a correct one. Only the
+ * compressed middle can fail.
  */
 const HAND_SIZE = 16;
 
