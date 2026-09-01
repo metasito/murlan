@@ -37,6 +37,30 @@ export function celebration(
   return "";
 }
 
+/**
+ * Whether `viewerId` is the seat (or, in team mode, teammate of the seat)
+ * `celebration` would name from the same `candidates`. Gated on `isTeamMode`
+ * rather than on `seat.team` alone, to stay in step with `celebration`'s own
+ * `teamLabel` gate. Undefined for a viewer holding no seat.
+ */
+export function celebratesViewer(
+  players: readonly { id: string; team?: string }[],
+  candidates: readonly (string | undefined)[],
+  viewerId: string | undefined,
+  isTeamMode: boolean
+): boolean {
+  if (viewerId === undefined) return false;
+  const viewerTeam = players.find((p) => p.id === viewerId)?.team;
+  for (const id of candidates) {
+    const seat = id === undefined ? undefined : players.find((p) => p.id === id);
+    if (!seat) continue;
+    return isTeamMode && seat.team !== undefined
+      ? seat.team === viewerTeam
+      : seat.id === viewerId;
+  }
+  return false;
+}
+
 /** One seat's line on the end-of-manche scoreboard, in every identity it is indexed by. */
 export interface ScoreLine {
   seatIndex: number;

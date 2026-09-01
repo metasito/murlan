@@ -122,6 +122,7 @@ describe('a standings row is explained by the number beside it', () => {
           onVoteRematch={() => {}}
           voteState={null}
           myUserId="u1"
+          mySeatIndex={0}
           cumulativeScores={TOTALS}
           ratingDelta={null}
           handRecorded={true}
@@ -160,6 +161,7 @@ describe('a standings row is explained by the number beside it', () => {
           onVoteRematch={() => {}}
           voteState={null}
           myUserId="u1"
+          mySeatIndex={0}
           cumulativeScores={{ player_0: 2, player_1: 0, player_2: 0 }}
           ratingDelta={null}
           handRecorded={true}

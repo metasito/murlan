@@ -11,7 +11,7 @@ import { AppModal } from "./AppModal";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import type { GameState } from "@/lib/gameEngine";
 import { standings } from "@/lib/standings";
-import { celebration } from "@/lib/matchState";
+import { celebratesViewer, celebration } from "@/lib/matchState";
 import type { OnlineMatchState } from "@/context/OnlineGameContext";
 import { Colors, FontSize, Spacing, TOUCH_TARGET_MIN } from "@/lib/theme";
 import { useTranslation } from "@/lib/i18n";
@@ -34,6 +34,7 @@ export function GameOverOverlay({
   onVoteRematch,
   voteState,
   myUserId,
+  mySeatIndex,
   cumulativeScores,
   handScores,
   ratingDelta,
@@ -47,6 +48,8 @@ export function GameOverOverlay({
   onVoteRematch: () => void;
   voteState: RematchVote | null;
   myUserId: string;
+  /** This device's seat, or -1 for a spectator holding none. */
+  mySeatIndex: number;
   /** By engine player id, the identity `rankings` and the winners are in. */
   cumulativeScores: Record<string, number>;
   /** What the manche just played awarded, by engine player id. */
@@ -81,10 +84,21 @@ export function GameOverOverlay({
     };
   });
 
+  const celebrationCandidates = [
+    match.over ? match.winners[0] : undefined,
+    gameState.rankings[0],
+    rows[0]?.id,
+  ];
   const celebratedName = celebration(
     gameState.players,
-    [match.over ? match.winners[0] : undefined, gameState.rankings[0], rows[0]?.id],
+    celebrationCandidates,
     isTeamMode ? (team) => t("lobby.team", { team }) : null
+  );
+  const viewerCelebrated = celebratesViewer(
+    gameState.players,
+    celebrationCandidates,
+    gameState.players[mySeatIndex]?.id,
+    isTeamMode
   );
 
   // A match the table voted down offers no way to restart it.
@@ -181,6 +195,7 @@ export function GameOverOverlay({
             : t("result.matchProgress", { target: match.target })
         }
         celebratedName={celebratedName}
+        viewerCelebrated={viewerCelebrated}
         celebrationSubtitle={
           match.over
             ? match.isDraw
