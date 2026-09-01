@@ -206,20 +206,21 @@ env:
 # 33428373840 was dealt the 3 of Hearts, skipped this block, and passed thirty
 # times into a disabled button.
 #
-# The card is taken by position rather than by name because the two are spelled
-# differently: the banner writes the suit as a symbol ("Inizi tu! Hai il 3♥")
-# and the card's own label writes it as a word ("3 di Cuori"), so nothing can be
-# carried from one to the other. The hand is sorted ascending and the opener is
-# by definition its lowest card, which makes it the first — verified against
-# that run's captured hierarchy, where the first card node is the one the banner
-# named.
+# The card is taken by id, which is neither counted nor translated. Counting was
+# what broke: Maestro's `index` sorts matches by position rather than by tree
+# order, and the fan's arc puts the outermost card a pixel below its neighbours,
+# which is enough to sort it behind all of them — so `index: 0` took the second
+# card on every run. Naming it instead is not available either, because the two
+# spellings diverge by design: the banner writes `getCardDisplayRank` and
+# `getSuitSymbol` ("Inizi tu! Hai il 3♥") where the card's own label writes
+# `cardSpokenName` ("3 di Cuori"). `components/table/hand.tsx` marks the one card
+# the opening must include, and only while it is still owed.
 - runFlow:
     when:
       visible: "Inizi tu.*"
     commands:
       - tapOn:
-          text: ".+ di (Cuori|Quadri|Fiori|Picche)"
-          index: 0
+          id: "card-start"
           waitToSettleTimeoutMs: 500
       # The button turns on only for a legal selection, so this is what says the
       # tap reached the card the banner asked for rather than a neighbour.

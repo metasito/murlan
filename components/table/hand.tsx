@@ -145,6 +145,13 @@ interface CardItemProps {
   /** The strip of this card a tap can reach — the rest is under its neighbour. */
   hitW: number;
   /**
+   * Set only on the card the opening play must include, so a device flow can
+   * name it instead of counting to it. Maestro's `index` sorts by position, and
+   * the arc puts the outermost card a pixel below its neighbours — enough to
+   * sort it last (#757).
+   */
+  isStartCard: boolean;
+  /**
    * The card's own box. Passed in rather than derived from `cardScale`: a
    * spectated hand draws backs, which are their own aspect, and the row's arc
    * is solved against whichever of the two CardView will actually draw.
@@ -174,6 +181,7 @@ function CardItemBase({
   cardScale,
   dealRise,
   hitW,
+  isStartCard,
   cardW,
   cardH,
   shiftX,
@@ -307,6 +315,7 @@ function CardItemBase({
         faceDown={faceDown}
         scale={cardScale}
         hitWidth={hitW}
+        testID={isStartCard ? "card-start" : undefined}
         hint={hint}
         a11yActions={a11yActions}
         onA11yAction={onMove ? handleMove : undefined}
@@ -348,6 +357,7 @@ export function cardItemPropsEqual(a: CardItemProps, b: CardItemProps): boolean 
     a.cardScale === b.cardScale &&
     a.dealRise === b.dealRise &&
     a.hitW === b.hitW &&
+    a.isStartCard === b.isStartCard &&
     a.cardW === b.cardW &&
     a.cardH === b.cardH &&
     a.shiftX === b.shiftX &&
@@ -390,6 +400,7 @@ export function StraightHand({
   onReorder,
   arrivingIndex,
   descendingId,
+  startCardId,
 }: {
   cards: Card[];
   selectedIds: string[];
@@ -432,6 +443,14 @@ export function StraightHand({
    * rather than in from the deck: it is arriving off the felt, not being dealt.
    */
   descendingId?: string;
+  /**
+   * The card the opening play must include, when this seat has to open. Only
+   * that one card is named, and only while it is still owed: a device flow
+   * reaches it by id rather than by counting, because Maestro's `index` sorts
+   * matches by position and the arc puts the outermost card a pixel below its
+   * neighbours — enough to sort it behind every one of them (#757).
+   */
+  startCardId?: string;
 }) {
   const { t } = useTranslation();
   const reduceMotion = usePrefersReducedMotion();
@@ -876,6 +895,7 @@ export function StraightHand({
           cardScale={cardScale}
           dealRise={dealRise}
           hitW={hitWidth(slot, arc.length, step, cardW)}
+          isStartCard={card.id === startCardId}
           cardW={cardW}
           cardH={cardH}
         />

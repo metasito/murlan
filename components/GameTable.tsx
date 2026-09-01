@@ -1392,6 +1392,12 @@ export function GameTable({
                   onReorder={spectating || withheldId !== undefined ? undefined : arrange}
                   arrivingIndex={arrivingIndex}
                   descendingId={descendingId}
+                  // Only while the opening is still owed. Named rather than
+                  // counted to: Maestro's `index` sorts by position, and the
+                  // arc puts the outermost card below its neighbours (#757).
+                  startCardId={
+                    gameState.firstPlayMade ? undefined : gameState.startCard?.id
+                  }
                 />
               </View>
             )}

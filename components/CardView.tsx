@@ -455,6 +455,13 @@ interface CardViewProps {
    */
   hitWidth?: number;
   /**
+   * Names the pressable rather than the card box inside it, because the two are
+   * different targets: a driver aims at the centre of what it is given, and the
+   * card's own centre is under the neighbour drawn over it. Only the strip
+   * resolves to this card.
+   */
+  testID?: string;
+  /**
    * The card is the visual content of an enclosing labelled control, so it
    * must not also announce itself — otherwise a screen reader reads the same
    * card twice, once for the wrapper and once for this.
@@ -503,6 +510,7 @@ function CardViewBase({
   decorative = false,
   light,
   hitWidth,
+  testID,
   hint,
   a11yActions,
   onA11yAction,
@@ -625,6 +633,7 @@ function CardViewBase({
   return (
     <Animated.View style={[animStyle, style]}>
       <Pressable
+        testID={testID}
         onPress={handlePress}
         onPressIn={handlePressIn}
         onPressOut={handlePressOut}
@@ -789,6 +798,7 @@ export function cardViewPropsEqual(a: CardViewProps, b: CardViewProps): boolean 
     a.light === b.light &&
     a.style === b.style &&
     a.hitWidth === b.hitWidth &&
+    a.testID === b.testID &&
     a.hint === b.hint &&
     a.a11yActions === b.a11yActions &&
     a.onA11yAction === b.onA11yAction &&
