@@ -31,67 +31,26 @@ import type { TranslationKey } from "@/lib/i18n";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { PROVISIONAL_GAMES, formatSeason } from "@/lib/rating";
 import { a11yGroup, a11yHidden } from "@/lib/a11y";
-import { HistoryRow, type MatchHistoryDto } from "@/components/HistoryRow";
+import { HistoryRow } from "@/components/HistoryRow";
 import { serverErrorMessage } from "@/lib/apiError";
 import { USERNAME_MAX, USERNAME_MIN, usernameProblem } from "@/shared/username";
+import { placementColor, positionLabelKey } from "@/lib/placement";
+import type { UserStatsDto, RatingDto, AchievementStatusDto, MatchHistoryDto } from "@/lib/wire";
 
 type IconName = React.ComponentProps<typeof Ionicons>["name"];
 
-// Wire shapes as they actually arrive over JSON (server/stats.ts) — Date
-// columns are serialized to ISO strings, not the `Date` objects that
-// shared/schema.ts's UserStats/MatchHistory types (DB row shapes) carry.
-interface UserStatsDto {
-  userId: string;
-  gamesPlayed: number;
-  gamesWon: number;
-  matchesWon: number;
-  currentStreak: number;
-  bestStreak: number;
-  dailyStreak: number;
-  bombsPlayed: number;
-  updatedAt: string;
-}
 
-interface RatingDto {
-  season: string;
-  rating: number;
-  games: number;
-  provisional: boolean;
-}
 
 /** How many hands the card lists before the door out to the rest. */
 const HISTORY_ROWS_SHOWN = 5;
 const DOOR_CHEVRON = 18;
 
-interface AchievementStatusDto {
-  id: string;
-  nameKey: string;
-  descKey: string;
-  unlocked: boolean;
-  unlockedAt: string | null;
-}
 
-/** The podium reads the same here as on the result screen. */
-const PLACEMENT_COLORS = [
-  Colors.podiumGold,
-  Colors.podiumSilver,
-  Colors.podiumBronze,
-  Colors.textMuted,
-];
 /** The floor a stat tile and an achievement row read at. Neither takes a press. */
 const READABLE_ROW_H = 44;
 const FORM_KEY_W = 34;
 const FORM_VALUE_W = 28;
-const placementColor = (placement: number) => PLACEMENT_COLORS[placement - 1] ?? Colors.textMuted;
 
-// Shared with app/result.tsx / components/GameOverOverlay.tsx — same "1°"/
-// "2°"/"3°"/"4°" badge text, one source of truth.
-const POSITION_LABEL_KEYS: TranslationKey[] = [
-  "result.position1",
-  "result.position2",
-  "result.position3",
-  "result.position4",
-];
 
 function StatTile({ icon, value, label }: { icon: IconName; value: string; label: string }) {
   return (
@@ -407,7 +366,7 @@ export default function ProfileScreen() {
                   {...a11yGroup(
                     t("profile.formRecentA11yLabel", {
                       results: recentForm(history)
-                        .map((p) => t(POSITION_LABEL_KEYS[p - 1] ?? "result.position4"))
+                        .map((p) => t(positionLabelKey(p) ?? "result.position4"))
                         .join(", "),
                     })
                   )}
@@ -423,7 +382,7 @@ export default function ProfileScreen() {
                 <Text style={styles.formLabel}>{t("profile.formDistributionLabel")}</Text>
                 {placementDistribution(history).map((slice) => {
                   const posText = t(
-                    POSITION_LABEL_KEYS[slice.placement - 1] ?? "result.position4"
+                    positionLabelKey(slice.placement) ?? "result.position4"
                   );
                   return (
                     <View

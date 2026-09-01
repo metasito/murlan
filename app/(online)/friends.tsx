@@ -26,13 +26,9 @@ import { useTranslation } from "@/lib/i18n";
 import { relativeTime } from "@/lib/relativeTime";
 import { registerForPush } from "@/lib/pushRegistration";
 import { a11yHidden, a11yState, useA11yHint } from "@/lib/a11y";
+import type { FriendInfo } from "@/lib/wire";
 
 
-interface FriendInfo {
-  id: string;
-  username: string;
-  lastSeen: string | null;
-}
 interface FriendRequest { id: string; username: string; createdAt: string | null }
 interface SearchResult { id: string; username: string }
 

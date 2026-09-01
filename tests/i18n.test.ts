@@ -652,7 +652,7 @@ describe("no key outlives its last reader", () => {
       covers: (key, named) =>
         /_(one|other)$/.test(key) && named.has(key.replace(/_(one|other)$/, "")),
       where: "lib/i18n.ts",
-      needle: "`${base}${suffix}`",
+      needle: '`${base}${Math.abs(count) === 1 ? "_one" : "_other"}`',
     },
     {
       covers: (key) => /^rules\.faq\.q\d+$/.test(key),

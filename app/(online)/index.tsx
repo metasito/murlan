@@ -8,7 +8,6 @@ import {
   ScrollView,
   useWindowDimensions,
   KeyboardAvoidingView,
-  Modal,
   ActivityIndicator,
 } from "react-native";
 import { router } from "expo-router";
@@ -29,11 +28,10 @@ import { MenuCard } from "@/components/MenuCard";
 import { MenuButton } from "@/components/MenuButton";
 import { useTranslation } from "@/lib/i18n";
 import { A11yStatus, a11yHidden, a11yState, useA11yHint } from "@/lib/a11y";
-import { usePrefersReducedMotion } from "@/lib/accessibility";
+import { AppModal } from "@/components/AppModal";
 
 export default function OnlineLobbyScreen() {
   const { t } = useTranslation();
-  const reduceMotion = usePrefersReducedMotion();
   const roomCodeHint = useA11yHint(t("onlineLobby.roomCodeA11yHint"));
   const watchHint = useA11yHint(t("onlineLobby.watchA11yHint"));
   const { width: W, height: H } = useWindowDimensions();
@@ -338,15 +336,9 @@ export default function OnlineLobbyScreen() {
         </ScrollView>
       )}
 
-      <Modal
+      <AppModal
         visible={joinModalVisible}
-        transparent
-        animationType={reduceMotion ? "none" : "fade"}
         onRequestClose={closeJoin}
-        statusBarTranslucent
-        // iOS defaults this to portrait only, which rotates the whole app when the
-        // modal opens in landscape and leaves the screen behind it mis-laid-out.
-        supportedOrientations={["portrait", "landscape"]}
         accessibilityLabel={t("onlineLobby.joinModalTitle")}
       >
         <KeyboardAvoidingView
@@ -418,7 +410,7 @@ export default function OnlineLobbyScreen() {
             </View>
           </ScrollView>
         </KeyboardAvoidingView>
-      </Modal>
+      </AppModal>
     </MenuLayout>
   );
 }

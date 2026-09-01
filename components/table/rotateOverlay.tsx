@@ -3,7 +3,7 @@
 // is the only way out, so onRequestClose is inert.
 
 import { useEffect } from "react";
-import { Modal, View } from "react-native";
+import { View } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import Animated, {
   Easing,
@@ -22,6 +22,7 @@ import { a11yGroup, a11yHidden } from "@/lib/a11y";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
 import { Colors, Motion } from "@/lib/theme";
+import { AppModal } from "../AppModal";
 
 const GLYPH_SIZE = 56;
 const TURN_MS = Motion.duration.reveal;
@@ -62,12 +63,7 @@ export function RotateOverlay() {
   }));
 
   return (
-    <Modal
-      transparent
-      visible
-      supportedOrientations={["portrait", "landscape"]}
-      onRequestClose={() => {}}
-    >
+    <AppModal onRequestClose={() => {}}>
       <View style={portraitOverlayStyles.overlay}>
         {/* The label lives here rather than on the Modal: a Modal's own host
             view is not an accessibility element on iOS, so a label on it is
@@ -87,6 +83,6 @@ export function RotateOverlay() {
           </TableText>
         </View>
       </View>
-    </Modal>
+    </AppModal>
   );
 }

@@ -7,38 +7,12 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { Colors, FontSize, Radius, Spacing, TOUCH_TARGET_MIN, Type } from "@/lib/theme";
 import { useTranslation } from "@/lib/i18n";
 import { relativeTime } from "@/lib/relativeTime";
-import type { TranslationKey } from "@/lib/i18n";
 import { a11yGroup, a11yHidden } from "@/lib/a11y";
-import type { GameMode } from "@/lib/gameEngine";
+import { positionLabelKey } from "@/lib/placement";
+import type { MatchHistoryDto } from "@/lib/wire";
 
-/** Wire shapes as JSON delivers them — `finishedAt` is an ISO string here,
- * not the `Date` server/matchHistoryView.ts holds. */
-export interface HistoryParticipantDto {
-  name: string | null;
-  bot: boolean;
-}
 
-export interface MatchHistoryDto {
-  id: string;
-  userId: string;
-  finishedAt: string;
-  gameMode: GameMode;
-  placement: number;
-  playerCount: number;
-  points: number;
-  opponents: unknown[];
-  participants: HistoryParticipantDto[];
-  replayId: string | null;
-  /** Null for a hand the ladder did not rate — never 0, which is a rated hand that moved nobody. */
-  ratingDelta: number | null;
-}
 
-const POSITION_LABEL_KEYS: TranslationKey[] = [
-  "result.position1",
-  "result.position2",
-  "result.position3",
-  "result.position4",
-];
 
 const PLAY_ICON = 28;
 
@@ -50,7 +24,7 @@ const PLAY_ICON = 28;
 export function HistoryRow({ hand }: { hand: MatchHistoryDto }) {
   const { t, tn } = useTranslation();
 
-  const labelKey = POSITION_LABEL_KEYS[hand.placement - 1];
+  const labelKey = positionLabelKey(hand.placement);
   const posText = labelKey ? t(labelKey) : `${hand.placement}°`;
   const modeText =
     hand.gameMode === "teams"

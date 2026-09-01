@@ -14,21 +14,9 @@ import { Colors, FontSize, Radius, Spacing, Type } from "@/lib/theme";
 import { PROVISIONAL_GAMES, formatSeason } from "@/lib/rating";
 import { useTranslation } from "@/lib/i18n";
 import { a11yGroup, a11yHidden } from "@/lib/a11y";
+import type { LeaderboardEntryDto, RatingDto } from "@/lib/wire";
 
-interface LeaderboardEntryDto {
-  rank: number;
-  userId: string;
-  username: string;
-  rating: number;
-  games: number;
-}
 
-interface RatingDto {
-  season: string;
-  rating: number;
-  games: number;
-  provisional: boolean;
-}
 
 /** Gold, silver and bronze for the top three; everyone else takes the plain ink. */
 const RANK_COLORS = [Colors.podiumGold, Colors.podiumSilver, Colors.podiumBronze];

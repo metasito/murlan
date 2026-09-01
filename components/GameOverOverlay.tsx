@@ -6,7 +6,8 @@
 // It is a Modal rather than a route because it covers a live table: offline
 // navigates away, online must not.
 import React, { useState } from "react";
-import { Modal, Text, StyleSheet, Pressable } from "react-native";
+import { Text, StyleSheet, Pressable } from "react-native";
+import { AppModal } from "./AppModal";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import type { GameState } from "@/lib/gameEngine";
 import { standings } from "@/lib/standings";
@@ -162,13 +163,7 @@ export function GameOverOverlay({
   return (
     // The manche is over and every route onward is a control inside this
     // overlay, so Escape has nothing to reveal behind it.
-    <Modal
-      transparent
-      visible
-      accessibilityLabel={t("result.rankingsTitle")}
-      supportedOrientations={["portrait", "landscape"]}
-      onRequestClose={() => {}}
-    >
+    <AppModal accessibilityLabel={t("result.rankingsTitle")} onRequestClose={() => {}}>
       <ResultBoard
         headerTitle={
           match.over
@@ -205,7 +200,7 @@ export function GameOverOverlay({
         topPad={topPad}
         bottomPad={bottomPad}
       />
-    </Modal>
+    </AppModal>
   );
 }
 

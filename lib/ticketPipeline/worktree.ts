@@ -1,14 +1,11 @@
 // lib/ticketPipeline/worktree.ts
 import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
+import { shellQuote } from "./shell.ts";
 
 export interface WorktreeRequest {
   number: number;
   branch: string;
-}
-
-function shellQuote(value: string): string {
-  return `'${value.replace(/'/g, "'\\''")}'`;
 }
 
 // Inside the checkout, not beside it. Node resolves both a bare `import` and `require.resolve` by

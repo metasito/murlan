@@ -12,9 +12,10 @@ import { ScreenHeader } from "@/components/ScreenHeader";
 import { MenuCard } from "@/components/MenuCard";
 import { MenuButton } from "@/components/MenuButton";
 import { LoadingBlock, ErrorBlock, EmptyBlock } from "@/components/StateBlock";
-import { HistoryRow, type MatchHistoryDto } from "@/components/HistoryRow";
+import { HistoryRow } from "@/components/HistoryRow";
 import { Colors, Spacing, Type } from "@/lib/theme";
 import { useTranslation } from "@/lib/i18n";
+import type { MatchHistoryDto } from "@/lib/wire";
 
 /** Rows per page. Chosen to fill a phone in portrait without spilling. */
 const PAGE_SIZE = 10;

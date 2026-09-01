@@ -43,21 +43,10 @@ import {
   TOUCH_TARGET_MIN,
   Type,
 } from "@/lib/theme";
-import { useTranslation, type TranslationKey } from "@/lib/i18n";
+import { useTranslation } from "@/lib/i18n";
 import { a11yHidden, a11yState } from "@/lib/a11y";
+import { placementColor, positionLabelKey } from "@/lib/placement";
 
-const POSITION_COLORS = [
-  Colors.podiumGold,
-  Colors.podiumSilver,
-  Colors.podiumBronze,
-  Colors.textMuted,
-];
-const POSITION_LABEL_KEYS: TranslationKey[] = [
-  "result.position1",
-  "result.position2",
-  "result.position3",
-  "result.position4",
-];
 const POSITION_ICONS = ["trophy", "medal", "ribbon", "remove-circle"] as const;
 
 // Home states a width so the primary beside it gets a known remainder, and the
@@ -122,9 +111,9 @@ function RankCard({
     transform: [{ translateX: tx.value }],
   }));
   const isWinner = rank === 0;
-  const color = POSITION_COLORS[rank] ?? Colors.textMuted;
+  const color = placementColor(rank + 1);
   const icon = POSITION_ICONS[rank] ?? "person";
-  const labelKey = POSITION_LABEL_KEYS[rank];
+  const labelKey = positionLabelKey(rank + 1);
   const label = labelKey ? t(labelKey) : `${rank + 1}°`;
 
   return (

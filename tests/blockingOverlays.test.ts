@@ -22,7 +22,7 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."
 
 /**
  * Every layer that covers the table, with a string from the overlay's own body
- * — a `<Modal>` somewhere else in the same file says nothing about this one.
+ * — an `<AppModal>` somewhere else in the same file says nothing about this one.
  */
 const BLOCKING_OVERLAYS: [string, string][] = [
   ["components/GameOverOverlay.tsx", "<ResultBoard"],
@@ -100,12 +100,13 @@ export function candidatesByFile(files: string[], read: (rel: string) => string)
   return found;
 }
 
-/** The text of every `<Modal …>…</Modal>` in `source`, nesting-aware. */
+/** The text of every `<AppModal …>…</AppModal>` in `source`, nesting-aware. */
 export function modalBodies(source: string): string[] {
   const out: string[] = [];
-  for (let at = source.indexOf("<Modal"); at !== -1; at = source.indexOf("<Modal", at + 1)) {
-    if (/[A-Za-z0-9_]/.test(source[at + 6] ?? "")) continue;
-    const close = source.indexOf("</Modal>", at);
+  const TAG = "<AppModal";
+  for (let at = source.indexOf(TAG); at !== -1; at = source.indexOf(TAG, at + 1)) {
+    if (/[A-Za-z0-9_]/.test(source[at + TAG.length] ?? "")) continue;
+    const close = source.indexOf("</AppModal>", at);
     if (close !== -1) out.push(source.slice(at, close));
   }
   return out;
@@ -188,8 +189,11 @@ test("every blocking overlay answers a close request and names itself", () => {
 });
 
 test("the scanner reads one modal at a time", () => {
-  assert.deepEqual(modalBodies("<Modal a>x</Modal>\n<Modal b>y</Modal>"), ["<Modal a>x", "<Modal b>y"]);
-  assert.deepEqual(modalBodies("<ModalContent>x</ModalContent>"), []);
+  assert.deepEqual(modalBodies("<AppModal a>x</AppModal>\n<AppModal b>y</AppModal>"), [
+    "<AppModal a>x",
+    "<AppModal b>y",
+  ]);
+  assert.deepEqual(modalBodies("<AppModalContent>x</AppModalContent>"), []);
 });
 
 for (const [rel, , marker, why, properties] of NON_MODAL_OVERLAYS) {

@@ -133,10 +133,12 @@ export function t(key: TranslationKey, params?: TranslationParams): string {
  * (enforced by tests/i18n.test.ts) and `count` is always available to the
  * template as `{{count}}`.
  */
+function pluralKey(base: string, count: number): TranslationKey {
+  return `${base}${Math.abs(count) === 1 ? "_one" : "_other"}` as TranslationKey;
+}
+
 export function tn(base: string, count: number, params?: TranslationParams): string {
-  const suffix = Math.abs(count) === 1 ? "_one" : "_other";
-  const key = `${base}${suffix}` as TranslationKey;
-  return t(key, { count, ...params });
+  return t(pluralKey(base, count), { count, ...params });
 }
 
 /** Their shapes, for the many functions that take a translator as a parameter. */
@@ -159,13 +161,15 @@ export interface ServerPayload {
  * server's plain-text `message` is shown instead — the plain-text
  * fallback exists precisely so nobody ever sees a blank error.
  */
+function serverPayloadKey(payload: ServerPayload): TranslationKey | null {
+  if (!payload.code) return null;
+  const key = `server.${payload.code}` as TranslationKey;
+  return Object.prototype.hasOwnProperty.call(catalogs[DEFAULT_LOCALE], key) ? key : null;
+}
+
 export function translateServerPayload(payload: ServerPayload): string {
-  if (payload.code) {
-    const key = `server.${payload.code}` as TranslationKey;
-    if (Object.prototype.hasOwnProperty.call(catalogs[DEFAULT_LOCALE], key)) {
-      return translate(currentLocale, key, payload.params);
-    }
-  }
+  const key = serverPayloadKey(payload);
+  if (key) return translate(currentLocale, key, payload.params);
   return payload.message ?? payload.error ?? t("common.unknownError");
 }
 
@@ -178,20 +182,14 @@ export function useTranslation() {
     [locale]
   );
   const tnBound = useCallback(
-    (base: string, count: number, params?: TranslationParams) => {
-      const suffix = Math.abs(count) === 1 ? "_one" : "_other";
-      return tBound(`${base}${suffix}` as TranslationKey, { count, ...params });
-    },
+    (base: string, count: number, params?: TranslationParams) =>
+      tBound(pluralKey(base, count), { count, ...params }),
     [tBound]
   );
   const translateServerPayloadBound = useCallback(
     (payload: ServerPayload) => {
-      if (payload.code) {
-        const key = `server.${payload.code}` as TranslationKey;
-        if (Object.prototype.hasOwnProperty.call(catalogs[DEFAULT_LOCALE], key)) {
-          return translate(locale, key, payload.params);
-        }
-      }
+      const key = serverPayloadKey(payload);
+      if (key) return translate(locale, key, payload.params);
       return payload.message ?? payload.error ?? tBound("common.unknownError");
     },
     [locale, tBound]
