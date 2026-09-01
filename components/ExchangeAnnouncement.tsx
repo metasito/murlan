@@ -94,7 +94,13 @@ export function ExchangeAnnouncement({
         </TableText>
       ) : (
         <>
-          {cardReceived && (
+          {/*
+            Retired the instant they land, which is the instant each receiving
+            hand takes its card in: a flier parks at its destination rather than
+            fading, so leaving it up for the rest of the notice would draw the
+            same card twice for four seconds. The tags below take over.
+          */}
+          {cardReceived && !landed && (
             <ExchangeFlyingCard
               card={cardReceived}
               trip={toWinner}
@@ -102,7 +108,7 @@ export function ExchangeAnnouncement({
               testID="exchange-flier-to-winner"
             />
           )}
-          {cardGiven && (
+          {cardGiven && !landed && (
             <ExchangeFlyingCard
               card={cardGiven}
               trip={toLoser}

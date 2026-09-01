@@ -1068,6 +1068,12 @@ export interface ExchangeView {
   viewerIsLoser: boolean;
   winner: Player | null;
   loser: Player | null;
+  /**
+   * The card taken off the loser. The engine puts it in the winner's hand as
+   * the phase opens while the prompt draws it on the felt, so the winner's fan
+   * has to know which card it is not drawing (#650).
+   */
+  cardFromLoser: Card | null;
 }
 
 export const INACTIVE_EXCHANGE: ExchangeView = {
@@ -1076,6 +1082,7 @@ export const INACTIVE_EXCHANGE: ExchangeView = {
   viewerIsLoser: false,
   winner: null,
   loser: null,
+  cardFromLoser: null,
 };
 
 export function readExchange(
@@ -1091,6 +1098,7 @@ export function readExchange(
     viewerIsLoser: viewerOwnsSeat(phase.loserIdx, viewerSeat, spectating),
     winner: state.players[phase.winnerIdx] ?? null,
     loser: state.players[phase.loserIdx] ?? null,
+    cardFromLoser: phase.cardFromLoser ?? null,
   };
 }
 

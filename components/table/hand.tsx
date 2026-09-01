@@ -413,28 +413,34 @@ export function StraightHand({
    */
   onReorder?: (id: string, to: number) => void;
   /**
-   * A card on its way in, and the slot it is coming to. The row steps for the
-   * hand *including* it and holds that slot empty, so the card lands in a space
+   * The slot a card still in flight is coming to. The row steps for the hand
+   * *including* it and holds that slot empty, so the card lands in a space
    * already waiting rather than over a fan that has not moved.
-   *
-   * `undefined` under reduced motion and whenever nothing is in flight: an
-   * empty slot with no card coming is a hand with a hole in it.
    */
   arrivingIndex?: number;
   /**
-   * The card that slot was being held for. It mounts on the render it lands,
-   * which is the render this names it — so it descends into the space rather
-   * than appearing in it. Straight down, not in from the deck: it is arriving
-   * from the felt this hand is sitting at, not from a deal.
+   * The card that slot was held for, named on the render it mounts, so it
+   * travels into the space rather than appearing in it. From the row's centre
+   * rather than in from the deck: it is arriving off the felt, not being dealt.
    */
   descendingId?: string;
 }) {
   const { t } = useTranslation();
   const reduceMotion = usePrefersReducedMotion();
   const n = cards.length;
+  // Declared here rather than in the reordering section below: the row parts
+  // for an arriving card only when nothing is held, and the layout is solved
+  // above that section.
+  const [heldId, setHeldId] = useState<string | null>(null);
+  // A drag already under way owns the row: it solves the arc for the hand
+  // *without* the card the finger holds, and a slot held open for an arrival on
+  // top of that is two index spaces at once. The caller stops offering
+  // `onReorder` when a card is in the air, but a gesture already in progress
+  // keeps its held card for at least one render past that.
+  const parting = heldId === null ? arrivingIndex : undefined;
   /** Slots the row is stepped for — the cards it draws, plus the one arriving. */
-  const slotCount = arrivingIndex === undefined ? n : n + 1;
-  const slotOf = (i: number) => slotForCard(i, arrivingIndex);
+  const slotCount = parting === undefined ? n : n + 1;
+  const slotOf = (i: number) => slotForCard(i, parting);
   const onTurn = isMyTurn === true;
   // Bigger cards *and* the same fraction more air between them: the share the
   // row aims at grows with the card, so the fan opens rather than just
@@ -504,7 +510,6 @@ export function StraightHand({
 
   // ─── Reordering ────────────────────────────────────────────────────────────
   const canReorder = onReorder !== undefined && !disabled && !faceDown;
-  const [heldId, setHeldId] = useState<string | null>(null);
   const [gapAt, setGapAt] = useState<number | null>(null);
   // What the gesture is holding, beside the state the render draws from: the
   // last `onUpdate` and the `onEnd` that follows it can land in the same frame,
@@ -642,8 +647,7 @@ export function StraightHand({
   // Split either side of the slot, so the hand's centre holds still while the
   // gap opens and nothing shifts out from under the thumb.
   const gapW = heldCard === null ? 0 : cardW * GAP_CARDS;
-  const gapShift = (slot: number) =>
-    gapAt === null ? 0 : slot >= gapAt ? gapW / 2 : -gapW / 2;
+  const gapShift = (i: number) => (gapAt === null ? 0 : i >= gapAt ? gapW / 2 : -gapW / 2);
   // Where the drop index is measured from: the arc without the gap in it. The
   // gap is a consequence of the slot, so measuring the slot against a row the
   // gap has already moved makes the two chase each other.
@@ -817,26 +821,23 @@ export function StraightHand({
         { width: scrollable ? totalW : rowW, height: visibleH },
       ]}
     >
-      {rest.map((_card, i) => {
-        // The arc is solved for every slot, including the one an arriving card
-        // is coming to — so a drawn card takes the slot past it, not the index
-        // it happens to sit at in the list.
+      {rest.map((card, i) => {
         const slot = slotOf(i);
         const at = arc[slot] ?? arc[arc.length - 1];
-        const descending = rest[i].id === descendingId;
-        const giveable = giveableSet?.has(rest[i].id);
+        const descending = card.id === descendingId;
+        const giveable = giveableSet?.has(card.id);
         // Placed where it sits in the whole hand; moved from there to where the
         // closed fan wants it, plus its share of the gap.
-        const home = place.get(rest[i].id) ?? at;
+        const home = place.get(card.id) ?? at;
         // A card the exchange has ruled out is a control reporting itself
         // unavailable; offering it two working actions anyway says the opposite
         // in the same breath.
         const arrangeable = canReorder && giveable !== false;
         return (
         <CardItem
-          key={rest[i].id}
-          card={rest[i]}
-          isSelected={selectedSet.has(rest[i].id)}
+          key={card.id}
+          card={card}
+          isSelected={selectedSet.has(card.id)}
           left={rowMid + home.x}
           shiftX={at.x - home.x + gapShift(i)}
           bottom={-crop - home.y}
@@ -852,7 +853,11 @@ export function StraightHand({
           faceDown={faceDown}
           zIndex={i}
           dealDelay={dealArmed ? i * Motion.stagger.deal : descending ? 0 : -1}
-          dealFromX={descending ? 0 : -home.x - cardW / 2}
+          // From the row's own centre, which is where the flight carrying it
+          // stops (`flightOrigin`'s `bottom` is `dx: 0`). The crossing and the
+          // descent are then one continuous move into the waiting slot, rather
+          // than a card that stops at the middle and reappears at one end.
+          dealFromX={descending ? -home.x : -home.x - cardW / 2}
           cardScale={cardScale}
           dealRise={dealRise}
           hitW={hitWidth(slot, arc.length, step, cardW)}
