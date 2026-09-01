@@ -172,3 +172,69 @@ describe("a rerun is gated on the workflow it would re-dispatch, not on being a 
     });
   }
 });
+
+describe("a rerun is read as its own command, with its own arguments", () => {
+  // Each of these reached the guard as a way past it. A rerun that cannot be read is refused
+  // rather than allowed: `$RUN` must not be the spelling that gets through.
+  const device = () => "iOS UI (Maestro)";
+  const ci = () => "CI";
+
+  test("reads --job, which is not a run id", () => {
+    // `gh run view <job-id>` answers 404, so a job id resolved as a run resolves to nothing —
+    // and `--job` re-dispatches the whole ~25 minute simulator job.
+    let asked: unknown = null;
+    const message = check("gh run rerun --job 99710945601", (t) => {
+      asked = t;
+      return "iOS UI (Maestro)";
+    });
+    assert.ok(message, "expected a device job rerun to be blocked");
+    assert.deepEqual(asked, { job: "99710945601" });
+  });
+
+  test("reads --job= in its joined spelling", () => {
+    assert.ok(check("gh run rerun --job=99710945601", device));
+  });
+
+  test("looks at every rerun on the line, not only the first", () => {
+    for (const separator of [" && ", "; ", "\n"]) {
+      const cmd = `gh run rerun 33495876524${separator}gh run rerun 33428375221`;
+      const message = check(cmd, (t) => (t.run === "33428375221" ? "iOS UI (Maestro)" : "CI"));
+      assert.ok(message, `expected the device rerun after a ${JSON.stringify(separator)} to block`);
+    }
+  });
+
+  test("does not take a flag's value for the run id", () => {
+    let asked: unknown = null;
+    check("gh run rerun -R metasito/murlan 33428375221", (t) => {
+      asked = t;
+      return "CI";
+    });
+    assert.deepEqual(asked, { run: "33428375221" }, "the repo was read as the run");
+  });
+
+  test("does not take a later command's id for this one's", () => {
+    // The download named here is the very command the block message prescribes as the way out.
+    let asked: unknown = null;
+    const message = check(
+      'gh run rerun "$RUN" --failed\ngh run download 33428375221 -n maestro-debug-ios',
+      (t) => {
+        asked = t;
+        return "iOS UI (Maestro)";
+      }
+    );
+    assert.equal(asked, null, "the download's id was read as the rerun's");
+    assert.match(String(message), /literal id/);
+  });
+
+  for (const cmd of ['gh run rerun "$RUN" --failed', "gh run rerun --failed"]) {
+    test(`refuses a rerun it cannot identify: ${cmd}`, () => {
+      const message = check(cmd, ci);
+      assert.ok(message, `expected ${cmd} to be blocked`);
+      assert.match(String(message), /literal id/);
+    });
+  }
+
+  test("the marker still clears a rerun it cannot identify", () => {
+    assert.equal(check('MAESTRO_EVIDENCE_READ=1 gh run rerun "$RUN" --failed', ci), null);
+  });
+});
