@@ -128,7 +128,10 @@ test("every screen and component compiles with no bailouts", () => {
 test("a render-time ref write is what the compiler refuses to compile in context/GameContext.tsx", () => {
   const rel = "context/GameContext.tsx";
   const original = readFileSync(path.join(repoRoot, rel), "utf8");
-  const anchor = "  const [exchangeAnnouncing, setExchangeAnnouncing] = useState(false);";
+  // The provider's own state, rather than any one feature's: a line that only
+  // exists while a feature is written this way takes the floor with it when
+  // that feature moves.
+  const anchor = "  const [gameState, setGameState] = useState<GameState | null>(null);";
   assert.ok(original.includes(anchor), `${rel} no longer contains the line this test patches`);
   const reasons = compile(
     rel,

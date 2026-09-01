@@ -15,13 +15,14 @@ import { useNotification } from "@/context/NotificationContext";
 import { t, translateServerPayload, type ServerPayload } from "@/lib/i18n";
 import { Reading } from "@/lib/theme";
 import { sendIntent } from "@/lib/sendIntent";
-import { MATCH_TARGETS, matchIsClosing } from "@/lib/gameEngine";
+import { MATCH_TARGETS } from "@/lib/gameEngine";
 import { handCountOf } from "@/components/gameTableModel";
 import { clearReactions, pushReaction } from "@/lib/reactions";
 import type { GameState, MatchLength } from "@/lib/gameEngine";
 import {
   buildExchangeAnnounce,
-  useExchangeCeremonyExpiry,
+  rematchPromptOpen as isRematchPromptOpen,
+  useExchangeAnnouncement,
   type ExchangeAnnounceData,
 } from "@/lib/sharedGameFlow";
 import type { BotPersonalityId } from "@/lib/botPersonalities";
@@ -186,16 +187,14 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
   const [ratingDeltas, setRatingDeltas] = useState<Record<string, number>>({});
   const [matchState, setMatchState] = useState<OnlineMatchState>(INITIAL_MATCH);
   const [rematchIntents, setRematchIntents] = useState<RematchIntentState>(INITIAL_INTENTS);
-  const [exchangeAnnouncing, setExchangeAnnouncing] = useState(false);
-  const [exchangeAnnounceData, setExchangeAnnounceData] = useState<ExchangeAnnounceData | null>(null);
   const [rejoinFailed, setRejoinFailed] = useState(false);
 
-  const endAnnouncing = useCallback(() => setExchangeAnnouncing(false), []);
-  useExchangeCeremonyExpiry(
-    exchangeAnnouncing,
-    exchangeAnnounceData?.bothJokersException,
-    endAnnouncing
-  );
+  const {
+    announcing: exchangeAnnouncing,
+    data: exchangeAnnounceData,
+    announce,
+    end: acknowledgeExchange,
+  } = useExchangeAnnouncement();
   const [reconnectNotice, setReconnectNotice] = useState<string | null>(null);
   const [isSpectator, setIsSpectator] = useState(false);
 
@@ -430,13 +429,12 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
         const cardReceived = prevPhase?.cardFromLoser;
         const cardGiven = state.exchangePhase.cardToLoser;
         if (cardReceived || cardGiven) {
-          setExchangeAnnounceData(
+          announce(
             buildExchangeAnnounce(state.players, state.exchangePhase, {
               given: cardGiven,
               received: cardReceived,
             })
           );
-          setExchangeAnnouncing(true);
         }
       }
 
@@ -445,8 +443,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       prevBothJokersExceptionRef.current = currBothJolly;
 
       if (!isActive && currBothJolly && !prevBothJolly) {
-        setExchangeAnnounceData(buildExchangeAnnounce(state.players, state.exchangePhase!));
-        setExchangeAnnouncing(true);
+        announce(buildExchangeAnnounce(state.players, state.exchangePhase!));
       }
 
       prevGameStateRef.current = state;
@@ -696,6 +693,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     persistWaitingRoom,
     showNotification,
     qc,
+    announce,
   ]);
 
   const createRoom = useCallback((gameMode: "free_for_all" | "teams", maxPlayers: number) => {
@@ -784,16 +782,18 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
 
   // Same predicate as the offline table (lib/gameEngine), fed by the sanitized
   // state: opponents' hands are blanked but `handCount` is not.
-  const rematchPromptOpen = useMemo(() => {
-    if (!gameState || gameState.gameOver || matchState.over) return false;
-    return matchIsClosing({
-      length: matchState.length,
-      target: matchState.target,
-      cumulative: cumulativeScores,
-      handCounts: gameState.players.map(handCountOf),
-      playerCount: gameState.players.length,
-    });
-  }, [gameState, matchState, cumulativeScores]);
+  const rematchPromptOpen = useMemo(
+    () =>
+      isRematchPromptOpen(
+        gameState && {
+          gameOver: gameState.gameOver,
+          handCounts: gameState.players.map(handCountOf),
+        },
+        matchState,
+        cumulativeScores
+      ),
+    [gameState, matchState, cumulativeScores]
+  );
 
   /**
    * The three intents that decide a hand. Each waits to be told it arrived and
@@ -826,10 +826,6 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     (cardId: string) => sendMove("game:exchange_give_card", { cardId }),
     [sendMove]
   );
-
-  const acknowledgeExchange = useCallback(() => {
-    setExchangeAnnouncing(false);
-  }, []);
 
   const sendReaction = useCallback((emoji: string) => {
     socket?.emit("game:reaction", { emoji });
