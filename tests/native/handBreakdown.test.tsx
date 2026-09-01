@@ -114,6 +114,14 @@ describe('the rating panel', () => {
   });
 });
 
+describe('a recorded hand', () => {
+  it('shows its own finish, points, player count and streak', async () => {
+    const view = await renderBreakdown(FULL, 12);
+    expect(view.getByLabelText('Finish: 1st of 4 · 3pt')).toBeTruthy();
+    expect(view.getByLabelText('Win streak: 3 · best 5')).toBeTruthy();
+  });
+});
+
 describe('a hand nothing recorded', () => {
   const UNRECORDED: Responses = {
     '/api/stats/me': { currentStreak: 0, bestStreak: 0 },
