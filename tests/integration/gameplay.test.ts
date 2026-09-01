@@ -9,6 +9,7 @@ import {
   skipMessage,
   type TestServer,
 } from "../helpers/testServer.ts";
+import { lobbyGraceMs } from "../../server/gameTimers.ts";
 import { register, waitFor } from "../helpers/client.ts";
 import {
   assertHandSecrecy,
@@ -43,7 +44,14 @@ import {
  */
 process.env.MURLAN_AFK_TIMEOUT_MS = "300";
 process.env.MURLAN_DISCONNECT_GRACE_MS = "500";
+process.env.MURLAN_LOBBY_GRACE_MS = "700";
 process.env.MURLAN_GAME_ACTION_RATE_LIMIT = "1200";
+
+/**
+ * Asked of the server rather than restated, so a grace this file cannot
+ * actually shorten shows up as its own deadline moving with it.
+ */
+const LOBBY_GRACE_MS = lobbyGraceMs();
 
 describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, () => {
   let server: TestServer;
@@ -520,19 +528,27 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
 
   // ── Test 8 ──────────────────────────────────────────────────────────────
 
-  test("a hard disconnect at the results screen frees the seat with no grace period", async () => {
+  /**
+   * Between hands the seat is held under the *lobby* grace, not the disconnect
+   * one: it counts towards the rematch gate, so the table cannot wait a full
+   * minute on it, and it is a seat in a running match, so a blip cannot cost
+   * it outright.
+   *
+   * Nothing is broadcast while it is held. A player who comes back inside the
+   * window was never away as far as the rest of the room is concerned.
+   */
+  test("a hard disconnect at the results screen holds the seat, then frees it", async () => {
+    const { seatedUsers } = await import("../helpers/liveGame.ts");
     const [dave, erin, frank] = await makeClients([
       "results_drop_dave",
       "results_drop_erin",
       "results_drop_frank",
     ]);
-    await setUpRoom([dave, erin, frank], 3);
+    const room = await setUpRoom([dave, erin, frank], 3);
     await playOpeningHand([dave, erin, frank]);
 
     const erinTeardowns = collect(erin, "game:player_left");
     const frankTeardowns = collect(frank, "game:player_left");
-    // Nobody is mid-turn between hands, so there is nothing to hold a grace
-    // period open for — the seat is freed on the disconnect itself.
     const graceNotices = collect(erin, "game:player_disconnected");
 
     const takeover = waitFor<{ userId: string }>(
@@ -541,6 +557,13 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
       5_000
     );
     dave.socket.disconnect();
+
+    await new Promise((resolve) => setTimeout(resolve, LOBBY_GRACE_MS / 2));
+    assert.ok(
+      Object.values(seatedUsers(room.roomId) ?? {}).includes(dave.user.id),
+      "the seat must still be theirs halfway through the grace"
+    );
+
     assert.equal((await takeover).userId, dave.user.id);
     assert.deepEqual(
       [...erinTeardowns, ...frankTeardowns],

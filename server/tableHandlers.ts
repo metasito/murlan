@@ -51,6 +51,7 @@ import {
 } from "./onlineGameLogic.ts";
 import {
   announceRejoin,
+  armLobbyGrace,
   handleSeatRelease,
   retireRoomInvites,
   roomStatePayload,
@@ -320,36 +321,37 @@ function exchangeAction(
   return OK;
 }
 
-async function rematchVoteAction(
+/**
+ * `total` is the seated-seat count: bots and seats whose player left hold no
+ * vote, exactly as countRematchAnswers counts them.
+ */
+function broadcastRematchVotes(io: SocketServer, game: OnlineGameState, roomId: string) {
+  io.to(roomId).emit("game:vote_state", {
+    votes: Array.from(game.rematchVotes),
+    total: Object.keys(game.playerMap).length,
+  });
+}
+
+/** Whether every seat still at the table has answered. */
+function rematchAnswered(game: OnlineGameState): boolean {
+  return game.rematchVotes.size >= Object.keys(game.playerMap).length;
+}
+
+/**
+ * Deals the manche the table has voted for, or says why it cannot and leaves
+ * every vote where it was.
+ *
+ * `tell` is the seat a refusal is reported to — the vote that closed the gate,
+ * or, when a seat *leaving* is what closed it, whoever is still there to read
+ * it.
+ */
+async function dealVotedManche(
   io: SocketServer,
   game: OnlineGameState,
-  action: Extract<TableAction, { kind: "rematchVote" }>
+  roomId: string,
+  tell: string
 ): Promise<EventOutcome> {
-  const { roomId, userId } = action;
-  if (!game.gameState.gameOver) return { ok: false, code: "NO_LIVE_GAME" };
-  if (seatOfUser(game, userId) === null) return { ok: false, code: "NOT_SEATED" };
-
-  // `total` is the seated-seat count: bots and seats whose player left hold no
-  // vote, exactly as countRematchAnswers counts them.
-  const broadcastVoteState = () =>
-    io.to(roomId).emit("game:vote_state", {
-      votes: Array.from(game.rematchVotes),
-      total: Object.keys(game.playerMap).length,
-    });
-
-  // The table was asked during the closing manche and said no. Nobody gets to
-  // restart it from the results screen after that.
-  if (game.matchOver && !tableWantsRematch(game)) {
-    gameError(io, userId, {
-      message: "The table chose not to play again",
-      code: "REMATCH_DECLINED",
-    });
-    return { ok: false, code: "REMATCH_DECLINED" };
-  }
-
-  game.rematchVotes.add(userId);
-  broadcastVoteState();
-  if (game.rematchVotes.size < Object.keys(game.playerMap).length) return OK;
+  const broadcastVoteState = () => broadcastRematchVotes(io, game, roomId);
 
   // The database is read for the room's settings and nothing else: the next
   // manche's seats are copied from the running game. `room_players` holds
@@ -357,14 +359,14 @@ async function rematchVoteAction(
   // renumbers whatever is left.
   const room = await storage.getRoomById(roomId);
   if (!room) {
-    gameError(io, userId, { message: "Room not found", code: "ROOM_NOT_FOUND" });
+    gameError(io, tell, { message: "Room not found", code: "ROOM_NOT_FOUND" });
     broadcastVoteState();
     return { ok: false, code: "ROOM_NOT_FOUND" };
   }
 
   const seats = game.gameState.players;
   if (seats.length < 2) {
-    gameError(io, userId, {
+    gameError(io, tell, {
       message: "At least 2 players are required",
       code: "MIN_PLAYERS_REQUIRED",
     });
@@ -408,6 +410,51 @@ async function rematchVoteAction(
   return OK;
 }
 
+async function rematchVoteAction(
+  io: SocketServer,
+  game: OnlineGameState,
+  action: Extract<TableAction, { kind: "rematchVote" }>
+): Promise<EventOutcome> {
+  const { roomId, userId } = action;
+  if (!game.gameState.gameOver) return { ok: false, code: "NO_LIVE_GAME" };
+  if (seatOfUser(game, userId) === null) return { ok: false, code: "NOT_SEATED" };
+
+  // The table was asked during the closing manche and said no. Nobody gets to
+  // restart it from the results screen after that.
+  if (game.matchOver && !tableWantsRematch(game)) {
+    gameError(io, userId, {
+      message: "The table chose not to play again",
+      code: "REMATCH_DECLINED",
+    });
+    return { ok: false, code: "REMATCH_DECLINED" };
+  }
+
+  game.rematchVotes.add(userId);
+  broadcastRematchVotes(io, game, roomId);
+  if (!rematchAnswered(game)) return OK;
+  return dealVotedManche(io, game, roomId, userId);
+}
+
+/**
+ * The gate again, after a seat has gone.
+ *
+ * It compares the votes cast against the seats still there, and only a vote
+ * ever evaluates it — so a seat that leaves rather than votes moves the
+ * threshold under a tally nothing reads again, and the table sits on a full
+ * count waiting for a player who is no longer at it.
+ */
+async function dealIfSeatLeftGateClosed(
+  io: SocketServer,
+  roomId: string
+): Promise<EventOutcome> {
+  const game = activeGames.get(roomId);
+  if (!game || !game.gameState.gameOver || !rematchAnswered(game)) return OK;
+  const [tell] = Object.values(game.playerMap);
+  if (!tell) return OK;
+  if (game.matchOver && !tableWantsRematch(game)) return OK;
+  return dealVotedManche(io, game, roomId, tell);
+}
+
 async function rejoinAction(
   io: SocketServer,
   game: OnlineGameState,
@@ -421,6 +468,9 @@ async function rejoinAction(
   // player may well have come back on another one. Clearing it here is what
   // makes the answer independent of that.
   clearDisconnectGrace(userId);
+  // The other grace a seat can be held under: the one armed when the drop
+  // landed between two manches.
+  clearLobbyGrace(roomId, userId);
 
   // Idempotent — an INSERT on every reconnect would pile up duplicate
   // room_players rows and corrupt the next rematch.
@@ -606,12 +656,13 @@ function seatLostAction(
   if (seatOfUser(game, userId) === null) return { ok: false, code: "NOT_SEATED" };
 
   if (game.gameState.gameOver) {
-    // The results screen is the opposite case: the seat counts towards the
-    // rematch gate, so holding it means the others can never start the next
-    // manche.
-    return handleSeatRelease(io, roomId, userId, username, { source: "disconnect" }).then(
-      () => OK
-    );
+    // A seat between hands counts towards the rematch gate, so holding it for
+    // the whole disconnect grace would stall three other players on one who
+    // may not be coming back — but releasing it outright charges a blip the
+    // whole match. The lobby grace is the short one, and its expiry asks the
+    // question this needs: back in *this* room, not merely back online.
+    const held = armLobbyGrace(io, roomId, userId, username);
+    return held ? held.then(() => OK) : OK;
   }
 
   // Distinct from losing: the hand was still running when they went.
@@ -657,6 +708,9 @@ function seatLostAction(
             )
           );
         await vacateSeat(io, roomId, userId, username);
+        // The hand may well have ended inside the grace, which puts this seat
+        // in the rematch tally it is now leaving.
+        await dealIfSeatLeftGateClosed(io, roomId);
         logger.info({ userId, username, roomId }, "Disconnect grace expired — seat handed to a bot");
       } catch (err) {
         logger.error({ err, userId, roomId }, "Disconnect timeout handler failed");
@@ -725,7 +779,9 @@ async function applyTableAction(
       // game knows whether the seat is still held. Removing the DB row alone
       // leaves it live — auto-playing the leaver's hand, or blocking the
       // rematch gate.
-      return vacateSeat(io, action.roomId, action.userId, action.username).then(() => OK);
+      return vacateSeat(io, action.roomId, action.userId, action.username).then(() =>
+        dealIfSeatLeftGateClosed(io, action.roomId)
+      );
   }
 }
 
