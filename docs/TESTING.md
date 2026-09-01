@@ -513,6 +513,18 @@ restored the known-stable baseline that `smoke.yaml` passes on.
    is exactly the kind of host-specific flakiness that's worth confirming
    isn't universal before spending more time on it locally.
 
+**Option 3 is answered: it is not universal.** The ceiling above belongs to
+this host and to Expo Go, not to the flow or to emulation. `maestro.yml` drives
+a release APK — which carries its own bundle, so there is no dev server, no
+packager link and no dev-menu window over the app — and on a stock two-core
+`ubuntu-latest`, run 33448536219 held the game table for 4m 41s and passed
+`smoke.yaml` in 7m 6s. It failed on a named assertion with a message, which is
+the opposite of the silent death this section predicted. No larger runner was
+needed, and #185 closed on that evidence.
+
+What is still true here is everything above about *this machine* under Expo Go
+and `swiftshader_indirect`. Do not read it as a statement about CI.
+
 ### Selectors
 
 Prefer accessibility labels/`testID`s (`id: "btn-passa"`, `id: "btn-gioca"`,
