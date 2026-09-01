@@ -1276,3 +1276,82 @@ export function rotateGlyphAngle(turn: number): number {
   return (ROTATE_SETTLED - turn) * UPRIGHT_DEGREES;
 }
 
+
+export interface ThrownPlay {
+  key: string;
+  dir: FlyDirection;
+  cards: Card[];
+  /** Where the throw starts, relative to where it lands. */
+  origin: { dx: number; dy: number };
+  /** Impact reads heavier for these. */
+  heavy: boolean;
+  /** The throw emptied the hand it came from, so the flush is owed. */
+  emptiedHand: boolean;
+}
+
+export interface ThrownPlayInput {
+  combo: Combination;
+  playedBy: number;
+  viewerSeat: number;
+  players: readonly Player[];
+  opponents: OpponentArrangement<Player>;
+  scale: number;
+  windowWidth: number;
+  windowHeight: number;
+  /**
+   * `TableFrame`'s own fields rather than the frame — it is rebuilt every
+   * render, so an effect that depended on the object would re-run on every
+   * one of them.
+   */
+  tableLeft: number;
+  tableRight: number;
+  tableTop: number;
+  surplus: number;
+  bottomPad: number;
+  /** A hand card's height, which sets the hand row's own. */
+  handCardH: number;
+}
+
+/**
+ * Everything a throw decides, from the state it was thrown out of.
+ *
+ * The counts are the seats' *displayed* ones, held at their pre-play values
+ * for the length of the flight: the pile sits in whatever room the top seat's
+ * column leaves whichever seat is throwing, so a fan that shrinks the moment
+ * the cards leave would move the pile out from under them mid-flight.
+ */
+export function readThrownPlay(input: ThrownPlayInput): ThrownPlay {
+  const { combo, playedBy, players, opponents } = input;
+  const dir = seatDirection(playedBy, input.viewerSeat, players.length);
+
+  const topPlayer = opponents.top?.player;
+  const topDisplayedCount = topPlayer
+    ? displayedHandCount(handCountOf(topPlayer), dir === "top" ? combo.cards.length : 0)
+    : 0;
+  const sidePlayer = dir === "left" || dir === "right" ? opponents[dir]?.player : undefined;
+  const sideDisplayedCount = sidePlayer
+    ? displayedHandCount(handCountOf(sidePlayer), combo.cards.length)
+    : 0;
+
+  const thrower = players[playedBy];
+  return {
+    key: comboKey(combo, playedBy),
+    dir,
+    cards: combo.cards,
+    heavy: combo.type === "bomb" || combo.type === "royal_straight",
+    emptiedHand: !!thrower && handCountOf(thrower) === 0,
+    origin: flightOrigin({
+      dir,
+      scale: input.scale,
+      windowWidth: input.windowWidth,
+      windowHeight: input.windowHeight,
+      tableLeft: input.tableLeft,
+      tableRight: input.tableRight,
+      tableTop: input.tableTop,
+      surplus: input.surplus,
+      handZoneH: HAND_ZONE_H(input.handCardH, input.bottomPad),
+      topDisplayedCount,
+      sideDisplayedCount,
+    }),
+  };
+}
