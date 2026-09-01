@@ -2109,11 +2109,6 @@ describe("readThrownPlay", () => {
     assert.equal(read(table(2, 1), 2).emptiedHand, false, "one card is not none");
   });
 
-  /**
-   * The reason the counts are taken here rather than read at render: the pile
-   * sits in the room the top seat's column leaves, so a fan that shrank as the
-   * cards left would move the pile out from under its own flight.
-   */
   test("a throw from the top seat starts where that seat's pre-play fan put it", () => {
     assert.notDeepEqual(
       read(table(2, 1), 2).origin,

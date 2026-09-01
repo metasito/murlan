@@ -1299,16 +1299,17 @@ export interface ThrownPlayInput {
   windowWidth: number;
   windowHeight: number;
   /**
-   * `TableFrame`'s own fields rather than the frame — it is rebuilt every
-   * render, so an effect that depended on the object would re-run on every
-   * one of them.
+   * `TableFrame`'s own fields rather than the frame. Naming the frame inside
+   * an effect is what `react-hooks/exhaustive-deps` makes it demand, and
+   * `computeTableFrame` runs on every render — so the caller would re-run on
+   * every render to pass one object it rebuilt anyway.
    */
   tableLeft: number;
   tableRight: number;
   tableTop: number;
   surplus: number;
   bottomPad: number;
-  /** A hand card's height, which sets the hand row's own. */
+  /** A hand card's height, which is what sets the height of the hand row. */
   handCardH: number;
 }
 
