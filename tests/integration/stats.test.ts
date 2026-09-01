@@ -130,7 +130,7 @@ describe("stats persistence (Task 8)", { skip: hasDatabase() ? false : skipMessa
       });
       assert.ok(payload, "game:over must fire");
 
-      const { getMatchHistoryView } = await import("../../server/stats.ts");
+      const { getMatchHistoryView } = await import("../../server/matchHistoryView.ts");
       const rows = await waitForRow(async () => {
         const view = await getMatchHistoryView(cara.user.id);
         return view.length > 0 && view[0].replayId !== null ? view : null;
@@ -188,7 +188,7 @@ describe("stats persistence (Task 8)", { skip: hasDatabase() ? false : skipMessa
       [user.id, JSON.stringify(["bot:1", "bot:2"])]
     );
 
-    const { getMatchHistoryView } = await import("../../server/stats.ts");
+    const { getMatchHistoryView } = await import("../../server/matchHistoryView.ts");
     const [hand] = await getMatchHistoryView(user.id);
 
     assert.equal(hand.replayId, null, "no replay pairs it, so nothing offers to play it");
