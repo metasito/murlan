@@ -263,3 +263,47 @@ describe("slotForCard", () => {
     }
   });
 });
+
+/**
+ * #683: `cardViewPropsEqual` skipped `hitWidth`, so a card kept the strip width
+ * of the hand before the play while its slot moved to the new one. The drift is
+ * the difference between the two steps, accumulated across the row, which is
+ * why it was reported as taps landing further off with every card played.
+ *
+ * Stated here because a press cannot state it (#720): the strip is ~3px narrow
+ * after one play and a card's art centre sits ~25px inside it, so a coordinate
+ * press lands on the right card either way. It takes the whole row to show.
+ */
+describe("a tap strip left at the previous hand's width", () => {
+  /** Where the press goes: the middle of the strip the *current* hand draws. */
+  const aimAt = (i: number, step: number) => i * step + step / 2;
+
+  /** The first card whose own press the stale strips give to somebody else. */
+  function firstMisrouted(n: number, room: number): number {
+    const stale = computeHandLayout(n, room, CW).step;
+    const fresh = computeHandLayout(n - 1, room, CW).step;
+    for (let i = 0; i < n - 1; i++) {
+      if (cardAtX(aimAt(i, fresh), n - 1, stale, CW) !== i) return i;
+    }
+    return -1;
+  }
+
+  test("sends a press to the wrong card, further along the row each time", () => {
+    // A full hand in a phone's share: the step is compressed, so playing a card
+    // widens it and every later slot moves out from under its own strip.
+    const room = 600;
+    for (const n of [14, 18]) {
+      const i = firstMisrouted(n, room);
+      assert.notEqual(i, -1, `a hand of ${n} in ${room} never misroutes, so this proves nothing`);
+      assert.ok(i > 0, "the first card cannot drift — it sits at the row's own origin");
+    }
+  });
+
+  test("cannot, where the step is already against a stop", () => {
+    // Clamped at MIN_READABLE_STEP, and clamped at MAX_STEP_RATIO: playing a
+    // card moves neither, so the stale strip is the fresh one. The defect
+    // needs the compressed middle, which is what the case above uses.
+    assert.equal(firstMisrouted(18, 320), -1, "against the finger floor");
+    assert.equal(firstMisrouted(13, 900), -1, "against the widest step a card takes");
+  });
+});
