@@ -19,7 +19,9 @@ import {
   Scrim,
   Spacing,
   TOUCH_TARGET_MIN,
-  Type, Layer, } from "@/lib/theme";
+  Type,
+  Layer,
+} from "@/lib/theme";
 
 /** The rematch question's own column down the side of the table. */
 const REMATCH_PANEL_W = 86;

@@ -71,7 +71,7 @@ export function StartReasonBanner({
 }
 
 /** Over the felt and the flying cards, under the exchange and the overlays. */
-const START_REASON_Z = 50;
+const START_REASON_Z = Layer.band;
 const START_REASON_MAX_W = 420;
 
 const startReasonStyles = StyleSheet.create({
@@ -331,7 +331,7 @@ export function RailKnob({
 }
 
 /** Over the felt and the seats, under the banners and the overlays. */
-const RAIL_Z = 20;
+const RAIL_Z = Layer.rail;
 
 const railStyles = StyleSheet.create({
   // No horizontal edge here: `side` sets the one it is against, and a `left: 0`

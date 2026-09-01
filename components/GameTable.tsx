@@ -150,9 +150,9 @@ const WEB_CLIP =
 const REJECT_HINT_MS = 2600;
 const REJECT_HINT_MAX_W = 260;
 /** Above the top bar and the rematch panel: the reason must not be covered. */
-const REJECT_HINT_Z = 30;
+const REJECT_HINT_Z = Layer.hint;
 /** The banner band sits over the felt, under the reject hint. */
-const BANNER_BAND_Z = 50;
+const BANNER_BAND_Z = Layer.band;
 /**
  * The felt is decoration and everything else is the game, so the game is
  * always on top. Stated rather than left to sibling order: the pool paints

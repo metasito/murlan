@@ -89,6 +89,21 @@ describe("orientation is never narrowed behind the player's back", () => {
     assert.ok(total > 0, "found no <Modal> at all — the scanner is broken");
   });
 
+  // Strictly stronger than the prop check above, which a new modal passes by
+  // remembering the prop. One shell is a site nobody has to remember at.
+  test("components/AppModal.tsx is the app's only <Modal>", () => {
+    const SHELL = "components/AppModal.tsx";
+    const declaring = screenSources()
+      .filter(([, src]) => modalOpeningTags(src).length > 0)
+      .map(([file]) => file);
+    assert.deepEqual(
+      declaring,
+      [SHELL],
+      `render <AppModal> instead — a second <Modal> is a second place to get ` +
+        `supportedOrientations, statusBarTranslucent and onRequestClose wrong: ${declaring.join(", ")}`
+    );
+  });
+
   test("only the game table forces an orientation", () => {
     const lockers = screenSources()
       .filter(([, src]) => src.includes("lockAsync"))

@@ -108,7 +108,7 @@ const MOVE_KEYS = { ArrowLeft: MOVE_LEFT, ArrowRight: MOVE_RIGHT };
 const VEIL_Z = Layer.table + 1;
 
 /** Past every card's own `zIndex`, which is its index in a hand of at most 18. */
-const HELD_Z = 100;
+const HELD_Z = Layer.held;
 
 interface CardItemProps {
   card: Card;
@@ -984,7 +984,7 @@ const handStyles = StyleSheet.create({
   cardGlow: {
     position: "absolute",
     top: 2, left: 2, right: 2, bottom: 2,
-    zIndex: 0,
+    zIndex: Layer.felt,
     borderRadius: Radius.sm,
     backgroundColor: Colors.gold,
     ...Shadow.goldSoft,
@@ -1014,7 +1014,7 @@ const handStyles = StyleSheet.create({
   giveableGlow: {
     position: "absolute",
     top: 0, left: 0, right: 0, bottom: 0,
-    zIndex: 0,
+    zIndex: Layer.felt,
     backgroundColor: Colors.gold,
     ...Shadow.gold,
   },

@@ -1,7 +1,7 @@
 // Design tokens. No runtime react-native import, so this is loadable outside a
 // bundler (tests import it directly). `theme.ts` re-exports everything here and
 // adds the platform-aware Shadow.
-import type { TextStyle } from "react-native";
+import type { TextStyle, ViewStyle } from "react-native";
 
 // Named once because two unrelated roles want the same ink: the second-place
 // podium and the silver card back.
@@ -128,6 +128,21 @@ export const Highlight = {
   clear: 'rgba(255,255,255,0.12)',
 } as const;
 
+/**
+ * One hairline of light along a surface's top edge: the cue that it has a
+ * thickness and is facing up. The inset and the tint are the only things a
+ * caller varies — a card is inset by a proportion of its own width, a panel by
+ * a fixed gutter.
+ */
+export const TopEdgeLight: ViewStyle = {
+  position: "absolute",
+  top: 0,
+  left: "12%",
+  right: "12%",
+  height: 1,
+  backgroundColor: Highlight.clear,
+};
+
 // Card face, lit from the top-left corner. Order is the gradient order.
 export const CardFaceGradient = [
   Colors.cardPaper,
@@ -188,6 +203,19 @@ export const Garnet = {
   base:  '#370A11',
   label: '#F4D5D0',
 } as const;
+
+/**
+ * The gradients, together, so a drifted copy is visible as one. `menuButton`
+ * and `playButton` open on different rungs of the gold scale deliberately: the
+ * table's is the brighter of the two because it sits on felt, not on a menu.
+ */
+export const Gradient = {
+  menuButton: [Colors.goldLight, Colors.gold, Colors.goldDark],
+  playButton: [Colors.goldLit, Colors.gold, Colors.goldDark],
+  menuCard: [Colors.feltLight, Colors.felt, Colors.feltDark],
+  garnet: [Garnet.lip, Garnet.face, Garnet.deep, Garnet.base],
+} as const;
+
 
 // Table felts, from the cloth directly under the lamp out to the cloth at the
 // edge of its reach. Order is the falloff order, and it is a falloff rather

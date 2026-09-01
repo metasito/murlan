@@ -3,6 +3,8 @@ import type { Socket } from "socket.io-client";
 import type { Card } from "../../lib/gameEngine.ts";
 import { connectAs, waitFor, DEADLINE_SCALE, type RegisteredUser } from "./client.ts";
 import type { TestServer } from "./testServer.ts";
+import type { GameOverPayload } from "../../lib/matchState.ts";
+export type { GameOverPayload };
 
 /**
  * Shared machinery for the integration suites that seat a table and play a
@@ -61,10 +63,6 @@ export interface Client {
   cookie: string;
 }
 
-export interface GameOverPayload {
-  rankings: string[];
-  matchOver: boolean;
-}
 
 export async function makeClients(
   server: TestServer,

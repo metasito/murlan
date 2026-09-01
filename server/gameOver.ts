@@ -6,6 +6,7 @@ import type { OnlineGameState } from "./gameRoom.ts";
 import { resolveHandEnd } from "./onlineGameLogic.ts";
 import { replaySeatsOf } from "./replayShape.ts";
 import { isMajority, tallyRematchAnswers, firstTargetFor } from "../lib/gameEngine.ts";
+import type { GameOverPayload } from "../lib/matchState.ts";
 import type { GameMode } from "../lib/gameEngine.ts";
 import type { GameResult } from "../lib/achievements.ts";
 import type { ReplayMove, ReplaySeat } from "../lib/replay.ts";
@@ -105,7 +106,7 @@ export async function handleGameOver(
         })
     : new Map<string, number>();
 
-  io.to(roomId).emit("game:over", {
+  const over: GameOverPayload = {
     rankings: state.rankings,
     scores: detailed,
     matchTarget: game.matchTarget,
@@ -120,7 +121,8 @@ export async function handleGameOver(
     // shows its empty state on absence rather than on a zero, which is a real
     // outcome.
     ratingDeltas: Object.fromEntries(ratingDeltasByUser),
-  });
+  };
+  io.to(roomId).emit("game:over", over);
 
   // The one record of how a hand resolved. `match_replays` is not a substitute:
   // it is written only for a table with a human seat and a live moveLog, and it

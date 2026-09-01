@@ -29,7 +29,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { stop } from "./felt";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { sparkOffset, SPARK_COUNT } from "@/components/gameTableModel";
-import { makeShadow, Motion } from "@/lib/theme";
+import { Layer, makeShadow, Motion } from "@/lib/theme";
 
 // The prototype's own literal colours for this one effect — a lamp exploding
 // at the pile is a brighter, whiter flash than the felt's own ambient
@@ -56,7 +56,7 @@ const FLARE_ID = "bombFlare";
 const FLARE_SIZE = 150;
 const FLARE_MS = 1500;
 const FLARE_EASING = Easing.bezier(0.12, 0.72, 0.28, 1);
-const FLARE_Z = 10;
+const FLARE_Z = Layer.moment;
 
 function Flare({ trigger, scale }: { trigger: number; scale: number }) {
   const reduceMotion = usePrefersReducedMotion();
@@ -123,7 +123,7 @@ function Flare({ trigger, scale }: { trigger: number; scale: number }) {
 const WAVE_SIZE = 120;
 const WAVE_BORDER = 2;
 const WAVE_EASING = Easing.bezier(0.1, 0.7, 0.25, 1);
-const WAVE_Z = 9;
+const WAVE_Z = Layer.moment - 1;
 /** The two rings. They run for the same length; the trail is entirely the delay. */
 const WAVE_RINGS = [
   { delay: Motion.duration.flash, duration: Motion.duration.dwell },
@@ -200,7 +200,7 @@ function Wave({
 const SPARK_SIZE = 3;
 const SPARK_MS = 1150;
 const SPARK_EASING = Easing.bezier(0.15, 0.75, 0.3, 1);
-const SPARK_Z = 11;
+const SPARK_Z = Layer.moment + 1;
 const SPARK_SCALE_FROM = 0.4;
 const SPARK_SCALE_TO = 0.2;
 
@@ -277,9 +277,9 @@ function Spark({ index, trigger, scale }: { index: number; trigger: number; scal
 
 const SPARK_INDICES = Array.from({ length: SPARK_COUNT }, (_, i) => i);
 // Over the pile it rings, under the flight still settling onto it
-// (pileStyles.flyingContainer, zIndex 60). Stated, never left to sibling
+// (pileStyles.flyingContainer, Layer.sheet). Stated, never left to sibling
 // order — CLAUDE.md's invariant, and the iOS renderer is why.
-const BURST_Z = 50;
+const BURST_Z = Layer.band;
 
 /**
  * The bomb's four layers, centred on the impact point — the same point
@@ -312,7 +312,7 @@ const SWEEP_W_FACTOR = 2.2;
 const SWEEP_H_FACTOR = 1.4;
 /** Its own travel: -60% to 60% of *its own* (oversized) width. */
 const SWEEP_TRAVEL_FACTOR = 0.6;
-const SWEEP_Z = 65;
+const SWEEP_Z = Layer.sheet + 1;
 
 /** A diagonal pass of light across the whole table — the flush's own sweep. */
 export function Sweep({ trigger, width, height }: { trigger: number; width: number; height: number }) {

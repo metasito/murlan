@@ -455,7 +455,7 @@ const pileStyles = StyleSheet.create({
   catchGlow: {
     position: "absolute",
     top: 2, left: 2, right: 2, bottom: 2,
-    zIndex: 0,
+    zIndex: Layer.felt,
     borderRadius: Radius.sm,
     backgroundColor: Colors.gold,
     ...Shadow.goldSoft,

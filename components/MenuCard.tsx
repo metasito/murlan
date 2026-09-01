@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, ViewStyle } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Colors, Spacing, Radius, FontSize, Highlight, Shadow } from '@/lib/theme';
+import { Colors, Spacing, Radius, FontSize, Gradient, Highlight, Shadow } from '@/lib/theme';
 import { takesSlack } from './MenuLayout';
 
 type Padding = 'sm' | 'md' | 'lg';
@@ -46,7 +46,7 @@ const paddingStyles = StyleSheet.create({
 
 // Lit from the top-left, like every other raised surface in the app, so a
 // column of cards reads as one lighting model rather than as flat swatches.
-const CARD_GRADIENT = [Colors.feltLight, Colors.felt, Colors.feltDark] as const;
+const CARD_GRADIENT = Gradient.menuCard;
 
 const styles = StyleSheet.create({
   wrapper: { marginBottom: Spacing.md },

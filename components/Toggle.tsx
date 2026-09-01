@@ -1,6 +1,7 @@
-import { Pressable, StyleSheet, View } from "react-native";
-import { Colors, Radius, TOUCH_TARGET_MIN } from "@/lib/theme";
-import { a11yHidden, a11yState, useA11yHint } from "@/lib/a11y";
+import { Pressable, StyleSheet } from "react-native";
+import { Opacity, TOUCH_TARGET_MIN } from "@/lib/theme";
+import { SwitchVisual } from "@/components/SwitchVisual";
+import { a11yState, useA11yHint } from "@/lib/a11y";
 
 /**
  * An on/off switch.
@@ -40,21 +41,12 @@ export function Toggle({
           pressed && styles.pressed,
         ]}
       >
-        <View style={[styles.track, value && styles.trackOn]} {...a11yHidden()}>
-          <View style={[styles.thumb, value ? styles.thumbOn : styles.thumbOff]} />
-        </View>
+        <SwitchVisual on={value} />
       </Pressable>
       {hint.node}
     </>
   );
 }
-
-const TRACK_W = 52;
-const TRACK_H = 32;
-const THUMB = 24;
-const THUMB_INSET = (TRACK_H - THUMB) / 2;
-const PRESSED_OPACITY = 0.8;
-const DISABLED_OPACITY = 0.4;
 
 const styles = StyleSheet.create({
   // The Pressable's own box is the whole target: react-native-web reads
@@ -65,22 +57,6 @@ const styles = StyleSheet.create({
     alignItems: "flex-end",
     justifyContent: "center",
   },
-  disabled: { opacity: DISABLED_OPACITY },
-  pressed: { opacity: PRESSED_OPACITY },
-  track: {
-    width: TRACK_W,
-    height: TRACK_H,
-    justifyContent: "center",
-    borderRadius: Radius.full,
-    backgroundColor: Colors.bgElevated,
-  },
-  trackOn: { backgroundColor: Colors.gold },
-  thumb: {
-    width: THUMB,
-    height: THUMB,
-    borderRadius: Radius.full,
-    position: "absolute",
-  },
-  thumbOff: { left: THUMB_INSET, backgroundColor: Colors.textMuted },
-  thumbOn: { right: THUMB_INSET, backgroundColor: Colors.white },
+  disabled: { opacity: Opacity.disabled },
+  pressed: { opacity: Opacity.pressed },
 });

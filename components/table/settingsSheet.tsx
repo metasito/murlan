@@ -13,7 +13,8 @@ import { physicalTouchTarget } from "@/components/cardFaceModel";
 import type { RailSide } from "@/components/gameTableModel";
 import { TableText } from "./TableText";
 import { LinearGradient } from "expo-linear-gradient";
-import { Colors, FontSize, Garnet, Highlight, makeShadow, Motion, Scrim, Spacing, TOUCH_TARGET_MIN } from "@/lib/theme";
+import { Colors, FontSize, Garnet, Gradient, Layer, makeShadow, Motion, Scrim, Spacing, TOUCH_TARGET_MIN } from "@/lib/theme";
+import { SwitchVisual } from "@/components/SwitchVisual";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
 import { useSettings } from "@/context/SettingsContext";
@@ -58,43 +59,9 @@ function useBackToClose(onBack: () => void) {
   }, [onBack]);
 }
 
-const SWITCH_W = 34;
-const SWITCH_H = 19;
-const SWITCH_THUMB = 13;
-const SWITCH_INSET = 3;
+/** The sheet's rows are laid out at their own scale, so the switch follows it. */
+const SWITCH_SCALE = 34 / 52;
 
-function RowSwitch({ on, scale }: { on: boolean; scale: number }) {
-  const w = SWITCH_W * scale;
-  const h = SWITCH_H * scale;
-  const thumb = SWITCH_THUMB * scale;
-  const inset = SWITCH_INSET * scale;
-  const travel = w - thumb - inset * 2;
-  return (
-    <View
-      {...a11yHidden()}
-      style={[
-        sheetStyles.switchTrack,
-        { width: w, height: h, borderRadius: h / 2, borderWidth: StyleSheet.hairlineWidth },
-        on ? sheetStyles.switchTrackOn : sheetStyles.switchTrackOff,
-      ]}
-    >
-      <View
-        style={[
-          sheetStyles.switchThumb,
-          {
-            width: thumb,
-            height: thumb,
-            borderRadius: thumb / 2,
-            top: (h - thumb) / 2,
-            left: inset,
-            transform: [{ translateX: on ? travel : 0 }],
-          },
-          on ? sheetStyles.switchThumbOn : sheetStyles.switchThumbOff,
-        ]}
-      />
-    </View>
-  );
-}
 
 const ROW_RADIUS = 8;
 const ROW_PAD_H = 7;
@@ -163,7 +130,7 @@ function SheetRow({
             )}
           </View>
         </View>
-        <RowSwitch on={on} scale={scale} />
+        <SwitchVisual on={on} scale={scale * SWITCH_SCALE} />
       </Pressable>
       {a11y.node}
     </>
@@ -199,7 +166,7 @@ const SHEET_GRADIENT = ["rgba(4,18,12,0.93)", "rgba(1,8,5,0.96)"] as const;
 // on either platform, and a gradient into the panel's own colour reads the
 // same wherever a fixed length of rows happens to end.
 const ROWS_FADE_GRADIENT = ["rgba(1,8,5,0)", "rgba(1,8,5,0.96)"] as const;
-const EXIT_GRADIENT = [Garnet.lip, Garnet.face, Garnet.deep, Garnet.base] as const;
+const EXIT_GRADIENT = Gradient.garnet;
 const EXIT_GRADIENT_LOCATIONS = [0, 0.22, 0.6, 1] as const;
 
 export interface GameSettingsSheetProps {
@@ -220,7 +187,7 @@ export interface GameSettingsSheetProps {
 }
 
 /** Above the felt, the seats and the HUD chips; below the exit confirmation, which is a real Modal. */
-const SHEET_Z = 60;
+const SHEET_Z = Layer.sheet;
 
 export function GameSettingsSheet({
   rail,
@@ -466,12 +433,6 @@ const sheetStyles = StyleSheet.create({
     textTransform: "uppercase",
     letterSpacing: 1,
   },
-  switchTrack: { justifyContent: "center" },
-  switchTrackOff: { backgroundColor: Highlight.soft, borderColor: Colors.goldSoft },
-  switchTrackOn: { backgroundColor: Colors.goldBorder, borderColor: Colors.goldLit },
-  switchThumb: { position: "absolute" },
-  switchThumbOff: { backgroundColor: Colors.textMuted },
-  switchThumbOn: { backgroundColor: Colors.goldLit },
   divider: { height: 1, backgroundColor: Colors.goldBorder },
   exit: { alignItems: "center", justifyContent: "center" },
   exitPressed: { opacity: 0.88 },

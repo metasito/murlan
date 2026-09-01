@@ -53,7 +53,7 @@ const ERROR_TOAST_MS = 3000;
  * therefore has to state its own place above them, rather than inherit one
  * from where it sits in the tree.
  */
-const OVERLAY_LAYER_Z = 300;
+const OVERLAY_LAYER_Z = Layer.overlay;
 
 export default function OnlineGameScreen() {
   const insets = useSafeAreaInsets();
