@@ -15,9 +15,22 @@ import { test, expect } from "./fixtures";
 import { openApp, registerNewAccount, uniqueUsername } from "./helpers/navigation";
 import { settled } from "./helpers/settle";
 import { it as copy } from "../../locales/it";
+import { Reading } from "../../lib/tokens";
 
 const FRIENDS_BUTTON = /^Amici/;
 const BANNER = '[data-testid="notification-banner"]';
+
+/**
+ * The ceiling on each of the two waits below.
+ *
+ * This spec builds its own context, so it does not get the reduced motion the
+ * `page` fixture emulates and both animations really run. `settled` returns as
+ * soon as what it watches holds still, so in the ordinary case this bounds
+ * nothing; what it has to guarantee is that a banner which never settles is
+ * still a *live* banner when it is measured. It dismisses itself
+ * `Reading.notice` after landing, so both ceilings together stay inside that.
+ */
+const STILL_MS = Reading.notice / 4;
 
 /** Real handsets and a real tablet, both ways up. A banner costs most where the window is shortest. */
 const VIEWPORTS = [
@@ -98,7 +111,12 @@ test("a banner displaces the controls under it rather than covering them", async
       await settled(page, 2_000);
 
       await raiseBanner(page, target);
-      // Read while it is still up: the banner leaves on its own after ~4.5s.
+      // Both boxes this compares move, and not together: `MenuLayout` eases the
+      // controls out of the way off the banner's measured height, so their
+      // movement begins after the slide it is reacting to. The scoped wait
+      // covers the banner; the default reading covers the controls.
+      await settled(page, STILL_MS, BANNER);
+      await settled(page, STILL_MS);
       const bannerBox = (await page.locator(BANNER).boundingBox())!;
       const covered = (await controls(page)).filter((c) => overlaps(c.box, bannerBox));
 
