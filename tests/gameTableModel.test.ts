@@ -8,13 +8,14 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { CARD_H, CARD_W, BACK_SCALE } from "../components/cardFaceModel.ts";
 import { TOUCH_TARGET_MIN } from "../lib/tokens.ts";
-import type { Card } from "../lib/gameEngine.ts";
+import type { Card, Combination } from "../lib/gameEngine.ts";
 import {
   ROTATE_SETTLED,
   ROTATE_UPRIGHT,
   rotateGlyphAngle,
   arrivingCard,
   readHandArrival,
+  readThrownPlay,
   actionBtnSize,
   HAND_ZONE_GAP,
   CHIP_H,
@@ -2044,5 +2045,98 @@ describe("arrivingCard", () => {
       assert.equal(at.withheldId, undefined);
       assert.equal(at.descendingId, undefined);
     });
+  });
+});
+
+describe("readThrownPlay", () => {
+  const card = (id: string) =>
+    ({ id, suit: "clubs", rank: "5", isJoker: false }) as Card;
+  const seat = (id: string, cards: number) =>
+    ({
+      id,
+      name: id,
+      type: "ai",
+      hand: Array.from({ length: cards }, (_, i) => card(`${id}_${i}`)),
+    }) as unknown as Player;
+
+  const PAIR = { type: "pair", cards: [card("x"), card("y")], strength: 5 } as Combination;
+  const BOMB = { type: "bomb", cards: [card("b")], strength: 9 } as Combination;
+
+  /** Four seats, the viewer at 0, everyone still holding cards. */
+  const table = (thrower: number, throwerCards = 6) => {
+    const players = [seat("me", 5), seat("right", 6), seat("top", 7), seat("left", 8)];
+    players[thrower] = seat(["me", "right", "top", "left"][thrower]!, throwerCards);
+    return players;
+  };
+
+  const read = (players: Player[], playedBy: number, combo = PAIR) =>
+    readThrownPlay({
+      combo,
+      playedBy,
+      viewerSeat: 0,
+      players,
+      opponents: arrangeOpponents(players, 0),
+      scale: 1,
+      windowWidth: 844,
+      windowHeight: 390,
+      tableLeft: 20,
+      tableRight: 20,
+      tableTop: 12,
+      surplus: 0,
+      bottomPad: 8,
+      handCardH: 90,
+    });
+
+  test("the cards are the combination's own, thrown from the seat that played it", () => {
+    const thrown = read(table(2), 2);
+    assert.deepEqual(thrown.cards, PAIR.cards);
+    assert.equal(thrown.dir, "top");
+  });
+
+  test("a bomb and a royal straight land heavier than anything else", () => {
+    assert.equal(read(table(2), 2, BOMB).heavy, true);
+    assert.equal(
+      read(table(2), 2, { type: "royal_straight", cards: [card("r")], strength: 9 } as Combination)
+        .heavy,
+      true
+    );
+    assert.equal(read(table(2), 2).heavy, false);
+  });
+
+  test("the flush is owed only when the throw left the hand empty", () => {
+    assert.equal(read(table(2, 0), 2).emptiedHand, true, "the thrower has nothing left");
+    assert.equal(read(table(2, 1), 2).emptiedHand, false, "one card is not none");
+  });
+
+  test("a throw from the top seat starts where that seat's pre-play fan put it", () => {
+    assert.notDeepEqual(
+      read(table(2, 1), 2).origin,
+      read(table(2, 5), 2).origin,
+      "the top seat's own count has to reach the origin, or the pile cannot be placed under it"
+    );
+  });
+
+  /**
+   * The fan draws at most `FAN_DRAWN_CARDS.top`, so past that the column stops
+   * growing and the pile stops moving. Pinned because the test above would
+   * pass for the wrong reason at any two counts on this side of the cap.
+   */
+  test("past the drawn cap the column stops growing, so the pile stops moving", () => {
+    assert.deepEqual(read(table(2, 7), 2).origin, read(table(2, 11), 2).origin);
+  });
+
+  test("each seat throws from its own side", () => {
+    const players = table(1);
+    const origins = [1, 2, 3].map((s) => ({
+      dir: read(players, s).dir,
+      dx: read(players, s).origin.dx,
+    }));
+    assert.deepEqual(
+      origins.map((o) => o.dir),
+      ["right", "top", "left"]
+    );
+    assert.ok(origins[0]!.dx > 0, "the right seat throws from the right");
+    assert.ok(origins[2]!.dx < 0, "the left seat throws from the left");
+    assert.equal(origins[1]!.dx, 0, "the top seat throws straight down the middle");
   });
 });

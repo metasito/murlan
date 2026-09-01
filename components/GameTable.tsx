@@ -66,10 +66,9 @@ import {
   LANDSCAPE_LEFT,
   readHandArrival,
   describeTableForA11y,
-  displayedHandCount,
   EMPTY_PILE,
-  flightOrigin,
   handCountOf,
+  readThrownPlay,
   impactDelayMs,
   lightPosition,
   passedSeats,
@@ -1270,17 +1269,29 @@ export function GameTable({
     prevComboKeyRef.current = key;
     setPileState((s) => advancePile(s, combo, gameState.lastPlayedBy));
 
+    const thrown = readThrownPlay({
+      combo,
+      playedBy: gameState.lastPlayedBy,
+      viewerSeat,
+      players,
+      opponents,
+      scale,
+      windowWidth: W,
+      windowHeight: H,
+      tableLeft: frame.tableLeft,
+      tableRight: frame.tableRight,
+      tableTop: frame.tableTop,
+      surplus: frame.surplus,
+      bottomPad: frame.bottomPad,
+      handCardH,
+    });
+
     // The card is thrown here and arrives ~312ms later, so everything that
     // reads as *impact* waits for it. Announced for every seat, not only the
     // viewer's: the sound belongs to a card landing, not to a tap.
-    const heavy = combo.type === "bomb" || combo.type === "royal_straight";
-    // The flush: this play emptied the throwing seat's hand. `players` is
-    // already this render's post-play state — same commit `combo` came from.
-    const playedByPlayer = players[gameState.lastPlayedBy];
-    const emptiedHand = !!playedByPlayer && handCountOf(playedByPlayer) === 0;
     impactTimerRef.current = setTimeout(() => {
-      playImpact(heavy);
-      if (emptiedHand) celebrateFlush();
+      playImpact(thrown.heavy);
+      if (thrown.emptiedHand) celebrateFlush();
     }, impactDelayMs(reduceMotion));
 
     // The throwing seat's held count and departing backs read off this same
@@ -1293,39 +1304,7 @@ export function GameTable({
       setFlightLanded(true);
     }, impactDelayMs(reduceMotion));
 
-    const dir = seatDirection(gameState.lastPlayedBy, viewerSeat, players.length);
-    // The pile sits in whatever vertical room the top seat's own column
-    // leaves, whichever seat is actually throwing — so its origin needs the
-    // top seat's *displayed* count, held at its pre-play value for the length
-    // of a flight from that seat specifically.
-    const topPlayer = opponents.top?.player;
-    const topDisplayedCount = topPlayer
-      ? displayedHandCount(handCountOf(topPlayer), dir === "top" ? combo.cards.length : 0)
-      : 0;
-
-    const sidePlayer = dir === "left" || dir === "right" ? opponents[dir]?.player : undefined;
-    const sideDisplayedCount = sidePlayer
-      ? displayedHandCount(handCountOf(sidePlayer), combo.cards.length)
-      : 0;
-
-    setFlyInfo({
-      key,
-      dir,
-      cards: combo.cards,
-      origin: flightOrigin({
-        dir,
-        scale,
-        windowWidth: W,
-        windowHeight: H,
-        tableLeft: frame.tableLeft,
-        tableRight: frame.tableRight,
-        tableTop: frame.tableTop,
-        surplus: frame.surplus,
-        handZoneH: HAND_ZONE_H(handCardH, frame.bottomPad),
-        topDisplayedCount,
-        sideDisplayedCount,
-      }),
-    });
+    setFlyInfo({ key, dir: thrown.dir, cards: thrown.cards, origin: thrown.origin });
   }, [
     gameState.lastPlayedCombination,
     gameState.lastPlayedBy,
