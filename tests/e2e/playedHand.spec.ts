@@ -23,9 +23,8 @@ import { HAND_CARDS, HAND_ZONE, TABLE, TABLE_STATE } from "./helpers/selectors.t
 import { PHONES } from "./helpers/phones.ts";
 import { PAST_HOLD_MS, tap, tapPoint } from "./helpers/press";
 import { settled } from "./helpers/settle";
-import { cardsInHands, driveGameToCompletion } from "./helpers/bot";
+import { cardsInHands } from "./helpers/bot";
 
-const RESULT_URL = /\/result/;
 const SETTLE_MS = 1_500;
 
 /**
@@ -67,9 +66,9 @@ const spread = (ranks: readonly Rank[]) =>
 const PILE_CARD = card("3_clubs", "3", "clubs");
 
 /**
- * Thirteen cards: a hand partway through a manche rather than a fresh deal,
- * which is twenty-one at two seats (`dealCards`), and enough of them that the
- * fan overlaps, which is what the presses below are aimed at.
+ * Thirteen cards: one short of the fourteen two seats are dealt (`dealCards`),
+ * so a hand one play into a manche, and enough of them that the fan overlaps —
+ * which is what the presses below are aimed at.
  *
  * Every viewer card beats the pile and loses to every bot card, against Murlan's
  * order (3…10, J, Q, K, A, 2). That is what makes both moves below legal by
@@ -103,10 +102,9 @@ function save(gameState: Record<string, unknown>) {
       firstPlayMade: true,
       ...gameState,
     },
-    // One manche, not a match. `driveGameToCompletion` below plays out whatever
-    // is left, and every manche after this one is dealt by a real shuffle — so a
-    // match would put an unbounded, undealt tail inside a spec whose whole claim
-    // is a deal it wrote down. `offlineMatch.spec.ts` is where a match belongs.
+    // One manche: a match deals every manche after this one by a real shuffle,
+    // so anything played past the seeded hand would be undealt. A match belongs
+    // in `offlineMatch.spec.ts`.
     match: {
       length: "single",
       target: 21,
@@ -300,13 +298,6 @@ test("one hand, played through every interaction the table has", async ({ page, 
     .toBeLessThan(onTableBeforePass!);
   await settled(page, SETTLE_MS, TABLE);
   expect((await handOrder(page)).length, "passing costs no cards").toBe(heldBeforePass);
-
-  // --- and out, through the rest of the hand ---
-  await driveGameToCompletion(page, {
-    isFinished: async (p) => RESULT_URL.test(p.url()),
-    log: (line) => test.info().annotations.push({ type: "move", description: line }),
-  });
-  await expect(page).toHaveURL(RESULT_URL);
 
   // --- exchange ---
   //

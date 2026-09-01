@@ -10,6 +10,17 @@ import type { Page } from "@playwright/test";
 const TUTORIAL_SEEN_KEY = "@murlan_tutorial_seen";
 
 /**
+ * How long the home screen has to become interactive.
+ *
+ * Bounded on purpose: with no timeout this wait runs to the *test's* budget, so
+ * a spec that never gets a home screen spends its whole allowance here and then
+ * fails at whatever line came next, describing that instead. Generous against a
+ * cold bundle on a shared runner, and short enough that the failure it reports
+ * is this one.
+ */
+const HOME_SCREEN_MS = 45_000;
+
+/**
  * Loads the app on a device that has already been offered the tutorial, and
  * returns once the home screen is interactive.
  *
@@ -30,7 +41,9 @@ export async function openApp(page: Page, baseURL: string): Promise<void> {
   // `networkidle` is the bundle arriving, not the app being interactive. The
   // offline row is the one home entry rendered unconditionally — the resume
   // row above it appears only with a saved game.
-  await page.getByRole("button", { name: "Offline" }).waitFor({ state: "visible" });
+  await page
+    .getByRole("button", { name: "Offline" })
+    .waitFor({ state: "visible", timeout: HOME_SCREEN_MS });
 }
 
 export type LobbyMode = "ai" | "local";
