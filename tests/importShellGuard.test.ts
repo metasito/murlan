@@ -55,9 +55,34 @@ describe("importUnderShellGuard", () => {
     assert.equal(importUnderShellGuard(url, { timeoutMs: 1_000 }).shelledOutTo, "gh");
   });
 
+  test("gives the module the whole budget, not what booting Node left of it", () => {
+    // The budget is the module's, so starting the child may not spend any of it. Measured
+    // here: `node -e 0` costs 100-160ms idle and more under load, so a budget counted from
+    // the spawn hands a module asking for nearly all of it a deficit — and the child is
+    // killed before the marker is written, which reads as a hang that never shelled out.
+    const url = moduleWith(
+      "import { execFileSync } from 'node:child_process';\n" +
+        "await new Promise((r) => setTimeout(r, 900));\n" +
+        "try { execFileSync('gh', ['issue', 'list']); } catch {}\n" +
+        "setInterval(() => {}, 1000);\nawait new Promise(() => {});\n"
+    );
+
+    assert.equal(importUnderShellGuard(url, { timeoutMs: 1_000 }).shelledOutTo, "gh");
+  });
+
   test("a module that throws on import reports its own stderr", () => {
     const url = moduleWith("throw new Error('boom from the module');\n");
 
     assert.throws(() => importUnderShellGuard(url), /boom from the module/);
+  });
+});
+
+describe("the child's deadline", () => {
+  test("says the child reached its own deadline, not that the parent gave up", () => {
+    // Two different failures with two different remedies: a module that hangs is the caller's
+    // to fix, and a child that cannot boot or cannot die is this helper's.
+    const url = moduleWith("setInterval(() => {}, 1000);\nawait new Promise(() => {});\n");
+
+    assert.throws(() => importUnderShellGuard(url, { timeoutMs: 1_000 }), /timed out after 1000ms/);
   });
 });
