@@ -1,8 +1,7 @@
 // Its own file, not chrome.tsx: the countdown ticks audibly, and `lib/sounds`
 // reaches `expo-audio` at import time. chrome.tsx is the table's shared
-// furniture — putting the dependency there hands it to every screen that draws
-// a chip or a rail, which is how `tests/native/rotateOverlay.test.tsx` came to
-// fail on a module it never asked for.
+// furniture, so folding this in hands a native audio module to every screen
+// that draws a chip or a rail.
 import { useEffect, useRef, useState } from "react";
 import { ChipText } from "./chrome";
 import { useTranslation } from "@/lib/i18n";
