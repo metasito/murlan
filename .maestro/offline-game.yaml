@@ -139,6 +139,17 @@ env:
 - assertVisible: "Inizia Partita"
 - tapOn: "Inizia Partita"
 
+# The device, not the app. This screen is landscape-locked and iOS draws it
+# turned inside a portrait simulator, and XCUITest then returns only the part
+# of the tree that starts within the unrotated width: measured at 173 nodes
+# with every origin x ≤ 445 of 912, which is 7 of the 14 cards and no play
+# button, all of them painted in the same run's screenshot. Rotating the device
+# so the two agree returns 345 nodes reaching 848 (#685).
+#
+# Here rather than at launch: the menus are portrait, and rotating under them
+# would fail this flow for a reason that has nothing to do with the table.
+- setOrientation: LANDSCAPE_LEFT
+
 # The game table is landscape-locked and the screen physically
 # rotates on entry — give it time to settle before looking for
 # anything, or a rotation-mid-flight screenshot reads as blank.

@@ -235,6 +235,32 @@ describe("the Android job drives this app, not Expo Go", () => {
   });
 });
 
+describe("the landscape screen is read on a landscape device", () => {
+  // iOS draws a landscape-locked screen turned inside a portrait simulator,
+  // and XCUITest then returns only the part of the tree starting within the
+  // unrotated width - 173 nodes against 345, missing half the hand and the
+  // play button, all of them painted (#685). Nothing about this is visible in
+  // a screenshot, which is why it took an artefact to find and a guard to keep.
+  const flow = ".maestro/offline-game.yaml";
+
+  test("the device is rotated before the table is read", () => {
+    const body = flowBody(flow, code);
+    const rotate = body.search(/^- setOrientation:/m);
+    const table = body.indexOf('id: "game-table"');
+    assert.notEqual(rotate, -1, `${flow} never rotates the device`);
+    assert.notEqual(table, -1, `${flow} no longer waits for the table`);
+    assert.ok(rotate < table, `${flow} rotates after reading the table, which is too late`);
+  });
+
+  test("it rotates to landscape, which is the orientation the screen locks to", () => {
+    assert.match(
+      flowBody(flow, code),
+      /^- setOrientation: LANDSCAPE_(LEFT|RIGHT)$/m,
+      `${flow} rotates somewhere other than landscape`,
+    );
+  });
+});
+
 describe("every flow can be driven without a packager", () => {
   for (const rel of FLOWS) {
     test(`${rel} reaches the packager only under a condition`, () => {

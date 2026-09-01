@@ -1,9 +1,10 @@
 /**
  * The pre-push check, run once per tree state.
  *
- * Runs typecheck, node tests and lint, then records the verdict against a hash of the working
- * tree. Called again on an unchanged tree it replays the verdict instead of re-running, so a
- * stage that checks twice pays for it once. Any edit changes the hash and the suites run again.
+ * Runs `STEPS` below - which is the only place they are listed, because a second list is one
+ * that goes stale - and records the verdict against a hash of the working tree. Called again on
+ * an unchanged tree it replays the verdict instead of re-running, so a stage that checks twice
+ * pays for it once. Any edit changes the hash and the suites run again.
  *
  * Usage: npm run agent:check          run, or replay a cached verdict
  *        npm run agent:check -- --force   ignore the cache
