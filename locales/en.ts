@@ -434,6 +434,16 @@ export const en = {
   "month.11": "November",
   "month.12": "December",
 
+  // -------------------------------------------------------------- history.*
+  "history.title": "All your hands",
+  "history.loadingA11yLabel": "Loading your hands",
+  "history.errorTitle": "Hands unavailable",
+  "history.pageLabel": "Page {{page}} of {{total}}",
+  "history.prev": "Previous",
+  "history.next": "Next",
+  "history.prevA11yLabel": "Previous page of hands",
+  "history.nextA11yLabel": "Next page of hands",
+
   // ---------------------------------------------------------------- ladder.*
   "ladder.title": "Leaderboard",
   "ladder.cardTitle": "Ranked",
@@ -862,6 +872,8 @@ export const en = {
   "profile.historyPlayers_other": "{{count}} players",
   "profile.historyRowA11yLabel": "{{position}} place, {{mode}}, {{players}}, {{points}} points, {{time}}",
   "profile.historyWith": "with {{names}}",
+  "profile.historyDoor": "See all {{count}} hands",
+  "profile.historyDoorA11yLabel": "See all {{n}} of your hands",
   "profile.historyBotSeat": "an AI",
   "profile.historyUnknownSeat": "a deleted account",
   "profile.historyWatchA11yLabel": "Watch: {{summary}}",

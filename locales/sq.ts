@@ -434,6 +434,16 @@ export const sq: Record<keyof typeof en, string> = {
   "month.11": "Nëntor",
   "month.12": "Dhjetor",
 
+  // -------------------------------------------------------------- history.*
+  "history.title": "Të gjitha duart e tua",
+  "history.loadingA11yLabel": "Duke ngarkuar duart e tua",
+  "history.errorTitle": "Duart nuk janë të disponueshme",
+  "history.pageLabel": "Faqja {{page}} nga {{total}}",
+  "history.prev": "E mëparshme",
+  "history.next": "Përpara",
+  "history.prevA11yLabel": "Faqja e mëparshme e duarve",
+  "history.nextA11yLabel": "Faqja tjetër e duarve",
+
   // ---------------------------------------------------------------- ladder.*
   "ladder.title": "Klasifikimi",
   "ladder.cardTitle": "I klasifikuar",
@@ -862,6 +872,8 @@ export const sq: Record<keyof typeof en, string> = {
   "profile.historyPlayers_other": "{{count}} lojtarë",
   "profile.historyRowA11yLabel": "Vendi {{position}}, {{mode}}, {{players}}, {{points}} pikë, {{time}}",
   "profile.historyWith": "me {{names}}",
+  "profile.historyDoor": "Shih të {{count}} duart",
+  "profile.historyDoorA11yLabel": "Shih të gjitha {{n}} duart e tua",
   "profile.historyBotSeat": "një IA",
   "profile.historyUnknownSeat": "një llogari e fshirë",
   "profile.historyWatchA11yLabel": "Shiko: {{summary}}",

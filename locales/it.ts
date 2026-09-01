@@ -427,6 +427,16 @@ export const it: Record<keyof typeof en, string> = {
   "month.11": "Novembre",
   "month.12": "Dicembre",
 
+  // -------------------------------------------------------------- history.*
+  "history.title": "Tutte le tue mani",
+  "history.loadingA11yLabel": "Caricamento delle tue mani",
+  "history.errorTitle": "Mani non disponibili",
+  "history.pageLabel": "Pagina {{page}} di {{total}}",
+  "history.prev": "Precedente",
+  "history.next": "Avanti",
+  "history.prevA11yLabel": "Pagina precedente di mani",
+  "history.nextA11yLabel": "Pagina successiva di mani",
+
   // ---------------------------------------------------------------- ladder.*
   "ladder.title": "Classifica",
   "ladder.cardTitle": "Classifica",
@@ -856,6 +866,8 @@ export const it: Record<keyof typeof en, string> = {
   "profile.historyPlayers_other": "{{count}} giocatori",
   "profile.historyRowA11yLabel": "{{position}} posto, {{mode}}, {{players}}, {{points}} punti, {{time}}",
   "profile.historyWith": "con {{names}}",
+  "profile.historyDoor": "Vedi tutte le {{count}} mani",
+  "profile.historyDoorA11yLabel": "Vedi tutte le tue {{n}} mani",
   "profile.historyBotSeat": "un'IA",
   "profile.historyUnknownSeat": "un account eliminato",
   "profile.historyWatchA11yLabel": "Guarda: {{summary}}",

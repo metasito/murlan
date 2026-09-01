@@ -10,7 +10,7 @@ import { db } from "./db.ts";
 import { matchReplays, users } from "../shared/schema.ts";
 import type { MatchHistory } from "../shared/schema.ts";
 import type { ReplaySeat } from "../lib/replay.ts";
-import { isBotSeatKey } from "./onlineGameLogic.ts";
+import { botSeatIndex, isBotSeatKey } from "./botSeat.ts";
 import { getMatchHistory } from "./stats.ts";
 
 /** One of the other seats at a hand the reader played. */
@@ -30,12 +30,6 @@ export interface MatchHistoryRow extends MatchHistory {
   participants: HistoryParticipant[];
   /** This hand's replay, while one still exists to watch. */
   replayId: string | null;
-}
-
-/** `bot:<seat>`'s seat index, which is the only thing the id carries. */
-function botSeatIndex(userId: string): number | null {
-  const seat = Number(userId.slice("bot:".length));
-  return Number.isInteger(seat) ? seat : null;
 }
 
 interface PairedReplay {

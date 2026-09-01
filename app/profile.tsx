@@ -24,11 +24,12 @@ import {
 import { MenuButton } from "@/components/MenuButton";
 import { LookPicker } from "@/components/LookPicker";
 import { useTranslation } from "@/lib/i18n";
-import type { TFn, TnFn, TranslationKey } from "@/lib/i18n";
+import { relativeTime } from "@/lib/relativeTime";
+import type { TranslationKey } from "@/lib/i18n";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
-import type { GameMode } from "@/lib/gameEngine";
 import { PROVISIONAL_GAMES, formatSeason } from "@/lib/rating";
 import { a11yGroup, a11yHidden } from "@/lib/a11y";
+import { HistoryRow, type MatchHistoryDto } from "@/components/HistoryRow";
 import { serverErrorMessage } from "@/lib/apiError";
 import { USERNAME_MAX, USERNAME_MIN, usernameProblem } from "@/shared/username";
 
@@ -56,26 +57,9 @@ interface RatingDto {
   provisional: boolean;
 }
 
-interface HistoryParticipantDto {
-  name: string | null;
-  bot: boolean;
-}
-
-interface MatchHistoryDto {
-  id: string;
-  userId: string;
-  finishedAt: string;
-  gameMode: GameMode;
-  placement: number;
-  playerCount: number;
-  points: number;
-  opponents: unknown[];
-  participants: HistoryParticipantDto[];
-  replayId: string | null;
-}
-
-/** How many hands the card lists. The door out to the rest is #678's slice. */
+/** How many hands the card lists before the door out to the rest. */
 const HISTORY_ROWS_SHOWN = 5;
+const DOOR_CHEVRON = 18;
 
 interface AchievementStatusDto {
   id: string;
@@ -106,21 +90,6 @@ const POSITION_LABEL_KEYS: TranslationKey[] = [
   "gameOverOverlay.position3",
   "gameOverOverlay.position4",
 ];
-
-// Same relative-time phrasing as app/(online)/friends.tsx's `relativeTime` —
-// not exported there, so duplicated rather than reaching across a screen
-// boundary; the underlying friends.time* keys are generic enough to share.
-function relativeTime(isoString: string | null | undefined, t: TFn, tn: TnFn): string {
-  if (!isoString) return t("friends.timeUnknown");
-  const diff = Date.now() - new Date(isoString).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return t("friends.timeJustNow");
-  if (mins < 60) return t("friends.timeMinutesAgo", { n: mins });
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return tn("friends.timeHoursAgo", hours);
-  const days = Math.floor(hours / 24);
-  return tn("friends.timeDaysAgo", days);
-}
 
 function LoadingBlock({ label }: { label: string }) {
   return (
@@ -594,69 +563,29 @@ export default function ProfileScreen() {
               )}
               {history.length > 0 && (
                 <View style={styles.listBlock}>
-                  {history.slice(0, HISTORY_ROWS_SHOWN).map((h) => {
-                    const labelKey = POSITION_LABEL_KEYS[h.placement - 1];
-                    const posText = labelKey ? t(labelKey) : `${h.placement}°`;
-                    const modeText = h.gameMode === "teams" ? t("gameOverOverlay.modeTeams") : t("gameOverOverlay.modeFreeForAll");
-                    const timeText = relativeTime(h.finishedAt, t, tn);
-                    const pointsText = t("gameOverOverlay.pointsAbbrev", { n: h.points });
-                    const playersText = tn("profile.historyPlayers", h.playerCount);
-                    const names = h.participants
-                      .map((p) => p.name ?? t(p.bot ? "profile.historyBotSeat" : "profile.historyUnknownSeat"))
-                      .join(", ");
-                    const withText = names ? t("profile.historyWith", { names }) : "";
-                    const summary = [
-                      t("profile.historyRowA11yLabel", {
-                        position: posText,
-                        mode: modeText,
-                        players: playersText,
-                        points: h.points,
-                        time: timeText,
-                      }),
-                      withText,
-                    ]
-                      .filter(Boolean)
-                      .join(", ");
-                    const body = (
-                      <>
-                        <View
-                          style={[styles.posBadge, h.placement === 1 && styles.posBadgeWinner]}
-                          {...a11yHidden()}
-                        >
-                          <Text style={[styles.posBadgeText, h.placement === 1 && styles.posBadgeTextWinner]}>
-                            {posText}
-                          </Text>
-                        </View>
-                        <View style={styles.rowInfo} {...a11yHidden()}>
-                          <Text style={styles.rowName}>{modeText} · {playersText}</Text>
-                          <Text style={styles.rowSub}>{timeText}</Text>
-                          {withText !== "" && (
-                            <Text style={styles.rowSub} numberOfLines={1}>{withText}</Text>
-                          )}
-                        </View>
-                        <Text style={styles.rowPoints} {...a11yHidden()}>{pointsText}</Text>
-                      </>
-                    );
-                    // A watchable row is a control, so it carries its label as a
-                    // button rather than as a group: a group holding a control
-                    // seals that control inside a leaf on iOS.
-                    return h.replayId === null ? (
-                      <View key={h.id} style={styles.row} {...a11yGroup(summary)}>{body}</View>
-                    ) : (
-                      <Pressable
-                        key={h.id}
-                        style={styles.row}
-                        onPress={() =>
-                          router.push({ pathname: "/(online)/replay", params: { id: h.replayId! } })
-                        }
-                        accessibilityRole="button"
-                        accessibilityLabel={t("profile.historyWatchA11yLabel", { summary })}
-                      >
-                        {body}
-                        <Ionicons name="play-circle" size={28} color={Colors.gold} {...a11yHidden()} />
-                      </Pressable>
-                    );
-                  })}
+                  {history.slice(0, HISTORY_ROWS_SHOWN).map((h) => (
+                    <HistoryRow key={h.id} hand={h} />
+                  ))}
+                  {history.length > HISTORY_ROWS_SHOWN && (
+                    <Pressable
+                      style={styles.doorRow}
+                      onPress={() => router.push("/(online)/history")}
+                      accessibilityRole="button"
+                      accessibilityLabel={t("profile.historyDoorA11yLabel", {
+                        n: history.length,
+                      })}
+                    >
+                      <Text style={styles.doorText} {...a11yHidden()}>
+                        {t("profile.historyDoor", { count: history.length })}
+                      </Text>
+                      <Ionicons
+                        name="chevron-forward"
+                        size={DOOR_CHEVRON}
+                        color={Colors.gold}
+                        {...a11yHidden()}
+                      />
+                    </Pressable>
+                  )}
                 </View>
               )}
             </MenuCard>
@@ -894,39 +823,21 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
   },
   listBlock: { gap: Spacing.sm },
+  doorRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: Spacing.xs,
+    minHeight: TOUCH_TARGET_MIN,
+  },
+  doorText: { ...Type.label, color: Colors.gold },
 
   ratingBlock: { alignItems: "center", gap: Spacing.xs / 2, paddingBottom: Spacing.md },
   ratingValue: { fontFamily: "Rajdhani_700Bold", fontSize: FontSize.hero, color: Colors.gold },
   ratingSeason: { ...Type.label },
   ratingGames: { ...Type.caption, textAlign: "center" },
 
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: Colors.bgSurface,
-    borderRadius: Radius.md,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    padding: Spacing.sm,
-    gap: Spacing.sm,
-    minHeight: TOUCH_TARGET_MIN,
-  },
-  posBadge: {
-    width: 32,
-    height: 32,
-    borderRadius: Radius.full,
-    borderWidth: 1.5,
-    borderColor: Colors.border,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  posBadgeWinner: { borderColor: Colors.gold },
-  posBadgeText: { fontFamily: "Rajdhani_700Bold", fontSize: FontSize.sm, color: Colors.textSecondary },
-  posBadgeTextWinner: { color: Colors.gold },
   rowInfo: { flex: 1, gap: Spacing.xxs },
-  rowName: { ...Type.bodyStrong },
-  rowSub: { ...Type.caption },
-  rowPoints: { fontFamily: "Rajdhani_700Bold", fontSize: FontSize.md, color: Colors.gold },
 
   achievementRow: {
     flexDirection: "row",
