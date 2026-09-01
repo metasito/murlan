@@ -312,9 +312,13 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
    */
   const abandonRejoin = useCallback(
     (payload: ServerPayload) => {
+      // A seat the table gave up is the server accounting for itself, not a
+      // refusal: same teardown, but nothing went wrong and it should not read
+      // as though it did.
+      const released = payload.code === "SEAT_RELEASED";
       showNotification({
-        type: "game_error",
-        title: t("onlineGame.rejoinFailedTitle"),
+        type: released ? "game_info" : "game_error",
+        title: t(released ? "onlineGame.seatReleasedTitle" : "onlineGame.rejoinFailedTitle"),
         message: translateServerPayload(payload),
         duration: Reading.notice,
       });

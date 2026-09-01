@@ -57,6 +57,8 @@ export interface RoomState {
 export interface Client {
   socket: Socket;
   user: RegisteredUser;
+  /** What `reconnectAs` buys the next ticket with; `connectAs` always has it. */
+  cookie: string;
 }
 
 export interface GameOverPayload {

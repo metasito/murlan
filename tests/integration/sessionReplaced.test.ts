@@ -137,7 +137,7 @@ describe(
           "the account never left the table, so nothing about it may be announced"
         );
 
-        const secondClient: Client = { socket: second, user: alice.user };
+        const secondClient: Client = { socket: second, user: alice.user, cookie: alice.cookie };
         const rejoined = waitFor<SanitizedState>(second, "game:state");
         second.emit("game:rejoin", { roomId: room.roomId });
         const state = await rejoined;

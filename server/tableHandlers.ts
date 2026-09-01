@@ -154,6 +154,7 @@ export async function rehydrateGame(
     // A hand restored after a restart has no record of who walked out of it:
     // the map is memory-only and the restart emptied it.
     abandonedSeats: new Map<number, string>(),
+    releasedSeats: new Set<string>(),
     spectators: new Set<string>(),
     // The log is memory-only, so a hand restored after a restart produces no
     // replay. The next hand starts a fresh one.
@@ -455,7 +456,12 @@ async function rejoinAction(
 ): Promise<EventOutcome> {
   const { roomId, userId, username } = action;
   const seat = seatOfUser(game, userId);
-  if (seat === null) return { ok: false, code: "UNAUTHORIZED" };
+  if (seat === null) {
+    // Two different answers: this table gave the seat up while they were
+    // away, or they never had one here.
+    const code = game.releasedSeats.has(userId) ? "SEAT_RELEASED" : "UNAUTHORIZED";
+    return { ok: false, code };
+  }
 
   // The grace timer lives on whichever instance saw the socket go, and the
   // player may well have come back on another one. Clearing it here is what
@@ -599,6 +605,7 @@ async function startMatchAction(
     matchOver: previous?.matchOver ?? false,
     handFlags: {},
     abandonedSeats: new Map<number, string>(),
+    releasedSeats: new Set<string>(),
     spectators: new Set<string>(),
     moveLog: startReplayLog(),
     dealFirstSeat: 0,

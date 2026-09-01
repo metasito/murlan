@@ -1,7 +1,7 @@
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
 import pg from "pg";
-import { io as ioClient, type Socket } from "socket.io-client";
+import type { Socket } from "socket.io-client";
 import {
   startTestServer,
   hasDatabase,
@@ -10,7 +10,7 @@ import {
 } from "../helpers/testServer.ts";
 import { MATCH_TARGETS, targetsFor } from "../../lib/gameEngine.ts";
 import { lobbyGraceMs } from "../../server/gameTimers.ts";
-import { connectAs, waitFor } from "../helpers/client.ts";
+import { connectAs, reconnectAs, waitFor } from "../helpers/client.ts";
 import {
   driveHandToExchangeOrOver,
   gameOverOf,
@@ -34,10 +34,6 @@ import {
 process.env.MURLAN_AFK_TIMEOUT_MS = "400";
 process.env.MURLAN_DISCONNECT_GRACE_MS = "4000";
 
-interface AuthedClient extends Client {
-  cookie: string;
-}
-
 interface ReconnectNotice {
   userId: string;
   username: string;
@@ -57,33 +53,6 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
     await dbPool.end();
     await server.stop();
   });
-
-  /**
-   * A second socket for an account that already registered — the returning
-   * half of a drop. `connectAs` would register a new user, and the register
-   * route is rate limited per process, so the cookie is reused for a fresh
-   * ticket instead.
-   */
-  async function reconnect(client: AuthedClient): Promise<Socket> {
-    const res = await fetch(`${server.url}/api/auth/socket-ticket`, {
-      method: "POST",
-      headers: { cookie: client.cookie },
-    });
-    const text = await res.text();
-    assert.equal(res.status, 200, text);
-    const { ticket } = JSON.parse(text) as { ticket: string };
-
-    const socket = ioClient(server.url, {
-      auth: { ticket },
-      transports: ["websocket"],
-      reconnection: false,
-    });
-    await new Promise<void>((resolve, reject) => {
-      socket.once("connect", () => resolve());
-      socket.once("connect_error", (e) => reject(e));
-    });
-    return socket;
-  }
 
   /**
    * Empties the table before its sockets go. A socket that simply closes on a
@@ -133,7 +102,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
     );
     // No game:rejoin: this is the connection handler's own grace-timer path,
     // reached by the socket coming back and nothing else.
-    const back = await reconnect(bob);
+    const back = await reconnectAs(server, bob);
     table[1] = { ...bob, socket: back };
     try {
       const notice = await announced;
@@ -419,7 +388,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
 
       // A socket that has never been sent room:state: the app after a restart,
       // rejoining on the room id it read back from storage and nothing else.
-      const back = await reconnect(kai);
+      const back = await reconnectAs(server, kai);
       table[1] = { socket: back };
       const recovered = waitFor<RoomState>(back, "room:state", 5_000);
       const restored = waitFor<SanitizedState>(back, "game:state", 5_000);
@@ -482,7 +451,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
       bob.socket.disconnect();
       await dropped;
 
-      const back = await reconnect(bob);
+      const back = await reconnectAs(server, bob);
       table[1] = { ...bob, socket: back };
       const framing = waitFor<{
         target: number;
@@ -552,7 +521,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
         "a drop between manches must hold the seat under the same grace as any other"
       );
 
-      const back = await reconnect(bob);
+      const back = await reconnectAs(server, bob);
       table[1] = { ...bob, socket: back };
       const answered = Promise.race([
         waitFor(back, "game:player_reconnected", 5_000).then(() => "rejoined" as const),
@@ -613,7 +582,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
       bob.socket.disconnect();
       await new Promise((r) => setTimeout(r, 300));
 
-      const back = await reconnect(bob);
+      const back = await reconnectAs(server, bob);
       table[1] = { ...bob, socket: back };
       const recovered = waitFor<RoomState>(back, "room:state", 5_000);
       // The code the client already holds — no re-entry by the player.
@@ -648,7 +617,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
       carol.socket.disconnect();
       await new Promise((r) => setTimeout(r, 300));
 
-      const back = await reconnect(carol);
+      const back = await reconnectAs(server, carol);
       table[0] = { ...carol, socket: back };
       const recovered = waitFor<RoomState>(back, "room:state", 5_000);
       back.emit("room:rejoin", { code: room.code });
@@ -687,10 +656,10 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
    * the `before` builds, the re-seat then takes it apart.
    */
   describe("room:rejoin re-seats only the people who were in the room", () => {
-    let kate: AuthedClient;
-    let liam: AuthedClient;
-    let mia: AuthedClient;
-    let nate: AuthedClient;
+    let kate: Client;
+    let liam: Client;
+    let mia: Client;
+    let nate: Client;
     let room: RoomState;
 
     before(async () => {
@@ -736,7 +705,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
       mia.socket.disconnect();
       await new Promise((r) => setTimeout(r, 300));
 
-      const back = await reconnect(mia);
+      const back = await reconnectAs(server, mia);
       mia = { ...mia, socket: back };
       const recovered = waitFor<RoomState>(back, "room:state", 5_000);
       back.emit("room:rejoin", { code: room.code });

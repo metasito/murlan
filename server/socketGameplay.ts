@@ -48,6 +48,7 @@ const GAME_ACTION_RATE_LIMIT = gameActionLimitFromEnv();
  */
 const REJOIN_FAILURE: Record<string, { message: string; code: string }> = {
   UNAUTHORIZED: { message: "Not authorized", code: "UNAUTHORIZED" },
+  SEAT_RELEASED: { message: "Your seat was given up", code: "SEAT_RELEASED" },
   NO_LIVE_GAME: { message: "Game not found", code: "GAME_NOT_FOUND" },
   GAME_NO_LONGER_VALID: { message: "Game no longer valid", code: "GAME_NO_LONGER_VALID" },
   SERVER_ERROR: { message: "Server error", code: "SERVER_ERROR" },

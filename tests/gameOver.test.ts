@@ -126,6 +126,7 @@ function makeGame(overrides: Partial<OnlineGameState> = {}): OnlineGameState {
     matchOver: false,
     handFlags: {},
     abandonedSeats: new Map(),
+    releasedSeats: new Set<string>(),
     spectators: new Set(),
     moveLog: [A_MOVE],
     dealFirstSeat: 0,
