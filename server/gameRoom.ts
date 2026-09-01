@@ -49,6 +49,17 @@ export interface OnlineGameState {
    */
   abandonedSeats: Map<number, string>;
   /**
+   * Everyone whose seat at this table has been given up. `playerMap` has
+   * forgotten them, so without this a rejoin cannot tell someone whose grace
+   * ran out from an account that never sat here — and answers both the same.
+   *
+   * Never cleared while the table lives: the whole point is to still recognise
+   * them manches later. Memory only, like `abandonedSeats` — persisting it
+   * would need a GAME_SCHEMA_VERSION bump, and a restart losing it costs a
+   * courtesy rather than a seat.
+   */
+  releasedSeats: Set<string>;
+  /**
    * When the acting seat's AFK window runs out, in server time. Undefined when
    * nothing is on the clock. Memory only — re-armed on the next move.
    */

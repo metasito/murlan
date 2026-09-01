@@ -126,6 +126,38 @@ export async function connectAs(
 }
 
 /**
+ * A second socket for an account that already registered — the returning half
+ * of a drop. `connectAs` would register a new user, and the register route is
+ * rate limited per process, so the cookie is reused for a fresh ticket.
+ */
+export async function reconnectAs(
+  server: TestServer,
+  client: { cookie: string }
+): Promise<Socket> {
+  const res = await fetch(`${server.url}/api/auth/socket-ticket`, {
+    method: "POST",
+    headers: { cookie: client.cookie },
+  });
+  const text = await res.text();
+  assert.equal(res.status, 200, text);
+  const { ticket } = JSON.parse(text) as { ticket: string };
+
+  const socket = ioClient(server.url, {
+    auth: { ticket },
+    transports: ["websocket"],
+    reconnection: false,
+  });
+  await new Promise<void>((resolve, reject) => {
+    socket.once("connect", () => resolve());
+    socket.once("connect_error", (e) => {
+      socket.close();
+      reject(e);
+    });
+  });
+  return socket;
+}
+
+/**
  * These deadlines exist to fail a hung test loudly rather than stall the
  * suite; none of them asserts how fast the server is. A shared runner is
  * several times slower than a developer machine — this suite takes 134s

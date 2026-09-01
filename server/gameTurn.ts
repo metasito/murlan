@@ -377,6 +377,7 @@ export async function vacateSeat(
   const seat = seatOfUser(game, userId);
   if (seat === null) return;
 
+  game.releasedSeats.add(userId);
   delete game.playerMap[seat];
   clearAfkTimer(roomId, userId);
 

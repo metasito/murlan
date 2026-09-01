@@ -583,7 +583,7 @@ describe("translate() produces the expected output per locale", () => {
     const codes = new Set(entries.map((m) => m[1]));
     assert.deepEqual(
       [...codes].sort(),
-      ["GAME_NOT_FOUND", "GAME_NO_LONGER_VALID", "SERVER_ERROR", "UNAUTHORIZED"]
+      ["GAME_NOT_FOUND", "GAME_NO_LONGER_VALID", "SEAT_RELEASED", "SERVER_ERROR", "UNAUTHORIZED"]
     );
     for (const locale of ["it", "en", "sq"] as const) {
       const rendered = [...codes].map((code) =>

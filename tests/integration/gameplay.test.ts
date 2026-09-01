@@ -10,7 +10,7 @@ import {
   type TestServer,
 } from "../helpers/testServer.ts";
 import { lobbyGraceMs } from "../../server/gameTimers.ts";
-import { register, waitFor } from "../helpers/client.ts";
+import { reconnectAs, register, waitFor } from "../helpers/client.ts";
 import {
   assertHandSecrecy,
   driveHandToExchangeOrOver,
@@ -578,6 +578,46 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
     erin.socket.emit("game:rematch_vote");
     frank.socket.emit("game:rematch_vote");
     await Promise.all(started);
+  });
+
+  /**
+   * Two different things used to answer with one sentence: a seat this table
+   * gave up while its player was away, and an account asking after a table it
+   * never sat at. The first is the server explaining itself, the second is a
+   * refusal — and "Not authorized" reads as an accusation either way.
+   *
+   * Distinguishable from the wire, so the soak can tell a working expiry from
+   * the defect #736 was filed for.
+   */
+  test("a seat given up while away is refused differently from one never held", async () => {
+    const [nina, otto, pia, quinn] = await makeClients([
+      "expired_nina",
+      "expired_otto",
+      "expired_pia",
+      "expired_quinn",
+    ]);
+    const room = await setUpRoom([nina, otto, pia], 3);
+    await playOpeningHand([nina, otto, pia]);
+
+    const takeover = waitFor(otto.socket, "game:seat_bot_takeover", 5_000);
+    nina.socket.disconnect();
+    await takeover;
+
+    const back = await reconnectAs(server, nina);
+    const expired = waitFor<{ code?: string }>(back, "game:rejoin_failed", 5_000);
+    back.emit("game:rejoin", { roomId: room.roomId });
+    assert.equal((await expired).code, "SEAT_RELEASED");
+
+    // Quinn registered but never joined: the same live table, the other answer.
+    const stranger = waitFor<{ code?: string }>(quinn.socket, "game:rejoin_failed", 5_000);
+    quinn.socket.emit("game:rejoin", { roomId: room.roomId });
+    assert.equal(
+      (await stranger).code,
+      "UNAUTHORIZED",
+      "an account that never sat here is still refused, not explained to"
+    );
+
+    back.close();
   });
 
   // ── Test 9 ──────────────────────────────────────────────────────────────
