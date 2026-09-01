@@ -55,11 +55,17 @@ const FULL: Responses = {
 async function renderBreakdown(
   responses: Responses,
   ratingDelta: number | null,
-  mancheCanFollow = false
+  mancheCanFollow = false,
+  handRecorded = true
 ) {
   const view = await render(
     <QueryClientProvider client={clientWith(responses)}>
-      <HandBreakdown myUserId="u1" ratingDelta={ratingDelta} mancheCanFollow={mancheCanFollow} />
+      <HandBreakdown
+        myUserId="u1"
+        ratingDelta={ratingDelta}
+        mancheCanFollow={mancheCanFollow}
+        handRecorded={handRecorded}
+      />
     </QueryClientProvider>
   );
   // Every query resolves on a microtask; findBy* waits for the first paint
@@ -116,7 +122,7 @@ describe('a hand nothing recorded', () => {
   };
 
   it('says so instead of showing a finish', async () => {
-    const view = await renderBreakdown(UNRECORDED, null);
+    const view = await renderBreakdown(UNRECORDED, null, false, false);
     expect(
       view.getByText('This hand was not recorded — too many bots at the table.')
     ).toBeTruthy();
@@ -124,14 +130,27 @@ describe('a hand nothing recorded', () => {
   });
 
   it('offers no replay it does not have', async () => {
-    const view = await renderBreakdown(UNRECORDED, null);
+    const view = await renderBreakdown(UNRECORDED, null, false, false);
     expect(view.getByText('No replay for this hand')).toBeTruthy();
     expect(view.queryByLabelText('Open the replay of this hand')).toBeNull();
   });
 
   it('reads a broken streak as broken, not as a streak of zero', async () => {
-    const view = await renderBreakdown(UNRECORDED, null);
+    const view = await renderBreakdown(UNRECORDED, null, false, false);
     expect(view.getByLabelText('Win streak: No streak running')).toBeTruthy();
+  });
+});
+
+// The case the suite above had no fixture for: a bot-majority table where the
+// player already has older, real history. `history[0]` is that older hand,
+// not this one — the breakdown must not read it as such.
+describe('a bot-majority hand with recorded history from before', () => {
+  it('says the hand was not recorded rather than showing the older row', async () => {
+    const view = await renderBreakdown(FULL, null, false, false);
+    expect(
+      view.getByText('This hand was not recorded — too many bots at the table.')
+    ).toBeTruthy();
+    expect(view.queryByLabelText(/^Finish:/)).toBeNull();
   });
 });
 
@@ -141,7 +160,7 @@ describe('when an endpoint is down', () => {
     delete down['/api/stats/me'];
     const view = await render(
       <QueryClientProvider client={clientWith(down)}>
-        <HandBreakdown myUserId="u1" ratingDelta={12} mancheCanFollow={false} />
+        <HandBreakdown myUserId="u1" ratingDelta={12} mancheCanFollow={false} handRecorded={true} />
       </QueryClientProvider>
     );
     expect(await view.findByLabelText('Retry loading the hand breakdown')).toBeTruthy();
