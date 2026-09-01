@@ -102,9 +102,9 @@ function save(gameState: Record<string, unknown>) {
       firstPlayMade: true,
       ...gameState,
     },
-    // One manche, not a match: every manche after this one is dealt by a real
-    // shuffle, and a spec whose whole claim is a deal it wrote down cannot carry
-    // an undealt tail. `offlineMatch.spec.ts` is where a match belongs.
+    // One manche: a match deals every manche after this one by a real shuffle,
+    // so anything played past the seeded hand would be undealt. A match belongs
+    // in `offlineMatch.spec.ts`.
     match: {
       length: "single",
       target: 21,
