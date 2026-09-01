@@ -21,17 +21,16 @@ const FRIENDS_BUTTON = /^Amici/;
 const BANNER = '[data-testid="notification-banner"]';
 
 /**
- * How long the banner has to come to rest before its box is read.
+ * The ceiling on each of the two waits below.
  *
  * This spec builds its own context, so it does not get the reduced motion the
- * `page` fixture emulates and the slide really runs. `settled` returns as soon
- * as the box holds still, so this is the bound on failure rather than a wait,
- * and the only thing it has to be is shorter than the banner's own life: it
- * dismisses itself `Reading.notice` after landing, and a bound that outlived
- * that would let a banner on its way out be measured — which reads as covering
- * nothing for the same reason reading too early does.
+ * `page` fixture emulates and both animations really run. `settled` returns as
+ * soon as what it watches holds still, so in the ordinary case this bounds
+ * nothing; what it has to guarantee is that a banner which never settles is
+ * still a *live* banner when it is measured. It dismisses itself
+ * `Reading.notice` after landing, so both ceilings together stay inside that.
  */
-const BANNER_STILL_MS = Reading.notice / 2;
+const STILL_MS = Reading.notice / 4;
 
 /** Real handsets and a real tablet, both ways up. A banner costs most where the window is shortest. */
 const VIEWPORTS = [
@@ -112,7 +111,12 @@ test("a banner displaces the controls under it rather than covering them", async
       await settled(page, 2_000);
 
       await raiseBanner(page, target);
-      await settled(page, BANNER_STILL_MS, BANNER);
+      // Both boxes this compares move, and not together: `MenuLayout` eases the
+      // controls out of the way off the banner's measured height, so their
+      // movement begins after the slide it is reacting to. The scoped wait
+      // covers the banner; the default reading covers the controls.
+      await settled(page, STILL_MS, BANNER);
+      await settled(page, STILL_MS);
       const bannerBox = (await page.locator(BANNER).boundingBox())!;
       const covered = (await controls(page)).filter((c) => overlaps(c.box, bannerBox));
 

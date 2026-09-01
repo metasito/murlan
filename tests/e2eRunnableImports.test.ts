@@ -19,35 +19,65 @@ import { blankComments } from "./helpers/sourceScan.ts";
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const E2E = path.join(repoRoot, "tests", "e2e");
 
-/** Packages whose published source Playwright's transform cannot parse. */
-const UNRUNNABLE = /^(react-native(-|$)|expo(-|$)|@expo\/)/;
+/**
+ * Packages whose published source Playwright's transform cannot parse — matched on the
+ * package name rather than the whole specifier, because `expo/fetch` and
+ * `@react-native-async-storage/async-storage` are both real imports in `lib/` and both
+ * carry the same problem as a bare `react-native`.
+ */
+const UNRUNNABLE = /^(@react-native[\w-]*\/|react-native(\/|-|$)|@expo\/|expo(\/|-|$))/;
+
+/** Aliases `tsconfig.json` declares. A specifier under one of these is a module here. */
+const ALIASES: [string, string][] = [
+  ["@shared/", path.join(repoRoot, "shared")],
+  ["@/", repoRoot],
+];
 
 /** `import type` and `export type` are erased before anything is loaded. */
-const IMPORTS = /^\s*(?:import|export)\s+(?!type\s)[^;]*?from\s*["']([^"']+)["']/gm;
-const BARE_IMPORTS = /^\s*import\s+["']([^"']+)["']/gm;
+const PATTERNS = [
+  /^\s*(?:import|export)\s+(?!type\s)[^;]*?from\s*["']([^"']+)["']/gm,
+  /^\s*import\s+["']([^"']+)["']/gm,
+  /\b(?:require|import)\s*\(\s*["']([^"']+)["']\s*\)/g,
+];
 
 function specifiers(file: string): string[] {
   const source = blankComments(readFileSync(file, "utf8"));
   const out: string[] = [];
-  for (const re of [IMPORTS, BARE_IMPORTS]) {
+  for (const re of PATTERNS) {
     re.lastIndex = 0;
     for (let m = re.exec(source); m; m = re.exec(source)) out.push(m[1]);
   }
   return out;
 }
 
-/** The file a specifier names, or null when it is a package rather than a module here. */
-function resolve(from: string, specifier: string): string | null {
-  const base = specifier.startsWith("@/")
-    ? path.join(repoRoot, specifier.slice(2))
-    : specifier.startsWith(".")
-      ? path.resolve(path.dirname(from), specifier)
-      : null;
-  if (base === null) return null;
-  for (const candidate of [base, `${base}.ts`, `${base}.tsx`, path.join(base, "index.ts")]) {
-    if (existsSync(candidate) && statSync(candidate).isFile()) return candidate;
+/** Every spelling of one module on disk, longest-lived first. */
+const EXTENSIONS = ["", ".ts", ".tsx", ".web.ts", ".web.tsx", ".js", ".mjs"];
+
+function local(from: string, specifier: string): string | null {
+  for (const [prefix, root] of ALIASES) {
+    if (specifier.startsWith(prefix)) return path.join(root, specifier.slice(prefix.length));
   }
-  return null;
+  return specifier.startsWith(".") ? path.resolve(path.dirname(from), specifier) : null;
+}
+
+/**
+ * The file a specifier names. A local specifier that resolves to nothing throws rather than
+ * being taken for a package: skipping it would leave everything behind it unscanned and
+ * report the sweep clean, which is the one way this guard could be quietly wrong.
+ */
+function resolve(from: string, specifier: string): string | null {
+  const base = local(from, specifier);
+  if (base === null) return null;
+  for (const ext of EXTENSIONS) {
+    for (const candidate of [`${base}${ext}`, path.join(base, `index${ext || ".ts"}`)]) {
+      if (existsSync(candidate) && statSync(candidate).isFile()) return candidate;
+    }
+  }
+  throw new Error(
+    `${path.relative(repoRoot, from)} imports "${specifier}", which names a module in this ` +
+      `repo and resolves to no file. Teach \`EXTENSIONS\`/\`ALIASES\` how to find it — left ` +
+      `unresolved, everything it imports goes unscanned and this sweep passes on nothing.`
+  );
 }
 
 /**
@@ -81,19 +111,32 @@ function e2eFiles(): string[] {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
       const full = path.join(dir, entry.name);
       if (entry.isDirectory()) walk(full);
-      else if (entry.name.endsWith(".ts")) out.push(full);
+      else if (/\.tsx?$/.test(entry.name)) out.push(full);
     }
   };
   walk(E2E);
   return out;
 }
 
-test("the walk finds an unparsable import through a chain of app modules", () => {
-  const chain = unrunnableChain(path.join(repoRoot, "components", "NotificationBanner.tsx"));
+test("the walk follows imports through app modules to reach an unparsable package", () => {
+  // `lib/socket.ts` imports no package this scan names; it gets there through `@/lib/query-client`
+  // and `expo/fetch`. Re-point this at another transitive reacher if that stops being true —
+  // never at one importing `react-native` itself, which proves only that the regex runs.
+  const chain = unrunnableChain(path.join(repoRoot, "lib", "socket.ts"));
   assert.ok(
-    chain && UNRUNNABLE.test(chain[chain.length - 1]),
-    "walking a React Native component reached nothing unparsable, so this scan cannot fail " +
-      "for the reason it exists — fix the resolver before trusting the sweep below"
+    chain && UNRUNNABLE.test(chain[chain.length - 1]) && chain.length > 2,
+    `walking \`lib/socket.ts\` found ${chain ? `a direct import: ${chain.join(" → ")}` : "nothing"}. ` +
+      "Recursion and resolution are what this scan is, and both are unproven if the only chain " +
+      "it can find is one file long"
+  );
+});
+
+test("a local specifier that resolves to nothing is an error, not a package", () => {
+  assert.throws(
+    () => resolve(path.join(repoRoot, "lib", "socket.ts"), "@/lib/nothingIsHere"),
+    /resolves to no file/,
+    "an unresolvable local import was taken for a package, so everything behind it goes " +
+      "unscanned and the sweep reports clean on a subtree it never read"
   );
 });
 
