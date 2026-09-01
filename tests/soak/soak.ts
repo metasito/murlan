@@ -13,7 +13,7 @@ import { pathToFileURL } from "node:url";
 import type { Socket } from "socket.io-client";
 import { startTestServer, hasDatabase, type TestServer } from "../helpers/testServer.ts";
 import { connectAs, reconnectWith, DEADLINE_SCALE } from "../helpers/client.ts";
-import { lobbyGraceMs } from "../../server/gameTimers.ts";
+import { disconnectGraceMs, lobbyGraceMs } from "../../server/gameTimers.ts";
 import {
   createDeck,
   getAllValidPlays,
@@ -72,25 +72,45 @@ const REJOIN_BUDGET_MS = 5_000 * DEADLINE_SCALE;
 /**
  * How long a dropped seat stays away, and why it may not grow.
  *
- * The oracle below calls an unanswered rejoin a violation. That is only true while the seat
- * still exists: inside `lobbyGraceMs()` the server is holding it, so silence is a defect.
- * Past it the seat is released correctly and the same violation would name working behaviour
- * — with the refusal reading `UNAUTHORIZED` either way, which is what makes it undetectable
- * by eye.
+ * The oracle below calls an unanswered rejoin a violation. That holds only while the seat
+ * still exists; once the server has released it the refusal is correct, and it reads
+ * `UNAUTHORIZED` either way, which is what makes the mistake invisible.
  */
 export const AWAY_WINDOW_MS = { floor: 200, spread: 600 };
+
+/**
+ * The grace a seat dropped by the chaos below is actually held for.
+ *
+ * A drop always starts mid-hand — the chaos only runs while the hand is live — so
+ * `seatLostAction` arms `disconnectGraceMs()`. But the hand can end while the seat is away,
+ * and a seat between hands is held by `lobbyGraceMs()` instead: that is the window #736
+ * lived in. Whichever is shorter is the one that can expire first.
+ */
+export const heldSeatGraceMs = () => Math.min(disconnectGraceMs(), lobbyGraceMs());
+
+/**
+ * How far under the grace the window has to sit.
+ *
+ * `longest` is the sleep alone, and the server's clock covers more than that: it starts when
+ * the close is observed and stops once the reconnect's ticket fetch and handshake have made
+ * the account online again. Unlike `REJOIN_BUDGET_MS` the window is not scaled on CI either,
+ * where every other deadline is multiplied. Comparing a grace against an underestimate
+ * exactly would leave the difference to be discovered by a violation nobody can explain.
+ */
+const AWAY_HEADROOM = 4;
 
 export function awayWindowOutsideGrace(
   window: typeof AWAY_WINDOW_MS,
   graceMs: number
 ): string | null {
   const longest = window.floor + window.spread;
-  if (longest < graceMs) return null;
+  if (longest * AWAY_HEADROOM < graceMs) return null;
   return (
-    `a dropped seat can stay away ${longest}ms against a ${graceMs}ms lobby grace, so the ` +
-    `server may release the seat while the soak still expects it held. Every unanswered ` +
-    `rejoin past that point reports working behaviour as a defect. Shorten the window, or ` +
-    `give a legitimate expiry an oracle of its own — it is not this one.`
+    `a dropped seat can stay away ${longest}ms, and the shortest grace holding it is ` +
+    `${graceMs}ms — under the ${AWAY_HEADROOM}x headroom the reconnect's own cost needs. ` +
+    `The server may release the seat while the soak still expects it held, and every ` +
+    `unanswered rejoin past that point reports working behaviour as a defect. Shorten the ` +
+    `window, or give a legitimate expiry an oracle of its own — it is not this one.`
   );
 }
 
@@ -389,8 +409,10 @@ export async function settle(
 }
 
 export async function runSoak(opts: Options, log = console.log): Promise<SoakResult> {
-  const misread = awayWindowOutsideGrace(AWAY_WINDOW_MS, lobbyGraceMs());
-  if (misread) throw new Error(`soak: ${misread}`);
+  if (opts.chaos > 0) {
+    const misread = awayWindowOutsideGrace(AWAY_WINDOW_MS, heldSeatGraceMs());
+    if (misread) throw new Error(`soak: ${misread}`);
+  }
 
   const rng = makeRng(opts.seed);
   const deckSize = createDeck().length;
