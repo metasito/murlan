@@ -48,8 +48,13 @@ export default function GameScreen() {
   const { gameState, selectedCards, selectCard, playSelected, passTurn, runAITurn } =
     useLocalTable();
   const { resetGame } = useLocalSession();
-  const { exchangeAnnouncing, exchangeAnnounceData, chooseExchangeCard, acknowledgeExchange } =
-    useLocalExchange();
+  const {
+    exchangeAnnouncing,
+    exchangeAnnounceData,
+    chooseExchangeCard,
+    acknowledgeExchange,
+    releaseStuckExchange,
+  } = useLocalExchange();
   const { rematchPromptOpen, rematchAnswers, rematchTally, answerRematch } = useLocalMatch();
 
   // Timers fire outside the render that scheduled them; refs keep them from
@@ -58,10 +63,12 @@ export default function GameScreen() {
   const runAITurnRef = useRef(runAITurn);
   const passTurnRef = useRef(passTurn);
   const chooseExchangeRef = useRef(chooseExchangeCard);
+  const releaseStuckRef = useRef(releaseStuckExchange);
   useEffect(() => {
     runAITurnRef.current = runAITurn;
     passTurnRef.current = passTurn;
     chooseExchangeRef.current = chooseExchangeCard;
+    releaseStuckRef.current = releaseStuckExchange;
   });
 
   const humanIdx = gameState?.players.findIndex((p) => p.type === "human") ?? -1;
@@ -103,19 +110,33 @@ export default function GameScreen() {
   // An AI that wins a round owes the loser a card; it gives up its weakest legal
   // one. A card id rather than the card, for the same reason as above: the
   // giveback timer must not be rescheduled by an unrelated update.
-  const aiGivebackCardId = (() => {
+  const givebackCardId = (() => {
     const phase = gameState?.exchangePhase;
     if (!phase?.active) return undefined;
     const winner = gameState!.players[phase.winnerIdx];
-    if (winner?.type !== "ai") return undefined;
+    if (!winner) return undefined;
     return pickGivebackCard(winner.hand, phase.cardFromLoser?.id)?.id;
   })();
+  const aiGivebackCardId =
+    gameState?.exchangePhase?.active &&
+    gameState.players[gameState.exchangePhase.winnerIdx]?.type === "ai"
+      ? givebackCardId
+      : undefined;
 
   useEffect(() => {
     if (!aiGivebackCardId) return;
     const t = setTimeout(() => chooseExchangeRef.current(aiGivebackCardId), AI_EXCHANGE_DELAY);
     return () => clearTimeout(t);
   }, [aiGivebackCardId]);
+
+  // The winner holds no card the rules let them give back, so no seat — human
+  // or bot — can satisfy the phase and the overlay would stay up forever.
+  const exchangeIsStuck = gameState?.exchangePhase?.active === true && givebackCardId === undefined;
+  useEffect(() => {
+    if (!exchangeIsStuck) return;
+    const t = setTimeout(() => releaseStuckRef.current(), AI_EXCHANGE_DELAY);
+    return () => clearTimeout(t);
+  }, [exchangeIsStuck]);
 
   useEffect(() => {
     if (!gameState) router.replace("/");

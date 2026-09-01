@@ -70,10 +70,27 @@ export function useLocalMatch() {
 
 /** The card that changes hands between manches, and the banner about it. */
 export function useLocalExchange() {
-  const { exchangeAnnouncing, exchangeAnnounceData, chooseExchangeCard, acknowledgeExchange } =
-    useGame();
+  const {
+    exchangeAnnouncing,
+    exchangeAnnounceData,
+    chooseExchangeCard,
+    acknowledgeExchange,
+    releaseStuckExchange,
+  } = useGame();
   return useMemo(
-    () => ({ exchangeAnnouncing, exchangeAnnounceData, chooseExchangeCard, acknowledgeExchange }),
-    [exchangeAnnouncing, exchangeAnnounceData, chooseExchangeCard, acknowledgeExchange]
+    () => ({
+      exchangeAnnouncing,
+      exchangeAnnounceData,
+      chooseExchangeCard,
+      acknowledgeExchange,
+      releaseStuckExchange,
+    }),
+    [
+      exchangeAnnouncing,
+      exchangeAnnounceData,
+      chooseExchangeCard,
+      acknowledgeExchange,
+      releaseStuckExchange,
+    ]
   );
 }

@@ -496,7 +496,7 @@ export default function RoomScreen() {
 
   const modePill = (
     <View style={styles.modePill}>
-      <Ionicons name={modeIcon} size={MODE_ICON} color={Colors.textMuted} />
+      <Ionicons name={modeIcon} size={MODE_ICON} color={Colors.textMuted} {...a11yHidden()} />
       <Text style={styles.modePillText}>
         {t("room.modeAndPlayers", { mode: modeLabel, n: room.maxPlayers })}
       </Text>

@@ -1,8 +1,5 @@
-// Where a seat finished, as the app draws it.
-//
-// Both halves were declared four times over — the badge text on the results
-// board, the profile, the history row and the hand breakdown, and the podium
-// colours in three of those.
+// Where a seat finished, as the app draws it: the podium colour and the words
+// on the badge.
 import { Colors } from "./theme";
 import type { TranslationKey } from "./i18n";
 

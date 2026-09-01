@@ -147,7 +147,7 @@ describe("online teams mode", { skip: hasDatabase() ? false : skipMessage() }, (
       const payload = (await over) as {
         rankings: string[];
         matchOver: boolean;
-        matchWinners: string[];
+        matchWinnerIds: string[];
       };
       assert.equal(payload.matchOver, true, "one manche settles a single-manche match");
 
@@ -155,10 +155,10 @@ describe("online teams mode", { skip: hasDatabase() ? false : skipMessage() }, (
       const winningTeam = state.players[topSeat].team;
       const expected = state.players
         .filter((p) => p.team === winningTeam)
-        .map((p) => p.name)
+        .map((p) => p.id)
         .sort();
       assert.deepEqual(
-        [...payload.matchWinners].sort(),
+        [...payload.matchWinnerIds].sort(),
         expected,
         "both partners take the manche, so both win the match"
       );

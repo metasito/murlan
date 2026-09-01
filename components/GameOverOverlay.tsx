@@ -11,7 +11,7 @@ import { AppModal } from "./AppModal";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import type { GameState } from "@/lib/gameEngine";
 import { standings } from "@/lib/standings";
-import { nameOfSeat } from "@/lib/matchState";
+import { celebration } from "@/lib/matchState";
 import type { OnlineMatchState } from "@/context/OnlineGameContext";
 import { Colors, FontSize, Spacing, TOUCH_TARGET_MIN } from "@/lib/theme";
 import { useTranslation } from "@/lib/i18n";
@@ -78,12 +78,11 @@ export function GameOverOverlay({
     };
   });
 
-  const celebratedId = match.over ? match.winners[0] : gameState.rankings[0];
-  const celebratedTeam = gameState.players.find((p) => p.id === celebratedId)?.team;
-  const celebratedName =
-    (isTeamMode && celebratedTeam
-      ? t("lobby.team", { team: celebratedTeam })
-      : nameOfSeat(gameState.players, celebratedId)) ?? "";
+  const { name: celebratedName } = celebration(
+    gameState.players,
+    [match.over ? match.winners[0] : undefined, gameState.rankings[0]],
+    isTeamMode ? (team) => t("lobby.team", { team }) : null
+  );
 
   // A match the table voted down offers no way to restart it.
   const canContinue = !match.over || match.continues;

@@ -1,10 +1,5 @@
 // A player, as a circle: the initial of their name, or the glyph for a seat
-// nobody is in yet.
-//
-// One scale for the whole app. Six hand-rolled copies had drifted to six
-// diameters (28, 30, 36, 42, 48, 52) and four initial sizes, and the two that
-// stand for *you* — the home screen and the profile — were four pixels apart
-// on the same identity.
+// nobody is in yet. One scale for the whole app.
 import React from "react";
 import { View, Text, StyleSheet } from "react-native";
 import type { StyleProp, ViewStyle } from "react-native";
@@ -43,13 +38,13 @@ export function Avatar({
   online?: boolean;
   style?: StyleProp<ViewStyle>;
 }) {
-  const d = DIAMETER[size];
-  const dot = Math.round(d * DOT_RATIO);
+  const diameter = DIAMETER[size];
+  const dot = Math.round(diameter * DOT_RATIO);
   return (
     <View
       style={[
         styles.circle,
-        { width: d, height: d },
+        { width: diameter, height: diameter },
         name === undefined && styles.vacant,
         ring && styles.ring,
         style,
@@ -59,7 +54,7 @@ export function Avatar({
       {name === undefined ? (
         <Ionicons
           name="person-add-outline"
-          size={Math.round(d * GLYPH_RATIO)}
+          size={Math.round(diameter * GLYPH_RATIO)}
           color={Colors.textMuted}
         />
       ) : (

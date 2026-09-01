@@ -1,9 +1,8 @@
 // The bar every menu screen opens with: a way back, a centred title, and
 // whatever that screen puts on the right.
 //
-// The title is centred by balancing the back control with a spacer of the same
-// width, so it has to be the control's own width rather than a number that
-// happens to be close to it.
+// The title is centred by balancing the back control with a spacer, both at
+// the TOUCH_TARGET_MIN width the control itself takes.
 import React from "react";
 import { View, Text, StyleSheet } from "react-native";
 import { router } from "expo-router";

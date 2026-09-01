@@ -5,9 +5,7 @@
 // resolution, and `node --test` type-strips plain .ts without resolving `@/`.
 //
 // It lives here rather than in server/ because a bot plays offline too, and
-// the two had drifted: the offline table gave up its weakest legal card while
-// the server gave up whatever sat first in the hand array, and the offline
-// path had neither of the server's two anti-freeze valves.
+// one rule played two ways is two rules.
 import {
   processPlay,
   processPass,
@@ -43,7 +41,7 @@ export function recordPlayFlags(
  * hand continues. Without this the whole table sits behind the exchange
  * overlay forever.
  */
-function resolveStuckExchange(state: GameState): GameState {
+export function resolveStuckExchange(state: GameState): GameState {
   const next = structuredClone(state);
   if (next.exchangePhase) next.exchangePhase.active = false;
   next.currentTurnIndex = getStartingPlayerAfterExchange(state);
@@ -52,8 +50,11 @@ function resolveStuckExchange(state: GameState): GameState {
 }
 
 export interface AutoMoveContext {
-  /** Mutated in place, as the achievement counters are read off it after the hand. */
-  handFlags: Record<number, { bomb: boolean; joker: boolean }>;
+  /**
+   * Mutated in place, as the achievement counters are read off it after the
+   * hand. Absent offline, which awards none.
+   */
+  handFlags?: Record<number, { bomb: boolean; joker: boolean }>;
   /** Records the move for a replay log. Absent offline, which keeps none. */
   onMove?: (seat: number, combo: Combination | null, next: GameState) => void;
 }
@@ -110,7 +111,7 @@ export function autoMoveForSeat(
       state.playedRanks
     );
     if (combo) {
-      recordPlayFlags(ctx.handFlags, seat, combo);
+      if (ctx.handFlags) recordPlayFlags(ctx.handFlags, seat, combo);
       return logged(combo, processPlay(state, combo));
     }
     if (!isNewRound) return logged(null, processPass(state));
@@ -124,7 +125,7 @@ export function autoMoveForSeat(
     if (!card) return null;
     const combo = buildCombination([card]);
     if (!combo) return null;
-    recordPlayFlags(ctx.handFlags, seat, combo);
+    if (ctx.handFlags) recordPlayFlags(ctx.handFlags, seat, combo);
     return logged(combo, processPlay(state, combo));
   }
 

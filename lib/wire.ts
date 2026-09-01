@@ -1,9 +1,5 @@
-// The HTTP shapes as JSON delivers them.
-//
-// Not shared/schema.ts's row types: a `Date` column arrives here as an ISO
-// string. Declared once because they were declared per screen — `RatingDto`
-// four times, `UserStatsDto` three, each free to gain a field the others
-// never heard about.
+// The HTTP shapes as JSON delivers them — not shared/schema.ts's row types,
+// because a `Date` column arrives here as an ISO string.
 import type { GameMode } from "./gameEngine";
 
 export interface UserStatsDto {

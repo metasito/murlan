@@ -1,11 +1,8 @@
-// The app's only <Modal>.
+// The app's only <Modal>, which tests/orientation.test.ts pins.
 //
 // React Native's Modal defaults to `supportedOrientations={["portrait"]}` on
 // iOS, so one opened in landscape rotates the whole app and leaves the screen
-// underneath laid out for the old size — every tap then lands on nothing. That
-// was six copies of the same three-line comment and one prop, which is six
-// places to forget it. tests/orientation.test.ts pins that this stays the only
-// declaration.
+// underneath laid out for the old size — every tap then lands on nothing.
 import React from "react";
 import { Modal } from "react-native";
 import { usePrefersReducedMotion } from "@/lib/accessibility";

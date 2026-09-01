@@ -1672,11 +1672,7 @@ export function foldHandIntoMatch(input: FoldHandInput): FoldHandResult {
  */
 export type MatchLength = "match" | "single";
 
-/**
- * The target a match of this many seats opens on. `targetsFor` returns the
- * whole escalation ladder and every caller wanting the opening rung was
- * indexing `[0]` and handling the empty case its own way, or not at all.
- */
+/** The target a match of this many seats opens on — the first rung of `targetsFor`. */
 export function firstTargetFor(playerCount: number): number {
   const [target] = targetsFor(playerCount);
   if (target === undefined) throw new Error(`targetsFor(${playerCount}) returned no targets`);

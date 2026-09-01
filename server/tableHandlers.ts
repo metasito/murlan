@@ -66,7 +66,7 @@ import {
   processExchangeChoice,
   processPass,
   processPlay,
-  targetsFor,
+  firstTargetFor,
   teamForSeat,
 } from "../lib/gameEngine.ts";
 import type { GameState } from "../lib/gameEngine.ts";
@@ -585,10 +585,7 @@ async function startMatchAction(
     if (!r.isBot) playerMap[idx] = r.userId;
   });
 
-  const [firstTarget] = targetsFor(roster.length);
-  if (firstTarget === undefined) {
-    throw new Error(`targetsFor(${roster.length}) returned no targets`);
-  }
+  const firstTarget = firstTargetFor(roster.length);
 
   const newGame: OnlineGameState = {
     gameState,

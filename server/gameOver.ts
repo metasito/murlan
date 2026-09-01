@@ -5,7 +5,7 @@ import { scoreKeyForSeat } from "./gameRoom.ts";
 import type { OnlineGameState } from "./gameRoom.ts";
 import { resolveHandEnd } from "./onlineGameLogic.ts";
 import { replaySeatsOf } from "./replayShape.ts";
-import { isMajority, tallyRematchAnswers, targetsFor } from "../lib/gameEngine.ts";
+import { isMajority, tallyRematchAnswers, firstTargetFor } from "../lib/gameEngine.ts";
 import type { GameMode } from "../lib/gameEngine.ts";
 import type { GameResult } from "../lib/achievements.ts";
 import type { ReplayMove, ReplaySeat } from "../lib/replay.ts";
@@ -214,10 +214,7 @@ export async function handleGameOver(
 /** Between hands: a finished match starts over, an unfinished one carries on. */
 export function rollMatchForward(game: OnlineGameState) {
   if (game.matchOver) {
-    const [target] = targetsFor(game.gameState.players.length);
-    if (target === undefined) {
-      throw new Error(`targetsFor(${game.gameState.players.length}) returned no targets`);
-    }
+    const target = firstTargetFor(game.gameState.players.length);
     game.cumulativeScores = {};
     game.matchTarget = target;
     game.handsPlayed = 0;

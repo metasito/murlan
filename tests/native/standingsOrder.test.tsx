@@ -52,8 +52,10 @@ const seat = (id: string, name: string): Player => ({ id, name, hand: [], type: 
 // but KenziGmbH carried more match points into it than rotonmeta did. Ordering
 // by the manche puts 3pt above 4pt.
 const FINISH_ORDER = ['player_0', 'player_1', 'player_2'];
-const TOTALS = { shtiz7: 14, rotonmeta: 3, KenziGmbH: 4 };
-const AWARDED = { shtiz7: 2, rotonmeta: 1, KenziGmbH: 0 };
+// Keyed by engine player id, as `game:over` states every score and winner —
+// a display name is not an identity, and two seats can share one.
+const TOTALS = { player_0: 14, player_1: 3, player_2: 4 };
+const AWARDED = { player_0: 2, player_1: 1, player_2: 0 };
 
 const mockState: GameState = {
   players: [seat('player_0', 'shtiz7'), seat('player_1', 'rotonmeta'), seat('player_2', 'KenziGmbH')],
@@ -80,11 +82,15 @@ const mockMatch: MatchState = {
 
 interface Queryable {
   getAllByText: (matcher: RegExp) => { props: Record<string, unknown> }[];
+  getAllByTestId: (id: string) => { props: Record<string, unknown> }[];
 }
 
-/** Every match total the overlay printed, top to bottom. */
+/**
+ * Every match total the board printed, top to bottom. By testID rather than by
+ * shape: the stats beside the standings print bare integers too.
+ */
 const printedTotals = (view: Queryable) =>
-  view.getAllByText(/^\d+pt$/).map((n) => Number(String(n.props.children).replace('pt', '')));
+  view.getAllByTestId('rank-total').map((n) => Number(String(n.props.children)));
 
 /**
  * What each standings row says the manche awarded it, top to bottom. The
@@ -124,7 +130,7 @@ describe('a standings row is explained by the number beside it', () => {
             length: 'match',
             handsPlayed: 3,
             over: true,
-            winners: ['shtiz7'],
+            winners: ['player_0'],
             isDraw: false,
             continues: false,
           }}
@@ -153,7 +159,7 @@ describe('a standings row is explained by the number beside it', () => {
           onVoteRematch={() => {}}
           voteState={null}
           myUserId="u1"
-          cumulativeScores={{ shtiz7: 2, rotonmeta: 0, KenziGmbH: 0 }}
+          cumulativeScores={{ player_0: 2, player_1: 0, player_2: 0 }}
           ratingDelta={null}
         handScores={AWARDED}
           match={{

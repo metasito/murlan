@@ -1,8 +1,5 @@
 // What a panel shows when it has nothing to show: it is loading, it could not
 // load, or there is genuinely nothing there.
-//
-// One set for every screen, because the three used to be written per screen and
-// the same "couldn't load" sentence rendered at three sizes and two weights.
 import React from "react";
 import { View, Text, StyleSheet, ActivityIndicator } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
@@ -11,6 +8,10 @@ import { Colors, Spacing, Type } from "@/lib/theme";
 import { a11yGroup, a11yHidden } from "@/lib/a11y";
 
 type IconName = React.ComponentProps<typeof Ionicons>["name"];
+
+const BODY_LINE_H = 18;
+/** Holds the sentence to roughly two lines on a phone, so it reads as one thought. */
+const BODY_MAX_W = 280;
 
 const STATE_ICON = 28;
 const RETRY_ICON = 16;
@@ -108,5 +109,5 @@ export function EmptyBlock({
 const styles = StyleSheet.create({
   block: { alignItems: "center", paddingVertical: Spacing.lg, gap: Spacing.sm },
   title: { ...Type.label, textAlign: "center" },
-  body: { ...Type.caption, textAlign: "center", lineHeight: 18, maxWidth: 280 },
+  body: { ...Type.caption, textAlign: "center", lineHeight: BODY_LINE_H, maxWidth: BODY_MAX_W },
 });

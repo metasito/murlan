@@ -264,8 +264,7 @@ export const Opacity = {
  * Named because sibling order is not a statement: web and Android paint in
  * tree order and iOS does not, so anything sharing a stacking context says
  * where it sits or finds out on a device (#209). Every band is a role, so two
- * views at the same number are deliberately peers — the failure this replaces
- * was three unrelated layers each independently choosing 50.
+ * views at the same number are deliberately peers.
  */
 export const Layer = {
   felt: 0,

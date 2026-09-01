@@ -1,10 +1,6 @@
 // What a manche ends with: who won it, where the match stands, the standings,
-// and the way onward.
-//
-// One board for both modes. Offline reaches it as a screen (app/result.tsx)
-// and online as an overlay over the table (components/GameOverOverlay.tsx),
-// and the two had been written separately — the same anatomy in two shapes,
-// with the online one naming no teams at all in a 2v2.
+// and the way onward. Offline reaches it as a screen (app/result.tsx), online
+// as an overlay over the table (components/GameOverOverlay.tsx).
 //
 // Every glyph is a literal here rather than a prop the callers pass: the icon
 // subset resolver follows a prop back to its call sites, and a name it cannot
@@ -148,7 +144,10 @@ function RankCard({
         )}
       </View>
       <View style={styles.scoreBlock}>
-        <Text style={[styles.totalScore, isWinner && styles.totalScoreWinner]}>
+        <Text
+          testID="rank-total"
+          style={[styles.totalScore, isWinner && styles.totalScoreWinner]}
+        >
           {row.total}
         </Text>
         <Text style={styles.scoreSub}>{t("result.pointsDelta", { n: row.points })}</Text>
@@ -657,7 +656,7 @@ const styles = StyleSheet.create({
     borderRadius: Radius.md,
     overflow: "hidden",
   },
-  rematchBtnDim: { opacity: Opacity.pressed },
+  rematchBtnDim: { opacity: Opacity.disabled },
   rematchGrad: {
     flex: 1,
     flexDirection: "row",

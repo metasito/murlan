@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { hapticLight, hapticMedium } from "@/lib/haptics";
 import { useLocalMatch, useLocalSession, useLocalTable } from "@/context/gameHooks";
 import { standings } from "@/lib/standings";
-import { nameOfSeat } from "@/lib/matchState";
+import { celebration } from "@/lib/matchState";
 import { ResultBoard, type ContinueAction, type ResultRow } from "@/components/ResultBoard";
 import { Spacing } from "@/lib/theme";
 import { useTranslation } from "@/lib/i18n";
@@ -49,15 +49,11 @@ export default function ResultScreen() {
     points: row.points,
   }));
 
-  const teamOf = (playerId: string) =>
-    gameState.players.find((p) => p.id === playerId)?.team;
-
-  const celebratedId = (match.over ? match.winners[0] : lastHand?.rankings[0]) ?? rows[0]?.id;
-  const celebratedTeam = celebratedId ? teamOf(celebratedId) : undefined;
-  const celebratedName =
-    (isTeamMode && celebratedTeam
-      ? t("lobby.team", { team: celebratedTeam })
-      : nameOfSeat(gameState.players, celebratedId)) ?? "";
+  const { name: celebratedName } = celebration(
+    gameState.players,
+    [match.over ? match.winners[0] : undefined, lastHand?.rankings[0], rows[0]?.id],
+    isTeamMode ? (team) => t("lobby.team", { team }) : null
+  );
 
   const handleHome = () => {
     hapticLight();
