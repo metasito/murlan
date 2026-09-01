@@ -7,6 +7,7 @@ import { evaluateAchievements, ACHIEVEMENTS } from "../lib/achievements.ts";
 import type { GameResult } from "../lib/achievements.ts";
 import type { GameMode } from "../lib/gameEngine.ts";
 import { dailyStreak, utcDay } from "../lib/streak.ts";
+import { isBotSeatKey } from "./botSeat.ts";
 
 /**
  * Match history kept per user, pruned on every write.
@@ -20,14 +21,6 @@ import { dailyStreak, utcDay } from "../lib/streak.ts";
  * deliberately retained. They must not become two numbers.
  */
 export const MAX_HISTORY_ROWS_PER_USER = 50;
-
-/** Bot seats carry this synthetic id (see server/onlineGameLogic.ts's
- * `scoreKeyForSeat`) instead of a real users.id — the same convention the
- * scoring path already uses to keep vacated seats out of anything keyed by a
- * real account. */
-function isBotId(userId: string): boolean {
-  return userId.startsWith("bot:");
-}
 
 /**
  * Per-hand score for a placement, mirroring lib/gameEngine.ts's `scoreHand`
@@ -66,7 +59,7 @@ export async function recordGameResult(
    */
   ratingDeltas: Map<string, number> = new Map()
 ): Promise<void> {
-  const humanResults = results.filter((r) => !isBotId(r.userId));
+  const humanResults = results.filter((r) => !isBotSeatKey(r.userId));
   if (humanResults.length === 0) return;
 
   for (const result of humanResults) {

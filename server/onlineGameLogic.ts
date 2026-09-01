@@ -1,6 +1,7 @@
 // Pure helpers used by server/socket.ts, kept here so a test can reach them
 // without pulling storage/db/session — and the pg pool they build at import —
 // onto a path that needs none of it.
+import { botSeatKey, isBotSeatKey } from "./botSeat.ts";
 import { botSeatNames, getBotPersonality } from "../lib/botPersonalities.ts";
 import type { BotPersonalityId } from "../lib/botPersonalities.ts";
 import { foldHandIntoMatch, resolveMatchFor } from "../lib/gameEngine.ts";
@@ -40,7 +41,7 @@ export function scoreKeyForSeat(
   playerMap: Record<number, string>,
   seat: number
 ): string {
-  return playerMap[seat] ?? `bot:${seat}`;
+  return playerMap[seat] ?? botSeatKey(seat);
 }
 
 /**
@@ -56,9 +57,6 @@ export function findViewerSeat(
   return seatOfUser(playerMap, viewerUserId);
 }
 
-export function isBotSeatKey(key: string): boolean {
-  return key.startsWith("bot:");
-}
 
 /** The shape of GameState.exchangePhase, restated because the two cards are
  * `unknown` here on purpose: this helper only decides whether to forward

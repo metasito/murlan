@@ -186,3 +186,33 @@ describe('the recent-hands card', () => {
     await view.unmount();
   });
 });
+
+/**
+ * The door out to the full list. It appears only when there is something
+ * behind it — five hands are all of them, and a door onto nothing is a dead
+ * end the reader has to discover by walking through it.
+ */
+describe('the door out of the card', () => {
+  it('is absent when the card already shows every hand', async () => {
+    const view = await show(
+      Array.from({ length: 5 }, (_, i) => hand(`h${i}`, [], null))
+    );
+    await act(async () => {});
+
+    expect(view.queryByLabelText(t('profile.historyDoorA11yLabel', { n: 5 }))).toBeNull();
+    await view.unmount();
+  });
+
+  it('says how many hands are behind it, and opens them', async () => {
+    const view = await show(
+      Array.from({ length: 8 }, (_, i) => hand(`h${i}`, [], null))
+    );
+    await act(async () => {});
+
+    await fireEvent.press(
+      view.getByLabelText(t('profile.historyDoorA11yLabel', { n: 8 }))
+    );
+    expect(mockPush).toHaveBeenCalledWith('/(online)/history');
+    await view.unmount();
+  });
+});

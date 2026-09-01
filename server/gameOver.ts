@@ -185,11 +185,15 @@ export async function handleGameOver(
       );
     }
 
-    // A replay is written for any table with a human seat, bot-majority ones
-    // included: it records what happened, it awards nothing. Not awaited, and
-    // the table is not required to exist — until `db:push` has run the insert
-    // fails, is logged, and the only consequence is an empty replays list.
-    if (game.moveLog && game.moveLog.length > 0) {
+    // A replay is written on the same gate as the stats beside it. The profile
+    // reaches a replay through its `match_history` row, so one written for a
+    // table that records no row is a hand nobody can open — kept for a
+    // fortnight and reachable from nowhere.
+    //
+    // Not awaited, and the table is not required to exist: until `db:push` has
+    // run the insert fails, is logged, and the only consequence is an empty
+    // replays list.
+    if (recordable && game.moveLog && game.moveLog.length > 0) {
       writers.saveReplay({
         roomId,
         finishedAt,

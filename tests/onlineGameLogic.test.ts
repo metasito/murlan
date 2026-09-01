@@ -5,11 +5,11 @@ import {
   seatOfUser,
   scoreKeyForSeat,
   findViewerSeat,
-  isBotSeatKey,
   buildSeatRoster,
   teamKeyMap,
   restoredMatchOver,
 } from "../server/onlineGameLogic.ts";
+import { isBotSeatKey } from "../server/botSeat.ts";
 import { teamForSeat, TEAMS_PLAYER_COUNT } from "../lib/gameEngine.ts";
 
 describe("readPersistedPlayerMap (seat resolution on rejoin)", () => {

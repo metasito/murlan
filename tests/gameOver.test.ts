@@ -286,7 +286,10 @@ describe("handleGameOver — the writes", () => {
     });
   });
 
-  test("a bot-majority table records no stats and no rating, but keeps the replay", async () => {
+  // The replay rides the same gate as the stats: the profile reaches a hand
+  // through its `match_history` row, so a replay written where no row is would
+  // be kept for a fortnight and reachable from nowhere (#752).
+  test("a bot-majority table records no stats, no rating and no replay", async () => {
     const s = stubServer();
     // One human, three bots — a seat with no playerMap entry is a bot.
     const game = makeGame({
@@ -305,7 +308,7 @@ describe("handleGameOver — the writes", () => {
 
     await handleGameOver(s.io, ROOM, game, s.writers);
 
-    assert.deepEqual(s.names(), ["updateRoomStatus", "persistGameState", "saveReplay"]);
+    assert.deepEqual(s.names(), ["updateRoomStatus", "persistGameState"]);
   });
 
   test("a hand with no move log writes no replay", async () => {
