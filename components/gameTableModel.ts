@@ -1278,7 +1278,6 @@ export function rotateGlyphAngle(turn: number): number {
 
 
 export interface ThrownPlay {
-  key: string;
   dir: FlyDirection;
   cards: Card[];
   /** Where the throw starts, relative to where it lands. */
@@ -1336,7 +1335,6 @@ export function readThrownPlay(input: ThrownPlayInput): ThrownPlay {
 
   const thrower = players[playedBy];
   return {
-    key: comboKey(combo, playedBy),
     dir,
     cards: combo.cards,
     heavy: combo.type === "bomb" || combo.type === "royal_straight",

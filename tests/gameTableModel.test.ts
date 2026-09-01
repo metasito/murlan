@@ -2087,9 +2087,8 @@ describe("readThrownPlay", () => {
       handCardH: 90,
     });
 
-  test("the key and the cards are the combination's own", () => {
+  test("the cards are the combination's own, thrown from the seat that played it", () => {
     const thrown = read(table(2), 2);
-    assert.equal(thrown.key, comboKey(PAIR, 2));
     assert.deepEqual(thrown.cards, PAIR.cards);
     assert.equal(thrown.dir, "top");
   });
