@@ -113,14 +113,62 @@ describe("a device run is gated on having read the last failure's artefact", () 
   for (const cmd of [
     "gh workflow run ios.yml --ref agent/353-ios-offline-game",
     "gh workflow run maestro.yml",
-    "gh run rerun 33428375221 --failed",
-    "gh run rerun 33428375221",
   ]) {
     test(`blocks: ${cmd}`, () => {
       const message = check(cmd);
       assert.ok(message, `expected ${cmd} to be blocked`);
       assert.match(String(message), /MAESTRO_EVIDENCE_READ=1/);
       assert.match(String(message), /screen-hierarchy|screenshot/);
+    });
+  }
+});
+
+describe("a rerun is gated on the workflow it would re-dispatch, not on being a rerun", () => {
+  // `gh run rerun <id>` names a run, not a workflow, so the command alone cannot say whether
+  // it costs 25 minutes on a simulator or four on a browser shard. Asking is the only way to
+  // know, and a guard that blocks the honest path teaches people to route around the marker.
+  const asWorkflow = (name: string | null) => () => name;
+
+  test("blocks a rerun of a device run", () => {
+    const message = check("gh run rerun 33428375221 --failed", asWorkflow("iOS UI (Maestro)"));
+    assert.ok(message, "expected a rerun of a Maestro run to be blocked");
+    assert.match(String(message), /MAESTRO_EVIDENCE_READ=1/);
+  });
+
+  test("blocks a rerun of the Android device run", () => {
+    assert.ok(check("gh run rerun 33428375221", asWorkflow("Android UI (Maestro)")));
+  });
+
+  test("allows a rerun of a run with no pixels to read", () => {
+    assert.equal(check("gh run rerun 33495876524 --failed", asWorkflow("CI")), null);
+  });
+
+  test("allows a rerun the marker acknowledges", () => {
+    assert.equal(
+      check("MAESTRO_EVIDENCE_READ=1 gh run rerun 33428375221", asWorkflow("iOS UI (Maestro)")),
+      null
+    );
+  });
+
+  test("allows a rerun whose workflow cannot be resolved", () => {
+    // Resolution goes through `gh`. If that cannot answer, the rerun it guards cannot dispatch
+    // anything either, so blocking here costs the honest path and protects nothing.
+    assert.equal(check("gh run rerun 33428375221 --failed", asWorkflow(null)), null);
+  });
+
+  // Resolution costs a network round trip, so it may only be spent on a command whose verdict
+  // it can still change.
+  for (const [what, cmd] of [
+    ["a command that reruns nothing", "gh run view 33428373840 --json jobs"],
+    ["a rerun the marker already allows", "MAESTRO_EVIDENCE_READ=1 gh run rerun 33428375221"],
+  ]) {
+    test(`does not ask about ${what}`, () => {
+      let asked = 0;
+      check(cmd, () => {
+        asked += 1;
+        return "iOS UI (Maestro)";
+      });
+      assert.equal(asked, 0, `${cmd} spent a round trip it could not have acted on`);
     });
   }
 });

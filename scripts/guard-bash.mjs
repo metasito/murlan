@@ -13,6 +13,7 @@
  * Exit 0 allows. Exit 2 blocks and returns the message on stderr to the agent.
  */
 import { readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 
 // A command actually runs only at the start of the line or after a separator. Without this the
 // guard fires on the same text quoted inside an argument — a grep pattern, a heredoc, a message —
@@ -31,6 +32,42 @@ function withoutQuotedBodies(command) {
   return command
     .replace(/@(['"])[\s\S]*?\1@/g, (m) => " ".repeat(m.length)) // PowerShell @'…'@ / @"…"@
     .replace(/<<-?\s*(['"]?)(\w+)\1[\s\S]*?^\t*\2$/gm, (m) => " ".repeat(m.length)); // sh <<EOF
+}
+
+/**
+ * Whether `gh run rerun <id>` would re-dispatch a device run.
+ *
+ * The command names a run, never a workflow, so nothing on the line says whether it costs
+ * twenty-five minutes on a simulator or four on a browser shard. Both device workflows are
+ * named for Maestro and a new one will be, so the answer is in the name once something asks.
+ *
+ * A resolver that cannot answer means no: `gh` is how the rerun would be dispatched too, so
+ * blocking on its silence forbids the honest path and protects nothing.
+ */
+const DEVICE_WORKFLOW = /maestro/i;
+
+function rerunsADeviceRun(command, workflowOfRun) {
+  const rerun = new RegExp(AT_COMMAND_START + String.raw`gh\s+run\s+rerun\b([^|;&]*)`, "m").exec(
+    command
+  );
+  if (!rerun) return false;
+  const runId = /\b(\d{5,})\b/.exec(rerun[1]);
+  return runId ? DEVICE_WORKFLOW.test(workflowOfRun(runId[1]) ?? "") : false;
+}
+
+/** The workflow a run belongs to, or null when `gh` cannot say. */
+function askGitHub(runId) {
+  try {
+    return (
+      execFileSync("gh", ["run", "view", runId, "--json", "workflowName", "-q", ".workflowName"], {
+        encoding: "utf8",
+        timeout: 15_000,
+        stdio: ["ignore", "pipe", "ignore"],
+      }).trim() || null
+    );
+  } catch {
+    return null;
+  }
 }
 
 const RULES = [
@@ -92,12 +129,13 @@ const RULES = [
     // captured: the flow gated its opening move on the 3 of Spades, the deal held the 3 of
     // Hearts, and every later tap went into a button that cannot enable until someone opens.
     // Reading the artefact is the rule; this is the only thing that has ever made it happen.
-    test: (c) =>
-      new RegExp(
-        AT_COMMAND_START +
-          String.raw`gh\s+(workflow\s+run\s+\S*(ios|maestro)|run\s+rerun)\b(?![^|;&]*MAESTRO_EVIDENCE_READ)`,
+    test: (c, workflowOfRun) =>
+      !/MAESTRO_EVIDENCE_READ=1/.test(c) &&
+      (new RegExp(
+        AT_COMMAND_START + String.raw`gh\s+workflow\s+run\s+\S*(ios|maestro)\b`,
         "m"
-      ).test(c) && !/MAESTRO_EVIDENCE_READ=1/.test(c),
+      ).test(c) ||
+        rerunsADeviceRun(c, workflowOfRun)),
     message:
       "Dispatching a device run is blocked until you have read the last failure's own pixels.\n" +
       "A run is ~25 minutes; the artefact is already on disk and usually holds the answer.\n" +
@@ -126,9 +164,9 @@ const RULES = [
   },
 ];
 
-export function check(command) {
+export function check(command, workflowOfRun = askGitHub) {
   const runnable = withoutQuotedBodies(command);
-  for (const rule of RULES) if (rule.test(runnable)) return rule.message;
+  for (const rule of RULES) if (rule.test(runnable, workflowOfRun)) return rule.message;
   return null;
 }
 
