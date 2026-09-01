@@ -1,0 +1,268 @@
+{
+  "devices": {
+    "com.apple.CoreSimulator.SimRuntime.iOS-26-4": [
+      {
+        "name": "iPhone 17 Pro",
+        "udid": "2A6DC5A9-CE8C-4BC5-959D-F98D5F4BD9AA"
+      },
+      {
+        "name": "iPhone 17 Pro Max",
+        "udid": "CB2B1AD7-5B11-458E-8E89-7BCE0B90DFE9"
+      },
+      {
+        "name": "iPhone 17e",
+        "udid": "8D41BEF8-BDAE-4808-AFD5-18425E20D23B"
+      },
+      {
+        "name": "iPhone Air",
+        "udid": "C5E77FA9-F994-4A87-A2B0-F070340AA20F"
+      },
+      {
+        "name": "iPhone 17",
+        "udid": "670F6F59-DF4D-4B6E-B791-28FF48ACC310"
+      },
+      {
+        "name": "iPad Pro 13-inch (M5)",
+        "udid": "9A90C5F3-53FC-4FBD-A451-14B8F7D5DF56"
+      },
+      {
+        "name": "iPad Pro 11-inch (M5)",
+        "udid": "E59B2434-1795-4D71-BD22-66A888EF4940"
+      },
+      {
+        "name": "iPad mini (A17 Pro)",
+        "udid": "264D5F9C-BDAA-4475-A832-3105F5D72ECD"
+      },
+      {
+        "name": "iPad Air 13-inch (M4)",
+        "udid": "4FB1F411-0629-4EAA-B390-C5C4F1EDD080"
+      },
+      {
+        "name": "iPad Air 11-inch (M4)",
+        "udid": "A245D7CA-E4F0-4A9F-B394-2392E78FFD41"
+      },
+      {
+        "name": "iPad (A16)",
+        "udid": "AEAB41E2-B911-469E-A937-B89C3BC57887"
+      }
+    ],
+    "com.apple.CoreSimulator.SimRuntime.tvOS-26-5": [
+      {
+        "name": "Apple TV 4K (3rd generation)",
+        "udid": "D63B6EE0-0A8C-4BE8-BCA0-6E1DA37BBE32"
+      },
+      {
+        "name": "Apple TV 4K (3rd generation) (at 1080p)",
+        "udid": "315553F5-1A4D-414D-93F5-78746EDC5E30"
+      },
+      {
+        "name": "Apple TV",
+        "udid": "9B25A82E-1C8C-48ED-BEB4-AFE5958ACF03"
+      }
+    ],
+    "com.apple.CoreSimulator.SimRuntime.xrOS-26-5": [
+      {
+        "name": "Apple Vision Pro",
+        "udid": "3D0ABE4F-AD0F-4D27-8707-3F3A8BFF9E0F"
+      }
+    ],
+    "com.apple.CoreSimulator.SimRuntime.watchOS-26-4": [
+      {
+        "name": "Apple Watch Series 11 (46mm)",
+        "udid": "12ADDF3A-EE5A-4F78-869F-97120B27A7B4"
+      },
+      {
+        "name": "Apple Watch Series 11 (42mm)",
+        "udid": "8EA1B8D2-BD8D-4AAA-B25E-94F18372BC39"
+      },
+      {
+        "name": "Apple Watch Ultra 3 (49mm)",
+        "udid": "0101FE49-62EB-47CC-9F82-9B00CFB0CA2F"
+      },
+      {
+        "name": "Apple Watch SE 3 (44mm)",
+        "udid": "126267C9-F8DE-45F7-8D17-54F0A6215751"
+      },
+      {
+        "name": "Apple Watch SE 3 (40mm)",
+        "udid": "D00E1AD4-7B9B-4ACE-B8D7-7DA7B1EEE111"
+      }
+    ],
+    "com.apple.CoreSimulator.SimRuntime.iOS-26-5": [
+      {
+        "name": "iPhone 17 Pro",
+        "udid": "6EE862FE-93F2-4D55-946E-8745EE2B3A88"
+      },
+      {
+        "name": "iPhone 17 Pro Max",
+        "udid": "6300F6FD-611A-422C-B6F2-F8C162FBDDF7"
+      },
+      {
+        "name": "iPhone 17e",
+        "udid": "A10B76FC-4115-4057-8550-967F510895A7"
+      },
+      {
+        "name": "iPhone Air",
+        "udid": "A8C66A3B-A7A0-4BD7-A222-B48E3A881425"
+      },
+      {
+        "name": "iPhone 17",
+        "udid": "FC5FEF2A-E933-4515-AAEF-C9FC16651D0B"
+      },
+      {
+        "name": "iPad Pro 13-inch (M5)",
+        "udid": "B29636C6-DD18-4550-B6F7-54EB38151CFA"
+      },
+      {
+        "name": "iPad Pro 11-inch (M5)",
+        "udid": "30835194-E95D-4011-A3D1-12F5D5F6412F"
+      },
+      {
+        "name": "iPad mini (A17 Pro)",
+        "udid": "7BC5C335-1793-4B5F-A2CF-A3DA10A6205F"
+      },
+      {
+        "name": "iPad Air 13-inch (M4)",
+        "udid": "FFD220A2-A803-49C3-BE74-F86868045C1B"
+      },
+      {
+        "name": "iPad Air 11-inch (M4)",
+        "udid": "B67CCB26-F271-45E5-B60A-840907A95372"
+      },
+      {
+        "name": "iPad (A16)",
+        "udid": "C7084CDD-3835-44B2-801F-57E640759790"
+      }
+    ],
+    "com.apple.CoreSimulator.SimRuntime.watchOS-26-2": [
+      {
+        "name": "Apple Watch Series 11 (46mm)",
+        "udid": "B2BBE823-9488-4987-9A2C-FD3361A645E1"
+      },
+      {
+        "name": "Apple Watch Series 11 (42mm)",
+        "udid": "5658D9F9-73DC-4DF0-8B07-A765CA138CD8"
+      },
+      {
+        "name": "Apple Watch Ultra 3 (49mm)",
+        "udid": "10EEBCE9-E01D-428A-BFBD-6D6EAC610588"
+      },
+      {
+        "name": "Apple Watch SE 3 (44mm)",
+        "udid": "0531346B-0C23-497A-897B-24FEA99A5DE7"
+      },
+      {
+        "name": "Apple Watch SE 3 (40mm)",
+        "udid": "015B8FE9-D2BF-4325-A267-B562399DABB1"
+      }
+    ],
+    "com.apple.CoreSimulator.SimRuntime.xrOS-26-2": [
+      {
+        "name": "Apple Vision Pro",
+        "udid": "BE484E48-A1E0-48D0-B0F8-4473D03325C5"
+      }
+    ],
+    "com.apple.CoreSimulator.SimRuntime.tvOS-26-2": [
+      {
+        "name": "Apple TV 4K (3rd generation)",
+        "udid": "04083A0F-C184-42C0-9C4C-DF4630B64BAA"
+      },
+      {
+        "name": "Apple TV 4K (3rd generation) (at 1080p)",
+        "udid": "05477ACF-C10F-4CD7-A30C-E2E7B38285FD"
+      },
+      {
+        "name": "Apple TV",
+        "udid": "23C871DA-490A-4B65-9C11-2DB3633A4B87"
+      }
+    ],
+    "com.apple.CoreSimulator.SimRuntime.watchOS-26-5": [
+      {
+        "name": "Apple Watch Series 11 (46mm)",
+        "udid": "D992EACC-6B68-4CB0-B15F-E0E3D719A255"
+      },
+      {
+        "name": "Apple Watch Series 11 (42mm)",
+        "udid": "014D8AFF-BE26-4B2E-8774-3386BBC3300A"
+      },
+      {
+        "name": "Apple Watch Ultra 3 (49mm)",
+        "udid": "3687CDAA-E0BA-480C-90D6-77648960145C"
+      },
+      {
+        "name": "Apple Watch SE 3 (44mm)",
+        "udid": "3066FCE3-2BF6-4F11-8100-2B01ABE67A29"
+      },
+      {
+        "name": "Apple Watch SE 3 (40mm)",
+        "udid": "D4E07688-5876-486A-8AEC-B790400E651D"
+      }
+    ],
+    "com.apple.CoreSimulator.SimRuntime.iOS-26-2": [
+      {
+        "name": "iPhone 17 Pro",
+        "udid": "6F69910C-E4FA-488A-B9C2-41B770484810"
+      },
+      {
+        "name": "iPhone 17 Pro Max",
+        "udid": "CAF77269-18B1-4CDB-B5D6-D294F2A6B8B5"
+      },
+      {
+        "name": "iPhone Air",
+        "udid": "BBED5A57-8BA7-4E5E-BEAC-64304CD7461E"
+      },
+      {
+        "name": "iPhone 17",
+        "udid": "9AA9ED9B-42D2-4F6E-B8B5-45AAB66D6404"
+      },
+      {
+        "name": "iPhone 16e",
+        "udid": "E7BD0281-5697-422C-B0CB-659D99F51028"
+      },
+      {
+        "name": "iPad Pro 13-inch (M5)",
+        "udid": "50E2E8BC-50A0-4C2D-943B-E7E53DBDD64C"
+      },
+      {
+        "name": "iPad Pro 11-inch (M5)",
+        "udid": "720F735B-B4B4-4692-9B20-2CF0AC1B1438"
+      },
+      {
+        "name": "iPad mini (A17 Pro)",
+        "udid": "9F0FDF94-418B-4B84-9974-80DE78929B99"
+      },
+      {
+        "name": "iPad (A16)",
+        "udid": "34703DD5-6831-4A40-B51B-12BB2AF833FF"
+      },
+      {
+        "name": "iPad Air 13-inch (M3)",
+        "udid": "11100B22-7945-4D12-A6C0-E7E1AC1F49FB"
+      },
+      {
+        "name": "iPad Air 11-inch (M3)",
+        "udid": "0B38A3FD-7EEB-41C1-988C-47D5E50ADC4A"
+      }
+    ],
+    "com.apple.CoreSimulator.SimRuntime.tvOS-26-4": [
+      {
+        "name": "Apple TV 4K (3rd generation)",
+        "udid": "C4E39B56-61E7-4475-8F5C-624B0BCE3EA9"
+      },
+      {
+        "name": "Apple TV 4K (3rd generation) (at 1080p)",
+        "udid": "ABC128E7-8919-4F38-941E-26CEBCDC66B8"
+      },
+      {
+        "name": "Apple TV",
+        "udid": "AEE727F9-14D5-4401-AC2A-123D89D475DD"
+      }
+    ],
+    "com.apple.CoreSimulator.SimRuntime.xrOS-26-4": [
+      {
+        "name": "Apple Vision Pro",
+        "udid": "566D8F24-7A0A-4233-B1E3-4918398F2F55"
+      }
+    ]
+  }
+}
