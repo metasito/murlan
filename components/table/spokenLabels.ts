@@ -5,18 +5,15 @@
 // the translation boundary on the other side of that contract: it turns game
 // state into words. Nothing here renders, so it stays a `.ts`.
 
-import type { Card, Combination, GameState } from "@/lib/gameEngine";
-import {
-  rankSpokenName,
-  cardSpokenName,
-  suitSpokenName,
-  type TFn,
-} from "@/lib/cardNames";
-import type { TnFn, TranslationKey } from "@/lib/i18n";
 import {
   getCardDisplayRank,
   getSuitSymbol,
+  type Card,
+  type Combination,
+  type GameState,
 } from "@/lib/gameEngine";
+import { rankSpokenName, cardSpokenName, suitSpokenName } from "@/lib/cardNames";
+import type { TFn, TnFn, TranslationKey } from "@/lib/i18n";
 import {
   straightTopRankChar,
   type PlayButtonLabel,
@@ -129,15 +126,20 @@ export function arrangedLabel(
  * be the fallback "lowest dealt card" rather than the 3♠ (docs/RULES.md §4).
  */
 export function playRefusalLabel(
-  refusal: { dimLabel: PlayButtonLabel; isMyTurn: boolean; isFinished: boolean; startCard: GameState["startCard"] },
+  play: {
+    refusal: PlayButtonLabel;
+    isMyTurn: boolean;
+    isFinished: boolean;
+    startCard: GameState["startCard"];
+  },
   t: TFn
 ): string {
-  const key = !refusal.isMyTurn
+  const key = !play.isMyTurn
     ? "gameTable.playA11ySpokenNotYourTurn"
-    : refusal.isFinished
+    : play.isFinished
       ? "gameTable.playA11ySpokenYouAreDone"
-      : PLAY_SPOKEN_KEYS[refusal.dimLabel];
-  const card = refusal.startCard;
+      : PLAY_SPOKEN_KEYS[play.refusal];
+  const card = play.startCard;
   return t(key, {
     rank: card ? getCardDisplayRank(card.rank) : "",
     suit: card ? getSuitSymbol(card.suit) : "",

@@ -139,7 +139,8 @@ export function tn(base: string, count: number, params?: TranslationParams): str
   return t(key, { count, ...params });
 }
 
-/** `tn`'s shape, for anything taking it as a parameter. `TFn` lives in `lib/cardNames.ts`. */
+/** Their shapes, for the many functions that take a translator as a parameter. */
+export type TFn = typeof t;
 export type TnFn = typeof tn;
 
 export interface ServerPayload {

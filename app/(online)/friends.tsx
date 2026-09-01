@@ -22,10 +22,9 @@ import { MenuLayout, takesSlack } from "@/components/MenuLayout";
 import { ConfirmDialog, type ConfirmRequest } from "@/components/ConfirmDialog";
 import { useTranslation } from "@/lib/i18n";
 import { registerForPush } from "@/lib/pushRegistration";
-import type { TnFn, TranslationKey, TranslationParams } from "@/lib/i18n";
+import type { TFn, TnFn } from "@/lib/i18n";
 import { a11yHidden, a11yState, useA11yHint } from "@/lib/a11y";
 
-type TFn = (key: TranslationKey, params?: TranslationParams) => string;
 
 interface FriendInfo {
   id: string;

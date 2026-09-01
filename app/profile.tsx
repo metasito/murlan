@@ -24,7 +24,7 @@ import {
 import { MenuButton } from "@/components/MenuButton";
 import { LookPicker } from "@/components/LookPicker";
 import { useTranslation } from "@/lib/i18n";
-import type { TnFn, TranslationKey, TranslationParams } from "@/lib/i18n";
+import type { TFn, TnFn, TranslationKey } from "@/lib/i18n";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import type { GameMode } from "@/lib/gameEngine";
 import type { ReplaySummary } from "@/lib/replay";
@@ -34,7 +34,6 @@ import { a11yGroup, a11yHidden } from "@/lib/a11y";
 import { serverErrorMessage } from "@/lib/apiError";
 import { USERNAME_MAX, USERNAME_MIN, usernameProblem } from "@/shared/username";
 
-type TFn = (key: TranslationKey, params?: TranslationParams) => string;
 type IconName = React.ComponentProps<typeof Ionicons>["name"];
 
 // Wire shapes as they actually arrive over JSON (server/stats.ts) — Date

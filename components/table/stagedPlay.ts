@@ -6,19 +6,21 @@
 // see `playButtonLabel`'s docstring, which states that only the caller can run
 // `canPlay`. This file is that caller, and it runs the engine for real.
 
-import { buildCombination, canPlay, type Card, type Combination, type GameState } from "@/lib/gameEngine";
-import { playButtonLabel, type PlayButtonLabel } from "@/components/gameTableModel";
+// Relative and extensioned, not `@/`: these are runtime imports, and Node's
+// built-in TypeScript loader (`node --test`) cannot resolve the bundler alias.
+import {
+  buildCombination,
+  canPlay,
+  type Card,
+  type Combination,
+  type GameState,
+} from "../../lib/gameEngine.ts";
+import { playButtonLabel, type PlayButtonLabel } from "../gameTableModel.ts";
 
 export interface StagedPlay {
   /** The selection as cards, in hand order. */
   cards: Card[];
-  /** What they add up to, or null if they are not a combination at all. */
-  combo: Combination | null;
-  requiresStartCard: boolean;
-  selectionHasStartCard: boolean;
-  /** The rules accept this play — says nothing about whose turn it is. */
-  isValid: boolean;
-  /** …and it is this player's to make now. What GIOCA is lit by. */
+  /** The rules accept them *and* it is this player's turn. What GIOCA is lit by. */
   playable: boolean;
   /** Why not, when it is not. Two words for the button, a key for the sentence. */
   refusal: PlayButtonLabel;
@@ -48,10 +50,6 @@ export function readStagedPlay(input: {
   const pile = input.lastPlayedCombination;
   return {
     cards,
-    combo,
-    requiresStartCard,
-    selectionHasStartCard,
-    isValid,
     playable: isValid && input.isMyTurn && !input.isFinished,
     refusal: playButtonLabel({
       isMyTurn: input.isMyTurn,

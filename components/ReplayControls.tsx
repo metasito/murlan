@@ -23,9 +23,8 @@ import type { CombinationType } from "@/lib/gameEngine";
 import type { ReplayDto, ReplayMoment } from "@/lib/replay";
 import { Colors, FontSize, Radius, Spacing, TOUCH_TARGET_MIN, Type } from "@/lib/theme";
 import { a11yHidden } from "@/lib/a11y";
-import type { TranslationKey } from "@/lib/i18n";
+import type { TFn, TranslationKey } from "@/lib/i18n";
 
-type TFn = (key: TranslationKey, params?: Record<string, string | number>) => string;
 
 /** The rules screen already names every combination, in all three locales. */
 const COMBO_NAME_KEYS: Record<CombinationType, TranslationKey> = {

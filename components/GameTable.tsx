@@ -95,7 +95,7 @@ import {
   playRefusalLabel,
   tableStrings,
   topBarLabel,
-} from "@/components/table/a11yLabels";
+} from "@/components/table/spokenLabels";
 import { readStagedPlay } from "@/components/table/stagedPlay";
 import { TurnTimer } from "@/components/table/turnTimer";
 import { GiocaButton, PassaButton } from "@/components/table/actions";
@@ -500,10 +500,8 @@ export function GameTable({
     : null;
   const exchangeLoserName = exchange.loser?.name ?? "";
 
-  // Two words fit on the button; the sentence is what the screen reader speaks
-  // and what the toast shows when the refusal is tapped.
   const dimReasonText = playRefusalLabel(
-    { dimLabel: staged.refusal, isMyTurn, isFinished, startCard: gameState.startCard },
+    { refusal: staged.refusal, isMyTurn, isFinished, startCard: gameState.startCard },
     t
   );
 
