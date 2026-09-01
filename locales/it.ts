@@ -427,18 +427,18 @@ export const it: Record<keyof typeof en, string> = {
   "month.11": "Novembre",
   "month.12": "Dicembre",
 
-  // ---------------------------------------------------------------- ladder.*
-  "ladder.title": "Classifica",
+  // -------------------------------------------------------------- history.*
   "history.title": "Tutte le tue mani",
   "history.loadingA11yLabel": "Caricamento delle tue mani",
   "history.errorTitle": "Mani non disponibili",
   "history.pageLabel": "Pagina {{page}} di {{total}}",
-  "history.prev": "Indietro",
+  "history.prev": "Precedente",
   "history.next": "Avanti",
   "history.prevA11yLabel": "Pagina precedente di mani",
   "history.nextA11yLabel": "Pagina successiva di mani",
-  "history.totalHands_one": "{{count}} mano in tutto",
-  "history.totalHands_other": "{{count}} mani in tutto",
+
+  // ---------------------------------------------------------------- ladder.*
+  "ladder.title": "Classifica",
   "ladder.cardTitle": "Classifica",
   "ladder.ratingLabel": "Punteggio",
   "ladder.seasonLabel": "Stagione {{season}}",
@@ -866,8 +866,7 @@ export const it: Record<keyof typeof en, string> = {
   "profile.historyPlayers_other": "{{count}} giocatori",
   "profile.historyRowA11yLabel": "{{position}} posto, {{mode}}, {{players}}, {{points}} punti, {{time}}",
   "profile.historyWith": "con {{names}}",
-  "profile.historyDoor_one": "Vedi la {{count}} mano",
-  "profile.historyDoor_other": "Vedi tutte le {{count}} mani",
+  "profile.historyDoor": "Vedi tutte le {{count}} mani",
   "profile.historyDoorA11yLabel": "Vedi tutte le tue {{n}} mani",
   "profile.historyBotSeat": "un'IA",
   "profile.historyUnknownSeat": "un account eliminato",

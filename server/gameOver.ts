@@ -185,10 +185,9 @@ export async function handleGameOver(
       );
     }
 
-    // A replay is written on the same gate as the stats beside it. The profile
-    // reaches a replay through its `match_history` row, so one written for a
-    // table that records no row is a hand nobody can open — kept for a
-    // fortnight and reachable from nowhere.
+    // On the same `recordable` gate as the stats above: a replay is reached
+    // through its `match_history` row, so one written without a row is
+    // openable from nowhere.
     //
     // Not awaited, and the table is not required to exist: until `db:push` has
     // run the insert fails, is logged, and the only consequence is an empty

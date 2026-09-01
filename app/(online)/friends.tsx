@@ -21,8 +21,8 @@ import { MenuButton } from "@/components/MenuButton";
 import { MenuLayout, takesSlack } from "@/components/MenuLayout";
 import { ConfirmDialog, type ConfirmRequest } from "@/components/ConfirmDialog";
 import { useTranslation } from "@/lib/i18n";
+import { relativeTime } from "@/lib/relativeTime";
 import { registerForPush } from "@/lib/pushRegistration";
-import type { TFn, TnFn } from "@/lib/i18n";
 import { a11yHidden, a11yState, useA11yHint } from "@/lib/a11y";
 
 
@@ -33,18 +33,6 @@ interface FriendInfo {
 }
 interface FriendRequest { id: string; username: string; createdAt: string | null }
 interface SearchResult { id: string; username: string }
-
-function relativeTime(isoString: string | null | undefined, t: TFn, tn: TnFn): string {
-  if (!isoString) return t("friends.timeUnknown");
-  const diff = Date.now() - new Date(isoString).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return t("friends.timeJustNow");
-  if (mins < 60) return t("friends.timeMinutesAgo", { n: mins });
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return tn("friends.timeHoursAgo", hours);
-  const days = Math.floor(hours / 24);
-  return tn("friends.timeDaysAgo", days);
-}
 
 function SectionHeader({ title, count }: { title: string; count?: number }) {
   return (

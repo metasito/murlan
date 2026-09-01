@@ -1,6 +1,6 @@
 // tests/native/handBreakdown.test.tsx — the cases that ship broken.
 //
-// The breakdown reads four endpoints and one socket field, and every one of
+// The breakdown reads three endpoints and one socket field, and every one of
 // them is legitimately absent for some table: an offline or bot-majority hand
 // is never written, a teams hand earns no rating, a second-game player's
 // rating is provisional, and a hand can be rated and still move nobody. Each
@@ -23,6 +23,7 @@ const RATED_HAND = {
   playerCount: 4,
   points: 3,
   ratingDelta: 12,
+  replayId: null,
 };
 
 /**
@@ -49,7 +50,6 @@ const FULL: Responses = {
   '/api/stats/me': { currentStreak: 3, bestStreak: 5 },
   '/api/stats/history': [RATED_HAND],
   '/api/ratings/me': { rating: 1042, games: 20, provisional: false },
-  '/api/replays': [],
 };
 
 async function renderBreakdown(
@@ -113,7 +113,6 @@ describe('a hand nothing recorded', () => {
     '/api/stats/me': { currentStreak: 0, bestStreak: 0 },
     '/api/stats/history': [],
     '/api/ratings/me': { rating: 1000, games: 0, provisional: true },
-    '/api/replays': [],
   };
 
   it('says so instead of showing a finish', async () => {
@@ -154,9 +153,11 @@ describe('when an endpoint is down', () => {
 // vote, and until it is settled the seat is still the server's to auto-pass
 // every 30s (server/gameTimers.ts AFK_TIMEOUT_MS).
 describe('the replay button while another manche can still follow', () => {
+  // The replay comes off the hand's own history row. A hand with no row has no
+  // replay to offer, which is what FULL's `replayId: null` stands for below.
   const WITH_REPLAY: Responses = {
     ...FULL,
-    '/api/replays': [{ id: 'r1', finishedAt: '2026-08-24T10:00:00.000Z', gameMode: 'free_for_all', playerCount: 4 }],
+    '/api/stats/history': [{ ...RATED_HAND, replayId: 'r1' }],
     '/api/replays/r1': { id: 'r1', seats: [], moves: [], rankings: [] },
   };
 

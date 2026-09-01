@@ -1,13 +1,13 @@
 // One finished hand, as both the profile's card and the full history screen
-// draw it. Shared rather than written twice: the two are the same row by
-// definition (#740), and a copy is how they come to disagree about a hand.
+// draw it.
 import React from "react";
 import { View, Text, StyleSheet, Pressable } from "react-native";
 import { router } from "expo-router";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { Colors, FontSize, Radius, Spacing, TOUCH_TARGET_MIN, Type } from "@/lib/theme";
 import { useTranslation } from "@/lib/i18n";
-import type { TFn, TnFn, TranslationKey } from "@/lib/i18n";
+import { relativeTime } from "@/lib/relativeTime";
+import type { TranslationKey } from "@/lib/i18n";
 import { a11yGroup, a11yHidden } from "@/lib/a11y";
 import type { GameMode } from "@/lib/gameEngine";
 
@@ -29,6 +29,8 @@ export interface MatchHistoryDto {
   opponents: unknown[];
   participants: HistoryParticipantDto[];
   replayId: string | null;
+  /** Null for a hand the ladder did not rate — never 0, which is a rated hand that moved nobody. */
+  ratingDelta: number | null;
 }
 
 const POSITION_LABEL_KEYS: TranslationKey[] = [
@@ -41,22 +43,10 @@ const POSITION_LABEL_KEYS: TranslationKey[] = [
 const PLAY_ICON = 28;
 
 /**
- * Same relative-time phrasing as the profile's and friends'. Passed the
+ * Passed the
  * translators rather than calling the hook, so a row inside a list renders
  * without one lookup per row.
  */
-function relativeTime(isoString: string | null | undefined, t: TFn, tn: TnFn): string {
-  if (!isoString) return t("friends.timeUnknown");
-  const diff = Date.now() - new Date(isoString).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return t("friends.timeJustNow");
-  if (mins < 60) return t("friends.timeMinutesAgo", { n: mins });
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return tn("friends.timeHoursAgo", hours);
-  const days = Math.floor(hours / 24);
-  return tn("friends.timeDaysAgo", days);
-}
-
 export function HistoryRow({ hand }: { hand: MatchHistoryDto }) {
   const { t, tn } = useTranslation();
 

@@ -434,18 +434,18 @@ export const sq: Record<keyof typeof en, string> = {
   "month.11": "Nëntor",
   "month.12": "Dhjetor",
 
-  // ---------------------------------------------------------------- ladder.*
-  "ladder.title": "Klasifikimi",
+  // -------------------------------------------------------------- history.*
   "history.title": "Të gjitha duart e tua",
   "history.loadingA11yLabel": "Duke ngarkuar duart e tua",
   "history.errorTitle": "Duart nuk janë të disponueshme",
   "history.pageLabel": "Faqja {{page}} nga {{total}}",
-  "history.prev": "Mbrapa",
+  "history.prev": "E mëparshme",
   "history.next": "Përpara",
   "history.prevA11yLabel": "Faqja e mëparshme e duarve",
   "history.nextA11yLabel": "Faqja tjetër e duarve",
-  "history.totalHands_one": "{{count}} dorë gjithsej",
-  "history.totalHands_other": "{{count}} duar gjithsej",
+
+  // ---------------------------------------------------------------- ladder.*
+  "ladder.title": "Klasifikimi",
   "ladder.cardTitle": "I klasifikuar",
   "ladder.ratingLabel": "Vlerësimi",
   "ladder.seasonLabel": "Sezoni {{season}}",
@@ -872,8 +872,7 @@ export const sq: Record<keyof typeof en, string> = {
   "profile.historyPlayers_other": "{{count}} lojtarë",
   "profile.historyRowA11yLabel": "Vendi {{position}}, {{mode}}, {{players}}, {{points}} pikë, {{time}}",
   "profile.historyWith": "me {{names}}",
-  "profile.historyDoor_one": "Shih {{count}} dorë",
-  "profile.historyDoor_other": "Shih të {{count}} duart",
+  "profile.historyDoor": "Shih të {{count}} duart",
   "profile.historyDoorA11yLabel": "Shih të gjitha {{n}} duart e tua",
   "profile.historyBotSeat": "një IA",
   "profile.historyUnknownSeat": "një llogari e fshirë",

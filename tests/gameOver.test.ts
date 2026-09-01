@@ -286,9 +286,6 @@ describe("handleGameOver — the writes", () => {
     });
   });
 
-  // The replay rides the same gate as the stats: the profile reaches a hand
-  // through its `match_history` row, so a replay written where no row is would
-  // be kept for a fortnight and reachable from nowhere (#752).
   test("a bot-majority table records no stats, no rating and no replay", async () => {
     const s = stubServer();
     // One human, three bots — a seat with no playerMap entry is a bot.

@@ -434,18 +434,18 @@ export const en = {
   "month.11": "November",
   "month.12": "December",
 
-  // ---------------------------------------------------------------- ladder.*
-  "ladder.title": "Leaderboard",
+  // -------------------------------------------------------------- history.*
   "history.title": "All your hands",
   "history.loadingA11yLabel": "Loading your hands",
   "history.errorTitle": "Hands unavailable",
   "history.pageLabel": "Page {{page}} of {{total}}",
-  "history.prev": "Back",
+  "history.prev": "Previous",
   "history.next": "Next",
   "history.prevA11yLabel": "Previous page of hands",
   "history.nextA11yLabel": "Next page of hands",
-  "history.totalHands_one": "{{count}} hand in all",
-  "history.totalHands_other": "{{count}} hands in all",
+
+  // ---------------------------------------------------------------- ladder.*
+  "ladder.title": "Leaderboard",
   "ladder.cardTitle": "Ranked",
   "ladder.ratingLabel": "Rating",
   "ladder.seasonLabel": "Season {{season}}",
@@ -872,8 +872,7 @@ export const en = {
   "profile.historyPlayers_other": "{{count}} players",
   "profile.historyRowA11yLabel": "{{position}} place, {{mode}}, {{players}}, {{points}} points, {{time}}",
   "profile.historyWith": "with {{names}}",
-  "profile.historyDoor_one": "See the {{count}} hand",
-  "profile.historyDoor_other": "See all {{count}} hands",
+  "profile.historyDoor": "See all {{count}} hands",
   "profile.historyDoorA11yLabel": "See all {{n}} of your hands",
   "profile.historyBotSeat": "an AI",
   "profile.historyUnknownSeat": "a deleted account",

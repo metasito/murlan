@@ -15,7 +15,8 @@ import { useTranslation, type TranslationKey } from "@/lib/i18n";
 import { a11yGroup, a11yHidden } from "@/lib/a11y";
 import { recentForm } from "@/lib/profileStats";
 import { bombsPlayedBy } from "@/lib/replay";
-import type { ReplayDto, ReplaySummary } from "@/lib/replay";
+import type { ReplayDto } from "@/lib/replay";
+import type { MatchHistoryDto } from "@/components/HistoryRow";
 import { PROVISIONAL_GAMES } from "@/lib/rating";
 
 // Wire shapes as JSON delivers them — `finishedAt` is an ISO string here, not
@@ -30,15 +31,6 @@ interface RatingDto {
   rating: number;
   games: number;
   provisional: boolean;
-}
-
-interface MatchHistoryDto {
-  finishedAt: string;
-  placement: number;
-  playerCount: number;
-  points: number;
-  /** Null for a hand the ladder did not rate — never 0, which is a rated hand that moved nobody. */
-  ratingDelta: number | null;
 }
 
 const POSITION_LABEL_KEYS: TranslationKey[] = [
@@ -118,7 +110,6 @@ export function HandBreakdown({
   const statsQuery = useQuery<UserStatsDto>({ queryKey: ["/api/stats/me"], ...fresh });
   const historyQuery = useQuery<MatchHistoryDto[]>({ queryKey: ["/api/stats/history"], ...fresh });
   const ratingQuery = useQuery<RatingDto>({ queryKey: ["/api/ratings/me"], ...fresh });
-  const replaysQuery = useQuery<ReplaySummary[]>({ queryKey: ["/api/replays"], ...fresh });
 
   const history = historyQuery.data ?? [];
   // The newest row is *inferred* to be the hand just played: the write is
@@ -126,18 +117,21 @@ export function HandBreakdown({
   // Acceptable for v1 — the rating change, the one number the inference used
   // to get wrong, now arrives on the event itself.
   const thisHand = history[0];
-  const newestReplayId = replaysQuery.data?.[0]?.id;
+  // From the row above rather than from the newest replay: a hand that records
+  // no row records no replay either, and the newest replay would then be a
+  // different hand's.
+  const replayId = thisHand?.replayId ?? undefined;
 
   const replayQuery = useQuery<ReplayDto>({
-    queryKey: ["/api/replays", newestReplayId ?? ""],
-    enabled: !!newestReplayId,
+    queryKey: ["/api/replays", replayId ?? ""],
+    enabled: !!replayId,
     ...fresh,
   });
 
   const anyLoading =
-    statsQuery.isLoading || historyQuery.isLoading || ratingQuery.isLoading || replaysQuery.isLoading;
+    statsQuery.isLoading || historyQuery.isLoading || ratingQuery.isLoading;
   const anyError =
-    statsQuery.isError || historyQuery.isError || ratingQuery.isError || replaysQuery.isError;
+    statsQuery.isError || historyQuery.isError || ratingQuery.isError;
 
   if (anyLoading) {
     return (
@@ -156,7 +150,6 @@ export function HandBreakdown({
             statsQuery.refetch();
             historyQuery.refetch();
             ratingQuery.refetch();
-            replaysQuery.refetch();
           }}
           style={styles.retryBtn}
           accessibilityRole="button"
@@ -267,13 +260,13 @@ export function HandBreakdown({
         </View>
       )}
 
-      {!newestReplayId ? (
+      {!replayId ? (
         <Text style={styles.stateBody}>{t("handBreakdown.noReplay")}</Text>
       ) : mancheCanFollow ? (
         <Text style={styles.stateBody}>{t("handBreakdown.replayAfterMatch")}</Text>
       ) : (
         <Pressable
-          onPress={() => router.push({ pathname: "/(online)/replay", params: { id: newestReplayId } })}
+          onPress={() => router.push({ pathname: "/(online)/replay", params: { id: replayId } })}
           style={styles.replayBtn}
           accessibilityRole="button"
           accessibilityLabel={t("handBreakdown.openReplayA11yLabel")}

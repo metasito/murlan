@@ -57,7 +57,6 @@ export function findViewerSeat(
   return seatOfUser(playerMap, viewerUserId);
 }
 
-
 /** The shape of GameState.exchangePhase, restated because the two cards are
  * `unknown` here on purpose: this helper only decides whether to forward
  * them, never reads one. */

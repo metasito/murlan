@@ -1,12 +1,9 @@
 // Every hand the player still has, a page at a time.
 //
-// It pages rather than scrolling without end, which is the defect #678 exists
-// to remove — a list that grows under the thumb has no bottom to reach and no
-// place to stand. Paging is client-side on purpose: `match_history` is capped
-// at MAX_HISTORY_ROWS_PER_USER per account and the profile already holds every
-// row for its trend panels, so a paged endpoint would page over data this
-// screen is already carrying, and give the card and the screen two ways to
-// disagree about one hand.
+// Paging is client-side: `match_history` is capped at
+// MAX_HISTORY_ROWS_PER_USER per account, and the profile already fetches every
+// row for its trend panels, so this screen pages over a list it is holding
+// anyway.
 import React, { useState } from "react";
 import { View, Text, StyleSheet, Pressable, ActivityIndicator } from "react-native";
 import { router } from "expo-router";
@@ -24,9 +21,10 @@ import { a11yGroup, a11yHidden } from "@/lib/a11y";
 const PAGE_SIZE = 10;
 const BACK_CHEVRON = 22;
 const STATE_ICON = 28;
+const RETRY_ICON = 16;
 
 export default function HistoryScreen() {
-  const { t, tn } = useTranslation();
+  const { t } = useTranslation();
   const historyQuery = useQuery<MatchHistoryDto[]>({ queryKey: ["/api/stats/history"] });
   const history = historyQuery.data ?? [];
 
@@ -63,7 +61,7 @@ export default function HistoryScreen() {
 
         {historyQuery.isError && (
           <View style={styles.stateBlock}>
-            <Ionicons name="alert-circle-outline" size={STATE_ICON} color={Colors.textMuted} />
+            <Ionicons name="alert-circle-outline" size={STATE_ICON} color={Colors.textMuted} {...a11yHidden()} />
             <Text style={styles.stateTitle}>{t("history.errorTitle")}</Text>
             <MenuButton
               label={t("common.retry")}
@@ -72,7 +70,7 @@ export default function HistoryScreen() {
               size="sm"
               fullWidth={false}
               accessibilityLabel={t("profile.retryHistoryA11yLabel")}
-              icon={<Ionicons name="refresh" size={16} color={Colors.gold} />}
+              icon={<Ionicons name="refresh" size={RETRY_ICON} color={Colors.gold} />}
             />
           </View>
         )}
@@ -121,10 +119,6 @@ export default function HistoryScreen() {
               accessibilityLabel={t("history.nextA11yLabel")}
             />
           </View>
-        )}
-
-        {pageCount > 1 && (
-          <Text style={styles.countText}>{tn("history.totalHands", history.length)}</Text>
         )}
       </MenuCard>
     </MenuLayout>

@@ -24,7 +24,8 @@ import {
 import { MenuButton } from "@/components/MenuButton";
 import { LookPicker } from "@/components/LookPicker";
 import { useTranslation } from "@/lib/i18n";
-import type { TFn, TnFn, TranslationKey } from "@/lib/i18n";
+import { relativeTime } from "@/lib/relativeTime";
+import type { TranslationKey } from "@/lib/i18n";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { PROVISIONAL_GAMES, formatSeason } from "@/lib/rating";
 import { a11yGroup, a11yHidden } from "@/lib/a11y";
@@ -89,21 +90,6 @@ const POSITION_LABEL_KEYS: TranslationKey[] = [
   "gameOverOverlay.position3",
   "gameOverOverlay.position4",
 ];
-
-// Same relative-time phrasing as app/(online)/friends.tsx's `relativeTime` —
-// not exported there, so duplicated rather than reaching across a screen
-// boundary; the underlying friends.time* keys are generic enough to share.
-function relativeTime(isoString: string | null | undefined, t: TFn, tn: TnFn): string {
-  if (!isoString) return t("friends.timeUnknown");
-  const diff = Date.now() - new Date(isoString).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return t("friends.timeJustNow");
-  if (mins < 60) return t("friends.timeMinutesAgo", { n: mins });
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return tn("friends.timeHoursAgo", hours);
-  const days = Math.floor(hours / 24);
-  return tn("friends.timeDaysAgo", days);
-}
 
 function LoadingBlock({ label }: { label: string }) {
   return (
@@ -590,7 +576,7 @@ export default function ProfileScreen() {
                       })}
                     >
                       <Text style={styles.doorText} {...a11yHidden()}>
-                        {tn("profile.historyDoor", history.length)}
+                        {t("profile.historyDoor", { count: history.length })}
                       </Text>
                       <Ionicons
                         name="chevron-forward"
@@ -851,33 +837,7 @@ const styles = StyleSheet.create({
   ratingSeason: { ...Type.label },
   ratingGames: { ...Type.caption, textAlign: "center" },
 
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: Colors.bgSurface,
-    borderRadius: Radius.md,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    padding: Spacing.sm,
-    gap: Spacing.sm,
-    minHeight: TOUCH_TARGET_MIN,
-  },
-  posBadge: {
-    width: 32,
-    height: 32,
-    borderRadius: Radius.full,
-    borderWidth: 1.5,
-    borderColor: Colors.border,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  posBadgeWinner: { borderColor: Colors.gold },
-  posBadgeText: { fontFamily: "Rajdhani_700Bold", fontSize: FontSize.sm, color: Colors.textSecondary },
-  posBadgeTextWinner: { color: Colors.gold },
   rowInfo: { flex: 1, gap: Spacing.xxs },
-  rowName: { ...Type.bodyStrong },
-  rowSub: { ...Type.caption },
-  rowPoints: { fontFamily: "Rajdhani_700Bold", fontSize: FontSize.md, color: Colors.gold },
 
   achievementRow: {
     flexDirection: "row",
