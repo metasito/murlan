@@ -242,5 +242,28 @@ describe("§7.4 — royal straight / flush: ranked above bombs, beaten only by a
       false,
       "§7.4: a 5-card royal straight never beats a 6-card royal straight, whatever its top card"
     );
+
+    // 6 and 8 share parity, so a comparison that checked
+    // `length % 2 === length % 2` instead of exact equality would let either
+    // one through here whenever strength favoured it — these fixtures are
+    // built exactly to expose that gap.
+    const royalEightAceTop = combo([
+      c("7", "hearts"), c("8", "hearts"), c("9", "hearts"), c("10", "hearts"),
+      c("J", "hearts"), c("Q", "hearts"), c("K", "hearts"), c("A", "hearts"),
+    ]);
+    const royalEightLowTop = combo([
+      c("3", "spades"), c("4", "spades"), c("5", "spades"), c("6", "spades"),
+      c("7", "spades"), c("8", "spades"), c("9", "spades"), c("10", "spades"),
+    ]);
+    assert.equal(
+      canPlay(royalEightAceTop, royalSixLowTop),
+      false,
+      "§7.4: an 8-card royal straight never beats a 6-card royal straight, whatever its top card"
+    );
+    assert.equal(
+      canPlay(royalSixAceTop, royalEightLowTop),
+      false,
+      "§7.4: a 6-card royal straight never beats an 8-card royal straight, whatever its top card"
+    );
   });
 });
