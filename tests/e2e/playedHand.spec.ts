@@ -67,9 +67,9 @@ const spread = (ranks: readonly Rank[]) =>
 const PILE_CARD = card("3_clubs", "3", "clubs");
 
 /**
- * Thirteen cards: a hand partway through a manche rather than a fresh deal,
- * which is twenty-one at two seats (`dealCards`), and enough of them that the
- * fan overlaps, which is what the presses below are aimed at.
+ * Thirteen cards: one short of the fourteen two seats are dealt (`dealCards`),
+ * so a hand one play into a manche, and enough of them that the fan overlaps —
+ * which is what the presses below are aimed at.
  *
  * Every viewer card beats the pile and loses to every bot card, against Murlan's
  * order (3…10, J, Q, K, A, 2). That is what makes both moves below legal by
