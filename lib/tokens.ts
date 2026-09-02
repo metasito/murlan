@@ -300,6 +300,14 @@ export const Layer = {
   moment: 10,
   rail: 20,
   hint: 30,
+  /**
+   * The turn countdown, and nothing else. A layer that holds the table covers
+   * the cards and the buttons on purpose, but a clock the seat is being charged
+   * for is not something a hold may take away — so it sits above every such
+   * layer and below the banner band, which is news about the app rather than
+   * about this turn.
+   */
+  clock: 40,
   band: 50,
   sheet: 60,
   held: 100,

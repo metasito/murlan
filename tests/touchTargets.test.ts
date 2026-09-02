@@ -48,7 +48,6 @@ const SIZED_AT_RUNTIME: [string, number, string][] = [
  */
 const NOT_A_TARGET: [string, number, string][] = [
   ["components/CardView.tsx", 1, "a playing card, sized CARD_W x CARD_H — the hand's geometry, not a control's"],
-  ["components/table/chrome.tsx", 1, "the start-reason toast: a full-width surface, tap anywhere to dismiss"],
   ["components/table/settingsSheet.tsx", 1, "the veil, which covers the table beside the rail"],
   ["app/(online)/quickmatch.tsx", 1, "a mode card, laid out at card size rather than control size"],
 ];

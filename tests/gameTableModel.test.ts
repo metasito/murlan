@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { CARD_H, CARD_W, BACK_SCALE } from "../components/cardFaceModel.ts";
+import { CARD_H, CARD_W, BACK_SCALE, HAND_SCALE, cardScale } from "../components/cardFaceModel.ts";
 import { Hold, TOUCH_TARGET_MIN, Trauma, Motion, Spacing } from "../lib/tokens.ts";
 import { blankComments } from "./helpers/sourceScan.ts";
 import type { Card, Combination } from "../lib/gameEngine.ts";
@@ -35,6 +35,7 @@ import {
   fanCounts,
   flightOrigin,
   exchangeFlight,
+  type FlyDirection,
   sideSlotHeight,
   seatFanArc,
   SEAT_DISC,
@@ -894,6 +895,25 @@ describe("turnTimerActive", () => {
     assert.equal(
       turnTimerActive({ ...base, includeNewRound: true, exchangeActive: true }),
       false
+    );
+  });
+
+  test("an announcement holding the table stops a clock this client owns", () => {
+    // The floor: without the hold the same case runs, so this is about the
+    // hold and not about some other stop already covering it.
+    assert.equal(turnTimerActive({ ...base, includeNewRound: true }), true);
+    assert.equal(
+      turnTimerActive({ ...base, includeNewRound: true, announcementHolds: true }),
+      false
+    );
+  });
+
+  test("…and the caller says so, because a pause a server is not keeping is a lie", () => {
+    // Online the deadline is the server's: `app/(online)/game.tsx` passes no
+    // `pausable`, so the hold never reaches here and the clock keeps running.
+    assert.equal(
+      turnTimerActive({ ...base, includeNewRound: true, announcementHolds: false }),
+      true
     );
   });
 });
@@ -2488,6 +2508,159 @@ describe("exchangeFlight", () => {
       width(trip(120, 168)) > width(trip(40, 56)),
       "the clearance is a fixed distance rather than the card's own reach"
     );
+  });
+
+  // #817: the owner read "got 2 of Diamonds" over his own hand, dark on a card
+  // face. The label used to sit at the landing point, and for the viewer's own
+  // seat that point is the hand zone's own centre (`flightOrigin`, "bottom").
+  describe("the seat labels", () => {
+    const tripFor = (from: FlyDirection, to: FlyDirection) =>
+      exchangeFlight({ ...frame, sideDisplayedCounts, from, to, cardW, cardH });
+
+    // The owner's own window as well as the reference one, measured the way the
+    // table measures it: a notched phone in landscape is tighter than the frame
+    // above in every direction, and its seats hold a full deal rather than a
+    // couple of cards — which is what puts a fan where a label wants to be.
+    const PHONE = { width: 844, height: 390 };
+    const phoneScale = cardScale(Math.min(PHONE.width, PHONE.height));
+    const phoneFrame = computeTableFrame({
+      ...PHONE,
+      insets: { top: 0, bottom: 21, left: 59, right: 0 },
+      scale: phoneScale,
+      railSide: "left",
+    });
+    const GEOMETRIES = [
+      { name: "the reference window", g: frame, sides: sideDisplayedCounts },
+      {
+        name: "a notched phone",
+        g: {
+          scale: phoneScale,
+          windowWidth: PHONE.width,
+          windowHeight: PHONE.height,
+          tableLeft: phoneFrame.tableLeft,
+          tableRight: phoneFrame.tableRight,
+          tableTop: phoneFrame.tableTop,
+          surplus: phoneFrame.surplus,
+          handZoneH: HAND_ZONE_H(CARD_H(phoneScale * HAND_SCALE), phoneFrame.bottomPad),
+          // Four seats, a fresh deal, thirteen cards each.
+          topDisplayedCount: 13,
+        },
+        sides: { left: 13, right: 13 },
+      },
+    ];
+
+    test("the label stops short of the seat it names, on every trip", () => {
+      for (const [from, to] of PAIRS) {
+        const flight = tripFor(from, to);
+        const tag = flight.tag;
+        const trip = dist(flight.from, flight.to);
+        // Measured along the trip alone: the lane offset is across it and
+        // would otherwise flatter the distance without moving the label off
+        // the seat's cards at all.
+        const ux = (flight.to.dx - flight.from.dx) / trip;
+        const uy = (flight.to.dy - flight.from.dy) / trip;
+        const short =
+          (flight.to.dx - tag.dx) * ux + (flight.to.dy - tag.dy) * uy;
+        assert.ok(
+          short >= cardH,
+          `${from} → ${to}: the label sits ${short.toFixed(0)}px short of the landing, ` +
+            `inside a ${cardH}px card`
+        );
+        // …and still on that seat's own half, or it is naming the wrong end.
+        assert.ok(
+          short < trip / 2,
+          `${from} → ${to}: the label fell back past the middle of the table`
+        );
+      }
+    });
+
+    test("the two labels stay a whole lane apart, as the two cards do", () => {
+      for (const [from, to] of PAIRS) {
+        const there = tripFor(from, to).tag;
+        const back = tripFor(to, from).tag;
+        assert.ok(
+          dist(there, back) > Math.max(cardW, cardH),
+          `${from} ⇄ ${to}: the two labels are ${dist(there, back).toFixed(0)}px apart`
+        );
+      }
+    });
+
+    test("the label is off the lane its own card landed on", () => {
+      for (const [from, to] of PAIRS) {
+        const flight = tripFor(from, to);
+        const tag = flight.tag;
+        assert.ok(
+          boxOverlap(tag, flight.to) === 0,
+          `${from} → ${to}: the label overlaps the card it describes`
+        );
+      }
+    });
+
+    // Every seat's, not only its own: the label is placed off one trip, and a
+    // trip knows nothing about the two seats it does not touch. Their cards are
+    // where their own would land, which is what `flightOrigin` answers.
+    test("the label is clear of every seat's cards, not only the pair trading", () => {
+      for (const geom of GEOMETRIES) {
+        const seatCard = (dir: FlyDirection) =>
+          flightOrigin({
+            ...geom.g,
+            dir,
+            sideDisplayedCount: dir === "left" || dir === "right" ? geom.sides[dir] : 0,
+          });
+        for (const [from, to] of PAIRS) {
+          const tag = exchangeFlight({
+            ...geom.g,
+            sideDisplayedCounts: geom.sides,
+            from,
+            to,
+            cardW,
+            cardH,
+          }).tag;
+          for (const seat of SEATS) {
+            assert.ok(
+              boxOverlap(tag, seatCard(seat)) === 0,
+              `${geom.name}, ${from} → ${to}: the label sits on the ${seat} seat's own cards`
+            );
+          }
+        }
+      }
+    });
+
+    // A trip standing off its lane can reach past the table it is drawn on: the
+    // lane's own offset is perpendicular to the travel, so on a diagonal it
+    // carries the label sideways as well as along, and the seat it names is
+    // already at the edge.
+    test("the label stays on the felt the seats are drawn on, and off the hand", () => {
+      for (const geom of GEOMETRIES) {
+        const pileX = geom.g.tableLeft + (geom.g.windowWidth - geom.g.tableLeft - geom.g.tableRight) / 2;
+        // The hand zone's own centre, from the same helper the flight uses —
+        // so the band the label must stay above is half a hand zone above it.
+        const handTop =
+          flightOrigin({ ...geom.g, dir: "bottom", sideDisplayedCount: 0 }).dy - geom.g.handZoneH / 2;
+        for (const [from, to] of PAIRS) {
+          const tag = exchangeFlight({
+            ...geom.g,
+            sideDisplayedCounts: geom.sides,
+            from,
+            to,
+            cardW,
+            cardH,
+          }).tag;
+          const x = pileX + tag.dx;
+          assert.ok(
+            x > geom.g.tableLeft && x < geom.g.windowWidth - geom.g.tableRight,
+            `${geom.name}, ${from} → ${to}: the label's centre is at x ${x.toFixed(0)}, ` +
+              `outside the table (${geom.g.tableLeft.toFixed(0)}…` +
+              `${(geom.g.windowWidth - geom.g.tableRight).toFixed(0)})`
+          );
+          assert.ok(
+            tag.dy < handTop,
+            `${geom.name}, ${from} → ${to}: the label's centre is ` +
+              `${(tag.dy - handTop).toFixed(0)}px into the player's own hand`
+          );
+        }
+      }
+    });
   });
 });
 

@@ -177,6 +177,9 @@ export default function GameScreen() {
         seconds: HUMAN_TURN_SECONDS,
         // Leading a round has no deadline offline.
         includeNewRound: false,
+        // Nothing else is keeping this clock, so it can be stopped while an
+        // announcement holds the table.
+        pausable: true,
         // Offline nobody announces the deadline expiring — there is no server
         // to send the banner the online screen gets — so the turn simply
         // vanished. The pass sound is the table's, fired off the committed

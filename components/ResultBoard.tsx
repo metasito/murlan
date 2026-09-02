@@ -13,7 +13,11 @@ import {
   Pressable,
   ScrollView,
 } from "react-native";
-import { useIsLandscape } from "@/lib/orientation";
+import { useIsLandscape, useOrientedWindow } from "@/lib/orientation";
+import { ControlRail, RailKnob } from "@/components/table/chrome";
+import { cardScale, railWidth } from "@/components/gameTableModel";
+import { physicalTouchTarget } from "@/components/cardFaceModel";
+import { useRailSide } from "@/components/useRailSide";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -287,6 +291,16 @@ export function ResultBoard({
 }) {
   const { t } = useTranslation();
   const isLandscape = useIsLandscape();
+  const { width, height } = useOrientedWindow();
+  const scale = cardScale(Math.min(width, height));
+  const railSide = useRailSide(Math.max(leftPad, rightPad));
+  // The same column, the same width, on the same edge as the table's own rail
+  // (#191): a screen that reads the inset as padding shifts its content and
+  // still loses whatever the cutout is wide enough to cover.
+  const rail = railWidth(railSide === "left" ? leftPad : rightPad, scale);
+  const bodyLeft = railSide === "left" ? rail : leftPad;
+  const bodyRight = railSide === "right" ? rail : rightPad;
+  const knobSize = physicalTouchTarget(scale);
 
   const header = (
     <View style={styles.headerMulti}>
@@ -361,25 +375,41 @@ export function ResultBoard({
   // One block in both orientations: a quiet exit of a stated width beside a
   // primary that takes the rest. Both stretch to the taller of the two, so the
   // pair cannot come out ragged whatever the locale does to the label.
+  // Landscape is the orientation with a cutout beside it, and the rail is
+  // where that column's control lives: the same knob, at the same head of the
+  // same edge, the table's own menu sat at a moment ago.
+  const homeKnob = (
+    <RailKnob
+      testID={home.testID}
+      onPress={home.onPress}
+      a11yLabel={home.a11yLabel ?? home.label}
+      size={knobSize}
+    >
+      <Ionicons name="home" size={ACTION_ICON} color={Colors.textSecondary} />
+    </RailKnob>
+  );
+
   const actions = (
     <View style={styles.actions}>
-      <Pressable
-        testID={home.testID}
-        onPress={home.onPress}
-        style={styles.homeBtn}
-        accessibilityRole="button"
-        accessibilityLabel={home.a11yLabel ?? home.label}
-      >
-        <Ionicons
-          name="home"
-          size={ACTION_ICON}
-          color={Colors.textSecondary}
-          {...a11yHidden()}
-        />
-        <Text style={styles.homeBtnText} numberOfLines={1} {...a11yHidden()}>
-          {home.label}
-        </Text>
-      </Pressable>
+      {!isLandscape && (
+        <Pressable
+          testID={home.testID}
+          onPress={home.onPress}
+          style={styles.homeBtn}
+          accessibilityRole="button"
+          accessibilityLabel={home.a11yLabel ?? home.label}
+        >
+          <Ionicons
+            name="home"
+            size={ACTION_ICON}
+            color={Colors.textSecondary}
+            {...a11yHidden()}
+          />
+          <Text style={styles.homeBtnText} numberOfLines={1} {...a11yHidden()}>
+            {home.label}
+          </Text>
+        </Pressable>
+      )}
       {primary && (
         <Pressable
           testID={primary.testID}
@@ -428,50 +458,61 @@ export function ResultBoard({
 
   if (isLandscape) {
     return (
-      <View
-        style={[
-          styles.container,
-          {
-            paddingTop: topPad,
-            paddingBottom: bottomPad,
-            paddingLeft: leftPad,
-            paddingRight: rightPad,
-          },
-        ]}
-      >
+      <View style={styles.container}>
         <LinearGradient
           colors={[Colors.bg, Colors.bgCard, Colors.bg]}
           locations={[0, 0.5, 1]}
           style={StyleSheet.absoluteFill}
         />
 
-        <View style={[styles.header, styles.headerLandscape]}>{header}</View>
+        <ControlRail
+          width={rail}
+          side={railSide}
+          topPad={topPad}
+          bottomPad={bottomPad}
+          top={homeKnob}
+        />
 
-        <View style={styles.landscapeBody}>
-          <View style={styles.landscapeLeft}>
-            <WinnerCelebration
-              name={celebratedName}
-              subtitle={celebrationSubtitle}
-              compact
-              viewerCelebrated={viewerCelebrated}
-            />
-            {stats}
-          </View>
+        <View
+          testID="result-body"
+          style={[
+            styles.landscapeInner,
+            {
+              paddingTop: topPad,
+              paddingBottom: bottomPad,
+              marginLeft: bodyLeft,
+              marginRight: bodyRight,
+            },
+          ]}
+        >
+          <View style={[styles.header, styles.headerLandscape]}>{header}</View>
 
-          {/* The actions close this column rather than the other one: the
-              standings are what the eye reads, so this is where it finishes. */}
-          <View style={styles.landscapeRight}>
-            <Text style={styles.sectionTitle}>{t("result.rankingsTitle")}</Text>
-            <ScrollView
-              testID="result-rankings"
-              showsVerticalScrollIndicator={false}
-              style={styles.landscapeRankScroll}
-              contentContainerStyle={styles.landscapeRankList}
-            >
-              {rankRows}
-              {footer}
-            </ScrollView>
-            {closing}
+          <View style={styles.landscapeBody}>
+            <View style={styles.landscapeLeft}>
+              <WinnerCelebration
+                name={celebratedName}
+                subtitle={celebrationSubtitle}
+                compact
+                viewerCelebrated={viewerCelebrated}
+              />
+              {stats}
+            </View>
+
+            {/* The actions close this column rather than the other one: the
+                standings are what the eye reads, so this is where it finishes. */}
+            <View style={styles.landscapeRight}>
+              <Text style={styles.sectionTitle}>{t("result.rankingsTitle")}</Text>
+              <ScrollView
+                testID="result-rankings"
+                showsVerticalScrollIndicator={false}
+                style={styles.landscapeRankScroll}
+                contentContainerStyle={styles.landscapeRankList}
+              >
+                {rankRows}
+                {footer}
+              </ScrollView>
+              {closing}
+            </View>
           </View>
         </View>
       </View>
@@ -550,6 +591,7 @@ const styles = StyleSheet.create({
 
   portraitScroll: { padding: Spacing.wide, gap: Spacing.md },
 
+  landscapeInner: { flex: 1 },
   landscapeBody: {
     flex: 1,
     flexDirection: "row",

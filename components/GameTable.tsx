@@ -53,8 +53,8 @@ import {
   canPassNow as canPassNowOf,
   comboKey,
   computeTableFrame,
-  railSideFor,
-  LANDSCAPE_LEFT,
+  LAMP_CENTRE,
+  openingIsPending,
   readHandArrival,
   describeTableForA11y,
   EMPTY_PILE,
@@ -108,6 +108,7 @@ import { RotateOverlay } from "@/components/table/rotateOverlay";
 import { GameSettingsSheet } from "@/components/table/settingsSheet";
 import { useTableFeedback } from "@/components/useTableFeedback";
 import { useHandOrder } from "@/components/useHandOrder";
+import { useRailSide } from "@/components/useRailSide";
 import { FlyingCards, PlayedPile, getComboLabel } from "@/components/table/pile";
 import { BombBurst, LampLift, Sweep } from "@/components/table/moments";
 import { TopOppSlot, SideOppSlot } from "@/components/table/seats";
@@ -163,6 +164,12 @@ const BANNER_BAND_Z = Layer.band;
  */
 const FELT_Z = { zIndex: Layer.felt } as const;
 const TABLE_Z = { zIndex: Layer.table } as const;
+/**
+ * The turn chip while the opening gate holds the table. Online the deadline is
+ * the server's and keeps running under the hold, so the countdown rides over it
+ * rather than being covered by it.
+ */
+const HELD_CLOCK_Z = { zIndex: Layer.clock } as const;
 
 /**
  * A sentence the browser harness reads, as `data-<hyphenated key>`. `dataSet` is
@@ -194,6 +201,13 @@ export interface TurnTimerConfig {
    * countdown is only a display of it.
    */
   onExpire?: () => void;
+  /**
+   * Whether this client owns the deadline, and may therefore stop the clock
+   * while an announcement is holding the table. True offline. False online:
+   * the server's AFK window keeps running whatever the client draws, so a
+   * pause here would show a seat more time than it has.
+   */
+  pausable?: boolean;
 }
 
 /**
@@ -320,8 +334,31 @@ export function GameTable({
   // session's own choice, not a stored preference — sound, music and
   // vibration are the persisted ones, which the sheet reads for itself.
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [rotation, setRotation] = useState<number>(LANDSCAPE_LEFT);
-  const tableWithdrawn = settingsOpen || tableCovered;
+  const railSide = useRailSide(Math.max(insets.left, insets.right));
+  // Who opens the manche, held over the table for as long as that opening has
+  // yet to be played. The opening ending is what turns the sentence into a
+  // statement about the past, so it is a condition of showing it at all rather
+  // than something a timer happens to outrun.
+  const startReason = gameState.startReason;
+  const openingPending =
+    openingIsPending(gameState) &&
+    // The exchange ceremony owns the table first; the two sequence rather than
+    // stacking, and this is the second of them.
+    exchangeAnnouncement?.visible !== true;
+  const [openingSpent, setOpeningSpent] = useState(false);
+  // Spent for this opening only, and cleared by the opening itself passing —
+  // the play that ends it, or the deal that replaces it. Online this component
+  // is never unmounted between manches, and nothing in the state names which
+  // manche is which, so a flag that outlived the opening would swallow the next
+  // one whenever two deals ran the same way.
+  useEffect(() => {
+    if (!openingPending) setOpeningSpent(false);
+  }, [openingPending]);
+  const holdingForStart = openingPending && !openingSpent;
+
+  // A reader must not be left able to play through a gate a finger cannot get
+  // past, so the hold sits beside the other two reasons the table is unusable.
+  const tableWithdrawn = settingsOpen || tableCovered || holdingForStart;
   const behindVeil = a11yVeiled(tableWithdrawn);
   // The sheet hangs off the rail, outside the overlays slot, so the slot goes
   // behind its veil. A cover inside the slot does not: `app/(online)/game.tsx`
@@ -330,7 +367,13 @@ export function GameTable({
   const behindSheetOnly = a11yVeiled(settingsOpen);
   // The rail is the one child that answers to a cover but not to the sheet: the sheet is
   // closed by the knob the rail carries, so veiling it there shuts the reader inside.
-  const behindCoverOnly = a11yVeiled(tableCovered && !settingsOpen);
+  // The opening gate covers the rail too, and the sheet its menu knob opens
+  // would come up above the gate carrying an exit.
+  const behindCoverOnly = a11yVeiled((tableCovered || holdingForStart) && !settingsOpen);
+  // The turn chip answers to everything that takes the table away except the
+  // opening gate: it names no control, and the countdown it carries is the one
+  // thing a hold may not hide from a reader either.
+  const clockVeil = a11yVeiled(settingsOpen || tableCovered);
   const [focusMode, setFocusMode] = useState(false);
   const [playOnLeft, setPlayOnLeft] = useState(false);
   const closeSettings = useCallback(() => setSettingsOpen(false), [setSettingsOpen]);
@@ -542,15 +585,17 @@ export function GameTable({
     [players, viewerSeat]
   );
 
-  const railSide = railSideFor(Math.max(insets.left, insets.right), rotation);
   const frame = computeTableFrame({ width: W, height: H, insets, scale, railSide });
   // The felt box the lamp lives in. The pool is drawn oversized and slid under
   // this box's own clipping, so it needs the box rather than the screen.
   const feltW = W;
   const feltH = H;
-  const light = lightPosition(
-    seatDirection(gameState.currentTurnIndex, viewerSeat, players.length)
-  );
+  // The owner's own remedy for an announcement nobody noticed: swing the lamp
+  // off the seat and onto the middle, where the words are. The table's existing
+  // attention mechanism, pointed somewhere else — not a second device.
+  const light = holdingForStart
+    ? LAMP_CENTRE
+    : lightPosition(seatDirection(gameState.currentTurnIndex, viewerSeat, players.length));
 
   // ── Screen-reader table description ─────────────────────────────────────────
   //
@@ -668,25 +713,6 @@ export function GameTable({
   );
 
   // ── Lifecycle ───────────────────────────────────────────────────────────────
-
-  // The lock permits both landscape directions, so the cutout is on whichever
-  // side the player is holding the phone — and the rail is the cutout's column.
-  useEffect(() => {
-    let mounted = true;
-    const follow = (o: ScreenOrientation.Orientation) => {
-      if (mounted) setRotation(o);
-    };
-    ScreenOrientation.getOrientationAsync().then(follow).catch(() => {});
-    const sub = ScreenOrientation.addOrientationChangeListener((e) =>
-      follow(e.orientationInfo.orientation)
-    );
-    return () => {
-      mounted = false;
-      // `removeOrientationChangeListener` throws on a subscription with no
-      // `remove`, which is what the native module hands back untethered.
-      sub?.remove?.();
-    };
-  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -986,6 +1012,7 @@ export function GameTable({
       gameOver: gameState.gameOver,
       exchangeActive: exchange.active,
       includeNewRound: turnTimer.includeNewRound ?? false,
+      announcementHolds: holdingForStart && (turnTimer.pausable ?? false),
     });
 
   // Changes on every move and every pass, so the countdown restarts once per
@@ -1117,10 +1144,11 @@ export function GameTable({
       <Animated.View
         testID="game-hud-stack"
         pointerEvents={focusMode ? "none" : undefined}
-        {...behindVeil}
+        {...clockVeil}
         style={[
           styles.hudRight,
           { right: frame.tableRight + frame.pad, top: frame.tableTop, gap: frame.pad },
+          holdingForStart && HELD_CLOCK_Z,
           focusFadeStyle,
         ]}
       >
@@ -1142,6 +1170,17 @@ export function GameTable({
           />
         </TableChip>
       </Animated.View>
+
+      {/* Over the whole table rather than inside the mid band: it holds the
+          table as well as saying something, so the first tap is spent clearing
+          it instead of playing a card. */}
+      {holdingForStart && startReason && (
+        <StartReasonBanner
+          reason={startReason}
+          players={players}
+          onDone={() => setOpeningSpent(true)}
+        />
+      )}
 
       {/* The cutout's own column. A cutout can never sit on a card, but it sits
           happily between two controls — so the menu knob takes the head of the
@@ -1279,18 +1318,6 @@ export function GameTable({
               guessed percentage, so a taller top seat takes it from the field
               instead of overlapping it. */}
           <View style={sharedTableStyles.midSection}>
-            {/* Gated on the exchange announcement so the two banners sequence
-                rather than stack. Inside the mid band, not at a computed
-                offset: the top opponent's avatar, name and card fan sit above
-                it, and card count is the single most important tactical signal
-                on the table. */}
-            {gameState.startReason && !exchangeAnnouncement?.visible && (
-              <StartReasonBanner
-                key={`reason-${gameState.startReason.type}-${gameState.startReason.playerIdx}`}
-                reason={gameState.startReason}
-                players={players}
-              />
-            )}
             <View style={[sharedTableStyles.sideSection, sharedTableStyles.sideSectionLeft]}>
               {opponents.left && (
                 <SideOppSlot

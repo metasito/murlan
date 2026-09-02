@@ -25,6 +25,11 @@ function fakePage(): Page {
     if (selector === '[data-testid="btn-rematch-no"]') {
       return { count: async () => 0, isVisible: async () => false };
     }
+    // No manche-opening announcement in this scenario, so the drive loop's
+    // gate-clearing step has nothing to clear (#817).
+    if (selector === '[data-testid="start-reason-gate"]') {
+      return { count: async () => 0 };
+    }
     if (selector === TABLE) {
       return {
         count: async () => 1,

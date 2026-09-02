@@ -27,6 +27,7 @@ const TRIP: ExchangeFlight = {
   meet: { dx: 30, dy: 0 },
   to: { dx: 0, dy: -120 },
   lane: { dx: 30, dy: 0 },
+  tag: { dx: 60, dy: -60 },
 };
 
 const WINNER = 'Ana';
