@@ -27,9 +27,7 @@ import Animated, {
   cancelAnimation,
   Easing,
 } from "react-native-reanimated";
-import Svg, { Defs, RadialGradient, Rect, Stop } from "react-native-svg";
 import { LinearGradient } from "expo-linear-gradient";
-import { stop } from "./felt";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { sparkOffset, SPARK_COUNT, type FlareKind } from "@/components/gameTableModel";
 import { Layer, makeShadow, Motion } from "@/lib/theme";
@@ -39,9 +37,18 @@ import { Layer, makeShadow, Motion } from "@/lib/theme";
 // Lantern tokens, which are tuned for a light source rather than an event,
 // and CLAUDE.md's invariant against a token used outside the role it was
 // named for rules those out here.
-const FLARE_CORE = "rgba(255,250,232,.98)";
-const FLARE_MID = "rgba(255,201,102,.5)";
-const FLARE_EDGE = "rgba(255,201,102,0)";
+//
+// Flare and LampLift were both a filled `<Svg>` radial gradient once, wrapped
+// in the same `transform: scale` Animated.View this file's `Wave` and `Spark`
+// already avoid. `felt.tsx`'s own comments record, from #209, that
+// react-native-svg's native path paints at its own laid-out bounds and does
+// not move with an ancestor transform — a bug this codebase has already paid
+// for twice. Nothing here can verify a variant of that shape is safe without
+// a device, so both are a plain filled+shadowed circle instead, the same
+// shape `Spark` already ships: a solid core (`*_FILL`) plus a static blurred
+// glow (`*_GLOW`, via `makeShadow`) standing in for the gradient's falloff.
+const FLARE_FILL = "rgba(255,250,232,.92)";
+const FLARE_GLOW = "#FFC966";
 const WAVE_STROKE = "rgba(255,236,180,.9)";
 const SPARK_FILL = "#FFE9B0";
 const SPARK_GLOW = "#FFD070";
@@ -49,23 +56,20 @@ const SWEEP_BAND = "rgba(255,240,200,.42)";
 const SWEEP_TRANSPARENT = "rgba(255,240,200,0)";
 // The lift's own glow (#765) — softer than the flare's near-white core: the
 // manche rung hands over to its own banner rather than surprising the table,
-// so it reads as the lamp itself brightening, not as a second flash. The
-// felt's own `Lantern` tokens (lib/tokens.ts) are tuned as a continuous
-// ambient stop at a few points of alpha — reused here at that same low
-// alpha, this would land as CLAUDE.md's silently-almost-nothing failure, the
-// same trap the flare's own literals above are already documented against.
-const LIFT_CORE = "rgba(255,242,208,.6)";
-const LIFT_MID = "rgba(255,236,190,.22)";
-const LIFT_EDGE = "rgba(255,236,190,0)";
+// so it reads as the lamp itself brightening, not as a second flash.
+const LIFT_FILL = "rgba(255,242,208,.55)";
+const LIFT_GLOW = "#FFE8B8";
 
 // `mix-blend-mode` has no native equivalent; RN Web passes it straight
-// through as a style prop, and native ignores an unrecognised one.
-const SCREEN_BLEND =
-  Platform.OS === "web" ? ({ mixBlendMode: "screen" } as unknown as ViewStyle) : null;
+// through as a style prop, and native ignores an unrecognised one. `{}`
+// rather than `null` — a literal `null` inside an Animated.View's own style
+// array is fine for RN's own flattening but crashes reanimated's jest
+// `getAnimatedStyle` read-back (its test-only `jestInlineStyle` filter does
+// `'jestAnimatedValues' in obj` on every entry, unguarded against `null`).
+const SCREEN_BLEND = Platform.OS === "web" ? ({ mixBlendMode: "screen" } as unknown as ViewStyle) : {};
 
 // ─── Flare ──────────────────────────────────────────────────────────────────
 
-const FLARE_ID = "bombFlare";
 const FLARE_SIZE = 150;
 /** The bomb's own window — brief, because the surprise is over the instant it lands. */
 const FLARE_BRIEF_MS = 1500;
@@ -119,27 +123,29 @@ function Flare({ trigger, scale, kind }: { trigger: number; scale: number; kind:
   }));
 
   const size = FLARE_SIZE * scale;
+  // Static — a shadow outside `useAnimatedStyle` never touches the per-frame
+  // animated path, the same split `Spark`'s own `glow` below relies on.
+  const glow = makeShadow(FLARE_GLOW, 0, 0, 1, size * 0.55, 10);
   return (
     <Animated.View
       pointerEvents="none"
+      testID="bomb-flare"
       style={[
         momentStyles.centered,
-        { width: size, height: size, left: -size / 2, top: -size / 2, zIndex: FLARE_Z },
+        {
+          width: size,
+          height: size,
+          left: -size / 2,
+          top: -size / 2,
+          borderRadius: size / 2,
+          backgroundColor: FLARE_FILL,
+          zIndex: FLARE_Z,
+        },
+        glow,
         SCREEN_BLEND,
         aStyle,
       ]}
-    >
-      <Svg width={size} height={size} viewBox="0 0 100 100">
-        <Defs>
-          <RadialGradient id={FLARE_ID}>
-            <Stop offset={0} {...stop(FLARE_CORE)} />
-            <Stop offset={0.4} {...stop(FLARE_MID)} />
-            <Stop offset={0.72} {...stop(FLARE_EDGE)} />
-          </RadialGradient>
-        </Defs>
-        <Rect width={100} height={100} fill={`url(#${FLARE_ID})`} />
-      </Svg>
-    </Animated.View>
+    />
   );
 }
 
@@ -280,6 +286,7 @@ function Spark({ index, trigger, scale }: { index: number; trigger: number; scal
   return (
     <Animated.View
       pointerEvents="none"
+      testID={`spark-${index}`}
       style={[
         momentStyles.centered,
         {
@@ -347,9 +354,12 @@ export function BombBurst({
 // A brightening-and-swelling pulse over the lamp's own position, never the
 // lamp rig itself — `felt.tsx`'s own comments record the native-only cost of
 // wrapping its `<Svg>` in a *repositioning* transform, and this needs none of
-// that: it never moves, it only glows in place.
+// that: it never moves, it only glows in place. It is also, like `Flare`
+// above, a plain filled+shadowed circle rather than an `<Svg>` for the same
+// reason: `transform: scale` wrapping an `<Svg>` is the shape #209 already
+// found silently not reaching the paint on iOS, and this file has no way to
+// re-verify that without a device.
 
-const LIFT_ID = "lampLift";
 const LIFT_SIZE = 130;
 const LIFT_MS = 900;
 const LIFT_EASING = Easing.bezier(0.2, 0.6, 0.25, 1);
@@ -403,27 +413,27 @@ export function LampLift({
   }));
 
   const size = LIFT_SIZE * scale;
+  // Static — see `Flare`'s own `glow` above.
+  const glow = makeShadow(LIFT_GLOW, 0, 0, 1, size * 0.5, 8);
   return (
     <Animated.View
       pointerEvents="none"
       testID="lamp-lift"
       style={[
         momentStyles.centered,
-        { left: x - size / 2, top: y - size / 2, width: size, height: size, zIndex: LIFT_Z },
+        {
+          left: x - size / 2,
+          top: y - size / 2,
+          width: size,
+          height: size,
+          borderRadius: size / 2,
+          backgroundColor: LIFT_FILL,
+          zIndex: LIFT_Z,
+        },
+        glow,
         aStyle,
       ]}
-    >
-      <Svg width={size} height={size} viewBox="0 0 100 100">
-        <Defs>
-          <RadialGradient id={LIFT_ID}>
-            <Stop offset={0} {...stop(LIFT_CORE)} />
-            <Stop offset={0.55} {...stop(LIFT_MID)} />
-            <Stop offset={1} {...stop(LIFT_EDGE)} />
-          </RadialGradient>
-        </Defs>
-        <Rect width={100} height={100} fill={`url(#${LIFT_ID})`} />
-      </Svg>
-    </Animated.View>
+    />
   );
 }
 

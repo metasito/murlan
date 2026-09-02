@@ -4,7 +4,10 @@
 // way tests/native/onlinePartitaShake.test.tsx already spies `shake` — a real
 // mount, a real landing timeout, a real call into the hook's own exposed
 // function, so a `burst` nobody actually calls fails this exactly as loudly
-// as a `burst` called with the wrong tier.
+// as a `burst` called with the wrong tier. `shake` is spied alongside it into
+// the one `feedbackCallLog`, so the last test can assert they fire for the
+// same tier in the same landing rather than trusting two independent spies
+// to agree by construction.
 import { describe, it, expect, jest, beforeEach, afterEach } from "@jest/globals";
 import React from "react";
 import { act, render } from "@testing-library/react-native";
@@ -39,6 +42,12 @@ jest.mock("@/lib/accessibility", () => ({
 }));
 
 const mockBurstCalls: string[] = [];
+/**
+ * `shake` and `burst` recorded into one shared, ordered log — not two
+ * separate ones — so "did both fire for the same landing" is answerable from
+ * a single array rather than two arrays a reader has to line up by hand.
+ */
+const feedbackCallLog: { fn: "shake" | "burst"; tier: string }[] = [];
 jest.mock("@/components/useTableFeedback", () => {
   const actual: any = jest.requireActual("@/components/useTableFeedback");
   return {
@@ -47,8 +56,13 @@ jest.mock("@/components/useTableFeedback", () => {
       const real = actual.useTableFeedback(input);
       return {
         ...real,
+        shake: (tier: any) => {
+          feedbackCallLog.push({ fn: "shake", tier });
+          return real.shake(tier);
+        },
         burst: (tier: any) => {
           mockBurstCalls.push(tier);
+          feedbackCallLog.push({ fn: "burst", tier });
           return real.burst(tier);
         },
       };
@@ -133,6 +147,7 @@ describe("the lamp's flare and lift, wired off the same tier the shake reads (#7
   beforeEach(() => {
     jest.clearAllMocks();
     mockBurstCalls.length = 0;
+    feedbackCallLog.length = 0;
     jest.useFakeTimers();
   });
   afterEach(() => {
@@ -194,6 +209,35 @@ describe("the lamp's flare and lift, wired off the same tier the shake reads (#7
 
     expect(mockBurstCalls).toContain("partitaWon");
     expect(mockBurstCalls).not.toContain("mancheWon");
+
+    await r.unmount();
+  });
+
+  it("burst fires for the same tier shake does, in the same landing — not two separately-derived tiers", async () => {
+    // The partita rung is the one scenario in this file where `shake` and
+    // `burst` disagreeing is actually observable: `matchOver` is what tells
+    // "mancheWon" from "partitaWon" apart, and only flips mid-test (below),
+    // so a `burst` that re-derived its own tier from a stale or default
+    // `matchOver` would read "mancheWon" here while `shake` reads
+    // "partitaWon" — the exact shape of decoupling this test exists to catch.
+    const r = await render(table(HAND_CLOSED, false));
+    await act(async () => r.rerender(table(HAND_CLOSED, true)));
+
+    await act(async () => {
+      jest.advanceTimersByTime(impactDelayMs(false) + 10);
+      jest.runOnlyPendingTimers();
+    });
+
+    // One `landingTier(...)` computed once and handed to both — a version
+    // that recomputed it separately for each call, or split them across two
+    // timeouts, would still make both calls but could disagree on the tier or
+    // land them apart; this is the shape a blind critique's own decoupling
+    // defect (#764) was caught by accident of one scenario's timing rather
+    // than by an assertion designed for it.
+    expect(feedbackCallLog).toEqual([
+      { fn: "shake", tier: "partitaWon" },
+      { fn: "burst", tier: "partitaWon" },
+    ]);
 
     await r.unmount();
   });
