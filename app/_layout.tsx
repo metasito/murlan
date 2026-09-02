@@ -14,6 +14,7 @@ import { SettingsProvider } from "@/context/SettingsContext";
 import { NotificationProvider, useNotification } from "@/context/NotificationContext";
 import NotificationBanner from "@/components/NotificationBanner";
 import { OfflineBanner } from "@/components/OfflineBanner";
+import { OrientationProvider } from "@/lib/orientation";
 import { initLocale } from "@/lib/i18n";
 import { useFonts } from "expo-font";
 import { APP_FONTS } from "@/lib/fonts";
@@ -126,15 +127,17 @@ export default function RootLayout() {
         <SafeAreaProvider>
           <ErrorBoundary>
             <GestureHandlerRootView style={{ flex: 1 }}>
-              <NotificationProvider>
-                <AuthProvider>
-                  <SocketProvider>
-                    <GameProvider>
-                      <RootLayoutNav />
-                    </GameProvider>
-                  </SocketProvider>
-                </AuthProvider>
-              </NotificationProvider>
+              <OrientationProvider>
+                <NotificationProvider>
+                  <AuthProvider>
+                    <SocketProvider>
+                      <GameProvider>
+                        <RootLayoutNav />
+                      </GameProvider>
+                    </SocketProvider>
+                  </AuthProvider>
+                </NotificationProvider>
+              </OrientationProvider>
             </GestureHandlerRootView>
           </ErrorBoundary>
         </SafeAreaProvider>

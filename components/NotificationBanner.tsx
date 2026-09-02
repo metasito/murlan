@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
-import { View, Text, StyleSheet, Pressable, useWindowDimensions } from "react-native";
+import { View, Text, StyleSheet, Pressable } from "react-native";
 import { IconButton } from "@/components/IconButton";
-import { useIsLandscape } from "@/lib/orientation";
+import { useOrientedWindow } from "@/lib/orientation";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -88,9 +88,10 @@ export default function NotificationBanner({ notification, onDismiss, onMeasure 
     t(notification?.onPress ? "notificationBanner.openA11yHint" : "notificationBanner.dismissA11yHint")
   );
   const [pressed, setPressed] = useState(false);
+  const [measuredHeight, setMeasuredHeight] = useState(0);
   const insets = useSafeAreaInsets();
-  const { width, height } = useWindowDimensions();
-  const isLandscape = useIsLandscape();
+  const { width, height } = useOrientedWindow();
+  const isLandscape = width > height;
   const translateY = useSharedValue(-120);
   const opacity = useSharedValue(0);
   const reduceMotion = usePrefersReducedMotion();
@@ -148,6 +149,14 @@ export default function NotificationBanner({ notification, onDismiss, onMeasure 
     }
   }, [notification, opacity, slideDur, onDismiss, translateY]);
 
+  // The resting box, not the animated one — `translateY` never moves it, and
+  // that box is what a screen below has to make room for. Derived from
+  // `topOffset` rather than from the layout event so that a screen re-reserves
+  // when the offset alone changes; only the height needs measuring.
+  useEffect(() => {
+    if (measuredHeight > 0) onMeasure?.(topOffset + TOP_GAP + measuredHeight);
+  }, [measuredHeight, onMeasure, topOffset]);
+
   const animStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: translateY.value }],
     opacity: opacity.value,
@@ -164,13 +173,11 @@ export default function NotificationBanner({ notification, onDismiss, onMeasure 
     <Animated.View
       testID="notification-banner"
       style={[styles.container, { top: topOffset + TOP_GAP, pointerEvents: notification ? "box-none" as const : "none" as const }, animStyle]}
-      // The resting box, not the animated one: `onLayout` reports the laid-out
-      // position, which `translateY` never moves. That is exactly what a screen
-      // below has to make room for.
-      onLayout={(e) => {
-        const { y, height } = e.nativeEvent.layout;
-        onMeasure?.(y + height);
-      }}
+      // Height only. `onLayout` is a ResizeObserver on web, which reports a
+      // change of size and not one of position, so the `y` it carries is
+      // whatever `topOffset` was when the box was last resized — stale from
+      // the moment the offset moves under a box that kept its height.
+      onLayout={(e) => setMeasuredHeight(e.nativeEvent.layout.height)}
       // The banner never unmounts, so with nothing to announce its close button
       // is an invisible control a screen reader still finds. `pointerEvents`
       // answers for the pointer alone.
