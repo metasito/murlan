@@ -186,11 +186,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
   const setupGame = useCallback(
     (players: PlayerSetupConfig[], mode: GameMode, length: MatchLength = "match") => {
-      // A brand-new table is always "a new match", so `dealFirstSeatFor`'s
-      // `matchOver` is unconditionally `true` here — routed through it anyway
-      // rather than a bare `0`, so it and `dealFrom` below share the one
-      // function that decides this (#803), the same as
-      // `server/tableHandlers.ts`'s `startMatchAction` and `dealVotedManche`.
+      // A brand-new table is always "a new match", so `matchOver` is
+      // unconditionally `true` here.
       const firstSeat = dealFirstSeatFor(true, 0, players.length);
       const state = initializeGame(players, mode, firstSeat);
       setGameState(state);
@@ -205,12 +202,9 @@ export function GameProvider({ children }: { children: ReactNode }) {
   );
 
   /**
-   * Deals the next manche, seeded by the last one's order. `matchIsOver` is
-   * `startNewMatch`'s: `dealFirstSeatFor` (`lib/gameEngine.ts`) resets a *new*
-   * match to seat 0 and only rotates *within* one — the same distinction
-   * `server/tableHandlers.ts`'s `startMatchAction` vs `dealVotedManche` makes
-   * online — so a plain `dealFrom` call cannot carry a finished match's own
-   * rotation into the new one (#803).
+   * Deals the next manche, seeded by the last one's order. `matchIsOver`
+   * tells `dealFirstSeatFor` (`lib/gameEngine.ts`) whether this deal starts a
+   * new match (reset to seat 0) or continues the current one (rotate).
    */
   const dealFrom = useCallback(
     (prevRankings: string[], matchIsOver = false) => {

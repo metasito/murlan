@@ -13,16 +13,14 @@
 // (verified empirically — a planted mutation that wrote a hardcoded
 // full-strength trauma still drove a zero style).
 //
-// A first version of this test spied only on `traumaFor`'s call args and
-// return value, which a blind critique defeated: a mutation that calls
-// `traumaFor` correctly (satisfying the spy) but then writes a hardcoded
-// trauma to the shared value anyway — ignoring what `traumaFor` returned —
-// passed it. `shakeTrauma` itself is not exposed by the hook, so this wraps
+// `shakeTrauma` itself is not exposed by the hook, so this wraps
 // `useSharedValue` to capture every shared value `shake()`'s component tree
 // creates, and mocks `traumaFor` to answer a value nothing else in the app
-// produces — so the only way one of those captured shared values can show it
-// is if `shake()`'s write actually carries `traumaFor`'s own return, not a
-// value read at the same point and discarded.
+// produces. The capture happens inside a *synchronous* `act()` callback, in
+// the same tick as the call to `shake()` — a write that is briefly wrong and
+// only corrected in a later microtask would still read wrong at that point,
+// so this only passes if the write `shake()` makes is already right the
+// instant it returns, not merely by the time something later reads it.
 import { describe, it, expect, jest, afterEach } from '@jest/globals';
 import React from 'react';
 import { act, render } from '@testing-library/react-native';
@@ -124,16 +122,25 @@ describe('the shake reads reduced motion at the point trauma is set (#794)', () 
     // introduce it.
     expect(mockCapturedSharedValues.some((sv) => sv.value === SENTINEL)).toBe(false);
 
+    // Captured by a synchronous statement inside `act()`'s callback, right
+    // after calling `shake()` and before that statement — or the callback
+    // itself — ever yields to the microtask queue: a mutation that writes a
+    // wrong value first and corrects it a tick later would still be caught
+    // wrong here, not merely right by the time the test looks again.
+    let sentinelLandedSynchronously = false;
     await act(async () => {
       shakeRef.current!('bomb');
+      sentinelLandedSynchronously = mockCapturedSharedValues.some((sv) => sv.value === SENTINEL);
     });
 
     // The point trauma is set: `shake()` must hand `traumaFor` the *live*
     // reduced-motion flag.
     expect(traumaSpy).toHaveBeenCalledWith('bomb', true);
-    // And what actually lands in a shared value — not merely what `shake()`
-    // read and could have discarded — is `traumaFor`'s own answer.
-    expect(mockCapturedSharedValues.some((sv) => sv.value === SENTINEL)).toBe(true);
+    // And what actually lands in a shared value, in the same tick as the
+    // call — not merely what `shake()` read and could have discarded, and not
+    // merely what a later microtask could still correct to — is `traumaFor`'s
+    // own answer.
+    expect(sentinelLandedSynchronously).toBe(true);
 
     await r.unmount();
   });
