@@ -24,6 +24,7 @@ import {
   announceRejoin,
   armLobbyGrace,
   joinSocketToRoom,
+  roomStatePayload,
 } from "./socketTable.ts";
 import { applyOrForward } from "./tableRouter.ts";
 import { NoPayloadSchema, FriendInviteSchema } from "./socketSchemas.ts";
@@ -71,6 +72,11 @@ export function registerFriendHandlers({ io, socket, userId, username }: Presenc
         // of saying "look now"; the row is what makes the invite exist, and it
         // is the only one of the three that survives the friend being away.
         await storage.recordGameInvite(room.id, userId, friendUserId);
+
+        // The row is what holds the seat, so the room has to be told the moment
+        // it exists — otherwise the seat waiting for this friend reads as an
+        // empty one until something else happens to broadcast.
+        io.to(room.id).emit("room:state", await roomStatePayload(room, seated));
 
         const friendIsHere = await isUserOnline(friendUserId);
         if (friendIsHere) {

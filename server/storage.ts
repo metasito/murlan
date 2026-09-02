@@ -11,10 +11,13 @@ import {
   matchReplays,
 } from "../shared/schema.ts";
 import type { User, InsertUser, Room, RoomPlayer, Friend, RoomVisibility } from "../shared/schema.ts";
+import { heldSeats, seatForClaim } from "./seatAllocation.ts";
+import type { SeatHold, SeatInvite, SeatedPlayer, SeatingRoom } from "./seatAllocation.ts";
+import { seatHoldMs } from "./gameTimers.ts";
 
 export type SeatClaim =
   | { ok: true; seatIndex: number }
-  | { ok: false; reason: "no_room" | "not_waiting" | "full" | "already_joined" };
+  | { ok: false; reason: "no_room" | "not_waiting" | "full" | "already_joined" | "held" };
 
 export interface JoinableRoom {
   room: Room;
@@ -289,8 +292,9 @@ class DrizzleStorage {
   }
 
   /**
-   * Allocates the lowest free seat under a row lock on the room, so two
-   * simultaneous joins cannot race into the same seat.
+   * Seats a player under a row lock on the room, so two simultaneous joins
+   * cannot race into the same seat — and so the invites the hold is read from
+   * cannot change between the read and the insert.
    */
   async claimRoomSeat(roomId: string, userId: string): Promise<SeatClaim> {
     return db.transaction(async (tx): Promise<SeatClaim> => {
@@ -311,14 +315,60 @@ class DrizzleStorage {
         return { ok: false, reason: "already_joined" };
       if (seated.length >= room.maxPlayers) return { ok: false, reason: "full" };
 
-      const taken = new Set(seated.map((p) => p.seatIndex));
-      let seatIndex = 0;
-      while (taken.has(seatIndex)) seatIndex++;
-      if (seatIndex >= room.maxPlayers) return { ok: false, reason: "full" };
+      const invites = await tx
+        .select({
+          inviterId: gameInvites.inviterId,
+          inviteeId: gameInvites.inviteeId,
+          createdAt: gameInvites.createdAt,
+        })
+        .from(gameInvites)
+        .where(eq(gameInvites.roomId, roomId))
+        .orderBy(gameInvites.createdAt, gameInvites.id);
+
+      const seatIndex = seatForClaim({
+        room,
+        seated,
+        invites,
+        now: Date.now(),
+        holdMs: seatHoldMs(),
+        userId,
+      });
+      if (seatIndex === null) return { ok: false, reason: "held" };
 
       await tx.insert(roomPlayers).values({ roomId, userId, seatIndex });
       return { ok: true, seatIndex };
     });
+  }
+
+  /**
+   * Which seats this room is holding, for whom, and until when — the room has
+   * to say a seat is held and for whom, or the hold reads as the room being
+   * broken.
+   */
+  async getRoomSeatHolds(
+    room: SeatingRoom & { id: string },
+    seated: readonly SeatedPlayer[]
+  ): Promise<(SeatHold & { username: string })[]> {
+    const invites: (SeatInvite & { username: string })[] = await db
+      .select({
+        inviterId: gameInvites.inviterId,
+        inviteeId: gameInvites.inviteeId,
+        createdAt: gameInvites.createdAt,
+        username: users.username,
+      })
+      .from(gameInvites)
+      .innerJoin(users, eq(gameInvites.inviteeId, users.id))
+      .where(eq(gameInvites.roomId, room.id))
+      .orderBy(gameInvites.createdAt, gameInvites.id);
+
+    const nameOf = new Map(invites.map((i) => [i.inviteeId, i.username]));
+    return heldSeats({
+      room,
+      seated,
+      invites,
+      now: Date.now(),
+      holdMs: seatHoldMs(),
+    }).map((hold) => ({ ...hold, username: nameOf.get(hold.inviteeId) ?? "" }));
   }
 
   /**
@@ -482,7 +532,11 @@ class DrizzleStorage {
       .values({ roomId, inviterId, inviteeId })
       .onConflictDoUpdate({
         target: [gameInvites.roomId, gameInvites.inviteeId],
-        set: { inviterId, createdAt: new Date() },
+        // The database's clock, not Node's: the insert's own default is
+        // `now()`, and the seat hold is read as an age against that same
+        // clock. A refresh stamped from the app server measures the hold
+        // through the offset between two machines.
+        set: { inviterId, createdAt: sql`now()` },
       })
       .returning({ createdAt: gameInvites.createdAt, id: gameInvites.id });
     return { created: !!row };

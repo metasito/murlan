@@ -625,7 +625,7 @@ async function startMatchAction(
   // resolving any one player.
   io.to(roomId).emit(
     "room:state",
-    roomStatePayload({ ...room, status: "in_progress" }, players)
+    await roomStatePayload({ ...room, status: "in_progress" }, players)
   );
 
   await dealManche(io, newGame, gameState);

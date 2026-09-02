@@ -37,6 +37,12 @@ export interface RoomState {
   visibility: "public" | "private";
   maxPlayers: number;
   players: { seatIndex: number; userId: string; username: string }[];
+  /**
+   * Seats held for someone who has been invited and has not arrived. The
+   * server measures the remaining time, because only the two clocks' difference
+   * would be left of a hold this short.
+   */
+  seatHolds?: { seatIndex: number; username: string; expiresInMs: number }[];
 }
 
 export interface RematchVoteState {
@@ -162,6 +168,7 @@ const TERMINAL_ROOM_REJOIN_CODES = new Set([
   "NOT_IN_ROOM",
   "GAME_ALREADY_STARTED",
   "ROOM_FULL",
+  "SEAT_HELD",
 ]);
 
 interface TurnDeadline {

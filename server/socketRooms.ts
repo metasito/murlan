@@ -50,7 +50,7 @@ export function registerRoomHandlers({ io, socket, userId, username }: RoomHandl
         socketRoomMap.set(socket.id, room.id);
 
         const players = await storage.getRoomPlayers(room.id);
-        socket.emit("room:state", roomStatePayload(room, players));
+        socket.emit("room:state", await roomStatePayload(room, players));
         logger.info({ roomId: room.id, code: room.code, userId }, "Room created");
       },
       { limit: 5, windowMs: 60_000 }
@@ -147,7 +147,7 @@ export function registerRoomHandlers({ io, socket, userId, username }: RoomHandl
           playerCount: updatedPlayers.length,
           gameMode: room.gameMode,
         });
-        io.to(room.id).emit("room:state", roomStatePayload(room, updatedPlayers));
+        io.to(room.id).emit("room:state", await roomStatePayload(room, updatedPlayers));
         await announceIfFilled(io, room, updatedPlayers.length);
       },
       { limit: 10, windowMs: 60_000 }
@@ -193,7 +193,7 @@ export function registerRoomHandlers({ io, socket, userId, username }: RoomHandl
         clearLobbyGrace(room.id, userId);
 
         const players = await storage.getRoomPlayers(room.id);
-        io.to(room.id).emit("room:state", roomStatePayload(room, players));
+        io.to(room.id).emit("room:state", await roomStatePayload(room, players));
       },
       { limit: 20, windowMs: 60_000 }
     );
@@ -250,7 +250,7 @@ export function registerRoomHandlers({ io, socket, userId, username }: RoomHandl
           const updatedPlayers = await storage.getRoomPlayers(roomId);
           io.to(roomId).emit(
             "room:state",
-            roomStatePayload(candidate.room, updatedPlayers)
+            await roomStatePayload(candidate.room, updatedPlayers)
           );
           await announceIfFilled(io, candidate.room, updatedPlayers.length);
           joinedRoomId = roomId;
@@ -264,7 +264,7 @@ export function registerRoomHandlers({ io, socket, userId, username }: RoomHandl
           socketRoomMap.set(socket.id, room.id);
 
           const players = await storage.getRoomPlayers(room.id);
-          socket.emit("room:state", roomStatePayload(room, players));
+          socket.emit("room:state", await roomStatePayload(room, players));
         }
       },
       { limit: 10, windowMs: 60_000 }
@@ -303,5 +303,6 @@ const SEAT_CLAIM_REFUSAL = {
   no_room: { message: "Room not found", code: "ROOM_NOT_FOUND" },
   not_waiting: { message: "Game already started", code: "GAME_ALREADY_STARTED" },
   full: { message: "Room full", code: "ROOM_FULL" },
+  held: { message: "Every free seat is being held for a friend", code: "SEAT_HELD" },
   already_joined: { message: "You are already in the room", code: "ALREADY_IN_ROOM" },
 } as const;
