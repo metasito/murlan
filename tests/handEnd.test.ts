@@ -174,6 +174,52 @@ describe("resolveHandEnd — gameResults shaping", () => {
     assert.ok(!("bot:1" in result.cumulativeScores));
   });
 
+  test("a straight duel's bot seat accumulates — only a vacated one is excluded (#815)", () => {
+    const state = mkState(
+      [player("p0", "Alice", 3), player("p1", "Drita", 0)],
+      ["p1", "p0"]
+    );
+    const result = resolveHandEnd({
+      // Seat 1 has no playerMap entry too, but it was never a human's this
+      // match — it must not read the same as seat 1 in the test above.
+      state,
+      playerMap: { 0: "alice" },
+      cumulativeScores: {},
+      matchTarget: 7,
+      matchLength: "match",
+      gameMode: "free_for_all",
+      handFlags: HAND_FLAGS,
+      abandonedSeats: new Map(),
+      botSeatsAtStart: new Set([1]),
+    });
+
+    assert.equal(result.cumulativeScores["bot:1"], 1);
+  });
+
+  test("#815: a straight duel's totals sum to hands played across a run", () => {
+    const players = [player("p0", "rotonmeta", 0), player("p1", "Drita", 3)];
+    let cumulativeScores: Record<string, number> = {};
+    const outcomes = ["p0", "p0", "p1", "p1"]; // winner of each of 4 hands
+    for (const winner of outcomes) {
+      const loser = winner === "p0" ? "p1" : "p0";
+      const result = resolveHandEnd({
+        state: mkState(players, [winner, loser]),
+        playerMap: { 0: "rotonmeta" },
+        cumulativeScores,
+        matchTarget: 7,
+        matchLength: "match",
+        gameMode: "free_for_all",
+        handFlags: HAND_FLAGS,
+        abandonedSeats: new Map(),
+        botSeatsAtStart: new Set([1]),
+      });
+      cumulativeScores = result.cumulativeScores;
+    }
+
+    const total = Object.values(cumulativeScores).reduce((a, b) => a + b, 0);
+    assert.equal(total, outcomes.length);
+  });
+
   test("opponentsFinished counts real finishers only, not auto-assigned placements", () => {
     // Only seat 0 actually emptied its hand; the hand ended there and the
     // other three are auto-ranked still holding cards.

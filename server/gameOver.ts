@@ -76,6 +76,7 @@ export async function handleGameOver(
     gameMode: game.gameMode,
     handFlags: game.handFlags,
     abandonedSeats: game.abandonedSeats,
+    botSeatsAtStart: game.botSeatsAtStart,
   });
   const { handByKey, matchWinners, isDraw, detailed, winnerEngineIds } = result;
   game.cumulativeScores = result.cumulativeScores;
