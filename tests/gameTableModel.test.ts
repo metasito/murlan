@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { CARD_H, CARD_W, BACK_SCALE } from "../components/cardFaceModel.ts";
 import { Hold, TOUCH_TARGET_MIN } from "../lib/tokens.ts";
+import { blankComments } from "./helpers/sourceScan.ts";
 import type { Card, Combination } from "../lib/gameEngine.ts";
 import {
   ROTATE_SETTLED,
@@ -62,6 +63,9 @@ import {
   describeTableForA11y,
   impactDelayMs,
   landingHoldMs,
+  landSquashScale,
+  LAND_SQUASH,
+  settleForMotion,
   FLIGHT_MS,
   LANDING_FRACTION,
   passedSeats,
@@ -1416,6 +1420,82 @@ describe("the table holds still at the landing frame", () => {
     // fire first and the pile would advance twice.
     const src = readFileSync(path.join(repoRoot, "components", "table", "pile.tsx"), "utf8");
     assert.match(src, /const FLIGHT_LIMIT_MS = .*Hold\.land/);
+  });
+});
+
+describe("a landed card squashes on the spring that lands it", () => {
+  test("at rest — settle 0, including the whole of reduced motion — there is no deformation", () => {
+    const { x, y } = landSquashScale(0);
+    assert.equal(x, 1);
+    assert.equal(y, 1);
+  });
+
+  test("the peak squash is the named constant, not a literal at the call site", () => {
+    assert.ok(LAND_SQUASH < 1, "a squash compresses; it does not grow");
+    const { y } = landSquashScale(1);
+    assert.equal(y, LAND_SQUASH);
+  });
+
+  test("compressing one axis expands the other — volume never drifts, at any point on the spring", () => {
+    // Includes a value past 1: `Motion.spring.land` overshoots past 0 once, and
+    // that overshoot is the recovery this rides rather than a second timeline.
+    for (const settle of [0, 0.25, 0.5, 0.75, 1, -0.07]) {
+      const { x, y } = landSquashScale(settle);
+      assert.ok(
+        Math.abs(x * y - 1) < 1e-9,
+        `x*y must stay 1 at settle=${settle}, got ${x * y}`
+      );
+    }
+  });
+
+  test("pile.tsx rides the same settle value Motion.spring.land drives, not a timeline of its own", () => {
+    const src = readFileSync(path.join(repoRoot, "components", "table", "pile.tsx"), "utf8");
+    assert.ok(
+      src.includes("landSquashScale(settle.value)"),
+      "the flying card's squash must read off `settle`, the value the landing spring already drives"
+    );
+  });
+});
+
+describe("settleForMotion", () => {
+  // Reanimated's cancelAnimation (the flight effect's own cleanup, re-run
+  // when `reduceMotion` flips) freezes a shared value at its current number
+  // rather than resetting it, so a live toggle mid-flight cannot rely on
+  // `settle` already being 0 by the time reduced motion takes over. These
+  // assert the behaviour directly — not a source pin — because the fix lives
+  // in a pure function pile.tsx also calls: unpinnable by rendering, though
+  // — a probe component mutating a shared value after mount, under this
+  // repo's jest-expo reanimated mock, left useAnimatedStyle's output at the
+  // value the component mounted with, the same frozen-at-mount trap loops.md
+  // documents for reading a value back out. So live reactivity on this exact
+  // path still needs an e2e toggle mid-flight or a device check; neither is
+  // what these prove.
+  test("reduced motion always resets to 0, whatever the incoming value was", () => {
+    assert.equal(settleForMotion(true, 0), 0);
+    assert.equal(settleForMotion(true, 1), 0);
+    assert.equal(settleForMotion(true, -0.07), 0);
+  });
+
+  test("off reduced motion the value passes through unchanged", () => {
+    assert.equal(settleForMotion(false, 0.42), 0.42);
+    assert.equal(settleForMotion(false, 0), 0);
+  });
+
+  test("FlyingCards runs it as the first thing its effect does, so a toggle cannot skip past it", () => {
+    // Anchored at the effect's own opening brace rather than searched for
+    // anywhere in the file: a call present but placed after a branch that
+    // returns early would never run under reduced motion — the defect this
+    // exists to catch — and an unanchored search cannot tell "runs first"
+    // from "is written down somewhere". Comments are blanked first, the way
+    // tests/e2eSentinels.test.ts does, so a copy of this exact text left
+    // behind in one does not read as the call.
+    const src = blankComments(
+      readFileSync(path.join(repoRoot, "components", "table", "pile.tsx"), "utf8")
+    );
+    assert.match(
+      src,
+      /useEffect\(\(\) => \{\s*settle\.value = settleForMotion\(reduceMotion, settle\.value\);/
+    );
   });
 });
 

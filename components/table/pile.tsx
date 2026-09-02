@@ -27,6 +27,8 @@ import {
   cardTilt,
   impactDelayMs,
   landingHoldMs,
+  landSquashScale,
+  settleForMotion,
   type FlyDirection,
 } from "@/components/gameTableModel";
 import { FIELD_ARC, solveArc } from "@/components/tableArc";
@@ -117,6 +119,9 @@ export function FlyingCards({
   const settle = useSharedValue(0);
 
   useEffect(() => {
+    // Runs on every entry to this effect, including a toggle mid-flight —
+    // see settleForMotion for why that matters.
+    settle.value = settleForMotion(reduceMotion, settle.value);
     if (reduceMotion) {
       // The pile is about to show these cards anyway; skip the flight entirely
       // and hand control straight back rather than jumping them across.
@@ -166,14 +171,19 @@ export function FlyingCards({
     // this component via `key` for each new one — so this runs once per flight.
   }, [reduceMotion, landingRot, notifyDone, tx, ty, rot, opacity, arcY, settle]);
 
-  const aStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateX: tx.value },
-      { translateY: ty.value + arcY.value + settle.value * LAND_DIP },
-      { rotate: `${rot.value + settle.value * landingRot * 0.4}deg` },
-    ],
-    opacity: opacity.value,
-  }));
+  const aStyle = useAnimatedStyle(() => {
+    const squash = landSquashScale(settle.value);
+    return {
+      transform: [
+        { translateX: tx.value },
+        { translateY: ty.value + arcY.value + settle.value * LAND_DIP },
+        { rotate: `${rot.value + settle.value * landingRot * 0.4}deg` },
+        { scaleX: squash.x },
+        { scaleY: squash.y },
+      ],
+      opacity: opacity.value,
+    };
+  });
 
   const cardScale = scale * FIELD_SCALE;
   const { arc, box, cardH } = fieldArc(cards, cardScale, roomW);
