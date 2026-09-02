@@ -7,7 +7,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { CARD_H, CARD_W, BACK_SCALE } from "../components/cardFaceModel.ts";
-import { Hold, TOUCH_TARGET_MIN } from "../lib/tokens.ts";
+import { Hold, TOUCH_TARGET_MIN, Trauma, SHAKE_DECAY_MS } from "../lib/tokens.ts";
 import { blankComments } from "./helpers/sourceScan.ts";
 import type { Card, Combination } from "../lib/gameEngine.ts";
 import {
@@ -66,6 +66,10 @@ import {
   landSquashScale,
   LAND_SQUASH,
   settleForMotion,
+  comboImpactTier,
+  traumaFor,
+  shakeMagnitude,
+  shakeOffset,
   FLIGHT_MS,
   LANDING_FRACTION,
   passedSeats,
@@ -73,6 +77,7 @@ import {
   sparkOffset,
   SPARK_COUNT,
   type ComboShape,
+  type ImpactTier,
   type TableA11yStrings,
 } from "../components/gameTableModel.ts";
 import {
@@ -1496,6 +1501,73 @@ describe("settleForMotion", () => {
       src,
       /useEffect\(\(\) => \{\s*settle\.value = settleForMotion\(reduceMotion, settle\.value\);/
     );
+  });
+});
+
+describe("the table's own trauma escalation (#763)", () => {
+  test("a play's tier reads off the combination that just landed", () => {
+    assert.equal(comboImpactTier("bomb"), "bomb");
+    assert.equal(comboImpactTier("straight"), "straightFlush");
+    assert.equal(comboImpactTier("royal_straight"), "straightFlush");
+    assert.equal(comboImpactTier("single"), "ordinary");
+    assert.equal(comboImpactTier("pair"), "ordinary");
+    assert.equal(comboImpactTier("triple"), "ordinary");
+  });
+
+  test("the tier→trauma mapping is the one table #101 settled", () => {
+    assert.equal(traumaFor("ordinary", false), 0);
+    assert.equal(traumaFor("straightFlush", false), 0);
+    assert.equal(traumaFor("bomb", false), Trauma.bomb);
+    assert.equal(traumaFor("mancheWon", false), Trauma.mancheWon);
+    assert.equal(traumaFor("partitaWon", false), Trauma.partitaWon);
+  });
+
+  test("the bomb outranks the manche and the partita both — a later 'tidy-up' that sorts by event size must fail this", () => {
+    const bomb = traumaFor("bomb", false);
+    const manche = traumaFor("mancheWon", false);
+    const partita = traumaFor("partitaWon", false);
+    assert.ok(
+      bomb > manche,
+      "a bomb is a surprise and a manche ending is expected — the bomb shakes harder on purpose"
+    );
+    assert.ok(bomb > partita, "the bomb outranks even the partita: it is the surprise in the game");
+    assert.ok(partita > manche, "a partita closing still outshakes a manche closing");
+  });
+
+  test("reduced motion produces no shake, at every tier, without a bespoke branch", () => {
+    const tiers: ImpactTier[] = ["ordinary", "straightFlush", "bomb", "mancheWon", "partitaWon"];
+    for (const tier of tiers) {
+      assert.equal(traumaFor(tier, true), 0, `${tier} must carry no trauma under reduced motion`);
+    }
+  });
+
+  test("trauma at rest (elapsed 0) is the tier's own peak — the shake starts struck, not built up to", () => {
+    assert.equal(shakeMagnitude(Trauma.bomb, 0), Trauma.bomb);
+  });
+
+  test("trauma decays squared, not linearly — a half-elapsed shake is a quarter strength, not half", () => {
+    const half = shakeMagnitude(Trauma.bomb, SHAKE_DECAY_MS / 2);
+    assert.ok(
+      Math.abs(half - Trauma.bomb * 0.25) < 1e-9,
+      `trauma² at the midpoint of the decay must be a quarter of the peak, got ${half}`
+    );
+  });
+
+  test("the shake is fully decayed at and past SHAKE_DECAY_MS, never negative", () => {
+    assert.equal(shakeMagnitude(Trauma.bomb, SHAKE_DECAY_MS), 0);
+    assert.equal(shakeMagnitude(Trauma.bomb, SHAKE_DECAY_MS * 4), 0);
+  });
+
+  test("no trauma is no displacement, at any point in the decay", () => {
+    assert.equal(shakeOffset(0, 0).x, 0);
+    assert.equal(shakeOffset(0, 0).y, 0);
+    assert.equal(shakeOffset(0, SHAKE_DECAY_MS / 3).x, 0);
+  });
+
+  test("the displacement peaks at the tier's own trauma, at the moment of impact", () => {
+    const { x, y } = shakeOffset(Trauma.bomb, 0);
+    // cos(0) = 1, so the wiggle contributes its full weight at elapsed 0.
+    assert.ok(x !== 0 && y !== 0, "a bomb's shake must actually move the node it is applied to");
   });
 });
 

@@ -13,7 +13,12 @@ import {
 } from "react-native-reanimated";
 import type { Combination } from "@/lib/gameEngine";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
-import { roundClosedWithWinner } from "@/components/gameTableModel";
+import {
+  roundClosedWithWinner,
+  traumaFor,
+  shakeOffset,
+  type ImpactTier,
+} from "@/components/gameTableModel";
 import {
   playBomb,
   playCardPass,
@@ -25,7 +30,7 @@ import {
 } from "@/lib/sounds";
 import { hapticHeavy, hapticSuccess, hapticWarn } from "@/lib/haptics";
 import { cancelMusicDuck, duckMusicFor } from "@/lib/music";
-import { Motion } from "@/lib/theme";
+import { Motion, SHAKE_DECAY_MS } from "@/lib/theme";
 
 // The refusal shake on GIOCA: deliberately a third of the bomb's amplitude —
 // it is a "no", not an event. One leg duration for all four legs.
@@ -94,6 +99,10 @@ interface TableFeedback {
   flushTrigger: number;
   /** Call once, at the same landing moment as `playImpact`, when that play emptied a hand. */
   celebrateFlush: () => void;
+  /** The escalation's own shake (#763) — apply to a node the online survey never measures. */
+  shakeStyle: AnimatedStyle<ViewStyle>;
+  /** Fire the shake for a play's own tier; a manche or a partita closing names its tier directly. */
+  shake: (tier: ImpactTier) => void;
 }
 
 /**
@@ -115,6 +124,11 @@ function useImpactFeedback(reduceMotion: boolean, scale: number) {
   const kickScale = useSharedValue(1);
   const giocaRejectX = useSharedValue(0);
   const [boomTrigger, setBoomTrigger] = useState(0);
+  // The escalation's own shake (#763): a trauma peak and an elapsed clock
+  // `shakeOffset` reads back every frame, riding the table #101 settled —
+  // never a second amplitude authored here.
+  const shakeTrauma = useSharedValue(0);
+  const shakeElapsed = useSharedValue(0);
 
   // Both inputs are read through refs so the two writers below depend on
   // nothing, which is what lets the callbacks that expose them hold `[]`.
@@ -151,6 +165,24 @@ function useImpactFeedback(reduceMotion: boolean, scale: number) {
     );
   };
 
+  // No `if (reduceMotion)`: `traumaFor` already answers 0 there, off the same
+  // derivation `landingHoldMs` reads (components/gameTableModel.ts), so a
+  // reduced-motion player's shake falls out of that rather than a second gate.
+  const shake = (tier: ImpactTier) => {
+    const trauma = traumaFor(tier, reduceMotionRef.current);
+    shakeTrauma.value = trauma;
+    if (trauma === 0) {
+      shakeElapsed.value = 0;
+      return;
+    }
+    cancelAnimation(shakeElapsed);
+    shakeElapsed.value = 0;
+    shakeElapsed.value = withTiming(SHAKE_DECAY_MS, {
+      duration: SHAKE_DECAY_MS,
+      easing: Easing.linear,
+    });
+  };
+
   const kickStyle = useAnimatedStyle(() => ({
     transform: [
       { translateX: kickX.value },
@@ -159,6 +191,11 @@ function useImpactFeedback(reduceMotion: boolean, scale: number) {
     ],
   }));
 
+  const shakeStyle = useAnimatedStyle(() => {
+    const { x, y } = shakeOffset(shakeTrauma.value, shakeElapsed.value);
+    return { transform: [{ translateX: x }, { translateY: y }] };
+  });
+
   // Reanimated keeps driving shared values after unmount unless cancelled.
   useEffect(
     () => () => {
@@ -166,8 +203,9 @@ function useImpactFeedback(reduceMotion: boolean, scale: number) {
       cancelAnimation(kickY);
       cancelAnimation(kickScale);
       cancelAnimation(giocaRejectX);
+      cancelAnimation(shakeElapsed);
     },
-    [kickX, kickY, kickScale, giocaRejectX]
+    [kickX, kickY, kickScale, giocaRejectX, shakeElapsed]
   );
 
   // The writers have to be plain closures — the compiler refuses a function
@@ -184,12 +222,13 @@ function useImpactFeedback(reduceMotion: boolean, scale: number) {
   // never refreshed because it never needs to be — both closures read their
   // only two inputs through `scaleRef` and `reduceMotionRef`, so the pair
   // captured on the first render behaves the same as any later one.
-  const writers = useRef({ kick, reject });
+  const writers = useRef({ kick, reject, shake });
 
   const impact = useCallback(() => writers.current.kick(), []);
   const rejectPlay = useCallback(() => writers.current.reject(), []);
+  const triggerShake = useCallback((tier: ImpactTier) => writers.current.shake(tier), []);
 
-  return { kickStyle, giocaRejectX, impact, rejectPlay, boomTrigger };
+  return { kickStyle, giocaRejectX, impact, rejectPlay, boomTrigger, shakeStyle, shake: triggerShake };
 }
 
 export function useTableFeedback({
@@ -228,10 +267,8 @@ export function useTableFeedback({
   const giocaFlashVal = useSharedValue(0);
   const passaFlashVal = useSharedValue(0);
   const giocaGlowVal = useSharedValue(0);
-  const { kickStyle, giocaRejectX, impact, rejectPlay, boomTrigger } = useImpactFeedback(
-    reduceMotion,
-    scale
-  );
+  const { kickStyle, giocaRejectX, impact, rejectPlay, boomTrigger, shakeStyle, shake } =
+    useImpactFeedback(reduceMotion, scale);
   // BombBurst and Sweep own their animations; these just say "again" —
   // PlayedPile's `bounceTrigger` is the same pattern.
   const [flushTrigger, setFlushTrigger] = useState(0);
@@ -271,6 +308,8 @@ export function useTableFeedback({
     }
     if (prevGameOverRef.current) return;
     prevGameOverRef.current = true;
+    // The partita's own rung — every seat shakes with it, not only the winner's.
+    shake("partitaWon");
     // `rankings` holds engine player ids (`player_0`), never display names.
     const myRank = viewerId ? rankings.indexOf(viewerId) : -1;
     if (myRank === 0) {
@@ -282,7 +321,7 @@ export function useTableFeedback({
       playGameLose();
       duckMusicFor(2200);
     }
-  }, [gameOver, rankings, viewerId]);
+  }, [gameOver, rankings, viewerId, shake]);
 
   // A duck outlives the play that started it by a second or two, so leaving
   // the table mid-bomb would otherwise leave the music down until something
@@ -377,5 +416,7 @@ export function useTableFeedback({
     boomTrigger,
     flushTrigger,
     celebrateFlush,
+    shakeStyle,
+    shake,
   };
 }

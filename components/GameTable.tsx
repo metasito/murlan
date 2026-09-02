@@ -61,6 +61,7 @@ import {
   handCountOf,
   readThrownPlay,
   impactDelayMs,
+  comboImpactTier,
   lightPosition,
   passedSeats,
   readExchange,
@@ -606,6 +607,8 @@ export function GameTable({
     boomTrigger,
     flushTrigger,
     celebrateFlush,
+    shakeStyle,
+    shake,
   } = useTableFeedback({
     isMyTurn,
     isFinished,
@@ -759,6 +762,7 @@ export function GameTable({
     // viewer's: the sound belongs to a card landing, not to a tap.
     impactTimerRef.current = setTimeout(() => {
       playImpact(thrown.heavy);
+      shake(comboImpactTier(combo.type));
       if (thrown.emptiedHand) celebrateFlush();
     }, impactDelayMs(reduceMotion));
 
@@ -781,6 +785,7 @@ export function GameTable({
     players.length,
     reduceMotion,
     playImpact,
+    shake,
     celebrateFlush,
     players,
     opponents,
@@ -823,9 +828,10 @@ export function GameTable({
   useEffect(() => {
     if (roundWinnerTag === null) return;
     playRoundWin();
+    shake("mancheWon");
     const dismiss = setTimeout(() => setRoundWinnerTag(null), ROUND_WINNER_MS);
     return () => clearTimeout(dismiss);
-  }, [roundWinnerTag]);
+  }, [roundWinnerTag, shake]);
 
   useEffect(() => {
     if (rejectHint === null) return;
@@ -1153,8 +1159,20 @@ export function GameTable({
       {/* Felt — decoration only, and edge to edge: a framed table draws a lit
           rectangle in a dark room, which is the one thing a single overhead
           lamp cannot produce. The pool tracks whose turn it is, so half the
-          cloth falls into shadow when it is not yours. */}
-      <View testID="table-felt" style={[StyleSheet.absoluteFill, FELT_Z]} pointerEvents="none" {...a11yHidden()}>
+          cloth falls into shadow when it is not yours.
+
+          The escalation's own shake (#763) rides here rather than on
+          `styles.root` (which carries `kickStyle`, an ancestor of
+          `testID="game-table"`): `table-felt` is that node's *sibling*, so a
+          transform on it never reaches the box the #57 layout survey (#785)
+          measures — a CSS transform moves an ancestor's descendants, never a
+          sibling's. */}
+      <Animated.View
+        testID="table-felt"
+        style={[StyleSheet.absoluteFill, FELT_Z, shakeStyle]}
+        pointerEvents="none"
+        {...a11yHidden()}
+      >
         <FeltPool
           width={feltW}
           height={feltH}
@@ -1162,7 +1180,7 @@ export function GameTable({
           lightX={light.x}
           lightY={light.y}
         />
-      </View>
+      </Animated.View>
 
       {/* Same coordinates, overflow visible so slots and buttons can extend out.
           `dataSet` and not `accessibilityLabel`: this sentence is the browser

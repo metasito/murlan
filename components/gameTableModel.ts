@@ -19,7 +19,7 @@ import {
   BASE_SHORT_EDGE,
 } from "./cardFaceModel.ts";
 import { arcBounds, solveArc, SEAT_ARC } from "./tableArc.ts";
-import { Hold, Spacing } from "../lib/tokens.ts";
+import { Hold, Spacing, Trauma, SHAKE_DECAY_MS } from "../lib/tokens.ts";
 
 // ─── Layout constants ─────────────────────────────────────────────────────────
 //
@@ -399,6 +399,75 @@ export function landSquashScale(settle: number): { x: number; y: number } {
  */
 export function settleForMotion(reduceMotion: boolean, current: number): number {
   return reduceMotion ? 0 : current;
+}
+
+// ─── Screen shake ──────────────────────────────────────────────────────────────
+//
+// The table's trauma at each rung of the landing escalation #101 settled — the
+// one place #764 (the beaten pile's flinch) and #765 (the lamp flare) key
+// their own magnitudes off, by the same five tiers, rather than inventing a
+// second classification that could disagree with this one.
+
+export type ImpactTier = "ordinary" | "straightFlush" | "bomb" | "mancheWon" | "partitaWon";
+
+const TRAUMA_BY_TIER: Record<ImpactTier, number> = {
+  ordinary: 0,
+  straightFlush: 0,
+  bomb: Trauma.bomb,
+  mancheWon: Trauma.mancheWon,
+  partitaWon: Trauma.partitaWon,
+};
+
+/**
+ * The tier a played combination lands at. A manche or a partita closing is
+ * never read off a combo — those are their own closures, named directly by
+ * the caller that already knows which one just happened.
+ */
+export function comboImpactTier(comboType: Combination["type"]): ImpactTier {
+  if (comboType === "bomb") return "bomb";
+  if (comboType === "straight" || comboType === "royal_straight") return "straightFlush";
+  return "ordinary";
+}
+
+/**
+ * The tier's peak trauma, gated by reduced motion through the same
+ * derivation `landingHoldMs` uses — reading `reduceMotion` a second time
+ * here is the thing that could drift from it.
+ */
+export function traumaFor(tier: ImpactTier, reduceMotion: boolean): number {
+  return impactDelayMs(reduceMotion) === 0 ? 0 : TRAUMA_BY_TIER[tier];
+}
+
+/**
+ * The shake's own amplitude `elapsedMs` into its decay: trauma squared, not
+ * trauma — see `Trauma` (lib/tokens.ts) for why squaring wins over the raw value.
+ * Clamped so a caller sampling past `SHAKE_DECAY_MS` gets rest rather than a
+ * negative reading.
+ */
+export function shakeMagnitude(trauma: number, elapsedMs: number): number {
+  "worklet";
+  const t = Math.min(Math.max(elapsedMs, 0), SHAKE_DECAY_MS) / SHAKE_DECAY_MS;
+  const remaining = 1 - t;
+  return trauma * remaining * remaining;
+}
+
+/** Full cycles the shake wiggles through across its own decay window. */
+const SHAKE_CYCLES = 3;
+/** Peak displacement at trauma 1, before the tier's own trauma scales it down. */
+const SHAKE_AMPLITUDE_X = 16;
+const SHAKE_AMPLITUDE_Y = 10;
+
+/**
+ * The table's own displacement `elapsedMs` into a shake — `shakeMagnitude`
+ * riding a decaying wiggle rather than a single push-and-recover, so the hit
+ * reads as a shake rather than a shove. `cos` rather than `sin`: the jolt
+ * peaks at the moment of impact (`elapsedMs` 0) instead of building up to it.
+ */
+export function shakeOffset(trauma: number, elapsedMs: number): { x: number; y: number } {
+  "worklet";
+  const magnitude = shakeMagnitude(trauma, elapsedMs);
+  const wiggle = Math.cos((elapsedMs / SHAKE_DECAY_MS) * Math.PI * 2 * SHAKE_CYCLES);
+  return { x: magnitude * wiggle * SHAKE_AMPLITUDE_X, y: magnitude * wiggle * SHAKE_AMPLITUDE_Y };
 }
 
 // ─── Bomb burst ────────────────────────────────────────────────────────────────

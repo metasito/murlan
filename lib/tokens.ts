@@ -471,3 +471,24 @@ export const Hold = {
   /** The table at a card's contact — Nijman's *sleep* (*Art of Screenshake*, INDIGO 2013). Three frames at 60fps. */
   land: 50,
 } as const;
+
+/**
+ * How hard the table shakes at each rung of the landing escalation #101
+ * settled — Nijman's *trauma*, 0..1 (*Art of Screenshake*, INDIGO Classes
+ * 2013). `shakeMagnitude` (components/gameTableModel.ts) reads it back as
+ * trauma squared, not trauma: #772 found the talk itself hedges between
+ * squaring and cubing that curve, and the owner settled this table on it — a
+ * raw linear decay reads as the table sliding to rest rather than struck.
+ *
+ * The bomb outranks the manche on purpose, confirmed by the owner on #101: a
+ * bomb is a surprise, a manche ending is expected. If the bigger event always
+ * shook harder, the moment the game is actually about would be the quiet one.
+ */
+export const Trauma = {
+  bomb: 0.55,
+  mancheWon: 0.40,
+  partitaWon: 0.50,
+} as const;
+
+/** How long a shake takes to decay back to rest, riding the curve above. */
+export const SHAKE_DECAY_MS = 260;
