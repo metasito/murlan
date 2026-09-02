@@ -208,6 +208,28 @@ describe("the Android job drives this app, not Expo Go", () => {
     assert.match(action, /adb install .*APP_APK/);
   });
 
+  test("it compiles for the architecture the emulator actually is", () => {
+    // Derived from the emulator's own `arch`, never restated: the two live in
+    // different files, and a build that compiles an architecture the device
+    // cannot execute installs nothing while costing 230s of the 862s of Gradle
+    // task time measured on run 33654901506 (#823).
+    const arch = action.match(/^\s*arch:\s*(\S+)\s*$/m)?.[1];
+    assert.ok(arch, "the emulator action names no arch");
+    const built = workflow.match(/-PreactNativeArchitectures=(\S+)/)?.[1];
+    assert.ok(built, "the build asks for no particular architecture");
+    assert.deepEqual(
+      built.split(","),
+      [arch],
+      `the build compiles ${built} for an emulator that is ${arch}`,
+    );
+  });
+
+  test("it does not lint the tree prebuild regenerates", () => {
+    // 116s of the same 862s, on a directory `expo prebuild` recreates from
+    // scratch each run. `ci.yml`'s eslint job is the lint gate for our code.
+    assert.match(workflow, /-x lintVitalRelease/);
+  });
+
   test("it never fetches or installs Expo Go", () => {
     // The Expo Go client came from a network fetch resolved against the pinned
     // SDK, and the app was reached by a deep link into it. Either one returning
