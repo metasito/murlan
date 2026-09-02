@@ -461,20 +461,13 @@ export function traumaFor(tier: ImpactTier, reduceMotion: boolean): number {
 }
 
 /**
- * How far the beaten combination (`pileState.prev`) is knocked as the new one
- * lands on it, scaled by the table the same way `shakeOffset` scales its own
- * displacement — #764, colocated with `TRAUMA_BY_TIER` so it reads the same
- * five tiers rather than inventing a second classification #765 could then
- * disagree with. Unlike trauma, a straight or flush is not silent here: the
- * pile it beat still visibly gives ground, just short of a bomb's knock.
- * `Spacing.xxs`/`Spacing.slim` (lib/tokens.ts), never a pixel literal.
- *
- * `straightFlush`'s own step is the smallest one on the scale on purpose,
- * matching #101's own tier table rather than a round-up chosen for
- * visibility: the escalation's headroom belongs to the bomb, which is the
- * surprise (see `Trauma`'s own doc). If a straight/flush's dip reads as too
- * subtle once the owner has seen it move, this is the one line to widen —
- * do not reach for `Spacing.sm` here without that read.
+ * How far the beaten combination (`pileState.prev`) is knocked as the new
+ * one lands on it, scaled by the table like `shakeOffset` — colocated with
+ * `TRAUMA_BY_TIER` so #764 and #765 read the same five tiers. `straightFlush`
+ * is not silent, unlike trauma: #101's own table keeps it the smallest
+ * non-zero step on purpose, reserving the escalation's headroom for the
+ * bomb. Widen `Spacing.xxs` here — not `TRAUMA_BY_TIER` — if that reads too
+ * subtle on a device.
  */
 const FLINCH_BY_TIER: Record<ImpactTier, number> = {
   ordinary: 0,

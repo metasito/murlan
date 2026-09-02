@@ -1728,22 +1728,20 @@ describe("the beaten pile's flinch (#764)", () => {
     );
   });
 
-  test("the flinch is wired into the beaten layer's own transform, not a second one that would clobber the resting pose", () => {
-    const src = blankComments(
-      readFileSync(path.join(repoRoot, "components", "table", "pile.tsx"), "utf8")
-    );
-    assert.match(
-      src,
-      /translateY:\s*PILE_PREV_Y\s*\+\s*flinchY\.value/,
-      "the flinch must displace the same translateY the beaten pile already rests at, not a sibling style RN would silently drop"
-    );
-  });
+  // A second blind critique defeated a source-scan version of this same check
+  // (matching `translateY: PILE_PREV_Y + flinchY.value` as text anywhere in
+  // the file) with a decoy function holding the same literal text elsewhere,
+  // and separately by dropping the static `-7deg` resting rotate outright —
+  // both passed every test here. A scan proves the text is present, not that
+  // it is reachable from the rendered node; `tests/native/pileFlinch.test.tsx`
+  // mounts `PlayedPile`, bumps `flinchTrigger`, and reads the beaten layer's
+  // actual transform, which is the only thing that can tell the two apart.
 
-  // A blind critique caught this exact shape: every one of the seven tests
-  // above stayed green while the flinch was rewired onto `current`, the
-  // landing combination, instead of `prev`, the one it beat — the whole
-  // point of the ticket. A string search for "prevLayerStyle" anywhere in the
-  // file cannot catch that; only asking which JSX branch carries it can.
+  // A blind critique caught this exact shape: every test above stayed green
+  // while the flinch was rewired onto `current`, the landing combination,
+  // instead of `prev`, the one it beat — the whole point of the ticket. A
+  // string search for "prevLayerStyle" anywhere in the file cannot catch
+  // that; only asking which JSX branch carries it can.
   test("the flinch lands on the beaten layer (prev), never on the new one — the whole point of the ticket", () => {
     const src = blankComments(
       readFileSync(path.join(repoRoot, "components", "table", "pile.tsx"), "utf8")

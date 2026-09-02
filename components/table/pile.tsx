@@ -447,6 +447,7 @@ export function PlayedPile({
             the way the previous trick sits under the one that took it. */}
         {prev && (
           <Animated.View
+            testID="pile-prev-layer"
             style={[pileStyles.pilePrevLayer, prevLayerStyle]}
             pointerEvents="none"
           >
