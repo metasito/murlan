@@ -119,6 +119,39 @@ describe("every child of the game table's root answers to the veil", () => {
     );
   });
 
+  test("the root holds exactly the felt and the layer the kick moves", () => {
+    // #101's fix is that the felt never moves while the kick displaces
+    // everything else. That only holds while the root has these two children
+    // and no other: a third would ride neither rule, and whichever side of the
+    // kick it landed on, the window it uncovered would show through again.
+    // The scan above reads the kick layer's children, so nothing else here
+    // would notice a new root child.
+    const lines = blankComments(source).split("\n");
+    const open = lines.findIndex((l) => /^ {4}<View style=\{\[styles\.root/.test(l));
+    assert.ok(open >= 0, "GameTable's root is no longer where this test looks for it");
+    const close = lines.findIndex((l, i) => i > open && /^ {4}<\/View>/.test(l));
+    assert.ok(close > open, "GameTable's root never closes");
+
+    const kids = lines
+      .slice(open + 1, close)
+      .filter((l) => /^ {6}</.test(l) && !/^ {6}<\//.test(l));
+
+    assert.equal(
+      kids.length,
+      2,
+      `the root has ${kids.length} direct children; #101 needs exactly two — the felt, ` +
+        `which never moves, and the layer the kick displaces`
+    );
+    assert.ok(
+      kids.some((l) => /styles\.kick/.test(l)),
+      "the layer the kick moves is no longer a direct child of the root"
+    );
+    assert.ok(
+      /^ {6}<View\b/.test(kids.find((l) => !/styles\.kick/.test(l)) ?? ""),
+      "the root's other child is no longer a plain View, so the felt may now be animated"
+    );
+  });
+
   for (const child of children) {
     const reason = REACHABLE_ON_PURPOSE[child.name];
     const own = VEILED_ON_ITS_OWN_TERMS[child.name];
