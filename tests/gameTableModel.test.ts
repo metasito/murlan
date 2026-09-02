@@ -1586,15 +1586,31 @@ describe("the table's own trauma escalation (#763)", () => {
     );
   });
 
-  test("trauma at rest (elapsed 0) is the tier's own peak — the shake starts struck, not built up to", () => {
-    assert.equal(shakeMagnitude(Trauma.bomb, 0, DECAY_MS), Trauma.bomb);
+  test("trauma at rest (elapsed 0) is the tier's own trauma squared — Trauma, lib/tokens.ts", () => {
+    const peak = shakeMagnitude(Trauma.bomb, 0, DECAY_MS);
+    assert.ok(
+      Math.abs(peak - Trauma.bomb * Trauma.bomb) < 1e-9,
+      `the shake starts struck at trauma squared (${Trauma.bomb * Trauma.bomb}), got ${peak}`
+    );
+  });
+
+  test("the tiers separate quadratically, not linearly — a bomb stands further above a manche than the raw trauma table shows", () => {
+    const bomb = shakeMagnitude(Trauma.bomb, 0, DECAY_MS);
+    const manche = shakeMagnitude(Trauma.mancheWon, 0, DECAY_MS);
+    const rawRatio = Trauma.bomb / Trauma.mancheWon;
+    const squaredRatio = bomb / manche;
+    assert.ok(
+      squaredRatio > rawRatio + 1e-9,
+      `squaring trauma must widen the bomb-over-manche gap past its raw ${rawRatio}, got ${squaredRatio}`
+    );
   });
 
   test("trauma decays squared, not linearly — a half-elapsed shake is a quarter strength, not half", () => {
+    const peak = shakeMagnitude(Trauma.bomb, 0, DECAY_MS);
     const half = shakeMagnitude(Trauma.bomb, DECAY_MS / 2, DECAY_MS);
     assert.ok(
-      Math.abs(half - Trauma.bomb * 0.25) < 1e-9,
-      `trauma squared at the midpoint of the decay must be a quarter of the peak, got ${half}`
+      Math.abs(half - peak * 0.25) < 1e-9,
+      `the decay squared at the midpoint must be a quarter of the peak, got ${half}`
     );
   });
 
@@ -1605,20 +1621,33 @@ describe("the table's own trauma escalation (#763)", () => {
 
   test("reduced motion's own decay window (0) is rest, never a division by zero", () => {
     assert.equal(shakeMagnitude(Trauma.bomb, 0, 0), 0);
-    assert.equal(shakeOffset(Trauma.bomb, 0, 0).x, 0);
-    assert.equal(shakeOffset(Trauma.bomb, 0, 0).y, 0);
+    assert.equal(shakeOffset(Trauma.bomb, 0, 0, 1).x, 0);
+    assert.equal(shakeOffset(Trauma.bomb, 0, 0, 1).y, 0);
   });
 
   test("no trauma is no displacement, at any point in the decay", () => {
-    assert.equal(shakeOffset(0, 0, DECAY_MS).x, 0);
-    assert.equal(shakeOffset(0, 0, DECAY_MS).y, 0);
-    assert.equal(shakeOffset(0, DECAY_MS / 3, DECAY_MS).x, 0);
+    assert.equal(shakeOffset(0, 0, DECAY_MS, 1).x, 0);
+    assert.equal(shakeOffset(0, 0, DECAY_MS, 1).y, 0);
+    assert.equal(shakeOffset(0, DECAY_MS / 3, DECAY_MS, 1).x, 0);
   });
 
   test("the displacement peaks at the tier's own trauma, at the moment of impact", () => {
-    const { x, y } = shakeOffset(Trauma.bomb, 0, DECAY_MS);
+    const { x, y } = shakeOffset(Trauma.bomb, 0, DECAY_MS, 1);
     // cos(0) = 1, so the wiggle contributes its full weight at elapsed 0.
     assert.ok(x !== 0 && y !== 0, "a bomb's shake must actually move the node it is applied to");
+  });
+
+  // #790: kick (useTableFeedback.ts) multiplies its jolts by the table's own
+  // scale, so the same shake reads as a small fraction of a phone and a huge
+  // one of a tablet unless it scales the same way.
+  test("the displacement scales with the table, the way kick's own jolts do", () => {
+    const atOne = shakeOffset(Trauma.bomb, 0, DECAY_MS, 1);
+    const atDouble = shakeOffset(Trauma.bomb, 0, DECAY_MS, 2);
+    assert.ok(
+      Math.abs(atDouble.x - atOne.x * 2) < 1e-9,
+      `doubling the table's scale must double the shake's own displacement, got ${atOne.x} then ${atDouble.x}`
+    );
+    assert.ok(Math.abs(atDouble.y - atOne.y * 2) < 1e-9);
   });
 
   test("the decay window comes from Motion, and the amplitudes from Spacing — never a bare literal", () => {

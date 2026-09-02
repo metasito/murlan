@@ -196,7 +196,7 @@ function useImpactFeedback(reduceMotion: boolean, scale: number) {
   }));
 
   const shakeStyle = useAnimatedStyle(() => {
-    const { x, y } = shakeOffset(shakeTrauma.value, shakeElapsed.value, shakeDecayMs.value);
+    const { x, y } = shakeOffset(shakeTrauma.value, shakeElapsed.value, shakeDecayMs.value, scale);
     return { transform: [{ translateX: x }, { translateY: y }] };
   });
 
