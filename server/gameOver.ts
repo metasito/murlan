@@ -61,6 +61,12 @@ export async function handleGameOver(
   game: OnlineGameState,
   writers: GameOverWriters
 ) {
+  // Cleared here, synchronously, before anything below can await: the caller
+  // already flipped `state.gameOver` true in this same tick, so a rejoin
+  // reading `game.lastGameOverPayload` must never be able to observe that
+  // flag alongside the previous hand's payload. The real assignment below
+  // runs after a DB round trip; nothing between here and there may add one.
+  game.lastGameOverPayload = undefined;
   const state = game.gameState;
   clearRoomTimers(roomId);
   // A pending grace timer must not fire into a finished game and evict the

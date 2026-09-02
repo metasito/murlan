@@ -595,6 +595,154 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
     }
   });
 
+  /**
+   * A promise that resolves once `waitMs` has passed with `event` never
+   * having landed on `socket`, or rejects with the first payload it does see
+   * — the shape a "this must NOT arrive" assertion needs, since a bare
+   * `waitFor` only ever resolves on the event showing up.
+   */
+  function assertNeverReceives<T>(socket: Socket, event: string, waitMs: number): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const onEvent = (payload: T) => {
+        clearTimeout(timer);
+        reject(new Error(`${event} must not have arrived, got ${JSON.stringify(payload)}`));
+      };
+      const timer = setTimeout(() => {
+        socket.off(event, onEvent);
+        resolve();
+      }, waitMs);
+      socket.once(event, onEvent);
+    });
+  }
+
+  /**
+   * #808 review: the regression test above only exercises a rejoin *before*
+   * the next hand deals. `announceRejoin`'s branch that re-sends `game:over`
+   * is gated on `gameState.gameOver` — while hand 2 is live that is false, so
+   * `lastGameOverPayload` (still holding hand 1's payload, dealt away by
+   * `dealManche`) must never reach a rejoining client. A rejoin mid-hand-2
+   * gets `game:state` and `game:match_state` — the running framing — and
+   * nothing else. `game:state` is what proves the handler actually ran
+   * before the negative assertion is trusted.
+   */
+  test("a rejoin during a second hand is not handed the first hand's game:over", async () => {
+    const alice = await connectAs(server, "hand2_alice");
+    const bob = await connectAs(server, "hand2_bob");
+    const room = await setUpRoom([alice, bob], 2);
+    const table = [alice, bob];
+    try {
+      const hand1Over = gameOverOf(
+        await driveHandToExchangeOrOver(table, () => alice.socket.emit("room:start"), {
+          stopOnExchange: false,
+        })
+      );
+      assert.ok(hand1Over.scores.length > 0, "hand 1 must have banked real scores");
+
+      const dealt = waitForDeal(alice.socket);
+      alice.socket.emit("game:rematch_vote");
+      bob.socket.emit("game:rematch_vote");
+      await dealt;
+
+      const noStaleOver = assertNeverReceives<GameOverPayload>(bob.socket, "game:over", 1_000);
+      const state = waitFor<SanitizedState>(bob.socket, "game:state", 5_000);
+      const framing = waitFor<{ target: number; scores: Record<string, number> }>(
+        bob.socket,
+        "game:match_state",
+        5_000
+      );
+      bob.socket.emit("game:rejoin", { roomId: room.roomId });
+      const [rejoinedState] = await Promise.all([state, framing]);
+      assert.equal(rejoinedState.gameOver, false, "hand 2 must still be the live hand");
+      await noStaleOver;
+    } finally {
+      await closeTable(table);
+    }
+  });
+
+  /**
+   * #808 review: `handleGameOver` flips no flag itself — its caller sets
+   * `gameState.gameOver = true` synchronously, in the same tick it invokes
+   * `handleGameOver`, which then awaits a real DB round trip
+   * (`previewRatedDeltas`) before broadcasting `game:over` and updating
+   * `lastGameOverPayload`. A rejoin landing inside that window used to read
+   * `gameOver: true` next to the *previous* hand's payload — #808's own
+   * symptom, through a different door. Widens the real window into one this
+   * test controls, so the race is deterministic rather than a matter of
+   * scheduler luck.
+   */
+  test("a rejoin inside handleGameOver's own write is not handed the previous hand's game:over", async () => {
+    const { gameOverWriters } = await import("../../server/gamePersistence.ts");
+    const realPreview = gameOverWriters.previewRatedDeltas;
+    const alice = await connectAs(server, "race_alice");
+    const bob = await connectAs(server, "race_bob");
+    const room = await setUpRoom([alice, bob], 2);
+    const table = [alice, bob];
+    try {
+      const hand1Over = gameOverOf(
+        await driveHandToExchangeOrOver(table, () => alice.socket.emit("room:start"), {
+          stopOnExchange: false,
+        })
+      );
+      assert.ok(hand1Over.scores.length > 0, "hand 1 must have banked real scores");
+
+      const dealt = waitForDeal(alice.socket);
+      alice.socket.emit("game:rematch_vote");
+      bob.socket.emit("game:rematch_vote");
+      await dealt;
+
+      let gateReached = false;
+      let releaseGate: () => void = () => {};
+      const gate = new Promise<void>((resolve) => {
+        releaseGate = resolve;
+      });
+      gameOverWriters.previewRatedDeltas = async (seatResults, gameMode, finishedAt) => {
+        gateReached = true;
+        await gate;
+        return realPreview(seatResults, gameMode, finishedAt);
+      };
+
+      const hand2OverPromise = driveHandToExchangeOrOver(table, () => {}, {
+        stopOnExchange: false,
+      });
+      // Never left as an unhandled rejection if an assertion below throws
+      // before releaseGate() runs — the inner finally still releases the
+      // gate so the driver settles either way; only the awaited value is
+      // used, and only once the assertions have already passed.
+      hand2OverPromise.catch(() => {});
+
+      try {
+        await waitUntil(
+          () => gateReached,
+          "handleGameOver never reached the gated rating-delta read — hand 2 did not finish",
+          10_000
+        );
+
+        // gameState.gameOver is already true for hand 2 here (flipped
+        // synchronously before handleGameOver ran); lastGameOverPayload has
+        // not been reassigned yet, because the gated write above is still
+        // pending.
+        const noStaleOver = assertNeverReceives<GameOverPayload>(bob.socket, "game:over", 1_000);
+        const state = waitFor<SanitizedState>(bob.socket, "game:state", 5_000);
+        bob.socket.emit("game:rejoin", { roomId: room.roomId });
+        const rejoinedState = await state;
+        assert.equal(rejoinedState.gameOver, true, "hand 2 must already be over in this window");
+        await noStaleOver;
+      } finally {
+        releaseGate();
+      }
+
+      const hand2Over = gameOverOf(await hand2OverPromise);
+      assert.notDeepEqual(
+        hand2Over.scores,
+        hand1Over.scores,
+        "the gate must not have swallowed hand 2's own game:over"
+      );
+    } finally {
+      gameOverWriters.previewRatedDeltas = realPreview;
+      await closeTable(table);
+    }
+  });
+
   // ── Test 5 ──────────────────────────────────────────────────────────────
 
   /**
