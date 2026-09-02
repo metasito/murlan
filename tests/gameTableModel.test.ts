@@ -7,7 +7,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { CARD_H, CARD_W, BACK_SCALE } from "../components/cardFaceModel.ts";
-import { Hold, TOUCH_TARGET_MIN, Trauma, Motion, motionMs } from "../lib/tokens.ts";
+import { Hold, TOUCH_TARGET_MIN, Trauma, Motion } from "../lib/tokens.ts";
 import { blankComments } from "./helpers/sourceScan.ts";
 import type { Card, Combination } from "../lib/gameEngine.ts";
 import {
@@ -1698,69 +1698,36 @@ describe("the bomb's peak, re-tuned against #789's corrected curve (#796)", () =
     assert.ok(bomb.y > shared.y, `expected the bomb's y peak (${bomb.y}) to exceed the shared one (${shared.y})`);
   });
 
-  /**
-   * `kick` (components/useTableFeedback.ts) is gated to `heavy` plays —
-   * `bomb`/`royal_straight` only (`readThrownPlay`, above) — so it is part of
-   * what a bomb lands with, never part of a manche or partita closed by an
-   * ordinary combination. Read its peak jolt from source rather than a second
-   * copy of the numbers, so a change to `KICK_JOLTS` cannot leave this floor
-   * stale.
-   */
-  function kickPeakJolt(): { x: number; y: number } {
-    const src = readFileSync(path.join(repoRoot, "components", "useTableFeedback.ts"), "utf8");
-    const jolts = [...src.matchAll(/\{ x: (-?\d+), y: (-?\d+), ms: [^}]+\}/g)].map((m) => ({
-      x: Number(m[1]),
-      y: Number(m[2]),
-    }));
-    assert.ok(jolts.length > 0, "expected to find KICK_JOLTS entries in useTableFeedback.ts");
-    return {
-      x: Math.max(...jolts.map((j) => Math.abs(j.x))),
-      y: Math.max(...jolts.map((j) => Math.abs(j.y))),
-    };
-  }
-
   function bombShake(shortEdge: number, elapsedMs: number) {
     const scale = shortEdge / BASE_EDGE;
     return shakeOffset(Trauma.bomb, elapsedMs, DECAY_MS, scale, shakeAmplitudeFor("bomb"));
   }
 
-  function combinedBombPeak(shortEdge: number, elapsedMs: number) {
-    const scale = shortEdge / BASE_EDGE;
-    const kick = kickPeakJolt();
-    const shake = bombShake(shortEdge, elapsedMs);
-    return { x: kick.x * scale + Math.abs(shake.x), y: kick.y * scale + Math.abs(shake.y) };
-  }
-
   // What a bomb's shake alone displaced before #789 corrected the decay curve
   // — a fixed pixel amount, unscaled by the table (#790's own bug) — at the
   // amplitude constants shipped then. #796's own measurement on #795's PR.
+  //
+  // `kick` (components/useTableFeedback.ts) is a separate jolt this ticket
+  // does not touch, gated to `heavy` plays and reported alongside this floor
+  // in the PR body — never folded into the assertion here: added identically
+  // to both sides of a `>=` it would cancel, proving nothing about either.
   const PRE_CORRECTION_SHAKE_X = Trauma.bomb * 16;
   const PRE_CORRECTION_SHAKE_Y = Trauma.bomb * 10;
-
-  function preCorrectionCombined(shortEdge: number) {
-    const scale = shortEdge / BASE_EDGE;
-    const kick = kickPeakJolt();
-    return {
-      x: kick.x * scale + PRE_CORRECTION_SHAKE_X,
-      y: kick.y * scale + PRE_CORRECTION_SHAKE_Y,
-    };
-  }
 
   for (const [label, shortEdge] of [
     ["phone", PHONE_EDGE],
     ["base", BASE_EDGE],
     ["tablet", TABLET_EDGE],
   ] as const) {
-    test(`a bomb's combined landing (shake plus kick), at contact, is at least what it felt before #789's curve correction — ${label}`, () => {
-      const before = preCorrectionCombined(shortEdge);
-      const after = combinedBombPeak(shortEdge, 0);
+    test(`a bomb's own shake, at contact, is at least what it displaced before #789's curve correction — ${label}`, () => {
+      const after = bombShake(shortEdge, 0);
       assert.ok(
-        after.x >= before.x,
-        `${label}: expected the re-tuned peak to clear the pre-correction floor of ${before.x.toFixed(2)}px on x, got ${after.x.toFixed(2)}px`
+        Math.abs(after.x) >= PRE_CORRECTION_SHAKE_X,
+        `${label}: expected the re-tuned peak to clear the pre-correction floor of ${PRE_CORRECTION_SHAKE_X.toFixed(2)}px on x, got ${Math.abs(after.x).toFixed(2)}px`
       );
       assert.ok(
-        after.y >= before.y,
-        `${label}: expected the re-tuned peak to clear the pre-correction floor of ${before.y.toFixed(2)}px on y, got ${after.y.toFixed(2)}px`
+        Math.abs(after.y) >= PRE_CORRECTION_SHAKE_Y,
+        `${label}: expected the re-tuned peak to clear the pre-correction floor of ${PRE_CORRECTION_SHAKE_Y.toFixed(2)}px on y, got ${Math.abs(after.y).toFixed(2)}px`
       );
     });
   }
@@ -1790,13 +1757,18 @@ describe("the bomb's peak, re-tuned against #789's corrected curve (#796)", () =
     assert.equal(spent.y, 0, "the boosted peak must still reach exactly 0 once its decay window has run");
   });
 
-  test("the bomb's re-tuned peak still zeroes under reduced motion", () => {
+  test("a leaked trauma under reduced motion cannot reach the bomb's boosted amplitude", () => {
+    // `motionMs("shake", true)` already answers a decay window of 0, and
+    // `shakeMagnitude`'s own `decayMs <= 0` guard zeroes the output before
+    // `trauma` is ever multiplied in — asserting through that decay window
+    // would pass no matter what `traumaFor` answered, boosted amplitude or
+    // not. A non-zero decay window here means only `traumaFor`'s own answer,
+    // run through the bomb's larger peak, is under test.
     const scale = PHONE_EDGE / BASE_EDGE;
     const trauma = traumaFor("bomb", true);
-    const decayMs = motionMs("shake", true);
-    const { x, y } = shakeOffset(trauma, 0, decayMs, scale, shakeAmplitudeFor("bomb"));
-    assert.equal(x, 0, "the boosted amplitude must not leak displacement past reduced motion");
-    assert.equal(y, 0, "the boosted amplitude must not leak displacement past reduced motion");
+    const { x, y } = shakeOffset(trauma, 0, DECAY_MS, scale, shakeAmplitudeFor("bomb"));
+    assert.equal(x, 0, "the boosted amplitude must not turn a leaked trauma into visible displacement");
+    assert.equal(y, 0, "the boosted amplitude must not turn a leaked trauma into visible displacement");
   });
 });
 
