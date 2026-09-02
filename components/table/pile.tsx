@@ -121,6 +121,13 @@ export function FlyingCards({
     if (reduceMotion) {
       // The pile is about to show these cards anyway; skip the flight entirely
       // and hand control straight back rather than jumping them across.
+      //
+      // A toggle mid-flight re-enters this branch with `settle` still nonzero:
+      // the cleanup below cancels it, and Reanimated's cancelAnimation freezes
+      // a shared value at its current number rather than resetting it. Left
+      // alone, that frozen value would keep landSquashScale() deforming a card
+      // for a player who just asked for no motion at all.
+      settle.value = 0;
       const id = setTimeout(() => onDoneRef.current(), Motion.duration.tap);
       return () => clearTimeout(id);
     }

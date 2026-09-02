@@ -1453,6 +1453,29 @@ describe("a landed card squashes on the spring that lands it", () => {
       "the flying card's squash must read off `settle`, the value the landing spring already drives"
     );
   });
+
+  test("a mid-flight toggle to reduced motion zeroes settle, rather than leaving a frozen squash", () => {
+    // Reanimated's cancelAnimation (the effect's own cleanup, re-run when
+    // `reduceMotion` flips) freezes a shared value at its current number
+    // rather than resetting it, so re-entering this branch mid-flight has to
+    // zero `settle` itself or a card frozen mid-squash stays squashed for a
+    // player who just asked for no motion at all.
+    //
+    // Unpinnable by rendering, so this is a source pin: a probe component
+    // mutating a shared value after mount, under this repo's jest-expo
+    // reanimated mock, left useAnimatedStyle's output at the value the
+    // component mounted with — the same frozen-at-mount trap loops.md
+    // documents for reading a value back out, but on the way in here. Live
+    // reactivity on this exact path needs an e2e toggle mid-flight or a
+    // device check; neither is what this proves.
+    const src = readFileSync(path.join(repoRoot, "components", "table", "pile.tsx"), "utf8");
+    const reduceBranch = src.match(/if \(reduceMotion\) \{[\s\S]*?\n    \}/);
+    assert.ok(reduceBranch, "the reduced-motion branch must exist in FlyingCards");
+    assert.ok(
+      /settle\.value = 0;/.test(reduceBranch![0]),
+      "the reduced-motion branch must zero `settle` itself, not rely on cancelAnimation to do it"
+    );
+  });
 });
 
 // ─── Flight origin ────────────────────────────────────────────────────────────
