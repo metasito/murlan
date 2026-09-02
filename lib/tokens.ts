@@ -481,8 +481,9 @@ export const Hold = {
  * settled — Nijman's *trauma*, 0..1 (*Art of Screenshake*, INDIGO Classes
  * 2013). `shakeMagnitude` (components/gameTableModel.ts) reads it back as
  * trauma squared, not trauma: #772 found the talk itself hedges between
- * squaring and cubing that curve, and the owner settled this table on it — a
- * raw linear decay reads as the table sliding to rest rather than struck.
+ * squaring and cubing that curve, and the owner settled this table on it —
+ * raw trauma reads as the table sliding to rest rather than struck, and
+ * flattens how far a bomb ought to stand above a manche closing.
  *
  * The bomb outranks the manche on purpose, confirmed by the owner on #101: a
  * bomb is a surprise, a manche ending is expected. If the bigger event always

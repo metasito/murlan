@@ -463,19 +463,20 @@ export function traumaFor(tier: ImpactTier, reduceMotion: boolean): number {
 /**
  * The shake's own amplitude `elapsedMs` into a decay window of `decayMs` —
  * trauma squared, not trauma (see `Trauma`, lib/tokens.ts, for why squaring
- * wins over the raw value). `decayMs` is a parameter rather than a constant
- * read in here: the caller resolves it through `motionMs("shake",
- * reduceMotion)` (`Motion.duration.shake`, lib/tokens.ts), so this file never
- * holds its own copy of a timing value for `motionMs`/`Motion.reduced` to
- * drift from. `decayMs` 0 (the reduced-motion answer) is rest, not a
- * division by zero.
+ * wins over the raw value): the tier's own trauma decays linearly to 0 across
+ * `decayMs`, and what the table reads back is that decaying value squared.
+ * `decayMs` is a parameter rather than a constant read in here: the caller
+ * resolves it through `motionMs("shake", reduceMotion)` (`Motion.duration.shake`,
+ * lib/tokens.ts), so this file never holds its own copy of a timing value for
+ * `motionMs`/`Motion.reduced` to drift from. `decayMs` 0 (the reduced-motion
+ * answer) is rest, not a division by zero.
  */
 export function shakeMagnitude(trauma: number, elapsedMs: number, decayMs: number): number {
   "worklet";
   if (decayMs <= 0) return 0;
   const t = Math.min(Math.max(elapsedMs, 0), decayMs) / decayMs;
-  const remaining = 1 - t;
-  return trauma * remaining * remaining;
+  const remaining = trauma * (1 - t);
+  return remaining * remaining;
 }
 
 /** Full cycles the shake wiggles through across its own decay window. */
@@ -493,18 +494,25 @@ const SHAKE_AMPLITUDE_Y = Spacing.snug;
  * `shakeMagnitude` riding a decaying wiggle rather than a single
  * push-and-recover, so the hit reads as a shake rather than a shove. `cos`
  * rather than `sin`: the jolt peaks at the moment of impact (`elapsedMs` 0)
- * instead of building up to it.
+ * instead of building up to it. `scale` is the table's own — `kick`
+ * (components/useTableFeedback.ts) multiplies its jolts by the same value, so
+ * a shake is a fraction of the table rather than a fixed pixel count that
+ * reads huge on a phone and vanishes on a tablet.
  */
 export function shakeOffset(
   trauma: number,
   elapsedMs: number,
-  decayMs: number
+  decayMs: number,
+  scale: number
 ): { x: number; y: number } {
   "worklet";
   const magnitude = shakeMagnitude(trauma, elapsedMs, decayMs);
   const wiggle =
     decayMs <= 0 ? 0 : Math.cos((elapsedMs / decayMs) * Math.PI * 2 * SHAKE_CYCLES);
-  return { x: magnitude * wiggle * SHAKE_AMPLITUDE_X, y: magnitude * wiggle * SHAKE_AMPLITUDE_Y };
+  return {
+    x: magnitude * wiggle * SHAKE_AMPLITUDE_X * scale,
+    y: magnitude * wiggle * SHAKE_AMPLITUDE_Y * scale,
+  };
 }
 
 // ─── Bomb burst ────────────────────────────────────────────────────────────────
