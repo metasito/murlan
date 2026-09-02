@@ -43,6 +43,31 @@ export interface FriendInfo {
   lastSeen: string | null;
 }
 
+/** One pending friend request, as `/api/friends/requests` and `/api/friends/sent` serve it. */
+export interface FriendRequestInfo {
+  id: string;
+  username: string;
+  createdAt: string | null;
+}
+
+/**
+ * The friend events, whose rows are the ones the fetch would have returned.
+ *
+ * A client that receives one can seat it in the cache on the frame the banner
+ * goes up, instead of waiting out the round trip an invalidation only starts.
+ * Both rows are optional: the banner has to keep working against a server that
+ * predates them, and against any path that creates a row without emitting.
+ */
+export interface FriendRequestIncoming {
+  from: string;
+  request?: FriendRequestInfo;
+}
+
+export interface FriendRequestAccepted {
+  by: string;
+  friend?: FriendInfo;
+}
+
 export interface HistoryParticipantDto {
   name: string | null;
   bot: boolean;

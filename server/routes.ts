@@ -3,6 +3,8 @@ import { createServer, type Server } from "node:http";
 import bcrypt from "bcryptjs";
 import { rateLimit } from "express-rate-limit";
 import { storage, UsernameTakenError } from "./storage.ts";
+import { friendRequestRow, friendRow } from "./friendRows.ts";
+import type { FriendRequestAccepted, FriendRequestIncoming } from "../lib/wire.ts";
 import type { User } from "../shared/schema.ts";
 import { logger } from "./logger.ts";
 import { validate } from "./validate.ts";
@@ -448,20 +450,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/friends", requireAuth, async (req, res) => {
     const friends = await storage.getFriends(req.session.userId!);
-    res.json(friends.map((f) => ({
-      id: f.friend.id,
-      username: f.friend.username,
-      lastSeen: f.friend.lastSeen ? f.friend.lastSeen.toISOString() : null,
-    })));
+    res.json(friends.map((f) => friendRow(f.friend)));
   });
 
   app.get("/api/friends/requests", requireAuth, async (req, res) => {
     const requests = await storage.getPendingFriendRequests(req.session.userId!);
-    res.json(requests.map((r) => ({
-      id: r.id,
-      username: r.requester.username,
-      createdAt: r.createdAt,
-    })));
+    res.json(requests.map((r) => friendRequestRow(r, r.requester)));
   });
 
   // The invites a socket would have announced. This is the half that survives
@@ -496,11 +490,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/friends/sent", requireAuth, async (req, res) => {
     const sent = await storage.getSentFriendRequests(req.session.userId!);
-    res.json(sent.map((r) => ({
-      id: r.id,
-      username: r.recipient.username,
-      createdAt: r.createdAt,
-    })));
+    res.json(sent.map((r) => friendRequestRow(r, r.recipient)));
   });
 
   app.post("/api/friends/add", requireAuth, friendLimiter, validate(AddFriendSchema), async (req, res) => {
@@ -537,11 +527,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
 
     const sender = await storage.getUser(req.session.userId!);
-    await storage.addFriend(req.session.userId!, friend.id);
+    const request = await storage.addFriend(req.session.userId!, friend.id);
 
+    // The row travels with the announcement: the recipient's cache holds the
+    // request on the frame the banner goes up, rather than seconds later when
+    // the fetch the invalidation started comes back.
     emitToUser(friend.id, "friend:request_incoming", {
       from: sender?.username ?? "Qualcuno",
-    });
+      request: sender && request ? friendRequestRow(request, sender) : undefined,
+    } satisfies FriendRequestIncoming);
 
     logger.info({ from: req.session.userId, to: friend.id }, "Friend request sent");
     res.json({ ok: true, username: friend.username });
@@ -575,7 +569,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     emitToUser(requesterId, "friend:request_accepted", {
       by: accepter?.username ?? "Qualcuno",
-    });
+      friend: accepter ? friendRow(accepter) : undefined,
+    } satisfies FriendRequestAccepted);
 
     if (await isUserOnline(accepterId)) {
       emitToUser(requesterId, "friend:status", { userId: accepterId, online: true });

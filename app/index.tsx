@@ -504,6 +504,7 @@ function HomePlayerUnit({ onSettings }: { onSettings: () => void }) {
         />
         <HomePill
           label={t("home.settingsA11yLabel")}
+          text={t("home.settingsA11yLabel")}
           icon={<Feather name="settings" size={PILL_ICON} color={Colors.textMuted} {...a11yHidden()} />}
           quiet
           testID="home-account-settings"
@@ -548,12 +549,13 @@ function HomePlayerUnit({ onSettings }: { onSettings: () => void }) {
       </View>
 
       <HomePill
-          label={t("home.settingsA11yLabel")}
-          icon={<Feather name="settings" size={PILL_ICON} color={Colors.textMuted} {...a11yHidden()} />}
-          quiet
-          testID="home-account-settings"
-          onPress={onSettings}
-        />
+        label={t("home.settingsA11yLabel")}
+        text={t("home.settingsA11yLabel")}
+        icon={<Feather name="settings" size={PILL_ICON} color={Colors.textMuted} {...a11yHidden()} />}
+        quiet
+        testID="home-account-settings"
+        onPress={onSettings}
+      />
     </Animated.View>
   );
 }

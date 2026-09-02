@@ -410,8 +410,13 @@ class DrizzleStorage {
     return row.userId === userId ? "sent" : "received";
   }
 
-  async addFriend(userId: string, friendUserId: string) {
-    await db.insert(friends).values({ userId, friendUserId, status: "pending" });
+  /** Returns the row it created, so the caller can push it rather than make the recipient ask for it. */
+  async addFriend(userId: string, friendUserId: string): Promise<Friend | undefined> {
+    const [row] = await db
+      .insert(friends)
+      .values({ userId, friendUserId, status: "pending" })
+      .returning();
+    return row;
   }
 
   /**
