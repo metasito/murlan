@@ -2517,6 +2517,38 @@ describe("exchangeFlight", () => {
     const tripFor = (from: FlyDirection, to: FlyDirection) =>
       exchangeFlight({ ...frame, sideDisplayedCounts, from, to, cardW, cardH });
 
+    // The owner's own window as well as the reference one, measured the way the
+    // table measures it: a notched phone in landscape is tighter than the frame
+    // above in every direction, and its seats hold a full deal rather than a
+    // couple of cards — which is what puts a fan where a label wants to be.
+    const PHONE = { width: 844, height: 390 };
+    const phoneScale = cardScale(Math.min(PHONE.width, PHONE.height));
+    const phoneFrame = computeTableFrame({
+      ...PHONE,
+      insets: { top: 0, bottom: 21, left: 59, right: 0 },
+      scale: phoneScale,
+      railSide: "left",
+    });
+    const GEOMETRIES = [
+      { name: "the reference window", g: frame, sides: sideDisplayedCounts },
+      {
+        name: "a notched phone",
+        g: {
+          scale: phoneScale,
+          windowWidth: PHONE.width,
+          windowHeight: PHONE.height,
+          tableLeft: phoneFrame.tableLeft,
+          tableRight: phoneFrame.tableRight,
+          tableTop: phoneFrame.tableTop,
+          surplus: phoneFrame.surplus,
+          handZoneH: HAND_ZONE_H(CARD_H(phoneScale * HAND_SCALE), phoneFrame.bottomPad),
+          // Four seats, a fresh deal, thirteen cards each.
+          topDisplayedCount: 13,
+        },
+        sides: { left: 13, right: 13 },
+      },
+    ];
+
     test("the label stops short of the seat it names, on every trip", () => {
       for (const [from, to] of PAIRS) {
         const flight = tripFor(from, to);
@@ -2564,42 +2596,42 @@ describe("exchangeFlight", () => {
       }
     });
 
+    // Every seat's, not only its own: the label is placed off one trip, and a
+    // trip knows nothing about the two seats it does not touch. Their cards are
+    // where their own would land, which is what `flightOrigin` answers.
+    test("the label is clear of every seat's cards, not only the pair trading", () => {
+      for (const geom of GEOMETRIES) {
+        const seatCard = (dir: FlyDirection) =>
+          flightOrigin({
+            ...geom.g,
+            dir,
+            sideDisplayedCount: dir === "left" || dir === "right" ? geom.sides[dir] : 0,
+          });
+        for (const [from, to] of PAIRS) {
+          const tag = exchangeFlight({
+            ...geom.g,
+            sideDisplayedCounts: geom.sides,
+            from,
+            to,
+            cardW,
+            cardH,
+          }).tag;
+          for (const seat of SEATS) {
+            assert.ok(
+              boxOverlap(tag, seatCard(seat)) === 0,
+              `${geom.name}, ${from} → ${to}: the label sits on the ${seat} seat's own cards`
+            );
+          }
+        }
+      }
+    });
+
     // A trip standing off its lane can reach past the table it is drawn on: the
     // lane's own offset is perpendicular to the travel, so on a diagonal it
     // carries the label sideways as well as along, and the seat it names is
     // already at the edge.
     test("the label stays on the felt the seats are drawn on, and off the hand", () => {
-      // The owner's own window, measured the way the table measures it: a
-      // notched phone in landscape is tighter than the frame above in every
-      // direction, and it is where the label went off-screen.
-      const W = 844;
-      const H = 390;
-      const deviceScale = cardScale(Math.min(W, H));
-      const deviceFrame = computeTableFrame({
-        width: W,
-        height: H,
-        insets: { top: 0, bottom: 21, left: 59, right: 0 },
-        scale: deviceScale,
-        railSide: "left",
-      });
-      const device = {
-        scale: deviceScale,
-        windowWidth: W,
-        windowHeight: H,
-        tableLeft: deviceFrame.tableLeft,
-        tableRight: deviceFrame.tableRight,
-        tableTop: deviceFrame.tableTop,
-        surplus: deviceFrame.surplus,
-        handZoneH: HAND_ZONE_H(CARD_H(deviceScale * HAND_SCALE), deviceFrame.bottomPad),
-        // Four seats, a fresh deal, thirteen cards each.
-        topDisplayedCount: 13,
-      };
-      const deviceSides = { left: 13, right: 13 };
-
-      for (const geom of [
-        { name: "the reference window", g: frame, sides: sideDisplayedCounts },
-        { name: "a notched phone", g: device, sides: deviceSides },
-      ]) {
+      for (const geom of GEOMETRIES) {
         const pileX = geom.g.tableLeft + (geom.g.windowWidth - geom.g.tableLeft - geom.g.tableRight) / 2;
         // The hand zone's own centre, from the same helper the flight uses —
         // so the band the label must stay above is half a hand zone above it.

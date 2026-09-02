@@ -902,17 +902,29 @@ export function exchangeFlight(input: ExchangeFlightInput): ExchangeFlight {
   const pile = pileGeometry(input);
   return {
     ...trip,
+    // The band the pile sits in, less the columns the side seats sit in: the
+    // one region of the table that holds no cards, whoever is playing and
+    // however many they hold. Everything outside it is somebody's hand — the
+    // top seat's own fan is what a diagonal trade put "got 2 of Diamonds" on
+    // (#817), and a clamp to the *window* would have left it there. The label
+    // is placed by its centre and drawn no wider than `TAG_MAX_W`, so half of
+    // that is what keeps the box itself inside as well.
     tag: exchangeTagOffset(trip, {
-      minDx: input.tableLeft + TAG_CLEARANCE - pile.centerX,
-      maxDx: input.windowWidth - input.tableRight - TAG_CLEARANCE - pile.centerX,
-      minDy: input.tableTop + TAG_CLEARANCE - pile.centerY,
-      // The hand zone is the one band on the table that is always full of
-      // cards, whoever is playing — the label's own floor rather than the
-      // window's.
-      maxDy: pile.tableFloor - input.handZoneH - TAG_CLEARANCE - pile.centerY,
+      minDx: input.tableLeft + SIDE_SECTION_W + TAG_MAX_W / 2 - pile.centerX,
+      maxDx: input.windowWidth - input.tableRight - SIDE_SECTION_W - TAG_MAX_W / 2 - pile.centerX,
+      minDy: TAG_CLEARANCE - pile.midH / 2,
+      maxDy: pile.midH / 2 - TAG_CLEARANCE,
     }),
   };
 }
+
+/**
+ * How wide the label is allowed to get. Both a bound the clamp above can use —
+ * a centre is only inside the table if half a label is too — and the width
+ * `ExchangeSeatTag` draws it at, so the two cannot disagree about a box only
+ * one of them can see.
+ */
+export const TAG_MAX_W = 160;
 
 /**
  * The label's own reach: how far it stands off anything it must not touch —

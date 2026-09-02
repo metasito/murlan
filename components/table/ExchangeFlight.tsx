@@ -16,7 +16,7 @@ import { a11yHidden } from "@/lib/a11y";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { Colors, Motion, motionMs, Radius, Scrim, Spacing } from "@/lib/theme";
 import { EXCHANGE_FLIGHT_MS, EXCHANGE_LEG_MS, MEET_HOLD_MS } from "@/lib/exchangeCeremony";
-import type { ExchangeFlight as Trip } from "@/components/gameTableModel";
+import { TAG_MAX_W, type ExchangeFlight as Trip } from "@/components/gameTableModel";
 
 const TAG_FS = 11;
 
@@ -168,6 +168,10 @@ export function ExchangeSeatTag({
 const styles = StyleSheet.create({
   flier: { position: "absolute" },
   tag: {
+    // The place the model picked for this box assumes this width; a longer
+    // card name wraps rather than growing out of the felt it was fitted onto.
+    maxWidth: TAG_MAX_W,
+    textAlign: "center",
     fontFamily: "Rajdhani_600SemiBold",
     fontSize: TAG_FS,
     color: Colors.gold,

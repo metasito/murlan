@@ -36,33 +36,25 @@ function intersection(a: Box, b: Box): number {
 
 const card = (id: string, rank: string, suit: string) => ({ id, rank, suit, isJoker: false });
 
-/** A hand per seat, the viewer's first — its 5 of hearts is what they give back. */
-const HANDS = [
-  [card("5_hearts", "5", "hearts"), card("K_spades", "K", "spades")],
-  [card("J_hearts", "J", "hearts"), card("Q_diamonds", "Q", "diamonds")],
-  [card("7_clubs", "7", "clubs"), card("8_diamonds", "8", "diamonds")],
-  [card("9_spades", "9", "spades"), card("10_hearts", "10", "hearts")],
-];
-const BOTS = ["Bea", "Drita", "Besnik"] as const;
-
-/**
- * The viewer has just won a manche and is choosing what to hand back.
- *
- * `loserIdx` is the seat they are trading with, and at four seats it decides
- * the *direction* of the trip: seat 1 sits beside the viewer, so that trade
- * runs diagonally, which is the pair of trips whose lane offset carries a
- * label sideways as well as along.
- */
-function midExchangeSave(playerCount: 2 | 4 = 2, loserIdx = 1) {
+/** The viewer has just won a manche and is choosing what to hand back. */
+function midExchangeSave() {
   return {
     version: 2,
     gameState: {
-      players: Array.from({ length: playerCount }, (_, i) => ({
-        id: `player_${i}`,
-        name: i === 0 ? "Ana" : BOTS[i - 1],
-        hand: HANDS[i],
-        type: i === 0 ? "human" : "ai",
-      })),
+      players: [
+        {
+          id: "player_0",
+          name: "Ana",
+          hand: [card("5_hearts", "5", "hearts"), card("K_spades", "K", "spades")],
+          type: "human",
+        },
+        {
+          id: "player_1",
+          name: "Bea",
+          hand: [card("J_hearts", "J", "hearts"), card("Q_diamonds", "Q", "diamonds")],
+          type: "ai",
+        },
+      ],
       currentTurnIndex: 0,
       lastPlayedCombination: null,
       lastPlayedBy: -1,
@@ -75,7 +67,7 @@ function midExchangeSave(playerCount: 2 | 4 = 2, loserIdx = 1) {
       exchangePhase: {
         active: true,
         winnerIdx: 0,
-        loserIdx,
+        loserIdx: 1,
         cardFromLoser: card("2_spades", "2", "spades"),
         bothJokersException: false,
       },
@@ -90,11 +82,10 @@ function midExchangeSave(playerCount: 2 | 4 = 2, loserIdx = 1) {
       isDraw: false,
     },
     rematchAnswers: {},
-    players: Array.from({ length: playerCount }, (_, i) =>
-      i === 0
-        ? { name: "Ana", type: "human" }
-        : { name: BOTS[i - 1], type: "ai", personality: "luan" }
-    ),
+    players: [
+      { name: "Ana", type: "human" },
+      { name: "Bea", type: "ai", personality: "luan" },
+    ],
     gameMode: "free_for_all",
     dealFirstSeat: 0,
   };
@@ -151,31 +142,38 @@ test("the two exchanged cards fly at once and never overlap", async ({ page, bas
 // label used to sit at the trip's landing point, and for the viewer's own seat
 // that point is the hand zone's own centre. Only a browser can say where either
 // box ended up.
-// A four-seat trade is run as well as a two-seat one, because the seats a
-// two-player table has are top and bottom, and the trip between them is the one
-// direction whose lane offset is purely sideways. Every other pairing is a
-// diagonal, where the same offset also carries the label down — off the bottom
-// of the window, on a phone (#817).
-for (const [seats, loserIdx, shape] of [
-  [2, 1, "across the table"],
-  [4, 1, "diagonally"],
-] as const) {
-  test(`neither seat's label lands on a card, trading ${shape}`, async ({ page, baseURL }) => {
-    test.setTimeout(120_000);
+// The seat pairs a two-player table cannot reach are swept in
+// tests/gameTableModel.test.ts, over every ordered pair at two window sizes:
+// the diagonals are where the lane offset carries the label sideways as well as
+// along, and this fixture has only the one trip between top and bottom.
+test("neither seat's label lands on a card", async ({ page, baseURL }) => {
+  test.setTimeout(120_000);
+  {
     // A real phone in landscape: the window the labels went off the bottom of.
     await page.setViewportSize({ width: 844, height: 390 });
-    await resumeSaved(page, baseURL!, midExchangeSave(seats, loserIdx));
+    await resumeSaved(page, baseURL!, midExchangeSave());
 
     await expect(page.getByTestId("exchange-prompt")).toBeVisible({ timeout: 15_000 });
     await tap(page, page.getByRole("button", { name: GIVEBACK_SPOKEN, exact: true }));
     await tap(page, page.getByTestId("btn-gioca"));
 
-    // The labels take over from the fliers at the landing, so they are what is on
-    // screen once the flight is over rather than during it.
+    // Both tags are mounted from the start and animate their opacity in, and
+    // `toBeVisible` counts a fully transparent box as visible — so waiting on
+    // that alone measures the prompt's own card, still mid-table, rather than
+    // anything the flight did. The landing is what retires the fliers, so that
+    // is what is waited for.
     const toWinner = page.getByTestId("exchange-tag-to-winner");
-    await expect(toWinner).toBeVisible({ timeout: 15_000 });
     const toLoser = page.getByTestId("exchange-tag-to-loser");
-    await expect(toLoser).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId("exchange-prompt")).toHaveCount(0, { timeout: 15_000 });
+    await expect(page.getByTestId("exchange-flier-to-winner")).toHaveCount(0, { timeout: 15_000 });
+    await expect(page.getByTestId("exchange-flier-to-loser")).toHaveCount(0, { timeout: 15_000 });
+    for (const tag of [toWinner, toLoser]) {
+      await expect
+        .poll(() => tag.evaluate((el) => Number(getComputedStyle(el).opacity)), {
+          timeout: 15_000,
+        })
+        .toBeGreaterThan(0.9);
+    }
 
     const cards = await page.evaluate(() =>
       [...document.querySelectorAll('[data-testid="card-box"], [data-testid="card-box-back"]')]
@@ -222,5 +220,5 @@ for (const [seats, loserIdx, shape] of [
       intersection((await toWinner.boundingBox())!, (await toLoser.boundingBox())!),
       "the two labels overlap each other"
     ).toBe(0);
-  });
-}
+  }
+});
