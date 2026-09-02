@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
-import { View, Text, StyleSheet, Pressable, useWindowDimensions } from "react-native";
+import { View, Text, StyleSheet, Pressable } from "react-native";
 import { IconButton } from "@/components/IconButton";
-import { useIsLandscape } from "@/lib/orientation";
+import { useOrientedWindow } from "@/lib/orientation";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -89,8 +89,8 @@ export default function NotificationBanner({ notification, onDismiss, onMeasure 
   );
   const [pressed, setPressed] = useState(false);
   const insets = useSafeAreaInsets();
-  const { width, height } = useWindowDimensions();
-  const isLandscape = useIsLandscape();
+  const { width, height } = useOrientedWindow();
+  const isLandscape = width > height;
   const translateY = useSharedValue(-120);
   const opacity = useSharedValue(0);
   const reduceMotion = usePrefersReducedMotion();

@@ -43,12 +43,24 @@ export function OrientationProvider({ children }: { children: ReactNode }) {
 
 const styles = StyleSheet.create({ fill: { flex: 1 } });
 
-/** Whether the window is wider than it is tall. */
-export function useIsLandscape(): boolean {
+/**
+ * The window's own size — the provider's measured value once mounted, the
+ * raw window before that or with no provider above. Every consumer of
+ * `useIsLandscape()` that also needs the raw dimensions reads them from
+ * here rather than calling `useWindowDimensions()` a second time: two reads
+ * can each self-correct on its own schedule, and the gap between them is a
+ * boolean and a set of numbers describing different moments (#821).
+ */
+export function useOrientedWindow(): WindowSize {
   const ctx = useContext(OrientationContext);
   // Called unconditionally, so this hook's own order never depends on
   // whether a provider happens to be mounted above it.
   const fallback = useWindowDimensions();
-  const { width, height } = ctx ?? fallback;
+  return ctx ?? fallback;
+}
+
+/** Whether the window is wider than it is tall. */
+export function useIsLandscape(): boolean {
+  const { width, height } = useOrientedWindow();
   return width > height;
 }
