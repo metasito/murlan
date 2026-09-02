@@ -226,6 +226,14 @@ export interface GameTableProps {
    * Defaults false: replay, capture and reaction-preview callers hold no match.
    */
   matchOver?: boolean;
+  /**
+   * What the manche just played awarded, by engine player id — the same
+   * value the results board reads (`GameOverOverlay`/`app/result.tsx`), fed
+   * to the table's own win/lose sting via `handOutcomeFor`. Defaults empty
+   * for the same callers `matchOver` defaults false for: with no scores to
+   * read, the sting simply stays silent rather than guessing.
+   */
+  handScores?: Record<string, number>;
   /** Seat the table is drawn from. Always rendered at the bottom. */
   viewerSeat: number;
   /**
@@ -274,6 +282,7 @@ export interface GameTableProps {
 export function GameTable({
   gameState,
   matchOver = false,
+  handScores = {},
   viewerSeat,
   spectating = false,
   selectedIds,
@@ -646,6 +655,9 @@ export function GameTable({
     roundWinner: gameState.roundWinner,
     gameOver: gameState.gameOver,
     rankings: gameState.rankings,
+    players,
+    isTeamMode: gameState.gameMode === "teams",
+    handScores,
     viewerId: viewer?.id,
     scale,
   });

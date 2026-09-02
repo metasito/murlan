@@ -146,11 +146,14 @@ export default function GameScreen() {
 
   const humanId = gameState.players[humanIdx]?.id;
   const myAnswer = humanId !== undefined && humanId in rematchAnswers ? rematchAnswers[humanId] : null;
+  const hands = match.hands ?? [];
+  const lastHandScores = hands[hands.length - 1]?.pointsAwarded ?? {};
 
   return (
     <GameTable
       gameState={gameState}
       matchOver={match.over}
+      handScores={lastHandScores}
       viewerSeat={humanIdx}
       selectedIds={selectedCards}
       onSelectCard={selectCard}

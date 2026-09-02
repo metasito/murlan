@@ -259,6 +259,7 @@ export default function OnlineGameScreen() {
     <GameTable
       gameState={gameState}
       matchOver={matchState.over}
+      handScores={handScores}
       // A spectator holds no seat, so the table is drawn from seat 0 and told
       // it is being watched. Every hand arrives blank from the server either
       // way; `spectating` is what makes the bottom one draw as backs rather

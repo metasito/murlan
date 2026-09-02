@@ -33,6 +33,7 @@ import {
   playYourTurn,
 } from "@/lib/sounds";
 import { hapticHeavy, hapticSuccess, hapticWarn } from "@/lib/haptics";
+import { handOutcomeFor } from "@/lib/matchState";
 import { cancelMusicDuck, duckMusicFor } from "@/lib/music";
 import { Motion, motionMs } from "@/lib/theme";
 
@@ -78,6 +79,11 @@ interface TableFeedbackState {
   roundWinner: number | null;
   gameOver: boolean;
   rankings: string[];
+  /** Only `id` and `team` are read — enough to resolve `handOutcomeFor`. */
+  players: readonly { id: string; team?: string }[];
+  isTeamMode: boolean;
+  /** What the manche just played awarded, by engine player id — `handOutcomeFor`'s draw check. */
+  handScores: Record<string, number>;
   viewerId: string | undefined;
   /** The table's own scale — the kick's travel and the burst's size read off it. */
   scale: number;
@@ -298,6 +304,9 @@ export function useTableFeedback({
   roundWinner,
   gameOver,
   rankings,
+  players,
+  isTeamMode,
+  handScores,
   viewerId,
   scale,
 }: TableFeedbackState): TableFeedback {
@@ -372,24 +381,36 @@ export function useTableFeedback({
       return;
     }
     if (prevGameOverRef.current) return;
-    prevGameOverRef.current = true;
     // The manche/partita shake itself is NOT fired here — this effect answers
     // `gameOver` the instant the state arrives, well ahead of the winning
     // card's own landing. `GameTable.tsx` fires `shake(landingTier(...))`
     // from the same `impactDelayMs` timeout everything else on the table
     // waits for, so the shake lands with the card rather than ahead of it.
     // `rankings` holds engine player ids (`player_0`), never display names.
-    const myRank = viewerId ? rankings.indexOf(viewerId) : -1;
-    if (myRank === 0) {
+    // Routed through the one function the results board's own haptic reads
+    // for the same question (`lib/matchState.ts`), fed the same `handScores`
+    // the caller already holds rather than a second `scoreHand` of its own,
+    // so a teams-mode 3-3 manche (RULES.md §11) stays neutral here exactly as
+    // it does there, instead of this effect deciding the same question again.
+    const outcome = handOutcomeFor(players, rankings, handScores, viewerId, isTeamMode);
+    // Online, `gameOver` reaches this effect (`game:state`) a render ahead of
+    // the scores that decide it (`game:over`, unawaited server-side and
+    // strictly later) — `"pending"` is that gap. Latching here would freeze
+    // the decision on data that was never real; returning without touching
+    // the ref lets the next render, carrying the real `handScores`, run this
+    // same effect again instead.
+    if (outcome === "pending") return;
+    prevGameOverRef.current = true;
+    if (outcome === "won") {
       hapticSuccess();
       playGameWin();
       duckMusicFor(2200);
-    } else if (myRank >= 0 && myRank === rankings.length - 1) {
+    } else if (outcome === "lost") {
       hapticWarn();
       playGameLose();
       duckMusicFor(2200);
     }
-  }, [gameOver, rankings, viewerId]);
+  }, [gameOver, rankings, players, isTeamMode, handScores, viewerId]);
 
   // A duck outlives the play that started it by a second or two, so leaving
   // the table mid-bomb would otherwise leave the music down until something

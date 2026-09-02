@@ -3,6 +3,7 @@
 // Relative imports and no `react-native`, for the same reason
 // lib/exchangeCeremony.ts has none: the server bundles this with no alias
 // resolution, and `node --test` type-strips plain .ts without resolving `@/`.
+import { aggregateTeamScores } from "./gameEngine.ts";
 import type { MatchLength } from "./gameEngine.ts";
 
 export interface MatchVerdict {
@@ -59,6 +60,71 @@ export function celebratesViewer(
       : seat.id === viewerId;
   }
   return false;
+}
+
+/**
+ * Whether a just-played manche paid every team the same total (RULES.md §11):
+ * first-and-fourth pays 3+0, second-and-third pays 2+1, both 3. A draw this
+ * way has no candidate to celebrate, so the caller must drop the manche's own
+ * placement (`rankings[0]`, the standings' own first row) from `celebration`'s
+ * candidates rather than let it fall through to the seat that went out first.
+ */
+export function isDrawnHand(
+  players: readonly { id: string; team?: string }[],
+  handScores: Record<string, number>
+): boolean {
+  const teamOfKey: Record<string, string> = {};
+  for (const p of players) {
+    if (p.team !== undefined) teamOfKey[p.id] = p.team;
+  }
+  // An absent or incomplete score set is not known yet, and "not known" must
+  // never collapse into "drawn": with no entries at all, aggregateTeamScores
+  // totals every team to zero and zero equals zero.
+  if (Object.keys(teamOfKey).some((id) => !(id in handScores))) return false;
+  const totals = aggregateTeamScores(handScores, teamOfKey);
+  const values = Object.values(totals);
+  return values.length > 1 && values.every((v) => v === values[0]);
+}
+
+export type HandOutcome = "won" | "lost" | "neutral" | "pending";
+
+/**
+ * What the manche that just ended did to `viewerId` — the decision the
+ * table's own win/lose sting reads (`components/useTableFeedback.ts`), and
+ * the one the results board's haptic reads for a hand the match itself has
+ * not yet decided. `handScores` is a parameter rather than recomputed here,
+ * so both readers score the manche from the one value its caller already
+ * holds (the server's `game:over` payload online, the played hand's own
+ * `pointsAwarded` offline) instead of two calls to `scoreHand` that happen to
+ * agree today. A 3-3 teams draw (RULES.md §11) is `"neutral"` here the same
+ * way it is an empty `celebration` there — one path recomputing its own
+ * placement checks, rather than reading the shared one, is how a win cue
+ * reached a losing seat's body in the first place (#777).
+ *
+ * `"pending"` is a fourth answer, not a stand-in for `"neutral"`: online, a
+ * finished hand's `rankings` reach the client (`game:state`, `gameOver:
+ * true`) before its scores do (the separate, unawaited `game:over`), and a
+ * genuine draw is indistinguishable from "not scored yet" without them —
+ * both leave every team's known total at zero. This is the caller's signal
+ * to wait for the render the scores arrive on rather than decide without
+ * them, the same way `isDrawnHand` itself refuses to call an incomplete
+ * score set a draw.
+ */
+export function handOutcomeFor(
+  players: readonly { id: string; team?: string }[],
+  rankings: readonly string[],
+  handScores: Record<string, number>,
+  viewerId: string | undefined,
+  isTeamMode: boolean
+): HandOutcome {
+  if (viewerId === undefined || rankings.length === 0) return "neutral";
+  if (isTeamMode && rankings.some((id) => !(id in handScores))) return "pending";
+  if (isTeamMode && isDrawnHand(players, handScores)) return "neutral";
+  if (celebratesViewer(players, [rankings[0]], viewerId, isTeamMode)) return "won";
+  if (celebratesViewer(players, [rankings[rankings.length - 1]], viewerId, isTeamMode)) {
+    return "lost";
+  }
+  return "neutral";
 }
 
 /** One seat's line on the end-of-manche scoreboard, in every identity it is indexed by. */

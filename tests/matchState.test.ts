@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { celebration } from "../lib/matchState.ts";
+import { celebration, isDrawnHand, handOutcomeFor } from "../lib/matchState.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -51,6 +51,126 @@ describe("celebration", () => {
   test("is empty when no candidate names a seat", () => {
     assert.equal(celebration(TABLE, [undefined, "player_9"], null), "");
     assert.equal(celebration(TABLE, [], null), "");
+  });
+});
+
+// RULES.md §11: first-and-fourth (3+0) pays the same total as second-and-
+// third (2+1), so a manche can end with both teams tied.
+describe("isDrawnHand", () => {
+  const TEAMS_TABLE = [
+    { id: "player_0", team: "A" },
+    { id: "player_1", team: "B" },
+    { id: "player_2", team: "B" },
+    { id: "player_3", team: "A" },
+  ];
+
+  test("first-and-fourth against second-and-third is a draw", () => {
+    const handScores = { player_0: 3, player_1: 2, player_2: 1, player_3: 0 };
+    assert.equal(isDrawnHand(TEAMS_TABLE, handScores), true);
+  });
+
+  test("a team that placed both members ahead is not a draw", () => {
+    const handScores = { player_0: 3, player_1: 1, player_2: 0, player_3: 2 };
+    assert.equal(isDrawnHand(TEAMS_TABLE, handScores), false);
+  });
+
+  test("a table with no team assignment is never a draw", () => {
+    const handScores = { player_0: 3, player_1: 2, player_2: 1, player_3: 0 };
+    assert.equal(
+      isDrawnHand(
+        TEAMS_TABLE.map(({ id }) => ({ id })),
+        handScores
+      ),
+      false
+    );
+  });
+
+  // Online, a hand's rankings reach the client before its scores do — an
+  // empty or partial score set totals every team to zero, which is not the
+  // same fact as every team scoring the same. "Not known yet" must read as
+  // not-a-draw, or a hand whose scores just haven't arrived reports the same
+  // answer as one that genuinely tied.
+  test("an absent score set is not a draw", () => {
+    assert.equal(isDrawnHand(TEAMS_TABLE, {}), false);
+  });
+
+  test("a partial score set — some seats not scored yet — is not a draw", () => {
+    const handScores = { player_0: 3, player_1: 2 };
+    assert.equal(isDrawnHand(TEAMS_TABLE, handScores), false);
+  });
+});
+
+// The one function every win/lose cue reads — the table's own sting
+// (components/useTableFeedback.ts) and the results board (celebration/
+// celebratesViewer) both, so a teams-mode 3-3 manche is neutral on both
+// paths rather than each recomputing its own placement check (#777).
+describe("handOutcomeFor", () => {
+  const TEAMS_TABLE = [
+    { id: "player_0", team: "A" },
+    { id: "player_1", team: "B" },
+    { id: "player_2", team: "B" },
+    { id: "player_3", team: "A" },
+  ];
+  // First-and-fourth (3+0) against second-and-third (2+1): a draw.
+  const drawnRankings = ["player_0", "player_1", "player_2", "player_3"];
+  const drawnScores = { player_0: 3, player_1: 2, player_2: 1, player_3: 0 };
+
+  test("is neutral for every seat on a drawn teams manche", () => {
+    for (const { id } of TEAMS_TABLE) {
+      assert.equal(handOutcomeFor(TEAMS_TABLE, drawnRankings, drawnScores, id, true), "neutral");
+    }
+  });
+
+  test("is won for the team that placed first-and-third, not just the seat that placed first", () => {
+    const rankings = ["player_0", "player_1", "player_3", "player_2"];
+    const scores = { player_0: 3, player_1: 2, player_3: 1, player_2: 0 };
+    assert.equal(handOutcomeFor(TEAMS_TABLE, rankings, scores, "player_0", true), "won");
+    assert.equal(handOutcomeFor(TEAMS_TABLE, rankings, scores, "player_3", true), "won");
+    assert.equal(handOutcomeFor(TEAMS_TABLE, rankings, scores, "player_1", true), "lost");
+    assert.equal(handOutcomeFor(TEAMS_TABLE, rankings, scores, "player_2", true), "lost");
+  });
+
+  test("in free-for-all, only the seat that placed first or last gets an outcome", () => {
+    const rankings = ["player_2", "player_0", "player_1", "player_3"];
+    const scores = { player_2: 3, player_0: 2, player_1: 1, player_3: 0 };
+    assert.equal(handOutcomeFor(TEAMS_TABLE, rankings, scores, "player_2", false), "won");
+    assert.equal(handOutcomeFor(TEAMS_TABLE, rankings, scores, "player_3", false), "lost");
+    assert.equal(handOutcomeFor(TEAMS_TABLE, rankings, scores, "player_0", false), "neutral");
+  });
+
+  test("is neutral for a spectator holding no seat", () => {
+    assert.equal(handOutcomeFor(TEAMS_TABLE, drawnRankings, drawnScores, undefined, true), "neutral");
+  });
+
+  test("is neutral before any manche has a finish order", () => {
+    assert.equal(handOutcomeFor(TEAMS_TABLE, [], {}, "player_0", true), "neutral");
+  });
+
+  // `isTeamMode` is what gates the draw suppression on a table that merely
+  // carries `.team` fields — free-for-all seats never do, which is what made
+  // this guard look removable without reddening anything: nothing exercised
+  // a non-teams table where `.team` happened to be set anyway.
+  test("the isTeamMode guard actually gates the draw check", () => {
+    assert.equal(
+      handOutcomeFor(TEAMS_TABLE, drawnRankings, drawnScores, "player_0", false),
+      "won"
+    );
+  });
+
+  // Online, `rankings` reaches the client (`game:state`, gameOver: true) a
+  // render ahead of `handScores` (the separate `game:over`) — the caller
+  // (components/useTableFeedback.ts) has to be able to tell "not decided
+  // yet" apart from "neutral" (an actual draw) so it knows to wait for the
+  // render the scores arrive on instead of latching a decision made with
+  // none.
+  test("is pending in team mode when the manche has a finish order but no scores yet", () => {
+    assert.equal(handOutcomeFor(TEAMS_TABLE, drawnRankings, {}, "player_0", true), "pending");
+  });
+
+  // Free-for-all never reads handScores at all — an absent score set must
+  // not stall a mode that was never waiting on one.
+  test("free-for-all is never pending, even with no scores at all", () => {
+    assert.equal(handOutcomeFor(TEAMS_TABLE, drawnRankings, {}, "player_0", false), "won");
   });
 });
 

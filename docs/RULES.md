@@ -117,6 +117,7 @@ The 3♠ opening requirement (§4) is **not** re-applied — it belongs to the f
 - **Seating:** partners sit **opposite** each other, so turn order alternates opponent–partner–opponent.
 - **Scoring/win:** murlanarena states the team format is scored as a combined total — *"in team mode when a team earns combined 21 points first."* i.e. the two partners' individual placement points (3/2/1/0) are summed per hand and the pair racing to 21 wins.
 - **No source states that a team wins the instant its first member goes out.** Under the combined-points reading, both partners' finishing positions matter (a 1st+2nd finish = 5 points, 1st+3rd = 4, etc.), so play continues after the first partner goes out. **Ambiguity** — resolved by the implementation choice recorded in `docs/BRIEF.md` §3.1.
+- **A manche can end with both teams paid the same total.** First-and-fourth (3+0) and second-and-third (2+1) both sum to 3, which the combined-points reading above pays out identically. **No source addresses this case.** **Ambiguity** — resolved by the implementation choice recorded in `docs/BRIEF.md` §3.1: **it is a real draw.** Nobody is congratulated for that manche — no team, no winning haptic — and neither the seat that finished first nor the running *partita* score breaks the tie.
 
 ## 12. Scoring
 
