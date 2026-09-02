@@ -301,8 +301,10 @@ function handFingerprint(state: GameState): string {
 }
 
 /** `SimulateMatchOptions.contest`'s move: the weakest legal beating
- * combination, or null to pass. */
-function weakestBeatingPlay(state: GameState, seat: number): Combination | null {
+ * combination, or null to pass. Exported so `tests/offlineMatchContestPlay.test.ts`
+ * can pin the ordering directly — a soak asserting only that a match ends
+ * cannot tell "weakest" from "strongest legal beating combination" apart. */
+export function weakestBeatingPlay(state: GameState, seat: number): Combination | null {
   const player = state.players[seat];
   const isNewRound = state.lastPlayedCombination === null;
   const startCard = !state.firstPlayMade ? state.startCard : undefined;
