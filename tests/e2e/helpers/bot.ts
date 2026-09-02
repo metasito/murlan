@@ -94,14 +94,6 @@ function labelSelector(label: string): string {
 
 export class StuckError extends Error {}
 
-/**
- * What this driver believes is selected in each page's hand, across turns.
- * Since a staged play survives an opponent's turn, the selection is no longer
- * guaranteed to be empty when a turn begins, and an early return mid-search
- * leaves cards lit that the next turn has to know about.
- */
-const stagedSelection = new WeakMap<Page, string[]>();
-
 // The table's own aria-label announces "your turn" purely from
 // `currentTurnIndex === viewerSeat` (components/gameTableModel.ts
 // `describeTableForA11y`), with no notion of `gameOver` — so for one tick
@@ -190,9 +182,16 @@ function requiredReplySize(desc: string): number | null {
 async function playOrPass(page: Page, desc: string): Promise<string | null> {
   const replySize = requiredReplySize(desc);
   const handCards = page.locator(HAND_CARDS);
-  const labels = (await handCards.evaluateAll((els) =>
-    els.map((el) => el.getAttribute("aria-label") ?? "")
-  )) as string[];
+  const cardsNow = (await handCards.evaluateAll((els) =>
+    els.map((el) => ({
+      label: el.getAttribute("aria-label") ?? "",
+      // `aria-pressed` (lib/a11y.tsx `a11yState`) is the selection itself —
+      // ground truth for what the table actually holds selected right now,
+      // as opposed to what this driver last believed it clicked.
+      selected: el.getAttribute("aria-pressed") === "true",
+    }))
+  )) as { label: string; selected: boolean }[];
+  const labels = cardsNow.map((c) => c.label);
   const giocaBtn = page.locator('[data-testid="btn-gioca"]');
   const passBtn = page.locator('[data-testid="btn-passa"]');
 
@@ -222,36 +221,31 @@ async function playOrPass(page: Page, desc: string): Promise<string | null> {
     }
   }
 
-  // Diffs the requested selection against what is actually still selected
-  // from the previous attempt, rather than blindly deselecting-then-
-  // reselecting from scratch — so a click that silently failed to toggle
-  // leaves a card correctly tracked as still selected instead of being
-  // assumed clear.
+  // Diffs the requested selection against what is actually still selected,
+  // rather than blindly deselecting-then-reselecting from scratch — so a
+  // click that silently failed to toggle leaves a card correctly tracked as
+  // still selected instead of being assumed clear.
   //
-  // Carried over from the previous turn, intersected with the hand that is
-  // there now: a selection survives an opponent's turn (the app no longer
-  // wipes it), so an early return on a click timeout leaves cards lit that a
-  // fresh, empty tracker would add targets on top of — building a combination
-  // the bot never meant to offer and, when leading, one it cannot pass out of.
-  // The app itself drops a staged id the hand no longer holds, which is why the
-  // intersection is the honest starting point rather than a guess.
-  let selected = (stagedSelection.get(page) ?? []).filter((l) => labels.includes(l));
-  function setStaged(next: string[]): void {
-    selected = next;
-    stagedSelection.set(page, next);
-  }
-  setStaged(selected);
+  // Read from the table itself rather than remembered across calls: a
+  // selection can survive an opponent's turn, but it can just as well be
+  // cleared out from under this driver by something that is not a click —
+  // offline, `HUMAN_TURN_SECONDS` auto-passes the turn on a timer that a slow
+  // card search can run into, and a pass clears the selection
+  // (`GameContext.tsx` `passTurn`). A belief carried in memory has no way to
+  // learn that happened and keeps clicking against a hand that has already
+  // moved on; the DOM's own `aria-pressed` cannot go stale like that.
+  let selected = cardsNow.filter((c) => c.selected).map((c) => c.label);
 
   async function setSelection(target: string[]): Promise<boolean> {
     for (const l of selected) {
       if (target.includes(l)) continue;
       if (!(await click(cardByLabel(l)))) return false;
-      setStaged(selected.filter((x) => x !== l));
+      selected = selected.filter((x) => x !== l);
     }
     for (const l of target) {
       if (selected.includes(l)) continue;
       if (!(await click(cardByLabel(l)))) return false;
-      setStaged([...selected, l]);
+      selected = [...selected, l];
     }
     return true;
   }
@@ -261,7 +255,7 @@ async function playOrPass(page: Page, desc: string): Promise<string | null> {
     const label = await giocaBtn.getAttribute("aria-label").catch(() => null);
     if (label === GIOCA_VALID_LABEL) {
       if (!(await click(giocaBtn))) return "gone";
-      setStaged([]); // the play succeeded — the hand itself is about to change entirely
+      selected = []; // the play succeeded — the hand itself is about to change entirely
       return "played";
     }
     return "no"; // leave the selection as-is; the next attempt's setSelection diffs against it
@@ -419,6 +413,16 @@ export interface DriveOptions {
   maxStatesWithoutProgress?: number;
   /** How long the table description may sit unchanged before this is a stall, not a wait. */
   stallMs?: number;
+  /**
+   * Wall-clock ceiling for the whole drive, independent of the two watchdogs
+   * above: both can stay green forever on a game that keeps changing state and
+   * keeps moving cards out of hands while never once reaching `isFinished`
+   * (#770). Comfortably above a normal manche (measured: 37s, offline 2-player)
+   * and comfortably below every caller's own `test.setTimeout`, so this names
+   * the failure before Playwright's bare timeout buries it under an unrelated
+   * assertion.
+   */
+  maxTotalMs?: number;
   log?: (line: string) => void;
 }
 
@@ -438,14 +442,23 @@ export async function driveGameToCompletion(page: Page, opts: DriveOptions): Pro
   // EXPO_PUBLIC_E2E_FAST and reduced motion both active) without being so
   // tight that one slow AI response false-positives a healthy game.
   const stallMs = opts.stallMs ?? 15_000;
+  const maxTotalMs = opts.maxTotalMs ?? 240_000;
   const log = opts.log ?? (() => {});
 
   let lastDesc = "";
   let lastChangeAt = Date.now();
   let progress = NO_PROGRESS_YET;
+  const startedAt = Date.now();
 
   for (;;) {
     if (await opts.isFinished(page)) return;
+    if (Date.now() - startedAt > maxTotalMs) {
+      throw new StuckError(
+        `Game did not reach isFinished within ${maxTotalMs}ms even though the table kept ` +
+          `changing state and cards kept leaving hands — neither watchdog above catches a match ` +
+          `that plays forever without ending. Last table state: "${lastDesc}".`
+      );
+    }
 
     await declineRematchPromptIfShown(page);
 
