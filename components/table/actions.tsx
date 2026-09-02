@@ -342,9 +342,13 @@ const styles = StyleSheet.create({
   playBtnFace: { borderWidth: 1, borderColor: Colors.goldLit },
   // Over the glow, which fills this button and paints.
   playBtnFront: { zIndex: Layer.table },
-  playBtnLabel: { color: Colors.bgCard },
+  // Colors.bg, not bgCard: the pressed gradient's darkest stop (goldDim)
+  // fails body-text contrast against bgCard (tests/contrast.test.ts) —
+  // MenuButton's own primary label already uses bg for the identical
+  // gold-on-gold pairing.
+  playBtnLabel: { color: Colors.bg },
   playBtnSub: {
     fontFamily: "Rajdhani_500Medium",
-    color: Colors.bgCard, opacity: 0.7,
+    color: Colors.bg, opacity: 0.7,
   },
 });

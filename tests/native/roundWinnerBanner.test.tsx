@@ -42,6 +42,7 @@ jest.mock('@/lib/accessibility', () => ({
 
 import { playRoundWin } from '@/lib/sounds';
 import { GameTable } from '@/components/GameTable';
+import { getVisibleText } from './visibilityHelpers';
 import type { Card, Combination, GameState, Player } from '@/lib/gameEngine';
 
 const METRICS = {
@@ -95,8 +96,11 @@ const table = (gameState: GameState) => (
   </SafeAreaProvider>
 );
 
-/** The name in the tag over the pile, not the same name on its seat. */
-const tagName = () => within(screen.getByTestId('pile-area')).queryByText(WINNER);
+/** The tag's scope over the pile, not the same name on its seat. */
+const pileArea = () => within(screen.getByTestId('pile-area'));
+/** Not present, hidden or otherwise — the tag unmounts on dismissal rather
+ *  than fading in place, so a plain absence check is the real claim here. */
+const tagGone = () => pileArea().queryByText(WINNER, { includeHiddenElements: true }) === null;
 
 describe('the round-winner tag', () => {
   beforeEach(() => {
@@ -109,20 +113,20 @@ describe('the round-winner tag', () => {
 
   it('shows the winner, dismisses itself, and shows the same winner again next round', async () => {
     const r = await render(table(closed()));
-    expect(tagName()).toBeTruthy();
+    getVisibleText(pileArea(), WINNER);
     expect(playRoundWin).toHaveBeenCalledTimes(1);
 
     await act(async () => {
       jest.advanceTimersByTime(4000);
     });
-    expect(tagName()).toBeNull();
+    expect(tagGone()).toBe(true);
 
     // The pass that ends nothing: three-handed, the engine clears roundWinner.
     await act(async () => r.rerender(table(between())));
-    expect(tagName()).toBeNull();
+    expect(tagGone()).toBe(true);
 
     await act(async () => r.rerender(table(closed())));
-    expect(tagName()).toBeTruthy();
+    getVisibleText(pileArea(), WINNER);
     expect(playRoundWin).toHaveBeenCalledTimes(2);
 
     await r.unmount();
@@ -132,22 +136,22 @@ describe('the round-winner tag', () => {
     // Two-handed: the winner leads the next round and takes it as well, so
     // `roundWinner` reads the same seat from the first close to the second.
     const r = await render(table(closed()));
-    expect(tagName()).toBeTruthy();
+    getVisibleText(pileArea(), WINNER);
     expect(playRoundWin).toHaveBeenCalledTimes(1);
 
     await act(async () => {
       jest.advanceTimersByTime(4000);
     });
-    expect(tagName()).toBeNull();
+    expect(tagGone()).toBe(true);
 
     await act(async () => r.rerender(table(leading())));
     await act(async () => {
       jest.advanceTimersByTime(500);
     });
-    expect(tagName()).toBeNull();
+    expect(tagGone()).toBe(true);
 
     await act(async () => r.rerender(table(closed())));
-    expect(tagName()).toBeTruthy();
+    getVisibleText(pileArea(), WINNER);
     expect(playRoundWin).toHaveBeenCalledTimes(2);
 
     await r.unmount();

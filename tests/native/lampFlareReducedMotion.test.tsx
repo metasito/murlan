@@ -8,7 +8,7 @@
 // preference is mocked at module scope, so the two cannot share one file.
 import { describe, it, expect, jest, beforeEach, afterEach } from "@jest/globals";
 import React from "react";
-import { act, render } from "@testing-library/react-native";
+import { act, render, screen, within } from "@testing-library/react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 jest.mock("@/lib/sounds", () => ({
@@ -54,6 +54,7 @@ jest.mock("@/components/useTableFeedback", () => {
 
 import { GameTable } from "@/components/GameTable";
 import { impactDelayMs } from "@/components/gameTableModel";
+import { getVisibleText } from "./visibilityHelpers";
 import type { Card, Combination, GameState, Player } from "@/lib/gameEngine";
 
 const METRICS = {
@@ -142,6 +143,25 @@ describe("reduced motion holds the lamp's flare and lift at exactly zero (#765)"
     });
 
     expect(boomTriggerReadings.every((v) => v === 0)).toBe(true);
+
+    await r.unmount();
+  });
+
+  // The flare/wave/spark are the whole of what a bomb "says" once — with the
+  // trigger held at zero (above), that channel is silent for the rest of the
+  // round. The combo chip on the pile is what has to carry the news instead,
+  // and it is not itself gated on the preference: it is `current`'s own label,
+  // drawn every time there is a combination to draw.
+  it("the bomb still names itself on the pile — the label, not just the flare, survives reduced motion", async () => {
+    const r = await render(table(inPlay(BOMB_PLAY), false));
+
+    await act(async () => {
+      jest.advanceTimersByTime(impactDelayMs(true) + 10);
+      jest.runOnlyPendingTimers();
+    });
+
+    const pile = within(screen.getByTestId("pile-area"));
+    getVisibleText(pile, /bomb/i);
 
     await r.unmount();
   });
