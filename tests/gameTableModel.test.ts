@@ -79,8 +79,12 @@ import {
   straightTopRankChar,
   sparkOffset,
   SPARK_COUNT,
+  flareKindFor,
+  sparksFor,
+  lampLiftFor,
   type ComboShape,
   type ImpactTier,
+  type FlareKind,
   type TableA11yStrings,
 } from "../components/gameTableModel.ts";
 import {
@@ -1800,6 +1804,51 @@ describe("the beaten pile's flinch (#764)", () => {
       /settle\.value \* LAND_DIP \* scale/,
       "FlyingCards' own settle dip must scale with the table"
     );
+  });
+});
+
+describe("the lamp's flare and lift (#765)", () => {
+  const ALL_TIERS: ImpactTier[] = ["ordinary", "straightFlush", "bomb", "mancheWon", "partitaWon"];
+
+  test("the graduated table #101 settled: only the bomb and the partita flare and spark", () => {
+    const expected: Record<ImpactTier, FlareKind> = {
+      ordinary: "none",
+      straightFlush: "none",
+      bomb: "brief",
+      mancheWon: "none",
+      partitaWon: "settle",
+    };
+    for (const tier of ALL_TIERS) {
+      assert.equal(flareKindFor(tier), expected[tier], `${tier} flare kind`);
+    }
+  });
+
+  test("a straight or flush lands at its own tier and gets neither a flare nor a spark", () => {
+    // The rung this ticket's own tier table names "Ordinary win, straight /
+    // flush" — the row `comboImpactTier` calls "straightFlush", never a bomb.
+    assert.equal(flareKindFor("straightFlush"), "none");
+    assert.equal(sparksFor("straightFlush"), false);
+  });
+
+  test("sparksFor never disagrees with flareKindFor — every tier that flares also sparks", () => {
+    for (const tier of ALL_TIERS) {
+      assert.equal(sparksFor(tier), flareKindFor(tier) !== "none", `${tier} spark/flare must agree`);
+    }
+  });
+
+  test("only the manche rung lifts the lamp — the row that hands over to the banner instead of flaring", () => {
+    for (const tier of ALL_TIERS) {
+      assert.equal(lampLiftFor(tier), tier === "mancheWon", `${tier} lamp lift`);
+    }
+  });
+
+  test("no tier both lifts and flares — the lamp does one or the other, never both", () => {
+    for (const tier of ALL_TIERS) {
+      assert.ok(
+        !(lampLiftFor(tier) && flareKindFor(tier) !== "none"),
+        `${tier} must not both lift and flare`
+      );
+    }
   });
 });
 

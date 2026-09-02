@@ -109,7 +109,7 @@ import { GameSettingsSheet } from "@/components/table/settingsSheet";
 import { useTableFeedback } from "@/components/useTableFeedback";
 import { useHandOrder } from "@/components/useHandOrder";
 import { FlyingCards, PlayedPile, getComboLabel } from "@/components/table/pile";
-import { BombBurst, Sweep } from "@/components/table/moments";
+import { BombBurst, LampLift, Sweep } from "@/components/table/moments";
 import { TopOppSlot, SideOppSlot } from "@/components/table/seats";
 import { ExchangeAnnouncement } from "@/components/ExchangeAnnouncement";
 import { ExchangePrompt } from "@/components/table/ExchangePrompt";
@@ -636,10 +636,13 @@ export function GameTable({
     playImpact,
     rejectPlay,
     boomTrigger,
+    flareKind,
+    lampLiftTrigger,
     flushTrigger,
     celebrateFlush,
     shakeStyle,
     shake,
+    burst,
   } = useTableFeedback({
     isMyTurn,
     isFinished,
@@ -802,6 +805,7 @@ export function GameTable({
       });
       playImpact(thrown.heavy);
       shake(tier);
+      burst(tier);
       setFlinchTier(tier);
       setFlinchTrigger((t) => t + 1);
       if (thrown.emptiedHand) celebrateFlush();
@@ -828,6 +832,7 @@ export function GameTable({
     reduceMotion,
     playImpact,
     shake,
+    burst,
     celebrateFlush,
     players,
     opponents,
@@ -1214,6 +1219,15 @@ export function GameTable({
           lightX={light.x}
           lightY={light.y}
         />
+        {/* The manche rung (#765): the lamp itself brightens rather than
+            flaring, at the point it is already standing — never a second
+            position computation, `light` is the one `FeltPool` just drew at. */}
+        <LampLift
+          trigger={lampLiftTrigger}
+          scale={scale}
+          x={light.x * feltW}
+          y={light.y * feltH}
+        />
       </View>
 
       {/* Same coordinates, overflow visible so slots and buttons can extend out.
@@ -1329,7 +1343,7 @@ export function GameTable({
 
               {/* Centred on the same point the pile draws at, so the burst
                   rings the impact rather than the middle of the table box. */}
-              <BombBurst trigger={boomTrigger} scale={scale} />
+              <BombBurst trigger={boomTrigger} scale={scale} flareKind={flareKind} />
 
               {/* Beside the pile, not beside the table: the flight has to
                   settle exactly where PlayedPile then redraws the same cards,

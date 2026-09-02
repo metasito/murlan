@@ -1,12 +1,15 @@
-// The bomb's burst (flare + two waves + a ring of sparks) and the flush's
-// sweep — one-shot celebrations fired by components/useTableFeedback.ts's
-// `boomTrigger`/`flushTrigger` counters. "A number changed, play again" is
-// the same pattern PlayedPile's own `bounceTrigger` already uses: the trigger
-// only says an event happened, and each piece here decides for itself,
-// against `usePrefersReducedMotion`, whether to actually animate.
+// The bomb's burst (flare + two waves + a ring of sparks), the manche's own
+// lamp lift, and the flush's sweep — one-shot celebrations fired by
+// components/useTableFeedback.ts's `boomTrigger`/`lampLiftTrigger`/
+// `flushTrigger` counters. "A number changed, play again" is the same
+// pattern PlayedPile's own `bounceTrigger` already uses: the trigger only
+// says an event happened, and each piece here decides for itself, against
+// `usePrefersReducedMotion`, whether to actually animate.
 //
 // Every duration, delay and value below is the prototype's own `kick` /
-// `flare` / `wave` / `spark` / `sweep` keyframes (issue #200), `* scale`.
+// `flare` / `wave` / `spark` / `sweep` keyframes (issue #200), `* scale` —
+// `LampLift` is the one exception, #765's own addition once the graduated
+// escalation (#101) gave the manche rung a reaction of its own.
 // CSS interpolates a `transform` list either function-by-function or by full
 // matrix decomposition depending on how the keyframes are written; neither
 // is worth reproducing bit-for-bit here, so a channel a keyframe leaves
@@ -24,44 +27,144 @@ import Animated, {
   cancelAnimation,
   Easing,
 } from "react-native-reanimated";
-import Svg, { Defs, RadialGradient, Rect, Stop } from "react-native-svg";
 import { LinearGradient } from "expo-linear-gradient";
-import { stop } from "./felt";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
-import { sparkOffset, SPARK_COUNT } from "@/components/gameTableModel";
-import { Layer, makeShadow, Motion } from "@/lib/theme";
+import { sparkOffset, SPARK_COUNT, type FlareKind } from "@/components/gameTableModel";
+import { Layer, makeShadow, withAlpha, Motion } from "@/lib/theme";
 
 // The prototype's own literal colours for this one effect — a lamp exploding
 // at the pile is a brighter, whiter flash than the felt's own ambient
 // Lantern tokens, which are tuned for a light source rather than an event,
 // and CLAUDE.md's invariant against a token used outside the role it was
 // named for rules those out here.
-const FLARE_CORE = "rgba(255,250,232,.98)";
-const FLARE_MID = "rgba(255,201,102,.5)";
-const FLARE_EDGE = "rgba(255,201,102,0)";
+//
+// Neither `Flare` nor `LampLift` animate an `<Svg>`. `felt.tsx`'s own
+// comments record, from #209, that react-native-svg's native path paints at
+// its own laid-out bounds and does not move with a `transform` on an
+// ancestor view — a bug this codebase has already paid for twice, and one no
+// device access this session can re-verify a variant of. Both animate a
+// plain `Animated.View`'s own `opacity`/`transform` instead, the shape
+// `Wave`/`Spark` already use, with a static blurred `glow` (`makeShadow`)
+// standing outside the animated path for the outer halo.
+const FLARE_GLOW = "#FFC966";
 const WAVE_STROKE = "rgba(255,236,180,.9)";
 const SPARK_FILL = "#FFE9B0";
 const SPARK_GLOW = "#FFD070";
 const SWEEP_BAND = "rgba(255,240,200,.42)";
 const SWEEP_TRANSPARENT = "rgba(255,240,200,0)";
+// The lift's own glow (#765) — softer than the flare's near-white core: the
+// manche rung hands over to its own banner rather than surprising the table,
+// so it reads as the lamp itself brightening, not as a second flash.
+const LIFT_GLOW = "#FFE8B8";
+
+/**
+ * A single flat fill reads as a coin, not a bloom of light — a second blind
+ * critique on #765 caught exactly that on `Flare`'s own replacement shape.
+ * `GradientLayers` fakes the falloff a radial gradient would have painted
+ * with a handful of concentric, decreasingly-transparent plain circles,
+ * largest and faintest first so each later (smaller, brighter) one composites
+ * on top — cheap, and every one of them still only ever animates via the
+ * parent `Animated.View`'s own `transform`/`opacity`, never its own.
+ */
+interface GradientLayer {
+  /** This layer's own diameter, as a fraction of the parent's `size`. */
+  diameterFactor: number;
+  fill: string;
+}
+
+function GradientLayers({ size, layers }: { size: number; layers: readonly GradientLayer[] }) {
+  return (
+    <>
+      {layers.map((layer, i) => {
+        const d = size * layer.diameterFactor;
+        return (
+          <View
+            key={i}
+            style={{
+              position: "absolute",
+              width: d,
+              height: d,
+              left: (size - d) / 2,
+              top: (size - d) / 2,
+              borderRadius: d / 2,
+              backgroundColor: layer.fill,
+            }}
+          />
+        );
+      })}
+    </>
+  );
+}
+
+/**
+ * The bomb/partita flare's own falloff — a hand-stepped approximation of the
+ * three-stop SVG radial gradient this effect shipped with in #200 (core
+ * `rgba(255,250,232,.98)` at the centre, through gold at 40% of the radius,
+ * to transparent at 72%). Every diameter and alpha step is its own named
+ * constant, #765's own acceptance criterion for a duration/opacity step.
+ */
+const FLARE_LAYER_OUTER_DIAMETER = 0.7;
+const FLARE_LAYER_OUTER_ALPHA = 0.18;
+const FLARE_LAYER_MID_DIAMETER = 0.42;
+const FLARE_LAYER_MID_ALPHA = 0.42;
+const FLARE_LAYER_MID_COLOR = "#FFDE9E";
+const FLARE_LAYER_CORE_DIAMETER = 0.16;
+const FLARE_LAYER_CORE_ALPHA = 0.92;
+const FLARE_LAYER_CORE_COLOR = "#FFFAE8";
+
+const FLARE_LAYERS: readonly GradientLayer[] = [
+  { diameterFactor: FLARE_LAYER_OUTER_DIAMETER, fill: withAlpha(FLARE_GLOW, FLARE_LAYER_OUTER_ALPHA) },
+  { diameterFactor: FLARE_LAYER_MID_DIAMETER, fill: withAlpha(FLARE_LAYER_MID_COLOR, FLARE_LAYER_MID_ALPHA) },
+  { diameterFactor: FLARE_LAYER_CORE_DIAMETER, fill: withAlpha(FLARE_LAYER_CORE_COLOR, FLARE_LAYER_CORE_ALPHA) },
+];
+
+/** The lift's own falloff — the same idea, softer throughout to match `LIFT_GLOW`. */
+const LIFT_LAYER_OUTER_DIAMETER = 0.85;
+const LIFT_LAYER_OUTER_ALPHA = 0.1;
+const LIFT_LAYER_MID_DIAMETER = 0.5;
+const LIFT_LAYER_MID_ALPHA = 0.22;
+const LIFT_LAYER_MID_COLOR = "#FFEEC8";
+const LIFT_LAYER_CORE_DIAMETER = 0.22;
+const LIFT_LAYER_CORE_ALPHA = 0.42;
+const LIFT_LAYER_CORE_COLOR = "#FFF5DC";
+
+const LIFT_LAYERS: readonly GradientLayer[] = [
+  { diameterFactor: LIFT_LAYER_OUTER_DIAMETER, fill: withAlpha(LIFT_GLOW, LIFT_LAYER_OUTER_ALPHA) },
+  { diameterFactor: LIFT_LAYER_MID_DIAMETER, fill: withAlpha(LIFT_LAYER_MID_COLOR, LIFT_LAYER_MID_ALPHA) },
+  { diameterFactor: LIFT_LAYER_CORE_DIAMETER, fill: withAlpha(LIFT_LAYER_CORE_COLOR, LIFT_LAYER_CORE_ALPHA) },
+];
 
 // `mix-blend-mode` has no native equivalent; RN Web passes it straight
-// through as a style prop, and native ignores an unrecognised one.
-const SCREEN_BLEND =
-  Platform.OS === "web" ? ({ mixBlendMode: "screen" } as unknown as ViewStyle) : null;
+// through as a style prop, and native ignores an unrecognised one. `{}`
+// rather than `null` — a literal `null` inside an Animated.View's own style
+// array is fine for RN's own flattening but crashes reanimated's jest
+// `getAnimatedStyle` read-back (its test-only `jestInlineStyle` filter does
+// `'jestAnimatedValues' in obj` on every entry, unguarded against `null`).
+const SCREEN_BLEND = Platform.OS === "web" ? ({ mixBlendMode: "screen" } as unknown as ViewStyle) : {};
 
 // ─── Flare ──────────────────────────────────────────────────────────────────
 
-const FLARE_ID = "bombFlare";
 const FLARE_SIZE = 150;
-const FLARE_MS = 1500;
+/** The bomb's own window — brief, because the surprise is over the instant it lands. */
+const FLARE_BRIEF_MS = 1500;
+/**
+ * The partita's own window — long enough to carry the closing beat rather
+ * than read as a second bomb: `flareKindFor` (gameTableModel.ts) is what
+ * decides which of the two a landing plays, never a branch in here.
+ */
+const FLARE_SETTLE_MS = FLARE_BRIEF_MS * 2;
 const FLARE_EASING = Easing.bezier(0.12, 0.72, 0.28, 1);
 const FLARE_Z = Layer.moment;
 
-function Flare({ trigger, scale }: { trigger: number; scale: number }) {
+function flareDurationMs(kind: FlareKind): number {
+  return kind === "settle" ? FLARE_SETTLE_MS : FLARE_BRIEF_MS;
+}
+
+function Flare({ trigger, scale, kind }: { trigger: number; scale: number; kind: FlareKind }) {
   const reduceMotion = usePrefersReducedMotion();
   const opacity = useSharedValue(0);
   const scaleV = useSharedValue(0.15);
+  const flareMs = flareDurationMs(kind);
 
   useEffect(() => {
     if (!trigger || reduceMotion) return;
@@ -69,16 +172,16 @@ function Flare({ trigger, scale }: { trigger: number; scale: number }) {
     scaleV.value = 0.15;
     const e = FLARE_EASING;
     opacity.value = withSequence(
-      withTiming(1, { duration: FLARE_MS * 0.06, easing: e }),
-      withTiming(1, { duration: FLARE_MS * 0.06, easing: e }),
-      withTiming(0, { duration: FLARE_MS * 0.88, easing: e })
+      withTiming(1, { duration: flareMs * 0.06, easing: e }),
+      withTiming(1, { duration: flareMs * 0.06, easing: e }),
+      withTiming(0, { duration: flareMs * 0.88, easing: e })
     );
     scaleV.value = withSequence(
-      withTiming(0.9, { duration: FLARE_MS * 0.06, easing: e }),
-      withTiming(1.05, { duration: FLARE_MS * 0.06, easing: e }),
-      withTiming(7, { duration: FLARE_MS * 0.88, easing: e })
+      withTiming(0.9, { duration: flareMs * 0.06, easing: e }),
+      withTiming(1.05, { duration: flareMs * 0.06, easing: e }),
+      withTiming(7, { duration: flareMs * 0.88, easing: e })
     );
-  }, [trigger, reduceMotion, opacity, scaleV]);
+  }, [trigger, reduceMotion, flareMs, opacity, scaleV]);
 
   useEffect(
     () => () => {
@@ -94,26 +197,22 @@ function Flare({ trigger, scale }: { trigger: number; scale: number }) {
   }));
 
   const size = FLARE_SIZE * scale;
+  // Static — a shadow outside `useAnimatedStyle` never touches the per-frame
+  // animated path, the same split `Spark`'s own `glow` below relies on.
+  const glow = makeShadow(FLARE_GLOW, 0, 0, 1, size * 0.55, 10);
   return (
     <Animated.View
       pointerEvents="none"
+      testID="bomb-flare"
       style={[
         momentStyles.centered,
         { width: size, height: size, left: -size / 2, top: -size / 2, zIndex: FLARE_Z },
+        glow,
         SCREEN_BLEND,
         aStyle,
       ]}
     >
-      <Svg width={size} height={size} viewBox="0 0 100 100">
-        <Defs>
-          <RadialGradient id={FLARE_ID}>
-            <Stop offset={0} {...stop(FLARE_CORE)} />
-            <Stop offset={0.4} {...stop(FLARE_MID)} />
-            <Stop offset={0.72} {...stop(FLARE_EDGE)} />
-          </RadialGradient>
-        </Defs>
-        <Rect width={100} height={100} fill={`url(#${FLARE_ID})`} />
-      </Svg>
+      <GradientLayers size={size} layers={FLARE_LAYERS} />
     </Animated.View>
   );
 }
@@ -255,6 +354,7 @@ function Spark({ index, trigger, scale }: { index: number; trigger: number; scal
   return (
     <Animated.View
       pointerEvents="none"
+      testID={`spark-${index}`}
       style={[
         momentStyles.centered,
         {
@@ -285,20 +385,113 @@ const BURST_Z = Layer.band;
  * The bomb's four layers, centred on the impact point — the same point
  * `PlayedPile` draws the pile at. Rendered as a sibling of it inside the
  * table's own centre section.
+ *
+ * `flareKind` names which of the two flaring tiers (#765) `trigger` is about
+ * to re-fire for — "brief" for the bomb, "settle" for the partita — read off
+ * `useTableFeedback`'s own `flareKind`, never guessed from `trigger` alone.
  */
-export function BombBurst({ trigger, scale }: { trigger: number; scale: number }) {
+export function BombBurst({
+  trigger,
+  scale,
+  flareKind,
+}: {
+  trigger: number;
+  scale: number;
+  flareKind: FlareKind;
+}) {
   return (
     <View pointerEvents="none" style={[momentStyles.overlay, { zIndex: BURST_Z }]}>
       <View style={momentStyles.anchor}>
         {WAVE_RINGS.map((ring, i) => (
           <Wave key={i} trigger={trigger} scale={scale} delayMs={ring.delay} durationMs={ring.duration} />
         ))}
-        <Flare trigger={trigger} scale={scale} />
+        <Flare trigger={trigger} scale={scale} kind={flareKind} />
         {SPARK_INDICES.map((i) => (
           <Spark key={i} index={i} trigger={trigger} scale={scale} />
         ))}
       </View>
     </View>
+  );
+}
+
+// ─── LampLift ───────────────────────────────────────────────────────────────
+//
+// The manche rung's own reaction (#765): a lift rather than a flare, since a
+// manche closing is the expected ending and hands over to the round-winner
+// banner rather than surprising the table the way a bomb or a partita does.
+// A brightening-and-swelling pulse over the lamp's own position, never the
+// lamp rig itself — `felt.tsx`'s own comments record the native-only cost of
+// wrapping its `<Svg>` in a *repositioning* transform, and this needs none of
+// that: it never moves, it only glows in place.
+
+const LIFT_SIZE = 130;
+const LIFT_MS = 900;
+const LIFT_EASING = Easing.bezier(0.2, 0.6, 0.25, 1);
+const LIFT_Z = Layer.felt;
+const LIFT_SCALE_FROM = 0.7;
+const LIFT_SCALE_TO = 1.35;
+
+/**
+ * `x`/`y` are the lamp's own centre in the felt box's own pixels —
+ * `lightPosition` (gameTableModel.ts) resolved against the felt's width and
+ * height, the same point `FeltPool` is already drawn at.
+ */
+export function LampLift({
+  trigger,
+  scale,
+  x,
+  y,
+}: {
+  trigger: number;
+  scale: number;
+  x: number;
+  y: number;
+}) {
+  const reduceMotion = usePrefersReducedMotion();
+  const opacity = useSharedValue(0);
+  const scaleV = useSharedValue(LIFT_SCALE_FROM);
+
+  useEffect(() => {
+    if (!trigger || reduceMotion) return;
+    opacity.value = 0;
+    scaleV.value = LIFT_SCALE_FROM;
+    const e = LIFT_EASING;
+    opacity.value = withSequence(
+      withTiming(0.85, { duration: LIFT_MS * 0.3, easing: e }),
+      withTiming(0, { duration: LIFT_MS * 0.7, easing: e })
+    );
+    scaleV.value = withTiming(LIFT_SCALE_TO, { duration: LIFT_MS, easing: e });
+  }, [trigger, reduceMotion, opacity, scaleV]);
+
+  useEffect(
+    () => () => {
+      cancelAnimation(opacity);
+      cancelAnimation(scaleV);
+    },
+    [opacity, scaleV]
+  );
+
+  const aStyle = useAnimatedStyle(() => ({
+    opacity: opacity.value,
+    transform: [{ scale: scaleV.value }],
+  }));
+
+  const size = LIFT_SIZE * scale;
+  // Static — see `Flare`'s own `glow` above.
+  const glow = makeShadow(LIFT_GLOW, 0, 0, 1, size * 0.5, 8);
+  return (
+    <Animated.View
+      pointerEvents="none"
+      testID="lamp-lift"
+      style={[
+        momentStyles.centered,
+        { left: x - size / 2, top: y - size / 2, width: size, height: size, zIndex: LIFT_Z },
+        glow,
+        aStyle,
+      ]}
+    >
+      <GradientLayers size={size} layers={LIFT_LAYERS} />
+    </Animated.View>
   );
 }
 

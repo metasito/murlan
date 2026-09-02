@@ -18,7 +18,10 @@ import {
   traumaFor,
   shakeOffset,
   shakeAmplitudeFor,
+  flareKindFor,
+  lampLiftFor,
   type ImpactTier,
+  type FlareKind,
 } from "@/components/gameTableModel";
 import {
   playBomb,
@@ -97,11 +100,17 @@ interface TableFeedback {
   playImpact: (heavy: boolean) => void;
   rejectPlay: () => void;
   /**
-   * Increments on every bomb impact — BombBurst (components/table/moments.tsx)
-   * re-fires its flare/wave/spark off the change, the same trigger-counter
-   * pattern PlayedPile's own `bounceTrigger` already uses.
+   * Increments whenever a landing's tier flares (#765: bomb, partita) —
+   * BombBurst (components/table/moments.tsx) re-fires its flare/wave/spark
+   * off the change, the same trigger-counter pattern PlayedPile's own
+   * `bounceTrigger` already uses. Never on a straight/flush or a manche
+   * closing: `flareKindFor` (gameTableModel.ts) is what decides.
    */
   boomTrigger: number;
+  /** Which shape the flare that `boomTrigger` is about to re-fire takes — read by BombBurst's own `Flare`. */
+  flareKind: FlareKind;
+  /** Increments when a landing's tier is the manche rung — the lamp lifts rather than flares. */
+  lampLiftTrigger: number;
   /** Increments when a play empties a hand — Sweep and PlayedPile's `catchTrigger` read it the same way. */
   flushTrigger: number;
   /** Call once, at the same landing moment as `playImpact`, when that play emptied a hand. */
@@ -110,6 +119,8 @@ interface TableFeedback {
   shakeStyle: AnimatedStyle<ViewStyle>;
   /** Fire the shake for the tier a landing resolved to — `landingTier` (gameTableModel.ts) names it. */
   shake: (tier: ImpactTier) => void;
+  /** Fire the lamp's own reaction (#765) for the same tier, at the same landing `shake` fires for. */
+  burst: (tier: ImpactTier) => void;
 }
 
 /**
@@ -131,6 +142,8 @@ function useImpactFeedback(reduceMotion: boolean, scale: number) {
   const kickScale = useSharedValue(1);
   const giocaRejectX = useSharedValue(0);
   const [boomTrigger, setBoomTrigger] = useState(0);
+  const [flareKind, setFlareKind] = useState<FlareKind>("none");
+  const [lampLiftTrigger, setLampLiftTrigger] = useState(0);
   // The escalation's own shake (#763): a trauma peak, an elapsed clock and the
   // decay window that landed with it — `shakeOffset` reads all four back
   // every frame, riding the table #101 settled — never a second amplitude
@@ -165,7 +178,22 @@ function useImpactFeedback(reduceMotion: boolean, scale: number) {
     );
     kickX.value = jolt("x");
     kickY.value = jolt("y");
-    setBoomTrigger((t) => t + 1);
+  };
+
+  // The lamp's own reaction (#765): reads `flareKindFor`/`lampLiftFor`
+  // (gameTableModel.ts) off the same tier `shake` below reads its trauma
+  // from, so a straight/flush or a manche closing can never trip the burst
+  // meant for a bomb or a partita — `kick`'s old, coarser "heavy" gate did.
+  const burst = (tier: ImpactTier) => {
+    if (reduceMotionRef.current) return;
+    const kind = flareKindFor(tier);
+    if (kind !== "none") {
+      setFlareKind(kind);
+      setBoomTrigger((t) => t + 1);
+    }
+    if (lampLiftFor(tier)) {
+      setLampLiftTrigger((t) => t + 1);
+    }
   };
 
   const reject = () => {
@@ -243,13 +271,25 @@ function useImpactFeedback(reduceMotion: boolean, scale: number) {
   // never refreshed because it never needs to be — both closures read their
   // only two inputs through `scaleRef` and `reduceMotionRef`, so the pair
   // captured on the first render behaves the same as any later one.
-  const writers = useRef({ kick, reject, shake });
+  const writers = useRef({ kick, reject, shake, burst });
 
   const impact = useCallback(() => writers.current.kick(), []);
   const rejectPlay = useCallback(() => writers.current.reject(), []);
   const triggerShake = useCallback((tier: ImpactTier) => writers.current.shake(tier), []);
+  const triggerBurst = useCallback((tier: ImpactTier) => writers.current.burst(tier), []);
 
-  return { kickStyle, giocaRejectX, impact, rejectPlay, boomTrigger, shakeStyle, shake: triggerShake };
+  return {
+    kickStyle,
+    giocaRejectX,
+    impact,
+    rejectPlay,
+    boomTrigger,
+    flareKind,
+    lampLiftTrigger,
+    shakeStyle,
+    shake: triggerShake,
+    burst: triggerBurst,
+  };
 }
 
 export function useTableFeedback({
@@ -291,8 +331,18 @@ export function useTableFeedback({
   const giocaFlashVal = useSharedValue(0);
   const passaFlashVal = useSharedValue(0);
   const giocaGlowVal = useSharedValue(0);
-  const { kickStyle, giocaRejectX, impact, rejectPlay, boomTrigger, shakeStyle, shake } =
-    useImpactFeedback(reduceMotion, scale);
+  const {
+    kickStyle,
+    giocaRejectX,
+    impact,
+    rejectPlay,
+    boomTrigger,
+    flareKind,
+    lampLiftTrigger,
+    shakeStyle,
+    shake,
+    burst,
+  } = useImpactFeedback(reduceMotion, scale);
   // BombBurst and Sweep own their animations; these just say "again" —
   // PlayedPile's `bounceTrigger` is the same pattern.
   const [flushTrigger, setFlushTrigger] = useState(0);
@@ -453,9 +503,12 @@ export function useTableFeedback({
     playImpact,
     rejectPlay,
     boomTrigger,
+    flareKind,
+    lampLiftTrigger,
     flushTrigger,
     celebrateFlush,
     shakeStyle,
     shake,
+    burst,
   };
 }

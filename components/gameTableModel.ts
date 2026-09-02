@@ -557,6 +557,39 @@ export function shakeOffset(
   };
 }
 
+// ─── Lamp flare and lift (#765) ──────────────────────────────────────────────
+//
+// The lamp's own reaction to a landing, at the graduated tiers #101 settled
+// (the "C — Cinema" row of #772's grammar). Reads `ImpactTier` — the same
+// tier #763 squares into a shake — rather than a second table: a manche is
+// the expected ending and hands over to its own banner, so it lifts instead
+// of flaring; the bomb and the partita both throw light, because both are the
+// surprise the shake already ranks above a manche closing.
+
+/** What the lamp's own flare does at a tier's landing, if anything. */
+export type FlareKind = "none" | "brief" | "settle";
+
+export function flareKindFor(tier: ImpactTier): FlareKind {
+  if (tier === "bomb") return "brief";
+  if (tier === "partitaWon") return "settle";
+  return "none";
+}
+
+/**
+ * Whether a tier's landing throws sparks off the point of impact. Never
+ * disagrees with `flareKindFor`: every tier that flares also sparks, in the
+ * table #101 settled, so this reads that one derivation rather than carrying
+ * a second membership test that could drift from it.
+ */
+export function sparksFor(tier: ImpactTier): boolean {
+  return flareKindFor(tier) !== "none";
+}
+
+/** Whether a tier's landing lifts the lamp rather than flaring it. */
+export function lampLiftFor(tier: ImpactTier): boolean {
+  return tier === "mancheWon";
+}
+
 // ─── Bomb burst ────────────────────────────────────────────────────────────────
 
 /** Spark dots ringing the bomb's impact point. */
