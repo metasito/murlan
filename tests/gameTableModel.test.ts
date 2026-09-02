@@ -7,7 +7,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { CARD_H, CARD_W, BACK_SCALE } from "../components/cardFaceModel.ts";
-import { Hold, TOUCH_TARGET_MIN, Trauma, Motion } from "../lib/tokens.ts";
+import { Hold, TOUCH_TARGET_MIN, Trauma, Motion, Spacing } from "../lib/tokens.ts";
 import { blankComments } from "./helpers/sourceScan.ts";
 import type { Card, Combination } from "../lib/gameEngine.ts";
 import {
@@ -69,6 +69,7 @@ import {
   comboImpactTier,
   landingTier,
   traumaFor,
+  flinchFor,
   shakeMagnitude,
   shakeOffset,
   shakeAmplitudeFor,
@@ -1659,6 +1660,145 @@ describe("the table's own trauma escalation (#763)", () => {
       src,
       /const (BOMB_)?SHAKE_AMPLITUDE_[XY]\s*=\s*\d/,
       "a shake amplitude must read a Spacing step, not a pixel literal"
+    );
+  });
+});
+
+describe("the beaten pile's flinch (#764)", () => {
+  const ALL_TIERS: ImpactTier[] = ["ordinary", "straightFlush", "bomb", "mancheWon", "partitaWon"];
+
+  test("the tier→displacement mapping reads the same five tiers #763's trauma table does", () => {
+    assert.equal(flinchFor("ordinary", false), 0);
+    assert.equal(flinchFor("straightFlush", false), Spacing.xxs);
+    assert.equal(flinchFor("bomb", false), Spacing.slim);
+    assert.equal(flinchFor("mancheWon", false), Spacing.slim);
+    assert.equal(flinchFor("partitaWon", false), Spacing.slim);
+  });
+
+  test("a straight or flush still displaces what it beat — only the ordinary win is silent", () => {
+    assert.ok(
+      flinchFor("straightFlush", false) > flinchFor("ordinary", false),
+      "the land spring's own overshoot is the whole effect for an ordinary win, but a straight or flush must visibly give ground"
+    );
+  });
+
+  test("bomb, manche and partita all knock the beaten pile the same distance — the escalation past the bomb rides the shake and the hold, not a bigger knock", () => {
+    assert.equal(flinchFor("bomb", false), flinchFor("mancheWon", false));
+    assert.equal(flinchFor("mancheWon", false), flinchFor("partitaWon", false));
+  });
+
+  test("reduced motion answers exactly 0 at every tier, without a bespoke branch", () => {
+    for (const tier of ALL_TIERS) {
+      assert.ok(
+        Object.is(flinchFor(tier, true), 0),
+        `${tier} must carry no flinch under reduced motion, and answer true rest rather than a small number`
+      );
+    }
+  });
+
+  test("the mapping reads Spacing, never a bare pixel literal", () => {
+    const src = blankComments(
+      readFileSync(path.join(repoRoot, "components", "gameTableModel.ts"), "utf8")
+    );
+    const table = src.match(/const FLINCH_BY_TIER: Record<ImpactTier, number> = \{[\s\S]*?\};/);
+    assert.ok(table, "expected a FLINCH_BY_TIER table in gameTableModel.ts");
+    assert.doesNotMatch(
+      table![0],
+      /:\s*[1-9]\d*/,
+      "a non-zero flinch displacement must read a Spacing step, not a pixel literal"
+    );
+  });
+
+  // #764's own ticket: this exact shape shipped inert twice — a flinch that
+  // fires but moves nothing a player can see. Pinning the wiring rather than
+  // just the pure function is what would have caught that.
+  test("the flinch fires from the same impactDelayMs() landing the shake and the impact sound wait for — never a second derivation", () => {
+    const src = blankComments(
+      readFileSync(path.join(repoRoot, "components", "GameTable.tsx"), "utf8")
+    );
+    const block = src.match(
+      /impactTimerRef\.current = setTimeout\(\(\) => \{[\s\S]*?\}, impactDelayMs\(reduceMotion\)\);/
+    );
+    assert.ok(block, "expected the impact timeout in GameTable.tsx");
+    assert.match(block![0], /shake\(tier\)/, "the shake must read the same tier the flinch does");
+    assert.match(
+      block![0],
+      /setFlinchTrigger/,
+      "the flinch must be triggered from this same landing, not a later one"
+    );
+  });
+
+  // A second blind critique defeated a source-scan version of this same check
+  // (matching `translateY: PILE_PREV_Y + flinchY.value` as text anywhere in
+  // the file) with a decoy function holding the same literal text elsewhere,
+  // and separately by dropping the static `-7deg` resting rotate outright —
+  // both passed every test here. A scan proves the text is present, not that
+  // it is reachable from the rendered node; `tests/native/pileFlinch.test.tsx`
+  // mounts `PlayedPile`, bumps `flinchTrigger`, and reads the beaten layer's
+  // actual transform, which is the only thing that can tell the two apart.
+
+  // A blind critique caught this exact shape: every test above stayed green
+  // while the flinch was rewired onto `current`, the landing combination,
+  // instead of `prev`, the one it beat — the whole point of the ticket. A
+  // string search for "prevLayerStyle" anywhere in the file cannot catch
+  // that; only asking which JSX branch carries it can.
+  test("the flinch lands on the beaten layer (prev), never on the new one — the whole point of the ticket", () => {
+    const src = blankComments(
+      readFileSync(path.join(repoRoot, "components", "table", "pile.tsx"), "utf8")
+    );
+    const stack = src.match(/<View style=\{pileStyles\.pileStack\}>[\s\S]*?<\/View>/);
+    assert.ok(stack, "expected the pile's own stacking View");
+    const prevBlock = stack![0].match(/\{prev &&[\s\S]*?\)\}/);
+    const currentBlock = stack![0].match(/\{current &&[\s\S]*?\)\}/);
+    assert.ok(prevBlock, "expected the prev-combo JSX branch inside the stack");
+    assert.ok(currentBlock, "expected the current-combo JSX branch inside the stack");
+    assert.match(
+      prevBlock![0],
+      /prevLayerStyle/,
+      "the flinch's own animated style must be applied to the beaten layer"
+    );
+    assert.doesNotMatch(
+      currentBlock![0],
+      /prevLayerStyle|flinchY/,
+      "the flinch must never reach the landing combination — displacing prev is the whole point of #764"
+    );
+  });
+
+  // A blind critique's own measurement: shipped at a fixed 2px/6px, the
+  // flinch was under half its intended share of the table at a tablet's
+  // short edge (834) against the base one (390) this scale is authored
+  // against (components/cardFaceModel.ts). `shakeOffset` and `kick`
+  // (useTableFeedback.ts) both read as a fraction of the table for the same
+  // reason: a fixed pixel count reads huge on a phone and vanishes on a
+  // tablet (#790).
+  test("the flinch's own distance scales with the table, the way shakeOffset scales trauma", () => {
+    const src = blankComments(
+      readFileSync(path.join(repoRoot, "components", "table", "pile.tsx"), "utf8")
+    );
+    assert.match(
+      src,
+      /flinchFor\(flinchTier \?\? "ordinary", reduceMotion\) \* scale/,
+      "the flinch's own trigger must multiply flinchFor's answer by the table's own scale"
+    );
+  });
+
+  // The critique found this exact defect twice more in the same file: the
+  // pile's own land-spring overshoot (the ordinary tier's whole effect) and
+  // FlyingCards' own settle dip were both fixed pixel counts too. Fixed
+  // alongside the flinch rather than left as the next instance of the class.
+  test("the pile's own bounce and FlyingCards' own land dip scale with the table too — the same defect class, fixed alongside the flinch", () => {
+    const src = blankComments(
+      readFileSync(path.join(repoRoot, "components", "table", "pile.tsx"), "utf8")
+    );
+    assert.match(
+      src,
+      /-PILE_BOUNCE_DIP \* scale/,
+      "PlayedPile's own bounce (the ordinary tier's whole effect) must scale with the table"
+    );
+    assert.match(
+      src,
+      /settle\.value \* LAND_DIP \* scale/,
+      "FlyingCards' own settle dip must scale with the table"
     );
   });
 });
