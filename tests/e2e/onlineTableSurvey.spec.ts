@@ -59,13 +59,26 @@ const RECORD = path.join(AUDIT_DIR, "online-table.txt");
 /** Set to rewrite the record instead of being held to it. */
 const UPDATING = process.env.AUDIT_UPDATE === "1";
 
-const keyOf = (row: string) => row.split("\t").slice(0, 2).join("\t");
+/**
+ * `MODE\tviewport\tcards=N`. Every seat here is a real account now (#800),
+ * so a fresh 4-player deal's leader is whichever of the four `dealFirstSeat`
+ * (server/tableHandlers.ts) happens to give the 3♠ — two of the four seats
+ * get 14 cards, two get 13 (`dealCards`, lib/gameEngine.ts), so the hand this
+ * measures is genuinely, legitimately, either. Leaving `cards` out of the key
+ * would hold a 13-card table to a 14-card table's own recorded row — the
+ * exact byte-for-byte fields a fresh shuffle changed on purpose — and reds a
+ * table that never drifted, on the very lottery this file exists to remove.
+ */
+const keyOf = (row: string) => {
+  const parts = row.split("\t");
+  return [parts[0], parts[1], parts[6]].join("\t");
+};
 
 /**
- * The record by `MODE\tviewport`, so a shard is held to the rows it measured.
- * CI does write a whole one — the split is by spec file, so one shard runs all
- * four — but onto a runner nothing commits from, so the checked-in copy only
- * ever moves when someone runs the survey locally.
+ * The record by `MODE\tviewport\tcards`, so a shard is held to the rows it
+ * measured. CI does write a whole one — the split is by spec file, so one
+ * shard runs all four — but onto a runner nothing commits from, so the
+ * checked-in copy only ever moves when someone runs the survey locally.
  */
 function recorded(): Map<string, string> {
   try {
@@ -378,103 +391,112 @@ const rows: string[] = [];
 
 test.describe("the online table, at the audit's viewports", () => {
   for (const vp of VIEWPORTS) {
-    // `consoleErrors` is asked for rather than left to the fixture file: it is
-    // not an auto fixture, so a test that does not name it gets neither the
-    // console-error gate nor the reduced-motion emulation set up beside it.
-    test(`${vp.name} — ${vp.width}x${vp.height}`, async ({ page, baseURL, consoleErrors }) => {
+    // Not the fixture `page`: every seat here is its own browser context (see
+    // `openOnlineTable`), so the console-error gate and the reduced-motion
+    // emulation the `consoleErrors` fixture would set up on the unused
+    // fixture page are wired onto each seat directly instead.
+    test(`${vp.name} — ${vp.width}x${vp.height}`, async ({ browser, baseURL }) => {
       // Past the sum of the ceilings each half sets for itself, so a runner
       // slow enough to reach one fails with that ceiling's own sentence rather
       // than with a timeout that names nothing.
       test.setTimeout(300_000);
-      await page.setViewportSize({ width: vp.width, height: vp.height });
 
-      await openOnlineTable(page, baseURL!, { playerCount: SEATS, gameMode: "free_for_all" });
-      const online = await stillMeasure(page, "ONLINE");
-      mkdirSync(path.join(AUDIT_DIR, "captures"), { recursive: true });
-      await page.screenshot({
-        path: path.join(AUDIT_DIR, "captures", `online-table__${vp.name}.png`),
+      const table = await openOnlineTable(browser, baseURL!, {
+        playerCount: SEATS,
+        gameMode: "free_for_all",
+        viewport: { width: vp.width, height: vp.height },
       });
+      const { page } = table;
+      try {
+        const online = await stillMeasure(page, "ONLINE");
+        mkdirSync(path.join(AUDIT_DIR, "captures"), { recursive: true });
+        await page.screenshot({
+          path: path.join(AUDIT_DIR, "captures", `online-table__${vp.name}.png`),
+        });
 
-      // Dealt the same number of cards the server just dealt, not the seed
-      // helper's default: the hand row sizes its cards to fit however many it
-      // holds, so a 13-card seed and a 14-card deal are two different tables
-      // and comparing them measures the deal rather than the layout.
-      await openSeededGame(page, baseURL!, SEATS, online.cards);
-      await page.locator(TABLE).waitFor({ timeout: 30_000 });
-      const offline = await stillMeasure(page, "OFFLINE");
+        // Dealt the same number of cards the server just dealt, not the seed
+        // helper's default: the hand row sizes its cards to fit however many it
+        // holds, so a 13-card seed and a 14-card deal are two different tables
+        // and comparing them measures the deal rather than the layout.
+        await openSeededGame(page, baseURL!, SEATS, online.cards);
+        await page.locator(TABLE).waitFor({ timeout: 30_000 });
+        const offline = await stillMeasure(page, "OFFLINE");
 
-      console.log(line("ONLINE", vp, online));
-      console.log(line("OFFLINE", vp, offline));
+        console.log(line("ONLINE", vp, online));
+        console.log(line("OFFLINE", vp, offline));
 
-      // The felt's own box. Both screens size it from the window's short edge
-      // (CLAUDE.md), so a difference here is one of them reading a different
-      // window — the safe-area regression that invariant exists for.
-      expect(
-        online.table,
-        `the online table is ${online.table.width}x${online.table.height} where the offline one ` +
-          `is ${offline.table.width}x${offline.table.height} at the same ${vp.width}x${vp.height} window`
-      ).toEqual(offline.table);
+        // The felt's own box. Both screens size it from the window's short edge
+        // (CLAUDE.md), so a difference here is one of them reading a different
+        // window — the safe-area regression that invariant exists for.
+        expect(
+          online.table,
+          `the online table is ${online.table.width}x${online.table.height} where the offline one ` +
+            `is ${offline.table.width}x${offline.table.height} at the same ${vp.width}x${vp.height} window`
+        ).toEqual(offline.table);
 
-      // The hand card is the scale made visible: every seat plate, fan and pile
-      // position is derived from it, so two tables that agree here agree about
-      // the whole geometry.
-      expect(
-        online.handSlot,
-        `an online hand card is ${online.handSlot.width}x${online.handSlot.height} where an ` +
-          `offline one is ${offline.handSlot.width}x${offline.handSlot.height}`
-      ).toEqual(offline.handSlot);
+        // The hand card is the scale made visible: every seat plate, fan and pile
+        // position is derived from it, so two tables that agree here agree about
+        // the whole geometry.
+        expect(
+          online.handSlot,
+          `an online hand card is ${online.handSlot.width}x${online.handSlot.height} where an ` +
+            `offline one is ${offline.handSlot.width}x${offline.handSlot.height}`
+        ).toEqual(offline.handSlot);
 
-      // The number finding 3 is about. It follows from the two above only if
-      // the seats sit where the scale says they do, which is the half of the
-      // table neither of them measures.
-      //
-      // Both lengths come out of the same scale, so the tolerance is taken from
-      // it too: a fiftieth of a card is below what the design distinguishes at
-      // any viewport, and a table whose seats sit differently is out by a card
-      // or more. A pixel count would be one thing on a phone and another on a
-      // tablet, where every length is two and a half times larger.
-      const tolerance = online.handSlot.height * PARITY_TOLERANCE;
-      expect(
-        Math.abs(online.emptyBand - offline.emptyBand),
-        `the online table leaves ${online.emptyBand.toFixed(3)}px between the lowest seat and ` +
-          `the hand where the offline one leaves ${offline.emptyBand.toFixed(3)}px, a difference ` +
-          `of more than the ${tolerance.toFixed(3)}px this viewport allows`
-      ).toBeLessThanOrEqual(tolerance);
+        // The number finding 3 is about. It follows from the two above only if
+        // the seats sit where the scale says they do, which is the half of the
+        // table neither of them measures.
+        //
+        // Both lengths come out of the same scale, so the tolerance is taken from
+        // it too: a fiftieth of a card is below what the design distinguishes at
+        // any viewport, and a table whose seats sit differently is out by a card
+        // or more. A pixel count would be one thing on a phone and another on a
+        // tablet, where every length is two and a half times larger.
+        const tolerance = online.handSlot.height * PARITY_TOLERANCE;
+        expect(
+          Math.abs(online.emptyBand - offline.emptyBand),
+          `the online table leaves ${online.emptyBand.toFixed(3)}px between the lowest seat and ` +
+            `the hand where the offline one leaves ${offline.emptyBand.toFixed(3)}px, a difference ` +
+            `of more than the ${tolerance.toFixed(3)}px this viewport allows`
+        ).toBeLessThanOrEqual(tolerance);
 
-      // The floor: a table that laid out as an empty box would satisfy every
-      // equality above having drawn nothing.
-      expect(
-        online.handSlot.width,
-        "the online hand rendered cards with no width"
-      ).toBeGreaterThan(20);
+        // The floor: a table that laid out as an empty box would satisfy every
+        // equality above having drawn nothing.
+        expect(
+          online.handSlot.width,
+          "the online hand rendered cards with no width"
+        ).toBeGreaterThan(20);
 
-      expect(
-        online.wide,
-        `these parts of the online table render off the side of a ${vp.width}px screen: ` +
-          online.wide.join("; ")
-      ).toEqual([]);
+        expect(
+          online.wide,
+          `these parts of the online table render off the side of a ${vp.width}px screen: ` +
+            online.wide.join("; ")
+        ).toEqual([]);
 
-      expect(consoleErrors.entries, "the browser reported errors at the table").toEqual([]);
+        expect(table.errors, "the browser reported errors at the table").toEqual([]);
 
-      // Last, never before the assertions: a red run's numbers are printed
-      // above but must not replace the record, which exists to say that the
-      // two tables agreed.
-      const measured = [line("ONLINE", vp, online), line("OFFLINE", vp, offline)];
-      rows.push(...measured);
+        // Last, never before the assertions: a red run's numbers are printed
+        // above but must not replace the record, which exists to say that the
+        // two tables agreed.
+        const measured = [line("ONLINE", vp, online), line("OFFLINE", vp, offline)];
+        rows.push(...measured);
 
-      if (!UPDATING) {
-        const record = recorded();
-        for (const row of measured) {
-          const was = record.get(keyOf(row));
-          if (was === undefined) continue;
-          expect(
-            row,
-            `the table no longer lays out the way docs/design/57-polish-audit/ records it ` +
-              `at ${vp.name}. If that is the intended change, say so on the ticket that made ` +
-              `it and regenerate the record with AUDIT_UPDATE=1 (a whole run, not a shard), ` +
-              `correcting the numbers README.md quotes.`
-          ).toBe(was);
+        if (!UPDATING) {
+          const record = recorded();
+          for (const row of measured) {
+            const was = record.get(keyOf(row));
+            if (was === undefined) continue;
+            expect(
+              row,
+              `the table no longer lays out the way docs/design/57-polish-audit/ records it ` +
+                `at ${vp.name}. If that is the intended change, say so on the ticket that made ` +
+                `it and regenerate the record with AUDIT_UPDATE=1 (a whole run, not a shard), ` +
+                `correcting the numbers README.md quotes.`
+            ).toBe(was);
+          }
         }
+      } finally {
+        await table.close();
       }
     });
   }
@@ -485,6 +507,41 @@ test.describe("the online table, at the audit's viewports", () => {
     // as the rest having stopped being true.
     if (rows.length !== VIEWPORTS.length * 2) return;
     mkdirSync(AUDIT_DIR, { recursive: true });
-    writeFileSync(RECORD, rows.join("\n") + "\n", "utf8");
+    // Merged into the existing file by key, never replacing it outright: this
+    // run's rows hold whichever `cards` count each viewport's real deal
+    // happened to land on, and the *other* count's own row — a real, already
+    // -verified table this run had no occasion to redeal — would be lost by
+    // a plain overwrite rather than left standing.
+    const merged = recorded();
+    for (const row of rows) merged.set(keyOf(row), row);
+    writeFileSync(RECORD, [...merged.values()].join("\n") + "\n", "utf8");
   });
+});
+
+/**
+ * #785's own guard, unrelated to #800's fix but sitting on the same table
+ * this file just changed how it reaches — proof the two are independent.
+ * `readTable` throws rather than measuring the instant any opponent seat
+ * reads below `freshFloor`, and this plants that exact condition at the DOM
+ * `readTable` reads it from, with no actual play needed to reach it.
+ */
+test("refuses to measure a table already played into", async ({ browser, baseURL }) => {
+  test.setTimeout(120_000);
+  const table = await openOnlineTable(browser, baseURL!, {
+    playerCount: SEATS,
+    gameMode: "free_for_all",
+    viewport: VIEWPORTS[0],
+  });
+  try {
+    await table.page.evaluate(() => {
+      const el = document.querySelector(
+        '[data-testid="top-seat"] [data-testid="seat-card-count"]'
+      );
+      if (!el) throw new Error("no top-seat card count on screen to plant a defect on");
+      el.textContent = "0";
+    });
+    await expect(measure(table.page)).rejects.toThrow(/already been played into/);
+  } finally {
+    await table.close();
+  }
 });
