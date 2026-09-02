@@ -156,7 +156,22 @@ env:
 # screen that is locked to landscape. The menus render either way, so rotating
 # earlier would work - it would just leave every assertion above this line
 # reading a layout no other flow reads.
-- setOrientation: LANDSCAPE_LEFT
+#
+# iOS only. The Android emulator has no such mismatch: run 33553366797's own
+# logcat shows the AVD's WindowManager finishing a real ROTATION_90 (mBounds
+# 2400x1080) a full second before this command starts, driven by the app's own
+# `ScreenOrientation.lockAsync(LANDSCAPE)` taking effect on the emulator as
+# soon as the table mounts. Asking Maestro to set the same rotation again is a
+# no-op the WindowManager never reports as a change, and `setOrientation` — unlike
+# `tapOn` — takes no `waitToSettleTimeoutMs` of its own: the settle-wait Maestro
+# always runs after it then polls this screen's own looping Reanimated
+# glow/pulse for something that never stops changing, and never returns. Same
+# class #762 fixed on `tapOn`, on a command with no cap to give it (#768).
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - setOrientation: LANDSCAPE_LEFT
 
 # The game table is landscape-locked and the screen physically
 # rotates on entry — give it time to settle before looking for
