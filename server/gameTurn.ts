@@ -27,7 +27,9 @@ import {
   autoMoveForSeat as sharedAutoMove,
   recordPlayFlags as recordFlags,
 } from "../lib/autoMove.ts";
+import { openingIsPending } from "../lib/gameEngine.ts";
 import type { GameState, Combination } from "../lib/gameEngine.ts";
+import { Reading } from "../lib/tokens.ts";
 
 /** The seat that must act right now: the exchange winner, or the turn holder. */
 function actingSeat(state: GameState): number {
@@ -108,8 +110,16 @@ export function armTurn(io: SocketServer, roomId: string, botDelayMs = botMoveDe
   }
 
   const username = game.gameState.players[seat]?.name ?? "";
-  game.turnDeadlineMs = Date.now() + afkTimeoutMs();
-  startAfkTimer(io, roomId, userId, username);
+  // The opener's own client holds the table behind the opening announcement
+  // for Reading.notice before it can act — an online-only cost, since the
+  // client draws that gate from state the server already dealt (startReason)
+  // rather than a message announcing it. Granted once, on the turn
+  // `openingIsPending` names: the opener's first play of the manche, never a
+  // seat replaying a turn it already spent its grant on.
+  const openingGraceMs = openingIsPending(game.gameState) ? Reading.notice : 0;
+  const timeoutMs = afkTimeoutMs() + openingGraceMs;
+  game.turnDeadlineMs = Date.now() + timeoutMs;
+  startAfkTimer(io, roomId, userId, username, timeoutMs);
   emitTurnDeadline(io, roomId, game);
 }
 
@@ -209,7 +219,8 @@ function startAfkTimer(
   io: SocketServer,
   roomId: string,
   userId: string,
-  username: string
+  username: string,
+  timeoutMs: number
 ) {
   clearAfkTimer(roomId, userId);
   const key = `${roomId}:${userId}`;
@@ -233,7 +244,7 @@ function startAfkTimer(
           });
         }
       });
-    }, afkTimeoutMs())
+    }, timeoutMs)
   );
 }
 

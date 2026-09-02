@@ -1141,29 +1141,9 @@ export function urgentThresholdSeconds(clockSeconds: number): number {
   return Math.max(URGENT_TICK_SECONDS, Math.ceil(clockSeconds * URGENT_FRACTION));
 }
 
-/**
- * Whether the manche's opening play is still to come — the moment
- * `startReason` describes, and the only one it may be announced in.
- *
- * The turn index matching the opener does not answer this: `startReason` labels
- * the whole manche and is never cleared, and the opener takes the lead again
- * every round they win. `firstPlayMade` does not either — only the very first
- * deal of a partita starts it false; a manche dealt after a lost round carries
- * it already true. What every deal empties and every play writes is the rank
- * tally, so an empty one is the state's own word for "nobody has played this
- * manche yet". A hand persisted before the tally existed has none, and reads as
- * past its opening: a missing announcement costs less than one over a live hand.
- */
-export function openingIsPending(state: {
-  currentTurnIndex: number;
-  gameOver: boolean;
-  startReason?: { playerIdx: number };
-  playedRanks?: number[];
-}): boolean {
-  if (state.gameOver || state.startReason === undefined) return false;
-  if (state.currentTurnIndex !== state.startReason.playerIdx) return false;
-  return state.playedRanks?.every((played) => played === 0) ?? false;
-}
+// Shared with the server (#830), which grants the opener's first turn a
+// longer AFK window on the same condition.
+export { openingIsPending } from "../lib/gameEngine.ts";
 
 /**
  * Whether the turn countdown should run. Offline it only answers a played
