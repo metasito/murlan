@@ -1,6 +1,6 @@
-import { Platform } from "react-native";
+import { AppState, Platform } from "react-native";
 import type { AudioPlayer } from "expo-audio";
-import { ensureAudioMode, onWebAudioUnlocked, sharedWebCtx } from "@/lib/sounds";
+import { ensureAudioMode, forgetAudioMode, onWebAudioUnlocked, sharedWebCtx } from "@/lib/sounds";
 import { TRACKS } from "@/lib/musicTracks";
 
 /**
@@ -205,6 +205,10 @@ function playNativeMusic(track: MusicTrack): void {
   }
   nativePlaying = track;
   try {
+    // lib/sounds.ts's playNative rewinds for the same reason: a player
+    // parked mid-loop or at the end of its buffer after an interruption
+    // plays silence otherwise.
+    player.seekTo(0);
     player.play();
   } catch {}
   fadeNative(player, targetGain(), FADE_S * 1000);
@@ -323,5 +327,16 @@ export function unloadMusic(): void {
 if (Platform.OS === "web") {
   onWebAudioUnlocked(() => {
     if (_wanted && _enabled) void playWebMusic(_wanted);
+  });
+} else {
+  // iOS silences the loop while the app is backgrounded
+  // (`shouldPlayInBackground: false`, lib/sounds.ts) — nothing else asks the
+  // player to sound again on return, and nothing else re-arms the session
+  // `ensureAudioMode` cached before the OS deactivated it.
+  AppState.addEventListener("change", (state) => {
+    if (state === "active" && _wanted && _enabled) {
+      forgetAudioMode();
+      void playMusic(_wanted);
+    }
   });
 }

@@ -1,15 +1,13 @@
-// tests/native/musicRouteReentry.test.tsx — #449: the game track goes silent
-// on a second entry to the table. Driving the real RootLayoutNav through a
-// pathname that leaves /game and comes back rules out the route effect
-// itself (`[pathname]` genuinely changes on every in-app navigation this app
-// has, and the mocked player's `play()` fires again every time — see the
-// first case). What reproduces the silence is the shape the owner actually
-// described: leaving the app and coming back to the same route, where
-// `pathname` never changes at all, and nothing here answers `AppState`.
+// tests/native/musicRouteReentry.test.tsx — #449: rules out the route effect
+// itself as a cause of the silent second entry. Driving the real
+// RootLayoutNav through `/game -> / -> /game` shows `[pathname]` genuinely
+// changes on every in-app navigation this app has, and the mocked player's
+// `play()` fires again on both entries — this path was never broken. What
+// was silent is covered separately, at the module that owns it
+// (tests/native/musicResume.test.tsx, lib/music.ts's own AppState handling).
 import { describe, it, expect, beforeEach, afterAll, jest } from '@jest/globals';
 import React from 'react';
 import { render, act } from '@testing-library/react-native';
-import { AppState } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 let mockPathname = '/';
@@ -46,6 +44,7 @@ jest.mock('expo-audio', () => ({
   createAudioPlayer: jest.fn(() => ({
     play: jest.fn(),
     pause: jest.fn(),
+    seekTo: jest.fn(),
     remove: jest.fn(),
     volume: 0,
     loop: false,
@@ -83,7 +82,6 @@ async function flush(): Promise<void> {
 beforeEach(() => {
   unloadMusic();
   createAudioPlayer.mockClear();
-  (AppState.addEventListener as jest.Mock).mockClear?.();
   mockPathname = '/';
 });
 
@@ -92,7 +90,7 @@ afterAll(() => {
   unloadMusic();
 });
 
-describe('music on a second entry to /game', () => {
+describe('music on a second entry to /game via in-app navigation', () => {
   it('plays the hand track again after leaving through another route and coming back', async () => {
     mockPathname = '/game';
     const r = await render(<Harness />);
@@ -107,31 +105,6 @@ describe('music on a second entry to /game', () => {
 
     mockPathname = '/game';
     await act(async () => r.rerender(<Harness />));
-    await flush();
-
-    expect(handPlayer.play).toHaveBeenCalledTimes(2);
-
-    await r.unmount();
-  });
-
-  it('plays the hand track again after the app leaves and returns to the foreground on the same route', async () => {
-    mockPathname = '/game';
-    const r = await render(<Harness />);
-    await flush();
-
-    const handPlayer = createAudioPlayer.mock.results[0].value as { play: jest.Mock };
-    expect(handPlayer.play).toHaveBeenCalledTimes(1);
-
-    // pathname never changes here — this is the shape the owner described:
-    // leaving the app (not the route) and coming back to the same table.
-    const listener = (AppState.addEventListener as jest.Mock).mock.calls.find(
-      ([event]) => event === 'change'
-    )?.[1] as ((state: string) => void) | undefined;
-    expect(listener).toBeDefined();
-
-    await act(async () => listener!('background'));
-    await flush();
-    await act(async () => listener!('active'));
     await flush();
 
     expect(handPlayer.play).toHaveBeenCalledTimes(2);
