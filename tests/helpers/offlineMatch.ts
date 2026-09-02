@@ -15,6 +15,7 @@ import {
   initializeRematch,
   nextDealFirstSeat,
   firstTargetFor,
+  type Combination,
   type GameMode,
   type GameState,
   type MatchLength,
@@ -195,6 +196,72 @@ export class SilentSeatError extends Error {
 }
 
 /**
+ * A turn landed on a seat other than the one `getNextActivePlayer`'s own
+ * contract — decrement from the acting seat, skip empty hands — promises.
+ * Reimplemented independently below (`expectedNextActive`) rather than
+ * imported: `getNextActivePlayer` is not exported, and importing it would
+ * let a bug inside it grade its own homework.
+ */
+export class RotationOrderError extends Error {
+  seed: number;
+  mancheIndex: number;
+  moveIndex: number;
+  expectedSeat: number;
+  actualSeat: number;
+
+  constructor(
+    message: string,
+    seed: number,
+    mancheIndex: number,
+    moveIndex: number,
+    expectedSeat: number,
+    actualSeat: number
+  ) {
+    super(message);
+    this.name = "RotationOrderError";
+    this.seed = seed;
+    this.mancheIndex = mancheIndex;
+    this.moveIndex = moveIndex;
+    this.expectedSeat = expectedSeat;
+    this.actualSeat = actualSeat;
+  }
+}
+
+/** `getNextActivePlayer`'s contract (lib/gameEngine.ts), reimplemented from
+ * scratch: decrement from `fromSeat`, skipping any seat holding no cards. */
+function expectedNextActive(fromSeat: number, hands: { length: number }[]): number {
+  const total = hands.length;
+  let next = (fromSeat - 1 + total) % total;
+  let attempts = 0;
+  while (hands[next].length === 0 && attempts < total) {
+    next = (next - 1 + total) % total;
+    attempts++;
+  }
+  return next;
+}
+
+/**
+ * A seat played a combination and did not lose exactly that many cards from
+ * its hand — the shape of a play the engine accepted (the turn moved on) but
+ * silently discarded. Checked the instant it happens, not after a manche
+ * fails to end: a seat can be given turns forever while never once actually
+ * shedding a card, which reaches `activePlayers.length <= 1` on nobody.
+ */
+export class HandNotShrunkError extends Error {
+  seed: number;
+  mancheIndex: number;
+  seat: number;
+
+  constructor(message: string, seed: number, mancheIndex: number, seat: number) {
+    super(message);
+    this.name = "HandNotShrunkError";
+    this.seed = seed;
+    this.mancheIndex = mancheIndex;
+    this.seat = seat;
+  }
+}
+
+/**
  * `app/game.tsx`'s own key for "does the AI turn effect need to reschedule",
  * reproduced exactly: seat, pass count, and the table's last combination —
  * gated on `!gameOver`, `!exchangePhase.active` and the acting seat being
@@ -326,20 +393,70 @@ export function simulateOfflineMatch(opts: SimulateMatchOptions): SimulateMatchR
           lastAiTurnState = null;
         }
 
-        const seat = state.exchangePhase?.active
-          ? state.exchangePhase.winnerIdx
-          : state.currentTurnIndex;
+        const isExchangeTurn = !!state.exchangePhase?.active;
+        const seat = isExchangeTurn ? state.exchangePhase!.winnerIdx : state.currentTurnIndex;
         actedSeats.add(seat);
         const useAiForSeat = opts.useAi?.[seat] ?? true;
-        const next = autoMoveForSeat(state, seat, useAiForSeat, {});
+        let playedCombo: Combination | null = null;
+        let comboSeen = false;
+        const next = autoMoveForSeat(state, seat, useAiForSeat, {
+          onMove: (_s, combo) => {
+            comboSeen = true;
+            playedCombo = combo;
+          },
+        });
         if (!next) {
           throw new MatchStallError(
             `manche ${manches.length} stuck: seat ${seat} could not act at move ${moves} ` +
-              `(exchange active: ${!!state.exchangePhase?.active})`,
+              `(exchange active: ${isExchangeTurn})`,
             opts.seed,
             manches
           );
         }
+
+        // Exchange choices and the stuck-exchange release neither play nor
+        // pass in `processPlay`/`processPass`'s sense (`onMove` never fires
+        // for them) and never touch `getNextActivePlayer` — out of scope for
+        // both checks below.
+        if (!isExchangeTurn && comboSeen) {
+          if (playedCombo !== null) {
+            const before = state.players[seat]?.hand.length ?? 0;
+            const after = next.players[seat]?.hand.length ?? 0;
+            const shed = (playedCombo as Combination).cards.length;
+            if (after !== before - shed) {
+              throw new HandNotShrunkError(
+                `manche ${manches.length} move ${moves}: seat ${seat} played ` +
+                  `${shed} card(s) but its hand went from ${before} to ${after}`,
+                opts.seed,
+                manches.length,
+                seat
+              );
+            }
+          }
+
+          if (!next.gameOver) {
+            const hands = next.players.map((p) => p.hand);
+            const expected =
+              playedCombo === null && next.roundWinner !== null
+                ? (next.players[next.lastPlayedBy]?.hand.length ?? 0) > 0
+                  ? next.lastPlayedBy
+                  : expectedNextActive(next.lastPlayedBy, hands)
+                : expectedNextActive(seat, hands);
+            if (expected !== next.currentTurnIndex) {
+              throw new RotationOrderError(
+                `manche ${manches.length} move ${moves}: expected seat ${expected} next, ` +
+                  `got seat ${next.currentTurnIndex} (acting seat was ${seat}, ` +
+                  `${playedCombo === null ? "passed" : "played"})`,
+                opts.seed,
+                manches.length,
+                moves,
+                expected,
+                next.currentTurnIndex
+              );
+            }
+          }
+        }
+
         state = next;
       }
 

@@ -123,7 +123,7 @@ jobs:
   offline-match-soak:
     name: Play offline matches headless
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
 
     steps:
       - uses: actions/checkout@v4
@@ -136,13 +136,25 @@ jobs:
       - name: Choose today's band
         env:
           MURLAN_MATCH_SOAK_SEEDS: "20000"
+          # 3- and 4-seat manches deal more cards and run longer per match
+          # (measured ~24-30ms vs. ~5.5ms at 2 seats), so their band is
+          # narrower to keep this job well inside its budget.
+          MURLAN_MATCH_SOAK_SEEDS_3P: "3000"
+          MURLAN_MATCH_SOAK_SEEDS_4P: "3000"
         run: |
+          # One shared band across every seat count: they are independent
+          # seed spaces (a "seed 5 at 3 players" and "seed 5 at 4 players"
+          # deal nothing alike), so reusing the same start is simplicity,
+          # not a claim they cover the same ground.
           start=$(( $(date -u +%s) / 86400 * MURLAN_MATCH_SOAK_SEEDS + 1 ))
-          echo "band: $start..$(( start + MURLAN_MATCH_SOAK_SEEDS - 1 ))"
+          echo "band: $start..$(( start + MURLAN_MATCH_SOAK_SEEDS - 1 )) (2p); " \
+               "$start..$(( start + MURLAN_MATCH_SOAK_SEEDS_3P - 1 )) (3p/4p)"
           # $GITHUB_ENV, not `export`: each step's `run:` is its own shell, so
           # a plain export here would not reach the "Play" step below.
           echo "MURLAN_MATCH_SOAK_START=$start" >> "$GITHUB_ENV"
           echo "MURLAN_MATCH_SOAK_SEEDS=$MURLAN_MATCH_SOAK_SEEDS" >> "$GITHUB_ENV"
+          echo "MURLAN_MATCH_SOAK_SEEDS_3P=$MURLAN_MATCH_SOAK_SEEDS_3P" >> "$GITHUB_ENV"
+          echo "MURLAN_MATCH_SOAK_SEEDS_4P=$MURLAN_MATCH_SOAK_SEEDS_4P" >> "$GITHUB_ENV"
 
       - name: Play
         run: node --test tests/matchTerminates.test.ts
@@ -159,7 +171,7 @@ jobs:
             echo
             echo "Re-run locally with the same band:"
             echo '```'
-            echo "MURLAN_MATCH_SOAK_START=$MURLAN_MATCH_SOAK_START MURLAN_MATCH_SOAK_SEEDS=$MURLAN_MATCH_SOAK_SEEDS node --test tests/matchTerminates.test.ts"
+            echo "MURLAN_MATCH_SOAK_START=$MURLAN_MATCH_SOAK_START MURLAN_MATCH_SOAK_SEEDS=$MURLAN_MATCH_SOAK_SEEDS MURLAN_MATCH_SOAK_SEEDS_3P=$MURLAN_MATCH_SOAK_SEEDS_3P MURLAN_MATCH_SOAK_SEEDS_4P=$MURLAN_MATCH_SOAK_SEEDS_4P node --test tests/matchTerminates.test.ts"
             echo '```'
           } > offline-soak-failure.md
           open=$(gh issue list --label soak --state open --limit 1 --json number --jq '.[0].number // empty')
