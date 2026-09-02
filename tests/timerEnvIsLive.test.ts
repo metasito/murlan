@@ -15,6 +15,19 @@ import path from "node:path";
 import "../server/gameRoom.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const TIMERS_SOURCE = path.join(repoRoot, "server/gameTimers.ts");
+
+/**
+ * Every env-backed timeout the module exports, read from its own source rather
+ * than listed here. A hand-kept list is a check that silently stops covering
+ * the timeout added after it was written.
+ */
+function declaredTimeouts(): { fn: string; env: string }[] {
+  const source = readFileSync(TIMERS_SOURCE, "utf8");
+  return [
+    ...source.matchAll(/^export const (\w+) = \(\) =>\s*timeoutFromEnv\("(\w+)"/gm),
+  ].map((m) => ({ fn: m[1], env: m[2] }));
+}
 
 describe("a timeout set after the server is loaded", () => {
   test("is the value the server actually uses", async () => {
@@ -35,15 +48,15 @@ describe("a timeout set after the server is loaded", () => {
   });
 
   test("every one of them, not just the one that broke", async () => {
-    const timers = await import("../server/gameTimers.ts");
-    const cases: [string, () => number][] = [
-      ["MURLAN_AFK_TIMEOUT_MS", timers.afkTimeoutMs],
-      ["MURLAN_DISCONNECT_GRACE_MS", timers.disconnectGraceMs],
-      ["MURLAN_LOBBY_GRACE_MS", timers.lobbyGraceMs],
-      ["MURLAN_STATE_ACK_TIMEOUT_MS", timers.stateAckTimeoutMs],
-      ["MURLAN_BOT_MOVE_DELAY_MS", timers.botMoveDelayMs],
-    ];
-    for (const [name, read] of cases) {
+    const timers = (await import("../server/gameTimers.ts")) as unknown as Record<
+      string,
+      () => number
+    >;
+    const declared = declaredTimeouts();
+    assert.ok(declared.length >= 5, `found ${declared.length} env-backed timeouts to check`);
+    for (const { fn, env: name } of declared) {
+      const read = timers[fn];
+      assert.equal(typeof read, "function", `${fn} is declared in the source but not exported`);
       const before = read();
       process.env[name] = "777";
       try {
@@ -76,7 +89,11 @@ describe("a timeout set after the server is loaded", () => {
 
     // Reading it live and then freezing the result one file over is the same
     // defect relocated, and the check above cannot see it.
-    const readers = /\b(afkTimeoutMs|disconnectGraceMs|lobbyGraceMs|stateAckTimeoutMs|botMoveDelayMs)\(\)/;
+    const readers = new RegExp(
+      `\\b(${declaredTimeouts()
+        .map(({ fn }) => fn)
+        .join("|")})\\(\\)`
+    );
     const captured: string[] = [];
     for (const file of readdirSync(path.join(repoRoot, "server"))) {
       if (!file.endsWith(".ts") || file === "gameTimers.ts") continue;

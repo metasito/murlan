@@ -527,7 +527,11 @@ class DrizzleStorage {
       .values({ roomId, inviterId, inviteeId })
       .onConflictDoUpdate({
         target: [gameInvites.roomId, gameInvites.inviteeId],
-        set: { inviterId, createdAt: new Date() },
+        // The database's clock, not Node's: the insert's own default is
+        // `now()`, and the seat hold is read as an age against that same
+        // clock. A refresh stamped from the app server measures the hold
+        // through the offset between two machines.
+        set: { inviterId, createdAt: sql`now()` },
       })
       .returning({ createdAt: gameInvites.createdAt, id: gameInvites.id });
     return { created: !!row };
