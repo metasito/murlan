@@ -174,6 +174,92 @@ describe("resolveHandEnd — gameResults shaping", () => {
     assert.ok(!("bot:1" in result.cumulativeScores));
   });
 
+  test("a straight duel's bot seat accumulates — only a vacated one is excluded (#815)", () => {
+    const state = mkState(
+      [player("p0", "Alice", 3), player("p1", "Drita", 0)],
+      ["p1", "p0"]
+    );
+    const result = resolveHandEnd({
+      // Seat 1 has no playerMap entry too, but it was never a human's this
+      // match — it must not read the same as seat 1 in the test above.
+      state,
+      playerMap: { 0: "alice" },
+      cumulativeScores: {},
+      matchTarget: 7,
+      matchLength: "match",
+      gameMode: "free_for_all",
+      handFlags: HAND_FLAGS,
+      abandonedSeats: new Map(),
+      botSeatsAtStart: new Set([1]),
+    });
+
+    assert.equal(result.cumulativeScores["bot:1"], 1);
+  });
+
+  test("#815: a straight duel's totals sum to hands played across a run", () => {
+    const players = [player("p0", "rotonmeta", 0), player("p1", "Drita", 3)];
+    let cumulativeScores: Record<string, number> = {};
+    const outcomes = ["p0", "p0", "p1", "p1"]; // winner of each of 4 hands
+    for (const winner of outcomes) {
+      const loser = winner === "p0" ? "p1" : "p0";
+      const result = resolveHandEnd({
+        state: mkState(players, [winner, loser]),
+        playerMap: { 0: "rotonmeta" },
+        cumulativeScores,
+        matchTarget: 7,
+        matchLength: "match",
+        gameMode: "free_for_all",
+        handFlags: HAND_FLAGS,
+        abandonedSeats: new Map(),
+        botSeatsAtStart: new Set([1]),
+      });
+      cumulativeScores = result.cumulativeScores;
+    }
+
+    const total = Object.values(cumulativeScores).reduce((a, b) => a + b, 0);
+    assert.equal(total, outcomes.length);
+  });
+
+  test("a seat vacated between hands keeps the pre-existing exclusion, unlike a straight duel's bot", () => {
+    // Two humans; rotonmeta wins hand 1. drita then leaves (vacateSeat: her
+    // seat drops out of playerMap; abandonedSeats and botSeatsAtStart are
+    // both left untouched, exactly as vacateSeat leaves them between hands).
+    // The AI now driving her seat wins hand 2.
+    const players = [player("p0", "rotonmeta", 3), player("p1", "drita", 0)];
+    const hand1 = resolveHandEnd({
+      state: mkState(players, ["p0", "p1"]),
+      playerMap: { 0: "rotonmeta", 1: "drita" },
+      cumulativeScores: {},
+      matchTarget: 7,
+      matchLength: "match",
+      gameMode: "free_for_all",
+      handFlags: HAND_FLAGS,
+      abandonedSeats: new Map(),
+      botSeatsAtStart: new Set(),
+    });
+    const hand2 = resolveHandEnd({
+      state: mkState(players, ["p1", "p0"]),
+      playerMap: { 0: "rotonmeta" }, // seat 1 vacated between hands
+      cumulativeScores: hand1.cumulativeScores,
+      matchTarget: 7,
+      matchLength: "match",
+      gameMode: "free_for_all",
+      handFlags: HAND_FLAGS,
+      abandonedSeats: new Map(),
+      botSeatsAtStart: new Set(),
+    });
+
+    // The point still lands on the hand's own scoreboard...
+    assert.equal(hand2.handByKey["bot:1"], 1);
+    // ...but this exclusion is left as-is: the owner's 2026-09-02 ruling on
+    // #815 keeps this PR scoped to the born-bot door and defers whether a
+    // vacated seat's points should accumulate to #820, which decides the
+    // disconnect policy as a whole. Not a §3.1 requirement — §3.1 only ever
+    // decided the winner *announcement*, not this.
+    const total = Object.values(hand2.cumulativeScores).reduce((a, b) => a + b, 0);
+    assert.equal(total, 1);
+  });
+
   test("opponentsFinished counts real finishers only, not auto-assigned placements", () => {
     // Only seat 0 actually emptied its hand; the hand ended there and the
     // other three are auto-ranked still holding cards.

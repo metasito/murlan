@@ -1,7 +1,7 @@
 // Pure helpers used by server/socket.ts, kept here so a test can reach them
 // without pulling storage/db/session — and the pg pool they build at import —
 // onto a path that needs none of it.
-import { botSeatKey, isBotSeatKey } from "./botSeat.ts";
+import { botSeatIndex, botSeatKey, isBotSeatKey } from "./botSeat.ts";
 import type { ScoreLine } from "../lib/matchState.ts";
 import { botSeatNames, getBotPersonality } from "../lib/botPersonalities.ts";
 import type { BotPersonalityId } from "../lib/botPersonalities.ts";
@@ -368,6 +368,43 @@ export function buildSeatRoster(
 }
 
 /**
+ * The two engine-seat-indexed maps a match starts from: which seat a human
+ * holds, and which seats were dealt to a bot before anyone could vacate one.
+ * Keyed by position in `roster`, not `r.seatIndex` — that position is the
+ * engine seat index (`initializeGame` assigns seats the same way), so a gap
+ * in the DB's own seat numbering cannot shift either map onto the wrong
+ * player. `startMatchAction` calls this rather than walking the roster
+ * inline, so a test can drive the same function it does.
+ */
+export function seatAssignmentsFromRoster(roster: SeatEntry[]): {
+  playerMap: Record<number, string>;
+  botSeatsAtStart: Set<number>;
+} {
+  const playerMap: Record<number, string> = {};
+  const botSeatsAtStart = new Set<number>();
+  roster.forEach((r, idx) => {
+    if (r.isBot) botSeatsAtStart.add(idx);
+    else playerMap[idx] = r.userId;
+  });
+  return { playerMap, botSeatsAtStart };
+}
+
+/**
+ * `botSeatsAtStart`, read back from a restored game rather than a fresh
+ * roster. `personality` is set once, at `seatAssignmentsFromRoster` time, for
+ * a born-bot seat only — `vacateSeat` flips a human seat to AI without ever
+ * setting it — and rides every hand's persisted envelope after that, so it
+ * survives a restart the roster itself does not.
+ */
+export function botSeatsFromPersonality(players: readonly { personality?: BotPersonalityId }[]): Set<number> {
+  const seats = new Set<number>();
+  players.forEach((p, seat) => {
+    if (p.personality !== undefined) seats.add(seat);
+  });
+  return seats;
+}
+
+/**
  * Scoring key -> team id, for the seated humans only. Vacated (`bot:<seat>`)
  * seats are left out on purpose: they are already excluded from
  * `cumulativeScores` (see `isBotSeatKey`), so including them here would add
@@ -424,6 +461,14 @@ export interface ResolveHandEndInput {
   handFlags: HandFlags;
   /** seat -> the userId who walked out on the hand still holding cards. */
   abandonedSeats: Map<number, string>;
+  /**
+   * Seats dealt to a bot when this match's roster was built — never a human's
+   * seat this match, unlike one `playerMap` merely no longer names. Defaults
+   * to none, which scores every bot seat as a vacated one (the prior
+   * behaviour), so a caller that does not know the difference gets the
+   * conservative answer rather than a silent new one.
+   */
+  botSeatsAtStart?: Set<number>;
 }
 
 export type ScoreboardRow = ScoreLine;
@@ -452,6 +497,7 @@ export interface ResolveHandEndResult {
  */
 export function resolveHandEnd(input: ResolveHandEndInput): ResolveHandEndResult {
   const { state, playerMap, matchLength, gameMode, handFlags, abandonedSeats } = input;
+  const botSeatsAtStart = input.botSeatsAtStart ?? new Set<number>();
 
   // rankings hold engine player ids ("player_0"); score by seat -> user so the
   // scoreboard is keyed by a real identity instead of an engine id wearing a
@@ -482,7 +528,14 @@ export function resolveHandEnd(input: ResolveHandEndInput): ResolveHandEndResult
       const seat = seatOfEngineId.get(engineId);
       return seat === undefined ? null : scoreKeyForSeat(playerMap, seat);
     },
-    accumulates: (key) => !isBotSeatKey(key),
+    // A `bot:<seat>` key excludes only a seat a human has left — a seat that
+    // was dealt to a bot when this match started (a straight duel, or a
+    // bot-filled table) is a real opponent and scores like any other.
+    accumulates: (key) => {
+      if (!isBotSeatKey(key)) return true;
+      const seat = botSeatIndex(key);
+      return seat !== null && botSeatsAtStart.has(seat);
+    },
     teamOf,
   });
 
