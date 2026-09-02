@@ -80,6 +80,9 @@ jest.mock('@/lib/music', () => ({ cancelMusicDuck: jest.fn(), duckMusicFor: jest
 // `shake()`'s write actually carries what `traumaFor` returned.
 const SENTINEL = 0.918273645;
 
+// `gameOver` stays false for the whole probe, so `handOutcomeFor` (which
+// reads `players`/`isTeamMode`/`handScores`) is never reached — these are
+// here only to satisfy `TableFeedbackState`, empty and neutral.
 const idleState = () => ({
   isMyTurn: false,
   isFinished: false,
@@ -92,6 +95,9 @@ const idleState = () => ({
   roundWinner: null,
   gameOver: false,
   rankings: [],
+  players: [],
+  isTeamMode: false,
+  handScores: {},
   viewerId: undefined,
   scale: 1,
 });
