@@ -904,11 +904,8 @@ export function exchangeFlight(input: ExchangeFlightInput): ExchangeFlight {
     ...trip,
     // The band the pile sits in, less the columns the side seats sit in: the
     // one region of the table that holds no cards, whoever is playing and
-    // however many they hold. Everything outside it is somebody's hand — the
-    // top seat's own fan is what a diagonal trade put "got 2 of Diamonds" on
-    // (#817), and a clamp to the *window* would have left it there. The label
-    // is placed by its centre and drawn no wider than `TAG_MAX_W`, so half of
-    // that is what keeps the box itself inside as well.
+    // however many they hold. The label is placed by its centre and drawn no
+    // wider than `TAG_MAX_W`, so half of that keeps its box inside as well.
     tag: exchangeTagOffset(trip, {
       minDx: input.tableLeft + SIDE_SECTION_W + TAG_MAX_W / 2 - pile.centerX,
       maxDx: input.windowWidth - input.tableRight - SIDE_SECTION_W - TAG_MAX_W / 2 - pile.centerX,
@@ -951,10 +948,8 @@ const TAG_ALONG_TRIP = 0.72;
  *
  * The lane runs across the direction of travel, so on a diagonal it carries the
  * label sideways as far as it carries it along — and the seat it names is
- * already at the table's edge. The bounds are what it may not leave: without
- * them a trade between the left seat and the viewer's put one label below the
- * window, where
- * the table's clip retired it entirely.
+ * already at the table's edge. The bounds are what it may not leave; the table
+ * clips what does, which costs the label its whole message and no error.
  */
 function exchangeTagOffset(
   trip: Omit<ExchangeFlight, "tag">,
