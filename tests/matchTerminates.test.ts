@@ -64,7 +64,7 @@ function tableOf(playerCount: number): OfflinePlayerSetup[] {
  * naming every stall and every `aiTurnKey` collision found, or reports the
  * total states checked when it finds neither.
  */
-function soakMatches(playerCount: number, count: number): void {
+function soakMatches(playerCount: number, count: number, contest?: boolean[]): void {
   const players = tableOf(playerCount);
   const failures: MatchStallError[] = [];
   const collisions: AiTurnKeyCollision[] = [];
@@ -79,6 +79,7 @@ function soakMatches(playerCount: number, count: number): void {
         players,
         gameMode: "free_for_all",
         length: "match",
+        contest,
         collectAiTurnKeyCollisions: collisions,
       });
     } catch (err) {
@@ -118,6 +119,15 @@ function soakMatches(playerCount: number, count: number): void {
 // effectively zero).
 test("an offline 2-player match reaches its target over many shuffles", () => {
   soakMatches(2, Number(process.env.MURLAN_MATCH_SOAK_SEEDS ?? 200));
+});
+
+// The seat-0 "human" actually contests every round (`contest`), rather than
+// the AFK floor `useAi:false` gives — #770's own recorded stall
+// (resultActions.spec.ts, run 33556887782) was driven by
+// tests/e2e/helpers/bot.ts's always-contesting bot, not an AFK one, and
+// nothing in this file's default AI-vs-AI seeds plays that shape either.
+test("an offline 2-player match reaches its target when the human seat contests every round", () => {
+  soakMatches(2, Number(process.env.MURLAN_MATCH_SOAK_SEEDS ?? 200), [true, false]);
 });
 
 // 3 and 4 seats deal more cards and score every placement, not just the

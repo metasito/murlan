@@ -15,6 +15,9 @@ import {
   initializeRematch,
   nextDealFirstSeat,
   firstTargetFor,
+  getAllValidPlays,
+  processPlay,
+  processPass,
   type Combination,
   type GameMode,
   type GameState,
@@ -134,11 +137,21 @@ export interface SimulateMatchOptions {
   /**
    * Per-seat AI choice, indexed like `players`. Defaults to every seat using
    * the real AI (`aiChoosePlay`). `false` plays the forced-minimum move
-   * instead — the same floor `autoMoveForSeat` gives an AFK human — which is
-   * what a real human playing conservatively, or the e2e harness's own
-   * weakest-legal-move driver, looks like to the engine.
+   * instead — the floor `autoMoveForSeat` gives an AFK human, which always
+   * passes once it is not leading a round (`lib/autoMove.ts`). That is not
+   * what an engaged human or `tests/e2e/helpers/bot.ts`'s own bot look like:
+   * both actively try to beat the table before passing. `contest` below is
+   * that shape instead.
    */
   useAi?: boolean[];
+  /**
+   * Per-seat, indexed like `players`. `true` plays the weakest legal
+   * combination that beats the table (singles before bigger shapes, lowest
+   * strength first), falling back to a pass only when nothing beats it —
+   * `tests/e2e/helpers/bot.ts`'s `playOrPass` search order, without the DOM.
+   * Takes priority over `useAi` for that seat; unset seats keep using `useAi`.
+   */
+  contest?: boolean[];
   /**
    * Collects every `computeAiTurnKey` collision found while playing, instead
    * of stopping at the first one — so a soak run can report how many turned
@@ -287,6 +300,20 @@ function handFingerprint(state: GameState): string {
   return state.players.map((p) => p.hand.map((c) => c.id).join(",")).join("|");
 }
 
+/** `SimulateMatchOptions.contest`'s move: the weakest legal beating
+ * combination, or null to pass. Exported so `tests/offlineMatchContestPlay.test.ts`
+ * can pin the ordering directly — a soak asserting only that a match ends
+ * cannot tell "weakest" from "strongest legal beating combination" apart. */
+export function weakestBeatingPlay(state: GameState, seat: number): Combination | null {
+  const player = state.players[seat];
+  const isNewRound = state.lastPlayedCombination === null;
+  const startCard = !state.firstPlayMade ? state.startCard : undefined;
+  const requireCard = startCard ? player.hand.find((c) => c.id === startCard.id) : undefined;
+  const plays = getAllValidPlays(player.hand, isNewRound ? null : state.lastPlayedCombination, isNewRound, requireCard);
+  if (plays.length === 0) return null;
+  return [...plays].sort((a, b) => a.cards.length - b.cards.length || a.strength - b.strength)[0];
+}
+
 export interface AiTurnKeyCollision {
   seed: number;
   mancheIndex: number;
@@ -396,15 +423,23 @@ export function simulateOfflineMatch(opts: SimulateMatchOptions): SimulateMatchR
         const isExchangeTurn = !!state.exchangePhase?.active;
         const seat = isExchangeTurn ? state.exchangePhase!.winnerIdx : state.currentTurnIndex;
         actedSeats.add(seat);
-        const useAiForSeat = opts.useAi?.[seat] ?? true;
         let playedCombo: Combination | null = null;
         let comboSeen = false;
-        const next = autoMoveForSeat(state, seat, useAiForSeat, {
-          onMove: (_s, combo) => {
-            comboSeen = true;
-            playedCombo = combo;
-          },
-        });
+        let next: GameState | null;
+        if (!isExchangeTurn && opts.contest?.[seat]) {
+          const combo = weakestBeatingPlay(state, seat);
+          comboSeen = true;
+          playedCombo = combo;
+          next = combo ? processPlay(state, combo) : processPass(state);
+        } else {
+          const useAiForSeat = opts.useAi?.[seat] ?? true;
+          next = autoMoveForSeat(state, seat, useAiForSeat, {
+            onMove: (_s, combo) => {
+              comboSeen = true;
+              playedCombo = combo;
+            },
+          });
+        }
         if (!next) {
           throw new MatchStallError(
             `manche ${manches.length} stuck: seat ${seat} could not act at move ${moves} ` +
