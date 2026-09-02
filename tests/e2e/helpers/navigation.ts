@@ -74,6 +74,23 @@ export async function startOfflineGame(page: Page, setup: OfflineSetup): Promise
   }
 
   await page.getByRole("button", { name: "Inizia Partita" }).click();
+  await page.locator('[data-testid="game-table"]').waitFor({ timeout: 60_000 });
+  await dismissStartAnnouncement(page);
+}
+
+/**
+ * Clears the manche-opening announcement if one is up (#817).
+ *
+ * It is a gate: it covers the table so the first tap is spent reading it
+ * rather than playing a card, which is exactly what a spec's own first tap
+ * would otherwise be spent on. A real player's tap, so a spec does what a
+ * player does instead of reaching under it. A no-op when nothing is up — a
+ * seeded table has no start reason to announce.
+ */
+export async function dismissStartAnnouncement(page: Page): Promise<void> {
+  const gate = page.locator('[data-testid="start-reason-gate"]');
+  if ((await gate.count()) === 0) return;
+  await gate.click({ timeout: 10_000 }).catch(() => {});
 }
 
 /**

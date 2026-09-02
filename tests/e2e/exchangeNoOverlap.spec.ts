@@ -1,5 +1,5 @@
 // tests/e2e/exchangeNoOverlap.spec.ts — the two exchanged cards never occupy
-// the same space.
+// the same space, and neither do the two labels that name what each seat got.
 //
 // "both at the same time, one takes one side the other the other side they
 // should not overlap" is the owner's own wording on #533, and it is the one
@@ -133,4 +133,56 @@ test("the two exchanged cards fly at once and never overlap", async ({ page, bas
     ...frames.map((f) => Math.hypot(f.a.x - frames[0].a.x, f.a.y - frames[0].a.y))
   );
   expect(moved, "the card has to cross the table, not stay at its seat").toBeGreaterThan(20);
+});
+
+// #817: the owner's capture had "got 2 of Diamonds" rendered straight over the
+// cards in his own hand — dark text on a card face, close to unreadable. The
+// label used to sit at the trip's landing point, and for the viewer's own seat
+// that point is the hand zone's own centre. Only a browser can say where either
+// box ended up.
+test("neither seat's label lands on a card", async ({ page, baseURL }) => {
+  test.setTimeout(120_000);
+  await resumeSaved(page, baseURL!, midExchangeSave());
+
+  await expect(page.getByTestId("exchange-prompt")).toBeVisible({ timeout: 15_000 });
+  await tap(page, page.getByRole("button", { name: GIVEBACK_SPOKEN, exact: true }));
+  await tap(page, page.getByTestId("btn-gioca"));
+
+  // The labels take over from the fliers at the landing, so they are what is on
+  // screen once the flight is over rather than during it.
+  const toWinner = page.getByTestId("exchange-tag-to-winner");
+  await expect(toWinner).toBeVisible({ timeout: 15_000 });
+  const toLoser = page.getByTestId("exchange-tag-to-loser");
+  await expect(toLoser).toBeVisible({ timeout: 15_000 });
+
+  const cards = await page.evaluate(() =>
+    [...document.querySelectorAll('[data-testid="card-box"], [data-testid="card-box-back"]')]
+      .map((el) => {
+        const r = el.getBoundingClientRect();
+        return { x: r.x, y: r.y, width: r.width, height: r.height };
+      })
+      .filter((r) => r.width > 0 && r.height > 0)
+  );
+  // The floor: with no cards measured the sweep below would pass having looked
+  // at nothing, and the hand is exactly what the labels used to cover.
+  expect(cards.length, "no card faces were measured at all").toBeGreaterThan(0);
+
+  for (const [name, tag] of [
+    ["the winner's", toWinner],
+    ["the loser's", toLoser],
+  ] as const) {
+    const box = (await tag.boundingBox())!;
+    const on = cards.filter((c) => intersection(box, c) > 0);
+    expect(
+      on.map((c) => `${Math.round(c.x)},${Math.round(c.y)}`),
+      `${name} label sits on ${on.length} card face(s)`
+    ).toEqual([]);
+  }
+
+  // …and the two do not land on each other either, which the perpendicular
+  // lane is what buys.
+  expect(
+    intersection((await toWinner.boundingBox())!, (await toLoser.boundingBox())!),
+    "the two labels overlap each other"
+  ).toBe(0);
 });

@@ -17,6 +17,7 @@ import type { Locator, Page } from "@playwright/test";
 // Extensioned because `tests/botProgress.test.ts` loads this file through Node's ESM
 // resolver, which will not guess one. Playwright accepts it either way.
 import { GIOCA_VALID_LABEL, YOUR_TURN_PREFIX } from "./labels.ts";
+import { dismissStartAnnouncement } from "./navigation.ts";
 
 import { tap } from "./press.ts";
 import { HAND_CARDS, TABLE, TABLE_STATE } from "./selectors.ts";
@@ -471,6 +472,8 @@ export async function driveGameToCompletion(page: Page, opts: DriveOptions): Pro
     }
 
     await declineRematchPromptIfShown(page);
+    // Every manche opens with one, so this cannot be done once before the loop.
+    await dismissStartAnnouncement(page);
 
     const desc = await tableDescription(page);
     if (desc === null) {

@@ -277,6 +277,8 @@ export const en = {
   "gameShared.startReasonCardSub": "(the 3♠ was not dealt)",
   "gameShared.startReasonLostRound": "{{name}} starts — lost the round",
   "gameShared.startReasonWonNoSwap": "{{name}} starts — won (no exchange)",
+  "gameShared.startReasonEyebrow": "New hand",
+  "gameShared.startReasonDismiss": "Tap to continue",
   "gameShared.you": "You",
   "gameShared.emptyTable": "— Table clear —",
   "gameShared.yourTurn": "Your turn",

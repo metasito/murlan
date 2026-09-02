@@ -67,6 +67,25 @@ const NON_MODAL_OVERLAYS: [string, number, string, string, [string, RegExp][]][]
       ["is announced as a dialog", /a11yDialog\(/],
     ],
   ],
+  [
+    "components/table/chrome.tsx",
+    1,
+    'testID="start-reason-gate"',
+    "there is nothing inside it to focus and nothing to answer: it holds the table for one " +
+      "reading and then leaves on its own clock, and a Modal would put a focus trap around a " +
+      "surface whose only interaction is a tap anywhere to be rid of it",
+    [
+      [
+        "is unreachable rather than landed on",
+        /testID="start-reason-gate"[\s\S]{0,240}\{\.\.\.a11yHidden\(\)\}/,
+      ],
+      ["announces itself as an alert instead", /<A11yStatus[\s\S]{0,160}role="alert"/],
+      [
+        "releases the table on a reading budget rather than a guessed delay",
+        /setTimeout\(\(\) => setVisible\(false\), Reading\.notice\)/,
+      ],
+    ],
+  ],
 ];
 
 /**

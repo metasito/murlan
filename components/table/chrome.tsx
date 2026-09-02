@@ -8,29 +8,70 @@ import {
   withTiming,
   cancelAnimation,
 } from "react-native-reanimated";
-import { Colors, FontSize, makeShadow, Radius, Scrim, Spacing, Type, Layer } from "@/lib/theme";
+import { LinearGradient } from "expo-linear-gradient";
+import {
+  Colors,
+  FontSize,
+  makeShadow,
+  Radius,
+  Reading,
+  Scrim,
+  Spacing,
+  Type,
+  Layer,
+} from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
-import { a11yState } from "@/lib/a11y";
+import { a11yHidden, a11yState, A11yStatus } from "@/lib/a11y";
 import type { Card, StartReason } from "@/lib/gameEngine";
 import { getCardDisplayRank, getSuitSymbol } from "@/lib/gameEngine";
 import { CHIP_H, SIDE_SECTION_W, type RailSide } from "@/components/gameTableModel";
 
 // ─── StartReasonBanner ────────────────────────────────────────────────────────
 
+/**
+ * Who starts the manche, and why — held over the table for as long as it takes
+ * to read it and no longer.
+ *
+ * It is a gate rather than a banner: it covers the table, so the first tap
+ * spends itself clearing this instead of playing a card, and the caller stops
+ * the turn clock while it is up (`turnTimerActive`, gameTableModel.ts) wherever
+ * that clock is the client's own. The moment it describes is one seat's turn to
+ * open, so the caller unmounts it the instant the table moves past that seat —
+ * a message about who starts is worth nothing once someone has played.
+ *
+ * Under reduced motion the words are unchanged: the whole cue is text and a
+ * lamp already pointed at it, never an animation carrying the meaning on its
+ * own.
+ */
 export function StartReasonBanner({
   reason,
   players,
+  onDone,
 }: {
   reason: StartReason;
   players: { name: string; type: string }[];
+  /** Told once, when the gate closes — by the clock or by the player. */
+  onDone: () => void;
 }) {
   const { t } = useTranslation();
   const [visible, setVisible] = useState(true);
+  const doneRef = useRef(onDone);
   useEffect(() => {
-    const timer = setTimeout(() => setVisible(false), 5000);
+    doneRef.current = onDone;
+  });
+  useEffect(() => {
+    const timer = setTimeout(() => setVisible(false), Reading.notice);
     return () => clearTimeout(timer);
   }, []);
+  // Told once however it ends: its own clock, a tap, or the caller taking the
+  // whole layer away because the turn it names is over. The last of the three
+  // is why the cleanup is here — the opener leads again later in the same
+  // manche, and the announcement must not come back with them.
+  useEffect(() => () => doneRef.current(), []);
+  useEffect(() => {
+    if (!visible) doneRef.current();
+  }, [visible]);
   if (!visible) return null;
 
   const playerName = players[reason.playerIdx]?.name ?? "?";
@@ -52,52 +93,77 @@ export function StartReasonBanner({
   }
 
   return (
-    <Pressable
-      onPress={() => setVisible(false)}
-      style={startReasonStyles.anchor}
-    >
-      <View style={startReasonStyles.card}>
-        <TableText style={startReasonStyles.main}>
-          {mainText}
-        </TableText>
-        {subText ? (
-          <TableText style={startReasonStyles.sub}>
-            {subText}
+    <>
+      {/* Its own node, never the control: a live region announces rather than
+          being landed on (CLAUDE.md), and the gate below is unreachable. */}
+      <A11yStatus
+        label={[mainText, subText].filter(Boolean).join(". ")}
+        role="alert"
+        live="assertive"
+      />
+      <Pressable
+        testID="start-reason-gate"
+        onPress={() => setVisible(false)}
+        style={startReasonStyles.gate}
+        {...a11yHidden()}
+      >
+        <View style={startReasonStyles.card}>
+          <LinearGradient
+            colors={[Colors.goldMuted, "transparent"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 0, y: 1 }}
+            style={StyleSheet.absoluteFill}
+          />
+          <TableText style={startReasonStyles.eyebrow}>
+            {t("gameShared.startReasonEyebrow")}
           </TableText>
-        ) : null}
-      </View>
-    </Pressable>
+          <TableText style={startReasonStyles.main}>{mainText}</TableText>
+          {subText ? <TableText style={startReasonStyles.sub}>{subText}</TableText> : null}
+          <TableText style={startReasonStyles.hint}>
+            {t("gameShared.startReasonDismiss")}
+          </TableText>
+        </View>
+      </Pressable>
+    </>
   );
 }
 
-/** Over the felt and the flying cards, under the exchange and the overlays. */
-const START_REASON_Z = Layer.band;
+/**
+ * Over the table and its rail both, because holding the table is the point.
+ * Under the settings sheet and every overlay, which are `Layer.sheet` and up.
+ */
+const START_REASON_Z = Layer.hint;
 const START_REASON_MAX_W = 420;
 
 const startReasonStyles = StyleSheet.create({
-  anchor: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
+  gate: {
+    ...StyleSheet.absoluteFillObject,
     alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: Scrim.medium,
     zIndex: START_REASON_Z,
-    pointerEvents: "box-none",
   },
   card: {
     backgroundColor: Colors.overlayStrong,
     borderColor: Colors.gold,
     borderWidth: 1,
     borderRadius: Radius.lg,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.cosy,
     alignItems: "center",
     maxWidth: START_REASON_MAX_W,
     gap: Spacing.xs,
+    overflow: "hidden",
+  },
+  eyebrow: {
+    ...Type.caption,
+    color: Colors.goldDim,
+    letterSpacing: 3,
+    textTransform: "uppercase",
   },
   main: {
-    ...Type.subheading,
-    color: Colors.gold,
+    ...Type.heading,
+    color: Colors.goldLit,
     letterSpacing: 0.5,
     textAlign: "center",
   },
@@ -105,6 +171,12 @@ const startReasonStyles = StyleSheet.create({
     ...Type.caption,
     color: Colors.textSecondary,
     textAlign: "center",
+  },
+  hint: {
+    ...Type.caption,
+    color: Colors.textMuted,
+    letterSpacing: 1,
+    textTransform: "uppercase",
   },
 });
 
@@ -305,6 +377,7 @@ export function RailKnob({
   a11yLabel,
   size,
   expanded,
+  testID,
   children,
 }: {
   onPress: () => void;
@@ -312,10 +385,12 @@ export function RailKnob({
   size: number;
   /** Set on a knob that opens something beside it — the settings sheet. */
   expanded?: boolean;
+  testID?: string;
   children: ReactNode;
 }) {
   return (
     <Pressable
+      testID={testID}
       onPress={onPress}
       accessibilityLabel={a11yLabel}
       {...a11yState({ role: "button", expanded })}

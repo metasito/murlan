@@ -27,6 +27,10 @@ const SOURCE = path.join(repoRoot, "components", "GameTable.tsx");
  */
 const REACHABLE_ON_PURPOSE: Record<string, string> = {
   GameSettingsSheet: "is the sheet",
+  StartReasonBanner:
+    "is the layer holding the table rather than something behind it — its own " +
+    "words reach a reader through an A11yStatus sibling, and the gate itself is " +
+    "a11yHidden",
   ExchangeAnnouncement: "is a pointer-transparent layer with nothing to reach",
   RotateOverlay: "replaces the table rather than sitting over it",
   Sweep: "is a decoration with nothing to reach",

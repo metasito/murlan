@@ -216,6 +216,13 @@ export interface LightPosition {
  * side: a lamp centred on a seat lights the seat rather than the table it is
  * leaning over.
  */
+/**
+ * The lamp swung off every seat and onto the middle of the felt, for a moment
+ * that belongs to the table rather than to one player — the announcement of who
+ * opens the manche. The same rig, pointed somewhere else; nothing new is drawn.
+ */
+export const LAMP_CENTRE: LightPosition = { x: 0.5, y: 0.5 };
+
 export function lightPosition(dir: FlyDirection): LightPosition {
   switch (dir) {
     case "bottom": return { x: 0.5, y: 0.98 };
@@ -868,6 +875,33 @@ export function exchangeFlight(input: ExchangeFlightInput): ExchangeFlight {
   };
 }
 
+/** How far clear of its own lane the label sits, beyond the card's own reach. */
+const TAG_LANE_CLEARANCE = 30;
+/**
+ * How far along its own trip the label sits — on its seat's side of the table,
+ * and stopping well short of the seat itself.
+ *
+ * A label at the landing point lands *in* that seat's cards: for the viewer's
+ * own seat the arrival is the hand zone's centre (`flightOrigin`, "bottom"), so
+ * the words came out over the player's own hand and read as dark text on a card
+ * face (#817). Short of it, the label is over felt in both directions, and the
+ * perpendicular lane keeps it off the card it names and off the other tag.
+ */
+const TAG_ALONG_TRIP = 0.72;
+
+/**
+ * Where one seat's "got this card" label sits, in the same pile-relative deltas
+ * the flight itself speaks.
+ */
+export function exchangeTagOffset(trip: ExchangeFlight): { dx: number; dy: number } {
+  const laneLen = Math.hypot(trip.lane.dx, trip.lane.dy) || 1;
+  const reach = laneLen + TAG_LANE_CLEARANCE;
+  return {
+    dx: trip.from.dx + (trip.to.dx - trip.from.dx) * TAG_ALONG_TRIP + (trip.lane.dx / laneLen) * reach,
+    dy: trip.from.dy + (trip.to.dy - trip.from.dy) * TAG_ALONG_TRIP + (trip.lane.dy / laneLen) * reach,
+  };
+}
+
 /**
  * Identity of a played combination. Two different players playing the same
  * card ids is impossible, but the same player replaying an identical-looking
@@ -1046,9 +1080,17 @@ export function turnTimerActive(opts: {
   gameOver: boolean;
   exchangeActive: boolean;
   includeNewRound: boolean;
+  /**
+   * An announcement is holding the table, and this client owns the deadline it
+   * would be holding. A pause a server is not keeping would draw a clock with
+   * more time on it than the seat actually has, so the caller passes false
+   * online however long the announcement is up.
+   */
+  announcementHolds?: boolean;
 }): boolean {
   if (!opts.isMyTurn || opts.isFinished) return false;
   if (opts.gameOver || opts.exchangeActive) return false;
+  if (opts.announcementHolds) return false;
   if (opts.isNewRound && !opts.includeNewRound) return false;
   return true;
 }

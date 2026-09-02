@@ -35,6 +35,8 @@ import {
   fanCounts,
   flightOrigin,
   exchangeFlight,
+  exchangeTagOffset,
+  type FlyDirection,
   sideSlotHeight,
   seatFanArc,
   SEAT_DISC,
@@ -894,6 +896,25 @@ describe("turnTimerActive", () => {
     assert.equal(
       turnTimerActive({ ...base, includeNewRound: true, exchangeActive: true }),
       false
+    );
+  });
+
+  test("an announcement holding the table stops a clock this client owns", () => {
+    // The floor: without the hold the same case runs, so this is about the
+    // hold and not about some other stop already covering it.
+    assert.equal(turnTimerActive({ ...base, includeNewRound: true }), true);
+    assert.equal(
+      turnTimerActive({ ...base, includeNewRound: true, announcementHolds: true }),
+      false
+    );
+  });
+
+  test("…and the caller says so, because a pause a server is not keeping is a lie", () => {
+    // Online the deadline is the server's: `app/(online)/game.tsx` passes no
+    // `pausable`, so the hold never reaches here and the clock keeps running.
+    assert.equal(
+      turnTimerActive({ ...base, includeNewRound: true, announcementHolds: false }),
+      true
     );
   });
 });
@@ -2488,6 +2509,61 @@ describe("exchangeFlight", () => {
       width(trip(120, 168)) > width(trip(40, 56)),
       "the clearance is a fixed distance rather than the card's own reach"
     );
+  });
+
+  // #817: the owner read "got 2 of Diamonds" over his own hand, dark on a card
+  // face. The label used to sit at the landing point, and for the viewer's own
+  // seat that point is the hand zone's own centre (`flightOrigin`, "bottom").
+  describe("exchangeTagOffset", () => {
+    const tripFor = (from: FlyDirection, to: FlyDirection) =>
+      exchangeFlight({ ...frame, sideDisplayedCounts, from, to, cardW, cardH });
+
+    test("the label stops short of the seat it names, on every trip", () => {
+      for (const [from, to] of PAIRS) {
+        const flight = tripFor(from, to);
+        const tag = exchangeTagOffset(flight);
+        const trip = dist(flight.from, flight.to);
+        // Measured along the trip alone: the lane offset is across it and
+        // would otherwise flatter the distance without moving the label off
+        // the seat's cards at all.
+        const ux = (flight.to.dx - flight.from.dx) / trip;
+        const uy = (flight.to.dy - flight.from.dy) / trip;
+        const short =
+          (flight.to.dx - tag.dx) * ux + (flight.to.dy - tag.dy) * uy;
+        assert.ok(
+          short >= cardH,
+          `${from} → ${to}: the label sits ${short.toFixed(0)}px short of the landing, ` +
+            `inside a ${cardH}px card`
+        );
+        // …and still on that seat's own half, or it is naming the wrong end.
+        assert.ok(
+          short < trip / 2,
+          `${from} → ${to}: the label fell back past the middle of the table`
+        );
+      }
+    });
+
+    test("the two labels stay a whole lane apart, as the two cards do", () => {
+      for (const [from, to] of PAIRS) {
+        const there = exchangeTagOffset(tripFor(from, to));
+        const back = exchangeTagOffset(tripFor(to, from));
+        assert.ok(
+          dist(there, back) > Math.max(cardW, cardH),
+          `${from} ⇄ ${to}: the two labels are ${dist(there, back).toFixed(0)}px apart`
+        );
+      }
+    });
+
+    test("the label is off the lane its own card landed on", () => {
+      for (const [from, to] of PAIRS) {
+        const flight = tripFor(from, to);
+        const tag = exchangeTagOffset(flight);
+        assert.ok(
+          boxOverlap(tag, flight.to) === 0,
+          `${from} → ${to}: the label overlaps the card it describes`
+        );
+      }
+    });
   });
 });
 
