@@ -17,7 +17,6 @@ import {
   roundClosedWithWinner,
   traumaFor,
   shakeOffset,
-  shakeMagnitude,
   type ImpactTier,
 } from "@/components/gameTableModel";
 import {
@@ -100,11 +99,7 @@ interface TableFeedback {
   flushTrigger: number;
   /** Call once, at the same landing moment as `playImpact`, when that play emptied a hand. */
   celebrateFlush: () => void;
-  /**
-   * The escalation's own shake (#763) — a transform and a trauma-scaled
-   * opacity, meant for a node no e2e spec measures by testID. Opacity is 0 at
-   * rest, so it is safe to apply anywhere without a spec knowing.
-   */
+  /** The escalation's own shake (#763): a translate, decaying to rest. */
   shakeStyle: AnimatedStyle<ViewStyle>;
   /** Fire the shake for the tier a landing resolved to — `landingTier` (gameTableModel.ts) names it. */
   shake: (tier: ImpactTier) => void;
@@ -172,14 +167,9 @@ function useImpactFeedback(reduceMotion: boolean, scale: number) {
     );
   };
 
-  // No `if (reduceMotion)`: `traumaFor` already answers 0 there, off the same
-  // derivation `landingHoldMs` reads (components/gameTableModel.ts), so a
-  // reduced-motion player's shake falls out of that rather than a second gate.
-  // The decay window is resolved the same way every other step on the table
-  // is — `motionMs("shake", reduceMotion)`, never `Motion.duration.shake`
-  // read past that helper — so a reduced-motion player's window collapses to
-  // `Motion.reduced.shake` (0) exactly the way `Motion.reduced` says it should,
-  // rather than by this call site's own judgement.
+  // No `if (reduceMotion)`: `traumaFor` already reads it and answers 0, and
+  // `motionMs("shake", reduceMotion)` collapses the decay window the same way
+  // every other step on the table does.
   const shake = (tier: ImpactTier) => {
     const trauma = traumaFor(tier, reduceMotionRef.current);
     const decayMs = motionMs("shake", reduceMotionRef.current);
@@ -205,13 +195,9 @@ function useImpactFeedback(reduceMotion: boolean, scale: number) {
     ],
   }));
 
-  // Opacity rides the same decaying magnitude as the offset, at rest (no
-  // trauma) is 0 — so the veil this drives contributes nothing to a pixel a
-  // spec samples, whether or not it happens to run mid-shake.
   const shakeStyle = useAnimatedStyle(() => {
     const { x, y } = shakeOffset(shakeTrauma.value, shakeElapsed.value, shakeDecayMs.value);
-    const magnitude = shakeMagnitude(shakeTrauma.value, shakeElapsed.value, shakeDecayMs.value);
-    return { transform: [{ translateX: x }, { translateY: y }], opacity: magnitude };
+    return { transform: [{ translateX: x }, { translateY: y }] };
   });
 
   // Reanimated keeps driving shared values after unmount unless cancelled.

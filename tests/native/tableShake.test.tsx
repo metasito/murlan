@@ -1,19 +1,10 @@
-// tests/native/tableShake.test.tsx — the escalation's own shake (#763): what
-// a native render can and cannot pin.
+// tests/native/tableShake.test.tsx — the escalation's own shake (#763).
 //
-// The tier→trauma mapping, the reduced-motion zeroing (all five tiers, and
-// that it is exactly 0 rather than merely small), and the trauma-squared
-// decay are asserted directly against the pure functions in
-// `tests/gameTableModel.test.ts`'s "the table's own trauma escalation
-// (#763)" describe block — not here. A `useAnimatedStyle` value read off a
-// rendered node's `props.style`, under this repo's jest-expo reanimated
-// mock, is frozen at whatever it was when the component mounted and does not
-// reactively update from a later shared-value write (`settleForMotion`,
-// tests/gameTableModel.test.ts, documents the same trap for #783's flight
-// squash) — so a probe that called `shake()` after mount and re-read the
-// style would pass whether or not the decay actually ran. What a mount-time
-// read CAN pin honestly is the shape `shakeStyle` starts at: nothing has
-// fired yet, so the transform is a no-op and the veil it drives is invisible.
+// The tier→trauma mapping and the decay math are asserted directly against
+// the pure functions in `tests/gameTableModel.test.ts` — a `useAnimatedStyle`
+// read off a rendered node freezes at mount (`settleForMotion`, same file,
+// documents the trap) and cannot pin a later reactive change. This only pins
+// the shape `shakeStyle` starts at rest.
 import { describe, it, expect, jest } from "@jest/globals";
 import React from "react";
 import { render } from "@testing-library/react-native";
@@ -62,7 +53,7 @@ function ShakeProbe() {
 }
 
 describe("the table's shake, at rest", () => {
-  it("nothing has landed yet, so the veil sits at zero offset and zero opacity", async () => {
+  it("nothing has landed yet, so the offset is zero", async () => {
     const r = await render(<ShakeProbe />);
 
     const flat = flattenStyle(r.getByTestId("shake-probe").props.style);
@@ -75,7 +66,6 @@ describe("the table's shake, at rest", () => {
     expect(translateY).toBeDefined();
     expect(translateX?.translateX).toBe(0);
     expect(translateY?.translateY).toBe(0);
-    expect(flat.opacity ?? 0).toBe(0);
 
     await r.unmount();
   });

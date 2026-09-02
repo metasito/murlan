@@ -374,6 +374,14 @@ export function GameTable({
   const roundHoldTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevComboKeyRef = useRef<string>("");
   const roundClosedRef = useRef(false);
+  // Online, `matchOver` arrives on its own socket packet after `gameOver` —
+  // a second render the pile effect's own `prevComboKeyRef` guard skips, so
+  // the impact timeout below reads this ref (current at the moment it
+  // fires) rather than the `matchOver` its own scheduling render closed over.
+  const matchOverRef = useRef(matchOver);
+  useEffect(() => {
+    matchOverRef.current = matchOver;
+  }, [matchOver]);
 
   // The reason a tap on an unavailable GIOCA was refused, spelled out. Keyed by
   // a counter so tapping again restarts the dwell instead of being swallowed as
@@ -771,7 +779,13 @@ export function GameTable({
     // viewer's: the sound belongs to a card landing, not to a tap.
     impactTimerRef.current = setTimeout(() => {
       playImpact(thrown.heavy);
-      shake(landingTier({ comboType: combo.type, handOver: gameState.gameOver, matchOver }));
+      shake(
+        landingTier({
+          comboType: combo.type,
+          handOver: gameState.gameOver,
+          matchOver: matchOverRef.current,
+        })
+      );
       if (thrown.emptiedHand) celebrateFlush();
     }, impactDelayMs(reduceMotion));
 
@@ -791,7 +805,6 @@ export function GameTable({
     gameState.lastPlayedBy,
     gameState.roundWinner,
     gameState.gameOver,
-    matchOver,
     viewerSeat,
     players.length,
     reduceMotion,
@@ -1169,11 +1182,7 @@ export function GameTable({
       {/* Felt — decoration only, and edge to edge: a framed table draws a lit
           rectangle in a dark room, which is the one thing a single overhead
           lamp cannot produce. The pool tracks whose turn it is, so half the
-          cloth falls into shadow when it is not yours.
-
-          Never animated: `tests/e2e/tableFit.spec.ts` takes this node's own
-          `boundingBox()` and `tests/e2e/feltParityGrid.spec.ts` samples pixels
-          inside it against a prototype fixture, both asserted exactly. */}
+          cloth falls into shadow when it is not yours. */}
       <View
         testID="table-felt"
         style={[StyleSheet.absoluteFill, FELT_Z]}
@@ -1188,19 +1197,6 @@ export function GameTable({
           lightY={light.y}
         />
       </View>
-
-      {/* The escalation's own shake (#763) rides on this node instead — a
-          sibling neither `tableFit` nor `feltParityGrid` nor any other e2e
-          spec addresses by testID, so a transform (and the trauma-scaled veil
-          riding with it) never reaches a box those specs assert against. At
-          rest `shakeStyle`'s opacity is 0 (no trauma, no offset), so it never
-          changes a sampled pixel even when a shake happens to land mid-spec. */}
-      <Animated.View
-        testID="table-shake-veil"
-        style={[StyleSheet.absoluteFill, FELT_Z, shakeStyle, styles.shakeVeilFill]}
-        pointerEvents="none"
-        {...a11yHidden()}
-      />
 
       {/* Same coordinates, overflow visible so slots and buttons can extend out.
           `dataSet` and not `accessibilityLabel`: this sentence is the browser
@@ -1228,7 +1224,7 @@ export function GameTable({
           },
         ]}
       >
-        <View style={sharedTableStyles.tableContent}>
+        <Animated.View style={[sharedTableStyles.tableContent, shakeStyle]}>
           <View testID="table-top-section" style={sharedTableStyles.topSection}>
             {opponents.top ? (
               <TopOppSlot
@@ -1469,7 +1465,7 @@ export function GameTable({
               />
             )}
           </Animated.View>
-        </View>
+        </Animated.View>
       </View>
 
 
@@ -1521,7 +1517,6 @@ export function GameTable({
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: Colors.bg, overflow: "hidden" },
-  shakeVeilFill: { backgroundColor: Scrim.subtle },
 
   bannerBand: {
     position: "absolute",

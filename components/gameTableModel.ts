@@ -455,13 +455,9 @@ export function landingTier(input: {
   return TRAUMA_BY_TIER[playTier] >= TRAUMA_BY_TIER[closureTier] ? playTier : closureTier;
 }
 
-/**
- * The tier's peak trauma, gated by reduced motion through the same
- * derivation `landingHoldMs` uses — reading `reduceMotion` a second time
- * here is the thing that could drift from it.
- */
+/** The tier's peak trauma, or 0 outright when the player asked for less motion. */
 export function traumaFor(tier: ImpactTier, reduceMotion: boolean): number {
-  return impactDelayMs(reduceMotion) === 0 ? 0 : TRAUMA_BY_TIER[tier];
+  return reduceMotion ? 0 : TRAUMA_BY_TIER[tier];
 }
 
 /**
