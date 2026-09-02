@@ -597,6 +597,13 @@ async function startMatchAction(
     releasedSeats: new Set<string>(),
     spectators: new Set<string>(),
     moveLog: startReplayLog(),
+    // A fresh match always starts its round-robin deal from seat 0 — the
+    // decision recorded in `docs/BRIEF.md` §3.1 ("Rotating the deal"), which
+    // only rotates `dealFirstSeat` *within* a running match (`nextDealFirstSeat`,
+    // below). `context/GameContext.tsx`'s `setupGame` resets to the same 0 for
+    // an offline match, so a fresh table is identical either way; it is the
+    // within-match rotation that keeps a host's seat 0 from always drawing the
+    // bigger hand.
     dealFirstSeat: 0,
   };
   // Before the game exists, not after: `claimRoomSeat` re-reads the status

@@ -186,6 +186,11 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
   const setupGame = useCallback(
     (players: PlayerSetupConfig[], mode: GameMode, length: MatchLength = "match") => {
+      // A fresh match starts its round-robin deal from seat 0, same as
+      // `server/tableHandlers.ts`'s own fresh-match construction — the
+      // decision recorded in `docs/BRIEF.md` §3.1 ("Rotating the deal"),
+      // which rotates `dealFirstSeat` only *within* a running match, via
+      // `dealFrom` below.
       const state = initializeGame(players, mode);
       setGameState(state);
       setSelectedCards([]);
