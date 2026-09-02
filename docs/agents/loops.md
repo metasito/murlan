@@ -393,6 +393,13 @@ Full sweeps, for the end of an item only: `npx tsc --noEmit` (~5s) → `npm test
 `npx jest` (~50s, 527) → `npx eslint components lib tests app` (~25s).
 `docs/agents/issue-tracker.md` covers when CI runs instead.
 
+**A `tsc` error about a route that plainly exists is a stale `.expo/types/router.d.ts`.** Typed
+routes are generated there by the dev server, the file is gitignored, and it is never regenerated
+by `tsc` — so a checkout where the dev server last ran before a route was added reports that
+route as unassignable to `Href`, forever. CI has no `.expo` at all and is green, and so is a
+fresh worktree, which is what makes it look like a branch defect rather than local state. Delete
+the file; absence is correct, and nothing an agent runs needs it.
+
 **`npm test` does not run the integration suite** — every file under `tests/integration/` skips
 itself when `DATABASE_URL` is unset, so a green sweep says nothing about any of them. CI sets one
 and runs them all, which is why a branch can be green locally and red there. Point them at the

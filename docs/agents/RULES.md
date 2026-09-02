@@ -40,7 +40,9 @@ Every rule an agent must follow, in one place. No rationale here — the *why* l
     an index and a bare add absorbs someone else's work.
 12. **Never push to `main`.** Branch, open a pull request, let CI speak.
 13. **`Closes #NN` goes in the pull request body, never in a commit message.**
-14. **Merge with `--merge --delete-branch`, never `--squash`.**
+14. **Merge with `--merge --delete-branch`, never `--squash`, and confirm the remote branch
+    is actually gone** (`git ls-remote origin <branch>` returns nothing). A worktree still
+    holding the local branch makes `--delete-branch` fail, and the remote one survives with it.
 15. **Bring a stale branch up to date before merging** (`gh pr update-branch`), not after.
 
 ## Reading and writing code
