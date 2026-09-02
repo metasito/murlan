@@ -277,7 +277,10 @@ describe("the landscape screen is read on a landscape device", () => {
     assert.match(gate, /when:/, `${flow}'s landscape rotation has no condition above it`);
     assert.match(
       gate,
-      /platform:\s*iOS/,
+      // Anchored: Maestro reads `platform` as an exact enum, so a value that
+      // merely starts with `iOS` matches neither platform and turns the
+      // rotation off everywhere - which #685 needs it on.
+      /^\s*platform:\s*["']?iOS["']?\s*$/m,
       `${flow} still asks Android to rotate a device that already turned itself`,
     );
   });
