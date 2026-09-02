@@ -2,6 +2,12 @@
 // where reading finishes, and pairs with Home rather than sitting beside a
 // control of another shape (#588).
 //
+// In landscape there is no pair to make: the cutout's column is a control rail
+// there and Home is the knob at its head (#816), the same place the table's own
+// menu sat a moment earlier. The pairing is asserted where it still exists, and
+// the landscape case asserts the knob instead — a square target of at least the
+// 44pt floor, clear of the standings.
+//
 // Only a browser can answer any of it. `react-test-renderer` never runs
 // flexbox, so a native test cannot say how tall either button ended up, nor
 // where the pair landed relative to the rankings — which is the whole ticket.
@@ -100,20 +106,37 @@ test("the result screen's actions read as a pair, below the rankings, at every s
       vp.width
     );
 
-    // A pair, which is the defect: the two used to be a square icon and a
-    // two-line label of different heights. 1px absorbs the browser's own
-    // subpixel rounding, not a real difference.
-    expect(
-      Math.abs(home.height - primary.height),
-      `at ${vp.name} Home (${home.height}px) and the primary (${primary.height}px) must be the same height`
-    ).toBeLessThanOrEqual(1);
+    if (vp.width > vp.height) {
+      // Landscape: Home is the rail's knob. Square, at least the 44pt floor,
+      // and in the rail's column rather than in the standings' one.
+      expect(
+        Math.abs(home.width - home.height),
+        `at ${vp.name} Home must be a knob, not a ${home.width}x${home.height} slab`
+      ).toBeLessThanOrEqual(1);
+      expect(
+        Math.min(home.width, home.height),
+        `at ${vp.name} the Home knob is under the 44pt touch floor`
+      ).toBeGreaterThanOrEqual(44);
+      expect(
+        home.x + home.width,
+        `at ${vp.name} the Home knob must sit in the rail, clear of the standings`
+      ).toBeLessThanOrEqual(rankings.x + 1);
+    } else {
+      // A pair, which is the defect: the two used to be a square icon and a
+      // two-line label of different heights. 1px absorbs the browser's own
+      // subpixel rounding, not a real difference.
+      expect(
+        Math.abs(home.height - primary.height),
+        `at ${vp.name} Home (${home.height}px) and the primary (${primary.height}px) must be the same height`
+      ).toBeLessThanOrEqual(1);
 
-    // Side by side, so "the same height" above is about a pair rather than two
-    // stacked buttons that trivially match.
-    expect(
-      Math.abs(home.y - primary.y),
-      `at ${vp.name} the two actions must sit on the same row`
-    ).toBeLessThanOrEqual(1);
+      // Side by side, so "the same height" above is about a pair rather than
+      // two stacked buttons that trivially match.
+      expect(
+        Math.abs(home.y - primary.y),
+        `at ${vp.name} the two actions must sit on the same row`
+      ).toBeLessThanOrEqual(1);
+    }
 
     // Where reading finishes: under the rankings, and in their column rather
     // than diagonally opposite them.

@@ -368,6 +368,8 @@ export default function OnlineGameScreen() {
                 gameState={gameState}
                 topPad={pads.topPad}
                 bottomPad={pads.bottomPad}
+                leftPad={pads.leftPad}
+                rightPad={pads.rightPad}
                 onLeave={leaveAndExit}
                 onVoteRematch={() => {
                   hapticMedium();

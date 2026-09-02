@@ -30,6 +30,8 @@ export function GameOverOverlay({
   gameState,
   topPad,
   bottomPad,
+  leftPad = 0,
+  rightPad = 0,
   onLeave,
   onVoteRematch,
   voteState,
@@ -44,6 +46,8 @@ export function GameOverOverlay({
   gameState: GameState;
   topPad: number;
   bottomPad: number;
+  leftPad?: number;
+  rightPad?: number;
   onLeave: () => void;
   onVoteRematch: () => void;
   voteState: RematchVote | null;
@@ -245,6 +249,8 @@ export function GameOverOverlay({
         footer={breakdown}
         topPad={topPad}
         bottomPad={bottomPad}
+        leftPad={leftPad}
+        rightPad={rightPad}
       />
     </AppModal>
   );
