@@ -483,11 +483,19 @@ export function shakeMagnitude(trauma: number, elapsedMs: number, decayMs: numbe
 const SHAKE_CYCLES = 3;
 /**
  * Peak displacement at trauma 1, before the tier's own trauma scales it down
- * — `Spacing.md`/`Spacing.snug` (lib/tokens.ts), not a pixel literal: a
- * shake is a distance on the same scale as a padding, the way `hitSlop` is.
+ * — `Spacing.xxl`/`Spacing.lg` (lib/tokens.ts), not a pixel literal: a shake
+ * is a distance on the same scale as a padding, the way `hitSlop` is.
+ *
+ * Re-tuned on #796: #789 squared the trauma this multiplies, which is
+ * correct and owner-settled (#101), but it also shrank the bomb's felt
+ * impact to about two thirds of what it was, because the amplitude here had
+ * been tuned by eye against the old, unsquared curve. Raised so the bomb's
+ * combined landing — this shake plus `kick`'s own unconditional jolt
+ * (`components/useTableFeedback.ts`), which every landing already carries —
+ * clears what it displaced before that correction, at every table size.
  */
-const SHAKE_AMPLITUDE_X = Spacing.md;
-const SHAKE_AMPLITUDE_Y = Spacing.snug;
+const SHAKE_AMPLITUDE_X = Spacing.xxl;
+const SHAKE_AMPLITUDE_Y = Spacing.lg;
 
 /**
  * The table's own displacement `elapsedMs` into a shake of `decayMs` —

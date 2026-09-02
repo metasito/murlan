@@ -1662,6 +1662,77 @@ describe("the table's own trauma escalation (#763)", () => {
   });
 });
 
+describe("the bomb's peak, re-tuned against #789's corrected curve (#796)", () => {
+  const DECAY_MS = Motion.duration.shake;
+  // The base short edge `cardScale` (components/cardFaceModel.ts) is authored
+  // at, and the phone/tablet short edges the critic on #795 read the
+  // regression at.
+  const BASE_EDGE = 390;
+  const PHONE_EDGE = 320;
+  const TABLET_EDGE = 834;
+
+  /**
+   * `kick` (components/useTableFeedback.ts) fires on every landing,
+   * unconditionally, and rides the same table scale the shake does — so a
+   * player's felt impact is the two summed, never the shake alone. Read its
+   * peak jolt from source rather than a second copy of the numbers, so a
+   * change to `KICK_JOLTS` cannot leave this floor stale.
+   */
+  function kickPeakJolt(): { x: number; y: number } {
+    const src = readFileSync(path.join(repoRoot, "components", "useTableFeedback.ts"), "utf8");
+    const jolts = [...src.matchAll(/\{ x: (-?\d+), y: (-?\d+), ms: [^}]+\}/g)].map((m) => ({
+      x: Number(m[1]),
+      y: Number(m[2]),
+    }));
+    assert.ok(jolts.length > 0, "expected to find KICK_JOLTS entries in useTableFeedback.ts");
+    return {
+      x: Math.max(...jolts.map((j) => Math.abs(j.x))),
+      y: Math.max(...jolts.map((j) => Math.abs(j.y))),
+    };
+  }
+
+  function combinedBombPeak(shortEdge: number) {
+    const scale = shortEdge / BASE_EDGE;
+    const kick = kickPeakJolt();
+    const shake = shakeOffset(Trauma.bomb, 0, DECAY_MS, scale);
+    return { x: kick.x * scale + Math.abs(shake.x), y: kick.y * scale + Math.abs(shake.y) };
+  }
+
+  // What a bomb's shake alone displaced before #789 corrected the decay curve
+  // — a fixed pixel amount, unscaled by the table (#790's own bug) — at the
+  // amplitude constants shipped then. #796's own measurement on #795's PR.
+  const PRE_CORRECTION_SHAKE_X = Trauma.bomb * 16;
+  const PRE_CORRECTION_SHAKE_Y = Trauma.bomb * 10;
+
+  function preCorrectionCombined(shortEdge: number) {
+    const scale = shortEdge / BASE_EDGE;
+    const kick = kickPeakJolt();
+    return {
+      x: kick.x * scale + PRE_CORRECTION_SHAKE_X,
+      y: kick.y * scale + PRE_CORRECTION_SHAKE_Y,
+    };
+  }
+
+  for (const [label, shortEdge] of [
+    ["phone", PHONE_EDGE],
+    ["base", BASE_EDGE],
+    ["tablet", TABLET_EDGE],
+  ] as const) {
+    test(`a bomb's combined landing (shake plus kick) is at least what it felt before #789's curve correction — ${label}`, () => {
+      const before = preCorrectionCombined(shortEdge);
+      const after = combinedBombPeak(shortEdge);
+      assert.ok(
+        after.x >= before.x,
+        `${label}: expected the re-tuned peak to clear the pre-correction floor of ${before.x.toFixed(2)}px on x, got ${after.x.toFixed(2)}px`
+      );
+      assert.ok(
+        after.y >= before.y,
+        `${label}: expected the re-tuned peak to clear the pre-correction floor of ${before.y.toFixed(2)}px on y, got ${after.y.toFixed(2)}px`
+      );
+    });
+  }
+});
+
 // ─── Flight origin ────────────────────────────────────────────────────────────
 
 describe("flightOrigin", () => {
