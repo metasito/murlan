@@ -18,6 +18,7 @@ import {
   startGame,
   waitForDeal,
   type Client,
+  type GameOverPayload,
   type RoomState,
   type SanitizedState,
 } from "../helpers/table.ts";
@@ -32,7 +33,11 @@ import {
  * new socket here.
  */
 process.env.MURLAN_AFK_TIMEOUT_MS = "400";
-process.env.MURLAN_DISCONNECT_GRACE_MS = "4000";
+// Long enough that driving a whole hand to game:over on the AFK path (used by
+// the #808 test below, where the disconnected seat is forced through every
+// one of its own turns) never races the seat's own disconnect-grace vacate —
+// `handleGameOver` cancels that timer once the hand actually ends.
+process.env.MURLAN_DISCONNECT_GRACE_MS = "20000";
 
 interface ReconnectNotice {
   userId: string;
@@ -531,6 +536,60 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
       ]);
       back.emit("game:rejoin", { roomId: room.roomId });
       assert.equal(await answered, "rejoined");
+    } finally {
+      await closeTable(table);
+    }
+  });
+
+  /**
+   * #808: a client away for `game:over` — the only message carrying a hand's
+   * scores — used to rejoin holding an empty scoreboard for it forever,
+   * because `announceRejoin` skips `emitMatchState` once the game is over and
+   * never sent anything in its place. Bob is offline for the whole hand, so
+   * the AFK path (armed by the same `MURLAN_AFK_TIMEOUT_MS` this file already
+   * sets) forces his seat's minimum legal moves in his place — the same
+   * forced-minimum play `driveHandToExchangeOrOver` does for a connected
+   * client — and alice alone drives her own side to `game:over`.
+   */
+  test("a client that missed game:over is sent the finished hand's scores on rejoin", async () => {
+    const alice = await connectAs(server, "missed_over_alice");
+    const bob = await connectAs(server, "missed_over_bob");
+    const room = await setUpRoom([alice, bob], 2);
+    const table = [alice, bob];
+    try {
+      await startGame(table);
+
+      const dropped = waitFor(alice.socket, "game:player_disconnected", 5_000);
+      bob.socket.disconnect();
+      await dropped;
+
+      const aliceOver = gameOverOf(
+        await driveHandToExchangeOrOver([alice], () => {}, { stopOnExchange: false })
+      );
+      assert.ok(aliceOver.scores.length > 0, "the hand must have banked real scores");
+
+      const back = await reconnectAs(server, bob);
+      table[1] = { ...bob, socket: back };
+      const bobOver = waitFor<GameOverPayload>(back, "game:over", 5_000);
+      back.emit("game:rejoin", { roomId: room.roomId });
+      const payload = await bobOver;
+
+      assert.deepEqual(
+        payload.scores,
+        aliceOver.scores,
+        "a client rejoining after the hand ended must be handed the same scores the room got, not an empty scoreboard"
+      );
+      assert.deepEqual(payload.rankings, aliceOver.rankings);
+
+      // The wire shape the client keys its display off (context/OnlineGameContext.tsx):
+      // engineId -> points, never userId or seat index.
+      const handScores = Object.fromEntries(payload.scores.map((r) => [r.engineId, r.points]));
+      for (const id of payload.rankings) {
+        assert.ok(
+          id in handScores,
+          `${id} is missing from the rejoining client's scores — a teams overlay would read this as an incomplete hand and fall back to naming rankings[0] the winner`
+        );
+      }
     } finally {
       await closeTable(table);
     }

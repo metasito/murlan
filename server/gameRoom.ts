@@ -3,6 +3,7 @@
 // server, and everything it drags in behind it.
 import type { GameState, GameMode, MatchLength } from "../lib/gameEngine.ts";
 import type { ReplayMove } from "../lib/replay.ts";
+import type { GameOverPayload } from "../lib/matchState.ts";
 import {
   scoreKeyForSeat as scoreKeyForMapSeat,
   seatOfUser as seatOfUserInMap,
@@ -86,6 +87,14 @@ export interface OnlineGameState {
    * restart, or past MAX_REPLAY_MOVES — and none will be written.
    */
   moveLog: ReplayMove[] | null;
+  /**
+   * The `game:over` this hand's `handleGameOver` broadcast to the room, kept
+   * so a client that was away for it can be sent the same payload on rejoin
+   * instead of being left with an empty score map. Cleared wherever
+   * `dealManche` starts the next hand; undefined for a table rehydrated after
+   * a restart, like the other memory-only fields above.
+   */
+  lastGameOverPayload?: GameOverPayload;
 }
 
 export const activeGames = new Map<string, OnlineGameState>();

@@ -27,6 +27,7 @@ export async function dealManche(
   game.handFlags = {};
   game.moveLog = startReplayLog();
   game.abandonedSeats.clear();
+  game.lastGameOverPayload = undefined;
   rollMatchForward(game);
 
   await storage.updateRoomStatus(game.roomId, "in_progress");

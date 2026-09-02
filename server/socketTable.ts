@@ -173,6 +173,12 @@ export async function announceRejoin(
   // `game:rematch_intents` own those.
   if (!game.gameState.gameOver) {
     emitMatchState(io, userRoom(userId), game);
+  } else if (game.lastGameOverPayload) {
+    // A rejoin at the results screen: everyone still in the room got
+    // `game:over` when the hand ended, but this socket was not one of them.
+    // Re-sent to this account only, so a client that never left is not told
+    // its own hand twice.
+    io.to(userRoom(userId)).emit("game:over", game.lastGameOverPayload);
   }
   io.to(roomId).emit("game:player_reconnected", {
     userId,

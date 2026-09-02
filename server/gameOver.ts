@@ -124,6 +124,9 @@ export async function handleGameOver(
     recorded: result.recordable,
   };
   io.to(roomId).emit("game:over", over);
+  // Kept so `announceRejoin` can hand this hand's scores to a client that
+  // rejoins after everyone still in the room has already been sent them.
+  game.lastGameOverPayload = over;
 
   // The one record of how a hand resolved. `match_replays` is not a substitute:
   // it is written only for a table with a human seat and a live moveLog, and it
