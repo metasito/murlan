@@ -2,7 +2,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Stack, usePathname } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect } from "react";
-import { View } from "react-native";
+import { AppState, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
@@ -37,7 +37,7 @@ function trackForRoute(pathname: string): MusicTrack {
   return "menu";
 }
 
-function RootLayoutNav() {
+export function RootLayoutNav() {
   const { notification, dismissNotification, reportBannerBottom } = useNotification();
   const pathname = usePathname();
 
@@ -50,6 +50,17 @@ function RootLayoutNav() {
   // does not restart the loop on an unrelated re-render.
   useEffect(() => {
     void playMusic(trackForRoute(pathname));
+  }, [pathname]);
+
+  // The effect above depends only on the route, which backgrounding never
+  // changes — so it never re-fires on return, and `shouldPlayInBackground:
+  // false` (lib/sounds.ts) leaves iOS free to have silenced the loop while
+  // the app was away.
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active") void playMusic(trackForRoute(pathname));
+    });
+    return () => sub.remove();
   }, [pathname]);
 
   return (
