@@ -27,6 +27,7 @@ import {
   cardTilt,
   impactDelayMs,
   landingHoldMs,
+  landSquashScale,
   type FlyDirection,
 } from "@/components/gameTableModel";
 import { FIELD_ARC, solveArc } from "@/components/tableArc";
@@ -166,14 +167,19 @@ export function FlyingCards({
     // this component via `key` for each new one — so this runs once per flight.
   }, [reduceMotion, landingRot, notifyDone, tx, ty, rot, opacity, arcY, settle]);
 
-  const aStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateX: tx.value },
-      { translateY: ty.value + arcY.value + settle.value * LAND_DIP },
-      { rotate: `${rot.value + settle.value * landingRot * 0.4}deg` },
-    ],
-    opacity: opacity.value,
-  }));
+  const aStyle = useAnimatedStyle(() => {
+    const squash = landSquashScale(settle.value);
+    return {
+      transform: [
+        { translateX: tx.value },
+        { translateY: ty.value + arcY.value + settle.value * LAND_DIP },
+        { rotate: `${rot.value + settle.value * landingRot * 0.4}deg` },
+        { scaleX: squash.x },
+        { scaleY: squash.y },
+      ],
+      opacity: opacity.value,
+    };
+  });
 
   const cardScale = scale * FIELD_SCALE;
   const { arc, box, cardH } = fieldArc(cards, cardScale, roomW);

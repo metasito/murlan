@@ -361,6 +361,31 @@ export function landingHoldMs(reduceMotion: boolean): number {
   return impactDelayMs(reduceMotion) === 0 ? 0 : Hold.land;
 }
 
+/**
+ * How far a card compresses on the axis it fell, at the peak of contact —
+ * `settle` at 1. Shy of `LAND_DIP`'s bounce: a card is a face, not a ball, so
+ * the deformation reads as pressed rather than squashed flat.
+ */
+export const LAND_SQUASH = 0.92;
+
+/**
+ * The card's squash-and-stretch at contact, riding the pile's own `settle`
+ * value rather than a timeline of its own — the squash rides `Motion.spring.land`
+ * because `settle` is what that spring drives; a second derivation is the
+ * thing that could drift from it. `x * y` is 1 for every input, so
+ * compressing one axis always expands the other by exactly as much — a
+ * uniform scale-down would be a card shrinking, not a card landing.
+ *
+ * At `settle` 0 both axes are 1: no deformation. That covers the whole of
+ * reduced motion for free — `FlyingCards` never advances `settle` past its
+ * initial value there — with no flag of its own to read.
+ */
+export function landSquashScale(settle: number): { x: number; y: number } {
+  "worklet";
+  const y = 1 - (1 - LAND_SQUASH) * settle;
+  return { x: 1 / y, y };
+}
+
 // ─── Bomb burst ────────────────────────────────────────────────────────────────
 
 /** Spark dots ringing the bomb's impact point. */

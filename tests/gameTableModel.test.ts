@@ -62,6 +62,8 @@ import {
   describeTableForA11y,
   impactDelayMs,
   landingHoldMs,
+  landSquashScale,
+  LAND_SQUASH,
   FLIGHT_MS,
   LANDING_FRACTION,
   passedSeats,
@@ -1416,6 +1418,40 @@ describe("the table holds still at the landing frame", () => {
     // fire first and the pile would advance twice.
     const src = readFileSync(path.join(repoRoot, "components", "table", "pile.tsx"), "utf8");
     assert.match(src, /const FLIGHT_LIMIT_MS = .*Hold\.land/);
+  });
+});
+
+describe("a landed card squashes on the spring that lands it", () => {
+  test("at rest — settle 0, including the whole of reduced motion — there is no deformation", () => {
+    const { x, y } = landSquashScale(0);
+    assert.equal(x, 1);
+    assert.equal(y, 1);
+  });
+
+  test("the peak squash is the named constant, not a literal at the call site", () => {
+    assert.ok(LAND_SQUASH < 1, "a squash compresses; it does not grow");
+    const { y } = landSquashScale(1);
+    assert.equal(y, LAND_SQUASH);
+  });
+
+  test("compressing one axis expands the other — volume never drifts, at any point on the spring", () => {
+    // Includes a value past 1: `Motion.spring.land` overshoots past 0 once, and
+    // that overshoot is the recovery this rides rather than a second timeline.
+    for (const settle of [0, 0.25, 0.5, 0.75, 1, -0.07]) {
+      const { x, y } = landSquashScale(settle);
+      assert.ok(
+        Math.abs(x * y - 1) < 1e-9,
+        `x*y must stay 1 at settle=${settle}, got ${x * y}`
+      );
+    }
+  });
+
+  test("pile.tsx rides the same settle value Motion.spring.land drives, not a timeline of its own", () => {
+    const src = readFileSync(path.join(repoRoot, "components", "table", "pile.tsx"), "utf8");
+    assert.ok(
+      src.includes("landSquashScale(settle.value)"),
+      "the flying card's squash must read off `settle`, the value the landing spring already drives"
+    );
   });
 });
 
