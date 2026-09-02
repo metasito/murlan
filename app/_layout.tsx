@@ -38,7 +38,7 @@ function trackForRoute(pathname: string): MusicTrack {
   return "menu";
 }
 
-function RootLayoutNav() {
+export function RootLayoutNav() {
   const { notification, dismissNotification, reportBannerBottom } = useNotification();
   const pathname = usePathname();
 
@@ -47,8 +47,11 @@ function RootLayoutNav() {
   useEffect(() => setCurrentScreen(pathname), [pathname]);
 
   // Requested on every route, started whenever a gesture has unlocked audio.
-  // playMusic is a no-op when the track is already the one playing, so this
-  // does not restart the loop on an unrelated re-render.
+  // The dependency array is what keeps this from firing on an unrelated
+  // re-render — native re-plays and rewinds every time it does fire, track
+  // change or not; only playWebMusic skips a genuine repeat internally
+  // (lib/music.ts). Resuming after the app was backgrounded is lib/music.ts's
+  // own concern (its AppState listener), not this route effect's.
   useEffect(() => {
     void playMusic(trackForRoute(pathname));
   }, [pathname]);

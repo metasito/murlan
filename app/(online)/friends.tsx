@@ -26,10 +26,9 @@ import { useTranslation } from "@/lib/i18n";
 import { relativeTime } from "@/lib/relativeTime";
 import { registerForPush } from "@/lib/pushRegistration";
 import { a11yHidden, a11yState, useA11yHint } from "@/lib/a11y";
-import type { FriendInfo } from "@/lib/wire";
+import type { FriendInfo, FriendRequestInfo } from "@/lib/wire";
 
 
-interface FriendRequest { id: string; username: string; createdAt: string | null }
 interface SearchResult { id: string; username: string }
 
 function SectionHeader({ title, count }: { title: string; count?: number }) {
@@ -77,12 +76,12 @@ export default function FriendsScreen() {
     refetchOnWindowFocus: true,
   });
 
-  const { data: requests = [] } = useQuery<FriendRequest[]>({
+  const { data: requests = [] } = useQuery<FriendRequestInfo[]>({
     queryKey: ["/api/friends/requests"],
     refetchOnWindowFocus: true,
   });
 
-  const { data: sentRequests = [] } = useQuery<FriendRequest[]>({
+  const { data: sentRequests = [] } = useQuery<FriendRequestInfo[]>({
     queryKey: ["/api/friends/sent"],
     refetchOnWindowFocus: true,
   });
@@ -97,7 +96,7 @@ export default function FriendsScreen() {
       await qc.cancelQueries({ queryKey: ["/api/friends/requests"] });
       qc.setQueryData(
         ["/api/friends/requests"],
-        (old: FriendRequest[] = []) => old.filter((r) => r.id !== id)
+        (old: FriendRequestInfo[] = []) => old.filter((r) => r.id !== id)
       );
     },
     onSuccess: () => {

@@ -43,10 +43,8 @@ jobs:
     # one timeout followed by a slow-but-successful retry near 63. A job that
     # overruns is cancelled rather than failed, which loses the verdict and both
     # artefacts - so the retry must not be what pushes it over. The build is
-    # what moved this from 60. `ci.yml`'s `android-build` measured 938s, and
-    # that is a floor rather than the figure: it assembles debug, where this
-    # assembles release and so additionally runs the Metro bundle through
-    # hermesc and crunches the PNGs. Unmeasured until the first dispatch.
+    # what moved this from 60: measured at 929s on run 33654901506, against
+    # `ci.yml`'s `android-build` at 957s for the debug variant.
     timeout-minutes: 100
 
     steps:
@@ -80,7 +78,29 @@ jobs:
       - name: Build the app
         run: |
           npx expo prebuild --platform android --no-install
-          ./android/gradlew -p android assembleRelease
+          # One ABI, for the device this is actually driven on — the emulator
+          # below is `arch: x86_64`. Left at the template's four, a third of the
+          # build is CMake for three architectures nothing in this job can
+          # execute: measured on run 33654901506, native compilation is 288s of
+          # the 862s of Gradle task time, and 230s of that is x86, armeabi-v7a
+          # and arm64-v8a. Every module that matters reads this property
+          # (`getReactNativeArchitectures` in the RN Gradle plugin; a copy of the
+          # same helper in reanimated, worklets, gesture-handler and
+          # expo-modules-core). `ios.yml` takes the same cut as
+          # `ONLY_ACTIVE_ARCH=YES` and for the same reason.
+          #
+          # This is not a loss of compile coverage: `ci.yml`'s `android-build`
+          # still assembles every architecture on every pull request. It is the
+          # gate for "the arm64 slice builds"; this job is the gate for "the app
+          # runs", and it only ever runs one slice.
+          #
+          # `lintVitalRelease` is 116s of the same 862s and reports on the
+          # `android/` tree `expo prebuild` regenerates from scratch each run,
+          # which nobody reads and nothing gates. `eslint` in `ci.yml` is the
+          # lint gate for the code that is ours.
+          ./android/gradlew -p android assembleRelease \
+            -PreactNativeArchitectures=x86_64 \
+            -x lintVitalRelease
           apk=""
           for candidate in android/app/build/outputs/apk/release/*.apk; do
             [ -f "$candidate" ] && { apk="$candidate"; break; }

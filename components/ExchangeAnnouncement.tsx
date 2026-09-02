@@ -119,6 +119,7 @@ export function ExchangeAnnouncement({
               label={t("exchange.seatGot", { card: cardSpokenName(cardReceived, t) })}
               trip={toWinner}
               visible={landed}
+              testID="exchange-tag-to-winner"
             />
           )}
           {cardGiven && (
@@ -126,6 +127,7 @@ export function ExchangeAnnouncement({
               label={t("exchange.seatGot", { card: cardSpokenName(cardGiven, t) })}
               trip={toLoser}
               visible={landed}
+              testID="exchange-tag-to-loser"
             />
           )}
         </>

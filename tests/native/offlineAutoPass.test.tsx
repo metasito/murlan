@@ -78,16 +78,20 @@ jest.mock('@/context/NotificationContext', () => ({
 // The clock itself is GameTable's; what is under test is what the screen wires
 // to its expiry. A button standing in for "the countdown reached zero" keeps
 // the test off wall-clock timing entirely.
+const mockSeenTimer: { current?: TurnTimerConfig } = {};
+
 jest.mock('@/components/GameTable', () => {
   const react = require('react') as typeof import('react');
   const rn = require('react-native') as typeof import('react-native');
   return {
-    GameTable: (props: { turnTimer?: TurnTimerConfig }) =>
-      react.createElement(
+    GameTable: (props: { turnTimer?: TurnTimerConfig }) => {
+      mockSeenTimer.current = props.turnTimer;
+      return react.createElement(
         rn.Pressable,
         { testID: 'expire', onPress: () => props.turnTimer?.onExpire?.() },
         react.createElement(rn.Text, null, 'expire')
-      ),
+      );
+    },
   };
 });
 
@@ -114,6 +118,18 @@ describe('the offline turn clock expiring', () => {
       expect.objectContaining({ type: 'afk', title: t('game.autoPassTitle') })
     );
     expect(mockPassTurn).toHaveBeenCalledTimes(1);
+
+    await r.unmount();
+  });
+
+  // Nobody else is keeping this deadline, so the table may stop it while an
+  // announcement holds the felt (#817). Online the same clock is the server's
+  // AFK window and this stays off, or the countdown would draw time the seat
+  // has already spent.
+  it('is the screen’s own to stop, and says so', async () => {
+    const r = await render(<GameScreen />);
+
+    expect(mockSeenTimer.current?.pausable).toBe(true);
 
     await r.unmount();
   });

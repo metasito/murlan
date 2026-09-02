@@ -170,6 +170,16 @@ export async function ensureAudioMode(): Promise<void> {
   } catch {}
 }
 
+/**
+ * iOS can deactivate the AVAudioSession while the app is backgrounded
+ * (`shouldPlayInBackground: false` above) — `_audioModeSet` has no way to
+ * learn that happened, so a resume needs `ensureAudioMode` to ask again
+ * rather than trust the session it cached is still the active one.
+ */
+export function forgetAudioMode(): void {
+  _audioModeSet = false;
+}
+
 function loadSound(key: string, assetModule: number): AudioPlayer | null {
   const cached = soundCache[key];
   if (cached) return cached;

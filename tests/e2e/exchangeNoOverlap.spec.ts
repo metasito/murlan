@@ -1,5 +1,5 @@
 // tests/e2e/exchangeNoOverlap.spec.ts — the two exchanged cards never occupy
-// the same space.
+// the same space, and neither do the two labels that name what each seat got.
 //
 // "both at the same time, one takes one side the other the other side they
 // should not overlap" is the owner's own wording on #533, and it is the one
@@ -34,8 +34,10 @@ function intersection(a: Box, b: Box): number {
   return w > 0 && h > 0 ? w * h : 0;
 }
 
+const card = (id: string, rank: string, suit: string) => ({ id, rank, suit, isJoker: false });
+
+/** The viewer has just won a manche and is choosing what to hand back. */
 function midExchangeSave() {
-  const card = (id: string, rank: string, suit: string) => ({ id, rank, suit, isJoker: false });
   return {
     version: 2,
     gameState: {
@@ -133,4 +135,90 @@ test("the two exchanged cards fly at once and never overlap", async ({ page, bas
     ...frames.map((f) => Math.hypot(f.a.x - frames[0].a.x, f.a.y - frames[0].a.y))
   );
   expect(moved, "the card has to cross the table, not stay at its seat").toBeGreaterThan(20);
+});
+
+// #817: the owner's capture had "got 2 of Diamonds" rendered straight over the
+// cards in his own hand — dark text on a card face, close to unreadable. The
+// label used to sit at the trip's landing point, and for the viewer's own seat
+// that point is the hand zone's own centre. Only a browser can say where either
+// box ended up.
+// The seat pairs a two-player table cannot reach are swept in
+// tests/gameTableModel.test.ts, over every ordered pair at two window sizes:
+// the diagonals are where the lane offset carries the label sideways as well as
+// along, and this fixture has only the one trip between top and bottom.
+test("neither seat's label lands on a card", async ({ page, baseURL }) => {
+  test.setTimeout(120_000);
+  {
+    // A real phone in landscape: the window the labels went off the bottom of.
+    await page.setViewportSize({ width: 844, height: 390 });
+    await resumeSaved(page, baseURL!, midExchangeSave());
+
+    await expect(page.getByTestId("exchange-prompt")).toBeVisible({ timeout: 15_000 });
+    await tap(page, page.getByRole("button", { name: GIVEBACK_SPOKEN, exact: true }));
+    await tap(page, page.getByTestId("btn-gioca"));
+
+    // Both tags are mounted from the start and animate their opacity in, and
+    // `toBeVisible` counts a fully transparent box as visible — so waiting on
+    // that alone measures the prompt's own card, still mid-table, rather than
+    // anything the flight did. The landing is what retires the fliers, so that
+    // is what is waited for.
+    const toWinner = page.getByTestId("exchange-tag-to-winner");
+    const toLoser = page.getByTestId("exchange-tag-to-loser");
+    await expect(page.getByTestId("exchange-prompt")).toHaveCount(0, { timeout: 15_000 });
+    await expect(page.getByTestId("exchange-flier-to-winner")).toHaveCount(0, { timeout: 15_000 });
+    await expect(page.getByTestId("exchange-flier-to-loser")).toHaveCount(0, { timeout: 15_000 });
+    for (const tag of [toWinner, toLoser]) {
+      await expect
+        .poll(() => tag.evaluate((el) => Number(getComputedStyle(el).opacity)), {
+          timeout: 15_000,
+        })
+        .toBeGreaterThan(0.9);
+    }
+
+    const cards = await page.evaluate(() =>
+      [...document.querySelectorAll('[data-testid="card-box"], [data-testid="card-box-back"]')]
+        .map((el) => {
+          const r = el.getBoundingClientRect();
+          return { x: r.x, y: r.y, width: r.width, height: r.height };
+        })
+        .filter((r) => r.width > 0 && r.height > 0)
+    );
+    // The floor: with no cards measured the sweep below would pass having looked
+    // at nothing, and the hand is exactly what the labels used to cover.
+    expect(cards.length, "no card faces were measured at all").toBeGreaterThan(0);
+
+    const window = page.viewportSize()!;
+    for (const [name, tag] of [
+      ["the winner's", toWinner],
+      ["the loser's", toLoser],
+    ] as const) {
+      const box = (await tag.boundingBox())!;
+      const on = cards.filter((c) => intersection(box, c) > 0);
+      expect(
+        on.map((c) => `${Math.round(c.x)},${Math.round(c.y)}`),
+        `${name} label sits on ${on.length} card face(s)`
+      ).toEqual([]);
+
+      // A label the table's own clip retired is a label that never said
+      // anything — and it passes every overlap check ever written.
+      expect(
+        [
+          box.x < 0 && "past the left edge",
+          box.y < 0 && "above the top edge",
+          box.x + box.width > window.width && "past the right edge",
+          box.y + box.height > window.height && "below the bottom edge",
+        ].filter(Boolean),
+        `${name} label is at ${Math.round(box.x)},${Math.round(box.y)} ` +
+          `(${Math.round(box.width)}x${Math.round(box.height)}) in a ` +
+          `${window.width}x${window.height} window`
+      ).toEqual([]);
+    }
+
+    // …and the two do not land on each other either, which the perpendicular
+    // lane is what buys.
+    expect(
+      intersection((await toWinner.boundingBox())!, (await toLoser.boundingBox())!),
+      "the two labels overlap each other"
+    ).toBe(0);
+  }
 });

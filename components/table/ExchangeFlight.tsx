@@ -16,7 +16,7 @@ import { a11yHidden } from "@/lib/a11y";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { Colors, Motion, motionMs, Radius, Scrim, Spacing } from "@/lib/theme";
 import { EXCHANGE_FLIGHT_MS, EXCHANGE_LEG_MS, MEET_HOLD_MS } from "@/lib/exchangeCeremony";
-import type { ExchangeFlight as Trip } from "@/components/gameTableModel";
+import { TAG_MAX_W, type ExchangeFlight as Trip } from "@/components/gameTableModel";
 
 const TAG_FS = 11;
 
@@ -114,27 +114,27 @@ export function ExchangeFlyingCard({
   );
 }
 
-/** How far clear of its own card a tag sits, beyond the card itself. */
-const TAG_CLEARANCE = 30;
-
 /**
- * What one seat got, beside that seat.
+ * What one seat got, on that seat's side of the table.
  *
  * The two players not trading are also watching this, and they cannot read a
- * flight they may have looked away from — so the words sit where the people
- * are, and each names its own side of the trade. It shares the flight's
- * geometry rather than measuring the seat again, and sits further along the
- * lane its own card took, so a tag is never on top of the card it describes
- * and the two tags are never on top of each other.
+ * flight they may have looked away from — so the words sit on the side the
+ * people are, and each names its own half of the trade. The place comes with
+ * the trip (`exchangeFlight`, gameTableModel.ts) rather than being measured
+ * again here, so a tag is never on top of the card it describes, never on the
+ * other tag, and never off the table.
  */
 export function ExchangeSeatTag({
   label,
   trip,
   visible,
+  testID,
 }: {
   label: string;
   trip: Trip;
   visible: boolean;
+  /** The overlap check measures this box — tests/e2e/exchangeNoOverlap.spec.ts. */
+  testID: string;
 }) {
   const reduceMotion = usePrefersReducedMotion();
   const opacity = useSharedValue(0);
@@ -148,23 +148,13 @@ export function ExchangeSeatTag({
 
   const anim = useAnimatedStyle(() => ({ opacity: opacity.value }));
 
-  // Past the card rather than beside it: the lane is exactly the card's own
-  // reach across the trip, so one more of it clears the card that landed here,
-  // and the far lane is the other way round from this one.
-  const laneLen = Math.hypot(trip.lane.dx, trip.lane.dy) || 1;
-  const reach = laneLen + TAG_CLEARANCE;
-
   return (
     <Animated.View
+      testID={testID}
       pointerEvents="none"
       style={[
         styles.flier,
-        {
-          transform: [
-            { translateX: trip.to.dx + (trip.lane.dx / laneLen) * reach },
-            { translateY: trip.to.dy + (trip.lane.dy / laneLen) * reach },
-          ],
-        },
+        { transform: [{ translateX: trip.tag.dx }, { translateY: trip.tag.dy }] },
         anim,
       ]}
     >
@@ -178,6 +168,10 @@ export function ExchangeSeatTag({
 const styles = StyleSheet.create({
   flier: { position: "absolute" },
   tag: {
+    // The place the model picked for this box assumes this width; a longer
+    // card name wraps rather than growing out of the felt it was fitted onto.
+    maxWidth: TAG_MAX_W,
+    textAlign: "center",
     fontFamily: "Rajdhani_600SemiBold",
     fontSize: TAG_FS,
     color: Colors.gold,
