@@ -97,6 +97,18 @@ function table(gameState: GameState, opts: { viewerSeat?: number; turnTimer?: Tu
   );
 }
 
+/**
+ * The stacking this node inherits: its own `zIndex`, or the nearest ancestor's.
+ * A leaf carries none of its own, and what decides whether it is covered is the
+ * positioned box it sits in.
+ */
+const zIndexAbove = (node: { parent: unknown; props: { style?: unknown } } | null): number => {
+  if (!node) return 0;
+  const own = (StyleSheet.flatten(node.props?.style) as Record<string, number> | undefined)?.zIndex;
+  if (typeof own === 'number') return own;
+  return zIndexAbove(node.parent as Parameters<typeof zIndexAbove>[0]);
+};
+
 /** True when this node is withdrawn from the accessibility tree on either platform. */
 const withdrawn = (props: Record<string, unknown>) =>
   props.accessibilityElementsHidden === true ||
@@ -218,20 +230,25 @@ describe('the manche-opening announcement', () => {
   });
 
   // Online the deadline is the server's AFK window, which runs whatever this
-  // client draws — so the countdown keeps going, and the scrim it goes on
-  // behind stays thin enough to read it through.
-  it('leaves a clock it cannot pause running, rather than drawing time the seat does not have', async () => {
+  // client draws — so the countdown keeps going, and a clock that keeps going
+  // is one the player has to be able to see. It is the one thing the hold
+  // takes neither from the eye nor from the reader.
+  it('leaves a clock it cannot pause running, and in plain sight', async () => {
     const serverClock: TurnTimerConfig = { seconds: 20, includeNewRound: true };
     const view = await render(table(state(OPENER), { viewerSeat: OPENER, turnTimer: serverClock }));
 
     expect(screen.getByTestId('start-reason-gate', { includeHiddenElements: true })).toBeTruthy();
-    expect(screen.getByText('20', { includeHiddenElements: true })).toBeTruthy();
+    const clock = screen.getByText('20');
+    expect(withdrawn(clock.props)).toBe(false);
 
-    const gate = StyleSheet.flatten(
-      screen.getByTestId('start-reason-gate', { includeHiddenElements: true }).props.style
-    ) as Record<string, string>;
-    const alpha = Number(/rgba?\([^)]*,\s*([\d.]+)\s*\)/.exec(gate.backgroundColor)?.[1] ?? '1');
-    expect(alpha).toBeLessThan(1);
+    const gateZ = Number(
+      (
+        StyleSheet.flatten(
+          screen.getByTestId('start-reason-gate', { includeHiddenElements: true }).props.style
+        ) as Record<string, number>
+      ).zIndex
+    );
+    expect(zIndexAbove(clock)).toBeGreaterThan(gateZ);
 
     await view.unmount();
   });

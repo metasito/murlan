@@ -164,6 +164,12 @@ const BANNER_BAND_Z = Layer.band;
  */
 const FELT_Z = { zIndex: Layer.felt } as const;
 const TABLE_Z = { zIndex: Layer.table } as const;
+/**
+ * The turn chip while the opening gate holds the table. Online the deadline is
+ * the server's and keeps running under the hold, so the countdown rides over it
+ * rather than being covered by it.
+ */
+const HELD_CLOCK_Z = { zIndex: Layer.clock } as const;
 
 /**
  * A sentence the browser harness reads, as `data-<hyphenated key>`. `dataSet` is
@@ -364,6 +370,10 @@ export function GameTable({
   // The opening gate covers the rail too, and the sheet its menu knob opens
   // would come up above the gate carrying an exit.
   const behindCoverOnly = a11yVeiled((tableCovered || holdingForStart) && !settingsOpen);
+  // The turn chip answers to everything that takes the table away except the
+  // opening gate: it names no control, and the countdown it carries is the one
+  // thing a hold may not hide from a reader either.
+  const clockVeil = a11yVeiled(settingsOpen || tableCovered);
   const [focusMode, setFocusMode] = useState(false);
   const [playOnLeft, setPlayOnLeft] = useState(false);
   const closeSettings = useCallback(() => setSettingsOpen(false), [setSettingsOpen]);
@@ -1134,10 +1144,11 @@ export function GameTable({
       <Animated.View
         testID="game-hud-stack"
         pointerEvents={focusMode ? "none" : undefined}
-        {...behindVeil}
+        {...clockVeil}
         style={[
           styles.hudRight,
           { right: frame.tableRight + frame.pad, top: frame.tableTop, gap: frame.pad },
+          holdingForStart && HELD_CLOCK_Z,
           focusFadeStyle,
         ]}
       >

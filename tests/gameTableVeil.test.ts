@@ -42,6 +42,13 @@ const REACHABLE_ON_PURPOSE: Record<string, string> = {
  * table's own veil below would satisfy any looser check, and here it is the wrong answer.
  */
 const VEILED_ON_ITS_OWN_TERMS: Record<string, { spelling: RegExp; why: string }> = {
+  "game-hud-stack": {
+    spelling: /\{\.\.\.clockVeil\}/,
+    why:
+      "carries the turn countdown, and answers to everything that takes the table away except " +
+      "the opening gate — online that clock is the server's and keeps running under the hold, " +
+      "so a reader losing it would be charged for time it could not hear",
+  },
   ControlRail: {
     spelling: /veiled=\{behindCoverOnly\}/,
     why:
@@ -97,7 +104,13 @@ export function rootChildren(raw: string): RootChild[] {
     // Blanking a `{/* … */}` leaves its braces, which are not a child.
     if (/^[\s{}]*$/.test(text)) continue;
     children.push({
-      name: /<([A-Za-z][\w.]*)/.exec(text)?.[1] ?? lines[i].trim(),
+      // Its testID where it has one: two of the root's children are plain
+      // `Animated.View`s, and a rule written against the tag name would answer
+      // for whichever of them it reached first.
+      name:
+        /testID="([^"]+)"/.exec(text)?.[1] ??
+        /<([A-Za-z][\w.]*)/.exec(text)?.[1] ??
+        lines[i].trim(),
       line: i + 1,
       source: text,
     });
