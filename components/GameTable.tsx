@@ -70,6 +70,7 @@ import {
   turnTimerActive,
   viewerOwnsSeat,
   type FlyDirection,
+  type ImpactTier,
   type OpponentSide,
   type PileState,
   type TableA11yExchange,
@@ -350,6 +351,10 @@ export function GameTable({
   const [roundWinnerTag, setRoundWinnerTag] = useState<{ seat: number; closure: number } | null>(null);
   const [pileState, setPileState] = useState<PileState>(EMPTY_PILE);
   const [pileBounceTrigger, setPileBounceTrigger] = useState(0);
+  // The beaten pile's own reaction (#764): fired from the same impactDelayMs()
+  // landing the shake and the impact sound wait for, never a second guess at it.
+  const [flinchTrigger, setFlinchTrigger] = useState(0);
+  const [flinchTier, setFlinchTier] = useState<ImpactTier>("ordinary");
   const [flyInfo, setFlyInfo] = useState<{
     key: string;
     dir: FlyDirection;
@@ -778,14 +783,15 @@ export function GameTable({
     // reads as *impact* waits for it. Announced for every seat, not only the
     // viewer's: the sound belongs to a card landing, not to a tap.
     impactTimerRef.current = setTimeout(() => {
+      const tier = landingTier({
+        comboType: combo.type,
+        handOver: gameState.gameOver,
+        matchOver: matchOverRef.current,
+      });
       playImpact(thrown.heavy);
-      shake(
-        landingTier({
-          comboType: combo.type,
-          handOver: gameState.gameOver,
-          matchOver: matchOverRef.current,
-        })
-      );
+      shake(tier);
+      setFlinchTier(tier);
+      setFlinchTrigger((t) => t + 1);
       if (thrown.emptiedHand) celebrateFlush();
     }, impactDelayMs(reduceMotion));
 
@@ -1302,6 +1308,8 @@ export function GameTable({
                   roundWinner={roundWinnerTag === null ? null : players[roundWinnerTag.seat]?.name ?? ""}
                   bounceTrigger={pileBounceTrigger}
                   catchTrigger={pileFlushed ? flushTrigger : undefined}
+                  flinchTrigger={flinchTrigger}
+                  flinchTier={flinchTier}
                   roomW={frame.fieldRoomW}
                   scale={scale}
                 />

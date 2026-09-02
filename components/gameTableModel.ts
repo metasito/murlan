@@ -461,6 +461,28 @@ export function traumaFor(tier: ImpactTier, reduceMotion: boolean): number {
 }
 
 /**
+ * How far the beaten combination (`pileState.prev`) is knocked as the new
+ * one lands on it, scaled by the table like `shakeOffset` — colocated with
+ * `TRAUMA_BY_TIER` so #764 and #765 read the same five tiers. `straightFlush`
+ * is not silent, unlike trauma: #101's own table keeps it the smallest
+ * non-zero step on purpose, reserving the escalation's headroom for the
+ * bomb. Widen `Spacing.xxs` here — not `TRAUMA_BY_TIER` — if that reads too
+ * subtle on a device.
+ */
+const FLINCH_BY_TIER: Record<ImpactTier, number> = {
+  ordinary: 0,
+  straightFlush: Spacing.xxs,
+  bomb: Spacing.slim,
+  mancheWon: Spacing.slim,
+  partitaWon: Spacing.slim,
+};
+
+/** The tier's own flinch, or 0 outright when the player asked for less motion — the caller scales the answer by the table the way `shakeOffset` scales trauma. */
+export function flinchFor(tier: ImpactTier, reduceMotion: boolean): number {
+  return reduceMotion ? 0 : FLINCH_BY_TIER[tier];
+}
+
+/**
  * The shake's own amplitude `elapsedMs` into a decay window of `decayMs` —
  * trauma squared, not trauma (see `Trauma`, lib/tokens.ts, for why squaring
  * wins over the raw value): the tier's own trauma decays linearly to 0 across
