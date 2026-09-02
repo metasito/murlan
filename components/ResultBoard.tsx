@@ -230,6 +230,7 @@ function WinnerCelebration({
         </LinearGradient>
       </View>
       <Text
+        testID="winner-celebration-name"
         style={[styles.winnerName, compact && styles.winnerNameCompact]}
         numberOfLines={1}
       >

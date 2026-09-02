@@ -95,11 +95,20 @@ export function GameOverOverlay({
   // leader) for the rare case `rankings[0]` itself fails to resolve —
   // `handOutcomeFor` is deliberately viewer-scoped and has no such tier, so
   // it answers a different question than this one.
+  //
+  // `scoresPending` — the same completeness check `handOutcomeFor` uses for
+  // its own "pending" tier — has to gate the same two candidates: a client
+  // that has not yet seen `game:over` for this manche (a rejoin landing
+  // ahead of it) holds `handScores` with a seat missing, which `isDrawnHand`
+  // already refuses to read as a draw but which `rankings[0]`/`rows[0]`
+  // cannot tell apart from a genuine placement (#808) — an unresolved
+  // manche must render no winner, not a guessed one.
+  const scoresPending = isTeamMode && gameState.rankings.some((id) => !(id in handScores));
   const mancheDrawn = isTeamMode && isDrawnHand(gameState.players, handScores);
   const celebrationCandidates = [
     match.over ? match.winners[0] : undefined,
-    mancheDrawn ? undefined : gameState.rankings[0],
-    mancheDrawn ? undefined : rows[0]?.id,
+    mancheDrawn || scoresPending ? undefined : gameState.rankings[0],
+    mancheDrawn || scoresPending ? undefined : rows[0]?.id,
   ];
   const celebratedName = celebration(
     gameState.players,
