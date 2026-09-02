@@ -1,7 +1,12 @@
 // tests/botFill.test.ts — pure seat-assignment logic, extracted so it is testable
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildSeatRoster, isContestedTable } from "../server/onlineGameLogic.ts";
+import {
+  botSeatsFromPersonality,
+  buildSeatRoster,
+  isContestedTable,
+  seatAssignmentsFromRoster,
+} from "../server/onlineGameLogic.ts";
 
 test("empty seats are filled with bots up to maxPlayers", () => {
   const roster = buildSeatRoster(
@@ -73,4 +78,47 @@ test("tables humans hold at least half of are recorded", () => {
   assert.equal(isContestedTable(1, 1), true); // a straight duel with the AI
   assert.equal(isContestedTable(4, 0), true); // a full human table
   assert.equal(isContestedTable(3, 1), true); // one seat vacated mid-game
+});
+
+// seatAssignmentsFromRoster is what startMatchAction actually calls to build
+// playerMap and botSeatsAtStart — driven here through the same buildSeatRoster
+// output rather than a hand-rolled roster, so a mutation that stops
+// populating either map, or populates it for every seat regardless of the
+// roster, shows up here rather than only in a caller that passes it by hand.
+test("seatAssignmentsFromRoster splits a mixed roster exactly, bots on one side and humans on the other", () => {
+  const roster = buildSeatRoster(
+    [{ seatIndex: 0, userId: "u_ana", username: "Ana" }],
+    4,
+    { fillWithBots: true, botPersonality: "gent" }
+  );
+  const { playerMap, botSeatsAtStart } = seatAssignmentsFromRoster(roster);
+  assert.deepEqual(playerMap, { 0: "u_ana" });
+  assert.deepEqual([...botSeatsAtStart].sort(), [1, 2, 3]);
+});
+
+test("seatAssignmentsFromRoster keys both maps by roster position, not the DB's own seatIndex", () => {
+  // A gap in the DB seat numbering: two humans at seats 0 and 3, no bots.
+  const roster = buildSeatRoster(
+    [
+      { seatIndex: 0, userId: "u_ana", username: "Ana" },
+      { seatIndex: 3, userId: "u_ben", username: "Ben" },
+    ],
+    4,
+    { fillWithBots: false }
+  );
+  const { playerMap, botSeatsAtStart } = seatAssignmentsFromRoster(roster);
+  // initializeGame seats this roster at positions 0 and 1, not 0 and 3.
+  assert.deepEqual(playerMap, { 0: "u_ana", 1: "u_ben" });
+  assert.deepEqual(botSeatsAtStart, new Set());
+});
+
+test("botSeatsFromPersonality reads a born bot, not a seat a human vacated", () => {
+  const players = [
+    { personality: undefined }, // human seat 0
+    { personality: "gent" as const }, // born-bot seat 1
+    // A seat that started human and was later vacated: type flips to "ai",
+    // personality is never set (vacateSeat doesn't touch it).
+    { personality: undefined },
+  ];
+  assert.deepEqual(botSeatsFromPersonality(players), new Set([1]));
 });

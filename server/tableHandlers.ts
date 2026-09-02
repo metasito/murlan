@@ -45,8 +45,10 @@ import {
   usersInLobbyGrace,
 } from "./gameTimers.ts";
 import {
+  botSeatsFromPersonality,
   buildSeatRoster,
   restoredMatchOver,
+  seatAssignmentsFromRoster,
   teamKeyMap,
   unpackPersistedState,
 } from "./onlineGameLogic.ts";
@@ -157,9 +159,7 @@ export async function rehydrateGame(
     // A hand restored after a restart has no record of who walked out of it:
     // the map is memory-only and the restart emptied it.
     abandonedSeats: new Map<number, string>(),
-    // Also memory-only, and lost the same way: every seat with no playerMap
-    // entry restores as if a human had vacated it (see the field's own doc).
-    botSeatsAtStart: new Set<number>(),
+    botSeatsAtStart: botSeatsFromPersonality(restoredPlayers),
     releasedSeats: new Set<string>(),
     spectators: new Set<string>(),
     // The log is memory-only, so a hand restored after a restart produces no
@@ -576,12 +576,7 @@ async function startMatchAction(
   }));
 
   const gameState = initializeGame(playerSetup, room.gameMode);
-  const playerMap: Record<number, string> = {};
-  const botSeatsAtStart = new Set<number>();
-  roster.forEach((r, idx) => {
-    if (r.isBot) botSeatsAtStart.add(idx);
-    else playerMap[idx] = r.userId;
-  });
+  const { playerMap, botSeatsAtStart } = seatAssignmentsFromRoster(roster);
 
   const firstTarget = firstTargetFor(roster.length);
 

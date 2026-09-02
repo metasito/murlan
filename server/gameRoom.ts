@@ -56,11 +56,12 @@ export interface OnlineGameState {
    * `foldHandIntoMatch` reads this to tell that seat apart from one a human
    * later walked out of: both score under the same `bot:<seat>` key, but only
    * the latter must be kept from accumulating under a name nobody left behind
-   * to claim it.
+   * to claim it. Not in `playerMap`'s own shape (a `Record` can't say "was
+   * never a key"), so it travels beside it rather than folding in.
    *
-   * Memory only, like `abandonedSeats` — a restart mid-match loses the
-   * distinction and falls back to excluding the seat, same as before this
-   * field existed.
+   * Restored from `personality` on a restart (`botSeatsFromPersonality`),
+   * which is persisted, rather than left empty like the true memory-only
+   * fields below.
    */
   botSeatsAtStart: Set<number>;
   /**

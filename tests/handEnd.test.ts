@@ -220,6 +220,47 @@ describe("resolveHandEnd — gameResults shaping", () => {
     assert.equal(total, outcomes.length);
   });
 
+  test("a seat vacated between hands keeps the pre-existing exclusion, unlike a straight duel's bot", () => {
+    // Two humans; rotonmeta wins hand 1. drita then leaves (vacateSeat: her
+    // seat drops out of playerMap; abandonedSeats and botSeatsAtStart are
+    // both left untouched, exactly as vacateSeat leaves them between hands).
+    // The AI now driving her seat wins hand 2.
+    const players = [player("p0", "rotonmeta", 3), player("p1", "drita", 0)];
+    const hand1 = resolveHandEnd({
+      state: mkState(players, ["p0", "p1"]),
+      playerMap: { 0: "rotonmeta", 1: "drita" },
+      cumulativeScores: {},
+      matchTarget: 7,
+      matchLength: "match",
+      gameMode: "free_for_all",
+      handFlags: HAND_FLAGS,
+      abandonedSeats: new Map(),
+      botSeatsAtStart: new Set(),
+    });
+    const hand2 = resolveHandEnd({
+      state: mkState(players, ["p1", "p0"]),
+      playerMap: { 0: "rotonmeta" }, // seat 1 vacated between hands
+      cumulativeScores: hand1.cumulativeScores,
+      matchTarget: 7,
+      matchLength: "match",
+      gameMode: "free_for_all",
+      handFlags: HAND_FLAGS,
+      abandonedSeats: new Map(),
+      botSeatsAtStart: new Set(),
+    });
+
+    // The point still lands on the hand's own scoreboard...
+    assert.equal(hand2.handByKey["bot:1"], 1);
+    // ...but docs/BRIEF.md §3.1 ("Naming the winner of a single manche") and
+    // the matching lib/gameEngine.ts contract (tests/scoring.test.ts's "keys
+    // the table does not accumulate") already decide, deliberately, that a
+    // vacated seat's points never join the running total a departed human's
+    // own name is still attached to. That decision — not this PR — is why
+    // this sum does not equal hands played; see the PR body for #815.
+    const total = Object.values(hand2.cumulativeScores).reduce((a, b) => a + b, 0);
+    assert.equal(total, 1);
+  });
+
   test("opponentsFinished counts real finishers only, not auto-assigned placements", () => {
     // Only seat 0 actually emptied its hand; the hand ended there and the
     // other three are auto-ranked still holding cards.

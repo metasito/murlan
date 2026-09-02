@@ -368,6 +368,43 @@ export function buildSeatRoster(
 }
 
 /**
+ * The two engine-seat-indexed maps a match starts from: which seat a human
+ * holds, and which seats were dealt to a bot before anyone could vacate one.
+ * Keyed by position in `roster`, not `r.seatIndex` — that position is the
+ * engine seat index (`initializeGame` assigns seats the same way), so a gap
+ * in the DB's own seat numbering cannot shift either map onto the wrong
+ * player. `startMatchAction` calls this rather than walking the roster
+ * inline, so a test can drive the same function it does.
+ */
+export function seatAssignmentsFromRoster(roster: SeatEntry[]): {
+  playerMap: Record<number, string>;
+  botSeatsAtStart: Set<number>;
+} {
+  const playerMap: Record<number, string> = {};
+  const botSeatsAtStart = new Set<number>();
+  roster.forEach((r, idx) => {
+    if (r.isBot) botSeatsAtStart.add(idx);
+    else playerMap[idx] = r.userId;
+  });
+  return { playerMap, botSeatsAtStart };
+}
+
+/**
+ * `botSeatsAtStart`, read back from a restored game rather than a fresh
+ * roster. `personality` is set once, at `seatAssignmentsFromRoster` time, for
+ * a born-bot seat only — `vacateSeat` flips a human seat to AI without ever
+ * setting it — and rides every hand's persisted envelope after that, so it
+ * survives a restart the roster itself does not.
+ */
+export function botSeatsFromPersonality(players: readonly { personality?: BotPersonalityId }[]): Set<number> {
+  const seats = new Set<number>();
+  players.forEach((p, seat) => {
+    if (p.personality !== undefined) seats.add(seat);
+  });
+  return seats;
+}
+
+/**
  * Scoring key -> team id, for the seated humans only. Vacated (`bot:<seat>`)
  * seats are left out on purpose: they are already excluded from
  * `cumulativeScores` (see `isBotSeatKey`), so including them here would add
