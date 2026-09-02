@@ -17,6 +17,7 @@ import {
   roundClosedWithWinner,
   traumaFor,
   shakeOffset,
+  shakeAmplitudeFor,
   type ImpactTier,
 } from "@/components/gameTableModel";
 import {
@@ -125,12 +126,16 @@ function useImpactFeedback(reduceMotion: boolean, scale: number) {
   const giocaRejectX = useSharedValue(0);
   const [boomTrigger, setBoomTrigger] = useState(0);
   // The escalation's own shake (#763): a trauma peak, an elapsed clock and the
-  // decay window that landed with it — `shakeOffset` reads all three back
+  // decay window that landed with it — `shakeOffset` reads all four back
   // every frame, riding the table #101 settled — never a second amplitude
-  // authored here.
+  // authored here. `shakeAmpX`/`Y` carry `shakeAmplitudeFor(tier)` (#796):
+  // which peak a landing reads is decided once, when it fires, not
+  // re-derived every frame from a tier this hook does not otherwise keep.
   const shakeTrauma = useSharedValue(0);
   const shakeElapsed = useSharedValue(0);
   const shakeDecayMs = useSharedValue(0);
+  const shakeAmpX = useSharedValue(0);
+  const shakeAmpY = useSharedValue(0);
 
   // Both inputs are read through refs so the two writers below depend on
   // nothing, which is what lets the callbacks that expose them hold `[]`.
@@ -173,8 +178,11 @@ function useImpactFeedback(reduceMotion: boolean, scale: number) {
   const shake = (tier: ImpactTier) => {
     const trauma = traumaFor(tier, reduceMotionRef.current);
     const decayMs = motionMs("shake", reduceMotionRef.current);
+    const amplitude = shakeAmplitudeFor(tier);
     shakeTrauma.value = trauma;
     shakeDecayMs.value = decayMs;
+    shakeAmpX.value = amplitude.x;
+    shakeAmpY.value = amplitude.y;
     if (trauma === 0) {
       shakeElapsed.value = 0;
       return;
@@ -196,7 +204,10 @@ function useImpactFeedback(reduceMotion: boolean, scale: number) {
   }));
 
   const shakeStyle = useAnimatedStyle(() => {
-    const { x, y } = shakeOffset(shakeTrauma.value, shakeElapsed.value, shakeDecayMs.value, scale);
+    const { x, y } = shakeOffset(shakeTrauma.value, shakeElapsed.value, shakeDecayMs.value, scale, {
+      x: shakeAmpX.value,
+      y: shakeAmpY.value,
+    });
     return { transform: [{ translateX: x }, { translateY: y }] };
   });
 

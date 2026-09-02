@@ -483,19 +483,28 @@ export function shakeMagnitude(trauma: number, elapsedMs: number, decayMs: numbe
 const SHAKE_CYCLES = 3;
 /**
  * Peak displacement at trauma 1, before the tier's own trauma scales it down
- * — `Spacing.xxl`/`Spacing.lg` (lib/tokens.ts), not a pixel literal: a shake
- * is a distance on the same scale as a padding, the way `hitSlop` is.
- *
- * Re-tuned on #796: #789 squared the trauma this multiplies, which is
- * correct and owner-settled (#101), but it also shrank the bomb's felt
- * impact to about two thirds of what it was, because the amplitude here had
- * been tuned by eye against the old, unsquared curve. Raised so the bomb's
- * combined landing — this shake plus `kick`'s own unconditional jolt
- * (`components/useTableFeedback.ts`), which every landing already carries —
- * clears what it displaced before that correction, at every table size.
+ * — `Spacing.md`/`Spacing.snug` (lib/tokens.ts), not a pixel literal: a
+ * shake is a distance on the same scale as a padding, the way `hitSlop` is.
  */
-const SHAKE_AMPLITUDE_X = Spacing.xxl;
-const SHAKE_AMPLITUDE_Y = Spacing.lg;
+const SHAKE_AMPLITUDE_X = Spacing.md;
+const SHAKE_AMPLITUDE_Y = Spacing.snug;
+
+/**
+ * The bomb's own peak, layered on top of the amplitude above rather than
+ * replacing it: `kick` (`components/useTableFeedback.ts`) is gated to
+ * `bomb`/`royal_straight` alone, so a manche or partita closed by an
+ * ordinary combination has no kick to lean on, and one shared amplitude
+ * moves every tier by the same ratio once trauma is squared — this is
+ * reserved for the one tier that needs the headroom.
+ */
+const BOMB_SHAKE_AMPLITUDE_X = Spacing.xxl;
+const BOMB_SHAKE_AMPLITUDE_Y = Spacing.lg;
+
+/** Which peak a tier's shake reads — every tier but the bomb shares the default above. */
+export function shakeAmplitudeFor(tier: ImpactTier): { x: number; y: number } {
+  if (tier === "bomb") return { x: BOMB_SHAKE_AMPLITUDE_X, y: BOMB_SHAKE_AMPLITUDE_Y };
+  return { x: SHAKE_AMPLITUDE_X, y: SHAKE_AMPLITUDE_Y };
+}
 
 /**
  * The table's own displacement `elapsedMs` into a shake of `decayMs` —
@@ -505,21 +514,24 @@ const SHAKE_AMPLITUDE_Y = Spacing.lg;
  * instead of building up to it. `scale` is the table's own — `kick`
  * (components/useTableFeedback.ts) multiplies its jolts by the same value, so
  * a shake is a fraction of the table rather than a fixed pixel count that
- * reads huge on a phone and vanishes on a tablet.
+ * reads huge on a phone and vanishes on a tablet. `amplitude` defaults to the
+ * shared peak above; the caller passes `shakeAmplitudeFor(tier)` to let one
+ * tier read a different one.
  */
 export function shakeOffset(
   trauma: number,
   elapsedMs: number,
   decayMs: number,
-  scale: number
+  scale: number,
+  amplitude: { x: number; y: number } = { x: SHAKE_AMPLITUDE_X, y: SHAKE_AMPLITUDE_Y }
 ): { x: number; y: number } {
   "worklet";
   const magnitude = shakeMagnitude(trauma, elapsedMs, decayMs);
   const wiggle =
     decayMs <= 0 ? 0 : Math.cos((elapsedMs / decayMs) * Math.PI * 2 * SHAKE_CYCLES);
   return {
-    x: magnitude * wiggle * SHAKE_AMPLITUDE_X * scale,
-    y: magnitude * wiggle * SHAKE_AMPLITUDE_Y * scale,
+    x: magnitude * wiggle * amplitude.x * scale,
+    y: magnitude * wiggle * amplitude.y * scale,
   };
 }
 

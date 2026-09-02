@@ -7,7 +7,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { CARD_H, CARD_W, BACK_SCALE } from "../components/cardFaceModel.ts";
-import { Hold, TOUCH_TARGET_MIN, Trauma, Motion } from "../lib/tokens.ts";
+import { Hold, TOUCH_TARGET_MIN, Trauma, Motion, motionMs } from "../lib/tokens.ts";
 import { blankComments } from "./helpers/sourceScan.ts";
 import type { Card, Combination } from "../lib/gameEngine.ts";
 import {
@@ -71,6 +71,7 @@ import {
   traumaFor,
   shakeMagnitude,
   shakeOffset,
+  shakeAmplitudeFor,
   FLIGHT_MS,
   LANDING_FRACTION,
   passedSeats,
@@ -1656,7 +1657,7 @@ describe("the table's own trauma escalation (#763)", () => {
     );
     assert.doesNotMatch(
       src,
-      /const SHAKE_AMPLITUDE_[XY]\s*=\s*\d/,
+      /const (BOMB_)?SHAKE_AMPLITUDE_[XY]\s*=\s*\d/,
       "a shake amplitude must read a Spacing step, not a pixel literal"
     );
   });
@@ -1671,12 +1672,39 @@ describe("the bomb's peak, re-tuned against #789's corrected curve (#796)", () =
   const PHONE_EDGE = 320;
   const TABLET_EDGE = 834;
 
+  const ALL_TIERS: ImpactTier[] = ["ordinary", "straightFlush", "bomb", "mancheWon", "partitaWon"];
+
+  test("only the bomb reads a different peak — every other tier shares one amplitude", () => {
+    const bomb = shakeAmplitudeFor("bomb");
+    for (const tier of ALL_TIERS) {
+      if (tier === "bomb") continue;
+      assert.deepEqual(
+        shakeAmplitudeFor(tier),
+        shakeAmplitudeFor("ordinary"),
+        `${tier} must read the same shared peak as every other non-bomb tier`
+      );
+      assert.notDeepEqual(
+        shakeAmplitudeFor(tier),
+        bomb,
+        `${tier} must not have picked up the bomb's own boosted peak`
+      );
+    }
+  });
+
+  test("the bomb's own peak is strictly larger on both axes than the shared one", () => {
+    const bomb = shakeAmplitudeFor("bomb");
+    const shared = shakeAmplitudeFor("mancheWon");
+    assert.ok(bomb.x > shared.x, `expected the bomb's x peak (${bomb.x}) to exceed the shared one (${shared.x})`);
+    assert.ok(bomb.y > shared.y, `expected the bomb's y peak (${bomb.y}) to exceed the shared one (${shared.y})`);
+  });
+
   /**
-   * `kick` (components/useTableFeedback.ts) fires on every landing,
-   * unconditionally, and rides the same table scale the shake does — so a
-   * player's felt impact is the two summed, never the shake alone. Read its
-   * peak jolt from source rather than a second copy of the numbers, so a
-   * change to `KICK_JOLTS` cannot leave this floor stale.
+   * `kick` (components/useTableFeedback.ts) is gated to `heavy` plays —
+   * `bomb`/`royal_straight` only (`readThrownPlay`, above) — so it is part of
+   * what a bomb lands with, never part of a manche or partita closed by an
+   * ordinary combination. Read its peak jolt from source rather than a second
+   * copy of the numbers, so a change to `KICK_JOLTS` cannot leave this floor
+   * stale.
    */
   function kickPeakJolt(): { x: number; y: number } {
     const src = readFileSync(path.join(repoRoot, "components", "useTableFeedback.ts"), "utf8");
@@ -1691,10 +1719,15 @@ describe("the bomb's peak, re-tuned against #789's corrected curve (#796)", () =
     };
   }
 
-  function combinedBombPeak(shortEdge: number) {
+  function bombShake(shortEdge: number, elapsedMs: number) {
+    const scale = shortEdge / BASE_EDGE;
+    return shakeOffset(Trauma.bomb, elapsedMs, DECAY_MS, scale, shakeAmplitudeFor("bomb"));
+  }
+
+  function combinedBombPeak(shortEdge: number, elapsedMs: number) {
     const scale = shortEdge / BASE_EDGE;
     const kick = kickPeakJolt();
-    const shake = shakeOffset(Trauma.bomb, 0, DECAY_MS, scale);
+    const shake = bombShake(shortEdge, elapsedMs);
     return { x: kick.x * scale + Math.abs(shake.x), y: kick.y * scale + Math.abs(shake.y) };
   }
 
@@ -1718,9 +1751,9 @@ describe("the bomb's peak, re-tuned against #789's corrected curve (#796)", () =
     ["base", BASE_EDGE],
     ["tablet", TABLET_EDGE],
   ] as const) {
-    test(`a bomb's combined landing (shake plus kick) is at least what it felt before #789's curve correction — ${label}`, () => {
+    test(`a bomb's combined landing (shake plus kick), at contact, is at least what it felt before #789's curve correction — ${label}`, () => {
       const before = preCorrectionCombined(shortEdge);
-      const after = combinedBombPeak(shortEdge);
+      const after = combinedBombPeak(shortEdge, 0);
       assert.ok(
         after.x >= before.x,
         `${label}: expected the re-tuned peak to clear the pre-correction floor of ${before.x.toFixed(2)}px on x, got ${after.x.toFixed(2)}px`
@@ -1731,6 +1764,40 @@ describe("the bomb's peak, re-tuned against #789's corrected curve (#796)", () =
       );
     });
   }
+
+  test("a manche or partita closed by an ordinary combination — no kick to lean on — keeps exactly the shake it had before this ticket", () => {
+    for (const tier of ["mancheWon", "partitaWon"] as const) {
+      const scale = PHONE_EDGE / BASE_EDGE;
+      const untouched = shakeOffset(traumaFor(tier, false), 0, DECAY_MS, scale);
+      const withThisTicketsHelper = shakeOffset(traumaFor(tier, false), 0, DECAY_MS, scale, shakeAmplitudeFor(tier));
+      assert.deepEqual(
+        withThisTicketsHelper,
+        untouched,
+        `${tier}'s shake must read the same peak with or without #796's amplitude lookup — only the bomb gets one`
+      );
+    }
+  });
+
+  test("the bomb's re-tuned shake still decays to rest across its own window, not to a raised floor", () => {
+    const atContact = bombShake(PHONE_EDGE, 0);
+    const midway = bombShake(PHONE_EDGE, DECAY_MS / 2);
+    const spent = bombShake(PHONE_EDGE, DECAY_MS);
+    assert.ok(
+      Math.abs(midway.x) < Math.abs(atContact.x),
+      `expected the boosted peak to have decayed by the midpoint, got ${midway.x} against a peak of ${atContact.x}`
+    );
+    assert.equal(spent.x, 0, "the boosted peak must still reach exactly 0 once its decay window has run");
+    assert.equal(spent.y, 0, "the boosted peak must still reach exactly 0 once its decay window has run");
+  });
+
+  test("the bomb's re-tuned peak still zeroes under reduced motion", () => {
+    const scale = PHONE_EDGE / BASE_EDGE;
+    const trauma = traumaFor("bomb", true);
+    const decayMs = motionMs("shake", true);
+    const { x, y } = shakeOffset(trauma, 0, decayMs, scale, shakeAmplitudeFor("bomb"));
+    assert.equal(x, 0, "the boosted amplitude must not leak displacement past reduced motion");
+    assert.equal(y, 0, "the boosted amplitude must not leak displacement past reduced motion");
+  });
 });
 
 // ─── Flight origin ────────────────────────────────────────────────────────────
