@@ -160,10 +160,6 @@ const BANNER_BAND_Z = Layer.band;
  * always on top. Stated rather than left to sibling order: the pool paints
  * over the seats, the pile and the hand on the iOS renderer, which draws that
  * subtree above them however the tree is written (#209).
- *
- * They are the root's only two children, and the pair is what keeps the felt
- * covering the window: `kickStyle` rides the upper one, so the cloth the game
- * is played on never leaves the viewport whatever the landing displaces.
  */
 const FELT_Z = { zIndex: Layer.felt } as const;
 const TABLE_Z = { zIndex: Layer.table } as const;
@@ -1086,7 +1082,126 @@ export function GameTable({
   })();
 
   return (
-    <View style={[styles.root, WEB_CLIP]}>
+    <Animated.View style={[styles.root, WEB_CLIP, kickStyle]}>
+      <Sweep trigger={flushTrigger} width={W} height={H} />
+      <A11yStatus label={tableA11yLabel} veiled={tableWithdrawn} />
+      {/* Two chips over the felt, at the corners the cards never reach — the
+          combination in play at the head of the field, whose turn it is at the
+          far side. Anything wider would be chrome drawn where a card lands. */}
+      <Animated.View
+        testID="game-top-bar"
+        {...a11yGroup(topBarA11yLabel)}
+        pointerEvents={focusMode ? "none" : undefined}
+        {...behindVeil}
+        style={[styles.hudLeft, { left: frame.tableLeft + frame.pad, top: frame.tableTop }, focusFadeStyle]}
+      >
+        {/* The chip draws the words the group's label already says. */}
+        <View {...a11yHidden()}>
+          <TableChip scale={scale}>
+            {comboLabel === null ? (
+              <ChipText scale={scale}>{t("gameShared.emptyTable")}</ChipText>
+            ) : (
+              <>
+                <ChipText scale={scale} maxWidth={CHIP_NAME_MAX_W}>
+                  {lastPlayName}
+                </ChipText>
+                <ChipText scale={scale} strong>
+                  {comboLabel}
+                </ChipText>
+              </>
+            )}
+          </TableChip>
+        </View>
+      </Animated.View>
+
+      <Animated.View
+        testID="game-hud-stack"
+        pointerEvents={focusMode ? "none" : undefined}
+        {...behindVeil}
+        style={[
+          styles.hudRight,
+          { right: frame.tableRight + frame.pad, top: frame.tableTop, gap: frame.pad },
+          focusFadeStyle,
+        ]}
+      >
+        <TableChip scale={scale} lit={isMyTurn && !isFinished}>
+          <ChipDot testID="turn-chip-dot" scale={scale} lit={isMyTurn && !isFinished} />
+          <ChipText scale={scale} lit={isMyTurn && !isFinished}>
+            {isMyTurn && !isFinished
+              ? t("gameShared.yourTurn")
+              : t("gameShared.turnOf", {
+                  name: players[gameState.currentTurnIndex]?.name ?? "",
+                })}
+          </ChipText>
+          <TurnTimer
+            seconds={turnTimer?.seconds ?? 0}
+            active={timerActive}
+            resetKey={`${turnToken}|${turnTimer?.resetKey ?? ""}`}
+            onExpire={turnTimer?.onExpire}
+            scale={scale}
+          />
+        </TableChip>
+      </Animated.View>
+
+      {/* The cutout's own column. A cutout can never sit on a card, but it sits
+          happily between two controls — so the menu knob takes the head of the
+          column, the reactions knob its foot, and the cutout the gap between. */}
+      <ControlRail
+        veiled={behindCoverOnly}
+        width={frame.rail}
+        side={frame.railSide}
+        topPad={frame.tableTop}
+        bottomPad={frame.tableBottom}
+        top={
+          <RailKnob
+            onPress={() => setSettingsOpen((open) => !open)}
+            a11yLabel={t("gameTable.settingsA11yLabel")}
+            size={knobSize}
+            expanded={settingsOpen}
+          >
+            <Ionicons name={settingsOpen ? "close" : "menu"} size={knobSize * 0.4} color={Colors.textMuted} />
+          </RailKnob>
+        }
+        bottom={
+          <Animated.View pointerEvents={focusMode ? "none" : undefined} style={focusFadeStyle}>
+            {railExtra}
+          </Animated.View>
+        }
+      />
+
+      {settingsOpen && (
+        <GameSettingsSheet
+          rail={frame.rail}
+          railSide={frame.railSide}
+          topPad={frame.tableTop}
+          bottomPad={frame.tableBottom}
+          scale={scale}
+          onClose={closeSettings}
+          focusMode={focusMode}
+          onToggleFocusMode={() => setFocusMode((v) => !v)}
+          playOnLeft={playOnLeft}
+          onTogglePlayOnLeft={() => setPlayOnLeft((v) => !v)}
+          onExit={() => {
+            closeSettings();
+            onQuit();
+          }}
+        />
+      )}
+
+      <View
+        {...behindVeil}
+        style={[
+          styles.bannerBand,
+          {
+            top: frame.tableTop + CHIP_H(scale) + frame.pad,
+            left: frame.tableLeft + frame.pad,
+            right: frame.tableRight + frame.pad,
+          },
+        ]}
+      >
+        {banners}
+      </View>
+
       {/* Felt — decoration only, and edge to edge: a framed table draws a lit
           rectangle in a dark room, which is the one thing a single overhead
           lamp cannot produce. The pool tracks whose turn it is, so half the
@@ -1115,452 +1230,327 @@ export function GameTable({
         />
       </View>
 
-      {/* The game, and everything a landing displaces. It clips at its own
-          moving edge, so the strip the kick uncovers is the cloth behind it
-          rather than whatever the window is drawn on. */}
-      <Animated.View style={[styles.kick, WEB_CLIP, TABLE_Z, kickStyle]}>
-        <Sweep trigger={flushTrigger} width={W} height={H} />
-        <A11yStatus label={tableA11yLabel} veiled={tableWithdrawn} />
-        {/* Two chips over the felt, at the corners the cards never reach — the
-            combination in play at the head of the field, whose turn it is at the
-            far side. Anything wider would be chrome drawn where a card lands. */}
-        <Animated.View
-          testID="game-top-bar"
-          {...a11yGroup(topBarA11yLabel)}
-          pointerEvents={focusMode ? "none" : undefined}
-          {...behindVeil}
-          style={[styles.hudLeft, { left: frame.tableLeft + frame.pad, top: frame.tableTop }, focusFadeStyle]}
-        >
-          {/* The chip draws the words the group's label already says. */}
-          <View {...a11yHidden()}>
-            <TableChip scale={scale}>
-              {comboLabel === null ? (
-                <ChipText scale={scale}>{t("gameShared.emptyTable")}</ChipText>
-              ) : (
-                <>
-                  <ChipText scale={scale} maxWidth={CHIP_NAME_MAX_W}>
-                    {lastPlayName}
-                  </ChipText>
-                  <ChipText scale={scale} strong>
-                    {comboLabel}
-                  </ChipText>
-                </>
-              )}
-            </TableChip>
+      {/* Same coordinates, overflow visible so slots and buttons can extend out.
+          `dataSet` and not `accessibilityLabel`: this sentence is the browser
+          harness's hook, and a container without `accessible` names nobody on any
+          platform. It cannot have `accessible` either — that would collapse the
+          PASSA/GIOCA buttons and every card underneath into one unreachable leaf.
+          Players get the same sentence from the A11yStatus node above. */}
+      <View
+        testID="game-table"
+        {...harnessState({ tableState: tableA11yLabel })}
+        {...behindVeil}
+        style={[
+          sharedTableStyles.tableOverlay,
+          TABLE_Z,
+          {
+            left: frame.tableLeft,
+            top: frame.tableTop,
+            right: frame.tableRight,
+            // The table's own bottom edge, not the felt's: the hand runs to
+            // it and past it, which is what buys the table the height above.
+            // Zero on every phone — `surplus` is only the height a window
+            // taller than the scale cap has, and it is taken off both ends so
+            // the drawn table stays centred rather than growing one gap.
+            bottom: frame.surplus,
+          },
+        ]}
+      >
+        <Animated.View style={[sharedTableStyles.tableContent, shakeStyle]}>
+          <View testID="table-top-section" style={sharedTableStyles.topSection}>
+            {opponents.top ? (
+              <TopOppSlot
+                player={opponents.top.player}
+                isActive={opponents.top.seat === gameState.currentTurnIndex}
+                cardCount={handCountOf(opponents.top.player)}
+                departing={departingSide === "top" ? departingCount : 0}
+                passed={passed.includes(opponents.top.seat)}
+                scale={scale}
+                countdown={seatCountdown}
+                focusMode={focusMode}
+              />
+            ) : (
+              <View />
+            )}
           </View>
-        </Animated.View>
 
-        <Animated.View
-          testID="game-hud-stack"
-          pointerEvents={focusMode ? "none" : undefined}
-          {...behindVeil}
-          style={[
-            styles.hudRight,
-            { right: frame.tableRight + frame.pad, top: frame.tableTop, gap: frame.pad },
-            focusFadeStyle,
-          ]}
-        >
-          <TableChip scale={scale} lit={isMyTurn && !isFinished}>
-            <ChipDot testID="turn-chip-dot" scale={scale} lit={isMyTurn && !isFinished} />
-            <ChipText scale={scale} lit={isMyTurn && !isFinished}>
-              {isMyTurn && !isFinished
-                ? t("gameShared.yourTurn")
-                : t("gameShared.turnOf", {
-                    name: players[gameState.currentTurnIndex]?.name ?? "",
-                  })}
-            </ChipText>
-            <TurnTimer
-              seconds={turnTimer?.seconds ?? 0}
-              active={timerActive}
-              resetKey={`${turnToken}|${turnTimer?.resetKey ?? ""}`}
-              onExpire={turnTimer?.onExpire}
-              scale={scale}
-            />
-          </TableChip>
-        </Animated.View>
-
-        {/* The cutout's own column. A cutout can never sit on a card, but it sits
-            happily between two controls — so the menu knob takes the head of the
-            column, the reactions knob its foot, and the cutout the gap between. */}
-        <ControlRail
-          veiled={behindCoverOnly}
-          width={frame.rail}
-          side={frame.railSide}
-          topPad={frame.tableTop}
-          bottomPad={frame.tableBottom}
-          top={
-            <RailKnob
-              onPress={() => setSettingsOpen((open) => !open)}
-              a11yLabel={t("gameTable.settingsA11yLabel")}
-              size={knobSize}
-              expanded={settingsOpen}
-            >
-              <Ionicons name={settingsOpen ? "close" : "menu"} size={knobSize * 0.4} color={Colors.textMuted} />
-            </RailKnob>
-          }
-          bottom={
-            <Animated.View pointerEvents={focusMode ? "none" : undefined} style={focusFadeStyle}>
-              {railExtra}
-            </Animated.View>
-          }
-        />
-
-        {settingsOpen && (
-          <GameSettingsSheet
-            rail={frame.rail}
-            railSide={frame.railSide}
-            topPad={frame.tableTop}
-            bottomPad={frame.tableBottom}
-            scale={scale}
-            onClose={closeSettings}
-            focusMode={focusMode}
-            onToggleFocusMode={() => setFocusMode((v) => !v)}
-            playOnLeft={playOnLeft}
-            onTogglePlayOnLeft={() => setPlayOnLeft((v) => !v)}
-            onExit={() => {
-              closeSettings();
-              onQuit();
-            }}
-          />
-        )}
-
-        <View
-          {...behindVeil}
-          style={[
-            styles.bannerBand,
-            {
-              top: frame.tableTop + CHIP_H(scale) + frame.pad,
-              left: frame.tableLeft + frame.pad,
-              right: frame.tableRight + frame.pad,
-            },
-          ]}
-        >
-          {banners}
-        </View>
-
-        {/* Same coordinates, overflow visible so slots and buttons can extend out.
-            `dataSet` and not `accessibilityLabel`: this sentence is the browser
-            harness's hook, and a container without `accessible` names nobody on any
-            platform. It cannot have `accessible` either — that would collapse the
-            PASSA/GIOCA buttons and every card underneath into one unreachable leaf.
-            Players get the same sentence from the A11yStatus node above. */}
-        <View
-          testID="game-table"
-          {...harnessState({ tableState: tableA11yLabel })}
-          {...behindVeil}
-          style={[
-            sharedTableStyles.tableOverlay,
-            TABLE_Z,
-            {
-              left: frame.tableLeft,
-              top: frame.tableTop,
-              right: frame.tableRight,
-              // The table's own bottom edge, not the felt's: the hand runs to
-              // it and past it, which is what buys the table the height above.
-              // Zero on every phone — `surplus` is only the height a window
-              // taller than the scale cap has, and it is taken off both ends so
-              // the drawn table stays centred rather than growing one gap.
-              bottom: frame.surplus,
-            },
-          ]}
-        >
-          <Animated.View style={[sharedTableStyles.tableContent, shakeStyle]}>
-            <View testID="table-top-section" style={sharedTableStyles.topSection}>
-              {opponents.top ? (
-                <TopOppSlot
-                  player={opponents.top.player}
-                  isActive={opponents.top.seat === gameState.currentTurnIndex}
-                  cardCount={handCountOf(opponents.top.player)}
-                  departing={departingSide === "top" ? departingCount : 0}
-                  passed={passed.includes(opponents.top.seat)}
+          {/* The band left over between the top seat and the hand. The seats
+              and the field centre in what is actually there rather than at a
+              guessed percentage, so a taller top seat takes it from the field
+              instead of overlapping it. */}
+          <View style={sharedTableStyles.midSection}>
+            {/* Gated on the exchange announcement so the two banners sequence
+                rather than stack. Inside the mid band, not at a computed
+                offset: the top opponent's avatar, name and card fan sit above
+                it, and card count is the single most important tactical signal
+                on the table. */}
+            {gameState.startReason && !exchangeAnnouncement?.visible && (
+              <StartReasonBanner
+                key={`reason-${gameState.startReason.type}-${gameState.startReason.playerIdx}`}
+                reason={gameState.startReason}
+                players={players}
+              />
+            )}
+            <View style={[sharedTableStyles.sideSection, sharedTableStyles.sideSectionLeft]}>
+              {opponents.left && (
+                <SideOppSlot
+                  player={opponents.left.player}
+                  isActive={opponents.left.seat === gameState.currentTurnIndex}
+                  side="left"
+                  cardCount={handCountOf(opponents.left.player)}
+                  departing={departingSide === "left" ? departingCount : 0}
+                  passed={passed.includes(opponents.left.seat)}
                   scale={scale}
                   countdown={seatCountdown}
                   focusMode={focusMode}
                 />
-              ) : (
-                <View />
               )}
             </View>
 
-            {/* The band left over between the top seat and the hand. The seats
-                and the field centre in what is actually there rather than at a
-                guessed percentage, so a taller top seat takes it from the field
-                instead of overlapping it. */}
-            <View style={sharedTableStyles.midSection}>
-              {/* Gated on the exchange announcement so the two banners sequence
-                  rather than stack. Inside the mid band, not at a computed
-                  offset: the top opponent's avatar, name and card fan sit above
-                  it, and card count is the single most important tactical signal
-                  on the table. */}
-              {gameState.startReason && !exchangeAnnouncement?.visible && (
-                <StartReasonBanner
-                  key={`reason-${gameState.startReason.type}-${gameState.startReason.playerIdx}`}
-                  reason={gameState.startReason}
-                  players={players}
+            <View style={sharedTableStyles.centerSection}>
+              {exchange.active && !exchangeAnnouncement?.visible ? (
+                // The round that opened this phase is already resolved, so the
+                // centre is free — and it is the one place every seat is
+                // already looking. It vacates the moment the cards fly.
+                <ExchangePrompt
+                  receivedCard={gameState.exchangePhase?.cardFromLoser}
+                  winnerName={exchange.winner?.name ?? ""}
+                  loserName={exchangeLoserName}
+                  viewerIsWinner={exchange.viewerIsWinner}
+                  viewerIsLoser={exchange.viewerIsLoser}
+                  noValidCards={!!giveable && givebackIsFallback(giveable)}
+                  scale={scale}
                 />
-              )}
-              <View style={[sharedTableStyles.sideSection, sharedTableStyles.sideSectionLeft]}>
-                {opponents.left && (
-                  <SideOppSlot
-                    player={opponents.left.player}
-                    isActive={opponents.left.seat === gameState.currentTurnIndex}
-                    side="left"
-                    cardCount={handCountOf(opponents.left.player)}
-                    departing={departingSide === "left" ? departingCount : 0}
-                    passed={passed.includes(opponents.left.seat)}
-                    scale={scale}
-                    countdown={seatCountdown}
-                    focusMode={focusMode}
-                  />
-                )}
-              </View>
-
-              <View style={sharedTableStyles.centerSection}>
-                {exchange.active && !exchangeAnnouncement?.visible ? (
-                  // The round that opened this phase is already resolved, so the
-                  // centre is free — and it is the one place every seat is
-                  // already looking. It vacates the moment the cards fly.
-                  <ExchangePrompt
-                    receivedCard={gameState.exchangePhase?.cardFromLoser}
-                    winnerName={exchange.winner?.name ?? ""}
-                    loserName={exchangeLoserName}
-                    viewerIsWinner={exchange.viewerIsWinner}
-                    viewerIsLoser={exchange.viewerIsLoser}
-                    noValidCards={!!giveable && givebackIsFallback(giveable)}
-                    scale={scale}
-                  />
-                ) : showStartCardBanner ? (
-                  <StartCardBanner
-                    card={gameState.startCard!}
-                    starterIsViewer={isMyTurn}
-                    starterName={players[gameState.currentTurnIndex]?.name ?? ""}
-                  />
-                ) : (
-                  <PlayedPile
-                    prev={pileState.prev}
-                    current={flyInfo ? null : pileState.current}
-                    roundWinner={roundWinnerTag === null ? null : players[roundWinnerTag.seat]?.name ?? ""}
-                    bounceTrigger={pileBounceTrigger}
-                    catchTrigger={pileFlushed ? flushTrigger : undefined}
-                    flinchTrigger={flinchTrigger}
-                    flinchTier={flinchTier}
-                    roomW={frame.fieldRoomW}
-                    scale={scale}
-                  />
-                )}
-
-                {/* Centred on the same point the pile draws at, so the burst
-                    rings the impact rather than the middle of the table box. */}
-                <BombBurst trigger={boomTrigger} scale={scale} flareKind={flareKind} />
-
-                {/* Beside the pile, not beside the table: the flight has to
-                    settle exactly where PlayedPile then redraws the same cards,
-                    and the rail makes the table box asymmetric — centred on the
-                    screen instead, the combination lands and then jumps. */}
-                {exchangeAnnouncement?.data && exchangeTrips && (
-                  <ExchangeAnnouncement
-                    visible={exchangeAnnouncement.visible}
-                    winnerName={exchangeAnnouncement.data.winnerName}
-                    loserName={exchangeAnnouncement.data.loserName}
-                    bothJokersException={exchangeAnnouncement.data.bothJokersException}
-                    cardGiven={exchangeAnnouncement.data.cardGiven}
-                    cardReceived={exchangeAnnouncement.data.cardReceived}
-                    toWinner={exchangeTrips.toWinner}
-                    toLoser={exchangeTrips.toLoser}
-                    scale={scale * FIELD_SCALE}
-                    onDismiss={exchangeAnnouncement.onDismiss}
-                  />
-                )}
-
-                {flyInfo && (
-                  <FlyingCards
-                    key={flyInfo.key}
-                    cards={flyInfo.cards}
-                    direction={flyInfo.dir}
-                    origin={flyInfo.origin}
-                    onDone={() => {
-                      setFlyInfo(null);
-                      setPileBounceTrigger((t) => t + 1);
-                    }}
-                    roomW={frame.fieldRoomW}
-                    scale={scale}
-                  />
-                )}
-              </View>
-
-              <View style={[sharedTableStyles.sideSection, sharedTableStyles.sideSectionRight]}>
-                {opponents.right && (
-                  <SideOppSlot
-                    player={opponents.right.player}
-                    isActive={opponents.right.seat === gameState.currentTurnIndex}
-                    side="right"
-                    cardCount={handCountOf(opponents.right.player)}
-                    departing={departingSide === "right" ? departingCount : 0}
-                    passed={passed.includes(opponents.right.seat)}
-                    scale={scale}
-                    countdown={seatCountdown}
-                    focusMode={focusMode}
-                  />
-                )}
-              </View>
-            </View>
-
-            {/* The hand rises off the bottom edge on the viewer's own turn. A
-                lift rather than a lit band: a wash behind the hand draws a gold
-                hairline the full width of the table, which reads as chrome over
-                the felt instead of as the hand coming up. */}
-            <Animated.View
-              style={[
-                sharedTableStyles.handSection,
-                {
-                  height: HAND_ZONE_H(handCardH, frame.bottomPad),
-                  paddingBottom: frame.bottomPad,
-                  gap: HAND_ZONE_GAP * scale,
-                },
-                // Play on the left mirrors the row rather than moving the rail,
-                // which stays put at the physical cutout: only GIOCA changes
-                // which thumb it falls under.
-                playOnLeft && styles.handSectionReversed,
-                handLiftStyle,
-              ]}
-            >
-              {!spectating && (
-                <PassaButton
-                  canPass={canPass}
-                  flashStyle={passaFlashStyle}
-                  onPress={handlePass}
-                  a11yLabel={t("gameTable.passA11yLabel")}
-                  size={actionBtn}
+              ) : showStartCardBanner ? (
+                <StartCardBanner
+                  card={gameState.startCard!}
+                  starterIsViewer={isMyTurn}
+                  starterName={players[gameState.currentTurnIndex]?.name ?? ""}
+                />
+              ) : (
+                <PlayedPile
+                  prev={pileState.prev}
+                  current={flyInfo ? null : pileState.current}
+                  roundWinner={roundWinnerTag === null ? null : players[roundWinnerTag.seat]?.name ?? ""}
+                  bounceTrigger={pileBounceTrigger}
+                  catchTrigger={pileFlushed ? flushTrigger : undefined}
+                  flinchTrigger={flinchTrigger}
+                  flinchTier={flinchTier}
+                  roomW={frame.fieldRoomW}
                   scale={scale}
                 />
               )}
 
-              {isFinished ? (
-                <View style={styles.finishedRow}>
-                  <Ionicons name="trophy" size={18} color={Colors.gold} />
-                  <TableText style={styles.finishedText}>{t("gameTable.waitingOthers")}</TableText>
-                </View>
-              ) : (
-                // The harness's hook, for the same reason as the table's above: no
-                // `accessible` here — it would hide every card's own label behind one
-                // leaf — so a name on this wrapper would reach nobody.
-                <View {...harnessState({ handState: handA11yLabel })}>
-                  <A11yStatus label={handA11yLabel} />
-                  {arrangedA11yLabel !== null && <A11yStatus label={arrangedA11yLabel} />}
-                  <StraightHand
-                    faceDown={spectating}
-                    cards={handOnTable}
-                    selectedIds={
-                      exchangeIsMine ? (exchangePick ? [exchangePick] : []) : selectedIds
-                    }
-                    onPress={handleCardPress}
-                    disabled={isFinished || spectating}
-                    giveableIds={giveableIds}
-                    giveHint={t("exchange.cardA11yHint")}
-                    refuseHint={t("exchange.cardA11yNotGiveable")}
-                    availW={frame.handAvailW}
-                    roomW={frame.handRoomW}
-                    isMyTurn={isMyTurn && !isFinished}
-                    scale={scale}
-                    // Off whenever a card is held back: the fan is drawn without
-                    // it, but `arrange` moves within the whole hand, so a drop
-                    // would land a slot from where the finger let go.
-                    onReorder={spectating || withheldId !== undefined ? undefined : arrange}
-                    arrivingIndex={arrivingIndex}
-                    descendingId={descendingId}
-                    // Only while the opening is still owed. Named rather than
-                    // counted to: Maestro's `index` sorts by position, and the
-                    // arc puts the outermost card below its neighbours (#757).
-                    startCardId={
-                      gameState.firstPlayMade ? undefined : gameState.startCard?.id
-                    }
-                  />
-                </View>
+              {/* Centred on the same point the pile draws at, so the burst
+                  rings the impact rather than the middle of the table box. */}
+              <BombBurst trigger={boomTrigger} scale={scale} flareKind={flareKind} />
+
+              {/* Beside the pile, not beside the table: the flight has to
+                  settle exactly where PlayedPile then redraws the same cards,
+                  and the rail makes the table box asymmetric — centred on the
+                  screen instead, the combination lands and then jumps. */}
+              {exchangeAnnouncement?.data && exchangeTrips && (
+                <ExchangeAnnouncement
+                  visible={exchangeAnnouncement.visible}
+                  winnerName={exchangeAnnouncement.data.winnerName}
+                  loserName={exchangeAnnouncement.data.loserName}
+                  bothJokersException={exchangeAnnouncement.data.bothJokersException}
+                  cardGiven={exchangeAnnouncement.data.cardGiven}
+                  cardReceived={exchangeAnnouncement.data.cardReceived}
+                  toWinner={exchangeTrips.toWinner}
+                  toLoser={exchangeTrips.toLoser}
+                  scale={scale * FIELD_SCALE}
+                  onDismiss={exchangeAnnouncement.onDismiss}
+                />
               )}
 
-              {!spectating && (
-                <GiocaButton
-                  lit={exchangeIsMine || (isMyTurn && !isFinished)}
-                  label={exchangeIsMine ? t("exchange.confirm") : t("gameTable.playLabelGioca")}
-                  rejectX={giocaRejectX}
-                  flashStyle={giocaFlashStyle}
-                  glowStyle={giocaGlowStyle}
-                  onPress={exchangeIsMine ? handleExchangeGive : handlePlay}
-                  // The visible `3c` suffix is hidden and deliberately not folded
-                  // in here: each card already reports its own selectedness, and a
-                  // button whose name changes on every tap is re-announced on
-                  // every tap. `tests/e2e/helpers/bot.ts` also reads this exact
-                  // sentence as the signal that the play is legal.
-                  a11yLabel={
-                    staged.playable
-                      ? t("gameTable.playA11yValid")
-                      : t("gameTable.playA11yUnavailable", { reason: dimReasonText })
-                  }
-                  exchange={
-                    exchangeIsMine
-                      ? { toName: exchangeLoserName, picked: pickedGiveCard }
-                      : undefined
-                  }
-                  selectedCount={exchangeIsMine ? 0 : selectedIds.length}
-                  size={actionBtn}
+              {flyInfo && (
+                <FlyingCards
+                  key={flyInfo.key}
+                  cards={flyInfo.cards}
+                  direction={flyInfo.dir}
+                  origin={flyInfo.origin}
+                  onDone={() => {
+                    setFlyInfo(null);
+                    setPileBounceTrigger((t) => t + 1);
+                  }}
+                  roomW={frame.fieldRoomW}
                   scale={scale}
                 />
               )}
-            </Animated.View>
-          </Animated.View>
-        </View>
+            </View>
 
+            <View style={[sharedTableStyles.sideSection, sharedTableStyles.sideSectionRight]}>
+              {opponents.right && (
+                <SideOppSlot
+                  player={opponents.right.player}
+                  isActive={opponents.right.seat === gameState.currentTurnIndex}
+                  side="right"
+                  cardCount={handCountOf(opponents.right.player)}
+                  departing={departingSide === "right" ? departingCount : 0}
+                  passed={passed.includes(opponents.right.seat)}
+                  scale={scale}
+                  countdown={seatCountdown}
+                  focusMode={focusMode}
+                />
+              )}
+            </View>
+          </View>
 
-        {rematchPrompt?.visible && (
-          <RematchPromptPanel
-            prompt={rematchPrompt}
-            top={frame.tableTop + CHIP_H(scale) + frame.pad}
-            left={frame.tableLeft + Spacing.sm}
-            veiled={behindVeil}
-          />
-        )}
-
-
-        {/* Sits just above the hand row, at the GIOCA end of it — the button
-            wears two words, this is the whole sentence, next to the control the
-            player just pressed rather than at the far side of the screen. */}
-        {rejectHint && (
+          {/* The hand rises off the bottom edge on the viewer's own turn. A
+              lift rather than a lit band: a wash behind the hand draws a gold
+              hairline the full width of the table, which reads as chrome over
+              the felt instead of as the hand coming up. */}
           <Animated.View
-            key={rejectHint.key}
-            entering={reduceMotion ? undefined : FadeIn.duration(Motion.duration.tap)}
-            pointerEvents="none"
-            {...behindVeil}
             style={[
-              styles.rejectHint,
+              sharedTableStyles.handSection,
               {
-                bottom: HAND_ZONE_H(handCardH, frame.bottomPad) + Spacing.xs,
-                left: frame.tableLeft,
-                right: frame.tableRight,
+                height: HAND_ZONE_H(handCardH, frame.bottomPad),
+                paddingBottom: frame.bottomPad,
+                gap: HAND_ZONE_GAP * scale,
               },
-              playOnLeft && styles.rejectHintMirrored,
+              // Play on the left mirrors the row rather than moving the rail,
+              // which stays put at the physical cutout: only GIOCA changes
+              // which thumb it falls under.
+              playOnLeft && styles.handSectionReversed,
+              handLiftStyle,
             ]}
           >
-            <TableText
-              style={[styles.rejectHintText, playOnLeft && styles.rejectHintTextMirrored]}
-              numberOfLines={2}
-              accessibilityLiveRegion="polite"
-            >
-              {rejectHint.text}
-            </TableText>
+            {!spectating && (
+              <PassaButton
+                canPass={canPass}
+                flashStyle={passaFlashStyle}
+                onPress={handlePass}
+                a11yLabel={t("gameTable.passA11yLabel")}
+                size={actionBtn}
+                scale={scale}
+              />
+            )}
+
+            {isFinished ? (
+              <View style={styles.finishedRow}>
+                <Ionicons name="trophy" size={18} color={Colors.gold} />
+                <TableText style={styles.finishedText}>{t("gameTable.waitingOthers")}</TableText>
+              </View>
+            ) : (
+              // The harness's hook, for the same reason as the table's above: no
+              // `accessible` here — it would hide every card's own label behind one
+              // leaf — so a name on this wrapper would reach nobody.
+              <View {...harnessState({ handState: handA11yLabel })}>
+                <A11yStatus label={handA11yLabel} />
+                {arrangedA11yLabel !== null && <A11yStatus label={arrangedA11yLabel} />}
+                <StraightHand
+                  faceDown={spectating}
+                  cards={handOnTable}
+                  selectedIds={
+                    exchangeIsMine ? (exchangePick ? [exchangePick] : []) : selectedIds
+                  }
+                  onPress={handleCardPress}
+                  disabled={isFinished || spectating}
+                  giveableIds={giveableIds}
+                  giveHint={t("exchange.cardA11yHint")}
+                  refuseHint={t("exchange.cardA11yNotGiveable")}
+                  availW={frame.handAvailW}
+                  roomW={frame.handRoomW}
+                  isMyTurn={isMyTurn && !isFinished}
+                  scale={scale}
+                  // Off whenever a card is held back: the fan is drawn without
+                  // it, but `arrange` moves within the whole hand, so a drop
+                  // would land a slot from where the finger let go.
+                  onReorder={spectating || withheldId !== undefined ? undefined : arrange}
+                  arrivingIndex={arrivingIndex}
+                  descendingId={descendingId}
+                  // Only while the opening is still owed. Named rather than
+                  // counted to: Maestro's `index` sorts by position, and the
+                  // arc puts the outermost card below its neighbours (#757).
+                  startCardId={
+                    gameState.firstPlayMade ? undefined : gameState.startCard?.id
+                  }
+                />
+              </View>
+            )}
+
+            {!spectating && (
+              <GiocaButton
+                lit={exchangeIsMine || (isMyTurn && !isFinished)}
+                label={exchangeIsMine ? t("exchange.confirm") : t("gameTable.playLabelGioca")}
+                rejectX={giocaRejectX}
+                flashStyle={giocaFlashStyle}
+                glowStyle={giocaGlowStyle}
+                onPress={exchangeIsMine ? handleExchangeGive : handlePlay}
+                // The visible `3c` suffix is hidden and deliberately not folded
+                // in here: each card already reports its own selectedness, and a
+                // button whose name changes on every tap is re-announced on
+                // every tap. `tests/e2e/helpers/bot.ts` also reads this exact
+                // sentence as the signal that the play is legal.
+                a11yLabel={
+                  staged.playable
+                    ? t("gameTable.playA11yValid")
+                    : t("gameTable.playA11yUnavailable", { reason: dimReasonText })
+                }
+                exchange={
+                  exchangeIsMine
+                    ? { toName: exchangeLoserName, picked: pickedGiveCard }
+                    : undefined
+                }
+                selectedCount={exchangeIsMine ? 0 : selectedIds.length}
+                size={actionBtn}
+                scale={scale}
+              />
+            )}
           </Animated.View>
-        )}
+        </Animated.View>
+      </View>
 
-        {overlays?.(behindSheetOnly)}
 
-        {W < H && <RotateOverlay />}
-      </Animated.View>
-    </View>
+      {rematchPrompt?.visible && (
+        <RematchPromptPanel
+          prompt={rematchPrompt}
+          top={frame.tableTop + CHIP_H(scale) + frame.pad}
+          left={frame.tableLeft + Spacing.sm}
+          veiled={behindVeil}
+        />
+      )}
+
+
+      {/* Sits just above the hand row, at the GIOCA end of it — the button
+          wears two words, this is the whole sentence, next to the control the
+          player just pressed rather than at the far side of the screen. */}
+      {rejectHint && (
+        <Animated.View
+          key={rejectHint.key}
+          entering={reduceMotion ? undefined : FadeIn.duration(Motion.duration.tap)}
+          pointerEvents="none"
+          {...behindVeil}
+          style={[
+            styles.rejectHint,
+            {
+              bottom: HAND_ZONE_H(handCardH, frame.bottomPad) + Spacing.xs,
+              left: frame.tableLeft,
+              right: frame.tableRight,
+            },
+            playOnLeft && styles.rejectHintMirrored,
+          ]}
+        >
+          <TableText
+            style={[styles.rejectHintText, playOnLeft && styles.rejectHintTextMirrored]}
+            numberOfLines={2}
+            accessibilityLiveRegion="polite"
+          >
+            {rejectHint.text}
+          </TableText>
+        </Animated.View>
+      )}
+
+      {overlays?.(behindSheetOnly)}
+
+      {W < H && <RotateOverlay />}
+    </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: Colors.bg, overflow: "hidden" },
-  kick: { ...StyleSheet.absoluteFillObject, overflow: "hidden" },
 
   bannerBand: {
     position: "absolute",

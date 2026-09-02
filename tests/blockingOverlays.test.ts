@@ -43,7 +43,6 @@ const BLOCKING_OVERLAYS: [string, string][] = [
  */
 const NOT_A_BLOCKER: [string, number, string][] = [
   ["components/table/felt.tsx", 1, "the table's own paint at zIndex 0 — the surface the game is drawn on, not a layer over it"],
-  ["components/GameTable.tsx", 1, "the game itself at Layer.table, over the felt it is dealt on — the whole table rather than a layer across it, and the one thing a landing displaces"],
   ["components/table/chrome.tsx", 1, "the rail is a fixed-width strip down one edge: full-height, never full-screen, and the table is laid out beside it"],
   ["app/index.tsx", 1, "the face of one animated card, absolute within that card's own view"],
   ["app/(online)/game.tsx", 1, 'the overlay layer itself is pointerEvents="box-none" — it takes no touch and holds no content, only the overlays that do'],
