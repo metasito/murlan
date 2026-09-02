@@ -377,13 +377,28 @@ export const LAND_SQUASH = 0.92;
  * uniform scale-down would be a card shrinking, not a card landing.
  *
  * At `settle` 0 both axes are 1: no deformation. That covers the whole of
- * reduced motion for free — `FlyingCards` never advances `settle` past its
- * initial value there — with no flag of its own to read.
+ * reduced motion for free as long as `settle` is actually 0 there —
+ * `settleForMotion` is what keeps that true.
  */
 export function landSquashScale(settle: number): { x: number; y: number } {
   "worklet";
   const y = 1 - (1 - LAND_SQUASH) * settle;
   return { x: 1 / y, y };
+}
+
+/**
+ * What `settle` should read the moment a flight's motion preference is
+ * decided — at mount, and again if the player toggles reduced motion while a
+ * flight is up. Reanimated's `cancelAnimation` (run by the effect's own
+ * cleanup on that toggle) freezes a shared value at its current number
+ * rather than resetting it, so the branch that skips the flight cannot rely
+ * on `current` already being 0 by the time it runs: under reduced motion
+ * this ignores `current` and always answers 0. Off reduced motion `current`
+ * passes through unchanged — the flight's own animation is what actually
+ * drives it from there.
+ */
+export function settleForMotion(reduceMotion: boolean, current: number): number {
+  return reduceMotion ? 0 : current;
 }
 
 // ─── Bomb burst ────────────────────────────────────────────────────────────────

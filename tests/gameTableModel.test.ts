@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { CARD_H, CARD_W, BACK_SCALE } from "../components/cardFaceModel.ts";
 import { Hold, TOUCH_TARGET_MIN } from "../lib/tokens.ts";
+import { blankComments } from "./helpers/sourceScan.ts";
 import type { Card, Combination } from "../lib/gameEngine.ts";
 import {
   ROTATE_SETTLED,
@@ -64,6 +65,7 @@ import {
   landingHoldMs,
   landSquashScale,
   LAND_SQUASH,
+  settleForMotion,
   FLIGHT_MS,
   LANDING_FRACTION,
   passedSeats,
@@ -1453,27 +1455,46 @@ describe("a landed card squashes on the spring that lands it", () => {
       "the flying card's squash must read off `settle`, the value the landing spring already drives"
     );
   });
+});
 
-  test("a mid-flight toggle to reduced motion zeroes settle, rather than leaving a frozen squash", () => {
-    // Reanimated's cancelAnimation (the effect's own cleanup, re-run when
-    // `reduceMotion` flips) freezes a shared value at its current number
-    // rather than resetting it, so re-entering this branch mid-flight has to
-    // zero `settle` itself or a card frozen mid-squash stays squashed for a
-    // player who just asked for no motion at all.
-    //
-    // Unpinnable by rendering, so this is a source pin: a probe component
-    // mutating a shared value after mount, under this repo's jest-expo
-    // reanimated mock, left useAnimatedStyle's output at the value the
-    // component mounted with — the same frozen-at-mount trap loops.md
-    // documents for reading a value back out, but on the way in here. Live
-    // reactivity on this exact path needs an e2e toggle mid-flight or a
-    // device check; neither is what this proves.
-    const src = readFileSync(path.join(repoRoot, "components", "table", "pile.tsx"), "utf8");
-    const reduceBranch = src.match(/if \(reduceMotion\) \{[\s\S]*?\n    \}/);
-    assert.ok(reduceBranch, "the reduced-motion branch must exist in FlyingCards");
-    assert.ok(
-      /settle\.value = 0;/.test(reduceBranch![0]),
-      "the reduced-motion branch must zero `settle` itself, not rely on cancelAnimation to do it"
+describe("settleForMotion", () => {
+  // Reanimated's cancelAnimation (the flight effect's own cleanup, re-run
+  // when `reduceMotion` flips) freezes a shared value at its current number
+  // rather than resetting it, so a live toggle mid-flight cannot rely on
+  // `settle` already being 0 by the time reduced motion takes over. These
+  // assert the behaviour directly — not a source pin — because the fix lives
+  // in a pure function pile.tsx also calls: unpinnable by rendering, though
+  // — a probe component mutating a shared value after mount, under this
+  // repo's jest-expo reanimated mock, left useAnimatedStyle's output at the
+  // value the component mounted with, the same frozen-at-mount trap loops.md
+  // documents for reading a value back out. So live reactivity on this exact
+  // path still needs an e2e toggle mid-flight or a device check; neither is
+  // what these prove.
+  test("reduced motion always resets to 0, whatever the incoming value was", () => {
+    assert.equal(settleForMotion(true, 0), 0);
+    assert.equal(settleForMotion(true, 1), 0);
+    assert.equal(settleForMotion(true, -0.07), 0);
+  });
+
+  test("off reduced motion the value passes through unchanged", () => {
+    assert.equal(settleForMotion(false, 0.42), 0.42);
+    assert.equal(settleForMotion(false, 0), 0);
+  });
+
+  test("FlyingCards runs it as the first thing its effect does, so a toggle cannot skip past it", () => {
+    // Anchored at the effect's own opening brace rather than searched for
+    // anywhere in the file: a call present but placed after a branch that
+    // returns early would never run under reduced motion — the defect this
+    // exists to catch — and an unanchored search cannot tell "runs first"
+    // from "is written down somewhere". Comments are blanked first, the way
+    // tests/e2eSentinels.test.ts does, so a copy of this exact text left
+    // behind in one does not read as the call.
+    const src = blankComments(
+      readFileSync(path.join(repoRoot, "components", "table", "pile.tsx"), "utf8")
+    );
+    assert.match(
+      src,
+      /useEffect\(\(\) => \{\s*settle\.value = settleForMotion\(reduceMotion, settle\.value\);/
     );
   });
 });
