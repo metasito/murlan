@@ -61,9 +61,9 @@ import {
 import {
   buildCombination,
   canPlay,
+  dealFirstSeatFor,
   initializeGame,
   initializeRematch,
-  nextDealFirstSeat,
   processExchangeChoice,
   processPass,
   processPlay,
@@ -387,7 +387,14 @@ async function dealVotedManche(
     team: room.gameMode === "teams" ? p.team : undefined,
   }));
 
-  const nextFirstSeat = nextDealFirstSeat(game.dealFirstSeat, playerSetup.length);
+  // `game.matchOver` still holds the just-ended manche's own verdict here —
+  // `dealManche` below is what flips it back via `rollMatchForward`. When it
+  // is true, this vote is "Rematch" on a table whose match already finished,
+  // the same real-world event `startMatchAction`'s `room:start` reaches for
+  // the same room, so it must resolve through the same `dealFirstSeatFor`
+  // rather than always rotating a seat count that could belong to the match
+  // that just ended (#803 — the two paths disagreed here).
+  const nextFirstSeat = dealFirstSeatFor(game.matchOver, game.dealFirstSeat, playerSetup.length);
   const newGameState =
     prevRankings.length >= 2
       ? initializeRematch(playerSetup, room.gameMode, prevRankings, nextFirstSeat)
@@ -597,14 +604,14 @@ async function startMatchAction(
     releasedSeats: new Set<string>(),
     spectators: new Set<string>(),
     moveLog: startReplayLog(),
-    // A fresh match always starts its round-robin deal from seat 0 — the
-    // decision recorded in `docs/BRIEF.md` §3.1 ("Rotating the deal"), which
-    // only rotates `dealFirstSeat` *within* a running match (`nextDealFirstSeat`,
-    // below). `context/GameContext.tsx`'s `setupGame` resets to the same 0 for
-    // an offline match, so a fresh table is identical either way; it is the
-    // within-match rotation that keeps a host's seat 0 from always drawing the
-    // bigger hand.
-    dealFirstSeat: 0,
+    // This branch is reached only when a match is genuinely starting fresh
+    // (no `previous`, or `previous.matchOver`), so `dealFirstSeatFor`'s
+    // `matchOver` argument is unconditionally `true` here — routed through it
+    // anyway, rather than a bare `0`, so every site that decides this reads
+    // off the one function `dealVotedManche` (below) also calls (#803).
+    // `context/GameContext.tsx`'s `setupGame` resets to the same 0 for an
+    // offline match, so a fresh table is identical either way.
+    dealFirstSeat: dealFirstSeatFor(true, 0, roster.length),
   };
   // Before the game exists, not after: `claimRoomSeat` re-reads the status
   // under its own row lock, so a room that is no longer `waiting` cannot take a

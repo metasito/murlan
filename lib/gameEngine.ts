@@ -1321,6 +1321,26 @@ export function nextDealFirstSeat(firstSeat: number, playerCount: number): numbe
   return (firstSeat + 1) % playerCount;
 }
 
+/**
+ * The seat the *next deal* starts from, whatever event triggered it —
+ * `docs/BRIEF.md` §3.1's "Rotating the deal" decision in one place: a
+ * finished match resets to seat 0, an unfinished one rotates one seat
+ * further (#803). `matchOver` is the state *before* this deal — the just-
+ * ended manche's own verdict, true when it was also the match's last one.
+ *
+ * Both the server's "Rematch" vote and the offline table's own next-hand /
+ * new-match callbacks call this rather than re-deriving the same branch, so
+ * a fresh match can no longer inherit the finished match's rotation the way
+ * only the room's own "start a new match" path used to reset it (#803).
+ */
+export function dealFirstSeatFor(
+  matchOver: boolean,
+  currentSeat: number,
+  playerCount: number
+): number {
+  return matchOver ? 0 : nextDealFirstSeat(currentSeat, playerCount);
+}
+
 export function initializeGame(
   playerSetup: {
     name: string;

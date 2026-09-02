@@ -6,23 +6,56 @@
 // way, whether or not `shake()` itself respects reduced motion — and reading
 // the driven `shakeStyle` after calling `shake()` proves nothing here either:
 // this repo's reanimated jest shim resolves `withTiming` synchronously
-// (`tests/native/setup.ts`), which collapses `shakeElapsed` straight to its
-// decayed end the instant `shake()` returns, so the rendered offset reads 0
-// after *any* call, correct or not — confirmed empirically: a planted
-// mutation that fed `traumaFor` a hardcoded `false` still drove a zero style.
-// The only place left to catch "wrote the full trauma, then papered over it
-// later" is the call itself: this pins that `traumaFor` — the pure function
-// `reduceMotion` actually reaches — is invoked with the live flag at the
-// point `shake()` computes trauma, and that its own answer, not a later
-// correction, is what the write carries.
+// (`tests/native/setup.ts`) and `Motion.reduced.shake` is itself 0
+// (`lib/tokens.ts`), which collapses `shakeMagnitude`'s `decayMs <= 0` branch
+// to 0 the instant `shake()` returns, so the rendered offset reads 0 after
+// *any* call under reduced motion, whatever `shakeTrauma` itself was set to
+// (verified empirically — a planted mutation that wrote a hardcoded
+// full-strength trauma still drove a zero style).
+//
+// A first version of this test spied only on `traumaFor`'s call args and
+// return value, which a blind critique defeated: a mutation that calls
+// `traumaFor` correctly (satisfying the spy) but then writes a hardcoded
+// trauma to the shared value anyway — ignoring what `traumaFor` returned —
+// passed it. `shakeTrauma` itself is not exposed by the hook, so this wraps
+// `useSharedValue` to capture every shared value `shake()`'s component tree
+// creates, and mocks `traumaFor` to answer a value nothing else in the app
+// produces — so the only way one of those captured shared values can show it
+// is if `shake()`'s write actually carries `traumaFor`'s own return, not a
+// value read at the same point and discarded.
 import { describe, it, expect, jest, afterEach } from '@jest/globals';
 import React from 'react';
 import { act, render } from '@testing-library/react-native';
-import Animated from 'react-native-reanimated';
 import * as gameTableModel from '@/components/gameTableModel';
-import { useTableFeedback } from '@/components/useTableFeedback';
 import { setMotionPreference } from '@/lib/accessibility';
 import type { ImpactTier } from '@/components/gameTableModel';
+
+/** Every shared value any component under test creates, in creation order. */
+const mockCapturedSharedValues: { value: unknown }[] = [];
+
+jest.mock('react-native-reanimated', () => {
+  const actual = jest.requireActual('react-native-reanimated') as typeof import('react-native-reanimated');
+  return {
+    ...actual,
+    // `__esModule` is a non-enumerable own property on the real module, so the
+    // spread above silently drops it — without it back, `_interopRequireDefault`
+    // treats this mock as a non-ES module and wraps the whole object as the
+    // default export, which is why `Animated.View` (the real default export's
+    // own property) reads as `undefined` without this line.
+    __esModule: true,
+    useSharedValue: (initial: unknown) => {
+      const sv = actual.useSharedValue(initial);
+      mockCapturedSharedValues.push(sv);
+      return sv;
+    },
+  };
+});
+
+// Imported after the mock above (jest hoists `jest.mock` calls to the top of
+// the file, ahead of every import) so both this file's `Animated.View` and
+// `useTableFeedback.ts`'s own `useSharedValue` calls go through the wrapper.
+import Animated from 'react-native-reanimated';
+import { useTableFeedback } from '@/components/useTableFeedback';
 
 jest.mock('@/lib/sounds', () => ({
   ensureAudioMode: jest.fn(),
@@ -40,6 +73,14 @@ jest.mock('@/lib/haptics', () => ({
   hapticWarn: jest.fn(),
 }));
 jest.mock('@/lib/music', () => ({ cancelMusicDuck: jest.fn(), duckMusicFor: jest.fn() }));
+
+// A value no real trauma, amplitude, decay-ms or flash/glow shared value in
+// this tree would ever hold on its own — every other one either starts and
+// stays at a small integer (0, 1) or carries a `Spacing`/`Motion` token.
+// Distinctive on purpose: with `traumaFor` answering *this* under reduced
+// motion, finding it among the captured shared values only happens if
+// `shake()`'s write actually carries what `traumaFor` returned.
+const SENTINEL = 0.918273645;
 
 const idleState = () => ({
   isMyTurn: false,
@@ -67,27 +108,32 @@ describe('the shake reads reduced motion at the point trauma is set (#794)', () 
   afterEach(async () => {
     await act(async () => setMotionPreference('system'));
     jest.restoreAllMocks();
+    mockCapturedSharedValues.length = 0;
   });
 
-  it('a bomb landing after mount reads the live reduced-motion flag, and takes the zero-trauma branch', async () => {
+  it("shake()'s write carries traumaFor's own answer, not a value read and then discarded", async () => {
     setMotionPreference('on');
-    const traumaSpy = jest.spyOn(gameTableModel, 'traumaFor');
+    // Every real call in this tree still reaches the pure `traumaFor` — its
+    // reduced-motion branch is pinned directly in tests/gameTableModel.test.ts
+    // — this only swaps its *answer* for one that is identifiable later.
+    const traumaSpy = jest.spyOn(gameTableModel, 'traumaFor').mockReturnValue(SENTINEL);
     const shakeRef: React.MutableRefObject<((tier: ImpactTier) => void) | null> = { current: null };
     const r = await render(<ShakeProbe shakeRef={shakeRef} />);
+
+    // Nothing on mount holds the sentinel — only `shake()`'s own write can
+    // introduce it.
+    expect(mockCapturedSharedValues.some((sv) => sv.value === SENTINEL)).toBe(false);
 
     await act(async () => {
       shakeRef.current!('bomb');
     });
 
     // The point trauma is set: `shake()` must hand `traumaFor` the *live*
-    // reduced-motion flag, not a stale or hardcoded one — a call with `false`
-    // here is a full-strength trauma about to be written, whatever zeroes it
-    // afterward.
+    // reduced-motion flag.
     expect(traumaSpy).toHaveBeenCalledWith('bomb', true);
-    // And that call's own answer — not a second, later correction — is what
-    // reaches the write: reduced motion means `traumaFor` itself already
-    // answered 0.
-    expect(traumaSpy).toHaveReturnedWith(0);
+    // And what actually lands in a shared value — not merely what `shake()`
+    // read and could have discarded — is `traumaFor`'s own answer.
+    expect(mockCapturedSharedValues.some((sv) => sv.value === SENTINEL)).toBe(true);
 
     await r.unmount();
   });

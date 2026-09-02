@@ -13,11 +13,11 @@ import {
   GameMode,
   PlayerType,
   MatchLength,
+  dealFirstSeatFor,
   firstTargetFor,
   foldHandIntoMatch,
   initializeGame,
   initializeRematch,
-  nextDealFirstSeat,
   isMajority,
   processExchangeChoice,
   processPlay,
@@ -186,15 +186,16 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
   const setupGame = useCallback(
     (players: PlayerSetupConfig[], mode: GameMode, length: MatchLength = "match") => {
-      // A fresh match starts its round-robin deal from seat 0, same as
-      // `server/tableHandlers.ts`'s own fresh-match construction — the
-      // decision recorded in `docs/BRIEF.md` §3.1 ("Rotating the deal"),
-      // which rotates `dealFirstSeat` only *within* a running match, via
-      // `dealFrom` below.
-      const state = initializeGame(players, mode);
+      // A brand-new table is always "a new match", so `dealFirstSeatFor`'s
+      // `matchOver` is unconditionally `true` here — routed through it anyway
+      // rather than a bare `0`, so it and `dealFrom` below share the one
+      // function that decides this (#803), the same as
+      // `server/tableHandlers.ts`'s `startMatchAction` and `dealVotedManche`.
+      const firstSeat = dealFirstSeatFor(true, 0, players.length);
+      const state = initializeGame(players, mode, firstSeat);
       setGameState(state);
       setSelectedCards([]);
-      setDealFirstSeat(0);
+      setDealFirstSeat(firstSeat);
       setMatch(freshMatch(length, players.length));
       setRematchAnswers({});
       setSavedPlayerConfigs(players);
@@ -203,11 +204,18 @@ export function GameProvider({ children }: { children: ReactNode }) {
     []
   );
 
-  /** Deals the next manche of the running match, seeded by the last one's order. */
+  /**
+   * Deals the next manche, seeded by the last one's order. `matchIsOver` is
+   * `startNewMatch`'s: `dealFirstSeatFor` (`lib/gameEngine.ts`) resets a *new*
+   * match to seat 0 and only rotates *within* one — the same distinction
+   * `server/tableHandlers.ts`'s `startMatchAction` vs `dealVotedManche` makes
+   * online — so a plain `dealFrom` call cannot carry a finished match's own
+   * rotation into the new one (#803).
+   */
   const dealFrom = useCallback(
-    (prevRankings: string[]) => {
+    (prevRankings: string[], matchIsOver = false) => {
       const playersWithId = savedPlayerConfigs.map((p, i) => ({ ...p, id: `player_${i}` }));
-      const nextFirstSeat = nextDealFirstSeat(dealFirstSeat, playersWithId.length);
+      const nextFirstSeat = dealFirstSeatFor(matchIsOver, dealFirstSeat, playersWithId.length);
       const state = initializeRematch(playersWithId, savedGameMode, prevRankings, nextFirstSeat);
       setDealFirstSeat(nextFirstSeat);
 
@@ -230,7 +238,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     if (!gameState) return;
     setMatch(freshMatch(match.length, gameState.players.length));
     setRematchAnswers({});
-    dealFrom(gameState.rankings);
+    dealFrom(gameState.rankings, true);
   }, [gameState, match.length, dealFrom]);
 
   const rematchPromptOpen = useMemo(
