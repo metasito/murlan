@@ -178,7 +178,7 @@ export function FlyingCards({
     return {
       transform: [
         { translateX: tx.value },
-        { translateY: ty.value + arcY.value + settle.value * LAND_DIP },
+        { translateY: ty.value + arcY.value + settle.value * LAND_DIP * scale },
         { rotate: `${rot.value + settle.value * landingRot * 0.4}deg` },
         { scaleX: squash.x },
         { scaleY: squash.y },
@@ -344,6 +344,12 @@ function PileComboCards({
 const PILE_PREV_ROTATE_DEG = -7;
 const PILE_PREV_Y = 9;
 
+// The land spring's own overshoot on the whole pile — an ordinary win's
+// entire reaction (#764's tier table). Scaled at the trigger, the way `kick`
+// (useTableFeedback.ts) scales its own jolts, rather than left as a fixed
+// pixel count that reads huge on a phone and vanishes on a tablet (#790).
+const PILE_BOUNCE_DIP = 5;
+
 export function PlayedPile({
   prev,
   current,
@@ -383,22 +389,24 @@ export function PlayedPile({
   useEffect(() => {
     if (!bounceTrigger || reduceMotion) return;
     settleY.value = withSequence(
-      withTiming(-5, { duration: Motion.duration.flash }),
+      withTiming(-PILE_BOUNCE_DIP * scale, { duration: Motion.duration.flash }),
       withSpring(0, Motion.spring.land)
     );
-  }, [bounceTrigger, reduceMotion, settleY]);
+  }, [bounceTrigger, reduceMotion, scale, settleY]);
 
   // No `|| reduceMotion`: `flinchFor` already reads it and answers 0, the way
-  // `traumaFor` does for the shake this composes with (#763).
+  // `traumaFor` does for the shake this composes with (#763). `* scale` for
+  // the same reason `shakeOffset` takes a scale — a knock is a fraction of
+  // the table, not a fixed pixel count.
   useEffect(() => {
     if (!flinchTrigger) return;
-    const distance = flinchFor(flinchTier ?? "ordinary", reduceMotion);
+    const distance = flinchFor(flinchTier ?? "ordinary", reduceMotion) * scale;
     if (distance === 0) return;
     flinchY.value = withSequence(
       withTiming(distance, { duration: Motion.duration.flash }),
       withSpring(0, Motion.spring.land)
     );
-  }, [flinchTrigger, flinchTier, reduceMotion, flinchY]);
+  }, [flinchTrigger, flinchTier, reduceMotion, scale, flinchY]);
 
   useEffect(
     () => () => {

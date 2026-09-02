@@ -1738,6 +1738,71 @@ describe("the beaten pile's flinch (#764)", () => {
       "the flinch must displace the same translateY the beaten pile already rests at, not a sibling style RN would silently drop"
     );
   });
+
+  // A blind critique caught this exact shape: every one of the seven tests
+  // above stayed green while the flinch was rewired onto `current`, the
+  // landing combination, instead of `prev`, the one it beat — the whole
+  // point of the ticket. A string search for "prevLayerStyle" anywhere in the
+  // file cannot catch that; only asking which JSX branch carries it can.
+  test("the flinch lands on the beaten layer (prev), never on the new one — the whole point of the ticket", () => {
+    const src = blankComments(
+      readFileSync(path.join(repoRoot, "components", "table", "pile.tsx"), "utf8")
+    );
+    const stack = src.match(/<View style=\{pileStyles\.pileStack\}>[\s\S]*?<\/View>/);
+    assert.ok(stack, "expected the pile's own stacking View");
+    const prevBlock = stack![0].match(/\{prev &&[\s\S]*?\)\}/);
+    const currentBlock = stack![0].match(/\{current &&[\s\S]*?\)\}/);
+    assert.ok(prevBlock, "expected the prev-combo JSX branch inside the stack");
+    assert.ok(currentBlock, "expected the current-combo JSX branch inside the stack");
+    assert.match(
+      prevBlock![0],
+      /prevLayerStyle/,
+      "the flinch's own animated style must be applied to the beaten layer"
+    );
+    assert.doesNotMatch(
+      currentBlock![0],
+      /prevLayerStyle|flinchY/,
+      "the flinch must never reach the landing combination — displacing prev is the whole point of #764"
+    );
+  });
+
+  // A blind critique's own measurement: shipped at a fixed 2px/6px, the
+  // flinch was under half its intended share of the table at a tablet's
+  // short edge (834) against the base one (390) this scale is authored
+  // against (components/cardFaceModel.ts). `shakeOffset` and `kick`
+  // (useTableFeedback.ts) both read as a fraction of the table for the same
+  // reason: a fixed pixel count reads huge on a phone and vanishes on a
+  // tablet (#790).
+  test("the flinch's own distance scales with the table, the way shakeOffset scales trauma", () => {
+    const src = blankComments(
+      readFileSync(path.join(repoRoot, "components", "table", "pile.tsx"), "utf8")
+    );
+    assert.match(
+      src,
+      /flinchFor\(flinchTier \?\? "ordinary", reduceMotion\) \* scale/,
+      "the flinch's own trigger must multiply flinchFor's answer by the table's own scale"
+    );
+  });
+
+  // The critique found this exact defect twice more in the same file: the
+  // pile's own land-spring overshoot (the ordinary tier's whole effect) and
+  // FlyingCards' own settle dip were both fixed pixel counts too. Fixed
+  // alongside the flinch rather than left as the next instance of the class.
+  test("the pile's own bounce and FlyingCards' own land dip scale with the table too — the same defect class, fixed alongside the flinch", () => {
+    const src = blankComments(
+      readFileSync(path.join(repoRoot, "components", "table", "pile.tsx"), "utf8")
+    );
+    assert.match(
+      src,
+      /-PILE_BOUNCE_DIP \* scale/,
+      "PlayedPile's own bounce (the ordinary tier's whole effect) must scale with the table"
+    );
+    assert.match(
+      src,
+      /settle\.value \* LAND_DIP \* scale/,
+      "FlyingCards' own settle dip must scale with the table"
+    );
+  });
 });
 
 describe("the bomb's peak, re-tuned against #789's corrected curve (#796)", () => {
