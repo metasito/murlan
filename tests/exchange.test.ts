@@ -14,6 +14,7 @@ import {
   processExchangeChoice,
   type Card,
 } from "./helpers.ts";
+import { autoMoveForSeat } from "../lib/autoMove.ts";
 
 const ids = (cards: Card[]) => cards.map((card) => card.id).sort();
 
@@ -165,6 +166,65 @@ describe("processExchangeChoice", () => {
   test("does nothing when the exchange phase is not active", () => {
     const state = makeState([makePlayer("a", [c("4", "hearts")]), makePlayer("b", [])]);
     assert.equal(processExchangeChoice(state, "4_hearts"), state);
+  });
+});
+
+// #784 — `autoMoveForSeat` re-asks whichever seat `exchangePhase.winnerIdx`
+// still names for as long as `exchangePhase.active` stays true. A correct
+// `processExchangeChoice` clears it on the winner's first giveback
+// (docs/RULES.md §10 allows exactly one), so this drives the same seat
+// through `autoMoveForSeat` — never `processExchangeChoice` directly — until
+// the phase closes, counting every card it hands over along the way. Left
+// unclosed, the loop keeps drawing from a two-card hand: a second giveback,
+// then a third call finds nothing left to offer and `resolveStuckExchange`
+// closes the phase with no card moved at all — the rescue this ticket says
+// must never be needed. Counting givebacks as they happen catches the second
+// ask on its own; it does not wait to see whether the rescue fires.
+describe("REGRESSION (#784): exchangePhase.active clears after exactly one giveback", () => {
+  test("the winner is not re-asked, and resolveStuckExchange is never needed", () => {
+    const winnerHand = [c("3", "hearts"), c("4", "clubs")];
+    let state = makeState(
+      [makePlayer("winner", winnerHand), makePlayer("loser", [c("9", "clubs")])],
+      {
+        currentTurnIndex: 0,
+        lastPlayedBy: 0,
+        exchangePhase: {
+          active: true,
+          winnerIdx: 0,
+          loserIdx: 1,
+          cardFromLoser: c("2", "spades"),
+          bothJokersException: false,
+        },
+      }
+    );
+
+    let givebacks = 0;
+    let rescued = false;
+    for (let i = 0; i < winnerHand.length + 2 && state.exchangePhase?.active; i++) {
+      const before = { winner: state.players[0].hand.length, loser: state.players[1].hand.length };
+      const next = autoMoveForSeat(state, 0, false, {});
+      assert.ok(next, "seat 0 is exchangePhase.winnerIdx and must always be able to act");
+      const after = { winner: next!.players[0].hand.length, loser: next!.players[1].hand.length };
+      if (after.winner === before.winner - 1 && after.loser === before.loser + 1) {
+        givebacks++;
+      } else if (!next!.exchangePhase?.active) {
+        rescued = true;
+      }
+      state = next!;
+    }
+
+    assert.equal(
+      givebacks,
+      1,
+      `seat 0 gave back a card ${givebacks} time(s) in one exchange, not 1 ` +
+        `(hand drained to ${state.players[0].hand.length} card(s))`
+    );
+    assert.equal(
+      rescued,
+      false,
+      "resolveStuckExchange closed the phase with no card moved — the exchange ran long enough to need it"
+    );
+    assert.equal(state.exchangePhase?.active, false, "the exchange must be closed after the winner's one giveback");
   });
 });
 
