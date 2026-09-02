@@ -31,6 +31,22 @@ function countNodes(node: unknown): number {
   return total;
 }
 
+type TestJson = { type: string; props?: Record<string, unknown>; children?: unknown };
+
+/** Depth-first search for the first node carrying this `testID`. */
+function findByTestID(node: unknown, testID: string): TestJson | null {
+  if (node === null || node === undefined || typeof node === "string") return null;
+  const arr = Array.isArray(node) ? node : [node];
+  for (const n of arr) {
+    if (n === null || n === undefined || typeof n === "string") continue;
+    const t = n as TestJson;
+    if (t.props?.testID === testID) return t;
+    const found = findByTestID(t.children, testID);
+    if (found) return found;
+  }
+  return null;
+}
+
 describe("the bomb burst's own node budget (#765)", () => {
   it("stays within the prototype's ~24-node figure", async () => {
     const r = await render(<BombBurst trigger={1} scale={1} flareKind="brief" />);
@@ -53,5 +69,17 @@ describe("the bomb burst's own node budget (#765)", () => {
     await settle.unmount();
 
     expect(briefCount).toBe(settleCount);
+  });
+
+  it("the flare is layered, not a single flat-filled disc — a second critique's own finding", async () => {
+    const r = await render(<BombBurst trigger={1} scale={1} flareKind="brief" />);
+
+    const flare = findByTestID(r.toJSON(), "bomb-flare");
+    const layers = countNodes(flare?.children);
+    // A flat fill (the shape the critique rejected) is one node with no
+    // children at all; this only holds once there is a real falloff to count.
+    expect(layers).toBeGreaterThanOrEqual(2);
+
+    await r.unmount();
   });
 });

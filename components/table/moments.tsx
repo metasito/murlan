@@ -38,16 +38,14 @@ import { Layer, makeShadow, Motion } from "@/lib/theme";
 // and CLAUDE.md's invariant against a token used outside the role it was
 // named for rules those out here.
 //
-// Flare and LampLift were both a filled `<Svg>` radial gradient once, wrapped
-// in the same `transform: scale` Animated.View this file's `Wave` and `Spark`
-// already avoid. `felt.tsx`'s own comments record, from #209, that
-// react-native-svg's native path paints at its own laid-out bounds and does
-// not move with an ancestor transform — a bug this codebase has already paid
-// for twice. Nothing here can verify a variant of that shape is safe without
-// a device, so both are a plain filled+shadowed circle instead, the same
-// shape `Spark` already ships: a solid core (`*_FILL`) plus a static blurred
-// glow (`*_GLOW`, via `makeShadow`) standing in for the gradient's falloff.
-const FLARE_FILL = "rgba(255,250,232,.92)";
+// Neither `Flare` nor `LampLift` animate an `<Svg>`. `felt.tsx`'s own
+// comments record, from #209, that react-native-svg's native path paints at
+// its own laid-out bounds and does not move with a `transform` on an
+// ancestor view — a bug this codebase has already paid for twice, and one no
+// device access this session can re-verify a variant of. Both animate a
+// plain `Animated.View`'s own `opacity`/`transform` instead, the shape
+// `Wave`/`Spark` already use, with a static blurred `glow` (`makeShadow`)
+// standing outside the animated path for the outer halo.
 const FLARE_GLOW = "#FFC966";
 const WAVE_STROKE = "rgba(255,236,180,.9)";
 const SPARK_FILL = "#FFE9B0";
@@ -57,8 +55,65 @@ const SWEEP_TRANSPARENT = "rgba(255,240,200,0)";
 // The lift's own glow (#765) — softer than the flare's near-white core: the
 // manche rung hands over to its own banner rather than surprising the table,
 // so it reads as the lamp itself brightening, not as a second flash.
-const LIFT_FILL = "rgba(255,242,208,.55)";
 const LIFT_GLOW = "#FFE8B8";
+
+/**
+ * A single flat fill reads as a coin, not a bloom of light — a second blind
+ * critique on #765 caught exactly that on `Flare`'s own replacement shape.
+ * `GradientLayers` fakes the falloff a radial gradient would have painted
+ * with a handful of concentric, decreasingly-transparent plain circles,
+ * largest and faintest first so each later (smaller, brighter) one composites
+ * on top — cheap, and every one of them still only ever animates via the
+ * parent `Animated.View`'s own `transform`/`opacity`, never its own.
+ */
+interface GradientLayer {
+  /** This layer's own diameter, as a fraction of the parent's `size`. */
+  diameterFactor: number;
+  fill: string;
+}
+
+function GradientLayers({ size, layers }: { size: number; layers: readonly GradientLayer[] }) {
+  return (
+    <>
+      {layers.map((layer, i) => {
+        const d = size * layer.diameterFactor;
+        return (
+          <View
+            key={i}
+            style={{
+              position: "absolute",
+              width: d,
+              height: d,
+              left: (size - d) / 2,
+              top: (size - d) / 2,
+              borderRadius: d / 2,
+              backgroundColor: layer.fill,
+            }}
+          />
+        );
+      })}
+    </>
+  );
+}
+
+/**
+ * The bomb/partita flare's own falloff — a hand-stepped approximation of the
+ * three-stop SVG radial gradient this effect shipped with in #200 (core
+ * `rgba(255,250,232,.98)` at the centre, through gold at 40% of the radius,
+ * to transparent at 72%).
+ */
+const FLARE_LAYERS: readonly GradientLayer[] = [
+  { diameterFactor: 0.7, fill: "rgba(255,201,102,0.18)" },
+  { diameterFactor: 0.42, fill: "rgba(255,222,158,0.42)" },
+  { diameterFactor: 0.16, fill: "rgba(255,250,232,0.92)" },
+];
+
+/** The lift's own falloff — the same idea, softer throughout to match `LIFT_GLOW`. */
+const LIFT_LAYERS: readonly GradientLayer[] = [
+  { diameterFactor: 0.85, fill: "rgba(255,232,184,0.1)" },
+  { diameterFactor: 0.5, fill: "rgba(255,238,200,0.22)" },
+  { diameterFactor: 0.22, fill: "rgba(255,245,220,0.42)" },
+];
 
 // `mix-blend-mode` has no native equivalent; RN Web passes it straight
 // through as a style prop, and native ignores an unrecognised one. `{}`
@@ -132,20 +187,14 @@ function Flare({ trigger, scale, kind }: { trigger: number; scale: number; kind:
       testID="bomb-flare"
       style={[
         momentStyles.centered,
-        {
-          width: size,
-          height: size,
-          left: -size / 2,
-          top: -size / 2,
-          borderRadius: size / 2,
-          backgroundColor: FLARE_FILL,
-          zIndex: FLARE_Z,
-        },
+        { width: size, height: size, left: -size / 2, top: -size / 2, zIndex: FLARE_Z },
         glow,
         SCREEN_BLEND,
         aStyle,
       ]}
-    />
+    >
+      <GradientLayers size={size} layers={FLARE_LAYERS} />
+    </Animated.View>
   );
 }
 
@@ -354,11 +403,7 @@ export function BombBurst({
 // A brightening-and-swelling pulse over the lamp's own position, never the
 // lamp rig itself — `felt.tsx`'s own comments record the native-only cost of
 // wrapping its `<Svg>` in a *repositioning* transform, and this needs none of
-// that: it never moves, it only glows in place. It is also, like `Flare`
-// above, a plain filled+shadowed circle rather than an `<Svg>` for the same
-// reason: `transform: scale` wrapping an `<Svg>` is the shape #209 already
-// found silently not reaching the paint on iOS, and this file has no way to
-// re-verify that without a device.
+// that: it never moves, it only glows in place.
 
 const LIFT_SIZE = 130;
 const LIFT_MS = 900;
@@ -421,19 +466,13 @@ export function LampLift({
       testID="lamp-lift"
       style={[
         momentStyles.centered,
-        {
-          left: x - size / 2,
-          top: y - size / 2,
-          width: size,
-          height: size,
-          borderRadius: size / 2,
-          backgroundColor: LIFT_FILL,
-          zIndex: LIFT_Z,
-        },
+        { left: x - size / 2, top: y - size / 2, width: size, height: size, zIndex: LIFT_Z },
         glow,
         aStyle,
       ]}
-    />
+    >
+      <GradientLayers size={size} layers={LIFT_LAYERS} />
+    </Animated.View>
   );
 }
 

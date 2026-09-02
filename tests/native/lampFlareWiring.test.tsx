@@ -213,32 +213,37 @@ describe("the lamp's flare and lift, wired off the same tier the shake reads (#7
     await r.unmount();
   });
 
-  it("burst fires for the same tier shake does, in the same landing — not two separately-derived tiers", async () => {
-    // The partita rung is the one scenario in this file where `shake` and
-    // `burst` disagreeing is actually observable: `matchOver` is what tells
-    // "mancheWon" from "partitaWon" apart, and only flips mid-test (below),
-    // so a `burst` that re-derived its own tier from a stale or default
-    // `matchOver` would read "mancheWon" here while `shake` reads
-    // "partitaWon" — the exact shape of decoupling this test exists to catch.
+  it("burst fires in the same tick shake does, for the same landing — not merely the same tier eventually", async () => {
+    // A second blind critique on this exact test caught it not testing what
+    // it claimed: `runOnlyPendingTimers()` after the advance flushes every
+    // timer pending at that point, including one a decoupled `burst` might
+    // be hiding behind (`setTimeout(() => burst(tier), 400)` inside the
+    // landing callback) — so it would still pass. Advancing to exactly the
+    // landing's own timeout, with nothing further flushed, is what actually
+    // pins the tick: a `burst` behind its own timer has not fired yet at
+    // that instant, only `shake` has.
+    //
+    // The partita rung is the one scenario in this file where a *tier*
+    // mismatch is also observable (`matchOver` flips mid-test, below), so
+    // this doubles as the #764-style decoupling check the tier-only version
+    // of this test used to be.
     const r = await render(table(HAND_CLOSED, false));
     await act(async () => r.rerender(table(HAND_CLOSED, true)));
 
     await act(async () => {
-      jest.advanceTimersByTime(impactDelayMs(false) + 10);
-      jest.runOnlyPendingTimers();
+      jest.advanceTimersByTime(impactDelayMs(false));
     });
 
-    // One `landingTier(...)` computed once and handed to both — a version
-    // that recomputed it separately for each call, or split them across two
-    // timeouts, would still make both calls but could disagree on the tier or
-    // land them apart; this is the shape a blind critique's own decoupling
-    // defect (#764) was caught by accident of one scenario's timing rather
-    // than by an assertion designed for it.
     expect(feedbackCallLog).toEqual([
       { fn: "shake", tier: "partitaWon" },
       { fn: "burst", tier: "partitaWon" },
     ]);
 
+    // Only now flush whatever else the landing may have scheduled (sounds,
+    // duck timers) — the assertion above already ran against the exact tick.
+    await act(async () => {
+      jest.runOnlyPendingTimers();
+    });
     await r.unmount();
   });
 });
