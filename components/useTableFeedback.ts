@@ -13,7 +13,12 @@ import {
 } from "react-native-reanimated";
 import type { Combination } from "@/lib/gameEngine";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
-import { roundClosedWithWinner } from "@/components/gameTableModel";
+import {
+  roundClosedWithWinner,
+  traumaFor,
+  shakeOffset,
+  type ImpactTier,
+} from "@/components/gameTableModel";
 import {
   playBomb,
   playCardPass,
@@ -25,7 +30,7 @@ import {
 } from "@/lib/sounds";
 import { hapticHeavy, hapticSuccess, hapticWarn } from "@/lib/haptics";
 import { cancelMusicDuck, duckMusicFor } from "@/lib/music";
-import { Motion } from "@/lib/theme";
+import { Motion, motionMs } from "@/lib/theme";
 
 // The refusal shake on GIOCA: deliberately a third of the bomb's amplitude —
 // it is a "no", not an event. One leg duration for all four legs.
@@ -94,6 +99,10 @@ interface TableFeedback {
   flushTrigger: number;
   /** Call once, at the same landing moment as `playImpact`, when that play emptied a hand. */
   celebrateFlush: () => void;
+  /** The escalation's own shake (#763): a translate, decaying to rest. */
+  shakeStyle: AnimatedStyle<ViewStyle>;
+  /** Fire the shake for the tier a landing resolved to — `landingTier` (gameTableModel.ts) names it. */
+  shake: (tier: ImpactTier) => void;
 }
 
 /**
@@ -115,6 +124,13 @@ function useImpactFeedback(reduceMotion: boolean, scale: number) {
   const kickScale = useSharedValue(1);
   const giocaRejectX = useSharedValue(0);
   const [boomTrigger, setBoomTrigger] = useState(0);
+  // The escalation's own shake (#763): a trauma peak, an elapsed clock and the
+  // decay window that landed with it — `shakeOffset` reads all three back
+  // every frame, riding the table #101 settled — never a second amplitude
+  // authored here.
+  const shakeTrauma = useSharedValue(0);
+  const shakeElapsed = useSharedValue(0);
+  const shakeDecayMs = useSharedValue(0);
 
   // Both inputs are read through refs so the two writers below depend on
   // nothing, which is what lets the callbacks that expose them hold `[]`.
@@ -151,6 +167,26 @@ function useImpactFeedback(reduceMotion: boolean, scale: number) {
     );
   };
 
+  // No `if (reduceMotion)`: `traumaFor` already reads it and answers 0, and
+  // `motionMs("shake", reduceMotion)` collapses the decay window the same way
+  // every other step on the table does.
+  const shake = (tier: ImpactTier) => {
+    const trauma = traumaFor(tier, reduceMotionRef.current);
+    const decayMs = motionMs("shake", reduceMotionRef.current);
+    shakeTrauma.value = trauma;
+    shakeDecayMs.value = decayMs;
+    if (trauma === 0) {
+      shakeElapsed.value = 0;
+      return;
+    }
+    cancelAnimation(shakeElapsed);
+    shakeElapsed.value = 0;
+    shakeElapsed.value = withTiming(decayMs, {
+      duration: decayMs,
+      easing: Easing.linear,
+    });
+  };
+
   const kickStyle = useAnimatedStyle(() => ({
     transform: [
       { translateX: kickX.value },
@@ -159,6 +195,11 @@ function useImpactFeedback(reduceMotion: boolean, scale: number) {
     ],
   }));
 
+  const shakeStyle = useAnimatedStyle(() => {
+    const { x, y } = shakeOffset(shakeTrauma.value, shakeElapsed.value, shakeDecayMs.value);
+    return { transform: [{ translateX: x }, { translateY: y }] };
+  });
+
   // Reanimated keeps driving shared values after unmount unless cancelled.
   useEffect(
     () => () => {
@@ -166,8 +207,9 @@ function useImpactFeedback(reduceMotion: boolean, scale: number) {
       cancelAnimation(kickY);
       cancelAnimation(kickScale);
       cancelAnimation(giocaRejectX);
+      cancelAnimation(shakeElapsed);
     },
-    [kickX, kickY, kickScale, giocaRejectX]
+    [kickX, kickY, kickScale, giocaRejectX, shakeElapsed]
   );
 
   // The writers have to be plain closures — the compiler refuses a function
@@ -184,12 +226,13 @@ function useImpactFeedback(reduceMotion: boolean, scale: number) {
   // never refreshed because it never needs to be — both closures read their
   // only two inputs through `scaleRef` and `reduceMotionRef`, so the pair
   // captured on the first render behaves the same as any later one.
-  const writers = useRef({ kick, reject });
+  const writers = useRef({ kick, reject, shake });
 
   const impact = useCallback(() => writers.current.kick(), []);
   const rejectPlay = useCallback(() => writers.current.reject(), []);
+  const triggerShake = useCallback((tier: ImpactTier) => writers.current.shake(tier), []);
 
-  return { kickStyle, giocaRejectX, impact, rejectPlay, boomTrigger };
+  return { kickStyle, giocaRejectX, impact, rejectPlay, boomTrigger, shakeStyle, shake: triggerShake };
 }
 
 export function useTableFeedback({
@@ -228,10 +271,8 @@ export function useTableFeedback({
   const giocaFlashVal = useSharedValue(0);
   const passaFlashVal = useSharedValue(0);
   const giocaGlowVal = useSharedValue(0);
-  const { kickStyle, giocaRejectX, impact, rejectPlay, boomTrigger } = useImpactFeedback(
-    reduceMotion,
-    scale
-  );
+  const { kickStyle, giocaRejectX, impact, rejectPlay, boomTrigger, shakeStyle, shake } =
+    useImpactFeedback(reduceMotion, scale);
   // BombBurst and Sweep own their animations; these just say "again" —
   // PlayedPile's `bounceTrigger` is the same pattern.
   const [flushTrigger, setFlushTrigger] = useState(0);
@@ -271,6 +312,11 @@ export function useTableFeedback({
     }
     if (prevGameOverRef.current) return;
     prevGameOverRef.current = true;
+    // The manche/partita shake itself is NOT fired here — this effect answers
+    // `gameOver` the instant the state arrives, well ahead of the winning
+    // card's own landing. `GameTable.tsx` fires `shake(landingTier(...))`
+    // from the same `impactDelayMs` timeout everything else on the table
+    // waits for, so the shake lands with the card rather than ahead of it.
     // `rankings` holds engine player ids (`player_0`), never display names.
     const myRank = viewerId ? rankings.indexOf(viewerId) : -1;
     if (myRank === 0) {
@@ -377,5 +423,7 @@ export function useTableFeedback({
     boomTrigger,
     flushTrigger,
     celebrateFlush,
+    shakeStyle,
+    shake,
   };
 }

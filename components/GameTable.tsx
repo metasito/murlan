@@ -61,6 +61,7 @@ import {
   handCountOf,
   readThrownPlay,
   impactDelayMs,
+  landingTier,
   lightPosition,
   passedSeats,
   readExchange,
@@ -216,6 +217,14 @@ export interface GameTableProps {
    * (opponents' hands blanked, `handCount` shipped alongside).
    */
   gameState: GameState;
+  /**
+   * Whether the *match* — the partita, not this hand — is over. `MatchVerdict.over`
+   * offline, `matchState.over` online: the same landing that empties a hand can
+   * also be the one that closes the match, so this is read alongside
+   * `gameState.gameOver` at the moment a play lands, never inferred from it.
+   * Defaults false: replay, capture and reaction-preview callers hold no match.
+   */
+  matchOver?: boolean;
   /** Seat the table is drawn from. Always rendered at the bottom. */
   viewerSeat: number;
   /**
@@ -263,6 +272,7 @@ export interface GameTableProps {
 
 export function GameTable({
   gameState,
+  matchOver = false,
   viewerSeat,
   spectating = false,
   selectedIds,
@@ -364,6 +374,14 @@ export function GameTable({
   const roundHoldTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevComboKeyRef = useRef<string>("");
   const roundClosedRef = useRef(false);
+  // Online, `matchOver` arrives on its own socket packet after `gameOver` —
+  // a second render the pile effect's own `prevComboKeyRef` guard skips, so
+  // the impact timeout below reads this ref (current at the moment it
+  // fires) rather than the `matchOver` its own scheduling render closed over.
+  const matchOverRef = useRef(matchOver);
+  useEffect(() => {
+    matchOverRef.current = matchOver;
+  }, [matchOver]);
 
   // The reason a tap on an unavailable GIOCA was refused, spelled out. Keyed by
   // a counter so tapping again restarts the dwell instead of being swallowed as
@@ -606,6 +624,8 @@ export function GameTable({
     boomTrigger,
     flushTrigger,
     celebrateFlush,
+    shakeStyle,
+    shake,
   } = useTableFeedback({
     isMyTurn,
     isFinished,
@@ -759,6 +779,13 @@ export function GameTable({
     // viewer's: the sound belongs to a card landing, not to a tap.
     impactTimerRef.current = setTimeout(() => {
       playImpact(thrown.heavy);
+      shake(
+        landingTier({
+          comboType: combo.type,
+          handOver: gameState.gameOver,
+          matchOver: matchOverRef.current,
+        })
+      );
       if (thrown.emptiedHand) celebrateFlush();
     }, impactDelayMs(reduceMotion));
 
@@ -777,10 +804,12 @@ export function GameTable({
     gameState.lastPlayedCombination,
     gameState.lastPlayedBy,
     gameState.roundWinner,
+    gameState.gameOver,
     viewerSeat,
     players.length,
     reduceMotion,
     playImpact,
+    shake,
     celebrateFlush,
     players,
     opponents,
@@ -1154,7 +1183,12 @@ export function GameTable({
           rectangle in a dark room, which is the one thing a single overhead
           lamp cannot produce. The pool tracks whose turn it is, so half the
           cloth falls into shadow when it is not yours. */}
-      <View testID="table-felt" style={[StyleSheet.absoluteFill, FELT_Z]} pointerEvents="none" {...a11yHidden()}>
+      <View
+        testID="table-felt"
+        style={[StyleSheet.absoluteFill, FELT_Z]}
+        pointerEvents="none"
+        {...a11yHidden()}
+      >
         <FeltPool
           width={feltW}
           height={feltH}
@@ -1190,7 +1224,7 @@ export function GameTable({
           },
         ]}
       >
-        <View style={sharedTableStyles.tableContent}>
+        <Animated.View style={[sharedTableStyles.tableContent, shakeStyle]}>
           <View testID="table-top-section" style={sharedTableStyles.topSection}>
             {opponents.top ? (
               <TopOppSlot
@@ -1431,7 +1465,7 @@ export function GameTable({
               />
             )}
           </Animated.View>
-        </View>
+        </Animated.View>
       </View>
 
 

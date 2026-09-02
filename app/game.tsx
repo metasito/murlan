@@ -55,7 +55,7 @@ export default function GameScreen() {
     acknowledgeExchange,
     releaseStuckExchange,
   } = useLocalExchange();
-  const { rematchPromptOpen, rematchAnswers, rematchTally, answerRematch } = useLocalMatch();
+  const { match, rematchPromptOpen, rematchAnswers, rematchTally, answerRematch } = useLocalMatch();
 
   // Timers fire outside the render that scheduled them; refs keep them from
   // calling a stale copy of the context action. Assigned after commit, never
@@ -150,6 +150,7 @@ export default function GameScreen() {
   return (
     <GameTable
       gameState={gameState}
+      matchOver={match.over}
       viewerSeat={humanIdx}
       selectedIds={selectedCards}
       onSelectCard={selectCard}

@@ -7,7 +7,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { CARD_H, CARD_W, BACK_SCALE } from "../components/cardFaceModel.ts";
-import { Hold, TOUCH_TARGET_MIN } from "../lib/tokens.ts";
+import { Hold, TOUCH_TARGET_MIN, Trauma, Motion } from "../lib/tokens.ts";
 import { blankComments } from "./helpers/sourceScan.ts";
 import type { Card, Combination } from "../lib/gameEngine.ts";
 import {
@@ -66,6 +66,11 @@ import {
   landSquashScale,
   LAND_SQUASH,
   settleForMotion,
+  comboImpactTier,
+  landingTier,
+  traumaFor,
+  shakeMagnitude,
+  shakeOffset,
   FLIGHT_MS,
   LANDING_FRACTION,
   passedSeats,
@@ -73,6 +78,7 @@ import {
   sparkOffset,
   SPARK_COUNT,
   type ComboShape,
+  type ImpactTier,
   type TableA11yStrings,
 } from "../components/gameTableModel.ts";
 import {
@@ -1495,6 +1501,134 @@ describe("settleForMotion", () => {
     assert.match(
       src,
       /useEffect\(\(\) => \{\s*settle\.value = settleForMotion\(reduceMotion, settle\.value\);/
+    );
+  });
+});
+
+describe("the table's own trauma escalation (#763)", () => {
+  const DECAY_MS = Motion.duration.shake;
+
+  test("a play's tier reads off the combination that just landed", () => {
+    assert.equal(comboImpactTier("bomb"), "bomb");
+    assert.equal(comboImpactTier("straight"), "straightFlush");
+    assert.equal(comboImpactTier("royal_straight"), "straightFlush");
+    assert.equal(comboImpactTier("single"), "ordinary");
+    assert.equal(comboImpactTier("pair"), "ordinary");
+    assert.equal(comboImpactTier("triple"), "ordinary");
+  });
+
+  // The manche rung is `GameState.gameOver` (processPlay: "the hand is
+  // decided"), never `roundWinner` — that is a trick, closing many times a
+  // hand (docs/RULES.md §9). The partita rung is a further fact about the
+  // same landing (`MatchVerdict.over`), not a second, later event.
+  describe("landingTier", () => {
+    test("a play that closes nothing lands at its own tier", () => {
+      assert.equal(landingTier({ comboType: "single", handOver: false, matchOver: false }), "ordinary");
+      assert.equal(landingTier({ comboType: "bomb", handOver: false, matchOver: false }), "bomb");
+    });
+
+    test("the hand emptying, with the match still open, is the manche rung", () => {
+      assert.equal(landingTier({ comboType: "single", handOver: true, matchOver: false }), "mancheWon");
+    });
+
+    test("the hand emptying and the match closing with it is the partita rung", () => {
+      assert.equal(landingTier({ comboType: "single", handOver: true, matchOver: true }), "partitaWon");
+    });
+
+    test("matchOver with handOver false never fires the partita rung — a match cannot close on a hand still in play", () => {
+      assert.equal(landingTier({ comboType: "single", handOver: false, matchOver: true }), "ordinary");
+    });
+
+    test("a bomb that also closes the manche is only as loud as its loudest rung", () => {
+      assert.equal(landingTier({ comboType: "bomb", handOver: true, matchOver: false }), "bomb");
+      assert.equal(landingTier({ comboType: "bomb", handOver: true, matchOver: true }), "bomb");
+    });
+  });
+
+  test("the tier→trauma mapping is the one table #101 settled", () => {
+    assert.equal(traumaFor("ordinary", false), 0);
+    assert.equal(traumaFor("straightFlush", false), 0);
+    assert.equal(traumaFor("bomb", false), Trauma.bomb);
+    assert.equal(traumaFor("mancheWon", false), Trauma.mancheWon);
+    assert.equal(traumaFor("partitaWon", false), Trauma.partitaWon);
+  });
+
+  test("the bomb outranks the manche and the partita both — a later 'tidy-up' that sorts by event size must fail this", () => {
+    const bomb = traumaFor("bomb", false);
+    const manche = traumaFor("mancheWon", false);
+    const partita = traumaFor("partitaWon", false);
+    assert.ok(
+      bomb > manche,
+      "a bomb is a surprise and a manche ending is expected — the bomb shakes harder on purpose"
+    );
+    assert.ok(bomb > partita, "the bomb outranks even the partita: it is the surprise in the game");
+    assert.ok(partita > manche, "a partita closing still outshakes a manche closing");
+  });
+
+  // The four probes a blind critique ran against the shipped shake: the
+  // reduced-motion zeroing removed outright, applied to only some tiers (one
+  // escaping), and answering a small non-zero number instead of true rest.
+  // `tests/native/tableShake.test.tsx` cannot red on these — a
+  // `useAnimatedStyle` read off a mounted node is frozen at whatever it was
+  // at mount (`settleForMotion`, above, documents the same trap) — so they
+  // are pinned here, directly against the pure functions, the way #783 did.
+  test("reduced motion produces no shake, at every tier, without a bespoke branch", () => {
+    const tiers: ImpactTier[] = ["ordinary", "straightFlush", "bomb", "mancheWon", "partitaWon"];
+    for (const tier of tiers) {
+      assert.equal(traumaFor(tier, true), 0, `${tier} must carry no trauma under reduced motion`);
+    }
+  });
+
+  test("reduced motion answers exactly 0, not merely a small number", () => {
+    assert.ok(
+      Object.is(traumaFor("partitaWon", true), 0),
+      "a fix that shrinks trauma instead of zeroing it would still shake, just less"
+    );
+  });
+
+  test("trauma at rest (elapsed 0) is the tier's own peak — the shake starts struck, not built up to", () => {
+    assert.equal(shakeMagnitude(Trauma.bomb, 0, DECAY_MS), Trauma.bomb);
+  });
+
+  test("trauma decays squared, not linearly — a half-elapsed shake is a quarter strength, not half", () => {
+    const half = shakeMagnitude(Trauma.bomb, DECAY_MS / 2, DECAY_MS);
+    assert.ok(
+      Math.abs(half - Trauma.bomb * 0.25) < 1e-9,
+      `trauma squared at the midpoint of the decay must be a quarter of the peak, got ${half}`
+    );
+  });
+
+  test("the shake is fully decayed at and past its own decay window, never negative", () => {
+    assert.equal(shakeMagnitude(Trauma.bomb, DECAY_MS, DECAY_MS), 0);
+    assert.equal(shakeMagnitude(Trauma.bomb, DECAY_MS * 4, DECAY_MS), 0);
+  });
+
+  test("reduced motion's own decay window (0) is rest, never a division by zero", () => {
+    assert.equal(shakeMagnitude(Trauma.bomb, 0, 0), 0);
+    assert.equal(shakeOffset(Trauma.bomb, 0, 0).x, 0);
+    assert.equal(shakeOffset(Trauma.bomb, 0, 0).y, 0);
+  });
+
+  test("no trauma is no displacement, at any point in the decay", () => {
+    assert.equal(shakeOffset(0, 0, DECAY_MS).x, 0);
+    assert.equal(shakeOffset(0, 0, DECAY_MS).y, 0);
+    assert.equal(shakeOffset(0, DECAY_MS / 3, DECAY_MS).x, 0);
+  });
+
+  test("the displacement peaks at the tier's own trauma, at the moment of impact", () => {
+    const { x, y } = shakeOffset(Trauma.bomb, 0, DECAY_MS);
+    // cos(0) = 1, so the wiggle contributes its full weight at elapsed 0.
+    assert.ok(x !== 0 && y !== 0, "a bomb's shake must actually move the node it is applied to");
+  });
+
+  test("the decay window comes from Motion, and the amplitudes from Spacing — never a bare literal", () => {
+    const src = blankComments(
+      readFileSync(path.join(repoRoot, "components", "gameTableModel.ts"), "utf8")
+    );
+    assert.doesNotMatch(
+      src,
+      /const SHAKE_AMPLITUDE_[XY]\s*=\s*\d/,
+      "a shake amplitude must read a Spacing step, not a pixel literal"
     );
   });
 });
