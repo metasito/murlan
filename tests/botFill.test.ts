@@ -1,12 +1,17 @@
 // tests/botFill.test.ts — pure seat-assignment logic, extracted so it is testable
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync, readdirSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   botSeatsFromPersonality,
   buildSeatRoster,
   isContestedTable,
   seatAssignmentsFromRoster,
 } from "../server/onlineGameLogic.ts";
+
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 test("empty seats are filled with bots up to maxPlayers", () => {
   const roster = buildSeatRoster(
@@ -122,3 +127,40 @@ test("botSeatsFromPersonality reads a born bot, not a seat a human vacated", () 
   ];
   assert.deepEqual(botSeatsFromPersonality(players), new Set([1]));
 });
+
+// seatAssignmentsFromRoster landed with one caller (startMatchAction) and an
+// unused-import lint warning is not the same guarantee: `void
+// seatAssignmentsFromRoster;` silences the warning without calling it, so a
+// second, inline rebuild of the same maps leaves tsc, lint and every other
+// test green. Counting call sites — `name(`, not merely `name` — is the fact
+// that tells the two apart.
+test("one function builds a match's playerMap and botSeatsAtStart", () => {
+  const TARGET = "seatAssignmentsFromRoster";
+  const HOME = "server/onlineGameLogic.ts";
+  const callers = ["app", "components", "context", "lib", "server"]
+    .flatMap((dir) => walk(path.join(repoRoot, dir)))
+    .filter((rel) =>
+      new RegExp(String.raw`\b${TARGET}\s*\(`).test(readFileSync(path.join(repoRoot, rel), "utf8"))
+    );
+
+  assert.deepEqual(
+    callers.sort(),
+    [HOME, "server/tableHandlers.ts"].sort(),
+    `${TARGET} is how a match's roster becomes playerMap and botSeatsAtStart, ` +
+      `so a caller that stops calling it, or a second inline copy, shows up ` +
+      `here: ${callers.join(", ")}`
+  );
+});
+
+function walk(dir: string): string[] {
+  const out: string[] = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      if (entry.name !== "node_modules") out.push(...walk(full));
+    } else if (/\.tsx?$/.test(entry.name)) {
+      out.push(path.relative(repoRoot, full).split(path.sep).join("/"));
+    }
+  }
+  return out;
+}
