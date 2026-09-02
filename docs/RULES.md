@@ -45,7 +45,7 @@ Where Tier 1 and Tier 2 disagree, this spec follows Tier 1 and records the disag
 - visixplay (EN): *"The game starts (first hand) by who has the 3 of spades (forced to throw the 3 of spades also combined)."*
 - catsatcards: *"the player who has the three of spades in hand plays first, and must include this card in the play."*
 - At **3 and 4 players** the full deck is dealt, so **the 3♠ is always in somebody's hand** — no fallback is needed there.
-- At **2 players** the 3♠ can end up in the 12 undealt cards (§3). When that happens, **the holder of the lowest dealt card opens instead** — the same fix Big Two and Tien Len use for their own stripped two-player deals. (MWM's app adds *"If that does not exist then a random player starts"*, a weaker version of the same idea.)
+- At **2 players** the 3♠ can end up in the 26 undealt cards (§3). When that happens, **the holder of the lowest dealt card opens instead** — the same fix Big Two and Tien Len use for their own stripped two-player deals. (MWM's app adds *"If that does not exist then a random player starts"*, a weaker version of the same idea.)
 - **This rule applies only to the first hand of a session.** Subsequent hands are opened per §10.
 
 ## 5. Valid combinations

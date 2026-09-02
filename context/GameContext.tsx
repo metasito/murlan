@@ -13,11 +13,11 @@ import {
   GameMode,
   PlayerType,
   MatchLength,
+  dealFirstSeatFor,
   firstTargetFor,
   foldHandIntoMatch,
   initializeGame,
   initializeRematch,
-  nextDealFirstSeat,
   isMajority,
   processExchangeChoice,
   processPlay,
@@ -186,10 +186,13 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
   const setupGame = useCallback(
     (players: PlayerSetupConfig[], mode: GameMode, length: MatchLength = "match") => {
-      const state = initializeGame(players, mode);
+      // A brand-new table is always "a new match", so `matchOver` is
+      // unconditionally `true` here.
+      const firstSeat = dealFirstSeatFor(true, 0, players.length);
+      const state = initializeGame(players, mode, firstSeat);
       setGameState(state);
       setSelectedCards([]);
-      setDealFirstSeat(0);
+      setDealFirstSeat(firstSeat);
       setMatch(freshMatch(length, players.length));
       setRematchAnswers({});
       setSavedPlayerConfigs(players);
@@ -198,11 +201,15 @@ export function GameProvider({ children }: { children: ReactNode }) {
     []
   );
 
-  /** Deals the next manche of the running match, seeded by the last one's order. */
+  /**
+   * Deals the next manche, seeded by the last one's order. `matchIsOver`
+   * tells `dealFirstSeatFor` (`lib/gameEngine.ts`) whether this deal starts a
+   * new match (reset to seat 0) or continues the current one (rotate).
+   */
   const dealFrom = useCallback(
-    (prevRankings: string[]) => {
+    (prevRankings: string[], matchIsOver = false) => {
       const playersWithId = savedPlayerConfigs.map((p, i) => ({ ...p, id: `player_${i}` }));
-      const nextFirstSeat = nextDealFirstSeat(dealFirstSeat, playersWithId.length);
+      const nextFirstSeat = dealFirstSeatFor(matchIsOver, dealFirstSeat, playersWithId.length);
       const state = initializeRematch(playersWithId, savedGameMode, prevRankings, nextFirstSeat);
       setDealFirstSeat(nextFirstSeat);
 
@@ -225,7 +232,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     if (!gameState) return;
     setMatch(freshMatch(match.length, gameState.players.length));
     setRematchAnswers({});
-    dealFrom(gameState.rankings);
+    dealFrom(gameState.rankings, true);
   }, [gameState, match.length, dealFrom]);
 
   const rematchPromptOpen = useMemo(

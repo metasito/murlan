@@ -108,3 +108,23 @@ export function matchSnapshot(roomId: string) {
     dealFirstSeat: game.dealFirstSeat,
   };
 }
+
+/**
+ * Rewrites a room's own match target and running scores, so the manche about
+ * to be played is guaranteed to end the match without a test having to shape
+ * real play toward a particular score. `handleGameOver` only adds this hand's
+ * own points on top of what is set here, so one seat set far below the target
+ * and the other far above it cannot trade places no matter what the manche
+ * itself awards.
+ */
+export function forceMatchNearTarget(
+  roomId: string,
+  target: number,
+  cumulativeScores: Record<string, number>
+): boolean {
+  const game = activeGames.get(roomId);
+  if (!game) return false;
+  game.matchTarget = target;
+  game.cumulativeScores = { ...cumulativeScores };
+  return true;
+}

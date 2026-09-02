@@ -135,7 +135,7 @@ export const emptyRankTally = (): number[] => new Array<number>(RANK_SLOTS).fill
  * How many cards stronger than `strength` are neither played nor in `myHand` —
  * that is, how many could still beat it in someone else's hand.
  *
- * At two seats twelve cards are never dealt (`dealCards` excludes them), so they
+ * At two seats twenty-six cards are never dealt (`dealCards` excludes them), so they
  * are counted here as outstanding. That errs towards caution — the bot may hold
  * back a card that was actually unbeatable — and never towards over-confidence,
  * which is the only direction that loses a hand it should have won.
@@ -1319,6 +1319,21 @@ export function teamForSeat(
 export function nextDealFirstSeat(firstSeat: number, playerCount: number): number {
   if (playerCount < 1) return 0;
   return (firstSeat + 1) % playerCount;
+}
+
+/**
+ * The seat the *next deal* starts from — `docs/BRIEF.md` §3.1's "Rotating
+ * the deal" decision: a finished match resets to seat 0, an unfinished one
+ * rotates one seat further. `matchOver` is the state *before* this deal —
+ * the just-ended manche's own verdict, true when it was also the match's
+ * last one.
+ */
+export function dealFirstSeatFor(
+  matchOver: boolean,
+  currentSeat: number,
+  playerCount: number
+): number {
+  return matchOver ? 0 : nextDealFirstSeat(currentSeat, playerCount);
 }
 
 export function initializeGame(

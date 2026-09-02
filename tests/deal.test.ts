@@ -1,10 +1,14 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync, readdirSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   c,
   cardStrength,
   createDeck,
   dealCards,
+  dealFirstSeatFor,
   findStartingPlayer,
   freshHandFloor,
   initializeGame,
@@ -16,6 +20,7 @@ import {
 } from "./helpers.ts";
 
 const ids = (cards: Card[]) => cards.map((card) => card.id);
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 describe("deck", () => {
   test("is 52 cards plus 2 distinguishable jokers", () => {
@@ -149,7 +154,7 @@ describe("the deal at 2 players — 14 each, 26 undealt", () => {
       if (excluded.some((c) => c.rank === "3" && c.suit === "spades")) sawAThreeSpadesExcluded = true;
       if (excluded.some((c) => c.isJoker)) sawAJokerExcluded = true;
     }
-    assert.ok(sawAThreeSpadesExcluded, "200 deals never left the 3♠ undealt — the deal is not actually stripping 12 cards");
+    assert.ok(sawAThreeSpadesExcluded, "200 deals never left the 3♠ undealt — the deal is not actually stripping 26 cards");
     assert.ok(sawAJokerExcluded, "200 deals never left a Joker undealt");
   });
 
@@ -174,6 +179,115 @@ describe("the deal at 2 players — 14 each, 26 undealt", () => {
     assert.ok(ran, "200 deals never gave a case where the 3♠ was undealt");
   });
 });
+
+// #806: the deal moved from 21 to 14 each at two seats (docs/BRIEF.md,
+// 2026-08-31) and left a stale "12" behind in docs/RULES.md §4, next to a
+// correct "26" three lines up in §3 — a number in a spec that disagrees with
+// itself is the kind of thing that gets read once and believed. This reads
+// both clauses back out of the file and checks them against `dealCards`'s
+// own arithmetic, rather than against each other, so a future deal-size
+// change that updates one clause and misses the other still reds here.
+describe("docs/RULES.md's undealt-card figure agrees with dealCards's own arithmetic (#806)", () => {
+  const rules = readFileSync(path.join(repoRoot, "docs", "RULES.md"), "utf8");
+
+  test("§3's own count of undealt cards matches what dealCards(2) actually excludes", () => {
+    const clause = rules.match(/remaining (\d+) are left face down and unused/);
+    assert.ok(clause, "§3's undealt-card clause was not found — has the wording moved?");
+    assert.equal(Number(clause![1]), dealCards(2).excluded.length);
+  });
+
+  test("§4's own count of undealt cards matches what dealCards(2) actually excludes", () => {
+    const clause = rules.match(/end up in the (\d+) undealt cards/);
+    assert.ok(clause, "§4's undealt-card clause was not found — has the wording moved?");
+    assert.equal(Number(clause![1]), dealCards(2).excluded.length);
+  });
+});
+
+// #803: a blind critique found a third, live call site the first pass of
+// this ticket missed. `server/tableHandlers.ts`'s `startMatchAction`
+// (`room:start` after a match ends) correctly reset `dealFirstSeat` to 0,
+// but `dealVotedManche` (`game:rematch_vote` — the "Rematch" button on the
+// results screen) always rotated it via `nextDealFirstSeat`, never checking
+// whether the manche that just ended was ALSO the match's last one. Offline
+// had the identical split between `setupGame` and `dealFrom`/`startNewMatch`.
+// Two different UI paths to "start a new match after the old one ended" gave
+// a different deal.
+//
+// `dealFirstSeatFor` (`lib/gameEngine.ts`) is now the one place
+// `docs/BRIEF.md` §3.1's "Rotating the deal" decision — reset a *new* match
+// to seat 0, rotate *within* one — is decided; every site that used to
+// re-derive it now calls that instead. The wiring test below pins that
+// `nextDealFirstSeat` itself is called from nowhere but `dealFirstSeatFor`'s
+// own body, so a future site cannot reintroduce a bare rotation that skips
+// the matchOver check the way `dealVotedManche` did.
+describe("dealFirstSeatFor: one function decides a new match from a continuing one (#803)", () => {
+  test("a match that just ended resets to seat 0, whatever seat it was on", () => {
+    assert.equal(dealFirstSeatFor(true, 0, 4), 0);
+    assert.equal(dealFirstSeatFor(true, 2, 4), 0);
+    assert.equal(dealFirstSeatFor(true, 3, 2), 0);
+  });
+
+  test("a match still running rotates one seat further, exactly like nextDealFirstSeat", () => {
+    for (const playerCount of [2, 3, 4]) {
+      for (let seat = 0; seat < playerCount; seat++) {
+        assert.equal(
+          dealFirstSeatFor(false, seat, playerCount),
+          nextDealFirstSeat(seat, playerCount)
+        );
+      }
+    }
+  });
+
+  const repoDirs = ["app", "components", "context", "lib", "server"];
+  const nextDealFirstSeatCallers = repoDirs
+    .flatMap((dir) => walk(path.join(repoRoot, dir)))
+    .filter((rel) => rel !== "lib/gameEngine.ts")
+    .filter((rel) =>
+      /\bnextDealFirstSeat\s*\(/.test(readFileSync(path.join(repoRoot, rel), "utf8"))
+    );
+
+  test("nextDealFirstSeat is called from nowhere but dealFirstSeatFor's own body", () => {
+    assert.deepEqual(
+      nextDealFirstSeatCallers,
+      [],
+      "a bare nextDealFirstSeat call outside lib/gameEngine.ts can rotate a deal that should " +
+        `have reset instead — route it through dealFirstSeatFor: ${nextDealFirstSeatCallers.join(", ")}`
+    );
+  });
+
+  test("all four sites that decide a deal's first seat route through dealFirstSeatFor", () => {
+    const serverSrc = readFileSync(path.join(repoRoot, "server", "tableHandlers.ts"), "utf8");
+    const offlineSrc = readFileSync(path.join(repoRoot, "context", "GameContext.tsx"), "utf8");
+    // The two sites that must tell a continuing match from a finished one —
+    // the ones #803's blind critique found disagreeing.
+    assert.match(serverSrc, /dealFirstSeatFor\(game\.matchOver,/);
+    assert.match(offlineSrc, /dealFirstSeatFor\(matchIsOver,/);
+    // The two sites that start a match from nothing, where `matchOver` is
+    // unconditionally true — a literal `dealFirstSeat: 0` would read the same
+    // today, but would stop being the one place this decision is made.
+    assert.match(serverSrc, /dealFirstSeatFor\(true, 0,/);
+    assert.match(offlineSrc, /dealFirstSeatFor\(true, 0,/);
+  });
+
+  test("dealCards's own arithmetic: dealFirstSeatFor's reset lands on the same seat 0 dealCards defaults to", () => {
+    for (const playerCount of [2, 3, 4]) {
+      assert.deepEqual(
+        dealCards(playerCount, dealFirstSeatFor(true, 1, playerCount)).hands.map((h) => h.length),
+        dealCards(playerCount, 0).hands.map((h) => h.length)
+      );
+    }
+  });
+});
+
+function walk(dir: string): string[] {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      return entry.name === "node_modules" ? [] : walk(full);
+    }
+    return /\.tsx?$/.test(entry.name) ? [path.relative(repoRoot, full).split(path.sep).join("/")] : [];
+  });
+}
 
 describe("freshHandFloor (#792) — the survey guard's floor, by actual seat count", () => {
   test("matches dealCards's own per-seat minimum at 2, 3 and 4 seats", () => {

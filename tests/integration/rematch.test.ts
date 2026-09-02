@@ -354,4 +354,93 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
     );
     await closeTable(room.roomId, pia);
   });
+
+  /**
+   * #803: a blind critique found this branch — `dealVotedManche` deciding the
+   * next deal's seat when the manche it is dealing follows a *finished*
+   * match — reachable only through a live vote and untested anywhere at the
+   * behavioral level. A source scan over the call site can be satisfied by a
+   * hand-rolled rotation that never looks at `matchOver`; this drives the
+   * real event both branches answer.
+   */
+  test("a rematch after the match ends resets the deal to seat 0; one still running rotates", async () => {
+    const { matchSnapshot, forceMatchNearTarget } = await import("../helpers/liveGame.ts");
+    // Four seats, not two: a reset to 0 and a rotation from seat 1 land on the
+    // same seat at two players, so a mutation that always rotates would pass
+    // undetected there. At four they land on 0 and 2 — different seats.
+    const clients = await makeClients(server, [
+      "dealreset_a",
+      "dealreset_b",
+      "dealreset_c",
+      "dealreset_d",
+    ]);
+    const [a] = clients;
+    const room = await setUpRoom(clients, 4);
+
+    gameOverOf(
+      await driveHandToExchangeOrOver(clients, () => {
+        a.socket.emit("room:start");
+      })
+    );
+    assert.equal(
+      matchSnapshot(room.roomId)?.matchOver,
+      false,
+      "one manche of a full-length match settles nothing"
+    );
+
+    // Rotate case: the vote lands mid-match, so the deal moves one seat further.
+    let dealt = waitForDeal(a.socket);
+    for (const c of clients) c.socket.emit("game:rematch_vote");
+    await dealt;
+    assert.equal(
+      matchSnapshot(room.roomId)?.dealFirstSeat,
+      1,
+      "a manche within a running match rotates the deal"
+    );
+
+    // Exactly one seat set to cross the target, the rest set far below it —
+    // more than one seat crossing at once escalates to a new target instead
+    // of ending the match — and whatever this manche's own score adds cannot
+    // change which side of it any of them land on, so the reset the next
+    // vote produces below is provably a reset, not a coincidental 0 landing
+    // on a deal that only ever rotates.
+    forceMatchNearTarget(room.roomId, 1, {
+      [clients[0].user.id]: 1_000_000,
+      [clients[1].user.id]: -1_000_000,
+      [clients[2].user.id]: -1_000_000,
+      [clients[3].user.id]: -1_000_000,
+    });
+    gameOverOf(await driveHandToExchangeOrOver(clients, () => {}, { stopOnExchange: false }));
+    assert.equal(
+      matchSnapshot(room.roomId)?.matchOver,
+      true,
+      "the lowered target must be crossed by the manche just played"
+    );
+
+    // The match is over now, so the vote also needs every seat's rematch
+    // intent — the same gate "a rematch that cannot proceed..." above
+    // exercises. Sequenced rather than fired together: the vote below reads
+    // whichever intents have already landed, and intents sent all at once
+    // race their own vote across separate sockets.
+    for (const c of clients) {
+      const registered = waitFor<{ total: number }>(a.socket, "game:rematch_intents");
+      c.socket.emit("game:rematch_intent", { wants: true });
+      await registered;
+    }
+
+    dealt = waitForDeal(a.socket);
+    for (const c of clients) c.socket.emit("game:rematch_vote");
+    const next = await dealt;
+    assert.equal(next.players.length, 4);
+    assert.equal(
+      matchSnapshot(room.roomId)?.dealFirstSeat,
+      0,
+      "a rematch after the match ends resets to seat 0, not a further rotation from seat 1"
+    );
+    // `closeTable` disposes on one leave dropping the table below two seated
+    // players — true at the two-seat rooms every other test in this file
+    // uses, but not at four, where the host leaving still leaves three.
+    for (const c of clients.slice(1)) c.socket.emit("room:leave");
+    await closeTable(room.roomId, a);
+  });
 });

@@ -61,9 +61,9 @@ import {
 import {
   buildCombination,
   canPlay,
+  dealFirstSeatFor,
   initializeGame,
   initializeRematch,
-  nextDealFirstSeat,
   processExchangeChoice,
   processPass,
   processPlay,
@@ -387,7 +387,9 @@ async function dealVotedManche(
     team: room.gameMode === "teams" ? p.team : undefined,
   }));
 
-  const nextFirstSeat = nextDealFirstSeat(game.dealFirstSeat, playerSetup.length);
+  // `game.matchOver` still holds the just-ended manche's own verdict here —
+  // `dealManche` below is what flips it back via `rollMatchForward`.
+  const nextFirstSeat = dealFirstSeatFor(game.matchOver, game.dealFirstSeat, playerSetup.length);
   const newGameState =
     prevRankings.length >= 2
       ? initializeRematch(playerSetup, room.gameMode, prevRankings, nextFirstSeat)
@@ -597,7 +599,9 @@ async function startMatchAction(
     releasedSeats: new Set<string>(),
     spectators: new Set<string>(),
     moveLog: startReplayLog(),
-    dealFirstSeat: 0,
+    // Reached only when a match is genuinely starting fresh (no `previous`,
+    // or `previous.matchOver`), so `matchOver` is unconditionally `true`.
+    dealFirstSeat: dealFirstSeatFor(true, 0, roster.length),
   };
   // Before the game exists, not after: `claimRoomSeat` re-reads the status
   // under its own row lock, so a room that is no longer `waiting` cannot take a

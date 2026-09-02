@@ -18,6 +18,7 @@ import { sq } from "../locales/sq.ts";
 import { translate, interpolate, DEFAULT_LOCALE } from "../lib/i18n.ts";
 import { CARD_BACK_IDS, TABLE_FELT_IDS } from "../lib/cosmetics.ts";
 import { BOT_PERSONALITIES } from "../lib/botPersonalities.ts";
+import { dealCards } from "../lib/gameEngine.ts";
 
 const LOCALES = { it, en, sq } as const;
 type LocaleName = keyof typeof LOCALES;
@@ -308,6 +309,29 @@ describe("no empty translations", () => {
         [],
         `${name} has empty-string translations for these keys`
       );
+    });
+  }
+});
+
+// #806: the two-player deal moved from 21 each to 14 each (docs/BRIEF.md,
+// 2026-08-31), and the in-app FAQ — "rules.faq.a15", read by a real player,
+// in all three locales — still said "21 cards each — 12 stay face down" long
+// after docs/RULES.md itself was corrected. Deriving the expected numbers
+// from `dealCards`'s own arithmetic, rather than hand-copying them again, is
+// what stops a future deal-size change from updating the doc and missing the
+// copy every player actually reads.
+describe("the two-player deal FAQ names dealCards's own numbers, in every locale (#806)", () => {
+  test("en states the per-seat and undealt counts dealCards(2) actually produces", () => {
+    const { hands, excluded } = dealCards(2);
+    assert.match(en["rules.faq.a15"], new RegExp(`${hands[0].length} cards each`));
+    assert.match(en["rules.faq.a15"], new RegExp(`${excluded.length} stay face down`));
+    assert.match(en["rules.faq.a15"], new RegExp(`undealt ${excluded.length}`));
+  });
+
+  for (const name of TRANSLATED) {
+    test(`${name} names the same undealt count as en`, () => {
+      const { excluded } = dealCards(2);
+      assert.match(LOCALES[name]["rules.faq.a15"], new RegExp(String(excluded.length)));
     });
   }
 });

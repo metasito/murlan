@@ -84,7 +84,7 @@ The field is **optional**, because `GameState` is persisted as jsonb and a hand 
 across a deploy rehydrates without it. A bot reading an absent tally must play exactly as it
 did before the tally existed. It is an additive protocol change; older clients ignore it.
 
-At two seats the twelve undealt cards are never played and never in a bot's hand, so they
+At two seats the twenty-six undealt cards are never played and never in a bot's hand, so they
 read as still outstanding. That makes the bot slightly more cautious than a perfect counter
 and never over-confident, which is the safe direction — do not "fix" it by tracking the
 excluded cards, which would put cards nobody has seen into a broadcast field.
