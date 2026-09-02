@@ -29,8 +29,15 @@ export async function createRoom(page: Page, setup: RoomSetup): Promise<string> 
   await page.waitForURL(/\/room/);
 
   // The code itself carries no label or testid of its own; it is the next
-  // sibling of the "CODICE STANZA" caption (app/(online)/room.tsx).
-  const codeLocator = page.getByText("CODICE STANZA").locator("xpath=following-sibling::*[1]");
+  // sibling of the "CODICE STANZA" caption (app/(online)/room.tsx). The room
+  // screen renders its landscape and portrait branches at once (shown/hidden
+  // by CSS, same as the create form below), so a caller reaching this screen
+  // more than once in a session — a retried room, not just a first one — can
+  // find two such captions live at once; only the visible one is real.
+  const codeLocator = page
+    .getByText("CODICE STANZA")
+    .locator("xpath=following-sibling::*[1]")
+    .locator("visible=true");
   await codeLocator.waitFor();
   return (await codeLocator.textContent())!.trim();
 }

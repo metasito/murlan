@@ -22,6 +22,7 @@ import { openSeededGame } from "./helpers/offlineSeed";
 import { openOnlineTable } from "./helpers/onlineTable";
 import { HAND_CARDS, HAND_ZONE, TABLE, TABLE_STATE } from "./helpers/selectors";
 import { YOUR_TURN_PREFIX } from "./helpers/labels";
+import { createDeck } from "../../lib/gameEngine";
 
 /** The audit's own four, named as `content.txt` and `table.txt` name them. */
 const VIEWPORTS = [
@@ -33,6 +34,19 @@ const VIEWPORTS = [
 
 /** Four seats fills the top seat and both side columns — the arrangement with the most to measure. */
 const SEATS = 4;
+
+/**
+ * #785: the fewest cards a freshly-dealt seat can hold. `dealCards`
+ * (`lib/gameEngine.ts`) gives every seat `Math.floor(deck.length / SEATS)`
+ * cards at minimum, one more to however many seats the remainder covers — 54
+ * over 4 seats is 13 each with two seats getting a 14th. A seat reading below
+ * this floor has necessarily played at least one card since the deal, which
+ * makes it a different table than the one `docs/design/57-polish-audit/`
+ * records: the record's own bots never move (`openSeededGame`'s pile is
+ * always empty), so comparing to it only means something when the online
+ * table hasn't moved either.
+ */
+const FRESH_HAND_FLOOR = Math.floor(createDeck().length / SEATS);
 
 const AUDIT_DIR = path.resolve(__dirname, "../../docs/design/57-polish-audit");
 const RECORD = path.join(AUDIT_DIR, "online-table.txt");
@@ -82,6 +96,27 @@ interface Measurement {
   wide: string[];
   cards: number;
   hand: { width: number; height: number; top: number };
+  /**
+   * #785: the diagnosis-only half. Nothing here is asserted on or written to
+   * the record — it exists so a disagreement can be read from the log of the
+   * run that actually disagreed, instead of reasoned about after the fact.
+   */
+  debug: {
+    tableBox: { width: number; height: number; top: number; bottom: number };
+    handTop: number;
+    plateBottom: number;
+    /** Every seat-ring candidate the `plateBottom` scan considered, raw. */
+    seatRings: { bottom: number; height: number }[];
+    /** Each opponent seat slot's own box and displayed card count. */
+    seatSlots: { testId: string; top: number; bottom: number; count: string }[];
+    /** `getComputedStyle(a).transform` for each of the table's first 6 DOM ancestors, `""` when identity. */
+    ancestorTransforms: string[];
+    dpr: number;
+    innerWidth: number;
+    innerHeight: number;
+    fontsStatus: string;
+    fontsSize: number;
+  };
 }
 
 /**
@@ -104,11 +139,22 @@ async function measure(page: Page): Promise<Measurement> {
 
 function readTable(page: Page): Promise<Measurement> {
   return page.evaluate(
-    ({ table: tableSel, hand: handSel, cards: cardSel, turn: turnAttr, yourTurn }) => {
+    ({ table: tableSel, hand: handSel, cards: cardSel, turn: turnAttr, yourTurn, freshFloor }) => {
       const round = (n: number) => Math.round(n);
       const table = document.querySelector(tableSel);
       if (!table) throw new Error("the table never rendered");
       const tableBox = table.getBoundingClientRect();
+
+      // #785 diagnosis: a peer's lead — `useTableFeedback.ts`'s `kickScale` sits
+      // on an ancestor of this element (`styles.root` in GameTable.tsx) and
+      // scales on a heavy landing. Reduced motion should gate it to a no-op
+      // (this suite's fixture emulates it before every test), but this reports
+      // the ancestor chain's own computed transform rather than trusting that.
+      const ancestorTransforms: string[] = [];
+      for (let a = table.parentElement, depth = 0; a && depth < 6; a = a.parentElement, depth++) {
+        const tf = getComputedStyle(a).transform;
+        ancestorTransforms.push(tf === "none" ? "" : tf);
+      }
 
       // The server's AFK clock runs while this reads (`MURLAN_AFK_TIMEOUT_MS`,
       // tests/e2e/playwright.config.ts). An auto-pass mid-measurement redraws
@@ -127,10 +173,43 @@ function readTable(page: Page): Promise<Measurement> {
       const hand = document.querySelector(handSel);
       const handTop = hand ? hand.getBoundingClientRect().top : tableBox.bottom;
       let plateBottom = tableBox.top;
+      const seatRings: { bottom: number; height: number }[] = [];
       for (const ring of Array.from(document.querySelectorAll('[data-testid="seat-ring"]'))) {
         const r = ring.getBoundingClientRect();
         if (r.height === 0) continue;
+        seatRings.push({ bottom: r.bottom, height: r.height });
         if (r.bottom > plateBottom && r.bottom <= handTop) plateBottom = r.bottom;
+      }
+
+      // #785 diagnosis: what each opponent seat slot is showing, to correlate a
+      // ring-position shift with a bot mid-hand rather than reasoning about it.
+      const seatSlots: { testId: string; top: number; bottom: number; count: string }[] = [];
+      for (const slot of Array.from(
+        document.querySelectorAll('[data-testid="top-seat"], [data-testid="side-seat-left"], [data-testid="side-seat-right"]')
+      )) {
+        const r = slot.getBoundingClientRect();
+        const countEl = slot.querySelector('[data-testid="seat-card-count"]');
+        seatSlots.push({
+          testId: slot.getAttribute("data-testid") ?? "?",
+          top: r.top,
+          bottom: r.bottom,
+          count: countEl ? (countEl.textContent ?? "") : "?",
+        });
+      }
+
+      // #785: the state this measurement requires, asserted rather than
+      // hoped for. A seat below the floor a fresh deal leaves it has already
+      // played, which makes this a different table than the record —
+      // measuring it anyway is what reported a false layout break twice.
+      for (const slot of seatSlots) {
+        const count = Number(slot.count);
+        if (Number.isFinite(count) && count < freshFloor) {
+          throw new Error(
+            `the ${slot.testId} seat already holds ${slot.count} card(s), fewer than the ` +
+              `${freshFloor} a fresh deal leaves any seat — this table has already been played ` +
+              `into and cannot be measured against a record of an unplayed one`
+          );
+        }
       }
 
       // Laid-out boxes that nothing clips, exactly as tableFit.spec.ts counts
@@ -168,9 +247,34 @@ function readTable(page: Page): Promise<Measurement> {
               top: round(handTop),
             }
           : { width: 0, height: 0, top: round(handTop) },
+        debug: {
+          tableBox: {
+            width: tableBox.width,
+            height: tableBox.height,
+            top: tableBox.top,
+            bottom: tableBox.bottom,
+          },
+          handTop,
+          plateBottom,
+          seatRings,
+          seatSlots,
+          ancestorTransforms,
+          dpr: window.devicePixelRatio,
+          innerWidth: window.innerWidth,
+          innerHeight: window.innerHeight,
+          fontsStatus: document.fonts.status,
+          fontsSize: document.fonts.size,
+        },
       };
     },
-    { table: TABLE, hand: HAND_ZONE, cards: HAND_CARDS, turn: TABLE_STATE, yourTurn: YOUR_TURN_PREFIX }
+    {
+      table: TABLE,
+      hand: HAND_ZONE,
+      cards: HAND_CARDS,
+      turn: TABLE_STATE,
+      yourTurn: YOUR_TURN_PREFIX,
+      freshFloor: FRESH_HAND_FLOOR,
+    }
   );
 }
 
@@ -212,13 +316,35 @@ const STILL_MEASURING_CEILING_MS = 20_000;
  * so this watches that and nothing else. A screen that will not hold one
  * reading says so, rather than being recorded mid-movement.
  */
+/**
+ * #785 diagnosis: every raw reading `stillMeasure` takes, none of it asserted
+ * on or written to the record. `measure()` reads twice (the moment-overlay
+ * settle) and reports the second's debug block, which is the one `fields()`
+ * — and so agreement — is computed from.
+ */
+function debugLine(kind: "ONLINE" | "OFFLINE", attempt: number, elapsedMs: number, m: Measurement): string {
+  const d = m.debug;
+  return (
+    `DEBUG\t${kind}\tattempt=${attempt}\telapsedMs=${elapsedMs}\t` +
+    `emptyBand(raw)=${m.emptyBand}\thandTop=${d.handTop}\tplateBottom=${d.plateBottom}\t` +
+    `tableBox=${d.tableBox.width}x${d.tableBox.height}@${d.tableBox.top}..${d.tableBox.bottom}\t` +
+    `seatRings=[${d.seatRings.map((r) => `${r.bottom}/${r.height}`).join(", ")}]\t` +
+    `seatSlots=[${d.seatSlots.map((s) => `${s.testId}:${s.top}..${s.bottom}/${s.count}`).join(", ")}]\t` +
+    `kick=[${d.ancestorTransforms.map((t, i) => `${i}:${t || "identity"}`).join(", ")}]\t` +
+    `dpr=${d.dpr}\tviewport=${d.innerWidth}x${d.innerHeight}\t` +
+    `fonts=${d.fontsStatus}(${d.fontsSize})`
+  );
+}
+
 async function stillMeasure(page: Page, kind: "ONLINE" | "OFFLINE"): Promise<Measurement> {
-  const deadline = Date.now() + STILL_MEASURING_CEILING_MS;
+  const started = Date.now();
+  const deadline = started + STILL_MEASURING_CEILING_MS;
   let previous: Measurement | null = null;
   let agreeing = 1;
 
-  for (;;) {
+  for (let attempt = 1; ; attempt++) {
     const current = await measure(page);
+    console.log(debugLine(kind, attempt, Date.now() - started, current));
     agreeing = previous && fields(current) === fields(previous) ? agreeing + 1 : 1;
     if (agreeing >= AGREEING_READINGS) return current;
     if (Date.now() >= deadline) {
