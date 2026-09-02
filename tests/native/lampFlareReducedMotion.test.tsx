@@ -54,6 +54,7 @@ jest.mock("@/components/useTableFeedback", () => {
 
 import { GameTable } from "@/components/GameTable";
 import { impactDelayMs } from "@/components/gameTableModel";
+import { getVisibleText } from "./visibilityHelpers";
 import type { Card, Combination, GameState, Player } from "@/lib/gameEngine";
 
 const METRICS = {
@@ -160,7 +161,7 @@ describe("reduced motion holds the lamp's flare and lift at exactly zero (#765)"
     });
 
     const pile = within(screen.getByTestId("pile-area"));
-    expect(pile.queryByText(/bomb/i)).toBeTruthy();
+    getVisibleText(pile, /bomb/i);
 
     await r.unmount();
   });

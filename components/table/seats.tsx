@@ -453,7 +453,7 @@ function SeatRing({
           ]}
         >
           {finishPos !== undefined ? (
-            <Ionicons name="trophy" size={badge * 0.5} color={Colors.gold} />
+            <Ionicons testID="seat-finish-trophy" name="trophy" size={badge * 0.5} color={Colors.gold} />
           ) : (
             <TableText style={[seatStyles.countBubbleText, { fontSize: SEAT_BADGE_FS * scale }]}>
               {cardCount}

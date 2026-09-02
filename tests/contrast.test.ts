@@ -11,7 +11,7 @@
 // Imports lib/tokens (pure values) rather than lib/theme, because theme pulls in
 // react-native for its platform-aware Shadow helper and Node cannot parse RN's
 // Flow-typed entry point. tokens.ts is the same palette, no runtime RN dependency.
-import { Colors, Garnet, Scrim, FeltGradients } from "../lib/tokens.ts";
+import { Colors, Garnet, Gradient, Scrim, FeltGradients } from "../lib/tokens.ts";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
@@ -95,7 +95,7 @@ const COMPONENTS = readdirSync(path.join(repoRoot, "components"), { recursive: t
   .filter((f) => f.endsWith(".tsx"))
   .map((f) => readFileSync(path.join(repoRoot, "components", f), "utf8"))
   .join("\n");
-const PALETTES: Record<string, Record<string, string>> = { Colors, Scrim };
+const PALETTES: Record<string, Record<string, string>> = { Colors, Scrim, Garnet };
 
 /** The body of a `name: { … }` entry in one of the table's StyleSheets. */
 function styleBlock(style: string): string {
@@ -111,6 +111,28 @@ function styleBlock(style: string): string {
 function styleColor(style: string, prop: "color" | "backgroundColor"): string | null {
   const m = new RegExp(String.raw`\b${prop}: ([A-Za-z]+)\.([A-Za-z]+)`).exec(styleBlock(style));
   return m ? PALETTES[m[1]]?.[m[2]] ?? null : null;
+}
+
+/**
+ * A `NAME = [ ... ]` array literal declared in component source — a pressed
+ * gradient's own stops — resolved to token values. A stop a component adds is
+ * covered by construction; nothing here needs to be told about it.
+ */
+function sourceArray(name: string): string[] {
+  const m = new RegExp(String.raw`\b${name}\s*=\s*\[([^\]]*)\]`).exec(COMPONENTS);
+  assert.ok(m, `no component declares an array named ${name}`);
+  // A stop is either a token reference (Colors.gold) or a raw literal
+  // ("#6B5220") slipped in directly — both must be caught, since the second
+  // is exactly the shape of a stop nobody meant to leave unresolved.
+  const items = m[1].match(/[A-Za-z]+\.[A-Za-z]+|"[^"]+"|'[^']+'/g) ?? [];
+  assert.ok(items.length > 0, `${name} has no gradient stops`);
+  return items.map((item) => {
+    if (item.startsWith('"') || item.startsWith("'")) return item.slice(1, -1);
+    const [ns, key] = item.split(".");
+    const val = PALETTES[ns]?.[key];
+    assert.ok(val, `${name}: unresolved token ${item}`);
+    return val;
+  });
 }
 
 /** Which falloff stops an element can sit over. */
@@ -258,7 +280,11 @@ test("Colors.white on Colors.danger background clears large-text contrast (butto
 // falls short of the 18.66px bold floor, so BODY_MIN applies, same as
 // components/MenuButton.tsx's own primary label a few lines below.
 
-const GIOCA_GRADIENT_STOPS = [Colors.goldLit, Colors.gold, Colors.goldDark, Colors.goldDim];
+// Both the resting gradient (Gradient.playButton, a real token — not a copy)
+// and the pressed one (GIOCA_GRADIENT_PRESSED, a component-local array) are
+// read rather than retyped, so a stop either one adds is caught without
+// anyone remembering to mirror it here.
+const GIOCA_GRADIENT_STOPS = [...new Set([...Gradient.playButton, ...sourceArray("GIOCA_GRADIENT_PRESSED")])];
 
 for (const stop of GIOCA_GRADIENT_STOPS) {
   test(`GIOCA's label (Colors.bg) clears body text contrast on gradient stop ${stop}`, () => {
@@ -267,7 +293,7 @@ for (const stop of GIOCA_GRADIENT_STOPS) {
   });
 }
 
-const PASSA_GRADIENT_STOPS = [Garnet.lip, Garnet.face, Garnet.deep, Garnet.base];
+const PASSA_GRADIENT_STOPS = [...new Set([...Gradient.garnet, ...sourceArray("PASS_GRADIENT_PRESSED")])];
 
 for (const stop of PASSA_GRADIENT_STOPS) {
   test(`PASSA's label (Garnet.label) clears body text contrast on gradient stop ${stop}`, () => {
@@ -279,7 +305,9 @@ for (const stop of PASSA_GRADIENT_STOPS) {
 // components/MenuButton.tsx's own primary label — the reference the two above
 // are held to. Confirms the home screen's gold buttons are not the same
 // regression in disguise.
-const MENU_BUTTON_GRADIENT_STOPS = [Colors.goldLight, Colors.gold, Colors.goldDark, Colors.goldDim];
+const MENU_BUTTON_GRADIENT_STOPS = [
+  ...new Set([...Gradient.menuButton, ...sourceArray("PRIMARY_GRADIENT_PRESSED")]),
+];
 
 for (const stop of MENU_BUTTON_GRADIENT_STOPS) {
   test(`MenuButton's primary label (Colors.bg) clears body text contrast on gradient stop ${stop}`, () => {

@@ -7,7 +7,7 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
-import { Colors, Type, Motion, Shadow, Layer } from "@/lib/theme";
+import { Colors, FontSize, Motion, Shadow, Layer } from "@/lib/theme";
 import { useTranslation } from "@/lib/i18n";
 import { a11yHidden } from "@/lib/a11y";
 
@@ -47,7 +47,7 @@ export function OfflineBanner() {
       accessibilityLiveRegion={isOffline ? "assertive" : "none"}
       {...a11yHidden(!isOffline)}
     >
-      <Text style={styles.text}>{t("offlineBanner.text")}</Text>
+      <Text testID="offline-banner-text" style={styles.text}>{t("offlineBanner.text")}</Text>
     </Animated.View>
   );
 }
@@ -65,5 +65,11 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     ...Shadow.raised,
   },
-  text: { ...Type.body, color: Colors.white },
+  // White on Colors.danger is 4.23:1 — short of BODY_MIN (4.5) but clear of
+  // LARGE_MIN (3.0) — and `danger` is itself documented as a fill usable for
+  // "text at the large-text bar" (lib/tokens.ts). Regular weight, so the
+  // WCAG floor that applies is size alone: >=18pt (24px), not the lower bold
+  // one — pinned by tests/native/offlineBannerLargeText.test.tsx and
+  // tests/contrast.test.ts.
+  text: { fontFamily: "Inter_400Regular", fontSize: FontSize.xxl, color: Colors.white },
 });
