@@ -30,7 +30,7 @@ import Animated, {
 import { LinearGradient } from "expo-linear-gradient";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { sparkOffset, SPARK_COUNT, type FlareKind } from "@/components/gameTableModel";
-import { Layer, makeShadow, Motion } from "@/lib/theme";
+import { Layer, makeShadow, withAlpha, Motion } from "@/lib/theme";
 
 // The prototype's own literal colours for this one effect — a lamp exploding
 // at the pile is a brighter, whiter flash than the felt's own ambient
@@ -100,19 +100,38 @@ function GradientLayers({ size, layers }: { size: number; layers: readonly Gradi
  * The bomb/partita flare's own falloff — a hand-stepped approximation of the
  * three-stop SVG radial gradient this effect shipped with in #200 (core
  * `rgba(255,250,232,.98)` at the centre, through gold at 40% of the radius,
- * to transparent at 72%).
+ * to transparent at 72%). Every diameter and alpha step is its own named
+ * constant, #765's own acceptance criterion for a duration/opacity step.
  */
+const FLARE_LAYER_OUTER_DIAMETER = 0.7;
+const FLARE_LAYER_OUTER_ALPHA = 0.18;
+const FLARE_LAYER_MID_DIAMETER = 0.42;
+const FLARE_LAYER_MID_ALPHA = 0.42;
+const FLARE_LAYER_MID_COLOR = "#FFDE9E";
+const FLARE_LAYER_CORE_DIAMETER = 0.16;
+const FLARE_LAYER_CORE_ALPHA = 0.92;
+const FLARE_LAYER_CORE_COLOR = "#FFFAE8";
+
 const FLARE_LAYERS: readonly GradientLayer[] = [
-  { diameterFactor: 0.7, fill: "rgba(255,201,102,0.18)" },
-  { diameterFactor: 0.42, fill: "rgba(255,222,158,0.42)" },
-  { diameterFactor: 0.16, fill: "rgba(255,250,232,0.92)" },
+  { diameterFactor: FLARE_LAYER_OUTER_DIAMETER, fill: withAlpha(FLARE_GLOW, FLARE_LAYER_OUTER_ALPHA) },
+  { diameterFactor: FLARE_LAYER_MID_DIAMETER, fill: withAlpha(FLARE_LAYER_MID_COLOR, FLARE_LAYER_MID_ALPHA) },
+  { diameterFactor: FLARE_LAYER_CORE_DIAMETER, fill: withAlpha(FLARE_LAYER_CORE_COLOR, FLARE_LAYER_CORE_ALPHA) },
 ];
 
 /** The lift's own falloff — the same idea, softer throughout to match `LIFT_GLOW`. */
+const LIFT_LAYER_OUTER_DIAMETER = 0.85;
+const LIFT_LAYER_OUTER_ALPHA = 0.1;
+const LIFT_LAYER_MID_DIAMETER = 0.5;
+const LIFT_LAYER_MID_ALPHA = 0.22;
+const LIFT_LAYER_MID_COLOR = "#FFEEC8";
+const LIFT_LAYER_CORE_DIAMETER = 0.22;
+const LIFT_LAYER_CORE_ALPHA = 0.42;
+const LIFT_LAYER_CORE_COLOR = "#FFF5DC";
+
 const LIFT_LAYERS: readonly GradientLayer[] = [
-  { diameterFactor: 0.85, fill: "rgba(255,232,184,0.1)" },
-  { diameterFactor: 0.5, fill: "rgba(255,238,200,0.22)" },
-  { diameterFactor: 0.22, fill: "rgba(255,245,220,0.42)" },
+  { diameterFactor: LIFT_LAYER_OUTER_DIAMETER, fill: withAlpha(LIFT_GLOW, LIFT_LAYER_OUTER_ALPHA) },
+  { diameterFactor: LIFT_LAYER_MID_DIAMETER, fill: withAlpha(LIFT_LAYER_MID_COLOR, LIFT_LAYER_MID_ALPHA) },
+  { diameterFactor: LIFT_LAYER_CORE_DIAMETER, fill: withAlpha(LIFT_LAYER_CORE_COLOR, LIFT_LAYER_CORE_ALPHA) },
 ];
 
 // `mix-blend-mode` has no native equivalent; RN Web passes it straight

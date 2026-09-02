@@ -12,6 +12,13 @@
 // back off the real rendered `bomb-flare`/`spark-0`/`lamp-lift` nodes the way
 // tests/native/pileFlinch.test.tsx reads a rendered transform — the one path
 // a hardcoded trigger literal in GameTable's own JSX cannot survive.
+//
+// The last test below closes a third critique's second gap: "every tier
+// flares" was only caught at the pure-function layer
+// (tests/gameTableModel.test.ts) — a `flareKindFor` that always answered
+// "brief" reds that, but nothing rendered, since the wiring tests only
+// assert the tier string handed to `burst()`, never that a non-flaring tier
+// actually stays dark on screen.
 import { describe, it, expect, jest, beforeEach, afterEach } from "@jest/globals";
 import React from "react";
 import { act, render } from "@testing-library/react-native";
@@ -65,6 +72,8 @@ const BOMB_PLAY: Combination = {
   ],
   strength: 8,
 };
+const ROYAL_CARD: Card = { id: "10_hearts", rank: "10", suit: "hearts", isJoker: false };
+const ROYAL_PLAY: Combination = { type: "royal_straight", cards: [ROYAL_CARD], strength: 10 };
 const SINGLE_CARD: Card = { id: "K_hearts", rank: "K", suit: "hearts", isJoker: false };
 const WINNING_PLAY: Combination = { type: "single", cards: [SINGLE_CARD], strength: 13 };
 
@@ -173,6 +182,29 @@ describe("the lamp's flare and lift, read back off GameTable's own real render (
     });
 
     expect(opacityOf(r, "lamp-lift")).toBeGreaterThan(0);
+
+    await r.unmount();
+  });
+
+  it("a straight/flush landing leaves the flare dark through GameTable's own wiring, not a mock of it", async () => {
+    // `tests/gameTableModel.test.ts` already pins `flareKindFor("straightFlush")
+    // === "none"` at the pure-function layer, and `lampFlareWiring.test.tsx`
+    // pins that `burst` is called with "straightFlush", never "bomb" — but
+    // neither renders anything, so a `flareKindFor` that always answered
+    // "brief" would still pass both while every straight/flush in the real
+    // app flared like a bomb. This is the same window/timing a bomb landing
+    // would use to light the flare, mounted through the real, unmocked hook.
+    const r = await render(table(inPlay(ROYAL_PLAY), false));
+
+    await act(async () => {
+      jest.advanceTimersByTime(impactDelayMs(false) + 1);
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(90);
+    });
+
+    expect(opacityOf(r, "bomb-flare")).toBe(0);
+    expect(opacityOf(r, "spark-0")).toBe(0);
 
     await r.unmount();
   });

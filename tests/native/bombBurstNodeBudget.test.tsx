@@ -12,7 +12,7 @@
 import { describe, it, expect } from "@jest/globals";
 import React from "react";
 import { render } from "@testing-library/react-native";
-import { BombBurst } from "@/components/table/moments";
+import { BombBurst, LampLift } from "@/components/table/moments";
 import { SPARK_COUNT } from "@/components/gameTableModel";
 
 /** The prototype's own figure (#765's issue body). */
@@ -47,6 +47,27 @@ function findByTestID(node: unknown, testID: string): TestJson | null {
   return null;
 }
 
+/** This node's own direct host-node children, normalised to an array. */
+function directChildren(node: TestJson | null): TestJson[] {
+  if (!node || node.children === null || node.children === undefined) return [];
+  const arr = Array.isArray(node.children) ? node.children : [node.children];
+  return arr.filter((c): c is TestJson => c !== null && typeof c === "object");
+}
+
+/**
+ * The alpha channel of a static style colour — 0 for a fully transparent
+ * `rgba(...)`, 1 for anything else resolvable (a solid `rgb()`/hex/named
+ * colour has no alpha channel to be zero). A third blind critique on #765
+ * set every `GradientLayers` fill's alpha to 0 — the flare and lift firing
+ * on schedule and completely invisible — and nothing that only reads the
+ * wrapper's own `opacity`/`transform` or counts child nodes catches that.
+ */
+function alphaOf(color: unknown): number {
+  if (typeof color !== "string") return 0;
+  const m = color.match(/^rgba\([^,]+,[^,]+,[^,]+,\s*([\d.]+)\s*\)$/);
+  return m ? Number(m[1]) : 1;
+}
+
 describe("the bomb burst's own node budget (#765)", () => {
   it("stays within the prototype's ~24-node figure", async () => {
     const r = await render(<BombBurst trigger={1} scale={1} flareKind="brief" />);
@@ -79,6 +100,34 @@ describe("the bomb burst's own node budget (#765)", () => {
     // A flat fill (the shape the critique rejected) is one node with no
     // children at all; this only holds once there is a real falloff to count.
     expect(layers).toBeGreaterThanOrEqual(2);
+
+    await r.unmount();
+  });
+
+  it("the flare's own layers actually paint something, not a transparent fill", async () => {
+    const r = await render(<BombBurst trigger={1} scale={1} flareKind="brief" />);
+
+    const flare = findByTestID(r.toJSON(), "bomb-flare");
+    const layers = directChildren(flare);
+    expect(layers.length).toBeGreaterThan(0);
+    for (const layer of layers) {
+      const style = layer.props?.style as { backgroundColor?: unknown } | undefined;
+      expect(alphaOf(style?.backgroundColor)).toBeGreaterThan(0);
+    }
+
+    await r.unmount();
+  });
+
+  it("the lamp lift's own layers actually paint something, not a transparent fill", async () => {
+    const r = await render(<LampLift trigger={1} scale={1} x={100} y={100} />);
+
+    const lift = findByTestID(r.toJSON(), "lamp-lift");
+    const layers = directChildren(lift);
+    expect(layers.length).toBeGreaterThan(0);
+    for (const layer of layers) {
+      const style = layer.props?.style as { backgroundColor?: unknown } | undefined;
+      expect(alphaOf(style?.backgroundColor)).toBeGreaterThan(0);
+    }
 
     await r.unmount();
   });
