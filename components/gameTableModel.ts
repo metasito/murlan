@@ -490,6 +490,23 @@ const SHAKE_AMPLITUDE_X = Spacing.md;
 const SHAKE_AMPLITUDE_Y = Spacing.snug;
 
 /**
+ * The bomb's own peak, layered on top of the amplitude above rather than
+ * replacing it: `kick` (`components/useTableFeedback.ts`) is gated to
+ * `bomb`/`royal_straight` alone, so a manche or partita closed by an
+ * ordinary combination has no kick to lean on, and one shared amplitude
+ * moves every tier by the same ratio once trauma is squared — this is
+ * reserved for the one tier that needs the headroom.
+ */
+const BOMB_SHAKE_AMPLITUDE_X = Spacing.xxl;
+const BOMB_SHAKE_AMPLITUDE_Y = Spacing.lg;
+
+/** Which peak a tier's shake reads — every tier but the bomb shares the default above. */
+export function shakeAmplitudeFor(tier: ImpactTier): { x: number; y: number } {
+  if (tier === "bomb") return { x: BOMB_SHAKE_AMPLITUDE_X, y: BOMB_SHAKE_AMPLITUDE_Y };
+  return { x: SHAKE_AMPLITUDE_X, y: SHAKE_AMPLITUDE_Y };
+}
+
+/**
  * The table's own displacement `elapsedMs` into a shake of `decayMs` —
  * `shakeMagnitude` riding a decaying wiggle rather than a single
  * push-and-recover, so the hit reads as a shake rather than a shove. `cos`
@@ -497,21 +514,24 @@ const SHAKE_AMPLITUDE_Y = Spacing.snug;
  * instead of building up to it. `scale` is the table's own — `kick`
  * (components/useTableFeedback.ts) multiplies its jolts by the same value, so
  * a shake is a fraction of the table rather than a fixed pixel count that
- * reads huge on a phone and vanishes on a tablet.
+ * reads huge on a phone and vanishes on a tablet. `amplitude` defaults to the
+ * shared peak above; the caller passes `shakeAmplitudeFor(tier)` to let one
+ * tier read a different one.
  */
 export function shakeOffset(
   trauma: number,
   elapsedMs: number,
   decayMs: number,
-  scale: number
+  scale: number,
+  amplitude: { x: number; y: number } = { x: SHAKE_AMPLITUDE_X, y: SHAKE_AMPLITUDE_Y }
 ): { x: number; y: number } {
   "worklet";
   const magnitude = shakeMagnitude(trauma, elapsedMs, decayMs);
   const wiggle =
     decayMs <= 0 ? 0 : Math.cos((elapsedMs / decayMs) * Math.PI * 2 * SHAKE_CYCLES);
   return {
-    x: magnitude * wiggle * SHAKE_AMPLITUDE_X * scale,
-    y: magnitude * wiggle * SHAKE_AMPLITUDE_Y * scale,
+    x: magnitude * wiggle * amplitude.x * scale,
+    y: magnitude * wiggle * amplitude.y * scale,
   };
 }
 

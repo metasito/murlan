@@ -71,6 +71,7 @@ import {
   traumaFor,
   shakeMagnitude,
   shakeOffset,
+  shakeAmplitudeFor,
   FLIGHT_MS,
   LANDING_FRACTION,
   passedSeats,
@@ -1656,9 +1657,118 @@ describe("the table's own trauma escalation (#763)", () => {
     );
     assert.doesNotMatch(
       src,
-      /const SHAKE_AMPLITUDE_[XY]\s*=\s*\d/,
+      /const (BOMB_)?SHAKE_AMPLITUDE_[XY]\s*=\s*\d/,
       "a shake amplitude must read a Spacing step, not a pixel literal"
     );
+  });
+});
+
+describe("the bomb's peak, re-tuned against #789's corrected curve (#796)", () => {
+  const DECAY_MS = Motion.duration.shake;
+  // The base short edge `cardScale` (components/cardFaceModel.ts) is authored
+  // at, and the phone/tablet short edges the critic on #795 read the
+  // regression at.
+  const BASE_EDGE = 390;
+  const PHONE_EDGE = 320;
+  const TABLET_EDGE = 834;
+
+  const ALL_TIERS: ImpactTier[] = ["ordinary", "straightFlush", "bomb", "mancheWon", "partitaWon"];
+
+  test("only the bomb reads a different peak — every other tier shares one amplitude", () => {
+    const bomb = shakeAmplitudeFor("bomb");
+    for (const tier of ALL_TIERS) {
+      if (tier === "bomb") continue;
+      assert.deepEqual(
+        shakeAmplitudeFor(tier),
+        shakeAmplitudeFor("ordinary"),
+        `${tier} must read the same shared peak as every other non-bomb tier`
+      );
+      assert.notDeepEqual(
+        shakeAmplitudeFor(tier),
+        bomb,
+        `${tier} must not have picked up the bomb's own boosted peak`
+      );
+    }
+  });
+
+  test("the bomb's own peak is strictly larger on both axes than the shared one", () => {
+    const bomb = shakeAmplitudeFor("bomb");
+    const shared = shakeAmplitudeFor("mancheWon");
+    assert.ok(bomb.x > shared.x, `expected the bomb's x peak (${bomb.x}) to exceed the shared one (${shared.x})`);
+    assert.ok(bomb.y > shared.y, `expected the bomb's y peak (${bomb.y}) to exceed the shared one (${shared.y})`);
+  });
+
+  function bombShake(shortEdge: number, elapsedMs: number) {
+    const scale = shortEdge / BASE_EDGE;
+    return shakeOffset(Trauma.bomb, elapsedMs, DECAY_MS, scale, shakeAmplitudeFor("bomb"));
+  }
+
+  // What a bomb's shake alone displaced before #789 corrected the decay curve
+  // — a fixed pixel amount, unscaled by the table (#790's own bug) — at the
+  // amplitude constants shipped then. #796's own measurement on #795's PR.
+  //
+  // `kick` (components/useTableFeedback.ts) is a separate jolt this ticket
+  // does not touch, gated to `heavy` plays and reported alongside this floor
+  // in the PR body — never folded into the assertion here: added identically
+  // to both sides of a `>=` it would cancel, proving nothing about either.
+  const PRE_CORRECTION_SHAKE_X = Trauma.bomb * 16;
+  const PRE_CORRECTION_SHAKE_Y = Trauma.bomb * 10;
+
+  for (const [label, shortEdge] of [
+    ["phone", PHONE_EDGE],
+    ["base", BASE_EDGE],
+    ["tablet", TABLET_EDGE],
+  ] as const) {
+    test(`a bomb's own shake, at contact, is at least what it displaced before #789's curve correction — ${label}`, () => {
+      const after = bombShake(shortEdge, 0);
+      assert.ok(
+        Math.abs(after.x) >= PRE_CORRECTION_SHAKE_X,
+        `${label}: expected the re-tuned peak to clear the pre-correction floor of ${PRE_CORRECTION_SHAKE_X.toFixed(2)}px on x, got ${Math.abs(after.x).toFixed(2)}px`
+      );
+      assert.ok(
+        Math.abs(after.y) >= PRE_CORRECTION_SHAKE_Y,
+        `${label}: expected the re-tuned peak to clear the pre-correction floor of ${PRE_CORRECTION_SHAKE_Y.toFixed(2)}px on y, got ${Math.abs(after.y).toFixed(2)}px`
+      );
+    });
+  }
+
+  test("a manche or partita closed by an ordinary combination — no kick to lean on — keeps exactly the shake it had before this ticket", () => {
+    for (const tier of ["mancheWon", "partitaWon"] as const) {
+      const scale = PHONE_EDGE / BASE_EDGE;
+      const untouched = shakeOffset(traumaFor(tier, false), 0, DECAY_MS, scale);
+      const withThisTicketsHelper = shakeOffset(traumaFor(tier, false), 0, DECAY_MS, scale, shakeAmplitudeFor(tier));
+      assert.deepEqual(
+        withThisTicketsHelper,
+        untouched,
+        `${tier}'s shake must read the same peak with or without #796's amplitude lookup — only the bomb gets one`
+      );
+    }
+  });
+
+  test("the bomb's re-tuned shake still decays to rest across its own window, not to a raised floor", () => {
+    const atContact = bombShake(PHONE_EDGE, 0);
+    const midway = bombShake(PHONE_EDGE, DECAY_MS / 2);
+    const spent = bombShake(PHONE_EDGE, DECAY_MS);
+    assert.ok(
+      Math.abs(midway.x) < Math.abs(atContact.x),
+      `expected the boosted peak to have decayed by the midpoint, got ${midway.x} against a peak of ${atContact.x}`
+    );
+    assert.equal(spent.x, 0, "the boosted peak must still reach exactly 0 once its decay window has run");
+    assert.equal(spent.y, 0, "the boosted peak must still reach exactly 0 once its decay window has run");
+  });
+
+  test("a leaked trauma under reduced motion cannot reach the bomb's boosted amplitude", () => {
+    // `motionMs("shake", true)` already answers a decay window of 0, and
+    // `shakeMagnitude`'s own `decayMs <= 0` guard zeroes the output before
+    // `trauma` is ever multiplied in — asserting through that decay window
+    // would pass no matter what `traumaFor` answered, boosted amplitude or
+    // not. A non-zero decay window here means only `traumaFor`'s own answer,
+    // run through the bomb's larger peak, is under test.
+    const scale = PHONE_EDGE / BASE_EDGE;
+    const trauma = traumaFor("bomb", true);
+    const { x, y } = shakeOffset(trauma, 0, DECAY_MS, scale, shakeAmplitudeFor("bomb"));
+    assert.equal(x, 0, "the boosted amplitude must not turn a leaked trauma into visible displacement");
+    assert.equal(y, 0, "the boosted amplitude must not turn a leaked trauma into visible displacement");
   });
 });
 
