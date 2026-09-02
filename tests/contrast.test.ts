@@ -11,7 +11,7 @@
 // Imports lib/tokens (pure values) rather than lib/theme, because theme pulls in
 // react-native for its platform-aware Shadow helper and Node cannot parse RN's
 // Flow-typed entry point. tokens.ts is the same palette, no runtime RN dependency.
-import { Colors, Scrim, FeltGradients } from "../lib/tokens.ts";
+import { Colors, Garnet, Scrim, FeltGradients } from "../lib/tokens.ts";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
@@ -249,3 +249,41 @@ test("Colors.white on Colors.danger background clears large-text contrast (butto
   const ratio = contrastRatio(Colors.white, Colors.danger);
   assert.ok(ratio >= LARGE_MIN, `white vs danger: ${ratio.toFixed(2)}:1`);
 });
+
+// --- The table's two keys: GIOCA and PASSA (components/table/actions.tsx) --
+// Both labels sit on a raked gradient rather than a flat fill, so the pair to
+// check is the label against each stop the gradient actually visits —
+// including the pressed variant, which is on screen for exactly as long as
+// the finger reading the label is still down. FontSize.lg (18) Rajdhani Bold
+// falls short of the 18.66px bold floor, so BODY_MIN applies, same as
+// components/MenuButton.tsx's own primary label a few lines below.
+
+const GIOCA_GRADIENT_STOPS = [Colors.goldLit, Colors.gold, Colors.goldDark, Colors.goldDim];
+
+for (const stop of GIOCA_GRADIENT_STOPS) {
+  test(`GIOCA's label (Colors.bg) clears body text contrast on gradient stop ${stop}`, () => {
+    const ratio = contrastRatio(Colors.bg, stop);
+    assert.ok(ratio >= BODY_MIN, `bg vs ${stop}: ${ratio.toFixed(2)}:1`);
+  });
+}
+
+const PASSA_GRADIENT_STOPS = [Garnet.lip, Garnet.face, Garnet.deep, Garnet.base];
+
+for (const stop of PASSA_GRADIENT_STOPS) {
+  test(`PASSA's label (Garnet.label) clears body text contrast on gradient stop ${stop}`, () => {
+    const ratio = contrastRatio(Garnet.label, stop);
+    assert.ok(ratio >= BODY_MIN, `Garnet.label vs ${stop}: ${ratio.toFixed(2)}:1`);
+  });
+}
+
+// components/MenuButton.tsx's own primary label — the reference the two above
+// are held to. Confirms the home screen's gold buttons are not the same
+// regression in disguise.
+const MENU_BUTTON_GRADIENT_STOPS = [Colors.goldLight, Colors.gold, Colors.goldDark, Colors.goldDim];
+
+for (const stop of MENU_BUTTON_GRADIENT_STOPS) {
+  test(`MenuButton's primary label (Colors.bg) clears body text contrast on gradient stop ${stop}`, () => {
+    const ratio = contrastRatio(Colors.bg, stop);
+    assert.ok(ratio >= BODY_MIN, `bg vs ${stop}: ${ratio.toFixed(2)}:1`);
+  });
+}
