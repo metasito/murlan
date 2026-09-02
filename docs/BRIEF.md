@@ -78,6 +78,18 @@ existing Murlan apps.
 | **Who votes on a rematch** | **Only seats held by a human vote, offline and online alike.** Bot seats and vacated seats abstain from both the count and the total. | Online already worked this way and the row above already says vacated and bot seats abstain; offline let AI seats vote *and* counted them toward the majority, so "most players agreed" meant two different things depending on where you were sitting. A computer has no preference to record, and a table of one human plus bots should restart when that human says so. |
 | **A 3-3 drawn manche in teams mode** | **It is a real draw.** The overlay states the manche was drawn, no team is congratulated, and no winning haptic fires for anyone. Neither the seat that finished first nor the running *partita* score breaks the tie. | First-and-fourth (3+0) and second-and-third (2+1) both sum to 3, so a manche can pay both teams the same total. The overlay was reading `rankings[0]` as a fallback "hand winner" whenever the match itself was not yet decided, so it congratulated the team of whoever finished first even when that manche was a draw — and delivered that congratulation to the losing team's own bodies as a haptic (#777, found on PR #776). No source addresses the case, and inventing a tiebreak (finish order, running score) would be deciding the manche on a number the combined-points rule (above) says does not decide it. |
 
+**Open, awaiting the owner: the disconnect policy as a whole.** The three rows above are all
+this table decides about a player who leaves — the abandoned hand is a last-place finish; a
+vacated seat is never announced as a manche's winner; a vacated seat abstains from the
+rematch gate. Everything else has only ever been a local code choice: the grace length, the
+bot takeover and the name the seat keeps, what happens to points won before and after the
+walkout, whether the seat can be reclaimed, what the other players are told, and what the
+standings render. "Scoring already excluded abandoned seats from the running total" appears
+above as a *rationale aside*, not as a decision, and #815 showed it was not doing what the
+aside claimed. `docs/design/DISCONNECT-POLICY.md` (#820) sets out the research, the options
+for each of those questions with the exploit each opens, and one recommended coherent policy.
+When the owner decides, the decision belongs in this table and the work in separate tickets.
+
 ---
 
 ### 3.2 Why the hand's size change is a cut
