@@ -207,6 +207,11 @@ Two things that are this project's shape rather than a rule, and so are stated o
 - React Compiler can miscompile `useEffect` references. It comes from
   `babel-preset-expo`'s own dependency — do not add a second copy to `package.json`;
   `tests/reactCompiler.test.ts` pins that there is only one.
+- **`onLayout` reports a change of size, never one of position.** On web it is backed
+  by a `ResizeObserver`, so the `y` it carries is whatever the element's offset was
+  when the box last *resized* — a box that keeps its height while its `top` moves
+  never fires again, and anything derived from that `y` is silently stale. Derive a
+  position from the value that set it and take only the size from the event.
 - **No unit test can see a layout bug.** `@testing-library/react-native` runs on
   `react-test-renderer`, which never runs flexbox, so no native test can assert which side of
   a seat a card fan renders on. Only `tests/e2e/` (Playwright) catches this class — a card fan
