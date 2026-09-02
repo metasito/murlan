@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { hapticLight, hapticMedium } from "@/lib/haptics";
 import { useLocalMatch, useLocalSession, useLocalTable } from "@/context/gameHooks";
 import { standings } from "@/lib/standings";
-import { celebratesViewer, celebration } from "@/lib/matchState";
+import { celebratesViewer, celebration, isDrawnHand } from "@/lib/matchState";
 import { ResultBoard, type ContinueAction, type ResultRow } from "@/components/ResultBoard";
 import { Spacing } from "@/lib/theme";
 import { useTranslation } from "@/lib/i18n";
@@ -49,10 +49,15 @@ export default function ResultScreen() {
     points: row.points,
   }));
 
+  // A drawn manche (RULES.md §11) has no seat or team to celebrate for it —
+  // dropped here rather than left in for `celebration` to reject, since only
+  // the manche's own placement is ever tied this way; the match winner (the
+  // first candidate) is decided on cumulative points and stands regardless.
+  const mancheDrawn = isTeamMode && isDrawnHand(gameState.players, handPoints);
   const celebrationCandidates = [
     match.over ? match.winners[0] : undefined,
-    lastHand?.rankings[0],
-    rows[0]?.id,
+    mancheDrawn ? undefined : lastHand?.rankings[0],
+    mancheDrawn ? undefined : rows[0]?.id,
   ];
   const celebratedName = celebration(
     gameState.players,
@@ -106,7 +111,9 @@ export default function ResultScreen() {
           ? match.isDraw
             ? t("result.matchDrawTitle")
             : t("result.matchOverTitle")
-          : t("result.handOverTitle")
+          : mancheDrawn
+            ? t("result.handDrawTitle")
+            : t("result.handOverTitle")
       }
       formatLine={
         isSingleHand
@@ -120,7 +127,9 @@ export default function ResultScreen() {
           ? match.isDraw
             ? t("result.matchDrawSubtitle")
             : t("result.matchWinner")
-          : t("result.handWinner")
+          : mancheDrawn
+            ? t("result.handDrawSubtitle")
+            : t("result.handWinner")
       }
       rows={rows}
       handCount={match.hands.length}

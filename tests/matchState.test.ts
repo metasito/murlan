@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { celebration } from "../lib/matchState.ts";
+import { celebration, isDrawnHand } from "../lib/matchState.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -51,6 +51,38 @@ describe("celebration", () => {
   test("is empty when no candidate names a seat", () => {
     assert.equal(celebration(TABLE, [undefined, "player_9"], null), "");
     assert.equal(celebration(TABLE, [], null), "");
+  });
+});
+
+// RULES.md §11: first-and-fourth (3+0) pays the same total as second-and-
+// third (2+1), so a manche can end with both teams tied.
+describe("isDrawnHand", () => {
+  const TEAMS_TABLE = [
+    { id: "player_0", team: "A" },
+    { id: "player_1", team: "B" },
+    { id: "player_2", team: "B" },
+    { id: "player_3", team: "A" },
+  ];
+
+  test("first-and-fourth against second-and-third is a draw", () => {
+    const handScores = { player_0: 3, player_1: 2, player_2: 1, player_3: 0 };
+    assert.equal(isDrawnHand(TEAMS_TABLE, handScores), true);
+  });
+
+  test("a team that placed both members ahead is not a draw", () => {
+    const handScores = { player_0: 3, player_1: 1, player_2: 0, player_3: 2 };
+    assert.equal(isDrawnHand(TEAMS_TABLE, handScores), false);
+  });
+
+  test("a table with no team assignment is never a draw", () => {
+    const handScores = { player_0: 3, player_1: 2, player_2: 1, player_3: 0 };
+    assert.equal(
+      isDrawnHand(
+        TEAMS_TABLE.map(({ id }) => ({ id })),
+        handScores
+      ),
+      false
+    );
   });
 });
 

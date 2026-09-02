@@ -11,7 +11,7 @@ import { AppModal } from "./AppModal";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import type { GameState } from "@/lib/gameEngine";
 import { standings } from "@/lib/standings";
-import { celebratesViewer, celebration } from "@/lib/matchState";
+import { celebratesViewer, celebration, isDrawnHand } from "@/lib/matchState";
 import type { OnlineMatchState } from "@/context/OnlineGameContext";
 import { Colors, FontSize, Spacing, TOUCH_TARGET_MIN } from "@/lib/theme";
 import { useTranslation } from "@/lib/i18n";
@@ -84,10 +84,15 @@ export function GameOverOverlay({
     };
   });
 
+  // A drawn manche (RULES.md §11) has no seat or team to celebrate for it —
+  // dropped here rather than left in for `celebration` to reject, since only
+  // the manche's own placement is ever tied this way; the match winner (the
+  // first candidate) is decided on cumulative points and stands regardless.
+  const mancheDrawn = isTeamMode && isDrawnHand(gameState.players, handScores);
   const celebrationCandidates = [
     match.over ? match.winners[0] : undefined,
-    gameState.rankings[0],
-    rows[0]?.id,
+    mancheDrawn ? undefined : gameState.rankings[0],
+    mancheDrawn ? undefined : rows[0]?.id,
   ];
   const celebratedName = celebration(
     gameState.players,
@@ -187,7 +192,9 @@ export function GameOverOverlay({
             ? match.isDraw
               ? t("result.matchDrawTitle")
               : t("result.matchOverTitle")
-            : t("result.handOverTitle")
+            : mancheDrawn
+              ? t("result.handDrawTitle")
+              : t("result.handOverTitle")
         }
         formatLine={
           match.length === "single"
@@ -201,7 +208,9 @@ export function GameOverOverlay({
             ? match.isDraw
               ? t("result.matchDrawSubtitle")
               : t("result.matchWinner")
-            : t("result.handWinner")
+            : mancheDrawn
+              ? t("result.handDrawSubtitle")
+              : t("result.handWinner")
         }
         rows={rows}
         handCount={match.handsPlayed}

@@ -3,6 +3,7 @@
 // Relative imports and no `react-native`, for the same reason
 // lib/exchangeCeremony.ts has none: the server bundles this with no alias
 // resolution, and `node --test` type-strips plain .ts without resolving `@/`.
+import { aggregateTeamScores } from "./gameEngine.ts";
 import type { MatchLength } from "./gameEngine.ts";
 
 export interface MatchVerdict {
@@ -59,6 +60,26 @@ export function celebratesViewer(
       : seat.id === viewerId;
   }
   return false;
+}
+
+/**
+ * Whether a just-played manche paid every team the same total (RULES.md §11):
+ * first-and-fourth pays 3+0, second-and-third pays 2+1, both 3. A draw this
+ * way has no candidate to celebrate, so the caller must drop the manche's own
+ * placement (`rankings[0]`, the standings' own first row) from `celebration`'s
+ * candidates rather than let it fall through to the seat that went out first.
+ */
+export function isDrawnHand(
+  players: readonly { id: string; team?: string }[],
+  handScores: Record<string, number>
+): boolean {
+  const teamOfKey: Record<string, string> = {};
+  for (const p of players) {
+    if (p.team !== undefined) teamOfKey[p.id] = p.team;
+  }
+  const totals = aggregateTeamScores(handScores, teamOfKey);
+  const values = Object.values(totals);
+  return values.length > 1 && values.every((v) => v === values[0]);
 }
 
 /** One seat's line on the end-of-manche scoreboard, in every identity it is indexed by. */
