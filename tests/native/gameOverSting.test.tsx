@@ -7,7 +7,7 @@
 // the last-placed seat the winner's haptic.
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import React from 'react';
-import { render } from '@testing-library/react-native';
+import { act, render } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 jest.mock('@/lib/sounds', () => ({
@@ -93,7 +93,11 @@ const teamSeat = (id: string, name: string, team: 'A' | 'B'): Player => ({
 
 // First-and-fourth (3+0) against second-and-third (2+1): both pay 3, a draw
 // (RULES.md §11). player_0 (team A) and player_3 (team A) hold 1st and 4th;
-// player_1 and player_2 (team B) hold 2nd and 3rd.
+// player_1 and player_2 (team B) hold 2nd and 3rd. Scores are given
+// explicitly (not left to GameTable's empty default) so this exercises a
+// hand `isDrawnHand` actually knows is a draw, not one it has no scores for.
+const DRAWN_TEAMS_RANKINGS = ['player_0', 'player_1', 'player_2', 'player_3'];
+const DRAWN_TEAMS_SCORES = { player_0: 3, player_1: 2, player_2: 1, player_3: 0 };
 const drawnTeamsTable = (viewerSeat: number) => (
   <SafeAreaProvider initialMetrics={METRICS}>
     <GameTable
@@ -111,9 +115,10 @@ const drawnTeamsTable = (viewerSeat: number) => (
         gameMode: 'teams',
         roundWinner: null,
         gameOver: true,
-        rankings: ['player_0', 'player_1', 'player_2', 'player_3'],
+        rankings: DRAWN_TEAMS_RANKINGS,
         firstPlayMade: true,
       }}
+      handScores={DRAWN_TEAMS_SCORES}
       viewerSeat={viewerSeat}
       selectedIds={[]}
       onSelectCard={noop}
@@ -236,6 +241,89 @@ describe('the end-of-hand sting', () => {
     const r = await render(wonTeamsTable(1));
     expect(playGameLose).toHaveBeenCalledTimes(1);
     expect(playGameWin).not.toHaveBeenCalled();
+    await r.unmount();
+  });
+
+  // Online, `game:state` (gameOver: true) reaches the client before the
+  // separate, unawaited `game:over` carries the scores — two renders, the
+  // first with the real rankings and no scores at all. player_3 (seat 3) is
+  // on the winning team (WON_TEAMS_SCORES).
+  it('waits for the real scores before firing the sting, instead of latching a decision made with none', async () => {
+    const inProgress = (
+      <SafeAreaProvider initialMetrics={METRICS}>
+        <GameTable
+          gameState={{
+            players: [
+              teamSeat('player_0', 'Ana', 'A'),
+              teamSeat('player_1', 'Besi', 'B'),
+              teamSeat('player_2', 'Cveta', 'B'),
+              teamSeat('player_3', 'Dritan', 'A'),
+            ],
+            currentTurnIndex: 0,
+            lastPlayedCombination: null,
+            lastPlayedBy: 0,
+            passCount: 0,
+            gameMode: 'teams',
+            roundWinner: null,
+            gameOver: false,
+            rankings: [],
+            firstPlayMade: true,
+          }}
+          viewerSeat={3}
+          selectedIds={[]}
+          onSelectCard={noop}
+          onPlay={noop}
+          onPass={noop}
+          onQuit={noop}
+          onExchangeGive={noop}
+        />
+      </SafeAreaProvider>
+    );
+    const stateArrived = (handScores: Record<string, number>) => (
+      <SafeAreaProvider initialMetrics={METRICS}>
+        <GameTable
+          gameState={{
+            players: [
+              teamSeat('player_0', 'Ana', 'A'),
+              teamSeat('player_1', 'Besi', 'B'),
+              teamSeat('player_2', 'Cveta', 'B'),
+              teamSeat('player_3', 'Dritan', 'A'),
+            ],
+            currentTurnIndex: 0,
+            lastPlayedCombination: null,
+            lastPlayedBy: 0,
+            passCount: 0,
+            gameMode: 'teams',
+            roundWinner: null,
+            gameOver: true,
+            rankings: WON_TEAMS_RANKINGS,
+            firstPlayMade: true,
+          }}
+          handScores={handScores}
+          viewerSeat={3}
+          selectedIds={[]}
+          onSelectCard={noop}
+          onPlay={noop}
+          onPass={noop}
+          onQuit={noop}
+          onExchangeGive={noop}
+        />
+      </SafeAreaProvider>
+    );
+
+    const r = await render(inProgress);
+
+    // `game:state`: gameOver flips true, rankings are the real finish order —
+    // but the scores that decide won/lost/drawn haven't arrived yet.
+    await act(async () => r.rerender(stateArrived({})));
+    expect(playGameWin).not.toHaveBeenCalled();
+    expect(playGameLose).not.toHaveBeenCalled();
+
+    // `game:over`: the real scores land, same gameOver, same rankings.
+    await act(async () => r.rerender(stateArrived(WON_TEAMS_SCORES)));
+    expect(playGameWin).toHaveBeenCalledTimes(1);
+    expect(playGameLose).not.toHaveBeenCalled();
+
     await r.unmount();
   });
 });

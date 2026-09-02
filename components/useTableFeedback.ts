@@ -331,7 +331,6 @@ export function useTableFeedback({
       return;
     }
     if (prevGameOverRef.current) return;
-    prevGameOverRef.current = true;
     // The manche/partita shake itself is NOT fired here — this effect answers
     // `gameOver` the instant the state arrives, well ahead of the winning
     // card's own landing. `GameTable.tsx` fires `shake(landingTier(...))`
@@ -344,6 +343,14 @@ export function useTableFeedback({
     // so a teams-mode 3-3 manche (RULES.md §11) stays neutral here exactly as
     // it does there, instead of this effect deciding the same question again.
     const outcome = handOutcomeFor(players, rankings, handScores, viewerId, isTeamMode);
+    // Online, `gameOver` reaches this effect (`game:state`) a render ahead of
+    // the scores that decide it (`game:over`, unawaited server-side and
+    // strictly later) — `"pending"` is that gap. Latching here would freeze
+    // the decision on data that was never real; returning without touching
+    // the ref lets the next render, carrying the real `handScores`, run this
+    // same effect again instead.
+    if (outcome === "pending") return;
+    prevGameOverRef.current = true;
     if (outcome === "won") {
       hapticSuccess();
       playGameWin();

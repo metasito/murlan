@@ -84,6 +84,20 @@ describe("isDrawnHand", () => {
       false
     );
   });
+
+  // Online, a hand's rankings reach the client before its scores do — an
+  // empty or partial score set totals every team to zero, which is not the
+  // same fact as every team scoring the same. "Not known yet" must read as
+  // not-a-draw, or a hand whose scores just haven't arrived reports the same
+  // answer as one that genuinely tied.
+  test("an absent score set is not a draw", () => {
+    assert.equal(isDrawnHand(TEAMS_TABLE, {}), false);
+  });
+
+  test("a partial score set — some seats not scored yet — is not a draw", () => {
+    const handScores = { player_0: 3, player_1: 2 };
+    assert.equal(isDrawnHand(TEAMS_TABLE, handScores), false);
+  });
 });
 
 // The one function every win/lose cue reads — the table's own sting
@@ -141,6 +155,22 @@ describe("handOutcomeFor", () => {
       handOutcomeFor(TEAMS_TABLE, drawnRankings, drawnScores, "player_0", false),
       "won"
     );
+  });
+
+  // Online, `rankings` reaches the client (`game:state`, gameOver: true) a
+  // render ahead of `handScores` (the separate `game:over`) — the caller
+  // (components/useTableFeedback.ts) has to be able to tell "not decided
+  // yet" apart from "neutral" (an actual draw) so it knows to wait for the
+  // render the scores arrive on instead of latching a decision made with
+  // none.
+  test("is pending in team mode when the manche has a finish order but no scores yet", () => {
+    assert.equal(handOutcomeFor(TEAMS_TABLE, drawnRankings, {}, "player_0", true), "pending");
+  });
+
+  // Free-for-all never reads handScores at all — an absent score set must
+  // not stall a mode that was never waiting on one.
+  test("free-for-all is never pending, even with no scores at all", () => {
+    assert.equal(handOutcomeFor(TEAMS_TABLE, drawnRankings, {}, "player_0", false), "won");
   });
 });
 
