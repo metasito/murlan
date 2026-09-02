@@ -6,6 +6,7 @@ import {
   createDeck,
   dealCards,
   findStartingPlayer,
+  freshHandFloor,
   initializeGame,
   j,
   makePlayer,
@@ -171,6 +172,28 @@ describe("the deal at 2 players — 14 each, 26 undealt", () => {
       assert.ok(players[playerIdx].hand.some((c) => c.id === startCard.id));
     }
     assert.ok(ran, "200 deals never gave a case where the 3♠ was undealt");
+  });
+});
+
+describe("freshHandFloor (#792) — the survey guard's floor, by actual seat count", () => {
+  test("matches dealCards's own per-seat minimum at 2, 3 and 4 seats", () => {
+    assert.equal(freshHandFloor(2), 14);
+    assert.equal(freshHandFloor(3), 18);
+    assert.equal(freshHandFloor(4), 13);
+  });
+
+  test("a floor derived from a fixed 4-seat count is wrong at 2 seats, and would let an already-played table through", () => {
+    const playedCount = 13; // one card played from a fresh 2-seat hand of 14
+    const floorFixedAtFourSeats = Math.floor(createDeck().length / 4);
+    assert.equal(floorFixedAtFourSeats, 13);
+    assert.ok(
+      !(playedCount < floorFixedAtFourSeats),
+      "a floor derived from SEATS=4 fails to catch a played 2-seat table — the guard's own defect"
+    );
+    assert.ok(
+      playedCount < freshHandFloor(2),
+      "the floor derived from the actual 2 seats on screen catches it"
+    );
   });
 });
 

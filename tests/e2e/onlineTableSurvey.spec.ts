@@ -22,7 +22,7 @@ import { openSeededGame } from "./helpers/offlineSeed";
 import { openOnlineTable } from "./helpers/onlineTable";
 import { HAND_CARDS, HAND_ZONE, TABLE, TABLE_STATE } from "./helpers/selectors";
 import { YOUR_TURN_PREFIX } from "./helpers/labels";
-import { createDeck } from "../../lib/gameEngine";
+import { createDeck, HEADS_UP_HAND } from "../../lib/gameEngine";
 
 /** The audit's own four, named as `content.txt` and `table.txt` name them. */
 const VIEWPORTS = [
@@ -36,17 +36,23 @@ const VIEWPORTS = [
 const SEATS = 4;
 
 /**
- * #785: the fewest cards a freshly-dealt seat can hold. `dealCards`
- * (`lib/gameEngine.ts`) gives every seat `Math.floor(deck.length / SEATS)`
- * cards at minimum, one more to however many seats the remainder covers — 54
- * over 4 seats is 13 each with two seats getting a 14th. A seat reading below
+ * #785: the fewest cards a freshly-dealt seat can hold. A seat reading below
  * this floor has necessarily played at least one card since the deal, which
  * makes it a different table than the one `docs/design/57-polish-audit/`
  * records: the record's own bots never move (`openSeededGame`'s pile is
  * always empty), so comparing to it only means something when the online
  * table hasn't moved either.
+ *
+ * #792: computed inside `readTable`, from the seat count the table actually
+ * renders — never from `SEATS` above, which is only what this suite asked
+ * for. `freshHandFloor` (`lib/gameEngine.ts`) is the source of truth; its
+ * math is mirrored here rather than called, because a `page.evaluate`
+ * callback runs in the browser and cannot reach a Node import. Two seats get
+ * the fixed `HEADS_UP_HAND` deal in full — `dealCards` never round-robins the
+ * whole deck for a duel — every other seat count round-robins it, so the
+ * floor is what an even split loses to its own remainder.
  */
-const FRESH_HAND_FLOOR = Math.floor(createDeck().length / SEATS);
+const DECK_LENGTH = createDeck().length;
 
 const AUDIT_DIR = path.resolve(__dirname, "../../docs/design/57-polish-audit");
 const RECORD = path.join(AUDIT_DIR, "online-table.txt");
@@ -139,7 +145,7 @@ async function measure(page: Page): Promise<Measurement> {
 
 function readTable(page: Page): Promise<Measurement> {
   return page.evaluate(
-    ({ table: tableSel, hand: handSel, cards: cardSel, turn: turnAttr, yourTurn, freshFloor }) => {
+    ({ table: tableSel, hand: handSel, cards: cardSel, turn: turnAttr, yourTurn, deckLength, headsUpHand }) => {
       const round = (n: number) => Math.round(n);
       const table = document.querySelector(tableSel);
       if (!table) throw new Error("the table never rendered");
@@ -197,6 +203,13 @@ function readTable(page: Page): Promise<Measurement> {
         });
       }
 
+      // #792: the seats this table actually renders — the viewer plus every
+      // opponent slot present in the DOM — not the seat count this suite
+      // asked `openOnlineTable` for. Mirrors `freshHandFloor` (lib/gameEngine.ts).
+      const seatsOnScreen = 1 + seatSlots.length;
+      const freshFloor =
+        seatsOnScreen === 2 ? headsUpHand : Math.floor(deckLength / seatsOnScreen);
+
       // #785: the state this measurement requires, asserted rather than
       // hoped for. A seat below the floor a fresh deal leaves it has already
       // played, which makes this a different table than the record —
@@ -206,8 +219,9 @@ function readTable(page: Page): Promise<Measurement> {
         if (Number.isFinite(count) && count < freshFloor) {
           throw new Error(
             `the ${slot.testId} seat already holds ${slot.count} card(s), fewer than the ` +
-              `${freshFloor} a fresh deal leaves any seat — this table has already been played ` +
-              `into and cannot be measured against a record of an unplayed one`
+              `${freshFloor} a fresh deal leaves any of this ${seatsOnScreen}-seat table's seats ` +
+              `— this table has already been played into and cannot be measured against a ` +
+              `record of an unplayed one`
           );
         }
       }
@@ -273,7 +287,8 @@ function readTable(page: Page): Promise<Measurement> {
       cards: HAND_CARDS,
       turn: TABLE_STATE,
       yourTurn: YOUR_TURN_PREFIX,
-      freshFloor: FRESH_HAND_FLOOR,
+      deckLength: DECK_LENGTH,
+      headsUpHand: HEADS_UP_HAND,
     }
   );
 }

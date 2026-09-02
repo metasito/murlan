@@ -311,7 +311,7 @@ export function shuffleDeck(deck: Card[]): Card[] {
   return shuffled;
 }
 
-const HEADS_UP_HAND = 14;
+export const HEADS_UP_HAND = 14;
 
 /**
  * Deals cards one at a time, round-robin from `firstSeat`. 4 players =
@@ -344,6 +344,18 @@ export function dealCards(
     hands[(start + i) % playerCount].push(deck[i]);
   }
   return { hands, excluded: deck.slice(dealt) };
+}
+
+/**
+ * The fewest cards `dealCards` ever leaves any seat at `playerCount`, before
+ * a card is played. Two seats get the fixed heads-up hand size in full — that
+ * branch never round-robins the whole deck — so the minimum is the deal size
+ * itself; every other seat count deals the whole deck round-robin, so the
+ * minimum is what an even split loses to its own remainder.
+ */
+export function freshHandFloor(playerCount: number, deckLength = createDeck().length): number {
+  if (playerCount < 1) return 0;
+  return playerCount === 2 ? HEADS_UP_HAND : Math.floor(deckLength / playerCount);
 }
 
 export function sortHand(hand: Card[]): Card[] {
