@@ -9,7 +9,7 @@
 // The tally counts ranks, never card identities. It is public information —
 // every seat watched those cards land — so it is broadcast unsanitised, and it
 // is built from plays alone: never from a hand, never from the deck. At two
-// seats the twelve undealt cards therefore read as still outstanding, which
+// seats the twenty-six undealt cards therefore read as still outstanding, which
 // makes the bot slightly too cautious and never over-confident. That direction
 // is deliberate; see the ticket.
 import { test, describe } from "node:test";

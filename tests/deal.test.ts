@@ -1,5 +1,8 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   c,
   cardStrength,
@@ -16,6 +19,7 @@ import {
 } from "./helpers.ts";
 
 const ids = (cards: Card[]) => cards.map((card) => card.id);
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 describe("deck", () => {
   test("is 52 cards plus 2 distinguishable jokers", () => {
@@ -149,7 +153,7 @@ describe("the deal at 2 players — 14 each, 26 undealt", () => {
       if (excluded.some((c) => c.rank === "3" && c.suit === "spades")) sawAThreeSpadesExcluded = true;
       if (excluded.some((c) => c.isJoker)) sawAJokerExcluded = true;
     }
-    assert.ok(sawAThreeSpadesExcluded, "200 deals never left the 3♠ undealt — the deal is not actually stripping 12 cards");
+    assert.ok(sawAThreeSpadesExcluded, "200 deals never left the 3♠ undealt — the deal is not actually stripping 26 cards");
     assert.ok(sawAJokerExcluded, "200 deals never left a Joker undealt");
   });
 
@@ -172,6 +176,85 @@ describe("the deal at 2 players — 14 each, 26 undealt", () => {
       assert.ok(players[playerIdx].hand.some((c) => c.id === startCard.id));
     }
     assert.ok(ran, "200 deals never gave a case where the 3♠ was undealt");
+  });
+});
+
+// #806: the deal moved from 21 to 14 each at two seats (docs/BRIEF.md,
+// 2026-08-31) and left a stale "12" behind in docs/RULES.md §4, next to a
+// correct "26" three lines up in §3 — a number in a spec that disagrees with
+// itself is the kind of thing that gets read once and believed. This reads
+// both clauses back out of the file and checks them against `dealCards`'s
+// own arithmetic, rather than against each other, so a future deal-size
+// change that updates one clause and misses the other still reds here.
+describe("docs/RULES.md's undealt-card figure agrees with dealCards's own arithmetic (#806)", () => {
+  const rules = readFileSync(path.join(repoRoot, "docs", "RULES.md"), "utf8");
+
+  test("§3's own count of undealt cards matches what dealCards(2) actually excludes", () => {
+    const clause = rules.match(/remaining (\d+) are left face down and unused/);
+    assert.ok(clause, "§3's undealt-card clause was not found — has the wording moved?");
+    assert.equal(Number(clause![1]), dealCards(2).excluded.length);
+  });
+
+  test("§4's own count of undealt cards matches what dealCards(2) actually excludes", () => {
+    const clause = rules.match(/end up in the (\d+) undealt cards/);
+    assert.ok(clause, "§4's undealt-card clause was not found — has the wording moved?");
+    assert.equal(Number(clause![1]), dealCards(2).excluded.length);
+  });
+});
+
+// #803: `server/tableHandlers.ts` passes a literal `dealFirstSeat: 0` for
+// every fresh online match, which reads as an oversight that always deals the
+// bigger hand to the same seats — until `docs/BRIEF.md` §3.1's "Rotating the
+// deal" decision is read: a fresh match is *meant* to start from seat 0, and
+// only the rotation *within* a running match (`nextDealFirstSeat`) is what
+// keeps a host's seat from always drawing it. Offline (`context/GameContext.tsx`)
+// resets to the same 0. This pins that both fresh-match sites still agree with
+// each other and with that decision, source-anchored rather than run through a
+// live server or a rendered screen: neither is a component, and the fact this
+// pins is about two files agreeing on a literal, which a source scan states
+// directly rather than inferring from an effect.
+describe("dealFirstSeat: fresh match resets to seat 0, online and offline agree (#803)", () => {
+  const serverSrc = readFileSync(path.join(repoRoot, "server", "tableHandlers.ts"), "utf8");
+  const offlineSrc = readFileSync(path.join(repoRoot, "context", "GameContext.tsx"), "utf8");
+
+  test("a fresh online match's OnlineGameState literal starts dealFirstSeat at 0", () => {
+    assert.match(
+      serverSrc,
+      /dealFirstSeat:\s*0,\n\s*};/,
+      "the fresh-match OnlineGameState literal no longer resets dealFirstSeat to 0 — " +
+        "docs/BRIEF.md §3.1 ('Rotating the deal') still calls for it"
+    );
+  });
+
+  test("a fresh offline match's setupGame resets dealFirstSeat to 0", () => {
+    const setupGame = offlineSrc.slice(
+      offlineSrc.indexOf("const setupGame ="),
+      offlineSrc.indexOf("const dealFrom =")
+    );
+    assert.match(
+      setupGame,
+      /setDealFirstSeat\(0\)/,
+      "setupGame no longer resets dealFirstSeat to 0 for a fresh offline match"
+    );
+  });
+
+  test("both sides rotate a running match's deal through the same nextDealFirstSeat", () => {
+    assert.match(serverSrc, /nextDealFirstSeat\(game\.dealFirstSeat,/);
+    assert.match(offlineSrc, /nextDealFirstSeat\(dealFirstSeat,/);
+  });
+
+  test("dealCards's own arithmetic: the implicit firstSeat both sides rely on is the same as an explicit 0", () => {
+    // Neither fresh-match site passes a third argument at all — server calls
+    // `initializeGame(playerSetup, room.gameMode)`, offline's `setupGame`
+    // calls `initializeGame(players, mode)` — so the literal `dealFirstSeat: 0`
+    // / `setDealFirstSeat(0)` each stores alongside it is only truthful if
+    // `dealCards`'s own default firstSeat actually is 0.
+    for (const playerCount of [2, 3, 4]) {
+      assert.deepEqual(
+        dealCards(playerCount).hands.map((h) => h.length),
+        dealCards(playerCount, 0).hands.map((h) => h.length)
+      );
+    }
   });
 });
 

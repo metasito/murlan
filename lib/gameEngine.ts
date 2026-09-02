@@ -135,7 +135,7 @@ export const emptyRankTally = (): number[] => new Array<number>(RANK_SLOTS).fill
  * How many cards stronger than `strength` are neither played nor in `myHand` —
  * that is, how many could still beat it in someone else's hand.
  *
- * At two seats twelve cards are never dealt (`dealCards` excludes them), so they
+ * At two seats twenty-six cards are never dealt (`dealCards` excludes them), so they
  * are counted here as outstanding. That errs towards caution — the bot may hold
  * back a card that was actually unbeatable — and never towards over-confidence,
  * which is the only direction that loses a hand it should have won.
