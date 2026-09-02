@@ -43,6 +43,8 @@ const idleState = () => ({
   roundWinner: null,
   gameOver: false,
   rankings: [],
+  players: [],
+  isTeamMode: false,
   viewerId: undefined,
   scale: 1,
 });

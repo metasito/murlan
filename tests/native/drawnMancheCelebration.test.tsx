@@ -163,3 +163,114 @@ describe('a drawn manche in teams mode congratulates nobody', () => {
     await view.unmount();
   });
 });
+
+// The manche that ends a partita can itself be a 3-3 draw (its own points
+// pay both teams the same) while the *match* — decided on cumulative points
+// across every prior manche too — is not. The draw belongs to that one hand,
+// never to the match it closed.
+describe('a manche that ends the match while being a draw itself still celebrates the match winner', () => {
+  beforeEach(() => {
+    notificationAsync.mockClear();
+  });
+
+  const players = [
+    seat('player_0', 'Ana', 'A'),
+    seat('player_1', 'Besi', 'B'),
+    seat('player_2', 'Cveta', 'B'),
+    seat('player_3', 'Dritan', 'A'),
+  ];
+  // Team A (player_0 + player_3) already led before this manche; this
+  // manche's own 3-3 split changes nothing about who has more points.
+  const cumulativeScores = { player_0: 15, player_1: 10, player_2: 8, player_3: 6 };
+
+  it('offline: celebrates team A and fires the haptic for its own seat', async () => {
+    mockState = {
+      players,
+      currentTurnIndex: 0,
+      lastPlayedCombination: null,
+      lastPlayedBy: 0,
+      passCount: 0,
+      gameMode: 'teams',
+      roundWinner: null,
+      gameOver: true,
+      rankings: drawnRankings,
+      firstPlayMade: true,
+    };
+    mockMatch = {
+      length: 'match',
+      target: 21,
+      scores: cumulativeScores,
+      hands: [{ rankings: drawnRankings, pointsAwarded: drawnHandScores }],
+      over: true,
+      winners: ['player_0', 'player_3'],
+      isDraw: false,
+    };
+
+    const view = await render(
+      <SafeAreaProvider initialMetrics={METRICS}>
+        <ResultScreen />
+      </SafeAreaProvider>
+    );
+    await act(async () => {});
+
+    expect(view.getByText(t('result.matchOverTitle'))).toBeTruthy();
+    expect(view.getByText(t('result.matchWinner'))).toBeTruthy();
+    expect(view.getAllByText(t('lobby.team', { team: 'A' })).length).toBeGreaterThan(0);
+    expect(notificationAsync.mock.calls).toContainEqual([
+      Haptics.NotificationFeedbackType.Success,
+    ]);
+    await view.unmount();
+  });
+
+  it('online: celebrates team A and fires the haptic for its own seat', async () => {
+    const gameState: GameState = {
+      players,
+      currentTurnIndex: 0,
+      lastPlayedCombination: null,
+      lastPlayedBy: 0,
+      passCount: 0,
+      gameMode: 'teams',
+      roundWinner: null,
+      gameOver: true,
+      rankings: drawnRankings,
+      firstPlayMade: true,
+    };
+
+    const view = await render(
+      <SafeAreaProvider initialMetrics={METRICS}>
+        <GameOverOverlay
+          gameState={gameState}
+          topPad={0}
+          bottomPad={0}
+          onLeave={() => {}}
+          onVoteRematch={() => {}}
+          voteState={null}
+          myUserId="u1"
+          mySeatIndex={0}
+          cumulativeScores={cumulativeScores}
+          handScores={drawnHandScores}
+          ratingDelta={null}
+          handRecorded={true}
+          match={{
+            target: 21,
+            length: 'match',
+            handsPlayed: 5,
+            over: true,
+            winners: ['player_0', 'player_3'],
+            isDraw: false,
+            continues: false,
+          }}
+        />
+      </SafeAreaProvider>
+    );
+    await act(async () => {});
+
+    expect(view.getByText(t('result.matchOverTitle'))).toBeTruthy();
+    expect(view.getByText(t('result.matchWinner'))).toBeTruthy();
+    expect(view.getAllByText(t('lobby.team', { team: 'A' })).length).toBeGreaterThan(0);
+    expect(notificationAsync.mock.calls).toContainEqual([
+      Haptics.NotificationFeedbackType.Success,
+    ]);
+    await view.unmount();
+  });
+});

@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { celebration, isDrawnHand } from "../lib/matchState.ts";
+import { celebration, isDrawnHand, handOutcomeFor } from "../lib/matchState.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -83,6 +83,50 @@ describe("isDrawnHand", () => {
       ),
       false
     );
+  });
+});
+
+// The one function every win/lose cue reads — the table's own sting
+// (components/useTableFeedback.ts) and the results board (celebration/
+// celebratesViewer) both, so a teams-mode 3-3 manche is neutral on both
+// paths rather than each recomputing its own placement check (#777).
+describe("handOutcomeFor", () => {
+  const TEAMS_TABLE = [
+    { id: "player_0", team: "A" },
+    { id: "player_1", team: "B" },
+    { id: "player_2", team: "B" },
+    { id: "player_3", team: "A" },
+  ];
+  // First-and-fourth (3+0) against second-and-third (2+1): a draw.
+  const drawnRankings = ["player_0", "player_1", "player_2", "player_3"];
+
+  test("is neutral for every seat on a drawn teams manche", () => {
+    for (const { id } of TEAMS_TABLE) {
+      assert.equal(handOutcomeFor(TEAMS_TABLE, drawnRankings, id, true), "neutral");
+    }
+  });
+
+  test("is won for the team that placed first-and-third, not just the seat that placed first", () => {
+    const rankings = ["player_0", "player_1", "player_3", "player_2"];
+    assert.equal(handOutcomeFor(TEAMS_TABLE, rankings, "player_0", true), "won");
+    assert.equal(handOutcomeFor(TEAMS_TABLE, rankings, "player_3", true), "won");
+    assert.equal(handOutcomeFor(TEAMS_TABLE, rankings, "player_1", true), "lost");
+    assert.equal(handOutcomeFor(TEAMS_TABLE, rankings, "player_2", true), "lost");
+  });
+
+  test("in free-for-all, only the seat that placed first or last gets an outcome", () => {
+    const rankings = ["player_2", "player_0", "player_1", "player_3"];
+    assert.equal(handOutcomeFor(TEAMS_TABLE, rankings, "player_2", false), "won");
+    assert.equal(handOutcomeFor(TEAMS_TABLE, rankings, "player_3", false), "lost");
+    assert.equal(handOutcomeFor(TEAMS_TABLE, rankings, "player_0", false), "neutral");
+  });
+
+  test("is neutral for a spectator holding no seat", () => {
+    assert.equal(handOutcomeFor(TEAMS_TABLE, drawnRankings, undefined, true), "neutral");
+  });
+
+  test("is neutral before any manche has a finish order", () => {
+    assert.equal(handOutcomeFor(TEAMS_TABLE, [], "player_0", true), "neutral");
   });
 });
 

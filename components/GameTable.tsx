@@ -643,6 +643,8 @@ export function GameTable({
     roundWinner: gameState.roundWinner,
     gameOver: gameState.gameOver,
     rankings: gameState.rankings,
+    players,
+    isTeamMode: gameState.gameMode === "teams",
     viewerId: viewer?.id,
     scale,
   });

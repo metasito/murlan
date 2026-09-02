@@ -30,6 +30,7 @@ import {
   playYourTurn,
 } from "@/lib/sounds";
 import { hapticHeavy, hapticSuccess, hapticWarn } from "@/lib/haptics";
+import { handOutcomeFor } from "@/lib/matchState";
 import { cancelMusicDuck, duckMusicFor } from "@/lib/music";
 import { Motion, motionMs } from "@/lib/theme";
 
@@ -75,6 +76,9 @@ interface TableFeedbackState {
   roundWinner: number | null;
   gameOver: boolean;
   rankings: string[];
+  /** Only `id` and `team` are read — enough to resolve `handOutcomeFor`. */
+  players: readonly { id: string; team?: string }[];
+  isTeamMode: boolean;
   viewerId: string | undefined;
   /** The table's own scale — the kick's travel and the burst's size read off it. */
   scale: number;
@@ -258,6 +262,8 @@ export function useTableFeedback({
   roundWinner,
   gameOver,
   rankings,
+  players,
+  isTeamMode,
   viewerId,
   scale,
 }: TableFeedbackState): TableFeedback {
@@ -329,17 +335,21 @@ export function useTableFeedback({
     // from the same `impactDelayMs` timeout everything else on the table
     // waits for, so the shake lands with the card rather than ahead of it.
     // `rankings` holds engine player ids (`player_0`), never display names.
-    const myRank = viewerId ? rankings.indexOf(viewerId) : -1;
-    if (myRank === 0) {
+    // Routed through the one function `ResultBoard`'s own haptic reads
+    // (`lib/matchState.ts`), so a teams-mode 3-3 manche (RULES.md §11) stays
+    // neutral here exactly as it does there, instead of this effect deciding
+    // the same question again off the raw rank.
+    const outcome = handOutcomeFor(players, rankings, viewerId, isTeamMode);
+    if (outcome === "won") {
       hapticSuccess();
       playGameWin();
       duckMusicFor(2200);
-    } else if (myRank >= 0 && myRank === rankings.length - 1) {
+    } else if (outcome === "lost") {
       hapticWarn();
       playGameLose();
       duckMusicFor(2200);
     }
-  }, [gameOver, rankings, viewerId]);
+  }, [gameOver, rankings, players, isTeamMode, viewerId]);
 
   // A duck outlives the play that started it by a second or two, so leaving
   // the table mid-bomb would otherwise leave the music down until something

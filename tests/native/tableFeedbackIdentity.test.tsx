@@ -46,6 +46,8 @@ const state = (scale: number) => ({
   roundWinner: null,
   gameOver: false,
   rankings: [],
+  players: [],
+  isTeamMode: false,
   viewerId: "viewer",
   scale,
 });

@@ -3,7 +3,7 @@
 // Relative imports and no `react-native`, for the same reason
 // lib/exchangeCeremony.ts has none: the server bundles this with no alias
 // resolution, and `node --test` type-strips plain .ts without resolving `@/`.
-import { aggregateTeamScores } from "./gameEngine.ts";
+import { aggregateTeamScores, scoreHand } from "./gameEngine.ts";
 import type { MatchLength } from "./gameEngine.ts";
 
 export interface MatchVerdict {
@@ -80,6 +80,35 @@ export function isDrawnHand(
   const totals = aggregateTeamScores(handScores, teamOfKey);
   const values = Object.values(totals);
   return values.length > 1 && values.every((v) => v === values[0]);
+}
+
+export type HandOutcome = "won" | "lost" | "neutral";
+
+/**
+ * What the manche that just ended did to `viewerId` — the one decision every
+ * win/lose cue reads, offline and online, on the table and on the results
+ * board. Derived from `rankings` alone (the per-hand points behind it are
+ * `scoreHand`'s, never a caller's own copy), so a 3-3 teams draw (RULES.md
+ * §11) is `"neutral"` here the same way it is an empty `celebration` there —
+ * one path recomputing its own placement checks, rather than a raw rank
+ * check, is how a win cue reached a losing seat's body in the first place
+ * (#777).
+ */
+export function handOutcomeFor(
+  players: readonly { id: string; team?: string }[],
+  rankings: readonly string[],
+  viewerId: string | undefined,
+  isTeamMode: boolean
+): HandOutcome {
+  if (viewerId === undefined || rankings.length === 0) return "neutral";
+  if (isTeamMode && isDrawnHand(players, scoreHand([...rankings], players.length))) {
+    return "neutral";
+  }
+  if (celebratesViewer(players, [rankings[0]], viewerId, isTeamMode)) return "won";
+  if (celebratesViewer(players, [rankings[rankings.length - 1]], viewerId, isTeamMode)) {
+    return "lost";
+  }
+  return "neutral";
 }
 
 /** One seat's line on the end-of-manche scoreboard, in every identity it is indexed by. */
