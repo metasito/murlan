@@ -28,7 +28,13 @@ import { armTurnIfIdle } from "./gameTurn.ts";
 import { TEAMS_PLAYER_COUNT } from "../lib/gameEngine.ts";
 import type { EventOutcome } from "./socketSafety.ts";
 
-export function roomStatePayload(
+/**
+ * Async because the seat holds are part of the room, not an extra message:
+ * every broadcast carries them, so no path can seat a player into a lobby that
+ * has forgotten which seats are spoken for. A failed read costs the holds and
+ * not the roster.
+ */
+export async function roomStatePayload(
   room: {
     id: string;
     code: string;
@@ -40,6 +46,14 @@ export function roomStatePayload(
   },
   players: { seatIndex: number; userId: string; user: { username: string } }[]
 ) {
+  const holds =
+    room.status === "waiting"
+      ? await storage.getRoomSeatHolds(room, players).catch((err: unknown) => {
+          logger.warn({ err, roomId: room.id }, "seat holds read failed; the lobby shows none");
+          return [];
+        })
+      : [];
+  const now = Date.now();
   return {
     roomId: room.id,
     code: room.code,
@@ -52,6 +66,13 @@ export function roomStatePayload(
       seatIndex: p.seatIndex,
       userId: p.userId,
       username: p.user.username,
+    })),
+    // Remaining, never a wall-clock deadline: the client's clock is not the
+    // server's, and the difference is the whole length of a short hold.
+    seatHolds: holds.map((hold) => ({
+      seatIndex: hold.seatIndex,
+      username: hold.username,
+      expiresInMs: Math.max(0, hold.expiresAt - now),
     })),
   };
 }
@@ -132,10 +153,11 @@ export async function emitRoomStateTo(
   });
   // A running game always seats at least one human, so an empty roster is the
   // rows being gone rather than the table being empty.
-  io.to(userRoom(userId)).emit(
-    "room:state",
-    roomStatePayload(room ?? roomOf(game), players.length > 0 ? players : seatedHumansOf(game))
+  const payload = await roomStatePayload(
+    room ?? roomOf(game),
+    players.length > 0 ? players : seatedHumansOf(game)
   );
+  io.to(userRoom(userId)).emit("room:state", payload);
 }
 
 /** The half of a rejoin that belongs to the socket rather than to the table. */
@@ -366,7 +388,7 @@ export async function handleSeatRelease(
     }
     io.to(roomId).emit(
       "room:state",
-      roomStatePayload({ ...room, hostUserId: newHostId }, remaining)
+      await roomStatePayload({ ...room, hostUserId: newHostId }, remaining)
     );
     // Only the edge, matching the filling side: a 4-seat lobby going 2 → 1 was
     // joinable before and after, and its invitees have nothing to re-ask.

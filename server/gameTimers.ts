@@ -35,6 +35,16 @@ export const disconnectGraceMs = () => timeoutFromEnv("MURLAN_DISCONNECT_GRACE_M
  */
 export const lobbyGraceMs = () => timeoutFromEnv("MURLAN_LOBBY_GRACE_MS", 20_000);
 /**
+ * How long a seat invited into a room is held before a stranger may take it.
+ *
+ * Not derived from any of the graces above: every one of those guards a seat
+ * whose occupant was connected and dropped, and this one guards a seat for
+ * someone who has never arrived. Two minutes is the decision recorded in
+ * `docs/BRIEF.md` §3.3 — a minute is hostile to the friend still on the bus,
+ * ten is hostile to the room.
+ */
+export const seatHoldMs = () => timeoutFromEnv("MURLAN_SEAT_HOLD_MS", 120_000);
+/**
  * How long a client has to say it received a state broadcast before the server
  * sends it again. Generous: this must outlast a slow round trip on mobile, or a
  * table on a bad connection pays a duplicate snapshot for every move.

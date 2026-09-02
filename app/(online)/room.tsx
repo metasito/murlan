@@ -26,7 +26,7 @@ import { useNotification } from "@/context/NotificationContext";
 import { useAuth } from "@/context/AuthContext";
 import { useSocket } from "@/context/SocketContext";
 import { Colors, Spacing, Radius, FontSize, Motion, TOUCH_TARGET_MIN, Type } from '@/lib/theme';
-import { firstTargetFor, teamForSeat, TEAMS_PLAYER_COUNT } from "@/lib/gameEngine";
+import { firstTargetFor, TEAMS_PLAYER_COUNT } from "@/lib/gameEngine";
 import type { MatchLength } from "@/lib/gameEngine";
 import { BOT_PERSONALITIES, DEFAULT_BOT_PERSONALITY, botBlurbKey } from "@/lib/botPersonalities";
 import type { BotPersonalityId } from "@/lib/botPersonalities";
@@ -34,6 +34,7 @@ import { MenuLayout } from "@/components/MenuLayout";
 import { MenuButton } from "@/components/MenuButton";
 import { Toggle } from "@/components/Toggle";
 import { RoomKindNote } from "@/components/RoomKindNote";
+import { RoomSeatList } from "@/components/RoomSeatList";
 import { ConfirmDialog, type ConfirmRequest } from "@/components/ConfirmDialog";
 import { useTranslation } from "@/lib/i18n";
 import { A11yStatus, a11yHidden, a11yState } from "@/lib/a11y";
@@ -42,8 +43,6 @@ import type { FriendInfo } from "@/lib/wire";
 
 const CODE_ICON = 15;
 const MODE_ICON = 13;
-const TEAM_STRIPE = 3;
-const TEAM_COLORS = { A: Colors.gold, B: Colors.info };
 
 /** Long enough to read as a confirmation rather than as a flicker. */
 const COPIED_FOR_MS = Motion.duration.dwell;
@@ -329,10 +328,6 @@ export default function RoomScreen() {
 
   const isLandscape = useIsLandscape();
 
-  const playerItemHeight = isLandscape ? 36 : 44;
-  const playerItemPaddingVertical = isLandscape ? 4 : 8;
-  const playerListGap = isLandscape ? 4 : 6;
-
   const hasGameState = !!gameState;
   useEffect(() => {
     if (hasGameState) {
@@ -503,49 +498,15 @@ export default function RoomScreen() {
   );
 
   const seatList = (
-    <View style={{ gap: playerListGap }}>
-      {Array.from({ length: maxSeats }, (_, i) => {
-        const player = room.players.find((p) => p.seatIndex === i);
-        // The engine's own rule rather than a copy of it: a teams room of
-        // anything but four seats has no 2-v-2 to split into.
-        const team = teamForSeat(i, maxSeats, room.gameMode);
-        const gap = isLandscape ? Spacing.sm : Spacing.cosy;
-        return (
-          <View
-            key={i}
-            style={[
-              styles.seatRow,
-              { height: playerItemHeight, paddingVertical: playerItemPaddingVertical },
-              team ? { borderLeftColor: TEAM_COLORS[team], borderLeftWidth: TEAM_STRIPE } : undefined,
-            ]}
-          >
-            <Avatar name={player?.username} size={isLandscape ? "sm" : "md"} />
-            {player ? (
-              <>
-                <View style={[styles.slotInfo, { marginLeft: gap }]}>
-                  <Text style={styles.slotName} numberOfLines={1}>
-                    {player.username}
-                    {player.userId === user?.id ? t("room.youSuffix") : ""}
-                  </Text>
-                  {room.hostUserId === player.userId && (
-                    <Text style={[styles.hostBadge, isLandscape && styles.hostBadgeCompact]}>
-                      {t("room.hostBadge")}
-                    </Text>
-                  )}
-                </View>
-                {team && (
-                  <Text style={[styles.teamBadge, { color: TEAM_COLORS[team] }]}>{team}</Text>
-                )}
-              </>
-            ) : (
-              <Text style={[styles.slotWaiting, { marginLeft: gap }]}>
-                {t("room.waitingSeat")}
-              </Text>
-            )}
-          </View>
-        );
-      })}
-    </View>
+    <RoomSeatList
+      maxSeats={maxSeats}
+      gameMode={room.gameMode}
+      players={room.players}
+      hostUserId={room.hostUserId}
+      myUserId={user?.id}
+      seatHolds={room.seatHolds}
+      isLandscape={isLandscape}
+    />
   );
 
   if (isLandscape) {
@@ -750,14 +711,6 @@ const inviteStyles = StyleSheet.create({
 });
 
 const styles = StyleSheet.create({
-
-  seatRow: {
-    paddingHorizontal: Spacing.cosy,
-    backgroundColor: Colors.bgCard,
-    borderRadius: Radius.sm,
-    flexDirection: "row",
-    alignItems: "center",
-  },
   landscapeBody: {
     flex: 1,
     flexDirection: "row",
@@ -856,19 +809,6 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     letterSpacing: 2,
   },
-  slotInfo: { flex: 1, gap: Spacing.xxs },
-  slotName: { fontFamily: "Inter_500Medium", fontSize: FontSize.sm, color: Colors.text },
-  hostBadge: {
-    fontFamily: "Inter_400Regular",
-    fontSize: FontSize.xs,
-    color: Colors.gold,
-    letterSpacing: 0.5,
-  },
-  hostBadgeCompact: {
-    fontSize: FontSize.xxs,
-  },
-  slotWaiting: { flex: 1, fontFamily: "Inter_400Regular", fontSize: FontSize.sm, color: Colors.textMuted },
-  teamBadge: { fontFamily: "Rajdhani_700Bold", fontSize: FontSize.sm, letterSpacing: 1 },
   footer: { paddingHorizontal: Spacing.roomy, paddingTop: Spacing.sm, paddingBottom: Spacing.xs, gap: Spacing.xs },
   waitingHost: {
     flexDirection: "row",

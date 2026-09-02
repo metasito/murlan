@@ -50,6 +50,7 @@ Three pillars, in priority order:
 | Deployment | Replit stays the backend, unchanged. Add EAS Cloud for iOS/Android binaries pointing at the Replit API. |
 | Socket auth | Short-lived single-use signed ticket, minted by an authenticated REST endpoint, consumed in the handshake. No new dependencies. |
 | Game rules | Research Murlan rules from real sources, consolidate into one documented specification, reconcile code and UI against it. Escalate genuine ambiguities rather than guessing. |
+| Seating a friend in 2 v 2 | **A seat can be reserved, and the allocator knows about teams.** Invite a friend and their seat is held for them, on your own side; quick match fills what is left, seating each arrival on the side that needs a player. One rule at three reservation counts — one seat held for "bring one friend", three for "four friends", none for "four strangers". See below. |
 | The hand's two sizes | The change between them is a cut, not a transition. The turn is already signalled continuously by the lamp, the seat's ring, the other seats dimming and the hand's own eased lift — the size is the fifth signal, and the one the platform will not let us ease. See below. |
 
 ### 3.1 Rule decisions (taken after research — the sources are cited in `docs/RULES.md`)
@@ -123,6 +124,47 @@ What is not a cut: the hand's lift. `useHandLift` eases 500ms on the same turn c
 (`components/table/chrome.tsx`), so the moment is animated even though the size within it is
 not. Revisit if the glyph measurement ever moves off ink-versus-box, which is what makes a
 transformed card unmeasurable.
+
+### 3.3 The held seat, and the side it is on
+
+The owner's answer to #679, and the three questions the letter itself did not settle.
+
+**What was broken.** `claimRoomSeat` handed out the lowest free seat index, and `teamForSeat`
+puts seats 0+2 against 1+3. Two friends who quick-matched into the same 2-v-2 room therefore
+took seats 0 and 1 — opposite teams — and nothing in the room model could have seated them any
+other way. All three cases the ticket lists (bring one friend; four friends; a stranger as a
+partner) are the same question, *who sits where*, and a party object was declined because it is
+the only answer that changes what quick match is matching.
+
+**No new column, and no new table.** The reservation is not stored: it is *derived from the
+`game_invites` row that already exists*. An invite younger than the hold means the seat on the
+inviter's own side is spoken for; the row's `createdAt` is the clock, and `recordGameInvite`
+already refreshes it when someone re-invites. That is the cheapest rung of the ladder in
+`CLAUDE.md` — derive from existing rows — and it keeps the property `shared/schema.ts` states
+about invites, that they carry no `expires_at` of their own: the *hold* lapses, the invite does
+not, and a friend arriving three minutes late still joins, just not into a guaranteed seat.
+
+**Two minutes, and where the number comes from.** Nothing in the codebase could supply it. Every
+other grace here (`afkTimeoutMs` 30s, `lobbyGraceMs` 20s, `disconnectGraceMs` 60s) guards a seat
+whose occupant was connected and then dropped, which is a different actor and a different risk
+from a seat held for someone who has never arrived; the only other figure is
+`STALE_ROOM_MAX_AGE_MS` at 24 hours. So it is a new constant beside them —
+`seatHoldMs()` in `server/gameTimers.ts`, tunable by `MURLAN_SEAT_HOLD_MS` without a deploy. A
+minute is hostile to the friend still on the bus, ten is hostile to the room; the room itself
+survives 24 hours either way, so the exact value inside "minutes" is a tuning knob rather than a
+safety property.
+
+**"Only while someone is actually waiting" costs nothing to honour.** `room:quickmatch` is
+synchronous request/response — it finds a waiting room, claims a seat in a row-locked
+transaction, or opens one. There is no queue and no waiting state, so a held seat is only ever
+contested at the instant a stranger's claim runs, which *is* "only while someone is waiting".
+No flag, no bookkeeping.
+
+**The hold is taken in 2-v-2 rooms only.** A free-for-all lobby has no sides, so a hold there
+buys nothing but politeness while costing the room a seat for two minutes — and every case the
+ticket describes is a teams case. The predicate is derived, not a mode string: a room whose
+seats have no team has no side to hold you a seat on. Widening it to free-for-all is a one-line
+change if the owner wants it.
 
 ## 4. Workstreams
 
