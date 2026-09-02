@@ -165,7 +165,7 @@ function readTable(page: Page): Promise<Measurement> {
       const tableBox = table.getBoundingClientRect();
 
       // #785 diagnosis: a peer's lead — `useTableFeedback.ts`'s `kickScale` sits
-      // on an ancestor of this element (`styles.root` in GameTable.tsx) and
+      // on an ancestor of this element (`styles.kick` in GameTable.tsx) and
       // scales on a heavy landing. Reduced motion should gate it to a no-op
       // (this suite's fixture emulates it before every test), but this reports
       // the ancestor chain's own computed transform rather than trusting that.

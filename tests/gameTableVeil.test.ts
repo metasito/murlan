@@ -76,24 +76,28 @@ export interface RootChild {
   source: string;
 }
 
-/** A child opens at six spaces; the same depth closing one is that child's end. */
+/** A child opens at eight spaces; the same depth closing one is that child's end. */
 function isChildStart(line: string): boolean {
-  return /^ {6}[<{]/.test(line) && !/^ {6}<\//.test(line);
+  return /^ {8}[<{]/.test(line) && !/^ {8}<\//.test(line);
 }
 
 /**
- * The direct children of the root element, which the source marks out by
- * indentation: the root opens at four spaces and its children at six.
+ * The direct children of the layer the game is rendered into, which the source
+ * marks out by indentation: it opens at six spaces and its children at eight.
+ *
+ * That layer rather than the root: the root's other child is the felt, which
+ * carries no control and never leaves the window (#101), and every reachable
+ * thing on the table is inside the layer the landing displaces.
  *
  * Comments are blanked first — one naming `behindVeil` next to a child that
  * does not carry it would answer for that child.
  */
 export function rootChildren(raw: string): RootChild[] {
   const lines = blankComments(raw).split("\n");
-  const open = lines.findIndex((l) => /^ {4}<Animated\.View style=\{\[styles\.root/.test(l));
-  assert.ok(open >= 0, "GameTable's root element is no longer where this test looks for it");
-  const close = lines.findIndex((l, i) => i > open && /^ {4}<\/Animated\.View>/.test(l));
-  assert.ok(close > open, "GameTable's root element never closes");
+  const open = lines.findIndex((l) => /^ {6}<Animated\.View style=\{\[styles\.kick/.test(l));
+  assert.ok(open >= 0, "GameTable's game layer is no longer where this test looks for it");
+  const close = lines.findIndex((l, i) => i > open && /^ {6}<\/Animated\.View>/.test(l));
+  assert.ok(close > open, "GameTable's game layer never closes");
 
   const children: RootChild[] = [];
   for (let i = open + 1; i < close; i++) {
@@ -129,6 +133,39 @@ describe("every child of the game table's root answers to the veil", () => {
     assert.ok(
       children.some((c) => c.name === "GameSettingsSheet"),
       "the sheet itself was not among the root's children, so the scan is looking in the wrong place"
+    );
+  });
+
+  test("the root holds exactly the felt and the layer the kick moves", () => {
+    // #101's fix is that the felt never moves while the kick displaces
+    // everything else. That only holds while the root has these two children
+    // and no other: a third would ride neither rule, and whichever side of the
+    // kick it landed on, the window it uncovered would show through again.
+    // The scan above reads the kick layer's children, so nothing else here
+    // would notice a new root child.
+    const lines = blankComments(source).split("\n");
+    const open = lines.findIndex((l) => /^ {4}<View style=\{\[styles\.root/.test(l));
+    assert.ok(open >= 0, "GameTable's root is no longer where this test looks for it");
+    const close = lines.findIndex((l, i) => i > open && /^ {4}<\/View>/.test(l));
+    assert.ok(close > open, "GameTable's root never closes");
+
+    const kids = lines
+      .slice(open + 1, close)
+      .filter((l) => /^ {6}</.test(l) && !/^ {6}<\//.test(l));
+
+    assert.equal(
+      kids.length,
+      2,
+      `the root has ${kids.length} direct children; #101 needs exactly two — the felt, ` +
+        `which never moves, and the layer the kick displaces`
+    );
+    assert.ok(
+      kids.some((l) => /styles\.kick/.test(l)),
+      "the layer the kick moves is no longer a direct child of the root"
+    );
+    assert.ok(
+      /^ {6}<View\b/.test(kids.find((l) => !/styles\.kick/.test(l)) ?? ""),
+      "the root's other child is no longer a plain View, so the felt may now be animated"
     );
   });
 
