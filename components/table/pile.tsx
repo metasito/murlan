@@ -25,11 +25,13 @@ import {
   COMBO_MAX_TILT,
   FLIGHT_MS,
   cardTilt,
+  flinchFor,
   impactDelayMs,
   landingHoldMs,
   landSquashScale,
   settleForMotion,
   type FlyDirection,
+  type ImpactTier,
 } from "@/components/gameTableModel";
 import { FIELD_ARC, solveArc } from "@/components/tableArc";
 
@@ -335,12 +337,21 @@ function PileComboCards({
   );
 }
 
+// The beaten pile's resting pose, folded into `prevLayerStyle` below rather
+// than left in `pilePrevLayer`'s own static style — the flinch (#764) rides
+// the same worklet, so a second `transform` array cannot clobber it (React
+// Native replaces a style's `transform` wholesale, never merges it).
+const PILE_PREV_ROTATE_DEG = -7;
+const PILE_PREV_Y = 9;
+
 export function PlayedPile({
   prev,
   current,
   roundWinner,
   bounceTrigger,
   catchTrigger,
+  flinchTrigger,
+  flinchTier,
   roomW,
   scale = 1,
 }: {
@@ -350,6 +361,10 @@ export function PlayedPile({
   bounceTrigger?: number;
   /** The flush: the play just landed emptied a hand. */
   catchTrigger?: number;
+  /** Increments at the same `impactDelayMs()` landing everything else on the table reads — the beaten pile's own reaction to being displaced (#764). */
+  flinchTrigger?: number;
+  /** The tier `flinchTrigger`'s landing resolved to — gameTableModel.ts `flinchFor`. */
+  flinchTier?: ImpactTier;
   /** The width share the field's arc may take — see FIELD_WIDTH_SHARE. */
   roomW: number;
   /** The table's own scale — the pile draws its cards at `scale * FIELD_SCALE`. */
@@ -361,6 +376,9 @@ export function PlayedPile({
   // The pile settles downward rather than scaling up: it holds card faces and
   // a label, and scaling rasterised text is what makes it look cheap.
   const settleY = useSharedValue(0);
+  // The beaten combination's own reaction (#764): knocked further under the
+  // new one, then spring-settled back to its resting offset.
+  const flinchY = useSharedValue(0);
 
   useEffect(() => {
     if (!bounceTrigger || reduceMotion) return;
@@ -370,15 +388,35 @@ export function PlayedPile({
     );
   }, [bounceTrigger, reduceMotion, settleY]);
 
+  // No `|| reduceMotion`: `flinchFor` already reads it and answers 0, the way
+  // `traumaFor` does for the shake this composes with (#763).
+  useEffect(() => {
+    if (!flinchTrigger) return;
+    const distance = flinchFor(flinchTier ?? "ordinary", reduceMotion);
+    if (distance === 0) return;
+    flinchY.value = withSequence(
+      withTiming(distance, { duration: Motion.duration.flash }),
+      withSpring(0, Motion.spring.land)
+    );
+  }, [flinchTrigger, flinchTier, reduceMotion, flinchY]);
+
   useEffect(
     () => () => {
       cancelAnimation(settleY);
+      cancelAnimation(flinchY);
     },
-    [settleY]
+    [settleY, flinchY]
   );
 
   const bounceStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: settleY.value }],
+  }));
+
+  const prevLayerStyle = useAnimatedStyle(() => ({
+    transform: [
+      { rotate: `${PILE_PREV_ROTATE_DEG}deg` },
+      { translateY: PILE_PREV_Y + flinchY.value },
+    ],
   }));
 
   const isPower = current && POWER_COMBOS.has(current.type);
@@ -400,9 +438,12 @@ export function PlayedPile({
         {/* The beaten combination stays under the new one, rotated off-axis,
             the way the previous trick sits under the one that took it. */}
         {prev && (
-          <View style={pileStyles.pilePrevLayer} pointerEvents="none">
+          <Animated.View
+            style={[pileStyles.pilePrevLayer, prevLayerStyle]}
+            pointerEvents="none"
+          >
             <PileComboCards cards={prev.cards} scale={cardScale} roomW={roomW} />
-          </View>
+          </Animated.View>
         )}
         {current && (
           <PileComboCards
@@ -506,7 +547,6 @@ const pileStyles = StyleSheet.create({
   pilePrevLayer: {
     position: "absolute",
     opacity: 0.3,
-    transform: [{ rotate: "-7deg" }, { translateY: 9 }],
   },
   comboLabel: { marginTop: Spacing.snug },
   comboChip: {

@@ -461,6 +461,27 @@ export function traumaFor(tier: ImpactTier, reduceMotion: boolean): number {
 }
 
 /**
+ * How far the beaten combination (`pileState.prev`) is knocked as the new one
+ * lands on it — #764, colocated with `TRAUMA_BY_TIER` so it reads the same
+ * five tiers rather than inventing a second classification #765 could then
+ * disagree with. Unlike trauma, a straight or flush is not silent here: the
+ * pile it beat still visibly gives ground, just short of a bomb's knock.
+ * `Spacing.xxs`/`Spacing.slim` (lib/tokens.ts), never a pixel literal.
+ */
+const FLINCH_BY_TIER: Record<ImpactTier, number> = {
+  ordinary: 0,
+  straightFlush: Spacing.xxs,
+  bomb: Spacing.slim,
+  mancheWon: Spacing.slim,
+  partitaWon: Spacing.slim,
+};
+
+/** The tier's own flinch, or 0 outright when the player asked for less motion. */
+export function flinchFor(tier: ImpactTier, reduceMotion: boolean): number {
+  return reduceMotion ? 0 : FLINCH_BY_TIER[tier];
+}
+
+/**
  * The shake's own amplitude `elapsedMs` into a decay window of `decayMs` —
  * trauma squared, not trauma (see `Trauma`, lib/tokens.ts, for why squaring
  * wins over the raw value): the tier's own trauma decays linearly to 0 across
