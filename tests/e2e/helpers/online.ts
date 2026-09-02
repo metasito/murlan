@@ -29,15 +29,22 @@ export async function createRoom(page: Page, setup: RoomSetup): Promise<string> 
   await page.waitForURL(/\/room/);
 
   // The code itself carries no label or testid of its own; it is the next
-  // sibling of the "CODICE STANZA" caption (app/(online)/room.tsx). The room
-  // screen renders its landscape and portrait branches at once (shown/hidden
-  // by CSS, same as the create form below), so a caller reaching this screen
-  // more than once in a session — a retried room, not just a first one — can
-  // find two such captions live at once; only the visible one is real.
+  // sibling of the "CODICE STANZA" caption (app/(online)/room.tsx), which
+  // renders exactly once — confirmed on both a first room visit and a
+  // revisited one, from the browser's own accessibility tree, not by reading
+  // the component (#793).
+  //
+  // `getByText` without `exact` matches by case-insensitive substring, which
+  // also catches "Inserisci codice stanza" (the lobby's join-by-code button)
+  // — a false positive, not a second caption. React Navigation's Stack
+  // (`app/(online)/_layout.tsx`) keeps a screen it navigated away from
+  // mounted rather than tearing it down, so the lobby the room was pushed
+  // from is still in the DOM underneath, `aria-hidden="true"`; the CDP
+  // accessibility tree carries no node for it at all. `exact` sidesteps the
+  // collision outright, with no need to reason about which copy is visible.
   const codeLocator = page
-    .getByText("CODICE STANZA")
-    .locator("xpath=following-sibling::*[1]")
-    .locator("visible=true");
+    .getByText("CODICE STANZA", { exact: true })
+    .locator("xpath=following-sibling::*[1]");
   await codeLocator.waitFor();
   return (await codeLocator.textContent())!.trim();
 }

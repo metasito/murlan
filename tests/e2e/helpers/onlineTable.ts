@@ -61,9 +61,7 @@ export interface OnlineTableSetup extends RoomSetup {
  * different tables depending on which seat the server dealt first.
  *
  * A losing deal is retried with a whole new account rather than a new room
- * on the same one: the room screen keeps a hidden landscape/portrait twin of
- * its own markup mounted (two "CODICE STANZA" nodes for one room, worked
- * around below), and re-creating a room on it once left a "Crea Stanza"
+ * on the same one: re-creating a room on it once left a "Crea Stanza"
  * click landing on a node the leave had already begun tearing down — the
  * click succeeded, the room never was. Signing out is not the cookie-clear
  * this replaced, either: clearing cookies under a page whose socket is still

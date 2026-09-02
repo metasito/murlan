@@ -81,6 +81,19 @@ const COMPARED_BUT_NOT_A_SENTINEL: [string, string, string][] = [
     "asks which control has focus, not whether something is legal — the same identity the file " +
       "takes by role five times over, and there is no locator query for `document.activeElement`",
   ],
+  [
+    "tests/e2e/oneAccessibleNode.spec.ts",
+    "room.codeLabel",
+    "asks how many accessibility-tree nodes carry this name, not whether something is legal " +
+      "(#793) — the count is the assertion, not the sentence",
+  ],
+  [
+    "tests/e2e/oneAccessibleNode.spec.ts",
+    "onlineLobby.enterRoomCode",
+    "asks whether a backgrounded screen's own control reaches the accessibility tree at all " +
+      "(#793), not whether something is legal — the same identity `getByText`'s substring match " +
+      "already collided on",
+  ],
 ];
 
 /**
