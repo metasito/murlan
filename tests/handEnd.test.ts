@@ -251,12 +251,11 @@ describe("resolveHandEnd — gameResults shaping", () => {
 
     // The point still lands on the hand's own scoreboard...
     assert.equal(hand2.handByKey["bot:1"], 1);
-    // ...but docs/BRIEF.md §3.1 ("Naming the winner of a single manche") and
-    // the matching lib/gameEngine.ts contract (tests/scoring.test.ts's "keys
-    // the table does not accumulate") already decide, deliberately, that a
-    // vacated seat's points never join the running total a departed human's
-    // own name is still attached to. That decision — not this PR — is why
-    // this sum does not equal hands played; see the PR body for #815.
+    // ...but this exclusion is left as-is: the owner's 2026-09-02 ruling on
+    // #815 keeps this PR scoped to the born-bot door and defers whether a
+    // vacated seat's points should accumulate to #820, which decides the
+    // disconnect policy as a whole. Not a §3.1 requirement — §3.1 only ever
+    // decided the winner *announcement*, not this.
     const total = Object.values(hand2.cumulativeScores).reduce((a, b) => a + b, 0);
     assert.equal(total, 1);
   });
