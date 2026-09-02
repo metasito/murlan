@@ -738,21 +738,42 @@ export interface FlightOriginInput {
  * zero, so the throw lands exactly where `PlayedPile` then redraws the same
  * cards.
  */
-export function flightOrigin(input: FlightOriginInput): { dx: number; dy: number } {
-  const { dir, scale } = input;
-
-  const ringSize = SEAT_DISC * scale;
+/**
+ * Where the pile's own centre lands, and the band the seats share it with.
+ * Every delta on this table is measured from that point, so it is derived once
+ * and read by both the throw's origin and the exchange's own geometry.
+ */
+function pileGeometry(input: Omit<FlightOriginInput, "dir" | "sideDisplayedCount">): {
+  centerX: number;
+  centerY: number;
+  tableFloor: number;
+  midH: number;
+} {
+  const ringSize = SEAT_DISC * input.scale;
   // The column the top seat's label, ring and fan stack in — see
   // components/table/seats.tsx `topOppSlot`. The pile sits in whatever
   // vertical space that column leaves, whichever seat is actually throwing.
   const topSectionH =
-    seatLabelH(scale) +
+    seatLabelH(input.scale) +
     ringSize +
-    (input.topDisplayedCount > 0 ? seatGap(scale) + topFanHeight(scale, input.topDisplayedCount) : 0);
+    (input.topDisplayedCount > 0
+      ? seatGap(input.scale) + topFanHeight(input.scale, input.topDisplayedCount)
+      : 0);
   const tableFloor = input.windowHeight - input.surplus;
-  const contentH = tableFloor - input.tableTop;
-  const midH = contentH - topSectionH - input.handZoneH;
-  const pileCenterY = input.tableTop + topSectionH + midH / 2;
+  const midH = tableFloor - input.tableTop - topSectionH - input.handZoneH;
+  return {
+    centerX: input.tableLeft + (input.windowWidth - input.tableLeft - input.tableRight) / 2,
+    centerY: input.tableTop + topSectionH + midH / 2,
+    tableFloor,
+    midH,
+  };
+}
+
+export function flightOrigin(input: FlightOriginInput): { dx: number; dy: number } {
+  const { dir, scale } = input;
+
+  const ringSize = SEAT_DISC * scale;
+  const { centerX: pileCenterX, centerY: pileCenterY, tableFloor, midH } = pileGeometry(input);
 
   if (dir === "bottom") {
     // The hand zone runs flush to the table's own bottom edge (GameTable.tsx
@@ -771,8 +792,6 @@ export function flightOrigin(input: FlightOriginInput): { dx: number; dy: number
   // its column is anchored to the top of the mid band (components/table/
   // chrome.tsx `sideSection`, `alignSelf`), so the ring rides the slot's own
   // centre while the pile rides the band's.
-  const tableW = input.windowWidth - input.tableLeft - input.tableRight;
-  const pileCenterX = input.tableLeft + tableW / 2;
   const ringCenterX =
     dir === "left"
       ? input.tableLeft + Spacing.sm + ringSize / 2
@@ -816,6 +835,13 @@ export interface ExchangeFlight {
    * direction between them, since all three carry the same shift.
    */
   lane: { dx: number; dy: number };
+  /**
+   * Where this trip's "got this card" label sits — beside the seat it names,
+   * clear of the card it describes, and inside the table. Carried on the trip
+   * rather than derived at the label itself, which knows the geometry of
+   * nothing.
+   */
+  tag: { dx: number; dy: number };
 }
 
 /**
@@ -867,16 +893,34 @@ export function exchangeFlight(input: ExchangeFlightInput): ExchangeFlight {
   const offY = len === 0 ? 0 : py * clearance;
   const intoLane = (p: { dx: number; dy: number }) => ({ dx: p.dx + offX, dy: p.dy + offY });
 
-  return {
+  const trip = {
     from: intoLane(from),
     meet: intoLane({ dx: (from.dx + to.dx) / 2, dy: (from.dy + to.dy) / 2 }),
     to: intoLane(to),
     lane: { dx: offX, dy: offY },
   };
+  const pile = pileGeometry(input);
+  return {
+    ...trip,
+    tag: exchangeTagOffset(trip, {
+      minDx: input.tableLeft + TAG_CLEARANCE - pile.centerX,
+      maxDx: input.windowWidth - input.tableRight - TAG_CLEARANCE - pile.centerX,
+      minDy: input.tableTop + TAG_CLEARANCE - pile.centerY,
+      // The hand zone is the one band on the table that is always full of
+      // cards, whoever is playing — the label's own floor rather than the
+      // window's.
+      maxDy: pile.tableFloor - input.handZoneH - TAG_CLEARANCE - pile.centerY,
+    }),
+  };
 }
 
-/** How far clear of its own lane the label sits, beyond the card's own reach. */
-const TAG_LANE_CLEARANCE = 30;
+/**
+ * The label's own reach: how far it stands off anything it must not touch —
+ * its lane, beyond the card's own reach, and every edge it is clamped inside.
+ * A single line of type in a padded box is smaller than this in both
+ * directions, so the clearance holds for the box and not merely its centre.
+ */
+const TAG_CLEARANCE = 30;
 /**
  * How far along its own trip the label sits — on its seat's side of the table,
  * and stopping well short of the seat itself.
@@ -892,13 +936,35 @@ const TAG_ALONG_TRIP = 0.72;
 /**
  * Where one seat's "got this card" label sits, in the same pile-relative deltas
  * the flight itself speaks.
+ *
+ * The lane runs across the direction of travel, so on a diagonal it carries the
+ * label sideways as far as it carries it along — and the seat it names is
+ * already at the table's edge. The bounds are what it may not leave: without
+ * them a trade between the left seat and the viewer's put one label below the
+ * window, where
+ * the table's clip retired it entirely.
  */
-export function exchangeTagOffset(trip: ExchangeFlight): { dx: number; dy: number } {
+function exchangeTagOffset(
+  trip: Omit<ExchangeFlight, "tag">,
+  bounds: { minDx: number; maxDx: number; minDy: number; maxDy: number }
+): { dx: number; dy: number } {
   const laneLen = Math.hypot(trip.lane.dx, trip.lane.dy) || 1;
-  const reach = laneLen + TAG_LANE_CLEARANCE;
+  const reach = laneLen + TAG_CLEARANCE;
+  // A window too small to hold the clearance on both sides has no room to
+  // clamp into; the middle of what there is beats an inverted box.
+  const clamp = (v: number, min: number, max: number) =>
+    min > max ? (min + max) / 2 : Math.min(Math.max(v, min), max);
   return {
-    dx: trip.from.dx + (trip.to.dx - trip.from.dx) * TAG_ALONG_TRIP + (trip.lane.dx / laneLen) * reach,
-    dy: trip.from.dy + (trip.to.dy - trip.from.dy) * TAG_ALONG_TRIP + (trip.lane.dy / laneLen) * reach,
+    dx: clamp(
+      trip.from.dx + (trip.to.dx - trip.from.dx) * TAG_ALONG_TRIP + (trip.lane.dx / laneLen) * reach,
+      bounds.minDx,
+      bounds.maxDx
+    ),
+    dy: clamp(
+      trip.from.dy + (trip.to.dy - trip.from.dy) * TAG_ALONG_TRIP + (trip.lane.dy / laneLen) * reach,
+      bounds.minDy,
+      bounds.maxDy
+    ),
   };
 }
 
@@ -1066,6 +1132,30 @@ const URGENT_FRACTION = 0.4;
  */
 export function urgentThresholdSeconds(clockSeconds: number): number {
   return Math.max(URGENT_TICK_SECONDS, Math.ceil(clockSeconds * URGENT_FRACTION));
+}
+
+/**
+ * Whether the manche's opening play is still to come — the moment
+ * `startReason` describes, and the only one it may be announced in.
+ *
+ * The turn index matching the opener does not answer this: `startReason` labels
+ * the whole manche and is never cleared, and the opener takes the lead again
+ * every round they win. `firstPlayMade` does not either — only the very first
+ * deal of a partita starts it false; a manche dealt after a lost round carries
+ * it already true. What every deal empties and every play writes is the rank
+ * tally, so an empty one is the state's own word for "nobody has played this
+ * manche yet". A hand persisted before the tally existed has none, and reads as
+ * past its opening: a missing announcement costs less than one over a live hand.
+ */
+export function openingIsPending(state: {
+  currentTurnIndex: number;
+  gameOver: boolean;
+  startReason?: { playerIdx: number };
+  playedRanks?: number[];
+}): boolean {
+  if (state.gameOver || state.startReason === undefined) return false;
+  if (state.currentTurnIndex !== state.startReason.playerIdx) return false;
+  return state.playedRanks?.every((played) => played === 0) ?? false;
 }
 
 /**

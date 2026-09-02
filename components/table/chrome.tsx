@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { View, StyleSheet, Pressable, type TextProps, type AccessibilityProps } from "react-native";
 import { TableText } from "./TableText";
 import {
@@ -55,24 +55,17 @@ export function StartReasonBanner({
   onDone: () => void;
 }) {
   const { t } = useTranslation();
-  const [visible, setVisible] = useState(true);
   const doneRef = useRef(onDone);
   useEffect(() => {
     doneRef.current = onDone;
   });
+  // Whether it is still up is the caller's to hold, not a second flag here:
+  // the caller is also the one that knows when the moment being announced has
+  // passed, and two answers to one question is how a gate comes back.
   useEffect(() => {
-    const timer = setTimeout(() => setVisible(false), Reading.notice);
+    const timer = setTimeout(() => doneRef.current(), Reading.notice);
     return () => clearTimeout(timer);
   }, []);
-  // Told once however it ends: its own clock, a tap, or the caller taking the
-  // whole layer away because the turn it names is over. The last of the three
-  // is why the cleanup is here — the opener leads again later in the same
-  // manche, and the announcement must not come back with them.
-  useEffect(() => () => doneRef.current(), []);
-  useEffect(() => {
-    if (!visible) doneRef.current();
-  }, [visible]);
-  if (!visible) return null;
 
   const playerName = players[reason.playerIdx]?.name ?? "?";
   let mainText = "";
@@ -103,7 +96,7 @@ export function StartReasonBanner({
       />
       <Pressable
         testID="start-reason-gate"
-        onPress={() => setVisible(false)}
+        onPress={() => doneRef.current()}
         style={startReasonStyles.gate}
         {...a11yHidden()}
       >

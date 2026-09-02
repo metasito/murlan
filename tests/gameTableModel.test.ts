@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { CARD_H, CARD_W, BACK_SCALE } from "../components/cardFaceModel.ts";
+import { CARD_H, CARD_W, BACK_SCALE, HAND_SCALE, cardScale } from "../components/cardFaceModel.ts";
 import { Hold, TOUCH_TARGET_MIN, Trauma, Motion, Spacing } from "../lib/tokens.ts";
 import { blankComments } from "./helpers/sourceScan.ts";
 import type { Card, Combination } from "../lib/gameEngine.ts";
@@ -35,7 +35,6 @@ import {
   fanCounts,
   flightOrigin,
   exchangeFlight,
-  exchangeTagOffset,
   type FlyDirection,
   sideSlotHeight,
   seatFanArc,
@@ -2514,14 +2513,14 @@ describe("exchangeFlight", () => {
   // #817: the owner read "got 2 of Diamonds" over his own hand, dark on a card
   // face. The label used to sit at the landing point, and for the viewer's own
   // seat that point is the hand zone's own centre (`flightOrigin`, "bottom").
-  describe("exchangeTagOffset", () => {
+  describe("the seat labels", () => {
     const tripFor = (from: FlyDirection, to: FlyDirection) =>
       exchangeFlight({ ...frame, sideDisplayedCounts, from, to, cardW, cardH });
 
     test("the label stops short of the seat it names, on every trip", () => {
       for (const [from, to] of PAIRS) {
         const flight = tripFor(from, to);
-        const tag = exchangeTagOffset(flight);
+        const tag = flight.tag;
         const trip = dist(flight.from, flight.to);
         // Measured along the trip alone: the lane offset is across it and
         // would otherwise flatter the distance without moving the label off
@@ -2545,8 +2544,8 @@ describe("exchangeFlight", () => {
 
     test("the two labels stay a whole lane apart, as the two cards do", () => {
       for (const [from, to] of PAIRS) {
-        const there = exchangeTagOffset(tripFor(from, to));
-        const back = exchangeTagOffset(tripFor(to, from));
+        const there = tripFor(from, to).tag;
+        const back = tripFor(to, from).tag;
         assert.ok(
           dist(there, back) > Math.max(cardW, cardH),
           `${from} ⇄ ${to}: the two labels are ${dist(there, back).toFixed(0)}px apart`
@@ -2557,11 +2556,77 @@ describe("exchangeFlight", () => {
     test("the label is off the lane its own card landed on", () => {
       for (const [from, to] of PAIRS) {
         const flight = tripFor(from, to);
-        const tag = exchangeTagOffset(flight);
+        const tag = flight.tag;
         assert.ok(
           boxOverlap(tag, flight.to) === 0,
           `${from} → ${to}: the label overlaps the card it describes`
         );
+      }
+    });
+
+    // A trip standing off its lane can reach past the table it is drawn on: the
+    // lane's own offset is perpendicular to the travel, so on a diagonal it
+    // carries the label sideways as well as along, and the seat it names is
+    // already at the edge.
+    test("the label stays on the felt the seats are drawn on, and off the hand", () => {
+      // The owner's own window, measured the way the table measures it: a
+      // notched phone in landscape is tighter than the frame above in every
+      // direction, and it is where the label went off-screen.
+      const W = 844;
+      const H = 390;
+      const deviceScale = cardScale(Math.min(W, H));
+      const deviceFrame = computeTableFrame({
+        width: W,
+        height: H,
+        insets: { top: 0, bottom: 21, left: 59, right: 0 },
+        scale: deviceScale,
+        railSide: "left",
+      });
+      const device = {
+        scale: deviceScale,
+        windowWidth: W,
+        windowHeight: H,
+        tableLeft: deviceFrame.tableLeft,
+        tableRight: deviceFrame.tableRight,
+        tableTop: deviceFrame.tableTop,
+        surplus: deviceFrame.surplus,
+        handZoneH: HAND_ZONE_H(CARD_H(deviceScale * HAND_SCALE), deviceFrame.bottomPad),
+        // Four seats, a fresh deal, thirteen cards each.
+        topDisplayedCount: 13,
+      };
+      const deviceSides = { left: 13, right: 13 };
+
+      for (const geom of [
+        { name: "the reference window", g: frame, sides: sideDisplayedCounts },
+        { name: "a notched phone", g: device, sides: deviceSides },
+      ]) {
+        const pileX = geom.g.tableLeft + (geom.g.windowWidth - geom.g.tableLeft - geom.g.tableRight) / 2;
+        // The hand zone's own centre, from the same helper the flight uses —
+        // so the band the label must stay above is half a hand zone above it.
+        const handTop =
+          flightOrigin({ ...geom.g, dir: "bottom", sideDisplayedCount: 0 }).dy - geom.g.handZoneH / 2;
+        for (const [from, to] of PAIRS) {
+          const tag = exchangeFlight({
+            ...geom.g,
+            sideDisplayedCounts: geom.sides,
+            from,
+            to,
+            cardW,
+            cardH,
+          }).tag;
+          const x = pileX + tag.dx;
+          assert.ok(
+            x > geom.g.tableLeft && x < geom.g.windowWidth - geom.g.tableRight,
+            `${geom.name}, ${from} → ${to}: the label's centre is at x ${x.toFixed(0)}, ` +
+              `outside the table (${geom.g.tableLeft.toFixed(0)}…` +
+              `${(geom.g.windowWidth - geom.g.tableRight).toFixed(0)})`
+          );
+          assert.ok(
+            tag.dy < handTop,
+            `${geom.name}, ${from} → ${to}: the label's centre is ` +
+              `${(tag.dy - handTop).toFixed(0)}px into the player's own hand`
+          );
+        }
       }
     });
   });

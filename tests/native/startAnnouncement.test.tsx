@@ -9,7 +9,8 @@
 // table having moved on is enough, on its own, to take the announcement away.
 import { describe, it, expect, jest } from '@jest/globals';
 import React from 'react';
-import { render, screen } from '@testing-library/react-native';
+import { fireEvent, render, screen } from '@testing-library/react-native';
+import { StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 const WINDOW = { width: 844, height: 390, scale: 2, fontScale: 1 };
@@ -31,8 +32,8 @@ jest.mock('@/lib/accessibility', () => ({
   getMotionPreference: () => 'off',
 }));
 
-import { GameTable } from '@/components/GameTable';
-import type { Card, GameState, Player } from '@/lib/gameEngine';
+import { GameTable, type TurnTimerConfig } from '@/components/GameTable';
+import { RANK_SLOTS, type Card, type GameState, type Player } from '@/lib/gameEngine';
 
 const INSETS = { top: 0, left: 47, right: 0, bottom: 21 };
 const METRICS = { frame: { x: 0, y: 0, width: WINDOW.width, height: WINDOW.height }, insets: INSETS };
@@ -48,7 +49,15 @@ const seat = (i: number): Player => ({
 /** The manche opens with seat 1 to play, because seat 1 lost the last round. */
 const OPENER = 1;
 
-function state(currentTurnIndex: number): GameState {
+/**
+ * A manche dealt after a lost round is dealt with `firstPlayMade` already true
+ * — only the very first deal of a partita starts it false — so what says the
+ * opening is still to come is the rank tally, which every deal empties and
+ * every play writes.
+ */
+function state(currentTurnIndex: number, cardsPlayed = 0): GameState {
+  const playedRanks = Array.from({ length: RANK_SLOTS }, () => 0);
+  playedRanks[0] = cardsPlayed;
   return {
     players: [0, 1, 2, 3].map(seat),
     currentTurnIndex,
@@ -61,17 +70,22 @@ function state(currentTurnIndex: number): GameState {
     rankings: [],
     firstPlayMade: true,
     startReason: { type: 'lost_round', playerIdx: OPENER },
+    playedRanks,
   };
 }
 
+/** The same manche, one play further in. */
+const midManche = (currentTurnIndex: number) => state(currentTurnIndex, 1);
+
 const noop = () => {};
 
-function table(gameState: GameState) {
+function table(gameState: GameState, opts: { viewerSeat?: number; turnTimer?: TurnTimerConfig } = {}) {
   return (
     <SafeAreaProvider initialMetrics={METRICS}>
       <GameTable
         gameState={gameState}
-        viewerSeat={0}
+        viewerSeat={opts.viewerSeat ?? 0}
+        turnTimer={opts.turnTimer}
         selectedIds={[]}
         onSelectCard={noop}
         onPlay={noop}
@@ -111,7 +125,7 @@ describe('the manche-opening announcement', () => {
     // One play later. Nothing about the clock has changed — this is the whole
     // claim: the announcement cannot outlive the turn it announces, however
     // much of its own reading budget is left.
-    await view.rerender(table(state(OPENER + 1)));
+    await view.rerender(table(midManche(OPENER + 1)));
     expect(screen.queryByTestId('start-reason-gate', { includeHiddenElements: true })).toBeNull();
     expect(screen.queryByRole('alert')).toBeNull();
 
@@ -120,12 +134,104 @@ describe('the manche-opening announcement', () => {
 
   it('does not come back when the same seat leads again later in the manche', async () => {
     const view = await render(table(state(OPENER)));
-    await view.rerender(table(state(OPENER + 1)));
+    await view.rerender(table(midManche(OPENER + 1)));
     // Everyone passes and the lead comes back round. The turn matching again
     // is not the manche opening again, and the announcement is spent.
-    await view.rerender(table(state(OPENER)));
+    await view.rerender(table(midManche(OPENER)));
 
     expect(screen.queryByTestId('start-reason-gate', { includeHiddenElements: true })).toBeNull();
+
+    await view.unmount();
+  });
+
+  // Online the table is never unmounted between manches — the result board is a
+  // modal inside its own overlays slot — so anything the last manche spent is
+  // still spent when the next one is dealt, and two manches running can carry
+  // the same opener for the same reason.
+  it('announces the next manche, even when the same seat opens it for the same reason', async () => {
+    const view = await render(table(state(OPENER)));
+    await view.rerender(table(midManche(OPENER + 1)));
+    expect(screen.queryByTestId('start-reason-gate', { includeHiddenElements: true })).toBeNull();
+
+    // A fresh deal: nothing played, and the same seat opening for the same
+    // reason as last time.
+    await view.rerender(table(state(OPENER)));
+    expect(screen.getByTestId('start-reason-gate', { includeHiddenElements: true })).toBeTruthy();
+
+    await view.unmount();
+  });
+
+  // `startReason` labels the whole manche and is never cleared, and the opener
+  // takes the lead again every round they win. A table mounted after the
+  // opening — an online reload, a rejoin, a resumed offline game — would
+  // otherwise cover the felt mid-hand with the deal's own news.
+  it('stays away on a table mounted after the opening was played', async () => {
+    const view = await render(table(midManche(OPENER + 1)));
+    expect(screen.queryByTestId('start-reason-gate', { includeHiddenElements: true })).toBeNull();
+
+    await view.rerender(table(midManche(OPENER)));
+    expect(screen.queryByTestId('start-reason-gate', { includeHiddenElements: true })).toBeNull();
+
+    await view.unmount();
+  });
+
+  // Withdrawing the table from the reader is half of it; the other half is
+  // covering it, and only the gate's own box says whether it does. A layer that
+  // paints under the table gates nothing — every card and both buttons stay
+  // where a finger can reach them, with nothing else in the suite the wiser.
+  it('covers the whole window, over the table rather than under it', async () => {
+    const view = await render(table(state(OPENER)));
+
+    const gate = StyleSheet.flatten(
+      screen.getByTestId('start-reason-gate', { includeHiddenElements: true }).props.style
+    ) as Record<string, number | string>;
+    expect(gate.position).toBe('absolute');
+    for (const edge of ['top', 'left', 'right', 'bottom'] as const) {
+      expect(gate[edge]).toBe(0);
+    }
+
+    const tableStyle = StyleSheet.flatten(
+      screen.getByTestId('game-table', { includeHiddenElements: true }).props.style
+    ) as Record<string, number>;
+    expect(Number(gate.zIndex)).toBeGreaterThan(tableStyle.zIndex);
+
+    await view.unmount();
+  });
+
+  // A pause the seat cannot see is worse than no pause: the clock the player is
+  // charged is the one the deadline's owner keeps, so the client stops its own
+  // and leaves a server's alone.
+  it('stops a clock this client owns while it holds, and starts it on the way out', async () => {
+    const clock: TurnTimerConfig = { seconds: 20, includeNewRound: true, pausable: true };
+    const view = await render(table(state(OPENER), { viewerSeat: OPENER, turnTimer: clock }));
+
+    // Hidden elements included both times: while the gate holds, the chip
+    // carrying the countdown is withdrawn along with the rest of the table, so
+    // a default query would report the clock stopped whether it was or not.
+    expect(screen.queryByText('20', { includeHiddenElements: true })).toBeNull();
+
+    await fireEvent.press(screen.getByTestId('start-reason-gate', { includeHiddenElements: true }));
+    expect(screen.queryByTestId('start-reason-gate', { includeHiddenElements: true })).toBeNull();
+    expect(screen.getByText('20', { includeHiddenElements: true })).toBeTruthy();
+
+    await view.unmount();
+  });
+
+  // Online the deadline is the server's AFK window, which runs whatever this
+  // client draws — so the countdown keeps going, and the scrim it goes on
+  // behind stays thin enough to read it through.
+  it('leaves a clock it cannot pause running, rather than drawing time the seat does not have', async () => {
+    const serverClock: TurnTimerConfig = { seconds: 20, includeNewRound: true };
+    const view = await render(table(state(OPENER), { viewerSeat: OPENER, turnTimer: serverClock }));
+
+    expect(screen.getByTestId('start-reason-gate', { includeHiddenElements: true })).toBeTruthy();
+    expect(screen.getByText('20', { includeHiddenElements: true })).toBeTruthy();
+
+    const gate = StyleSheet.flatten(
+      screen.getByTestId('start-reason-gate', { includeHiddenElements: true }).props.style
+    ) as Record<string, string>;
+    const alpha = Number(/rgba?\([^)]*,\s*([\d.]+)\s*\)/.exec(gate.backgroundColor)?.[1] ?? '1');
+    expect(alpha).toBeLessThan(1);
 
     await view.unmount();
   });
@@ -140,8 +246,15 @@ describe('the manche-opening announcement', () => {
       withdrawn(screen.getByTestId('game-table', { includeHiddenElements: true }).props)
     ).toBe(true);
 
-    await view.rerender(table(state(OPENER + 1)));
+    // The rail with it: a reader who can still reach the menu knob opens a
+    // sheet that sits *above* the gate, with an exit in it.
+    expect(
+      withdrawn(screen.getByTestId('control-rail', { includeHiddenElements: true }).props)
+    ).toBe(true);
+
+    await view.rerender(table(midManche(OPENER + 1)));
     expect(screen.getByTestId('game-table')).toBeTruthy();
+    expect(screen.getByTestId('control-rail')).toBeTruthy();
 
     await view.unmount();
   });

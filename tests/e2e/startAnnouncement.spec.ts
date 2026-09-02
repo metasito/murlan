@@ -14,6 +14,7 @@
 // announcement cannot outlive the turn it names.
 import { test, expect, type Page } from "@playwright/test";
 import { resumeSaved } from "./helpers/offlineSeed";
+import { RANK_SLOTS } from "../../lib/gameEngine";
 
 const VIEWPORT = { width: 844, height: 390 };
 /** How far off centre the lamp may sit and still be called centred. */
@@ -49,6 +50,9 @@ function openingSave() {
       rankings: [],
       firstPlayMade: true,
       startReason: { type: "lost_round", playerIdx: 0 },
+      // Nothing played yet — the manche the `startReason` describes is still at
+      // its opening, which is the whole condition for announcing it.
+      playedRanks: Array.from({ length: RANK_SLOTS }, () => 0),
     },
     match: {
       length: "match",

@@ -19,13 +19,17 @@ jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({
   default: () => WINDOW,
 }));
 
-// Pinned, not stubbed away: `railSideFor` is what turns a rotation into a side
-// and it has its own boundary tests (tests/gameTableModel.test.ts). What this
-// file is measuring is the column's width and the offset it buys, so the
-// rotation has to hold still while it does.
+// Driven, not stubbed away: the phone is locked to landscape but not to one
+// landscape *direction*, and the cutout is on the right in the other one. The
+// rotation is held still while a case measures widths and offsets, and turned
+// over for the case that is about the side itself.
+const LANDSCAPE_LEFT = 3;
+const LANDSCAPE_RIGHT = 4;
+const mockRotation = { current: LANDSCAPE_LEFT };
+
 jest.mock('expo-screen-orientation', () => ({
   Orientation: { LANDSCAPE_LEFT: 3 },
-  getOrientationAsync: async () => 3,
+  getOrientationAsync: async () => mockRotation.current,
   addOrientationChangeListener: () => ({ remove: () => {} }),
 }));
 
@@ -114,6 +118,27 @@ describe('the result screen under a cutout', () => {
     expect(body.marginRight).toBe(0);
 
     await view.unmount();
+  });
+
+  // #816's own definition of done. The screen is locked to landscape, not to
+  // one landscape direction, and the same phone turned the other way puts the
+  // cutout on the right — a board that assumed a side would lose the rankings
+  // there instead of the winner.
+  it('follows the cutout to the other edge when the phone is turned over', async () => {
+    mockRotation.current = LANDSCAPE_RIGHT;
+    const view = await mount(0, ISLAND);
+
+    const rail = flat(screen.getByTestId('control-rail'));
+    expect(rail.width).toBe(railColumn());
+    expect(rail.right).toBe(0);
+    expect(rail.left).toBeUndefined();
+
+    const body = flat(screen.getByTestId('result-body'));
+    expect(body.marginRight).toBe(railColumn());
+    expect(body.marginLeft).toBe(0);
+
+    await view.unmount();
+    mockRotation.current = LANDSCAPE_LEFT;
   });
 
   it('puts the screen’s exit in that column, so the cutout sits under a control', async () => {

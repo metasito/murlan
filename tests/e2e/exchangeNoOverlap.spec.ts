@@ -34,25 +34,35 @@ function intersection(a: Box, b: Box): number {
   return w > 0 && h > 0 ? w * h : 0;
 }
 
-function midExchangeSave() {
-  const card = (id: string, rank: string, suit: string) => ({ id, rank, suit, isJoker: false });
+const card = (id: string, rank: string, suit: string) => ({ id, rank, suit, isJoker: false });
+
+/** A hand per seat, the viewer's first — its 5 of hearts is what they give back. */
+const HANDS = [
+  [card("5_hearts", "5", "hearts"), card("K_spades", "K", "spades")],
+  [card("J_hearts", "J", "hearts"), card("Q_diamonds", "Q", "diamonds")],
+  [card("7_clubs", "7", "clubs"), card("8_diamonds", "8", "diamonds")],
+  [card("9_spades", "9", "spades"), card("10_hearts", "10", "hearts")],
+];
+const BOTS = ["Bea", "Drita", "Besnik"] as const;
+
+/**
+ * The viewer has just won a manche and is choosing what to hand back.
+ *
+ * `loserIdx` is the seat they are trading with, and at four seats it decides
+ * the *direction* of the trip: seat 1 sits beside the viewer, so that trade
+ * runs diagonally, which is the pair of trips whose lane offset carries a
+ * label sideways as well as along.
+ */
+function midExchangeSave(playerCount: 2 | 4 = 2, loserIdx = 1) {
   return {
     version: 2,
     gameState: {
-      players: [
-        {
-          id: "player_0",
-          name: "Ana",
-          hand: [card("5_hearts", "5", "hearts"), card("K_spades", "K", "spades")],
-          type: "human",
-        },
-        {
-          id: "player_1",
-          name: "Bea",
-          hand: [card("J_hearts", "J", "hearts"), card("Q_diamonds", "Q", "diamonds")],
-          type: "ai",
-        },
-      ],
+      players: Array.from({ length: playerCount }, (_, i) => ({
+        id: `player_${i}`,
+        name: i === 0 ? "Ana" : BOTS[i - 1],
+        hand: HANDS[i],
+        type: i === 0 ? "human" : "ai",
+      })),
       currentTurnIndex: 0,
       lastPlayedCombination: null,
       lastPlayedBy: -1,
@@ -65,7 +75,7 @@ function midExchangeSave() {
       exchangePhase: {
         active: true,
         winnerIdx: 0,
-        loserIdx: 1,
+        loserIdx,
         cardFromLoser: card("2_spades", "2", "spades"),
         bothJokersException: false,
       },
@@ -80,10 +90,11 @@ function midExchangeSave() {
       isDraw: false,
     },
     rematchAnswers: {},
-    players: [
-      { name: "Ana", type: "human" },
-      { name: "Bea", type: "ai", personality: "luan" },
-    ],
+    players: Array.from({ length: playerCount }, (_, i) =>
+      i === 0
+        ? { name: "Ana", type: "human" }
+        : { name: BOTS[i - 1], type: "ai", personality: "luan" }
+    ),
     gameMode: "free_for_all",
     dealFirstSeat: 0,
   };
@@ -140,49 +151,76 @@ test("the two exchanged cards fly at once and never overlap", async ({ page, bas
 // label used to sit at the trip's landing point, and for the viewer's own seat
 // that point is the hand zone's own centre. Only a browser can say where either
 // box ended up.
-test("neither seat's label lands on a card", async ({ page, baseURL }) => {
-  test.setTimeout(120_000);
-  await resumeSaved(page, baseURL!, midExchangeSave());
+// A four-seat trade is run as well as a two-seat one, because the seats a
+// two-player table has are top and bottom, and the trip between them is the one
+// direction whose lane offset is purely sideways. Every other pairing is a
+// diagonal, where the same offset also carries the label down — off the bottom
+// of the window, on a phone (#817).
+for (const [seats, loserIdx, shape] of [
+  [2, 1, "across the table"],
+  [4, 1, "diagonally"],
+] as const) {
+  test(`neither seat's label lands on a card, trading ${shape}`, async ({ page, baseURL }) => {
+    test.setTimeout(120_000);
+    // A real phone in landscape: the window the labels went off the bottom of.
+    await page.setViewportSize({ width: 844, height: 390 });
+    await resumeSaved(page, baseURL!, midExchangeSave(seats, loserIdx));
 
-  await expect(page.getByTestId("exchange-prompt")).toBeVisible({ timeout: 15_000 });
-  await tap(page, page.getByRole("button", { name: GIVEBACK_SPOKEN, exact: true }));
-  await tap(page, page.getByTestId("btn-gioca"));
+    await expect(page.getByTestId("exchange-prompt")).toBeVisible({ timeout: 15_000 });
+    await tap(page, page.getByRole("button", { name: GIVEBACK_SPOKEN, exact: true }));
+    await tap(page, page.getByTestId("btn-gioca"));
 
-  // The labels take over from the fliers at the landing, so they are what is on
-  // screen once the flight is over rather than during it.
-  const toWinner = page.getByTestId("exchange-tag-to-winner");
-  await expect(toWinner).toBeVisible({ timeout: 15_000 });
-  const toLoser = page.getByTestId("exchange-tag-to-loser");
-  await expect(toLoser).toBeVisible({ timeout: 15_000 });
+    // The labels take over from the fliers at the landing, so they are what is on
+    // screen once the flight is over rather than during it.
+    const toWinner = page.getByTestId("exchange-tag-to-winner");
+    await expect(toWinner).toBeVisible({ timeout: 15_000 });
+    const toLoser = page.getByTestId("exchange-tag-to-loser");
+    await expect(toLoser).toBeVisible({ timeout: 15_000 });
 
-  const cards = await page.evaluate(() =>
-    [...document.querySelectorAll('[data-testid="card-box"], [data-testid="card-box-back"]')]
-      .map((el) => {
-        const r = el.getBoundingClientRect();
-        return { x: r.x, y: r.y, width: r.width, height: r.height };
-      })
-      .filter((r) => r.width > 0 && r.height > 0)
-  );
-  // The floor: with no cards measured the sweep below would pass having looked
-  // at nothing, and the hand is exactly what the labels used to cover.
-  expect(cards.length, "no card faces were measured at all").toBeGreaterThan(0);
+    const cards = await page.evaluate(() =>
+      [...document.querySelectorAll('[data-testid="card-box"], [data-testid="card-box-back"]')]
+        .map((el) => {
+          const r = el.getBoundingClientRect();
+          return { x: r.x, y: r.y, width: r.width, height: r.height };
+        })
+        .filter((r) => r.width > 0 && r.height > 0)
+    );
+    // The floor: with no cards measured the sweep below would pass having looked
+    // at nothing, and the hand is exactly what the labels used to cover.
+    expect(cards.length, "no card faces were measured at all").toBeGreaterThan(0);
 
-  for (const [name, tag] of [
-    ["the winner's", toWinner],
-    ["the loser's", toLoser],
-  ] as const) {
-    const box = (await tag.boundingBox())!;
-    const on = cards.filter((c) => intersection(box, c) > 0);
+    const window = page.viewportSize()!;
+    for (const [name, tag] of [
+      ["the winner's", toWinner],
+      ["the loser's", toLoser],
+    ] as const) {
+      const box = (await tag.boundingBox())!;
+      const on = cards.filter((c) => intersection(box, c) > 0);
+      expect(
+        on.map((c) => `${Math.round(c.x)},${Math.round(c.y)}`),
+        `${name} label sits on ${on.length} card face(s)`
+      ).toEqual([]);
+
+      // A label the table's own clip retired is a label that never said
+      // anything — and it passes every overlap check ever written.
+      expect(
+        [
+          box.x < 0 && "past the left edge",
+          box.y < 0 && "above the top edge",
+          box.x + box.width > window.width && "past the right edge",
+          box.y + box.height > window.height && "below the bottom edge",
+        ].filter(Boolean),
+        `${name} label is at ${Math.round(box.x)},${Math.round(box.y)} ` +
+          `(${Math.round(box.width)}x${Math.round(box.height)}) in a ` +
+          `${window.width}x${window.height} window`
+      ).toEqual([]);
+    }
+
+    // …and the two do not land on each other either, which the perpendicular
+    // lane is what buys.
     expect(
-      on.map((c) => `${Math.round(c.x)},${Math.round(c.y)}`),
-      `${name} label sits on ${on.length} card face(s)`
-    ).toEqual([]);
-  }
-
-  // …and the two do not land on each other either, which the perpendicular
-  // lane is what buys.
-  expect(
-    intersection((await toWinner.boundingBox())!, (await toLoser.boundingBox())!),
-    "the two labels overlap each other"
-  ).toBe(0);
-});
+      intersection((await toWinner.boundingBox())!, (await toLoser.boundingBox())!),
+      "the two labels overlap each other"
+    ).toBe(0);
+  });
+}

@@ -16,7 +16,7 @@ import { a11yHidden } from "@/lib/a11y";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { Colors, Motion, motionMs, Radius, Scrim, Spacing } from "@/lib/theme";
 import { EXCHANGE_FLIGHT_MS, EXCHANGE_LEG_MS, MEET_HOLD_MS } from "@/lib/exchangeCeremony";
-import { exchangeTagOffset, type ExchangeFlight as Trip } from "@/components/gameTableModel";
+import type { ExchangeFlight as Trip } from "@/components/gameTableModel";
 
 const TAG_FS = 11;
 
@@ -119,10 +119,10 @@ export function ExchangeFlyingCard({
  *
  * The two players not trading are also watching this, and they cannot read a
  * flight they may have looked away from — so the words sit on the side the
- * people are, and each names its own half of the trade. It shares the flight's
- * geometry rather than measuring the seat again (`exchangeTagOffset`,
- * gameTableModel.ts), so a tag is never on top of the card it describes, never
- * on the other tag, and never as far as the seat's own cards.
+ * people are, and each names its own half of the trade. The place comes with
+ * the trip (`exchangeFlight`, gameTableModel.ts) rather than being measured
+ * again here, so a tag is never on top of the card it describes, never on the
+ * other tag, and never off the table.
  */
 export function ExchangeSeatTag({
   label,
@@ -133,7 +133,7 @@ export function ExchangeSeatTag({
   label: string;
   trip: Trip;
   visible: boolean;
-  /** The overlap check measures this box — tests/e2e/exchangeTagClear.spec.ts. */
+  /** The overlap check measures this box — tests/e2e/exchangeNoOverlap.spec.ts. */
   testID: string;
 }) {
   const reduceMotion = usePrefersReducedMotion();
@@ -148,15 +148,13 @@ export function ExchangeSeatTag({
 
   const anim = useAnimatedStyle(() => ({ opacity: opacity.value }));
 
-  const at = exchangeTagOffset(trip);
-
   return (
     <Animated.View
       testID={testID}
       pointerEvents="none"
       style={[
         styles.flier,
-        { transform: [{ translateX: at.dx }, { translateY: at.dy }] },
+        { transform: [{ translateX: trip.tag.dx }, { translateY: trip.tag.dy }] },
         anim,
       ]}
     >

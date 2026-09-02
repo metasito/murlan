@@ -82,7 +82,7 @@ const NON_MODAL_OVERLAYS: [string, number, string, string, [string, RegExp][]][]
       ["announces itself as an alert instead", /<A11yStatus[\s\S]{0,160}role="alert"/],
       [
         "releases the table on a reading budget rather than a guessed delay",
-        /setTimeout\(\(\) => setVisible\(false\), Reading\.notice\)/,
+        /setTimeout\(\(\) => doneRef\.current\(\), Reading\.notice\)/,
       ],
     ],
   ],

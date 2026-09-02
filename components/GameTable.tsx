@@ -54,6 +54,7 @@ import {
   comboKey,
   computeTableFrame,
   LAMP_CENTRE,
+  openingIsPending,
   readHandArrival,
   describeTableForA11y,
   EMPTY_PILE,
@@ -328,22 +329,26 @@ export function GameTable({
   // vibration are the persisted ones, which the sheet reads for itself.
   const [settingsOpen, setSettingsOpen] = useState(false);
   const railSide = useRailSide(Math.max(insets.left, insets.right));
-  // Who opens the manche, held over the table for as long as that seat has yet
-  // to act. The turn moving on is what turns the sentence into a statement
-  // about the past, so it is a condition of showing it at all rather than
-  // something a timer happens to outrun. Keyed by the reason itself: a
-  // dismissal must not swallow the *next* manche's announcement.
+  // Who opens the manche, held over the table for as long as that opening has
+  // yet to be played. The opening ending is what turns the sentence into a
+  // statement about the past, so it is a condition of showing it at all rather
+  // than something a timer happens to outrun.
   const startReason = gameState.startReason;
-  const startReasonKey = startReason && `${startReason.type}-${startReason.playerIdx}`;
-  const [startReasonDone, setStartReasonDone] = useState<string | undefined>(undefined);
-  const holdingForStart =
-    startReason !== undefined &&
-    startReasonKey !== startReasonDone &&
+  const openingPending =
+    openingIsPending(gameState) &&
     // The exchange ceremony owns the table first; the two sequence rather than
     // stacking, and this is the second of them.
-    exchangeAnnouncement?.visible !== true &&
-    !gameState.gameOver &&
-    gameState.currentTurnIndex === startReason.playerIdx;
+    exchangeAnnouncement?.visible !== true;
+  const [openingSpent, setOpeningSpent] = useState(false);
+  // Spent for this opening only, and cleared by the opening itself passing —
+  // the play that ends it, or the deal that replaces it. Online this component
+  // is never unmounted between manches, and nothing in the state names which
+  // manche is which, so a flag that outlived the opening would swallow the next
+  // one whenever two deals ran the same way.
+  useEffect(() => {
+    if (!openingPending) setOpeningSpent(false);
+  }, [openingPending]);
+  const holdingForStart = openingPending && !openingSpent;
 
   // A reader must not be left able to play through a gate a finger cannot get
   // past, so the hold sits beside the other two reasons the table is unusable.
@@ -356,7 +361,9 @@ export function GameTable({
   const behindSheetOnly = a11yVeiled(settingsOpen);
   // The rail is the one child that answers to a cover but not to the sheet: the sheet is
   // closed by the knob the rail carries, so veiling it there shuts the reader inside.
-  const behindCoverOnly = a11yVeiled(tableCovered && !settingsOpen);
+  // The opening gate covers the rail too, and the sheet its menu knob opens
+  // would come up above the gate carrying an exit.
+  const behindCoverOnly = a11yVeiled((tableCovered || holdingForStart) && !settingsOpen);
   const [focusMode, setFocusMode] = useState(false);
   const [playOnLeft, setPlayOnLeft] = useState(false);
   const closeSettings = useCallback(() => setSettingsOpen(false), [setSettingsOpen]);
@@ -1156,12 +1163,11 @@ export function GameTable({
       {/* Over the whole table rather than inside the mid band: it holds the
           table as well as saying something, so the first tap is spent clearing
           it instead of playing a card. */}
-      {holdingForStart && (
+      {holdingForStart && startReason && (
         <StartReasonBanner
-          key={startReasonKey}
           reason={startReason}
           players={players}
-          onDone={() => setStartReasonDone(startReasonKey)}
+          onDone={() => setOpeningSpent(true)}
         />
       )}
 
