@@ -226,17 +226,28 @@ async function playOrPass(page: Page, desc: string): Promise<string | null> {
   // click that silently failed to toggle leaves a card correctly tracked as
   // still selected instead of being assumed clear.
   //
-  // Read from the table itself rather than remembered across calls: a
-  // selection can survive an opponent's turn, but it can just as well be
-  // cleared out from under this driver by something that is not a click —
-  // offline, `HUMAN_TURN_SECONDS` auto-passes the turn on a timer that a slow
-  // card search can run into, and a pass clears the selection
-  // (`GameContext.tsx` `passTurn`). A belief carried in memory has no way to
-  // learn that happened and keeps clicking against a hand that has already
-  // moved on; the DOM's own `aria-pressed` cannot go stale like that.
-  let selected = cardsNow.filter((c) => c.selected).map((c) => c.label);
+  // Read fresh from the table at the top of every call, rather than carried
+  // in a variable across the whole search: a selection can survive an
+  // opponent's turn, but it can just as well be cleared out from under this
+  // driver by something that is not a click — offline, `HUMAN_TURN_SECONDS`
+  // auto-passes the turn on a timer that a slow card search (many
+  // setSelection calls, one search) can run into mid-search, and a pass
+  // clears the selection (`GameContext.tsx` `passTurn`). A belief carried in
+  // memory has no way to learn that happened partway through a search and
+  // keeps clicking against a hand that has already moved on; re-reading
+  // `aria-pressed` on every call is what the DOM cannot go stale on.
+  async function currentSelection(): Promise<string[]> {
+    const cards = (await handCards.evaluateAll((els) =>
+      els.map((el) => ({
+        label: el.getAttribute("aria-label") ?? "",
+        selected: el.getAttribute("aria-pressed") === "true",
+      }))
+    )) as { label: string; selected: boolean }[];
+    return cards.filter((c) => c.selected).map((c) => c.label);
+  }
 
   async function setSelection(target: string[]): Promise<boolean> {
+    let selected = await currentSelection();
     for (const l of selected) {
       if (target.includes(l)) continue;
       if (!(await click(cardByLabel(l)))) return false;
@@ -255,7 +266,6 @@ async function playOrPass(page: Page, desc: string): Promise<string | null> {
     const label = await giocaBtn.getAttribute("aria-label").catch(() => null);
     if (label === GIOCA_VALID_LABEL) {
       if (!(await click(giocaBtn))) return "gone";
-      selected = []; // the play succeeded — the hand itself is about to change entirely
       return "played";
     }
     return "no"; // leave the selection as-is; the next attempt's setSelection diffs against it
