@@ -179,7 +179,7 @@ describe("§9.6 — \"Going out … Play continues among the rest. The hand ends
   });
 });
 
-describe("§7.3 — \"A bomb is beaten only by a higher bomb\"", () => {
+describe("§7.3 — \"A bomb is beaten only by a higher bomb — with one exception, a royal straight, which beats a bomb of any strength and can never be beaten by one\"", () => {
   const bomb5 = combo([c("5", "hearts"), c("5", "clubs"), c("5", "spades"), c("5", "diamonds")]);
   const bomb5Again = combo([c("5", "hearts"), c("5", "clubs"), c("5", "spades"), c("5", "diamonds")]);
   const pair8 = combo([c("8", "hearts"), c("8", "clubs")]);
@@ -195,10 +195,11 @@ describe("§7.3 — \"A bomb is beaten only by a higher bomb\"", () => {
 });
 
 describe("§7.4 — royal straight / flush: ranked above bombs, beaten only by a higher royal straight of the same length", () => {
-  // docs/BRIEF.md §3.1 ("Royal straight") already records the decision behind
-  // this: keep the royal straight beating bombs, no engine change — only
-  // docs/RULES.md was meant to carry the exception, and §7.4 is where it
-  // actually lives (§7.3 states the bomb-only rule with no mention of it).
+  // docs/BRIEF.md §3.1 ("Royal straight") records the decision behind this:
+  // keep the royal straight beating bombs, no engine change. §7.3 now states
+  // the exception itself; this block owns the detailed royal-straight
+  // assertions (length parity, both directions) that §7.3's own test does not
+  // repeat.
   const bomb5 = combo([c("5", "hearts"), c("5", "clubs"), c("5", "spades"), c("5", "diamonds")]);
   const bombK = combo([c("K", "hearts"), c("K", "clubs"), c("K", "spades"), c("K", "diamonds")]);
   const royalLow = combo([
