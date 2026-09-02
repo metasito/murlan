@@ -22,6 +22,7 @@
 import { expect, test } from "./fixtures";
 import type { Page } from "@playwright/test";
 import { resumeSaved } from "./helpers/offlineSeed";
+import { E2E_SUSPEND_AI_KEY } from "../../lib/e2eAiSuspend";
 import { buildCombination, type Card, type Rank, type Suit } from "../../lib/gameEngine";
 import { GIOCA_VALID_LABEL } from "./helpers/labels.ts";
 import { HAND_ZONE, TABLE } from "./helpers/selectors.ts";
@@ -91,10 +92,7 @@ const spoken = (c: Card) => `${c.rank} di ${SPOKEN_SUIT[c.suit!]}`;
  */
 const BOMB = (["hearts", "diamonds", "clubs", "spades"] as const).map((s) => card("7", s));
 const VIEWER_HAND = [...BOMB, card("4", "hearts"), card("5", "diamonds"), card("6", "clubs")];
-/**
- * Nothing here can beat a bomb and none of it is consecutive, so the seat has
- * to pass and the table stays still for the rest of the window.
- */
+/** Nothing here can beat a bomb, and with the AI held it never gets to try. */
 const BOT_HAND = (["4", "6", "8", "10", "Q"] as const).map((r) => card(r, "spades"));
 /** A single the bomb beats — a bomb beats anything but a higher bomb (`canBeat`). */
 const PILE_CARD = card("3", "clubs");
@@ -251,22 +249,44 @@ async function cornerLuminance(page: Page): Promise<number> {
 const named = (page: Page, name: string) =>
   page.locator(HAND_ZONE).getByRole("button", { name, exact: true });
 
+/**
+ * A table with the bomb selected and GIOCA armed, one tap from the landing.
+ *
+ * The AI is held for the life of the page (`lib/e2eAiSuspend.ts`). It is not a
+ * convenience: `EXPO_PUBLIC_E2E_FAST` answers for the seat in ~0ms, and a pass
+ * closes the round heads-up, which takes `GameTable`'s own pile effect down the
+ * `combo === null` branch and **clears the pending impact timer** — so the
+ * bomb's whole landing, kick and flare included, is cancelled ~300ms before it
+ * was due to fire and every measurement below reads a table at rest.
+ */
+async function armedBomb(page: Page, baseURL: string): Promise<void> {
+  await page.setViewportSize(VIEWPORT);
+  // The tier lands at zero under reduced motion — no kick, no flare — so a run
+  // that inherited it would assert nothing at all.
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await page.addInitScript((key: string) => {
+    window.localStorage.setItem(key, "1");
+  }, E2E_SUSPEND_AI_KEY);
+
+  await resumeSaved(page, baseURL, bombSave());
+  await page.locator(TABLE).waitFor({ timeout: 30_000 });
+
+  expect(
+    await page.evaluate(() => window.matchMedia("(prefers-reduced-motion: reduce)").matches),
+    "this browser is asking for reduced motion, which zeroes every tier this spec measures"
+  ).toBe(false);
+
+  for (const c of BOMB) await tap(page, named(page, spoken(c)));
+  await expect(
+    page.getByTestId("btn-gioca"),
+    "four of a rank over a single is a bomb, so GIOCA has to offer the play"
+  ).toHaveAttribute("aria-label", GIOCA_VALID_LABEL, { timeout: 10_000 });
+}
+
 test.describe("a bomb's landing never moves the felt off the window (#101)", () => {
   test("the felt covers every edge through the whole excursion", async ({ page, baseURL }) => {
     test.setTimeout(90_000);
-    await page.setViewportSize(VIEWPORT);
-    // The tier lands at zero under reduced motion, so a run that inherited it
-    // would assert nothing at all.
-    await page.emulateMedia({ reducedMotion: "no-preference" });
-
-    await resumeSaved(page, baseURL!, bombSave());
-    await page.locator(TABLE).waitFor({ timeout: 30_000 });
-
-    for (const c of BOMB) await tap(page, named(page, spoken(c)));
-    await expect(
-      page.getByTestId("btn-gioca"),
-      "four of a rank over a single is a bomb, so GIOCA has to offer the play"
-    ).toHaveAttribute("aria-label", GIOCA_VALID_LABEL, { timeout: 10_000 });
+    await armedBomb(page, baseURL!);
 
     const atRest = await cornerLuminance(page);
 
@@ -318,18 +338,7 @@ test.describe("a bomb's landing never moves the felt off the window (#101)", () 
     baseURL,
   }) => {
     test.setTimeout(90_000);
-    await page.setViewportSize(VIEWPORT);
-    await page.emulateMedia({ reducedMotion: "no-preference" });
-
-    await resumeSaved(page, baseURL!, bombSave());
-    await page.locator(TABLE).waitFor({ timeout: 30_000 });
-
-    for (const c of BOMB) await tap(page, named(page, spoken(c)));
-    await expect(page.getByTestId("btn-gioca")).toHaveAttribute(
-      "aria-label",
-      GIOCA_VALID_LABEL,
-      { timeout: 10_000 }
-    );
+    await armedBomb(page, baseURL!);
 
     await watchLanding(page);
     await tap(page, page.getByTestId("btn-gioca"));
