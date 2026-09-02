@@ -27,6 +27,12 @@ export async function dealManche(
   game.handFlags = {};
   game.moveLog = startReplayLog();
   game.abandonedSeats.clear();
+  // Not required for correctness — announceRejoin's `else if` already makes a
+  // stale payload unreachable the instant gameState.gameOver goes false, and
+  // handleGameOver clears this itself before the next hand it plays can end.
+  // Cleared here anyway so the table does not hold a finished hand's payload
+  // in memory for the whole of the next one.
+  game.lastGameOverPayload = undefined;
   rollMatchForward(game);
 
   await storage.updateRoomStatus(game.roomId, "in_progress");
