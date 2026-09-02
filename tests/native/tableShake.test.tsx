@@ -45,6 +45,7 @@ const idleState = () => ({
   rankings: [],
   players: [],
   isTeamMode: false,
+  handScores: {},
   viewerId: undefined,
   scale: 1,
 });

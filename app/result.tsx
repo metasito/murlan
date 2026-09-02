@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { hapticLight, hapticMedium } from "@/lib/haptics";
 import { useLocalMatch, useLocalSession, useLocalTable } from "@/context/gameHooks";
 import { standings } from "@/lib/standings";
-import { celebratesViewer, celebration, isDrawnHand } from "@/lib/matchState";
+import { celebratesViewer, celebration, isDrawnHand, handOutcomeFor } from "@/lib/matchState";
 import { ResultBoard, type ContinueAction, type ResultRow } from "@/components/ResultBoard";
 import { Spacing } from "@/lib/theme";
 import { useTranslation } from "@/lib/i18n";
@@ -53,6 +53,13 @@ export default function ResultScreen() {
   // dropped here rather than left in for `celebration` to reject, since only
   // the manche's own placement is ever tied this way; the match winner (the
   // first candidate) is decided on cumulative points and stands regardless.
+  //
+  // `mancheDrawn`/`celebratedName` stay on `isDrawnHand` directly rather than
+  // `handOutcomeFor`: naming who to celebrate is asked once, with a
+  // defensive third tier (`rows[0]?.id`, the match's current leader) for the
+  // rare case `rankings[0]` itself fails to resolve — `handOutcomeFor` is
+  // deliberately viewer-scoped and has no such tier, so it answers a
+  // different question than this one.
   const mancheDrawn = isTeamMode && isDrawnHand(gameState.players, handPoints);
   const celebrationCandidates = [
     match.over ? match.winners[0] : undefined,
@@ -65,11 +72,16 @@ export default function ResultScreen() {
     isTeamMode ? (team) => t("lobby.team", { team }) : null
   );
   // Pass-and-play seats every human at the same device, so a win by any one
-  // of them — not only the first — is this device's win.
-  const viewerCelebrated = gameState.players.some(
-    (p) =>
-      p.type === "human" &&
-      celebratesViewer(gameState.players, celebrationCandidates, p.id, isTeamMode)
+  // of them — not only the first — is this device's win. The haptic is the
+  // one question `handOutcomeFor` exists to answer, so a hand the match has
+  // not yet decided reads that rather than recomputing the same draw/
+  // placement check here; a decided match still reads `match.winners`.
+  const viewerCelebrated = gameState.players.some((p) =>
+    p.type !== "human"
+      ? false
+      : match.over
+        ? celebratesViewer(gameState.players, celebrationCandidates, p.id, isTeamMode)
+        : handOutcomeFor(gameState.players, finishOrder, handPoints, p.id, isTeamMode) === "won"
   );
 
   const handleHome = () => {

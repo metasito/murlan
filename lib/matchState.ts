@@ -3,7 +3,7 @@
 // Relative imports and no `react-native`, for the same reason
 // lib/exchangeCeremony.ts has none: the server bundles this with no alias
 // resolution, and `node --test` type-strips plain .ts without resolving `@/`.
-import { aggregateTeamScores, scoreHand } from "./gameEngine.ts";
+import { aggregateTeamScores } from "./gameEngine.ts";
 import type { MatchLength } from "./gameEngine.ts";
 
 export interface MatchVerdict {
@@ -85,25 +85,27 @@ export function isDrawnHand(
 export type HandOutcome = "won" | "lost" | "neutral";
 
 /**
- * What the manche that just ended did to `viewerId` — the one decision every
- * win/lose cue reads, offline and online, on the table and on the results
- * board. Derived from `rankings` alone (the per-hand points behind it are
- * `scoreHand`'s, never a caller's own copy), so a 3-3 teams draw (RULES.md
- * §11) is `"neutral"` here the same way it is an empty `celebration` there —
- * one path recomputing its own placement checks, rather than a raw rank
- * check, is how a win cue reached a losing seat's body in the first place
- * (#777).
+ * What the manche that just ended did to `viewerId` — the decision the
+ * table's own win/lose sting reads (`components/useTableFeedback.ts`), and
+ * the one the results board's haptic reads for a hand the match itself has
+ * not yet decided. `handScores` is a parameter rather than recomputed here,
+ * so both readers score the manche from the one value its caller already
+ * holds (the server's `game:over` payload online, the played hand's own
+ * `pointsAwarded` offline) instead of two calls to `scoreHand` that happen to
+ * agree today. A 3-3 teams draw (RULES.md §11) is `"neutral"` here the same
+ * way it is an empty `celebration` there — one path recomputing its own
+ * placement checks, rather than reading the shared one, is how a win cue
+ * reached a losing seat's body in the first place (#777).
  */
 export function handOutcomeFor(
   players: readonly { id: string; team?: string }[],
   rankings: readonly string[],
+  handScores: Record<string, number>,
   viewerId: string | undefined,
   isTeamMode: boolean
 ): HandOutcome {
   if (viewerId === undefined || rankings.length === 0) return "neutral";
-  if (isTeamMode && isDrawnHand(players, scoreHand([...rankings], players.length))) {
-    return "neutral";
-  }
+  if (isTeamMode && isDrawnHand(players, handScores)) return "neutral";
   if (celebratesViewer(players, [rankings[0]], viewerId, isTeamMode)) return "won";
   if (celebratesViewer(players, [rankings[rankings.length - 1]], viewerId, isTeamMode)) {
     return "lost";

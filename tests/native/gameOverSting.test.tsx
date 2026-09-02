@@ -125,6 +125,43 @@ const drawnTeamsTable = (viewerSeat: number) => (
   </SafeAreaProvider>
 );
 
+// Team A (player_0 + player_3) holds 1st and 3rd — 3+1 = 4 — against team B
+// (player_1 + player_2) holding 2nd and 4th — 2+0 = 2. Not a draw: team A
+// wins the manche, even though player_3 personally placed third.
+const WON_TEAMS_RANKINGS = ['player_0', 'player_1', 'player_3', 'player_2'];
+const WON_TEAMS_SCORES = { player_0: 3, player_1: 2, player_3: 1, player_2: 0 };
+const wonTeamsTable = (viewerSeat: number) => (
+  <SafeAreaProvider initialMetrics={METRICS}>
+    <GameTable
+      gameState={{
+        players: [
+          teamSeat('player_0', 'Ana', 'A'),
+          teamSeat('player_1', 'Besi', 'B'),
+          teamSeat('player_2', 'Cveta', 'B'),
+          teamSeat('player_3', 'Dritan', 'A'),
+        ],
+        currentTurnIndex: 0,
+        lastPlayedCombination: null,
+        lastPlayedBy: 0,
+        passCount: 0,
+        gameMode: 'teams',
+        roundWinner: null,
+        gameOver: true,
+        rankings: WON_TEAMS_RANKINGS,
+        firstPlayMade: true,
+      }}
+      handScores={WON_TEAMS_SCORES}
+      viewerSeat={viewerSeat}
+      selectedIds={[]}
+      onSelectCard={noop}
+      onPlay={noop}
+      onPass={noop}
+      onQuit={noop}
+      onExchangeGive={noop}
+    />
+  </SafeAreaProvider>
+);
+
 describe('the end-of-hand sting', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -176,6 +213,29 @@ describe('the end-of-hand sting', () => {
     const r = await render(drawnTeamsTable(3));
     expect(playGameWin).not.toHaveBeenCalled();
     expect(playGameLose).not.toHaveBeenCalled();
+    await r.unmount();
+  });
+
+  // player_3 (seat 3) placed third individually, but its team took the
+  // manche — the win sting now credits the whole team, not only whichever
+  // partner happened to go out first.
+  it('credits the win sting to a third-placed partner on the winning team', async () => {
+    const r = await render(wonTeamsTable(3));
+    expect(playGameWin).toHaveBeenCalledTimes(1);
+    expect(playGameLose).not.toHaveBeenCalled();
+    expect(jest.mocked(Haptics.notificationAsync)).toHaveBeenCalledWith(
+      Haptics.NotificationFeedbackType.Success
+    );
+    await r.unmount();
+  });
+
+  // player_2 (seat 2) placed fourth on the losing team, and player_1 (seat
+  // 1) placed second on that same losing team — both partners lose, not
+  // only the one who finished last.
+  it('credits the lose sting to a second-placed partner on the losing team', async () => {
+    const r = await render(wonTeamsTable(1));
+    expect(playGameLose).toHaveBeenCalledTimes(1);
+    expect(playGameWin).not.toHaveBeenCalled();
     await r.unmount();
   });
 });

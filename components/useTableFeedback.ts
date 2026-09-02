@@ -79,6 +79,8 @@ interface TableFeedbackState {
   /** Only `id` and `team` are read — enough to resolve `handOutcomeFor`. */
   players: readonly { id: string; team?: string }[];
   isTeamMode: boolean;
+  /** What the manche just played awarded, by engine player id — `handOutcomeFor`'s draw check. */
+  handScores: Record<string, number>;
   viewerId: string | undefined;
   /** The table's own scale — the kick's travel and the burst's size read off it. */
   scale: number;
@@ -264,6 +266,7 @@ export function useTableFeedback({
   rankings,
   players,
   isTeamMode,
+  handScores,
   viewerId,
   scale,
 }: TableFeedbackState): TableFeedback {
@@ -335,11 +338,12 @@ export function useTableFeedback({
     // from the same `impactDelayMs` timeout everything else on the table
     // waits for, so the shake lands with the card rather than ahead of it.
     // `rankings` holds engine player ids (`player_0`), never display names.
-    // Routed through the one function `ResultBoard`'s own haptic reads
-    // (`lib/matchState.ts`), so a teams-mode 3-3 manche (RULES.md §11) stays
-    // neutral here exactly as it does there, instead of this effect deciding
-    // the same question again off the raw rank.
-    const outcome = handOutcomeFor(players, rankings, viewerId, isTeamMode);
+    // Routed through the one function the results board's own haptic reads
+    // for the same question (`lib/matchState.ts`), fed the same `handScores`
+    // the caller already holds rather than a second `scoreHand` of its own,
+    // so a teams-mode 3-3 manche (RULES.md §11) stays neutral here exactly as
+    // it does there, instead of this effect deciding the same question again.
+    const outcome = handOutcomeFor(players, rankings, handScores, viewerId, isTeamMode);
     if (outcome === "won") {
       hapticSuccess();
       playGameWin();
@@ -349,7 +353,7 @@ export function useTableFeedback({
       playGameLose();
       duckMusicFor(2200);
     }
-  }, [gameOver, rankings, players, isTeamMode, viewerId]);
+  }, [gameOver, rankings, players, isTeamMode, handScores, viewerId]);
 
   // A duck outlives the play that started it by a second or two, so leaving
   // the table mid-bomb would otherwise leave the music down until something

@@ -11,7 +11,7 @@ import { AppModal } from "./AppModal";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import type { GameState } from "@/lib/gameEngine";
 import { standings } from "@/lib/standings";
-import { celebratesViewer, celebration, isDrawnHand } from "@/lib/matchState";
+import { celebratesViewer, celebration, isDrawnHand, handOutcomeFor } from "@/lib/matchState";
 import type { OnlineMatchState } from "@/context/OnlineGameContext";
 import { Colors, FontSize, Spacing, TOUCH_TARGET_MIN } from "@/lib/theme";
 import { useTranslation } from "@/lib/i18n";
@@ -88,6 +88,13 @@ export function GameOverOverlay({
   // dropped here rather than left in for `celebration` to reject, since only
   // the manche's own placement is ever tied this way; the match winner (the
   // first candidate) is decided on cumulative points and stands regardless.
+  //
+  // `mancheDrawn`/`celebratedName` stay on `isDrawnHand` directly rather than
+  // `handOutcomeFor`: naming who to celebrate is asked once, for every
+  // viewer, with a defensive third tier (`rows[0]?.id`, the match's current
+  // leader) for the rare case `rankings[0]` itself fails to resolve —
+  // `handOutcomeFor` is deliberately viewer-scoped and has no such tier, so
+  // it answers a different question than this one.
   const mancheDrawn = isTeamMode && isDrawnHand(gameState.players, handScores);
   const celebrationCandidates = [
     match.over ? match.winners[0] : undefined,
@@ -99,12 +106,15 @@ export function GameOverOverlay({
     celebrationCandidates,
     isTeamMode ? (team) => t("lobby.team", { team }) : null
   );
-  const viewerCelebrated = celebratesViewer(
-    gameState.players,
-    celebrationCandidates,
-    gameState.players[mySeatIndex]?.id,
-    isTeamMode
-  );
+  const viewerId = gameState.players[mySeatIndex]?.id;
+  // The haptic is the one question `handOutcomeFor` exists to answer, so it
+  // reads that rather than recomputing the same draw/placement check here —
+  // the match-winner branch is unaffected, since a decided match is read off
+  // `match.winners`, never off this manche's own rankings.
+  const viewerCelebrated = match.over
+    ? celebratesViewer(gameState.players, celebrationCandidates, viewerId, isTeamMode)
+    : handOutcomeFor(gameState.players, gameState.rankings, handScores, viewerId, isTeamMode) ===
+      "won";
 
   // A match the table voted down offers no way to restart it.
   const canContinue = !match.over || match.continues;

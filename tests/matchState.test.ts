@@ -99,34 +99,48 @@ describe("handOutcomeFor", () => {
   ];
   // First-and-fourth (3+0) against second-and-third (2+1): a draw.
   const drawnRankings = ["player_0", "player_1", "player_2", "player_3"];
+  const drawnScores = { player_0: 3, player_1: 2, player_2: 1, player_3: 0 };
 
   test("is neutral for every seat on a drawn teams manche", () => {
     for (const { id } of TEAMS_TABLE) {
-      assert.equal(handOutcomeFor(TEAMS_TABLE, drawnRankings, id, true), "neutral");
+      assert.equal(handOutcomeFor(TEAMS_TABLE, drawnRankings, drawnScores, id, true), "neutral");
     }
   });
 
   test("is won for the team that placed first-and-third, not just the seat that placed first", () => {
     const rankings = ["player_0", "player_1", "player_3", "player_2"];
-    assert.equal(handOutcomeFor(TEAMS_TABLE, rankings, "player_0", true), "won");
-    assert.equal(handOutcomeFor(TEAMS_TABLE, rankings, "player_3", true), "won");
-    assert.equal(handOutcomeFor(TEAMS_TABLE, rankings, "player_1", true), "lost");
-    assert.equal(handOutcomeFor(TEAMS_TABLE, rankings, "player_2", true), "lost");
+    const scores = { player_0: 3, player_1: 2, player_3: 1, player_2: 0 };
+    assert.equal(handOutcomeFor(TEAMS_TABLE, rankings, scores, "player_0", true), "won");
+    assert.equal(handOutcomeFor(TEAMS_TABLE, rankings, scores, "player_3", true), "won");
+    assert.equal(handOutcomeFor(TEAMS_TABLE, rankings, scores, "player_1", true), "lost");
+    assert.equal(handOutcomeFor(TEAMS_TABLE, rankings, scores, "player_2", true), "lost");
   });
 
   test("in free-for-all, only the seat that placed first or last gets an outcome", () => {
     const rankings = ["player_2", "player_0", "player_1", "player_3"];
-    assert.equal(handOutcomeFor(TEAMS_TABLE, rankings, "player_2", false), "won");
-    assert.equal(handOutcomeFor(TEAMS_TABLE, rankings, "player_3", false), "lost");
-    assert.equal(handOutcomeFor(TEAMS_TABLE, rankings, "player_0", false), "neutral");
+    const scores = { player_2: 3, player_0: 2, player_1: 1, player_3: 0 };
+    assert.equal(handOutcomeFor(TEAMS_TABLE, rankings, scores, "player_2", false), "won");
+    assert.equal(handOutcomeFor(TEAMS_TABLE, rankings, scores, "player_3", false), "lost");
+    assert.equal(handOutcomeFor(TEAMS_TABLE, rankings, scores, "player_0", false), "neutral");
   });
 
   test("is neutral for a spectator holding no seat", () => {
-    assert.equal(handOutcomeFor(TEAMS_TABLE, drawnRankings, undefined, true), "neutral");
+    assert.equal(handOutcomeFor(TEAMS_TABLE, drawnRankings, drawnScores, undefined, true), "neutral");
   });
 
   test("is neutral before any manche has a finish order", () => {
-    assert.equal(handOutcomeFor(TEAMS_TABLE, [], "player_0", true), "neutral");
+    assert.equal(handOutcomeFor(TEAMS_TABLE, [], {}, "player_0", true), "neutral");
+  });
+
+  // `isTeamMode` is what gates the draw suppression on a table that merely
+  // carries `.team` fields — free-for-all seats never do, which is what made
+  // this guard look removable without reddening anything: nothing exercised
+  // a non-teams table where `.team` happened to be set anyway.
+  test("the isTeamMode guard actually gates the draw check", () => {
+    assert.equal(
+      handOutcomeFor(TEAMS_TABLE, drawnRankings, drawnScores, "player_0", false),
+      "won"
+    );
   });
 });
 
