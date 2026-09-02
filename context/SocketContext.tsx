@@ -9,7 +9,7 @@ import React, {
   ReactNode,
 } from "react";
 import { router } from "expo-router";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/query-client";
 import { useAuth } from "@/context/AuthContext";
 import { connectSocket, disconnectSocket, setSocketAuthFailureHandler } from "@/lib/socket";
@@ -17,7 +17,25 @@ import { useNotification } from "@/context/NotificationContext";
 import { SessionReplacedNotice } from "@/components/SessionReplacedNotice";
 import { t, translateServerPayload, type ServerPayload } from "@/lib/i18n";
 import { Reading } from "@/lib/theme";
+import type { FriendRequestAccepted, FriendRequestIncoming } from "@/lib/wire";
 import type { Socket } from "socket.io-client";
+
+/**
+ * Seats a row the server sent with its announcement into the list a fetch
+ * would have filled, so the badge and the friends list move on the frame the
+ * banner does rather than a round trip later.
+ *
+ * The invalidation each caller keeps behind this is the reconciler: the pushed
+ * row is the fast path, the fetch is the truth. The row is optional at every
+ * call site — a server that predates it, or a row created by a path that emits
+ * nothing — and without one the fetch does all of the work, as it always did.
+ */
+function seatRow<T extends { id: string }>(qc: QueryClient, key: string, row: T | undefined) {
+  if (!row) return;
+  qc.setQueryData<T[]>([key], (rows = []) =>
+    rows.some((r) => r.id === row.id) ? rows : [...rows, row]
+  );
+}
 
 const RETRY_BASE_MS = 2000;
 const RETRY_MAX_MS = 30_000;
@@ -272,7 +290,8 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       }
     };
 
-    const onRequestIncoming = ({ from }: { from: string }) => {
+    const onRequestIncoming = ({ from, request }: FriendRequestIncoming) => {
+      seatRow(qc, "/api/friends/requests", request);
       qc.invalidateQueries({ queryKey: ["/api/friends/requests"] });
       showNotification({
         type: "friend_request",
@@ -282,7 +301,8 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       });
     };
 
-    const onRequestAccepted = ({ by }: { by: string }) => {
+    const onRequestAccepted = ({ by, friend }: FriendRequestAccepted) => {
+      seatRow(qc, "/api/friends", friend);
       qc.invalidateQueries({ queryKey: ["/api/friends"] });
       qc.invalidateQueries({ queryKey: ["/api/friends/requests"] });
       qc.invalidateQueries({ queryKey: ["/api/friends/sent"] });
