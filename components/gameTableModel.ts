@@ -19,7 +19,7 @@ import {
   BASE_SHORT_EDGE,
 } from "./cardFaceModel.ts";
 import { arcBounds, solveArc, SEAT_ARC } from "./tableArc.ts";
-import { Hold, Spacing, Trauma, SHAKE_DECAY_MS } from "../lib/tokens.ts";
+import { Hold, Spacing, Trauma } from "../lib/tokens.ts";
 
 // ─── Layout constants ─────────────────────────────────────────────────────────
 //
@@ -418,15 +418,41 @@ const TRAUMA_BY_TIER: Record<ImpactTier, number> = {
   partitaWon: Trauma.partitaWon,
 };
 
-/**
- * The tier a played combination lands at. A manche or a partita closing is
- * never read off a combo — those are their own closures, named directly by
- * the caller that already knows which one just happened.
- */
+/** The tier a played combination's own shape lands at, on its own. */
 export function comboImpactTier(comboType: Combination["type"]): ImpactTier {
   if (comboType === "bomb") return "bomb";
   if (comboType === "straight" || comboType === "royal_straight") return "straightFlush";
   return "ordinary";
+}
+
+/**
+ * The tier one landing falls at, once whatever it closed is folded in.
+ *
+ * A manche closes when `GameState.gameOver` turns true — `processPlay`
+ * (lib/gameEngine.ts) sets it the moment a hand empties, its own comment
+ * calling that "the hand is decided", which `docs/RULES.md` names the
+ * manche. A partita closing is a *further* fact about that same landing,
+ * carried by the match verdict (`lib/matchState.ts` `MatchVerdict.over`,
+ * `context/GameContext.tsx` `applyHandToMatch`, the online
+ * `game:over`/`matchOver` payload): the hand that empties a seat's hand is
+ * also the hand that happens to close the match, never a second, later
+ * event. `GameState.roundWinner` is not read here — `docs/RULES.md` §9
+ * calls that a *trick*, and it closes many times a hand.
+ *
+ * One landing fires one tier: a play that is itself a bomb and also closes
+ * the manche or the partita is still only as loud as its loudest rung —
+ * `TRAUMA_BY_TIER` is what decides which that is, so this can't disagree
+ * with the table by naming a tier lower than the play already earned.
+ */
+export function landingTier(input: {
+  comboType: Combination["type"];
+  handOver: boolean;
+  matchOver: boolean;
+}): ImpactTier {
+  const playTier = comboImpactTier(input.comboType);
+  if (!input.handOver) return playTier;
+  const closureTier: ImpactTier = input.matchOver ? "partitaWon" : "mancheWon";
+  return TRAUMA_BY_TIER[playTier] >= TRAUMA_BY_TIER[closureTier] ? playTier : closureTier;
 }
 
 /**
@@ -439,34 +465,49 @@ export function traumaFor(tier: ImpactTier, reduceMotion: boolean): number {
 }
 
 /**
- * The shake's own amplitude `elapsedMs` into its decay: trauma squared, not
- * trauma — see `Trauma` (lib/tokens.ts) for why squaring wins over the raw value.
- * Clamped so a caller sampling past `SHAKE_DECAY_MS` gets rest rather than a
- * negative reading.
+ * The shake's own amplitude `elapsedMs` into a decay window of `decayMs` —
+ * trauma squared, not trauma (see `Trauma`, lib/tokens.ts, for why squaring
+ * wins over the raw value). `decayMs` is a parameter rather than a constant
+ * read in here: the caller resolves it through `motionMs("shake",
+ * reduceMotion)` (`Motion.duration.shake`, lib/tokens.ts), so this file never
+ * holds its own copy of a timing value for `motionMs`/`Motion.reduced` to
+ * drift from. `decayMs` 0 (the reduced-motion answer) is rest, not a
+ * division by zero.
  */
-export function shakeMagnitude(trauma: number, elapsedMs: number): number {
+export function shakeMagnitude(trauma: number, elapsedMs: number, decayMs: number): number {
   "worklet";
-  const t = Math.min(Math.max(elapsedMs, 0), SHAKE_DECAY_MS) / SHAKE_DECAY_MS;
+  if (decayMs <= 0) return 0;
+  const t = Math.min(Math.max(elapsedMs, 0), decayMs) / decayMs;
   const remaining = 1 - t;
   return trauma * remaining * remaining;
 }
 
 /** Full cycles the shake wiggles through across its own decay window. */
 const SHAKE_CYCLES = 3;
-/** Peak displacement at trauma 1, before the tier's own trauma scales it down. */
-const SHAKE_AMPLITUDE_X = 16;
-const SHAKE_AMPLITUDE_Y = 10;
+/**
+ * Peak displacement at trauma 1, before the tier's own trauma scales it down
+ * — `Spacing.md`/`Spacing.snug` (lib/tokens.ts), not a pixel literal: a
+ * shake is a distance on the same scale as a padding, the way `hitSlop` is.
+ */
+const SHAKE_AMPLITUDE_X = Spacing.md;
+const SHAKE_AMPLITUDE_Y = Spacing.snug;
 
 /**
- * The table's own displacement `elapsedMs` into a shake — `shakeMagnitude`
- * riding a decaying wiggle rather than a single push-and-recover, so the hit
- * reads as a shake rather than a shove. `cos` rather than `sin`: the jolt
- * peaks at the moment of impact (`elapsedMs` 0) instead of building up to it.
+ * The table's own displacement `elapsedMs` into a shake of `decayMs` —
+ * `shakeMagnitude` riding a decaying wiggle rather than a single
+ * push-and-recover, so the hit reads as a shake rather than a shove. `cos`
+ * rather than `sin`: the jolt peaks at the moment of impact (`elapsedMs` 0)
+ * instead of building up to it.
  */
-export function shakeOffset(trauma: number, elapsedMs: number): { x: number; y: number } {
+export function shakeOffset(
+  trauma: number,
+  elapsedMs: number,
+  decayMs: number
+): { x: number; y: number } {
   "worklet";
-  const magnitude = shakeMagnitude(trauma, elapsedMs);
-  const wiggle = Math.cos((elapsedMs / SHAKE_DECAY_MS) * Math.PI * 2 * SHAKE_CYCLES);
+  const magnitude = shakeMagnitude(trauma, elapsedMs, decayMs);
+  const wiggle =
+    decayMs <= 0 ? 0 : Math.cos((elapsedMs / decayMs) * Math.PI * 2 * SHAKE_CYCLES);
   return { x: magnitude * wiggle * SHAKE_AMPLITUDE_X, y: magnitude * wiggle * SHAKE_AMPLITUDE_Y };
 }
 

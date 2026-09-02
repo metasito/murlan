@@ -1,20 +1,24 @@
-// tests/native/tableShake.test.tsx — the escalation's own shake (#763) under
-// reduced motion.
+// tests/native/tableShake.test.tsx — the escalation's own shake (#763): what
+// a native render can and cannot pin.
 //
-// `useTableFeedback`'s gameOver effect fires `shake("partitaWon")` the moment
-// a match closes. `traumaFor` already answers 0 under reduced motion (the
-// same derivation `landingHoldMs` reads), so the shared values that shake
-// drives should never leave rest — this pins that `shakeStyle` carries no
-// transform for a player who asked for less motion, read the way
-// `landSquash.test.tsx` (#731) does: off a rendered node's own `props.style`,
-// not off the hook's return directly — a `useAnimatedStyle` value read any
-// other way is the frozen-at-mount trap loops.md documents.
-import { describe, it, expect, afterEach, jest } from "@jest/globals";
+// The tier→trauma mapping, the reduced-motion zeroing (all five tiers, and
+// that it is exactly 0 rather than merely small), and the trauma-squared
+// decay are asserted directly against the pure functions in
+// `tests/gameTableModel.test.ts`'s "the table's own trauma escalation
+// (#763)" describe block — not here. A `useAnimatedStyle` value read off a
+// rendered node's `props.style`, under this repo's jest-expo reanimated
+// mock, is frozen at whatever it was when the component mounted and does not
+// reactively update from a later shared-value write (`settleForMotion`,
+// tests/gameTableModel.test.ts, documents the same trap for #783's flight
+// squash) — so a probe that called `shake()` after mount and re-read the
+// style would pass whether or not the decay actually ran. What a mount-time
+// read CAN pin honestly is the shape `shakeStyle` starts at: nothing has
+// fired yet, so the transform is a no-op and the veil it drives is invisible.
+import { describe, it, expect, jest } from "@jest/globals";
 import React from "react";
 import { render } from "@testing-library/react-native";
 import Animated from "react-native-reanimated";
 import { useTableFeedback } from "@/components/useTableFeedback";
-import { setMotionPreference } from "@/lib/accessibility";
 
 jest.mock("@/lib/sounds", () => ({
   playBomb: jest.fn(),
@@ -32,17 +36,13 @@ jest.mock("@/lib/haptics", () => ({
 }));
 jest.mock("@/lib/music", () => ({ cancelMusicDuck: jest.fn(), duckMusicFor: jest.fn() }));
 
-function flattenTransform(style: unknown): Record<string, unknown>[] {
-  const flat: Record<string, unknown> = Object.assign(
-    {},
-    ...(Array.isArray(style) ? style.filter(Boolean) : [style])
-  );
-  return Array.isArray(flat.transform) ? (flat.transform as Record<string, unknown>[]) : [];
+function flattenStyle(style: unknown): Record<string, unknown> {
+  return Object.assign({}, ...(Array.isArray(style) ? style.filter(Boolean) : [style]));
 }
 
-const gameOverState = () => ({
+const idleState = () => ({
   isMyTurn: false,
-  isFinished: true,
+  isFinished: false,
   exchangeActive: false,
   canPass: false,
   playBtnValid: false,
@@ -50,36 +50,32 @@ const gameOverState = () => ({
   passCount: 0,
   lastPlayedCombination: null,
   roundWinner: null,
-  gameOver: true,
-  rankings: ["player_0", "player_1"],
-  viewerId: "player_1",
+  gameOver: false,
+  rankings: [],
+  viewerId: undefined,
   scale: 1,
 });
 
-// The partita's own shake fires from `useTableFeedback`'s own gameOver effect,
-// which needs a mounted component to run inside — a bare `renderHook` call
-// reads the hook's return before that mount-time effect flush is reflected.
 function ShakeProbe() {
-  const { shakeStyle } = useTableFeedback(gameOverState());
+  const { shakeStyle } = useTableFeedback(idleState());
   return <Animated.View testID="shake-probe" style={shakeStyle} />;
 }
 
-describe("the table's shake under reduced motion", () => {
-  afterEach(() => setMotionPreference("system"));
-
-  it("a match closing with reduced motion already on shakes nothing", async () => {
-    setMotionPreference("on");
+describe("the table's shake, at rest", () => {
+  it("nothing has landed yet, so the veil sits at zero offset and zero opacity", async () => {
     const r = await render(<ShakeProbe />);
 
-    const transform = flattenTransform(r.getByTestId("shake-probe").props.style);
-    const translateEntries = transform.filter((t) => "translateX" in t || "translateY" in t);
-    // Pins that a translate transform actually exists — the shake this ticket
-    // adds — rather than passing vacuously because none was ever wired up.
-    expect(translateEntries.length).toBeGreaterThan(0);
-    for (const entry of translateEntries) {
-      if ("translateX" in entry) expect(entry.translateX).toBe(0);
-      if ("translateY" in entry) expect(entry.translateY).toBe(0);
-    }
+    const flat = flattenStyle(r.getByTestId("shake-probe").props.style);
+    const transform = Array.isArray(flat.transform) ? (flat.transform as Record<string, unknown>[]) : [];
+    const translateX = transform.find((t) => "translateX" in t);
+    const translateY = transform.find((t) => "translateY" in t);
+    // Pins that a translate transform actually exists — the shake this
+    // ticket adds — rather than passing vacuously because none was wired up.
+    expect(translateX).toBeDefined();
+    expect(translateY).toBeDefined();
+    expect(translateX?.translateX).toBe(0);
+    expect(translateY?.translateY).toBe(0);
+    expect(flat.opacity ?? 0).toBe(0);
 
     await r.unmount();
   });

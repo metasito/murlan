@@ -61,7 +61,7 @@ import {
   handCountOf,
   readThrownPlay,
   impactDelayMs,
-  comboImpactTier,
+  landingTier,
   lightPosition,
   passedSeats,
   readExchange,
@@ -217,6 +217,14 @@ export interface GameTableProps {
    * (opponents' hands blanked, `handCount` shipped alongside).
    */
   gameState: GameState;
+  /**
+   * Whether the *match* — the partita, not this hand — is over. `MatchVerdict.over`
+   * offline, `matchState.over` online: the same landing that empties a hand can
+   * also be the one that closes the match, so this is read alongside
+   * `gameState.gameOver` at the moment a play lands, never inferred from it.
+   * Defaults false: replay, capture and reaction-preview callers hold no match.
+   */
+  matchOver?: boolean;
   /** Seat the table is drawn from. Always rendered at the bottom. */
   viewerSeat: number;
   /**
@@ -264,6 +272,7 @@ export interface GameTableProps {
 
 export function GameTable({
   gameState,
+  matchOver = false,
   viewerSeat,
   spectating = false,
   selectedIds,
@@ -762,7 +771,7 @@ export function GameTable({
     // viewer's: the sound belongs to a card landing, not to a tap.
     impactTimerRef.current = setTimeout(() => {
       playImpact(thrown.heavy);
-      shake(comboImpactTier(combo.type));
+      shake(landingTier({ comboType: combo.type, handOver: gameState.gameOver, matchOver }));
       if (thrown.emptiedHand) celebrateFlush();
     }, impactDelayMs(reduceMotion));
 
@@ -781,6 +790,8 @@ export function GameTable({
     gameState.lastPlayedCombination,
     gameState.lastPlayedBy,
     gameState.roundWinner,
+    gameState.gameOver,
+    matchOver,
     viewerSeat,
     players.length,
     reduceMotion,
@@ -828,10 +839,9 @@ export function GameTable({
   useEffect(() => {
     if (roundWinnerTag === null) return;
     playRoundWin();
-    shake("mancheWon");
     const dismiss = setTimeout(() => setRoundWinnerTag(null), ROUND_WINNER_MS);
     return () => clearTimeout(dismiss);
-  }, [roundWinnerTag, shake]);
+  }, [roundWinnerTag]);
 
   useEffect(() => {
     if (rejectHint === null) return;
@@ -1161,15 +1171,12 @@ export function GameTable({
           lamp cannot produce. The pool tracks whose turn it is, so half the
           cloth falls into shadow when it is not yours.
 
-          The escalation's own shake (#763) rides here rather than on
-          `styles.root` (which carries `kickStyle`, an ancestor of
-          `testID="game-table"`): `table-felt` is that node's *sibling*, so a
-          transform on it never reaches the box the #57 layout survey (#785)
-          measures — a CSS transform moves an ancestor's descendants, never a
-          sibling's. */}
-      <Animated.View
+          Never animated: `tests/e2e/tableFit.spec.ts` takes this node's own
+          `boundingBox()` and `tests/e2e/feltParityGrid.spec.ts` samples pixels
+          inside it against a prototype fixture, both asserted exactly. */}
+      <View
         testID="table-felt"
-        style={[StyleSheet.absoluteFill, FELT_Z, shakeStyle]}
+        style={[StyleSheet.absoluteFill, FELT_Z]}
         pointerEvents="none"
         {...a11yHidden()}
       >
@@ -1180,7 +1187,20 @@ export function GameTable({
           lightX={light.x}
           lightY={light.y}
         />
-      </Animated.View>
+      </View>
+
+      {/* The escalation's own shake (#763) rides on this node instead — a
+          sibling neither `tableFit` nor `feltParityGrid` nor any other e2e
+          spec addresses by testID, so a transform (and the trauma-scaled veil
+          riding with it) never reaches a box those specs assert against. At
+          rest `shakeStyle`'s opacity is 0 (no trauma, no offset), so it never
+          changes a sampled pixel even when a shake happens to land mid-spec. */}
+      <Animated.View
+        testID="table-shake-veil"
+        style={[StyleSheet.absoluteFill, FELT_Z, shakeStyle, styles.shakeVeilFill]}
+        pointerEvents="none"
+        {...a11yHidden()}
+      />
 
       {/* Same coordinates, overflow visible so slots and buttons can extend out.
           `dataSet` and not `accessibilityLabel`: this sentence is the browser
@@ -1501,6 +1521,7 @@ export function GameTable({
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: Colors.bg, overflow: "hidden" },
+  shakeVeilFill: { backgroundColor: Scrim.subtle },
 
   bannerBand: {
     position: "absolute",

@@ -17,6 +17,7 @@ import {
   roundClosedWithWinner,
   traumaFor,
   shakeOffset,
+  shakeMagnitude,
   type ImpactTier,
 } from "@/components/gameTableModel";
 import {
@@ -30,7 +31,7 @@ import {
 } from "@/lib/sounds";
 import { hapticHeavy, hapticSuccess, hapticWarn } from "@/lib/haptics";
 import { cancelMusicDuck, duckMusicFor } from "@/lib/music";
-import { Motion, SHAKE_DECAY_MS } from "@/lib/theme";
+import { Motion, motionMs } from "@/lib/theme";
 
 // The refusal shake on GIOCA: deliberately a third of the bomb's amplitude —
 // it is a "no", not an event. One leg duration for all four legs.
@@ -99,9 +100,13 @@ interface TableFeedback {
   flushTrigger: number;
   /** Call once, at the same landing moment as `playImpact`, when that play emptied a hand. */
   celebrateFlush: () => void;
-  /** The escalation's own shake (#763) — apply to a node the online survey never measures. */
+  /**
+   * The escalation's own shake (#763) — a transform and a trauma-scaled
+   * opacity, meant for a node no e2e spec measures by testID. Opacity is 0 at
+   * rest, so it is safe to apply anywhere without a spec knowing.
+   */
   shakeStyle: AnimatedStyle<ViewStyle>;
-  /** Fire the shake for a play's own tier; a manche or a partita closing names its tier directly. */
+  /** Fire the shake for the tier a landing resolved to — `landingTier` (gameTableModel.ts) names it. */
   shake: (tier: ImpactTier) => void;
 }
 
@@ -124,11 +129,13 @@ function useImpactFeedback(reduceMotion: boolean, scale: number) {
   const kickScale = useSharedValue(1);
   const giocaRejectX = useSharedValue(0);
   const [boomTrigger, setBoomTrigger] = useState(0);
-  // The escalation's own shake (#763): a trauma peak and an elapsed clock
-  // `shakeOffset` reads back every frame, riding the table #101 settled —
-  // never a second amplitude authored here.
+  // The escalation's own shake (#763): a trauma peak, an elapsed clock and the
+  // decay window that landed with it — `shakeOffset` reads all three back
+  // every frame, riding the table #101 settled — never a second amplitude
+  // authored here.
   const shakeTrauma = useSharedValue(0);
   const shakeElapsed = useSharedValue(0);
+  const shakeDecayMs = useSharedValue(0);
 
   // Both inputs are read through refs so the two writers below depend on
   // nothing, which is what lets the callbacks that expose them hold `[]`.
@@ -168,17 +175,24 @@ function useImpactFeedback(reduceMotion: boolean, scale: number) {
   // No `if (reduceMotion)`: `traumaFor` already answers 0 there, off the same
   // derivation `landingHoldMs` reads (components/gameTableModel.ts), so a
   // reduced-motion player's shake falls out of that rather than a second gate.
+  // The decay window is resolved the same way every other step on the table
+  // is — `motionMs("shake", reduceMotion)`, never `Motion.duration.shake`
+  // read past that helper — so a reduced-motion player's window collapses to
+  // `Motion.reduced.shake` (0) exactly the way `Motion.reduced` says it should,
+  // rather than by this call site's own judgement.
   const shake = (tier: ImpactTier) => {
     const trauma = traumaFor(tier, reduceMotionRef.current);
+    const decayMs = motionMs("shake", reduceMotionRef.current);
     shakeTrauma.value = trauma;
+    shakeDecayMs.value = decayMs;
     if (trauma === 0) {
       shakeElapsed.value = 0;
       return;
     }
     cancelAnimation(shakeElapsed);
     shakeElapsed.value = 0;
-    shakeElapsed.value = withTiming(SHAKE_DECAY_MS, {
-      duration: SHAKE_DECAY_MS,
+    shakeElapsed.value = withTiming(decayMs, {
+      duration: decayMs,
       easing: Easing.linear,
     });
   };
@@ -191,9 +205,13 @@ function useImpactFeedback(reduceMotion: boolean, scale: number) {
     ],
   }));
 
+  // Opacity rides the same decaying magnitude as the offset, at rest (no
+  // trauma) is 0 — so the veil this drives contributes nothing to a pixel a
+  // spec samples, whether or not it happens to run mid-shake.
   const shakeStyle = useAnimatedStyle(() => {
-    const { x, y } = shakeOffset(shakeTrauma.value, shakeElapsed.value);
-    return { transform: [{ translateX: x }, { translateY: y }] };
+    const { x, y } = shakeOffset(shakeTrauma.value, shakeElapsed.value, shakeDecayMs.value);
+    const magnitude = shakeMagnitude(shakeTrauma.value, shakeElapsed.value, shakeDecayMs.value);
+    return { transform: [{ translateX: x }, { translateY: y }], opacity: magnitude };
   });
 
   // Reanimated keeps driving shared values after unmount unless cancelled.
@@ -308,8 +326,11 @@ export function useTableFeedback({
     }
     if (prevGameOverRef.current) return;
     prevGameOverRef.current = true;
-    // The partita's own rung — every seat shakes with it, not only the winner's.
-    shake("partitaWon");
+    // The manche/partita shake itself is NOT fired here — this effect answers
+    // `gameOver` the instant the state arrives, well ahead of the winning
+    // card's own landing. `GameTable.tsx` fires `shake(landingTier(...))`
+    // from the same `impactDelayMs` timeout everything else on the table
+    // waits for, so the shake lands with the card rather than ahead of it.
     // `rankings` holds engine player ids (`player_0`), never display names.
     const myRank = viewerId ? rankings.indexOf(viewerId) : -1;
     if (myRank === 0) {
@@ -321,7 +342,7 @@ export function useTableFeedback({
       playGameLose();
       duckMusicFor(2200);
     }
-  }, [gameOver, rankings, viewerId, shake]);
+  }, [gameOver, rankings, viewerId]);
 
   // A duck outlives the play that started it by a second or two, so leaving
   // the table mid-bomb would otherwise leave the music down until something
