@@ -8,6 +8,7 @@
 // render, a "Rendered fewer hooks than expected" warning, or a red-box would
 // all surface exactly this way and nowhere else.
 
+import type { Page } from "@playwright/test";
 import { test as base, expect } from "@playwright/test";
 
 /**
@@ -27,6 +28,31 @@ export interface ConsoleErrors {
   entries: string[];
 }
 
+/**
+ * Wires up the same collection the `consoleErrors` fixture below returns, on
+ * whatever page is handed in — for a spec that drives more than one page (an
+ * extra browser context per seat, say) and needs every one of them watched,
+ * not just the fixture's own.
+ */
+export function collectConsoleErrors(page: Page): ConsoleErrors {
+  const entries: string[] = [];
+
+  page.on("console", (msg) => {
+    if (msg.type() !== "error" && msg.type() !== "warning") return;
+    const text = msg.text();
+    if (isExpectedNoise(text, msg.location().url)) return;
+    entries.push(`console.${msg.type()}: ${text}`);
+  });
+  page.on("pageerror", (err) => {
+    entries.push(`pageerror: ${err.message}\n${err.stack ?? ""}`);
+  });
+  page.on("crash", () => {
+    entries.push("page crashed");
+  });
+
+  return { entries };
+}
+
 export const test = base.extend<{ consoleErrors: ConsoleErrors }>({
   consoleErrors: async ({ page }, use) => {
     // Cuts every Reanimated spring/timing duration to ~0 via the same
@@ -35,27 +61,13 @@ export const test = base.extend<{ consoleErrors: ConsoleErrors }>({
     // env plumbing, just less real time spent waiting on animation frames.
     await page.emulateMedia({ reducedMotion: "reduce" });
 
-    const entries: string[] = [];
+    const collected = collectConsoleErrors(page);
+    await use(collected);
 
-    page.on("console", (msg) => {
-      if (msg.type() !== "error" && msg.type() !== "warning") return;
-      const text = msg.text();
-      if (isExpectedNoise(text, msg.location().url)) return;
-      entries.push(`console.${msg.type()}: ${text}`);
-    });
-    page.on("pageerror", (err) => {
-      entries.push(`pageerror: ${err.message}\n${err.stack ?? ""}`);
-    });
-    page.on("crash", () => {
-      entries.push("page crashed");
-    });
-
-    await use({ entries });
-
-    if (entries.length > 0) {
+    if (collected.entries.length > 0) {
       throw new Error(
-        `Browser reported ${entries.length} error(s)/warning(s) during the test:\n\n` +
-          entries.map((e, i) => `[${i + 1}] ${e}`).join("\n\n")
+        `Browser reported ${collected.entries.length} error(s)/warning(s) during the test:\n\n` +
+          collected.entries.map((e, i) => `[${i + 1}] ${e}`).join("\n\n")
       );
     }
   },

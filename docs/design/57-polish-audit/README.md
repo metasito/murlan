@@ -80,10 +80,14 @@ in `tests/e2e/onlineTableSurvey.spec.ts` holds them to. That check compares the 
 against the offline one, and nothing else: the two can drift together, and the band did,
 because a fix landed for it. What pins the band itself is `tests/tableProportions.test.ts`.
 
-`online-table.txt` is rewritten by every whole run of that spec, so it reports the app as it
-is now — but only a local run reaches this repository, since CI writes it onto a runner
-nothing commits from. The run is held to it either way. The `emptyBand` column below is the
-audit's own figure, kept because it is what finding 3 was raised on.
+`online-table.txt` is merged, by `MODE\tviewport\tcards`, on every whole run of that spec, so
+it reports the app as it is now — but only a local run reaches this repository, since CI
+writes it onto a runner nothing commits from. The run is held to it either way. `cards` is
+part of the key (#800): every seat is a real dealt-in account, so a fresh 4-player table's
+leader is whichever of the four seats the shuffle actually gives the 3♠, and two of the four
+hold 14 cards where the other two hold 13 (`dealCards`, `lib/gameEngine.ts`) — both are real,
+both get their own row. The `emptyBand` column below is the audit's own figure, kept because
+it is what finding 3 was raised on.
 
 `handSlot` is the box the fan gives one hand card — full height, and only the width the card
 beside it leaves uncovered. It is not `table.txt`'s `card`, which is a card on the felt.

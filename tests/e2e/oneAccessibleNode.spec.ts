@@ -143,10 +143,10 @@ test("a revisited room screen carries the room code on exactly one accessible no
 
   await reachRoom("onenodea");
 
-  // Start and leave the game, the way `openOnlineTable`'s retry does —
-  // "Impostazioni" lives on the game screen, not the room lobby — then sign
-  // into a fresh account and create a second room, so the lobby this second
-  // room was pushed from is a screen the session has already left once.
+  // Start and leave the game — "Impostazioni" lives on the game screen, not
+  // the room lobby — then sign into a fresh account and create a second room,
+  // so the lobby this second room was pushed from is a screen the session has
+  // already left once.
   await fillWithBotsAndStart(page);
   await page.locator(TABLE).waitFor({ timeout: 30_000 });
   await page.getByRole("button", { name: "Impostazioni" }).first().click();
