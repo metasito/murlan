@@ -65,24 +65,28 @@ export interface RootChild {
   source: string;
 }
 
-/** A child opens at six spaces; the same depth closing one is that child's end. */
+/** A child opens at eight spaces; the same depth closing one is that child's end. */
 function isChildStart(line: string): boolean {
-  return /^ {6}[<{]/.test(line) && !/^ {6}<\//.test(line);
+  return /^ {8}[<{]/.test(line) && !/^ {8}<\//.test(line);
 }
 
 /**
- * The direct children of the root element, which the source marks out by
- * indentation: the root opens at four spaces and its children at six.
+ * The direct children of the layer the game is rendered into, which the source
+ * marks out by indentation: it opens at six spaces and its children at eight.
+ *
+ * That layer rather than the root: the root's other child is the felt, which
+ * carries no control and never leaves the window (#101), and every reachable
+ * thing on the table is inside the layer the landing displaces.
  *
  * Comments are blanked first — one naming `behindVeil` next to a child that
  * does not carry it would answer for that child.
  */
 export function rootChildren(raw: string): RootChild[] {
   const lines = blankComments(raw).split("\n");
-  const open = lines.findIndex((l) => /^ {4}<Animated\.View style=\{\[styles\.root/.test(l));
-  assert.ok(open >= 0, "GameTable's root element is no longer where this test looks for it");
-  const close = lines.findIndex((l, i) => i > open && /^ {4}<\/Animated\.View>/.test(l));
-  assert.ok(close > open, "GameTable's root element never closes");
+  const open = lines.findIndex((l) => /^ {6}<Animated\.View style=\{\[styles\.kick/.test(l));
+  assert.ok(open >= 0, "GameTable's game layer is no longer where this test looks for it");
+  const close = lines.findIndex((l, i) => i > open && /^ {6}<\/Animated\.View>/.test(l));
+  assert.ok(close > open, "GameTable's game layer never closes");
 
   const children: RootChild[] = [];
   for (let i = open + 1; i < close; i++) {
