@@ -203,6 +203,58 @@ const resetPasswordLimiter = rateLimit({
   message: { error: "Too many requests, slow down.", code: "RATE_LIMITED" },
 });
 
+/** Same pattern as authMaxFromEnv() above. */
+function changePasswordMaxFromEnv(): number {
+  const parsed = Number(process.env.MURLAN_CHANGE_PASSWORD_RATE_LIMIT);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : 10;
+}
+
+/**
+ * Per-account bound on POST /api/auth/change-password (#892) — the route
+ * carried no limiter at all, so an authenticated caller could spend
+ * bcrypt.compare's cost (~100ms) against a wrong currentPassword without
+ * limit. skipSuccessfulRequests mirrors loginUsernameLimiter's reasoning: a
+ * person legitimately changing their password twice must not spend the
+ * budget a wrong currentPassword does.
+ *
+ * No decoy hash here, unlike loginUsernameLimiter: that one exists because a
+ * fast 401 tells an *anonymous* attacker they have exhausted an account's
+ * guesses. This route is already authenticated as the account it is
+ * guessing at, so there is no oracle to close.
+ */
+const changePasswordLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: changePasswordMaxFromEnv(),
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,
+  keyGenerator: (req: Request) => req.session?.userId ?? "anonymous",
+  message: { error: "Too many requests, slow down.", code: "RATE_LIMITED" },
+});
+
+/** Same pattern as authMaxFromEnv() above. */
+function registerEmailMaxFromEnv(): number {
+  const parsed = Number(process.env.MURLAN_REGISTER_EMAIL_RATE_LIMIT);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : 5;
+}
+
+/**
+ * Per-address cap on POST /api/auth/register (#892), mirroring
+ * passwordResetRequestLimiter exactly. Registration mails the address on
+ * demand — see #897 — which is an amplification vector authLimiter's
+ * per-IP ceiling does not close. Keying on the submitted address is not
+ * itself an oracle: a nonexistent address is throttled on the identical
+ * schedule a real one is.
+ */
+const registerEmailLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: registerEmailMaxFromEnv(),
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req: Request) => (req.body as { email: string }).email.toLowerCase(),
+  message: { error: "Too many requests, slow down.", code: "RATE_LIMITED" },
+});
+
 const friendLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 10,
@@ -338,7 +390,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ── Auth ──────────────────────────────────────────────────────────────────
 
-  app.post("/api/auth/register", authLimiter, validate(RegisterSchema), async (req, res) => {
+  app.post("/api/auth/register", authLimiter, validate(RegisterSchema), registerEmailLimiter, async (req, res) => {
     const { username, password, email } = req.body as { username: string; password: string; email: string };
 
     const existingUsername = await storage.getUserByUsername(username);
@@ -476,7 +528,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // A live session alone is not proof of intent to change a credential —
   // mirrors login's own bcrypt.compare, and answers a wrong currentPassword
   // with the same generic code login does, so the two are indistinguishable.
-  app.post("/api/auth/change-password", requireAuth, validate(ChangePasswordSchema), async (req, res) => {
+  app.post("/api/auth/change-password", requireAuth, changePasswordLimiter, validate(ChangePasswordSchema), async (req, res) => {
     const { currentPassword, newPassword } = req.body as { currentPassword: string; newPassword: string };
     const userId = req.session.userId!;
 
@@ -541,7 +593,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // the session. Generic failure message — whether the token is unknown,
   // expired or already used is not this caller's business, and the redeem
   // itself is the account oracle to avoid distinguishing.
-  app.post("/api/auth/verify-email", validate(VerifyEmailSchema), async (req, res) => {
+  app.post("/api/auth/verify-email", authLimiter, validate(VerifyEmailSchema), async (req, res) => {
     const { token } = req.body as { token: string };
     const userId = await redeemAuthToken(token, "email_verify");
     if (!userId) {

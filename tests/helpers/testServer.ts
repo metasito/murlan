@@ -52,6 +52,19 @@ process.env.MURLAN_LOGIN_USERNAME_RATE_LIMIT ??= "5";
 process.env.MURLAN_PASSWORD_RESET_REQUEST_RATE_LIMIT ??= "5";
 
 /**
+ * change-password's per-account limiter (#892) defaults to 10 in production,
+ * same reasoning as MURLAN_LOGIN_USERNAME_RATE_LIMIT above.
+ */
+process.env.MURLAN_CHANGE_PASSWORD_RATE_LIMIT ??= "5";
+
+/**
+ * register's per-email limiter (#892) already defaults to 5 in production —
+ * set here anyway, before server/routes.ts is imported, so a test never
+ * depends on that default staying where it is.
+ */
+process.env.MURLAN_REGISTER_EMAIL_RATE_LIMIT ??= "5";
+
+/**
  * Production pauses 1.2s before a bot moves, which is about twenty pauses per
  * hand played out. A suite wanting a different pace sets its own before
  * importing this — tests/integration/spectator.test.ts does.

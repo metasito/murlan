@@ -410,6 +410,41 @@ describe("email at signup", { skip: hasDatabase() ? false : skipMessage() }, () 
     assert.equal(direct, null, "an expired token must not redeem via the module either");
   });
 
+  // #892/#895: redeemAuthToken used to sweep every expired row on every call.
+  // A garbage token must still be refused without touching a row it has
+  // nothing to do with.
+  test("a POST to verify-email does not sweep an unrelated expired row", async () => {
+    const { user } = await register(server, "verify_no_sweep");
+    const { mintAuthToken } = await import("../../server/authTokens.ts");
+    await mintAuthToken(user.id, "email_verify", -1);
+
+    const admin = new pg.Pool({ connectionString: process.env.DATABASE_URL! });
+    try {
+      const res = await fetch(`${server.url}/api/auth/verify-email`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ token: "not-a-real-token" }),
+      });
+      assert.equal(res.status, 400, await res.text());
+
+      // Two rows for this user: the one register() itself minted, and the
+      // expired one above — both must survive the failed POST.
+      const rows = await admin.query(
+        `SELECT 1 FROM "${server.schema}".auth_tokens t
+           JOIN "${server.schema}".users u ON u.id = t.user_id
+          WHERE u.username = $1 AND t.purpose = 'email_verify'`,
+        ["verify_no_sweep"]
+      );
+      assert.equal(
+        rows.rowCount,
+        2,
+        "an expired row must still be there — the sweep is on a schedule (server/retention.ts), not this route"
+      );
+    } finally {
+      await admin.end();
+    }
+  });
+
   test("registration still succeeds when the mail provider is not configured", async () => {
     // testServer.ts sets no RESEND_API_KEY/MAIL_FROM_ADDRESS, so this exercises
     // the actual "no config" path sendMail() takes in this suite, not a mock.
