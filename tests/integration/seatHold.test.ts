@@ -178,5 +178,104 @@ describe(
         "so the last seat still goes to whoever asks for it"
       );
     });
+
+    test("a re-invite does not extend the hold — it still runs from the first invite", async () => {
+      process.env.MURLAN_SEAT_HOLD_MS = "1000";
+      try {
+        const host = await player("rn_host");
+        const friend = await player("rn_friend");
+        await befriend(server, host, friend);
+
+        const made = waitFor<RoomState>(host.socket, "room:state");
+        host.socket.emit("room:create", { gameMode: "teams", maxPlayers: TEAMS_PLAYER_COUNT });
+        const room = await made;
+
+        const firstInvite = waitFor<RoomState>(host.socket, "room:state");
+        host.socket.emit("friend:invite", { friendUserId: friend.user.id, roomCode: room.code });
+        await firstInvite;
+
+        const strangerA = await player("rn_sA");
+        await joins(strangerA, room.code, host.socket);
+        const strangerB = await player("rn_sB");
+        await joins(strangerB, room.code, host.socket);
+
+        await new Promise((resolve) => setTimeout(resolve, 600));
+
+        // If the conflict path still restamped created_at, this would buy the
+        // hold another 1000ms from here instead of leaving the first invite's
+        // clock alone.
+        const reinvite = waitFor<RoomState>(host.socket, "room:state");
+        host.socket.emit("friend:invite", { friendUserId: friend.user.id, roomCode: room.code });
+        await reinvite;
+
+        await new Promise((resolve) => setTimeout(resolve, 600));
+
+        const latecomer = await player("rn_late");
+        const seated = await joins(latecomer, room.code, host.socket);
+        assert.equal(
+          seated.players.find((p) => p.userId === latecomer.user.id)?.seatIndex,
+          2,
+          "1200ms after the first invite the hold must be gone, no matter how many re-invites followed it"
+        );
+      } finally {
+        delete process.env.MURLAN_SEAT_HOLD_MS;
+      }
+    });
+
+    test("declining an invite frees the seat and tells the room on the same event", async () => {
+      const host = await player("dec_host");
+      const friend = await player("dec_friend");
+      await befriend(server, host, friend);
+
+      const made = waitFor<RoomState>(host.socket, "room:state");
+      host.socket.emit("room:create", { gameMode: "teams", maxPlayers: TEAMS_PLAYER_COUNT });
+      const room = await made;
+
+      const heard = waitFor<RoomState>(host.socket, "room:state");
+      host.socket.emit("friend:invite", { friendUserId: friend.user.id, roomCode: room.code });
+      const held = await heard;
+      assert.deepEqual(
+        held.seatHolds.map((h) => h.seatIndex),
+        [2],
+        "the seat is held before the decline"
+      );
+
+      // Fill every other seat while the hold still stands, so seat 2 is the
+      // only one left for the decline to prove it actually freed.
+      const strangerA = await player("dec_sA");
+      const afterA = await joins(strangerA, room.code, host.socket);
+      assert.equal(
+        afterA.players.find((p) => p.userId === strangerA.user.id)?.seatIndex,
+        1
+      );
+      const strangerB = await player("dec_sB");
+      const afterB = await joins(strangerB, room.code, host.socket);
+      assert.equal(
+        afterB.players.find((p) => p.userId === strangerB.user.id)?.seatIndex,
+        3,
+        "seat 2 must still be held, not handed to the second stranger"
+      );
+
+      // Armed before the decline lands, over HTTP rather than the socket: the
+      // room must be told on the decline's own event, not on whatever
+      // broadcast happens along next.
+      const freed = waitFor<RoomState>(host.socket, "room:state");
+      const decline = await fetch(`${server.url}/api/friends/invites/${room.code}`, {
+        method: "DELETE",
+        headers: { cookie: friend.cookie },
+      });
+      assert.equal(decline.status, 200, await decline.text());
+
+      const after = await freed;
+      assert.deepEqual(after.seatHolds, [], "the room hears the hold is gone, not just the database");
+
+      const latecomer = await player("dec_late");
+      const seated = await joins(latecomer, room.code, host.socket);
+      assert.equal(
+        seated.players.find((p) => p.userId === latecomer.user.id)?.seatIndex,
+        2,
+        "the freed seat is immediately claimable, not merely reported as free"
+      );
+    });
   }
 );

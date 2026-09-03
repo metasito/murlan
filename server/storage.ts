@@ -625,8 +625,12 @@ class DrizzleStorage {
   /**
    * Records that one player asked another to join a room, and returns whether
    * the invite is new. Re-inviting the same person to the same room refreshes
-   * the existing row rather than adding a second — so an impatient host and a
+   * who's asking rather than adding a second row — so an impatient host and a
    * retried emit are the same event.
+   *
+   * `createdAt` is never in the update set: a hold is a cap on the room, not a
+   * renewable lease (#840), so the 120s always runs from the first invite no
+   * matter how many times the room re-asks.
    */
   async recordGameInvite(
     roomId: string,
@@ -638,11 +642,7 @@ class DrizzleStorage {
       .values({ roomId, inviterId, inviteeId })
       .onConflictDoUpdate({
         target: [gameInvites.roomId, gameInvites.inviteeId],
-        // The database's clock, not Node's: the insert's own default is
-        // `now()`, and the seat hold is read as an age against that same
-        // clock. A refresh stamped from the app server measures the hold
-        // through the offset between two machines.
-        set: { inviterId, createdAt: sql`now()` },
+        set: { inviterId },
       })
       .returning({ createdAt: gameInvites.createdAt, id: gameInvites.id });
     return { created: !!row };
@@ -710,17 +710,24 @@ class DrizzleStorage {
    * Turns one invite down. Addressed by room code rather than row id because
    * the unique index makes (invitee, room) name exactly one row, which also
    * makes a repeated decline a no-op instead of an error.
+   *
+   * Returns the room the freed hold belonged to, or null when there was
+   * nothing to decline — the caller's cue for whether the room needs telling.
    */
-  async declineGameInvite(inviteeId: string, roomCode: string): Promise<void> {
-    await db.delete(gameInvites).where(
-      and(
-        eq(gameInvites.inviteeId, inviteeId),
-        inArray(
-          gameInvites.roomId,
-          db.select({ id: rooms.id }).from(rooms).where(eq(rooms.code, roomCode))
+  async declineGameInvite(inviteeId: string, roomCode: string): Promise<string | null> {
+    const [row] = await db
+      .delete(gameInvites)
+      .where(
+        and(
+          eq(gameInvites.inviteeId, inviteeId),
+          inArray(
+            gameInvites.roomId,
+            db.select({ id: rooms.id }).from(rooms).where(eq(rooms.code, roomCode))
+          )
         )
       )
-    );
+      .returning({ roomId: gameInvites.roomId });
+    return row?.roomId ?? null;
   }
 
   async removeFriend(userId: string, friendUserId: string): Promise<void> {

@@ -269,6 +269,26 @@ function tellInvitees(
   }
 }
 
+/**
+ * Tells the room its seat holds changed. The row an invite lives in *is* the
+ * hold, so every path that deletes one routes through here — a lobby's
+ * "held for" must clear on the same event that frees the seat, not on
+ * whatever broadcast happens to come along next.
+ */
+export async function announceSeatHoldsChanged(io: SocketServer, roomId: string): Promise<void> {
+  const room = await storage.getRoomById(roomId).catch((err: unknown) => {
+    logger.warn({ err, roomId }, "Failed to read the room while announcing a seat-hold change");
+    return null;
+  });
+  if (!room) return;
+  const players = await storage.getRoomPlayers(roomId).catch((err: unknown) => {
+    logger.warn({ err, roomId }, "Failed to read the roster while announcing a seat-hold change");
+    return null;
+  });
+  if (!players) return;
+  io.to(roomId).emit("room:state", await roomStatePayload(room, players));
+}
+
 /** Retires every invite pointing at a room that can no longer be joined. */
 export async function retireRoomInvites(
   io: SocketServer,
@@ -280,6 +300,7 @@ export async function retireRoomInvites(
     return [] as string[];
   });
   tellInvitees(io, invitees, "friend:invite_retired", { roomCode });
+  if (invitees.length > 0) await announceSeatHoldsChanged(io, roomId);
 }
 
 /**

@@ -423,7 +423,7 @@ describe("email at signup", { skip: hasDatabase() ? false : skipMessage() }, () 
   test("an expired token fails to redeem", async () => {
     const { user } = await register(server, "verify_expired");
     const { mintAuthToken, redeemAuthToken } = await import("../../server/authTokens.ts");
-    const token = await mintAuthToken(user.id, "email_verify", -1);
+    const token = await mintAuthToken(user.id, "email_verify", -60_000);
 
     const res = await fetch(`${server.url}/api/auth/verify-email`, {
       method: "POST",
@@ -442,7 +442,7 @@ describe("email at signup", { skip: hasDatabase() ? false : skipMessage() }, () 
   test("a POST to verify-email does not sweep an unrelated expired row", async () => {
     const { user } = await register(server, "verify_no_sweep");
     const { mintAuthToken } = await import("../../server/authTokens.ts");
-    await mintAuthToken(user.id, "email_verify", -1);
+    await mintAuthToken(user.id, "email_verify", -60_000);
 
     const admin = new pg.Pool({ connectionString: process.env.DATABASE_URL! });
     try {

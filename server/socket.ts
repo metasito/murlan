@@ -30,6 +30,7 @@ import { reopenOwnership } from "./gameOwnership.ts";
 // so the presence family can reach it without an import cycle. Re-exported
 // because `server/routes.ts` and the timer-containment test ask for it here.
 export {
+  declineGameInviteAndNotify,
   emitToUser,
   evictUser,
   isUserOnline,
