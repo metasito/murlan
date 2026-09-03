@@ -29,7 +29,7 @@ import {
 } from "@/components/ReactionLayer";
 import { GameOverOverlay } from "@/components/GameOverOverlay";
 import { MenuButton } from "@/components/MenuButton";
-import { Colors, FontSize, Radius, Spacing, Type, Layer } from "@/lib/theme";
+import { Colors, FontSize, Radius, Reading, Spacing, Type, Layer } from "@/lib/theme";
 import { hapticLight, hapticMedium } from "@/lib/haptics";
 import { useTranslation } from "@/lib/i18n";
 import { a11yHidden } from "@/lib/a11y";
@@ -40,12 +40,9 @@ import { a11yHidden } from "@/lib/a11y";
 // is untouched.
 const E2E_FAST = process.env.EXPO_PUBLIC_E2E_FAST === "1";
 
-/** How long the emoji picker stays open before hiding itself. */
-const REACTION_PANEL_MS = 4000;
-/** Beat before the results overlay covers the final play. */
+// Beat before the results overlay covers the final play. A domain hold, not a
+// generic UI transition, so it is not a Motion token.
 const GAME_OVER_DELAY = E2E_FAST ? 0 : 800;
-/** In-game server errors are transient; clear them rather than stacking. */
-const ERROR_TOAST_MS = 3000;
 
 /**
  * The veiled wrapper below opens a stacking context, so the 100 and 300 its
@@ -148,7 +145,7 @@ export default function OnlineGameScreen() {
 
   useEffect(() => {
     if (!error) return;
-    const t = setTimeout(clearError, ERROR_TOAST_MS);
+    const t = setTimeout(clearError, Reading.toast);
     return () => clearTimeout(t);
   }, [error, clearError]);
 
@@ -255,7 +252,7 @@ export default function OnlineGameScreen() {
     if (!showReactions) {
       reactionTimerRef.current = setTimeout(
         () => setShowReactions(false),
-        REACTION_PANEL_MS
+        Reading.notice
       );
     }
   };

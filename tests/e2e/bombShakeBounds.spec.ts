@@ -34,7 +34,7 @@ const VIEWPORT = { width: 844, height: 390 };
 /**
  * How long the landing is watched for.
  *
- * The throw is ~380ms, the impact fires ~312ms into it, and the kick it starts
+ * The throw is ~260ms, the impact fires ~213ms into it, and the kick it starts
  * runs 1600ms from there (`KICK_MS`, components/useTableFeedback.ts) against a
  * 360ms shake. Comfortably past the last of them, because the assertion is
  * that *no* frame in the whole excursion uncovers the felt.

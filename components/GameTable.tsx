@@ -128,7 +128,7 @@ import {
 } from "@/lib/sounds";
 import { hapticError, hapticLight, hapticMedium, hapticSelection } from "@/lib/haptics";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
-import { Colors, FontSize, Motion, Radius, Scrim, Spacing, Layer } from "@/lib/theme";
+import { Colors, FontSize, Motion, Radius, Reading, Scrim, Spacing, Layer } from "@/lib/theme";
 import { useTableFelt } from "@/lib/cosmetics";
 import { A11yStatus, a11yGroup, a11yHidden, a11yVeiled } from "@/lib/a11y";
 
@@ -150,9 +150,9 @@ const ROUND_WINNER_MS = 1800;
 const WEB_CLIP =
   Platform.OS === "web" ? ({ overflow: "clip" } as unknown as ViewStyle) : null;
 
-// How long the refused-play reason stays on screen, and how wide it may get
-// before it wraps onto its second (and last) line.
-const REJECT_HINT_MS = 2600;
+// How wide the refused-play reason may get before it wraps onto its second
+// (and last) line. How long it stays up is `Reading.hint` (#829): a player
+// reads it, which is what `Reading` is for, not a Motion step.
 const REJECT_HINT_MAX_W = 260;
 /** Above the top bar and the rematch panel: the reason must not be covered. */
 const REJECT_HINT_Z = Layer.hint;
@@ -834,7 +834,7 @@ export function GameTable({
       handCardH,
     });
 
-    // The card is thrown here and arrives ~312ms later, so everything that
+    // The card is thrown here and arrives ~213ms later, so everything that
     // reads as *impact* waits for it. Announced for every seat, not only the
     // viewer's: the sound belongs to a card landing, not to a tap.
     impactTimerRef.current = setTimeout(() => {
@@ -921,7 +921,7 @@ export function GameTable({
 
   useEffect(() => {
     if (rejectHint === null) return;
-    const id = setTimeout(() => setRejectHint(null), REJECT_HINT_MS);
+    const id = setTimeout(() => setRejectHint(null), Reading.hint);
     return () => clearTimeout(id);
   }, [rejectHint]);
 
