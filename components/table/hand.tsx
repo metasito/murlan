@@ -88,11 +88,6 @@ const UNGIVEABLE_FILTER = { filter: "grayscale(1)" } as const;
 const GIVEABLE_SHEEN_TOP = withAlpha(Colors.gold, 0.55);
 const GIVEABLE_SHEEN_BOTTOM = withAlpha(Colors.gold, 0);
 const GIVEABLE_SHEEN_STOP = 0.6;
-// Past every card index a hand can hold (at most 18, `docs/RULES.md`), so a
-// giveable card always paints over an illegal neighbour regardless of which
-// of the two the fan's own draw order would otherwise put on top — the eye
-// has to land on what can be chosen, not on whatever happens to overlap it.
-const GIVEABLE_Z_LIFT = 100;
 
 
 // ─── Reordering (#531) ────────────────────────────────────────────────────────
@@ -130,7 +125,10 @@ const MOVE_KEYS = { ArrowLeft: MOVE_LEFT, ArrowRight: MOVE_RIGHT };
  */
 const EXCHANGE_OVERLAY_Z = Layer.table + 1;
 
-/** Past every card's own `zIndex`, which is its index in a hand of at most 18. */
+/**
+ * Past every card's own `zIndex`, which is its index in a hand of at most 18,
+ * or that index lifted by the row's count while the exchange marks it giveable.
+ */
 const HELD_Z = Layer.held;
 
 interface CardItemProps {
@@ -293,8 +291,6 @@ function CardItemBase({
     };
   });
 
-  // The sheen animates in by opacity alone, same as the selection bloom, and
-  // for the same reason: it must never touch the card's own rasterised ranks.
   const giveableStyle = useAnimatedStyle(() => ({
     opacity: Math.max(0, exchangeState.value),
   }));
@@ -346,7 +342,7 @@ function CardItemBase({
       {giveable === false && (
         <Animated.View
           pointerEvents="none"
-          style={[handStyles.ungiveableVeil, { borderRadius: Radius.sm }, veilStyle]}
+          style={[handStyles.ungiveableVeil, { borderRadius: cardRadius(cardW) }, veilStyle]}
         />
       )}
       {giveable === true && (
@@ -525,12 +521,6 @@ export function StraightHand({
   const crop = cardH * HAND_CROP;
   const visibleH = cardH - crop;
   const dealRise = DEAL_RISE_PX * cardScale;
-  // Where the exchange's flying card retires, in the row's own baseline units
-  // (`exchangeArrivalRise`'s own doc). The arriving card's descent starts
-  // there instead of from `dealRise` above, which is a fixed rise meant for a
-  // card dropping from the deck and unrelated to where any given card in this
-  // hand actually receives one.
-  const exchangeArrivalDealRise = exchangeArrivalRise(cardH, handBottomPad);
   // O(1) membership check per card instead of `selectedIds.includes(card.id)`
   // (an O(k) scan repeated for every one of the up to 18 cards in a hand).
   // Computed before the early return below — Rules of Hooks requires every
@@ -657,6 +647,21 @@ export function StraightHand({
   // The middle card rides highest, so the row is as tall as the card plus the
   // climb; the whole arc is then pushed past the bottom edge by the crop.
   const arcRise = box.h - cardH;
+  // Where the exchange's flying card retires, in the row's own baseline units
+  // (`exchangeArrivalRise`'s own doc). The arriving card's descent starts
+  // there instead of from `dealRise` above, which is a fixed rise meant for a
+  // card dropping from the deck and unrelated to where any given card in this
+  // hand actually receives one.
+  //
+  // `handCenter` is `arcRise` taller than the row and centres it, so the row's
+  // baseline sits half the climb above the zone's own padded floor; and the
+  // resting card height, not this hand's, because the flight was solved
+  // against the resting one whether or not the turn is the viewer's.
+  const exchangeArrivalDealRise = exchangeArrivalRise(
+    CARD_H(scale * HAND_SCALE),
+    handBottomPad,
+    arcRise / 2
+  );
   // A tilted card stands taller than the card: its box grows by
   // `w·sin(a) + h·cos(a) − h`, half of it above and half below. The end cards
   // carry the most of the arc's own tilt and a chosen one adds SELECT_TILT on
@@ -933,8 +938,10 @@ export function StraightHand({
           faceDown={faceDown}
           // A giveable card draws over every neighbour regardless of the fan's
           // own order, so the eye lands on what can be chosen rather than on
-          // whichever illegal card the draw order happened to put on top.
-          zIndex={giveable === true ? i + GIVEABLE_Z_LIFT : i}
+          // whichever illegal card the draw order happened to put on top. The
+          // lift is the row's own count — past every index it hands out, and
+          // still short of `HELD_Z`, which has to stay above both bands.
+          zIndex={giveable === true ? rest.length + i : i}
           dealDelay={dealArmed ? i * Motion.stagger.deal : descending ? 0 : -1}
           // From the row's own centre, which is where the flight carrying it
           // stops (`flightOrigin`'s `bottom` is `dx: 0`). The crossing and the
@@ -1045,6 +1052,10 @@ const handStyles = StyleSheet.create({
     alignSelf: "center",
   },
   handCardWrap: { position: "absolute" },
+  // Its corner comes from the card's own width at the call site, never from a
+  // fixed radius: a card rounds at a share of itself, so a veil rounding at a
+  // constant leaves a crescent of undimmed face at each of the four corners —
+  // four bright specks on a card that is meant to have receded.
   ungiveableVeil: {
     position: "absolute",
     top: 0, left: 0, right: 0, bottom: 0,

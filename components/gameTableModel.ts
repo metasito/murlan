@@ -118,18 +118,27 @@ export function HAND_ZONE_H(cardH: number, bottomPad: number): number {
 /**
  * How far above the hand row's own baseline (`bottom: 0`, `hand.tsx`) the
  * exchange's flying card retires — `flightOrigin`'s "bottom" case lands it at
- * the hand zone's own vertical centre, `handZoneH / 2` above the table floor,
- * and the row's own baseline sits `bottomPad` above that same floor
- * (`HAND_CROP`'s own comment: the row meets the device edge and is cropped by
- * it). The two floor-relative terms cancel, leaving this.
+ * the hand zone's own vertical centre, `handZoneH / 2` above the table floor.
+ *
+ * The row's baseline is not that floor. The zone reserves `bottomPad` under
+ * itself, and the row is then centred in the headroom above it, which lifts it
+ * by `rowRise` again — so both terms come off, and neither may be assumed to
+ * be zero. `cardH` is the *resting* hand card (`CARD_H(scale * HAND_SCALE)`),
+ * because that is the one the flight's own geometry was solved against; a hand
+ * drawn larger because the turn is the viewer's own does not move where the
+ * flier stopped.
  *
  * The arriving card's own descent (`hand.tsx`'s `dealRise`) starts from this
  * point instead of the unrelated height a freshly dealt card drops from
  * (`DEAL_RISE_PX`), so the flier's landing and the card's mount are the same
  * point rather than two guesses that happen to be close.
  */
-export function exchangeArrivalRise(cardH: number, bottomPad: number): number {
-  return HAND_ZONE_H(cardH, bottomPad) / 2 - bottomPad;
+export function exchangeArrivalRise(
+  cardH: number,
+  bottomPad: number,
+  rowRise: number
+): number {
+  return HAND_ZONE_H(cardH, bottomPad) / 2 - bottomPad - rowRise;
 }
 
 // ─── Width budgets ────────────────────────────────────────────────────────────

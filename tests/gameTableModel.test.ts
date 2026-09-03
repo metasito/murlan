@@ -2819,18 +2819,32 @@ describe("exchangeArrivalRise", () => {
   test("is the hand zone's own centre, restated against the row's baseline", () => {
     // flightOrigin's "bottom" case lands the flying card at handZoneH / 2
     // above the table floor; the row's own baseline sits bottomPad above that
-    // same floor (HAND_CROP's own comment: the row meets the device edge and
-    // is cropped by it). Restated here from the two pieces rather than
-    // imported whole, so a change to either formula shows up as disagreement.
+    // floor plus the lift handCenter gives it. Restated here from the pieces
+    // rather than imported whole, so a change to either formula shows up as
+    // disagreement.
     const cardH = 90;
     const bottomPad = 34;
+    const rowRise = 7;
     const handZoneH = handVisibleH(cardH) + bottomPad + handRowHeadroom(cardH);
-    assert.equal(exchangeArrivalRise(cardH, bottomPad), handZoneH / 2 - bottomPad);
+    assert.equal(
+      exchangeArrivalRise(cardH, bottomPad, rowRise),
+      handZoneH / 2 - bottomPad - rowRise
+    );
   });
 
   test("rises with a taller card, and falls with a deeper safe area", () => {
-    assert.ok(exchangeArrivalRise(120, 20) > exchangeArrivalRise(90, 20));
-    assert.ok(exchangeArrivalRise(90, 40) < exchangeArrivalRise(90, 0));
+    assert.ok(exchangeArrivalRise(120, 20, 0) > exchangeArrivalRise(90, 20, 0));
+    assert.ok(exchangeArrivalRise(90, 40, 0) < exchangeArrivalRise(90, 0, 0));
+  });
+
+  // The row is lifted off the zone's padded floor by half the arc's own climb,
+  // and a rise that ignored it would hand the card over that far from where
+  // the flier stopped — the seam this function exists to close.
+  test("comes down by the row's own lift", () => {
+    assert.equal(
+      exchangeArrivalRise(90, 34, 0) - exchangeArrivalRise(90, 34, 9),
+      9
+    );
   });
 });
 
