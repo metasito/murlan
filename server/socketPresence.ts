@@ -4,12 +4,14 @@
 // both: the invite it can send, the online list it is given, the notice its
 // friends receive, and the grace its seat is held under when it drops.
 //
-// `registerDisconnect` is called after this module's own awaits rather than
-// before them, exactly as it was inline.
-import type { Server as SocketServer, Socket } from "socket.io";
+// `registerDisconnect` registers synchronously, before `announcePresence`'s
+// own awaits (server/socket.ts): a socket that closes while those are still
+// running has no other listener that will ever see it.
+import type { DisconnectReason, Server as SocketServer, Socket } from "socket.io";
 import { storage } from "./storage.ts";
 import { logger } from "./logger.ts";
 import { notifyUser } from "./push.ts";
+import { trackEvent } from "./events.ts";
 import { onEvent } from "./socketSafety.ts";
 import {
   activeGames,
@@ -160,7 +162,8 @@ export async function announcePresence({ io, socket, userId, username }: Presenc
 
 export function registerDisconnect({ io, socket, userId, username }: PresenceContext) {
 
-    socket.on("disconnect", () => {
+    socket.on("disconnect", (reason: DisconnectReason) => {
+      trackEvent("socket.closed", userId, { reason });
       void (async () => {
         try {
           // A spectator holds no seat, so none of the grace/AFK machinery below

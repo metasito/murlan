@@ -84,6 +84,26 @@ export function reportError(error: unknown, componentStack?: string): boolean {
   }
 }
 
+/**
+ * The client is the only side that ever sees `transport error` — the server's
+ * own handler only gets the reason its own transport already knew about
+ * (#844). Rides the crash-report endpoint rather than `events`: that table is
+ * server-written only (#131), because a client-emitted reason is forgeable.
+ */
+export function reportSocketClose(reason: string): void {
+  try {
+    void apiRequest("POST", "/api/client-errors", {
+      message: `socket disconnect: ${reason}`,
+      screen: currentScreen?.slice(0, SCREEN_MAX),
+      platform: reportablePlatform(),
+      appVersion: APP_VERSION,
+    }).catch(() => {});
+  } catch {
+    // Called straight from a socket "disconnect" handler — never allowed to
+    // throw back into it.
+  }
+}
+
 type GlobalHandler = (error: unknown, isFatal?: boolean) => void;
 type ReactNativeErrorUtils = {
   getGlobalHandler?: () => GlobalHandler | undefined;

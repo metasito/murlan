@@ -14,6 +14,7 @@ jest.mock('@/lib/query-client', () => ({
 import {
   installGlobalErrorHandlers,
   reportError,
+  reportSocketClose,
   setCurrentScreen,
   resetErrorReportingForTests,
 } from '@/lib/errorReporting';
@@ -127,6 +128,32 @@ describe('the reporter cannot take the app down with it', () => {
 
     emit('unhandledrejection', { reason: new Error('original') });
     expect(apiRequest).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('reportSocketClose', () => {
+  it('sends the reason through the same endpoint, with the screen and app version', () => {
+    setCurrentScreen('/game');
+    reportSocketClose('transport close');
+
+    expect(apiRequest).toHaveBeenCalledTimes(1);
+    const [method, route] = apiRequest.mock.calls[0];
+    expect(method).toBe('POST');
+    expect(route).toBe('/api/client-errors');
+    expect(sent()[0]).toMatchObject({
+      message: 'socket disconnect: transport close',
+      screen: '/game',
+      appVersion: '9.9.9',
+      platform: 'web',
+    });
+  });
+
+  it('never throws when the endpoint itself throws', () => {
+    apiRequest.mockImplementationOnce(() => {
+      throw new Error('the outage that dropped the socket also breaks reporting');
+    });
+
+    expect(() => reportSocketClose('transport error')).not.toThrow();
   });
 });
 
