@@ -33,6 +33,12 @@ interface AuthContextValue {
   changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
   /** Throws `ApiError` when the address is already taken or the account already has one. */
   addEmail: (email: string) => Promise<void>;
+  /**
+   * Re-asks the server who we are, applying fetchMe()'s own contract below —
+   * `undefined` (a dropped connection, a 5xx) leaves the cached user
+   * standing rather than overwriting it with a guess.
+   */
+  refreshUser: () => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -169,6 +175,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(data));
   }, []);
 
+  // verify-email is the only caller today: redeeming a token changes one
+  // field of the signed-in user (emailVerified) with no other side effect,
+  // so re-asking is the whole of what it needs.
+  const refreshUser = useCallback(async () => {
+    const data = await fetchMe();
+    if (data === undefined) return;
+    setUser(data);
+    if (data) await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    else await AsyncStorage.removeItem(STORAGE_KEY);
+  }, []);
+
   const logout = useCallback(async () => {
     // Before the session goes: the endpoint needs the cookie, and the next
     // person to sign in on this phone must not inherit these invites.
@@ -186,8 +203,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const contextValue = useMemo(
-    () => ({ user, loading, login, register, rename, changePassword, addEmail, logout }),
-    [user, loading, login, register, rename, changePassword, addEmail, logout]
+    () => ({ user, loading, login, register, rename, changePassword, addEmail, refreshUser, logout }),
+    [user, loading, login, register, rename, changePassword, addEmail, refreshUser, logout]
   );
 
   return (

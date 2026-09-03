@@ -6,7 +6,7 @@ import {
   StyleSheet,
   Pressable,
 } from "react-native";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { hapticLight } from "@/lib/haptics";
 import { ScreenHeader } from "@/components/ScreenHeader";
@@ -33,6 +33,7 @@ export default function AuthScreen() {
   const emailHint = useA11yHint(t("auth.emailA11yHint"));
   const passwordHint = useA11yHint(t("auth.passwordA11yHint"));
   const { login, register } = useAuth();
+  const params = useLocalSearchParams<{ notice?: string }>();
   const [tab, setTab] = useState<Tab>("login");
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
@@ -40,12 +41,19 @@ export default function AuthScreen() {
   const [showPwd, setShowPwd] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Seeded from the query param app/recover.tsx returns through, once — a
+  // later re-render (a field edit, a tab switch) must not resurrect it after
+  // the handler below clears it.
+  const [notice, setNotice] = useState<string | null>(() =>
+    params.notice === "passwordReset" ? t("auth.passwordResetNotice") : null
+  );
   const [checkEmail, setCheckEmail] = useState<CheckEmailState | null>(null);
   const emailRef = useRef<TextInput>(null);
   const pwdRef = useRef<TextInput>(null);
 
   async function handleSubmit() {
     setError(null);
+    setNotice(null);
     if (!username.trim() || !password.trim() || (tab === "register" && !email.trim())) {
       setError(t(tab === "register" ? "auth.missingFieldsRegister" : "auth.missingFields"));
       return;
@@ -114,6 +122,13 @@ export default function AuthScreen() {
                   checkEmail.signedIn ? t("auth.checkEmailContinue") : t("auth.checkEmailBackToSignIn")
                 }
               />
+              <MenuButton
+                label={t("auth.checkEmailVerifyNow")}
+                onPress={() => router.push("/verify-email")}
+                variant="ghost"
+                size="sm"
+                accessibilityLabel={t("auth.checkEmailVerifyNow")}
+              />
             </View>
           ) : (
           <>
@@ -121,7 +136,7 @@ export default function AuthScreen() {
             {(["login", "register"] as Tab[]).map((tabOption) => (
               <Pressable
                 key={tabOption}
-                onPress={() => { setTab(tabOption); setError(null); }}
+                onPress={() => { setTab(tabOption); setError(null); setNotice(null); }}
                 style={[styles.tabBtn, tab === tabOption && styles.tabActive]}
                 accessibilityLabel={tabOption === "login" ? t("auth.tabLogin") : t("auth.tabRegister")}
                 {...a11yState({ role: "tab", selected: tab === tabOption })}
@@ -134,6 +149,12 @@ export default function AuthScreen() {
           </View>
 
           <View style={styles.form}>
+            {notice && (
+              <View style={styles.noticeBox} accessibilityLiveRegion="polite">
+                <Ionicons name="checkmark-circle-outline" size={14} color={Colors.accent} />
+                <Text style={styles.noticeText}>{notice}</Text>
+              </View>
+            )}
             <View style={styles.field}>
               <Text style={styles.label}>{t("auth.usernameLabel")}</Text>
               <View style={styles.inputRow}>
@@ -240,6 +261,16 @@ export default function AuthScreen() {
               accessibilityLabel={tab === "login" ? t("auth.submitLogin") : t("auth.submitRegister")}
             />
 
+            {tab === "login" && (
+              <MenuButton
+                label={t("auth.forgotPassword")}
+                onPress={() => router.push("/recover")}
+                variant="ghost"
+                size="sm"
+                accessibilityLabel={t("auth.forgotPassword")}
+              />
+            )}
+
             {tab === "register" && (
               <Text style={styles.hint}>{t("auth.hint")}</Text>
             )}
@@ -326,6 +357,15 @@ const styles = StyleSheet.create({
     padding: Spacing.cosy,
   },
   errorText: { fontFamily: "Inter_400Regular", fontSize: FontSize.sm, color: Colors.dangerDim, flex: 1 },
+  noticeBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.sm,
+    backgroundColor: Colors.accentMuted,
+    borderRadius: Radius.sm,
+    padding: Spacing.cosy,
+  },
+  noticeText: { fontFamily: "Inter_400Regular", fontSize: FontSize.sm, color: Colors.accent, flex: 1 },
   hint: {
     ...Type.caption,
     textAlign: "center",

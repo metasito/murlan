@@ -33,9 +33,10 @@ import type { TranslationKey } from "@/lib/i18n";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { PROVISIONAL_GAMES, formatSeason } from "@/lib/rating";
 import { a11yGroup, a11yHidden } from "@/lib/a11y";
-import { shouldShowAddEmailCard } from "@/lib/emailNudge";
+import { shouldShowAddEmailCard, shouldShowVerifyEmailCard } from "@/lib/emailNudge";
 import { HistoryRow } from "@/components/HistoryRow";
 import { serverErrorMessage } from "@/lib/apiError";
+import { apiRequest } from "@/lib/query-client";
 import { USERNAME_MAX, USERNAME_MIN, usernameProblem } from "@/shared/username";
 import { placementColor, positionLabelKey } from "@/lib/placement";
 import type { UserStatsDto, RatingDto, AchievementStatusDto, MatchHistoryDto } from "@/lib/wire";
@@ -346,6 +347,10 @@ function AddEmailCard() {
       await addEmail(email.trim());
       setOpen(false);
       setEmail("");
+      // A freshly-added address has nothing verified yet — straight into the
+      // screen that redeems the code rather than leaving the player to find
+      // the card below on their own.
+      router.push("/verify-email");
     } catch (e: unknown) {
       setError(serverErrorMessage(e, t("profile.addEmailFailed")));
     }
@@ -416,6 +421,65 @@ function AddEmailCard() {
         </View>
       </AppModal>
     </>
+  );
+}
+
+/**
+ * #893: the state a player returns to the app in, having read the
+ * verification mail on another device — an address is on the row, but
+ * nothing has redeemed its token yet.
+ */
+function VerifyEmailCard({ email }: { email: string }) {
+  const { t } = useTranslation();
+  const [resending, setResending] = useState(false);
+  const [resent, setResent] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function resend() {
+    setResending(true);
+    setError(null);
+    try {
+      await apiRequest("POST", "/api/auth/resend-verification");
+      setResent(true);
+    } catch (e: unknown) {
+      setResent(false);
+      setError(serverErrorMessage(e, t("profile.verifyEmailResendFailed")));
+    }
+    setResending(false);
+  }
+
+  return (
+    <MenuCard title={t("profile.verifyEmailTitle")}>
+      <Text style={styles.addEmailBody}>{t("profile.verifyEmailBody", { email })}</Text>
+
+      {error && (
+        <Text style={styles.modalError} accessibilityLiveRegion="polite" testID="verify-email-resend-error">
+          {error}
+        </Text>
+      )}
+      {resent && !error && (
+        <Text style={styles.verifyEmailResentNotice} accessibilityLiveRegion="polite">
+          {t("profile.verifyEmailResendSuccess")}
+        </Text>
+      )}
+
+      <View style={styles.renameActions}>
+        <View style={styles.renameAction}>
+          <MenuButton
+            label={t("profile.verifyEmailEnterCode")}
+            onPress={() => router.push("/verify-email")}
+          />
+        </View>
+        <View style={styles.renameAction}>
+          <MenuButton
+            label={resending ? t("profile.verifyEmailResendSaving") : t("profile.verifyEmailResend")}
+            variant="secondary"
+            onPress={resend}
+            disabled={resending}
+          />
+        </View>
+      </View>
+    </MenuCard>
   );
 }
 
@@ -500,6 +564,7 @@ export default function ProfileScreen() {
         {user ? <UserCard user={user} /> : loading ? null : <SignInCard />}
         {user && <ChangePasswordCard />}
         {user && shouldShowAddEmailCard(user) && <AddEmailCard />}
+        {user && shouldShowVerifyEmailCard(user) && <VerifyEmailCard email={user.email!} />}
 
         <SectionHeading label={t("profile.lookTitle")} />
         <LookPicker />
@@ -784,6 +849,7 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     marginBottom: Spacing.sm,
   },
+  verifyEmailResentNotice: { ...Type.caption, color: Colors.accent, marginBottom: Spacing.sm },
   signedOut: { gap: Spacing.md },
   signedOutBody: {
     fontFamily: "Rajdhani_500Medium",
