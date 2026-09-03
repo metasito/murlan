@@ -7,6 +7,8 @@ import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node
 import { tmpdir } from "node:os";
 import { dirname, join, sep } from "node:path";
 import { buildCleanupCommands } from "../lib/ticketPipeline/cleanup.ts";
+import { shellQuote } from "../lib/ticketPipeline/shell.ts";
+import { buildWorktreeCommands } from "../lib/ticketPipeline/worktree.ts";
 
 /**
  * The shell the cleanup commands are written in.
@@ -348,6 +350,30 @@ describe("running the port-freeing command", () => {
       holder.kill("SIGKILL");
       client.kill("SIGKILL");
     }
+  });
+});
+
+// Asserted through a real shell, because the value a quoter produces reads as correct at every
+// stage that is not bash: `'\''` written in a JS string literal is three quotes by the time it
+// reaches the replacement, and three quotes are an empty word.
+describe("quoting a value bash has to read back whole", () => {
+  const echo = (value: string) =>
+    execFileSync(SHELL, ["-c", `printf %s ${shellQuote(value)}`], { encoding: "utf8" });
+
+  test("a value carrying a single quote survives as one word", () => {
+    assert.equal(echo("require.resolve('typescript')"), "require.resolve('typescript')");
+    assert.equal(echo("it's"), "it's");
+  });
+
+  test("the worktree probe reaches bash as the expression it was written as", () => {
+    const probe = buildWorktreeCommands({ number: 42, branch: "agent/42-x" }).find((c) =>
+      c.startsWith("node -e ")
+    );
+    assert.ok(probe);
+    assert.equal(
+      execFileSync(SHELL, ["-c", `${probe.replace(/^node -e /, "printf %s ")}`], { encoding: "utf8" }),
+      "require.resolve('typescript')"
+    );
   });
 });
 
