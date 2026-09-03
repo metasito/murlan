@@ -93,6 +93,12 @@ Each of these produced a confident, wrong "fixed" in one session:
 - **Metro caches the transform that inlines `process.env.EXPO_PUBLIC_*`.** Flipping that env
   var and rebuilding gives you the *previous* value. `expo export --clear` is what actually
   rebuilds it.
+- **`EXPO_PUBLIC_E2E_REDUCE_MOTION=1`** (set only by `maestro.yml`'s own build step) makes
+  `usePrefersReducedMotion` return `true` regardless of any player choice, so **the table's
+  looping decorative animation never plays under this build** — the active-turn breathe, the
+  `Gioca` glow, and anything else that already gates on the hook (#837). It answers "does the
+  emulator reach idle", not "what does the animation look like"; a defect in the breathe or
+  the glow itself needs a build without it.
 - **One frame is not a state.** Screenshotting a seeded table at the viewer's turn proves
   that one frame. Play real hands (`tests/e2e/helpers/bot.ts` drives one), and sample
   *through* a turn handover, not after it.

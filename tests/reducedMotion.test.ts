@@ -242,3 +242,38 @@ test("the flush — the sweep (moments.tsx) and the pile's own catch (pile.tsx) 
   assert.deepEqual(ungatedAnimationBlocks(moments), []);
   assert.deepEqual(ungatedAnimationBlocks(pile), []);
 });
+
+// ─── The automation flag stays out of every player build (#837) ────────────
+//
+// `usePrefersReducedMotion` returns true unconditionally when
+// EXPO_PUBLIC_E2E_REDUCE_MOTION is set, so a build that sets it ships an app
+// with no decorative animation at all and nothing at runtime to say why. What
+// makes that safe is that only maestro.yml's own build step sets it — a claim
+// that lives in a comment, and a comment cannot fail.
+//
+// EXPO_PUBLIC_* is inlined at build time, so a setter only matters where a
+// build is configured: the workflows, and the config files at the root.
+
+const AUTOMATION_FLAG = /EXPO_PUBLIC_E2E_REDUCE_MOTION\s*[:=]/;
+
+function buildConfigFiles(): string[] {
+  const workflows = readdirSync(path.join(repoRoot, ".github/workflows"))
+    .map((name) => `.github/workflows/${name}`);
+  const roots = readdirSync(repoRoot, { withFileTypes: true })
+    .filter((e) => e.isFile())
+    .map((e) => e.name);
+  return [...workflows, ...roots];
+}
+
+test("only maestro.yml's build sets the automation flag", () => {
+  const setters = buildConfigFiles().filter((rel) =>
+    AUTOMATION_FLAG.test(readFileSync(path.join(repoRoot, rel), "utf8"))
+  );
+
+  assert.deepEqual(
+    setters,
+    [".github/workflows/maestro.yml"],
+    `EXPO_PUBLIC_E2E_REDUCE_MOTION forces reduced motion on for everyone the build reaches. ` +
+      `Setting it anywhere a player's build is made ships an app that never animates: ${setters.join(", ")}`
+  );
+});
