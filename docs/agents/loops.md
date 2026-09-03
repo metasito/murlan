@@ -126,6 +126,13 @@ Each of these produced a confident, wrong "fixed" in one session:
   The screenshot saved beside the failing step is the evidence; the step name is a guess.
   `maestro.yml` now annotates a run whose logcat holds a tombstone for the app's own package
   (#629), but only Android does, and only for a native crash.
+- **Where an Android run's minutes went is a join, not a read.**
+  `node scripts/analyze-maestro-run.mjs <maestro.log> <logcat.txt>` puts each command's own
+  window beside the hierarchy fetches and the app's janky frames inside it, which is what
+  separates a command starved by animation from one paying a flat per-fetch cost (#823). The
+  header of the script has the `gh run download` invocation. It reads the `maestro-debug`
+  artefact, which `maestro.yml` uploads only for a **failed** run — a green one leaves nothing
+  to analyse.
 - **A flow run through Expo Go never pressed one of our controls.** Expo Go's dev-menu window
   sits above the app's own and takes the touch: the tap is dispatched `to window:
   <EXDevMenuWindow>`, which then resigns key, so it is spent dismissing an invisible window
