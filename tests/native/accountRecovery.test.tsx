@@ -82,8 +82,14 @@ describe('app/verify-email', () => {
     await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(2)); // refreshUser's own fetchMe
 
     // The screen confirms rather than vanishing: leaving silently is
-    // indistinguishable from a tap that did nothing.
-    await waitFor(() => expect(screen.getByText(locale['verifyEmail.successTitle'])).toBeTruthy());
+    // indistinguishable from a tap that did nothing. Asked for by its group
+    // label, not its text — StateBlock hides its own words from the
+    // accessibility tree, and RNTL skips hidden elements by default.
+    await waitFor(() =>
+      expect(
+        screen.getByLabelText(`${locale['verifyEmail.successTitle']}. ${locale['verifyEmail.successBody']}`)
+      ).toBeTruthy()
+    );
     expect(mockBack).not.toHaveBeenCalled();
 
     await act(async () => {
@@ -291,8 +297,10 @@ describe('app/auth reaches both new screens', () => {
       fireEvent.press(screen.getByRole('button', { name: locale['auth.submitRegister'] }));
     });
 
-    await waitFor(() => expect(screen.getByText(locale['auth.checkEmailVerifiedTitle'])).toBeTruthy());
-    expect(screen.queryByText(locale['auth.checkEmailTitle'])).toBeNull();
+    const verified = `${locale['auth.checkEmailVerifiedTitle']}. ${locale['auth.checkEmailVerifiedBody']}`;
+    const unverified = `${locale['auth.checkEmailTitle']}. ${locale['auth.checkEmailBody']}`;
+    await waitFor(() => expect(screen.getByLabelText(verified)).toBeTruthy());
+    expect(screen.queryByLabelText(unverified)).toBeNull();
     expect(screen.queryByRole('button', { name: locale['auth.checkEmailVerifyNow'] })).toBeNull();
     await view.unmount();
   });

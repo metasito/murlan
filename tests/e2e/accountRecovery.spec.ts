@@ -35,14 +35,18 @@ test("account recovery — verify a fresh address, then reset a forgotten passwo
   const verifyToken = await readMailToken(email, "Verify your Murlan email");
   await page.getByRole("textbox", { name: "Codice di verifica" }).fill(verifyToken);
   await page.getByRole("button", { name: "Verifica" }).click();
-  await expect(page.getByText("Email verificata")).toBeVisible();
-  await page.getByRole("button", { name: "Fatto" }).click();
+  // The success state, not a screen that closed itself: a redeemed code and a
+  // tap that did nothing would otherwise look the same.
+  const done = page.getByRole("button", { name: "Fatto" });
+  await expect(done).toBeVisible();
+  await done.click();
 
   // Back on the interstitial, which now reads the account rather than the
-  // state it was created in: registration signed this device in (a fresh,
-  // unclaimed address), so it offers "Continua".
+  // state it was created in — so it no longer offers a code already
+  // redeemed. Registration signed this device in (a fresh, unclaimed
+  // address), so it offers "Continua".
   await page.waitForURL(/\/auth/);
-  await expect(page.getByText("Il tuo indirizzo è confermato.", { exact: false })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Inserisci il codice ora" })).toHaveCount(0);
   await page.getByRole("button", { name: "Continua" }).click();
   await page.waitForURL((url) => !url.pathname.startsWith("/auth"));
 
