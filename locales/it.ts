@@ -108,6 +108,10 @@ export const it: Record<keyof typeof en, string> = {
   "auth.missingFields": "Inserisci username e password",
   "auth.missingFieldsRegister": "Inserisci username, email e password",
   "auth.unknownError": "Errore sconosciuto",
+  "auth.checkEmailTitle": "Controlla la tua email",
+  "auth.checkEmailBody": "Ti abbiamo inviato un'email. Verifica il tuo indirizzo per sbloccare il gioco completo — oppure, se hai già un account con questo indirizzo, segui le istruzioni contenute nell'email.",
+  "auth.checkEmailContinue": "Continua",
+  "auth.checkEmailBackToSignIn": "Torna all'accesso",
 
   // ------------------------------------------------------------ settings.*
   "settings.title": "Impostazioni",

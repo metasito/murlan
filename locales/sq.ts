@@ -124,6 +124,10 @@ export const sq: Record<keyof typeof en, string> = {
   "auth.missingFields": "Shkruaj emrin e përdoruesit dhe fjalëkalimin",
   "auth.missingFieldsRegister": "Shkruaj emrin e përdoruesit, email-in dhe fjalëkalimin",
   "auth.unknownError": "Gabim i panjohur",
+  "auth.checkEmailTitle": "Kontrollo emailin tënd",
+  "auth.checkEmailBody": "Të kemi dërguar një email. Verifiko adresën për të zhbllokuar lojën e plotë — ose, nëse ke tashmë një llogari me këtë adresë, ndiq udhëzimet atje.",
+  "auth.checkEmailContinue": "Vazhdo",
+  "auth.checkEmailBackToSignIn": "Kthehu te hyrja",
 
   // ------------------------------------------------------------ settings.*
   "settings.title": "Cilësimet",

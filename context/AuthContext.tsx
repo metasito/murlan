@@ -18,7 +18,14 @@ interface AuthContextValue {
   user: AuthUser | null;
   loading: boolean;
   login: (username: string, password: string) => Promise<void>;
-  register: (username: string, password: string, email: string) => Promise<void>;
+  /**
+   * Resolves to the signed-in account, or null when registration answered
+   * neutrally without one — the pre-migration fallback (docs/DEPLOY-RUNBOOK.md
+   * #897) is the only path that reaches null today. The caller needs this to
+   * show a coherent "check your email" state rather than guessing from `user`,
+   * which a re-render can update out from under it.
+   */
+  register: (username: string, password: string, email: string) => Promise<AuthUser | null>;
   /** Throws `ApiError` when the server refuses; the account is left untouched. */
   rename: (username: string) => Promise<void>;
   /** Throws `ApiError` when the current password is wrong; the account is left untouched. */
@@ -127,6 +134,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(data ?? null);
     if (data) await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(data));
     else await AsyncStorage.removeItem(STORAGE_KEY);
+    return data ?? null;
   }, []);
 
   // Here rather than in the screen: the signed-in player lives in state *and*

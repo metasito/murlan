@@ -18,8 +18,14 @@ import { MenuButton } from "@/components/MenuButton";
 import { useTranslation } from "@/lib/i18n";
 import { serverErrorMessage } from "@/lib/apiError";
 import { a11yHidden, a11yState, useA11yHint } from "@/lib/a11y";
+import { EmptyBlock } from "@/components/StateBlock";
 
 type Tab = "login" | "register";
+
+/** Whether registration signed this device in — see AuthContext.register. */
+interface CheckEmailState {
+  signedIn: boolean;
+}
 
 export default function AuthScreen() {
   const { t } = useTranslation();
@@ -34,6 +40,7 @@ export default function AuthScreen() {
   const [showPwd, setShowPwd] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [checkEmail, setCheckEmail] = useState<CheckEmailState | null>(null);
   const emailRef = useRef<TextInput>(null);
   const pwdRef = useRef<TextInput>(null);
 
@@ -48,14 +55,29 @@ export default function AuthScreen() {
     try {
       if (tab === "login") {
         await login(username.trim(), password);
+        router.replace("/");
       } else {
-        await register(username.trim(), password, email.trim());
+        // #897: the response never says whether the address was free — the
+        // client only learns whether *this device* ended up signed in, and
+        // either way the person must be told to check their email, not sent
+        // straight into the app as if nothing happened.
+        const signedIn = await register(username.trim(), password, email.trim());
+        setCheckEmail({ signedIn: signedIn !== null });
       }
-      router.replace("/");
     } catch (e: unknown) {
       setError(serverErrorMessage(e, t("auth.unknownError")));
     }
     setLoading(false);
+  }
+
+  function continueFromCheckEmail() {
+    if (checkEmail?.signedIn) {
+      router.replace("/");
+      return;
+    }
+    setCheckEmail(null);
+    setPassword("");
+    setTab("login");
   }
 
   return (
@@ -69,6 +91,24 @@ export default function AuthScreen() {
         </View>
 
         <MenuCard style={{ marginBottom: 0 }} padding="sm">
+          {checkEmail ? (
+            <View style={styles.checkEmail}>
+              <EmptyBlock
+                icon="mail-outline"
+                title={t("auth.checkEmailTitle")}
+                body={t("auth.checkEmailBody")}
+              />
+              <MenuButton
+                label={checkEmail.signedIn ? t("auth.checkEmailContinue") : t("auth.checkEmailBackToSignIn")}
+                onPress={continueFromCheckEmail}
+                variant="primary"
+                accessibilityLabel={
+                  checkEmail.signedIn ? t("auth.checkEmailContinue") : t("auth.checkEmailBackToSignIn")
+                }
+              />
+            </View>
+          ) : (
+          <>
           <View style={styles.tabs}>
             {(["login", "register"] as Tab[]).map((tabOption) => (
               <Pressable
@@ -196,6 +236,8 @@ export default function AuthScreen() {
               <Text style={styles.hint}>{t("auth.hint")}</Text>
             )}
           </View>
+          </>
+          )}
         </MenuCard>
       </View>
     </MenuLayout>
@@ -203,6 +245,11 @@ export default function AuthScreen() {
 }
 
 const styles = StyleSheet.create({
+  checkEmail: {
+    paddingVertical: Spacing.md,
+    gap: Spacing.md,
+    alignItems: "center",
+  },
   contentWrapper: {
     width: "100%",
     maxWidth: 480,
