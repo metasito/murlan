@@ -41,6 +41,13 @@ export class UsernameTakenError extends Error {
   }
 }
 
+/** Same shape as UsernameTakenError, for the email's own unique index. */
+export class EmailTakenError extends Error {
+  constructor() {
+    super("Email already registered");
+  }
+}
+
 // No O/0/I/1 — same alphabet as the friend codes, so a code read aloud or
 // typed from a screenshot is unambiguous.
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -138,6 +145,14 @@ class DrizzleStorage {
     return user;
   }
 
+  async getUserByEmail(email: string): Promise<User | undefined> {
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(sql`lower(${users.email}) = lower(${email})`);
+    return user;
+  }
+
   private generateFriendCode(): string {
     return randomCode(6);
   }
@@ -158,10 +173,16 @@ class DrizzleStorage {
         const violated = uniqueViolation(err);
         if (violated?.includes("friend_code") && attempt < 9) continue;
         if (violated?.includes("username")) throw new UsernameTakenError();
+        if (violated?.includes("email")) throw new EmailTakenError();
         throw err;
       }
     }
     throw new Error("Failed to generate unique friend code");
+  }
+
+  /** Set once, by the token redemption that proved control of the mailbox. */
+  async markEmailVerified(userId: string): Promise<void> {
+    await db.update(users).set({ emailVerifiedAt: new Date() }).where(eq(users.id, userId));
   }
 
   /**

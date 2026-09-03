@@ -227,10 +227,11 @@ test("a dump restores into an empty database with matching account and rating ro
 
     try {
       for (const username of ["restore_user_a", "restore_user_b"]) {
+        const fullUsername = `${username}_${Date.now()}`;
         const res = await fetch(`${server.url}/api/auth/register`, {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ username: `${username}_${Date.now()}`, password: "password123" }),
+          body: JSON.stringify({ username: fullUsername, password: "password123", email: `${fullUsername}@example.test` }),
         });
         assert.equal(res.status, 200, await res.text());
       }

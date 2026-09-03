@@ -31,7 +31,8 @@ test("a fresh database is usable on the first boot", async (t) => {
   const admin = new pg.Pool({ connectionString: baseUrl });
 
   try {
-    const credentials = { username: `fresh_${Date.now()}`, password: "password123" };
+    const username = `fresh_${Date.now()}`;
+    const credentials = { username, password: "password123", email: `${username}@example.test` };
     let cookie = "";
 
     await t.test("registration and login both succeed", async () => {

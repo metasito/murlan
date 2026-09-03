@@ -10,6 +10,15 @@ export const RegisterSchema = z.object({
     .max(USERNAME_MAX)
     .regex(USERNAME_PATTERN, { message: "Letters, numbers and underscores only" }),
   password: z.string().min(6).max(100),
+  // #34: required at signup. Bounded to RFC 5321's own limit, ahead of the
+  // format check, so a pathological value is rejected on size before regex
+  // backtracking ever sees it.
+  email: z.string().trim().min(3).max(254).email(),
+});
+
+/** `token` is a `randomBytes(32)` base64url value — see server/authTokens.ts. */
+export const VerifyEmailSchema = z.object({
+  token: z.string().min(1).max(128),
 });
 
 /**

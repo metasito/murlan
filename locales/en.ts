@@ -31,6 +31,8 @@ export const en = {
   "server.RATE_LIMITED": "Too many requests, slow down.",
   "server.NOT_AUTHENTICATED": "Not authenticated",
   "server.USERNAME_TAKEN": "Username already in use",
+  "server.EMAIL_TAKEN": "Email already registered",
+  "server.INVALID_TOKEN": "Invalid or expired verification link",
   "server.INTERNAL_SERVER_ERROR": "Internal server error",
   "server.INVALID_CREDENTIALS": "Wrong username or password",
   "server.USER_NOT_FOUND": "User not found",

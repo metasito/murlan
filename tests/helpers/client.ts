@@ -19,7 +19,9 @@ export async function register(
   const res = await fetch(`${server.url}/api/auth/register`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ username, password: "password123" }),
+    // Username is already unique per call, so deriving the (also unique)
+    // email from it needs no extra bookkeeping here.
+    body: JSON.stringify({ username, password: "password123", email: `${username.toLowerCase()}@example.test` }),
   });
   // Read the body once as text: `assert.equal`'s message argument is
   // evaluated eagerly regardless of pass/fail, so `await res.text()` inline

@@ -67,7 +67,7 @@ async function register(port: number, username: string): Promise<string> {
   const res = await fetch(`http://127.0.0.1:${port}/api/auth/register`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ username, password: "cross-instance-pw" }),
+    body: JSON.stringify({ username, password: "cross-instance-pw", email: `${username}@example.test` }),
   });
   const text = await res.text();
   assert.equal(res.status, 200, `register ${username}: ${text}`);

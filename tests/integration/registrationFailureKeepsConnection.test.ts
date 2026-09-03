@@ -33,7 +33,7 @@ describe(
       const res = await fetch(`${server.url}/api/auth/register`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ username, password: "password123" }),
+        body: JSON.stringify({ username, password: "password123", email: `${username}@example.test` }),
       });
       await res.text();
       return res.status;

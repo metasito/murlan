@@ -98,7 +98,7 @@ describe("session regeneration on login and registration", { skip: hasDatabase()
     const res = await fetch(`${server.url}/api/auth/register`, {
       method: "POST",
       headers: { "content-type": "application/json", cookie: cookie1 },
-      body: JSON.stringify({ username: "sid_reg_victim", password: "password123" }),
+      body: JSON.stringify({ username: "sid_reg_victim", password: "password123", email: "sid_reg_victim@example.test" }),
     });
     const text = await res.text();
     assert.equal(res.status, 200, text);
@@ -132,7 +132,7 @@ describe("session regeneration on login and registration", { skip: hasDatabase()
       const res = await fetch(`${server.url}/api/auth/register`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ username, password: "password123" }),
+        body: JSON.stringify({ username, password: "password123", email: `${username}@example.test` }),
       });
       const text = await res.text();
       assert.notEqual(res.status, 200, `registration must fail when the session cannot be saved: ${text}`);
@@ -148,7 +148,7 @@ describe("session regeneration on login and registration", { skip: hasDatabase()
     const retry = await fetch(`${server.url}/api/auth/register`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ username, password: "password123" }),
+      body: JSON.stringify({ username, password: "password123", email: `${username}@example.test` }),
     });
     const retryText = await retry.text();
     assert.equal(retry.status, 200, `the rolled-back username must be free again: ${retryText}`);
@@ -183,7 +183,7 @@ describe("username case", { skip: hasDatabase() ? false : skipMessage() }, () =>
     return fetch(`${server.url}/api/auth/register`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ username, password: "password123" }),
+      body: JSON.stringify({ username, password: "password123", email: `${username}@example.test` }),
     });
   }
 
@@ -312,5 +312,112 @@ describe("login rate limiting", { skip: hasDatabase() ? false : skipMessage() },
       `limited responses averaged ${limitedAvg.toFixed(1)}ms vs ${genuineAvg.toFixed(1)}ms ` +
         `for a genuine wrong password — the decoy bcrypt.compare may not be running`
     );
+  });
+});
+
+// #861: email required at signup, and a token that proves control of it.
+describe("email at signup", { skip: hasDatabase() ? false : skipMessage() }, () => {
+  async function registerRaw(body: Record<string, unknown>) {
+    return fetch(`${server.url}/api/auth/register`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  }
+
+  test("registration requires a well-formed email", async () => {
+    const res = await registerRaw({
+      username: "email_missing",
+      password: "password123",
+      email: "not-an-email",
+    });
+    assert.equal(res.status, 400, await res.text());
+  });
+
+  test("registration stores the email and mints an email_verify token", async () => {
+    const { user } = await register(server, "email_stores");
+    const { storage } = await import("../../server/storage.ts");
+    const stored = await storage.getUser(user.id);
+    assert.equal(stored?.email, "email_stores@example.test");
+    assert.equal(stored?.emailVerifiedAt, null);
+
+    const { db } = await import("../../server/db.ts");
+    const { authTokens } = await import("../../shared/schema.ts");
+    const { eq, and } = await import("drizzle-orm");
+    const rows = await db
+      .select()
+      .from(authTokens)
+      .where(and(eq(authTokens.userId, user.id), eq(authTokens.purpose, "email_verify")));
+    assert.equal(rows.length, 1, "register must mint exactly one email_verify token");
+    assert.equal(rows[0]!.usedAt, null);
+  });
+
+  test("a duplicate email is rejected like a duplicate username, case-insensitively", async () => {
+    await register(server, "email_dup_owner");
+    const res = await registerRaw({
+      username: "email_dup_other",
+      password: "password123",
+      email: "EMAIL_DUP_OWNER@Example.Test",
+    });
+    const text = await res.text();
+    assert.equal(res.status, 409, text);
+    assert.equal(JSON.parse(text).code, "EMAIL_TAKEN");
+  });
+
+  test("verify-email redeems a token once, and a second redemption fails", async () => {
+    const { user } = await register(server, "verify_once");
+    const { mintAuthToken, redeemAuthToken } = await import("../../server/authTokens.ts");
+    const token = await mintAuthToken(user.id, "email_verify", 60_000);
+
+    const first = await fetch(`${server.url}/api/auth/verify-email`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ token }),
+    });
+    assert.equal(first.status, 200, await first.text());
+
+    const { storage } = await import("../../server/storage.ts");
+    const stored = await storage.getUser(user.id);
+    assert.ok(stored?.emailVerifiedAt, "emailVerifiedAt must be set after redemption");
+
+    const second = await fetch(`${server.url}/api/auth/verify-email`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ token }),
+    });
+    assert.equal(second.status, 400, "a consumed token must not redeem twice");
+    assert.equal((await second.json()).code, "INVALID_TOKEN");
+
+    // Same guard the route uses, exercised directly: a used token is refused
+    // by redeemAuthToken itself, not only by some outer route-level check.
+    const direct = await redeemAuthToken(token, "email_verify");
+    assert.equal(direct, null, "redeemAuthToken must refuse an already-used token");
+  });
+
+  test("an expired token fails to redeem", async () => {
+    const { user } = await register(server, "verify_expired");
+    const { mintAuthToken, redeemAuthToken } = await import("../../server/authTokens.ts");
+    const token = await mintAuthToken(user.id, "email_verify", -1);
+
+    const res = await fetch(`${server.url}/api/auth/verify-email`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ token }),
+    });
+    assert.equal(res.status, 400, await res.text());
+
+    const direct = await redeemAuthToken(token, "email_verify");
+    assert.equal(direct, null, "an expired token must not redeem via the module either");
+  });
+
+  test("registration still succeeds when the mail provider is not configured", async () => {
+    // testServer.ts sets no RESEND_API_KEY/MAIL_FROM_ADDRESS, so this exercises
+    // the actual "no config" path sendMail() takes in this suite, not a mock.
+    const res = await registerRaw({
+      username: "email_no_provider",
+      password: "password123",
+      email: "email_no_provider@example.test",
+    });
+    assert.equal(res.status, 200, await res.text());
   });
 });

@@ -40,6 +40,8 @@ export const sq: Record<keyof typeof en, string> = {
   "server.RATE_LIMITED": "Shumë kërkesa, ngadalëso.",
   "server.NOT_AUTHENTICATED": "Kërkohet kyçja",
   "server.USERNAME_TAKEN": "Emri i përdoruesit është i zënë",
+  "server.EMAIL_TAKEN": "Email-i është regjistruar tashmë",
+  "server.INVALID_TOKEN": "Lidhja e verifikimit është e pavlefshme ose ka skaduar",
   "server.INTERNAL_SERVER_ERROR": "Gabim i brendshëm i serverit",
   "server.DEV_SYNC_NOT_CONFIGURED": "Webhook-u i sinkronizimit nuk është konfiguruar",
   "server.INVALID_WEBHOOK_SIGNATURE": "Nënshkrimi i webhook-ut është i pavlefshëm",
