@@ -111,6 +111,7 @@ export async function registerNewAccount(page: Page, username: string): Promise<
   await page.waitForURL(/\/auth/);
   await page.getByRole("tab", { name: "Registrati" }).click();
   await page.getByRole("textbox", { name: "Nome utente" }).fill(username);
+  await page.getByRole("textbox", { name: "Email" }).fill(`${username}@example.test`);
   await page.getByRole("textbox", { name: "Password" }).fill("e2e-test-pw");
   await page.getByRole("button", { name: "Crea account" }).click();
   await page.waitForURL((url) => !url.pathname.startsWith("/auth"));

@@ -103,6 +103,10 @@ export const sq: Record<keyof typeof en, string> = {
   "auth.usernamePlaceholder": "nofka_jote",
   "auth.usernameA11yLabel": "Emri i përdoruesit",
   "auth.usernameA11yHint": "Shkruaj emrin e përdoruesit për t'u kyçur ose regjistruar",
+  "auth.emailLabel": "Email",
+  "auth.emailPlaceholder": "ti@shembull.com",
+  "auth.emailA11yLabel": "Email",
+  "auth.emailA11yHint": "Shkruaj email-in për t'u regjistruar",
   "auth.passwordLabel": "Fjalëkalimi",
   "auth.passwordA11yLabel": "Fjalëkalimi",
   "auth.passwordA11yHint": "Shkruaj fjalëkalimin për t'u kyçur",
@@ -112,6 +116,7 @@ export const sq: Record<keyof typeof en, string> = {
   "auth.submitRegister": "Krijo llogari",
   "auth.hint": "Emri i përdoruesit: 3–20 shkronja (shkronja, numra, _)\nFjalëkalimi: minimumi 6 shkronja",
   "auth.missingFields": "Shkruaj emrin e përdoruesit dhe fjalëkalimin",
+  "auth.missingFieldsRegister": "Shkruaj emrin e përdoruesit, email-in dhe fjalëkalimin",
   "auth.unknownError": "Gabim i panjohur",
 
   // ------------------------------------------------------------ settings.*

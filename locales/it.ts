@@ -87,6 +87,10 @@ export const it: Record<keyof typeof en, string> = {
   "auth.usernamePlaceholder": "il_tuo_nick",
   "auth.usernameA11yLabel": "Nome utente",
   "auth.usernameA11yHint": "Inserisci il tuo nome utente per accedere o registrarti",
+  "auth.emailLabel": "Email",
+  "auth.emailPlaceholder": "tu@esempio.com",
+  "auth.emailA11yLabel": "Email",
+  "auth.emailA11yHint": "Inserisci la tua email per registrarti",
   "auth.passwordLabel": "Password",
   "auth.passwordA11yLabel": "Password",
   "auth.passwordA11yHint": "Inserisci la tua password per accedere",
@@ -96,6 +100,7 @@ export const it: Record<keyof typeof en, string> = {
   "auth.submitRegister": "Crea account",
   "auth.hint": "Username: 3–20 caratteri (lettere, numeri, _)\nPassword: minimo 6 caratteri",
   "auth.missingFields": "Inserisci username e password",
+  "auth.missingFieldsRegister": "Inserisci username, email e password",
   "auth.unknownError": "Errore sconosciuto",
 
   // ------------------------------------------------------------ settings.*
