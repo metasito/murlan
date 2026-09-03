@@ -129,10 +129,10 @@ export async function declineGameInviteAndNotify(
   inviteeId: string,
   roomCode: string
 ): Promise<void> {
-  const roomId = await storage.declineGameInvite(inviteeId, roomCode).catch((err) => {
-    logger.warn({ err, inviteeId, roomCode }, "Failed to decline a game invite");
-    return null;
-  });
+  // Deliberately unguarded: a decline that did not happen must reach the
+  // caller as a failure, not as an ok with the invite still standing.
+  // `announceSeatHoldsChanged` swallows its own read failures.
+  const roomId = await storage.declineGameInvite(inviteeId, roomCode);
   if (!roomId || !_io) return;
   await announceSeatHoldsChanged(_io, roomId);
 }
