@@ -31,6 +31,7 @@ const BLOCKING_OVERLAYS: [string, string][] = [
   ["components/ErrorFallback.tsx", "styles.modalOverlay"],
   ["components/SessionReplacedNotice.tsx", "styles.overlay"],
   ["app/(online)/index.tsx", "StyleSheet.absoluteFill"],
+  ["app/profile.tsx", "StyleSheet.absoluteFill"],
   // The portrait cover, which is the whole screen.
   ["components/table/rotateOverlay.tsx", "portraitOverlayStyles.overlay"],
 ];
