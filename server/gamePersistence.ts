@@ -19,7 +19,7 @@ import type { GameOverWriters } from "./gameOver.ts";
 import { releaseRoom, unclaimedRooms } from "./gameOwnership.ts";
 import {
   stateAckTimeoutMs,
-  SWEEP_INTERVAL_MS,
+  sweepIntervalMs,
   clearRoomTimers,
   clearRoomDisconnectTimers,
   clearRoomLobbyGraces,
@@ -362,7 +362,7 @@ export function startSweeper(io: SocketServer) {
     } catch (err) {
       logger.error({ err }, "Sweeper failed");
     }
-  }, SWEEP_INTERVAL_MS);
+  }, sweepIntervalMs());
   (sweeper as unknown as { unref?: () => void }).unref?.();
 }
 

@@ -65,6 +65,16 @@ process.env.MURLAN_CHANGE_PASSWORD_RATE_LIMIT ??= "5";
 process.env.MURLAN_REGISTER_EMAIL_RATE_LIMIT ??= "5";
 
 /**
+ * The retention sweep (#895) shares startSweeper's 5-minute interval. A test
+ * that ages a fixture row and asserts it survives a write is asserting
+ * against that same background timer — a tick landing between the fixture
+ * and the assertion would fail it for a reason that has nothing to do with
+ * the write path. Set far longer than any single suite runs, so the sweep
+ * only ever runs when a test calls sweepRetention() itself.
+ */
+process.env.MURLAN_SWEEP_INTERVAL_MS ??= String(24 * 60 * 60 * 1000);
+
+/**
  * Production pauses 1.2s before a bot moves, which is about twenty pauses per
  * hand played out. A suite wanting a different pace sets its own before
  * importing this — tests/integration/spectator.test.ts does.
