@@ -41,6 +41,7 @@ export const sq: Record<keyof typeof en, string> = {
   "server.NOT_AUTHENTICATED": "Kërkohet kyçja",
   "server.USERNAME_TAKEN": "Emri i përdoruesit është i zënë",
   "server.EMAIL_TAKEN": "Email-i është regjistruar tashmë",
+  "server.EMAIL_ALREADY_SET": "Ky llogari ka tashmë një email",
   "server.INVALID_TOKEN": "Lidhja e verifikimit është e pavlefshme ose ka skaduar",
   "server.INVALID_RESET_TOKEN": "Lidhja e rivendosjes është e pavlefshme ose ka skaduar",
   "server.INTERNAL_SERVER_ERROR": "Gabim i brendshëm i serverit",
@@ -874,6 +875,15 @@ export const sq: Record<keyof typeof en, string> = {
   "profile.changePasswordHint": "Minimumi 6 shkronja",
   "profile.changePasswordSaving": "Duke ruajtur…",
   "profile.changePasswordFailed": "Fjalëkalimi nuk u ndryshua dot. Provo sërish.",
+
+  "profile.addEmailTitle": "Shto një email",
+  "profile.addEmailBody": "Shto dhe verifiko një email për të mundësuar rikuperimin e fjalëkalimit. Gjithçka tjetër funksionon edhe pa të.",
+  "profile.addEmailAction": "Shto email",
+  "profile.addEmailModalTitle": "Shto një email",
+  "profile.addEmailPlaceholder": "ti@shembull.com",
+  "profile.addEmailA11yLabel": "Email",
+  "profile.addEmailSaving": "Duke ruajtur…",
+  "profile.addEmailFailed": "Email-i nuk u shtua dot. Provo sërish.",
 
   "profile.statsTitle": "Statistikat",
   "profile.statsLoadingA11yLabel": "Duke ngarkuar statistikat",
