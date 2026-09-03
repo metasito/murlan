@@ -347,9 +347,9 @@ export function startSweeper(io: SocketServer) {
         logger.error({ err }, "Pruning stale rooms failed")
       );
 
-      void sweepRetention().catch((err: unknown) =>
-        logger.error({ err }, "Retention sweep failed")
-      );
+      // sweepRetention gives each table's DELETE its own try/catch and never
+      // rejects, so there is no outer failure to log here.
+      void sweepRetention();
 
       // Only reachable through a bug — every path that puts a game in memory
       // claims the room first — but what it would be reporting is two
