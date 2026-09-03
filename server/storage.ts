@@ -1,4 +1,4 @@
-import { eq, and, or, sql, desc, inArray, isNull } from "drizzle-orm";
+import { eq, and, or, sql, desc, inArray, isNull, isNotNull } from "drizzle-orm";
 import { randomInt } from "node:crypto";
 import { db } from "./db.ts";
 import {
@@ -181,19 +181,29 @@ class DrizzleStorage {
   }
 
   /**
-   * Set by the token redemption that proved control of the mailbox. Returns
-   * false when a different account already verified this address first —
-   * `users_email_verified_lower_uq` (#897) is the actual arbiter of that, so
-   * this account's own claim is cleared rather than left collided with it.
+   * Set by the token redemption that proved control of the mailbox.
+   * "lost_race" is a different account already having verified this address
+   * first — `users_email_verified_lower_uq` (#897) is the actual arbiter of
+   * that, so this account's own claim is cleared rather than left collided
+   * with it. "not_found" is anything that leaves no row to update: the
+   * account no longer exists, or its own email claim is already gone (a
+   * prior race, or a second outstanding token — #894 review, finding 3 —
+   * redeemed after the first already cleared it). Scoping the UPDATE to
+   * `email IS NOT NULL` is what makes that second case return "not_found"
+   * instead of silently re-verifying a claim that no longer exists.
    */
-  async markEmailVerified(userId: string): Promise<boolean> {
+  async markEmailVerified(userId: string): Promise<"verified" | "lost_race" | "not_found"> {
     try {
-      await db.update(users).set({ emailVerifiedAt: new Date() }).where(eq(users.id, userId));
-      return true;
+      const [row] = await db
+        .update(users)
+        .set({ emailVerifiedAt: new Date() })
+        .where(and(eq(users.id, userId), isNotNull(users.email)))
+        .returning({ id: users.id });
+      return row ? "verified" : "not_found";
     } catch (err) {
       if (!uniqueViolation(err)?.includes("email")) throw err;
       await db.update(users).set({ email: null }).where(eq(users.id, userId));
-      return false;
+      return "lost_race";
     }
   }
 

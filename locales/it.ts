@@ -27,7 +27,7 @@ export const it: Record<keyof typeof en, string> = {
   "server.EMAIL_TAKEN": "Email già registrata",
   "server.EMAIL_ALREADY_SET": "Questo account ha già un'email",
   "server.CHECK_YOUR_EMAIL": "Controlla la tua email per verificare l'indirizzo",
-  "server.EMAIL_VERIFIED_ELSEWHERE": "Questa email è già verificata su un altro account. Accedi a quell'account o reimposta la password.",
+  "server.EMAIL_VERIFIED_ELSEWHERE": "Questa email è già verificata su un altro account. Se quell'account è tuo, accedi lì o reimposta la password. Se non lo è, puoi aggiungere un'altra email dal tuo profilo.",
   "server.INVALID_TOKEN": "Link di verifica non valido o scaduto",
   "server.INVALID_RESET_TOKEN": "Link di reimpostazione non valido o scaduto",
   "server.INTERNAL_SERVER_ERROR": "Errore interno del server",

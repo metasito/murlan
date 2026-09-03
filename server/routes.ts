@@ -622,8 +622,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(400).json({ ...payload("INVALID_TOKEN") });
       return;
     }
-    const verified = await storage.markEmailVerified(userId);
-    if (!verified) {
+    const result = await storage.markEmailVerified(userId);
+    if (result === "not_found") {
+      // #894 review, finding 3: the account this token names is gone, or its
+      // own email claim already is (a second outstanding token, redeemed
+      // after the first already cleared it) — either way there is nothing
+      // left to verify. Same generic failure the redeem step above uses.
+      logger.info({ userId }, "Email verification token redeemed nothing left to verify");
+      res.status(400).json({ ...payload("INVALID_TOKEN") });
+      return;
+    }
+    if (result === "lost_race") {
       // #897: another account proved control of this mailbox first — this
       // one's claim is already cleared by markEmailVerified, not colliding
       // with users_email_verified_lower_uq.
