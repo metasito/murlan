@@ -21,7 +21,7 @@ import type { Card } from "@/lib/gameEngine";
 import { computeHandLayout, hitWidth, slotForCard } from "@/components/handLayout";
 import { cardAt, dropIndex } from "@/components/handOrder";
 import { HAND_ARC, solveArc } from "@/components/tableArc";
-import { HAND_CROP, handRowHeadroom } from "@/components/gameTableModel";
+import { HAND_CROP, exchangeArrivalRise, handRowHeadroom } from "@/components/gameTableModel";
 import {
   CARD_W,
   CARD_H,
@@ -75,6 +75,17 @@ const UNGIVEABLE_DIM = Scrim.medium;
 // processFilter parses the same string, so the string form is the only one that
 // works on both — an array serialises to `[object Object]` on web.
 const UNGIVEABLE_FILTER = { filter: "grayscale(1)" } as const;
+// The giveable halo: a flat fill behind the card, wider than it by a fixed
+// rim, never painted on the card's own face — a fan exposes only a sliver of
+// most cards in the run, mostly the top-left index, and that is the one thing
+// the marker must never sit on top of.
+//
+// The rim is flat rather than blurred: a blurred glow's radius fans out in a
+// full circle at a corner and only a thin line along a straight edge, so
+// wherever the fan's overlap leaves just a corner exposed it reads as a
+// brighter smear than the rest of the run (reported 2026-09-02, iOS). A flat
+// fill has no radius to concentrate — every exposed sliver, corner or edge,
+// shows the same rim.
 
 
 // ─── Reordering (#531) ────────────────────────────────────────────────────────
@@ -104,10 +115,19 @@ const MOVE_LEFT = "moveCardLeft";
 const MOVE_RIGHT = "moveCardRight";
 /** The same two moves from a keyboard, which is the whole of them on web. */
 const MOVE_KEYS = { ArrowLeft: MOVE_LEFT, ArrowRight: MOVE_RIGHT };
-/** Directly over the cards it dims, so it is derived from their band rather than guessed. */
+/** Directly over the card it dims, so it is derived from its band rather than guessed. */
 const VEIL_Z = Layer.table + 1;
+/** The halo sits behind the card, on the same step the selection bloom does. */
+const GIVEABLE_HALO_Z = Layer.felt;
+/** How far past the card's own edge the halo's rim shows. */
+const GIVEABLE_HALO_PAD = 2;
 
-/** Past every card's own `zIndex`, which is its index in a hand of at most 18. */
+/**
+ * Past every card's own `zIndex`, which is its index in a hand of at most 18,
+ * or that index lifted by the row's count while the exchange marks it
+ * giveable — clamped short of this, so the bound holds for any hand size
+ * rather than resting on one never being dealt.
+ */
 const HELD_Z = Layer.held;
 
 interface CardItemProps {
@@ -270,8 +290,6 @@ function CardItemBase({
     };
   });
 
-  // The giveable rim rides the same textless sibling the selection bloom does,
-  // for the same reason: it must never touch the card's own rasterised ranks.
   const giveableStyle = useAnimatedStyle(() => ({
     opacity: Math.max(0, exchangeState.value),
   }));
@@ -303,11 +321,18 @@ function CardItemBase({
         giveable === false && UNGIVEABLE_FILTER,
       ]}
     >
-      <Animated.View pointerEvents="none" style={[handStyles.cardGlow, glowStyle]} />
+      <Animated.View
+        pointerEvents="none"
+        style={[handStyles.cardGlow, { borderRadius: cardRadius(cardW) }, glowStyle]}
+      />
       {giveable === true && (
         <Animated.View
           pointerEvents="none"
-          style={[handStyles.giveableGlow, { borderRadius: cardRadius(cardW) }, giveableStyle]}
+          style={[
+            handStyles.giveableHalo,
+            { borderRadius: cardRadius(cardW) + GIVEABLE_HALO_PAD },
+            giveableStyle,
+          ]}
         />
       )}
       <CardView
@@ -329,7 +354,7 @@ function CardItemBase({
       {giveable === false && (
         <Animated.View
           pointerEvents="none"
-          style={[handStyles.ungiveableVeil, { borderRadius: Radius.sm }, veilStyle]}
+          style={[handStyles.ungiveableVeil, { borderRadius: cardRadius(cardW) }, veilStyle]}
         />
       )}
     </Animated.View>
@@ -404,6 +429,7 @@ export function StraightHand({
   arrivingIndex,
   descendingId,
   startCardId,
+  handBottomPad = 0,
 }: {
   cards: Card[];
   selectedIds: string[];
@@ -454,6 +480,14 @@ export function StraightHand({
    * neighbours — enough to sort it behind every one of them (#757).
    */
   startCardId?: string;
+  /**
+   * `TableFrame.bottomPad` — the safe-area inset `HAND_ZONE_H` reserves below
+   * the row. `descendingId`'s own arrival reads it to start its descent from
+   * where the exchange's flying card actually retires (`exchangeArrivalRise`)
+   * rather than from the unrelated height a freshly dealt card drops from.
+   * Unused, so omittable, on any hand that never receives one.
+   */
+  handBottomPad?: number;
 }) {
   const { t } = useTranslation();
   const reduceMotion = usePrefersReducedMotion();
@@ -613,6 +647,21 @@ export function StraightHand({
   // The middle card rides highest, so the row is as tall as the card plus the
   // climb; the whole arc is then pushed past the bottom edge by the crop.
   const arcRise = box.h - cardH;
+  // Where the exchange's flying card retires, in the row's own baseline units
+  // (`exchangeArrivalRise`'s own doc). The arriving card's descent starts
+  // there instead of from `dealRise` above, which is a fixed rise meant for a
+  // card dropping from the deck and unrelated to where any given card in this
+  // hand actually receives one.
+  //
+  // `handCenter` is `arcRise` taller than the row and centres it, so the row's
+  // baseline sits half the climb above the zone's own padded floor; and the
+  // resting card height, not this hand's, because the flight was solved
+  // against the resting one whether or not the turn is the viewer's.
+  const exchangeArrivalDealRise = exchangeArrivalRise(
+    CARD_H(scale * HAND_SCALE),
+    handBottomPad,
+    arcRise / 2
+  );
   // A tilted card stands taller than the card: its box grows by
   // `w·sin(a) + h·cos(a) − h`, half of it above and half below. The end cards
   // carry the most of the arc's own tilt and a chosen one adds SELECT_TILT on
@@ -887,7 +936,14 @@ export function StraightHand({
           giveable={giveable}
           hint={giveable === undefined ? undefined : giveable ? giveHint : refuseHint}
           faceDown={faceDown}
-          zIndex={i}
+          // A giveable card draws over every neighbour regardless of the fan's
+          // own order, so the eye lands on what can be chosen rather than on
+          // whichever illegal card the draw order happened to put on top. The
+          // lift is the row's own count — past every index it hands out —
+          // clamped short of `HELD_Z`, which has to stay above both bands: a
+          // hand this row could ever be handed is what makes the ceiling hold,
+          // not an assumption about how big one gets.
+          zIndex={giveable === true ? Math.min(rest.length + i, HELD_Z - 1) : i}
           dealDelay={dealArmed ? i * Motion.stagger.deal : descending ? 0 : -1}
           // From the row's own centre, which is where the flight carrying it
           // stops (`flightOrigin`'s `bottom` is `dx: 0`). The crossing and the
@@ -896,7 +952,10 @@ export function StraightHand({
           dealFromX={descending ? -home.x : -home.x - cardW / 2}
           dealFade={!descending}
           cardScale={cardScale}
-          dealRise={dealRise}
+          // A descending card starts its fall from where the exchange's own
+          // flying card retires, not from `dealRise`'s deck-drop height —
+          // otherwise the two disagree about where the card just was.
+          dealRise={descending ? cardH / 2 - crop - home.y - exchangeArrivalDealRise : dealRise}
           hitW={hitWidth(slot, arc.length, step, cardW)}
           isStartCard={card.id === startCardId}
           cardW={cardW}
@@ -985,7 +1044,6 @@ const handStyles = StyleSheet.create({
     position: "absolute",
     top: 2, left: 2, right: 2, bottom: 2,
     zIndex: Layer.felt,
-    borderRadius: Radius.sm,
     backgroundColor: Colors.gold,
     ...Shadow.goldSoft,
   },
@@ -995,28 +1053,31 @@ const handStyles = StyleSheet.create({
     alignSelf: "center",
   },
   handCardWrap: { position: "absolute" },
+  // Its corner comes from the card's own width at the call site, never from a
+  // fixed radius: a card rounds at a share of itself, so a veil rounding at a
+  // constant leaves a crescent of undimmed face at each of the four corners —
+  // four bright specks on a card that is meant to have receded.
   ungiveableVeil: {
     position: "absolute",
     top: 0, left: 0, right: 0, bottom: 0,
     zIndex: VEIL_Z,
     backgroundColor: UNGIVEABLE_DIM,
   },
-  // A halo around the card, on the same principle as the selection bloom above
-  // and for the same reason: a filled sibling *behind* the card, so all that is
-  // ever seen of it is the light that spills past the card's own silhouette.
-  // The card covers the fill; nothing is drawn over the card.
+  // Behind the card (`GIVEABLE_HALO_Z` is `Layer.felt`, under `cardLayer`'s
+  // `Layer.table`), so nothing it draws ever reaches the card's own face —
+  // only the rim a fan's overlap leaves exposed. `GIVEABLE_HALO_PAD` inset
+  // negative, restated as a literal rather than the constant: the stacking
+  // scan (tests/stackingIsStated.test.ts) reads insets off the source text.
   //
-  // Never a border. A hand fans by overlapping, so three of a four-sided rim's
-  // sides are hidden and only its top edge survives — and the top edges of a
-  // run of adjacent cards join into one unbroken hard line with a square cap at
-  // either end, which reads as a frame the cards are trapped in rather than as
-  // a mark on each of them. Light has no edge to join.
-  giveableGlow: {
+  // Never a border: a fan overlaps by design, and only the top edge of a
+  // bordered card survives it — a run of them joins into one hard line with a
+  // square cap at either end, a frame the cards are trapped in rather than a
+  // mark on each. A fill has no edge to join.
+  giveableHalo: {
     position: "absolute",
-    top: 0, left: 0, right: 0, bottom: 0,
-    zIndex: Layer.felt,
+    top: -2, left: -2, right: -2, bottom: -2,
+    zIndex: GIVEABLE_HALO_Z,
     backgroundColor: Colors.gold,
-    ...Shadow.gold,
   },
   // Its own plate. Under a lamp that moves, the felt has no reliably dark end
   // to sit on: the brightest cloth on the table is wherever the light is.

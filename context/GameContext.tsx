@@ -171,7 +171,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     data: exchangeAnnounceData,
     announce,
     end: acknowledgeExchange,
-  } = useExchangeAnnouncement();
+  } = useExchangeAnnouncement(gameState?.exchangePhase !== undefined);
 
   /**
    * The single write path for engine output: a manche that has just ended is

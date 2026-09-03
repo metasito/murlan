@@ -56,8 +56,15 @@ function exchangeState(): GameState {
 }
 
 function Probe() {
-  const { gameState, exchangeAnnouncing, exchangeAnnounceData, hasSavedGame, resumeGame, chooseExchangeCard } =
-    useGame();
+  const {
+    gameState,
+    exchangeAnnouncing,
+    exchangeAnnounceData,
+    hasSavedGame,
+    resumeGame,
+    chooseExchangeCard,
+    setupGame,
+  } = useGame();
   return (
     <>
       <Pressable testID="resume" onPress={() => resumeGame()}>
@@ -66,8 +73,23 @@ function Probe() {
       <Pressable testID="choose" onPress={() => chooseExchangeCard("4_clubs")}>
         <Text>choose</Text>
       </Pressable>
+      <Pressable
+        testID="newMatch"
+        onPress={() =>
+          setupGame(
+            [
+              { name: "Ana", type: "human" },
+              { name: "Gent", type: "ai" },
+            ],
+            "free_for_all"
+          )
+        }
+      >
+        <Text>new match</Text>
+      </Pressable>
       <Text testID="saved">{String(hasSavedGame)}</Text>
       <Text testID="active">{String(gameState?.exchangePhase?.active ?? "none")}</Text>
+      <Text testID="phasePresent">{String(gameState?.exchangePhase !== undefined)}</Text>
       <Text testID="winnerHand">{gameState ? gameState.players[0].hand.map((c) => c.id).join(",") : "-"}</Text>
       <Text testID="loserHand">{gameState ? gameState.players[1].hand.map((c) => c.id).join(",") : "-"}</Text>
       <Text testID="turn">{String(gameState?.currentTurnIndex ?? "-")}</Text>
@@ -125,4 +147,50 @@ test("choosing an exchange card moves the card and announces it through the real
   expect(shown(view, "turn")).toBe("1");
   expect(shown(view, "announcing")).toBe("true");
   expect(shown(view, "announceGiven")).toBe("4_clubs");
+
+  await view.unmount();
+});
+
+// #533, reopened 2026-09-02: a residue outliving the exchange. The ceremony's
+// own reading clock is deliberately long (`Reading.notice` past the flight),
+// so a table that starts over while it is still counting down — a fresh
+// match dealt here, a room rejoin online — must not carry the old trade's
+// announcement onto a felt with no record of it left. Turning `phasePresent`
+// off (`useExchangeAnnouncement`, lib/sharedGameFlow.ts) into a no-op — read
+// but never acted on — is the one-line change that reds this: `announcing`
+// would then still read "true" after `setupGame`, deposed only by the timer
+// this test never advances.
+test("a fresh match clears the announcement outright, not on the old ceremony's clock", async () => {
+  await AsyncStorage.setItem(
+    OFFLINE_SAVE_KEY,
+    encodeOfflineSave({
+      gameState: exchangeState(),
+      match: { length: "match", target: 21, scores: {}, hands: [], over: false, winners: [], isDraw: false },
+      rematchAnswers: {},
+      players: [
+        { name: "Ana", type: "human" },
+        { name: "Gent", type: "ai" },
+      ],
+      gameMode: "free_for_all",
+      dealFirstSeat: 0,
+    })
+  );
+
+  const view = await mount();
+  await waitFor(() => expect(shown(view, "saved")).toBe("true"));
+
+  await press(view, "resume");
+  await press(view, "choose");
+  expect(shown(view, "announcing")).toBe("true");
+  expect(shown(view, "phasePresent")).toBe("true");
+
+  await press(view, "newMatch");
+
+  // No fake timers, no `waitFor`: the ceremony's own clock is seconds long
+  // (`exchangeAnnounceMs`), so anything left showing here is left showing by
+  // the phase-driven path, not merely fast enough to have expired the timer.
+  expect(shown(view, "phasePresent")).toBe("false");
+  expect(shown(view, "announcing")).toBe("false");
+
+  await view.unmount();
 });

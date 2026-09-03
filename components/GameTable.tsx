@@ -1410,6 +1410,7 @@ export function GameTable({
                     cardReceived={exchangeAnnouncement.data.cardReceived}
                     toWinner={exchangeTrips.toWinner}
                     toLoser={exchangeTrips.toLoser}
+                    landed={tradedCardsLanded}
                     scale={scale * FIELD_SCALE}
                     onDismiss={exchangeAnnouncement.onDismiss}
                   />
@@ -1513,6 +1514,7 @@ export function GameTable({
                     onReorder={spectating || withheldId !== undefined ? undefined : arrange}
                     arrivingIndex={arrivingIndex}
                     descendingId={descendingId}
+                    handBottomPad={frame.bottomPad}
                     // Only while the opening is still owed. Named rather than
                     // counted to: Maestro's `index` sorts by position, and the
                     // arc puts the outermost card below its neighbours (#757).

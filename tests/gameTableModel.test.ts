@@ -26,6 +26,7 @@ import {
   HAND_ZONE_H,
   handVisibleH,
   handRowHeadroom,
+  exchangeArrivalRise,
   cardTilt,
   getOpponentPosition,
   seatDirection,
@@ -2811,6 +2812,65 @@ describe("arrivingCard", () => {
       assert.equal(at.withheldId, undefined);
       assert.equal(at.descendingId, undefined);
     });
+  });
+});
+
+describe("exchangeArrivalRise", () => {
+  test("is the hand zone's own centre, restated against the row's baseline", () => {
+    // flightOrigin's "bottom" case lands the flying card at handZoneH / 2
+    // above the table floor; the row's own baseline sits bottomPad above that
+    // floor plus the lift handCenter gives it. Restated here from the pieces
+    // rather than imported whole, so a change to either formula shows up as
+    // disagreement.
+    const cardH = 90;
+    const bottomPad = 34;
+    const rowRise = 7;
+    const handZoneH = handVisibleH(cardH) + bottomPad + handRowHeadroom(cardH);
+    assert.equal(
+      exchangeArrivalRise(cardH, bottomPad, rowRise),
+      handZoneH / 2 - bottomPad - rowRise
+    );
+  });
+
+  test("rises with a taller card, and falls with a deeper safe area", () => {
+    assert.ok(exchangeArrivalRise(120, 20, 0) > exchangeArrivalRise(90, 20, 0));
+    assert.ok(exchangeArrivalRise(90, 40, 0) < exchangeArrivalRise(90, 0, 0));
+  });
+
+  // The row is lifted off the zone's padded floor by half the arc's own climb,
+  // and a rise that ignored it would hand the card over that far from where
+  // the flier stopped — the seam this function exists to close.
+  test("comes down by the row's own lift", () => {
+    assert.equal(
+      exchangeArrivalRise(90, 34, 0) - exchangeArrivalRise(90, 34, 9),
+      9
+    );
+  });
+});
+
+// The flier retiring and the hand taking its card back are two views reading
+// one instant; a second `useTradedCardsLanded` call is a second clock for it,
+// and a clock that can drift from the one everything else reads is exactly
+// how the exchange's own flying card and the hand's arrival came to disagree
+// about when the trip is over (#533, reopened 2026-09-02: a residue outliving
+// the exchange). GameTable.tsx is the one call; every other view reads its
+// answer through a prop.
+describe("the exchange landing has one clock", () => {
+  const CALL = /(?<!function\s)\buseTradedCardsLanded\s*\(/g;
+  const HOME = "lib/sharedGameFlow.ts";
+
+  test("GameTable is the only caller of useTradedCardsLanded", () => {
+    assert.deepEqual(scan(CALL), ["components/GameTable.tsx: useTradedCardsLanded("]);
+  });
+
+  test("the scan fires on a second caller", () => {
+    const planted: [string, string][] = [
+      [HOME, "export function useTradedCardsLanded(a, b) { return true; }"],
+      ["components/ExchangeAnnouncement.tsx", "const landed = useTradedCardsLanded(visible, x);"],
+    ];
+    assert.deepEqual(scanSources(CALL, planted), [
+      "components/ExchangeAnnouncement.tsx: useTradedCardsLanded(",
+    ]);
   });
 });
 
