@@ -80,7 +80,6 @@ export const it: Record<keyof typeof en, string> = {
   "server.PLAYER_DISCONNECTED_GRACE": "{{username}} ha perso la connessione. Ha {{seconds}} secondi per rientrare.",
   "server.PLAYER_RECONNECTED": "{{username}} è di nuovo in partita.",
   "server.SESSION_REPLACED": "Il tuo account è stato aperto altrove. Questa sessione è stata chiusa.",
-  "server.MATCHMAKING_COOLDOWN": "Il matchmaking è in pausa dopo abbandoni ripetuti — riprova tra {{minutes}} minuti.",
   "server.MATCH_ENDED_BY_AGREEMENT": "Il tavolo ha deciso di terminare la partita. Nessuna penalità per nessuno.",
   "server.NO_VACANCY_TO_END": "Non c'è ancora nessuno su cui votare per terminare la partita",
 

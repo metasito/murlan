@@ -87,7 +87,6 @@ export const en = {
   "server.PLAYER_DISCONNECTED_GRACE": "{{username}} disconnected. They have {{seconds}} seconds to rejoin.",
   "server.PLAYER_RECONNECTED": "{{username}} is back.",
   "server.SESSION_REPLACED": "Your account was opened somewhere else. This session has been closed.",
-  "server.MATCHMAKING_COOLDOWN": "Matchmaking is paused after repeated abandonments — try again in {{minutes}} minutes.",
   "server.MATCH_ENDED_BY_AGREEMENT": "The table agreed to end the match. Nobody is penalised.",
   "server.NO_VACANCY_TO_END": "There's nobody to vote on ending the match yet",
 

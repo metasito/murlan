@@ -18,7 +18,6 @@ import {
   announceIfFilled,
 } from "./socketTable.ts";
 import { applyOrForward } from "./tableRouter.ts";
-import { matchmakingCooldownFor } from "./matchmakingCooldown.ts";
 import {
   NoPayloadSchema,
   RoomCreateSchema,
@@ -225,17 +224,6 @@ export function registerRoomHandlers({ io, socket, userId, username }: RoomHandl
       RoomQuickmatchSchema,
       async ({ maxPlayers, gameMode }) => {
         if (teamsSizeRefusal((p) => socket.emit("room:error", p), gameMode, maxPlayers)) return;
-
-        const cooldown = await matchmakingCooldownFor(userId);
-        if (cooldown.active) {
-          const minutes = Math.ceil((cooldown.until!.getTime() - Date.now()) / 60_000);
-          socket.emit("room:error", {
-            message: `Matchmaking is on cooldown after repeated abandonments — try again in ${minutes} minutes`,
-            code: "MATCHMAKING_COOLDOWN",
-            params: { minutes },
-          });
-          return;
-        }
 
         const waiting = await storage.findWaitingPublicRooms(userId);
 

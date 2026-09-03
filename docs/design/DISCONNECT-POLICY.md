@@ -1,8 +1,14 @@
 # The disconnect policy, decided as a whole
 
-**Status: a recommendation, not a decision.** #820 asked for research, options and one
-coherent proposal; the choice is the owner's. Nothing here has been implemented, and the
-proposal changes no behaviour until the tickets in §9 are filed and worked.
+**Status: decided.** #820 asked for research, options and one coherent proposal; the owner
+decided on 2026-09-03. Clauses 1–11 of §6 (below) were adopted in full and are implemented —
+tickets A–H of §9's original list landed as #850's disconnect policy. **Clause 12 — the
+repeat-abandonment matchmaking cooldown — was rejected**, and its code (#858's
+`lib/abandonCooldown.ts`, `server/matchmakingCooldown.ts`) was removed on #898. Abandoning
+costs the abandoner their own score, via clause 6, and nothing further; see `docs/BRIEF.md`
+§3.1 for the decision as recorded there. §5 Q7's cooldown recommendation, §7 row I and §9
+item 9 below are struck for the same reason — kept, marked, rather than deleted, because the
+reasoning that was rejected is itself worth keeping on the record.
 
 Written 2026-09-02 against `origin/main` at `d5f234d`, after #815 landed.
 
@@ -382,20 +388,22 @@ one more caller of machinery that exists rather than a new mechanism.
 | Abandoned hand rates as last place (today, §3.1) | Quitting costs what losing costs | It costs *exactly* what losing costs, so quitting a hand you were losing anyway is free. BGA's answer to this is the extra −10. |
 | Nothing counts for anyone | Nobody is cheated by someone else's router | Every rated loss becomes escapable. The single worst option, and the one every source rejects. |
 | Survivors keep their rating for the hands they played (today) | Correct by P3 | None. |
-| **Add an escalating penalty on the record** | Repeat quitters are handled where the problem actually is | Needs storage, and a false positive punishes someone's commute. Keep it a matchmaking cooldown, never a bigger rating hit. |
+| ~~Add an escalating penalty on the record~~ **Rejected on #898** | Repeat quitters are handled where the problem actually is | Needs storage, and a false positive punishes someone's commute. Keep it a matchmaking cooldown, never a bigger rating hit. |
 
-**Recommend: keep §3.1's rule unchanged, add nothing to the single incident, and put the
+~~**Recommend: keep §3.1's rule unchanged, add nothing to the single incident, and put the
 escalation on the record.** Every source that has solved this solved it this way (Lichess
 playbans, chess.com's history-dependent verdict, BGA karma). The mechanic to build is the
 smallest one that works: count abandonments per account over a rolling window and impose a
-short matchmaking cooldown past a threshold, with the first offence forgiven.
+short matchmaking cooldown past a threshold, with the first offence forgiven.~~
 
-The honest cost note: `match_history` has **no** column recording that a result was an
-abandonment (`shared/schema.ts:145-167`), and `placement == playerCount` is not a substitute —
-finishing last is not quitting. `GameResult.abandoned` exists in memory
-(`lib/achievements.ts:48`) and is thrown away at the write. So this is a new column on a
-table holding real accounts: design-first, `pg_dump` first, per `CLAUDE.md`. It is the only
-recommendation here that touches storage, and it is the one most safely deferred.
+**Decided against, 2026-09-03 (#898): no cooldown, at any threshold.** Abandoning costs the
+abandoner their own score — Q4's frozen-points clause — and nothing further; one drop, or a
+habit of them, is forgiven.
+
+The honest cost note that made this the safely-deferred item is now moot: `match_history` did
+gain the `abandoned` column (`shared/schema.ts`, written by `server/stats.ts`) — it feeds
+`GET /api/stats/history`'s own record of a hand, which #898 keeps — but no rolling count and
+no gate was ever built on it, and none will be.
 
 ### Q8 — What the standings should show
 
@@ -437,12 +445,13 @@ match with a departed seat — because a scoreboard that silently fails to add u
 10. **Once a seat has been vacated mid-match, any remaining player may call a unanimous vote to
     end the match**, penalty-free for everyone still present.
 11. **A match abandoned before a single point is scored is voided and rated for nobody.**
-12. **Repetition escalates, on the record, as a matchmaking cooldown** — never as a larger
-    rating loss, and never on the first offence.
+12. ~~Repetition escalates, on the record, as a matchmaking cooldown — never as a larger
+    rating loss, and never on the first offence.~~ **Rejected, 2026-09-03 (#898): no cooldown.**
+    The record stands (9); nothing further is enforced on it.
 
 Read against the principles: nothing rewards leaving whether you are ahead (5, 9) or behind
 (5, 11's narrow window); nobody is trapped (10) or robbed (6, 8); the table never stalls (1-4);
-the substitute is never an upgrade (1, 4); and one drop is forgiven while a habit is not (9, 12).
+the substitute is never an upgrade (1, 4); and one drop, or several, is forgiven (9).
 
 ---
 
@@ -460,7 +469,7 @@ Sizes are the ticket scale used in the tracker.
 | F | Seat reclaimable for the life of the match | `releasedSeats` permanent → consulted only for a finished/disposed table | **M**; the rejoin path, the announcement both ways, and the AFK-rearm guard | Medium — this is the reconnection mechanics #820 explicitly deferred, so it is the one that most needs its own design pass |
 | G | Unanimous end-the-match vote after a vacancy | none → new vote, reusing the rematch gate's unanimity and abstention rules | **M**, server + one screen + locale keys | Medium |
 | H | Void a match abandoned before the first point | none → new branch at hand end | **S** | Low |
-| I | Repeat-abandonment cooldown | none → new `abandoned` column on `match_history`, a rolling count, a matchmaking gate | **L**, and design-first: real accounts, `pg_dump` first | Highest; safely deferred |
+| I | ~~Repeat-abandonment cooldown~~ | ~~none → new `abandoned` column on `match_history`, a rolling count, a matchmaking gate~~ | ~~**L**, and design-first: real accounts, `pg_dump` first~~ | **Rejected, 2026-09-03 (#898).** The `abandoned` column was built (it serves `GET /api/stats/history`), but no count and no gate. |
 
 **Unchanged by this recommendation:** the 30 s turn timer; the 60 s and 20 s grace lengths;
 §3.1's abandonment rule; the winner being stated as an engine player id; the rule that a
@@ -499,8 +508,8 @@ worked.
    unanimity and abstention rules, penalty-free for everyone present. (G)
 8. **Void a match abandoned before its first point** — nothing earned, nothing taken, rated for
    nobody. (H)
-9. **Record abandonments and cool down repeat quitters** — a new `match_history` column, a
-   rolling count and a matchmaking gate; design-first, `pg_dump` first. (I)
+9. ~~Record abandonments and cool down repeat quitters~~ — **rejected, 2026-09-03 (#898); no
+   cooldown, at any threshold.** (I)
 
 ---
 
