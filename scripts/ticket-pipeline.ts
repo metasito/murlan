@@ -15,7 +15,8 @@
  * Nothing an agent says about what it did is believed. Git is asked instead.
  */
 import { execFileSync } from "node:child_process";
-import { existsSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -49,6 +50,25 @@ interface RunState {
 
 /** A stop with a reason the owner will read on the issue. Anything else is a crash, and says so. */
 class Stop extends Error {}
+
+/**
+ * What one stage cost, kept because `stage()`'s own line goes to stdout and dies with the
+ * terminal. Every question about where a run's time and money went — #823's shape — was
+ * answerable at the moment it was printed and unanswerable an hour later.
+ */
+interface StageRecord {
+  name: string;
+  model: string;
+  effort: Effort;
+  minutes: string;
+  turns: number;
+  costUsd: number;
+  tokensIn: number;
+  tokensOut: number;
+  cacheRead: number;
+}
+
+const ledger: StageRecord[] = [];
 
 // ---------------------------------------------------------------- shell
 
@@ -240,7 +260,65 @@ function stage(name: string, prompt: string, model: "sonnet" | "opus", effort: E
       `, out ${k(output)}`
   );
   if (!result.ok) say(`(the ${name} agent exited non-zero; git decides whether it did the work)`);
+  ledger.push({
+    name, model, effort, minutes, turns: result.turns, costUsd: result.costUsd,
+    tokensIn: input + cacheRead + cacheWrite, tokensOut: output, cacheRead,
+  });
   return result.text;
+}
+
+/**
+ * `gh` is handed a file rather than an inline `--body`: a body with a newline in it is
+ * word-split by the shell, and PowerShell's own redirection writes cp1252, which mojibakes
+ * every character above ASCII. Node writes UTF-8.
+ */
+function ghComment(args: string[], body: string): void {
+  const dir = mkdtempSync(path.join(tmpdir(), "murlan-pipeline-"));
+  const file = path.join(dir, "body.md");
+  try {
+    writeFileSync(file, body, "utf8");
+    gh([...args, "--body-file", file]);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+/**
+ * The reviewer's findings, on the pull request they are about. Without this the one stage that
+ * read the diff cold reported to stdout and to nobody: the PR body is the implement stage's own
+ * account of its work, which is exactly the account a review exists to second-guess.
+ */
+function recordFindings(prNumber: number, findings: string): void {
+  if (!findings.trim()) return;
+  ghComment(
+    ["pr", "comment", String(prNumber), "--repo", REPO],
+    `## Review findings\n\n${findings.slice(-6000)}\n`
+  );
+}
+
+/** What the run cost, on the ticket, where the next reader of this ticket will find it. */
+function recordRun(issueNumber: number): void {
+  if (ledger.length === 0) return;
+  const rows = ledger.map(
+    (s) =>
+      `| ${s.name} | ${s.model} | ${s.effort} | ${s.minutes}m | ${s.turns} | ` +
+      `$${s.costUsd.toFixed(2)} | ${k(s.tokensIn)} | ${k(s.cacheRead)} | ${k(s.tokensOut)} |`
+  );
+  const total = ledger.reduce((sum, s) => sum + s.costUsd, 0);
+  const wall = ledger.reduce((sum, s) => sum + Number(s.minutes), 0);
+  ghComment(
+    ["issue", "comment", String(issueNumber), "--repo", REPO],
+    [
+      "## Run record",
+      "",
+      "| stage | model | effort | wall | turns | cost | in | cached | out |",
+      "|---|---|---|---|---|---|---|---|---|",
+      ...rows,
+      "",
+      `**${ledger.length} model stages, ${wall.toFixed(1)}m, $${total.toFixed(2)}.**`,
+      "",
+    ].join("\n")
+  );
 }
 
 interface IssueDetail {
@@ -380,10 +458,11 @@ function work(ticket: Ticket, branch: string, state: RunState): void {
   commitLeftovers(worktree, `Implement #${ticket.number}`);
   if (commitsAhead(worktree) === 0) throw new Stop("nothing is committed on the branch");
 
-  stage("review", reviewPrompt(ticket, evidence), "opus", "max", worktree);
+  const findings = stage("review", reviewPrompt(ticket, evidence), "opus", "max", worktree);
   commitLeftovers(worktree, "Apply review findings");
 
   const prNumber = publish(ticket, branch, worktree, state, evidence);
+  recordFindings(prNumber, findings);
   driveToGreen(branch, prNumber, worktree);
   land(branch, prNumber, worktree, state);
 }
@@ -464,6 +543,14 @@ function removeOrphanedDirectory(worktreePath: string): void {
 }
 
 function teardown(ticket: Ticket, state: RunState, why: string): void {
+  // Before the claim comes off, and on the stopped path as much as the landed one: a run that
+  // cost forty minutes and stopped is the one whose record is worth having.
+  try {
+    recordRun(ticket.number);
+  } catch (error) {
+    say(`could not record the run: ${(error as Error).message}`);
+  }
+
   try {
     if (state.merged) {
       // The merge closes the issue through the pull request body, but nothing takes the claim's
