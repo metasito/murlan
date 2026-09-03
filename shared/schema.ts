@@ -175,6 +175,16 @@ export const matchHistory = pgTable("match_history", {
    * written those inputs are gone.
    */
   ratingDelta: integer("rating_delta"),
+  /**
+   * This row is the seat the player walked out on, scored as a forfeit
+   * (`GameResult.abandoned`, lib/achievements.ts) rather than played to its
+   * placement — docs/BRIEF.md §3.1 "Abandoning a hand". Defaulted rather than
+   * nullable: every row written before this column existed was not one, and
+   * `false` says that outright instead of leaving it to a reader's `?? false`.
+   * The matchmaking cooldown (docs/design/DISCONNECT-POLICY.md §6.12) counts
+   * these directly rather than needing a table of its own.
+   */
+  abandoned: boolean("abandoned").notNull().default(false),
 }, (t) => [index("match_history_user_idx").on(t.userId, t.finishedAt)]);
 
 /**
