@@ -19,7 +19,7 @@ import { trackEvent } from "./events.ts";
 import { DEFAULT_LOCALE, translate } from "../shared/i18n.ts";
 import { activeGames as activeGamesTable } from "../shared/schema.ts";
 import type { EventOutcome } from "./socketSafety.ts";
-import { activeGames, seatOfUser, userRoom } from "./gameRoom.ts";
+import { activeGames, scoreKeyForSeat, seatOfUser, userRoom } from "./gameRoom.ts";
 import { isUserOnline } from "./socketRegistry.ts";
 import type { OnlineGameState } from "./gameRoom.ts";
 import {
@@ -513,9 +513,16 @@ function reclaimableSeat(game: OnlineGameState, userId: string): number | null {
 
 /** Restores a vacated seat to the account that left it. */
 function reclaimSeat(game: OnlineGameState, seat: number, userId: string): void {
+  const botKey = scoreKeyForSeat(game, seat);
   game.playerMap[seat] = userId;
+  const carried = game.cumulativeScores[botKey] ?? 0;
+  if (carried !== 0) {
+    game.cumulativeScores[userId] = (game.cumulativeScores[userId] ?? 0) + carried;
+  }
+  delete game.cumulativeScores[botKey];
   game.vacatedSeats.delete(seat);
   game.releasedSeats.delete(userId);
+  game.endMatchVotes.clear();
   const seatPlayer = game.gameState.players[seat];
   if (seatPlayer) seatPlayer.type = "human";
 }

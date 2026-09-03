@@ -1,9 +1,8 @@
 import type { Server as SocketServer } from "socket.io";
 import { logger } from "./logger.ts";
 import { clearRoomTimers, clearRoomDisconnectTimers } from "./gameTimers.ts";
-import { scoreKeyForSeat } from "./gameRoom.ts";
 import type { OnlineGameState } from "./gameRoom.ts";
-import { resolveHandEnd } from "./onlineGameLogic.ts";
+import { resolveHandEnd, seatTotal } from "./onlineGameLogic.ts";
 import { replaySeatsOf } from "./replayShape.ts";
 import { isMajority, tallyRematchAnswers, firstTargetFor } from "../lib/gameEngine.ts";
 import type { GameOverPayload } from "../lib/matchState.ts";
@@ -340,7 +339,7 @@ export function countRematchAnswers(game: OnlineGameState): { yes: number; total
 export function scoresByEngineId(game: OnlineGameState): Record<string, number> {
   const byId: Record<string, number> = {};
   game.gameState.players.forEach((p, seat) => {
-    byId[p.id] = game.cumulativeScores[scoreKeyForSeat(game, seat)] ?? 0;
+    byId[p.id] = seatTotal(game.cumulativeScores, game.playerMap, game.vacatedSeats, seat);
   });
   return byId;
 }
