@@ -86,4 +86,6 @@ export interface MatchHistoryDto {
   replayId: string | null;
   /** Null for a hand the ladder did not rate — never 0, which is a rated hand that moved nobody. */
   ratingDelta: number | null;
+  /** True when this seat left before the hand finished — docs/BRIEF.md §3.1. */
+  abandoned: boolean;
 }
