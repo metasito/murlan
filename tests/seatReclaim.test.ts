@@ -232,7 +232,7 @@ function finishedHand(rankings: string[]): GameState {
 
 describe("a reclaim merges the vacated seat's carried points into the returning player's own key (#894)", () => {
   test("cumulativeScores, both readers, and endMatchVotes all agree after the reclaim", async () => {
-    const { io } = stubIo();
+    const { io, emitted } = stubIo();
     const game = baseGame({
       gameState: midHand(),
       playerMap: { 0: "alice", 2: "carl", 3: "dee" }, // seat 1 vacated
@@ -289,6 +289,13 @@ describe("a reclaim merges the vacated seat's carried points into the returning 
         "the standings must sum to the hands played, asserted as arithmetic"
       );
       assert.equal(game.endMatchVotes.size, 0, "a roster change makes the vote new again");
+      const voteState = emitted.filter((e) => e.event === "game:end_match_vote_state").pop();
+      assert.ok(voteState, "the cleared tally must be broadcast, not just held in server memory");
+      assert.deepEqual(
+        (voteState!.payload as { votes: string[] }).votes,
+        [],
+        "a client still showing alice+carl's old vote would need this to know it is gone"
+      );
     } finally {
       clearRoomTimers(ROOM);
       activeGames.delete(ROOM);

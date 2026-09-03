@@ -537,6 +537,10 @@ async function rejoinAction(
     // it — has to reach them. A normal reconnect skips this: the seat was
     // never vacated on the wire in the first place.
     broadcastGameState(io, game);
+    // reclaimSeat clears the (now-stale) end-match tally; every seat still
+    // holding a vote for it has to be told, or its banner keeps counting a
+    // vote the server no longer has.
+    emitEndMatchVoteState(io, roomId, game);
     persistGameState(roomId, game);
   }
 
