@@ -123,7 +123,7 @@ landing page.
 the database half is not optional once Step 5 has run: reverting the server does not undo the
 column renames.
 
-## #897 — dropping the old email uniqueness index
+## #897 — dropping the old email uniqueness index (required, not optional)
 
 `shared/schema.ts` now declares `users_email_verified_lower_uq`, a **partial** unique index on
 `lower(email) WHERE email_verified_at IS NOT NULL`, in place of the old unconditional
@@ -131,10 +131,21 @@ column renames.
 creates the new index on its own at the next boot — no manual step for that half. What it
 never does is drop the old one, and the two disagree: while both exist, the old index still
 refuses two accounts sharing an unverified email, which is exactly the claim (not possession)
-behaviour #897 exists to allow. Registration degrades safely in the meantime — a taken address
-gets the same neutral reply with no account created (`server/routes.ts`'s `EmailTakenError`
-catch in the register route) — but the address stays un-reclaimable by its real owner until
-this step runs.
+behaviour #897 exists to allow.
+
+**This step must run as part of this deploy, not "when convenient."** Registration no longer
+degrades safely against an un-migrated database. The code review behind this note (#894) found
+that the previous safe-looking degradation — a neutral 202 with no account and no session
+cookie — was itself a defect: it was a second, non-neutral registration outcome the client
+could not tell apart from success, and it answered a stranger's probe just as precisely as the
+oracle #897 exists to close. `server/routes.ts`'s register route no longer catches
+`EmailTakenError` at all. Against an un-migrated database — one where the old unconditional
+index still stands — every registration that collides with an existing unverified email now
+throws uncaught and the route replies **500**, loudly, until this step runs. That is the
+intended failure mode: loud and visible in the server log rather than a silent leak. But it
+means real registrations can 500 from the moment this code boots, so treat dropping
+`users_email_lower_uq` as part of this deploy's own steps, before announcing the app or
+opening it to new signups — not a follow-up to get to later.
 
 1 — Back up. Same requirement as Step 3 above, for the same reason:
 

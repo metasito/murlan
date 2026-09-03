@@ -155,7 +155,7 @@ describe("a reply goes out before any token mint or mail send on its own path (#
   test("register", () => {
     assertReplyBeforeMail(
       "/api/auth/register",
-      new Set(["mintAuthToken", "sendVerificationEmail", "sendRegistrationAttemptEmail"])
+      new Set(["mintAuthToken", "sendVerificationEmail"])
     );
   });
 

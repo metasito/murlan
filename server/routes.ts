@@ -325,23 +325,6 @@ function sendVerificationEmail(to: string, token: string): void {
 }
 
 /**
- * The pre-migration fallback path only (#897): `createUser` still raised
- * `EmailTakenError` because the database it is running against has not yet
- * had `users_email_lower_uq` manually dropped (docs/DEPLOY-RUNBOOK.md), so
- * no account was created for this attempt. Once that step runs, `createUser`
- * always succeeds and this function is never reached.
- */
-function sendRegistrationAttemptEmail(to: string): void {
-  sendMail(
-    to,
-    "Someone tried to register a Murlan account with this email",
-    "Someone tried to register an account with this address. If it was you, " +
-      "sign in or reset your password. If it was not, no account was created " +
-      "and you need do nothing."
-  ).catch((err) => logger.error({ err, to }, "sendRegistrationAttemptEmail failed"));
-}
-
-/**
  * Never awaited by its caller (design doc, Box 5) — the enumeration-safe
  * request-password-reset handler replies before this settles, so the only
  * work the response waits on is the token mint, not the outbound HTTPS call.
@@ -413,10 +396,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // directly, and a taken-but-unverified address succeeds exactly like a
   // free one (users_email_verified_lower_uq only constrains a *verified*
   // email), so both cases regenerate the same session, mint the same
-  // verification token and answer with the same body. Only the
-  // pre-migration fallback below — reachable while the database still
-  // carries the old unconditional index — answers differently, and it
-  // creates no account.
+  // verification token and answer with the same body. `EmailTakenError` is
+  // deliberately not caught here: on a fully migrated database `createUser`
+  // never raises it (the only unique index left on email is the partial,
+  // verified-only one, and a new account's own row is always unverified), so
+  // seeing it means the deploy step in docs/DEPLOY-RUNBOOK.md that drops the
+  // old unconditional index has not run yet — that must fail loudly (a 500)
+  // rather than degrade into a second, session-less registration outcome
+  // that a client cannot tell apart from success.
   app.post("/api/auth/register", authLimiter, validate(RegisterSchema), registerEmailLimiter, async (req, res) => {
     const { username, password, email } = req.body as { username: string; password: string; email: string };
 
@@ -433,11 +420,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (err) {
       if (err instanceof UsernameTakenError) {
         res.status(409).json({ ...payload("USERNAME_TAKEN") });
-        return;
-      }
-      if (err instanceof EmailTakenError) {
-        res.status(202).json({ ...payload("CHECK_YOUR_EMAIL") });
-        sendRegistrationAttemptEmail(email);
         return;
       }
       throw err;
@@ -466,9 +448,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // the oracle restated (#897).
         res.status(202).json({ ...payload("CHECK_YOUR_EMAIL") });
         // A provider outage must not block signup — mint and fire without
-        // awaiting the send, and only after the reply: the mint is an
-        // INSERT the pre-migration fallback branch above never does, so
-        // doing it before the reply would put the same timing gap back.
+        // awaiting the send, and only after the reply: the mint is an INSERT,
+        // and doing it before the reply would reopen the timing gap #897
+        // exists to close.
         mintAuthToken(user.id, "email_verify", EMAIL_VERIFY_TOKEN_TTL_MS)
           .then((token) => sendVerificationEmail(email, token))
           .catch((err) => logger.error({ err, userId: user.id }, "Failed to mint the verification token"));
