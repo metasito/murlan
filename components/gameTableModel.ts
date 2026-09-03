@@ -19,7 +19,7 @@ import {
   BASE_SHORT_EDGE,
 } from "./cardFaceModel.ts";
 import { arcBounds, solveArc, SEAT_ARC } from "./tableArc.ts";
-import { Hold, Spacing, Trauma } from "../lib/tokens.ts";
+import { Hold, Motion, Spacing, Trauma } from "../lib/tokens.ts";
 
 // ─── Layout constants ─────────────────────────────────────────────────────────
 //
@@ -380,7 +380,10 @@ export function arrivingCard(
   return undefined;
 }
 
-export const FLIGHT_MS = 380;
+// The card in flight is `travel` (#126) — 380 was Weighted, the alternative
+// the owner rejected in favour of this one. Derived rather than restated, so
+// the throw cannot drift back to a number the decision already turned down.
+export const FLIGHT_MS: number = Motion.duration.travel;
 /** Fraction of the flight after which the card is on the felt and settling. */
 export const LANDING_FRACTION = 0.82;
 

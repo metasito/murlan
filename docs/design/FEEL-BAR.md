@@ -13,8 +13,8 @@ Our own tokens, cited throughout for grounding: `Motion.duration` (`flash` 90ms,
 120ms, `shift` 200ms, `travel` 260ms, `reveal` 600ms, `dwell` 1200ms),
 `Motion.anticipate` 40ms, `Motion.spring.land` (damping 21, stiffness 260, ~7% overshoot
 once), `Motion.spring.pickup` (damping 37, stiffness 340, critically damped),
-`Motion.stagger.deal` 42ms, `Hold.land` 50ms, `impactDelayMs()` = round(380 × 0.82) =
-312ms, `Reading.notice` 4000ms, `Reading.invite` 6000ms — all in `lib/tokens.ts`. The
+`Motion.stagger.deal` 42ms, `Hold.land` 50ms, `impactDelayMs()` = round(260 × 0.82) =
+213ms, `Reading.notice` 4000ms, `Reading.invite` 6000ms — all in `lib/tokens.ts`. The
 grammar C tier table from #101 (hold/shake/aftermath per tier) is assumed read.
 
 ---
@@ -56,7 +56,7 @@ casino product, not an afterthought.
   money-facing products tune and advertise, which argues against treating `stagger.deal`
   as a fixed constant nobody revisits.
 - Frame check: the full 13-card deal (first card's `t=0` to the 13th card's landing at
-  roughly `t = 12×42ms + 312ms ≈ 816ms`) completes in under 1 second — nowhere near the
+  roughly `t = 12×42ms + 213ms ≈ 717ms`) completes in under 1 second — nowhere near the
   ~42.9s/hand pace a real table tolerates, which is the point: our deal can afford to be
   unhurried relative to the casino floor, not raced against it.
 
@@ -425,7 +425,7 @@ moments, each a checkable frame property rather than a claim of quality:
   — a single symmetric "breath" so the whole hand's arrival reads as one gesture starting
   before the first card moves, not only once the first card is already in flight.
 - **Card landing.** The card's drop-shadow length at the frame nearest `impactDelayMs()`
-  (312ms) is measurably longer than its length 50ms later (`Hold.land`'s own span) — the
+  (213ms) is measurably longer than its length 50ms later (`Hold.land`'s own span) — the
   shadow itself contracts in sync with the squash, rather than staying a fixed-length
   decoration under a card that is otherwise settling.
 - **Turn hand-off.** At the single frame nearest the midpoint of a hand-off, the outgoing
