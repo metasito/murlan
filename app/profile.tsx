@@ -11,11 +11,12 @@ import { router } from "expo-router";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/context/AuthContext";
-import { Colors, Spacing, Radius, FontSize, Type, Motion, TOUCH_TARGET_MIN } from "@/lib/theme";
+import { Colors, Spacing, Radius, FontSize, Type, Motion, Shadow, TOUCH_TARGET_MIN } from "@/lib/theme";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { MenuLayout } from "@/components/MenuLayout";
 import { Avatar } from "@/components/Avatar";
 import { MenuCard } from "@/components/MenuCard";
+import { AppModal } from "@/components/AppModal";
 import {
   recentForm,
   placementDistribution,
@@ -52,6 +53,7 @@ const GLYPH = 18;
 const READABLE_ROW_H = 44;
 const FORM_KEY_W = 34;
 const FORM_VALUE_W = 28;
+const MODAL_MAX_W = 340;
 
 
 function StatTile({ icon, value, label }: { icon: IconName; value: string; label: string }) {
@@ -195,6 +197,125 @@ function UserCard({ user }: { user: { username: string } }) {
 }
 
 /**
+ * A logged-in user who still knows their current password sets a new one.
+ * Requires the current password (a live session alone is not proof of intent
+ * to change a credential — server/routes.ts's change-password route) and
+ * clears every other session for the account on success.
+ */
+function ChangePasswordCard() {
+  const { t } = useTranslation();
+  const { changePassword } = useAuth();
+  const [open, setOpen] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function close() {
+    if (saving) return;
+    setOpen(false);
+    setCurrentPassword("");
+    setNewPassword("");
+    setError(null);
+  }
+
+  async function submit() {
+    setSaving(true);
+    setError(null);
+    try {
+      await changePassword(currentPassword, newPassword);
+      setOpen(false);
+      setCurrentPassword("");
+      setNewPassword("");
+    } catch (e: unknown) {
+      setError(serverErrorMessage(e, t("profile.changePasswordFailed")));
+    }
+    setSaving(false);
+  }
+
+  return (
+    <>
+      <MenuCard title={t("profile.securityTitle")}>
+        <MenuButton
+          label={t("profile.changePasswordAction")}
+          variant="secondary"
+          onPress={() => setOpen(true)}
+        />
+      </MenuCard>
+
+      <AppModal visible={open} onRequestClose={close}>
+        <View style={styles.modalBackdrop}>
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={close}
+            disabled={saving}
+            {...a11yHidden()}
+          />
+          <View style={styles.modalCard} accessibilityViewIsModal accessibilityRole="none">
+            <Text style={styles.modalTitle} accessibilityRole="header">
+              {t("profile.changePasswordModalTitle")}
+            </Text>
+
+            <TextInput
+              style={styles.modalInput}
+              value={currentPassword}
+              onChangeText={(v) => { setCurrentPassword(v); setError(null); }}
+              placeholder={t("profile.changePasswordCurrentPlaceholder")}
+              placeholderTextColor={Colors.textMuted}
+              secureTextEntry
+              autoCapitalize="none"
+              autoCorrect={false}
+              autoComplete="current-password"
+              textContentType="password"
+              accessibilityLabel={t("profile.changePasswordCurrentA11yLabel")}
+              editable={!saving}
+              testID="input-current-password"
+            />
+            <TextInput
+              style={styles.modalInput}
+              value={newPassword}
+              onChangeText={(v) => { setNewPassword(v); setError(null); }}
+              placeholder={t("profile.changePasswordNewPlaceholder")}
+              placeholderTextColor={Colors.textMuted}
+              secureTextEntry
+              autoCapitalize="none"
+              autoCorrect={false}
+              autoComplete="new-password"
+              textContentType="newPassword"
+              returnKeyType="done"
+              onSubmitEditing={submit}
+              accessibilityLabel={t("profile.changePasswordNewA11yLabel")}
+              editable={!saving}
+              testID="input-new-password"
+            />
+            <Text style={styles.modalHint}>{t("profile.changePasswordHint")}</Text>
+
+            {error && (
+              <Text style={styles.modalError} accessibilityLiveRegion="polite" testID="change-password-error">
+                {error}
+              </Text>
+            )}
+
+            <View style={styles.modalActions}>
+              <View style={styles.modalAction}>
+                <MenuButton label={t("common.cancel")} variant="ghost" onPress={close} disabled={saving} />
+              </View>
+              <View style={styles.modalAction}>
+                <MenuButton
+                  label={saving ? t("profile.changePasswordSaving") : t("common.save")}
+                  onPress={submit}
+                  disabled={saving || !currentPassword || !newPassword}
+                />
+              </View>
+            </View>
+          </View>
+        </View>
+      </AppModal>
+    </>
+  );
+}
+
+/**
  * What an account adds, for a player who has not got one.
  *
  * Not a redirect and not a disabled section: this screen exists outside the
@@ -273,6 +394,7 @@ export default function ProfileScreen() {
       <View style={styles.contentWrapper}>
         <SectionHeading label={t("profile.youTitle")} />
         {user ? <UserCard user={user} /> : loading ? null : <SignInCard />}
+        {user && <ChangePasswordCard />}
 
         <SectionHeading label={t("profile.lookTitle")} />
         <LookPicker />
@@ -596,6 +718,46 @@ const styles = StyleSheet.create({
   renameActions: { flexDirection: "row", gap: Spacing.sm },
   renameAction: { flex: 1 },
   username: { ...Type.heading, fontSize: FontSize.lg },
+
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: Colors.overlay,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: Spacing.lg,
+  },
+  modalCard: {
+    width: "100%",
+    maxWidth: MODAL_MAX_W,
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: Spacing.lg,
+    gap: Spacing.sm,
+    ...Shadow.overlay,
+  },
+  modalTitle: {
+    ...Type.heading,
+    color: Colors.gold,
+    letterSpacing: 1,
+    textTransform: "uppercase",
+  },
+  modalInput: {
+    minHeight: TOUCH_TARGET_MIN,
+    paddingHorizontal: Spacing.sm,
+    borderWidth: 1,
+    borderColor: Colors.goldBorder,
+    borderRadius: Radius.sm,
+    backgroundColor: Colors.bgSurface,
+    fontFamily: "Inter_400Regular",
+    fontSize: FontSize.md,
+    color: Colors.text,
+  },
+  modalHint: { ...Type.caption, color: Colors.textMuted },
+  modalError: { ...Type.caption, color: Colors.dangerDim },
+  modalActions: { flexDirection: "row", gap: Spacing.sm, marginTop: Spacing.sm },
+  modalAction: { flex: 1 },
 
 
   statsGrid: { flexDirection: "row", flexWrap: "wrap", gap: Spacing.sm },

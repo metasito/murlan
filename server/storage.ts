@@ -184,6 +184,20 @@ class DrizzleStorage {
     }
   }
 
+  /**
+   * `storage.deleteUser`'s own `DELETE FROM session WHERE sess->>'userId'`
+   * idiom, narrowed by `sid != keepSid` so the session the request itself
+   * arrived on survives the clear.
+   */
+  async changePassword(userId: string, passwordHash: string, keepSid: string): Promise<void> {
+    await db.transaction(async (tx) => {
+      await tx.update(users).set({ password: passwordHash }).where(eq(users.id, userId));
+      await tx.execute(
+        sql`DELETE FROM session WHERE sess->>'userId' = ${userId} AND sid != ${keepSid}`
+      );
+    });
+  }
+
   async updateLastSeen(userId: string): Promise<void> {
     await db.update(users).set({ lastSeen: new Date() }).where(eq(users.id, userId));
   }

@@ -843,6 +843,17 @@ export const it: Record<keyof typeof en, string> = {
   "profile.renameInvalidChars": "Solo lettere, numeri e trattini bassi.",
   "profile.renameFailed": "Non è stato possibile cambiare il nome. Riprova.",
 
+  "profile.securityTitle": "Sicurezza",
+  "profile.changePasswordAction": "Cambia password",
+  "profile.changePasswordModalTitle": "Cambia password",
+  "profile.changePasswordCurrentPlaceholder": "Password attuale",
+  "profile.changePasswordCurrentA11yLabel": "Password attuale",
+  "profile.changePasswordNewPlaceholder": "Nuova password",
+  "profile.changePasswordNewA11yLabel": "Nuova password",
+  "profile.changePasswordHint": "Minimo 6 caratteri",
+  "profile.changePasswordSaving": "Salvataggio…",
+  "profile.changePasswordFailed": "Non è stato possibile cambiare la password. Riprova.",
+
   "profile.statsTitle": "Statistiche",
   "profile.statsLoadingA11yLabel": "Caricamento statistiche",
   "profile.statsErrorTitle": "Impossibile caricare le statistiche",

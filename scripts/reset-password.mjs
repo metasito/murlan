@@ -4,9 +4,10 @@
  *   ALLOW_RESET=1 node scripts/reset-password.mjs <username>
  *
  * There is no self-serve recovery — no email is stored — so this is the only
- * way a locked-out account gets back in. It is deliberately not an npm script
- * and not a route: it needs the database URL and a person who has decided to
- * run it.
+ * way a *locked-out* account gets back in. A signed-in player who still knows
+ * their current password uses the in-app change-password screen instead. This
+ * script is deliberately not an npm script and not a route: it needs the
+ * database URL and a person who has decided to run it.
  *
  * The username is matched case-insensitively, the same way login is
  * (server/storage.ts getUserByUsername), so the caller does not have to know
@@ -49,7 +50,7 @@ try {
     process.exit(1);
   }
   console.log(`${rows[0].username} — temporary password: ${temporary}`);
-  console.log("Shown once. Send it to them — there is no in-app change-password screen yet.");
+  console.log("Shown once. Send it to them — they can set their own password from the profile screen once signed in.");
 } finally {
   await pool.end();
 }

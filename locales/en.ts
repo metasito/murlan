@@ -849,6 +849,17 @@ export const en = {
   "profile.renameInvalidChars": "Letters, numbers and underscores only.",
   "profile.renameFailed": "The name could not be changed. Try again.",
 
+  "profile.securityTitle": "Security",
+  "profile.changePasswordAction": "Change password",
+  "profile.changePasswordModalTitle": "Change password",
+  "profile.changePasswordCurrentPlaceholder": "Current password",
+  "profile.changePasswordCurrentA11yLabel": "Current password",
+  "profile.changePasswordNewPlaceholder": "New password",
+  "profile.changePasswordNewA11yLabel": "New password",
+  "profile.changePasswordHint": "Minimum 6 characters",
+  "profile.changePasswordSaving": "Saving…",
+  "profile.changePasswordFailed": "The password could not be changed. Try again.",
+
   "profile.statsTitle": "Stats",
   "profile.statsLoadingA11yLabel": "Loading stats",
   "profile.statsErrorTitle": "Couldn't load your stats",

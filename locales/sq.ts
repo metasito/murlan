@@ -849,6 +849,17 @@ export const sq: Record<keyof typeof en, string> = {
   "profile.renameInvalidChars": "Vetëm shkronja, numra dhe nënvija.",
   "profile.renameFailed": "Emri nuk u ndryshua dot. Provo sërish.",
 
+  "profile.securityTitle": "Siguria",
+  "profile.changePasswordAction": "Ndrysho fjalëkalimin",
+  "profile.changePasswordModalTitle": "Ndrysho fjalëkalimin",
+  "profile.changePasswordCurrentPlaceholder": "Fjalëkalimi aktual",
+  "profile.changePasswordCurrentA11yLabel": "Fjalëkalimi aktual",
+  "profile.changePasswordNewPlaceholder": "Fjalëkalimi i ri",
+  "profile.changePasswordNewA11yLabel": "Fjalëkalimi i ri",
+  "profile.changePasswordHint": "Minimumi 6 shkronja",
+  "profile.changePasswordSaving": "Duke ruajtur…",
+  "profile.changePasswordFailed": "Fjalëkalimi nuk u ndryshua dot. Provo sërish.",
+
   "profile.statsTitle": "Statistikat",
   "profile.statsLoadingA11yLabel": "Duke ngarkuar statistikat",
   "profile.statsErrorTitle": "Nuk u ngarkuan dot statistikat",

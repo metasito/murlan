@@ -12,6 +12,7 @@ import {
   RegisterSchema,
   RenameSchema,
   LoginSchema,
+  ChangePasswordSchema,
   AddFriendSchema,
   ClientErrorSchema,
   PushTokenSchema,
@@ -368,6 +369,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return;
     }
     res.json(sessionUser(user));
+  });
+
+  // A live session alone is not proof of intent to change a credential —
+  // mirrors login's own bcrypt.compare, and answers a wrong currentPassword
+  // with the same generic code login does, so the two are indistinguishable.
+  app.post("/api/auth/change-password", requireAuth, validate(ChangePasswordSchema), async (req, res) => {
+    const { currentPassword, newPassword } = req.body as { currentPassword: string; newPassword: string };
+    const userId = req.session.userId!;
+
+    const user = await storage.getUser(userId);
+    if (!user) {
+      res.status(401).json({ message: "Not authenticated", code: "NOT_AUTHENTICATED" });
+      return;
+    }
+
+    const ok = await bcrypt.compare(currentPassword, user.password);
+    if (!ok) {
+      res.status(401).json({ message: "Wrong username or password", code: "INVALID_CREDENTIALS" });
+      return;
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+    await storage.changePassword(userId, passwordHash, req.sessionID);
+    logger.info({ userId }, "Password changed");
+    res.json({ ok: true });
   });
 
   // Mints the short-lived, single-use ticket the socket handshake accepts in

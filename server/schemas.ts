@@ -25,6 +25,14 @@ export const LoginSchema = z.object({
   password: z.string().min(1).max(100),
 });
 
+// currentPassword is bounded but not shape-validated, like LoginSchema's
+// password above — a wrong current password is refused by bcrypt.compare,
+// not by this schema. newPassword takes RegisterSchema's own rule.
+export const ChangePasswordSchema = z.object({
+  currentPassword: z.string().min(1).max(100),
+  newPassword: RegisterSchema.shape.password,
+});
+
 export const AddFriendSchema = z.object({
   username: z.string().min(1, "Username is required"),
 });

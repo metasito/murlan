@@ -18,6 +18,8 @@ interface AuthContextValue {
   register: (username: string, password: string) => Promise<void>;
   /** Throws `ApiError` when the server refuses; the account is left untouched. */
   rename: (username: string) => Promise<void>;
+  /** Throws `ApiError` when the current password is wrong; the account is left untouched. */
+  changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -126,6 +128,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(data));
   }, []);
 
+  // No local state to update: unlike rename, a password change doesn't touch
+  // anything AuthContext holds, only the server's stored hash and its other
+  // live sessions.
+  const changePassword = useCallback(async (currentPassword: string, newPassword: string) => {
+    await apiRequest("POST", "/api/auth/change-password", { currentPassword, newPassword });
+  }, []);
+
   const logout = useCallback(async () => {
     // Before the session goes: the endpoint needs the cookie, and the next
     // person to sign in on this phone must not inherit these invites.
@@ -143,8 +152,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const contextValue = useMemo(
-    () => ({ user, loading, login, register, rename, logout }),
-    [user, loading, login, register, rename, logout]
+    () => ({ user, loading, login, register, rename, changePassword, logout }),
+    [user, loading, login, register, rename, changePassword, logout]
   );
 
   return (
