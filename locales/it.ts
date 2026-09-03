@@ -25,6 +25,7 @@ export const it: Record<keyof typeof en, string> = {
   "server.NOT_AUTHENTICATED": "Autenticazione richiesta",
   "server.USERNAME_TAKEN": "Username già in uso",
   "server.EMAIL_TAKEN": "Email già registrata",
+  "server.EMAIL_ALREADY_SET": "Questo account ha già un'email",
   "server.INVALID_TOKEN": "Link di verifica non valido o scaduto",
   "server.INVALID_RESET_TOKEN": "Link di reimpostazione non valido o scaduto",
   "server.INTERNAL_SERVER_ERROR": "Errore interno del server",
@@ -868,6 +869,15 @@ export const it: Record<keyof typeof en, string> = {
   "profile.changePasswordHint": "Minimo 6 caratteri",
   "profile.changePasswordSaving": "Salvataggio…",
   "profile.changePasswordFailed": "Non è stato possibile cambiare la password. Riprova.",
+
+  "profile.addEmailTitle": "Aggiungi un'email",
+  "profile.addEmailBody": "Aggiungi e verifica un'email per abilitare il recupero della password. Tutto il resto funziona anche senza.",
+  "profile.addEmailAction": "Aggiungi email",
+  "profile.addEmailModalTitle": "Aggiungi un'email",
+  "profile.addEmailPlaceholder": "tu@esempio.com",
+  "profile.addEmailA11yLabel": "Email",
+  "profile.addEmailSaving": "Salvataggio…",
+  "profile.addEmailFailed": "Non è stato possibile aggiungere l'email. Riprova.",
 
   "profile.statsTitle": "Statistiche",
   "profile.statsLoadingA11yLabel": "Caricamento statistiche",

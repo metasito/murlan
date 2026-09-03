@@ -32,6 +32,7 @@ export const en = {
   "server.NOT_AUTHENTICATED": "Not authenticated",
   "server.USERNAME_TAKEN": "Username already in use",
   "server.EMAIL_TAKEN": "Email already registered",
+  "server.EMAIL_ALREADY_SET": "This account already has an email",
   "server.INVALID_TOKEN": "Invalid or expired verification link",
   "server.INVALID_RESET_TOKEN": "Invalid or expired reset link",
   "server.INTERNAL_SERVER_ERROR": "Internal server error",
@@ -874,6 +875,15 @@ export const en = {
   "profile.changePasswordHint": "Minimum 6 characters",
   "profile.changePasswordSaving": "Saving…",
   "profile.changePasswordFailed": "The password could not be changed. Try again.",
+
+  "profile.addEmailTitle": "Add an email",
+  "profile.addEmailBody": "Add and verify an email to enable password recovery. Everything else still works without one.",
+  "profile.addEmailAction": "Add email",
+  "profile.addEmailModalTitle": "Add an email",
+  "profile.addEmailPlaceholder": "you@example.com",
+  "profile.addEmailA11yLabel": "Email",
+  "profile.addEmailSaving": "Saving…",
+  "profile.addEmailFailed": "The email could not be added. Try again.",
 
   "profile.statsTitle": "Stats",
   "profile.statsLoadingA11yLabel": "Loading stats",

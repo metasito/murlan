@@ -9,6 +9,9 @@ export interface AuthUser {
   username: string;
   /** When this account first opened the tutorial, on any device; null if never. */
   tutorialSeenAt: string | null;
+  /** Null for an account that predates the email requirement (#861) — see lib/emailNudge.ts. */
+  email: string | null;
+  emailVerified: boolean;
 }
 
 interface AuthContextValue {
@@ -20,6 +23,8 @@ interface AuthContextValue {
   rename: (username: string) => Promise<void>;
   /** Throws `ApiError` when the current password is wrong; the account is left untouched. */
   changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
+  /** Throws `ApiError` when the address is already taken or the account already has one. */
+  addEmail: (email: string) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -135,6 +140,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await apiRequest("POST", "/api/auth/change-password", { currentPassword, newPassword });
   }, []);
 
+  // Like rename: the card that calls this (app/profile.tsx) hides itself off
+  // `user.email`, so the state has to update in the same place the request
+  // lands, not wait for the next /api/auth/me poll.
+  const addEmail = useCallback(async (email: string) => {
+    const res = await apiRequest("POST", "/api/auth/add-email", { email });
+    const data = await res.json();
+    setUser(data);
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  }, []);
+
   const logout = useCallback(async () => {
     // Before the session goes: the endpoint needs the cookie, and the next
     // person to sign in on this phone must not inherit these invites.
@@ -152,8 +167,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const contextValue = useMemo(
-    () => ({ user, loading, login, register, rename, changePassword, logout }),
-    [user, loading, login, register, rename, changePassword, logout]
+    () => ({ user, loading, login, register, rename, changePassword, addEmail, logout }),
+    [user, loading, login, register, rename, changePassword, addEmail, logout]
   );
 
   return (
