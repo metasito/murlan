@@ -60,8 +60,16 @@ export default function AuthScreen() {
         // #897: the response never says whether the address was free — the
         // client only learns whether *this device* ended up signed in, and
         // either way the person must be told to check their email, not sent
-        // straight into the app as if nothing happened.
+        // straight into the app as if nothing happened. `undefined` means
+        // that could not be confirmed (the registration itself already
+        // succeeded) — that is an error to retry, never a silent "not
+        // signed in".
         const signedIn = await register(username.trim(), password, email.trim());
+        if (signedIn === undefined) {
+          setError(t("auth.unknownError"));
+          setLoading(false);
+          return;
+        }
         setCheckEmail({ signedIn: signedIn !== null });
       }
     } catch (e: unknown) {

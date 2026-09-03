@@ -19,13 +19,14 @@ interface AuthContextValue {
   loading: boolean;
   login: (username: string, password: string) => Promise<void>;
   /**
-   * Resolves to the signed-in account, or null when registration answered
-   * neutrally without one — the pre-migration fallback (docs/DEPLOY-RUNBOOK.md
-   * #897) is the only path that reaches null today. The caller needs this to
-   * show a coherent "check your email" state rather than guessing from `user`,
+   * Resolves to the signed-in account, null when the follow-up
+   * `GET /api/auth/me` confirmed no session, or undefined when that
+   * confirmation itself could not be reached (a dropped connection, a 5xx) —
+   * see fetchMe()'s own contract below. The caller needs this to show a
+   * coherent "check your email" state rather than guessing from `user`,
    * which a re-render can update out from under it.
    */
-  register: (username: string, password: string, email: string) => Promise<AuthUser | null>;
+  register: (username: string, password: string, email: string) => Promise<AuthUser | null | undefined>;
   /** Throws `ApiError` when the server refuses; the account is left untouched. */
   rename: (username: string) => Promise<void>;
   /** Throws `ApiError` when the current password is wrong; the account is left untouched. */
@@ -125,16 +126,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // The response body carries no user (#897 — it is the same neutral
   // { ok: true, code: "CHECK_YOUR_EMAIL" } whether or not the address was
   // already taken, and a user object in one case and not the other would
-  // put the leak straight back). Who actually got signed in — including the
-  // pre-migration fallback, which sets no session at all — is answered the
-  // same way a boot-time check already answers it: GET /api/auth/me.
+  // put the leak straight back). Who actually got signed in is answered the
+  // same way a boot-time check already answers it: GET /api/auth/me — and by
+  // fetchMe()'s own contract, `undefined` means that question went
+  // unanswered, not that it was answered "no". A flaky connection right
+  // after a successful POST must not read as a sign-out.
   const register = useCallback(async (username: string, password: string, email: string) => {
     await apiRequest("POST", "/api/auth/register", { username, password, email });
     const data = await fetchMe();
-    setUser(data ?? null);
+    if (data === undefined) return undefined;
+    setUser(data);
     if (data) await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(data));
     else await AsyncStorage.removeItem(STORAGE_KEY);
-    return data ?? null;
+    return data;
   }, []);
 
   // Here rather than in the screen: the signed-in player lives in state *and*

@@ -2,8 +2,10 @@
 // neutrally, with no user object in the body, so the client learns whether it
 // actually signed in from GET /api/auth/me. A person who registers must see a
 // "check your email" state either way, never a silent no-op (a bare navigate
-// to "/", as if nothing had happened) and never a spurious error (the
-// pre-migration fallback, which mints no session, is not a failure).
+// to "/", as if nothing had happened), never a spurious error when the
+// follow-up confirms no session, and never a silent "not signed in" when the
+// follow-up itself cannot be reached at all (a dropped connection right
+// after a successful registration).
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import React from 'react';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
@@ -109,9 +111,9 @@ describe('registering signs this device in', () => {
 });
 
 describe('registering to an address this device did not end up signed in with', () => {
-  // The pre-migration fallback (docs/DEPLOY-RUNBOOK.md #897): the response is
-  // the same neutral 202, but no session was minted, so GET /api/auth/me
-  // answers 401.
+  // The response is the same neutral 202 either way; here GET /api/auth/me
+  // confirms — with a definitive 401 — that no session was minted for this
+  // device.
   beforeEach(() => {
     mockFetch.mockResolvedValue({ status: 401, ok: false });
   });
@@ -140,5 +142,26 @@ describe('registering to an address this device did not end up signed in with', 
       screen.getByRole('tab', { name: locale['auth.tabLogin'] }).props.accessibilityState.selected
     ).toBe(true);
     view.unmount();
+  });
+});
+
+describe('a network hiccup right after registering', () => {
+  // The POST already succeeded — this only breaks the follow-up
+  // GET /api/auth/me, so fetchMe() resolves `undefined` (unanswered), not
+  // `null` (confirmed signed out). Treating the two the same is the defect:
+  // it would show "check your email" with signedIn: false, telling an
+  // already-registered player to go sign back in.
+  beforeEach(() => {
+    mockFetch.mockRejectedValue(new Error('Network request failed'));
+  });
+
+  it('surfaces an error instead of a confident "not signed in" state', async () => {
+    const view = await mount();
+    await fillAndSubmitRegister();
+
+    await waitFor(() => expect(screen.getByText(locale['auth.unknownError'])).toBeTruthy());
+    expect(screen.queryByText(locale['auth.checkEmailTitle'], { includeHiddenElements: true })).toBeNull();
+    expect(mockReplace).not.toHaveBeenCalled();
+    await view.unmount();
   });
 });
