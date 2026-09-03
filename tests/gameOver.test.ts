@@ -129,6 +129,9 @@ function makeGame(overrides: Partial<OnlineGameState> = {}): OnlineGameState {
     abandonedSeats: new Map(),
     botSeatsAtStart: new Set<number>(),
     releasedSeats: new Set<string>(),
+    vacatedSeats: new Map(),
+    weakSeats: new Set<number>(),
+    endMatchVotes: new Set<string>(),
     spectators: new Set(),
     moveLog: [A_MOVE],
     dealFirstSeat: 0,
@@ -183,6 +186,8 @@ describe("handleGameOver — the broadcast", () => {
     // One row per seat carries every identity: the totals used to ride
     // alongside as a name -> total map, where two seats sharing a name
     // collapsed into one entry.
+    // Was pinned with no `vacated` field: #850 clause 2 added it to every row
+    // so the client can render the flag without the server naming anyone.
     assert.deepEqual(payload.scores, [
       {
         seatIndex: 0,
@@ -191,6 +196,7 @@ describe("handleGameOver — the broadcast", () => {
         username: "Alice",
         points: 1,
         total: game.cumulativeScores.u_alice,
+        vacated: false,
       },
       {
         seatIndex: 1,
@@ -199,6 +205,7 @@ describe("handleGameOver — the broadcast", () => {
         username: "Bob",
         points: 0,
         total: game.cumulativeScores.u_bob,
+        vacated: false,
       },
     ]);
   });

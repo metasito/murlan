@@ -464,11 +464,17 @@ export interface ResolveHandEndInput {
   /**
    * Seats dealt to a bot when this match's roster was built — never a human's
    * seat this match, unlike one `playerMap` merely no longer names. Defaults
-   * to none, which scores every bot seat as a vacated one (the prior
-   * behaviour), so a caller that does not know the difference gets the
-   * conservative answer rather than a silent new one.
+   * to none, which treats every bot seat as a vacated one (the conservative
+   * answer for a caller that does not know the difference) for win eligibility.
    */
   botSeatsAtStart?: Set<number>;
+  /**
+   * Seats a human has left this match, by seat — set at vacate and never
+   * cleared while the seat stays open, so a departed player's row can be
+   * found across hands even once `playerMap` has forgotten them. Defaults to
+   * none.
+   */
+  vacatedSeats?: Map<number, { userId: string; username: string }>;
 }
 
 export type ScoreboardRow = ScoreLine;
@@ -498,6 +504,7 @@ export interface ResolveHandEndResult {
 export function resolveHandEnd(input: ResolveHandEndInput): ResolveHandEndResult {
   const { state, playerMap, matchLength, gameMode, handFlags, abandonedSeats } = input;
   const botSeatsAtStart = input.botSeatsAtStart ?? new Set<number>();
+  const vacatedSeats = input.vacatedSeats ?? new Map<number, { userId: string; username: string }>();
 
   // rankings hold engine player ids ("player_0"); score by seat -> user so the
   // scoreboard is keyed by a real identity instead of an engine id wearing a
@@ -528,10 +535,13 @@ export function resolveHandEnd(input: ResolveHandEndInput): ResolveHandEndResult
       const seat = seatOfEngineId.get(engineId);
       return seat === undefined ? null : scoreKeyForSeat(playerMap, seat);
     },
-    // A `bot:<seat>` key excludes only a seat a human has left — a seat that
-    // was dealt to a bot when this match started (a straight duel, or a
-    // bot-filled table) is a real opponent and scores like any other.
-    accumulates: (key) => {
+    // A seat that becomes a bot scores exactly as a seat that was born one
+    // (docs/BRIEF.md §3.1, the disconnect policy) — every key accumulates.
+    // Win eligibility is the one thing that still tells them apart: a `bot:
+    // <seat>` key can cross the target or be named a winner only when that
+    // seat was dealt to a bot when this match started (a straight duel, or a
+    // bot-filled table) — never a seat a human left.
+    winEligible: (key) => {
       if (!isBotSeatKey(key)) return true;
       const seat = botSeatIndex(key);
       return seat !== null && botSeatsAtStart.has(seat);
@@ -544,13 +554,22 @@ export function resolveHandEnd(input: ResolveHandEndInput): ResolveHandEndResult
   // collapsed into one entry there, silently.
   const detailed: ScoreboardRow[] = state.players.map((p, seat) => {
     const key = scoreKeyForSeat(playerMap, seat);
+    const vacated = vacatedSeats.get(seat);
+    // A vacated seat's row sums the person's frozen total (their own userId
+    // key, untouched since they left) and the bot's total under it since
+    // takeover — the seat's `key` alone reads as the bot's total only, which
+    // is why it used to show 0 for points the person had already won.
+    const total = vacated
+      ? (cumulativeScores[vacated.userId] ?? 0) + (cumulativeScores[key] ?? 0)
+      : (cumulativeScores[key] ?? 0);
     return {
       seatIndex: seat,
       engineId: p.id,
-      userId: playerMap[seat] ?? null,
+      userId: vacated?.userId ?? playerMap[seat] ?? null,
       username: p.name,
       points: handByKey[key] ?? 0,
-      total: cumulativeScores[key] ?? 0,
+      total,
+      vacated: vacated !== undefined,
     };
   });
 

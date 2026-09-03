@@ -303,10 +303,13 @@ describe("foldHandIntoMatch", () => {
         const seat = seatOf[engineId];
         return seat === undefined ? null : (playerMap[seat] ?? `bot:${seat}`);
       },
-      accumulates: (key: string) => !key.startsWith("bot:"),
+      // No `accumulates` override: docs/BRIEF.md §3.1 has a vacated seat's
+      // points join the running total like a born-bot seat's do. What still
+      // excludes it is `winEligible`, which only ever gates the win decision.
+      winEligible: (key: string) => !key.startsWith("bot:"),
     };
 
-    test("a vacated seat is on the hand's scoreboard but not in the match total", () => {
+    test("a vacated seat's points land on both the hand and the match scoreboard", () => {
       const result = foldHandIntoMatch({
         ...online,
         target: 21,
@@ -314,7 +317,11 @@ describe("foldHandIntoMatch", () => {
         cumulative: { u0: 4, u2: 2, u3: 1 },
       });
       assert.deepEqual(result.handByKey, { "bot:1": 3, u0: 2, u2: 1, u3: 0 });
-      assert.deepEqual(result.cumulative, { u0: 6, u2: 3, u3: 1 });
+      // Was `{ u0: 6, u2: 3, u3: 1 }`, `bot:1` absent: the old fixture set
+      // `accumulates` to exclude a vacated seat from the running total.
+      // Clause 4 of #850 folds it in like any other bot seat's points — only
+      // `winEligible`, tested below, still keeps it off the podium.
+      assert.deepEqual(result.cumulative, { "bot:1": 3, u0: 6, u2: 3, u3: 1 });
     });
 
     test("a vacated seat cannot cross the target or be named the winner", () => {
@@ -326,8 +333,11 @@ describe("foldHandIntoMatch", () => {
       });
       assert.equal(result.over, false);
       assert.deepEqual(result.winners, []);
-      // A sentinel total that predates the walkout is carried, never added to.
-      assert.equal(result.cumulative["bot:1"], 20);
+      // Was pinned at 20 (frozen, never added to) under the old `accumulates`
+      // exclusion. It now accumulates this hand's 3 points same as any other
+      // seat's — `over`/`winners` above are what prove the target/winner gate
+      // still holds despite the total sitting past `target`.
+      assert.equal(result.cumulative["bot:1"], 23);
     });
 
     test("a vacated seat that takes a single manche names the best seat behind it", () => {

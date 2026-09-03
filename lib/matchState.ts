@@ -136,6 +136,12 @@ export interface ScoreLine {
   username: string;
   points: number;
   total: number;
+  /**
+   * The seat is a human's that left, played on by the engine. `username` is
+   * still the person's real name — the client renders the departed label
+   * itself, through `t()`, rather than reading it off the wire as text.
+   */
+  vacated: boolean;
 }
 
 /**
@@ -168,4 +174,11 @@ export interface GameOverPayload {
    * is recorded and unrated.
    */
   recorded: boolean;
+  /**
+   * The match ended before its first point, on an abandonment
+   * (docs/BRIEF.md §3.1) — nothing earned, nothing taken, rated for nobody.
+   * `rankings` and `scores` are empty and `recorded` is false alongside it;
+   * false for every other hand, voided or not.
+   */
+  voided: boolean;
 }

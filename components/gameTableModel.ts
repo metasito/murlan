@@ -271,6 +271,15 @@ export function handCountOf(player: Player | (Player & { handCount?: number })):
 }
 
 /**
+ * Whether a seat is a human's that left, played on by the engine — never
+ * true offline, which vacates nobody. The flag travels on the wire
+ * (`sanitizeStateForPlayer`); `name` stays the person's own.
+ */
+export function vacatedOf(player: Player | (Player & { vacated?: boolean })): boolean {
+  return (player as { vacated?: boolean }).vacated === true;
+}
+
+/**
  * The number a seat's fan and count badge both show — derived, never stored.
  * docs/adr/0002-a-play-leaves-the-seat-it-was-thrown-from.md §2.
  */

@@ -228,7 +228,7 @@ export function ChipText({
   /** Caps this run so an unbounded value (a username) ellipsizes instead of widening the chip. */
   maxWidth?: number;
   children: ReactNode;
-} & Partial<Pick<TextProps, "accessibilityLabel" | "accessibilityLiveRegion">>) {
+} & Partial<Pick<TextProps, "accessibilityLabel" | "accessibilityLiveRegion" | "testID">>) {
   return (
     <TableText
       numberOfLines={1}

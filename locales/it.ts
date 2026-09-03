@@ -79,6 +79,8 @@ export const it: Record<keyof typeof en, string> = {
   "server.PLAYER_DISCONNECTED_GRACE": "{{username}} ha perso la connessione. Ha {{seconds}} secondi per rientrare.",
   "server.PLAYER_RECONNECTED": "{{username}} è di nuovo in partita.",
   "server.SESSION_REPLACED": "Il tuo account è stato aperto altrove. Questa sessione è stata chiusa.",
+  "server.MATCH_ENDED_BY_AGREEMENT": "Il tavolo ha deciso di terminare la partita. Nessuna penalità per nessuno.",
+  "server.NO_VACANCY_TO_END": "Non c'è ancora nessuno su cui votare per terminare la partita",
 
   // ---------------------------------------------------------------- auth.*
   "auth.subtitle": "Accesso Online",
@@ -291,8 +293,13 @@ export const it: Record<keyof typeof en, string> = {
   "game.moveNotDelivered": "La tua mossa non è arrivata al tavolo. Controlla la connessione e riprova.",
   "game.autoPassTitle": "Passaggio automatico",
   "game.autoPassBody": "Tempo scaduto: hai passato il turno.",
+  "game.seatLeft": "{{username}} — uscito",
+  "game.endMatchVoteButton": "Vota per terminare la partita",
+  "game.endMatchVoteHint": "Ogni giocatore rimasto deve essere d'accordo — nessuna penalità.",
+  "game.endMatchVoteTally": "{{votes}} di {{total}} d'accordo a terminare la partita",
 
   // -------------------------------------------------------------- gameTable.*
+  "gameTable.seatReconnecting": "Riconnessione… {{seconds}}s",
   "gameTable.rotateTitle": "Gira il dispositivo di lato",
   "gameTable.rotateBody": "Il tavolo ha bisogno del lato lungo.",
   "gameTable.rotateA11yLabel": "Gira il dispositivo di lato. Il tavolo ha bisogno del lato lungo.",

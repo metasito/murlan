@@ -64,7 +64,8 @@ export function sanitizeStateForPlayer(
   state: GameState,
   viewerUserId: string,
   playerMap: Record<number, string>,
-  turnDeadlineMs?: number
+  turnDeadlineMs?: number,
+  vacatedSeats?: ReadonlyMap<number, { userId: string; username: string }>
 ) {
   // The server knows which seat the viewer occupies authoritatively; ship it
   // with every state so the client never has to derive it (e.g. from a lobby
@@ -88,6 +89,10 @@ export function sanitizeStateForPlayer(
         ...p,
         hand: isViewer ? p.hand : ([] as Card[]),
         handCount: p.hand.length,
+        // The flag travels, never the text (docs/BRIEF.md §3.1): `name` is
+        // still the person's real name, and each client renders the
+        // departed label itself, through `t()`, in its own locale.
+        vacated: vacatedSeats?.has(idx) ?? false,
       };
     }),
   };
@@ -175,7 +180,13 @@ export function sendGameStateTo(io: SocketServer, uid: string, game: OnlineGameS
       .timeout(stateAckTimeoutMs())
       .emit(
         "game:state",
-        sanitizeStateForPlayer(live.gameState, uid, live.playerMap, live.turnDeadlineMs),
+        sanitizeStateForPlayer(
+          live.gameState,
+          uid,
+          live.playerMap,
+          live.turnDeadlineMs,
+          live.vacatedSeats
+        ),
         (err: unknown) => {
           if (err && !retrying) send(true);
         }
