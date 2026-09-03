@@ -17,7 +17,6 @@ import { MenuLayout } from "@/components/MenuLayout";
 import { Avatar } from "@/components/Avatar";
 import { MenuCard } from "@/components/MenuCard";
 import { AppModal } from "@/components/AppModal";
-import { apiRequest } from "@/lib/query-client";
 import {
   recentForm,
   placementDistribution,
@@ -205,6 +204,7 @@ function UserCard({ user }: { user: { username: string } }) {
  */
 function ChangePasswordCard() {
   const { t } = useTranslation();
+  const { changePassword } = useAuth();
   const [open, setOpen] = useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -223,7 +223,7 @@ function ChangePasswordCard() {
     setSaving(true);
     setError(null);
     try {
-      await apiRequest("POST", "/api/auth/change-password", { currentPassword, newPassword });
+      await changePassword(currentPassword, newPassword);
       setOpen(false);
       setCurrentPassword("");
       setNewPassword("");
