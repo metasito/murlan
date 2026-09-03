@@ -36,6 +36,13 @@ export const users = pgTable(
     uniqueIndex("users_email_verified_lower_uq")
       .on(sql`lower(${t.email})`)
       .where(sql`${t.emailVerifiedAt} is not null`),
+    // Non-unique, unconditional (#894 review, finding 5): getUserByEmail's
+    // `lower(email) = lower($1)` (request-password-reset, register's
+    // username/email pre-checks) has no index to use once
+    // docs/DEPLOY-RUNBOOK.md's step drops the old unconditional unique
+    // index — the partial one above only covers verified rows, which this
+    // predicate does not imply. Without this, that lookup is a seq scan.
+    index("users_email_lower_idx").on(sql`lower(${t.email})`),
   ]
 );
 

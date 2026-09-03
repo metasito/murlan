@@ -136,6 +136,18 @@ test("the email uniqueness index is partial, not unconditional (#897)", () => {
   );
 });
 
+test("getUserByEmail's unconditional lookup has an index it can use (#894 review, finding 5)", () => {
+  // Once docs/DEPLOY-RUNBOOK.md's step drops the old unconditional unique
+  // index, the only other lower(email) index is the partial, verified-only
+  // one above — which Postgres cannot use for a predicate that does not
+  // imply "verified". getUserByEmail's `lower(email) = lower($1)` needs its
+  // own, non-unique index.
+  const create = statements.find((s) => /"users_email_lower_idx"/.test(s));
+  assert.ok(create, "no users_email_lower_idx statement");
+  assert.match(create, /^CREATE INDEX/);
+  assert.match(create, /ON "users" \(\(lower\("email"\)\)\)/);
+});
+
 test("events and auth_tokens have an index the retention sweep can use", () => {
   // Both predicates (events.occurredAt, auth_tokens.expiresAt) had no index
   // before #895 — server/retention.ts's scheduled DELETE would otherwise be
