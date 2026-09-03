@@ -27,6 +27,7 @@ import {
 import { autoMoveForSeat } from "../../lib/autoMove.ts";
 import { comboKey } from "../../components/gameTableModel.ts";
 import { mulberry32 } from "../helpers.ts";
+import type { BotPersonalityId } from "../../lib/botPersonalities.ts";
 
 interface HandResult {
   rankings: string[];
@@ -93,7 +94,7 @@ function applyHandToMatch(match: MatchState, finished: GameState): MatchState {
  * reproduce, offline included — matching the convention `tests/helpers.ts`'s
  * own `mulberry32` comment already states for the property suite.
  */
-function withSeededDeals<T>(seed: number, run: () => T): T {
+export function withSeededDeals<T>(seed: number, run: () => T): T {
   const rand = mulberry32(seed);
   const original = Object.getOwnPropertyDescriptor(globalThis, "crypto");
   const fake = {
@@ -123,6 +124,8 @@ export interface OfflinePlayerSetup {
   name: string;
   type: PlayerType;
   team?: "A" | "B";
+  /** Absent means `DEFAULT_BOT_PERSONALITY` (`lib/botPersonalities.ts`). */
+  personality?: BotPersonalityId;
 }
 
 export interface SimulateMatchOptions {
@@ -158,6 +161,15 @@ export interface SimulateMatchOptions {
    * up across the whole search rather than only the first.
    */
   collectAiTurnKeyCollisions?: AiTurnKeyCollision[];
+  /**
+   * Forwarded to every AI seat's `aiChoosePlay` call (`lib/autoMove.ts`'s
+   * `AutoMoveContext.rng`). Absent means that function's own default —
+   * `Math.random`, unseeded. A caller measuring outcomes across many seeds
+   * (rather than only checking that a match terminates) wants this seeded
+   * too, so the whole match — deal and personality knobs both — replays from
+   * `seed` alone.
+   */
+  aiRng?: (seed: number) => () => number;
 }
 
 export interface SimulatedManche {
@@ -166,6 +178,15 @@ export interface SimulatedManche {
   target: number;
   /** Plays + passes + exchange choices this manche took to reach `gameOver`. */
   moves: number;
+  /**
+   * How many of the six top cards (the four 2s and two Jokers) each seat held
+   * the moment this manche's hand was set — after `initializeRematch`'s
+   * automatic loser-to-winner card (docs/RULES.md §10) for every manche past
+   * the first, before any card is played. The giveback leg never touches this:
+   * it is restricted to ranks 3-10 (`EXCHANGE_VALID_RANKS`), so it cannot move
+   * a 2 or a Joker either way.
+   */
+  topCardCounts: number[];
 }
 
 export interface SimulateMatchResult {
@@ -341,6 +362,9 @@ export function simulateOfflineMatch(opts: SimulateMatchOptions): SimulateMatchR
     let prevRankings: string[] = [];
     const manches: SimulatedManche[] = [];
     let aiTurnKeyChecks = 0;
+    const aiRng = opts.aiRng?.(opts.seed);
+    const topCardCount = (hand: { rank: string }[]) =>
+      hand.filter((c) => c.rank === "2" || c.rank === "joker_bw" || c.rank === "joker_colored").length;
 
     while (!match.over) {
       if (manches.length >= maxManches) {
@@ -368,6 +392,8 @@ export function simulateOfflineMatch(opts: SimulateMatchOptions): SimulateMatchR
           dealFirstSeat
         );
       }
+
+      const topCardCounts = state.players.map((p) => topCardCount(p.hand));
 
       // Every seat dealt cards must be given at least one turn before this
       // manche's `gameOver` — a turn-advance that silently keeps re-picking
@@ -440,6 +466,7 @@ export function simulateOfflineMatch(opts: SimulateMatchOptions): SimulateMatchR
               comboSeen = true;
               playedCombo = combo;
             },
+            rng: aiRng,
           });
         }
         if (!next) {
@@ -516,6 +543,7 @@ export function simulateOfflineMatch(opts: SimulateMatchOptions): SimulateMatchR
         cumulativeAfter: match.scores,
         target: match.target,
         moves,
+        topCardCounts,
       });
     }
 
