@@ -164,6 +164,8 @@ export interface SimulatedManche {
   rankings: string[];
   cumulativeAfter: Record<string, number>;
   target: number;
+  /** Plays + passes + exchange choices this manche took to reach `gameOver`. */
+  moves: number;
 }
 
 export interface SimulateMatchResult {
@@ -513,6 +515,7 @@ export function simulateOfflineMatch(opts: SimulateMatchOptions): SimulateMatchR
         rankings: state.rankings,
         cumulativeAfter: match.scores,
         target: match.target,
+        moves,
       });
     }
 
