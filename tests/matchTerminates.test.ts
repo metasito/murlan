@@ -35,6 +35,12 @@
 //   - `AiTurnKeyCollision` — two different engine states hashing to the same
 //     `app/game.tsx` `aiTurnKey`, so a real render would never reschedule
 //     the second AI decision; collected the same way as stalls.
+//   - a manche past `MANCHE_MOVES_CEILING` — not a stall (it still reaches
+//     `gameOver`), but a manche that takes an order of magnitude more moves
+//     than any this file has measured is the shape that costs real-world
+//     wall clock without ever tripping `maxMovesPerManche`, which is exactly
+//     what a bare 300s Playwright timeout with no thrown error looks like
+//     from the outside.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -60,14 +66,37 @@ function tableOf(playerCount: number): OfflinePlayerSetup[] {
 }
 
 /**
+ * A manche needing far more moves than any real deal does is the shape that
+ * would explain #770's recorded 5-minute stall without ever tripping
+ * `maxMovesPerManche` (2000, an order of magnitude looser): a manche that is
+ * merely *slow* rather than stuck still terminates, so `MatchStallError`
+ * never fires for it, and the only trace it leaves is real-world wall clock —
+ * exactly what a headless run cannot see for itself. Measured directly
+ * (2-player, free_for_all, AI-vs-AI / contesting-human-vs-AI /
+ * contesting-both, 8,000 seeds each): the worst manche across all three
+ * needed 39 moves. 150 is four times that ceiling with zero seeds this file
+ * has ever produced coming within shouting distance of it, so a seed that
+ * trips it is worth capturing as a fixture on its own, independent of
+ * whether the match it belongs to ever stalls outright.
+ */
+const MANCHE_MOVES_CEILING = 150;
+
+interface SlowManche {
+  seed: number;
+  mancheIndex: number;
+  moves: number;
+}
+
+/**
  * Plays `count` seeded matches at `playerCount` seats and fails the test
- * naming every stall and every `aiTurnKey` collision found, or reports the
- * total states checked when it finds neither.
+ * naming every stall, every anomalously slow manche and every `aiTurnKey`
+ * collision found, or reports the total states checked when it finds none.
  */
 function soakMatches(playerCount: number, count: number, contest?: boolean[]): void {
   const players = tableOf(playerCount);
   const failures: MatchStallError[] = [];
   const collisions: AiTurnKeyCollision[] = [];
+  const slowManches: SlowManche[] = [];
   let aiTurnKeyChecks = 0;
 
   for (let i = 0; i < count; i++) {
@@ -90,6 +119,11 @@ function soakMatches(playerCount: number, count: number, contest?: boolean[]): v
       throw err;
     }
     aiTurnKeyChecks += result.aiTurnKeyChecks;
+    result.manches.forEach((m, mancheIndex) => {
+      if (m.moves > MANCHE_MOVES_CEILING) {
+        slowManches.push({ seed, mancheIndex, moves: m.moves });
+      }
+    });
     assert.ok(
       result.winners.length > 0 || result.isDraw,
       `${playerCount}p seed ${seed}: match.over with no winners and no draw`
@@ -101,6 +135,15 @@ function soakMatches(playerCount: number, count: number, contest?: boolean[]): v
     assert.fail(
       `${playerCount}p: ${failures.length}/${count} seeds (from ${SOAK_START}) never reached ` +
         `the match target (seeds: ${failures.map((f) => f.seed).join(", ")}). First: ${first.message}`
+    );
+  }
+
+  if (slowManches.length > 0) {
+    const [first] = slowManches;
+    assert.fail(
+      `${playerCount}p: ${slowManches.length} manche(s) needed more than ` +
+        `${MANCHE_MOVES_CEILING} moves (seeds: ${slowManches.map((s) => s.seed).join(", ")}). ` +
+        `First: seed ${first.seed}, manche ${first.mancheIndex}, ${first.moves} moves.`
     );
   }
 
