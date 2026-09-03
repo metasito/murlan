@@ -38,7 +38,11 @@ import { FIELD_ARC, solveArc } from "@/components/tableArc";
 const FLY_ROTS: Record<FlyDirection, number> = {
   bottom: -12, top: 12, left: -18, right: 18,
 };
-const FLY_LANDING_ROTS: Record<FlyDirection, number> = {
+// The settle's overshoot rock, not a resting pose: the flight always comes to
+// rest at 0deg, the same group rotation PileComboCards draws at, so the two
+// views hand off without a jump (#828). This only shapes how far the card
+// rocks past that mark before it gets there.
+const SETTLE_ROCK_ROTS: Record<FlyDirection, number> = {
   bottom: -4, top: 5, left: -7, right: 7,
 };
 // How high the throw arcs and how far it drives into the felt before rocking
@@ -96,7 +100,7 @@ export function FlyingCards({
 }) {
   const { dx, dy } = origin;
   const startRot = FLY_ROTS[direction];
-  const landingRot = FLY_LANDING_ROTS[direction];
+  const rockRot = SETTLE_ROCK_ROTS[direction];
   const reduceMotion = usePrefersReducedMotion();
 
   // The caller passes a fresh onDone closure on every render; a ref keeps the
@@ -135,7 +139,10 @@ export function FlyingCards({
     opacity.value = withTiming(1, { duration: Motion.duration.flash * 0.7 });
     tx.value = withTiming(0, { duration: FLIGHT_MS, easing });
     ty.value = withTiming(0, { duration: FLIGHT_MS, easing });
-    rot.value = withTiming(landingRot, { duration: FLIGHT_MS, easing: Easing.out(Easing.cubic) });
+    // The flight's own resting rotation is the pile's — 0, PileComboCards'
+    // own group rotation — so the handoff from FlyingCards to PlayedPile
+    // cannot read as a jump (#828).
+    rot.value = withTiming(0, { duration: FLIGHT_MS, easing: Easing.out(Easing.cubic) });
     arcY.value = withSequence(
       withTiming(-ARC_PEAK, { duration: FLIGHT_MS * 0.5, easing: Easing.out(Easing.quad) }),
       withTiming(0, { duration: FLIGHT_MS * 0.5, easing: Easing.in(Easing.quad) })
@@ -171,7 +178,7 @@ export function FlyingCards({
     };
     // Every entry is stable for the life of one flight — the caller remounts
     // this component via `key` for each new one — so this runs once per flight.
-  }, [reduceMotion, landingRot, notifyDone, tx, ty, rot, opacity, arcY, settle]);
+  }, [reduceMotion, notifyDone, tx, ty, rot, opacity, arcY, settle]);
 
   const aStyle = useAnimatedStyle(() => {
     const squash = landSquashScale(settle.value);
@@ -179,7 +186,7 @@ export function FlyingCards({
       transform: [
         { translateX: tx.value },
         { translateY: ty.value + arcY.value + settle.value * LAND_DIP * scale },
-        { rotate: `${rot.value + settle.value * landingRot * 0.4}deg` },
+        { rotate: `${rot.value + settle.value * rockRot * 0.4}deg` },
         { scaleX: squash.x },
         { scaleY: squash.y },
       ],
@@ -353,6 +360,7 @@ const PILE_BOUNCE_DIP = 5;
 export function PlayedPile({
   prev,
   current,
+  comboLabel = current,
   roundWinner,
   bounceTrigger,
   catchTrigger,
@@ -363,6 +371,13 @@ export function PlayedPile({
 }: {
   prev: Combination | null;
   current: Combination | null;
+  /**
+   * The combination the chip names. Defaults to `current`; pass it
+   * separately only when the chip must show before `current` does — the
+   * landing, `flightLanded` — while `current` itself stays gated on
+   * `flyInfo` to protect the once-only card render (#828).
+   */
+  comboLabel?: Combination | null;
   roundWinner: string | null;
   bounceTrigger?: number;
   /** The flush: the play just landed emptied a hand. */
@@ -427,7 +442,7 @@ export function PlayedPile({
     ],
   }));
 
-  const isPower = current && POWER_COMBOS.has(current.type);
+  const isPower = comboLabel && POWER_COMBOS.has(comboLabel.type);
 
   return (
     <Animated.View style={[pileStyles.pileArea, bounceStyle]} testID="pile-area">
@@ -464,13 +479,13 @@ export function PlayedPile({
         )}
       </View>
 
-      {current && (
+      {comboLabel && (
         <View style={pileStyles.comboLabel}>
           <View style={[pileStyles.comboChip, isPower && pileStyles.comboChipPower]}>
             <TableText style={[pileStyles.comboChipText, isPower && pileStyles.comboChipTextPower]}>
               {isPower ? "✦ " : ""}
-              {COMBO_LABEL_KEYS[current.type] ? t(COMBO_LABEL_KEYS[current.type]) : current.type}
-              {current.cards.length > 2 ? t("gameShared.comboMultiplier", { count: current.cards.length }) : ""}
+              {COMBO_LABEL_KEYS[comboLabel.type] ? t(COMBO_LABEL_KEYS[comboLabel.type]) : comboLabel.type}
+              {comboLabel.cards.length > 2 ? t("gameShared.comboMultiplier", { count: comboLabel.cards.length }) : ""}
             </TableText>
           </View>
         </View>

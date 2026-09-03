@@ -110,6 +110,7 @@ import { useTableFeedback } from "@/components/useTableFeedback";
 import { useHandOrder } from "@/components/useHandOrder";
 import { useRailSide } from "@/components/useRailSide";
 import { FlyingCards, PlayedPile, getComboLabel } from "@/components/table/pile";
+import { warmCourtArt } from "@/components/CardView";
 import { BombBurst, LampLift, Sweep } from "@/components/table/moments";
 import { TopOppSlot, SideOppSlot } from "@/components/table/seats";
 import { ExchangeAnnouncement } from "@/components/ExchangeAnnouncement";
@@ -730,6 +731,7 @@ export function GameTable({
         if (mounted) playDeal();
       })
       .catch(() => {});
+    warmCourtArt();
     return () => {
       mounted = false;
       ScreenOrientation.unlockAsync().catch(() => {});
@@ -1367,6 +1369,7 @@ export function GameTable({
                   <PlayedPile
                     prev={pileState.prev}
                     current={flyInfo ? null : pileState.current}
+                    comboLabel={flightLanded ? pileState.current : null}
                     roundWinner={roundWinnerTag === null ? null : players[roundWinnerTag.seat]?.name ?? ""}
                     bounceTrigger={pileBounceTrigger}
                     catchTrigger={pileFlushed ? flushTrigger : undefined}
