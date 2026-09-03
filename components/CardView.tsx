@@ -8,6 +8,7 @@ import Animated, {
   withTiming,
   cancelAnimation,
 } from "react-native-reanimated";
+import { Asset } from "expo-asset";
 import { LinearGradient } from "expo-linear-gradient";
 import Svg, { Path, Circle, G, Rect, Defs, Use } from "react-native-svg";
 import { Card, Suit, getCardDisplayRank } from "@/lib/gameEngine";
@@ -373,6 +374,21 @@ const COURT_ART: Record<string, () => number> = {
   K_hearts:     () => require("../assets/images/cards/king_of_hearts.png") as number,
   K_spades:     () => require("../assets/images/cards/king_of_spades.png") as number,
 };
+
+let courtArtWarmed: Promise<void> | null = null;
+
+/**
+ * Fetches the twelve court bitmaps once per session, so a J/Q/K arriving from
+ * an opponent's hand is already decoded when it lands rather than popping in
+ * a beat later (#838). Fire-and-forget: a rejected load leaves a card with no
+ * figure, the same as before this existed, rather than throwing into the table.
+ */
+export function warmCourtArt(): void {
+  if (courtArtWarmed) return;
+  courtArtWarmed = Asset.loadAsync(Object.values(COURT_ART).map((load) => load()))
+    .then(() => undefined)
+    .catch(() => undefined);
+}
 
 function CourtArt({ card, w, h }: { card: Card; w: number; h: number }) {
   const source = card.suit ? COURT_ART[`${card.rank}_${card.suit}`] : undefined;
