@@ -315,13 +315,29 @@ function sessionUser(user: User) {
   };
 }
 
+/**
+ * Names the account and says what to do if the reader didn't ask for this
+ * (#894 review, finding 2): registration is neutral by design (#897), which
+ * means this mail can now land in a mailbox that never asked to create one —
+ * a stranger who registered with someone else's address. An anonymous
+ * "here's a code" body gave that person no way to tell it apart from their
+ * own pending signup, and redeeming the wrong one loses their own email
+ * claim (storage.markEmailVerified). Exported so tests can pin the wording
+ * without standing up a mail provider.
+ */
+export function verificationEmailBody(username: string, token: string): string {
+  return (
+    `Someone signed up for a Murlan account (@${username}) using this email address.\n\n` +
+    `If that was you, your verification code is:\n\n${token}\n\nThis code expires in 24 hours.\n\n` +
+    `If it was not you, no further action is needed — leaving this code unused does not give ` +
+    `that account your address.`
+  );
+}
+
 /** Never awaited by a caller — a provider outage must not delay or fail the response it rides with. */
-function sendVerificationEmail(to: string, token: string): void {
-  sendMail(
-    to,
-    "Verify your Murlan email",
-    `Your Murlan email verification code is:\n\n${token}\n\nThis code expires in 24 hours.`
-  ).catch((err) => logger.error({ err, to }, "sendVerificationEmail failed"));
+function sendVerificationEmail(to: string, username: string, token: string): void {
+  sendMail(to, "Verify your Murlan email", verificationEmailBody(username, token))
+    .catch((err) => logger.error({ err, to }, "sendVerificationEmail failed"));
 }
 
 /**
@@ -452,7 +468,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // and doing it before the reply would reopen the timing gap #897
         // exists to close.
         mintAuthToken(user.id, "email_verify", EMAIL_VERIFY_TOKEN_TTL_MS)
-          .then((token) => sendVerificationEmail(email, token))
+          .then((token) => sendVerificationEmail(email, username, token))
           .catch((err) => logger.error({ err, userId: user.id }, "Failed to mint the verification token"));
       });
     });
@@ -590,7 +606,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
 
     const token = await mintAuthToken(userId, "email_verify", EMAIL_VERIFY_TOKEN_TTL_MS);
-    sendVerificationEmail(email, token);
+    sendVerificationEmail(email, user.username, token);
     logger.info({ userId }, "Email added, pending verification");
     res.json(sessionUser(user));
   });
