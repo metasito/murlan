@@ -7,6 +7,7 @@ import {
   type TestServer,
 } from "../helpers/testServer.ts";
 import { waitFor } from "../helpers/client.ts";
+import type { Socket } from "socket.io-client";
 import { makeClients, setUpRoom, startGame } from "../helpers/table.ts";
 import { Reading } from "../../lib/tokens.ts";
 
@@ -26,18 +27,37 @@ interface Notification {
 }
 
 /**
- * Whether a promise settles by its own timeout rather than resolving —
- * `tests/wallClockBudgets.test.ts` bans asserting a measured duration against
- * a fixed number, so what proves "not yet" here is which branch of `waitFor`'s
- * own deadline wins, never a clock reading compared to one.
+ * Whether the auto-pass has *not* arrived within `ms` — the one wait in this
+ * file that must not be scaled by `DEADLINE_SCALE`.
+ *
+ * Every other deadline in the suite is an upper bound ("give up after"), and
+ * scaling those on a slow runner is what keeps them honest. This is a lower
+ * bound ("must not have happened yet"), measured against a server timer that
+ * `MURLAN_AFK_TIMEOUT_MS` fixes in real milliseconds and no scale touches.
+ * Scaling it does not add tolerance, it moves the window *past* the deadline
+ * it is supposed to sit before — at CI's scale of 4 this window ran to 5200ms
+ * against a 4300ms grace, and the test failed on every CI run while passing
+ * on every local one. Load can only push the auto-pass later, which is the
+ * safe direction for a lower bound, so this one needs no scale at all.
+ *
+ * Filtered to the AFK notification rather than the first `game:notification`
+ * of any kind: a stray notice of another type would otherwise read as the
+ * auto-pass having fired.
  */
-async function didTimeOut(promise: Promise<unknown>): Promise<boolean> {
-  try {
-    await promise;
-    return false;
-  } catch {
-    return true;
-  }
+function afkArrivesWithin(socket: Socket, ms: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const onNotice = (payload: Notification) => {
+      if (payload?.type !== "afk") return;
+      socket.off("game:notification", onNotice);
+      clearTimeout(timer);
+      resolve(true);
+    };
+    const timer = setTimeout(() => {
+      socket.off("game:notification", onNotice);
+      resolve(false);
+    }, ms);
+    socket.on("game:notification", onNotice);
+  });
 }
 
 describe(
@@ -57,18 +77,14 @@ describe(
       try {
         await setUpRoom(clients, 2);
 
-        // Comfortably longer than the base AFK window alone, and nowhere near
-        // afkTimeoutMs() + Reading.notice: if the grace were not applied, a
-        // plain AFK auto-pass would land well inside this and resolve it.
-        const stillPending = waitFor<Notification>(
-          clients[1].socket,
-          "game:notification",
-          AFK_MS + 1_000
-        );
+        // Comfortably past the base AFK window alone and comfortably short of
+        // it plus the grace: if the grace were not applied, the auto-pass
+        // would land well inside this.
+        const tooEarly = afkArrivesWithin(clients[1].socket, AFK_MS + 1_000);
         await startGame(clients);
         assert.equal(
-          await didTimeOut(stillPending),
-          true,
+          await tooEarly,
+          false,
           "the opener was auto-passed within its base AFK window alone — the opening grace was not applied"
         );
 
