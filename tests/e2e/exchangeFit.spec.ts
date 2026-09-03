@@ -139,12 +139,7 @@ test("the giveable marker is light around a card, not a line around the run", as
   await page.waitForTimeout(1_500);
 
   const marks = await page.evaluate((sel) => {
-    // Gold's own channels, checked as a substring: the sheen paints them as a
-    // `linear-gradient(...)` on a child the fill is clipped to, which shows up
-    // in `backgroundImage` as `rgba(201, 168, 76, …)` rather than in this
-    // element's own flat `backgroundColor`.
-    const goldRGB = "201, 168, 76";
-    const isGold = (s: string) => s.includes(goldRGB);
+    const gold = "rgb(201, 168, 76)";
     const out: { border: number; radius: number; cardRadius: number }[] = [];
     // Scoped to the hand: GIOCA's own face is this same gold on the turn it
     // borrows the exchange's confirm, and an unscoped sweep would read that
@@ -157,16 +152,8 @@ test("the giveable marker is light around a card, not a line around the run", as
       const cardRadius = face ? parseFloat(getComputedStyle(face).borderTopLeftRadius) || 0 : 0;
       for (const kid of Array.from(wrap.children)) {
         const st = getComputedStyle(kid);
-        if (st.opacity === "0") continue;
-        // The marker is this wrapper — it is what carries the border and the
-        // radius the assertions below check — but the gold itself can be
-        // anywhere in its subtree, so the two are read from different places.
-        const subtree = [kid, ...Array.from(kid.querySelectorAll("*"))];
-        const marks = subtree.some((el) => {
-          const s = el === kid ? st : getComputedStyle(el);
-          return isGold(s.backgroundColor) || isGold(s.borderTopColor) || isGold(s.backgroundImage);
-        });
-        if (!marks) continue;
+        const marks = st.backgroundColor === gold || st.borderTopColor === gold;
+        if (!marks || st.opacity === "0") continue;
         out.push({
           border: parseFloat(st.borderTopWidth) || 0,
           radius: parseFloat(st.borderTopLeftRadius) || 0,

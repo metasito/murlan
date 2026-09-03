@@ -20,7 +20,7 @@ import { Colors, FontSize, Hold, Motion, Radius, Scrim, Shadow, Spacing, Layer }
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
 import type { Card, Combination } from "@/lib/gameEngine";
-import { CARD_W, CARD_H, FIELD_SCALE } from "@/components/cardFaceModel";
+import { CARD_W, CARD_H, FIELD_SCALE, cardRadius } from "@/components/cardFaceModel";
 import {
   COMBO_MAX_TILT,
   FLIGHT_MS,
@@ -294,7 +294,10 @@ function CatchCard({
 
   return (
     <Animated.View style={liftStyle}>
-      <Animated.View pointerEvents="none" style={[pileStyles.catchGlow, glowStyle]} />
+      <Animated.View
+        pointerEvents="none"
+        style={[pileStyles.catchGlow, { borderRadius: cardRadius(CARD_W(scale)) }, glowStyle]}
+      />
       <View style={pileStyles.caughtCard}>{children}</View>
     </Animated.View>
   );
@@ -537,7 +540,6 @@ const pileStyles = StyleSheet.create({
     position: "absolute",
     top: 2, left: 2, right: 2, bottom: 2,
     zIndex: Layer.felt,
-    borderRadius: Radius.sm,
     backgroundColor: Colors.gold,
     ...Shadow.goldSoft,
   },

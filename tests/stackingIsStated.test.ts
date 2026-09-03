@@ -124,6 +124,7 @@ test("the scan reaches the styles it exists for", () => {
   for (const name of [
     "components/table/hand.tsx: handStyles.ungiveableVeil",
     "components/table/hand.tsx: handStyles.cardGlow",
+    "components/table/hand.tsx: handStyles.giveableHalo",
     "components/table/actions.tsx: styles.playBtnGlow",
   ]) {
     assert.ok(names.includes(name), `${name} is the case this scan exists for, and it missed it`);

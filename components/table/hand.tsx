@@ -13,9 +13,8 @@ import Animated, {
   Easing,
 } from "react-native-reanimated";
 import Ionicons from "@expo/vector-icons/Ionicons";
-import { LinearGradient } from "expo-linear-gradient";
 import { CardView } from "@/components/CardView";
-import { Colors, FontSize, Layer, Motion, motionMs, Radius, Scrim, Shadow, Spacing, withAlpha } from "@/lib/theme";
+import { Colors, FontSize, Layer, Motion, motionMs, Radius, Scrim, Shadow, Spacing } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
 import type { Card } from "@/lib/gameEngine";
@@ -76,18 +75,17 @@ const UNGIVEABLE_DIM = Scrim.medium;
 // processFilter parses the same string, so the string form is the only one that
 // works on both — an array serialises to `[object Object]` on web.
 const UNGIVEABLE_FILTER = { filter: "grayscale(1)" } as const;
-// The giveable sheen: a gradient painted *on* the card's own face rather than
-// a blurred halo behind it. A halo's blur radius fans out in a full circle at
-// a rounded corner and only a thin line along a straight edge, so wherever a
-// fan's overlap leaves just a corner exposed, the halo reads as a bright
-// smear rather than as the same light the rest of the card carries (reported
-// 2026-09-02, iOS). A gradient clipped to the card's own shape has no blur to
-// concentrate: every exposed sliver — corner or edge — shows the same
-// top-lit fade, because it is the card's own surface catching light rather
-// than a shape drawn around it.
-const GIVEABLE_SHEEN_TOP = withAlpha(Colors.gold, 0.55);
-const GIVEABLE_SHEEN_BOTTOM = withAlpha(Colors.gold, 0);
-const GIVEABLE_SHEEN_STOP = 0.6;
+// The giveable halo: a flat fill behind the card, wider than it by a fixed
+// rim, never painted on the card's own face — a fan exposes only a sliver of
+// most cards in the run, mostly the top-left index, and that is the one thing
+// the marker must never sit on top of.
+//
+// The rim is flat rather than blurred: a blurred glow's radius fans out in a
+// full circle at a corner and only a thin line along a straight edge, so
+// wherever the fan's overlap leaves just a corner exposed it reads as a
+// brighter smear than the rest of the run (reported 2026-09-02, iOS). A flat
+// fill has no radius to concentrate — every exposed sliver, corner or edge,
+// shows the same rim.
 
 
 // ─── Reordering (#531) ────────────────────────────────────────────────────────
@@ -117,17 +115,18 @@ const MOVE_LEFT = "moveCardLeft";
 const MOVE_RIGHT = "moveCardRight";
 /** The same two moves from a keyboard, which is the whole of them on web. */
 const MOVE_KEYS = { ArrowLeft: MOVE_LEFT, ArrowRight: MOVE_RIGHT };
-/**
- * Directly over the card it treats, so it is derived from the card's own
- * band rather than guessed. The veil and the sheen never draw on the same
- * card at once — `giveable` is `true`, `false` or `undefined` — so both take
- * the same step above it.
- */
-const EXCHANGE_OVERLAY_Z = Layer.table + 1;
+/** Directly over the card it dims, so it is derived from its band rather than guessed. */
+const VEIL_Z = Layer.table + 1;
+/** The halo sits behind the card, on the same step the selection bloom does. */
+const GIVEABLE_HALO_Z = Layer.felt;
+/** How far past the card's own edge the halo's rim shows. */
+const GIVEABLE_HALO_PAD = 2;
 
 /**
  * Past every card's own `zIndex`, which is its index in a hand of at most 18,
- * or that index lifted by the row's count while the exchange marks it giveable.
+ * or that index lifted by the row's count while the exchange marks it
+ * giveable — clamped short of this, so the bound holds for any hand size
+ * rather than resting on one never being dealt.
  */
 const HELD_Z = Layer.held;
 
@@ -322,7 +321,20 @@ function CardItemBase({
         giveable === false && UNGIVEABLE_FILTER,
       ]}
     >
-      <Animated.View pointerEvents="none" style={[handStyles.cardGlow, glowStyle]} />
+      <Animated.View
+        pointerEvents="none"
+        style={[handStyles.cardGlow, { borderRadius: cardRadius(cardW) }, glowStyle]}
+      />
+      {giveable === true && (
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            handStyles.giveableHalo,
+            { borderRadius: cardRadius(cardW) + GIVEABLE_HALO_PAD },
+            giveableStyle,
+          ]}
+        />
+      )}
       <CardView
         card={card}
         selected={isSelected}
@@ -344,18 +356,6 @@ function CardItemBase({
           pointerEvents="none"
           style={[handStyles.ungiveableVeil, { borderRadius: cardRadius(cardW) }, veilStyle]}
         />
-      )}
-      {giveable === true && (
-        <Animated.View
-          pointerEvents="none"
-          style={[handStyles.giveableSheen, { borderRadius: cardRadius(cardW) }, giveableStyle]}
-        >
-          <LinearGradient
-            colors={[GIVEABLE_SHEEN_TOP, GIVEABLE_SHEEN_BOTTOM]}
-            locations={[0, GIVEABLE_SHEEN_STOP]}
-            style={StyleSheet.absoluteFill}
-          />
-        </Animated.View>
       )}
     </Animated.View>
   );
@@ -939,9 +939,11 @@ export function StraightHand({
           // A giveable card draws over every neighbour regardless of the fan's
           // own order, so the eye lands on what can be chosen rather than on
           // whichever illegal card the draw order happened to put on top. The
-          // lift is the row's own count — past every index it hands out, and
-          // still short of `HELD_Z`, which has to stay above both bands.
-          zIndex={giveable === true ? rest.length + i : i}
+          // lift is the row's own count — past every index it hands out —
+          // clamped short of `HELD_Z`, which has to stay above both bands: a
+          // hand this row could ever be handed is what makes the ceiling hold,
+          // not an assumption about how big one gets.
+          zIndex={giveable === true ? Math.min(rest.length + i, HELD_Z - 1) : i}
           dealDelay={dealArmed ? i * Motion.stagger.deal : descending ? 0 : -1}
           // From the row's own centre, which is where the flight carrying it
           // stops (`flightOrigin`'s `bottom` is `dx: 0`). The crossing and the
@@ -1042,7 +1044,6 @@ const handStyles = StyleSheet.create({
     position: "absolute",
     top: 2, left: 2, right: 2, bottom: 2,
     zIndex: Layer.felt,
-    borderRadius: Radius.sm,
     backgroundColor: Colors.gold,
     ...Shadow.goldSoft,
   },
@@ -1059,25 +1060,24 @@ const handStyles = StyleSheet.create({
   ungiveableVeil: {
     position: "absolute",
     top: 0, left: 0, right: 0, bottom: 0,
-    zIndex: EXCHANGE_OVERLAY_Z,
+    zIndex: VEIL_Z,
     backgroundColor: UNGIVEABLE_DIM,
   },
-  // Light on the card's own face, not a halo behind it: clipped to the card's
-  // own rounded rect (`overflow: "hidden"`), so every corner and edge a fan's
-  // overlap leaves exposed shows the same top-lit fade a blurred shadow could
-  // not — a blur radiates in a full circle at a corner and a thin line along
-  // an edge, which is the shine this replaced (reported 2026-09-02, iOS).
+  // Behind the card (`GIVEABLE_HALO_Z` is `Layer.felt`, under `cardLayer`'s
+  // `Layer.table`), so nothing it draws ever reaches the card's own face —
+  // only the rim a fan's overlap leaves exposed. `GIVEABLE_HALO_PAD` inset
+  // negative, restated as a literal rather than the constant: the stacking
+  // scan (tests/stackingIsStated.test.ts) reads insets off the source text.
   //
-  // Never a border either, for the reason the veil is a fill and not a ring:
-  // a fan overlaps by design, and only the top edge of a bordered card
-  // survives it — a run of them joins into one hard line with a square cap at
-  // either end, a frame the cards are trapped in rather than a mark on each.
-  // A fill has no edge to join, whichever shape draws it.
-  giveableSheen: {
+  // Never a border: a fan overlaps by design, and only the top edge of a
+  // bordered card survives it — a run of them joins into one hard line with a
+  // square cap at either end, a frame the cards are trapped in rather than a
+  // mark on each. A fill has no edge to join.
+  giveableHalo: {
     position: "absolute",
-    top: 0, left: 0, right: 0, bottom: 0,
-    zIndex: EXCHANGE_OVERLAY_Z,
-    overflow: "hidden",
+    top: -2, left: -2, right: -2, bottom: -2,
+    zIndex: GIVEABLE_HALO_Z,
+    backgroundColor: Colors.gold,
   },
   // Its own plate. Under a lamp that moves, the felt has no reliably dark end
   // to sit on: the brightest cloth on the table is wherever the light is.
