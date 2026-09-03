@@ -192,9 +192,10 @@ function fadeNative(player: AudioPlayer, to: number, ms: number, onDone?: () => 
   }, step);
 }
 
-function playNativeMusic(track: MusicTrack): void {
+function playNativeMusic(track: MusicTrack, opts: { rewind?: boolean } = {}): void {
   const player = nativePlayer(track);
   if (!player) return;
+  const alreadyPlaying = nativePlaying === track;
   if (nativePlaying && nativePlaying !== track) {
     const old = nativePlayers[nativePlaying];
     if (old) {
@@ -204,13 +205,15 @@ function playNativeMusic(track: MusicTrack): void {
     }
   }
   nativePlaying = track;
-  try {
-    // lib/sounds.ts's playNative rewinds for the same reason: a player
-    // parked mid-loop or at the end of its buffer after an interruption
-    // plays silence otherwise.
-    player.seekTo(0);
-    player.play();
-  } catch {}
+  if (!alreadyPlaying || opts.rewind) {
+    try {
+      // lib/sounds.ts's playNative rewinds for the same reason: a player
+      // parked mid-loop or at the end of its buffer after an interruption
+      // plays silence otherwise.
+      player.seekTo(0);
+      player.play();
+    } catch {}
+  }
   fadeNative(player, targetGain(), FADE_S * 1000);
 }
 
@@ -229,6 +232,16 @@ export async function playMusic(track: MusicTrack): Promise<void> {
   }
   await ensureAudioMode();
   playNativeMusic(track);
+}
+
+/**
+ * The resume path's own entry point: unlike playMusic, this rewinds even when
+ * the requested track is the one already loaded, because the OS may have
+ * parked the player mid-loop or dropped the audio session while backgrounded.
+ */
+async function resumeNativeMusic(track: MusicTrack): Promise<void> {
+  await ensureAudioMode();
+  playNativeMusic(track, { rewind: true });
 }
 
 // `_wanted` deliberately survives: silencing the bed does not change which
@@ -336,7 +349,7 @@ if (Platform.OS === "web") {
   AppState.addEventListener("change", (state) => {
     if (state === "active" && _wanted && _enabled) {
       forgetAudioMode();
-      void playMusic(_wanted);
+      void resumeNativeMusic(_wanted);
     }
   });
 }

@@ -46,15 +46,15 @@ export function RootLayoutNav() {
   // rather than read — a crash in a timer has no hook to call.
   useEffect(() => setCurrentScreen(pathname), [pathname]);
 
-  // Requested on every route, started whenever a gesture has unlocked audio.
-  // The dependency array is what keeps this from firing on an unrelated
-  // re-render — native re-plays and rewinds every time it does fire, track
-  // change or not; only playWebMusic skips a genuine repeat internally
-  // (lib/music.ts). Resuming after the app was backgrounded is lib/music.ts's
-  // own concern (its AppState listener), not this route effect's.
+  // Keyed on the route's track rather than the route itself: several screens
+  // share one track (trackForRoute), and playMusic is a no-op when the track
+  // requested is already playing (lib/music.ts). Resuming after the app was
+  // backgrounded is lib/music.ts's own concern (its AppState listener), not
+  // this route effect's.
+  const track = trackForRoute(pathname);
   useEffect(() => {
-    void playMusic(trackForRoute(pathname));
-  }, [pathname]);
+    void playMusic(track);
+  }, [track]);
 
   return (
     <View style={{ flex: 1 }}>
