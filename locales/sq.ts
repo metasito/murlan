@@ -41,7 +41,7 @@ export const sq: Record<keyof typeof en, string> = {
   "server.NOT_AUTHENTICATED": "Kërkohet kyçja",
   "server.USERNAME_TAKEN": "Emri i përdoruesit është i zënë",
   "server.EMAIL_TAKEN": "Email-i është regjistruar tashmë",
-  "server.EMAIL_ALREADY_SET": "Ky llogari ka tashmë një email",
+  "server.EMAIL_ALREADY_SET": "Kjo llogari ka tashmë një email",
   "server.CHECK_YOUR_EMAIL": "Kontrollo emailin për të verifikuar adresën",
   "server.EMAIL_VERIFIED_ELSEWHERE": "Ky email është verifikuar tashmë në një llogari tjetër. Hyr në atë llogari ose rivendos fjalëkalimin përkatës.",
   "server.INVALID_TOKEN": "Lidhja e verifikimit është e pavlefshme ose ka skaduar",
