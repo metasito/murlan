@@ -15,7 +15,8 @@
  * Nothing an agent says about what it did is believed. Git is asked instead.
  */
 import { execFileSync } from "node:child_process";
-import { existsSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -26,6 +27,7 @@ import { claimTicket, releaseTicket } from "../lib/ticketPipeline/claim.ts";
 import { readVerdict, ghExecOptions, type Verdict } from "../lib/ticketPipeline/ciVerdict.ts";
 import { buildCleanupCommands } from "../lib/ticketPipeline/cleanup.ts";
 import { decideLanding, mergeArgs } from "../lib/ticketPipeline/land.ts";
+import { readSecondOpinion, riskyPaths, VERDICT_PREFIX } from "../lib/ticketPipeline/risk.ts";
 import { buildWorktreeCommands, worktreePathFor } from "../lib/ticketPipeline/worktree.ts";
 
 const REPO = "metasito/murlan";
@@ -49,6 +51,25 @@ interface RunState {
 
 /** A stop with a reason the owner will read on the issue. Anything else is a crash, and says so. */
 class Stop extends Error {}
+
+/**
+ * What one stage cost, kept because `stage()`'s own line goes to stdout and dies with the
+ * terminal. Every question about where a run's time and money went — #823's shape — was
+ * answerable at the moment it was printed and unanswerable an hour later.
+ */
+interface StageRecord {
+  name: string;
+  model: string;
+  effort: Effort;
+  minutes: string;
+  turns: number;
+  costUsd: number;
+  tokensIn: number;
+  tokensOut: number;
+  cacheRead: number;
+}
+
+const ledger: StageRecord[] = [];
 
 // ---------------------------------------------------------------- shell
 
@@ -205,6 +226,46 @@ function reviewPrompt(ticket: Ticket, evidence: string): string {
   ].join("\n");
 }
 
+/**
+ * The second reader, on the paths where green is not evidence (lib/ticketPipeline/risk.ts).
+ *
+ * It is given the ticket and the diff and nothing else — deliberately not the implement
+ * stage's account of its own work, which the first review already had. An account of a change
+ * is a frame to read it through, and the whole point of this pass is a reader who has not been
+ * told what to conclude.
+ */
+function secondOpinionPrompt(ticket: Ticket, paths: string[]): string {
+  return [
+    `This branch closes issue #${ticket.number}: ${ticket.title}`,
+    "",
+    `It changes ${paths.join(", ")} — paths where this repo merges on a green suite with no`,
+    "human reading the diff. A passing suite cannot tell whether a rules change plays the game",
+    "the rules describe, whether a schema migrates into the shape that was wanted, or whether a",
+    "wire payload keeps the promise the other side compiles against. That is what you are for.",
+    "",
+    "Read `git diff origin/main...HEAD` and the issue below. Ask one question: **is this change",
+    "green and wrong?** Not whether it is tidy, not whether you would have written it this way —",
+    "the first review already covered style and correctness-in-the-small, and repeating it wastes",
+    "the pass. Design, contracts, and invariants only.",
+    "",
+    `${SHELL_NOTE} \`docs/agents/RULES.md\` and \`CLAUDE.md\` carry the invariants; \`docs/RULES.md\``,
+    "specifies the game.",
+    "",
+    "Change nothing. Commit nothing. You are reading, not fixing.",
+    "",
+    `End your reply with exactly one line: \`${VERDICT_PREFIX} LAND\` if nothing here should stop`,
+    `the merge, or \`${VERDICT_PREFIX} HOLD — <one sentence>\` if it should. Hold only for a defect`,
+    "you can name in the diff, never for an unease you cannot; the ticket goes back to the owner",
+    "and stops the queue, so an unfounded hold costs more than the merge would have.",
+    "",
+    `---`,
+    "",
+    `# #${ticket.number} — ${ticket.title}`,
+    "",
+    ticket.body,
+  ].join("\n");
+}
+
 function fixPrompt(verdict: Verdict, round: number): string {
   return [
     "ci.yml is red on this branch. Make it green, and change nothing the failure does not require.",
@@ -240,7 +301,73 @@ function stage(name: string, prompt: string, model: "sonnet" | "opus", effort: E
       `, out ${k(output)}`
   );
   if (!result.ok) say(`(the ${name} agent exited non-zero; git decides whether it did the work)`);
+  ledger.push({
+    name, model, effort, minutes, turns: result.turns, costUsd: result.costUsd,
+    tokensIn: input + cacheRead + cacheWrite, tokensOut: output, cacheRead,
+  });
   return result.text;
+}
+
+/**
+ * `gh` is handed a file rather than an inline `--body`: a body with a newline in it is
+ * word-split by the shell, and PowerShell's own redirection writes cp1252, which mojibakes
+ * every character above ASCII. Node writes UTF-8.
+ */
+function ghComment(args: string[], body: string): void {
+  const dir = mkdtempSync(path.join(tmpdir(), "murlan-pipeline-"));
+  const file = path.join(dir, "body.md");
+  try {
+    writeFileSync(file, body, "utf8");
+    gh([...args, "--body-file", file]);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+/**
+ * The reviewer's findings, on the pull request they are about. Without this the one stage that
+ * read the diff cold reported to stdout and to nobody: the PR body is the implement stage's own
+ * account of its work, which is exactly the account a review exists to second-guess.
+ */
+function recordFindings(prNumber: number, findings: string): void {
+  if (!findings.trim()) return;
+  ghComment(
+    ["pr", "comment", String(prNumber), "--repo", REPO],
+    `## Review findings\n\n${findings.slice(-6000)}\n`
+  );
+}
+
+/** The second reader's verdict, beside the findings it did not get to see. */
+function recordSecondOpinion(prNumber: number, paths: string[], verdict: string, reply: string): void {
+  ghComment(
+    ["pr", "comment", String(prNumber), "--repo", REPO],
+    `## Second opinion — ${verdict.toUpperCase()}\n\nHigh-risk paths: ${paths.join(", ")}\n\n${reply.slice(-6000)}\n`
+  );
+}
+
+/** What the run cost, on the ticket, where the next reader of this ticket will find it. */
+function recordRun(issueNumber: number): void {
+  if (ledger.length === 0) return;
+  const rows = ledger.map(
+    (s) =>
+      `| ${s.name} | ${s.model} | ${s.effort} | ${s.minutes}m | ${s.turns} | ` +
+      `$${s.costUsd.toFixed(2)} | ${k(s.tokensIn)} | ${k(s.cacheRead)} | ${k(s.tokensOut)} |`
+  );
+  const total = ledger.reduce((sum, s) => sum + s.costUsd, 0);
+  const wall = ledger.reduce((sum, s) => sum + Number(s.minutes), 0);
+  ghComment(
+    ["issue", "comment", String(issueNumber), "--repo", REPO],
+    [
+      "## Run record",
+      "",
+      "| stage | model | effort | wall | turns | cost | in | cached | out |",
+      "|---|---|---|---|---|---|---|---|---|",
+      ...rows,
+      "",
+      `**${ledger.length} model stages, ${wall.toFixed(1)}m, $${total.toFixed(2)}.**`,
+      "",
+    ].join("\n")
+  );
 }
 
 interface IssueDetail {
@@ -321,6 +448,32 @@ function publish(ticket: Ticket, branch: string, worktree: string, state: RunSta
   return pr.number;
 }
 
+/**
+ * A second reader on the paths a green suite cannot judge, and nothing at all on the rest.
+ *
+ * Runs after the pull request exists so the verdict has somewhere to live, and before
+ * `driveToGreen` so a hold does not spend a CI round it is about to throw away.
+ */
+function secondOpinion(ticket: Ticket, prNumber: number, worktree: string): void {
+  const changed = git(worktree, ["diff", "--name-only", "origin/main...HEAD"])
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const paths = riskyPaths(changed);
+  if (paths.length === 0) {
+    say("no high-risk path touched — no second opinion");
+    return;
+  }
+
+  const reply = stage("second opinion", secondOpinionPrompt(ticket, paths), "opus", "max", worktree);
+  const opinion = readSecondOpinion(reply);
+  say(`second opinion: ${opinion.verdict} — ${opinion.reason}`);
+  recordSecondOpinion(prNumber, paths, opinion.verdict, reply);
+  if (opinion.verdict === "hold") {
+    throw new Stop(`the second reader held it: ${opinion.reason}`);
+  }
+}
+
 /** Green, or a reason to stop. A fix agent is spawned only for a failure ci.yml actually reported. */
 function driveToGreen(branch: string, prNumber: number, worktree: string): void {
   let fixRounds = 0;
@@ -380,10 +533,12 @@ function work(ticket: Ticket, branch: string, state: RunState): void {
   commitLeftovers(worktree, `Implement #${ticket.number}`);
   if (commitsAhead(worktree) === 0) throw new Stop("nothing is committed on the branch");
 
-  stage("review", reviewPrompt(ticket, evidence), "opus", "max", worktree);
+  const findings = stage("review", reviewPrompt(ticket, evidence), "opus", "max", worktree);
   commitLeftovers(worktree, "Apply review findings");
 
   const prNumber = publish(ticket, branch, worktree, state, evidence);
+  recordFindings(prNumber, findings);
+  secondOpinion(ticket, prNumber, worktree);
   driveToGreen(branch, prNumber, worktree);
   land(branch, prNumber, worktree, state);
 }
@@ -464,6 +619,14 @@ function removeOrphanedDirectory(worktreePath: string): void {
 }
 
 function teardown(ticket: Ticket, state: RunState, why: string): void {
+  // Before the claim comes off, and on the stopped path as much as the landed one: a run that
+  // cost forty minutes and stopped is the one whose record is worth having.
+  try {
+    recordRun(ticket.number);
+  } catch (error) {
+    say(`could not record the run: ${(error as Error).message}`);
+  }
+
   try {
     if (state.merged) {
       // The merge closes the issue through the pull request body, but nothing takes the claim's
