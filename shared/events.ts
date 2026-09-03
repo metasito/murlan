@@ -21,17 +21,40 @@ export const EVENT_NAMES = [
   "game.firstMoveMade",
   /** They left mid-manche — distinct from losing one. */
   "game.abandoned",
+  /** Any socket closed, server side — see server/socketPresence.ts. */
+  "socket.closed",
 ] as const;
 
 export type EventName = (typeof EVENT_NAMES)[number];
 
 /**
+ * Socket.IO's own server-side disconnect reason, verbatim —
+ * https://socket.io/docs/v4/server-socket-instance/#disconnect. A fixed union
+ * rather than the string the library hands the handler, so a reason this type
+ * doesn't name is a compile error rather than a silent new bucket in `events`.
+ */
+export const SOCKET_CLOSE_REASONS = [
+  "transport error",
+  "transport close",
+  "forced close",
+  "ping timeout",
+  "parse error",
+  "server shutting down",
+  "forced server close",
+  "client namespace disconnect",
+  "server namespace disconnect",
+] as const;
+
+export type SocketCloseReason = (typeof SOCKET_CLOSE_REASONS)[number];
+
+/**
  * What may travel with an event. Small and non-identifying on purpose: player
- * count, game mode, manche number. No usernames, no game state — this table
- * exists to count steps, not to describe people.
+ * count, game mode, manche number, close reason. No usernames, no game state
+ * — this table exists to count steps, not to describe people.
  */
 export interface EventContext {
   playerCount?: number;
   gameMode?: string;
   manche?: number;
+  reason?: SocketCloseReason;
 }

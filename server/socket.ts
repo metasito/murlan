@@ -171,10 +171,9 @@ export function setupSocket(httpServer: HttpServer) {
     registerRoomHandlers(ctx);
     registerGameplayHandlers(ctx);
     registerFriendHandlers(ctx);
+    registerDisconnect(ctx);
 
     await announcePresence(ctx);
-
-    registerDisconnect(ctx);
   });
 
   startSweeper(io);

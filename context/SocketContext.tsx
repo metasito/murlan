@@ -13,6 +13,7 @@ import { useQuery, useQueryClient, type QueryClient } from "@tanstack/react-quer
 import { apiRequest } from "@/lib/query-client";
 import { useAuth } from "@/context/AuthContext";
 import { connectSocket, disconnectSocket, setSocketAuthFailureHandler } from "@/lib/socket";
+import { reportSocketClose } from "@/lib/errorReporting";
 import { useNotification } from "@/context/NotificationContext";
 import { SessionReplacedNotice } from "@/components/SessionReplacedNotice";
 import { t, translateServerPayload, type ServerPayload } from "@/lib/i18n";
@@ -235,8 +236,9 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       for (const queryKey of RECONCILED_ON_CONNECT) qc.invalidateQueries({ queryKey });
     };
 
-    const onDisconnect = () => {
+    const onDisconnect = (reason: Socket.DisconnectReason) => {
       setConnected(false);
+      reportSocketClose(reason);
     };
 
     // A handshake rejected by server middleware (expired or already-used
