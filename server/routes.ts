@@ -30,6 +30,7 @@ import {
   mintAuthToken,
   redeemAuthToken,
   invalidateAuthTokens,
+  invalidatePendingAuthTokens,
   EMAIL_VERIFY_TOKEN_TTL_MS,
   PASSWORD_RESET_TOKEN_TTL_MS,
 } from "./authTokens.ts";
@@ -492,8 +493,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // A provider outage must not block signup — mint and fire without
         // awaiting the send, and only after the reply: the mint is an INSERT,
         // and doing it before the reply would reopen the timing gap #897
-        // exists to close.
-        mintAuthToken(user.id, "email_verify", EMAIL_VERIFY_TOKEN_TTL_MS)
+        // exists to close. invalidatePendingAuthTokens first: a brand-new
+        // user has nothing to retire, but this mint can still land after
+        // add-email's own — see authTokens.ts.
+        invalidatePendingAuthTokens(user.id, "email_verify")
+          .then(() => mintAuthToken(user.id, "email_verify", EMAIL_VERIFY_TOKEN_TTL_MS))
           .then((token) => sendVerificationEmail(email, username, token))
           .catch((err) => logger.error({ err, userId: user.id }, "Failed to mint the verification token"));
       });
@@ -631,6 +635,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       throw err;
     }
 
+    await invalidatePendingAuthTokens(userId, "email_verify");
     const token = await mintAuthToken(userId, "email_verify", EMAIL_VERIFY_TOKEN_TTL_MS);
     sendVerificationEmail(email, user.username, token);
     logger.info({ userId }, "Email added, pending verification");
@@ -686,7 +691,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     passwordResetRequestLimiter,
     async (req, res) => {
       const { email } = req.body as { email: string };
-      const user = await storage.getUserByEmail(email);
+      const user = await storage.getVerifiedUserByEmail(email);
       res.json({ ok: true });
       if (!user?.emailVerifiedAt) return;
       // Not awaited: the request this reply belonged to is already done, so

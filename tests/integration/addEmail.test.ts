@@ -63,6 +63,30 @@ describe("add-email migration nudge", { skip: hasDatabase() ? false : skipMessag
     assert.equal(rows[0]!.usedAt, null);
   });
 
+  // #900 review: two live email_verify tokens for one user is the
+  // precondition for an address-takeover escalation — redeem one and lose
+  // the race (email cleared to NULL), then add-email a different address
+  // and redeem the still-live second one, verifying an address never
+  // proven. Exercised directly against authTokens.ts rather than through
+  // the race above, so this fails on the mechanism regressing even if the
+  // race that first surfaced it never reproduces.
+  test("minting a second email_verify token invalidates the first, unconditionally", async () => {
+    const { user } = await register(server, "nudge_invalidate");
+    const { mintAuthToken, redeemAuthToken, invalidatePendingAuthTokens } = await import(
+      "../../server/authTokens.ts"
+    );
+
+    const first = await mintAuthToken(user.id, "email_verify", 60_000);
+    await invalidatePendingAuthTokens(user.id, "email_verify");
+    const second = await mintAuthToken(user.id, "email_verify", 60_000);
+
+    const redeemedFirst = await redeemAuthToken(first, "email_verify");
+    assert.equal(redeemedFirst, null, "an outstanding sibling token must not survive a fresh mint");
+
+    const redeemedSecond = await redeemAuthToken(second, "email_verify");
+    assert.equal(redeemedSecond, user.id, "the latest mint must still redeem normally");
+  });
+
   test("the minted token redeems through the same /api/auth/verify-email route signup uses — no second endpoint", async () => {
     const { user, cookie } = await legacyAccount("nudge_reuse");
     const addRes = await addEmail(cookie, "nudge_reuse@example.test");
