@@ -69,7 +69,7 @@ export async function recordGameResult(
     // every other player's stats, history and achievements for the hand.
     await db
       .transaction(async (tx) => {
-        const { userId, placement, playerCount, playedBomb, matchWon } = result;
+        const { userId, placement, playerCount, playedBomb, matchWon, abandoned } = result;
         const won = placement === 1;
 
         // Single atomic UPSERT: in the UPDATE branch, referencing
@@ -119,6 +119,7 @@ export async function recordGameResult(
           points: pointsForPlacement(placement, playerCount),
           opponents,
           ratingDelta: ratingDeltas.get(userId) ?? null,
+          abandoned: abandoned ?? false,
         });
 
         // Prune in the same transaction as the insert above, so the table
