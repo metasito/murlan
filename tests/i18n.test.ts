@@ -122,6 +122,19 @@ function payloadSentences(sourceFile: ts.SourceFile): string[] {
   return found;
 }
 
+/**
+ * `payload()` (server/payload.ts) moved most of a payload's own fallback
+ * text out of server/ source — where payloadSentences() above can see it —
+ * and into `locales/en.ts`'s `server.*` values, resolved at runtime through
+ * a call this scan deliberately stops at. Both scans below that walk
+ * payloadSentences() also need these, or the class of defect they exist to
+ * catch (an Italian or gendered sentence shipped as the neutral English
+ * fallback) can recur here unseen.
+ */
+function serverEnFallbackSentences(): [string, string][] {
+  return Object.entries(en).filter(([key]) => key.startsWith("server."));
+}
+
 describe("locale key parity", () => {
   const enKeys = Object.keys(en).sort();
 
@@ -231,6 +244,14 @@ describe("no server string assumes the player's gender", () => {
         }
       }
     }
+    // payload()'s own fallback text: not in server/ source at all (#894
+    // review, finding 7) — see serverEnFallbackSentences() above.
+    for (const [key, text] of serverEnFallbackSentences()) {
+      sentences.push(text);
+      for (const label of offences(text, all)) {
+        offenders.push(`locales/en.ts:${key} (${label}): ${text}`);
+      }
+    }
     // The scan's own floor, and why it is a sentence and not only a number:
     // this one exists nowhere but a schema's option key, so a scan that stops
     // descending schemas fails here outright instead of merely counting lower,
@@ -252,13 +273,15 @@ describe("no server string assumes the player's gender", () => {
       "the scan no longer reaches a validator's own trailing message " +
         "(server/socketSchemas.ts) — if that sentence was reworded, name the new one here"
     );
-    // It moved down when server/payload.ts's payload() helper replaced most
-    // hand-written { message, code } literals across server/ (not only
-    // routes.ts) with a call the scan deliberately stops at (#896) — real
-    // payload literals were consolidated, not hidden from the scan.
+    // Restored after #896's payload() helper moved most hand-written
+    // { message, code } literals across server/ into locales/en.ts's
+    // server.* values, resolved at runtime through a call this scan stops
+    // at — dropping this floor from >120 to >35 (127 to 49) let the class of
+    // defect this test exists to catch recur inside en.ts unseen (#894
+    // review, finding 7). Restored by scanning en.ts's server.* values too.
     assert.ok(
-      sentences.length > 35,
-      `expected server/'s payload sentences, got ${sentences.length} (49 when this floor was set)`
+      sentences.length > 100,
+      `expected server/'s payload sentences plus locales/en.ts's server.* values, got ${sentences.length} (114 when this floor was set)`
     );
     assert.deepEqual(offenders, [], offenders.join(" | "));
   });
@@ -299,9 +322,19 @@ describe("the server writes its fallbacks in the source language", () => {
         if (ITALIAN.test(text)) offenders.push(`${file}: ${text}`);
       }
     }
-    // See the matching floor above: payload() consolidated most of server/'s
-    // literals into calls this scan stops at (#896).
-    assert.ok(scanned > 35, `expected server/'s payload sentences, got ${scanned} (49 when this floor was set)`);
+    // payload()'s own fallback text: not in server/ source at all (#894
+    // review, finding 7) — see serverEnFallbackSentences() above.
+    for (const [key, text] of serverEnFallbackSentences()) {
+      scanned++;
+      if (ITALIAN.test(text)) offenders.push(`locales/en.ts:${key}: ${text}`);
+    }
+    // See the matching floor above: restored after payload() moved most of
+    // server/'s literals into locales/en.ts's server.* values (#894 review,
+    // finding 7) — scanning en.ts's server.* values too is what restores it.
+    assert.ok(
+      scanned > 100,
+      `expected server/'s payload sentences plus locales/en.ts's server.* values, got ${scanned} (114 when this floor was set)`
+    );
     assert.deepEqual(offenders, [], `these ship Italian to every locale: ${offenders.join(" | ")}`);
   });
 });

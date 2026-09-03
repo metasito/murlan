@@ -43,7 +43,7 @@ export const sq: Record<keyof typeof en, string> = {
   "server.EMAIL_TAKEN": "Email-i është regjistruar tashmë",
   "server.EMAIL_ALREADY_SET": "Kjo llogari ka tashmë një email",
   "server.CHECK_YOUR_EMAIL": "Kontrollo emailin për të verifikuar adresën",
-  "server.EMAIL_VERIFIED_ELSEWHERE": "Ky email është verifikuar tashmë në një llogari tjetër. Nëse ajo llogari është jotja, hyr atje ose rivendos fjalëkalimin. Nëse nuk është, mund të shtosh një email tjetër nga profili yt.",
+  "server.EMAIL_VERIFIED_ELSEWHERE": "Ky email është verifikuar tashmë në një llogari tjetër. Nëse llogaria e verifikuar është jotja, identifikohu aty ose rivendos fjalëkalimin. Nëse nuk është jotja, mund të shtosh një email tjetër nga profili yt.",
   "server.INVALID_TOKEN": "Lidhja e verifikimit është e pavlefshme ose ka skaduar",
   "server.INVALID_RESET_TOKEN": "Lidhja e rivendosjes është e pavlefshme ose ka skaduar",
   "server.INTERNAL_SERVER_ERROR": "Gabim i brendshëm i serverit",
