@@ -73,6 +73,7 @@ test("every unlimited /api/auth/* route is a named exception, and no others exis
       "/api/auth/logout",
       "/api/auth/me",
       "/api/auth/register",
+      "/api/auth/resend-verification",
       "/api/auth/reset-password",
       "/api/auth/socket-ticket",
       "/api/auth/verify-email",

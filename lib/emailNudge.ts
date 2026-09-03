@@ -9,3 +9,12 @@ export function shouldShowAddEmailCard(user: { email?: string | null }): boolean
   // may predate the field, and an upgraded install is exactly this cohort.
   return !user.email;
 }
+
+/**
+ * #893: the state a player returns to the app in, having read the
+ * verification mail on another device — an address is on the row, but
+ * nothing has redeemed its token yet.
+ */
+export function shouldShowVerifyEmailCard(user: { email?: string | null; emailVerified?: boolean }): boolean {
+  return Boolean(user.email) && !user.emailVerified;
+}

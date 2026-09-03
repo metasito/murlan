@@ -1,6 +1,8 @@
 import { defineConfig, devices } from "@playwright/test";
 import { execFileSync } from "node:child_process";
 import { resolve } from "node:path";
+import os from "node:os";
+import { writeFileSync } from "node:fs";
 
 // This is the one place that knows both `baseURL` and the `webServer` command, so it is the one
 // place that can hand a single port to the server, the health check and every spec at once.
@@ -19,6 +21,18 @@ process.env.E2E_PORT = PORT;
 const BASE_URL = `http://127.0.0.1:${PORT}`;
 // A run whose server is not where the docs say it is has to be able to say where it is.
 if (PORT !== "5199") console.log(`e2e: port 5199 is taken, serving on ${PORT}`);
+
+// #893: the only way accountRecovery.spec.ts can get a raw verification or
+// reset token — only its hash is stored server-side, and the real send goes
+// to Resend. Tied to the port for the same reason PORT is: two runs on this
+// machine must not share a file. Computed once and re-exported so every
+// worker this config is loaded in reads the same path (see PORT above).
+const MAIL_SINK = process.env.MURLAN_MAIL_SINK ?? resolve(os.tmpdir(), `murlan-e2e-mail-${PORT}.jsonl`);
+// Truncated by the load that starts the server, never by a worker's — the file
+// holds live credentials, and a run reading a previous run's leftovers would
+// find a token for an account that no longer exists.
+if (!process.env.MURLAN_MAIL_SINK) writeFileSync(MAIL_SINK, "");
+process.env.MURLAN_MAIL_SINK = MAIL_SINK;
 
 // Kept out of `npm test` (tests/**/*.test.ts) on purpose — this suite builds
 // the Expo web bundle and drives a real browser against the real server, so
@@ -77,6 +91,7 @@ export default defineConfig({
     timeout: 3 * 60_000,
     env: {
       E2E_PORT: PORT,
+      MURLAN_MAIL_SINK: MAIL_SINK,
       // The server defaults this to 5s under E2E so nothing waits on it. That
       // is shorter than socket.io's own reconnect backoff, so a client that
       // drops would have its seat vacated before it could possibly return —

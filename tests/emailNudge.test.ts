@@ -3,7 +3,7 @@
 // off this predicate, so a bug here is a bug there.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { shouldShowAddEmailCard } from "../lib/emailNudge.ts";
+import { shouldShowAddEmailCard, shouldShowVerifyEmailCard } from "../lib/emailNudge.ts";
 
 describe("shouldShowAddEmailCard", () => {
   test("present for an account that has never had an email — the beta migration cohort", () => {
@@ -20,5 +20,28 @@ describe("shouldShowAddEmailCard", () => {
 
   test("absent for an account that already has one, verified", () => {
     assert.equal(shouldShowAddEmailCard({ email: "player@example.test" }), false);
+  });
+});
+
+// #893: the state a player returns to the app in, having read the
+// verification mail on another device.
+describe("shouldShowVerifyEmailCard", () => {
+  test("present for an address on the row with nothing redeemed yet", () => {
+    assert.equal(
+      shouldShowVerifyEmailCard({ email: "player@example.test", emailVerified: false }),
+      true
+    );
+  });
+
+  test("absent once the address is verified", () => {
+    assert.equal(
+      shouldShowVerifyEmailCard({ email: "player@example.test", emailVerified: true }),
+      false
+    );
+  });
+
+  test("absent for an account with no address at all — that is shouldShowAddEmailCard's cohort", () => {
+    assert.equal(shouldShowVerifyEmailCard({ email: null, emailVerified: false }), false);
+    assert.equal(shouldShowVerifyEmailCard({}), false);
   });
 });
