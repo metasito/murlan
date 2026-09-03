@@ -59,6 +59,7 @@ import {
   describeTableForA11y,
   EMPTY_PILE,
   handCountOf,
+  vacatedOf,
   readThrownPlay,
   impactDelayMs,
   landingTier,
@@ -274,6 +275,12 @@ export interface GameTableProps {
   turnTimer?: TurnTimerConfig;
   exchangeAnnouncement?: ExchangeAnnouncementSlot;
   rematchPrompt?: RematchPromptSlot;
+  /**
+   * Seats mid disconnect grace, by seat — the countdown for the whole 60 s
+   * window (docs/BRIEF.md §3.1), driven from the server's own `seconds` the
+   * same way `turnTimer` is. Empty offline, which disconnects nobody.
+   */
+  disconnectedSeats?: Record<number, { seconds: number; resetKey: string }>;
 
   /** The rail's lower knob (online: the reactions trigger). */
   railExtra?: React.ReactNode;
@@ -313,6 +320,7 @@ export function GameTable({
   turnTimer,
   exchangeAnnouncement,
   rematchPrompt,
+  disconnectedSeats = {},
   railExtra,
   banners,
   overlays,
@@ -1315,6 +1323,8 @@ export function GameTable({
                   cardCount={handCountOf(opponents.top.player)}
                   departing={departingSide === "top" ? departingCount : 0}
                   passed={passed.includes(opponents.top.seat)}
+                  vacated={vacatedOf(opponents.top.player)}
+                  reconnecting={disconnectedSeats[opponents.top.seat]}
                   scale={scale}
                   countdown={seatCountdown}
                   focusMode={focusMode}
@@ -1338,6 +1348,8 @@ export function GameTable({
                     cardCount={handCountOf(opponents.left.player)}
                     departing={departingSide === "left" ? departingCount : 0}
                     passed={passed.includes(opponents.left.seat)}
+                    vacated={vacatedOf(opponents.left.player)}
+                    reconnecting={disconnectedSeats[opponents.left.seat]}
                     scale={scale}
                     countdown={seatCountdown}
                     focusMode={focusMode}
@@ -1428,6 +1440,8 @@ export function GameTable({
                     cardCount={handCountOf(opponents.right.player)}
                     departing={departingSide === "right" ? departingCount : 0}
                     passed={passed.includes(opponents.right.seat)}
+                    vacated={vacatedOf(opponents.right.player)}
+                    reconnecting={disconnectedSeats[opponents.right.seat]}
                     scale={scale}
                     countdown={seatCountdown}
                     focusMode={focusMode}

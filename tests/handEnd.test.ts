@@ -152,7 +152,7 @@ describe("resolveHandEnd — teams", () => {
 });
 
 describe("resolveHandEnd — gameResults shaping", () => {
-  test("a vacated seat is scored under bot:<seat> and excluded from cumulativeScores", () => {
+  test("a vacated seat is scored under bot:<seat> and accumulates like any bot seat (#850 clause 4)", () => {
     const state = mkState(
       [player("p0", "Alice", 0), player("p1", "Ghost", 3), player("p2", "Carl", 5), player("p3", "Dee", 8)],
       ["p0", "p1", "p2", "p3"]
@@ -169,12 +169,15 @@ describe("resolveHandEnd — gameResults shaping", () => {
       abandonedSeats: new Map(),
     });
 
+    // Was pinned at `undefined`/absent: docs/BRIEF.md §3.1 has a vacated
+    // seat's points join the running total like a born-bot seat's do, so the
+    // standings sum to the hands played. It still cannot cross the target or
+    // be named the winner — that is `winEligible`, not `cumulativeScores`.
     assert.equal(result.handByKey["bot:1"], 2);
-    assert.equal(result.cumulativeScores["bot:1"], undefined);
-    assert.ok(!("bot:1" in result.cumulativeScores));
+    assert.equal(result.cumulativeScores["bot:1"], 2);
   });
 
-  test("a straight duel's bot seat accumulates — only a vacated one is excluded (#815)", () => {
+  test("a straight duel's born-bot seat accumulates (#815)", () => {
     const state = mkState(
       [player("p0", "Alice", 3), player("p1", "Drita", 0)],
       ["p1", "p0"]
@@ -220,7 +223,7 @@ describe("resolveHandEnd — gameResults shaping", () => {
     assert.equal(total, outcomes.length);
   });
 
-  test("a seat vacated between hands keeps the pre-existing exclusion, unlike a straight duel's bot", () => {
+  test("a seat vacated between hands accumulates from the hand it left, not before (#850 clause 4)", () => {
     // Two humans; rotonmeta wins hand 1. drita then leaves (vacateSeat: her
     // seat drops out of playerMap; abandonedSeats and botSeatsAtStart are
     // both left untouched, exactly as vacateSeat leaves them between hands).
@@ -249,15 +252,15 @@ describe("resolveHandEnd — gameResults shaping", () => {
       botSeatsAtStart: new Set(),
     });
 
-    // The point still lands on the hand's own scoreboard...
+    // The point lands on the hand's own scoreboard...
     assert.equal(hand2.handByKey["bot:1"], 1);
-    // ...but this exclusion is left as-is: the owner's 2026-09-02 ruling on
-    // #815 keeps this PR scoped to the born-bot door and defers whether a
-    // vacated seat's points should accumulate to #820, which decides the
-    // disconnect policy as a whole. Not a §3.1 requirement — §3.1 only ever
-    // decided the winner *announcement*, not this.
+    // ...and, as of #850, on the running total too: docs/BRIEF.md §3.1 settled
+    // what #815 deferred — a vacated seat accumulates like a born-bot seat
+    // from the hand it left onward. drita's own point from hand 1 (she was
+    // still seated then) is not retroactively added; only bot:1's hand-2
+    // point is. Was pinned at 1 (bot:1 excluded entirely); now 2.
     const total = Object.values(hand2.cumulativeScores).reduce((a, b) => a + b, 0);
-    assert.equal(total, 1);
+    assert.equal(total, 2);
   });
 
   test("opponentsFinished counts real finishers only, not auto-assigned placements", () => {
@@ -364,5 +367,59 @@ describe("resolveHandEnd — gameResults shaping", () => {
     const seat1Result = result.gameResults.find((r) => r.userId === "walkedOutUser");
     assert.ok(seat1Result, "the abandoning user's own id must appear in gameResults");
     assert.equal(seat1Result!.abandoned, true);
+  });
+});
+
+describe("resolveHandEnd — a vacated seat's win eligibility and frozen points (#850 clauses 4-5)", () => {
+  test("a vacated seat's total can sit past the target without ending the match or naming it the winner", () => {
+    const state = mkState(
+      [player("p0", "Alice", 3), player("p1", "Ghost", 0), player("p2", "Carl", 5), player("p3", "Dee", 8)],
+      ["p1", "p0", "p2", "p3"]
+    );
+    const result = resolveHandEnd({
+      state,
+      playerMap: { 0: "alice", 2: "carl", 3: "dee" }, // seat 1 vacated
+      cumulativeScores: { alice: 4, carl: 2, dee: 1, "bot:1": 20 },
+      matchTarget: 21,
+      matchLength: "match",
+      gameMode: "free_for_all",
+      handFlags: HAND_FLAGS,
+      abandonedSeats: new Map(),
+      botSeatsAtStart: new Set(), // never a human's — vacated, not born-bot
+    });
+
+    // The seat took the hand and its total now sits at 23, past the 21
+    // target — but a vacated seat is never win-eligible, so the match keeps
+    // running rather than crowning it or the table it beat.
+    assert.equal(result.cumulativeScores["bot:1"], 23);
+    assert.equal(result.matchOver, false);
+    assert.deepEqual(result.matchWinners, []);
+  });
+
+  test("a vacated seat's detailed row sums the departed player's frozen total and the bot's total since", () => {
+    const state = mkState(
+      [player("p0", "Alice", 3), player("p1", "Ghost", 0), player("p2", "Carl", 5), player("p3", "Dee", 8)],
+      ["p1", "p0", "p2", "p3"]
+    );
+    const result = resolveHandEnd({
+      state,
+      playerMap: { 0: "alice", 2: "carl", 3: "dee" },
+      cumulativeScores: { alice: 4, carl: 2, dee: 1, "leftUser": 12, "bot:1": 20 },
+      matchTarget: 21,
+      matchLength: "match",
+      gameMode: "free_for_all",
+      handFlags: HAND_FLAGS,
+      abandonedSeats: new Map(),
+      botSeatsAtStart: new Set(),
+      vacatedSeats: new Map([[1, { userId: "leftUser", username: "Ghost" }]]),
+    });
+
+    const seat1 = result.detailed.find((r) => r.seatIndex === 1)!;
+    assert.equal(seat1.vacated, true);
+    assert.equal(seat1.userId, "leftUser");
+    // 12 (leftUser's frozen pre-departure total) + 23 (bot:1's total this hand).
+    assert.equal(seat1.total, 35);
+    // Nobody else reads as vacated.
+    assert.ok(result.detailed.filter((r) => r.vacated).every((r) => r.seatIndex === 1));
   });
 });

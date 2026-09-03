@@ -95,6 +95,8 @@ export const sq: Record<keyof typeof en, string> = {
   "server.PLAYER_DISCONNECTED_GRACE": "{{username}} humbi lidhjen. Ka {{seconds}} sekonda për t'u rikthyer.",
   "server.PLAYER_RECONNECTED": "{{username}} është sërish në lojë.",
   "server.SESSION_REPLACED": "Llogaria jote u hap diku tjetër. Kjo seancë u mbyll.",
+  "server.MATCH_ENDED_BY_AGREEMENT": "Tavolina vendosi ta përfundojë ndeshjen. Askush nuk penalizohet.",
+  "server.NO_VACANCY_TO_END": "Ende s'ka njeri për të votuar përfundimin e ndeshjes",
 
   // ---------------------------------------------------------------- auth.*
   "auth.subtitle": "Qasje Online",
@@ -298,8 +300,13 @@ export const sq: Record<keyof typeof en, string> = {
   "game.moveNotDelivered": "Lëvizja jote nuk arriti në tavolinë. Kontrollo lidhjen dhe provo përsëri.",
   "game.autoPassTitle": "Kalim automatik",
   "game.autoPassBody": "Koha mbaroi: radha jote u kalua.",
+  "game.seatLeft": "{{username}} — u largua",
+  "game.endMatchVoteButton": "Voto për të përfunduar ndeshjen",
+  "game.endMatchVoteHint": "Çdo lojtar i mbetur duhet të pajtohet — askush nuk penalizohet.",
+  "game.endMatchVoteTally": "{{votes}} nga {{total}} u pajtuan të përfundojnë ndeshjen",
 
   // -------------------------------------------------------------- gameTable.*
+  "gameTable.seatReconnecting": "Po rilidhet… {{seconds}}s",
   "gameTable.rotateTitle": "Kthejeni pajisjen anash",
   "gameTable.rotateBody": "Tavolina ka nevojë për anën e gjatë.",
   "gameTable.rotateA11yLabel": "Kthejeni pajisjen anash. Tavolina ka nevojë për anën e gjatë.",

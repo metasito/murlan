@@ -6,7 +6,7 @@
 // states (reconnect notice, a player leaving, a failed rejoin).
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { View, Text, StyleSheet, ActivityIndicator, useWindowDimensions } from "react-native";
+import { View, Text, Pressable, StyleSheet, ActivityIndicator, useWindowDimensions } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Ionicons from "@expo/vector-icons/Ionicons";
@@ -21,7 +21,7 @@ import {
 import { useAuth } from "@/context/AuthContext";
 import { ConfirmDialog, type ConfirmRequest } from "@/components/ConfirmDialog";
 import { GameTable } from "@/components/GameTable";
-import { cardScale, computeScreenPads, railWidth } from "@/components/gameTableModel";
+import { cardScale, computeScreenPads, railWidth, vacatedOf } from "@/components/gameTableModel";
 import {
   FloatingReactions,
   ReactionPanel,
@@ -32,6 +32,7 @@ import { MenuButton } from "@/components/MenuButton";
 import { Colors, FontSize, Radius, Spacing, Type, Layer } from "@/lib/theme";
 import { hapticLight, hapticMedium } from "@/lib/haptics";
 import { useTranslation } from "@/lib/i18n";
+import { a11yHidden } from "@/lib/a11y";
 
 // Read once at module scope, never per-call. EXPO_PUBLIC_ vars are inlined
 // at bundle build time, so this only ever takes the fast path in a build the
@@ -60,7 +61,8 @@ export default function OnlineGameScreen() {
   const { width, height } = useWindowDimensions();
   const { t } = useTranslation();
   const { user } = useAuth();
-  const { gameState, mySeatIndex, playCards, pass, sendReaction } = useOnlineTable();
+  const { gameState, mySeatIndex, playCards, pass, sendReaction, disconnectedSeats } =
+    useOnlineTable();
   const { turnSeconds, turnDeadlineMs } = useOnlineTurnClock();
   const { isSpectator, entrySource, leaveRoom } = useOnlineRoom();
   const {
@@ -80,11 +82,14 @@ export default function OnlineGameScreen() {
     ratingDeltas,
     handRecorded,
     rematchVoteState,
+    endMatchVoteState,
     rematchIntents,
     rematchPromptOpen,
     voteRematch,
+    voteToEndMatch,
     answerRematch,
   } = useOnlineMatch();
+
   const { exchangeAnnouncing, exchangeAnnounceData, giveExchangeCard, acknowledgeExchange } =
     useOnlineExchange();
 
@@ -221,6 +226,11 @@ export default function OnlineGameScreen() {
     );
   }
 
+  // "A seat has been vacated" (docs/BRIEF.md §3.1) — the vote is offered while
+  // any seat is currently vacated, matching the server's own gate
+  // (NO_VACANCY_TO_END) so the button never outlives what the server allows.
+  const anyVacatedSeat = gameState.players.some(vacatedOf);
+
   const myUserId = user?.id ?? "";
   const myRematchAnswer =
     myUserId in rematchIntents.answers ? rematchIntents.answers[myUserId] : null;
@@ -266,6 +276,7 @@ export default function OnlineGameScreen() {
       // than as an empty hand.
       viewerSeat={isSpectator ? 0 : mySeatIndex}
       spectating={isSpectator}
+      disconnectedSeats={disconnectedSeats}
       selectedIds={selectedIds}
       onSelectCard={toggleCard}
       onPlay={handlePlay}
@@ -325,6 +336,29 @@ export default function OnlineGameScreen() {
               {reconnectNotice}
             </Text>
           </View>
+        ) : anyVacatedSeat && !gameState.gameOver ? (
+          <Pressable
+            style={styles.reconnectBanner}
+            hitSlop={Spacing.wide}
+            accessibilityRole="button"
+            accessibilityLabel={t("game.endMatchVoteHint")}
+            onPress={() => {
+              hapticMedium();
+              voteToEndMatch();
+            }}
+          >
+            <View style={styles.bannerRow} {...a11yHidden()}>
+              <Ionicons name="flag" size={14} color={Colors.gold} />
+              <Text style={styles.reconnectBannerText} numberOfLines={1}>
+                {endMatchVoteState
+                  ? t("game.endMatchVoteTally", {
+                      votes: endMatchVoteState.votes.length,
+                      total: endMatchVoteState.total,
+                    })
+                  : t("game.endMatchVoteButton")}
+              </Text>
+            </View>
+          </Pressable>
         ) : null
       }
       overlays={(veiled) => (
@@ -431,6 +465,11 @@ const styles = StyleSheet.create({
     borderColor: Colors.danger,
   },
   reconnectBannerTextAlert: { color: Colors.dangerDim },
+  bannerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.slim,
+  },
 
 
   errorToast: {

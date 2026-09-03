@@ -31,6 +31,7 @@ import {
   seatDirection,
   arrangeOpponents,
   handCountOf,
+  vacatedOf,
   displayedHandCount,
   fanCounts,
   flightOrigin,
@@ -371,6 +372,17 @@ describe("handCountOf", () => {
 
   test("a handCount of zero is honoured, not treated as missing", () => {
     assert.equal(handCountOf({ hand: [{}, {}], handCount: 0 } as any), 0);
+  });
+});
+
+describe("vacatedOf (#850 clause 2)", () => {
+  test("offline: a player never carries the field, and reads as not vacated", () => {
+    assert.equal(vacatedOf({ hand: [] } as any), false);
+  });
+
+  test("online: the sanitizer's boolean travels through as-is", () => {
+    assert.equal(vacatedOf({ hand: [], vacated: true } as any), true);
+    assert.equal(vacatedOf({ hand: [], vacated: false } as any), false);
   });
 });
 

@@ -86,6 +86,8 @@ export const en = {
   "server.PLAYER_DISCONNECTED_GRACE": "{{username}} disconnected. They have {{seconds}} seconds to rejoin.",
   "server.PLAYER_RECONNECTED": "{{username}} is back.",
   "server.SESSION_REPLACED": "Your account was opened somewhere else. This session has been closed.",
+  "server.MATCH_ENDED_BY_AGREEMENT": "The table agreed to end the match. Nobody is penalised.",
+  "server.NO_VACANCY_TO_END": "There's nobody to vote on ending the match yet",
 
   // ---------------------------------------------------------------- auth.*
   "auth.subtitle": "Online Access",
@@ -298,8 +300,13 @@ export const en = {
   "game.moveNotDelivered": "Your move did not reach the table. Check your connection and try again.",
   "game.autoPassTitle": "Auto-pass",
   "game.autoPassBody": "Time is up: your turn was passed.",
+  "game.seatLeft": "{{username}} — left",
+  "game.endMatchVoteButton": "Vote to end match",
+  "game.endMatchVoteHint": "Every remaining player must agree — nobody is penalised.",
+  "game.endMatchVoteTally": "{{votes}} of {{total}} agreed to end the match",
 
   // -------------------------------------------------------------- gameTable.*
+  "gameTable.seatReconnecting": "Reconnecting… {{seconds}}s",
   "gameTable.rotateTitle": "Turn your device sideways",
   "gameTable.rotateBody": "The table needs the long edge.",
   "gameTable.rotateA11yLabel": "Turn your device sideways. The table needs the long edge.",

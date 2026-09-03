@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { View, StyleSheet } from "react-native";
 import { TableText } from "./TableText";
 import { ChipText, TableChip } from "./chrome";
@@ -481,13 +481,80 @@ function PassedChip({ scale }: { scale: number }) {
   );
 }
 
-// Both markers share one wrapping row. A seat carrying both would otherwise
-// stand two badge heights taller than one carrying neither.
-function SeatBadges({ passed, scale, maxW }: { passed: boolean; scale: number; maxW: number }) {
-  if (!passed) return null;
+/**
+ * A seat's own disconnect countdown, for the whole grace (docs/BRIEF.md
+ * §3.1) — not the ten-second banner it replaces. Ticks locally off the
+ * server's own `seconds`, restarted by `resetKey` the same way `TurnTimer`
+ * is; there is no clock of its own to invent.
+ */
+function ReconnectingChip({
+  seconds,
+  resetKey,
+  scale,
+}: {
+  seconds: number;
+  resetKey: string;
+  scale: number;
+}) {
+  const { t } = useTranslation();
+  const [left, setLeft] = useState(seconds);
+
+  useEffect(() => {
+    let remaining = seconds;
+    setLeft(remaining);
+    const id = setInterval(() => {
+      remaining -= 1;
+      setLeft(Math.max(0, remaining));
+      if (remaining <= 0) clearInterval(id);
+    }, 1000);
+    return () => clearInterval(id);
+  }, [resetKey, seconds]);
+
+  return (
+    <TableChip scale={scale}>
+      <ChipText scale={scale} testID="seat-reconnect-chip">
+        {t("gameTable.seatReconnecting", { seconds: left })}
+      </ChipText>
+    </TableChip>
+  );
+}
+
+function VacatedChip({ username, scale }: { username: string; scale: number }) {
+  const { t } = useTranslation();
+  return (
+    <TableChip scale={scale}>
+      <ChipText scale={scale} testID="seat-vacated-chip">
+        {t("game.seatLeft", { username })}
+      </ChipText>
+    </TableChip>
+  );
+}
+
+// Every marker shares one wrapping row. A seat carrying more than one would
+// otherwise stand a badge height taller than one carrying none.
+function SeatBadges({
+  passed,
+  vacated,
+  reconnecting,
+  name,
+  scale,
+  maxW,
+}: {
+  passed: boolean;
+  vacated: boolean;
+  reconnecting?: { seconds: number; resetKey: string };
+  name: string;
+  scale: number;
+  maxW: number;
+}) {
+  if (!passed && !vacated && !reconnecting) return null;
   return (
     <View style={[seatStyles.seatBadgeRow, { maxWidth: maxW }]}>
-      <PassedChip scale={scale} />
+      {reconnecting && (
+        <ReconnectingChip seconds={reconnecting.seconds} resetKey={reconnecting.resetKey} scale={scale} />
+      )}
+      {!reconnecting && vacated && <VacatedChip username={name} scale={scale} />}
+      {passed && <PassedChip scale={scale} />}
     </View>
   );
 }
@@ -500,6 +567,8 @@ export function TopOppSlot({
   cardCount,
   departing = 0,
   passed = false,
+  vacated = false,
+  reconnecting,
   scale = 1,
   countdown,
   focusMode = false,
@@ -511,6 +580,10 @@ export function TopOppSlot({
   departing?: number;
   /** This seat has passed in the round on the table. */
   passed?: boolean;
+  /** The seat is a human's that left, played on by the engine. */
+  vacated?: boolean;
+  /** The seat's own disconnect countdown, for the whole grace. */
+  reconnecting?: { seconds: number; resetKey: string };
   /** The table's own scale — the seat's fan draws its backs at `scale * BACK_SCALE`. */
   scale?: number;
   /** The turn window, so the seat on move can sweep its own rim. */
@@ -528,6 +601,7 @@ export function TopOppSlot({
         seatStyles.topOppSlot,
         { paddingTop: seatLabelH(scale), gap: seatGap(scale) },
         !isActive && seatStyles.seatDim,
+        !!reconnecting && seatStyles.seatDim,
       ]}
     >
       <SeatWho
@@ -536,6 +610,8 @@ export function TopOppSlot({
         count={displayed}
         finishPos={player.finishPosition}
         passed={passed}
+        vacated={vacated}
+        reconnecting={reconnecting}
         scale={scale}
         countdown={countdown}
         focusMode={focusMode}
@@ -562,6 +638,8 @@ function SeatWho({
   count,
   finishPos,
   passed,
+  vacated = false,
+  reconnecting,
   scale,
   countdown,
   anchor = "centre",
@@ -572,6 +650,10 @@ function SeatWho({
   count: number;
   finishPos?: number;
   passed: boolean;
+  /** The seat is a human's that left, played on by the engine. */
+  vacated?: boolean;
+  /** The seat's own disconnect countdown, for the whole grace. */
+  reconnecting?: { seconds: number; resetKey: string };
   scale: number;
   countdown?: { seconds: number; resetKey: string };
   /**
@@ -617,7 +699,14 @@ function SeatWho({
           >
             {name}
           </TableText>
-          <SeatBadges passed={passed} scale={scale} maxW={labelW} />
+          <SeatBadges
+            passed={passed}
+            vacated={vacated}
+            reconnecting={reconnecting}
+            name={name}
+            scale={scale}
+            maxW={labelW}
+          />
         </View>
       )}
       <SeatRing
@@ -642,6 +731,8 @@ export function SideOppSlot({
   cardCount,
   departing = 0,
   passed = false,
+  vacated = false,
+  reconnecting,
   scale = 1,
   countdown,
   focusMode = false,
@@ -654,6 +745,10 @@ export function SideOppSlot({
   departing?: number;
   /** This seat has passed in the round on the table. */
   passed?: boolean;
+  /** The seat is a human's that left, played on by the engine. */
+  vacated?: boolean;
+  /** The seat's own disconnect countdown, for the whole grace. */
+  reconnecting?: { seconds: number; resetKey: string };
   /** The table's own scale — the seat's fan draws its backs at `scale * BACK_SCALE`. */
   scale?: number;
   /** The turn window, so the seat on move can sweep its own rim. */
@@ -671,6 +766,7 @@ export function SideOppSlot({
         { gap: seatGap(scale) },
         isLeft ? seatStyles.sideLeft : seatStyles.sideRight,
         !isActive && seatStyles.seatDim,
+        !!reconnecting && seatStyles.seatDim,
       ]}
     >
       <SeatWho
@@ -679,6 +775,8 @@ export function SideOppSlot({
         count={displayed}
         finishPos={player.finishPosition}
         passed={passed}
+        vacated={vacated}
+        reconnecting={reconnecting}
         scale={scale}
         countdown={countdown}
         anchor={isLeft ? "left" : "right"}

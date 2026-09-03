@@ -257,21 +257,24 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
 
     // alice and carol are left idle too (no explicit moves below), so every
     // further turn — including the bot's — has to run on the shortened
-    // AFK/bot timers. Collect state broadcasts until the bot-controlled
-    // vacated seat has actually played and the turn has moved on to someone
-    // else: proof the table kept advancing instead of freezing on the empty
-    // seat.
-    let sawVacatedSeatAct = false;
+    // AFK/bot timers. Collect state broadcasts until the vacated seat's own
+    // turn has come up and gone: proof the table kept advancing instead of
+    // freezing on the empty seat. #850 clause 3 plays this seat at minimum
+    // legal strength until the hand ends, which passes far more often than
+    // the old full-AI takeover did — a pass resolves the turn exactly as
+    // well as a play, so it is the turn moving on that proves no deadlock,
+    // not which of the two the seat chose.
+    let sawVacatedSeatsTurn = false;
     let sawTurnPastVacatedSeat = false;
-    for (let i = 0; i < 10 && !(sawVacatedSeatAct && sawTurnPastVacatedSeat); i++) {
+    for (let i = 0; i < 10 && !(sawVacatedSeatsTurn && sawTurnPastVacatedSeat); i++) {
       const state = await waitFor<SanitizedState>(alice.socket, "game:state", 8_000);
       if (state.gameOver) break;
-      if (state.lastPlayedBy === vacatedSeat) sawVacatedSeatAct = true;
-      if (sawVacatedSeatAct && state.currentTurnIndex !== vacatedSeat) {
+      if (state.currentTurnIndex === vacatedSeat) sawVacatedSeatsTurn = true;
+      if (sawVacatedSeatsTurn && state.currentTurnIndex !== vacatedSeat) {
         sawTurnPastVacatedSeat = true;
       }
     }
-    assert.ok(sawVacatedSeatAct, "the bot-controlled vacated seat never got to act");
+    assert.ok(sawVacatedSeatsTurn, "the bot-controlled vacated seat's turn never came up");
     assert.ok(sawTurnPastVacatedSeat, "the turn never advanced past the vacated seat");
   });
 
@@ -581,15 +584,14 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
   });
 
   /**
-   * Two different things used to answer with one sentence: a seat this table
-   * gave up while its player was away, and an account asking after a table it
-   * never sat at. The first is the server explaining itself, the second is a
-   * refusal — and "Not authorized" reads as an accusation either way.
-   *
-   * Distinguishable from the wire, so the soak can tell a working expiry from
-   * the defect #736 was filed for.
+   * #850 clause 7 (docs/BRIEF.md §3.1) made the seat a takeover left behind
+   * reclaimable by the same account for the life of the match — `SEAT_RELEASED`
+   * now answers only for a finished or disposed table, not a live one. Was
+   * pinned the other way (nina refused with `SEAT_RELEASED`) before that
+   * decision; re-pinned to prove the reclaim, alongside the one refusal that
+   * is unchanged — an account that never sat here at all.
    */
-  test("a seat given up while away is refused differently from one never held", async () => {
+  test("a seat given up while away is reclaimed by the account that left it; a stranger is still refused", async () => {
     const [nina, otto, pia, quinn] = await makeClients([
       "expired_nina",
       "expired_otto",
@@ -604,11 +606,15 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
     await takeover;
 
     const back = await reconnectAs(server, nina);
-    const expired = waitFor<{ code?: string }>(back, "game:rejoin_failed", 5_000);
+    const reclaimed = waitFor<{ userId?: string }>(
+      otto.socket,
+      "game:player_reconnected",
+      5_000
+    );
     back.emit("game:rejoin", { roomId: room.roomId });
-    assert.equal((await expired).code, "SEAT_RELEASED");
+    assert.equal((await reclaimed).userId, nina.user.id);
 
-    // Quinn registered but never joined: the same live table, the other answer.
+    // Quinn registered but never joined: the same live table, still refused.
     const stranger = waitFor<{ code?: string }>(quinn.socket, "game:rejoin_failed", 5_000);
     quinn.socket.emit("game:rejoin", { roomId: room.roomId });
     assert.equal(

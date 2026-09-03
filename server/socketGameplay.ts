@@ -121,6 +121,18 @@ export function registerGameplayHandlers({
 
     onEvent(
       socket,
+      "game:end_match_vote",
+      NoPayloadSchema,
+      async () => {
+        const roomId = atTable();
+        if (!roomId) return { ok: false, code: "NOT_AT_A_TABLE" };
+        return applyOrForward(io, { kind: "endMatchVote", roomId, userId, username });
+      },
+      { limit: 20, windowMs: 60_000 }
+    );
+
+    onEvent(
+      socket,
       "game:rejoin",
       GameRejoinSchema,
       async ({ roomId }) => {

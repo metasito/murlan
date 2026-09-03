@@ -1611,11 +1611,18 @@ export interface FoldHandInput {
   keyOf: (engineId: string) => string | null;
   /**
    * Whether a key's points join the running match total. Defaults to all of
-   * them. The server declines its `bot:<seat>` sentinels: a vacated seat has
-   * to appear on the hand's scoreboard, but must never accumulate towards
-   * winning the match under the departed human's name.
+   * them.
    */
   accumulates?: (key: string) => boolean;
+  /**
+   * Whether a key may cross the target or be named a winner — of a manche in
+   * `single` length, or of the match in `match` length. Defaults to
+   * `accumulates`. The server splits the two: a vacated seat's points join
+   * the running total (docs/BRIEF.md §3.1, the disconnect policy) so the
+   * standings sum to the hands played, but the seat itself must still never
+   * be crowned — the departed human left nobody behind to claim it.
+   */
+  winEligible?: (key: string) => boolean;
   /** Engine player id -> team id, for every seat that has one. */
   teamOf?: Record<string, string>;
 }
@@ -1644,6 +1651,7 @@ export interface FoldHandResult {
 export function foldHandIntoMatch(input: FoldHandInput): FoldHandResult {
   const { rankings, playerCount, length, gameMode, target, keyOf } = input;
   const accumulates = input.accumulates ?? (() => true);
+  const winEligible = input.winEligible ?? accumulates;
   const teamOf = input.teamOf ?? {};
 
   const handByKey: Record<string, number> = {};
@@ -1662,7 +1670,7 @@ export function foldHandIntoMatch(input: FoldHandInput): FoldHandResult {
   const teamOfKey: Record<string, string> = {};
   for (const [engineId, team] of Object.entries(teamOf)) {
     const key = keyOf(engineId);
-    if (key === null || !accumulates(key)) continue;
+    if (key === null || !winEligible(key)) continue;
     teamOfKey[key] = team;
   }
 
@@ -1671,7 +1679,7 @@ export function foldHandIntoMatch(input: FoldHandInput): FoldHandResult {
     const championTeam = championId === undefined ? undefined : teamOf[championId];
     if (gameMode === "teams" && championTeam !== undefined) {
       // A manche is taken by a pair (docs/RULES.md §11), and `teamOfKey`
-      // already holds only the keys that accumulate, so a vacated seat's
+      // already holds only the win-eligible keys, so a vacated seat's
       // partner is named and the seat itself never is.
       const winners = Object.entries(teamOfKey)
         .filter(([, team]) => team === championTeam)
@@ -1683,7 +1691,7 @@ export function foldHandIntoMatch(input: FoldHandInput): FoldHandResult {
     // announcing it credits the match to the person who left.
     const championKey = rankings
       .map(keyOf)
-      .find((key) => key !== null && accumulates(key));
+      .find((key) => key !== null && winEligible(key));
     return {
       handByKey,
       cumulative,
@@ -1694,7 +1702,22 @@ export function foldHandIntoMatch(input: FoldHandInput): FoldHandResult {
     };
   }
 
-  const resolution = resolveMatchFor({ gameMode, cumulative, teamOfKey, target, playerCount });
+  // Winner/target-crossing is decided on the win-eligible subset only — a
+  // vacated seat's points still land in `cumulative` above (so the standings
+  // sum to the hands played), but they must never let it cross the target or
+  // escalate the match on its own.
+  const winEligibleCumulative: Record<string, number> = {};
+  for (const [key, points] of Object.entries(cumulative)) {
+    if (winEligible(key)) winEligibleCumulative[key] = points;
+  }
+
+  const resolution = resolveMatchFor({
+    gameMode,
+    cumulative: winEligibleCumulative,
+    teamOfKey,
+    target,
+    playerCount,
+  });
   if (!resolution) {
     return { handByKey, cumulative, target, over: false, winners: [], isDraw: false };
   }

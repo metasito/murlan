@@ -9,6 +9,7 @@ import { storage } from "./storage.ts";
 import { logger } from "./logger.ts";
 import {
   isShuttingDown,
+  seatOfUser,
   socketRoomMap,
   userRoom,
   userSocketMap,
@@ -205,6 +206,7 @@ export async function announceRejoin(
   io.to(roomId).emit("game:player_reconnected", {
     userId,
     username,
+    seatIndex: seatOfUser(game, userId),
     code: "PLAYER_RECONNECTED",
     message: `${username} is back.`,
     params: { username },
