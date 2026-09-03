@@ -82,7 +82,7 @@ export function checkMailConfigOnBoot(): void {
   if (missing.length > 0) {
     logger.error(
       { missing },
-      "Mail is not configured — verification, password-reset and registration-attempt mail will silently no-op"
+      "Mail is not configured — verification and password-reset mail will silently no-op"
     );
   }
 }

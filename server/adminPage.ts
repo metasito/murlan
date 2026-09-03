@@ -136,9 +136,9 @@ export function renderAdminPage(snapshot: AdminSnapshot): string {
           snapshot.mail.failed,
         ]]
       ) +
-        `<p class="meta">Since this process last started. "no" means verification, ` +
-        `password-reset and registration-attempt mail is silently a no-op — see the ` +
-        `mail.sendFailed rows in "Where people drop out" above.</p>`
+        `<p class="meta">Since this process last started. "no" means verification and ` +
+        `password-reset mail is silently a no-op — see the mail.sendFailed rows in ` +
+        `"Where people drop out" above.</p>`
     ),
     panel(
       11,
