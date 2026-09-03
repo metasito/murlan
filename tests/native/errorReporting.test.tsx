@@ -134,18 +134,35 @@ describe('the reporter cannot take the app down with it', () => {
 describe('reportSocketClose', () => {
   it('sends the reason through the same endpoint, with the screen and app version', () => {
     setCurrentScreen('/game');
-    reportSocketClose('transport close');
+    reportSocketClose('transport error');
 
     expect(apiRequest).toHaveBeenCalledTimes(1);
     const [method, route] = apiRequest.mock.calls[0];
     expect(method).toBe('POST');
     expect(route).toBe('/api/client-errors');
     expect(sent()[0]).toMatchObject({
-      message: 'socket disconnect: transport close',
+      message: 'socket disconnect: transport error',
       screen: '/game',
       appVersion: '9.9.9',
       platform: 'web',
     });
+  });
+
+  // The server's own disconnect handler already records socket.closed for
+  // every one of these — this call exists only for the one reason the server
+  // structurally cannot observe (#844).
+  it('does not post for a reason the server already records itself', () => {
+    reportSocketClose('io client disconnect');
+    reportSocketClose('io server disconnect');
+    reportSocketClose('transport close');
+    reportSocketClose('ping timeout');
+
+    expect(apiRequest).not.toHaveBeenCalled();
+  });
+
+  it('posts for parse error too — the other reason only the client ever sees', () => {
+    reportSocketClose('parse error');
+    expect(apiRequest).toHaveBeenCalledTimes(1);
   });
 
   it('never throws when the endpoint itself throws', () => {

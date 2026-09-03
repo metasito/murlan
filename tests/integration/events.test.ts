@@ -24,6 +24,7 @@ describe("funnel events", { skip: hasDatabase() ? false : skipMessage() }, () =>
   let ownerCookie: string;
   let trackEvent: typeof import("../../server/events.ts").trackEvent;
   let retentionDays: number;
+  let sweepRetention: typeof import("../../server/retention.ts").sweepRetention;
 
   before(async () => {
     server = await startTestServer();
@@ -33,6 +34,7 @@ describe("funnel events", { skip: hasDatabase() ? false : skipMessage() }, () =>
     ({ trackEvent, EVENT_RETENTION_DAYS: retentionDays } = await import(
       "../../server/events.ts"
     ));
+    ({ sweepRetention } = await import("../../server/retention.ts"));
     dbPool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 
     ({ cookie } = await register(server, "funnel_player"));
@@ -101,7 +103,7 @@ describe("funnel events", { skip: hasDatabase() ? false : skipMessage() }, () =>
     assert.equal(res.status, 200);
   });
 
-  test("a step older than the retention window is deleted by the next write", async () => {
+  test("retention is off the write path, and the scheduled sweep still works", async () => {
     await dbPool.query(
       `INSERT INTO "${server.schema}".events (name, occurred_at)
        VALUES ($1, now() - make_interval(days => $2))`,
@@ -110,13 +112,21 @@ describe("funnel events", { skip: hasDatabase() ? false : skipMessage() }, () =>
     assert.equal((await rowsNamed("lobby.entered")).length, 1);
 
     trackEvent("room.joined", null);
-    let remaining = 1;
-    for (let attempt = 0; attempt < 20 && remaining > 0; attempt++) {
-      remaining = (await rowsNamed("lobby.entered")).length;
-      if (remaining > 0) await new Promise((r) => setTimeout(r, 50));
-    }
+    await settle(() => rowsNamed("room.joined"), 1);
 
-    assert.equal(remaining, 0, "a step past the retention window survived");
+    assert.equal(
+      (await rowsNamed("lobby.entered")).length,
+      1,
+      "a write must not prune the table it just grew"
+    );
+
+    await sweepRetention();
+
+    assert.equal(
+      (await rowsNamed("lobby.entered")).length,
+      0,
+      "the scheduled sweep must still remove a row past the retention window"
+    );
   });
 
   test("the funnel renders on /admin", async () => {

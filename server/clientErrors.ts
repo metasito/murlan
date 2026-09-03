@@ -4,7 +4,7 @@
 // This is the other reader: the owner, later, asking whether anyone got stuck
 // — a question a log stream answers badly.
 import { createHash } from "node:crypto";
-import { lt, sql } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import { db } from "./db.ts";
 import { clientErrors } from "../shared/schema.ts";
 
@@ -59,31 +59,17 @@ function computeFingerprint(message: string, stack: string | undefined): string 
   return createHash("sha256").update(basis).digest("hex");
 }
 
-/**
- * Writes one report and prunes what has aged out, in the same transaction —
- * the shape `server/replays.ts` uses, so the table cannot grow without bound
- * if a scheduled prune is ever skipped or never written.
- */
+/** Writes one report. Retention is server/retention.ts's job, on a schedule. */
 export async function recordClientError(input: ClientErrorInput): Promise<void> {
-  await db.transaction(async (tx) => {
-    await tx.insert(clientErrors).values({
-      userId: input.userId,
-      message: input.message,
-      stack: input.stack ?? null,
-      screen: input.screen ?? null,
-      platform: input.platform ?? null,
-      appVersion: input.appVersion ?? null,
-      context: input.context ?? {},
-      fingerprint: computeFingerprint(input.message, input.stack),
-    });
-    await tx
-      .delete(clientErrors)
-      .where(
-        lt(
-          clientErrors.occurredAt,
-          sql`now() - make_interval(days => ${CLIENT_ERROR_RETENTION_DAYS})`
-        )
-      );
+  await db.insert(clientErrors).values({
+    userId: input.userId,
+    message: input.message,
+    stack: input.stack ?? null,
+    screen: input.screen ?? null,
+    platform: input.platform ?? null,
+    appVersion: input.appVersion ?? null,
+    context: input.context ?? {},
+    fingerprint: computeFingerprint(input.message, input.stack),
   });
 }
 

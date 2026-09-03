@@ -252,7 +252,10 @@ export const events = pgTable("events", {
   occurredAt: timestamp("occurred_at").defaultNow().notNull(),
   name: text("name").notNull(),
   context: jsonb("context").notNull().default({}),
-}, (t) => [index("events_name_occurred_idx").on(t.name, t.occurredAt)]);
+}, (t) => [
+  index("events_name_occurred_idx").on(t.name, t.occurredAt),
+  index("events_occurred_idx").on(t.occurredAt),
+]);
 
 export const userAchievements = pgTable("user_achievements", {
   userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
@@ -333,9 +336,8 @@ export const pushTokens = pgTable("push_tokens", {
  * this shape is deliberately not reused from (a reset/verify link survives a
  * server restart; a signed in-memory-nonce ticket does not).
  *
- * Nothing else bounds this table — a row lands per signup and per reset
- * request — so expired rows are swept opportunistically on every redemption
- * rather than kept forever or run through a scheduler.
+ * Expired rows are swept on a schedule (server/retention.ts), not on the
+ * write or redemption path — see that module for why.
  */
 export const authTokens = pgTable(
   "auth_tokens",
@@ -353,6 +355,7 @@ export const authTokens = pgTable(
     // `RETURNING user_id` a single row rather than a set.
     uniqueIndex("auth_tokens_token_hash_uq").on(t.tokenHash),
     index("auth_tokens_user_id_idx").on(t.userId, t.purpose),
+    index("auth_tokens_expires_idx").on(t.expiresAt),
   ]
 );
 

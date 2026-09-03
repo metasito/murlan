@@ -38,9 +38,6 @@ export async function mintAuthToken(
  * expires_at > now()` guard inside the same UPDATE, so two near-simultaneous
  * redemptions cannot both succeed. Returns the token's userId, or null if it
  * is unknown, already used, expired or minted for a different purpose.
- *
- * Sweeps expired rows on every call — the design's retention rule, and the
- * only thing that bounds this table.
  */
 export async function redeemAuthToken(
   rawToken: string,
@@ -56,7 +53,6 @@ export async function redeemAuthToken(
       AND expires_at > now()
     RETURNING user_id
   `);
-  await db.execute(sql`DELETE FROM auth_tokens WHERE expires_at < now()`);
   return result.rows[0]?.user_id ?? null;
 }
 

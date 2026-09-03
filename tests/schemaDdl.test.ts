@@ -116,6 +116,22 @@ test("the replay ownership predicate has an index it can use", () => {
   assert.match(statement, /USING "gin" \("player_ids"\)/);
 });
 
+test("events and auth_tokens have an index the retention sweep can use", () => {
+  // Both predicates (events.occurredAt, auth_tokens.expiresAt) had no index
+  // before #895 — server/retention.ts's scheduled DELETE would otherwise be
+  // the same full-table seq scan the write-path prune was.
+  assert.ok(
+    statements.some((s) => /"events_occurred_idx"/.test(s) && /ON "events" \("occurred_at"\)/.test(s)),
+    "events.occurred_at needs an index for the retention sweep"
+  );
+  assert.ok(
+    statements.some(
+      (s) => /"auth_tokens_expires_idx"/.test(s) && /ON "auth_tokens" \("expires_at"\)/.test(s)
+    ),
+    "auth_tokens.expires_at needs an index for the retention sweep"
+  );
+});
+
 test("a table is created before anything references it", () => {
   const createdAt = new Map<string, number>();
   statements.forEach((s, i) => {

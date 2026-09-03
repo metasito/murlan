@@ -6,6 +6,7 @@ import { db } from "./db.ts";
 import { recordGameResult } from "./stats.ts";
 import { previewRatedDeltas, recordRatedResult } from "./ratings.ts";
 import { saveReplay } from "./replays.ts";
+import { sweepRetention } from "./retention.ts";
 import {
   activeGames as activeGamesTable,
   roomPlayers as roomPlayersTable,
@@ -344,6 +345,10 @@ export function startSweeper(io: SocketServer) {
 
       void pruneStaleRooms().catch((err: unknown) =>
         logger.error({ err }, "Pruning stale rooms failed")
+      );
+
+      void sweepRetention().catch((err: unknown) =>
+        logger.error({ err }, "Retention sweep failed")
       );
 
       // Only reachable through a bug — every path that puts a game in memory
