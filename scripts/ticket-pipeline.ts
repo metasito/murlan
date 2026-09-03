@@ -27,6 +27,7 @@ import { claimTicket, releaseTicket } from "../lib/ticketPipeline/claim.ts";
 import { readVerdict, ghExecOptions, type Verdict } from "../lib/ticketPipeline/ciVerdict.ts";
 import { buildCleanupCommands } from "../lib/ticketPipeline/cleanup.ts";
 import { decideLanding, mergeArgs } from "../lib/ticketPipeline/land.ts";
+import { readSecondOpinion, riskyPaths, VERDICT_PREFIX } from "../lib/ticketPipeline/risk.ts";
 import { buildWorktreeCommands, worktreePathFor } from "../lib/ticketPipeline/worktree.ts";
 
 const REPO = "metasito/murlan";
@@ -225,6 +226,46 @@ function reviewPrompt(ticket: Ticket, evidence: string): string {
   ].join("\n");
 }
 
+/**
+ * The second reader, on the paths where green is not evidence (lib/ticketPipeline/risk.ts).
+ *
+ * It is given the ticket and the diff and nothing else — deliberately not the implement
+ * stage's account of its own work, which the first review already had. An account of a change
+ * is a frame to read it through, and the whole point of this pass is a reader who has not been
+ * told what to conclude.
+ */
+function secondOpinionPrompt(ticket: Ticket, paths: string[]): string {
+  return [
+    `This branch closes issue #${ticket.number}: ${ticket.title}`,
+    "",
+    `It changes ${paths.join(", ")} — paths where this repo merges on a green suite with no`,
+    "human reading the diff. A passing suite cannot tell whether a rules change plays the game",
+    "the rules describe, whether a schema migrates into the shape that was wanted, or whether a",
+    "wire payload keeps the promise the other side compiles against. That is what you are for.",
+    "",
+    "Read `git diff origin/main...HEAD` and the issue below. Ask one question: **is this change",
+    "green and wrong?** Not whether it is tidy, not whether you would have written it this way —",
+    "the first review already covered style and correctness-in-the-small, and repeating it wastes",
+    "the pass. Design, contracts, and invariants only.",
+    "",
+    `${SHELL_NOTE} \`docs/agents/RULES.md\` and \`CLAUDE.md\` carry the invariants; \`docs/RULES.md\``,
+    "specifies the game.",
+    "",
+    "Change nothing. Commit nothing. You are reading, not fixing.",
+    "",
+    `End your reply with exactly one line: \`${VERDICT_PREFIX} LAND\` if nothing here should stop`,
+    `the merge, or \`${VERDICT_PREFIX} HOLD — <one sentence>\` if it should. Hold only for a defect`,
+    "you can name in the diff, never for an unease you cannot; the ticket goes back to the owner",
+    "and stops the queue, so an unfounded hold costs more than the merge would have.",
+    "",
+    `---`,
+    "",
+    `# #${ticket.number} — ${ticket.title}`,
+    "",
+    ticket.body,
+  ].join("\n");
+}
+
 function fixPrompt(verdict: Verdict, round: number): string {
   return [
     "ci.yml is red on this branch. Make it green, and change nothing the failure does not require.",
@@ -293,6 +334,14 @@ function recordFindings(prNumber: number, findings: string): void {
   ghComment(
     ["pr", "comment", String(prNumber), "--repo", REPO],
     `## Review findings\n\n${findings.slice(-6000)}\n`
+  );
+}
+
+/** The second reader's verdict, beside the findings it did not get to see. */
+function recordSecondOpinion(prNumber: number, paths: string[], verdict: string, reply: string): void {
+  ghComment(
+    ["pr", "comment", String(prNumber), "--repo", REPO],
+    `## Second opinion — ${verdict.toUpperCase()}\n\nHigh-risk paths: ${paths.join(", ")}\n\n${reply.slice(-6000)}\n`
   );
 }
 
@@ -399,6 +448,32 @@ function publish(ticket: Ticket, branch: string, worktree: string, state: RunSta
   return pr.number;
 }
 
+/**
+ * A second reader on the paths a green suite cannot judge, and nothing at all on the rest.
+ *
+ * Runs after the pull request exists so the verdict has somewhere to live, and before
+ * `driveToGreen` so a hold does not spend a CI round it is about to throw away.
+ */
+function secondOpinion(ticket: Ticket, prNumber: number, worktree: string): void {
+  const changed = git(worktree, ["diff", "--name-only", "origin/main...HEAD"])
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const paths = riskyPaths(changed);
+  if (paths.length === 0) {
+    say("no high-risk path touched — no second opinion");
+    return;
+  }
+
+  const reply = stage("second opinion", secondOpinionPrompt(ticket, paths), "opus", "max", worktree);
+  const opinion = readSecondOpinion(reply);
+  say(`second opinion: ${opinion.verdict} — ${opinion.reason}`);
+  recordSecondOpinion(prNumber, paths, opinion.verdict, reply);
+  if (opinion.verdict === "hold") {
+    throw new Stop(`the second reader held it: ${opinion.reason}`);
+  }
+}
+
 /** Green, or a reason to stop. A fix agent is spawned only for a failure ci.yml actually reported. */
 function driveToGreen(branch: string, prNumber: number, worktree: string): void {
   let fixRounds = 0;
@@ -463,6 +538,7 @@ function work(ticket: Ticket, branch: string, state: RunState): void {
 
   const prNumber = publish(ticket, branch, worktree, state, evidence);
   recordFindings(prNumber, findings);
+  secondOpinion(ticket, prNumber, worktree);
   driveToGreen(branch, prNumber, worktree);
   land(branch, prNumber, worktree, state);
 }
