@@ -185,6 +185,41 @@ that comment promised was impossible.
   exploit. `docs/BRIEF.md` §3.1 settles it: *"points won before leaving are kept, shown and
   frozen, so the standings always sum to the hands played."*
 
+#### Reaffirmed after review (2026-09-03)
+
+A code review re-raised seat-keying once reason (i) above stopped applying — the app has not
+launched, so a `GAME_SCHEMA_VERSION` bump costs nothing live to discard. Re-read against the
+implementation actually landed (`98b420f`), which built exactly this section's recommended fix:
+`reclaimSeat` merges `bot:<seat>` into `userId` before deleting it, and `seatTotal()` is the one
+resolver both `scoresByEngineId` and `resolveHandEnd`'s `detailed` builder call through.
+
+**Verified all three read sites are correct, not merely patched:**
+
+1. `scoresByEngineId` and `resolveHandEnd`'s `detailed` builder both go through `seatTotal()` —
+   one function, one rule; `tests/seatReclaim.test.ts` exercises both.
+2. `foldHandIntoMatch`'s match-target resolution (the "serious" finding) needed **no reader-side
+   change at all**, and that is the fix's own argument for itself: `resolveHandEnd` passes
+   `game.cumulativeScores` — the same map `reclaimSeat` merges into — straight through as
+   `foldHandIntoMatch`'s `input.cumulative`. By the time the next hand folds, the carried points
+   are already sitting under the returning player's own key. Added a test that would not have
+   passed under the pre-`98b420f` code: seat vacated and carried 3 points, reclaimed, then a
+   second hand crosses a target that is only reachable with the merged total (11 + 3 = 14 over a
+   target of 12) — and confirmed red with the merge temporarily removed.
+3. `endMatchVotes.clear()` on reclaim — asserted directly.
+
+**Decision: merge-at-reclaim stays. Seat-keying is not built.** Reasons (ii) and (iii) above are
+not deployment-cost arguments — they are unchanged by whether the app is live: (ii)
+`foldHandIntoMatch` is shared with the offline table, which already keys by engine player id
+(`"player_N"`), and seat-keying online would still not *be* that key space, so it adds a third
+rather than unifying with the second. (iii) `gameResults` and achievements are written keyed by
+`userId` at the moment each hand ends (`abandonedSeats.get(seat) ?? scoreKeyForSeat(...)`);
+seat-keying `cumulativeScores` would still need a seat→userId translation at the one moment
+identity is being decided (`matchWon: matchWinners.includes(key)`), trading today's single merge
+site (at reclaim, the moment the two key spaces actually converge) for a mapping site at the
+moment that matters most. Fixing the *data* once, at convergence, reaches every reader
+including one (`foldHandIntoMatch`) that cannot be patched from the outside; re-keying the
+ledger does not remove a key space, it adds one.
+
 #### Blast radius
 
 `server/tableHandlers.ts`, `server/onlineGameLogic.ts`, `server/gameOver.ts`,

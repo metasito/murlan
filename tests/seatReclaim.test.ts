@@ -295,6 +295,67 @@ describe("a reclaim merges the vacated seat's carried points into the returning 
     }
   });
 
+  test("the carried points can be the difference in crossing the match target (finding 2: foldHandIntoMatch)", async () => {
+    const { io } = stubIo();
+    const game = baseGame({
+      gameState: midHand(),
+      playerMap: { 0: "alice", 2: "carl", 3: "dee" }, // seat 1 vacated
+      vacatedSeats: new Map([[1, { userId: "drita", username: "Drita" }]]),
+      releasedSeats: new Set(["drita"]),
+      cumulativeScores: { alice: 2, drita: 8, carl: 1, dee: 1 },
+      matchTarget: 12,
+      handsPlayed: 1,
+    });
+    activeGames.set(ROOM, game);
+
+    try {
+      // Hand 1, still vacated: the bot seat (seat 1) finishes first and
+      // carries 3 points under "bot:1" — cumulativeScores.drita stays frozen
+      // at 8, below the 12 target either way.
+      const first = resolveHandEnd({
+        state: finishedHand(["p1", "p0", "p2", "p3"]),
+        playerMap: game.playerMap,
+        cumulativeScores: game.cumulativeScores,
+        matchTarget: game.matchTarget,
+        matchLength: "match",
+        gameMode: "free_for_all",
+        handFlags: {},
+        abandonedSeats: new Map(),
+        vacatedSeats: game.vacatedSeats,
+      });
+      game.cumulativeScores = first.cumulativeScores;
+      game.handsPlayed += 1;
+      assert.equal(first.matchOver, false, "8 and 3 apart do not yet reach 12 either way");
+
+      await applyOrForward(io, { kind: "rejoin", roomId: ROOM, userId: "drita", username: "Drita" });
+      assert.equal(game.cumulativeScores.drita, 11, "the reclaim already merged the carried 3 points");
+
+      // Hand 2, seat 1 now drita's own again: she finishes first a second
+      // time. 11 (merged) + 3 = 14, over the 12 target — the match must end
+      // and name her the winner. A reader that resolved the target from the
+      // orphaned "bot:1" bucket instead of the merged "drita" key would see
+      // only 8 + 3 = 11 here and wrongly call the match still running.
+      const second = resolveHandEnd({
+        state: finishedHand(["p1", "p0", "p2", "p3"]),
+        playerMap: game.playerMap,
+        cumulativeScores: game.cumulativeScores,
+        matchTarget: game.matchTarget,
+        matchLength: "match",
+        gameMode: "free_for_all",
+        handFlags: {},
+        abandonedSeats: new Map(),
+        vacatedSeats: game.vacatedSeats,
+      });
+
+      assert.equal(second.cumulativeScores.drita, 14);
+      assert.equal(second.matchOver, true, "the match must end the instant the merged total crosses target");
+      assert.deepEqual(second.matchWinners, ["drita"]);
+    } finally {
+      clearRoomTimers(ROOM);
+      activeGames.delete(ROOM);
+    }
+  });
+
   test("scoresByEngineId already merges a still-vacated seat's frozen total with the bot's (finding 1)", () => {
     const game = baseGame({
       gameState: midHand(),
