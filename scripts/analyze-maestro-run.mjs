@@ -75,12 +75,20 @@ export function parseCommandWindows(maestroLog, endHintMs = 0) {
       windows.push({ label, status: "RUNNING", startMs, endMs: openEndMs, elapsedMs: openEndMs - startMs });
     }
   }
+  const backwards = windows.find((w) => w.elapsedMs < 0);
+  if (backwards) {
+    throw new Error(
+      `"${backwards.label}" ends before it starts. Both logs carry a time of day and no date, so a run that crosses midnight cannot be joined on it.`
+    );
+  }
   return windows.sort((a, b) => a.startMs - b.startMs);
 }
 
 /** @param {string} logcat @returns {{ ms: number, durationMs: number }[]} */
 export function parseHierarchyFetches(logcat) {
-  const re = /^(\S+ \S+) D\/Maestro\S* \(\s*\d+\): View hierarchy received in (\d+) ms$/;
+  // `\s*` before the paren, not a literal space: logcat's `time` format pads a tag to eight
+  // characters, so `Maestro` gets one and any longer spelling of it gets none.
+  const re = /^(\S+ \S+) D\/Maestro\S*\s*\(\s*\d+\): View hierarchy received in (\d+) ms$/;
   return matchAll(logcat, re);
 }
 
@@ -122,7 +130,10 @@ export function appPidAt(logcat, packageId, beforeMs) {
   for (const line of logcat.split("\n")) {
     const match = line.match(re);
     if (!match) continue;
-    if (timeOfDayMs(match[1]) > beforeMs) break;
+    // Skipped rather than stopped at: `logcat -b all` interleaves buffers and is not strictly
+    // ordered, so one line out of sequence would end the scan on an earlier launch than the
+    // one that was live.
+    if (timeOfDayMs(match[1]) > beforeMs) continue;
     pid = Number(match[2]);
   }
   return pid;
@@ -135,9 +146,12 @@ export function appPidAt(logcat, packageId, beforeMs) {
  */
 export function summarize(windows, fetches, jank) {
   return windows.map((w) => {
-    const inWindow = (e) => e.ms >= w.startMs && e.ms <= w.endMs;
-    const wFetches = fetches.filter(inWindow);
-    const wJank = jank.filter(inWindow);
+    const inWindow = (ms) => ms >= w.startMs && ms <= w.endMs;
+    // A fetch is logged when it returns, so its completion falls in whichever command was
+    // running by then — which for a slow one is the command *after* the one that paid. The
+    // command that paid is the one the fetch started inside.
+    const wFetches = fetches.filter((e) => inWindow(e.ms - e.durationMs));
+    const wJank = jank.filter((e) => inWindow(e.ms));
     const sum = (es) => es.reduce((a, e) => a + e.durationMs, 0);
     return {
       label: w.label,
@@ -179,8 +193,13 @@ if (isInvokedDirectly(process.argv[1], import.meta.url)) {
 
   const maestroLog = readFileSync(maestroLogPath, "utf8");
   const logcat = readFileSync(logcatPath, "utf8");
-  const logcatTimestamps = [...logcat.matchAll(/^\d\d-\d\d (\d\d:\d\d:\d\d\.\d+) /gm)].map((m) => timeOfDayMs(m[1]));
-  const logcatEndMs = Math.max(0, ...logcatTimestamps);
+  // Folded rather than spread: `Math.max(...xs)` is a call with one argument per element, and
+  // a run's logcat carries a few hundred thousand timestamped lines — well past the point
+  // where that overflows the stack.
+  let logcatEndMs = 0;
+  for (const m of logcat.matchAll(/^\d\d-\d\d (\d\d:\d\d:\d\d\.\d+) /gm)) {
+    logcatEndMs = Math.max(logcatEndMs, timeOfDayMs(m[1]));
+  }
   const windows = parseCommandWindows(maestroLog, logcatEndMs);
   const flowStart = windows.find((w) => /^Launch app/.test(w.label))?.endMs ?? 0;
   const pid = appPidAt(logcat, packageId, flowStart);
