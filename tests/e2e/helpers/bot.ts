@@ -96,20 +96,14 @@ function labelSelector(label: string): string {
 export class StuckError extends Error {}
 
 /**
- * A single turn's own candidate search ran past its budget. Distinct from
- * `StuckError`: that class means the *game* stopped progressing; this means
- * one `playOrPass` call did not finish trying candidates fast enough — the
- * distinction #770 needs, since neither `stallMs` nor
- * `maxStatesWithoutProgress` can observe time spent inside a single call
- * (both only compare table descriptions *between* calls). `HUMAN_TURN_SECONDS`
- * (app/game.tsx) is a real 20s wall-clock deadline that
- * `EXPO_PUBLIC_E2E_FAST` deliberately does not shorten
- * (tests/e2e/tableFit.spec.ts drives it out for real), so a search that is
- * still running that long after a turn started has already lost the race —
- * continuing only spends real time on a turn production has already taken
- * back. `SEARCH_BUDGET_MS` below stays under it so this fires first, with a
- * diagnostic, instead of the pass landing mid-search and the driver grinding
- * on with stale candidates.
+ * One `playOrPass` call spent longer than its budget hunting for a card to
+ * play. Neither `stallMs` nor `maxStatesWithoutProgress` can see this: both
+ * only compare table descriptions *between* calls.
+ *
+ * The budget is a ceiling over every healthy search, not a claim about which
+ * deadline the search lost to — offline `HUMAN_TURN_SECONDS` does not arm on
+ * a lead (`turnTimerActive`, `includeNewRound: false`) and online the
+ * deadline is the server's AFK window instead.
  */
 export class SearchTimeoutError extends StuckError {}
 
@@ -123,7 +117,13 @@ export class SearchTimeoutError extends StuckError {}
 // own timeout, which buries the real diagnostic under a generic one.
 const CARD_CLICK_TIMEOUT_MS = 4_000;
 
-/** See `SearchTimeoutError`. `DriveOptions.searchBudgetMs` overrides it. */
+/**
+ * Under `app/game.tsx`'s `HUMAN_TURN_SECONDS`, so an offline reply search is
+ * cut off before the auto-pass takes the turn out from under it. That constant
+ * is module-local and cannot be imported here; `tests/botSearchTimeout.test.ts`
+ * reads both out of source and fails when this stops being the smaller one.
+ * `DriveOptions.searchBudgetMs` overrides it.
+ */
 const DEFAULT_SEARCH_BUDGET_MS = 18_000;
 
 /**
@@ -288,14 +288,18 @@ async function playOrPass(
     return true;
   }
 
+  let combosTried = 0;
+
   async function tryCombo(cardLabels: string[]): Promise<"played" | "no" | "gone"> {
     if (Date.now() > searchDeadline) {
       throw new SearchTimeoutError(
-        `Search for a reply to "${desc}" ran past ${searchBudgetMs}ms without finishing — ` +
-          `HUMAN_TURN_SECONDS (app/game.tsx, 20s) has already or is about to auto-pass this ` +
-          `turn out from under it. Hand at search start: [${labels.join(", ")}].`
+        `Search for a reply to "${desc}" ran past ${searchBudgetMs}ms after ${combosTried} ` +
+          `candidate(s), without finishing. The turn's own deadline — offline ` +
+          `HUMAN_TURN_SECONDS when answering a play, online the server's AFK window — may ` +
+          `already have passed it. Hand at search start: [${labels.join(", ")}].`
       );
     }
+    combosTried += 1;
     if (!(await setSelection(cardLabels))) return "gone";
     const label = await giocaBtn.getAttribute("aria-label").catch(() => null);
     if (label === GIOCA_VALID_LABEL) {
@@ -467,7 +471,7 @@ export interface DriveOptions {
    * assertion.
    */
   maxTotalMs?: number;
-  /** See `SearchTimeoutError`. Overrides `DEFAULT_SEARCH_BUDGET_MS` (18s). */
+  /** See `SearchTimeoutError`. Overrides `DEFAULT_SEARCH_BUDGET_MS`. */
   searchBudgetMs?: number;
   log?: (line: string) => void;
 }
@@ -547,7 +551,10 @@ export async function driveGameToCompletion(page: Page, opts: DriveOptions): Pro
     } else if (desc.startsWith(YOUR_TURN_PREFIX)) {
       const searchStartedAt = Date.now();
       const action = await playOrPass(page, desc, searchBudgetMs);
-      const searchMs = Date.now() - searchStartedAt;
+      // Logged before the null branch below, not after: a search that lost its
+      // hand partway through is the one whose duration is worth having, and it
+      // is exactly the branch that returns null.
+      log(`${action ?? "abandoned"} (was: "${desc}") [search ${Date.now() - searchStartedAt}ms]`);
       if (action === null) {
         // The hand stopped being interactive mid-search — most often the
         // one-tick "your turn" / gameOver race described above `playOrPass`.
@@ -556,9 +563,6 @@ export async function driveGameToCompletion(page: Page, opts: DriveOptions): Pro
         await sleep(150);
         continue;
       }
-      // #770: every turn's search time, so a stall's log carries the full
-      // history rather than just the one search that (maybe) ran long.
-      log(`${action} (was: "${desc}") [search ${searchMs}ms]`);
       const changed = await waitForChange(page, desc, stallMs);
       if (!changed) {
         throw new StuckError(
