@@ -14,6 +14,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 const mockReplace = jest.fn();
 jest.mock('expo-router', () => ({
   router: { replace: (...args: unknown[]) => mockReplace(...args), push: jest.fn(), back: jest.fn() },
+  useLocalSearchParams: () => ({}),
 }));
 
 const mockApiRequest = jest.fn<(...args: unknown[]) => Promise<unknown>>();

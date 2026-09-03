@@ -30,6 +30,11 @@ jest.mock('@/context/AuthContext', () => ({
   useAuth: () => ({ user: { id: 'u1', username: 'Ana' }, logout: async () => {} }),
 }));
 
+jest.mock('@/lib/query-client', () => ({
+  getApiUrl: () => 'http://localhost',
+  apiRequest: jest.fn(),
+}));
+
 const mockData: Record<string, unknown> = {};
 jest.mock('@tanstack/react-query', () => ({
   useQuery: ({ queryKey }: { queryKey: string[] }) => ({
