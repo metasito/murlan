@@ -48,7 +48,7 @@ const GAME_ACTION_RATE_LIMIT = gameActionLimitFromEnv();
  * handling listens for, and `roomId` stays top-level because its stale-reply
  * guard matches on it.
  */
-const REJOIN_FAILURE: Record<string, { message: string; code: string }> = {
+const REJOIN_FAILURE: Record<string, ReturnType<typeof payload>> = {
   UNAUTHORIZED: payload("UNAUTHORIZED"),
   SEAT_RELEASED: payload("SEAT_RELEASED"),
   NO_LIVE_GAME: payload("GAME_NOT_FOUND"),
