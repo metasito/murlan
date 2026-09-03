@@ -505,6 +505,11 @@ jobs:
     # Not `success()`: a red shard is exactly when the report is worth reading.
     if: ${{ !cancelled() && needs.browser.result != 'skipped' }}
     runs-on: ubuntu-latest
+    # Only the push-to-main branch of this job commits, but the token is scoped
+    # per job, not per step — a pull request's own push of this same job must
+    # still be able to run with a read-only token.
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -542,6 +547,35 @@ jobs:
           path: playwright-report/
           if-no-files-found: error
           retention-days: 7
+
+      # The same merge, read out as JSON instead of thrown away as HTML — the
+      # per-spec durations `scripts/e2e-timings.mjs` needs are otherwise
+      # computed by this job and discarded with the runner (#841). Runs
+      # unconditionally, on PR branches too, so a merge failure here is caught
+      # on the branch that broke it rather than surfacing only on `main`.
+      - name: Merge into one report — JSON, for timings
+        run: npx playwright merge-reports --reporter json ./all-blob-reports > merged-report.json
+
+      - name: Regenerate tests/e2e/timings.json
+        run: node scripts/e2e-timings.mjs merged-report.json
+
+      # Post-merge to `main` only: a PR branch regenerating and committing its
+      # own copy would race every other open PR over the same file. `main` has
+      # no branch protection blocking a direct push, and a push authored with
+      # the default GITHUB_TOKEN does not trigger a new workflow run, so this
+      # cannot loop.
+      - name: Commit the regenerated timings, if main's copy is stale
+        if: github.event_name == 'push'
+        run: |
+          if git diff --quiet -- tests/e2e/timings.json; then
+            echo "tests/e2e/timings.json already matches this run's measurements."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add tests/e2e/timings.json
+          git commit -m "Regenerate tests/e2e/timings.json from measured durations"
+          git push
 
   build:
     name: Build and boot
