@@ -505,6 +505,11 @@ jobs:
     # Not `success()`: a red shard is exactly when the report is worth reading.
     if: ${{ !cancelled() && needs.browser.result != 'skipped' }}
     runs-on: ubuntu-latest
+    # For the `git push` below. A token is scoped per job, not per step, so this
+    # job's pull request runs carry a write token they never reach a use for —
+    # the only step that commits is gated on `push`.
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -542,6 +547,54 @@ jobs:
           path: playwright-report/
           if-no-files-found: error
           retention-days: 7
+
+      # The same merge, read out as JSON instead of thrown away as HTML — the
+      # per-spec durations `scripts/e2e-timings.mjs` needs are otherwise
+      # computed by this job and discarded with the runner (#841). Runs
+      # unconditionally, on PR branches too, so a merge failure here is caught
+      # on the branch that broke it rather than surfacing only on `main`.
+      - name: Merge into one report — JSON, for timings
+        run: npx playwright merge-reports --reporter json ./all-blob-reports > merged-report.json
+
+      - name: Regenerate tests/e2e/timings.json
+        run: node scripts/e2e-timings.mjs merged-report.json
+
+      # Post-merge to `main` only: a PR branch regenerating and committing its
+      # own copy would race every other open PR over the same file. `main` has
+      # no branch protection blocking a direct push, and a push authored with
+      # the default GITHUB_TOKEN does not trigger a new workflow run, so this
+      # cannot loop.
+      #
+      # A red run is not a measurement: `merge-reports` exits 0 for a report
+      # full of failures, and a test that fails at its timeout prices its spec
+      # at the timeout while one that fails on its first assertion prices it at
+      # seconds. Either number is indistinguishable from a real duration once
+      # committed, and lands as the lopsided split `tests/e2eShardSplit.test.ts`
+      # reds the next pull request over — which is the defect this job exists
+      # to end.
+      - name: Commit the regenerated timings, if main's copy is stale
+        if: ${{ github.event_name == 'push' && needs.browser.result == 'success' }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          # `main` moves while the browser shards run: the concurrency group
+          # serializes this workflow's runs, not the merges that queue behind
+          # them, so a second merge landing during this run leaves the push
+          # non-fast-forward. Re-derive against the new tip rather than rebase
+          # — both sides rewrote the whole file.
+          for attempt in 1 2 3; do
+            if git diff --quiet -- tests/e2e/timings.json; then
+              echo "tests/e2e/timings.json already matches this run's measurements."
+              exit 0
+            fi
+            git commit -q -m "Regenerate tests/e2e/timings.json from measured durations" -- tests/e2e/timings.json
+            if git push; then exit 0; fi
+            git fetch --force origin main:refs/remotes/origin/main
+            git reset --hard refs/remotes/origin/main
+            node scripts/e2e-timings.mjs merged-report.json
+          done
+          echo "::error::main moved under each of three attempts to commit the regenerated timings."
+          exit 1
 
   build:
     name: Build and boot
