@@ -30,6 +30,22 @@ function subscribe(fn: () => void): () => void {
   return () => listeners.delete(fn);
 }
 
+/**
+ * `EXPO_PUBLIC_E2E_REDUCE_MOTION` is set only by `maestro.yml`'s own build step, never by an
+ * EAS build or `expo:web:build` — no player build sets it, so this never overrides anyone's
+ * own choice. #837: the table's looping decorative animations (the active-turn breathe, the
+ * `Gioca` glow) kept a CI emulator painting forever, so Maestro's view-hierarchy fetch on that
+ * screen starved for 60-75s against a ~5s baseline everywhere else (#823's measurement).
+ * Folding the flag in here, rather than at each animation's own call site, means every looping
+ * animation already gated on this hook stops with it — `tests/reducedMotion.test.ts` is what
+ * already proves there is no other kind. Read per call, not hoisted to a module constant: a
+ * production build never sees this branch at all, since babel-preset-expo inlines the env read
+ * to a literal `false` where the variable was never set.
+ */
+function automationReducedMotion(): boolean {
+  return process.env.EXPO_PUBLIC_E2E_REDUCE_MOTION === '1';
+}
+
 /** True when the OS (or browser) has asked for reduced motion. */
 function useSystemReducedMotion(): boolean {
   const [reduceMotion, setReduceMotion] = useState(false);
@@ -86,6 +102,7 @@ export function usePrefersReducedMotion(): boolean {
     getMotionPreference,
     getMotionPreference
   );
+  if (automationReducedMotion()) return true;
   if (preference === 'on') return true;
   if (preference === 'off') return false;
   return system;

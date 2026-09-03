@@ -4,6 +4,7 @@ import { emitVoteState } from "./emit.ts";
 import { logger } from "./logger.ts";
 import { DEFAULT_LOCALE, translate } from "../shared/i18n.ts";
 import { activeGames, seatOfUser } from "./gameRoom.ts";
+import { payload } from "./payload.ts";
 import type { OnlineGameState } from "./gameRoom.ts";
 import {
   afkTimers,
@@ -21,7 +22,7 @@ import {
   persistGameState,
   safeTimer,
 } from "./gamePersistence.ts";
-import { handleGameOver } from "./gameOver.ts";
+import { handleGameOver, voidAbandonedMatch } from "./gameOver.ts";
 import { appendReplayMove } from "./replayShape.ts";
 import {
   autoMoveForSeat as sharedAutoMove,
@@ -156,13 +157,17 @@ function runBotTurn(io: SocketServer, roomId: string) {
     return;
   }
 
-  const next = autoMoveForSeat(game, seat, true);
+  // The takeover plays the hand it happened on at minimum legal strength
+  // (docs/BRIEF.md §3.1) — the same "an AFK human should not be played well"
+  // rule the turn timer already applies, kept until `dealManche` clears
+  // `weakSeats` at the next deal, by which point the seat is honestly a bot's.
+  const useAi = !game.weakSeats.has(seat);
+  const next = autoMoveForSeat(game, seat, useAi);
   if (!next) {
     logger.error({ roomId, seat }, "Vacant seat could not act — closing table");
     io.to(roomId).emit("game:notification", {
       type: "abandoned",
-      code: "GAME_INTERRUPTED_EMPTY_SEAT",
-      message: "Match interrupted: an empty seat cannot play.",
+      ...payload("GAME_INTERRUPTED_EMPTY_SEAT"),
     });
     void storage
       .updateRoomStatus(roomId, "finished")
@@ -306,11 +311,25 @@ export async function vacateSeat(
   const seatPlayer = game.gameState.players[seat];
   if (seatPlayer) seatPlayer.type = "ai";
 
+  // The seat is reclaimable by this account for the life of the match
+  // (docs/BRIEF.md §3.1) — every vacate is recorded here, whether it happened
+  // mid-hand or between them, so the rejoin path can find it, the sanitizer
+  // can label the seat, and `resolveHandEnd` can find the person's frozen
+  // total once `playerMap` has forgotten them.
+  game.vacatedSeats.set(seat, { userId, username });
+  // A vote to end the match answers "is the table still the one everyone
+  // joined" — a roster change makes that question new again.
+  game.endMatchVotes.clear();
+
   // Walking out on a hand still holding cards is a forfeit, and is recorded as
   // one at game over. A seat between hands has no hand to forfeit, and a seat
   // that already emptied its hand has finished the one it was playing.
   if (!game.gameState.gameOver && seatPlayer?.finishPosition === undefined) {
     game.abandonedSeats.set(seat, userId);
+    // The takeover plays this hand at minimum strength only — `dealManche`
+    // clears this at the next deal, by which point the seat is honestly a
+    // bot's (docs/BRIEF.md §3.1).
+    game.weakSeats.add(seat);
   }
 
   const remaining = Object.keys(game.playerMap).length;
@@ -353,6 +372,18 @@ export async function vacateSeat(
       message: translate(DEFAULT_LOCALE, "server.PLAYER_LEFT_ABANDONED", { username }),
       params: { username },
     });
+
+    if (game.handsPlayed === 0) {
+      // Nothing has been earned yet — no completed hand behind this match —
+      // so nothing is taken away: voided and rated for nobody, the walkout
+      // included (docs/BRIEF.md §3.1). A conceded hand's forced placements
+      // are not a genuine finish, so scoring them as the match's own first
+      // hand would defeat the point of the rule.
+      await voidAbandonedMatch(io, roomId, game, gameOverWriters);
+      disposeGame(roomId);
+      return;
+    }
+
     // The hand is scored rather than discarded. The win goes to the last seat
     // still held by a person; concedeHand places every seat still holding
     // cards behind them, the walkout included as the last-place finish a

@@ -16,6 +16,7 @@ import {
   type RoomState,
 
 } from "../helpers/gameDriver.ts";
+import { waitForDeal } from "../helpers/table.ts";
 
 /**
  * recordGameResult is called (fire-and-forget) from the game-over path.
@@ -326,6 +327,12 @@ describe("stats persistence (Task 8)", { skip: hasDatabase() ? false : skipMessa
    * with bots is contested; counting the seat someone walked out on as a
    * third bot makes it bot-majority and drops every write — losing the hand
    * for the player who stayed, in the one case the gate exists to protect.
+   *
+   * #850 clause 11 (docs/BRIEF.md §3.1) voids a match abandoned before its
+   * first point, which would swallow a first-manche walkout whole and never
+   * reach the gate this test exists to protect. Playing the first manche out
+   * for real, then abandoning the second, is what keeps this test honest
+   * about the thing it is pinning.
    */
   test("a hand on a half-bot table is still recorded when a human walks out", async () => {
     const stayer = await connectAs(server, "half_ilir");
@@ -343,17 +350,35 @@ describe("stats persistence (Task 8)", { skip: hasDatabase() ? false : skipMessa
       stayer.socket.emit("room:start", { fillWithBots: true, botPersonality: "luan" });
       await Promise.all(dealt);
 
+      await driveHumansToGameOver([stayer.socket, leaver.socket], () => {});
+
+      const nextDeal = waitForDeal(stayer.socket);
+      stayer.socket.emit("game:rematch_vote");
+      leaver.socket.emit("game:rematch_vote");
+      await nextDeal;
+
       // One human left at the table: the hand is conceded to them there and
       // then, and the walkout is scored inside it.
       leaver.socket.emit("room:leave");
 
+      // Two manches, two rows each by now — the first hand, played out fairly,
+      // already wrote one row per user before the walkout below could. Only
+      // the latest row per user is the one the walkout wrote.
       const rows = await waitForRow<{ user_id: string; placement: number; player_count: number }[]>(
         async () => {
           const res = await dbPool.query(
-            "SELECT user_id, placement, player_count FROM match_history WHERE user_id = ANY($1)",
+            `SELECT DISTINCT ON (user_id) user_id, placement, player_count
+             FROM match_history WHERE user_id = ANY($1)
+             ORDER BY user_id, finished_at DESC`,
             [[stayer.user.id, leaver.user.id]]
           );
-          return res.rows.length === 2 ? res.rows : null;
+          if (res.rows.length !== 2) return null;
+          const countRes = await dbPool.query(
+            "SELECT user_id, COUNT(*)::int AS n FROM match_history WHERE user_id = ANY($1) GROUP BY user_id",
+            [[stayer.user.id, leaver.user.id]]
+          );
+          const bothHaveTwo = countRes.rows.every((r: { n: number }) => Number(r.n) === 2);
+          return bothHaveTwo ? res.rows : null;
         },
         15_000
       );

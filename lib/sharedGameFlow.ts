@@ -108,8 +108,18 @@ export interface ExchangeAnnouncement {
  * The whole ceremony: what is being announced, whether it still is, and the
  * clock that ends it. Both providers run this one, so a table cannot be under a
  * ceremony on one transport and not the other.
+ *
+ * `phasePresent` is `gameState.exchangePhase !== undefined` — the record this
+ * ceremony describes, read fresh every render. The reading clock is what ends
+ * an ordinary trade; this is the floor under it, not a replacement for it: an
+ * exchange stays on the felt for `Reading.notice` after it resolves by design,
+ * and the phase itself lives at least that long too (the winner still has to
+ * play out the rest of the hand). What it guards is the case the timer
+ * cannot — a fresh match dealt, or the table reset, while the old ceremony's
+ * clock is still counting down describes a trade that no longer has a record
+ * to point to, and nothing should still be showing it.
  */
-export function useExchangeAnnouncement(): ExchangeAnnouncement {
+export function useExchangeAnnouncement(phasePresent: boolean): ExchangeAnnouncement {
   const [announcing, setAnnouncing] = useState(false);
   const [data, setData] = useState<ExchangeAnnounceData | null>(null);
 
@@ -120,6 +130,11 @@ export function useExchangeAnnouncement(): ExchangeAnnouncement {
   const end = useCallback(() => setAnnouncing(false), []);
 
   useExchangeCeremonyExpiry(announcing, data?.bothJokersException, end);
+
+  useEffect(() => {
+    if (announcing && !phasePresent) end();
+  }, [announcing, phasePresent, end]);
+
   return { announcing, data, announce, end };
 }
 

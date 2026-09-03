@@ -31,6 +31,7 @@ import {
 import { applyOrForward } from "./tableRouter.ts";
 import { NoPayloadSchema, FriendInviteSchema } from "./socketSchemas.ts";
 import { isUserOnline, onlineUserIds } from "./socketRegistry.ts";
+import { payload } from "./payload.ts";
 
 export interface PresenceContext {
   io: SocketServer;
@@ -51,13 +52,13 @@ export function registerFriendHandlers({ io, socket, userId, username }: Presenc
         // primitive that would let any user spam any userId.
         const areFriends = await storage.areFriends(userId, friendUserId);
         if (!areFriends) {
-          socket.emit("friend:error", { message: "You are not friends", code: "NOT_FRIENDS" });
+          socket.emit("friend:error", payload("NOT_FRIENDS"));
           return { ok: false, code: "NOT_FRIENDS" };
         }
 
         const room = await storage.getRoomByCode(roomCode.toUpperCase());
         if (!room || room.status !== "waiting") {
-          socket.emit("friend:error", { message: "Room not found", code: "ROOM_NOT_FOUND" });
+          socket.emit("friend:error", payload("ROOM_NOT_FOUND"));
           return { ok: false, code: "ROOM_NOT_FOUND" };
         }
 
@@ -66,7 +67,7 @@ export function registerFriendHandlers({ io, socket, userId, username }: Presenc
         // room's code would invite a friend into a stranger's room.
         const seated = await storage.getRoomPlayers(room.id);
         if (!seated.some((p) => p.userId === userId)) {
-          socket.emit("friend:error", { message: "You are not in that room", code: "NOT_IN_ROOM" });
+          socket.emit("friend:error", payload("NOT_IN_ROOM"));
           return { ok: false, code: "NOT_IN_ROOM" };
         }
 
@@ -304,10 +305,7 @@ export function evictReplacedSession(
     void replacement.join(roomId);
   }
 
-  replaced.emit("socket:error", {
-    code: "SESSION_REPLACED",
-    message: "Your account was opened somewhere else. This session has been closed.",
-  });
+  replaced.emit("socket:error", payload("SESSION_REPLACED"));
   logger.info(
     { userId, replacedSocketId },
     "Session replaced by a newer connection for the same account"

@@ -1,9 +1,8 @@
 import type { Server as SocketServer } from "socket.io";
 import { logger } from "./logger.ts";
 import { clearRoomTimers, clearRoomDisconnectTimers } from "./gameTimers.ts";
-import { scoreKeyForSeat } from "./gameRoom.ts";
 import type { OnlineGameState } from "./gameRoom.ts";
-import { resolveHandEnd } from "./onlineGameLogic.ts";
+import { resolveHandEnd, seatTotal } from "./onlineGameLogic.ts";
 import { replaySeatsOf } from "./replayShape.ts";
 import { isMajority, tallyRematchAnswers, firstTargetFor } from "../lib/gameEngine.ts";
 import type { GameOverPayload } from "../lib/matchState.ts";
@@ -83,6 +82,7 @@ export async function handleGameOver(
     handFlags: game.handFlags,
     abandonedSeats: game.abandonedSeats,
     botSeatsAtStart: game.botSeatsAtStart,
+    vacatedSeats: game.vacatedSeats,
   });
   const { handByKey, matchWinners, isDraw, detailed, winnerEngineIds } = result;
   game.cumulativeScores = result.cumulativeScores;
@@ -129,6 +129,7 @@ export async function handleGameOver(
     // outcome.
     ratingDeltas: Object.fromEntries(ratingDeltasByUser),
     recorded: result.recordable,
+    voided: false,
   };
   io.to(roomId).emit("game:over", over);
   // Kept so `announceRejoin` can hand this hand's scores to a client that
@@ -224,6 +225,85 @@ export async function handleGameOver(
   }
 }
 
+/**
+ * Ends the match without scoring whatever hand was in progress: nothing is
+ * folded into `cumulativeScores`, `handsPlayed` does not advance, and no
+ * stats/rating/replay write runs — the whole point being that this hand
+ * never happened. `game:over` still goes out, so the table's clients leave
+ * the game screen the one way they know how, rather than being torn down.
+ */
+async function closeMatchWithoutScoring(
+  io: SocketServer,
+  roomId: string,
+  game: OnlineGameState,
+  writers: GameOverWriters,
+  voided: boolean
+): Promise<void> {
+  game.lastGameOverPayload = undefined;
+  clearRoomTimers(roomId);
+  clearRoomDisconnectTimers(game);
+  game.gameState.gameOver = true;
+  game.matchOver = true;
+
+  const over: GameOverPayload = {
+    rankings: [],
+    scores: [],
+    matchTarget: game.matchTarget,
+    matchLength: game.matchLength,
+    handsPlayed: game.handsPlayed,
+    matchOver: true,
+    matchWinnerIds: [],
+    matchContinues: false,
+    isDraw: false,
+    ratingDeltas: {},
+    recorded: false,
+    voided,
+  };
+  io.to(roomId).emit("game:over", over);
+  game.lastGameOverPayload = over;
+
+  await writers
+    .updateRoomStatus(roomId, "finished")
+    .catch((err) =>
+      logger.warn(
+        { err, roomId },
+        "Failed to set rooms.status = finished after the match closed with no further scoring"
+      )
+    );
+  await writers.persistGameState(roomId, game);
+}
+
+/**
+ * A match abandoned before its first point (docs/BRIEF.md §3.1): nothing
+ * earned, nothing taken, rated for nobody — not even the seat that walked
+ * out. The caller disposes the table; there is nobody left to show a
+ * results screen to.
+ */
+export async function voidAbandonedMatch(
+  io: SocketServer,
+  roomId: string,
+  game: OnlineGameState,
+  writers: GameOverWriters
+): Promise<void> {
+  await closeMatchWithoutScoring(io, roomId, game, writers, true);
+}
+
+/**
+ * The table's own unanimous vote to end a match a seat has been vacated
+ * from (docs/BRIEF.md §3.1) — penalty-free for everyone still present. Every
+ * hand already finished stays exactly as recorded; only the one in progress,
+ * if any, goes unscored. The table is left in place, at the results screen,
+ * rather than disposed: the players who agreed to stop are still here.
+ */
+export async function endMatchByAgreement(
+  io: SocketServer,
+  roomId: string,
+  game: OnlineGameState,
+  writers: GameOverWriters
+): Promise<void> {
+  await closeMatchWithoutScoring(io, roomId, game, writers, false);
+}
+
 /** Between hands: a finished match starts over, an unfinished one carries on. */
 export function rollMatchForward(game: OnlineGameState) {
   if (game.matchOver) {
@@ -259,7 +339,7 @@ export function countRematchAnswers(game: OnlineGameState): { yes: number; total
 export function scoresByEngineId(game: OnlineGameState): Record<string, number> {
   const byId: Record<string, number> = {};
   game.gameState.players.forEach((p, seat) => {
-    byId[p.id] = game.cumulativeScores[scoreKeyForSeat(game, seat)] ?? 0;
+    byId[p.id] = seatTotal(game.cumulativeScores, game.playerMap, game.vacatedSeats, seat);
   });
   return byId;
 }

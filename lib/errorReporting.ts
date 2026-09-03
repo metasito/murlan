@@ -85,12 +85,22 @@ export function reportError(error: unknown, componentStack?: string): boolean {
 }
 
 /**
- * The client is the only side that ever sees `transport error` — the server's
- * own handler only gets the reason its own transport already knew about
- * (#844). Rides the crash-report endpoint rather than `events`: that table is
- * server-written only (#131), because a client-emitted reason is forgeable.
+ * When the *client's* transport fails, the server never learns that reason —
+ * its own handler only gets the reason its own transport already knew about
+ * (#844), which for the same underlying failure is "transport close" or
+ * "ping timeout", not "transport error" or "parse error" (both of which
+ * `shared/events.ts`'s SOCKET_CLOSE_REASONS also lists as reasons the
+ * server's own transport can report, for its own failures). So these two are
+ * the one pair of reasons the server structurally cannot observe from the
+ * client's side, and `socket.closed` already records every other reason
+ * server-side. Rides the crash-report endpoint rather than `events`: that
+ * table is server-written only (#131), because a client-emitted reason is
+ * forgeable.
  */
+const CLIENT_ONLY_CLOSE_REASONS = new Set(["transport error", "parse error"]);
+
 export function reportSocketClose(reason: string): void {
+  if (!CLIENT_ONLY_CLOSE_REASONS.has(reason)) return;
   try {
     void apiRequest("POST", "/api/client-errors", {
       message: `socket disconnect: ${reason}`,

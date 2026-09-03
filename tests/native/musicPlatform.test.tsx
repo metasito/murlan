@@ -87,6 +87,31 @@ describe(`music on ${Platform.OS}`, () => {
     expect(createAudioPlayer).toHaveBeenCalledTimes(2);
   });
 
+  // #885: playMusic's own docstring says a repeat request is a no-op, but
+  // playNativeMusic used to call seekTo unconditionally — audible as the loop
+  // restarting on every menu-to-menu navigation, since all four menu screens
+  // request the same track.
+  it('does not rewind a track that is already playing', async () => {
+    await playMusic('menu');
+    const player = createAudioPlayer.mock.results[0].value as {
+      seekTo: jest.Mock;
+      play: jest.Mock;
+    };
+    player.seekTo.mockClear();
+    player.play.mockClear();
+
+    await playMusic('menu');
+
+    expect(player.seekTo).not.toHaveBeenCalled();
+  });
+
+  it('still plays when a genuine track change follows one already playing', async () => {
+    await playMusic('menu');
+    await playMusic('hand');
+    const handPlayer = createAudioPlayer.mock.results[1].value as { seekTo: jest.Mock };
+    expect(handPlayer.seekTo).toHaveBeenCalledWith(0);
+  });
+
   // Any screen that mounts GameTable reaches playMusic, which reaches
   // ensureAudioMode — so a lib/sounds mock that omits it throws at render, in a
   // suite about something else entirely, naming a line no one there wrote. The

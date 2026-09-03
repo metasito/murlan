@@ -111,7 +111,13 @@ export async function registerNewAccount(page: Page, username: string): Promise<
   await page.waitForURL(/\/auth/);
   await page.getByRole("tab", { name: "Registrati" }).click();
   await page.getByRole("textbox", { name: "Nome utente" }).fill(username);
+  await page.getByRole("textbox", { name: "Email" }).fill(`${username}@example.test`);
   await page.getByRole("textbox", { name: "Password" }).fill("e2e-test-pw");
   await page.getByRole("button", { name: "Crea account" }).click();
+  // #897: the response no longer carries the account, so the screen answers
+  // with a mandatory "check your email" interstitial rather than navigating
+  // straight through — still on /auth until this is dismissed, session or
+  // not (app/auth.tsx's `checkEmail` branch).
+  await page.getByRole("button", { name: "Continua" }).click();
   await page.waitForURL((url) => !url.pathname.startsWith("/auth"));
 }

@@ -1,6 +1,7 @@
 import type { Socket } from "socket.io";
 import { z } from "zod";
 import { logger } from "./logger.ts";
+import { payload } from "./payload.ts";
 
 /**
  * Boundary wrapper for socket events: validate the payload, rate limit the
@@ -184,10 +185,7 @@ export function onEvent<S extends z.ZodTypeAny>(
           // Records its own refusal, once per window rather than per packet.
           !allowSocketAction(socket, event, options.limit, options.windowMs ?? 10_000)
         ) {
-          socket.emit(errorEventFor(event), {
-            code: "RATE_LIMITED",
-            message: "Too many requests, slow down.",
-          });
+          socket.emit(errorEventFor(event), payload("RATE_LIMITED"));
           answer({ ok: false, code: "RATE_LIMITED" });
           return;
         }
@@ -195,7 +193,7 @@ export function onEvent<S extends z.ZodTypeAny>(
         const parsed = schema.safeParse(rawPayload);
         if (!parsed.success) {
           logRefusal(event, socket, "INVALID_PAYLOAD");
-          socket.emit(errorEventFor(event), { code: "INVALID_PAYLOAD", message: "Invalid data" });
+          socket.emit(errorEventFor(event), payload("INVALID_PAYLOAD"));
           answer({ ok: false, code: "INVALID_PAYLOAD" });
           return;
         }
@@ -210,7 +208,7 @@ export function onEvent<S extends z.ZodTypeAny>(
           { err, event, userId: socket.data?.userId, code: "SERVER_ERROR" },
           "Socket handler threw — contained"
         );
-        socket.emit(errorEventFor(event), { code: "SERVER_ERROR", message: "Server error" });
+        socket.emit(errorEventFor(event), payload("SERVER_ERROR"));
         answer({ ok: false, code: "SERVER_ERROR" });
       }
     })();

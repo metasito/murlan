@@ -22,6 +22,7 @@ describe("the admin dashboard", { skip: hasDatabase() ? false : skipMessage() },
   let ownerCookie: string;
   let playerCookie: string;
   let retentionDays: number;
+  let sweepRetention: typeof import("../../server/retention.ts").sweepRetention;
 
   before(async () => {
     server = await startTestServer();
@@ -29,6 +30,7 @@ describe("the admin dashboard", { skip: hasDatabase() ? false : skipMessage() },
     // it is first loaded, and startTestServer() is what points that at this
     // run's own schema. A top-level import would connect to public instead.
     ({ CLIENT_ERROR_RETENTION_DAYS: retentionDays } = await import("../../server/clientErrors.ts"));
+    ({ sweepRetention } = await import("../../server/retention.ts"));
     dbPool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 
     ({ cookie: ownerCookie } = await register(server, "the_owner"));
@@ -108,7 +110,7 @@ describe("the admin dashboard", { skip: hasDatabase() ? false : skipMessage() },
     assert.equal(rows.length, 1, "the crash report was never stored");
   });
 
-  test("a report older than the retention window is deleted, not merely documented", async () => {
+  test("retention is off the write path, and the scheduled sweep still removes an aged report", async () => {
     await dbPool.query(
       `INSERT INTO "${server.schema}".client_errors (message, occurred_at)
        VALUES ($1, now() - make_interval(days => $2))`,
@@ -121,25 +123,39 @@ describe("the admin dashboard", { skip: hasDatabase() ? false : skipMessage() },
     );
     assert.equal(before.rows.length, 1, "the fixture row was never inserted");
 
-    // The prune rides the next insert, as the replay prune does, so no
-    // scheduled job can be skipped or forgotten.
-    await fetch(`${server.url}/api/client-errors`, {
+    // recordClientError is a bare insert (#895) — only sweepRetention() prunes.
+    const res = await fetch(`${server.url}/api/client-errors`, {
       method: "POST",
       headers: { "content-type": "application/json", cookie: playerCookie },
       body: JSON.stringify({ message: "a fresh crash", platform: "web" }),
     });
+    assert.equal(res.status, 204);
 
-    let remaining = 1;
-    for (let attempt = 0; attempt < 20 && remaining > 0; attempt++) {
-      const result = await dbPool.query(
-        `SELECT 1 FROM "${server.schema}".client_errors WHERE message = $1`,
-        ["ancient crash"]
-      );
-      remaining = result.rows.length;
-      if (remaining > 0) await new Promise((r) => setTimeout(r, 50));
-    }
+    // The write is fire-and-forget, so give it a moment to land before
+    // asserting on what it did *not* also do.
+    await new Promise((r) => setTimeout(r, 300));
 
-    assert.equal(remaining, 0, "a report past the retention window survived");
+    const afterWrite = await dbPool.query(
+      `SELECT 1 FROM "${server.schema}".client_errors WHERE message = $1`,
+      ["ancient crash"]
+    );
+    assert.equal(
+      afterWrite.rows.length,
+      1,
+      "a write must not prune the table it just grew"
+    );
+
+    await sweepRetention();
+
+    const afterSweep = await dbPool.query(
+      `SELECT 1 FROM "${server.schema}".client_errors WHERE message = $1`,
+      ["ancient crash"]
+    );
+    assert.equal(
+      afterSweep.rows.length,
+      0,
+      "the scheduled sweep must still remove a row past the retention window"
+    );
   });
 
   // #166: the whole point is one row per crash, not one per event.

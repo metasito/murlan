@@ -19,7 +19,7 @@ import {
   BASE_SHORT_EDGE,
 } from "./cardFaceModel.ts";
 import { arcBounds, solveArc, SEAT_ARC } from "./tableArc.ts";
-import { Hold, Spacing, Trauma } from "../lib/tokens.ts";
+import { Hold, Motion, Spacing, Trauma } from "../lib/tokens.ts";
 
 // ─── Layout constants ─────────────────────────────────────────────────────────
 //
@@ -113,6 +113,32 @@ export function handVisibleH(cardH: number): number {
  */
 export function HAND_ZONE_H(cardH: number, bottomPad: number): number {
   return handVisibleH(cardH) + bottomPad + handRowHeadroom(cardH);
+}
+
+/**
+ * How far above the hand row's own baseline (`bottom: 0`, `hand.tsx`) the
+ * exchange's flying card retires — `flightOrigin`'s "bottom" case lands it at
+ * the hand zone's own vertical centre, `handZoneH / 2` above the table floor.
+ *
+ * The row's baseline is not that floor. The zone reserves `bottomPad` under
+ * itself, and the row is then centred in the headroom above it, which lifts it
+ * by `rowRise` again — so both terms come off, and neither may be assumed to
+ * be zero. `cardH` is the *resting* hand card (`CARD_H(scale * HAND_SCALE)`),
+ * because that is the one the flight's own geometry was solved against; a hand
+ * drawn larger because the turn is the viewer's own does not move where the
+ * flier stopped.
+ *
+ * The arriving card's own descent (`hand.tsx`'s `dealRise`) starts from this
+ * point instead of the unrelated height a freshly dealt card drops from
+ * (`DEAL_RISE_PX`), so the flier's landing and the card's mount are the same
+ * point rather than two guesses that happen to be close.
+ */
+export function exchangeArrivalRise(
+  cardH: number,
+  bottomPad: number,
+  rowRise: number
+): number {
+  return HAND_ZONE_H(cardH, bottomPad) / 2 - bottomPad - rowRise;
 }
 
 // ─── Width budgets ────────────────────────────────────────────────────────────
@@ -271,6 +297,15 @@ export function handCountOf(player: Player | (Player & { handCount?: number })):
 }
 
 /**
+ * Whether a seat is a human's that left, played on by the engine — never
+ * true offline, which vacates nobody. The flag travels on the wire
+ * (`sanitizeStateForPlayer`); `name` stays the person's own.
+ */
+export function vacatedOf(player: Player | (Player & { vacated?: boolean })): boolean {
+  return (player as { vacated?: boolean }).vacated === true;
+}
+
+/**
  * The number a seat's fan and count badge both show — derived, never stored.
  * docs/adr/0002-a-play-leaves-the-seat-it-was-thrown-from.md §2.
  */
@@ -345,7 +380,10 @@ export function arrivingCard(
   return undefined;
 }
 
-export const FLIGHT_MS = 380;
+// The card in flight is `travel` (#126) — 380 was Weighted, the alternative
+// the owner rejected in favour of this one. Derived rather than restated, so
+// the throw cannot drift back to a number the decision already turned down.
+export const FLIGHT_MS: number = Motion.duration.travel;
 /** Fraction of the flight after which the card is on the felt and settling. */
 export const LANDING_FRACTION = 0.82;
 

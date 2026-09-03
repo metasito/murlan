@@ -2,7 +2,7 @@ import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "node:http";
 import bcrypt from "bcryptjs";
 import { rateLimit } from "express-rate-limit";
-import { storage, UsernameTakenError } from "./storage.ts";
+import { storage, UsernameTakenError, EmailTakenError } from "./storage.ts";
 import { friendRequestRow, friendRow } from "./friendRows.ts";
 import type { FriendRequestAccepted, FriendRequestIncoming } from "../lib/wire.ts";
 import type { User } from "../shared/schema.ts";
@@ -13,15 +13,28 @@ import {
   RenameSchema,
   LoginSchema,
   ChangePasswordSchema,
+  AddEmailSchema,
+  VerifyEmailSchema,
+  RequestPasswordResetSchema,
+  ResetPasswordSchema,
   AddFriendSchema,
   ClientErrorSchema,
   PushTokenSchema,
   BugReportSchema,
 } from "./schemas.ts";
 import { deletePushToken, savePushToken } from "./push.ts";
-import { DEFAULT_LOCALE, translate, type Locale } from "../shared/i18n.ts";
+import { DEFAULT_LOCALE, type Locale } from "../shared/i18n.ts";
 import { emitToUser, evictUser, isUserOnline } from "./socket.ts";
 import { mintSocketTicket } from "./ticket.ts";
+import {
+  mintAuthToken,
+  redeemAuthToken,
+  invalidateAuthTokens,
+  invalidatePendingAuthTokens,
+  EMAIL_VERIFY_TOKEN_TTL_MS,
+  PASSWORD_RESET_TOKEN_TTL_MS,
+} from "./authTokens.ts";
+import { sendMail } from "./mail.ts";
 import { getUserStats, getUserAchievements } from "./stats.ts";
 import { getMatchHistoryView } from "./matchHistoryView.ts";
 import { getReplayForUser, listReplaysForUser } from "./replays.ts";
@@ -31,6 +44,7 @@ import { recordBugReport } from "./bugReports.ts";
 import { adminSnapshot } from "./admin.ts";
 import { trackEvent } from "./events.ts";
 import { renderAdminPage } from "./adminPage.ts";
+import { payload } from "./payload.ts";
 import { z } from "zod";
 
 // Every JSON error body carries a stable machine-readable `code` alongside
@@ -47,7 +61,7 @@ const RouteParamSchema = z.string().min(1).max(64);
 function readParam(res: Response, raw: unknown): string | null {
   const parsed = RouteParamSchema.safeParse(raw);
   if (!parsed.success) {
-    res.status(400).json({ message: "Invalid parameter", code: "INVALID_PARAMETER" });
+    res.status(400).json({ ...payload("INVALID_PARAMETER") });
     return null;
   }
   return parsed.data;
@@ -75,7 +89,7 @@ const authLimiter = rateLimit({
   max: authMaxFromEnv(),
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: "Too many attempts, try again in 15 minutes.", code: "AUTH_RATE_LIMITED" },
+  message: payload("AUTH_RATE_LIMITED"),
 });
 
 /**
@@ -93,7 +107,7 @@ const renameLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req: Request) => req.session?.userId ?? "anonymous",
-  message: { message: "Too many name changes, try again tomorrow.", code: "RENAME_RATE_LIMITED" },
+  message: payload("RENAME_RATE_LIMITED"),
 });
 
 /** Same pattern as authMaxFromEnv() above. */
@@ -142,14 +156,137 @@ const loginUsernameLimiter = rateLimit({
   keyGenerator: (req: Request) => (req.body as { username: string }).username.toLowerCase(),
   handler: async (_req, res) => {
     await bcrypt.compare("x", LOGIN_LIMIT_DECOY_HASH);
-    res.status(401).json({ message: "Wrong username or password", code: "INVALID_CREDENTIALS" });
+    res.status(401).json({ ...payload("INVALID_CREDENTIALS") });
   },
+});
+
+/** Same pattern as authMaxFromEnv() above. */
+function passwordResetRequestMaxFromEnv(): number {
+  const parsed = Number(process.env.MURLAN_PASSWORD_RESET_REQUEST_RATE_LIMIT);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : 5;
+}
+
+/**
+ * Per-email cap for POST /api/auth/request-password-reset (design doc,
+ * Box 4) — mirrors loginUsernameLimiter's per-account shape, keyed on the
+ * same case-insensitive form storage.getUserByEmail looks up by. Unlike
+ * loginUsernameLimiter, tripping this is not itself an oracle: the key is
+ * whatever address the caller submitted, so a nonexistent address is
+ * throttled on the identical schedule a real one is.
+ */
+const passwordResetRequestLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: passwordResetRequestMaxFromEnv(),
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req: Request) => (req.body as { email: string }).email.toLowerCase(),
+  message: payload("RATE_LIMITED"),
+});
+
+/** Same pattern as authMaxFromEnv() above. */
+function resetPasswordMaxFromEnv(): number {
+  const parsed = Number(process.env.MURLAN_RESET_PASSWORD_RATE_LIMIT);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : 20;
+}
+
+/**
+ * POST /api/auth/reset-password's only bound (design doc, Box 4) — the
+ * token's 256 bits of entropy is the real defense against guessing it, so
+ * this is a modest per-IP cap against automated scanning, mirroring
+ * ticketLimiter's shape rather than authLimiter's numbers or
+ * loginUsernameLimiter's per-account precision, which this route has no
+ * username to key on.
+ */
+const resetPasswordLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: resetPasswordMaxFromEnv(),
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: payload("RATE_LIMITED"),
+});
+
+/** Same pattern as authMaxFromEnv() above. */
+function changePasswordMaxFromEnv(): number {
+  const parsed = Number(process.env.MURLAN_CHANGE_PASSWORD_RATE_LIMIT);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : 10;
+}
+
+/**
+ * Per-account bound on POST /api/auth/change-password (#892) — the route
+ * carried no limiter at all, so an authenticated caller could spend
+ * bcrypt.compare's cost (~100ms) against a wrong currentPassword without
+ * limit. skipSuccessfulRequests mirrors loginUsernameLimiter's reasoning: a
+ * person legitimately changing their password twice must not spend the
+ * budget a wrong currentPassword does.
+ *
+ * No decoy hash here, unlike loginUsernameLimiter: that one exists because a
+ * fast 401 tells an *anonymous* attacker they have exhausted an account's
+ * guesses. This route is already authenticated as the account it is
+ * guessing at, so there is no oracle to close.
+ */
+const changePasswordLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: changePasswordMaxFromEnv(),
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,
+  keyGenerator: (req: Request) => req.session?.userId ?? "anonymous",
+  message: payload("RATE_LIMITED"),
+});
+
+/** Same pattern as authMaxFromEnv() above. */
+function registerEmailMaxFromEnv(): number {
+  const parsed = Number(process.env.MURLAN_REGISTER_EMAIL_RATE_LIMIT);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : 5;
+}
+
+/**
+ * Per-address cap on POST /api/auth/register (#892), mirroring
+ * passwordResetRequestLimiter exactly. Registration mails the address on
+ * demand — see #897 — which is an amplification vector authLimiter's
+ * per-IP ceiling does not close. Keying on the submitted address is not
+ * itself an oracle: a nonexistent address is throttled on the identical
+ * schedule a real one is.
+ */
+const registerEmailLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: registerEmailMaxFromEnv(),
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req: Request) => (req.body as { email: string }).email.toLowerCase(),
+  message: payload("RATE_LIMITED"),
+});
+
+/** Same pattern as authMaxFromEnv() above. */
+function addEmailMaxFromEnv(): number {
+  const parsed = Number(process.env.MURLAN_ADD_EMAIL_RATE_LIMIT);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : 5;
+}
+
+/**
+ * Per-address cap on POST /api/auth/add-email (#894 review, finding 4),
+ * mirroring registerEmailLimiter exactly. add-email's own EMAIL_ALREADY_SET
+ * cap bounds any one *account* to a single verification mail, which is what
+ * #892 rested its "self-limiting, no route limiter needed" call on — but
+ * that call predates storage.setEmail no longer raising EmailTakenError for
+ * an address claimed-but-unverified elsewhere. Post-#897 any authenticated
+ * account can mail one verification code to any address, including a
+ * verified victim's, so the amplification now scales with how many accounts
+ * an attacker holds rather than being capped at one mail, period.
+ */
+const addEmailLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: addEmailMaxFromEnv(),
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req: Request) => (req.body as { email: string }).email.toLowerCase(),
+  message: payload("RATE_LIMITED"),
 });
 
 const friendLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 10,
-  message: { error: "Too many requests, slow down.", code: "RATE_LIMITED" },
+  message: payload("RATE_LIMITED"),
 });
 
 // One ticket per socket connection attempt, including every reconnect, so this
@@ -159,7 +296,7 @@ const ticketLimiter = rateLimit({
   max: 60,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: "Too many requests, slow down.", code: "RATE_LIMITED" },
+  message: payload("RATE_LIMITED"),
 });
 
 // A crashing client can crash repeatedly. This is deliberately tight: enough
@@ -176,7 +313,7 @@ const pushLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req: Request) => req.session?.userId ?? "anonymous",
-  message: { error: "Too many requests, slow down.", code: "RATE_LIMITED" },
+  message: payload("RATE_LIMITED"),
 });
 
 const errorReportLimiter = rateLimit({
@@ -190,7 +327,7 @@ const errorReportLimiter = rateLimit({
   // one device silences every other. The route is requireAuth, so there is
   // always a userId to key on. Compare #41, where login has no such option.
   keyGenerator: (req: Request) => req.session?.userId ?? "anonymous",
-  message: { error: "Too many requests, slow down.", code: "RATE_LIMITED" },
+  message: payload("RATE_LIMITED"),
 });
 
 // Everything a signed-in client is told about itself, from the one place, so
@@ -200,7 +337,48 @@ function sessionUser(user: User) {
     id: user.id,
     username: user.username,
     tutorialSeenAt: user.tutorialSeenAt ? user.tutorialSeenAt.toISOString() : null,
+    email: user.email,
+    emailVerified: user.emailVerifiedAt !== null,
   };
+}
+
+/**
+ * Names the account and says what to do if the reader didn't ask for this
+ * (#894 review, finding 2): registration is neutral by design (#897), which
+ * means this mail can now land in a mailbox that never asked to create one —
+ * a stranger who registered with someone else's address. An anonymous
+ * "here's a code" body gave that person no way to tell it apart from their
+ * own pending signup, and redeeming the wrong one loses their own email
+ * claim (storage.markEmailVerified). Exported so tests can pin the wording
+ * without standing up a mail provider.
+ */
+export function verificationEmailBody(username: string, token: string): string {
+  return (
+    `Someone signed up for a Murlan account (@${username}) using this email address.\n\n` +
+    `If that was you, your verification code is:\n\n${token}\n\nThis code expires in 24 hours.\n\n` +
+    `If it was not you, no further action is needed — leaving this code unused does not give ` +
+    `that account your address.`
+  );
+}
+
+/** Never awaited by a caller — a provider outage must not delay or fail the response it rides with. */
+function sendVerificationEmail(to: string, username: string, token: string): void {
+  sendMail(to, "Verify your Murlan email", verificationEmailBody(username, token))
+    .catch((err) => logger.error({ err, to }, "sendVerificationEmail failed"));
+}
+
+/**
+ * Never awaited by its caller (design doc, Box 5) — the enumeration-safe
+ * request-password-reset handler replies before this settles, so the only
+ * work the response waits on is the token mint, not the outbound HTTPS call.
+ */
+function sendPasswordResetEmail(to: string, token: string): void {
+  sendMail(
+    to,
+    "Reset your Murlan password",
+    `Your Murlan password reset code is:\n\n${token}\n\nThis code expires in 30 minutes. ` +
+      `If you did not request this, you can ignore this email.`
+  ).catch((err) => logger.error({ err, to }, "sendPasswordResetEmail failed"));
 }
 
 /**
@@ -227,7 +405,7 @@ async function requireAdmin(req: Request, res: Response, next: () => void) {
 
 function requireAuth(req: Request, res: Response, next: () => void) {
   if (!req.session.userId) {
-    res.status(401).json({ message: "Not authenticated", code: "NOT_AUTHENTICATED" });
+    res.status(401).json({ ...payload("NOT_AUTHENTICATED") });
     return;
   }
   next();
@@ -249,30 +427,45 @@ async function rollbackRegistration(req: Request, userId: string, res: Response)
       resolve();
     })
   );
-  res.status(500).json({ message: "Internal server error", code: "INTERNAL_SERVER_ERROR" });
+  res.status(500).json({ ...payload("INTERNAL_SERVER_ERROR") });
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
 
   // ── Auth ──────────────────────────────────────────────────────────────────
 
-  app.post("/api/auth/register", authLimiter, validate(RegisterSchema), async (req, res) => {
-    const { username, password } = req.body as { username: string; password: string };
+  // #897: neutral by construction, not by matching a decoy. There is no
+  // pre-check and no separate "taken" branch — createUser is attempted
+  // directly, and a taken-but-unverified address succeeds exactly like a
+  // free one (users_email_verified_lower_uq only constrains a *verified*
+  // email), so both cases regenerate the same session, mint the same
+  // verification token and answer with the same body. `EmailTakenError` is
+  // deliberately not caught here: on a fully migrated database `createUser`
+  // never raises it (the only unique index left on email is the partial,
+  // verified-only one, and a new account's own row is always unverified), so
+  // seeing it means the deploy step in docs/DEPLOY-RUNBOOK.md that drops the
+  // old unconditional index has not run yet — that must fail loudly (a 500)
+  // rather than degrade into a second, session-less registration outcome
+  // that a client cannot tell apart from success.
+  app.post("/api/auth/register", authLimiter, validate(RegisterSchema), registerEmailLimiter, async (req, res) => {
+    const { username, password, email } = req.body as { username: string; password: string; email: string };
 
-    const existing = await storage.getUserByUsername(username);
-    if (existing) {
-      res.status(409).json({ message: "Username already taken", code: "USERNAME_TAKEN" });
+    const existingUsername = await storage.getUserByUsername(username);
+    if (existingUsername) {
+      res.status(409).json({ ...payload("USERNAME_TAKEN") });
       return;
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
     let user;
     try {
-      user = await storage.createUser({ username, password: passwordHash });
+      user = await storage.createUser({ username, password: passwordHash, email });
     } catch (err) {
-      if (!(err instanceof UsernameTakenError)) throw err;
-      res.status(409).json({ message: "Username already taken", code: "USERNAME_TAKEN" });
-      return;
+      if (err instanceof UsernameTakenError) {
+        res.status(409).json({ ...payload("USERNAME_TAKEN") });
+        return;
+      }
+      throw err;
     }
 
     // Regenerating gives the new account a fresh session id instead of writing
@@ -293,7 +486,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return;
         }
         logger.info({ userId: user.id, username }, "User registered");
-        res.json(sessionUser(user));
+        // The client learns who it signed in as from GET /api/auth/me, not
+        // from this body — a user object in one branch and not the other is
+        // the oracle restated (#897).
+        res.status(202).json({ ...payload("CHECK_YOUR_EMAIL") });
+        // A provider outage must not block signup — mint and fire without
+        // awaiting the send, and only after the reply: the mint is an INSERT,
+        // and doing it before the reply would reopen the timing gap #897
+        // exists to close. invalidatePendingAuthTokens first: a brand-new
+        // user has nothing to retire, but this mint can still land after
+        // add-email's own — see authTokens.ts.
+        invalidatePendingAuthTokens(user.id, "email_verify")
+          .then(() => mintAuthToken(user.id, "email_verify", EMAIL_VERIFY_TOKEN_TTL_MS))
+          .then((token) => sendVerificationEmail(email, username, token))
+          .catch((err) => logger.error({ err, userId: user.id }, "Failed to mint the verification token"));
       });
     });
   });
@@ -303,13 +509,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     const user = await storage.getUserByUsername(username);
     if (!user) {
-      res.status(401).json({ message: "Wrong username or password", code: "INVALID_CREDENTIALS" });
+      res.status(401).json({ ...payload("INVALID_CREDENTIALS") });
       return;
     }
 
     const ok = await bcrypt.compare(password, user.password);
     if (!ok) {
-      res.status(401).json({ message: "Wrong username or password", code: "INVALID_CREDENTIALS" });
+      res.status(401).json({ ...payload("INVALID_CREDENTIALS") });
       return;
     }
 
@@ -318,14 +524,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     req.session.regenerate((regenErr) => {
       if (regenErr) {
         logger.error({ err: regenErr }, "Session regenerate failed on login");
-        res.status(500).json({ message: "Internal server error", code: "INTERNAL_SERVER_ERROR" });
+        res.status(500).json({ ...payload("INTERNAL_SERVER_ERROR") });
         return;
       }
       req.session.userId = user.id;
       req.session.save((err) => {
         if (err) {
           logger.error({ err }, "Session save failed on login");
-          res.status(500).json({ message: "Internal server error", code: "INTERNAL_SERVER_ERROR" });
+          res.status(500).json({ ...payload("INTERNAL_SERVER_ERROR") });
           return;
         }
         logger.info({ userId: user.id, username }, "User logged in");
@@ -360,12 +566,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/auth/me", async (req, res) => {
     if (!req.session.userId) {
-      res.status(401).json({ message: "Not authenticated", code: "NOT_AUTHENTICATED" });
+      res.status(401).json({ ...payload("NOT_AUTHENTICATED") });
       return;
     }
     const user = await storage.getUser(req.session.userId);
     if (!user) {
-      res.status(401).json({ message: "User not found", code: "USER_NOT_FOUND" });
+      res.status(401).json({ ...payload("USER_NOT_FOUND") });
       return;
     }
     res.json(sessionUser(user));
@@ -374,19 +580,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // A live session alone is not proof of intent to change a credential —
   // mirrors login's own bcrypt.compare, and answers a wrong currentPassword
   // with the same generic code login does, so the two are indistinguishable.
-  app.post("/api/auth/change-password", requireAuth, validate(ChangePasswordSchema), async (req, res) => {
+  app.post("/api/auth/change-password", requireAuth, changePasswordLimiter, validate(ChangePasswordSchema), async (req, res) => {
     const { currentPassword, newPassword } = req.body as { currentPassword: string; newPassword: string };
     const userId = req.session.userId!;
 
     const user = await storage.getUser(userId);
     if (!user) {
-      res.status(401).json({ message: "Not authenticated", code: "NOT_AUTHENTICATED" });
+      res.status(401).json({ ...payload("NOT_AUTHENTICATED") });
       return;
     }
 
     const ok = await bcrypt.compare(currentPassword, user.password);
     if (!ok) {
-      res.status(401).json({ message: "Wrong username or password", code: "INVALID_CREDENTIALS" });
+      res.status(401).json({ ...payload("INVALID_CREDENTIALS") });
       return;
     }
 
@@ -395,6 +601,134 @@ export async function registerRoutes(app: Express): Promise<Server> {
     logger.info({ userId }, "Password changed");
     res.json({ ok: true });
   });
+
+  // #863: the existing-beta-cohort nudge (docs/superpowers/specs/2026-09-03-
+  // account-recovery-design.md, Box 1). Reuses the signup flow's own
+  // machinery — mint an email_verify token, send it through sendVerificationEmail
+  // — rather than a second one; redemption still goes through the
+  // verify-email route below. `email IS NULL` is re-checked here (not just by
+  // the profile card that hides once it isn't) because the check and the
+  // write below are not one transaction, and this is an authenticated
+  // account overwriting its own row, not a public lookup.
+  app.post("/api/auth/add-email", requireAuth, validate(AddEmailSchema), addEmailLimiter, async (req, res) => {
+    const { email } = req.body as { email: string };
+    const userId = req.session.userId!;
+
+    const existing = await storage.getUser(userId);
+    if (!existing) {
+      res.status(401).json({ ...payload("NOT_AUTHENTICATED") });
+      return;
+    }
+    if (existing.email) {
+      res.status(409).json({ ...payload("EMAIL_ALREADY_SET") });
+      return;
+    }
+
+    let user;
+    try {
+      user = await storage.setEmail(userId, email);
+    } catch (err) {
+      if (err instanceof EmailTakenError) {
+        res.status(409).json({ ...payload("EMAIL_TAKEN") });
+        return;
+      }
+      throw err;
+    }
+
+    await invalidatePendingAuthTokens(userId, "email_verify");
+    const token = await mintAuthToken(userId, "email_verify", EMAIL_VERIFY_TOKEN_TTL_MS);
+    sendVerificationEmail(email, user.username, token);
+    logger.info({ userId }, "Email added, pending verification");
+    res.json(sessionUser(user));
+  });
+
+  // Public: the token itself is the credential (server/authTokens.ts), not
+  // the session. Generic failure message — whether the token is unknown,
+  // expired or already used is not this caller's business, and the redeem
+  // itself is the account oracle to avoid distinguishing.
+  app.post("/api/auth/verify-email", authLimiter, validate(VerifyEmailSchema), async (req, res) => {
+    const { token } = req.body as { token: string };
+    const userId = await redeemAuthToken(token, "email_verify");
+    if (!userId) {
+      res.status(400).json({ ...payload("INVALID_TOKEN") });
+      return;
+    }
+    const result = await storage.markEmailVerified(userId);
+    if (result === "not_found") {
+      // #894 review, finding 3: the account this token names is gone, or its
+      // own email claim already is (a second outstanding token, redeemed
+      // after the first already cleared it) — either way there is nothing
+      // left to verify. Same generic failure the redeem step above uses.
+      logger.info({ userId }, "Email verification token redeemed nothing left to verify");
+      res.status(400).json({ ...payload("INVALID_TOKEN") });
+      return;
+    }
+    if (result === "lost_race") {
+      // #897: another account proved control of this mailbox first — this
+      // one's claim is already cleared by markEmailVerified, not colliding
+      // with users_email_verified_lower_uq.
+      logger.info({ userId }, "Email verification lost the race to a different account");
+      res.status(409).json({ ...payload("EMAIL_VERIFIED_ELSEWHERE") });
+      return;
+    }
+    logger.info({ userId }, "Email verified");
+    res.json({ ok: true });
+  });
+
+  // Enumeration-safe by design (docs/superpowers/specs/2026-09-03-account-
+  // recovery-design.md, Box 5): identical 200 { ok: true } whether or not
+  // the address matches a verified account, and the branch then costs one
+  // indexed `users` lookup either way, which is the only work that happens
+  // before the reply — the mint and the send both run after it, so neither
+  // can be timed. An unverified email is deliberately treated the same as
+  // no account at all: verified-email is load-bearing here, not a
+  // formality (an unverified address that could reset is
+  // registration-then-takeover of someone else's account).
+  app.post(
+    "/api/auth/request-password-reset",
+    authLimiter,
+    validate(RequestPasswordResetSchema),
+    passwordResetRequestLimiter,
+    async (req, res) => {
+      const { email } = req.body as { email: string };
+      const user = await storage.getVerifiedUserByEmail(email);
+      res.json({ ok: true });
+      if (!user?.emailVerifiedAt) return;
+      // Not awaited: the request this reply belonged to is already done, so
+      // a rejection here has no caller left to reach it except this catch.
+      mintAuthToken(user.id, "password_reset", PASSWORD_RESET_TOKEN_TTL_MS)
+        .then((token) => sendPasswordResetEmail(user.email!, token))
+        .catch((err) => logger.error({ err, userId: user.id }, "Failed to mint the reset token"));
+    }
+  );
+
+  // Public: the token itself is the credential, same as verify-email above.
+  // One generic failure for unknown/expired/used/unverified alike — which of
+  // those it was is not this caller's business.
+  app.post(
+    "/api/auth/reset-password",
+    resetPasswordLimiter,
+    validate(ResetPasswordSchema),
+    async (req, res) => {
+      const { token, newPassword } = req.body as { token: string; newPassword: string };
+      const userId = await redeemAuthToken(token, "password_reset");
+      const user = userId ? await storage.getUser(userId) : undefined;
+      if (!user?.emailVerifiedAt) {
+        res.status(400).json({ ...payload("INVALID_RESET_TOKEN") });
+        return;
+      }
+
+      const passwordHash = await bcrypt.hash(newPassword, 10);
+      await storage.resetPassword(user.id, passwordHash);
+      // The token this request redeemed is already used_at-stamped; this
+      // only reaches its unredeemed siblings (design doc, Box 2) — the same
+      // "live credential" class as the sessions storage.resetPassword just
+      // cleared, and for the same reason.
+      await invalidateAuthTokens(user.id, "password_reset");
+      logger.info({ userId: user.id }, "Password reset");
+      res.json({ ok: true });
+    }
+  );
 
   // Mints the short-lived, single-use ticket the socket handshake accepts in
   // place of a session cookie (native clients do not send cookies on upgrade).
@@ -423,7 +757,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     // lets a player recase their own: that lookup finds their own row.
     const holder = await storage.getUserByUsername(username);
     if (holder && holder.id !== userId) {
-      res.status(409).json({ message: "Username already taken", code: "USERNAME_TAKEN" });
+      res.status(409).json({ ...payload("USERNAME_TAKEN") });
       return;
     }
 
@@ -435,7 +769,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // The check above and this write are not one transaction, so the name can be claimed in
       // between. The constraint is the authority; the check only makes the common case a clean 409.
       if (!(err instanceof UsernameTakenError)) throw err;
-      res.status(409).json({ message: "Username already taken", code: "USERNAME_TAKEN" });
+      res.status(409).json({ ...payload("USERNAME_TAKEN") });
     }
   });
 
@@ -462,13 +796,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // table.
       await evictUser(userId);
       logger.info({ userId }, "User account deleted");
-      res.json({ message: "Account deleted", code: "ACCOUNT_DELETED" });
+      res.json({ ...payload("ACCOUNT_DELETED") });
     } catch (err) {
       logger.error({ err }, "Delete user failed");
-      res.status(500).json({
-        error: translate(DEFAULT_LOCALE, "server.ACCOUNT_DELETE_FAILED"),
-        code: "ACCOUNT_DELETE_FAILED",
-      });
+      res.status(500).json({ ...payload("ACCOUNT_DELETE_FAILED") });
     }
   });
 
@@ -493,7 +824,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete("/api/friends/invites/:roomCode", requireAuth, async (req, res) => {
     const roomCode = z.string().length(6).safeParse(String(req.params.roomCode ?? "").toUpperCase());
     if (!roomCode.success) {
-      res.status(400).json({ message: "Invalid room code", code: "INVALID_ROOM_CODE" });
+      res.status(400).json({ ...payload("INVALID_ROOM_CODE") });
       return;
     }
     await storage.declineGameInvite(req.session.userId!, roomCode.data);
@@ -503,12 +834,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/users/search", requireAuth, async (req, res) => {
     const username = z.string().min(1).max(30).safeParse(req.query.username);
     if (!username.success) {
-      res.status(400).json({ message: "Invalid username", code: "INVALID_USERNAME" });
+      res.status(400).json({ ...payload("INVALID_USERNAME") });
       return;
     }
     const found = await storage.getUserByUsername(username.data);
     if (!found || found.id === req.session.userId) {
-      res.status(404).json({ message: "User not found", code: "USER_NOT_FOUND" });
+      res.status(404).json({ ...payload("USER_NOT_FOUND") });
       return;
     }
     res.json({ id: found.id, username: found.username });
@@ -524,31 +855,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     const friend = await storage.getUserByUsername(username);
     if (!friend) {
-      res.status(404).json({ message: "User not found", code: "USER_NOT_FOUND" });
+      res.status(404).json({ ...payload("USER_NOT_FOUND") });
       return;
     }
 
     if (friend.id === req.session.userId) {
-      res.status(400).json({ message: "You cannot add yourself", code: "CANNOT_ADD_SELF" });
+      res.status(400).json({ ...payload("CANNOT_ADD_SELF") });
       return;
     }
 
     const already = await storage.areFriends(req.session.userId!, friend.id);
     if (already) {
-      res.status(409).json({ message: "Already friends", code: "ALREADY_FRIENDS" });
+      res.status(409).json({ ...payload("ALREADY_FRIENDS") });
       return;
     }
 
     const pending = await storage.pendingRequestBetween(req.session.userId!, friend.id);
     if (pending === "sent") {
-      res.status(409).json({ message: "Friend request already sent", code: "FRIEND_REQUEST_ALREADY_SENT" });
+      res.status(409).json({ ...payload("FRIEND_REQUEST_ALREADY_SENT") });
       return;
     }
     if (pending === "received") {
-      res.status(409).json({
-        message: "They already sent you a request — accept it instead",
-        code: "FRIEND_REQUEST_INCOMING_PENDING",
-      });
+      res.status(409).json({ ...payload("FRIEND_REQUEST_INCOMING_PENDING") });
       return;
     }
 
@@ -573,7 +901,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     // Only the sender can cancel — enforced inside cancelFriendRequest.
     const cancelled = await storage.cancelFriendRequest(id, req.session.userId!);
     if (!cancelled) {
-      res.status(404).json({ message: "Friend request not found", code: "FRIEND_REQUEST_NOT_FOUND" });
+      res.status(404).json({ ...payload("FRIEND_REQUEST_NOT_FOUND") });
       return;
     }
     res.json({ ok: true });
@@ -587,7 +915,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     // own request by id (IDOR).
     const result = await storage.acceptFriend(id, accepterId);
     if (!result) {
-      res.status(404).json({ message: "Friend request not found", code: "FRIEND_REQUEST_NOT_FOUND" });
+      res.status(404).json({ ...payload("FRIEND_REQUEST_NOT_FOUND") });
       return;
     }
     const accepter = await storage.getUser(accepterId);
@@ -615,7 +943,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     // pending request by id).
     const declined = await storage.declineFriendRequest(id, req.session.userId!);
     if (!declined) {
-      res.status(404).json({ message: "Friend request not found", code: "FRIEND_REQUEST_NOT_FOUND" });
+      res.status(404).json({ ...payload("FRIEND_REQUEST_NOT_FOUND") });
       return;
     }
     res.json({ ok: true });
@@ -681,7 +1009,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (id === null) return;
     const replay = await getReplayForUser(id, req.session.userId!);
     if (!replay) {
-      res.status(404).json({ message: "Replay not found", code: "REPLAY_NOT_FOUND" });
+      res.status(404).json({ ...payload("REPLAY_NOT_FOUND") });
       return;
     }
     res.json(replay);
@@ -762,10 +1090,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         res.status(201).json({ ok: true });
       } catch (err) {
         logger.error({ err, userId: req.session.userId }, "Failed to store a bug report");
-        res.status(500).json({
-          error: translate(DEFAULT_LOCALE, "server.INTERNAL_SERVER_ERROR"),
-          code: "INTERNAL_SERVER_ERROR",
-        });
+        res.status(500).json({ ...payload("INTERNAL_SERVER_ERROR") });
       }
     }
   );

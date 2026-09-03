@@ -8,10 +8,12 @@ import type { Server as SocketIOServer } from "socket.io";
 import { logger } from "./logger.ts";
 import { sessionMiddleware } from "./session.ts";
 import { pool } from "./db.ts";
+import { payload } from "./payload.ts";
 import { registerRoutes } from "./routes.ts";
 import { ensureSchema } from "./schemaDdl.ts";
 import { isAllowedOrigin, isBehindProxy } from "./cors.ts";
 import { registerGithubDevSyncHook } from "./devSyncHook.ts";
+import { checkMailConfigOnBoot } from "./mail.ts";
 import { runningCommitSha } from "./gitInfo.ts";
 import * as fs from "fs";
 import * as path from "path";
@@ -236,10 +238,7 @@ function setupErrorHandler(app: express.Application) {
       // a 5xx message is whatever internal thing threw, and has leaked
       // Postgres errors naming tables and columns straight into the UI.
       if (status >= 500) {
-        return res.status(status).json({
-          message: "Internal server error",
-          code: "INTERNAL_SERVER_ERROR",
-        });
+        return res.status(status).json({ ...payload("INTERNAL_SERVER_ERROR") });
       }
       return res
         .status(status)
@@ -303,6 +302,7 @@ export async function createApp(): Promise<CreatedApp> {
   // Before the session middleware, which reads `session` on the very first
   // request that carries a cookie — and before any route touches a table.
   await ensureSchema(pool);
+  checkMailConfigOnBoot();
 
   app.use(sessionMiddleware);
 

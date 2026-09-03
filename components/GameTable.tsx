@@ -59,6 +59,7 @@ import {
   describeTableForA11y,
   EMPTY_PILE,
   handCountOf,
+  vacatedOf,
   readThrownPlay,
   impactDelayMs,
   landingTier,
@@ -127,7 +128,7 @@ import {
 } from "@/lib/sounds";
 import { hapticError, hapticLight, hapticMedium, hapticSelection } from "@/lib/haptics";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
-import { Colors, FontSize, Motion, Radius, Scrim, Spacing, Layer } from "@/lib/theme";
+import { Colors, FontSize, Motion, Radius, Reading, Scrim, Spacing, Layer } from "@/lib/theme";
 import { useTableFelt } from "@/lib/cosmetics";
 import { A11yStatus, a11yGroup, a11yHidden, a11yVeiled } from "@/lib/a11y";
 
@@ -149,9 +150,9 @@ const ROUND_WINNER_MS = 1800;
 const WEB_CLIP =
   Platform.OS === "web" ? ({ overflow: "clip" } as unknown as ViewStyle) : null;
 
-// How long the refused-play reason stays on screen, and how wide it may get
-// before it wraps onto its second (and last) line.
-const REJECT_HINT_MS = 2600;
+// How wide the refused-play reason may get before it wraps onto its second
+// (and last) line. How long it stays up is `Reading.hint` (#829): a player
+// reads it, which is what `Reading` is for, not a Motion step.
 const REJECT_HINT_MAX_W = 260;
 /** Above the top bar and the rematch panel: the reason must not be covered. */
 const REJECT_HINT_Z = Layer.hint;
@@ -274,6 +275,12 @@ export interface GameTableProps {
   turnTimer?: TurnTimerConfig;
   exchangeAnnouncement?: ExchangeAnnouncementSlot;
   rematchPrompt?: RematchPromptSlot;
+  /**
+   * Seats mid disconnect grace, by seat — the countdown for the whole 60 s
+   * window (docs/BRIEF.md §3.1), driven from the server's own `seconds` the
+   * same way `turnTimer` is. Empty offline, which disconnects nobody.
+   */
+  disconnectedSeats?: Record<number, { seconds: number; resetKey: string }>;
 
   /** The rail's lower knob (online: the reactions trigger). */
   railExtra?: React.ReactNode;
@@ -313,6 +320,7 @@ export function GameTable({
   turnTimer,
   exchangeAnnouncement,
   rematchPrompt,
+  disconnectedSeats = {},
   railExtra,
   banners,
   overlays,
@@ -826,7 +834,7 @@ export function GameTable({
       handCardH,
     });
 
-    // The card is thrown here and arrives ~312ms later, so everything that
+    // The card is thrown here and arrives ~213ms later, so everything that
     // reads as *impact* waits for it. Announced for every seat, not only the
     // viewer's: the sound belongs to a card landing, not to a tap.
     impactTimerRef.current = setTimeout(() => {
@@ -913,7 +921,7 @@ export function GameTable({
 
   useEffect(() => {
     if (rejectHint === null) return;
-    const id = setTimeout(() => setRejectHint(null), REJECT_HINT_MS);
+    const id = setTimeout(() => setRejectHint(null), Reading.hint);
     return () => clearTimeout(id);
   }, [rejectHint]);
 
@@ -1315,6 +1323,8 @@ export function GameTable({
                   cardCount={handCountOf(opponents.top.player)}
                   departing={departingSide === "top" ? departingCount : 0}
                   passed={passed.includes(opponents.top.seat)}
+                  vacated={vacatedOf(opponents.top.player)}
+                  reconnecting={disconnectedSeats[opponents.top.seat]}
                   scale={scale}
                   countdown={seatCountdown}
                   focusMode={focusMode}
@@ -1338,6 +1348,8 @@ export function GameTable({
                     cardCount={handCountOf(opponents.left.player)}
                     departing={departingSide === "left" ? departingCount : 0}
                     passed={passed.includes(opponents.left.seat)}
+                    vacated={vacatedOf(opponents.left.player)}
+                    reconnecting={disconnectedSeats[opponents.left.seat]}
                     scale={scale}
                     countdown={seatCountdown}
                     focusMode={focusMode}
@@ -1398,6 +1410,7 @@ export function GameTable({
                     cardReceived={exchangeAnnouncement.data.cardReceived}
                     toWinner={exchangeTrips.toWinner}
                     toLoser={exchangeTrips.toLoser}
+                    landed={tradedCardsLanded}
                     scale={scale * FIELD_SCALE}
                     onDismiss={exchangeAnnouncement.onDismiss}
                   />
@@ -1428,6 +1441,8 @@ export function GameTable({
                     cardCount={handCountOf(opponents.right.player)}
                     departing={departingSide === "right" ? departingCount : 0}
                     passed={passed.includes(opponents.right.seat)}
+                    vacated={vacatedOf(opponents.right.player)}
+                    reconnecting={disconnectedSeats[opponents.right.seat]}
                     scale={scale}
                     countdown={seatCountdown}
                     focusMode={focusMode}
@@ -1499,6 +1514,7 @@ export function GameTable({
                     onReorder={spectating || withheldId !== undefined ? undefined : arrange}
                     arrivingIndex={arrivingIndex}
                     descendingId={descendingId}
+                    handBottomPad={frame.bottomPad}
                     // Only while the opening is still owed. Named rather than
                     // counted to: Maestro's `index` sorts by position, and the
                     // arc puts the outermost card below its neighbours (#757).

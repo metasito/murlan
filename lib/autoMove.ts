@@ -57,6 +57,13 @@ export interface AutoMoveContext {
   handFlags?: Record<number, { bomb: boolean; joker: boolean }>;
   /** Records the move for a replay log. Absent offline, which keeps none. */
   onMove?: (seat: number, combo: Combination | null, next: GameState) => void;
+  /**
+   * Forwarded to `aiChoosePlay`'s own `rng` parameter. Absent means that
+   * function's own default (`Math.random`) — a simulation that needs a match
+   * reproducible end to end from one seed passes a seeded generator here
+   * instead of only faking the deal's `crypto` source.
+   */
+  rng?: () => number;
 }
 
 /**
@@ -106,7 +113,7 @@ export function autoMoveForSeat(
       isNewRound,
       opponents.handCounts,
       requireCard,
-      undefined,
+      ctx.rng,
       opponents.partnerHoldsTop,
       state.playedRanks
     );

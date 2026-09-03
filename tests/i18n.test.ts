@@ -122,6 +122,19 @@ function payloadSentences(sourceFile: ts.SourceFile): string[] {
   return found;
 }
 
+/**
+ * `payload()` (server/payload.ts) moved most of a payload's own fallback
+ * text out of server/ source — where payloadSentences() above can see it —
+ * and into `locales/en.ts`'s `server.*` values, resolved at runtime through
+ * a call this scan deliberately stops at. Both scans below that walk
+ * payloadSentences() also need these, or the class of defect they exist to
+ * catch (an Italian or gendered sentence shipped as the neutral English
+ * fallback) can recur here unseen.
+ */
+function serverEnFallbackSentences(): [string, string][] {
+  return Object.entries(en).filter(([key]) => key.startsWith("server."));
+}
+
 describe("locale key parity", () => {
   const enKeys = Object.keys(en).sort();
 
@@ -231,6 +244,14 @@ describe("no server string assumes the player's gender", () => {
         }
       }
     }
+    // payload()'s own fallback text: not in server/ source at all (#894
+    // review, finding 7) — see serverEnFallbackSentences() above.
+    for (const [key, text] of serverEnFallbackSentences()) {
+      sentences.push(text);
+      for (const label of offences(text, all)) {
+        offenders.push(`locales/en.ts:${key} (${label}): ${text}`);
+      }
+    }
     // The scan's own floor, and why it is a sentence and not only a number:
     // this one exists nowhere but a schema's option key, so a scan that stops
     // descending schemas fails here outright instead of merely counting lower,
@@ -252,9 +273,15 @@ describe("no server string assumes the player's gender", () => {
       "the scan no longer reaches a validator's own trailing message " +
         "(server/socketSchemas.ts) — if that sentence was reworded, name the new one here"
     );
+    // Restored after #896's payload() helper moved most hand-written
+    // { message, code } literals across server/ into locales/en.ts's
+    // server.* values, resolved at runtime through a call this scan stops
+    // at — dropping this floor from >120 to >35 (127 to 49) let the class of
+    // defect this test exists to catch recur inside en.ts unseen (#894
+    // review, finding 7). Restored by scanning en.ts's server.* values too.
     assert.ok(
-      sentences.length > 120,
-      `expected server/'s payload sentences, got ${sentences.length} (127 when this floor was set)`
+      sentences.length > 100,
+      `expected server/'s payload sentences plus locales/en.ts's server.* values, got ${sentences.length} (114 when this floor was set)`
     );
     assert.deepEqual(offenders, [], offenders.join(" | "));
   });
@@ -295,8 +322,80 @@ describe("the server writes its fallbacks in the source language", () => {
         if (ITALIAN.test(text)) offenders.push(`${file}: ${text}`);
       }
     }
-    assert.ok(scanned > 120, `expected server/'s payload sentences, got ${scanned}`);
+    // payload()'s own fallback text: not in server/ source at all (#894
+    // review, finding 7) — see serverEnFallbackSentences() above.
+    for (const [key, text] of serverEnFallbackSentences()) {
+      scanned++;
+      if (ITALIAN.test(text)) offenders.push(`locales/en.ts:${key}: ${text}`);
+    }
+    // See the matching floor above: restored after payload() moved most of
+    // server/'s literals into locales/en.ts's server.* values (#894 review,
+    // finding 7) — scanning en.ts's server.* values too is what restores it.
+    assert.ok(
+      scanned > 100,
+      `expected server/'s payload sentences plus locales/en.ts's server.* values, got ${scanned} (114 when this floor was set)`
+    );
     assert.deepEqual(offenders, [], `these ship Italian to every locale: ${offenders.join(" | ")}`);
+  });
+});
+
+// A hand-written `message`/`error` beside a hand-written `code` is exactly
+// what drifted out of sync with locales/en.ts before (#896) — payload()
+// derives the fallback from the code so the two cannot disagree. The four
+// sites this once carved server/routes.ts's register route out for were
+// rewritten wholesale for neutral registration (#897); the carve-out went
+// with them — a scan with one is a scan that stops being true (design doc,
+// Q2).
+describe("a payload's code and its message are never both hand-written (#896)", () => {
+  function offendingObjects(sourceFile: ts.SourceFile): string[] {
+    const found: string[] = [];
+    const visit = (node: ts.Node) => {
+      if (ts.isObjectLiteralExpression(node)) {
+        let code: string | null = null;
+        let text: string | null = null;
+        for (const prop of node.properties) {
+          if (!ts.isPropertyAssignment(prop)) continue;
+          const name =
+            ts.isIdentifier(prop.name) || ts.isStringLiteral(prop.name) ? prop.name.text : null;
+          if (
+            name === "code" &&
+            (ts.isStringLiteral(prop.initializer) || ts.isNoSubstitutionTemplateLiteral(prop.initializer))
+          ) {
+            code = prop.initializer.text;
+          }
+          if (
+            (name === "message" || name === "error") &&
+            (ts.isStringLiteral(prop.initializer) ||
+              ts.isNoSubstitutionTemplateLiteral(prop.initializer) ||
+              ts.isTemplateExpression(prop.initializer))
+          ) {
+            text = prop.initializer.getText(sourceFile);
+          }
+        }
+        if (code !== null && text !== null) {
+          found.push(node.getText(sourceFile).replace(/\s+/g, " ").trim().slice(0, 120));
+        }
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(sourceFile);
+    return found;
+  }
+
+  test("no object literal under server/ carries both a literal code and a literal message/error", () => {
+    const offenders: string[] = [];
+    let scanned = 0;
+    for (const { file, source } of serverSources()) {
+      scanned++;
+      const sourceFile = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+      for (const text of offendingObjects(sourceFile)) offenders.push(`${file}: ${text}`);
+    }
+    assert.ok(scanned > 20, `expected to have scanned most of server/, got ${scanned} files`);
+    assert.deepEqual(
+      offenders,
+      [],
+      `these hand-write a message beside a code instead of deriving it through payload(): ${offenders.join(" | ")}`
+    );
   });
 });
 
@@ -558,13 +657,22 @@ describe("translate() produces the expected output per locale", () => {
       // seatClaimCode() and its siblings return the code directly.
       for (const m of rendered.matchAll(/return "([A-Z][A-Z_]{3,})";/g)) emitted.add(m[1]);
     }
+    // payload("CODE") calls carry no literal `code: "..."` property at all
+    // (#896) — a call the two regexes above cannot see.
+    for (const { source } of serverSources()) {
+      for (const m of source.matchAll(/payload\("([A-Z][A-Z_]*)"/g)) emitted.add(m[1]);
+    }
     assert.ok(
       emitted.has("EXCHANGE_PENDING"),
       "the ack exclusion took a code that is also emitted to the player"
     );
+    // It moved down for the same reason as the floors above: a code reached
+    // only through payload("CODE") (#896) carries no literal `code: "..."`
+    // property for this regex to see, and is checked at compile time instead
+    // (server/payload.ts's ServerCode constraint) rather than by this scan.
     assert.ok(
-      emitted.size > 44,
-      `expected to find the server's codes, got ${emitted.size} (46 when this floor was set)`
+      emitted.size > 34,
+      `expected to find the server's codes, got ${emitted.size} (38 when this floor was set)`
     );
 
     const missing = [...emitted].filter(
@@ -602,7 +710,7 @@ describe("translate() produces the expected output per locale", () => {
 
     // The reasons themselves, from the table that emit spreads.
     const table = /REJOIN_FAILURE[^=]*=\s*\{([\s\S]*?)\n\};/.exec(source)?.[1] ?? "";
-    const entries = [...table.matchAll(/\{\s*message: "[^"]+", code: "([A-Z_]+)" \}/g)];
+    const entries = [...table.matchAll(/payload\("([A-Z_]+)"\)/g)];
     assert.ok(entries.length >= 4, `the rejoin failure table has ${entries.length} reasons`);
     const codes = new Set(entries.map((m) => m[1]));
     assert.deepEqual(
@@ -823,7 +931,11 @@ describe("every player-facing server response carries a code", () => {
     return calls;
   }
 
-  /** An object literal's own top-level property names. */
+  /**
+   * An object literal's own top-level property names. `...payload("CODE")`
+   * (server/payload.ts) always spreads in `code`, `message` and `params`, so
+   * it counts as naming those without the scan having to evaluate the call.
+   */
   function propertyNames(obj: ts.ObjectLiteralExpression): Set<string> {
     const names = new Set<string>();
     for (const prop of obj.properties) {
@@ -832,6 +944,16 @@ describe("every player-facing server response carries a code", () => {
         (ts.isIdentifier(prop.name) || ts.isStringLiteral(prop.name))
       ) {
         names.add(prop.name.text);
+      }
+      if (
+        ts.isSpreadAssignment(prop) &&
+        ts.isCallExpression(prop.expression) &&
+        ts.isIdentifier(prop.expression.expression) &&
+        prop.expression.expression.text === "payload"
+      ) {
+        names.add("code");
+        names.add("message");
+        names.add("params");
       }
     }
     return names;

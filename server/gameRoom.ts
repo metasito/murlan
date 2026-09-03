@@ -77,6 +77,36 @@ export interface OnlineGameState {
    */
   releasedSeats: Set<string>;
   /**
+   * Seat -> the account that used to hold it, for a seat a human has left
+   * while the table is still live. This is the seat's half of
+   * `releasedSeats`: that set answers "may this account never sit again",
+   * this map answers "which seat, and who". Cleared on reclaim, and read by
+   * the sanitizer (the `vacated` flag), `resolveHandEnd` (a departed
+   * player's frozen total) and the rejoin path (reclaiming the seat).
+   *
+   * Memory only, like `abandonedSeats` and `releasedSeats` — a restart
+   * losing it costs the same courtesy those already do: the seat can no
+   * longer be told apart from one nobody ever sat in.
+   */
+  vacatedSeats: Map<number, { userId: string; username: string }>;
+  /**
+   * Seats currently held to the minimum legal move because their human left
+   * mid-hand — the takeover plays weakly only for the hand it happened on
+   * (docs/BRIEF.md §3.1). Cleared at every `dealManche`, so a seat vacated
+   * between hands is never weak: there is no hand in progress to protect, and
+   * it plays properly from its first turn as a bot.
+   */
+  weakSeats: Set<number>;
+  /**
+   * Votes to end the match outright once a seat has been vacated
+   * (docs/BRIEF.md §3.1) — the same unanimity-among-seated-humans shape as
+   * `rematchVotes`, kept apart because it answers a different question and
+   * runs mid-hand as well as between hands. Cleared whenever the roster
+   * changes (a vacate or a reclaim) or a new hand deals, so a stale unanimous
+   * vote from a different table can never end one it was never taken on.
+   */
+  endMatchVotes: Set<string>;
+  /**
    * When the acting seat's AFK window runs out, in server time. Undefined when
    * nothing is on the clock. Memory only — re-armed on the next move.
    */

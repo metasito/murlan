@@ -87,3 +87,37 @@ describe('motion preference overrides the system setting', () => {
     expect(view.getByText('reduced')).toBeTruthy();
   });
 });
+
+// #837: the CI-only automation flag that pauses looping decorative animation on a device
+// loop's emulator. It has to win over a player's own "off" choice — a fresh CI build never
+// makes that choice, and the point of the flag is that nothing here can suppress it.
+describe('the CI automation flag (EXPO_PUBLIC_E2E_REDUCE_MOTION) forces reduced motion', () => {
+  const ORIGINAL = process.env.EXPO_PUBLIC_E2E_REDUCE_MOTION;
+
+  beforeEach(() => {
+    setMotionPreference('off');
+    jest.spyOn(AccessibilityInfo, 'isReduceMotionEnabled').mockResolvedValue(false);
+    jest.spyOn(AccessibilityInfo, 'addEventListener').mockReturnValue({
+      remove: () => {},
+    } as ReturnType<typeof AccessibilityInfo.addEventListener>);
+  });
+
+  afterEach(async () => {
+    if (ORIGINAL === undefined) delete process.env.EXPO_PUBLIC_E2E_REDUCE_MOTION;
+    else process.env.EXPO_PUBLIC_E2E_REDUCE_MOTION = ORIGINAL;
+    await act(async () => setMotionPreference('system'));
+    jest.restoreAllMocks();
+  });
+
+  it('reduces motion even over an explicit "off" preference and a system "no"', async () => {
+    process.env.EXPO_PUBLIC_E2E_REDUCE_MOTION = '1';
+    const view = await mount();
+    expect(view.getByText('reduced')).toBeTruthy();
+  });
+
+  it('does nothing when unset — a normal build never sees this branch', async () => {
+    delete process.env.EXPO_PUBLIC_E2E_REDUCE_MOTION;
+    const view = await mount();
+    expect(view.getByText('full')).toBeTruthy();
+  });
+});

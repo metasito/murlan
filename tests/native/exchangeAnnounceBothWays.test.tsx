@@ -45,6 +45,7 @@ async function announce(props: { cardReceived?: Card; cardGiven?: Card }) {
       bothJokersException={false}
       toWinner={TRIP}
       toLoser={TRIP}
+      landed={false}
       scale={1}
       onDismiss={() => {}}
       {...props}
@@ -99,6 +100,7 @@ describe('the exchange announcement states both legs', () => {
         bothJokersException
         toWinner={TRIP}
         toLoser={TRIP}
+        landed={false}
         scale={1}
         onDismiss={() => {}}
       />

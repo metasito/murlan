@@ -33,6 +33,7 @@ import type { TranslationKey } from "@/lib/i18n";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { PROVISIONAL_GAMES, formatSeason } from "@/lib/rating";
 import { a11yGroup, a11yHidden } from "@/lib/a11y";
+import { shouldShowAddEmailCard } from "@/lib/emailNudge";
 import { HistoryRow } from "@/components/HistoryRow";
 import { serverErrorMessage } from "@/lib/apiError";
 import { USERNAME_MAX, USERNAME_MIN, usernameProblem } from "@/shared/username";
@@ -316,6 +317,109 @@ function ChangePasswordCard() {
 }
 
 /**
+ * The non-blocking nudge for an account that predates the email requirement
+ * (#863, `lib/emailNudge.ts`) — never a login wall, never an `Alert`. Submitting
+ * mints an `email_verify` token and sends it through the same machinery signup
+ * uses; server/routes.ts's `/api/auth/verify-email` (reached from the emailed
+ * link, not from this screen) is what redeems it and makes the card disappear
+ * on the next `/api/auth/me`.
+ */
+function AddEmailCard() {
+  const { t } = useTranslation();
+  const { addEmail } = useAuth();
+  const [open, setOpen] = useState(false);
+  const [email, setEmail] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function close() {
+    if (saving) return;
+    setOpen(false);
+    setEmail("");
+    setError(null);
+  }
+
+  async function submit() {
+    setSaving(true);
+    setError(null);
+    try {
+      await addEmail(email.trim());
+      setOpen(false);
+      setEmail("");
+    } catch (e: unknown) {
+      setError(serverErrorMessage(e, t("profile.addEmailFailed")));
+    }
+    setSaving(false);
+  }
+
+  return (
+    <>
+      <MenuCard title={t("profile.addEmailTitle")}>
+        <Text style={styles.addEmailBody}>{t("profile.addEmailBody")}</Text>
+        <MenuButton
+          label={t("profile.addEmailAction")}
+          variant="secondary"
+          onPress={() => setOpen(true)}
+        />
+      </MenuCard>
+
+      <AppModal visible={open} onRequestClose={close}>
+        <View style={styles.modalBackdrop}>
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={close}
+            disabled={saving}
+            {...a11yHidden()}
+          />
+          <View style={styles.modalCard} accessibilityViewIsModal accessibilityRole="none">
+            <Text style={styles.modalTitle} accessibilityRole="header">
+              {t("profile.addEmailModalTitle")}
+            </Text>
+
+            <TextInput
+              style={styles.modalInput}
+              value={email}
+              onChangeText={(v) => { setEmail(v); setError(null); }}
+              placeholder={t("profile.addEmailPlaceholder")}
+              placeholderTextColor={Colors.textMuted}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              autoCorrect={false}
+              autoComplete="email"
+              textContentType="emailAddress"
+              returnKeyType="done"
+              onSubmitEditing={submit}
+              accessibilityLabel={t("profile.addEmailA11yLabel")}
+              editable={!saving}
+              testID="input-add-email"
+            />
+
+            {error && (
+              <Text style={styles.modalError} accessibilityLiveRegion="polite" testID="add-email-error">
+                {error}
+              </Text>
+            )}
+
+            <View style={styles.modalActions}>
+              <View style={styles.modalAction}>
+                <MenuButton label={t("common.cancel")} variant="ghost" onPress={close} disabled={saving} />
+              </View>
+              <View style={styles.modalAction}>
+                <MenuButton
+                  label={saving ? t("profile.addEmailSaving") : t("common.save")}
+                  onPress={submit}
+                  disabled={saving || !email.trim()}
+                />
+              </View>
+            </View>
+          </View>
+        </View>
+      </AppModal>
+    </>
+  );
+}
+
+/**
  * What an account adds, for a player who has not got one.
  *
  * Not a redirect and not a disabled section: this screen exists outside the
@@ -395,6 +499,7 @@ export default function ProfileScreen() {
         <SectionHeading label={t("profile.youTitle")} />
         {user ? <UserCard user={user} /> : loading ? null : <SignInCard />}
         {user && <ChangePasswordCard />}
+        {user && shouldShowAddEmailCard(user) && <AddEmailCard />}
 
         <SectionHeading label={t("profile.lookTitle")} />
         <LookPicker />
@@ -671,6 +776,13 @@ const styles = StyleSheet.create({
     color: Colors.gold,
     textTransform: "uppercase",
     marginTop: Spacing.sm,
+  },
+  addEmailBody: {
+    fontFamily: "Rajdhani_500Medium",
+    fontSize: FontSize.sm,
+    lineHeight: FontSize.sm * 1.4,
+    color: Colors.textSecondary,
+    marginBottom: Spacing.sm,
   },
   signedOut: { gap: Spacing.md },
   signedOutBody: {

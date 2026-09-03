@@ -6,18 +6,20 @@ import { db } from "./db.ts";
 import { recordGameResult } from "./stats.ts";
 import { previewRatedDeltas, recordRatedResult } from "./ratings.ts";
 import { saveReplay } from "./replays.ts";
+import { sweepRetention } from "./retention.ts";
 import {
   activeGames as activeGamesTable,
   roomPlayers as roomPlayersTable,
   rooms as roomsTable,
 } from "../shared/schema.ts";
 import { activeGames, userRoom } from "./gameRoom.ts";
+import { payload } from "./payload.ts";
 import type { OnlineGameState } from "./gameRoom.ts";
 import type { GameOverWriters } from "./gameOver.ts";
 import { releaseRoom, unclaimedRooms } from "./gameOwnership.ts";
 import {
   stateAckTimeoutMs,
-  SWEEP_INTERVAL_MS,
+  sweepIntervalMs,
   clearRoomTimers,
   clearRoomDisconnectTimers,
   clearRoomLobbyGraces,
@@ -64,7 +66,8 @@ export function sanitizeStateForPlayer(
   state: GameState,
   viewerUserId: string,
   playerMap: Record<number, string>,
-  turnDeadlineMs?: number
+  turnDeadlineMs?: number,
+  vacatedSeats?: ReadonlyMap<number, { userId: string; username: string }>
 ) {
   // The server knows which seat the viewer occupies authoritatively; ship it
   // with every state so the client never has to derive it (e.g. from a lobby
@@ -88,6 +91,10 @@ export function sanitizeStateForPlayer(
         ...p,
         hand: isViewer ? p.hand : ([] as Card[]),
         handCount: p.hand.length,
+        // The flag travels, never the text (docs/BRIEF.md §3.1): `name` is
+        // still the person's real name, and each client renders the
+        // departed label itself, through `t()`, in its own locale.
+        vacated: vacatedSeats?.has(idx) ?? false,
       };
     }),
   };
@@ -175,7 +182,13 @@ export function sendGameStateTo(io: SocketServer, uid: string, game: OnlineGameS
       .timeout(stateAckTimeoutMs())
       .emit(
         "game:state",
-        sanitizeStateForPlayer(live.gameState, uid, live.playerMap, live.turnDeadlineMs),
+        sanitizeStateForPlayer(
+          live.gameState,
+          uid,
+          live.playerMap,
+          live.turnDeadlineMs,
+          live.vacatedSeats
+        ),
         (err: unknown) => {
           if (err && !retrying) send(true);
         }
@@ -218,8 +231,7 @@ export function safeTimer(
     logger.error({ err, roomId, label }, "Timer callback threw — closing table");
     io?.to(roomId).emit("game:notification", {
       type: "abandoned",
-      code: "GAME_INTERRUPTED_SERVER_ERROR",
-      message: "Game interrupted: a server error.",
+      ...payload("GAME_INTERRUPTED_SERVER_ERROR"),
     });
     void storage
       .updateRoomStatus(roomId, "finished")
@@ -335,6 +347,10 @@ export function startSweeper(io: SocketServer) {
         logger.error({ err }, "Pruning stale rooms failed")
       );
 
+      // sweepRetention gives each table's DELETE its own try/catch and never
+      // rejects, so there is no outer failure to log here.
+      void sweepRetention();
+
       // Only reachable through a bug — every path that puts a game in memory
       // claims the room first — but what it would be reporting is two
       // instances broadcasting one table over each other, which is worth a
@@ -346,7 +362,7 @@ export function startSweeper(io: SocketServer) {
     } catch (err) {
       logger.error({ err }, "Sweeper failed");
     }
-  }, SWEEP_INTERVAL_MS);
+  }, sweepIntervalMs());
   (sweeper as unknown as { unref?: () => void }).unref?.();
 }
 

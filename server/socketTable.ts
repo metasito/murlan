@@ -9,6 +9,7 @@ import { storage } from "./storage.ts";
 import { logger } from "./logger.ts";
 import {
   isShuttingDown,
+  seatOfUser,
   socketRoomMap,
   userRoom,
   userSocketMap,
@@ -25,6 +26,7 @@ import {
 import { sendGameStateTo } from "./gamePersistence.ts";
 import { emitMatchState } from "./emit.ts";
 import { armTurnIfIdle } from "./gameTurn.ts";
+import { payload } from "./payload.ts";
 import { TEAMS_PLAYER_COUNT } from "../lib/gameEngine.ts";
 import type { EventOutcome } from "./socketSafety.ts";
 
@@ -117,17 +119,14 @@ export function roomOf(game: OnlineGameState) {
  * literal at each call site.
  */
 export function teamsSizeRefusal(
-  refuse: (payload: { message: string; code: string }) => void,
+  refuse: (refusal: { message: string; code: string }) => void,
   gameMode: string,
   playerCount: number
 ): EventOutcome | null {
   if (gameMode !== "teams" || playerCount === TEAMS_PLAYER_COUNT) return null;
-  const payload = {
-    message: "Teams mode needs exactly 4 players",
-    code: "TEAMS_REQUIRE_FOUR",
-  };
-  refuse(payload);
-  return { ok: false, code: payload.code };
+  const refusal = payload("TEAMS_REQUIRE_FOUR");
+  refuse(refusal);
+  return { ok: false, code: refusal.code };
 }
 
 /**
@@ -205,9 +204,8 @@ export async function announceRejoin(
   io.to(roomId).emit("game:player_reconnected", {
     userId,
     username,
-    code: "PLAYER_RECONNECTED",
-    message: `${username} is back.`,
-    params: { username },
+    seatIndex: seatOfUser(game, userId),
+    ...payload("PLAYER_RECONNECTED", { username }),
   });
   armTurnIfIdle(io, roomId);
 }

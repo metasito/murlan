@@ -9,17 +9,30 @@ export interface AuthUser {
   username: string;
   /** When this account first opened the tutorial, on any device; null if never. */
   tutorialSeenAt: string | null;
+  /** Null for an account that predates the email requirement (#861) — see lib/emailNudge.ts. */
+  email: string | null;
+  emailVerified: boolean;
 }
 
 interface AuthContextValue {
   user: AuthUser | null;
   loading: boolean;
   login: (username: string, password: string) => Promise<void>;
-  register: (username: string, password: string) => Promise<void>;
+  /**
+   * Resolves to the signed-in account, null when the follow-up
+   * `GET /api/auth/me` confirmed no session, or undefined when that
+   * confirmation itself could not be reached (a dropped connection, a 5xx) —
+   * see fetchMe()'s own contract below. The caller needs this to show a
+   * coherent "check your email" state rather than guessing from `user`,
+   * which a re-render can update out from under it.
+   */
+  register: (username: string, password: string, email: string) => Promise<AuthUser | null | undefined>;
   /** Throws `ApiError` when the server refuses; the account is left untouched. */
   rename: (username: string) => Promise<void>;
   /** Throws `ApiError` when the current password is wrong; the account is left untouched. */
   changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
+  /** Throws `ApiError` when the address is already taken or the account already has one. */
+  addEmail: (email: string) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -110,11 +123,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(data));
   }, []);
 
-  const register = useCallback(async (username: string, password: string) => {
-    const res = await apiRequest("POST", "/api/auth/register", { username, password });
-    const data = await res.json();
+  // The response body carries no user (#897 — it is the same neutral
+  // { ok: true, code: "CHECK_YOUR_EMAIL" } whether or not the address was
+  // already taken, and a user object in one case and not the other would
+  // put the leak straight back). Who actually got signed in is answered the
+  // same way a boot-time check already answers it: GET /api/auth/me — and by
+  // fetchMe()'s own contract, `undefined` means that question went
+  // unanswered, not that it was answered "no". A flaky connection right
+  // after a successful POST must not read as a sign-out.
+  const register = useCallback(async (username: string, password: string, email: string) => {
+    await apiRequest("POST", "/api/auth/register", { username, password, email });
+    const data = await fetchMe();
+    if (data === undefined) return undefined;
     setUser(data);
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    if (data) await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    else await AsyncStorage.removeItem(STORAGE_KEY);
+    return data;
   }, []);
 
   // Here rather than in the screen: the signed-in player lives in state *and*
@@ -135,6 +159,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await apiRequest("POST", "/api/auth/change-password", { currentPassword, newPassword });
   }, []);
 
+  // Like rename: the card that calls this (app/profile.tsx) hides itself off
+  // `user.email`, so the state has to update in the same place the request
+  // lands, not wait for the next /api/auth/me poll.
+  const addEmail = useCallback(async (email: string) => {
+    const res = await apiRequest("POST", "/api/auth/add-email", { email });
+    const data = await res.json();
+    setUser(data);
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  }, []);
+
   const logout = useCallback(async () => {
     // Before the session goes: the endpoint needs the cookie, and the next
     // person to sign in on this phone must not inherit these invites.
@@ -152,8 +186,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const contextValue = useMemo(
-    () => ({ user, loading, login, register, rename, changePassword, logout }),
-    [user, loading, login, register, rename, changePassword, logout]
+    () => ({ user, loading, login, register, rename, changePassword, addEmail, logout }),
+    [user, loading, login, register, rename, changePassword, addEmail, logout]
   );
 
   return (

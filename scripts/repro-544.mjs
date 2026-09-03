@@ -57,7 +57,7 @@ async function register(port, username) {
   const res = await fetch(`http://127.0.0.1:${port}/api/auth/register`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ username, password: "repro-544-pw" }),
+    body: JSON.stringify({ username, password: "repro-544-pw", email: `${username}@example.test` }),
   });
   if (!res.ok) throw new Error(`register ${username}: ${res.status} ${await res.text()}`);
   const cookie = (res.headers.getSetCookie?.() ?? [])

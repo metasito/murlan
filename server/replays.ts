@@ -1,8 +1,7 @@
-import { and, desc, eq, lt, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "./db.ts";
 import { matchReplays } from "../shared/schema.ts";
 import { replayPlayerIdsOf } from "./replayShape.ts";
-import { REPLAY_RETENTION_DAYS } from "../lib/replay.ts";
 import type { ReplayDto, ReplayMove, ReplaySeat, ReplaySummary } from "../lib/replay.ts";
 import type { GameMode } from "../lib/gameEngine.ts";
 
@@ -26,26 +25,14 @@ export async function saveReplay(input: {
   // An all-bot table produces a replay nobody could ever open.
   if (playerIds.length === 0) return;
 
-  await db.transaction(async (tx) => {
-    await tx.insert(matchReplays).values({
-      roomId: input.roomId,
-      finishedAt: input.finishedAt,
-      gameMode: input.gameMode,
-      playerIds,
-      seats: input.seats,
-      moves: input.moves,
-      rankings: input.rankings,
-    });
-    // Pruned in the same transaction as the insert, as match_history is, so
-    // the table cannot grow without bound if the prune is ever skipped.
-    await tx
-      .delete(matchReplays)
-      .where(
-        lt(
-          matchReplays.finishedAt,
-          sql`now() - make_interval(days => ${REPLAY_RETENTION_DAYS})`
-        )
-      );
+  await db.insert(matchReplays).values({
+    roomId: input.roomId,
+    finishedAt: input.finishedAt,
+    gameMode: input.gameMode,
+    playerIds,
+    seats: input.seats,
+    moves: input.moves,
+    rankings: input.rankings,
   });
 }
 

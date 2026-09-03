@@ -41,6 +41,8 @@ test("vacateSeat never sets personality on the seat it hands to the AI", async (
     playerMap: { 0: "u_rotonmeta", 1: "u_drita" },
     rematchVotes: new Set<string>(),
     releasedSeats: new Set<string>(),
+    vacatedSeats: new Map(),
+    endMatchVotes: new Set<string>(),
     abandonedSeats: new Map<number, string>(),
     gameState,
   } as unknown as OnlineGameState;

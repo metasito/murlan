@@ -24,3 +24,15 @@ export function emitVoteState(io: SocketServer, room: string, game: OnlineGameSt
     total: Object.keys(game.playerMap).length,
   });
 }
+
+/**
+ * Who has voted to end the match outright, out of how many can answer — the
+ * same unanimity-among-seated-humans shape as `emitVoteState`, kept apart
+ * because it answers a different question (docs/BRIEF.md §3.1).
+ */
+export function emitEndMatchVoteState(io: SocketServer, room: string, game: OnlineGameState) {
+  io.to(room).emit("game:end_match_vote_state", {
+    votes: Array.from(game.endMatchVotes),
+    total: Object.keys(game.playerMap).length,
+  });
+}

@@ -79,7 +79,7 @@ describe("in-app change password", { skip: hasDatabase() ? false : skipMessage()
     const body = await res.json();
     assert.equal(res.status, 401);
     // Generic, indistinguishable from a wrong login — never a dedicated code.
-    assert.deepEqual(body, { message: "Wrong username or password", code: "INVALID_CREDENTIALS" });
+    assert.deepEqual(body, { message: "Wrong username or password", code: "INVALID_CREDENTIALS", params: {} });
 
     // Neither session was touched by the refused attempt.
     assert.equal((await me(deviceA)).status, 200, "an unrelated session must survive a refused change");
@@ -90,6 +90,38 @@ describe("in-app change password", { skip: hasDatabase() ? false : skipMessage()
     assert.equal(withOld.status, 200, await withOld.text());
     const withAttempted = await login(username, "new-password-456");
     assert.equal(withAttempted.status, 401);
+  });
+
+  // #892: change-password carried no rate limiter at all, so a wrong
+  // currentPassword's bcrypt.compare could be driven without limit.
+  // MURLAN_CHANGE_PASSWORD_RATE_LIMIT=5 in tests/helpers/testServer.ts.
+  test("repeated wrong passwords trip the limiter", async () => {
+    const { cookie } = await register(server, "change_pw_limited_wrong");
+
+    const statuses: number[] = [];
+    for (let i = 0; i < 6; i++) {
+      statuses.push((await changePassword(cookie, "not-the-real-password", "new-password-456")).status);
+    }
+    assert.ok(
+      statuses.includes(429),
+      `expected the limiter to trip within six wrong attempts, got ${statuses.join(", ")}`
+    );
+  });
+
+  // skipSuccessfulRequests: a correct change must never itself spend the
+  // budget a wrong currentPassword does, so a legitimate account changing
+  // its password repeatedly must never be gated by this limiter — a naive
+  // limiter with no skip flag would 429 the sixth of these.
+  test("repeated correct password changes never trip the limiter", async () => {
+    const { cookie } = await register(server, "change_pw_limited_ok");
+
+    let current = "password123";
+    for (let i = 0; i < 6; i++) {
+      const next = `new-password-${i}`;
+      const res = await changePassword(cookie, current, next);
+      assert.equal(res.status, 200, `change ${i} unexpectedly failed: ${await res.text()}`);
+      current = next;
+    }
   });
 
   test("an unauthenticated request is refused", async () => {

@@ -172,13 +172,20 @@ describe("ladder and replay writes", { skip: hasDatabase() ? false : skipMessage
     });
 
     /**
-     * The cheapest exploit there was: watch your hand, and when it is clearly
-     * lost, close the tab. Nothing was written for the quitter — their seat left
-     * `playerMap` and scored as `bot:<seat>`, which every write filters out —
-     * and heads-up the survivor lost their win with it, because a two-player
+     * The cheapest exploit there once was: watch your hand, and when it is
+     * clearly lost, close the tab. Nothing was written for the quitter, and
+     * heads-up the survivor lost their win with it — because a two-player
      * table was disposed without ever reaching the scoring path.
+     *
+     * #850 clause 11 (docs/BRIEF.md §3.1) carved a narrow exception into that
+     * fix: a match abandoned before its very first point is scored — this
+     * one, still mid-deal-one with nothing on the board — is voided and
+     * rated for nobody, not scored as a forfeit. Was pinned the other way
+     * (quitter rated down, survivor rated up); re-pinned to the decided rule,
+     * proved by the absence of a `user_ratings` row for either seat rather
+     * than by a rating value.
      */
-    test("a player who drops mid-hand is rated as last, and their opponent is rated for the win", async () => {
+    test("a match abandoned before its first point is voided, and rated for nobody", async () => {
       const quitter = await connectAs(server, "quit_qara");
       const survivor = await connectAs(server, "quit_sten");
       try {
@@ -195,35 +202,34 @@ describe("ladder and replay writes", { skip: hasDatabase() ? false : skipMessage
         await Promise.all(dealt);
 
         // Mid-hand: neither seat has emptied a hand, and the match is nowhere
-        // near its target.
-        quitter.socket.disconnect();
-
-        const season = seasonKey(new Date());
-        const rows = await waitForRow<
-          { user_id: string; rating: number; games: number; season: string }[]
-        >(async () => {
-          const res = await dbPool.query(
-            "SELECT user_id, rating, games, season FROM user_ratings WHERE user_id = ANY($1)",
-            [[quitter.user.id, survivor.user.id]]
-          );
-          return res.rows.length === 2 ? res.rows : null;
-        }, 15_000);
-
-        const ratingOf = (id: string) => {
-          const row = rows.find((r) => r.user_id === id);
-          assert.ok(row, `no user_ratings row for ${id}`);
-          assert.equal(row.season, season);
-          assert.equal(Number(row.games), 1, "the abandoned hand counts as a game for both");
-          return Number(row.rating);
-        };
-
-        assert.ok(
-          ratingOf(quitter.user.id) < START_RATING,
-          "walking out of a hand has to cost rating"
+        // near its target — the narrow window clause 11 covers.
+        const over = waitFor<{ voided?: boolean; recorded?: boolean }>(
+          survivor.socket,
+          "game:over",
+          5_000
         );
-        assert.ok(
-          ratingOf(survivor.user.id) > START_RATING,
-          "the player left at the table has to be paid for the win"
+        quitter.socket.disconnect();
+        const overPayload = await over;
+        assert.equal(overPayload.voided, true, "nothing earned yet, so nothing is taken away");
+        assert.equal(overPayload.recorded, false);
+
+        // The write has had its chance once the room itself is closed out —
+        // the last thing a voided match does.
+        await waitForRow(async () => {
+          const res = await dbPool.query("SELECT status FROM rooms WHERE id = $1", [
+            room.roomId,
+          ]);
+          return res.rows[0]?.status === "finished" ? res.rows[0] : null;
+        });
+
+        const rows = await dbPool.query(
+          "SELECT user_id FROM user_ratings WHERE user_id = ANY($1)",
+          [[quitter.user.id, survivor.user.id]]
+        );
+        assert.equal(
+          rows.rows.length,
+          0,
+          "a match voided before its first point rates neither the quitter nor the survivor"
         );
       } finally {
         quitter.socket.close();

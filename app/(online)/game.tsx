@@ -6,7 +6,7 @@
 // states (reconnect notice, a player leaving, a failed rejoin).
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { View, Text, StyleSheet, ActivityIndicator, useWindowDimensions } from "react-native";
+import { View, Text, Pressable, StyleSheet, ActivityIndicator, useWindowDimensions } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Ionicons from "@expo/vector-icons/Ionicons";
@@ -21,7 +21,7 @@ import {
 import { useAuth } from "@/context/AuthContext";
 import { ConfirmDialog, type ConfirmRequest } from "@/components/ConfirmDialog";
 import { GameTable } from "@/components/GameTable";
-import { cardScale, computeScreenPads, railWidth } from "@/components/gameTableModel";
+import { cardScale, computeScreenPads, railWidth, vacatedOf } from "@/components/gameTableModel";
 import {
   FloatingReactions,
   ReactionPanel,
@@ -29,9 +29,10 @@ import {
 } from "@/components/ReactionLayer";
 import { GameOverOverlay } from "@/components/GameOverOverlay";
 import { MenuButton } from "@/components/MenuButton";
-import { Colors, FontSize, Radius, Spacing, Type, Layer } from "@/lib/theme";
+import { Colors, FontSize, Radius, Reading, Spacing, Type, Layer } from "@/lib/theme";
 import { hapticLight, hapticMedium } from "@/lib/haptics";
 import { useTranslation } from "@/lib/i18n";
+import { A11yStatus, a11yHidden, useA11yHint } from "@/lib/a11y";
 
 // Read once at module scope, never per-call. EXPO_PUBLIC_ vars are inlined
 // at bundle build time, so this only ever takes the fast path in a build the
@@ -39,12 +40,9 @@ import { useTranslation } from "@/lib/i18n";
 // is untouched.
 const E2E_FAST = process.env.EXPO_PUBLIC_E2E_FAST === "1";
 
-/** How long the emoji picker stays open before hiding itself. */
-const REACTION_PANEL_MS = 4000;
-/** Beat before the results overlay covers the final play. */
+// Beat before the results overlay covers the final play. A domain hold, not a
+// generic UI transition, so it is not a Motion token.
 const GAME_OVER_DELAY = E2E_FAST ? 0 : 800;
-/** In-game server errors are transient; clear them rather than stacking. */
-const ERROR_TOAST_MS = 3000;
 
 /**
  * The veiled wrapper below opens a stacking context, so the 100 and 300 its
@@ -59,8 +57,10 @@ export default function OnlineGameScreen() {
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   const { t } = useTranslation();
+  const endMatchVoteHint = useA11yHint(t("game.endMatchVoteHint"));
   const { user } = useAuth();
-  const { gameState, mySeatIndex, playCards, pass, sendReaction } = useOnlineTable();
+  const { gameState, mySeatIndex, playCards, pass, sendReaction, disconnectedSeats } =
+    useOnlineTable();
   const { turnSeconds, turnDeadlineMs } = useOnlineTurnClock();
   const { isSpectator, entrySource, leaveRoom } = useOnlineRoom();
   const {
@@ -80,11 +80,14 @@ export default function OnlineGameScreen() {
     ratingDeltas,
     handRecorded,
     rematchVoteState,
+    endMatchVoteState,
     rematchIntents,
     rematchPromptOpen,
     voteRematch,
+    voteToEndMatch,
     answerRematch,
   } = useOnlineMatch();
+
   const { exchangeAnnouncing, exchangeAnnounceData, giveExchangeCard, acknowledgeExchange } =
     useOnlineExchange();
 
@@ -143,7 +146,7 @@ export default function OnlineGameScreen() {
 
   useEffect(() => {
     if (!error) return;
-    const t = setTimeout(clearError, ERROR_TOAST_MS);
+    const t = setTimeout(clearError, Reading.toast);
     return () => clearTimeout(t);
   }, [error, clearError]);
 
@@ -221,9 +224,15 @@ export default function OnlineGameScreen() {
     );
   }
 
+  // "A seat has been vacated" (docs/BRIEF.md §3.1) — the vote is offered while
+  // any seat is currently vacated, matching the server's own gate
+  // (NO_VACANCY_TO_END) so the button never outlives what the server allows.
+  const anyVacatedSeat = gameState.players.some(vacatedOf);
+
   const myUserId = user?.id ?? "";
   const myRematchAnswer =
     myUserId in rematchIntents.answers ? rematchIntents.answers[myUserId] : null;
+  const hasVotedToEndMatch = endMatchVoteState?.votes.includes(myUserId) ?? false;
 
   // The results overlay sits above the table and needs the same safe-area pads
   // the table uses; the table computes its own full frame from the same source.
@@ -245,7 +254,7 @@ export default function OnlineGameScreen() {
     if (!showReactions) {
       reactionTimerRef.current = setTimeout(
         () => setShowReactions(false),
-        REACTION_PANEL_MS
+        Reading.notice
       );
     }
   };
@@ -266,6 +275,7 @@ export default function OnlineGameScreen() {
       // than as an empty hand.
       viewerSeat={isSpectator ? 0 : mySeatIndex}
       spectating={isSpectator}
+      disconnectedSeats={disconnectedSeats}
       selectedIds={selectedIds}
       onSelectCard={toggleCard}
       onPlay={handlePlay}
@@ -325,6 +335,69 @@ export default function OnlineGameScreen() {
               {reconnectNotice}
             </Text>
           </View>
+        ) : anyVacatedSeat && !gameState.gameOver ? (
+          <>
+            <Pressable
+              style={styles.reconnectBanner}
+              hitSlop={Spacing.wide}
+              accessibilityRole="button"
+              accessibilityLabel={
+                hasVotedToEndMatch
+                  ? t("game.endMatchWithdrawButton")
+                  : t("game.endMatchVoteButton")
+              }
+              {...endMatchVoteHint.props}
+              onPress={() => {
+                hapticMedium();
+                if (hasVotedToEndMatch) {
+                  voteToEndMatch(false);
+                  return;
+                }
+                setConfirming({
+                  title: t("game.endMatchConfirmTitle"),
+                  body: t("game.endMatchVoteHint"),
+                  cancelLabel: t("common.cancel"),
+                  confirmLabel: t("game.endMatchConfirmAction"),
+                  destructive: true,
+                  onConfirm: () => voteToEndMatch(true),
+                });
+              }}
+            >
+              <View style={styles.bannerRow} {...a11yHidden()}>
+                <Ionicons name="flag" size={14} color={Colors.gold} />
+                <Text style={styles.reconnectBannerText} numberOfLines={1}>
+                  {hasVotedToEndMatch
+                    ? t("game.endMatchVoteTallyVoted", {
+                        votes: endMatchVoteState?.votes.length ?? 1,
+                        total: endMatchVoteState?.total ?? gameState.players.length,
+                      })
+                    : endMatchVoteState && endMatchVoteState.votes.length > 0
+                      ? t("game.endMatchVoteTally", {
+                          votes: endMatchVoteState.votes.length,
+                          total: endMatchVoteState.total,
+                        })
+                      : t("game.endMatchVoteButton")}
+                </Text>
+              </View>
+              {endMatchVoteHint.node}
+            </Pressable>
+            {endMatchVoteState && endMatchVoteState.votes.length > 0 && (
+              <A11yStatus
+                label={
+                  hasVotedToEndMatch
+                    ? t("game.endMatchVoteTallyVoted", {
+                        votes: endMatchVoteState.votes.length,
+                        total: endMatchVoteState.total,
+                      })
+                    : t("game.endMatchVoteTally", {
+                        votes: endMatchVoteState.votes.length,
+                        total: endMatchVoteState.total,
+                      })
+                }
+                live="polite"
+              />
+            )}
+          </>
         ) : null
       }
       overlays={(veiled) => (
@@ -431,6 +504,11 @@ const styles = StyleSheet.create({
     borderColor: Colors.danger,
   },
   reconnectBannerTextAlert: { color: Colors.dangerDim },
+  bannerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.slim,
+  },
 
 
   errorToast: {

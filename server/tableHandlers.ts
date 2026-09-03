@@ -13,13 +13,14 @@ import type { Server as SocketServer } from "socket.io";
 import { eq } from "drizzle-orm";
 import { db } from "./db.ts";
 import { storage } from "./storage.ts";
-import { emitVoteState } from "./emit.ts";
+import { emitVoteState, emitEndMatchVoteState } from "./emit.ts";
+import { payload } from "./payload.ts";
 import { logger } from "./logger.ts";
 import { trackEvent } from "./events.ts";
 import { DEFAULT_LOCALE, translate } from "../shared/i18n.ts";
 import { activeGames as activeGamesTable } from "../shared/schema.ts";
 import type { EventOutcome } from "./socketSafety.ts";
-import { activeGames, seatOfUser, userRoom } from "./gameRoom.ts";
+import { activeGames, scoreKeyForSeat, seatOfUser, userRoom } from "./gameRoom.ts";
 import { isUserOnline } from "./socketRegistry.ts";
 import type { OnlineGameState } from "./gameRoom.ts";
 import {
@@ -31,6 +32,7 @@ import {
 } from "./gamePersistence.ts";
 import {
   broadcastRematchIntents,
+  endMatchByAgreement,
   handleGameOver,
   tableWantsRematch,
 } from "./gameOver.ts";
@@ -161,6 +163,12 @@ export async function rehydrateGame(
     abandonedSeats: new Map<number, string>(),
     botSeatsAtStart: botSeatsFromPersonality(restoredPlayers),
     releasedSeats: new Set<string>(),
+    // Memory-only, like releasedSeats above: a restart forgets who was mid
+    // reconnect grace, and a seat vacated before the restart is no longer
+    // reclaimable — the same courtesy releasedSeats already concedes.
+    vacatedSeats: new Map(),
+    weakSeats: new Set<number>(),
+    endMatchVotes: new Set<string>(),
     spectators: new Set<string>(),
     // The log is memory-only, so a hand restored after a restart produces no
     // replay. The next hand starts a fresh one.
@@ -183,10 +191,7 @@ function playAction(
   // The round winner owes a card: nobody may play until it is given, otherwise
   // they keep the card and freeze the table behind the exchange overlay.
   if (gameState.exchangePhase?.active) {
-    gameError(io, userId, {
-      message: "You must complete the exchange first",
-      code: "EXCHANGE_PENDING",
-    });
+    gameError(io, userId, payload("EXCHANGE_PENDING"));
     return { ok: false, code: "EXCHANGE_PENDING" };
   }
 
@@ -198,16 +203,13 @@ function playAction(
   const unique = Array.from(new Set(cardIds));
   const cards = player.hand.filter((c) => unique.includes(c.id));
   if (cards.length !== unique.length) {
-    gameError(io, userId, { message: "Invalid card", code: "INVALID_CARD" });
+    gameError(io, userId, payload("INVALID_CARD"));
     return { ok: false, code: "INVALID_CARD" };
   }
 
   const combo = buildCombination(cards);
   if (!combo) {
-    gameError(io, userId, {
-      message: "Invalid combination",
-      code: "INVALID_COMBINATION",
-    });
+    gameError(io, userId, payload("INVALID_COMBINATION"));
     return { ok: false, code: "INVALID_COMBINATION" };
   }
 
@@ -230,7 +232,7 @@ function playAction(
   }
 
   if (!canPlay(combo, isNewRound ? null : gameState.lastPlayedCombination)) {
-    gameError(io, userId, { message: "Invalid move", code: "INVALID_MOVE" });
+    gameError(io, userId, payload("INVALID_MOVE"));
     return { ok: false, code: "INVALID_MOVE" };
   }
 
@@ -275,17 +277,14 @@ function passAction(
   if (game.gameState.gameOver) return { ok: false, code: "NO_LIVE_GAME" };
   const { gameState, playerMap } = game;
   if (gameState.exchangePhase?.active) {
-    gameError(io, userId, {
-      message: "You must complete the exchange first",
-      code: "EXCHANGE_PENDING",
-    });
+    gameError(io, userId, payload("EXCHANGE_PENDING"));
     return { ok: false, code: "EXCHANGE_PENDING" };
   }
 
   const currentIdx = gameState.currentTurnIndex;
   if (playerMap[currentIdx] !== userId) return { ok: false, code: "NOT_YOUR_TURN" };
   if (gameState.lastPlayedCombination === null) {
-    gameError(io, userId, { message: "You cannot pass", code: "CANNOT_PASS" });
+    gameError(io, userId, payload("CANNOT_PASS"));
     return { ok: false, code: "CANNOT_PASS" };
   }
 
@@ -315,7 +314,7 @@ function exchangeAction(
   const bothJokersException = game.gameState.exchangePhase.bothJokersException === true;
   const next = processExchangeChoice(game.gameState, cardId);
   if (next === game.gameState) {
-    gameError(io, userId, { message: "Invalid card", code: "INVALID_CARD" });
+    gameError(io, userId, payload("INVALID_CARD"));
     return { ok: false, code: "INVALID_CARD" };
   }
   game.gameState = next;
@@ -332,8 +331,18 @@ function broadcastRematchVotes(io: SocketServer, game: OnlineGameState, roomId: 
   emitVoteState(io, roomId, game);
 }
 
+/**
+ * Unanimous among the seats a human currently holds — a bot, or a seat whose
+ * player left, has nobody who can answer and abstains. The one shape every
+ * vote on this table's roster is counted in, so a second vote reuses this
+ * rather than its own arithmetic.
+ */
+function votesUnanimous(votes: Set<string>, game: OnlineGameState): boolean {
+  return votes.size >= Object.keys(game.playerMap).length;
+}
+
 function rematchAnswered(game: OnlineGameState): boolean {
-  return game.rematchVotes.size >= Object.keys(game.playerMap).length;
+  return votesUnanimous(game.rematchVotes, game);
 }
 
 /** The table was asked during the closing manche and said no. */
@@ -422,10 +431,7 @@ async function rematchVoteAction(
 
   // Nobody gets to restart it from the results screen after that.
   if (rematchRefused(game)) {
-    gameError(io, userId, {
-      message: "The table chose not to play again",
-      code: "REMATCH_DECLINED",
-    });
+    gameError(io, userId, payload("REMATCH_DECLINED"));
     return { ok: false, code: "REMATCH_DECLINED" };
   }
 
@@ -433,6 +439,37 @@ async function rematchVoteAction(
   broadcastRematchVotes(io, game, roomId);
   if (!rematchAnswered(game)) return OK;
   return dealVotedManche(io, game, roomId, userId);
+}
+
+/**
+ * The unanimous, penalty-free vote to end a match a seat has been vacated
+ * from (docs/BRIEF.md §3.1). Offered only once a seat has actually gone —
+ * otherwise there is nothing for it to answer — and it carries only when
+ * every seat a human still holds has voted; a bot or a vacated seat abstains,
+ * the same shape `rematchAnswered` counts.
+ */
+async function endMatchVoteAction(
+  io: SocketServer,
+  game: OnlineGameState,
+  action: Extract<TableAction, { kind: "endMatchVote" }>
+): Promise<EventOutcome> {
+  const { roomId, userId, wants } = action;
+  if (seatOfUser(game, userId) === null) return { ok: false, code: "NOT_SEATED" };
+  if (game.vacatedSeats.size === 0) return { ok: false, code: "NO_VACANCY_TO_END" };
+
+  if (wants) game.endMatchVotes.add(userId);
+  else game.endMatchVotes.delete(userId);
+  emitEndMatchVoteState(io, roomId, game);
+  // A withdrawal can never end a match, and votesUnanimous on a shrinking set
+  // must not be asked.
+  if (!wants || !votesUnanimous(game.endMatchVotes, game)) return OK;
+
+  io.to(roomId).emit("game:notification", {
+    type: "info",
+    ...payload("MATCH_ENDED_BY_AGREEMENT"),
+  });
+  await endMatchByAgreement(io, roomId, game, gameOverWriters);
+  return OK;
 }
 
 /**
@@ -450,16 +487,61 @@ async function dealIfSeatLeftGateClosed(
   return dealVotedManche(io, game, roomId, null);
 }
 
+/**
+ * The seat `userId` used to hold, if this table still has it open — the seat
+ * is reclaimable by the same account for the life of the match
+ * (docs/BRIEF.md §3.1). `SEAT_RELEASED` is left to answer only once the
+ * table itself is finished or disposed, which is a state `game` cannot be
+ * in here (a caller holding it has a live one).
+ */
+function reclaimableSeat(game: OnlineGameState, userId: string): number | null {
+  for (const [seat, vacated] of game.vacatedSeats) {
+    if (vacated.userId === userId) return seat;
+  }
+  return null;
+}
+
+/** Restores a vacated seat to the account that left it. */
+function reclaimSeat(game: OnlineGameState, seat: number, userId: string): void {
+  const botKey = scoreKeyForSeat(game, seat);
+  game.playerMap[seat] = userId;
+  const carried = game.cumulativeScores[botKey] ?? 0;
+  if (carried !== 0) {
+    game.cumulativeScores[userId] = (game.cumulativeScores[userId] ?? 0) + carried;
+  }
+  delete game.cumulativeScores[botKey];
+  game.vacatedSeats.delete(seat);
+  game.releasedSeats.delete(userId);
+  game.endMatchVotes.clear();
+  const seatPlayer = game.gameState.players[seat];
+  if (seatPlayer) seatPlayer.type = "human";
+}
+
 async function rejoinAction(
   io: SocketServer,
   game: OnlineGameState,
   action: Extract<TableAction, { kind: "rejoin" }>
 ): Promise<EventOutcome> {
   const { roomId, userId, username } = action;
-  const seat = seatOfUser(game, userId);
+  let seat = seatOfUser(game, userId);
   if (seat === null) {
-    const code = game.releasedSeats.has(userId) ? "SEAT_RELEASED" : "UNAUTHORIZED";
-    return { ok: false, code };
+    const reclaim = reclaimableSeat(game, userId);
+    if (reclaim === null) {
+      const code = game.releasedSeats.has(userId) ? "SEAT_RELEASED" : "UNAUTHORIZED";
+      return { ok: false, code };
+    }
+    reclaimSeat(game, reclaim, userId);
+    seat = reclaim;
+    // Every viewer's own `vacated` flag for this seat must flip false, and
+    // the returning player's hand — still theirs; `vacateSeat` never touched
+    // it — has to reach them. A normal reconnect skips this: the seat was
+    // never vacated on the wire in the first place.
+    broadcastGameState(io, game);
+    // reclaimSeat clears the (now-stale) end-match tally; every seat still
+    // holding a vote for it has to be told, or its banner keeps counting a
+    // vote the server no longer has.
+    emitEndMatchVoteState(io, roomId, game);
+    persistGameState(roomId, game);
   }
 
   // The grace timer lives on whichever instance saw the socket go, and the
@@ -501,7 +583,7 @@ async function startMatchAction(
       // it here would deal without an exchange phase, and would let the
       // payload's matchLength rewrite the format of a match that is already
       // being scored.
-      roomError(io, userId, { message: "A match is already in progress", code: "MATCH_IN_PROGRESS" });
+      roomError(io, userId, payload("MATCH_IN_PROGRESS"));
       return { ok: false, code: "MATCH_IN_PROGRESS" };
     }
 
@@ -514,10 +596,7 @@ async function startMatchAction(
     const seatedIds = Object.values(previous.playerMap);
     emitVoteState(io, roomId, previous);
     if (!seatedIds.every((uid) => previous.rematchVotes.has(uid))) {
-      roomError(io, userId, {
-        message: "Every player must be ready before a new match starts",
-        code: "NEW_MATCH_NOT_READY",
-      });
+      roomError(io, userId, payload("NEW_MATCH_NOT_READY"));
       return { ok: false, code: "NEW_MATCH_NOT_READY" };
     }
   } else if (room.status !== "waiting" && room.status !== "finished") {
@@ -544,7 +623,7 @@ async function startMatchAction(
   // With bots filling every empty seat, one seated human is enough — the min-2
   // guard only matters for an all-human table.
   if (!fillWithBots && players.length < 2) {
-    roomError(io, userId, { message: "At least 2 players are required", code: "MIN_PLAYERS_REQUIRED" });
+    roomError(io, userId, payload("MIN_PLAYERS_REQUIRED"));
     return { ok: false, code: "MIN_PLAYERS_REQUIRED" };
   }
   if (players.length < 1) return { ok: false, code: "MIN_PLAYERS_REQUIRED" };
@@ -598,6 +677,9 @@ async function startMatchAction(
     abandonedSeats: new Map<number, string>(),
     botSeatsAtStart,
     releasedSeats: new Set<string>(),
+    vacatedSeats: new Map(),
+    weakSeats: new Set<number>(),
+    endMatchVotes: new Set<string>(),
     spectators: new Set<string>(),
     moveLog: startReplayLog(),
     // Reached only when a match is genuinely starting fresh (no `previous`,
@@ -649,7 +731,8 @@ function seatLostAction(
   action: Extract<TableAction, { kind: "seatLost" }>
 ): Promise<EventOutcome> | EventOutcome {
   const { roomId, userId, username } = action;
-  if (seatOfUser(game, userId) === null) return { ok: false, code: "NOT_SEATED" };
+  const seat = seatOfUser(game, userId);
+  if (seat === null) return { ok: false, code: "NOT_SEATED" };
 
   if (game.gameState.gameOver) {
     // The lobby grace, not the disconnect one: a seat between hands counts
@@ -670,12 +753,8 @@ function seatLostAction(
   io.to(roomId).emit("game:player_disconnected", {
     userId,
     username,
-    code: "PLAYER_DISCONNECTED_GRACE",
-    // The grace period is configurable, so the number has to come from the same
-    // constant the timer below is armed with — a hardcoded "60 seconds" in the
-    // text is a promise the server may not keep.
-    message: `${username} disconnected. They have ${graceSeconds} seconds to rejoin.`,
-    params: { username, seconds: graceSeconds },
+    seatIndex: seat,
+    ...payload("PLAYER_DISCONNECTED_GRACE", { username, seconds: graceSeconds }),
   });
 
   // A vacant seat must keep playing while we wait, or the table stalls for a
@@ -750,6 +829,8 @@ async function applyTableAction(
     }
     case "rematchVote":
       return rematchVoteAction(io, game, action);
+    case "endMatchVote":
+      return endMatchVoteAction(io, game, action);
     case "rejoin":
       return rejoinAction(io, game, action);
     case "spectate": {

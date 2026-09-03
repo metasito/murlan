@@ -33,14 +33,14 @@ describe(
       const res = await fetch(`${server.url}/api/auth/register`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ username, password: "password123" }),
+        body: JSON.stringify({ username, password: "password123", email: `${username}@example.test` }),
       });
       await res.text();
       return res.status;
     }
 
     test("leaves the connection open for the next request", async () => {
-      assert.equal(await register("keepalive_warm"), 200);
+      assert.equal(await register("keepalive_warm"), 202);
 
       const admin = new pg.Pool({ connectionString: process.env.DATABASE_URL! });
       const before = closed;
@@ -50,7 +50,7 @@ describe(
         );
         assert.notEqual(
           await register("keepalive_doomed"),
-          200,
+          202,
           "registration has to fail while the session cannot be written"
         );
       } finally {

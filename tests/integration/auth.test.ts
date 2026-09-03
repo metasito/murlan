@@ -98,10 +98,10 @@ describe("session regeneration on login and registration", { skip: hasDatabase()
     const res = await fetch(`${server.url}/api/auth/register`, {
       method: "POST",
       headers: { "content-type": "application/json", cookie: cookie1 },
-      body: JSON.stringify({ username: "sid_reg_victim", password: "password123" }),
+      body: JSON.stringify({ username: "sid_reg_victim", password: "password123", email: "sid_reg_victim@example.test" }),
     });
     const text = await res.text();
-    assert.equal(res.status, 200, text);
+    assert.equal(res.status, 202, text);
     const cookie2 = res.headers.get("set-cookie");
     assert.ok(cookie2, "register response must set a session cookie");
 
@@ -132,10 +132,10 @@ describe("session regeneration on login and registration", { skip: hasDatabase()
       const res = await fetch(`${server.url}/api/auth/register`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ username, password: "password123" }),
+        body: JSON.stringify({ username, password: "password123", email: `${username}@example.test` }),
       });
       const text = await res.text();
-      assert.notEqual(res.status, 200, `registration must fail when the session cannot be saved: ${text}`);
+      assert.notEqual(res.status, 202, `registration must fail when the session cannot be saved: ${text}`);
     } finally {
       await admin.query(
         `ALTER TABLE "${server.schema}".session DROP CONSTRAINT session_writes_fail`
@@ -148,10 +148,10 @@ describe("session regeneration on login and registration", { skip: hasDatabase()
     const retry = await fetch(`${server.url}/api/auth/register`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ username, password: "password123" }),
+      body: JSON.stringify({ username, password: "password123", email: `${username}@example.test` }),
     });
     const retryText = await retry.text();
-    assert.equal(retry.status, 200, `the rolled-back username must be free again: ${retryText}`);
+    assert.equal(retry.status, 202, `the rolled-back username must be free again: ${retryText}`);
   });
 
   test("logging in twice in the same browser still works", async () => {
@@ -183,7 +183,7 @@ describe("username case", { skip: hasDatabase() ? false : skipMessage() }, () =>
     return fetch(`${server.url}/api/auth/register`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ username, password: "password123" }),
+      body: JSON.stringify({ username, password: "password123", email: `${username}@example.test` }),
     });
   }
 
@@ -273,6 +273,7 @@ describe("login rate limiting", { skip: hasDatabase() ? false : skipMessage() },
     assert.deepEqual(JSON.parse(body), {
       message: "Wrong username or password",
       code: "INVALID_CREDENTIALS",
+      params: {},
     });
   });
 
@@ -312,5 +313,223 @@ describe("login rate limiting", { skip: hasDatabase() ? false : skipMessage() },
       `limited responses averaged ${limitedAvg.toFixed(1)}ms vs ${genuineAvg.toFixed(1)}ms ` +
         `for a genuine wrong password — the decoy bcrypt.compare may not be running`
     );
+  });
+});
+
+// #861: email required at signup, and a token that proves control of it.
+describe("email at signup", { skip: hasDatabase() ? false : skipMessage() }, () => {
+  async function registerRaw(body: Record<string, unknown>) {
+    return fetch(`${server.url}/api/auth/register`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  }
+
+  test("registration requires a well-formed email", async () => {
+    const res = await registerRaw({
+      username: "email_missing",
+      password: "password123",
+      email: "not-an-email",
+    });
+    assert.equal(res.status, 400, await res.text());
+  });
+
+  test("registration stores the email and mints an email_verify token", async () => {
+    const { user } = await register(server, "email_stores");
+    const { storage } = await import("../../server/storage.ts");
+    const stored = await storage.getUser(user.id);
+    assert.equal(stored?.email, "email_stores@example.test");
+    assert.equal(stored?.emailVerifiedAt, null);
+
+    const { db } = await import("../../server/db.ts");
+    const { authTokens } = await import("../../shared/schema.ts");
+    const { eq, and } = await import("drizzle-orm");
+    const readRows = () =>
+      db
+        .select()
+        .from(authTokens)
+        .where(and(eq(authTokens.userId, user.id), eq(authTokens.purpose, "email_verify")));
+
+    // register() replies before minting (#897) precisely so the mint can
+    // never be timed from the response — the row is not guaranteed to exist
+    // the instant the 202 lands, only shortly after (tests/integration/
+    // passwordReset.test.ts's identical "mints exactly one" poll).
+    let rows = await readRows();
+    for (let attempt = 0; attempt < 20 && rows.length === 0; attempt++) {
+      await new Promise((r) => setTimeout(r, 50));
+      rows = await readRows();
+    }
+    assert.equal(rows.length, 1, "register must mint exactly one email_verify token");
+    assert.equal(rows[0]!.usedAt, null);
+  });
+
+  // #897: unlike a duplicate username (public, reported plainly above), a
+  // duplicate email answers identically whether it was free or already
+  // claimed — there is no separate "taken" branch left to distinguish by
+  // status, body or timing. An unverified email is a claim, not a
+  // possession (users_email_verified_lower_uq, shared/schema.ts), so this
+  // registration still creates its own account; the two rows simply share
+  // an unverified address until one of them verifies it.
+  test("a duplicate email answers identically to a free one, and still creates its own account", async () => {
+    const { user: owner } = await register(server, "email_dup_owner");
+    const res = await registerRaw({
+      username: "email_dup_other",
+      password: "password123",
+      email: "EMAIL_DUP_OWNER@Example.Test",
+    });
+    const text = await res.text();
+    assert.equal(res.status, 202, text);
+    assert.equal(JSON.parse(text).code, "CHECK_YOUR_EMAIL");
+
+    const { storage } = await import("../../server/storage.ts");
+    const other = await storage.getUserByUsername("email_dup_other");
+    assert.ok(other, "the taken-address branch must still create an account");
+    assert.notEqual(other.id, owner.id);
+    assert.equal(other.email?.toLowerCase(), "email_dup_owner@example.test");
+    assert.equal(other.emailVerifiedAt, null, "an unverified claim, not a possession");
+  });
+
+  test("verify-email redeems a token once, and a second redemption fails", async () => {
+    const { user } = await register(server, "verify_once");
+    const { mintAuthToken, redeemAuthToken } = await import("../../server/authTokens.ts");
+    const token = await mintAuthToken(user.id, "email_verify", 60_000);
+
+    const first = await fetch(`${server.url}/api/auth/verify-email`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ token }),
+    });
+    assert.equal(first.status, 200, await first.text());
+
+    const { storage } = await import("../../server/storage.ts");
+    const stored = await storage.getUser(user.id);
+    assert.ok(stored?.emailVerifiedAt, "emailVerifiedAt must be set after redemption");
+
+    const second = await fetch(`${server.url}/api/auth/verify-email`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ token }),
+    });
+    assert.equal(second.status, 400, "a consumed token must not redeem twice");
+    assert.equal((await second.json()).code, "INVALID_TOKEN");
+
+    // Same guard the route uses, exercised directly: a used token is refused
+    // by redeemAuthToken itself, not only by some outer route-level check.
+    const direct = await redeemAuthToken(token, "email_verify");
+    assert.equal(direct, null, "redeemAuthToken must refuse an already-used token");
+  });
+
+  test("an expired token fails to redeem", async () => {
+    const { user } = await register(server, "verify_expired");
+    const { mintAuthToken, redeemAuthToken } = await import("../../server/authTokens.ts");
+    const token = await mintAuthToken(user.id, "email_verify", -1);
+
+    const res = await fetch(`${server.url}/api/auth/verify-email`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ token }),
+    });
+    assert.equal(res.status, 400, await res.text());
+
+    const direct = await redeemAuthToken(token, "email_verify");
+    assert.equal(direct, null, "an expired token must not redeem via the module either");
+  });
+
+  // #892/#895: redeemAuthToken used to sweep every expired row on every call.
+  // A garbage token must still be refused without touching a row it has
+  // nothing to do with.
+  test("a POST to verify-email does not sweep an unrelated expired row", async () => {
+    const { user } = await register(server, "verify_no_sweep");
+    const { mintAuthToken } = await import("../../server/authTokens.ts");
+    await mintAuthToken(user.id, "email_verify", -1);
+
+    const admin = new pg.Pool({ connectionString: process.env.DATABASE_URL! });
+    try {
+      const res = await fetch(`${server.url}/api/auth/verify-email`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ token: "not-a-real-token" }),
+      });
+      assert.equal(res.status, 400, await res.text());
+
+      // Two rows for this user: the one register() itself minted, and the
+      // expired one above — both must survive the failed POST. register()
+      // replies before minting (#897), so — same as the poll above — the
+      // row is not guaranteed to exist yet at this exact instant.
+      const countRows = () =>
+        admin.query(
+          `SELECT 1 FROM "${server.schema}".auth_tokens t
+             JOIN "${server.schema}".users u ON u.id = t.user_id
+            WHERE u.username = $1 AND t.purpose = 'email_verify'`,
+          ["verify_no_sweep"]
+        );
+      let rows = await countRows();
+      for (let attempt = 0; attempt < 20 && (rows.rowCount ?? 0) < 2; attempt++) {
+        await new Promise((r) => setTimeout(r, 50));
+        rows = await countRows();
+      }
+      assert.equal(
+        rows.rowCount,
+        2,
+        "an expired row must still be there — the sweep is on a schedule (server/retention.ts), not this route"
+      );
+    } finally {
+      await admin.end();
+    }
+  });
+
+  test("registration still succeeds when the mail provider is not configured", async () => {
+    // testServer.ts sets no RESEND_API_KEY/MAIL_FROM_ADDRESS, so this exercises
+    // the actual "no config" path sendMail() takes in this suite, not a mock.
+    const res = await registerRaw({
+      username: "email_no_provider",
+      password: "password123",
+      email: "email_no_provider@example.test",
+    });
+    assert.equal(res.status, 202, await res.text());
+  });
+
+  // #875/#893: a misconfigured mailer must be loud, not a `warn` nobody
+  // reads. Asserting the row, not the log line — a log assertion would pass
+  // on the very defect this exists to catch.
+  test("a misconfigured mailer writes a mail.sendFailed event row, not just a log line", async () => {
+    const admin = new pg.Pool({ connectionString: process.env.DATABASE_URL! });
+    try {
+      // Counted before/after rather than filtered by occurred_at: the test
+      // process and the database run as separate clocks (a container's own
+      // clock, in the dev stack), so "since this Date()" is not a safe bound.
+      const countFailures = async () =>
+        Number(
+          (
+            await admin.query<{ n: string }>(
+              `SELECT count(*) AS n FROM "${server.schema}".events WHERE name = 'mail.sendFailed'`
+            )
+          ).rows[0]!.n
+        );
+      const before = await countFailures();
+
+      const res = await registerRaw({
+        username: "email_loud_failure",
+        password: "password123",
+        email: "email_loud_failure@example.test",
+      });
+      assert.equal(res.status, 202, await res.text());
+
+      let after = before;
+      for (let attempt = 0; attempt < 20 && after <= before; attempt++) {
+        after = await countFailures();
+        if (after <= before) await new Promise((r) => setTimeout(r, 50));
+      }
+      assert.ok(after > before, "sendMail's failure never became an events row");
+
+      const latest = await admin.query<{ context: { mailFailureReason?: string } }>(
+        `SELECT context FROM "${server.schema}".events
+          WHERE name = 'mail.sendFailed' ORDER BY occurred_at DESC LIMIT 1`
+      );
+      assert.equal(latest.rows[0]!.context.mailFailureReason, "unconfigured");
+    } finally {
+      await admin.end();
+    }
   });
 });

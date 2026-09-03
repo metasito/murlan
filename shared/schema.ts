@@ -19,8 +19,31 @@ export const users = pgTable(
     // One boolean, not a roles table. If a second admin ever exists, that is
     // when a role earns a column.
     isAdmin: boolean("is_admin").notNull().default(false),
+    // Nullable so every pre-existing row satisfies it on the day it lands —
+    // #34 requires an email at signup going forward, but this column carries
+    // no login-time check against the accounts that predate that decision
+    // (docs/superpowers/specs/2026-09-03-account-recovery-design.md, Box 1).
+    email: text("email"),
+    emailVerifiedAt: timestamp("email_verified_at"),
   },
-  (t) => [uniqueIndex("users_username_lower_uq").on(sql`lower(${t.username})`)]
+  (t) => [
+    uniqueIndex("users_username_lower_uq").on(sql`lower(${t.username})`),
+    // Partial, not unconditional (#897): an unverified email is a claim, not
+    // a possession, so any number of accounts may hold the same address
+    // unverified. Only a verified one is unique — whoever verifies first
+    // owns it, and storage.markEmailVerified clears a later claimant's email
+    // rather than colliding with this index.
+    uniqueIndex("users_email_verified_lower_uq")
+      .on(sql`lower(${t.email})`)
+      .where(sql`${t.emailVerifiedAt} is not null`),
+    // Non-unique, unconditional (#894 review, finding 5): getUserByEmail's
+    // `lower(email) = lower($1)` (request-password-reset, register's
+    // username/email pre-checks) has no index to use once
+    // docs/DEPLOY-RUNBOOK.md's step drops the old unconditional unique
+    // index — the partial one above only covers verified rows, which this
+    // predicate does not imply. Without this, that lookup is a seq scan.
+    index("users_email_lower_idx").on(sql`lower(${t.email})`),
+  ]
 );
 
 export const roomStatusEnum = pgEnum("room_status", ["waiting", "in_progress", "finished"]);
@@ -164,6 +187,16 @@ export const matchHistory = pgTable("match_history", {
    * written those inputs are gone.
    */
   ratingDelta: integer("rating_delta"),
+  /**
+   * This row is the seat the player walked out on, scored as a forfeit
+   * (`GameResult.abandoned`, lib/achievements.ts) rather than played to its
+   * placement — docs/BRIEF.md §3.1 "Abandoning a hand". Defaulted rather than
+   * nullable: every row written before this column existed was not one, and
+   * `false` says that outright instead of leaving it to a reader's `?? false`.
+   * The matchmaking cooldown (docs/design/DISCONNECT-POLICY.md §6.12) counts
+   * these directly rather than needing a table of its own.
+   */
+  abandoned: boolean("abandoned").notNull().default(false),
 }, (t) => [index("match_history_user_idx").on(t.userId, t.finishedAt)]);
 
 /**
@@ -231,7 +264,10 @@ export const events = pgTable("events", {
   occurredAt: timestamp("occurred_at").defaultNow().notNull(),
   name: text("name").notNull(),
   context: jsonb("context").notNull().default({}),
-}, (t) => [index("events_name_occurred_idx").on(t.name, t.occurredAt)]);
+}, (t) => [
+  index("events_name_occurred_idx").on(t.name, t.occurredAt),
+  index("events_occurred_idx").on(t.occurredAt),
+]);
 
 export const userAchievements = pgTable("user_achievements", {
   userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
@@ -298,6 +334,43 @@ export const pushTokens = pgTable("push_tokens", {
   index("push_tokens_user_id_idx").on(t.userId),
 ]);
 
+/**
+ * A proof-of-mailbox-control credential — one shape for both email
+ * verification and (next ticket) password reset, per
+ * docs/superpowers/specs/2026-09-03-account-recovery-design.md, Box 2.
+ *
+ * The raw token is a `randomBytes(32)` value handed to the user and never
+ * persisted; only its SHA-256 hash is stored, and redemption is the single
+ * atomic `UPDATE ... WHERE used_at IS NULL AND expires_at > now()` the design
+ * doc specifies, which makes single-use race-proof without a read-then-write.
+ * Read by two plain HTTP routes only (verify-email, and the next ticket's
+ * reset routes) — never by the socket handshake in server/ticket.ts, which
+ * this shape is deliberately not reused from (a reset/verify link survives a
+ * server restart; a signed in-memory-nonce ticket does not).
+ *
+ * Expired rows are swept on a schedule (server/retention.ts), not on the
+ * write or redemption path — see that module for why.
+ */
+export const authTokens = pgTable(
+  "auth_tokens",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    purpose: text("purpose").$type<"email_verify" | "password_reset">().notNull(),
+    tokenHash: text("token_hash").notNull(),
+    expiresAt: timestamp("expires_at").notNull(),
+    usedAt: timestamp("used_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (t) => [
+    // The only key redemption looks a row up by; unique is what keeps
+    // `RETURNING user_id` a single row rather than a set.
+    uniqueIndex("auth_tokens_token_hash_uq").on(t.tokenHash),
+    index("auth_tokens_user_id_idx").on(t.userId, t.purpose),
+    index("auth_tokens_expires_idx").on(t.expiresAt),
+  ]
+);
+
 const bytea = customType<{ data: Buffer; driverData: Buffer }>({
   dataType: () => "bytea",
 });
@@ -330,6 +403,7 @@ export const socketIoAttachments = pgTable(
 export const insertUserSchema = createInsertSchema(users).pick({
   username: true,
   password: true,
+  email: true,
 });
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -341,3 +415,5 @@ export type Friend = typeof friends.$inferSelect;
 export type UserStats = typeof userStats.$inferSelect;
 export type MatchHistory = typeof matchHistory.$inferSelect;
 export type PushToken = typeof pushTokens.$inferSelect;
+export type AuthToken = typeof authTokens.$inferSelect;
+export type AuthTokenPurpose = AuthToken["purpose"];

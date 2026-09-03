@@ -75,23 +75,32 @@ function formatDefaultClause(
 }
 
 /**
- * Renders an expression index's term, e.g. `sql\`lower(${users.username})\`` as
- * `(lower("username"))`. Only literal text and column references — a bound
- * parameter cannot be indexed and throws, as it does in a default clause.
+ * Renders a `SQL` fragment's literal text and column references, e.g.
+ * `sql\`lower(${users.username})\`` as `lower("username")`. Only those two
+ * chunk shapes — a bound parameter cannot appear in an index definition and
+ * throws, as it does in a default clause. Shared by an index's own term and
+ * a partial index's `WHERE` condition, which are the same kind of fragment.
  */
-function indexExpression(expr: SQL, indexName: string, tableName: string): string {
-  const text = expr.queryChunks
+function renderSqlExpression(expr: SQL, contextName: string, tableName: string): string {
+  return expr.queryChunks
     .map((chunk) => {
       if (is(chunk, StringChunk)) return chunk.value.join("");
       if (is(chunk, Column)) return quoteIdent(chunk.name);
       throw new Error(
-        `schemaStatements: index "${indexName}" on table "${tableName}" ` +
-          `indexes a parameterized expression, which is not supported — ` +
-          `update schemaStatements() in server/schemaDdl.ts.`
+        `schemaStatements: ${contextName} on table "${tableName}" references ` +
+          `a parameterized expression, which is not supported — update ` +
+          `schemaStatements() in server/schemaDdl.ts.`
       );
     })
     .join("");
-  return `(${text})`;
+}
+
+/**
+ * Renders an expression index's term, e.g. `sql\`lower(${users.username})\`` as
+ * `(lower("username"))`.
+ */
+function indexExpression(expr: SQL, indexName: string, tableName: string): string {
+  return `(${renderSqlExpression(expr, `index "${indexName}"`, tableName)})`;
 }
 
 type TableConfig = ReturnType<typeof getTableConfig>;
@@ -341,9 +350,12 @@ export function schemaStatements(): string[] {
       // form can mean, so it is left implicit; anything else is named.
       const method = idx.config.method;
       const using = !method || method === "btree" ? "" : ` USING ${quoteIdent(method)}`;
+      const where = idx.config.where
+        ? ` WHERE ${renderSqlExpression(idx.config.where, `index "${indexName}"'s WHERE clause`, cfg.name)}`
+        : "";
       indexStatements.push(
         `${kind} IF NOT EXISTS ${quoteIdent(indexName)} ON ${quoteIdent(cfg.name)}` +
-          `${using} (${cols.join(", ")});`
+          `${using} (${cols.join(", ")})${where};`
       );
     }
   }

@@ -100,10 +100,11 @@ export function useOnlineRoom() {
 
 /** The hand in front of you and the two things you can do with it. */
 export function useOnlineTable() {
-  const { gameState, mySeatIndex, playCards, pass, sendReaction } = useOnlineGame();
+  const { gameState, mySeatIndex, playCards, pass, sendReaction, disconnectedSeats } =
+    useOnlineGame();
   return useMemo(
-    () => ({ gameState, mySeatIndex, playCards, pass, sendReaction }),
-    [gameState, mySeatIndex, playCards, pass, sendReaction]
+    () => ({ gameState, mySeatIndex, playCards, pass, sendReaction, disconnectedSeats }),
+    [gameState, mySeatIndex, playCards, pass, sendReaction, disconnectedSeats]
   );
 }
 
@@ -126,9 +127,11 @@ export function useOnlineMatch() {
     ratingDeltas,
     handRecorded,
     rematchVoteState,
+    endMatchVoteState,
     rematchIntents,
     rematchPromptOpen,
     voteRematch,
+    voteToEndMatch,
     answerRematch,
   } = useOnlineGame();
   return useMemo(
@@ -139,9 +142,11 @@ export function useOnlineMatch() {
       ratingDeltas,
       handRecorded,
       rematchVoteState,
+      endMatchVoteState,
       rematchIntents,
       rematchPromptOpen,
       voteRematch,
+      voteToEndMatch,
       answerRematch,
     }),
     [
@@ -151,9 +156,11 @@ export function useOnlineMatch() {
       ratingDeltas,
       handRecorded,
       rematchVoteState,
+      endMatchVoteState,
       rematchIntents,
       rematchPromptOpen,
       voteRematch,
+      voteToEndMatch,
       answerRematch,
     ]
   );

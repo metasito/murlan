@@ -8,7 +8,7 @@
 // Written here, from the server, on the server's clock. A client-emitted event
 // is telemetry the player can forge or block, and CLAUDE.md's server-authority
 // rule is about what gets recorded as much as about who wins a hand.
-import { desc, lt, sql } from "drizzle-orm";
+import { desc, sql } from "drizzle-orm";
 import { db } from "./db.ts";
 import { events } from "../shared/schema.ts";
 import { logger } from "./logger.ts";
@@ -21,9 +21,8 @@ export const EVENT_RETENTION_DAYS = 90;
 export const FUNNEL_WINDOW_DAYS = 30;
 
 /**
- * Records one step and prunes what has aged out, in the same transaction — the
- * shape server/replays.ts and server/clientErrors.ts already use, so the table
- * cannot grow without bound if a scheduled prune is never written.
+ * Records one step. Retention is server/retention.ts's job, on a schedule —
+ * not this call's.
  *
  * Callers use `trackEvent`, not this. This is what it awaits.
  */
@@ -32,14 +31,7 @@ async function insertEvent(
   userId: string | null,
   context: EventContext
 ): Promise<void> {
-  await db.transaction(async (tx) => {
-    await tx.insert(events).values({ name, userId, context });
-    await tx
-      .delete(events)
-      .where(
-        lt(events.occurredAt, sql`now() - make_interval(days => ${EVENT_RETENTION_DAYS})`)
-      );
-  });
+  await db.insert(events).values({ name, userId, context });
 }
 
 /**
