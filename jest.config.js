@@ -21,6 +21,12 @@ const project = (platform) => ({
   rootDir,
   testMatch: [`${rootDir}/tests/native/**/*.test.tsx`],
   setupFilesAfterEnv: [`${rootDir}/tests/native/setup.ts`],
+  // react-native-worklets ships `.native.ts` files that call into a real
+  // native module `setUpTests()` cannot stand in for under Jest. Its own
+  // resolver strips the `.native` extension so requests resolve to the
+  // plain (mockable) implementation instead — without it, requiring
+  // react-native-reanimated throws before any test runs.
+  resolver: require.resolve('react-native-worklets/jest/resolver'),
 });
 
 module.exports = {

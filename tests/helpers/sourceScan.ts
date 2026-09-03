@@ -121,7 +121,7 @@ function closingBrace(source: string, open: number): number {
 }
 
 const FULL_BLEED = (body: string): boolean =>
-  /absoluteFillObject/.test(body) ||
+  /absoluteFill(Object)?\b/.test(body) ||
   (/position:\s*["']absolute["']/.test(body) &&
     /top:\s*0/.test(body) &&
     /bottom:\s*0/.test(body));
