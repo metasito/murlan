@@ -219,6 +219,18 @@ class DrizzleStorage {
     });
   }
 
+  /**
+   * Box 6: unlike `changePassword`, a reset is never made from within a live
+   * session, so there is no `keepSid` to spare — every session for the
+   * account is cleared.
+   */
+  async resetPassword(userId: string, passwordHash: string): Promise<void> {
+    await db.transaction(async (tx) => {
+      await tx.update(users).set({ password: passwordHash }).where(eq(users.id, userId));
+      await tx.execute(sql`DELETE FROM session WHERE sess->>'userId' = ${userId}`);
+    });
+  }
+
   async updateLastSeen(userId: string): Promise<void> {
     await db.update(users).set({ lastSeen: new Date() }).where(eq(users.id, userId));
   }

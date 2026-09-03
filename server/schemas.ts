@@ -21,6 +21,16 @@ export const VerifyEmailSchema = z.object({
   token: z.string().min(1).max(128),
 });
 
+export const RequestPasswordResetSchema = z.object({
+  email: RegisterSchema.shape.email,
+});
+
+/** `token` is a `randomBytes(32)` base64url value — see server/authTokens.ts. */
+export const ResetPasswordSchema = z.object({
+  token: z.string().min(1).max(128),
+  newPassword: RegisterSchema.shape.password,
+});
+
 /**
  * A rename is registration's username rule and nothing else — referenced rather than restated,
  * so the two cannot drift into accepting different names.

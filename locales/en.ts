@@ -33,6 +33,7 @@ export const en = {
   "server.USERNAME_TAKEN": "Username already in use",
   "server.EMAIL_TAKEN": "Email already registered",
   "server.INVALID_TOKEN": "Invalid or expired verification link",
+  "server.INVALID_RESET_TOKEN": "Invalid or expired reset link",
   "server.INTERNAL_SERVER_ERROR": "Internal server error",
   "server.INVALID_CREDENTIALS": "Wrong username or password",
   "server.USER_NOT_FOUND": "User not found",

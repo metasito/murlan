@@ -14,6 +14,8 @@ import {
   LoginSchema,
   ChangePasswordSchema,
   VerifyEmailSchema,
+  RequestPasswordResetSchema,
+  ResetPasswordSchema,
   AddFriendSchema,
   ClientErrorSchema,
   PushTokenSchema,
@@ -23,7 +25,13 @@ import { deletePushToken, savePushToken } from "./push.ts";
 import { DEFAULT_LOCALE, translate, type Locale } from "../shared/i18n.ts";
 import { emitToUser, evictUser, isUserOnline } from "./socket.ts";
 import { mintSocketTicket } from "./ticket.ts";
-import { mintAuthToken, redeemAuthToken, EMAIL_VERIFY_TOKEN_TTL_MS } from "./authTokens.ts";
+import {
+  mintAuthToken,
+  redeemAuthToken,
+  invalidateAuthTokens,
+  EMAIL_VERIFY_TOKEN_TTL_MS,
+  PASSWORD_RESET_TOKEN_TTL_MS,
+} from "./authTokens.ts";
 import { sendMail } from "./mail.ts";
 import { getUserStats, getUserAchievements } from "./stats.ts";
 import { getMatchHistoryView } from "./matchHistoryView.ts";
@@ -149,6 +157,51 @@ const loginUsernameLimiter = rateLimit({
   },
 });
 
+/** Same pattern as authMaxFromEnv() above. */
+function passwordResetRequestMaxFromEnv(): number {
+  const parsed = Number(process.env.MURLAN_PASSWORD_RESET_REQUEST_RATE_LIMIT);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : 5;
+}
+
+/**
+ * Per-email cap for POST /api/auth/request-password-reset (design doc,
+ * Box 4) — mirrors loginUsernameLimiter's per-account shape, keyed on the
+ * same case-insensitive form storage.getUserByEmail looks up by. Unlike
+ * loginUsernameLimiter, tripping this is not itself an oracle: the key is
+ * whatever address the caller submitted, so a nonexistent address is
+ * throttled on the identical schedule a real one is.
+ */
+const passwordResetRequestLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: passwordResetRequestMaxFromEnv(),
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req: Request) => (req.body as { email: string }).email.toLowerCase(),
+  message: { error: "Too many requests, slow down.", code: "RATE_LIMITED" },
+});
+
+/** Same pattern as authMaxFromEnv() above. */
+function resetPasswordMaxFromEnv(): number {
+  const parsed = Number(process.env.MURLAN_RESET_PASSWORD_RATE_LIMIT);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : 20;
+}
+
+/**
+ * POST /api/auth/reset-password's only bound (design doc, Box 4) — the
+ * token's 256 bits of entropy is the real defense against guessing it, so
+ * this is a modest per-IP cap against automated scanning, mirroring
+ * ticketLimiter's shape rather than authLimiter's numbers or
+ * loginUsernameLimiter's per-account precision, which this route has no
+ * username to key on.
+ */
+const resetPasswordLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: resetPasswordMaxFromEnv(),
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many requests, slow down.", code: "RATE_LIMITED" },
+});
+
 const friendLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 10,
@@ -215,6 +268,20 @@ function sendVerificationEmail(to: string, token: string): void {
     "Verify your Murlan email",
     `Your Murlan email verification code is:\n\n${token}\n\nThis code expires in 24 hours.`
   ).catch((err) => logger.error({ err, to }, "sendVerificationEmail failed"));
+}
+
+/**
+ * Never awaited by its caller (design doc, Box 5) — the enumeration-safe
+ * request-password-reset handler replies before this settles, so the only
+ * work the response waits on is the token mint, not the outbound HTTPS call.
+ */
+function sendPasswordResetEmail(to: string, token: string): void {
+  sendMail(
+    to,
+    "Reset your Murlan password",
+    `Your Murlan password reset code is:\n\n${token}\n\nThis code expires in 30 minutes. ` +
+      `If you did not request this, you can ignore this email.`
+  ).catch((err) => logger.error({ err, to }, "sendPasswordResetEmail failed"));
 }
 
 /**
@@ -445,6 +512,61 @@ export async function registerRoutes(app: Express): Promise<Server> {
     logger.info({ userId }, "Email verified");
     res.json({ ok: true });
   });
+
+  // Enumeration-safe by design (docs/superpowers/specs/2026-09-03-account-
+  // recovery-design.md, Box 5): identical 200 { ok: true } whether or not
+  // the address matches a verified account, and the response is sent
+  // before the mail provider is ever called — only the token mint (an
+  // indexed lookup plus one insert) happens before the reply, so the two
+  // branches cost the same up to that point. An unverified email is
+  // deliberately treated the same as no account at all: verified-email is
+  // load-bearing here, not a formality (an unverified address that could
+  // reset is registration-then-takeover of someone else's account).
+  app.post(
+    "/api/auth/request-password-reset",
+    authLimiter,
+    validate(RequestPasswordResetSchema),
+    passwordResetRequestLimiter,
+    async (req, res) => {
+      const { email } = req.body as { email: string };
+      const user = await storage.getUserByEmail(email);
+      if (user && user.emailVerifiedAt) {
+        const token = await mintAuthToken(user.id, "password_reset", PASSWORD_RESET_TOKEN_TTL_MS);
+        res.json({ ok: true });
+        sendPasswordResetEmail(user.email!, token);
+        return;
+      }
+      res.json({ ok: true });
+    }
+  );
+
+  // Public: the token itself is the credential, same as verify-email above.
+  // One generic failure for unknown/expired/used/unverified alike — which of
+  // those it was is not this caller's business.
+  app.post(
+    "/api/auth/reset-password",
+    resetPasswordLimiter,
+    validate(ResetPasswordSchema),
+    async (req, res) => {
+      const { token, newPassword } = req.body as { token: string; newPassword: string };
+      const userId = await redeemAuthToken(token, "password_reset");
+      const user = userId ? await storage.getUser(userId) : undefined;
+      if (!user?.emailVerifiedAt) {
+        res.status(400).json({ message: "Invalid or expired reset link", code: "INVALID_RESET_TOKEN" });
+        return;
+      }
+
+      const passwordHash = await bcrypt.hash(newPassword, 10);
+      await storage.resetPassword(user.id, passwordHash);
+      // The token this request redeemed is already used_at-stamped; this
+      // only reaches its unredeemed siblings (design doc, Box 2) — the same
+      // "live credential" class as the sessions storage.resetPassword just
+      // cleared, and for the same reason.
+      await invalidateAuthTokens(user.id, "password_reset");
+      logger.info({ userId: user.id }, "Password reset");
+      res.json({ ok: true });
+    }
+  );
 
   // Mints the short-lived, single-use ticket the socket handshake accepts in
   // place of a session cookie (native clients do not send cookies on upgrade).
