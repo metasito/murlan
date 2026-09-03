@@ -283,6 +283,27 @@ const addEmailLimiter = rateLimit({
   message: payload("RATE_LIMITED"),
 });
 
+/** Same pattern as authMaxFromEnv() above. */
+function resendVerificationMaxFromEnv(): number {
+  const parsed = Number(process.env.MURLAN_RESEND_VERIFICATION_RATE_LIMIT);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : 5;
+}
+
+/**
+ * Per-account cap on POST /api/auth/resend-verification (#893) — it is a way
+ * to make the server send mail, so it is limited the way addEmailLimiter is,
+ * but keyed on the account rather than an address: the route takes no
+ * address in its body, only the one already on the caller's own row.
+ */
+const resendVerificationLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: resendVerificationMaxFromEnv(),
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req: Request) => req.session?.userId ?? "anonymous",
+  message: payload("RATE_LIMITED"),
+});
+
 const friendLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 10,
@@ -672,6 +693,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return;
     }
     logger.info({ userId }, "Email verified");
+    res.json({ ok: true });
+  });
+
+  /**
+   * #893: without this, a mint older than 24h (EMAIL_VERIFY_TOKEN_TTL_MS)
+   * leaves an account permanently unverifiable — add-email refuses a second
+   * call once an address is set (EMAIL_ALREADY_SET), and nothing else mints
+   * an email_verify token. Same invalidate-then-mint shape as add-email,
+   * keyed on the session rather than a submitted address: the address to
+   * resend to is the one already on the caller's own row.
+   */
+  app.post("/api/auth/resend-verification", requireAuth, resendVerificationLimiter, async (req, res) => {
+    const userId = req.session.userId!;
+    const user = await storage.getUser(userId);
+    if (!user) {
+      res.status(401).json({ ...payload("NOT_AUTHENTICATED") });
+      return;
+    }
+    if (!user.email) {
+      res.status(409).json({ ...payload("EMAIL_NOT_SET") });
+      return;
+    }
+    if (user.emailVerifiedAt) {
+      res.status(409).json({ ...payload("EMAIL_ALREADY_VERIFIED") });
+      return;
+    }
+
+    await invalidatePendingAuthTokens(userId, "email_verify");
+    const token = await mintAuthToken(userId, "email_verify", EMAIL_VERIFY_TOKEN_TTL_MS);
+    sendVerificationEmail(user.email, user.username, token);
+    logger.info({ userId }, "Verification email resent");
     res.json({ ok: true });
   });
 

@@ -1,3 +1,4 @@
+import { appendFile } from "node:fs/promises";
 import { logger } from "./logger.ts";
 import { trackEvent } from "./events.ts";
 
@@ -34,6 +35,24 @@ export function mailHealth(): MailHealth {
  */
 export async function sendMail(to: string, subject: string, text: string): Promise<boolean> {
   counts.attempted += 1;
+
+  // #893: an e2e run cannot get a raw token any other way — only its hash is
+  // stored, and the real send goes to Resend. `NODE_ENV !== "production"`
+  // is load-bearing, not a formality: this writes the credential itself to a
+  // file on the server's own host.
+  const sink = process.env.MURLAN_MAIL_SINK;
+  if (sink && process.env.NODE_ENV !== "production") {
+    try {
+      await appendFile(sink, `${JSON.stringify({ to, subject, text })}\n`);
+      counts.succeeded += 1;
+      return true;
+    } catch (err) {
+      logger.error({ err, to }, "sendMail: failed to write to the mail sink");
+      counts.failed += 1;
+      return false;
+    }
+  }
+
   const apiKey = process.env.RESEND_API_KEY;
   const from = process.env.MAIL_FROM_ADDRESS;
   if (!apiKey || !from) {
