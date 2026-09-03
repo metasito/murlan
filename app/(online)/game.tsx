@@ -32,7 +32,7 @@ import { MenuButton } from "@/components/MenuButton";
 import { Colors, FontSize, Radius, Reading, Spacing, Type, Layer } from "@/lib/theme";
 import { hapticLight, hapticMedium } from "@/lib/haptics";
 import { useTranslation } from "@/lib/i18n";
-import { A11yStatus, a11yHidden } from "@/lib/a11y";
+import { A11yStatus, a11yHidden, useA11yHint } from "@/lib/a11y";
 
 // Read once at module scope, never per-call. EXPO_PUBLIC_ vars are inlined
 // at bundle build time, so this only ever takes the fast path in a build the
@@ -57,6 +57,7 @@ export default function OnlineGameScreen() {
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   const { t } = useTranslation();
+  const endMatchVoteHint = useA11yHint(t("game.endMatchVoteHint"));
   const { user } = useAuth();
   const { gameState, mySeatIndex, playCards, pass, sendReaction, disconnectedSeats } =
     useOnlineTable();
@@ -345,7 +346,7 @@ export default function OnlineGameScreen() {
                   ? t("game.endMatchWithdrawButton")
                   : t("game.endMatchVoteButton")
               }
-              accessibilityHint={t("game.endMatchVoteHint")}
+              {...endMatchVoteHint.props}
               onPress={() => {
                 hapticMedium();
                 if (hasVotedToEndMatch) {
@@ -373,6 +374,7 @@ export default function OnlineGameScreen() {
                     : t("game.endMatchVoteButton")}
                 </Text>
               </View>
+              {endMatchVoteHint.node}
             </Pressable>
             {endMatchVoteState && (
               <A11yStatus
