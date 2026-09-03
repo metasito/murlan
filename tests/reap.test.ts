@@ -17,6 +17,7 @@ import {
   stalePortHolders,
   wouldTakeSelf,
   isSessionHost,
+  parseWindowsProcessJson,
 } from "../scripts/reap.mjs";
 import preflightMemory, { memoryVerdict, memoryFloor } from "../scripts/preflightMemory.mjs";
 
@@ -748,5 +749,53 @@ describe("psTimeToMs", () => {
 
   test("an unparseable column yields NaN, which cpuRatios then declines to rate", () => {
     assert.equal(Number.isNaN(psTimeToMs("-")), true);
+  });
+});
+
+/**
+ * One process carrying a raw control byte in its command line once took the whole reaper down —
+ * and with it `npm run agent:check`, because `JSON.parse` rejects the entire table over a single
+ * unescaped byte and nothing above `processTable` catches it.
+ */
+describe("parseWindowsProcessJson", () => {
+  const row = (commandLine: string) =>
+    `[{"ProcessId":42,"ParentProcessId":7,"Name":"node.exe","CommandLine":"${commandLine}",` +
+    `"Started":1700000000000,"Cpu":1234}]`;
+
+  test("reads the shape ConvertTo-Json emits", () => {
+    assert.deepEqual(parseWindowsProcessJson(row("node index.mjs")), [
+      {
+        pid: 42,
+        ppid: 7,
+        name: "node.exe",
+        commandLine: "node index.mjs",
+        startedAt: 1_700_000_000_000,
+        cpuMs: 1234,
+      },
+    ]);
+  });
+
+  test("survives a raw control byte the serializer left unescaped", () => {
+    const raw = row(`node a${String.fromCharCode(1)}b.mjs`);
+    assert.throws(() => JSON.parse(raw), "the fixture must be what JSON.parse rejects");
+
+    const [only] = parseWindowsProcessJson(raw);
+    assert.equal(only.commandLine, "node ab.mjs", "the byte is dropped, the rest of the line is not");
+    assert.equal(only.pid, 42, "and the row it sat in still arrives");
+  });
+
+  test("keeps an escaped control character, which is legitimate JSON", () => {
+    const [only] = parseWindowsProcessJson(row("node a\\tb.mjs"));
+    assert.equal(only.commandLine, `node a${String.fromCharCode(9)}b.mjs`);
+  });
+
+  test("a single object is one row, not a table of its keys", () => {
+    const rows = parseWindowsProcessJson(row("node solo.mjs").slice(1, -1));
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].pid, 42);
+  });
+
+  test("no output is no processes, not a parse error", () => {
+    assert.deepEqual(parseWindowsProcessJson("  \n"), []);
   });
 });

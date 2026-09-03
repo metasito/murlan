@@ -152,6 +152,28 @@ function sh(cmd, args) {
   }
 }
 
+/**
+ * `-Compress` emits no whitespace of its own, so a raw byte below 0x20 arriving here is never
+ * JSON structure — it is a character of somebody's command line that the serializer let through
+ * unescaped, and `JSON.parse` rejects the whole table over it. Dropping it costs one character of
+ * one command line, which every rule below matches on as a substring.
+ */
+const RAW_CONTROL_BYTE = /[\x00-\x1f]/g;
+
+/** One row per process, from the Windows table's JSON. Exported so the line above is testable. */
+export function parseWindowsProcessJson(json) {
+  if (!json.trim()) return [];
+  const rows = JSON.parse(json.replace(RAW_CONTROL_BYTE, ""));
+  return (Array.isArray(rows) ? rows : [rows]).map((r) => ({
+    pid: r.ProcessId,
+    ppid: r.ParentProcessId,
+    name: String(r.Name ?? ""),
+    commandLine: r.CommandLine ?? "",
+    startedAt: Number(r.Started ?? 0),
+    cpuMs: Number(r.Cpu ?? NaN),
+  }));
+}
+
 /** Every process on the box, so a candidate's parent can be looked up rather than assumed dead. */
 function processTable() {
   if (process.platform === "win32") {
@@ -164,16 +186,7 @@ function processTable() {
         "@{n='Cpu';e={[int64](($_.KernelModeTime + $_.UserModeTime) / 10000)}} " +
         "| ConvertTo-Json -Compress",
     ]);
-    if (!json.trim()) return [];
-    const rows = JSON.parse(json);
-    return (Array.isArray(rows) ? rows : [rows]).map((r) => ({
-      pid: r.ProcessId,
-      ppid: r.ParentProcessId,
-      name: String(r.Name ?? ""),
-      commandLine: r.CommandLine ?? "",
-      startedAt: Number(r.Started ?? 0),
-      cpuMs: Number(r.Cpu ?? NaN),
-    }));
+    return parseWindowsProcessJson(json);
   }
   const now = Date.now();
   return sh("ps", ["-eo", "pid=,ppid=,etimes=,time=,args="])
