@@ -95,6 +95,24 @@ function labelSelector(label: string): string {
 
 export class StuckError extends Error {}
 
+/**
+ * A single turn's own candidate search ran past its budget. Distinct from
+ * `StuckError`: that class means the *game* stopped progressing; this means
+ * one `playOrPass` call did not finish trying candidates fast enough — the
+ * distinction #770 needs, since neither `stallMs` nor
+ * `maxStatesWithoutProgress` can observe time spent inside a single call
+ * (both only compare table descriptions *between* calls). `HUMAN_TURN_SECONDS`
+ * (app/game.tsx) is a real 20s wall-clock deadline that
+ * `EXPO_PUBLIC_E2E_FAST` deliberately does not shorten
+ * (tests/e2e/tableFit.spec.ts drives it out for real), so a search that is
+ * still running that long after a turn started has already lost the race —
+ * continuing only spends real time on a turn production has already taken
+ * back. `SEARCH_BUDGET_MS` below stays under it so this fires first, with a
+ * diagnostic, instead of the pass landing mid-search and the driver grinding
+ * on with stale candidates.
+ */
+export class SearchTimeoutError extends StuckError {}
+
 // The table's own aria-label announces "your turn" purely from
 // `currentTurnIndex === viewerSeat` (components/gameTableModel.ts
 // `describeTableForA11y`), with no notion of `gameOver` — so for one tick
@@ -104,6 +122,9 @@ export class StuckError extends Error {}
 // evaporated, go round the loop again" instead of hanging until the test's
 // own timeout, which buries the real diagnostic under a generic one.
 const CARD_CLICK_TIMEOUT_MS = 4_000;
+
+/** See `SearchTimeoutError`. `DriveOptions.searchBudgetMs` overrides it. */
+const DEFAULT_SEARCH_BUDGET_MS = 18_000;
 
 /**
  * The table description names the last play's shape, and `canPlay` only ever
@@ -180,7 +201,12 @@ function requiredReplySize(desc: string): number | null {
  * element that has since detached, failing the whole turn on what is really
  * just animation churn rather than a stuck game.
  */
-async function playOrPass(page: Page, desc: string): Promise<string | null> {
+async function playOrPass(
+  page: Page,
+  desc: string,
+  searchBudgetMs = DEFAULT_SEARCH_BUDGET_MS
+): Promise<string | null> {
+  const searchDeadline = Date.now() + searchBudgetMs;
   const replySize = requiredReplySize(desc);
   const handCards = page.locator(HAND_CARDS);
   const cardsNow = (await handCards.evaluateAll((els) =>
@@ -263,6 +289,13 @@ async function playOrPass(page: Page, desc: string): Promise<string | null> {
   }
 
   async function tryCombo(cardLabels: string[]): Promise<"played" | "no" | "gone"> {
+    if (Date.now() > searchDeadline) {
+      throw new SearchTimeoutError(
+        `Search for a reply to "${desc}" ran past ${searchBudgetMs}ms without finishing — ` +
+          `HUMAN_TURN_SECONDS (app/game.tsx, 20s) has already or is about to auto-pass this ` +
+          `turn out from under it. Hand at search start: [${labels.join(", ")}].`
+      );
+    }
     if (!(await setSelection(cardLabels))) return "gone";
     const label = await giocaBtn.getAttribute("aria-label").catch(() => null);
     if (label === GIOCA_VALID_LABEL) {
@@ -434,6 +467,8 @@ export interface DriveOptions {
    * assertion.
    */
   maxTotalMs?: number;
+  /** See `SearchTimeoutError`. Overrides `DEFAULT_SEARCH_BUDGET_MS` (18s). */
+  searchBudgetMs?: number;
   log?: (line: string) => void;
 }
 
@@ -454,6 +489,7 @@ export async function driveGameToCompletion(page: Page, opts: DriveOptions): Pro
   // tight that one slow AI response false-positives a healthy game.
   const stallMs = opts.stallMs ?? 15_000;
   const maxTotalMs = opts.maxTotalMs ?? 240_000;
+  const searchBudgetMs = opts.searchBudgetMs ?? DEFAULT_SEARCH_BUDGET_MS;
   const log = opts.log ?? (() => {});
 
   let lastDesc = "";
@@ -509,7 +545,9 @@ export async function driveGameToCompletion(page: Page, opts: DriveOptions): Pro
       }
       // No valid giveback card exists — nothing to click; keep polling for the stall watchdog.
     } else if (desc.startsWith(YOUR_TURN_PREFIX)) {
-      const action = await playOrPass(page, desc);
+      const searchStartedAt = Date.now();
+      const action = await playOrPass(page, desc, searchBudgetMs);
+      const searchMs = Date.now() - searchStartedAt;
       if (action === null) {
         // The hand stopped being interactive mid-search — most often the
         // one-tick "your turn" / gameOver race described above `playOrPass`.
@@ -518,7 +556,9 @@ export async function driveGameToCompletion(page: Page, opts: DriveOptions): Pro
         await sleep(150);
         continue;
       }
-      log(`${action} (was: "${desc}")`);
+      // #770: every turn's search time, so a stall's log carries the full
+      // history rather than just the one search that (maybe) ran long.
+      log(`${action} (was: "${desc}") [search ${searchMs}ms]`);
       const changed = await waitForChange(page, desc, stallMs);
       if (!changed) {
         throw new StuckError(
