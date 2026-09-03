@@ -345,10 +345,21 @@ describe("email at signup", { skip: hasDatabase() ? false : skipMessage() }, () 
     const { db } = await import("../../server/db.ts");
     const { authTokens } = await import("../../shared/schema.ts");
     const { eq, and } = await import("drizzle-orm");
-    const rows = await db
-      .select()
-      .from(authTokens)
-      .where(and(eq(authTokens.userId, user.id), eq(authTokens.purpose, "email_verify")));
+    const readRows = () =>
+      db
+        .select()
+        .from(authTokens)
+        .where(and(eq(authTokens.userId, user.id), eq(authTokens.purpose, "email_verify")));
+
+    // register() replies before minting (#897) precisely so the mint can
+    // never be timed from the response — the row is not guaranteed to exist
+    // the instant the 202 lands, only shortly after (tests/integration/
+    // passwordReset.test.ts's identical "mints exactly one" poll).
+    let rows = await readRows();
+    for (let attempt = 0; attempt < 20 && rows.length === 0; attempt++) {
+      await new Promise((r) => setTimeout(r, 50));
+      rows = await readRows();
+    }
     assert.equal(rows.length, 1, "register must mint exactly one email_verify token");
     assert.equal(rows[0]!.usedAt, null);
   });
@@ -443,13 +454,21 @@ describe("email at signup", { skip: hasDatabase() ? false : skipMessage() }, () 
       assert.equal(res.status, 400, await res.text());
 
       // Two rows for this user: the one register() itself minted, and the
-      // expired one above — both must survive the failed POST.
-      const rows = await admin.query(
-        `SELECT 1 FROM "${server.schema}".auth_tokens t
-           JOIN "${server.schema}".users u ON u.id = t.user_id
-          WHERE u.username = $1 AND t.purpose = 'email_verify'`,
-        ["verify_no_sweep"]
-      );
+      // expired one above — both must survive the failed POST. register()
+      // replies before minting (#897), so — same as the poll above — the
+      // row is not guaranteed to exist yet at this exact instant.
+      const countRows = () =>
+        admin.query(
+          `SELECT 1 FROM "${server.schema}".auth_tokens t
+             JOIN "${server.schema}".users u ON u.id = t.user_id
+            WHERE u.username = $1 AND t.purpose = 'email_verify'`,
+          ["verify_no_sweep"]
+        );
+      let rows = await countRows();
+      for (let attempt = 0; attempt < 20 && (rows.rowCount ?? 0) < 2; attempt++) {
+        await new Promise((r) => setTimeout(r, 50));
+        rows = await countRows();
+      }
       assert.equal(
         rows.rowCount,
         2,
