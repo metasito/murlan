@@ -24,6 +24,8 @@ export const it: Record<keyof typeof en, string> = {
   "server.RATE_LIMITED": "Troppe richieste, rallenta.",
   "server.NOT_AUTHENTICATED": "Autenticazione richiesta",
   "server.USERNAME_TAKEN": "Username già in uso",
+  "server.EMAIL_TAKEN": "Email già registrata",
+  "server.INVALID_TOKEN": "Link di verifica non valido o scaduto",
   "server.INTERNAL_SERVER_ERROR": "Errore interno del server",
   "server.DEV_SYNC_NOT_CONFIGURED": "Il webhook di sincronizzazione non è configurato",
   "server.INVALID_WEBHOOK_SIGNATURE": "Firma del webhook non valida",
@@ -85,6 +87,10 @@ export const it: Record<keyof typeof en, string> = {
   "auth.usernamePlaceholder": "il_tuo_nick",
   "auth.usernameA11yLabel": "Nome utente",
   "auth.usernameA11yHint": "Inserisci il tuo nome utente per accedere o registrarti",
+  "auth.emailLabel": "Email",
+  "auth.emailPlaceholder": "tu@esempio.com",
+  "auth.emailA11yLabel": "Email",
+  "auth.emailA11yHint": "Inserisci la tua email per registrarti",
   "auth.passwordLabel": "Password",
   "auth.passwordA11yLabel": "Password",
   "auth.passwordA11yHint": "Inserisci la tua password per accedere",
@@ -94,6 +100,7 @@ export const it: Record<keyof typeof en, string> = {
   "auth.submitRegister": "Crea account",
   "auth.hint": "Username: 3–20 caratteri (lettere, numeri, _)\nPassword: minimo 6 caratteri",
   "auth.missingFields": "Inserisci username e password",
+  "auth.missingFieldsRegister": "Inserisci username, email e password",
   "auth.unknownError": "Errore sconosciuto",
 
   // ------------------------------------------------------------ settings.*

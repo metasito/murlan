@@ -3,7 +3,7 @@
  *
  *   ALLOW_RESET=1 node scripts/reset-password.mjs <username>
  *
- * There is no self-serve recovery — no email is stored — so this is the only
+ * There is no self-serve recovery yet — #862 builds it — so this is the only
  * way a *locked-out* account gets back in. A signed-in player who still knows
  * their current password uses the in-app change-password screen instead. This
  * script is deliberately not an npm script and not a route: it needs the

@@ -24,20 +24,23 @@ type Tab = "login" | "register";
 export default function AuthScreen() {
   const { t } = useTranslation();
   const usernameHint = useA11yHint(t("auth.usernameA11yHint"));
+  const emailHint = useA11yHint(t("auth.emailA11yHint"));
   const passwordHint = useA11yHint(t("auth.passwordA11yHint"));
   const { login, register } = useAuth();
   const [tab, setTab] = useState<Tab>("login");
   const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPwd, setShowPwd] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const emailRef = useRef<TextInput>(null);
   const pwdRef = useRef<TextInput>(null);
 
   async function handleSubmit() {
     setError(null);
-    if (!username.trim() || !password.trim()) {
-      setError(t("auth.missingFields"));
+    if (!username.trim() || !password.trim() || (tab === "register" && !email.trim())) {
+      setError(t(tab === "register" ? "auth.missingFieldsRegister" : "auth.missingFields"));
       return;
     }
     hapticLight();
@@ -46,7 +49,7 @@ export default function AuthScreen() {
       if (tab === "login") {
         await login(username.trim(), password);
       } else {
-        await register(username.trim(), password);
+        await register(username.trim(), password, email.trim());
       }
       router.replace("/");
     } catch (e: unknown) {
@@ -98,13 +101,40 @@ export default function AuthScreen() {
                   autoComplete="username"
                   textContentType="username"
                   returnKeyType="next"
-                  onSubmitEditing={() => pwdRef.current?.focus()}
+                  onSubmitEditing={() => (tab === "register" ? emailRef : pwdRef).current?.focus()}
                   accessibilityLabel={t("auth.usernameA11yLabel")}
                   {...usernameHint.props}
                 />
                 {usernameHint.node}
               </View>
             </View>
+
+            {tab === "register" && (
+              <View style={styles.field}>
+                <Text style={styles.label}>{t("auth.emailLabel")}</Text>
+                <View style={styles.inputRow}>
+                  <Ionicons name="mail-outline" size={16} color={Colors.textMuted} style={styles.inputIcon} />
+                  <TextInput
+                    ref={emailRef}
+                    style={styles.input}
+                    value={email}
+                    onChangeText={(v) => { setEmail(v); setError(null); }}
+                    placeholder={t("auth.emailPlaceholder")}
+                    placeholderTextColor={Colors.textMuted}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    keyboardType="email-address"
+                    autoComplete="email"
+                    textContentType="emailAddress"
+                    returnKeyType="next"
+                    onSubmitEditing={() => pwdRef.current?.focus()}
+                    accessibilityLabel={t("auth.emailA11yLabel")}
+                    {...emailHint.props}
+                  />
+                  {emailHint.node}
+                </View>
+              </View>
+            )}
 
             <View style={styles.field}>
               <Text style={styles.label}>{t("auth.passwordLabel")}</Text>

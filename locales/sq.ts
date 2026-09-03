@@ -40,6 +40,8 @@ export const sq: Record<keyof typeof en, string> = {
   "server.RATE_LIMITED": "Shumë kërkesa, ngadalëso.",
   "server.NOT_AUTHENTICATED": "Kërkohet kyçja",
   "server.USERNAME_TAKEN": "Emri i përdoruesit është i zënë",
+  "server.EMAIL_TAKEN": "Email-i është regjistruar tashmë",
+  "server.INVALID_TOKEN": "Lidhja e verifikimit është e pavlefshme ose ka skaduar",
   "server.INTERNAL_SERVER_ERROR": "Gabim i brendshëm i serverit",
   "server.DEV_SYNC_NOT_CONFIGURED": "Webhook-u i sinkronizimit nuk është konfiguruar",
   "server.INVALID_WEBHOOK_SIGNATURE": "Nënshkrimi i webhook-ut është i pavlefshëm",
@@ -101,6 +103,10 @@ export const sq: Record<keyof typeof en, string> = {
   "auth.usernamePlaceholder": "nofka_jote",
   "auth.usernameA11yLabel": "Emri i përdoruesit",
   "auth.usernameA11yHint": "Shkruaj emrin e përdoruesit për t'u kyçur ose regjistruar",
+  "auth.emailLabel": "Email",
+  "auth.emailPlaceholder": "ti@shembull.com",
+  "auth.emailA11yLabel": "Email",
+  "auth.emailA11yHint": "Shkruaj email-in për t'u regjistruar",
   "auth.passwordLabel": "Fjalëkalimi",
   "auth.passwordA11yLabel": "Fjalëkalimi",
   "auth.passwordA11yHint": "Shkruaj fjalëkalimin për t'u kyçur",
@@ -110,6 +116,7 @@ export const sq: Record<keyof typeof en, string> = {
   "auth.submitRegister": "Krijo llogari",
   "auth.hint": "Emri i përdoruesit: 3–20 shkronja (shkronja, numra, _)\nFjalëkalimi: minimumi 6 shkronja",
   "auth.missingFields": "Shkruaj emrin e përdoruesit dhe fjalëkalimin",
+  "auth.missingFieldsRegister": "Shkruaj emrin e përdoruesit, email-in dhe fjalëkalimin",
   "auth.unknownError": "Gabim i panjohur",
 
   // ------------------------------------------------------------ settings.*

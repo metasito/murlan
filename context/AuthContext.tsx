@@ -15,7 +15,7 @@ interface AuthContextValue {
   user: AuthUser | null;
   loading: boolean;
   login: (username: string, password: string) => Promise<void>;
-  register: (username: string, password: string) => Promise<void>;
+  register: (username: string, password: string, email: string) => Promise<void>;
   /** Throws `ApiError` when the server refuses; the account is left untouched. */
   rename: (username: string) => Promise<void>;
   /** Throws `ApiError` when the current password is wrong; the account is left untouched. */
@@ -110,8 +110,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(data));
   }, []);
 
-  const register = useCallback(async (username: string, password: string) => {
-    const res = await apiRequest("POST", "/api/auth/register", { username, password });
+  const register = useCallback(async (username: string, password: string, email: string) => {
+    const res = await apiRequest("POST", "/api/auth/register", { username, password, email });
     const data = await res.json();
     setUser(data);
     await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(data));

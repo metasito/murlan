@@ -31,6 +31,8 @@ export const en = {
   "server.RATE_LIMITED": "Too many requests, slow down.",
   "server.NOT_AUTHENTICATED": "Not authenticated",
   "server.USERNAME_TAKEN": "Username already in use",
+  "server.EMAIL_TAKEN": "Email already registered",
+  "server.INVALID_TOKEN": "Invalid or expired verification link",
   "server.INTERNAL_SERVER_ERROR": "Internal server error",
   "server.INVALID_CREDENTIALS": "Wrong username or password",
   "server.USER_NOT_FOUND": "User not found",
@@ -92,6 +94,10 @@ export const en = {
   "auth.usernamePlaceholder": "your_nick",
   "auth.usernameA11yLabel": "Username",
   "auth.usernameA11yHint": "Enter your username to log in or sign up",
+  "auth.emailLabel": "Email",
+  "auth.emailPlaceholder": "you@example.com",
+  "auth.emailA11yLabel": "Email",
+  "auth.emailA11yHint": "Enter your email to sign up",
   "auth.passwordLabel": "Password",
   "auth.passwordA11yLabel": "Password",
   "auth.passwordA11yHint": "Enter your password to log in",
@@ -101,6 +107,7 @@ export const en = {
   "auth.submitRegister": "Create Account",
   "auth.hint": "Username: 3–20 characters (letters, numbers, _)\nPassword: minimum 6 characters",
   "auth.missingFields": "Enter a username and password",
+  "auth.missingFieldsRegister": "Enter a username, email and password",
   "auth.unknownError": "Unknown error",
 
   // ------------------------------------------------------------ settings.*

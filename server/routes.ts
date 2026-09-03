@@ -2,7 +2,7 @@ import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "node:http";
 import bcrypt from "bcryptjs";
 import { rateLimit } from "express-rate-limit";
-import { storage, UsernameTakenError } from "./storage.ts";
+import { storage, UsernameTakenError, EmailTakenError } from "./storage.ts";
 import { friendRequestRow, friendRow } from "./friendRows.ts";
 import type { FriendRequestAccepted, FriendRequestIncoming } from "../lib/wire.ts";
 import type { User } from "../shared/schema.ts";
@@ -13,6 +13,7 @@ import {
   RenameSchema,
   LoginSchema,
   ChangePasswordSchema,
+  VerifyEmailSchema,
   AddFriendSchema,
   ClientErrorSchema,
   PushTokenSchema,
@@ -22,6 +23,8 @@ import { deletePushToken, savePushToken } from "./push.ts";
 import { DEFAULT_LOCALE, translate, type Locale } from "../shared/i18n.ts";
 import { emitToUser, evictUser, isUserOnline } from "./socket.ts";
 import { mintSocketTicket } from "./ticket.ts";
+import { mintAuthToken, redeemAuthToken, EMAIL_VERIFY_TOKEN_TTL_MS } from "./authTokens.ts";
+import { sendMail } from "./mail.ts";
 import { getUserStats, getUserAchievements } from "./stats.ts";
 import { getMatchHistoryView } from "./matchHistoryView.ts";
 import { getReplayForUser, listReplaysForUser } from "./replays.ts";
@@ -200,7 +203,18 @@ function sessionUser(user: User) {
     id: user.id,
     username: user.username,
     tutorialSeenAt: user.tutorialSeenAt ? user.tutorialSeenAt.toISOString() : null,
+    email: user.email,
+    emailVerified: user.emailVerifiedAt !== null,
   };
+}
+
+/** Never awaited by a caller — a provider outage must not delay or fail the response it rides with. */
+function sendVerificationEmail(to: string, token: string): void {
+  sendMail(
+    to,
+    "Verify your Murlan email",
+    `Your Murlan email verification code is:\n\n${token}\n\nThis code expires in 24 hours.`
+  ).catch((err) => logger.error({ err, to }, "sendVerificationEmail failed"));
 }
 
 /**
@@ -257,22 +271,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ── Auth ──────────────────────────────────────────────────────────────────
 
   app.post("/api/auth/register", authLimiter, validate(RegisterSchema), async (req, res) => {
-    const { username, password } = req.body as { username: string; password: string };
+    const { username, password, email } = req.body as { username: string; password: string; email: string };
 
-    const existing = await storage.getUserByUsername(username);
-    if (existing) {
+    const existingUsername = await storage.getUserByUsername(username);
+    if (existingUsername) {
       res.status(409).json({ message: "Username already taken", code: "USERNAME_TAKEN" });
+      return;
+    }
+    const existingEmail = await storage.getUserByEmail(email);
+    if (existingEmail) {
+      res.status(409).json({ message: "Email already registered", code: "EMAIL_TAKEN" });
       return;
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
     let user;
     try {
-      user = await storage.createUser({ username, password: passwordHash });
+      user = await storage.createUser({ username, password: passwordHash, email });
     } catch (err) {
-      if (!(err instanceof UsernameTakenError)) throw err;
-      res.status(409).json({ message: "Username already taken", code: "USERNAME_TAKEN" });
-      return;
+      if (err instanceof UsernameTakenError) {
+        res.status(409).json({ message: "Username already taken", code: "USERNAME_TAKEN" });
+        return;
+      }
+      if (err instanceof EmailTakenError) {
+        res.status(409).json({ message: "Email already registered", code: "EMAIL_TAKEN" });
+        return;
+      }
+      throw err;
+    }
+
+    // A provider outage must not block signup — mint and fire without
+    // awaiting the send, and never let it fail the response.
+    try {
+      const token = await mintAuthToken(user.id, "email_verify", EMAIL_VERIFY_TOKEN_TTL_MS);
+      sendVerificationEmail(email, token);
+    } catch (err) {
+      logger.error({ err, userId: user.id }, "Failed to mint the verification token");
     }
 
     // Regenerating gives the new account a fresh session id instead of writing
@@ -393,6 +427,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const passwordHash = await bcrypt.hash(newPassword, 10);
     await storage.changePassword(userId, passwordHash, req.sessionID);
     logger.info({ userId }, "Password changed");
+    res.json({ ok: true });
+  });
+
+  // Public: the token itself is the credential (server/authTokens.ts), not
+  // the session. Generic failure message — whether the token is unknown,
+  // expired or already used is not this caller's business, and the redeem
+  // itself is the account oracle to avoid distinguishing.
+  app.post("/api/auth/verify-email", validate(VerifyEmailSchema), async (req, res) => {
+    const { token } = req.body as { token: string };
+    const userId = await redeemAuthToken(token, "email_verify");
+    if (!userId) {
+      res.status(400).json({ message: "Invalid or expired verification link", code: "INVALID_TOKEN" });
+      return;
+    }
+    await storage.markEmailVerified(userId);
+    logger.info({ userId }, "Email verified");
     res.json({ ok: true });
   });
 

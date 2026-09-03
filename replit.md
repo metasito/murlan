@@ -39,6 +39,14 @@ All three must be set in Replit Secrets or the server refuses to boot
 - `SESSION_SECRET` — also used to sign socket auth tickets
 - `PORT` — assigned by Replit; never hardcode it
 
+## Optional Secrets
+
+Missing either of these does not stop the server from booting — `server/mail.ts` logs a
+warning and skips the send, so signup and email verification still complete without them:
+
+- `RESEND_API_KEY` — Resend API key for `server/mail.ts`
+- `MAIL_FROM_ADDRESS` — the verified "from" address Resend sends as
+
 ## Things that will break Replit if you change them
 
 - **`process.env.PORT`.** Replit assigns it dynamically.

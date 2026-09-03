@@ -19,8 +19,19 @@ export const users = pgTable(
     // One boolean, not a roles table. If a second admin ever exists, that is
     // when a role earns a column.
     isAdmin: boolean("is_admin").notNull().default(false),
+    // Nullable so every pre-existing row satisfies it on the day it lands —
+    // #34 requires an email at signup going forward, but this column carries
+    // no login-time check against the accounts that predate that decision
+    // (docs/superpowers/specs/2026-09-03-account-recovery-design.md, Box 1).
+    email: text("email"),
+    emailVerifiedAt: timestamp("email_verified_at"),
   },
-  (t) => [uniqueIndex("users_username_lower_uq").on(sql`lower(${t.username})`)]
+  (t) => [
+    uniqueIndex("users_username_lower_uq").on(sql`lower(${t.username})`),
+    // Postgres permits any number of NULLs in a unique index, so nullable and
+    // unique compose with no special case here.
+    uniqueIndex("users_email_lower_uq").on(sql`lower(${t.email})`),
+  ]
 );
 
 export const roomStatusEnum = pgEnum("room_status", ["waiting", "in_progress", "finished"]);
@@ -298,6 +309,43 @@ export const pushTokens = pgTable("push_tokens", {
   index("push_tokens_user_id_idx").on(t.userId),
 ]);
 
+/**
+ * A proof-of-mailbox-control credential — one shape for both email
+ * verification and (next ticket) password reset, per
+ * docs/superpowers/specs/2026-09-03-account-recovery-design.md, Box 2.
+ *
+ * The raw token is a `randomBytes(32)` value handed to the user and never
+ * persisted; only its SHA-256 hash is stored, and redemption is the single
+ * atomic `UPDATE ... WHERE used_at IS NULL AND expires_at > now()` the design
+ * doc specifies, which makes single-use race-proof without a read-then-write.
+ * Read by two plain HTTP routes only (verify-email, and the next ticket's
+ * reset routes) — never by the socket handshake in server/ticket.ts, which
+ * this shape is deliberately not reused from (a reset/verify link survives a
+ * server restart; a signed in-memory-nonce ticket does not).
+ *
+ * Nothing else bounds this table — a row lands per signup and per reset
+ * request — so expired rows are swept opportunistically on every redemption
+ * rather than kept forever or run through a scheduler.
+ */
+export const authTokens = pgTable(
+  "auth_tokens",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    purpose: text("purpose").$type<"email_verify" | "password_reset">().notNull(),
+    tokenHash: text("token_hash").notNull(),
+    expiresAt: timestamp("expires_at").notNull(),
+    usedAt: timestamp("used_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (t) => [
+    // The only key redemption looks a row up by; unique is what keeps
+    // `RETURNING user_id` a single row rather than a set.
+    uniqueIndex("auth_tokens_token_hash_uq").on(t.tokenHash),
+    index("auth_tokens_user_id_idx").on(t.userId, t.purpose),
+  ]
+);
+
 const bytea = customType<{ data: Buffer; driverData: Buffer }>({
   dataType: () => "bytea",
 });
@@ -330,6 +378,7 @@ export const socketIoAttachments = pgTable(
 export const insertUserSchema = createInsertSchema(users).pick({
   username: true,
   password: true,
+  email: true,
 });
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -341,3 +390,5 @@ export type Friend = typeof friends.$inferSelect;
 export type UserStats = typeof userStats.$inferSelect;
 export type MatchHistory = typeof matchHistory.$inferSelect;
 export type PushToken = typeof pushTokens.$inferSelect;
+export type AuthToken = typeof authTokens.$inferSelect;
+export type AuthTokenPurpose = AuthToken["purpose"];
