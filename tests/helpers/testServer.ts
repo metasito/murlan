@@ -65,6 +65,12 @@ process.env.MURLAN_CHANGE_PASSWORD_RATE_LIMIT ??= "5";
 process.env.MURLAN_REGISTER_EMAIL_RATE_LIMIT ??= "5";
 
 /**
+ * add-email's per-address limiter (#894 review, finding 4) — same pattern
+ * and reasoning as MURLAN_REGISTER_EMAIL_RATE_LIMIT above.
+ */
+process.env.MURLAN_ADD_EMAIL_RATE_LIMIT ??= "5";
+
+/**
  * The retention sweep (#895) shares startSweeper's 5-minute interval. A test
  * that ages a fixture row and asserts it survives a write is asserting
  * against that same background timer — a tick landing between the fixture

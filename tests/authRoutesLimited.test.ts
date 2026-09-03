@@ -33,9 +33,6 @@ const NO_LIMITER_BY_DESIGN = new Set([
   // A read of the caller's own session — cheap, and answers 401 for anyone
   // without one. No account or provider cost an attacker can spend.
   "/api/auth/me",
-  // Self-limiting: a second call 409s EMAIL_ALREADY_SET before doing any
-  // work, once the first has set the account's email.
-  "/api/auth/add-email",
 ]);
 
 /** Every `/api/auth/*` route mounting in server/routes.ts, with whether it names a `*Limiter`. */

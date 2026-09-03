@@ -256,6 +256,32 @@ const registerEmailLimiter = rateLimit({
   message: payload("RATE_LIMITED"),
 });
 
+/** Same pattern as authMaxFromEnv() above. */
+function addEmailMaxFromEnv(): number {
+  const parsed = Number(process.env.MURLAN_ADD_EMAIL_RATE_LIMIT);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : 5;
+}
+
+/**
+ * Per-address cap on POST /api/auth/add-email (#894 review, finding 4),
+ * mirroring registerEmailLimiter exactly. add-email's own EMAIL_ALREADY_SET
+ * cap bounds any one *account* to a single verification mail, which is what
+ * #892 rested its "self-limiting, no route limiter needed" call on — but
+ * that call predates storage.setEmail no longer raising EmailTakenError for
+ * an address claimed-but-unverified elsewhere. Post-#897 any authenticated
+ * account can mail one verification code to any address, including a
+ * verified victim's, so the amplification now scales with how many accounts
+ * an attacker holds rather than being capped at one mail, period.
+ */
+const addEmailLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: addEmailMaxFromEnv(),
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req: Request) => (req.body as { email: string }).email.toLowerCase(),
+  message: payload("RATE_LIMITED"),
+});
+
 const friendLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 10,
@@ -580,7 +606,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // the profile card that hides once it isn't) because the check and the
   // write below are not one transaction, and this is an authenticated
   // account overwriting its own row, not a public lookup.
-  app.post("/api/auth/add-email", requireAuth, validate(AddEmailSchema), async (req, res) => {
+  app.post("/api/auth/add-email", requireAuth, validate(AddEmailSchema), addEmailLimiter, async (req, res) => {
     const { email } = req.body as { email: string };
     const userId = req.session.userId!;
 
