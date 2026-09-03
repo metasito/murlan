@@ -314,6 +314,7 @@ export const sq: Record<keyof typeof en, string> = {
   "game.endMatchConfirmAction": "Përfundo ndeshjen",
   "game.endMatchVoteHint": "Çdo lojtar i mbetur duhet të pajtohet — askush nuk penalizohet.",
   "game.endMatchVoteTally": "{{votes}} nga {{total}} u pajtuan të përfundojnë ndeshjen",
+  "game.endMatchVoteTallyVoted": "{{votes}} nga {{total}} u pajtuan. Prek për të tërhequr votën tënde.",
 
   // -------------------------------------------------------------- gameTable.*
   "gameTable.seatReconnecting": "Po rilidhet… {{seconds}}s",

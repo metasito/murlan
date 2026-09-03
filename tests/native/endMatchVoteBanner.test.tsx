@@ -4,7 +4,7 @@
 // live tally must land on a node of its own rather than inside the control.
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import React from 'react';
-import { render, fireEvent, waitFor } from '@testing-library/react-native';
+import { render, fireEvent, waitFor, within } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import type { Card, GameState, Player } from '@/lib/gameEngine';
 
@@ -176,16 +176,45 @@ describe('the end-match vote banner, a seat vacated', () => {
     mockEndMatchVoteState = { votes: ['alice'], total: 2 };
     const view = await render(screenUnderTest());
 
-    const tallyText = locale['game.endMatchVoteTally']
+    const tallyText = locale['game.endMatchVoteTallyVoted']
       .replace('{{votes}}', '1')
       .replace('{{total}}', '2');
-    const tally = view.getByText(tallyText);
     const button = view.getByRole('button', { name: locale['game.endMatchWithdrawButton'] });
-    expect(tally).toBeTruthy();
-    // The tally node is not the button's own accessible name — a screen
-    // reader would otherwise announce the count only when the control is
-    // focused, rather than as it changes.
-    expect(button.props.accessibilityLabel).not.toContain('1');
+    // The visible copy inside the control, and the live region's own copy —
+    // two nodes, and the live region's is not inside the button's own
+    // accessible subtree, so a screen reader announces it as it changes
+    // rather than only when the control is focused.
+    const allTallies = view.getAllByText(tallyText, { includeHiddenElements: true });
+    expect(allTallies.length).toBeGreaterThanOrEqual(2);
+    expect(within(button).queryAllByText(tallyText, { includeHiddenElements: true }).length).toBe(1);
+
+    await view.unmount();
+  });
+
+  it('shows a visible cue that a second tap withdraws, not just the same tally a non-voter sees', async () => {
+    mockEndMatchVoteState = { votes: ['alice'], total: 2 };
+    const view = await render(screenUnderTest());
+
+    // A sighted player who already voted must see something other than the
+    // plain tally a non-voter would — otherwise a second tap withdraws with
+    // no visible change (#894 review, finding 8).
+    const nonVoterTally = locale['game.endMatchVoteTally']
+      .replace('{{votes}}', '1')
+      .replace('{{total}}', '2');
+    expect(view.queryByText(nonVoterTally, { includeHiddenElements: true })).toBeNull();
+
+    await view.unmount();
+  });
+
+  it('reverts to the base label once the tally returns to zero (a withdrawal)', async () => {
+    mockEndMatchVoteState = { votes: [], total: 2 };
+    const view = await render(screenUnderTest());
+
+    expect(
+      view.getByText(locale['game.endMatchVoteButton'], { includeHiddenElements: true })
+    ).toBeTruthy();
+    expect(view.getByRole('button', { name: locale['game.endMatchVoteButton'] })).toBeTruthy();
+    expect(view.queryByRole('button', { name: locale['game.endMatchWithdrawButton'] })).toBeNull();
 
     await view.unmount();
   });

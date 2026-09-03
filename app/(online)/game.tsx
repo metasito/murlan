@@ -366,22 +366,34 @@ export default function OnlineGameScreen() {
               <View style={styles.bannerRow} {...a11yHidden()}>
                 <Ionicons name="flag" size={14} color={Colors.gold} />
                 <Text style={styles.reconnectBannerText} numberOfLines={1}>
-                  {endMatchVoteState
-                    ? t("game.endMatchVoteTally", {
-                        votes: endMatchVoteState.votes.length,
-                        total: endMatchVoteState.total,
+                  {hasVotedToEndMatch
+                    ? t("game.endMatchVoteTallyVoted", {
+                        votes: endMatchVoteState?.votes.length ?? 1,
+                        total: endMatchVoteState?.total ?? gameState.players.length,
                       })
-                    : t("game.endMatchVoteButton")}
+                    : endMatchVoteState && endMatchVoteState.votes.length > 0
+                      ? t("game.endMatchVoteTally", {
+                          votes: endMatchVoteState.votes.length,
+                          total: endMatchVoteState.total,
+                        })
+                      : t("game.endMatchVoteButton")}
                 </Text>
               </View>
               {endMatchVoteHint.node}
             </Pressable>
-            {endMatchVoteState && (
+            {endMatchVoteState && endMatchVoteState.votes.length > 0 && (
               <A11yStatus
-                label={t("game.endMatchVoteTally", {
-                  votes: endMatchVoteState.votes.length,
-                  total: endMatchVoteState.total,
-                })}
+                label={
+                  hasVotedToEndMatch
+                    ? t("game.endMatchVoteTallyVoted", {
+                        votes: endMatchVoteState.votes.length,
+                        total: endMatchVoteState.total,
+                      })
+                    : t("game.endMatchVoteTally", {
+                        votes: endMatchVoteState.votes.length,
+                        total: endMatchVoteState.total,
+                      })
+                }
                 live="polite"
               />
             )}

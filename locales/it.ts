@@ -307,6 +307,7 @@ export const it: Record<keyof typeof en, string> = {
   "game.endMatchConfirmAction": "Termina partita",
   "game.endMatchVoteHint": "Ogni giocatore rimasto deve essere d'accordo — nessuna penalità.",
   "game.endMatchVoteTally": "{{votes}} di {{total}} d'accordo a terminare la partita",
+  "game.endMatchVoteTallyVoted": "{{votes}} di {{total}} d'accordo. Tocca per ritirare il tuo voto.",
 
   // -------------------------------------------------------------- gameTable.*
   "gameTable.seatReconnecting": "Riconnessione… {{seconds}}s",

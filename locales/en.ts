@@ -314,6 +314,7 @@ export const en = {
   "game.endMatchConfirmAction": "End match",
   "game.endMatchVoteHint": "Every remaining player must agree — nobody is penalised.",
   "game.endMatchVoteTally": "{{votes}} of {{total}} agreed to end the match",
+  "game.endMatchVoteTallyVoted": "{{votes}} of {{total}} agreed. Tap to withdraw your vote.",
 
   // -------------------------------------------------------------- gameTable.*
   "gameTable.seatReconnecting": "Reconnecting… {{seconds}}s",
