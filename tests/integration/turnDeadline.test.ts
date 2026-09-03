@@ -9,6 +9,7 @@ import {
 import { waitFor } from "../helpers/client.ts";
 import { makeClients, setUpRoom, type Client } from "../helpers/table.ts";
 import type { SanitizedState } from "../helpers/gameDriver.ts";
+import { Reading } from "../../lib/tokens.ts";
 
 /**
  * Long enough that no seat is auto-passed while the assertions run, and
@@ -17,6 +18,12 @@ import type { SanitizedState } from "../helpers/gameDriver.ts";
  */
 const AFK_SECONDS = 9;
 process.env.MURLAN_AFK_TIMEOUT_MS = String(AFK_SECONDS * 1000);
+/**
+ * `room:start` deals the match's first manche, whose opener carries the
+ * opening announcement's reading time on top of the base window (#830) — the
+ * seat this whole file arms and watches.
+ */
+const OPENING_GRACE_SECONDS = Reading.notice / 1000;
 
 interface TurnDeadline {
   turnDeadlineMs?: number;
@@ -47,8 +54,8 @@ describe("turn deadline", { skip: hasDatabase() ? false : skipMessage() }, () =>
 
       assert.equal(
         deadline.turnSecondsRemaining,
-        AFK_SECONDS,
-        "the countdown is MURLAN_AFK_TIMEOUT_MS, not a client constant"
+        AFK_SECONDS + OPENING_GRACE_SECONDS,
+        "the opener's first turn is MURLAN_AFK_TIMEOUT_MS plus the opening announcement's grace (#830), not a client constant"
       );
       assert.ok(
         typeof deadline.turnDeadlineMs === "number",
@@ -75,7 +82,7 @@ describe("turn deadline", { skip: hasDatabase() ? false : skipMessage() }, () =>
       clients[0].socket.emit("game:rejoin", { roomId: room.roomId });
       const state = await rejoined;
 
-      const expected = AFK_SECONDS - elapsedMs / 1000;
+      const expected = AFK_SECONDS + OPENING_GRACE_SECONDS - elapsedMs / 1000;
       assert.ok(
         Math.abs(state.turnSecondsRemaining - expected) <= 1,
         `expected about ${expected}s left, got ${state.turnSecondsRemaining}`

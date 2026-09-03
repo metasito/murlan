@@ -1297,6 +1297,37 @@ export function getStartingPlayerAfterExchange(state: GameState): number {
     : state.exchangePhase.loserIdx;
 }
 
+/**
+ * Whether the manche's opening play is still to come — the moment
+ * `startReason` describes, and the only one it may be announced in.
+ *
+ * The turn index matching the opener does not answer this: `startReason` labels
+ * the whole manche and is never cleared, and the opener takes the lead again
+ * every round they win. `firstPlayMade` does not either — only the very first
+ * deal of a partita starts it false; a manche dealt after a lost round carries
+ * it already true. What every deal empties and every play writes is the rank
+ * tally, so an empty one is the state's own word for "nobody has played this
+ * manche yet". A hand persisted before the tally existed has none, and reads as
+ * past its opening: a missing announcement costs less than one over a live hand.
+ *
+ * True during the round-winner's exchange choice only by accident of index —
+ * `currentTurnIndex` still names the exchange's actor there, which for
+ * `lost_round` differs from `startReason.playerIdx` and for `won_no_swap`
+ * (no exchange) already matches it. Shared with the server, which reads it to
+ * grant the opener's first turn a longer AFK window (#830) — the same
+ * condition, not a second one kept in step by hand.
+ */
+export function openingIsPending(state: {
+  currentTurnIndex: number;
+  gameOver: boolean;
+  startReason?: { playerIdx: number };
+  playedRanks?: number[];
+}): boolean {
+  if (state.gameOver || state.startReason === undefined) return false;
+  if (state.currentTurnIndex !== state.startReason.playerIdx) return false;
+  return state.playedRanks?.every((played) => played === 0) ?? false;
+}
+
 /** Teams is 2-v-2 and only 2-v-2 (docs/RULES.md §11). */
 export const TEAMS_PLAYER_COUNT = 4;
 
