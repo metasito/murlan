@@ -109,7 +109,7 @@ test("neither provider keeps its own ceremony or prompt", () => {
   for (const file of ["context/GameContext.tsx", "context/OnlineGameContext.tsx"]) {
     const source = readFileSync(new URL(file, root), "utf8");
     assert.ok(
-      source.includes("useExchangeAnnouncement()"),
+      source.includes("useExchangeAnnouncement("),
       `${file} does not drive the ceremony from lib/sharedGameFlow.ts`
     );
     assert.equal(

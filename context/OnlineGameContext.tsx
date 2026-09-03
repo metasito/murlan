@@ -213,7 +213,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     data: exchangeAnnounceData,
     announce,
     end: acknowledgeExchange,
-  } = useExchangeAnnouncement();
+  } = useExchangeAnnouncement(gameState?.exchangePhase !== undefined);
   const [reconnectNotice, setReconnectNotice] = useState<string | null>(null);
   const [isSpectator, setIsSpectator] = useState(false);
 
