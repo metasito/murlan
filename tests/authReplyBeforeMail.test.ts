@@ -53,16 +53,36 @@ function callsMatching(node: ts.Node, isTarget: (callee: ts.Expression) => boole
 }
 
 /**
+ * Whether `n` is a brace-less `if`/loop body — `if (x) res.json(...)` has no
+ * `{ ... }` for the block check below to stop at, so without this a reply
+ * guarded by an untaken condition would count as covering a sibling
+ * statement the same way a guaranteed one does.
+ */
+function isConditionalSingleStatement(n: ts.Node): boolean {
+  const p = n.parent;
+  if (!p) return false;
+  if (ts.isIfStatement(p) && (p.thenStatement === n || p.elseStatement === n)) return true;
+  if (
+    (ts.isWhileStatement(p) || ts.isDoStatement(p) || ts.isForStatement(p) || ts.isForInStatement(p) || ts.isForOfStatement(p)) &&
+    p.statement === n
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/**
  * The same search as `callsMatching`, except it does not descend into a
  * nested `{ ... }` block — an if/else/try body or a callback's own body is a
  * different, not-necessarily-shared execution path, and a reply inside one
  * of those (an early-return guard, most often) must not count as covering a
- * sibling statement that runs on a different path.
+ * sibling statement that runs on a different path. A brace-less `if`/loop
+ * body is the same wall without the braces.
  */
 function callsMatchingSamePath(node: ts.Node, isTarget: (callee: ts.Expression) => boolean): ts.CallExpression[] {
   const calls: ts.CallExpression[] = [];
   const visit = (n: ts.Node) => {
-    if (ts.isBlock(n) && n !== node) return;
+    if (n !== node && (ts.isBlock(n) || isConditionalSingleStatement(n))) return;
     if (ts.isCallExpression(n) && isTarget(n.expression)) calls.push(n);
     ts.forEachChild(n, visit);
   };
@@ -197,5 +217,22 @@ describe("a reply goes out before any token mint or mail send on its own path (#
     const [mail] = callsMatching(handler, isCallNamed(new Set(["mintAuthToken"])));
     assert.ok(mail);
     assert.equal(replyPrecedes(mail, handler), false, "the success branch's own reply must still be required");
+  });
+
+  test("a reply inside a brace-less if does not excuse an unconditional mail call (#894 review, test weakness 4)", () => {
+    // Same shape as the block-bodied version above, minus the braces: a
+    // reply that only fires on `taken` must not be read as covering the
+    // mail call below it, which runs unconditionally.
+    const broken = `
+      app.post("/api/x", async (req, res) => {
+        if (taken) res.json({ ok: true });
+        const token = await mintAuthToken(user.id, "email_verify", TTL);
+      });
+    `;
+    const synthetic = ts.createSourceFile("synthetic.ts", broken, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+    const handler = routeHandler("/api/x", synthetic);
+    const [mail] = callsMatching(handler, isCallNamed(new Set(["mintAuthToken"])));
+    assert.ok(mail);
+    assert.equal(replyPrecedes(mail, handler), false, "a conditional reply must not excuse an unconditional mail call");
   });
 });
