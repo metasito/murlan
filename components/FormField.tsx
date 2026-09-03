@@ -10,11 +10,11 @@ const BODY_LINE_H = FontSize.sm * 1.4;
 
 /**
  * The labelled input row every account screen is built out of. `children` is
- * the field itself rather than a `<TextInput>` prop set, because a row can
+ * the field itself rather than a set of input props, because a row can
  * carry more than the input — a reveal-password toggle, an `useA11yHint`
  * node — and those sit inside the same bordered box.
  *
- * Use `fieldInput` for the `<TextInput>`'s own style: the row is a flex
+ * Style the field itself with `fieldStyles.input`: the row is a flex
  * container, so an input that does not claim the remaining width collapses
  * to its content.
  */
