@@ -76,6 +76,14 @@ jobs:
       # debug keystore and leaves `enableMinifyInReleaseBuilds` false, so this
       # needs no secrets and carries no ProGuard risk.
       - name: Build the app
+        env:
+          # #837: the table's own looping decorative animation (the active-turn breathe, the
+          # Gioca glow) never let this emulator reach view-hierarchy idle, so one Maestro
+          # fetch on the table cost 72-92s against a ~5s baseline elsewhere (#823's
+          # measurement) — on the slower of two measured runs it never returned inside the
+          # 90s `extendedWaitUntil`. `lib/accessibility.ts` is the one place this is read;
+          # nothing outside this job's own build ever sets it.
+          EXPO_PUBLIC_E2E_REDUCE_MOTION: "1"
         run: |
           npx expo prebuild --platform android --no-install
           # One ABI, for the device this is actually driven on — the emulator
