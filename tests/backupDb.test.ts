@@ -233,7 +233,10 @@ test("a dump restores into an empty database with matching account and rating ro
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ username: fullUsername, password: "password123", email: `${fullUsername}@example.test` }),
         });
-        assert.equal(res.status, 200, await res.text());
+        // #897: registration answers neutrally, 202 {code: "CHECK_YOUR_EMAIL"}
+        // whether or not the address was free — this test only needs the row
+        // to exist, which it checks below with its own count query.
+        assert.equal(res.status, 202, await res.text());
       }
       await admin.query(
         `INSERT INTO "${server.schema}".user_ratings (user_id, season, rating)
