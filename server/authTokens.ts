@@ -11,6 +11,7 @@ import type { AuthTokenPurpose } from "../shared/schema.ts";
  */
 
 export const EMAIL_VERIFY_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
+export const PASSWORD_RESET_TOKEN_TTL_MS = 30 * 60 * 1000;
 
 function hashToken(raw: string): string {
   return createHash("sha256").update(raw).digest("hex");
@@ -57,4 +58,20 @@ export async function redeemAuthToken(
   `);
   await db.execute(sql`DELETE FROM auth_tokens WHERE expires_at < now()`);
   return result.rows[0]?.user_id ?? null;
+}
+
+/**
+ * Box 2: redeeming one `password_reset` token invalidates every other
+ * outstanding one for the same user. The row the caller just redeemed
+ * already has `used_at` set by `redeemAuthToken`, so this `used_at IS NULL`
+ * guard leaves it untouched and only catches its unredeemed siblings.
+ */
+export async function invalidateAuthTokens(userId: string, purpose: AuthTokenPurpose): Promise<void> {
+  await db.execute(sql`
+    UPDATE auth_tokens
+    SET used_at = now()
+    WHERE user_id = ${userId}
+      AND purpose = ${purpose}
+      AND used_at IS NULL
+  `);
 }

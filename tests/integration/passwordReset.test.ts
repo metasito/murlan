@@ -1,30 +1,39 @@
-// tests/integration/passwordReset.test.ts — the owner-run password reset.
+// tests/integration/passwordReset.test.ts — both password-reset paths.
 //
-// There is no self-serve recovery, so this script is the only way a locked-out
-// account gets back in. It writes a bcrypt hash directly, which means the login
-// route has to accept it — asserted here against the real server rather than by
-// reading both sides and hoping they agree.
+// "owner password reset" below is the break-glass script
+// (scripts/reset-password.mjs): the only recovery for an account with no
+// verified email yet, or that has lost access to its mailbox. It writes a
+// bcrypt hash directly, which means the login route has to accept it —
+// asserted here against the real server rather than by reading both sides
+// and hoping they agree.
+//
+// "password reset" is the self-serve "forgot password" flow added by #862:
+// request + submit endpoints. A reset token is a credential: single-use,
+// expiring, never handed back through the enumeration-safe request
+// endpoint's response, and its redemption evicts every session and sibling
+// token for the account — the same live-credential class Boxes 2 and 6 of
+// docs/superpowers/specs/2026-09-03-account-recovery-design.md both name.
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-  startTestServer,
-  hasDatabase,
-  skipMessage,
-  type TestServer,
-} from "../helpers/testServer.ts";
+import { startTestServer, hasDatabase, skipMessage, type TestServer } from "../helpers/testServer.ts";
 import { register } from "../helpers/client.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const script = path.join(repoRoot, "scripts", "reset-password.mjs");
 
-describe("owner password reset", { skip: hasDatabase() ? false : skipMessage() }, () => {
-  let server: TestServer;
-  before(async () => { server = await startTestServer(); });
-  after(async () => { if (server) await server.stop(); });
+// One server for the whole file, shared by both describe blocks below —
+// server/db.ts's pool is a module-level singleton created on first import;
+// stop() ends it, and a second full startTestServer()/stop() cycle in this
+// same process would reuse that already-ended pool and fail to boot (see
+// tests/integration/auth.test.ts, which does the same for the same reason).
+let server: TestServer;
+before(async () => { if (hasDatabase()) server = await startTestServer(); });
+after(async () => { if (server) await server.stop(); });
 
+describe("owner password reset", { skip: hasDatabase() ? false : skipMessage() }, () => {
   const login = (username: string, password: string) =>
     fetch(`${server.url}/api/auth/login`, {
       method: "POST",
@@ -83,5 +92,216 @@ describe("owner password reset", { skip: hasDatabase() ? false : skipMessage() }
         }),
       /ALLOW_RESET/
     );
+  });
+});
+
+describe("password reset", { skip: hasDatabase() ? false : skipMessage() }, () => {
+  function requestReset(email: string) {
+    return fetch(`${server.url}/api/auth/request-password-reset`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email }),
+    });
+  }
+
+  function submitReset(token: string, newPassword: string) {
+    return fetch(`${server.url}/api/auth/reset-password`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ token, newPassword }),
+    });
+  }
+
+  function login(username: string, password: string) {
+    return fetch(`${server.url}/api/auth/login`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ username, password }),
+    });
+  }
+
+  function me(cookie: string) {
+    return fetch(`${server.url}/api/auth/me`, { headers: { cookie } });
+  }
+
+  /** Registers, then verifies the way the email-verify flow itself would. */
+  async function verifiedUser(username: string) {
+    const { user, cookie } = await register(server, username);
+    const { storage } = await import("../../server/storage.ts");
+    await storage.markEmailVerified(user.id);
+    return { user, cookie, email: `${username.toLowerCase()}@example.test` };
+  }
+
+  test("an unverified account's reset request mints no token and answers like any other", async () => {
+    const { user } = await register(server, "reset_unverified");
+    const res = await requestReset("reset_unverified@example.test");
+    const text = await res.text();
+    assert.equal(res.status, 200, text);
+    assert.deepEqual(JSON.parse(text), { ok: true });
+
+    const { db } = await import("../../server/db.ts");
+    const { authTokens } = await import("../../shared/schema.ts");
+    const { eq, and } = await import("drizzle-orm");
+    const rows = await db
+      .select()
+      .from(authTokens)
+      .where(and(eq(authTokens.userId, user.id), eq(authTokens.purpose, "password_reset")));
+    assert.equal(rows.length, 0, "an unverified account must never get a password_reset token minted");
+  });
+
+  test("a nonexistent address gets the identical 200 { ok: true }", async () => {
+    const res = await requestReset("nobody_reset_at_all@example.test");
+    const text = await res.text();
+    assert.equal(res.status, 200, text);
+    assert.deepEqual(JSON.parse(text), { ok: true });
+  });
+
+  test("a verified account's reset request mints exactly one password_reset token", async () => {
+    const { user, email } = await verifiedUser("reset_mints_one");
+    const res = await requestReset(email);
+    assert.equal(res.status, 200, await res.text());
+
+    const { db } = await import("../../server/db.ts");
+    const { authTokens } = await import("../../shared/schema.ts");
+    const { eq, and } = await import("drizzle-orm");
+    const rows = await db
+      .select()
+      .from(authTokens)
+      .where(and(eq(authTokens.userId, user.id), eq(authTokens.purpose, "password_reset")));
+    assert.equal(rows.length, 1, "a verified request must mint exactly one password_reset token");
+    assert.equal(rows[0]!.usedAt, null);
+  });
+
+  test("the request endpoint replies without awaiting the mail send, and timing is comparable for a real vs. nonexistent address", async () => {
+    const SAMPLES = 6;
+    const realMs: number[] = [];
+    const fakeMs: number[] = [];
+
+    for (let i = 0; i < SAMPLES; i++) {
+      const { email } = await verifiedUser(`reset_timing_real_${i}`);
+      let t0 = performance.now();
+      const realRes = await requestReset(email);
+      realMs.push(performance.now() - t0);
+      assert.equal(realRes.status, 200);
+
+      t0 = performance.now();
+      const fakeRes = await requestReset(`reset_timing_fake_${i}@example.test`);
+      fakeMs.push(performance.now() - t0);
+      assert.equal(fakeRes.status, 200);
+    }
+
+    const avg = (values: number[]) => values.reduce((a, b) => a + b, 0) / values.length;
+    const realAvg = avg(realMs);
+    const fakeAvg = avg(fakeMs);
+
+    // Not near-equality — CI timing is noisy, and the real branch does one
+    // extra insert (the token) the fake branch skips. What this guards
+    // against is the mail send leaking into the response path: that is a
+    // network round-trip of hundreds of ms, not what one extra insert costs.
+    // A generous ratio still catches that without flaking on sampling noise.
+    assert.ok(
+      realAvg < fakeAvg * 5 + 50,
+      `a real address averaged ${realAvg.toFixed(1)}ms vs ${fakeAvg.toFixed(1)}ms for a ` +
+        `nonexistent one — the response may be awaiting the mail send`
+    );
+  });
+
+  test("a used token cannot be redeemed twice", async () => {
+    const { user } = await verifiedUser("reset_used_twice");
+    const { mintAuthToken, redeemAuthToken } = await import("../../server/authTokens.ts");
+    const token = await mintAuthToken(user.id, "password_reset", 60_000);
+
+    const first = await submitReset(token, "brand-new-pw-1");
+    assert.equal(first.status, 200, await first.text());
+
+    const withNew = await login(user.username, "brand-new-pw-1");
+    assert.equal(withNew.status, 200, await withNew.text());
+
+    const second = await submitReset(token, "another-pw-2");
+    const secondText = await second.text();
+    assert.equal(second.status, 400, secondText);
+    assert.equal(JSON.parse(secondText).code, "INVALID_RESET_TOKEN");
+
+    // Same guard the route uses, exercised directly.
+    const direct = await redeemAuthToken(token, "password_reset");
+    assert.equal(direct, null, "redeemAuthToken must refuse an already-used password_reset token");
+
+    // The rejected second attempt did not overwrite the first password.
+    const stillNew = await login(user.username, "brand-new-pw-1");
+    assert.equal(stillNew.status, 200);
+  });
+
+  test("an expired token fails to redeem and changes nothing", async () => {
+    const { user } = await verifiedUser("reset_expired");
+    const { mintAuthToken, redeemAuthToken } = await import("../../server/authTokens.ts");
+    // A full minute in the past, not -1ms: under a loaded machine the redeem
+    // query's `now()` runs in Postgres, not Node, and a margin of a
+    // millisecond is inside plausible clock skew between the two processes.
+    const token = await mintAuthToken(user.id, "password_reset", -60_000);
+
+    const res = await submitReset(token, "should-not-apply-1");
+    const text = await res.text();
+    assert.equal(res.status, 400, text);
+    assert.equal(JSON.parse(text).code, "INVALID_RESET_TOKEN");
+
+    const direct = await redeemAuthToken(token, "password_reset");
+    assert.equal(direct, null, "an expired token must not redeem via the module either");
+
+    const stillOld = await login(user.username, "password123");
+    assert.equal(stillOld.status, 200, "an expired-token attempt must not have changed the password");
+  });
+
+  test("an unknown token is rejected with the same generic error", async () => {
+    const res = await submitReset("not-a-real-token-at-all", "whatever-pw-1");
+    const text = await res.text();
+    assert.equal(res.status, 400, text);
+    assert.equal(JSON.parse(text).code, "INVALID_RESET_TOKEN");
+  });
+
+  test("a successful reset clears every session for that user, but not another user's", async () => {
+    const { user, cookie: deviceA } = await verifiedUser("reset_clears_sessions");
+    const loginRes = await login("reset_clears_sessions", "password123");
+    const deviceB = loginRes.headers.get("set-cookie");
+    assert.ok(deviceB, "second login must set its own session cookie");
+
+    const bystander = await verifiedUser("reset_bystander");
+
+    const { mintAuthToken } = await import("../../server/authTokens.ts");
+    const token = await mintAuthToken(user.id, "password_reset", 60_000);
+    const res = await submitReset(token, "post-reset-pw-1");
+    assert.equal(res.status, 200, await res.text());
+
+    assert.equal((await me(deviceA)).status, 401, "a session predating the reset must be cleared");
+    assert.equal((await me(deviceB!)).status, 401, "every session for the account must be cleared");
+    assert.equal((await me(bystander.cookie)).status, 200, "a different account's session must survive");
+  });
+
+  test("a completed reset makes a second outstanding token for that user unredeemable", async () => {
+    const { user } = await verifiedUser("reset_sibling_invalidated");
+    const { mintAuthToken, redeemAuthToken } = await import("../../server/authTokens.ts");
+    const first = await mintAuthToken(user.id, "password_reset", 60_000);
+    const second = await mintAuthToken(user.id, "password_reset", 60_000);
+
+    const res = await submitReset(first, "sibling-test-pw-1");
+    assert.equal(res.status, 200, await res.text());
+
+    const direct = await redeemAuthToken(second, "password_reset");
+    assert.equal(direct, null, "an outstanding sibling token must be invalidated by a completed reset");
+  });
+
+  test("a shared IP hammering one address does not lock a different address out of its own reset request", async () => {
+    const target = "reset_ratelimit_target@example.test";
+    // MURLAN_PASSWORD_RESET_REQUEST_RATE_LIMIT is 5 in tests (testServer.ts).
+    for (let i = 0; i < 5; i++) {
+      const res = await requestReset(target);
+      assert.equal(res.status, 200, `attempt ${i} against the targeted address should still succeed`);
+    }
+    const limited = await requestReset(target);
+    assert.equal(limited.status, 429, "the sixth request against the same address must trip its own limiter");
+
+    const { email } = await verifiedUser("reset_ratelimit_bystander");
+    const bystander = await requestReset(email);
+    const text = await bystander.text();
+    assert.equal(bystander.status, 200, `a different address on the same IP was blocked: ${text}`);
   });
 });

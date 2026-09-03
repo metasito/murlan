@@ -26,6 +26,7 @@ export const it: Record<keyof typeof en, string> = {
   "server.USERNAME_TAKEN": "Username già in uso",
   "server.EMAIL_TAKEN": "Email già registrata",
   "server.INVALID_TOKEN": "Link di verifica non valido o scaduto",
+  "server.INVALID_RESET_TOKEN": "Link di reimpostazione non valido o scaduto",
   "server.INTERNAL_SERVER_ERROR": "Errore interno del server",
   "server.DEV_SYNC_NOT_CONFIGURED": "Il webhook di sincronizzazione non è configurato",
   "server.INVALID_WEBHOOK_SIGNATURE": "Firma del webhook non valida",
