@@ -14,6 +14,7 @@ import { funnel, type FunnelStep } from "./events.ts";
 import { recentClientErrorGroups, topFrame, type ClientErrorGroup } from "./clientErrors.ts";
 import { recentBugReports } from "./bugReports.ts";
 import { symbolicate } from "./sourceMaps.ts";
+import { mailHealth, type MailHealth } from "./mail.ts";
 
 /** How far back the time series look. One screen, not an analytics product. */
 export const WINDOW_DAYS = 30;
@@ -43,6 +44,7 @@ export interface AdminSnapshot {
   crashGroups: { message: string; count: number; lastSeen: string; location: string }[];
   bugReports: { at: string; who: string; description: string; where: string; build: string }[];
   funnel: FunnelStep[];
+  mail: MailHealth;
 }
 
 /** 1. Signups over time — users.created_at, one row per day in the window. */
@@ -261,6 +263,7 @@ export async function adminSnapshot(provisionalGames: number): Promise<AdminSnap
     crashesThisWeek: crashes,
     crashGroups: await forDisplay(crashGroupRows),
     funnel: funnelRows,
+    mail: mailHealth(),
     bugReports: bugReportRows.map((r) => ({
       at: r.createdAt.toISOString(),
       // The LEFT JOIN types this nullable, but `bug_reports.user_id` is

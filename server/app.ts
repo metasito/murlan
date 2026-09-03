@@ -13,6 +13,7 @@ import { registerRoutes } from "./routes.ts";
 import { ensureSchema } from "./schemaDdl.ts";
 import { isAllowedOrigin, isBehindProxy } from "./cors.ts";
 import { registerGithubDevSyncHook } from "./devSyncHook.ts";
+import { checkMailConfigOnBoot } from "./mail.ts";
 import { runningCommitSha } from "./gitInfo.ts";
 import * as fs from "fs";
 import * as path from "path";
@@ -301,6 +302,7 @@ export async function createApp(): Promise<CreatedApp> {
   // Before the session middleware, which reads `session` on the very first
   // request that carries a cookie — and before any route touches a table.
   await ensureSchema(pool);
+  checkMailConfigOnBoot();
 
   app.use(sessionMiddleware);
 

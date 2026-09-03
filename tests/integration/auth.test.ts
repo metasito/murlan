@@ -470,4 +470,47 @@ describe("email at signup", { skip: hasDatabase() ? false : skipMessage() }, () 
     });
     assert.equal(res.status, 202, await res.text());
   });
+
+  // #875/#893: a misconfigured mailer must be loud, not a `warn` nobody
+  // reads. Asserting the row, not the log line — a log assertion would pass
+  // on the very defect this exists to catch.
+  test("a misconfigured mailer writes a mail.sendFailed event row, not just a log line", async () => {
+    const admin = new pg.Pool({ connectionString: process.env.DATABASE_URL! });
+    try {
+      // Counted before/after rather than filtered by occurred_at: the test
+      // process and the database run as separate clocks (a container's own
+      // clock, in the dev stack), so "since this Date()" is not a safe bound.
+      const countFailures = async () =>
+        Number(
+          (
+            await admin.query<{ n: string }>(
+              `SELECT count(*) AS n FROM "${server.schema}".events WHERE name = 'mail.sendFailed'`
+            )
+          ).rows[0]!.n
+        );
+      const before = await countFailures();
+
+      const res = await registerRaw({
+        username: "email_loud_failure",
+        password: "password123",
+        email: "email_loud_failure@example.test",
+      });
+      assert.equal(res.status, 202, await res.text());
+
+      let after = before;
+      for (let attempt = 0; attempt < 20 && after <= before; attempt++) {
+        after = await countFailures();
+        if (after <= before) await new Promise((r) => setTimeout(r, 50));
+      }
+      assert.ok(after > before, "sendMail's failure never became an events row");
+
+      const latest = await admin.query<{ context: { mailFailureReason?: string } }>(
+        `SELECT context FROM "${server.schema}".events
+          WHERE name = 'mail.sendFailed' ORDER BY occurred_at DESC LIMIT 1`
+      );
+      assert.equal(latest.rows[0]!.context.mailFailureReason, "unconfigured");
+    } finally {
+      await admin.end();
+    }
+  });
 });

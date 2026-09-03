@@ -148,6 +148,7 @@ describe("funnel events", { skip: hasDatabase() ? false : skipMessage() }, () =>
         "game.abandoned",
         "game.firstMoveMade",
         "lobby.entered",
+        "mail.sendFailed",
         "room.joined",
         "socket.closed",
         "tutorial.started",
