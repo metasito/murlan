@@ -4,6 +4,8 @@
  * 03-account-recovery-design.md, Box 1). A pure predicate so app/profile.tsx's
  * card visibility is testable with `node --test`, without rendering React.
  */
-export function shouldShowAddEmailCard(user: { email: string | null }): boolean {
-  return user.email === null;
+export function shouldShowAddEmailCard(user: { email?: string | null }): boolean {
+  // Absent, not just null: AuthContext hydrates from an AsyncStorage entry that
+  // may predate the field, and an upgraded install is exactly this cohort.
+  return !user.email;
 }
