@@ -273,6 +273,7 @@ describe("login rate limiting", { skip: hasDatabase() ? false : skipMessage() },
     assert.deepEqual(JSON.parse(body), {
       message: "Wrong username or password",
       code: "INVALID_CREDENTIALS",
+      params: {},
     });
   });
 

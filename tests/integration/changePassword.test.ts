@@ -79,7 +79,7 @@ describe("in-app change password", { skip: hasDatabase() ? false : skipMessage()
     const body = await res.json();
     assert.equal(res.status, 401);
     // Generic, indistinguishable from a wrong login — never a dedicated code.
-    assert.deepEqual(body, { message: "Wrong username or password", code: "INVALID_CREDENTIALS" });
+    assert.deepEqual(body, { message: "Wrong username or password", code: "INVALID_CREDENTIALS", params: {} });
 
     // Neither session was touched by the refused attempt.
     assert.equal((await me(deviceA)).status, 200, "an unrelated session must survive a refused change");
