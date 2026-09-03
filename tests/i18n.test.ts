@@ -309,8 +309,10 @@ describe("the server writes its fallbacks in the source language", () => {
 // A hand-written `message`/`error` beside a hand-written `code` is exactly
 // what drifted out of sync with locales/en.ts before (#896) — payload()
 // derives the fallback from the code so the two cannot disagree. The four
-// left in server/routes.ts's /api/auth/register are #897's, not this one's:
-// they're rewritten wholesale for neutral registration.
+// sites this once carved server/routes.ts's register route out for were
+// rewritten wholesale for neutral registration (#897); the carve-out went
+// with them — a scan with one is a scan that stops being true (design doc,
+// Q2).
 describe("a payload's code and its message are never both hand-written (#896)", () => {
   function offendingObjects(sourceFile: ts.SourceFile): string[] {
     const found: string[] = [];
@@ -351,7 +353,6 @@ describe("a payload's code and its message are never both hand-written (#896)", 
     const offenders: string[] = [];
     let scanned = 0;
     for (const { file, source } of serverSources()) {
-      if (file === "routes.ts") continue;
       scanned++;
       const sourceFile = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
       for (const text of offendingObjects(sourceFile)) offenders.push(`${file}: ${text}`);
@@ -362,23 +363,6 @@ describe("a payload's code and its message are never both hand-written (#896)", 
       [],
       `these hand-write a message beside a code instead of deriving it through payload(): ${offenders.join(" | ")}`
     );
-  });
-
-  test("routes.ts's own four register-route sites are the only ones left, pending #897", () => {
-    const source = readFileSync(path.join(SERVER_DIR, "routes.ts"), "utf8");
-    const sourceFile = ts.createSourceFile("routes.ts", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
-    const offenders = offendingObjects(sourceFile);
-    assert.equal(
-      offenders.length,
-      4,
-      `expected exactly the register route's USERNAME_TAKEN/EMAIL_TAKEN sites, got: ${offenders.join(" | ")}`
-    );
-    for (const text of offenders) {
-      assert.ok(
-        /USERNAME_TAKEN|EMAIL_TAKEN/.test(text),
-        `an unexpected literal payload appeared outside the register route: ${text}`
-      );
-    }
   });
 });
 

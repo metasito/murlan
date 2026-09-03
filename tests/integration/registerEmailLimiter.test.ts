@@ -37,6 +37,6 @@ describe("register is rate limited per address", { skip: hasDatabase() ? false :
     // Keyed on the address, not the IP: a different address from the same
     // caller must still be accepted inside the same window.
     const res = await register("register_limit_other_user", "registeremaillimiter_other@example.test");
-    assert.equal(res.status, 200, await res.text());
+    assert.equal(res.status, 202, await res.text());
   });
 });

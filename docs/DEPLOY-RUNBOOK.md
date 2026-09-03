@@ -11,6 +11,9 @@
 >
 > Rolling back is `replit.md` § Rolling back a deploy, not here — the two are one topic split
 > across "how to go forward" and "how to go back" so neither buries the other.
+>
+> § #897 below is a second, unrelated destructive change — dropping the old unconditional
+> email index — with its own short sequence, not a step inside the one above.
 
 ## Before you start
 
@@ -119,6 +122,58 @@ landing page.
 `replit.md` § Rolling back a deploy — the code half and the database half are separate, and
 the database half is not optional once Step 5 has run: reverting the server does not undo the
 column renames.
+
+## #897 — dropping the old email uniqueness index
+
+`shared/schema.ts` now declares `users_email_verified_lower_uq`, a **partial** unique index on
+`lower(email) WHERE email_verified_at IS NOT NULL`, in place of the old unconditional
+`users_email_lower_uq`. `ensureSchema()` (`server/schemaDdl.ts`) is additive only, so it
+creates the new index on its own at the next boot — no manual step for that half. What it
+never does is drop the old one, and the two disagree: while both exist, the old index still
+refuses two accounts sharing an unverified email, which is exactly the claim (not possession)
+behaviour #897 exists to allow. Registration degrades safely in the meantime — a taken address
+gets the same neutral reply with no account created (`server/routes.ts`'s `EmailTakenError`
+catch in the register route) — but the address stays un-reclaimable by its real owner until
+this step runs.
+
+1 — Back up. Same requirement as Step 3 above, for the same reason:
+
+```bash
+npm run db:backup
+```
+
+2 — Confirm the new index already exists (a normal deploy creates it at boot) and the old one
+still does:
+
+```bash
+psql "$DATABASE_URL" -c "\d users" | grep -E "users_email_lower_uq|users_email_verified_lower_uq"
+```
+
+Expected: both present. If `users_email_verified_lower_uq` is missing, a deploy carrying this
+change has not yet booted against this database — deploy first, then come back to this step.
+
+3 — Run the push, and **read what it proposes before answering**:
+
+```bash
+npm run db:push
+```
+
+`drizzle-kit` will ask whether removing `users_email_lower_uq` from the schema means to
+**drop** it or **rename** it to something else. **Answer drop.** There is no column or index
+in the new schema this one could be a rename of — `users_email_verified_lower_uq` is a
+differently-scoped index on the same expression, not the same index renamed. Answering
+"rename" would leave the unconditional constraint alive under a new name and this step would
+have accomplished nothing.
+
+4 — Verify the drop landed, and that a second push is a no-op:
+
+```bash
+psql "$DATABASE_URL" -c "\d users" | grep -E "users_email_lower_uq|users_email_verified_lower_uq"
+npm run db:push
+```
+
+Expected: only `users_email_verified_lower_uq` present, and the second `db:push` reports no
+changes detected.
 
 ## Backups
 

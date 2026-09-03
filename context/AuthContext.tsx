@@ -115,11 +115,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(data));
   }, []);
 
+  // The response body carries no user (#897 — it is the same neutral
+  // { ok: true, code: "CHECK_YOUR_EMAIL" } whether or not the address was
+  // already taken, and a user object in one case and not the other would
+  // put the leak straight back). Who actually got signed in — including the
+  // pre-migration fallback, which sets no session at all — is answered the
+  // same way a boot-time check already answers it: GET /api/auth/me.
   const register = useCallback(async (username: string, password: string, email: string) => {
-    const res = await apiRequest("POST", "/api/auth/register", { username, password, email });
-    const data = await res.json();
-    setUser(data);
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    await apiRequest("POST", "/api/auth/register", { username, password, email });
+    const data = await fetchMe();
+    setUser(data ?? null);
+    if (data) await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    else await AsyncStorage.removeItem(STORAGE_KEY);
   }, []);
 
   // Here rather than in the screen: the signed-in player lives in state *and*

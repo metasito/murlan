@@ -89,17 +89,66 @@ describe("add-email migration nudge", { skip: hasDatabase() ? false : skipMessag
     assert.equal(direct, null, "the token must be single-use through the shared redeem path");
   });
 
-  test("submitting an email already taken by another account is refused, and changes nothing", async () => {
+  // #897: an unverified email is a claim, not a possession
+  // (users_email_verified_lower_uq, shared/schema.ts) — setEmail only ever
+  // touches this account's own row, never the other one's emailVerifiedAt,
+  // so the partial index has nothing to enforce here regardless of whether
+  // the address is already taken, verified or not. The conflict this used
+  // to catch at add-email time now surfaces at verify-email time instead —
+  // see the two tests below.
+  test("submitting an email already claimed (unverified) elsewhere succeeds — it is a second claim, not a takeover", async () => {
     await register(server, "nudge_owner");
     const { cookie } = await legacyAccount("nudge_dup");
     const res = await addEmail(cookie, "NUDGE_OWNER@Example.Test");
     const text = await res.text();
-    assert.equal(res.status, 409, text);
-    assert.equal(JSON.parse(text).code, "EMAIL_TAKEN");
+    assert.equal(res.status, 200, text);
+    assert.equal(JSON.parse(text).email, "NUDGE_OWNER@Example.Test");
 
     const meRes = await me(cookie);
     const meBody = await meRes.json();
-    assert.equal(meBody.email, null, "a refused add-email must leave the account's own email untouched");
+    assert.equal(meBody.email, "NUDGE_OWNER@Example.Test");
+    assert.equal(meBody.emailVerified, false);
+  });
+
+  test("verifying a claim against an address already verified elsewhere is refused, and clears this account's email", async () => {
+    const { user: owner, cookie: ownerCookie } = await register(server, "nudge_verified_owner");
+    const { mintAuthToken } = await import("../../server/authTokens.ts");
+    const ownerToken = await mintAuthToken(owner.id, "email_verify", 60_000);
+    const ownerVerify = await fetch(`${server.url}/api/auth/verify-email`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ token: ownerToken }),
+    });
+    assert.equal(ownerVerify.status, 200, await ownerVerify.text());
+
+    const { user: claimant, cookie } = await legacyAccount("nudge_race");
+    const addRes = await addEmail(cookie, "NUDGE_VERIFIED_OWNER@Example.Test");
+    assert.equal(
+      addRes.status,
+      200,
+      `claiming it is still allowed — only verifying it isn't: ${await addRes.text()}`
+    );
+
+    // Same reason register()'s and legacyAccount()'s own callers do this
+    // rather than reading a stored token back: only its hash is persisted.
+    const claimToken = await mintAuthToken(claimant.id, "email_verify", 60_000);
+
+    const verifyRes = await fetch(`${server.url}/api/auth/verify-email`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ token: claimToken }),
+    });
+    const verifyText = await verifyRes.text();
+    assert.equal(verifyRes.status, 409, verifyText);
+    assert.equal(JSON.parse(verifyText).code, "EMAIL_VERIFIED_ELSEWHERE");
+
+    const meRes = await me(cookie);
+    const meBody = await meRes.json();
+    assert.equal(meBody.email, null, "the losing claim's email must be cleared, not left colliding");
+
+    const ownerMeRes = await me(ownerCookie);
+    const ownerMeBody = await ownerMeRes.json();
+    assert.equal(ownerMeBody.emailVerified, true, "the first verifier keeps the address");
   });
 
   test("an account that already has an email cannot overwrite it through this endpoint", async () => {

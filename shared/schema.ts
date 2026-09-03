@@ -28,9 +28,14 @@ export const users = pgTable(
   },
   (t) => [
     uniqueIndex("users_username_lower_uq").on(sql`lower(${t.username})`),
-    // Postgres permits any number of NULLs in a unique index, so nullable and
-    // unique compose with no special case here.
-    uniqueIndex("users_email_lower_uq").on(sql`lower(${t.email})`),
+    // Partial, not unconditional (#897): an unverified email is a claim, not
+    // a possession, so any number of accounts may hold the same address
+    // unverified. Only a verified one is unique — whoever verifies first
+    // owns it, and storage.markEmailVerified clears a later claimant's email
+    // rather than colliding with this index.
+    uniqueIndex("users_email_verified_lower_uq")
+      .on(sql`lower(${t.email})`)
+      .where(sql`${t.emailVerifiedAt} is not null`),
   ]
 );
 

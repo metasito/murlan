@@ -325,6 +325,23 @@ function sendVerificationEmail(to: string, token: string): void {
 }
 
 /**
+ * The pre-migration fallback path only (#897): `createUser` still raised
+ * `EmailTakenError` because the database it is running against has not yet
+ * had `users_email_lower_uq` manually dropped (docs/DEPLOY-RUNBOOK.md), so
+ * no account was created for this attempt. Once that step runs, `createUser`
+ * always succeeds and this function is never reached.
+ */
+function sendRegistrationAttemptEmail(to: string): void {
+  sendMail(
+    to,
+    "Someone tried to register a Murlan account with this email",
+    "Someone tried to register an account with this address. If it was you, " +
+      "sign in or reset your password. If it was not, no account was created " +
+      "and you need do nothing."
+  ).catch((err) => logger.error({ err, to }, "sendRegistrationAttemptEmail failed"));
+}
+
+/**
  * Never awaited by its caller (design doc, Box 5) — the enumeration-safe
  * request-password-reset handler replies before this settles, so the only
  * work the response waits on is the token mint, not the outbound HTTPS call.
@@ -391,17 +408,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ── Auth ──────────────────────────────────────────────────────────────────
 
+  // #897: neutral by construction, not by matching a decoy. There is no
+  // pre-check and no separate "taken" branch — createUser is attempted
+  // directly, and a taken-but-unverified address succeeds exactly like a
+  // free one (users_email_verified_lower_uq only constrains a *verified*
+  // email), so both cases regenerate the same session, mint the same
+  // verification token and answer with the same body. Only the
+  // pre-migration fallback below — reachable while the database still
+  // carries the old unconditional index — answers differently, and it
+  // creates no account.
   app.post("/api/auth/register", authLimiter, validate(RegisterSchema), registerEmailLimiter, async (req, res) => {
     const { username, password, email } = req.body as { username: string; password: string; email: string };
 
     const existingUsername = await storage.getUserByUsername(username);
     if (existingUsername) {
-      res.status(409).json({ message: "Username already taken", code: "USERNAME_TAKEN" });
-      return;
-    }
-    const existingEmail = await storage.getUserByEmail(email);
-    if (existingEmail) {
-      res.status(409).json({ message: "Email already registered", code: "EMAIL_TAKEN" });
+      res.status(409).json({ ...payload("USERNAME_TAKEN") });
       return;
     }
 
@@ -411,23 +432,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       user = await storage.createUser({ username, password: passwordHash, email });
     } catch (err) {
       if (err instanceof UsernameTakenError) {
-        res.status(409).json({ message: "Username already taken", code: "USERNAME_TAKEN" });
+        res.status(409).json({ ...payload("USERNAME_TAKEN") });
         return;
       }
       if (err instanceof EmailTakenError) {
-        res.status(409).json({ message: "Email already registered", code: "EMAIL_TAKEN" });
+        res.status(202).json({ ...payload("CHECK_YOUR_EMAIL") });
+        sendRegistrationAttemptEmail(email);
         return;
       }
       throw err;
-    }
-
-    // A provider outage must not block signup — mint and fire without
-    // awaiting the send, and never let it fail the response.
-    try {
-      const token = await mintAuthToken(user.id, "email_verify", EMAIL_VERIFY_TOKEN_TTL_MS);
-      sendVerificationEmail(email, token);
-    } catch (err) {
-      logger.error({ err, userId: user.id }, "Failed to mint the verification token");
     }
 
     // Regenerating gives the new account a fresh session id instead of writing
@@ -448,7 +461,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return;
         }
         logger.info({ userId: user.id, username }, "User registered");
-        res.json(sessionUser(user));
+        // The client learns who it signed in as from GET /api/auth/me, not
+        // from this body — a user object in one branch and not the other is
+        // the oracle restated (#897).
+        res.status(202).json({ ...payload("CHECK_YOUR_EMAIL") });
+        // A provider outage must not block signup — mint and fire without
+        // awaiting the send, and only after the reply: the mint is an
+        // INSERT the pre-migration fallback branch above never does, so
+        // doing it before the reply would put the same timing gap back.
+        mintAuthToken(user.id, "email_verify", EMAIL_VERIFY_TOKEN_TTL_MS)
+          .then((token) => sendVerificationEmail(email, token))
+          .catch((err) => logger.error({ err, userId: user.id }, "Failed to mint the verification token"));
       });
     });
   });
@@ -601,20 +624,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(400).json({ ...payload("INVALID_TOKEN") });
       return;
     }
-    await storage.markEmailVerified(userId);
+    const verified = await storage.markEmailVerified(userId);
+    if (!verified) {
+      // #897: another account proved control of this mailbox first — this
+      // one's claim is already cleared by markEmailVerified, not colliding
+      // with users_email_verified_lower_uq.
+      logger.info({ userId }, "Email verification lost the race to a different account");
+      res.status(409).json({ ...payload("EMAIL_VERIFIED_ELSEWHERE") });
+      return;
+    }
     logger.info({ userId }, "Email verified");
     res.json({ ok: true });
   });
 
   // Enumeration-safe by design (docs/superpowers/specs/2026-09-03-account-
   // recovery-design.md, Box 5): identical 200 { ok: true } whether or not
-  // the address matches a verified account, and the response is sent
-  // before the mail provider is ever called — only the token mint (an
-  // indexed lookup plus one insert) happens before the reply, so the two
-  // branches cost the same up to that point. An unverified email is
-  // deliberately treated the same as no account at all: verified-email is
-  // load-bearing here, not a formality (an unverified address that could
-  // reset is registration-then-takeover of someone else's account).
+  // the address matches a verified account, and the branch then costs one
+  // indexed `users` lookup either way, which is the only work that happens
+  // before the reply — the mint and the send both run after it, so neither
+  // can be timed. An unverified email is deliberately treated the same as
+  // no account at all: verified-email is load-bearing here, not a
+  // formality (an unverified address that could reset is
+  // registration-then-takeover of someone else's account).
   app.post(
     "/api/auth/request-password-reset",
     authLimiter,
@@ -623,13 +654,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     async (req, res) => {
       const { email } = req.body as { email: string };
       const user = await storage.getUserByEmail(email);
-      if (user && user.emailVerifiedAt) {
-        const token = await mintAuthToken(user.id, "password_reset", PASSWORD_RESET_TOKEN_TTL_MS);
-        res.json({ ok: true });
-        sendPasswordResetEmail(user.email!, token);
-        return;
-      }
       res.json({ ok: true });
+      if (!user?.emailVerifiedAt) return;
+      // Not awaited: the request this reply belonged to is already done, so
+      // a rejection here has no caller left to reach it except this catch.
+      mintAuthToken(user.id, "password_reset", PASSWORD_RESET_TOKEN_TTL_MS)
+        .then((token) => sendPasswordResetEmail(user.email!, token))
+        .catch((err) => logger.error({ err, userId: user.id }, "Failed to mint the reset token"));
     }
   );
 

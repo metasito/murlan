@@ -180,9 +180,21 @@ class DrizzleStorage {
     throw new Error("Failed to generate unique friend code");
   }
 
-  /** Set once, by the token redemption that proved control of the mailbox. */
-  async markEmailVerified(userId: string): Promise<void> {
-    await db.update(users).set({ emailVerifiedAt: new Date() }).where(eq(users.id, userId));
+  /**
+   * Set by the token redemption that proved control of the mailbox. Returns
+   * false when a different account already verified this address first —
+   * `users_email_verified_lower_uq` (#897) is the actual arbiter of that, so
+   * this account's own claim is cleared rather than left collided with it.
+   */
+  async markEmailVerified(userId: string): Promise<boolean> {
+    try {
+      await db.update(users).set({ emailVerifiedAt: new Date() }).where(eq(users.id, userId));
+      return true;
+    } catch (err) {
+      if (!uniqueViolation(err)?.includes("email")) throw err;
+      await db.update(users).set({ email: null }).where(eq(users.id, userId));
+      return false;
+    }
   }
 
   /**

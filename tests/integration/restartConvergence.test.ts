@@ -79,7 +79,7 @@ async function register(username: string): Promise<string> {
     body: JSON.stringify({ username, password: "restart-convergence-pw", email: `${username}@example.test` }),
   });
   const text = await res.text();
-  assert.equal(res.status, 200, `register ${username}: ${text}`);
+  assert.equal(res.status, 202, `register ${username}: ${text}`);
   return (res.headers.getSetCookie?.() ?? []).map((c) => c.split(";")[0]).join("; ");
 }
 

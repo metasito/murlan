@@ -101,7 +101,7 @@ describe("session regeneration on login and registration", { skip: hasDatabase()
       body: JSON.stringify({ username: "sid_reg_victim", password: "password123", email: "sid_reg_victim@example.test" }),
     });
     const text = await res.text();
-    assert.equal(res.status, 200, text);
+    assert.equal(res.status, 202, text);
     const cookie2 = res.headers.get("set-cookie");
     assert.ok(cookie2, "register response must set a session cookie");
 
@@ -135,7 +135,7 @@ describe("session regeneration on login and registration", { skip: hasDatabase()
         body: JSON.stringify({ username, password: "password123", email: `${username}@example.test` }),
       });
       const text = await res.text();
-      assert.notEqual(res.status, 200, `registration must fail when the session cannot be saved: ${text}`);
+      assert.notEqual(res.status, 202, `registration must fail when the session cannot be saved: ${text}`);
     } finally {
       await admin.query(
         `ALTER TABLE "${server.schema}".session DROP CONSTRAINT session_writes_fail`
@@ -151,7 +151,7 @@ describe("session regeneration on login and registration", { skip: hasDatabase()
       body: JSON.stringify({ username, password: "password123", email: `${username}@example.test` }),
     });
     const retryText = await retry.text();
-    assert.equal(retry.status, 200, `the rolled-back username must be free again: ${retryText}`);
+    assert.equal(retry.status, 202, `the rolled-back username must be free again: ${retryText}`);
   });
 
   test("logging in twice in the same browser still works", async () => {
@@ -352,16 +352,30 @@ describe("email at signup", { skip: hasDatabase() ? false : skipMessage() }, () 
     assert.equal(rows[0]!.usedAt, null);
   });
 
-  test("a duplicate email is rejected like a duplicate username, case-insensitively", async () => {
-    await register(server, "email_dup_owner");
+  // #897: unlike a duplicate username (public, reported plainly above), a
+  // duplicate email answers identically whether it was free or already
+  // claimed — there is no separate "taken" branch left to distinguish by
+  // status, body or timing. An unverified email is a claim, not a
+  // possession (users_email_verified_lower_uq, shared/schema.ts), so this
+  // registration still creates its own account; the two rows simply share
+  // an unverified address until one of them verifies it.
+  test("a duplicate email answers identically to a free one, and still creates its own account", async () => {
+    const { user: owner } = await register(server, "email_dup_owner");
     const res = await registerRaw({
       username: "email_dup_other",
       password: "password123",
       email: "EMAIL_DUP_OWNER@Example.Test",
     });
     const text = await res.text();
-    assert.equal(res.status, 409, text);
-    assert.equal(JSON.parse(text).code, "EMAIL_TAKEN");
+    assert.equal(res.status, 202, text);
+    assert.equal(JSON.parse(text).code, "CHECK_YOUR_EMAIL");
+
+    const { storage } = await import("../../server/storage.ts");
+    const other = await storage.getUserByUsername("email_dup_other");
+    assert.ok(other, "the taken-address branch must still create an account");
+    assert.notEqual(other.id, owner.id);
+    assert.equal(other.email?.toLowerCase(), "email_dup_owner@example.test");
+    assert.equal(other.emailVerifiedAt, null, "an unverified claim, not a possession");
   });
 
   test("verify-email redeems a token once, and a second redemption fails", async () => {
@@ -453,6 +467,6 @@ describe("email at signup", { skip: hasDatabase() ? false : skipMessage() }, () 
       password: "password123",
       email: "email_no_provider@example.test",
     });
-    assert.equal(res.status, 200, await res.text());
+    assert.equal(res.status, 202, await res.text());
   });
 });
