@@ -4,6 +4,7 @@ import { emitVoteState } from "./emit.ts";
 import { logger } from "./logger.ts";
 import { DEFAULT_LOCALE, translate } from "../shared/i18n.ts";
 import { activeGames, seatOfUser } from "./gameRoom.ts";
+import { payload } from "./payload.ts";
 import type { OnlineGameState } from "./gameRoom.ts";
 import {
   afkTimers,
@@ -166,8 +167,7 @@ function runBotTurn(io: SocketServer, roomId: string) {
     logger.error({ roomId, seat }, "Vacant seat could not act — closing table");
     io.to(roomId).emit("game:notification", {
       type: "abandoned",
-      code: "GAME_INTERRUPTED_EMPTY_SEAT",
-      message: "Match interrupted: an empty seat cannot play.",
+      ...payload("GAME_INTERRUPTED_EMPTY_SEAT"),
     });
     void storage
       .updateRoomStatus(roomId, "finished")

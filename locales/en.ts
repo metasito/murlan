@@ -303,6 +303,9 @@ export const en = {
   "game.autoPassBody": "Time is up: your turn was passed.",
   "game.seatLeft": "{{username}} — left",
   "game.endMatchVoteButton": "Vote to end match",
+  "game.endMatchWithdrawButton": "Withdraw vote to end match",
+  "game.endMatchConfirmTitle": "End the match?",
+  "game.endMatchConfirmAction": "End match",
   "game.endMatchVoteHint": "Every remaining player must agree — nobody is penalised.",
   "game.endMatchVoteTally": "{{votes}} of {{total}} agreed to end the match",
 

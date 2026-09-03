@@ -296,6 +296,9 @@ export const it: Record<keyof typeof en, string> = {
   "game.autoPassBody": "Tempo scaduto: hai passato il turno.",
   "game.seatLeft": "{{username}} — uscito",
   "game.endMatchVoteButton": "Vota per terminare la partita",
+  "game.endMatchWithdrawButton": "Ritira il voto per terminare la partita",
+  "game.endMatchConfirmTitle": "Terminare la partita?",
+  "game.endMatchConfirmAction": "Termina partita",
   "game.endMatchVoteHint": "Ogni giocatore rimasto deve essere d'accordo — nessuna penalità.",
   "game.endMatchVoteTally": "{{votes}} di {{total}} d'accordo a terminare la partita",
 

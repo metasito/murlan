@@ -5,6 +5,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import type { Express, Request, Response } from "express";
 import { logger } from "./logger.ts";
+import { payload } from "./payload.ts";
 
 const execFileAsync = promisify(execFile);
 export const DEV_SYNC_TRIGGER_FILE =
@@ -120,7 +121,7 @@ export function createGithubDevSyncHandler({
     }
     if (!secret) {
       logger.error("REPLIT_DEV_HOOK_SECRET is not configured");
-      return res.status(503).json({ error: "Dev sync hook is not configured", code: "DEV_SYNC_NOT_CONFIGURED" });
+      return res.status(503).json({ ...payload("DEV_SYNC_NOT_CONFIGURED") });
     }
 
     const rawBody = Buffer.isBuffer(req.rawBody)
@@ -133,15 +134,15 @@ export function createGithubDevSyncHandler({
         secret
       )
     ) {
-      return res.status(401).json({ error: "Invalid webhook signature", code: "INVALID_WEBHOOK_SIGNATURE" });
+      return res.status(401).json({ ...payload("INVALID_WEBHOOK_SIGNATURE") });
     }
 
     if (req.header("x-github-event") !== "push") {
       return res.status(204).end();
     }
 
-    const payload = req.body as GitHubPush;
-    if (payload.ref !== "refs/heads/main") {
+    const push = req.body as GitHubPush;
+    if (push.ref !== "refs/heads/main") {
       return res.status(202).json({ ignored: true, reason: "Not a main push", code: "IGNORED_NON_MAIN_PUSH" });
     }
 
@@ -165,8 +166,7 @@ export function createGithubDevSyncHandler({
       // Whoever is told about this runs on another machine and cannot read
       // this log, so the reason has to travel with the response.
       return res.status(409).json({
-        error: "Dev sync was not applied",
-        code: "DEV_SYNC_FAILED",
+        ...payload("DEV_SYNC_FAILED"),
         reason:
           error instanceof DevSyncRefusal
             ? error.message

@@ -303,6 +303,9 @@ export const sq: Record<keyof typeof en, string> = {
   "game.autoPassBody": "Koha mbaroi: radha jote u kalua.",
   "game.seatLeft": "{{username}} — u largua",
   "game.endMatchVoteButton": "Voto për të përfunduar ndeshjen",
+  "game.endMatchWithdrawButton": "Tërhiq votën për të përfunduar ndeshjen",
+  "game.endMatchConfirmTitle": "Të përfundojë ndeshja?",
+  "game.endMatchConfirmAction": "Përfundo ndeshjen",
   "game.endMatchVoteHint": "Çdo lojtar i mbetur duhet të pajtohet — askush nuk penalizohet.",
   "game.endMatchVoteTally": "{{votes}} nga {{total}} u pajtuan të përfundojnë ndeshjen",
 

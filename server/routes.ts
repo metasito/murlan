@@ -23,7 +23,7 @@ import {
   BugReportSchema,
 } from "./schemas.ts";
 import { deletePushToken, savePushToken } from "./push.ts";
-import { DEFAULT_LOCALE, translate, type Locale } from "../shared/i18n.ts";
+import { DEFAULT_LOCALE, type Locale } from "../shared/i18n.ts";
 import { emitToUser, evictUser, isUserOnline } from "./socket.ts";
 import { mintSocketTicket } from "./ticket.ts";
 import {
@@ -43,6 +43,7 @@ import { recordBugReport } from "./bugReports.ts";
 import { adminSnapshot } from "./admin.ts";
 import { trackEvent } from "./events.ts";
 import { renderAdminPage } from "./adminPage.ts";
+import { payload } from "./payload.ts";
 import { z } from "zod";
 
 // Every JSON error body carries a stable machine-readable `code` alongside
@@ -59,7 +60,7 @@ const RouteParamSchema = z.string().min(1).max(64);
 function readParam(res: Response, raw: unknown): string | null {
   const parsed = RouteParamSchema.safeParse(raw);
   if (!parsed.success) {
-    res.status(400).json({ message: "Invalid parameter", code: "INVALID_PARAMETER" });
+    res.status(400).json({ ...payload("INVALID_PARAMETER") });
     return null;
   }
   return parsed.data;
@@ -87,7 +88,7 @@ const authLimiter = rateLimit({
   max: authMaxFromEnv(),
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: "Too many attempts, try again in 15 minutes.", code: "AUTH_RATE_LIMITED" },
+  message: payload("AUTH_RATE_LIMITED"),
 });
 
 /**
@@ -105,7 +106,7 @@ const renameLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req: Request) => req.session?.userId ?? "anonymous",
-  message: { message: "Too many name changes, try again tomorrow.", code: "RENAME_RATE_LIMITED" },
+  message: payload("RENAME_RATE_LIMITED"),
 });
 
 /** Same pattern as authMaxFromEnv() above. */
@@ -154,7 +155,7 @@ const loginUsernameLimiter = rateLimit({
   keyGenerator: (req: Request) => (req.body as { username: string }).username.toLowerCase(),
   handler: async (_req, res) => {
     await bcrypt.compare("x", LOGIN_LIMIT_DECOY_HASH);
-    res.status(401).json({ message: "Wrong username or password", code: "INVALID_CREDENTIALS" });
+    res.status(401).json({ ...payload("INVALID_CREDENTIALS") });
   },
 });
 
@@ -178,7 +179,7 @@ const passwordResetRequestLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req: Request) => (req.body as { email: string }).email.toLowerCase(),
-  message: { error: "Too many requests, slow down.", code: "RATE_LIMITED" },
+  message: payload("RATE_LIMITED"),
 });
 
 /** Same pattern as authMaxFromEnv() above. */
@@ -200,7 +201,7 @@ const resetPasswordLimiter = rateLimit({
   max: resetPasswordMaxFromEnv(),
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: "Too many requests, slow down.", code: "RATE_LIMITED" },
+  message: payload("RATE_LIMITED"),
 });
 
 /** Same pattern as authMaxFromEnv() above. */
@@ -229,7 +230,7 @@ const changePasswordLimiter = rateLimit({
   legacyHeaders: false,
   skipSuccessfulRequests: true,
   keyGenerator: (req: Request) => req.session?.userId ?? "anonymous",
-  message: { error: "Too many requests, slow down.", code: "RATE_LIMITED" },
+  message: payload("RATE_LIMITED"),
 });
 
 /** Same pattern as authMaxFromEnv() above. */
@@ -252,13 +253,13 @@ const registerEmailLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req: Request) => (req.body as { email: string }).email.toLowerCase(),
-  message: { error: "Too many requests, slow down.", code: "RATE_LIMITED" },
+  message: payload("RATE_LIMITED"),
 });
 
 const friendLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 10,
-  message: { error: "Too many requests, slow down.", code: "RATE_LIMITED" },
+  message: payload("RATE_LIMITED"),
 });
 
 // One ticket per socket connection attempt, including every reconnect, so this
@@ -268,7 +269,7 @@ const ticketLimiter = rateLimit({
   max: 60,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: "Too many requests, slow down.", code: "RATE_LIMITED" },
+  message: payload("RATE_LIMITED"),
 });
 
 // A crashing client can crash repeatedly. This is deliberately tight: enough
@@ -285,7 +286,7 @@ const pushLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req: Request) => req.session?.userId ?? "anonymous",
-  message: { error: "Too many requests, slow down.", code: "RATE_LIMITED" },
+  message: payload("RATE_LIMITED"),
 });
 
 const errorReportLimiter = rateLimit({
@@ -299,7 +300,7 @@ const errorReportLimiter = rateLimit({
   // one device silences every other. The route is requireAuth, so there is
   // always a userId to key on. Compare #41, where login has no such option.
   keyGenerator: (req: Request) => req.session?.userId ?? "anonymous",
-  message: { error: "Too many requests, slow down.", code: "RATE_LIMITED" },
+  message: payload("RATE_LIMITED"),
 });
 
 // Everything a signed-in client is told about itself, from the one place, so
@@ -361,7 +362,7 @@ async function requireAdmin(req: Request, res: Response, next: () => void) {
 
 function requireAuth(req: Request, res: Response, next: () => void) {
   if (!req.session.userId) {
-    res.status(401).json({ message: "Not authenticated", code: "NOT_AUTHENTICATED" });
+    res.status(401).json({ ...payload("NOT_AUTHENTICATED") });
     return;
   }
   next();
@@ -383,7 +384,7 @@ async function rollbackRegistration(req: Request, userId: string, res: Response)
       resolve();
     })
   );
-  res.status(500).json({ message: "Internal server error", code: "INTERNAL_SERVER_ERROR" });
+  res.status(500).json({ ...payload("INTERNAL_SERVER_ERROR") });
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -457,13 +458,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     const user = await storage.getUserByUsername(username);
     if (!user) {
-      res.status(401).json({ message: "Wrong username or password", code: "INVALID_CREDENTIALS" });
+      res.status(401).json({ ...payload("INVALID_CREDENTIALS") });
       return;
     }
 
     const ok = await bcrypt.compare(password, user.password);
     if (!ok) {
-      res.status(401).json({ message: "Wrong username or password", code: "INVALID_CREDENTIALS" });
+      res.status(401).json({ ...payload("INVALID_CREDENTIALS") });
       return;
     }
 
@@ -472,14 +473,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     req.session.regenerate((regenErr) => {
       if (regenErr) {
         logger.error({ err: regenErr }, "Session regenerate failed on login");
-        res.status(500).json({ message: "Internal server error", code: "INTERNAL_SERVER_ERROR" });
+        res.status(500).json({ ...payload("INTERNAL_SERVER_ERROR") });
         return;
       }
       req.session.userId = user.id;
       req.session.save((err) => {
         if (err) {
           logger.error({ err }, "Session save failed on login");
-          res.status(500).json({ message: "Internal server error", code: "INTERNAL_SERVER_ERROR" });
+          res.status(500).json({ ...payload("INTERNAL_SERVER_ERROR") });
           return;
         }
         logger.info({ userId: user.id, username }, "User logged in");
@@ -514,12 +515,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/auth/me", async (req, res) => {
     if (!req.session.userId) {
-      res.status(401).json({ message: "Not authenticated", code: "NOT_AUTHENTICATED" });
+      res.status(401).json({ ...payload("NOT_AUTHENTICATED") });
       return;
     }
     const user = await storage.getUser(req.session.userId);
     if (!user) {
-      res.status(401).json({ message: "User not found", code: "USER_NOT_FOUND" });
+      res.status(401).json({ ...payload("USER_NOT_FOUND") });
       return;
     }
     res.json(sessionUser(user));
@@ -534,13 +535,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     const user = await storage.getUser(userId);
     if (!user) {
-      res.status(401).json({ message: "Not authenticated", code: "NOT_AUTHENTICATED" });
+      res.status(401).json({ ...payload("NOT_AUTHENTICATED") });
       return;
     }
 
     const ok = await bcrypt.compare(currentPassword, user.password);
     if (!ok) {
-      res.status(401).json({ message: "Wrong username or password", code: "INVALID_CREDENTIALS" });
+      res.status(401).json({ ...payload("INVALID_CREDENTIALS") });
       return;
     }
 
@@ -564,11 +565,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     const existing = await storage.getUser(userId);
     if (!existing) {
-      res.status(401).json({ message: "Not authenticated", code: "NOT_AUTHENTICATED" });
+      res.status(401).json({ ...payload("NOT_AUTHENTICATED") });
       return;
     }
     if (existing.email) {
-      res.status(409).json({ message: "Email already set", code: "EMAIL_ALREADY_SET" });
+      res.status(409).json({ ...payload("EMAIL_ALREADY_SET") });
       return;
     }
 
@@ -577,7 +578,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       user = await storage.setEmail(userId, email);
     } catch (err) {
       if (err instanceof EmailTakenError) {
-        res.status(409).json({ message: "Email already registered", code: "EMAIL_TAKEN" });
+        res.status(409).json({ ...payload("EMAIL_TAKEN") });
         return;
       }
       throw err;
@@ -597,7 +598,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const { token } = req.body as { token: string };
     const userId = await redeemAuthToken(token, "email_verify");
     if (!userId) {
-      res.status(400).json({ message: "Invalid or expired verification link", code: "INVALID_TOKEN" });
+      res.status(400).json({ ...payload("INVALID_TOKEN") });
       return;
     }
     await storage.markEmailVerified(userId);
@@ -644,7 +645,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const userId = await redeemAuthToken(token, "password_reset");
       const user = userId ? await storage.getUser(userId) : undefined;
       if (!user?.emailVerifiedAt) {
-        res.status(400).json({ message: "Invalid or expired reset link", code: "INVALID_RESET_TOKEN" });
+        res.status(400).json({ ...payload("INVALID_RESET_TOKEN") });
         return;
       }
 
@@ -687,7 +688,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     // lets a player recase their own: that lookup finds their own row.
     const holder = await storage.getUserByUsername(username);
     if (holder && holder.id !== userId) {
-      res.status(409).json({ message: "Username already taken", code: "USERNAME_TAKEN" });
+      res.status(409).json({ ...payload("USERNAME_TAKEN") });
       return;
     }
 
@@ -699,7 +700,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // The check above and this write are not one transaction, so the name can be claimed in
       // between. The constraint is the authority; the check only makes the common case a clean 409.
       if (!(err instanceof UsernameTakenError)) throw err;
-      res.status(409).json({ message: "Username already taken", code: "USERNAME_TAKEN" });
+      res.status(409).json({ ...payload("USERNAME_TAKEN") });
     }
   });
 
@@ -726,13 +727,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // table.
       await evictUser(userId);
       logger.info({ userId }, "User account deleted");
-      res.json({ message: "Account deleted", code: "ACCOUNT_DELETED" });
+      res.json({ ...payload("ACCOUNT_DELETED") });
     } catch (err) {
       logger.error({ err }, "Delete user failed");
-      res.status(500).json({
-        error: translate(DEFAULT_LOCALE, "server.ACCOUNT_DELETE_FAILED"),
-        code: "ACCOUNT_DELETE_FAILED",
-      });
+      res.status(500).json({ ...payload("ACCOUNT_DELETE_FAILED") });
     }
   });
 
@@ -757,7 +755,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete("/api/friends/invites/:roomCode", requireAuth, async (req, res) => {
     const roomCode = z.string().length(6).safeParse(String(req.params.roomCode ?? "").toUpperCase());
     if (!roomCode.success) {
-      res.status(400).json({ message: "Invalid room code", code: "INVALID_ROOM_CODE" });
+      res.status(400).json({ ...payload("INVALID_ROOM_CODE") });
       return;
     }
     await storage.declineGameInvite(req.session.userId!, roomCode.data);
@@ -767,12 +765,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/users/search", requireAuth, async (req, res) => {
     const username = z.string().min(1).max(30).safeParse(req.query.username);
     if (!username.success) {
-      res.status(400).json({ message: "Invalid username", code: "INVALID_USERNAME" });
+      res.status(400).json({ ...payload("INVALID_USERNAME") });
       return;
     }
     const found = await storage.getUserByUsername(username.data);
     if (!found || found.id === req.session.userId) {
-      res.status(404).json({ message: "User not found", code: "USER_NOT_FOUND" });
+      res.status(404).json({ ...payload("USER_NOT_FOUND") });
       return;
     }
     res.json({ id: found.id, username: found.username });
@@ -788,31 +786,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     const friend = await storage.getUserByUsername(username);
     if (!friend) {
-      res.status(404).json({ message: "User not found", code: "USER_NOT_FOUND" });
+      res.status(404).json({ ...payload("USER_NOT_FOUND") });
       return;
     }
 
     if (friend.id === req.session.userId) {
-      res.status(400).json({ message: "You cannot add yourself", code: "CANNOT_ADD_SELF" });
+      res.status(400).json({ ...payload("CANNOT_ADD_SELF") });
       return;
     }
 
     const already = await storage.areFriends(req.session.userId!, friend.id);
     if (already) {
-      res.status(409).json({ message: "Already friends", code: "ALREADY_FRIENDS" });
+      res.status(409).json({ ...payload("ALREADY_FRIENDS") });
       return;
     }
 
     const pending = await storage.pendingRequestBetween(req.session.userId!, friend.id);
     if (pending === "sent") {
-      res.status(409).json({ message: "Friend request already sent", code: "FRIEND_REQUEST_ALREADY_SENT" });
+      res.status(409).json({ ...payload("FRIEND_REQUEST_ALREADY_SENT") });
       return;
     }
     if (pending === "received") {
-      res.status(409).json({
-        message: "They already sent you a request — accept it instead",
-        code: "FRIEND_REQUEST_INCOMING_PENDING",
-      });
+      res.status(409).json({ ...payload("FRIEND_REQUEST_INCOMING_PENDING") });
       return;
     }
 
@@ -837,7 +832,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     // Only the sender can cancel — enforced inside cancelFriendRequest.
     const cancelled = await storage.cancelFriendRequest(id, req.session.userId!);
     if (!cancelled) {
-      res.status(404).json({ message: "Friend request not found", code: "FRIEND_REQUEST_NOT_FOUND" });
+      res.status(404).json({ ...payload("FRIEND_REQUEST_NOT_FOUND") });
       return;
     }
     res.json({ ok: true });
@@ -851,7 +846,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     // own request by id (IDOR).
     const result = await storage.acceptFriend(id, accepterId);
     if (!result) {
-      res.status(404).json({ message: "Friend request not found", code: "FRIEND_REQUEST_NOT_FOUND" });
+      res.status(404).json({ ...payload("FRIEND_REQUEST_NOT_FOUND") });
       return;
     }
     const accepter = await storage.getUser(accepterId);
@@ -879,7 +874,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     // pending request by id).
     const declined = await storage.declineFriendRequest(id, req.session.userId!);
     if (!declined) {
-      res.status(404).json({ message: "Friend request not found", code: "FRIEND_REQUEST_NOT_FOUND" });
+      res.status(404).json({ ...payload("FRIEND_REQUEST_NOT_FOUND") });
       return;
     }
     res.json({ ok: true });
@@ -945,7 +940,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (id === null) return;
     const replay = await getReplayForUser(id, req.session.userId!);
     if (!replay) {
-      res.status(404).json({ message: "Replay not found", code: "REPLAY_NOT_FOUND" });
+      res.status(404).json({ ...payload("REPLAY_NOT_FOUND") });
       return;
     }
     res.json(replay);
@@ -1026,10 +1021,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         res.status(201).json({ ok: true });
       } catch (err) {
         logger.error({ err, userId: req.session.userId }, "Failed to store a bug report");
-        res.status(500).json({
-          error: translate(DEFAULT_LOCALE, "server.INTERNAL_SERVER_ERROR"),
-          code: "INTERNAL_SERVER_ERROR",
-        });
+        res.status(500).json({ ...payload("INTERNAL_SERVER_ERROR") });
       }
     }
   );

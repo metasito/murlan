@@ -18,6 +18,7 @@ import type { EventOutcome } from "./socketSafety.ts";
 import { socketRoomMap } from "./gameRoom.ts";
 import { applyOrForward } from "./tableRouter.ts";
 import { joinSocketToRoom } from "./socketTable.ts";
+import { payload } from "./payload.ts";
 import {
   NoPayloadSchema,
   GamePlaySchema,
@@ -25,6 +26,7 @@ import {
   GameReactionSchema,
   GameExchangeGiveCardSchema,
   GameRematchIntentSchema,
+  GameEndMatchVoteSchema,
 } from "./socketSchemas.ts";
 
 /**
@@ -47,11 +49,11 @@ const GAME_ACTION_RATE_LIMIT = gameActionLimitFromEnv();
  * guard matches on it.
  */
 const REJOIN_FAILURE: Record<string, { message: string; code: string }> = {
-  UNAUTHORIZED: { message: "Not authorized", code: "UNAUTHORIZED" },
-  SEAT_RELEASED: { message: "Your seat was given up", code: "SEAT_RELEASED" },
-  NO_LIVE_GAME: { message: "Game not found", code: "GAME_NOT_FOUND" },
-  GAME_NO_LONGER_VALID: { message: "Game no longer valid", code: "GAME_NO_LONGER_VALID" },
-  SERVER_ERROR: { message: "Server error", code: "SERVER_ERROR" },
+  UNAUTHORIZED: payload("UNAUTHORIZED"),
+  SEAT_RELEASED: payload("SEAT_RELEASED"),
+  NO_LIVE_GAME: payload("GAME_NOT_FOUND"),
+  GAME_NO_LONGER_VALID: payload("GAME_NO_LONGER_VALID"),
+  SERVER_ERROR: payload("SERVER_ERROR"),
 };
 
 export interface GameplayHandlerContext {
@@ -122,11 +124,11 @@ export function registerGameplayHandlers({
     onEvent(
       socket,
       "game:end_match_vote",
-      NoPayloadSchema,
-      async () => {
+      GameEndMatchVoteSchema,
+      async ({ wants }) => {
         const roomId = atTable();
         if (!roomId) return { ok: false, code: "NOT_AT_A_TABLE" };
-        return applyOrForward(io, { kind: "endMatchVote", roomId, userId, username });
+        return applyOrForward(io, { kind: "endMatchVote", roomId, userId, username, wants });
       },
       { limit: 20, windowMs: 60_000 }
     );

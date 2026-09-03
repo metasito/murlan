@@ -32,8 +32,8 @@ export type TableAction =
   | (TableActionBase & { kind: "reaction"; emoji: string })
   | (TableActionBase & { kind: "rematchIntent"; wants: boolean })
   | (TableActionBase & { kind: "rematchVote" })
-  /** A vote to end the match outright, once a seat has been vacated. */
-  | (TableActionBase & { kind: "endMatchVote" })
+  /** A vote to end the match outright, once a seat has been vacated — or its withdrawal. */
+  | (TableActionBase & { kind: "endMatchVote"; wants: boolean })
   /**
    * The half of `game:rejoin` that needs the game. The socket's own half —
    * `socket.join`, `socketRoomMap` — stays where the socket is.

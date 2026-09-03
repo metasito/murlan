@@ -13,6 +13,7 @@ import {
   rooms as roomsTable,
 } from "../shared/schema.ts";
 import { activeGames, userRoom } from "./gameRoom.ts";
+import { payload } from "./payload.ts";
 import type { OnlineGameState } from "./gameRoom.ts";
 import type { GameOverWriters } from "./gameOver.ts";
 import { releaseRoom, unclaimedRooms } from "./gameOwnership.ts";
@@ -230,8 +231,7 @@ export function safeTimer(
     logger.error({ err, roomId, label }, "Timer callback threw — closing table");
     io?.to(roomId).emit("game:notification", {
       type: "abandoned",
-      code: "GAME_INTERRUPTED_SERVER_ERROR",
-      message: "Game interrupted: a server error.",
+      ...payload("GAME_INTERRUPTED_SERVER_ERROR"),
     });
     void storage
       .updateRoomStatus(roomId, "finished")

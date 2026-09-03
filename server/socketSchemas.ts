@@ -76,6 +76,16 @@ export const GameRematchIntentSchema = z.object({
   wants: z.boolean(),
 });
 
+/**
+ * The vote to end a match a seat has been vacated from, as a toggle rather
+ * than a second event. `wants` defaults to `true` when the field is absent —
+ * an old native client, built before withdrawal existed, emits no payload at
+ * all and must keep voting yes; it simply cannot withdraw until it updates.
+ */
+export const GameEndMatchVoteSchema = z
+  .union([z.undefined(), z.null(), z.object({ wants: z.boolean().optional() }).passthrough()])
+  .transform((v) => ({ wants: v?.wants ?? true }));
+
 export const GamePlaySchema = z.object({
   cardIds: z.array(IdSchema).min(1).max(14),
 });

@@ -32,7 +32,7 @@ import { MenuButton } from "@/components/MenuButton";
 import { Colors, FontSize, Radius, Reading, Spacing, Type, Layer } from "@/lib/theme";
 import { hapticLight, hapticMedium } from "@/lib/haptics";
 import { useTranslation } from "@/lib/i18n";
-import { a11yHidden } from "@/lib/a11y";
+import { A11yStatus, a11yHidden } from "@/lib/a11y";
 
 // Read once at module scope, never per-call. EXPO_PUBLIC_ vars are inlined
 // at bundle build time, so this only ever takes the fast path in a build the
@@ -231,6 +231,7 @@ export default function OnlineGameScreen() {
   const myUserId = user?.id ?? "";
   const myRematchAnswer =
     myUserId in rematchIntents.answers ? rematchIntents.answers[myUserId] : null;
+  const hasVotedToEndMatch = endMatchVoteState?.votes.includes(myUserId) ?? false;
 
   // The results overlay sits above the table and needs the same safe-area pads
   // the table uses; the table computes its own full frame from the same source.
@@ -334,28 +335,55 @@ export default function OnlineGameScreen() {
             </Text>
           </View>
         ) : anyVacatedSeat && !gameState.gameOver ? (
-          <Pressable
-            style={styles.reconnectBanner}
-            hitSlop={Spacing.wide}
-            accessibilityRole="button"
-            accessibilityLabel={t("game.endMatchVoteHint")}
-            onPress={() => {
-              hapticMedium();
-              voteToEndMatch();
-            }}
-          >
-            <View style={styles.bannerRow} {...a11yHidden()}>
-              <Ionicons name="flag" size={14} color={Colors.gold} />
-              <Text style={styles.reconnectBannerText} numberOfLines={1}>
-                {endMatchVoteState
-                  ? t("game.endMatchVoteTally", {
-                      votes: endMatchVoteState.votes.length,
-                      total: endMatchVoteState.total,
-                    })
-                  : t("game.endMatchVoteButton")}
-              </Text>
-            </View>
-          </Pressable>
+          <>
+            <Pressable
+              style={styles.reconnectBanner}
+              hitSlop={Spacing.wide}
+              accessibilityRole="button"
+              accessibilityLabel={
+                hasVotedToEndMatch
+                  ? t("game.endMatchWithdrawButton")
+                  : t("game.endMatchVoteButton")
+              }
+              accessibilityHint={t("game.endMatchVoteHint")}
+              onPress={() => {
+                hapticMedium();
+                if (hasVotedToEndMatch) {
+                  voteToEndMatch(false);
+                  return;
+                }
+                setConfirming({
+                  title: t("game.endMatchConfirmTitle"),
+                  body: t("game.endMatchVoteHint"),
+                  cancelLabel: t("common.cancel"),
+                  confirmLabel: t("game.endMatchConfirmAction"),
+                  destructive: true,
+                  onConfirm: () => voteToEndMatch(true),
+                });
+              }}
+            >
+              <View style={styles.bannerRow} {...a11yHidden()}>
+                <Ionicons name="flag" size={14} color={Colors.gold} />
+                <Text style={styles.reconnectBannerText} numberOfLines={1}>
+                  {endMatchVoteState
+                    ? t("game.endMatchVoteTally", {
+                        votes: endMatchVoteState.votes.length,
+                        total: endMatchVoteState.total,
+                      })
+                    : t("game.endMatchVoteButton")}
+                </Text>
+              </View>
+            </Pressable>
+            {endMatchVoteState && (
+              <A11yStatus
+                label={t("game.endMatchVoteTally", {
+                  votes: endMatchVoteState.votes.length,
+                  total: endMatchVoteState.total,
+                })}
+                live="polite"
+              />
+            )}
+          </>
         ) : null
       }
       overlays={(veiled) => (
