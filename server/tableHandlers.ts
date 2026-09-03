@@ -14,12 +14,13 @@ import { eq } from "drizzle-orm";
 import { db } from "./db.ts";
 import { storage } from "./storage.ts";
 import { emitVoteState, emitEndMatchVoteState } from "./emit.ts";
+import { payload } from "./payload.ts";
 import { logger } from "./logger.ts";
 import { trackEvent } from "./events.ts";
 import { DEFAULT_LOCALE, translate } from "../shared/i18n.ts";
 import { activeGames as activeGamesTable } from "../shared/schema.ts";
 import type { EventOutcome } from "./socketSafety.ts";
-import { activeGames, seatOfUser, userRoom } from "./gameRoom.ts";
+import { activeGames, scoreKeyForSeat, seatOfUser, userRoom } from "./gameRoom.ts";
 import { isUserOnline } from "./socketRegistry.ts";
 import type { OnlineGameState } from "./gameRoom.ts";
 import {
@@ -190,10 +191,7 @@ function playAction(
   // The round winner owes a card: nobody may play until it is given, otherwise
   // they keep the card and freeze the table behind the exchange overlay.
   if (gameState.exchangePhase?.active) {
-    gameError(io, userId, {
-      message: "You must complete the exchange first",
-      code: "EXCHANGE_PENDING",
-    });
+    gameError(io, userId, payload("EXCHANGE_PENDING"));
     return { ok: false, code: "EXCHANGE_PENDING" };
   }
 
@@ -205,16 +203,13 @@ function playAction(
   const unique = Array.from(new Set(cardIds));
   const cards = player.hand.filter((c) => unique.includes(c.id));
   if (cards.length !== unique.length) {
-    gameError(io, userId, { message: "Invalid card", code: "INVALID_CARD" });
+    gameError(io, userId, payload("INVALID_CARD"));
     return { ok: false, code: "INVALID_CARD" };
   }
 
   const combo = buildCombination(cards);
   if (!combo) {
-    gameError(io, userId, {
-      message: "Invalid combination",
-      code: "INVALID_COMBINATION",
-    });
+    gameError(io, userId, payload("INVALID_COMBINATION"));
     return { ok: false, code: "INVALID_COMBINATION" };
   }
 
@@ -237,7 +232,7 @@ function playAction(
   }
 
   if (!canPlay(combo, isNewRound ? null : gameState.lastPlayedCombination)) {
-    gameError(io, userId, { message: "Invalid move", code: "INVALID_MOVE" });
+    gameError(io, userId, payload("INVALID_MOVE"));
     return { ok: false, code: "INVALID_MOVE" };
   }
 
@@ -282,17 +277,14 @@ function passAction(
   if (game.gameState.gameOver) return { ok: false, code: "NO_LIVE_GAME" };
   const { gameState, playerMap } = game;
   if (gameState.exchangePhase?.active) {
-    gameError(io, userId, {
-      message: "You must complete the exchange first",
-      code: "EXCHANGE_PENDING",
-    });
+    gameError(io, userId, payload("EXCHANGE_PENDING"));
     return { ok: false, code: "EXCHANGE_PENDING" };
   }
 
   const currentIdx = gameState.currentTurnIndex;
   if (playerMap[currentIdx] !== userId) return { ok: false, code: "NOT_YOUR_TURN" };
   if (gameState.lastPlayedCombination === null) {
-    gameError(io, userId, { message: "You cannot pass", code: "CANNOT_PASS" });
+    gameError(io, userId, payload("CANNOT_PASS"));
     return { ok: false, code: "CANNOT_PASS" };
   }
 
@@ -322,7 +314,7 @@ function exchangeAction(
   const bothJokersException = game.gameState.exchangePhase.bothJokersException === true;
   const next = processExchangeChoice(game.gameState, cardId);
   if (next === game.gameState) {
-    gameError(io, userId, { message: "Invalid card", code: "INVALID_CARD" });
+    gameError(io, userId, payload("INVALID_CARD"));
     return { ok: false, code: "INVALID_CARD" };
   }
   game.gameState = next;
@@ -439,10 +431,7 @@ async function rematchVoteAction(
 
   // Nobody gets to restart it from the results screen after that.
   if (rematchRefused(game)) {
-    gameError(io, userId, {
-      message: "The table chose not to play again",
-      code: "REMATCH_DECLINED",
-    });
+    gameError(io, userId, payload("REMATCH_DECLINED"));
     return { ok: false, code: "REMATCH_DECLINED" };
   }
 
@@ -464,19 +453,20 @@ async function endMatchVoteAction(
   game: OnlineGameState,
   action: Extract<TableAction, { kind: "endMatchVote" }>
 ): Promise<EventOutcome> {
-  const { roomId, userId } = action;
+  const { roomId, userId, wants } = action;
   if (seatOfUser(game, userId) === null) return { ok: false, code: "NOT_SEATED" };
   if (game.vacatedSeats.size === 0) return { ok: false, code: "NO_VACANCY_TO_END" };
 
-  game.endMatchVotes.add(userId);
+  if (wants) game.endMatchVotes.add(userId);
+  else game.endMatchVotes.delete(userId);
   emitEndMatchVoteState(io, roomId, game);
-  if (!votesUnanimous(game.endMatchVotes, game)) return OK;
+  // A withdrawal can never end a match, and votesUnanimous on a shrinking set
+  // must not be asked.
+  if (!wants || !votesUnanimous(game.endMatchVotes, game)) return OK;
 
   io.to(roomId).emit("game:notification", {
     type: "info",
-    code: "MATCH_ENDED_BY_AGREEMENT",
-    message: translate(DEFAULT_LOCALE, "server.MATCH_ENDED_BY_AGREEMENT", {}),
-    params: {},
+    ...payload("MATCH_ENDED_BY_AGREEMENT"),
   });
   await endMatchByAgreement(io, roomId, game, gameOverWriters);
   return OK;
@@ -513,9 +503,16 @@ function reclaimableSeat(game: OnlineGameState, userId: string): number | null {
 
 /** Restores a vacated seat to the account that left it. */
 function reclaimSeat(game: OnlineGameState, seat: number, userId: string): void {
+  const botKey = scoreKeyForSeat(game, seat);
   game.playerMap[seat] = userId;
+  const carried = game.cumulativeScores[botKey] ?? 0;
+  if (carried !== 0) {
+    game.cumulativeScores[userId] = (game.cumulativeScores[userId] ?? 0) + carried;
+  }
+  delete game.cumulativeScores[botKey];
   game.vacatedSeats.delete(seat);
   game.releasedSeats.delete(userId);
+  game.endMatchVotes.clear();
   const seatPlayer = game.gameState.players[seat];
   if (seatPlayer) seatPlayer.type = "human";
 }
@@ -540,6 +537,10 @@ async function rejoinAction(
     // it — has to reach them. A normal reconnect skips this: the seat was
     // never vacated on the wire in the first place.
     broadcastGameState(io, game);
+    // reclaimSeat clears the (now-stale) end-match tally; every seat still
+    // holding a vote for it has to be told, or its banner keeps counting a
+    // vote the server no longer has.
+    emitEndMatchVoteState(io, roomId, game);
     persistGameState(roomId, game);
   }
 
@@ -582,7 +583,7 @@ async function startMatchAction(
       // it here would deal without an exchange phase, and would let the
       // payload's matchLength rewrite the format of a match that is already
       // being scored.
-      roomError(io, userId, { message: "A match is already in progress", code: "MATCH_IN_PROGRESS" });
+      roomError(io, userId, payload("MATCH_IN_PROGRESS"));
       return { ok: false, code: "MATCH_IN_PROGRESS" };
     }
 
@@ -595,10 +596,7 @@ async function startMatchAction(
     const seatedIds = Object.values(previous.playerMap);
     emitVoteState(io, roomId, previous);
     if (!seatedIds.every((uid) => previous.rematchVotes.has(uid))) {
-      roomError(io, userId, {
-        message: "Every player must be ready before a new match starts",
-        code: "NEW_MATCH_NOT_READY",
-      });
+      roomError(io, userId, payload("NEW_MATCH_NOT_READY"));
       return { ok: false, code: "NEW_MATCH_NOT_READY" };
     }
   } else if (room.status !== "waiting" && room.status !== "finished") {
@@ -625,7 +623,7 @@ async function startMatchAction(
   // With bots filling every empty seat, one seated human is enough — the min-2
   // guard only matters for an all-human table.
   if (!fillWithBots && players.length < 2) {
-    roomError(io, userId, { message: "At least 2 players are required", code: "MIN_PLAYERS_REQUIRED" });
+    roomError(io, userId, payload("MIN_PLAYERS_REQUIRED"));
     return { ok: false, code: "MIN_PLAYERS_REQUIRED" };
   }
   if (players.length < 1) return { ok: false, code: "MIN_PLAYERS_REQUIRED" };
@@ -756,12 +754,7 @@ function seatLostAction(
     userId,
     username,
     seatIndex: seat,
-    code: "PLAYER_DISCONNECTED_GRACE",
-    // The grace period is configurable, so the number has to come from the same
-    // constant the timer below is armed with — a hardcoded "60 seconds" in the
-    // text is a promise the server may not keep.
-    message: `${username} disconnected. They have ${graceSeconds} seconds to rejoin.`,
-    params: { username, seconds: graceSeconds },
+    ...payload("PLAYER_DISCONNECTED_GRACE", { username, seconds: graceSeconds }),
   });
 
   // A vacant seat must keep playing while we wait, or the table stalls for a

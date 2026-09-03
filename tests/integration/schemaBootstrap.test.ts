@@ -42,7 +42,7 @@ test("a fresh database is usable on the first boot", async (t) => {
         body: JSON.stringify(credentials),
       });
       const registerBody = await registered.text();
-      assert.equal(registered.status, 200, registerBody);
+      assert.equal(registered.status, 202, registerBody);
       assert.ok(
         registered.headers.get("set-cookie"),
         "registration must set a session cookie, which requires a working session store"

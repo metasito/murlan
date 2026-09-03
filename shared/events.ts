@@ -23,6 +23,8 @@ export const EVENT_NAMES = [
   "game.abandoned",
   /** Any socket closed, server side — see server/socketPresence.ts. */
   "socket.closed",
+  /** sendMail returned false — see server/mail.ts. Nobody reads a `warn` log. */
+  "mail.sendFailed",
 ] as const;
 
 export type EventName = (typeof EVENT_NAMES)[number];
@@ -57,4 +59,10 @@ export interface EventContext {
   gameMode?: string;
   manche?: number;
   reason?: SocketCloseReason;
+  /**
+   * Why sendMail returned false: no `RESEND_API_KEY`/`MAIL_FROM_ADDRESS` at
+   * all, the provider rejected the send, or the request itself never
+   * completed (network/exception).
+   */
+  mailFailureReason?: "unconfigured" | "rejected" | "network_error";
 }

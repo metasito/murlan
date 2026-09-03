@@ -6,18 +6,20 @@ import { db } from "./db.ts";
 import { recordGameResult } from "./stats.ts";
 import { previewRatedDeltas, recordRatedResult } from "./ratings.ts";
 import { saveReplay } from "./replays.ts";
+import { sweepRetention } from "./retention.ts";
 import {
   activeGames as activeGamesTable,
   roomPlayers as roomPlayersTable,
   rooms as roomsTable,
 } from "../shared/schema.ts";
 import { activeGames, userRoom } from "./gameRoom.ts";
+import { payload } from "./payload.ts";
 import type { OnlineGameState } from "./gameRoom.ts";
 import type { GameOverWriters } from "./gameOver.ts";
 import { releaseRoom, unclaimedRooms } from "./gameOwnership.ts";
 import {
   stateAckTimeoutMs,
-  SWEEP_INTERVAL_MS,
+  sweepIntervalMs,
   clearRoomTimers,
   clearRoomDisconnectTimers,
   clearRoomLobbyGraces,
@@ -229,8 +231,7 @@ export function safeTimer(
     logger.error({ err, roomId, label }, "Timer callback threw — closing table");
     io?.to(roomId).emit("game:notification", {
       type: "abandoned",
-      code: "GAME_INTERRUPTED_SERVER_ERROR",
-      message: "Game interrupted: a server error.",
+      ...payload("GAME_INTERRUPTED_SERVER_ERROR"),
     });
     void storage
       .updateRoomStatus(roomId, "finished")
@@ -346,6 +347,10 @@ export function startSweeper(io: SocketServer) {
         logger.error({ err }, "Pruning stale rooms failed")
       );
 
+      // sweepRetention gives each table's DELETE its own try/catch and never
+      // rejects, so there is no outer failure to log here.
+      void sweepRetention();
+
       // Only reachable through a bug — every path that puts a game in memory
       // claims the room first — but what it would be reporting is two
       // instances broadcasting one table over each other, which is worth a
@@ -357,7 +362,7 @@ export function startSweeper(io: SocketServer) {
     } catch (err) {
       logger.error({ err }, "Sweeper failed");
     }
-  }, SWEEP_INTERVAL_MS);
+  }, sweepIntervalMs());
   (sweeper as unknown as { unref?: () => void }).unref?.();
 }
 

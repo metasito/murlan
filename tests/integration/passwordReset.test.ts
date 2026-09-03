@@ -164,16 +164,88 @@ describe("password reset", { skip: hasDatabase() ? false : skipMessage() }, () =
     const { db } = await import("../../server/db.ts");
     const { authTokens } = await import("../../shared/schema.ts");
     const { eq, and } = await import("drizzle-orm");
-    const rows = await db
-      .select()
-      .from(authTokens)
-      .where(and(eq(authTokens.userId, user.id), eq(authTokens.purpose, "password_reset")));
+    const readRows = () =>
+      db
+        .select()
+        .from(authTokens)
+        .where(and(eq(authTokens.userId, user.id), eq(authTokens.purpose, "password_reset")));
+
+    // The route replies before minting (design doc, Box 5) precisely so the
+    // mint can never be timed from the response — which means this row is
+    // not guaranteed to exist the instant the 200 lands, only shortly after.
+    let rows = await readRows();
+    for (let attempt = 0; attempt < 20 && rows.length === 0; attempt++) {
+      await new Promise((r) => setTimeout(r, 50));
+      rows = await readRows();
+    }
     assert.equal(rows.length, 1, "a verified request must mint exactly one password_reset token");
     assert.equal(rows[0]!.usedAt, null);
   });
 
+  // #900 review, finding 1: users_email_lower_uq (unconditional) became a
+  // partial, verified-only index under #897 — any number of unverified
+  // accounts may now share an address. getUserByEmail's bare `[0]` used to
+  // be safe only because that old index made it unambiguous; here it is not.
+  test("a squatted unverified email does not swallow the verified owner's reset request", async () => {
+    const email = "reset_squatted_target@example.test";
+    const registerWith = (username: string) =>
+      fetch(`${server.url}/api/auth/register`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ username, password: "password123", email }),
+      });
+
+    // Registers first — an older row this account's email lookup could sort
+    // ahead of the verified owner's, with no ORDER BY to say otherwise.
+    const squatterRes = await registerWith("reset_squat_a");
+    assert.equal(squatterRes.status, 202, await squatterRes.text());
+
+    const ownerRes = await registerWith("reset_squat_b");
+    assert.equal(ownerRes.status, 202, await ownerRes.text());
+    const ownerCookie = ownerRes.headers.get("set-cookie");
+    assert.ok(ownerCookie, "register() response must set a session cookie");
+    const ownerMe = await fetch(`${server.url}/api/auth/me`, { headers: { cookie: ownerCookie! } });
+    const owner = await ownerMe.json();
+
+    const { storage } = await import("../../server/storage.ts");
+    await storage.markEmailVerified(owner.id);
+
+    const res = await requestReset(email);
+    assert.equal(res.status, 200, await res.text());
+
+    const { db } = await import("../../server/db.ts");
+    const { authTokens } = await import("../../shared/schema.ts");
+    const { eq, and } = await import("drizzle-orm");
+    const readRows = (userId: string) =>
+      db
+        .select()
+        .from(authTokens)
+        .where(and(eq(authTokens.userId, userId), eq(authTokens.purpose, "password_reset")));
+
+    let ownerRows = await readRows(owner.id);
+    for (let attempt = 0; attempt < 20 && ownerRows.length === 0; attempt++) {
+      await new Promise((r) => setTimeout(r, 50));
+      ownerRows = await readRows(owner.id);
+    }
+    assert.equal(ownerRows.length, 1, "the verified owner must get the reset token");
+
+    const squatterId = (await (await fetch(`${server.url}/api/auth/me`, {
+      headers: { cookie: squatterRes.headers.get("set-cookie")! },
+    })).json()).id;
+    const squatterRows = await readRows(squatterId);
+    assert.equal(squatterRows.length, 0, "the unverified squatter must never get a reset token");
+  });
+
+  // A smoke test, not the guarantee — timing is noise-bound on CI, so the
+  // deterministic one is tests/authReplyBeforeMail.test.ts's AST check that
+  // the reply's own source position precedes the mint and the send (#897).
+  // What this still catches is the same regression class in a way an AST
+  // scan cannot: the mail send itself leaking into the response path, which
+  // is a network round trip of hundreds of ms, not noise. Both branches now
+  // do the identical one indexed `users` lookup before replying (b), so
+  // there is no longer a real extra insert to budget for either.
   test("the request endpoint replies without awaiting the mail send, and timing is comparable for a real vs. nonexistent address", async () => {
-    const SAMPLES = 6;
+    const SAMPLES = 15;
     const realMs: number[] = [];
     const fakeMs: number[] = [];
 
@@ -190,18 +262,17 @@ describe("password reset", { skip: hasDatabase() ? false : skipMessage() }, () =
       assert.equal(fakeRes.status, 200);
     }
 
-    const avg = (values: number[]) => values.reduce((a, b) => a + b, 0) / values.length;
-    const realAvg = avg(realMs);
-    const fakeAvg = avg(fakeMs);
+    const median = (values: number[]) => {
+      const sorted = [...values].sort((a, b) => a - b);
+      const mid = Math.floor(sorted.length / 2);
+      return sorted.length % 2 === 0 ? (sorted[mid - 1]! + sorted[mid]!) / 2 : sorted[mid]!;
+    };
+    const realMedian = median(realMs);
+    const fakeMedian = median(fakeMs);
 
-    // Not near-equality — CI timing is noisy, and the real branch does one
-    // extra insert (the token) the fake branch skips. What this guards
-    // against is the mail send leaking into the response path: that is a
-    // network round-trip of hundreds of ms, not what one extra insert costs.
-    // A generous ratio still catches that without flaking on sampling noise.
     assert.ok(
-      realAvg < fakeAvg * 5 + 50,
-      `a real address averaged ${realAvg.toFixed(1)}ms vs ${fakeAvg.toFixed(1)}ms for a ` +
+      realMedian < fakeMedian * 1.5 + 20,
+      `a real address had a median of ${realMedian.toFixed(1)}ms vs ${fakeMedian.toFixed(1)}ms for a ` +
         `nonexistent one — the response may be awaiting the mail send`
     );
   });

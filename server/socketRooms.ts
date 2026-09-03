@@ -11,6 +11,7 @@ import { trackEvent } from "./events.ts";
 import { onEvent } from "./socketSafety.ts";
 import { socketRoomMap, spectatorRoomMap } from "./gameRoom.ts";
 import { clearLobbyGrace } from "./gameTimers.ts";
+import { payload } from "./payload.ts";
 import {
   handleSeatRelease,
   roomStatePayload,
@@ -18,7 +19,6 @@ import {
   announceIfFilled,
 } from "./socketTable.ts";
 import { applyOrForward } from "./tableRouter.ts";
-import { matchmakingCooldownFor } from "./matchmakingCooldown.ts";
 import {
   NoPayloadSchema,
   RoomCreateSchema,
@@ -69,7 +69,7 @@ export function registerRoomHandlers({ io, socket, userId, username }: RoomHandl
       async ({ code }) => {
         const room = await storage.getRoomByCode(code.toUpperCase());
         if (!room) {
-          socket.emit("room:error", { message: "Room not found", code: "ROOM_NOT_FOUND" });
+          socket.emit("room:error", payload("ROOM_NOT_FOUND"));
           return { ok: false, code: "ROOM_NOT_FOUND" };
         }
 
@@ -83,8 +83,8 @@ export function registerRoomHandlers({ io, socket, userId, username }: RoomHandl
           socket.emit(
             "room:error",
             admitted.code === "ALREADY_IN_ROOM"
-              ? { message: "You are already at the table", code: "ALREADY_IN_ROOM" }
-              : { message: "Game not found", code: "GAME_NOT_FOUND" }
+              ? payload("ALREADY_IN_ROOM")
+              : payload("GAME_NOT_FOUND")
           );
           return admitted;
         }
@@ -126,11 +126,11 @@ export function registerRoomHandlers({ io, socket, userId, username }: RoomHandl
       async ({ code }) => {
         const room = await storage.getRoomByCode(code.toUpperCase());
         if (!room) {
-          socket.emit("room:error", { message: "Room not found", code: "ROOM_NOT_FOUND" });
+          socket.emit("room:error", payload("ROOM_NOT_FOUND"));
           return;
         }
         if (room.status !== "waiting") {
-          socket.emit("room:error", { message: "Game already started", code: "GAME_ALREADY_STARTED" });
+          socket.emit("room:error", payload("GAME_ALREADY_STARTED"));
           return;
         }
 
@@ -170,16 +170,13 @@ export function registerRoomHandlers({ io, socket, userId, username }: RoomHandl
       async ({ code }) => {
         const room = await storage.getRoomByCode(code.toUpperCase());
         if (!room) {
-          socket.emit("room:error", { message: "Room not found", code: "ROOM_NOT_FOUND" });
+          socket.emit("room:error", payload("ROOM_NOT_FOUND"));
           return;
         }
 
         const seated = await storage.getRoomPlayers(room.id);
         if (!seated.some((p) => p.userId === userId)) {
-          socket.emit("room:error", {
-            message: "You are not in this room",
-            code: "NOT_IN_ROOM",
-          });
+          socket.emit("room:error", payload("NOT_IN_ROOM"));
           return;
         }
 
@@ -225,17 +222,6 @@ export function registerRoomHandlers({ io, socket, userId, username }: RoomHandl
       RoomQuickmatchSchema,
       async ({ maxPlayers, gameMode }) => {
         if (teamsSizeRefusal((p) => socket.emit("room:error", p), gameMode, maxPlayers)) return;
-
-        const cooldown = await matchmakingCooldownFor(userId);
-        if (cooldown.active) {
-          const minutes = Math.ceil((cooldown.until!.getTime() - Date.now()) / 60_000);
-          socket.emit("room:error", {
-            message: `Matchmaking is on cooldown after repeated abandonments — try again in ${minutes} minutes`,
-            code: "MATCHMAKING_COOLDOWN",
-            params: { minutes },
-          });
-          return;
-        }
 
         const waiting = await storage.findWaitingPublicRooms(userId);
 
@@ -313,9 +299,9 @@ export function registerRoomHandlers({ io, socket, userId, username }: RoomHandl
  * cannot.
  */
 const SEAT_CLAIM_REFUSAL = {
-  no_room: { message: "Room not found", code: "ROOM_NOT_FOUND" },
-  not_waiting: { message: "Game already started", code: "GAME_ALREADY_STARTED" },
-  full: { message: "Room full", code: "ROOM_FULL" },
-  held: { message: "Every free seat is being held for a friend", code: "SEAT_HELD" },
-  already_joined: { message: "You are already in the room", code: "ALREADY_IN_ROOM" },
-} as const;
+  no_room: payload("ROOM_NOT_FOUND"),
+  not_waiting: payload("GAME_ALREADY_STARTED"),
+  full: payload("ROOM_FULL"),
+  held: payload("SEAT_HELD"),
+  already_joined: payload("ALREADY_IN_ROOM"),
+};

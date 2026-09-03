@@ -11,6 +11,8 @@ import { installTableHandlers, applyOrForward } from "../server/tableHandlers.ts
 import { armTurn } from "../server/gameTurn.ts";
 import { activeGames } from "../server/gameRoom.ts";
 import { clearRoomTimers } from "../server/gameTimers.ts";
+import { resolveHandEnd } from "../server/onlineGameLogic.ts";
+import { scoresByEngineId } from "../server/gameOver.ts";
 import type { OnlineGameState } from "../server/gameRoom.ts";
 import type { GameState, Player } from "../lib/gameEngine.ts";
 
@@ -205,5 +207,189 @@ describe("a vacated seat is reclaimable by the account that left it (#850 clause
       clearRoomTimers(ROOM);
       activeGames.delete(ROOM);
     }
+  });
+});
+
+function finishedHand(rankings: string[]): GameState {
+  return {
+    players: [
+      player("p0", "Alice"),
+      player("p1", "Drita", "ai"),
+      player("p2", "Carl"),
+      player("p3", "Dee"),
+    ],
+    currentTurnIndex: 0,
+    lastPlayedCombination: null,
+    lastPlayedBy: -1,
+    passCount: 0,
+    gameMode: "free_for_all",
+    roundWinner: null,
+    gameOver: true,
+    rankings,
+    firstPlayMade: true,
+  };
+}
+
+describe("a reclaim merges the vacated seat's carried points into the returning player's own key (#894)", () => {
+  test("cumulativeScores, both readers, and endMatchVotes all agree after the reclaim", async () => {
+    const { io, emitted } = stubIo();
+    const game = baseGame({
+      gameState: midHand(),
+      playerMap: { 0: "alice", 2: "carl", 3: "dee" }, // seat 1 vacated
+      vacatedSeats: new Map([[1, { userId: "drita", username: "Drita" }]]),
+      releasedSeats: new Set(["drita"]),
+      cumulativeScores: { alice: 2, drita: 8, carl: 1, dee: 1 },
+      handsPlayed: 2,
+      endMatchVotes: new Set(["alice", "carl"]),
+    });
+    activeGames.set(ROOM, game);
+
+    try {
+      // Fold one hand while the seat is still vacated — the bot seat (seat 1)
+      // finishes first and scores under "bot:1", not under "drita".
+      const result = resolveHandEnd({
+        state: finishedHand(["p1", "p0", "p2", "p3"]),
+        playerMap: game.playerMap,
+        cumulativeScores: game.cumulativeScores,
+        matchTarget: 21,
+        matchLength: "match",
+        gameMode: "free_for_all",
+        handFlags: {},
+        abandonedSeats: new Map(),
+        vacatedSeats: game.vacatedSeats,
+      });
+      game.cumulativeScores = result.cumulativeScores;
+      game.handsPlayed += 1;
+
+      assert.ok(
+        (game.cumulativeScores["bot:1"] ?? 0) > 0,
+        "the vacated seat must actually have scored, or the rest of this test proves nothing"
+      );
+      assert.equal(game.cumulativeScores["bot:1"], 3);
+
+      const outcome = await applyOrForward(io, {
+        kind: "rejoin",
+        roomId: ROOM,
+        userId: "drita",
+        username: "Drita",
+      });
+      assert.equal(outcome.ok, true);
+
+      assert.equal(game.cumulativeScores["bot:1"], undefined, "the orphaned bucket must be gone");
+      assert.equal(game.cumulativeScores.drita, 11, "the frozen total plus the bot's carried points");
+      assert.equal(
+        scoresByEngineId(game)["p1"],
+        11,
+        "the live-standings reader must agree with the ledger"
+      );
+      const sum = Object.values(game.cumulativeScores).reduce((a, b) => a + b, 0);
+      assert.equal(
+        sum,
+        6 * game.handsPlayed,
+        "the standings must sum to the hands played, asserted as arithmetic"
+      );
+      assert.equal(game.endMatchVotes.size, 0, "a roster change makes the vote new again");
+      const voteState = emitted.filter((e) => e.event === "game:end_match_vote_state").pop();
+      assert.ok(voteState, "the cleared tally must be broadcast, not just held in server memory");
+      assert.deepEqual(
+        (voteState!.payload as { votes: string[] }).votes,
+        [],
+        "a client still showing alice+carl's old vote would need this to know it is gone"
+      );
+    } finally {
+      clearRoomTimers(ROOM);
+      activeGames.delete(ROOM);
+    }
+  });
+
+  test("the carried points can be the difference in crossing the match target (finding 2: foldHandIntoMatch)", async () => {
+    const { io } = stubIo();
+    const game = baseGame({
+      gameState: midHand(),
+      playerMap: { 0: "alice", 2: "carl", 3: "dee" }, // seat 1 vacated
+      vacatedSeats: new Map([[1, { userId: "drita", username: "Drita" }]]),
+      releasedSeats: new Set(["drita"]),
+      cumulativeScores: { alice: 2, drita: 8, carl: 1, dee: 1 },
+      matchTarget: 12,
+      handsPlayed: 1,
+    });
+    activeGames.set(ROOM, game);
+
+    try {
+      // Hand 1, still vacated: the bot seat (seat 1) finishes first and
+      // carries 3 points under "bot:1" — cumulativeScores.drita stays frozen
+      // at 8, below the 12 target either way.
+      const first = resolveHandEnd({
+        state: finishedHand(["p1", "p0", "p2", "p3"]),
+        playerMap: game.playerMap,
+        cumulativeScores: game.cumulativeScores,
+        matchTarget: game.matchTarget,
+        matchLength: "match",
+        gameMode: "free_for_all",
+        handFlags: {},
+        abandonedSeats: new Map(),
+        vacatedSeats: game.vacatedSeats,
+      });
+      game.cumulativeScores = first.cumulativeScores;
+      game.handsPlayed += 1;
+      assert.equal(first.matchOver, false, "8 and 3 apart do not yet reach 12 either way");
+
+      await applyOrForward(io, { kind: "rejoin", roomId: ROOM, userId: "drita", username: "Drita" });
+      assert.equal(game.cumulativeScores.drita, 11, "the reclaim already merged the carried 3 points");
+
+      // Hand 2, seat 1 now drita's own again: she finishes first a second
+      // time. 11 (merged) + 3 = 14, over the 12 target — the match must end
+      // and name her the winner. A reader that resolved the target from the
+      // orphaned "bot:1" bucket instead of the merged "drita" key would see
+      // only 8 + 3 = 11 here and wrongly call the match still running.
+      const second = resolveHandEnd({
+        state: finishedHand(["p1", "p0", "p2", "p3"]),
+        playerMap: game.playerMap,
+        cumulativeScores: game.cumulativeScores,
+        matchTarget: game.matchTarget,
+        matchLength: "match",
+        gameMode: "free_for_all",
+        handFlags: {},
+        abandonedSeats: new Map(),
+        vacatedSeats: game.vacatedSeats,
+      });
+
+      assert.equal(second.cumulativeScores.drita, 14);
+      assert.equal(second.matchOver, true, "the match must end the instant the merged total crosses target");
+      assert.deepEqual(second.matchWinners, ["drita"]);
+    } finally {
+      clearRoomTimers(ROOM);
+      activeGames.delete(ROOM);
+    }
+  });
+
+  test("scoresByEngineId already merges a still-vacated seat's frozen total with the bot's (finding 1)", () => {
+    const game = baseGame({
+      gameState: midHand(),
+      playerMap: { 0: "alice", 2: "carl", 3: "dee" }, // seat 1 vacated
+      vacatedSeats: new Map([[1, { userId: "drita", username: "Drita" }]]),
+      releasedSeats: new Set(["drita"]),
+      cumulativeScores: { alice: 2, drita: 8, carl: 1, dee: 1 },
+      handsPlayed: 2,
+    });
+
+    const result = resolveHandEnd({
+      state: finishedHand(["p1", "p0", "p2", "p3"]),
+      playerMap: game.playerMap,
+      cumulativeScores: game.cumulativeScores,
+      matchTarget: 21,
+      matchLength: "match",
+      gameMode: "free_for_all",
+      handFlags: {},
+      abandonedSeats: new Map(),
+      vacatedSeats: game.vacatedSeats,
+    });
+    game.cumulativeScores = result.cumulativeScores;
+
+    assert.equal(
+      scoresByEngineId(game)["p1"],
+      game.cumulativeScores.drita + game.cumulativeScores["bot:1"]!,
+      "the live-standings row for a still-vacated seat must show the frozen total plus the bot's, not just the bot's"
+    );
   });
 });

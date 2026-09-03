@@ -10,6 +10,7 @@ import type { Server as SocketServer } from "socket.io";
 import { installTableHandlers, applyOrForward } from "../server/tableHandlers.ts";
 import { activeGames } from "../server/gameRoom.ts";
 import { clearRoomTimers } from "../server/gameTimers.ts";
+import { GameEndMatchVoteSchema } from "../server/socketSchemas.ts";
 import type { OnlineGameState } from "../server/gameRoom.ts";
 import type { GameOverPayload } from "../lib/matchState.ts";
 import type { GameState, Player } from "../lib/gameEngine.ts";
@@ -82,12 +83,13 @@ before(() => {
   installTableHandlers({ on: () => {} } as unknown as SocketServer);
 });
 
-function vote(io: SocketServer, userId: string) {
+function vote(io: SocketServer, userId: string, wants = true) {
   return applyOrForward(io, {
     kind: "endMatchVote",
     roomId: ROOM,
     userId,
     username: userId,
+    wants,
   });
 }
 
@@ -197,5 +199,56 @@ describe("the end-match vote, offered only after a vacancy, decided by unanimity
     } finally {
       activeGames.delete(ROOM);
     }
+  });
+
+  test("withdrawing a vote leaves the tally empty and cannot end the match", async () => {
+    const { io, emitted } = stubIo();
+    const game = baseGame({
+      gameState: midHandOneVacated(),
+      playerMap: { 0: "alice", 2: "carl", 3: "dee" },
+      vacatedSeats: new Map([[1, { userId: "drita", username: "Drita" }]]),
+    });
+    activeGames.set(ROOM, game);
+
+    try {
+      await vote(io, "alice");
+      await vote(io, "alice", false);
+      assert.equal(game.endMatchVotes.size, 0);
+      assert.equal(game.matchOver, false);
+      assert.ok(!emitted.some((e) => e.event === "game:over"));
+    } finally {
+      activeGames.delete(ROOM);
+    }
+  });
+
+  test("withdrawing a vote from a seat that never voted is a no-op", async () => {
+    const { io } = stubIo();
+    const game = baseGame({
+      gameState: midHandOneVacated(),
+      playerMap: { 0: "alice", 2: "carl", 3: "dee" },
+      vacatedSeats: new Map([[1, { userId: "drita", username: "Drita" }]]),
+    });
+    activeGames.set(ROOM, game);
+
+    try {
+      const outcome = await vote(io, "alice", false);
+      assert.equal(outcome.ok, true);
+      assert.equal(game.endMatchVotes.size, 0);
+    } finally {
+      activeGames.delete(ROOM);
+    }
+  });
+});
+
+describe("GameEndMatchVoteSchema — an old client's absent payload must still vote yes", () => {
+  test("no payload at all defaults to wants: true", () => {
+    assert.deepEqual(GameEndMatchVoteSchema.parse(undefined), { wants: true });
+    assert.deepEqual(GameEndMatchVoteSchema.parse(null), { wants: true });
+    assert.deepEqual(GameEndMatchVoteSchema.parse({}), { wants: true });
+  });
+
+  test("an explicit wants is respected either way", () => {
+    assert.deepEqual(GameEndMatchVoteSchema.parse({ wants: false }), { wants: false });
+    assert.deepEqual(GameEndMatchVoteSchema.parse({ wants: true }), { wants: true });
   });
 });

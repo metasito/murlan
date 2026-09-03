@@ -1,4 +1,4 @@
-import { eq, and, or, sql, desc, inArray, isNull } from "drizzle-orm";
+import { eq, and, or, sql, desc, inArray, isNull, isNotNull } from "drizzle-orm";
 import { randomInt } from "node:crypto";
 import { db } from "./db.ts";
 import {
@@ -153,6 +153,25 @@ class DrizzleStorage {
     return user;
   }
 
+  /**
+   * request-password-reset's lookup. `users_email_lower_uq` used to make
+   * `getUserByEmail` safe here; #897 replaced it with a *partial* unique
+   * index (verified rows only), so any number of unverified accounts may
+   * now share an address and `getUserByEmail`'s bare `[0]` returns whichever
+   * one the planner happens to hand back — silently answering for the wrong
+   * account (#900 review, finding 1). Scoping to `emailVerifiedAt IS NOT
+   * NULL` is exactly the predicate the partial index enforces uniqueness
+   * over, so this can never return more than the one account that owns the
+   * address.
+   */
+  async getVerifiedUserByEmail(email: string): Promise<User | undefined> {
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(and(sql`lower(${users.email}) = lower(${email})`, isNotNull(users.emailVerifiedAt)));
+    return user;
+  }
+
   private generateFriendCode(): string {
     return randomCode(6);
   }
@@ -180,9 +199,31 @@ class DrizzleStorage {
     throw new Error("Failed to generate unique friend code");
   }
 
-  /** Set once, by the token redemption that proved control of the mailbox. */
-  async markEmailVerified(userId: string): Promise<void> {
-    await db.update(users).set({ emailVerifiedAt: new Date() }).where(eq(users.id, userId));
+  /**
+   * Set by the token redemption that proved control of the mailbox.
+   * "lost_race" is a different account already having verified this address
+   * first — `users_email_verified_lower_uq` (#897) is the actual arbiter of
+   * that, so this account's own claim is cleared rather than left collided
+   * with it. "not_found" is anything that leaves no row to update: the
+   * account no longer exists, or its own email claim is already gone (a
+   * prior race, or a second outstanding token — #894 review, finding 3 —
+   * redeemed after the first already cleared it). Scoping the UPDATE to
+   * `email IS NOT NULL` is what makes that second case return "not_found"
+   * instead of silently re-verifying a claim that no longer exists.
+   */
+  async markEmailVerified(userId: string): Promise<"verified" | "lost_race" | "not_found"> {
+    try {
+      const [row] = await db
+        .update(users)
+        .set({ emailVerifiedAt: new Date() })
+        .where(and(eq(users.id, userId), isNotNull(users.email)))
+        .returning({ id: users.id });
+      return row ? "verified" : "not_found";
+    } catch (err) {
+      if (!uniqueViolation(err)?.includes("email")) throw err;
+      await db.update(users).set({ email: null }).where(eq(users.id, userId));
+      return "lost_race";
+    }
   }
 
   /**

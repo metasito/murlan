@@ -11,6 +11,9 @@
 >
 > Rolling back is `replit.md` § Rolling back a deploy, not here — the two are one topic split
 > across "how to go forward" and "how to go back" so neither buries the other.
+>
+> § #897 below is a second, unrelated destructive change — dropping the old unconditional
+> email index — with its own short sequence, not a step inside the one above.
 
 ## Before you start
 
@@ -119,6 +122,69 @@ landing page.
 `replit.md` § Rolling back a deploy — the code half and the database half are separate, and
 the database half is not optional once Step 5 has run: reverting the server does not undo the
 column renames.
+
+## #897 — dropping the old email uniqueness index (required, not optional)
+
+`shared/schema.ts` now declares `users_email_verified_lower_uq`, a **partial** unique index on
+`lower(email) WHERE email_verified_at IS NOT NULL`, in place of the old unconditional
+`users_email_lower_uq`. `ensureSchema()` (`server/schemaDdl.ts`) is additive only, so it
+creates the new index on its own at the next boot — no manual step for that half. What it
+never does is drop the old one, and the two disagree: while both exist, the old index still
+refuses two accounts sharing an unverified email, which is exactly the claim (not possession)
+behaviour #897 exists to allow.
+
+**This step must run as part of this deploy, not "when convenient."** Registration no longer
+degrades safely against an un-migrated database. The code review behind this note (#894) found
+that the previous safe-looking degradation — a neutral 202 with no account and no session
+cookie — was itself a defect: it was a second, non-neutral registration outcome the client
+could not tell apart from success, and it answered a stranger's probe just as precisely as the
+oracle #897 exists to close. `server/routes.ts`'s register route no longer catches
+`EmailTakenError` at all. Against an un-migrated database — one where the old unconditional
+index still stands — every registration that collides with an existing unverified email now
+throws uncaught and the route replies **500**, loudly, until this step runs. That is the
+intended failure mode: loud and visible in the server log rather than a silent leak. But it
+means real registrations can 500 from the moment this code boots, so treat dropping
+`users_email_lower_uq` as part of this deploy's own steps, before announcing the app or
+opening it to new signups — not a follow-up to get to later.
+
+1 — Back up. Same requirement as Step 3 above, for the same reason:
+
+```bash
+npm run db:backup
+```
+
+2 — Confirm the new index already exists (a normal deploy creates it at boot) and the old one
+still does:
+
+```bash
+psql "$DATABASE_URL" -c "\d users" | grep -E "users_email_lower_uq|users_email_verified_lower_uq"
+```
+
+Expected: both present. If `users_email_verified_lower_uq` is missing, a deploy carrying this
+change has not yet booted against this database — deploy first, then come back to this step.
+
+3 — Run the push, and **read what it proposes before answering**:
+
+```bash
+npm run db:push
+```
+
+`drizzle-kit` will ask whether removing `users_email_lower_uq` from the schema means to
+**drop** it or **rename** it to something else. **Answer drop.** There is no column or index
+in the new schema this one could be a rename of — `users_email_verified_lower_uq` is a
+differently-scoped index on the same expression, not the same index renamed. Answering
+"rename" would leave the unconditional constraint alive under a new name and this step would
+have accomplished nothing.
+
+4 — Verify the drop landed, and that a second push is a no-op:
+
+```bash
+psql "$DATABASE_URL" -c "\d users" | grep -E "users_email_lower_uq|users_email_verified_lower_uq"
+npm run db:push
+```
+
+Expected: only `users_email_verified_lower_uq` present, and the second `db:push` reports no
+changes detected.
 
 ## Backups
 

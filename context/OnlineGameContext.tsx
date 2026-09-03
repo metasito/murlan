@@ -126,8 +126,11 @@ interface OnlineGameContextValue {
     matchLength?: MatchLength;
   }) => void;
   voteRematch: () => void;
-  /** Vote to end the match outright — offered only once a seat has been vacated. */
-  voteToEndMatch: () => void;
+  /**
+   * Vote to end the match outright, or withdraw that vote — offered only
+   * once a seat has been vacated.
+   */
+  voteToEndMatch: (wants: boolean) => void;
   answerRematch: (wants: boolean) => void;
   playCards: (cardIds: string[]) => void;
   pass: () => void;
@@ -839,8 +842,8 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     socket?.emit("game:rematch_vote");
   }, [socket]);
 
-  const voteToEndMatch = useCallback(() => {
-    socket?.emit("game:end_match_vote");
+  const voteToEndMatch = useCallback((wants: boolean) => {
+    socket?.emit("game:end_match_vote", { wants });
   }, [socket]);
 
   const answerRematch = useCallback((wants: boolean) => {

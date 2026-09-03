@@ -33,6 +33,8 @@ export const en = {
   "server.USERNAME_TAKEN": "Username already in use",
   "server.EMAIL_TAKEN": "Email already registered",
   "server.EMAIL_ALREADY_SET": "This account already has an email",
+  "server.CHECK_YOUR_EMAIL": "Check your email to verify your address",
+  "server.EMAIL_VERIFIED_ELSEWHERE": "This email is already verified on a different account. If that account is yours, sign in there or reset its password. If it isn't, you can add a different email from your profile.",
   "server.INVALID_TOKEN": "Invalid or expired verification link",
   "server.INVALID_RESET_TOKEN": "Invalid or expired reset link",
   "server.INTERNAL_SERVER_ERROR": "Internal server error",
@@ -87,7 +89,6 @@ export const en = {
   "server.PLAYER_DISCONNECTED_GRACE": "{{username}} disconnected. They have {{seconds}} seconds to rejoin.",
   "server.PLAYER_RECONNECTED": "{{username}} is back.",
   "server.SESSION_REPLACED": "Your account was opened somewhere else. This session has been closed.",
-  "server.MATCHMAKING_COOLDOWN": "Matchmaking is paused after repeated abandonments — try again in {{minutes}} minutes.",
   "server.MATCH_ENDED_BY_AGREEMENT": "The table agreed to end the match. Nobody is penalised.",
   "server.NO_VACANCY_TO_END": "There's nobody to vote on ending the match yet",
 
@@ -114,6 +115,10 @@ export const en = {
   "auth.missingFields": "Enter a username and password",
   "auth.missingFieldsRegister": "Enter a username, email and password",
   "auth.unknownError": "Unknown error",
+  "auth.checkEmailTitle": "Check your email",
+  "auth.checkEmailBody": "We've sent you an email. Verify your address to unlock the full game — or, if you already have an account with this address, follow the instructions there.",
+  "auth.checkEmailContinue": "Continue",
+  "auth.checkEmailBackToSignIn": "Back to sign in",
 
   // ------------------------------------------------------------ settings.*
   "settings.title": "Settings",
@@ -304,8 +309,12 @@ export const en = {
   "game.autoPassBody": "Time is up: your turn was passed.",
   "game.seatLeft": "{{username}} — left",
   "game.endMatchVoteButton": "Vote to end match",
+  "game.endMatchWithdrawButton": "Withdraw vote to end match",
+  "game.endMatchConfirmTitle": "End the match?",
+  "game.endMatchConfirmAction": "End match",
   "game.endMatchVoteHint": "Every remaining player must agree — nobody is penalised.",
   "game.endMatchVoteTally": "{{votes}} of {{total}} agreed to end the match",
+  "game.endMatchVoteTallyVoted": "{{votes}} of {{total}} agreed. Tap to withdraw your vote.",
 
   // -------------------------------------------------------------- gameTable.*
   "gameTable.seatReconnecting": "Reconnecting… {{seconds}}s",

@@ -38,9 +38,6 @@ export async function mintAuthToken(
  * expires_at > now()` guard inside the same UPDATE, so two near-simultaneous
  * redemptions cannot both succeed. Returns the token's userId, or null if it
  * is unknown, already used, expired or minted for a different purpose.
- *
- * Sweeps expired rows on every call — the design's retention rule, and the
- * only thing that bounds this table.
  */
 export async function redeemAuthToken(
   rawToken: string,
@@ -56,7 +53,6 @@ export async function redeemAuthToken(
       AND expires_at > now()
     RETURNING user_id
   `);
-  await db.execute(sql`DELETE FROM auth_tokens WHERE expires_at < now()`);
   return result.rows[0]?.user_id ?? null;
 }
 
@@ -70,6 +66,28 @@ export async function invalidateAuthTokens(userId: string, purpose: AuthTokenPur
   await db.execute(sql`
     UPDATE auth_tokens
     SET used_at = now()
+    WHERE user_id = ${userId}
+      AND purpose = ${purpose}
+      AND used_at IS NULL
+  `);
+}
+
+/**
+ * Unlike `password_reset` (invalidated only on redemption — an outstanding
+ * link the user is about to click must survive a second request), every
+ * `email_verify` mint retires every other outstanding one for that user
+ * first. Two live `email_verify` tokens is the address-takeover window
+ * #900's review flagged: redeem one and lose the race (email cleared to
+ * NULL by markEmailVerified), then add-email a different address and
+ * redeem the still-live second one — verifying an address never proven.
+ * A hard DELETE, not a soft `used_at` mark: at most one row may exist for
+ * a user+purpose at a time is the actual invariant, not just "at most one
+ * redeemable" — whichever mint runs last always wins, regardless of which
+ * of register's fire-and-forget mint or add-email's own lands first.
+ */
+export async function invalidatePendingAuthTokens(userId: string, purpose: AuthTokenPurpose): Promise<void> {
+  await db.execute(sql`
+    DELETE FROM auth_tokens
     WHERE user_id = ${userId}
       AND purpose = ${purpose}
       AND used_at IS NULL

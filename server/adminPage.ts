@@ -126,6 +126,22 @@ export function renderAdminPage(snapshot: AdminSnapshot): string {
     ),
     panel(
       10,
+      "Mail health",
+      table(
+        ["Configured", "Attempted", "Succeeded", "Failed"],
+        [[
+          snapshot.mail.configured ? "yes" : "no",
+          snapshot.mail.attempted,
+          snapshot.mail.succeeded,
+          snapshot.mail.failed,
+        ]]
+      ) +
+        `<p class="meta">Since this process last started. "no" means verification and ` +
+        `password-reset mail is silently a no-op — see the mail.sendFailed rows in ` +
+        `"Where people drop out" above.</p>`
+    ),
+    panel(
+      11,
       "Bug reports",
       table(
         ["When", "Who", "What they said", "Where", "Build"],

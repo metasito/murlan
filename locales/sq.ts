@@ -41,7 +41,9 @@ export const sq: Record<keyof typeof en, string> = {
   "server.NOT_AUTHENTICATED": "Kërkohet kyçja",
   "server.USERNAME_TAKEN": "Emri i përdoruesit është i zënë",
   "server.EMAIL_TAKEN": "Email-i është regjistruar tashmë",
-  "server.EMAIL_ALREADY_SET": "Ky llogari ka tashmë një email",
+  "server.EMAIL_ALREADY_SET": "Kjo llogari ka tashmë një email",
+  "server.CHECK_YOUR_EMAIL": "Kontrollo emailin për të verifikuar adresën",
+  "server.EMAIL_VERIFIED_ELSEWHERE": "Ky email është verifikuar tashmë në një llogari tjetër. Nëse llogaria e verifikuar është jotja, identifikohu aty ose rivendos fjalëkalimin. Nëse nuk është jotja, mund të shtosh një email tjetër nga profili yt.",
   "server.INVALID_TOKEN": "Lidhja e verifikimit është e pavlefshme ose ka skaduar",
   "server.INVALID_RESET_TOKEN": "Lidhja e rivendosjes është e pavlefshme ose ka skaduar",
   "server.INTERNAL_SERVER_ERROR": "Gabim i brendshëm i serverit",
@@ -96,7 +98,6 @@ export const sq: Record<keyof typeof en, string> = {
   "server.PLAYER_DISCONNECTED_GRACE": "{{username}} humbi lidhjen. Ka {{seconds}} sekonda për t'u rikthyer.",
   "server.PLAYER_RECONNECTED": "{{username}} është sërish në lojë.",
   "server.SESSION_REPLACED": "Llogaria jote u hap diku tjetër. Kjo seancë u mbyll.",
-  "server.MATCHMAKING_COOLDOWN": "Ndeshja e re është pauzuar pas braktisjeve të përsëritura — provo përsëri pas {{minutes}} minutash.",
   "server.MATCH_ENDED_BY_AGREEMENT": "Tavolina vendosi ta përfundojë ndeshjen. Askush nuk penalizohet.",
   "server.NO_VACANCY_TO_END": "Ende s'ka njeri për të votuar përfundimin e ndeshjes",
 
@@ -123,6 +124,10 @@ export const sq: Record<keyof typeof en, string> = {
   "auth.missingFields": "Shkruaj emrin e përdoruesit dhe fjalëkalimin",
   "auth.missingFieldsRegister": "Shkruaj emrin e përdoruesit, email-in dhe fjalëkalimin",
   "auth.unknownError": "Gabim i panjohur",
+  "auth.checkEmailTitle": "Kontrollo emailin tënd",
+  "auth.checkEmailBody": "Të kemi dërguar një email. Verifiko adresën për të zhbllokuar lojën e plotë — ose, nëse ke tashmë një llogari me këtë adresë, ndiq udhëzimet atje.",
+  "auth.checkEmailContinue": "Vazhdo",
+  "auth.checkEmailBackToSignIn": "Kthehu te hyrja",
 
   // ------------------------------------------------------------ settings.*
   "settings.title": "Cilësimet",
@@ -304,8 +309,12 @@ export const sq: Record<keyof typeof en, string> = {
   "game.autoPassBody": "Koha mbaroi: radha jote u kalua.",
   "game.seatLeft": "{{username}} — u largua",
   "game.endMatchVoteButton": "Voto për të përfunduar ndeshjen",
+  "game.endMatchWithdrawButton": "Tërhiq votën për të përfunduar ndeshjen",
+  "game.endMatchConfirmTitle": "Të përfundojë ndeshja?",
+  "game.endMatchConfirmAction": "Përfundo ndeshjen",
   "game.endMatchVoteHint": "Çdo lojtar i mbetur duhet të pajtohet — askush nuk penalizohet.",
   "game.endMatchVoteTally": "{{votes}} nga {{total}} u pajtuan të përfundojnë ndeshjen",
+  "game.endMatchVoteTallyVoted": "{{votes}} nga {{total}} u pajtuan. Prek për të tërhequr votën tënde.",
 
   // -------------------------------------------------------------- gameTable.*
   "gameTable.seatReconnecting": "Po rilidhet… {{seconds}}s",

@@ -28,9 +28,21 @@ export const users = pgTable(
   },
   (t) => [
     uniqueIndex("users_username_lower_uq").on(sql`lower(${t.username})`),
-    // Postgres permits any number of NULLs in a unique index, so nullable and
-    // unique compose with no special case here.
-    uniqueIndex("users_email_lower_uq").on(sql`lower(${t.email})`),
+    // Partial, not unconditional (#897): an unverified email is a claim, not
+    // a possession, so any number of accounts may hold the same address
+    // unverified. Only a verified one is unique — whoever verifies first
+    // owns it, and storage.markEmailVerified clears a later claimant's email
+    // rather than colliding with this index.
+    uniqueIndex("users_email_verified_lower_uq")
+      .on(sql`lower(${t.email})`)
+      .where(sql`${t.emailVerifiedAt} is not null`),
+    // Non-unique, unconditional (#894 review, finding 5): getUserByEmail's
+    // `lower(email) = lower($1)` (request-password-reset, register's
+    // username/email pre-checks) has no index to use once
+    // docs/DEPLOY-RUNBOOK.md's step drops the old unconditional unique
+    // index — the partial one above only covers verified rows, which this
+    // predicate does not imply. Without this, that lookup is a seq scan.
+    index("users_email_lower_idx").on(sql`lower(${t.email})`),
   ]
 );
 
@@ -252,7 +264,10 @@ export const events = pgTable("events", {
   occurredAt: timestamp("occurred_at").defaultNow().notNull(),
   name: text("name").notNull(),
   context: jsonb("context").notNull().default({}),
-}, (t) => [index("events_name_occurred_idx").on(t.name, t.occurredAt)]);
+}, (t) => [
+  index("events_name_occurred_idx").on(t.name, t.occurredAt),
+  index("events_occurred_idx").on(t.occurredAt),
+]);
 
 export const userAchievements = pgTable("user_achievements", {
   userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
@@ -333,9 +348,8 @@ export const pushTokens = pgTable("push_tokens", {
  * this shape is deliberately not reused from (a reset/verify link survives a
  * server restart; a signed in-memory-nonce ticket does not).
  *
- * Nothing else bounds this table — a row lands per signup and per reset
- * request — so expired rows are swept opportunistically on every redemption
- * rather than kept forever or run through a scheduler.
+ * Expired rows are swept on a schedule (server/retention.ts), not on the
+ * write or redemption path — see that module for why.
  */
 export const authTokens = pgTable(
   "auth_tokens",
@@ -353,6 +367,7 @@ export const authTokens = pgTable(
     // `RETURNING user_id` a single row rather than a set.
     uniqueIndex("auth_tokens_token_hash_uq").on(t.tokenHash),
     index("auth_tokens_user_id_idx").on(t.userId, t.purpose),
+    index("auth_tokens_expires_idx").on(t.expiresAt),
   ]
 );
 

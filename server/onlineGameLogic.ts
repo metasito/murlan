@@ -46,6 +46,25 @@ export function scoreKeyForSeat(
 }
 
 /**
+ * A seat's cumulative total, merging a departed player's frozen row with
+ * the bot's own — the one shared resolver every reader of `cumulativeScores`
+ * goes through, so a seat's total cannot be computed one way here and
+ * another way there.
+ */
+export function seatTotal(
+  cumulativeScores: Record<string, number>,
+  playerMap: Record<number, string>,
+  vacatedSeats: ReadonlyMap<number, { userId: string; username: string }>,
+  seat: number
+): number {
+  const key = scoreKeyForSeat(playerMap, seat);
+  const vacated = vacatedSeats.get(seat);
+  return vacated
+    ? (cumulativeScores[vacated.userId] ?? 0) + (cumulativeScores[key] ?? 0)
+    : (cumulativeScores[key] ?? 0);
+}
+
+/**
  * The seat a viewer should see as "mine". Server-authoritative — this is
  * what sanitizeStateForPlayer stamps onto every game:state as
  * `viewerSeatIndex`, so the client never has to guess (and never falls back
@@ -555,13 +574,7 @@ export function resolveHandEnd(input: ResolveHandEndInput): ResolveHandEndResult
   const detailed: ScoreboardRow[] = state.players.map((p, seat) => {
     const key = scoreKeyForSeat(playerMap, seat);
     const vacated = vacatedSeats.get(seat);
-    // A vacated seat's row sums the person's frozen total (their own userId
-    // key, untouched since they left) and the bot's total under it since
-    // takeover — the seat's `key` alone reads as the bot's total only, which
-    // is why it used to show 0 for points the person had already won.
-    const total = vacated
-      ? (cumulativeScores[vacated.userId] ?? 0) + (cumulativeScores[key] ?? 0)
-      : (cumulativeScores[key] ?? 0);
+    const total = seatTotal(cumulativeScores, playerMap, vacatedSeats, seat);
     return {
       seatIndex: seat,
       engineId: p.id,

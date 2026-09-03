@@ -54,7 +54,7 @@ export const stateAckTimeoutMs = () => timeoutFromEnv("MURLAN_STATE_ACK_TIMEOUT_
 // Tunable for tests, which otherwise pay it on every move of every table a
 // disconnect hands over to the AI.
 export const botMoveDelayMs = () => timeoutFromEnv("MURLAN_BOT_MOVE_DELAY_MS", 1_200);
-export const SWEEP_INTERVAL_MS = 5 * 60_000;
+export const sweepIntervalMs = () => timeoutFromEnv("MURLAN_SWEEP_INTERVAL_MS", 5 * 60_000);
 
 /** Whole seconds left on a deadline, floored at 0. Zero when nothing is armed. */
 export function secondsUntil(deadlineMs: number | undefined): number {

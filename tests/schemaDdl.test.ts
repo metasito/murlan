@@ -116,6 +116,54 @@ test("the replay ownership predicate has an index it can use", () => {
   assert.match(statement, /USING "gin" \("player_ids"\)/);
 });
 
+test("the email uniqueness index is partial, not unconditional (#897)", () => {
+  // An unverified email is a claim, not a possession — any number of
+  // accounts may share one unverified, so the constraint has to name the
+  // condition rather than the bare column, or two such accounts could never
+  // both be created.
+  const create = statements.find((s) => /users_email_verified_lower_uq/.test(s));
+  assert.ok(create, "no users_email_verified_lower_uq statement");
+  assert.match(create, /ON "users" \(\(lower\("email"\)\)\)/);
+  assert.match(create, /WHERE "email_verified_at" is not null;$/);
+
+  // The index this one replaces must never come back unconditional — that
+  // silently drops the "unverified accounts may share an address" property
+  // this partial index exists to grant.
+  assert.ok(
+    !statements.some((s) => /users_email_lower_uq/.test(s)),
+    "the old unconditional email index must not be re-declared in shared/schema.ts " +
+      "(dropping it from a database that already has it is docs/DEPLOY-RUNBOOK.md's job, not this module's)"
+  );
+});
+
+test("getUserByEmail's unconditional lookup has an index it can use (#894 review, finding 5)", () => {
+  // Once docs/DEPLOY-RUNBOOK.md's step drops the old unconditional unique
+  // index, the only other lower(email) index is the partial, verified-only
+  // one above — which Postgres cannot use for a predicate that does not
+  // imply "verified". getUserByEmail's `lower(email) = lower($1)` needs its
+  // own, non-unique index.
+  const create = statements.find((s) => /"users_email_lower_idx"/.test(s));
+  assert.ok(create, "no users_email_lower_idx statement");
+  assert.match(create, /^CREATE INDEX/);
+  assert.match(create, /ON "users" \(\(lower\("email"\)\)\)/);
+});
+
+test("events and auth_tokens have an index the retention sweep can use", () => {
+  // Both predicates (events.occurredAt, auth_tokens.expiresAt) had no index
+  // before #895 — server/retention.ts's scheduled DELETE would otherwise be
+  // the same full-table seq scan the write-path prune was.
+  assert.ok(
+    statements.some((s) => /"events_occurred_idx"/.test(s) && /ON "events" \("occurred_at"\)/.test(s)),
+    "events.occurred_at needs an index for the retention sweep"
+  );
+  assert.ok(
+    statements.some(
+      (s) => /"auth_tokens_expires_idx"/.test(s) && /ON "auth_tokens" \("expires_at"\)/.test(s)
+    ),
+    "auth_tokens.expires_at needs an index for the retention sweep"
+  );
+});
+
 test("a table is created before anything references it", () => {
   const createdAt = new Map<string, number>();
   statements.forEach((s, i) => {

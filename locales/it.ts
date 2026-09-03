@@ -26,6 +26,8 @@ export const it: Record<keyof typeof en, string> = {
   "server.USERNAME_TAKEN": "Username già in uso",
   "server.EMAIL_TAKEN": "Email già registrata",
   "server.EMAIL_ALREADY_SET": "Questo account ha già un'email",
+  "server.CHECK_YOUR_EMAIL": "Controlla la tua email per verificare l'indirizzo",
+  "server.EMAIL_VERIFIED_ELSEWHERE": "Questa email è già verificata su un altro account. Se quell'account è tuo, accedi lì o reimposta la password. Se non lo è, puoi aggiungere un'altra email dal tuo profilo.",
   "server.INVALID_TOKEN": "Link di verifica non valido o scaduto",
   "server.INVALID_RESET_TOKEN": "Link di reimpostazione non valido o scaduto",
   "server.INTERNAL_SERVER_ERROR": "Errore interno del server",
@@ -80,7 +82,6 @@ export const it: Record<keyof typeof en, string> = {
   "server.PLAYER_DISCONNECTED_GRACE": "{{username}} ha perso la connessione. Ha {{seconds}} secondi per rientrare.",
   "server.PLAYER_RECONNECTED": "{{username}} è di nuovo in partita.",
   "server.SESSION_REPLACED": "Il tuo account è stato aperto altrove. Questa sessione è stata chiusa.",
-  "server.MATCHMAKING_COOLDOWN": "Il matchmaking è in pausa dopo abbandoni ripetuti — riprova tra {{minutes}} minuti.",
   "server.MATCH_ENDED_BY_AGREEMENT": "Il tavolo ha deciso di terminare la partita. Nessuna penalità per nessuno.",
   "server.NO_VACANCY_TO_END": "Non c'è ancora nessuno su cui votare per terminare la partita",
 
@@ -107,6 +108,10 @@ export const it: Record<keyof typeof en, string> = {
   "auth.missingFields": "Inserisci username e password",
   "auth.missingFieldsRegister": "Inserisci username, email e password",
   "auth.unknownError": "Errore sconosciuto",
+  "auth.checkEmailTitle": "Controlla la tua email",
+  "auth.checkEmailBody": "Ti abbiamo inviato un'email. Verifica il tuo indirizzo per sbloccare il gioco completo — oppure, se hai già un account con questo indirizzo, segui le istruzioni contenute nell'email.",
+  "auth.checkEmailContinue": "Continua",
+  "auth.checkEmailBackToSignIn": "Torna all'accesso",
 
   // ------------------------------------------------------------ settings.*
   "settings.title": "Impostazioni",
@@ -297,8 +302,12 @@ export const it: Record<keyof typeof en, string> = {
   "game.autoPassBody": "Tempo scaduto: hai passato il turno.",
   "game.seatLeft": "{{username}} — uscito",
   "game.endMatchVoteButton": "Vota per terminare la partita",
+  "game.endMatchWithdrawButton": "Ritira il voto per terminare la partita",
+  "game.endMatchConfirmTitle": "Terminare la partita?",
+  "game.endMatchConfirmAction": "Termina partita",
   "game.endMatchVoteHint": "Ogni giocatore rimasto deve essere d'accordo — nessuna penalità.",
   "game.endMatchVoteTally": "{{votes}} di {{total}} d'accordo a terminare la partita",
+  "game.endMatchVoteTallyVoted": "{{votes}} di {{total}} d'accordo. Tocca per ritirare il tuo voto.",
 
   // -------------------------------------------------------------- gameTable.*
   "gameTable.seatReconnecting": "Riconnessione… {{seconds}}s",

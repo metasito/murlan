@@ -30,7 +30,7 @@ export async function register(
   const text = await res.text();
   assert.equal(
     res.status,
-    200,
+    202,
     res.status === 429
       ? `register(${username}) hit the /api/auth/register cap — raise ` +
           `MURLAN_AUTH_RATE_LIMIT in tests/helpers/testServer.ts: ${text}`
@@ -38,7 +38,17 @@ export async function register(
   );
   const cookie = res.headers.get("set-cookie");
   assert.ok(cookie, "register() response must set a session cookie");
-  return { user: JSON.parse(text), cookie };
+
+  // #897: the register response body is the same neutral
+  // { ok, code: "CHECK_YOUR_EMAIL" } regardless of which account this
+  // turned out to be — who actually got signed in is GET /api/auth/me's
+  // question, same as the client asks it (context/AuthContext.tsx).
+  const me = await fetch(`${server.url}/api/auth/me`, {
+    headers: { cookie },
+  });
+  const meText = await me.text();
+  assert.equal(me.status, 200, `register(${username}): /api/auth/me after registering: ${meText}`);
+  return { user: JSON.parse(meText), cookie };
 }
 
 /** Raw handshake helper: connects with an arbitrary `auth` payload without
