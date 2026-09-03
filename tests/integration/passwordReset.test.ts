@@ -164,10 +164,20 @@ describe("password reset", { skip: hasDatabase() ? false : skipMessage() }, () =
     const { db } = await import("../../server/db.ts");
     const { authTokens } = await import("../../shared/schema.ts");
     const { eq, and } = await import("drizzle-orm");
-    const rows = await db
-      .select()
-      .from(authTokens)
-      .where(and(eq(authTokens.userId, user.id), eq(authTokens.purpose, "password_reset")));
+    const readRows = () =>
+      db
+        .select()
+        .from(authTokens)
+        .where(and(eq(authTokens.userId, user.id), eq(authTokens.purpose, "password_reset")));
+
+    // The route replies before minting (design doc, Box 5) precisely so the
+    // mint can never be timed from the response — which means this row is
+    // not guaranteed to exist the instant the 200 lands, only shortly after.
+    let rows = await readRows();
+    for (let attempt = 0; attempt < 20 && rows.length === 0; attempt++) {
+      await new Promise((r) => setTimeout(r, 50));
+      rows = await readRows();
+    }
     assert.equal(rows.length, 1, "a verified request must mint exactly one password_reset token");
     assert.equal(rows[0]!.usedAt, null);
   });
