@@ -7,7 +7,6 @@ import { A11yStatus, a11yHidden } from "@/lib/a11y";
 import { Colors, FontSize, Radius, Scrim, Spacing } from "@/lib/theme";
 import { TableText } from "@/components/table/TableText";
 import { exchangeAnnounceMs } from "@/lib/exchangeCeremony";
-import { useTradedCardsLanded } from "@/lib/sharedGameFlow";
 import type { ExchangeFlight as Trip } from "@/components/gameTableModel";
 import { ExchangeFlyingCard, ExchangeSeatTag } from "@/components/table/ExchangeFlight";
 
@@ -24,6 +23,15 @@ interface ExchangeAnnouncementProps {
   toWinner: Trip;
   /** …and the winner's, which is the same line walked the other way. */
   toLoser: Trip;
+  /**
+   * Whether the traded cards have arrived — read from the caller rather than
+   * timed again here. `readHandArrival` (`components/gameTableModel.ts`) reads
+   * the same instant to decide when the receiving hand takes its card back;
+   * a second `useTradedCardsLanded` call here once raced it, since two
+   * `setTimeout`s scheduled for the same duration from two separate effects
+   * are two clocks that can disagree, and this is the one thing they must not.
+   */
+  landed: boolean;
   scale: number;
   onDismiss: () => void;
 }
@@ -47,11 +55,11 @@ export function ExchangeAnnouncement({
   cardReceived,
   toWinner,
   toLoser,
+  landed,
   scale,
   onDismiss,
 }: ExchangeAnnouncementProps) {
   const { t } = useTranslation();
-  const landed = useTradedCardsLanded(visible, bothJokersException);
   const dismissRef = useRef(onDismiss);
   useEffect(() => {
     dismissRef.current = onDismiss;

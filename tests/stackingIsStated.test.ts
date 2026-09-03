@@ -123,7 +123,6 @@ test("the scan reaches the styles it exists for", () => {
   const names = found.map((c) => `${c.rel}: ${c.name}`);
   for (const name of [
     "components/table/hand.tsx: handStyles.ungiveableVeil",
-    "components/table/hand.tsx: handStyles.giveableGlow",
     "components/table/hand.tsx: handStyles.cardGlow",
     "components/table/actions.tsx: styles.playBtnGlow",
   ]) {

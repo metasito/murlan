@@ -13,15 +13,16 @@ import Animated, {
   Easing,
 } from "react-native-reanimated";
 import Ionicons from "@expo/vector-icons/Ionicons";
+import { LinearGradient } from "expo-linear-gradient";
 import { CardView } from "@/components/CardView";
-import { Colors, FontSize, Layer, Motion, motionMs, Radius, Scrim, Shadow, Spacing } from "@/lib/theme";
+import { Colors, FontSize, Layer, Motion, motionMs, Radius, Scrim, Shadow, Spacing, withAlpha } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
 import type { Card } from "@/lib/gameEngine";
 import { computeHandLayout, hitWidth, slotForCard } from "@/components/handLayout";
 import { cardAt, dropIndex } from "@/components/handOrder";
 import { HAND_ARC, solveArc } from "@/components/tableArc";
-import { HAND_CROP, handRowHeadroom } from "@/components/gameTableModel";
+import { HAND_CROP, exchangeArrivalRise, handRowHeadroom } from "@/components/gameTableModel";
 import {
   CARD_W,
   CARD_H,
@@ -75,6 +76,23 @@ const UNGIVEABLE_DIM = Scrim.medium;
 // processFilter parses the same string, so the string form is the only one that
 // works on both — an array serialises to `[object Object]` on web.
 const UNGIVEABLE_FILTER = { filter: "grayscale(1)" } as const;
+// The giveable sheen: a gradient painted *on* the card's own face rather than
+// a blurred halo behind it. A halo's blur radius fans out in a full circle at
+// a rounded corner and only a thin line along a straight edge, so wherever a
+// fan's overlap leaves just a corner exposed, the halo reads as a bright
+// smear rather than as the same light the rest of the card carries (reported
+// 2026-09-02, iOS). A gradient clipped to the card's own shape has no blur to
+// concentrate: every exposed sliver — corner or edge — shows the same
+// top-lit fade, because it is the card's own surface catching light rather
+// than a shape drawn around it.
+const GIVEABLE_SHEEN_TOP = withAlpha(Colors.gold, 0.55);
+const GIVEABLE_SHEEN_BOTTOM = withAlpha(Colors.gold, 0);
+const GIVEABLE_SHEEN_STOP = 0.6;
+// Past every card index a hand can hold (at most 18, `docs/RULES.md`), so a
+// giveable card always paints over an illegal neighbour regardless of which
+// of the two the fan's own draw order would otherwise put on top — the eye
+// has to land on what can be chosen, not on whatever happens to overlap it.
+const GIVEABLE_Z_LIFT = 100;
 
 
 // ─── Reordering (#531) ────────────────────────────────────────────────────────
@@ -104,8 +122,13 @@ const MOVE_LEFT = "moveCardLeft";
 const MOVE_RIGHT = "moveCardRight";
 /** The same two moves from a keyboard, which is the whole of them on web. */
 const MOVE_KEYS = { ArrowLeft: MOVE_LEFT, ArrowRight: MOVE_RIGHT };
-/** Directly over the cards it dims, so it is derived from their band rather than guessed. */
-const VEIL_Z = Layer.table + 1;
+/**
+ * Directly over the card it treats, so it is derived from the card's own
+ * band rather than guessed. The veil and the sheen never draw on the same
+ * card at once — `giveable` is `true`, `false` or `undefined` — so both take
+ * the same step above it.
+ */
+const EXCHANGE_OVERLAY_Z = Layer.table + 1;
 
 /** Past every card's own `zIndex`, which is its index in a hand of at most 18. */
 const HELD_Z = Layer.held;
@@ -270,7 +293,7 @@ function CardItemBase({
     };
   });
 
-  // The giveable rim rides the same textless sibling the selection bloom does,
+  // The sheen animates in by opacity alone, same as the selection bloom, and
   // for the same reason: it must never touch the card's own rasterised ranks.
   const giveableStyle = useAnimatedStyle(() => ({
     opacity: Math.max(0, exchangeState.value),
@@ -304,12 +327,6 @@ function CardItemBase({
       ]}
     >
       <Animated.View pointerEvents="none" style={[handStyles.cardGlow, glowStyle]} />
-      {giveable === true && (
-        <Animated.View
-          pointerEvents="none"
-          style={[handStyles.giveableGlow, { borderRadius: cardRadius(cardW) }, giveableStyle]}
-        />
-      )}
       <CardView
         card={card}
         selected={isSelected}
@@ -331,6 +348,18 @@ function CardItemBase({
           pointerEvents="none"
           style={[handStyles.ungiveableVeil, { borderRadius: Radius.sm }, veilStyle]}
         />
+      )}
+      {giveable === true && (
+        <Animated.View
+          pointerEvents="none"
+          style={[handStyles.giveableSheen, { borderRadius: cardRadius(cardW) }, giveableStyle]}
+        >
+          <LinearGradient
+            colors={[GIVEABLE_SHEEN_TOP, GIVEABLE_SHEEN_BOTTOM]}
+            locations={[0, GIVEABLE_SHEEN_STOP]}
+            style={StyleSheet.absoluteFill}
+          />
+        </Animated.View>
       )}
     </Animated.View>
   );
@@ -404,6 +433,7 @@ export function StraightHand({
   arrivingIndex,
   descendingId,
   startCardId,
+  handBottomPad = 0,
 }: {
   cards: Card[];
   selectedIds: string[];
@@ -454,6 +484,14 @@ export function StraightHand({
    * neighbours — enough to sort it behind every one of them (#757).
    */
   startCardId?: string;
+  /**
+   * `TableFrame.bottomPad` — the safe-area inset `HAND_ZONE_H` reserves below
+   * the row. `descendingId`'s own arrival reads it to start its descent from
+   * where the exchange's flying card actually retires (`exchangeArrivalRise`)
+   * rather than from the unrelated height a freshly dealt card drops from.
+   * Unused, so omittable, on any hand that never receives one.
+   */
+  handBottomPad?: number;
 }) {
   const { t } = useTranslation();
   const reduceMotion = usePrefersReducedMotion();
@@ -487,6 +525,12 @@ export function StraightHand({
   const crop = cardH * HAND_CROP;
   const visibleH = cardH - crop;
   const dealRise = DEAL_RISE_PX * cardScale;
+  // Where the exchange's flying card retires, in the row's own baseline units
+  // (`exchangeArrivalRise`'s own doc). The arriving card's descent starts
+  // there instead of from `dealRise` above, which is a fixed rise meant for a
+  // card dropping from the deck and unrelated to where any given card in this
+  // hand actually receives one.
+  const exchangeArrivalDealRise = exchangeArrivalRise(cardH, handBottomPad);
   // O(1) membership check per card instead of `selectedIds.includes(card.id)`
   // (an O(k) scan repeated for every one of the up to 18 cards in a hand).
   // Computed before the early return below — Rules of Hooks requires every
@@ -887,7 +931,10 @@ export function StraightHand({
           giveable={giveable}
           hint={giveable === undefined ? undefined : giveable ? giveHint : refuseHint}
           faceDown={faceDown}
-          zIndex={i}
+          // A giveable card draws over every neighbour regardless of the fan's
+          // own order, so the eye lands on what can be chosen rather than on
+          // whichever illegal card the draw order happened to put on top.
+          zIndex={giveable === true ? i + GIVEABLE_Z_LIFT : i}
           dealDelay={dealArmed ? i * Motion.stagger.deal : descending ? 0 : -1}
           // From the row's own centre, which is where the flight carrying it
           // stops (`flightOrigin`'s `bottom` is `dx: 0`). The crossing and the
@@ -896,7 +943,10 @@ export function StraightHand({
           dealFromX={descending ? -home.x : -home.x - cardW / 2}
           dealFade={!descending}
           cardScale={cardScale}
-          dealRise={dealRise}
+          // A descending card starts its fall from where the exchange's own
+          // flying card retires, not from `dealRise`'s deck-drop height —
+          // otherwise the two disagree about where the card just was.
+          dealRise={descending ? cardH / 2 - crop - home.y - exchangeArrivalDealRise : dealRise}
           hitW={hitWidth(slot, arc.length, step, cardW)}
           isStartCard={card.id === startCardId}
           cardW={cardW}
@@ -998,25 +1048,25 @@ const handStyles = StyleSheet.create({
   ungiveableVeil: {
     position: "absolute",
     top: 0, left: 0, right: 0, bottom: 0,
-    zIndex: VEIL_Z,
+    zIndex: EXCHANGE_OVERLAY_Z,
     backgroundColor: UNGIVEABLE_DIM,
   },
-  // A halo around the card, on the same principle as the selection bloom above
-  // and for the same reason: a filled sibling *behind* the card, so all that is
-  // ever seen of it is the light that spills past the card's own silhouette.
-  // The card covers the fill; nothing is drawn over the card.
+  // Light on the card's own face, not a halo behind it: clipped to the card's
+  // own rounded rect (`overflow: "hidden"`), so every corner and edge a fan's
+  // overlap leaves exposed shows the same top-lit fade a blurred shadow could
+  // not — a blur radiates in a full circle at a corner and a thin line along
+  // an edge, which is the shine this replaced (reported 2026-09-02, iOS).
   //
-  // Never a border. A hand fans by overlapping, so three of a four-sided rim's
-  // sides are hidden and only its top edge survives — and the top edges of a
-  // run of adjacent cards join into one unbroken hard line with a square cap at
-  // either end, which reads as a frame the cards are trapped in rather than as
-  // a mark on each of them. Light has no edge to join.
-  giveableGlow: {
+  // Never a border either, for the reason the veil is a fill and not a ring:
+  // a fan overlaps by design, and only the top edge of a bordered card
+  // survives it — a run of them joins into one hard line with a square cap at
+  // either end, a frame the cards are trapped in rather than a mark on each.
+  // A fill has no edge to join, whichever shape draws it.
+  giveableSheen: {
     position: "absolute",
     top: 0, left: 0, right: 0, bottom: 0,
-    zIndex: Layer.felt,
-    backgroundColor: Colors.gold,
-    ...Shadow.gold,
+    zIndex: EXCHANGE_OVERLAY_Z,
+    overflow: "hidden",
   },
   // Its own plate. Under a lamp that moves, the felt has no reliably dark end
   // to sit on: the brightest cloth on the table is wherever the light is.

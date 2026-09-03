@@ -26,6 +26,7 @@ import {
   HAND_ZONE_H,
   handVisibleH,
   handRowHeadroom,
+  exchangeArrivalRise,
   cardTilt,
   getOpponentPosition,
   seatDirection,
@@ -2811,6 +2812,51 @@ describe("arrivingCard", () => {
       assert.equal(at.withheldId, undefined);
       assert.equal(at.descendingId, undefined);
     });
+  });
+});
+
+describe("exchangeArrivalRise", () => {
+  test("is the hand zone's own centre, restated against the row's baseline", () => {
+    // flightOrigin's "bottom" case lands the flying card at handZoneH / 2
+    // above the table floor; the row's own baseline sits bottomPad above that
+    // same floor (HAND_CROP's own comment: the row meets the device edge and
+    // is cropped by it). Restated here from the two pieces rather than
+    // imported whole, so a change to either formula shows up as disagreement.
+    const cardH = 90;
+    const bottomPad = 34;
+    const handZoneH = handVisibleH(cardH) + bottomPad + handRowHeadroom(cardH);
+    assert.equal(exchangeArrivalRise(cardH, bottomPad), handZoneH / 2 - bottomPad);
+  });
+
+  test("rises with a taller card, and falls with a deeper safe area", () => {
+    assert.ok(exchangeArrivalRise(120, 20) > exchangeArrivalRise(90, 20));
+    assert.ok(exchangeArrivalRise(90, 40) < exchangeArrivalRise(90, 0));
+  });
+});
+
+// The flier retiring and the hand taking its card back are two views reading
+// one instant; a second `useTradedCardsLanded` call is a second clock for it,
+// and a clock that can drift from the one everything else reads is exactly
+// how the exchange's own flying card and the hand's arrival came to disagree
+// about when the trip is over (#533, reopened 2026-09-02: a residue outliving
+// the exchange). GameTable.tsx is the one call; every other view reads its
+// answer through a prop.
+describe("the exchange landing has one clock", () => {
+  const CALL = /(?<!function\s)\buseTradedCardsLanded\s*\(/g;
+  const HOME = "lib/sharedGameFlow.ts";
+
+  test("GameTable is the only caller of useTradedCardsLanded", () => {
+    assert.deepEqual(scan(CALL), ["components/GameTable.tsx: useTradedCardsLanded("]);
+  });
+
+  test("the scan fires on a second caller", () => {
+    const planted: [string, string][] = [
+      [HOME, "export function useTradedCardsLanded(a, b) { return true; }"],
+      ["components/ExchangeAnnouncement.tsx", "const landed = useTradedCardsLanded(visible, x);"],
+    ];
+    assert.deepEqual(scanSources(CALL, planted), [
+      "components/ExchangeAnnouncement.tsx: useTradedCardsLanded(",
+    ]);
   });
 });
 

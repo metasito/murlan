@@ -115,6 +115,23 @@ export function HAND_ZONE_H(cardH: number, bottomPad: number): number {
   return handVisibleH(cardH) + bottomPad + handRowHeadroom(cardH);
 }
 
+/**
+ * How far above the hand row's own baseline (`bottom: 0`, `hand.tsx`) the
+ * exchange's flying card retires — `flightOrigin`'s "bottom" case lands it at
+ * the hand zone's own vertical centre, `handZoneH / 2` above the table floor,
+ * and the row's own baseline sits `bottomPad` above that same floor
+ * (`HAND_CROP`'s own comment: the row meets the device edge and is cropped by
+ * it). The two floor-relative terms cancel, leaving this.
+ *
+ * The arriving card's own descent (`hand.tsx`'s `dealRise`) starts from this
+ * point instead of the unrelated height a freshly dealt card drops from
+ * (`DEAL_RISE_PX`), so the flier's landing and the card's mount are the same
+ * point rather than two guesses that happen to be close.
+ */
+export function exchangeArrivalRise(cardH: number, bottomPad: number): number {
+  return HAND_ZONE_H(cardH, bottomPad) / 2 - bottomPad;
+}
+
 // ─── Width budgets ────────────────────────────────────────────────────────────
 //
 // Every arc takes a share of the table, never all the room it can reach. A
