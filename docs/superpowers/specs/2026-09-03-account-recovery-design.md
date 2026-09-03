@@ -28,8 +28,14 @@ accounts always carry an email, and that email is not trusted for recovery until
 
 ## Box 1 — Migration path for existing beta accounts
 
-**Recommendation.** `users.email` and `users.email_verified_at` both land **nullable**. An
-existing account keeps every capability it has today — log in, play, everything — with no
+**Recommendation.** `users.email` and `users.email_verified_at` both land **nullable**, under a
+**case-insensitive unique index** (`users_email_lower_uq`, exactly the shape
+`users_username_lower_uq` already takes). Nullable and unique compose here without a special
+case: Postgres permits any number of NULLs in a unique index, so every existing account satisfies
+it on the day it lands. Uniqueness is not optional garnish — reset-request looks an account up
+*by address*, and two accounts verified against one mailbox leaves that lookup with no defined
+answer, as well as handing whoever registers second a verified address on an account the mailbox's
+owner does not control. An existing account keeps every capability it has today — log in, play, everything — with no
 deadline and no lockout imposed by this work. What it *cannot* do until it adds and verifies an
 address is request a self-serve password reset (there is nothing to send a link to, and an
 unverified address is excluded from resetting by the decision above anyway). It is prompted with
@@ -49,7 +55,9 @@ without any schema change.
 
 **Reversal cost.** Cheap. The column stays nullable regardless of whether a deadline is added
 later; a deadline is enforced in application code (a login-time check), not the schema, so it can
-be introduced or removed without touching a row.
+be introduced or removed without touching a row. Dropping the unique index is a one-line schema
+edit that touches no data; adding it *later*, once duplicates exist, is the expensive direction —
+which is why it lands with the column rather than after it.
 
 ## Box 2 — Token storage, lifetime, single-use
 
@@ -67,7 +75,22 @@ auth_tokens
   expires_at  timestamp
   used_at     timestamp, nullable
   created_at  timestamp, default now()
+
+  auth_tokens_token_hash_uq  unique index on (token_hash)
+  auth_tokens_user_id_idx    index on (user_id, purpose)
 ```
+
+Both indexes are load-bearing, not tuning. `token_hash` is the *only* key every redemption looks
+a row up by, and unique is what keeps `RETURNING user_id` a single row rather than a set;
+`(user_id, purpose)` is what the invalidation sweep below and any owner-side audit read. Neither
+appears by accident — `server/schemaDdl.ts` creates exactly the named indexes `shared/schema.ts`
+declares, so an index omitted from the sketch is an index that never exists.
+
+**Retention.** Nothing keeps this table bounded on its own: a row lands per signup and per reset
+request and none is ever deleted, on a table holding credential material. Redeemed and expired
+rows are deleted opportunistically — `DELETE FROM auth_tokens WHERE expires_at < now()` runs on
+each successful redemption, which is the cheapest rung (no scheduler, no new process, no Replit
+cron) and is bounded by the same traffic that creates the rows.
 
 The raw token is a `randomBytes(32)` value, sent to the user (in the reset link / verify link)
 and never persisted — only its SHA-256 hash is. A row is redeemed by `UPDATE auth_tokens SET
@@ -76,9 +99,17 @@ RETURNING user_id`: the `used_at IS NULL` guard inside the same statement is wha
 atomic against two near-simultaneous redemptions, rather than a read-then-write race. Expiry:
 **30 minutes for `password_reset`** (short, because it grants a credential change), **24 hours
 for `email_verify`** (longer is safe — it only confirms mailbox ownership, not account access).
-Requesting a new token of the same purpose does not need to invalidate the previous one explicitly
-— it is left alone and simply expires or gets redeemed once; the redemption guard already makes
-using an old one no more powerful than using the newest one.
+
+**Redeeming one `password_reset` token invalidates every other one for that user**, in the same
+statement that writes the new hash: `UPDATE auth_tokens SET used_at = now() WHERE user_id = $1 AND
+purpose = 'password_reset' AND used_at IS NULL`. Merely *requesting* a second token does not
+invalidate the first — an outstanding link the user is about to click must not be killed by a
+double tap on "send me a link" — but completing a reset must, and for the same reason Box 6 clears
+the session rows. The threat is one Box 6 is explicitly written against: an attacker reading the
+victim's mailbox takes a reset link, the victim notices, secures the mailbox and resets. Clearing
+sessions alone leaves the attacker's unredeemed token good for the rest of its 30 minutes, so the
+reset evicts them from every device and hands them the account back a minute later. Sessions and
+outstanding tokens are the same class of live credential and are cleared together or not at all.
 
 **Why not the ticket.ts shape.** `server/ticket.ts`'s signed, stateless, in-memory-nonce ticket is
 right for its own job (60-second socket handshake credential, minted and consumed within the same
@@ -144,11 +175,23 @@ share.
 ## Box 5 — Enumeration
 
 **Recommendation.** No. `POST /api/auth/request-password-reset` returns the same `200 { ok: true
-}` whether or not the address belongs to a verified account, and takes roughly the same time
-either way (send-or-not both happen after the same lookup + hash-comparison-shaped work, so no
-early return short-circuits before the expensive part — mirroring the decoy-bcrypt fix #41 landed
-for exactly this reason: a response-shape fix that leaves a timing fix undone reopens the same
-hole). This repeats a tradeoff the owner already made once, explicitly, on #41: *"Accepted cost: a
+}` whether or not the address belongs to a verified account, and — the half that is easy to leave
+undone — takes the same time either way.
+
+**The timing oracle here is the mail send, not a hash.** #41's decoy `bcrypt.compare` worked
+because login's whole cost *was* the hash. This endpoint's cost is Box 3's outbound HTTPS call to
+the provider, which only the account-exists branch makes, and no decoy is worth doing: a fake
+round-trip to a real vendor is absurd and a fixed sleep sized above it makes every request that
+slow. So **the handler responds `200 { ok: true }` before dispatching the send at all** — mint the
+token, write the row, reply, and send afterwards without the response awaiting it. The branch then
+costs one indexed `users` lookup either way, which is the only work that happens before the reply.
+Two consequences the implementing ticket owns: a send failure cannot be reported to the caller (it
+is logged, and the user's remedy is to request another link, which is the correct UX for an
+enumeration-safe endpoint anyway), and the send must be fired in a way an unhandled rejection
+cannot take the process down. A response-shape fix that leaves the timing undone reopens the same
+hole it closed — the specific mistake #41 was landed to avoid.
+
+This repeats a tradeoff the owner already made once, explicitly, on #41: *"Accepted cost: a
 genuinely locked-out user is not told why."* Recommend inheriting it rather than re-litigating,
 for consistency across the two flows a beta tester will experience identically.
 
@@ -162,6 +205,10 @@ for consistency across the two flows a beta tester will experience identically.
 hash is written, inside the same request. This logs out every device the instant a reset
 succeeds, which is the actual point of a reset after a suspected compromise. Never `DROP` or
 alter the `session` table itself; this only ever deletes rows, and only that user's.
+
+Paired with Box 2's sibling-token invalidation, which runs in the same request: a session and an
+unredeemed reset token are both live credentials for the account, and clearing one while leaving
+the other standing evicts an attacker for about a minute.
 
 **Reversal cost.** None — this is a runtime side effect of the reset endpoint, not a schema or
 data change. Removing the call is a one-line revert.
@@ -194,15 +241,21 @@ still remember.
 
 ## Implementation tickets filed from this design
 
-Filed as separate `ready-for-agent` issues, each sized and carrying its blocking edge:
+Filed as separate `ready-for-agent` issues, each sized and carrying its blocking edge. The issues
+are the record; this list is the index into them, so read the issue before implementing one.
 
-1. **Email at signup: column, verification token, verify-email endpoint** — `size:M`. Builds
-   `users.email`/`email_verified_at`, the `auth_tokens` table, `server/mail.ts`, and the
-   signup-time verification flow. Everything else below depends on this landing first.
-2. **Password reset: request + submit endpoints** — `size:M`, blocked by (1). Builds the two
-   reset routes, the rate limiting from Box 4, the enumeration-safe response from Box 5, and the
-   session-clearing from Box 6.
-3. **Existing-account email migration nudge** — `size:S`, blocked by (1). The non-blocking banner
-   and add-email flow from Box 1, for accounts that predate the email requirement.
-4. **In-app change-password screen** — `size:S`, no blocking edge (does not need email or
-   `auth_tokens`). Builds the endpoint and UI scoped above.
+- **[#861](https://github.com/metasito/murlan/issues/861) — Email at signup: column, verification
+  token, verify-email endpoint.** `size:M`, no blocker. Builds
+  `users.email`/`email_verified_at` and their unique index, the `auth_tokens` table with both
+  indexes, `server/mail.ts`, and the signup-time verification flow. Everything else below depends
+  on this landing first.
+- **[#862](https://github.com/metasito/murlan/issues/862) — Password reset: request + submit
+  endpoints.** `size:M`, blocked by #861. Builds the two reset routes, the rate limiting from
+  Box 4, the reply-before-send ordering from Box 5, and the session *and* sibling-token clearing
+  from Boxes 6 and 2.
+- **[#863](https://github.com/metasito/murlan/issues/863) — Existing-account email migration
+  nudge.** `size:S`, blocked by #861. The non-blocking banner and add-email flow from Box 1, for
+  accounts that predate the email requirement.
+- **[#864](https://github.com/metasito/murlan/issues/864) — In-app change-password screen.**
+  `size:S`, no blocking edge (does not need email or `auth_tokens`). Builds the endpoint and UI
+  scoped above.
