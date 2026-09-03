@@ -2,6 +2,7 @@ import { defineConfig, devices } from "@playwright/test";
 import { execFileSync } from "node:child_process";
 import { resolve } from "node:path";
 import os from "node:os";
+import { writeFileSync } from "node:fs";
 
 // This is the one place that knows both `baseURL` and the `webServer` command, so it is the one
 // place that can hand a single port to the server, the health check and every spec at once.
@@ -27,6 +28,10 @@ if (PORT !== "5199") console.log(`e2e: port 5199 is taken, serving on ${PORT}`);
 // machine must not share a file. Computed once and re-exported so every
 // worker this config is loaded in reads the same path (see PORT above).
 const MAIL_SINK = process.env.MURLAN_MAIL_SINK ?? resolve(os.tmpdir(), `murlan-e2e-mail-${PORT}.jsonl`);
+// Truncated by the load that starts the server, never by a worker's — the file
+// holds live credentials, and a run reading a previous run's leftovers would
+// find a token for an account that no longer exists.
+if (!process.env.MURLAN_MAIL_SINK) writeFileSync(MAIL_SINK, "");
 process.env.MURLAN_MAIL_SINK = MAIL_SINK;
 
 // Kept out of `npm test` (tests/**/*.test.ts) on purpose — this suite builds

@@ -115,6 +115,8 @@ export const it: Record<keyof typeof en, string> = {
   "auth.checkEmailContinue": "Continua",
   "auth.checkEmailBackToSignIn": "Torna all'accesso",
   "auth.checkEmailVerifyNow": "Inserisci il codice ora",
+  "auth.checkEmailVerifiedTitle": "Email verificata",
+  "auth.checkEmailVerifiedBody": "Il tuo indirizzo è confermato. Ora puoi recuperare la password di questo account.",
   "auth.forgotPassword": "Password dimenticata?",
   "auth.passwordResetNotice": "Password reimpostata. Accedi con la nuova password.",
 
@@ -128,6 +130,9 @@ export const it: Record<keyof typeof en, string> = {
   "verifyEmail.saving": "Verifica in corso…",
   "verifyEmail.missingCode": "Inserisci il codice ricevuto via email",
   "verifyEmail.failed": "Non è stato possibile verificare il codice. Riprova.",
+  "verifyEmail.successTitle": "Email verificata",
+  "verifyEmail.successBody": "Il tuo indirizzo è confermato. Se dimentichi la password, puoi reimpostarla dalla schermata di accesso.",
+  "verifyEmail.done": "Fatto",
 
   // ------------------------------------------------------------- recover.*
   "recover.title": "Reimposta password",
@@ -140,6 +145,7 @@ export const it: Record<keyof typeof en, string> = {
   "recover.missingEmail": "Inserisci la tua email",
   "recover.requestFailed": "Non è stato possibile inviare la richiesta. Riprova.",
   "recover.haveCodeAlready": "Ho già un codice",
+  "recover.backToEmail": "Usa un'altra email",
   "recover.noticeBody": "Se quell'indirizzo ha un account verificato, un codice è in arrivo.",
   "recover.codeLabel": "Codice",
   "recover.codePlaceholder": "Incolla qui il codice",

@@ -10,11 +10,13 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 const mockPush = jest.fn();
 const mockReplace = jest.fn();
 const mockBack = jest.fn();
+const mockCanGoBack = jest.fn<() => boolean>();
 jest.mock('expo-router', () => ({
   router: {
     push: (...args: unknown[]) => mockPush(...args),
     replace: (...args: unknown[]) => mockReplace(...args),
     back: (...args: unknown[]) => mockBack(...args),
+    canGoBack: () => mockCanGoBack(),
   },
   useLocalSearchParams: () => ({}),
 }));
@@ -50,6 +52,7 @@ const mockFetch = jest.fn<() => Promise<unknown>>();
 beforeEach(() => {
   jest.clearAllMocks();
   mockFetch.mockResolvedValue({ status: 401, ok: false });
+  mockCanGoBack.mockReturnValue(true);
   (globalThis as { fetch: unknown }).fetch = mockFetch;
 });
 
@@ -63,7 +66,7 @@ describe('app/verify-email', () => {
       </SafeAreaProvider>
     );
 
-  it('redeems the pasted code, refreshes the signed-in user, and returns whence it came', async () => {
+  it('redeems the pasted code, refreshes the signed-in user, and says so before leaving', async () => {
     mockApiRequest.mockResolvedValue({ ok: true, json: async () => ({ ok: true }) });
     const view = await mount();
     await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(1)); // the boot check settles first
@@ -77,7 +80,37 @@ describe('app/verify-email', () => {
 
     expect(mockApiRequest).toHaveBeenCalledWith('POST', '/api/auth/verify-email', { token: 'the-raw-token' });
     await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(2)); // refreshUser's own fetchMe
+
+    // The screen confirms rather than vanishing: leaving silently is
+    // indistinguishable from a tap that did nothing.
+    await waitFor(() => expect(screen.getByText(locale['verifyEmail.successTitle'])).toBeTruthy());
+    expect(mockBack).not.toHaveBeenCalled();
+
+    await act(async () => {
+      fireEvent.press(screen.getByRole('button', { name: locale['verifyEmail.done'] }));
+    });
     expect(mockBack).toHaveBeenCalled();
+    await view.unmount();
+  });
+
+  it('goes home instead of back when there is nowhere to go back to', async () => {
+    mockCanGoBack.mockReturnValue(false);
+    mockApiRequest.mockResolvedValue({ ok: true, json: async () => ({ ok: true }) });
+    const view = await mount();
+
+    await act(async () => {
+      fireEvent.changeText(screen.getByLabelText(locale['verifyEmail.codeA11yLabel']), 'the-raw-token');
+    });
+    await act(async () => {
+      fireEvent.press(screen.getByRole('button', { name: locale['verifyEmail.submit'] }));
+    });
+    const done = await screen.findByRole('button', { name: locale['verifyEmail.done'] });
+    await act(async () => {
+      fireEvent.press(done);
+    });
+
+    expect(mockBack).not.toHaveBeenCalled();
+    expect(mockReplace).toHaveBeenCalledWith('/');
     await view.unmount();
   });
 
@@ -224,6 +257,43 @@ describe('app/auth reaches both new screens', () => {
     });
 
     expect(mockPush).toHaveBeenCalledWith('/verify-email');
+    await view.unmount();
+  });
+
+  // Coming back from /verify-email lands on this same interstitial. Reading
+  // the state it was created in rather than the account's would leave it
+  // still asking for a code already redeemed.
+  it('the interstitial reports a verified address instead of asking again', async () => {
+    mockApiRequest.mockResolvedValue({ ok: true, json: async () => ({}) });
+    const me = {
+      id: 'u1',
+      username: 'newplayer',
+      tutorialSeenAt: null,
+      email: 'newplayer@example.test',
+      emailVerified: true,
+    };
+    mockFetch.mockResolvedValue({ status: 200, ok: true, json: async () => me });
+    const view = await mount();
+
+    await act(async () => {
+      fireEvent.press(screen.getByRole('tab', { name: locale['auth.tabRegister'] }));
+    });
+    await act(async () => {
+      fireEvent.changeText(screen.getByLabelText(locale['auth.usernameA11yLabel']), 'newplayer');
+    });
+    await act(async () => {
+      fireEvent.changeText(screen.getByLabelText(locale['auth.emailA11yLabel']), 'newplayer@example.test');
+    });
+    await act(async () => {
+      fireEvent.changeText(screen.getByLabelText(locale['auth.passwordA11yLabel']), 'password123');
+    });
+    await act(async () => {
+      fireEvent.press(screen.getByRole('button', { name: locale['auth.submitRegister'] }));
+    });
+
+    await waitFor(() => expect(screen.getByText(locale['auth.checkEmailVerifiedTitle'])).toBeTruthy());
+    expect(screen.queryByText(locale['auth.checkEmailTitle'])).toBeNull();
+    expect(screen.queryByRole('button', { name: locale['auth.checkEmailVerifyNow'] })).toBeNull();
     await view.unmount();
   });
 });

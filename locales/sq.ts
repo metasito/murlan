@@ -131,6 +131,8 @@ export const sq: Record<keyof typeof en, string> = {
   "auth.checkEmailContinue": "Vazhdo",
   "auth.checkEmailBackToSignIn": "Kthehu te hyrja",
   "auth.checkEmailVerifyNow": "Shkruaj kodin tani",
+  "auth.checkEmailVerifiedTitle": "Email-i u verifikua",
+  "auth.checkEmailVerifiedBody": "Adresa jote është konfirmuar. Tani mund ta rikuperosh fjalëkalimin e kësaj llogarie.",
   "auth.forgotPassword": "Harrove fjalëkalimin?",
   "auth.passwordResetNotice": "Fjalëkalimi u rivendos. Identifikohu me fjalëkalimin e ri.",
 
@@ -144,6 +146,9 @@ export const sq: Record<keyof typeof en, string> = {
   "verifyEmail.saving": "Duke verifikuar…",
   "verifyEmail.missingCode": "Shkruaj kodin që more në email",
   "verifyEmail.failed": "Kodi nuk u verifikua dot. Provo sërish.",
+  "verifyEmail.successTitle": "Email-i u verifikua",
+  "verifyEmail.successBody": "Adresa jote është konfirmuar. Nëse harron fjalëkalimin, mund ta rivendosësh nga ekrani i hyrjes.",
+  "verifyEmail.done": "U krye",
 
   // ------------------------------------------------------------- recover.*
   "recover.title": "Rivendos fjalëkalimin",
@@ -156,6 +161,7 @@ export const sq: Record<keyof typeof en, string> = {
   "recover.missingEmail": "Shkruaj email-in tënd",
   "recover.requestFailed": "Kërkesa nuk u dërgua dot. Provo sërish.",
   "recover.haveCodeAlready": "E kam tashmë një kod",
+  "recover.backToEmail": "Përdor një email tjetër",
   "recover.noticeBody": "Nëse ajo adresë ka një llogari të verifikuar, një kod është duke u nisur.",
   "recover.codeLabel": "Kodi",
   "recover.codePlaceholder": "Ngjit kodin këtu",

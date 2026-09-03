@@ -11,7 +11,8 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { hapticLight } from "@/lib/haptics";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { useAuth } from "@/context/AuthContext";
-import { Colors, FontSize, Radius, Spacing, TOUCH_TARGET_MIN, Type } from "@/lib/theme";
+import { Colors, FontSize, Spacing, TOUCH_TARGET_MIN, Type } from "@/lib/theme";
+import { FormField, FormNotice, fieldStyles } from "@/components/FormField";
 import { MenuLayout } from "@/components/MenuLayout";
 import { MenuCard } from "@/components/MenuCard";
 import { MenuButton } from "@/components/MenuButton";
@@ -32,7 +33,7 @@ export default function AuthScreen() {
   const usernameHint = useA11yHint(t("auth.usernameA11yHint"));
   const emailHint = useA11yHint(t("auth.emailA11yHint"));
   const passwordHint = useA11yHint(t("auth.passwordA11yHint"));
-  const { login, register } = useAuth();
+  const { login, register, user } = useAuth();
   const params = useLocalSearchParams<{ notice?: string }>();
   const [tab, setTab] = useState<Tab>("login");
   const [username, setUsername] = useState("");
@@ -109,10 +110,13 @@ export default function AuthScreen() {
         <MenuCard style={{ marginBottom: 0 }} padding="sm">
           {checkEmail ? (
             <View style={styles.checkEmail}>
+              {/* Read from the account rather than from what was true when
+                  this state was set: returning here after verifying must not
+                  still ask for something already done. */}
               <EmptyBlock
-                icon="mail-outline"
-                title={t("auth.checkEmailTitle")}
-                body={t("auth.checkEmailBody")}
+                icon={user?.emailVerified ? "checkmark-circle-outline" : "mail-outline"}
+                title={t(user?.emailVerified ? "auth.checkEmailVerifiedTitle" : "auth.checkEmailTitle")}
+                body={t(user?.emailVerified ? "auth.checkEmailVerifiedBody" : "auth.checkEmailBody")}
               />
               <MenuButton
                 label={checkEmail.signedIn ? t("auth.checkEmailContinue") : t("auth.checkEmailBackToSignIn")}
@@ -122,13 +126,15 @@ export default function AuthScreen() {
                   checkEmail.signedIn ? t("auth.checkEmailContinue") : t("auth.checkEmailBackToSignIn")
                 }
               />
-              <MenuButton
-                label={t("auth.checkEmailVerifyNow")}
-                onPress={() => router.push("/verify-email")}
-                variant="ghost"
-                size="sm"
-                accessibilityLabel={t("auth.checkEmailVerifyNow")}
-              />
+              {!user?.emailVerified && (
+                <MenuButton
+                  label={t("auth.checkEmailVerifyNow")}
+                  onPress={() => router.push("/verify-email")}
+                  variant="ghost"
+                  size="sm"
+                  accessibilityLabel={t("auth.checkEmailVerifyNow")}
+                />
+              )}
             </View>
           ) : (
           <>
@@ -149,18 +155,10 @@ export default function AuthScreen() {
           </View>
 
           <View style={styles.form}>
-            {notice && (
-              <View style={styles.noticeBox} accessibilityLiveRegion="polite">
-                <Ionicons name="checkmark-circle-outline" size={14} color={Colors.accent} />
-                <Text style={styles.noticeText}>{notice}</Text>
-              </View>
-            )}
-            <View style={styles.field}>
-              <Text style={styles.label}>{t("auth.usernameLabel")}</Text>
-              <View style={styles.inputRow}>
-                <Ionicons name="person-outline" size={16} color={Colors.textMuted} style={styles.inputIcon} />
+            {notice && <FormNotice tone="success" text={notice} />}
+            <FormField label={t("auth.usernameLabel")} icon="person-outline">
                 <TextInput
-                  style={styles.input}
+                  style={fieldStyles.input}
                   value={username}
                   onChangeText={(v) => { setUsername(v); setError(null); }}
                   placeholder={t("auth.usernamePlaceholder")}
@@ -175,17 +173,13 @@ export default function AuthScreen() {
                   {...usernameHint.props}
                 />
                 {usernameHint.node}
-              </View>
-            </View>
+            </FormField>
 
             {tab === "register" && (
-              <View style={styles.field}>
-                <Text style={styles.label}>{t("auth.emailLabel")}</Text>
-                <View style={styles.inputRow}>
-                  <Ionicons name="mail-outline" size={16} color={Colors.textMuted} style={styles.inputIcon} />
+              <FormField label={t("auth.emailLabel")} icon="mail-outline">
                   <TextInput
                     ref={emailRef}
-                    style={styles.input}
+                    style={fieldStyles.input}
                     value={email}
                     onChangeText={(v) => { setEmail(v); setError(null); }}
                     placeholder={t("auth.emailPlaceholder")}
@@ -201,17 +195,13 @@ export default function AuthScreen() {
                     {...emailHint.props}
                   />
                   {emailHint.node}
-                </View>
-              </View>
+              </FormField>
             )}
 
-            <View style={styles.field}>
-              <Text style={styles.label}>{t("auth.passwordLabel")}</Text>
-              <View style={styles.inputRow}>
-                <Ionicons name="lock-closed-outline" size={16} color={Colors.textMuted} style={styles.inputIcon} />
+            <FormField label={t("auth.passwordLabel")} icon="lock-closed-outline">
                 <TextInput
                   ref={pwdRef}
-                  style={[styles.input, { flex: 1 }]}
+                  style={fieldStyles.input}
                   value={password}
                   onChangeText={(v) => { setPassword(v); setError(null); }}
                   placeholder="••••••"
@@ -240,18 +230,9 @@ export default function AuthScreen() {
                     {...a11yHidden()}
                   />
                 </Pressable>
-              </View>
-            </View>
+            </FormField>
 
-            {/* A live region announces the text that changes inside it, so it
-                is never `accessible`: that would make it a leaf with no label
-                of its own to speak. */}
-            {error && (
-              <View style={styles.errorBox} accessibilityLiveRegion="polite">
-                <Ionicons name="alert-circle-outline" size={14} color={Colors.dangerDim} />
-                <Text style={styles.errorText}>{error}</Text>
-              </View>
-            )}
+            {error && <FormNotice tone="error" text={error} />}
 
             <MenuButton
               label={tab === "login" ? t("auth.submitLogin") : t("auth.submitRegister")}
@@ -321,51 +302,7 @@ const styles = StyleSheet.create({
   },
   tabTextActive: { color: Colors.gold },
   form: { paddingTop: Spacing.md, gap: Spacing.md },
-  field: { gap: Spacing.sm },
-  label: {
-    ...Type.label,
-    fontSize: FontSize.xs,
-    letterSpacing: 1,
-    textTransform: "uppercase",
-  },
-  inputRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: Colors.bgCard,
-    borderRadius: Radius.md,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    paddingHorizontal: Spacing.wide,
-    paddingVertical: Spacing.wide,
-    minHeight: TOUCH_TARGET_MIN,
-    gap: Spacing.snug,
-  },
-  inputIcon: {},
-  input: {
-    flex: 1,
-    fontFamily: "Inter_400Regular",
-    fontSize: FontSize.md,
-    color: Colors.text,
-  },
   eyeBtn: { padding: Spacing.xxs, width: 32, height: 32, alignItems: "center", justifyContent: "center" },
-  errorBox: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: Spacing.sm,
-    backgroundColor: Colors.redMuted,
-    borderRadius: Radius.sm,
-    padding: Spacing.cosy,
-  },
-  errorText: { fontFamily: "Inter_400Regular", fontSize: FontSize.sm, color: Colors.dangerDim, flex: 1 },
-  noticeBox: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: Spacing.sm,
-    backgroundColor: Colors.accentMuted,
-    borderRadius: Radius.sm,
-    padding: Spacing.cosy,
-  },
-  noticeText: { fontFamily: "Inter_400Regular", fontSize: FontSize.sm, color: Colors.accent, flex: 1 },
   hint: {
     ...Type.caption,
     textAlign: "center",

@@ -35,11 +35,14 @@ test("account recovery — verify a fresh address, then reset a forgotten passwo
   const verifyToken = await readMailToken(email, "Verify your Murlan email");
   await page.getByRole("textbox", { name: "Codice di verifica" }).fill(verifyToken);
   await page.getByRole("button", { name: "Verifica" }).click();
+  await expect(page.getByText("Email verificata")).toBeVisible();
+  await page.getByRole("button", { name: "Fatto" }).click();
 
-  // router.back() returns to the interstitial still on /auth — registration
-  // signed this device in (a fresh, unclaimed address), so it offers
-  // "Continua" rather than "Torna all'accesso".
+  // Back on the interstitial, which now reads the account rather than the
+  // state it was created in: registration signed this device in (a fresh,
+  // unclaimed address), so it offers "Continua".
   await page.waitForURL(/\/auth/);
+  await expect(page.getByText("Il tuo indirizzo è confermato.", { exact: false })).toBeVisible();
   await page.getByRole("button", { name: "Continua" }).click();
   await page.waitForURL((url) => !url.pathname.startsWith("/auth"));
 

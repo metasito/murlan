@@ -122,6 +122,8 @@ export const en = {
   "auth.checkEmailContinue": "Continue",
   "auth.checkEmailBackToSignIn": "Back to sign in",
   "auth.checkEmailVerifyNow": "Enter code now",
+  "auth.checkEmailVerifiedTitle": "Email verified",
+  "auth.checkEmailVerifiedBody": "Your address is confirmed. Password recovery is now available for this account.",
   "auth.forgotPassword": "Forgot password?",
   "auth.passwordResetNotice": "Password reset. Sign in with your new password.",
 
@@ -135,6 +137,9 @@ export const en = {
   "verifyEmail.saving": "Verifying…",
   "verifyEmail.missingCode": "Enter the code from your email",
   "verifyEmail.failed": "The code could not be verified. Try again.",
+  "verifyEmail.successTitle": "Email verified",
+  "verifyEmail.successBody": "Your address is confirmed. If you ever forget your password, you can reset it from the sign-in screen.",
+  "verifyEmail.done": "Done",
 
   // ------------------------------------------------------------- recover.*
   "recover.title": "Reset password",
@@ -147,6 +152,7 @@ export const en = {
   "recover.missingEmail": "Enter your email",
   "recover.requestFailed": "The request could not be sent. Try again.",
   "recover.haveCodeAlready": "I already have a code",
+  "recover.backToEmail": "Use a different email",
   "recover.noticeBody": "If that address has a verified account, a code is on its way.",
   "recover.codeLabel": "Code",
   "recover.codePlaceholder": "Paste the code here",
