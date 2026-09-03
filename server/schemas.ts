@@ -25,6 +25,11 @@ export const RequestPasswordResetSchema = z.object({
   email: RegisterSchema.shape.email,
 });
 
+/** The existing-account migration nudge (#863) — same shape signup validates. */
+export const AddEmailSchema = z.object({
+  email: RegisterSchema.shape.email,
+});
+
 /** `token` is a `randomBytes(32)` base64url value — see server/authTokens.ts. */
 export const ResetPasswordSchema = z.object({
   token: z.string().min(1).max(128),

@@ -13,6 +13,7 @@ import {
   RenameSchema,
   LoginSchema,
   ChangePasswordSchema,
+  AddEmailSchema,
   VerifyEmailSchema,
   RequestPasswordResetSchema,
   ResetPasswordSchema,
@@ -495,6 +496,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
     await storage.changePassword(userId, passwordHash, req.sessionID);
     logger.info({ userId }, "Password changed");
     res.json({ ok: true });
+  });
+
+  // #863: the existing-beta-cohort nudge (docs/superpowers/specs/2026-09-03-
+  // account-recovery-design.md, Box 1). Reuses the signup flow's own
+  // machinery — mint an email_verify token, send it through sendVerificationEmail
+  // — rather than a second one; redemption still goes through the
+  // verify-email route below. `email IS NULL` is re-checked here (not just by
+  // the profile card that hides once it isn't) because the check and the
+  // write below are not one transaction, and this is an authenticated
+  // account overwriting its own row, not a public lookup.
+  app.post("/api/auth/add-email", requireAuth, validate(AddEmailSchema), async (req, res) => {
+    const { email } = req.body as { email: string };
+    const userId = req.session.userId!;
+
+    const existing = await storage.getUser(userId);
+    if (!existing) {
+      res.status(401).json({ message: "Not authenticated", code: "NOT_AUTHENTICATED" });
+      return;
+    }
+    if (existing.email) {
+      res.status(409).json({ message: "Email already set", code: "EMAIL_ALREADY_SET" });
+      return;
+    }
+
+    let user;
+    try {
+      user = await storage.setEmail(userId, email);
+    } catch (err) {
+      if (err instanceof EmailTakenError) {
+        res.status(409).json({ message: "Email already registered", code: "EMAIL_TAKEN" });
+        return;
+      }
+      throw err;
+    }
+
+    const token = await mintAuthToken(userId, "email_verify", EMAIL_VERIFY_TOKEN_TTL_MS);
+    sendVerificationEmail(email, token);
+    logger.info({ userId }, "Email added, pending verification");
+    res.json(sessionUser(user));
   });
 
   // Public: the token itself is the credential (server/authTokens.ts), not

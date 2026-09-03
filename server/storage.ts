@@ -186,6 +186,24 @@ class DrizzleStorage {
   }
 
   /**
+   * #863: an existing account (predating the email requirement) adding one.
+   * Same `EmailTakenError` shape `createUser` raises on its own unique index —
+   * the caller's route re-checks `email IS NULL` first, but that check and
+   * this write are not one transaction, so the constraint is still the
+   * authority.
+   */
+  async setEmail(userId: string, email: string): Promise<User> {
+    try {
+      const [user] = await db.update(users).set({ email }).where(eq(users.id, userId)).returning();
+      if (!user) throw new Error("setEmail: no such user");
+      return user;
+    } catch (err) {
+      if (uniqueViolation(err)?.includes("email")) throw new EmailTakenError();
+      throw err;
+    }
+  }
+
+  /**
    * Throws `UsernameTakenError` when the name is another account's. Both unique constraints can
    * raise it — the column's own, and `users_username_lower_uq` on `lower(username)` — so a caller
    * that checked first still has to catch: the check and the write are not one transaction.
