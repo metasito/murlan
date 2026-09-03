@@ -153,6 +153,25 @@ class DrizzleStorage {
     return user;
   }
 
+  /**
+   * request-password-reset's lookup. `users_email_lower_uq` used to make
+   * `getUserByEmail` safe here; #897 replaced it with a *partial* unique
+   * index (verified rows only), so any number of unverified accounts may
+   * now share an address and `getUserByEmail`'s bare `[0]` returns whichever
+   * one the planner happens to hand back — silently answering for the wrong
+   * account (#900 review, finding 1). Scoping to `emailVerifiedAt IS NOT
+   * NULL` is exactly the predicate the partial index enforces uniqueness
+   * over, so this can never return more than the one account that owns the
+   * address.
+   */
+  async getVerifiedUserByEmail(email: string): Promise<User | undefined> {
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(and(sql`lower(${users.email}) = lower(${email})`, isNotNull(users.emailVerifiedAt)));
+    return user;
+  }
+
   private generateFriendCode(): string {
     return randomCode(6);
   }

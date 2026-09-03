@@ -182,6 +182,60 @@ describe("password reset", { skip: hasDatabase() ? false : skipMessage() }, () =
     assert.equal(rows[0]!.usedAt, null);
   });
 
+  // #900 review, finding 1: users_email_lower_uq (unconditional) became a
+  // partial, verified-only index under #897 — any number of unverified
+  // accounts may now share an address. getUserByEmail's bare `[0]` used to
+  // be safe only because that old index made it unambiguous; here it is not.
+  test("a squatted unverified email does not swallow the verified owner's reset request", async () => {
+    const email = "reset_squatted_target@example.test";
+    const registerWith = (username: string) =>
+      fetch(`${server.url}/api/auth/register`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ username, password: "password123", email }),
+      });
+
+    // Registers first — an older row this account's email lookup could sort
+    // ahead of the verified owner's, with no ORDER BY to say otherwise.
+    const squatterRes = await registerWith("reset_squat_a");
+    assert.equal(squatterRes.status, 202, await squatterRes.text());
+
+    const ownerRes = await registerWith("reset_squat_b");
+    assert.equal(ownerRes.status, 202, await ownerRes.text());
+    const ownerCookie = ownerRes.headers.get("set-cookie");
+    assert.ok(ownerCookie, "register() response must set a session cookie");
+    const ownerMe = await fetch(`${server.url}/api/auth/me`, { headers: { cookie: ownerCookie! } });
+    const owner = await ownerMe.json();
+
+    const { storage } = await import("../../server/storage.ts");
+    await storage.markEmailVerified(owner.id);
+
+    const res = await requestReset(email);
+    assert.equal(res.status, 200, await res.text());
+
+    const { db } = await import("../../server/db.ts");
+    const { authTokens } = await import("../../shared/schema.ts");
+    const { eq, and } = await import("drizzle-orm");
+    const readRows = (userId: string) =>
+      db
+        .select()
+        .from(authTokens)
+        .where(and(eq(authTokens.userId, userId), eq(authTokens.purpose, "password_reset")));
+
+    let ownerRows = await readRows(owner.id);
+    for (let attempt = 0; attempt < 20 && ownerRows.length === 0; attempt++) {
+      await new Promise((r) => setTimeout(r, 50));
+      ownerRows = await readRows(owner.id);
+    }
+    assert.equal(ownerRows.length, 1, "the verified owner must get the reset token");
+
+    const squatterId = (await (await fetch(`${server.url}/api/auth/me`, {
+      headers: { cookie: squatterRes.headers.get("set-cookie")! },
+    })).json()).id;
+    const squatterRows = await readRows(squatterId);
+    assert.equal(squatterRows.length, 0, "the unverified squatter must never get a reset token");
+  });
+
   // A smoke test, not the guarantee — timing is noise-bound on CI, so the
   // deterministic one is tests/authReplyBeforeMail.test.ts's AST check that
   // the reply's own source position precedes the mint and the send (#897).
