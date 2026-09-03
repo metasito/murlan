@@ -7,7 +7,7 @@
 // Everything stored here is the reporter's own: their words, the route they
 // were on, and what their build is. No game state and no attached crash, both
 // of which carry other players' data and wait on a privacy policy.
-import { lt, sql } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import { db } from "./db.ts";
 import { bugReports } from "../shared/schema.ts";
 
@@ -52,29 +52,15 @@ export interface BugReportRow {
   resolved: boolean;
 }
 
-/**
- * Writes one report and prunes what has aged out, in the same transaction —
- * the shape `server/clientErrors.ts` uses, so the table cannot grow without
- * bound if a scheduled prune is ever skipped or never written.
- */
+/** Writes one report. Retention is server/retention.ts's job, on a schedule. */
 export async function recordBugReport(input: BugReportInput): Promise<void> {
-  await db.transaction(async (tx) => {
-    await tx.insert(bugReports).values({
-      userId: input.userId,
-      description: input.description,
-      screen: input.screen ?? null,
-      appVersion: input.appVersion ?? null,
-      platform: input.platform ?? null,
-      locale: input.locale ?? null,
-    });
-    await tx
-      .delete(bugReports)
-      .where(
-        lt(
-          bugReports.createdAt,
-          sql`now() - make_interval(days => ${BUG_REPORT_RETENTION_DAYS})`
-        )
-      );
+  await db.insert(bugReports).values({
+    userId: input.userId,
+    description: input.description,
+    screen: input.screen ?? null,
+    appVersion: input.appVersion ?? null,
+    platform: input.platform ?? null,
+    locale: input.locale ?? null,
   });
 }
 

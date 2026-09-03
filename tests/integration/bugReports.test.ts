@@ -45,6 +45,8 @@ describe("bug reports", { skip: hasDatabase() ? false : skipMessage() }, () => {
   let capCookie: string;
   let capCookie2: string;
   let dbPool: pg.Pool;
+  let sweepRetention: typeof import("../../server/retention.ts").sweepRetention;
+  let retentionDays: number;
   // Unique per run: the suite must be runnable twice against the same
   // database without the second run failing on USERNAME_TAKEN.
   const suffix = `${Date.now()}`.slice(-8);
@@ -55,6 +57,10 @@ describe("bug reports", { skip: hasDatabase() ? false : skipMessage() }, () => {
     ({ cookie: capCookie } = await register(server, `bug_caps_${suffix}`));
     ({ cookie: capCookie2 } = await register(server, `bug_caps2_${suffix}`));
     dbPool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+    // After startTestServer, never at file scope — see the CAP comment above
+    // for why a module reaching server/db.ts cannot be imported any earlier.
+    ({ sweepRetention } = await import("../../server/retention.ts"));
+    ({ BUG_REPORT_RETENTION_DAYS: retentionDays } = await import("../../server/bugReports.ts"));
   });
   after(async () => {
     await dbPool.end();
@@ -131,6 +137,29 @@ describe("bug reports", { skip: hasDatabase() ? false : skipMessage() }, () => {
   test("a platform outside the known set is refused", async () => {
     const res = await post({ description: "fine", platform: "blackberry" }, capCookie2);
     assert.equal(res.status, 400);
+  });
+
+  test("retention is off the write path, and the scheduled sweep still works", async () => {
+    await dbPool.query(
+      `INSERT INTO "${server.schema}".bug_reports (user_id, description, created_at)
+       VALUES ($1, $2, now() - make_interval(days => $3))`,
+      [(await register(server, `bug_aged_${suffix}`)).user.id, "aged out", retentionDays + 1]
+    );
+    const aged = async () =>
+      (
+        await dbPool.query(`SELECT 1 FROM "${server.schema}".bug_reports WHERE description = 'aged out'`)
+      ).rowCount;
+
+    assert.equal(await aged(), 1);
+
+    const res = await post({ description: `fresh report ${Date.now()}` }, capCookie);
+    assert.equal(res.status, 201);
+
+    assert.equal(await aged(), 1, "a write must not prune the table it just grew");
+
+    await sweepRetention();
+
+    assert.equal(await aged(), 0, "the scheduled sweep must still remove a row past the retention window");
   });
 
   // Last, because it spends this account's whole budget for the window.
