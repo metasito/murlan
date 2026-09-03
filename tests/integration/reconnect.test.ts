@@ -10,6 +10,7 @@ import {
 } from "../helpers/testServer.ts";
 import { MATCH_TARGETS, targetsFor } from "../../lib/gameEngine.ts";
 import { lobbyGraceMs } from "../../server/gameTimers.ts";
+import { Reading } from "../../lib/tokens.ts";
 import { connectAs, reconnectAs, waitFor } from "../helpers/client.ts";
 import {
   driveHandToExchangeOrOver,
@@ -138,6 +139,13 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
   // ── NET-04: a rejoin must not restart the acting seat's clock ───────────
 
   const AFK_MS = Number(process.env.MURLAN_AFK_TIMEOUT_MS);
+  /**
+   * `clientOnTurn` below always names the manche's opener — the very first
+   * actor after `room:start` — whose own first turn now carries the opening
+   * announcement's reading time on top of `AFK_MS` (#830). Every wait tied to
+   * that seat's own timeout has to budget for both.
+   */
+  const OPENING_GRACE_MS = Reading.notice;
 
   /**
    * The names of every seat the server has auto-passed for being idle, in
@@ -227,7 +235,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
         await waitUntil(
           () => passes.includes(actor.user.username),
           "the looping player's seat was never auto-passed — every rejoin re-armed its AFK window",
-          AFK_MS * 2.5
+          AFK_MS * 2.5 + OPENING_GRACE_MS
         );
       } finally {
         stop();
@@ -255,7 +263,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
         await waitUntil(
           () => passes.includes(actor.user.username),
           "another seat's rejoins pushed the acting player's AFK deadline out",
-          AFK_MS * 2.5
+          AFK_MS * 2.5 + OPENING_GRACE_MS
         );
       } finally {
         stop();
@@ -312,7 +320,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
       await waitUntil(
         () => passes.includes(onTurn),
         "the rehydrated game came back with no armed timer — the table would sit there forever",
-        AFK_MS * 4
+        AFK_MS * 4 + OPENING_GRACE_MS
       );
     } finally {
       await closeTable(table);

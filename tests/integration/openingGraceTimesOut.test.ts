@@ -19,17 +19,25 @@ import { Reading } from "../../lib/tokens.ts";
 const AFK_MS = 300;
 process.env.MURLAN_AFK_TIMEOUT_MS = String(AFK_MS);
 
-const GRANTED_MS = AFK_MS + Reading.notice;
-// Generous both ways: the lower bound is what proves the grace was actually
-// applied (a seat auto-passed at plain AFK_MS would fail it), the upper bound
-// is what proves the window still ends (a seat never passed would time this
-// test out well before reaching it).
-const TOLERANCE_MS = 1500;
-
 interface Notification {
   type?: string;
   code?: string;
   message?: string;
+}
+
+/**
+ * Whether a promise settles by its own timeout rather than resolving —
+ * `tests/wallClockBudgets.test.ts` bans asserting a measured duration against
+ * a fixed number, so what proves "not yet" here is which branch of `waitFor`'s
+ * own deadline wins, never a clock reading compared to one.
+ */
+async function didTimeOut(promise: Promise<unknown>): Promise<boolean> {
+  try {
+    await promise;
+    return false;
+  } catch {
+    return true;
+  }
 }
 
 describe(
@@ -49,27 +57,31 @@ describe(
       try {
         await setUpRoom(clients, 2);
 
-        const notified = waitFor<Notification>(
+        // Comfortably longer than the base AFK window alone, and nowhere near
+        // afkTimeoutMs() + Reading.notice: if the grace were not applied, a
+        // plain AFK auto-pass would land well inside this and resolve it.
+        const stillPending = waitFor<Notification>(
           clients[1].socket,
           "game:notification",
-          GRANTED_MS + TOLERANCE_MS + 5_000
+          AFK_MS + 1_000
         );
-        const armedAt = Date.now();
         await startGame(clients);
+        assert.equal(
+          await didTimeOut(stillPending),
+          true,
+          "the opener was auto-passed within its base AFK window alone — the opening grace was not applied"
+        );
 
-        const notice = await notified;
-        const elapsedMs = Date.now() - armedAt;
-
+        // The grace still ends: a generous but bounded second wait must catch
+        // the auto-pass that the first, deliberately short one was too early
+        // for.
+        const notice = await waitFor<Notification>(
+          clients[1].socket,
+          "game:notification",
+          Reading.notice + 5_000
+        );
         assert.equal(notice.type, "afk");
         assert.equal(notice.code, "PLAYER_AFK_AUTO_PASS");
-        assert.ok(
-          elapsedMs >= GRANTED_MS - TOLERANCE_MS,
-          `auto-passed after ${elapsedMs}ms — too soon for afkTimeoutMs() (${AFK_MS}ms) + Reading.notice (${Reading.notice}ms); the opener's grace was not applied`
-        );
-        assert.ok(
-          elapsedMs <= GRANTED_MS + TOLERANCE_MS,
-          `auto-passed after ${elapsedMs}ms — the opening grace must still end, not run past afkTimeoutMs() + Reading.notice (${GRANTED_MS}ms)`
-        );
       } finally {
         // Neither client ever plays, so with AFK_MS this small the table keeps
         // auto-passing itself long after the assertions above are done —
