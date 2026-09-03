@@ -17,7 +17,7 @@
 import { test, expect } from "./fixtures";
 import { resumeSaved, offlineGameSave, DEAL_SIZE } from "./helpers/offlineSeed";
 import { TOUCH_TARGET_MIN } from "../../lib/tokens";
-import { TABLE } from "./helpers/selectors.ts";
+import { HAND_CARDS, TABLE } from "./helpers/selectors.ts";
 
 // tests/e2e/tableFit.spec.ts's own phone fixtures, which are the windows this
 // is actually seen in.
@@ -138,10 +138,18 @@ test("the giveable marker is light around a card, not a line around the run", as
   await expect(page.getByTestId("exchange-prompt")).toBeVisible({ timeout: 15_000 });
   await page.waitForTimeout(1_500);
 
-  const marks = await page.evaluate(() => {
-    const gold = "rgb(201, 168, 76)";
+  const marks = await page.evaluate((sel) => {
+    // Gold's own channels, checked as a substring: the sheen paints them as a
+    // `linear-gradient(...)` on a child the fill is clipped to, which shows up
+    // in `backgroundImage` as `rgba(201, 168, 76, …)` rather than in this
+    // element's own flat `backgroundColor`.
+    const goldRGB = "201, 168, 76";
+    const isGold = (s: string) => s.includes(goldRGB);
     const out: { border: number; radius: number; cardRadius: number }[] = [];
-    for (const button of Array.from(document.querySelectorAll('[role="button"]'))) {
+    // Scoped to the hand: GIOCA's own face is this same gold on the turn it
+    // borrows the exchange's confirm, and an unscoped sweep would read that
+    // as a card the player can give away.
+    for (const button of Array.from(document.querySelectorAll(sel))) {
       const wrap = button.parentElement?.parentElement;
       if (!wrap || button.getAttribute("aria-disabled") === "true") continue;
       // The card's own corners, read off the thing that draws the card.
@@ -149,8 +157,16 @@ test("the giveable marker is light around a card, not a line around the run", as
       const cardRadius = face ? parseFloat(getComputedStyle(face).borderTopLeftRadius) || 0 : 0;
       for (const kid of Array.from(wrap.children)) {
         const st = getComputedStyle(kid);
-        const marks = st.backgroundColor === gold || st.borderTopColor === gold;
-        if (!marks || st.opacity === "0") continue;
+        if (st.opacity === "0") continue;
+        // The marker is this wrapper — it is what carries the border and the
+        // radius the assertions below check — but the gold itself can be
+        // anywhere in its subtree, so the two are read from different places.
+        const subtree = [kid, ...Array.from(kid.querySelectorAll("*"))];
+        const marks = subtree.some((el) => {
+          const s = el === kid ? st : getComputedStyle(el);
+          return isGold(s.backgroundColor) || isGold(s.borderTopColor) || isGold(s.backgroundImage);
+        });
+        if (!marks) continue;
         out.push({
           border: parseFloat(st.borderTopWidth) || 0,
           radius: parseFloat(st.borderTopLeftRadius) || 0,
@@ -159,7 +175,7 @@ test("the giveable marker is light around a card, not a line around the run", as
       }
     }
     return out;
-  });
+  }, HAND_CARDS);
 
   expect(marks.length, "no giveable card carries a marker at all").toBeGreaterThan(0);
   for (const m of marks) {
