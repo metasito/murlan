@@ -34,6 +34,13 @@ function worktree(branch: string): string {
 
 const BASE = execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim();
 
+function worktreeDirs(): string[] {
+  return execFileSync("git", ["worktree", "list", "--porcelain"], { cwd: root, encoding: "utf8" })
+    .split(/\r?\n/)
+    .filter((l) => l.startsWith("worktree "))
+    .map((l) => l.slice("worktree ".length));
+}
+
 function commit(wt: string, file: string, body = "\n// probe\n") {
   const target = join(wt, file);
   mkdirSync(dirname(target), { recursive: true });
@@ -76,6 +83,18 @@ function gate(
 }
 
 function sweep() {
+  // A probe worktree left inside `.worktrees/` by a run that died mid-suite is a run as far as the
+  // gate is concerned, so the very first case here would find one and every later case would fail
+  // on "branch already exists". Clear both before deciding anything.
+  for (const w of worktreeDirs()) {
+    if (!/[\\/]\.worktrees[\\/]agent-99\d+$/.test(w)) continue;
+    try {
+      execFileSync(process.execPath, [PRUNE, "--remove", w, "--force"], { cwd: root });
+    } catch {
+      /* already detached; the prune below finishes it */
+    }
+    rmSync(w, { recursive: true, force: true });
+  }
   execFileSync("git", ["worktree", "prune"], { cwd: root });
   const branches = execFileSync(
     "git",
@@ -115,10 +134,14 @@ after(() => {
 });
 
 describe("the gate's exit code, which is what phase E reads", () => {
+  // Two ways to be off a ticket: on another branch, or on none at all. `actions/checkout` checks a
+  // PR out at a detached HEAD, so CI only ever sees the second — this asserted the first alone and
+  // went red on the runner while passing locally.
   test("off a ticket branch it declines to judge, and that is never 0", () => {
     const { code, out } = gate(root);
     assert.equal(code, 2);
-    assert.match(out, /not on an agent branch/);
+    assert.match(out, /not on an agent branch|HEAD is detached/);
+    assert.match(out, /nothing to judge/);
   });
 
   test("a ticket branch with nothing committed is refused", () => {
