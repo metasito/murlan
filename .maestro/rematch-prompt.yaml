@@ -92,12 +92,27 @@ env:
           waitToSettleTimeoutMs: 500
 
 # --- Pass whenever legal, until the hand empties and the result screen replaces the table ---
+#
+# `rematchPromptOpen` (lib/sharedGameFlow.ts) opens the side-panel vote once
+# hand counts drop low enough for the closing manche to matter — for a
+# single-hand match that is this hand, partway through, not from the start.
+# `tableWantsRematch` (context/GameContext.tsx) is a majority of the answers
+# it actually receives, and an AI seat abstains rather than voting, so with
+# one human seat the vote is the whole tally: never answering it is a "no"
+# by default, and "btn-nuova-partita" then never renders on the result
+# screen. Answering here, inside the loop that is already running while the
+# panel can appear, rather than waiting for it separately and costing the
+# flow a wait of its own.
 - repeat:
     times: 30
     while:
       visible:
         id: "btn-passa"
     commands:
+      - tapOn:
+          id: "btn-rematch-yes"
+          optional: true
+          waitToSettleTimeoutMs: 500
       - tapOn:
           id: "btn-passa"
           optional: true
