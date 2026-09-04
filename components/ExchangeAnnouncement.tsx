@@ -95,6 +95,11 @@ export function ExchangeAnnouncement({
   return (
     <View testID="exchange-announce" pointerEvents="none" style={styles.layer}>
       <A11yStatus label={a11yLabel} role="alert" live="assertive" />
+      {/* `styles.layer` is sized to nothing on purpose (see below), so it reports
+          empty bounds to anything that reads the tree by that id — this marker
+          carries real geometry for the ceremony's whole lifetime, in both
+          branches, so a driver reading the tree by bounds has something to find. */}
+      <View testID="exchange-announce-active" style={styles.activeMarker} />
 
       {bothJokersException ? (
         <TableText {...a11yHidden()} style={styles.noSwap}>
@@ -148,6 +153,9 @@ const styles = StyleSheet.create({
   // Sized to nothing and centred on the pile: every child positions itself in
   // the deltas `flightOrigin` speaks, which are measured from that point.
   layer: { position: "absolute", width: 0, height: 0, alignItems: "center", justifyContent: "center" },
+  // `layer` above is deliberately zero-area, so a driver reading the tree by
+  // this marker's bounds needs its own non-empty box.
+  activeMarker: { position: "absolute", width: 1, height: 1 },
   noSwap: {
     position: "absolute",
     fontFamily: "Rajdhani_600SemiBold",

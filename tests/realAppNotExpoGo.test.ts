@@ -276,41 +276,49 @@ describe("the landscape screen is read on a landscape device", () => {
   // unrotated width - 173 nodes against 345, missing half the hand and the
   // play button, all of them painted (#685). Nothing about this is visible in
   // a screenshot, which is why it took an artefact to find and a guard to keep.
-  const flow = ".maestro/offline-game.yaml";
+  // Every flow that reaches `game-table` carries its own copy of this same
+  // rotation block, and each is exactly as exposed to #685 as the others.
+  const gameTableFlows = [
+    ".maestro/offline-game.yaml",
+    ".maestro/exchange-phase.yaml",
+    ".maestro/rematch-prompt.yaml",
+  ];
 
-  test("the device is in landscape before the table is read", () => {
-    // One assertion rather than "a rotation happens" plus "landscape appears
-    // somewhere", which two flows satisfy together while forbidding neither:
-    // `PORTRAIT` before the table and `LANDSCAPE_LEFT` after it passes both
-    // and reintroduces the truncation exactly.
-    const body = flowBody(flow, code);
-    const landscape = body.search(/^\s*- setOrientation: LANDSCAPE_(LEFT|RIGHT)$/m);
-    const table = body.indexOf('id: "game-table"');
-    assert.notEqual(landscape, -1, `${flow} never rotates the device to landscape`);
-    assert.notEqual(table, -1, `${flow} no longer waits for the table`);
-    assert.ok(landscape < table, `${flow} reaches the table before rotating, which is too late`);
-  });
+  for (const flow of gameTableFlows) {
+    test(`${flow}: the device is in landscape before the table is read`, () => {
+      // One assertion rather than "a rotation happens" plus "landscape appears
+      // somewhere", which two flows satisfy together while forbidding neither:
+      // `PORTRAIT` before the table and `LANDSCAPE_LEFT` after it passes both
+      // and reintroduces the truncation exactly.
+      const body = flowBody(flow, code);
+      const landscape = body.search(/^\s*- setOrientation: LANDSCAPE_(LEFT|RIGHT)$/m);
+      const table = body.indexOf('id: "game-table"');
+      assert.notEqual(landscape, -1, `${flow} never rotates the device to landscape`);
+      assert.notEqual(table, -1, `${flow} no longer waits for the table`);
+      assert.ok(landscape < table, `${flow} reaches the table before rotating, which is too late`);
+    });
 
-  test("the Android emulator is never asked to rotate a screen it already turned itself", () => {
-    // The AVD physically rotates on its own once the app's own landscape lock
-    // takes effect on the table mounting - confirmed in run 33553366797's
-    // logcat, a full second before Maestro's own command starts. Asking
-    // Maestro to set the same rotation again is a no-op the WindowManager
-    // never reports as a change, and `setOrientation` takes no
-    // `waitToSettleTimeoutMs` of its own to cap the settle-wait that follows
-    // it - which then polls the table's own looping animations forever (#768).
-    const block = landscapeBlock(flow);
-    const gate = block.slice(0, block.indexOf("setOrientation:"));
-    assert.match(gate, /when:/, `${flow}'s landscape rotation has no condition above it`);
-    assert.match(
-      gate,
-      // Anchored: Maestro reads `platform` as an exact enum, so a value that
-      // merely starts with `iOS` matches neither platform and turns the
-      // rotation off everywhere - which #685 needs it on.
-      /^\s*platform:\s*["']?iOS["']?\s*$/m,
-      `${flow} still asks Android to rotate a device that already turned itself`,
-    );
-  });
+    test(`${flow}: the Android emulator is never asked to rotate a screen it already turned itself`, () => {
+      // The AVD physically rotates on its own once the app's own landscape lock
+      // takes effect on the table mounting - confirmed in run 33553366797's
+      // logcat, a full second before Maestro's own command starts. Asking
+      // Maestro to set the same rotation again is a no-op the WindowManager
+      // never reports as a change, and `setOrientation` takes no
+      // `waitToSettleTimeoutMs` of its own to cap the settle-wait that follows
+      // it - which then polls the table's own looping animations forever (#768).
+      const block = landscapeBlock(flow);
+      const gate = block.slice(0, block.indexOf("setOrientation:"));
+      assert.match(gate, /when:/, `${flow}'s landscape rotation has no condition above it`);
+      assert.match(
+        gate,
+        // Anchored: Maestro reads `platform` as an exact enum, so a value that
+        // merely starts with `iOS` matches neither platform and turns the
+        // rotation off everywhere - which #685 needs it on.
+        /^\s*platform:\s*["']?iOS["']?\s*$/m,
+        `${flow} still asks Android to rotate a device that already turned itself`,
+      );
+    });
+  }
 
   test("a flow that reads the menus asks for portrait rather than inheriting it", () => {
     // Device orientation outlives a flow: `clearState` resets the app, not the

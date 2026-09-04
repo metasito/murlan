@@ -22,15 +22,21 @@
 # the check below needs no condition on which cards were dealt. What it does
 # need is the right element: `exchange-prompt` (`<ExchangePrompt>`) is only
 # mounted for the pre-resolution `AI_EXCHANGE_DELAY` window (600ms, app/game.tsx)
-# while the AI winner's giveback is still pending, too short for this screen's
-# own hierarchy-read latency to reliably catch — a real run of this flow's
-# first version had it SKIPPED every time. `exchange-announce`
-# (`<ExchangeAnnouncement>`, components/ExchangeAnnouncement.tsx) takes over
+# while the AI winner's giveback is still pending — too short for this
+# screen's own hierarchy-read latency to reliably catch.
+# `<ExchangeAnnouncement>` (components/ExchangeAnnouncement.tsx) takes over
 # once the giveback resolves and stays mounted for `exchangeAnnounceMs()`
 # (lib/exchangeCeremony.ts) — 4000ms on the two-Joker notice, ~5180ms
-# otherwise — long enough to observe. This assumes the AI is the exchange
-# winner, which the human's pass-only play here makes it: a human giveback
-# would need a tap on `exchange-prompt` this flow does not make.
+# otherwise — long enough to observe, in either branch. Checked by
+# `exchange-announce-active` rather than the component's own outer
+# `exchange-announce`: that element is `width: 0, height: 0` by design (every
+# child positions itself from that anchor point), which a driver reading
+# element bounds can read as never visible regardless of how long it waits —
+# `exchange-announce-active` is a small marker added alongside it for exactly
+# this reason, present for the same lifetime in both branches. This assumes
+# the AI is the exchange winner, which the human's pass-only play here makes
+# it: a human giveback would need a tap on `exchange-prompt` this flow does
+# not make.
 #
 # This flow does not play the second hand out: reaching `btn-passa` again
 # is what proves the match moved on rather than ending, and that is the
@@ -138,11 +144,11 @@ env:
     timeout: 90000
 - extendedWaitUntil:
     visible:
-      id: "exchange-announce"
+      id: "exchange-announce-active"
     timeout: 10000
 - extendedWaitUntil:
     notVisible:
-      id: "exchange-announce"
+      id: "exchange-announce-active"
     timeout: 8000
 
 # --- Confirm the match actually moved on: a fresh, playable second hand ---
