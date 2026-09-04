@@ -29,9 +29,11 @@ jobs:
     name: Drive the app on a real iOS simulator
     runs-on: macos-latest
     # Generous on purpose, and the same as maestro.yml's: this job compiles the
-    # app before it drives it, and then runs offline-game.yaml as well as
-    # smoke.yaml — offline-game is a full hand, 16 minutes on a developer
-    # machine. A measured run is 23. Hitting the cap
+    # app before it drives it, and then runs smoke.yaml, offline-game.yaml,
+    # exchange-phase.yaml and rematch-prompt.yaml — offline-game alone is a
+    # full hand, 16 minutes on a developer machine. A measured run of just
+    # smoke + offline-game is 23; exchange-phase and rematch-prompt add
+    # another ~8.5 (run 33899179508: 3m36s + 4m55s). Hitting the cap
     # cancels the job, and a cancelled job skips every `if: failure()` step
     # below, so an overrun costs the artefacts that would say what happened.
     timeout-minutes: 100
@@ -197,7 +199,8 @@ jobs:
           # it holds.
           run_flows() {
             maestro --device "$SIMULATOR_UDID" test -e MAESTRO_APP_ID="$APP_ID" \
-              .maestro/smoke.yaml .maestro/offline-game.yaml 2>&1 | tee "$RUNNER_TEMP/maestro-$1.log"
+              .maestro/smoke.yaml .maestro/offline-game.yaml .maestro/exchange-phase.yaml \
+              .maestro/rematch-prompt.yaml 2>&1 | tee "$RUNNER_TEMP/maestro-$1.log"
             return "${PIPESTATUS[0]}"
           }
           if run_flows first; then exit 0; fi

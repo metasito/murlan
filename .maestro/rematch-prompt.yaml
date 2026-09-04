@@ -1,0 +1,139 @@
+##
+# Rematch flow: plays a real offline "Manche secca" (single-hand) match to
+# its end and confirms the rematch offer actually starts a new match — see
+# #55 and docs/RULES.md. `MatchLength = "single"` means "one manche and
+# done" (lib/gameEngine.ts), so a single hand is a genuine match ending, not
+# a shortcut around one: it is the cheapest length that reaches the state
+# this flow is about, and it is exactly the format offline-game.yaml already
+# uses, so this adds almost nothing to that flow's own cost — #823 is open
+# on wall-clock already too slow to gate a PR, and a 7-hand "Partita" would
+# have cost several extra minutes for no more evidence.
+#
+# Maestro has no import mechanism, so the launch/tutorial/lobby boilerplate
+# below is duplicated from offline-game.yaml on purpose, the way smoke.yaml
+# and offline-game.yaml already duplicate it against each other.
+#
+# "Same seats": `startNewMatch` (context/GameContext.tsx) deals a fresh hand
+# from `savedPlayerConfigs` — the seats already on the table — rather than
+# returning to the lobby, so there is no player-setup screen to re-drive and
+# nothing to assert about the seats beyond the table mounting again with a
+# playable hand.
+#
+# See offline-game.yaml for the performance note on `waitToSettleTimeoutMs`
+# and the reasoning behind every wait below; it is not repeated here.
+appId: "${typeof MAESTRO_APP_ID === 'string' ? MAESTRO_APP_ID : 'host.exp.exponent'}"
+env:
+  MURLAN_PACKAGER_URL: exp://127.0.0.1:8081?disableOnboarding=1
+---
+- launchApp:
+    clearState: true
+    arguments:
+      AppleLanguages: "(it-IT)"
+      AppleLocale: "it_IT"
+- runFlow:
+    when:
+      true: ${typeof MAESTRO_APP_ID !== 'string' || MAESTRO_APP_ID.indexOf('host.exp') === 0}
+    commands:
+      - stopApp
+      - openLink: "${MURLAN_PACKAGER_URL}"
+      - runFlow:
+          when:
+            platform: iOS
+          commands:
+            - tapOn:
+                text: "Apri|Open"
+                optional: true
+- runFlow:
+    commands:
+      - extendedWaitUntil:
+          visible: "Salta il tutorial"
+          timeout: 180000
+      - tapOn: "Salta il tutorial"
+      - extendedWaitUntil:
+          notVisible: "Salta il tutorial"
+          timeout: 30000
+
+# --- Lobby: offline vs AI, 2 players, single hand ---
+- assertVisible: "Offline"
+- tapOn: "Offline"
+- assertVisible: "Manche secca.*"
+- tapOn: "Manche secca.*"
+- assertVisible: "Inizia Partita"
+- tapOn:
+    text: "Inizia Partita"
+    waitToSettleTimeoutMs: 500
+
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - setOrientation: LANDSCAPE_LEFT
+
+- extendedWaitUntil:
+    visible:
+      id: "game-table"
+    timeout: 90000
+
+# --- Opening move, only if this seat was dealt the forced opener ---
+- extendedWaitUntil:
+    visible:
+      id: "btn-passa"
+    timeout: 60000
+- runFlow:
+    when:
+      visible: "Inizi tu.*"
+    commands:
+      - tapOn:
+          id: "card-start"
+          waitToSettleTimeoutMs: 500
+      - assertVisible: "Gioca le carte selezionate"
+      - tapOn:
+          id: "btn-gioca"
+          waitToSettleTimeoutMs: 500
+
+# --- Pass whenever legal, until the hand empties and the result screen replaces the table ---
+#
+# `rematchPromptOpen` (lib/sharedGameFlow.ts) opens the side-panel vote once
+# hand counts drop low enough for the closing manche to matter — for a
+# single-hand match that is this hand, partway through, not from the start.
+# `tableWantsRematch` (context/GameContext.tsx) is a majority of the answers
+# it actually receives, and an AI seat abstains rather than voting, so with
+# one human seat the vote is the whole tally: never answering it is a "no"
+# by default, and "btn-nuova-partita" then never renders on the result
+# screen. Answering here, inside the loop that is already running while the
+# panel can appear, rather than waiting for it separately and costing the
+# flow a wait of its own.
+- repeat:
+    times: 30
+    while:
+      visible:
+        id: "btn-passa"
+    commands:
+      - tapOn:
+          id: "btn-rematch-yes"
+          optional: true
+          waitToSettleTimeoutMs: 500
+      - tapOn:
+          id: "btn-passa"
+          optional: true
+          waitToSettleTimeoutMs: 500
+
+# --- Result screen: a single-hand match is over as soon as the hand is, so the primary
+# action is the rematch offer rather than "Prossima manche" ---
+- extendedWaitUntil:
+    visible:
+      id: "btn-nuova-partita"
+    timeout: 30000
+- tapOn:
+    id: "btn-nuova-partita"
+    waitToSettleTimeoutMs: 500
+
+# --- Confirm a new match actually started: a fresh, playable table ---
+- extendedWaitUntil:
+    visible:
+      id: "game-table"
+    timeout: 90000
+- extendedWaitUntil:
+    visible:
+      id: "btn-passa"
+    timeout: 60000
