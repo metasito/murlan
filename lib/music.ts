@@ -170,8 +170,10 @@ function nativePlayer(track: MusicTrack): AudioPlayer | null {
     // file — including the ones that mock lib/sounds precisely to avoid it.
     // eslint-disable-next-line @typescript-eslint/no-require-imports -- see above
     const { createAudioPlayer } = require("expo-audio") as typeof import("expo-audio");
-    // 50ms rather than the 500ms default so dev-only onset logging isn't bucketed.
-    const player = createAudioPlayer(TRACKS[track](), __DEV__ ? { updateInterval: 50 } : undefined);
+    const player = createAudioPlayer(
+      TRACKS[track](),
+      __DEV__ ? { updateInterval: ONSET_UPDATE_INTERVAL_MS } : undefined,
+    );
     player.loop = true;
     player.volume = 0;
     nativePlayers[track] = player;
@@ -213,6 +215,8 @@ function logSeekDuration(player: AudioPlayer, tSeek: number): void {
 /** Dev-only: the last subscription from logStatusSamples, so a toggle before it finishes cannot leak it onto a later play. */
 let onsetSub: { remove(): void } | null = null;
 const ONSET_SAMPLE_COUNT = 6;
+/** expo-audio's default is 500ms, which bucket-quantises the onset samples below. */
+const ONSET_UPDATE_INTERVAL_MS = 50;
 
 /**
  * Dev-only: `play()` returns before sound starts, and `currentTime` can still read
@@ -228,11 +232,12 @@ function logStatusSamples(player: AudioPlayer, tPlay: number): void {
       console.log(
         `[music-timing][${Platform.OS}] status#${n} +${Date.now() - tPlay}ms playing=${status.playing} ` +
           `currentTime=${status.currentTime.toFixed(2)} isBuffering=${status.isBuffering} ` +
-          `timeControlStatus=${status.timeControlStatus} @${Date.now()}`,
+          `timeControlStatus=${status.timeControlStatus} reasonForWaitingToPlay=${status.reasonForWaitingToPlay} ` +
+          `@${Date.now()}`,
       );
       if (n >= ONSET_SAMPLE_COUNT) {
         sub.remove();
-        onsetSub = null;
+        if (onsetSub === sub) onsetSub = null;
       }
     });
     onsetSub = sub;
@@ -263,8 +268,9 @@ function playNativeMusic(track: MusicTrack, opts: { rewind?: boolean } = {}): vo
       else player.seekTo(0);
       const tPlay = __DEV__ ? Date.now() : 0;
       if (__DEV__) logStatusSamples(player, tPlay);
+      const tPlayCall = __DEV__ ? Date.now() : 0;
       player.play();
-      if (__DEV__) console.log(`[music-timing][${Platform.OS}] player.play() call ${Date.now() - tPlay}ms @${Date.now()}`);
+      if (__DEV__) console.log(`[music-timing][${Platform.OS}] player.play() call ${Date.now() - tPlayCall}ms @${Date.now()}`);
     } catch {}
   }
   fadeNative(player, targetGain(), FADE_S * 1000, () => {

@@ -170,4 +170,26 @@ describe(`music on ${Platform.OS}`, () => {
     stopMusic();
     expect(remove).toHaveBeenCalled();
   });
+
+  // The registration test above proves the subscription lifecycle, not the
+  // handler body itself — invoke it the way a real status event would.
+  it('logs a status sample without throwing when a playbackStatusUpdate event fires', async () => {
+    await playMusic('menu');
+    const player = createAudioPlayer.mock.results[0].value as { addListener: jest.Mock };
+    const onStatus = player.addListener.mock.calls[0][1] as (status: Record<string, unknown>) => void;
+    const logSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
+
+    expect(() =>
+      onStatus({
+        playing: true,
+        currentTime: 0.02,
+        isBuffering: false,
+        timeControlStatus: 'playing',
+        reasonForWaitingToPlay: '',
+      })
+    ).not.toThrow();
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('status#1'));
+
+    logSpy.mockRestore();
+  });
 });
