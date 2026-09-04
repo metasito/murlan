@@ -16,6 +16,14 @@ import fs from "node:fs";
 import path from "node:path";
 import { nativeScope } from "./native-scope.mjs";
 
+/**
+ * Per step. A wedged jest or a suite waiting on a port nothing will bind used to hang this
+ * check for ever, and an unattended run has nobody to notice - a check that never answers is
+ * worse than one that answers red. On Windows the kill reaches the shell rather than the whole
+ * tree, so a stray child can outlive it; the verdict is still delivered.
+ */
+const STEP_TIMEOUT_MS = 20 * 60_000;
+
 const STEPS = [
   { name: "typecheck", args: ["run", "typecheck"] },
   { name: "typecheck:strict", args: ["run", "typecheck:strict"] },
@@ -98,8 +106,20 @@ for (const step of STEPS) {
     continue;
   }
   process.stdout.write(`\n=== ${step.name} ===\n`);
-  const run = spawnSync("npm", step.args, { stdio: "inherit", shell: process.platform === "win32" });
-  if (run.status !== 0) failed.push(step.name);
+  const run = spawnSync("npm", step.args, {
+    stdio: "inherit",
+    shell: process.platform === "win32",
+    timeout: STEP_TIMEOUT_MS,
+  });
+  // A timeout leaves `status` null and sets `error.code` to ETIMEDOUT. Both are failures, but
+  // only one of them says anything about the code, so they are reported apart.
+  if (run.error?.code === "ETIMEDOUT") {
+    console.error(`
+${step.name} timed out after ${STEP_TIMEOUT_MS / 60_000} minutes`);
+    failed.push(`${step.name} (timed out)`);
+  } else if (run.status !== 0) {
+    failed.push(step.name);
+  }
 }
 
 // A green line standing for a suite nobody ran is the defect this check was

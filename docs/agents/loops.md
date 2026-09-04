@@ -348,7 +348,7 @@ A command line that could not be read claims nothing.
 nothing waiting on the port, so a holder still attached to a live launcher is somebody's run and
 stays — parentage is the signal, and a holder the process table cannot describe is left alone.
 `--port` is the blunt form, kept for cleaning up after a run that is already over
-(`lib/ticketPipeline/cleanup.ts`); no run takes that path on its way in any more.
+(`scripts/reap.mjs`); no run takes that path on its way in any more.
 
 Starting a run used to, and that is what made two sessions collide: Playwright refuses a busy port
 *before* it runs the `webServer` command, so freeing it was the only way to boot — and the run
@@ -358,7 +358,7 @@ is free instead (`scripts/e2ePort.mjs`), which is a smaller thing to get right t
 The reason this matters more than one lost run: a webServer pulled out from under Playwright
 surfaces as a connection error or a 0ms failure, which reads exactly like a defect. A sweep that
 takes a live port *manufactures a test result* in another process, and anything trusting a
-suite's verdict — a review agent, `scripts/ticket-pipeline.ts` — then acts on it. Same shape as
+suite's verdict — a review agent, the `/queue` gate — then acts on it. Same shape as
 the starvation table below, one layer up.
 
 And it can manufacture a **green** as easily as a red: land part-way through a suite and the
@@ -564,9 +564,9 @@ Every port this repo's local tooling binds — including the local-substitute pa
 | --- | --- | --- |
 | `5000` | The Express server (`PORT`) | `server/index.ts`, `.replit` (`[[ports]]` localPort/externalPort, `[env] PORT`, `waitForPort`), `package.json` (`expo:dev`, `expo:dev:clean`) |
 | `8081` | Metro (`npx expo start` / `npm start`) | `scripts/build.js`, `.replit` |
-| `5199`+ | Playwright's e2e webServer (`E2E_PORT`) — the base, and the first free port above it when a neighbour holds it | chosen by `scripts/e2ePort.mjs`, used by `tests/e2e/playwright.config.ts` and `scripts/e2e-server.mjs`; a leftover is freed by `scripts/reap.mjs` and by `lib/ticketPipeline/cleanup.ts` |
+| `5199`+ | Playwright's e2e webServer (`E2E_PORT`) — the base, and the first free port above it when a neighbour holds it | chosen by `scripts/e2ePort.mjs`, used by `tests/e2e/playwright.config.ts` and `scripts/e2e-server.mjs`; a leftover is freed by `scripts/reap.mjs` |
 | `55432`+ | The dev-stack's disposable Postgres (`MURLAN_DEV_PG_PORT`) — the base, and the first port above it the Docker daemon will accept when something already holds it. Ask `dev-stack env` rather than assuming 55432 | `murlan-dev-pg` container — `scripts/dev-stack.mjs`, `scripts/devStackPort.mjs`, `scripts/e2e-server.mjs` |
-| `55433` | The verify-only Postgres substituted for CI's database | `murlan-verify-pg` container — freed by `lib/ticketPipeline/cleanup.ts`; also bound manually by CLAUDE.md's "When Actions cannot start" |
+| `55433` | The verify-only Postgres substituted for CI's database | `murlan-verify-pg` container — freed by `scripts/reap.mjs` |
 
 ## Playwright, locally
 

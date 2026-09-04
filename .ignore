@@ -1,0 +1,10 @@
+# Kept out of ripgrep, not out of git.
+#
+# `.claude/_archive/` holds the retired loop protocols. They are real files with real history,
+# and they answer "what did we used to do" — but they use the same vocabulary as the live loop,
+# so a search for `worktree` or `agent:check` came back 28-40% dead. An agent cannot tell a
+# retired instruction from a current one by reading it.
+#
+# CLAUDE.md used to ask the model to ignore this directory. An instruction is a promise; this
+# is the check. `rg --no-ignore` still reaches it when the archive is what you actually want.
+.claude/_archive/

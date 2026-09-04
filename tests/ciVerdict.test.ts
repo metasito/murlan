@@ -7,7 +7,7 @@ import {
   runForHead,
   runListArgs,
   stripLogPrefix,
-} from "../lib/ticketPipeline/ciVerdict.ts";
+} from "../lib/loop/ciVerdict.ts";
 
 const done = (conclusion: string | null) => ({ databaseId: 7, conclusion, status: "completed" });
 
@@ -162,5 +162,35 @@ describe("reading ci.yml's verdict", () => {
     for (const conclusion of ["cancelled", "timed_out", "startup_failure", null]) {
       assert.equal(decideVerdict(done(conclusion)).pass, false, `${conclusion} must not pass`);
     }
+  });
+});
+
+// Run 33862429187, verbatim in shape: gitleaks went red, the run failed fast, and every sibling
+// was cancelled — including a reporting job cancelled before its first step. Asked stepless-first,
+// the verdict named that cancelled job and said `infrastructure: true`, so the loop would have
+// re-asked instead of fixing the one job that actually reported something.
+describe("a red job that cancelled its siblings", () => {
+  const run = { databaseId: 33862429187, status: "completed", conclusion: "failure" } as never;
+  const jobs = [
+    { name: "Secret scan", conclusion: "failure", steps: 8 },
+    { name: "Typecheck and tests", conclusion: "cancelled", steps: 14 },
+    { name: "Browser test report", conclusion: "cancelled", steps: 0 },
+  ] as never[];
+
+  test("is reported as the failure it is, not as infrastructure", () => {
+    const v = decideVerdict(run, jobs);
+    assert.equal(v.pass, false);
+    assert.notEqual(v.infrastructure, true);
+    assert.equal(v.failedStep, "Secret scan");
+  });
+
+  test("a cancelled stepless job on its own is still not infrastructure", () => {
+    const v = decideVerdict(run, [{ name: "Browser test report", conclusion: "cancelled", steps: 0 }] as never[]);
+    assert.notEqual(v.infrastructure, true);
+  });
+
+  test("a genuinely stepless job with no failure anywhere is still infrastructure", () => {
+    const v = decideVerdict(run, [{ name: "Build and boot", conclusion: "failure", steps: 0 }] as never[]);
+    assert.equal(v.infrastructure, true);
   });
 });

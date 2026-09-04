@@ -8,10 +8,9 @@ const RULES = "docs/agents/RULES.md";
 // Files that instruct an agent. Each may point at a rule; none may restate one.
 const INSTRUCTION_FILES = [
   "CLAUDE.md",
-  ".claude/commands/ticket.md",
+  ".claude/commands/queue.md",
   ".claude/commands/triage.md",
   ".claude/commands/wayfinder.md",
-  "scripts/ticket-pipeline.ts",
   "docs/agents/issue-tracker.md",
   "docs/agents/loops.md",
   "docs/agents/domain.md",
@@ -63,6 +62,32 @@ describe("every agent rule is written down exactly once", () => {
         [],
         `${offenders.join(", ")} restates the "${name}" rule. State it once in ${RULES} and ` +
           `point at it by number from here.`
+      );
+    });
+  }
+
+  // CLAUDE.md is loaded every session; queue.md only when the loop runs. That asymmetry is
+  // exactly why the loop's procedure kept getting summarised into CLAUDE.md "so it is always
+  // there" — and a summary is a second copy that drifts, with the always-loaded one winning.
+  // CLAUDE.md may point at the protocol and name the paths an agent must not touch on its own.
+  // The steps belong to queue.md alone.
+  for (const [name, pattern] of [
+    ["how the review is recorded", /VERDICT: LAND/],
+    ["where an out-of-scope finding goes", /gh issue create/i],
+    ["how the run is recovered", /loop-status\.mjs/],
+    ["one ticket at a time", /one ticket at a time/i],
+    ["what to preserve when compacting", /failing test output/i],
+  ] as [string, RegExp][]) {
+    test(`"${name}" is procedure, so it lives in the command file only`, () => {
+      assert.equal(
+        pattern.test(read("CLAUDE.md")),
+        false,
+        `CLAUDE.md restates "${name}". It belongs in .claude/commands/queue.md; CLAUDE.md ` +
+          `points at that file and stops there.`
+      );
+      assert.ok(
+        pattern.test(read(".claude/commands/queue.md")),
+        `neither file states "${name}" any more — it was deleted rather than moved`
       );
     });
   }

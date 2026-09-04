@@ -38,7 +38,6 @@
     "typecheck": "tsc --noEmit",
     "typecheck:strict": "node scripts/checkStrictIndexed.mjs",
     "verify": "npm run typecheck && npm run typecheck:strict && npm run test && npm run test:native && npm run lint",
-    "ticket": "tsx scripts/ticket-pipeline.ts",
     "soak": "node --experimental-strip-types tests/soak/soak.ts"
   },
   "dependencies": {
