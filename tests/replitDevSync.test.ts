@@ -16,8 +16,9 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."
 const readRepoFile = (...parts: string[]) =>
   readFileSync(path.join(repoRoot, ...parts), "utf8");
 
-// The page Replit's edge serves for a workspace that is not running.
-const ASLEEP_MARKER = "Run this app to see the results here";
+// What the workflow checks to tell a sleeping Replit from a real failure —
+// see scripts/replitSyncVerdict.mjs (#905) for the branch itself.
+const VERDICT_CHECK = 'if [ "$verdict" = stopped ]; then';
 
 describe("the Replit workspace syncs to main when it boots", () => {
   const replit = readRepoFile(".replit");
@@ -60,17 +61,30 @@ describe("the Replit workspace syncs to main when it boots", () => {
 describe("a sleeping workspace is not reported as a failing sync", () => {
   const workflow = readRepoFile(".github", "workflows", "replit-dev-sync.yml");
 
-  test("the placeholder page ends the run without filing anything", () => {
-    const branch = workflow.slice(workflow.indexOf(ASLEEP_MARKER));
+  test("a stopped-workspace verdict ends the run without filing anything", () => {
+    const branch = workflow.slice(workflow.indexOf(VERDICT_CHECK));
     assert.notEqual(
-      workflow.indexOf(ASLEEP_MARKER),
+      workflow.indexOf(VERDICT_CHECK),
       -1,
-      "the workflow does not recognise Replit's stopped-workspace page"
+      "the workflow no longer branches on the stopped-workspace verdict"
     );
     assert.match(
       branch.slice(0, branch.indexOf("- name:")),
       /exit 0/,
       "the workflow recognises a stopped workspace but still fails the run"
+    );
+  });
+
+  test("the verdict comes from the response, never a pipeline's exit status", () => {
+    assert.doesNotMatch(
+      workflow,
+      /\|\s*grep -q/,
+      "the guard reads a pipeline's exit status again, which is exactly how #905 went silently wrong"
+    );
+    assert.match(
+      workflow,
+      /node "\$GITHUB_WORKSPACE\/scripts\/replitSyncVerdict\.mjs"/,
+      "the workflow no longer calls the falsifiable verdict script"
     );
   });
 
