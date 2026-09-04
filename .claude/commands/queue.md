@@ -52,6 +52,10 @@ node scripts/next-ticket.mjs --all    # the queue, in pick order
 Write `STATE.md`: `status: RUNNING`, `objective` (one line, never rewritten), `queue`,
 `budget: 0/$1` (default 5). If preflight or the picker fails, **halt** — do not work around it.
 
+`queue` is a snapshot for the report and for the handoff, not a work order: phase A picks
+again from live tracker state every ticket, because labels and blockers move while the run is
+running. Where they differ, the picker is right.
+
 Then run phases A–F per ticket until the budget is spent, the queue is empty, or a stop
 condition fires.
 
@@ -68,26 +72,23 @@ node scripts/next-ticket.mjs          # prints ROUTE, body, comments, blockers, 
 Route `triage` runs `/triage`; route `wayfinder` runs `/wayfinder`; route `handoff` means no
 agent-takeable work is left — go to **Halt**. Only route `implement` continues here.
 
-Read the whole ticket — **body and comments together, never either alone**:
-
-```sh
-gh issue view <n> --json title,body,comments --jq '.title, .body, (.comments[]|"--- "+.author.login+": "+.body)'
-```
-
-`--comments` prints the thread *instead of* the body; `--json body` drops the thread. The
-comments are where the owner's ruling and the answer to the body's own question live, and a
-later ruling overrides the body.
+That output is already the whole ticket — **body and comments together**, which is why the
+picker prints both and you do not fetch them again. The comments are where the owner's ruling
+and the answer to the body's own question live, and **a later comment overrides the body**.
+Read to the end of the thread before scoping.
 
 Claim it as the first write, before any code:
 
 ```sh
 gh issue edit <n> --add-label in-progress
 gh issue comment <n> --body "Claimed by \`agent/<n>-<slug>\`."
-gh issue view <n> --comments
+gh issue view <n> --comments        # a fresh read *after* the write — this is the race check
 ```
 
-Every session authenticates as the same account, so the branch name is the claim. An older
-claim comment wins: remove your label, say so in one line, take the next ticket.
+Every session authenticates as the same account, so the branch name is the claim. That last
+read is not a repeat of the picker's: it is the only way to see a peer who claimed the same
+ticket between the pick and the write. An older claim comment wins — remove your label, say so
+in one line, take the next ticket.
 
 ```sh
 git fetch origin --quiet
@@ -107,7 +108,8 @@ One subagent (`sonnet`), so the codebase never enters this context:
 > Investigate issue #N in the worktree `.worktrees/agent-N`. Report only: files to touch,
 > existing patterns to reuse, risks, and whether the ticket is ambiguous. Figures and file
 > paths, never prose. Max 30 lines. Do not spawn any subagent, and do not run
-> `npm run agent:check` — it refuses while a peer holds it and you will stall instead of answering.
+> `npm run agent:check` — it waits on free memory and then runs a twenty-minute suite, so you
+> would stall instead of answering. Phase E is where it runs.
 
 Write its answer to `recon:`.
 
