@@ -38,7 +38,17 @@ describe("add-email migration nudge", { skip: hasDatabase() ? false : skipMessag
     await db.update(users).set({ email: null, emailVerifiedAt: null }).where(eq(users.id, user.id));
     // register() already minted its own email_verify token; a real legacy
     // account predates that flow entirely, so drop it rather than count it
-    // alongside the one add-email mints.
+    // alongside the one add-email mints. Registration replies *before* that
+    // mint (server/routes.ts, so a provider outage cannot delay the reply),
+    // so the row is not there yet when register() resolves — deleting without
+    // waiting for it leaves it to land afterwards and be counted.
+    const deadline = Date.now() + 5_000;
+    for (;;) {
+      const rows = await db.select().from(authTokens).where(eq(authTokens.userId, user.id));
+      if (rows.length > 0) break;
+      assert.ok(Date.now() < deadline, "register never minted the token this account has to shed");
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
     await db.delete(authTokens).where(eq(authTokens.userId, user.id));
     return { user, cookie };
   }
