@@ -12,19 +12,25 @@
 # first hand. "Partita" is the lobby's own default match length
 # (`app/lobby.tsx`'s `matchLength` state starts at `"match"`), so this only
 # adds the format tile's own name over offline-game.yaml's flow — not a
-# second play strategy. One hand is enough: `startNextHand` (tapped from
-# "Prossima manche") is the only thing that ever builds `exchangePhase`, and
-# it does so before the table remounts, so `exchange-prompt` is present on
-# the very first frame back on `/game` whenever it fires — never a delayed
-# element to race an animation for.
+# second play strategy. One hand is enough: `dealFrom` (context/GameContext.tsx,
+# called by both `startNextHand` and `startNewMatch`) builds `exchangePhase`
+# synchronously with the deal, before the table remounts.
 #
-# The exchange check is deliberately conditional. `bothJokersException`
-# (lib/gameEngine.ts) skips the exchange entirely on the one deal where the
-# hand's loser holds both Jokers, so a flow that always demanded
-# `exchange-prompt` would flake on exactly that deal. Gated on
-# `exchangePhase.active` being true, the same way offline-game.yaml already
-# gates the opening move on "Inizi tu.*" rather than assuming it — never on
-# which cards were dealt.
+# Per docs/RULES.md §10 an exchange is announced after every hand — either the
+# card swap, or, on the one deal where the loser holds both Jokers
+# (`bothJokersException`, lib/gameEngine.ts), an explicit no-swap notice — so
+# the check below needs no condition on which cards were dealt. What it does
+# need is the right element: `exchange-prompt` (`<ExchangePrompt>`) is only
+# mounted for the pre-resolution `AI_EXCHANGE_DELAY` window (600ms, app/game.tsx)
+# while the AI winner's giveback is still pending, too short for this screen's
+# own hierarchy-read latency to reliably catch — a real run of this flow's
+# first version had it SKIPPED every time. `exchange-announce`
+# (`<ExchangeAnnouncement>`, components/ExchangeAnnouncement.tsx) takes over
+# once the giveback resolves and stays mounted for `exchangeAnnounceMs()`
+# (lib/exchangeCeremony.ts) — 4000ms on the two-Joker notice, ~5180ms
+# otherwise — long enough to observe. This assumes the AI is the exchange
+# winner, which the human's pass-only play here makes it: a human giveback
+# would need a tap on `exchange-prompt` this flow does not make.
 #
 # This flow does not play the second hand out: reaching `btn-passa` again
 # is what proves the match moved on rather than ending, and that is the
@@ -130,17 +136,14 @@ env:
     visible:
       id: "game-table"
     timeout: 90000
-- runFlow:
-    when:
-      visible:
-        id: "exchange-prompt"
-    commands:
-      - assertVisible:
-          id: "exchange-prompt"
-      - extendedWaitUntil:
-          notVisible:
-            id: "exchange-prompt"
-          timeout: 6000
+- extendedWaitUntil:
+    visible:
+      id: "exchange-announce"
+    timeout: 10000
+- extendedWaitUntil:
+    notVisible:
+      id: "exchange-announce"
+    timeout: 8000
 
 # --- Confirm the match actually moved on: a fresh, playable second hand ---
 - extendedWaitUntil:

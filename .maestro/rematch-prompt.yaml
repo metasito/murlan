@@ -14,7 +14,7 @@
 # and offline-game.yaml already duplicate it against each other.
 #
 # "Same seats": `startNewMatch` (context/GameContext.tsx) deals a fresh hand
-# from `gameState.players` — the seats already on the table — rather than
+# from `savedPlayerConfigs` — the seats already on the table — rather than
 # returning to the lobby, so there is no player-setup screen to re-drive and
 # nothing to assert about the seats beyond the table mounting again with a
 # playable hand.
