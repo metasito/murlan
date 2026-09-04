@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 import { readFields, check } from "../scripts/loop-gate.mjs";
+import { brief } from "../scripts/loop-brief.mjs";
 
 const FILLED = `# LOOP STATE
 
@@ -55,5 +56,28 @@ describe("the loop's evidence gate", () => {
     for (const key of ["status", "ticket", "branch", "dod", "recon", "verdict"]) {
       assert.ok(key in fields, `.claude/loop/STATE.md has no \`${key}\` field`);
     }
+  });
+});
+
+// The hook this guards was a POSIX one-liner until PowerShell — this machine's primary shell —
+// was found to reject it with a parser error, leaving the loop with no recovery from a
+// compaction and no sign that anything was wrong. Hence a node script, and hence these.
+describe("the compaction brief", () => {
+  test("says nothing when no run is live", () => {
+    assert.equal(brief("status: IDLE\nticket:\n", "a lesson"), "");
+    assert.equal(brief("", ""), "");
+  });
+
+  test("carries the state and the lessons into a session that lost them", () => {
+    const out = brief(FILLED, "- never trust a green suite nobody ran");
+    assert.match(out, /do not\s+restart the ticket/);
+    assert.match(out, /agent\/824-music-delay/);
+    assert.match(out, /never trust a green suite/);
+  });
+
+  // `status:` is matched per line, so a run is live only when the field says so — not when the
+  // word appears in a phase note or a lesson.
+  test("a mention of RUNNING is not a live run", () => {
+    assert.equal(brief("status: HALTED\nphase_note: was RUNNING when CI went red\n", ""), "");
   });
 });

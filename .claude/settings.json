@@ -26,7 +26,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "[ -f \"$CLAUDE_PROJECT_DIR/.claude/loop/STATE.md\" ] && grep -q \"^status: RUNNING\" \"$CLAUDE_PROJECT_DIR/.claude/loop/STATE.md\" && cat \"$CLAUDE_PROJECT_DIR/.claude/loop/STATE.md\" \"$CLAUDE_PROJECT_DIR/.claude/loop/LESSONS.md\" || true"
+            "command": "node scripts/loop-brief.mjs"
           }
         ]
       }
