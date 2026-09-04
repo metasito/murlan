@@ -1,0 +1,149 @@
+##
+# Exchange-phase flow: plays the first hand of a real offline "Partita"
+# (match format, not "Manche secca") far enough to reach the result screen,
+# advances to the second manche, and confirms the exchange the ticket is
+# about actually ran through the real engine — see #55 and docs/RULES.md.
+#
+# Maestro has no import mechanism, so the launch/tutorial/lobby boilerplate
+# below is duplicated from offline-game.yaml on purpose, the way smoke.yaml
+# and offline-game.yaml already duplicate it against each other.
+#
+# Strategy: same "pass whenever legal" play as offline-game.yaml for the
+# first hand. "Partita" is the lobby's own default match length
+# (`app/lobby.tsx`'s `matchLength` state starts at `"match"`), so this only
+# adds the format tile's own name over offline-game.yaml's flow — not a
+# second play strategy. One hand is enough: `startNextHand` (tapped from
+# "Prossima manche") is the only thing that ever builds `exchangePhase`, and
+# it does so before the table remounts, so `exchange-prompt` is present on
+# the very first frame back on `/game` whenever it fires — never a delayed
+# element to race an animation for.
+#
+# The exchange check is deliberately conditional. `bothJokersException`
+# (lib/gameEngine.ts) skips the exchange entirely on the one deal where the
+# hand's loser holds both Jokers, so a flow that always demanded
+# `exchange-prompt` would flake on exactly that deal. Gated on
+# `exchangePhase.active` being true, the same way offline-game.yaml already
+# gates the opening move on "Inizi tu.*" rather than assuming it — never on
+# which cards were dealt.
+#
+# This flow does not play the second hand out: reaching `btn-passa` again
+# is what proves the match moved on rather than ending, and that is the
+# whole claim. Costing this flow only one hand plus one "Prossima manche"
+# tap over offline-game.yaml's own budget is deliberate — #823 is open on
+# wall-clock already too slow to gate a PR.
+#
+# See offline-game.yaml for the performance note on `waitToSettleTimeoutMs`
+# and the reasoning behind every wait below; it is not repeated here.
+appId: "${typeof MAESTRO_APP_ID === 'string' ? MAESTRO_APP_ID : 'host.exp.exponent'}"
+env:
+  MURLAN_PACKAGER_URL: exp://127.0.0.1:8081?disableOnboarding=1
+---
+- launchApp:
+    clearState: true
+    arguments:
+      AppleLanguages: "(it-IT)"
+      AppleLocale: "it_IT"
+- runFlow:
+    when:
+      true: ${typeof MAESTRO_APP_ID !== 'string' || MAESTRO_APP_ID.indexOf('host.exp') === 0}
+    commands:
+      - stopApp
+      - openLink: "${MURLAN_PACKAGER_URL}"
+      - runFlow:
+          when:
+            platform: iOS
+          commands:
+            - tapOn:
+                text: "Apri|Open"
+                optional: true
+- runFlow:
+    commands:
+      - extendedWaitUntil:
+          visible: "Salta il tutorial"
+          timeout: 180000
+      - tapOn: "Salta il tutorial"
+      - extendedWaitUntil:
+          notVisible: "Salta il tutorial"
+          timeout: 30000
+
+# --- Lobby: offline vs AI, 2 players, match format ("Partita") ---
+- assertVisible: "Offline"
+- tapOn: "Offline"
+- assertVisible: "Partita.*"
+- tapOn: "Partita.*"
+- assertVisible: "Inizia Partita"
+- tapOn:
+    text: "Inizia Partita"
+    waitToSettleTimeoutMs: 500
+
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - setOrientation: LANDSCAPE_LEFT
+
+- extendedWaitUntil:
+    visible:
+      id: "game-table"
+    timeout: 90000
+
+# --- Hand 1: opening move, only if this seat was dealt the forced opener ---
+- extendedWaitUntil:
+    visible:
+      id: "btn-passa"
+    timeout: 60000
+- runFlow:
+    when:
+      visible: "Inizi tu.*"
+    commands:
+      - tapOn:
+          id: "card-start"
+          waitToSettleTimeoutMs: 500
+      - assertVisible: "Gioca le carte selezionate"
+      - tapOn:
+          id: "btn-gioca"
+          waitToSettleTimeoutMs: 500
+
+# --- Hand 1: pass whenever legal, until the hand empties and the result screen replaces the table ---
+- repeat:
+    times: 30
+    while:
+      visible:
+        id: "btn-passa"
+    commands:
+      - tapOn:
+          id: "btn-passa"
+          optional: true
+          waitToSettleTimeoutMs: 500
+
+# --- Result screen: a "Partita" is not over after one hand, so "Prossima manche" replaces "Manche secca"'s "Casa" ---
+- extendedWaitUntil:
+    visible:
+      id: "btn-prossima-manche"
+    timeout: 30000
+- tapOn:
+    id: "btn-prossima-manche"
+    waitToSettleTimeoutMs: 500
+
+# --- Hand 2: the exchange this flow exists to reach ---
+- extendedWaitUntil:
+    visible:
+      id: "game-table"
+    timeout: 90000
+- runFlow:
+    when:
+      visible:
+        id: "exchange-prompt"
+    commands:
+      - assertVisible:
+          id: "exchange-prompt"
+      - extendedWaitUntil:
+          notVisible:
+            id: "exchange-prompt"
+          timeout: 6000
+
+# --- Confirm the match actually moved on: a fresh, playable second hand ---
+- extendedWaitUntil:
+    visible:
+      id: "btn-passa"
+    timeout: 60000

@@ -34,7 +34,12 @@ const read = (rel: string) => readFileSync(path.join(repoRoot, rel), "utf8");
  */
 const code = (rel: string) => read(rel).replace(/^[ \t]*#.*$/gm, "");
 
-const FLOWS = [".maestro/smoke.yaml", ".maestro/offline-game.yaml"];
+const FLOWS = [
+  ".maestro/smoke.yaml",
+  ".maestro/offline-game.yaml",
+  ".maestro/exchange-phase.yaml",
+  ".maestro/rematch-prompt.yaml",
+];
 
 /**
  * The names of the flow's top-level commands, which are the ones that run

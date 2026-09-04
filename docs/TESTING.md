@@ -10,7 +10,7 @@ blocker documented below rather than glossed over.
 | Integration | `npm test` | folded into the above | `DATABASE_URL` |
 | Native renderer | `npm run test:native` | every `tests/native/` suite, once per platform (ios, android) | nothing |
 | Web e2e | `npm run test:e2e` | Playwright, chromium — gameplay, reconnect, a tap-target sweep of every screen at three sizes, and a check that no part of the table renders off the side of one | Docker + a built web bundle |
-| Android UI (Maestro) | `maestro test .maestro/*.yaml` | 2 flows | Android SDK + emulator + Maestro, see §5 |
+| Android UI (Maestro) | `maestro test .maestro/*.yaml` | 4 flows | Android SDK + emulator + Maestro, see §5 |
 
 `npm run verify` runs typecheck, unit/integration, the native suite and lint.
 The web e2e suite is deliberately excluded — it builds the Expo web bundle and
@@ -306,6 +306,8 @@ export PATH="$ANDROID_HOME/platform-tools:$PATH:$HOME/.maestro/bin"
 cd murlan
 maestro test .maestro/smoke.yaml
 maestro test .maestro/offline-game.yaml
+maestro test .maestro/exchange-phase.yaml
+maestro test .maestro/rematch-prompt.yaml
 ```
 
 `npx expo start` must already be running, and the device needs a route to it:
@@ -336,7 +338,8 @@ default passes, and the same flow against a wrong port fails.
 ### What CI runs, and what it does not
 
 `.github/workflows/maestro.yml` compiles a **release APK** and drives that, and
-runs both `smoke.yaml` and `offline-game.yaml`. It is **on demand only** —
+runs `smoke.yaml`, `offline-game.yaml`, `exchange-phase.yaml` and
+`rematch-prompt.yaml`. It is **on demand only** —
 `on: workflow_dispatch:`, no `push` trigger. It was taken off `main` for #186's
 boot flake, and #354 owns bringing a trigger back, wanting `pull_request`
 rather than `push`.

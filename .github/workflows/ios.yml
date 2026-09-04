@@ -197,7 +197,8 @@ jobs:
           # it holds.
           run_flows() {
             maestro --device "$SIMULATOR_UDID" test -e MAESTRO_APP_ID="$APP_ID" \
-              .maestro/smoke.yaml .maestro/offline-game.yaml 2>&1 | tee "$RUNNER_TEMP/maestro-$1.log"
+              .maestro/smoke.yaml .maestro/offline-game.yaml .maestro/exchange-phase.yaml \
+              .maestro/rematch-prompt.yaml 2>&1 | tee "$RUNNER_TEMP/maestro-$1.log"
             return "${PIPESTATUS[0]}"
           }
           if run_flows first; then exit 0; fi
