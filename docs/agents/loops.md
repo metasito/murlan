@@ -358,7 +358,7 @@ is free instead (`scripts/e2ePort.mjs`), which is a smaller thing to get right t
 The reason this matters more than one lost run: a webServer pulled out from under Playwright
 surfaces as a connection error or a 0ms failure, which reads exactly like a defect. A sweep that
 takes a live port *manufactures a test result* in another process, and anything trusting a
-suite's verdict — a review agent, the `/loop` gate — then acts on it. Same shape as
+suite's verdict — a review agent, the `/queue` gate — then acts on it. Same shape as
 the starvation table below, one layer up.
 
 And it can manufacture a **green** as easily as a red: land part-way through a suite and the

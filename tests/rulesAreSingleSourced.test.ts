@@ -8,7 +8,7 @@ const RULES = "docs/agents/RULES.md";
 // Files that instruct an agent. Each may point at a rule; none may restate one.
 const INSTRUCTION_FILES = [
   "CLAUDE.md",
-  ".claude/commands/loop.md",
+  ".claude/commands/queue.md",
   ".claude/commands/triage.md",
   ".claude/commands/wayfinder.md",
   "docs/agents/issue-tracker.md",

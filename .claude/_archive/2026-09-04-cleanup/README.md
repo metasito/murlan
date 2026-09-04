@@ -6,22 +6,22 @@ Nothing here is live. Paths mirror where each file used to sit. The inner `.clau
 
 Before this cleanup, **five** things claimed to be the loop protocol at once: the Node
 pipeline, a `PostCompact` hook, two prose protocols under `docs/agents/`, and an AFK prompt
-in `.scratch/`. Whichever one an agent read first won. `/loop` is now the only one.
+in `.scratch/`. Whichever one an agent read first won. `/queue` is now the only one.
 
 ## The pipeline
 
 | Path | What it was | Why retired |
 |---|---|---|
-| `scripts/ticket-pipeline.ts` | The queue runner: claim → worktree → implement(sonnet) → review(opus) → PR → second opinion → ci.yml → fix → merge → teardown. Node owned control flow; a model ran at three points. | Owner's call — it repeatedly failed in practice and was no longer trusted. Replaced by `/loop`. |
+| `scripts/ticket-pipeline.ts` | The queue runner: claim → worktree → implement(sonnet) → review(opus) → PR → second opinion → ci.yml → fix → merge → teardown. Node owned control flow; a model ran at three points. | Owner's call — it repeatedly failed in practice and was no longer trusted. Replaced by `/queue`. |
 | `lib/ticketPipeline/` | Its eight modules. `ciVerdict.ts` and `land.ts` were **not** retired — see below. | Followed the runner. |
 | `tests/ticketPipeline*.test.ts`, `tests/claimTicket.test.ts` | Their tests. | Followed the modules. |
-| `claude/commands/ticket.md` | `/ticket [loop]`, which ran `npm run ticket`. | Replaced by `/loop`. |
+| `claude/commands/ticket.md` | `/ticket [loop]`, which ran `npm run ticket`. | Replaced by `/queue`. |
 
 **Kept out of it, deliberately:** `lib/loop/ciVerdict.ts` and `lib/loop/land.ts` (with
 `tests/ciVerdict.test.ts` and `tests/landPr.test.ts`) were moved to `lib/loop/`, not archived.
 They are the two steps prose cannot do reliably: reading a CI verdict from run data rather
 than a command's exit status — piped, that status belongs to the pipe, which is how a red
-branch once reached `main` — and deciding whether a green PR is landable or `BEHIND`. `/loop`
+branch once reached `main` — and deciding whether a green PR is landable or `BEHIND`. `/queue`
 phase E calls both. Also kept: `scripts/next-ticket.mjs` (the only picker; nothing in the
 mattpocock pack picks a ticket), `scripts/agent-check.mjs`, `scripts/preflight.mjs`,
 `scripts/prune-worktrees.mjs`, `scripts/reap.mjs`.
@@ -30,11 +30,11 @@ mattpocock pack picks a ticket), `scripts/agent-check.mjs`, `scripts/preflight.m
 
 | Path | What it was | Why retired |
 |---|---|---|
-| `docs/agents/SESSION-PROMPT.md` | Two parallel sessions in lanes (bugs / design), with a hand-rolled 13-step per-ticket contract and manual worktrees. 46 PRs in 24 hours. | Its per-ticket contract contradicted the pipeline that replaced it, and parallel sessions are what let four protocols disagree. Its lessons were folded into `/loop` and `docs/agents/RULES.md`. |
-| `docs/agents/GAUNTLET-PROMPT.md` | Shumer's gauntlet: builder against a blind critic, judged against a named fetchable bar, looping until the work wins. | A quality-raising loop, not a backlog-draining one; keeping both meant two protocols. Its ideas survive in `/loop` (below). `docs/design/FEEL-BAR.md` still holds the bars themselves. |
+| `docs/agents/SESSION-PROMPT.md` | Two parallel sessions in lanes (bugs / design), with a hand-rolled 13-step per-ticket contract and manual worktrees. 46 PRs in 24 hours. | Its per-ticket contract contradicted the pipeline that replaced it, and parallel sessions are what let four protocols disagree. Its lessons were folded into `/queue` and `docs/agents/RULES.md`. |
+| `docs/agents/GAUNTLET-PROMPT.md` | Shumer's gauntlet: builder against a blind critic, judged against a named fetchable bar, looping until the work wins. | A quality-raising loop, not a backlog-draining one; keeping both meant two protocols. Its ideas survive in `/queue` (below). `docs/design/FEEL-BAR.md` still holds the bars themselves. |
 | `scratch/loop-prompt.md`, `scratch/loop-watchdog.ps1`, `scratch/gate.mjs` | An earlier AFK loop, a PowerShell relauncher that killed the CLI on transcript staleness, and a standalone gate runner with per-step timeouts. | Superseded. `loop-prompt.md` also carried a standing "Actions minutes are exhausted — merge without CI" exception that has been false for weeks and read as current instruction. The watchdog killed processes by start time on a shared machine. |
 | `docs/HANDOFF.md` | Session bootstrap. | Orphaned, and wrong: it told you to run `npm run verify`, which `RULES.md` rule 2 forbids. |
-| `.claude/settings.local.json` → `PostCompact` hook | Injected a "STANDING SESSION CONTRACT" on every compaction: two parallel slots, never stop, pick by player impact. | Fired on every compaction and contradicted "one ticket at a time". Its two real rules survive in `/loop`. Replaced by a `SessionStart` hook that re-reads `STATE.md` from disk instead of asserting a contract from memory. |
+| `.claude/settings.local.json` → `PostCompact` hook | Injected a "STANDING SESSION CONTRACT" on every compaction: two parallel slots, never stop, pick by player impact. | Fired on every compaction and contradicted "one ticket at a time". Its two real rules survive in `/queue`. Replaced by a `SessionStart` hook that re-reads `STATE.md` from disk instead of asserting a contract from memory. |
 
 ## What survived, and where it went
 
@@ -58,7 +58,7 @@ mattpocock pack picks a ticket), `scripts/agent-check.mjs`, `scripts/preflight.m
 | Read body **and** comments in one command | `SESSION-PROMPT.md` | Phase A |
 | Watch the check fail first; root cause across every caller | `SESSION-PROMPT.md` | Phase C |
 | Never let a subagent run `npm run agent:check`; say "do not spawn any subagent" | `PostCompact` hook | Phases B and D |
-| Three-branch never-stall policy: repo-answerable / default exists / owner-only | `scratch/loop-prompt.md` | `/loop`, *Never stall* |
+| Three-branch never-stall policy: repo-answerable / default exists / owner-only | `scratch/loop-prompt.md` | `/queue`, *Never stall* |
 | Per-step timeout, and a timeout is a failure | `scratch/gate.mjs` | Noted as an open gap — `agent:check` has no timeout |
 
 **Dropped on purpose:** two parallel slots and lanes (they contradict one-ticket-at-a-time);

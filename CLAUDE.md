@@ -146,7 +146,7 @@ lines than code lines is explaining itself instead of being clear.
 
 ## LOOP PROTOCOL
 
-`/loop` is the only loop protocol in this repo. `.claude/_archive/` is retired: ignore it.
+`/queue` is the only loop protocol in this repo. `.claude/_archive/` is retired: ignore it.
 
 If `.claude/loop/STATE.md` exists and its status is `RUNNING`, you are inside an autonomous
 ticket loop. Before answering anything else: read `STATE.md` and `.claude/loop/LESSONS.md`, and
@@ -154,8 +154,9 @@ resume at the phase `STATE.md` names. Do not restart the ticket. Do not ask whet
 
 - One ticket at a time, in its own worktree. `STATE.md` is rewritten at every phase transition
   and is the only truth; nothing you remember counts.
-- An empty line under `STATE.md`'s **Evidence** means that phase did not finish. Phase E refuses
-  to push while one is blank — that is what makes skipping review or the gate impossible.
+- An empty line under `STATE.md`'s **Evidence** means that phase did not finish.
+  `node scripts/loop-gate.mjs` exits non-zero on one, and phase E runs it before every push —
+  so skipping the review or the gate is caught rather than merely discouraged.
 - Out-of-scope findings go to `.claude/loop/PARKED.md`, never into the diff.
 - Loop artefacts live in `.claude/loop/` only. Never write run logs, session notes or
   completed-task summaries into `docs/`.

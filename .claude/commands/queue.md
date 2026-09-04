@@ -57,6 +57,10 @@ condition fires.
 
 ## A — Take
 
+**Read `.claude/loop/LESSONS.md` first, every ticket.** It is the only thing standing
+between this run and repeating the last one's mistakes; written in phase F and never read is
+the same as not written.
+
 ```sh
 node scripts/next-ticket.mjs          # prints ROUTE, body, comments, blockers, takeability
 ```
@@ -114,7 +118,9 @@ and take the next.
 
 ## C — Build
 
-`mattpocock-skills:tdd`. A bug goes through `mattpocock-skills:diagnosing-bugs` first.
+`mattpocock-skills:tdd`. A bug goes through `mattpocock-skills:diagnosing-bugs` first. Those
+two, by those exact names — inside this loop they outrank any general instruction to reach for
+a superpowers process skill, which would otherwise answer the same trigger differently each ticket.
 
 - **Watch the check fail first, for the reason you claim.** A check you never saw red is decoration.
 - **Fix the root cause across every caller**, not the instance the ticket names.
@@ -147,8 +153,14 @@ Where you disagree with a finding, one line in the commit body — never a softe
 
 ## E — Land
 
-**If `dod`, `recon` or `verdict` is empty, stop and redo that phase.** This is the check that
-makes forgetting a phase impossible rather than merely discouraged.
+```sh
+node scripts/loop-gate.mjs
+```
+
+It reads `STATE.md` and exits non-zero naming any phase that left its evidence line blank, or
+a reviewer that held the diff. **A non-zero exit means redo that phase — never the ticket, and
+never push past it.** This is a check rather than a promise: your own account of what you did
+is exactly what cannot be trusted here.
 
 ```sh
 npm run agent:check
@@ -244,4 +256,4 @@ Between tickets, exactly one line:
 
 `✅ #<n> <title> — <files> files, <tests> tests, <verdict>`
 
-Prose goes in `HANDOFF.md`.
+Prose goes in `HANDOFF.md`. If you catch yourself narrating, invoke `caveman`.
