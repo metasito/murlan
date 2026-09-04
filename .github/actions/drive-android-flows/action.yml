@@ -136,4 +136,4 @@ runs:
           # started and one that failed to in three dispatches of eight.
           # `MAESTRO_APP_ID` is what tells the flows they are driving the app
           # itself: given one, they skip the Expo Go launch dance entirely.
-          maestro --device emulator-5554 test -e MAESTRO_APP_ID="$APP_ID" .maestro/exchange-phase.yaml .maestro/rematch-prompt.yaml .maestro/smoke.yaml .maestro/offline-game.yaml
+          maestro --device emulator-5554 test -e MAESTRO_APP_ID="$APP_ID" .maestro/smoke.yaml .maestro/offline-game.yaml .maestro/exchange-phase.yaml .maestro/rematch-prompt.yaml
