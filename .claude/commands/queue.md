@@ -196,8 +196,20 @@ That is the whole record of the review, and the sha is what makes it trustworthy
 a verdict only if it names the commit being pushed. Commit again after a review and it stops
 counting, so there is no way to land a diff nobody read, and nothing to remember.
 
-Fix everything real, commit, re-review once — the new head needs its own verdict. A second HOLD
-parks the ticket; both verdicts are already on the issue.
+Fix everything real, commit, re-review — every new head gets its own verdict. A review will
+always find *something*; that alone is not a reason to stop. Keep going while each round is
+fixing real, newly-raised findings, up to a hard cap of **4 review rounds**, regardless of
+ticket size.
+
+At the cap, do not park for this reason alone. If round 4 landed, you're done. If it's still a
+HOLD, read its findings yourself: fix anything that is an actual blocker (breaks behaviour,
+loses data, a security hole) — that fix doesn't spend another round. For what's left — style,
+a missing edge case in dev-only scaffolding, a nitpick — post your own
+`VERDICT: LAND <sha>` naming what you're accepting and why the cap makes that the right call,
+and continue to phase E on that head. A capped-out ticket still needs its DoD comment in phase F
+to say plainly what's known-unresolved; that's what keeps this honest instead of a rubber stamp.
+
+Park only for what parking was for: only the owner can decide it, or a protected path.
 
 Where you disagree with a finding, one line in the commit body — never a softened summary of it.
 
