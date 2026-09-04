@@ -48,14 +48,26 @@ export function decideVerdict(run: RunRow | undefined, jobs: JobRow[] = []): Ver
     return { pass: true, runId: run.databaseId, reason: "ci.yml passed" };
   }
 
+  // A job that actually failed outranks one that ran nothing, and the order matters: a run that
+  // fails fast cancels its siblings, and a cancelled job that never reached its first step is
+  // stepless. Asked the other way round, this reported `infrastructure` and named the cancelled
+  // job — hiding a real red `Secret scan` for two rounds, which is exactly the fix round the
+  // infrastructure verdict exists to prevent being wasted.
+  const realFailure = jobs.find((j) => j.conclusion === "failure" && j.steps > 0);
+
   // A skipped job reports zero steps too, and it means the opposite: its gate answered, rather
   // than the runner never starting. `android-build`/`ios-build` skip whenever no native input
   // changed, so counting them here would call every genuinely red run infrastructure and stop
-  // `driveToGreen` from ever sending a fix agent.
+  // `driveToGreen` from ever sending a fix agent. `cancelled` is the same: the run was stopped
+  // from outside, so the job says nothing about the runner either.
   const stepless = jobs.filter(
-    (j) => j.conclusion !== "success" && j.conclusion !== "skipped" && j.steps === 0,
+    (j) =>
+      j.conclusion !== "success" &&
+      j.conclusion !== "skipped" &&
+      j.conclusion !== "cancelled" &&
+      j.steps === 0,
   );
-  if (stepless.length > 0) {
+  if (!realFailure && stepless.length > 0) {
     return {
       pass: false,
       runId: run.databaseId,
@@ -65,7 +77,7 @@ export function decideVerdict(run: RunRow | undefined, jobs: JobRow[] = []): Ver
     };
   }
 
-  const failed = jobs.find((j) => j.conclusion === "failure");
+  const failed = realFailure ?? jobs.find((j) => j.conclusion === "failure");
   return {
     pass: false,
     runId: run.databaseId,

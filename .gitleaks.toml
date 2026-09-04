@@ -19,7 +19,14 @@ id = "generic-api-key"
 condition = "AND"
 # A fabricated example in a snippet demonstrating the wrong way to hold a key.
 regexes = ['''sk_live_abc123xyz''']
-paths = ['''\.claude/_archive/2026-09-04-cleanup/claude/agents/tier-2-power/security-specialist\.md''']
+# Both paths, because gitleaks scans the whole history and not the working tree:
+# archiving the file with `git mv` left every earlier commit still holding it at
+# the old path. Repointing this at the new one alone turned the scan red on 1595
+# commits it had always been green on.
+paths = [
+  '''\.claude/agents/tier-2-power/security-specialist\.md''',
+  '''\.claude/_archive/2026-09-04-cleanup/claude/agents/tier-2-power/security-specialist\.md''',
+]
 
 [[rules]]
 id = "aws-access-token"
