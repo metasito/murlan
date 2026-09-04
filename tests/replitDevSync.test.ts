@@ -145,6 +145,15 @@ describe("a sleeping workspace is not reported as a failing sync", () => {
     );
   });
 
+  test("a failed verdict fails the step, so the issue actually gets filed", () => {
+    const send = workflow.slice(workflow.indexOf("Send signed main push"));
+    assert.match(
+      send,
+      /\n\s*\[ "\$verdict" = ok \]\s*\n/,
+      "the step no longer fails on a bad verdict - a real sync failure would exit clean, file nothing, and the recovery step would close an already-open failure as recovered"
+    );
+  });
+
   test("only a real reply may close the failing-sync issue", () => {
     const close = workflow.slice(workflow.indexOf("Close the failing-sync issue"));
     const condition = close.match(/if: ([^\n]+)/)?.[1] ?? "";
