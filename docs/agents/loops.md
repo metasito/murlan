@@ -152,9 +152,9 @@ can be confused by the host. They are `workflow_dispatch` only — #354 owns the
 | | `ios.yml` | `maestro.yml` |
 | --- | --- | --- |
 | Builds | `xcodebuild`, active arch only | `./gradlew assembleRelease` |
-| Runs | smoke + offline-game | smoke + offline-game |
+| Runs | smoke + offline-game + exchange-phase + rematch-prompt | smoke + offline-game + exchange-phase + rematch-prompt |
 | Locale | `launchApp` arguments, no boot | `persist.sys.locale` + a real reboot |
-| Roughly | 23 min, measured | unmeasured; budgeted for 100 |
+| Roughly | 23 min pre-#55, +8.5 min measured for the two new flows (run 33899179508: exchange-phase 3m36s, rematch-prompt 4m55s) | unmeasured; budgeted for 100 |
 
 Neither can see what the other can. iOS is a simulator on the host, so it has no emulator boot
 to flake (#186) and no KVM; Android is a virtual device, so it is the only one that produces a
@@ -400,7 +400,7 @@ process that is still serving as a corpse.
 | Anything **visual** (colour, gradient, shadow, size) | the parity harness below | pixels vs the prototype | ~40s |
 | Tokens, contrast, roles | `node --test tests/contrast.test.ts tests/tokenRoles.test.ts tests/cosmetics.test.ts` | AA floors | ~1s |
 | The server, the socket protocol, auth or storage | `tests/integration/` — see below, it needs a database | the routes and handlers end to end | ~10s a file |
-| Anything the app must **boot and stay drivable through on iOS** | `.github/workflows/ios.yml`, dispatched by hand | a crash, a screen that never renders, a control the flows tap going missing — on a real simulator | 10–15 min over three runs on 2026-08-31, none of which finished the flow (#620); a full pass is longer, and the 75 min ceiling is sized for offline-game.yaml, which this job does not yet run |
+| Anything the app must **boot and stay drivable through on iOS** | `.github/workflows/ios.yml`, dispatched by hand | a crash, a screen that never renders, a control the flows tap going missing — on a real simulator | 10–15 min over three runs on 2026-08-31, none of which finished the flow (#620); a full pass of all four flows (run 33899179508) is longer, comfortably inside the job's 100 min ceiling |
 
 Full sweeps, for the end of an item only: `npx tsc --noEmit` (~5s) → `npm test` (~12s, 1066) →
 `npx jest` (~50s, 527) → `npx eslint components lib tests app` (~25s).
