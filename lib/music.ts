@@ -159,7 +159,10 @@ let nativeFade: ReturnType<typeof setInterval> | null = null;
 
 function nativePlayer(track: MusicTrack): AudioPlayer | null {
   const cached = nativePlayers[track];
-  if (cached) return cached;
+  if (cached) {
+    if (__DEV__) console.log(`[music-timing][${Platform.OS}] createAudioPlayer cached, 0ms @${Date.now()}`);
+    return cached;
+  }
   const t0 = __DEV__ ? Date.now() : 0;
   try {
     // Required here, not imported: web never needs it, and a module-level
@@ -167,7 +170,8 @@ function nativePlayer(track: MusicTrack): AudioPlayer | null {
     // file — including the ones that mock lib/sounds precisely to avoid it.
     // eslint-disable-next-line @typescript-eslint/no-require-imports -- see above
     const { createAudioPlayer } = require("expo-audio") as typeof import("expo-audio");
-    const player = createAudioPlayer(TRACKS[track]());
+    // 50ms rather than the 500ms default so dev-only onset logging isn't bucketed.
+    const player = createAudioPlayer(TRACKS[track](), __DEV__ ? { updateInterval: 50 } : undefined);
     player.loop = true;
     player.volume = 0;
     nativePlayers[track] = player;
@@ -197,26 +201,41 @@ function fadeNative(player: AudioPlayer, to: number, ms: number, onDone?: () => 
   }, step);
 }
 
-/** Dev-only: seekTo returns a Promise, so a bare call times only its dispatch, not its work. */
+/** Dev-only: seekTo() resolves once the seek lands, so this times the work itself, not its dispatch. */
 function logSeekDuration(player: AudioPlayer, tSeek: number): void {
-  void Promise.resolve(player.seekTo(0)).then(() => {
-    console.log(`[music-timing][${Platform.OS}] seekTo ${Date.now() - tSeek}ms @${Date.now()}`);
-  });
+  void Promise.resolve(player.seekTo(0))
+    .then(() => {
+      console.log(`[music-timing][${Platform.OS}] seekTo ${Date.now() - tSeek}ms @${Date.now()}`);
+    })
+    .catch(() => {});
 }
 
+/** Dev-only: the last subscription from logStatusSamples, so a toggle before it finishes cannot leak it onto a later play. */
+let onsetSub: { remove(): void } | null = null;
+const ONSET_SAMPLE_COUNT = 6;
+
 /**
- * Dev-only: play() itself returns immediately, so the only way to see when sound
- * actually starts is the first status update reporting real playback, not a
- * loop restart at time zero.
+ * Dev-only: `play()` returns before sound starts, and `currentTime` can still read
+ * the pre-seek position for a moment, so onset is read off a run of raw statuses —
+ * `isBuffering`/`timeControlStatus` — rather than a single derived instant.
  */
-function logAudibleOnset(player: AudioPlayer, tPlay: number): void {
+function logStatusSamples(player: AudioPlayer, tPlay: number): void {
   try {
+    onsetSub?.remove();
+    let n = 0;
     const sub = player.addListener("playbackStatusUpdate", (status) => {
-      if (status.playing && status.currentTime > 0) {
-        console.log(`[music-timing][${Platform.OS}] audible onset ${Date.now() - tPlay}ms @${Date.now()}`);
+      n++;
+      console.log(
+        `[music-timing][${Platform.OS}] status#${n} +${Date.now() - tPlay}ms playing=${status.playing} ` +
+          `currentTime=${status.currentTime.toFixed(2)} isBuffering=${status.isBuffering} ` +
+          `timeControlStatus=${status.timeControlStatus} @${Date.now()}`,
+      );
+      if (n >= ONSET_SAMPLE_COUNT) {
         sub.remove();
+        onsetSub = null;
       }
     });
+    onsetSub = sub;
   } catch {}
 }
 
@@ -243,7 +262,7 @@ function playNativeMusic(track: MusicTrack, opts: { rewind?: boolean } = {}): vo
       if (__DEV__) logSeekDuration(player, tSeek);
       else player.seekTo(0);
       const tPlay = __DEV__ ? Date.now() : 0;
-      if (__DEV__) logAudibleOnset(player, tPlay);
+      if (__DEV__) logStatusSamples(player, tPlay);
       player.play();
       if (__DEV__) console.log(`[music-timing][${Platform.OS}] player.play() call ${Date.now() - tPlay}ms @${Date.now()}`);
     } catch {}
@@ -293,6 +312,10 @@ export function stopMusic(): void {
     setTimeout(stopWebSources, FADE_S * 1000 + 50);
     webPlaying = null;
     return;
+  }
+  if (__DEV__) {
+    onsetSub?.remove();
+    onsetSub = null;
   }
   const player = nativePlaying ? nativePlayers[nativePlaying] : null;
   const stopping = nativePlaying;
@@ -361,6 +384,10 @@ export function unloadMusic(): void {
   if (duckTimer) {
     clearTimeout(duckTimer);
     duckTimer = null;
+  }
+  if (__DEV__) {
+    onsetSub?.remove();
+    onsetSub = null;
   }
   _wanted = null;
   _ducked = false;

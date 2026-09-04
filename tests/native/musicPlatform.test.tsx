@@ -18,6 +18,7 @@ jest.mock('expo-audio', () => ({
     pause: jest.fn(),
     seekTo: jest.fn(),
     remove: jest.fn(),
+    addListener: jest.fn(() => ({ remove: jest.fn() })),
     volume: 0,
     loop: false,
   })),
@@ -59,7 +60,7 @@ describe(`music on ${Platform.OS}`, () => {
   it('creates the player from the platform-resolved TRACKS import, not a copy', () => {
     const source = readFileSync(join(__dirname, '..', '..', 'lib', 'music.ts'), 'utf8');
     expect(source).toMatch(/import\s*\{\s*TRACKS\s*\}\s*from\s*["']@\/lib\/musicTracks["']/);
-    expect(source).toMatch(/createAudioPlayer\(\s*TRACKS\[track\]\(\)\s*\)/);
+    expect(source).toMatch(/createAudioPlayer\(\s*TRACKS\[track\]\(\)/);
   });
 
   it('creates one player when a track starts', async () => {
@@ -149,5 +150,24 @@ describe(`music on ${Platform.OS}`, () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(player.play).toHaveBeenCalled();
+  });
+
+  // Dev-only timing instrumentation (#824) subscribes to playbackStatusUpdate
+  // on every play; if the subscription is never removed it leaks across toggles.
+  it('registers and removes a playbackStatusUpdate subscription on each play', async () => {
+    await playMusic('menu');
+    const player = createAudioPlayer.mock.results[0].value as {
+      addListener: jest.Mock;
+    };
+    const remove = jest.fn();
+    player.addListener.mockReturnValueOnce({ remove });
+
+    setMusicMasterEnabled(false);
+    setMusicMasterEnabled(true);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(player.addListener).toHaveBeenCalledWith('playbackStatusUpdate', expect.any(Function));
+    stopMusic();
+    expect(remove).toHaveBeenCalled();
   });
 });
