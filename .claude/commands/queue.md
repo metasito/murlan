@@ -179,7 +179,11 @@ gh pr create --base main --head agent/<n>-<slug> --title "<title>" --body-file <
 The body says what changed, how you know, and which Definition-of-done boxes are closed and
 which are not. `Closes #<n>` goes in the **body**, never in a commit message — a commit
 closes the issue at push time, before CI has said anything. Multi-line `gh` bodies always go
-through `--body-file` written as UTF-8; an inline `--body` is word-split and mojibaked.
+through `--body-file`; an inline `--body` is word-split and mojibaked.
+
+Write that file with the Write tool or a bash heredoc. PowerShell's `Set-Content` defaults to
+cp1252 on this machine and mangles every em-dash in it — and the body you are writing is a
+paragraph of this repo's prose, which is full of them.
 
 Do not read CI by eye, and never from a command's exit status — `gh pr checks --watch` piped
 into anything reports the *pipe's* status, and that is how a red branch once reached main.
