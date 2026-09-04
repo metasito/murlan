@@ -7,7 +7,7 @@
  * trusted here. Phase E calls this before `git push`, so "don't forget the review" is a check
  * rather than a promise.
  *
- * Usage: node scripts/loop-gate.mjs [--state <path>]
+ * Usage: node scripts/loop-gate.mjs [--state <path>] [--base <ref>]
  *        exit 0 - every required field carries evidence
  *        exit 1 - names the blank ones; exit 2 - STATE.md is unreadable or not RUNNING
  */
@@ -132,7 +132,8 @@ function main(argv) {
     return 2;
   }
 
-  const protectedFiles = protectedHits();
+  const baseAt = argv.indexOf("--base");
+  const protectedFiles = protectedHits(baseAt === -1 ? undefined : argv[baseAt + 1]);
   if (protectedFiles.length) {
     const n = fields.ticket || "<n>";
     console.error(
