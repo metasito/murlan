@@ -1,0 +1,439 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Difficulty Ladder</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@600;700&family=Inter:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    /* Deliberately single-theme: this previews a felt-table game UI that is
+       dark-only by design (lib/theme.ts has no light palette), so a light
+       mode here would misrepresent the product rather than adapt to one. */
+    --canvas: #05140c;
+    --bg: #031008;
+    --bg-card: #0A1F18;
+    --bg-elevated: #142E24;
+    --felt: #0B3B25;
+    --gold: #C9A84C;
+    --gold-light: #E2C06A;
+    --gold-dark: #A8832B;
+    --gold-dim: #A07830;
+    --gold-ghost: rgba(201,168,76,0.06);
+    --gold-muted: rgba(201,168,76,0.15);
+    --gold-soft: rgba(201,168,76,0.2);
+    --gold-border: rgba(201,168,76,0.3);
+    --gold-strong: rgba(201,168,76,0.5);
+    --white: #FFFFFF;
+    --text: #F0EAD6;
+    --text-secondary: rgba(240,234,214,0.75);
+    --text-muted: rgba(240,234,214,0.58);
+    --border: rgba(240,234,214,0.1);
+    --border-strong: rgba(240,234,214,0.2);
+    --danger: #E53935;
+    --accent: #22C55E;
+    --info: #6b8ef5;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--canvas);
+    color: var(--text);
+    font-family: 'Inter', system-ui, sans-serif;
+    padding: 32px 20px 80px;
+  }
+  h1 {
+    font-family: 'Rajdhani', sans-serif;
+    font-weight: 700;
+    font-size: 26px;
+    color: var(--text);
+    margin: 0 0 4px;
+    text-wrap: balance;
+  }
+  .sub {
+    color: var(--text-muted);
+    font-size: 13px;
+    margin: 0 0 36px;
+    max-width: 640px;
+    line-height: 1.5;
+  }
+  .sub code { color: var(--gold-light); }
+  section {
+    max-width: 900px;
+    margin: 0 auto 56px;
+  }
+  h2 {
+    font-family: 'Rajdhani', sans-serif;
+    font-weight: 600;
+    font-size: 13px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--gold);
+    margin: 0 0 14px;
+    padding-left: 4px;
+  }
+  .note {
+    font-size: 13px;
+    color: var(--text-secondary);
+    line-height: 1.6;
+    max-width: 640px;
+    margin: 14px 0 0;
+  }
+  .note strong { color: var(--text); }
+  .row-frame {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+  }
+  .phone {
+    width: 340px;
+    background: var(--bg);
+    border-radius: 20px;
+    padding: 14px;
+    border: 1px solid var(--border);
+  }
+  .phone-label {
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 11px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin: 0 0 10px 4px;
+  }
+  .card {
+    background: var(--felt);
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    overflow: hidden;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.5);
+    padding: 16px;
+  }
+  .card-top-highlight {
+    height: 1px;
+    background: rgba(255,255,255,0.06);
+    margin: -16px -16px 14px;
+  }
+
+  /* --- BEFORE: current tap-to-cycle row --- */
+  .player-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 6px 0;
+  }
+  .avatar {
+    width: 40px; height: 40px; border-radius: 999px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    background: linear-gradient(135deg, var(--bg-elevated), #0E2920);
+    color: var(--text-secondary);
+    font-size: 16px;
+  }
+  .player-info { flex: 1; min-width: 0; }
+  .player-name {
+    font-family: 'Rajdhani', sans-serif;
+    font-weight: 600;
+    font-size: 15px;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .cycle-btn {
+    display: flex; align-items: center; gap: 4px;
+    background: var(--bg-elevated);
+    padding: 6px 10px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    color: var(--gold);
+    font-family: 'Rajdhani', sans-serif;
+    font-weight: 600;
+    font-size: 13px;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .cycle-btn .chev { font-size: 10px; color: var(--gold); }
+
+  .flag {
+    display: inline-block;
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    padding: 2px 8px;
+    border-radius: 999px;
+    margin-left: 8px;
+  }
+  .flag.bad { background: rgba(229,57,53,0.15); color: #ff8f8b; border: 1px solid rgba(229,57,53,0.4); }
+  .flag.good { background: rgba(34,197,94,0.15); color: #7bdb9d; border: 1px solid rgba(34,197,94,0.4); }
+
+  /* --- AFTER: the ladder control --- */
+  .player-row-v2 { display: flex; flex-direction: column; gap: 10px; padding: 8px 0; }
+  .player-row-v2 .top-line { display: flex; align-items: center; gap: 12px; }
+
+  .ladder {
+    display: flex;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    overflow: hidden;
+    background: var(--bg-elevated);
+  }
+  .ladder-seg {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    padding: 9px 4px;
+    min-height: 44px;
+    position: relative;
+    font-family: 'Rajdhani', sans-serif;
+    font-weight: 600;
+    font-size: 12px;
+    color: var(--text-secondary);
+    border-right: 1px solid var(--border);
+  }
+  .ladder-seg:last-child { border-right: none; }
+  .ladder-seg .bars { display: flex; gap: 2px; align-items: flex-end; height: 10px; }
+  .ladder-seg .bar { width: 3px; background: var(--text-muted); border-radius: 1px; }
+  .ladder-seg[data-tier="easy"] .bar:nth-child(1) { height: 4px; }
+  .ladder-seg[data-tier="easy"] .bar:nth-child(2) { height: 4px; opacity: 0.25; }
+  .ladder-seg[data-tier="easy"] .bar:nth-child(3) { height: 4px; opacity: 0.25; }
+  .ladder-seg[data-tier="normal"] .bar:nth-child(1) { height: 5px; }
+  .ladder-seg[data-tier="normal"] .bar:nth-child(2) { height: 7px; }
+  .ladder-seg[data-tier="normal"] .bar:nth-child(3) { height: 7px; opacity: 0.25; }
+  .ladder-seg[data-tier="hard"] .bar:nth-child(1) { height: 5px; }
+  .ladder-seg[data-tier="hard"] .bar:nth-child(2) { height: 7px; }
+  .ladder-seg[data-tier="hard"] .bar:nth-child(3) { height: 10px; }
+
+  .ladder-seg.selected {
+    background: var(--gold);
+    color: var(--bg);
+  }
+  .ladder-seg.selected .bar { background: var(--bg); opacity: 1 !important; }
+  .ladder-seg.selected::after {
+    content: "";
+    position: absolute;
+    top: 0; left: 0; right: 0; height: 2px;
+    background: var(--gold-light);
+  }
+  .ladder-seg:not(.selected) .bar { background: var(--text-muted); }
+
+  .caption { font-size: 11px; color: var(--text-muted); margin-top: 8px; text-align: center; }
+
+  .variants { display: flex; gap: 20px; flex-wrap: wrap; }
+  .variant-label {
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 11px; letter-spacing: 1px; text-transform: uppercase;
+    color: var(--text-muted); margin: 0 0 8px 4px;
+  }
+
+  .legend {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 14px;
+    margin-top: 20px;
+  }
+  .legend-item {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 12px 14px;
+    font-size: 12.5px;
+    color: var(--text-secondary);
+    line-height: 1.5;
+  }
+  .legend-item b { color: var(--gold-light); display: block; margin-bottom: 4px; font-family: 'Rajdhani', sans-serif; }
+</style>
+</head>
+<body>
+
+<h1>#904 — offline difficulty picker</h1>
+<p class="sub">
+  Mockup only — hand-authored HTML against this app's real tokens (<code>lib/tokens.ts</code>,
+  <code>lib/theme.ts</code>), not shipped code. Fonts here are Google-hosted Rajdhani/Inter as a
+  stand-in for the bundled static faces the app actually ships. For the owner to look at and
+  redirect before <code>app/lobby.tsx</code> / <code>app/(online)/room.tsx</code> are touched.
+</p>
+
+<section>
+  <h2>Before — today's control</h2>
+  <div class="row-frame">
+    <div class="phone">
+      <div class="phone-label">app/lobby.tsx · PlayerRow</div>
+      <div class="card">
+        <div class="card-top-highlight"></div>
+        <div class="player-row">
+          <div class="avatar">&#129302;</div>
+          <div class="player-info">
+            <div class="player-name">Drita</div>
+          </div>
+          <div class="cycle-btn">
+            <span>Sly and unpredictable</span>
+            <span class="chev">&#9662;</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="note">
+    A tap-to-cycle chevron over a flavour blurb <span class="flag bad">no difficulty shown</span> —
+    nothing here says whether this opponent is easy or hard, and the only feedback on tap is the
+    text changing underneath your thumb. This is the control #904 replaces.
+  </p>
+</section>
+
+<section>
+  <h2>After — the ladder, three states</h2>
+  <div class="variants">
+    <div>
+      <div class="variant-label">Easy selected</div>
+      <div class="phone">
+        <div class="card">
+          <div class="card-top-highlight"></div>
+          <div class="player-row-v2">
+            <div class="top-line">
+              <div class="avatar">&#129302;</div>
+              <div class="player-info"><div class="player-name">Luan</div></div>
+            </div>
+            <div class="ladder">
+              <div class="ladder-seg selected" data-tier="easy">
+                <div class="bars"><div class="bar"></div><div class="bar"></div><div class="bar"></div></div>
+                Easy
+              </div>
+              <div class="ladder-seg" data-tier="normal">
+                <div class="bars"><div class="bar"></div><div class="bar"></div><div class="bar"></div></div>
+                Normal
+              </div>
+              <div class="ladder-seg" data-tier="hard">
+                <div class="bars"><div class="bar"></div><div class="bar"></div><div class="bar"></div></div>
+                Hard
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="variant-label">Normal selected (default)</div>
+      <div class="phone">
+        <div class="card">
+          <div class="card-top-highlight"></div>
+          <div class="player-row-v2">
+            <div class="top-line">
+              <div class="avatar">&#129302;</div>
+              <div class="player-info"><div class="player-name">Besnik</div></div>
+            </div>
+            <div class="ladder">
+              <div class="ladder-seg" data-tier="easy">
+                <div class="bars"><div class="bar"></div><div class="bar"></div><div class="bar"></div></div>
+                Easy
+              </div>
+              <div class="ladder-seg selected" data-tier="normal">
+                <div class="bars"><div class="bar"></div><div class="bar"></div><div class="bar"></div></div>
+                Normal
+              </div>
+              <div class="ladder-seg" data-tier="hard">
+                <div class="bars"><div class="bar"></div><div class="bar"></div><div class="bar"></div></div>
+                Hard
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="variant-label">Hard selected</div>
+      <div class="phone">
+        <div class="card">
+          <div class="card-top-highlight"></div>
+          <div class="player-row-v2">
+            <div class="top-line">
+              <div class="avatar">&#129302;</div>
+              <div class="player-info"><div class="player-name">Gent</div></div>
+            </div>
+            <div class="ladder">
+              <div class="ladder-seg" data-tier="easy">
+                <div class="bars"><div class="bar"></div><div class="bar"></div><div class="bar"></div></div>
+                Easy
+              </div>
+              <div class="ladder-seg" data-tier="normal">
+                <div class="bars"><div class="bar"></div><div class="bar"></div><div class="bar"></div></div>
+                Normal
+              </div>
+              <div class="ladder-seg selected" data-tier="hard">
+                <div class="bars"><div class="bar"></div><div class="bar"></div><div class="bar"></div></div>
+                Hard
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <p class="note">
+    <strong>Full-width segmented control below the name</strong>, not squeezed into the same line
+    as the avatar — the row grows one line taller only when the seat is AI. All three options are
+    visible and directly tappable (no cycling), each meeting the 44pt touch floor
+    (<code>TOUCH_TARGET_MIN</code>). Segments are separated by <code>Colors.border</code>
+    hairlines and sit on <code>Colors.bgElevated</code>, matching the existing pill's surface.
+  </p>
+</section>
+
+<section>
+  <h2>How this reads as a ladder, not a switch</h2>
+  <p class="note">
+    Selection state is never colour alone <span class="flag good">shape + fill + label</span>:
+    a rising three-bar glyph (like a signal-strength icon) climbs left to right, filled solid on
+    the selected segment and dimmed on the others, alongside the gold fill (<code>Colors.gold</code>)
+    and a 2px <code>Colors.goldLight</code> top edge that only the selected segment carries. A
+    colour-blind reader still sees which bar-height is "on," and a sighted reader gets the ladder
+    metaphor for free from the glyph shape.
+  </p>
+  <div class="legend">
+    <div class="legend-item">
+      <b>Container</b>
+      Border <code>Colors.border</code>, radius <code>Radius.md</code> (12), background
+      <code>Colors.bgElevated</code> — same materials as the pill it replaces.
+    </div>
+    <div class="legend-item">
+      <b>Selected segment</b>
+      Fill <code>Colors.gold</code>, text/glyph <code>Colors.bg</code> (dark-on-gold, the same
+      contrast pairing as <code>MenuButton</code>'s primary variant), top edge
+      <code>Colors.goldLight</code>.
+    </div>
+    <div class="legend-item">
+      <b>Unselected segment</b>
+      Text <code>Colors.textSecondary</code>, glyph bars <code>Colors.textMuted</code> — dim, not
+      hidden, so all three labels stay legible before a choice is made.
+    </div>
+    <div class="legend-item">
+      <b>Accessibility</b>
+      Container is a radiogroup; each segment a radio with
+      <code>accessibilityState={{ selected }}</code> and a full-word
+      <code>accessibilityLabel</code> ("Easy", "Normal", "Hard" — localized) — never abbreviated
+      for the screen reader even though the on-screen glyph is compact.
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Open question for the owner</h2>
+  <p class="note">
+    <code>app/(online)/room.tsx</code>'s <code>BotFillControls</code> is a separate implementation
+    (a row of name-only pills, not shared code with <code>PlayerRow</code>). The ticket's AC only
+    asks it to "use the same three and the same labels," not necessarily this exact segmented
+    shape — its row is laid out differently (filling an open seat, not configuring an existing
+    one). Plan: reuse this same ladder control there unless told otherwise, since one picker
+    reads as intentional and two different shapes for the same choice would not.
+  </p>
+</section>
+
+</body>
+</html>
