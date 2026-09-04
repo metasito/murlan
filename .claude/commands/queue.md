@@ -247,6 +247,10 @@ auto-compaction does fire, the `SessionStart` hook re-reads `STATE.md` and `LESS
 disk. Nothing depends on what survived the summary — read the files and resume at the phase
 they name.
 
+When compacting, preserve: `STATE.md` verbatim, the current ticket and phase, the worktree
+path, and any failing test output. The first three are on disk and recoverable; the failing
+output is the one thing that is not.
+
 ## Halt
 
 Budget spent · queue empty · route `handoff` · preflight red · three failed CI rounds on the

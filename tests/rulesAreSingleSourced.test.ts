@@ -66,6 +66,32 @@ describe("every agent rule is written down exactly once", () => {
     });
   }
 
+  // CLAUDE.md is loaded every session; queue.md only when the loop runs. That asymmetry is
+  // exactly why the loop's procedure kept getting summarised into CLAUDE.md "so it is always
+  // there" — and a summary is a second copy that drifts, with the always-loaded one winning.
+  // CLAUDE.md may point at the protocol and name the paths an agent must not touch on its own.
+  // The steps belong to queue.md alone.
+  for (const [name, pattern] of [
+    ["the Evidence rule", /under .{0,20}Evidence|loop-gate\.mjs/i],
+    ["where parked findings go", /PARKED\.md/i],
+    ["where loop artefacts live", /LESSONS\.md|DONE\.md/i],
+    ["one ticket at a time", /one ticket at a time/i],
+    ["what to preserve when compacting", /when compacting, preserve/i],
+  ] as [string, RegExp][]) {
+    test(`"${name}" is procedure, so it lives in the command file only`, () => {
+      assert.equal(
+        pattern.test(read("CLAUDE.md")),
+        false,
+        `CLAUDE.md restates "${name}". It belongs in .claude/commands/queue.md; CLAUDE.md ` +
+          `points at that file and stops there.`
+      );
+      assert.ok(
+        pattern.test(read(".claude/commands/queue.md")),
+        `neither file states "${name}" any more — it was deleted rather than moved`
+      );
+    });
+  }
+
   // The floor: with a rule genuinely duplicated, the check above must fail. A pattern that no
   // longer matches its own rule would pass every assertion while enforcing nothing.
   test("each pattern still matches the rule it guards, inside the ruleset", () => {

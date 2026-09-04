@@ -146,23 +146,13 @@ lines than code lines is explaining itself instead of being clear.
 
 ## LOOP PROTOCOL
 
-`/queue` is the only loop protocol in this repo. `.claude/_archive/` is retired: ignore it.
+`.claude/commands/queue.md` is the only loop protocol in this repo, and the only place its
+procedure is written down. Nothing here restates it (`tests/rulesAreSingleSourced.test.ts`).
 
-If `.claude/loop/STATE.md` exists and its status is `RUNNING`, you are inside an autonomous
-ticket loop. Before answering anything else: read `STATE.md` and `.claude/loop/LESSONS.md`, and
-resume at the phase `STATE.md` names. Do not restart the ticket. Do not ask whether to continue.
+If `.claude/loop/STATE.md` says `status: RUNNING`, a run is live. Before answering anything
+else, read that file and `.claude/commands/queue.md`, and resume at the phase it names. Do not
+restart the ticket, and do not ask whether to continue.
 
-- One ticket at a time, in its own worktree. `STATE.md` is rewritten at every phase transition
-  and is the only truth; nothing you remember counts.
-- An empty line under `STATE.md`'s **Evidence** means that phase did not finish.
-  `node scripts/loop-gate.mjs` exits non-zero on one, and phase E runs it before every push —
-  so skipping the review or the gate is caught rather than merely discouraged.
-- Out-of-scope findings go to `.claude/loop/PARKED.md`, never into the diff.
-- Loop artefacts live in `.claude/loop/` only. Never write run logs, session notes or
-  completed-task summaries into `docs/`.
-- Never autonomously change `shared/schema.ts`, `server/socket.ts`, `shared/events.ts`,
-  `.github/workflows/`, `.replit`, `drizzle.config.ts`, or anything under `server/` that touches
-  auth or the session table. Park it for the owner.
-
-When compacting, preserve: `STATE.md` verbatim, the current ticket and phase, the worktree path,
-and any failing test output.
+Never autonomously change `shared/schema.ts`, `server/socket.ts`, `shared/events.ts`,
+`.github/workflows/`, `.replit`, `drizzle.config.ts`, or anything under `server/` that touches
+auth or the session table. Park it for the owner.
