@@ -1,8 +1,8 @@
 ##
 # Exchange-phase flow: plays the first hand of a real offline "Partita"
 # (match format, not "Manche secca") far enough to reach the result screen,
-# advances to the second manche, and confirms the exchange the ticket is
-# about actually ran through the real engine — see #55 and docs/RULES.md.
+# advances to the second manche, and drives the exchange the engine runs on
+# that deal — see #55 and docs/RULES.md §10.
 #
 # Maestro has no import mechanism, so the launch/tutorial/lobby boilerplate
 # below is duplicated from offline-game.yaml on purpose, the way smoke.yaml
@@ -16,30 +16,20 @@
 # called by both `startNextHand` and `startNewMatch`) builds `exchangePhase`
 # synchronously with the deal, before the table remounts.
 #
-# Per docs/RULES.md §10 an exchange is announced after every hand — either the
-# card swap, or, on the one deal where the loser holds both Jokers
-# (`bothJokersException`, lib/gameEngine.ts), an explicit no-swap notice — so
-# the check below needs no condition on which cards were dealt. What it does
-# need is the right element: `exchange-prompt` (`<ExchangePrompt>`) is only
-# mounted for the pre-resolution `AI_EXCHANGE_DELAY` window (600ms, app/game.tsx)
-# while the AI winner's giveback is still pending — too short for this
-# screen's own hierarchy-read latency to reliably catch.
-# `<ExchangeAnnouncement>` (components/ExchangeAnnouncement.tsx) takes over
-# once the giveback resolves and stays mounted for `exchangeAnnounceMs()`
-# (lib/exchangeCeremony.ts) — 4000ms on the two-Joker notice, ~5180ms
-# otherwise — long enough to observe, in either branch. Checked by
-# `exchange-announce-active` rather than the component's own outer
-# `exchange-announce`: that element is `width: 0, height: 0` by design (every
-# child positions itself from that anchor point), which a driver reading
-# element bounds can read as never visible regardless of how long it waits —
-# `exchange-announce-active` is a small marker added alongside it for exactly
-# this reason, present for the same lifetime in both branches. This assumes
-# the AI is the exchange winner, which the human's pass-only play here makes
-# it: a human giveback would need a tap on `exchange-prompt` this flow does
-# not make.
+# The ceremony's own overlay is deliberately not asserted, and cannot be from
+# here. `<ExchangeAnnouncement>` lives for `AI_EXCHANGE_DELAY` plus
+# `exchangeAnnounceMs()` — under six seconds — and the `btn-prossima-manche`
+# tap below does not return for eight (measured on the iOS runner, run
+# 33906243513), so the whole ceremony begins and ends inside that one command
+# and no wait placed after it can observe it. Nor can a marker be hidden and
+# found at once: the same hierarchy dump carries 44 elements and nothing
+# smaller than 6x6, so anything small enough to be invisible is too small to
+# be matched. The exchange is driven here as a code path — it runs on the deal
+# below, and a throw or a hang in it fails the assertions that follow — while
+# what it decides is asserted by the unit tests, which can see it.
 #
-# This flow does not play the second hand out: reaching `btn-passa` again
-# is what proves the match moved on rather than ending, and that is the
+# This flow does not play the second hand out: a dealt hand with `btn-passa`
+# live is what proves the match moved on rather than ending, and that is the
 # whole claim. Costing this flow only one hand plus one "Prossima manche"
 # tap over offline-game.yaml's own budget is deliberate — #823 is open on
 # wall-clock already too slow to gate a PR.
@@ -137,22 +127,16 @@ env:
     id: "btn-prossima-manche"
     waitToSettleTimeoutMs: 500
 
-# --- Hand 2: the exchange this flow exists to reach ---
+# --- Hand 2: the deal the exchange runs on ---
 - extendedWaitUntil:
     visible:
       id: "game-table"
     timeout: 90000
-- extendedWaitUntil:
-    visible:
-      id: "exchange-announce-active"
-    timeout: 10000
-- extendedWaitUntil:
-    notVisible:
-      id: "exchange-announce-active"
-    timeout: 8000
 
-# --- Confirm the match actually moved on: a fresh, playable second hand ---
+# --- Confirm the match moved on rather than ending: a fresh, playable hand ---
 - extendedWaitUntil:
     visible:
       id: "btn-passa"
     timeout: 60000
+- assertVisible:
+    id: "hand-row"
