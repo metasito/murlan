@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/scripts/guard-bash.mjs\""
+            "command": "node scripts/guard-bash.mjs"
           }
         ]
       },
@@ -15,7 +15,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/scripts/hint-test-traps.mjs\""
+            "command": "node scripts/hint-test-traps.mjs"
           }
         ]
       }
