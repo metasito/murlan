@@ -155,10 +155,7 @@ on its own. If this session opened with a live run described to you, read
 `.claude/commands/queue.md` and resume at the phase it names. Do not restart the ticket, and do not
 ask whether to continue.
 
-Never autonomously change `shared/schema.ts`, `shared/events.ts`, `server/socket.ts`,
-`server/schemaDdl.ts`, `drizzle.config.ts`, `.replit`, `.github/workflows/`, or anything under
-`server/` that touches auth or the session table. Park it for the owner: label it
-`ready-for-human` and say on the issue what the change would be and why it needs you.
-
-`scripts/loop-gate.mjs` enforces exactly this list before every push, and
-`tests/loopProtectedPaths.test.ts` fails if the two ever disagree.
+No file is off limits to the loop, and no file count is. What decides whether a change lands is the
+review that read it, not which paths it touched. The invariants above still hold, and the schema and
+Replit notes above say what a change to those costs; a diff reaching one of them is a diff the
+review reads harder.

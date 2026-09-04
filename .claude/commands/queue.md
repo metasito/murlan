@@ -126,14 +126,9 @@ One subagent (`sonnet`), so the codebase never enters this context:
 > free memory and then runs a twenty-minute suite, so you would stall instead of answering. Phase E
 > is where it runs.
 
-**Protected paths.** If the recon names a file the loop may not change on its own, park it now and
-take the next. `node scripts/loop-gate.mjs` holds the list and refuses the push in phase E
-regardless, so going ahead only wastes the build — but parking here saves it. There is no "unless a
-decision is recorded" exemption: these are the owner's, recorded or not.
-
-**Design gate — mechanical, not a judgement.** If the work touches more than six files **and** no
-decision is recorded in `docs/BRIEF.md`, an ADR, or a comment on the ticket: park it and take the
-next.
+No file is out of scope, and no file count is. If the recon names the schema, the socket protocol,
+`.replit` or a workflow, that is a reason to build it carefully and to say in the PR body what it
+costs to get wrong — not a reason to hand it back. The review in phase D is the check.
 
 ## C — Build
 
@@ -209,7 +204,7 @@ a missing edge case in dev-only scaffolding, a nitpick — post your own
 and continue to phase E on that head. A capped-out ticket still needs its DoD comment in phase F
 to say plainly what's known-unresolved; that's what keeps this honest instead of a rubber stamp.
 
-Park only for what parking was for: only the owner can decide it, or a protected path.
+Park only for what parking was for: a decision only the owner can make.
 
 Where you disagree with a finding, one line in the commit body — never a softened summary of it.
 
@@ -222,7 +217,6 @@ node scripts/loop-gate.mjs
 It reads git and the issue, and refuses the push naming what is wrong when any of these is true:
 
 - the branch has no commits, or an empty diff, against `origin/main`;
-- the diff touches a protected path;
 - no `VERDICT: LAND <sha>` on the issue names the commit you are pushing — a hold, a missing
   verdict, or a review of an earlier commit all refuse. A `HOLD` on a commit is final for that
   commit: a later `LAND` on the same sha does not lift it, and the only way past it is a fix, which

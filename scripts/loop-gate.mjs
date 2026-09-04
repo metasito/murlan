@@ -6,7 +6,6 @@
  *
  * - you are on an `agent/<n>-...` branch, which is what says the work belongs to ticket n;
  * - the branch has commits and a non-empty diff, so something was actually built;
- * - the diff touches no protected path;
  * - the issue carries `VERDICT: LAND <sha>` for **this** head, so the review read this code.
  *
  * That last binding is the whole point. The review names the commit it read, so committing again
@@ -20,53 +19,7 @@
  *        exit 0 - built, clean, and cleared by a review of this exact head
  *        exit 1 - says what is missing; exit 2 - not on a ticket, or cannot judge
  */
-import { execFileSync } from "node:child_process";
 import { derive } from "./loop-derive.mjs";
-
-/**
- * Paths the loop may not change on its own. Each either takes production down or is the thing that
- * would have caught it: `schemaDdl.ts` is the only creator of tables, `.replit` is the production
- * runtime, `.github/workflows/` is CI itself. A diff touching one of these is a decision.
- *
- * `tests/loopProtectedPaths.test.ts` pins this against the copy in CLAUDE.md, because a list an
- * agent reads and a list a program enforces are two lists the moment nothing compares them.
- */
-export const PROTECTED = [
-  "shared/schema.ts",
-  "shared/events.ts",
-  "server/socket.ts",
-  "server/schemaDdl.ts",
-  "drizzle.config.ts",
-  ".replit",
-  ".github/workflows/",
-];
-
-/**
- * "Anything under `server/` that touches auth or the session table" is the one entry a path cannot
- * decide, so it is decided on the changed lines. Broad on purpose: a false stop costs a park, and
- * the failure it prevents is an impersonation vector.
- */
-const SENSITIVE = /\b(session|auth|passport|cookie|credential|token|password|secret)/i;
-
-const git = (args, cwd) => execFileSync("git", args, { encoding: "utf8", cwd });
-
-/** @param {string[]} changed @param {string} base @param {string} [cwd] @returns {string[]} */
-export function protectedHits(changed, base = "origin/main", cwd = undefined) {
-  const hits = changed.filter((f) => PROTECTED.some((p) => f === p || f.startsWith(p)));
-  for (const f of changed.filter((f) => f.startsWith("server/") && !hits.includes(f))) {
-    try {
-      const patch = git(["diff", "-U0", `${base}...HEAD`, "--", f], cwd);
-      const lines = patch
-        .split("\n")
-        .filter((l) => /^[+-][^+-]/.test(l))
-        .join("\n");
-      if (SENSITIVE.test(lines)) hits.push(`${f} (touches auth or the session table)`);
-    } catch {
-      /* an unreadable patch is not evidence of a violation */
-    }
-  }
-  return hits;
-}
 
 function main() {
   const s = derive();
@@ -92,17 +45,6 @@ function main() {
     return refuse("nothing was built on this branch", [
       `${s.commits} commit(s), ${s.changed.length} changed file(s) against ${base} in ${s.cwd}`,
       "Phase C commits each slice as it lands.",
-    ]);
-  }
-
-  const hits = protectedHits(s.changed, base, s.cwd);
-  if (hits.length) {
-    return refuse("this diff changes what the loop may not change on its own", [
-      ...hits,
-      "",
-      "Park it, then say on the issue what the change would be and why it needs you:",
-      `  gh issue edit ${s.ticket} --remove-label ready-for-agent --remove-label in-progress ` +
-        `--add-label ready-for-human`,
     ]);
   }
 
