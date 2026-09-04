@@ -88,6 +88,29 @@ describe("a sleeping workspace is not reported as a failing sync", () => {
     );
   });
 
+  test("the job checks out the repo it now runs a script from", () => {
+    const send = workflow.slice(workflow.indexOf("jobs:"), workflow.indexOf("Send signed main push"));
+    assert.match(
+      send,
+      /actions\/checkout@v\d/,
+      "the job calls scripts/replitSyncVerdict.mjs but no longer checks out the repository"
+    );
+
+    const file = workflow.match(/\$GITHUB_WORKSPACE\/(scripts\/\S+\.mjs)/)?.[1];
+    assert.ok(file, "the workflow no longer names a script path for the gate");
+    assert.ok(existsSync(path.join(repoRoot, file!)), `the workflow calls a missing file: ${file}`);
+  });
+
+  test("a genuine failure's status reaches the issue it files, not just the run log", () => {
+    const send = workflow.slice(workflow.indexOf("Send signed main push"));
+    const body = send.slice(0, send.indexOf("- name:"));
+    assert.match(
+      body,
+      /echo "HTTP \$http_code/,
+      "the response status is captured but never written to the output the failing-sync issue quotes"
+    );
+  });
+
   test("only a real reply may close the failing-sync issue", () => {
     const close = workflow.slice(workflow.indexOf("Close the failing-sync issue"));
     const condition = close.match(/if: ([^\n]+)/)?.[1] ?? "";
