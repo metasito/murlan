@@ -2,8 +2,9 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 
-import { readFields, check } from "../scripts/loop-gate.mjs";
+import { readFields, check, protectedHits } from "../scripts/loop-gate.mjs";
 import { brief } from "../scripts/loop-brief.mjs";
 
 const FILLED = `# LOOP STATE
@@ -79,5 +80,50 @@ describe("the compaction brief", () => {
   // word appears in a phase note or a lesson.
   test("a mention of RUNNING is not a live run", () => {
     assert.equal(brief("status: HALTED\nphase_note: was RUNNING when CI went red\n", ""), "");
+  });
+});
+
+// CLAUDE.md said "never autonomously change" these; the command file said the same work was fine
+// once a decision was recorded somewhere. Both could not be followed, and neither was executable.
+// The list is now one list, and it runs.
+describe("the protected paths", () => {
+  test("a clean branch touching none of them is not blocked", () => {
+    assert.deepEqual(protectedHits("HEAD"), []);
+  });
+
+  test("the check reads the real diff rather than trusting a claim", () => {
+    // Against the merge-base of this branch, this run's own diff is the fixture: it changes the
+    // gate and the loop's docs, and none of the protected paths.
+    const hits = protectedHits("origin/main");
+    assert.deepEqual(
+      hits.filter((f) => f.startsWith("shared/") || f.startsWith(".github/")),
+      [],
+      `this branch should not be touching protected paths, but reports: ${hits.join(", ")}`
+    );
+  });
+
+  // The floor. Every assertion above passes just as happily on a check that never fires, which is
+  // the failure mode this repo names in CLAUDE.md: a guard satisfied without the thing it guards
+  // being true. So it is aimed at a real change to a protected path, taken from this repo's own
+  // history rather than a fixture that could drift away from what the rule means.
+  test("it actually fires on a real change to a protected path", () => {
+    const commit = execFileSync("git", ["log", "--format=%H", "-1", "--", "shared/schema.ts"], {
+      encoding: "utf8",
+    }).trim();
+    assert.ok(commit, "no commit in this history touches shared/schema.ts");
+
+    const hits = protectedHits(`${commit}~1`);
+    assert.ok(
+      hits.includes("shared/schema.ts"),
+      `a diff that changes shared/schema.ts was not caught; got: ${hits.join(", ") || "nothing"}`
+    );
+    assert.ok(
+      hits.some((h) => h.startsWith("server/") && h.includes("auth or the session table")),
+      "the content rule for server/ never fired on a diff that changes auth"
+    );
+  });
+
+  test("an unresolvable base is not read as a violation", () => {
+    assert.deepEqual(protectedHits("refs/heads/no-such-branch-xyz"), []);
   });
 });

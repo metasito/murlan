@@ -113,10 +113,14 @@ One subagent (`sonnet`), so the codebase never enters this context:
 
 Write its answer to `recon:`.
 
-**Design gate — mechanical, not a judgement.** If the work touches `shared/schema.ts`, the
-socket protocol (`server/socket.ts`, `shared/events.ts`), or more than six files, **and** no
-decision is already recorded in `docs/BRIEF.md`, an ADR, or a comment on the ticket: park it
-and take the next.
+**Protected paths.** If the recon names a file the loop may not change on its own, park it now
+and take the next. `node scripts/loop-gate.mjs` holds the list and refuses the push in phase E
+regardless, so going ahead only wastes the build — but parking here saves it. There is no
+"unless a decision is recorded" exemption: these are the owner's, recorded or not.
+
+**Design gate — mechanical, not a judgement.** If the work touches more than six files **and**
+no decision is recorded in `docs/BRIEF.md`, an ADR, or a comment on the ticket: park it and
+take the next.
 
 ## C — Build
 
