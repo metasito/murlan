@@ -20,6 +20,9 @@ jobs:
     name: Trigger Replit dev workflow
     runs-on: ubuntu-latest
     steps:
+      # Only for scripts/replitSyncVerdict.mjs below — nothing else here reads a repo file.
+      - uses: actions/checkout@v4
+
       - name: Send signed main push to Replit
         id: send
         env:
@@ -54,39 +57,63 @@ jobs:
           # that into a 502 "couldn't reach this app" page. That is not the
           # preview rejecting the push, it is the previous sync still taking
           # effect, so it is worth a few retries before it counts as a failure.
+          #
+          # No `--fail`: curl exits non-zero here only on a transport failure,
+          # never on an HTTP error status, so the response's own status code —
+          # read via `--write-out`, not sniffed from the body — is what
+          # `scripts/replitSyncVerdict.mjs` (#905) actually branches on. This
+          # also narrows `--retry-all-errors`, which engages only on a
+          # non-zero CURLcode: it no longer retries on an HTTP error status
+          # (the 502 case above still retries, from curl's own built-in
+          # transient list), only on a transport failure.
           set +e
-          reply=$(curl --fail-with-body --silent --show-error \
+          http_code=$(curl --silent --show-error --output /tmp/reply.body \
+            --write-out '%{http_code}' \
             --retry 6 --retry-delay 5 --retry-all-errors --max-time 20 \
             --request POST "$HOOK_URL" \
             --header 'Content-Type: application/json' \
             --header 'X-GitHub-Event: push' \
             --header "X-Hub-Signature-256: sha256=$digest" \
             --data-binary "$payload" 2>/tmp/curl.err)
-          code=$?
+          curl_status=$?
           set -e
+          echo "HTTP status: $http_code (curl exit $curl_status)" >&2
+          reply=$(cat /tmp/reply.body 2>/dev/null || true)
           echo "$reply"
           cat /tmp/curl.err >&2 || true
 
-          # Replit answers every request to a workspace that is not running
-          # with this page, under a 404. It means the push had nowhere to
-          # land, not that the preview refused it — and no number of retries
-          # wakes a stopped Repl. The workspace syncs to origin/main when it
-          # next boots, so there is nothing here to report or to fix.
-          if [ $code -ne 0 ] && printf '%s' "$reply" | grep -qF 'Run this app to see the results here'; then
+          # A script failure here (a missing or broken replitSyncVerdict.mjs) must
+          # not be read as "the request never reached the preview" downstream —
+          # it reached it fine; only judging the answer broke. Treat it the same
+          # as any other status this script wasn't given a name for.
+          verdict=$(node "$GITHUB_WORKSPACE/scripts/replitSyncVerdict.mjs" "$http_code" "$curl_status") || verdict=failed
+
+          # A stopped workspace means the push had nowhere to land, not that
+          # the preview refused it — and no number of retries wakes a stopped
+          # Repl. The workspace syncs to origin/main when it next boots, so
+          # there is nothing here to report or to fix.
+          if [ "$verdict" = stopped ]; then
             echo "::notice::The Replit workspace is not running. It will sync to main when it next starts."
             echo "asleep=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
           # A delimiter the server could also emit would end the value early
-          # and let the rest be read as further outputs (CVE-2022-35954).
+          # and let the rest be read as further outputs (CVE-2022-35954). The
+          # status line only goes in when curl actually completed a transaction —
+          # a pure transport failure (curl_status non-zero) never got a reply to
+          # quote, and "What the preview said: HTTP 000" would misstate that.
           delim="EOF_$(openssl rand -hex 16)"
           {
             echo "reply<<$delim"
+            if [ "$curl_status" -eq 0 ]; then
+              echo "HTTP $http_code (curl exit $curl_status)"
+            fi
             echo "$reply"
             echo "$delim"
           } >> "$GITHUB_OUTPUT"
-          exit $code
+
+          [ "$verdict" = ok ]
 
       # A push-triggered job nobody reviews is invisible when it turns red —
       # nothing blocks a PR on it and no one has a reason to check the

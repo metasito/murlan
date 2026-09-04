@@ -16,8 +16,9 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."
 const readRepoFile = (...parts: string[]) =>
   readFileSync(path.join(repoRoot, ...parts), "utf8");
 
-// The page Replit's edge serves for a workspace that is not running.
-const ASLEEP_MARKER = "Run this app to see the results here";
+// What the workflow checks to tell a sleeping Replit from a real failure —
+// see scripts/replitSyncVerdict.mjs (#905) for the branch itself.
+const VERDICT_CHECK = 'if [ "$verdict" = stopped ]; then';
 
 describe("the Replit workspace syncs to main when it boots", () => {
   const replit = readRepoFile(".replit");
@@ -60,17 +61,96 @@ describe("the Replit workspace syncs to main when it boots", () => {
 describe("a sleeping workspace is not reported as a failing sync", () => {
   const workflow = readRepoFile(".github", "workflows", "replit-dev-sync.yml");
 
-  test("the placeholder page ends the run without filing anything", () => {
-    const branch = workflow.slice(workflow.indexOf(ASLEEP_MARKER));
+  test("a stopped-workspace verdict ends the run without filing anything", () => {
+    const branch = workflow.slice(workflow.indexOf(VERDICT_CHECK));
     assert.notEqual(
-      workflow.indexOf(ASLEEP_MARKER),
+      workflow.indexOf(VERDICT_CHECK),
       -1,
-      "the workflow does not recognise Replit's stopped-workspace page"
+      "the workflow no longer branches on the stopped-workspace verdict"
     );
     assert.match(
       branch.slice(0, branch.indexOf("- name:")),
       /exit 0/,
       "the workflow recognises a stopped workspace but still fails the run"
+    );
+  });
+
+  test("the verdict comes from the response, never a pipeline's exit status", () => {
+    assert.doesNotMatch(
+      workflow,
+      /\|\s*grep -q/,
+      "the guard reads a pipeline's exit status again, which is exactly how #905 went silently wrong"
+    );
+    assert.match(
+      workflow,
+      /node "\$GITHUB_WORKSPACE\/scripts\/replitSyncVerdict\.mjs"/,
+      "the workflow no longer calls the falsifiable verdict script"
+    );
+  });
+
+  test("the job checks out the repo it now runs a script from", () => {
+    const send = workflow.slice(workflow.indexOf("jobs:"), workflow.indexOf("Send signed main push"));
+    assert.match(
+      send,
+      /actions\/checkout@v\d/,
+      "the job calls scripts/replitSyncVerdict.mjs but no longer checks out the repository"
+    );
+
+    const file = workflow.match(/\$GITHUB_WORKSPACE\/(scripts\/\S+\.mjs)/)?.[1];
+    assert.ok(file, "the workflow no longer names a script path for the gate");
+    assert.ok(existsSync(path.join(repoRoot, file!)), `the workflow calls a missing file: ${file}`);
+  });
+
+  test("a genuine failure's status reaches the issue it files, not just the run log", () => {
+    const send = workflow.slice(workflow.indexOf("Send signed main push"));
+    const outputBlock = send.slice(send.indexOf("reply<<$delim"), send.indexOf('echo "$delim"'));
+    assert.notEqual(
+      send.indexOf("reply<<$delim"),
+      -1,
+      "the workflow no longer writes a reply output the failing-sync issue could quote"
+    );
+    assert.match(
+      outputBlock,
+      /echo "HTTP \$http_code/,
+      "the response status is logged but never written into the reply output the failing-sync issue quotes"
+    );
+  });
+
+  test("the status line is skipped when curl never got a response to quote", () => {
+    const send = workflow.slice(workflow.indexOf("Send signed main push"));
+    const outputBlock = send.slice(send.indexOf("reply<<$delim"), send.indexOf('echo "$delim"'));
+    assert.match(
+      outputBlock,
+      /if \[ "\$curl_status" -eq 0 \]; then\s*\n\s*echo "HTTP \$http_code/,
+      'a pure transport failure would report "What the preview said" for a preview that never answered'
+    );
+  });
+
+  test("the verdict script gets the response's own status, in the order it reads them", () => {
+    const send = workflow.slice(workflow.indexOf("Send signed main push"));
+    assert.match(
+      send,
+      /node "\$GITHUB_WORKSPACE\/scripts\/replitSyncVerdict\.mjs" "\$http_code" "\$curl_status"/,
+      'the script is no longer called as verdict(code, status) — every "stopped" and "ok" verdict would invert'
+    );
+  });
+
+  test("a broken verdict script is not read as the request never reaching the preview", () => {
+    const send = workflow.slice(workflow.indexOf("Send signed main push"));
+    const call = send.slice(send.indexOf("verdict=$(node"));
+    assert.match(
+      call.split("\n")[0],
+      /\|\|\s*verdict=failed/,
+      "a throwing replitSyncVerdict.mjs would die before $GITHUB_OUTPUT is written, which the next step reads as \"never reached the preview\" - wrong"
+    );
+  });
+
+  test("a failed verdict fails the step, so the issue actually gets filed", () => {
+    const send = workflow.slice(workflow.indexOf("Send signed main push"));
+    assert.match(
+      send,
+      /\n\s*\[ "\$verdict" = ok \]\s*\n/,
+      "the step no longer fails on a bad verdict - a real sync failure would exit clean, file nothing, and the recovery step would close an already-open failure as recovered"
     );
   });
 
