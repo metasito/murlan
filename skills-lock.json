@@ -1,12 +1,6 @@
 {
   "version": 1,
   "skills": {
-    "expo-horizon": {
-      "source": "software-mansion-labs/skills",
-      "sourceType": "github",
-      "skillPath": "skills/expo-horizon/SKILL.md",
-      "computedHash": "71653dd73c51221a04a417c5fe4be1744e2a0d45e4eb2d5e98c09a5797fdb98b"
-    },
     "find-skills": {
       "source": "vercel-labs/skills",
       "sourceType": "github",
@@ -45,16 +39,6 @@
       "sourceType": "github",
       "skillPath": "skills/typegpu/SKILL.md",
       "computedHash": "df3150a892a1703546d8bf246baef319e25942ada1cf4cedb9bb8f4d259ca248"
-    },
-    "vercel-composition-patterns": {
-      "source": "vercel-labs/agent-skills",
-      "sourceType": "github",
-      "computedHash": "f98931159fa9c7fed043bcd18a891a46dcf89ababa38df13a4c5b7b30dc0ce07"
-    },
-    "vercel-react-best-practices": {
-      "source": "vercel-labs/agent-skills",
-      "sourceType": "github",
-      "computedHash": "3462ec83f862abb2d532953df33a4dbf87f4616849da5d4b5cc7c13601aaf997"
     }
   }
 }

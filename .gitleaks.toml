@@ -19,7 +19,7 @@ id = "generic-api-key"
 condition = "AND"
 # A fabricated example in a snippet demonstrating the wrong way to hold a key.
 regexes = ['''sk_live_abc123xyz''']
-paths = ['''\.claude/agents/tier-2-power/security-specialist\.md''']
+paths = ['''\.claude/_archive/2026-09-04-cleanup/claude/agents/tier-2-power/security-specialist\.md''']
 
 [[rules]]
 id = "aws-access-token"

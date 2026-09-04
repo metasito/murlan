@@ -262,7 +262,7 @@ function samePath(a, b) {
 }
 
 /**
- * `.worktrees/` mirrors `lib/ticketPipeline/worktree.ts`'s `WORKTREE_DIR` - it is not imported
+ * `.worktrees/` is the worktree root named by `/loop` phase A - it is not imported
  * here because that module is TypeScript and this script runs under plain `node`.
  */
 const WORKTREE_DIR = ".worktrees";

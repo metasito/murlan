@@ -164,7 +164,7 @@ function componentSources(): [string, string][] {
     ]);
 }
 
-describe("layout constants (CLAUDE.md: MUST NOT CHANGE)", () => {
+describe("layout constants (pinned here; this test is the authority)", () => {
   test("every constant still holds the value both game screens are built around", () => {
     // These are pinned, not documented: a silent change to any of them breaks
     // the table on one screen or the other with no error signal.

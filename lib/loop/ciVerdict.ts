@@ -1,4 +1,4 @@
-// lib/ticketPipeline/ciVerdict.ts
+// lib/loop/ciVerdict.ts
 import { execFileSync, type ExecFileSyncOptionsWithStringEncoding } from "node:child_process";
 
 export interface RunRow {
@@ -210,7 +210,7 @@ export function readVerdict(repo: string, branch: string, prNumber: number): Ver
 if (process.argv[1]?.endsWith("ciVerdict.ts")) {
   const [repo, branch, prNumber] = process.argv.slice(2);
   if (!repo || !branch || !prNumber) {
-    console.error("usage: npx tsx lib/ticketPipeline/ciVerdict.ts <repo> <branch> <prNumber>");
+    console.error("usage: npx tsx lib/loop/ciVerdict.ts <repo> <branch> <prNumber>");
     process.exit(1);
   }
   process.stdout.write(JSON.stringify(readVerdict(repo, branch, Number(prNumber))));

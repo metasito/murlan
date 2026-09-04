@@ -364,7 +364,7 @@ if (import.meta.filename === process.argv[1]) {
   const dryRun = process.argv.includes("--dry-run");
   const verb = dryRun ? "would clear" : "cleared";
 
-  // Cleaning up after a run that is already over — `lib/ticketPipeline/cleanup.ts` is the
+  // Cleaning up after a run that is already over — `/loop` phase F is the
   // caller. Starting a run does not come through here: `scripts/e2ePort.mjs` picks a port that
   // is already free, which is what stopped two concurrent runs taking each other's server.
   //

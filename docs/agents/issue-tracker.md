@@ -36,12 +36,12 @@ Infer the repo from `git remote -v`; `gh` does this automatically when run insid
 
 ## Claiming an item
 
-The standard way to work a ticket the picker routes to implement is **`npm run ticket`**
-(`scripts/ticket-pipeline.ts`), or **`/ticket`** which runs it. It claims, implements, reviews its
-own diff with `/code-review --fix` before pushing, reads `ci.yml`'s verdict, fixes a red run,
-lands and tears down. The picker's other two routes have entry points of their own — `/triage`
-and `/wayfinder`. Everything below describes what the runner does, and stays the instruction for
-anything worked by hand.
+The standard way to work a ticket the picker routes to implement is **`/loop`**
+(`.claude/commands/loop.md`): it claims, builds in a worktree, has a reader who did not write
+the diff review it, reads `ci.yml`'s verdict, fixes a red run, lands and tears down, one ticket
+at a time. The picker's other two routes have entry points of their own — `/triage` and
+`/wayfinder`. Everything below is what `/loop` does, and stays the instruction for anything
+worked by hand.
 
 Sessions run in parallel against one repo, and every one of them authenticates as the same
 GitHub account — so `--add-assignee @me` cannot tell two sessions apart. The branch name
@@ -57,16 +57,15 @@ can, and that is what the claim carries.
   removes a ticket from the frontier (the lost-label backstop). It is the single
   picker; do not re-derive a queue per session, and do not encode blocking anywhere
   but GitHub's dependency graph.
-- **Execute the route through its command** — `/ticket`, `/triage` or `/wayfinder`, each
-  taking `loop`. `/triage` and `/wayfinder` run `mattpocock-skills:triage` and
-  `mattpocock-skills:wayfinder`, which own their procedures; the command files carry
-  only what is specific to this repo.
+- **Execute the route through its command** — `/loop`, `/triage` or `/wayfinder`. `/triage`
+  and `/wayfinder` run `mattpocock-skills:triage` and `mattpocock-skills:wayfinder`, which
+  own their procedures; the command files carry only what is specific to this repo.
   `mattpocock-skills:implement` is **not** among them: it is marked
   `disable-model-invocation`, so no agent can call it, and its "run the full test suite
-  once at the end" contradicts this repo's rule that `ci.yml` owns the sweep. The
-  implement stage spells its own workflow out instead — read the whole issue, write its
-  Definition of done out as a checklist, build test-first, `/code-review --fix` the diff,
-  then check the boxes against the code actually written.
+  once at the end" contradicts this repo's rule that `ci.yml` owns the sweep. `/loop`
+  spells its own procedure out instead, and nothing in that pack picks a ticket — its only
+  frontier query is scoped to a `wayfinder` map's children and drops candidates on
+  assignee, which cannot separate two sessions here.
 - **Claim**, as the session's first write, before the branch and before reading the code:
   ```sh
   gh issue edit <n> --add-label in-progress

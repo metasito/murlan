@@ -1,7 +1,7 @@
 // tests/landPr.test.ts
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { decideLanding, mergeArgs } from "../lib/ticketPipeline/land.ts";
+import { decideLanding, mergeArgs } from "../lib/loop/land.ts";
 
 describe("deciding how to land a green pull request", () => {
   test("a clean pull request merges", () => {

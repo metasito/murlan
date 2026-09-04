@@ -68,7 +68,7 @@ Every rule an agent must follow, in one place. No rationale here — the *why* l
     `gh issue view <n> --json title,body,comments --jq '.title, .body, (.comments[]|"--- "+.author.login+": "+.body)'`.
     `--comments` prints the thread *instead of* the body, and `--json body` drops the thread.
 26. **Release the claim whenever you stop without landing** — remove `in-progress`, say why.
-27. **A routed `implement` goes through `/ticket`**; `triage` through `/triage`; `wayfinder`
+27. **A routed `implement` goes through `/loop`**; `triage` through `/triage`; `wayfinder`
     through `/wayfinder`.
 28. **An item needing an owner decision gets `ready-for-human`, not closed** — and
     `ready-for-agent` comes off at the same time.

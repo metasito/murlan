@@ -1,4 +1,4 @@
-// lib/ticketPipeline/land.ts
+// lib/loop/land.ts
 import { execFileSync } from "node:child_process";
 
 export interface PrState {
@@ -52,7 +52,7 @@ function gh(args: string[]): string {
 if (process.argv[1]?.endsWith("land.ts")) {
   const [repo, prNumber] = process.argv.slice(2);
   if (!repo || !prNumber) {
-    console.error("usage: npx tsx lib/ticketPipeline/land.ts <repo> <prNumber>");
+    console.error("usage: npx tsx lib/loop/land.ts <repo> <prNumber>");
     process.exit(1);
   }
   const pr: PrState = JSON.parse(

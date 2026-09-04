@@ -1,7 +1,7 @@
 # The feel bar
 
-The prototype (`docs/agents/GAUNTLET-PROMPT.md` → **Look**) is the floor for every moment
-below, never the ceiling. This file is the ceiling: for each moment, named references a
+The prototype (`https://claude.ai/code/artifact/80607f3e-e852-416e-a6f1-91788d80f40f`, fetched
+with `WebFetch`, never `curl`) is the floor for every moment below, never the ceiling. This file is the ceiling: for each moment, named references a
 critic can `WebFetch` and compare us against, plus ideas past any reference for what "even
 cooler" means, stated as frame properties rather than adjectives.
 

@@ -7,7 +7,7 @@ import {
   runForHead,
   runListArgs,
   stripLogPrefix,
-} from "../lib/ticketPipeline/ciVerdict.ts";
+} from "../lib/loop/ciVerdict.ts";
 
 const done = (conclusion: string | null) => ({ databaseId: 7, conclusion, status: "completed" });
 
