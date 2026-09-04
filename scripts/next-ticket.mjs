@@ -143,9 +143,15 @@ function printDetail(ticket, comments) {
     const n = issue.number;
     console.log("\n----- NEXT -----");
     console.log("Claim (first write; then confirm you won the race):");
+    // Not an inline --body: PowerShell turns the backticks this file's own `claimBranch()`
+    // matches on into a BEL, so an inline claim is one no peer can see. Not `--comments` either:
+    // rule 25, it prints the thread instead of the body.
     console.log(`  gh issue edit ${n} --add-label in-progress`);
-    console.log(`  gh issue comment ${n} --body "Claimed by \\\`<branch-name>\\\`."`);
-    console.log(`  gh issue view ${n} --comments`);
+    console.log(`  gh issue comment ${n} --body-file <file>   # holding: Claimed by \`<branch>\`.`);
+    console.log(
+      `  gh issue view ${n} --json title,body,comments ` +
+        `--jq '.title, .body, (.comments[]|"--- "+.author.login+": "+.body)'`
+    );
   }
 }
 

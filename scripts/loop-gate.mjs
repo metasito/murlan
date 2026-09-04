@@ -13,7 +13,10 @@
  * after a review invalidates it automatically — there is no way to land a diff nobody looked at,
  * and no bookkeeping to forget.
  *
- * Usage: node scripts/loop-gate.mjs [--base <ref>]
+ * Run it from anywhere in the repo. It finds the run's worktree itself, because the loop works in
+ * `.worktrees/agent-<n>` and rule 40 keeps the shell out of it.
+ *
+ * Usage: node scripts/loop-gate.mjs
  *        exit 0 - built, clean, and cleared by a review of this exact head
  *        exit 1 - says what is missing; exit 2 - not on a ticket, or cannot judge
  */
@@ -65,10 +68,9 @@ export function protectedHits(changed, base = "origin/main", cwd = undefined) {
   return hits;
 }
 
-function main(argv) {
-  const at = argv.indexOf("--base");
-  const base = at === -1 ? "origin/main" : argv[at + 1];
-  const s = derive({ base });
+function main() {
+  const s = derive();
+  const base = s.base ?? "origin/main";
 
   if (!s.onTicket) {
     console.error(`loop-gate: ${s.why} (${s.branch ?? "no branch"}) — nothing to judge`);
@@ -88,12 +90,12 @@ function main(argv) {
 
   if (s.commits === 0 || s.changed.length === 0) {
     return refuse("nothing was built on this branch", [
-      `${s.commits} commit(s), ${s.changed.length} changed file(s) against ${base}`,
+      `${s.commits} commit(s), ${s.changed.length} changed file(s) against ${base} in ${s.cwd}`,
       "Phase C commits each slice as it lands.",
     ]);
   }
 
-  const hits = protectedHits(s.changed, base);
+  const hits = protectedHits(s.changed, base, s.cwd);
   if (hits.length) {
     return refuse("this diff changes what the loop may not change on its own", [
       ...hits,
@@ -128,4 +130,4 @@ function main(argv) {
   return 0;
 }
 
-if (process.argv[1]?.endsWith("loop-gate.mjs")) process.exit(main(process.argv.slice(2)));
+if (process.argv[1]?.endsWith("loop-gate.mjs")) process.exit(main());

@@ -82,8 +82,12 @@ Claim it as the first write, before any code:
 ```sh
 gh issue edit <n> --add-label in-progress
 gh issue comment <n> --body-file <file>   # the file holds: Claimed by `agent/<n>-<slug>`.
-gh issue view <n> --comments              # a fresh read *after* the write — the race check
+gh issue view <n> --json title,body,comments --jq '.title, .body, (.comments[]|"--- "+.author.login+": "+.body)'
 ```
+
+That last line is the race check: a fresh read *after* the write. It is rule 25's form, because
+`--comments` prints the thread *instead of* the body and `--json body` alone drops the thread —
+either one alone hides half of what decides whether you may take the ticket.
 
 The claim goes through a file, not an inline `--body`. PowerShell eats the backticks around the
 branch name — `` `agent/824-x` `` arrives as a BEL character — and `claimBranch()` in
@@ -208,7 +212,12 @@ It reads git and the issue, and refuses the push naming what is wrong when any o
 - the branch has no commits, or an empty diff, against `origin/main`;
 - the diff touches a protected path;
 - no `VERDICT: LAND <sha>` on the issue names the commit you are pushing — a hold, a missing
-  verdict, or a review of an earlier commit all refuse.
+  verdict, or a review of an earlier commit all refuse. A `HOLD` on a commit is final for that
+  commit: a later `LAND` on the same sha does not lift it, and the only way past it is a fix, which
+  moves the head and asks for a review of the new code.
+
+Run it from the shared checkout. It finds the run's worktree itself, and takes no arguments — there
+is nothing to point it at and no way to widen what it looks at.
 
 **A non-zero exit means redo that phase — never the ticket, and never push past it.** Exit 2 means
 it could not judge at all (not on a ticket branch, or the tracker is unreachable), which is not
@@ -220,6 +229,11 @@ npm run agent:check
 
 Say what it reported, including what it says it skipped — a green line standing for a suite nobody
 ran is not a pass.
+
+**If it is red, you are back in phase C.** Fix it, commit the fix, then go round again from phase D:
+the new commit moves the head, so the review you were holding no longer covers what you would push,
+and the gate says so. Never push a red check, and never re-run it hoping for a different answer — a
+check that turns green on a second run with no change is a flake to report on the issue, not a pass.
 
 ```sh
 git push -u origin agent/<n>-<slug>
@@ -271,7 +285,8 @@ The PR body closes the issue; nothing takes the label off, and a closed ticket s
 
 ## F — Close out
 
-1. Re-read the issue — `gh issue view <n> --comments`. A ruling can land while you were building,
+1. Re-read the issue, rule 25's way — `gh issue view <n> --json title,body,comments --jq '.title,
+   .body, (.comments[]|"--- "+.author.login+": "+.body)'`. A ruling can land while you were building,
    and a ticket answered against its first version is answered against the wrong one.
 2. Tick the Definition of done against the code actually written, as a comment. A box you did not
    close is named there, with why. An honest gap is worth more than a green report.
