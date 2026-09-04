@@ -82,7 +82,11 @@ jobs:
           echo "$reply"
           cat /tmp/curl.err >&2 || true
 
-          verdict=$(node "$GITHUB_WORKSPACE/scripts/replitSyncVerdict.mjs" "$http_code" "$curl_status")
+          # A script failure here (a missing or broken replitSyncVerdict.mjs) must
+          # not be read as "the request never reached the preview" downstream —
+          # it reached it fine; only judging the answer broke. Treat it the same
+          # as any other status this script wasn't given a name for.
+          verdict=$(node "$GITHUB_WORKSPACE/scripts/replitSyncVerdict.mjs" "$http_code" "$curl_status") || verdict=failed
 
           # A stopped workspace means the push had nowhere to land, not that
           # the preview refused it — and no number of retries wakes a stopped
@@ -95,14 +99,16 @@ jobs:
           fi
 
           # A delimiter the server could also emit would end the value early
-          # and let the rest be read as further outputs (CVE-2022-35954).
-          # The status line goes in the same output as the body: the issue
-          # this can file quotes `reply` verbatim, and reading it should not
-          # require following the run link to learn what Replit answered.
+          # and let the rest be read as further outputs (CVE-2022-35954). The
+          # status line only goes in when curl actually completed a transaction —
+          # a pure transport failure (curl_status non-zero) never got a reply to
+          # quote, and "What the preview said: HTTP 000" would misstate that.
           delim="EOF_$(openssl rand -hex 16)"
           {
             echo "reply<<$delim"
-            echo "HTTP $http_code (curl exit $curl_status)"
+            if [ "$curl_status" -eq 0 ]; then
+              echo "HTTP $http_code (curl exit $curl_status)"
+            fi
             echo "$reply"
             echo "$delim"
           } >> "$GITHUB_OUTPUT"

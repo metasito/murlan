@@ -103,11 +103,45 @@ describe("a sleeping workspace is not reported as a failing sync", () => {
 
   test("a genuine failure's status reaches the issue it files, not just the run log", () => {
     const send = workflow.slice(workflow.indexOf("Send signed main push"));
-    const body = send.slice(0, send.indexOf("- name:"));
+    const outputBlock = send.slice(send.indexOf("reply<<$delim"), send.indexOf('echo "$delim"'));
+    assert.notEqual(
+      send.indexOf("reply<<$delim"),
+      -1,
+      "the workflow no longer writes a reply output the failing-sync issue could quote"
+    );
     assert.match(
-      body,
+      outputBlock,
       /echo "HTTP \$http_code/,
-      "the response status is captured but never written to the output the failing-sync issue quotes"
+      "the response status is logged but never written into the reply output the failing-sync issue quotes"
+    );
+  });
+
+  test("the status line is skipped when curl never got a response to quote", () => {
+    const send = workflow.slice(workflow.indexOf("Send signed main push"));
+    const outputBlock = send.slice(send.indexOf("reply<<$delim"), send.indexOf('echo "$delim"'));
+    assert.match(
+      outputBlock,
+      /if \[ "\$curl_status" -eq 0 \]; then\s*\n\s*echo "HTTP \$http_code/,
+      'a pure transport failure would report "What the preview said" for a preview that never answered'
+    );
+  });
+
+  test("the verdict script gets the response's own status, in the order it reads them", () => {
+    const send = workflow.slice(workflow.indexOf("Send signed main push"));
+    assert.match(
+      send,
+      /node "\$GITHUB_WORKSPACE\/scripts\/replitSyncVerdict\.mjs" "\$http_code" "\$curl_status"/,
+      'the script is no longer called as verdict(code, status) — every "stopped" and "ok" verdict would invert'
+    );
+  });
+
+  test("a broken verdict script is not read as the request never reaching the preview", () => {
+    const send = workflow.slice(workflow.indexOf("Send signed main push"));
+    const call = send.slice(send.indexOf("verdict=$(node"));
+    assert.match(
+      call.split("\n")[0],
+      /\|\|\s*verdict=failed/,
+      "a throwing replitSyncVerdict.mjs would die before $GITHUB_OUTPUT is written, which the next step reads as \"never reached the preview\" - wrong"
     );
   });
 

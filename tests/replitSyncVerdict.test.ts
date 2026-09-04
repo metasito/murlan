@@ -10,14 +10,19 @@ const SCRIPT = path.join(repoRoot, "scripts", "replitSyncVerdict.mjs");
 
 // Run 33809403903 (#905) recorded a 404 whose body was Replit's
 // stopped-workspace page (`<title>Run this app to see the results here.</title>`)
-// and whose curl exit code was non-zero — `verdict` reads neither the body nor
-// (for this case) the exit code, only the status below, which is the whole fix.
+// and whose curl exit code was 22 (curl was still called with --fail-with-body
+// at the time) — `verdict` reads neither the body nor the exit code for this
+// case, only the status, which is the whole fix.
 
 describe("verdict decides from the HTTP response, never a pipeline's exit status", () => {
-  test("a 404 is a stopped workspace, even though curl reported a response", () => {
-    // The workflow calls curl without --fail, so status is 0 for any completed
-    // HTTP transaction, error statuses included — this is exactly the case run
-    // 33809403903 hit, and status alone must not decide "ok".
+  test("the 404 run 33809403903 actually recorded is a stopped workspace", () => {
+    assert.equal(verdict({ code: "404", status: 22 }), "stopped");
+  });
+
+  test("a 404 is still a stopped workspace under the current curl invocation", () => {
+    // The workflow no longer calls curl with --fail, so status is 0 for any
+    // completed HTTP transaction, error statuses included — status alone must
+    // not decide "ok".
     assert.equal(verdict({ code: "404", status: 0 }), "stopped");
   });
 
