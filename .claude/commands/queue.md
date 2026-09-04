@@ -285,9 +285,14 @@ The PR body closes the issue; nothing takes the label off, and a closed ticket s
 
 ## F — Close out
 
-1. Re-read the issue, rule 25's way — `gh issue view <n> --json title,body,comments --jq '.title,
-   .body, (.comments[]|"--- "+.author.login+": "+.body)'`. A ruling can land while you were building,
-   and a ticket answered against its first version is answered against the wrong one.
+1. Re-read the issue, rule 25's way — the same command phase A ends with. A ruling can land while
+   you were building, and a ticket answered against its first version is answered against the wrong
+   one.
+
+   ```sh
+   gh issue view <n> --json title,body,comments --jq '.title, .body, (.comments[]|"--- "+.author.login+": "+.body)'
+   ```
+
 2. Tick the Definition of done against the code actually written, as a comment. A box you did not
    close is named there, with why. An honest gap is worth more than a green report.
 3. In that same comment, one line on the effective diff in plain language — "the hand fans from the
