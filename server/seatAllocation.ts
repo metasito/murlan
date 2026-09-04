@@ -12,8 +12,8 @@ export interface SeatedPlayer {
 }
 
 /**
- * An invite, as the reservation reads it. `createdAt` is refreshed by
- * `recordGameInvite` on a re-invite, so the hold restarts with the asking.
+ * An invite, as the reservation reads it. `createdAt` is immutable once set —
+ * a hold is a cap on the room, not a lease a re-invite can renew.
  */
 export interface SeatInvite {
   inviterId: string;

@@ -5,9 +5,10 @@
 // need these: keeping them next to `setupSocket` made an import cycle.
 import type { Server as SocketServer } from "socket.io";
 import { logger } from "./logger.ts";
+import { storage } from "./storage.ts";
 import { socketRoomMap, userRoom, userSocketMap } from "./gameRoom.ts";
 import { safeTimer } from "./gamePersistence.ts";
-import { handleSeatRelease } from "./socketTable.ts";
+import { announceSeatHoldsChanged, handleSeatRelease } from "./socketTable.ts";
 import { applyOrForward } from "./tableRouter.ts";
 
 let _io: SocketServer | null = null;
@@ -116,6 +117,24 @@ export async function evictUser(userId: string): Promise<void> {
   }
 
   socket.disconnect(true);
+}
+
+/**
+ * Declines an invite and tells the room in the same event. `server/routes.ts`
+ * has no `io` of its own — this is the one path from an HTTP handler to a
+ * room broadcast, so a row-deleting endpoint added there later has somewhere
+ * to route through instead of reaching for the socket server directly.
+ */
+export async function declineGameInviteAndNotify(
+  inviteeId: string,
+  roomCode: string
+): Promise<void> {
+  // Deliberately unguarded: a decline that did not happen must reach the
+  // caller as a failure, not as an ok with the invite still standing.
+  // `announceSeatHoldsChanged` swallows its own read failures.
+  const roomId = await storage.declineGameInvite(inviteeId, roomCode);
+  if (!roomId || !_io) return;
+  await announceSeatHoldsChanged(_io, roomId);
 }
 
 /**

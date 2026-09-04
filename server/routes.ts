@@ -24,7 +24,7 @@ import {
 } from "./schemas.ts";
 import { deletePushToken, savePushToken } from "./push.ts";
 import { DEFAULT_LOCALE, type Locale } from "../shared/i18n.ts";
-import { emitToUser, evictUser, isUserOnline } from "./socket.ts";
+import { declineGameInviteAndNotify, emitToUser, evictUser, isUserOnline } from "./socket.ts";
 import { mintSocketTicket } from "./ticket.ts";
 import {
   mintAuthToken,
@@ -879,7 +879,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(400).json({ ...payload("INVALID_ROOM_CODE") });
       return;
     }
-    await storage.declineGameInvite(req.session.userId!, roomCode.data);
+    await declineGameInviteAndNotify(req.session.userId!, roomCode.data);
     res.json({ ok: true });
   });
 

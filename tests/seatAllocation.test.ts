@@ -262,17 +262,21 @@ describe("the age the hold is measured on", () => {
     return source.slice(open, close);
   }
 
-  test("comes from the database's clock on every path", () => {
+  test("comes from the database's clock, and only once", () => {
     // `created_at` defaults to `now()` on insert, and `heldSeats` reads the
-    // window as an age against it. A refresh stamped by the app server puts
-    // two clocks in one column, so rows are no longer even ordered by age.
+    // window as an age against it. A stamp written by the app server puts two
+    // clocks in one column, so rows are no longer even ordered by age.
     assert.ok(
       !/new Date\(\)/.test(inviteWrite()),
       "an invite's created_at is stamped from Node, which is not the clock the insert used"
     );
+    // A hold is a cap on the room, not a lease: whatever the conflict path
+    // updates, it is never the column the hold is measured from.
+    const conflictUpdate = /set:\s*\{([^}]*)\}/.exec(inviteWrite())?.[1];
+    assert.ok(conflictUpdate, "the invite insert no longer has an onConflictDoUpdate set");
     assert.ok(
-      /createdAt: sql`now\(\)`/.test(inviteWrite()),
-      "the refresh no longer restamps created_at, so a re-invite does not renew the hold"
+      !/createdAt/.test(conflictUpdate),
+      "the conflict path restamps created_at, so a re-invite renews a hold that must not be renewable"
     );
   });
 });
