@@ -38,7 +38,10 @@ export function musicEnabled(): boolean {
 export function setMusicMasterEnabled(v: boolean): void {
   _enabled = v;
   if (!v) stopMusic();
-  else if (_wanted) void playMusic(_wanted);
+  else if (_wanted) {
+    if (__DEV__) console.log(`[music-timing][${Platform.OS}] toggle-on ${Date.now()}`);
+    void playMusic(_wanted);
+  }
 }
 
 export function setMusicMasterVolume(v: number): void {
@@ -157,6 +160,7 @@ let nativeFade: ReturnType<typeof setInterval> | null = null;
 function nativePlayer(track: MusicTrack): AudioPlayer | null {
   const cached = nativePlayers[track];
   if (cached) return cached;
+  const t0 = __DEV__ ? Date.now() : 0;
   try {
     // Required here, not imported: web never needs it, and a module-level
     // import pulls the native module into every test graph that imports this
@@ -167,6 +171,7 @@ function nativePlayer(track: MusicTrack): AudioPlayer | null {
     player.loop = true;
     player.volume = 0;
     nativePlayers[track] = player;
+    if (__DEV__) console.log(`[music-timing][${Platform.OS}] createAudioPlayer ${Date.now() - t0}ms`);
     return player;
   } catch {
     return null;
@@ -193,6 +198,7 @@ function fadeNative(player: AudioPlayer, to: number, ms: number, onDone?: () => 
 }
 
 function playNativeMusic(track: MusicTrack, opts: { rewind?: boolean } = {}): void {
+  const tStart = __DEV__ ? Date.now() : 0;
   const player = nativePlayer(track);
   if (!player) return;
   const alreadyPlaying = nativePlaying === track;
@@ -210,11 +216,16 @@ function playNativeMusic(track: MusicTrack, opts: { rewind?: boolean } = {}): vo
       // lib/sounds.ts's playNative rewinds for the same reason: a player
       // parked mid-loop or at the end of its buffer after an interruption
       // plays silence otherwise.
+      const tSeek = __DEV__ ? Date.now() : 0;
       player.seekTo(0);
+      if (__DEV__) console.log(`[music-timing][${Platform.OS}] seekTo ${Date.now() - tSeek}ms`);
+      const tPlay = __DEV__ ? Date.now() : 0;
       player.play();
+      if (__DEV__) console.log(`[music-timing][${Platform.OS}] player.play() call ${Date.now() - tPlay}ms`);
     } catch {}
   }
   fadeNative(player, targetGain(), FADE_S * 1000);
+  if (__DEV__) console.log(`[music-timing][${Platform.OS}] playNativeMusic total ${Date.now() - tStart}ms`);
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────

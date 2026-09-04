@@ -160,6 +160,7 @@ let _audioModeSet = false;
  */
 export async function ensureAudioMode(): Promise<void> {
   if (_audioModeSet) return;
+  const t0 = __DEV__ ? Date.now() : 0;
   try {
     await setAudioModeAsync({
       playsInSilentMode: true,
@@ -168,6 +169,7 @@ export async function ensureAudioMode(): Promise<void> {
     });
     _audioModeSet = true;
   } catch {}
+  if (__DEV__) console.log(`[music-timing][${Platform.OS}] setAudioModeAsync ${Date.now() - t0}ms`);
 }
 
 /**
