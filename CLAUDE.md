@@ -149,9 +149,11 @@ lines than code lines is explaining itself instead of being clear.
 `.claude/commands/queue.md` is the only loop protocol in this repo, and the only place its
 procedure is written down. Nothing here restates it (`tests/rulesAreSingleSourced.test.ts`).
 
-If `.claude/loop/STATE.md` says `status: RUNNING`, a run is live. Before answering anything
-else, read that file and `.claude/commands/queue.md`, and resume at the phase it names. Do not
-restart the ticket, and do not ask whether to continue.
+The loop keeps no state file. Which ticket, what is committed, whether a review covers it — all of
+it is derived from git and the tracker, so it cannot go stale, and a `SessionStart` hook reports it
+on its own. If this session opened with a live run described to you, read
+`.claude/commands/queue.md` and resume at the phase it names. Do not restart the ticket, and do not
+ask whether to continue.
 
 Never autonomously change `shared/schema.ts`, `shared/events.ts`, `server/socket.ts`,
 `server/schemaDdl.ts`, `drizzle.config.ts`, `.replit`, `.github/workflows/`, or anything under

@@ -42,15 +42,22 @@ describe("the loop's instructions name only things that exist", () => {
     assert.deepEqual(missing, [], `queue.md names npm scripts that package.json does not define`);
   });
 
-  // Loop artefacts live outside the working tree now, so there is no file to assert the existence
-  // of — what must hold is that the docs no longer point at the tracked copies that used to be
-  // rewritten into a dirty tree, and that the template they are laid down from is still shipped.
-  test("the docs do not point at a tracked, rewritable state file", () => {
-    const q = read(QUEUE);
-    for (const gone of [".claude/loop/STATE.md", ".claude/loop/LESSONS.md", ".claude/loop/PARKED.md", ".claude/loop/DONE.md"]) {
-      assert.ok(!q.includes(gone), `queue.md still points at ${gone}, which no longer exists`);
+  // The loop stores nothing now, so what must hold is that neither instruction file points at the
+  // state layer that was deleted — including CLAUDE.md, which the previous version of this test
+  // did not check, and which kept a dead path through a whole rebuild.
+  test("no instruction file points at the deleted state layer", () => {
+    for (const file of [QUEUE, "CLAUDE.md"]) {
+      const text = read(file);
+      for (const gone of [
+        ".claude/loop/",
+        "loop-state.mjs",
+        "loop-brief.mjs",
+        "STATE.md",
+        "LESSONS.md",
+      ]) {
+        assert.ok(!text.includes(gone), `${file} still points at ${gone}, which no longer exists`);
+      }
     }
-    assert.ok(existsSync(".claude/loop/STATE.template.md"), "the state template must be shipped");
   });
 
   // A hook is the one instruction nobody reads and nothing imports, so a broken one fails silently

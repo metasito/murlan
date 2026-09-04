@@ -72,11 +72,11 @@ describe("every agent rule is written down exactly once", () => {
   // CLAUDE.md may point at the protocol and name the paths an agent must not touch on its own.
   // The steps belong to queue.md alone.
   for (const [name, pattern] of [
-    ["the Evidence rule", /under \*\*Evidence\*\*|Evidence line blank/i],
+    ["how the review is recorded", /VERDICT: LAND/],
     ["where an out-of-scope finding goes", /gh issue create/i],
-    ["where loop artefacts live", /LESSONS\.md/i],
+    ["how the run is recovered", /loop-status\.mjs/],
     ["one ticket at a time", /one ticket at a time/i],
-    ["what to preserve when compacting", /when compacting, preserve/i],
+    ["what to preserve when compacting", /failing test output/i],
   ] as [string, RegExp][]) {
     test(`"${name}" is procedure, so it lives in the command file only`, () => {
       assert.equal(
