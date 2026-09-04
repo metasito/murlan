@@ -1,18 +1,26 @@
 /**
  * The loop's evidence gate: refuses to push a ticket whose phases did not all happen.
  *
- * `/loop` writes one line per phase into STATE.md's Evidence block. A phase that was skipped —
+ * `/queue` writes one line per phase into the state's Evidence block. A phase that was skipped —
  * or that a compaction landed in the middle of — leaves its line blank, and a blank line is the
- * only reliable trace of it: the model's own account of what it did is exactly what cannot be
- * trusted here. Phase E calls this before `git push`, so "don't forget the review" is a check
- * rather than a promise.
+ * only reliable trace of it. Phase E calls this before `git push`, so "don't forget the review" is
+ * a check rather than a promise.
  *
- * Usage: node scripts/loop-gate.mjs [--state <path>] [--base <ref>]
- *        exit 0 - every required field carries evidence
- *        exit 1 - names the blank ones; exit 2 - STATE.md is unreadable or not RUNNING
+ * Two rules govern what it will believe:
+ *
+ * - **Only an explicit LAND allows a push.** Anything else — a HOLD, a blank, a verdict written in
+ *   some other shape — refuses. It read `/^VERDICT:\s*HOLD/` before, which meant the template's own
+ *   `HOLD - reason` hint passed: the gate printed the word HOLD and exited 0.
+ * - **The state file is a claim, and git is the evidence.** A state asserting a finished run over
+ *   an empty diff exited 0, so the one thing the gate was built not to trust was the only thing it
+ *   consulted. Commits and a non-empty diff are now required.
+ *
+ * Usage: node scripts/loop-gate.mjs [--base <ref>]
+ *        exit 0 - every phase has evidence, git agrees, and the reviewer said LAND
+ *        exit 1 - names what is missing; exit 2 - no live run to judge
  */
-import fs from "node:fs";
 import { execFileSync } from "node:child_process";
+import { readState, readFields, isRunning, statePath } from "./loop-state.mjs";
 
 /** Required before a push. `gate`, `ci_run` and `pr` are filled by phase E itself, after this. */
 const REQUIRED = {
@@ -24,141 +32,147 @@ const REQUIRED = {
 };
 
 /**
- * Paths the loop may not change on its own. Each one either takes production down or is the
- * thing that would have caught it: `schemaDdl.ts` is the only creator of tables, `.replit` is
- * the production runtime, `.github/workflows/` is CI itself. A diff touching one of these is a
- * decision, and decisions belong to the owner.
+ * Paths the loop may not change on its own. Each either takes production down or is the thing that
+ * would have caught it: `schemaDdl.ts` is the only creator of tables, `.replit` is the production
+ * runtime, `.github/workflows/` is CI itself. A diff touching one of these is a decision.
  *
- * This used to be a sentence in CLAUDE.md and a shorter, *contradicting* list in the command
- * file, which granted an exemption ("unless a decision is recorded") that the sentence did not.
- * Two rules that cannot both be followed are worse than either alone, so the list lives here,
- * once, where it is executed rather than remembered.
+ * `tests/loopProtectedPaths.test.ts` pins this list against the copy in CLAUDE.md, because a list
+ * an agent reads and a list a program enforces are two lists the moment nothing compares them.
  */
-const PROTECTED = [
+export const PROTECTED = [
   "shared/schema.ts",
-  "server/socket.ts",
   "shared/events.ts",
+  "server/socket.ts",
+  "server/schemaDdl.ts",
   "drizzle.config.ts",
   ".replit",
   ".github/workflows/",
 ];
 
 /**
- * "Anything under `server/` that touches auth or the session table" is the one entry that a path
- * cannot decide, so it is decided on the changed lines instead. Broad on purpose: a false stop
- * costs a park, and the failure it prevents is an impersonation vector.
+ * "Anything under `server/` that touches auth or the session table" is the one entry a path cannot
+ * decide, so it is decided on the changed lines. Broad on purpose: a false stop costs a park, and
+ * the failure it prevents is an impersonation vector.
  */
 const SENSITIVE = /\b(session|auth|passport|cookie|credential|token|password|secret)/i;
 
-/** @param {string} base @returns {string[]} */
-export function protectedHits(base = "origin/main") {
-  /** @param {string[]} args */
-  const git = (args) => execFileSync("git", args, { encoding: "utf8" });
+const git = (args, cwd) => execFileSync("git", args, { encoding: "utf8", cwd });
+
+/** @param {string} base @param {string} [cwd] @returns {string[]} */
+export function protectedHits(base = "origin/main", cwd = undefined) {
   let files;
   try {
-    files = git(["diff", "--name-only", `${base}...HEAD`]).split(/\r?\n/).filter(Boolean);
+    files = git(["diff", "--name-only", `${base}...HEAD`], cwd).split(/\r?\n/).filter(Boolean);
   } catch {
-    return []; // no diff to judge is not a violation; the other checks still run
+    return [];
   }
   const hits = files.filter((f) => PROTECTED.some((p) => f === p || f.startsWith(p)));
   for (const f of files.filter((f) => f.startsWith("server/") && !hits.includes(f))) {
     try {
-      const patch = git(["diff", "-U0", `${base}...HEAD`, "--", f]);
+      const patch = git(["diff", "-U0", `${base}...HEAD`, "--", f], cwd);
       const changed = patch
         .split(/\r?\n/)
         .filter((l) => /^[+-][^+-]/.test(l))
         .join("\n");
       if (SENSITIVE.test(changed)) hits.push(`${f} (touches auth or the session table)`);
     } catch {
-      /* unreadable patch is not evidence of a violation */
+      /* an unreadable patch is not evidence of a violation */
     }
   }
   return hits;
 }
 
 /**
- * A field's value is what follows its colon, plus any indented or bulleted lines under it — `dod`
- * is a checklist and spans several. A trailing `# ...` is the template's own hint, not evidence,
- * so it is stripped: without that, every untouched field reads as filled.
+ * What git says happened, as against what the state file claims. A run with nothing committed has
+ * not built anything, whatever its Evidence block says.
  *
- * @param {string} text
- * @returns {Record<string, string>}
+ * @param {string} base
  */
-export function readFields(text) {
-  const lines = text.split(/\r?\n/);
-  /** @type {Record<string, string>} */
-  const out = {};
-  let current = null;
-  for (const line of lines) {
-    if (/^\s+\S/.test(line) || /^\s*-\s/.test(line)) {
-      if (current) out[current] += ` ${line.trim()}`;
-      continue;
-    }
-    const m = /^([a-z_]+):(.*)$/.exec(line);
-    if (!m) {
-      current = null;
-      continue;
-    }
-    current = m[1];
-    out[current] = m[2].replace(/#.*$/, "").trim();
+export function workEvidence(base = "origin/main") {
+  try {
+    const commits = Number(git(["rev-list", "--count", `${base}..HEAD`]).trim());
+    const changed = git(["diff", "--name-only", `${base}...HEAD`]).split(/\r?\n/).filter(Boolean);
+    return { commits, changed: changed.length, readable: true };
+  } catch {
+    return { commits: 0, changed: 0, readable: false };
   }
-  return out;
 }
 
-/** A HOLD is evidence that phase D ran, and a reason not to push. Both are reported. */
+/**
+ * Fail closed. Only `VERDICT: LAND` — the exact line phase D is told to end on — is permission;
+ * every other shape is a reviewer whose answer could not be read, which is not a yes.
+ */
+export function verdictAllows(verdict) {
+  return /^VERDICT:\s*LAND\s*$/i.test((verdict ?? "").trim());
+}
+
 export function check(fields) {
   const blank = Object.entries(REQUIRED)
     .filter(([k]) => !fields[k])
     .map(([k, why]) => `${k}: ${why}`);
-  const held = /^VERDICT:\s*HOLD\b/i.test(fields.verdict ?? "");
-  return { blank, held, verdict: fields.verdict ?? "" };
+  return { blank, verdict: fields.verdict ?? "" };
 }
 
 function main(argv) {
-  const at = argv.indexOf("--state");
-  const path = at === -1 ? ".claude/loop/STATE.md" : argv[at + 1];
+  const baseAt = argv.indexOf("--base");
+  const base = baseAt === -1 ? "origin/main" : argv[baseAt + 1];
 
-  let text;
-  try {
-    text = fs.readFileSync(path, "utf8");
-  } catch {
-    console.error(`loop-gate: cannot read ${path}`);
+  const text = readState();
+  if (!text) {
+    console.error(`loop-gate: no run state at ${statePath()}`);
     return 2;
   }
 
   const fields = readFields(text);
-  if (fields.status !== "RUNNING") {
+  if (!isRunning(fields)) {
     console.error(`loop-gate: status is ${fields.status || "(unset)"}, not RUNNING`);
     return 2;
   }
 
-  const baseAt = argv.indexOf("--base");
-  const protectedFiles = protectedHits(baseAt === -1 ? undefined : argv[baseAt + 1]);
-  if (protectedFiles.length) {
-    const n = fields.ticket || "<n>";
-    console.error(
-      `loop-gate: BLOCKED on #${n} — this diff changes what the loop may not change on its own\n`
-    );
-    for (const f of protectedFiles) console.error(`  ${f}`);
-    console.error(
-      `\nPark it, then say on the issue what the change would be and why it needs you:\n` +
-        `  gh issue edit ${n} --remove-label ready-for-agent --remove-label in-progress ` +
-        `--add-label ready-for-human`
-    );
+  const n = fields.ticket || "<n>";
+  const refuse = (headline, lines) => {
+    console.error(`loop-gate: BLOCKED on #${n} — ${headline}\n`);
+    for (const l of lines) console.error(`  ${l}`);
     return 1;
+  };
+
+  const hits = protectedHits(base);
+  if (hits.length) {
+    return refuse("this diff changes what the loop may not change on its own", [
+      ...hits,
+      "",
+      "Park it, then say on the issue what the change would be and why it needs you:",
+      `  gh issue edit ${n} --remove-label ready-for-agent --remove-label in-progress ` +
+        `--add-label ready-for-human`,
+    ]);
   }
 
-  const { blank, held, verdict } = check(fields);
-  if (blank.length) {
-    console.error(`loop-gate: BLOCKED on #${fields.ticket || "?"} — redo the phase, not the ticket\n`);
-    for (const b of blank) console.error(`  ${b}`);
-    return 1;
+  const { blank, verdict } = check(fields);
+  if (blank.length) return refuse("redo the phase, not the ticket", blank);
+
+  const work = workEvidence(base);
+  if (!work.readable) {
+    console.error(`loop-gate: cannot read the branch's history against ${base}`);
+    return 2;
   }
-  if (held) {
-    console.error(`loop-gate: BLOCKED on #${fields.ticket} — the reviewer held it\n\n  ${verdict}`);
-    return 1;
+  if (work.commits === 0 || work.changed === 0) {
+    return refuse("the state claims a finished run over a branch with no work on it", [
+      `${work.commits} commit(s), ${work.changed} changed file(s) against ${base}`,
+      "Phase C commits each slice as it lands. Nothing committed means nothing was built.",
+    ]);
   }
-  console.log(`loop-gate: #${fields.ticket} has evidence for every phase — ${verdict}`);
+
+  if (!verdictAllows(verdict)) {
+    return refuse("the reviewer did not clear this diff", [
+      `verdict: ${verdict || "(blank)"}`,
+      "Only the exact line `VERDICT: LAND` is permission. Anything else is a hold.",
+    ]);
+  }
+
+  console.log(
+    `loop-gate: #${n} — ${work.commits} commit(s), ${work.changed} file(s), every phase has ` +
+      `evidence, reviewer said LAND`
+  );
   return 0;
 }
 

@@ -4,36 +4,18 @@
  * `SessionStart` fires on compact, resume and startup, and this is what stands between an
  * auto-compaction and a restarted ticket. It has to run on whatever shell the host picks: the
  * POSIX one-liner it replaces (`[ -f ... ] && grep -q ... && cat`) is not a command under
- * cmd.exe, which greets it with a banner and exits 0 — a hook that does nothing while
- * reporting success, which is worse than no hook at all.
+ * PowerShell, which rejects it at parse time — a hook that does nothing while reporting success.
  *
- * So: node, no shell operators, no environment expansion, and paths resolved from this file
- * rather than from the working directory the host happened to choose.
+ * So: node, no shell operators, no environment expansion, and the state found through git rather
+ * than through the working directory the host happened to choose.
  *
- * Silent unless a run is live, and never non-zero — a broken brief must not take the session
- * with it.
+ * Silent unless a run is live, and never non-zero — a broken brief must not take the session down.
  */
-import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { readState, readLessons, readFields, isRunning } from "./loop-state.mjs";
 
-const loopDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", ".claude", "loop");
-
-const read = (name) => {
-  try {
-    return fs.readFileSync(path.join(loopDir, name), "utf8");
-  } catch {
-    return "";
-  }
-};
-
-/**
- * @param {string} state
- * @param {string} lessons
- * @returns {string}
- */
+/** @param {string} state @param {string} lessons @returns {string} */
 export function brief(state, lessons) {
-  if (!/^status: RUNNING\b/m.test(state)) return "";
+  if (!isRunning(readFields(state))) return "";
   return [
     "An autonomous ticket run is live. Resume at the phase below — do not re-plan, do not",
     "restart the ticket, do not ask whether to continue. `.claude/commands/queue.md` is the",
@@ -44,5 +26,9 @@ export function brief(state, lessons) {
   ].join("\n");
 }
 
-const out = brief(read("STATE.md"), read("LESSONS.md"));
-if (out) console.log(out);
+try {
+  const out = brief(readState(), readLessons());
+  if (out) console.log(out);
+} catch {
+  /* no git, no repo, no state: nothing to restore and nothing to say about it */
+}

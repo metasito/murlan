@@ -8,15 +8,21 @@ model: opus
 The only loop protocol in this repo. `docs/agents/RULES.md` is the ruleset; this file is the
 procedure. Where they disagree, RULES.md wins and this file is stale — fix it.
 
-`.claude/loop/STATE.md` is the single truth. Rewrite it at every phase transition, before
-doing the next thing. Nothing you remember counts; only what is on disk.
+The run state is the single truth. Rewrite it at every phase transition, before doing the next
+thing. Nothing you remember counts; only what is on disk.
+
+It lives at `<git-common-dir>/loop/STATE.md` — outside the working tree, and shared by the main
+checkout and every worktree. `node scripts/loop-state.mjs` is not run directly; `scripts/loop-gate.mjs`
+and `scripts/loop-brief.mjs` both resolve it, so you never hardcode the path. It is deliberately
+untracked: a tracked state file is rewritten into a dirty tree, and phase 0's preflight refuses to
+start a run on one.
 
 ## Recovery — read this first, every time
 
-If `STATE.md` says `status: RUNNING`, you are mid-run. Do not re-plan, do not re-scope, do
+If the state says `status: RUNNING`, you are mid-run. Do not re-plan, do not re-scope, do
 not ask whether to continue.
 
-1. Read `STATE.md` and `LESSONS.md`.
+1. Read the state and the lessons — `node scripts/loop-brief.mjs` prints both.
 2. Work in the worktree it names. `git log --oneline origin/main..HEAD` there is what the run
    has actually done — trust it over any summary of it.
 3. Resume at the phase it names. Never restart a ticket.
@@ -29,13 +35,14 @@ Uncommitted changes in the worktree are your in-progress slice. Finish it; do no
 Three cases, and they are all of them:
 
 - **Answerable from the repo** — look it up, or test it.
-- **A default exists** in `CLAUDE.md`, `docs/RULES.md`, an ADR or a ticket comment — follow it.
+- **A default exists** in `docs/agents/RULES.md`, `CLAUDE.md`, an ADR or a ticket comment — follow
+  it. (`docs/RULES.md` is the card game's spec, not the agent ruleset.)
 - **Only the owner can decide** — comment the option space on the issue (what each option
   costs, not a bare question), then park it:
   ```sh
   gh issue edit <n> --remove-label ready-for-agent --remove-label in-progress --add-label ready-for-human
   ```
-  one line in `PARKED.md`, take the next ticket.
+  then take the next ticket. The issue is the record; there is no parked-findings file.
 
 Never ask the user a question while `status: RUNNING`.
 
@@ -46,10 +53,14 @@ Never ask the user a question while `status: RUNNING`.
 ```sh
 node scripts/prune-worktrees.mjs      # a killed run never reached its own teardown
 node scripts/preflight.mjs            # refuses to start on someone else's uncommitted work
+node -e "import('./scripts/loop-state.mjs').then(m=>console.log(m.initState()))"
 node scripts/next-ticket.mjs --all    # the queue, in pick order
 ```
 
-Write `STATE.md`: `status: RUNNING`, `objective` (one line, never rewritten), `queue`,
+The third line prints the path of the live state, laying it down from
+`.claude/loop/STATE.template.md` if this is a first run. Write to that path, never to the template.
+
+Write the state: `status: RUNNING`, `objective` (one line, never rewritten), `queue`,
 `budget: 0/$1` (default 5). If preflight or the picker fails, **halt** — do not work around it.
 
 `queue` is a snapshot for the report and for the handoff, not a work order: phase A picks
@@ -61,7 +72,7 @@ condition fires.
 
 ## A — Take
 
-**Read `.claude/loop/LESSONS.md` first, every ticket.** It is the only thing standing
+**Read the lessons first, every ticket** — `node scripts/loop-brief.mjs` prints them with the state. It is the only thing standing
 between this run and repeating the last one's mistakes; written in phase F and never read is
 the same as not written.
 
@@ -81,14 +92,19 @@ Claim it as the first write, before any code:
 
 ```sh
 gh issue edit <n> --add-label in-progress
-gh issue comment <n> --body "Claimed by \`agent/<n>-<slug>\`."
-gh issue view <n> --comments        # a fresh read *after* the write — this is the race check
+gh issue comment <n> --body-file <file>   # the file holds: Claimed by `agent/<n>-<slug>`.
+gh issue view <n> --comments              # a fresh read *after* the write — the race check
 ```
 
-Every session authenticates as the same account, so the branch name is the claim. That last
-read is not a repeat of the picker's: it is the only way to see a peer who claimed the same
-ticket between the pick and the write. An older claim comment wins — remove your label, say so
-in one line, take the next ticket.
+The claim goes through a file, not an inline `--body`. PowerShell eats the backticks around the
+branch name — `` `agent/824-x` `` arrives as a BEL character — and `claimBranch()` in
+`next-ticket.mjs` matches the claim *by* those backticks. An inline claim is a claim no peer can
+see, and it fails silently.
+
+Every session authenticates as the same account, so the branch name is the claim. That last read
+is not a repeat of the picker's: it is the only way to see a peer who claimed the same ticket
+between the pick and the write. An older claim comment wins — remove your label, say so in one
+line, take the next ticket.
 
 ```sh
 git fetch origin --quiet
@@ -97,7 +113,7 @@ git worktree add -b agent/<n>-<slug> .worktrees/agent-<n> origin/main
 
 Work only in that worktree. Never change the shared checkout's branch.
 
-**Write the ticket's Definition of done into `STATE.md` as `dod:`, now, before any code.**
+**Write the ticket's Definition of done into the state as `dod:`, now, before any code.**
 That checklist is the contract and it is what Phase F is judged against. A ticket with no
 checkable Definition of done is not a ticket — park it.
 
@@ -130,7 +146,8 @@ a superpowers process skill, which would otherwise answer the same trigger diffe
 
 - **Watch the check fail first, for the reason you claim.** A check you never saw red is decoration.
 - **Fix the root cause across every caller**, not the instance the ticket names.
-- Scope is exactly the ticket. A finding outside it goes to `PARKED.md`, never into the diff.
+- Scope is exactly the ticket. A finding outside it is filed as its own issue, never folded into
+  the diff: `gh issue create --title "<what>" --body-file <file> --label ready-for-human`.
 - A bug three levels under the bug in hand: file it, do not follow it.
 - **Commit each slice as you finish it** — `git add -- <paths>`, never `-A`. An unstaged edit
   is the only work this loop can lose.
@@ -152,7 +169,8 @@ nothing else — never your reasoning, which is the frame the review exists to e
 > End with exactly one line: `VERDICT: LAND`, or `VERDICT: HOLD — <one sentence>`.
 > Do not spawn any subagent, and do not run `npm run agent:check`.
 
-Copy that verdict line into `verdict:` **verbatim**. Fix everything real, commit, re-review
+Copy that verdict line into `verdict:` **verbatim** — the gate accepts only the exact string
+`VERDICT: LAND`, so a paraphrase reads as a hold. Fix everything real, commit, re-review
 once. A second HOLD parks the ticket with both verdicts on the issue.
 
 Where you disagree with a finding, one line in the commit body — never a softened summary of it.
@@ -163,10 +181,17 @@ Where you disagree with a finding, one line in the commit body — never a softe
 node scripts/loop-gate.mjs
 ```
 
-It reads `STATE.md` and exits non-zero naming any phase that left its evidence line blank, or
-a reviewer that held the diff. **A non-zero exit means redo that phase — never the ticket, and
-never push past it.** This is a check rather than a promise: your own account of what you did
-is exactly what cannot be trusted here.
+It refuses the push, naming what is wrong, when any of these is true:
+
+- a phase left its Evidence line blank;
+- the verdict is anything other than the exact line `VERDICT: LAND` — a hold, a blank, or a
+  wording it cannot read is not permission;
+- the branch has no commits, or an empty diff, against `origin/main` — git is the evidence, and
+  the state file is only the claim;
+- the diff touches a protected path.
+
+**A non-zero exit means redo that phase — never the ticket, and never push past it.** Exit 2 means
+it could not judge at all (no live run), which is not permission either.
 
 ```sh
 npm run agent:check
@@ -225,20 +250,22 @@ The PR body closes the issue; nothing takes the label off, and a closed ticket s
 
 ## F — Close out
 
-1. Tick `dod:` against the code actually written. A box you did not close is named on the
+1. Re-read the issue — `gh issue view <n> --comments`. A ruling can land while you were building,
+   and a ticket answered against its first version is answered against the wrong one.
+2. Tick `dod:` against the code actually written. A box you did not close is named on the
    issue, with why. An honest gap is worth more than a green report.
-2. One line to `DONE.md`: the effective diff in plain language — "the hand fans from the left
+3. One line on the issue: the effective diff in plain language — "the hand fans from the left
    edge", not "edited handLayout.ts".
-3. At most one line to `LESSONS.md`, and only a rule that changes future behaviour. Nothing
+4. At most one line to the lessons file (`<git-common-dir>/loop/LESSONS.md`), and only a rule that changes future behaviour. Nothing
    the code already tells you. Over 40 lines: merge duplicates, drop what is no longer
    load-bearing.
-4. Teardown, in this order — `git worktree remove` walks *into* a Windows junction and empties
+5. Teardown, in this order — `git worktree remove` walks *into* a Windows junction and empties
    the shared install:
    ```sh
    npm run worktrees:remove -- .worktrees/agent-<n>
    git status --porcelain              # must be empty; if it is not, teardown failed — say so
    ```
-5. Point `STATE.md` at the next ticket, phase A, budget incremented. Continue immediately.
+6. Point the state at the next ticket, phase A, budget incremented. Continue immediately.
 
 Teardown runs on the parked and stopped paths too. A run that cost forty minutes and stopped
 is the one whose record is worth having.
@@ -247,11 +274,11 @@ is the one whose record is worth having.
 
 Context is kept flat by delegating: Phase B and Phase D run in subagents whose tool output
 never enters this conversation, so a ticket costs roughly what its own diff costs. When
-auto-compaction does fire, the `SessionStart` hook re-reads `STATE.md` and `LESSONS.md` from
+auto-compaction does fire, the `SessionStart` hook re-reads the state and the lessons from
 disk. Nothing depends on what survived the summary — read the files and resume at the phase
 they name.
 
-When compacting, preserve: `STATE.md` verbatim, the current ticket and phase, the worktree
+When compacting, preserve: the state file verbatim, the current ticket and phase, the worktree
 path, and any failing test output. The first three are on disk and recoverable; the failing
 output is the one thing that is not.
 
@@ -261,7 +288,7 @@ Budget spent · queue empty · route `handoff` · preflight red · three failed 
 same failure · a decision only the owner can make **that parking cannot carry**.
 
 Set `status: HALTED` with the reason in `phase_note`, release any claim, run teardown, and
-write `.claude/loop/HANDOFF.md`: the ticket, the phase reached, what is committed and on
+write `<git-common-dir>/loop/HANDOFF.md`: the ticket, the phase reached, what is committed and on
 which branch, the exact failure, and the one decision needed. Then five lines to the user.
 
 ## Output
@@ -270,4 +297,4 @@ Between tickets, exactly one line:
 
 `✅ #<n> <title> — <files> files, <tests> tests, <verdict>`
 
-Prose goes in `HANDOFF.md`. If you catch yourself narrating, invoke `caveman`.
+Prose goes in the handoff file. If you catch yourself narrating, invoke `caveman`.

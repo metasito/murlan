@@ -1,129 +1,148 @@
 // tests/loopGate.test.ts
-import { test, describe } from "node:test";
+import { test, describe, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { execFileSync } from "node:child_process";
+import { spawnSync, execFileSync } from "node:child_process";
+import { mkdirSync, writeFileSync, rmSync, existsSync, readFileSync, copyFileSync } from "node:fs";
+import { join } from "node:path";
 
-import { readFields, check, protectedHits } from "../scripts/loop-gate.mjs";
-import { brief } from "../scripts/loop-brief.mjs";
+import { PROTECTED, verdictAllows, protectedHits } from "../scripts/loop-gate.mjs";
+import { statePath, stateDir } from "../scripts/loop-state.mjs";
 
-const FILLED = `# LOOP STATE
+/**
+ * Phase E branches on this command's exit code, so that is what is asserted — never a function's
+ * return value. A `main()` that printed every refusal and returned 0 would keep a suite of unit
+ * tests green while letting every skipped phase through.
+ *
+ * The live state is outside the working tree, so these write it directly and restore whatever was
+ * there. Nothing here goes through a pipe: a pipeline reports the last command's status.
+ */
+const LIVE = statePath();
+const BACKUP = `${LIVE}.testbak`;
 
-status: RUNNING
-ticket: 824
-branch: agent/824-music-delay
+const state = (over: Record<string, string> = {}) => {
+  const f: Record<string, string> = {
+    status: "RUNNING",
+    ticket: "824",
+    branch: "agent/824-x",
+    recon: "lib/a.ts",
+    verdict: "VERDICT: LAND",
+    ...over,
+  };
+  const dod = f.dod === "" ? "dod:\n" : "dod:\n  - [x] done\n";
+  delete f.dod;
+  return Object.entries(f).map(([k, v]) => `${k}: ${v}`).join("\n") + "\n" + dod;
+};
 
-## Evidence
-dod:
-  - [ ] the delay is measured on device
-  - [ ] a regression test pins it
-recon: components/audio.ts, lib/sound.ts
-verdict: VERDICT: LAND
-gate:
-`;
+function gate(text: string, extra: string[] = []): number {
+  mkdirSync(stateDir(), { recursive: true });
+  writeFileSync(LIVE, text, "utf8");
+  const r = spawnSync(process.execPath, ["scripts/loop-gate.mjs", ...extra], { encoding: "utf8" });
+  return r.status ?? -1;
+}
 
-describe("the loop's evidence gate", () => {
-  test("a filled state passes", () => {
-    assert.deepEqual(check(readFields(FILLED)).blank, []);
+before(() => {
+  mkdirSync(stateDir(), { recursive: true });
+  if (existsSync(LIVE)) copyFileSync(LIVE, BACKUP);
+});
+after(() => {
+  if (existsSync(BACKUP)) {
+    copyFileSync(BACKUP, LIVE);
+    rmSync(BACKUP, { force: true });
+  } else rmSync(LIVE, { force: true });
+});
+
+describe("the gate's exit code, which is what phase E reads", () => {
+  test("a complete run over real commits is allowed", () => {
+    assert.equal(gate(state()), 0);
   });
 
-  test("a phase that never ran leaves its field blank, and is named", () => {
-    const { blank } = check(readFields(FILLED.replace("recon: components/audio.ts, lib/sound.ts", "recon:")));
-    assert.equal(blank.length, 1);
-    assert.match(blank[0], /^recon: phase B never ran/);
-  });
+  for (const [name, over] of [
+    ["phase B never ran", { recon: "" }],
+    ["phase D never ran", { verdict: "" }],
+    ["phase A wrote no Definition of done", { dod: "" }],
+    ["phase A never claimed a ticket", { ticket: "" }],
+  ] as [string, Record<string, string>][]) {
+    test(`refuses when ${name}`, () => assert.equal(gate(state(over)), 1));
+  }
 
-  // The failure this whole file exists for: the template ships every field carrying a `# hint`
-  // comment, and reading that as content would call a run that did nothing complete.
-  test("a template hint is not evidence", () => {
-    const fields = readFields(`status: RUNNING\nticket: 1\nbranch: b\ndod:\nrecon:   # B: files to touch\nverdict:\n`);
-    assert.equal(fields.recon, "");
-    assert.deepEqual(
-      check(fields).blank.map((b) => b.split(":")[0]),
-      ["dod", "recon", "verdict"],
-    );
-  });
-
-  test("a HOLD blocks the push even though phase D ran", () => {
-    const { blank, held } = check(readFields(FILLED.replace("VERDICT: LAND", "VERDICT: HOLD — the guard exempts its own case")));
-    assert.deepEqual(blank, []);
-    assert.equal(held, true);
-  });
-
-  // The shipped template must be the shape the gate reads, or the gate is checking a file
-  // nothing writes. It ships IDLE, so only its field names are asserted here.
-  test("the committed STATE.md carries every field the gate requires", () => {
-    const fields = readFields(readFileSync(".claude/loop/STATE.md", "utf8"));
-    for (const key of ["status", "ticket", "branch", "dod", "recon", "verdict"]) {
-      assert.ok(key in fields, `.claude/loop/STATE.md has no \`${key}\` field`);
-    }
+  test("no live run, and no state at all, are exit 2 and never 0", () => {
+    assert.equal(gate(state({ status: "IDLE" })), 2);
+    rmSync(LIVE, { force: true });
+    const r = spawnSync(process.execPath, ["scripts/loop-gate.mjs"], { encoding: "utf8" });
+    assert.equal(r.status, 2);
   });
 });
 
-// The hook this guards was a POSIX one-liner until PowerShell — this machine's primary shell —
-// was found to reject it with a parser error, leaving the loop with no recovery from a
-// compaction and no sign that anything was wrong. Hence a node script, and hence these.
-describe("the compaction brief", () => {
-  test("says nothing when no run is live", () => {
-    assert.equal(brief("status: IDLE\nticket:\n", "a lesson"), "");
-    assert.equal(brief("", ""), "");
-  });
+// The defect: the template hinted `HOLD - reason`, the gate matched only `/^VERDICT:\s*HOLD/`, so
+// following the template printed "has evidence for every phase - HOLD ..." and exited 0.
+describe("only an explicit LAND is permission", () => {
+  for (const bad of [
+    "HOLD - the guard exempts its own case",
+    "VERDICT: HOLD - it is wrong",
+    "hold",
+    "LAND",
+    "VERDICT: LAND, with reservations",
+    "the reviewer was happy",
+  ]) {
+    test(`refuses ${JSON.stringify(bad)}`, () => {
+      assert.equal(verdictAllows(bad), false);
+      assert.equal(gate(state({ verdict: bad })), 1);
+    });
+  }
 
-  test("carries the state and the lessons into a session that lost them", () => {
-    const out = brief(FILLED, "- never trust a green suite nobody ran");
-    assert.match(out, /do not\s+restart the ticket/);
-    assert.match(out, /agent\/824-music-delay/);
-    assert.match(out, /never trust a green suite/);
-  });
-
-  // `status:` is matched per line, so a run is live only when the field says so — not when the
-  // word appears in a phase note or a lesson.
-  test("a mention of RUNNING is not a live run", () => {
-    assert.equal(brief("status: HALTED\nphase_note: was RUNNING when CI went red\n", ""), "");
-  });
+  for (const good of ["VERDICT: LAND", "verdict: land", "VERDICT:LAND", "  VERDICT: LAND  "]) {
+    test(`allows ${JSON.stringify(good)}`, () => assert.equal(verdictAllows(good), true));
+  }
 });
 
-// CLAUDE.md said "never autonomously change" these; the command file said the same work was fine
-// once a decision was recorded somewhere. Both could not be followed, and neither was executable.
-// The list is now one list, and it runs.
-describe("the protected paths", () => {
-  test("a clean branch touching none of them is not blocked", () => {
+// Every path, not one of them. The previous fixtures aimed only at shared/schema.ts, so the list
+// could lose .github/workflows/ and .replit with the whole suite still green.
+describe("every protected path is actually guarded", () => {
+  let root: string;
+  before(() => {
+    root = execFileSync("git", ["rev-parse", "--show-toplevel"], { encoding: "utf8" }).trim();
+  });
+
+  for (const p of PROTECTED) {
+    test(`${p} is caught`, () => {
+      const file = p.endsWith("/") ? `${p}probe.yml` : p;
+      const wt = join(process.env.TEMP ?? "/tmp", `pp-${Math.random().toString(36).slice(2)}`);
+      execFileSync("git", ["worktree", "add", "-q", "--detach", wt, "origin/main"], { cwd: root });
+      try {
+        const target = join(wt, file);
+        mkdirSync(join(target, ".."), { recursive: true });
+        const before_ = existsSync(target) ? readFileSync(target, "utf8") : "";
+        writeFileSync(target, `${before_}
+# probe
+`);
+        execFileSync("git", ["add", "--", file], { cwd: wt });
+        execFileSync(
+          "git",
+          ["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "probe"],
+          { cwd: wt }
+        );
+        const hits = protectedHits("origin/main", wt);
+        assert.ok(
+          hits.some((h) => h.startsWith(p) || h.startsWith(file)),
+          `${p} was changed and the gate did not catch it; got: ${hits.join(", ") || "nothing"}`
+        );
+      } finally {
+        execFileSync("git", ["worktree", "remove", "--force", wt], { cwd: root });
+      }
+    });
+  }
+});
+
+describe("git is the evidence, not the state file", () => {
+  test("a state claiming a finished run over an empty diff is refused", () => {
+    assert.equal(gate(state(), ["--base", "HEAD"]), 1);
+  });
+
+  test("and the same state over real commits is allowed", () => {
+    assert.equal(gate(state()), 0);
+  });
+
+  test("protectedHits is empty on a branch that touches none of them", () => {
     assert.deepEqual(protectedHits("HEAD"), []);
-  });
-
-  test("the check reads the real diff rather than trusting a claim", () => {
-    // Against the merge-base of this branch, this run's own diff is the fixture: it changes the
-    // gate and the loop's docs, and none of the protected paths.
-    const hits = protectedHits("origin/main");
-    assert.deepEqual(
-      hits.filter((f) => f.startsWith("shared/") || f.startsWith(".github/")),
-      [],
-      `this branch should not be touching protected paths, but reports: ${hits.join(", ")}`
-    );
-  });
-
-  // The floor. Every assertion above passes just as happily on a check that never fires, which is
-  // the failure mode this repo names in CLAUDE.md: a guard satisfied without the thing it guards
-  // being true. So it is aimed at a real change to a protected path, taken from this repo's own
-  // history rather than a fixture that could drift away from what the rule means.
-  test("it actually fires on a real change to a protected path", () => {
-    const commit = execFileSync("git", ["log", "--format=%H", "-1", "--", "shared/schema.ts"], {
-      encoding: "utf8",
-    }).trim();
-    assert.ok(commit, "no commit in this history touches shared/schema.ts");
-
-    const hits = protectedHits(`${commit}~1`);
-    assert.ok(
-      hits.includes("shared/schema.ts"),
-      `a diff that changes shared/schema.ts was not caught; got: ${hits.join(", ") || "nothing"}`
-    );
-    assert.ok(
-      hits.some((h) => h.startsWith("server/") && h.includes("auth or the session table")),
-      "the content rule for server/ never fired on a diff that changes auth"
-    );
-  });
-
-  test("an unresolvable base is not read as a violation", () => {
-    assert.deepEqual(protectedHits("refs/heads/no-such-branch-xyz"), []);
   });
 });

@@ -42,15 +42,15 @@ describe("the loop's instructions name only things that exist", () => {
     assert.deepEqual(missing, [], `queue.md names npm scripts that package.json does not define`);
   });
 
-  // `HANDOFF.md` is the halt artefact: written when a run stops and deleted with the run, so it
-  // is absent in a healthy repo. Everything else the loop names it must be able to read on the
-  // first ticket of a fresh clone, which means committed.
-  const PRODUCED = new Set([".claude/loop/HANDOFF.md"]);
-
-  test("every loop artefact it reads is committed, not assumed", () => {
-    const named = [...read(QUEUE).matchAll(/`?(\.claude\/loop\/[\w.]+)`?/g)].map((m) => m[1]);
-    const missing = [...new Set(named)].filter((f) => !PRODUCED.has(f) && !existsSync(f));
-    assert.deepEqual(missing, [], `queue.md names loop files that are not in the repo`);
+  // Loop artefacts live outside the working tree now, so there is no file to assert the existence
+  // of — what must hold is that the docs no longer point at the tracked copies that used to be
+  // rewritten into a dirty tree, and that the template they are laid down from is still shipped.
+  test("the docs do not point at a tracked, rewritable state file", () => {
+    const q = read(QUEUE);
+    for (const gone of [".claude/loop/STATE.md", ".claude/loop/LESSONS.md", ".claude/loop/PARKED.md", ".claude/loop/DONE.md"]) {
+      assert.ok(!q.includes(gone), `queue.md still points at ${gone}, which no longer exists`);
+    }
+    assert.ok(existsSync(".claude/loop/STATE.template.md"), "the state template must be shipped");
   });
 
   // A hook is the one instruction nobody reads and nothing imports, so a broken one fails silently
