@@ -171,7 +171,7 @@ function nativePlayer(track: MusicTrack): AudioPlayer | null {
     player.loop = true;
     player.volume = 0;
     nativePlayers[track] = player;
-    if (__DEV__) console.log(`[music-timing][${Platform.OS}] createAudioPlayer ${Date.now() - t0}ms`);
+    if (__DEV__) console.log(`[music-timing][${Platform.OS}] createAudioPlayer ${Date.now() - t0}ms @${Date.now()}`);
     return player;
   } catch {
     return null;
@@ -197,6 +197,29 @@ function fadeNative(player: AudioPlayer, to: number, ms: number, onDone?: () => 
   }, step);
 }
 
+/** Dev-only: seekTo returns a Promise, so a bare call times only its dispatch, not its work. */
+function logSeekDuration(player: AudioPlayer, tSeek: number): void {
+  void Promise.resolve(player.seekTo(0)).then(() => {
+    console.log(`[music-timing][${Platform.OS}] seekTo ${Date.now() - tSeek}ms @${Date.now()}`);
+  });
+}
+
+/**
+ * Dev-only: play() itself returns immediately, so the only way to see when sound
+ * actually starts is the first status update reporting real playback, not a
+ * loop restart at time zero.
+ */
+function logAudibleOnset(player: AudioPlayer, tPlay: number): void {
+  try {
+    const sub = player.addListener("playbackStatusUpdate", (status) => {
+      if (status.playing && status.currentTime > 0) {
+        console.log(`[music-timing][${Platform.OS}] audible onset ${Date.now() - tPlay}ms @${Date.now()}`);
+        sub.remove();
+      }
+    });
+  } catch {}
+}
+
 function playNativeMusic(track: MusicTrack, opts: { rewind?: boolean } = {}): void {
   const tStart = __DEV__ ? Date.now() : 0;
   const player = nativePlayer(track);
@@ -217,15 +240,18 @@ function playNativeMusic(track: MusicTrack, opts: { rewind?: boolean } = {}): vo
       // parked mid-loop or at the end of its buffer after an interruption
       // plays silence otherwise.
       const tSeek = __DEV__ ? Date.now() : 0;
-      player.seekTo(0);
-      if (__DEV__) console.log(`[music-timing][${Platform.OS}] seekTo ${Date.now() - tSeek}ms`);
+      if (__DEV__) logSeekDuration(player, tSeek);
+      else player.seekTo(0);
       const tPlay = __DEV__ ? Date.now() : 0;
+      if (__DEV__) logAudibleOnset(player, tPlay);
       player.play();
-      if (__DEV__) console.log(`[music-timing][${Platform.OS}] player.play() call ${Date.now() - tPlay}ms`);
+      if (__DEV__) console.log(`[music-timing][${Platform.OS}] player.play() call ${Date.now() - tPlay}ms @${Date.now()}`);
     } catch {}
   }
-  fadeNative(player, targetGain(), FADE_S * 1000);
-  if (__DEV__) console.log(`[music-timing][${Platform.OS}] playNativeMusic total ${Date.now() - tStart}ms`);
+  fadeNative(player, targetGain(), FADE_S * 1000, () => {
+    if (__DEV__) console.log(`[music-timing][${Platform.OS}] fade-in done @${Date.now()}`);
+  });
+  if (__DEV__) console.log(`[music-timing][${Platform.OS}] playNativeMusic total ${Date.now() - tStart}ms @${Date.now()}`);
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
