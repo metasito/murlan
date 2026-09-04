@@ -25,8 +25,10 @@
 # found at once: the same hierarchy dump carries 44 elements and nothing
 # smaller than 6x6, so anything small enough to be invisible is too small to
 # be matched. The exchange is driven here as a code path — it runs on the deal
-# below, and a throw or a hang in it fails the assertions that follow — while
-# what it decides is asserted by the unit tests, which can see it.
+# below, and a throw in it fails the assertions that follow. A hang would not:
+# `btn-passa` and `hand-row` render regardless of the ceremony's own state, so
+# this flow does not guard against the overlay getting stuck open. What the
+# exchange decides is asserted by the unit tests, which can see it.
 #
 # This flow does not play the second hand out: a dealt hand with `btn-passa`
 # live is what proves the match moved on rather than ending, and that is the
