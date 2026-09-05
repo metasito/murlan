@@ -535,16 +535,17 @@ export const it: Record<keyof typeof en, string> = {
   // -------------------------------------------------------------------- bot.*
   // The names are proper nouns and stay as they are; only the play style is translated.
   "bot.luanBlurb": "Impulsivo e imprevedibile",
-  "bot.dritaBlurb": "Prudente, si tiene le carte alte",
   "bot.besnikBlurb": "Contende ogni mano",
   "bot.gentBlurb": "Spietato, non lascia passare nulla",
-  "bot.anaBlurb": "Paziente e calcolatrice",
 
   // ------------------------------------------------------------------ lobby.*
   "lobby.team": "Team {{team}}",
   "lobby.aiNameA11yLabel": "Nome giocatore intelligente",
   "lobby.aiNameA11yHint": "Inserisci il nome per questo giocatore controllato dal computer",
-  "lobby.personalityA11yLabel": "Avversario: {{name}}, {{style}}. Tocca per cambiare",
+  "lobby.difficultyA11yLabel": "Difficoltà di {{name}}: {{difficulty}}",
+  "bot.difficultyEasy": "Facile",
+  "bot.difficultyNormal": "Normale",
+  "bot.difficultyHard": "Difficile",
   "lobby.playerCountOptionA11yLabel": "{{n}} giocatori",
   "lobby.defaultPlayerName1": "Giocatore 1",
   "lobby.playerName": "Giocatore {{n}}",
@@ -628,7 +629,7 @@ export const it: Record<keyof typeof en, string> = {
   "rules.faq.q16": "Come funziona la Rivincita online?",
   "rules.faq.a16": "Nella modalità Online, la rivincita è democratica:\n\n• Tutti i giocatori vedono il pulsante \"Rivincita\" nella schermata di fine partita\n• Una nuova partita inizia SOLO quando TUTTI i giocatori hanno cliccato Rivincita\n• Il contatore mostra in tempo reale quanti hanno già votato (es. 2/4 vogliono giocare)\n• Se non tutti votano, si può sempre uscire premendo il tasto Esci\n\nI punteggi si accumulano tra una rivincita e l'altra — chi ha il totale più alto vince la sessione!",
   "rules.faq.q17": "Come funziona l'AI?",
-  "rules.faq.a17": "Ogni avversario controllato dal computer ha una personalità con un suo stile di gioco:\n• Luan: impulsivo e imprevedibile\n• Drita: prudente, si tiene le carte alte\n• Besnik: contende ogni mano\n• Gent: spietato, non lascia passare nulla\n• Ana: paziente e calcolatrice\nLo stile decide con quanta forza un bot contende un turno, e quando lo lascia andare. Gent e Ana tengono da parte un 2, un Jolly o una Bomba per quando non resta nulla di ordinario da giocare; Luan, Drita e Besnik ne spendono uno quando il loro stile dice di insistere. Lo stile non cambia mai quali combinazioni sono valide.",
+  "rules.faq.a17": "Ogni avversario controllato dal computer gioca a uno di tre livelli di difficoltà:\n• Luan (Facile): impulsivo e imprevedibile\n• Besnik (Normale): contende ogni mano\n• Gent (Difficile): spietato, non lascia passare nulla\nLa difficoltà decide con quanta forza un bot contende un turno, e quando lo lascia andare. Gent tiene da parte un 2, un Jolly o una Bomba per quando non resta nulla di ordinario da giocare; Luan e Besnik ne spendono uno quando il loro stile dice di insistere. La difficoltà non cambia mai quali combinazioni sono valide.",
   "rules.faq.q18": "Il gioco finisce subito quando termino le mie carte?",
   "rules.faq.a18": "No! Se ci sono altri giocatori, il gioco continua tra di loro. Tu aspetti semplicemente che finiscano. Puoi vedere le posizioni finali nella schermata dei risultati (1°, 2°, 3°, 4°).",
 
@@ -799,7 +800,6 @@ export const it: Record<keyof typeof en, string> = {
   "room.fillWithBotsSubtitle": "I posti liberi saranno occupati da giocatori virtuali",
   "room.fillWithBotsA11yLabel": "Riempi i posti liberi con bot",
   "room.fillWithBotsA11yHint": "Attiva per far controllare al computer i posti liberi quando la partita inizia",
-  "room.botPersonalityOptionA11yLabel": "Bot: {{name}}, {{style}}",
   "room.formatLabel": "FORMATO",
 
   // ---------------------------------------------------------------- friends.*

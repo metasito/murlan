@@ -41,9 +41,9 @@ test("a single bot seat keeps the bare personality name", () => {
   const roster = buildSeatRoster(
     [{ seatIndex: 0, userId: "u1", username: "Ana" }],
     2,
-    { fillWithBots: true, botPersonality: "drita" }
+    { fillWithBots: true, botPersonality: "besnik" }
   );
-  assert.deepEqual(roster.filter((r) => r.isBot).map((r) => r.username), ["Drita"]);
+  assert.deepEqual(roster.filter((r) => r.isBot).map((r) => r.username), ["Besnik"]);
 });
 
 test("without fillWithBots the roster is only the humans", () => {

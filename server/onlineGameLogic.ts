@@ -356,7 +356,7 @@ export interface SeatEntry {
 export function buildSeatRoster(
   humans: { seatIndex: number; userId: string; username: string }[],
   maxPlayers: number,
-  opts: { fillWithBots?: boolean; botPersonality?: BotPersonalityId }
+  opts: { fillWithBots?: boolean; botPersonality?: string }
 ): SeatEntry[] {
   const roster: SeatEntry[] = humans
     .map((h) => ({ ...h, isBot: false }))

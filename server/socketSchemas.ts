@@ -1,6 +1,4 @@
 import { z } from "zod";
-import { BOT_PERSONALITIES } from "../lib/botPersonalities.ts";
-import type { BotPersonalityId } from "../lib/botPersonalities.ts";
 
 /**
  * Runtime schemas for every inbound socket event.
@@ -48,9 +46,13 @@ export const RoomQuickmatchSchema = z.object({
   gameMode: GameModeSchema,
 });
 
-const BotPersonalitySchema = z.enum(
-  BOT_PERSONALITIES.map((p) => p.id) as [BotPersonalityId, ...BotPersonalityId[]]
-);
+// Not a strict enum of BOT_PERSONALITIES: a client on an older bundle can
+// still send an id this build has since removed, and getBotPersonality (#904)
+// is what resolves that to the default — rejecting the payload here instead
+// would refuse the whole room:start message before it ever reaches that
+// fallback. IdSchema's bound is enough to keep this a bot-personality-shaped
+// string rather than an open field.
+const BotPersonalitySchema = IdSchema;
 const MatchLengthSchema = z.enum(["match", "single"]);
 
 /**

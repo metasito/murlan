@@ -14,7 +14,7 @@ import { GameProvider, useGame } from "@/context/GameContext";
 const ONE_HUMAN_THREE_BOTS = [
   { name: "Ana", type: "human" as const },
   { name: "Luan", type: "ai" as const, personality: "luan" as const },
-  { name: "Drita", type: "ai" as const, personality: "drita" as const },
+  { name: "Besnik", type: "ai" as const, personality: "besnik" as const },
   { name: "Gent", type: "ai" as const, personality: "gent" as const },
 ];
 

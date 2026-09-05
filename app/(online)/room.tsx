@@ -28,8 +28,9 @@ import { useSocket } from "@/context/SocketContext";
 import { Colors, Spacing, Radius, FontSize, Motion, TOUCH_TARGET_MIN, Type } from '@/lib/theme';
 import { firstTargetFor, TEAMS_PLAYER_COUNT } from "@/lib/gameEngine";
 import type { MatchLength } from "@/lib/gameEngine";
-import { BOT_PERSONALITIES, DEFAULT_BOT_PERSONALITY, botBlurbKey } from "@/lib/botPersonalities";
+import { DEFAULT_BOT_PERSONALITY, botBlurbKey } from "@/lib/botPersonalities";
 import type { BotPersonalityId } from "@/lib/botPersonalities";
+import { DifficultyLadder } from "@/components/DifficultyLadder";
 import { MenuLayout } from "@/components/MenuLayout";
 import { MenuButton } from "@/components/MenuButton";
 import { Toggle } from "@/components/Toggle";
@@ -79,39 +80,14 @@ function BotFillControls({
       </View>
 
       {fillWithBots && (
-        <View style={botFillStyles.personalityRow}>
-          {BOT_PERSONALITIES.map((p) => {
-            const selected = botPersonality === p.id;
-            return (
-              <Pressable
-                key={p.id}
-                onPress={() => {
-                  onChangeBotPersonality(p.id);
-                  hapticSelection();
-                }}
-                accessibilityLabel={t("room.botPersonalityOptionA11yLabel", {
-                  name: p.name,
-                  style: t(botBlurbKey(p.id)),
-                })}
-                {...a11yState({ role: "button", selected })}
-                style={[botFillStyles.personalityPill, selected && botFillStyles.personalityPillActive]}
-              >
-                <Text
-                  {...a11yHidden()}
-                  style={[
-                    botFillStyles.personalityPillText,
-                    selected && botFillStyles.personalityPillTextActive,
-                  ]}
-                >
-                  {p.name}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-      )}
-      {fillWithBots && (
-        <Text style={botFillStyles.sublabel}>{t(botBlurbKey(botPersonality))}</Text>
+        <>
+          <DifficultyLadder
+            personality={botPersonality}
+            onChange={onChangeBotPersonality}
+            a11yName={t("room.fillWithBotsLabel")}
+          />
+          <Text style={botFillStyles.sublabel}>{t(botBlurbKey(botPersonality))}</Text>
+        </>
       )}
     </View>
   );
@@ -641,35 +617,6 @@ const botFillStyles = StyleSheet.create({
     fontFamily: "Inter_400Regular",
     fontSize: FontSize.xs,
     color: Colors.textMuted,
-  },
-  personalityRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: Spacing.sm,
-  },
-  personalityPill: {
-    // Five names never fit one phone-width row; wrap to two rather than clip.
-    flexGrow: 1,
-    flexBasis: "28%",
-    minHeight: TOUCH_TARGET_MIN,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: Radius.sm,
-    backgroundColor: Colors.bgSurface,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  personalityPillActive: {
-    borderColor: Colors.gold,
-    backgroundColor: Colors.goldMuted,
-  },
-  personalityPillText: {
-    fontFamily: "Rajdhani_600SemiBold",
-    fontSize: FontSize.sm,
-    color: Colors.textSecondary,
-  },
-  personalityPillTextActive: {
-    color: Colors.gold,
   },
 });
 

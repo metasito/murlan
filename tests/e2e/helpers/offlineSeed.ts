@@ -18,8 +18,8 @@ import { E2E_SUSPEND_AI_KEY } from "../../../lib/e2eAiSuspend";
 /** Bot names and personalities as app/lobby.tsx fills empty seats. */
 const BOTS = [
   { name: "Luan", personality: "luan" },
-  { name: "Drita", personality: "drita" },
   { name: "Besnik", personality: "besnik" },
+  { name: "Gent", personality: "gent" },
 ] as const;
 
 /**

@@ -542,16 +542,17 @@ export const en = {
   // -------------------------------------------------------------------- bot.*
   // The names are proper nouns and stay as they are; only the play style is translated.
   "bot.luanBlurb": "Impulsive and unpredictable",
-  "bot.dritaBlurb": "Cautious, saves her high cards",
   "bot.besnikBlurb": "Contests every round",
   "bot.gentBlurb": "Ruthless, lets nothing through",
-  "bot.anaBlurb": "Patient and calculating",
 
   // ------------------------------------------------------------------ lobby.*
   "lobby.team": "Team {{team}}",
   "lobby.aiNameA11yLabel": "AI player name",
   "lobby.aiNameA11yHint": "Enter a name for this computer-controlled player",
-  "lobby.personalityA11yLabel": "Opponent: {{name}}, {{style}}. Tap to change",
+  "lobby.difficultyA11yLabel": "{{name}} difficulty: {{difficulty}}",
+  "bot.difficultyEasy": "Easy",
+  "bot.difficultyNormal": "Normal",
+  "bot.difficultyHard": "Hard",
   "lobby.playerCountOptionA11yLabel": "{{n}} players",
   "lobby.defaultPlayerName1": "Player 1",
   "lobby.playerName": "Player {{n}}",
@@ -635,7 +636,7 @@ export const en = {
   "rules.faq.q16": "How does the online Rematch work?",
   "rules.faq.a16": "In Online mode, a rematch is democratic:\n\n• Every player sees the \"Rematch\" button on the results screen\n• A new game starts ONLY once EVERY player has clicked Rematch\n• The counter shows in real time how many have already voted (e.g. 2/4 want to play)\n• If not everyone votes, you can always leave by pressing Exit\n\nScores accumulate from one rematch to the next — whoever has the highest total wins the session!",
   "rules.faq.q17": "How does the AI work?",
-  "rules.faq.a17": "Every computer opponent has a personality with its own style:\n• Luan: impulsive and unpredictable\n• Drita: cautious, saves her high cards\n• Besnik: contests every round\n• Gent: ruthless, lets nothing through\n• Ana: patient and calculating\nStyle decides how hard a bot contests a round, and when it gives one up. Gent and Ana hold a 2, a Joker or a Bomb back for when nothing ordinary is left to play; Luan, Drita and Besnik spend one when their style says to press. Style never changes which combinations are legal.",
+  "rules.faq.a17": "Every computer opponent plays at one of three difficulty levels:\n• Luan (Easy): impulsive and unpredictable\n• Besnik (Normal): contests every round\n• Gent (Hard): ruthless, lets nothing through\nDifficulty decides how hard a bot contests a round, and when it gives one up. Gent holds a 2, a Joker or a Bomb back for when nothing ordinary is left to play; Luan and Besnik spend one when their style says to press. Difficulty never changes which combinations are legal.",
   "rules.faq.q18": "Does the game end as soon as I finish my cards?",
   "rules.faq.a18": "No! If there are other players, the game continues among them. You simply wait for them to finish. You can see the final standings on the results screen (1st, 2nd, 3rd, 4th).",
 
@@ -806,7 +807,6 @@ export const en = {
   "room.fillWithBotsSubtitle": "Empty seats will be taken by virtual players",
   "room.fillWithBotsA11yLabel": "Fill empty seats with bots",
   "room.fillWithBotsA11yHint": "Turn on to have the computer control empty seats when the game starts",
-  "room.botPersonalityOptionA11yLabel": "Bot: {{name}}, {{style}}",
   "room.formatLabel": "FORMAT",
 
   // ---------------------------------------------------------------- friends.*

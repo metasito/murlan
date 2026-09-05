@@ -690,7 +690,7 @@ function cheapestPlain(plays: Combination[], isNewRound: boolean): Combination |
  * re-rank plays the tier already had in hand, so nothing here can produce an
  * illegal play — `plays` is `getAllValidPlays`' output, untouched.
  */
-function applyPersonality(
+export function applyPersonality(
   choice: Combination | null,
   plays: Combination[],
   isNewRound: boolean,

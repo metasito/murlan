@@ -15,7 +15,7 @@ const seededAi = (s: number) => mulberry32(s + 1);
 test("aiRng makes a whole match — deal and AI knobs both — reproducible from one seed", () => {
   const players: OfflinePlayerSetup[] = [
     { name: "A", type: "ai", personality: "besnik" },
-    { name: "B", type: "ai", personality: "ana" },
+    { name: "B", type: "ai", personality: "gent" },
   ];
   const run = () =>
     simulateOfflineMatch({

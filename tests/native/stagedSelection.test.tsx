@@ -189,7 +189,7 @@ function AiTurnProbe() {
           setupGame(
             [
               { name: 'Luan', type: 'ai', personality: 'luan' },
-              { name: 'Drita', type: 'ai', personality: 'drita' },
+              { name: 'Besnik', type: 'ai', personality: 'besnik' },
             ],
             'free_for_all'
           )

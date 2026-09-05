@@ -10,7 +10,6 @@
 // that pretends they do fails silently. Naming the actions makes what crosses
 // an instance boundary something a reader can enumerate.
 import type { MatchLength } from "../lib/gameEngine.ts";
-import type { BotPersonalityId } from "../lib/botPersonalities.ts";
 
 /** Every action names the room it is about; that is how the owner is found. */
 export interface TableActionBase {
@@ -44,7 +43,8 @@ export type TableAction =
   | (TableActionBase & {
       kind: "startMatch";
       fillWithBots?: boolean;
-      botPersonality?: BotPersonalityId;
+      /** Raw and unresolved — a stale client can send an id this build no longer knows; getBotPersonality resolves it. */
+      botPersonality?: string;
       matchLength?: MatchLength;
     })
   /** A seated player's socket went away on some instance. */
