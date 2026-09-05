@@ -57,3 +57,28 @@ test("SettingsProvider mounting does not reopen a preloaded haptics-off window",
 
   expect(hapticsEnabled()).toBe(false);
 });
+
+test("SettingsProvider's own read still reaches lib/haptics once it resolves", async () => {
+  // Flush the microtasks lib/haptics's module-init .then() resolves on.
+  await new Promise((resolve) => setImmediate(resolve));
+  expect(hapticsEnabled()).toBe(false);
+
+  let releaseRead!: (raw: string | null) => void;
+  jest.mocked(AsyncStorage.getItem).mockImplementationOnce(
+    () => new Promise((resolve) => { releaseRead = resolve; })
+  );
+
+  await render(
+    <SettingsProvider>
+      <></>
+    </SettingsProvider>
+  );
+
+  // The guard that keeps this effect quiet until the read finishes must not
+  // keep it quiet forever — a stored value genuinely different from the
+  // preload still has to land.
+  await act(async () => { releaseRead(JSON.stringify({ hapticsEnabled: true })); });
+  await act(async () => {});
+
+  expect(hapticsEnabled()).toBe(true);
+});
