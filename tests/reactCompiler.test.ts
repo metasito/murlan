@@ -11,6 +11,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
+import { execFileSync } from "node:child_process";
 import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -24,15 +25,54 @@ const presetRequire = createRequire(require.resolve("babel-preset-expo/package.j
 const { transformSync } = require("@babel/core");
 const reactCompiler = presetRequire("babel-plugin-react-compiler");
 
+/**
+ * Every occurrence of `name` anywhere in an `npm ls --json` dependency tree,
+ * counted by walking `dependencies` recursively rather than by where npm's
+ * own hoisting algorithm happened to place it on disk. Hoisting moved
+ * `babel-plugin-react-compiler` to top-level `node_modules` under SDK 57
+ * with no second entry in the tree — `npm ls --all` still showed exactly one
+ * logical consumer — so a test that infers "one copy" from nesting depth
+ * goes red on a layout change that changed nothing this invariant cares
+ * about. This counts the dependency graph itself instead.
+ */
+function occurrencesInTree(name: string): number {
+  // shell: true because npm ships as npm.cmd on Windows, which spawnSync
+  // refuses to exec directly. Every argument here is a static literal, never
+  // interpolated, so there is nothing for the shell to misinterpret.
+  const tree = JSON.parse(
+    execFileSync("npm", ["ls", name, "--all", "--json"], { cwd: repoRoot, encoding: "utf8", shell: true })
+  ) as { dependencies?: Record<string, { dependencies?: unknown }> };
+  let count = 0;
+  const walk = (deps: Record<string, { dependencies?: unknown }> | undefined) => {
+    if (!deps) return;
+    for (const [pkgName, node] of Object.entries(deps)) {
+      if (pkgName === name) count++;
+      walk(node.dependencies as Record<string, { dependencies?: unknown }> | undefined);
+    }
+  };
+  walk(tree.dependencies);
+  return count;
+}
+
 test("the compiler under test is the one babel-preset-expo builds with", () => {
   const built = presetRequire("babel-plugin-react-compiler/package.json").version;
-  assert.throws(
-    () => require("babel-plugin-react-compiler/package.json"),
-    { code: "MODULE_NOT_FOUND" },
-    `a top-level babel-plugin-react-compiler resolves again; babel-preset-expo already provides ` +
-      `${built} and this suite must compile with that one copy, not a second one`
+  const declared = { ...packageJson().dependencies, ...packageJson().devDependencies };
+  assert.ok(
+    !("babel-plugin-react-compiler" in declared),
+    "package.json declares babel-plugin-react-compiler directly — babel-preset-expo already " +
+      `provides ${built}; do not add a second copy to package.json`
+  );
+  assert.equal(
+    occurrencesInTree("babel-plugin-react-compiler"),
+    1,
+    "the dependency tree resolves babel-plugin-react-compiler through more than one logical " +
+      "consumer — babel-preset-expo must stay the only one"
   );
 });
+
+function packageJson(): { dependencies?: Record<string, string>; devDependencies?: Record<string, string> } {
+  return JSON.parse(readFileSync(path.join(repoRoot, "package.json"), "utf8"));
+}
 
 /**
  * A hook, by the only rule the compiler itself goes by: the name. Matching the

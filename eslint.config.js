@@ -53,6 +53,16 @@ module.exports = defineConfig([
       // on purpose already carries its own `eslint-disable-next-line` with a
       // reason, which this does not affect.
       "react-hooks/exhaustive-deps": "error",
+      // eslint-plugin-react-hooks 7 (pulled in by eslint-config-expo's SDK 57
+      // bump) folds the React Compiler's static analysis into `recommended`,
+      // newly flagging every `setState` call reachable from a `useEffect`
+      // body — 17 of them here, all pre-existing and each one intentionally
+      // syncing state to an external signal (a socket teardown, a media
+      // query, a stored save). Adopting the rule means auditing each site for
+      // the cascading-render risk it describes, not a mechanical rename like
+      // `absoluteFillObject`; that audit is its own piece of work, tracked in
+      // #891, not a rider on an SDK bump.
+      "react-hooks/set-state-in-effect": "off",
       "no-restricted-syntax": [
         "error",
         {
@@ -132,6 +142,15 @@ module.exports = defineConfig([
     rules: {
       "import/first": "off",
       "@typescript-eslint/no-require-imports": "off",
+      // A Probe/Harness component assigning a hook's return value to a
+      // module-scope `let` — so the test body, which renders nothing of its
+      // own, can call or read it — is this suite's standard way to reach a
+      // hook from outside a component. eslint-plugin-react-hooks 7's
+      // `globals` and `refs` rules (new in SDK 57's eslint-config-expo, see
+      // the note on `set-state-in-effect` above) read every one of those
+      // assignments as a component impurity. Tracked in #891 with the rest.
+      "react-hooks/globals": "off",
+      "react-hooks/refs": "off",
     },
   },
   {

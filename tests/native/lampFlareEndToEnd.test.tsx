@@ -137,7 +137,7 @@ function opacityOf(
   testID: string
 ): number {
   const node = r.getByTestId(testID, { includeHiddenElements: true });
-  const style = getAnimatedStyle(node) as { opacity?: number };
+  const style = getAnimatedStyle(node as { props: Record<string, unknown> }) as { opacity?: number };
   return style.opacity ?? 0;
 }
 

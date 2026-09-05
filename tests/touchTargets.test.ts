@@ -108,7 +108,7 @@ export function pressableBoxes(files: string[], read: (rel: string) => string): 
       // A layer that covers its whole parent is self-evidently larger than a thumb.
       if (
         node.accessors.includes("StyleSheet.absoluteFill") ||
-        bodies.some((b) => /absoluteFillObject/.test(b))
+        bodies.some((b) => /absoluteFill(Object)?\b/.test(b))
       ) {
         continue;
       }

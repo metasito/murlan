@@ -40,7 +40,7 @@ describe("socket authentication", { skip: hasDatabase() ? false : skipMessage() 
     assert.equal(res.status, 200);
     const { ticket } = await res.json();
     const r = await connect({ ticket });
-    assert.equal(r.ok, true, r.err);
+    assert.ok(r.ok, r.err ?? "the socket was rejected with no reason given");
   });
 
   test("a ticket cannot be replayed", async () => {
@@ -48,7 +48,7 @@ describe("socket authentication", { skip: hasDatabase() ? false : skipMessage() 
     const res = await fetch(`${server.url}/api/auth/socket-ticket`, { method: "POST", headers: { cookie } });
     const { ticket } = await res.json();
     const first = await connect({ ticket });
-    assert.equal(first.ok, true, first.err);
+    assert.ok(first.ok, first.err ?? "the socket was rejected with no reason given");
     const second = await connect({ ticket });
     assert.equal(second.ok, false, "a consumed ticket must not authenticate a second socket");
   });

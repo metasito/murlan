@@ -24,11 +24,12 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."
  * All four edges pinned, which is what makes it a cover.
  *
  * Any inset, not only `0`: the selection bloom sits at 2 on every side and
- * covers just as much of the card as one at 0 does. `absoluteFillObject` is the
- * same shape spelled as a spread, and `sourceScan`'s own `FULL_BLEED` reads it.
+ * covers just as much of the card as one at 0 does. `absoluteFill` (and its
+ * pre-SDK-57 name, `absoluteFillObject`) is the same shape spelled as a
+ * spread, and `sourceScan`'s own `FULL_BLEED` reads it.
  */
 function fillsItsParent(body: string): boolean {
-  if (/absoluteFillObject/.test(body)) return true;
+  if (/absoluteFill(Object)?\b/.test(body)) return true;
   const edge = (side: string) =>
     new RegExp(String.raw`(^|[^\w])${side}:\s*-?[\d.]`).test(body);
   return (
@@ -97,7 +98,8 @@ test("the predicates still recognise a cover, and still ignore what covers nothi
   assert.ok(fillsItsParent(full));
   // An inset cover is still a cover — the selection bloom sits at 2.
   assert.ok(fillsItsParent('position: "absolute", top: 2, left: 2, right: 2, bottom: 2,'));
-  assert.ok(fillsItsParent("...StyleSheet.absoluteFillObject,"), "the spread spelling");
+  assert.ok(fillsItsParent("...StyleSheet.absoluteFill,"), "the spread spelling");
+  assert.ok(fillsItsParent("...StyleSheet.absoluteFillObject,"), "the pre-SDK-57 spread spelling");
   assert.ok(!fillsItsParent('position: "absolute", top: 0, left: 0,'), "three edges is not a fill");
   assert.ok(!fillsItsParent('top: 0, left: 0, right: 0, bottom: 0,'), "static flow is not a cover");
   // `borderTopWidth: 0` and `paddingTop: 0` are not `top: 0`.

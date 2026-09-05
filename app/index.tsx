@@ -1145,7 +1145,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.felt,
   },
   floatingCardFace: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     borderRadius: Radius.sm,
     overflow: "hidden",
     borderWidth: CARD_EDGE,
