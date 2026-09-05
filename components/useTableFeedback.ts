@@ -32,7 +32,7 @@ import {
   playGameWin,
   playYourTurn,
 } from "@/lib/sounds";
-import { hapticHeavy, hapticSuccess, hapticWarn } from "@/lib/haptics";
+import { hapticHeavy, hapticLight, hapticSuccess, hapticWarn } from "@/lib/haptics";
 import { handOutcomeFor } from "@/lib/matchState";
 import { cancelMusicDuck, duckMusicFor } from "@/lib/music";
 import { Motion, motionMs } from "@/lib/theme";
@@ -348,7 +348,10 @@ export function useTableFeedback({
   const [flushTrigger, setFlushTrigger] = useState(0);
 
   useEffect(() => {
-    if (isMyTurn && !isFinished && !prevMyTurnRef.current) playYourTurn();
+    if (isMyTurn && !isFinished && !prevMyTurnRef.current) {
+      playYourTurn();
+      hapticLight();
+    }
     prevMyTurnRef.current = isMyTurn;
   }, [isMyTurn, isFinished]);
 
