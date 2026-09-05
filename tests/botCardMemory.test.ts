@@ -250,7 +250,7 @@ describe("the hard bot plays what it knows", () => {
 describe("the medium bot takes an unbeatable lead and nothing more", () => {
   test("leads the unbeatable card", () => {
     const hand = [j("colored"), c("4", "hearts"), c("5", "spades"), c("7", "clubs")];
-    const { me, playedRanks } = leadWith(hand, { "2": 4, joker_bw: 1 }, "drita");
+    const { me, playedRanks } = leadWith(hand, { "2": 4, joker_bw: 1 }, "besnik");
 
     const choice = aiChoosePlay(me, null, true, [8, 8, 8], undefined, () => 0.5, false, playedRanks);
 
@@ -260,7 +260,7 @@ describe("the medium bot takes an unbeatable lead and nothing more", () => {
 
   test("is otherwise exactly the bot it was — a beatable lead is unchanged", () => {
     const hand = [c("4", "hearts"), c("5", "spades"), c("7", "clubs"), c("9", "hearts")];
-    const { me, playedRanks } = leadWith(hand, {}, "drita");
+    const { me, playedRanks } = leadWith(hand, {}, "besnik");
 
     const withMemory = aiChoosePlay(me, null, true, [8, 8, 8], undefined, () => 0.5, false, playedRanks);
     const without = aiChoosePlay(me, null, true, [8, 8, 8], undefined, () => 0.5, false, undefined);

@@ -16,6 +16,7 @@ import {
 } from "../lib/botPersonalities.ts";
 import {
   aiChoosePlay,
+  applyPersonality,
   buildCombination,
   createDeck,
   getAllValidPlays,
@@ -129,34 +130,38 @@ test("personalities are distinguishable, not just named", () => {
 // below are ones the strategy tier resolves identically for every personality,
 // so any difference in the answer comes from the personality alone.
 
+// These two knobs are tested directly through applyPersonality, not through a
+// named personality's own aggression value — the roster (#904) now holds only
+// one personality per difficulty tier, so no pair of surviving ids shares a
+// tier the way this comparison needs.
+
 test("aggression decides whether a round is contested or conceded", () => {
-  // Eight cards, the only legal answers to a 10 are the two 2s, and no opponent
-  // is close to finishing — the hard tier concedes the round here.
+  // Eight cards, the only legal answers to a 10 are the two 2s.
   const hand = [c("2", "hearts"), c("2", "diamonds"), c("3", "clubs"), c("4", "clubs"),
     c("5", "clubs"), c("6", "clubs"), c("7", "clubs"), c("9", "clubs")];
   const lastPlayed = buildCombination([c("10", "spades")])!;
-  const ask = (personality: BotPersonalityId) =>
-    aiChoosePlay(makePlayer("bot", hand, { type: "ai", personality }), lastPlayed, false,
-      [7, 7, 7], undefined, fixedRng([0.5]));
+  const plays = getAllValidPlays(hand, lastPlayed, false, undefined);
+  const ask = (aggression: number) =>
+    applyPersonality(null, plays, false, { aggression, unpredictability: 0, difficulty: "hard" },
+      fixedRng([0.5]));
 
-  assert.equal(ask("ana"), null, "a patient personality lets the round go");
-  assert.deepEqual(ask("gent")?.cards.map((x) => x.rank), ["2"], "a ruthless one spends a 2 to take it");
+  assert.equal(ask(0.05), null, "a patient personality lets the round go");
+  assert.deepEqual(ask(0.95)?.cards.map((x) => x.rank), ["2"], "a ruthless one spends a 2 to take it");
 });
 
 test("aggression decides whether a lead spends premium cards", () => {
-  // Leading with nine cards: the medium tier's longest multi-card play is the
-  // triple of 2s, and a plain pair is available instead.
+  // Leading with nine cards: the longest multi-card play is the triple of 2s,
+  // and a plain pair is available instead.
   const hand = [c("2", "hearts"), c("2", "diamonds"), c("2", "clubs"), c("3", "hearts"),
     c("3", "diamonds"), c("5", "clubs"), c("7", "diamonds"), c("9", "spades"), c("J", "clubs")];
-  const ask = (personality: BotPersonalityId) =>
-    aiChoosePlay(makePlayer("bot", hand, { type: "ai", personality }), null, true,
-      [9, 9, 9], undefined, fixedRng([0.5]));
+  const plays = getAllValidPlays(hand, null, true, undefined);
+  const triple = buildCombination([c("2", "hearts"), c("2", "diamonds"), c("2", "clubs")])!;
+  const ask = (aggression: number) =>
+    applyPersonality(triple, plays, true, { aggression, unpredictability: 0, difficulty: "medium" },
+      fixedRng([0.5]));
 
-  assert.deepEqual(ask("besnik")?.cards.map((x) => x.rank), ["2", "2", "2"], "an aggressive lead dumps the 2s");
-  assert.ok(
-    !ask("drita")!.cards.some((x) => x.rank === "2"),
-    "a cautious lead keeps them"
-  );
+  assert.deepEqual(ask(0.95)?.cards.map((x) => x.rank), ["2", "2", "2"], "an aggressive lead dumps the 2s");
+  assert.ok(!ask(0.05)!.cards.some((x) => x.rank === "2"), "a cautious lead keeps them");
 });
 
 // The hard tier hoards what wins a contested round: 2s, jokers, bombs and
@@ -210,7 +215,7 @@ test("the hard tier's near-finish shortcut sorts on length, not on dump value", 
 test("the hard tier leads its longest plain play rather than open with a bomb", () => {
   const hand = [c("K", "clubs"), c("K", "hearts"), c("K", "spades"),
     c("K", "diamonds"), c("3", "clubs"), c("4", "diamonds")];
-  for (const personality of ["gent", "ana"] as BotPersonalityId[]) {
+  for (const personality of ["gent"] as BotPersonalityId[]) {
     for (const roll of [0, 0.5, 0.99]) {
       const choice = aiChoosePlay(
         makePlayer("bot", hand, { type: "ai", personality }), null, true,
@@ -231,7 +236,7 @@ test("the hard tier answers plainly rather than spend a joker, at every roll", (
   const hand = [j("colored"), c("K", "hearts"), c("4", "clubs"), c("5", "clubs"),
     c("6", "clubs"), c("7", "clubs"), c("9", "clubs"), c("10", "diamonds")];
   const lastPlayed = buildCombination([c("Q", "spades")])!;
-  for (const personality of ["gent", "ana"] as BotPersonalityId[]) {
+  for (const personality of ["gent"] as BotPersonalityId[]) {
     for (const roll of [0, 0.5, 0.99]) {
       const choice = aiChoosePlay(
         makePlayer("bot", hand, { type: "ai", personality }), lastPlayed, false,
@@ -308,11 +313,11 @@ test("an unknown or missing personality resolves to the default", () => {
   assert.equal(getBotPersonality(undefined).id, DEFAULT_BOT_PERSONALITY);
   assert.equal(getBotPersonality("not-a-personality").id, DEFAULT_BOT_PERSONALITY);
   assert.equal(isBotPersonalityId("not-a-personality"), false);
-  assert.equal(isBotPersonalityId("ana"), true);
+  assert.equal(isBotPersonalityId("gent"), true);
 });
 
 test("botSeatNames numbers only the repeated personalities", () => {
-  assert.deepEqual(botSeatNames(["ana", "gent", "ana"]), ["Ana 1", "Gent", "Ana 2"]);
+  assert.deepEqual(botSeatNames(["luan", "gent", "luan"]), ["Luan 1", "Gent", "Luan 2"]);
   assert.deepEqual(botSeatNames([]), []);
 });
 
@@ -383,19 +388,19 @@ test("a requireCard that is not the 3♠ is still honoured", () => {
   }
 });
 
-// rules.faq.a17 names Gent and Ana as the two that hold a 2, a Joker or a Bomb
-// back, because applyPersonality's floor runs on `difficulty === "hard"` and
-// those are the two hard personalities. Re-tier one and the answer is wrong in
-// three locales with nothing to say so — which is how it came to promise
-// premium spending the hard tier had stopped doing (#476).
+// rules.faq.a17 names the hard-tier personalities as the ones that hold a 2, a
+// Joker or a Bomb back, because applyPersonality's floor runs on
+// `difficulty === "hard"`. Re-tier one and the answer is wrong in three
+// locales with nothing to say so — which is how it came to promise premium
+// spending the hard tier had stopped doing (#476).
 test("the personalities rules.faq.a17 singles out are still the hard ones", () => {
   const hard = BOT_PERSONALITIES.filter((p) => p.difficulty === "hard")
     .map((p) => p.name)
     .sort();
   assert.deepEqual(
     hard,
-    ["Ana", "Gent"],
-    "rules.faq.a17 names Gent and Ana as the two that keep premium cards for defence; " +
-      "update that sentence in en.ts, it.ts and sq.ts to match the new hard tier"
+    ["Gent"],
+    "rules.faq.a17 names the hard-tier personalities that keep premium cards for defence; " +
+      "update that sentence in en.ts, it.ts and sq.ts to match the current hard tier"
   );
 });

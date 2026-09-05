@@ -17,7 +17,7 @@ import { OFFLINE_SAVE_KEY, OFFLINE_SAVE_VERSION, decodeOfflineSave } from "@/lib
 const FOUR_PLAYERS = [
   { name: "Ana", type: "human" as const },
   { name: "Luan", type: "ai" as const, personality: "luan" as const },
-  { name: "Drita", type: "ai" as const, personality: "drita" as const },
+  { name: "Besnik", type: "ai" as const, personality: "besnik" as const },
   { name: "Gent", type: "ai" as const, personality: "gent" as const },
 ];
 

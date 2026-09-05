@@ -6,7 +6,7 @@
 import type { AIDifficulty } from "./gameEngine.ts";
 import type { TranslationKey } from "./i18n.ts";
 
-export type BotPersonalityId = "luan" | "drita" | "besnik" | "gent" | "ana";
+export type BotPersonalityId = "luan" | "besnik" | "gent";
 
 export interface BotPersonality {
   id: BotPersonalityId;
@@ -21,18 +21,18 @@ export interface BotPersonality {
 }
 
 /**
- * Five, and no more: each has to be describable in one line and actually
- * distinguishable across a hand, or it is a menu entry rather than an opponent.
+ * Exactly three, one per AIDifficulty tier (#904) — a difficulty ladder needs
+ * a worse policy at each step, which lib/gameEngine.ts's tiers already are
+ * (only "hard" counts cards, protects 2s/jokers, and branches in the
+ * endgame), not the same policy with aggression/unpredictability turned down.
  */
 export const BOT_PERSONALITIES: readonly BotPersonality[] = [
   { id: "luan", name: "Luan", difficulty: "easy", aggression: 0.5, unpredictability: 0.45 },
-  { id: "drita", name: "Drita", difficulty: "medium", aggression: 0.15, unpredictability: 0.1 },
   { id: "besnik", name: "Besnik", difficulty: "medium", aggression: 0.8, unpredictability: 0.2 },
   { id: "gent", name: "Gent", difficulty: "hard", aggression: 0.85, unpredictability: 0.05 },
-  { id: "ana", name: "Ana", difficulty: "hard", aggression: 0.25, unpredictability: 0 },
 ] as const;
 
-export const DEFAULT_BOT_PERSONALITY: BotPersonalityId = "drita";
+export const DEFAULT_BOT_PERSONALITY: BotPersonalityId = "besnik";
 
 const BY_ID = new Map<string, BotPersonality>(BOT_PERSONALITIES.map((p) => [p.id, p]));
 
