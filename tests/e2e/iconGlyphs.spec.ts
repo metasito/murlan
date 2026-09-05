@@ -29,9 +29,12 @@ test("menu screens render every icon glyph, across the states reachable with no 
   await page.getByRole("button", { name: "Offline" }).click();
   // Four players is what reveals the game-mode row (app/lobby.tsx) — both its
   // options render at once, so both the "person" and "people" mode icons and
-  // both the human/bot row icons are already on screen with no further click.
+  // all four avatar icons are already on screen with no further click. #904
+  // replaced the per-seat personality button (an Ionicons chevron-down) with
+  // DifficultyLadder's own bar glyph, which draws Views rather than an icon
+  // font glyph, so the AI seats no longer add to this count.
   await page.getByRole("radio", { name: "4 giocatori" }).click();
-  await assertAllGlyphsRender(page, "offline lobby — 4 players", 11);
+  await assertAllGlyphsRender(page, "offline lobby — 4 players", 8);
   await page.goBack();
 
   await page.goto(`${baseURL}/rules`);
