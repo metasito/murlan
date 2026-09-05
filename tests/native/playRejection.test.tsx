@@ -32,7 +32,7 @@ jest.mock('expo-haptics', () => ({
   selectionAsync: jest.fn(async () => {}),
   impactAsync: jest.fn(async () => {}),
   notificationAsync: jest.fn(async () => {}),
-  ImpactFeedbackStyle: { Light: 'light', Medium: 'medium', Heavy: 'heavy' },
+  ImpactFeedbackStyle: { Light: 'light', Medium: 'medium', Heavy: 'heavy', Rigid: 'rigid' },
   NotificationFeedbackType: { Success: 'success', Error: 'error', Warning: 'warning' },
 }));
 
@@ -224,7 +224,7 @@ describe('tapping an unavailable GIOCA', () => {
       [SEVEN_H.id, SEVEN_C.id]
     );
 
-  it('answers with the error haptic and the reason in words', async () => {
+  it('answers with the rigid haptic and the reason in words', async () => {
     const r = await render(refusedTable());
 
     expect(screen.queryByText(t('gameTable.playA11ySpokenWrongType'))).toBeNull();
@@ -233,7 +233,8 @@ describe('tapping an unavailable GIOCA', () => {
       fireEvent.press(screen.getByTestId('btn-gioca'));
     });
 
-    expect(jest.mocked(Haptics.notificationAsync)).toHaveBeenCalledWith('error');
+    expect(jest.mocked(Haptics.impactAsync)).toHaveBeenCalledWith('rigid');
+    expect(jest.mocked(Haptics.notificationAsync)).not.toHaveBeenCalledWith('error');
     expect(screen.getByText(t('gameTable.playA11ySpokenWrongType'))).toBeTruthy();
 
     await r.unmount();

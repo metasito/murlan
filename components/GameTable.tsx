@@ -126,7 +126,7 @@ import {
   preloadSounds,
   unloadSounds,
 } from "@/lib/sounds";
-import { hapticError, hapticLight, hapticMedium, hapticSelection } from "@/lib/haptics";
+import { hapticLight, hapticMedium, hapticRigid, hapticSelection } from "@/lib/haptics";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { Colors, FontSize, Motion, Radius, Reading, Scrim, Spacing, Layer } from "@/lib/theme";
 import { useTableFelt } from "@/lib/cosmetics";
@@ -963,11 +963,11 @@ export function GameTable({
     [isFinished, spectating, onSelectCard, exchangeIsMine, setExchangePick]
   );
   // The button stays pressable while it is unavailable so a refusal has a
-  // channel: an error haptic, a shake, and the reason in words. It keeps
+  // channel: a rigid haptic, a shake, and the reason in words. It keeps
   // reporting itself as disabled to assistive tech.
   const handlePlay = useCallback(() => {
     if (!staged.playable) {
-      hapticError();
+      hapticRigid();
       setRejectHint((prev) => ({ key: (prev?.key ?? 0) + 1, text: dimReasonText }));
       rejectPlay();
       return;
@@ -986,7 +986,7 @@ export function GameTable({
   // memo over a translated string (scripts/react-compiler-probe.mjs).
   const handleExchangeGive = () => {
     if (!exchangePick) {
-      hapticError();
+      hapticRigid();
       setRejectHint((prev) => ({
         key: (prev?.key ?? 0) + 1,
         text: t("exchange.confirmA11yWaiting", { name: exchangeLoserName }),
