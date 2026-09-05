@@ -43,6 +43,8 @@ export const hapticMedium = () =>
   guard() && Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 export const hapticHeavy = () =>
   guard() && Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+export const hapticRigid = () =>
+  guard() && Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Rigid);
 export const hapticSuccess = () =>
   guard() && Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 export const hapticError = () =>
