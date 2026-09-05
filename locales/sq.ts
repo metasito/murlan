@@ -807,7 +807,6 @@ export const sq: Record<keyof typeof en, string> = {
   "room.fillWithBotsSubtitle": "Vendet e lira do të zihen nga lojtarë virtualë",
   "room.fillWithBotsA11yLabel": "Plotëso vendet e lira me bot",
   "room.fillWithBotsA11yHint": "Aktivizoje që kompjuteri të kontrollojë vendet e lira kur fillon loja",
-  "room.botPersonalityOptionA11yLabel": "Bot: {{name}}, {{style}}",
   "room.formatLabel": "FORMATI",
 
   // ---------------------------------------------------------------- friends.*
