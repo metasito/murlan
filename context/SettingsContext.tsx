@@ -138,9 +138,13 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     setMusicMasterVolume(settings.musicVolume);
   }, [settings.musicVolume]);
 
+  // lib/haptics.ts preloads this same key at module init, before this provider
+  // mounts — pushing the unread default here would stomp a correctly-preloaded
+  // `false` until the read below resolves.
   useEffect(() => {
+    if (!readFinished) return;
     setHapticsMasterEnabled(settings.hapticsEnabled);
-  }, [settings.hapticsEnabled]);
+  }, [settings.hapticsEnabled, readFinished]);
 
   useEffect(() => {
     setMotionPreference(settings.motion);
