@@ -30,7 +30,10 @@ export function hapticsEnabled(): boolean {
   return _hapticsEnabled;
 }
 
-const guard = () => _hapticsEnabled && isNative;
+// expo-haptics' web shim already implements navigator.vibrate() per style,
+// no-opping harmlessly where the Vibration API doesn't exist (iOS/desktop
+// Safari) and firing for real where it does (Android web).
+const guard = () => _hapticsEnabled && (isNative || Platform.OS === "web");
 
 export const hapticSelection = () => guard() && Haptics.selectionAsync();
 export const hapticLight = () =>
