@@ -8,34 +8,28 @@ jest.mock('expo-haptics', () => ({
   ImpactFeedbackStyle: { Light: 'light', Medium: 'medium', Heavy: 'heavy' },
   NotificationFeedbackType: { Success: 'success', Error: 'error', Warning: 'warning' },
 }));
-
-const mockStoredRaw = JSON.stringify({ hapticsEnabled: false });
 jest.mock('@react-native-async-storage/async-storage', () => ({
   __esModule: true,
-  default: { getItem: jest.fn(async () => mockStoredRaw) },
+  // Inlined rather than referencing an outer const: lib/haptics.ts's
+  // module-init preload calls this the moment the import below is required,
+  // which — like tests/native/hapticsWeb.test.tsx — happens ahead of any
+  // later statement in this file.
+  default: { getItem: jest.fn(async () => JSON.stringify({ hapticsEnabled: false })) },
 }));
 
-// lib/haptics.ts's module-init preload runs the instant it is required, before
-// any inline statement following an import — so the module under test has to
-// be required inside jest.isolateModules, after the mocks above are already
-// in place, rather than via a static top-level import.
+import * as Haptics from 'expo-haptics';
+import { hapticSelection, hapticsEnabled } from '@/lib/haptics';
+
+const mocked = jest.mocked(Haptics);
+
 describe('lib/haptics preloads the stored preference on web', () => {
   it('honours a stored hapticsEnabled:false before any provider mounts', async () => {
-    let hapticSelection: () => unknown;
-    let hapticsEnabled: () => boolean;
-    jest.isolateModules(() => {
-      const mod = require('@/lib/haptics');
-      hapticSelection = mod.hapticSelection;
-      hapticsEnabled = mod.hapticsEnabled;
-    });
-
     // Flush the microtasks the module-init .then() resolves on.
     await new Promise((resolve) => setImmediate(resolve));
 
-    expect(hapticsEnabled!()).toBe(false);
+    expect(hapticsEnabled()).toBe(false);
 
-    const Haptics = require('expo-haptics');
-    hapticSelection!();
-    expect(Haptics.selectionAsync).not.toHaveBeenCalled();
+    hapticSelection();
+    expect(mocked.selectionAsync).not.toHaveBeenCalled();
   });
 });
