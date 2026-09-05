@@ -5,6 +5,7 @@ import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { hapticSelection } from "@/lib/haptics";
 import { BOT_PERSONALITIES, BotPersonalityId, difficultyLabelKey, getBotPersonality } from "@/lib/botPersonalities";
+import type { AIDifficulty } from "@/lib/gameEngine";
 import { Colors, Spacing, Radius, FontSize, TOUCH_TARGET_MIN } from "@/lib/theme";
 import { useTranslation } from "@/lib/i18n";
 import { a11yHidden, a11yState } from "@/lib/a11y";
@@ -12,6 +13,18 @@ import { a11yHidden, a11yState } from "@/lib/a11y";
 // A local one-off rather than a Radius step: the bar is 3px wide, and every
 // step on that scale (Radius.sm = 8) would round it into a pill.
 const LADDER_BAR_RADIUS = 1;
+
+/**
+ * The rising-glyph reading has to come from bar height, not just which bars
+ * are dimmed: a selected segment forces every bar fully opaque
+ * (ladderBarSelected), so height is the only cue left standing once a tier
+ * is picked.
+ */
+const TIER_BARS: Record<AIDifficulty, { height: number; dim?: boolean }[]> = {
+  easy: [{ height: 4 }, { height: 4, dim: true }, { height: 4, dim: true }],
+  medium: [{ height: 5 }, { height: 7 }, { height: 7, dim: true }],
+  hard: [{ height: 5 }, { height: 7 }, { height: 10 }],
+};
 
 export function DifficultyLadder({
   personality,
@@ -46,12 +59,12 @@ export function DifficultyLadder({
             {...a11yState({ role: "radio", selected })}
           >
             <View {...a11yHidden()} style={styles.ladderBars}>
-              {[0, 1, 2].map((bar) => (
+              {TIER_BARS[p.difficulty].map((bar, barIndex) => (
                 <View
-                  key={bar}
+                  key={barIndex}
                   style={[
                     styles.ladderBar,
-                    { height: 4 + bar * 3, opacity: bar <= i ? 1 : 0.25 },
+                    { height: bar.height, opacity: bar.dim ? 0.25 : 1 },
                     selected && styles.ladderBarSelected,
                   ]}
                 />
@@ -86,6 +99,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: Spacing.xxs,
     paddingVertical: Spacing.slim,
+    borderTopWidth: 2,
+    borderTopColor: "transparent",
   },
   ladderSegBorder: {
     borderLeftWidth: 1,
@@ -93,7 +108,6 @@ const styles = StyleSheet.create({
   },
   ladderSegSelected: {
     backgroundColor: Colors.gold,
-    borderTopWidth: 2,
     borderTopColor: Colors.goldLight,
   },
   ladderBars: {

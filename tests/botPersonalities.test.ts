@@ -126,6 +126,18 @@ test("personalities are distinguishable, not just named", () => {
   assert.equal(new Set(traits).size, traits.length);
 });
 
+// Both the difficulty-ladder label (difficultyLabelKey, keyed by tier) and the
+// ladder glyph's bar count (DifficultyLadder, indexed into BOT_PERSONALITIES)
+// assume exactly one personality per tier, in easy/medium/hard order. A
+// second personality on one tier would read as two "Normal" segments; a
+// reordered array would give the wrong bar count to the wrong label.
+test("exactly one personality per tier, in easy/medium/hard order", () => {
+  assert.deepEqual(
+    BOT_PERSONALITIES.map((p) => p.difficulty),
+    ["easy", "medium", "hard"]
+  );
+});
+
 // The two knobs have to change the play, not just the label. Both positions
 // below are ones the strategy tier resolves identically for every personality,
 // so any difference in the answer comes from the personality alone.

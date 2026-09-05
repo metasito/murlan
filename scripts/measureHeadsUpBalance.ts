@@ -212,8 +212,8 @@ interface PersonalityRow {
 
 /** Each personality as seat 0, `DEFAULT_BOT_PERSONALITY` as seat 1 — the
  * matchup the owner's report actually played (one human, one default bot),
- * with the human side replaced by every named personality in turn so
- * `drita`'s own row is also this loop's symmetric control. */
+ * with the human side replaced by every named personality in turn so the
+ * default personality's own row is also this loop's symmetric control. */
 function measurePersonalityVsDefault(n: number, seed: number): PersonalityRow[] {
   return BOT_PERSONALITIES.map((personality, idx) => {
     const players = tableOf(2, [personality.id, DEFAULT_BOT_PERSONALITY]);
