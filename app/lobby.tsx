@@ -18,7 +18,7 @@ import type { PlayerSetupConfig } from "@/context/GameContext";
 import { useLocalSession } from "@/context/gameHooks";
 import { useAuth } from "@/context/AuthContext";
 import { GameMode, MatchLength, firstTargetFor, teamForSeat } from "@/lib/gameEngine";
-import { BOT_PERSONALITIES, botBlurbKey, botSeatNames, getBotPersonality } from "@/lib/botPersonalities";
+import { BOT_PERSONALITIES, botSeatNames, difficultyLabelKey, getBotPersonality } from "@/lib/botPersonalities";
 import { Colors, Spacing, Radius, FontSize, TOUCH_TARGET_MIN, Type } from '@/lib/theme';
 import { MenuLayout } from "@/components/MenuLayout";
 import { MenuButton } from "@/components/MenuButton";
@@ -26,6 +26,10 @@ import { useTranslation } from "@/lib/i18n";
 import { a11yHidden, a11yState, useA11yHint } from "@/lib/a11y";
 
 type LobbyMode = "ai" | "local";
+
+// A local one-off rather than a Radius step: the bar is 3px wide, and every
+// step on that scale (Radius.sm = 8) would round it into a pill.
+const LADDER_BAR_RADIUS = 1;
 
 interface PlayerRowProps {
   index: number;
@@ -35,85 +39,122 @@ interface PlayerRowProps {
   lobbyMode: LobbyMode;
 }
 
+function DifficultyLadder({
+  personality,
+  onChange,
+}: {
+  personality: PlayerSetupConfig["personality"];
+  onChange: (id: (typeof BOT_PERSONALITIES)[number]["id"]) => void;
+}) {
+  const { t } = useTranslation();
+  const current = getBotPersonality(personality);
+
+  return (
+    <View style={styles.ladder}>
+      {BOT_PERSONALITIES.map((p, i) => {
+        const selected = p.id === current.id;
+        return (
+          <Pressable
+            key={p.id}
+            onPress={() => { onChange(p.id); hapticSelection(); }}
+            style={[
+              styles.ladderSeg,
+              i > 0 && styles.ladderSegBorder,
+              selected && styles.ladderSegSelected,
+            ]}
+            accessibilityLabel={t("lobby.difficultyA11yLabel", {
+              name: current.name,
+              difficulty: t(difficultyLabelKey(p.difficulty)),
+            })}
+            {...a11yState({ role: "radio", selected })}
+          >
+            <View {...a11yHidden()} style={styles.ladderBars}>
+              {[0, 1, 2].map((bar) => (
+                <View
+                  key={bar}
+                  style={[
+                    styles.ladderBar,
+                    { height: 4 + bar * 3, opacity: bar <= i ? 1 : 0.25 },
+                    selected && styles.ladderBarSelected,
+                  ]}
+                />
+              ))}
+            </View>
+            <Text
+              {...a11yHidden()}
+              style={[styles.ladderSegText, selected && styles.ladderSegTextSelected]}
+            >
+              {t(difficultyLabelKey(p.difficulty))}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
 function PlayerRow({ index, config, onChange, isHuman, lobbyMode }: PlayerRowProps) {
   const { t } = useTranslation();
   const aiNameHint = useA11yHint(t("lobby.aiNameA11yHint"));
   const isAI = config.type === "ai";
-  const personality = getBotPersonality(config.personality);
-
-  const cyclePersonality = () => {
-    const i = BOT_PERSONALITIES.findIndex((p) => p.id === personality.id);
-    const next = BOT_PERSONALITIES[(i + 1) % BOT_PERSONALITIES.length];
-    onChange({ ...config, personality: next.id });
-    hapticSelection();
-  };
 
   const teamLabel = config.team ? t("lobby.team", { team: config.team }) : null;
 
   return (
     <View style={styles.playerRow}>
-      <View style={styles.playerAvatar}>
-        <LinearGradient
-          colors={
-            isHuman
-              ? [Colors.gold, Colors.goldDark]
-              : [Colors.bgElevated, Colors.bgSurface]
-          }
-          style={styles.avatarGradient}
-        >
-          <Ionicons
-            name={isHuman ? "person" : "hardware-chip"}
-            size={18}
-            color={isHuman ? Colors.bgCard : Colors.textSecondary}
-          />
-        </LinearGradient>
-      </View>
-
-      <View style={styles.playerInfo}>
-        {lobbyMode === "local" && !isHuman ? (
-          <>
-            <TextInput
-              value={config.name}
-              onChangeText={(newName) => onChange({ ...config, name: newName })}
-              style={styles.nameInput}
-              placeholderTextColor={Colors.textMuted}
-              maxLength={12}
-              accessibilityLabel={t("lobby.aiNameA11yLabel")}
-              {...aiNameHint.props}
-            />
-            {aiNameHint.node}
-          </>
-        ) : (
-          <Text style={styles.playerName}>{config.name}</Text>
-        )}
-        {teamLabel && (
-          <Text
-            style={[
-              styles.teamBadge,
-              { color: config.team === "A" ? Colors.accent : Colors.gold },
-            ]}
+      <View style={styles.playerTopLine}>
+        <View style={styles.playerAvatar}>
+          <LinearGradient
+            colors={
+              isHuman
+                ? [Colors.gold, Colors.goldDark]
+                : [Colors.bgElevated, Colors.bgSurface]
+            }
+            style={styles.avatarGradient}
           >
-            {teamLabel}
-          </Text>
-        )}
+            <Ionicons
+              name={isHuman ? "person" : "hardware-chip"}
+              size={18}
+              color={isHuman ? Colors.bgCard : Colors.textSecondary}
+            />
+          </LinearGradient>
+        </View>
+
+        <View style={styles.playerInfo}>
+          {lobbyMode === "local" && !isHuman ? (
+            <>
+              <TextInput
+                value={config.name}
+                onChangeText={(newName) => onChange({ ...config, name: newName })}
+                style={styles.nameInput}
+                placeholderTextColor={Colors.textMuted}
+                maxLength={12}
+                accessibilityLabel={t("lobby.aiNameA11yLabel")}
+                {...aiNameHint.props}
+              />
+              {aiNameHint.node}
+            </>
+          ) : (
+            <Text style={styles.playerName}>{config.name}</Text>
+          )}
+          {teamLabel && (
+            <Text
+              style={[
+                styles.teamBadge,
+                { color: config.team === "A" ? Colors.accent : Colors.gold },
+              ]}
+            >
+              {teamLabel}
+            </Text>
+          )}
+        </View>
       </View>
 
       {isAI && (
-        <Pressable
-          onPress={cyclePersonality}
-          style={styles.personalityBtn}
-          accessibilityRole="button"
-          accessibilityLabel={t("lobby.personalityA11yLabel", {
-            name: personality.name,
-            style: t(botBlurbKey(personality.id)),
-          })}
-          hitSlop={Spacing.sm}
-        >
-          <Text {...a11yHidden()} style={styles.personalityText} numberOfLines={1}>
-            {t(botBlurbKey(personality.id))}
-          </Text>
-          <Ionicons name="chevron-down" size={12} color={Colors.gold} {...a11yHidden()} />
-        </Pressable>
+        <DifficultyLadder
+          personality={config.personality}
+          onChange={(id) => onChange({ ...config, personality: id })}
+        />
       )}
     </View>
   );
@@ -449,14 +490,17 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   playerRow: {
-    flexDirection: "row",
-    alignItems: "center",
     backgroundColor: Colors.bgSurface,
     borderRadius: Radius.md,
     padding: Spacing.wide,
-    gap: Spacing.cosy,
+    gap: Spacing.snug,
     borderWidth: 1,
     borderColor: Colors.border,
+  },
+  playerTopLine: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.cosy,
   },
   playerAvatar: {
     width: 40,
@@ -492,22 +536,53 @@ const styles = StyleSheet.create({
     marginTop: Spacing.xxs,
     letterSpacing: 0.5,
   },
-  personalityBtn: {
-    minHeight: TOUCH_TARGET_MIN,
+  ladder: {
     flexDirection: "row",
-    alignItems: "center",
-    gap: Spacing.xs,
-    backgroundColor: Colors.bgElevated,
-    paddingHorizontal: Spacing.snug,
-    paddingVertical: Spacing.slim,
-    borderRadius: Radius.sm,
+    borderRadius: Radius.md,
     borderWidth: 1,
     borderColor: Colors.border,
+    backgroundColor: Colors.bgElevated,
+    overflow: "hidden",
   },
-  personalityText: {
+  ladderSeg: {
+    flex: 1,
+    minHeight: TOUCH_TARGET_MIN,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: Spacing.xxs,
+    paddingVertical: Spacing.slim,
+  },
+  ladderSegBorder: {
+    borderLeftWidth: 1,
+    borderLeftColor: Colors.border,
+  },
+  ladderSegSelected: {
+    backgroundColor: Colors.gold,
+    borderTopWidth: 2,
+    borderTopColor: Colors.goldLight,
+  },
+  ladderBars: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: Spacing.xxs,
+    height: 10,
+  },
+  ladderBar: {
+    width: 3,
+    borderRadius: LADDER_BAR_RADIUS,
+    backgroundColor: Colors.textMuted,
+  },
+  ladderBarSelected: {
+    backgroundColor: Colors.bgCard,
+    opacity: 1,
+  },
+  ladderSegText: {
     fontFamily: "Rajdhani_600SemiBold",
-    fontSize: FontSize.sm,
-    color: Colors.gold,
+    fontSize: FontSize.xs,
+    color: Colors.textSecondary,
+  },
+  ladderSegTextSelected: {
+    color: Colors.bgCard,
   },
   startContainer: {
     position: "absolute",

@@ -50,6 +50,17 @@ export function botBlurbKey(id: BotPersonalityId): TranslationKey {
   return `bot.${id}Blurb` as TranslationKey;
 }
 
+const DIFFICULTY_LABEL_KEY: Record<AIDifficulty, TranslationKey> = {
+  easy: "bot.difficultyEasy",
+  medium: "bot.difficultyNormal",
+  hard: "bot.difficultyHard",
+};
+
+/** The Easy/Normal/Hard label for a personality's engine tier. */
+export function difficultyLabelKey(difficulty: AIDifficulty): TranslationKey {
+  return DIFFICULTY_LABEL_KEY[difficulty];
+}
+
 /**
  * Display names for a set of bot seats. Two seats on the same personality would
  * otherwise be two players called "Luan"; only the repeated ones get numbered.
