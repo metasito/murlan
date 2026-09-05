@@ -2,8 +2,8 @@
 // one-sided as it reads, and which of three named mechanisms produces it:
 // the exchange compounding every manche between the same two seats
 // (docs/RULES.md §10), half the deck going undealt at two players
-// (lib/gameEngine.ts's dealCards), or the default bot personality (`drita`)
-// being the passive one (lib/botPersonalities.ts).
+// (lib/gameEngine.ts's dealCards), or the default bot personality being the
+// passive one (lib/botPersonalities.ts).
 //
 // Calls the real engine and the real bot AI through
 // tests/helpers/offlineMatch.ts's `simulateOfflineMatch` — no copy of
