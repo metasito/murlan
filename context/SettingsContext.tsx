@@ -140,7 +140,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
 
   // lib/haptics.ts preloads this same key at module init, before this provider
   // mounts — pushing the unread default here would stomp a correctly-preloaded
-  // `false` until the read below resolves.
+  // `false` until the read above resolves.
   useEffect(() => {
     if (!readFinished) return;
     setHapticsMasterEnabled(settings.hapticsEnabled);
