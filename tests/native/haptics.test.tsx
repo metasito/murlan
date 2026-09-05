@@ -23,9 +23,8 @@ import {
 
 const mocked = jest.mocked(Haptics);
 
-// expo-haptics has no meaningful web behaviour, so the settings toggle that
-// silences it is only ever real on a device. These cover the native branch of
-// lib/haptics.ts, which the web suite cannot reach.
+// Platform.OS defaults to 'ios' in this test environment, so these cover the
+// native branch; tests/native/hapticsWeb.test.tsx covers the web one.
 describe('lib/haptics honours the master toggle', () => {
   beforeEach(() => {
     jest.clearAllMocks();

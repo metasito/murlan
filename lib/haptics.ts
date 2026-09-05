@@ -2,13 +2,17 @@ import * as Haptics from "expo-haptics";
 import { Platform } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-const isNative = Platform.OS === "ios" || Platform.OS === "android";
+// expo-haptics' web shim calls navigator.vibrate() per style, a no-op where
+// the Vibration API doesn't exist (iOS/desktop Safari) and real on Android
+// web — so every platform but nothing-at-all goes through this gate.
+const isHapticsPlatform =
+  Platform.OS === "ios" || Platform.OS === "android" || Platform.OS === "web";
 let _hapticsEnabled = true;
 
 // Same key/shape as SettingsContext — read once at module init so the stored
 // preference is honoured even before SettingsProvider has mounted and pushed it.
 const SETTINGS_STORAGE_KEY = "@murlan_settings";
-if (isNative) {
+if (isHapticsPlatform) {
   AsyncStorage.getItem(SETTINGS_STORAGE_KEY)
     .then((raw) => {
       if (!raw) return;
@@ -30,10 +34,7 @@ export function hapticsEnabled(): boolean {
   return _hapticsEnabled;
 }
 
-// expo-haptics' web shim already implements navigator.vibrate() per style,
-// no-opping harmlessly where the Vibration API doesn't exist (iOS/desktop
-// Safari) and firing for real where it does (Android web).
-const guard = () => _hapticsEnabled && (isNative || Platform.OS === "web");
+const guard = () => _hapticsEnabled && isHapticsPlatform;
 
 export const hapticSelection = () => guard() && Haptics.selectionAsync();
 export const hapticLight = () =>
