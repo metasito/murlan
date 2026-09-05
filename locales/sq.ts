@@ -542,10 +542,8 @@ export const sq: Record<keyof typeof en, string> = {
   // -------------------------------------------------------------------- bot.*
   // The names are proper nouns and stay as they are; only the play style is translated.
   "bot.luanBlurb": "Impulsiv dhe i paparashikueshëm",
-  "bot.dritaBlurb": "E kujdesshme, i ruan letrat e larta",
   "bot.besnikBlurb": "E kundërshton çdo raund",
   "bot.gentBlurb": "I pamëshirshëm, nuk lë asgjë të kalojë",
-  "bot.anaBlurb": "E durueshme dhe llogaritëse",
 
   // ------------------------------------------------------------------ lobby.*
   "lobby.team": "Ekipi {{team}}",
@@ -635,7 +633,7 @@ export const sq: Record<keyof typeof en, string> = {
   "rules.faq.q16": "Si funksionon Rivanshi online?",
   "rules.faq.a16": "Në modalitetin Online, rivanshi është demokratik:\n\n• Të gjithë lojtarët shohin butonin \"Rivansh\" në ekranin e fundit të ndeshjes\n• Një lojë e re fillon VETËM kur TË GJITHË lojtarët kanë klikuar Rivansh\n• Numëruesi tregon në kohë reale sa kanë votuar tashmë (p.sh. 2/4 duan të luajnë)\n• Nëse jo të gjithë votojnë, mund të dalësh gjithmonë duke shtypur butonin Dil\n\nPikët grumbullohen nga një rivansh në tjetrin — kush ka totalin më të lartë fiton sesionin!",
   "rules.faq.q17": "Si funksionon AI?",
-  "rules.faq.a17": "Çdo kundërshtar i kompjuterit ka një personalitet me stilin e vet:\n• Luan: impulsiv dhe i paparashikueshëm\n• Drita: e kujdesshme, i ruan letrat e larta\n• Besnik: e kundërshton çdo raund\n• Gent: i pamëshirshëm, nuk lë asgjë të kalojë\n• Ana: e durueshme dhe llogaritëse\nStili vendos sa fort një bot e kundërshton një raund, dhe kur e lëshon. Gent dhe Ana e ruajnë një 2, një Xhol ose një Bombë për kur nuk mbetet asgjë e zakonshme për të luajtur; Luan, Drita dhe Besnik e shpenzojnë kur stili i tyre thotë të ngulmojnë. Stili nuk ndryshon kurrë cilat kombinime janë të vlefshme.",
+  "rules.faq.a17": "Çdo kundërshtar i kompjuterit luan në një nga tre nivelet e vështirësisë:\n• Luan (Lehtë): impulsiv dhe i paparashikueshëm\n• Besnik (Normal): e kundërshton çdo raund\n• Gent (Vështirë): i pamëshirshëm, nuk lë asgjë të kalojë\nVështirësia vendos sa fort një bot e kundërshton një raund, dhe kur e lëshon. Gent e ruan një 2, një Xhol ose një Bombë për kur nuk mbetet asgjë e zakonshme për të luajtur; Luan dhe Besnik e shpenzojnë kur stili i tyre thotë të ngulmojnë. Vështirësia nuk ndryshon kurrë cilat kombinime janë të vlefshme.",
   "rules.faq.q18": "A mbyllet loja menjëherë kur mbaroj letrat e mia?",
   "rules.faq.a18": "Jo! Nëse ka lojtarë të tjerë, loja vazhdon mes tyre. Ti thjesht pret që të mbarojnë. Mund të shohësh pozicionet përfundimtare në ekranin e rezultateve (1°, 2°, 3°, 4°).",
 
