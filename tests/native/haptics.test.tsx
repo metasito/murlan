@@ -23,8 +23,8 @@ import {
 
 const mocked = jest.mocked(Haptics);
 
-// Platform.OS defaults to 'ios' in this test environment, so these cover the
-// native branch; tests/native/hapticsWeb.test.tsx covers the web one.
+// Platform.OS is ios or android here (jest.config.js runs both projects);
+// tests/native/hapticsWeb.test.tsx covers web.
 describe('lib/haptics honours the master toggle', () => {
   beforeEach(() => {
     jest.clearAllMocks();
