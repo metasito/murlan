@@ -69,10 +69,11 @@ export function worktrees(cwd) {
  *
  * @param {string} [cwd]
  * @param {string} [worktree]
- * @returns {{cwd: string|undefined, branch: string|null, ticket: number|null, detached: boolean}}
+ * @returns {{cwd: string|undefined, branch: string|null, ticket: number|null, detached: boolean,
+ *   ambiguous?: number, worktrees?: string[]}}
  */
 export function locateRun(cwd, worktree) {
-  const at = worktree ?? cwd;
+  const at = worktree || cwd;
   const here = currentBranch(at);
   if (ticketOf(here)) return { cwd: at, branch: here, ticket: ticketOf(here), detached: false };
   if (worktree) return { cwd: at, branch: here, ticket: null, detached: here === "HEAD" };
@@ -94,8 +95,9 @@ export function locateRun(cwd, worktree) {
     const w = onBranch[0];
     return { cwd: w.dir, branch: w.branch, ticket: ticketOf(w.branch), detached: false };
   }
-  // More than one live ticket worktree and nothing here says which one this run is for — guessing
-  // is how a leftover from a crashed run once got judged as the ticket actually in progress.
+  // More than one live ticket worktree and nothing here says which one this run is for — a
+  // leftover from a crashed run, sitting next to the one actually in progress. Refuse rather
+  // than guess.
   if (onBranch.length > 1) {
     return {
       cwd,

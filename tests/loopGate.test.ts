@@ -317,7 +317,7 @@ describe("the run is found by scanning .worktrees/, not from where the process s
 
   // Two live ticket worktrees is not a real loop state (one ticket at a time), but a leftover
   // from a crashed run sitting next to the one in progress is exactly how it happens. Picking one
-  // arbitrarily used to mean judging a review that was never for this ticket at all.
+  // arbitrarily would judge a review that was never for this ticket at all.
   test("two live ticket worktrees refuse rather than guess which one", () => {
     const checkout = scratchCheckout();
     const a = join(checkout, ".worktrees", "agent-9900097");
