@@ -63,12 +63,20 @@ export function worktrees(cwd) {
  * directory name carries the ticket and the caller is told the head is loose rather than told
  * nothing is happening.
  *
+ * `worktree` says outright which path to read, for asking "is *this* one on a ticket" without
+ * going through the scan at all — a test seam, since a real invocation is never asking about
+ * anywhere but its own `.worktrees/`.
+ *
  * @param {string} [cwd]
- * @returns {{cwd: string|undefined, branch: string|null, ticket: number|null, detached: boolean}}
+ * @param {string} [worktree]
+ * @returns {{cwd: string|undefined, branch: string|null, ticket: number|null, detached: boolean,
+ *   ambiguous?: number, worktrees?: string[]}}
  */
-export function locateRun(cwd) {
-  const here = currentBranch(cwd);
-  if (ticketOf(here)) return { cwd, branch: here, ticket: ticketOf(here), detached: false };
+export function locateRun(cwd, worktree) {
+  const at = worktree || cwd;
+  const here = currentBranch(at);
+  if (ticketOf(here)) return { cwd: at, branch: here, ticket: ticketOf(here), detached: false };
+  if (worktree) return { cwd: at, branch: here, ticket: null, detached: here === "HEAD" };
 
   // Only worktrees under the checkout's own `.worktrees/`, which is where phase A puts them. The
   // scan answers "is a run live", so it must not adopt an unrelated `agent/` branch someone left
@@ -87,9 +95,18 @@ export function locateRun(cwd) {
     const w = onBranch[0];
     return { cwd: w.dir, branch: w.branch, ticket: ticketOf(w.branch), detached: false };
   }
+  // More than one live ticket worktree and nothing here says which one this run is for — a
+  // leftover from a crashed run, sitting next to the one actually in progress. Refuse rather
+  // than guess.
   if (onBranch.length > 1) {
-    const w = onBranch[0];
-    return { cwd: w.dir, branch: w.branch, ticket: ticketOf(w.branch), detached: false, many: onBranch.length };
+    return {
+      cwd,
+      branch: here,
+      ticket: null,
+      detached: here === "HEAD",
+      ambiguous: onBranch.length,
+      worktrees: onBranch.map((w) => w.branch),
+    };
   }
 
   const loose = list.find((w) => w.detached && /^agent-\d+$/.test(basename(w.dir ?? "")));
@@ -162,9 +179,17 @@ function readComments(ticket, cwd) {
  * against scratch worktrees that have no `origin/main`. It is deliberately not a command-line
  * flag — an audit passed `--base HEAD~1` and walked a `.github/workflows/` change straight through
  * the gate, because a documented flag is a mistake the loop can make by reading its own usage text.
+ *
+ * `LOOP_WORKTREE` is the same kind of seam, and the same kind of hazard if it ever became a real
+ * flag: pointed at a worktree other than the one about to be pushed, it clears a review that never
+ * looked at this branch's head. Like `LOOP_BASE`, nothing in the loop itself may ever set it.
  */
-export function derive({ cwd = undefined, base = process.env.LOOP_BASE || "origin/main" } = {}) {
-  const at = locateRun(cwd);
+export function derive({
+  cwd = undefined,
+  base = process.env.LOOP_BASE || "origin/main",
+  worktree = process.env.LOOP_WORKTREE,
+} = {}) {
+  const at = locateRun(cwd, worktree);
   if (at.detached && at.ticket) {
     return {
       onTicket: true,
@@ -176,10 +201,12 @@ export function derive({ cwd = undefined, base = process.env.LOOP_BASE || "origi
     };
   }
   if (!at.ticket) {
-    const why = at.detached
-      ? "HEAD is detached, so there is no branch to read a ticket from"
-      : "not on an agent branch";
-    return { onTicket: false, branch: at.branch, phase: "A", why };
+    const why = at.ambiguous
+      ? `${at.ambiguous} live agent/* worktrees under .worktrees/ (${at.worktrees.join(", ")}) — cannot tell which one this run is`
+      : at.detached
+        ? "HEAD is detached, so there is no branch to read a ticket from"
+        : "not on an agent branch";
+    return { onTicket: false, branch: at.branch, phase: "A", why, ambiguous: Boolean(at.ambiguous) };
   }
   const { ticket, branch } = at;
   cwd = at.cwd;

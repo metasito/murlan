@@ -161,4 +161,17 @@ describe("the compaction brief", () => {
     assert.match(out, /#9/);
     assert.match(out, /stuck/i);
   });
+
+  // Two live agent/* worktrees is `onTicket: false` (derive can't say which is the run), but it is
+  // not the same as no run being live — the "says nothing" case above must stay narrower than this.
+  test("an ambiguous scan is reported, not silenced as no run", () => {
+    const out = report({
+      onTicket: false,
+      phase: "A",
+      why: "2 live agent/* worktrees under .worktrees/ (agent/1-a, agent/2-b) — cannot tell which one this run is",
+      ambiguous: true,
+    });
+    assert.notEqual(out, "");
+    assert.match(out, /agent\/1-a/);
+  });
 });
