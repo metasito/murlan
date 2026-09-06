@@ -60,10 +60,11 @@ can, and that is what the claim carries.
 - **Execute the route through its command** — `/queue`, `/triage` or `/wayfinder`. `/triage`
   and `/wayfinder` run `mattpocock-skills:triage` and `mattpocock-skills:wayfinder`, which
   own their procedures; the command files carry only what is specific to this repo.
-  `mattpocock-skills:implement` is **not** among them: it is marked
-  `disable-model-invocation`, so no agent can call it, and its "run the full test suite
-  once at the end" contradicts this repo's rule that `ci.yml` owns the sweep. `/queue`
-  spells its own procedure out instead, and nothing in that pack picks a ticket — its only
+  `mattpocock-skills:implement` is **not** among them: it is invokable, but its "run the
+  full test suite once at the end" contradicts this repo's rule that `ci.yml` owns the
+  sweep, so `queue.md` calls `mattpocock-skills:tdd` and `code-review` directly rather than
+  through it. `/queue` spells its own procedure out instead, and nothing in that pack picks
+  a ticket — its only
   frontier query is scoped to a `wayfinder` map's children and drops candidates on
   assignee, which cannot separate two sessions here.
 - **Claim**, as the session's first write, before the branch and before reading the code:

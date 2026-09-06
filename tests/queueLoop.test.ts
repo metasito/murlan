@@ -1,7 +1,7 @@
 // tests/queueLoop.test.ts
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { parseRoute, shouldStop } from "../scripts/queue-loop.mjs";
+import { parseRoute, shouldStop, queueLoopArgs } from "../scripts/queue-loop.mjs";
 
 describe("parseRoute", () => {
   test("reads the ROUTE line next-ticket.mjs prints", () => {
@@ -16,6 +16,18 @@ describe("parseRoute", () => {
 
   test("throws on output with no ROUTE line, rather than silently looping forever", () => {
     assert.throws(() => parseRoute("some unrelated error\n"), /no ROUTE line/);
+  });
+});
+
+describe("queueLoopArgs", () => {
+  test("runs /queue unattended, with no MCP tools an empty run could stall waiting on", () => {
+    assert.deepEqual(queueLoopArgs(), [
+      "-p",
+      "/queue",
+      "--permission-mode",
+      "auto",
+      "--strict-mcp-config",
+    ]);
   });
 });
 

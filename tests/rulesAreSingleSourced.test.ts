@@ -118,6 +118,12 @@ describe("every agent rule is written down exactly once", () => {
     );
   });
 
+  test("phase D runs the real two-axis code-review, not a hand-rolled single subagent", () => {
+    const queue = read(".claude/commands/queue.md");
+    assert.match(queue, /mattpocock-skills:code-review/);
+    assert.match(queue, /## Standards.{0,80}## Spec/s);
+  });
+
   // The floor: with a rule genuinely duplicated, the check above must fail. A pattern that no
   // longer matches its own rule would pass every assertion while enforcing nothing.
   test("each pattern still matches the rule it guards, inside the ruleset", () => {

@@ -49,34 +49,22 @@ Never ask the user a question while a run is live.
 
 ---
 
-## Phase 0 — Bootstrap (once per run)
+## A — Start
 
 ```sh
-node scripts/prune-worktrees.mjs      # a killed run never reached its own teardown
-node scripts/preflight.mjs            # refuses to start on someone else's uncommitted work
-node scripts/next-ticket.mjs --all    # the queue, in pick order
-```
-
-If preflight or the picker fails, **halt** — do not work around it.
-
-That listing is a snapshot for your report, not a work order: phase A picks again from live tracker
-state every ticket, because labels and blockers move while the run is running. Where they differ,
-the picker is right.
-
-Then run phases A–F once, for exactly one ticket per process. `scripts/queue-loop.mjs` is what
-keeps going — it is a fresh `claude -p "/queue"` invocation that starts the next ticket, not this
-session continuing. There is no ticket-count budget: nothing survives past phase F for a budget to
-protect.
-
-## A — Take
-
-```sh
+node scripts/prune-worktrees.mjs          # a killed run never reached its own teardown
+node scripts/preflight.mjs                # refuses to start on someone else's uncommitted work
 node scripts/next-ticket.mjs $ARGUMENTS   # prints ROUTE, body, comments, blockers, takeability
 ```
 
-`$ARGUMENTS` is normally empty, which picks from the live queue as usual. Pass an explicit issue
-number by hand (`/queue 911`) to inspect or work that one ticket instead of picking — `next-ticket.mjs`
-already supports this as its `explicit` branch.
+If preflight fails, **halt** — do not work around it. `$ARGUMENTS` is normally empty, which picks
+from the live queue. Pass an explicit issue number by hand (`/queue 911`) to inspect or work that
+one ticket instead of picking — `next-ticket.mjs` already supports this as its `explicit` branch.
+
+This runs once, for exactly one ticket, then phases B–F carry it to a close. `scripts/queue-loop.mjs`
+is what keeps going — it is a fresh `claude -p "/queue"` invocation that starts the next ticket, not
+this session continuing. There is no ticket-count budget: nothing survives past phase F for a budget
+to protect.
 
 Route `triage` runs `/triage`; route `wayfinder` runs `/wayfinder`; route `handoff` means no
 agent-takeable work is left — go to **Halt**. Only route `implement` continues here.
@@ -160,47 +148,32 @@ you did is not evidence; git is.
 
 ## D — Review
 
-A fresh subagent (`opus`) that did not write the code, given the ticket and the diff and nothing
-else — never your reasoning, which is the frame the review exists to escape:
+`mattpocock-skills:code-review`, fixed point `origin/main`. Two fresh `opus` subagents (rule 29's
+independent-review tier) that did not write the code, each given the diff and nothing else — never
+your reasoning, which is the frame the review exists to escape:
 
-> You did not write this. Read `git diff origin/main...HEAD` in `.worktrees/agent-N`, and issue #N.
-> Your job is a judgement, not a checklist: is this change correct, in scope, and something this
-> repo should carry?
->
-> Check at least these, because they are what has actually gone wrong here before: correctness bugs;
-> scope creep; a part of the ticket quietly left undone; a new test that would still pass on broken
-> code (delete or invert what it guards, and check); a comment that narrates history or restates the
-> line below it (`CLAUDE.md`, Comments); anything breaking `docs/agents/RULES.md`.
->
-> That list is a floor, not a boundary. If the thing that matters most is not on it — a design that
-> will not hold, a race, a security hole, a much simpler shape the author walked past, a premise
-> that is just wrong — say that, and say why. Never withhold a real finding because it has no
-> category.
->
-> Follow the diff outward whenever you have a reason to. If the fix claims to handle every caller,
-> go and read the callers; if it claims a test covers something, go and read the test. Read whatever
-> you need to reach a judgement. Run a specific test if running it would settle a question — but not
-> `npm run agent:check`, which waits on memory and then runs for twenty minutes.
->
-> Be blunt and specific: name the file and line, and say what breaks and when. No preamble, no
-> summary of what the code does, no praise. Around 25 lines of findings is usual; say everything
-> that matters, and nothing that doesn't. Length is not the limit — padding is.
->
-> End with exactly one line: `VERDICT: LAND <sha>`, or `VERDICT: HOLD <sha> — <one sentence>`,
-> where `<sha>` is `git rev-parse --short HEAD` in that worktree.
-> Do not spawn any subagent.
+- **Standards** — sources: `docs/agents/RULES.md` plus the skill's own Fowler smell baseline (paste
+  it in full; the subagent has no other access to it). Brief: report every documented-rule violation
+  by number, and any baseline smell, named and quoted; skip what tooling enforces. Around 25 lines.
+- **Spec** — source: issue #N's body and comments, already fetched in phase A. Brief: report
+  requirements missing or partial, behaviour not asked for, and anything implemented but wrong,
+  quoting the issue for each. Around 25 lines.
 
-Post that line verbatim as a comment on the issue:
+Both: `Do not spawn any subagent.`
+
+Post both reports on the issue, under `## Standards` and `## Spec`, unmerged — the skill's own rule,
+because a change can pass one axis and fail the other. Then read both yourself and write the one
+line `loop-gate.mjs` needs: `VERDICT: LAND <sha>`, or `VERDICT: HOLD <sha> — <one sentence>`, where
+`<sha>` is `git rev-parse --short HEAD` in that worktree. HOLD on any hard Standards violation or any
+missing/wrong Spec finding; a baseline smell alone, or added behaviour with no correctness cost, is a
+note, not a HOLD. Post that verdict as its own comment, first line the VERDICT:
 
 ```sh
 gh issue comment <n> --body-file <file>   # first line: VERDICT: LAND <sha>
 ```
 
-This is one subagent, not `mattpocock-skills:code-review`'s two-axis parallel shape — deliberately.
-`loop-gate.mjs` binds to a single sha-tagged `VERDICT: LAND <sha>` line, and running Standards and
-Spec as two parallel opus subagents would double review cost across up to 4 rounds for a prompt that
-already asks both questions. See `docs/superpowers/plans/2026-09-06-loop-rewrite.md` (Decision 5) if
-this trade-off ever needs revisiting.
+Two opus subagents plus this session's own read, not a third subagent for the verdict — that keeps
+`loop-gate.mjs`'s single sha-bound line while still running the skill's real shape.
 
 That is the whole record of the review, and the sha is what makes it trustworthy: the gate accepts
 a verdict only if it names the commit being pushed. Commit again after a review and it stops
@@ -324,9 +297,9 @@ The PR body closes the issue; nothing takes the label off, and a closed ticket s
    npm run worktrees:remove -- .worktrees/agent-<n>
    git status --porcelain              # must be empty; if it is not, teardown failed — say so
    ```
-5. **Exit.** One ticket per process, by design (`docs/superpowers/plans/2026-09-06-loop-rewrite.md`):
-   `scripts/queue-loop.mjs` starts the next ticket in a clean process, so there is nothing here to
-   reset and nothing that can leak forward. Do not loop back to phase A in this session.
+5. **Exit.** One ticket per process, by design: `scripts/queue-loop.mjs` starts the next ticket in a
+   clean process, so there is nothing here to reset and nothing that can leak forward. Do not loop
+   back to phase A in this session.
 
 Teardown runs on the parked and stopped paths too. A run that cost forty minutes and stopped is the
 one whose record is worth having.
