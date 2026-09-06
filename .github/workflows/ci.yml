@@ -359,10 +359,16 @@ jobs:
   # pull request would triple the wait in the middle of every ticket — the cost
   # #288 exists to keep down. See the filter in `scope` for why a source change
   # cannot reach them.
+  # Disabled 2026-09-06 (#928): 21m22s this run, 16m51s for iOS below, against
+  # 1-5 min for everything else, and `scope`'s fail-unsafe allowlist trips
+  # `native=true` on any package.json touch at all, including a scripts-only
+  # edit with no native effect. Re-enable once #928 lands a fix (or accept
+  # keeping it off, if research says that's the right call) — don't just flip
+  # this back to see if it's still slow.
   android-build:
     name: Android compiles
     needs: scope
-    if: needs.scope.outputs.native == 'true'
+    if: false # was: needs.scope.outputs.native == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
@@ -384,10 +390,11 @@ jobs:
         working-directory: android
         run: ./gradlew assembleDebug --no-daemon
 
+  # Disabled 2026-09-06 (#928) alongside android-build above — see its comment.
   ios-build:
     name: iOS compiles
     needs: scope
-    if: needs.scope.outputs.native == 'true'
+    if: false # was: needs.scope.outputs.native == 'true'
     runs-on: macos-latest
     timeout-minutes: 60
     steps:
