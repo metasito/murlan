@@ -77,6 +77,8 @@ describe("every agent rule is written down exactly once", () => {
     ["how the run is recovered", /loop-status\.mjs/],
     ["one ticket at a time", /one ticket at a time/i],
     ["what to preserve when compacting", /failing test output/i],
+    ["the loop is one ticket per process", /one ticket per (claude )?process/i],
+    ["there is no ticket-count budget", /queue-loop\.mjs/i],
   ] as [string, RegExp][]) {
     test(`"${name}" is procedure, so it lives in the command file only`, () => {
       assert.equal(
@@ -91,6 +93,17 @@ describe("every agent rule is written down exactly once", () => {
       );
     });
   }
+
+  test("queue.md builds each ticket at sonnet, not opus", () => {
+    const queue = read(".claude/commands/queue.md");
+    const model = queue.match(/^model:\s*(\S+)/m)?.[1];
+    assert.equal(
+      model,
+      "sonnet",
+      "queue.md's own frontmatter model runs phases C and E directly (implement/verify/land, " +
+        "rule 29) — it should not be opus. Phase D's subagent keeps its own opus override."
+    );
+  });
 
   // The floor: with a rule genuinely duplicated, the check above must fail. A pattern that no
   // longer matches its own rule would pass every assertion while enforcing nothing.
