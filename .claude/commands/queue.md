@@ -19,18 +19,6 @@ stale. `node scripts/loop-status.mjs` computes the answer at any moment.
 The branch name is the binding: `agent/<n>-<slug>` says which ticket the work belongs to, and git
 will not let you be on two at once.
 
-## Recovery — read this first, every time
-
-```sh
-node scripts/loop-status.mjs
-```
-
-Silent means no run is live. Anything else means you are mid-run: do not re-plan, do not re-scope,
-do not ask whether to continue. It names the ticket, the branch, what is committed, whether a
-review covers the current head, and the phase to resume at. Resume there. Never restart a ticket.
-
-Uncommitted changes in the worktree are your in-progress slice. Finish it; do not start over.
-
 ## Never stall
 
 Three cases, and they are all of them:
@@ -50,6 +38,23 @@ Never ask the user a question while a run is live.
 ---
 
 ## A — Start
+
+**Run this first, before anything else, every time — including a fresh process that has never seen
+this ticket:**
+
+```sh
+node scripts/loop-status.mjs
+```
+
+Silent means no run is live — continue to the picker below. Anything else means a ticket is already
+mid-run: resume at the phase it names, do not re-plan, do not re-scope, do not ask whether to
+continue, and **do not run the picker below at all.** A ticket already claimed and mid-build is not
+a competing option next to a fresh one — picking a new ticket while this one is unfinished is the
+exact one-ticket-at-a-time violation this loop exists to prevent, not a matter of preference between
+two takeable tickets. Uncommitted changes in that worktree are your in-progress slice; finish it,
+don't start over.
+
+Only once `loop-status.mjs` is silent:
 
 ```sh
 node scripts/prune-worktrees.mjs          # a killed run never reached its own teardown

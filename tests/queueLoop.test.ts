@@ -1,7 +1,7 @@
 // tests/queueLoop.test.ts
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { parseRoute, shouldStop, queueLoopArgs } from "../scripts/queue-loop.mjs";
+import { parseRoute, shouldStop, queueLoopArgs, liveRoute } from "../scripts/queue-loop.mjs";
 
 describe("parseRoute", () => {
   test("reads the ROUTE line next-ticket.mjs prints", () => {
@@ -28,6 +28,30 @@ describe("queueLoopArgs", () => {
       "auto",
       "--strict-mcp-config",
     ]);
+  });
+});
+
+describe("liveRoute", () => {
+  test("no route when no ticket is live — the picker should run", () => {
+    assert.equal(liveRoute({ onTicket: false }), null);
+  });
+
+  test("resumes the live ticket instead of asking the picker for a new one", () => {
+    assert.deepEqual(liveRoute({ onTicket: true, ticket: 911, branch: "agent/911-x" }), {
+      skill: "implement",
+      number: 911,
+      title: "agent/911-x",
+      resuming: true,
+    });
+  });
+
+  test("falls back to a bare ticket label when derive() found no branch (the stuck/'?' case)", () => {
+    assert.deepEqual(liveRoute({ onTicket: true, ticket: 911, branch: null }), {
+      skill: "implement",
+      number: 911,
+      title: "ticket #911",
+      resuming: true,
+    });
   });
 });
 

@@ -118,6 +118,18 @@ describe("every agent rule is written down exactly once", () => {
     );
   });
 
+  test("phase A checks loop-status.mjs before the picker, not just somewhere in the doc", () => {
+    const queue = read(".claude/commands/queue.md");
+    const statusAt = queue.indexOf("loop-status.mjs");
+    const pickerAt = queue.indexOf("next-ticket.mjs $ARGUMENTS");
+    assert.ok(statusAt >= 0 && pickerAt >= 0, "one of the two commands is missing from queue.md");
+    assert.ok(
+      statusAt < pickerAt,
+      "loop-status.mjs must run before next-ticket.mjs's picker, or a live ticket can be bypassed " +
+        "for a fresh pick — see #911/#915"
+    );
+  });
+
   test("phase D runs the real two-axis code-review, not a hand-rolled single subagent", () => {
     const queue = read(".claude/commands/queue.md");
     assert.match(queue, /mattpocock-skills:code-review/);

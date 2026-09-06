@@ -13,6 +13,7 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { derive } from "./loop-derive.mjs";
 
 export function isInvokedDirectly(argv1, moduleUrl) {
   return Boolean(argv1) && path.resolve(argv1) === fileURLToPath(moduleUrl);
@@ -30,9 +31,28 @@ export function shouldStop(route) {
   return route.skill === "handoff";
 }
 
+/**
+ * @returns {{ skill: string, number: number, title: string, resuming: true } | null}
+ */
+export function liveRoute(status) {
+  if (!status.onTicket || !status.ticket) return null;
+  return {
+    skill: "implement",
+    number: status.ticket,
+    title: status.branch ?? `ticket #${status.ticket}`,
+    resuming: true,
+  };
+}
+
 function nextRoute() {
+  // Checked here, not just left to queue.md's own phase A: without this, the log below claims
+  // "starting #N" for whatever the picker happens to return, even while a different ticket is
+  // genuinely mid-build in a worktree — misleading regardless of what the spawned session goes
+  // on to correctly resume.
+  const live = liveRoute(derive());
+  if (live) return live;
   const stdout = execFileSync("node", ["scripts/next-ticket.mjs"], { encoding: "utf8" });
-  return parseRoute(stdout);
+  return { ...parseRoute(stdout), resuming: false };
 }
 
 export function queueLoopArgs() {
@@ -61,7 +81,11 @@ function main() {
       console.log(`queue-loop: ${route.title} — stopping`);
       return 0;
     }
-    console.log(`queue-loop: starting #${route.number} ${route.title} (${route.skill})`);
+    console.log(
+      route.resuming
+        ? `queue-loop: resuming #${route.number} (${route.title}) — a run was already mid-build`
+        : `queue-loop: starting #${route.number} ${route.title} (${route.skill})`
+    );
     const status = runOneTicket();
     if (status !== 0) {
       console.error(`queue-loop: claude -p exited ${status}, stopping rather than looping on a broken run`);
