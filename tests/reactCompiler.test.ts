@@ -17,6 +17,14 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+// The shared checkout, via `--git-common-dir` rather than `--show-toplevel` (RULES.md rule 10:
+// the latter returns the worktree's own path from inside one). `npm ls`, unlike `require()`,
+// needs a real `node_modules` in its own cwd — only the shared checkout is guaranteed to have one.
+const sharedCheckout = path.dirname(
+  execFileSync("git", ["rev-parse", "--path-format=absolute", "--git-common-dir"], {
+    encoding: "utf8",
+  }).trim()
+);
 const require = createRequire(path.join(repoRoot, "package.json"));
 // Resolved through Node, not `repoRoot + "node_modules/…"`: a git worktree
 // has no `node_modules` of its own and depends on the ancestor lookup
@@ -40,7 +48,7 @@ function occurrencesInTree(name: string): number {
   // refuses to exec directly. Every argument here is a static literal, never
   // interpolated, so there is nothing for the shell to misinterpret.
   const tree = JSON.parse(
-    execFileSync("npm", ["ls", name, "--all", "--json"], { cwd: repoRoot, encoding: "utf8", shell: true })
+    execFileSync("npm", ["ls", name, "--all", "--json"], { cwd: sharedCheckout, encoding: "utf8", shell: true })
   ) as { dependencies?: Record<string, { dependencies?: unknown }> };
   let count = 0;
   const walk = (deps: Record<string, { dependencies?: unknown }> | undefined) => {
