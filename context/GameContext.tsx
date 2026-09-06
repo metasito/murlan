@@ -54,7 +54,7 @@ const E2E_FAST = process.env.EXPO_PUBLIC_E2E_FAST === "1";
  * after that single command can observe an overlay gone by the real ~5.2s —
  * this holds it past that return instead of speeding the real ceremony up.
  */
-const E2E_EXCHANGE_HOLD_MS = 9000;
+const E2E_EXCHANGE_HOLD_MS = 10000;
 
 export interface PlayerSetupConfig {
   name: string;
