@@ -94,6 +94,19 @@ describe("every agent rule is written down exactly once", () => {
     });
   }
 
+  test("queue.md carries no ticket-count budget language", () => {
+    // Matches the old mechanic's own phrasing, not the sentence that now declares its absence —
+    // "there is no ticket-count budget" would otherwise trip a bare /ticket-count budget/i itself.
+    const queue = read(".claude/commands/queue.md");
+    const budgetPattern = /max-tickets|budget is spent|budget spent ·/i;
+    assert.equal(
+      budgetPattern.test(queue),
+      false,
+      "queue.md still mentions the old ticket-count budget mechanism; Decision 3 replaced it with " +
+        "queue-loop.mjs running one ticket per process with no cap"
+    );
+  });
+
   test("queue.md builds each ticket at sonnet, not opus", () => {
     const queue = read(".claude/commands/queue.md");
     const model = queue.match(/^model:\s*(\S+)/m)?.[1];

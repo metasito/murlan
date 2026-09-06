@@ -36,11 +36,17 @@ function nextRoute() {
 }
 
 function runOneTicket() {
-  // Verified headless: `claude -p "/ponytail-help"` via this same spawnSync mechanism expands the
-  // command correctly (docs/superpowers/plans/2026-09-06-loop-rewrite.md, Task 4). Testing this by
-  // hand from Git Bash instead needs `MSYS_NO_PATHCONV=1` — MSYS rewrites a bare leading `/word`
-  // into a Windows path (`/help` -> `C:/Program Files/Git/help`) before `claude` ever sees it.
-  // spawnSync here goes straight to CreateProcess, not through that shell layer, so it is unaffected.
+  // NOT YET VERIFIED against /queue itself (docs/superpowers/plans/2026-09-06-loop-rewrite.md,
+  // Task 4) — that would claim a real ticket as a side effect, so it needs a deliberate go-ahead
+  // rather than running as part of building this script. What IS confirmed: this exact spawnSync
+  // mechanism correctly expands a harmless command (`claude -p "/ponytail-help"`) in headless mode,
+  // so command expansion itself works; whether /queue's phase text specifically appears (rather
+  // than a literal echo) is the one open question Task 4 was written to answer.
+  //
+  // Testing by hand from Git Bash needs `MSYS_NO_PATHCONV=1` — MSYS rewrites a bare leading
+  // `/word` into a Windows path (`/help` -> `C:/Program Files/Git/help`) before `claude` ever sees
+  // it. spawnSync here goes straight to CreateProcess, not through that shell layer, so it is
+  // unaffected — only manual bash testing needs the env var.
   const result = spawnSync("claude", ["-p", "/queue", "--permission-mode", "auto"], {
     stdio: "inherit",
   });

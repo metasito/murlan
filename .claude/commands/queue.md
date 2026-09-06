@@ -71,8 +71,12 @@ protect.
 ## A — Take
 
 ```sh
-node scripts/next-ticket.mjs          # prints ROUTE, body, comments, blockers, takeability
+node scripts/next-ticket.mjs $ARGUMENTS   # prints ROUTE, body, comments, blockers, takeability
 ```
+
+`$ARGUMENTS` is normally empty, which picks from the live queue as usual. Pass an explicit issue
+number by hand (`/queue 911`) to inspect or work that one ticket instead of picking — `next-ticket.mjs`
+already supports this as its `explicit` branch.
 
 Route `triage` runs `/triage`; route `wayfinder` runs `/wayfinder`; route `handoff` means no
 agent-takeable work is left — go to **Halt**. Only route `implement` continues here.
