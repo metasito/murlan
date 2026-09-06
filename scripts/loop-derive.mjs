@@ -63,12 +63,21 @@ export function worktrees(cwd) {
  * directory name carries the ticket and the caller is told the head is loose rather than told
  * nothing is happening.
  *
+ * `worktree` is an explicit pointer that skips the `.worktrees/` scan below entirely — the tests'
+ * only seam, for a case the scan cannot handle: more than one real `agent/*` worktree checked out
+ * at once, which is the ordinary state of a machine mid-run on one ticket while these tests probe
+ * scratch ones. Naming the path outright is what the scan exists to avoid needing in production,
+ * where nothing ever sets it.
+ *
  * @param {string} [cwd]
+ * @param {string} [worktree]
  * @returns {{cwd: string|undefined, branch: string|null, ticket: number|null, detached: boolean}}
  */
-export function locateRun(cwd) {
-  const here = currentBranch(cwd);
-  if (ticketOf(here)) return { cwd, branch: here, ticket: ticketOf(here), detached: false };
+export function locateRun(cwd, worktree) {
+  const at = worktree ?? cwd;
+  const here = currentBranch(at);
+  if (ticketOf(here)) return { cwd: at, branch: here, ticket: ticketOf(here), detached: false };
+  if (worktree) return { cwd: at, branch: here, ticket: null, detached: here === "HEAD" };
 
   // Only worktrees under the checkout's own `.worktrees/`, which is where phase A puts them. The
   // scan answers "is a run live", so it must not adopt an unrelated `agent/` branch someone left
@@ -162,9 +171,16 @@ function readComments(ticket, cwd) {
  * against scratch worktrees that have no `origin/main`. It is deliberately not a command-line
  * flag — an audit passed `--base HEAD~1` and walked a `.github/workflows/` change straight through
  * the gate, because a documented flag is a mistake the loop can make by reading its own usage text.
+ *
+ * `LOOP_WORKTREE` is the same kind of seam, for `locateRun`'s scan: unset in every real
+ * invocation, so auto-discovery is still the only path a loop run ever takes.
  */
-export function derive({ cwd = undefined, base = process.env.LOOP_BASE || "origin/main" } = {}) {
-  const at = locateRun(cwd);
+export function derive({
+  cwd = undefined,
+  base = process.env.LOOP_BASE || "origin/main",
+  worktree = process.env.LOOP_WORKTREE,
+} = {}) {
+  const at = locateRun(cwd, worktree);
   if (at.detached && at.ticket) {
     return {
       onTicket: true,

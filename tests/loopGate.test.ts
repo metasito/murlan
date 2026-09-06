@@ -69,12 +69,17 @@ function stubGh(comments: { body: string }[]): string {
 function gate(
   cwd: string,
   comments?: { body: string }[],
-  base: string | undefined = BASE
+  base: string | undefined = BASE,
+  worktree?: string
 ): { code: number; out: string } {
   const env: NodeJS.ProcessEnv = { ...process.env };
   if (comments) env.LOOP_GH_SCRIPT = stubGh(comments);
   if (base) env.LOOP_BASE = base;
   else delete env.LOOP_BASE;
+  // Points the gate at exactly one worktree, so a real agent/* run left live elsewhere on the
+  // machine (this suite's own, or a peer's) cannot be mistaken for the one under test here.
+  if (worktree) env.LOOP_WORKTREE = worktree;
+  else delete env.LOOP_WORKTREE;
   const r = spawnSync(process.execPath, [GATE], { cwd, encoding: "utf8", env });
   return { code: r.status ?? -1, out: `${r.stderr}${r.stdout}` };
 }
@@ -135,7 +140,9 @@ describe("the gate's exit code, which is what phase E reads", () => {
   // PR out at a detached HEAD, so CI only ever sees the second — this asserted the first alone and
   // went red on the runner while passing locally.
   test("off a ticket branch it declines to judge, and that is never 0", () => {
-    const { code, out } = gate(root);
+    // Points the gate at `root` itself rather than letting it scan `.worktrees/`, which may hold
+    // a real ticket's live worktree (this suite's own run, if any) that is not the case here.
+    const { code, out } = gate(root, undefined, BASE, root);
     assert.equal(code, 2);
     assert.match(out, /not on an agent branch|HEAD is detached/);
     assert.match(out, /nothing to judge/);
@@ -273,7 +280,10 @@ describe("the run is found from the shared checkout, not from where the process 
 
     // The gate runs at `root`, which is on chore/... — the situation that used to exit 2 for not
     // being on a ticket at all. Naming the ticket is what proves it found the run in .worktrees/.
-    const { code, out } = gate(root);
+    // Pointed at HOME explicitly: a real ticket's own worktree may be live under `.worktrees/` at
+    // the same time (this suite's own run, if any), and the scan has no way to prefer one over
+    // the other.
+    const { code, out } = gate(root, undefined, BASE, HOME);
     assert.notEqual(code, 0, `the gate cleared a push it never reviewed: ${out}`);
     assert.match(out, /#9900099/);
     assert.doesNotMatch(out, /nothing to judge/);
