@@ -62,6 +62,12 @@ jobs:
       # Metro to start, no packager URL to reach, no deep link and no
       # dev menu to be on top in the first place.
       - name: Build the app
+        env:
+          # Holds the offline exchange overlay open past the ~8.2s a real
+          # device's single tap-and-wait Maestro command takes to return
+          # (#915), instead of its real ~5.2s — never read outside a build
+          # this harness itself produced (`scripts/assertNotE2EFast.js`).
+          EXPO_PUBLIC_E2E_FAST: "1"
         run: |
           npx expo prebuild --platform ios --no-install
           pod install --project-directory=ios

@@ -44,6 +44,18 @@ import { handCountOf } from "@/components/gameTableModel";
 import type { MatchVerdict } from "@/lib/matchState";
 import type { BotPersonalityId } from "@/lib/botPersonalities";
 
+// Read once at module scope, matching app/game.tsx's own E2E_FAST — inlined
+// at bundle build time, so this only ever takes the fast path in a build the
+// E2E harness produced itself.
+const E2E_FAST = process.env.EXPO_PUBLIC_E2E_FAST === "1";
+/**
+ * How long the offline exchange overlay holds under Maestro. A real device's
+ * `btn-prossima-manche` tap doesn't return for ~8.2s (#915), so no wait placed
+ * after that single command can observe an overlay gone by the real ~5.2s —
+ * this holds it past that return instead of speeding the real ceremony up.
+ */
+const E2E_EXCHANGE_HOLD_MS = 9000;
+
 export interface PlayerSetupConfig {
   name: string;
   type: PlayerType;
@@ -128,6 +140,8 @@ interface GameContextValue {
   tableWantsRematch: boolean;
   exchangeAnnouncing: boolean;
   exchangeAnnounceData: ExchangeAnnounceData | null;
+  /** Set only under `EXPO_PUBLIC_E2E_FAST` (#915); undefined for a real player. */
+  exchangeHoldMsOverride: number | undefined;
   setupGame: (players: PlayerSetupConfig[], mode: GameMode, length?: MatchLength) => void;
   startNextHand: () => void;
   startNewMatch: () => void;
@@ -166,12 +180,13 @@ export function GameProvider({ children }: { children: ReactNode }) {
   const [hasSavedGame, setHasSavedGame] = useState(false);
   const savedRef = useRef<ReturnType<typeof decodeOfflineSave>>(null);
 
+  const exchangeHoldMsOverride = E2E_FAST ? E2E_EXCHANGE_HOLD_MS : undefined;
   const {
     announcing: exchangeAnnouncing,
     data: exchangeAnnounceData,
     announce,
     end: acknowledgeExchange,
-  } = useExchangeAnnouncement(gameState?.exchangePhase !== undefined);
+  } = useExchangeAnnouncement(gameState?.exchangePhase !== undefined, exchangeHoldMsOverride);
 
   /**
    * The single write path for engine output: a manche that has just ended is
@@ -424,6 +439,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       tableWantsRematch,
       exchangeAnnouncing,
       exchangeAnnounceData,
+      exchangeHoldMsOverride,
       setupGame,
       startNextHand,
       startNewMatch,
@@ -449,6 +465,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       tableWantsRematch,
       exchangeAnnouncing,
       exchangeAnnounceData,
+      exchangeHoldMsOverride,
       setupGame,
       startNextHand,
       startNewMatch,

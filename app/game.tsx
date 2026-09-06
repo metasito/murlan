@@ -51,6 +51,7 @@ export default function GameScreen() {
   const {
     exchangeAnnouncing,
     exchangeAnnounceData,
+    exchangeHoldMsOverride,
     chooseExchangeCard,
     acknowledgeExchange,
     releaseStuckExchange,
@@ -198,6 +199,7 @@ export default function GameScreen() {
         visible: exchangeAnnouncing,
         data: exchangeAnnounceData,
         onDismiss: acknowledgeExchange,
+        holdMsOverride: exchangeHoldMsOverride,
       }}
       rematchPrompt={{
         visible: rematchPromptOpen,

@@ -34,6 +34,8 @@ interface ExchangeAnnouncementProps {
   landed: boolean;
   scale: number;
   onDismiss: () => void;
+  /** Replaces `exchangeAnnounceMs()` as this overlay's own dismiss clock (#915, offline-only). */
+  holdMsOverride?: number;
 }
 
 /**
@@ -58,6 +60,7 @@ export function ExchangeAnnouncement({
   landed,
   scale,
   onDismiss,
+  holdMsOverride,
 }: ExchangeAnnouncementProps) {
   const { t } = useTranslation();
   const dismissRef = useRef(onDismiss);
@@ -67,9 +70,12 @@ export function ExchangeAnnouncement({
 
   useEffect(() => {
     if (!visible) return;
-    const done = setTimeout(() => dismissRef.current(), exchangeAnnounceMs(bothJokersException));
+    const done = setTimeout(
+      () => dismissRef.current(),
+      holdMsOverride ?? exchangeAnnounceMs(bothJokersException)
+    );
     return () => clearTimeout(done);
-  }, [visible, bothJokersException]);
+  }, [visible, bothJokersException, holdMsOverride]);
 
   if (!visible) return null;
 
