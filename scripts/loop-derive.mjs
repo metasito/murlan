@@ -97,7 +97,14 @@ export function locateRun(cwd, worktree) {
   // More than one live ticket worktree and nothing here says which one this run is for — guessing
   // is how a leftover from a crashed run once got judged as the ticket actually in progress.
   if (onBranch.length > 1) {
-    return { cwd, branch: here, ticket: null, detached: here === "HEAD", ambiguous: onBranch.length };
+    return {
+      cwd,
+      branch: here,
+      ticket: null,
+      detached: here === "HEAD",
+      ambiguous: onBranch.length,
+      worktrees: onBranch.map((w) => w.branch),
+    };
   }
 
   const loose = list.find((w) => w.detached && /^agent-\d+$/.test(basename(w.dir ?? "")));
@@ -193,11 +200,11 @@ export function derive({
   }
   if (!at.ticket) {
     const why = at.ambiguous
-      ? `${at.ambiguous} live agent/* worktrees under .worktrees/ — cannot tell which one this run is`
+      ? `${at.ambiguous} live agent/* worktrees under .worktrees/ (${at.worktrees.join(", ")}) — cannot tell which one this run is`
       : at.detached
         ? "HEAD is detached, so there is no branch to read a ticket from"
         : "not on an agent branch";
-    return { onTicket: false, branch: at.branch, phase: "A", why };
+    return { onTicket: false, branch: at.branch, phase: "A", why, ambiguous: Boolean(at.ambiguous) };
   }
   const { ticket, branch } = at;
   cwd = at.cwd;

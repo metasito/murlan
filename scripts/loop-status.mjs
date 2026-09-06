@@ -13,7 +13,18 @@
 import { derive } from "./loop-derive.mjs";
 
 export function report(s) {
-  if (!s.onTicket) return "";
+  if (!s.onTicket) {
+    if (!s.ambiguous) return "";
+    return [
+      "More than one agent/* worktree is live under .worktrees/, and nothing here says which one",
+      "this session's run is — that is not the same as no run being live.",
+      "",
+      `  ${s.why}`,
+      "",
+      "Resolve which one is the real run before picking a new ticket.",
+      "`.claude/commands/queue.md` is the procedure.",
+    ].join("\n");
+  }
   if (s.phase === "?") {
     return [
       `An autonomous ticket run is live: #${s.ticket}, and it is stuck.`,

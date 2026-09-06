@@ -5,6 +5,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync, mkdirSync, appendFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 
 /**
  * Phase E branches on this command's exit code, so the exit code is what is asserted — never a
@@ -13,10 +14,23 @@ import { join, dirname } from "node:path";
  * Each case is a real branch in a real worktree. `gh` cannot resolve a scratch ticket number, and
  * that is itself the "cannot read the review" path, so the review-dependent cases assert a
  * refusal: the gate fails closed, which is the property worth pinning.
+ *
+ * `SCRIPTS` and `root` are deliberately two different notions of "where this suite runs":
+ * `SCRIPTS` is this file's own directory, so `GATE`/`PRUNE` are always the copy of the code under
+ * test — the edited worktree's, when this suite runs the way phase C always runs it, from inside
+ * `.worktrees/agent-<n>`. `root` is the shared checkout, via `--git-common-dir` rather than
+ * `--show-toplevel` (RULES.md rule 10: the latter returns the worktree's own path from inside
+ * one). Several fixtures need `root` to be off any ticket branch, which only the shared checkout
+ * — never a ticket's own worktree — is guaranteed to be (rule 8).
  */
-const root = execFileSync("git", ["rev-parse", "--show-toplevel"], { encoding: "utf8" }).trim();
-const GATE = join(root, "scripts", "loop-gate.mjs");
-const PRUNE = join(root, "scripts", "prune-worktrees.mjs");
+const SCRIPTS = join(dirname(fileURLToPath(import.meta.url)), "..", "scripts");
+const GATE = join(SCRIPTS, "loop-gate.mjs");
+const PRUNE = join(SCRIPTS, "prune-worktrees.mjs");
+const root = dirname(
+  execFileSync("git", ["rev-parse", "--path-format=absolute", "--git-common-dir"], {
+    encoding: "utf8",
+  }).trim()
+);
 
 let dir: string;
 const madeDirs: string[] = [];
