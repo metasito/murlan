@@ -1,12 +1,15 @@
 ---
-description: Work the ticket queue autonomously, one ticket at a time
-argument-hint: "[max-tickets]"
+description: Work one ticket, then exit — scripts/queue-loop.mjs starts the next process
+argument-hint: "[issue-number]"
 allowed-tools: Read, Write, Edit, Grep, Glob, Bash, Task, Skill, SlashCommand, TodoWrite
-model: opus
+model: sonnet
 ---
 
 The only loop protocol in this repo. `docs/agents/RULES.md` is the ruleset; this file is the
 procedure. Where they disagree, RULES.md wins and this file is stale — fix it.
+
+One ticket at a time, one ticket per process: `scripts/queue-loop.mjs` starts the next process when
+this one exits, so working more than one ticket concurrently is not a mode this procedure has.
 
 **Nothing about the run is written down, because nothing needs to be.** Git knows the branch, the
 commits and the diff; the tracker knows the ticket, its comments and the review. Every question the
@@ -46,28 +49,22 @@ Never ask the user a question while a run is live.
 
 ---
 
-## Phase 0 — Bootstrap (once per run)
+## A — Start
 
 ```sh
-node scripts/prune-worktrees.mjs      # a killed run never reached its own teardown
-node scripts/preflight.mjs            # refuses to start on someone else's uncommitted work
-node scripts/next-ticket.mjs --all    # the queue, in pick order
+node scripts/prune-worktrees.mjs          # a killed run never reached its own teardown
+node scripts/preflight.mjs                # refuses to start on someone else's uncommitted work
+node scripts/next-ticket.mjs $ARGUMENTS   # prints ROUTE, body, comments, blockers, takeability
 ```
 
-If preflight or the picker fails, **halt** — do not work around it.
+If preflight fails, **halt** — do not work around it. `$ARGUMENTS` is normally empty, which picks
+from the live queue. Pass an explicit issue number by hand (`/queue 911`) to inspect or work that
+one ticket instead of picking — `next-ticket.mjs` already supports this as its `explicit` branch.
 
-That listing is a snapshot for your report, not a work order: phase A picks again from live tracker
-state every ticket, because labels and blockers move while the run is running. Where they differ,
-the picker is right.
-
-Then run phases A–F per ticket until the budget is spent (default 5, or `$1`), the queue is empty,
-or a stop condition fires.
-
-## A — Take
-
-```sh
-node scripts/next-ticket.mjs          # prints ROUTE, body, comments, blockers, takeability
-```
+This runs once, for exactly one ticket, then phases B–F carry it to a close. `scripts/queue-loop.mjs`
+is what keeps going — it is a fresh `claude -p "/queue"` invocation that starts the next ticket, not
+this session continuing. There is no ticket-count budget: nothing survives past phase F for a budget
+to protect.
 
 Route `triage` runs `/triage`; route `wayfinder` runs `/wayfinder`; route `handoff` means no
 agent-takeable work is left — go to **Halt**. Only route `implement` continues here.
@@ -151,41 +148,32 @@ you did is not evidence; git is.
 
 ## D — Review
 
-A fresh subagent (`opus`) that did not write the code, given the ticket and the diff and nothing
-else — never your reasoning, which is the frame the review exists to escape:
+`mattpocock-skills:code-review`, fixed point `origin/main`. Two fresh `opus` subagents (rule 29's
+independent-review tier) that did not write the code, each given the diff and nothing else — never
+your reasoning, which is the frame the review exists to escape:
 
-> You did not write this. Read `git diff origin/main...HEAD` in `.worktrees/agent-N`, and issue #N.
-> Your job is a judgement, not a checklist: is this change correct, in scope, and something this
-> repo should carry?
->
-> Check at least these, because they are what has actually gone wrong here before: correctness bugs;
-> scope creep; a part of the ticket quietly left undone; a new test that would still pass on broken
-> code (delete or invert what it guards, and check); a comment that narrates history or restates the
-> line below it (`CLAUDE.md`, Comments); anything breaking `docs/agents/RULES.md`.
->
-> That list is a floor, not a boundary. If the thing that matters most is not on it — a design that
-> will not hold, a race, a security hole, a much simpler shape the author walked past, a premise
-> that is just wrong — say that, and say why. Never withhold a real finding because it has no
-> category.
->
-> Follow the diff outward whenever you have a reason to. If the fix claims to handle every caller,
-> go and read the callers; if it claims a test covers something, go and read the test. Read whatever
-> you need to reach a judgement. Run a specific test if running it would settle a question — but not
-> `npm run agent:check`, which waits on memory and then runs for twenty minutes.
->
-> Be blunt and specific: name the file and line, and say what breaks and when. No preamble, no
-> summary of what the code does, no praise. Around 25 lines of findings is usual; say everything
-> that matters, and nothing that doesn't. Length is not the limit — padding is.
->
-> End with exactly one line: `VERDICT: LAND <sha>`, or `VERDICT: HOLD <sha> — <one sentence>`,
-> where `<sha>` is `git rev-parse --short HEAD` in that worktree.
-> Do not spawn any subagent.
+- **Standards** — sources: `docs/agents/RULES.md` plus the skill's own Fowler smell baseline (paste
+  it in full; the subagent has no other access to it). Brief: report every documented-rule violation
+  by number, and any baseline smell, named and quoted; skip what tooling enforces. Around 25 lines.
+- **Spec** — source: issue #N's body and comments, already fetched in phase A. Brief: report
+  requirements missing or partial, behaviour not asked for, and anything implemented but wrong,
+  quoting the issue for each. Around 25 lines.
 
-Post that line verbatim as a comment on the issue:
+Both: `Do not spawn any subagent.`
+
+Post both reports on the issue, under `## Standards` and `## Spec`, unmerged — the skill's own rule,
+because a change can pass one axis and fail the other. Then read both yourself and write the one
+line `loop-gate.mjs` needs: `VERDICT: LAND <sha>`, or `VERDICT: HOLD <sha> — <one sentence>`, where
+`<sha>` is `git rev-parse --short HEAD` in that worktree. HOLD on any hard Standards violation or any
+missing/wrong Spec finding; a baseline smell alone, or added behaviour with no correctness cost, is a
+note, not a HOLD. Post that verdict as its own comment, first line the VERDICT:
 
 ```sh
 gh issue comment <n> --body-file <file>   # first line: VERDICT: LAND <sha>
 ```
+
+Two opus subagents plus this session's own read, not a third subagent for the verdict — that keeps
+`loop-gate.mjs`'s single sha-bound line while still running the skill's real shape.
 
 That is the whole record of the review, and the sha is what makes it trustworthy: the gate accepts
 a verdict only if it names the commit being pushed. Commit again after a review and it stops
@@ -309,8 +297,9 @@ The PR body closes the issue; nothing takes the label off, and a closed ticket s
    npm run worktrees:remove -- .worktrees/agent-<n>
    git status --porcelain              # must be empty; if it is not, teardown failed — say so
    ```
-5. Take the next ticket. There is no state to reset: the next `git worktree add` is what says which
-   ticket you are on, and the previous ticket's review cannot follow you to it.
+5. **Exit.** One ticket per process, by design: `scripts/queue-loop.mjs` starts the next ticket in a
+   clean process, so there is nothing here to reset and nothing that can leak forward. Do not loop
+   back to phase A in this session.
 
 Teardown runs on the parked and stopped paths too. A run that cost forty minutes and stopped is the
 one whose record is worth having.
@@ -329,8 +318,10 @@ Everything else is derivable; that is not.
 
 ## Halt
 
-Budget spent · queue empty · route `handoff` · preflight red · three failed CI rounds on the same
-failure · a decision only the owner can make **that parking cannot carry**.
+Queue empty · route `handoff` · preflight red · three failed CI rounds on the same
+failure · a decision only the owner can make **that parking cannot carry**. `queue-loop.mjs` checks
+for an empty queue before it even starts a process; this list is the fallback for a `/queue` run
+started by hand.
 
 Release the claim, run teardown, and say on the issue: the phase reached, what is committed and on
 which branch, the exact failure, and the one decision needed. Then five lines to the user. The issue
