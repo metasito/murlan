@@ -63,11 +63,9 @@ export function worktrees(cwd) {
  * directory name carries the ticket and the caller is told the head is loose rather than told
  * nothing is happening.
  *
- * `worktree` is an explicit pointer that skips the `.worktrees/` scan below entirely — the tests'
- * only seam, for a case the scan cannot handle: more than one real `agent/*` worktree checked out
- * at once, which is the ordinary state of a machine mid-run on one ticket while these tests probe
- * scratch ones. Naming the path outright is what the scan exists to avoid needing in production,
- * where nothing ever sets it.
+ * `worktree` says outright which path to read, for asking "is *this* one on a ticket" without
+ * going through the scan at all — a test seam, since a real invocation is never asking about
+ * anywhere but its own `.worktrees/`.
  *
  * @param {string} [cwd]
  * @param {string} [worktree]
@@ -96,9 +94,10 @@ export function locateRun(cwd, worktree) {
     const w = onBranch[0];
     return { cwd: w.dir, branch: w.branch, ticket: ticketOf(w.branch), detached: false };
   }
+  // More than one live ticket worktree and nothing here says which one this run is for — guessing
+  // is how a leftover from a crashed run once got judged as the ticket actually in progress.
   if (onBranch.length > 1) {
-    const w = onBranch[0];
-    return { cwd: w.dir, branch: w.branch, ticket: ticketOf(w.branch), detached: false, many: onBranch.length };
+    return { cwd, branch: here, ticket: null, detached: here === "HEAD", ambiguous: onBranch.length };
   }
 
   const loose = list.find((w) => w.detached && /^agent-\d+$/.test(basename(w.dir ?? "")));
@@ -172,8 +171,9 @@ function readComments(ticket, cwd) {
  * flag — an audit passed `--base HEAD~1` and walked a `.github/workflows/` change straight through
  * the gate, because a documented flag is a mistake the loop can make by reading its own usage text.
  *
- * `LOOP_WORKTREE` is the same kind of seam, for `locateRun`'s scan: unset in every real
- * invocation, so auto-discovery is still the only path a loop run ever takes.
+ * `LOOP_WORKTREE` is the same kind of seam, and the same kind of hazard if it ever became a real
+ * flag: pointed at a worktree other than the one about to be pushed, it clears a review that never
+ * looked at this branch's head. Like `LOOP_BASE`, nothing in the loop itself may ever set it.
  */
 export function derive({
   cwd = undefined,
@@ -192,9 +192,11 @@ export function derive({
     };
   }
   if (!at.ticket) {
-    const why = at.detached
-      ? "HEAD is detached, so there is no branch to read a ticket from"
-      : "not on an agent branch";
+    const why = at.ambiguous
+      ? `${at.ambiguous} live agent/* worktrees under .worktrees/ — cannot tell which one this run is`
+      : at.detached
+        ? "HEAD is detached, so there is no branch to read a ticket from"
+        : "not on an agent branch";
     return { onTicket: false, branch: at.branch, phase: "A", why };
   }
   const { ticket, branch } = at;

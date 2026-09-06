@@ -252,40 +252,85 @@ I have not run it.`,
 });
 
 /**
+ * A worktree of its own — a `.worktrees/` scoped to a checkout nobody else on the machine can be
+ * standing in, this ticket's own `.worktrees/agent-911` included. The two tests below need that:
+ * unlike the `LOOP_WORKTREE`-pointed cases above, these exist to prove the scan itself still
+ * finds the right answer, so they cannot route around it.
+ */
+function scratchCheckout(): string {
+  const wt = join(dir, `checkout-${Math.random().toString(36).slice(2)}`);
+  execFileSync("git", ["worktree", "add", "-q", "--detach", wt, "HEAD"], { cwd: root });
+  return wt;
+}
+
+function removeWorktree(wt: string) {
+  try {
+    execFileSync(process.execPath, [PRUNE, "--remove", wt, "--force"], { cwd: root });
+  } catch {
+    /* never created, or already gone */
+  }
+}
+
+/**
  * The defect this pins was the loop being unable to see its own run. Work happens in
  * `.worktrees/agent-<n>` and rule 40 keeps the shell in the shared checkout, so reading `HEAD`
  * where the process stands answered for the wrong branch: on a live ticket the compaction brief
  * printed nothing and phase E's gate exited 2 every time.
  */
-describe("the run is found from the shared checkout, not from where the process stands", () => {
-  const HOME = join(root, ".worktrees", "agent-9900099");
-
-  const teardown = () => {
+describe("the run is found by scanning .worktrees/, not from where the process stands", () => {
+  test("a run in .worktrees/ is judged from that checkout", () => {
+    const checkout = scratchCheckout();
+    const home = join(checkout, ".worktrees", "agent-9900099");
     try {
-      execFileSync(process.execPath, [PRUNE, "--remove", HOME, "--force"], { cwd: root });
-    } catch {
-      /* never created, or already gone */
+      execFileSync("git", ["worktree", "add", "-q", "-b", "agent/9900099-live", home, "HEAD"], {
+        cwd: root,
+      });
+      commit(home, ".github/workflows/probe.yml", "\non: push\n");
+
+      // The gate runs at `checkout`, which is off any ticket — the situation that used to exit 2
+      // for not being on a ticket at all. Naming the ticket is what proves the scan found the run.
+      const { code, out } = gate(checkout);
+      assert.notEqual(code, 0, `the gate cleared a push it never reviewed: ${out}`);
+      assert.match(out, /#9900099/);
+      assert.doesNotMatch(out, /nothing to judge/);
+    } finally {
+      removeWorktree(home);
+      removeWorktree(checkout);
+      execFileSync("git", ["worktree", "prune"], { cwd: root });
+      rmSync(checkout, { recursive: true, force: true });
     }
-    execFileSync("git", ["worktree", "prune"], { cwd: root });
-    rmSync(HOME, { recursive: true, force: true });
-  };
-  after(teardown);
-
-  test("a run in .worktrees/ is judged from the main checkout", () => {
-    teardown();
-    execFileSync("git", ["worktree", "add", "-q", "-b", "agent/9900099-live", HOME, "HEAD"], {
-      cwd: root,
-    });
-    commit(HOME, ".github/workflows/probe.yml", "\non: push\n");
-
-    // The gate runs at `root`, which is on chore/... — the situation that used to exit 2 for not
-    // being on a ticket at all. Naming the ticket is what proves it found the run in .worktrees/.
-    // Pointed at HOME explicitly: a real ticket's own worktree may be live under `.worktrees/` at
-    // the same time (this suite's own run, if any), and the scan has no way to prefer one over
-    // the other.
-    const { code, out } = gate(root, undefined, BASE, HOME);
-    assert.notEqual(code, 0, `the gate cleared a push it never reviewed: ${out}`);
-    assert.match(out, /#9900099/);
-    assert.doesNotMatch(out, /nothing to judge/);
   });
+
+  // Two live ticket worktrees is not a real loop state (one ticket at a time), but a leftover
+  // from a crashed run sitting next to the one in progress is exactly how it happens. Picking one
+  // arbitrarily used to mean judging a review that was never for this ticket at all.
+  test("two live ticket worktrees refuse rather than guess which one", () => {
+    const checkout = scratchCheckout();
+    const a = join(checkout, ".worktrees", "agent-9900097");
+    const b = join(checkout, ".worktrees", "agent-9900098");
+    try {
+      execFileSync("git", ["worktree", "add", "-q", "-b", "agent/9900097-a", a, "HEAD"], { cwd: root });
+      execFileSync("git", ["worktree", "add", "-q", "-b", "agent/9900098-b", b, "HEAD"], { cwd: root });
+
+      const { code, out } = gate(checkout);
+      assert.equal(code, 2, out);
+      assert.match(out, /cannot tell which one/);
+    } finally {
+      removeWorktree(a);
+      removeWorktree(b);
+      removeWorktree(checkout);
+      execFileSync("git", ["worktree", "prune"], { cwd: root });
+      rmSync(checkout, { recursive: true, force: true });
+    }
+  });
+});
+
+// The other, narrower seam: pointing straight at one worktree rather than asking the scan to
+// find it. Exercised from `root`, which is off any ticket itself — the override is what answers.
+test("LOOP_WORKTREE names the ticket directly, without a scan", () => {
+  const wt = worktree("agent/9900015-pointed");
+  commit(wt, "docs/probe.md");
+  const { code, out } = gate(root, undefined, BASE, wt);
+  assert.notEqual(code, 0, out);
+  assert.match(out, /#9900015/);
 });
