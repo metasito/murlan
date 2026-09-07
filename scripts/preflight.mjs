@@ -13,6 +13,7 @@
  */
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { join } from "node:path";
 
 export function classifyStatus(porcelain) {
@@ -57,7 +58,8 @@ export function lockDrift(packageJson, packageLock, installedVersions) {
 
 function installedVersion(root, name) {
   try {
-    return JSON.parse(readFileSync(join(root, "node_modules", name, "package.json"), "utf8")).version;
+    const resolve = createRequire(join(root, "package.json"));
+    return JSON.parse(readFileSync(resolve.resolve(`${name}/package.json`), "utf8")).version;
   } catch {
     return undefined;
   }

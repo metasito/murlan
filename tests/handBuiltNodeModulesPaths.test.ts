@@ -28,10 +28,15 @@ const SKIP_DIRS = new Set([
 /**
  * tests/typeSuppressions.test.ts carries "node_modules" as a directory name
  * in its own walk's skip-list — a name to not descend into, never a path
- * resolved to find where a package lives. That is the one site this scan
- * must not flag; #275 names it explicitly as correct and untouched.
+ * resolved to find where a package lives. #275 names it explicitly as
+ * correct and untouched.
+ *
+ * tests/preflight.test.ts's `install()` helper builds a fake install under a
+ * `mkdtempSync` root it created itself, to give `checkLockDrift` a real disk
+ * fixture — it is not locating an existing package relative to a worktree,
+ * so the flat-layout assumption this scan protects against never applies.
  */
-const IGNORE_LIST = new Set(["tests/typeSuppressions.test.ts"]);
+const IGNORE_LIST = new Set(["tests/typeSuppressions.test.ts", "tests/preflight.test.ts"]);
 
 function sourceFiles(dir: string): string[] {
   return readdirSync(path.join(repoRoot, dir), { withFileTypes: true }).flatMap((e) => {
