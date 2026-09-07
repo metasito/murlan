@@ -770,23 +770,40 @@ export function opponentsOf(
 }
 
 /**
- * The one card the exchange reveals to `seat`, or undefined if it told it
- * nothing. The loser learns what it gave away (now the winner's); the
- * winner learns what it gave back (now the loser's). `knownCardStillOut`
- * below is what keeps this from meaning "for the rest of the manche" —
- * both facts stop applying the moment the tally shows the card spent.
- * Nobody outside the exchange is party to it, and the both-jokers exception
- * moves no card at all (docs/RULES.md §10), so neither seat learns anything
- * then.
+ * The one card the exchange reveals to the loser: its own former best,
+ * which the winner now holds. Winner-side knowledge (what it gave back) is
+ * deliberately not surfaced — a bot's own giveback is always its weakest
+ * eligible card (`pickGivebackCard`), so the winner can never hold anything
+ * weaker than it; a floor built on that fact would never fire. Nobody
+ * outside the exchange is party to this, and the both-jokers exception
+ * moves no card at all (docs/RULES.md §10), so the loser learns nothing
+ * then either.
  */
 export function knownOpponentExchangeCard(
   exchangePhase: ExchangePhase | undefined,
   seat: number
 ): Card | undefined {
   if (!exchangePhase || exchangePhase.bothJokersException) return undefined;
-  if (seat === exchangePhase.loserIdx) return exchangePhase.cardFromLoser;
-  if (seat === exchangePhase.winnerIdx) return exchangePhase.cardToLoser;
-  return undefined;
+  if (seat !== exchangePhase.loserIdx) return undefined;
+  return exchangePhase.cardFromLoser;
+}
+
+/** Whether leading `play`'s single card loses outright to `known`. */
+export function losesLeadToExchangeCard(play: Combination, known: Card): boolean {
+  return play.cards.length === 1 && cardStrength(play.cards[0]) < cardStrength(known);
+}
+
+// Same rank-only tally, same caution documented on `outstandingAbove` above:
+// it can call a spent card "still out" (a suit undealt at two seats keeps a
+// rank's count under its deck total), never the reverse.
+export function isExchangeCardStillOut(
+  card: Card,
+  playedRanks: number[] | undefined,
+  hand: Card[]
+): boolean {
+  const strength = cardStrength(card);
+  const accounted = (playedRanks?.[strength] ?? 0) + hand.filter((c) => cardStrength(c) === strength).length;
+  return accounted < DECK_BY_STRENGTH[strength];
 }
 
 /**
@@ -813,36 +830,17 @@ export function aiChoosePlay(
   const myCards = player.hand.length;
   const minOpponent = Math.min(...otherPlayersHandCount);
 
-  /**
-   * `knownOpponentCard` goes stale the moment every copy of its rank is
-   * accounted for by the public tally and this hand — the opponent cannot
-   * still hold it then, known or not, and treating it as live would make the
-   * bot avoid a threat that already left the game.
-   */
-  const knownCardStillOut = (card: Card): boolean => {
-    const strength = cardStrength(card);
-    const accounted =
-      (playedRanks?.[strength] ?? 0) +
-      player.hand.filter((c) => cardStrength(c) === strength).length;
-    return accounted < DECK_BY_STRENGTH[strength];
-  };
   const knownCard =
-    knownOpponentCard && knownCardStillOut(knownOpponentCard) ? knownOpponentCard : undefined;
+    knownOpponentCard && isExchangeCardStillOut(knownOpponentCard, playedRanks, player.hand)
+      ? knownOpponentCard
+      : undefined;
 
-  /**
-   * Every tier's floor (#907): never lead the one single a human never would
-   * — one weaker than the exact card the exchange revealed the opponent
-   * holds, when a lead without that problem is legal. Only bears on a lead:
-   * a response is not "leading into" anything.
-   */
-  const losesLeadToKnownCard = (play: Combination) =>
-    knownCard !== undefined &&
-    play.cards.length === 1 &&
-    cardStrength(play.cards[0]) < cardStrength(knownCard);
-
+  // Every tier's floor (#907): never lead into a known, still-live loss when
+  // a lead without that problem is legal. Only bears on a lead: a response
+  // is not "leading into" anything.
   const leadPlays = isNewRound
     ? (() => {
-        const safe = plays.filter((p) => !losesLeadToKnownCard(p));
+        const safe = plays.filter((p) => !(knownCard && losesLeadToExchangeCard(p, knownCard)));
         return safe.length > 0 ? safe : plays;
       })()
     : plays;
@@ -955,20 +953,7 @@ export function aiChoosePlay(
 
   // Prefer beating with lowest conservative card (preserve 2s/jokers)
   if (conservative.length > 0) {
-    // Hard tier's exchange layer: among the conservative answers, favour one
-    // that also beats the exact card the exchange revealed the opponent
-    // holds, so winning this trick does not hand it straight back to a card
-    // already known rather than merely suspected. A single can never beat a
-    // multi-card combo (`canPlay` requires matching shape), so the known
-    // single is never a threat to a pair/triple/straight response — the
-    // length check leaves those untouched rather than filtering them all out.
-    const denyKnownCard = knownCard
-      ? conservative.filter(
-          (p) => p.cards.length !== 1 || cardStrength(p.cards[0]) > cardStrength(knownCard)
-        )
-      : [];
-    const pool = denyKnownCard.length > 0 ? denyKnownCard : conservative;
-    return withPersonality(pool.sort((a, b) => a.strength - b.strength)[0]);
+    return withPersonality(conservative.sort((a, b) => a.strength - b.strength)[0]);
   }
 
   // Use high cards only if hand is small or opponent is close to winning

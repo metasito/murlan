@@ -17,10 +17,11 @@
 import { pathToFileURL } from "node:url";
 import {
   aiChoosePlay,
-  cardStrength,
   dealCards,
   initializeRematch,
+  isExchangeCardStillOut,
   knownOpponentExchangeCard,
+  losesLeadToExchangeCard,
   opponentsOf,
   type Card,
   type Combination,
@@ -245,13 +246,16 @@ function measurePersonalityVsDefault(n: number, seed: number): PersonalityRow[] 
 // The manche-winner streak above is a coarse proxy — the fix bears on
 // individual lead decisions, not the manche's outcome. This measures the
 // mechanism directly: deals a manche and drives it with today's engine
-// (exchange included), and at every new-round lead either seat makes while
-// it still has a live known card, asks that one decision twice from the
-// identical state — once passing the exchange fact (today's behaviour) and
-// once withholding it (pre-#907's — that parameter's own purpose is exactly
-// this toggle, per `tests/botExchangeAwareness.test.ts`). Counts how often
-// the without-knowledge answer leads a single under the known card while a
-// safer lead was legal, and how often the with-knowledge answer still does.
+// (exchange included), and at every new-round lead the loser makes while its
+// tribute is still verifiably live (`isExchangeCardStillOut` — the same gate
+// `aiChoosePlay` applies internally, applied here too so a fact the fix
+// itself has already retired is not scored as a defect), asks that one
+// decision twice from the identical state — once passing the exchange fact
+// (today's behaviour) and once withholding it (pre-#907's — that parameter's
+// own purpose is exactly this toggle, per
+// `tests/botExchangeAwareness.test.ts`). Counts how often the
+// without-knowledge answer leads a single under the known card while a safer
+// lead was legal, and how often the with-knowledge answer still does.
 
 interface BlunderCounts {
   leadsChecked: number;
@@ -260,7 +264,7 @@ interface BlunderCounts {
 }
 
 function isKnownCardBlunder(choice: Combination | null, known: Card): boolean {
-  return choice !== null && choice.cards.length === 1 && cardStrength(choice.cards[0]) < cardStrength(known);
+  return choice !== null && losesLeadToExchangeCard(choice, known);
 }
 
 function measureExchangeBlunderAvoidance(n: number, seed: number): BlunderCounts {
@@ -282,10 +286,10 @@ function measureExchangeBlunderAvoidance(n: number, seed: number): BlunderCounts
       const isNewRound = !state.exchangePhase?.active && state.lastPlayedCombination === null;
 
       if (isNewRound) {
+        const leader = state.players[seat];
         const known = knownOpponentExchangeCard(state.exchangePhase, seat);
-        if (known) {
+        if (known && isExchangeCardStillOut(known, state.playedRanks, leader.hand)) {
           leadsChecked++;
-          const leader = state.players[seat];
           const opponents = opponentsOf(state, seat);
           const before = aiChoosePlay(
             leader, null, true, opponents.handCounts, undefined, mulberry32(dealSeed + turn), false, state.playedRanks, undefined
@@ -387,10 +391,10 @@ function main(): void {
 
   // ── Measurement 5 ───────────────────────────────────────────────────────
   console.log("\n## 5. Exchange blunder avoidance (#907)\n");
-  console.log("Every new-round lead, by either exchange party, while it still holds a live known");
-  console.log("card, asked twice from the identical state: with the exchange fact (today) and");
-  console.log("without it (pre-#907, same call with the last argument omitted) — see the file");
-  console.log("banner above measureExchangeBlunderAvoidance.\n");
+  console.log("Every new-round lead the loser makes while its tribute is still verifiably live,");
+  console.log("asked twice from the identical state: with the exchange fact (today) and without");
+  console.log("it (pre-#907, same call with the last argument omitted) — see the file banner");
+  console.log("above measureExchangeBlunderAvoidance.\n");
   const blunders = measureExchangeBlunderAvoidance(opts.matchN2p, opts.seed);
   console.log(`  new-round leads made with a live known card: ${blunders.leadsChecked}`);
   console.log(`  without the exchange fact, led under the known card: ${fmtWilson(blunders.wouldHaveBlundered, blunders.leadsChecked)}`);

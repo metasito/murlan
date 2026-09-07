@@ -1,6 +1,6 @@
-// tests/botExchangeAwareness.test.ts — the exchange hands each side of the
-// table one card of known identity, and a bot that ignores it can lead
-// straight into the hand that's known to beat it (#907).
+// tests/botExchangeAwareness.test.ts — the exchange reveals the loser's own
+// former best card, now in the winner's hand, and a bot that ignores it can
+// lead straight into the hand it knows can beat it (#907).
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -33,29 +33,26 @@ describe("knownOpponentExchangeCard", () => {
     assert.equal(knownOpponentExchangeCard(phase, 1)?.id, "6_clubs");
   });
 
-  test("the winner learns what it gave back — now the loser's", () => {
+  // A bot's own giveback is always its weakest eligible card
+  // (pickGivebackCard), so it can never hold anything weaker than what it
+  // gave back — a floor built on that fact would never fire.
+  test("the winner learns nothing — its own giveback can never be led under", () => {
     const phase = exchange(0, 1, { cardToLoser: c("5", "spades") });
-    assert.equal(knownOpponentExchangeCard(phase, 0)?.id, "5_spades");
-  });
-
-  test("the winner knows nothing until it has chosen a giveback", () => {
-    const phase = exchange(0, 1);
     assert.equal(knownOpponentExchangeCard(phase, 0), undefined);
   });
 
-  test("the both-jokers exception moves no card, so neither side learns anything", () => {
-    const phase = exchange(0, 1, { bothJokersException: true, cardToLoser: c("5", "spades") });
-    assert.equal(knownOpponentExchangeCard(phase, 0), undefined);
+  test("the both-jokers exception moves no card, so the loser learns nothing", () => {
+    const phase = exchange(0, 1, { bothJokersException: true, cardFromLoser: c("2", "spades") });
     assert.equal(knownOpponentExchangeCard(phase, 1), undefined);
   });
 
   test("a seat outside the exchange (a teammate) learns nothing", () => {
-    const phase = exchange(0, 1, { cardToLoser: c("5", "spades") });
+    const phase = exchange(0, 1);
     assert.equal(knownOpponentExchangeCard(phase, 2), undefined);
   });
 
   test("no exchange this manche means no known card", () => {
-    assert.equal(knownOpponentExchangeCard(undefined, 0), undefined);
+    assert.equal(knownOpponentExchangeCard(undefined, 1), undefined);
   });
 });
 
@@ -120,48 +117,8 @@ describe("every tier: never lead the exact card known to lose", () => {
   });
 });
 
-describe("hard tier: protects a won trick from the exact card known to retake it", () => {
-  test("prefers the cheapest conservative answer that also beats the known card", () => {
-    const hand = [c("6", "hearts"), c("8", "clubs"), c("K", "diamonds"), c("Q", "spades"), c("J", "hearts")];
-    const me = makePlayer("me", hand, { type: "ai", personality: "gent" });
-    const lastPlayed = buildCombination([c("3", "clubs")])!;
-    const knownOpponentCard = c("9", "spades");
-
-    const choice = aiChoosePlay(
-      me, lastPlayed, false, [10], undefined, () => 0.5, false, undefined, knownOpponentCard
-    );
-
-    assert.equal(choice?.cards[0].rank, "J", "spent more than needed, or left the 9 able to retake");
-  });
-
-  test("without a known card it is the plain cheapest answer, unchanged", () => {
-    const hand = [c("6", "hearts"), c("8", "clubs"), c("K", "diamonds"), c("Q", "spades"), c("J", "hearts")];
-    const me = makePlayer("me", hand, { type: "ai", personality: "gent" });
-    const lastPlayed = buildCombination([c("3", "clubs")])!;
-
-    const choice = aiChoosePlay(me, lastPlayed, false, [10], undefined, () => 0.5, false, undefined, undefined);
-
-    assert.equal(choice?.cards[0].rank, "6", "spent more than the old behaviour did");
-  });
-
-  test("a pair response is never filtered by a known single — a single cannot beat a pair", () => {
-    // A fifth, unrelated card keeps `myCards` above the hard tier's own
-    // "small hand" branch, so this actually reaches the code under test.
-    const hand = [c("6", "hearts"), c("6", "clubs"), c("8", "diamonds"), c("8", "spades"), c("4", "clubs")];
-    const me = makePlayer("me", hand, { type: "ai", personality: "gent" });
-    const lastPlayed = buildCombination([c("3", "hearts"), c("3", "clubs")])!;
-    const knownOpponentCard = c("9", "spades");
-
-    const choice = aiChoosePlay(
-      me, lastPlayed, false, [10], undefined, () => 0.5, false, undefined, knownOpponentCard
-    );
-
-    assert.equal(choice?.cards[0].rank, "6", "the known single filter leaked into a pair response");
-  });
-});
-
-describe("autoMoveForSeat wires the exchange into whichever bot plays next", () => {
-  test("the loser leading the new hand does not lead its own tribute's shadow into the winner's known hand", () => {
+describe("autoMoveForSeat wires the exchange into the loser that leads next", () => {
+  test("the loser does not lead under its own former card now in the winner's hand", () => {
     const state = makeState(
       [
         makePlayer("winner", [c("9", "clubs"), c("K", "hearts")], { type: "ai", personality: "luan" }),
@@ -183,29 +140,5 @@ describe("autoMoveForSeat wires the exchange into whichever bot plays next", () 
     );
     assert.equal(played.length, 1);
     assert.equal(played[0].rank, "Q", "led the 4 into the winner's known 6");
-  });
-
-  test("the winner does not lead its own giveback into the loser's known hand", () => {
-    const state = makeState(
-      [
-        makePlayer("winner", [c("4", "hearts"), c("K", "spades")], { type: "ai", personality: "luan" }),
-        makePlayer("loser", [c("Q", "diamonds")], { type: "ai", personality: "luan" }),
-      ],
-      {
-        currentTurnIndex: 0,
-        lastPlayedBy: 0,
-        firstPlayMade: true,
-        exchangePhase: exchange(0, 1, { cardToLoser: c("6", "diamonds") }),
-      }
-    );
-
-    const next = autoMoveForSeat(state, 0, true, { rng: () => 0.5 });
-
-    assert.ok(next, "the winner must lead something");
-    const played = state.players[0].hand.filter(
-      (card) => !next!.players[0].hand.some((left) => left.id === card.id)
-    );
-    assert.equal(played.length, 1);
-    assert.equal(played[0].rank, "K", "led the 4 into the loser's known 6");
   });
 });
