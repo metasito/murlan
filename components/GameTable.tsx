@@ -229,6 +229,8 @@ export interface ExchangeAnnouncementSlot {
   visible: boolean;
   data: ExchangeAnnounceData | null;
   onDismiss: () => void;
+  /** Offline-only E2E override for how long the overlay holds (#915). */
+  holdMsOverride?: number;
 }
 
 export interface GameTableProps {
@@ -1413,6 +1415,7 @@ export function GameTable({
                     landed={tradedCardsLanded}
                     scale={scale * FIELD_SCALE}
                     onDismiss={exchangeAnnouncement.onDismiss}
+                    holdMsOverride={exchangeAnnouncement.holdMsOverride}
                   />
                 )}
 

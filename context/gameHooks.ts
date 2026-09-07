@@ -73,6 +73,7 @@ export function useLocalExchange() {
   const {
     exchangeAnnouncing,
     exchangeAnnounceData,
+    exchangeHoldMsOverride,
     chooseExchangeCard,
     acknowledgeExchange,
     releaseStuckExchange,
@@ -81,6 +82,7 @@ export function useLocalExchange() {
     () => ({
       exchangeAnnouncing,
       exchangeAnnounceData,
+      exchangeHoldMsOverride,
       chooseExchangeCard,
       acknowledgeExchange,
       releaseStuckExchange,
@@ -88,6 +90,7 @@ export function useLocalExchange() {
     [
       exchangeAnnouncing,
       exchangeAnnounceData,
+      exchangeHoldMsOverride,
       chooseExchangeCard,
       acknowledgeExchange,
       releaseStuckExchange,

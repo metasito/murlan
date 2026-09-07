@@ -84,6 +84,17 @@ jobs:
           # 90s `extendedWaitUntil`. `lib/accessibility.ts` is the one place this is read;
           # nothing outside this job's own build ever sets it.
           EXPO_PUBLIC_E2E_REDUCE_MOTION: "1"
+          # Read at module scope by every screen that names it (`app/game.tsx`,
+          # `app/(online)/game.tsx`, `context/GameContext.tsx`), so it zeroes
+          # every AI/result delay any of them has (`AI_DELAY`,
+          # `AI_EXCHANGE_DELAY`, `RESULT_DELAY`, `GAME_OVER_DELAY`) across all
+          # four flows this job drives, not only exchange-phase.yaml's. What
+          # that ticket needed from it is the offline exchange overlay holding
+          # open past the ~8.2s a real device's single tap-and-wait command
+          # takes to return (#915), instead of its real ~5.2s — but every flow
+          # here now runs at this pace. Never read outside a build this
+          # harness itself produced (`scripts/assertNotE2EFast.js`).
+          EXPO_PUBLIC_E2E_FAST: "1"
         run: |
           npx expo prebuild --platform android --no-install
           # One ABI, for the device this is actually driven on — the emulator

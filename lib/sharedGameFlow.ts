@@ -59,13 +59,14 @@ export function buildExchangeAnnounce(
 function useExchangeCeremonyExpiry(
   announcing: boolean,
   bothJokersException: boolean | undefined,
-  end: () => void
+  end: () => void,
+  holdMsOverride?: number
 ): void {
   useEffect(() => {
     if (!announcing) return;
-    const done = setTimeout(end, exchangeAnnounceMs(bothJokersException ?? false));
+    const done = setTimeout(end, holdMsOverride ?? exchangeAnnounceMs(bothJokersException ?? false));
     return () => clearTimeout(done);
-  }, [announcing, bothJokersException, end]);
+  }, [announcing, bothJokersException, end, holdMsOverride]);
 }
 
 /**
@@ -118,8 +119,16 @@ export interface ExchangeAnnouncement {
  * cannot — a fresh match dealt, or the table reset, while the old ceremony's
  * clock is still counting down describes a trade that no longer has a record
  * to point to, and nothing should still be showing it.
+ *
+ * `holdMsOverride`, when given, replaces `exchangeAnnounceMs()` as the clock
+ * this ceremony ends on. Only an offline-only caller may pass one (#915) — an
+ * online table's clock must stay `exchangeAnnounceMs()` exactly, or the
+ * client's overlay and the server's hold drift apart.
  */
-export function useExchangeAnnouncement(phasePresent: boolean): ExchangeAnnouncement {
+export function useExchangeAnnouncement(
+  phasePresent: boolean,
+  holdMsOverride?: number
+): ExchangeAnnouncement {
   const [announcing, setAnnouncing] = useState(false);
   const [data, setData] = useState<ExchangeAnnounceData | null>(null);
 
@@ -129,7 +138,7 @@ export function useExchangeAnnouncement(phasePresent: boolean): ExchangeAnnounce
   }, []);
   const end = useCallback(() => setAnnouncing(false), []);
 
-  useExchangeCeremonyExpiry(announcing, data?.bothJokersException, end);
+  useExchangeCeremonyExpiry(announcing, data?.bothJokersException, end, holdMsOverride);
 
   useEffect(() => {
     if (announcing && !phasePresent) end();
