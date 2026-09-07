@@ -79,7 +79,10 @@ export default function AuthScreen() {
           setLoading(false);
           return;
         }
+        // #925: shown, not just reachable — the interstitial underneath is
+        // only what "back" lands on now.
         setCheckEmail({ signedIn: signedIn !== null });
+        router.push({ pathname: "/verify-email", params: { email: email.trim() } });
       }
     } catch (e: unknown) {
       setError(serverErrorMessage(e, t("auth.unknownError")));

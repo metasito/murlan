@@ -28,11 +28,8 @@ export default function VerifyEmailScreen() {
   const [email, setEmail] = useState(params.email ?? "");
   const [code, setCode] = useState("");
 
-  // `user` is still null on first render — AuthContext's boot check is async
-  // — so the param above is the only prefill a plain useState can see. Once
-  // the boot check resolves, fill in the signed-in user's own address too,
-  // but only if the field is still untouched (the functional update reads
-  // the latest `email` without needing it in the dependency array).
+  // AuthContext's boot check resolves after first render, so this fills the
+  // signed-in address in only once it lands, and only into an empty field.
   useEffect(() => {
     const signedInEmail = user?.email;
     if (signedInEmail) setEmail((current) => current || signedInEmail);
@@ -67,13 +64,17 @@ export default function VerifyEmailScreen() {
     setLoading(false);
   }
 
+  // Resends to the signed-in account's own address (server/routes.ts), never
+  // to whatever is currently typed in the email field above, so the notice
+  // names the actual destination rather than implying the field controls it.
   async function resend() {
+    const destination = user?.email ?? "";
     setError(null);
     setNotice(null);
     setResending(true);
     try {
       await apiRequest("POST", "/api/auth/resend-verification", {});
-      setNotice(t("verifyEmail.resendSent"));
+      setNotice(t("verifyEmail.resendSent", { email: destination }));
     } catch (e: unknown) {
       setError(serverErrorMessage(e, t("verifyEmail.resendFailed")));
     }

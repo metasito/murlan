@@ -152,7 +152,7 @@ export const sq: Record<keyof typeof en, string> = {
   "verifyEmail.done": "U krye",
   "verifyEmail.resend": "Ridërgo kodin",
   "verifyEmail.resending": "Duke dërguar…",
-  "verifyEmail.resendSent": "Një kod i ri po vjen.",
+  "verifyEmail.resendSent": "Një kod i ri po vjen te {{email}}.",
   "verifyEmail.resendFailed": "Kodi nuk u ridërgua dot. Provo sërish.",
 
   // ------------------------------------------------------------- recover.*

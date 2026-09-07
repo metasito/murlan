@@ -668,9 +668,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Public: the code plus the email it was sent to is the credential
   // (server/authTokens.ts), not the session — reachable signed-out, the same
   // as the redeem this replaces. No separate account lookup: redeemAuthCode
-  // resolves the userId from the matched row itself, so an unknown address
-  // and a wrong code cost the same query shape and answer with the same
-  // generic failure.
+  // resolves the userId from the matched row itself. An unknown address does
+  // skip the miss path's extra write, a timing difference authLimiter's
+  // per-IP cap makes uneconomical to enumerate through.
   app.post("/api/auth/verify-email", authLimiter, validate(VerifyEmailSchema), async (req, res) => {
     const { email, code } = req.body as { email: string; code: string };
     const userId = await redeemAuthCode(email, "email_verify", code);

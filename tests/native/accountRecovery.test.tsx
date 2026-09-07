@@ -193,13 +193,37 @@ describe('app/verify-email', () => {
     });
     const view = await mount();
 
+    const emailInput = await screen.findByLabelText(locale['auth.emailA11yLabel']);
+    expect(emailInput.props.value).toBe('fresh@example.test');
+
     const resend = await screen.findByRole('button', { name: locale['verifyEmail.resend'] });
     await act(async () => {
       fireEvent.press(resend);
     });
 
     expect(mockApiRequest).toHaveBeenCalledWith('POST', '/api/auth/resend-verification', {});
-    await waitFor(() => expect(screen.getByText(locale['verifyEmail.resendSent'])).toBeTruthy());
+    const resendSent = locale['verifyEmail.resendSent'].replace('{{email}}', 'fresh@example.test');
+    await waitFor(() => expect(screen.getByText(resendSent)).toBeTruthy());
+    await view.unmount();
+  });
+
+  it('prefills the email from the signed-in user when there is no route param', async () => {
+    mockUseLocalSearchParams.mockReturnValue({});
+    mockFetch.mockResolvedValue({
+      status: 200,
+      ok: true,
+      json: async () => ({
+        id: 'u1',
+        username: 'signedin',
+        tutorialSeenAt: null,
+        email: 'signedin@example.test',
+        emailVerified: false,
+      }),
+    });
+    const view = await mount();
+
+    const emailInput = await screen.findByLabelText(locale['auth.emailA11yLabel']);
+    await waitFor(() => expect(emailInput.props.value).toBe('signedin@example.test'));
     await view.unmount();
   });
 });
@@ -311,6 +335,16 @@ describe('app/auth reaches both new screens', () => {
     await act(async () => {
       fireEvent.press(screen.getByRole('button', { name: locale['auth.submitRegister'] }));
     });
+
+    // #925: shown, not just reachable — the push happens on submit, before
+    // any interstitial button is touched.
+    await waitFor(() =>
+      expect(mockPush).toHaveBeenCalledWith({
+        pathname: '/verify-email',
+        params: { email: 'newplayer@example.test' },
+      })
+    );
+    mockPush.mockClear();
 
     const verifyNow = await screen.findByRole('button', { name: locale['auth.checkEmailVerifyNow'] });
     await act(async () => {

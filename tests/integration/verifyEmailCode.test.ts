@@ -22,9 +22,16 @@ describe("verify-email code guessing is capped per credential", { skip: hasDatab
     });
   }
 
+  // Every test below mints its own code right after register() — which
+  // already minted one in the background (fire-and-forget, same technique
+  // tests/integration/resendVerification.test.ts documents). Clearing
+  // whatever that mint left first keeps this test's own code the only
+  // pending row, so a late-arriving background mint can't null it out from
+  // under an in-flight assertion.
   test("a wrong code fails with the generic failure", async () => {
     const { user } = await register(server, "code_wrong");
-    const { mintAuthCode } = await import("../../server/authTokens.ts");
+    const { mintAuthCode, invalidatePendingAuthTokens } = await import("../../server/authTokens.ts");
+    await invalidatePendingAuthTokens(user.id, "email_verify");
     await mintAuthCode(user.id, user.email!, "email_verify", 60_000);
 
     const res = await verify(user.email!, "000000");
@@ -42,7 +49,10 @@ describe("verify-email code guessing is capped per credential", { skip: hasDatab
 
   test("MAX_CODE_ATTEMPTS wrong guesses force a resend — the right code stops working before its TTL runs out", async () => {
     const { user } = await register(server, "code_capped");
-    const { mintAuthCode, MAX_CODE_ATTEMPTS } = await import("../../server/authTokens.ts");
+    const { mintAuthCode, invalidatePendingAuthTokens, MAX_CODE_ATTEMPTS } = await import(
+      "../../server/authTokens.ts"
+    );
+    await invalidatePendingAuthTokens(user.id, "email_verify");
     const code = await mintAuthCode(user.id, user.email!, "email_verify", 60_000);
 
     // Wrong guesses, each guaranteed not to collide with the real code.
@@ -70,11 +80,15 @@ describe("verify-email code guessing is capped per credential", { skip: hasDatab
   test("a code minted for one account does not redeem for a different account, even with the right digits", async () => {
     const { user: alice } = await register(server, "code_salt_alice");
     const { user: bob } = await register(server, "code_salt_bob");
-    const { mintAuthCode, redeemAuthCode } = await import("../../server/authTokens.ts");
+    const { mintAuthCode, redeemAuthCode, invalidatePendingAuthTokens } = await import(
+      "../../server/authTokens.ts"
+    );
+    await invalidatePendingAuthTokens(alice.id, "email_verify");
     const aliceCode = await mintAuthCode(alice.id, alice.email!, "email_verify", 60_000);
 
-    // If the hash were salted by code alone (no email/purpose), this would
-    // wrongly redeem bob's own pending row instead of failing.
+    // If the hash were salted by code alone (no email), this would still
+    // match alice's own row and return her userId — the email argument
+    // naming bob wouldn't matter at all.
     const crossRedeem = await redeemAuthCode(bob.email!, "email_verify", aliceCode);
     assert.equal(crossRedeem, null, "alice's code must not verify bob's account");
 
@@ -84,7 +98,10 @@ describe("verify-email code guessing is capped per credential", { skip: hasDatab
 
   test("fewer than MAX_CODE_ATTEMPTS wrong guesses still allow the right code through", async () => {
     const { user } = await register(server, "code_recovers");
-    const { mintAuthCode, MAX_CODE_ATTEMPTS } = await import("../../server/authTokens.ts");
+    const { mintAuthCode, invalidatePendingAuthTokens, MAX_CODE_ATTEMPTS } = await import(
+      "../../server/authTokens.ts"
+    );
+    await invalidatePendingAuthTokens(user.id, "email_verify");
     const code = await mintAuthCode(user.id, user.email!, "email_verify", 60_000);
 
     const wrong = code === "000000" ? "111111" : "000000";

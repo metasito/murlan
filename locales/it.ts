@@ -136,7 +136,7 @@ export const it: Record<keyof typeof en, string> = {
   "verifyEmail.done": "Fatto",
   "verifyEmail.resend": "Reinvia codice",
   "verifyEmail.resending": "Invio…",
-  "verifyEmail.resendSent": "Un nuovo codice è in arrivo.",
+  "verifyEmail.resendSent": "Un nuovo codice è in arrivo a {{email}}.",
   "verifyEmail.resendFailed": "Impossibile reinviare il codice. Riprova.",
 
   // ------------------------------------------------------------- recover.*

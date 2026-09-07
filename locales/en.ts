@@ -143,7 +143,7 @@ export const en = {
   "verifyEmail.done": "Done",
   "verifyEmail.resend": "Resend code",
   "verifyEmail.resending": "Sending…",
-  "verifyEmail.resendSent": "A new code is on its way.",
+  "verifyEmail.resendSent": "A new code is on its way to {{email}}.",
   "verifyEmail.resendFailed": "Could not resend the code. Try again.",
 
   // ------------------------------------------------------------- recover.*

@@ -11,6 +11,9 @@ import type { AuthTokenPurpose } from "../shared/schema.ts";
  * handshake.
  */
 
+// #925: long enough to fetch the mail without feeling rushed, short enough
+// that a stale code isn't worth guessing — MAX_CODE_ATTEMPTS below is what
+// actually bounds a brute force, this just bounds how long one is live.
 export const EMAIL_VERIFY_CODE_TTL_MS = 15 * 60 * 1000;
 export const PASSWORD_RESET_TOKEN_TTL_MS = 30 * 60 * 1000;
 
@@ -96,18 +99,18 @@ export async function mintAuthCode(
 }
 
 /**
- * Redeems a code the same single-use, race-proof way `redeemAuthToken` does:
- * a match and a miss are each one atomic `UPDATE`, so a concurrent guess
- * can't act on a stale read the way a separate SELECT-then-UPDATE could —
- * Postgres re-checks each statement's WHERE clause against the just-locked
- * row before applying it.
+ * Matched by `(email, purpose, code)`, so a hit's own `user_id` answers
+ * "which account" with no separate lookup, and a miss can still be charged
+ * without knowing it up front — every still-pending row at that address gets
+ * `attempts + 1`, which is more than one row only when several accounts
+ * share an address.
  *
- * Matched by `(email, purpose, code)`, so the row's own `user_id` answers
- * "which account" and a miss can still be charged without knowing it up
- * front. A miss increments `attempts` on every still-pending row at that
- * address instead: at most one per account by construction, so this reaches
- * more than one only when several accounts share an address, in which case
- * a wrong guess costs all of them rather than an arbitrary one.
+ * A hit is one atomic `UPDATE`, so two concurrent right guesses can't both
+ * redeem. A miss takes no row lock (its `WHERE` matches nothing), so several
+ * concurrent wrong guesses can each be checked before `attempts` catches up:
+ * the cap bounds a guessing run to roughly MAX_CODE_ATTEMPTS plus whatever
+ * ran concurrently, not exactly. Negligible against a 1-in-1,000,000 code
+ * and `authLimiter`'s per-IP ceiling.
  */
 export async function redeemAuthCode(
   email: string,
