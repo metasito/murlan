@@ -131,8 +131,8 @@ Each of these produced a confident, wrong "fixed" in one session:
   window beside the hierarchy fetches and the app's janky frames inside it, which is what
   separates a command starved by animation from one paying a flat per-fetch cost (#823). The
   header of the script has the `gh run download` invocation. It reads the `maestro-debug`
-  artefact, which `maestro.yml` uploads only for a **failed** run — a green one leaves nothing
-  to analyse.
+  artefact, which `maestro.yml` and `ios.yml` upload only for a **failed** run by default — a
+  green one leaves nothing to analyse unless the run is dispatched with `force-upload-debug: true`.
 - **A flow run through Expo Go never pressed one of our controls.** Expo Go's dev-menu window
   sits above the app's own and takes the touch: the tap is dispatched `to window:
   <EXDevMenuWindow>`, which then resigns key, so it is spent dismissing an invisible window
