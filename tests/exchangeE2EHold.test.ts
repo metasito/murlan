@@ -48,19 +48,25 @@ function hasTopLevelComma(args: string): boolean {
 }
 
 describe("the offline exchange overlay's E2E hold", () => {
-  test("only maestro.yml and ios.yml ever set EXPO_PUBLIC_E2E_FAST", () => {
-    const FLAG = /EXPO_PUBLIC_E2E_FAST\s*[:=]/;
+  test("only the E2E harness's own build configs ever set EXPO_PUBLIC_E2E_FAST", () => {
+    // A plain assignment (`= "1"` / `: "1"`), never a read: `app/game.tsx` and
+    // `context/GameContext.tsx` compare against it with `===`, which this flag
+    // does not match, so a reader gating its own behaviour is not a setter.
+    const FLAG = /EXPO_PUBLIC_E2E_FAST\s*[:=]\s*["']1["']/;
     const workflows = readdirSync(path.join(repoRoot, ".github/workflows")).map(
       (name) => `.github/workflows/${name}`
     );
+    const scripts = readdirSync(path.join(repoRoot, "scripts"), { withFileTypes: true })
+      .filter((e) => e.isFile())
+      .map((e) => `scripts/${e.name}`);
     const roots = readdirSync(repoRoot, { withFileTypes: true })
       .filter((e) => e.isFile())
       .map((e) => e.name);
-    const setters = [...workflows, ...roots].filter((rel) => FLAG.test(read(rel)));
+    const setters = [...workflows, ...scripts, ...roots].filter((rel) => FLAG.test(read(rel)));
 
     assert.deepEqual(
       setters,
-      [".github/workflows/ios.yml", ".github/workflows/maestro.yml"],
+      [".github/workflows/ios.yml", ".github/workflows/maestro.yml", "scripts/e2e-server.mjs"],
       `EXPO_PUBLIC_E2E_FAST zeroes every AI/result delay app/game.tsx has, not only the ` +
         `exchange hold — setting it anywhere a player's build is made ships that: ${setters.join(", ")}`
     );
