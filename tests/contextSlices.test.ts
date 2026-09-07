@@ -77,8 +77,8 @@ const LOCAL: Record<string, string[]> = {
     "rematchPromptOpen", "answerRematch", "startNextHand", "startNewMatch",
   ],
   useLocalExchange: [
-    "exchangeAnnouncing", "exchangeAnnounceData", "chooseExchangeCard", "acknowledgeExchange",
-    "releaseStuckExchange",
+    "exchangeAnnouncing", "exchangeAnnounceData", "exchangeHoldMsOverride", "chooseExchangeCard",
+    "acknowledgeExchange", "releaseStuckExchange",
   ],
 };
 
