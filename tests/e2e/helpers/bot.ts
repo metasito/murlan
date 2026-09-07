@@ -96,14 +96,15 @@ function labelSelector(label: string): string {
 export class StuckError extends Error {}
 
 /**
- * One `playOrPass` call spent longer than its budget hunting for a card to
- * play. Neither `stallMs` nor `maxStatesWithoutProgress` can see this: both
- * only compare table descriptions *between* calls.
+ * One `playOrPass` call tried more candidate combinations than
+ * `maxCombosTried` allows. Neither `stallMs` nor `maxStatesWithoutProgress`
+ * can see this: both only compare table descriptions *between* calls.
  *
- * The budget is a ceiling over every healthy search, not a claim about which
- * deadline the search lost to — offline `HUMAN_TURN_SECONDS` does not arm on
- * a lead (`turnTimerActive`, `includeNewRound: false`) and online the
- * deadline is the server's AFK window instead.
+ * Counted rather than timed, for the same reason `maxStatesWithoutProgress`
+ * is: a slow CI runner plays through the same finite candidate list a fast
+ * one does, just slower — a wall-clock ceiling can't tell "still working" from
+ * "stuck" under machine-speed variance, and #928 was exactly that false
+ * positive (an 18s budget racing CPU contention on the runner's own VM).
  */
 export class SearchTimeoutError extends StuckError {}
 
@@ -118,13 +119,13 @@ export class SearchTimeoutError extends StuckError {}
 const CARD_CLICK_TIMEOUT_MS = 4_000;
 
 /**
- * Under `app/game.tsx`'s `HUMAN_TURN_SECONDS`, so an offline reply search is
- * cut off before the auto-pass takes the turn out from under it. That constant
- * is module-local and cannot be imported here; `tests/botSearchTimeout.test.ts`
- * reads both out of source and fails when this stops being the smaller one.
- * `DriveOptions.searchBudgetMs` overrides it.
+ * Generous relative to any hand this game deals: `worthTrying` singles are
+ * bounded by hand size, and the pair/triple/bomb sweep by rank × 3 sizes —
+ * comfortably under 100 combos even for the largest legal hand. A search
+ * that blows past this is stuck, not slow. `DriveOptions.maxCombosTried`
+ * overrides it.
  */
-const DEFAULT_SEARCH_BUDGET_MS = 18_000;
+const DEFAULT_MAX_COMBOS_TRIED = 150;
 
 /**
  * The table description names the last play's shape, and `canPlay` only ever
@@ -204,9 +205,8 @@ function requiredReplySize(desc: string): number | null {
 async function playOrPass(
   page: Page,
   desc: string,
-  searchBudgetMs = DEFAULT_SEARCH_BUDGET_MS
+  maxCombosTried = DEFAULT_MAX_COMBOS_TRIED
 ): Promise<string | null> {
-  const searchDeadline = Date.now() + searchBudgetMs;
   const replySize = requiredReplySize(desc);
   const handCards = page.locator(HAND_CARDS);
   const cardsNow = (await handCards.evaluateAll((els) =>
@@ -291,12 +291,11 @@ async function playOrPass(
   let combosTried = 0;
 
   async function tryCombo(cardLabels: string[]): Promise<"played" | "no" | "gone"> {
-    if (Date.now() > searchDeadline) {
+    if (combosTried >= maxCombosTried) {
       throw new SearchTimeoutError(
-        `Search for a reply to "${desc}" ran past ${searchBudgetMs}ms after ${combosTried} ` +
-          `candidate(s), without finishing. The turn's own deadline — offline ` +
-          `HUMAN_TURN_SECONDS when answering a play, online the server's AFK window — may ` +
-          `already have passed it. Hand at search start: [${labels.join(", ")}].`
+        `Search for a reply to "${desc}" tried ${combosTried} candidate(s) without finishing, ` +
+          `past the ${maxCombosTried}-candidate ceiling. Hand at search start: ` +
+          `[${labels.join(", ")}].`
       );
     }
     combosTried += 1;
@@ -471,8 +470,8 @@ export interface DriveOptions {
    * assertion.
    */
   maxTotalMs?: number;
-  /** See `SearchTimeoutError`. Overrides `DEFAULT_SEARCH_BUDGET_MS`. */
-  searchBudgetMs?: number;
+  /** See `SearchTimeoutError`. Overrides `DEFAULT_MAX_COMBOS_TRIED`. */
+  maxCombosTried?: number;
   log?: (line: string) => void;
 }
 
@@ -493,7 +492,7 @@ export async function driveGameToCompletion(page: Page, opts: DriveOptions): Pro
   // tight that one slow AI response false-positives a healthy game.
   const stallMs = opts.stallMs ?? 15_000;
   const maxTotalMs = opts.maxTotalMs ?? 240_000;
-  const searchBudgetMs = opts.searchBudgetMs ?? DEFAULT_SEARCH_BUDGET_MS;
+  const maxCombosTried = opts.maxCombosTried ?? DEFAULT_MAX_COMBOS_TRIED;
   const log = opts.log ?? (() => {});
 
   let lastDesc = "";
@@ -550,7 +549,7 @@ export async function driveGameToCompletion(page: Page, opts: DriveOptions): Pro
       // No valid giveback card exists — nothing to click; keep polling for the stall watchdog.
     } else if (desc.startsWith(YOUR_TURN_PREFIX)) {
       const searchStartedAt = Date.now();
-      const action = await playOrPass(page, desc, searchBudgetMs);
+      const action = await playOrPass(page, desc, maxCombosTried);
       // Logged before the null branch below, not after: a search that lost its
       // hand partway through is the one whose duration is worth having, and it
       // is exactly the branch that returns null.

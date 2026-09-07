@@ -4,8 +4,9 @@
 // whose card search grinds is invisible to all three, and the only recorded
 // instance of #770 surfaced as a bare 300s Playwright timeout with `""` for a
 // URL. `SearchTimeoutError` is the bound on one search; these tests hold it to
-// being a bound on the *search* rather than on a single candidate, and hold
-// its default to staying under the deadline it exists to fire before.
+// being a bound on the *search* rather than on a single candidate. #928:
+// bounded by `combosTried`, not wall-clock — a wall-clock budget raced CI's
+// variable CPU availability and false-positived a healthy, merely slow search.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -27,16 +28,8 @@ function sourceConstant(relPath: string, name: string): number {
   return Number(found[1].replace(/_/g, ""));
 }
 
-test("the search budget is derived from the deadline it must fire before, not asserted", () => {
+test("tableFit's offline clock has not drifted from HUMAN_TURN_SECONDS", () => {
   const humanTurnMs = sourceConstant("app/game.tsx", "HUMAN_TURN_SECONDS") * 1_000;
-  const budgetMs = sourceConstant("tests/e2e/helpers/bot.ts", "DEFAULT_SEARCH_BUDGET_MS");
-
-  assert.ok(
-    budgetMs < humanTurnMs,
-    `DEFAULT_SEARCH_BUDGET_MS (${budgetMs}ms) must name a stalled search before app/game.tsx's ` +
-      `HUMAN_TURN_SECONDS (${humanTurnMs}ms) auto-passes the turn out from under it`
-  );
-  // The third copy of the same deadline: tableFit drives it out for real.
   assert.equal(
     sourceConstant("tests/e2e/tableFit.spec.ts", "OFFLINE_CLOCK_MS"),
     humanTurnMs,
@@ -167,15 +160,13 @@ function makeFake(opts: FakeOptions = {}): Fake {
   };
 }
 
-/** Everything but the budget wide open, so only `searchBudgetMs` can end a drive. */
+/** Everything but the cap wide open, so only `maxCombosTried` can end a drive. */
 const OPEN = { stallMs: 60_000, maxStatesWithoutProgress: 100_000, maxTotalMs: 10_000_000 };
 
-test("the budget bounds the whole search, not each candidate", async (t) => {
-  // 4s per DOM read against a 10s budget: the third candidate's check is the
-  // first to find the clock past the deadline, so two must already have run.
-  // A budget re-armed per candidate would never reach it and the search would
-  // run to its end — which is the mutation this asserts against.
-  const fake = makeFake({ stepMs: 4_000 });
+test("the cap bounds the whole search, not each candidate", async (t) => {
+  // HAND has 4 candidates (see its own comment); a cap of 2 must stop after
+  // the second, not restart the count for each new candidate tried.
+  const fake = makeFake({ stepMs: 100 });
   t.after(fake.restore);
 
   await assert.rejects(
@@ -183,28 +174,28 @@ test("the budget bounds the whole search, not each candidate", async (t) => {
       driveGameToCompletion(fake.page, {
         ...OPEN,
         isFinished: fake.isFinished,
-        searchBudgetMs: 10_000,
+        maxCombosTried: 2,
         log: (line) => fake.lines.push(line),
       }),
     (err: unknown) => {
       assert.ok(err instanceof SearchTimeoutError, `expected SearchTimeoutError, got ${err}`);
       assert.ok(err instanceof StuckError, "SearchTimeoutError must still be a StuckError");
-      assert.match((err as Error).message, /ran past 10000ms after 2 candidate\(s\)/);
+      assert.match((err as Error).message, /tried 2 candidate\(s\).*2-candidate ceiling/s);
       assert.match((err as Error).message, new RegExp(HAND[0]));
       return true;
     }
   );
-  assert.equal(fake.combos(), 2, "the budget must span candidates, not restart at each one");
+  assert.equal(fake.combos(), 2, "the cap must span candidates, not restart at each one");
 });
 
-test("a search that fits inside its budget plays, and its duration reaches the log", async (t) => {
+test("a search that fits inside its cap plays, and its duration reaches the log", async (t) => {
   const fake = makeFake({ stepMs: 100, acceptNth: 2 });
   t.after(fake.restore);
 
   await driveGameToCompletion(fake.page, {
     ...OPEN,
     isFinished: fake.isFinished,
-    searchBudgetMs: 10_000,
+    maxCombosTried: 10,
     log: (line) => fake.lines.push(line),
   });
 
@@ -225,7 +216,7 @@ test("a search whose hand goes out from under it still logs how long it ran", as
   await driveGameToCompletion(fake.page, {
     ...OPEN,
     isFinished: fake.isFinished,
-    searchBudgetMs: 10_000,
+    maxCombosTried: 10,
     log: (line) => fake.lines.push(line),
   });
 
