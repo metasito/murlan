@@ -123,4 +123,27 @@ describe("checkLockDrift reads a real root, not just in-memory objects", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  // Real dependencies of this repo (helmet, drizzle-orm, ...) ship an `exports` map that omits
+  // `./package.json`; `require.resolve("widget/package.json")` would throw for this fixture the
+  // same way it does for them, and reads as "missing" rather than the version actually on disk.
+  test("an exports map that omits package.json is still read correctly", () => {
+    const dir = root();
+    writeFileSync(
+      join(dir, "package-lock.json"),
+      JSON.stringify({ packages: { "node_modules/widget": { version: "2.0.0" } } })
+    );
+    const pkgDir = join(dir, "node_modules", "widget");
+    mkdirSync(pkgDir, { recursive: true });
+    writeFileSync(
+      join(pkgDir, "package.json"),
+      JSON.stringify({ name: "widget", version: "2.0.0", exports: { ".": "./index.js" } })
+    );
+    writeFileSync(join(pkgDir, "index.js"), "module.exports = {};");
+    try {
+      assert.deepEqual(checkLockDrift(dir), []);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });

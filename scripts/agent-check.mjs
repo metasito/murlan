@@ -91,7 +91,11 @@ function readCache() {
 // The cache key is tree content only (see `treeHash` above), so it cannot see a node_modules-only
 // drift — a peer session's `npm install` mid-run would otherwise keep replaying a stale PASS.
 const sharedRoot = primaryWorktree(git("worktree", "list", "--porcelain"));
-const drift = sharedRoot ? checkLockDrift(sharedRoot) : [];
+if (!sharedRoot) {
+  console.error("agent:check: could not find the primary worktree");
+  process.exit(1);
+}
+const drift = checkLockDrift(sharedRoot);
 if (drift.length) {
   console.error(`\nagent:check  node_modules in ${sharedRoot} has drifted from package-lock.json:\n`);
   for (const d of drift) console.error(`  ${d.name}: installed ${d.installed}, locked ${d.locked}`);

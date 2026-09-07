@@ -13,7 +13,6 @@
  */
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
-import { createRequire } from "node:module";
 import { join } from "node:path";
 
 export function classifyStatus(porcelain) {
@@ -56,10 +55,16 @@ export function lockDrift(packageJson, packageLock, installedVersions) {
   return drift;
 }
 
+/**
+ * Deliberately not `require.resolve`: Node's resolver rejects a bare `${name}/package.json`
+ * for any dependency whose own `exports` map omits it (helmet, drizzle-orm, ...), and has no
+ * entry point at all to resolve for a types-only package (`@types/express`, ...) — both are
+ * real dependencies of this repo, so that route drops real installs as "missing" rather than
+ * reading them. See tests/handBuiltNodeModulesPaths.test.ts's IGNORE_LIST for this file.
+ */
 function installedVersion(root, name) {
   try {
-    const resolve = createRequire(join(root, "package.json"));
-    return JSON.parse(readFileSync(resolve.resolve(`${name}/package.json`), "utf8")).version;
+    return JSON.parse(readFileSync(join(root, "node_modules", name, "package.json"), "utf8")).version;
   } catch {
     return undefined;
   }
