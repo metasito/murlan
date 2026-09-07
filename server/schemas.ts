@@ -16,9 +16,10 @@ export const RegisterSchema = z.object({
   email: z.string().trim().min(3).max(254).email(),
 });
 
-/** `token` is a `randomBytes(32)` base64url value — see server/authTokens.ts. */
+/** `code` is the 6-digit value mailed by mintAuthCode — see server/authTokens.ts. */
 export const VerifyEmailSchema = z.object({
-  token: z.string().min(1).max(128),
+  email: RegisterSchema.shape.email,
+  code: z.string().regex(/^\d{6}$/, "6 digits"),
 });
 
 export const RequestPasswordResetSchema = z.object({

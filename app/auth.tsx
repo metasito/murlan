@@ -79,7 +79,10 @@ export default function AuthScreen() {
           setLoading(false);
           return;
         }
+        // The interstitial still renders underneath, unnavigated away from,
+        // for router.back() from /verify-email to land on.
         setCheckEmail({ signedIn: signedIn !== null });
+        router.push({ pathname: "/verify-email", params: { email: email.trim() } });
       }
     } catch (e: unknown) {
       setError(serverErrorMessage(e, t("auth.unknownError")));
@@ -129,7 +132,7 @@ export default function AuthScreen() {
               {!user?.emailVerified && (
                 <MenuButton
                   label={t("auth.checkEmailVerifyNow")}
-                  onPress={() => router.push("/verify-email")}
+                  onPress={() => router.push({ pathname: "/verify-email", params: { email } })}
                   variant="ghost"
                   size="sm"
                   accessibilityLabel={t("auth.checkEmailVerifyNow")}

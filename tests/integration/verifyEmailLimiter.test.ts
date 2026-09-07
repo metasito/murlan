@@ -25,7 +25,7 @@ describe("verify-email is rate limited", { skip: hasDatabase() ? false : skipMes
       const res = await fetch(`${server.url}/api/auth/verify-email`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ token: `not-a-real-token-${i}` }),
+        body: JSON.stringify({ email: `not-a-real-${i}@example.test`, code: "000000" }),
       });
       statuses.push(res.status);
     }

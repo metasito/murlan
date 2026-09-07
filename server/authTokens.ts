@@ -1,6 +1,7 @@
-import { randomBytes, createHash } from "node:crypto";
+import { randomBytes, randomInt, createHash } from "node:crypto";
 import { sql } from "drizzle-orm";
 import { db } from "./db.ts";
+import { uniqueViolation } from "./storage.ts";
 import { authTokens } from "../shared/schema.ts";
 import type { AuthTokenPurpose } from "../shared/schema.ts";
 
@@ -10,11 +11,24 @@ import type { AuthTokenPurpose } from "../shared/schema.ts";
  * handshake.
  */
 
-export const EMAIL_VERIFY_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
+// #925: long enough to fetch the mail without feeling rushed, short enough
+// that a stale code isn't worth guessing — MAX_CODE_ATTEMPTS below is what
+// actually bounds a brute force, this just bounds how long one is live.
+export const EMAIL_VERIFY_CODE_TTL_MS = 15 * 60 * 1000;
 export const PASSWORD_RESET_TOKEN_TTL_MS = 30 * 60 * 1000;
+
+/** #925: wrong guesses against one outstanding code before it must be resent. */
+export const MAX_CODE_ATTEMPTS = 5;
 
 function hashToken(raw: string): string {
   return createHash("sha256").update(raw).digest("hex");
+}
+
+// Salted by email rather than userId, so redemption resolves the account
+// from the matched row's own `user_id` instead of a separate, ambiguous
+// email→account lookup (#900 review) — see shared/schema.ts's table doc.
+function codeHashInput(email: string, purpose: AuthTokenPurpose, code: string): string {
+  return `${email.trim().toLowerCase()}:${purpose}:${code}`;
 }
 
 /** Mints a raw token, stores only its hash, and returns the raw value to hand to the user. */
@@ -54,6 +68,78 @@ export async function redeemAuthToken(
     RETURNING user_id
   `);
   return result.rows[0]?.user_id ?? null;
+}
+
+/**
+ * Mints a 6-digit numeric code for `email`, stores only its salted hash, and
+ * returns the raw digits to send. A collision on `auth_tokens_token_hash_uq`
+ * (two mints landing on the same digits, ~1-in-1,000,000 per pair) retries
+ * with a fresh code rather than failing the mint outright.
+ */
+export async function mintAuthCode(
+  userId: string,
+  email: string,
+  purpose: AuthTokenPurpose,
+  ttlMs: number
+): Promise<string> {
+  for (let attempt = 0; ; attempt++) {
+    const code = randomInt(0, 1_000_000).toString().padStart(6, "0");
+    try {
+      await db.insert(authTokens).values({
+        userId,
+        purpose,
+        tokenHash: hashToken(codeHashInput(email, purpose, code)),
+        expiresAt: new Date(Date.now() + ttlMs),
+      });
+      return code;
+    } catch (err) {
+      if (attempt >= 2 || uniqueViolation(err) !== "auth_tokens_token_hash_uq") throw err;
+    }
+  }
+}
+
+/**
+ * Matched by `(email, purpose, code)`, so a hit's own `user_id` answers
+ * "which account" with no separate lookup, and a miss can still be charged
+ * without knowing it up front — every still-pending row at that address gets
+ * `attempts + 1`, which is more than one row only when several accounts
+ * share an address.
+ *
+ * A hit is one atomic `UPDATE`, so two concurrent right guesses can't both
+ * redeem. A miss takes no row lock (its `WHERE` matches nothing), so several
+ * concurrent wrong guesses can each be checked before `attempts` catches up:
+ * the cap bounds a guessing run to roughly MAX_CODE_ATTEMPTS plus whatever
+ * ran concurrently, not exactly. Negligible against a 1-in-1,000,000 code
+ * and `authLimiter`'s per-IP ceiling.
+ */
+export async function redeemAuthCode(
+  email: string,
+  purpose: AuthTokenPurpose,
+  code: string
+): Promise<string | null> {
+  const tokenHash = hashToken(codeHashInput(email, purpose, code));
+  const result = await db.execute<{ user_id: string }>(sql`
+    UPDATE auth_tokens
+    SET used_at = now()
+    WHERE token_hash = ${tokenHash}
+      AND purpose = ${purpose}
+      AND used_at IS NULL
+      AND expires_at > now()
+      AND attempts < ${MAX_CODE_ATTEMPTS}
+    RETURNING user_id
+  `);
+  const redeemedUserId = result.rows[0]?.user_id;
+  if (redeemedUserId) return redeemedUserId;
+
+  await db.execute(sql`
+    UPDATE auth_tokens
+    SET attempts = attempts + 1
+    WHERE purpose = ${purpose}
+      AND used_at IS NULL
+      AND expires_at > now()
+      AND user_id IN (SELECT id FROM users WHERE lower(email) = lower(${email}))
+  `);
+  return null;
 }
 
 /**

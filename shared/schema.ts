@@ -336,17 +336,17 @@ export const pushTokens = pgTable("push_tokens", {
 
 /**
  * A proof-of-mailbox-control credential — one shape for both email
- * verification and (next ticket) password reset, per
+ * verification and password reset, per
  * docs/superpowers/specs/2026-09-03-account-recovery-design.md, Box 2.
+ * `password_reset` mints a `randomBytes(32)` link token; `email_verify`
+ * (#925) mints a 6-digit code — see server/authTokens.ts for how each is
+ * hashed and redeemed. Neither raw value is ever persisted, only its
+ * SHA-256 hash. `attempts` exists only for the code shape (`MAX_CODE_ATTEMPTS`).
  *
- * The raw token is a `randomBytes(32)` value handed to the user and never
- * persisted; only its SHA-256 hash is stored, and redemption is the single
- * atomic `UPDATE ... WHERE used_at IS NULL AND expires_at > now()` the design
- * doc specifies, which makes single-use race-proof without a read-then-write.
- * Read by two plain HTTP routes only (verify-email, and the next ticket's
- * reset routes) — never by the socket handshake in server/ticket.ts, which
- * this shape is deliberately not reused from (a reset/verify link survives a
- * server restart; a signed in-memory-nonce ticket does not).
+ * Read by two plain HTTP routes only (verify-email, reset-password) — never
+ * by the socket handshake in server/ticket.ts, which this shape is
+ * deliberately not reused from (a reset/verify credential survives a server
+ * restart; a signed in-memory-nonce ticket does not).
  *
  * Expired rows are swept on a schedule (server/retention.ts), not on the
  * write or redemption path — see that module for why.
@@ -358,6 +358,7 @@ export const authTokens = pgTable(
     userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
     purpose: text("purpose").$type<"email_verify" | "password_reset">().notNull(),
     tokenHash: text("token_hash").notNull(),
+    attempts: integer("attempts").default(0).notNull(),
     expiresAt: timestamp("expires_at").notNull(),
     usedAt: timestamp("used_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),

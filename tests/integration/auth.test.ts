@@ -390,15 +390,15 @@ describe("email at signup", { skip: hasDatabase() ? false : skipMessage() }, () 
     assert.equal(other.emailVerifiedAt, null, "an unverified claim, not a possession");
   });
 
-  test("verify-email redeems a token once, and a second redemption fails", async () => {
+  test("verify-email redeems a code once, and a second redemption fails", async () => {
     const { user } = await register(server, "verify_once");
-    const { mintAuthToken, redeemAuthToken } = await import("../../server/authTokens.ts");
-    const token = await mintAuthToken(user.id, "email_verify", 60_000);
+    const { mintAuthCode, redeemAuthCode } = await import("../../server/authTokens.ts");
+    const code = await mintAuthCode(user.id, user.email!, "email_verify", 60_000);
 
     const first = await fetch(`${server.url}/api/auth/verify-email`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ token }),
+      body: JSON.stringify({ email: user.email, code }),
     });
     assert.equal(first.status, 200, await first.text());
 
@@ -409,47 +409,49 @@ describe("email at signup", { skip: hasDatabase() ? false : skipMessage() }, () 
     const second = await fetch(`${server.url}/api/auth/verify-email`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ token }),
+      body: JSON.stringify({ email: user.email, code }),
     });
-    assert.equal(second.status, 400, "a consumed token must not redeem twice");
+    assert.equal(second.status, 400, "a consumed code must not redeem twice");
     assert.equal((await second.json()).code, "INVALID_TOKEN");
 
-    // Same guard the route uses, exercised directly: a used token is refused
-    // by redeemAuthToken itself, not only by some outer route-level check.
-    const direct = await redeemAuthToken(token, "email_verify");
-    assert.equal(direct, null, "redeemAuthToken must refuse an already-used token");
+    // Same guard the route uses, exercised directly: a used code is refused
+    // by redeemAuthCode itself, not only by some outer route-level check.
+    const direct = await redeemAuthCode(user.email!, "email_verify", code);
+    assert.equal(direct, null, "redeemAuthCode must refuse an already-used code");
   });
 
-  test("an expired token fails to redeem", async () => {
+  test("an expired code fails to redeem", async () => {
     const { user } = await register(server, "verify_expired");
-    const { mintAuthToken, redeemAuthToken } = await import("../../server/authTokens.ts");
-    const token = await mintAuthToken(user.id, "email_verify", -60_000);
+    const { mintAuthCode, redeemAuthCode } = await import("../../server/authTokens.ts");
+    const code = await mintAuthCode(user.id, user.email!, "email_verify", -60_000);
 
     const res = await fetch(`${server.url}/api/auth/verify-email`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ token }),
+      body: JSON.stringify({ email: user.email, code }),
     });
-    assert.equal(res.status, 400, await res.text());
+    const text = await res.text();
+    assert.equal(res.status, 400, text);
+    assert.equal(JSON.parse(text).code, "INVALID_TOKEN");
 
-    const direct = await redeemAuthToken(token, "email_verify");
-    assert.equal(direct, null, "an expired token must not redeem via the module either");
+    const direct = await redeemAuthCode(user.email!, "email_verify", code);
+    assert.equal(direct, null, "an expired code must not redeem via the module either");
   });
 
-  // #892/#895: redeemAuthToken used to sweep every expired row on every call.
-  // A garbage token must still be refused without touching a row it has
-  // nothing to do with.
+  // #892/#895: redeemAuthToken used to sweep every expired row on every call
+  // — redeemAuthCode inherits the same guarantee. A wrong code must still be
+  // refused without touching a row it has nothing to do with.
   test("a POST to verify-email does not sweep an unrelated expired row", async () => {
     const { user } = await register(server, "verify_no_sweep");
-    const { mintAuthToken } = await import("../../server/authTokens.ts");
-    await mintAuthToken(user.id, "email_verify", -60_000);
+    const { mintAuthCode } = await import("../../server/authTokens.ts");
+    await mintAuthCode(user.id, user.email!, "email_verify", -60_000);
 
     const admin = new pg.Pool({ connectionString: process.env.DATABASE_URL! });
     try {
       const res = await fetch(`${server.url}/api/auth/verify-email`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ token: "not-a-real-token" }),
+        body: JSON.stringify({ email: user.email, code: "000000" }),
       });
       assert.equal(res.status, 400, await res.text());
 

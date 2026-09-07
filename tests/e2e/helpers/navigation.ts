@@ -117,7 +117,11 @@ export async function registerNewAccount(page: Page, username: string): Promise<
   // #897: the response no longer carries the account, so the screen answers
   // with a mandatory "check your email" interstitial rather than navigating
   // straight through — still on /auth until this is dismissed, session or
-  // not (app/auth.tsx's `checkEmail` branch).
+  // not (app/auth.tsx's `checkEmail` branch). #925: registration now also
+  // pushes straight to /verify-email over that interstitial; a spec that
+  // does not care about verifying goes back to it rather than through it.
+  await page.waitForURL(/\/verify-email/);
+  await page.getByRole("button", { name: "Indietro" }).click();
   await page.getByRole("button", { name: "Continua" }).click();
   await page.waitForURL((url) => !url.pathname.startsWith("/auth"));
 }

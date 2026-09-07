@@ -28,8 +28,6 @@ test("account recovery — verify a fresh address, then reset a forgotten passwo
   await page.getByRole("textbox", { name: "Email" }).fill(email);
   await page.getByRole("textbox", { name: "Password" }).fill(originalPassword);
   await page.getByRole("button", { name: "Crea account" }).click();
-
-  await page.getByRole("button", { name: "Inserisci il codice ora" }).click();
   await page.waitForURL(/\/verify-email/);
 
   const verifyToken = await readMailToken(email, "Verify your Murlan email");

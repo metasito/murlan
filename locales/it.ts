@@ -28,7 +28,7 @@ export const it: Record<keyof typeof en, string> = {
   "server.EMAIL_ALREADY_SET": "Questo account ha già un'email",
   "server.CHECK_YOUR_EMAIL": "Controlla la tua email per verificare l'indirizzo",
   "server.EMAIL_VERIFIED_ELSEWHERE": "Questa email è già verificata su un altro account. Se quell'account è tuo, accedi lì o reimposta la password. Se non lo è, puoi aggiungere un'altra email dal tuo profilo.",
-  "server.INVALID_TOKEN": "Link di verifica non valido o scaduto",
+  "server.INVALID_TOKEN": "Codice di verifica non valido o scaduto",
   "server.INVALID_RESET_TOKEN": "Link di reimpostazione non valido o scaduto",
   "server.EMAIL_NOT_SET": "Questo account non ha un'email da verificare",
   "server.EMAIL_ALREADY_VERIFIED": "Questa email è già verificata",
@@ -122,17 +122,22 @@ export const it: Record<keyof typeof en, string> = {
 
   // -------------------------------------------------------- verifyEmail.*
   "verifyEmail.title": "Verifica email",
-  "verifyEmail.body": "Inserisci il codice dell'email che ti abbiamo inviato.",
+  "verifyEmail.body": "Inserisci il codice a 6 cifre dell'email che ti abbiamo inviato.",
   "verifyEmail.codeLabel": "Codice",
-  "verifyEmail.codePlaceholder": "Incolla qui il codice",
+  "verifyEmail.codePlaceholder": "Codice a 6 cifre",
   "verifyEmail.codeA11yLabel": "Codice di verifica",
   "verifyEmail.submit": "Verifica",
   "verifyEmail.saving": "Verifica in corso…",
   "verifyEmail.missingCode": "Inserisci il codice ricevuto via email",
+  "verifyEmail.missingEmail": "Inserisci l'email con cui ti sei registrato",
   "verifyEmail.failed": "Non è stato possibile verificare il codice. Riprova.",
   "verifyEmail.successTitle": "Email verificata",
   "verifyEmail.successBody": "Il tuo indirizzo è confermato. Se dimentichi la password, puoi reimpostarla dalla schermata di accesso.",
   "verifyEmail.done": "Fatto",
+  "verifyEmail.resend": "Reinvia codice",
+  "verifyEmail.resending": "Invio…",
+  "verifyEmail.resendSent": "Un nuovo codice è in arrivo a {{email}}.",
+  "verifyEmail.resendFailed": "Impossibile reinviare il codice. Riprova.",
 
   // ------------------------------------------------------------- recover.*
   "recover.title": "Reimposta password",

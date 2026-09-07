@@ -10,6 +10,7 @@ import type { TestServer } from "./testServer.ts";
 export interface RegisteredUser {
   id: string;
   username: string;
+  email: string | null;
 }
 
 export async function register(
