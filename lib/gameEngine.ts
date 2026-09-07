@@ -770,6 +770,41 @@ export function opponentsOf(
 }
 
 /**
+ * The one card the exchange reveals to the loser: its own former best,
+ * which the winner now holds. Winner-side knowledge (what it gave back) is
+ * deliberately not surfaced — a bot's own giveback is always its weakest
+ * eligible card (`pickGivebackCard`), so the winner can never hold anything
+ * weaker than it; a floor built on that fact would never fire. Nobody
+ * outside the exchange is party to this, and the both-jokers exception
+ * moves no card at all (docs/RULES.md §10), so the loser learns nothing
+ * then either.
+ */
+export function knownOpponentExchangeCard(
+  exchangePhase: ExchangePhase | undefined,
+  seat: number
+): Card | undefined {
+  if (!exchangePhase || exchangePhase.bothJokersException) return undefined;
+  if (seat !== exchangePhase.loserIdx) return undefined;
+  return exchangePhase.cardFromLoser;
+}
+
+/** Whether leading `play`'s single card loses outright to `known`. */
+export function losesLeadToExchangeCard(play: Combination, known: Card): boolean {
+  return play.cards.length === 1 && cardStrength(play.cards[0]) < cardStrength(known);
+}
+
+// Same tally `outstandingAbove` reads above, at the card's own rank: same
+// caution (a suit undealt at two seats reads as "still out"), never the
+// reverse.
+export function isExchangeCardStillOut(
+  card: Card,
+  playedRanks: number[] | undefined,
+  hand: Card[]
+): boolean {
+  return outstandingTally(playedRanks, hand)[cardStrength(card)] > 0;
+}
+
+/**
  * The AI's move for `player`, or null to pass. `rng` is a parameter so that
  * personalities can vary their play without making the engine untestable —
  * tests inject a fixed sequence and stay deterministic.
@@ -782,7 +817,8 @@ export function aiChoosePlay(
   requireCard?: Card,
   rng: () => number = Math.random,
   partnerHoldsTop = false,
-  playedRanks?: number[]
+  playedRanks?: number[],
+  knownOpponentCard?: Card
 ): Combination | null {
   const plays = getAllValidPlays(player.hand, lastPlayed, isNewRound, requireCard);
   if (plays.length === 0) return null;
@@ -791,6 +827,17 @@ export function aiChoosePlay(
   const diff = personality.difficulty;
   const myCards = player.hand.length;
   const minOpponent = Math.min(...otherPlayersHandCount);
+
+  const knownCard =
+    knownOpponentCard && isExchangeCardStillOut(knownOpponentCard, playedRanks, player.hand)
+      ? knownOpponentCard
+      : undefined;
+
+  // Every tier's floor (#907): never lead into a known, still-live loss when
+  // a lead without that problem is legal. Only bears on a lead: a response
+  // is not "leading into" anything.
+  const safeLeads = knownCard && isNewRound ? plays.filter((p) => !losesLeadToExchangeCard(p, knownCard)) : [];
+  const leadPlays = isNewRound && safeLeads.length > 0 ? safeLeads : plays;
 
   /**
    * Whether leading this card takes the round on everything a tally can see:
@@ -826,10 +873,10 @@ export function aiChoosePlay(
   if (partnerHoldsTop && !isNewRound) return null;
 
   const withPersonality = (choice: Combination | null) =>
-    applyPersonality(choice, plays, isNewRound, personality, rng);
+    applyPersonality(choice, leadPlays, isNewRound, personality, rng);
 
   if (diff === "easy") {
-    return withPersonality([...plays].sort((a, b) => a.strength - b.strength)[0]);
+    return withPersonality([...leadPlays].sort((a, b) => a.strength - b.strength)[0]);
   }
 
   // A lead nothing left can answer takes the round for free, so holding it back
@@ -838,16 +885,16 @@ export function aiChoosePlay(
   // deliberately: aggression and unpredictability exist to colour a judgement
   // call, and this is as close to a counted one as the tally gets.
   if (isNewRound) {
-    const certain = plays.filter(takesTheRound);
+    const certain = leadPlays.filter(takesTheRound);
     if (certain.length > 0) {
       return certain.sort((a, b) => a.strength - b.strength)[0];
     }
   }
 
-  const bombs = plays.filter(
+  const bombs = leadPlays.filter(
     (p) => p.type === "bomb" || p.type === "royal_straight"
   );
-  const normal = plays.filter(
+  const normal = leadPlays.filter(
     (p) => p.type !== "bomb" && p.type !== "royal_straight"
   );
 
@@ -881,7 +928,7 @@ export function aiChoosePlay(
 
   if (isNewRound) {
     // We control the round: dump as many weak cards as efficiently as possible
-    const near3 = plays.filter((p) => p.cards.length >= myCards - 2);
+    const near3 = leadPlays.filter((p) => p.cards.length >= myCards - 2);
     if (near3.length > 0)
       return withPersonality(near3.sort((a, b) => b.cards.length - a.cards.length)[0]);
 
@@ -890,7 +937,7 @@ export function aiChoosePlay(
     if (candidates.length > 0)
       return withPersonality(candidates.sort((a, b) => scorePlayForDump(b) - scorePlayForDump(a))[0]);
 
-    return withPersonality([...plays].sort((a, b) => scorePlayForDump(b) - scorePlayForDump(a))[0]);
+    return withPersonality([...leadPlays].sort((a, b) => scorePlayForDump(b) - scorePlayForDump(a))[0]);
   }
 
   // Responding to opponent's combo

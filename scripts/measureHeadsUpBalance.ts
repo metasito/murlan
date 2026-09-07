@@ -15,7 +15,19 @@
 // Flags (all optional, see `parseArgs`): --seed --dealN --matchN2p
 // --matchN4p --personalityN
 import { pathToFileURL } from "node:url";
-import { dealCards, type Card } from "../lib/gameEngine.ts";
+import {
+  aiChoosePlay,
+  dealCards,
+  getAllValidPlays,
+  initializeRematch,
+  isExchangeCardStillOut,
+  knownOpponentExchangeCard,
+  losesLeadToExchangeCard,
+  opponentsOf,
+  type Card,
+  type Combination,
+} from "../lib/gameEngine.ts";
+import { autoMoveForSeat } from "../lib/autoMove.ts";
 import {
   BOT_PERSONALITIES,
   DEFAULT_BOT_PERSONALITY,
@@ -230,6 +242,85 @@ function measurePersonalityVsDefault(n: number, seed: number): PersonalityRow[] 
   });
 }
 
+// ─── Measurement 5: exchange blunder avoidance (#907) ─────────────────────
+//
+// The manche-winner streak above is a coarse proxy — the fix bears on
+// individual lead decisions, not the manche's outcome. This measures the
+// mechanism directly: deals a manche and drives it with today's engine
+// (exchange included), and at every new-round lead the loser makes while its
+// tribute is still verifiably live (`isExchangeCardStillOut` — the same gate
+// `aiChoosePlay` applies internally, applied here too so a fact the fix
+// itself has already retired is not scored as a defect), asks whether a
+// legal lead exists that does not lose outright to the known card. Only
+// those "avoidable" decision points are asked twice — once passing the
+// exchange fact (today's behaviour) and once withholding it (pre-#907's —
+// that parameter's own purpose is exactly this toggle, per
+// `tests/botExchangeAwareness.test.ts`) — since a lead with no safe
+// alternative is not a case either policy could have done better on.
+
+interface BlunderCounts {
+  avoidableLeadsChecked: number;
+  wouldHaveBlundered: number;
+  stillBlunders: number;
+  forcedLeads: number;
+}
+
+function isKnownCardBlunder(choice: Combination | null, known: Card): boolean {
+  return choice !== null && losesLeadToExchangeCard(choice, known);
+}
+
+function measureExchangeBlunderAvoidance(n: number, seed: number): BlunderCounts {
+  let avoidableLeadsChecked = 0;
+  let wouldHaveBlundered = 0;
+  let stillBlunders = 0;
+  let forcedLeads = 0;
+
+  for (let i = 0; i < n; i++) {
+    // "luan" (easy), not the table default: easy's whole policy is "lowest
+    // strength wins", the shape most exposed to this blunder and exactly the
+    // tier the ticket named ("easy should mean easy, not total stupid").
+    const players = tableOf(2, ["luan", "luan"]);
+    const dealSeed = seed * 2246822519 + i;
+    let state = withSeededDeals(dealSeed, () => initializeRematch(players, "free_for_all", []));
+    const rng = mulberry32(dealSeed + 1);
+
+    for (let turn = 0; turn < 300 && !state.gameOver; turn++) {
+      const seat = state.currentTurnIndex;
+      const isNewRound = !state.exchangePhase?.active && state.lastPlayedCombination === null;
+
+      if (isNewRound) {
+        const leader = state.players[seat];
+        const known = knownOpponentExchangeCard(state.exchangePhase, seat);
+        if (known && isExchangeCardStillOut(known, state.playedRanks, leader.hand)) {
+          const legalPlays = getAllValidPlays(leader.hand, null, true, undefined);
+          const hadSafeAlternative = legalPlays.some((p) => !losesLeadToExchangeCard(p, known));
+
+          if (!hadSafeAlternative) {
+            forcedLeads++;
+          } else {
+            avoidableLeadsChecked++;
+            const opponents = opponentsOf(state, seat);
+            const before = aiChoosePlay(
+              leader, null, true, opponents.handCounts, undefined, mulberry32(dealSeed + turn), false, state.playedRanks, undefined
+            );
+            const after = aiChoosePlay(
+              leader, null, true, opponents.handCounts, undefined, mulberry32(dealSeed + turn), false, state.playedRanks, known
+            );
+            if (isKnownCardBlunder(before, known)) wouldHaveBlundered++;
+            if (isKnownCardBlunder(after, known)) stillBlunders++;
+          }
+        }
+      }
+
+      const next = autoMoveForSeat(state, seat, true, { rng });
+      if (!next) break;
+      state = next;
+    }
+  }
+
+  return { avoidableLeadsChecked, wouldHaveBlundered, stillBlunders, forcedLeads };
+}
+
 // ─── Report ──────────────────────────────────────────────────────────────
 
 function printHistogram(histogram: Map<number, number>, n: number, maxKey: number): void {
@@ -307,6 +398,19 @@ function main(): void {
         (row.draws > 0 ? ` (${row.draws} draws)` : "")
     );
   }
+
+  // ── Measurement 5 ───────────────────────────────────────────────────────
+  console.log("\n## 5. Exchange blunder avoidance (#907)\n");
+  console.log("Every new-round lead the loser makes while its tribute is still verifiably live");
+  console.log("AND a legal lead exists that does not lose to it outright — asked twice from the");
+  console.log("identical state: with the exchange fact (today) and without it (pre-#907, same");
+  console.log("call with the last argument omitted) — see the file banner above");
+  console.log("measureExchangeBlunderAvoidance.\n");
+  const blunders = measureExchangeBlunderAvoidance(opts.matchN2p, opts.seed);
+  console.log(`  avoidable decision points (a safe lead was legal): ${blunders.avoidableLeadsChecked}`);
+  console.log(`  without the exchange fact, led under the known card anyway: ${fmtWilson(blunders.wouldHaveBlundered, blunders.avoidableLeadsChecked)}`);
+  console.log(`  with it (today's behaviour), led under the known card anyway: ${fmtWilson(blunders.stillBlunders, blunders.avoidableLeadsChecked)}`);
+  console.log(`  (forced leads, no safe alternative existed either way, excluded above: ${blunders.forcedLeads})`);
 
   console.log(`\nDone in ${((Date.now() - startedAt) / 1000).toFixed(1)}s.`);
 }

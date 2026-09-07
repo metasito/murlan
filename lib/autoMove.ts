@@ -13,6 +13,7 @@ import {
   buildCombination,
   sortHand,
   aiChoosePlay,
+  knownOpponentExchangeCard,
   opponentsOf,
   pickGivebackCard,
   getStartingPlayerAfterExchange,
@@ -115,7 +116,8 @@ export function autoMoveForSeat(
       requireCard,
       ctx.rng,
       opponents.partnerHoldsTop,
-      state.playedRanks
+      state.playedRanks,
+      knownOpponentExchangeCard(state.exchangePhase, seat)
     );
     if (combo) {
       if (ctx.handFlags) recordPlayFlags(ctx.handFlags, seat, combo);
