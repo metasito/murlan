@@ -44,7 +44,7 @@ export const sq: Record<keyof typeof en, string> = {
   "server.EMAIL_ALREADY_SET": "Kjo llogari ka tashmë një email",
   "server.CHECK_YOUR_EMAIL": "Kontrollo emailin për të verifikuar adresën",
   "server.EMAIL_VERIFIED_ELSEWHERE": "Ky email është verifikuar tashmë në një llogari tjetër. Nëse llogaria e verifikuar është jotja, identifikohu aty ose rivendos fjalëkalimin. Nëse nuk është jotja, mund të shtosh një email tjetër nga profili yt.",
-  "server.INVALID_TOKEN": "Lidhja e verifikimit është e pavlefshme ose ka skaduar",
+  "server.INVALID_TOKEN": "Kodi i verifikimit është i pavlefshëm ose ka skaduar",
   "server.INVALID_RESET_TOKEN": "Lidhja e rivendosjes është e pavlefshme ose ka skaduar",
   "server.EMAIL_NOT_SET": "Kjo llogari nuk ka email për t'u verifikuar",
   "server.EMAIL_ALREADY_VERIFIED": "Ky email është verifikuar tashmë",

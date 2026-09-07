@@ -42,7 +42,7 @@ describe("verify-email code guessing is capped per credential", { skip: hasDatab
 
   test("MAX_CODE_ATTEMPTS wrong guesses force a resend — the right code stops working before its TTL runs out", async () => {
     const { user } = await register(server, "code_capped");
-    const { mintAuthCode, redeemAuthCode, MAX_CODE_ATTEMPTS } = await import("../../server/authTokens.ts");
+    const { mintAuthCode, MAX_CODE_ATTEMPTS } = await import("../../server/authTokens.ts");
     const code = await mintAuthCode(user.id, user.email!, "email_verify", 60_000);
 
     // Wrong guesses, each guaranteed not to collide with the real code.
@@ -52,8 +52,34 @@ describe("verify-email code guessing is capped per credential", { skip: hasDatab
       assert.equal(res.status, 400, `attempt ${i}: ${await res.text()}`);
     }
 
-    const direct = await redeemAuthCode(user.email!, "email_verify", code);
-    assert.equal(direct, null, "the correct code must stop redeeming once MAX_CODE_ATTEMPTS wrong guesses have run");
+    const { db } = await import("../../server/db.ts");
+    const { authTokens } = await import("../../shared/schema.ts");
+    const { eq } = await import("drizzle-orm");
+    const [row] = await db.select().from(authTokens).where(eq(authTokens.userId, user.id));
+    assert.ok(
+      (row?.attempts ?? 0) >= MAX_CODE_ATTEMPTS,
+      `the row's own attempts counter must reach the cap, got ${row?.attempts}`
+    );
+
+    const finalTry = await verify(user.email!, code);
+    const finalText = await finalTry.text();
+    assert.equal(finalTry.status, 400, finalText);
+    assert.equal(JSON.parse(finalText).code, "INVALID_TOKEN");
+  });
+
+  test("a code minted for one account does not redeem for a different account, even with the right digits", async () => {
+    const { user: alice } = await register(server, "code_salt_alice");
+    const { user: bob } = await register(server, "code_salt_bob");
+    const { mintAuthCode, redeemAuthCode } = await import("../../server/authTokens.ts");
+    const aliceCode = await mintAuthCode(alice.id, alice.email!, "email_verify", 60_000);
+
+    // If the hash were salted by code alone (no email/purpose), this would
+    // wrongly redeem bob's own pending row instead of failing.
+    const crossRedeem = await redeemAuthCode(bob.email!, "email_verify", aliceCode);
+    assert.equal(crossRedeem, null, "alice's code must not verify bob's account");
+
+    const res = await verify(alice.email!, aliceCode);
+    assert.equal(res.status, 200, await res.text());
   });
 
   test("fewer than MAX_CODE_ATTEMPTS wrong guesses still allow the right code through", async () => {

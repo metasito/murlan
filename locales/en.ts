@@ -35,7 +35,7 @@ export const en = {
   "server.EMAIL_ALREADY_SET": "This account already has an email",
   "server.CHECK_YOUR_EMAIL": "Check your email to verify your address",
   "server.EMAIL_VERIFIED_ELSEWHERE": "This email is already verified on a different account. If that account is yours, sign in there or reset its password. If it isn't, you can add a different email from your profile.",
-  "server.INVALID_TOKEN": "Invalid or expired verification link",
+  "server.INVALID_TOKEN": "Invalid or expired verification code",
   "server.INVALID_RESET_TOKEN": "Invalid or expired reset link",
   "server.EMAIL_NOT_SET": "This account has no email to verify",
   "server.EMAIL_ALREADY_VERIFIED": "This email is already verified",

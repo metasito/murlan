@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { View, Text, TextInput, StyleSheet } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { ScreenHeader } from "@/components/ScreenHeader";
@@ -25,8 +25,18 @@ export default function VerifyEmailScreen() {
   const { t } = useTranslation();
   const { user, refreshUser } = useAuth();
   const params = useLocalSearchParams<{ email?: string }>();
-  const [email, setEmail] = useState(user?.email ?? params.email ?? "");
+  const [email, setEmail] = useState(params.email ?? "");
   const [code, setCode] = useState("");
+
+  // `user` is still null on first render — AuthContext's boot check is async
+  // — so the param above is the only prefill a plain useState can see. Once
+  // the boot check resolves, fill in the signed-in user's own address too,
+  // but only if the field is still untouched (the functional update reads
+  // the latest `email` without needing it in the dependency array).
+  useEffect(() => {
+    const signedInEmail = user?.email;
+    if (signedInEmail) setEmail((current) => current || signedInEmail);
+  }, [user?.email]);
   const [verified, setVerified] = useState(false);
   const [loading, setLoading] = useState(false);
   const [resending, setResending] = useState(false);

@@ -26,7 +26,7 @@ export interface JoinableRoom {
 }
 
 /** The constraint a 23505 names, or undefined if the error is something else. */
-function uniqueViolation(err: unknown): string | undefined {
+export function uniqueViolation(err: unknown): string | undefined {
   for (let e = err; e; e = (e as { cause?: unknown }).cause) {
     const { code, constraint } = e as { code?: string; constraint?: string };
     if (code === "23505" && constraint) return constraint;

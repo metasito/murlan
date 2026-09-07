@@ -336,31 +336,17 @@ export const pushTokens = pgTable("push_tokens", {
 
 /**
  * A proof-of-mailbox-control credential — one shape for both email
- * verification and (next ticket) password reset, per
+ * verification and password reset, per
  * docs/superpowers/specs/2026-09-03-account-recovery-design.md, Box 2.
+ * `password_reset` mints a `randomBytes(32)` link token; `email_verify`
+ * (#925) mints a 6-digit code — see server/authTokens.ts for how each is
+ * hashed and redeemed. Neither raw value is ever persisted, only its
+ * SHA-256 hash. `attempts` exists only for the code shape (`MAX_CODE_ATTEMPTS`).
  *
- * Two raw-value shapes share this table: `password_reset` mints a
- * `randomBytes(32)` link token (globally unique on its own); `email_verify`
- * (#925) mints a 6-digit code, human-typeable but only a 1,000,000-value
- * space, so its hash input is salted with `email:purpose`
- * (`authTokens.ts`'s `hashCodeInput`) rather than hashing the code alone —
- * otherwise two accounts minted the same digits would collide on
- * `auth_tokens_token_hash_uq`. Salted by the address rather than `userId`:
- * redemption resolves the account from the row's own `user_id`, so it never
- * needs a separate email→account lookup, which would be ambiguous once more
- * than one account can share an address (#900 review). Neither raw value is
- * ever persisted, only its SHA-256 hash.
- *
- * Redemption is the single atomic `UPDATE ... WHERE used_at IS NULL AND
- * expires_at > now()` the design doc specifies, which makes single-use
- * race-proof without a read-then-write. `attempts` exists only for the code
- * shape: a per-row guess counter, so a 1-in-1,000,000 credential can be
- * capped per-credential (`MAX_CODE_ATTEMPTS`) rather than just per-IP.
- *
- * Read by two plain HTTP routes only (verify-email, and the next ticket's
- * reset routes) — never by the socket handshake in server/ticket.ts, which
- * this shape is deliberately not reused from (a reset/verify link survives a
- * server restart; a signed in-memory-nonce ticket does not).
+ * Read by two plain HTTP routes only (verify-email, reset-password) — never
+ * by the socket handshake in server/ticket.ts, which this shape is
+ * deliberately not reused from (a reset/verify credential survives a server
+ * restart; a signed in-memory-nonce ticket does not).
  *
  * Expired rows are swept on a schedule (server/retention.ts), not on the
  * write or redemption path — see that module for why.

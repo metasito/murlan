@@ -1,6 +1,7 @@
 import { randomBytes, randomInt, createHash } from "node:crypto";
 import { sql } from "drizzle-orm";
 import { db } from "./db.ts";
+import { uniqueViolation } from "./storage.ts";
 import { authTokens } from "../shared/schema.ts";
 import type { AuthTokenPurpose } from "../shared/schema.ts";
 
@@ -20,16 +21,10 @@ function hashToken(raw: string): string {
   return createHash("sha256").update(raw).digest("hex");
 }
 
-// Salts the hash with the address and purpose it's for, so two accounts
-// minted the same 6-digit code don't collide on `auth_tokens_token_hash_uq`
-// — see the `authTokens` table doc in shared/schema.ts. Salted by email
-// rather than userId: the row's own `user_id` (via `RETURNING`) is what
-// answers "which account", so redeeming never needs a separate, ambiguous
-// email→account lookup the way `storage.getUserByEmail`'s bare `[0]` would
-// be once more than one account can share an address (#900 review).
-// Case-folded so a redeem typed in different case than the mint still
-// matches, the same normalization `getUserByEmail`'s `lower()` applies.
-function hashCodeInput(email: string, purpose: AuthTokenPurpose, code: string): string {
+// Salted by email rather than userId, so redemption resolves the account
+// from the matched row's own `user_id` instead of a separate, ambiguous
+// email→account lookup (#900 review) — see shared/schema.ts's table doc.
+function codeHashInput(email: string, purpose: AuthTokenPurpose, code: string): string {
   return `${email.trim().toLowerCase()}:${purpose}:${code}`;
 }
 
@@ -72,47 +67,54 @@ export async function redeemAuthToken(
   return result.rows[0]?.user_id ?? null;
 }
 
-/** Mints a 6-digit numeric code for `email`, stores only its salted hash, and returns the raw digits to send. */
+/**
+ * Mints a 6-digit numeric code for `email`, stores only its salted hash, and
+ * returns the raw digits to send. A collision on `auth_tokens_token_hash_uq`
+ * (two mints landing on the same digits, ~1-in-1,000,000 per pair) retries
+ * with a fresh code rather than failing the mint outright.
+ */
 export async function mintAuthCode(
   userId: string,
   email: string,
   purpose: AuthTokenPurpose,
   ttlMs: number
 ): Promise<string> {
-  const code = randomInt(0, 1_000_000).toString().padStart(6, "0");
-  await db.insert(authTokens).values({
-    userId,
-    purpose,
-    tokenHash: hashToken(hashCodeInput(email, purpose, code)),
-    expiresAt: new Date(Date.now() + ttlMs),
-  });
-  return code;
+  for (let attempt = 0; ; attempt++) {
+    const code = randomInt(0, 1_000_000).toString().padStart(6, "0");
+    try {
+      await db.insert(authTokens).values({
+        userId,
+        purpose,
+        tokenHash: hashToken(codeHashInput(email, purpose, code)),
+        expiresAt: new Date(Date.now() + ttlMs),
+      });
+      return code;
+    } catch (err) {
+      if (attempt >= 2 || uniqueViolation(err) !== "auth_tokens_token_hash_uq") throw err;
+    }
+  }
 }
 
 /**
- * Redeems a code the same single-use, race-proof way `redeemAuthToken` does
- * — matched by `(email, purpose, code)` rather than the code alone, so it
- * needs no separate account lookup — and additionally guarded by
- * `attempts < MAX_CODE_ATTEMPTS` so a match stops working once a code has
- * been guessed wrong too many times, even before its TTL runs out. Returns
- * the row's own userId, exactly what `RETURNING` names, never a value the
- * caller had to resolve itself.
+ * Redeems a code the same single-use, race-proof way `redeemAuthToken` does:
+ * a match and a miss are each one atomic `UPDATE`, so a concurrent guess
+ * can't act on a stale read the way a separate SELECT-then-UPDATE could —
+ * Postgres re-checks each statement's WHERE clause against the just-locked
+ * row before applying it.
  *
- * A miss still costs a row an attempt: the second UPDATE runs whenever the
- * first found nothing, incrementing every still-pending `email_verify` row
- * for an account at this address — there is at most one per account by
- * construction, and more than one account only when several share an
- * address, in which case a wrong guess costs all of them equally rather
- * than picking one arbitrarily. This is what makes "N wrong guesses" a real
- * cap instead of just documentation — an unmatched guess doesn't identify a
- * row on its own the way the first UPDATE's exact hash match does.
+ * Matched by `(email, purpose, code)`, so the row's own `user_id` answers
+ * "which account" and a miss can still be charged without knowing it up
+ * front. A miss increments `attempts` on every still-pending row at that
+ * address instead: at most one per account by construction, so this reaches
+ * more than one only when several accounts share an address, in which case
+ * a wrong guess costs all of them rather than an arbitrary one.
  */
 export async function redeemAuthCode(
   email: string,
   purpose: AuthTokenPurpose,
   code: string
 ): Promise<string | null> {
-  const tokenHash = hashToken(hashCodeInput(email, purpose, code));
+  const tokenHash = hashToken(codeHashInput(email, purpose, code));
   const result = await db.execute<{ user_id: string }>(sql`
     UPDATE auth_tokens
     SET used_at = now()

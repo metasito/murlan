@@ -375,18 +375,18 @@ function sessionUser(user: User) {
  * claim (storage.markEmailVerified). Exported so tests can pin the wording
  * without standing up a mail provider.
  */
-export function verificationEmailBody(username: string, token: string): string {
+export function verificationEmailBody(username: string, code: string): string {
   return (
     `Someone signed up for a Murlan account (@${username}) using this email address.\n\n` +
-    `If that was you, your verification code is:\n\n${token}\n\nThis code expires in 15 minutes.\n\n` +
+    `If that was you, your verification code is:\n\n${code}\n\nThis code expires in 15 minutes.\n\n` +
     `If it was not you, no further action is needed — leaving this code unused does not give ` +
     `that account your address.`
   );
 }
 
 /** Never awaited by a caller — a provider outage must not delay or fail the response it rides with. */
-function sendVerificationEmail(to: string, username: string, token: string): void {
-  sendMail(to, "Verify your Murlan email", verificationEmailBody(username, token))
+function sendVerificationEmail(to: string, username: string, code: string): void {
+  sendMail(to, "Verify your Murlan email", verificationEmailBody(username, code))
     .catch((err) => logger.error({ err, to }, "sendVerificationEmail failed"));
 }
 
