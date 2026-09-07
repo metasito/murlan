@@ -19,6 +19,12 @@ name: iOS UI (Maestro)
 # bringing `pull_request` back, and must not until #620 passes twice running.
 on:
   workflow_dispatch:
+    inputs:
+      force-upload-debug:
+        description: "Upload maestro-debug-ios even on a passing run, for #823's per-step command windows (no logcat, so analyze-maestro-run.mjs can't read it)"
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   group: ios-${{ github.ref }}
@@ -227,8 +233,10 @@ jobs:
           xcrun simctl install "$SIMULATOR_UDID" "$APP_BUNDLE"
           run_flows second
 
+      # `inputs.force-upload-debug`, never `github.event.inputs.`: the latter reads a
+      # boolean as the string "false", which is truthy, and uploads on every run.
       - name: Upload Maestro debug output
-        if: failure()
+        if: failure() || inputs.force-upload-debug
         uses: actions/upload-artifact@v4
         with:
           name: maestro-debug-ios
