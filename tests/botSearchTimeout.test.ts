@@ -72,6 +72,8 @@ const YOUR_TURN_DESC =
   "È il tuo turno. Luan ha giocato Re di Cuori. Luan ha 5 carte in mano. Hai 4 carte in mano.";
 const AFTER_PLAY_DESC =
   "Hai giocato Asso di Fiori. Luan ha 5 carte in mano. Hai 3 carte in mano.";
+const AUTO_PASSED_DESC =
+  "Passaggio automatico. Luan ha 5 carte in mano. Hai 4 carte in mano.";
 
 /**
  * Four distinct ranks, every one above the Re on the table, so `playOrPass`
@@ -91,6 +93,12 @@ interface FakeOptions {
   acceptNth?: number;
   /** Every card click fails, as a selection cleared out from under the driver does. */
   handVanishes?: boolean;
+  /**
+   * PASSA reads disabled, and the table's own description no longer claims
+   * the viewer's turn — the shape `HUMAN_TURN_SECONDS` auto-passing mid-search
+   * produces, as opposed to the rules genuinely offering no legal move.
+   */
+  autoPassedMidSearch?: boolean;
 }
 
 interface Fake {
@@ -116,6 +124,7 @@ function makeFake(opts: FakeOptions = {}): Fake {
   let combos = 0;
   let played = false;
   let vanished = false;
+  let raced = false;
 
   const box = { x: 0, y: 0, width: 10, height: 10 };
   const pressable = { hover: async () => {}, boundingBox: async () => box };
@@ -136,6 +145,7 @@ function makeFake(opts: FakeOptions = {}): Fake {
         count: async () => 1,
         getAttribute: async () => {
           tick();
+          if (raced) return AUTO_PASSED_DESC;
           return played ? AFTER_PLAY_DESC : YOUR_TURN_DESC;
         },
       };
@@ -169,7 +179,13 @@ function makeFake(opts: FakeOptions = {}): Fake {
       };
     }
     if (selector === '[data-testid="btn-passa"]') {
-      return { ...pressable, isEnabled: async () => true };
+      return {
+        ...pressable,
+        isEnabled: async () => {
+          if (opts.autoPassedMidSearch) raced = true;
+          return !opts.autoPassedMidSearch;
+        },
+      };
     }
     throw new Error(`fakePage: unexpected locator "${selector}"`);
   };
@@ -183,7 +199,7 @@ function makeFake(opts: FakeOptions = {}): Fake {
   return {
     page,
     lines,
-    isFinished: async () => played || vanished,
+    isFinished: async () => played || vanished || raced,
     combos: () => combos,
     restore: () => {
       Date.now = realNow;
@@ -256,4 +272,24 @@ test("a search whose hand goes out from under it still logs how long it ran", as
   const searched = abandoned.match(/\[search (\d+)ms\]/);
   assert.ok(searched, `the abandoned turn carries no search time: "${abandoned}"`);
   assert.ok(Number(searched[1]) > 0, "a search that read the DOM cannot have taken 0ms");
+});
+
+test("HUMAN_TURN_SECONDS auto-passing mid-search abandons the turn, it does not throw", async (t) => {
+  // No maxSearchMs backstop guards this anymore (removed as covered by
+  // per-locator timeouts) — but a disabled PASSA read while the app's own
+  // 20s auto-pass has already moved the turn on is not "the rules are
+  // broken", it is the same race `currentSelection`'s comment names. Only a
+  // disabled PASSA on a table that still claims the viewer's turn is a bug.
+  const fake = makeFake({ stepMs: 100, autoPassedMidSearch: true });
+  t.after(fake.restore);
+
+  await driveGameToCompletion(fake.page, {
+    ...OPEN,
+    isFinished: fake.isFinished,
+    maxCombosTried: 10,
+    log: (line) => fake.lines.push(line),
+  });
+
+  const abandoned = fake.lines.find((l) => l.startsWith("abandoned "));
+  assert.ok(abandoned, `an abandoned search logged nothing: ${JSON.stringify(fake.lines)}`);
 });

@@ -103,16 +103,18 @@ jobs:
             exit 0
           fi
           changed=$(git diff --name-only "$base" HEAD)
-          # A package.json touch that only edits `.scripts` cannot change what either
-          # native project bundles. Same fail-unsafe posture as everything below: a
-          # parse failure, or any change other than `.scripts`, leaves package.json in
-          # $native_trigger so the existing allowlist check still catches it.
+          # A package.json touch that only edits a *non-lifecycle* `.scripts` entry
+          # cannot change what either native project bundles — `scripts/package-
+          # json-native-trigger.mjs` (tested: tests/packageJsonNativeTrigger.test.ts)
+          # is what decides that, so `postinstall`'s patch-package reach into native
+          # sources can't be exempted by accident. Same fail-unsafe posture as
+          # everything below: a parse failure, or any other change, leaves
+          # package.json in $native_trigger so the existing allowlist check still
+          # catches it.
           native_trigger="$changed"
           if grep -qE '^package\.json$' <<< "$changed"; then
-            before_rest=$(git show "$base:package.json" 2>/dev/null | jq -S 'del(.scripts)' 2>/dev/null || true)
-            after_rest=$(jq -S 'del(.scripts)' package.json 2>/dev/null || true)
-            if [ -n "$before_rest" ] && [ -n "$after_rest" ] && [ "$before_rest" = "$after_rest" ]; then
-              echo "package.json changed but only .scripts did — not a native trigger."
+            if [ "$(node scripts/package-json-native-trigger.mjs "$base")" = "not-native" ]; then
+              echo "package.json changed but only a non-lifecycle .scripts entry did — not a native trigger."
               native_trigger=$(grep -vE '^package\.json$' <<< "$changed" || true)
             fi
           fi
