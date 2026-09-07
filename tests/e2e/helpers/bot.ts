@@ -96,14 +96,23 @@ function labelSelector(label: string): string {
 export class StuckError extends Error {}
 
 /**
- * One `playOrPass` call spent longer than its budget hunting for a card to
- * play. Neither `stallMs` nor `maxStatesWithoutProgress` can see this: both
- * only compare table descriptions *between* calls.
+ * One `playOrPass` call tried more candidate combinations than
+ * `maxCombosTried` allows, or ran past `maxSearchMs` doing it. Neither
+ * `stallMs` nor `maxStatesWithoutProgress` can see this: both only compare
+ * table descriptions *between* calls.
  *
- * The budget is a ceiling over every healthy search, not a claim about which
- * deadline the search lost to — offline `HUMAN_TURN_SECONDS` does not arm on
- * a lead (`turnTimerActive`, `includeNewRound: false`) and online the
- * deadline is the server's AFK window instead.
+ * `maxCombosTried` is counted rather than timed, for the same reason
+ * `maxStatesWithoutProgress` is: a slow CI runner plays through the same
+ * finite candidate list a fast one does, just slower, and a wall-clock
+ * ceiling on one candidate can't tell "still working" from "stuck" under
+ * machine-speed variance — every locator call inside one candidate's own
+ * search (`tryCombo`, `setSelection`) already carries its own bounded
+ * timeout for that. `maxSearchMs` bounds the sum across every candidate
+ * instead: up to `maxCombosTried` of them, each capable of costing close to
+ * its own per-locator ceiling if every read comes back slow rather than
+ * fast, can still add up past this test's own timeout before either
+ * watchdog above gets a look — the #770 failure mode this class exists to
+ * pre-empt with a real diagnostic instead of a bare timeout.
  */
 export class SearchTimeoutError extends StuckError {}
 
@@ -118,13 +127,22 @@ export class SearchTimeoutError extends StuckError {}
 const CARD_CLICK_TIMEOUT_MS = 4_000;
 
 /**
- * Under `app/game.tsx`'s `HUMAN_TURN_SECONDS`, so an offline reply search is
- * cut off before the auto-pass takes the turn out from under it. That constant
- * is module-local and cannot be imported here; `tests/botSearchTimeout.test.ts`
- * reads both out of source and fails when this stops being the smaller one.
- * `DriveOptions.searchBudgetMs` overrides it.
+ * `tests/botSearchTimeout.test.ts` derives the real worst case from
+ * `dealCards`' own output and fails if this stops being comfortably above
+ * it. `DriveOptions.maxCombosTried` overrides it.
  */
-const DEFAULT_SEARCH_BUDGET_MS = 18_000;
+export const DEFAULT_MAX_COMBOS_TRIED = 150;
+
+/**
+ * Backstop against the aggregate, not against one candidate hanging
+ * (`CARD_CLICK_TIMEOUT_MS` already covers that) or against CPU variance
+ * (`DEFAULT_MAX_COMBOS_TRIED` already covers a healthy search running slow).
+ * Comfortably above anything a healthy search has been measured to take, and
+ * comfortably below both `maxTotalMs` and Playwright's own per-test timeout,
+ * so this names the failure before either buries it under a bare 300s
+ * timeout with no diagnostic (#770). `DriveOptions.maxSearchMs` overrides it.
+ */
+export const DEFAULT_MAX_SEARCH_MS = 90_000;
 
 /**
  * The table description names the last play's shape, and `canPlay` only ever
@@ -204,9 +222,10 @@ function requiredReplySize(desc: string): number | null {
 async function playOrPass(
   page: Page,
   desc: string,
-  searchBudgetMs = DEFAULT_SEARCH_BUDGET_MS
+  maxCombosTried = DEFAULT_MAX_COMBOS_TRIED,
+  maxSearchMs = DEFAULT_MAX_SEARCH_MS
 ): Promise<string | null> {
-  const searchDeadline = Date.now() + searchBudgetMs;
+  const searchDeadline = Date.now() + maxSearchMs;
   const replySize = requiredReplySize(desc);
   const handCards = page.locator(HAND_CARDS);
   const cardsNow = (await handCards.evaluateAll((els) =>
@@ -291,17 +310,25 @@ async function playOrPass(
   let combosTried = 0;
 
   async function tryCombo(cardLabels: string[]): Promise<"played" | "no" | "gone"> {
+    if (combosTried >= maxCombosTried) {
+      throw new SearchTimeoutError(
+        `Search for a reply to "${desc}" tried ${combosTried} candidate(s) without finishing, ` +
+          `past the ${maxCombosTried}-candidate ceiling. Hand at search start: ` +
+          `[${labels.join(", ")}].`
+      );
+    }
     if (Date.now() > searchDeadline) {
       throw new SearchTimeoutError(
-        `Search for a reply to "${desc}" ran past ${searchBudgetMs}ms after ${combosTried} ` +
-          `candidate(s), without finishing. The turn's own deadline — offline ` +
-          `HUMAN_TURN_SECONDS when answering a play, online the server's AFK window — may ` +
-          `already have passed it. Hand at search start: [${labels.join(", ")}].`
+        `Search for a reply to "${desc}" ran past ${maxSearchMs}ms after ${combosTried} ` +
+          `candidate(s) — the count cap alone would not have caught this. Hand at search ` +
+          `start: [${labels.join(", ")}].`
       );
     }
     combosTried += 1;
     if (!(await setSelection(cardLabels))) return "gone";
-    const label = await giocaBtn.getAttribute("aria-label").catch(() => null);
+    const label = await giocaBtn
+      .getAttribute("aria-label", { timeout: CARD_CLICK_TIMEOUT_MS })
+      .catch(() => null);
     if (label === GIOCA_VALID_LABEL) {
       if (!(await click(giocaBtn))) return "gone";
       return "played";
@@ -355,6 +382,12 @@ async function playOrPass(
     return null; // PASSA itself has gone — the game moved on, not a stuck table.
   }
   if (!passEnabled) {
+    // The same race `currentSelection`'s own comment names: `HUMAN_TURN_SECONDS`
+    // can auto-pass the turn out from under a slow search, and a disabled PASSA
+    // read mid-race looks identical to the app being wrong unless the table is
+    // asked whether it still agrees this is the viewer's turn.
+    const stillMyTurn = (await tableDescription(page))?.startsWith(YOUR_TURN_PREFIX) ?? false;
+    if (!stillMyTurn) return null;
     throw new StuckError(
       `No combination in hand [${labels.join(", ")}] satisfies GIOCA, and PASSA is disabled — the rules guarantee one of those always holds.`
     );
@@ -471,8 +504,10 @@ export interface DriveOptions {
    * assertion.
    */
   maxTotalMs?: number;
-  /** See `SearchTimeoutError`. Overrides `DEFAULT_SEARCH_BUDGET_MS`. */
-  searchBudgetMs?: number;
+  /** See `SearchTimeoutError`. Overrides `DEFAULT_MAX_COMBOS_TRIED`. */
+  maxCombosTried?: number;
+  /** See `SearchTimeoutError`. Overrides `DEFAULT_MAX_SEARCH_MS`. */
+  maxSearchMs?: number;
   log?: (line: string) => void;
 }
 
@@ -493,13 +528,22 @@ export async function driveGameToCompletion(page: Page, opts: DriveOptions): Pro
   // tight that one slow AI response false-positives a healthy game.
   const stallMs = opts.stallMs ?? 15_000;
   const maxTotalMs = opts.maxTotalMs ?? 240_000;
-  const searchBudgetMs = opts.searchBudgetMs ?? DEFAULT_SEARCH_BUDGET_MS;
+  const maxCombosTried = opts.maxCombosTried ?? DEFAULT_MAX_COMBOS_TRIED;
+  const maxSearchMs = opts.maxSearchMs ?? DEFAULT_MAX_SEARCH_MS;
   const log = opts.log ?? (() => {});
 
   let lastDesc = "";
   let lastChangeAt = Date.now();
   let progress = NO_PROGRESS_YET;
   const startedAt = Date.now();
+  // `progress` sums cards across every hand, so a viewer stuck auto-passing
+  // every turn (HUMAN_TURN_SECONDS beating a slow search — see `playOrPass`'s
+  // null return) is invisible to it as long as opponents keep playing: the
+  // total still falls, `stale` keeps resetting, and the match finishes with a
+  // winner even though this seat never once played. This counts turns
+  // abandoned back to back, which only that specific failure can run up.
+  let consecutiveAbandons = 0;
+  const maxConsecutiveAbandons = 10;
 
   for (;;) {
     if (await opts.isFinished(page)) return;
@@ -550,7 +594,7 @@ export async function driveGameToCompletion(page: Page, opts: DriveOptions): Pro
       // No valid giveback card exists — nothing to click; keep polling for the stall watchdog.
     } else if (desc.startsWith(YOUR_TURN_PREFIX)) {
       const searchStartedAt = Date.now();
-      const action = await playOrPass(page, desc, searchBudgetMs);
+      const action = await playOrPass(page, desc, maxCombosTried, maxSearchMs);
       // Logged before the null branch below, not after: a search that lost its
       // hand partway through is the one whose duration is worth having, and it
       // is exactly the branch that returns null.
@@ -559,10 +603,20 @@ export async function driveGameToCompletion(page: Page, opts: DriveOptions): Pro
         // The hand stopped being interactive mid-search — most often the
         // one-tick "your turn" / gameOver race described above `playOrPass`.
         // Let the next iteration's isFinished/description check decide what
-        // actually happened rather than asserting anything here.
+        // actually happened, except for the count below, which is the one
+        // thing that check cannot see.
+        consecutiveAbandons += 1;
+        if (consecutiveAbandons > maxConsecutiveAbandons) {
+          throw new StuckError(
+            `The viewer's turn was abandoned ${consecutiveAbandons} times in a row without ever ` +
+              `completing a play or pass — this seat is not participating even though the game ` +
+              `keeps moving. Last table state: "${desc}".`
+          );
+        }
         await sleep(150);
         continue;
       }
+      consecutiveAbandons = 0;
       const changed = await waitForChange(page, desc, stallMs);
       if (!changed) {
         throw new StuckError(
