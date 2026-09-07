@@ -103,14 +103,9 @@ jobs:
             exit 0
           fi
           changed=$(git diff --name-only "$base" HEAD)
-          # A package.json touch that only edits a *non-lifecycle* `.scripts` entry
-          # cannot change what either native project bundles — `scripts/package-
-          # json-native-trigger.mjs` (tested: tests/packageJsonNativeTrigger.test.ts)
-          # is what decides that, so `postinstall`'s patch-package reach into native
-          # sources can't be exempted by accident. Same fail-unsafe posture as
-          # everything below: a parse failure, or any other change, leaves
-          # package.json in $native_trigger so the existing allowlist check still
-          # catches it.
+          # A non-lifecycle `.scripts` edit cannot reach either native project;
+          # scripts/package-json-native-trigger.mjs decides that, keeping
+          # postinstall's patch-package reach out of the exemption.
           native_trigger="$changed"
           if grep -qE '^package\.json$' <<< "$changed"; then
             if [ "$(node scripts/package-json-native-trigger.mjs "$base")" = "not-native" ]; then

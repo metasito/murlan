@@ -97,16 +97,22 @@ export class StuckError extends Error {}
 
 /**
  * One `playOrPass` call tried more candidate combinations than
- * `maxCombosTried` allows. Neither `stallMs` nor `maxStatesWithoutProgress`
- * can see this: both only compare table descriptions *between* calls.
+ * `maxCombosTried` allows, or ran past `maxSearchMs` doing it. Neither
+ * `stallMs` nor `maxStatesWithoutProgress` can see this: both only compare
+ * table descriptions *between* calls.
  *
- * Counted rather than timed, for the same reason `maxStatesWithoutProgress`
- * is: a slow CI runner plays through the same finite candidate list a fast
- * one does, just slower, and a wall-clock ceiling can't tell "still working"
- * from "stuck" under machine-speed variance. A single candidate hanging is a
- * different failure and not this class's job — every locator call inside one
- * candidate's own search (`tryCombo`, `setSelection`) carries its own bounded
- * timeout instead.
+ * `maxCombosTried` is counted rather than timed, for the same reason
+ * `maxStatesWithoutProgress` is: a slow CI runner plays through the same
+ * finite candidate list a fast one does, just slower, and a wall-clock
+ * ceiling on one candidate can't tell "still working" from "stuck" under
+ * machine-speed variance — every locator call inside one candidate's own
+ * search (`tryCombo`, `setSelection`) already carries its own bounded
+ * timeout for that. `maxSearchMs` bounds the sum across every candidate
+ * instead: up to `maxCombosTried` of them, each capable of costing close to
+ * its own per-locator ceiling if every read comes back slow rather than
+ * fast, can still add up past this test's own timeout before either
+ * watchdog above gets a look — the #770 failure mode this class exists to
+ * pre-empt with a real diagnostic instead of a bare timeout.
  */
 export class SearchTimeoutError extends StuckError {}
 
@@ -126,6 +132,17 @@ const CARD_CLICK_TIMEOUT_MS = 4_000;
  * it. `DriveOptions.maxCombosTried` overrides it.
  */
 export const DEFAULT_MAX_COMBOS_TRIED = 150;
+
+/**
+ * Backstop against the aggregate, not against one candidate hanging
+ * (`CARD_CLICK_TIMEOUT_MS` already covers that) or against CPU variance
+ * (`DEFAULT_MAX_COMBOS_TRIED` already covers a healthy search running slow).
+ * Comfortably above anything a healthy search has been measured to take, and
+ * comfortably below both `maxTotalMs` and Playwright's own per-test timeout,
+ * so this names the failure before either buries it under a bare 300s
+ * timeout with no diagnostic (#770). `DriveOptions.maxSearchMs` overrides it.
+ */
+export const DEFAULT_MAX_SEARCH_MS = 90_000;
 
 /**
  * The table description names the last play's shape, and `canPlay` only ever
@@ -205,8 +222,10 @@ function requiredReplySize(desc: string): number | null {
 async function playOrPass(
   page: Page,
   desc: string,
-  maxCombosTried = DEFAULT_MAX_COMBOS_TRIED
+  maxCombosTried = DEFAULT_MAX_COMBOS_TRIED,
+  maxSearchMs = DEFAULT_MAX_SEARCH_MS
 ): Promise<string | null> {
+  const searchDeadline = Date.now() + maxSearchMs;
   const replySize = requiredReplySize(desc);
   const handCards = page.locator(HAND_CARDS);
   const cardsNow = (await handCards.evaluateAll((els) =>
@@ -296,6 +315,13 @@ async function playOrPass(
         `Search for a reply to "${desc}" tried ${combosTried} candidate(s) without finishing, ` +
           `past the ${maxCombosTried}-candidate ceiling. Hand at search start: ` +
           `[${labels.join(", ")}].`
+      );
+    }
+    if (Date.now() > searchDeadline) {
+      throw new SearchTimeoutError(
+        `Search for a reply to "${desc}" ran past ${maxSearchMs}ms after ${combosTried} ` +
+          `candidate(s) — the aggregate is unbounded even though every candidate is timed on ` +
+          `its own. Hand at search start: [${labels.join(", ")}].`
       );
     }
     combosTried += 1;
@@ -480,6 +506,8 @@ export interface DriveOptions {
   maxTotalMs?: number;
   /** See `SearchTimeoutError`. Overrides `DEFAULT_MAX_COMBOS_TRIED`. */
   maxCombosTried?: number;
+  /** See `SearchTimeoutError`. Overrides `DEFAULT_MAX_SEARCH_MS`. */
+  maxSearchMs?: number;
   log?: (line: string) => void;
 }
 
@@ -501,6 +529,7 @@ export async function driveGameToCompletion(page: Page, opts: DriveOptions): Pro
   const stallMs = opts.stallMs ?? 15_000;
   const maxTotalMs = opts.maxTotalMs ?? 240_000;
   const maxCombosTried = opts.maxCombosTried ?? DEFAULT_MAX_COMBOS_TRIED;
+  const maxSearchMs = opts.maxSearchMs ?? DEFAULT_MAX_SEARCH_MS;
   const log = opts.log ?? (() => {});
 
   let lastDesc = "";
@@ -557,7 +586,7 @@ export async function driveGameToCompletion(page: Page, opts: DriveOptions): Pro
       // No valid giveback card exists — nothing to click; keep polling for the stall watchdog.
     } else if (desc.startsWith(YOUR_TURN_PREFIX)) {
       const searchStartedAt = Date.now();
-      const action = await playOrPass(page, desc, maxCombosTried);
+      const action = await playOrPass(page, desc, maxCombosTried, maxSearchMs);
       // Logged before the null branch below, not after: a search that lost its
       // hand partway through is the one whose duration is worth having, and it
       // is exactly the branch that returns null.

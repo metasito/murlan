@@ -3,7 +3,9 @@
 // shared/, locales/ and app/, so naming the directories that *do* reach them
 // would be a list to keep in step with every new import. This names the ones
 // that cannot instead, and anything unrecognised runs the suite — the same
-// direction .github/workflows/ci.yml's `scope` job fails in.
+// direction .github/workflows/ci.yml's `scope` job fails in. Not to be
+// confused with scripts/package-json-native-trigger.mjs, which answers
+// whether a change can reach what the *native compile jobs* build.
 
 import { execFileSync } from "node:child_process";
 import path from "node:path";

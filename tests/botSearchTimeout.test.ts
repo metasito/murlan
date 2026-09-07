@@ -72,8 +72,8 @@ const YOUR_TURN_DESC =
   "È il tuo turno. Luan ha giocato Re di Cuori. Luan ha 5 carte in mano. Hai 4 carte in mano.";
 const AFTER_PLAY_DESC =
   "Hai giocato Asso di Fiori. Luan ha 5 carte in mano. Hai 3 carte in mano.";
-const AUTO_PASSED_DESC =
-  "Passaggio automatico. Luan ha 5 carte in mano. Hai 4 carte in mano.";
+/** Synthetic: only needs to not start with YOUR_TURN_PREFIX, not to match real a11y output. */
+const NOT_YOUR_TURN_DESC = "Luan sta giocando.";
 
 /**
  * Four distinct ranks, every one above the Re on the table, so `playOrPass`
@@ -145,7 +145,7 @@ function makeFake(opts: FakeOptions = {}): Fake {
         count: async () => 1,
         getAttribute: async () => {
           tick();
-          if (raced) return AUTO_PASSED_DESC;
+          if (raced) return NOT_YOUR_TURN_DESC;
           return played ? AFTER_PLAY_DESC : YOUR_TURN_DESC;
         },
       };
@@ -235,6 +235,29 @@ test("the cap bounds the whole search, not each candidate", async (t) => {
   assert.equal(fake.combos(), 2, "the cap must span candidates, not restart at each one");
 });
 
+test("many candidates adding up trips the wall-clock backstop, not just the combo count", async (t) => {
+  // maxCombosTried wide open (1000) so only maxSearchMs can end this drive —
+  // the aggregate has no bound of its own once the count cap can't reach it.
+  const fake = makeFake({ stepMs: 1_000 });
+  t.after(fake.restore);
+
+  await assert.rejects(
+    () =>
+      driveGameToCompletion(fake.page, {
+        ...OPEN,
+        isFinished: fake.isFinished,
+        maxCombosTried: 1_000,
+        maxSearchMs: 1_500,
+        log: (line) => fake.lines.push(line),
+      }),
+    (err: unknown) => {
+      assert.ok(err instanceof SearchTimeoutError, `expected SearchTimeoutError, got ${err}`);
+      assert.match((err as Error).message, /ran past 1500ms after \d+ candidate\(s\)/);
+      return true;
+    }
+  );
+});
+
 test("a search that fits inside its cap plays, and its duration reaches the log", async (t) => {
   const fake = makeFake({ stepMs: 100, acceptNth: 2 });
   t.after(fake.restore);
@@ -275,11 +298,10 @@ test("a search whose hand goes out from under it still logs how long it ran", as
 });
 
 test("HUMAN_TURN_SECONDS auto-passing mid-search abandons the turn, it does not throw", async (t) => {
-  // No maxSearchMs backstop guards this anymore (removed as covered by
-  // per-locator timeouts) — but a disabled PASSA read while the app's own
-  // 20s auto-pass has already moved the turn on is not "the rules are
-  // broken", it is the same race `currentSelection`'s comment names. Only a
-  // disabled PASSA on a table that still claims the viewer's turn is a bug.
+  // A disabled PASSA read while the app's own 20s auto-pass has already
+  // moved the turn on is not "the rules are broken", it is the same race
+  // `currentSelection`'s comment names. Only a disabled PASSA on a table
+  // that still claims the viewer's turn is a bug.
   const fake = makeFake({ stepMs: 100, autoPassedMidSearch: true });
   t.after(fake.restore);
 

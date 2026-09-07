@@ -2,7 +2,9 @@
 // — anything but a non-lifecycle `.scripts` entry. `postinstall` runs
 // patch-package, which edits native sources directly (.github/workflows/ci.yml
 // `scope` job), so the install-lifecycle scripts must stay in the comparison
-// or this exempts the exact edit it exists to catch.
+// or this exempts the exact edit it exists to catch. Not to be confused with
+// scripts/native-scope.mjs, which answers a different question: whether a
+// change can reach the native *jest* suite.
 
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";

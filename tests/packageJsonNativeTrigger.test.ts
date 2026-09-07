@@ -9,8 +9,7 @@ test("a non-lifecycle scripts edit is not a native trigger", () => {
 });
 
 test("adding a postinstall script is a native trigger", () => {
-  // #928 round 2: postinstall runs patch-package, which edits native sources —
-  // a wholesale `.scripts` exemption silently skipped the compile jobs for it.
+  // postinstall runs patch-package, which edits native sources directly.
   const before = JSON.stringify({ name: "x", scripts: { test: "a" } });
   const after = JSON.stringify({
     name: "x",
