@@ -22,14 +22,31 @@ describe("verify-email code guessing is capped per credential", { skip: hasDatab
     });
   }
 
-  // Every test below mints its own code right after register() — which
-  // already minted one in the background (fire-and-forget, same technique
-  // tests/integration/resendVerification.test.ts documents). Clearing
-  // whatever that mint left first keeps this test's own code the only
-  // pending row, so a late-arriving background mint can't null it out from
-  // under an in-flight assertion.
+  // register() replies before minting (#897), so its own email_verify token
+  // can land any time after — including after this test's own mint, whose
+  // invalidatePendingAuthTokens+INSERT would then race register's identical
+  // DELETE+INSERT chain. Waiting for register's row to exist first (same
+  // poll as tests/integration/auth.test.ts's "mints exactly one" test) means
+  // that chain has already finished before this test invalidates and mints
+  // its own — no later DELETE can still be in flight to remove it.
+  async function waitForPendingCode(userId: string): Promise<void> {
+    const { db } = await import("../../server/db.ts");
+    const { authTokens } = await import("../../shared/schema.ts");
+    const { eq, and } = await import("drizzle-orm");
+    for (let attempt = 0; attempt < 20; attempt++) {
+      const rows = await db
+        .select()
+        .from(authTokens)
+        .where(and(eq(authTokens.userId, userId), eq(authTokens.purpose, "email_verify")));
+      if (rows.length > 0) return;
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    throw new Error(`register's background mint for ${userId} never landed`);
+  }
+
   test("a wrong code fails with the generic failure", async () => {
     const { user } = await register(server, "code_wrong");
+    await waitForPendingCode(user.id);
     const { mintAuthCode, invalidatePendingAuthTokens } = await import("../../server/authTokens.ts");
     await invalidatePendingAuthTokens(user.id, "email_verify");
     await mintAuthCode(user.id, user.email!, "email_verify", 60_000);

@@ -178,6 +178,9 @@ describe('app/verify-email', () => {
   });
 
   it('prefills the email from the route param and offers a resend when signed in', async () => {
+    // A different address than the param: the field must keep the param's
+    // value (the prefill only fills an empty field), and resend must still
+    // target the signed-in account's own address, not the field.
     mockUseLocalSearchParams.mockReturnValue({ email: 'fresh@example.test' });
     mockApiRequest.mockResolvedValue({ ok: true, json: async () => ({ ok: true }) });
     mockFetch.mockResolvedValue({
@@ -187,14 +190,14 @@ describe('app/verify-email', () => {
         id: 'u1',
         username: 'fresh',
         tutorialSeenAt: null,
-        email: 'fresh@example.test',
+        email: 'signedin@example.test',
         emailVerified: false,
       }),
     });
     const view = await mount();
 
     const emailInput = await screen.findByLabelText(locale['auth.emailA11yLabel']);
-    expect(emailInput.props.value).toBe('fresh@example.test');
+    await waitFor(() => expect(emailInput.props.value).toBe('fresh@example.test'));
 
     const resend = await screen.findByRole('button', { name: locale['verifyEmail.resend'] });
     await act(async () => {
@@ -202,7 +205,7 @@ describe('app/verify-email', () => {
     });
 
     expect(mockApiRequest).toHaveBeenCalledWith('POST', '/api/auth/resend-verification', {});
-    const resendSent = locale['verifyEmail.resendSent'].replace('{{email}}', 'fresh@example.test');
+    const resendSent = locale['verifyEmail.resendSent'].replace('{{email}}', 'signedin@example.test');
     await waitFor(() => expect(screen.getByText(resendSent)).toBeTruthy());
     await view.unmount();
   });
@@ -336,8 +339,9 @@ describe('app/auth reaches both new screens', () => {
       fireEvent.press(screen.getByRole('button', { name: locale['auth.submitRegister'] }));
     });
 
-    // #925: shown, not just reachable — the push happens on submit, before
-    // any interstitial button is touched.
+    // The push happens on submit itself, before any interstitial button is
+    // touched — asserted here so deleting it would fail this, not just the
+    // button-press assertion below.
     await waitFor(() =>
       expect(mockPush).toHaveBeenCalledWith({
         pathname: '/verify-email',

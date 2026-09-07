@@ -79,8 +79,8 @@ export default function AuthScreen() {
           setLoading(false);
           return;
         }
-        // #925: shown, not just reachable — the interstitial underneath is
-        // only what "back" lands on now.
+        // The interstitial still renders underneath, unnavigated away from,
+        // for router.back() from /verify-email to land on.
         setCheckEmail({ signedIn: signedIn !== null });
         router.push({ pathname: "/verify-email", params: { email: email.trim() } });
       }
