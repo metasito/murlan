@@ -39,11 +39,9 @@ function git(args, cwd) {
 }
 
 /**
- * A stale `npm install` can leave node_modules on a looser resolution than package-lock.json
- * pins, silently — #926/#938 lost a full ticket + review cycle to phantom type errors from
- * exactly this. Every direct dependency the lockfile actually pins is checked; one missing from
- * `packages` (a transitive-only entry, or a lockfile shape this doesn't recognize) is not our
- * call to make and is skipped rather than guessed at.
+ * A dependency absent from the lockfile's `packages` map — a transitive-only entry, or a shape
+ * this doesn't recognize — is not this function's call to make, so it is skipped rather than
+ * guessed at. See `docs/agents/loops.md` for why this check exists.
  */
 export function lockDrift(packageJson, packageLock, installedVersions) {
   const deps = { ...packageJson.dependencies, ...packageJson.devDependencies };
@@ -63,6 +61,20 @@ function installedVersion(root, name) {
   } catch {
     return undefined;
   }
+}
+
+/** Reads `root`'s own `package.json`/`package-lock.json`/`node_modules` and compares them. */
+export function checkLockDrift(root) {
+  const packageJson = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
+  const packageLock = JSON.parse(readFileSync(join(root, "package-lock.json"), "utf8"));
+  if (!packageLock.packages) {
+    throw new Error(`${root}/package-lock.json has no "packages" map — cannot check for drift`);
+  }
+  const installed = Object.create(null);
+  for (const name of Object.keys({ ...packageJson.dependencies, ...packageJson.devDependencies })) {
+    installed[name] = installedVersion(root, name);
+  }
+  return lockDrift(packageJson, packageLock, installed);
 }
 
 if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop())) {
@@ -88,17 +100,15 @@ if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "
     process.exit(1);
   }
 
-  const packageJson = JSON.parse(readFileSync(join(shared, "package.json"), "utf8"));
-  const packageLock = JSON.parse(readFileSync(join(shared, "package-lock.json"), "utf8"));
-  const installed = Object.create(null);
-  for (const name of Object.keys({ ...packageJson.dependencies, ...packageJson.devDependencies })) {
-    installed[name] = installedVersion(shared, name);
-  }
-  const drift = lockDrift(packageJson, packageLock, installed);
+  const drift = checkLockDrift(shared);
   if (drift.length) {
     console.error(`\npreflight: node_modules in ${shared} has drifted from package-lock.json:\n`);
     for (const d of drift) console.error(`  ${d.name}: installed ${d.installed}, locked ${d.locked}`);
-    console.error(`\nRun \`npm ci\` in ${shared} before trusting a local check — a stale install can pass typecheck on phantom errors and fail test:native outright.`);
+    console.error(
+      `\nRun \`npm ci\` in ${shared} before trusting a local check — a stale install can pass ` +
+        `typecheck on phantom errors and fail test:native outright. node_modules is shared live ` +
+        `across every worktree: check no peer session is mid-run before reinstalling.`
+    );
     process.exit(1);
   }
 
