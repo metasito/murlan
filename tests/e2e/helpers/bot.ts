@@ -97,19 +97,16 @@ export class StuckError extends Error {}
 
 /**
  * One `playOrPass` call tried more candidate combinations than
- * `maxCombosTried` allows, or ran past `maxSearchMs` doing it. Neither
- * `stallMs` nor `maxStatesWithoutProgress` can see this: both only compare
- * table descriptions *between* calls.
+ * `maxCombosTried` allows. Neither `stallMs` nor `maxStatesWithoutProgress`
+ * can see this: both only compare table descriptions *between* calls.
  *
- * `maxCombosTried` is the bound that actually decides "stuck" — counted
- * rather than timed, for the same reason `maxStatesWithoutProgress` is: a
- * slow CI runner plays through the same finite candidate list a fast one
- * does, just slower, and a wall-clock ceiling can't tell "still working" from
- * "stuck" under machine-speed variance. `maxSearchMs` is a much larger
- * backstop against a single candidate itself hanging (a click that never
- * resolves) — without it, `maxTotalMs` only checks between turns, and a
- * wedged search would surface as Playwright's own bare timeout instead of
- * this error's diagnostic.
+ * Counted rather than timed, for the same reason `maxStatesWithoutProgress`
+ * is: a slow CI runner plays through the same finite candidate list a fast
+ * one does, just slower, and a wall-clock ceiling can't tell "still working"
+ * from "stuck" under machine-speed variance. A single candidate hanging is a
+ * different failure and not this class's job — every locator call inside one
+ * candidate's own search (`tryCombo`, `setSelection`) carries its own bounded
+ * timeout instead.
  */
 export class SearchTimeoutError extends StuckError {}
 
@@ -124,23 +121,11 @@ export class SearchTimeoutError extends StuckError {}
 const CARD_CLICK_TIMEOUT_MS = 4_000;
 
 /**
- * Derived, not guessed: the largest hand `dealCards` deals is 18 (3 players,
- * `Math.ceil(54/3)`, lib/gameEngine.ts). Worst case for `worthTrying` is all
- * 18 as singles; worst case for the pair/triple/bomb sweep is 4 ranks holding
- * all 4 suits each (16 cards, tried at sizes 2/3/4 = 12 combos) plus one more
- * rank's pair (1 combo) — 31 combos total. `DEFAULT_MAX_COMBOS_TRIED` leaves
- * roughly 5x that headroom; a search that blows past it is stuck, not slow.
- * `DriveOptions.maxCombosTried` overrides it.
+ * `tests/botSearchTimeout.test.ts` derives the real worst case from
+ * `dealCards`' own output and fails if this stops being comfortably above
+ * it. `DriveOptions.maxCombosTried` overrides it.
  */
-const DEFAULT_MAX_COMBOS_TRIED = 150;
-
-/**
- * Backstop against one candidate itself hanging, not against a slow CI
- * runner — see `SearchTimeoutError`. Comfortably above anything the original
- * (flaky) 18s ms-based budget ever needed, so it should never fire on a
- * healthy search regardless of load. `DriveOptions.maxSearchMs` overrides it.
- */
-const DEFAULT_MAX_SEARCH_MS = 90_000;
+export const DEFAULT_MAX_COMBOS_TRIED = 150;
 
 /**
  * The table description names the last play's shape, and `canPlay` only ever
@@ -220,10 +205,8 @@ function requiredReplySize(desc: string): number | null {
 async function playOrPass(
   page: Page,
   desc: string,
-  maxCombosTried = DEFAULT_MAX_COMBOS_TRIED,
-  maxSearchMs = DEFAULT_MAX_SEARCH_MS
+  maxCombosTried = DEFAULT_MAX_COMBOS_TRIED
 ): Promise<string | null> {
-  const searchDeadline = Date.now() + maxSearchMs;
   const replySize = requiredReplySize(desc);
   const handCards = page.locator(HAND_CARDS);
   const cardsNow = (await handCards.evaluateAll((els) =>
@@ -315,16 +298,11 @@ async function playOrPass(
           `[${labels.join(", ")}].`
       );
     }
-    if (Date.now() > searchDeadline) {
-      throw new SearchTimeoutError(
-        `Search for a reply to "${desc}" ran past ${maxSearchMs}ms after ${combosTried} ` +
-          `candidate(s) — one candidate is hanging, not just slow. Hand at search start: ` +
-          `[${labels.join(", ")}].`
-      );
-    }
     combosTried += 1;
     if (!(await setSelection(cardLabels))) return "gone";
-    const label = await giocaBtn.getAttribute("aria-label").catch(() => null);
+    const label = await giocaBtn
+      .getAttribute("aria-label", { timeout: CARD_CLICK_TIMEOUT_MS })
+      .catch(() => null);
     if (label === GIOCA_VALID_LABEL) {
       if (!(await click(giocaBtn))) return "gone";
       return "played";
@@ -496,8 +474,6 @@ export interface DriveOptions {
   maxTotalMs?: number;
   /** See `SearchTimeoutError`. Overrides `DEFAULT_MAX_COMBOS_TRIED`. */
   maxCombosTried?: number;
-  /** See `SearchTimeoutError`. Overrides `DEFAULT_MAX_SEARCH_MS`. */
-  maxSearchMs?: number;
   log?: (line: string) => void;
 }
 
@@ -519,7 +495,6 @@ export async function driveGameToCompletion(page: Page, opts: DriveOptions): Pro
   const stallMs = opts.stallMs ?? 15_000;
   const maxTotalMs = opts.maxTotalMs ?? 240_000;
   const maxCombosTried = opts.maxCombosTried ?? DEFAULT_MAX_COMBOS_TRIED;
-  const maxSearchMs = opts.maxSearchMs ?? DEFAULT_MAX_SEARCH_MS;
   const log = opts.log ?? (() => {});
 
   let lastDesc = "";
@@ -576,7 +551,7 @@ export async function driveGameToCompletion(page: Page, opts: DriveOptions): Pro
       // No valid giveback card exists — nothing to click; keep polling for the stall watchdog.
     } else if (desc.startsWith(YOUR_TURN_PREFIX)) {
       const searchStartedAt = Date.now();
-      const action = await playOrPass(page, desc, maxCombosTried, maxSearchMs);
+      const action = await playOrPass(page, desc, maxCombosTried);
       // Logged before the null branch below, not after: a search that lost its
       // hand partway through is the one whose duration is worth having, and it
       // is exactly the branch that returns null.

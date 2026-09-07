@@ -12,10 +12,16 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Page } from "@playwright/test";
-import { driveGameToCompletion, SearchTimeoutError, StuckError } from "./e2e/helpers/bot.ts";
+import {
+  DEFAULT_MAX_COMBOS_TRIED,
+  driveGameToCompletion,
+  SearchTimeoutError,
+  StuckError,
+} from "./e2e/helpers/bot.ts";
 import { GIOCA_VALID_LABEL } from "./e2e/helpers/labels.ts";
 import { TABLE, HAND_CARDS } from "./e2e/helpers/selectors.ts";
 import { blankComments } from "./helpers/sourceScan.ts";
+import { dealCards } from "../lib/gameEngine.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -33,6 +39,32 @@ test("tableFit's offline clock has not drifted from HUMAN_TURN_SECONDS", () => {
     sourceConstant("tests/e2e/tableFit.spec.ts", "OFFLINE_CLOCK_MS"),
     humanTurnMs,
     "tests/e2e/tableFit.spec.ts's OFFLINE_CLOCK_MS has drifted from HUMAN_TURN_SECONDS"
+  );
+});
+
+test("DEFAULT_MAX_COMBOS_TRIED stays ahead of the largest hand dealCards actually deals", () => {
+  // Sweep every seat count the engine deals for, not just the known-largest
+  // (3 players, 18 cards) — this reds if dealCards' own math changes, rather
+  // than pinning a number this test would otherwise just restate.
+  let maxHandSize = 0;
+  for (let playerCount = 2; playerCount <= 8; playerCount++) {
+    const { hands } = dealCards(playerCount, 0);
+    for (const hand of hands) maxHandSize = Math.max(maxHandSize, hand.length);
+  }
+
+  // Mirrors tryCombo's own search shape: every card tried as a single, plus a
+  // pair/triple/bomb sweep bounded by same-rank groups of at most 4 cards
+  // (one per suit) tried at up to 3 sizes each.
+  const fullRankGroups = Math.floor(maxHandSize / 4);
+  const leftoverCards = maxHandSize % 4;
+  const groupCombos = fullRankGroups * 3 + (leftoverCards >= 2 ? 1 : 0);
+  const worstCaseCombos = maxHandSize + groupCombos;
+
+  assert.ok(
+    DEFAULT_MAX_COMBOS_TRIED > worstCaseCombos,
+    `DEFAULT_MAX_COMBOS_TRIED (${DEFAULT_MAX_COMBOS_TRIED}) must exceed the largest realistic ` +
+      `search (${worstCaseCombos} combos for a ${maxHandSize}-card hand) or a healthy search ` +
+      `could trip it`
   );
 });
 
@@ -159,13 +191,8 @@ function makeFake(opts: FakeOptions = {}): Fake {
   };
 }
 
-/** Everything but the cap/backstop under test wide open. */
-const OPEN = {
-  stallMs: 60_000,
-  maxStatesWithoutProgress: 100_000,
-  maxTotalMs: 10_000_000,
-  maxSearchMs: 10_000_000,
-};
+/** Everything but the cap under test wide open. */
+const OPEN = { stallMs: 60_000, maxStatesWithoutProgress: 100_000, maxTotalMs: 10_000_000 };
 
 test("the cap bounds the whole search, not each candidate", async (t) => {
   // HAND has 4 candidates (see its own comment); a cap of 2 must stop after
@@ -190,30 +217,6 @@ test("the cap bounds the whole search, not each candidate", async (t) => {
     }
   );
   assert.equal(fake.combos(), 2, "the cap must span candidates, not restart at each one");
-});
-
-test("a search stuck on one candidate still trips the wall-clock backstop", async (t) => {
-  // The cap wide open (1000) so only maxSearchMs can end this drive — a
-  // candidate that itself hangs has no way to move combosTried forward fast
-  // enough for the count-based cap to see it.
-  const fake = makeFake({ stepMs: 1_000 });
-  t.after(fake.restore);
-
-  await assert.rejects(
-    () =>
-      driveGameToCompletion(fake.page, {
-        ...OPEN,
-        isFinished: fake.isFinished,
-        maxCombosTried: 1_000,
-        maxSearchMs: 1_500,
-        log: (line) => fake.lines.push(line),
-      }),
-    (err: unknown) => {
-      assert.ok(err instanceof SearchTimeoutError, `expected SearchTimeoutError, got ${err}`);
-      assert.match((err as Error).message, /ran past 1500ms after \d+ candidate\(s\)/);
-      return true;
-    }
-  );
 });
 
 test("a search that fits inside its cap plays, and its duration reaches the log", async (t) => {
