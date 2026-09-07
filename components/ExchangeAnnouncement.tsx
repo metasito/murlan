@@ -100,6 +100,12 @@ export function ExchangeAnnouncement({
 
   return (
     <View testID="exchange-announce" pointerEvents="none" style={styles.layer}>
+      {/* Diagnostic only, offline-E2E-only (#940): a hierarchy dump can
+          confirm the override actually reached this render, instead of
+          inferring it from timing math after the fact. */}
+      {typeof holdMsOverride === "number" && (
+        <View testID={`exchange-announce-hold-override-${holdMsOverride}`} />
+      )}
       <A11yStatus label={a11yLabel} role="alert" live="assertive" />
 
       {bothJokersException ? (

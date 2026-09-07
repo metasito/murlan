@@ -17,11 +17,16 @@
 # synchronously with the deal, before the table remounts.
 #
 # The ceremony's own overlay (`<ExchangeAnnouncement>`, testID
-# `exchange-announce`) is asserted below, right after the `btn-prossima-manche`
-# tap that deals the hand it fires on. That single tap command does not return
-# for ~8.2s on a real device (#915), well past the overlay's real ~5.2s hold —
-# so `EXPO_PUBLIC_E2E_FAST` (set only by this job's own build) holds it open
-# past that return instead; no real player ever reads this env var. What the
+# `exchange-announce`) is waited for below, after the `btn-prossima-manche`
+# tap that deals the hand it fires on. That single tap command's own return
+# time is Maestro/XCUITest's settle-detection overhead on this device, not a
+# duration this app can measure and match (#915 measured ~8.2s; #940 found an
+# assertion sized to that single measurement plus a margin still missed the
+# overlay) — so `EXPO_PUBLIC_E2E_FAST` (set only by this job's own build)
+# holds the overlay open far longer than any round trip this suite has
+# recorded, and the wait below is `extendedWaitUntil` rather than an instant
+# `assertVisible` so it does not require the overlay to already be up the
+# moment the tap returns. No real player ever reads this env var. What the
 # exchange *decides* is asserted by the unit tests, which can see it — this
 # flow only proves the overlay itself paints on a real device.
 #
@@ -129,8 +134,10 @@ env:
     visible:
       id: "game-table"
     timeout: 90000
-- assertVisible:
-    id: "exchange-announce"
+- extendedWaitUntil:
+    visible:
+      id: "exchange-announce"
+    timeout: 20000
 
 # --- Confirm the match moved on rather than ending: a fresh, playable hand ---
 - extendedWaitUntil:
