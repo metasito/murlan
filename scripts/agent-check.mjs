@@ -15,6 +15,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { nativeScope } from "./native-scope.mjs";
+import { primaryWorktree, checkLockDrift } from "./preflight.mjs";
 
 /**
  * Per step. A wedged jest or a suite waiting on a port nothing will bind used to hang this
@@ -85,6 +86,24 @@ function readCache() {
   } catch {
     return {};
   }
+}
+
+// The cache key is tree content only (see `treeHash` above), so it cannot see a node_modules-only
+// drift — a peer session's `npm install` mid-run would otherwise keep replaying a stale PASS.
+const sharedRoot = primaryWorktree(git("worktree", "list", "--porcelain"));
+if (!sharedRoot) {
+  console.error("agent:check: could not find the primary worktree");
+  process.exit(1);
+}
+const drift = checkLockDrift(sharedRoot);
+if (drift.length) {
+  console.error(`\nagent:check  node_modules in ${sharedRoot} has drifted from package-lock.json:\n`);
+  for (const d of drift) console.error(`  ${d.name}: installed ${d.installed}, locked ${d.locked}`);
+  console.error(
+    `\nRun \`npm ci\` in ${sharedRoot} before trusting this result — node_modules is shared live ` +
+      `across every worktree: check no peer session is mid-run before reinstalling.`
+  );
+  process.exit(1);
 }
 
 const force = process.argv.includes("--force");
