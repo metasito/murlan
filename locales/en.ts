@@ -129,17 +129,22 @@ export const en = {
 
   // -------------------------------------------------------- verifyEmail.*
   "verifyEmail.title": "Verify email",
-  "verifyEmail.body": "Enter the code from the email we sent you.",
+  "verifyEmail.body": "Enter the 6-digit code from the email we sent you.",
   "verifyEmail.codeLabel": "Code",
-  "verifyEmail.codePlaceholder": "Paste the code here",
+  "verifyEmail.codePlaceholder": "6-digit code",
   "verifyEmail.codeA11yLabel": "Verification code",
   "verifyEmail.submit": "Verify",
   "verifyEmail.saving": "Verifying…",
   "verifyEmail.missingCode": "Enter the code from your email",
+  "verifyEmail.missingEmail": "Enter the email you signed up with",
   "verifyEmail.failed": "The code could not be verified. Try again.",
   "verifyEmail.successTitle": "Email verified",
   "verifyEmail.successBody": "Your address is confirmed. If you ever forget your password, you can reset it from the sign-in screen.",
   "verifyEmail.done": "Done",
+  "verifyEmail.resend": "Resend code",
+  "verifyEmail.resending": "Sending…",
+  "verifyEmail.resendSent": "A new code is on its way.",
+  "verifyEmail.resendFailed": "Could not resend the code. Try again.",
 
   // ------------------------------------------------------------- recover.*
   "recover.title": "Reset password",

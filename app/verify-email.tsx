@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { View, Text, TextInput, StyleSheet } from "react-native";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { MenuLayout } from "@/components/MenuLayout";
 import { MenuCard } from "@/components/MenuCard";
@@ -14,34 +14,60 @@ import { serverErrorMessage } from "@/lib/apiError";
 import { Colors, Spacing } from "@/lib/theme";
 
 /**
- * Reachable signed-in or signed-out: the redeem route is public — the token
- * is the credential (server/authTokens.ts) — and a player who read the mail
- * on another device may land here with no session on this one at all.
+ * Reachable signed-in or signed-out: the redeem route is public — the code
+ * plus the email it was sent to is the credential (server/authTokens.ts) —
+ * and a player who read the mail on another device may land here with no
+ * session on this one at all. The email field is prefilled from the signed-in
+ * user or the `email` route param (set by app/auth.tsx after signup) but
+ * stays editable for that signed-out case.
  */
 export default function VerifyEmailScreen() {
   const { t } = useTranslation();
-  const { refreshUser } = useAuth();
+  const { user, refreshUser } = useAuth();
+  const params = useLocalSearchParams<{ email?: string }>();
+  const [email, setEmail] = useState(user?.email ?? params.email ?? "");
   const [code, setCode] = useState("");
   const [verified, setVerified] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [resending, setResending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   async function submit() {
-    const token = code.trim();
-    if (!token) {
+    const trimmedEmail = email.trim();
+    const trimmedCode = code.trim();
+    if (!trimmedEmail) {
+      setError(t("verifyEmail.missingEmail"));
+      return;
+    }
+    if (!trimmedCode) {
       setError(t("verifyEmail.missingCode"));
       return;
     }
     setError(null);
+    setNotice(null);
     setLoading(true);
     try {
-      await apiRequest("POST", "/api/auth/verify-email", { token });
+      await apiRequest("POST", "/api/auth/verify-email", { email: trimmedEmail, code: trimmedCode });
       await refreshUser();
       setVerified(true);
     } catch (e: unknown) {
       setError(serverErrorMessage(e, t("verifyEmail.failed")));
     }
     setLoading(false);
+  }
+
+  async function resend() {
+    setError(null);
+    setNotice(null);
+    setResending(true);
+    try {
+      await apiRequest("POST", "/api/auth/resend-verification", {});
+      setNotice(t("verifyEmail.resendSent"));
+    } catch (e: unknown) {
+      setError(serverErrorMessage(e, t("verifyEmail.resendFailed")));
+    }
+    setResending(false);
   }
 
   // Typing the URL is a way in on web, so there is not always somewhere to
@@ -70,6 +96,21 @@ export default function VerifyEmailScreen() {
             <View style={styles.form}>
               <Text style={fieldStyles.body}>{t("verifyEmail.body")}</Text>
 
+              <FormField label={t("auth.emailLabel")} icon="mail-outline">
+                <TextInput
+                  style={fieldStyles.input}
+                  value={email}
+                  onChangeText={(v) => { setEmail(v); setError(null); }}
+                  placeholder={t("auth.emailPlaceholder")}
+                  placeholderTextColor={Colors.textMuted}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  keyboardType="email-address"
+                  accessibilityLabel={t("auth.emailA11yLabel")}
+                  testID="input-verify-email-address"
+                />
+              </FormField>
+
               <FormField label={t("verifyEmail.codeLabel")} icon="key-outline">
                 <TextInput
                   style={fieldStyles.input}
@@ -79,6 +120,8 @@ export default function VerifyEmailScreen() {
                   placeholderTextColor={Colors.textMuted}
                   autoCapitalize="none"
                   autoCorrect={false}
+                  keyboardType="number-pad"
+                  maxLength={6}
                   returnKeyType="done"
                   onSubmitEditing={submit}
                   accessibilityLabel={t("verifyEmail.codeA11yLabel")}
@@ -87,6 +130,7 @@ export default function VerifyEmailScreen() {
               </FormField>
 
               {error && <FormNotice tone="error" text={error} />}
+              {notice && <FormNotice tone="success" text={notice} />}
 
               <MenuButton
                 label={loading ? t("verifyEmail.saving") : t("verifyEmail.submit")}
@@ -95,6 +139,17 @@ export default function VerifyEmailScreen() {
                 loading={loading}
                 accessibilityLabel={t("verifyEmail.submit")}
               />
+
+              {user && !user.emailVerified && (
+                <MenuButton
+                  label={resending ? t("verifyEmail.resending") : t("verifyEmail.resend")}
+                  onPress={resend}
+                  variant="ghost"
+                  size="sm"
+                  loading={resending}
+                  accessibilityLabel={t("verifyEmail.resend")}
+                />
+              )}
             </View>
           )}
         </MenuCard>

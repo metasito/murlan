@@ -129,7 +129,7 @@ export default function AuthScreen() {
               {!user?.emailVerified && (
                 <MenuButton
                   label={t("auth.checkEmailVerifyNow")}
-                  onPress={() => router.push("/verify-email")}
+                  onPress={() => router.push({ pathname: "/verify-email", params: { email } })}
                   variant="ghost"
                   size="sm"
                   accessibilityLabel={t("auth.checkEmailVerifyNow")}

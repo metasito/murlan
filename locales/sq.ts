@@ -138,17 +138,22 @@ export const sq: Record<keyof typeof en, string> = {
 
   // -------------------------------------------------------- verifyEmail.*
   "verifyEmail.title": "Verifiko email-in",
-  "verifyEmail.body": "Shkruaj kodin nga email-i që të dërguam.",
+  "verifyEmail.body": "Shkruaj kodin 6-shifror nga email-i që të dërguam.",
   "verifyEmail.codeLabel": "Kodi",
-  "verifyEmail.codePlaceholder": "Ngjit kodin këtu",
+  "verifyEmail.codePlaceholder": "Kod 6-shifror",
   "verifyEmail.codeA11yLabel": "Kodi i verifikimit",
   "verifyEmail.submit": "Verifiko",
   "verifyEmail.saving": "Duke verifikuar…",
   "verifyEmail.missingCode": "Shkruaj kodin që more në email",
+  "verifyEmail.missingEmail": "Shkruaj email-in me të cilin u regjistrove",
   "verifyEmail.failed": "Kodi nuk u verifikua dot. Provo sërish.",
   "verifyEmail.successTitle": "Email-i u verifikua",
   "verifyEmail.successBody": "Adresa jote është konfirmuar. Nëse harron fjalëkalimin, mund ta rivendosësh nga ekrani i hyrjes.",
   "verifyEmail.done": "U krye",
+  "verifyEmail.resend": "Ridërgo kodin",
+  "verifyEmail.resending": "Duke dërguar…",
+  "verifyEmail.resendSent": "Një kod i ri po vjen.",
+  "verifyEmail.resendFailed": "Kodi nuk u ridërgua dot. Provo sërish.",
 
   // ------------------------------------------------------------- recover.*
   "recover.title": "Rivendos fjalëkalimin",
