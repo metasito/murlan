@@ -18,6 +18,7 @@ import { pathToFileURL } from "node:url";
 import {
   aiChoosePlay,
   dealCards,
+  getAllValidPlays,
   initializeRematch,
   isExchangeCardStillOut,
   knownOpponentExchangeCard,
@@ -249,18 +250,19 @@ function measurePersonalityVsDefault(n: number, seed: number): PersonalityRow[] 
 // (exchange included), and at every new-round lead the loser makes while its
 // tribute is still verifiably live (`isExchangeCardStillOut` — the same gate
 // `aiChoosePlay` applies internally, applied here too so a fact the fix
-// itself has already retired is not scored as a defect), asks that one
-// decision twice from the identical state — once passing the exchange fact
-// (today's behaviour) and once withholding it (pre-#907's — that parameter's
-// own purpose is exactly this toggle, per
-// `tests/botExchangeAwareness.test.ts`). Counts how often the
-// without-knowledge answer leads a single under the known card while a safer
-// lead was legal, and how often the with-knowledge answer still does.
+// itself has already retired is not scored as a defect), asks whether a
+// legal lead exists that does not lose outright to the known card. Only
+// those "avoidable" decision points are asked twice — once passing the
+// exchange fact (today's behaviour) and once withholding it (pre-#907's —
+// that parameter's own purpose is exactly this toggle, per
+// `tests/botExchangeAwareness.test.ts`) — since a lead with no safe
+// alternative is not a case either policy could have done better on.
 
 interface BlunderCounts {
-  leadsChecked: number;
+  avoidableLeadsChecked: number;
   wouldHaveBlundered: number;
   stillBlunders: number;
+  forcedLeads: number;
 }
 
 function isKnownCardBlunder(choice: Combination | null, known: Card): boolean {
@@ -268,9 +270,10 @@ function isKnownCardBlunder(choice: Combination | null, known: Card): boolean {
 }
 
 function measureExchangeBlunderAvoidance(n: number, seed: number): BlunderCounts {
-  let leadsChecked = 0;
+  let avoidableLeadsChecked = 0;
   let wouldHaveBlundered = 0;
   let stillBlunders = 0;
+  let forcedLeads = 0;
 
   for (let i = 0; i < n; i++) {
     // "luan" (easy), not the table default: easy's whole policy is "lowest
@@ -289,16 +292,23 @@ function measureExchangeBlunderAvoidance(n: number, seed: number): BlunderCounts
         const leader = state.players[seat];
         const known = knownOpponentExchangeCard(state.exchangePhase, seat);
         if (known && isExchangeCardStillOut(known, state.playedRanks, leader.hand)) {
-          leadsChecked++;
-          const opponents = opponentsOf(state, seat);
-          const before = aiChoosePlay(
-            leader, null, true, opponents.handCounts, undefined, mulberry32(dealSeed + turn), false, state.playedRanks, undefined
-          );
-          const after = aiChoosePlay(
-            leader, null, true, opponents.handCounts, undefined, mulberry32(dealSeed + turn), false, state.playedRanks, known
-          );
-          if (isKnownCardBlunder(before, known)) wouldHaveBlundered++;
-          if (isKnownCardBlunder(after, known)) stillBlunders++;
+          const legalPlays = getAllValidPlays(leader.hand, null, true, undefined);
+          const hadSafeAlternative = legalPlays.some((p) => !losesLeadToExchangeCard(p, known));
+
+          if (!hadSafeAlternative) {
+            forcedLeads++;
+          } else {
+            avoidableLeadsChecked++;
+            const opponents = opponentsOf(state, seat);
+            const before = aiChoosePlay(
+              leader, null, true, opponents.handCounts, undefined, mulberry32(dealSeed + turn), false, state.playedRanks, undefined
+            );
+            const after = aiChoosePlay(
+              leader, null, true, opponents.handCounts, undefined, mulberry32(dealSeed + turn), false, state.playedRanks, known
+            );
+            if (isKnownCardBlunder(before, known)) wouldHaveBlundered++;
+            if (isKnownCardBlunder(after, known)) stillBlunders++;
+          }
         }
       }
 
@@ -308,7 +318,7 @@ function measureExchangeBlunderAvoidance(n: number, seed: number): BlunderCounts
     }
   }
 
-  return { leadsChecked, wouldHaveBlundered, stillBlunders };
+  return { avoidableLeadsChecked, wouldHaveBlundered, stillBlunders, forcedLeads };
 }
 
 // ─── Report ──────────────────────────────────────────────────────────────
@@ -391,14 +401,16 @@ function main(): void {
 
   // ── Measurement 5 ───────────────────────────────────────────────────────
   console.log("\n## 5. Exchange blunder avoidance (#907)\n");
-  console.log("Every new-round lead the loser makes while its tribute is still verifiably live,");
-  console.log("asked twice from the identical state: with the exchange fact (today) and without");
-  console.log("it (pre-#907, same call with the last argument omitted) — see the file banner");
-  console.log("above measureExchangeBlunderAvoidance.\n");
+  console.log("Every new-round lead the loser makes while its tribute is still verifiably live");
+  console.log("AND a legal lead exists that does not lose to it outright — asked twice from the");
+  console.log("identical state: with the exchange fact (today) and without it (pre-#907, same");
+  console.log("call with the last argument omitted) — see the file banner above");
+  console.log("measureExchangeBlunderAvoidance.\n");
   const blunders = measureExchangeBlunderAvoidance(opts.matchN2p, opts.seed);
-  console.log(`  new-round leads made with a live known card: ${blunders.leadsChecked}`);
-  console.log(`  without the exchange fact, led under the known card: ${fmtWilson(blunders.wouldHaveBlundered, blunders.leadsChecked)}`);
-  console.log(`  with it (today's behaviour), led under the known card: ${fmtWilson(blunders.stillBlunders, blunders.leadsChecked)}`);
+  console.log(`  avoidable decision points (a safe lead was legal): ${blunders.avoidableLeadsChecked}`);
+  console.log(`  without the exchange fact, led under the known card anyway: ${fmtWilson(blunders.wouldHaveBlundered, blunders.avoidableLeadsChecked)}`);
+  console.log(`  with it (today's behaviour), led under the known card anyway: ${fmtWilson(blunders.stillBlunders, blunders.avoidableLeadsChecked)}`);
+  console.log(`  (forced leads, no safe alternative existed either way, excluded above: ${blunders.forcedLeads})`);
 
   console.log(`\nDone in ${((Date.now() - startedAt) / 1000).toFixed(1)}s.`);
 }

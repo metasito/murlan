@@ -33,9 +33,6 @@ describe("knownOpponentExchangeCard", () => {
     assert.equal(knownOpponentExchangeCard(phase, 1)?.id, "6_clubs");
   });
 
-  // A bot's own giveback is always its weakest eligible card
-  // (pickGivebackCard), so it can never hold anything weaker than what it
-  // gave back — a floor built on that fact would never fire.
   test("the winner learns nothing — its own giveback can never be led under", () => {
     const phase = exchange(0, 1, { cardToLoser: c("5", "spades") });
     assert.equal(knownOpponentExchangeCard(phase, 0), undefined);

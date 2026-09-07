@@ -793,17 +793,15 @@ export function losesLeadToExchangeCard(play: Combination, known: Card): boolean
   return play.cards.length === 1 && cardStrength(play.cards[0]) < cardStrength(known);
 }
 
-// Same rank-only tally, same caution documented on `outstandingAbove` above:
-// it can call a spent card "still out" (a suit undealt at two seats keeps a
-// rank's count under its deck total), never the reverse.
+// Same tally `outstandingAbove` reads above, at the card's own rank: same
+// caution (a suit undealt at two seats reads as "still out"), never the
+// reverse.
 export function isExchangeCardStillOut(
   card: Card,
   playedRanks: number[] | undefined,
   hand: Card[]
 ): boolean {
-  const strength = cardStrength(card);
-  const accounted = (playedRanks?.[strength] ?? 0) + hand.filter((c) => cardStrength(c) === strength).length;
-  return accounted < DECK_BY_STRENGTH[strength];
+  return outstandingTally(playedRanks, hand)[cardStrength(card)] > 0;
 }
 
 /**
@@ -838,12 +836,8 @@ export function aiChoosePlay(
   // Every tier's floor (#907): never lead into a known, still-live loss when
   // a lead without that problem is legal. Only bears on a lead: a response
   // is not "leading into" anything.
-  const leadPlays = isNewRound
-    ? (() => {
-        const safe = plays.filter((p) => !(knownCard && losesLeadToExchangeCard(p, knownCard)));
-        return safe.length > 0 ? safe : plays;
-      })()
-    : plays;
+  const safeLeads = knownCard && isNewRound ? plays.filter((p) => !losesLeadToExchangeCard(p, knownCard)) : [];
+  const leadPlays = isNewRound && safeLeads.length > 0 ? safeLeads : plays;
 
   /**
    * Whether leading this card takes the round on everything a tally can see:
