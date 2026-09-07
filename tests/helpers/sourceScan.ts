@@ -257,7 +257,7 @@ export function hitSlopGrowth(tag: string, spacing: Record<string, number>): num
 export function fullBleedNodes(source: string, accessors: string[] = []): string[] {
   const all = [...new Set([...fullBleedAccessors(source), ...accessors])];
   const markers = [
-    /StyleSheet\.absoluteFill\b/g,
+    /StyleSheet\.absoluteFill(Object)?\b/g,
     ...all.map((a) => new RegExp(a.replace(".", String.raw`\.`) + String.raw`\b`, "g")),
   ];
   const byPosition = new Map<number, string>();

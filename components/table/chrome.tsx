@@ -130,7 +130,7 @@ const START_REASON_MAX_W = 420;
 
 const startReasonStyles = StyleSheet.create({
   gate: {
-    ...StyleSheet.absoluteFill,
+    ...StyleSheet.absoluteFillObject,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: Scrim.medium,
@@ -427,7 +427,7 @@ const railStyles = StyleSheet.create({
 
 export const portraitOverlayStyles = StyleSheet.create({
   overlay: {
-    ...StyleSheet.absoluteFill,
+    ...StyleSheet.absoluteFillObject,
     backgroundColor: Colors.overlayOpaque,
     alignItems: "center",
     justifyContent: "center",

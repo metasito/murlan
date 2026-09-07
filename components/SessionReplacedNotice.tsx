@@ -58,7 +58,7 @@ export function SessionReplacedNotice({
 
 const styles = StyleSheet.create({
   overlay: {
-    ...StyleSheet.absoluteFill,
+    ...StyleSheet.absoluteFillObject,
     // Above the notification banner and the offline banner, both of which
     // report a connection this screen has already ruled on.
     zIndex: Layer.blocking,

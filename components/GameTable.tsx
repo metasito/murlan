@@ -1610,7 +1610,7 @@ export function GameTable({
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: Colors.bg, overflow: "hidden" },
-  kick: { ...StyleSheet.absoluteFill, overflow: "hidden" },
+  kick: { ...StyleSheet.absoluteFillObject, overflow: "hidden" },
 
   bannerBand: {
     position: "absolute",
