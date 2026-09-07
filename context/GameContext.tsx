@@ -49,16 +49,16 @@ import type { BotPersonalityId } from "@/lib/botPersonalities";
 // E2E harness produced itself.
 const E2E_FAST = process.env.EXPO_PUBLIC_E2E_FAST === "1";
 /**
- * How long the offline exchange overlay holds under Maestro. A real device's
- * `btn-prossima-manche` tap doesn't return for several seconds (#915 measured
- * ~8.2s; #940 saw the assertion miss a hold sized to that single measurement
- * plus a 4s margin), so no wait placed after that one command can be sized by
- * chasing the latest measurement — the round trip is Maestro/XCUITest's own
- * settle-detection overhead, not this app's, and it is not this app's to
- * bound precisely. This hold is instead sized far past any round trip this
- * suite has ever recorded, with its only real ceiling being
- * `.maestro/exchange-phase.yaml`'s own wait for `btn-passa` to reappear
- * afterwards — comfortably under that, never chasing the tap.
+ * How long the offline exchange overlay holds under Maestro, when
+ * `EXPO_PUBLIC_E2E_FAST` reaches this build. #915 sized this to a single
+ * measured `btn-prossima-manche` round trip (~8.2s) plus a margin; #940
+ * found that still missed on a later dispatch, and whether the round trip
+ * was slower that time or the flag never reached the build was not
+ * distinguished (`components/ExchangeAnnouncement.tsx`'s
+ * `exchange-announce-hold-override-*` testID exists to tell those apart on
+ * the next one). No flow step in `.maestro/exchange-phase.yaml` is gated on
+ * this hold ending, so nothing bounds it from above either — it is sized
+ * generously rather than against any measured ceiling.
  */
 const E2E_EXCHANGE_HOLD_MS = 45_000;
 

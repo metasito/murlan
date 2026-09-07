@@ -18,17 +18,12 @@
 #
 # The ceremony's own overlay (`<ExchangeAnnouncement>`, testID
 # `exchange-announce`) is waited for below, after the `btn-prossima-manche`
-# tap that deals the hand it fires on. That single tap command's own return
-# time is Maestro/XCUITest's settle-detection overhead on this device, not a
-# duration this app can measure and match (#915 measured ~8.2s; #940 found an
-# assertion sized to that single measurement plus a margin still missed the
-# overlay) — so `EXPO_PUBLIC_E2E_FAST` (set only by this job's own build)
-# holds the overlay open far longer than any round trip this suite has
-# recorded, and the wait below is `extendedWaitUntil` rather than an instant
-# `assertVisible` so it does not require the overlay to already be up the
-# moment the tap returns. No real player ever reads this env var. What the
-# exchange *decides* is asserted by the unit tests, which can see it — this
-# flow only proves the overlay itself paints on a real device.
+# tap that deals the hand it fires on — `extendedWaitUntil` rather than an
+# instant `assertVisible`, so it does not require the overlay already up the
+# moment the tap returns. `context/GameContext.tsx`'s `E2E_EXCHANGE_HOLD_MS`
+# is the authority on how long that hold lasts and why; not repeated here.
+# What the exchange *decides* is asserted by the unit tests, which can see
+# it — this flow only proves the overlay itself paints on a real device.
 #
 # This flow does not play the second hand out: a dealt hand with `btn-passa`
 # live is what proves the match moved on rather than ending, and that is the

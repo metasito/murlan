@@ -77,7 +77,13 @@ export function ExchangeAnnouncement({
     return () => clearTimeout(done);
   }, [visible, bothJokersException, holdMsOverride]);
 
-  if (!visible) return null;
+  // Diagnostic testID, offline-E2E-only: rendered regardless of `visible`.
+  const holdOverrideMarker =
+    typeof holdMsOverride === "number" ? (
+      <View testID={`exchange-announce-hold-override-${holdMsOverride}`} />
+    ) : null;
+
+  if (!visible) return holdOverrideMarker;
 
   const a11yLabel = bothJokersException
     ? t("exchangeAnnouncement.a11yNoSwap", { loserName })
@@ -100,12 +106,7 @@ export function ExchangeAnnouncement({
 
   return (
     <View testID="exchange-announce" pointerEvents="none" style={styles.layer}>
-      {/* Diagnostic only, offline-E2E-only (#940): a hierarchy dump can
-          confirm the override actually reached this render, instead of
-          inferring it from timing math after the fact. */}
-      {typeof holdMsOverride === "number" && (
-        <View testID={`exchange-announce-hold-override-${holdMsOverride}`} />
-      )}
+      {holdOverrideMarker}
       <A11yStatus label={a11yLabel} role="alert" live="assertive" />
 
       {bothJokersException ? (
