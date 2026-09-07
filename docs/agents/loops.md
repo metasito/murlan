@@ -136,6 +136,16 @@ Each of these produced a confident, wrong "fixed" in one session:
   run too. `ios.yml` uploads `maestro-debug-ios` on the same opt-in, but that artefact carries no
   logcat, so this script cannot read it; iOS per-step timing comes from the exported
   `parseCommandWindows` alone, against `maestro-debug-ios`'s own `maestro.log`.
+- **A stale `node_modules` reads as a real defect.** A past `npm install` (not `ci`) can leave
+  `react-native`/`react-native-worklets` on a looser resolution than `package-lock.json` pins,
+  silently — #926 spent a full ticket + review cycle on phantom `TS2698` errors from exactly
+  this, and #928 hit the same install again. `scripts/preflight.mjs` now diffs every direct
+  dependency's installed version against the lockfile and refuses to start a run on drift,
+  pointing at `npm ci` rather than running it — node_modules is shared live across every
+  worktree, so an unprompted reinstall could pull files out from under a peer session
+  (#938). `npm run agent:check`'s own cache is keyed on tracked git content only
+  (`scripts/agent-check.mjs`'s `treeHash()`), so it cannot see a node_modules-only drift and
+  will keep replaying a stale PASS — preflight, not agent-check, is what has to catch this.
 - **A flow run through Expo Go never pressed one of our controls.** Expo Go's dev-menu window
   sits above the app's own and takes the touch: the tap is dispatched `to window:
   <EXDevMenuWindow>`, which then resigns key, so it is spent dismissing an invisible window

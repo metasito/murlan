@@ -1,7 +1,7 @@
 // tests/preflight.test.ts
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { classifyStatus, primaryWorktree } from "../scripts/preflight.mjs";
+import { classifyStatus, primaryWorktree, lockDrift } from "../scripts/preflight.mjs";
 
 describe("what blocks a run from starting", () => {
   test("a modified tracked file blocks", () => {
@@ -44,5 +44,39 @@ describe("what blocks a run from starting", () => {
 
   test("an unreadable listing yields no worktree rather than a wrong one", () => {
     assert.equal(primaryWorktree(""), null);
+  });
+});
+
+describe("node_modules drift from package-lock.json", () => {
+  const packageJson = { dependencies: { "react-native": "0.86.3" }, devDependencies: { typescript: "5.0.0" } };
+  const packageLock = {
+    packages: {
+      "node_modules/react-native": { version: "0.86.3" },
+      "node_modules/typescript": { version: "5.0.0" },
+    },
+  };
+
+  test("an installed version behind the lockfile is drift", () => {
+    const drift = lockDrift(packageJson, packageLock, { "react-native": "0.81.5", typescript: "5.0.0" });
+    assert.deepEqual(drift, [{ name: "react-native", installed: "0.81.5", locked: "0.86.3" }]);
+  });
+
+  test("a missing install is drift too, not silently skipped", () => {
+    const drift = lockDrift(packageJson, packageLock, { typescript: "5.0.0" });
+    assert.deepEqual(drift, [{ name: "react-native", installed: "missing", locked: "0.86.3" }]);
+  });
+
+  test("matching installs report no drift", () => {
+    const drift = lockDrift(packageJson, packageLock, { "react-native": "0.86.3", typescript: "5.0.0" });
+    assert.deepEqual(drift, []);
+  });
+
+  test("a dependency absent from the lockfile's packages map is not checked", () => {
+    const drift = lockDrift(
+      { dependencies: { unlocked: "1.0.0" } },
+      { packages: {} },
+      { unlocked: "2.0.0" }
+    );
+    assert.deepEqual(drift, []);
   });
 });
