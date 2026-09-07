@@ -50,11 +50,14 @@ import type { BotPersonalityId } from "@/lib/botPersonalities";
 const E2E_FAST = process.env.EXPO_PUBLIC_E2E_FAST === "1";
 /**
  * How long the offline exchange overlay holds under Maestro. A real device's
- * `btn-prossima-manche` tap doesn't return for ~8.2s (#915), so no wait placed
- * after that single command can observe an overlay gone by the real ~5.2s —
- * this holds it past that return instead of speeding the real ceremony up.
+ * `btn-prossima-manche` tap doesn't return for ~8.2s, measured on the iOS
+ * runner (#915, run 33906243513) — well past the overlay's real ~5.2s — so no
+ * wait placed after that single command can observe it. This holds it past
+ * that measured return instead of speeding the real ceremony up.
  */
-const E2E_EXCHANGE_HOLD_MS = 10000;
+const MEASURED_TAP_RETURN_MS = 8200;
+const E2E_EXCHANGE_HOLD_MARGIN_MS = 4000;
+const E2E_EXCHANGE_HOLD_MS = MEASURED_TAP_RETURN_MS + E2E_EXCHANGE_HOLD_MARGIN_MS;
 
 export interface PlayerSetupConfig {
   name: string;

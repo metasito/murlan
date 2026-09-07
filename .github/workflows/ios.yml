@@ -63,10 +63,15 @@ jobs:
       # dev menu to be on top in the first place.
       - name: Build the app
         env:
-          # Holds the offline exchange overlay open past the ~8.2s a real
-          # device's single tap-and-wait Maestro command takes to return
-          # (#915), instead of its real ~5.2s — never read outside a build
-          # this harness itself produced (`scripts/assertNotE2EFast.js`).
+          # `app/game.tsx` reads this once, at module scope, for the whole
+          # build: it zeroes every AI/result delay it names (`AI_DELAY`,
+          # `AI_EXCHANGE_DELAY`, `RESULT_DELAY`) across all four flows this
+          # job drives, not only exchange-phase.yaml's. What that ticket
+          # needed from it is the offline exchange overlay holding open past
+          # the ~8.2s a real device's single tap-and-wait command takes to
+          # return (#915), instead of its real ~5.2s — but every flow here now
+          # runs at this pace. Never read outside a build this harness itself
+          # produced (`scripts/assertNotE2EFast.js`).
           EXPO_PUBLIC_E2E_FAST: "1"
         run: |
           npx expo prebuild --platform ios --no-install

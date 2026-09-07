@@ -19,7 +19,7 @@
 # The ceremony's own overlay (`<ExchangeAnnouncement>`, testID
 # `exchange-announce`) is asserted below, right after the `btn-prossima-manche`
 # tap that deals the hand it fires on. That single tap command does not return
-# for ~8.2s on a real device (#915), well past the overlay's real ~5.8s hold —
+# for ~8.2s on a real device (#915), well past the overlay's real ~5.2s hold —
 # so `EXPO_PUBLIC_E2E_FAST` (set only by this job's own build) holds it open
 # past that return instead; no real player ever reads this env var. What the
 # exchange *decides* is asserted by the unit tests, which can see it — this
