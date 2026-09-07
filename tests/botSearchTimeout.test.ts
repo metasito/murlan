@@ -4,9 +4,8 @@
 // whose card search grinds is invisible to all three, and the only recorded
 // instance of #770 surfaced as a bare 300s Playwright timeout with `""` for a
 // URL. `SearchTimeoutError` is the bound on one search; these tests hold it to
-// being a bound on the *search* rather than on a single candidate. #928:
-// bounded by `combosTried`, not wall-clock — a wall-clock budget raced CI's
-// variable CPU availability and false-positived a healthy, merely slow search.
+// being a bound on the *search* rather than on a single candidate, primarily
+// via `maxCombosTried` (see its own doc comment for why counted, not timed).
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -160,8 +159,13 @@ function makeFake(opts: FakeOptions = {}): Fake {
   };
 }
 
-/** Everything but the cap wide open, so only `maxCombosTried` can end a drive. */
-const OPEN = { stallMs: 60_000, maxStatesWithoutProgress: 100_000, maxTotalMs: 10_000_000 };
+/** Everything but the cap/backstop under test wide open. */
+const OPEN = {
+  stallMs: 60_000,
+  maxStatesWithoutProgress: 100_000,
+  maxTotalMs: 10_000_000,
+  maxSearchMs: 10_000_000,
+};
 
 test("the cap bounds the whole search, not each candidate", async (t) => {
   // HAND has 4 candidates (see its own comment); a cap of 2 must stop after
@@ -186,6 +190,30 @@ test("the cap bounds the whole search, not each candidate", async (t) => {
     }
   );
   assert.equal(fake.combos(), 2, "the cap must span candidates, not restart at each one");
+});
+
+test("a search stuck on one candidate still trips the wall-clock backstop", async (t) => {
+  // The cap wide open (1000) so only maxSearchMs can end this drive — a
+  // candidate that itself hangs has no way to move combosTried forward fast
+  // enough for the count-based cap to see it.
+  const fake = makeFake({ stepMs: 1_000 });
+  t.after(fake.restore);
+
+  await assert.rejects(
+    () =>
+      driveGameToCompletion(fake.page, {
+        ...OPEN,
+        isFinished: fake.isFinished,
+        maxCombosTried: 1_000,
+        maxSearchMs: 1_500,
+        log: (line) => fake.lines.push(line),
+      }),
+    (err: unknown) => {
+      assert.ok(err instanceof SearchTimeoutError, `expected SearchTimeoutError, got ${err}`);
+      assert.match((err as Error).message, /ran past 1500ms after \d+ candidate\(s\)/);
+      return true;
+    }
+  );
 });
 
 test("a search that fits inside its cap plays, and its duration reaches the log", async (t) => {
