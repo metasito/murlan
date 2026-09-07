@@ -103,6 +103,20 @@ jobs:
             exit 0
           fi
           changed=$(git diff --name-only "$base" HEAD)
+          # A package.json touch that leaves `dependencies` alone cannot change what
+          # either native project bundles (#928 — PR #927 tripped native=true on a
+          # scripts-only addition). Same fail-unsafe posture as everything below: a
+          # parse failure or any other unrecognised shape leaves it in $native_trigger
+          # so the existing allowlist check still catches it.
+          native_trigger="$changed"
+          if grep -qE '^package\.json$' <<< "$changed"; then
+            before_deps=$(git show "$base:package.json" 2>/dev/null | jq -S '.dependencies // {}' 2>/dev/null)
+            after_deps=$(jq -S '.dependencies // {}' package.json 2>/dev/null)
+            if [ -n "$before_deps" ] && [ -n "$after_deps" ] && [ "$before_deps" = "$after_deps" ]; then
+              echo "package.json changed but .dependencies did not — not a native trigger."
+              native_trigger=$(grep -vE '^package\.json$' <<< "$changed")
+            fi
+          fi
           # The two compile jobs cost about 15 minutes each, against 5 for the
           # whole rest of this workflow, so they do not run on every change. A
           # debug build loads its JavaScript from Metro instead of bundling it —
@@ -121,7 +135,7 @@ jobs:
           if grep -qE '^\.github/workflows/ci\.yml$' <<< "$changed"; then
             echo "This workflow changed — it must exercise its own compile jobs."
             echo "native=true" >> "$GITHUB_OUTPUT"
-          elif grep -qvE '^(app|components|context|lib|locales|shared|server|tests|docs|scripts|public|\.claude|\.agents|\.maestro|\.github)/|\.md$' <<< "$changed"; then
+          elif [ -n "$native_trigger" ] && grep -qvE '^(app|components|context|lib|locales|shared|server|tests|docs|scripts|public|\.claude|\.agents|\.maestro|\.github)/|\.md$' <<< "$native_trigger"; then
             echo "Something outside the JavaScript sources changed — compiling for both devices."
             echo "native=true" >> "$GITHUB_OUTPUT"
           else
@@ -359,16 +373,13 @@ jobs:
   # pull request would triple the wait in the middle of every ticket — the cost
   # #288 exists to keep down. See the filter in `scope` for why a source change
   # cannot reach them.
-  # Disabled 2026-09-06 (#928): 21m22s this run, 16m51s for iOS below, against
-  # 1-5 min for everything else, and `scope`'s fail-unsafe allowlist trips
-  # `native=true` on any package.json touch at all, including a scripts-only
-  # edit with no native effect. Re-enable once #928 lands a fix (or accept
-  # keeping it off, if research says that's the right call) — don't just flip
-  # this back to see if it's still slow.
+  # Re-enabled 2026-09-06 (#928): the false-positive that made these run on
+  # every package.json touch is fixed in `scope` above (dependencies-only
+  # diff). Was disabled 2026-09-06..2026-09-07 in #930.
   android-build:
     name: Android compiles
     needs: scope
-    if: false # was: needs.scope.outputs.native == 'true'
+    if: needs.scope.outputs.native == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
@@ -382,6 +393,7 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
+          cache: gradle
       - run: npm ci
       # --no-install: `npm ci` above already installed, and letting prebuild run
       # its own install would resolve outside the lockfile.
@@ -390,11 +402,10 @@ jobs:
         working-directory: android
         run: ./gradlew assembleDebug --no-daemon
 
-  # Disabled 2026-09-06 (#928) alongside android-build above — see its comment.
   ios-build:
     name: iOS compiles
     needs: scope
-    if: false # was: needs.scope.outputs.native == 'true'
+    if: needs.scope.outputs.native == 'true'
     runs-on: macos-latest
     timeout-minutes: 60
     steps:
@@ -407,6 +418,12 @@ jobs:
       # --no-install skips CocoaPods as well as npm, so the pods are installed
       # explicitly rather than left out.
       - run: npx expo prebuild --platform ios --no-install
+      - uses: actions/cache@v6
+        with:
+          path: ios/Pods
+          key: ${{ runner.os }}-pods-${{ hashFiles('**/Podfile.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-pods-
       - run: pod install --project-directory=ios
       # The workspace and scheme are named from app.json rather than fixed here,
       # so renaming the app does not silently stop compiling anything.
