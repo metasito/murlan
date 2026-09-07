@@ -320,8 +320,8 @@ async function playOrPass(
     if (Date.now() > searchDeadline) {
       throw new SearchTimeoutError(
         `Search for a reply to "${desc}" ran past ${maxSearchMs}ms after ${combosTried} ` +
-          `candidate(s) — the aggregate is unbounded even though every candidate is timed on ` +
-          `its own. Hand at search start: [${labels.join(", ")}].`
+          `candidate(s) — the count cap alone would not have caught this. Hand at search ` +
+          `start: [${labels.join(", ")}].`
       );
     }
     combosTried += 1;
@@ -536,6 +536,14 @@ export async function driveGameToCompletion(page: Page, opts: DriveOptions): Pro
   let lastChangeAt = Date.now();
   let progress = NO_PROGRESS_YET;
   const startedAt = Date.now();
+  // `progress` sums cards across every hand, so a viewer stuck auto-passing
+  // every turn (HUMAN_TURN_SECONDS beating a slow search — see `playOrPass`'s
+  // null return) is invisible to it as long as opponents keep playing: the
+  // total still falls, `stale` keeps resetting, and the match finishes with a
+  // winner even though this seat never once played. This counts turns
+  // abandoned back to back, which only that specific failure can run up.
+  let consecutiveAbandons = 0;
+  const maxConsecutiveAbandons = 10;
 
   for (;;) {
     if (await opts.isFinished(page)) return;
@@ -595,10 +603,20 @@ export async function driveGameToCompletion(page: Page, opts: DriveOptions): Pro
         // The hand stopped being interactive mid-search — most often the
         // one-tick "your turn" / gameOver race described above `playOrPass`.
         // Let the next iteration's isFinished/description check decide what
-        // actually happened rather than asserting anything here.
+        // actually happened, except for the count below, which is the one
+        // thing that check cannot see.
+        consecutiveAbandons += 1;
+        if (consecutiveAbandons > maxConsecutiveAbandons) {
+          throw new StuckError(
+            `The viewer's turn was abandoned ${consecutiveAbandons} times in a row without ever ` +
+              `completing a play or pass — this seat is not participating even though the game ` +
+              `keeps moving. Last table state: "${desc}".`
+          );
+        }
         await sleep(150);
         continue;
       }
+      consecutiveAbandons = 0;
       const changed = await waitForChange(page, desc, stallMs);
       if (!changed) {
         throw new StuckError(

@@ -14,6 +14,7 @@ import { fileURLToPath } from "node:url";
 import type { Page } from "@playwright/test";
 import {
   DEFAULT_MAX_COMBOS_TRIED,
+  DEFAULT_MAX_SEARCH_MS,
   driveGameToCompletion,
   SearchTimeoutError,
   StuckError,
@@ -68,6 +69,22 @@ test("DEFAULT_MAX_COMBOS_TRIED stays ahead of the largest hand dealCards actuall
   );
 });
 
+test("DEFAULT_MAX_SEARCH_MS stays under driveGameToCompletion's own maxTotalMs default", () => {
+  const source = blankComments(
+    readFileSync(path.join(repoRoot, "tests/e2e/helpers/bot.ts"), "utf8")
+  );
+  const found = source.match(/maxTotalMs\s*=\s*opts\.maxTotalMs\s*\?\?\s*([0-9_]+)/);
+  assert.ok(found, "driveGameToCompletion no longer declares maxTotalMs's default this way");
+  const maxTotalMsDefault = Number(found[1].replace(/_/g, ""));
+
+  assert.ok(
+    DEFAULT_MAX_SEARCH_MS < maxTotalMsDefault,
+    `DEFAULT_MAX_SEARCH_MS (${DEFAULT_MAX_SEARCH_MS}ms) must stay under maxTotalMs's default ` +
+      `(${maxTotalMsDefault}ms), or a runaway search reports as "the whole game stalled" with ` +
+      `none of SearchTimeoutError's own diagnostic`
+  );
+});
+
 const YOUR_TURN_DESC =
   "È il tuo turno. Luan ha giocato Re di Cuori. Luan ha 5 carte in mano. Hai 4 carte in mano.";
 const AFTER_PLAY_DESC =
@@ -99,6 +116,8 @@ interface FakeOptions {
    * produces, as opposed to the rules genuinely offering no legal move.
    */
   autoPassedMidSearch?: boolean;
+  /** The auto-pass race above, every single turn, forever — never once resolved. */
+  autoPassRepeatedly?: boolean;
 }
 
 interface Fake {
@@ -125,6 +144,7 @@ function makeFake(opts: FakeOptions = {}): Fake {
   let played = false;
   let vanished = false;
   let raced = false;
+  let justRaced = false;
 
   const box = { x: 0, y: 0, width: 10, height: 10 };
   const pressable = { hover: async () => {}, boundingBox: async () => box };
@@ -145,6 +165,13 @@ function makeFake(opts: FakeOptions = {}): Fake {
         count: async () => 1,
         getAttribute: async () => {
           tick();
+          if (opts.autoPassRepeatedly) {
+            if (justRaced) {
+              justRaced = false; // consumed — the viewer is back "on turn" for the next read
+              return NOT_YOUR_TURN_DESC;
+            }
+            return YOUR_TURN_DESC;
+          }
           if (raced) return NOT_YOUR_TURN_DESC;
           return played ? AFTER_PLAY_DESC : YOUR_TURN_DESC;
         },
@@ -183,7 +210,8 @@ function makeFake(opts: FakeOptions = {}): Fake {
         ...pressable,
         isEnabled: async () => {
           if (opts.autoPassedMidSearch) raced = true;
-          return !opts.autoPassedMidSearch;
+          if (opts.autoPassRepeatedly) justRaced = true;
+          return !(opts.autoPassedMidSearch || opts.autoPassRepeatedly);
         },
       };
     }
@@ -314,4 +342,29 @@ test("HUMAN_TURN_SECONDS auto-passing mid-search abandons the turn, it does not 
 
   const abandoned = fake.lines.find((l) => l.startsWith("abandoned "));
   assert.ok(abandoned, `an abandoned search logged nothing: ${JSON.stringify(fake.lines)}`);
+});
+
+test("the viewer's seat abandoning every turn in a row is a stuck game, not a quiet loss", async (t) => {
+  // `progress` sums cards across every hand, so if this seat's turn keeps
+  // auto-passing out from under it while opponents keep playing, the total
+  // still falls and `maxStatesWithoutProgress` never sees it — the match
+  // would finish with a winner even though this seat never once played.
+  const fake = makeFake({ stepMs: 100, autoPassRepeatedly: true });
+  t.after(fake.restore);
+
+  await assert.rejects(
+    () =>
+      driveGameToCompletion(fake.page, {
+        ...OPEN,
+        isFinished: fake.isFinished,
+        maxCombosTried: 10,
+        maxTotalMs: 30_000,
+        log: (line) => fake.lines.push(line),
+      }),
+    (err: unknown) => {
+      assert.ok(err instanceof StuckError, `expected StuckError, got ${err}`);
+      assert.match((err as Error).message, /abandoned \d+ times in a row/);
+      return true;
+    }
+  );
 });
