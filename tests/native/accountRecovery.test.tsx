@@ -11,6 +11,7 @@ const mockPush = jest.fn();
 const mockReplace = jest.fn();
 const mockBack = jest.fn();
 const mockCanGoBack = jest.fn<() => boolean>();
+const mockUseLocalSearchParams = jest.fn<() => Record<string, string>>(() => ({}));
 jest.mock('expo-router', () => ({
   router: {
     push: (...args: unknown[]) => mockPush(...args),
@@ -18,7 +19,7 @@ jest.mock('expo-router', () => ({
     back: (...args: unknown[]) => mockBack(...args),
     canGoBack: () => mockCanGoBack(),
   },
-  useLocalSearchParams: () => ({}),
+  useLocalSearchParams: () => mockUseLocalSearchParams(),
 }));
 
 const mockApiRequest = jest.fn<(...args: unknown[]) => Promise<unknown>>();
@@ -53,6 +54,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockFetch.mockResolvedValue({ status: 401, ok: false });
   mockCanGoBack.mockReturnValue(true);
+  mockUseLocalSearchParams.mockReturnValue({});
   (globalThis as { fetch: unknown }).fetch = mockFetch;
 });
 
@@ -72,13 +74,19 @@ describe('app/verify-email', () => {
     await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(1)); // the boot check settles first
 
     await act(async () => {
-      fireEvent.changeText(screen.getByLabelText(locale['verifyEmail.codeA11yLabel']), 'the-raw-token');
+      fireEvent.changeText(screen.getByLabelText(locale['auth.emailA11yLabel']), 'player@example.test');
+    });
+    await act(async () => {
+      fireEvent.changeText(screen.getByLabelText(locale['verifyEmail.codeA11yLabel']), '123456');
     });
     await act(async () => {
       fireEvent.press(screen.getByRole('button', { name: locale['verifyEmail.submit'] }));
     });
 
-    expect(mockApiRequest).toHaveBeenCalledWith('POST', '/api/auth/verify-email', { token: 'the-raw-token' });
+    expect(mockApiRequest).toHaveBeenCalledWith('POST', '/api/auth/verify-email', {
+      email: 'player@example.test',
+      code: '123456',
+    });
     await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(2)); // refreshUser's own fetchMe
 
     // The screen confirms rather than vanishing: leaving silently is
@@ -105,7 +113,10 @@ describe('app/verify-email', () => {
     const view = await mount();
 
     await act(async () => {
-      fireEvent.changeText(screen.getByLabelText(locale['verifyEmail.codeA11yLabel']), 'the-raw-token');
+      fireEvent.changeText(screen.getByLabelText(locale['auth.emailA11yLabel']), 'player@example.test');
+    });
+    await act(async () => {
+      fireEvent.changeText(screen.getByLabelText(locale['verifyEmail.codeA11yLabel']), '123456');
     });
     await act(async () => {
       fireEvent.press(screen.getByRole('button', { name: locale['verifyEmail.submit'] }));
@@ -120,9 +131,24 @@ describe('app/verify-email', () => {
     await view.unmount();
   });
 
-  it('asks for a code before submitting an empty one', async () => {
+  it('asks for an email before submitting an empty one', async () => {
     const view = await mount();
 
+    await act(async () => {
+      fireEvent.press(screen.getByRole('button', { name: locale['verifyEmail.submit'] }));
+    });
+
+    expect(screen.getByText(locale['verifyEmail.missingEmail'])).toBeTruthy();
+    expect(mockApiRequest).not.toHaveBeenCalled();
+    await view.unmount();
+  });
+
+  it('asks for a code once the email is filled in', async () => {
+    const view = await mount();
+
+    await act(async () => {
+      fireEvent.changeText(screen.getByLabelText(locale['auth.emailA11yLabel']), 'player@example.test');
+    });
     await act(async () => {
       fireEvent.press(screen.getByRole('button', { name: locale['verifyEmail.submit'] }));
     });
@@ -137,7 +163,10 @@ describe('app/verify-email', () => {
     const view = await mount();
 
     await act(async () => {
-      fireEvent.changeText(screen.getByLabelText(locale['verifyEmail.codeA11yLabel']), 'bad-token');
+      fireEvent.changeText(screen.getByLabelText(locale['auth.emailA11yLabel']), 'player@example.test');
+    });
+    await act(async () => {
+      fireEvent.changeText(screen.getByLabelText(locale['verifyEmail.codeA11yLabel']), '000000');
     });
     await act(async () => {
       fireEvent.press(screen.getByRole('button', { name: locale['verifyEmail.submit'] }));
@@ -145,6 +174,32 @@ describe('app/verify-email', () => {
 
     await waitFor(() => expect(screen.getByText(locale['verifyEmail.failed'])).toBeTruthy());
     expect(mockBack).not.toHaveBeenCalled();
+    await view.unmount();
+  });
+
+  it('prefills the email from the route param and offers a resend when signed in', async () => {
+    mockUseLocalSearchParams.mockReturnValue({ email: 'fresh@example.test' });
+    mockApiRequest.mockResolvedValue({ ok: true, json: async () => ({ ok: true }) });
+    mockFetch.mockResolvedValue({
+      status: 200,
+      ok: true,
+      json: async () => ({
+        id: 'u1',
+        username: 'fresh',
+        tutorialSeenAt: null,
+        email: 'fresh@example.test',
+        emailVerified: false,
+      }),
+    });
+    const view = await mount();
+
+    const resend = await screen.findByRole('button', { name: locale['verifyEmail.resend'] });
+    await act(async () => {
+      fireEvent.press(resend);
+    });
+
+    expect(mockApiRequest).toHaveBeenCalledWith('POST', '/api/auth/resend-verification', {});
+    await waitFor(() => expect(screen.getByText(locale['verifyEmail.resendSent'])).toBeTruthy());
     await view.unmount();
   });
 });
@@ -262,7 +317,10 @@ describe('app/auth reaches both new screens', () => {
       fireEvent.press(verifyNow);
     });
 
-    expect(mockPush).toHaveBeenCalledWith('/verify-email');
+    expect(mockPush).toHaveBeenCalledWith({
+      pathname: '/verify-email',
+      params: { email: 'newplayer@example.test' },
+    });
     await view.unmount();
   });
 

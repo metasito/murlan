@@ -73,45 +73,47 @@ describe("add-email migration nudge", { skip: hasDatabase() ? false : skipMessag
     assert.equal(rows[0]!.usedAt, null);
   });
 
-  // #900 review: two live email_verify tokens for one user is the
+  // #900 review: two live email_verify codes for one user is the
   // precondition for an address-takeover escalation — redeem one and lose
   // the race (email cleared to NULL), then add-email a different address
   // and redeem the still-live second one, verifying an address never
   // proven. Exercised directly against authTokens.ts rather than through
   // the race above, so this fails on the mechanism regressing even if the
   // race that first surfaced it never reproduces.
-  test("minting a second email_verify token invalidates the first, unconditionally", async () => {
+  test("minting a second email_verify code invalidates the first, unconditionally", async () => {
     const { user } = await register(server, "nudge_invalidate");
-    const { mintAuthToken, redeemAuthToken, invalidatePendingAuthTokens } = await import(
+    const { mintAuthCode, redeemAuthCode, invalidatePendingAuthTokens } = await import(
       "../../server/authTokens.ts"
     );
+    const email = user.email!;
 
-    const first = await mintAuthToken(user.id, "email_verify", 60_000);
+    const first = await mintAuthCode(user.id, email, "email_verify", 60_000);
     await invalidatePendingAuthTokens(user.id, "email_verify");
-    const second = await mintAuthToken(user.id, "email_verify", 60_000);
+    const second = await mintAuthCode(user.id, email, "email_verify", 60_000);
 
-    const redeemedFirst = await redeemAuthToken(first, "email_verify");
-    assert.equal(redeemedFirst, null, "an outstanding sibling token must not survive a fresh mint");
+    const redeemedFirst = await redeemAuthCode(email, "email_verify", first);
+    assert.equal(redeemedFirst, null, "an outstanding sibling code must not survive a fresh mint");
 
-    const redeemedSecond = await redeemAuthToken(second, "email_verify");
+    const redeemedSecond = await redeemAuthCode(email, "email_verify", second);
     assert.equal(redeemedSecond, user.id, "the latest mint must still redeem normally");
   });
 
-  test("the minted token redeems through the same /api/auth/verify-email route signup uses — no second endpoint", async () => {
+  test("the minted code redeems through the same /api/auth/verify-email route signup uses — no second endpoint", async () => {
     const { user, cookie } = await legacyAccount("nudge_reuse");
-    const addRes = await addEmail(cookie, "nudge_reuse@example.test");
+    const email = "nudge_reuse@example.test";
+    const addRes = await addEmail(cookie, email);
     assert.equal(addRes.status, 200, await addRes.text());
 
-    // The raw token is only ever mailed, never returned in the response (same
+    // The raw code is only ever mailed, never returned in the response (same
     // as register's own mint) — mint an equivalent one directly to drive the
     // shared redemption path add-email's mint call feeds in production.
-    const { mintAuthToken, redeemAuthToken } = await import("../../server/authTokens.ts");
-    const token = await mintAuthToken(user.id, "email_verify", 60_000);
+    const { mintAuthCode, redeemAuthCode } = await import("../../server/authTokens.ts");
+    const code = await mintAuthCode(user.id, email, "email_verify", 60_000);
 
     const verifyRes = await fetch(`${server.url}/api/auth/verify-email`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ token }),
+      body: JSON.stringify({ email, code }),
     });
     assert.equal(verifyRes.status, 200, await verifyRes.text());
 
@@ -119,8 +121,8 @@ describe("add-email migration nudge", { skip: hasDatabase() ? false : skipMessag
     const meBody = await meRes.json();
     assert.equal(meBody.emailVerified, true, "verify-email must be the route that flips emailVerifiedAt for an added email too");
 
-    const direct = await redeemAuthToken(token, "email_verify");
-    assert.equal(direct, null, "the token must be single-use through the shared redeem path");
+    const direct = await redeemAuthCode(email, "email_verify", code);
+    assert.equal(direct, null, "the code must be single-use through the shared redeem path");
   });
 
   // #897: an unverified email is a claim, not a possession
@@ -146,17 +148,18 @@ describe("add-email migration nudge", { skip: hasDatabase() ? false : skipMessag
 
   test("verifying a claim against an address already verified elsewhere is refused, and clears this account's email", async () => {
     const { user: owner, cookie: ownerCookie } = await register(server, "nudge_verified_owner");
-    const { mintAuthToken } = await import("../../server/authTokens.ts");
-    const ownerToken = await mintAuthToken(owner.id, "email_verify", 60_000);
+    const { mintAuthCode } = await import("../../server/authTokens.ts");
+    const ownerCode = await mintAuthCode(owner.id, owner.email!, "email_verify", 60_000);
     const ownerVerify = await fetch(`${server.url}/api/auth/verify-email`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ token: ownerToken }),
+      body: JSON.stringify({ email: owner.email, code: ownerCode }),
     });
     assert.equal(ownerVerify.status, 200, await ownerVerify.text());
 
     const { user: claimant, cookie } = await legacyAccount("nudge_race");
-    const addRes = await addEmail(cookie, "NUDGE_VERIFIED_OWNER@Example.Test");
+    const claimedEmail = "NUDGE_VERIFIED_OWNER@Example.Test";
+    const addRes = await addEmail(cookie, claimedEmail);
     assert.equal(
       addRes.status,
       200,
@@ -164,13 +167,13 @@ describe("add-email migration nudge", { skip: hasDatabase() ? false : skipMessag
     );
 
     // Same reason register()'s and legacyAccount()'s own callers do this
-    // rather than reading a stored token back: only its hash is persisted.
-    const claimToken = await mintAuthToken(claimant.id, "email_verify", 60_000);
+    // rather than reading a stored code back: only its hash is persisted.
+    const claimCode = await mintAuthCode(claimant.id, claimedEmail, "email_verify", 60_000);
 
     const verifyRes = await fetch(`${server.url}/api/auth/verify-email`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ token: claimToken }),
+      body: JSON.stringify({ email: claimedEmail, code: claimCode }),
     });
     const verifyText = await verifyRes.text();
     assert.equal(verifyRes.status, 409, verifyText);

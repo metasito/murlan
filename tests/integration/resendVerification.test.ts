@@ -1,9 +1,9 @@
 // tests/integration/resendVerification.test.ts — #893: POST
 // /api/auth/resend-verification, the fix for the dead end an expired
-// email_verify mint (24h TTL) leaves behind — add-email refuses a second
-// call once an address is set (EMAIL_ALREADY_SET), so nothing else could
-// mint a fresh one. Follows tests/integration/addEmail.test.ts for the
-// harness shape.
+// email_verify mint (EMAIL_VERIFY_CODE_TTL_MS) leaves behind — add-email
+// refuses a second call once an address is set (EMAIL_ALREADY_SET), so
+// nothing else could mint a fresh one. Follows tests/integration/
+// addEmail.test.ts for the harness shape.
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
 import { startTestServer, hasDatabase, skipMessage, type TestServer } from "../helpers/testServer.ts";
@@ -58,21 +58,21 @@ describe("resend-verification", { skip: hasDatabase() ? false : skipMessage() },
     assert.equal(res.status, 401);
   });
 
-  test("a resend invalidates whatever email_verify token was pending, and mints exactly one fresh one", async () => {
+  test("a resend invalidates whatever email_verify code was pending, and mints exactly one fresh one", async () => {
     const { user, cookie } = await register(server, "resend_invalidates");
-    const { mintAuthToken, redeemAuthToken } = await import("../../server/authTokens.ts");
+    const { mintAuthCode, redeemAuthCode } = await import("../../server/authTokens.ts");
 
-    // Stands in for the token register() already minted in the background —
+    // Stands in for the code register() already minted in the background —
     // the same technique tests/integration/addEmail.test.ts's own
     // invalidation test uses, so this assertion cannot race register()'s own
-    // fire-and-forget mint: whichever token is live when resend runs, the
+    // fire-and-forget mint: whichever code is live when resend runs, the
     // route's own invalidate-then-mint clears every pending row regardless.
-    const pending = await mintAuthToken(user.id, "email_verify", 60_000);
+    const pending = await mintAuthCode(user.id, user.email!, "email_verify", 60_000);
 
     const res = await resend(cookie);
     assert.equal(res.status, 200, await res.text());
 
-    const stalePending = await redeemAuthToken(pending, "email_verify");
+    const stalePending = await redeemAuthCode(user.email!, "email_verify", pending);
     assert.equal(stalePending, null, "resend must invalidate whatever was pending before it");
 
     const { db } = await import("../../server/db.ts");
