@@ -196,10 +196,13 @@ describe('app/verify-email', () => {
     });
     const view = await mount();
 
-    const emailInput = await screen.findByLabelText(locale['auth.emailA11yLabel']);
-    await waitFor(() => expect(emailInput.props.value).toBe('fresh@example.test'));
-
+    // The resend button only renders once `user` has landed (AuthContext's
+    // boot fetch), so finding it first means the prefill useEffect has
+    // already run its once chance to overwrite the field below.
     const resend = await screen.findByRole('button', { name: locale['verifyEmail.resend'] });
+    const emailInput = screen.getByLabelText(locale['auth.emailA11yLabel']);
+    expect(emailInput.props.value).toBe('fresh@example.test');
+
     await act(async () => {
       fireEvent.press(resend);
     });

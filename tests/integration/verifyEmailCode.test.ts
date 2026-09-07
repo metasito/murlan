@@ -69,6 +69,7 @@ describe("verify-email code guessing is capped per credential", { skip: hasDatab
     const { mintAuthCode, invalidatePendingAuthTokens, MAX_CODE_ATTEMPTS } = await import(
       "../../server/authTokens.ts"
     );
+    await waitForPendingCode(user.id);
     await invalidatePendingAuthTokens(user.id, "email_verify");
     const code = await mintAuthCode(user.id, user.email!, "email_verify", 60_000);
 
@@ -82,10 +83,11 @@ describe("verify-email code guessing is capped per credential", { skip: hasDatab
     const { db } = await import("../../server/db.ts");
     const { authTokens } = await import("../../shared/schema.ts");
     const { eq } = await import("drizzle-orm");
-    const [row] = await db.select().from(authTokens).where(eq(authTokens.userId, user.id));
+    const rows = await db.select().from(authTokens).where(eq(authTokens.userId, user.id));
+    assert.equal(rows.length, 1, "a late background mint would leave a second, untouched row here");
     assert.ok(
-      (row?.attempts ?? 0) >= MAX_CODE_ATTEMPTS,
-      `the row's own attempts counter must reach the cap, got ${row?.attempts}`
+      (rows[0]?.attempts ?? 0) >= MAX_CODE_ATTEMPTS,
+      `the row's own attempts counter must reach the cap, got ${rows[0]?.attempts}`
     );
 
     const finalTry = await verify(user.email!, code);
@@ -100,6 +102,7 @@ describe("verify-email code guessing is capped per credential", { skip: hasDatab
     const { mintAuthCode, redeemAuthCode, invalidatePendingAuthTokens } = await import(
       "../../server/authTokens.ts"
     );
+    await waitForPendingCode(alice.id);
     await invalidatePendingAuthTokens(alice.id, "email_verify");
     const aliceCode = await mintAuthCode(alice.id, alice.email!, "email_verify", 60_000);
 
@@ -118,6 +121,7 @@ describe("verify-email code guessing is capped per credential", { skip: hasDatab
     const { mintAuthCode, invalidatePendingAuthTokens, MAX_CODE_ATTEMPTS } = await import(
       "../../server/authTokens.ts"
     );
+    await waitForPendingCode(user.id);
     await invalidatePendingAuthTokens(user.id, "email_verify");
     const code = await mintAuthCode(user.id, user.email!, "email_verify", 60_000);
 

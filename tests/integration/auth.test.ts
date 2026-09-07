@@ -430,7 +430,9 @@ describe("email at signup", { skip: hasDatabase() ? false : skipMessage() }, () 
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ email: user.email, code }),
     });
-    assert.equal(res.status, 400, await res.text());
+    const text = await res.text();
+    assert.equal(res.status, 400, text);
+    assert.equal(JSON.parse(text).code, "INVALID_TOKEN");
 
     const direct = await redeemAuthCode(user.email!, "email_verify", code);
     assert.equal(direct, null, "an expired code must not redeem via the module either");
