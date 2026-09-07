@@ -29,9 +29,11 @@ import { mintSocketTicket } from "./ticket.ts";
 import {
   mintAuthToken,
   redeemAuthToken,
+  mintAuthCode,
+  redeemAuthCode,
   invalidateAuthTokens,
   invalidatePendingAuthTokens,
-  EMAIL_VERIFY_TOKEN_TTL_MS,
+  EMAIL_VERIFY_CODE_TTL_MS,
   PASSWORD_RESET_TOKEN_TTL_MS,
 } from "./authTokens.ts";
 import { sendMail } from "./mail.ts";
@@ -376,7 +378,7 @@ function sessionUser(user: User) {
 export function verificationEmailBody(username: string, token: string): string {
   return (
     `Someone signed up for a Murlan account (@${username}) using this email address.\n\n` +
-    `If that was you, your verification code is:\n\n${token}\n\nThis code expires in 24 hours.\n\n` +
+    `If that was you, your verification code is:\n\n${token}\n\nThis code expires in 15 minutes.\n\n` +
     `If it was not you, no further action is needed — leaving this code unused does not give ` +
     `that account your address.`
   );
@@ -518,9 +520,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // user has nothing to retire, but this mint can still land after
         // add-email's own — see authTokens.ts.
         invalidatePendingAuthTokens(user.id, "email_verify")
-          .then(() => mintAuthToken(user.id, "email_verify", EMAIL_VERIFY_TOKEN_TTL_MS))
-          .then((token) => sendVerificationEmail(email, username, token))
-          .catch((err) => logger.error({ err, userId: user.id }, "Failed to mint the verification token"));
+          .then(() => mintAuthCode(user.id, email, "email_verify", EMAIL_VERIFY_CODE_TTL_MS))
+          .then((code) => sendVerificationEmail(email, username, code))
+          .catch((err) => logger.error({ err, userId: user.id }, "Failed to mint the verification code"));
       });
     });
   });
@@ -657,19 +659,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
 
     await invalidatePendingAuthTokens(userId, "email_verify");
-    const token = await mintAuthToken(userId, "email_verify", EMAIL_VERIFY_TOKEN_TTL_MS);
-    sendVerificationEmail(email, user.username, token);
+    const code = await mintAuthCode(userId, email, "email_verify", EMAIL_VERIFY_CODE_TTL_MS);
+    sendVerificationEmail(email, user.username, code);
     logger.info({ userId }, "Email added, pending verification");
     res.json(sessionUser(user));
   });
 
-  // Public: the token itself is the credential (server/authTokens.ts), not
-  // the session. Generic failure message — whether the token is unknown,
-  // expired or already used is not this caller's business, and the redeem
-  // itself is the account oracle to avoid distinguishing.
+  // Public: the code plus the email it was sent to is the credential
+  // (server/authTokens.ts), not the session — reachable signed-out, the same
+  // as the redeem this replaces. No separate account lookup: redeemAuthCode
+  // resolves the userId from the matched row itself, so an unknown address
+  // and a wrong code cost the same query shape and answer with the same
+  // generic failure.
   app.post("/api/auth/verify-email", authLimiter, validate(VerifyEmailSchema), async (req, res) => {
-    const { token } = req.body as { token: string };
-    const userId = await redeemAuthToken(token, "email_verify");
+    const { email, code } = req.body as { email: string; code: string };
+    const userId = await redeemAuthCode(email, "email_verify", code);
     if (!userId) {
       res.status(400).json({ ...payload("INVALID_TOKEN") });
       return;
@@ -697,10 +701,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   /**
-   * #893: without this, a mint older than 24h (EMAIL_VERIFY_TOKEN_TTL_MS)
+   * #893: without this, a mint older than its TTL (EMAIL_VERIFY_CODE_TTL_MS)
    * leaves an account permanently unverifiable — add-email refuses a second
    * call once an address is set (EMAIL_ALREADY_SET), and nothing else mints
-   * an email_verify token. Same invalidate-then-mint shape as add-email,
+   * an email_verify code. Same invalidate-then-mint shape as add-email,
    * keyed on the session rather than a submitted address: the address to
    * resend to is the one already on the caller's own row.
    */
@@ -721,8 +725,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
 
     await invalidatePendingAuthTokens(userId, "email_verify");
-    const token = await mintAuthToken(userId, "email_verify", EMAIL_VERIFY_TOKEN_TTL_MS);
-    sendVerificationEmail(user.email, user.username, token);
+    const code = await mintAuthCode(userId, user.email, "email_verify", EMAIL_VERIFY_CODE_TTL_MS);
+    sendVerificationEmail(user.email, user.username, code);
     logger.info({ userId }, "Verification email resent");
     res.json({ ok: true });
   });
