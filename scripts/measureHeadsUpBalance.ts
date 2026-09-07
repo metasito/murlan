@@ -15,7 +15,17 @@
 // Flags (all optional, see `parseArgs`): --seed --dealN --matchN2p
 // --matchN4p --personalityN
 import { pathToFileURL } from "node:url";
-import { dealCards, type Card } from "../lib/gameEngine.ts";
+import {
+  aiChoosePlay,
+  cardStrength,
+  dealCards,
+  initializeRematch,
+  knownOpponentExchangeCard,
+  opponentsOf,
+  type Card,
+  type Combination,
+} from "../lib/gameEngine.ts";
+import { autoMoveForSeat } from "../lib/autoMove.ts";
 import {
   BOT_PERSONALITIES,
   DEFAULT_BOT_PERSONALITY,
@@ -230,6 +240,73 @@ function measurePersonalityVsDefault(n: number, seed: number): PersonalityRow[] 
   });
 }
 
+// ─── Measurement 5: exchange blunder avoidance (#907) ─────────────────────
+//
+// The manche-winner streak above is a coarse proxy — the fix bears on
+// individual lead decisions, not the manche's outcome. This measures the
+// mechanism directly: deals a manche and drives it with today's engine
+// (exchange included), and at every new-round lead either seat makes while
+// it still has a live known card, asks that one decision twice from the
+// identical state — once passing the exchange fact (today's behaviour) and
+// once withholding it (pre-#907's — that parameter's own purpose is exactly
+// this toggle, per `tests/botExchangeAwareness.test.ts`). Counts how often
+// the without-knowledge answer leads a single under the known card while a
+// safer lead was legal, and how often the with-knowledge answer still does.
+
+interface BlunderCounts {
+  leadsChecked: number;
+  wouldHaveBlundered: number;
+  stillBlunders: number;
+}
+
+function isKnownCardBlunder(choice: Combination | null, known: Card): boolean {
+  return choice !== null && choice.cards.length === 1 && cardStrength(choice.cards[0]) < cardStrength(known);
+}
+
+function measureExchangeBlunderAvoidance(n: number, seed: number): BlunderCounts {
+  let leadsChecked = 0;
+  let wouldHaveBlundered = 0;
+  let stillBlunders = 0;
+
+  for (let i = 0; i < n; i++) {
+    // "luan" (easy), not the table default: easy's whole policy is "lowest
+    // strength wins", the shape most exposed to this blunder and exactly the
+    // tier the ticket named ("easy should mean easy, not total stupid").
+    const players = tableOf(2, ["luan", "luan"]);
+    const dealSeed = seed * 2246822519 + i;
+    let state = withSeededDeals(dealSeed, () => initializeRematch(players, "free_for_all", []));
+    const rng = mulberry32(dealSeed + 1);
+
+    for (let turn = 0; turn < 300 && !state.gameOver; turn++) {
+      const seat = state.currentTurnIndex;
+      const isNewRound = !state.exchangePhase?.active && state.lastPlayedCombination === null;
+
+      if (isNewRound) {
+        const known = knownOpponentExchangeCard(state.exchangePhase, seat);
+        if (known) {
+          leadsChecked++;
+          const leader = state.players[seat];
+          const opponents = opponentsOf(state, seat);
+          const before = aiChoosePlay(
+            leader, null, true, opponents.handCounts, undefined, mulberry32(dealSeed + turn), false, state.playedRanks, undefined
+          );
+          const after = aiChoosePlay(
+            leader, null, true, opponents.handCounts, undefined, mulberry32(dealSeed + turn), false, state.playedRanks, known
+          );
+          if (isKnownCardBlunder(before, known)) wouldHaveBlundered++;
+          if (isKnownCardBlunder(after, known)) stillBlunders++;
+        }
+      }
+
+      const next = autoMoveForSeat(state, seat, true, { rng });
+      if (!next) break;
+      state = next;
+    }
+  }
+
+  return { leadsChecked, wouldHaveBlundered, stillBlunders };
+}
+
 // ─── Report ──────────────────────────────────────────────────────────────
 
 function printHistogram(histogram: Map<number, number>, n: number, maxKey: number): void {
@@ -307,6 +384,17 @@ function main(): void {
         (row.draws > 0 ? ` (${row.draws} draws)` : "")
     );
   }
+
+  // ── Measurement 5 ───────────────────────────────────────────────────────
+  console.log("\n## 5. Exchange blunder avoidance (#907)\n");
+  console.log("Every new-round lead, by either exchange party, while it still holds a live known");
+  console.log("card, asked twice from the identical state: with the exchange fact (today) and");
+  console.log("without it (pre-#907, same call with the last argument omitted) — see the file");
+  console.log("banner above measureExchangeBlunderAvoidance.\n");
+  const blunders = measureExchangeBlunderAvoidance(opts.matchN2p, opts.seed);
+  console.log(`  new-round leads made with a live known card: ${blunders.leadsChecked}`);
+  console.log(`  without the exchange fact, led under the known card: ${fmtWilson(blunders.wouldHaveBlundered, blunders.leadsChecked)}`);
+  console.log(`  with it (today's behaviour), led under the known card: ${fmtWilson(blunders.stillBlunders, blunders.leadsChecked)}`);
 
   console.log(`\nDone in ${((Date.now() - startedAt) / 1000).toFixed(1)}s.`);
 }
