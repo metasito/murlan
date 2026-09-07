@@ -21,7 +21,7 @@ on:
   workflow_dispatch:
     inputs:
       force-upload-debug:
-        description: Upload maestro-debug-ios even on a passing run, for #823's per-step command windows (no logcat, so analyze-maestro-run.mjs can't read it)
+        description: "Upload maestro-debug-ios even on a passing run, for #823's per-step command windows (no logcat, so analyze-maestro-run.mjs can't read it)"
         required: false
         default: false
         type: boolean

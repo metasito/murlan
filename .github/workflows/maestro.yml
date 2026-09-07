@@ -27,7 +27,7 @@ on:
         required: false
         default: "900"
       force-upload-debug:
-        description: Upload maestro-debug even on a passing run (for #823's per-step timing)
+        description: "Upload maestro-debug even on a passing run (for #823's per-step timing)"
         required: false
         default: false
         type: boolean

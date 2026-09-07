@@ -133,7 +133,7 @@ Each of these produced a confident, wrong "fixed" in one session:
   header of the script has the `gh run download` invocation. It reads the `maestro-debug`
   artefact, which `maestro.yml` uploads only for a run that failed or whose logcat holds a
   crash tombstone by default — dispatch with `force-upload-debug: true` to get it from a green
-  run too. `ios.yml` uploads `maestro-debug-ios` the same way, but that artefact carries no
+  run too. `ios.yml` uploads `maestro-debug-ios` on the same opt-in, but that artefact carries no
   logcat, so this script cannot read it; iOS per-step timing comes from the exported
   `parseCommandWindows` alone, against `maestro-debug-ios`'s own `maestro.log`.
 - **A flow run through Expo Go never pressed one of our controls.** Expo Go's dev-menu window
