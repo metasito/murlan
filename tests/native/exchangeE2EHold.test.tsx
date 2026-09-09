@@ -68,11 +68,7 @@ const state = (): GameState => ({
 
 const noop = () => {};
 
-const tableWith = (
-  holdMsOverride: number | undefined,
-  onDismiss: () => void,
-  visible: boolean = true
-) => (
+const tableWith = (holdMsOverride: number | undefined, onDismiss: () => void) => (
   <SafeAreaProvider initialMetrics={METRICS}>
     <GameTable
       gameState={state()}
@@ -84,7 +80,7 @@ const tableWith = (
       onQuit={noop}
       onExchangeGive={noop}
       exchangeAnnouncement={{
-        visible,
+        visible: true,
         data: {
           winnerName: 'Ana',
           loserName: 'Bea',
@@ -136,15 +132,6 @@ describe('the offline table forwards holdMsOverride to the overlay it renders', 
 
     await act(async () => jest.advanceTimersByTime(HOLD - REAL_MS - 1000));
     expect(onDismiss).toHaveBeenCalledTimes(1);
-
-    await r.unmount();
-  });
-
-  it('with an override, the diagnostic marker renders even while dismissed (#940)', async () => {
-    const HOLD = REAL_MS + 5000;
-    const r = await render(tableWith(HOLD, noop, false));
-    expect(screen.getByTestId(`exchange-announce-hold-override-${HOLD}`)).toBeTruthy();
-    expect(screen.queryByTestId('exchange-announce')).toBeNull();
 
     await r.unmount();
   });

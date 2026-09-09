@@ -49,15 +49,15 @@ import type { BotPersonalityId } from "@/lib/botPersonalities";
 // E2E harness produced itself.
 const E2E_FAST = process.env.EXPO_PUBLIC_E2E_FAST === "1";
 /**
- * How long the offline exchange overlay holds under Maestro, when
- * `EXPO_PUBLIC_E2E_FAST` reaches this build — comfortably past
- * `btn-prossima-manche`'s slowest observed device round trip. Its real
- * ceiling: `app/game.tsx` suspends the AI turn for as long as this overlay
- * is announcing, and `AI_DELAY` is 0 under this same flag, so hold + AI_DELAY
- * must still land inside `.maestro/exchange-phase.yaml`'s wait for
- * `btn-passa` to reappear afterwards — pinned by
- * `tests/exchangeE2EHold.test.ts` so the two numbers cannot drift apart
- * silently.
+ * How long the offline exchange overlay holds when `EXPO_PUBLIC_E2E_FAST`
+ * reaches this build — several times the slowest `btn-prossima-manche`
+ * round trip measured so far, to absorb device-to-device variance rather
+ * than one dispatch's number.
+ *
+ * `app/game.tsx` suspends the AI turn for as long as this overlay is
+ * announcing, so a larger value freezes the offline AI loop that much
+ * longer after every exchange. Nothing bounds it today: no Maestro flow
+ * plays a hand out past an exchange.
  */
 const E2E_EXCHANGE_HOLD_MS = 45_000;
 

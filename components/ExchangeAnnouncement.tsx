@@ -77,16 +77,7 @@ export function ExchangeAnnouncement({
     return () => clearTimeout(done);
   }, [visible, bothJokersException, holdMsOverride]);
 
-  // Stays in the tree once `visible` turns false: `acknowledgeExchange`
-  // (GameContext.tsx) only flips `announcing`, never clears `data`, so this
-  // node is still mounted exactly when a run needs to tell "held, then
-  // dismissed" apart from "never held at all".
-  const holdOverrideMarker =
-    typeof holdMsOverride === "number" ? (
-      <View testID={`exchange-announce-hold-override-${holdMsOverride}`} />
-    ) : null;
-
-  if (!visible) return holdOverrideMarker;
+  if (!visible) return null;
 
   const a11yLabel = bothJokersException
     ? t("exchangeAnnouncement.a11yNoSwap", { loserName })
@@ -109,7 +100,6 @@ export function ExchangeAnnouncement({
 
   return (
     <View testID="exchange-announce" pointerEvents="none" style={styles.layer}>
-      {holdOverrideMarker}
       <A11yStatus label={a11yLabel} role="alert" live="assertive" />
 
       {bothJokersException ? (
