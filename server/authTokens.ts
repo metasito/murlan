@@ -1,5 +1,5 @@
 import { randomBytes, randomInt, createHash } from "node:crypto";
-import { sql, type SQL } from "drizzle-orm";
+import { sql, inArray } from "drizzle-orm";
 import { db } from "./db.ts";
 import { uniqueViolation, storage } from "./storage.ts";
 import { authTokens } from "../shared/schema.ts";
@@ -31,41 +31,40 @@ function codeHashInput(email: string, purpose: AuthTokenPurpose, code: string): 
   return `${email.trim().toLowerCase()}:${purpose}:${code}`;
 }
 
-/** Shared INSERT behind both mint shapes below — they differ only in what raw value they hash. */
-async function insertCredential(
-  userId: string,
-  purpose: AuthTokenPurpose,
-  tokenHash: string,
-  ttlMs: number
-): Promise<void> {
+async function insertCredential(params: {
+  userId: string;
+  purpose: AuthTokenPurpose;
+  tokenHash: string;
+  ttlMs: number;
+}): Promise<void> {
   await db.insert(authTokens).values({
-    userId,
-    purpose,
-    tokenHash,
-    expiresAt: new Date(Date.now() + ttlMs),
+    userId: params.userId,
+    purpose: params.purpose,
+    tokenHash: params.tokenHash,
+    expiresAt: new Date(Date.now() + params.ttlMs),
   });
 }
 
 /**
  * Shared atomic claim behind both redeem shapes below: single-use via the
  * `used_at IS NULL AND expires_at > now()` guard inside the same UPDATE, so
- * two near-simultaneous redemptions cannot both succeed. `extra` narrows
- * further — the code path's attempt cap, which the token path has no
- * equivalent of.
+ * two near-simultaneous redemptions cannot both succeed. `maxAttempts` is the
+ * code path's attempt cap, which the token path has no equivalent of.
  */
-async function claimCredential(
-  tokenHash: string,
-  purpose: AuthTokenPurpose,
-  extra: SQL = sql``
-): Promise<string | null> {
+async function claimCredential(params: {
+  tokenHash: string;
+  purpose: AuthTokenPurpose;
+  maxAttempts?: number;
+}): Promise<string | null> {
+  const attemptsGuard = params.maxAttempts === undefined ? sql`` : sql`AND attempts < ${params.maxAttempts}`;
   const result = await db.execute<{ user_id: string }>(sql`
     UPDATE auth_tokens
     SET used_at = now()
-    WHERE token_hash = ${tokenHash}
-      AND purpose = ${purpose}
+    WHERE token_hash = ${params.tokenHash}
+      AND purpose = ${params.purpose}
       AND used_at IS NULL
       AND expires_at > now()
-      ${extra}
+      ${attemptsGuard}
     RETURNING user_id
   `);
   return result.rows[0]?.user_id ?? null;
@@ -78,7 +77,7 @@ export async function mintAuthToken(
   ttlMs: number
 ): Promise<string> {
   const raw = randomBytes(32).toString("base64url");
-  await insertCredential(userId, purpose, hashToken(raw), ttlMs);
+  await insertCredential({ userId, purpose, tokenHash: hashToken(raw), ttlMs });
   return raw;
 }
 
@@ -87,7 +86,7 @@ export async function mintAuthToken(
  * already used, expired or minted for a different purpose.
  */
 export async function redeemAuthToken(rawToken: string, purpose: AuthTokenPurpose): Promise<string | null> {
-  return claimCredential(hashToken(rawToken), purpose);
+  return claimCredential({ tokenHash: hashToken(rawToken), purpose });
 }
 
 /**
@@ -106,7 +105,7 @@ export async function mintAuthCode(params: {
   for (let attempt = 0; ; attempt++) {
     const code = randomInt(0, 1_000_000).toString().padStart(6, "0");
     try {
-      await insertCredential(userId, purpose, hashToken(codeHashInput(email, purpose, code)), ttlMs);
+      await insertCredential({ userId, purpose, tokenHash: hashToken(codeHashInput(email, purpose, code)), ttlMs });
       return code;
     } catch (err) {
       if (attempt >= 2 || uniqueViolation(err) !== "auth_tokens_token_hash_uq") throw err;
@@ -135,20 +134,18 @@ export async function redeemAuthCode(params: {
 }): Promise<string | null> {
   const { email, purpose, code } = params;
   const tokenHash = hashToken(codeHashInput(email, purpose, code));
-  const redeemedUserId = await claimCredential(tokenHash, purpose, sql`AND attempts < ${MAX_CODE_ATTEMPTS}`);
+  const redeemedUserId = await claimCredential({ tokenHash, purpose, maxAttempts: MAX_CODE_ATTEMPTS });
   if (redeemedUserId) return redeemedUserId;
 
   const userIds = await storage.getUserIdsByEmail(email);
-  if (userIds.length > 0) {
-    await db.execute(sql`
-      UPDATE auth_tokens
-      SET attempts = attempts + 1
-      WHERE purpose = ${purpose}
-        AND used_at IS NULL
-        AND expires_at > now()
-        AND user_id IN (${sql.join(userIds.map((id) => sql`${id}`), sql`, `)})
-    `);
-  }
+  await db.execute(sql`
+    UPDATE auth_tokens
+    SET attempts = attempts + 1
+    WHERE purpose = ${purpose}
+      AND used_at IS NULL
+      AND expires_at > now()
+      AND ${inArray(authTokens.userId, userIds)}
+  `);
   return null;
 }
 
