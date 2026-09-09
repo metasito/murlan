@@ -140,14 +140,13 @@ describe("verify-email code guessing is capped per credential", { skip: hasDatab
     assert.equal(res.status, 200, await res.text());
   });
 
-  // storage.getUserIdsByEmail (the redeemAuthCode miss path's replacement for
-  // its old raw `users` subselect) can return more than one row: the partial
-  // unique index only covers verified addresses, so several unverified
-  // accounts may share one. A miss must still charge every pending row at
-  // that address, not just the first match.
-  test("a miss charges every unverified account sharing the guessed address", async () => {
+  // The partial unique index only covers verified addresses, so several
+  // unverified accounts may share one. A miss must still charge every
+  // pending row at that address, not just the first match — and no others.
+  test("a miss charges every unverified account sharing the guessed address, and no other account", async () => {
     const { user: alice } = await register(server, "code_shared_alice");
     const { user: bob } = await register(server, "code_shared_bob");
+    const { user: carol } = await register(server, "code_shared_carol");
     const sharedEmail = "code_shared@example.test";
 
     const { db } = await import("../../server/db.ts");
@@ -155,12 +154,14 @@ describe("verify-email code guessing is capped per credential", { skip: hasDatab
     const { eq } = await import("drizzle-orm");
     await waitForPendingCode(alice.id);
     await waitForPendingCode(bob.id);
+    await waitForPendingCode(carol.id);
     await db.update(users).set({ email: sharedEmail, emailVerifiedAt: null }).where(eq(users.id, alice.id));
     await db.update(users).set({ email: sharedEmail, emailVerifiedAt: null }).where(eq(users.id, bob.id));
 
     const { mintAuthCode, invalidatePendingAuthTokens } = await import("../../server/authTokens.ts");
     await invalidatePendingAuthTokens(alice.id, "email_verify");
     await invalidatePendingAuthTokens(bob.id, "email_verify");
+    await invalidatePendingAuthTokens(carol.id, "email_verify");
     const aliceCode = await mintAuthCode({
       userId: alice.id,
       email: sharedEmail,
@@ -168,6 +169,7 @@ describe("verify-email code guessing is capped per credential", { skip: hasDatab
       ttlMs: 60_000,
     });
     const bobCode = await mintAuthCode({ userId: bob.id, email: sharedEmail, purpose: "email_verify", ttlMs: 60_000 });
+    await mintAuthCode({ userId: carol.id, email: carol.email!, purpose: "email_verify", ttlMs: 60_000 });
 
     const wrong = [aliceCode, bobCode].includes("000000") ? "111111" : "000000";
     const res = await verify(sharedEmail, wrong);
@@ -176,7 +178,9 @@ describe("verify-email code guessing is capped per credential", { skip: hasDatab
     const rows = await db.select().from(authTokens).where(eq(authTokens.purpose, "email_verify"));
     const aliceRow = rows.find((row) => row.userId === alice.id);
     const bobRow = rows.find((row) => row.userId === bob.id);
+    const carolRow = rows.find((row) => row.userId === carol.id);
     assert.equal(aliceRow?.attempts, 1, "alice's pending row must be charged too");
     assert.equal(bobRow?.attempts, 1, "bob's pending row must be charged too");
+    assert.equal(carolRow?.attempts, 0, "a miss at one address must not charge an unrelated account's row");
   });
 });

@@ -37,31 +37,32 @@ async function insertCredential(params: {
   tokenHash: string;
   ttlMs: number;
 }): Promise<void> {
+  const { userId, purpose, tokenHash, ttlMs } = params;
   await db.insert(authTokens).values({
-    userId: params.userId,
-    purpose: params.purpose,
-    tokenHash: params.tokenHash,
-    expiresAt: new Date(Date.now() + params.ttlMs),
+    userId,
+    purpose,
+    tokenHash,
+    expiresAt: new Date(Date.now() + ttlMs),
   });
 }
 
 /**
  * Shared atomic claim behind both redeem shapes below: single-use via the
  * `used_at IS NULL AND expires_at > now()` guard inside the same UPDATE, so
- * two near-simultaneous redemptions cannot both succeed. `maxAttempts` is the
- * code path's attempt cap, which the token path has no equivalent of.
+ * two near-simultaneous redemptions cannot both succeed.
  */
 async function claimCredential(params: {
   tokenHash: string;
   purpose: AuthTokenPurpose;
   maxAttempts?: number;
 }): Promise<string | null> {
-  const attemptsGuard = params.maxAttempts === undefined ? sql`` : sql`AND attempts < ${params.maxAttempts}`;
+  const { tokenHash, purpose, maxAttempts } = params;
+  const attemptsGuard = maxAttempts === undefined ? sql`` : sql`AND attempts < ${maxAttempts}`;
   const result = await db.execute<{ user_id: string }>(sql`
     UPDATE auth_tokens
     SET used_at = now()
-    WHERE token_hash = ${params.tokenHash}
-      AND purpose = ${params.purpose}
+    WHERE token_hash = ${tokenHash}
+      AND purpose = ${purpose}
       AND used_at IS NULL
       AND expires_at > now()
       ${attemptsGuard}
