@@ -287,7 +287,8 @@ jobs:
         if: always()
         run: |
           if sudo dmesg -T > "$RUNNER_TEMP/dmesg-oom.txt" 2>&1; then
-            if grep -qiE "killed process|out of memory|oom-kill|oom_reaper" "$RUNNER_TEMP/dmesg-oom.txt"; then
+            match=$(grep -iE "killed process|out of memory|oom-kill|oom_reaper" "$RUNNER_TEMP/dmesg-oom.txt" || true)
+            if [ -n "$match" ]; then
               echo "found=true" >> "$GITHUB_OUTPUT"
               echo "::warning::The kernel log shows an OOM kill during this run - see dmesg-oom.txt in the debug artifact. #941"
             fi
