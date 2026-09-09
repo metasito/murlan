@@ -393,7 +393,7 @@ describe("email at signup", { skip: hasDatabase() ? false : skipMessage() }, () 
   test("verify-email redeems a code once, and a second redemption fails", async () => {
     const { user } = await register(server, "verify_once");
     const { mintAuthCode, redeemAuthCode } = await import("../../server/authTokens.ts");
-    const code = await mintAuthCode(user.id, user.email!, "email_verify", 60_000);
+    const code = await mintAuthCode({ userId: user.id, email: user.email!, purpose: "email_verify", ttlMs: 60_000 });
 
     const first = await fetch(`${server.url}/api/auth/verify-email`, {
       method: "POST",
@@ -416,14 +416,19 @@ describe("email at signup", { skip: hasDatabase() ? false : skipMessage() }, () 
 
     // Same guard the route uses, exercised directly: a used code is refused
     // by redeemAuthCode itself, not only by some outer route-level check.
-    const direct = await redeemAuthCode(user.email!, "email_verify", code);
+    const direct = await redeemAuthCode({ email: user.email!, purpose: "email_verify", code });
     assert.equal(direct, null, "redeemAuthCode must refuse an already-used code");
   });
 
   test("an expired code fails to redeem", async () => {
     const { user } = await register(server, "verify_expired");
     const { mintAuthCode, redeemAuthCode } = await import("../../server/authTokens.ts");
-    const code = await mintAuthCode(user.id, user.email!, "email_verify", -60_000);
+    const code = await mintAuthCode({
+      userId: user.id,
+      email: user.email!,
+      purpose: "email_verify",
+      ttlMs: -60_000,
+    });
 
     const res = await fetch(`${server.url}/api/auth/verify-email`, {
       method: "POST",
@@ -434,7 +439,7 @@ describe("email at signup", { skip: hasDatabase() ? false : skipMessage() }, () 
     assert.equal(res.status, 400, text);
     assert.equal(JSON.parse(text).code, "INVALID_TOKEN");
 
-    const direct = await redeemAuthCode(user.email!, "email_verify", code);
+    const direct = await redeemAuthCode({ email: user.email!, purpose: "email_verify", code });
     assert.equal(direct, null, "an expired code must not redeem via the module either");
   });
 
@@ -444,7 +449,7 @@ describe("email at signup", { skip: hasDatabase() ? false : skipMessage() }, () 
   test("a POST to verify-email does not sweep an unrelated expired row", async () => {
     const { user } = await register(server, "verify_no_sweep");
     const { mintAuthCode } = await import("../../server/authTokens.ts");
-    await mintAuthCode(user.id, user.email!, "email_verify", -60_000);
+    await mintAuthCode({ userId: user.id, email: user.email!, purpose: "email_verify", ttlMs: -60_000 });
 
     const admin = new pg.Pool({ connectionString: process.env.DATABASE_URL! });
     try {

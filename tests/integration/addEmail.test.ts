@@ -87,14 +87,14 @@ describe("add-email migration nudge", { skip: hasDatabase() ? false : skipMessag
     );
     const email = user.email!;
 
-    const first = await mintAuthCode(user.id, email, "email_verify", 60_000);
+    const first = await mintAuthCode({ userId: user.id, email, purpose: "email_verify", ttlMs: 60_000 });
     await invalidatePendingAuthTokens(user.id, "email_verify");
-    const second = await mintAuthCode(user.id, email, "email_verify", 60_000);
+    const second = await mintAuthCode({ userId: user.id, email, purpose: "email_verify", ttlMs: 60_000 });
 
-    const redeemedFirst = await redeemAuthCode(email, "email_verify", first);
+    const redeemedFirst = await redeemAuthCode({ email, purpose: "email_verify", code: first });
     assert.equal(redeemedFirst, null, "an outstanding sibling code must not survive a fresh mint");
 
-    const redeemedSecond = await redeemAuthCode(email, "email_verify", second);
+    const redeemedSecond = await redeemAuthCode({ email, purpose: "email_verify", code: second });
     assert.equal(redeemedSecond, user.id, "the latest mint must still redeem normally");
   });
 
@@ -108,7 +108,7 @@ describe("add-email migration nudge", { skip: hasDatabase() ? false : skipMessag
     // as register's own mint) — mint an equivalent one directly to drive the
     // shared redemption path add-email's mint call feeds in production.
     const { mintAuthCode, redeemAuthCode } = await import("../../server/authTokens.ts");
-    const code = await mintAuthCode(user.id, email, "email_verify", 60_000);
+    const code = await mintAuthCode({ userId: user.id, email, purpose: "email_verify", ttlMs: 60_000 });
 
     const verifyRes = await fetch(`${server.url}/api/auth/verify-email`, {
       method: "POST",
@@ -121,7 +121,7 @@ describe("add-email migration nudge", { skip: hasDatabase() ? false : skipMessag
     const meBody = await meRes.json();
     assert.equal(meBody.emailVerified, true, "verify-email must be the route that flips emailVerifiedAt for an added email too");
 
-    const direct = await redeemAuthCode(email, "email_verify", code);
+    const direct = await redeemAuthCode({ email, purpose: "email_verify", code });
     assert.equal(direct, null, "the code must be single-use through the shared redeem path");
   });
 
@@ -149,7 +149,12 @@ describe("add-email migration nudge", { skip: hasDatabase() ? false : skipMessag
   test("verifying a claim against an address already verified elsewhere is refused, and clears this account's email", async () => {
     const { user: owner, cookie: ownerCookie } = await register(server, "nudge_verified_owner");
     const { mintAuthCode } = await import("../../server/authTokens.ts");
-    const ownerCode = await mintAuthCode(owner.id, owner.email!, "email_verify", 60_000);
+    const ownerCode = await mintAuthCode({
+      userId: owner.id,
+      email: owner.email!,
+      purpose: "email_verify",
+      ttlMs: 60_000,
+    });
     const ownerVerify = await fetch(`${server.url}/api/auth/verify-email`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -168,7 +173,12 @@ describe("add-email migration nudge", { skip: hasDatabase() ? false : skipMessag
 
     // Same reason register()'s and legacyAccount()'s own callers do this
     // rather than reading a stored code back: only its hash is persisted.
-    const claimCode = await mintAuthCode(claimant.id, claimedEmail, "email_verify", 60_000);
+    const claimCode = await mintAuthCode({
+      userId: claimant.id,
+      email: claimedEmail,
+      purpose: "email_verify",
+      ttlMs: 60_000,
+    });
 
     const verifyRes = await fetch(`${server.url}/api/auth/verify-email`, {
       method: "POST",
