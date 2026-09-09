@@ -277,6 +277,15 @@ jobs:
           signal=$(grep -A6 ">>> $APP_ID" "$tombstone" | grep -m1 -o "signal [0-9]* ([A-Z]*)" || echo "an unknown signal")
           echo "::warning::The app died of a native crash during this run ($signal). Maestro asserts against a stale hierarchy afterwards, so the step that failed is not where the problem is - read the screenshot beside it. Tombstone: ${tombstone#$HOME/.maestro/tests/}. #629"
 
+      # #941: run 34101806375's host-vitals showed `used` fall ~3.4GB in the
+      # 90s before a device-server death, consistent with the kernel OOM
+      # killer taking the emulator - but host-vitals alone cannot say so. The
+      # kernel ring buffer can; `dmesg` outlives the process it killed the
+      # same way the streamed logcat outlives the device (#185).
+      - name: Capture the kernel's own record of an OOM kill
+        if: always()
+        run: sudo dmesg -T 2>/dev/null | grep -iE "killed process|out of memory" > "$RUNNER_TEMP/dmesg-oom.txt" || true
+
       # Recordings, logs and screenshots from a failed flow are the only way to
       # tell a real regression from an emulator that fell over.
       #
@@ -295,4 +304,5 @@ jobs:
             ~/.maestro/tests/
             ${{ runner.temp }}/logcat.txt
             ${{ runner.temp }}/host-vitals.txt
+            ${{ runner.temp }}/dmesg-oom.txt
           if-no-files-found: ignore

@@ -24,13 +24,14 @@ runs:
         target: google_apis
         arch: x86_64
         profile: pixel_6
-        emulator-options: -no-window -no-audio -no-boot-anim -gpu guest -camera-back none
-        # `guest` renders entirely inside the guest, so no colour-buffer
-        # handle crosses the host-guest pipe. `swiftshader_indirect` was that
-        # handshake, and it died twice under it: #185's `bad color buffer
-        # handle 370`, then #941's device server dying inside a long repeat
-        # loop. Untried before #941; the other candidate is a newer system
-        # image than API 34.
+        emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -camera-back none
+        # `-gpu guest` was #185's cheapest unspent remedy for the host-guest
+        # colour-buffer handshake, and #941 tried it here first. It does not
+        # apply: system images from API 28 on ship no guest-side GL renderer,
+        # so the emulator silently falls back to swiftshader_indirect anyway
+        # (developer.android.com/studio/run/emulator-acceleration). At
+        # api-level 34 above, this is a no-op, not an unspent option.
+        #
         # Left on. #35 names this as the first knob to try for a struggling
         # emulator and it was tried, but it is the wrong one: Reanimated reads
         # the system scales as a reduced-motion signal and disables animations
@@ -39,12 +40,13 @@ runs:
         # hide_error_dialogs, below. Driving real worklets on a real UI thread
         # is the reason this layer exists.
         disable-animations: false
-        # Deliberately stock. `loadavg` peaked at 8.35 on four vCPUs across
-        # run 33448536219's game-table render, so CPU is the number to argue
-        # from if these knobs are ever raised. Host memory is not uniformly
-        # clean, though: #941 measured `used` fall ~3.4GB in the 90s before a
-        # bot-play repeat loop's device-server death, a longer and different
-        # workload than the one that found 10.5GB available.
+        # Deliberately stock, on evidence scoped to what each run measured.
+        # 152 samples across run 33448536219's shorter game-table render put
+        # worst available host memory at 10.5 GB of 16 and `loadavg` at 8.35
+        # on four vCPUs - CPU is the number to argue from for that workload.
+        # Run 34101806375's longer bot-play repeat loop measured differently:
+        # `used` fell ~3.4GB in the 90s before its device-server death, which
+        # #941 could not attribute further without an OOM signal to read.
         #
         # The boot itself is intermittently slow on a runner - three runs have
         # ended on "Timeout waiting for emulator to boot", including one on
