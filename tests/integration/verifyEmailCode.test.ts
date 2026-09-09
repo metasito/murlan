@@ -49,7 +49,7 @@ describe("verify-email code guessing is capped per credential", { skip: hasDatab
     await waitForPendingCode(user.id);
     const { mintAuthCode, invalidatePendingAuthTokens } = await import("../../server/authTokens.ts");
     await invalidatePendingAuthTokens(user.id, "email_verify");
-    await mintAuthCode(user.id, user.email!, "email_verify", 60_000);
+    await mintAuthCode({ userId: user.id, email: user.email!, purpose: "email_verify", ttlMs: 60_000 });
 
     const res = await verify(user.email!, "000000");
     const text = await res.text();
@@ -71,7 +71,7 @@ describe("verify-email code guessing is capped per credential", { skip: hasDatab
     );
     await waitForPendingCode(user.id);
     await invalidatePendingAuthTokens(user.id, "email_verify");
-    const code = await mintAuthCode(user.id, user.email!, "email_verify", 60_000);
+    const code = await mintAuthCode({ userId: user.id, email: user.email!, purpose: "email_verify", ttlMs: 60_000 });
 
     // Wrong guesses, each guaranteed not to collide with the real code.
     const wrong = code === "000000" ? "111111" : "000000";
@@ -104,12 +104,17 @@ describe("verify-email code guessing is capped per credential", { skip: hasDatab
     );
     await waitForPendingCode(alice.id);
     await invalidatePendingAuthTokens(alice.id, "email_verify");
-    const aliceCode = await mintAuthCode(alice.id, alice.email!, "email_verify", 60_000);
+    const aliceCode = await mintAuthCode({
+      userId: alice.id,
+      email: alice.email!,
+      purpose: "email_verify",
+      ttlMs: 60_000,
+    });
 
     // If the hash were salted by code alone (no email), this would still
     // match alice's own row and return her userId — the email argument
     // naming bob wouldn't matter at all.
-    const crossRedeem = await redeemAuthCode(bob.email!, "email_verify", aliceCode);
+    const crossRedeem = await redeemAuthCode({ email: bob.email!, purpose: "email_verify", code: aliceCode });
     assert.equal(crossRedeem, null, "alice's code must not verify bob's account");
 
     const res = await verify(alice.email!, aliceCode);
@@ -123,7 +128,7 @@ describe("verify-email code guessing is capped per credential", { skip: hasDatab
     );
     await waitForPendingCode(user.id);
     await invalidatePendingAuthTokens(user.id, "email_verify");
-    const code = await mintAuthCode(user.id, user.email!, "email_verify", 60_000);
+    const code = await mintAuthCode({ userId: user.id, email: user.email!, purpose: "email_verify", ttlMs: 60_000 });
 
     const wrong = code === "000000" ? "111111" : "000000";
     for (let i = 0; i < MAX_CODE_ATTEMPTS - 1; i++) {

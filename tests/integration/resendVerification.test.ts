@@ -67,12 +67,17 @@ describe("resend-verification", { skip: hasDatabase() ? false : skipMessage() },
     // invalidation test uses, so this assertion cannot race register()'s own
     // fire-and-forget mint: whichever code is live when resend runs, the
     // route's own invalidate-then-mint clears every pending row regardless.
-    const pending = await mintAuthCode(user.id, user.email!, "email_verify", 60_000);
+    const pending = await mintAuthCode({
+      userId: user.id,
+      email: user.email!,
+      purpose: "email_verify",
+      ttlMs: 60_000,
+    });
 
     const res = await resend(cookie);
     assert.equal(res.status, 200, await res.text());
 
-    const stalePending = await redeemAuthCode(user.email!, "email_verify", pending);
+    const stalePending = await redeemAuthCode({ email: user.email!, purpose: "email_verify", code: pending });
     assert.equal(stalePending, null, "resend must invalidate whatever was pending before it");
 
     const { db } = await import("../../server/db.ts");

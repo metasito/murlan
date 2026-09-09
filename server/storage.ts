@@ -172,6 +172,19 @@ class DrizzleStorage {
     return user;
   }
 
+  /**
+   * Unlike `getUserByEmail`, may legitimately return more than one id: the
+   * partial unique index only covers verified rows, so several unverified
+   * accounts can share an address (see `getVerifiedUserByEmail`'s doc).
+   */
+  async getUserIdsByEmail(email: string): Promise<string[]> {
+    const rows = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(sql`lower(${users.email}) = lower(${email})`);
+    return rows.map((row) => row.id);
+  }
+
   private generateFriendCode(): string {
     return randomCode(6);
   }

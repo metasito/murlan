@@ -520,7 +520,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // user has nothing to retire, but this mint can still land after
         // add-email's own — see authTokens.ts.
         invalidatePendingAuthTokens(user.id, "email_verify")
-          .then(() => mintAuthCode(user.id, email, "email_verify", EMAIL_VERIFY_CODE_TTL_MS))
+          .then(() => mintAuthCode({ userId: user.id, email, purpose: "email_verify", ttlMs: EMAIL_VERIFY_CODE_TTL_MS }))
           .then((code) => sendVerificationEmail(email, username, code))
           .catch((err) => logger.error({ err, userId: user.id }, "Failed to mint the verification code"));
       });
@@ -659,7 +659,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
 
     await invalidatePendingAuthTokens(userId, "email_verify");
-    const code = await mintAuthCode(userId, email, "email_verify", EMAIL_VERIFY_CODE_TTL_MS);
+    const code = await mintAuthCode({ userId, email, purpose: "email_verify", ttlMs: EMAIL_VERIFY_CODE_TTL_MS });
     sendVerificationEmail(email, user.username, code);
     logger.info({ userId }, "Email added, pending verification");
     res.json(sessionUser(user));
@@ -674,7 +674,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // uneconomical to enumerate through.
   app.post("/api/auth/verify-email", authLimiter, validate(VerifyEmailSchema), async (req, res) => {
     const { email, code } = req.body as { email: string; code: string };
-    const userId = await redeemAuthCode(email, "email_verify", code);
+    const userId = await redeemAuthCode({ email, purpose: "email_verify", code });
     if (!userId) {
       res.status(400).json({ ...payload("INVALID_TOKEN") });
       return;
@@ -726,7 +726,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
 
     await invalidatePendingAuthTokens(userId, "email_verify");
-    const code = await mintAuthCode(userId, user.email, "email_verify", EMAIL_VERIFY_CODE_TTL_MS);
+    const code = await mintAuthCode({
+      userId,
+      email: user.email,
+      purpose: "email_verify",
+      ttlMs: EMAIL_VERIFY_CODE_TTL_MS,
+    });
     sendVerificationEmail(user.email, user.username, code);
     logger.info({ userId }, "Verification email resent");
     res.json({ ok: true });
