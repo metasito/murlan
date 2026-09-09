@@ -24,6 +24,10 @@ runs:
         target: google_apis
         arch: x86_64
         profile: pixel_6
+        # `-gpu guest` is a no-op from API 28 on: no guest-side GL renderer
+        # ships in the system image, so the emulator falls back to
+        # swiftshader_indirect regardless
+        # (developer.android.com/studio/run/emulator-acceleration).
         emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -camera-back none
         # Left on. #35 names this as the first knob to try for a struggling
         # emulator and it was tried, but it is the wrong one: Reanimated reads
@@ -33,12 +37,14 @@ runs:
         # hide_error_dialogs, below. Driving real worklets on a real UI thread
         # is the reason this layer exists.
         disable-animations: false
-        # Deliberately stock, and now on evidence rather than assumption.
-        # Memory was the standing explanation for #185 and it is measured
-        # false: 152 samples across run 33448536219 put the worst available
-        # host memory at 10.5 GB of 16 while the game table rendered. CPU is
-        # the half that is not clean - `loadavg` peaks at 8.35 on four vCPUs -
-        # so if these knobs are ever raised, that is the number to argue from.
+        # Deliberately stock, on evidence scoped to what each run measured.
+        # 152 samples across run 33448536219's shorter game-table render put
+        # worst available host memory at 10.5 GB of 16 and `loadavg` at 8.35
+        # on four vCPUs - CPU is the number to argue from for that workload.
+        # Run 34101806375's longer bot-play repeat loop measured differently:
+        # `used` fell ~3.4GB in the 90s before its device-server death.
+        # `dmesg-oom.txt` (maestro.yml) is what can tell that apart from an
+        # unrelated cause.
         #
         # The boot itself is intermittently slow on a runner - three runs have
         # ended on "Timeout waiting for emulator to boot", including one on
