@@ -24,14 +24,11 @@ runs:
         target: google_apis
         arch: x86_64
         profile: pixel_6
+        # `-gpu guest` is a no-op from API 28 on: no guest-side GL renderer
+        # ships in the system image, so the emulator falls back to
+        # swiftshader_indirect regardless
+        # (developer.android.com/studio/run/emulator-acceleration).
         emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -camera-back none
-        # `-gpu guest` was #185's cheapest unspent remedy for the host-guest
-        # colour-buffer handshake, and #941 tried it here first. It does not
-        # apply: system images from API 28 on ship no guest-side GL renderer,
-        # so the emulator silently falls back to swiftshader_indirect anyway
-        # (developer.android.com/studio/run/emulator-acceleration). At
-        # api-level 34 above, this is a no-op, not an unspent option.
-        #
         # Left on. #35 names this as the first knob to try for a struggling
         # emulator and it was tried, but it is the wrong one: Reanimated reads
         # the system scales as a reduced-motion signal and disables animations
@@ -45,8 +42,9 @@ runs:
         # worst available host memory at 10.5 GB of 16 and `loadavg` at 8.35
         # on four vCPUs - CPU is the number to argue from for that workload.
         # Run 34101806375's longer bot-play repeat loop measured differently:
-        # `used` fell ~3.4GB in the 90s before its device-server death, which
-        # #941 could not attribute further without an OOM signal to read.
+        # `used` fell ~3.4GB in the 90s before its device-server death, a
+        # figure the kernel's own OOM record (`dmesg-oom.txt` in
+        # maestro.yml) is what can tell it apart from an unrelated cause.
         #
         # The boot itself is intermittently slow on a runner - three runs have
         # ended on "Timeout waiting for emulator to boot", including one on
