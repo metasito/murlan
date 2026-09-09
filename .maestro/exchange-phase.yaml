@@ -17,13 +17,13 @@
 # synchronously with the deal, before the table remounts.
 #
 # The ceremony's own overlay (`<ExchangeAnnouncement>`, testID
-# `exchange-announce`) is asserted below, right after the `btn-prossima-manche`
-# tap that deals the hand it fires on. That single tap command does not return
-# for ~8.2s on a real device (#915), well past the overlay's real ~5.2s hold —
-# so `EXPO_PUBLIC_E2E_FAST` (set only by this job's own build) holds it open
-# past that return instead; no real player ever reads this env var. What the
-# exchange *decides* is asserted by the unit tests, which can see it — this
-# flow only proves the overlay itself paints on a real device.
+# `exchange-announce`) is waited for below, after the `btn-prossima-manche`
+# tap that deals the hand it fires on: the overlay may not be up yet the
+# instant that tap returns, so this polls rather than asserting once.
+# `context/GameContext.tsx`'s `E2E_EXCHANGE_HOLD_MS` is the authority on how
+# long that hold lasts and why; not repeated here. What the exchange
+# *decides* is asserted by the unit tests, which can see it — this flow only
+# proves the overlay itself paints on a real device.
 #
 # This flow does not play the second hand out: a dealt hand with `btn-passa`
 # live is what proves the match moved on rather than ending, and that is the
@@ -129,8 +129,10 @@ env:
     visible:
       id: "game-table"
     timeout: 90000
-- assertVisible:
-    id: "exchange-announce"
+- extendedWaitUntil:
+    visible:
+      id: "exchange-announce"
+    timeout: 20000
 
 # --- Confirm the match moved on rather than ending: a fresh, playable hand ---
 - extendedWaitUntil:
