@@ -18,6 +18,7 @@ const gameContext = read("context/GameContext.tsx");
 const onlineGameContext = read("context/OnlineGameContext.tsx");
 const gameHooks = read("context/gameHooks.ts");
 const offlineScreen = read("app/game.tsx");
+const exchangePhaseFlow = read(".maestro/exchange-phase.yaml");
 
 /**
  * The arguments of the first call to `name(` in `source`, respecting nested
@@ -97,6 +98,35 @@ describe("the offline exchange overlay's E2E hold", () => {
       /holdMsOverride:\s*exchangeHoldMsOverride/,
       "app/game.tsx no longer passes exchangeHoldMsOverride into the exchangeAnnouncement slot " +
         "it hands to GameTable"
+    );
+  });
+
+  test("the hold plus the AI's own delay stays under the yaml's post-exchange btn-passa wait", () => {
+    // app/game.tsx suspends the AI turn for the whole hold (`exchangeAnnouncing`
+    // gates `aiTurnKey`), so a bump to either number here can silently blow the
+    // other's budget without either file's own test noticing.
+    const holdMatch = gameContext.match(/const E2E_EXCHANGE_HOLD_MS = ([\d_]+);/);
+    assert.ok(holdMatch, "E2E_EXCHANGE_HOLD_MS constant not found in GameContext.tsx");
+    const holdMs = Number(holdMatch[1].replace(/_/g, ""));
+
+    const aiDelayMatch = offlineScreen.match(/const AI_DELAY = E2E_FAST \? (\d+) : \d+;/);
+    assert.ok(aiDelayMatch, "AI_DELAY's E2E_FAST branch not found in app/game.tsx");
+    const aiDelayMs = Number(aiDelayMatch[1]);
+
+    const afterExchangeAnnounce = exchangePhaseFlow.slice(
+      exchangePhaseFlow.indexOf('id: "exchange-announce"')
+    );
+    const passaWait = afterExchangeAnnounce.match(/id:\s*"btn-passa"[\s\S]*?timeout:\s*(\d+)/);
+    assert.ok(
+      passaWait,
+      "no btn-passa wait found after the exchange-announce wait in .maestro/exchange-phase.yaml"
+    );
+    const passaTimeoutMs = Number(passaWait[1]);
+
+    assert.ok(
+      holdMs + aiDelayMs < passaTimeoutMs,
+      `E2E_EXCHANGE_HOLD_MS (${holdMs}) + AI_DELAY (${aiDelayMs}) must stay under ` +
+        `exchange-phase.yaml's post-exchange btn-passa wait (${passaTimeoutMs})`
     );
   });
 

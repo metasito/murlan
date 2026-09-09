@@ -18,12 +18,12 @@
 #
 # The ceremony's own overlay (`<ExchangeAnnouncement>`, testID
 # `exchange-announce`) is waited for below, after the `btn-prossima-manche`
-# tap that deals the hand it fires on — `extendedWaitUntil` rather than an
-# instant `assertVisible`, so it does not require the overlay already up the
-# moment the tap returns. `context/GameContext.tsx`'s `E2E_EXCHANGE_HOLD_MS`
-# is the authority on how long that hold lasts and why; not repeated here.
-# What the exchange *decides* is asserted by the unit tests, which can see
-# it — this flow only proves the overlay itself paints on a real device.
+# tap that deals the hand it fires on: the overlay may not be up yet the
+# instant that tap returns, so this polls rather than asserting once.
+# `context/GameContext.tsx`'s `E2E_EXCHANGE_HOLD_MS` is the authority on how
+# long that hold lasts and why; not repeated here. What the exchange
+# *decides* is asserted by the unit tests, which can see it — this flow only
+# proves the overlay itself paints on a real device.
 #
 # This flow does not play the second hand out: a dealt hand with `btn-passa`
 # live is what proves the match moved on rather than ending, and that is the

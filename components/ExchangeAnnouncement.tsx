@@ -77,7 +77,10 @@ export function ExchangeAnnouncement({
     return () => clearTimeout(done);
   }, [visible, bothJokersException, holdMsOverride]);
 
-  // Diagnostic testID, offline-E2E-only: rendered regardless of `visible`.
+  // Stays in the tree once `visible` turns false: `acknowledgeExchange`
+  // (GameContext.tsx) only flips `announcing`, never clears `data`, so this
+  // node is still mounted exactly when a run needs to tell "held, then
+  // dismissed" apart from "never held at all".
   const holdOverrideMarker =
     typeof holdMsOverride === "number" ? (
       <View testID={`exchange-announce-hold-override-${holdMsOverride}`} />
