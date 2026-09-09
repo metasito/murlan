@@ -42,9 +42,9 @@ runs:
         # worst available host memory at 10.5 GB of 16 and `loadavg` at 8.35
         # on four vCPUs - CPU is the number to argue from for that workload.
         # Run 34101806375's longer bot-play repeat loop measured differently:
-        # `used` fell ~3.4GB in the 90s before its device-server death, a
-        # figure the kernel's own OOM record (`dmesg-oom.txt` in
-        # maestro.yml) is what can tell it apart from an unrelated cause.
+        # `used` fell ~3.4GB in the 90s before its device-server death.
+        # `dmesg-oom.txt` (maestro.yml) is what can tell that apart from an
+        # unrelated cause.
         #
         # The boot itself is intermittently slow on a runner - three runs have
         # ended on "Timeout waiting for emulator to boot", including one on
