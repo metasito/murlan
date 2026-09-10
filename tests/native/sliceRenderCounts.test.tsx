@@ -16,6 +16,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, render } from '@testing-library/react-native';
 
 import { OnlineGameProvider, useOnlineGame } from '@/context/OnlineGameContext';
+import type { RoomState } from '@/context/OnlineGameContext';
 import {
   useOnlineConnection,
   useOnlineExchange,
@@ -25,6 +26,7 @@ import {
   useOnlineTurnClock,
 } from '@/context/onlineGameHooks';
 import { NotificationProvider } from '@/context/NotificationContext';
+import type { GameState } from '@/lib/gameEngine';
 
 type Listener = (...args: unknown[]) => void;
 
@@ -89,15 +91,70 @@ const deliver = async (event: string, payload: unknown) => {
   });
 };
 
-const roomState = {
+const gameState: GameState = {
+  players: [
+    { id: 'player_0', name: 'Ana', hand: [], type: 'human' },
+    { id: 'player_1', name: 'Besi', hand: [], type: 'human' },
+  ],
+  currentTurnIndex: 0,
+  lastPlayedCombination: null,
+  lastPlayedBy: -1,
+  passCount: 0,
+  gameMode: 'free_for_all',
+  roundWinner: null,
+  gameOver: false,
+  rankings: [],
+  firstPlayMade: true,
+};
+
+const roomState: RoomState = {
   roomId: 'R1',
   code: 'R1',
   hostUserId: 'u1',
-  status: 'waiting' as const,
-  gameMode: 'free_for_all' as const,
+  status: 'waiting',
+  gameMode: 'free_for_all',
+  visibility: 'private',
   maxPlayers: 2,
   players: [{ seatIndex: 0, userId: 'u1', username: 'Ana' }],
 };
+
+/**
+ * One broadcast per case, delivered twice, and what each slice owes it. The
+ * server sends the deadline with the state as well as on its own, so the clock
+ * wakes with the table there; the four slices a move says nothing about are
+ * what the split is for.
+ */
+const CASES: {
+  what: string;
+  event: string;
+  payloads: [unknown, unknown];
+  expected: Record<keyof typeof PROBES, number>;
+}[] = [
+  {
+    what: 'a turn deadline',
+    event: 'game:turn_deadline',
+    payloads: [
+      { turnDeadlineMs: 1000, turnSecondsRemaining: 30 },
+      { turnDeadlineMs: 2000, turnSecondsRemaining: 30 },
+    ],
+    expected: { connection: 0, room: 0, table: 0, turnClock: 2, match: 0, exchange: 0, wide: 2 },
+  },
+  {
+    what: 'a roster change',
+    event: 'room:state',
+    payloads: [roomState, { ...roomState, players: [] }],
+    expected: { connection: 0, room: 2, table: 0, turnClock: 0, match: 0, exchange: 0, wide: 2 },
+  },
+  {
+    what: 'a move',
+    event: 'game:state',
+    payloads: [
+      { ...gameState, turnDeadlineMs: 1000, turnSecondsRemaining: 30 },
+      { ...gameState, turnDeadlineMs: 2000, turnSecondsRemaining: 29 },
+    ],
+    expected: { connection: 0, room: 0, table: 2, turnClock: 2, match: 0, exchange: 0, wide: 2 },
+  },
+];
 
 describe('a field change wakes its own slice', () => {
   beforeEach(() => {
@@ -105,51 +162,18 @@ describe('a field change wakes its own slice', () => {
     for (const key of Object.keys(renders)) delete renders[key];
   });
 
-  // Mount settles first: what is measured is the delta a field change costs,
-  // not the mount that had to happen either way.
-  const settled = async () => {
-    const view = await mount();
-    for (const key of Object.keys(renders)) renders[key] = 0;
-    return view;
-  };
+  for (const { what, event, payloads, expected } of CASES) {
+    it(`leaves the slices ${what} says nothing about unrendered`, async () => {
+      const view = await mount();
+      // Mount settles first: what is measured is the delta a field change
+      // costs, not the mount that had to happen either way.
+      for (const key of Object.keys(renders)) renders[key] = 0;
 
-  it('leaves the five slices a turn deadline says nothing about unrendered', async () => {
-    const view = await settled();
+      for (const payload of payloads) await deliver(event, payload);
 
-    await deliver('game:turn_deadline', { turnDeadlineMs: 1000, turnSecondsRemaining: 30 });
-    await deliver('game:turn_deadline', { turnDeadlineMs: 2000, turnSecondsRemaining: 30 });
+      expect(renders).toEqual(expected);
 
-    expect(renders).toEqual({
-      connection: 0,
-      room: 0,
-      table: 0,
-      turnClock: 2,
-      match: 0,
-      exchange: 0,
-      wide: 2,
+      await view.unmount();
     });
-
-    await view.unmount();
-  });
-
-  // The other direction, and the one the lobby screens pay for: `room:state`
-  // arrives on every roster change a waiting table has.
-  it('leaves the five slices a room change says nothing about unrendered', async () => {
-    const view = await settled();
-
-    await deliver('room:state', roomState);
-    await deliver('room:state', { ...roomState, players: [] });
-
-    expect(renders).toEqual({
-      connection: 0,
-      room: 2,
-      table: 0,
-      turnClock: 0,
-      match: 0,
-      exchange: 0,
-      wide: 2,
-    });
-
-    await view.unmount();
-  });
+  }
 });

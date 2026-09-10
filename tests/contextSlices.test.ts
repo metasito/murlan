@@ -22,7 +22,9 @@ const CONTEXT_HOOKS = /use(?:Online)?Game|use(?:Connection|Room|Table|TurnClock|
   .source;
 
 /**
- * The names a slice hook destructures off `via`, its own context hook.
+ * The context hook a slice reads, and the names it destructures off it. Both
+ * come from the source: a slice's concern is what it takes, not what a map
+ * beside the assertion says it takes.
  *
  * Every destructure in the body, not the first: a hook that reads its context
  * twice widens by whatever the second one takes, and reading only the first
@@ -132,8 +134,8 @@ test("the slices partition the context, leaving nothing unreachable", () => {
     const all = fieldsOf(read(contextFile), iface) as string[];
     const covered = new Set(Object.values(slices).flat());
     // A field no slice offers is reachable only through the wide hook, which
-    // is the thing being retired. A field in two slices is a concern boundary
-    // drawn in the wrong place.
+    // no screen may call. A field in two slices is a concern boundary drawn in
+    // the wrong place.
     assert.deepEqual(
       all.filter((f) => !covered.has(f)),
       [],
@@ -152,7 +154,8 @@ test("the slices partition the context, leaving nothing unreachable", () => {
 test("each online slice reads one context, and no two read the same one", () => {
   // The saving is the split, and two slices sharing a context is how it is
   // half-made: every shape check above still passes while a turn-deadline
-  // change wakes both. `sliceFields` pins the one; this pins the six.
+  // change wakes both. `sliceRead` pins that a slice reads one context; this
+  // pins that the six are six.
   const source = read("context/onlineGameHooks.ts");
   const contexts = Object.keys(ONLINE).map((hook) => sliceRead(source, hook).via);
   assert.equal(new Set(contexts).size, contexts.length, "two online slices share a context");
