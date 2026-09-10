@@ -12,8 +12,9 @@
 // which is the half that silently stops working when a prop is dropped.
 import { describe, it, expect, jest, beforeEach, afterEach } from '@jest/globals';
 import React from 'react';
-import { Text, StyleSheet } from 'react-native';
+import { Text } from 'react-native';
 import { render, screen, act } from '@testing-library/react-native';
+import { getAnimatedStyle } from 'react-native-reanimated';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({
@@ -66,14 +67,18 @@ const mount = () =>
     </SafeAreaProvider>
   );
 
+/**
+ * The padding is written from the UI thread, so it is not in `props.style` —
+ * reanimated's own test store is where the current frame's value lives.
+ */
 const padTop = () =>
-  StyleSheet.flatten(screen.getByTestId('menu-content').props.style).paddingTop as number;
+  getAnimatedStyle(screen.getByTestId('menu-content')).paddingTop as unknown as number;
 
 /**
  * The reservation is eased over the banner's own slide, so it is the final
- * number only once the clock has run. `Animated` schedules each frame from
- * inside the previous one, so advancing past the duration leaves the last frame
- * queued — flushing what the advance itself scheduled is what settles it.
+ * number only once the clock has run. Each frame is scheduled from inside the
+ * previous one, so advancing past the duration leaves the last frame queued —
+ * flushing what the advance itself scheduled is what settles it.
  */
 async function settle() {
   await act(async () => {
