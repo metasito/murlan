@@ -28,39 +28,41 @@ jest.mock('@/context/AuthContext', () => ({
   useAuth: () => ({ user: { id: 'u1', username: 'Ana' } }),
 }));
 
-jest.mock('@/context/OnlineGameContext', () => ({
-  useOnlineGame: () => ({
-    // A failed rejoin has already cleared the state, so the screen renders
-    // nothing — every hook still runs, which is what this test drives.
-    gameState: null,
-    mySeatIndex: -1,
-    isSpectator: false,
-    playerLeft: false,
-    rejoinFailed: true,
-    reconnectNotice: null,
-    connected: true,
-    error: null,
-    clearError: jest.fn(),
-    playCards: jest.fn(),
-    pass: jest.fn(),
-    giveExchangeCard: jest.fn(),
-    sendReaction: jest.fn(),
-    leaveRoom: mockLeaveRoom,
-    voteRematch: jest.fn(),
-    entrySource: null,
-    rematchVoteState: null,
-    cumulativeScores: {},
-    matchState: { target: 21, length: 'match', over: false, winners: [], isDraw: false, continues: false },
-    rematchIntents: { yes: 0, total: 0, answers: {} },
-    rematchPromptOpen: false,
-    answerRematch: jest.fn(),
-    exchangeAnnouncing: false,
-    exchangeAnnounceData: null,
-    acknowledgeExchange: jest.fn(),
-    clearPlayerLeft: jest.fn(),
-    clearRejoinFailed: mockClearRejoinFailed,
-  }),
-}));
+jest.mock('@/context/OnlineGameContext', () =>
+  (require('./onlineContextMock') as typeof import('./onlineContextMock')).onlineContextMock(
+    () => ({
+      // A failed rejoin has already cleared the state, so the screen renders
+      // nothing — every hook still runs, which is what this test drives.
+      gameState: null,
+      mySeatIndex: -1,
+      isSpectator: false,
+      playerLeft: false,
+      rejoinFailed: true,
+      reconnectNotice: null,
+      connected: true,
+      error: null,
+      clearError: jest.fn(),
+      playCards: jest.fn(),
+      pass: jest.fn(),
+      giveExchangeCard: jest.fn(),
+      sendReaction: jest.fn(),
+      leaveRoom: mockLeaveRoom,
+      voteRematch: jest.fn(),
+      entrySource: null,
+      rematchVoteState: null,
+      cumulativeScores: {},
+      matchState: { target: 21, length: 'match', over: false, winners: [], isDraw: false, continues: false },
+      rematchIntents: { yes: 0, total: 0, answers: {} },
+      rematchPromptOpen: false,
+      answerRematch: jest.fn(),
+      exchangeAnnouncing: false,
+      exchangeAnnounceData: null,
+      acknowledgeExchange: jest.fn(),
+      clearPlayerLeft: jest.fn(),
+      clearRejoinFailed: mockClearRejoinFailed,
+    })
+  )
+);
 
 // Required, not imported: an import is hoisted above the mock functions the
 // factories above close over, and expo-router's would capture an undefined one.

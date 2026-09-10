@@ -11,17 +11,24 @@
  * piece of state and every effect. What lives once and is shared with the
  * local game lives in `lib/sharedGameFlow.ts`.
  *
- * The `useMemo` around each result buys no render today: the provider already
- * memoizes its value, so a consumer re-renders when any field changes whatever
- * these do, and every call site destructures immediately, so the identity is
- * never observed. It is here because the first call site to keep the object
- * rather than unpack it — a dependency array, a memoized child — would
- * otherwise get a new one every render, and that failure looks like an
- * unrelated render loop. `exhaustive-deps` is an error in this repo, so the
- * lists cannot drift out of step with the destructures above them.
+ * Each reads its own context, and that is where the render saving is: a field
+ * change wakes only the screens reading the slice it belongs to. The `useMemo`
+ * around each result is about identity, not renders — the destructure builds a
+ * new object, so the first call site to keep it rather than unpack it, a
+ * dependency array or a memoized child, would otherwise get a new one every
+ * render, and that failure looks like an unrelated render loop.
+ * `exhaustive-deps` is an error in this repo, so the lists cannot drift out of
+ * step with the destructures above them.
  */
 import { useMemo } from "react";
-import { useOnlineGame } from "./OnlineGameContext";
+import {
+  useConnectionSlice,
+  useExchangeSlice,
+  useMatchSlice,
+  useRoomSlice,
+  useTableSlice,
+  useTurnClockSlice,
+} from "./OnlineGameContext";
 
 /** Whether there is a live table at all, and the ways of being thrown off one. */
 export function useOnlineConnection() {
@@ -34,7 +41,7 @@ export function useOnlineConnection() {
     clearError,
     clearPlayerLeft,
     clearRejoinFailed,
-  } = useOnlineGame();
+  } = useConnectionSlice();
   return useMemo(
     () => ({
       connected,
@@ -71,7 +78,7 @@ export function useOnlineRoom() {
     leaveRoom,
     quickmatch,
     startGame,
-  } = useOnlineGame();
+  } = useRoomSlice();
   return useMemo(
     () => ({
       room,
@@ -101,7 +108,7 @@ export function useOnlineRoom() {
 /** The hand in front of you and the two things you can do with it. */
 export function useOnlineTable() {
   const { gameState, mySeatIndex, playCards, pass, sendReaction, disconnectedSeats } =
-    useOnlineGame();
+    useTableSlice();
   return useMemo(
     () => ({ gameState, mySeatIndex, playCards, pass, sendReaction, disconnectedSeats }),
     [gameState, mySeatIndex, playCards, pass, sendReaction, disconnectedSeats]
@@ -114,7 +121,7 @@ export function useOnlineTable() {
  * be an abstraction telling a lie.
  */
 export function useOnlineTurnClock() {
-  const { turnSeconds, turnDeadlineMs } = useOnlineGame();
+  const { turnSeconds, turnDeadlineMs } = useTurnClockSlice();
   return useMemo(() => ({ turnSeconds, turnDeadlineMs }), [turnSeconds, turnDeadlineMs]);
 }
 
@@ -133,7 +140,7 @@ export function useOnlineMatch() {
     voteRematch,
     voteToEndMatch,
     answerRematch,
-  } = useOnlineGame();
+  } = useMatchSlice();
   return useMemo(
     () => ({
       matchState,
@@ -169,7 +176,7 @@ export function useOnlineMatch() {
 /** The card that changes hands between manches, and the banner about it. */
 export function useOnlineExchange() {
   const { exchangeAnnouncing, exchangeAnnounceData, giveExchangeCard, acknowledgeExchange } =
-    useOnlineGame();
+    useExchangeSlice();
   return useMemo(
     () => ({ exchangeAnnouncing, exchangeAnnounceData, giveExchangeCard, acknowledgeExchange }),
     [exchangeAnnouncing, exchangeAnnounceData, giveExchangeCard, acknowledgeExchange]

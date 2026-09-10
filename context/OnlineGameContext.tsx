@@ -148,7 +148,89 @@ interface OnlineGameContextValue {
   clearRejoinFailed: () => void;
 }
 
-const OnlineGameContext = createContext<OnlineGameContextValue | null>(null);
+/**
+ * One context per slice, so a field change wakes only the screens reading that
+ * slice. The turn clock is what makes that worth having: `armTurn` re-arms it
+ * after every state change, every rejoin and every disconnect, and every online
+ * screen the router holds mounted reads one of these contexts.
+ *
+ * `Pick` rather than six hand-written interfaces: the field names stay declared
+ * once, and a field added to the surface has to be placed in a slice to be
+ * reachable (`tests/contextSlices.test.ts`).
+ */
+type ConnectionSlice = Pick<
+  OnlineGameContextValue,
+  | "connected"
+  | "error"
+  | "reconnectNotice"
+  | "playerLeft"
+  | "rejoinFailed"
+  | "clearError"
+  | "clearPlayerLeft"
+  | "clearRejoinFailed"
+>;
+type RoomSlice = Pick<
+  OnlineGameContextValue,
+  | "room"
+  | "entrySource"
+  | "isSpectator"
+  | "createRoom"
+  | "joinRoom"
+  | "spectateRoom"
+  | "leaveRoom"
+  | "quickmatch"
+  | "startGame"
+>;
+type TableSlice = Pick<
+  OnlineGameContextValue,
+  "gameState" | "mySeatIndex" | "playCards" | "pass" | "sendReaction" | "disconnectedSeats"
+>;
+type TurnClockSlice = Pick<OnlineGameContextValue, "turnSeconds" | "turnDeadlineMs">;
+type MatchSlice = Pick<
+  OnlineGameContextValue,
+  | "matchState"
+  | "cumulativeScores"
+  | "handScores"
+  | "ratingDeltas"
+  | "handRecorded"
+  | "rematchVoteState"
+  | "endMatchVoteState"
+  | "rematchIntents"
+  | "rematchPromptOpen"
+  | "voteRematch"
+  | "voteToEndMatch"
+  | "answerRematch"
+>;
+type ExchangeSlice = Pick<
+  OnlineGameContextValue,
+  "exchangeAnnouncing" | "exchangeAnnounceData" | "giveExchangeCard" | "acknowledgeExchange"
+>;
+
+function sliceContext<T>(hookName: string) {
+  const Context = createContext<T | null>(null);
+  function useSlice(): T {
+    const value = useContext(Context);
+    if (!value) throw new Error(`${hookName} must be used within OnlineGameProvider`);
+    return value;
+  }
+  return [Context, useSlice] as const;
+}
+
+const [ConnectionContext, useConnectionSlice] = sliceContext<ConnectionSlice>("useOnlineConnection");
+const [RoomContext, useRoomSlice] = sliceContext<RoomSlice>("useOnlineRoom");
+const [TableContext, useTableSlice] = sliceContext<TableSlice>("useOnlineTable");
+const [TurnClockContext, useTurnClockSlice] = sliceContext<TurnClockSlice>("useOnlineTurnClock");
+const [MatchContext, useMatchSlice] = sliceContext<MatchSlice>("useOnlineMatch");
+const [ExchangeContext, useExchangeSlice] = sliceContext<ExchangeSlice>("useOnlineExchange");
+
+export {
+  useConnectionSlice,
+  useRoomSlice,
+  useTableSlice,
+  useTurnClockSlice,
+  useMatchSlice,
+  useExchangeSlice,
+};
 
 // Persisted so a cold start — or leaving the (online) route group, which unmounts
 // this provider — does not lock a player out of a game that is still live server-side.
@@ -180,10 +262,14 @@ const TERMINAL_ROOM_REJOIN_CODES = new Set([
   "SEAT_HELD",
 ]);
 
-interface TurnDeadline {
+export interface TurnDeadline {
   turnDeadlineMs?: number;
   turnSecondsRemaining: number;
 }
+
+// Optional because the handler tolerates their absence, not because the server
+// omits them: `sanitizeStateForPlayer` stamps every broadcast with all three.
+export type GameStateBroadcast = GameState & { viewerSeatIndex?: number | null } & Partial<TurnDeadline>;
 
 const NO_TURN_DEADLINE: TurnDeadline = { turnSecondsRemaining: 0 };
 
@@ -428,7 +514,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     };
 
     const onGameState = (
-      state: GameState & { viewerSeatIndex?: number | null } & Partial<TurnDeadline>,
+      state: GameStateBroadcast,
       // Answering is the whole point: a broadcast nobody confirms is re-sent,
       // and the last state of a hand has no later one to correct it.
       ack?: () => void
@@ -905,62 +991,105 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
   const clearPlayerLeft = useCallback(() => setPlayerLeft(false), []);
   const clearRejoinFailed = useCallback(() => setRejoinFailed(false), []);
 
-  const contextValue = useMemo(
+  // One memo per slice, each over only its own state. Two slices sharing a
+  // memo, or a dep list reaching past its own slice, is a split that passes
+  // every shape check and saves nothing — which is why what pins these is a
+  // render count (tests/native/sliceRenderCounts.test.tsx).
+  const connectionValue = useMemo(
     () => ({
-      room,
-      gameState,
       connected,
       error,
+      reconnectNotice,
       playerLeft,
       rejoinFailed,
-      reconnectNotice,
-      mySeatIndex,
-      turnSeconds: turnDeadline.turnSecondsRemaining,
-      turnDeadlineMs: turnDeadline.turnDeadlineMs,
-      entrySource,
-      rematchVoteState,
-      endMatchVoteState,
-      disconnectedSeats,
-      cumulativeScores,
-      handScores,
-      ratingDeltas,
-      handRecorded,
-      matchState,
-      rematchIntents,
-      rematchPromptOpen,
-      exchangeAnnouncing,
-      exchangeAnnounceData,
-      createRoom,
-      joinRoom,
-      spectateRoom,
-      isSpectator,
-      leaveRoom,
-      quickmatch,
-      startGame,
-      voteRematch,
-      voteToEndMatch,
-      answerRematch,
-      playCards,
-      pass,
-      giveExchangeCard,
-      acknowledgeExchange,
-      sendReaction,
       clearError,
       clearPlayerLeft,
       clearRejoinFailed,
     }),
-    [room, gameState, connected, error, playerLeft, rejoinFailed, reconnectNotice, mySeatIndex, turnDeadline, entrySource, rematchVoteState, endMatchVoteState, disconnectedSeats, cumulativeScores, handScores, ratingDeltas, handRecorded, matchState, rematchIntents, rematchPromptOpen, exchangeAnnouncing, exchangeAnnounceData, createRoom, joinRoom, spectateRoom, isSpectator, leaveRoom, quickmatch, startGame, voteRematch, voteToEndMatch, answerRematch, playCards, pass, giveExchangeCard, acknowledgeExchange, sendReaction, clearError, clearPlayerLeft, clearRejoinFailed]
+    [connected, error, reconnectNotice, playerLeft, rejoinFailed, clearError, clearPlayerLeft, clearRejoinFailed]
+  );
+
+  const roomValue = useMemo(
+    () => ({
+      room,
+      entrySource,
+      isSpectator,
+      createRoom,
+      joinRoom,
+      spectateRoom,
+      leaveRoom,
+      quickmatch,
+      startGame,
+    }),
+    [room, entrySource, isSpectator, createRoom, joinRoom, spectateRoom, leaveRoom, quickmatch, startGame]
+  );
+
+  const tableValue = useMemo(
+    () => ({ gameState, mySeatIndex, playCards, pass, sendReaction, disconnectedSeats }),
+    [gameState, mySeatIndex, playCards, pass, sendReaction, disconnectedSeats]
+  );
+
+  const turnClockValue = useMemo(
+    () => ({
+      turnSeconds: turnDeadline.turnSecondsRemaining,
+      turnDeadlineMs: turnDeadline.turnDeadlineMs,
+    }),
+    [turnDeadline]
+  );
+
+  const matchValue = useMemo(
+    () => ({
+      matchState,
+      cumulativeScores,
+      handScores,
+      ratingDeltas,
+      handRecorded,
+      rematchVoteState,
+      endMatchVoteState,
+      rematchIntents,
+      rematchPromptOpen,
+      voteRematch,
+      voteToEndMatch,
+      answerRematch,
+    }),
+    [matchState, cumulativeScores, handScores, ratingDeltas, handRecorded, rematchVoteState, endMatchVoteState, rematchIntents, rematchPromptOpen, voteRematch, voteToEndMatch, answerRematch]
+  );
+
+  const exchangeValue = useMemo(
+    () => ({ exchangeAnnouncing, exchangeAnnounceData, giveExchangeCard, acknowledgeExchange }),
+    [exchangeAnnouncing, exchangeAnnounceData, giveExchangeCard, acknowledgeExchange]
   );
 
   return (
-    <OnlineGameContext.Provider value={contextValue}>
-      {children}
-    </OnlineGameContext.Provider>
+    <ConnectionContext.Provider value={connectionValue}>
+      <RoomContext.Provider value={roomValue}>
+        <TableContext.Provider value={tableValue}>
+          <TurnClockContext.Provider value={turnClockValue}>
+            <MatchContext.Provider value={matchValue}>
+              <ExchangeContext.Provider value={exchangeValue}>
+                {children}
+              </ExchangeContext.Provider>
+            </MatchContext.Provider>
+          </TurnClockContext.Provider>
+        </TableContext.Provider>
+      </RoomContext.Provider>
+    </ConnectionContext.Provider>
   );
 }
 
-export function useOnlineGame() {
-  const ctx = useContext(OnlineGameContext);
-  if (!ctx) throw new Error("useOnlineGame must be used within OnlineGameProvider");
-  return ctx;
+/**
+ * The whole surface, as the composition of the six. A consumer of this wakes on
+ * any field, which is why the slices are the way in for a screen.
+ */
+export function useOnlineGame(): OnlineGameContextValue {
+  const connection = useConnectionSlice();
+  const room = useRoomSlice();
+  const table = useTableSlice();
+  const turnClock = useTurnClockSlice();
+  const match = useMatchSlice();
+  const exchange = useExchangeSlice();
+  return useMemo(
+    () => ({ ...connection, ...room, ...table, ...turnClock, ...match, ...exchange }),
+    [connection, room, table, turnClock, match, exchange]
+  );
 }

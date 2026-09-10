@@ -59,37 +59,39 @@ const stateWith = (over: Partial<GameState>): GameState => ({
 // changed. A stub for it keeps the test on the screen's own state machine.
 let mockGameState: GameState = stateWith({});
 
-jest.mock('@/context/OnlineGameContext', () => ({
-  useOnlineGame: () => ({
-    gameState: mockGameState,
-    mySeatIndex: 0,
-    isSpectator: false,
-    playerLeft: false,
-    rejoinFailed: false,
-    reconnectNotice: null,
-    connected: true,
-    error: null,
-    clearError: () => {},
-    playCards: () => {},
-    pass: () => {},
-    giveExchangeCard: () => {},
-    sendReaction: () => {},
-    leaveRoom: () => {},
-    voteRematch: () => {},
-    entrySource: 'lobby',
-    rematchVoteState: null,
-    cumulativeScores: {},
-    matchState: { target: 21, length: 'match', over: false },
-    rematchIntents: { yes: 0, total: 0, answers: {} },
-    rematchPromptOpen: false,
-    answerRematch: () => {},
-    exchangeAnnouncing: false,
-    exchangeAnnounceData: null,
-    acknowledgeExchange: () => {},
-    clearPlayerLeft: () => {},
-    clearRejoinFailed: () => {},
-  }),
-}));
+jest.mock('@/context/OnlineGameContext', () =>
+  (require('./onlineContextMock') as typeof import('./onlineContextMock')).onlineContextMock(
+    () => ({
+      gameState: mockGameState,
+      mySeatIndex: 0,
+      isSpectator: false,
+      playerLeft: false,
+      rejoinFailed: false,
+      reconnectNotice: null,
+      connected: true,
+      error: null,
+      clearError: () => {},
+      playCards: () => {},
+      pass: () => {},
+      giveExchangeCard: () => {},
+      sendReaction: () => {},
+      leaveRoom: () => {},
+      voteRematch: () => {},
+      entrySource: 'lobby',
+      rematchVoteState: null,
+      cumulativeScores: {},
+      matchState: { target: 21, length: 'match', over: false },
+      rematchIntents: { yes: 0, total: 0, answers: {} },
+      rematchPromptOpen: false,
+      answerRematch: () => {},
+      exchangeAnnouncing: false,
+      exchangeAnnounceData: null,
+      acknowledgeExchange: () => {},
+      clearPlayerLeft: () => {},
+      clearRejoinFailed: () => {},
+    })
+  )
+);
 
 jest.mock('@/components/GameTable', () => {
   const react = require('react') as typeof import('react');
