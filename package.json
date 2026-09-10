@@ -27,6 +27,7 @@
     "worktrees:remove": "node scripts/prune-worktrees.mjs --remove",
     "reap": "node scripts/reap.mjs",
     "queue:loop": "node scripts/queue-loop.mjs",
+    "queue:pre": "node scripts/queue-pre.mjs",
     "db:reset": "node scripts/reset-db.mjs && drizzle-kit push",
     "start": "npx expo start",
     "lint": "npx expo lint . -- --max-warnings 0",

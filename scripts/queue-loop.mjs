@@ -13,7 +13,7 @@
  *
  * Usage: node scripts/queue-loop.mjs
  */
-import { execFileSync, spawn } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
 import fs, { createWriteStream, mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { createInterface } from "node:readline";
@@ -367,6 +367,9 @@ async function main() {
       return 0;
     }
     if (!syncProtocol(git, (m) => console.error(m))) return 1;
+
+    const pre = spawnSync(process.execPath, ["scripts/queue-pre.mjs"], { stdio: "inherit" });
+    if (pre.status !== 0) return pre.status ?? 1;
 
     const route = nextRoute();
     if (shouldStop(route)) {

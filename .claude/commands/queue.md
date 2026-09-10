@@ -57,12 +57,15 @@ don't start over.
 Only once `loop-status.mjs` is silent:
 
 ```sh
-node scripts/prune-worktrees.mjs          # a killed run never reached its own teardown
-node scripts/preflight.mjs                # refuses to start on someone else's uncommitted work
+npm run queue:pre                         # by-hand runs only: the loop has already run it
 node scripts/next-ticket.mjs $ARGUMENTS   # prints ROUTE, body, comments, blockers, takeability
 ```
 
-If preflight fails, **halt** — do not work around it. `$ARGUMENTS` is normally empty, which picks
+`queue:pre` is the leftover worktree, the peer's uncommitted work and the orphaned processes — all
+loop-level, none of it about this ticket, which is why `queue-loop.mjs` runs it before it spawns you
+and you will normally see it already done.
+
+If it fails, **halt** — do not work around it. `$ARGUMENTS` is normally empty, which picks
 from the live queue. Pass an explicit issue number by hand (`/queue 911`) to inspect or work that
 one ticket instead of picking — `next-ticket.mjs` already supports this as its `explicit` branch.
 

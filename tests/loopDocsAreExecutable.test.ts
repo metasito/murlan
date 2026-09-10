@@ -77,3 +77,20 @@ describe("the loop's instructions name only things that exist", () => {
     }
   });
 });
+
+describe("phase A's housekeeping belongs to the supervisor", () => {
+  test("queue.md names the one command a by-hand run needs", () => {
+    assert.match(read(QUEUE), /npm run queue:pre/, "a by-hand /queue still needs the pre-checks");
+  });
+
+  test("it does not also ask the model to run what the supervisor already ran", () => {
+    const text = read(QUEUE);
+    for (const moved of ["node scripts/prune-worktrees.mjs", "node scripts/preflight.mjs"]) {
+      assert.ok(!text.includes(moved), `${moved} moved to the supervisor; queue.md must not ask for it too`);
+    }
+  });
+
+  test("loop-status.mjs stays, because it is what tells a fresh session a run is live", () => {
+    assert.match(read(QUEUE), /node scripts\/loop-status\.mjs/);
+  });
+});
