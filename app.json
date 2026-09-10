@@ -8,7 +8,6 @@
     "icon": "./assets/images/icon.png",
     "scheme": "murlan",
     "userInterfaceStyle": "dark",
-    "newArchEnabled": true,
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.murlan.cardgame",

@@ -13,6 +13,9 @@
 // what to compare them against.
 import { test, expect } from "./fixtures";
 import { openApp, startOfflineGame } from "./helpers/navigation";
+import { openSeededGame } from "./helpers/offlineSeed";
+import { HAND_CARDS } from "./helpers/selectors";
+import { PAST_HOLD_MS } from "./helpers/press";
 
 const TABLE = '[data-testid="game-table"]';
 
@@ -120,5 +123,47 @@ test.describe("web frame performance", () => {
     expect(deal.frames, "no frames were observed, so nothing was measured").toBeGreaterThan(30);
     expect(idle.frames, "no frames were observed on the settled table").toBeGreaterThan(20);
     expect(deal.domNodes, "the table never rendered").toBeGreaterThan(100);
+  });
+
+  // The deal is a burst the player watches; a drag is a burst the player's own
+  // finger drives, and the only one where a dropped frame lands under the thumb
+  // that caused it. It is also the one place the gesture crosses to the JS
+  // thread while it runs, so it is where a hop that fires per frame shows up.
+  test("records a drag across the hand fan", async ({ page, baseURL }) => {
+    test.setTimeout(3 * 60_000);
+
+    // A real landscape phone, the orientation the game locks to.
+    await page.setViewportSize({ width: 844, height: 390 });
+    await openSeededGame(page, baseURL!, 4);
+    await page.locator(TABLE).waitFor({ timeout: 60_000 });
+    await page.waitForTimeout(1_500);
+
+    const cards = await page.locator(HAND_CARDS).all();
+    const boxes = (await Promise.all(cards.map((c) => c.boundingBox())))
+      .filter((b): b is NonNullable<typeof b> => b !== null)
+      .sort((a, b) => a.x - b.x);
+    expect(boxes.length, "the seeded hand rendered no cards").toBeGreaterThan(4);
+
+    const first = boxes[0]!;
+    const last = boxes[boxes.length - 1]!;
+    const fromX = first.x + first.width / 2;
+    const y = first.y + first.height / 2;
+
+    // The recorder runs while the drag does — awaiting it first would measure a
+    // still table, which is the mistake the deal case above already documents.
+    const recording = record(page, 2_500);
+    await page.mouse.move(fromX, y);
+    await page.mouse.down();
+    await page.waitForTimeout(PAST_HOLD_MS);
+    // Many small steps rather than one jump: each is a frame the gesture has to
+    // answer, which is the load being measured.
+    await page.mouse.move(last.x + last.width, y, { steps: 40 });
+    await page.mouse.up();
+    const drag = await recording;
+
+    console.log(`[web-perf] drag ${JSON.stringify(drag)}`);
+
+    expect(drag.frames, "no frames were observed during the drag").toBeGreaterThan(20);
+    expect(drag.domNodes, "the table never rendered").toBeGreaterThan(100);
   });
 });
