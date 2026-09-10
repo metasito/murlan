@@ -1,12 +1,7 @@
 /**
- * Which check runs where, as data. `scripts/agent-check.mjs` runs the `local` ones;
- * `.github/workflows/ci.yml` runs the `ci` ones in the job each names.
- *
- * The split is by cost, not by importance: measured on a green run, the three local steps are 47s
- * of runner time against 249s for the delegated three, and that pair of suites is what starves
- * this machine. `npm test` also skips its integration suites here — they need the Postgres only
- * the `verify` job has. `tests/agentCheckDelegation.test.ts` pins every delegated step to a real
- * `run:` in that workflow: a check nobody runs is worse than no check.
+ * Which check runs where. `agent-check.mjs` runs the `local` ones; `ci.yml` runs the `ci` ones in
+ * the job each names, with the Postgres the integration suites need and this machine has not.
+ * `tests/agentCheckDelegation.test.ts` pins each delegated step to a real command in that workflow.
  */
 export const STEPS = [
   { name: "typecheck", args: ["run", "typecheck"], where: "local" },

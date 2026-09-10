@@ -9,8 +9,7 @@ const steps = STEPS as Step[];
 const delegated = DELEGATED as Step[];
 
 const raw = readFileSync(".github/workflows/ci.yml", "utf8");
-// Comments stripped first: this workflow explains itself at length, and a command named in a
-// comment is not a command anything runs.
+// A command named in a comment is not a command anything runs.
 const ci = raw.replace(/^\s*#.*$/gm, "");
 
 const runs = (command: string) =>
@@ -37,8 +36,7 @@ describe("a check delegated to CI is a check CI runs", () => {
     }
   });
 
-  // The floor. With both lists free to empty themselves, "everything is delegated" and
-  // "nothing is delegated" both pass every assertion above while checking nothing.
+  // Without this, "everything is delegated" passes every assertion above while checking nothing.
   test("both sides of the split are non-empty", () => {
     assert.ok(LOCAL.length > 0, "no step runs before the push");
     assert.ok(delegated.length > 0, "nothing is delegated, so this guard proves nothing");
@@ -46,7 +44,6 @@ describe("a check delegated to CI is a check CI runs", () => {
 
   test("the match would catch a delegated command CI does not run", () => {
     assert.equal(runs("npm run definitely-not-a-real-script"), false);
-    // And it does not accept the command only because a comment mentions it.
     assert.equal(/npm run verify/.test(raw) && runs("npm run verify"), false);
   });
 });

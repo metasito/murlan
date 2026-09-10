@@ -106,8 +106,6 @@ describe("syncProtocol", () => {
     assert.match(said.join("\n"), /cannot restore main/);
   });
 
-  // The floor: without this, a repair that left the tree still drifted would report success and
-  // the loop would run the very protocol this guard exists to catch.
   test("stops when the drift survives the repair", () => {
     const { git } = fakeGit(["CLAUDE.md", "CLAUDE.md", "CLAUDE.md"]);
     assert.equal(syncProtocol(git, () => {}), false);

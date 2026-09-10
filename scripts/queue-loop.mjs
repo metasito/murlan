@@ -59,26 +59,11 @@ export function queueLoopArgs() {
   return ["-p", "/queue", "--permission-mode", "auto", "--strict-mcp-config"];
 }
 
-/**
- * Read from this working tree, not from the ticket's worktree: the session's instructions, and
- * the scripts the loop shells out to by relative path. A stale copy of any of them is a different
- * protocol. This file is in that set and cannot guard its own staleness — a loop started from an
- * old checkout runs an old guard, which is why the repair below is worth having at every
- * iteration rather than once at startup.
- */
+// The session and the loop read these from the shared checkout, not from the ticket's worktree.
 const PROTOCOL = ["CLAUDE.md", ".claude", "scripts"];
 
-/**
- * The spawned session reads `PROTOCOL` from the shared checkout, not from `origin/main`. Left on
- * a ticket branch — which rule 8 forbids and which happened anyway — it runs whatever protocol
- * that branch froze, silently and green.
- *
- * Drift is repaired rather than reported: `git checkout` is the authority on whether that would
- * lose anything, so a refusal is the stop condition and nothing here second-guesses it. An agent
- * branch keeps its commits either way — only HEAD moves.
- *
- * @returns {boolean} false when the checkout could not be made to match `origin/main`.
- */
+// Repaired, not reported: `git checkout` decides whether that loses anything, and its refusal is
+// the stop. A branch keeps its commits either way — only HEAD moves.
 export function syncProtocol(git, log) {
   const drift = () => git("diff", "--name-only", "origin/main", "--", ...PROTOCOL).trim();
   git("fetch", "origin", "--quiet");
@@ -92,7 +77,6 @@ export function syncProtocol(git, log) {
     log(`queue-loop: cannot restore main — ${String(err.message).trim()}`);
     return false;
   }
-  // A repair that did not repair must not report success.
   if (drift()) {
     log("queue-loop: still differs after moving to main — main itself is ahead of origin");
     return false;

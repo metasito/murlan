@@ -19,9 +19,7 @@ import { LOCAL, DELEGATED, cmd } from "./check-steps.mjs";
  */
 const STEP_TIMEOUT_MS = 20 * 60_000;
 
-// What this check left out is part of its verdict: a green line standing for a suite nobody ran
-// is the defect it was reported for. Naming the command, not the suite, is what stops an agent
-// inventing one.
+// What this left out is part of its verdict, named as a command so nobody has to invent one.
 const verdict = (outcome) =>
   [
     outcome,
