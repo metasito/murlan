@@ -9,6 +9,24 @@
 //
 // The socket's own work — joining a room, `socketRoomMap` — stays with the
 // socket, in the handler families.
+//
+// A play/pass action crosses six files before it settles: `tableRouter.ts`
+// `applyOrForward` (reaching here through a module-local `apply` set by
+// `setTableHandlers`, to dodge a circular import) → `playAction`/`passAction`
+// here → `gameTurn.ts` `recordPlayFlags` (play only) → `gamePersistence.ts`
+// `broadcastGameState`/`persistGameState` → `gameTurn.ts` `armTurn`, or
+// `gameOver.ts` `handleGameOver` when the play empties a hand.
+//
+// A disconnect runs a different chain: `socketPresence.ts`
+// `registerDisconnect` → `tableRouter.ts` `applyOrForward` with a `seatLost`
+// intent → `seatLostAction` here (arms a grace timer, calling `armTurn` so a
+// bot covers the seat) → on grace expiry, `gameTurn.ts` `vacateSeat`, which
+// either reaches `gameOver.ts` `handleGameOver` through its own
+// `concedeHand`, or calls `dealIfSeatLeftGateClosed` here when the hand had
+// already ended.
+//
+// `gameOver.ts` `handleGameOver` is reachable both ways: from a play/pass
+// here, and from `vacateSeat`'s abandonment branch in `gameTurn.ts`.
 import type { Server as SocketServer } from "socket.io";
 import { eq } from "drizzle-orm";
 import { db } from "./db.ts";
