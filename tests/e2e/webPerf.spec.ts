@@ -13,6 +13,9 @@
 // what to compare them against.
 import { test, expect } from "./fixtures";
 import { openApp, startOfflineGame } from "./helpers/navigation";
+import { openSeededGame } from "./helpers/offlineSeed";
+import { HAND_CARDS } from "./helpers/selectors";
+import { PAST_HOLD_MS } from "./helpers/press";
 
 const TABLE = '[data-testid="game-table"]';
 
@@ -120,5 +123,82 @@ test.describe("web frame performance", () => {
     expect(deal.frames, "no frames were observed, so nothing was measured").toBeGreaterThan(30);
     expect(idle.frames, "no frames were observed on the settled table").toBeGreaterThan(20);
     expect(deal.domNodes, "the table never rendered").toBeGreaterThan(100);
+  });
+
+  // The deal is a burst the player watches; a drag is a burst the player's own
+  // finger drives, and the only one where a dropped frame lands under the thumb
+  // that caused it. It is also the one place the gesture crosses to the JS
+  // thread while it runs, so it is where a hop that fires per frame shows up.
+  test("records a drag across the hand fan", async ({ page, baseURL }) => {
+    test.setTimeout(3 * 60_000);
+
+    // A real landscape phone, the orientation the game locks to.
+    await page.setViewportSize({ width: 844, height: 390 });
+    await openSeededGame(page, baseURL!, 4);
+    await page.locator(TABLE).waitFor({ timeout: 60_000 });
+    await page.waitForTimeout(1_500);
+
+    const cards = await page.locator(HAND_CARDS).all();
+    const boxes = (await Promise.all(cards.map((c) => c.boundingBox())))
+      .filter((b): b is NonNullable<typeof b> => b !== null)
+      .sort((a, b) => a.x - b.x);
+    expect(boxes.length, "the seeded hand rendered no cards").toBeGreaterThan(4);
+
+    const labelsNow = async () => {
+      const found = await page.locator(HAND_CARDS).all();
+      const withX = await Promise.all(
+        found.map(async (c) => ({
+          label: await c.getAttribute("aria-label"),
+          box: await c.boundingBox(),
+        }))
+      );
+      return withX
+        .filter((c) => c.label !== null && c.box !== null)
+        .sort((a, b) => a.box!.x - b.box!.x)
+        .map((c) => c.label!);
+    };
+
+    const before = await labelsNow();
+    const first = boxes[0]!;
+    const last = boxes[boxes.length - 1]!;
+    const fromX = first.x + first.width / 2;
+    const toX = last.x + last.width;
+    const y = first.y + first.height / 2;
+
+    // The hold is a stationary finger, so it is spent BEFORE the recorder
+    // starts: 800ms of pointer-down inside the window would be 800ms of idle
+    // table averaged into the drag's own p50.
+    await page.mouse.move(fromX, y);
+    await page.mouse.down();
+    await page.waitForTimeout(PAST_HOLD_MS);
+
+    // `mouse.move(..., { steps: n })` dispatches every step back to back, so the
+    // whole traversal lands in tens of milliseconds and the window it was meant
+    // to fill stays idle. A finger arrives about once a frame; this paces the
+    // moves to match, so the recorded frames are frames the gesture had to
+    // answer.
+    const STEP_MS = 16;
+    const STEPS = 90;
+    const recording = record(page, STEP_MS * STEPS);
+    for (let i = 1; i <= STEPS; i++) {
+      await page.mouse.move(fromX + ((toX - fromX) * i) / STEPS, y);
+      await page.waitForTimeout(STEP_MS);
+    }
+    const drag = await recording;
+    await page.mouse.up();
+    await page.waitForTimeout(500);
+
+    console.log(`[web-perf] drag ${JSON.stringify(drag)}`);
+
+    // A number labelled `drag` that no drag produced is worse than no number:
+    // every threshold below is satisfied by a table nobody touched.
+    const after = await labelsNow();
+    expect(after, "the hand lost or gained a card during the drag").toHaveLength(before.length);
+    expect(
+      after,
+      `the pointer went down and up without moving a card, so the recording above is of an idle table: ${after.join(", ")}`
+    ).not.toEqual(before);
+    expect(drag.frames, "no frames were observed during the drag").toBeGreaterThan(20);
+    expect(drag.domNodes, "the table never rendered").toBeGreaterThan(100);
   });
 });

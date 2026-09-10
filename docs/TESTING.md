@@ -135,8 +135,9 @@ only by running the app on hardware:
   islands and gesture bars are device-only.
 - **Text rendering.** Font weight synthesis, Rajdhani/Inter fallback and line
   breaking differ from the browser.
-- **The New Architecture** (`newArchEnabled: true`) and the React Compiler.
-  Fabric and TurboModules are not what Jest renders into.
+- **The New Architecture** — the SDK default since 57, with no app.json key to
+  set — and the React Compiler. Fabric and TurboModules are not what Jest
+  renders into.
 
 ---
 

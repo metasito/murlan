@@ -17,21 +17,32 @@ up to 54 cards.
 npm run perf:web
 ```
 
-Roughly 25 seconds. It is **not** part of `npm run test:e2e` — the default suite
+Roughly a minute. It is **not** part of `npm run test:e2e` — the default suite
 ignores the file, and this runs from its own config
 (`tests/e2e/playwright.perf.config.ts`).
 
-It prints two lines:
+It prints three lines:
 
 ```
 [web-perf] deal {...}
 [web-perf] idle {...}
+[web-perf] drag {...}
 ```
 
 `deal` records for three seconds from the click that starts the game, which is
 the burst worth measuring: every card in the hand animates in at once. `idle`
 records a settled table as the control — the difference between the two is the
 cost of the animation rather than the cost of the page.
+
+`drag` records a card being dragged the width of the fan: the other burst, and
+the only one whose dropped frames land under the finger that caused them. Its
+window is sized to the drag and starts *after* the hold, because the hold is a
+stationary finger — 800ms of it inside the window is 800ms of idle table
+averaged into the drag's own p50, which is how the first version of this
+recording reported a figure for a table nobody was touching. For the same
+reason the moves are paced one per frame rather than handed to Playwright's
+`steps`, which dispatches them back to back in tens of milliseconds. The test
+refuses to publish a number unless the hand's order actually changed.
 
 | Field | Means |
 |---|---|
@@ -55,6 +66,18 @@ Desktop Chromium via Playwright, offline game, 4 players, `ef03d0c`, 2026-08-21
 Read it as: the table holds 60fps, and the deal costs **one dropped frame**. No
 long tasks at all, on this machine.
 
+`drag`, recorded later (2026-09-10, `ccf7ff1`, same machine):
+
+| | frames | p50 | p95 | worst | janky | longTasks | transformed | domNodes |
+|---|---|---|---|---|---|---|---|---|
+| **drag** | 87 | 16.7 | 16.7 | 16.8 | 0 | 0 | 193 | 711 |
+
+Read it as: **a drag has headroom to spare.** Every frame arrives on time, so a
+change that removes work from the gesture cannot show up here — the saving is
+absorbed before it reaches the number. Moving the drop-slot decision onto the UI
+thread left all four figures identical, and that is the ceiling talking, not
+evidence the work was free.
+
 Two things worth carrying forward:
 
 - **`transformed` is already 179 on a settled table**, against #95's ~100
@@ -72,6 +95,7 @@ There is no threshold in the test, deliberately. Compare against the table above
 by hand, and treat as a regression:
 
 - `janky` on `deal` rising above single figures, or any `janky` on `idle`
+- any `janky` at all on `drag`, or its `p95` leaving ~16.7
 - `longTasks` becoming non-zero
 - `p95` on `idle` leaving ~16.8
 

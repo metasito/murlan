@@ -779,11 +779,10 @@ export function StraightHand({
     holdTimer.value = 0;
   };
 
-  const trackGap = (x: number) => {
-    if (held.value === null) return;
-    const at = dropIndex(lefts, cardW, x);
-    if (at === gap.value) return;
-    gap.value = at;
+  // Takes the slot, not the finger: `onUpdate` has already decided on the UI
+  // thread that this is a new one, so the crossing happens once per slot rather
+  // than once per frame of the drag.
+  const trackGap = (at: number) => {
     setGapAt(at);
   };
 
@@ -878,7 +877,17 @@ export function StraightHand({
     .onUpdate((e) => {
       fingerX.value = e.x;
       fingerY.value = e.y;
-      scheduleOnRN(trackGap, e.x);
+      // Advances a gap `grab` has already opened; never opens one. `grab` runs
+      // on the other runtime, where each write is a separately queued UI job, so
+      // between its `held` landing and its `gap` landing there is a frame where
+      // opening one here would be overwritten by the pickup slot arriving after
+      // it — leaving the shared value and the rendered gap on different slots,
+      // and the card returning to where it was picked up.
+      if (held.value === null || gap.value === null) return;
+      const at = dropIndex(lefts, cardW, e.x);
+      if (at === gap.value) return;
+      gap.value = at;
+      scheduleOnRN(trackGap, at);
     })
     .onEnd(() => {
       // Claimed here rather than in `drop`: `onFinalize` runs on this thread the
