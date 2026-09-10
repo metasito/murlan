@@ -39,9 +39,11 @@ jest.mock('@/context/AuthContext', () => ({
   useAuth: () => ({ user: { id: 'u1', username: 'Ana' } }),
 }));
 
-jest.mock('@/context/OnlineGameContext', () => ({
-  useOnlineGame: () => mockOnline.value,
-}));
+jest.mock('@/context/OnlineGameContext', () =>
+  (require('./onlineContextMock') as typeof import('./onlineContextMock')).onlineContextMock(
+    () => mockOnline.value
+  )
+);
 
 // The table's chrome is not what is under test; the callback path through it
 // is. This keeps that path exactly as GameTable wires it — `onSelectCard`

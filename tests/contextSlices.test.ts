@@ -17,28 +17,34 @@ import { fieldsOf, walk } from "../scripts/contextSurface.mjs";
 const ROOT = path.resolve(import.meta.dirname, "..");
 const read = (...p: string[]) => readFileSync(path.join(ROOT, ...p), "utf8");
 
+/** Every context hook a slice module can legitimately read. */
+const CONTEXT_HOOKS = /use(?:Online)?Game|use(?:Connection|Room|Table|TurnClock|Match|Exchange)Slice/
+  .source;
+
 /**
- * The names a slice hook destructures off its context hook.
+ * The names a slice hook destructures off `via`, its own context hook.
  *
  * Every destructure in the body, not the first: a hook that reads its context
  * twice widens by whatever the second one takes, and reading only the first
  * would leave that invisible to the very check meant to catch it. A second
  * call is rejected outright as well, since it is also how a field ends up in
- * two slices without the partition below noticing.
+ * two slices without the partition below noticing — and, now that each online
+ * slice has a context to itself, how a slice quietly goes back to waking on a
+ * second slice's fields.
  */
-function sliceFields(source: string, hookName: string): string[] {
+function sliceFields(source: string, hookName: string, via: string): string[] {
   const start = source.indexOf(`export function ${hookName}(`);
   assert.notEqual(start, -1, `no hook ${hookName}`);
   const body = source.slice(start, source.indexOf("\n}", start));
 
-  const calls = [...body.matchAll(/use(?:Online)?Game\s*\(/g)];
-  assert.equal(
-    calls.length,
-    1,
-    `${hookName} reads its context ${calls.length} times; a slice reads it once`
+  const calls = [...body.matchAll(new RegExp(`(${CONTEXT_HOOKS})\\s*\\(`, "g"))];
+  assert.deepEqual(
+    calls.map((m) => m[1]),
+    [via],
+    `${hookName} reads ${calls.map((m) => m[1]).join(", ") || "no context"}; a slice reads ${via}, once`
   );
 
-  const names = [...body.matchAll(/const\s*\{([^}]*)\}\s*=\s*\n?\s*use(?:Online)?Game\(\)/g)]
+  const names = [...body.matchAll(new RegExp(`const\\s*\\{([^}]*)\\}\\s*=\\s*\\n?\\s*${via}\\(\\)`, "g"))]
     .flatMap((m) => m[1].split(","))
     .map((s) => s.trim())
     .filter(Boolean);
@@ -67,6 +73,24 @@ const ONLINE: Record<string, string[]> = {
   ],
 };
 
+/**
+ * The context each slice reads. Six of them online, one each, which is what
+ * keeps a turn-deadline change off the five slices it says nothing about; the
+ * local game has one small context and no such cost.
+ */
+const VIA: Record<string, string> = {
+  useOnlineConnection: "useConnectionSlice",
+  useOnlineRoom: "useRoomSlice",
+  useOnlineTable: "useTableSlice",
+  useOnlineTurnClock: "useTurnClockSlice",
+  useOnlineMatch: "useMatchSlice",
+  useOnlineExchange: "useExchangeSlice",
+  useLocalTable: "useGame",
+  useLocalSession: "useGame",
+  useLocalMatch: "useGame",
+  useLocalExchange: "useGame",
+};
+
 const LOCAL: Record<string, string[]> = {
   useLocalTable: [
     "gameState", "selectedCards", "selectCard", "playSelected", "passTurn", "runAITurn",
@@ -90,7 +114,7 @@ for (const [file, expected] of [
     const source = read(file);
     for (const [hook, fields] of Object.entries(expected)) {
       assert.deepEqual(
-        sliceFields(source, hook).sort(),
+        sliceFields(source, hook, VIA[hook]).sort(),
         [...fields].sort(),
         `${hook} reads a different set than its concern`
       );
@@ -123,10 +147,32 @@ test("the slices partition the context, leaving nothing unreachable", () => {
   }
 });
 
+test("each online slice reads one context, and no two read the same one", () => {
+  // The saving is the split, and two slices sharing a context is how it is
+  // half-made: every shape check above still passes while a turn-deadline
+  // change wakes both. `sliceFields` pins the one; this pins the six.
+  const source = read("context/onlineGameHooks.ts");
+  const contexts = Object.keys(ONLINE).map((hook) => {
+    sliceFields(source, hook, VIA[hook]);
+    return VIA[hook];
+  });
+  assert.equal(new Set(contexts).size, contexts.length, "two online slices share a context");
+
+  const provider = read("context/OnlineGameContext.tsx");
+  for (const via of contexts) {
+    assert.match(
+      provider,
+      new RegExp(`\\[\\s*\\w+\\s*,\\s*${via}\\s*\\]\\s*=\\s*sliceContext<`),
+      `${via} is not a context of its own`
+    );
+  }
+});
+
 test("nothing reaches past the slices for the whole surface", () => {
-  // The slices are only worth having if they are the way in. `useOnlineGame`
-  // and `useGame` stay exported because the slices are built on them, and that
-  // export is also the way back to a thirty-seven-field destructure.
+  // The slices are only worth having if they are the way in. Every context
+  // hook stays exported because the slices are built on them, and each is also
+  // a way back past a slice — `useOnlineGame` to the thirty-seven-field
+  // destructure, a `use*Slice` to a context a screen has no business naming.
   // Every source directory, not the two that happen to hold consumers today:
   // a screen moved into a new one would leave the guard behind. The slice
   // modules are the exception, being what the hooks are for; the providers
@@ -142,7 +188,7 @@ test("nothing reaches past the slices for the whole surface", () => {
       const code = readFileSync(file, "utf8")
         .replace(/\/\*[\s\S]*?\*\//g, "")
         .replace(/\/\/[^\n]*/g, "");
-      if (/\buseOnlineGame\s*\(|\buseGame\s*\(/.test(code)) offenders.push(path.relative(ROOT, file));
+      if (new RegExp(`\\b(${CONTEXT_HOOKS})\\s*\\(`).test(code)) offenders.push(path.relative(ROOT, file));
     }
   }
   assert.deepEqual(
