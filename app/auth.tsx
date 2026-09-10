@@ -216,9 +216,9 @@ export default function AuthScreen() {
                   textContentType={tab === "login" ? "password" : "newPassword"}
                   returnKeyType="done"
                   onSubmitEditing={handleSubmit}
-                  editable={!loading}
                   accessibilityLabel={t("auth.passwordA11yLabel")}
                   {...passwordHint.props}
+                  editable={!loading}
                 />
                 {passwordHint.node}
                 <Pressable
