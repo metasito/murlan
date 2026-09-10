@@ -1,8 +1,10 @@
 import React from 'react';
 import {
   View, ScrollView, StyleSheet, ViewStyle, KeyboardAvoidingView,
-  Animated, Easing,
 } from 'react-native';
+import Animated, {
+  cancelAnimation, Easing, useAnimatedStyle, useSharedValue, withTiming,
+} from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '@/lib/theme';
@@ -24,57 +26,47 @@ const SCROLL_THROTTLE_MS = 16;
 const MENU_MAX_W = 800;
 
 /**
- * `target`, reached over `duration` rather than in a single frame.
+ * A style whose `paddingTop` is `base + target`, reached over `duration` rather
+ * than in a single frame.
  *
- * A plain number, deliberately, and that is the whole reason this exists rather
- * than an animated style: the value is layout padding, and an animated entry in
- * `style` is frozen at the render that mounted it, so nothing below could read
- * what was reserved. A layout transition is not available either — reanimated
- * implements one on web as a FLIP, scaling the whole subtree for its duration.
- * Mirroring an `Animated.Value` into state costs a render per frame of the
- * movement, and that is what buys a number anything can read.
+ * The base is inside the worklet rather than in a static style underneath it:
+ * a padding written from the UI thread wins over the one React rendered, so a
+ * static `paddingTop` sibling would be whatever the first frame overwrites.
+ *
+ * A layout transition is not the answer here — reanimated implements one on web
+ * as a FLIP, scaling the whole subtree for its duration.
  *
  * Starts settled: a screen mounted while a banner is already up has nothing to
  * animate, and sliding its content down on arrival would be a second movement
  * nobody asked for.
  */
-function useEasedTo(target: number, fullDuration: number): number {
-  // Lazy state rather than a ref: the React Compiler bails out of a component
-  // that reads `.current` during render, and an unmemoized subtree is the cost.
-  const [value] = React.useState(() => new Animated.Value(target));
-  const [eased, setEased] = React.useState(target);
+function useEasedPadTop(base: number, target: number, fullDuration: number) {
+  const reserved = useSharedValue(target);
   const reduceMotion = usePrefersReducedMotion();
   const duration = reduceMotion ? 0 : fullDuration;
 
   React.useEffect(() => {
-    if (duration === 0) {
-      value.setValue(target);
-      setEased(target);
-      return;
-    }
-    const id = value.addListener((v) => setEased(v.value));
-    const animation = Animated.timing(value, {
-      toValue: target,
-      duration,
-      easing: Easing.out(Easing.cubic),
-      // Layout props cannot be driven off the JS thread.
-      useNativeDriver: false,
-    });
-    animation.start();
-    return () => {
-      animation.stop();
-      value.removeListener(id);
-    };
-  }, [target, duration, value]);
+    reserved.value = withTiming(target, { duration, easing: Easing.out(Easing.cubic) });
+    // A screen left mid-slide otherwise keeps ticking on the UI thread against
+    // a shared value whose view is already gone.
+    return () => cancelAnimation(reserved);
+  }, [target, duration, reserved]);
 
-  return eased;
+  return useAnimatedStyle(() => ({ paddingTop: base + reserved.value }));
 }
 
 interface MenuLayoutProps {
   children: React.ReactNode;
   scrollable?: boolean;
   centered?: boolean;
-  style?: ViewStyle;
+  /**
+   * The top pad is not a caller's to set: it carries the banner reservation and
+   * is written from the UI thread, so a value here would be dropped on the first
+   * frame with nothing to say so. Stated as a type rather than in a comment,
+   * because the `paddingBottom: 0` three screens already pass is exactly the
+   * gesture someone copies upward.
+   */
+  style?: Omit<ViewStyle, 'padding' | 'paddingVertical' | 'paddingTop'>;
   contentPad?: number;
   /** `null` opts a screen out — for the landscape bodies that size their own columns. */
   maxWidth?: number | null;
@@ -113,16 +105,22 @@ export function MenuLayout({
   // is told it is there and the screen would otherwise lay itself out under it.
   // Eased on the banner's own step, so the content moves with it rather than
   // jumping clear a third of a second before it arrives.
-  const reserved = useEasedTo(Math.max(0, bannerBottom + TOP_GAP - paddingTop), SLIDE_DURATION);
+  const padTopStyle = useEasedPadTop(
+    paddingTop,
+    Math.max(0, bannerBottom + TOP_GAP - paddingTop),
+    SLIDE_DURATION
+  );
 
-  // `style` is merged last (after `centered`) so callers can override layout
-  // — e.g. justifyContent — without it being clobbered by the centered preset.
+  // `style` is merged after `centered` so callers can override layout — e.g.
+  // justifyContent — without it being clobbered by the centered preset. Its type
+  // has no top pad in it, which is the only reason `padTopStyle` can sit last.
   const contentStyle = [
     styles.bounded,
     { maxWidth: maxWidth ?? undefined },
-    { paddingTop: paddingTop + reserved, paddingBottom, paddingLeft, paddingRight },
+    { paddingBottom, paddingLeft, paddingRight },
     centered && styles.centered,
     style,
+    padTopStyle,
   ];
 
   return (
@@ -158,7 +156,7 @@ export function MenuLayout({
               onContentSizeChange={(_w, h) => setContentH(h)}
               onScroll={(e) => setOffsetY(e.nativeEvent.contentOffset.y)}
             >
-              <View testID="menu-content" style={contentStyle}>{children}</View>
+              <Animated.View testID="menu-content" style={contentStyle}>{children}</Animated.View>
             </ScrollView>
             {/* A screen taller than its window otherwise ends flush at the
                 bottom edge and reads as finished — /rules is 240% of a phone
@@ -177,7 +175,7 @@ export function MenuLayout({
           </View>
         ) : (
           <View style={styles.fill}>
-            <View testID="menu-content" style={contentStyle}>{children}</View>
+            <Animated.View testID="menu-content" style={contentStyle}>{children}</Animated.View>
           </View>
         )}
       </KeyboardAvoidingView>

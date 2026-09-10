@@ -18,8 +18,9 @@ const HINTS = [
       "a bare `fireEvent` leaves its act scope open and corrupts EVERY LATER render in the file, " +
       "so an unconditionally present control reads as `Unable to find an element with testID`. " +
       "Await the fireEvent, and end each case with `await view.unmount()`. " +
-      "A value from `useAnimatedStyle` is frozen at the mounting render and cannot be read back " +
-      "from `props.style` — keep anything a test must assert a plain number.",
+      "A value from `useAnimatedStyle` is frozen at the mounting render in `props.style` — read " +
+      "it with reanimated's own `getAnimatedStyle(node)` rather than mirroring it into state, " +
+      "which costs a render per frame of the animation.",
   },
   {
     when: (p) => /tests[\\/]e2e[\\/].*\.spec\.ts$/.test(p),
