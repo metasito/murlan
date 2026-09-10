@@ -14,7 +14,7 @@
  * Usage: node scripts/queue-loop.mjs
  */
 import { execFileSync, spawn } from "node:child_process";
-import { appendFileSync, createWriteStream, mkdirSync } from "node:fs";
+import { appendFileSync, createWriteStream, mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
@@ -121,6 +121,58 @@ export function syncProtocol(git, log) {
   return true;
 }
 
+/**
+ * `lib/loop/ciVerdict.ts` blocks in phase E waiting for a CI run, which regularly takes twenty
+ * minutes and emits nothing while it does. Any ceiling at or under that reads a working run as a
+ * stalled one.
+ */
+export const STALL_MS = 30 * 60_000;
+
+export const stalled = (lastFactAt, now) => now - lastFactAt > STALL_MS;
+
+const sh = (file, args, opts) =>
+  execFileSync(file, args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], ...opts });
+
+/**
+ * Hands a ticket back to the owner: the work committed, the claim released, the reason on the
+ * issue, the worktree gone. Any step throwing stops the loop rather than leaving a ticket in a
+ * state nobody can name.
+ *
+ * @param {number} number
+ * @param {{phase: string, why: string, log: string, cwd: string, branch: string|null,
+ *   dirty: boolean, run?: Function, write?: Function}} ctx
+ */
+export function park(number, { phase, why, log, cwd, branch, dirty, run = sh, write = writeFileSync }) {
+  if (dirty) {
+    // `-A` is safe here and nowhere else: this is the ticket's own worktree, which has its own
+    // index, and rule 40 keeps every other session out of it. Rule 11's hazard is the shared
+    // checkout. Losing an unstaged edit is the one thing parking must not do.
+    run("git", ["-C", cwd, "add", "-A", "--", "."]);
+    run("git", ["-C", cwd, "commit", "-m", `wip(#${number}): parked in phase ${phase}`]);
+  }
+
+  run("gh", [
+    "issue", "edit", String(number),
+    "--remove-label", "in-progress",
+    "--add-label", "ready-for-human",
+  ]);
+
+  const body = [
+    `Parked by the queue loop in **phase ${phase}**.`,
+    "",
+    `- reason: ${why}`,
+    `- branch: \`${branch ?? "none"}\`${dirty ? " (uncommitted work was committed before teardown)" : ""}`,
+    `- log: \`${log}\``,
+    "",
+    "The branch keeps its commits. Nothing was discarded.",
+  ].join("\n");
+  const file = path.join(LOG_DIR, `park-${number}.md`);
+  write(file, body, "utf8");
+  run("gh", ["issue", "comment", String(number), "--body-file", file]);
+
+  run("npm", ["run", "worktrees:remove", "--", cwd]);
+}
+
 /** One ticket's worth of the issue, for the header. Covers the resume path, which has no picker. */
 function ticketFacts(number) {
   try {
@@ -146,7 +198,7 @@ function ticketFacts(number) {
  * `claude` binary. stderr stays inherited: a crash should still print itself rather than being
  * reassembled from a log nobody is watching.
  */
-export function runTicket(spawnFn, { number, queue, log = console.log, facts = ticketFacts }) {
+export function runTicket(spawnFn, { number, queue, log = console.log, facts = ticketFacts, stallMs = STALL_MS, tick = 30_000 }) {
   mkdirSync(LOG_DIR, { recursive: true });
   const logPath = path.join(LOG_DIR, `${number}.jsonl`);
   const sink = createWriteStream(logPath, { flags: "a" });
@@ -159,6 +211,7 @@ export function runTicket(spawnFn, { number, queue, log = console.log, facts = t
     version: null,
     phases: {},
     lastFactAt: Date.now(),
+    stalled: false,
   };
 
   const closePhase = (letter, detail) => {
@@ -199,16 +252,30 @@ export function runTicket(spawnFn, { number, queue, log = console.log, facts = t
   });
 
   return new Promise((resolve) => {
+    // SIGTERM, not SIGINT: the docs give SIGTERM as the one that terminates the process tree of a
+    // still-running Bash command and then runs SessionEnd, which is what a wedged session needs.
+    // SIGINT only ends the turn, and a session with nothing to end ignores it.
+    const watchdog = setInterval(() => {
+      if (Date.now() - state.lastFactAt <= stallMs) return;
+      state.stalled = true;
+      child.kill("SIGTERM");
+      setTimeout(() => child.kill("SIGKILL"), 10_000).unref();
+    }, tick);
+    watchdog.unref();
+
     child.on("close", (status) => {
-      sink.end();
-      resolve({
-        status: status ?? 1,
+      clearInterval(watchdog);
+      // Resolved on the sink's own finish, not on the child's close: `end()` only asks, and a
+      // caller reading the log it was just handed would otherwise find it short.
+      sink.end(() => resolve({
+        status: state.stalled ? "stalled" : (status ?? 1),
         result: state.result,
+        phase: state.phase,
         phases: state.phases,
         version: state.version,
         ms: Date.now() - startedAt,
         log: logPath,
-      });
+      }));
     });
   });
 }

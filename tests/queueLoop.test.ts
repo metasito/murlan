@@ -13,6 +13,9 @@ import {
   advance,
   parseStatus,
   runTicket,
+  stalled,
+  STALL_MS,
+  park,
 } from "../scripts/queue-loop.mjs";
 
 describe("parseRoute", () => {
@@ -230,6 +233,64 @@ describe("runTicket", () => {
     assert.ok(!said.join("\n").includes("[5/6] E"), "a subagent cannot push the board to phase E");
   });
 
+  test("a session that goes silent is killed and reported as stalled", async () => {
+    const killed: string[] = [];
+    const silent = () => {
+      const child: any = new EventEmitter();
+      // Never ends on its own: the watchdog is the only thing that can close this run.
+      child.stdout = new Readable({ read() {} });
+      child.kill = (sig: string) => {
+        killed.push(sig);
+        child.stdout.push(null);
+        setImmediate(() => child.emit("close", null));
+      };
+      return child;
+    };
+    const run = await runTicket(silent, {
+      number: 953,
+      queue,
+      log: () => {},
+      facts,
+      stallMs: 20,
+      tick: 10,
+    });
+    assert.equal(run.status, "stalled");
+    assert.equal(killed[0], "SIGTERM", "SIGTERM is what takes the child's Bash tree with it");
+  });
+
+  test("a talking session is never killed, however long it runs", async () => {
+    const killed: string[] = [];
+    const chatty = () => {
+      const child: any = new EventEmitter();
+      const s = new Readable({ read() {} });
+      child.stdout = s;
+      child.kill = (sig: string) => killed.push(sig);
+      let n = 0;
+      const timer = setInterval(() => {
+        s.push(`${tool("Read", "")}
+`);
+        if (++n === 8) {
+          clearInterval(timer);
+          s.push(`${RESULT}
+`);
+          s.push(null);
+          setImmediate(() => child.emit("close", 0));
+        }
+      }, 5);
+      return child;
+    };
+    const run = await runTicket(chatty, {
+      number: 953,
+      queue,
+      log: () => {},
+      facts,
+      stallMs: 60,
+      tick: 10,
+    });
+    assert.deepEqual(killed, [], "a session still emitting is working, not stalled");
+    assert.equal(run.status, 0);
+  });
+
   test("a non-zero exit is reported, not thrown", async () => {
     const run = await runTicket(fakeSpawn([RESULT], 1), {
       number: 953,
@@ -250,5 +311,89 @@ describe("runTicket", () => {
     assert.match(run.log, /999\.jsonl$/);
     assert.ok(readFileSync(run.log, "utf8").includes('"type":"result"'));
     rmSync(run.log, { force: true });
+  });
+});
+
+describe("stalled", () => {
+  test("silence past the ceiling is a stall", () => {
+    assert.equal(stalled(0, STALL_MS + 1), true);
+  });
+
+  test("silence inside it is not — a CI wait is legitimately quiet for twenty minutes", () => {
+    assert.equal(stalled(0, 20 * 60_000), false);
+    assert.ok(STALL_MS > 20 * 60_000, "the ceiling must clear a real ciVerdict wait");
+  });
+});
+
+describe("park", () => {
+  const recorder = () => {
+    const calls: { file: string; args: string[] }[] = [];
+    return {
+      calls,
+      run: (file: string, args: string[]) => {
+        calls.push({ file, args });
+        return "";
+      },
+    };
+  };
+  const ran = (calls: { file: string; args: string[] }[], needle: string) =>
+    calls.some((c) => [c.file, ...c.args].join(" ").includes(needle));
+  const opts = (extra: object) => ({
+    phase: "C",
+    why: "stalled",
+    log: "x.jsonl",
+    cwd: ".worktrees/agent-953",
+    branch: "agent/953-x",
+    dirty: false,
+    write: () => {},
+    ...extra,
+  });
+
+  test("commits the worktree's own dirty tree before removing it, so nothing is lost", () => {
+    const { calls, run } = recorder();
+    park(953, opts({ dirty: true, run }));
+    const commitAt = calls.findIndex((c) => c.args.includes("commit"));
+    const removeAt = calls.findIndex((c) => c.args.join(" ").includes("worktrees:remove"));
+    assert.ok(commitAt !== -1, "a dirty worktree must be committed");
+    assert.ok(removeAt > commitAt, "the worktree is removed only after its work is committed");
+  });
+
+  test("releases the claim and hands the ticket to the owner", () => {
+    const { calls, run } = recorder();
+    park(953, opts({ run }));
+    assert.ok(ran(calls, "--remove-label in-progress"));
+    assert.ok(ran(calls, "--add-label ready-for-human"));
+  });
+
+  test("the reason goes on the issue through a file, never an inline body", () => {
+    const { calls, run } = recorder();
+    park(953, opts({ run }));
+    const comment = calls.find((c) => c.args.includes("comment"));
+    assert.ok(comment, "park must comment on the issue");
+    assert.ok(comment!.args.includes("--body-file"), "an inline --body is word-split and mojibaked");
+    assert.ok(!comment!.args.includes("--body"), "an inline body loses the backticks a peer reads");
+  });
+
+  test("removes the worktree only through the named script, never git worktree remove", () => {
+    const { calls, run } = recorder();
+    park(953, opts({ run }));
+    assert.ok(ran(calls, "worktrees:remove"));
+    assert.ok(!ran(calls, "worktree remove"), "a recursive delete follows the node_modules junction");
+  });
+
+  test("a clean worktree is not given an empty commit", () => {
+    const { calls, run } = recorder();
+    park(953, opts({ run }));
+    assert.ok(!calls.some((c) => c.args.includes("commit")));
+  });
+
+  test("the body it writes names the phase, the branch and the log", () => {
+    let body = "";
+    const { run } = recorder();
+    park(953, opts({ run, write: (_p: string, text: string) => { body = text; } }));
+    assert.match(body, /phase C/);
+    assert.match(body, /agent\/953-x/);
+    assert.match(body, /x\.jsonl/);
+    assert.match(body, /stalled/);
   });
 });
