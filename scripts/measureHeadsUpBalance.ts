@@ -17,15 +17,21 @@
 import { pathToFileURL } from "node:url";
 import {
   aiChoosePlay,
+  bombPossible,
+  cardStrength,
   dealCards,
   getAllValidPlays,
+  getStraightFaceValue,
   initializeRematch,
   isExchangeCardStillOut,
   knownOpponentExchangeCard,
   losesLeadToExchangeCard,
   opponentsOf,
+  outstandingAbove,
+  STRAIGHT_MIN_LEN,
   type Card,
   type Combination,
+  type Suit,
 } from "../lib/gameEngine.ts";
 import { autoMoveForSeat } from "../lib/autoMove.ts";
 import {
@@ -321,6 +327,125 @@ function measureExchangeBlunderAvoidance(n: number, seed: number): BlunderCounts
   return { avoidableLeadsChecked, wouldHaveBlundered, stillBlunders, forcedLeads };
 }
 
+// ─── Measurement 6 helpers: royal-straight blind spot (#943) ──────────────
+//
+// takesTheRound (lib/gameEngine.ts, module-private inside aiChoosePlay) names
+// one residual risk a rank tally cannot see: a royal straight, which needs
+// suits the tally deliberately does not hold. isCertainLead mirrors that
+// predicate exactly — same three conditions, same order — because the
+// original is not exported and this measurement needs to ask the identical
+// question about every legal play, not just the one aiChoosePlay ends up
+// picking.
+
+/** Mirrors `takesTheRound` inside `lib/gameEngine.ts`'s `aiChoosePlay`. */
+export function isCertainLead(
+  play: Combination,
+  playedRanks: number[] | undefined,
+  hand: Card[]
+): boolean {
+  return (
+    play.cards.length === 1 &&
+    outstandingAbove(cardStrength(play.cards[0]), playedRanks, hand) === 0 &&
+    !bombPossible(playedRanks, hand)
+  );
+}
+
+/**
+ * Whether `hand` holds a legal royal straight in any suit, under either
+ * straight-value convention (ace-low, ace-high — `getStraightFaceValue`'s own
+ * two conventions, reused rather than re-derived so this can never drift from
+ * what `isStraight`/`isRoyalStraight` actually accept). Per `canPlay`, any
+ * royal straight beats any single unconditionally (the
+ * `candidate.type === "royal_straight"` branch returns true before comparing
+ * strength, unless `lastPlayed` is itself a royal straight) — so this
+ * function answering `true` is the whole question a "certain" single lead
+ * needs answered; no strength comparison is required.
+ */
+export function handHasLegalRoyalStraight(hand: Card[]): boolean {
+  const bySuit = new Map<Suit, Card[]>();
+  for (const card of hand) {
+    if (card.isJoker || !card.suit) continue;
+    const arr = bySuit.get(card.suit) ?? [];
+    arr.push(card);
+    bySuit.set(card.suit, arr);
+  }
+
+  for (const cards of bySuit.values()) {
+    if (cards.length < STRAIGHT_MIN_LEN) continue;
+
+    for (const aceAsHigh of [true, false]) {
+      const values = cards
+        .map((card) => getStraightFaceValue(card.rank, aceAsHigh))
+        .filter((v): v is number => v !== null)
+        .sort((a, b) => a - b);
+
+      let runStart = 0;
+      for (let i = 1; i <= values.length; i++) {
+        const brokeRun = i === values.length || values[i] !== values[i - 1] + 1;
+        if (brokeRun) {
+          if (i - runStart >= STRAIGHT_MIN_LEN) return true;
+          runStart = i;
+        }
+      }
+    }
+  }
+  return false;
+}
+
+interface RoyalStraightBlindSpot {
+  certainLeadsChecked: number;
+  actuallyAnswerable: number;
+}
+
+/**
+ * At every new-round lead a medium- or hard-tier bot makes where today's
+ * `certain` filter (isCertainLead, mirroring the module-private
+ * `takesTheRound`) calls a candidate a sure thing, checks the actual, full
+ * opponent hand — not sanitized, nothing here reads a sanitized view — for a
+ * legal royal straight that would answer it. 2-seat matches only, both
+ * personalities that reach this code path (`besnik`=medium, `gent`=hard;
+ * `easy` never reaches the `isNewRound` certain-filter branch at all,
+ * lib/gameEngine.ts:878-880).
+ */
+function measureRoyalStraightBlindSpot(n: number, seed: number): RoyalStraightBlindSpot {
+  let certainLeadsChecked = 0;
+  let actuallyAnswerable = 0;
+
+  const personalities = ["besnik", "gent"] as const;
+  for (const personalityId of personalities) {
+    for (let i = 0; i < n; i++) {
+      const players = tableOf(2, [personalityId, personalityId]);
+      const dealSeed = seed * 3454817917 + personalities.indexOf(personalityId) * 10_000_000 + i;
+      let state = withSeededDeals(dealSeed, () => initializeRematch(players, "free_for_all", []));
+      const rng = mulberry32(dealSeed + 1);
+
+      for (let turn = 0; turn < 300 && !state.gameOver; turn++) {
+        const seat = state.currentTurnIndex;
+        const isNewRound = !state.exchangePhase?.active && state.lastPlayedCombination === null;
+
+        if (isNewRound) {
+          const leader = state.players[seat];
+          const legalPlays = getAllValidPlays(leader.hand, null, true, undefined);
+          const certain = legalPlays.filter((p) => isCertainLead(p, state.playedRanks, leader.hand));
+          if (certain.length > 0) {
+            certainLeadsChecked++;
+            const opponentSeat = seat === 0 ? 1 : 0; // 2-seat table only
+            if (handHasLegalRoyalStraight(state.players[opponentSeat].hand)) {
+              actuallyAnswerable++;
+            }
+          }
+        }
+
+        const next = autoMoveForSeat(state, seat, true, { rng });
+        if (!next) break;
+        state = next;
+      }
+    }
+  }
+
+  return { certainLeadsChecked, actuallyAnswerable };
+}
+
 // ─── Report ──────────────────────────────────────────────────────────────
 
 function printHistogram(histogram: Map<number, number>, n: number, maxKey: number): void {
@@ -411,6 +536,17 @@ function main(): void {
   console.log(`  without the exchange fact, led under the known card anyway: ${fmtWilson(blunders.wouldHaveBlundered, blunders.avoidableLeadsChecked)}`);
   console.log(`  with it (today's behaviour), led under the known card anyway: ${fmtWilson(blunders.stillBlunders, blunders.avoidableLeadsChecked)}`);
   console.log(`  (forced leads, no safe alternative existed either way, excluded above: ${blunders.forcedLeads})`);
+
+  // ── Measurement 6 ───────────────────────────────────────────────────────
+  console.log("\n## 6. Royal-straight blind spot in \"certain\" leads (#943)\n");
+  console.log("At every medium/hard new-round lead today's engine calls a sure thing,");
+  console.log("checks the real opponent hand for a live royal straight that answers it.");
+  console.log("Gate (docs/research/2026-09-10-card-ai-suit-tracking-and-lookahead.md §5,");
+  console.log("stated before this ran): a fix is worth building only if the Wilson lower");
+  console.log("bound clears 1% (#907's own 0.12%/6-of-4950 dead-end precedent x ~8).\n");
+  const royalGap = measureRoyalStraightBlindSpot(opts.matchN2p, opts.seed);
+  console.log(`  "certain" leads checked (besnik + gent, 2-seat): ${royalGap.certainLeadsChecked}`);
+  console.log(`  actually answerable by a live royal straight: ${fmtWilson(royalGap.actuallyAnswerable, royalGap.certainLeadsChecked)}`);
 
   console.log(`\nDone in ${((Date.now() - startedAt) / 1000).toFixed(1)}s.`);
 }

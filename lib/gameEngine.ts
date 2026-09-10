@@ -180,7 +180,7 @@ export function cardStrength(card: Card): number {
   return getRankStrength(card.rank);
 }
 
-function getStraightFaceValue(rank: Rank, aceAsHigh: boolean): number | null {
+export function getStraightFaceValue(rank: Rank, aceAsHigh: boolean): number | null {
   if (rank === "joker_bw" || rank === "joker_colored") return null;
   if (rank === "A") return aceAsHigh ? 14 : 1;
   const map: Partial<Record<Rank, number>> = {
