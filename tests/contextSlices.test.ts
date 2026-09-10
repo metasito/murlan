@@ -28,28 +28,28 @@ const CONTEXT_HOOKS = /use(?:Online)?Game|use(?:Connection|Room|Table|TurnClock|
  * twice widens by whatever the second one takes, and reading only the first
  * would leave that invisible to the very check meant to catch it. A second
  * call is rejected outright as well, since it is also how a field ends up in
- * two slices without the partition below noticing — and, now that each online
- * slice has a context to itself, how a slice quietly goes back to waking on a
- * second slice's fields.
+ * two slices without the partition below noticing, and how an online slice
+ * comes to wake on a second slice's fields.
  */
-function sliceFields(source: string, hookName: string, via: string): string[] {
+function sliceRead(source: string, hookName: string): { via: string; fields: string[] } {
   const start = source.indexOf(`export function ${hookName}(`);
   assert.notEqual(start, -1, `no hook ${hookName}`);
   const body = source.slice(start, source.indexOf("\n}", start));
 
-  const calls = [...body.matchAll(new RegExp(`(${CONTEXT_HOOKS})\\s*\\(`, "g"))];
-  assert.deepEqual(
-    calls.map((m) => m[1]),
-    [via],
-    `${hookName} reads ${calls.map((m) => m[1]).join(", ") || "no context"}; a slice reads ${via}, once`
+  const calls = [...body.matchAll(new RegExp(`(${CONTEXT_HOOKS})\\s*\\(`, "g"))].map((m) => m[1]);
+  assert.equal(
+    calls.length,
+    1,
+    `${hookName} reads ${calls.join(", ") || "no context"}; a slice reads one, once`
   );
+  const via = calls[0];
 
-  const names = [...body.matchAll(new RegExp(`const\\s*\\{([^}]*)\\}\\s*=\\s*\\n?\\s*${via}\\(\\)`, "g"))]
+  const fields = [...body.matchAll(new RegExp(`const\\s*\\{([^}]*)\\}\\s*=\\s*\\n?\\s*${via}\\(\\)`, "g"))]
     .flatMap((m) => m[1].split(","))
     .map((s) => s.trim())
     .filter(Boolean);
-  assert.ok(names.length, `${hookName} does not read its context hook by destructuring`);
-  return names;
+  assert.ok(fields.length, `${hookName} does not read ${via} by destructuring`);
+  return { via, fields };
 }
 
 const ONLINE: Record<string, string[]> = {
@@ -113,8 +113,10 @@ for (const [file, expected] of [
   test(`${file}: each slice reads exactly its own concern`, () => {
     const source = read(file);
     for (const [hook, fields] of Object.entries(expected)) {
+      const slice = sliceRead(source, hook);
+      assert.equal(slice.via, VIA[hook], `${hook} reads ${slice.via}, not its own context`);
       assert.deepEqual(
-        sliceFields(source, hook, VIA[hook]).sort(),
+        slice.fields.sort(),
         [...fields].sort(),
         `${hook} reads a different set than its concern`
       );
@@ -152,10 +154,7 @@ test("each online slice reads one context, and no two read the same one", () => 
   // half-made: every shape check above still passes while a turn-deadline
   // change wakes both. `sliceFields` pins the one; this pins the six.
   const source = read("context/onlineGameHooks.ts");
-  const contexts = Object.keys(ONLINE).map((hook) => {
-    sliceFields(source, hook, VIA[hook]);
-    return VIA[hook];
-  });
+  const contexts = Object.keys(ONLINE).map((hook) => sliceRead(source, hook).via);
   assert.equal(new Set(contexts).size, contexts.length, "two online slices share a context");
 
   const provider = read("context/OnlineGameContext.tsx");

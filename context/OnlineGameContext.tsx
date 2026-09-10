@@ -150,13 +150,13 @@ interface OnlineGameContextValue {
 
 /**
  * One context per slice, so a field change wakes only the screens reading that
- * slice. `armTurn` re-arms the turn clock after every state change, every
- * rejoin and every disconnect; behind a single context that woke every online
- * screen the router still had mounted, twice a turn.
+ * slice. The turn clock is what makes that worth having: `armTurn` re-arms it
+ * after every state change, every rejoin and every disconnect, and every online
+ * screen the router holds mounted reads one of these contexts.
  *
- * `Pick` rather than six hand-written interfaces: the surface stays declared
- * once, and a field added to it has to be placed in a slice to be reachable
- * (`tests/contextSlices.test.ts`).
+ * `Pick` rather than six hand-written interfaces: the field names stay declared
+ * once, and a field added to the surface has to be placed in a slice to be
+ * reachable (`tests/contextSlices.test.ts`).
  */
 type ConnectionSlice = Pick<
   OnlineGameContextValue,
@@ -987,9 +987,10 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
   const clearPlayerLeft = useCallback(() => setPlayerLeft(false), []);
   const clearRejoinFailed = useCallback(() => setRejoinFailed(false), []);
 
-  // One memo per slice, each over only its own state. A memo shared between
-  // the six would leave every consumer waking on every field, which is the way
-  // this split fails while looking done (tests/native/sliceRenderCounts.test.tsx).
+  // One memo per slice, each over only its own state. Two slices sharing a
+  // memo, or a dep list reaching past its own slice, is a split that passes
+  // every shape check and saves nothing — which is why what pins these is a
+  // render count (tests/native/sliceRenderCounts.test.tsx).
   const connectionValue = useMemo(
     () => ({
       connected,

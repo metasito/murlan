@@ -13,11 +13,12 @@
  *
  * Each reads its own context, and that is where the render saving is: a field
  * change wakes only the screens reading the slice it belongs to. The `useMemo`
- * around each result is a second, cheaper guarantee — the first call site to
- * keep the object rather than unpack it, a dependency array or a memoized
- * child, would otherwise get a new one every render, and that failure looks
- * like an unrelated render loop. `exhaustive-deps` is an error in this repo,
- * so the lists cannot drift out of step with the destructures above them.
+ * around each result is about identity, not renders — the destructure builds a
+ * new object, so the first call site to keep it rather than unpack it, a
+ * dependency array or a memoized child, would otherwise get a new one every
+ * render, and that failure looks like an unrelated render loop.
+ * `exhaustive-deps` is an error in this repo, so the lists cannot drift out of
+ * step with the destructures above them.
  */
 import { useMemo } from "react";
 import {
