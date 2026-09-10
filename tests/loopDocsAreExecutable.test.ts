@@ -27,11 +27,14 @@ describe("the loop's instructions name only things that exist", () => {
     assert.deepEqual(missing, [], `queue.md tells the agent to run scripts that do not exist`);
   });
 
-  test("every `npx tsx lib/...` it tells you to run is a real module", () => {
-    const named = [...read(QUEUE).matchAll(/npx\s+tsx\s+(lib\/[\w./-]+\.ts)/g)].map((m) => m[1]);
-    assert.ok(named.length >= 1, "no tsx invocations found; the pattern has drifted");
+  // The CI verdict and the merge moved to the supervisor, so it is queue-loop.mjs that names these
+  // now. Scanning both keeps the check pointed at whoever actually invokes them.
+  test("every `lib/loop/*.ts` the loop invokes is a real module", () => {
+    const sources = `${read(QUEUE)} ${read("scripts/queue-loop.mjs")}`;
+    const named = [...sources.matchAll(/(lib\/loop\/[\w.-]+\.ts)/g)].map((m) => m[1]);
+    assert.ok(named.length >= 1, "no lib/loop invocations found; the pattern has drifted");
     const missing = [...new Set(named)].filter((s) => !existsSync(s));
-    assert.deepEqual(missing, [], `queue.md tells the agent to run modules that do not exist`);
+    assert.deepEqual(missing, [], `the loop invokes modules that do not exist`);
   });
 
   test("every `npm run x` it tells you to run is a real script", () => {

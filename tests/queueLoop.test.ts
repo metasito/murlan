@@ -20,6 +20,8 @@ import {
   shouldHalt,
   BREAKER,
   takeStopFile,
+  afterPush,
+  canStartNext,
 } from "../scripts/queue-loop.mjs";
 
 describe("parseRoute", () => {
@@ -457,5 +459,83 @@ describe("takeStopFile", () => {
     const fs = { existsSync: () => true, rmSync: (p: string) => calls.push(p) };
     assert.equal(takeStopFile(fs, ".loop-stop"), true);
     assert.deepEqual(calls, [".loop-stop"]);
+  });
+});
+
+describe("afterPush", () => {
+  test("green and clean merges", () => {
+    const r = afterPush({ verdict: { pass: true }, landing: { action: "merge", reason: "CLEAN" } });
+    assert.equal(r.action, "merged");
+  });
+
+  test("green but behind updates the branch first, and does not merge on the old verdict", () => {
+    const r = afterPush({ verdict: { pass: true }, landing: { action: "update-branch", reason: "BEHIND" } });
+    assert.equal(r.action, "update-branch");
+  });
+
+  test("red hands the ticket back to a session rather than parking it", () => {
+    const r = afterPush({ verdict: { pass: false, failedStep: "lint", output: "..." } });
+    assert.equal(r.action, "fix");
+    assert.match(r.why, /lint/);
+  });
+
+  test("a job that ran zero steps says nothing about the diff, so it is asked again, not fixed", () => {
+    const r = afterPush({ verdict: { pass: false, infrastructure: true } });
+    assert.equal(r.action, "retry-verdict");
+  });
+
+  test("a conflicting branch parks — a merge that needs forcing is a decision", () => {
+    const r = afterPush({
+      verdict: { pass: true },
+      landing: { action: "stop", reason: "the branch conflicts with main" },
+    });
+    assert.equal(r.action, "park");
+    assert.match(r.why, /conflicts/);
+  });
+
+  test("infrastructure wins over a failed step: it says nothing about the diff either way", () => {
+    const r = afterPush({ verdict: { pass: false, infrastructure: true, failedStep: "browser" } });
+    assert.equal(r.action, "retry-verdict");
+  });
+});
+
+describe("canStartNext", () => {
+  test("nothing pending, so start", () => {
+    assert.equal(canStartNext({ pending: null }).ok, true);
+  });
+
+  test("a pending ticket awaiting its first verdict does not block the next one", () => {
+    assert.equal(
+      canStartNext({ pending: { ticket: 953, state: "awaiting-ci", changed: ["lib/x.ts"] } }).ok,
+      true
+    );
+  });
+
+  test("a red pending ticket blocks the queue — the next session is its fix", () => {
+    const r = canStartNext({ pending: { ticket: 953, state: "red", changed: ["lib/x.ts"] } });
+    assert.equal(r.ok, false);
+    assert.match(r.why, /#953/);
+  });
+
+  test("a dependency change drains before anything else starts", () => {
+    const r = canStartNext({
+      pending: { ticket: 953, state: "awaiting-ci", changed: ["package.json", "lib/x.ts"] },
+    });
+    assert.equal(r.ok, false);
+    assert.match(r.why, /node_modules|package\.json/);
+  });
+
+  test("package-lock.json counts the same as package.json", () => {
+    assert.equal(
+      canStartNext({ pending: { ticket: 953, state: "awaiting-ci", changed: ["package-lock.json"] } }).ok,
+      false
+    );
+  });
+
+  test("a lockfile deep in a worktree path is not this repo's shared install", () => {
+    assert.equal(
+      canStartNext({ pending: { ticket: 953, state: "awaiting-ci", changed: ["docs/package.json"] } }).ok,
+      true
+    );
   });
 });

@@ -257,39 +257,14 @@ Write that file with the Write tool or a bash heredoc. PowerShell's `Set-Content
 on this machine and mangles every em-dash in it — and the body you are writing is a paragraph of
 this repo's prose, which is full of them.
 
-Do not read CI by eye, and never from a command's exit status — `gh pr checks --watch` piped into
-anything reports the *pipe's* status, and that is how a red branch once reached main. Ask the one
-thing that answers from run data:
+CI is not yours to read, and neither is the merge. `scripts/queue-loop.mjs` waits for the run this
+push started, updates the branch if main moved, merges when it is green, takes `in-progress` off,
+and removes the worktree. None of that is a judgement, and a model reading a CI log to decide that
+green means merge is a model spending turns on a switch statement.
 
-```sh
-npx tsx lib/loop/ciVerdict.ts metasito/murlan agent/<n>-<slug> <pr>
-```
-
-It waits for the run this push started, matches it by `headRefOid` so a fix round cannot read the
-previous push's red, filters to `ci.yml` (the branch also carries Maestro and EAS runs that settle
-on their own schedule, and a green one of those reads as a green branch), and returns JSON:
-`{ pass, runId, failedStep, output, infrastructure, reason }`.
-
-- `pass: false` — fix on the branch from `output`, push, ask again. A fix is new code, so it needs
-  its own review before it lands. Three attempts on the same failure, then park with the log.
-- `infrastructure: true` — a job completed having run zero steps: billing, a quota, a runner. It
-  says nothing about the diff, so ask once more rather than spending a fix round on it.
-
-```sh
-npx tsx lib/loop/land.ts metasito/murlan <pr>
-```
-
-Merges when the PR is mergeable. `next: "update-branch"` means main moved — run
-`gh pr update-branch`, read the verdict again (merging behind runs the whole suite twice), then
-land. Anything else stops: park it. Never reach for `--admin` — a merge that needs a flag to force
-it is a decision, not a step.
-
-```sh
-gh issue edit <n> --remove-label in-progress
-```
-
-The PR body closes the issue; nothing takes the label off, and a closed ticket still wearing
-`in-progress` reads as a live run.
+If CI goes red, the loop starts a fresh session on this same ticket — `derive()` finds it from the
+branch and the open pull request, exactly as it finds any live run — and that session fixes it from
+the failure the pull request shows, gets a fresh review of the new head, and pushes again.
 
 ## F — Close out
 
@@ -305,18 +280,12 @@ The PR body closes the issue; nothing takes the label off, and a closed ticket s
    close is named there, with why. An honest gap is worth more than a green report.
 3. In that same comment, one line on the effective diff in plain language — "the hand fans from the
    left edge", not "edited handLayout.ts".
-4. Teardown, in this order — `git worktree remove` walks *into* a Windows junction and empties the
-   shared install:
-   ```sh
-   npm run worktrees:remove -- .worktrees/agent-<n>
-   git status --porcelain              # must be empty; if it is not, teardown failed — say so
-   ```
-5. **Exit.** One ticket per process, by design: `scripts/queue-loop.mjs` starts the next ticket in a
+4. **Exit.** One ticket per process, by design: `scripts/queue-loop.mjs` starts the next ticket in a
    clean process, so there is nothing here to reset and nothing that can leak forward. Do not loop
    back to phase A in this session.
 
-Teardown runs on the parked and stopped paths too. A run that cost forty minutes and stopped is the
-one whose record is worth having.
+The loop tears the worktree down, on the landed, parked and stopped paths alike. A run that cost
+forty minutes and stopped is the one whose record is worth having.
 
 ## Compaction
 

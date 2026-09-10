@@ -151,6 +151,42 @@ export function madeProgress(prev, now) {
   return prev.head !== now.head || prev.commits !== now.commits;
 }
 
+/**
+ * What to do with a ticket whose session has already exited.
+ *
+ * Nothing in this stretch is a judgement — `ciVerdict` says whether the run passed and
+ * `decideLanding()` is already a pure function over the merge state — so it is a table here rather
+ * than a model reading a CI log to decide that green means merge.
+ *
+ * @param {{verdict: {pass?: boolean, infrastructure?: boolean, failedStep?: string, output?: string},
+ *   landing?: {action: string, reason: string}}} state
+ */
+export function afterPush({ verdict, landing }) {
+  // A job that completed having run zero steps is billing, a quota or a runner. It says nothing
+  // about the diff, so it is asked again rather than spending a fix round on it.
+  if (verdict.infrastructure) return { action: "retry-verdict", why: "a job completed having run zero steps" };
+  if (!verdict.pass) return { action: "fix", why: `CI failed at ${verdict.failedStep ?? "an unnamed step"}` };
+  if (landing?.action === "merge") return { action: "merged", why: landing.reason };
+  if (landing?.action === "update-branch") return { action: "update-branch", why: landing.reason };
+  return { action: "park", why: landing?.reason ?? "the pull request is not mergeable" };
+}
+
+// Worktrees isolate branches and indexes. They do not isolate node_modules — one install, shared
+// through a junction — so a dependency change landing under a peer build is how that build gets a
+// green typecheck against modules it does not have.
+const SHARED_INSTALL = ["package.json", "package-lock.json"];
+
+/** Whether a new ticket may start while the last one is still waiting to merge. */
+export function canStartNext({ pending }) {
+  if (!pending) return { ok: true, why: "" };
+  if (pending.state === "red") {
+    return { ok: false, why: `#${pending.ticket} is red; the next session is its fix` };
+  }
+  const dep = (pending.changed ?? []).find((f) => SHARED_INSTALL.includes(f));
+  if (dep) return { ok: false, why: `#${pending.ticket} changes ${dep}, and node_modules is shared` };
+  return { ok: true, why: "" };
+}
+
 /** `.loop-stop` drains the loop after the current ticket. Reading it removes it, so it cannot go stale. */
 export function takeStopFile(fs, file) {
   if (!fs.existsSync(file)) return false;
@@ -321,18 +357,18 @@ const STOP_FILE = ".loop-stop";
  * Written as each ticket ends rather than at exit, so a crash or a closed terminal keeps whatever
  * the night had already done.
  */
+const today = () => new Date().toISOString().slice(0, 10);
+const reportPath = () => path.join(LOG_DIR, `run-${today()}.md`);
+
+const NL = "\n";
+
 function record(entry, line) {
   mkdirSync(LOG_DIR, { recursive: true });
-  fs.appendFileSync(path.join(LOG_DIR, "tickets.jsonl"), `${JSON.stringify(entry)}
-`, "utf8");
-  const report = path.join(LOG_DIR, `run-${new Date().toISOString().slice(0, 10)}.md`);
-  if (!fs.existsSync(report)) {
-    fs.writeFileSync(report, `# queue-loop ${new Date().toISOString().slice(0, 10)}
-
-`, "utf8");
+  fs.appendFileSync(path.join(LOG_DIR, "tickets.jsonl"), JSON.stringify(entry) + NL, "utf8");
+  if (!fs.existsSync(reportPath())) {
+    fs.writeFileSync(reportPath(), `# queue-loop ${today()}` + NL + NL, "utf8");
   }
-  fs.appendFileSync(report, `${line}
-`, "utf8");
+  fs.appendFileSync(reportPath(), line + NL, "utf8");
 }
 
 /** A ticket's raw stream log is worth keeping for a week; after that it is only taking up disk. */
@@ -346,25 +382,119 @@ function pruneLogs(now = Date.now()) {
   }
 }
 
+const REPO = "metasito/murlan";
+const tsx = (args) => JSON.parse(sh("npx", ["tsx", ...args]));
+
+/** land.ts merges when it can and otherwise names what it wants next; both shapes read the same. */
+const landingOf = (out) =>
+  out.merged ? { action: "merge", reason: out.reason } : { action: out.next, reason: out.reason };
+
+/** The pull request this branch pushed, if it pushed one. */
+function pushedPr(branch) {
+  try {
+    const [pr] = JSON.parse(
+      sh("gh", ["pr", "list", "--head", branch, "--state", "open", "--json", "number", "--limit", "1"])
+    );
+    return pr?.number ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Waits for the pushed branch's CI and lands it. No judgement here — `ciVerdict` says whether the
+ * run passed, `land.ts` says whether the pull request can merge — which is why the session that
+ * built the ticket has already exited by the time this runs.
+ *
+ * Updating a behind branch costs one more CI run; merging behind costs two, and tests a tree no run
+ * has seen.
+ */
+async function settle(pending, log = console.log) {
+  for (let round = 0; round < 3; round++) {
+    const verdict = tsx(["lib/loop/ciVerdict.ts", REPO, pending.branch, String(pending.pr)]);
+    const landing = verdict.pass ? landingOf(tsx(["lib/loop/land.ts", REPO, String(pending.pr)])) : undefined;
+    const next = afterPush({ verdict, landing });
+
+    if (next.action === "update-branch") {
+      log(`  ⏳ #${pending.ticket} main moved — updating the branch and reading CI again`);
+      sh("gh", ["pr", "update-branch", String(pending.pr)]);
+      continue;
+    }
+    if (next.action === "retry-verdict") {
+      log(`  ⏳ #${pending.ticket} ${next.why} — asking once more`);
+      continue;
+    }
+    if (next.action === "merged") {
+      sh("gh", ["issue", "edit", String(pending.ticket), "--remove-label", "in-progress"]);
+    }
+    return next;
+  }
+  return { action: "park", why: "three rounds without a settled CI verdict" };
+}
+
 /** Where the ticket stood when its session exited — what the progress guard compares against. */
 const standing = () => {
   const s = derive();
   return s.onTicket
-    ? { ticket: s.ticket, head: s.head ?? null, commits: s.commits ?? 0, cwd: s.cwd, branch: s.branch, dirty: s.dirty, phase: s.phase }
+    ? {
+        ticket: s.ticket,
+        head: s.head ?? null,
+        commits: s.commits ?? 0,
+        changed: s.changed ?? [],
+        cwd: s.cwd,
+        branch: s.branch,
+        dirty: s.dirty,
+        phase: s.phase,
+      }
     : null;
 };
 
 async function main() {
   let prev = null;
   let failures = 0;
+  let pending = null;
   const totals = { tickets: 0, landed: 0, parked: 0, cost: 0, ms: 0 };
 
   pruneLogs();
 
+  /** Waits for the queued pull request to merge, or hands its ticket back for a fix. */
+  const drain = async () => {
+    if (!pending) return;
+    const held = pending;
+    pending = null;
+    const outcome = await settle(held);
+    if (outcome.action === "merged") {
+      console.log(closing({ outcome: "merged", number: held.ticket, files: 0, turns: 0, ms: 0, cost: 0 }));
+      return;
+    }
+    // Not merged: the ticket is live again, so the next session is its fix rather than a new ticket.
+    console.log(`  ⚠️ #${held.ticket} ${outcome.why}`);
+    if (outcome.action !== "fix") {
+      const at = standing();
+      if (at && at.ticket === held.ticket) {
+        park(held.ticket, {
+          phase: at.phase,
+          why: outcome.why,
+          log: path.join(LOG_DIR, `${held.ticket}.jsonl`),
+          cwd: at.cwd,
+          branch: at.branch,
+          dirty: at.dirty,
+        });
+      }
+    }
+  };
+
   for (;;) {
     if (takeStopFile(fs, STOP_FILE)) {
       console.log("queue-loop: .loop-stop — draining, nothing new will be started");
+      await drain();
       return 0;
+    }
+
+    const gate = canStartNext({ pending });
+    if (!gate.ok) {
+      console.log(`  ⏳ ${gate.why}`);
+      await drain();
     }
     if (!syncProtocol(git, (m) => console.error(m))) return 1;
 
@@ -373,7 +503,10 @@ async function main() {
 
     const route = nextRoute();
     if (shouldStop(route)) {
+      // The queue is empty of new work, but a pushed ticket may still be waiting to merge.
+      await drain();
       console.log(`queue-loop: ${route.title} — stopping`);
+      console.log(runTotal(totals));
       return 0;
     }
 
@@ -394,7 +527,29 @@ async function main() {
           ? `the session exited ${run.status} in phase ${run.phase ?? "?"}`
           : null;
 
-    if (landed && !why) {
+    const pr = after?.branch ? pushedPr(after.branch) : null;
+    // Pushed counts as done for this session: the ticket is still live only because the merge has
+    // not happened yet, and the merge is the supervisor's.
+    const ok = !why && Boolean(pr || landed);
+
+    if (pr && !why) {
+      // Pushed and reviewed, so nothing left needs a model. It goes in the merge queue and the next
+      // ticket starts building against its CI wait rather than behind it.
+      failures = 0;
+      totals.landed += 1;
+      console.log(
+        closing({
+          outcome: "landed",
+          number: route.number,
+          files: run.files,
+          turns: run.result?.turns ?? 0,
+          ms: run.ms,
+          cost: run.result?.cost ?? 0,
+        })
+      );
+      console.log(`  ⏳ #${route.number} CI running on PR #${pr} — starting the next ticket`);
+      pending = { ticket: route.number, pr, branch: after.branch, changed: after.changed ?? [], state: "awaiting-ci" };
+    } else if (landed && !why) {
       failures = 0;
       totals.landed += 1;
       console.log(
@@ -437,8 +592,8 @@ async function main() {
       row({
         number: route.number,
         size: facts.size,
-        outcome: landed && !why ? "landed" : "parked",
-        pr: null,
+        outcome: ok ? "landed" : "parked",
+        pr,
         phases: run.phases,
         result: run.result,
         ci: null,
@@ -449,8 +604,8 @@ async function main() {
       reportRow({
         number: route.number,
         title: facts.title,
-        outcome: landed && !why ? "landed" : "parked",
-        pr: null,
+        outcome: ok ? "landed" : "parked",
+        pr,
         ms: run.ms,
         cost: run.result?.cost ?? 0,
         why: why ?? undefined,
@@ -459,12 +614,11 @@ async function main() {
 
     prev = after;
     if (shouldHalt(failures)) {
+      await drain();
       console.error(`queue-loop: ${failures} tickets in a row did not land — stopping`);
       const total = runTotal(totals);
       console.log(total);
-      fs.appendFileSync(path.join(LOG_DIR, `run-${new Date().toISOString().slice(0, 10)}.md`), `
-${total}
-`, "utf8");
+      fs.appendFileSync(reportPath(), `\n${total}\n`, "utf8");
       return 1;
     }
   }
