@@ -59,8 +59,14 @@ export function queueLoopArgs() {
   return ["-p", "/queue", "--permission-mode", "auto", "--strict-mcp-config"];
 }
 
-/** Read from this working tree at session start, so a stale copy is a different protocol. */
-const PROTOCOL = ["CLAUDE.md", ".claude"];
+/**
+ * Read from this working tree, not from the ticket's worktree: the session's instructions, and
+ * the scripts the loop shells out to by relative path. A stale copy of any of them is a different
+ * protocol. This file is in that set and cannot guard its own staleness — a loop started from an
+ * old checkout runs an old guard, which is why the repair below is worth having at every
+ * iteration rather than once at startup.
+ */
+const PROTOCOL = ["CLAUDE.md", ".claude", "scripts"];
 
 /**
  * The spawned session reads `PROTOCOL` from the shared checkout, not from `origin/main`. Left on
