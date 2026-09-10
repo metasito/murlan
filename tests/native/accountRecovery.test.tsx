@@ -294,17 +294,16 @@ describe('app/recover', () => {
     await view.unmount();
   });
 
-  it('holding return on the email field issues only one request', async () => {
+  it('a second submit while the reset request is in flight issues no second request', async () => {
     mockApiRequest.mockReturnValue(new Promise(() => {}));
     const view = await mount();
 
     await act(async () => {
       fireEvent.changeText(screen.getByLabelText(locale['recover.emailA11yLabel']), 'player@example.test');
     });
-    // Calling the prop rather than firing the event: react-native-web renders
-    // editable={false} as readOnly and dispatches onSubmitEditing on Enter
-    // regardless, so this is the web keypress. RNTL's own fireEvent refuses any
-    // event on a non-editable input, which would test the harness instead.
+    // The prop, not the event: RNTL's fireEvent refuses any event on a
+    // non-editable input, which would assert the harness. Dispatching anyway is
+    // what the web build does (tests/submitEditingGuards.test.ts says why).
     // Re-read each time — the browser re-attaches the handler every render, and
     // the guard only sees `loading` through the closure it was made in.
     const submit = () => screen.getByLabelText(locale['recover.emailA11yLabel']).props.onSubmitEditing;
