@@ -10,24 +10,30 @@
 // The socket's own work — joining a room, `socketRoomMap` — stays with the
 // socket, in the handler families.
 //
-// A play/pass action crosses six files before it settles: `socketGameplay.ts`
+// A play or pass reaches five files before it settles: `socketGameplay.ts`
 // `registerGameplayHandlers` → `tableRouter.ts` `applyOrForward` (reaching
 // here through a module-local `apply` set by `setTableHandlers`, to dodge a
-// circular import) → `playAction`/`passAction` here → `gameTurn.ts`
-// `recordPlayFlags` (play only) → `gamePersistence.ts`
-// `broadcastGameState`/`persistGameState` → `gameOver.ts` `handleGameOver`
-// when the play empties a hand, or `gameTurn.ts` `armTurn` otherwise.
+// circular import) → `playAction`/`passAction` here (`gameTurn.ts`
+// `recordPlayFlags` runs first, play only) → `gamePersistence.ts`
+// `broadcastGameState`/`persistGameState` → `gameTurn.ts` `armTurn`. A play
+// that empties a hand takes a sixth file instead of `armTurn`: `gameOver.ts`
+// `handleGameOver`; a pass never reaches it.
 //
 // A disconnect runs a different chain: `socketPresence.ts`
 // `registerDisconnect` → `tableRouter.ts` `applyOrForward` with a `seatLost`
-// intent → `seatLostAction` here, which arms a grace timer and, on expiry,
-// calls `gameTurn.ts` `vacateSeat` — settling the departure itself, through a
-// bot takeover, `gameOver.ts` `voidAbandonedMatch`, or `gameTurn.ts`'s own
-// `concedeHand` into `gameOver.ts` `handleGameOver` — then re-checks the
-// rematch gate through `dealIfSeatLeftGateClosed` here.
+// intent → `seatLostAction` here. Mid-hand, it arms a grace timer and, on
+// expiry, calls `gameTurn.ts` `vacateSeat` — settling the departure itself,
+// through a bot takeover, `gameOver.ts` `voidAbandonedMatch`, or
+// `gameTurn.ts`'s own `concedeHand` into `gameOver.ts` `handleGameOver` —
+// then re-checks the rematch gate through `dealIfSeatLeftGateClosed` here.
+// Between hands it instead arms a separate, shorter lobby grace and never
+// reaches `vacateSeat`.
 //
-// `gameOver.ts` `handleGameOver` is therefore reachable both from a play/pass
-// here and from `vacateSeat`'s forfeit branch in `gameTurn.ts`.
+// `gameOver.ts` `handleGameOver` has more entry points than a play: an
+// AFK/bot auto-move (`gameTurn.ts` `runBotTurn`, `handleAutoPass`) and
+// `vacateSeat`'s forfeit branch reach it too. Inside, it resolves the hand
+// through `onlineGameLogic.ts` `resolveHandEnd`, emits `game:over`, then
+// writes it through the `GameOverWriters` `gamePersistence.ts` implements.
 import type { Server as SocketServer } from "socket.io";
 import { eq } from "drizzle-orm";
 import { db } from "./db.ts";
