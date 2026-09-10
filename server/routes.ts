@@ -1,7 +1,7 @@
 import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "node:http";
 import bcrypt from "bcryptjs";
-import { rateLimit } from "express-rate-limit";
+import { routeLimiter } from "./rateLimit.ts";
 import { storage, UsernameTakenError, EmailTakenError } from "./storage.ts";
 import { friendRequestRow, friendRow } from "./friendRows.ts";
 import type { FriendRequestAccepted, FriendRequestIncoming } from "../lib/wire.ts";
@@ -71,26 +71,19 @@ function readParam(res: Response, raw: unknown): string | null {
 
 /**
  * An integration suite registers one throwaway account per seat and burns the
- * production budget in a few tables. Read once at module scope, so a test
- * process must set it before the app is imported — see
- * tests/helpers/testServer.ts.
+ * production budget in a few tables, which is what the env override exists
+ * for — set before the app is imported, see tests/helpers/testServer.ts.
  *
  * Raised from the old 20: this is now a broad per-IP backstop shared by
  * register and login (#41) rather than login's only defense, so it has to
  * clear a whole office or carrier NAT's worth of normal traffic in a window
  * without tripping. What actually bounds one account's login attempts is
- * loginUsernameMaxFromEnv() below.
+ * loginUsernameLimiter below.
  */
-function authMaxFromEnv(): number {
-  const parsed = Number(process.env.MURLAN_AUTH_RATE_LIMIT);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : 100;
-}
-
-const authLimiter = rateLimit({
+const authLimiter = routeLimiter({
   windowMs: 15 * 60 * 1000,
-  max: authMaxFromEnv(),
-  standardHeaders: true,
-  legacyHeaders: false,
+  defaultMax: 100,
+  envVar: "MURLAN_AUTH_RATE_LIMIT",
   message: payload("AUTH_RATE_LIMITED"),
 });
 
@@ -103,26 +96,13 @@ const authLimiter = rateLimit({
  * a column is the last resort. A player-visible "you can change this again in N days" would need
  * one, and that is its own ticket.
  */
-const renameLimiter = rateLimit({
+const renameLimiter = routeLimiter({
   windowMs: 24 * 60 * 60 * 1000,
-  max: renameMaxFromEnv(),
-  standardHeaders: true,
-  legacyHeaders: false,
-  keyGenerator: (req: Request) => req.session?.userId ?? "anonymous",
+  defaultMax: 5,
+  envVar: "MURLAN_RENAME_RATE_LIMIT",
+  keyBy: "session",
   message: payload("RENAME_RATE_LIMITED"),
 });
-
-/** Same pattern as authMaxFromEnv() above. */
-function renameMaxFromEnv(): number {
-  const parsed = Number(process.env.MURLAN_RENAME_RATE_LIMIT);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : 5;
-}
-
-/** Same pattern as authMaxFromEnv() above. */
-function loginUsernameMaxFromEnv(): number {
-  const parsed = Number(process.env.MURLAN_LOGIN_USERNAME_RATE_LIMIT);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : 10;
-}
 
 // Never a real user's hash — exists only so the limiter below can spend
 // bcrypt.compare's cost without a real password to check. Sync and at
@@ -149,24 +129,17 @@ const LOGIN_LIMIT_DECOY_HASH = bcrypt.hashSync("murlan-rate-limit-timing-decoy",
  * account's real guesses. Paying a decoy bcrypt.compare closes that gap; see
  * #41's PR description for the measurement.
  */
-const loginUsernameLimiter = rateLimit({
+const loginUsernameLimiter = routeLimiter({
   windowMs: 15 * 60 * 1000,
-  max: loginUsernameMaxFromEnv(),
-  standardHeaders: true,
-  legacyHeaders: false,
+  defaultMax: 10,
+  envVar: "MURLAN_LOGIN_USERNAME_RATE_LIMIT",
+  keyBy: "username",
   skipSuccessfulRequests: true,
-  keyGenerator: (req: Request) => (req.body as { username: string }).username.toLowerCase(),
   handler: async (_req, res) => {
     await bcrypt.compare("x", LOGIN_LIMIT_DECOY_HASH);
     res.status(401).json({ ...payload("INVALID_CREDENTIALS") });
   },
 });
-
-/** Same pattern as authMaxFromEnv() above. */
-function passwordResetRequestMaxFromEnv(): number {
-  const parsed = Number(process.env.MURLAN_PASSWORD_RESET_REQUEST_RATE_LIMIT);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : 5;
-}
 
 /**
  * Per-email cap for POST /api/auth/request-password-reset (design doc,
@@ -176,20 +149,13 @@ function passwordResetRequestMaxFromEnv(): number {
  * whatever address the caller submitted, so a nonexistent address is
  * throttled on the identical schedule a real one is.
  */
-const passwordResetRequestLimiter = rateLimit({
+const passwordResetRequestLimiter = routeLimiter({
   windowMs: 15 * 60 * 1000,
-  max: passwordResetRequestMaxFromEnv(),
-  standardHeaders: true,
-  legacyHeaders: false,
-  keyGenerator: (req: Request) => (req.body as { email: string }).email.toLowerCase(),
+  defaultMax: 5,
+  envVar: "MURLAN_PASSWORD_RESET_REQUEST_RATE_LIMIT",
+  keyBy: "email",
   message: payload("RATE_LIMITED"),
 });
-
-/** Same pattern as authMaxFromEnv() above. */
-function resetPasswordMaxFromEnv(): number {
-  const parsed = Number(process.env.MURLAN_RESET_PASSWORD_RATE_LIMIT);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : 20;
-}
 
 /**
  * POST /api/auth/reset-password's only bound (design doc, Box 4) — the
@@ -199,19 +165,12 @@ function resetPasswordMaxFromEnv(): number {
  * loginUsernameLimiter's per-account precision, which this route has no
  * username to key on.
  */
-const resetPasswordLimiter = rateLimit({
+const resetPasswordLimiter = routeLimiter({
   windowMs: 60 * 1000,
-  max: resetPasswordMaxFromEnv(),
-  standardHeaders: true,
-  legacyHeaders: false,
+  defaultMax: 20,
+  envVar: "MURLAN_RESET_PASSWORD_RATE_LIMIT",
   message: payload("RATE_LIMITED"),
 });
-
-/** Same pattern as authMaxFromEnv() above. */
-function changePasswordMaxFromEnv(): number {
-  const parsed = Number(process.env.MURLAN_CHANGE_PASSWORD_RATE_LIMIT);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : 10;
-}
 
 /**
  * Per-account bound on POST /api/auth/change-password (#892) — the route
@@ -226,21 +185,14 @@ function changePasswordMaxFromEnv(): number {
  * guesses. This route is already authenticated as the account it is
  * guessing at, so there is no oracle to close.
  */
-const changePasswordLimiter = rateLimit({
+const changePasswordLimiter = routeLimiter({
   windowMs: 15 * 60 * 1000,
-  max: changePasswordMaxFromEnv(),
-  standardHeaders: true,
-  legacyHeaders: false,
+  defaultMax: 10,
+  envVar: "MURLAN_CHANGE_PASSWORD_RATE_LIMIT",
+  keyBy: "session",
   skipSuccessfulRequests: true,
-  keyGenerator: (req: Request) => req.session?.userId ?? "anonymous",
   message: payload("RATE_LIMITED"),
 });
-
-/** Same pattern as authMaxFromEnv() above. */
-function registerEmailMaxFromEnv(): number {
-  const parsed = Number(process.env.MURLAN_REGISTER_EMAIL_RATE_LIMIT);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : 5;
-}
 
 /**
  * Per-address cap on POST /api/auth/register (#892), mirroring
@@ -250,20 +202,13 @@ function registerEmailMaxFromEnv(): number {
  * itself an oracle: a nonexistent address is throttled on the identical
  * schedule a real one is.
  */
-const registerEmailLimiter = rateLimit({
+const registerEmailLimiter = routeLimiter({
   windowMs: 15 * 60 * 1000,
-  max: registerEmailMaxFromEnv(),
-  standardHeaders: true,
-  legacyHeaders: false,
-  keyGenerator: (req: Request) => (req.body as { email: string }).email.toLowerCase(),
+  defaultMax: 5,
+  envVar: "MURLAN_REGISTER_EMAIL_RATE_LIMIT",
+  keyBy: "email",
   message: payload("RATE_LIMITED"),
 });
-
-/** Same pattern as authMaxFromEnv() above. */
-function addEmailMaxFromEnv(): number {
-  const parsed = Number(process.env.MURLAN_ADD_EMAIL_RATE_LIMIT);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : 5;
-}
 
 /**
  * Per-address cap on POST /api/auth/add-email (#894 review, finding 4),
@@ -276,20 +221,13 @@ function addEmailMaxFromEnv(): number {
  * verified victim's, so the amplification now scales with how many accounts
  * an attacker holds rather than being capped at one mail, period.
  */
-const addEmailLimiter = rateLimit({
+const addEmailLimiter = routeLimiter({
   windowMs: 15 * 60 * 1000,
-  max: addEmailMaxFromEnv(),
-  standardHeaders: true,
-  legacyHeaders: false,
-  keyGenerator: (req: Request) => (req.body as { email: string }).email.toLowerCase(),
+  defaultMax: 5,
+  envVar: "MURLAN_ADD_EMAIL_RATE_LIMIT",
+  keyBy: "email",
   message: payload("RATE_LIMITED"),
 });
-
-/** Same pattern as authMaxFromEnv() above. */
-function resendVerificationMaxFromEnv(): number {
-  const parsed = Number(process.env.MURLAN_RESEND_VERIFICATION_RATE_LIMIT);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : 5;
-}
 
 /**
  * Per-account cap on POST /api/auth/resend-verification (#893) — it is a way
@@ -297,28 +235,25 @@ function resendVerificationMaxFromEnv(): number {
  * but keyed on the account rather than an address: the route takes no
  * address in its body, only the one already on the caller's own row.
  */
-const resendVerificationLimiter = rateLimit({
+const resendVerificationLimiter = routeLimiter({
   windowMs: 15 * 60 * 1000,
-  max: resendVerificationMaxFromEnv(),
-  standardHeaders: true,
-  legacyHeaders: false,
-  keyGenerator: (req: Request) => req.session?.userId ?? "anonymous",
+  defaultMax: 5,
+  envVar: "MURLAN_RESEND_VERIFICATION_RATE_LIMIT",
+  keyBy: "session",
   message: payload("RATE_LIMITED"),
 });
 
-const friendLimiter = rateLimit({
+const friendLimiter = routeLimiter({
   windowMs: 60 * 1000,
-  max: 10,
+  defaultMax: 10,
   message: payload("RATE_LIMITED"),
 });
 
 // One ticket per socket connection attempt, including every reconnect, so this
 // has to tolerate a flapping mobile connection while still being bounded.
-const ticketLimiter = rateLimit({
+const ticketLimiter = routeLimiter({
   windowMs: 60 * 1000,
-  max: 60,
-  standardHeaders: true,
-  legacyHeaders: false,
+  defaultMax: 60,
   message: payload("RATE_LIMITED"),
 });
 
@@ -330,26 +265,22 @@ const ticketLimiter = rateLimit({
 // Keyed by account, not by address: the endpoint requires a session, so the
 // account is the thing worth limiting, and an IP key would make one player on
 // a shared network throttle everyone else behind it.
-const pushLimiter = rateLimit({
+const pushLimiter = routeLimiter({
   windowMs: 60 * 1000,
-  max: 10,
-  standardHeaders: true,
-  legacyHeaders: false,
-  keyGenerator: (req: Request) => req.session?.userId ?? "anonymous",
+  defaultMax: 10,
+  keyBy: "session",
   message: payload("RATE_LIMITED"),
 });
 
-const errorReportLimiter = rateLimit({
+const errorReportLimiter = routeLimiter({
   windowMs: 60 * 1000,
-  max: 5,
-  standardHeaders: true,
-  legacyHeaders: false,
+  defaultMax: 5,
   // Keyed by account, like the limiter above. The default key is the IP, and
   // a whole shared network — an office, a carrier NAT — then shares five
   // reports a minute: during the crash wave that makes reports worth having,
   // one device silences every other. The route is requireAuth, so there is
   // always a userId to key on. Compare #41, where login has no such option.
-  keyGenerator: (req: Request) => req.session?.userId ?? "anonymous",
+  keyBy: "session",
   message: payload("RATE_LIMITED"),
 });
 
