@@ -262,10 +262,13 @@ const TERMINAL_ROOM_REJOIN_CODES = new Set([
   "SEAT_HELD",
 ]);
 
-interface TurnDeadline {
+export interface TurnDeadline {
   turnDeadlineMs?: number;
   turnSecondsRemaining: number;
 }
+
+/** What `game:state` carries: the state, the viewer's seat, and the AFK window. */
+export type GameStateBroadcast = GameState & { viewerSeatIndex?: number | null } & Partial<TurnDeadline>;
 
 const NO_TURN_DEADLINE: TurnDeadline = { turnSecondsRemaining: 0 };
 
@@ -510,7 +513,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     };
 
     const onGameState = (
-      state: GameState & { viewerSeatIndex?: number | null } & Partial<TurnDeadline>,
+      state: GameStateBroadcast,
       // Answering is the whole point: a broadcast nobody confirms is re-sent,
       // and the last state of a hand has no later one to correct it.
       ack?: () => void

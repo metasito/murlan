@@ -16,7 +16,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, render } from '@testing-library/react-native';
 
 import { OnlineGameProvider, useOnlineGame } from '@/context/OnlineGameContext';
-import type { RoomState } from '@/context/OnlineGameContext';
+import type { GameStateBroadcast, RoomState, TurnDeadline } from '@/context/OnlineGameContext';
 import {
   useOnlineConnection,
   useOnlineExchange,
@@ -85,7 +85,7 @@ function mount() {
   );
 }
 
-const deliver = async (event: string, payload: unknown) => {
+const deliver = async (event: string, payload: Broadcast['payloads'][number]) => {
   await act(async () => {
     listeners.get(event)?.(payload);
   });
@@ -121,15 +121,21 @@ const roomState: RoomState = {
 /**
  * One broadcast per case, delivered twice, and what each slice owes it. The
  * server sends the deadline with the state as well as on its own, so the clock
- * wakes with the table there; the four slices a move says nothing about are
- * what the split is for.
+ * wakes with the table there; the four slices left asleep by a move are what
+ * the split is for.
+ *
+ * `match` is asleep here because no rematch vote is outstanding — `onGameState`
+ * clears one unconditionally, so a state arriving during a vote does wake it.
  */
-const CASES: {
+type Broadcast =
+  | { event: 'game:turn_deadline'; payloads: [TurnDeadline, TurnDeadline] }
+  | { event: 'room:state'; payloads: [RoomState, RoomState] }
+  | { event: 'game:state'; payloads: [GameStateBroadcast, GameStateBroadcast] };
+
+const CASES: (Broadcast & {
   what: string;
-  event: string;
-  payloads: [unknown, unknown];
   expected: Record<keyof typeof PROBES, number>;
-}[] = [
+})[] = [
   {
     what: 'a turn deadline',
     event: 'game:turn_deadline',
@@ -148,9 +154,13 @@ const CASES: {
   {
     what: 'a move',
     event: 'game:state',
+    // The same window twice, because `onGameState` re-arms the clock with a
+    // fresh object on every broadcast carrying one: the clock wakes on a state
+    // that moved nothing about it, and a fixture that varied the numbers could
+    // not tell that from a handler that only wrote on a change.
     payloads: [
-      { ...gameState, turnDeadlineMs: 1000, turnSecondsRemaining: 30 },
-      { ...gameState, turnDeadlineMs: 2000, turnSecondsRemaining: 29 },
+      { ...gameState, viewerSeatIndex: 0, turnDeadlineMs: 1000, turnSecondsRemaining: 30 },
+      { ...gameState, viewerSeatIndex: 0, turnDeadlineMs: 1000, turnSecondsRemaining: 30 },
     ],
     expected: { connection: 0, room: 0, table: 2, turnClock: 2, match: 0, exchange: 0, wide: 2 },
   },

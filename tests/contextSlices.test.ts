@@ -22,9 +22,10 @@ const CONTEXT_HOOKS = /use(?:Online)?Game|use(?:Connection|Room|Table|TurnClock|
   .source;
 
 /**
- * The context hook a slice reads, and the names it destructures off it. Both
- * come from the source: a slice's concern is what it takes, not what a map
- * beside the assertion says it takes.
+ * The context hook a slice reads, and the names it destructures off it, both
+ * read from the source. `VIA` and `ONLINE` are then compared against that,
+ * rather than being the thing the checks below iterate — a set built from the
+ * expectation is distinct by construction and would pin nothing.
  *
  * Every destructure in the body, not the first: a hook that reads its context
  * twice widens by whatever the second one takes, and reading only the first
