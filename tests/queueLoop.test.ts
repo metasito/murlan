@@ -1,7 +1,7 @@
 // tests/queueLoop.test.ts
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { parseRoute, shouldStop, queueLoopArgs, liveRoute } from "../scripts/queue-loop.mjs";
+import { parseRoute, shouldStop, queueLoopArgs, liveRoute, syncProtocol } from "../scripts/queue-loop.mjs";
 
 describe("parseRoute", () => {
   test("reads the ROUTE line next-ticket.mjs prints", () => {
@@ -65,4 +65,51 @@ describe("shouldStop", () => {
       assert.equal(shouldStop({ skill }), false);
     });
   }
+});
+
+describe("syncProtocol", () => {
+  /** @param drifts one entry per `git diff` call, in order. */
+  const fakeGit = (drifts: string[], fails?: string) => {
+    const calls: string[][] = [];
+    const git = (...args: string[]) => {
+      calls.push(args);
+      if (fails && args[0] === fails) throw new Error(`fatal: ${fails} refused`);
+      return args[0] === "diff" ? (drifts.shift() ?? "") : "";
+    };
+    return { git, calls };
+  };
+  const ran = (calls: string[][], verb: string) => calls.some((c) => c[0] === verb);
+
+  test("fetches, and goes straight through when nothing drifted", () => {
+    const { git, calls } = fakeGit([""]);
+    assert.equal(syncProtocol(git, () => {}), true);
+    assert.ok(ran(calls, "fetch"));
+    assert.equal(ran(calls, "checkout"), false);
+  });
+
+  test("moves the checkout back to main when the protocol drifted", () => {
+    const { git, calls } = fakeGit([".claude/commands/queue.md", ".claude/commands/queue.md", ""]);
+    assert.equal(syncProtocol(git, () => {}), true);
+    assert.deepEqual(
+      calls.filter((c) => c[0] !== "diff" && c[0] !== "fetch"),
+      [
+        ["checkout", "main"],
+        ["merge", "--ff-only", "origin/main"],
+      ]
+    );
+  });
+
+  test("stops when git refuses the checkout, rather than running a stale protocol", () => {
+    const { git } = fakeGit(["CLAUDE.md", "CLAUDE.md"], "checkout");
+    const said: string[] = [];
+    assert.equal(syncProtocol(git, (m: string) => said.push(m)), false);
+    assert.match(said.join("\n"), /cannot restore main/);
+  });
+
+  // The floor: without this, a repair that left the tree still drifted would report success and
+  // the loop would run the very protocol this guard exists to catch.
+  test("stops when the drift survives the repair", () => {
+    const { git } = fakeGit(["CLAUDE.md", "CLAUDE.md", "CLAUDE.md"]);
+    assert.equal(syncProtocol(git, () => {}), false);
+  });
 });

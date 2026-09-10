@@ -59,6 +59,42 @@ export function queueLoopArgs() {
   return ["-p", "/queue", "--permission-mode", "auto", "--strict-mcp-config"];
 }
 
+/** Read from this working tree at session start, so a stale copy is a different protocol. */
+const PROTOCOL = ["CLAUDE.md", ".claude"];
+
+/**
+ * The spawned session reads `PROTOCOL` from the shared checkout, not from `origin/main`. Left on
+ * a ticket branch — which rule 8 forbids and which happened anyway — it runs whatever protocol
+ * that branch froze, silently and green.
+ *
+ * Drift is repaired rather than reported: `git checkout` is the authority on whether that would
+ * lose anything, so a refusal is the stop condition and nothing here second-guesses it. An agent
+ * branch keeps its commits either way — only HEAD moves.
+ *
+ * @returns {boolean} false when the checkout could not be made to match `origin/main`.
+ */
+export function syncProtocol(git, log) {
+  const drift = () => git("diff", "--name-only", "origin/main", "--", ...PROTOCOL).trim();
+  git("fetch", "origin", "--quiet");
+  if (!drift()) return true;
+
+  log(`queue-loop: protocol differs from origin/main (${drift().split("\n").join(", ")})`);
+  try {
+    git("checkout", "main");
+    git("merge", "--ff-only", "origin/main");
+  } catch (err) {
+    log(`queue-loop: cannot restore main — ${String(err.message).trim()}`);
+    return false;
+  }
+  // A repair that did not repair must not report success.
+  if (drift()) {
+    log("queue-loop: still differs after moving to main — main itself is ahead of origin");
+    return false;
+  }
+  log("queue-loop: checkout moved back to main");
+  return true;
+}
+
 function runOneTicket() {
   // NOT YET VERIFIED against /queue itself — that would claim a real ticket as a side effect, so
   // it needs a deliberate go-ahead rather than running as part of building this script. What IS
@@ -74,8 +110,11 @@ function runOneTicket() {
   return result.status ?? 1;
 }
 
+const git = (...args) => execFileSync("git", args, { encoding: "utf8" });
+
 function main() {
   for (;;) {
+    if (!syncProtocol(git, (m) => console.error(m))) return 1;
     const route = nextRoute();
     if (shouldStop(route)) {
       console.log(`queue-loop: ${route.title} — stopping`);
