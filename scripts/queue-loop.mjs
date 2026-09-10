@@ -3,17 +3,26 @@
  * The loop that never stops. `.claude/commands/queue.md` runs one ticket per process and exits;
  * this is what starts the next one, in a clean process, so no ticket's context reaches the next.
  *
+ * It also renders what that process is doing. `--output-format stream-json` is exclusive — taking
+ * the machine-readable stream means the human-readable one is this file's to draw — so the child's
+ * stdout is parsed here and the raw lines are kept in `.loop-logs/<n>.jsonl` for anything the board
+ * does not show.
+ *
  * No iteration cap and no context budget: there is nothing here for a budget to protect, since
- * nothing survives past one `claude -p` call. The only stop condition is the tracker itself
- * reporting nothing takeable (`ROUTE handoff`), same halt `queue.md` already defines for a
- * by-hand run.
+ * nothing survives past one `claude -p` call.
  *
  * Usage: node scripts/queue-loop.mjs
  */
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
+import { appendFileSync, createWriteStream, mkdirSync } from "node:fs";
 import path from "node:path";
+import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { derive } from "./loop-derive.mjs";
+import { readLine, phaseOf, REDERIVE } from "./loop-stream.mjs";
+import { PHASES, closing, header, phaseLine } from "./loop-render.mjs";
+
+const LOG_DIR = ".loop-logs";
 
 export function isInvokedDirectly(argv1, moduleUrl) {
   return Boolean(argv1) && path.resolve(argv1) === fileURLToPath(moduleUrl);
@@ -25,6 +34,13 @@ export function parseRoute(stdout) {
   if (!line) throw new Error("no ROUTE line in next-ticket.mjs output");
   const [, skill, number, title] = line.split("\t");
   return { skill, number: Number(number), title };
+}
+
+/** The bucket depths the picker already prints, for the header's "how much is behind this one". */
+export function parseStatus(stdout) {
+  const line = stdout.split("\n").find((l) => l.startsWith("STATUS\t"));
+  const read = (name) => Number(/:(\d+)/.exec(line?.split("\t").find((f) => f.startsWith(name)) ?? "")?.[1] ?? 0);
+  return { implement: read("implement"), triage: read("triage"), wayfinder: read("wayfinder") };
 }
 
 export function shouldStop(route) {
@@ -50,13 +66,33 @@ function nextRoute() {
   // genuinely mid-build in a worktree — misleading regardless of what the spawned session goes
   // on to correctly resume.
   const live = liveRoute(derive());
-  if (live) return live;
+  if (live) return { ...live, queue: { implement: 0, triage: 0, wayfinder: 0 } };
   const stdout = execFileSync("node", ["scripts/next-ticket.mjs"], { encoding: "utf8" });
-  return { ...parseRoute(stdout), resuming: false };
+  return { ...parseRoute(stdout), queue: parseStatus(stdout), resuming: false };
 }
 
 export function queueLoopArgs() {
-  return ["-p", "/queue", "--permission-mode", "auto", "--strict-mcp-config"];
+  return [
+    "-p",
+    "/queue",
+    "--permission-mode",
+    "auto",
+    "--strict-mcp-config",
+    "--output-format",
+    "stream-json",
+    // Print mode refuses stream-json without it: "Error: When using --print,
+    // --output-format=stream-json requires --verbose".
+    "--verbose",
+  ];
+}
+
+const ORDER = PHASES.map(([l]) => l);
+
+/** The board only ever moves forward: a marker for a phase already passed says nothing new. */
+export function advance(current, next) {
+  const a = ORDER.indexOf(current);
+  const b = ORDER.indexOf(next);
+  return b > a ? ORDER[b] : current;
 }
 
 // The session and the loop read these from the shared checkout, not from the ticket's worktree.
@@ -85,24 +121,101 @@ export function syncProtocol(git, log) {
   return true;
 }
 
-function runOneTicket() {
-  // NOT YET VERIFIED against /queue itself — that would claim a real ticket as a side effect, so
-  // it needs a deliberate go-ahead rather than running as part of building this script. What IS
-  // confirmed: this exact spawnSync mechanism correctly expands a harmless command
-  // (`claude -p "/ponytail-help"`) in headless mode, so command expansion itself works; whether
-  // /queue's phase text specifically appears (rather than a literal echo) is still open.
-  //
-  // Testing by hand from Git Bash needs `MSYS_NO_PATHCONV=1` — MSYS rewrites a bare leading
-  // `/word` into a Windows path (`/help` -> `C:/Program Files/Git/help`) before `claude` ever sees
-  // it. spawnSync here goes straight to CreateProcess, not through that shell layer, so it is
-  // unaffected — only manual bash testing needs the env var.
-  const result = spawnSync("claude", queueLoopArgs(), { stdio: "inherit" });
-  return result.status ?? 1;
+/** One ticket's worth of the issue, for the header. Covers the resume path, which has no picker. */
+function ticketFacts(number) {
+  try {
+    const raw = execFileSync("gh", ["issue", "view", String(number), "--json", "title,labels,url"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    const issue = JSON.parse(raw);
+    return {
+      title: issue.title,
+      url: issue.url,
+      size: issue.labels.map((l) => l.name).find((n) => n.startsWith("size:")) ?? null,
+    };
+  } catch {
+    return { title: `ticket #${number}`, url: "", size: null };
+  }
+}
+
+/**
+ * Spawns one session and draws its board from the stream.
+ *
+ * `spawnFn` is a parameter so a test can drive fixture lines through the whole path without a
+ * `claude` binary. stderr stays inherited: a crash should still print itself rather than being
+ * reassembled from a log nobody is watching.
+ */
+export function runTicket(spawnFn, { number, queue, log = console.log, facts = ticketFacts }) {
+  mkdirSync(LOG_DIR, { recursive: true });
+  const logPath = path.join(LOG_DIR, `${number}.jsonl`);
+  const sink = createWriteStream(logPath, { flags: "a" });
+  const startedAt = Date.now();
+
+  const state = {
+    phase: null,
+    printedHeader: false,
+    result: null,
+    version: null,
+    phases: {},
+    lastFactAt: Date.now(),
+  };
+
+  const closePhase = (letter, detail) => {
+    state.phases[letter] = Math.round((Date.now() - startedAt) / 1000);
+    log(phaseLine({ letter, detail, ms: Date.now() - startedAt }));
+  };
+
+  const child = spawnFn("claude", queueLoopArgs(), { stdio: ["ignore", "pipe", "inherit"] });
+
+  createInterface({ input: child.stdout }).on("line", (line) => {
+    sink.write(`${line}\n`);
+    state.lastFactAt = Date.now();
+    const fact = readLine(line);
+    if (!fact) return;
+
+    if (fact.kind === "init") state.version = fact.version;
+    if (fact.kind === "result") state.result = fact;
+    if (fact.kind === "rate_limit") {
+      log(closing({ outcome: "rate_limited", number, why: `resets ${fact.resetsAt ?? "unknown"}`, ms: 0, cost: 0 }));
+    }
+    if (fact.kind !== "tool") return;
+
+    for (const call of fact.calls) {
+      // A subagent's own tool calls are phase B's work, not the session's progress through it.
+      if (call.parent) continue;
+      const before = state.phase;
+      let next = advance(state.phase, phaseOf(call));
+      if (call.name === "Bash" && REDERIVE.test(call.command)) next = advance(next, derive().phase);
+      state.phase = next;
+      if (next === before) continue;
+
+      if (!state.printedHeader) {
+        log(header({ number, ...facts(number), queue }));
+        state.printedHeader = true;
+      }
+      closePhase(next, "");
+    }
+  });
+
+  return new Promise((resolve) => {
+    child.on("close", (status) => {
+      sink.end();
+      resolve({
+        status: status ?? 1,
+        result: state.result,
+        phases: state.phases,
+        version: state.version,
+        ms: Date.now() - startedAt,
+        log: logPath,
+      });
+    });
+  });
 }
 
 const git = (...args) => execFileSync("git", args, { encoding: "utf8" });
 
-function main() {
+async function main() {
   for (;;) {
     if (!syncProtocol(git, (m) => console.error(m))) return 1;
     const route = nextRoute();
@@ -112,17 +225,20 @@ function main() {
     }
     console.log(
       route.resuming
-        ? `queue-loop: resuming #${route.number} (${route.title}) — a run was already mid-build`
-        : `queue-loop: starting #${route.number} ${route.title} (${route.skill})`
+        ? `queue-loop: resuming #${route.number} — a run was already mid-build`
+        : `queue-loop: picking up #${route.number} (${route.skill})`
     );
-    const status = runOneTicket();
-    if (status !== 0) {
-      console.error(`queue-loop: claude -p exited ${status}, stopping rather than looping on a broken run`);
-      return status;
+
+    const run = await runTicket(spawn, { number: route.number, queue: route.queue });
+    if (run.status !== 0) {
+      console.error(
+        `queue-loop: claude -p exited ${run.status}, stopping rather than looping on a broken run`
+      );
+      return run.status;
     }
   }
 }
 
 if (isInvokedDirectly(process.argv[1], import.meta.url)) {
-  process.exit(main());
+  main().then((code) => process.exit(code));
 }

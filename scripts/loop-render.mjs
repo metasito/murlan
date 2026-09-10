@@ -8,6 +8,7 @@
  */
 const WIDTH = 78;
 
+/** @type {[string, string][]} */
 export const PHASES = [
   ["A", "claim"],
   ["B", "scope"],
@@ -35,6 +36,10 @@ function fit(left, right) {
   return left.slice(0, Math.max(0, WIDTH - right.length - 2)) + "… " + right;
 }
 
+/**
+ * @param {{number: number, title: string, url: string, queue: {implement: number, triage: number,
+ *   wayfinder: number}, size?: string|null}} ticket
+ */
 export function header({ number, title, size, url, queue }) {
   const depths = `queue: ${queue.implement} · ${queue.triage} · ${queue.wayfinder}`;
   return [
@@ -54,6 +59,10 @@ export function phaseLine({ letter, detail, ms }) {
 
 const MARK = { landed: "✅", merged: "✅", parked: "⚠️", failed: "❌", rate_limited: "⏸" };
 
+/**
+ * @param {{outcome: string, number: number, ms: number, cost: number,
+ *   files?: number, turns?: number, log?: string, why?: string}} run
+ */
 export function closing({ outcome, number, files, turns, ms, cost, log, why }) {
   const mark = MARK[outcome] ?? "•";
   const head =
@@ -66,6 +75,9 @@ export function closing({ outcome, number, files, turns, ms, cost, log, why }) {
 /**
  * The title is what gets shortened when the line will not fit, never the reason: a parked row
  * exists to say why it parked, and a row reading "no review …" has thrown away its only content.
+ *
+ * @param {{number: number, title: string, outcome: string, ms: number, cost: number,
+ *   pr?: number|null, why?: string}} run
  */
 export function reportRow({ number, title, outcome, pr, ms, cost, why }) {
   const tail = pr ? `PR #${pr}` : (why ?? "");
