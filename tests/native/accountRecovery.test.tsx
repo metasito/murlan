@@ -276,6 +276,25 @@ describe('app/recover', () => {
     await view.unmount();
   });
 
+  it('holding return on the email field issues only one request', async () => {
+    // apiRequest never resolves here, standing in for a request still in
+    // flight — so this fires the event without awaiting its own promise,
+    // which chains onto that pending request and would hang forever.
+    mockApiRequest.mockReturnValue(new Promise(() => {}));
+    const view = await mount();
+
+    await act(async () => {
+      fireEvent.changeText(screen.getByLabelText(locale['recover.emailA11yLabel']), 'player@example.test');
+    });
+    const emailInput = screen.getByLabelText(locale['recover.emailA11yLabel']);
+    fireEvent(emailInput, 'submitEditing');
+    await waitFor(() => expect(emailInput.props.editable).toBe(false));
+    fireEvent(emailInput, 'submitEditing');
+    await waitFor(() => expect(mockApiRequest).toHaveBeenCalledTimes(1));
+
+    await view.unmount();
+  });
+
   it('a player who already holds a code skips straight to step two', async () => {
     const view = await mount();
 

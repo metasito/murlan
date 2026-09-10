@@ -86,6 +86,7 @@ export default function RecoverScreen() {
                   textContentType="emailAddress"
                   returnKeyType="done"
                   onSubmitEditing={submitRequest}
+                  editable={!loading}
                   accessibilityLabel={t("recover.emailA11yLabel")}
                   testID="input-recover-email"
                 />
@@ -140,6 +141,7 @@ export default function RecoverScreen() {
                   textContentType="newPassword"
                   returnKeyType="done"
                   onSubmitEditing={submitReset}
+                  editable={!loading}
                   accessibilityLabel={t("recover.newPasswordA11yLabel")}
                   testID="input-recover-new-password"
                 />

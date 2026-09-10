@@ -135,6 +135,7 @@ export default function VerifyEmailScreen() {
                   maxLength={6}
                   returnKeyType="done"
                   onSubmitEditing={submit}
+                  editable={!loading && !resending}
                   accessibilityLabel={t("verifyEmail.codeA11yLabel")}
                   testID="input-verify-email-code"
                 />

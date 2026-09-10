@@ -239,6 +239,7 @@ export default function FriendsScreen() {
               maxLength={30}
               onSubmitEditing={handleSearchUsername}
               returnKeyType="search"
+              editable={!searchLoading}
               accessibilityLabel={t("friends.searchA11yLabel")}
               {...searchHint.props}
             />
