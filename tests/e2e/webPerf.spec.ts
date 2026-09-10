@@ -144,25 +144,60 @@ test.describe("web frame performance", () => {
       .sort((a, b) => a.x - b.x);
     expect(boxes.length, "the seeded hand rendered no cards").toBeGreaterThan(4);
 
+    const labelsNow = async () => {
+      const found = await page.locator(HAND_CARDS).all();
+      const withX = await Promise.all(
+        found.map(async (c) => ({
+          label: await c.getAttribute("aria-label"),
+          box: await c.boundingBox(),
+        }))
+      );
+      return withX
+        .filter((c) => c.label !== null && c.box !== null)
+        .sort((a, b) => a.box!.x - b.box!.x)
+        .map((c) => c.label!);
+    };
+
+    const before = await labelsNow();
     const first = boxes[0]!;
     const last = boxes[boxes.length - 1]!;
     const fromX = first.x + first.width / 2;
+    const toX = last.x + last.width;
     const y = first.y + first.height / 2;
 
-    // The recorder runs while the drag does — awaiting it first would measure a
-    // still table, which is the mistake the deal case above already documents.
-    const recording = record(page, 2_500);
+    // The hold is a stationary finger, so it is spent BEFORE the recorder
+    // starts: 800ms of pointer-down inside the window would be 800ms of idle
+    // table averaged into the drag's own p50.
     await page.mouse.move(fromX, y);
     await page.mouse.down();
     await page.waitForTimeout(PAST_HOLD_MS);
-    // Many small steps rather than one jump: each is a frame the gesture has to
-    // answer, which is the load being measured.
-    await page.mouse.move(last.x + last.width, y, { steps: 40 });
-    await page.mouse.up();
+
+    // `mouse.move(..., { steps: n })` dispatches every step back to back, so the
+    // whole traversal lands in tens of milliseconds and the window it was meant
+    // to fill stays idle. A finger arrives about once a frame; this paces the
+    // moves to match, so the recorded frames are frames the gesture had to
+    // answer.
+    const STEP_MS = 16;
+    const STEPS = 90;
+    const recording = record(page, STEP_MS * STEPS);
+    for (let i = 1; i <= STEPS; i++) {
+      await page.mouse.move(fromX + ((toX - fromX) * i) / STEPS, y);
+      await page.waitForTimeout(STEP_MS);
+    }
     const drag = await recording;
+    await page.mouse.up();
+    await page.waitForTimeout(500);
 
     console.log(`[web-perf] drag ${JSON.stringify(drag)}`);
 
+    // A number labelled `drag` that no drag produced is worse than no number:
+    // every threshold below is satisfied by a table nobody touched.
+    const after = await labelsNow();
+    expect(after, "the hand lost or gained a card during the drag").toHaveLength(before.length);
+    expect(
+      after,
+      `the pointer went down and up without moving a card, so the recording above is of an idle table: ${after.join(", ")}`
+    ).not.toEqual(before);
     expect(drag.frames, "no frames were observed during the drag").toBeGreaterThan(20);
     expect(drag.domNodes, "the table never rendered").toBeGreaterThan(100);
   });

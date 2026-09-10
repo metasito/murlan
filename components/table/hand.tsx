@@ -877,7 +877,13 @@ export function StraightHand({
     .onUpdate((e) => {
       fingerX.value = e.x;
       fingerY.value = e.y;
-      if (held.value === null) return;
+      // Advances a gap `grab` has already opened; never opens one. `grab` runs
+      // on the other runtime, where each write is a separately queued UI job, so
+      // between its `held` landing and its `gap` landing there is a frame where
+      // opening one here would be overwritten by the pickup slot arriving after
+      // it — leaving the shared value and the rendered gap on different slots,
+      // and the card returning to where it was picked up.
+      if (held.value === null || gap.value === null) return;
       const at = dropIndex(lefts, cardW, e.x);
       if (at === gap.value) return;
       gap.value = at;
