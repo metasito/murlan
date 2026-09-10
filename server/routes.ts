@@ -1,7 +1,7 @@
 import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "node:http";
 import bcrypt from "bcryptjs";
-import { accountLimiter } from "./rateLimit.ts";
+import { routeLimiter } from "./rateLimit.ts";
 import { storage, UsernameTakenError, EmailTakenError } from "./storage.ts";
 import { friendRequestRow, friendRow } from "./friendRows.ts";
 import type { FriendRequestAccepted, FriendRequestIncoming } from "../lib/wire.ts";
@@ -80,7 +80,7 @@ function readParam(res: Response, raw: unknown): string | null {
  * without tripping. What actually bounds one account's login attempts is
  * loginUsernameLimiter below.
  */
-const authLimiter = accountLimiter({
+const authLimiter = routeLimiter({
   windowMs: 15 * 60 * 1000,
   defaultMax: 100,
   envVar: "MURLAN_AUTH_RATE_LIMIT",
@@ -96,7 +96,7 @@ const authLimiter = accountLimiter({
  * a column is the last resort. A player-visible "you can change this again in N days" would need
  * one, and that is its own ticket.
  */
-const renameLimiter = accountLimiter({
+const renameLimiter = routeLimiter({
   windowMs: 24 * 60 * 60 * 1000,
   defaultMax: 5,
   envVar: "MURLAN_RENAME_RATE_LIMIT",
@@ -129,7 +129,7 @@ const LOGIN_LIMIT_DECOY_HASH = bcrypt.hashSync("murlan-rate-limit-timing-decoy",
  * account's real guesses. Paying a decoy bcrypt.compare closes that gap; see
  * #41's PR description for the measurement.
  */
-const loginUsernameLimiter = accountLimiter({
+const loginUsernameLimiter = routeLimiter({
   windowMs: 15 * 60 * 1000,
   defaultMax: 10,
   envVar: "MURLAN_LOGIN_USERNAME_RATE_LIMIT",
@@ -149,7 +149,7 @@ const loginUsernameLimiter = accountLimiter({
  * whatever address the caller submitted, so a nonexistent address is
  * throttled on the identical schedule a real one is.
  */
-const passwordResetRequestLimiter = accountLimiter({
+const passwordResetRequestLimiter = routeLimiter({
   windowMs: 15 * 60 * 1000,
   defaultMax: 5,
   envVar: "MURLAN_PASSWORD_RESET_REQUEST_RATE_LIMIT",
@@ -165,7 +165,7 @@ const passwordResetRequestLimiter = accountLimiter({
  * loginUsernameLimiter's per-account precision, which this route has no
  * username to key on.
  */
-const resetPasswordLimiter = accountLimiter({
+const resetPasswordLimiter = routeLimiter({
   windowMs: 60 * 1000,
   defaultMax: 20,
   envVar: "MURLAN_RESET_PASSWORD_RATE_LIMIT",
@@ -185,7 +185,7 @@ const resetPasswordLimiter = accountLimiter({
  * guesses. This route is already authenticated as the account it is
  * guessing at, so there is no oracle to close.
  */
-const changePasswordLimiter = accountLimiter({
+const changePasswordLimiter = routeLimiter({
   windowMs: 15 * 60 * 1000,
   defaultMax: 10,
   envVar: "MURLAN_CHANGE_PASSWORD_RATE_LIMIT",
@@ -202,7 +202,7 @@ const changePasswordLimiter = accountLimiter({
  * itself an oracle: a nonexistent address is throttled on the identical
  * schedule a real one is.
  */
-const registerEmailLimiter = accountLimiter({
+const registerEmailLimiter = routeLimiter({
   windowMs: 15 * 60 * 1000,
   defaultMax: 5,
   envVar: "MURLAN_REGISTER_EMAIL_RATE_LIMIT",
@@ -221,7 +221,7 @@ const registerEmailLimiter = accountLimiter({
  * verified victim's, so the amplification now scales with how many accounts
  * an attacker holds rather than being capped at one mail, period.
  */
-const addEmailLimiter = accountLimiter({
+const addEmailLimiter = routeLimiter({
   windowMs: 15 * 60 * 1000,
   defaultMax: 5,
   envVar: "MURLAN_ADD_EMAIL_RATE_LIMIT",
@@ -235,7 +235,7 @@ const addEmailLimiter = accountLimiter({
  * but keyed on the account rather than an address: the route takes no
  * address in its body, only the one already on the caller's own row.
  */
-const resendVerificationLimiter = accountLimiter({
+const resendVerificationLimiter = routeLimiter({
   windowMs: 15 * 60 * 1000,
   defaultMax: 5,
   envVar: "MURLAN_RESEND_VERIFICATION_RATE_LIMIT",
@@ -243,7 +243,7 @@ const resendVerificationLimiter = accountLimiter({
   message: payload("RATE_LIMITED"),
 });
 
-const friendLimiter = accountLimiter({
+const friendLimiter = routeLimiter({
   windowMs: 60 * 1000,
   defaultMax: 10,
   message: payload("RATE_LIMITED"),
@@ -251,7 +251,7 @@ const friendLimiter = accountLimiter({
 
 // One ticket per socket connection attempt, including every reconnect, so this
 // has to tolerate a flapping mobile connection while still being bounded.
-const ticketLimiter = accountLimiter({
+const ticketLimiter = routeLimiter({
   windowMs: 60 * 1000,
   defaultMax: 60,
   message: payload("RATE_LIMITED"),
@@ -265,14 +265,14 @@ const ticketLimiter = accountLimiter({
 // Keyed by account, not by address: the endpoint requires a session, so the
 // account is the thing worth limiting, and an IP key would make one player on
 // a shared network throttle everyone else behind it.
-const pushLimiter = accountLimiter({
+const pushLimiter = routeLimiter({
   windowMs: 60 * 1000,
   defaultMax: 10,
   keyBy: "session",
   message: payload("RATE_LIMITED"),
 });
 
-const errorReportLimiter = accountLimiter({
+const errorReportLimiter = routeLimiter({
   windowMs: 60 * 1000,
   defaultMax: 5,
   // Keyed by account, like the limiter above. The default key is the IP, and

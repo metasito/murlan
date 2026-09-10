@@ -7,7 +7,7 @@ import path from "node:path";
 import ts from "typescript";
 import express from "express";
 import type { AddressInfo } from "node:net";
-import { accountLimiter } from "../server/rateLimit.ts";
+import { routeLimiter } from "../server/rateLimit.ts";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const SERVER_DIR = path.join(REPO_ROOT, "server");
@@ -43,8 +43,8 @@ test("every limiter in server/routes.ts is built by the factory", () => {
   // fourteenth limiter built the right way must not have to edit this test.
   assert.ok(declared.length >= 13, `only ${declared.length} limiters found — the scan has stopped seeing them`);
 
-  const byHand = declared.filter((d) => d.callee !== "accountLimiter");
-  assert.deepEqual(byHand, [], `these bypass accountLimiter: ${byHand.map((d) => `${d.name} = ${d.callee}()`).join(", ")}`);
+  const byHand = declared.filter((d) => d.callee !== "routeLimiter");
+  assert.deepEqual(byHand, [], `these bypass routeLimiter: ${byHand.map((d) => `${d.name} = ${d.callee}()`).join(", ")}`);
 });
 
 test("server/rateLimit.ts is the only file under server/ that calls rateLimit()", () => {
@@ -52,12 +52,17 @@ test("server/rateLimit.ts is the only file under server/ that calls rateLimit()"
     .filter((f) => f.endsWith(".ts") && f !== "rateLimit.ts")
     .map((f) => ({ file: f, text: readFileSync(path.join(SERVER_DIR, f), "utf8") }));
 
-  assert.ok(sources.length > 0, "no server sources scanned");
+  // RULES §6 again: a scan reading nothing passes. routes.ts is where every
+  // limiter lived, so its absence means the walk, not the codebase, changed.
+  assert.ok(
+    sources.some((s) => s.file === "routes.ts"),
+    `routes.ts was not among the ${sources.length} files scanned`,
+  );
   const callers = sources.filter((s) => /\brateLimit\s*\(/.test(s.text)).map((s) => s.file);
   assert.deepEqual(callers, [], `these build a limiter by hand: ${callers.join(", ")}`);
 });
 
-/** Listen on an ephemeral port and return calls into the app. */
+/** Listen on an ephemeral port; the caller does the calling. */
 async function serve(app: express.Express) {
   const server = app.listen(0);
   await new Promise((resolve) => server.once("listening", resolve));
@@ -68,7 +73,6 @@ async function serve(app: express.Express) {
   };
 }
 
-/** An app whose only route is the limiter, then a 200. */
 function limited(limiter: express.RequestHandler) {
   const app = express();
   app.get("/", limiter, (_req, res) => {
@@ -78,7 +82,7 @@ function limited(limiter: express.RequestHandler) {
 }
 
 test("a limiter from the factory sends standard headers and no legacy ones", async () => {
-  const { url, close } = await serve(limited(accountLimiter({ windowMs: 60_000, defaultMax: 1, message: { code: "RATE_LIMITED" } })));
+  const { url, close } = await serve(limited(routeLimiter({ windowMs: 60_000, defaultMax: 1, message: { code: "RATE_LIMITED" } })));
   try {
     const first = await fetch(url);
     assert.equal(first.status, 200);
@@ -95,9 +99,9 @@ test("a limiter from the factory sends standard headers and no legacy ones", asy
 
 test("defaultMax gives way to a valid env var, and survives a junk one", async () => {
   process.env.MURLAN_TEST_RATE_LIMIT = "2";
-  const two = accountLimiter({ windowMs: 60_000, defaultMax: 9, envVar: "MURLAN_TEST_RATE_LIMIT", message: {} });
+  const two = routeLimiter({ windowMs: 60_000, defaultMax: 9, envVar: "MURLAN_TEST_RATE_LIMIT", message: {} });
   process.env.MURLAN_TEST_RATE_LIMIT = "nonsense";
-  const fallback = accountLimiter({ windowMs: 60_000, defaultMax: 1, envVar: "MURLAN_TEST_RATE_LIMIT", message: {} });
+  const fallback = routeLimiter({ windowMs: 60_000, defaultMax: 1, envVar: "MURLAN_TEST_RATE_LIMIT", message: {} });
   delete process.env.MURLAN_TEST_RATE_LIMIT;
 
   const a = await serve(limited(two));
@@ -123,7 +127,7 @@ test("keyBy: session gives each account its own budget", async () => {
     if (typeof id === "string") (req as { session?: unknown }).session = { userId: id };
     next();
   });
-  app.get("/", accountLimiter({ windowMs: 60_000, defaultMax: 1, keyBy: "session", message: {} }), (_req, res) => {
+  app.get("/", routeLimiter({ windowMs: 60_000, defaultMax: 1, keyBy: "session", message: {} }), (_req, res) => {
     res.json({ ok: true });
   });
   const { url, close } = await serve(app);
@@ -142,7 +146,7 @@ test("keyBy: email and username key on the submitted value, case-folded", async 
   for (const keyBy of ["email", "username"] as const) {
     const app = express();
     app.use(express.json());
-    app.post("/", accountLimiter({ windowMs: 60_000, defaultMax: 1, keyBy, message: {} }), (_req, res) => {
+    app.post("/", routeLimiter({ windowMs: 60_000, defaultMax: 1, keyBy, message: {} }), (_req, res) => {
       res.json({ ok: true });
     });
     const { url, close } = await serve(app);

@@ -28,11 +28,7 @@ type LimiterSpec = {
   windowMs: number;
   /** Used when `envVar` is unset, or holds anything but a positive integer. */
   defaultMax: number;
-  /**
-   * Read when the limiter is built, not per request — so a limiter built at
-   * module scope, as all of routes.ts's are, has its ceiling fixed by the time
-   * the app is imported and a test process must set the var before that.
-   */
+  /** Read when the limiter is built, not per request. */
   envVar?: string;
   keyBy?: LimiterKey;
   skipSuccessfulRequests?: boolean;
@@ -47,11 +43,12 @@ export type LimiterOptions = LimiterSpec &
   ({ message: object; handler?: never } | { handler: RateLimitExceededEventHandler; message?: never });
 
 function maxFrom(envVar: string | undefined, defaultMax: number): number {
-  const parsed = Number(envVar ? process.env[envVar] : undefined);
+  if (!envVar) return defaultMax;
+  const parsed = Number(process.env[envVar]);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : defaultMax;
 }
 
-export function accountLimiter({
+export function routeLimiter({
   windowMs,
   defaultMax,
   envVar,
