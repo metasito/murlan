@@ -10,24 +10,26 @@ above.
 
 **Your account.** Creating an account requires a username, a password, and an email address. The
 password is stored only as a salted hash — we never hold the password itself. Alongside those we
-store a six-character friend code (so other players can add you), whether your email has been
-confirmed, the date you registered, when you were last seen online, whether you've finished the
-tutorial, and whether the account is an administrator of the service.
+store whether your email has been confirmed, the date you registered, when you were last seen
+online, whether the tutorial has been offered to you, whether the account is an administrator of
+the service, and a six-character friend code generated at signup that no feature uses yet.
 
 **Email.** Your address is used for exactly two things: confirming the address is yours, and
 resetting your password if you forget it. We send no newsletters, no marketing, and no game
 notifications by email, and we never sell or share your address. While a confirmation or reset is
-outstanding we hold a hashed copy of the one-time code, which is discarded once it is used or
-expires.
+outstanding we hold a hashed copy of the one-time code. Using the code marks it spent; the hash
+itself is deleted when it expires, which is minutes later.
 
 **Push notifications.** If you enable them, your device registers a token with the Expo push
 service so we can tell you when a friend invites you to a game. That is the only push we send —
 we do not push turn reminders or game results. We store the token, your platform (iOS or
 Android), and your app's language, and nothing else about your device.
 
-**Games you are playing.** While you are in a room, we store which room you are seated in, and —
-if you host it — the room itself and the state of the hand being played in it, cards included, so
-the game survives a disconnection or a server restart. This is deleted when the room ends.
+**Games you are playing.** While you are at a table we store which room you are seated in, the
+room itself, and the state of the hand being played there — cards included — so the game survives
+a disconnection or a server restart. The hand is deleted as soon as the game ends. The room and
+your seat in it are deleted by a sweep that runs against rooms more than 24 hours old, so they
+outlive the game by up to a day.
 
 **Social and finished-game data.** Your friends list, pending game invites, match history,
 ratings, stats, and achievements are stored against your account so the game works and you can
@@ -35,9 +37,10 @@ see your own progress. Each finished hand is also kept as a replay for 14 days s
 it can review it — a match of several hands leaves several replays — after which it is deleted
 automatically.
 
-**Crash and bug reports.** When the app errors, it sends us a report containing the error
-message, a stack trace (including which components were on screen), your app version, platform,
-and the screen you were on — never your cards or game state. Reporting requires you to be signed
+**Crash and bug reports.** When the app errors — or loses its connection in a way only your
+device can see — it sends us a report containing the error message, a stack trace (including
+which components were on screen), your app version, platform, and the screen you were on — never
+your cards or game state. Reporting requires you to be signed
 in, so these reports are linked to your account. The in-app "report a bug" form sends only what
 you type plus the screen you were on, your app version, platform, and language — no error message
 and no stack trace. Both are kept for 90 days, then deleted automatically.
@@ -50,19 +53,24 @@ after 90 days. We use no third-party analytics or tracking — no Google Analyti
 advertising SDKs of any kind.
 
 **Session cookie.** Signing in sets a session cookie so the server knows it's still you between
-requests. It is cleared when you sign out, when you change or reset your password (which ends
-your other sessions), when you delete your account, and in any case 30 days after it is issued.
+requests. It is cleared when you sign out, when you delete your account, and in any case 30 days
+after it is issued. Changing your password ends your other sessions and keeps the one you changed
+it from; resetting a forgotten password ends every session on the account.
 
 **Server logs.** Like any web service, our server writes an operational log line for each
 request, which includes your IP address, the address requested, and your browser or device's
 request headers. Your session cookie and any authorization header are removed before the line is
-written. These logs exist so we can diagnose faults and abuse. They are held by our hosting
-provider under its own retention, are not covered by the deletion windows above, and deleting
-your account does not remove them. Contact us at the address below if this matters to you.
+written. Crash reports and any game message the server refuses are written to the same log, with
+the account they came from. These logs exist so we can diagnose faults and abuse. They are held
+by our hosting provider under its own retention, are not covered by the deletion windows above,
+and deleting your account does not remove them. Contact us at the address below if this matters
+to you.
 
 **On your own device.** The app stores some things locally, which never reach us: your signed-in
-account details, any offline single-player game in progress, your chosen language, and your
-sound and haptics settings. Deleting the app removes all of it.
+account details, any offline single-player game in progress, the last online room you were in,
+your chosen language, whether you've seen the tutorial and how far through it you got, and your
+settings — sound and music volumes, haptics, reduced motion, and your chosen card back and table
+felt. Deleting the app removes all of it.
 
 ## Third parties
 
@@ -98,12 +106,13 @@ a copy of your data.
 | Data | Kept for |
 |---|---|
 | Account, friends, match history, ratings, stats, achievements | Until you delete your account |
-| Room seat and in-progress hand | Until the room ends |
+| In-progress hand | Until the game ends |
+| Room and your seat in it | Swept once the room is more than 24 hours old |
 | Replays | 14 days after the hand |
 | Crash reports, bug reports, usage events | 90 days |
-| Email confirmation and password-reset codes | Until used, or until they expire |
+| Email confirmation and password-reset codes | Until they expire, minutes after being sent |
 | Push token | Until you sign out, uninstall the app, register a sixth device (we keep your five most recent), give the device to someone who signs in on it, or delete your account |
-| Session cookie | 30 days, or until you sign out, change your password, or delete your account |
+| Session cookie | 30 days, or until you sign out or delete your account. Changing your password ends your other sessions; resetting it ends all of them |
 | Server logs | Our hosting provider's retention; not removed by account deletion |
 
 ## Contact
