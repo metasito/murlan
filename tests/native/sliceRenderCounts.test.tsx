@@ -118,20 +118,23 @@ const roomState: RoomState = {
   players: [{ seatIndex: 0, userId: 'u1', username: 'Ana' }],
 };
 
+type Broadcast =
+  | { event: 'game:turn_deadline'; payloads: [TurnDeadline, TurnDeadline] }
+  | { event: 'room:state'; payloads: [RoomState, RoomState] }
+  | { event: 'game:state'; payloads: [GameStateBroadcast, GameStateBroadcast] };
+
 /**
  * One broadcast per case, delivered twice, and what each slice owes it. The
  * server sends the deadline with the state as well as on its own, so the clock
  * wakes with the table there; the four slices left asleep by a move are what
  * the split is for.
  *
- * `match` is asleep here because no rematch vote is outstanding — `onGameState`
- * clears one unconditionally, so a state arriving during a vote does wake it.
+ * Two of a move's four zeros are conditional, not structural: `onGameState`
+ * clears a rematch vote unconditionally and announces an exchange as its phase
+ * closes, so a state arriving during either wakes that slice. `connection` and
+ * `room` sleep through it whatever happens — that handler writes their refs
+ * and storage, never their state.
  */
-type Broadcast =
-  | { event: 'game:turn_deadline'; payloads: [TurnDeadline, TurnDeadline] }
-  | { event: 'room:state'; payloads: [RoomState, RoomState] }
-  | { event: 'game:state'; payloads: [GameStateBroadcast, GameStateBroadcast] };
-
 const CASES: (Broadcast & {
   what: string;
   expected: Record<keyof typeof PROBES, number>;

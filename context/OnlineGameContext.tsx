@@ -267,7 +267,8 @@ export interface TurnDeadline {
   turnSecondsRemaining: number;
 }
 
-/** What `game:state` carries: the state, the viewer's seat, and the AFK window. */
+// Optional because the handler tolerates their absence, not because the server
+// omits them: `sanitizeStateForPlayer` stamps every broadcast with all three.
 export type GameStateBroadcast = GameState & { viewerSeatIndex?: number | null } & Partial<TurnDeadline>;
 
 const NO_TURN_DEADLINE: TurnDeadline = { turnSecondsRemaining: 0 };

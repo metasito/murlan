@@ -23,9 +23,9 @@ const CONTEXT_HOOKS = /use(?:Online)?Game|use(?:Connection|Room|Table|TurnClock|
 
 /**
  * The context hook a slice reads, and the names it destructures off it, both
- * read from the source. `VIA` and `ONLINE` are then compared against that,
- * rather than being the thing the checks below iterate — a set built from the
- * expectation is distinct by construction and would pin nothing.
+ * read from the source. The distinctness check below counts what this returns
+ * rather than what `VIA` says: a set built from the expectation is distinct by
+ * construction and would pin nothing.
  *
  * Every destructure in the body, not the first: a hook that reads its context
  * twice widens by whatever the second one takes, and reading only the first
@@ -115,6 +115,13 @@ for (const [file, expected] of [
 ] as const) {
   test(`${file}: each slice reads exactly its own concern`, () => {
     const source = read(file);
+    // The hooks come from the source too. A seventh slice named only in the
+    // module is one this test would otherwise never read.
+    assert.deepEqual(
+      [...source.matchAll(/export function (use\w+)\(/g)].map((m) => m[1]).sort(),
+      Object.keys(expected).sort(),
+      `${file} exports slices this test does not check`
+    );
     for (const [hook, fields] of Object.entries(expected)) {
       const slice = sliceRead(source, hook);
       assert.equal(slice.via, VIA[hook], `${hook} reads ${slice.via}, not its own context`);
