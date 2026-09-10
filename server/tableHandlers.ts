@@ -9,6 +9,34 @@
 //
 // The socket's own work — joining a room, `socketRoomMap` — stays with the
 // socket, in the handler families.
+//
+// A play or pass reaches five files before it settles: `socketGameplay.ts`
+// `registerGameplayHandlers` → `tableRouter.ts` `applyOrForward` (reaching
+// here through a module-local `apply` set by `setTableHandlers`, to dodge a
+// circular import) → `playAction`/`passAction` here (`gameTurn.ts`
+// `recordPlayFlags` runs first, play only) → `gamePersistence.ts`
+// `broadcastGameState`/`persistGameState` → `gameTurn.ts` `armTurn`. The play
+// that ends the hand — `lib/gameEngine.ts` decides which one — takes a sixth
+// file instead of `armTurn`: `gameOver.ts` `handleGameOver`; a pass never
+// reaches it.
+//
+// A disconnect runs a different chain: `socketPresence.ts`
+// `registerDisconnect` → `tableRouter.ts` `applyOrForward` with a `seatLost`
+// intent → `seatLostAction` here. Mid-hand, it arms a grace timer and, on
+// expiry, calls `gameTurn.ts` `vacateSeat` and `dealIfSeatLeftGateClosed`
+// here directly — `vacateSeat` settles the departure itself, through a bot
+// takeover, `gameOver.ts` `voidAbandonedMatch`, or `gameTurn.ts`'s own
+// `concedeHand` into `gameOver.ts` `handleGameOver`. Between hands it instead
+// arms `socketTable.ts` `armLobbyGrace`, whose own expiry (`handleSeatRelease`)
+// reaches the same `vacateSeat`/`dealIfSeatLeftGateClosed` pair through a
+// `vacate` intent routed back through `applyOrForward`, landing on the
+// `"vacate"` case here rather than `seatLostAction`.
+//
+// `gameOver.ts` `handleGameOver` has more entry points than a play: an
+// AFK/bot auto-move (`gameTurn.ts` `runBotTurn`, `handleAutoPass`) and
+// `vacateSeat`'s forfeit branch reach it too. Inside, it resolves the hand
+// through `onlineGameLogic.ts` `resolveHandEnd`, emits `game:over`, then
+// writes it through the `GameOverWriters` `gamePersistence.ts` implements.
 import type { Server as SocketServer } from "socket.io";
 import { eq } from "drizzle-orm";
 import { db } from "./db.ts";
