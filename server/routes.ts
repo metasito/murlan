@@ -72,7 +72,7 @@ function readParam(res: Response, raw: unknown): string | null {
 /**
  * An integration suite registers one throwaway account per seat and burns the
  * production budget in a few tables, which is what the env override exists
- * for.
+ * for — set before the app is imported, see tests/helpers/testServer.ts.
  *
  * Raised from the old 20: this is now a broad per-IP backstop shared by
  * register and login (#41) rather than login's only defense, so it has to

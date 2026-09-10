@@ -1,10 +1,6 @@
-// The one place a rate limiter is built. Every limiter in server/routes.ts
-// shares the same shape — parse an env override, fall back to a default, set
-// the header flags, key on one of four things — and what varies between them
-// is the handful of values below. Thirteen hand-written copies of that shape
-// is how `friendLimiter` came to be the only one sending no RateLimit headers
-// at all (#953): nothing about a literal makes the next author notice what the
-// last twelve set.
+// The one place a rate limiter is built — pinned by
+// tests/rateLimiterFactory.test.ts, which fails on any other caller of
+// rateLimit() under server/.
 import { rateLimit, type RateLimitExceededEventHandler } from "express-rate-limit";
 import type { Request, RequestHandler } from "express";
 
@@ -33,9 +29,9 @@ type LimiterSpec = {
   /** Used when `envVar` is unset, or holds anything but a positive integer. */
   defaultMax: number;
   /**
-   * Read once, here, at module scope — a test process must set it before the
-   * app is imported (see tests/helpers/testServer.ts). Deliberate: a limiter
-   * whose ceiling could move mid-process is one no test can pin.
+   * Read when the limiter is built, not per request — so a limiter built at
+   * module scope, as all of routes.ts's are, has its ceiling fixed by the time
+   * the app is imported and a test process must set the var before that.
    */
   envVar?: string;
   keyBy?: LimiterKey;
@@ -51,7 +47,7 @@ export type LimiterOptions = LimiterSpec &
   ({ message: object; handler?: never } | { handler: RateLimitExceededEventHandler; message?: never });
 
 function maxFrom(envVar: string | undefined, defaultMax: number): number {
-  const parsed = Number(envVar === undefined ? undefined : process.env[envVar]);
+  const parsed = Number(envVar ? process.env[envVar] : undefined);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : defaultMax;
 }
 
