@@ -22,6 +22,7 @@ import { derive } from "./loop-derive.mjs";
 import { readLine, phaseOf, REDERIVE } from "./loop-stream.mjs";
 import { PHASES, closing, header, phaseLine, reportRow, runTotal } from "./loop-render.mjs";
 import { row } from "./loop-record.mjs";
+import { readAllowedTools } from "./loop-tools.mjs";
 
 const LOG_DIR = ".loop-logs";
 
@@ -72,6 +73,9 @@ function nextRoute() {
   return { ...parseRoute(stdout), queue: parseStatus(stdout), resuming: false };
 }
 
+/** One runaway ticket must not be able to spend the night's budget. */
+const TICKET_BUDGET_USD = "15";
+
 export function queueLoopArgs() {
   return [
     "-p",
@@ -84,6 +88,14 @@ export function queueLoopArgs() {
     // Print mode refuses stream-json without it: "Error: When using --print,
     // --output-format=stream-json requires --verbose".
     "--verbose",
+    // The git status snapshot is part of the cached prompt prefix, and this loop commits and merges
+    // between tickets — so without this every ticket rebuilds a ~41k-token prefix at full price
+    // instead of reading the one the previous ticket built.
+    "--exclude-dynamic-system-prompt-sections",
+    "--tools",
+    readAllowedTools().join(","),
+    "--max-budget-usd",
+    TICKET_BUDGET_USD,
   ];
 }
 
@@ -281,7 +293,13 @@ export function runTicket(spawnFn, { number, queue, log = console.log, facts = t
     log(phaseLine({ letter, detail, ms: Date.now() - startedAt }));
   };
 
-  const child = spawnFn("claude", queueLoopArgs(), { stdio: ["ignore", "pipe", "inherit"] });
+  const child = spawnFn("claude", queueLoopArgs(), {
+    stdio: ["ignore", "pipe", "inherit"],
+    // A background update landing at 2am changes the system prompt, and every remaining ticket of
+    // the night then rebuilds its cached prefix at full price, with nothing to see. Whether to
+    // update is a decision for a person between runs.
+    env: { ...process.env, DISABLE_AUTOUPDATER: "1" },
+  });
 
   createInterface({ input: child.stdout }).on("line", (line) => {
     sink.write(`${line}\n`);

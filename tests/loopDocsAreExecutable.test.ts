@@ -2,6 +2,8 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, existsSync } from "node:fs";
+import { allowedTools } from "../scripts/loop-tools.mjs";
+import { queueLoopArgs } from "../scripts/queue-loop.mjs";
 
 /**
  * The loop's instructions name commands and files. Prose cannot be run, so every one of those
@@ -95,5 +97,25 @@ describe("phase A's housekeeping belongs to the supervisor", () => {
 
   test("loop-status.mjs stays, because it is what tells a fresh session a run is live", () => {
     assert.match(read(QUEUE), /node scripts\/loop-status\.mjs/);
+  });
+});
+
+describe("the --tools list is queue.md's own declaration", () => {
+  test("parsed from the frontmatter rather than copied into the supervisor", () => {
+    const tools = allowedTools(read(QUEUE));
+    assert.ok(tools.length >= 5, "allowed-tools frontmatter did not parse; the shape has drifted");
+    assert.ok(tools.includes("Bash"));
+    assert.ok(tools.includes("Task"), "phase B dispatches a subagent");
+    assert.ok(tools.includes("Skill"), "phase C names two skills by name");
+  });
+
+  test("a file with no such frontmatter yields nothing, rather than a wrong list", () => {
+    assert.deepEqual(allowedTools("# just a heading\n"), []);
+  });
+
+  test("the list it yields is what the spawn actually passes", () => {
+    const args = queueLoopArgs();
+    const passed = args[args.indexOf("--tools") + 1].split(",");
+    assert.deepEqual(passed, allowedTools(read(QUEUE)));
   });
 });
