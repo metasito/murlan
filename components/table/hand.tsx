@@ -779,11 +779,10 @@ export function StraightHand({
     holdTimer.value = 0;
   };
 
-  const trackGap = (x: number) => {
-    if (held.value === null) return;
-    const at = dropIndex(lefts, cardW, x);
-    if (at === gap.value) return;
-    gap.value = at;
+  // Takes the slot, not the finger: `onUpdate` has already decided on the UI
+  // thread that this is a new one, so the crossing happens once per slot rather
+  // than once per frame of the drag.
+  const trackGap = (at: number) => {
     setGapAt(at);
   };
 
@@ -878,7 +877,11 @@ export function StraightHand({
     .onUpdate((e) => {
       fingerX.value = e.x;
       fingerY.value = e.y;
-      scheduleOnRN(trackGap, e.x);
+      if (held.value === null) return;
+      const at = dropIndex(lefts, cardW, e.x);
+      if (at === gap.value) return;
+      gap.value = at;
+      scheduleOnRN(trackGap, at);
     })
     .onEnd(() => {
       // Claimed here rather than in `drop`: `onFinalize` runs on this thread the
