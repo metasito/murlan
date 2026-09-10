@@ -155,9 +155,14 @@ you did is not evidence; git is.
 
 ## D — Review
 
-`mattpocock-skills:code-review`, fixed point `origin/main`. Two fresh `opus` subagents (rule 29's
-independent-review tier) that did not write the code, each given the diff and nothing else — never
-your reasoning, which is the frame the review exists to escape:
+`mattpocock-skills:code-review`. Round 1's fixed point is `origin/main`; every later round's is the
+sha the previous round reviewed — that delta, plus the findings that round left open. Round 1 and
+the deltas together cover every line at its final state, so re-reading the whole diff each round
+buys nothing.
+
+Two fresh `opus` subagents (rule 29's independent-review tier) that did not write the code, each
+given the diff and nothing else — never your reasoning, which is the frame the review exists to
+escape:
 
 - **Standards** — sources: `docs/agents/RULES.md` plus the skill's own Fowler smell baseline (paste
   it in full; the subagent has no other access to it). Brief: report every documented-rule violation
@@ -166,7 +171,7 @@ your reasoning, which is the frame the review exists to escape:
   requirements missing or partial, behaviour not asked for, and anything implemented but wrong,
   quoting the issue for each. Around 25 lines.
 
-Both: `Do not spawn any subagent.`
+Both: `Do not spawn any subagent. Report findings only — what checked out is not reported.`
 
 Post both reports on the issue, under `## Standards` and `## Spec`, unmerged — the skill's own rule,
 because a change can pass one axis and fail the other. Then read both yourself and write the one
