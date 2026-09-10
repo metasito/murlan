@@ -27,9 +27,13 @@ Android), and your app's language, and nothing else about your device.
 
 **Games you are playing.** While you are at a table we store which room you are seated in, the
 room itself, and the state of the hand being played there — cards included — so the game survives
-a disconnection or a server restart. The hand is deleted as soon as the game ends. The room and
-your seat in it are deleted by a sweep that runs against rooms more than 24 hours old, so they
-outlive the game by up to a day.
+a disconnection or a server restart. The hand is deleted when the table breaks up, and in any
+case by a sweep 24 hours on, which also catches a game a restart left with nobody to end it. The
+room and your seat in it go the same way, so they outlive the game by up to a day.
+
+While a game is in play, messages too large to send in one piece — usually the state of the
+table, including your own hand — are held in the database for a few seconds until every player
+has them, and are then discarded automatically.
 
 **Social and finished-game data.** Your friends list, pending game invites, match history,
 ratings, stats, and achievements are stored against your account so the game works and you can
@@ -61,7 +65,8 @@ it from; resetting a forgotten password ends every session on the account.
 request, which includes your IP address, the address requested, and your browser or device's
 request headers. Your session cookie and any authorization header are removed before the line is
 written. Crash reports and any game message the server refuses are written to the same log, with
-the account they came from. These logs exist so we can diagnose faults and abuse. They are held
+the account they came from, as is your email address if a message to you fails to send. These
+logs exist so we can diagnose faults and abuse. They are held
 by our hosting provider under its own retention, are not covered by the deletion windows above,
 and deleting your account does not remove them. Contact us at the address below if this matters
 to you.
@@ -106,12 +111,13 @@ a copy of your data.
 | Data | Kept for |
 |---|---|
 | Account, friends, match history, ratings, stats, achievements | Until you delete your account |
-| In-progress hand | Until the game ends |
+| In-progress hand | Until the game ends, and in any case 24 hours |
 | Room and your seat in it | Swept once the room is more than 24 hours old |
+| Oversized game messages in transit | Seconds, then discarded automatically |
 | Replays | 14 days after the hand |
 | Crash reports, bug reports, usage events | 90 days |
 | Email confirmation and password-reset codes | Until they expire, minutes after being sent |
-| Push token | Until you sign out, uninstall the app, register a sixth device (we keep your five most recent), give the device to someone who signs in on it, or delete your account |
+| Push token | Until you sign out, register a sixth device (we keep your five most recent), give the device to someone who signs in on it, delete your account, or a later notification finds the device gone |
 | Session cookie | 30 days, or until you sign out or delete your account. Changing your password ends your other sessions; resetting it ends all of them |
 | Server logs | Our hosting provider's retention; not removed by account deletion |
 

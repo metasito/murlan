@@ -13,6 +13,9 @@ const PgSession = connectPgSimple(session);
 
 const isProduction = process.env.NODE_ENV === "production";
 
+/** Named so `docs/PRIVACY.md`'s stated cookie lifetime can be checked against it. */
+export const SESSION_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+
 export const sessionMiddleware = session({
   store: new PgSession({
     pool,
@@ -24,7 +27,7 @@ export const sessionMiddleware = session({
   saveUninitialized: false,
   proxy: isProduction,
   cookie: {
-    maxAge: 30 * 24 * 60 * 60 * 1000,
+    maxAge: SESSION_MAX_AGE_MS,
     httpOnly: true,
     // Requires `app.set("trust proxy", 1)` (see server/index.ts): behind
     // Replit's TLS terminator Express otherwise never considers the connection
