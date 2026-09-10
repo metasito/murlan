@@ -3,7 +3,7 @@ import {
   View, ScrollView, StyleSheet, ViewStyle, KeyboardAvoidingView,
 } from 'react-native';
 import Animated, {
-  Easing, useAnimatedStyle, useSharedValue, withTiming,
+  cancelAnimation, Easing, useAnimatedStyle, useSharedValue, withTiming,
 } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -47,6 +47,9 @@ function useEasedPadTop(base: number, target: number, fullDuration: number) {
 
   React.useEffect(() => {
     reserved.value = withTiming(target, { duration, easing: Easing.out(Easing.cubic) });
+    // A screen left mid-slide otherwise keeps ticking on the UI thread against
+    // a shared value whose view is already gone.
+    return () => cancelAnimation(reserved);
   }, [target, duration, reserved]);
 
   return useAnimatedStyle(() => ({ paddingTop: base + reserved.value }));
@@ -56,7 +59,14 @@ interface MenuLayoutProps {
   children: React.ReactNode;
   scrollable?: boolean;
   centered?: boolean;
-  style?: ViewStyle;
+  /**
+   * The top pad is not a caller's to set: it carries the banner reservation and
+   * is written from the UI thread, so a value here would be dropped on the first
+   * frame with nothing to say so. Stated as a type rather than in a comment,
+   * because the `paddingBottom: 0` three screens already pass is exactly the
+   * gesture someone copies upward.
+   */
+  style?: Omit<ViewStyle, 'padding' | 'paddingVertical' | 'paddingTop'>;
   contentPad?: number;
   /** `null` opts a screen out — for the landscape bodies that size their own columns. */
   maxWidth?: number | null;
@@ -102,9 +112,8 @@ export function MenuLayout({
   );
 
   // `style` is merged after `centered` so callers can override layout — e.g.
-  // justifyContent — without it being clobbered by the centered preset.
-  // `padTopStyle` sits last because it is the one the UI thread also writes
-  // directly; no caller sets `paddingTop`, and one that did would lose it here.
+  // justifyContent — without it being clobbered by the centered preset. Its type
+  // has no top pad in it, which is the only reason `padTopStyle` can sit last.
   const contentStyle = [
     styles.bounded,
     { maxWidth: maxWidth ?? undefined },

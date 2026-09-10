@@ -276,10 +276,15 @@ so a test that flattens `props.style` reads the value the component started with
 live one. `tests/native/feltTranslate.test.tsx` works around it where it has to, by using the
 animated entry's *position in the array* rather than its contents.
 
-The consequence when writing a component, not a test: **if a number has to be readable — by a
-test, or by anything below it in the tree — it cannot be animated through `style`.** #589 hit
-this making a menu screen reserve the room a notification banner occupies. Keep the value a
-plain number and animate around it.
+**A test reads the live value with reanimated's own `getAnimatedStyle(node)`**, which comes off
+the `jestAnimatedStyle` the animated component hangs on the host node rather than off `style`.
+`tests/native/bannerMakesRoom.test.tsx` asserts an eased padding through it, mid-animation
+included. So `props.style` being frozen is a fact about `props.style`, not a reason to keep the
+value in React state: mirroring one into state with `.addListener` costs a render of the whole
+subtree per frame, which is what #589 shipped here and what removing it recovered.
+
+What is still true is the half about **anything below it in the tree**: no child can read an
+animated entry, and no JS-side code can. A number another component has to see is a plain number.
 
 Reaching for a layout transition instead is not the escape it looks like. On web,
 `LinearTransition` is a FLIP: `react-native-reanimated/src/layoutReanimation/web/transition/Linear.web.ts`
