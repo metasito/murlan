@@ -52,7 +52,9 @@ Every rule an agent must follow, in one place. No rationale here — the *why* l
 18. **No bare literals for colour, radius, font size, spacing or timing** — use `lib/theme.ts`, and
     use a token in the role it was named for.
 19. **Every user-facing string goes through `t()`, keyed in `en`, `it` and `sq`.**
-20. **Default to no comment.** Never explain the bug you just fixed; that is the commit message.
+20. **Default to no comment, and never explain the bug you just fixed** — that is the commit
+    message. Code is the truth; prose about it decays. Comment only where the code cannot say it,
+    and verify each claim against the file it names as you write it, never in review.
 
 ## Taking work
 
@@ -72,8 +74,8 @@ Every rule an agent must follow, in one place. No rationale here — the *why* l
     through `/wayfinder`.
 28. **An item needing an owner decision gets `ready-for-human`, not closed** — and
     `ready-for-agent` comes off at the same time.
-29. **Name a model on every sub-agent.** Mechanical work: haiku. Implementing, verifying, landing:
-    sonnet. Independent review: opus. Give every dispatch a label.
+29. **Name a model on every sub-agent.** Mechanical work: haiku. Recon and verification: sonnet.
+    Implementing and independent review: opus. Give every dispatch a label.
 
 ## Finishing
 

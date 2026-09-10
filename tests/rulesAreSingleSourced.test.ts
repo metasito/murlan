@@ -107,14 +107,14 @@ describe("every agent rule is written down exactly once", () => {
     );
   });
 
-  test("queue.md builds each ticket at sonnet, not opus", () => {
+  test("queue.md builds each ticket at opus", () => {
     const queue = read(".claude/commands/queue.md");
     const model = queue.match(/^model:\s*(\S+)/m)?.[1];
     assert.equal(
       model,
-      "sonnet",
-      "queue.md's own frontmatter model runs phases C and E directly (implement/verify/land, " +
-        "rule 29) — it should not be opus. Phase D's subagent keeps its own opus override."
+      "opus",
+      "queue.md's own frontmatter model runs phase C directly, and rule 29 puts implementing at " +
+        "opus. A cheaper builder pushes the tracing into phase D's reviewers."
     );
   });
 

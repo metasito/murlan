@@ -2,7 +2,7 @@
 description: Work one ticket, then exit — scripts/queue-loop.mjs starts the next process
 argument-hint: "[issue-number]"
 allowed-tools: Read, Write, Edit, Grep, Glob, Bash, Task, Skill, SlashCommand, TodoWrite
-model: sonnet
+model: opus
 ---
 
 The only loop protocol in this repo. `docs/agents/RULES.md` is the ruleset; this file is the
@@ -142,6 +142,8 @@ How to solve it is yours. What follows constrains the process, never the design:
 
 - **Watch the check fail first, for the reason you claim.** A check you never saw red is decoration.
 - **Fix the root cause across every caller**, not the instance the ticket names.
+- **A diff that describes code is traced here, not in phase D** (rule 20). The review confirms a
+  map; it does not build one.
 - Scope is exactly the ticket. A finding outside it is filed as its own issue, never folded into the
   diff: `gh issue create --title "<what>" --body-file <file> --label ready-for-human`.
 - A bug three levels under the bug in hand: file it, do not follow it.
