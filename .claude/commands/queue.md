@@ -124,9 +124,8 @@ One subagent (`sonnet`), so the codebase never enters this context:
 > asks for something the codebase already does, say so plainly in a sentence. That is the most
 > valuable thing you can come back with, and it is worth more than a tidy list.
 >
-> Around 30 lines. Do not spawn any subagent, and do not run `npm run agent:check` — it waits on
-> free memory and then runs a twenty-minute suite, so you would stall instead of answering. Phase E
-> is where it runs.
+> Around 30 lines. Do not spawn any subagent, and do not run `npm run agent:check` — phase E is
+> where it runs, and recon is not the place to be running checks at all.
 
 No file is out of scope, and no file count is. If the recon names the schema, the socket protocol,
 `.replit` or a workflow, that is a reason to build it carefully and to say in the PR body what it
@@ -233,8 +232,8 @@ permission either.
 npm run agent:check
 ```
 
-Say what it reported, including what it says it skipped — a green line standing for a suite nobody
-ran is not a pass.
+Say what it reported, including the checks it names as CI's — a green line standing for a suite
+nobody ran is not a pass.
 
 **If it is red, you are back in phase C.** Fix it, commit the fix, then go round again from phase D:
 the new commit moves the head, so the review you were holding no longer covers what you would push,

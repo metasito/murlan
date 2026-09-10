@@ -1,11 +1,6 @@
 /**
- * The pre-push check, run once per tree state.
- *
- * Runs `STEPS` below - the only list this script reads; `package.json`'s `verify` is a second
- * entry point that runs the same stages unconditionally, where `test:native` here is gated on
- * whether the change can reach it. Records the verdict against a hash of the working tree, so
- * called again on an unchanged tree it replays instead of re-running and a stage that checks
- * twice pays for it once. Any edit changes the hash and the suites run again.
+ * The pre-push check, run once per tree state. The verdict is keyed on a hash of the working
+ * tree, so an unchanged tree replays instead of re-running.
  *
  * Usage: npm run agent:check          run, or replay a cached verdict
  *        npm run agent:check -- --force   ignore the cache
@@ -14,26 +9,25 @@ import { createHash } from "node:crypto";
 import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { nativeScope } from "./native-scope.mjs";
 import { primaryWorktree, checkLockDrift } from "./preflight.mjs";
+import { LOCAL, DELEGATED, cmd } from "./check-steps.mjs";
 
 /**
- * Per step. A wedged jest or a suite waiting on a port nothing will bind used to hang this
- * check for ever, and an unattended run has nobody to notice - a check that never answers is
- * worse than one that answers red. On Windows the kill reaches the shell rather than the whole
- * tree, so a stray child can outlive it; the verdict is still delivered.
+ * A wedged suite used to hang this check for ever, and an unattended run has nobody to notice.
+ * On Windows the kill reaches the shell rather than the whole tree, so a stray child can outlive
+ * it; the verdict is still delivered.
  */
 const STEP_TIMEOUT_MS = 20 * 60_000;
 
-const STEPS = [
-  { name: "typecheck", args: ["run", "typecheck"] },
-  { name: "typecheck:strict", args: ["run", "typecheck:strict"] },
-  { name: "test", args: ["test"] },
-  // Both jest projects, ios and android: they run the same files under
-  // different setups, so one of the two passing is not an outcome.
-  { name: "test:native", args: ["run", "test:native"], when: nativeScope },
-  { name: "lint", args: ["run", "lint"] },
-];
+// What this check left out is part of its verdict: a green line standing for a suite nobody ran
+// is the defect it was reported for. Naming the command, not the suite, is what stops an agent
+// inventing one.
+const verdict = (outcome) =>
+  [
+    outcome,
+    `  ran here:  ${LOCAL.map((s) => s.name).join(", ")}`,
+    ...DELEGATED.map((s) => `  ci.yml ${s.job}:  ${cmd(s)}`),
+  ].join("\n");
 
 function git(...args) {
   return execFileSync("git", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
@@ -111,19 +105,13 @@ const key = treeHash();
 const cache = readCache();
 
 if (!force && cache[key]?.pass) {
-  console.log(`agent:check  CACHED PASS for tree ${key} (${cache[key].at})`);
+  console.log(verdict(`agent:check  CACHED PASS for tree ${key} (${cache[key].at})`));
   console.log("Nothing changed since that run. Use --force to run the suites anyway.");
   process.exit(0);
 }
 
 const failed = [];
-const skipped = [];
-for (const step of STEPS) {
-  const scope = step.when?.();
-  if (scope && !scope.run) {
-    skipped.push(`${step.name} (${scope.reason})`);
-    continue;
-  }
+for (const step of LOCAL) {
   process.stdout.write(`\n=== ${step.name} ===\n`);
   const run = spawnSync("npm", step.args, {
     stdio: "inherit",
@@ -140,11 +128,6 @@ ${step.name} timed out after ${STEP_TIMEOUT_MS / 60_000} minutes`);
     failed.push(step.name);
   }
 }
-
-// A green line standing for a suite nobody ran is the defect this check was
-// reported for, so what it left out is part of its verdict.
-const verdict = (outcome) =>
-  skipped.length ? `${outcome}\n  not run: ${skipped.join(", ")}` : outcome;
 
 // Only a pass is cached. A failure has to re-run: the fix for it lands in the same tree the
 // failure was recorded against only when nothing else moved, and replaying a red verdict would

@@ -5,17 +5,15 @@ Every rule an agent must follow, in one place. No rationale here — the *why* l
 
 ## Checking your work
 
-1. **Run `npm run agent:check` before you push.** It runs typecheck, tests, lint, and the native
-   suite when your change can reach it, names whatever it skipped, and replays the verdict if the
-   tree has not changed — so running it again costs nothing.
-2. **Do not run `npm run verify`.** It is the whole sweep; `ci.yml` already runs it on your push.
-3. **`npm run test:e2e` is yours to judge.** It is slow (9 minutes) and CI runs it. Run it when
-   your change could break what only a browser can see — a laid-out box, an interaction, an
-   accessibility label a spec clicks by name. Skip it otherwise. Rule 1 decides `test:native`.
-4. **While iterating, run one file:** `node --test tests/x.test.ts`. One Playwright spec
-   (`npx playwright test --config tests/e2e/playwright.config.ts one.spec.ts`) is that loop only
-   under rule 5. Otherwise every run rebuilds: prove the spec red once and green once, push, and
-   let CI carry the rest.
+1. **Run `npm run agent:check` before you push.** `scripts/check-steps.mjs` is the list of what
+   runs there and what `ci.yml` carries; the check prints both and replays on an unchanged tree.
+2. **Never run a whole suite by hand** — not `npm run verify`, `npm test`, `npm run test:native`,
+   `npm run test:e2e`. `ci.yml` runs them on your push, in parallel, with the Postgres the
+   integration suites need and this machine has not.
+3. **One spec is still yours**, when only a browser can see what you changed:
+   `npx playwright test --config tests/e2e/playwright.config.ts one.spec.ts`.
+4. **While iterating, run one file:** `node --test tests/x.test.ts`. That is where rule 6's
+   red-then-green is watched; everything wider rides CI.
 5. **Add `E2E_SKIP_BUILD=1` only when your edit is confined to a spec file.** Any change under
    `app/`, `components/` or `lib/` needs a rebuild, or the run tests a stale bundle.
 6. **A new test must fail before your fix, and a scan must fail on a planted defect** — and it
