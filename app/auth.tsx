@@ -53,6 +53,7 @@ export default function AuthScreen() {
   const pwdRef = useRef<TextInput>(null);
 
   async function handleSubmit() {
+    if (loading) return;
     setError(null);
     setNotice(null);
     if (!username.trim() || !password.trim() || (tab === "register" && !email.trim())) {
@@ -217,6 +218,7 @@ export default function AuthScreen() {
                   onSubmitEditing={handleSubmit}
                   accessibilityLabel={t("auth.passwordA11yLabel")}
                   {...passwordHint.props}
+                  editable={!loading}
                 />
                 {passwordHint.node}
                 <Pressable

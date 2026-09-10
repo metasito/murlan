@@ -276,6 +276,48 @@ describe('app/recover', () => {
     await view.unmount();
   });
 
+  it('the email field stops taking keystrokes while the request is in flight', async () => {
+    // Never resolves: the request stays in flight for the rest of the case.
+    mockApiRequest.mockReturnValue(new Promise(() => {}));
+    const view = await mount();
+
+    await act(async () => {
+      fireEvent.changeText(screen.getByLabelText(locale['recover.emailA11yLabel']), 'player@example.test');
+    });
+    await act(async () => {
+      fireEvent(screen.getByLabelText(locale['recover.emailA11yLabel']), 'submitEditing');
+    });
+    await waitFor(() =>
+      expect(screen.getByLabelText(locale['recover.emailA11yLabel']).props.editable).toBe(false),
+    );
+
+    await view.unmount();
+  });
+
+  it('a second submit while the reset request is in flight issues no second request', async () => {
+    mockApiRequest.mockReturnValue(new Promise(() => {}));
+    const view = await mount();
+
+    await act(async () => {
+      fireEvent.changeText(screen.getByLabelText(locale['recover.emailA11yLabel']), 'player@example.test');
+    });
+    // The prop, not the event: RNTL's fireEvent refuses any event on a
+    // non-editable input, which would assert the harness. Dispatching anyway is
+    // what the web build does (tests/submitEditingGuards.test.ts says why).
+    // Re-read each time — the browser re-attaches the handler every render, and
+    // the guard only sees `loading` through the closure it was made in.
+    const submit = () => screen.getByLabelText(locale['recover.emailA11yLabel']).props.onSubmitEditing;
+    await act(async () => {
+      submit()();
+    });
+    await act(async () => {
+      submit()();
+    });
+    expect(mockApiRequest).toHaveBeenCalledTimes(1);
+
+    await view.unmount();
+  });
+
   it('a player who already holds a code skips straight to step two', async () => {
     const view = await mount();
 

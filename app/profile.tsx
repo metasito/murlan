@@ -97,6 +97,7 @@ function UserCard({ user }: { user: { username: string } }) {
   };
 
   async function save() {
+    if (saving) return;
     const name = draft.trim();
     if (name === user.username) {
       setEditing(false);
@@ -222,6 +223,7 @@ function ChangePasswordCard() {
   }
 
   async function submit() {
+    if (saving) return;
     setSaving(true);
     setError(null);
     try {
@@ -341,6 +343,7 @@ function AddEmailCard() {
   }
 
   async function submit() {
+    if (saving) return;
     setSaving(true);
     setError(null);
     try {

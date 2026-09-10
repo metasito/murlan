@@ -144,6 +144,7 @@ export default function FriendsScreen() {
   }
 
   async function handleSearchUsername() {
+    if (searchLoading) return;
     if (!searchQuery.trim()) return;
     setSearchLoading(true);
     setSearchResult(null);
@@ -241,6 +242,7 @@ export default function FriendsScreen() {
               returnKeyType="search"
               accessibilityLabel={t("friends.searchA11yLabel")}
               {...searchHint.props}
+              editable={!searchLoading}
             />
             {searchHint.node}
             <Pressable

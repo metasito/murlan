@@ -29,6 +29,7 @@ export default function RecoverScreen() {
   const [error, setError] = useState<string | null>(null);
 
   async function submitRequest() {
+    if (loading) return;
     if (!email.trim()) {
       setError(t("recover.missingEmail"));
       return;
@@ -45,6 +46,7 @@ export default function RecoverScreen() {
   }
 
   async function submitReset() {
+    if (loading) return;
     if (!code.trim() || !newPassword.trim()) {
       setError(t("recover.missingFields"));
       return;
@@ -86,6 +88,7 @@ export default function RecoverScreen() {
                   textContentType="emailAddress"
                   returnKeyType="done"
                   onSubmitEditing={submitRequest}
+                  editable={!loading}
                   accessibilityLabel={t("recover.emailA11yLabel")}
                   testID="input-recover-email"
                 />
@@ -140,6 +143,7 @@ export default function RecoverScreen() {
                   textContentType="newPassword"
                   returnKeyType="done"
                   onSubmitEditing={submitReset}
+                  editable={!loading}
                   accessibilityLabel={t("recover.newPasswordA11yLabel")}
                   testID="input-recover-new-password"
                 />
