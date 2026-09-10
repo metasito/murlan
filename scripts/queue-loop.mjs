@@ -88,10 +88,10 @@ export function queueLoopArgs() {
     // Print mode refuses stream-json without it: "Error: When using --print,
     // --output-format=stream-json requires --verbose".
     "--verbose",
-    // The git status snapshot is part of the cached prompt prefix, and this loop commits and merges
-    // between tickets — so without this every ticket rebuilds a ~41k-token prefix at full price
-    // instead of reading the one the previous ticket built.
-    "--exclude-dynamic-system-prompt-sections",
+    // No `--exclude-dynamic-system-prompt-sections`: it was measured on 2.1.268 and bought nothing.
+    // Two fresh processes with a git-status change between them paid 15,579 creation tokens with it
+    // and 14,848 without — the dynamic sections are ~200 tokens, and what a second process fails to
+    // reuse is the rest of the prefix, which the flag does not reach.
     "--tools",
     readAllowedTools().join(","),
     "--max-budget-usd",
