@@ -48,21 +48,27 @@ test("every limiter in server/routes.ts is built by the factory", () => {
 });
 
 test("server/rateLimit.ts is the only file under server/ that calls rateLimit()", () => {
-  const wanted = (f: string) => f.endsWith(".ts") && f !== "rateLimit.ts";
-  const sources = readdirSync(SERVER_DIR, { recursive: true, encoding: "utf8" })
-    .filter(wanted)
-    .map((f) => ({ file: f, text: readFileSync(path.join(SERVER_DIR, f), "utf8") }));
-
-  // RULES §6 again: a scan reading nothing passes, and one reading a subset
-  // passes just as quietly. The floor is the flat listing rather than a
-  // number, so it cannot decay as files come and go — a recursive walk that
-  // narrows to fewer files than a plain readdir finds is the walk breaking.
-  const flat = readdirSync(SERVER_DIR).filter(wanted);
-  assert.ok(
-    sources.length >= flat.length && sources.some((s) => s.file === "routes.ts"),
-    `the walk read ${sources.length} of at least ${flat.length} server sources`,
+  const CALLS_RATE_LIMIT = /\brateLimit\s*\(/;
+  const scanned = new Map(
+    readdirSync(SERVER_DIR, { recursive: true, encoding: "utf8" })
+      .filter((f) => f.endsWith(".ts") && f !== "rateLimit.ts")
+      .map((f) => [f, readFileSync(path.join(SERVER_DIR, f), "utf8")]),
   );
-  const callers = sources.filter((s) => /\brateLimit\s*\(/.test(s.text)).map((s) => s.file);
+
+  // RULES §6: a scan reading nothing passes, and one reading a subset passes
+  // just as quietly. This second listing deliberately does not share the
+  // filter above — a predicate narrowed there would otherwise narrow the
+  // floor with it, and the guard would move in lockstep with the guarded.
+  const mustRead = readdirSync(SERVER_DIR).filter((f) => /\.ts$/.test(f) && f !== "rateLimit.ts");
+  const missed = mustRead.filter((f) => !scanned.has(f));
+  assert.deepEqual(missed, [], `the walk never read: ${missed.join(", ")}`);
+  assert.ok(scanned.has("routes.ts"), "routes.ts, where every limiter lives, was not read");
+
+  // Positive control: a scan of 57 files proves nothing unless the pattern
+  // can be seen to match the one file that legitimately calls rateLimit().
+  assert.match(readFileSync(path.join(SERVER_DIR, "rateLimit.ts"), "utf8"), CALLS_RATE_LIMIT);
+
+  const callers = [...scanned].filter(([, text]) => CALLS_RATE_LIMIT.test(text)).map(([file]) => file);
   assert.deepEqual(callers, [], `these build a limiter by hand: ${callers.join(", ")}`);
 });
 
