@@ -144,6 +144,7 @@ export default function FriendsScreen() {
   }
 
   async function handleSearchUsername() {
+    if (searchLoading) return;
     if (!searchQuery.trim()) return;
     setSearchLoading(true);
     setSearchResult(null);

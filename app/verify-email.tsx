@@ -41,6 +41,7 @@ export default function VerifyEmailScreen() {
   const [notice, setNotice] = useState<string | null>(null);
 
   async function submit() {
+    if (loading || resending) return;
     const trimmedEmail = email.trim();
     const trimmedCode = code.trim();
     if (!trimmedEmail) {

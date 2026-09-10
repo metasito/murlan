@@ -29,6 +29,10 @@ export default function RecoverScreen() {
   const [error, setError] = useState<string | null>(null);
 
   async function submitRequest() {
+    // react-native-web renders `editable={false}` as `readOnly`, and its
+    // TextInput fires onSubmitEditing on Enter without consulting either — so
+    // the prop stops a held return key on native only, and this stops it on web.
+    if (loading) return;
     if (!email.trim()) {
       setError(t("recover.missingEmail"));
       return;
@@ -45,6 +49,7 @@ export default function RecoverScreen() {
   }
 
   async function submitReset() {
+    if (loading) return;
     if (!code.trim() || !newPassword.trim()) {
       setError(t("recover.missingFields"));
       return;

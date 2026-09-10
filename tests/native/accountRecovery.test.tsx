@@ -276,21 +276,45 @@ describe('app/recover', () => {
     await view.unmount();
   });
 
-  it('holding return on the email field issues only one request', async () => {
-    // apiRequest never resolves here, standing in for a request still in
-    // flight — so this fires the event without awaiting its own promise,
-    // which chains onto that pending request and would hang forever.
+  it('the email field stops taking keystrokes while the request is in flight', async () => {
+    // Never resolves: the request stays in flight for the rest of the case.
     mockApiRequest.mockReturnValue(new Promise(() => {}));
     const view = await mount();
 
     await act(async () => {
       fireEvent.changeText(screen.getByLabelText(locale['recover.emailA11yLabel']), 'player@example.test');
     });
-    const emailInput = screen.getByLabelText(locale['recover.emailA11yLabel']);
-    fireEvent(emailInput, 'submitEditing');
-    await waitFor(() => expect(emailInput.props.editable).toBe(false));
-    fireEvent(emailInput, 'submitEditing');
-    await waitFor(() => expect(mockApiRequest).toHaveBeenCalledTimes(1));
+    await act(async () => {
+      fireEvent(screen.getByLabelText(locale['recover.emailA11yLabel']), 'submitEditing');
+    });
+    await waitFor(() =>
+      expect(screen.getByLabelText(locale['recover.emailA11yLabel']).props.editable).toBe(false),
+    );
+
+    await view.unmount();
+  });
+
+  it('holding return on the email field issues only one request', async () => {
+    mockApiRequest.mockReturnValue(new Promise(() => {}));
+    const view = await mount();
+
+    await act(async () => {
+      fireEvent.changeText(screen.getByLabelText(locale['recover.emailA11yLabel']), 'player@example.test');
+    });
+    // Calling the prop rather than firing the event: react-native-web renders
+    // editable={false} as readOnly and dispatches onSubmitEditing on Enter
+    // regardless, so this is the web keypress. RNTL's own fireEvent refuses any
+    // event on a non-editable input, which would test the harness instead.
+    // Re-read each time — the browser re-attaches the handler every render, and
+    // the guard only sees `loading` through the closure it was made in.
+    const submit = () => screen.getByLabelText(locale['recover.emailA11yLabel']).props.onSubmitEditing;
+    await act(async () => {
+      submit()();
+    });
+    await act(async () => {
+      submit()();
+    });
+    expect(mockApiRequest).toHaveBeenCalledTimes(1);
 
     await view.unmount();
   });

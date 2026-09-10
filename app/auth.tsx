@@ -53,6 +53,7 @@ export default function AuthScreen() {
   const pwdRef = useRef<TextInput>(null);
 
   async function handleSubmit() {
+    if (loading) return;
     setError(null);
     setNotice(null);
     if (!username.trim() || !password.trim() || (tab === "register" && !email.trim())) {
