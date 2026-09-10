@@ -20,7 +20,8 @@ import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { derive } from "./loop-derive.mjs";
 import { readLine, phaseOf, REDERIVE } from "./loop-stream.mjs";
-import { PHASES, closing, header, phaseLine, runTotal } from "./loop-render.mjs";
+import { PHASES, closing, header, phaseLine, reportRow, runTotal } from "./loop-render.mjs";
+import { row } from "./loop-record.mjs";
 
 const LOG_DIR = ".loop-logs";
 
@@ -316,6 +317,35 @@ const git = (...args) => execFileSync("git", args, { encoding: "utf8" });
 
 const STOP_FILE = ".loop-stop";
 
+/**
+ * Written as each ticket ends rather than at exit, so a crash or a closed terminal keeps whatever
+ * the night had already done.
+ */
+function record(entry, line) {
+  mkdirSync(LOG_DIR, { recursive: true });
+  fs.appendFileSync(path.join(LOG_DIR, "tickets.jsonl"), `${JSON.stringify(entry)}
+`, "utf8");
+  const report = path.join(LOG_DIR, `run-${new Date().toISOString().slice(0, 10)}.md`);
+  if (!fs.existsSync(report)) {
+    fs.writeFileSync(report, `# queue-loop ${new Date().toISOString().slice(0, 10)}
+
+`, "utf8");
+  }
+  fs.appendFileSync(report, `${line}
+`, "utf8");
+}
+
+/** A ticket's raw stream log is worth keeping for a week; after that it is only taking up disk. */
+function pruneLogs(now = Date.now()) {
+  const week = 7 * 24 * 60 * 60_000;
+  if (!fs.existsSync(LOG_DIR)) return;
+  for (const name of fs.readdirSync(LOG_DIR)) {
+    if (!name.endsWith(".jsonl") || name === "tickets.jsonl") continue;
+    const file = path.join(LOG_DIR, name);
+    if (now - fs.statSync(file).mtimeMs > week) fs.rmSync(file, { force: true });
+  }
+}
+
 /** Where the ticket stood when its session exited — what the progress guard compares against. */
 const standing = () => {
   const s = derive();
@@ -328,6 +358,8 @@ async function main() {
   let prev = null;
   let failures = 0;
   const totals = { tickets: 0, landed: 0, parked: 0, cost: 0, ms: 0 };
+
+  pruneLogs();
 
   for (;;) {
     if (takeStopFile(fs, STOP_FILE)) {
@@ -397,10 +429,39 @@ async function main() {
       );
     }
 
+    const facts = ticketFacts(route.number);
+    record(
+      row({
+        number: route.number,
+        size: facts.size,
+        outcome: landed && !why ? "landed" : "parked",
+        pr: null,
+        phases: run.phases,
+        result: run.result,
+        ci: null,
+        reviewRounds: 0,
+        startedAt: new Date(Date.now() - run.ms).toISOString(),
+        version: run.version,
+      }),
+      reportRow({
+        number: route.number,
+        title: facts.title,
+        outcome: landed && !why ? "landed" : "parked",
+        pr: null,
+        ms: run.ms,
+        cost: run.result?.cost ?? 0,
+        why: why ?? undefined,
+      })
+    );
+
     prev = after;
     if (shouldHalt(failures)) {
       console.error(`queue-loop: ${failures} tickets in a row did not land — stopping`);
-      console.log(runTotal(totals));
+      const total = runTotal(totals);
+      console.log(total);
+      fs.appendFileSync(path.join(LOG_DIR, `run-${new Date().toISOString().slice(0, 10)}.md`), `
+${total}
+`, "utf8");
       return 1;
     }
   }
