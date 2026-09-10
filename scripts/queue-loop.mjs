@@ -14,13 +14,13 @@
  * Usage: node scripts/queue-loop.mjs
  */
 import { execFileSync, spawn } from "node:child_process";
-import { appendFileSync, createWriteStream, mkdirSync, writeFileSync } from "node:fs";
+import fs, { createWriteStream, mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { derive } from "./loop-derive.mjs";
 import { readLine, phaseOf, REDERIVE } from "./loop-stream.mjs";
-import { PHASES, closing, header, phaseLine } from "./loop-render.mjs";
+import { PHASES, closing, header, phaseLine, runTotal } from "./loop-render.mjs";
 
 const LOG_DIR = ".loop-logs";
 
@@ -133,6 +133,30 @@ export const stalled = (lastFactAt, now) => now - lastFactAt > STALL_MS;
 const sh = (file, args, opts) =>
   execFileSync(file, args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], ...opts });
 
+/** One bad ticket is a ticket. Three in a row is the loop or the machine, and a night proving it. */
+export const BREAKER = 3;
+export const shouldHalt = (consecutiveFailures) => consecutiveFailures >= BREAKER;
+
+/**
+ * A session can exit 0 without landing — parked, out of turns, halted by its own rules — and leave
+ * the worktree and the `in-progress` label behind. The next iteration then resumes the same ticket,
+ * and without this it does so for ever, at a full session's cost each time.
+ *
+ * Nothing is written down: the supervisor is alive across iterations, so this is memory rather than
+ * state, and there is no third copy of the truth to disagree with git and the tracker.
+ */
+export function madeProgress(prev, now) {
+  if (!prev || prev.ticket !== now.ticket) return true;
+  return prev.head !== now.head || prev.commits !== now.commits;
+}
+
+/** `.loop-stop` drains the loop after the current ticket. Reading it removes it, so it cannot go stale. */
+export function takeStopFile(fs, file) {
+  if (!fs.existsSync(file)) return false;
+  fs.rmSync(file);
+  return true;
+}
+
 /**
  * Hands a ticket back to the owner: the work committed, the claim released, the reason on the
  * issue, the worktree gone. Any step throwing stops the loop rather than leaving a ticket in a
@@ -212,6 +236,7 @@ export function runTicket(spawnFn, { number, queue, log = console.log, facts = t
     phases: {},
     lastFactAt: Date.now(),
     stalled: false,
+    files: 0,
   };
 
   const closePhase = (letter, detail) => {
@@ -239,7 +264,13 @@ export function runTicket(spawnFn, { number, queue, log = console.log, facts = t
       if (call.parent) continue;
       const before = state.phase;
       let next = advance(state.phase, phaseOf(call));
-      if (call.name === "Bash" && REDERIVE.test(call.command)) next = advance(next, derive().phase);
+      if (call.name === "Bash" && REDERIVE.test(call.command)) {
+        const d = derive();
+        next = advance(next, d.phase);
+        // The count as of the last commit: after the ticket lands, its worktree is gone and there
+        // is nothing left to count.
+        state.files = d.changed?.length ?? state.files;
+      }
       state.phase = next;
       if (next === before) continue;
 
@@ -272,6 +303,7 @@ export function runTicket(spawnFn, { number, queue, log = console.log, facts = t
         result: state.result,
         phase: state.phase,
         phases: state.phases,
+        files: state.files,
         version: state.version,
         ms: Date.now() - startedAt,
         log: logPath,
@@ -282,26 +314,94 @@ export function runTicket(spawnFn, { number, queue, log = console.log, facts = t
 
 const git = (...args) => execFileSync("git", args, { encoding: "utf8" });
 
+const STOP_FILE = ".loop-stop";
+
+/** Where the ticket stood when its session exited — what the progress guard compares against. */
+const standing = () => {
+  const s = derive();
+  return s.onTicket
+    ? { ticket: s.ticket, head: s.head ?? null, commits: s.commits ?? 0, cwd: s.cwd, branch: s.branch, dirty: s.dirty, phase: s.phase }
+    : null;
+};
+
 async function main() {
+  let prev = null;
+  let failures = 0;
+  const totals = { tickets: 0, landed: 0, parked: 0, cost: 0, ms: 0 };
+
   for (;;) {
+    if (takeStopFile(fs, STOP_FILE)) {
+      console.log("queue-loop: .loop-stop — draining, nothing new will be started");
+      return 0;
+    }
     if (!syncProtocol(git, (m) => console.error(m))) return 1;
+
     const route = nextRoute();
     if (shouldStop(route)) {
       console.log(`queue-loop: ${route.title} — stopping`);
       return 0;
     }
-    console.log(
-      route.resuming
-        ? `queue-loop: resuming #${route.number} — a run was already mid-build`
-        : `queue-loop: picking up #${route.number} (${route.skill})`
-    );
 
     const run = await runTicket(spawn, { number: route.number, queue: route.queue });
-    if (run.status !== 0) {
-      console.error(
-        `queue-loop: claude -p exited ${run.status}, stopping rather than looping on a broken run`
+    const after = standing();
+    totals.tickets += 1;
+    totals.cost += run.result?.cost ?? 0;
+    totals.ms += run.ms;
+
+    // A ticket still live after its session exited did not land, whatever the exit code said.
+    const landed = !after || after.ticket !== route.number;
+    const stuck = after && !madeProgress(prev, after);
+    const why = stuck
+      ? "resumed with nothing committed since the last run"
+      : run.status === "stalled"
+        ? `no output for ${Math.round(STALL_MS / 60_000)}m in phase ${run.phase ?? "?"}`
+        : run.status !== 0
+          ? `the session exited ${run.status} in phase ${run.phase ?? "?"}`
+          : null;
+
+    if (landed && !why) {
+      failures = 0;
+      totals.landed += 1;
+      console.log(
+        closing({
+          outcome: "landed",
+          number: route.number,
+          files: run.files,
+          turns: run.result?.turns ?? 0,
+          ms: run.ms,
+          cost: run.result?.cost ?? 0,
+        })
       );
-      return run.status;
+    } else {
+      failures += 1;
+      totals.parked += 1;
+      if (after) {
+        park(route.number, {
+          phase: after.phase,
+          why: why ?? "the session exited without landing the ticket",
+          log: run.log,
+          cwd: after.cwd,
+          branch: after.branch,
+          dirty: after.dirty,
+        });
+      }
+      console.log(
+        closing({
+          outcome: "parked",
+          number: route.number,
+          why: why ?? "the session exited without landing the ticket",
+          ms: run.ms,
+          cost: run.result?.cost ?? 0,
+          log: run.log,
+        })
+      );
+    }
+
+    prev = after;
+    if (shouldHalt(failures)) {
+      console.error(`queue-loop: ${failures} tickets in a row did not land — stopping`);
+      console.log(runTotal(totals));
+      return 1;
     }
   }
 }

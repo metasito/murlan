@@ -16,6 +16,10 @@ import {
   stalled,
   STALL_MS,
   park,
+  madeProgress,
+  shouldHalt,
+  BREAKER,
+  takeStopFile,
 } from "../scripts/queue-loop.mjs";
 
 describe("parseRoute", () => {
@@ -395,5 +399,63 @@ describe("park", () => {
     assert.match(body, /agent\/953-x/);
     assert.match(body, /x\.jsonl/);
     assert.match(body, /stalled/);
+  });
+});
+
+describe("madeProgress", () => {
+  test("a first sighting of a ticket is progress", () => {
+    assert.equal(madeProgress(null, { ticket: 953, head: "aaa", commits: 0 }), true);
+  });
+
+  test("a different ticket is progress", () => {
+    assert.equal(
+      madeProgress({ ticket: 953, head: "aaa", commits: 2 }, { ticket: 961, head: "aaa", commits: 2 }),
+      true
+    );
+  });
+
+  test("the same ticket with a new head is progress", () => {
+    assert.equal(
+      madeProgress({ ticket: 953, head: "aaa", commits: 2 }, { ticket: 953, head: "bbb", commits: 3 }),
+      true
+    );
+  });
+
+  test("the same ticket, same head, same commits is not — this is the loop resuming forever", () => {
+    assert.equal(
+      madeProgress({ ticket: 953, head: "aaa", commits: 2 }, { ticket: 953, head: "aaa", commits: 2 }),
+      false
+    );
+  });
+
+  test("a first commit on a branch that had none is progress, even with no head yet recorded", () => {
+    assert.equal(
+      madeProgress({ ticket: 953, head: null, commits: 0 }, { ticket: 953, head: "aaa", commits: 1 }),
+      true
+    );
+  });
+});
+
+describe("shouldHalt", () => {
+  test("one bad ticket is a ticket; three in a row is the loop or the machine", () => {
+    assert.equal(shouldHalt(1), false);
+    assert.equal(shouldHalt(BREAKER - 1), false);
+    assert.equal(shouldHalt(BREAKER), true);
+  });
+});
+
+describe("takeStopFile", () => {
+  test("absent means carry on, and nothing is deleted", () => {
+    const calls: string[] = [];
+    const fs = { existsSync: () => false, rmSync: (p: string) => calls.push(p) };
+    assert.equal(takeStopFile(fs, ".loop-stop"), false);
+    assert.deepEqual(calls, []);
+  });
+
+  test("present means drain, and reading it removes it so it cannot go stale", () => {
+    const calls: string[] = [];
+    const fs = { existsSync: () => true, rmSync: (p: string) => calls.push(p) };
+    assert.equal(takeStopFile(fs, ".loop-stop"), true);
+    assert.deepEqual(calls, [".loop-stop"]);
   });
 });
