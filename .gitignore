@@ -89,3 +89,6 @@ backups/
 # tests/e2e/ is the suite's contract — scratch specs go here instead.
 .scratch/
 
+
+# Per-ticket stream logs and the run's own report. Large, local, and never reviewed.
+.loop-logs/

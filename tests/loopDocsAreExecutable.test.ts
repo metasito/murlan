@@ -2,6 +2,9 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, existsSync } from "node:fs";
+import { allowedTools } from "../scripts/loop-tools.mjs";
+import { PHASE_MARKERS, toPattern } from "../scripts/loop-stream.mjs";
+import { queueLoopArgs } from "../scripts/queue-loop.mjs";
 
 /**
  * The loop's instructions name commands and files. Prose cannot be run, so every one of those
@@ -27,11 +30,14 @@ describe("the loop's instructions name only things that exist", () => {
     assert.deepEqual(missing, [], `queue.md tells the agent to run scripts that do not exist`);
   });
 
-  test("every `npx tsx lib/...` it tells you to run is a real module", () => {
-    const named = [...read(QUEUE).matchAll(/npx\s+tsx\s+(lib\/[\w./-]+\.ts)/g)].map((m) => m[1]);
-    assert.ok(named.length >= 1, "no tsx invocations found; the pattern has drifted");
+  // The CI verdict and the merge moved to the supervisor, so it is queue-loop.mjs that names these
+  // now. Scanning both keeps the check pointed at whoever actually invokes them.
+  test("every `lib/loop/*.ts` the loop invokes is a real module", () => {
+    const sources = `${read(QUEUE)} ${read("scripts/queue-loop.mjs")}`;
+    const named = [...sources.matchAll(/(lib\/loop\/[\w.-]+\.ts)/g)].map((m) => m[1]);
+    assert.ok(named.length >= 1, "no lib/loop invocations found; the pattern has drifted");
     const missing = [...new Set(named)].filter((s) => !existsSync(s));
-    assert.deepEqual(missing, [], `queue.md tells the agent to run modules that do not exist`);
+    assert.deepEqual(missing, [], `the loop invokes modules that do not exist`);
   });
 
   test("every `npm run x` it tells you to run is a real script", () => {
@@ -75,5 +81,60 @@ describe("the loop's instructions name only things that exist", () => {
       const script = /node\s+([\w./-]+)/.exec(c)?.[1];
       if (script) assert.ok(existsSync(script), `hook runs a script that does not exist: ${script}`);
     }
+  });
+});
+
+describe("phase A's housekeeping belongs to the supervisor", () => {
+  test("queue.md names the one command a by-hand run needs", () => {
+    assert.match(read(QUEUE), /npm run queue:pre/, "a by-hand /queue still needs the pre-checks");
+  });
+
+  test("it does not also ask the model to run what the supervisor already ran", () => {
+    const text = read(QUEUE);
+    for (const moved of ["node scripts/prune-worktrees.mjs", "node scripts/preflight.mjs"]) {
+      assert.ok(!text.includes(moved), `${moved} moved to the supervisor; queue.md must not ask for it too`);
+    }
+  });
+
+  test("loop-status.mjs stays, because it is what tells a fresh session a run is live", () => {
+    assert.match(read(QUEUE), /node scripts\/loop-status\.mjs/);
+  });
+});
+
+// The marker table is a premise about queue.md's commands, and a premise in prose decays: this PR
+// moved the worktree teardown to the supervisor, and phase F's marker went on naming a command the
+// file no longer contains — a board that would have printed five phases out of six, silently.
+describe("every phase marker names a command queue.md actually runs", () => {
+  test("each doc string matches a line of the file", () => {
+    const text = read(QUEUE);
+    for (const marker of PHASE_MARKERS) {
+      if (!marker.doc) continue;
+      assert.match(text, toPattern(marker.doc), `phase ${marker.phase}: queue.md no longer runs "${marker.doc}"`);
+    }
+  });
+
+  test("the table covers every phase the session itself can mark", () => {
+    const marked = PHASE_MARKERS.map((m) => m.phase);
+    assert.deepEqual(marked, ["A", "B", "E"], "C and D come from derive(); F is the supervisor's own work");
+  });
+});
+
+describe("the --tools list is queue.md's own declaration", () => {
+  test("parsed from the frontmatter rather than copied into the supervisor", () => {
+    const tools = allowedTools(read(QUEUE));
+    assert.ok(tools.length >= 5, "allowed-tools frontmatter did not parse; the shape has drifted");
+    assert.ok(tools.includes("Bash"));
+    assert.ok(tools.includes("Task"), "phase B dispatches a subagent");
+    assert.ok(tools.includes("Skill"), "phase C names two skills by name");
+  });
+
+  test("a file with no such frontmatter yields nothing, rather than a wrong list", () => {
+    assert.deepEqual(allowedTools("# just a heading\n"), []);
+  });
+
+  test("the list it yields is what the spawn actually passes", () => {
+    const args = queueLoopArgs();
+    const passed = args[args.indexOf("--tools") + 1].split(",");
+    assert.deepEqual(passed, allowedTools(read(QUEUE)));
   });
 });
