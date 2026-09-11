@@ -14,6 +14,7 @@ import { isAllowedOrigin, isBehindProxy } from "./cors.ts";
 import { registerGithubDevSyncHook } from "./devSyncHook.ts";
 import { checkMailConfigOnBoot } from "./mail.ts";
 import { runningCommitSha } from "./gitInfo.ts";
+import { ANSWERED_BY_SHELL, CONTENT_HASHED } from "./staticPaths.ts";
 import * as fs from "fs";
 import * as path from "path";
 
@@ -137,11 +138,6 @@ function serveLandingPage({
 
 export const __testables = { safeHost, renderLandingPage, CSP_DIRECTIVES };
 
-// Metro names its build output with a 32-hex content hash — `<name>.<hash>.<ext>`
-// for assets (optionally followed by an `@2x` density suffix) and
-// `<name>-<hash>.<ext>` for the JS bundles. Those URLs never change their bytes.
-const CONTENT_HASHED = /[.-][0-9a-f]{32}(@[0-9]+x)?\.[^.]+$/;
-
 /**
  * Cache-Control for one file under `dist/`. Content-hashed files get a year;
  * everything else — `index.html`, `favicon.ico`, `metadata.json` — keeps its
@@ -198,6 +194,10 @@ function configureExpoAndLanding(app: express.Application) {
       // after this mount — without the exclusion the SPA shell answers it, so
       // every visitor gets a 200 and the owner never sees the dashboard.
       if (req.path.startsWith("/api") || req.path === "/admin") return next();
+      // Read by `loggedRequest`: the shell answering a request shaped like a
+      // build file is how a deploy that lost one looks from the outside, and
+      // it is a 200 like any other.
+      (req as Request & { [ANSWERED_BY_SHELL]?: true })[ANSWERED_BY_SHELL] = true;
       res.set("Cache-Control", "no-cache");
       // `root` here, rather than folding it into an absolute path: without
       // it `send` dotfile-checks every segment of the *filesystem* path, so

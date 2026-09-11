@@ -316,9 +316,9 @@ export function verificationEmailBody(username: string, code: string): string {
 }
 
 /** Never awaited by a caller — a provider outage must not delay or fail the response it rides with. */
-function sendVerificationEmail(to: string, username: string, code: string): void {
-  sendMail(to, "Verify your Murlan email", verificationEmailBody(username, code))
-    .catch((err) => logger.error({ err, to }, "sendVerificationEmail failed"));
+function sendVerificationEmail(to: string, username: string, code: string, userId: string): void {
+  sendMail(to, "Verify your Murlan email", verificationEmailBody(username, code), userId)
+    .catch((err) => logger.error({ err, userId }, "sendVerificationEmail failed"));
 }
 
 /**
@@ -326,13 +326,14 @@ function sendVerificationEmail(to: string, username: string, code: string): void
  * request-password-reset handler replies before this settles, so the only
  * work the response waits on is the token mint, not the outbound HTTPS call.
  */
-function sendPasswordResetEmail(to: string, token: string): void {
+function sendPasswordResetEmail(to: string, token: string, userId: string): void {
   sendMail(
     to,
     "Reset your Murlan password",
     `Your Murlan password reset code is:\n\n${token}\n\nThis code expires in 30 minutes. ` +
-      `If you did not request this, you can ignore this email.`
-  ).catch((err) => logger.error({ err, to }, "sendPasswordResetEmail failed"));
+      `If you did not request this, you can ignore this email.`,
+    userId
+  ).catch((err) => logger.error({ err, userId }, "sendPasswordResetEmail failed"));
 }
 
 /**
@@ -452,7 +453,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // add-email's own — see authTokens.ts.
         invalidatePendingAuthTokens(user.id, "email_verify")
           .then(() => mintAuthCode({ userId: user.id, email, purpose: "email_verify", ttlMs: EMAIL_VERIFY_CODE_TTL_MS }))
-          .then((code) => sendVerificationEmail(email, username, code))
+          .then((code) => sendVerificationEmail(email, username, code, user.id))
           .catch((err) => logger.error({ err, userId: user.id }, "Failed to mint the verification code"));
       });
     });
@@ -591,7 +592,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     await invalidatePendingAuthTokens(userId, "email_verify");
     const code = await mintAuthCode({ userId, email, purpose: "email_verify", ttlMs: EMAIL_VERIFY_CODE_TTL_MS });
-    sendVerificationEmail(email, user.username, code);
+    sendVerificationEmail(email, user.username, code, userId);
     logger.info({ userId }, "Email added, pending verification");
     res.json(sessionUser(user));
   });
@@ -663,7 +664,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       purpose: "email_verify",
       ttlMs: EMAIL_VERIFY_CODE_TTL_MS,
     });
-    sendVerificationEmail(user.email, user.username, code);
+    sendVerificationEmail(user.email, user.username, code, userId);
     logger.info({ userId }, "Verification email resent");
     res.json({ ok: true });
   });
@@ -690,7 +691,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Not awaited: the request this reply belonged to is already done, so
       // a rejection here has no caller left to reach it except this catch.
       mintAuthToken(user.id, "password_reset", PASSWORD_RESET_TOKEN_TTL_MS)
-        .then((token) => sendPasswordResetEmail(user.email!, token))
+        .then((token) => sendPasswordResetEmail(user.email!, token, user.id))
         .catch((err) => logger.error({ err, userId: user.id }, "Failed to mint the reset token"));
     }
   );
@@ -884,7 +885,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       request: sender && request ? friendRequestRow(request, sender) : undefined,
     } satisfies FriendRequestIncoming);
 
-    logger.info({ from: req.session.userId, to: friend.id }, "Friend request sent");
+    logger.info({ fromUserId: req.session.userId, toUserId: friend.id }, "Friend request sent");
     res.json({ ok: true, username: friend.username });
   });
 
@@ -1012,12 +1013,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   //
   // In-house rather than a third-party crash SDK: any such SDK is a data
   // processor, which changes the App Store privacy answers and adds a
-  // dependency that runs in every session. This writes to the log the server
-  // already has, so a crash on a device is visible wherever the server's
-  // output is read.
+  // dependency that runs in every session. The report itself goes to
+  // `client_errors`, which `sweepRetention` expires at 90 days and
+  // `deleteUser` clears; the log line says only that a crash happened and on
+  // what platform, because nothing sweeps or deletes a log stream.
   //
-  // Authenticated on purpose. An open endpoint is an open log-injection
-  // vector, and a crash worth chasing is one a real account hit.
+  // Authenticated on purpose. An open endpoint is an open write into that
+  // table, and a crash worth chasing is one a real account hit.
   app.post(
     "/api/client-errors",
     requireAuth,
@@ -1032,10 +1034,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         appVersion?: string;
         screen?: string;
       };
-      logger.error(
-        { userId: req.session.userId, clientError: report },
-        "Client reported an unhandled error"
-      );
+      logger.error({ platform: report.platform }, "Client reported an unhandled error");
       // Also kept as a row, so the owner can read it on /admin later rather
       // than only in the log stream. Fire-and-forget: a crash report failing
       // to store must not turn into a second failure for a client that is
@@ -1051,7 +1050,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         platform: report.platform,
         appVersion: report.appVersion,
         context: report.componentStack ? { componentStack: report.componentStack } : {},
-      }).catch((err) => logger.error({ err }, "Failed to store a client error report"));
+        // Not the report, even here. A client chooses its own `message`, and a
+        // NUL in it makes this insert fail every time — which would be a way
+        // to write arbitrary text into a stream nothing sweeps.
+      }).catch((err) =>
+        logger.error({ err, platform: report.platform }, "Failed to store a client error report")
+      );
       // Nothing to say back. The client is already showing its error screen and
       // must not depend on this having worked.
       res.status(204).end();

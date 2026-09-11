@@ -52,7 +52,7 @@ export function registerRoomHandlers({ io, socket, userId, username }: RoomHandl
 
         const players = await storage.getRoomPlayers(room.id);
         socket.emit("room:state", await roomStatePayload(room, players));
-        logger.info({ roomId: room.id, code: room.code, userId }, "Room created");
+        logger.info({ roomId: room.id, userId }, "Room created");
       },
       { limit: 5, windowMs: 60_000 }
     );

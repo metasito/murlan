@@ -1,6 +1,7 @@
 import pino from "pino";
 import pinoHttp from "pino-http";
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { ANSWERED_BY_SHELL, unmatchedKind } from "./staticPaths.ts";
 
 // A hand-written line handed a request or response object carries the live
 // session cookie and any bearer token in cleartext. The completed-request line
@@ -64,13 +65,27 @@ export const logger = createLogger();
 // `req.baseUrl` is deliberately not joined on: it is matched text, so a Router
 // mounted at `/api/rooms/:roomCode` would put the code back. `path` is typed as
 // it arrives, not as it is usually written — a regexp route makes it a RegExp.
-type LoggedRequest = IncomingMessage & { route?: { path?: unknown } };
+//
+// With no pattern to write, `kind` says which of the app's surfaces was asked
+// for, from `unmatchedKind`'s fixed four words. Without it a scan sweep of the
+// API and a deploy that lost a file out of `dist/` are the same line — and the
+// lost file is not even a 404, since the SPA catch-all answers it with the
+// shell, which is what `ANSWERED_BY_SHELL` is read for.
+type LoggedRequest = IncomingMessage & {
+  route?: { path?: unknown };
+  originalUrl?: string;
+  [ANSWERED_BY_SHELL]?: true;
+};
 
 function loggedRequest(req: LoggedRequest) {
   const pattern = req.route?.path;
+  const url = typeof pattern === "string" && !pattern.includes("*") ? pattern : undefined;
   return {
     method: req.method,
-    url: typeof pattern === "string" && !pattern.includes("*") ? pattern : undefined,
+    url,
+    kind: url
+      ? undefined
+      : unmatchedKind((req.originalUrl ?? req.url ?? "").split("?")[0] ?? "", req[ANSWERED_BY_SHELL]),
   };
 }
 
