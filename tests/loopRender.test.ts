@@ -174,8 +174,7 @@ describe("runTotal", () => {
   });
 });
 
-// The heartbeat is the one line that is drawn and then erased, so it must occupy exactly the columns
-// the phase line does: a shorter one leaves the tail of itself behind on the terminal.
+// Drawn and erased in place, so it must fill exactly the phase line's columns.
 describe("heartbeat", () => {
   test("stands in the same columns as the phase line it is replaced by", () => {
     const beat = heartbeat({ letter: "C", ms: 511_000, at: 0 });
@@ -197,8 +196,7 @@ describe("heartbeat", () => {
   });
 });
 
-// "resets 1789134000" reached a real terminal. Unix seconds are what the stream gives, and the one
-// line whose job is to say how long the wait is must not print a number nobody can act on.
+// A wait is only actionable as a time and a distance.
 describe("clockAt", () => {
   const now = Date.UTC(2026, 8, 11, 9, 14);
 

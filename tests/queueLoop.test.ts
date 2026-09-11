@@ -82,19 +82,22 @@ describe("liveRoute", () => {
   });
 
   test("resumes the live ticket instead of asking the picker for a new one", () => {
-    assert.deepEqual(liveRoute({ onTicket: true, ticket: 911, branch: "agent/911-x" }), {
+    assert.deepEqual(liveRoute({ onTicket: true, ticket: 911, branch: "agent/911-x", phase: "D" }), {
       skill: "implement",
       number: 911,
       title: "agent/911-x",
+      phase: "D",
       resuming: true,
     });
   });
 
   test("falls back to a bare ticket label when derive() found no branch (the stuck/'?' case)", () => {
-    assert.deepEqual(liveRoute({ onTicket: true, ticket: 911, branch: null }), {
+    assert.deepEqual(liveRoute({ onTicket: true, ticket: 911, branch: null, phase: "?" }), {
       skill: "implement",
       number: 911,
       title: "ticket #911",
+      // "?" is derive() saying it could not tell; the board starts at the build rather than lying.
+      phase: "C",
       resuming: true,
     });
   });
@@ -114,12 +117,15 @@ describe("shouldStop", () => {
 
 describe("syncProtocol", () => {
   /** @param drifts one entry per `git diff` call, in order. */
-  const fakeGit = (drifts: string[], fails?: string) => {
+  const fakeGit = (drifts: string[], fails?: string, head = { branch: "main", own: "0" }) => {
     const calls: string[][] = [];
     const git = (...args: string[]) => {
       calls.push(args);
       if (fails && args[0] === fails) throw new Error(`fatal: ${fails} refused`);
-      return args[0] === "diff" ? (drifts.shift() ?? "") : "";
+      if (args[0] === "diff") return drifts.shift() ?? "";
+      if (args[0] === "rev-parse") return head.branch;
+      if (args[0] === "rev-list") return head.own;
+      return "";
     };
     return { git, calls };
   };
@@ -136,7 +142,7 @@ describe("syncProtocol", () => {
     const { git, calls } = fakeGit([".claude/commands/queue.md", ".claude/commands/queue.md", ""]);
     assert.equal(syncProtocol(git, () => {}), true);
     assert.deepEqual(
-      calls.filter((c) => c[0] !== "diff" && c[0] !== "fetch"),
+      calls.filter((c) => !["diff", "fetch", "rev-parse", "rev-list"].includes(c[0])),
       [
         ["checkout", "main"],
         ["merge", "--ff-only", "origin/main"],
@@ -515,10 +521,7 @@ describe("canStartNext", () => {
     );
   });
 
-  // Red CI is not this function's business, and a branch here for it was unreachable: `state` was
-  // only ever "awaiting-ci", because the supervisor learns a ticket is red by draining it — and a
-  // drained ticket is no longer pending. `afterPush` is where red is decided; these two pin that the
-  // pair still divides the work that way.
+  // Red is `afterPush`'s call, not this one's: a drained ticket is no longer pending.
   test("a red verdict hands the ticket back for a fix rather than parking it", () => {
     const next = afterPush({ verdict: { pass: false, failedStep: "verify" } });
     assert.equal(next.action, "fix");
@@ -553,14 +556,7 @@ describe("canStartNext", () => {
   });
 });
 
-/**
- * The merge queue is one slot, and both of this branch's worst defects lived in how it was filled.
- *
- * A second `pending = …` over a full slot dropped a pushed pull request: its CI was never read, it
- * never merged, and the loop went on reporting it as landed. And a pushed ticket that kept its
- * worktree was read by `derive()` as a run still needing a session, so the "next" ticket was the one
- * just pushed — a second paid session per ticket, ending in a spurious park.
- */
+/** One slot: it must be emptied before it is refilled, and a pushed ticket must give up its worktree. */
 describe("mergeSlot", () => {
   const fakes = () => {
     const calls: string[] = [];
@@ -623,12 +619,7 @@ describe("mergeSlot", () => {
   });
 });
 
-/**
- * A healthy ticket was parked against a limit that did not exist: the meter event was read without
- * its status, so "allowed" at 30% of the window looked like a refusal. Every line here is one way
- * this can go wrong — waiting when nothing refused, waiting for ever, waiting on a reset that has
- * already passed, or throwing away a ticket whose work was actually done.
- */
+/** Every way a wait goes wrong: waiting on nothing, for ever, on a passed reset, or on done work. */
 describe("waitFor", () => {
   const now = 1_000_000_000_000;
   const mins = (n: number) => n * 60_000;
@@ -670,5 +661,44 @@ describe("holdFor", () => {
 
   test("otherwise it waits the time out", async () => {
     assert.equal(await holdFor(10, () => false, 5), "waited");
+  });
+});
+
+/** A background process may not move a checkout someone is working in. */
+describe("syncProtocol leaves someone else's branch alone", () => {
+  const fake = (branch: string, own: string) => {
+    const calls: string[][] = [];
+    const git = (...args: string[]) => {
+      calls.push(args);
+      if (args[0] === "diff") return "scripts/queue-loop.mjs";
+      if (args[0] === "rev-parse") return branch;
+      if (args[0] === "rev-list") return own;
+      return "";
+    };
+    return { git, calls };
+  };
+
+  test("a branch with commits of its own stops the loop instead of being checked out of", () => {
+    const { git, calls } = fake("fix/loop-rate-limit-wait", "1");
+    const said: string[] = [];
+    assert.equal(syncProtocol(git, (m: string) => said.push(m)), false);
+    assert.equal(
+      calls.some((c) => c[0] === "checkout"),
+      false,
+      "the loop must not move a branch it did not create"
+    );
+    assert.match(said.join("\n"), /fix\/loop-rate-limit-wait is checked out with 1 commit/);
+  });
+
+  test("a leftover branch with nothing of its own is still repaired, which is what this is for", () => {
+    const { git, calls } = fake("agent/900-old", "0");
+    syncProtocol(git, () => {});
+    assert.ok(calls.some((c) => c[0] === "checkout" && c[1] === "main"));
+  });
+
+  test("drift on main itself is repaired, branch or no branch", () => {
+    const { git, calls } = fake("main", "0");
+    syncProtocol(git, () => {});
+    assert.ok(calls.some((c) => c[0] === "checkout" && c[1] === "main"));
   });
 });

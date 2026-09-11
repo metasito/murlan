@@ -27,11 +27,7 @@ export function elapsed(ms) {
   return h ? `${h}:${String(m).padStart(2, "0")}:${ss}` : `${m}:${ss}`;
 }
 
-/**
- * A reset time as a person reads it. The stream gives Unix *seconds*, and printing that raw is how
- * "resets 1789134000" reached a terminal — a number nobody can act on, in the one line whose whole
- * job is to say how long the wait is.
- */
+/** The stream gives Unix seconds; a wait is only actionable as a time and a distance. */
 export function clockAt(resetsAt, now = Date.now()) {
   if (!resetsAt) return "an unknown time";
   const ms = resetsAt > 1e12 ? resetsAt : resetsAt * 1000;

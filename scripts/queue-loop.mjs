@@ -59,6 +59,8 @@ export function liveRoute(status) {
     skill: "implement",
     number: status.ticket,
     title: status.branch ?? `ticket #${status.ticket}`,
+    // A resumed session re-emits no marker for a phase it has already passed.
+    phase: status.phase && status.phase !== "?" ? status.phase : "C",
     resuming: true,
   };
 }
@@ -120,6 +122,18 @@ export function syncProtocol(git, log) {
   if (!drift()) return true;
 
   log(`queue-loop: protocol differs from origin/main (${drift().split("\n").join(", ")})`);
+
+  // Commits of its own mean someone is working here. Refuse; never move a checkout in use.
+  const branch = git("rev-parse", "--abbrev-ref", "HEAD").trim();
+  const own = Number(git("rev-list", "--count", "origin/main..HEAD").trim()) || 0;
+  if (branch !== "main" && own > 0) {
+    log(
+      `queue-loop: ${branch} is checked out with ${own} commit(s) of its own — not moving it. ` +
+        `Land or park that branch, then start the loop.`
+    );
+    return false;
+  }
+
   try {
     git("checkout", "main");
     git("merge", "--ff-only", "origin/main");
@@ -149,21 +163,13 @@ export const REDERIVE_MS = 20_000;
 const BEAT_MS = 1_000;
 
 /**
- * Waiting out a spent usage window, with every way of waiting for ever closed off.
- *
- * `CAP` is above the longest window the service has (five hours) and below anything that could be a
- * wrong clock or a bad field: a reset a year out is not a reason to sleep for a year. `FLOOR` covers
- * a refusal that names no reset — look again shortly rather than park the ticket. `MARGIN` is how
- * long after the reset to start again, which wants to be small: the point is to resume almost the
- * moment the window rolls over.
+ * `CAP` is above the longest window (five hours) and below a wrong clock. `FLOOR` covers a refusal
+ * naming no reset. `MARGIN` is small on purpose: resume as the window rolls over.
  */
 export const WAIT = { CAP: 5.5 * 60 * 60_000, FLOOR: 60_000, MARGIN: 30_000, TRIES: 20 };
 
 /**
- * How long to hold before running this ticket again. Zero means do not wait at all — and the first
- * two lines are why: a session that pushed or landed did its work whatever the meter said, and a
- * meter reading "allowed" is not a refusal. Reading the event without its status is what parked a
- * healthy ticket against a limit that did not exist.
+ * How long to hold before running this ticket again; zero is do not wait.
  *
  * @param {{blocked?: boolean, blockedUntil?: number, done?: boolean}} run
  */
@@ -350,16 +356,14 @@ export function mergeSlot({ settle, release, reattach, log = console.log }) {
   };
 }
 
-/**
- * Sleeps, in slices, so that `.loop-stop` still stops the loop while it is waiting out a usage
- * window. A single five-hour `setTimeout` would make the one file that exists to stop the loop
- * useless for the longest stretch the loop ever sits still.
- */
+/** Sliced, so `.loop-stop` still reaches the loop across a five-hour wait. */
 export async function holdFor(ms, exists = (f) => fs.existsSync(f), slice = 30_000) {
   const until = Date.now() + ms;
   while (Date.now() < until) {
     if (exists(STOP_FILE)) return "stopped";
-    await new Promise((r) => setTimeout(r, Math.min(slice, until - Date.now())).unref());
+    // Not unref'd: the child has exited and every other timer is cleared, so this is the only
+    // handle keeping the process alive. An unref'd wait exits node mid-hold (loopHoldSurvives).
+    await new Promise((r) => setTimeout(r, Math.min(slice, until - Date.now())));
   }
   return "waited";
 }
@@ -400,14 +404,15 @@ function ticketFacts(number) {
  * `claude` binary. stderr stays inherited: a crash should still print itself rather than being
  * reassembled from a log nobody is watching.
  */
-export function runTicket(spawnFn, { number, queue, log = console.log, facts = ticketFacts, stallMs = STALL_MS, tick = 30_000 }) {
+export function runTicket(spawnFn, { number, queue, at = null, log = console.log, facts = ticketFacts, stallMs = STALL_MS, tick = 30_000 }) {
   mkdirSync(LOG_DIR, { recursive: true });
   const logPath = path.join(LOG_DIR, `${number}.jsonl`);
   const sink = createWriteStream(logPath, { flags: "a" });
   const startedAt = Date.now();
 
   const state = {
-    phase: null,
+    // Seeded from derive(): a resumed ticket's markers are already behind it.
+    phase: at,
     printedHeader: false,
     result: null,
     version: null,
@@ -439,6 +444,14 @@ export function runTicket(spawnFn, { number, queue, log = console.log, facts = t
     say(phaseLine({ letter, detail, ms: Date.now() - startedAt }));
   };
 
+  // A resumed ticket is known before the session starts, so the header is truthful now. A fresh one
+  // waits for the claim, because until then the loop's guess can be wrong.
+  if (at) {
+    say(header({ number, ...facts(number), queue }));
+    say(phaseLine({ letter: at, detail: "resumed", ms: 0 }));
+    state.printedHeader = true;
+  }
+
   const child = spawnFn("claude", queueLoopArgs(), {
     stdio: ["ignore", "pipe", "inherit"],
     // A background update landing at 2am changes the system prompt, and every remaining ticket of
@@ -456,10 +469,10 @@ export function runTicket(spawnFn, { number, queue, log = console.log, facts = t
     if (fact.kind === "init") state.version = fact.version;
     if (fact.kind === "result") state.result = fact;
     if (fact.kind === "rate_limit") {
-      // Said once, and only when work was actually refused: the meter ticks several times a minute.
+      // Once, and only on a refusal: the meter ticks several times a minute.
       if (fact.blocked && !state.blocked) {
         state.blocked = true;
-        state.blockedUntil = fact.resetsAt ? fact.resetsAt * 1000 : 0;
+        state.blockedUntil = fact.resetsAtMs ?? 0;
         say(
           closing({
             outcome: "rate_limited",
@@ -616,7 +629,8 @@ const SETTLE_PAUSE_MS = 15_000;
 
 async function settle(pending, log = console.log, pause = SETTLE_PAUSE_MS) {
   const left = { ...SETTLE_ROUNDS };
-  const wait = () => new Promise((r) => setTimeout(r, pause).unref());
+  // Not unref'd, for the same reason `holdFor` is not: this is the only handle open while it waits.
+  const wait = () => new Promise((r) => setTimeout(r, pause));
 
   for (;;) {
     let next;
@@ -672,6 +686,7 @@ async function main() {
   let prev = null;
   let failures = 0;
   let waits = 0;
+  let waitsOn = null;
   const totals = { tickets: 0, landed: 0, parked: 0, cost: 0, ms: 0 };
 
   pruneLogs();
@@ -745,30 +760,48 @@ async function main() {
       return 0;
     }
 
-    const run = await runTicket(spawn, { number: route.number, queue: route.queue });
+    // Never a silent terminal: a fresh ticket has nothing truthful to show until it is claimed.
+    if (!route.resuming) console.log(`  · picking — ${route.queue.implement} takeable`);
+
+    const run = await runTicket(spawn, {
+      number: route.number,
+      queue: route.queue,
+      at: route.resuming ? (route.phase ?? "C") : null,
+    });
 
     const after = standing();
+    const pushed = after?.branch ? pushedPr(after.branch) : null;
 
-    // A spent usage window is not a failed ticket. Parking one would label the owner's own throttle
-    // as work needing a human, and three would trip the breaker and end the night — so the loop
-    // waits the window out and runs the same ticket again, still live and still claimed.
-    const hold = waitFor({
-      blocked: run.blocked,
-      blockedUntil: run.blockedUntil,
-      done: Boolean((after?.ticket !== route.number) || (after?.branch && pushedPr(after.branch))),
-    });
-    if (hold) {
-      waits += 1;
-      if (waits > WAIT.TRIES) {
-        console.log(`  ⚠️ #${route.number} refused ${waits} times running — parking rather than waiting on`);
-      } else {
-        console.log(`  ⏸ #${route.number} waiting out the usage window — back at ${clockAt(Date.now() + hold)}`);
-        await holdFor(hold);
-        continue;
-      }
-    } else {
+    // A spent window is not a failed ticket: park three and the breaker ends the night. `done` is
+    // "this session pushed", never "no ticket is live" — a session refused before claiming is
+    // indistinguishable from a landed one by that test.
+    if (waitsOn !== route.number) {
+      waitsOn = route.number;
       waits = 0;
     }
+    const hold = waitFor({ blocked: run.blocked, blockedUntil: run.blockedUntil, done: Boolean(pushed) });
+
+    if (hold && waits < WAIT.TRIES) {
+      waits += 1;
+      // Spent before the refusal is still spent.
+      totals.cost += run.result?.cost ?? 0;
+      totals.ms += run.ms;
+      prev = after;
+      // The pending pull request must not sleep through an unrelated window.
+      await drain();
+      console.log(
+        `  ⏸ #${route.number} waiting out the usage window (${waits}/${WAIT.TRIES}) — back at ${clockAt(Date.now() + hold)}`
+      );
+      if ((await holdFor(hold)) === "stopped") {
+        console.log("queue-loop: .loop-stop during the wait — stopping");
+        return 0;
+      }
+      continue;
+    }
+    if (hold) {
+      console.log(`  ⚠️ #${route.number} refused ${waits} times running — parking it rather than waiting on`);
+    }
+    waits = 0;
 
     totals.tickets += 1;
     totals.cost += run.result?.cost ?? 0;
@@ -785,7 +818,7 @@ async function main() {
           ? `the session exited ${run.status} in phase ${run.phase ?? "?"}`
           : null;
 
-    const pr = after?.branch ? pushedPr(after.branch) : null;
+    const pr = pushed;
     const facts = ticketFacts(route.number);
 
     if (pr && !why) {

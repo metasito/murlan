@@ -19,9 +19,7 @@ describe("readLine", () => {
     assert.deepEqual(readLine(line), { kind: "init", sessionId: "abc-123", version: "2.1.251" });
   });
 
-  // The fixture below is captured from a real run's `.loop-logs/962.jsonl`. The invented one it
-  // replaces had a status of "throttled" and an ISO reset — neither of which the stream emits — and
-  // a test agreeing with a shape nobody had seen is what let the loop misread the live one.
+  // Captured from a real run's `.loop-logs/962.jsonl`, not invented: the shape is the claim.
   test("reads a rate limit event: its status, its window, and its reset", () => {
     const line = JSON.stringify({
       type: "rate_limit_event",
@@ -37,6 +35,7 @@ describe("readLine", () => {
       status: "allowed",
       blocked: false,
       resetsAt: 1789134000,
+      resetsAtMs: 1789134000000,
       window: "five_hour",
       used: 0.28,
     });
@@ -169,12 +168,7 @@ describe("REDERIVE", () => {
   });
 });
 
-/**
- * The event that made this necessary, verbatim from `.loop-logs/962.jsonl`: a healthy session at
- * 30% of its five-hour window, emitting this several times a minute with `status: "allowed"`. The
- * loop read the type alone and announced "#962 rate limited — resets 1789134000", twice, about a
- * ticket that was building perfectly well.
- */
+/** A healthy session emits this several times a minute; only "rejected" is work refused. */
 describe("rate_limit_event is a usage meter, not an alarm", () => {
   const read = (line: string) => {
     const fact = readLine(line);
@@ -204,8 +198,12 @@ describe("rate_limit_event is a usage meter, not an alarm", () => {
     assert.equal(read(event("rejected")).blocked, true);
   });
 
-  test("a warning still counts as work refused, because it is not 'allowed'", () => {
-    assert.equal(read(event("allowed_warning")).blocked, true);
+  test("a warning is a session still being served, not a refusal", () => {
+    assert.equal(read(event("allowed_warning")).blocked, false);
+  });
+
+  test("seconds and milliseconds both come out as milliseconds", () => {
+    assert.equal(read(event("rejected")).resetsAtMs, 1789134000000);
   });
 
   test("it carries the window and the reset, so the wait can be stated", () => {
