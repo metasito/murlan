@@ -8,11 +8,18 @@
 // and nobody would notice.
 //
 // So: no chaos, a few seconds, and the only claim is that cards left hands.
+//
+// A few seconds is `GATE.playMinutes`, and it does not reach a game-over — asserted
+// below, so the claim cannot quietly stop being true. The rematch vote, the re-deal
+// and the high-water-mark reset are gated nowhere; they belong to soak.yml.
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
 import { hasDatabase, skipMessage } from "../helpers/testServer.ts";
 import { runSoak, REFUSAL_EVENTS } from "../soak/soak.ts";
+import { gate, GATE_PLAY_MS, MIN_ROUNDS } from "../soak/gateBudget.ts";
 import { errorEventFor } from "../../server/socketSafety.ts";
+
+const GATE = gate();
 
 describe("the soak harness drives a real game", {
   skip: hasDatabase() ? false : skipMessage(),
@@ -29,15 +36,30 @@ describe("the soak harness drives a real game", {
   });
   after(() => restore?.());
 
-  test("it deals, plays legal moves, and the table agrees throughout", async () => {
+  // Its own timeout: this is the one test whose cost is a wall clock the runner's
+  // speed cannot shorten, and `--test-timeout` serves every other test in the repo.
+  test("it deals, plays legal moves, and the table agrees throughout", { timeout: GATE.timeoutMs }, async () => {
     const result = await runSoak(
-      { seats: 4, minutes: 0.4, seed: 20260829, chaos: 0 },
+      { seats: 4, minutes: GATE.playMinutes, seed: 20260829, chaos: 0 },
       () => {}
     );
 
     assert.ok(
       result.moves > 0,
       "the harness took no turns at all — it is no longer playing the game"
+    );
+    // `gateBudget`'s floor claims this many rounds fit, and arithmetic cannot notice
+    // the figure behind that claim going stale.
+    assert.ok(
+      result.moves >= MIN_ROUNDS,
+      `${result.moves} rounds in ${GATE_PLAY_MS}ms, under the ${MIN_ROUNDS} the window is ` +
+        `sized for: a round costs more than gateBudget assumes, or this runner is slower ` +
+        `than the allowance there`
+    );
+    assert.equal(
+      result.manches,
+      0,
+      "the window now reaches a game-over — this file's header says it does not"
     );
     assert.deepEqual(
       result.violations,

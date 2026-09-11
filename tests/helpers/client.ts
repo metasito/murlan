@@ -177,8 +177,13 @@ export async function reconnectAs(
  * locally and 238s on CI — and the socket tests deliberately saturate the
  * connect path, so a budget chosen against local latency fails on load while
  * nothing is wrong. Every deadline scales instead of each one being retuned.
+ *
+ * `SLOW_RUNNER_SCALE` is that allowance named on its own, because a budget that
+ * has to hold on CI is judged against it from a machine where `DEADLINE_SCALE`
+ * reads 1 (`tests/soak/gateBudget.ts`).
  */
-export const DEADLINE_SCALE = process.env.CI ? 4 : 1;
+export const SLOW_RUNNER_SCALE = 4;
+export const DEADLINE_SCALE = process.env.CI ? SLOW_RUNNER_SCALE : 1;
 
 /**
  * Waits for a single occurrence of `event` on `socket`, timing out loudly
