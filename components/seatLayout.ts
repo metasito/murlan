@@ -138,25 +138,6 @@ export const HAND_WIDTH_SHARE = 0.56;
  */
 export const FIELD_WIDTH_SHARE = 0.55;
 
-// ─── Card jitter ──────────────────────────────────────────────────────────────
-
-/**
- * Cards thrown onto a table do not land square, so a combination keeps a small
- * jitter on top of the arc it lands on. The bound stays small: past a few
- * degrees the overlap stops reading as one combination.
- */
-export const COMBO_MAX_TILT = 4.5;
-
-/**
- * A card's own jitter (deg), derived from its id so the same combination looks
- * the same on every client and in every frame of its throw.
- */
-export function cardTilt(id: string, maxTilt: number): number {
-  let hash = 0;
-  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) | 0;
-  return ((Math.abs(hash) % 200) / 100 - 1) * maxTilt;
-}
-
 // ─── Seating ──────────────────────────────────────────────────────────────────
 
 export type FlyDirection = "top" | "bottom" | "left" | "right";

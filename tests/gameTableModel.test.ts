@@ -1,7 +1,8 @@
 // Pure logic behind the shared game table (components/GameTable.tsx), extracted
-// into components/seatLayout.ts, flightPhysics.ts, turnTimerUi.ts, tableFrame.ts
-// and tableA11y.ts so `node --test` can load it — the table itself is .tsx and
-// cannot be type-stripped by Node's loader.
+// into components/seatLayout.ts, flightPhysics.ts, turnTimerUi.ts, tableFrame.ts,
+// tableA11y.ts and the components/table/ modules that keep to the same shape, so
+// `node --test` can load it — the table itself is .tsx and cannot be type-stripped
+// by Node's loader.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
@@ -22,7 +23,6 @@ import {
   handVisibleH,
   handRowHeadroom,
   exchangeArrivalRise,
-  cardTilt,
   getOpponentPosition,
   seatDirection,
   arrangeOpponents,
@@ -40,9 +40,7 @@ import {
   viewerOwnsSeat,
 } from "../components/seatLayout.ts";
 import {
-  ROTATE_SETTLED,
-  ROTATE_UPRIGHT,
-  rotateGlyphAngle,
+  cardTilt,
   arrivingCard,
   readHandArrival,
   readThrownPlay,
@@ -69,7 +67,6 @@ import {
   FLIGHT_MS,
   LANDING_FRACTION,
   passedSeats,
-  straightTopRankChar,
   sparkOffset,
   SPARK_COUNT,
   flareKindFor,
@@ -78,6 +75,8 @@ import {
   type ImpactTier,
   type FlareKind,
 } from "../components/flightPhysics.ts";
+import { ROTATE_SETTLED, ROTATE_UPRIGHT, rotateGlyphAngle } from "../components/table/rotateGlyph.ts";
+import { straightTopRankChar } from "../components/table/straightTopRank.ts";
 import {
   canPassNow,
   playButtonLabel,

@@ -2,9 +2,9 @@
 // them.
 //
 // Its own file rather than `turnTimerUi.ts`, which takes nothing from
-// `lib/gameEngine` but a type and the `openingIsPending` predicate — see
-// `playButtonLabel`'s docstring, which states that only the caller can run
-// `canPlay`. This file is that caller, and it runs the engine for real.
+// `lib/gameEngine` but a type — see `playButtonLabel`'s docstring, which states
+// that only the caller can run `canPlay`. This file is that caller, and it runs
+// the engine for real.
 
 // Relative and extensioned, not `@/`: these are runtime imports, and Node's
 // built-in TypeScript loader (`node --test`) cannot resolve the bundler alias.
