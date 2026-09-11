@@ -83,8 +83,7 @@ export function budget(diff) {
 }
 
 // Wide, not git's default 3: `side()`'s ceiling above is reached through the window, so this is
-// what puts a docblock's `/*` inside the hunk editing its body. Context lines cost no count, so
-// the only thing a wider window can change is that state.
+// what puts a docblock's `/*` inside the hunk that edits its body.
 const CONTEXT = 20;
 
 export function diffOf(base, head = "HEAD") {
