@@ -65,11 +65,12 @@ it from; resetting a forgotten password ends every session on the account.
 request. That line holds the method, which of the app's addresses was asked for, the answer's
 status code and how long it took — and nothing about you at all. Your IP address is not written,
 nor are your request headers, nor anything you passed in the address's query string. The address
-is recorded as its general form rather than the one you sent, so a name, an account number or an
-invite code that appears in a link is not written either. A request line names nobody, and there
-is nothing in it to look up, export or delete. Your IP address still reaches the server, because a
-network connection cannot be made without one, and our rate limiter counts recent requests against
-it in memory to stop abuse — but it is never written down.
+is recorded as the general form of one of our own addresses rather than the one you sent, so a
+name, an account number or an invite code that appears in a link is not written either; and when
+what you asked for is not one of our addresses, no address at all is recorded for it. A request
+line names nobody, and there is nothing in it to look up, export or delete. Your IP address still
+reaches the server, because a network connection cannot be made without one, and our rate limiter
+counts recent requests against it in memory to stop abuse — but it is never written down.
 
 Other lines in the same log do name an account: crash reports, any game message the server
 refuses, actions on your account such as signing in or changing your password, and your email
@@ -125,7 +126,7 @@ a copy of your data.
 | Email confirmation and password-reset codes | Until they expire, minutes after being sent |
 | Push token | Until you sign out, register a sixth device (we keep your five most recent), give the device to someone who signs in on it, delete your account, or a later notification finds the device gone |
 | Session cookie | 30 days, or until you sign out or delete your account. Changing your password ends your other sessions; resetting it ends all of them |
-| Server logs — the line written for each request | Nothing in it identifies you: no IP address, no headers, no query string, no id from the address |
+| Server logs — the line written for each request | Nothing in it identifies you: no IP address, no headers, no query string, and no id from the address, which is recorded only as one of our own addresses in its general form |
 | Server logs — every other line (crash reports, refused game messages, account actions, failed email sends) | Our hosting provider's retention; not removed by account deletion |
 
 ## Contact

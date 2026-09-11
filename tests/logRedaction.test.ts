@@ -143,17 +143,32 @@ function requested(
  */
 async function requestLine(
   target: string,
-  { headers = {}, route }: { headers?: Record<string, string>; route?: string } = {}
+  {
+    headers = {},
+    route,
+    catchAll = false,
+    method = "GET",
+  }: { headers?: Record<string, string>; route?: string; catchAll?: boolean; method?: string } = {}
 ): Promise<Record<string, any> | null> {
   const { sink, written } = captureSink();
   const middleware = createRequestLogger(createLogger(sink));
 
   let handler: http.RequestListener;
-  if (route) {
+  if (route || catchAll) {
     const app = express();
     app.use(middleware);
-    app.get(route, (_req, res) => res.send("ok"));
-    app.delete(route, (_req, res) => res.send("ok"));
+    if (route) {
+      app.get(route, (_req, res) => res.send("ok"));
+      app.delete(route, (_req, res) => res.send("ok"));
+    }
+    // `server/app.ts`'s SPA catch-all, to the letter: GET only, and it hands
+    // `/api` onward rather than answering it. Both halves are what put a route
+    // on `req` that never handled the request.
+    if (catchAll)
+      app.get("*path", (req, res, next) => {
+        if (req.path.startsWith("/api")) return next();
+        res.send("spa");
+      });
     handler = app as unknown as http.RequestListener;
   } else {
     handler = (req, res) => {
@@ -175,7 +190,7 @@ async function requestLine(
   const { port } = server.address() as AddressInfo;
 
   try {
-    await requested(port, target, { headers, method: route ? "DELETE" : "GET" });
+    await requested(port, target, { headers, method });
     await settled;
     return written() === "" ? null : JSON.parse(written());
   } finally {
@@ -187,7 +202,7 @@ async function requestLine(
 /** The same, and it must have written a line — every assertion below is about what is in it. */
 async function completedRequestLine(
   target: string,
-  options?: { headers?: Record<string, string>; route?: string }
+  options?: { headers?: Record<string, string>; route?: string; catchAll?: boolean; method?: string }
 ): Promise<Record<string, any>> {
   const line = await requestLine(target, options);
   assert.ok(line, `nothing was logged for ${target} — every assertion about the line would pass vacuously`);
@@ -235,6 +250,7 @@ describe("what a completed request leaves in the log", () => {
   test("a matched route is logged as its pattern, so a room code never reaches the line", async () => {
     const line = await completedRequestLine("/api/friends/invites/SECRET7", {
       route: "/api/friends/invites/:roomCode",
+      method: "DELETE",
       headers: PROXY_HEADERS,
     });
     assert.equal(line.req.url, "/api/friends/invites/:roomCode");
@@ -246,9 +262,34 @@ describe("what a completed request leaves in the log", () => {
     assert.equal(line.req.url, "/api/friends/:friendUserId");
   });
 
-  test("a request no route matched keeps its path, without the query string", async () => {
+  test("a request no route matched has no address written for it", async () => {
     const line = await completedRequestLine("/favicon.ico?v=2", { headers: PROXY_HEADERS });
-    assert.equal(line.req.url, "/favicon.ico");
+    assert.equal(line.req.url, undefined);
+  });
+
+  // The three below are the shape `server/app.ts` actually produces and the
+  // bare-handler cases above cannot: express leaves `req.route` set on a route
+  // that declined, so a catch-all mounted before the API routes puts a pattern
+  // on requests it never answered, and answers none of the non-GET ones at all.
+  test("a catch-all that declined is not a match, so its own pattern is not the address", async () => {
+    const line = await completedRequestLine("/api/typo/SECRET7", { catchAll: true });
+    assert.equal(line.req.url, undefined, "the SPA catch-all's pattern was logged as the address asked for");
+    assert.equal(JSON.stringify(line).includes("SECRET7"), false);
+  });
+
+  test("a non-GET that no route matched writes no address", async () => {
+    const line = await completedRequestLine("/api/friends/invites/SECRET7", {
+      catchAll: true,
+      method: "POST",
+    });
+    assert.equal(JSON.stringify(line).includes("SECRET7"), false, "a room code reached the log through a 404");
+    assert.equal(line.req.url, undefined);
+  });
+
+  test("a client-side route the SPA shell answered writes no address either", async () => {
+    const line = await completedRequestLine("/room/SECRET7", { catchAll: true });
+    assert.equal(JSON.stringify(line).includes("SECRET7"), false, "a room code reached the log through a deep link");
+    assert.equal(line.req.url, undefined);
   });
 
   test("what a fault is diagnosed from still comes through", async () => {
@@ -262,8 +303,9 @@ describe("what a completed request leaves in the log", () => {
   });
 
   test("the helper can tell a written line from none at all", async () => {
-    // Without this the three negative assertions above would pass on `null`,
-    // which is what a broken logger returns.
+    // The floor under the assertion above: `/health` is the one test that
+    // passes on nothing being logged, so something has to fail when nothing is
+    // logged for anything else either.
     assert.notEqual(await requestLine("/api/profile"), null);
   });
 
@@ -283,12 +325,19 @@ describe("what a completed request leaves in the log", () => {
   });
 
   test("docs/PRIVACY.md still claims what the line actually holds", () => {
-    // The policy is written to be published; #962 is the second time it has had
-    // to describe this line. Read it against the assertions above, not against
-    // what the code did when it was written.
+    // The policy is written to be published, so every clause of it is one the
+    // suite above also asserts. This cannot check the prose against the code —
+    // it can only refuse to let a clause outlive the assertion that earns it.
     const policy = readFileSync(path.join(repoRoot, "docs", "PRIVACY.md"), "utf8");
-    assert.match(policy, /Your IP address is not written/);
-    assert.match(policy, /no IP address, no headers, no query string/);
+    for (const claim of [
+      /Your IP address is not written/,
+      /nor are your request headers/,
+      /nor anything you passed in the address's query string/,
+      /recorded as the general form of one of our own addresses rather than the one you sent/,
+      /when\s+what you asked for is not one of our addresses, no address at all is recorded for it/,
+      /no id from the address, which is recorded only as one of our own addresses in its general form/,
+    ])
+      assert.match(policy, claim, `docs/PRIVACY.md no longer states ${claim}`);
   });
 
   test("the log is written asynchronously, so no request waits on it", () => {
