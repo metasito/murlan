@@ -340,10 +340,10 @@ describe("what a completed request leaves in the log", () => {
       /Your IP address is not written/,
       /neither are your request headers/,
       /anything you passed in the address's query string/,
-      /written only when one of our\s+own routes answered/,
-      /then only in its general form rather than as you sent it/,
-      /for anything else[\s\S]{0,300}no address is written\s+at all/,
-      /no id from the address, which is written only when one of our own routes answered and then only in its general form/,
+      /written only when it matches one\s+of our own routes/,
+      /then only in that route's general form rather than as you sent it/,
+      /when it matches\s+none of them[\s\S]{0,300}no address is\s+written at all/,
+      /no id from the address, which is written only when it matches one of our own routes and then only in that route's general form/,
     ])
       assert.match(policy, claim, `docs/PRIVACY.md no longer states ${claim}`);
   });
