@@ -2,10 +2,9 @@ import express from "express";
 import type { Request, Response, NextFunction } from "express";
 import compression from "compression";
 import helmet from "helmet";
-import pinoHttp from "pino-http";
 import type { Server as HttpServer } from "node:http";
 import type { Server as SocketIOServer } from "socket.io";
-import { logger } from "./logger.ts";
+import { createRequestLogger, logger } from "./logger.ts";
 import { sessionMiddleware } from "./session.ts";
 import { pool } from "./db.ts";
 import { payload } from "./payload.ts";
@@ -282,12 +281,7 @@ export async function createApp(): Promise<CreatedApp> {
     })
   );
 
-  app.use(
-    pinoHttp({
-      logger,
-      autoLogging: { ignore: (req) => req.url === "/health" },
-    })
-  );
+  app.use(createRequestLogger());
 
   setupCors(app);
   setupBodyParsing(app);

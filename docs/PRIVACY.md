@@ -62,14 +62,16 @@ after it is issued. Changing your password ends your other sessions and keeps th
 it from; resetting a forgotten password ends every session on the account.
 
 **Server logs.** Like any web service, our server writes an operational log line for each
-request, which includes your IP address, the address requested, and your browser or device's
-request headers. Your session cookie and any authorization header are removed before the line is
-written. Crash reports and any game message the server refuses are written to the same log, with
-the account they came from, as is your email address if a message to you fails to send. These
-logs exist so we can diagnose faults and abuse. They are held
-by our hosting provider under its own retention, are not covered by the deletion windows above,
-and deleting your account does not remove them. Contact us at the address below if this matters
-to you.
+request. That line holds the method, the path requested, the answer's status code and how long it
+took — and nothing else. Your IP address is not written, nor are your request headers, nor
+anything you passed in the address's query string, so a request line names nobody and there is
+nothing in it to look up, export or delete. Your IP address still reaches the server, because a
+network connection cannot be made without one, and our rate limiter counts recent requests against
+it in memory to stop abuse — but it is never written down. Crash reports and any game message the
+server refuses are written to the same log, with the account they came from, as is your email
+address if a message to you fails to send; those lines are held by our hosting provider under its
+own retention, are not covered by the deletion windows above, and deleting your account does not
+remove them. Contact us at the address below if this matters to you.
 
 **On your own device.** The app stores some things locally, which never reach us: your signed-in
 account details, any offline single-player game in progress, the last online room you were in,
@@ -119,7 +121,8 @@ a copy of your data.
 | Email confirmation and password-reset codes | Until they expire, minutes after being sent |
 | Push token | Until you sign out, register a sixth device (we keep your five most recent), give the device to someone who signs in on it, delete your account, or a later notification finds the device gone |
 | Session cookie | 30 days, or until you sign out or delete your account. Changing your password ends your other sessions; resetting it ends all of them |
-| Server logs | Our hosting provider's retention; not removed by account deletion |
+| Server logs — the line written for each request | Nothing in it identifies you: no IP address, no headers, no query string |
+| Server logs — crash reports, refused game messages, failed email sends | Our hosting provider's retention; not removed by account deletion |
 
 ## Contact
 
