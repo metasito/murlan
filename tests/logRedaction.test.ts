@@ -16,7 +16,7 @@
 // another code-shaped field fails here until it is redacted too.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import http from "node:http";
@@ -25,6 +25,7 @@ import { once } from "node:events";
 import type { AddressInfo } from "node:net";
 import { Writable } from "node:stream";
 import { createLogger, createRequestLogger, REDACT_PATHS } from "../server/logger.ts";
+import { unmatchedKind } from "../server/staticPaths.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const schemas = readFileSync(path.join(repoRoot, "server", "socketSchemas.ts"), "utf8");
@@ -110,6 +111,92 @@ describe("what a refused socket event leaves in the log", () => {
   test("the session cookie is still redacted", () => {
     const line = loggedLine({ req: { headers: { cookie: "connect.sid=s%3Alive" } } });
     assert.equal(JSON.stringify(line).includes("connect.sid"), false);
+  });
+});
+
+/**
+ * Every `logger.<level>(…)` call under `server/`, as the source text of its
+ * arguments. Parentheses are balanced rather than matched to the first `)`, so
+ * a nested call cannot cut the arguments short and hide a field from the rules
+ * below; an unbalanced one inside a string only ever runs the slice long, which
+ * makes them stricter, never blinder.
+ */
+function loggerCalls(): { file: string; args: string }[] {
+  const calls: { file: string; args: string }[] = [];
+  const dir = path.join(repoRoot, "server");
+  for (const file of readdirSync(dir).filter((f) => f.endsWith(".ts"))) {
+    const src = readFileSync(path.join(dir, file), "utf8");
+    for (const m of src.matchAll(/\blogger\.(?:trace|debug|info|warn|error|fatal)\(/g)) {
+      const start = m.index + m[0].length;
+      let depth = 1;
+      let i = start;
+      while (i < src.length && depth > 0) {
+        if (src[i] === "(") depth += 1;
+        else if (src[i] === ")") depth -= 1;
+        i += 1;
+      }
+      calls.push({ file, args: src.slice(start, i - 1) });
+    }
+  }
+  return calls;
+}
+
+describe("what a hand-written line may name", () => {
+  test("the scan reads the calls it is a rule about", () => {
+    // The floor: every assertion below passes on an empty list.
+    const calls = loggerCalls();
+    assert.ok(calls.length > 20, `the scan found ${calls.length} logger calls under server/`);
+    for (const file of ["mail.ts", "routes.ts", "socketSafety.ts"])
+      assert.ok(calls.some((c) => c.file === file), `the scan is not reading server/${file}`);
+  });
+
+  test("no line names an email address", () => {
+    // `to` is the recipient's address at every call site that binds it, so the
+    // rule is the name rather than a list of lines. An account number is what
+    // a failed send is diagnosed from; the address adds nothing a log stream —
+    // which has no retention window and no deletion path — should outlive the
+    // account with.
+    for (const { file, args } of loggerCalls())
+      assert.equal(
+        /\bto\b\s*[,:}]/.test(args),
+        false,
+        `server/${file}: a logger call passes \`to\`, the address a message was sent to`
+      );
+  });
+
+  test("a crash report is not copied beside the row that expires it", () => {
+    const reported = loggerCalls().filter((c) => c.args.includes("Client reported an unhandled error"));
+    assert.equal(reported.length, 1, "the crash-report line was renamed or removed — this rule lost its subject");
+    for (const field of ["userId", "clientError", "message", "stack"])
+      assert.equal(
+        reported[0].args.includes(field),
+        false,
+        `the crash-report log line still carries ${field} — client_errors is swept at 90 days and ` +
+          `cleared by deleteUser, and a copy in the log is reached by neither`
+      );
+  });
+});
+
+describe("what an unmatched request says about itself", () => {
+  const HASHED = "/_expo/static/js/web/entry-0123456789abcdef0123456789abcdef.js";
+
+  test("each surface gets its own word", () => {
+    assert.equal(unmatchedKind("/api/friends/SECRET7"), "api");
+    assert.equal(unmatchedKind("/assets/icon.png"), "asset");
+    assert.equal(unmatchedKind(HASHED), "asset");
+    assert.equal(unmatchedKind("/index.html"), "asset");
+    assert.equal(unmatchedKind("/room/SECRET7"), "other");
+  });
+
+  test("the word is the whole of what it can say", () => {
+    // The reason an unmatched request writes no path: the only text it carries
+    // is the client's own. Three words, whatever was asked for.
+    for (const target of ["/assets/SECRET7.png", "/api/SECRET7", "/room/SECRET7", "/SECRET7"])
+      assert.ok(["api", "asset", "other"].includes(unmatchedKind(target)), target);
+  });
+
+  test("a prefix is not a path segment", () => {
+    assert.equal(unmatchedKind("/apifake/thing"), "other");
   });
 });
 
@@ -285,6 +372,25 @@ describe("what a completed request leaves in the log", () => {
     assert.equal(line.req.url, undefined);
   });
 
+  test("a lost build file and a probe of the API are not the same line", async () => {
+    // Neither is a 404 the other way round: the SPA catch-all answers a missing
+    // asset with the shell, 200, so the status code alone tells them apart for
+    // nobody. This is the one thing the line still says when it says no address.
+    const asset = await completedRequestLine(
+      "/_expo/static/js/web/entry-0123456789abcdef0123456789abcdef.js",
+      { catchAll: true }
+    );
+    const api = await completedRequestLine("/api/typo/SECRET7", { catchAll: true });
+    assert.equal(asset.req.kind, "asset");
+    assert.equal(api.req.kind, "api");
+    assert.equal(JSON.stringify(api).includes("SECRET7"), false, "the path reached the line through `kind`");
+  });
+
+  test("a matched route says nothing about a kind", async () => {
+    const line = await completedRequestLine("/api/friends/42", { route: "/api/friends/:friendUserId" });
+    assert.equal(line.req.kind, undefined);
+  });
+
   test("what a fault is diagnosed from still comes through", async () => {
     const line = await completedRequestLine("/api/profile", { headers: PROXY_HEADERS });
     assert.equal(line.req.method, "GET");
@@ -343,6 +449,8 @@ describe("what a completed request leaves in the log", () => {
       /written only when it matches one\s+of our own routes/,
       /then only in that route's general form rather than as you sent it/,
       /when it matches\s+none of them[\s\S]{0,300}no address is\s+written at all/,
+      /only one of three fixed words of our own saying which part of the service was\s+asked for/,
+      /never your email address and never the contents of a crash report/,
       /no id from the address, which is written only when it matches one of our own routes and then only in that route's general form/,
     ])
       assert.match(policy, claim, `docs/PRIVACY.md no longer states ${claim}`);

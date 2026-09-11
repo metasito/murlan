@@ -14,6 +14,7 @@ import { isAllowedOrigin, isBehindProxy } from "./cors.ts";
 import { registerGithubDevSyncHook } from "./devSyncHook.ts";
 import { checkMailConfigOnBoot } from "./mail.ts";
 import { runningCommitSha } from "./gitInfo.ts";
+import { CONTENT_HASHED } from "./staticPaths.ts";
 import * as fs from "fs";
 import * as path from "path";
 
@@ -136,11 +137,6 @@ function serveLandingPage({
 }
 
 export const __testables = { safeHost, renderLandingPage, CSP_DIRECTIVES };
-
-// Metro names its build output with a 32-hex content hash — `<name>.<hash>.<ext>`
-// for assets (optionally followed by an `@2x` density suffix) and
-// `<name>-<hash>.<ext>` for the JS bundles. Those URLs never change their bytes.
-const CONTENT_HASHED = /[.-][0-9a-f]{32}(@[0-9]+x)?\.[^.]+$/;
 
 /**
  * Cache-Control for one file under `dist/`. Content-hashed files get a year;

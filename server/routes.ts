@@ -318,7 +318,7 @@ export function verificationEmailBody(username: string, code: string): string {
 /** Never awaited by a caller — a provider outage must not delay or fail the response it rides with. */
 function sendVerificationEmail(to: string, username: string, code: string): void {
   sendMail(to, "Verify your Murlan email", verificationEmailBody(username, code))
-    .catch((err) => logger.error({ err, to }, "sendVerificationEmail failed"));
+    .catch((err) => logger.error({ err }, "sendVerificationEmail failed"));
 }
 
 /**
@@ -332,7 +332,7 @@ function sendPasswordResetEmail(to: string, token: string): void {
     "Reset your Murlan password",
     `Your Murlan password reset code is:\n\n${token}\n\nThis code expires in 30 minutes. ` +
       `If you did not request this, you can ignore this email.`
-  ).catch((err) => logger.error({ err, to }, "sendPasswordResetEmail failed"));
+  ).catch((err) => logger.error({ err }, "sendPasswordResetEmail failed"));
 }
 
 /**
@@ -884,7 +884,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       request: sender && request ? friendRequestRow(request, sender) : undefined,
     } satisfies FriendRequestIncoming);
 
-    logger.info({ from: req.session.userId, to: friend.id }, "Friend request sent");
+    logger.info({ fromUserId: req.session.userId, toUserId: friend.id }, "Friend request sent");
     res.json({ ok: true, username: friend.username });
   });
 
@@ -1012,12 +1012,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   //
   // In-house rather than a third-party crash SDK: any such SDK is a data
   // processor, which changes the App Store privacy answers and adds a
-  // dependency that runs in every session. This writes to the log the server
-  // already has, so a crash on a device is visible wherever the server's
-  // output is read.
+  // dependency that runs in every session. The report itself goes to
+  // `client_errors`, which `sweepRetention` expires at 90 days and
+  // `deleteUser` clears; the log line says only that a crash happened and on
+  // what platform, because nothing sweeps or deletes a log stream.
   //
-  // Authenticated on purpose. An open endpoint is an open log-injection
-  // vector, and a crash worth chasing is one a real account hit.
+  // Authenticated on purpose. An open endpoint is an open write into that
+  // table, and a crash worth chasing is one a real account hit.
   app.post(
     "/api/client-errors",
     requireAuth,
@@ -1032,10 +1033,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         appVersion?: string;
         screen?: string;
       };
-      logger.error(
-        { userId: req.session.userId, clientError: report },
-        "Client reported an unhandled error"
-      );
+      logger.error({ platform: report.platform }, "Client reported an unhandled error");
       // Also kept as a row, so the owner can read it on /admin later rather
       // than only in the log stream. Fire-and-forget: a crash report failing
       // to store must not turn into a second failure for a client that is

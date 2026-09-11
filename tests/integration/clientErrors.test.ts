@@ -1,10 +1,10 @@
 // tests/integration/clientErrors.test.ts — the crash-report endpoint.
 //
-// This is the only route that takes attacker-controlled free text and writes it
-// straight into the server log, so its limits are the whole point of it. An
-// unbounded stack field is a way to fill a disk, and an unauthenticated one is
-// open log injection. Both are asserted here against the real server rather
-// than inferred from the schema.
+// This is the only route that takes attacker-controlled free text and stores
+// it, so its limits are the whole point of it. An unbounded stack field is a
+// way to fill a disk, and an unauthenticated one is an open write into a table
+// nobody asked for. Both are asserted here against the real server rather than
+// inferred from the schema.
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
 import pg from "pg";
@@ -60,7 +60,7 @@ describe("client crash reports", { skip: hasDatabase() ? false : skipMessage() }
   });
 
   test("an unauthenticated report is refused", async () => {
-    // Otherwise anyone on the internet can write arbitrary text into the log.
+    // Otherwise anyone on the internet can write arbitrary text into the table.
     const res = await post({ message: "injected" }, false);
     assert.equal(res.status, 401);
   });
