@@ -818,6 +818,8 @@ export function cardTilt(id: string, maxTilt: number): number {
   return ((Math.abs(hash) % 200) / 100 - 1) * maxTilt;
 }
 
+// ─── Thrown plays ─────────────────────────────────────────────────────────────
+
 export interface ThrownPlay {
   dir: FlyDirection;
   cards: Card[];
