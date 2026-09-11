@@ -8,10 +8,19 @@
 // and nobody would notice.
 //
 // So: no chaos, a few seconds, and the only claim is that cards left hands.
+//
+// A few seconds is `GATE.playMinutes`, and what that window does not reach is a
+// game-over: nine seconds is around seventeen turns, and a four-handed manche
+// runs far past that. The rematch vote, the re-deal and the high-water-mark
+// reset below are exercised by `npm run soak` and by soak.yml, never here — and
+// they were not exercised here at 24s either, where `result.manches` was already
+// 0. What this run gates is the turn: a deal, legal moves, and four views that
+// agree over every one of them.
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
 import { hasDatabase, skipMessage } from "../helpers/testServer.ts";
 import { runSoak, REFUSAL_EVENTS } from "../soak/soak.ts";
+import { GATE } from "../soak/gateBudget.ts";
 import { errorEventFor } from "../../server/socketSafety.ts";
 
 describe("the soak harness drives a real game", {
@@ -29,9 +38,13 @@ describe("the soak harness drives a real game", {
   });
   after(() => restore?.());
 
-  test("it deals, plays legal moves, and the table agrees throughout", async () => {
+  // Its own timeout, not the suite's: this is the one test whose cost is a wall
+  // clock the runner's speed cannot shorten, and `--test-timeout` is a single
+  // number serving every other test in the repo. `gateBudget` derives both halves
+  // from the window, so neither can be retuned without the other.
+  test("it deals, plays legal moves, and the table agrees throughout", { timeout: GATE.timeoutMs }, async () => {
     const result = await runSoak(
-      { seats: 4, minutes: 0.4, seed: 20260829, chaos: 0 },
+      { seats: 4, minutes: GATE.playMinutes, seed: 20260829, chaos: 0 },
       () => {}
     );
 
