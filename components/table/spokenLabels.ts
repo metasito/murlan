@@ -14,7 +14,7 @@ import {
 } from "@/lib/gameEngine";
 import { rankSpokenName, cardSpokenName, suitSpokenName } from "@/lib/cardNames";
 import type { TFn, TnFn, TranslationKey } from "@/lib/i18n";
-import { straightTopRankChar } from "@/components/flightPhysics";
+import { straightTopRankChar } from "@/components/table/straightTopRank";
 import { type PlayButtonLabel } from "@/components/turnTimerUi";
 import { type TableA11yStrings } from "@/components/tableA11y";
 

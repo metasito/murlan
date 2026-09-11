@@ -109,10 +109,6 @@ export function urgentThresholdSeconds(clockSeconds: number): number {
   return Math.max(URGENT_TICK_SECONDS, Math.ceil(clockSeconds * URGENT_FRACTION));
 }
 
-// Shared with the server (#830), which grants the opener's first turn a
-// longer AFK window on the same condition.
-export { openingIsPending } from "../lib/gameEngine.ts";
-
 /**
  * Whether the turn countdown should run. Offline it only answers a played
  * combination (leading has no deadline); online it mirrors the server's AFK

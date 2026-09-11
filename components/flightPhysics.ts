@@ -799,37 +799,24 @@ export function readHandArrival(input: {
   };
 }
 
-const FACE_VALUE_RANK: Record<number, string> = {
-  1: "A", 2: "2", 3: "3", 4: "4", 5: "5", 6: "6", 7: "7", 8: "8", 9: "9", 10: "10",
-  11: "J", 12: "Q", 13: "K", 14: "A",
-};
+// ─── Card jitter ──────────────────────────────────────────────────────────────
 
 /**
- * Renders a straight's `Combination.strength` — already the correct
- * top-of-sequence face value, ace-high-vs-ace-low resolved by
- * `getStraightStrength` — back as a rank character, for the spoken top card.
- *
- * Taking `cards[cards.length - 1].rank` instead gets A-2-3-4-5 wrong: its top
- * card is 5.
+ * Cards thrown onto a table do not land square, so a combination keeps a small
+ * jitter on top of the arc it lands on. The bound stays small: past a few
+ * degrees the overlap stops reading as one combination.
  */
-export function straightTopRankChar(strength: number): string {
-  return FACE_VALUE_RANK[strength] ?? String(strength);
+export const COMBO_MAX_TILT = 4.5;
+
+/**
+ * A card's own jitter (deg), derived from its id so the same combination looks
+ * the same on every client and in every frame of its throw.
+ */
+export function cardTilt(id: string, maxTilt: number): number {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) | 0;
+  return ((Math.abs(hash) % 200) / 100 - 1) * maxTilt;
 }
-
-// ─── The portrait cover's glyph ───────────────────────────────────────────────
-
-/** A landscape phone glyph stood on its end, which is how the player holds it. */
-export const ROTATE_UPRIGHT = 0;
-/** Lying down: the pose the prompt is asking for, and where it comes to rest. */
-export const ROTATE_SETTLED = 1;
-const UPRIGHT_DEGREES = 90;
-
-/** The glyph's angle at `turn`, upright at `ROTATE_UPRIGHT` and flat at `ROTATE_SETTLED`. */
-export function rotateGlyphAngle(turn: number): number {
-  "worklet";
-  return (ROTATE_SETTLED - turn) * UPRIGHT_DEGREES;
-}
-
 
 export interface ThrownPlay {
   dir: FlyDirection;
