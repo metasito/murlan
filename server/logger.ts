@@ -1,8 +1,11 @@
 import pino from "pino";
+import pinoHttp from "pino-http";
+import type { IncomingMessage, ServerResponse } from "node:http";
 
-// pino-http's default req/res serializers copy the entire header bag, which
-// would put the live session cookie and any bearer token in cleartext on every
-// completed-request log line.
+// A hand-written line handed a request or response object carries the live
+// session cookie and any bearer token in cleartext. The completed-request line
+// is not one of them: it goes through `HTTP_SERIALIZERS` below, which writes no
+// headers at all.
 //
 // A room code is the sole credential for `room:join` and `room:spectate`, so
 // the `payload` a refused socket event carries (`server/socketSafety.ts`) is
@@ -42,3 +45,59 @@ export function createLogger(destination?: pino.DestinationStream) {
 }
 
 export const logger = createLogger();
+
+// pino-http's defaults emit the whole header bag and the socket's peer address.
+// `x-forwarded-for`, `forwarded` (RFC 7239), `x-real-ip` and `cf-connecting-ip`
+// each carry the player's own IP. Truncating or hashing an address leaves
+// personal data under the same retention and deletion duty (CNIL's Google
+// Analytics decision, 10 February 2022; EDPB Guidelines 01/2025 on
+// pseudonymisation), so none of it is written at all.
+//
+// The address is written only as the pattern of the route that answered —
+// `DELETE /api/friends/invites/:roomCode` — because the requested one holds a
+// room code, the very thing `REDACT_PATHS` keeps out of the line, and
+// `/api/friends/:friendUserId` names an account. Anything else writes no
+// address: the only other text available is the client's own. A wildcard counts
+// as anything else — express leaves `req.route` set on a route that called
+// `next()`, and `server/app.ts`'s SPA catch-all declines `/api` that way.
+//
+// `req.baseUrl` is deliberately not joined on: it is matched text, so a Router
+// mounted at `/api/rooms/:roomCode` would put the code back. `path` is typed as
+// it arrives, not as it is usually written — a regexp route makes it a RegExp.
+type LoggedRequest = IncomingMessage & { route?: { path?: unknown } };
+
+function loggedRequest(req: LoggedRequest) {
+  const pattern = req.route?.path;
+  return {
+    method: req.method,
+    url: typeof pattern === "string" && !pattern.includes("*") ? pattern : undefined,
+  };
+}
+
+const HTTP_SERIALIZERS = {
+  req: loggedRequest,
+  res: (res: ServerResponse) => ({ statusCode: res.statusCode }),
+};
+
+/** The completed-request logger `server/app.ts` mounts. */
+export function createRequestLogger(target: pino.Logger = logger) {
+  return pinoHttp({
+    logger: target,
+    serializers: HTTP_SERIALIZERS,
+    // On, pino-http composes its own serializer under ours, which hands
+    // `loggedRequest` a plain object with no `route` on it.
+    wrapSerializers: false,
+    // The completed-request line is assembled here, at `finish`, rather than
+    // bound to the child logger: pino serializes a child's bindings when the
+    // child is made, which is before routing, and `req.route` is the whole
+    // point. `quietResLogger` is what drops the early binding — leave it out
+    // and the line carries both, the second one still holding the address.
+    quietResLogger: true,
+    customSuccessObject: (req: LoggedRequest, _res: ServerResponse, line: object) => ({ ...line, req }),
+    customErrorObject: (req: LoggedRequest, _res: ServerResponse, _err: Error, line: object) => ({
+      ...line,
+      req,
+    }),
+    autoLogging: { ignore: (req: IncomingMessage) => req.url === "/health" },
+  });
+}
