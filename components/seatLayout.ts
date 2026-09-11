@@ -17,9 +17,9 @@ import { Spacing } from "../lib/tokens.ts";
 // Both game screens are laid out around these, and changing one without the
 // other silently breaks a screen — `tests/gameTableModel.test.ts` is what pins
 // their values. The card dimensions belong to cardFaceModel.ts, which draws the
-// card; the rest are defined here (rather than in the components/table/ files
-// that read them) so that scan has one place to look and so the frame maths in
-// tableFrame.ts can use them directly.
+// card; the rest are defined here rather than in the components/table/ files
+// that read them, so one module owns the number and the frame maths in
+// tableFrame.ts can use it directly.
 
 // The column a side seat's ring and label stand in. The prototype's own side
 // seat measures 92 at scale 1; the fan leans out of the column by design.
@@ -340,8 +340,8 @@ export function seatLabelH(scale: number): number {
 /**
  * A seat's own fan of `count` backs at `backScale` — the one solve `CardFan`
  * (components/table/seats.tsx) performs for its wrapper box, `topFanHeight`
- * and `flightOrigin` below, so none of the three can disagree with what the
- * fan actually draws.
+ * below, and `flightOrigin` (components/flightPhysics.ts), so none of the three
+ * can disagree with what the fan actually draws.
  */
 export function seatFanArc(count: number, backScale: number) {
   const backW = CARD_BACK_W(backScale);
@@ -372,8 +372,8 @@ export function sideSlotHeight(scale: number, displayedCount: number): number {
 /**
  * The top seat's own fan height for `displayedCount` backs.
  *
- * Exported only because `flightOrigin` needs it and lives in `flightPhysics.ts`
- * — it was module-private while both sat in one file. Nothing else calls it.
+ * Exported for `flightOrigin` (components/flightPhysics.ts), which is the only
+ * caller outside this file.
  */
 export function topFanHeight(scale: number, displayedCount: number): number {
   const drawn = Math.min(displayedCount, FAN_DRAWN_CARDS.top);
