@@ -16,18 +16,31 @@ const SHELL_FILES = new Set(["index.html", "favicon.ico", "metadata.json"]);
 const STATIC_MOUNT = /^\/(assets|_expo)\//;
 
 /**
- * One of three words for a request no route claimed, so that a lost file under
+ * Marks a request the SPA catch-all answered. `express.static` sets no
+ * `req.route` and neither does a wildcard worth logging, so without this a file
+ * that is present and one that is missing are the same line: both 200, both
+ * with no address. A symbol rather than a field, so nothing serializes it.
+ */
+export const ANSWERED_BY_SHELL = Symbol("murlan.answeredByShell");
+
+/**
+ * One of four words for a request no route claimed, so that a lost file under
  * `dist/` and a scan sweep of the API are not the same line. Never the path
  * itself: the only text an unmatched request carries is whatever the client
  * chose to ask for.
  *
- * A missing asset does not 404 — the SPA catch-all answers it with the shell,
- * 200 — so the status code alone cannot tell the two apart.
+ * `shell` is the one that names a fault — a request shaped like a build file
+ * that the SPA fallback answered with `index.html`, which is what a deploy
+ * missing a bundle looks like from the outside. It is not a 404, so the status
+ * code alone reports nothing.
  */
-export function unmatchedKind(pathname: string): "api" | "asset" | "other" {
+export function unmatchedKind(
+  pathname: string,
+  answeredByShell = false
+): "api" | "asset" | "shell" | "other" {
   if (pathname === "/api" || pathname.startsWith("/api/")) return "api";
   const name = path.basename(pathname);
   if (STATIC_MOUNT.test(pathname) || CONTENT_HASHED.test(name) || SHELL_FILES.has(name))
-    return "asset";
+    return answeredByShell ? "shell" : "asset";
   return "other";
 }

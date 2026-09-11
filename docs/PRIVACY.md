@@ -68,7 +68,7 @@ anything you passed in the address's query string. An address is written only wh
 of our own routes, and then only in that route's general form rather than as you sent it, so a
 name, an account number or an invite code that appears in a link is not written; when it matches
 none of them — a file the app loads, an address of ours that does not exist — no address is
-written at all, only one of three fixed words of our own saying which part of the service was
+written at all, only one of four fixed words of our own saying which part of the service was
 asked for, so that a missing file and a stranger probing us do not read the same. A request line
 names nobody, and there is nothing in it to look up, export or delete.
 Your IP address still reaches the server, because a network connection cannot be made without
@@ -77,7 +77,8 @@ never written down.
 
 Other lines in the same log do name an account: any game message the server refuses, and actions
 on your account such as signing in or changing your password. Those carry your account number,
-never your email address and never the contents of a crash report — a crash report is kept in the
+and your username where the action was about it — never your email address and never the contents
+of a crash report — a crash report is kept in the
 database alone, where both the 90-day window and account deletion reach it; a failed email send
 is logged as the reason it failed, without the address. The lines that do name an account are
 held by our hosting provider under its own retention, are not covered by the deletion windows
@@ -132,8 +133,8 @@ a copy of your data.
 | Email confirmation and password-reset codes | Until they expire, minutes after being sent |
 | Push token | Until you sign out, register a sixth device (we keep your five most recent), give the device to someone who signs in on it, delete your account, or a later notification finds the device gone |
 | Session cookie | 30 days, or until you sign out or delete your account. Changing your password ends your other sessions; resetting it ends all of them |
-| Server logs — the line written for each request | Nothing in it identifies you: no IP address, no headers, no query string, and no id from the address, which is written only when it matches one of our own routes and then only in that route's general form; when it matches none, one of three fixed words of ours saying which part of the service was asked for |
-| Server logs — every other line (refused game messages, account actions) | Our hosting provider's retention; not removed by account deletion. Carries your account number only — no email address, and no crash report |
+| Server logs — the line written for each request | Nothing in it identifies you: no IP address, no headers, no query string, and no id from the address, which is written only when it matches one of our own routes and then only in that route's general form; when it matches none, one of four fixed words of ours saying which part of the service was asked for |
+| Server logs — every other line (refused game messages, account actions) | Our hosting provider's retention; not removed by account deletion. Carries your account number, and your username where the action was about it — no email address, and no crash report |
 
 ## Contact
 

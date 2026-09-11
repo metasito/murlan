@@ -33,11 +33,17 @@ export function mailHealth(): MailHealth {
  * path also lands a `mail.sendFailed` event row, which `funnel()` counts and
  * `/admin` can show; see `boot check` below for the once-at-startup half.
  *
- * No failure line names `to`. An address in the log stream outlives the account
- * that owned it — nothing sweeps or deletes a log — and the reason a send
- * failed is already in `err`, `status` and `mailFailureReason`.
+ * No failure line names `to`: an address in the log stream outlives the account
+ * that owned it, because nothing sweeps or deletes a log. `userId` is what a
+ * failed send is diagnosed from instead — which account, and how many distinct
+ * ones an outage hit — and it is what a deletion request can already reach.
  */
-export async function sendMail(to: string, subject: string, text: string): Promise<boolean> {
+export async function sendMail(
+  to: string,
+  subject: string,
+  text: string,
+  userId: string
+): Promise<boolean> {
   counts.attempted += 1;
 
   // #893: an e2e run cannot get a raw token any other way — only its hash is
@@ -51,7 +57,7 @@ export async function sendMail(to: string, subject: string, text: string): Promi
       counts.succeeded += 1;
       return true;
     } catch (err) {
-      logger.error({ err }, "sendMail: failed to write to the mail sink");
+      logger.error({ err, userId }, "sendMail: failed to write to the mail sink");
       counts.failed += 1;
       return false;
     }
@@ -60,8 +66,8 @@ export async function sendMail(to: string, subject: string, text: string): Promi
   const apiKey = process.env.RESEND_API_KEY;
   const from = process.env.MAIL_FROM_ADDRESS;
   if (!apiKey || !from) {
-    logger.warn("sendMail: RESEND_API_KEY/MAIL_FROM_ADDRESS not set, skipping send");
-    trackEvent("mail.sendFailed", null, { mailFailureReason: "unconfigured" });
+    logger.warn({ userId }, "sendMail: RESEND_API_KEY/MAIL_FROM_ADDRESS not set, skipping send");
+    trackEvent("mail.sendFailed", userId, { mailFailureReason: "unconfigured" });
     counts.failed += 1;
     return false;
   }
@@ -75,16 +81,16 @@ export async function sendMail(to: string, subject: string, text: string): Promi
       body: JSON.stringify({ from, to, subject, text }),
     });
     if (!res.ok) {
-      logger.error({ status: res.status }, "sendMail: provider rejected the send");
-      trackEvent("mail.sendFailed", null, { mailFailureReason: "rejected" });
+      logger.error({ status: res.status, userId }, "sendMail: provider rejected the send");
+      trackEvent("mail.sendFailed", userId, { mailFailureReason: "rejected" });
       counts.failed += 1;
       return false;
     }
     counts.succeeded += 1;
     return true;
   } catch (err) {
-    logger.error({ err }, "sendMail: send failed");
-    trackEvent("mail.sendFailed", null, { mailFailureReason: "network_error" });
+    logger.error({ err, userId }, "sendMail: send failed");
+    trackEvent("mail.sendFailed", userId, { mailFailureReason: "network_error" });
     counts.failed += 1;
     return false;
   }

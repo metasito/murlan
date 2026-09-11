@@ -316,8 +316,8 @@ export function verificationEmailBody(username: string, code: string): string {
 }
 
 /** Never awaited by a caller — a provider outage must not delay or fail the response it rides with. */
-function sendVerificationEmail(to: string, username: string, code: string): void {
-  sendMail(to, "Verify your Murlan email", verificationEmailBody(username, code))
+function sendVerificationEmail(to: string, username: string, code: string, userId: string): void {
+  sendMail(to, "Verify your Murlan email", verificationEmailBody(username, code), userId)
     .catch((err) => logger.error({ err }, "sendVerificationEmail failed"));
 }
 
@@ -326,12 +326,13 @@ function sendVerificationEmail(to: string, username: string, code: string): void
  * request-password-reset handler replies before this settles, so the only
  * work the response waits on is the token mint, not the outbound HTTPS call.
  */
-function sendPasswordResetEmail(to: string, token: string): void {
+function sendPasswordResetEmail(to: string, token: string, userId: string): void {
   sendMail(
     to,
     "Reset your Murlan password",
     `Your Murlan password reset code is:\n\n${token}\n\nThis code expires in 30 minutes. ` +
-      `If you did not request this, you can ignore this email.`
+      `If you did not request this, you can ignore this email.`,
+    userId
   ).catch((err) => logger.error({ err }, "sendPasswordResetEmail failed"));
 }
 
@@ -452,7 +453,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // add-email's own — see authTokens.ts.
         invalidatePendingAuthTokens(user.id, "email_verify")
           .then(() => mintAuthCode({ userId: user.id, email, purpose: "email_verify", ttlMs: EMAIL_VERIFY_CODE_TTL_MS }))
-          .then((code) => sendVerificationEmail(email, username, code))
+          .then((code) => sendVerificationEmail(email, username, code, user.id))
           .catch((err) => logger.error({ err, userId: user.id }, "Failed to mint the verification code"));
       });
     });
@@ -591,7 +592,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     await invalidatePendingAuthTokens(userId, "email_verify");
     const code = await mintAuthCode({ userId, email, purpose: "email_verify", ttlMs: EMAIL_VERIFY_CODE_TTL_MS });
-    sendVerificationEmail(email, user.username, code);
+    sendVerificationEmail(email, user.username, code, userId);
     logger.info({ userId }, "Email added, pending verification");
     res.json(sessionUser(user));
   });
@@ -663,7 +664,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       purpose: "email_verify",
       ttlMs: EMAIL_VERIFY_CODE_TTL_MS,
     });
-    sendVerificationEmail(user.email, user.username, code);
+    sendVerificationEmail(user.email, user.username, code, userId);
     logger.info({ userId }, "Verification email resent");
     res.json({ ok: true });
   });
@@ -690,7 +691,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Not awaited: the request this reply belonged to is already done, so
       // a rejection here has no caller left to reach it except this catch.
       mintAuthToken(user.id, "password_reset", PASSWORD_RESET_TOKEN_TTL_MS)
-        .then((token) => sendPasswordResetEmail(user.email!, token))
+        .then((token) => sendPasswordResetEmail(user.email!, token, user.id))
         .catch((err) => logger.error({ err, userId: user.id }, "Failed to mint the reset token"));
     }
   );
@@ -1049,7 +1050,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         platform: report.platform,
         appVersion: report.appVersion,
         context: report.componentStack ? { componentStack: report.componentStack } : {},
-      }).catch((err) => logger.error({ err }, "Failed to store a client error report"));
+        // The one line that may hold the report: the row it belongs in does
+        // not exist, so this is not a second copy of anything.
+      }).catch((err) => logger.error({ err, report }, "Failed to store a client error report"));
       // Nothing to say back. The client is already showing its error screen and
       // must not depend on this having worked.
       res.status(204).end();

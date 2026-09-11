@@ -25,7 +25,7 @@ import { once } from "node:events";
 import type { AddressInfo } from "node:net";
 import { Writable } from "node:stream";
 import { createLogger, createRequestLogger, REDACT_PATHS } from "../server/logger.ts";
-import { unmatchedKind } from "../server/staticPaths.ts";
+import { ANSWERED_BY_SHELL, unmatchedKind } from "../server/staticPaths.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const schemas = readFileSync(path.join(repoRoot, "server", "socketSchemas.ts"), "utf8");
@@ -114,18 +114,42 @@ describe("what a refused socket event leaves in the log", () => {
   });
 });
 
+/** Every `.ts` under `server/`, at any depth, so a later split cannot narrow the scan. */
+function serverSources(dir = path.join(repoRoot, "server")): string[] {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) return serverSources(full);
+    return entry.name.endsWith(".ts") ? [full] : [];
+  });
+}
+
+/** The leading `{…}` of a call's arguments — the fields, without the message after them. */
+function firstObjectArg(args: string): string {
+  const text = args.trimStart();
+  if (!text.startsWith("{")) return "";
+  let depth = 0;
+  for (let i = 0; i < text.length; i += 1) {
+    if (text[i] === "{") depth += 1;
+    else if (text[i] === "}" && (depth -= 1) === 0) return text.slice(0, i + 1);
+  }
+  return text;
+}
+
 /**
- * Every `logger.<level>(…)` call under `server/`, as the source text of its
- * arguments. Parentheses are balanced rather than matched to the first `)`, so
- * a nested call cannot cut the arguments short and hide a field from the rules
- * below; an unbalanced one inside a string only ever runs the slice long, which
- * makes them stricter, never blinder.
+ * Every `logger.<level>(…)` call under `server/`, as its fields and its whole
+ * argument text. Braces and parentheses are balanced rather than matched to the
+ * first closer, so a nested object or call cannot cut the slice short and hide
+ * a field from the rules below; one unbalanced inside a string only ever runs
+ * the slice long, which makes them stricter, never blinder.
+ *
+ * The rules read `fields`, not `args`: a message is prose, and "handed the seat
+ * to, then took it back" is not a privacy defect.
  */
-function loggerCalls(): { file: string; args: string }[] {
-  const calls: { file: string; args: string }[] = [];
-  const dir = path.join(repoRoot, "server");
-  for (const file of readdirSync(dir).filter((f) => f.endsWith(".ts"))) {
-    const src = readFileSync(path.join(dir, file), "utf8");
+function loggerCalls(): { file: string; fields: string; args: string }[] {
+  const calls: { file: string; fields: string; args: string }[] = [];
+  for (const full of serverSources()) {
+    const file = path.relative(path.join(repoRoot, "server"), full);
+    const src = readFileSync(full, "utf8");
     for (const m of src.matchAll(/\blogger\.(?:trace|debug|info|warn|error|fatal)\(/g)) {
       const start = m.index + m[0].length;
       let depth = 1;
@@ -135,7 +159,8 @@ function loggerCalls(): { file: string; args: string }[] {
         else if (src[i] === ")") depth -= 1;
         i += 1;
       }
-      calls.push({ file, args: src.slice(start, i - 1) });
+      const args = src.slice(start, i - 1);
+      calls.push({ file, fields: firstObjectArg(args), args });
     }
   }
   return calls;
@@ -146,21 +171,38 @@ describe("what a hand-written line may name", () => {
     // The floor: every assertion below passes on an empty list.
     const calls = loggerCalls();
     assert.ok(calls.length > 20, `the scan found ${calls.length} logger calls under server/`);
-    for (const file of ["mail.ts", "routes.ts", "socketSafety.ts"])
+    for (const file of ["mail.ts", "routes.ts", "socketSafety.ts", "socketRooms.ts"])
       assert.ok(calls.some((c) => c.file === file), `the scan is not reading server/${file}`);
+    assert.ok(
+      calls.some((c) => c.fields.includes("userId")),
+      "no call's fields were read — firstObjectArg is returning nothing"
+    );
   });
 
   test("no line names an email address", () => {
     // `to` is the recipient's address at every call site that binds it, so the
-    // rule is the name rather than a list of lines. An account number is what
-    // a failed send is diagnosed from; the address adds nothing a log stream —
-    // which has no retention window and no deletion path — should outlive the
-    // account with.
-    for (const { file, args } of loggerCalls())
+    // rule is the name rather than a list of lines. `userId` is what a failed
+    // send is diagnosed from; the address adds nothing a log stream — which has
+    // no retention window and no deletion path — should outlive the account
+    // with. The quote is for `{ "to": … }`, which is the same field.
+    for (const { file, fields } of loggerCalls())
       assert.equal(
-        /\bto\b\s*[,:}]/.test(args),
+        /\bto\b"?\s*[,:}]/.test(fields),
         false,
         `server/${file}: a logger call passes \`to\`, the address a message was sent to`
+      );
+  });
+
+  test("no line names a live room code", () => {
+    // The credential `REDACT_PATHS` keeps out of a refused socket event is the
+    // same credential when a handler logs it directly, where no redact path
+    // reaches it: `payload.code` is a path, and a top-level `code` is a
+    // refusal's own reason, which the suite above asserts is kept.
+    for (const { file, fields } of loggerCalls())
+      assert.equal(
+        /\broom\.code\b|\broomCode\b/.test(fields),
+        false,
+        `server/${file}: a logger call passes a room code, the sole credential for joining that table`
       );
   });
 
@@ -169,11 +211,19 @@ describe("what a hand-written line may name", () => {
     assert.equal(reported.length, 1, "the crash-report line was renamed or removed — this rule lost its subject");
     for (const field of ["userId", "clientError", "message", "stack"])
       assert.equal(
-        reported[0].args.includes(field),
+        reported[0].fields.includes(field),
         false,
         `the crash-report log line still carries ${field} — client_errors is swept at 90 days and ` +
           `cleared by deleteUser, and a copy in the log is reached by neither`
       );
+  });
+
+  test("a crash report that could not be stored is still written down", () => {
+    // The exception that is not one: when the insert fails there is no row for
+    // the line to duplicate, and losing the report entirely is the worse half.
+    const failed = loggerCalls().filter((c) => c.args.includes("Failed to store a client error report"));
+    assert.equal(failed.length, 1);
+    assert.ok(failed[0].fields.includes("report"), "a report the database refused is now lost entirely");
   });
 });
 
@@ -188,11 +238,21 @@ describe("what an unmatched request says about itself", () => {
     assert.equal(unmatchedKind("/room/SECRET7"), "other");
   });
 
+  test("a build file the shell answered is the one that names a fault", () => {
+    // Present and missing are both 200 with no address, so the status code
+    // reports nothing; which of the two answered is the whole signal.
+    assert.equal(unmatchedKind(HASHED, true), "shell");
+    assert.equal(unmatchedKind(HASHED, false), "asset");
+    // A deep link into the app is also answered by the shell, and is not a fault.
+    assert.equal(unmatchedKind("/room/SECRET7", true), "other");
+  });
+
   test("the word is the whole of what it can say", () => {
     // The reason an unmatched request writes no path: the only text it carries
-    // is the client's own. Three words, whatever was asked for.
+    // is the client's own. Four words, whatever was asked for.
     for (const target of ["/assets/SECRET7.png", "/api/SECRET7", "/room/SECRET7", "/SECRET7"])
-      assert.ok(["api", "asset", "other"].includes(unmatchedKind(target)), target);
+      for (const shell of [true, false])
+        assert.ok(["api", "asset", "shell", "other"].includes(unmatchedKind(target, shell)), target);
   });
 
   test("a prefix is not a path segment", () => {
@@ -234,27 +294,40 @@ async function requestLine(
     headers = {},
     route,
     catchAll = false,
+    serves,
     method = "GET",
-  }: { headers?: Record<string, string>; route?: string; catchAll?: boolean; method?: string } = {}
+  }: {
+    headers?: Record<string, string>;
+    route?: string;
+    catchAll?: boolean;
+    serves?: string;
+    method?: string;
+  } = {}
 ): Promise<Record<string, any> | null> {
   const { sink, written } = captureSink();
   const middleware = createRequestLogger(createLogger(sink));
 
   let handler: http.RequestListener;
-  if (route || catchAll) {
+  if (route || catchAll || serves) {
     const app = express();
     app.use(middleware);
     if (route) {
       app.get(route, (_req, res) => res.send("ok"));
       app.delete(route, (_req, res) => res.send("ok"));
     }
-    // `server/app.ts`'s SPA catch-all in the two respects that matter here:
-    // GET only, and it hands `/api` onward rather than answering it. Both are
-    // what put a route on `req` that never handled the request. The scan below
-    // is what fails if that mount stops having this shape.
+    // `express.static` in the one respect the serializer can see: it answers
+    // without a router, so it leaves `req.route` unset. A file that is present
+    // takes this path and never reaches the catch-all.
+    if (serves) app.use((req, res, next) => (req.path === serves ? res.send("js") : next()));
+    // `server/app.ts`'s SPA catch-all in the three respects that matter here:
+    // GET only, it hands `/api` onward rather than answering it, and it marks
+    // what it answered. The first two are what put a route on `req` that never
+    // handled the request; the third is what tells a missing file from a served
+    // one. The scan below is what fails if that mount stops having this shape.
     if (catchAll)
       app.get("*path", (req, res, next) => {
         if (req.path.startsWith("/api")) return next();
+        (req as typeof req & { [ANSWERED_BY_SHELL]?: true })[ANSWERED_BY_SHELL] = true;
         res.send("spa");
       });
     handler = app as unknown as http.RequestListener;
@@ -290,7 +363,13 @@ async function requestLine(
 /** The same, and it must have written a line — every assertion below is about what is in it. */
 async function completedRequestLine(
   target: string,
-  options?: { headers?: Record<string, string>; route?: string; catchAll?: boolean; method?: string }
+  options?: {
+    headers?: Record<string, string>;
+    route?: string;
+    catchAll?: boolean;
+    serves?: string;
+    method?: string;
+  }
 ): Promise<Record<string, any>> {
   const line = await requestLine(target, options);
   assert.ok(line, `nothing was logged for ${target} — every assertion about the line would pass vacuously`);
@@ -372,16 +451,20 @@ describe("what a completed request leaves in the log", () => {
     assert.equal(line.req.url, undefined);
   });
 
-  test("a lost build file and a probe of the API are not the same line", async () => {
-    // Neither is a 404 the other way round: the SPA catch-all answers a missing
-    // asset with the shell, 200, so the status code alone tells them apart for
-    // nobody. This is the one thing the line still says when it says no address.
-    const asset = await completedRequestLine(
-      "/_expo/static/js/web/entry-0123456789abcdef0123456789abcdef.js",
-      { catchAll: true }
-    );
+  test("a build file the shell answered is not the one that was served", async () => {
+    // The whole of #975: both are 200 with no address, so nothing else in the
+    // line separates a deploy that lost a bundle from an ordinary page load.
+    const bundle = "/_expo/static/js/web/entry-0123456789abcdef0123456789abcdef.js";
+    const served = await completedRequestLine(bundle, { catchAll: true, serves: bundle });
+    const missing = await completedRequestLine(bundle, { catchAll: true });
+    assert.equal(served.res.statusCode, 200);
+    assert.equal(missing.res.statusCode, 200);
+    assert.equal(served.req.kind, "asset");
+    assert.equal(missing.req.kind, "shell", "a missing bundle reads as a served one");
+  });
+
+  test("a probe of the API is neither", async () => {
     const api = await completedRequestLine("/api/typo/SECRET7", { catchAll: true });
-    assert.equal(asset.req.kind, "asset");
     assert.equal(api.req.kind, "api");
     assert.equal(JSON.stringify(api).includes("SECRET7"), false, "the path reached the line through `kind`");
   });
@@ -429,6 +512,15 @@ describe("what a completed request leaves in the log", () => {
       "the SPA catch-all is no longer a GET on `*path` — the harness above copies that shape, and the " +
         "rule that drops a wildcard address is written for it"
     );
+    // The floor under `kind: "shell"`: without this line every missing build
+    // file reads as a served one, and the suite above would only be testing its
+    // own harness.
+    assert.match(
+      app,
+      /\[ANSWERED_BY_SHELL\] = true/,
+      "the SPA catch-all no longer marks what it answered — a lost bundle and a served one " +
+        "are the same log line again"
+    );
     assert.equal(
       (app.match(/app\.(get|post|put|patch|delete|use)\("[^"]*\*/g) ?? []).length,
       1,
@@ -449,8 +541,9 @@ describe("what a completed request leaves in the log", () => {
       /written only when it matches one\s+of our own routes/,
       /then only in that route's general form rather than as you sent it/,
       /when it matches\s+none of them[\s\S]{0,300}no address is\s+written at all/,
-      /only one of three fixed words of our own saying which part of the service was\s+asked for/,
-      /never your email address and never the contents of a crash report/,
+      /only one of four fixed words of our own saying which part of the service was\s+asked for/,
+      /never your email address and never the contents\s+of a crash report/,
+      /your username where the action was about it/,
       /no id from the address, which is written only when it matches one of our own routes and then only in that route's general form/,
     ])
       assert.match(policy, claim, `docs/PRIVACY.md no longer states ${claim}`);
