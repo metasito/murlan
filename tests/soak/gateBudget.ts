@@ -1,4 +1,4 @@
-// tests/soak/gateBudget.ts — what the gated soak may cost, derived rather than chosen.
+// tests/soak/gateBudget.ts — what the gated soak may cost, and what it may not.
 //
 // `opts.minutes * 60_000` is the one deadline in this path `DEADLINE_SCALE` does not
 // multiply, and every wait around it is one it does. A budget shared between the two
@@ -43,7 +43,8 @@ const MAX_WINDOW_MS = 12_000;
 /**
  * The window the gate plays for. Not scaled: the soak's deadline is wall clock, so a slow
  * runner takes fewer rounds in it rather than longer, and `MIN_ROUNDS` keeps "fewer" over
- * zero. At this window the whole test measures 12,775 / 12,823 / 12,848 ms locally.
+ * zero. At this window the whole test measures 12,775 / 12,823 / 12,848 ms locally, against a
+ * budget whose stall allowance costs `SLOW_RUNNER_SCALE` times as much on CI.
  */
 export const GATE_PLAY_MS = 10_000;
 
@@ -91,7 +92,7 @@ export function gateBudget(
       detail:
         `a ${playMs}ms window is over the ${ceilingMs}ms this gate may spend — ${MAX_WINDOW_MS}ms, ` +
         `or what is left of the suite's ${suiteMs}ms once a ${stallMs}ms stall is reserved, ` +
-        `whichever is less.`,
+        `whichever is less. Past that it is the search, which soak.yml runs.`,
     };
   }
 
