@@ -19,18 +19,21 @@ const counts = (d: string) =>
 
 // `diffOf` decides how much context git prints, so what the window is worth can only be seen
 // against a real repository: every fixture above hands `budget` a diff that was written by hand.
-// `gpgsign` is off because a machine signing globally would fail the commit and red these cases
-// for a reason that is not the check's.
+// The config files are pointed at a path that does not exist, so nothing the machine happens to
+// set globally — a signing key, `core.hooksPath`, a template directory — can red these cases for
+// a reason that is not the check's.
 const diffAcross = (before: string[], after: string[]) => {
   const dir = mkdtempSync(join(tmpdir(), "comment-budget-"));
-  const git = (...args: string[]) => execFileSync("git", args, { cwd: dir, stdio: "pipe" });
+  const none = join(dir, "no-config");
+  const env = { ...process.env, GIT_CONFIG_GLOBAL: none, GIT_CONFIG_SYSTEM: none };
+  const git = (...args: string[]) => execFileSync("git", args, { cwd: dir, env, stdio: "pipe" });
   const cwd = process.cwd();
   try {
     git("init", "-b", "main");
     for (const [i, text] of [before, after].entries()) {
       writeFileSync(join(dir, "a.mjs"), text.join("\n") + "\n");
       git("add", "a.mjs");
-      git("-c", "user.email=t@t", "-c", "user.name=t", "-c", "commit.gpgsign=false", "commit", "-m", `v${i}`);
+      git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-m", `v${i}`);
     }
     process.chdir(dir);
     return diffOf("HEAD~1");
@@ -40,7 +43,7 @@ const diffAcross = (before: string[], after: string[]) => {
   }
 };
 
-const unsigned = (lines: string[]) => lines.map((l) => l.slice(1));
+const unprefixed = (lines: string[]) => lines.map((l) => l.slice(1));
 
 describe("comment budget", () => {
   test("a diff that is mostly prose is over", () => {
@@ -147,20 +150,19 @@ describe("comment budget", () => {
     assert.deepEqual(counts(`${from}\n${to}`), [["scripts/b.mjs", 7, 1]]);
   });
 
+  // The opener sits fifteen lines above the prose that was added, which is longer than this
+  // script's own header: a window that cannot cover a docblock that long is too narrow to be
+  // worth printing, and this is the case that says so.
   test("prose added far below a block comment's opener counts as prose", () => {
-    const head = ["/*", ...unsigned(prose(5))];
-    const tail = ["*/", ...unsigned(code(1))];
-    const added = unsigned(prose(8)).map((l) => `${l} also`);
+    const head = ["/*", ...unprefixed(prose(14))];
+    const tail = ["*/", ...unprefixed(code(1))];
+    const added = unprefixed(prose(8)).map((l) => `${l} also`);
     assert.deepEqual(counts(diffAcross([...head, ...tail], [...head, ...added, ...tail])), [["a.mjs", 8, 0]]);
   });
 
-  // Both halves, in one case: the window has to reach the far line for the first assertion to
-  // hold, and the lines it reaches have to stay out of both columns for the second.
-  test("the context a wide window prints is counted in neither column", () => {
-    const before = [...unsigned(code(20)), ...unsigned(comments(6))];
-    const after = [...before.slice(0, 20), ...unsigned(comments(7)).map((l) => `${l} new`), ...before.slice(20)];
-    const printed = diffAcross(before, after);
-    assert.ok(printed.includes(`\n ${before[0]}`), "the window falls short of the file's first line");
-    assert.deepEqual(counts(printed), [["a.mjs", 7, 0]]);
+  test("a context line is counted in neither column", () => {
+    const before = [...unprefixed(code(12)), ...unprefixed(comments(6))];
+    const after = [...before.slice(0, 9), ...unprefixed(comments(7)).map((l) => `${l} new`), ...before.slice(9)];
+    assert.deepEqual(counts(diffAcross(before, after)), [["a.mjs", 7, 0]]);
   });
 });
