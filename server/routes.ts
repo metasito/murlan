@@ -318,7 +318,7 @@ export function verificationEmailBody(username: string, code: string): string {
 /** Never awaited by a caller — a provider outage must not delay or fail the response it rides with. */
 function sendVerificationEmail(to: string, username: string, code: string, userId: string): void {
   sendMail(to, "Verify your Murlan email", verificationEmailBody(username, code), userId)
-    .catch((err) => logger.error({ err }, "sendVerificationEmail failed"));
+    .catch((err) => logger.error({ err, userId }, "sendVerificationEmail failed"));
 }
 
 /**
@@ -333,7 +333,7 @@ function sendPasswordResetEmail(to: string, token: string, userId: string): void
     `Your Murlan password reset code is:\n\n${token}\n\nThis code expires in 30 minutes. ` +
       `If you did not request this, you can ignore this email.`,
     userId
-  ).catch((err) => logger.error({ err }, "sendPasswordResetEmail failed"));
+  ).catch((err) => logger.error({ err, userId }, "sendPasswordResetEmail failed"));
 }
 
 /**
@@ -1050,9 +1050,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         platform: report.platform,
         appVersion: report.appVersion,
         context: report.componentStack ? { componentStack: report.componentStack } : {},
-        // The one line that may hold the report: the row it belongs in does
-        // not exist, so this is not a second copy of anything.
-      }).catch((err) => logger.error({ err, report }, "Failed to store a client error report"));
+        // Not the report, even here. A client chooses its own `message`, and a
+        // NUL in it makes this insert fail every time — which would be a way
+        // to write arbitrary text into a stream nothing sweeps.
+      }).catch((err) =>
+        logger.error({ err, platform: report.platform }, "Failed to store a client error report")
+      );
       // Nothing to say back. The client is already showing its error screen and
       // must not depend on this having worked.
       res.status(204).end();

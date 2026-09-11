@@ -123,24 +123,61 @@ function serverSources(dir = path.join(repoRoot, "server")): string[] {
   });
 }
 
-/** The leading `{…}` of a call's arguments — the fields, without the message after them. */
-function firstObjectArg(args: string): string {
-  const text = args.trimStart();
-  if (!text.startsWith("{")) return "";
-  let depth = 0;
-  for (let i = 0; i < text.length; i += 1) {
-    if (text[i] === "{") depth += 1;
-    else if (text[i] === "}" && (depth -= 1) === 0) return text.slice(0, i + 1);
+/**
+ * The source with every string and comment blanked out, offsets unchanged. The
+ * brace and paren walks below run on this rather than the source: a `}` inside a
+ * message would otherwise close the fields early and hide every field after it
+ * from the rules — green on the very defect they are written for. Comments go
+ * for the same reason and one more, an apostrophe in prose, which reads as a
+ * string that runs to the next one and swallows whole files.
+ */
+function blankStrings(src: string): string {
+  const out = [...src];
+  let state: "" | '"' | "'" | "`" | "//" | "/*" = "";
+  let escaped = false;
+  for (let i = 0; i < src.length; i += 1) {
+    const ch = src[i]!;
+    const blank = () => {
+      if (ch !== "\n") out[i] = " ";
+    };
+    if (state === "//") {
+      if (ch === "\n") state = "";
+      else blank();
+    } else if (state === "/*") {
+      if (ch === "/" && src[i - 1] === "*") state = "";
+      blank();
+    } else if (state) {
+      if (escaped) escaped = false;
+      else if (ch === "\\") escaped = true;
+      else if (ch === state) state = "";
+      if (state) blank();
+    } else if (ch === "/" && (src[i + 1] === "/" || src[i + 1] === "*")) {
+      state = src[i + 1] === "/" ? "//" : "/*";
+      blank();
+    } else if (ch === '"' || ch === "'" || ch === "`") {
+      state = ch;
+    }
   }
-  return text;
+  return out.join("");
+}
+
+/** The leading `{…}` of a call's arguments — the fields, without the message after them. */
+function firstObjectArg(blank: string): number {
+  const lead = blank.length - blank.trimStart().length;
+  if (blank[lead] !== "{") return 0;
+  let depth = 0;
+  for (let i = lead; i < blank.length; i += 1) {
+    if (blank[i] === "{") depth += 1;
+    else if (blank[i] === "}" && (depth -= 1) === 0) return i + 1;
+  }
+  return blank.length;
 }
 
 /**
  * Every `logger.<level>(…)` call under `server/`, as its fields and its whole
- * argument text. Braces and parentheses are balanced rather than matched to the
- * first closer, so a nested object or call cannot cut the slice short and hide
- * a field from the rules below; one unbalanced inside a string only ever runs
- * the slice long, which makes them stricter, never blinder.
+ * argument text. Structure is read off `blankStrings`, so neither a brace nor a
+ * paren inside a message can cut a slice short; `args` is the real text, which
+ * is what the crash-report rule below finds its own subject by.
  *
  * The rules read `fields`, not `args`: a message is prose, and "handed the seat
  * to, then took it back" is not a privacy defect.
@@ -150,17 +187,22 @@ function loggerCalls(): { file: string; fields: string; args: string }[] {
   for (const full of serverSources()) {
     const file = path.relative(path.join(repoRoot, "server"), full);
     const src = readFileSync(full, "utf8");
-    for (const m of src.matchAll(/\blogger\.(?:trace|debug|info|warn|error|fatal)\(/g)) {
+    const blank = blankStrings(src);
+    for (const m of blank.matchAll(/\blogger\.(?:trace|debug|info|warn|error|fatal)\(/g)) {
       const start = m.index + m[0].length;
       let depth = 1;
       let i = start;
-      while (i < src.length && depth > 0) {
-        if (src[i] === "(") depth += 1;
-        else if (src[i] === ")") depth -= 1;
+      while (i < blank.length && depth > 0) {
+        if (blank[i] === "(") depth += 1;
+        else if (blank[i] === ")") depth -= 1;
         i += 1;
       }
-      const args = src.slice(start, i - 1);
-      calls.push({ file, fields: firstObjectArg(args), args });
+      const end = i - 1;
+      calls.push({
+        file,
+        fields: src.slice(start, start + firstObjectArg(blank.slice(start, end))),
+        args: src.slice(start, end),
+      });
     }
   }
   return calls;
@@ -177,6 +219,32 @@ describe("what a hand-written line may name", () => {
       calls.some((c) => c.fields.includes("userId")),
       "no call's fields were read — firstObjectArg is returning nothing"
     );
+  });
+
+  test("no call is exempt from the rules by the shape of its first argument", () => {
+    // With no `{…}` to read, every rule below passes on the empty string. A
+    // message-only line has nothing to hide; anything else — a bound object, a
+    // spread — has to be looked at rather than skipped.
+    for (const { file, fields, args } of loggerCalls())
+      assert.ok(
+        fields !== "" || /^\s*["'`]/.test(args),
+        `server/${file}: a logger call passes something other than a literal object, which the ` +
+          `rules below cannot read: ${args.slice(0, 60)}`
+      );
+  });
+
+  test("a brace inside a message does not end the fields", () => {
+    // The decoy this scan would otherwise fall to, asserted on the scanner
+    // itself because no call in server/ has this shape today.
+    const source =
+      `logger.error({ err, note: "}", to }, "a } in prose"); // don't stop here\n` +
+      `logger.warn({ to }, "x");`;
+    const blanked = blankStrings(source);
+    assert.equal(blanked.includes('"}"'), false, "the string's brace was left in place");
+    assert.equal(blanked.length, source.length, "offsets moved, so every slice is wrong");
+    // An apostrophe in prose reads as a string that runs to the next one, which
+    // is how a comment came to swallow whole files of calls.
+    assert.equal(blanked.split("logger.").length - 1, 2, "a comment swallowed the call after it");
   });
 
   test("no line names an email address", () => {
@@ -218,12 +286,15 @@ describe("what a hand-written line may name", () => {
       );
   });
 
-  test("a crash report that could not be stored is still written down", () => {
-    // The exception that is not one: when the insert fails there is no row for
-    // the line to duplicate, and losing the report entirely is the worse half.
+  test("a crash report the database refused does not reach the log either", () => {
+    // The tempting exception, and why there is none: a client chooses its own
+    // `message`, and a NUL in it fails this insert every time — so the fallback
+    // would be a way to write arbitrary text into a stream nothing sweeps.
     const failed = loggerCalls().filter((c) => c.args.includes("Failed to store a client error report"));
     assert.equal(failed.length, 1);
-    assert.ok(failed[0].fields.includes("report"), "a report the database refused is now lost entirely");
+    // `report.platform` is the bounded enum, and is not the report.
+    for (const field of [/\breport\b(?!\.platform)/, /\buserId\b/, /\bmessage\b/, /\bstack\b/])
+      assert.equal(field.test(failed[0].fields), false, `the fallback line carries ${field}`);
   });
 });
 

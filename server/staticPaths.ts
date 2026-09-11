@@ -12,7 +12,7 @@ export const CONTENT_HASHED = /[.-][0-9a-f]{32}(@[0-9]+x)?\.[^.]+$/;
 /** The files under `dist/` that keep their URL across deploys. */
 const SHELL_FILES = new Set(["index.html", "favicon.ico", "metadata.json"]);
 
-/** Where `configureExpoAndLanding` mounts `express.static`. */
+/** The two prefixes under which the build and the repo emit files, and nothing else. */
 const STATIC_MOUNT = /^\/(assets|_expo)\//;
 
 /**
@@ -39,7 +39,9 @@ export function unmatchedKind(
   answeredByShell = false
 ): "api" | "asset" | "shell" | "other" {
   if (pathname === "/api" || pathname.startsWith("/api/")) return "api";
-  const name = path.basename(pathname);
+  // A URL path, so never the platform-flavoured `path.basename`: on Windows it
+  // would cut `/xundle-<hash>.js` at the backslash and the deploy would not.
+  const name = path.posix.basename(pathname);
   if (STATIC_MOUNT.test(pathname) || CONTENT_HASHED.test(name) || SHELL_FILES.has(name))
     return answeredByShell ? "shell" : "asset";
   return "other";
