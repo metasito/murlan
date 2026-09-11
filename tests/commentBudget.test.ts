@@ -20,17 +20,22 @@ const counts = (d: string) =>
 
 // `diffOf` decides how much context git prints, so what the window is worth can only be seen
 // against a real repository: every fixture above hands `budget` a diff that was written by hand.
-// `env` reaches the measured diff and not only the setup, so the machine's own global config — a
-// signing key, `core.hooksPath`, a template directory — can red none of these, and `extra` is the
-// only config any of them sees. `raw` is the same diff without the flags that pin git's format:
-// what the check would have been handed had it not asked.
-const diffAcross = (before: string[], after: string[], extra: Record<string, string> = {}) => {
+// `env` reaches the measured diff and not only the setup, so a `GIT_CONFIG_GLOBAL` or
+// `GIT_CONFIG_SYSTEM` this machine keeps cannot red any of these — the rest of the environment is
+// still inherited. `raw` is the same diff without the flags that pin git's format: what the check
+// would have been handed had it not asked.
+const diffAcross = (
+  before: string[],
+  after: string[],
+  { config = {}, attributes = "" }: { config?: Record<string, string>; attributes?: string } = {},
+) => {
   const dir = mkdtempSync(join(tmpdir(), "comment-budget-"));
   const none = join(dir, "no-config");
-  const env = { ...process.env, GIT_CONFIG_GLOBAL: none, GIT_CONFIG_SYSTEM: none, ...extra };
+  const env = { ...process.env, GIT_CONFIG_GLOBAL: none, GIT_CONFIG_SYSTEM: none, ...config };
   const git = (...args: string[]) => execFileSync("git", args, { cwd: dir, env, encoding: "utf8", stdio: "pipe" });
   try {
     git("init", "-b", "main");
+    if (attributes) writeFileSync(join(dir, ".gitattributes"), attributes + "\n");
     for (const [i, text] of [before, after].entries()) {
       writeFileSync(join(dir, "a.mjs"), text.join("\n") + "\n");
       git("add", "a.mjs");
@@ -173,6 +178,8 @@ describe("comment budget", () => {
   });
 
   test("prose added far below a block comment's opener counts as prose", () => {
+    // A scan that found nothing would build a one-line fixture and pass having measured nothing.
+    assert.ok(longestBlock > 20, `scanned ${longestBlock} lines of block comment`);
     const head = ["/*", ...unprefixed(prose(longestBlock - 1))];
     const tail = ["*/", ...unprefixed(code(1))];
     const added = unprefixed(prose(8)).map((l) => `${l} also`);
@@ -185,12 +192,18 @@ describe("comment budget", () => {
   test("a machine that rewrites diff headers cannot empty the check out", () => {
     const before = unprefixed(code(2));
     const after = [...before, ...unprefixed(comments(7)).map((l) => `${l} new`)];
-    const { pinned, raw } = diffAcross(before, after, {
-      GIT_CONFIG_COUNT: "1",
-      GIT_CONFIG_KEY_0: "diff.noprefix",
-      GIT_CONFIG_VALUE_0: "true",
-    });
+    const config = { GIT_CONFIG_COUNT: "1", GIT_CONFIG_KEY_0: "diff.noprefix", GIT_CONFIG_VALUE_0: "true" };
+    const { pinned, raw } = diffAcross(before, after, { config });
     assert.match(raw, /^diff --git a\.mjs a\.mjs$/m);
+    assert.deepEqual(counts(pinned), [["a.mjs", 7, 0]]);
+  });
+
+  // The other half of that class: the header still parses, and every line of content is gone.
+  test("a source file marked binary cannot empty the check out", () => {
+    const before = unprefixed(code(2));
+    const after = [...before, ...unprefixed(comments(7)).map((l) => `${l} new`)];
+    const { pinned, raw } = diffAcross(before, after, { attributes: "*.mjs -diff" });
+    assert.match(raw, /^Binary files /m);
     assert.deepEqual(counts(pinned), [["a.mjs", 7, 0]]);
   });
 

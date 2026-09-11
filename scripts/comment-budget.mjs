@@ -82,23 +82,20 @@ export function budget(diff) {
   return [...files].filter(([, n]) => n.comment > 6 && n.comment > n.code);
 }
 
-// `side()`'s block state is per hunk, so the window is what puts a docblock's `/*` inside the hunk
-// that edits its body. It has to clear the longest block comment this repo actually writes —
-// `tests/commentBudget.test.ts` measures that and reds when this no longer covers it.
+// Block state is per hunk, so the window must clear the longest block comment this repo writes —
+// `tests/commentBudget.test.ts` measures that and reds when this stops covering it.
 const CONTEXT = 40;
 
-// `pathOf` reads git's own header, so the format is demanded rather than hoped for: a machine
-// carrying `diff.noprefix`, `color.ui`, an external differ or a textconv filter would otherwise
-// leave this check parsing no files at all and reporting green.
-const HEADERS = ["--no-ext-diff", "--no-textconv", "--no-color", "--src-prefix=a/", "--dst-prefix=b/"];
+// Demanded rather than hoped for: a differ, a textconv filter, `diff.noprefix`, `color.ui` or a
+// `-diff` attribute each leave this parsing no files at all and reporting green.
+const FORMAT = ["--no-ext-diff", "--no-textconv", "--text", "--no-color", "--src-prefix=a/", "--dst-prefix=b/"];
 
-// cwd and env are the caller's, so nothing has to chdir a whole process to ask about another repo.
 export function diffOf(base, head = "HEAD", opts = {}) {
-  const argv = ["diff", `-U${CONTEXT}`, ...HEADERS, `${base}...${head}`, "--", "*.mjs", "*.js", "*.ts", "*.tsx"];
+  const argv = ["diff", `-U${CONTEXT}`, ...FORMAT, `${base}...${head}`, "--", "*.mjs", "*.js", "*.ts", "*.tsx"];
   return execFileSync("git", argv, {
+    ...opts,
     encoding: "utf8",
     maxBuffer: 64 * 1024 * 1024,
-    ...opts,
   });
 }
 
