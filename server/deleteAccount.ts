@@ -15,9 +15,8 @@ import {
  * the endpoint 500s: friends (both directions), room_players, the rooms this
  * user hosts (plus their players and any persisted game), and the sessions.
  *
- * It reaches every domain the stores divide between, and does so in one
- * transaction — which is why it lives in neither of them and writes the rows
- * itself rather than calling across stores that each open their own.
+ * All of it in one transaction, which is why it writes the rows itself rather
+ * than calling the stores — each of those opens its own.
  */
 export async function deleteUser(userId: string): Promise<void> {
   await db.transaction(async (tx) => {

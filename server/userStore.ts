@@ -207,5 +207,3 @@ export const userStore = {
       .where(and(eq(users.id, userId), isNull(users.tutorialSeenAt)));
   },
 };
-
-export const __testables = { uniqueViolation };

@@ -92,7 +92,7 @@ export default function ReplayScreen() {
   const restart = useCallback(() => goTo(-1), [goTo]);
 
   // A player who deleted their account is erased from the stored seat, which
-  // keeps no wording of its own (server/storage.ts deleteUser). The label is
+  // keeps no wording of its own (server/deleteAccount.ts). The label is
   // supplied here so it is in the reader's language rather than the language
   // the hand happened to be played in.
   const named = useMemo(
