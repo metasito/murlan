@@ -11,8 +11,12 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."
 /** Where the constraint is explained. Every file it governs points here instead. */
 const AUTHORITY = "docs/agents/loops.md";
 
-/** A pointer, as written: the path, then the section it names. */
-const POINTER = /docs\/agents\/loops\.md[,)]? "([^"\n]+)"/g;
+/**
+ * A pointer, as written: the path, then the section it quotes. The class between the two
+ * absorbs a wrap — three of these run past the margin and carry the quote on the next
+ * comment line, and a single-line pattern reads them as no pointer at all.
+ */
+const POINTER = /docs\/agents\/loops\.md[,)]?[\s/#*]*"([^"\n]+)"/g;
 
 const SELF = "tests/loaderConstraintIsSingleSourced.test.ts";
 
@@ -21,8 +25,8 @@ const SELF = "tests/loaderConstraintIsSingleSourced.test.ts";
  * list checkable rather than a guess: the assertion below names the file that must match. It
  * catches a paste and a near-paraphrase; a restatement in wholly fresh words would pass, and
  * widening this on the day one appears is the maintenance it asks for. The structural
- * alternative — flagging any long comment block about the loader — was measured against this
- * tree and flags four unrelated blocks, so it would ship with an exemption list instead.
+ * alternative — flagging any long comment block about the loader — trips on unrelated blocks
+ * in this tree, so it would ship with an exemption list instead.
  */
 const EXPLAINS =
   /type-strip|strips plain|cannot parse (a |the )?(\.tsx|JSX)|(?:bundler|tsconfig|`paths`)[\s\S]{0,30}alias/i;
