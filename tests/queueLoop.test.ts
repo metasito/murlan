@@ -24,6 +24,7 @@ import {
   canStartNext,
   mergeSlot,
   waitFor,
+  afterRefusal,
   holdFor,
   WAIT,
 } from "../scripts/queue-loop.mjs";
@@ -206,6 +207,55 @@ describe("runTicket", () => {
 
   const facts = () => ({ title: "Rate limiter factory", url: "u", size: "size:S" });
   const queue = { implement: 1, triage: 0, wayfinder: 0 };
+
+  const meter = (status: string) =>
+    JSON.stringify({
+      type: "rate_limit_event",
+      rate_limit_info: {
+        status,
+        resetsAt: 1789134000,
+        rateLimitType: "five_hour",
+        unifiedWindows: { five_hour: { utilization: 0.3, resetsAt: 1789134000 } },
+      },
+    });
+
+  test("a refusal reaches the caller, as milliseconds", async () => {
+    const run = await runTicket(fakeSpawn([meter("rejected"), RESULT]), {
+      number: 962,
+      queue,
+      log: () => {},
+      facts,
+    });
+    assert.equal(run.blocked, true);
+    assert.equal(run.blockedUntil, 1789134000000);
+  });
+
+  test("a healthy meter reading reaches it as nothing at all", async () => {
+    const said: string[] = [];
+    const run = await runTicket(fakeSpawn([meter("allowed"), meter("allowed"), RESULT]), {
+      number: 962,
+      queue,
+      log: (m: string) => said.push(m),
+      facts,
+    });
+    assert.equal(run.blocked, false);
+    assert.equal(run.blockedUntil, 0);
+    assert.doesNotMatch(said.join("\n"), /rate limited/, "a healthy session must not be announced as throttled");
+  });
+
+  test("a resumed ticket draws its header at once, with no marker in the stream", async () => {
+    const said: string[] = [];
+    await runTicket(fakeSpawn([RESULT]), {
+      number: 962,
+      queue,
+      at: "D",
+      log: (m: string) => said.push(m),
+      facts,
+    });
+    const out = said.join("\n");
+    assert.match(out, /#962 · Rate limiter factory/);
+    assert.match(out, /\[4\/6\] D/);
+  });
 
   test("draws the header once and a line per phase it sees", async () => {
     const said: string[] = [];
@@ -700,5 +750,47 @@ describe("syncProtocol leaves someone else's branch alone", () => {
     const { git, calls } = fake("main", "0");
     syncProtocol(git, () => {});
     assert.ok(calls.some((c) => c[0] === "checkout" && c[1] === "main"));
+  });
+});
+
+describe("afterRefusal", () => {
+  const now = 1_000_000_000_000;
+  const base = { ticket: 962, waits: 0, waitsOn: null, blocked: true, blockedUntil: now + 60_000 };
+
+  test("a session that was not refused just proceeds", () => {
+    const step = afterRefusal({ ...base, blocked: false }, now);
+    assert.equal(step.action, "proceed");
+    assert.equal(step.waits, 0);
+  });
+
+  test("a refusal retries and counts", () => {
+    const step = afterRefusal(base, now);
+    assert.equal(step.action, "retry");
+    assert.equal(step.waits, 1);
+    assert.ok(step.hold > 0);
+  });
+
+  // A reset already passed means go now. Falling through to the ordinary accounting instead would
+  // record a throttled session as "resumed with nothing committed" and count it toward the breaker.
+  test("a window that has already reset retries with no wait at all", () => {
+    const step = afterRefusal({ ...base, blockedUntil: now - 1 }, now);
+    assert.equal(step.action, "retry");
+    assert.equal(step.hold, 0);
+  });
+
+  test("a different ticket starts its own count", () => {
+    const step = afterRefusal({ ...base, ticket: 970, waits: 19, waitsOn: 962 }, now);
+    assert.equal(step.waits, 1);
+    assert.equal(step.waitsOn, 970);
+  });
+
+  test("refused too often, it parks — and the reason survives into the row", () => {
+    const step = afterRefusal({ ...base, waits: WAIT.TRIES, waitsOn: 962 }, now);
+    assert.equal(step.action, "park");
+    assert.match(step.why ?? "", /refused 20 times running/);
+  });
+
+  test("a session that pushed never waits, whatever the meter said", () => {
+    assert.equal(afterRefusal({ ...base, done: true }, now).action, "proceed");
   });
 });
