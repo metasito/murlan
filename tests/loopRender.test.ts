@@ -12,6 +12,7 @@ import {
   heartbeat,
   BLANK,
   clockAt,
+  detailOf,
 } from "../scripts/loop-render.mjs";
 
 describe("elapsed", () => {
@@ -81,6 +82,14 @@ describe("phaseLine", () => {
     assert.match(line, /8:31/);
   });
 
+  test("the mark is the caller's, so a phase taken up does not read as a phase finished", () => {
+    assert.match(phaseLine({ letter: "C", detail: "resumed", ms: 0, mark: "↻" }), /↻ \[3\/6\]/);
+    assert.equal(
+      phaseLine({ letter: "C", detail: "x", ms: 0, mark: "↻" }).length,
+      phaseLine({ letter: "C", detail: "x", ms: 0 }).length
+    );
+  });
+
   test("every phase in PHASES renders and they are the six queue.md defines", () => {
     assert.deepEqual(
       PHASES.map(([l]: [string, string]) => l),
@@ -89,6 +98,54 @@ describe("phaseLine", () => {
     for (const [letter] of PHASES) {
       assert.match(phaseLine({ letter, detail: "", ms: 0 }), new RegExp(`\\b${letter}\\b`));
     }
+  });
+});
+
+describe("detailOf", () => {
+  const snap = {
+    branch: "agent/953-rate-limiter-factory",
+    commits: 3,
+    changed: ["a.ts", "b.ts", "c.ts", "d.ts"],
+    dirty: false,
+    head: "6863af4cafebabe",
+    trackerReadable: true,
+    verdict: null as { decision: string } | null,
+  };
+
+  test("the claim shows the branch it made", () => {
+    assert.equal(detailOf("A", snap), "agent/953-rate-limiter-factory");
+  });
+
+  test("the scope counts the subagents it dispatched, singular when there was one", () => {
+    assert.equal(detailOf("B", { ...snap, tasks: 2 }), "2 subagents");
+    assert.equal(detailOf("B", { ...snap, tasks: 1 }), "1 subagent");
+  });
+
+  test("the build shows the commits and the diff, and says so when work is left uncommitted", () => {
+    assert.equal(detailOf("C", snap), "3 commits · 4 files");
+    assert.equal(detailOf("C", { ...snap, dirty: true }), "3 commits · 4 files · dirty");
+    assert.equal(detailOf("C", { ...snap, commits: 0 }), "");
+    assert.equal(detailOf("C", { ...snap, commits: 0, dirty: true }), "uncommitted");
+  });
+
+  test("the review names the verdict and the commit it covers, and its rounds", () => {
+    assert.equal(detailOf("D", { ...snap, verdict: { decision: "LAND" } }), "LAND 6863af4");
+    assert.equal(detailOf("D", { ...snap, verdict: { decision: "HOLD" }, tasks: 2 }), "HOLD 6863af4 · 2 reviews");
+    assert.equal(detailOf("D", snap), "no verdict for 6863af4");
+    assert.equal(detailOf("D", { ...snap, trackerReadable: false }), "tracker unreadable");
+  });
+
+  test("the push names the head CI will answer for", () => {
+    assert.equal(detailOf("E", snap), "pushed 6863af4 · 4 files");
+  });
+
+  // The board's phases are read from git and the tracker; a night that cannot reach either still has
+  // phases to draw, and a column inventing a count is worse than one saying nothing.
+  test("nothing readable is a blank column, never a guess", () => {
+    for (const [letter] of PHASES) {
+      assert.doesNotMatch(detailOf(letter, {}), /\d/, `${letter} invented a figure`);
+    }
+    assert.equal(detailOf("C", {}), "");
   });
 });
 
