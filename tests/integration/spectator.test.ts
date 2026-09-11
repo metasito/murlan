@@ -205,9 +205,9 @@ describe("spectator mode", { skip: hasDatabase() ? false : skipMessage() }, () =
     eve.socket.emit("room:join", { code: room.code });
     await joined;
 
-    const { storage } = await import("../../server/storage.ts");
+    const { roomStore } = await import("../../server/roomStore.ts");
     const seated = async () =>
-      (await storage.getRoomPlayers(room.roomId)).some((p) => p.userId === eve.user.id);
+      (await roomStore.getRoomPlayers(room.roomId)).some((p) => p.userId === eve.user.id);
     assert.ok(await seated(), "the join must have taken a seat for the assertions below to mean anything");
 
     eve.socket.emit("room:unspectate");

@@ -68,7 +68,7 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
 
   /**
    * Regression test for a startup race in the connection handler: it used
-   * to `await storage.getFriends(userId)` (a real DB round-trip) before
+   * to `await friendStore.getFriends(userId)` (a real DB round-trip) before
    * registering any of the room:* / game:* listeners. An event emitted the
    * instant the client sees "connect" could land in that window and be
    * silently dropped — no error, no ack, nothing. This is exactly how the

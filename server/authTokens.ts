@@ -1,7 +1,7 @@
 import { randomBytes, randomInt, createHash } from "node:crypto";
 import { sql, inArray } from "drizzle-orm";
 import { db } from "./db.ts";
-import { uniqueViolation, storage } from "./storage.ts";
+import { userStore, uniqueViolation } from "./userStore.ts";
 import { authTokens } from "../shared/schema.ts";
 import type { AuthTokenPurpose } from "../shared/schema.ts";
 
@@ -138,7 +138,7 @@ export async function redeemAuthCode(params: {
   const redeemedUserId = await claimCredential({ tokenHash, purpose, maxAttempts: MAX_CODE_ATTEMPTS });
   if (redeemedUserId) return redeemedUserId;
 
-  const userIds = await storage.getUserIdsByEmail(email);
+  const userIds = await userStore.getUserIdsByEmail(email);
   await db.execute(sql`
     UPDATE auth_tokens
     SET attempts = attempts + 1

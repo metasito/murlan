@@ -2,7 +2,9 @@ import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "node:http";
 import bcrypt from "bcryptjs";
 import { routeLimiter } from "./rateLimit.ts";
-import { storage, UsernameTakenError, EmailTakenError } from "./storage.ts";
+import { friendStore } from "./friendStore.ts";
+import { userStore, UsernameTakenError, EmailTakenError } from "./userStore.ts";
+import { deleteUser } from "./deleteAccount.ts";
 import { friendRequestRow, friendRow } from "./friendRows.ts";
 import type { FriendRequestAccepted, FriendRequestIncoming } from "../lib/wire.ts";
 import type { User } from "../shared/schema.ts";
@@ -113,7 +115,7 @@ const LOGIN_LIMIT_DECOY_HASH = bcrypt.hashSync("murlan-rate-limit-timing-decoy",
  * Per-account login attempts (#41) — express-rate-limit's own `authLimiter`
  * above is a per-IP ceiling shared with register and sized for a whole
  * office; this is the thing that actually makes one account's password hard
- * to guess. Keyed on the same normalized username storage.getUserByUsername
+ * to guess. Keyed on the same normalized username userStore.getUserByUsername
  * looks up by, so case doesn't fork one account into two budgets.
  *
  * skipSuccessfulRequests: a correct login must never spend down the budget a
@@ -144,7 +146,7 @@ const loginUsernameLimiter = routeLimiter({
 /**
  * Per-email cap for POST /api/auth/request-password-reset (design doc,
  * Box 4) — mirrors loginUsernameLimiter's per-account shape, keyed on the
- * same case-insensitive form storage.getUserByEmail looks up by. Unlike
+ * same case-insensitive form userStore.getUserByEmail looks up by. Unlike
  * loginUsernameLimiter, tripping this is not itself an oracle: the key is
  * whatever address the caller submitted, so a nonexistent address is
  * throttled on the identical schedule a real one is.
@@ -215,7 +217,7 @@ const registerEmailLimiter = routeLimiter({
  * mirroring registerEmailLimiter exactly. add-email's own EMAIL_ALREADY_SET
  * cap bounds any one *account* to a single verification mail, which is what
  * #892 rested its "self-limiting, no route limiter needed" call on — but
- * that call predates storage.setEmail no longer raising EmailTakenError for
+ * that call predates userStore.setEmail no longer raising EmailTakenError for
  * an address claimed-but-unverified elsewhere. Post-#897 any authenticated
  * account can mail one verification code to any address, including a
  * verified victim's, so the amplification now scales with how many accounts
@@ -303,7 +305,7 @@ function sessionUser(user: User) {
  * a stranger who registered with someone else's address. An anonymous
  * "here's a code" body gave that person no way to tell it apart from their
  * own pending signup, and redeeming the wrong one loses their own email
- * claim (storage.markEmailVerified). Exported so tests can pin the wording
+ * claim (userStore.markEmailVerified). Exported so tests can pin the wording
  * without standing up a mail provider.
  */
 export function verificationEmailBody(username: string, code: string): string {
@@ -350,7 +352,7 @@ async function requireAdmin(req: Request, res: Response, next: () => void) {
     res.status(404).type("text/plain").send("Not found");
     return;
   }
-  const user = await storage.getUser(userId);
+  const user = await userStore.getUser(userId);
   if (!user?.isAdmin) {
     res.status(404).type("text/plain").send("Not found");
     return;
@@ -371,7 +373,7 @@ function requireAuth(req: Request, res: Response, next: () => void) {
 // account is created but unreachable, and its username is permanently taken.
 // Both failure paths call this so the rollback isn't duplicated.
 async function rollbackRegistration(req: Request, userId: string, res: Response) {
-  await storage.deleteUser(userId).catch((cleanupErr) =>
+  await deleteUser(userId).catch((cleanupErr) =>
     logger.error({ cleanupErr, userId }, "Failed to roll back orphaned registration")
   );
   // express-session retries the save at `res.end` for as long as a session is
@@ -405,7 +407,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/auth/register", authLimiter, validate(RegisterSchema), registerEmailLimiter, async (req, res) => {
     const { username, password, email } = req.body as { username: string; password: string; email: string };
 
-    const existingUsername = await storage.getUserByUsername(username);
+    const existingUsername = await userStore.getUserByUsername(username);
     if (existingUsername) {
       res.status(409).json({ ...payload("USERNAME_TAKEN") });
       return;
@@ -414,7 +416,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const passwordHash = await bcrypt.hash(password, 10);
     let user;
     try {
-      user = await storage.createUser({ username, password: passwordHash, email });
+      user = await userStore.createUser({ username, password: passwordHash, email });
     } catch (err) {
       if (err instanceof UsernameTakenError) {
         res.status(409).json({ ...payload("USERNAME_TAKEN") });
@@ -462,7 +464,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/auth/login", authLimiter, validate(LoginSchema), loginUsernameLimiter, async (req, res) => {
     const { username, password } = req.body as { username: string; password: string };
 
-    const user = await storage.getUserByUsername(username);
+    const user = await userStore.getUserByUsername(username);
     if (!user) {
       res.status(401).json({ ...payload("INVALID_CREDENTIALS") });
       return;
@@ -524,7 +526,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(401).json({ ...payload("NOT_AUTHENTICATED") });
       return;
     }
-    const user = await storage.getUser(req.session.userId);
+    const user = await userStore.getUser(req.session.userId);
     if (!user) {
       res.status(401).json({ ...payload("USER_NOT_FOUND") });
       return;
@@ -539,7 +541,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const { currentPassword, newPassword } = req.body as { currentPassword: string; newPassword: string };
     const userId = req.session.userId!;
 
-    const user = await storage.getUser(userId);
+    const user = await userStore.getUser(userId);
     if (!user) {
       res.status(401).json({ ...payload("NOT_AUTHENTICATED") });
       return;
@@ -552,7 +554,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
 
     const passwordHash = await bcrypt.hash(newPassword, 10);
-    await storage.changePassword(userId, passwordHash, req.sessionID);
+    await userStore.changePassword(userId, passwordHash, req.sessionID);
     logger.info({ userId }, "Password changed");
     res.json({ ok: true });
   });
@@ -569,7 +571,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const { email } = req.body as { email: string };
     const userId = req.session.userId!;
 
-    const existing = await storage.getUser(userId);
+    const existing = await userStore.getUser(userId);
     if (!existing) {
       res.status(401).json({ ...payload("NOT_AUTHENTICATED") });
       return;
@@ -581,7 +583,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     let user;
     try {
-      user = await storage.setEmail(userId, email);
+      user = await userStore.setEmail(userId, email);
     } catch (err) {
       if (err instanceof EmailTakenError) {
         res.status(409).json({ ...payload("EMAIL_TAKEN") });
@@ -611,7 +613,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(400).json({ ...payload("INVALID_TOKEN") });
       return;
     }
-    const result = await storage.markEmailVerified(userId);
+    const result = await userStore.markEmailVerified(userId);
     if (result === "not_found") {
       // #894 review, finding 3: the account this token names is gone, or its
       // own email claim already is (a second outstanding token, redeemed
@@ -643,7 +645,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
    */
   app.post("/api/auth/resend-verification", requireAuth, resendVerificationLimiter, async (req, res) => {
     const userId = req.session.userId!;
-    const user = await storage.getUser(userId);
+    const user = await userStore.getUser(userId);
     if (!user) {
       res.status(401).json({ ...payload("NOT_AUTHENTICATED") });
       return;
@@ -685,7 +687,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     passwordResetRequestLimiter,
     async (req, res) => {
       const { email } = req.body as { email: string };
-      const user = await storage.getVerifiedUserByEmail(email);
+      const user = await userStore.getVerifiedUserByEmail(email);
       res.json({ ok: true });
       if (!user?.emailVerifiedAt) return;
       // Not awaited: the request this reply belonged to is already done, so
@@ -706,17 +708,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     async (req, res) => {
       const { token, newPassword } = req.body as { token: string; newPassword: string };
       const userId = await redeemAuthToken(token, "password_reset");
-      const user = userId ? await storage.getUser(userId) : undefined;
+      const user = userId ? await userStore.getUser(userId) : undefined;
       if (!user?.emailVerifiedAt) {
         res.status(400).json({ ...payload("INVALID_RESET_TOKEN") });
         return;
       }
 
       const passwordHash = await bcrypt.hash(newPassword, 10);
-      await storage.resetPassword(user.id, passwordHash);
+      await userStore.resetPassword(user.id, passwordHash);
       // The token this request redeemed is already used_at-stamped; this
       // only reaches its unredeemed siblings (design doc, Box 2) — the same
-      // "live credential" class as the sessions storage.resetPassword just
+      // "live credential" class as the sessions userStore.resetPassword just
       // cleared, and for the same reason.
       await invalidateAuthTokens(user.id, "password_reset");
       logger.info({ userId: user.id }, "Password reset");
@@ -749,14 +751,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     // Case-insensitively, by `users_username_lower_uq`. Comparing ids rather than names is what
     // lets a player recase their own: that lookup finds their own row.
-    const holder = await storage.getUserByUsername(username);
+    const holder = await userStore.getUserByUsername(username);
     if (holder && holder.id !== userId) {
       res.status(409).json({ ...payload("USERNAME_TAKEN") });
       return;
     }
 
     try {
-      const user = await storage.renameUser(userId, username);
+      const user = await userStore.renameUser(userId, username);
       logger.info({ userId, username }, "User renamed");
       res.json(sessionUser(user));
     } catch (err) {
@@ -773,8 +775,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     // catch-up write app/index.tsx makes when the device knows and the account
     // does not, and counting that would report one player opening the tutorial
     // once per phone they own.
-    const before = await storage.getUser(userId);
-    await storage.markTutorialSeen(userId);
+    const before = await userStore.getUser(userId);
+    await userStore.markTutorialSeen(userId);
     if (before && !before.tutorialSeenAt) trackEvent("tutorial.started", userId);
     res.json({ ok: true });
   });
@@ -782,7 +784,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete("/api/users/me", requireAuth, async (req, res) => {
     try {
       const userId = req.session.userId!;
-      await storage.deleteUser(userId);
+      await deleteUser(userId);
       req.session.destroy(() => {});
       // After the delete has committed, never before: the account's live
       // socket outlives its session, and a seat still held by an id no `users`
@@ -800,19 +802,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ── Friends ───────────────────────────────────────────────────────────────
 
   app.get("/api/friends", requireAuth, async (req, res) => {
-    const friends = await storage.getFriends(req.session.userId!);
+    const friends = await friendStore.getFriends(req.session.userId!);
     res.json(friends.map((f) => friendRow(f.friend)));
   });
 
   app.get("/api/friends/requests", requireAuth, async (req, res) => {
-    const requests = await storage.getPendingFriendRequests(req.session.userId!);
+    const requests = await friendStore.getPendingFriendRequests(req.session.userId!);
     res.json(requests.map((r) => friendRequestRow(r, r.requester)));
   });
 
   // The invites a socket would have announced. This is the half that survives
   // the recipient being away — the emit and the push are both "look now".
   app.get("/api/friends/invites", requireAuth, async (req, res) => {
-    res.json(await storage.getGameInvites(req.session.userId!));
+    res.json(await friendStore.getGameInvites(req.session.userId!));
   });
 
   app.delete("/api/friends/invites/:roomCode", requireAuth, async (req, res) => {
@@ -831,7 +833,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(400).json({ ...payload("INVALID_USERNAME") });
       return;
     }
-    const found = await storage.getUserByUsername(username.data);
+    const found = await userStore.getUserByUsername(username.data);
     if (!found || found.id === req.session.userId) {
       res.status(404).json({ ...payload("USER_NOT_FOUND") });
       return;
@@ -840,14 +842,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.get("/api/friends/sent", requireAuth, async (req, res) => {
-    const sent = await storage.getSentFriendRequests(req.session.userId!);
+    const sent = await friendStore.getSentFriendRequests(req.session.userId!);
     res.json(sent.map((r) => friendRequestRow(r, r.recipient)));
   });
 
   app.post("/api/friends/add", requireAuth, friendLimiter, validate(AddFriendSchema), async (req, res) => {
     const { username } = req.body as { username: string };
 
-    const friend = await storage.getUserByUsername(username);
+    const friend = await userStore.getUserByUsername(username);
     if (!friend) {
       res.status(404).json({ ...payload("USER_NOT_FOUND") });
       return;
@@ -858,13 +860,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return;
     }
 
-    const already = await storage.areFriends(req.session.userId!, friend.id);
+    const already = await friendStore.areFriends(req.session.userId!, friend.id);
     if (already) {
       res.status(409).json({ ...payload("ALREADY_FRIENDS") });
       return;
     }
 
-    const pending = await storage.pendingRequestBetween(req.session.userId!, friend.id);
+    const pending = await friendStore.pendingRequestBetween(req.session.userId!, friend.id);
     if (pending === "sent") {
       res.status(409).json({ ...payload("FRIEND_REQUEST_ALREADY_SENT") });
       return;
@@ -874,8 +876,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return;
     }
 
-    const sender = await storage.getUser(req.session.userId!);
-    const request = await storage.addFriend(req.session.userId!, friend.id);
+    const sender = await userStore.getUser(req.session.userId!);
+    const request = await friendStore.addFriend(req.session.userId!, friend.id);
 
     // The row travels with the announcement: the recipient's cache holds the
     // request on the frame the banner goes up, rather than seconds later when
@@ -893,7 +895,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const id = readParam(res, req.params.id);
     if (id === null) return;
     // Only the sender can cancel — enforced inside cancelFriendRequest.
-    const cancelled = await storage.cancelFriendRequest(id, req.session.userId!);
+    const cancelled = await friendStore.cancelFriendRequest(id, req.session.userId!);
     if (!cancelled) {
       res.status(404).json({ ...payload("FRIEND_REQUEST_NOT_FOUND") });
       return;
@@ -907,12 +909,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const accepterId = req.session.userId!;
     // Scoped to the recipient: the sender must not be able to accept their
     // own request by id (IDOR).
-    const result = await storage.acceptFriend(id, accepterId);
+    const result = await friendStore.acceptFriend(id, accepterId);
     if (!result) {
       res.status(404).json({ ...payload("FRIEND_REQUEST_NOT_FOUND") });
       return;
     }
-    const accepter = await storage.getUser(accepterId);
+    const accepter = await userStore.getUser(accepterId);
     const requesterId = result.requesterId;
 
     emitToUser(requesterId, "friend:request_accepted", {
@@ -935,7 +937,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (id === null) return;
     // Only the recipient can decline (IDOR: any user could destroy any
     // pending request by id).
-    const declined = await storage.declineFriendRequest(id, req.session.userId!);
+    const declined = await friendStore.declineFriendRequest(id, req.session.userId!);
     if (!declined) {
       res.status(404).json({ ...payload("FRIEND_REQUEST_NOT_FOUND") });
       return;
@@ -946,7 +948,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete("/api/friends/:friendUserId", requireAuth, async (req, res) => {
     const friendUserId = readParam(res, req.params.friendUserId);
     if (friendUserId === null) return;
-    await storage.removeFriend(req.session.userId!, friendUserId);
+    await friendStore.removeFriend(req.session.userId!, friendUserId);
     res.json({ ok: true });
   });
 

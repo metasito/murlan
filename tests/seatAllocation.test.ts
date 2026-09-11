@@ -249,14 +249,14 @@ describe("the seat a newcomer is given", () => {
 
 describe("the age the hold is measured on", () => {
   const source = readFileSync(
-    path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "server", "storage.ts"),
+    path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "server", "friendStore.ts"),
     "utf8"
   );
 
   /** The `gameInvites` insert, from `.insert(gameInvites)` to its `.returning(`. */
   function inviteWrite(): string {
     const open = source.indexOf(".insert(gameInvites)");
-    assert.ok(open >= 0, "storage.ts no longer inserts a game invite where this test looks");
+    assert.ok(open >= 0, "friendStore.ts no longer inserts a game invite where this test looks");
     const close = source.indexOf(".returning(", open);
     assert.ok(close > open, "the game invite insert never ends");
     return source.slice(open, close);

@@ -5,7 +5,7 @@
 // `await`, exactly as it did inline. Socket.IO drops a packet that arrives
 // with no listener attached, and the client emits on its own `connect`.
 import type { Server as SocketServer, Socket } from "socket.io";
-import { storage } from "./storage.ts";
+import { roomStore } from "./roomStore.ts";
 import { logger } from "./logger.ts";
 import { trackEvent } from "./events.ts";
 import { onEvent } from "./socketSafety.ts";
@@ -44,13 +44,13 @@ export function registerRoomHandlers({ io, socket, userId, username }: RoomHandl
       RoomCreateSchema,
       async ({ gameMode, maxPlayers }) => {
         if (teamsSizeRefusal((p) => socket.emit("room:error", p), gameMode, maxPlayers)) return;
-        const room = await storage.createRoom(userId, gameMode, maxPlayers, "private");
-        await storage.addRoomPlayer(room.id, userId, 0);
+        const room = await roomStore.createRoom(userId, gameMode, maxPlayers, "private");
+        await roomStore.addRoomPlayer(room.id, userId, 0);
 
         socket.join(room.id);
         socketRoomMap.set(socket.id, room.id);
 
-        const players = await storage.getRoomPlayers(room.id);
+        const players = await roomStore.getRoomPlayers(room.id);
         socket.emit("room:state", await roomStatePayload(room, players));
         logger.info({ roomId: room.id, userId }, "Room created");
       },
@@ -67,7 +67,7 @@ export function registerRoomHandlers({ io, socket, userId, username }: RoomHandl
       "room:spectate",
       RoomSpectateSchema,
       async ({ code }) => {
-        const room = await storage.getRoomByCode(code.toUpperCase());
+        const room = await roomStore.getRoomByCode(code.toUpperCase());
         if (!room) {
           socket.emit("room:error", payload("ROOM_NOT_FOUND"));
           return { ok: false, code: "ROOM_NOT_FOUND" };
@@ -124,7 +124,7 @@ export function registerRoomHandlers({ io, socket, userId, username }: RoomHandl
       "room:join",
       RoomJoinSchema,
       async ({ code }) => {
-        const room = await storage.getRoomByCode(code.toUpperCase());
+        const room = await roomStore.getRoomByCode(code.toUpperCase());
         if (!room) {
           socket.emit("room:error", payload("ROOM_NOT_FOUND"));
           return;
@@ -134,7 +134,7 @@ export function registerRoomHandlers({ io, socket, userId, username }: RoomHandl
           return;
         }
 
-        const claim = await storage.claimRoomSeat(room.id, userId);
+        const claim = await roomStore.claimRoomSeat(room.id, userId);
         if (!claim.ok) {
           socket.emit("room:error", SEAT_CLAIM_REFUSAL[claim.reason]);
           return;
@@ -143,7 +143,7 @@ export function registerRoomHandlers({ io, socket, userId, username }: RoomHandl
         socket.join(room.id);
         socketRoomMap.set(socket.id, room.id);
 
-        const updatedPlayers = await storage.getRoomPlayers(room.id);
+        const updatedPlayers = await roomStore.getRoomPlayers(room.id);
         trackEvent("room.joined", userId, {
           playerCount: updatedPlayers.length,
           gameMode: room.gameMode,
@@ -168,19 +168,19 @@ export function registerRoomHandlers({ io, socket, userId, username }: RoomHandl
       "room:rejoin",
       RoomRejoinSchema,
       async ({ code }) => {
-        const room = await storage.getRoomByCode(code.toUpperCase());
+        const room = await roomStore.getRoomByCode(code.toUpperCase());
         if (!room) {
           socket.emit("room:error", payload("ROOM_NOT_FOUND"));
           return;
         }
 
-        const seated = await storage.getRoomPlayers(room.id);
+        const seated = await roomStore.getRoomPlayers(room.id);
         if (!seated.some((p) => p.userId === userId)) {
           socket.emit("room:error", payload("NOT_IN_ROOM"));
           return;
         }
 
-        const claim = await storage.claimRoomSeat(room.id, userId);
+        const claim = await roomStore.claimRoomSeat(room.id, userId);
         if (!claim.ok && claim.reason !== "already_joined") {
           socket.emit("room:error", SEAT_CLAIM_REFUSAL[claim.reason]);
           return;
@@ -190,7 +190,7 @@ export function registerRoomHandlers({ io, socket, userId, username }: RoomHandl
         socketRoomMap.set(socket.id, room.id);
         clearLobbyGrace(room.id, userId);
 
-        const players = await storage.getRoomPlayers(room.id);
+        const players = await roomStore.getRoomPlayers(room.id);
         io.to(room.id).emit("room:state", await roomStatePayload(room, players));
       },
       { limit: 20, windowMs: 60_000 }
@@ -223,7 +223,7 @@ export function registerRoomHandlers({ io, socket, userId, username }: RoomHandl
       async ({ maxPlayers, gameMode }) => {
         if (teamsSizeRefusal((p) => socket.emit("room:error", p), gameMode, maxPlayers)) return;
 
-        const waiting = await storage.findWaitingPublicRooms(userId);
+        const waiting = await roomStore.findWaitingPublicRooms(userId);
 
         let joinedRoomId: string | null = null;
         for (const candidate of waiting) {
@@ -239,14 +239,14 @@ export function registerRoomHandlers({ io, socket, userId, username }: RoomHandl
           )
             continue;
 
-          const claim = await storage.claimRoomSeat(candidate.room.id, userId);
+          const claim = await roomStore.claimRoomSeat(candidate.room.id, userId);
           if (!claim.ok) continue;
 
           const roomId = candidate.room.id;
           socket.join(roomId);
           socketRoomMap.set(socket.id, roomId);
 
-          const updatedPlayers = await storage.getRoomPlayers(roomId);
+          const updatedPlayers = await roomStore.getRoomPlayers(roomId);
           io.to(roomId).emit(
             "room:state",
             await roomStatePayload(candidate.room, updatedPlayers)
@@ -257,12 +257,12 @@ export function registerRoomHandlers({ io, socket, userId, username }: RoomHandl
         }
 
         if (!joinedRoomId) {
-          const room = await storage.createRoom(userId, gameMode, maxPlayers, "public");
-          await storage.addRoomPlayer(room.id, userId, 0);
+          const room = await roomStore.createRoom(userId, gameMode, maxPlayers, "public");
+          await roomStore.addRoomPlayer(room.id, userId, 0);
           socket.join(room.id);
           socketRoomMap.set(socket.id, room.id);
 
-          const players = await storage.getRoomPlayers(room.id);
+          const players = await roomStore.getRoomPlayers(room.id);
           socket.emit("room:state", await roomStatePayload(room, players));
         }
       },

@@ -106,8 +106,8 @@ describe("room visibility", { skip: hasDatabase() ? false : skipMessage() }, () 
     host.socket.emit("room:create", { gameMode: "free_for_all", maxPlayers: 2 });
     const privateRoom = await made;
 
-    const { storage } = await import("../../server/storage.ts");
-    const open = await storage.findWaitingPublicRooms();
+    const { roomStore } = await import("../../server/roomStore.ts");
+    const open = await roomStore.findWaitingPublicRooms();
     const ids = open.map((c) => c.room.id);
 
     assert.ok(ids.includes(opened.roomId), "a public room still waiting must be in the query's answer");
@@ -137,8 +137,8 @@ describe("room visibility", { skip: hasDatabase() ? false : skipMessage() }, () 
     host.socket.emit("room:start");
     await waitFor(host.socket, "game:started");
 
-    const { storage } = await import("../../server/storage.ts");
-    const open = await storage.findWaitingPublicRooms();
+    const { roomStore } = await import("../../server/roomStore.ts");
+    const open = await roomStore.findWaitingPublicRooms();
     assert.ok(
       !open.some((c) => c.room.id === room.roomId),
       "a room whose hand has been dealt must not still be on quick-match's list"
@@ -152,8 +152,8 @@ describe("room visibility", { skip: hasDatabase() ? false : skipMessage() }, () 
     const opener = await player("orphan_opener");
     const opened = await quickmatch(opener);
 
-    const { storage } = await import("../../server/storage.ts");
-    await storage.removeRoomPlayer(opened.roomId, opener.user.id);
+    const { roomStore } = await import("../../server/roomStore.ts");
+    await roomStore.removeRoomPlayer(opened.roomId, opener.user.id);
 
     const arrival = await player("orphan_arrival");
     const landed = await quickmatch(arrival);

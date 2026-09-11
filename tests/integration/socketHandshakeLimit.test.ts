@@ -166,7 +166,7 @@ describe(
      * need the very same rows.
      */
     test("a connection reads the caller's friends once", async () => {
-      const { storage } = await import("../../server/storage.ts");
+      const { friendStore } = await import("../../server/friendStore.ts");
       // The two tests above accept 72 connections between them, and each one
       // leaves two fire-and-forget friends reads behind — the connect handler's
       // and the debounced offline notice its close schedules. The suite's pool
@@ -185,13 +185,13 @@ describe(
           `connections above are still draining, so this test cannot get a slot.`
       );
       const { connectAs, waitFor } = await import("../helpers/client.ts");
-      const realGetFriends = storage.getFriends;
+      const realGetFriends = friendStore.getFriends;
       // Keyed by caller, not a bare counter: the two tests above open 72
       // sockets between them, and a connection handler's read is
       // fire-and-forget, so their tails are still landing when this one
       // installs its stub.
       const readsFor = new Map<string, number>();
-      storage.getFriends = async function (userId: string) {
+      friendStore.getFriends = async function (userId: string) {
         readsFor.set(userId, (readsFor.get(userId) ?? 0) + 1);
         return realGetFriends.call(this, userId);
       };
@@ -211,7 +211,7 @@ describe(
           client.socket.close();
         }
       } finally {
-        storage.getFriends = realGetFriends;
+        friendStore.getFriends = realGetFriends;
       }
     });
   }

@@ -40,7 +40,7 @@
 import type { Server as SocketServer } from "socket.io";
 import { eq } from "drizzle-orm";
 import { db } from "./db.ts";
-import { storage } from "./storage.ts";
+import { roomStore } from "./roomStore.ts";
 import { emitVoteState, emitEndMatchVoteState } from "./emit.ts";
 import { payload } from "./payload.ts";
 import { logger } from "./logger.ts";
@@ -404,7 +404,7 @@ async function dealVotedManche(
   // manche's seats are copied from the running game. `room_players` holds
   // humans only, so a roster rebuilt from it drops every bot seat and
   // renumbers whatever is left.
-  const room = await storage.getRoomById(roomId);
+  const room = await roomStore.getRoomById(roomId);
   if (!room) return refuse("ROOM_NOT_FOUND", "Room not found");
 
   const seats = game.gameState.players;
@@ -580,7 +580,7 @@ async function rejoinAction(
 
   // Idempotent — an INSERT on every reconnect would pile up duplicate
   // room_players rows and corrupt the next rematch.
-  await storage
+  await roomStore
     .upsertRoomPlayer(roomId, userId, seat)
     .catch((err: unknown) => logger.warn({ err, roomId, userId }, "upsertRoomPlayer failed"));
 
@@ -595,7 +595,7 @@ async function startMatchAction(
 ): Promise<EventOutcome> {
   const { roomId, userId, fillWithBots, botPersonality, matchLength } = action;
 
-  const room = await storage.getRoomById(roomId);
+  const room = await roomStore.getRoomById(roomId);
   if (!room || room.hostUserId !== userId) return { ok: false, code: "NOT_THE_HOST" };
 
   // A live in-memory game is the authority on whether this room may deal:
@@ -637,7 +637,7 @@ async function startMatchAction(
   // a hand gives the table a player who cannot play it and whom no disconnect
   // can ever hand to a bot, because their disconnect already happened. Release
   // the seat instead; they can rejoin the next lobby.
-  const seated = await storage.getRoomPlayers(room.id);
+  const seated = await roomStore.getRoomPlayers(room.id);
   const absent = new Set(usersInLobbyGrace(roomId));
   // The finished match's tally, discarded before any seat leaves: releasing one
   // lowers the rematch gate, and a stale full count would deal that match one
@@ -719,7 +719,7 @@ async function startMatchAction(
   // straggler. Leaving it to dealManche would open a window the width of one
   // round-trip in which quick-match can seat someone into a hand whose roster
   // is already frozen.
-  await storage.updateRoomStatus(roomId, "in_progress");
+  await roomStore.updateRoomStatus(roomId, "in_progress");
   // Not awaited: nothing below reads the rows, and the deal must not wait on it.
   void retireRoomInvites(io, roomId, room.code).catch((err: unknown) =>
     logger.warn({ err, roomId }, "Failed to retire the invites of a room that started")
@@ -801,7 +801,7 @@ function seatLostAction(
         // the local map alone hands a connected player's seat to a bot.
         if (await isUserOnline(userId)) return;
 
-        await storage
+        await roomStore
           .removeRoomPlayer(roomId, userId)
           .catch((err) =>
             logger.warn(

@@ -107,7 +107,7 @@ test("columns are added before the indexes that may target them", () => {
 
 test("the replay ownership predicate has an index it can use", () => {
   // Both readers of match_replays filter on `player_ids @> '["<uid>"]'`
-  // (server/replays.ts, server/storage.ts). Containment is not a btree
+  // (server/replays.ts, server/deleteAccount.ts). Containment is not a btree
   // predicate, so the access method has to survive into the DDL — an index
   // created under the same name as a btree would be dead weight the planner
   // never touches.

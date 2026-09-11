@@ -122,7 +122,7 @@ describe("session regeneration on login and registration", { skip: hasDatabase()
     // NOT VALID check constraint on the `session` table that startTestServer()
     // pins this app to makes the store's INSERT fail while leaving deletes
     // alone. Deletes have to keep working — rollbackRegistration reaches
-    // storage.deleteUser, which clears the user's own session rows.
+    // userStore.deleteUser, which clears the user's own session rows.
     const admin = new pg.Pool({ connectionString: process.env.DATABASE_URL! });
     try {
       await admin.query(
@@ -208,10 +208,10 @@ describe("username case", { skip: hasDatabase() ? false : skipMessage() }, () =>
   // can both pass the pre-check. Only the index refuses the second, and it is
   // reached by inserting directly — the route's own check would mask it.
   test("the database refuses a differently-cased duplicate the pre-check let through", async () => {
-    const { storage, UsernameTakenError } = await import("../../server/storage.ts");
-    await storage.createUser({ username: "CaseCarol", password: "x" });
+    const { userStore, UsernameTakenError } = await import("../../server/userStore.ts");
+    await userStore.createUser({ username: "CaseCarol", password: "x" });
     await assert.rejects(
-      () => storage.createUser({ username: "casecarol", password: "x" }),
+      () => userStore.createUser({ username: "casecarol", password: "x" }),
       UsernameTakenError
     );
 
@@ -337,8 +337,8 @@ describe("email at signup", { skip: hasDatabase() ? false : skipMessage() }, () 
 
   test("registration stores the email and mints an email_verify token", async () => {
     const { user } = await register(server, "email_stores");
-    const { storage } = await import("../../server/storage.ts");
-    const stored = await storage.getUser(user.id);
+    const { userStore } = await import("../../server/userStore.ts");
+    const stored = await userStore.getUser(user.id);
     assert.equal(stored?.email, "email_stores@example.test");
     assert.equal(stored?.emailVerifiedAt, null);
 
@@ -382,8 +382,8 @@ describe("email at signup", { skip: hasDatabase() ? false : skipMessage() }, () 
     assert.equal(res.status, 202, text);
     assert.equal(JSON.parse(text).code, "CHECK_YOUR_EMAIL");
 
-    const { storage } = await import("../../server/storage.ts");
-    const other = await storage.getUserByUsername("email_dup_other");
+    const { userStore } = await import("../../server/userStore.ts");
+    const other = await userStore.getUserByUsername("email_dup_other");
     assert.ok(other, "the taken-address branch must still create an account");
     assert.notEqual(other.id, owner.id);
     assert.equal(other.email?.toLowerCase(), "email_dup_owner@example.test");
@@ -402,8 +402,8 @@ describe("email at signup", { skip: hasDatabase() ? false : skipMessage() }, () 
     });
     assert.equal(first.status, 200, await first.text());
 
-    const { storage } = await import("../../server/storage.ts");
-    const stored = await storage.getUser(user.id);
+    const { userStore } = await import("../../server/userStore.ts");
+    const stored = await userStore.getUser(user.id);
     assert.ok(stored?.emailVerifiedAt, "emailVerifiedAt must be set after redemption");
 
     const second = await fetch(`${server.url}/api/auth/verify-email`, {

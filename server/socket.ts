@@ -3,7 +3,7 @@ import type { Socket } from "socket.io";
 import type { IncomingMessage, Server as HttpServer } from "node:http";
 import type { NextFunction, Request, Response } from "express";
 import type { Session, SessionData } from "express-session";
-import { storage } from "./storage.ts";
+import { userStore } from "./userStore.ts";
 import { logger } from "./logger.ts";
 import { trackEvent } from "./events.ts";
 import { sessionMiddleware } from "./session.ts";
@@ -132,7 +132,7 @@ export function setupSocket(httpServer: HttpServer) {
         return next(new Error("Too many connections"));
       }
 
-      const user = await storage.getUser(claimedUserId).catch(() => null);
+      const user = await userStore.getUser(claimedUserId).catch(() => null);
       if (!user) return next(new Error("Not authenticated"));
 
       socket.data.username = user.username;

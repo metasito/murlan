@@ -5,7 +5,8 @@
 // disconnect path alike, so they live apart from all three: leaving them in
 // socket.ts while socket.ts imports the room family would be a cycle.
 import type { Server as SocketServer, Socket } from "socket.io";
-import { storage } from "./storage.ts";
+import { friendStore } from "./friendStore.ts";
+import { roomStore } from "./roomStore.ts";
 import { logger } from "./logger.ts";
 import {
   isShuttingDown,
@@ -50,7 +51,7 @@ export async function roomStatePayload(
 ) {
   const holds =
     room.status === "waiting"
-      ? await storage.getRoomSeatHolds(room, players).catch((err: unknown) => {
+      ? await roomStore.getRoomSeatHolds(room, players).catch((err: unknown) => {
           logger.warn({ err, roomId: room.id }, "seat holds read failed; the lobby shows none");
           return [];
         })
@@ -142,11 +143,11 @@ export async function emitRoomStateTo(
   roomId: string,
   game: OnlineGameState
 ) {
-  const room = await storage.getRoomById(roomId).catch((err: unknown) => {
+  const room = await roomStore.getRoomById(roomId).catch((err: unknown) => {
     logger.warn({ err, roomId }, "getRoomById failed; answering from the live game");
     return undefined;
   });
-  const players = await storage.getRoomPlayers(roomId).catch((err: unknown) => {
+  const players = await roomStore.getRoomPlayers(roomId).catch((err: unknown) => {
     logger.warn({ err, roomId }, "getRoomPlayers failed; answering from the live roster");
     return [];
   });
@@ -276,12 +277,12 @@ function tellInvitees(
  * whatever broadcast happens to come along next.
  */
 export async function announceSeatHoldsChanged(io: SocketServer, roomId: string): Promise<void> {
-  const room = await storage.getRoomById(roomId).catch((err: unknown) => {
+  const room = await roomStore.getRoomById(roomId).catch((err: unknown) => {
     logger.warn({ err, roomId }, "Failed to read the room while announcing a seat-hold change");
     return null;
   });
   if (!room) return;
-  const players = await storage.getRoomPlayers(roomId).catch((err: unknown) => {
+  const players = await roomStore.getRoomPlayers(roomId).catch((err: unknown) => {
     logger.warn({ err, roomId }, "Failed to read the roster while announcing a seat-hold change");
     return null;
   });
@@ -295,7 +296,7 @@ export async function retireRoomInvites(
   roomId: string,
   roomCode: string
 ): Promise<void> {
-  const invitees = await storage.clearGameInvites(roomId).catch((err) => {
+  const invitees = await friendStore.clearGameInvites(roomId).catch((err) => {
     logger.warn({ err, roomId }, "Failed to clear the invites of a room that closed");
     return [] as string[];
   });
@@ -314,7 +315,7 @@ export async function announceRoomJoinable(
   roomCode: string,
   joinable: boolean
 ): Promise<void> {
-  const invitees = await storage.getRoomInvitees(roomId).catch((err: unknown) => {
+  const invitees = await friendStore.getRoomInvitees(roomId).catch((err: unknown) => {
     logger.warn({ err, roomId, joinable }, "Failed to read who holds an invite to a room");
     return [] as string[];
   });
@@ -340,7 +341,7 @@ export async function announceIfFilled(
  * live game. A `room:leave` and a lost connection differ only in what the
  * caller can hand over, so the seat-side work lives in one place.
  *
- * Runs on the disconnect path inside a `void (async () => …)`, so every storage
+ * Runs on the disconnect path inside a `void (async () => …)`, so every store
  * call is `.catch`-guarded: an unguarded throw there strands the room.
  */
 export async function handleSeatRelease(
@@ -355,7 +356,7 @@ export async function handleSeatRelease(
 ) {
   clearAllTimersForUser(userId, roomId);
 
-  await storage
+  await roomStore
     .removeRoomPlayer(roomId, userId)
     .catch((err) =>
       logger.warn(
@@ -365,7 +366,7 @@ export async function handleSeatRelease(
     );
   opts.socket?.leave(roomId);
 
-  const room = await storage.getRoomById(roomId).catch((err) => {
+  const room = await roomStore.getRoomById(roomId).catch((err) => {
     logger.warn({ err, roomId, userId }, "Failed to read the rooms row while releasing a seat");
     return null;
   });
@@ -374,13 +375,13 @@ export async function handleSeatRelease(
   if (room.status === "waiting") {
     // `null`, not `[]`: an unreadable roster and an empty one lead opposite
     // ways, and the branch below deletes rows on the strength of the answer.
-    const remaining = await storage.getRoomPlayers(roomId).catch((err: unknown) => {
+    const remaining = await roomStore.getRoomPlayers(roomId).catch((err: unknown) => {
       logger.warn({ err, roomId }, "Failed to read the remaining lobby players");
       return null;
     });
     if (!remaining) return;
     if (remaining.length === 0) {
-      await storage
+      await roomStore
         .updateRoomStatus(roomId, "finished")
         .catch((err) =>
           logger.warn(
@@ -396,7 +397,7 @@ export async function handleSeatRelease(
       const [nextHost] = remaining.sort((a, b) => a.seatIndex - b.seatIndex);
       if (!nextHost) throw new Error(`releaseSeat: room ${roomId} has no remaining players to host`);
       newHostId = nextHost.userId;
-      await storage
+      await roomStore
         .updateRoomHost(roomId, newHostId)
         .catch((err) =>
           logger.warn(

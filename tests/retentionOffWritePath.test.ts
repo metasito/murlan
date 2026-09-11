@@ -17,7 +17,7 @@
 // Scoped to the age-based signature deliberately, not to "insert and delete
 // anywhere in one file": server/push.ts and server/stats.ts also combine the
 // two, to cap rows kept per user (`notInArray` against a `keep` set), and
-// server/storage.ts deletes `session` rows by userId on account deletion —
+// server/deleteAccount.ts deletes `session` rows by userId on account deletion —
 // neither is age-based, so neither trips this.
 import { test } from "node:test";
 import assert from "node:assert/strict";

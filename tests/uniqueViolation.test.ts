@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { __testables } from "../server/storage.ts";
+import { __testables } from "../server/userStore.ts";
 
 const { uniqueViolation } = __testables;
 

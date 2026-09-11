@@ -1,6 +1,6 @@
 import type { Server as SocketServer } from "socket.io";
 import { eq, inArray, lt } from "drizzle-orm";
-import { storage } from "./storage.ts";
+import { roomStore } from "./roomStore.ts";
 import { logger } from "./logger.ts";
 import { db } from "./db.ts";
 import { recordGameResult } from "./stats.ts";
@@ -233,7 +233,7 @@ export function safeTimer(
       type: "abandoned",
       ...payload("GAME_INTERRUPTED_SERVER_ERROR"),
     });
-    void storage
+    void roomStore
       .updateRoomStatus(roomId, "finished")
       .catch((statusErr) =>
         logger.warn(
@@ -269,7 +269,7 @@ export async function pruneAbandonedGames(): Promise<number> {
  * `updateRoomStatus(…, "finished")` is all that ever happened to the `rooms`
  * row, so every online game ever played left one behind, plus a
  * `room_players` row per seat. `room_players` has no cascade, so its rows go
- * first — the same order `storage.deleteUser` uses.
+ * first — the same order `deleteAccount.ts`'s `deleteUser` uses.
  *
  * A room still in the in-memory map is never a candidate, whatever its age.
  */
@@ -367,7 +367,7 @@ export function startSweeper(io: SocketServer) {
 }
 
 export const gameOverWriters: GameOverWriters = {
-  updateRoomStatus: (roomId, status) => storage.updateRoomStatus(roomId, status),
+  updateRoomStatus: (roomId, status) => roomStore.updateRoomStatus(roomId, status),
   persistGameState,
   recordGameResult,
   recordRatedResult,

@@ -1,5 +1,5 @@
 import type { Server as SocketServer } from "socket.io";
-import { storage } from "./storage.ts";
+import { roomStore } from "./roomStore.ts";
 import { rollMatchForward } from "./gameOver.ts";
 import { emitMatchState } from "./emit.ts";
 import { broadcastGameState, persistGameState } from "./gamePersistence.ts";
@@ -41,7 +41,7 @@ export async function dealManche(
   game.lastGameOverPayload = undefined;
   rollMatchForward(game);
 
-  await storage.updateRoomStatus(game.roomId, "in_progress");
+  await roomStore.updateRoomStatus(game.roomId, "in_progress");
 
   broadcastGameState(io, game);
   io.to(game.roomId).emit("game:started");
