@@ -1,9 +1,10 @@
 // tests/queueLoop.test.ts
-import { test, describe } from "node:test";
+import { test, describe, after } from "node:test";
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { Readable } from "node:stream";
 import { readFileSync, rmSync } from "node:fs";
+import path from "node:path";
 import {
   parseRoute,
   shouldStop,
@@ -179,7 +180,13 @@ describe("parseStatus", () => {
   });
 });
 
+// Its own directory, deleted after: `runTicket` appends a real stream to `<dir>/<n>.jsonl`, and the
+// fixtures use live ticket numbers — so the suite was appending to the loop's own logs, every run.
+const SCRATCH = path.join("tests", ".scratch-loop");
+
 describe("runTicket", () => {
+  after(() => rmSync(SCRATCH, { recursive: true, force: true }));
+
   /** A `claude` that emits the given lines on stdout and then exits with `status`. */
   const fakeSpawn = (lines: string[], status = 0) => () => {
     const child: any = new EventEmitter();
@@ -225,6 +232,7 @@ describe("runTicket", () => {
       queue,
       log: () => {},
       facts,
+      dir: SCRATCH,
     });
     assert.equal(run.blocked, true);
     assert.equal(run.blockedUntil, 1789134000000);
@@ -237,6 +245,7 @@ describe("runTicket", () => {
       queue,
       log: (m: string) => said.push(m),
       facts,
+      dir: SCRATCH,
     });
     assert.equal(run.blocked, false);
     assert.equal(run.blockedUntil, 0);
@@ -251,6 +260,7 @@ describe("runTicket", () => {
       at: "D",
       log: (m: string) => said.push(m),
       facts,
+      dir: SCRATCH,
     });
     const out = said.join("\n");
     assert.match(out, /#962 · Rate limiter factory/);
@@ -265,7 +275,7 @@ describe("runTicket", () => {
         tool("Task", ""),
         RESULT,
       ]),
-      { number: 953, queue, log: (m: string) => said.push(m), facts }
+      { number: 953, queue, log: (m: string) => said.push(m), facts, dir: SCRATCH }
     );
     const out = said.join("\n");
     assert.equal(out.match(/#953 · Rate limiter factory/g)?.length, 1, "the header prints once");
@@ -280,6 +290,7 @@ describe("runTicket", () => {
       queue,
       log: () => {},
       facts,
+      dir: SCRATCH,
     });
     assert.equal(run.result?.cost, 1.82);
     assert.equal(run.result?.turns, 41);
@@ -294,7 +305,7 @@ describe("runTicket", () => {
         tool("Bash", "git push -u origin agent/953-x", "toolu_parent"),
         RESULT,
       ]),
-      { number: 953, queue, log: (m: string) => said.push(m), facts }
+      { number: 953, queue, log: (m: string) => said.push(m), facts, dir: SCRATCH }
     );
     assert.ok(!said.join("\n").includes("[5/6] E"), "a subagent cannot push the board to phase E");
   });
@@ -317,6 +328,7 @@ describe("runTicket", () => {
       queue,
       log: () => {},
       facts,
+      dir: SCRATCH,
       stallMs: 20,
       tick: 10,
     });
@@ -350,6 +362,7 @@ describe("runTicket", () => {
       queue,
       log: () => {},
       facts,
+      dir: SCRATCH,
       stallMs: 60,
       tick: 10,
     });
@@ -363,6 +376,7 @@ describe("runTicket", () => {
       queue,
       log: () => {},
       facts,
+      dir: SCRATCH,
     });
     assert.equal(run.status, 1);
   });
@@ -373,6 +387,7 @@ describe("runTicket", () => {
       queue,
       log: () => {},
       facts,
+      dir: SCRATCH,
     });
     assert.match(run.log, /999\.jsonl$/);
     assert.ok(readFileSync(run.log, "utf8").includes('"type":"result"'));

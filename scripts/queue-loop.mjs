@@ -536,10 +536,11 @@ export function runTicket(
     facts = ticketFacts,
     stallMs = STALL_MS,
     tick = 30_000,
+    dir = LOG_DIR,
   },
 ) {
-  mkdirSync(LOG_DIR, { recursive: true });
-  const logPath = path.join(LOG_DIR, `${number}.jsonl`);
+  mkdirSync(dir, { recursive: true });
+  const logPath = path.join(dir, `${number}.jsonl`);
   const sink = createWriteStream(logPath, { flags: "a" });
   const startedAt = Date.now();
 
