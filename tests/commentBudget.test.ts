@@ -20,15 +20,15 @@ const counts = (d: string) =>
 
 // `diffOf` decides how much context git prints, so what the window is worth can only be seen
 // against a real repository: every fixture above hands `budget` a diff that was written by hand.
-// The global and system config files are pointed at a path that does not exist, so nothing the
-// machine keeps in either — a signing key, `core.hooksPath`, a template directory — can red these
-// cases for a reason that is not the check's.
-const diffAcross = (before: string[], after: string[]) => {
+// `env` reaches the measured diff and not only the setup, so the machine's own global config — a
+// signing key, `core.hooksPath`, a template directory — can red none of these, and `extra` is the
+// only config any of them sees. `raw` is the same diff without the flags that pin git's format:
+// what the check would have been handed had it not asked.
+const diffAcross = (before: string[], after: string[], extra: Record<string, string> = {}) => {
   const dir = mkdtempSync(join(tmpdir(), "comment-budget-"));
   const none = join(dir, "no-config");
-  const env = { ...process.env, GIT_CONFIG_GLOBAL: none, GIT_CONFIG_SYSTEM: none };
-  const git = (...args: string[]) => execFileSync("git", args, { cwd: dir, env, stdio: "pipe" });
-  const cwd = process.cwd();
+  const env = { ...process.env, GIT_CONFIG_GLOBAL: none, GIT_CONFIG_SYSTEM: none, ...extra };
+  const git = (...args: string[]) => execFileSync("git", args, { cwd: dir, env, encoding: "utf8", stdio: "pipe" });
   try {
     git("init", "-b", "main");
     for (const [i, text] of [before, after].entries()) {
@@ -36,23 +36,36 @@ const diffAcross = (before: string[], after: string[]) => {
       git("add", "a.mjs");
       git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-m", `v${i}`);
     }
-    process.chdir(dir);
-    return diffOf("HEAD~1");
+    return { pinned: diffOf("HEAD~1", "HEAD", { cwd: dir, env }), raw: git("diff", "HEAD~1", "HEAD") };
   } finally {
-    process.chdir(cwd);
     rmSync(dir, { recursive: true, force: true, maxRetries: 3 });
   }
 };
 
 const unprefixed = (lines: string[]) => lines.map((l) => l.slice(1));
 
-// The window has to reach the opener of a docblock as long as any this repo actually writes, and
-// the script's own header is one: read rather than restated, so growing that header past the
-// window reds the case below instead of leaving a number nobody rechecked.
-const ownHeader =
-  readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../scripts/comment-budget.mjs"), "utf8")
-    .split("\n")
-    .findIndex((l) => l.trim() === "*/") + 1;
+// The window has to reach the opener of a block comment as long as any this repo actually writes,
+// so that length is measured rather than restated: a docblock grown past `CONTEXT` reds the case
+// below instead of quietly leaving an edit under it counted as code.
+const longestBlock = (() => {
+  const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+  const files = execFileSync("git", ["ls-files", "*.mjs", "*.js", "*.ts", "*.tsx"], { cwd: root, encoding: "utf8" });
+  let longest = 0;
+  for (const file of files.split("\n").filter(Boolean)) {
+    let open = -1;
+    readFileSync(join(root, file), "utf8")
+      .split("\n")
+      .forEach((line, i) => {
+        const text = line.trim();
+        if (open < 0) open = text.startsWith("/*") && !text.includes("*/") ? i : -1;
+        else if (text.includes("*/")) {
+          longest = Math.max(longest, i - open + 1);
+          open = -1;
+        }
+      });
+  }
+  return longest;
+})();
 
 describe("comment budget", () => {
   test("a diff that is mostly prose is over", () => {
@@ -160,29 +173,30 @@ describe("comment budget", () => {
   });
 
   test("prose added far below a block comment's opener counts as prose", () => {
-    const head = ["/*", ...unprefixed(prose(ownHeader - 1))];
+    const head = ["/*", ...unprefixed(prose(longestBlock - 1))];
     const tail = ["*/", ...unprefixed(code(1))];
     const added = unprefixed(prose(8)).map((l) => `${l} also`);
-    assert.deepEqual(counts(diffAcross([...head, ...tail], [...head, ...added, ...tail])), [["a.mjs", 8, 0]]);
+    assert.deepEqual(counts(diffAcross([...head, ...tail], [...head, ...added, ...tail]).pinned), [["a.mjs", 8, 0]]);
   });
 
   // Without the format flags this is not a failure but a pass: every header stops matching, the
-  // check sees no file at all, and reports within budget.
+  // check sees no file at all, and reports within budget. `raw` is asserted first, or the case
+  // would stay green on a day the config stopped reaching git and nothing was being rewritten.
   test("a machine that rewrites diff headers cannot empty the check out", () => {
     const before = unprefixed(code(2));
     const after = [...before, ...unprefixed(comments(7)).map((l) => `${l} new`)];
-    const rewritten = { GIT_CONFIG_COUNT: "1", GIT_CONFIG_KEY_0: "diff.noprefix", GIT_CONFIG_VALUE_0: "true" };
-    Object.assign(process.env, rewritten);
-    try {
-      assert.deepEqual(counts(diffAcross(before, after)), [["a.mjs", 7, 0]]);
-    } finally {
-      for (const key of Object.keys(rewritten)) delete process.env[key];
-    }
+    const { pinned, raw } = diffAcross(before, after, {
+      GIT_CONFIG_COUNT: "1",
+      GIT_CONFIG_KEY_0: "diff.noprefix",
+      GIT_CONFIG_VALUE_0: "true",
+    });
+    assert.match(raw, /^diff --git a\.mjs a\.mjs$/m);
+    assert.deepEqual(counts(pinned), [["a.mjs", 7, 0]]);
   });
 
   test("a context line is counted in neither column", () => {
     const before = [...unprefixed(code(12)), ...unprefixed(comments(6))];
     const after = [...before.slice(0, 9), ...unprefixed(comments(7)).map((l) => `${l} new`), ...before.slice(9)];
-    assert.deepEqual(counts(diffAcross(before, after)), [["a.mjs", 7, 0]]);
+    assert.deepEqual(counts(diffAcross(before, after).pinned), [["a.mjs", 7, 0]]);
   });
 });

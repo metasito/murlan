@@ -82,20 +82,23 @@ export function budget(diff) {
   return [...files].filter(([, n]) => n.comment > 6 && n.comment > n.code);
 }
 
-// Wide, not git's default 3: `side()`'s ceiling above is reached through the window, so this is
-// what puts a docblock's `/*` inside the hunk that edits its body.
-const CONTEXT = 20;
+// `side()`'s block state is per hunk, so the window is what puts a docblock's `/*` inside the hunk
+// that edits its body. It has to clear the longest block comment this repo actually writes —
+// `tests/commentBudget.test.ts` measures that and reds when this no longer covers it.
+const CONTEXT = 40;
 
 // `pathOf` reads git's own header, so the format is demanded rather than hoped for: a machine
-// carrying `diff.noprefix`, `color.ui` or an external differ would otherwise leave this check
-// parsing no files at all and reporting green.
-const PLAIN = ["--no-ext-diff", "--no-color", "--src-prefix=a/", "--dst-prefix=b/"];
+// carrying `diff.noprefix`, `color.ui`, an external differ or a textconv filter would otherwise
+// leave this check parsing no files at all and reporting green.
+const HEADERS = ["--no-ext-diff", "--no-textconv", "--no-color", "--src-prefix=a/", "--dst-prefix=b/"];
 
-export function diffOf(base, head = "HEAD") {
-  const argv = ["diff", `-U${CONTEXT}`, ...PLAIN, `${base}...${head}`, "--", "*.mjs", "*.js", "*.ts", "*.tsx"];
+// cwd and env are the caller's, so nothing has to chdir a whole process to ask about another repo.
+export function diffOf(base, head = "HEAD", opts = {}) {
+  const argv = ["diff", `-U${CONTEXT}`, ...HEADERS, `${base}...${head}`, "--", "*.mjs", "*.js", "*.ts", "*.tsx"];
   return execFileSync("git", argv, {
     encoding: "utf8",
     maxBuffer: 64 * 1024 * 1024,
+    ...opts,
   });
 }
 
