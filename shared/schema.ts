@@ -31,7 +31,7 @@ export const users = pgTable(
     // Partial, not unconditional (#897): an unverified email is a claim, not
     // a possession, so any number of accounts may hold the same address
     // unverified. Only a verified one is unique — whoever verifies first
-    // owns it, and storage.markEmailVerified clears a later claimant's email
+    // owns it, and userStore.markEmailVerified clears a later claimant's email
     // rather than colliding with this index.
     uniqueIndex("users_email_verified_lower_uq")
       .on(sql`lower(${t.email})`)

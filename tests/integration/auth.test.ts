@@ -122,7 +122,7 @@ describe("session regeneration on login and registration", { skip: hasDatabase()
     // NOT VALID check constraint on the `session` table that startTestServer()
     // pins this app to makes the store's INSERT fail while leaving deletes
     // alone. Deletes have to keep working — rollbackRegistration reaches
-    // userStore.deleteUser, which clears the user's own session rows.
+    // deleteAccount.ts's deleteUser, which clears the user's own session rows.
     const admin = new pg.Pool({ connectionString: process.env.DATABASE_URL! });
     try {
       await admin.query(

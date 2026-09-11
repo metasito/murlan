@@ -4,9 +4,10 @@ import { users, rooms, roomPlayers, friends, gameInvites } from "../shared/schem
 import type { User, Friend } from "../shared/schema.ts";
 
 /**
- * An object rather than bare exported functions: `tests/integration/` replaces
- * a single read with a counting stub to drive the handshake paths, and an ES
- * module's namespace is sealed against exactly that.
+ * An object rather than bare exported functions: `tests/integration/
+ * socketHandshakeLimit.test.ts` replaces `getFriends` with a counting stub to
+ * drive the handshake paths, and an ES module's namespace is sealed against
+ * exactly that.
  */
 export const friendStore = {
   async getFriends(userId: string): Promise<(Friend & { friend: User })[]> {
