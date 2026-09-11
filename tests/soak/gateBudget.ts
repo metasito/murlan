@@ -24,28 +24,26 @@ const CAPPED_SETTLES = 2;
  */
 const OVERHEAD_MS = 5_200;
 
-/** A turn, measured locally: 47 of them in a 24,000 ms window, 20 in 10,000 ms. */
-const MOVE_MS = 512;
+/**
+ * A round — one loop pass in which a seat acted, which is what `result.moves` counts.
+ * Measured locally: 47 of them in a 24,000 ms window, 20 in 10,000 ms.
+ */
+const ROUND_MS = 512;
 
 /**
- * What a turn may cost before the bounds below are arithmetic on a stale figure. The gated
- * test measures against it, as `rejoinFailure` observes what `awayWindowOutsideGrace` assumes.
+ * Rounds the window must fit on the slowest runner budgeted for. Under this a run can take
+ * no round at all and red for the clock rather than for the harness, so the gated test
+ * observes it — the relation `rejoinFailure` has to `awayWindowOutsideGrace`.
  */
-export const SLOWEST_TURN_MS = MOVE_MS * SLOW_RUNNER_SCALE;
+export const MIN_ROUNDS = 4;
 
-/**
- * Turns the window must fit on the slowest runner budgeted for, and the most it may fit on
- * this one. Under the floor a run can take no turn and red for the clock rather than for the
- * harness; over the ceiling the gate is running the search, which belongs to soak.yml.
- */
-const MIN_MOVES = 4;
-const MAX_MOVES = 24;
+/** What a gate may spend playing. Past it this is the search, which belongs to soak.yml. */
+const MAX_WINDOW_MS = 12_000;
 
 /**
  * The window the gate plays for. Not scaled: the soak's deadline is wall clock, so a slow
- * runner takes fewer turns in it rather than longer, and `MIN_MOVES` keeps "fewer" over zero.
- * At this window the test measures 12,775 / 12,823 / 12,848 ms locally; every millisecond of
- * `timeoutMs` past that is stall allowance, and costs four times as much on CI.
+ * runner takes fewer rounds in it rather than longer, and `MIN_ROUNDS` keeps "fewer" over
+ * zero. At this window the whole test measures 12,775 / 12,823 / 12,848 ms locally.
  */
 export const GATE_PLAY_MS = 10_000;
 
@@ -72,28 +70,28 @@ export function gateBudget(
   scale: number = DEADLINE_SCALE
 ): GateBudget {
   const stallMs = OVERHEAD_MS + CAPPED_SETTLES * SETTLE_CAP_MS;
-  const floorMs = MOVE_MS * MIN_MOVES * SLOW_RUNNER_SCALE;
+  const floorMs = ROUND_MS * MIN_ROUNDS * SLOW_RUNNER_SCALE;
   // Two ceilings, lower one binding: `suiteMs` is a number this file reads and cannot
   // bound, so alone it is a ratchet — raise `--test-timeout` for an unrelated test and
   // the gate would be permitted a wider window for free.
-  const ceilingMs = Math.min(MOVE_MS * MAX_MOVES, suiteMs - stallMs);
+  const ceilingMs = Math.min(MAX_WINDOW_MS, suiteMs - stallMs);
 
   let unfit: GateBudget["unfit"] = null;
   if (playMs < floorMs) {
     unfit = {
       reason: "too-short",
       detail:
-        `a ${playMs}ms window is under the ${floorMs}ms that ${MIN_MOVES} turns cost on a ` +
-        `${SLOW_RUNNER_SCALE}x runner. A run that takes no turn reds on the clock, and reads ` +
+        `a ${playMs}ms window is under the ${floorMs}ms that ${MIN_ROUNDS} rounds cost on a ` +
+        `${SLOW_RUNNER_SCALE}x runner. A run that takes no round reds on the clock, and reads ` +
         `as the harness having stopped playing.`,
     };
   } else if (playMs > ceilingMs) {
     unfit = {
       reason: "too-long",
       detail:
-        `a ${playMs}ms window is over the ${ceilingMs}ms this gate may spend — ${MAX_MOVES} ` +
-        `turns, or what is left of the suite's ${suiteMs}ms once a ${stallMs}ms stall is ` +
-        `reserved, whichever is less. Past that it is the search, which soak.yml runs.`,
+        `a ${playMs}ms window is over the ${ceilingMs}ms this gate may spend — ${MAX_WINDOW_MS}ms, ` +
+        `or what is left of the suite's ${suiteMs}ms once a ${stallMs}ms stall is reserved, ` +
+        `whichever is less.`,
     };
   }
 

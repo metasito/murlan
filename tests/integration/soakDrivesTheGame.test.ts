@@ -16,7 +16,7 @@ import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
 import { hasDatabase, skipMessage } from "../helpers/testServer.ts";
 import { runSoak, REFUSAL_EVENTS } from "../soak/soak.ts";
-import { gate, GATE_PLAY_MS, SLOWEST_TURN_MS } from "../soak/gateBudget.ts";
+import { gate, GATE_PLAY_MS, MIN_ROUNDS } from "../soak/gateBudget.ts";
 import { errorEventFor } from "../../server/socketSafety.ts";
 
 const GATE = gate();
@@ -48,12 +48,13 @@ describe("the soak harness drives a real game", {
       result.moves > 0,
       "the harness took no turns at all — it is no longer playing the game"
     );
-    // The figure `gateBudget`'s bounds are arithmetic on, observed — the arithmetic
-    // there cannot notice it going stale.
+    // `gateBudget`'s floor claims this many rounds fit, and arithmetic cannot notice
+    // the figure behind that claim going stale.
     assert.ok(
-      GATE_PLAY_MS / result.moves <= SLOWEST_TURN_MS,
-      `${result.moves} turns in ${GATE_PLAY_MS}ms is ${Math.round(GATE_PLAY_MS / result.moves)}ms ` +
-        `a turn, over the ${SLOWEST_TURN_MS}ms gateBudget sizes the window against`
+      result.moves >= MIN_ROUNDS,
+      `${result.moves} rounds in ${GATE_PLAY_MS}ms, under the ${MIN_ROUNDS} the window is ` +
+        `sized for: a round costs more than gateBudget assumes, or this runner is slower ` +
+        `than the allowance there`
     );
     assert.equal(
       result.manches,

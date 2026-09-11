@@ -30,10 +30,10 @@ describe("the gated soak's budget", () => {
   });
 
   // The floor and the ceiling are one guard: without the first, a window too short
-  // to take a turn passes and the gate's own claim goes vacuous.
-  test("a window too short to take a turn on a slow runner is refused", () => {
-    const oneTurn = 512;
-    assert.equal(gateBudget(oneTurn, suiteTimeoutMs(), 1).unfit?.reason, "too-short");
+  // to take a round passes and the gate's own claim goes vacuous.
+  test("a window too short to take a round on a slow runner is refused", () => {
+    const oneRound = 512;
+    assert.equal(gateBudget(oneRound, suiteTimeoutMs(), 1).unfit?.reason, "too-short");
   });
 
   test("a window wide enough to be the search is refused", () => {

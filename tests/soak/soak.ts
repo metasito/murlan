@@ -472,6 +472,9 @@ export async function openTable(
   return room;
 }
 
+/** How long the table has to say nothing before two views are of the same moment. */
+const SETTLE_QUIET_MS = 250;
+
 export interface SoakResult {
   violations: Violation[];
   moves: number;
@@ -492,7 +495,7 @@ export interface SoakResult {
  */
 export async function settle(
   seats: Seat[],
-  quietMs = 250,
+  quietMs = SETTLE_QUIET_MS,
   capMs = SETTLE_CAP_MS * DEADLINE_SCALE
 ): Promise<void> {
   const deadline = Date.now() + capMs;
