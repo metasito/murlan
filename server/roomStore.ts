@@ -24,10 +24,10 @@ function generateRoomCode(): string {
 }
 
 /**
- * An object rather than bare exported functions: `tests/integration/
- * reconnect.test.ts` replaces `getRoomPlayers` with a throwing stub to drive
- * the failure paths, and an ES module's namespace is sealed against exactly
- * that.
+ * An object rather than bare exported functions:
+ * `tests/integration/reconnect.test.ts` replaces `getRoomPlayers` with a
+ * throwing stub to drive the failure paths, and an ES module's namespace is
+ * sealed against exactly that.
  */
 export const roomStore = {
   /**
