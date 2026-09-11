@@ -15,12 +15,12 @@ function sourcesUnder(repoRoot: string, dirs: string[]): [string, string][] {
   );
 }
 
-/** Every source file of the client, as `[repo-relative path, contents]`. */
+/** `app/`, `components/` and `lib/`, as `[repo-relative path, contents]`. */
 export function clientSources(repoRoot: string): [string, string][] {
   return sourcesUnder(repoRoot, ["app", "components", "lib"]);
 }
 
-/** The same, narrowed to what renders. */
+/** `components/` alone — for a rule about what draws, rather than about the client. */
 export function componentSources(repoRoot: string): [string, string][] {
   return sourcesUnder(repoRoot, ["components"]);
 }
