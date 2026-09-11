@@ -19,9 +19,10 @@ export function budget(diff) {
   const files = new Map();
   const lines = diff.split("\n");
 
-  // The `diff --git` header, not the `---`/`+++` pair: a deleted source line reading
-  // `-- a/x.mjs` reaches this loop as `--- a/x.mjs`, and both passes reading the one
-  // header is what stops them disagreeing about which file they are in.
+  // The `diff --git` header, not the `---`/`+++` pair: every line of content carries a
+  // `+`, `-` or space, so only a header can be unprefixed and no line can impersonate one.
+  // Returns undefined for "not a header" and null for "a header this check ignores" — test
+  // for undefined, not truth, or an ignored file leaves the previous one's name standing.
   const pathOf = (line) => {
     const named = /^diff --git a\/.+ b\/(.+)$/.exec(line);
     return named ? (CODE.test(named[1]) ? named[1] : null) : undefined;
