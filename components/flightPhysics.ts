@@ -9,17 +9,14 @@
 
 import type { Card, Combination, GameState, Player } from "@/lib/gameEngine";
 import type { ExchangeAnnounceData } from "@/lib/sharedGameFlow";
-import { CARD_BACK_H, CARD_BACK_W, BACK_SCALE } from "./cardFaceModel.ts";
 import { Hold, Motion, Spacing, Trauma } from "../lib/tokens.ts";
 import {
-  FAN_DRAWN_CARDS,
   HAND_ZONE_H,
   SEAT_DISC,
   SIDE_SECTION_W,
   displayedHandCount,
   handCountOf,
   seatDirection,
-  seatFanArc,
   seatGap,
   seatLabelH,
   sideSlotHeight,

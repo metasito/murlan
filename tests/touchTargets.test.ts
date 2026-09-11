@@ -14,7 +14,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { Spacing, TOUCH_TARGET_MIN } from "../lib/tokens.ts";
 import { physicalTouchTarget } from "../components/cardFaceModel.ts";
-import { ACTION_BTN_FLOOR, actionBtnSize } from "../components/gameTableModel.ts";
+import { ACTION_BTN_FLOOR, actionBtnSize } from "../components/seatLayout.ts";
 import {
   blankComments,
   declaredBox,

@@ -17,7 +17,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { TableText } from "./TableText";
 import { portraitOverlayStyles } from "./chrome";
-import { ROTATE_SETTLED, ROTATE_UPRIGHT, rotateGlyphAngle } from "../gameTableModel";
+import { ROTATE_SETTLED, ROTATE_UPRIGHT, rotateGlyphAngle } from "../flightPhysics";
 import { a11yGroup, a11yHidden } from "@/lib/a11y";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";

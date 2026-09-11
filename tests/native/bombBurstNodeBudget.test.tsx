@@ -13,7 +13,7 @@ import { describe, it, expect } from "@jest/globals";
 import React from "react";
 import { render } from "@testing-library/react-native";
 import { BombBurst, LampLift } from "@/components/table/moments";
-import { SPARK_COUNT } from "@/components/gameTableModel";
+import { SPARK_COUNT } from "@/components/flightPhysics";
 
 /** The prototype's own figure (#765's issue body). */
 const NODE_BUDGET = 24;

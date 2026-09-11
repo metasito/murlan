@@ -52,7 +52,7 @@ jest.mock("@/lib/accessibility", () => ({
 }));
 
 import { GameTable } from "@/components/GameTable";
-import { impactDelayMs } from "@/components/gameTableModel";
+import { impactDelayMs } from "@/components/flightPhysics";
 import type { Card, Combination, GameState, Player } from "@/lib/gameEngine";
 
 const METRICS = {

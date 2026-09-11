@@ -1,5 +1,5 @@
 // Drives a real game of Murlan through the rendered UI: reads the table's
-// own screen-reader description (components/gameTableModel.ts
+// own screen-reader description (components/tableA11y.ts
 // `describeTableForA11y`) to know whose turn it is and what was last played,
 // selects real cards by their `accessibilityLabel`, and asserts the game
 // keeps progressing. A game that stops advancing is treated as a failure,
@@ -117,7 +117,7 @@ export class StuckError extends Error {}
 export class SearchTimeoutError extends StuckError {}
 
 // The table's own aria-label announces "your turn" purely from
-// `currentTurnIndex === viewerSeat` (components/gameTableModel.ts
+// `currentTurnIndex === viewerSeat` (components/tableA11y.ts
 // `describeTableForA11y`), with no notion of `gameOver` — so for one tick
 // after an opponent's move ends the game, the description can still read as
 // "your turn" while the hand itself is already correctly disabled. A short

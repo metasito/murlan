@@ -13,16 +13,7 @@ import {
 } from "react-native-reanimated";
 import type { Combination } from "@/lib/gameEngine";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
-import {
-  roundClosedWithWinner,
-  traumaFor,
-  shakeOffset,
-  shakeAmplitudeFor,
-  flareKindFor,
-  lampLiftFor,
-  type ImpactTier,
-  type FlareKind,
-} from "@/components/gameTableModel";
+import { roundClosedWithWinner, traumaFor, shakeOffset, shakeAmplitudeFor, flareKindFor, lampLiftFor, type ImpactTier, type FlareKind } from "@/components/flightPhysics";
 import {
   playBomb,
   playCardPass,
@@ -104,7 +95,7 @@ interface TableFeedback {
    * BombBurst (components/table/moments.tsx) re-fires its flare/wave/spark
    * off the change, the same trigger-counter pattern PlayedPile's own
    * `bounceTrigger` already uses. Never on a straight/flush or a manche
-   * closing: `flareKindFor` (gameTableModel.ts) is what decides.
+   * closing: `flareKindFor` (flightPhysics.ts) is what decides.
    */
   boomTrigger: number;
   /** Which shape the flare that `boomTrigger` is about to re-fire takes — read by BombBurst's own `Flare`. */
@@ -117,7 +108,7 @@ interface TableFeedback {
   celebrateFlush: () => void;
   /** The escalation's own shake (#763): a translate, decaying to rest. */
   shakeStyle: AnimatedStyle<ViewStyle>;
-  /** Fire the shake for the tier a landing resolved to — `landingTier` (gameTableModel.ts) names it. */
+  /** Fire the shake for the tier a landing resolved to — `landingTier` (flightPhysics.ts) names it. */
   shake: (tier: ImpactTier) => void;
   /** Fire the lamp's own reaction (#765) for the same tier, at the same landing `shake` fires for. */
   burst: (tier: ImpactTier) => void;
@@ -181,7 +172,7 @@ function useImpactFeedback(reduceMotion: boolean, scale: number) {
   };
 
   // The lamp's own reaction (#765): reads `flareKindFor`/`lampLiftFor`
-  // (gameTableModel.ts) off the same tier `shake` below reads its trauma
+  // (flightPhysics.ts) off the same tier `shake` below reads its trauma
   // from, so a straight/flush or a manche closing can never trip the burst
   // meant for a bomb or a partita — `kick`'s old, coarser "heavy" gate did.
   const burst = (tier: ImpactTier) => {

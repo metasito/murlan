@@ -14,7 +14,7 @@ import { FeltGradients } from '@/lib/tokens';
 
 const W = 874;
 const H = 402;
-// BESNIK and LUAN — two of lightPosition()'s (components/gameTableModel.ts)
+// BESNIK and LUAN — two of lightPosition()'s (components/seatLayout.ts)
 // off-viewer fractions, on opposite sides of the table.
 const BESNIK = { x: 0.02, y: 0.48 };
 const LUAN = { x: 0.98, y: 0.48 };

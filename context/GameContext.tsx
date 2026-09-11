@@ -40,7 +40,7 @@ import {
   useExchangeAnnouncement,
   type ExchangeAnnounceData,
 } from "@/lib/sharedGameFlow";
-import { handCountOf } from "@/components/gameTableModel";
+import { handCountOf } from "@/components/seatLayout";
 import type { MatchVerdict } from "@/lib/matchState";
 import type { BotPersonalityId } from "@/lib/botPersonalities";
 

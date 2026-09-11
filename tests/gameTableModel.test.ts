@@ -1,6 +1,7 @@
 // Pure logic behind the shared game table (components/GameTable.tsx), extracted
-// into components/gameTableModel.ts so `node --test` can load it — the table
-// itself is .tsx and cannot be type-stripped by Node's loader.
+// into components/seatLayout.ts, flightPhysics.ts, turnTimerUi.ts, tableFrame.ts
+// and tableA11y.ts so `node --test` can load it — the table itself is .tsx and
+// cannot be type-stripped by Node's loader.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
@@ -10,86 +11,11 @@ import { CARD_H, CARD_W, BACK_SCALE, HAND_SCALE, cardScale } from "../components
 import { Hold, TOUCH_TARGET_MIN, Trauma, Motion, Spacing } from "../lib/tokens.ts";
 import { blankComments } from "./helpers/sourceScan.ts";
 import type { Card, Combination } from "../lib/gameEngine.ts";
-import {
-  ROTATE_SETTLED,
-  ROTATE_UPRIGHT,
-  rotateGlyphAngle,
-  arrivingCard,
-  readHandArrival,
-  readThrownPlay,
-  actionBtnSize,
-  HAND_ZONE_GAP,
-  CHIP_H,
-  SIDE_SECTION_W,
-  HAND_CROP,
-  HAND_WIDTH_SHARE,
-  HAND_ZONE_H,
-  handVisibleH,
-  handRowHeadroom,
-  exchangeArrivalRise,
-  cardTilt,
-  getOpponentPosition,
-  seatDirection,
-  arrangeOpponents,
-  handCountOf,
-  vacatedOf,
-  displayedHandCount,
-  fanCounts,
-  flightOrigin,
-  exchangeFlight,
-  type FlyDirection,
-  sideSlotHeight,
-  seatFanArc,
-  SEAT_DISC,
-  seatGap,
-  seatLabelH,
-  FAN_DRAWN_CARDS,
-  comboKey,
-  advancePile,
-  roundClosedWithWinner,
-  EMPTY_PILE,
-  canPassNow,
-  playButtonLabel,
-  turnTimerActive,
-  urgentThresholdSeconds,
-  URGENT_TICK_SECONDS,
-  notificationTopOffset,
-  computeTableFrame,
-  railWidth,
-  cutoutClass,
-  railSideForOrientation,
-  railSideFor,
-  LANDSCAPE_LEFT,
-  readExchange,
-  viewerOwnsSeat,
-  INACTIVE_EXCHANGE,
-  describeTableForA11y,
-  impactDelayMs,
-  landingHoldMs,
-  landSquashScale,
-  LAND_SQUASH,
-  settleForMotion,
-  comboImpactTier,
-  landingTier,
-  traumaFor,
-  flinchFor,
-  shakeMagnitude,
-  shakeOffset,
-  shakeAmplitudeFor,
-  FLIGHT_MS,
-  LANDING_FRACTION,
-  passedSeats,
-  straightTopRankChar,
-  sparkOffset,
-  SPARK_COUNT,
-  flareKindFor,
-  sparksFor,
-  lampLiftFor,
-  type ComboShape,
-  type ImpactTier,
-  type FlareKind,
-  type TableA11yStrings,
-} from "../components/gameTableModel.ts";
+import { actionBtnSize, HAND_ZONE_GAP, CHIP_H, SIDE_SECTION_W, HAND_CROP, HAND_WIDTH_SHARE, HAND_ZONE_H, handVisibleH, handRowHeadroom, exchangeArrivalRise, cardTilt, getOpponentPosition, seatDirection, arrangeOpponents, handCountOf, vacatedOf, displayedHandCount, fanCounts, type FlyDirection, sideSlotHeight, seatFanArc, SEAT_DISC, seatGap, seatLabelH, FAN_DRAWN_CARDS, viewerOwnsSeat } from "../components/seatLayout.ts";
+import { ROTATE_SETTLED, ROTATE_UPRIGHT, rotateGlyphAngle, arrivingCard, readHandArrival, readThrownPlay, flightOrigin, exchangeFlight, comboKey, advancePile, roundClosedWithWinner, EMPTY_PILE, readExchange, INACTIVE_EXCHANGE, impactDelayMs, landingHoldMs, landSquashScale, LAND_SQUASH, settleForMotion, comboImpactTier, landingTier, traumaFor, flinchFor, shakeMagnitude, shakeOffset, shakeAmplitudeFor, FLIGHT_MS, LANDING_FRACTION, passedSeats, straightTopRankChar, sparkOffset, SPARK_COUNT, flareKindFor, sparksFor, lampLiftFor, type ImpactTier, type FlareKind } from "../components/flightPhysics.ts";
+import { canPassNow, playButtonLabel, turnTimerActive, urgentThresholdSeconds, URGENT_TICK_SECONDS, type ComboShape } from "../components/turnTimerUi.ts";
+import { notificationTopOffset, computeTableFrame, railWidth, cutoutClass, railSideForOrientation, railSideFor, LANDSCAPE_LEFT } from "../components/tableFrame.ts";
+import { describeTableForA11y, type TableA11yStrings } from "../components/tableA11y.ts";
 import {
   buildCombination,
   processPass,
@@ -1767,7 +1693,7 @@ describe("the table's own trauma escalation (#763)", () => {
 
   test("the decay window comes from Motion, and the amplitudes from Spacing — never a bare literal", () => {
     const src = blankComments(
-      readFileSync(path.join(repoRoot, "components", "gameTableModel.ts"), "utf8")
+      readFileSync(path.join(repoRoot, "components", "flightPhysics.ts"), "utf8")
     );
     assert.doesNotMatch(
       src,
@@ -1811,10 +1737,10 @@ describe("the beaten pile's flinch (#764)", () => {
 
   test("the mapping reads Spacing, never a bare pixel literal", () => {
     const src = blankComments(
-      readFileSync(path.join(repoRoot, "components", "gameTableModel.ts"), "utf8")
+      readFileSync(path.join(repoRoot, "components", "flightPhysics.ts"), "utf8")
     );
     const table = src.match(/const FLINCH_BY_TIER: Record<ImpactTier, number> = \{[\s\S]*?\};/);
-    assert.ok(table, "expected a FLINCH_BY_TIER table in gameTableModel.ts");
+    assert.ok(table, "expected a FLINCH_BY_TIER table in flightPhysics.ts");
     assert.doesNotMatch(
       table![0],
       /:\s*[1-9]\d*/,
@@ -2183,9 +2109,9 @@ describe("flightOrigin", () => {
   // A copy of SEAT_DISC also holds the pinned value above, so that assertion
   // alone can never see one — only the source scan can (same reasoning as the
   // CARD_W/CARD_H scan further up this file).
-  test("SEAT_DISC is declared in gameTableModel.ts and nowhere else", () => {
+  test("SEAT_DISC is declared in seatLayout.ts and nowhere else", () => {
     const SEAT_DISC_DECL = /(?<![\w$])(?:const|let|var)\s+SEAT_DISC(?![\w$])/g;
-    assert.deepEqual(scan(SEAT_DISC_DECL), ["components/gameTableModel.ts: const SEAT_DISC"]);
+    assert.deepEqual(scan(SEAT_DISC_DECL), ["components/seatLayout.ts: const SEAT_DISC"]);
   });
 });
 
@@ -2316,7 +2242,7 @@ test("no screen asks whether a seat is the viewer's by hand", () => {
     asked,
     [],
     `a watcher's seat answers yes to these: ${asked.join(" | ")}. ` +
-      `Use viewerOwnsSeat(seat, viewerSeat, spectating) from components/gameTableModel.`
+      `Use viewerOwnsSeat(seat, viewerSeat, spectating) from components/seatLayout.`
   );
 });
 

@@ -10,7 +10,7 @@ import {
 } from "../lib/replay.ts";
 import { buildCombination } from "../lib/gameEngine.ts";
 import { c } from "./helpers.ts";
-import { handCountOf } from "../components/gameTableModel.ts";
+import { handCountOf } from "../components/seatLayout.ts";
 import type { ReplayDto } from "../lib/replay.ts";
 
 const single = (rank: Parameters<typeof c>[0], suit: Parameters<typeof c>[1]) =>

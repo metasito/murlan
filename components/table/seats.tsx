@@ -2,18 +2,8 @@ import { useEffect, useState } from "react";
 import { View, StyleSheet } from "react-native";
 import { TableText } from "./TableText";
 import { ChipText, TableChip } from "./chrome";
-import {
-  FAN_DRAWN_CARDS,
-  SEAT_DISC,
-  SEAT_LABEL_GAP,
-  SEAT_LABEL_PAD,
-  seatGap,
-  displayedHandCount,
-  fanCounts,
-  impactDelayMs,
-  seatFanArc,
-  seatLabelH,
-} from "@/components/gameTableModel";
+import { FAN_DRAWN_CARDS, SEAT_DISC, SEAT_LABEL_GAP, SEAT_LABEL_PAD, seatGap, displayedHandCount, fanCounts, seatFanArc, seatLabelH } from "@/components/seatLayout";
+import { impactDelayMs } from "@/components/flightPhysics";
 import Animated, {
   useAnimatedProps,
   useAnimatedStyle,
@@ -30,7 +20,7 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { LinearGradient } from "expo-linear-gradient";
 import { CardView } from "@/components/CardView";
 import type { ArcCard } from "@/components/tableArc";
-import type { OpponentSide } from "@/components/gameTableModel";
+import type { OpponentSide } from "@/components/seatLayout";
 import { BACK_SCALE } from "@/components/cardFaceModel";
 import { Colors, makeShadow, Motion, Radius, Spacing } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
@@ -469,7 +459,7 @@ function SeatRing({
 
 // A pass leaves no trace on the felt, so this chip is the only thing that says
 // a seat is out of the current round. It stands until somebody plays, which is
-// when `passedSeats` (gameTableModel.ts) stops returning that seat. Deliberately
+// when `passedSeats` (flightPhysics.ts) stops returning that seat. Deliberately
 // quieter than the gold bot badge and the gold turn ring: a seat that has
 // withdrawn from the round must not out-shout whose turn it is.
 function PassedChip({ scale }: { scale: number }) {

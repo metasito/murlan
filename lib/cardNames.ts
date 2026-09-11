@@ -1,6 +1,6 @@
 // The spoken name of a card, for accessibility labels and announcements.
 //
-// Kept free of *runtime* imports for the same reason components/gameTableModel.ts
+// Kept free of *runtime* imports for the same reason components/flightPhysics.ts
 // is: Node's built-in TypeScript loader (`node --test`) type-strips plain .ts
 // but cannot resolve the `@/` bundler alias at runtime. Type-only imports are
 // erased before resolution; a value import would break the test suite.

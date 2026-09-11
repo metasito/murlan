@@ -1,6 +1,6 @@
 // tests/e2e/reducedMotionSquashReset.spec.ts — a live toggle mid-flight.
 //
-// `settleForMotion` (components/gameTableModel.ts) is a pure function with its
+// `settleForMotion` (components/flightPhysics.ts) is a pure function with its
 // own unit coverage (#731, PR #783); what nothing reaches is whether the
 // *live* path actually works — `AccessibilityInfo`/`matchMedia` firing while a
 // card is mid-flight, re-running `FlyingCards`' effect, and the animated style

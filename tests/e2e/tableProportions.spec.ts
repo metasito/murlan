@@ -9,7 +9,7 @@
 // react-test-renderer never runs (CLAUDE.md, *Known pitfalls*). #340.
 import { test, expect, type Page } from "@playwright/test";
 import { openSeededGame } from "./helpers/offlineSeed";
-import { CHIP_H, SEAT_DISC, actionBtnSize } from "../../components/gameTableModel";
+import { CHIP_H, SEAT_DISC, actionBtnSize } from "../../components/seatLayout";
 import { cardScale } from "../../components/cardFaceModel";
 
 // tests/e2e/handParity.spec.ts's own handsets.

@@ -16,7 +16,7 @@ import { a11yHidden } from "@/lib/a11y";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { Colors, Motion, motionMs, Radius, Scrim, Spacing } from "@/lib/theme";
 import { EXCHANGE_FLIGHT_MS, EXCHANGE_LEG_MS, MEET_HOLD_MS } from "@/lib/exchangeCeremony";
-import { TAG_MAX_W, type ExchangeFlight as Trip } from "@/components/gameTableModel";
+import { TAG_MAX_W, type ExchangeFlight as Trip } from "@/components/flightPhysics";
 
 const TAG_FS = 11;
 
@@ -120,7 +120,7 @@ export function ExchangeFlyingCard({
  * The two players not trading are also watching this, and they cannot read a
  * flight they may have looked away from — so the words sit on the side the
  * people are, and each names its own half of the trade. The place comes with
- * the trip (`exchangeFlight`, gameTableModel.ts) rather than being measured
+ * the trip (`exchangeFlight`, flightPhysics.ts) rather than being measured
  * again here, so a tag is never on top of the card it describes, never on the
  * other tag, and never off the table.
  */

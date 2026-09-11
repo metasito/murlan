@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { ChipText } from "./chrome";
 import { useTranslation } from "@/lib/i18n";
 import { playUrgentTick } from "@/lib/sounds";
-import { urgentThresholdSeconds, URGENT_TICK_SECONDS } from "@/components/gameTableModel";
+import { urgentThresholdSeconds, URGENT_TICK_SECONDS } from "@/components/turnTimerUi";
 
 // ─── Turn countdown ───────────────────────────────────────────────────────────
 //

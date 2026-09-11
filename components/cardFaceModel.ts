@@ -1,5 +1,5 @@
 // Pure geometry of a card face, kept out of CardView.tsx for the same reason
-// gameTableModel.ts is kept out of GameTable.tsx: Node's test loader strips
+// flightPhysics.ts is kept out of GameTable.tsx: Node's test loader strips
 // plain .ts but cannot parse .tsx, so none of this is reachable from a test
 // while it lives next to JSX.
 //

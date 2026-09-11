@@ -28,7 +28,9 @@ jest.mock('@/lib/accessibility', () => ({
 }));
 
 import { GameTable } from '@/components/GameTable';
-import { CHIP_H, cardScale, computeTableFrame } from '@/components/gameTableModel';
+import { CHIP_H } from '@/components/seatLayout';
+import { computeTableFrame } from '@/components/tableFrame';
+import { cardScale } from '@/components/cardFaceModel';
 import type { Card, GameState, Player } from '@/lib/gameEngine';
 
 const INSETS = { top: 0, left: 47, right: 34, bottom: 0 };

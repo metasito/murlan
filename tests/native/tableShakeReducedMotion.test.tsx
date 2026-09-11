@@ -24,9 +24,9 @@
 import { describe, it, expect, jest, afterEach } from '@jest/globals';
 import React from 'react';
 import { act, render } from '@testing-library/react-native';
-import * as gameTableModel from '@/components/gameTableModel';
+import * as flightPhysics from '@/components/flightPhysics';
 import { setMotionPreference } from '@/lib/accessibility';
-import type { ImpactTier } from '@/components/gameTableModel';
+import type { ImpactTier } from '@/components/flightPhysics';
 
 /** Every shared value any component under test creates, in creation order. */
 const mockCapturedSharedValues: { value: unknown }[] = [];
@@ -120,7 +120,7 @@ describe('the shake reads reduced motion at the point trauma is set (#794)', () 
     // Every real call in this tree still reaches the pure `traumaFor` — its
     // reduced-motion branch is pinned directly in tests/gameTableModel.test.ts
     // — this only swaps its *answer* for one that is identifiable later.
-    const traumaSpy = jest.spyOn(gameTableModel, 'traumaFor').mockReturnValue(SENTINEL);
+    const traumaSpy = jest.spyOn(flightPhysics, 'traumaFor').mockReturnValue(SENTINEL);
     const shakeRef: React.MutableRefObject<((tier: ImpactTier) => void) | null> = { current: null };
     const r = await render(<ShakeProbe shakeRef={shakeRef} />);
 

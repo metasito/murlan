@@ -16,14 +16,8 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import {
-  computeTableFrame,
-  seatLabelH,
-  seatGap,
-  surplusHeight,
-  SEAT_DISC,
-  HAND_ZONE_H,
-} from "../components/gameTableModel.ts";
+import { seatLabelH, seatGap, SEAT_DISC, HAND_ZONE_H } from "../components/seatLayout.ts";
+import { computeTableFrame, surplusHeight } from "../components/tableFrame.ts";
 import { cardScale, CARD_H, HAND_SCALE } from "../components/cardFaceModel.ts";
 
 /** The ticket's own list: two phones, a large phone, and two tablets. */

@@ -25,7 +25,7 @@ import {
   type PlayerType,
 } from "../../lib/gameEngine.ts";
 import { autoMoveForSeat } from "../../lib/autoMove.ts";
-import { comboKey } from "../../components/gameTableModel.ts";
+import { comboKey } from "../../components/flightPhysics.ts";
 import { mulberry32 } from "../helpers.ts";
 import type { BotPersonalityId } from "../../lib/botPersonalities.ts";
 
