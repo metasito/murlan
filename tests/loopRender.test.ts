@@ -9,6 +9,8 @@ import {
   reportRow,
   runTotal,
   PHASES,
+  heartbeat,
+  BLANK,
 } from "../scripts/loop-render.mjs";
 
 describe("elapsed", () => {
@@ -168,5 +170,28 @@ describe("runTotal", () => {
     assert.match(t, /1 parked/);
     assert.match(t, /\$6\.40/);
     assert.match(t, /3:12:00/);
+  });
+});
+
+// The heartbeat is the one line that is drawn and then erased, so it must occupy exactly the columns
+// the phase line does: a shorter one leaves the tail of itself behind on the terminal.
+describe("heartbeat", () => {
+  test("stands in the same columns as the phase line it is replaced by", () => {
+    const beat = heartbeat({ letter: "C", ms: 511_000, at: 0 });
+    const real = phaseLine({ letter: "C", detail: "", ms: 511_000 });
+    assert.equal(beat.length, real.length);
+    assert.match(beat, /\[3\/6\] C\s+build/);
+    assert.match(beat, /8:31/);
+  });
+
+  test("turns, so a stopped clock is visibly a stopped loop", () => {
+    const letters = [0, 1, 2, 3, 4].map((at) => heartbeat({ letter: "C", ms: 1000, at })[2]);
+    assert.ok(new Set(letters).size > 1, "the spinner never changes");
+    assert.equal(letters[0], letters[4], "and it cycles");
+  });
+
+  test("BLANK covers a whole line, which is what erases it", () => {
+    assert.equal(BLANK.length, phaseLine({ letter: "A", detail: "", ms: 0 }).length);
+    assert.equal(BLANK.trim(), "");
   });
 });

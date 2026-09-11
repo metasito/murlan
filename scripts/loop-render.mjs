@@ -51,6 +51,21 @@ export function header({ number, title, size, url, queue }) {
   ].join("\n");
 }
 
+/**
+ * The in-progress twin of `phaseLine`, for a TTY only: same columns, a spinner where the tick goes,
+ * and no newline of its own — the caller rewrites it in place and the phase's real line replaces it.
+ * `BLANK` is what erases it, so nothing has to know the width from outside this file.
+ */
+export const BLANK = " ".repeat(WIDTH);
+const SPIN = ["·", "•", "●", "•"];
+
+export function heartbeat({ letter, ms, at = 0 }) {
+  const i = PHASES.findIndex(([l]) => l === letter);
+  const name = PHASES[i]?.[1] ?? "";
+  const mark = SPIN[at % SPIN.length];
+  return fit(`  ${mark} [${i + 1}/6] ${letter}  ${name.padEnd(9)}`, `${elapsed(ms)} `);
+}
+
 export function phaseLine({ letter, detail, ms }) {
   const i = PHASES.findIndex(([l]) => l === letter);
   const name = PHASES[i]?.[1] ?? "";

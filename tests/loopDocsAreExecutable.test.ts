@@ -3,6 +3,7 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, existsSync } from "node:fs";
 import { allowedTools } from "../scripts/loop-tools.mjs";
+import { PHASE_MARKERS, toPattern } from "../scripts/loop-stream.mjs";
 import { queueLoopArgs } from "../scripts/queue-loop.mjs";
 
 /**
@@ -97,6 +98,24 @@ describe("phase A's housekeeping belongs to the supervisor", () => {
 
   test("loop-status.mjs stays, because it is what tells a fresh session a run is live", () => {
     assert.match(read(QUEUE), /node scripts\/loop-status\.mjs/);
+  });
+});
+
+// The marker table is a premise about queue.md's commands, and a premise in prose decays: this PR
+// moved the worktree teardown to the supervisor, and phase F's marker went on naming a command the
+// file no longer contains — a board that would have printed five phases out of six, silently.
+describe("every phase marker names a command queue.md actually runs", () => {
+  test("each doc string matches a line of the file", () => {
+    const text = read(QUEUE);
+    for (const marker of PHASE_MARKERS) {
+      if (!marker.doc) continue;
+      assert.match(text, toPattern(marker.doc), `phase ${marker.phase}: queue.md no longer runs "${marker.doc}"`);
+    }
+  });
+
+  test("the table covers every phase the session itself can mark", () => {
+    const marked = PHASE_MARKERS.map((m) => m.phase);
+    assert.deepEqual(marked, ["A", "B", "E"], "C and D come from derive(); F is the supervisor's own work");
   });
 });
 

@@ -5,10 +5,13 @@
  */
 
 /**
- * Which command in `queue.md` marks a phase `loop-derive.mjs` cannot see. A, B, E and F leave no
- * trace in git or the tracker at the moment they start, so they are read from what the session
- * runs — and `tests/loopDocsAreExecutable.test.ts` is what keeps each `doc` a command queue.md
- * actually names.
+ * Which command in `queue.md` marks a phase `loop-derive.mjs` cannot see. A, B and E leave no trace
+ * in git or the tracker at the moment they start, so they are read from what the session runs — and
+ * `tests/loopDocsAreExecutable.test.ts` is what keeps each `doc` a command queue.md actually names.
+ *
+ * F is not here. Closing out is the supervisor's: it reads CI, merges and removes the worktree after
+ * the session has exited, so no line of the session's stream can mark it and the supervisor prints
+ * that phase from its own work.
  *
  * Nothing the loop *does* depends on this table. A marker that stops matching costs a phase line,
  * never a decision.
@@ -17,7 +20,6 @@ export const PHASE_MARKERS = [
   { phase: "A", tool: "Bash", doc: "gh issue edit <n> --add-label in-progress" },
   { phase: "B", tool: "Task" },
   { phase: "E", tool: "Bash", doc: "git push -u origin agent/<n>-<slug>" },
-  { phase: "F", tool: "Bash", doc: "npm run worktrees:remove -- .worktrees/agent-<n>" },
 ];
 
 /** A `<placeholder>` stands for one argument; everything else in the doc string is literal. */

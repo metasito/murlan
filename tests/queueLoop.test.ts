@@ -22,6 +22,7 @@ import {
   takeStopFile,
   afterPush,
   canStartNext,
+  mergeSlot,
 } from "../scripts/queue-loop.mjs";
 
 describe("parseRoute", () => {
@@ -511,10 +512,19 @@ describe("canStartNext", () => {
     );
   });
 
-  test("a red pending ticket blocks the queue — the next session is its fix", () => {
-    const r = canStartNext({ pending: { ticket: 953, state: "red", changed: ["lib/x.ts"] } });
-    assert.equal(r.ok, false);
-    assert.match(r.why, /#953/);
+  // Red CI is not this function's business, and a branch here for it was unreachable: `state` was
+  // only ever "awaiting-ci", because the supervisor learns a ticket is red by draining it — and a
+  // drained ticket is no longer pending. `afterPush` is where red is decided; these two pin that the
+  // pair still divides the work that way.
+  test("a red verdict hands the ticket back for a fix rather than parking it", () => {
+    const next = afterPush({ verdict: { pass: false, failedStep: "verify" } });
+    assert.equal(next.action, "fix");
+  });
+
+  test("a green verdict that cannot merge parks, and says why", () => {
+    const next = afterPush({ verdict: { pass: true }, landing: { action: "stop", reason: "CONFLICTING" } });
+    assert.equal(next.action, "park");
+    assert.match(next.why, /CONFLICTING/);
   });
 
   test("a dependency change drains before anything else starts", () => {
@@ -537,5 +547,75 @@ describe("canStartNext", () => {
       canStartNext({ pending: { ticket: 953, state: "awaiting-ci", changed: ["docs/package.json"] } }).ok,
       true
     );
+  });
+});
+
+/**
+ * The merge queue is one slot, and both of this branch's worst defects lived in how it was filled.
+ *
+ * A second `pending = …` over a full slot dropped a pushed pull request: its CI was never read, it
+ * never merged, and the loop went on reporting it as landed. And a pushed ticket that kept its
+ * worktree was read by `derive()` as a run still needing a session, so the "next" ticket was the one
+ * just pushed — a second paid session per ticket, ending in a spurious park.
+ */
+describe("mergeSlot", () => {
+  const fakes = () => {
+    const calls: string[] = [];
+    const io = {
+      settle: async (t: any) => {
+        calls.push(`settle:${t.ticket}`);
+        return { action: "merged", why: "merged" };
+      },
+      release: (cwd: string) => calls.push(`release:${cwd}`),
+      reattach: (cwd: string) => calls.push(`reattach:${cwd}`),
+      log: () => {},
+    };
+    return { calls, io };
+  };
+
+  test("a second ticket cannot take the slot until the first has settled", async () => {
+    const { calls, io } = fakes();
+    const slot = mergeSlot(io);
+
+    await slot.adopt({ ticket: 953, cwd: ".worktrees/agent-953", at: Date.now() });
+    await slot.adopt({ ticket: 961, cwd: ".worktrees/agent-961", at: Date.now() });
+
+    assert.deepEqual(
+      calls,
+      ["release:.worktrees/agent-953", "settle:953", "release:.worktrees/agent-961"],
+      "#953 must have been settled before #961 took the slot"
+    );
+    assert.equal(slot.pending.ticket, 961);
+  });
+
+  test("adopting reports what settled, so the caller can record it", async () => {
+    const { io } = fakes();
+    const slot = mergeSlot(io);
+    await slot.adopt({ ticket: 953, cwd: "a", at: Date.now() });
+    const settled = await slot.adopt({ ticket: 961, cwd: "b", at: Date.now() });
+    assert.equal(settled?.ticket.ticket, 953);
+    assert.equal(settled?.outcome.action, "merged");
+  });
+
+  test("a pushed ticket gives up its worktree, so nothing derives it as a live run", async () => {
+    const { calls, io } = fakes();
+    const slot = mergeSlot(io);
+    await slot.adopt({ ticket: 953, cwd: ".worktrees/agent-953", at: Date.now() });
+    assert.ok(calls.includes("release:.worktrees/agent-953"));
+  });
+
+  test("red CI gets the worktree back, because the next session is its fix", async () => {
+    const { calls, io } = fakes();
+    const slot = mergeSlot({ ...io, settle: async () => ({ action: "fix", why: "CI failed at verify" }) });
+    await slot.adopt({ ticket: 953, cwd: ".worktrees/agent-953", branch: "agent/953-x", at: Date.now() });
+    const settled = await slot.drain();
+    assert.equal(settled?.outcome.action, "fix");
+    assert.ok(calls.includes("reattach:.worktrees/agent-953"));
+    assert.equal(slot.pending, null);
+  });
+
+  test("draining an empty slot is nothing, not a crash", async () => {
+    const { io } = fakes();
+    assert.equal(await mergeSlot(io).drain(), null);
   });
 });
