@@ -46,7 +46,7 @@ Verify against source before changing any.
 - **One socket per userId** via `lib/socket.ts`; `SocketContext` owns the lifecycle.
 - **Hooks before the null guard** in both game screens — every hook runs before `if (!gameState)`.
 - **A card appears exactly once** in flight/`pileState` — never twice, never zero times
-  (`tests/gameTableModel.test.ts`, `advancePile`).
+  (`tests/flightPhysics.test.ts`, `advancePile`).
 - **`CARD_W`/`CARD_H` are declared once**, in `components/cardFaceModel.ts`; `handLayout.ts` takes
   a width as a parameter rather than importing it. Pinned by a source scan, because pinning the
   value cannot find a copy holding the same number.

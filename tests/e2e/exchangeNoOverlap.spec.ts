@@ -4,7 +4,7 @@
 // "both at the same time, one takes one side the other the other side they
 // should not overlap" is the owner's own wording on #533, and it is the one
 // claim about this animation no unit test can make: `exchangeFlight`'s
-// arithmetic is checked in `tests/gameTableModel.test.ts`, but arithmetic says
+// arithmetic is checked in `tests/flightPhysics.test.ts`, but arithmetic says
 // nothing about where two transformed views actually land — react-test-renderer
 // never runs layout (docs/agents/loops.md). Only the browser knows.
 //
@@ -143,7 +143,7 @@ test("the two exchanged cards fly at once and never overlap", async ({ page, bas
 // that point is the hand zone's own centre. Only a browser can say where either
 // box ended up.
 // The seat pairs a two-player table cannot reach are swept in
-// tests/gameTableModel.test.ts, over every ordered pair at two window sizes:
+// tests/flightPhysics.test.ts, over every ordered pair at two window sizes:
 // the diagonals are where the lane offset carries the label sideways as well as
 // along, and this fixture has only the one trip between top and bottom.
 test("neither seat's label lands on a card", async ({ page, baseURL }) => {

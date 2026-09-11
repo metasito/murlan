@@ -1,7 +1,7 @@
 // tests/native/ceremonyHoldsTheCard.test.tsx — the hand does not hold the
 // traded card while the flight carrying it is still on screen.
 //
-// `arrivingCard` (tests/gameTableModel.test.ts) says which card each seat is
+// `arrivingCard` (tests/flightPhysics.test.ts) says which card each seat is
 // owed. Only a rendered table says whether the fan actually leaves the place
 // for it, which is what #650 lands into.
 import { describe, it, expect, jest } from '@jest/globals';

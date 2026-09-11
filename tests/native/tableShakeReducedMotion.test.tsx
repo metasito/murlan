@@ -118,7 +118,7 @@ describe('the shake reads reduced motion at the point trauma is set (#794)', () 
   it("shake()'s write carries traumaFor's own answer, not a value read and then discarded", async () => {
     setMotionPreference('on');
     // Every real call in this tree still reaches the pure `traumaFor` — its
-    // reduced-motion branch is pinned directly in tests/gameTableModel.test.ts
+    // reduced-motion branch is pinned directly in tests/flightPhysics.test.ts
     // — this only swaps its *answer* for one that is identifiable later.
     const traumaSpy = jest.spyOn(flightPhysics, 'traumaFor').mockReturnValue(SENTINEL);
     const shakeRef: React.MutableRefObject<((tier: ImpactTier) => void) | null> = { current: null };
