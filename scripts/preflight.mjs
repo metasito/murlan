@@ -38,7 +38,9 @@ export function checkSubject({ toplevel, baseSha, changed }) {
   if (!toplevel) return { refuse: "no tree to judge — this is not inside a git worktree" };
   if (!baseSha) return { refuse: "no base to judge against — origin/main does not resolve" };
   if (!changed.trim()) {
-    return { refuse: `nothing to judge in ${toplevel} — no commits and no edits against origin/main` };
+    return {
+      refuse: `nothing to judge in ${toplevel} — no commits against origin/main, nothing tracked changed`,
+    };
   }
   return { root: toplevel, base: baseSha.slice(0, 7) };
 }
@@ -59,8 +61,7 @@ export function readSubject(cwd) {
   return checkSubject({
     toplevel: read("rev-parse", "--show-toplevel"),
     baseSha: read("rev-parse", "--verify", "origin/main"),
-    // Untracked files are excluded: a scratch file in the shared checkout is not a change any
-    // verdict could be about, and counting one puts the vacuous green back.
+    // Untracked files are excluded: a scratch file is not a change any verdict could be about.
     changed: [
       read("diff", "--name-only", "origin/main...HEAD"),
       read("status", "--porcelain", "--untracked-files=no"),

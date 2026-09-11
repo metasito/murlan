@@ -18,6 +18,10 @@ const LINE = /^\s*(\/\/|\*|\/\*)/;
  * One credit per comment line deleted anywhere in the diff. A file split moves prose verbatim, and
  * git's rename detection cannot see it: it consumes the source as one file's rename and will not
  * also report it as the others' copy source, so the exemption has to be content, not history.
+ *
+ * Credit is spent, never minted, so no prose can be excused that was not deleted somewhere. The
+ * known ceiling: a line carrying no text, only block-comment scaffolding, matches across unrelated
+ * blocks. Charging for those instead would fail a file split, which is what this exists to prevent.
  */
 function movedCredits(diff) {
   const credits = new Map();
