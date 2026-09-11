@@ -80,6 +80,23 @@ describe("comment budget", () => {
     assert.deepEqual(counts(diff("scripts/a.mjs", lines)), [["scripts/a.mjs", 11, 2]]);
   });
 
+  test("a block comment the same diff deletes elsewhere moved rather than being written", () => {
+    const body = ["+/*", ...prose(8), "+*/"];
+    const from = diff("scripts/a.mjs", body.map((l) => `-${l.slice(1)}`));
+    const to = diff("scripts/b.mjs", [...body, ...code(1)]);
+    assert.deepEqual(counts(`${from}\n${to}`), []);
+  });
+
+  test("a `*/` arriving as a context line closes the block", () => {
+    const lines = ["+/*", ...prose(2), " */", ...code(12), ...comments(7)];
+    assert.deepEqual(counts(diff("scripts/a.mjs", lines)), []);
+  });
+
+  test("a block comment left open at the end of a hunk does not reach the next", () => {
+    const lines = ["+/*", ...prose(2), "@@ -20,0 +20 @@", ...code(12), ...comments(7)];
+    assert.deepEqual(counts(diff("scripts/a.mjs", lines)), []);
+  });
+
   test("an unterminated block comment does not swallow the next file", () => {
     const from = diff("scripts/a.mjs", ["+/*", ...prose(2)]);
     const to = diff("scripts/b.mjs", [...comments(7), ...code(1)]);
