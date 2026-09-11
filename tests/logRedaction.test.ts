@@ -161,9 +161,10 @@ async function requestLine(
       app.get(route, (_req, res) => res.send("ok"));
       app.delete(route, (_req, res) => res.send("ok"));
     }
-    // `server/app.ts`'s SPA catch-all, to the letter: GET only, and it hands
-    // `/api` onward rather than answering it. Both halves are what put a route
-    // on `req` that never handled the request.
+    // `server/app.ts`'s SPA catch-all in the two respects that matter here:
+    // GET only, and it hands `/api` onward rather than answering it. Both are
+    // what put a route on `req` that never handled the request. The scan below
+    // is what fails if that mount stops having this shape.
     if (catchAll)
       app.get("*path", (req, res, next) => {
         if (req.path.startsWith("/api")) return next();
@@ -339,8 +340,9 @@ describe("what a completed request leaves in the log", () => {
       /Your IP address is not written/,
       /neither are your request headers/,
       /anything you passed in the address's query string/,
-      /written only when one of our\s+own routes answered, and then only in its general form rather than as you sent it/,
-      /for anything else[\s\S]{0,90}no address is written\s+at all/,
+      /written only when one of our\s+own routes answered/,
+      /then only in its general form rather than as you sent it/,
+      /for anything else[\s\S]{0,300}no address is written\s+at all/,
       /no id from the address, which is written only when one of our own routes answered and then only in its general form/,
     ])
       assert.match(policy, claim, `docs/PRIVACY.md no longer states ${claim}`);

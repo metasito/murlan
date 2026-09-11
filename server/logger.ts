@@ -57,11 +57,9 @@ export const logger = createLogger();
 // `DELETE /api/friends/invites/:roomCode` — because the requested one holds a
 // room code, the very thing `REDACT_PATHS` keeps out of the line, and
 // `/api/friends/:friendUserId` names an account. Anything else writes no
-// address: the only other text available is the client's own.
-//
-// A wildcard is not a match. Express leaves `req.route` set on a route that
-// called `next()`, and `server/app.ts` mounts a GET-only SPA catch-all ahead of
-// the API which declines `/api` that way.
+// address: the only other text available is the client's own. A wildcard counts
+// as anything else — express leaves `req.route` set on a route that called
+// `next()`, and `server/app.ts`'s SPA catch-all declines `/api` that way.
 //
 // `req.baseUrl` is deliberately not joined on: it is matched text, so a Router
 // mounted at `/api/rooms/:roomCode` would put the code back. `path` is typed as
