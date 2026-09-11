@@ -339,9 +339,9 @@ export function seatLabelH(scale: number): number {
 
 /**
  * A seat's own fan of `count` backs at `backScale` — the one solve `CardFan`
- * (components/table/seats.tsx) performs for its wrapper box, `topFanHeight`
- * below, and `flightOrigin` (components/flightPhysics.ts), so none of the three
- * can disagree with what the fan actually draws.
+ * (components/table/seats.tsx) performs for its wrapper box, and that
+ * `sideSlotHeight` and `topFanHeight` below perform for theirs, so none of the
+ * three can disagree with what the fan actually draws.
  */
 export function seatFanArc(count: number, backScale: number) {
   const backW = CARD_BACK_W(backScale);
@@ -372,8 +372,8 @@ export function sideSlotHeight(scale: number, displayedCount: number): number {
 /**
  * The top seat's own fan height for `displayedCount` backs.
  *
- * Exported for `flightOrigin` (components/flightPhysics.ts), which is the only
- * caller outside this file.
+ * Exported for `pileGeometry` (components/flightPhysics.ts), its only caller,
+ * which serves both `flightOrigin` and `exchangeFlight`.
  */
 export function topFanHeight(scale: number, displayedCount: number): number {
   const drawn = Math.min(displayedCount, FAN_DRAWN_CARDS.top);

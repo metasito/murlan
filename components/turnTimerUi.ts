@@ -50,7 +50,8 @@ export interface ComboShape {
  * than both being called too low.
  *
  * Answers "why would this be refused"; the caller decides whether to show it,
- * because only the caller holds the hand and the pile `canPlay` needs.
+ * because only the caller can run `canPlay` — this takes a `ComboShape`, and
+ * `canPlay` wants the two whole `Combination`s.
  */
 export function playButtonLabel(opts: {
   isMyTurn: boolean;
