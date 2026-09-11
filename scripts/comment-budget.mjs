@@ -14,6 +14,7 @@ import { pathToFileURL } from "node:url";
 
 const CODE = /\.(mjs|js|ts|tsx)$/;
 const LINE = /^\+\s*(\/\/|\*|\/\*)/;
+const OPENS = /^\+\s*\/\*/;
 
 export function budget(diff) {
   const files = new Map();
@@ -48,16 +49,22 @@ export function budget(diff) {
   }
 
   let file = null;
+  // The leading `*` is a convention, not the syntax: a block comment's body is prose whatever
+  // its lines start with. Per file, so an unterminated one cannot swallow the next.
+  let block = false;
   for (const line of lines) {
     const named = pathOf(line);
     if (named !== undefined) {
       file = named;
+      block = false;
       if (file && !files.has(file)) files.set(file, { comment: 0, code: 0 });
       continue;
     }
     if (!file || !line.startsWith("+") || line.startsWith("+++")) continue;
     const at = files.get(file);
-    if (LINE.test(line)) {
+    const inBlock = block || OPENS.test(line);
+    block = inBlock && !line.includes("*/");
+    if (inBlock || LINE.test(line)) {
       const left = moved.get(line.slice(1).trim()) ?? 0;
       if (left) moved.set(line.slice(1).trim(), left - 1);
       else at.comment += 1;

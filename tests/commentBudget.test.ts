@@ -8,6 +8,7 @@ const diff = (file: string, lines: string[]) =>
 
 const comments = (n: number) => Array.from({ length: n }, (_, i) => `+// line ${i}`);
 const code = (n: number) => Array.from({ length: n }, (_, i) => `+const x${i} = ${i};`);
+const prose = (n: number) => Array.from({ length: n }, (_, i) => `+  why ${i}`);
 
 const counts = (d: string) =>
   budget(d).map(([f, n]: [string, { comment: number; code: number }]) => [f, n.comment, n.code]);
@@ -67,5 +68,21 @@ describe("comment budget", () => {
   test("block-comment bodies count", () => {
     const lines = ["+/**", ...Array.from({ length: 8 }, () => "+ * why"), "+ */", "+const x = 1;"];
     assert.equal(budget(diff("scripts/a.mjs", lines))[0][1].comment, 10);
+  });
+
+  test("a block-comment body counts without leading asterisks", () => {
+    const lines = ["+/*", ...prose(8), "+*/", ...code(1)];
+    assert.deepEqual(counts(diff("scripts/a.mjs", lines)), [["scripts/a.mjs", 10, 1]]);
+  });
+
+  test("a block comment opening and closing on one line opens no block", () => {
+    const lines = ["+/* why */", ...code(2), "+/*", ...prose(8), "+*/"];
+    assert.deepEqual(counts(diff("scripts/a.mjs", lines)), [["scripts/a.mjs", 11, 2]]);
+  });
+
+  test("an unterminated block comment does not swallow the next file", () => {
+    const from = diff("scripts/a.mjs", ["+/*", ...prose(2)]);
+    const to = diff("scripts/b.mjs", [...comments(7), ...code(1)]);
+    assert.deepEqual(counts(`${from}\n${to}`), [["scripts/b.mjs", 7, 1]]);
   });
 });
