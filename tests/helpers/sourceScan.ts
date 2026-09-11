@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 
-/** The two trees that hold rendered UI. A guard that scans one of them scans both. */
+/** What `scannedFiles` walks: the two trees that hold rendered UI, never one without the other. */
 const SCANNED_DIRS = ["components", "app"];
 
 function sourcesUnder(repoRoot: string, dirs: string[]): [string, string][] {
