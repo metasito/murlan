@@ -9,7 +9,7 @@ import { createHash } from "node:crypto";
 import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { primaryWorktree, checkLockDrift, checkSubject } from "./preflight.mjs";
+import { primaryWorktree, checkLockDrift, readSubject } from "./preflight.mjs";
 import { LOCAL, DELEGATED, cmd } from "./check-steps.mjs";
 
 /**
@@ -34,26 +34,14 @@ function git(...args) {
   return execFileSync("git", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
 }
 
-function gitOrNull(...args) {
-  try {
-    return git(...args).trim();
-  } catch {
-    return null;
-  }
-}
-
-const subject = checkSubject({
-  toplevel: gitOrNull("rev-parse", "--show-toplevel"),
-  baseSha: gitOrNull("rev-parse", "--verify", "origin/main"),
-  changed: [
-    gitOrNull("diff", "--name-only", "origin/main...HEAD"),
-    gitOrNull("status", "--porcelain"),
-  ].join("\n"),
-});
+const subject = readSubject(process.cwd());
 if (subject.refuse) {
   console.error(`agent:check: ${subject.refuse}`);
   process.exit(1);
 }
+// Everything below — the tree hash, the cache, the steps — reads the tree being judged rather than
+// wherever the invoker happened to be standing. Moving once is what keeps them from disagreeing.
+process.chdir(subject.root);
 
 /**
  * Identifies the working tree by content, not by commit: HEAD alone would call an edited tree
@@ -135,10 +123,7 @@ if (!force && cache[key]?.pass) {
 const failed = [];
 for (const step of LOCAL) {
   process.stdout.write(`\n=== ${step.name} ===\n`);
-  // Pinned to the tree being judged. An inherited cwd is the invoker's, and the invoker is as often
-  // the shared checkout as the worktree the branch lives in.
   const run = spawnSync("npm", step.args, {
-    cwd: subject.root,
     stdio: "inherit",
     shell: process.platform === "win32",
     timeout: STEP_TIMEOUT_MS,

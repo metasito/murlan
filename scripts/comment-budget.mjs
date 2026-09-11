@@ -15,26 +15,23 @@ const CODE = /\.(mjs|js|ts|tsx)$/;
 const LINE = /^\s*(\/\/|\*|\/\*)/;
 
 /**
- * Comment lines deleted anywhere in the diff, counted. A file split moves prose verbatim, and git's
- * rename detection cannot see it: it consumes the source as one file's rename and will not also
- * report it as the others' copy source, so the exemption has to be content, not history.
- *
- * Counted rather than collected, so one deletion excuses one addition — otherwise deleting a line
- * once would licence any number of copies of it.
+ * One credit per comment line deleted anywhere in the diff. A file split moves prose verbatim, and
+ * git's rename detection cannot see it: it consumes the source as one file's rename and will not
+ * also report it as the others' copy source, so the exemption has to be content, not history.
  */
-function moved(diff) {
-  const pool = new Map();
+function movedCredits(diff) {
+  const credits = new Map();
   for (const line of diff.split("\n")) {
     if (!line.startsWith("-") || line.startsWith("---")) continue;
     const body = line.slice(1);
-    if (LINE.test(body)) pool.set(body, (pool.get(body) ?? 0) + 1);
+    if (LINE.test(body)) credits.set(body, (credits.get(body) ?? 0) + 1);
   }
-  return pool;
+  return credits;
 }
 
 export function budget(diff) {
   const files = new Map();
-  const pool = moved(diff);
+  const credits = movedCredits(diff);
   let file = null;
   for (const line of diff.split("\n")) {
     const named = /^\+\+\+ b\/(.+)$/.exec(line);
@@ -48,8 +45,8 @@ export function budget(diff) {
     const body = line.slice(1);
     // An exact match only: a line reworded on the way is prose someone wrote today.
     if (LINE.test(body)) {
-      const left = pool.get(body) ?? 0;
-      if (left) pool.set(body, left - 1);
+      const left = credits.get(body) ?? 0;
+      if (left) credits.set(body, left - 1);
       else at.comment += 1;
     } else if (body.trim()) at.code += 1;
   }
