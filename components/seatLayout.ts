@@ -1,6 +1,6 @@
 // Seat and hand layout geometry for the shared game table.
 //
-// JSX-free and relatively imported, so `node --test` can load it: docs/agents/loops.md.
+// JSX-free, runtime imports relative — docs/agents/loops.md, "Node's TypeScript loader".
 
 import type { Player } from "@/lib/gameEngine";
 import { CARD_BACK_H, CARD_BACK_W, BACK_SCALE } from "./cardFaceModel.ts";

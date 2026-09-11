@@ -11,35 +11,59 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."
 /** Where the constraint is explained. Every file it governs points here instead. */
 const AUTHORITY = "docs/agents/loops.md";
 
-/** This file quotes the phrasings in order to find them, so it cannot count itself. */
+/** The heading the pointers cite, so a rename of the section shows up here. */
+const SECTION = "## Node's TypeScript loader";
+
 const SELF = "tests/loaderConstraintIsSingleSourced.test.ts";
 
 /**
- * Any restatement carries one of these, whatever wording it reaches for: the loader
- * strips types, refuses JSX, or resolves no alias. Matching the claim rather than one
- * sentence is what makes a fresh paraphrase fail too — five files held the same seven
- * lines verbatim and nothing could see the sixth paste coming (#983).
+ * The wordings a restatement reaches for. Every copy this replaced used one of them, and so
+ * does the authority — which is what makes the list checkable rather than a guess. It catches
+ * a paste and the near-paraphrases seen so far; a restatement in wholly fresh words would pass,
+ * and widening this on the day one appears is the maintenance it asks for.
  */
 const EXPLAINS =
-  /type-strip|strips plain|cannot parse (a |the )?(\.tsx|JSX)|bundler alias|path alias/i;
+  /type-strip|strips plain|cannot parse (a |the )?(\.tsx|JSX)|(?:bundler|tsconfig|`paths`)[\s\S]{0,30}alias/i;
 
-/** Tracked text, which is every file a paste could land in and no file it could not. */
-const files = execFileSync("git", ["ls-files"], { cwd: repoRoot, encoding: "utf8" })
-  .split("\n")
-  .filter((f) => /\.(ts|tsx|mjs|cjs|js|md)$/.test(f) && f !== SELF);
+/** Everything above, as it is written here. Blanked in this file only — see `source`. */
+const DECLARATION = /const EXPLAINS =[\s\S]*?;/;
+
+const tracked = execFileSync("git", ["ls-files", "-z"], { cwd: repoRoot, encoding: "utf8" })
+  .split("\0")
+  .filter(Boolean);
+
+/**
+ * A tracked file's text, or "" for a binary one — git's own heuristic, a NUL in the first
+ * 8000 bytes. No extension list: a restatement in a workflow, a shell script or a `.txt` is
+ * the same restatement, and a list of suffixes is a blind spot that grows on its own.
+ *
+ * This file is scanned like any other, minus the one declaration that has to quote the
+ * wordings in order to find them. Skipping the whole file would exempt the guard's own prose.
+ */
+function source(file: string): string {
+  const buf = readFileSync(path.join(repoRoot, file));
+  if (buf.subarray(0, 8000).includes(0)) return "";
+  const text = buf.toString("utf8");
+  return file === SELF ? text.replace(DECLARATION, "") : text;
+}
 
 describe("the Node loader constraint is written down once", () => {
   // One assertion pins the count *and* the place, and it is its own floor: a pattern that
   // stopped matching, or an authority that was deleted, empties the list and fails here.
   test(`only ${AUTHORITY} explains it`, () => {
-    const offenders = files.filter((f) =>
-      EXPLAINS.test(readFileSync(path.join(repoRoot, f), "utf8"))
-    );
+    const offenders = tracked.filter((f) => EXPLAINS.test(source(f)));
     assert.deepEqual(
       offenders,
       [AUTHORITY],
       `these files explain Node's TypeScript loader themselves: ${offenders.join(", ")}. ` +
         `State it once in ${AUTHORITY} and carry a one-line pointer at it.`
+    );
+  });
+
+  test(`${AUTHORITY} still carries the section the pointers cite`, () => {
+    assert.ok(
+      source(AUTHORITY).includes(SECTION),
+      `no "${SECTION}" heading in ${AUTHORITY}; every pointer names it`
     );
   });
 });

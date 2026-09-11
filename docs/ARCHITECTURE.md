@@ -218,12 +218,11 @@ collapsed:
 
 - **`components/seatLayout.ts`**, **`flightPhysics.ts`**, **`turnTimerUi.ts`**,
   **`tableFrame.ts`**, **`tableA11y.ts`** — the table's pure model, one file per concern
-  (#956). Each is JSX-free, and every runtime import it makes is relative and carries its
-  `.ts` extension, so it loads under Node's built-in TypeScript stripping in the test suite
-  (`node --test`) without a bundler — the `@/` alias appears only in type-only imports,
-  which are erased before resolution. A module under `components/table/` that keeps to the
-  same shape is node-loadable whatever its neighbours are, which is how a number reached
-  only from a `.tsx` — or from a `.ts` that imports through the alias at runtime — is tested.
+  (#956). Each is JSX-free with relative runtime imports, so `node --test` can load it
+  (`docs/agents/loops.md`, "Node's TypeScript loader"). A module under `components/table/`
+  that keeps to the same shape is node-loadable whatever its neighbours are, which is how a
+  number reached only from a `.tsx` — or from a `.ts` that imports through `@/` at runtime —
+  is tested.
   `seatLayout` holds the layout constants and the seating/opponent-position math;
   `flightPhysics` the card flight, pile advancement, impact feedback and exchange-state
   reads; `turnTimerUi` the play-button labels and the turn clock; `tableFrame` the

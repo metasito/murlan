@@ -2,7 +2,7 @@
 // the felt. One solve, three callers, no special case between one card and
 // thirteen.
 //
-// JSX-free and relatively imported, so `node --test` can load it: docs/agents/loops.md.
+// JSX-free, runtime imports relative — docs/agents/loops.md, "Node's TypeScript loader".
 
 /** Where one card sits in an arc, relative to the arc's own midpoint. */
 export interface ArcCard {

@@ -1,6 +1,6 @@
 // Card-flight and pile physics, and the impact feedback a landing earns.
 //
-// JSX-free and relatively imported, so `node --test` can load it: docs/agents/loops.md.
+// JSX-free, runtime imports relative — docs/agents/loops.md, "Node's TypeScript loader".
 
 import type { Card, Combination, GameState, Player } from "@/lib/gameEngine";
 import type { ExchangeAnnounceData } from "@/lib/sharedGameFlow";

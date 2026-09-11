@@ -1,6 +1,7 @@
 // The order an end-of-manche scoreboard is listed in.
 //
-// Free of runtime `@/` imports, so `node --test` can load it: docs/agents/loops.md.
+// Free of runtime `@/` imports, so `node --test` can load it — docs/agents/loops.md,
+// "Node's TypeScript loader".
 
 /**
  * One row of a scoreboard, however the screen showing it keys its players.

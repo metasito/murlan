@@ -1,6 +1,6 @@
 // What the play/pass controls say, and when the turn clock is running.
 //
-// JSX-free and relatively imported, so `node --test` can load it: docs/agents/loops.md.
+// JSX-free, runtime imports relative — docs/agents/loops.md, "Node's TypeScript loader".
 
 import type { Combination } from "@/lib/gameEngine";
 

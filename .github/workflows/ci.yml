@@ -28,7 +28,7 @@ concurrency:
 
 env:
   # Node 22+ is required: tests run via `node --test` against .ts files
-  # directly, relying on Node's native TypeScript type-stripping (stable since
+  # directly, through the loader docs/agents/loops.md describes (stable since
   # Node 22.6, no ts-node/tsx/vitest needed). Node 24 is the current LTS-track
   # release and what the project is developed against, so pin to it to keep
   # local and CI runs identical. The `build` job is deliberately not on this —

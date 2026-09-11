@@ -1,6 +1,6 @@
 // Screen frame and safe-area maths: what the window leaves the table to use.
 //
-// JSX-free and relatively imported, so `node --test` can load it: docs/agents/loops.md.
+// JSX-free, runtime imports relative — docs/agents/loops.md, "Node's TypeScript loader".
 
 import { BASE_SHORT_EDGE } from "./cardFaceModel.ts";
 import {

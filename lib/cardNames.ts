@@ -1,6 +1,7 @@
 // The spoken name of a card, for accessibility labels and announcements.
 //
-// Free of *runtime* imports, so `node --test` can load it: docs/agents/loops.md.
+// Free of *runtime* imports, so `node --test` can load it — docs/agents/loops.md,
+// "Node's TypeScript loader".
 //
 // `t` is a parameter rather than a hook call so this stays pure and testable.
 

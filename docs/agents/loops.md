@@ -313,10 +313,10 @@ and its runtime imports are relative and carry the `.ts` extension (`tsconfig.js
 modules beside a component exist — `components/handLayout.ts` next to `table/hand.tsx`,
 `components/flightPhysics.ts` next to `GameTable.tsx`, and the rest of that family.
 
-This paragraph is the only copy. Each of those modules carries a one-line pointer here instead of its
-own restatement, and `tests/loaderConstraintIsSingleSourced.test.ts` keeps the count at one — five
-files held the same seven lines verbatim before #983, and a correction to any one of them left four
-quietly stale.
+This is the only place the constraint is written down. Every file it governs carries a one-line
+pointer here instead of its own restatement, and `tests/loaderConstraintIsSingleSourced.test.ts`
+holds the count at one — a copy corrected in one file leaves the rest quietly stale, and the stale
+one is whichever the next reader happens to open.
 
 ## Starvation looks exactly like a red suite
 

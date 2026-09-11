@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 // Relative and extensioned, not `@/`: `tests/sharedGameFlow.test.ts` loads this
-// under `node --test` — docs/agents/loops.md.
+// under `node --test` — docs/agents/loops.md, "Node's TypeScript loader".
 import { EXCHANGE_FLIGHT_MS, exchangeAnnounceMs } from "./exchangeCeremony.ts";
 import { matchIsClosing } from "./gameEngine.ts";
 import type { Card, MatchLength } from "@/lib/gameEngine";

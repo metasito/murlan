@@ -1,5 +1,5 @@
 // Pure geometry of a card face, kept out of CardView.tsx so `node --test` can
-// load it: docs/agents/loops.md.
+// load it — docs/agents/loops.md, "Node's TypeScript loader".
 //
 // Everything is expressed as a fraction of the card's own width or height, so
 // one set of numbers serves both card sizes.

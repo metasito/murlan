@@ -1,6 +1,6 @@
 // The order a player has put their own hand in (#531).
 //
-// JSX-free and relatively imported, so `node --test` can load it: docs/agents/loops.md.
+// JSX-free, runtime imports relative — docs/agents/loops.md, "Node's TypeScript loader".
 import type { Card } from "../lib/gameEngine.ts";
 
 /**
