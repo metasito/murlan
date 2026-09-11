@@ -147,7 +147,12 @@ How to solve it is yours. What follows constrains the process, never the design:
 - **A diff that describes code is traced here, not in phase D** (rule 20). The review confirms a
   map; it does not build one.
 - Scope is exactly the ticket. A finding outside it is filed as its own issue, never folded into the
-  diff: `gh issue create --title "<what>" --body-file <file> --label ready-for-human`.
+  diff: `gh issue create --title "<what>" --body-file <file> --label <label> --label size:<size>`.
+  **Choose that label, because it decides who the queue serves the ticket to.** `ready-for-agent`
+  when you can write a Definition of done with no open box — research it and state the answer, the
+  way you would have if the ticket were yours. `ready-for-human` only when closing it needs an
+  account, a device, a design call or a policy call you cannot make. Defaulting to the owner is how
+  #962 filed three agent-decidable tickets (#971, #973, #975) out of the queue in one run.
 - A bug three levels under the bug in hand: file it, do not follow it.
 - **Commit each slice as you finish it** — `git add -- <paths>`, never `-A`. An unstaged edit is the
   only work this loop can lose.

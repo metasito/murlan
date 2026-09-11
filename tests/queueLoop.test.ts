@@ -215,6 +215,21 @@ describe("runTicket", () => {
   const facts = () => ({ title: "Rate limiter factory", url: "u", size: "size:S" });
   const queue = { implement: 1, triage: 0, wayfinder: 0 };
 
+  // What git and the tracker would say. Injected, because a closing row reads them for real and a
+  // unit test must not shell out to `git` and `gh` once per phase.
+  const look = () => ({
+    onTicket: true,
+    ticket: 953,
+    branch: "agent/953-rate-limiter-factory",
+    commits: 2,
+    changed: ["a.ts", "b.ts"],
+    dirty: false,
+    head: "ace650fdeadbeef",
+    trackerReadable: true,
+    verdict: null,
+    phase: "C",
+  });
+
   const meter = (status: string) =>
     JSON.stringify({
       type: "rate_limit_event",
@@ -232,6 +247,7 @@ describe("runTicket", () => {
       queue,
       log: () => {},
       facts,
+      look,
       dir: SCRATCH,
     });
     assert.equal(run.blocked, true);
@@ -245,6 +261,7 @@ describe("runTicket", () => {
       queue,
       log: (m: string) => said.push(m),
       facts,
+      look,
       dir: SCRATCH,
     });
     assert.equal(run.blocked, false);
@@ -260,6 +277,7 @@ describe("runTicket", () => {
       at: "D",
       log: (m: string) => said.push(m),
       facts,
+      look,
       dir: SCRATCH,
     });
     const out = said.join("\n");
@@ -275,7 +293,7 @@ describe("runTicket", () => {
         tool("Task", ""),
         RESULT,
       ]),
-      { number: 953, queue, log: (m: string) => said.push(m), facts, dir: SCRATCH }
+      { number: 953, queue, log: (m: string) => said.push(m), facts, look, dir: SCRATCH }
     );
     const out = said.join("\n");
     assert.equal(out.match(/#953 · Rate limiter factory/g)?.length, 1, "the header prints once");
@@ -284,12 +302,108 @@ describe("runTicket", () => {
     assert.equal(run.status, 0);
   });
 
+  test("a phase's row carries what that phase produced, not an empty column", async () => {
+    const said: string[] = [];
+    await runTicket(
+      fakeSpawn([
+        tool("Bash", "gh issue edit 953 --add-label in-progress"),
+        tool("Task", ""),
+        // The build is derived, not marked: a commit is what makes the loop look again.
+        tool("Bash", "git commit -m one"),
+        tool("Bash", "git push -u origin agent/953-rate-limiter-factory"),
+        RESULT,
+      ]),
+      { number: 953, queue, log: (m: string) => said.push(m), facts, look, dir: SCRATCH }
+    );
+    const row = (letter: string) => said.find((l) => l.includes(`] ${letter}  `)) ?? "";
+    assert.match(row("A"), /agent\/953-rate-limiter-factory/, "the claim shows the branch it made");
+    assert.match(row("B"), /1 subagent/, "the scope shows the subagents it dispatched");
+    assert.match(row("C"), /2 commits · 2 files/, "the build shows the commits and the diff");
+    assert.match(row("E"), /pushed ace650f/, "the push shows the head CI will answer for");
+  });
+
+  test("the phase the session ended in still gets its row — that is where a stall happened", async () => {
+    const said: string[] = [];
+    await runTicket(fakeSpawn([tool("Task", ""), RESULT]), {
+      number: 953,
+      queue,
+      log: (m: string) => said.push(m),
+      facts,
+      look,
+      dir: SCRATCH,
+    });
+    assert.match(said.join("\n"), /\[2\/6\] B/, "B opened and never closed by a successor");
+  });
+
+  test("one ✓ row per phase — a resumed phase is marked as taken up, not as finished", async () => {
+    const said: string[] = [];
+    await runTicket(fakeSpawn([RESULT]), {
+      number: 962,
+      queue,
+      at: "C",
+      log: (m: string) => said.push(m),
+      facts,
+      look,
+      dir: SCRATCH,
+    });
+    const rows = said.filter((l) => l.includes("[3/6] C"));
+    assert.equal(rows.length, 2);
+    assert.match(rows[0], /↻.*resumed/, "the row for the phase being taken up cannot read as closed");
+    assert.equal(rows.filter((l) => l.includes("✓")).length, 1, "a phase closes once");
+  });
+
+  test("the review's row names the verdict and the commit it covers", async () => {
+    const said: string[] = [];
+    await runTicket(
+      fakeSpawn([
+        tool("Bash", "git commit -m one"),
+        tool("Bash", "git push -u origin agent/953-x"),
+        RESULT,
+      ]),
+      {
+        number: 953,
+        queue,
+        log: (m: string) => said.push(m),
+        facts,
+        look: () => ({ ...look(), phase: "D", verdict: { decision: "LAND" } }),
+        dir: SCRATCH,
+      }
+    );
+    assert.match(said.join("\n"), /LAND ace650f/);
+  });
+
+  test("the detail is read as the phase closes, never carried from an earlier reading", async () => {
+    let reads = 0;
+    const said: string[] = [];
+    await runTicket(
+      fakeSpawn([
+        tool("Bash", "gh issue edit 953 --add-label in-progress"),
+        tool("Bash", "git commit -m one"),
+        RESULT,
+      ]),
+      {
+        number: 953,
+        queue,
+        log: (m: string) => said.push(m),
+        facts,
+        // A growing count, so a row built from the first reading is distinguishable from one built
+        // at the close — the build is where a stale count does its damage.
+        look: () => ({ ...look(), commits: ++reads }),
+        dir: SCRATCH,
+      }
+    );
+    const build = said.find((l) => l.includes("] C  ")) ?? "";
+    assert.match(build, new RegExp(`${reads} commits`));
+    assert.doesNotMatch(build, /\b1 commit\b/, "the first reading is not what the row reports");
+  });
+
   test("carries the final result out, which is what the row and the closing line are built from", async () => {
     const run = await runTicket(fakeSpawn([tool("Task", ""), RESULT]), {
       number: 953,
       queue,
       log: () => {},
       facts,
+      look,
       dir: SCRATCH,
     });
     assert.equal(run.result?.cost, 1.82);
@@ -305,7 +419,7 @@ describe("runTicket", () => {
         tool("Bash", "git push -u origin agent/953-x", "toolu_parent"),
         RESULT,
       ]),
-      { number: 953, queue, log: (m: string) => said.push(m), facts, dir: SCRATCH }
+      { number: 953, queue, log: (m: string) => said.push(m), facts, look, dir: SCRATCH }
     );
     assert.ok(!said.join("\n").includes("[5/6] E"), "a subagent cannot push the board to phase E");
   });
@@ -328,6 +442,7 @@ describe("runTicket", () => {
       queue,
       log: () => {},
       facts,
+      look,
       dir: SCRATCH,
       stallMs: 20,
       tick: 10,
@@ -362,6 +477,7 @@ describe("runTicket", () => {
       queue,
       log: () => {},
       facts,
+      look,
       dir: SCRATCH,
       stallMs: 60,
       tick: 10,
@@ -376,6 +492,7 @@ describe("runTicket", () => {
       queue,
       log: () => {},
       facts,
+      look,
       dir: SCRATCH,
     });
     assert.equal(run.status, 1);
@@ -387,6 +504,7 @@ describe("runTicket", () => {
       queue,
       log: () => {},
       facts,
+      look,
       dir: SCRATCH,
     });
     assert.match(run.log, /999\.jsonl$/);

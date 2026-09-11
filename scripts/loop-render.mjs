@@ -78,10 +78,52 @@ export function heartbeat({ letter, ms, at = 0 }) {
   return fit(`  ${mark} [${i + 1}/6] ${letter}  ${name.padEnd(9)}`, `${elapsed(ms)} `);
 }
 
-export function phaseLine({ letter, detail, ms }) {
+export function phaseLine({ letter, detail, ms, mark = "✓" }) {
   const i = PHASES.findIndex(([l]) => l === letter);
   const name = PHASES[i]?.[1] ?? "";
-  return fit(`  ✓ [${i + 1}/6] ${letter}  ${name.padEnd(9)}${detail}`, `${elapsed(ms)} `);
+  return fit(`  ${mark} [${i + 1}/6] ${letter}  ${name.padEnd(9)}${detail}`, `${elapsed(ms)} `);
+}
+
+const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
+/**
+ * What a phase has to show for itself, from the snapshot taken as it closed — the one line of the
+ * board that makes a claim about the work, and so the one that is pure and unit-tested rather than
+ * printed from somewhere only a live night reaches.
+ *
+ * An empty string is the honest answer for facts that were not readable. The row still says the
+ * phase closed and when; a column guessing at a count would be worse than a blank one.
+ *
+ * @param {string} letter
+ * `tasks` is the subagents dispatched *in that phase*, which is the count that means something:
+ * dispatches in B are the scope, dispatches in D are review rounds.
+ *
+ * @param {{branch?: string|null, commits?: number, changed?: string[], dirty?: boolean,
+ *   head?: string|null, verdict?: {decision: string}|null, trackerReadable?: boolean,
+ *   tasks?: number}} snap
+ */
+export function detailOf(letter, snap = {}) {
+  const files = snap.changed?.length ?? 0;
+  const head = snap.head ? snap.head.slice(0, 7) : "";
+  const parts = {
+    A: [snap.branch ?? ""],
+    B: [snap.tasks ? plural(snap.tasks, "subagent") : ""],
+    C: snap.commits
+      ? [plural(snap.commits, "commit"), plural(files, "file"), snap.dirty ? "dirty" : ""]
+      : [snap.dirty ? "uncommitted" : ""],
+    D: [
+      snap.trackerReadable === false
+        ? "tracker unreadable"
+        : snap.verdict
+          ? `${snap.verdict.decision} ${head}`
+          : head
+            ? `no verdict for ${head}`
+            : "",
+      snap.tasks ? plural(snap.tasks, "review") : "",
+    ],
+    E: [head ? `pushed ${head}` : "pushed", head ? plural(files, "file") : ""],
+  };
+  return (parts[letter] ?? []).filter(Boolean).join(" · ");
 }
 
 const MARK = { landed: "✅", merged: "✅", parked: "⚠️", failed: "❌", rate_limited: "⏸" };

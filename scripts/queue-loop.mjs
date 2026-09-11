@@ -25,6 +25,7 @@ import {
   PHASES,
   clockAt,
   closing,
+  detailOf,
   header,
   heartbeat,
   phaseLine,
@@ -440,7 +441,9 @@ export function mergeSlot({ settle, release, reattach, log = console.log }) {
         log(
           phaseLine({
             letter: "F",
-            detail: "merged · worktree removed",
+            detail: [ticket.pr ? `PR #${ticket.pr}` : "", "merged", "worktree removed"]
+              .filter(Boolean)
+              .join(" · "),
             ms: Date.now() - ticket.at,
           }),
         );
@@ -522,9 +525,12 @@ function ticketFacts(number) {
  * `claude` binary. stderr stays inherited: a crash should still print itself rather than being
  * reassembled from a log nobody is watching.
  *
+ * `look` is `derive()` for the same reason: a unit test must not reach git and the tracker six times
+ * a phase.
+ *
  * @param {Function} spawnFn
  * @param {{number: number, queue: object, at?: string|null, log?: Function, facts?: Function,
- *   stallMs?: number, tick?: number, dir?: string}} opts
+ *   stallMs?: number, tick?: number, dir?: string, look?: Function}} opts
  */
 export function runTicket(
   spawnFn,
@@ -537,6 +543,7 @@ export function runTicket(
     stallMs = STALL_MS,
     tick = 30_000,
     dir = LOG_DIR,
+    look = derive,
   },
 ) {
   mkdirSync(dir, { recursive: true });
@@ -556,6 +563,9 @@ export function runTicket(
     blockedUntil: 0,
     stalled: false,
     files: 0,
+    seen: null,
+    /** Subagents dispatched, per phase: the scope in B, the review rounds in D. */
+    tasks: {},
   };
 
   // A TTY gets one rewritten line saying the build is still moving; a pipe or a file gets nothing,
@@ -572,14 +582,35 @@ export function runTicket(
     log(line);
   };
 
-  const closePhase = (letter, detail) => {
-    state.phases[letter] = Math.round((Date.now() - startedAt) / 1000);
-    say(phaseLine({ letter, detail, ms: Date.now() - startedAt }));
+  /**
+   * Git and the tracker, as of now. Asked again at every close rather than carried: a count taken at
+   * the last re-derive describes a phase that has since moved, and a row's whole job is to be the
+   * account of the phase it names. A throw leaves no snapshot rather than the previous one — a blank
+   * column says nothing, a stale one says something false.
+   */
+  const snapshot = () => {
+    try {
+      state.seen = look();
+    } catch {
+      state.seen = null;
+    }
+    state.files = state.seen?.changed?.length ?? state.files;
+    return state.seen ?? {};
+  };
+
+  /** A row is written as its phase closes, so the facts in it are the facts that phase produced. */
+  const closePhase = (letter, mark = "✓") => {
+    const ms = Date.now() - startedAt;
+    state.phases[letter] = Math.round(ms / 1000);
+    const detail = detailOf(letter, { ...snapshot(), tasks: state.tasks[letter] ?? 0 });
+    say(phaseLine({ letter, detail, ms, mark }));
   };
 
   if (at) {
     say(header({ number, ...facts(number), queue }));
-    say(phaseLine({ letter: at, detail: "resumed", ms: 0 }));
+    // `↻`, not the closing tick: this phase is being taken up, not finished, and it prints its own
+    // row when it closes. Two ✓ rows for one letter is how a resumed board reads as a repeated phase.
+    say(phaseLine({ letter: at, detail: "resumed", ms: 0, mark: "↻" }));
     state.printedHeader = true;
   }
 
@@ -625,23 +656,29 @@ export function runTicket(
       // drains the child's stdout — and `git commit` fires many times in one ticket. Re-deriving on
       // every one applies the tracker's latency to the session being watched, for a phase that can
       // only move once. A missed re-derive costs a phase line arriving late, never a wrong one.
+      //
+      // The stamp is this throttle's own, never touched by the reading a closing row takes: sharing
+      // one made a row's snapshot suppress the next advance, and the phase it would have found was
+      // the build.
       const due = Date.now() - state.lastDerive > REDERIVE_MS;
       if (call.name === "Bash" && REDERIVE.test(call.command) && due) {
         state.lastDerive = Date.now();
-        const d = derive();
-        next = advance(next, d.phase);
-        // The count as of the last commit: after the ticket lands, its worktree is gone and there
-        // is nothing left to count.
-        state.files = d.changed?.length ?? state.files;
+        next = advance(next, snapshot().phase);
       }
       state.phase = next;
+      // Counted against the phase it lands in, not the one it left: the first `Task` is the scope
+      // itself, and a `Task` that moves the board nowhere is a review round inside phase D.
+      if (call.name === "Task") state.tasks[next] = (state.tasks[next] ?? 0) + 1;
       if (next === before) continue;
 
       if (!state.printedHeader) {
         say(header({ number, ...facts(number), queue }));
         state.printedHeader = true;
       }
-      closePhase(next, "");
+      // The phase that just ended is the one with something to show; the one starting has produced
+      // nothing yet, and a row printed at its start can only be blank. A phase skipped entirely
+      // (no scope subagent on a size:S ticket) is a phase with no row, which is the truth.
+      if (before) closePhase(before);
     }
   });
 
@@ -672,6 +709,9 @@ export function runTicket(
       clearInterval(watchdog);
       if (beat.timer) clearInterval(beat.timer);
       erase();
+      // The phase the session ended in has no successor to close it, and it is the phase whose
+      // account matters most — it is where a stall, a refusal or a park happened.
+      if (state.phase && state.printedHeader) closePhase(state.phase);
       // Resolved on the sink's own finish, not on the child's close: `end()` only asks, and a
       // caller reading the log it was just handed would otherwise find it short.
       sink.end(() =>
