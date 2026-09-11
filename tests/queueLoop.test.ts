@@ -23,6 +23,9 @@ import {
   afterPush,
   canStartNext,
   mergeSlot,
+  waitFor,
+  holdFor,
+  WAIT,
 } from "../scripts/queue-loop.mjs";
 
 describe("parseRoute", () => {
@@ -617,5 +620,55 @@ describe("mergeSlot", () => {
   test("draining an empty slot is nothing, not a crash", async () => {
     const { io } = fakes();
     assert.equal(await mergeSlot(io).drain(), null);
+  });
+});
+
+/**
+ * A healthy ticket was parked against a limit that did not exist: the meter event was read without
+ * its status, so "allowed" at 30% of the window looked like a refusal. Every line here is one way
+ * this can go wrong — waiting when nothing refused, waiting for ever, waiting on a reset that has
+ * already passed, or throwing away a ticket whose work was actually done.
+ */
+describe("waitFor", () => {
+  const now = 1_000_000_000_000;
+  const mins = (n: number) => n * 60_000;
+
+  test("a meter reading that is not a refusal waits for nothing", () => {
+    assert.equal(waitFor({ blocked: false, blockedUntil: now + mins(300) }, now), 0);
+  });
+
+  test("a refusal waits until the reset, plus a small margin, and no longer", () => {
+    const hold = waitFor({ blocked: true, blockedUntil: now + mins(265) }, now);
+    assert.equal(hold, mins(265) + WAIT.MARGIN);
+    assert.ok(WAIT.MARGIN <= mins(1), "the point is to resume almost as the window rolls over");
+  });
+
+  test("a reset that has already passed is not a wait — try again now", () => {
+    assert.equal(waitFor({ blocked: true, blockedUntil: now - mins(5) }, now), 0);
+  });
+
+  test("a refusal naming no reset looks again shortly, rather than parking the ticket", () => {
+    assert.equal(waitFor({ blocked: true, blockedUntil: 0 }, now), WAIT.FLOOR);
+  });
+
+  test("a reset a year out is a bad field, not a year of sleep", () => {
+    const hold = waitFor({ blocked: true, blockedUntil: now + 365 * 24 * 60 * 60_000 }, now);
+    assert.equal(hold, WAIT.CAP);
+    assert.ok(WAIT.CAP <= mins(360), "the longest window is five hours");
+  });
+
+  test("a session that got the work done does not wait, whatever the meter said", () => {
+    assert.equal(waitFor({ blocked: true, blockedUntil: now + mins(300), done: true }, now), 0);
+  });
+});
+
+describe("holdFor", () => {
+  test("a stop file ends the wait, so .loop-stop still works during a five-hour hold", async () => {
+    const out = await holdFor(60_000, () => true, 5);
+    assert.equal(out, "stopped");
+  });
+
+  test("otherwise it waits the time out", async () => {
+    assert.equal(await holdFor(10, () => false, 5), "waited");
   });
 });

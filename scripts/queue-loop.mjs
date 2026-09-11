@@ -20,11 +20,12 @@ import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { derive } from "./loop-derive.mjs";
 import { readLine, phaseOf, REDERIVE } from "./loop-stream.mjs";
-import { BLANK, PHASES, closing, header, heartbeat, phaseLine, reportRow, runTotal } from "./loop-render.mjs";
+import { BLANK, PHASES, clockAt, closing, header, heartbeat, phaseLine, reportRow, runTotal } from "./loop-render.mjs";
 import { row } from "./loop-record.mjs";
 import { readAllowedTools } from "./loop-tools.mjs";
 
 const LOG_DIR = ".loop-logs";
+const STOP_FILE = ".loop-stop";
 
 export function isInvokedDirectly(argv1, moduleUrl) {
   return Boolean(argv1) && path.resolve(argv1) === fileURLToPath(moduleUrl);
@@ -146,6 +147,33 @@ export const stalled = (lastFactAt, now) => now - lastFactAt > STALL_MS;
 /** How often the loop is willing to pay for a `derive()`, and how often the TTY line redraws. */
 export const REDERIVE_MS = 20_000;
 const BEAT_MS = 1_000;
+
+/**
+ * Waiting out a spent usage window, with every way of waiting for ever closed off.
+ *
+ * `CAP` is above the longest window the service has (five hours) and below anything that could be a
+ * wrong clock or a bad field: a reset a year out is not a reason to sleep for a year. `FLOOR` covers
+ * a refusal that names no reset — look again shortly rather than park the ticket. `MARGIN` is how
+ * long after the reset to start again, which wants to be small: the point is to resume almost the
+ * moment the window rolls over.
+ */
+export const WAIT = { CAP: 5.5 * 60 * 60_000, FLOOR: 60_000, MARGIN: 30_000, TRIES: 20 };
+
+/**
+ * How long to hold before running this ticket again. Zero means do not wait at all — and the first
+ * two lines are why: a session that pushed or landed did its work whatever the meter said, and a
+ * meter reading "allowed" is not a refusal. Reading the event without its status is what parked a
+ * healthy ticket against a limit that did not exist.
+ *
+ * @param {{blocked?: boolean, blockedUntil?: number, done?: boolean}} run
+ */
+export function waitFor({ blocked, blockedUntil, done }, now = Date.now()) {
+  if (!blocked || done) return 0;
+  if (!blockedUntil) return WAIT.FLOOR;
+  const gap = blockedUntil - now;
+  if (gap <= 0) return 0;
+  return Math.min(gap + WAIT.MARGIN, WAIT.CAP);
+}
 
 // `npm` and `npx` are `.cmd` shims, and since the fix for CVE-2024-27980 node will not resolve one
 // from execFileSync — measured here: `execFileSync("npx", ["--version"])` throws ENOENT while `gh`
@@ -322,6 +350,20 @@ export function mergeSlot({ settle, release, reattach, log = console.log }) {
   };
 }
 
+/**
+ * Sleeps, in slices, so that `.loop-stop` still stops the loop while it is waiting out a usage
+ * window. A single five-hour `setTimeout` would make the one file that exists to stop the loop
+ * useless for the longest stretch the loop ever sits still.
+ */
+export async function holdFor(ms, exists = (f) => fs.existsSync(f), slice = 30_000) {
+  const until = Date.now() + ms;
+  while (Date.now() < until) {
+    if (exists(STOP_FILE)) return "stopped";
+    await new Promise((r) => setTimeout(r, Math.min(slice, until - Date.now())).unref());
+  }
+  return "waited";
+}
+
 /** CI went red, so the ticket needs a session again — and a session needs the worktree back. */
 function reattachWorktree(cwd, branch, log = console.log, run = sh) {
   try {
@@ -372,6 +414,8 @@ export function runTicket(spawnFn, { number, queue, log = console.log, facts = t
     phases: {},
     lastFactAt: Date.now(),
     lastDerive: 0,
+    blocked: false,
+    blockedUntil: 0,
     stalled: false,
     files: 0,
   };
@@ -412,7 +456,20 @@ export function runTicket(spawnFn, { number, queue, log = console.log, facts = t
     if (fact.kind === "init") state.version = fact.version;
     if (fact.kind === "result") state.result = fact;
     if (fact.kind === "rate_limit") {
-      say(closing({ outcome: "rate_limited", number, why: `resets ${fact.resetsAt ?? "unknown"}`, ms: 0, cost: 0 }));
+      // Said once, and only when work was actually refused: the meter ticks several times a minute.
+      if (fact.blocked && !state.blocked) {
+        state.blocked = true;
+        state.blockedUntil = fact.resetsAt ? fact.resetsAt * 1000 : 0;
+        say(
+          closing({
+            outcome: "rate_limited",
+            number,
+            why: `the ${fact.window ?? "usage"} limit is spent — resets ${clockAt(fact.resetsAt)}`,
+            ms: 0,
+            cost: 0,
+          })
+        );
+      }
     }
     if (fact.kind !== "tool") return;
 
@@ -474,6 +531,8 @@ export function runTicket(spawnFn, { number, queue, log = console.log, facts = t
       // caller reading the log it was just handed would otherwise find it short.
       sink.end(() => resolve({
         status: state.stalled ? "stalled" : (status ?? 1),
+        blocked: state.blocked,
+        blockedUntil: state.blockedUntil,
         result: state.result,
         phase: state.phase,
         phases: state.phases,
@@ -488,7 +547,6 @@ export function runTicket(spawnFn, { number, queue, log = console.log, facts = t
 
 const git = (...args) => execFileSync("git", args, { encoding: "utf8" });
 
-const STOP_FILE = ".loop-stop";
 
 /**
  * Written as each ticket ends rather than at exit, so a crash or a closed terminal keeps whatever
@@ -613,6 +671,7 @@ const standing = () => {
 async function main() {
   let prev = null;
   let failures = 0;
+  let waits = 0;
   const totals = { tickets: 0, landed: 0, parked: 0, cost: 0, ms: 0 };
 
   pruneLogs();
@@ -687,7 +746,30 @@ async function main() {
     }
 
     const run = await runTicket(spawn, { number: route.number, queue: route.queue });
+
     const after = standing();
+
+    // A spent usage window is not a failed ticket. Parking one would label the owner's own throttle
+    // as work needing a human, and three would trip the breaker and end the night — so the loop
+    // waits the window out and runs the same ticket again, still live and still claimed.
+    const hold = waitFor({
+      blocked: run.blocked,
+      blockedUntil: run.blockedUntil,
+      done: Boolean((after?.ticket !== route.number) || (after?.branch && pushedPr(after.branch))),
+    });
+    if (hold) {
+      waits += 1;
+      if (waits > WAIT.TRIES) {
+        console.log(`  ⚠️ #${route.number} refused ${waits} times running — parking rather than waiting on`);
+      } else {
+        console.log(`  ⏸ #${route.number} waiting out the usage window — back at ${clockAt(Date.now() + hold)}`);
+        await holdFor(hold);
+        continue;
+      }
+    } else {
+      waits = 0;
+    }
+
     totals.tickets += 1;
     totals.cost += run.result?.cost ?? 0;
     totals.ms += run.ms;

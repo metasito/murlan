@@ -52,8 +52,20 @@ export function readLine(line) {
   if (e.type === "system" && e.subtype === "init") {
     return { kind: "init", sessionId: e.session_id ?? null, version: e.claude_code_version ?? null };
   }
+  // This event is a usage meter, not an alarm: it arrives every few turns of a perfectly healthy
+  // session with `status: "allowed"` and the window's utilisation. Only a status that is not
+  // "allowed" means work was actually refused. Reading the type alone reports a throttle on a
+  // session running at 30% of its five-hour window, several times a minute.
   if (e.type === "rate_limit_event") {
-    return { kind: "rate_limit", resetsAt: e.rate_limit_info?.resetsAt ?? null };
+    const info = e.rate_limit_info ?? {};
+    return {
+      kind: "rate_limit",
+      status: info.status ?? "unknown",
+      blocked: Boolean(info.status) && info.status !== "allowed",
+      resetsAt: info.resetsAt ?? null,
+      window: info.rateLimitType ?? null,
+      used: info.unifiedWindows?.[info.rateLimitType]?.utilization ?? null,
+    };
   }
   if (e.type === "assistant") {
     const calls = (e.message?.content ?? [])

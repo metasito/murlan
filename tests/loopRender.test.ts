@@ -11,6 +11,7 @@ import {
   PHASES,
   heartbeat,
   BLANK,
+  clockAt,
 } from "../scripts/loop-render.mjs";
 
 describe("elapsed", () => {
@@ -193,5 +194,30 @@ describe("heartbeat", () => {
   test("BLANK covers a whole line, which is what erases it", () => {
     assert.equal(BLANK.length, phaseLine({ letter: "A", detail: "", ms: 0 }).length);
     assert.equal(BLANK.trim(), "");
+  });
+});
+
+// "resets 1789134000" reached a real terminal. Unix seconds are what the stream gives, and the one
+// line whose job is to say how long the wait is must not print a number nobody can act on.
+describe("clockAt", () => {
+  const now = Date.UTC(2026, 8, 11, 9, 14);
+
+  test("reads as a time and a distance, never as an epoch", () => {
+    const s = clockAt(1789134000, now);
+    assert.doesNotMatch(s, /1789134000/);
+    assert.match(s, /in 4h/);
+  });
+
+  test("minutes under the hour", () => {
+    assert.match(clockAt(Math.floor(now / 1000) + 25 * 60, now), /in 25m/);
+  });
+
+  test("milliseconds are accepted too, since the shape is not guaranteed", () => {
+    assert.equal(clockAt(1789134000000, now), clockAt(1789134000, now));
+  });
+
+  test("a past or missing reset says so rather than counting backwards", () => {
+    assert.doesNotMatch(clockAt(Math.floor(now / 1000) - 600, now), /in -/);
+    assert.equal(clockAt(null), "an unknown time");
   });
 });

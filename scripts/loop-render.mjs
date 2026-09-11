@@ -27,6 +27,22 @@ export function elapsed(ms) {
   return h ? `${h}:${String(m).padStart(2, "0")}:${ss}` : `${m}:${ss}`;
 }
 
+/**
+ * A reset time as a person reads it. The stream gives Unix *seconds*, and printing that raw is how
+ * "resets 1789134000" reached a terminal — a number nobody can act on, in the one line whose whole
+ * job is to say how long the wait is.
+ */
+export function clockAt(resetsAt, now = Date.now()) {
+  if (!resetsAt) return "an unknown time";
+  const ms = resetsAt > 1e12 ? resetsAt : resetsAt * 1000;
+  const when = new Date(ms);
+  const time = when.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const mins = Math.round((ms - now) / 60_000);
+  if (mins <= 0) return time;
+  const gap = mins < 60 ? `${mins}m` : `${Math.floor(mins / 60)}h${String(mins % 60).padStart(2, "0")}`;
+  return `${time}, in ${gap}`;
+}
+
 const money = (n) => `$${Number(n ?? 0).toFixed(2)}`;
 const rule = "━".repeat(WIDTH);
 

@@ -19,12 +19,27 @@ describe("readLine", () => {
     assert.deepEqual(readLine(line), { kind: "init", sessionId: "abc-123", version: "2.1.251" });
   });
 
-  test("reads a rate limit event and its reset time", () => {
+  // The fixture below is captured from a real run's `.loop-logs/962.jsonl`. The invented one it
+  // replaces had a status of "throttled" and an ISO reset — neither of which the stream emits — and
+  // a test agreeing with a shape nobody had seen is what let the loop misread the live one.
+  test("reads a rate limit event: its status, its window, and its reset", () => {
     const line = JSON.stringify({
       type: "rate_limit_event",
-      rate_limit_info: { status: "throttled", resetsAt: "2026-09-11T04:10:00Z" },
+      rate_limit_info: {
+        status: "allowed",
+        resetsAt: 1789134000,
+        rateLimitType: "five_hour",
+        unifiedWindows: { five_hour: { utilization: 0.28, resetsAt: 1789134000 } },
+      },
     });
-    assert.deepEqual(readLine(line), { kind: "rate_limit", resetsAt: "2026-09-11T04:10:00Z" });
+    assert.deepEqual(readLine(line), {
+      kind: "rate_limit",
+      status: "allowed",
+      blocked: false,
+      resetsAt: 1789134000,
+      window: "five_hour",
+      used: 0.28,
+    });
   });
 
   test("reads every tool_use block out of one assistant message", () => {
@@ -151,5 +166,55 @@ describe("REDERIVE", () => {
 
   test("reading a file is not", () => {
     assert.ok(!REDERIVE.test("cat package.json"));
+  });
+});
+
+/**
+ * The event that made this necessary, verbatim from `.loop-logs/962.jsonl`: a healthy session at
+ * 30% of its five-hour window, emitting this several times a minute with `status: "allowed"`. The
+ * loop read the type alone and announced "#962 rate limited — resets 1789134000", twice, about a
+ * ticket that was building perfectly well.
+ */
+describe("rate_limit_event is a usage meter, not an alarm", () => {
+  const read = (line: string) => {
+    const fact = readLine(line);
+    assert.ok(fact, "the event was not read at all");
+    return fact as any;
+  };
+
+  const event = (status: string, utilization = 0.3) =>
+    JSON.stringify({
+      type: "rate_limit_event",
+      rate_limit_info: {
+        status,
+        resetsAt: 1789134000,
+        rateLimitType: "five_hour",
+        unifiedWindows: { five_hour: { utilization, resetsAt: 1789134000 } },
+      },
+    });
+
+  test("an allowed window is not a block", () => {
+    const fact = read(event("allowed"));
+    assert.equal(fact.kind, "rate_limit");
+    assert.equal(fact.blocked, false, "a session at 30% of its window is not rate limited");
+    assert.equal(fact.used, 0.3);
+  });
+
+  test("a refusal is", () => {
+    assert.equal(read(event("rejected")).blocked, true);
+  });
+
+  test("a warning still counts as work refused, because it is not 'allowed'", () => {
+    assert.equal(read(event("allowed_warning")).blocked, true);
+  });
+
+  test("it carries the window and the reset, so the wait can be stated", () => {
+    const fact = read(event("rejected"));
+    assert.equal(fact.window, "five_hour");
+    assert.equal(fact.resetsAt, 1789134000);
+  });
+
+  test("an event with no info at all is not read as a block", () => {
+    assert.equal(read(JSON.stringify({ type: "rate_limit_event" })).blocked, false);
   });
 });
