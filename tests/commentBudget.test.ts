@@ -97,6 +97,21 @@ describe("comment budget", () => {
     assert.deepEqual(counts(diff("scripts/a.mjs", lines)), []);
   });
 
+  test("prose added inside a block comment already in the file counts", () => {
+    const lines = [" /*", ...prose(8), " */", ...code(1)];
+    assert.deepEqual(counts(diff("scripts/a.mjs", lines)), [["scripts/a.mjs", 8, 1]]);
+  });
+
+  test("a body whose opener falls outside the hunk reads as code", () => {
+    const lines = ["+/*", ...prose(2), "@@ -20,0 +20 @@", ...prose(9), ...comments(7)];
+    assert.deepEqual(counts(diff("scripts/a.mjs", lines)), [["scripts/a.mjs", 10, 9]]);
+  });
+
+  test("a blank line in a block comment counts as neither", () => {
+    const lines = ["+/*", "+", ...prose(8), "+*/", ...code(1)];
+    assert.deepEqual(counts(diff("scripts/a.mjs", lines)), [["scripts/a.mjs", 10, 1]]);
+  });
+
   test("an unterminated block comment does not swallow the next file", () => {
     const from = diff("scripts/a.mjs", ["+/*", ...prose(2)]);
     const to = diff("scripts/b.mjs", [...comments(7), ...code(1)]);

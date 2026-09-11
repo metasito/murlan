@@ -29,11 +29,11 @@ export function budget(diff) {
     return named ? (CODE.test(named[1]) ? named[1] : null) : undefined;
   };
 
-  // One side of the diff, as `[file, text, comment]` per line of its own. Both passes read it,
-  // or the two would disagree on what a comment is and a moved one would lose its credit.
-  // A block comment's body is prose whatever its lines start with — the leading `*` is a
-  // convention, not the syntax. Block state is per hunk: the lines a hunk leaves out can close
-  // one, so inside a hunk is the only place it is known.
+  // One side of the diff, as `[file, text, comment]` per line of its own; both passes read it,
+  // so what a comment is gets decided once. A block comment's body is prose whatever its lines
+  // start with — the leading `*` is a convention, not the syntax. A context line opens and closes
+  // a block without being counted in either version. Block state is per hunk, and that is the
+  // ceiling: a body whose `/*` falls outside the hunk reads as code.
   function* side(sign) {
     let file = null;
     let block = false;
@@ -45,8 +45,6 @@ export function budget(diff) {
         continue;
       }
       if (!file || line.startsWith("+++") || line.startsWith("---")) continue;
-      // A context line is in both versions: it closes a block without being counted in either.
-      // The opposite sign's lines belong to the other version and are not read at all.
       const own = line.startsWith(sign);
       if (!own && !line.startsWith(" ")) continue;
       const text = "+" + line.slice(1);
