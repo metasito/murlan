@@ -1,7 +1,6 @@
 // tests/commentBudget.test.ts
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-// @ts-expect-error - .mjs script, no types
 import { budget } from "../scripts/comment-budget.mjs";
 
 const diff = (file: string, lines: string[]) =>

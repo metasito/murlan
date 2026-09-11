@@ -524,7 +524,7 @@ function ticketFacts(number) {
  *
  * @param {Function} spawnFn
  * @param {{number: number, queue: object, at?: string|null, log?: Function, facts?: Function,
- *   stallMs?: number, tick?: number}} opts
+ *   stallMs?: number, tick?: number, dir?: string}} opts
  */
 export function runTicket(
   spawnFn,
