@@ -12,10 +12,29 @@ import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 
 const CODE = /\.(mjs|js|ts|tsx)$/;
-const LINE = /^\+\s*(\/\/|\*|\/\*)/;
+const LINE = /^\s*(\/\/|\*|\/\*)/;
+
+/**
+ * Comment lines deleted anywhere in the diff, counted. A file split moves prose verbatim, and git's
+ * rename detection cannot see it: it consumes the source as one file's rename and will not also
+ * report it as the others' copy source, so the exemption has to be content, not history.
+ *
+ * Counted rather than collected, so one deletion excuses one addition — otherwise deleting a line
+ * once would licence any number of copies of it.
+ */
+function moved(diff) {
+  const pool = new Map();
+  for (const line of diff.split("\n")) {
+    if (!line.startsWith("-") || line.startsWith("---")) continue;
+    const body = line.slice(1);
+    if (LINE.test(body)) pool.set(body, (pool.get(body) ?? 0) + 1);
+  }
+  return pool;
+}
 
 export function budget(diff) {
   const files = new Map();
+  const pool = moved(diff);
   let file = null;
   for (const line of diff.split("\n")) {
     const named = /^\+\+\+ b\/(.+)$/.exec(line);
@@ -26,8 +45,13 @@ export function budget(diff) {
     }
     if (!file || !line.startsWith("+") || line.startsWith("+++")) continue;
     const at = files.get(file);
-    if (LINE.test(line)) at.comment += 1;
-    else if (line.slice(1).trim()) at.code += 1;
+    const body = line.slice(1);
+    // An exact match only: a line reworded on the way is prose someone wrote today.
+    if (LINE.test(body)) {
+      const left = pool.get(body) ?? 0;
+      if (left) pool.set(body, left - 1);
+      else at.comment += 1;
+    } else if (body.trim()) at.code += 1;
   }
   // A handful of comments on a small change is not a ratio worth policing; the rule is about a diff
   // that is mostly prose.
