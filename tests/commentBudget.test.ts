@@ -1,7 +1,11 @@
 // tests/commentBudget.test.ts
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { budget } from "../scripts/comment-budget.mjs";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { budget, diffOf } from "../scripts/comment-budget.mjs";
 
 const diff = (file: string, lines: string[]) =>
   [`diff --git a/${file} b/${file}`, `--- a/${file}`, `+++ b/${file}`, "@@ -0,0 +1 @@", ...lines].join("\n");
@@ -12,6 +16,29 @@ const prose = (n: number) => Array.from({ length: n }, (_, i) => `+  why ${i}`);
 
 const counts = (d: string) =>
   budget(d).map(([f, n]: [string, { comment: number; code: number }]) => [f, n.comment, n.code]);
+
+// `diffOf` decides how much context git prints, so what it costs can only be seen against a real
+// repository: every fixture above hands `budget` a diff that was written by hand.
+const countsAcross = (versions: string[][]) => {
+  const dir = mkdtempSync(join(tmpdir(), "comment-budget-"));
+  const git = (...args: string[]) => execFileSync("git", args, { cwd: dir, stdio: "pipe" });
+  const cwd = process.cwd();
+  try {
+    git("init", "-b", "main");
+    for (const [i, text] of versions.entries()) {
+      writeFileSync(join(dir, "a.mjs"), text.join("\n") + "\n");
+      git("add", "a.mjs");
+      git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-m", `v${i}`);
+    }
+    process.chdir(dir);
+    return counts(diffOf("HEAD~1"));
+  } finally {
+    process.chdir(cwd);
+    rmSync(dir, { recursive: true, force: true, maxRetries: 3 });
+  }
+};
+
+const bare = (lines: string[]) => lines.map((l) => l.slice(1));
 
 describe("comment budget", () => {
   test("a diff that is mostly prose is over", () => {
@@ -116,5 +143,18 @@ describe("comment budget", () => {
     const from = diff("scripts/a.mjs", ["+/*", ...prose(2)]);
     const to = diff("scripts/b.mjs", [...comments(7), ...code(1)]);
     assert.deepEqual(counts(`${from}\n${to}`), [["scripts/b.mjs", 7, 1]]);
+  });
+
+  test("prose added far below a block comment's opener counts as prose", () => {
+    const head = ["/*", ...bare(prose(5))];
+    const tail = ["*/", ...bare(code(1))];
+    const added = bare(prose(8)).map((l) => `${l} also`);
+    assert.deepEqual(countsAcross([[...head, ...tail], [...head, ...added, ...tail]]), [["a.mjs", 8, 0]]);
+  });
+
+  test("the context a wider window prints is counted in neither column", () => {
+    const before = [...bare(code(12)), ...bare(comments(6))];
+    const after = [...before.slice(0, 9), ...bare(comments(7)).map((l) => `${l} new`), ...before.slice(9)];
+    assert.deepEqual(countsAcross([before, after]), [["a.mjs", 7, 0]]);
   });
 });

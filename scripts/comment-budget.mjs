@@ -82,8 +82,13 @@ export function budget(diff) {
   return [...files].filter(([, n]) => n.comment > 6 && n.comment > n.code);
 }
 
+// Wide, not git's default 3: `side()`'s ceiling above is reached through the window, so this is
+// what puts a docblock's `/*` inside the hunk editing its body. Context lines cost no count, so
+// the only thing a wider window can change is that state.
+const CONTEXT = 20;
+
 export function diffOf(base, head = "HEAD") {
-  return execFileSync("git", ["diff", `${base}...${head}`, "--", "*.mjs", "*.js", "*.ts", "*.tsx"], {
+  return execFileSync("git", ["diff", `-U${CONTEXT}`, `${base}...${head}`, "--", "*.mjs", "*.js", "*.ts", "*.tsx"], {
     encoding: "utf8",
     maxBuffer: 64 * 1024 * 1024,
   });
