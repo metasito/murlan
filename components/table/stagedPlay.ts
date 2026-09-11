@@ -6,8 +6,7 @@
 // that only the caller can run `canPlay`. This file is that caller, and it runs
 // the engine for real.
 
-// Relative and extensioned, not `@/`: these are runtime imports, and Node's
-// built-in TypeScript loader (`node --test`) cannot resolve the bundler alias.
+// Relative and extensioned, not `@/`: these are runtime imports — docs/agents/loops.md.
 import {
   buildCombination,
   canPlay,

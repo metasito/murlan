@@ -1,7 +1,6 @@
 // Layout math for StraightHand's card row (components/table/hand.tsx),
 // extracted to components/handLayout.ts specifically so it is importable
-// here — Node's native TS loader can type-strip a plain .ts file but cannot
-// parse the JSX in hand.tsx.
+// here — docs/agents/loops.md.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { CARD_W } from "../components/cardFaceModel.ts";

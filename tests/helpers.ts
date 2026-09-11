@@ -1,8 +1,7 @@
 // Shared fixtures for the engine test suite.
 //
-// The `.ts` extension on the imports across this suite is required by Node's ESM
-// loader when it type-strips them (`node --test tests/**/*.test.ts`);
-// tsconfig.json's `allowImportingTsExtensions` is what lets `tsc` accept it.
+// The `.ts` extension on the imports across this suite is required —
+// docs/agents/loops.md.
 import type {
   Card,
   GameMode,

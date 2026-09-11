@@ -1,11 +1,6 @@
 // The whole table in words, for a screen reader.
 //
-// This file is deliberately JSX-free, for the same reason components/handLayout.ts
-// is: Node's built-in TypeScript loader (`node --test tests/**/*.test.ts`) only
-// type-strips plain .ts source — it cannot parse a .tsx file, and it cannot
-// resolve the `@/` bundler alias at runtime. A runtime import must therefore be
-// relative and carry its .ts extension; `@/` is safe only in a type-only import,
-// which is erased before resolution.
+// JSX-free and relatively imported, so `node --test` can load it: docs/agents/loops.md.
 
 // ─── Screen-reader description ─────────────────────────────────────────────────
 //

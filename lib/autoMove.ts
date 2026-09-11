@@ -2,7 +2,7 @@
 //
 // Relative imports and no `react-native`, for the same reason
 // lib/exchangeCeremony.ts has none: the server bundles this with no alias
-// resolution, and `node --test` type-strips plain .ts without resolving `@/`.
+// resolution, and `node --test` loads it the same way (docs/agents/loops.md).
 //
 // It lives here rather than in server/ because a bot plays offline too, and
 // one rule played two ways is two rules.

@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 // Relative and extensioned, not `@/`: `tests/sharedGameFlow.test.ts` loads this
-// under `node --test`, which type-strips plain .ts and resolves nothing a
-// bundler would. A type-only import is erased before resolution and may use the
-// alias; a runtime one may not.
+// under `node --test` — docs/agents/loops.md.
 import { EXCHANGE_FLIGHT_MS, exchangeAnnounceMs } from "./exchangeCeremony.ts";
 import { matchIsClosing } from "./gameEngine.ts";
 import type { Card, MatchLength } from "@/lib/gameEngine";

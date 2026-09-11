@@ -1,7 +1,5 @@
-// Pure geometry of a card face, kept out of CardView.tsx for the same reason
-// flightPhysics.ts is kept out of GameTable.tsx: Node's test loader strips
-// plain .ts but cannot parse .tsx, so none of this is reachable from a test
-// while it lives next to JSX.
+// Pure geometry of a card face, kept out of CardView.tsx so `node --test` can
+// load it: docs/agents/loops.md.
 //
 // Everything is expressed as a fraction of the card's own width or height, so
 // one set of numbers serves both card sizes.
