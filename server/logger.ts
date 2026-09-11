@@ -85,7 +85,7 @@ function loggedRequest(req: LoggedRequest) {
     url,
     kind: url
       ? undefined
-      : unmatchedKind((req.originalUrl ?? req.url ?? "").split("?")[0], req[ANSWERED_BY_SHELL]),
+      : unmatchedKind((req.originalUrl ?? req.url ?? "").split("?")[0] ?? "", req[ANSWERED_BY_SHELL]),
   };
 }
 
