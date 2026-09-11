@@ -86,8 +86,8 @@ export function budget(diff) {
 // `tests/commentBudget.test.ts` measures that and reds when this stops covering it.
 const CONTEXT = 40;
 
-// Demanded rather than hoped for: a differ, a textconv filter, `diff.noprefix`, `color.ui` or a
-// `-diff` attribute each leave this parsing no files at all and reporting green.
+// The output format is demanded rather than hoped for: an external differ, `diff.noprefix` or
+// `color.ui` leaves this parsing no file at all; a textconv filter or `-diff`, no line under one.
 const FORMAT = ["--no-ext-diff", "--no-textconv", "--text", "--no-color", "--src-prefix=a/", "--dst-prefix=b/"];
 
 export function diffOf(base, head = "HEAD", opts = {}) {
