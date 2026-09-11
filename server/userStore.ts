@@ -27,11 +27,6 @@ export class EmailTakenError extends Error {
   }
 }
 
-/**
- * An object rather than bare exported functions: `tests/integration/` replaces
- * a single read with a throwing stub to drive the failure paths, and an ES
- * module's namespace is sealed against exactly that.
- */
 export const userStore = {
   async getUser(id: string) {
     const [user] = await db.select().from(users).where(eq(users.id, id));
