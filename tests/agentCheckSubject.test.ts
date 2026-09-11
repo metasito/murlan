@@ -9,11 +9,19 @@ import { checkSubject } from "../scripts/preflight.mjs";
 
 // The two readings one repository gives at one moment: from the shared checkout on main, which
 // carries nothing, and from the ticket worktree, which carries the work.
-const primary = { toplevel: "C:/Users/x/murlan", baseSha: "abc1234567", changed: "" };
-const worktree = {
+type Reading = { toplevel: string | null; baseSha: string | null; changed: string };
+
+const primary: Reading = { toplevel: "C:/Users/x/murlan", baseSha: "abc1234567", changed: "" };
+const worktree: Reading = {
   toplevel: "C:/Users/x/murlan/.worktrees/agent-981",
   baseSha: "abc1234567",
   changed: " M scripts/agent-check.mjs\n",
+};
+
+const refusal = (reading: typeof worktree): string => {
+  const { refuse } = checkSubject(reading);
+  assert.ok(refuse, "expected a refusal, got a subject");
+  return refuse;
 };
 
 describe("the tree agent:check judges", () => {
@@ -23,7 +31,7 @@ describe("the tree agent:check judges", () => {
 
   test("two worktrees of one repository give two verdicts", () => {
     assert.match(
-      checkSubject(primary).refuse,
+      refusal(primary),
       /nothing to judge/,
       "the shared checkout has no diff, so a green there is about nothing"
     );
@@ -31,11 +39,11 @@ describe("the tree agent:check judges", () => {
   });
 
   test("no tree is a refusal, not a pass", () => {
-    assert.match(checkSubject({ ...worktree, toplevel: null }).refuse, /no tree to judge/);
+    assert.match(refusal({ ...worktree, toplevel: null }), /no tree to judge/);
   });
 
   test("no base is a refusal, not a pass", () => {
-    assert.match(checkSubject({ ...worktree, baseSha: null }).refuse, /origin\/main/);
+    assert.match(refusal({ ...worktree, baseSha: null }), /origin\/main/);
   });
 
   test("the verdict names the base it judged against", () => {
