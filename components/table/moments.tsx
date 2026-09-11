@@ -29,7 +29,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
-import { sparkOffset, SPARK_COUNT, type FlareKind } from "@/components/gameTableModel";
+import { sparkOffset, SPARK_COUNT, type FlareKind } from "@/components/flightPhysics";
 import { Layer, makeShadow, withAlpha, Motion } from "@/lib/theme";
 
 // The prototype's own literal colours for this one effect — a lamp exploding
@@ -149,7 +149,7 @@ const FLARE_SIZE = 150;
 const FLARE_BRIEF_MS = 1500;
 /**
  * The partita's own window — long enough to carry the closing beat rather
- * than read as a second bomb: `flareKindFor` (gameTableModel.ts) is what
+ * than read as a second bomb: `flareKindFor` (flightPhysics.ts) is what
  * decides which of the two a landing plays, never a branch in here.
  */
 const FLARE_SETTLE_MS = FLARE_BRIEF_MS * 2;
@@ -433,7 +433,7 @@ const LIFT_SCALE_TO = 1.35;
 
 /**
  * `x`/`y` are the lamp's own centre in the felt box's own pixels —
- * `lightPosition` (gameTableModel.ts) resolved against the felt's width and
+ * `lightPosition` (seatLayout.ts) resolved against the felt's width and
  * height, the same point `FeltPool` is already drawn at.
  */
 export function LampLift({

@@ -23,7 +23,9 @@ jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({
 }));
 
 import NotificationBanner from '@/components/NotificationBanner';
-import { CHIP_H, cardScale, computeScreenPads } from '@/components/gameTableModel';
+import { CHIP_H } from '@/components/seatLayout';
+import { computeScreenPads } from '@/components/tableFrame';
+import { cardScale } from '@/components/cardFaceModel';
 
 const INSETS = { top: 24, left: 47, right: 34, bottom: 0 };
 const METRICS = { frame: { x: 0, y: 0, width: 844, height: 390 }, insets: INSETS };

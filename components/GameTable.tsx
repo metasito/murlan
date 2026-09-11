@@ -42,42 +42,38 @@ import { useTradedCardsLanded, type ExchangeAnnounceData } from "@/lib/sharedGam
 import {
   CHIP_H,
   HAND_ZONE_H,
-  CARD_H,
-  exchangeFlight,
-  type ExchangeFlight,
-  cardScale,
   actionBtnSize,
   HAND_ZONE_GAP,
-  advancePile,
   arrangeOpponents,
-  canPassNow as canPassNowOf,
-  comboKey,
-  computeTableFrame,
   LAMP_CENTRE,
-  openingIsPending,
-  readHandArrival,
-  describeTableForA11y,
-  EMPTY_PILE,
   handCountOf,
   vacatedOf,
+  lightPosition,
+  seatDirection,
+  viewerOwnsSeat,
+  type FlyDirection,
+  type OpponentSide,
+} from "@/components/seatLayout";
+import {
+  exchangeFlight,
+  type ExchangeFlight,
+  advancePile,
+  comboKey,
+  readHandArrival,
+  EMPTY_PILE,
   readThrownPlay,
   impactDelayMs,
   landingTier,
-  lightPosition,
   passedSeats,
   readExchange,
   roundClosedWithWinner,
-  seatDirection,
-  turnTimerActive,
-  viewerOwnsSeat,
-  type FlyDirection,
   type ImpactTier,
-  type OpponentSide,
   type PileState,
-  type TableA11yExchange,
-  type TableA11yLastPlay,
-  type TableA11yOpponent,
-} from "@/components/gameTableModel";
+} from "@/components/flightPhysics";
+import { canPassNow as canPassNowOf, openingIsPending, turnTimerActive } from "@/components/turnTimerUi";
+import { computeTableFrame } from "@/components/tableFrame";
+import { describeTableForA11y, type TableA11yExchange, type TableA11yLastPlay, type TableA11yOpponent } from "@/components/tableA11y";
+import { CARD_H, CARD_W, cardScale, FIELD_SCALE, HAND_SCALE, physicalTouchTarget } from "@/components/cardFaceModel";
 import { useTranslation } from "@/lib/i18n";
 import {
   CHIP_NAME_MAX_W,
@@ -116,7 +112,6 @@ import { BombBurst, LampLift, Sweep } from "@/components/table/moments";
 import { TopOppSlot, SideOppSlot } from "@/components/table/seats";
 import { ExchangeAnnouncement } from "@/components/ExchangeAnnouncement";
 import { ExchangePrompt } from "@/components/table/ExchangePrompt";
-import { CARD_W, FIELD_SCALE, HAND_SCALE, physicalTouchTarget } from "@/components/cardFaceModel";
 import {
   playCardSelect,
   playCardPlay,
@@ -426,7 +421,7 @@ export function GameTable({
     key: string;
     dir: FlyDirection;
     cards: Card[];
-    /** Where the throw starts — components/gameTableModel.ts `flightOrigin`. */
+    /** Where the throw starts — components/flightPhysics.ts `flightOrigin`. */
     origin: { dx: number; dy: number };
   } | null>(null);
   // False for exactly impactDelayMs() from the moment a flight begins — the
@@ -614,7 +609,7 @@ export function GameTable({
 
   // ── Screen-reader table description ─────────────────────────────────────────
   //
-  // describeTableForA11y (gameTableModel.ts) does the ordering; this just
+  // describeTableForA11y (tableA11y.ts) does the ordering; this just
   // gathers the translated pieces it asks for. The bottom seat's size comes
   // from `sortedHand`, which is the real hand when playing and the count-derived
   // face-down set when spectating — `viewer.hand.length` is 0 in that case,

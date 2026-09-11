@@ -7,7 +7,7 @@ import { A11yStatus, a11yHidden } from "@/lib/a11y";
 import { Colors, FontSize, Radius, Scrim, Spacing } from "@/lib/theme";
 import { TableText } from "@/components/table/TableText";
 import { exchangeAnnounceMs } from "@/lib/exchangeCeremony";
-import type { ExchangeFlight as Trip } from "@/components/gameTableModel";
+import type { ExchangeFlight as Trip } from "@/components/flightPhysics";
 import { ExchangeFlyingCard, ExchangeSeatTag } from "@/components/table/ExchangeFlight";
 
 interface ExchangeAnnouncementProps {
@@ -25,7 +25,7 @@ interface ExchangeAnnouncementProps {
   toLoser: Trip;
   /**
    * Whether the traded cards have arrived — read from the caller rather than
-   * timed again here. `readHandArrival` (`components/gameTableModel.ts`) reads
+   * timed again here. `readHandArrival` (`components/flightPhysics.ts`) reads
    * the same instant to decide when the receiving hand takes its card back;
    * a second `useTradedCardsLanded` call here once raced it, since two
    * `setTimeout`s scheduled for the same duration from two separate effects

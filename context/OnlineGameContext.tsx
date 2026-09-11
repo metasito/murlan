@@ -16,7 +16,7 @@ import { t, translateServerPayload, type ServerPayload } from "@/lib/i18n";
 import { Reading } from "@/lib/theme";
 import { sendIntent } from "@/lib/sendIntent";
 import { MATCH_TARGETS } from "@/lib/gameEngine";
-import { handCountOf } from "@/components/gameTableModel";
+import { handCountOf } from "@/components/seatLayout";
 import { clearReactions, pushReaction } from "@/lib/reactions";
 import type { GameState, MatchLength } from "@/lib/gameEngine";
 import type { GameOverPayload, MatchVerdict } from "@/lib/matchState";

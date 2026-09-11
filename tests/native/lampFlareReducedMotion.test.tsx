@@ -53,7 +53,7 @@ jest.mock("@/components/useTableFeedback", () => {
 });
 
 import { GameTable } from "@/components/GameTable";
-import { impactDelayMs } from "@/components/gameTableModel";
+import { impactDelayMs } from "@/components/flightPhysics";
 import { getVisibleText } from "./visibilityHelpers";
 import type { Card, Combination, GameState, Player } from "@/lib/gameEngine";
 

@@ -23,7 +23,7 @@ jest.mock('react-native-worklets', () => {
 
 import { FlyingCards } from '@/components/table/pile';
 import NotificationBanner from '@/components/NotificationBanner';
-import { FLIGHT_MS } from '@/components/gameTableModel';
+import { FLIGHT_MS } from '@/components/flightPhysics';
 import type { Card } from '@/lib/gameEngine';
 
 const METRICS = { frame: { x: 0, y: 0, width: 874, height: 402 }, insets: { top: 0, left: 59, right: 59, bottom: 21 } };

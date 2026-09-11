@@ -11,12 +11,8 @@ import Animated, {
 import { scheduleOnRN } from "react-native-worklets";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import {
-  cardScale,
-  computeScreenPads,
-  notificationTopOffset,
-  surplusHeight,
-} from "@/components/gameTableModel";
+import { computeScreenPads, notificationTopOffset, surplusHeight } from "@/components/tableFrame";
+import { cardScale } from "@/components/cardFaceModel";
 import { Colors, Reading, Spacing, Radius, Type, Shadow, TOUCH_TARGET_MIN, Layer } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";

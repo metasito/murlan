@@ -1,6 +1,6 @@
 // The table's screen-reader sentences.
 //
-// `gameTableModel.ts` decides what is worth saying and in what order, and takes
+// `tableA11y.ts` decides what is worth saying and in what order, and takes
 // every phrase already translated — it is pure, and node runs it. This file is
 // the translation boundary on the other side of that contract: it turns game
 // state into words. Nothing here renders, so it stays a `.ts`.
@@ -14,11 +14,9 @@ import {
 } from "@/lib/gameEngine";
 import { rankSpokenName, cardSpokenName, suitSpokenName } from "@/lib/cardNames";
 import type { TFn, TnFn, TranslationKey } from "@/lib/i18n";
-import {
-  straightTopRankChar,
-  type PlayButtonLabel,
-  type TableA11yStrings,
-} from "@/components/gameTableModel";
+import { straightTopRankChar } from "@/components/flightPhysics";
+import { type PlayButtonLabel } from "@/components/turnTimerUi";
+import { type TableA11yStrings } from "@/components/tableA11y";
 
 /**
  * The translation boundary for why a play is refused. Total, so a new reason

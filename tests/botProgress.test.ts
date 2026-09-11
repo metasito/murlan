@@ -12,7 +12,7 @@ import {
   type Progress,
 } from "./e2e/helpers/bot.ts";
 
-/** The shape components/gameTableModel.ts `describeTableForA11y` produces. */
+/** The shape components/tableA11y.ts `describeTableForA11y` produces. */
 const state = (you: number, luan: number, extra = "") =>
   `${extra}Hai ${you} cart${you === 1 ? "a" : "e"} in mano. ` +
   `Luan ha ${luan} cart${luan === 1 ? "a" : "e"} in mano.`;

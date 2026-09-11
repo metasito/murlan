@@ -26,7 +26,8 @@ import {
   HAND_SCALE,
   HAND_SCALE_ON_TURN,
 } from "../components/cardFaceModel.ts";
-import { computeTableFrame, HAND_ZONE_GAP } from "../components/gameTableModel.ts";
+import { HAND_ZONE_GAP } from "../components/seatLayout.ts";
+import { computeTableFrame } from "../components/tableFrame.ts";
 import { computeHandLayout, MIN_READABLE_STEP } from "../components/handLayout.ts";
 import { PHONES, type Phone } from "./e2e/helpers/phones.ts";
 import { dealCards } from "../lib/gameEngine.ts";

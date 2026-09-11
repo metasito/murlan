@@ -15,7 +15,7 @@ import {
   captureStateById,
   nextTurn,
 } from "../lib/captureStates.ts";
-import { seatDirection } from "../components/gameTableModel.ts";
+import { seatDirection } from "../components/seatLayout.ts";
 import { createDeck } from "../lib/gameEngine.ts";
 
 describe("capture states", () => {

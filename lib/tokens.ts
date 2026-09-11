@@ -491,7 +491,7 @@ export const Hold = {
 /**
  * How hard the table shakes at each rung of the landing escalation #101
  * settled — Nijman's *trauma*, 0..1 (*Art of Screenshake*, INDIGO Classes
- * 2013). `shakeMagnitude` (components/gameTableModel.ts) reads it back as
+ * 2013). `shakeMagnitude` (components/flightPhysics.ts) reads it back as
  * trauma squared, not trauma: #772 found the talk itself hedges between
  * squaring and cubing that curve, and the owner settled this table on it —
  * raw trauma reads as the table sliding to rest rather than struck, and

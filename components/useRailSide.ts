@@ -5,7 +5,7 @@
 // derived separately are two that can answer differently on the same rotation.
 import { useEffect, useState } from "react";
 import * as ScreenOrientation from "expo-screen-orientation";
-import { LANDSCAPE_LEFT, railSideFor, type RailSide } from "@/components/gameTableModel";
+import { LANDSCAPE_LEFT, railSideFor, type RailSide } from "@/components/tableFrame";
 
 /**
  * `sideInset` is the larger of the two horizontal insets — the cutout's own,

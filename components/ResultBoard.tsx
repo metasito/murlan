@@ -15,8 +15,8 @@ import {
 } from "react-native";
 import { useIsLandscape, useOrientedWindow } from "@/lib/orientation";
 import { ControlRail, RailKnob } from "@/components/table/chrome";
-import { cardScale, railWidth } from "@/components/gameTableModel";
-import { physicalTouchTarget } from "@/components/cardFaceModel";
+import { railWidth } from "@/components/tableFrame";
+import { cardScale, physicalTouchTarget } from "@/components/cardFaceModel";
 import { useRailSide } from "@/components/useRailSide";
 import Animated, {
   useAnimatedStyle,

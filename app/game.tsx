@@ -18,7 +18,7 @@ import { ConfirmDialog, type ConfirmRequest } from "@/components/ConfirmDialog";
 import { pickGivebackCard } from "@/lib/gameEngine";
 import { suspendAI } from "@/lib/e2eAiSuspend";
 import { GameTable } from "@/components/GameTable";
-import { comboKey } from "@/components/gameTableModel";
+import { comboKey } from "@/components/flightPhysics";
 import { hapticWarn } from "@/lib/haptics";
 import { useTranslation } from "@/lib/i18n";
 

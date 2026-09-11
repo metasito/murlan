@@ -11,7 +11,7 @@ import {
   processPlay,
   type Card,
 } from "./helpers.ts";
-import { seatDirection } from "../components/gameTableModel.ts";
+import { seatDirection } from "../components/seatLayout.ts";
 
 const pair = (rank: Parameters<typeof c>[0]): Card[] => [c(rank, "hearts"), c(rank, "clubs")];
 const combo = (cards: Card[]) => buildCombination(cards)!;

@@ -21,18 +21,8 @@ import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
 import type { Card, Combination } from "@/lib/gameEngine";
 import { CARD_W, CARD_H, FIELD_SCALE, cardRadius } from "@/components/cardFaceModel";
-import {
-  COMBO_MAX_TILT,
-  FLIGHT_MS,
-  cardTilt,
-  flinchFor,
-  impactDelayMs,
-  landingHoldMs,
-  landSquashScale,
-  settleForMotion,
-  type FlyDirection,
-  type ImpactTier,
-} from "@/components/gameTableModel";
+import { COMBO_MAX_TILT, cardTilt, type FlyDirection } from "@/components/seatLayout";
+import { FLIGHT_MS, flinchFor, impactDelayMs, landingHoldMs, landSquashScale, settleForMotion, type ImpactTier } from "@/components/flightPhysics";
 import { FIELD_ARC, solveArc } from "@/components/tableArc";
 
 const FLY_ROTS: Record<FlyDirection, number> = {
@@ -46,7 +36,7 @@ const SETTLE_ROCK_ROTS: Record<FlyDirection, number> = {
   bottom: -4, top: 5, left: -7, right: 7,
 };
 // How high the throw arcs and how far it drives into the felt before rocking
-// back. The flight's duration lives in gameTableModel, because the table times
+// back. The flight's duration lives in flightPhysics, because the table times
 // its impact sound and shake against it.
 const ARC_PEAK = 22;
 const LAND_DIP = 5;
@@ -90,7 +80,7 @@ export function FlyingCards({
 }: {
   cards: Card[];
   direction: FlyDirection;
-  /** Where the throw starts — components/gameTableModel.ts `flightOrigin`. */
+  /** Where the throw starts — components/flightPhysics.ts `flightOrigin`. */
   origin: { dx: number; dy: number };
   onDone: () => void;
   /** The width share the field's arc may take — see FIELD_WIDTH_SHARE. */
@@ -387,7 +377,7 @@ export function PlayedPile({
   catchTrigger?: number;
   /** Increments at the same `impactDelayMs()` landing everything else on the table reads — the beaten pile's own reaction to being displaced (#764). */
   flinchTrigger?: number;
-  /** The tier `flinchTrigger`'s landing resolved to — gameTableModel.ts `flinchFor`. */
+  /** The tier `flinchTrigger`'s landing resolved to — flightPhysics.ts `flinchFor`. */
   flinchTier?: ImpactTier;
   /** The width share the field's arc may take — see FIELD_WIDTH_SHARE. */
   roomW: number;

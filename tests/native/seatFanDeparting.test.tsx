@@ -42,7 +42,7 @@ jest.mock('@/lib/accessibility', () => ({
 }));
 
 import { GameTable } from '@/components/GameTable';
-import { impactDelayMs } from '@/components/gameTableModel';
+import { impactDelayMs } from '@/components/flightPhysics';
 import type { Card, Combination, GameState, Player } from '@/lib/gameEngine';
 
 const METRICS = {
@@ -79,7 +79,7 @@ const table = (gameState: GameState) => (
 );
 
 // viewerSeat 0, 4 players: seat 3 renders as the "left" opponent
-// (components/gameTableModel.ts getOpponentPosition).
+// (components/seatLayout.ts getOpponentPosition).
 const LEFT_SEAT = 3;
 
 const baseState = (players: Player[], combo: Combination): GameState => ({

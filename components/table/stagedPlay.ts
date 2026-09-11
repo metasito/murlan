@@ -1,9 +1,9 @@
 // What the cards a player has picked up amount to, and whether GIOCA will take
 // them.
 //
-// Its own file rather than `gameTableModel.ts`, which imports `lib/gameEngine`
-// *type-only* by design so node can run the whole model without the rules —
-// see `playButtonLabel`'s docstring, which states that only the caller can run
+// Its own file rather than `turnTimerUi.ts`, which takes nothing from
+// `lib/gameEngine` but a type and the `openingIsPending` predicate — see
+// `playButtonLabel`'s docstring, which states that only the caller can run
 // `canPlay`. This file is that caller, and it runs the engine for real.
 
 // Relative and extensioned, not `@/`: these are runtime imports, and Node's
@@ -15,7 +15,7 @@ import {
   type Combination,
   type GameState,
 } from "../../lib/gameEngine.ts";
-import { playButtonLabel, type PlayButtonLabel } from "../gameTableModel.ts";
+import { playButtonLabel, type PlayButtonLabel } from "../turnTimerUi.ts";
 
 export interface StagedPlay {
   /** The selection as cards, in hand order. */

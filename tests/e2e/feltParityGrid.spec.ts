@@ -30,7 +30,7 @@ import {
   CAPTURE_VIEWER_SEAT,
   type CaptureState,
 } from "../../lib/captureStates";
-import { seatDirection } from "../../components/gameTableModel";
+import { seatDirection } from "../../components/seatLayout";
 
 /** The table's scale comes from the window's short edge, so a tablet is a different weave-to-card ratio. */
 const VIEWPORTS = [

@@ -10,7 +10,7 @@ import Animated, { SlideInLeft, SlideInRight } from "react-native-reanimated";
 import Feather from "@expo/vector-icons/Feather";
 import { RAIL_TESTID } from "./chrome";
 import { physicalTouchTarget } from "@/components/cardFaceModel";
-import type { RailSide } from "@/components/gameTableModel";
+import type { RailSide } from "@/components/tableFrame";
 import { TableText } from "./TableText";
 import { LinearGradient } from "expo-linear-gradient";
 import { Colors, FontSize, Garnet, Gradient, Layer, makeShadow, Motion, Scrim, Spacing, TOUCH_TARGET_MIN } from "@/lib/theme";

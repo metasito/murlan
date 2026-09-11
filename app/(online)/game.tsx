@@ -21,7 +21,9 @@ import {
 import { useAuth } from "@/context/AuthContext";
 import { ConfirmDialog, type ConfirmRequest } from "@/components/ConfirmDialog";
 import { GameTable } from "@/components/GameTable";
-import { cardScale, computeScreenPads, railWidth, vacatedOf } from "@/components/gameTableModel";
+import { vacatedOf } from "@/components/seatLayout";
+import { computeScreenPads, railWidth } from "@/components/tableFrame";
+import { cardScale } from "@/components/cardFaceModel";
 import {
   FloatingReactions,
   ReactionPanel,

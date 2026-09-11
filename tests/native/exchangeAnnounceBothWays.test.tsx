@@ -18,7 +18,7 @@ import React from 'react';
 import { act, render, within } from '@testing-library/react-native';
 import { ExchangeAnnouncement } from '@/components/ExchangeAnnouncement';
 import type { Card } from '@/lib/gameEngine';
-import type { ExchangeFlight } from '@/components/gameTableModel';
+import type { ExchangeFlight } from '@/components/flightPhysics';
 
 /** Geometry is exchangeFlight's business and tests/gameTableModel.test.ts's; this
  *  file is about what the announcement says, so any trip will do. */

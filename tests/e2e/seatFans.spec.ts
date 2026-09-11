@@ -13,7 +13,7 @@
 // a relayout in between, is what catches it.
 import { test, expect, type Page } from "@playwright/test";
 import { openSeededGame } from "./helpers/offlineSeed";
-import { FAN_DRAWN_CARDS } from "../../components/gameTableModel";
+import { FAN_DRAWN_CARDS } from "../../components/seatLayout";
 
 const VIEWPORT = { width: 844, height: 390 };
 
@@ -233,7 +233,7 @@ test.describe("the opponents' fans", () => {
 
 // ─── A throw's origin ──────────────────────────────────────────────────────
 //
-// components/gameTableModel.ts `flightOrigin` predicts where a throw starts
+// components/flightPhysics.ts `flightOrigin` predicts where a throw starts
 // from the same layout vocabulary the seats themselves render from
 // (seatLabelH, SEAT_DISC, the seat arc's own solve). This is what proves the
 // prediction and the real, laid-out page agree — a unit test can only check
@@ -251,7 +251,7 @@ test.describe("the opponents' fans", () => {
 test.describe("a throw's origin", () => {
   // Viewer is always seat 0 (offlineSeed.ts); with four seats this is the
   // turn that hands the very first move to the opponent on that side —
-  // seatDirection's own mapping (components/gameTableModel.ts).
+  // seatDirection's own mapping (components/seatLayout.ts).
   const FIRST_MOVE_TURN: Record<"top" | "left" | "right", number> = {
     top: 2,
     left: 3,

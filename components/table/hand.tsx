@@ -21,7 +21,7 @@ import type { Card } from "@/lib/gameEngine";
 import { computeHandLayout, hitWidth, slotForCard } from "@/components/handLayout";
 import { cardAt, dropIndex } from "@/components/handOrder";
 import { HAND_ARC, solveArc } from "@/components/tableArc";
-import { HAND_CROP, exchangeArrivalRise, handRowHeadroom } from "@/components/gameTableModel";
+import { HAND_CROP, exchangeArrivalRise, handRowHeadroom } from "@/components/seatLayout";
 import {
   CARD_W,
   CARD_H,

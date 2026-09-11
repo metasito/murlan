@@ -40,7 +40,8 @@ jest.mock('@/lib/accessibility', () => ({
 }));
 
 import { ResultBoard, type ResultRow } from '@/components/ResultBoard';
-import { cardScale, railWidth } from '@/components/gameTableModel';
+import { railWidth } from '@/components/tableFrame';
+import { cardScale } from '@/components/cardFaceModel';
 
 /** An iPhone's Dynamic Island in landscape — past the rail's own floor. */
 const ISLAND = 59;

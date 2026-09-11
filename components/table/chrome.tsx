@@ -25,7 +25,8 @@ import { useTranslation } from "@/lib/i18n";
 import { a11yHidden, a11yState, A11yStatus } from "@/lib/a11y";
 import type { Card, StartReason } from "@/lib/gameEngine";
 import { getCardDisplayRank, getSuitSymbol } from "@/lib/gameEngine";
-import { CHIP_H, SIDE_SECTION_W, type RailSide } from "@/components/gameTableModel";
+import { CHIP_H, SIDE_SECTION_W } from "@/components/seatLayout";
+import { type RailSide } from "@/components/tableFrame";
 
 // ─── StartReasonBanner ────────────────────────────────────────────────────────
 
@@ -35,7 +36,7 @@ import { CHIP_H, SIDE_SECTION_W, type RailSide } from "@/components/gameTableMod
  *
  * It is a gate rather than a banner: it covers the table, so the first tap
  * spends itself clearing this instead of playing a card, and the caller stops
- * the turn clock while it is up (`turnTimerActive`, gameTableModel.ts) wherever
+ * the turn clock while it is up (`turnTimerActive`, turnTimerUi.ts) wherever
  * that clock is the client's own. The moment it describes is one seat's turn to
  * open, so the caller unmounts it the instant the table moves past that seat —
  * a message about who starts is worth nothing once someone has played.
@@ -315,7 +316,7 @@ const chipStyles = StyleSheet.create({
 /**
  * The column the device cutout occupies, turned into the table's control
  * column: `top` at the head, `bottom` at the foot, and the cutout in the gap
- * between them. Its width comes from `railWidth` (components/gameTableModel.ts),
+ * between them. Its width comes from `railWidth` (components/tableFrame.ts),
  * which floors it well above a 44pt knob so a phone with no cutout lays out
  * exactly like one with a Dynamic Island.
  */
@@ -332,7 +333,7 @@ export function ControlRail({
   veiled,
 }: {
   width: number;
-  /** The edge the cutout is on, from the frame (components/gameTableModel.ts). */
+  /** The edge the cutout is on, from the frame (components/tableFrame.ts). */
   side: RailSide;
   topPad: number;
   bottomPad: number;
