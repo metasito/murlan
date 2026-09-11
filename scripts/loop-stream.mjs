@@ -52,8 +52,19 @@ export function readLine(line) {
   if (e.type === "system" && e.subtype === "init") {
     return { kind: "init", sessionId: e.session_id ?? null, version: e.claude_code_version ?? null };
   }
+  // A meter, not an alarm: it ticks several times a minute on a healthy session, carrying
+  // `status: "allowed"`. Only "rejected" is work refused — a warning is still being served.
   if (e.type === "rate_limit_event") {
-    return { kind: "rate_limit", resetsAt: e.rate_limit_info?.resetsAt ?? null };
+    const info = e.rate_limit_info ?? {};
+    return {
+      kind: "rate_limit",
+      status: info.status ?? "unknown",
+      blocked: info.status === "rejected",
+      resetsAt: info.resetsAt ?? null,
+      resetsAtMs: info.resetsAt ? (info.resetsAt > 1e12 ? info.resetsAt : info.resetsAt * 1000) : 0,
+      window: info.rateLimitType ?? null,
+      used: info.unifiedWindows?.[info.rateLimitType]?.utilization ?? null,
+    };
   }
   if (e.type === "assistant") {
     const calls = (e.message?.content ?? [])

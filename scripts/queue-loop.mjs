@@ -20,11 +20,22 @@ import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { derive } from "./loop-derive.mjs";
 import { readLine, phaseOf, REDERIVE } from "./loop-stream.mjs";
-import { BLANK, PHASES, closing, header, heartbeat, phaseLine, reportRow, runTotal } from "./loop-render.mjs";
+import {
+  BLANK,
+  PHASES,
+  clockAt,
+  closing,
+  header,
+  heartbeat,
+  phaseLine,
+  reportRow,
+  runTotal,
+} from "./loop-render.mjs";
 import { row } from "./loop-record.mjs";
 import { readAllowedTools } from "./loop-tools.mjs";
 
 const LOG_DIR = ".loop-logs";
+const STOP_FILE = ".loop-stop";
 
 export function isInvokedDirectly(argv1, moduleUrl) {
   return Boolean(argv1) && path.resolve(argv1) === fileURLToPath(moduleUrl);
@@ -41,8 +52,17 @@ export function parseRoute(stdout) {
 /** The bucket depths the picker already prints, for the header's "how much is behind this one". */
 export function parseStatus(stdout) {
   const line = stdout.split("\n").find((l) => l.startsWith("STATUS\t"));
-  const read = (name) => Number(/:(\d+)/.exec(line?.split("\t").find((f) => f.startsWith(name)) ?? "")?.[1] ?? 0);
-  return { implement: read("implement"), triage: read("triage"), wayfinder: read("wayfinder") };
+  const read = (name) =>
+    Number(
+      /:(\d+)/.exec(
+        line?.split("\t").find((f) => f.startsWith(name)) ?? "",
+      )?.[1] ?? 0,
+    );
+  return {
+    implement: read("implement"),
+    triage: read("triage"),
+    wayfinder: read("wayfinder"),
+  };
 }
 
 export function shouldStop(route) {
@@ -58,6 +78,8 @@ export function liveRoute(status) {
     skill: "implement",
     number: status.ticket,
     title: status.branch ?? `ticket #${status.ticket}`,
+    // A resumed session re-emits no marker for a phase it has already passed.
+    phase: status.phase && status.phase !== "?" ? status.phase : "C",
     resuming: true,
   };
 }
@@ -68,8 +90,11 @@ function nextRoute() {
   // genuinely mid-build in a worktree — misleading regardless of what the spawned session goes
   // on to correctly resume.
   const live = liveRoute(derive());
-  if (live) return { ...live, queue: { implement: 0, triage: 0, wayfinder: 0 } };
-  const stdout = execFileSync("node", ["scripts/next-ticket.mjs"], { encoding: "utf8" });
+  if (live)
+    return { ...live, queue: { implement: 0, triage: 0, wayfinder: 0 } };
+  const stdout = execFileSync("node", ["scripts/next-ticket.mjs"], {
+    encoding: "utf8",
+  });
   return { ...parseRoute(stdout), queue: parseStatus(stdout), resuming: false };
 }
 
@@ -114,11 +139,27 @@ const PROTOCOL = ["CLAUDE.md", ".claude", "scripts"];
 // Repaired, not reported: `git checkout` decides whether that loses anything, and its refusal is
 // the stop. A branch keeps its commits either way — only HEAD moves.
 export function syncProtocol(git, log) {
-  const drift = () => git("diff", "--name-only", "origin/main", "--", ...PROTOCOL).trim();
+  const drift = () =>
+    git("diff", "--name-only", "origin/main", "--", ...PROTOCOL).trim();
   git("fetch", "origin", "--quiet");
   if (!drift()) return true;
 
-  log(`queue-loop: protocol differs from origin/main (${drift().split("\n").join(", ")})`);
+  log(
+    `queue-loop: protocol differs from origin/main (${drift().split("\n").join(", ")})`,
+  );
+
+  // Commits of its own mean someone is working here. Refuse; never move a checkout in use.
+  const branch = git("rev-parse", "--abbrev-ref", "HEAD").trim();
+  const own =
+    Number(git("rev-list", "--count", "origin/main..HEAD").trim()) || 0;
+  if (branch !== "main" && own > 0) {
+    log(
+      `queue-loop: ${branch} is checked out with ${own} commit(s) of its own — not moving it. ` +
+        `Land or park that branch, then start the loop.`,
+    );
+    return false;
+  }
+
   try {
     git("checkout", "main");
     git("merge", "--ff-only", "origin/main");
@@ -127,7 +168,9 @@ export function syncProtocol(git, log) {
     return false;
   }
   if (drift()) {
-    log("queue-loop: still differs after moving to main — main itself is ahead of origin");
+    log(
+      "queue-loop: still differs after moving to main — main itself is ahead of origin",
+    );
     return false;
   }
   log("queue-loop: checkout moved back to main");
@@ -147,6 +190,60 @@ export const stalled = (lastFactAt, now) => now - lastFactAt > STALL_MS;
 export const REDERIVE_MS = 20_000;
 const BEAT_MS = 1_000;
 
+/** `CAP` is above the longest window and below a wrong clock; `FLOOR` covers a reset nobody named. */
+export const WAIT = {
+  CAP: 5.5 * 60 * 60_000,
+  FLOOR: 60_000,
+  MARGIN: 30_000,
+  TRIES: 20,
+};
+
+/**
+ * How long to hold before running this ticket again; zero is do not wait.
+ *
+ * @param {{blocked?: boolean, blockedUntil?: number, done?: boolean}} run
+ */
+export function waitFor({ blocked, blockedUntil, done }, now = Date.now()) {
+  if (!blocked || done) return 0;
+  if (!blockedUntil) return WAIT.FLOOR;
+  const gap = blockedUntil - now;
+  if (gap <= 0) return 0;
+  return Math.min(gap + WAIT.MARGIN, WAIT.CAP);
+}
+
+/**
+ * What a session that was refused costs the ticket: nothing, until it has been refused too often.
+ * A hold of zero is still a retry — a reset that has already passed means go now, not park.
+ *
+ * @param {{ticket: number, waits: number, waitsOn: number|null, blocked?: boolean,
+ *   blockedUntil?: number, done?: boolean}} run
+ * @returns {{action: "proceed"|"retry"|"park", hold: number, waits: number, waitsOn: number,
+ *   why?: string}}
+ */
+export function afterRefusal(
+  { ticket, waits, waitsOn, blocked, blockedUntil, done },
+  now = Date.now(),
+) {
+  const so_far = waitsOn === ticket ? waits : 0;
+  if (!blocked || done)
+    return { action: "proceed", hold: 0, waits: 0, waitsOn: ticket };
+  if (so_far >= WAIT.TRIES) {
+    return {
+      action: "park",
+      hold: 0,
+      waits: 0,
+      waitsOn: ticket,
+      why: `refused ${so_far} times running`,
+    };
+  }
+  return {
+    action: "retry",
+    hold: waitFor({ blocked, blockedUntil, done }, now),
+    waits: so_far + 1,
+    waitsOn: ticket,
+  };
+}
+
 // `npm` and `npx` are `.cmd` shims, and since the fix for CVE-2024-27980 node will not resolve one
 // from execFileSync — measured here: `execFileSync("npx", ["--version"])` throws ENOENT while `gh`
 // and `git` are fine. Both are reached only with argument lists this file writes itself, never with
@@ -158,12 +255,18 @@ const sh = (file, args, opts) => {
   // Under `shell` the arguments are concatenated, not passed through — and one of them is a
   // worktree path, which carries whatever spaces the checkout's own location has.
   const argv = shell ? args.map((a) => (/\s/.test(a) ? `"${a}"` : a)) : args;
-  return execFileSync(file, argv, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], shell, ...opts });
+  return execFileSync(file, argv, {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+    shell,
+    ...opts,
+  });
 };
 
 /** One bad ticket is a ticket. Three in a row is the loop or the machine, and a night proving it. */
 export const BREAKER = 3;
-export const shouldHalt = (consecutiveFailures) => consecutiveFailures >= BREAKER;
+export const shouldHalt = (consecutiveFailures) =>
+  consecutiveFailures >= BREAKER;
 
 /**
  * A session can exit 0 without landing — parked, out of turns, halted by its own rules — and leave
@@ -191,11 +294,24 @@ export function madeProgress(prev, now) {
 export function afterPush({ verdict, landing }) {
   // A job that completed having run zero steps is billing, a quota or a runner. It says nothing
   // about the diff, so it is asked again rather than spending a fix round on it.
-  if (verdict.infrastructure) return { action: "retry-verdict", why: "a job completed having run zero steps" };
-  if (!verdict.pass) return { action: "fix", why: `CI failed at ${verdict.failedStep ?? "an unnamed step"}` };
-  if (landing?.action === "merge") return { action: "merged", why: landing.reason };
-  if (landing?.action === "update-branch") return { action: "update-branch", why: landing.reason };
-  return { action: "park", why: landing?.reason ?? "the pull request is not mergeable" };
+  if (verdict.infrastructure)
+    return {
+      action: "retry-verdict",
+      why: "a job completed having run zero steps",
+    };
+  if (!verdict.pass)
+    return {
+      action: "fix",
+      why: `CI failed at ${verdict.failedStep ?? "an unnamed step"}`,
+    };
+  if (landing?.action === "merge")
+    return { action: "merged", why: landing.reason };
+  if (landing?.action === "update-branch")
+    return { action: "update-branch", why: landing.reason };
+  return {
+    action: "park",
+    why: landing?.reason ?? "the pull request is not mergeable",
+  };
 }
 
 // Worktrees isolate branches and indexes. They do not isolate node_modules — one install, shared
@@ -207,7 +323,11 @@ const SHARED_INSTALL = ["package.json", "package-lock.json"];
 export function canStartNext({ pending }) {
   if (!pending) return { ok: true, why: "" };
   const dep = (pending.changed ?? []).find((f) => SHARED_INSTALL.includes(f));
-  if (dep) return { ok: false, why: `#${pending.ticket} changes ${dep}, and node_modules is shared` };
+  if (dep)
+    return {
+      ok: false,
+      why: `#${pending.ticket} changes ${dep}, and node_modules is shared`,
+    };
   return { ok: true, why: "" };
 }
 
@@ -227,7 +347,10 @@ export function takeStopFile(fs, file) {
  * @param {{phase: string, why: string, log: string, cwd: string, branch: string|null,
  *   dirty: boolean, run?: Function, write?: Function}} ctx
  */
-export function park(number, { phase, why, log, cwd, branch, dirty, run = sh, write = writeFileSync }) {
+export function park(
+  number,
+  { phase, why, log, cwd, branch, dirty, run = sh, write = writeFileSync },
+) {
   // A ticket parked after its push has no worktree left: the supervisor removes it at the push so
   // that nothing derives the ticket as a run still needing a session. There is then nothing to
   // commit and nothing to tear down, and the branch already holds the work.
@@ -236,13 +359,23 @@ export function park(number, { phase, why, log, cwd, branch, dirty, run = sh, wr
     // index, and rule 40 keeps every other session out of it. Rule 11's hazard is the shared
     // checkout. Losing an unstaged edit is the one thing parking must not do.
     run("git", ["-C", cwd, "add", "-A", "--", "."]);
-    run("git", ["-C", cwd, "commit", "-m", `wip(#${number}): parked in phase ${phase}`]);
+    run("git", [
+      "-C",
+      cwd,
+      "commit",
+      "-m",
+      `wip(#${number}): parked in phase ${phase}`,
+    ]);
   }
 
   run("gh", [
-    "issue", "edit", String(number),
-    "--remove-label", "in-progress",
-    "--add-label", "ready-for-human",
+    "issue",
+    "edit",
+    String(number),
+    "--remove-label",
+    "in-progress",
+    "--add-label",
+    "ready-for-human",
   ]);
 
   const body = [
@@ -304,7 +437,13 @@ export function mergeSlot({ settle, release, reattach, log = console.log }) {
       held = null;
       const outcome = await settle(ticket);
       if (outcome.action === "merged") {
-        log(phaseLine({ letter: "F", detail: "merged · worktree removed", ms: Date.now() - ticket.at }));
+        log(
+          phaseLine({
+            letter: "F",
+            detail: "merged · worktree removed",
+            ms: Date.now() - ticket.at,
+          }),
+        );
       } else {
         log(`  ⚠️ #${ticket.ticket} ${outcome.why}`);
         // Red CI is not a failed ticket: the next session fixes it from what the pull request
@@ -322,13 +461,32 @@ export function mergeSlot({ settle, release, reattach, log = console.log }) {
   };
 }
 
+/** Sliced, so `.loop-stop` still reaches the loop across a five-hour wait. */
+export async function holdFor(
+  ms,
+  exists = (f) => fs.existsSync(f),
+  slice = 30_000,
+) {
+  const until = Date.now() + ms;
+  while (Date.now() < until) {
+    if (exists(STOP_FILE)) return "stopped";
+    // Not unref'd: by now this is the only handle keeping the process alive.
+    await new Promise((r) =>
+      setTimeout(r, Math.min(slice, until - Date.now())),
+    );
+  }
+  return "waited";
+}
+
 /** CI went red, so the ticket needs a session again — and a session needs the worktree back. */
 function reattachWorktree(cwd, branch, log = console.log, run = sh) {
   try {
     run("git", ["worktree", "add", cwd, branch]);
     return true;
   } catch (err) {
-    log(`  ⚠️ could not re-attach ${cwd} — ${String(err.message).split("\n")[0]}`);
+    log(
+      `  ⚠️ could not re-attach ${cwd} — ${String(err.message).split("\n")[0]}`,
+    );
     return false;
   }
 }
@@ -336,15 +494,21 @@ function reattachWorktree(cwd, branch, log = console.log, run = sh) {
 /** One ticket's worth of the issue, for the header. Covers the resume path, which has no picker. */
 function ticketFacts(number) {
   try {
-    const raw = execFileSync("gh", ["issue", "view", String(number), "--json", "title,labels,url"], {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-    });
+    const raw = execFileSync(
+      "gh",
+      ["issue", "view", String(number), "--json", "title,labels,url"],
+      {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
+      },
+    );
     const issue = JSON.parse(raw);
     return {
       title: issue.title,
       url: issue.url,
-      size: issue.labels.map((l) => l.name).find((n) => n.startsWith("size:")) ?? null,
+      size:
+        issue.labels.map((l) => l.name).find((n) => n.startsWith("size:")) ??
+        null,
     };
   } catch {
     return { title: `ticket #${number}`, url: "", size: null };
@@ -357,21 +521,39 @@ function ticketFacts(number) {
  * `spawnFn` is a parameter so a test can drive fixture lines through the whole path without a
  * `claude` binary. stderr stays inherited: a crash should still print itself rather than being
  * reassembled from a log nobody is watching.
+ *
+ * @param {Function} spawnFn
+ * @param {{number: number, queue: object, at?: string|null, log?: Function, facts?: Function,
+ *   stallMs?: number, tick?: number, dir?: string}} opts
  */
-export function runTicket(spawnFn, { number, queue, log = console.log, facts = ticketFacts, stallMs = STALL_MS, tick = 30_000 }) {
-  mkdirSync(LOG_DIR, { recursive: true });
-  const logPath = path.join(LOG_DIR, `${number}.jsonl`);
+export function runTicket(
+  spawnFn,
+  {
+    number,
+    queue,
+    at = null,
+    log = console.log,
+    facts = ticketFacts,
+    stallMs = STALL_MS,
+    tick = 30_000,
+    dir = LOG_DIR,
+  },
+) {
+  mkdirSync(dir, { recursive: true });
+  const logPath = path.join(dir, `${number}.jsonl`);
   const sink = createWriteStream(logPath, { flags: "a" });
   const startedAt = Date.now();
 
   const state = {
-    phase: null,
+    phase: at,
     printedHeader: false,
     result: null,
     version: null,
     phases: {},
     lastFactAt: Date.now(),
     lastDerive: 0,
+    blocked: false,
+    blockedUntil: 0,
     stalled: false,
     files: 0,
   };
@@ -395,6 +577,12 @@ export function runTicket(spawnFn, { number, queue, log = console.log, facts = t
     say(phaseLine({ letter, detail, ms: Date.now() - startedAt }));
   };
 
+  if (at) {
+    say(header({ number, ...facts(number), queue }));
+    say(phaseLine({ letter: at, detail: "resumed", ms: 0 }));
+    state.printedHeader = true;
+  }
+
   const child = spawnFn("claude", queueLoopArgs(), {
     stdio: ["ignore", "pipe", "inherit"],
     // A background update landing at 2am changes the system prompt, and every remaining ticket of
@@ -412,7 +600,19 @@ export function runTicket(spawnFn, { number, queue, log = console.log, facts = t
     if (fact.kind === "init") state.version = fact.version;
     if (fact.kind === "result") state.result = fact;
     if (fact.kind === "rate_limit") {
-      say(closing({ outcome: "rate_limited", number, why: `resets ${fact.resetsAt ?? "unknown"}`, ms: 0, cost: 0 }));
+      if (fact.blocked && !state.blocked) {
+        state.blocked = true;
+        state.blockedUntil = fact.resetsAtMs ?? 0;
+        say(
+          closing({
+            outcome: "rate_limited",
+            number,
+            why: `the ${fact.window ?? "usage"} limit is spent — resets ${clockAt(fact.resetsAt)}`,
+            ms: 0,
+            cost: 0,
+          }),
+        );
+      }
     }
     if (fact.kind !== "tool") return;
 
@@ -448,7 +648,9 @@ export function runTicket(spawnFn, { number, queue, log = console.log, facts = t
   if (process.stdout.isTTY) {
     beat.timer = setInterval(() => {
       if (!state.phase) return;
-      process.stdout.write(`\r${heartbeat({ letter: state.phase, ms: Date.now() - startedAt, at: beat.at++ })}`);
+      process.stdout.write(
+        `\r${heartbeat({ letter: state.phase, ms: Date.now() - startedAt, at: beat.at++ })}`,
+      );
       beat.shown = true;
     }, BEAT_MS);
     beat.timer.unref();
@@ -472,23 +674,25 @@ export function runTicket(spawnFn, { number, queue, log = console.log, facts = t
       erase();
       // Resolved on the sink's own finish, not on the child's close: `end()` only asks, and a
       // caller reading the log it was just handed would otherwise find it short.
-      sink.end(() => resolve({
-        status: state.stalled ? "stalled" : (status ?? 1),
-        result: state.result,
-        phase: state.phase,
-        phases: state.phases,
-        files: state.files,
-        version: state.version,
-        ms: Date.now() - startedAt,
-        log: logPath,
-      }));
+      sink.end(() =>
+        resolve({
+          status: state.stalled ? "stalled" : (status ?? 1),
+          blocked: state.blocked,
+          blockedUntil: state.blockedUntil,
+          result: state.result,
+          phase: state.phase,
+          phases: state.phases,
+          files: state.files,
+          version: state.version,
+          ms: Date.now() - startedAt,
+          log: logPath,
+        }),
+      );
     });
   });
 }
 
 const git = (...args) => execFileSync("git", args, { encoding: "utf8" });
-
-const STOP_FILE = ".loop-stop";
 
 /**
  * Written as each ticket ends rather than at exit, so a crash or a closed terminal keeps whatever
@@ -501,7 +705,11 @@ const NL = "\n";
 
 function record(entry, line) {
   mkdirSync(LOG_DIR, { recursive: true });
-  fs.appendFileSync(path.join(LOG_DIR, "tickets.jsonl"), JSON.stringify(entry) + NL, "utf8");
+  fs.appendFileSync(
+    path.join(LOG_DIR, "tickets.jsonl"),
+    JSON.stringify(entry) + NL,
+    "utf8",
+  );
   if (!fs.existsSync(reportPath())) {
     fs.writeFileSync(reportPath(), `# queue-loop ${today()}` + NL + NL, "utf8");
   }
@@ -515,7 +723,8 @@ function pruneLogs(now = Date.now()) {
   for (const name of fs.readdirSync(LOG_DIR)) {
     if (!name.endsWith(".jsonl") || name === "tickets.jsonl") continue;
     const file = path.join(LOG_DIR, name);
-    if (now - fs.statSync(file).mtimeMs > week) fs.rmSync(file, { force: true });
+    if (now - fs.statSync(file).mtimeMs > week)
+      fs.rmSync(file, { force: true });
   }
 }
 
@@ -524,13 +733,26 @@ const tsx = (args) => JSON.parse(sh("npx", ["tsx", ...args]));
 
 /** land.ts merges when it can and otherwise names what it wants next; both shapes read the same. */
 const landingOf = (out) =>
-  out.merged ? { action: "merge", reason: out.reason } : { action: out.next, reason: out.reason };
+  out.merged
+    ? { action: "merge", reason: out.reason }
+    : { action: out.next, reason: out.reason };
 
 /** The pull request this branch pushed, if it pushed one. */
 function pushedPr(branch) {
   try {
     const [pr] = JSON.parse(
-      sh("gh", ["pr", "list", "--head", branch, "--state", "open", "--json", "number", "--limit", "1"])
+      sh("gh", [
+        "pr",
+        "list",
+        "--head",
+        branch,
+        "--state",
+        "open",
+        "--json",
+        "number",
+        "--limit",
+        "1",
+      ]),
     );
     return pr?.number ?? null;
   } catch {
@@ -558,22 +780,35 @@ const SETTLE_PAUSE_MS = 15_000;
 
 async function settle(pending, log = console.log, pause = SETTLE_PAUSE_MS) {
   const left = { ...SETTLE_ROUNDS };
-  const wait = () => new Promise((r) => setTimeout(r, pause).unref());
+  // Not unref'd, for the same reason `holdFor` is not: this is the only handle open while it waits.
+  const wait = () => new Promise((r) => setTimeout(r, pause));
 
   for (;;) {
     let next;
     try {
-      const verdict = tsx(["lib/loop/ciVerdict.ts", REPO, pending.branch, String(pending.pr)]);
-      const landing = verdict.pass ? landingOf(tsx(["lib/loop/land.ts", REPO, String(pending.pr)])) : undefined;
+      const verdict = tsx([
+        "lib/loop/ciVerdict.ts",
+        REPO,
+        pending.branch,
+        String(pending.pr),
+      ]);
+      const landing = verdict.pass
+        ? landingOf(tsx(["lib/loop/land.ts", REPO, String(pending.pr)]))
+        : undefined;
       next = afterPush({ verdict, landing });
     } catch (err) {
       // `gh` refusing, a rate limit, or anything that is not JSON. The ticket is pushed and its
       // branch is intact, so this parks rather than ending the night.
-      return { action: "park", why: `could not read CI — ${String(err.message).split("\n")[0]}` };
+      return {
+        action: "park",
+        why: `could not read CI — ${String(err.message).split("\n")[0]}`,
+      };
     }
 
     if (next.action === "update-branch" && left.update-- > 0) {
-      log(`  ⏳ #${pending.ticket} main moved — updating the branch and reading CI again`);
+      log(
+        `  ⏳ #${pending.ticket} main moved — updating the branch and reading CI again`,
+      );
       sh("gh", ["pr", "update-branch", String(pending.pr)]);
       await wait();
       continue;
@@ -584,10 +819,19 @@ async function settle(pending, log = console.log, pause = SETTLE_PAUSE_MS) {
       continue;
     }
     if (next.action === "update-branch" || next.action === "retry-verdict") {
-      return { action: "park", why: `${next.action} did not settle in ${SETTLE_ROUNDS.update} rounds` };
+      return {
+        action: "park",
+        why: `${next.action} did not settle in ${SETTLE_ROUNDS.update} rounds`,
+      };
     }
     if (next.action === "merged") {
-      sh("gh", ["issue", "edit", String(pending.ticket), "--remove-label", "in-progress"]);
+      sh("gh", [
+        "issue",
+        "edit",
+        String(pending.ticket),
+        "--remove-label",
+        "in-progress",
+      ]);
     }
     return next;
   }
@@ -613,11 +857,17 @@ const standing = () => {
 async function main() {
   let prev = null;
   let failures = 0;
+  let waits = 0;
+  let waitsOn = null;
   const totals = { tickets: 0, landed: 0, parked: 0, cost: 0, ms: 0 };
 
   pruneLogs();
 
-  const slot = mergeSlot({ settle, release: releaseWorktree, reattach: reattachWorktree });
+  const slot = mergeSlot({
+    settle,
+    release: releaseWorktree,
+    reattach: reattachWorktree,
+  });
 
   /**
    * A pushed ticket is not a landed one, so its row and its place in the totals are written when CI
@@ -631,10 +881,12 @@ async function main() {
     if (outcome.action === "merged") {
       failures = 0;
       totals.landed += 1;
-      console.log(closing({ outcome: "merged", number: held.ticket, ...held.cost }));
+      console.log(
+        closing({ outcome: "merged", number: held.ticket, ...held.cost }),
+      );
       record(
         row({ ...held.record, outcome: "landed", ci: { pass: true } }),
-        reportRow({ ...held.report, outcome: "landed" })
+        reportRow({ ...held.report, outcome: "landed" }),
       );
       return;
     }
@@ -653,7 +905,7 @@ async function main() {
     });
     record(
       row({ ...held.record, outcome: "parked", ci: { pass: false } }),
-      reportRow({ ...held.report, outcome: "parked", why: outcome.why })
+      reportRow({ ...held.report, outcome: "parked", why: outcome.why }),
     );
   };
 
@@ -662,7 +914,9 @@ async function main() {
 
   for (;;) {
     if (takeStopFile(fs, STOP_FILE)) {
-      console.log("queue-loop: .loop-stop — draining, nothing new will be started");
+      console.log(
+        "queue-loop: .loop-stop — draining, nothing new will be started",
+      );
       await drain();
       return 0;
     }
@@ -674,7 +928,9 @@ async function main() {
     }
     if (!syncProtocol(git, (m) => console.error(m))) return 1;
 
-    const pre = spawnSync(process.execPath, ["scripts/queue-pre.mjs"], { stdio: "inherit" });
+    const pre = spawnSync(process.execPath, ["scripts/queue-pre.mjs"], {
+      stdio: "inherit",
+    });
     if (pre.status !== 0) return pre.status ?? 1;
 
     const route = nextRoute();
@@ -686,8 +942,51 @@ async function main() {
       return 0;
     }
 
-    const run = await runTicket(spawn, { number: route.number, queue: route.queue });
+    // Never a silent terminal: a fresh ticket has nothing truthful to show until it is claimed.
+    if (!route.resuming)
+      console.log(`  · picking — ${route.queue.implement} takeable`);
+
+    const run = await runTicket(spawn, {
+      number: route.number,
+      queue: route.queue,
+      at: route.resuming ? (route.phase ?? "C") : null,
+    });
+
     const after = standing();
+    const pushed = after?.branch ? pushedPr(after.branch) : null;
+
+    // `done` is "this session pushed": a session refused before claiming leaves no live ticket
+    // either, so "no ticket is live" cannot tell the two apart.
+    const step = afterRefusal({
+      ticket: route.number,
+      waits,
+      waitsOn,
+      blocked: run.blocked,
+      blockedUntil: run.blockedUntil,
+      done: Boolean(pushed),
+    });
+    waits = step.waits;
+    waitsOn = step.waitsOn;
+
+    if (step.action === "retry") {
+      // Spent before the refusal is still spent.
+      totals.cost += run.result?.cost ?? 0;
+      totals.ms += run.ms;
+      prev = after;
+      // The pending pull request must not sleep through an unrelated window.
+      await drain();
+      console.log(
+        step.hold
+          ? `  ⏸ #${route.number} waiting out the usage window (${waits}/${WAIT.TRIES}) — back at ${clockAt(Date.now() + step.hold)}`
+          : `  ⏸ #${route.number} refused, and the window has already reset — going again`,
+      );
+      if (step.hold && (await holdFor(step.hold)) === "stopped") {
+        console.log("queue-loop: .loop-stop during the wait — stopping");
+        return 0;
+      }
+      continue;
+    }
+
     totals.tickets += 1;
     totals.cost += run.result?.cost ?? 0;
     totals.ms += run.ms;
@@ -695,15 +994,17 @@ async function main() {
     // A ticket still live after its session exited did not land, whatever the exit code said.
     const landed = !after || after.ticket !== route.number;
     const stuck = after && !madeProgress(prev, after);
-    const why = stuck
-      ? "resumed with nothing committed since the last run"
-      : run.status === "stalled"
-        ? `no output for ${Math.round(STALL_MS / 60_000)}m in phase ${run.phase ?? "?"}`
-        : run.status !== 0
-          ? `the session exited ${run.status} in phase ${run.phase ?? "?"}`
-          : null;
+    const why = step.why
+      ? step.why
+      : stuck
+        ? "resumed with nothing committed since the last run"
+        : run.status === "stalled"
+          ? `no output for ${Math.round(STALL_MS / 60_000)}m in phase ${run.phase ?? "?"}`
+          : run.status !== 0
+            ? `the session exited ${run.status} in phase ${run.phase ?? "?"}`
+            : null;
 
-    const pr = after?.branch ? pushedPr(after.branch) : null;
+    const pr = pushed;
     const facts = ticketFacts(route.number);
 
     if (pr && !why) {
@@ -717,9 +1018,11 @@ async function main() {
           turns: run.result?.turns ?? 0,
           ms: run.ms,
           cost: run.result?.cost ?? 0,
-        })
+        }),
       );
-      console.log(`  ⏳ #${route.number} CI running on PR #${pr} — starting the next ticket`);
+      console.log(
+        `  ⏳ #${route.number} CI running on PR #${pr} — starting the next ticket`,
+      );
       await adopt({
         ticket: route.number,
         pr,
@@ -727,7 +1030,12 @@ async function main() {
         cwd: after.cwd,
         changed: after.changed ?? [],
         at: Date.now(),
-        cost: { files: run.files, turns: run.result?.turns ?? 0, ms: run.ms, cost: run.result?.cost ?? 0 },
+        cost: {
+          files: run.files,
+          turns: run.result?.turns ?? 0,
+          ms: run.ms,
+          cost: run.result?.cost ?? 0,
+        },
         record: {
           number: route.number,
           size: facts.size,
@@ -757,7 +1065,7 @@ async function main() {
           turns: run.result?.turns ?? 0,
           ms: run.ms,
           cost: run.result?.cost ?? 0,
-        })
+        }),
       );
     } else {
       failures += 1;
@@ -780,7 +1088,7 @@ async function main() {
           ms: run.ms,
           cost: run.result?.cost ?? 0,
           log: run.log,
-        })
+        }),
       );
     }
 
@@ -808,14 +1116,16 @@ async function main() {
           ms: run.ms,
           cost: run.result?.cost ?? 0,
           why: why ?? undefined,
-        })
+        }),
       );
     }
 
     prev = after;
     if (shouldHalt(failures)) {
       await drain();
-      console.error(`queue-loop: ${failures} tickets in a row did not land — stopping`);
+      console.error(
+        `queue-loop: ${failures} tickets in a row did not land — stopping`,
+      );
       const total = runTotal(totals);
       console.log(total);
       fs.appendFileSync(reportPath(), `\n${total}\n`, "utf8");
@@ -829,7 +1139,9 @@ if (isInvokedDirectly(process.argv[1], import.meta.url)) {
   // in the one process whose job is to say what happened.
   main()
     .catch((err) => {
-      console.error(`queue-loop: stopped by an unhandled error — ${err?.stack ?? err}`);
+      console.error(
+        `queue-loop: stopped by an unhandled error — ${err?.stack ?? err}`,
+      );
       return 1;
     })
     .then((code) => process.exit(code));

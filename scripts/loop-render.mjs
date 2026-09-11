@@ -27,6 +27,18 @@ export function elapsed(ms) {
   return h ? `${h}:${String(m).padStart(2, "0")}:${ss}` : `${m}:${ss}`;
 }
 
+/** The stream gives Unix seconds; a wait is only actionable as a time and a distance. */
+export function clockAt(resetsAt, now = Date.now()) {
+  if (!resetsAt) return "an unknown time";
+  const ms = resetsAt > 1e12 ? resetsAt : resetsAt * 1000;
+  const when = new Date(ms);
+  const time = when.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const mins = Math.round((ms - now) / 60_000);
+  if (mins <= 0) return time;
+  const gap = mins < 60 ? `${mins}m` : `${Math.floor(mins / 60)}h${String(mins % 60).padStart(2, "0")}`;
+  return `${time}, in ${gap}`;
+}
+
 const money = (n) => `$${Number(n ?? 0).toFixed(2)}`;
 const rule = "━".repeat(WIDTH);
 

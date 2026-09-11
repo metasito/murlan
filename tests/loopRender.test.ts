@@ -11,6 +11,7 @@ import {
   PHASES,
   heartbeat,
   BLANK,
+  clockAt,
 } from "../scripts/loop-render.mjs";
 
 describe("elapsed", () => {
@@ -173,8 +174,7 @@ describe("runTotal", () => {
   });
 });
 
-// The heartbeat is the one line that is drawn and then erased, so it must occupy exactly the columns
-// the phase line does: a shorter one leaves the tail of itself behind on the terminal.
+// Drawn and erased in place, so it must fill exactly the phase line's columns.
 describe("heartbeat", () => {
   test("stands in the same columns as the phase line it is replaced by", () => {
     const beat = heartbeat({ letter: "C", ms: 511_000, at: 0 });
@@ -193,5 +193,29 @@ describe("heartbeat", () => {
   test("BLANK covers a whole line, which is what erases it", () => {
     assert.equal(BLANK.length, phaseLine({ letter: "A", detail: "", ms: 0 }).length);
     assert.equal(BLANK.trim(), "");
+  });
+});
+
+// A wait is only actionable as a time and a distance.
+describe("clockAt", () => {
+  const now = Date.UTC(2026, 8, 11, 9, 14);
+
+  test("reads as a time and a distance, never as an epoch", () => {
+    const s = clockAt(1789134000, now);
+    assert.doesNotMatch(s, /1789134000/);
+    assert.match(s, /in 4h/);
+  });
+
+  test("minutes under the hour", () => {
+    assert.match(clockAt(Math.floor(now / 1000) + 25 * 60, now), /in 25m/);
+  });
+
+  test("milliseconds are accepted too, since the shape is not guaranteed", () => {
+    assert.equal(clockAt(1789134000000, now), clockAt(1789134000, now));
+  });
+
+  test("a past or missing reset says so rather than counting backwards", () => {
+    assert.doesNotMatch(clockAt(Math.floor(now / 1000) - 600, now), /in -/);
+    assert.equal(clockAt(null), "an unknown time");
   });
 });
