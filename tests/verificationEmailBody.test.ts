@@ -4,7 +4,7 @@
 // someone else's address). The mail must name the account it verifies, so
 // the real owner of the address can tell a stranger's pending signup apart
 // from their own — redeeming the wrong one loses their own email claim
-// (server/storage.ts's markEmailVerified).
+// (server/userStore.ts's markEmailVerified).
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { verificationEmailBody } from "../server/routes.ts";

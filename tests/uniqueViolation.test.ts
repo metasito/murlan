@@ -1,8 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { __testables } from "../server/storage.ts";
-
-const { uniqueViolation } = __testables;
+import { uniqueViolation } from "../server/userStore.ts";
 
 // drizzle-orm wraps the driver error, so both the friend-code retry and the
 // USERNAME_TAKEN 409 read the constraint through the cause chain.

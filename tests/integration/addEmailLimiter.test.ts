@@ -1,5 +1,5 @@
 // tests/integration/addEmailLimiter.test.ts — #894 review, finding 4:
-// storage.setEmail no longer raises EmailTakenError for an address
+// userStore.setEmail no longer raises EmailTakenError for an address
 // claimed-but-unverified elsewhere (#897), so any authenticated account can
 // send one verification mail to any address, including a verified victim's.
 // Capped at one send per *account* by EMAIL_ALREADY_SET, but an attacker

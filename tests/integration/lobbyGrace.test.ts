@@ -127,8 +127,8 @@ describe("lobby disconnect grace", { skip: hasDatabase() ? false : skipMessage()
     const heard = await churn;
     assert.equal(heard, null, "a blip must not tell the room that someone left");
 
-    const { storage } = await import("../../server/storage.ts");
-    const seats = await storage.getRoomPlayers(room.roomId);
+    const { roomStore } = await import("../../server/roomStore.ts");
+    const seats = await roomStore.getRoomPlayers(room.roomId);
     assert.equal(seats.length, 2, "the seat row must survive the disconnect");
     assert.ok(
       seats.some((s) => s.userId === guest.user.id),
@@ -156,8 +156,8 @@ describe("lobby disconnect grace", { skip: hasDatabase() ? false : skipMessage()
     host.socket.close();
     await new Promise((r) => setTimeout(r, 300));
 
-    const { storage } = await import("../../server/storage.ts");
-    const room2 = await storage.getRoomById(room.roomId);
+    const { roomStore } = await import("../../server/roomStore.ts");
+    const room2 = await roomStore.getRoomById(room.roomId);
     assert.equal(
       room2?.hostUserId,
       host.user.id,
@@ -178,8 +178,8 @@ describe("lobby disconnect grace", { skip: hasDatabase() ? false : skipMessage()
 
     await new Promise((r) => setTimeout(r, 3000));
 
-    const { storage } = await import("../../server/storage.ts");
-    const seats = await storage.getRoomPlayers(room.roomId);
+    const { roomStore } = await import("../../server/roomStore.ts");
+    const seats = await roomStore.getRoomPlayers(room.roomId);
     assert.ok(
       !seats.some((s) => s.userId === guest.user.id),
       "being online somewhere else is not being in this room: the seat must be given back"

@@ -127,8 +127,8 @@ describe("password reset", { skip: hasDatabase() ? false : skipMessage() }, () =
   /** Registers, then verifies the way the email-verify flow itself would. */
   async function verifiedUser(username: string) {
     const { user, cookie } = await register(server, username);
-    const { storage } = await import("../../server/storage.ts");
-    await storage.markEmailVerified(user.id);
+    const { userStore } = await import("../../server/userStore.ts");
+    await userStore.markEmailVerified(user.id);
     return { user, cookie, email: `${username.toLowerCase()}@example.test` };
   }
 
@@ -207,8 +207,8 @@ describe("password reset", { skip: hasDatabase() ? false : skipMessage() }, () =
     const ownerMe = await fetch(`${server.url}/api/auth/me`, { headers: { cookie: ownerCookie! } });
     const owner = await ownerMe.json();
 
-    const { storage } = await import("../../server/storage.ts");
-    await storage.markEmailVerified(owner.id);
+    const { userStore } = await import("../../server/userStore.ts");
+    await userStore.markEmailVerified(owner.id);
 
     const res = await requestReset(email);
     assert.equal(res.status, 200, await res.text());

@@ -1,5 +1,5 @@
 import type { Server as SocketServer } from "socket.io";
-import { storage } from "./storage.ts";
+import { roomStore } from "./roomStore.ts";
 import { emitVoteState } from "./emit.ts";
 import { logger } from "./logger.ts";
 import { DEFAULT_LOCALE, translate } from "../shared/i18n.ts";
@@ -169,7 +169,7 @@ function runBotTurn(io: SocketServer, roomId: string) {
       type: "abandoned",
       ...payload("GAME_INTERRUPTED_EMPTY_SEAT"),
     });
-    void storage
+    void roomStore
       .updateRoomStatus(roomId, "finished")
       .catch((err) =>
         logger.warn(
@@ -350,7 +350,7 @@ export async function vacateSeat(
     });
     emitVoteState(io, roomId, game);
     if (remaining === 0) {
-      await storage
+      await roomStore
         .updateRoomStatus(roomId, "finished")
         .catch((err) =>
           logger.warn(

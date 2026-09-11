@@ -337,17 +337,17 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
    * a live seat to a bot.
    */
   test("a failed roster read does not fail a rejoin that holds a seat", async () => {
-    const { storage } = await import("../../server/storage.ts");
+    const { roomStore } = await import("../../server/roomStore.ts");
     const hank = await connectAs(server, "roster_hank");
     const ivy = await connectAs(server, "roster_ivy");
     const room = await setUpRoom([hank, ivy], 2);
     const table = [hank, ivy];
-    const realGetRoomPlayers = storage.getRoomPlayers;
+    const realGetRoomPlayers = roomStore.getRoomPlayers;
     try {
       await startGame(table);
 
       let tripped = 0;
-      storage.getRoomPlayers = async function (roomId: string) {
+      roomStore.getRoomPlayers = async function (roomId: string) {
         if (tripped === 0 && roomId === room.roomId) {
           tripped += 1;
           throw new Error("connection terminated unexpectedly");
@@ -371,18 +371,18 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
         "the rejoining player was not recognised at their own seat"
       );
     } finally {
-      storage.getRoomPlayers = realGetRoomPlayers;
+      roomStore.getRoomPlayers = realGetRoomPlayers;
       await closeTable(table);
     }
   });
 
   test("a cold-start rejoin is given its room even when the roster read fails", async () => {
-    const { storage } = await import("../../server/storage.ts");
+    const { roomStore } = await import("../../server/roomStore.ts");
     const jo = await connectAs(server, "cold_start_jo");
     const kai = await connectAs(server, "cold_start_kai");
     const room = await setUpRoom([jo, kai], 2);
     const table: { socket: Socket }[] = [jo, kai];
-    const realGetRoomPlayers = storage.getRoomPlayers;
+    const realGetRoomPlayers = roomStore.getRoomPlayers;
     let tripped = 0;
     try {
       await startGame([jo, kai]);
@@ -391,7 +391,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
       kai.socket.disconnect();
       await dropped;
 
-      storage.getRoomPlayers = async function (roomId: string) {
+      roomStore.getRoomPlayers = async function (roomId: string) {
         if (roomId === room.roomId) {
           tripped += 1;
           throw new Error("connection terminated unexpectedly");
@@ -421,7 +421,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
         "the rejoining player was not recognised at their own seat"
       );
     } finally {
-      storage.getRoomPlayers = realGetRoomPlayers;
+      roomStore.getRoomPlayers = realGetRoomPlayers;
       await closeTable(table);
     }
   });

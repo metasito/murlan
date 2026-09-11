@@ -5,7 +5,7 @@
 // need these: keeping them next to `setupSocket` made an import cycle.
 import type { Server as SocketServer } from "socket.io";
 import { logger } from "./logger.ts";
-import { storage } from "./storage.ts";
+import { friendStore } from "./friendStore.ts";
 import { socketRoomMap, userRoom, userSocketMap } from "./gameRoom.ts";
 import { safeTimer } from "./gamePersistence.ts";
 import { announceSeatHoldsChanged, handleSeatRelease } from "./socketTable.ts";
@@ -132,7 +132,7 @@ export async function declineGameInviteAndNotify(
   // Deliberately unguarded: a decline that did not happen must reach the
   // caller as a failure, not as an ok with the invite still standing.
   // `announceSeatHoldsChanged` swallows its own read failures.
-  const roomId = await storage.declineGameInvite(inviteeId, roomCode);
+  const roomId = await friendStore.declineGameInvite(inviteeId, roomCode);
   if (!roomId || !_io) return;
   await announceSeatHoldsChanged(_io, roomId);
 }

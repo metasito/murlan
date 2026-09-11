@@ -1,5 +1,5 @@
 // tests/integration/markEmailVerified.test.ts — #894 review, finding 3:
-// storage.markEmailVerified() must not report "verified" when nothing was
+// userStore.markEmailVerified() must not report "verified" when nothing was
 // actually verified. Two ways that happened before this fix: the UPDATE
 // matched zero rows (the account is gone, or this account's own email claim
 // is already gone) and the caller still got `true` back.
@@ -15,12 +15,12 @@ describe("markEmailVerified's three outcomes", { skip: hasDatabase() ? false : s
 
   test("verifies the ordinary case", async () => {
     const { user } = await register(server, "markverify_ok");
-    const { storage } = await import("../../server/storage.ts");
+    const { userStore } = await import("../../server/userStore.ts");
 
-    const result = await storage.markEmailVerified(user.id);
+    const result = await userStore.markEmailVerified(user.id);
     assert.equal(result, "verified");
 
-    const stored = await storage.getUser(user.id);
+    const stored = await userStore.getUser(user.id);
     assert.ok(stored?.emailVerifiedAt, "emailVerifiedAt must be set");
   });
 
@@ -34,12 +34,12 @@ describe("markEmailVerified's three outcomes", { skip: hasDatabase() ? false : s
     // allows this; only a verified claim is unique.
     await db.update(users).set({ email: "markverify_race@example.test" }).where(eq(users.id, first.id));
     await db.update(users).set({ email: "markverify_race@example.test" }).where(eq(users.id, second.id));
-    const { storage } = await import("../../server/storage.ts");
+    const { userStore } = await import("../../server/userStore.ts");
 
-    assert.equal(await storage.markEmailVerified(first.id), "verified");
-    assert.equal(await storage.markEmailVerified(second.id), "lost_race");
+    assert.equal(await userStore.markEmailVerified(first.id), "verified");
+    assert.equal(await userStore.markEmailVerified(second.id), "lost_race");
 
-    const loser = await storage.getUser(second.id);
+    const loser = await userStore.getUser(second.id);
     assert.equal(loser?.email, null, "the loser's own claim must be cleared, not left colliding");
     assert.equal(loser?.emailVerifiedAt, null);
   });
@@ -54,21 +54,22 @@ describe("markEmailVerified's three outcomes", { skip: hasDatabase() ? false : s
     const { users } = await import("../../shared/schema.ts");
     const { eq } = await import("drizzle-orm");
     await db.update(users).set({ email: null }).where(eq(users.id, user.id));
-    const { storage } = await import("../../server/storage.ts");
+    const { userStore } = await import("../../server/userStore.ts");
 
-    const result = await storage.markEmailVerified(user.id);
+    const result = await userStore.markEmailVerified(user.id);
     assert.equal(result, "not_found", "an UPDATE matching zero rows must not report success");
 
-    const stored = await storage.getUser(user.id);
+    const stored = await userStore.getUser(user.id);
     assert.equal(stored?.emailVerifiedAt, null, "nothing was actually verified");
   });
 
   test("reports not_found for an account that no longer exists", async () => {
     const { user } = await register(server, "markverify_deleted");
-    const { storage } = await import("../../server/storage.ts");
-    await storage.deleteUser(user.id);
+    const { deleteUser } = await import("../../server/deleteAccount.ts");
+    const { userStore } = await import("../../server/userStore.ts");
+    await deleteUser(user.id);
 
-    const result = await storage.markEmailVerified(user.id);
+    const result = await userStore.markEmailVerified(user.id);
     assert.equal(result, "not_found", "a deleted account must not read back as verified");
   });
 });

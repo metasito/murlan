@@ -44,8 +44,8 @@ describe("resend-verification", { skip: hasDatabase() ? false : skipMessage() },
 
   test("an already-verified account is refused", async () => {
     const { user, cookie } = await register(server, "resend_already_verified");
-    const { storage } = await import("../../server/storage.ts");
-    await storage.markEmailVerified(user.id);
+    const { userStore } = await import("../../server/userStore.ts");
+    await userStore.markEmailVerified(user.id);
 
     const res = await resend(cookie);
     const text = await res.text();

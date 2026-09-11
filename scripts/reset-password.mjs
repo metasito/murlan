@@ -13,7 +13,7 @@
  * database URL and a person who has decided to run it.
  *
  * The username is matched case-insensitively, the same way login is
- * (server/storage.ts getUserByUsername), so the caller does not have to know
+ * (server/userStore.ts getUserByUsername), so the caller does not have to know
  * the exact casing the account was registered with.
  */
 import { randomBytes } from "node:crypto";

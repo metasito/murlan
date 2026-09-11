@@ -8,7 +8,9 @@
 // own awaits (server/socket.ts): a socket that closes while those are still
 // running has no other listener that will ever see it.
 import type { DisconnectReason, Server as SocketServer, Socket } from "socket.io";
-import { storage } from "./storage.ts";
+import { friendStore } from "./friendStore.ts";
+import { roomStore } from "./roomStore.ts";
+import { userStore } from "./userStore.ts";
 import { logger } from "./logger.ts";
 import { notifyUser } from "./push.ts";
 import { trackEvent } from "./events.ts";
@@ -50,13 +52,13 @@ export function registerFriendHandlers({ io, socket, userId, username }: Presenc
         // Only accepted friends may invite each other, and only a few per
         // minute — an invite is otherwise an unauthenticated broadcast
         // primitive that would let any user spam any userId.
-        const areFriends = await storage.areFriends(userId, friendUserId);
+        const areFriends = await friendStore.areFriends(userId, friendUserId);
         if (!areFriends) {
           socket.emit("friend:error", payload("NOT_FRIENDS"));
           return { ok: false, code: "NOT_FRIENDS" };
         }
 
-        const room = await storage.getRoomByCode(roomCode.toUpperCase());
+        const room = await roomStore.getRoomByCode(roomCode.toUpperCase());
         if (!room || room.status !== "waiting") {
           socket.emit("friend:error", payload("ROOM_NOT_FOUND"));
           return { ok: false, code: "ROOM_NOT_FOUND" };
@@ -65,7 +67,7 @@ export function registerFriendHandlers({ io, socket, userId, username }: Presenc
         // The code comes from the client, and the client is not what decides
         // whether the sender is at that table. Without this, naming any waiting
         // room's code would invite a friend into a stranger's room.
-        const seated = await storage.getRoomPlayers(room.id);
+        const seated = await roomStore.getRoomPlayers(room.id);
         if (!seated.some((p) => p.userId === userId)) {
           socket.emit("friend:error", payload("NOT_IN_ROOM"));
           return { ok: false, code: "NOT_IN_ROOM" };
@@ -74,7 +76,7 @@ export function registerFriendHandlers({ io, socket, userId, username }: Presenc
         // Written before it is announced. The emit and the push are both ways
         // of saying "look now"; the row is what makes the invite exist, and it
         // is the only one of the three that survives the friend being away.
-        await storage.recordGameInvite(room.id, userId, friendUserId);
+        await friendStore.recordGameInvite(room.id, userId, friendUserId);
 
         // The row is what holds the seat, so the room has to be told the moment
         // it exists — otherwise the seat waiting for this friend reads as an
@@ -109,7 +111,7 @@ export function registerFriendHandlers({ io, socket, userId, username }: Presenc
       "friend:get_online_list",
       NoPayloadSchema,
       async () => {
-        const userFriends = await storage.getFriends(userId);
+        const userFriends = await friendStore.getFriends(userId);
         const online = await onlineUserIds();
         const onlineIds = userFriends
           .map((f) => f.friend.id)
@@ -146,7 +148,7 @@ export async function announcePresence({ io, socket, userId, username }: Presenc
       // One read for both halves of the connect notice: the friends who must
       // be told this account came online, and the online list this socket is
       // sent, are the same rows.
-      const friends = await storage.getFriends(userId);
+      const friends = await friendStore.getFriends(userId);
       await announceOnlineToFriends(io, userId, friends);
       const online = await onlineUserIds();
       const onlineIds = friends
@@ -186,7 +188,7 @@ export function registerDisconnect({ io, socket, userId, username }: PresenceCon
           }
           logger.debug({ userId, socketId: socket.id }, "Socket disconnected");
 
-          await storage
+          await userStore
             .updateLastSeen(userId)
             .catch((err) =>
               logger.debug({ err, userId }, "Failed to update users.last_seen on disconnect")
@@ -318,7 +320,7 @@ export function evictReplacedSession(
 async function announceOnlineToFriends(
   io: SocketServer,
   userId: string,
-  friends: Awaited<ReturnType<typeof storage.getFriends>>
+  friends: Awaited<ReturnType<typeof friendStore.getFriends>>
 ) {
   // The read the caller did is awaited, so the socket may already be gone.
   if (!(await isUserOnline(userId))) return;
@@ -336,7 +338,7 @@ async function emitFriendStatusOffline(
   // these windows must cancel the offline notice rather than race it.
   await new Promise((resolve) => setTimeout(resolve, 400));
   if (await isUserOnline(userId)) return;
-  const friends = await storage.getFriends(userId).catch(() => []);
+  const friends = await friendStore.getFriends(userId).catch(() => []);
   if (await isUserOnline(userId)) return;
   friends.forEach((f) => {
     io.to(userRoom(f.friend.id)).emit("friend:status", {
