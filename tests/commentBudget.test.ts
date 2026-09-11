@@ -2,9 +2,10 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { budget, diffOf } from "../scripts/comment-budget.mjs";
 
 const diff = (file: string, lines: string[]) =>
@@ -19,9 +20,9 @@ const counts = (d: string) =>
 
 // `diffOf` decides how much context git prints, so what the window is worth can only be seen
 // against a real repository: every fixture above hands `budget` a diff that was written by hand.
-// The config files are pointed at a path that does not exist, so nothing the machine happens to
-// set globally — a signing key, `core.hooksPath`, a template directory — can red these cases for
-// a reason that is not the check's.
+// The global and system config files are pointed at a path that does not exist, so nothing the
+// machine keeps in either — a signing key, `core.hooksPath`, a template directory — can red these
+// cases for a reason that is not the check's.
 const diffAcross = (before: string[], after: string[]) => {
   const dir = mkdtempSync(join(tmpdir(), "comment-budget-"));
   const none = join(dir, "no-config");
@@ -44,6 +45,14 @@ const diffAcross = (before: string[], after: string[]) => {
 };
 
 const unprefixed = (lines: string[]) => lines.map((l) => l.slice(1));
+
+// The window has to reach the opener of a docblock as long as any this repo actually writes, and
+// the script's own header is one: read rather than restated, so growing that header past the
+// window reds the case below instead of leaving a number nobody rechecked.
+const ownHeader =
+  readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../scripts/comment-budget.mjs"), "utf8")
+    .split("\n")
+    .findIndex((l) => l.trim() === "*/") + 1;
 
 describe("comment budget", () => {
   test("a diff that is mostly prose is over", () => {
@@ -150,14 +159,25 @@ describe("comment budget", () => {
     assert.deepEqual(counts(`${from}\n${to}`), [["scripts/b.mjs", 7, 1]]);
   });
 
-  // The opener sits fifteen lines above the prose that was added, which is longer than this
-  // script's own header: a window that cannot cover a docblock that long is too narrow to be
-  // worth printing, and this is the case that says so.
   test("prose added far below a block comment's opener counts as prose", () => {
-    const head = ["/*", ...unprefixed(prose(14))];
+    const head = ["/*", ...unprefixed(prose(ownHeader - 1))];
     const tail = ["*/", ...unprefixed(code(1))];
     const added = unprefixed(prose(8)).map((l) => `${l} also`);
     assert.deepEqual(counts(diffAcross([...head, ...tail], [...head, ...added, ...tail])), [["a.mjs", 8, 0]]);
+  });
+
+  // Without the format flags this is not a failure but a pass: every header stops matching, the
+  // check sees no file at all, and reports within budget.
+  test("a machine that rewrites diff headers cannot empty the check out", () => {
+    const before = unprefixed(code(2));
+    const after = [...before, ...unprefixed(comments(7)).map((l) => `${l} new`)];
+    const rewritten = { GIT_CONFIG_COUNT: "1", GIT_CONFIG_KEY_0: "diff.noprefix", GIT_CONFIG_VALUE_0: "true" };
+    Object.assign(process.env, rewritten);
+    try {
+      assert.deepEqual(counts(diffAcross(before, after)), [["a.mjs", 7, 0]]);
+    } finally {
+      for (const key of Object.keys(rewritten)) delete process.env[key];
+    }
   });
 
   test("a context line is counted in neither column", () => {

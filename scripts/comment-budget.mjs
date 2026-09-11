@@ -86,8 +86,14 @@ export function budget(diff) {
 // what puts a docblock's `/*` inside the hunk that edits its body.
 const CONTEXT = 20;
 
+// `pathOf` reads git's own header, so the format is demanded rather than hoped for: a machine
+// carrying `diff.noprefix`, `color.ui` or an external differ would otherwise leave this check
+// parsing no files at all and reporting green.
+const PLAIN = ["--no-ext-diff", "--no-color", "--src-prefix=a/", "--dst-prefix=b/"];
+
 export function diffOf(base, head = "HEAD") {
-  return execFileSync("git", ["diff", `-U${CONTEXT}`, `${base}...${head}`, "--", "*.mjs", "*.js", "*.ts", "*.tsx"], {
+  const argv = ["diff", `-U${CONTEXT}`, ...PLAIN, `${base}...${head}`, "--", "*.mjs", "*.js", "*.ts", "*.tsx"];
+  return execFileSync("git", argv, {
     encoding: "utf8",
     maxBuffer: 64 * 1024 * 1024,
   });
