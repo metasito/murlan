@@ -239,6 +239,7 @@ describe("what a completed request leaves in the log", () => {
     assert.equal(written.includes("127.0.0.1"), false, "the socket's peer address reached the line");
     assert.equal(line.req.remoteAddress, undefined);
     assert.equal(line.req.remotePort, undefined);
+    assert.equal(written.includes("ana"), false, "the query string reached the line");
   });
 
   test("the header bag is not written at all", async () => {
@@ -262,19 +263,16 @@ describe("what a completed request leaves in the log", () => {
     assert.equal(line.req.url, "/api/friends/:friendUserId");
   });
 
-  test("a request no route matched has no address written for it", async () => {
-    const line = await completedRequestLine("/favicon.ico?v=2", { headers: PROXY_HEADERS });
-    assert.equal(line.req.url, undefined);
-  });
-
-  // The three below are the shape `server/app.ts` actually produces and the
-  // bare-handler cases above cannot: express leaves `req.route` set on a route
-  // that declined, so a catch-all mounted before the API routes puts a pattern
-  // on requests it never answered, and answers none of the non-GET ones at all.
-  test("a catch-all that declined is not a match, so its own pattern is not the address", async () => {
-    const line = await completedRequestLine("/api/typo/SECRET7", { catchAll: true });
-    assert.equal(line.req.url, undefined, "the SPA catch-all's pattern was logged as the address asked for");
-    assert.equal(JSON.stringify(line).includes("SECRET7"), false);
+  // The two below are the shape `server/app.ts` produces and a bare handler
+  // cannot: express leaves `req.route` set on a route that declined, so a
+  // catch-all mounted ahead of the API rides along on requests it never
+  // answered — and answers none of the non-GET ones at all.
+  test("a wildcard route is not a match, whether it declined or answered", async () => {
+    for (const target of ["/api/typo/SECRET7", "/room/SECRET7"]) {
+      const line = await completedRequestLine(target, { catchAll: true });
+      assert.equal(line.req.url, undefined, `${target}: the catch-all's own pattern was logged as the address`);
+      assert.equal(JSON.stringify(line).includes("SECRET7"), false, `${target}: the path reached the line`);
+    }
   });
 
   test("a non-GET that no route matched writes no address", async () => {
@@ -283,12 +281,6 @@ describe("what a completed request leaves in the log", () => {
       method: "POST",
     });
     assert.equal(JSON.stringify(line).includes("SECRET7"), false, "a room code reached the log through a 404");
-    assert.equal(line.req.url, undefined);
-  });
-
-  test("a client-side route the SPA shell answered writes no address either", async () => {
-    const line = await completedRequestLine("/room/SECRET7", { catchAll: true });
-    assert.equal(JSON.stringify(line).includes("SECRET7"), false, "a room code reached the log through a deep link");
     assert.equal(line.req.url, undefined);
   });
 
@@ -322,6 +314,20 @@ describe("what a completed request leaves in the log", () => {
       "server/app.ts builds its own pino-http options — the serializers that keep the client IP out " +
         "of the log live in server/logger.ts, and a second options object silently bypasses them"
     );
+    // The floor under `loggedRequest`'s wildcard rule, and under the `catchAll`
+    // harness above, which is a hand copy of this mount.
+    assert.match(
+      app,
+      /app\.get\("\*path"/,
+      "the SPA catch-all is no longer a GET on `*path` — the harness above copies that shape, and the " +
+        "rule that drops a wildcard address is written for it"
+    );
+    assert.equal(
+      (app.match(/app\.(get|post|put|patch|delete|use)\("[^"]*\*/g) ?? []).length,
+      1,
+      "server/app.ts has a second wildcard route — every address it touches is dropped from the log, " +
+        "which is right for the SPA shell and wrong for a route that means to answer"
+    );
   });
 
   test("docs/PRIVACY.md still claims what the line actually holds", () => {
@@ -331,11 +337,11 @@ describe("what a completed request leaves in the log", () => {
     const policy = readFileSync(path.join(repoRoot, "docs", "PRIVACY.md"), "utf8");
     for (const claim of [
       /Your IP address is not written/,
-      /nor are your request headers/,
-      /nor anything you passed in the address's query string/,
-      /recorded as the general form of one of our own addresses rather than the one you sent/,
-      /when\s+what you asked for is not one of our addresses, no address at all is recorded for it/,
-      /no id from the address, which is recorded only as one of our own addresses in its general form/,
+      /neither are your request headers/,
+      /anything you passed in the address's query string/,
+      /written only when one of our\s+own routes answered, and then only in its general form rather than as you sent it/,
+      /for anything else[\s\S]{0,90}no address is written\s+at all/,
+      /no id from the address, which is written only when one of our own routes answered and then only in its general form/,
     ])
       assert.match(policy, claim, `docs/PRIVACY.md no longer states ${claim}`);
   });
