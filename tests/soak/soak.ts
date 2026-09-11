@@ -22,7 +22,7 @@ import {
   type Combination,
 } from "../../lib/gameEngine.ts";
 import { checkAll, type SeatView, type Violation } from "./invariants.ts";
-import { SETTLE_CAP_MS, SETTLE_QUIET_MS } from "./gateBudget.ts";
+import { SETTLE_CAP_MS } from "./gateBudget.ts";
 
 interface SanitizedPlayer {
   name: string;
@@ -492,7 +492,7 @@ export interface SoakResult {
  */
 export async function settle(
   seats: Seat[],
-  quietMs = SETTLE_QUIET_MS,
+  quietMs = 250,
   capMs = SETTLE_CAP_MS * DEADLINE_SCALE
 ): Promise<void> {
   const deadline = Date.now() + capMs;
