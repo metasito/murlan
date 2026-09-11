@@ -43,8 +43,8 @@ Node strips types natively, so these files import `.ts` specifiers directly and
 can only load modules that do not import `react-native`. That is why the table's
 logic lives in `components/seatLayout.ts`, `flightPhysics.ts`, `turnTimerUi.ts`,
 `tableFrame.ts` and `tableA11y.ts` apart from the `.tsx` component, and in the plain
-`.ts` modules under `components/table/` that sit beside a `.tsx` consumer
-(`rotateGlyph.ts`, `straightTopRank.ts`).
+`.ts` modules under `components/table/` (`rotateGlyph.ts`, `straightTopRank.ts`) whose
+own consumers Node cannot load.
 
 **Covers:** every game rule, and the arithmetic behind the UI.
 **Cannot cover:** anything that renders, and anything platform-dependent.

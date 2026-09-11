@@ -51,6 +51,15 @@ describe("comment budget", () => {
     );
   });
 
+  test("a comment deleted from a file this check ignores funds nothing", () => {
+    const from = diff("docs/a.md", [...comments(10).map((l) => `-${l.slice(1)}`)]);
+    const to = diff("scripts/b.mjs", [...comments(10), ...code(1)]);
+    assert.deepEqual(
+      budget(`${from}\n${to}`).map(([f, n]: [string, { comment: number; code: number }]) => [f, n.comment]),
+      [["scripts/b.mjs", 10]]
+    );
+  });
+
   test("block-comment bodies count", () => {
     const lines = ["+/**", ...Array.from({ length: 8 }, () => "+ * why"), "+ */", "+const x = 1;"];
     assert.equal(budget(diff("scripts/a.mjs", lines))[0][1].comment, 10);

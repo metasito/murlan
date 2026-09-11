@@ -23,10 +23,18 @@ export function budget(diff) {
   // that was written: an extraction carries a function's docstring to its new file,
   // and counting that as explanation would price documenting a small function out of
   // ever being moved. Matched on the exact text, and each deletion pays for one
-  // addition, so no amount of new prose can hide behind it.
+  // addition, so no amount of new prose can hide behind it. Credit is minted only
+  // where it is spent — a file this check counts — or a deleted markdown bullet
+  // would fund a docstring.
   const moved = new Map();
+  let from = null;
   for (const line of lines) {
-    if (!line.startsWith("-") || line.startsWith("---") || !LINE.test("+" + line.slice(1))) continue;
+    if (line.startsWith("--- ")) {
+      const named = /^--- a\/(.+)$/.exec(line);
+      from = named && CODE.test(named[1]) ? named[1] : null;
+      continue;
+    }
+    if (!from || !line.startsWith("-") || !LINE.test("+" + line.slice(1))) continue;
     const text = line.slice(1).trim();
     moved.set(text, (moved.get(text) ?? 0) + 1);
   }
