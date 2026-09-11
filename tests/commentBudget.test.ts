@@ -9,6 +9,9 @@ const diff = (file: string, lines: string[]) =>
 const comments = (n: number) => Array.from({ length: n }, (_, i) => `+// line ${i}`);
 const code = (n: number) => Array.from({ length: n }, (_, i) => `+const x${i} = ${i};`);
 
+const counts = (d: string) =>
+  budget(d).map(([f, n]: [string, { comment: number; code: number }]) => [f, n.comment, n.code]);
+
 describe("comment budget", () => {
   test("a diff that is mostly prose is over", () => {
     const over = budget(diff("scripts/a.mjs", [...comments(10), ...code(3)]));
@@ -45,19 +48,20 @@ describe("comment budget", () => {
     const from = diff("scripts/a.mjs", [`-${comments(1)[0].slice(1)}`]);
     const to = diff("scripts/b.mjs", [...comments(10), ...code(1)]);
     // Nine of the ten are new prose, so the file is still over.
-    assert.deepEqual(
-      budget(`${from}\n${to}`).map(([f, n]: [string, { comment: number; code: number }]) => [f, n.comment]),
-      [["scripts/b.mjs", 9]]
-    );
+    assert.deepEqual(counts(`${from}\n${to}`), [["scripts/b.mjs", 9, 1]]);
   });
 
   test("a comment deleted from a file this check ignores funds nothing", () => {
     const from = diff("docs/a.md", [...comments(10).map((l) => `-${l.slice(1)}`)]);
     const to = diff("scripts/b.mjs", [...comments(10), ...code(1)]);
-    assert.deepEqual(
-      budget(`${from}\n${to}`).map(([f, n]: [string, { comment: number; code: number }]) => [f, n.comment]),
-      [["scripts/b.mjs", 10]]
-    );
+    assert.deepEqual(counts(`${from}\n${to}`), [["scripts/b.mjs", 10, 1]]);
+  });
+
+  test("a deleted line shaped like a file header does not re-arm the credit pool", () => {
+    // Reaches the parser as `--- a/scripts/z.mjs`, which is the `---` header's own shape.
+    const from = diff("docs/a.md", ["--- a/scripts/z.mjs", ...comments(10).map((l) => `-${l.slice(1)}`)]);
+    const to = diff("scripts/b.mjs", [...comments(10), ...code(1)]);
+    assert.deepEqual(counts(`${from}\n${to}`), [["scripts/b.mjs", 10, 1]]);
   });
 
   test("block-comment bodies count", () => {

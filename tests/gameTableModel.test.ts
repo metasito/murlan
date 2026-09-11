@@ -1,8 +1,8 @@
 // Pure logic behind the shared game table (components/GameTable.tsx), extracted
 // into components/seatLayout.ts, flightPhysics.ts, turnTimerUi.ts, tableFrame.ts,
-// tableA11y.ts and the plain-.ts modules under components/table/ that sit beside
-// their .tsx consumers, so `node --test` can load it — the table itself is .tsx and
-// cannot be type-stripped by Node's loader.
+// tableA11y.ts and the plain-.ts modules under components/table/ whose own
+// consumers Node cannot load, so `node --test` can load it — the table itself is
+// .tsx and cannot be type-stripped by Node's loader.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";

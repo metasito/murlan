@@ -221,9 +221,9 @@ collapsed:
   (#956). Each is JSX-free, and every runtime import it makes is relative and carries its
   `.ts` extension, so it loads under Node's built-in TypeScript stripping in the test suite
   (`node --test`) without a bundler — the `@/` alias appears only in type-only imports,
-  which are erased before resolution. The same shape repeats under `components/table/`
-  (`rotateGlyph.ts`, `straightTopRank.ts`): a plain `.ts` beside a neighbour Node's loader
-  cannot follow — a `.tsx`, or a `.ts` importing through the alias at runtime.
+  which are erased before resolution. The same shape repeats under `components/table/`,
+  wherever a plain `.ts` sits beside a neighbour Node's loader cannot follow — a `.tsx`,
+  or a `.ts` importing through the alias at runtime.
   `seatLayout` holds the layout constants and the seating/opponent-position math;
   `flightPhysics` the card flight, pile advancement, impact feedback and exchange-state
   reads; `turnTimerUi` the play-button labels and the turn clock; `tableFrame` the

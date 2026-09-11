@@ -19,19 +19,26 @@ export function budget(diff) {
   const files = new Map();
   const lines = diff.split("\n");
 
+  // The `diff --git` header, not the `---`/`+++` pair: a deleted source line reading
+  // `-- a/x.mjs` reaches this loop as `--- a/x.mjs`, and both passes reading the one
+  // header is what stops them disagreeing about which file they are in.
+  const pathOf = (line) => {
+    const named = /^diff --git a\/.+ b\/(.+)$/.exec(line);
+    return named ? (CODE.test(named[1]) ? named[1] : null) : undefined;
+  };
+
   // A comment line the diff also deletes somewhere is prose that moved, not prose
   // that was written: an extraction carries a function's docstring to its new file,
   // and counting that as explanation would price documenting a small function out of
   // ever being moved. Matched on the exact text, and each deletion pays for one
-  // addition, so no amount of new prose can hide behind it. Credit is minted only
-  // where it is spent — a file this check counts — or a deleted markdown bullet
-  // would fund a docstring.
+  // addition, so no amount of new prose can hide behind it — and credit is minted
+  // only in the files it can be spent in, or deleting a doc would fund a docstring.
   const moved = new Map();
   let from = null;
   for (const line of lines) {
-    if (line.startsWith("--- ")) {
-      const named = /^--- a\/(.+)$/.exec(line);
-      from = named && CODE.test(named[1]) ? named[1] : null;
+    const named = pathOf(line);
+    if (named !== undefined) {
+      from = named;
       continue;
     }
     if (!from || !line.startsWith("-") || !LINE.test("+" + line.slice(1))) continue;
@@ -41,9 +48,9 @@ export function budget(diff) {
 
   let file = null;
   for (const line of lines) {
-    const named = /^\+\+\+ b\/(.+)$/.exec(line);
-    if (named) {
-      file = CODE.test(named[1]) ? named[1] : null;
+    const named = pathOf(line);
+    if (named !== undefined) {
+      file = named;
       if (file && !files.has(file)) files.set(file, { comment: 0, code: 0 });
       continue;
     }
