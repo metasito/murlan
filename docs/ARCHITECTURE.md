@@ -35,7 +35,8 @@ lib/gameEngine.ts (offline: called directly)   server/socket.ts (online: server-
 - **`server/socket.ts`** is the only place that mutates online game state. The client never
   computes an online outcome locally — it sends an intent (`game:play`, `game:pass`,
   `game:exchange_give_card`) and renders whatever the server broadcasts back.
-- **`components/GameTable.tsx`** + **`components/gameTableModel.ts`** (pure/JSX-free) +
+- **`components/GameTable.tsx`** + the table's pure model (`seatLayout.ts`,
+  `flightPhysics.ts`, `turnTimerUi.ts`, `tableFrame.ts`, `tableA11y.ts` — all JSX-free) +
   **`components/table/`** are the single presentational table. `GameTable.tsx` assembles it
   and owns the interaction; `components/table/` holds the pieces it draws, one file per
   concern — `seats.tsx` (the opponent slots), `pile.tsx` (the played pile and the card
@@ -215,12 +216,15 @@ it does not touch socket or game state.
 implement nearly-identical table rendering, layout and animation. That has been
 collapsed:
 
-- **`components/gameTableModel.ts`** — pure functions and constants with no JSX and no
-  runtime imports (only type-only imports from `lib/gameEngine.ts`), so it loads under
+- **`components/seatLayout.ts`**, **`flightPhysics.ts`**, **`turnTimerUi.ts`**,
+  **`tableFrame.ts`**, **`tableA11y.ts`** — the table's pure model, one file per concern
+  (#956). Each is JSX-free and takes only types from `lib/gameEngine.ts`, so it loads under
   Node's built-in TypeScript stripping in the test suite (`node --test`) without a bundler.
-  Owns the layout constants (`CARD_H`, `BTN_W`, `SIDE_BTN_W`, `TABLE_M`,
-  `HAND_SECTION_H`, …), seating/opponent-position math, pile advancement, exchange-state
-  reads, and other logic both screens need identically.
+  `seatLayout` holds the layout constants and the seating/opponent-position math;
+  `flightPhysics` the card flight, pile advancement, impact feedback and exchange-state
+  reads; `turnTimerUi` the play-button labels and the turn clock; `tableFrame` the
+  safe-area/rail arithmetic; `tableA11y` the screen-reader description. `flightPhysics`
+  takes `seatDirection` from `seatLayout`; the reverse must never happen.
 - **`components/GameTable.tsx`** — the one presentational table. It takes a `GameState`, a
   `viewerSeat`, and a small set of slots (`topBarExtra`, `banners`, `overlays`,
   `turnTimer`) through which the offline and online adapters inject exactly what differs

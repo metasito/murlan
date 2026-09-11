@@ -39,8 +39,37 @@ import {
   type GameState,
 } from "@/lib/gameEngine";
 import { useTradedCardsLanded, type ExchangeAnnounceData } from "@/lib/sharedGameFlow";
-import { CHIP_H, HAND_ZONE_H, actionBtnSize, HAND_ZONE_GAP, arrangeOpponents, LAMP_CENTRE, handCountOf, vacatedOf, lightPosition, seatDirection, viewerOwnsSeat, type FlyDirection, type OpponentSide } from "@/components/seatLayout";
-import { exchangeFlight, type ExchangeFlight, advancePile, comboKey, readHandArrival, EMPTY_PILE, readThrownPlay, impactDelayMs, landingTier, passedSeats, readExchange, roundClosedWithWinner, type ImpactTier, type PileState } from "@/components/flightPhysics";
+import {
+  CHIP_H,
+  HAND_ZONE_H,
+  actionBtnSize,
+  HAND_ZONE_GAP,
+  arrangeOpponents,
+  LAMP_CENTRE,
+  handCountOf,
+  vacatedOf,
+  lightPosition,
+  seatDirection,
+  viewerOwnsSeat,
+  type FlyDirection,
+  type OpponentSide,
+} from "@/components/seatLayout";
+import {
+  exchangeFlight,
+  type ExchangeFlight,
+  advancePile,
+  comboKey,
+  readHandArrival,
+  EMPTY_PILE,
+  readThrownPlay,
+  impactDelayMs,
+  landingTier,
+  passedSeats,
+  readExchange,
+  roundClosedWithWinner,
+  type ImpactTier,
+  type PileState,
+} from "@/components/flightPhysics";
 import { canPassNow as canPassNowOf, openingIsPending, turnTimerActive } from "@/components/turnTimerUi";
 import { computeTableFrame } from "@/components/tableFrame";
 import { describeTableForA11y, type TableA11yExchange, type TableA11yLastPlay, type TableA11yOpponent } from "@/components/tableA11y";

@@ -258,5 +258,3 @@ export function notificationTopOffset(opts: {
   const chipTop = Math.max(PAD_TOP * opts.scale, opts.topPad) + opts.surplus;
   return chipTop + CHIP_H(opts.scale) + PAD_INNER * opts.scale;
 }
-
-// ─── Who the viewer is ────────────────────────────────────────────────────────

@@ -14,12 +14,12 @@ import { Spacing } from "../lib/tokens.ts";
 
 // ─── Layout constants ─────────────────────────────────────────────────────────
 //
-// CLAUDE.md marks these as MUST NOT CHANGE: both game screens are laid out
-// around them, and changing one without the other silently breaks a screen.
-// The card dimensions belong to cardFaceModel.ts, which draws the card; the
-// rest are defined here (rather than in the components/table/ files that read
-// them) so tests/gameTableModel.test.ts can pin their values and so the frame
-// maths in tableFrame.ts can use them directly.
+// Both game screens are laid out around these, and changing one without the
+// other silently breaks a screen — `tests/gameTableModel.test.ts` is what pins
+// their values. The card dimensions belong to cardFaceModel.ts, which draws the
+// card; the rest are defined here (rather than in the components/table/ files
+// that read them) so that scan has one place to look and so the frame maths in
+// tableFrame.ts can use them directly.
 
 // The column a side seat's ring and label stand in. The prototype's own side
 // seat measures 92 at scale 1; the fan leans out of the column by design.
@@ -214,18 +214,18 @@ export interface LightPosition {
 }
 
 /**
- * Where the lamp hangs when a given seat is on move, so half the table falls
- * into shadow when it is not your turn. Just off the edge on that seat's own
- * side: a lamp centred on a seat lights the seat rather than the table it is
- * leaning over.
- */
-/**
  * The lamp swung off every seat and onto the middle of the felt, for a moment
  * that belongs to the table rather than to one player — the announcement of who
  * opens the manche. The same rig, pointed somewhere else; nothing new is drawn.
  */
 export const LAMP_CENTRE: LightPosition = { x: 0.5, y: 0.5 };
 
+/**
+ * Where the lamp hangs when a given seat is on move, so half the table falls
+ * into shadow when it is not your turn. Just off the edge on that seat's own
+ * side: a lamp centred on a seat lights the seat rather than the table it is
+ * leaning over.
+ */
 export function lightPosition(dir: FlyDirection): LightPosition {
   switch (dir) {
     case "bottom": return { x: 0.5, y: 0.98 };
@@ -369,7 +369,12 @@ export function sideSlotHeight(scale: number, displayedCount: number): number {
   return Math.max(ring, seatFanArc(drawn, scale * BACK_SCALE).bounds.w);
 }
 
-/** The top seat's own fan height for `displayedCount` backs. */
+/**
+ * The top seat's own fan height for `displayedCount` backs.
+ *
+ * Exported only because `flightOrigin` needs it and lives in `flightPhysics.ts`
+ * — it was module-private while both sat in one file. Nothing else calls it.
+ */
 export function topFanHeight(scale: number, displayedCount: number): number {
   const drawn = Math.min(displayedCount, FAN_DRAWN_CARDS.top);
   if (drawn <= 0) return 0;

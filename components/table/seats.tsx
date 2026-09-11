@@ -2,7 +2,17 @@ import { useEffect, useState } from "react";
 import { View, StyleSheet } from "react-native";
 import { TableText } from "./TableText";
 import { ChipText, TableChip } from "./chrome";
-import { FAN_DRAWN_CARDS, SEAT_DISC, SEAT_LABEL_GAP, SEAT_LABEL_PAD, seatGap, displayedHandCount, fanCounts, seatFanArc, seatLabelH } from "@/components/seatLayout";
+import {
+  FAN_DRAWN_CARDS,
+  SEAT_DISC,
+  SEAT_LABEL_GAP,
+  SEAT_LABEL_PAD,
+  seatGap,
+  displayedHandCount,
+  fanCounts,
+  seatFanArc,
+  seatLabelH,
+} from "@/components/seatLayout";
 import { impactDelayMs } from "@/components/flightPhysics";
 import Animated, {
   useAnimatedProps,

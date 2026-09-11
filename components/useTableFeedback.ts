@@ -13,7 +13,16 @@ import {
 } from "react-native-reanimated";
 import type { Combination } from "@/lib/gameEngine";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
-import { roundClosedWithWinner, traumaFor, shakeOffset, shakeAmplitudeFor, flareKindFor, lampLiftFor, type ImpactTier, type FlareKind } from "@/components/flightPhysics";
+import {
+  roundClosedWithWinner,
+  traumaFor,
+  shakeOffset,
+  shakeAmplitudeFor,
+  flareKindFor,
+  lampLiftFor,
+  type ImpactTier,
+  type FlareKind,
+} from "@/components/flightPhysics";
 import {
   playBomb,
   playCardPass,
