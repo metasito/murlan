@@ -218,8 +218,11 @@ collapsed:
 
 - **`components/seatLayout.ts`**, **`flightPhysics.ts`**, **`turnTimerUi.ts`**,
   **`tableFrame.ts`**, **`tableA11y.ts`** — the table's pure model, one file per concern
-  (#956). Each is JSX-free and takes only types from `lib/gameEngine.ts`, so it loads under
-  Node's built-in TypeScript stripping in the test suite (`node --test`) without a bundler.
+  (#956). Each is JSX-free, and every runtime import it makes is relative and carries its
+  `.ts` extension, so it loads under Node's built-in TypeScript stripping in the test suite
+  (`node --test`) without a bundler — the `@/` alias appears only in type-only imports,
+  which are erased before resolution. (`turnTimerUi` is the one with a runtime import from
+  the engine: it re-exports `openingIsPending`, shared with the server per #830.)
   `seatLayout` holds the layout constants and the seating/opponent-position math;
   `flightPhysics` the card flight, pile advancement, impact feedback and exchange-state
   reads; `turnTimerUi` the play-button labels and the turn clock; `tableFrame` the
