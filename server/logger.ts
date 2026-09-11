@@ -2,11 +2,10 @@ import pino from "pino";
 import pinoHttp from "pino-http";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
-// The completed-request line no longer carries headers at all
-// (`HTTP_SERIALIZERS` below), so the three header paths here defend any *other*
-// line handed a request or response object — an error a library attaches one
-// to, or a future hand-written line. They stay because the cost is nil and the
-// next such line is not announced.
+// A hand-written line handed a request or response object carries the live
+// session cookie and any bearer token in cleartext. The completed-request line
+// is not one of them: it goes through `HTTP_SERIALIZERS` below, which writes no
+// headers at all.
 //
 // A room code is the sole credential for `room:join` and `room:spectate`, so
 // the `payload` a refused socket event carries (`server/socketSafety.ts`) is
@@ -47,22 +46,35 @@ export function createLogger(destination?: pino.DestinationStream) {
 
 export const logger = createLogger();
 
-// pino-http's default serializers emit the whole header bag and the socket's
-// peer address. `x-forwarded-for`, `forwarded` (RFC 7239), `x-real-ip` and
-// `cf-connecting-ip` each carry the player's real IP through Replit's TLS
-// terminator, and no query string is worth keeping either — `?username=` names
-// an account, and the next route to take a token in the URL would be logged
-// without anyone deciding to.
+// pino-http's defaults emit the whole header bag and the socket's peer address.
+// `x-forwarded-for`, `forwarded` (RFC 7239), `x-real-ip` and `cf-connecting-ip`
+// each carry the player's own IP. Truncating or hashing an address leaves
+// personal data under the same retention and deletion duty (CNIL's Google
+// Analytics decision, 2022; EDPB Guidelines 01/2025 §pseudonymisation), so none
+// of it is written at all.
 //
-// Truncating or hashing the address instead would not help: a DPA has already
-// rejected octet-truncation as anonymisation, and a salted hash is only
-// pseudonymisation, so either answer still leaves personal data to retain,
-// export and delete. What a fault is diagnosed from is the path and the status.
-const HTTP_SERIALIZERS = {
-  req: (req: IncomingMessage & { originalUrl?: string }) => ({
+// The URL is logged as the route's pattern, never as the address requested:
+// `DELETE /api/friends/invites/:roomCode` would otherwise put a room code in
+// the line, which is the very thing `REDACT_PATHS` exists to keep out of it,
+// and `/api/friends/:friendUserId` would name an account. A request no route
+// matched — a static asset — has no pattern, and carries no parameter either.
+type LoggedRequest = IncomingMessage & {
+  originalUrl?: string;
+  baseUrl?: string;
+  route?: { path?: string };
+};
+
+function loggedRequest(req: LoggedRequest) {
+  return {
     method: req.method,
-    url: (req.originalUrl ?? req.url ?? "").split("?")[0],
-  }),
+    url: req.route?.path
+      ? `${req.baseUrl ?? ""}${req.route.path}`
+      : (req.originalUrl ?? req.url ?? "").split("?")[0],
+  };
+}
+
+const HTTP_SERIALIZERS = {
+  req: loggedRequest,
   res: (res: ServerResponse) => ({ statusCode: res.statusCode }),
 };
 
@@ -71,6 +83,20 @@ export function createRequestLogger(target: pino.Logger = logger) {
   return pinoHttp({
     logger: target,
     serializers: HTTP_SERIALIZERS,
+    // The completed-request line is assembled here, at `finish`, rather than
+    // bound to the child logger: pino serializes a child's bindings when the
+    // child is made, which is before routing, and `req.route` is the whole
+    // point. `quietResLogger` is what drops the early binding — leave it out
+    // and the line carries both, the second one still holding the address.
+    quietResLogger: true,
+    customSuccessObject: (req: LoggedRequest, _res: ServerResponse, line: object) => ({
+      ...line,
+      req: loggedRequest(req),
+    }),
+    customErrorObject: (req: LoggedRequest, _res: ServerResponse, _err: Error, line: object) => ({
+      ...line,
+      req: loggedRequest(req),
+    }),
     autoLogging: { ignore: (req: IncomingMessage) => req.url === "/health" },
   });
 }

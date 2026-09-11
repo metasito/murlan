@@ -62,15 +62,19 @@ after it is issued. Changing your password ends your other sessions and keeps th
 it from; resetting a forgotten password ends every session on the account.
 
 **Server logs.** Like any web service, our server writes an operational log line for each
-request. That line holds the method, the path requested, the answer's status code and how long it
-took — and nothing else. Your IP address is not written, nor are your request headers, nor
-anything you passed in the address's query string, so a request line names nobody and there is
-nothing in it to look up, export or delete. Your IP address still reaches the server, because a
+request. That line holds the method, which of the app's addresses was asked for, the answer's
+status code and how long it took — and nothing about you at all. Your IP address is not written,
+nor are your request headers, nor anything you passed in the address's query string. The address
+is recorded as its general form rather than the one you sent, so a name, an account number or an
+invite code that appears in a link is not written either. A request line names nobody, and there
+is nothing in it to look up, export or delete. Your IP address still reaches the server, because a
 network connection cannot be made without one, and our rate limiter counts recent requests against
-it in memory to stop abuse — but it is never written down. Crash reports and any game message the
-server refuses are written to the same log, with the account they came from, as is your email
-address if a message to you fails to send; those lines are held by our hosting provider under its
-own retention, are not covered by the deletion windows above, and deleting your account does not
+it in memory to stop abuse — but it is never written down.
+
+Other lines in the same log do name an account: crash reports, any game message the server
+refuses, actions on your account such as signing in or changing your password, and your email
+address if a message to you fails to send. Those are held by our hosting provider under its own
+retention, are not covered by the deletion windows above, and deleting your account does not
 remove them. Contact us at the address below if this matters to you.
 
 **On your own device.** The app stores some things locally, which never reach us: your signed-in
@@ -97,7 +101,7 @@ You can delete your account at any time from Settings. It is permanent and immed
 recovery period: your account, friends list, invites, seat in any room, any room you host along
 with the hand being played in it, match history, stats, ratings, achievements, crash and bug
 reports, usage events, push tokens, outstanding email codes, and sessions are all deleted. Server
-logs are the exception, as described above.
+logs are the exception, to the limited extent described above.
 
 One thing is anonymised rather than deleted. A replay belongs to everyone who played that hand,
 so deleting yours would take the other players' copy with it. Instead your account id and your
@@ -121,8 +125,8 @@ a copy of your data.
 | Email confirmation and password-reset codes | Until they expire, minutes after being sent |
 | Push token | Until you sign out, register a sixth device (we keep your five most recent), give the device to someone who signs in on it, delete your account, or a later notification finds the device gone |
 | Session cookie | 30 days, or until you sign out or delete your account. Changing your password ends your other sessions; resetting it ends all of them |
-| Server logs — the line written for each request | Nothing in it identifies you: no IP address, no headers, no query string |
-| Server logs — crash reports, refused game messages, failed email sends | Our hosting provider's retention; not removed by account deletion |
+| Server logs — the line written for each request | Nothing in it identifies you: no IP address, no headers, no query string, no id from the address |
+| Server logs — every other line (crash reports, refused game messages, account actions, failed email sends) | Our hosting provider's retention; not removed by account deletion |
 
 ## Contact
 

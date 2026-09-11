@@ -20,6 +20,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import http from "node:http";
+import express from "express";
 import { once } from "node:events";
 import type { AddressInfo } from "node:net";
 import { Writable } from "node:stream";
@@ -36,17 +37,25 @@ function schemaFields(): string[] {
   return [...fields];
 }
 
+/** A pino destination that keeps what was written to it. */
+function captureSink(): { sink: Writable; written: () => string } {
+  let written = "";
+  return {
+    sink: new Writable({
+      write(chunk, _enc, done) {
+        written += String(chunk);
+        done();
+      },
+    }),
+    written: () => written,
+  };
+}
+
 /** Reads back what pino actually wrote, rather than what it was handed. */
 function loggedLine(fields: Record<string, unknown>): Record<string, unknown> {
-  let written = "";
-  const sink = new Writable({
-    write(chunk, _enc, done) {
-      written += String(chunk);
-      done();
-    },
-  });
+  const { sink, written } = captureSink();
   createLogger(sink).warn(fields, "Socket event refused");
-  return JSON.parse(written);
+  return JSON.parse(written());
 }
 
 describe("what a refused socket event leaves in the log", () => {
@@ -105,43 +114,93 @@ describe("what a refused socket event leaves in the log", () => {
 });
 
 /**
- * One real request through the very middleware `server/app.ts` mounts, and the
- * line it wrote. A hand-built options object would only prove the test's own
- * serializer drops the address.
+ * One request, answered and closed. `agent: false` is what closes it: a
+ * keep-alive socket left in a client pool aborts the runner under
+ * `--test-force-exit`, which is how `npm test` runs this file.
  */
-async function completedRequestLine(
+function requested(
+  port: number,
   target: string,
-  headers: Record<string, string> = {}
-): Promise<Record<string, any> | null> {
-  let resolveLine: (line: string | null) => void = () => {};
-  const firstLine = new Promise<string | null>((resolve) => (resolveLine = resolve));
-  const sink = new Writable({
-    write(chunk, _enc, done) {
-      resolveLine(String(chunk));
-      done();
-    },
+  { headers, method }: { headers: Record<string, string>; method: string }
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const req = http.request({ host: "127.0.0.1", port, path: target, method, headers, agent: false }, (res) => {
+      res.resume();
+      res.on("end", () => resolve());
+    });
+    req.on("error", reject);
+    req.end();
   });
+}
 
+/**
+ * Runs one real request through the very middleware `server/app.ts` mounts and
+ * returns the line it wrote, or `null` if it wrote none. A hand-built options
+ * object would only prove the test's own serializer drops the address.
+ *
+ * `express` is only reached for when a route pattern is wanted: the serializer
+ * reads `req.route`, which nothing but a router sets.
+ */
+async function requestLine(
+  target: string,
+  { headers = {}, route }: { headers?: Record<string, string>; route?: string } = {}
+): Promise<Record<string, any> | null> {
+  const { sink, written } = captureSink();
   const middleware = createRequestLogger(createLogger(sink));
-  const server = http.createServer((req, res) => {
-    middleware(req, res);
-    res.end("ok");
+
+  let handler: http.RequestListener;
+  if (route) {
+    const app = express();
+    app.use(middleware);
+    app.get(route, (_req, res) => res.send("ok"));
+    app.delete(route, (_req, res) => res.send("ok"));
+    handler = app as unknown as http.RequestListener;
+  } else {
+    handler = (req, res) => {
+      middleware(req, res);
+      res.end("ok");
+    };
+  }
+
+  const server = http.createServer(handler);
+  // pino-http writes from its own `finish` listener, registered when the
+  // middleware ran — before this one, so by the time this fires the line is
+  // already in the sink. No wall clock, so a slow runner cannot read as
+  // "nothing was logged", which is the assertion `/health` turns on.
+  const settled = new Promise<void>((resolve) => {
+    server.on("request", (_req, res) => res.on("finish", () => setImmediate(resolve)));
   });
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
   const { port } = server.address() as AddressInfo;
 
   try {
-    await (await fetch(`http://127.0.0.1:${port}${target}`, { headers })).text();
-    // Nothing written within a settled event loop means nothing was logged;
-    // `/health` is filtered, so a silent answer is a real outcome here.
-    const timer = setTimeout(() => resolveLine(null), 250);
-    const line = await firstLine;
-    clearTimeout(timer);
-    return line === null ? null : JSON.parse(line);
+    await requested(port, target, { headers, method: route ? "DELETE" : "GET" });
+    await settled;
+    return written() === "" ? null : JSON.parse(written());
   } finally {
+    server.closeAllConnections();
     server.close();
   }
+}
+
+/** The same, and it must have written a line — every assertion below is about what is in it. */
+async function completedRequestLine(
+  target: string,
+  options?: { headers?: Record<string, string>; route?: string }
+): Promise<Record<string, any>> {
+  const line = await requestLine(target, options);
+  assert.ok(line, `nothing was logged for ${target} — every assertion about the line would pass vacuously`);
+  return line;
+}
+
+/**
+ * pino's write destination. The symbol is unique per pino copy, not
+ * `Symbol.for("pino.stream")`, so it is found by description.
+ */
+function pinoDestination(l: object): { sync?: boolean } | undefined {
+  const key = Object.getOwnPropertySymbols(l).find((s) => s.description === "pino.stream");
+  return key ? (l as Record<symbol, { sync?: boolean }>)[key] : undefined;
 }
 
 const PROXY_HEADERS = {
@@ -159,43 +218,92 @@ const PROXY_HEADERS = {
 
 describe("what a completed request leaves in the log", () => {
   test("no client address survives, from any header or from the socket", async () => {
-    const line = await completedRequestLine("/api/profile?username=ana", PROXY_HEADERS);
+    const line = await completedRequestLine("/api/profile?username=ana", { headers: PROXY_HEADERS });
     const written = JSON.stringify(line);
     assert.equal(written.includes("203.0.113.7"), false, "a proxy header put the client IP in the line");
     assert.equal(written.includes("127.0.0.1"), false, "the socket's peer address reached the line");
-    assert.equal(line?.req.remoteAddress, undefined);
-    assert.equal(line?.req.remotePort, undefined);
+    assert.equal(line.req.remoteAddress, undefined);
+    assert.equal(line.req.remotePort, undefined);
   });
 
   test("the header bag is not written at all", async () => {
-    const line = await completedRequestLine("/api/profile", PROXY_HEADERS);
-    assert.equal(line?.req.headers, undefined);
+    const line = await completedRequestLine("/api/profile", { headers: PROXY_HEADERS });
+    assert.equal(line.req.headers, undefined);
     assert.equal(JSON.stringify(line).includes("iPhone"), false, "the user agent is a fingerprint we do not need");
   });
 
-  test("the query string is dropped, the path is kept", async () => {
-    const line = await completedRequestLine("/api/profile?username=ana", PROXY_HEADERS);
-    assert.equal(line?.req.url, "/api/profile");
+  test("a matched route is logged as its pattern, so a room code never reaches the line", async () => {
+    const line = await completedRequestLine("/api/friends/invites/SECRET7", {
+      route: "/api/friends/invites/:roomCode",
+      headers: PROXY_HEADERS,
+    });
+    assert.equal(line.req.url, "/api/friends/invites/:roomCode");
+    assert.equal(JSON.stringify(line).includes("SECRET7"), false, "a room code reached the log through the URL");
+  });
+
+  test("an account id in a path is a pattern too", async () => {
+    const line = await completedRequestLine("/api/friends/42", { route: "/api/friends/:friendUserId" });
+    assert.equal(line.req.url, "/api/friends/:friendUserId");
+  });
+
+  test("a request no route matched keeps its path, without the query string", async () => {
+    const line = await completedRequestLine("/favicon.ico?v=2", { headers: PROXY_HEADERS });
+    assert.equal(line.req.url, "/favicon.ico");
   });
 
   test("what a fault is diagnosed from still comes through", async () => {
-    const line = await completedRequestLine("/api/profile", PROXY_HEADERS);
-    assert.equal(line?.req.method, "GET");
-    assert.equal(line?.res.statusCode, 200);
+    const line = await completedRequestLine("/api/profile", { headers: PROXY_HEADERS });
+    assert.equal(line.req.method, "GET");
+    assert.equal(line.res.statusCode, 200);
   });
 
   test("a health check still writes nothing", async () => {
-    assert.equal(await completedRequestLine("/health"), null);
+    assert.equal(await requestLine("/health"), null);
+  });
+
+  test("the helper can tell a written line from none at all", async () => {
+    // Without this the three negative assertions above would pass on `null`,
+    // which is what a broken logger returns.
+    assert.notEqual(await requestLine("/api/profile"), null);
   });
 
   test("server/app.ts mounts that middleware rather than building its own", () => {
     const app = readFileSync(path.join(repoRoot, "server", "app.ts"), "utf8");
-    assert.match(app, /createRequestLogger\(\)/, "server/app.ts no longer mounts createRequestLogger()");
+    assert.match(
+      app,
+      /app\.use\(createRequestLogger\(\)\)/,
+      "server/app.ts no longer mounts createRequestLogger() — the serializers below it are unreached"
+    );
     assert.equal(
       /pinoHttp\s*\(/.test(app),
       false,
       "server/app.ts builds its own pino-http options — the serializers that keep the client IP out " +
         "of the log live in server/logger.ts, and a second options object silently bypasses them"
     );
+  });
+
+  test("docs/PRIVACY.md still claims what the line actually holds", () => {
+    // The policy is written to be published; #962 is the second time it has had
+    // to describe this line. Read it against the assertions above, not against
+    // what the code did when it was written.
+    const policy = readFileSync(path.join(repoRoot, "docs", "PRIVACY.md"), "utf8");
+    assert.match(policy, /Your IP address is not written/);
+    assert.match(policy, /no IP address, no headers, no query string/);
+  });
+
+  test("the log is written asynchronously, so no request waits on it", () => {
+    // The owner's requirement on #962. pino's default destination is a
+    // SonicBoom on fd 1 with `sync: false`; `pino.destination({ sync: true })`
+    // here would put an fs.writeSync on every request's path, and nothing else
+    // in the repo would notice.
+    const before = process.env.NODE_ENV;
+    process.env.NODE_ENV = "production";
+    try {
+      const destination = pinoDestination(createLogger());
+      assert.ok(destination, "createLogger() no longer holds a pino destination — this test is reading nothing");
+      assert.equal(destination.sync, false);
+    } finally {
+      process.env.NODE_ENV = before;
+    }
   });
 });
