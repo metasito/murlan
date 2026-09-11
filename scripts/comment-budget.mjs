@@ -13,22 +13,25 @@ import { pathToFileURL } from "node:url";
 
 const CODE = /\.(mjs|js|ts|tsx)$/;
 const LINE = /^\s*(\/\/|\*|\/\*)/;
+// Scaffolding carrying no words. Neither charged nor creditable: charging it would fail a file
+// split for punctuation, and crediting it would let one deleted block excuse the frame of a new one.
+const BARE = /^\s*(\/\*\*?|\*\/|\*|\/\/)\s*$/;
+
+const prose = (body) => LINE.test(body) && !BARE.test(body);
 
 /**
  * One credit per comment line deleted anywhere in the diff. A file split moves prose verbatim, and
  * git's rename detection cannot see it: it consumes the source as one file's rename and will not
  * also report it as the others' copy source, so the exemption has to be content, not history.
  *
- * Credit is spent, never minted, so no prose can be excused that was not deleted somewhere. The
- * known ceiling: a line carrying no text, only block-comment scaffolding, matches across unrelated
- * blocks. Charging for those instead would fail a file split, which is what this exists to prevent.
+ * Credit is spent, never minted: nothing is excused that was not deleted somewhere in the diff.
  */
 function movedCredits(diff) {
   const credits = new Map();
   for (const line of diff.split("\n")) {
     if (!line.startsWith("-") || line.startsWith("---")) continue;
     const body = line.slice(1);
-    if (LINE.test(body)) credits.set(body, (credits.get(body) ?? 0) + 1);
+    if (prose(body)) credits.set(body, (credits.get(body) ?? 0) + 1);
   }
   return credits;
 }
@@ -48,11 +51,11 @@ export function budget(diff) {
     const at = files.get(file);
     const body = line.slice(1);
     // An exact match only: a line reworded on the way is prose someone wrote today.
-    if (LINE.test(body)) {
+    if (prose(body)) {
       const left = credits.get(body) ?? 0;
       if (left) credits.set(body, left - 1);
       else at.comment += 1;
-    } else if (body.trim()) at.code += 1;
+    } else if (!LINE.test(body) && body.trim()) at.code += 1;
   }
   // A handful of comments on a small change is not a ratio worth policing; the rule is about a diff
   // that is mostly prose.

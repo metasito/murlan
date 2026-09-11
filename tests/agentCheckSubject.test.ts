@@ -7,6 +7,13 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { checkSubject, readSubject } from "../scripts/preflight.mjs";
+import { BANNER } from "../scripts/check-steps.mjs";
+
+const REAP = { recursive: true, force: true, maxRetries: 3, retryDelay: 100 } as const;
+// A refusal exits at once; a regression that stops short-circuiting would otherwise run the real
+// suites, and a check turning from red into an hours-long hang is the one outcome a guard must not
+// have.
+const SPAWN = { encoding: "utf8", timeout: 60_000 } as const;
 
 const SCRIPT = fileURLToPath(new URL("../scripts/agent-check.mjs", import.meta.url));
 
@@ -72,7 +79,7 @@ before(() => {
 });
 
 after(() => {
-  if (root) fs.rmSync(root, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+  if (root) fs.rmSync(root, REAP);
   root = null;
 });
 
@@ -97,7 +104,7 @@ describe("the tree agent:check judges", () => {
   // Without this, the subject could be resolved for any tree at all and every assertion above
   // would still pass — the shape where a correct module lands with nothing calling it.
   test("the script asks about the tree it is standing in", () => {
-    const run = spawnSync(process.execPath, [SCRIPT], { cwd: shared, encoding: "utf8" });
+    const run = spawnSync(process.execPath, [SCRIPT], { ...SPAWN, cwd: shared });
     assert.notEqual(run.status, 0);
     assert.match(run.stderr, new RegExp(`nothing to judge in ${slashes(shared).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
   });
@@ -107,12 +114,12 @@ describe("the refusal is the script's, not only the helper's", () => {
   test("run where it cannot find a tree, agent-check refuses before it runs a step", () => {
     const outside = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "murlan-no-tree-")));
     try {
-      const run = spawnSync(process.execPath, [SCRIPT], { cwd: outside, encoding: "utf8" });
+      const run = spawnSync(process.execPath, [SCRIPT], { ...SPAWN, cwd: outside });
       assert.notEqual(run.status, 0, "a check that cannot locate its subject must not report green");
       assert.match(run.stderr, /agent:check: no tree to judge/);
-      assert.doesNotMatch(run.stdout, /^=== /m, "no step may run before the subject is known");
+      assert.ok(!run.stdout.includes(BANNER), "no step may run before the subject is known");
     } finally {
-      fs.rmSync(outside, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+      fs.rmSync(outside, REAP);
     }
   });
 });

@@ -67,8 +67,16 @@ describe("comment budget", () => {
     assert.equal(budget(duplicated)[0][1].comment, 7);
   });
 
-  test("block-comment bodies count", () => {
+  test("block-comment bodies count, the frame around them does not", () => {
     const lines = ["+/**", ...Array.from({ length: 8 }, () => "+ * why"), "+ */", "+const x = 1;"];
-    assert.equal(budget(diff("scripts/a.mjs", lines))[0][1].comment, 10);
+    assert.equal(budget(diff("scripts/a.mjs", lines))[0][1].comment, 8);
+  });
+
+  test("a wordless frame is neither charged nor creditable", () => {
+    const framed = [
+      diff("scripts/old.mjs", ["-/**", "- * moved", "- */"]),
+      diff("scripts/new.mjs", ["+/**", ...Array.from({ length: 8 }, (_, i) => `+ * new thought ${i}`), "+ */"]),
+    ].join("\n");
+    assert.equal(budget(framed)[0][1].comment, 8, "the deleted frame must not excuse the new one");
   });
 });

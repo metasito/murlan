@@ -10,7 +10,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { primaryWorktree, checkLockDrift, readSubject } from "./preflight.mjs";
-import { LOCAL, DELEGATED, cmd } from "./check-steps.mjs";
+import { LOCAL, DELEGATED, cmd, BANNER } from "./check-steps.mjs";
 
 /**
  * A wedged suite used to hang this check for ever, and an unattended run has nobody to notice.
@@ -122,7 +122,7 @@ if (!force && cache[key]?.pass) {
 
 const failed = [];
 for (const step of LOCAL) {
-  process.stdout.write(`\n=== ${step.name} ===\n`);
+  process.stdout.write(`\n${BANNER}${step.name} ===\n`);
   const run = spawnSync("npm", step.args, {
     stdio: "inherit",
     shell: process.platform === "win32",
