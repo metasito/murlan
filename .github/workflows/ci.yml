@@ -27,9 +27,9 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
-  # Node 22+ is required: tests run via `node --test` against .ts files
-  # directly, through the loader docs/agents/loops.md describes (stable since
-  # Node 22.6, no ts-node/tsx/vitest needed). Node 24 is the current LTS-track
+  # Node 22+ is required: tests run via `node --test` against .ts files directly
+  # (docs/agents/loops.md, "Node's TypeScript loader"), stable since Node 22.6,
+  # so no ts-node/tsx/vitest is needed. Node 24 is the current LTS-track
   # release and what the project is developed against, so pin to it to keep
   # local and CI runs identical. The `build` job is deliberately not on this —
   # it runs production's Node, for the reason given there.

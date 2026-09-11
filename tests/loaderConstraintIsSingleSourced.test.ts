@@ -11,16 +11,18 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."
 /** Where the constraint is explained. Every file it governs points here instead. */
 const AUTHORITY = "docs/agents/loops.md";
 
-/** The heading the pointers cite, so a rename of the section shows up here. */
-const SECTION = "## Node's TypeScript loader";
+/** A pointer, as written: the path, then the section it names. */
+const POINTER = /docs\/agents\/loops\.md[,)]? "([^"\n]+)"/g;
 
 const SELF = "tests/loaderConstraintIsSingleSourced.test.ts";
 
 /**
- * The wordings a restatement reaches for. Every copy this replaced used one of them, and so
- * does the authority — which is what makes the list checkable rather than a guess. It catches
- * a paste and the near-paraphrases seen so far; a restatement in wholly fresh words would pass,
- * and widening this on the day one appears is the maintenance it asks for.
+ * The wordings a restatement reaches for. The authority uses them too, which is what makes the
+ * list checkable rather than a guess: the assertion below names the file that must match. It
+ * catches a paste and a near-paraphrase; a restatement in wholly fresh words would pass, and
+ * widening this on the day one appears is the maintenance it asks for. The structural
+ * alternative — flagging any long comment block about the loader — was measured against this
+ * tree and flags four unrelated blocks, so it would ship with an exemption list instead.
  */
 const EXPLAINS =
   /type-strip|strips plain|cannot parse (a |the )?(\.tsx|JSX)|(?:bundler|tsconfig|`paths`)[\s\S]{0,30}alias/i;
@@ -60,10 +62,19 @@ describe("the Node loader constraint is written down once", () => {
     );
   });
 
-  test(`${AUTHORITY} still carries the section the pointers cite`, () => {
-    assert.ok(
-      source(AUTHORITY).includes(SECTION),
-      `no "${SECTION}" heading in ${AUTHORITY}; every pointer names it`
+  // Derived from the pointers rather than from a constant naming the section: a check that
+  // asserts what the tree says every pointer does cannot disagree with a pointer that does not.
+  test(`every section a pointer cites exists in ${AUTHORITY}`, () => {
+    const headings = source(AUTHORITY).match(/^#+ .+$/gm) ?? [];
+    const cited = tracked.flatMap((f) =>
+      [...source(f).matchAll(POINTER)].map(([, section]) => ({ file: f, section }))
+    );
+    assert.ok(cited.length > 0, `nothing cites a section of ${AUTHORITY}; the pointers went away`);
+    const dangling = cited.filter((c) => !headings.some((h) => h.includes(c.section)));
+    assert.deepEqual(
+      dangling.map((c) => `${c.file} → "${c.section}"`),
+      [],
+      `${AUTHORITY} has no such heading any more`
     );
   });
 });
