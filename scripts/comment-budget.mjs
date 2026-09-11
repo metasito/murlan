@@ -14,6 +14,7 @@ import { pathToFileURL } from "node:url";
 
 const CODE = /\.(mjs|js|ts|tsx)$/;
 const LINE = /^\+\s*(\/\/|\*|\/\*)/;
+const OPENS = /^\+\s*\/\*/;
 
 export function budget(diff) {
   const files = new Map();
@@ -28,6 +29,32 @@ export function budget(diff) {
     return named ? (CODE.test(named[1]) ? named[1] : null) : undefined;
   };
 
+  // One side of the diff, as `[file, text, comment]` per line of its own; both passes read it,
+  // so what a comment is gets decided once. A block comment's body is prose whatever its lines
+  // start with — the leading `*` is a convention, not the syntax. A context line opens and closes
+  // a block without being counted in either version. Block state is per hunk, and that is the
+  // ceiling: a body whose `/*` falls outside the hunk reads as code.
+  function* side(sign) {
+    let file = null;
+    let block = false;
+    for (const line of lines) {
+      const named = pathOf(line);
+      if (named !== undefined || line.startsWith("@@")) {
+        if (named !== undefined) file = named;
+        block = false;
+        continue;
+      }
+      if (!file || line.startsWith("+++") || line.startsWith("---")) continue;
+      const own = line.startsWith(sign);
+      if (!own && !line.startsWith(" ")) continue;
+      const text = "+" + line.slice(1);
+      const open = block || OPENS.test(text);
+      block = open && !text.includes("*/");
+      const body = line.slice(1).trim();
+      if (own && body) yield [file, body, open || LINE.test(text)];
+    }
+  }
+
   // A comment line the diff also deletes somewhere is prose that moved, not prose
   // that was written: an extraction carries a function's docstring to its new file,
   // and counting that as explanation would price documenting a small function out of
@@ -35,33 +62,20 @@ export function budget(diff) {
   // addition, so no amount of new prose can hide behind it — and credit is minted
   // only in the files it can be spent in, or deleting a doc would fund a docstring.
   const moved = new Map();
-  let from = null;
-  for (const line of lines) {
-    const named = pathOf(line);
-    if (named !== undefined) {
-      from = named;
-      continue;
-    }
-    if (!from || !line.startsWith("-") || !LINE.test("+" + line.slice(1))) continue;
-    const text = line.slice(1).trim();
-    moved.set(text, (moved.get(text) ?? 0) + 1);
+  for (const [, text, comment] of side("-")) {
+    if (comment) moved.set(text, (moved.get(text) ?? 0) + 1);
   }
 
-  let file = null;
-  for (const line of lines) {
-    const named = pathOf(line);
-    if (named !== undefined) {
-      file = named;
-      if (file && !files.has(file)) files.set(file, { comment: 0, code: 0 });
+  for (const [file, text, comment] of side("+")) {
+    if (!files.has(file)) files.set(file, { comment: 0, code: 0 });
+    const at = files.get(file);
+    if (!comment) {
+      at.code += 1;
       continue;
     }
-    if (!file || !line.startsWith("+") || line.startsWith("+++")) continue;
-    const at = files.get(file);
-    if (LINE.test(line)) {
-      const left = moved.get(line.slice(1).trim()) ?? 0;
-      if (left) moved.set(line.slice(1).trim(), left - 1);
-      else at.comment += 1;
-    } else if (line.slice(1).trim()) at.code += 1;
+    const left = moved.get(text) ?? 0;
+    if (left) moved.set(text, left - 1);
+    else at.comment += 1;
   }
   // A handful of comments on a small change is not a ratio worth policing; the rule is about a diff
   // that is mostly prose.
