@@ -9,13 +9,13 @@
 //
 // So: no chaos, a few seconds, and the only claim is that cards left hands.
 //
-// A few seconds is `GATE.playMinutes`, and what that window does not reach is a
-// game-over: nine seconds is around seventeen turns, and a four-handed manche
-// runs far past that. The rematch vote, the re-deal and the high-water-mark
-// reset below are exercised by `npm run soak` and by soak.yml, never here — and
-// they were not exercised here at 24s either, where `result.manches` was already
-// 0. What this run gates is the turn: a deal, legal moves, and four views that
-// agree over every one of them.
+// A few seconds is `GATE.playMinutes` — around eighteen turns, measured — and what
+// it does not reach is a game-over. A four-handed manche runs past any window that
+// fits beside the suite's own per-test budget (`tests/soak/gateBudget.ts` refuses
+// the ones that don't), so the rematch vote, the re-deal and the high-water-mark
+// reset belong to `npm run soak` and soak.yml and are not gated anywhere. What is
+// gated here is the turn: a deal, legal moves, and four views that agree over every
+// one of them.
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
 import { hasDatabase, skipMessage } from "../helpers/testServer.ts";
