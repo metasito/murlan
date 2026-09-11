@@ -28,6 +28,22 @@ export function classifyStatus(porcelain) {
   return { blocking, untracked };
 }
 
+/**
+ * The tree `agent:check` is judging, from that tree's own readings. It is the worktree the check
+ * was invoked from — never the primary, which shares this repository's checkout but not its branch.
+ *
+ * A subject with nothing in it is a refusal rather than a pass: a check looking at no diff has
+ * nothing its green could be a statement about, and the loop only ever runs this before a push.
+ */
+export function checkSubject({ toplevel, baseSha, changed }) {
+  if (!toplevel) return { refuse: "no tree to judge — this is not inside a git worktree" };
+  if (!baseSha) return { refuse: "no base to judge against — origin/main does not resolve" };
+  if (!changed.trim()) {
+    return { refuse: `nothing to judge in ${toplevel} — no commits and no edits against origin/main` };
+  }
+  return { root: toplevel, base: baseSha.slice(0, 7) };
+}
+
 /** The primary worktree — `git worktree list` always prints it first. */
 export function primaryWorktree(porcelainList) {
   const first = porcelainList.split("\n").find((l) => l.startsWith("worktree "));
