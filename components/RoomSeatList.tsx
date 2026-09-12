@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { View, Text, StyleSheet } from "react-native";
 import { Avatar } from "@/components/Avatar";
 import { teamForSeat } from "@/lib/gameEngine";
@@ -29,12 +29,6 @@ export interface SeatHoldView {
   expiresInMs: number;
 }
 
-interface Hold {
-  seatIndex: number;
-  username: string;
-  expiresAt: number;
-}
-
 export interface RoomSeatListProps {
   maxSeats: number;
   gameMode: string;
@@ -63,36 +57,36 @@ export function RoomSeatList({
   isLandscape,
 }: RoomSeatListProps) {
   const { t } = useTranslation();
-  const [holds, setHolds] = useState<Hold[]>([]);
+  // How far into this list's own lifetime the lapsed ones reach. The server
+  // sends each hold as a duration, so keeping the threshold in those same units
+  // means nothing here has to turn one into a wall-clock time — which render
+  // must not read.
+  const [lapsedMs, setLapsedMs] = useState(0);
+  const arrivedAtRef = useRef(0);
 
+  const [shownHolds, setShownHolds] = useState(seatHolds);
+  if (seatHolds !== shownHolds) {
+    setShownHolds(seatHolds);
+    setLapsedMs(0);
+  }
+
+  // Declared before the scheduler below, which measures against it: effects run
+  // in declaration order, so the arrival is recorded before anything reads it.
   useEffect(() => {
-    const arrived = Date.now();
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- the server sends a duration; turning it into a deadline reads the wall clock, which render must not
-    setHolds(
-      (seatHolds ?? []).map((hold) => ({
-        seatIndex: hold.seatIndex,
-        username: hold.username,
-        expiresAt: arrived + hold.expiresInMs,
-      }))
-    );
+    arrivedAtRef.current = Date.now();
   }, [seatHolds]);
 
   useEffect(() => {
-    let soonest: number | undefined;
-    for (const hold of holds) {
-      if (soonest === undefined || hold.expiresAt < soonest) soonest = hold.expiresAt;
-    }
-    if (soonest === undefined) return;
+    const soonest = Math.min(
+      ...(seatHolds ?? []).filter((hold) => hold.expiresInMs > lapsedMs).map((h) => h.expiresInMs)
+    );
+    if (!Number.isFinite(soonest)) return;
     const timer = setTimeout(
-      () =>
-        setHolds((prev) => {
-          const live = prev.filter((hold) => hold.expiresAt > Date.now());
-          return live.length === prev.length ? prev : live;
-        }),
-      Math.max(0, soonest - Date.now()) + HOLD_LAPSE_MARGIN_MS
+      () => setLapsedMs(soonest),
+      Math.max(0, arrivedAtRef.current + soonest - Date.now()) + HOLD_LAPSE_MARGIN_MS
     );
     return () => clearTimeout(timer);
-  }, [holds]);
+  }, [seatHolds, lapsedMs]);
 
   const rowHeight = isLandscape ? SEAT_ROW_H_COMPACT : SEAT_ROW_H;
   const rowPaddingVertical = isLandscape ? SEAT_ROW_PAD_V_COMPACT : SEAT_ROW_PAD_V;
@@ -107,7 +101,9 @@ export function RoomSeatList({
         const team = teamForSeat(seatIndex, maxSeats, gameMode as "teams" | "free_for_all");
         const heldFor = player
           ? undefined
-          : holds.find((hold) => hold.seatIndex === seatIndex)?.username;
+          : (seatHolds ?? []).find(
+              (hold) => hold.seatIndex === seatIndex && hold.expiresInMs > lapsedMs
+            )?.username;
         return (
           <View
             key={seatIndex}
