@@ -4,6 +4,26 @@ import { getApiUrl } from "@/lib/query-client";
 const socketMap = new Map<string, Socket>();
 
 /**
+ * The map, readable by React without owning a copy of it.
+ *
+ * `connectSocket` mints one, so asking it during a render would be a render
+ * that creates a connection. These two only report what is already there, which
+ * is what lets `SocketContext` read the socket rather than mirror it into state.
+ */
+const mapListeners = new Set<() => void>();
+
+export function subscribeToSockets(onChange: () => void): () => void {
+  mapListeners.add(onChange);
+  return () => {
+    mapListeners.delete(onChange);
+  };
+}
+
+export function peekSocket(userId: string | null | undefined): Socket | null {
+  return userId ? (socketMap.get(userId) ?? null) : null;
+}
+
+/**
  * Fired when the ticket endpoint reports the session is dead (401). Retrying
  * a ticket mint after that can never succeed until the user logs in again —
  * SocketContext registers this to stop hammering the endpoint and route to
@@ -65,6 +85,7 @@ export function connectSocket(userId: string): Socket {
     reconnectionDelayMax: 5000,
   });
   socketMap.set(userId, socket);
+  mapListeners.forEach((fn) => fn());
   return socket;
 }
 
@@ -75,5 +96,6 @@ export function disconnectSocket(userId: string) {
     s.removeAllListeners();
     s.disconnect();
     socketMap.delete(userId);
+    mapListeners.forEach((fn) => fn());
   }
 }
