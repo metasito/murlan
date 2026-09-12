@@ -39,6 +39,14 @@ Never ask the user a question while a run is live.
 
 ## A — Start
 
+Say which phase you are in, as the whole of one message, before its first command:
+
+`PHASE A`
+
+The supervisor reads that line and nothing else about your progress. One line, on its own, no prose
+around it — a sentence mentioning the phase is not a phase report. Do the same at the top of every
+phase below.
+
 **Run this first, before anything else, every time — including a fresh process that has never seen
 this ticket:**
 
@@ -65,9 +73,16 @@ node scripts/next-ticket.mjs $ARGUMENTS   # prints ROUTE, body, comments, blocke
 loop-level, none of it about this ticket, which is why `queue-loop.mjs` runs it before it spawns you
 and you will normally see it already done.
 
-If it fails, **halt** — do not work around it. `$ARGUMENTS` is normally empty, which picks
-from the live queue. Pass an explicit issue number by hand (`/queue 911`) to inspect or work that
-one ticket instead of picking — `next-ticket.mjs` already supports this as its `explicit` branch.
+If it fails, **halt** — do not work around it.
+
+`scripts/queue-loop.mjs` passes the ticket number, so `$ARGUMENTS` is normally set and
+`next-ticket.mjs $ARGUMENTS` inspects *that* ticket rather than picking. A bare `/queue` with no
+argument picks from the live queue, which is the by-hand form.
+
+**You work the ticket you were given.** If it turns out to be wrong — the claim race is lost, the
+premise is false, a blocker is named in a comment — say so on the issue, remove your label, and
+**exit**. Do not pick another one: the supervisor starts the next process, and a session that picks
+a second ticket spends one ticket's accounting on two.
 
 This runs once, for exactly one ticket, then phases B–F carry it to a close. `scripts/queue-loop.mjs`
 is what keeps going — it is a fresh `claude -p "/queue"` invocation that starts the next ticket, not
@@ -118,6 +133,8 @@ of done is not a ticket — park it.
 
 ## B — Scope
 
+`PHASE B`
+
 One subagent (`sonnet`), so the codebase never enters this context:
 
 > Investigate issue #N in the worktree `.worktrees/agent-N`. Report: which files the change has to
@@ -136,6 +153,8 @@ costs to get wrong — not a reason to hand it back. The review in phase D is th
 
 ## C — Build
 
+`PHASE C`
+
 `mattpocock-skills:tdd`. A bug goes through `mattpocock-skills:diagnosing-bugs` first. Those two, by
 those exact names — inside this loop they outrank any general instruction to reach for a superpowers
 process skill, which would otherwise answer the same trigger differently each ticket.
@@ -153,6 +172,14 @@ How to solve it is yours. What follows constrains the process, never the design:
   way you would have if the ticket were yours. `ready-for-human` only when closing it needs an
   account, a device, a design call or a policy call you cannot make. Defaulting to the owner is how
   #962 filed three agent-decidable tickets (#971, #973, #975) out of the queue in one run.
+
+  If the thing you filed cannot be started until this ticket lands — it edits the same file, or it
+  builds on what you are adding — record that, or the picker will serve it against a `main` that
+  does not have your change and the session will be stuck the way #995 was:
+
+  ```sh
+  gh api -X POST repos/{owner}/{repo}/issues/<new>/dependencies/blocked_by -f issue_id=<this>
+  ```
 - A bug three levels under the bug in hand: file it, do not follow it.
 - **Commit each slice as you finish it** — `git add -- <paths>`, never `-A`. An unstaged edit is the
   only work this loop can lose.
@@ -161,6 +188,8 @@ Before leaving C, `git rev-list --count origin/main..HEAD` must be non-zero. You
 you did is not evidence; git is.
 
 ## D — Review
+
+`PHASE D`
 
 `mattpocock-skills:code-review`. Round 1's fixed point is `origin/main`; every later round's is the
 sha the previous round reviewed — that delta, plus the findings that round left open. Round 1 and
@@ -217,6 +246,8 @@ Where you disagree with a finding, one line in the commit body — never a softe
 
 ## E — Land
 
+`PHASE E`
+
 ```sh
 node scripts/loop-gate.mjs
 ```
@@ -268,15 +299,19 @@ on this machine and mangles every em-dash in it — and the body you are writing
 this repo's prose, which is full of them.
 
 CI is not yours to read, and neither is the merge. `scripts/queue-loop.mjs` waits for the run this
-push started, updates the branch if main moved, merges when it is green, takes `in-progress` off,
-and removes the worktree. None of that is a judgement, and a model reading a CI log to decide that
-green means merge is a model spending turns on a switch statement.
+push started, updates the branch if main moved, merges when it is green and takes `in-progress` off.
+None of that is a judgement, and a model reading a CI log to decide that green means merge is a
+model spending turns on a switch statement. `scripts/guard-bash.mjs` blocks `gh pr merge` from a
+session — two of them merged a peer's pull request to unblock themselves, and the supervisor then
+parked the ticket that had just landed.
 
 If CI goes red, the loop starts a fresh session on this same ticket — `derive()` finds it from the
 branch and the open pull request, exactly as it finds any live run — and that session fixes it from
 the failure the pull request shows, gets a fresh review of the new head, and pushes again.
 
 ## F — Close out
+
+`PHASE F`
 
 1. Re-read the issue, rule 25's way — the same command phase A ends with. A ruling can land while
    you were building, and a ticket answered against its first version is answered against the wrong
@@ -290,12 +325,26 @@ the failure the pull request shows, gets a fresh review of the new head, and pus
    close is named there, with why. An honest gap is worth more than a green report.
 3. In that same comment, one line on the effective diff in plain language — "the hand fans from the
    left edge", not "edited handLayout.ts".
-4. **Exit.** One ticket per process, by design: `scripts/queue-loop.mjs` starts the next ticket in a
+4. **Tear down your worktree.**
+
+   ```sh
+   git -C .worktrees/agent-<n> status --short      # nothing unexpected left behind?
+   npm run worktrees:remove -- .worktrees/agent-<n>
+   git worktree list                               # yours is gone
+   ```
+
+   You are the only process that knows whether that tree is dirty, which is why this is yours and
+   not the supervisor's. If the removal refuses, **read what it names** — that is work you have not
+   committed. Commit it to your branch and push again, or say on the issue what it is. Never pass
+   `--force` and never `rm -rf`: a `--force` removal walks *through* the `node_modules` junction
+   into the shared install and exits 0. `scripts/guard-bash.mjs` blocks the form; the reason is
+   measured, not theorised.
+
+5. **Exit.** One ticket per process, by design: `scripts/queue-loop.mjs` starts the next ticket in a
    clean process, so there is nothing here to reset and nothing that can leak forward. Do not loop
    back to phase A in this session.
 
-The loop tears the worktree down, on the landed, parked and stopped paths alike. A run that cost
-forty minutes and stopped is the one whose record is worth having.
+A run that cost forty minutes and stopped is the one whose record is worth having.
 
 ## Compaction
 

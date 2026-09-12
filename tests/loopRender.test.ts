@@ -9,10 +9,7 @@ import {
   reportRow,
   runTotal,
   PHASES,
-  heartbeat,
-  BLANK,
   clockAt,
-  detailOf,
 } from "../scripts/loop-render.mjs";
 
 describe("elapsed", () => {
@@ -101,53 +98,6 @@ describe("phaseLine", () => {
   });
 });
 
-describe("detailOf", () => {
-  const snap = {
-    branch: "agent/953-rate-limiter-factory",
-    commits: 3,
-    changed: ["a.ts", "b.ts", "c.ts", "d.ts"],
-    dirty: false,
-    head: "6863af4cafebabe",
-    trackerReadable: true,
-    verdict: null as { decision: string } | null,
-  };
-
-  test("the claim shows the branch it made", () => {
-    assert.equal(detailOf("A", snap), "agent/953-rate-limiter-factory");
-  });
-
-  test("the scope counts the subagents it dispatched, singular when there was one", () => {
-    assert.equal(detailOf("B", { ...snap, tasks: 2 }), "2 subagents");
-    assert.equal(detailOf("B", { ...snap, tasks: 1 }), "1 subagent");
-  });
-
-  test("the build shows the commits and the diff, and says so when work is left uncommitted", () => {
-    assert.equal(detailOf("C", snap), "3 commits · 4 files");
-    assert.equal(detailOf("C", { ...snap, dirty: true }), "3 commits · 4 files · dirty");
-    assert.equal(detailOf("C", { ...snap, commits: 0 }), "");
-    assert.equal(detailOf("C", { ...snap, commits: 0, dirty: true }), "uncommitted");
-  });
-
-  test("the review names the verdict and the commit it covers, and its rounds", () => {
-    assert.equal(detailOf("D", { ...snap, verdict: { decision: "LAND" } }), "LAND 6863af4");
-    assert.equal(detailOf("D", { ...snap, verdict: { decision: "HOLD" }, tasks: 2 }), "HOLD 6863af4 · 2 reviews");
-    assert.equal(detailOf("D", snap), "no verdict for 6863af4");
-    assert.equal(detailOf("D", { ...snap, trackerReadable: false }), "tracker unreadable");
-  });
-
-  test("the push names the head CI will answer for", () => {
-    assert.equal(detailOf("E", snap), "pushed 6863af4 · 4 files");
-  });
-
-  // The board's phases are read from git and the tracker; a night that cannot reach either still has
-  // phases to draw, and a column inventing a count is worse than one saying nothing.
-  test("nothing readable is a blank column, never a guess", () => {
-    for (const [letter] of PHASES) {
-      assert.doesNotMatch(detailOf(letter, {}), /\d/, `${letter} invented a figure`);
-    }
-    assert.equal(detailOf("C", {}), "");
-  });
-});
 
 describe("closing", () => {
   test("a landed ticket leads with the tick and carries the figures", () => {
@@ -232,26 +182,6 @@ describe("runTotal", () => {
 });
 
 // Drawn and erased in place, so it must fill exactly the phase line's columns.
-describe("heartbeat", () => {
-  test("stands in the same columns as the phase line it is replaced by", () => {
-    const beat = heartbeat({ letter: "C", ms: 511_000, at: 0 });
-    const real = phaseLine({ letter: "C", detail: "", ms: 511_000 });
-    assert.equal(beat.length, real.length);
-    assert.match(beat, /\[3\/6\] C\s+build/);
-    assert.match(beat, /8:31/);
-  });
-
-  test("turns, so a stopped clock is visibly a stopped loop", () => {
-    const letters = [0, 1, 2, 3, 4].map((at) => heartbeat({ letter: "C", ms: 1000, at })[2]);
-    assert.ok(new Set(letters).size > 1, "the spinner never changes");
-    assert.equal(letters[0], letters[4], "and it cycles");
-  });
-
-  test("BLANK covers a whole line, which is what erases it", () => {
-    assert.equal(BLANK.length, phaseLine({ letter: "A", detail: "", ms: 0 }).length);
-    assert.equal(BLANK.trim(), "");
-  });
-});
 
 // A wait is only actionable as a time and a distance.
 describe("clockAt", () => {

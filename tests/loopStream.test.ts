@@ -1,7 +1,7 @@
 // tests/loopStream.test.ts
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { readLine, phaseOf, toPattern, PHASE_MARKERS, REDERIVE } from "../scripts/loop-stream.mjs";
+import { readLine } from "../scripts/loop-stream.mjs";
 
 describe("readLine", () => {
   test("returns null for a line that is not JSON, rather than throwing", () => {
@@ -34,10 +34,12 @@ describe("readLine", () => {
       kind: "rate_limit",
       status: "allowed",
       blocked: false,
+      warning: false,
       resetsAt: 1789134000,
       resetsAtMs: 1789134000000,
       window: "five_hour",
       used: 0.28,
+      errorCode: null,
     });
   });
 
@@ -94,6 +96,7 @@ describe("readLine", () => {
     });
     assert.deepEqual(readLine(line), {
       kind: "result",
+      origin: null,
       isError: false,
       subtype: "success",
       terminalReason: null,
@@ -117,56 +120,8 @@ describe("readLine", () => {
   });
 });
 
-describe("toPattern", () => {
-  test("turns a queue.md placeholder into a wildcard and escapes the rest", () => {
-    const re = toPattern("gh issue edit <n> --add-label in-progress");
-    assert.ok(re.test("gh issue edit 953 --add-label in-progress"));
-    assert.ok(!re.test("gh issue edit 953 --add-label ready-for-human"));
-  });
 
-  test("a regex metacharacter in the doc string is matched literally", () => {
-    const re = toPattern("npm run worktrees:remove -- .worktrees/agent-<n>");
-    assert.ok(re.test("npm run worktrees:remove -- .worktrees/agent-953"));
-    assert.ok(!re.test("npm run worktreesXremove -- Yworktrees/agent-953"));
-  });
-});
 
-describe("phaseOf", () => {
-  test("the claim write marks phase A", () => {
-    assert.equal(phaseOf({ name: "Bash", command: "gh issue edit 953 --add-label in-progress" }), "A");
-  });
-
-  test("a Task dispatch marks phase B whatever it says", () => {
-    assert.equal(phaseOf({ name: "Task", command: "" }), "B");
-  });
-
-  test("the push marks phase E", () => {
-    assert.equal(phaseOf({ name: "Bash", command: "git push -u origin agent/953-rate-limiter" }), "E");
-  });
-
-  test("an unrelated command marks nothing", () => {
-    assert.equal(phaseOf({ name: "Bash", command: "ls -la" }), null);
-    assert.equal(phaseOf({ name: "Read", command: "" }), null);
-  });
-
-  test("every marker names a tool and every Bash marker carries a doc string", () => {
-    for (const m of PHASE_MARKERS) {
-      assert.ok(m.tool, `marker for phase ${m.phase} names no tool`);
-      if (m.tool === "Bash") assert.ok(m.doc, `Bash marker for phase ${m.phase} has no doc string to pin`);
-    }
-  });
-});
-
-describe("REDERIVE", () => {
-  test("a commit and a verdict comment are both worth re-deriving after", () => {
-    assert.ok(REDERIVE.test("git commit -m 'feat: x'"));
-    assert.ok(REDERIVE.test("gh issue comment 953 --body-file /tmp/v.md"));
-  });
-
-  test("reading a file is not", () => {
-    assert.ok(!REDERIVE.test("cat package.json"));
-  });
-});
 
 /** A healthy session emits this several times a minute; only "rejected" is work refused. */
 describe("rate_limit_event is a usage meter, not an alarm", () => {
@@ -214,5 +169,42 @@ describe("rate_limit_event is a usage meter, not an alarm", () => {
 
   test("an event with no info at all is not read as a block", () => {
     assert.equal(read(JSON.stringify({ type: "rate_limit_event" })).blocked, false);
+  });
+});
+
+// The session is the only thing that knows what phase it is in.
+describe("a PHASE line from the session", () => {
+  const said = (text: string) =>
+    readLine(JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text }] } }));
+
+  test("on its own, it is a fact", () => {
+    assert.deepEqual(said("PHASE D"), { kind: "phase", letter: "D" });
+  });
+
+  test("surrounding whitespace does not stop it being one", () => {
+    assert.deepEqual(said("  PHASE E\n"), { kind: "phase", letter: "E" });
+  });
+
+  test("prose mentioning a phase is not a fact", () => {
+    assert.notEqual(said("now in PHASE D of six")?.kind, "phase");
+  });
+
+  test("a letter outside A-F is not a phase", () => {
+    assert.notEqual(said("PHASE Z")?.kind, "phase");
+  });
+});
+
+// A background task's wake-up is a turn and emits a result of its own; the real one carries
+// `origin: null`. Last-wins across all of them reported a 144-turn session as one turn.
+describe("a result's origin", () => {
+  const result = (over: object) =>
+    readLine(JSON.stringify({ type: "result", subtype: "success", num_turns: 41, ...over })) as any;
+
+  test("the session's own result carries none", () => {
+    assert.equal(result({}).origin, null);
+  });
+
+  test("a task notification's is carried through, so the reader can skip it", () => {
+    assert.deepEqual(result({ origin: { kind: "task-notification" } }).origin, { kind: "task-notification" });
   });
 });

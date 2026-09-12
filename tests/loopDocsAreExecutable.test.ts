@@ -3,7 +3,6 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, existsSync } from "node:fs";
 import { allowedTools } from "../scripts/loop-tools.mjs";
-import { PHASE_MARKERS, toPattern } from "../scripts/loop-stream.mjs";
 import { queueLoopArgs } from "../scripts/queue-loop.mjs";
 
 /**
@@ -101,21 +100,32 @@ describe("phase A's housekeeping belongs to the supervisor", () => {
   });
 });
 
-// The marker table is a premise about queue.md's commands, and a premise in prose decays: this PR
-// moved the worktree teardown to the supervisor, and phase F's marker went on naming a command the
-// file no longer contains — a board that would have printed five phases out of six, silently.
-describe("every phase marker names a command queue.md actually runs", () => {
-  test("each doc string matches a line of the file", () => {
-    const text = read(QUEUE);
-    for (const marker of PHASE_MARKERS) {
-      if (!marker.doc) continue;
-      assert.match(text, toPattern(marker.doc), `phase ${marker.phase}: queue.md no longer runs "${marker.doc}"`);
-    }
+// The supervisor reads the session's own `PHASE <letter>` line and nothing else about its
+// progress. Inferring it from outside by regexing queue.md's commands missed 74 of 131 markers,
+// because queue.md itself prescribes `git add -- <paths>` before committing.
+describe("every phase of queue.md reports itself", () => {
+  for (const letter of ["A", "B", "C", "D", "E", "F"]) {
+    test(`phase ${letter} echoes its own letter`, () => {
+      assert.match(read(QUEUE), new RegExp("^`PHASE " + letter + "`$", "m"), `phase ${letter} has no echo`);
+    });
+  }
+
+  test("the echo is a line of its own, which is what the reader matches", () => {
+    // A sentence mentioning the phase is not a phase report, so the instruction has to say so.
+    assert.match(read(QUEUE), /as the whole of one message/);
+  });
+});
+
+// The session is the only process that knows whether its tree is dirty. The supervisor removed it
+// without --force against a post-push tree that is always dirty, the removal refused, and the
+// surviving directory made derive() report a live run.
+describe("the session tears down its own worktree", () => {
+  test("phase F names the script that detaches the junction first", () => {
+    assert.match(read(QUEUE), /npm run worktrees:remove -- \.worktrees\/agent-<n>/);
   });
 
-  test("the table covers every phase the session itself can mark", () => {
-    const marked = PHASE_MARKERS.map((m) => m.phase);
-    assert.deepEqual(marked, ["A", "B", "E"], "C and D come from derive(); F is the supervisor's own work");
+  test("nothing still claims the supervisor does it", () => {
+    assert.doesNotMatch(read(QUEUE), /The loop tears the worktree down/);
   });
 });
 
@@ -133,7 +143,7 @@ describe("the --tools list is queue.md's own declaration", () => {
   });
 
   test("the list it yields is what the spawn actually passes", () => {
-    const args = queueLoopArgs();
+    const args = queueLoopArgs(1);
     const passed = args[args.indexOf("--tools") + 1].split(",");
     assert.deepEqual(passed, allowedTools(read(QUEUE)));
   });

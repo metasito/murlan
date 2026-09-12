@@ -92,3 +92,4 @@ backups/
 
 # Per-ticket stream logs and the run's own report. Large, local, and never reviewed.
 .loop-logs/
+.loop-stop
