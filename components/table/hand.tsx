@@ -537,7 +537,7 @@ export function StraightHand({
   // give-back) mounts with the deal disarmed and simply appears in place.
   const [dealArmed, setDealArmed] = useState(true);
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- see above: armed is "the hand was empty last render", which this render cannot see
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- armed means "the hand was empty last render", which this render cannot see
     setDealArmed(n === 0);
   }, [n]);
 

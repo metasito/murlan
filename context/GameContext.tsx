@@ -402,7 +402,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!gameState) return;
     if (match.over) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- see above: the save is external storage, and a finished match has nothing left to restore
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- `clearSavedGame` drops `hasSavedGame` with the stored row, and the row is what the flag reports
       clearSavedGame();
       return;
     }

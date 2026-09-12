@@ -154,7 +154,7 @@ export default function OnlineGameScreen() {
 
   useEffect(() => {
     if (!gameState?.gameOver) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- follows the server's own gameOver, which this screen never sets
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- clears the latch, so the next game-over of the session waits out the delay too
       setShowGameOver(false);
       return;
     }

@@ -57,8 +57,10 @@ module.exports = defineConfig([
       // here was read one at a time for #891. The ones that remain are syncs
       // to something React cannot see — a socket, a media query, a wall clock,
       // an interval's first tick — and each carries its own
-      // `eslint-disable-next-line` naming that signal, so a new one of these
-      // arrives as an error rather than as company.
+      // `eslint-disable-next-line` naming that signal. The rule reports once
+      // per effect, so such a directive exempts the whole effect it sits in;
+      // what it catches is a *new* effect, and `tests/hooksLint` is what keeps
+      // the exemptions one line wide and answerable.
       "react-hooks/set-state-in-effect": "error",
       "no-restricted-syntax": [
         "error",
@@ -139,15 +141,15 @@ module.exports = defineConfig([
     rules: {
       "import/first": "off",
       "@typescript-eslint/no-require-imports": "off",
-      // `globals` and `refs` police render purity for the React Compiler,
-      // which never compiles this suite. What they flag is a Probe assigning a
-      // hook's return value to a module-scope `let` so the test body can drive
-      // it, and `renderHook` — the shape they accept — cannot stand in: these
-      // tests assert that a *consumer* re-rendered with the new value, which
-      // is what the Probe is there to be. Weighed site by site in #891; kept
-      // off here, and the `tests/hooksLint` pin refuses it anywhere else.
+      // `globals` polices render purity for the React Compiler, which never
+      // compiles this suite. What it flags is a Probe assigning a hook's
+      // return value to a module-scope `let` so the test body can drive it,
+      // and `renderHook` — the shape it accepts — cannot stand in: these tests
+      // assert that a *consumer* re-rendered with the new value, which is what
+      // the Probe is there to be. Weighed site by site in #891; kept off here,
+      // and the `tests/hooksLint` pin refuses it anywhere else. `refs` is on:
+      // its one site was a write during render, which an effect does properly.
       "react-hooks/globals": "off",
-      "react-hooks/refs": "off",
     },
   },
   {

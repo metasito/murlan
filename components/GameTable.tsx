@@ -363,7 +363,7 @@ export function GameTable({
   // manche is which, so a flag that outlived the opening would swallow the next
   // one whenever two deals ran the same way.
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- see above: nothing in the state names the manche, so only the opening's end can clear this
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- nothing in the state names the manche, so only the opening's own end can clear this
     if (!openingPending) setOpeningSpent(false);
   }, [openingPending]);
   const holdingForStart = openingPending && !openingSpent;

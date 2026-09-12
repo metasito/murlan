@@ -82,7 +82,7 @@ export default function OnlineLobbyScreen() {
   // screen rather than replacing it, so back would come home to a banner still
   // claiming a join is in flight.
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- the join ends on whichever of the socket's two answers lands first
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- a room id is the socket's answer arriving, and the banner has nothing left to say
     if (error || roomId) setJoiningInvite(false);
   }, [error, roomId]);
 

@@ -35,7 +35,7 @@ export default function ReplayScreen() {
   const { t } = useTranslation();
   const { id } = useLocalSearchParams<{ id: string }>();
   const [index, setIndex] = useState(-1);
-  const [playRequested, setPlaying] = useState(false);
+  const [playRequested, setPlayRequested] = useState(false);
   const [speedIndex, setSpeedIndex] = useState(0);
   const [movesOpen, setMovesOpen] = useState(false);
 
@@ -66,7 +66,7 @@ export default function ReplayScreen() {
    */
   const scrubTo = useCallback(
     (next: number) => {
-      setPlaying(false);
+      setPlayRequested(false);
       setIndex(clamp(next));
     },
     [clamp]
@@ -82,7 +82,7 @@ export default function ReplayScreen() {
 
   const step = useCallback(
     (delta: number) => {
-      setPlaying(false);
+      setPlayRequested(false);
       setIndex((i) => clamp(i + delta));
       hapticSelection();
     },
@@ -172,7 +172,7 @@ export default function ReplayScreen() {
           onStep={step}
           onRestart={restart}
           onTogglePlay={() => {
-            setPlaying((p) => !p);
+            setPlayRequested((p) => !p);
             hapticSelection();
           }}
           onExit={() => {

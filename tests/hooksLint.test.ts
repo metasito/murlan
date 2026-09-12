@@ -5,7 +5,9 @@
 // exemption going quiet: `"off"` put back in eslint.config.js for app code, a
 // file-wide `/* eslint-disable */` at the top of a screen, or a bare
 // `eslint-disable-next-line` with no reason — each of which reopens the whole
-// class with CI green, which is the state #891 started from.
+// class with CI green, which is the state #891 started from. A directive naming
+// no rule is the worst of the three and the hardest to see, so it is an
+// offender here on its own terms rather than for the rules it happens to cover.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
@@ -19,6 +21,7 @@ const require = createRequire(import.meta.url);
 /** Every rule #891 adopted, and the only directory any of them may be off for. */
 const ADOPTED = ["react-hooks/set-state-in-effect", "react-hooks/globals", "react-hooks/refs"];
 const OFF_ONLY_FOR = "tests/native/**/*.{ts,tsx}";
+const ALWAYS_ON = ["react-hooks/set-state-in-effect", "react-hooks/refs"];
 
 type Block = { files?: string[]; rules?: Record<string, unknown> };
 
@@ -42,25 +45,23 @@ function sourceFiles(dir: string): string[] {
 }
 
 describe("the react-hooks 7 rules #891 adopted stay adopted", () => {
-  test("set-state-in-effect is off nowhere — app code has per-site exemptions instead", () => {
-    const off = blocksTurningOff("react-hooks/set-state-in-effect");
-    assert.deepEqual(
-      off.map((block) => block.files),
-      [],
-      "a whole directory exempted again; #891 audited 21 sites one at a time for this reason"
-    );
-  });
-
-  for (const rule of ["react-hooks/globals", "react-hooks/refs"]) {
-    test(`${rule} is off for tests/native and nothing else`, () => {
-      const off = blocksTurningOff(rule);
+  for (const rule of ALWAYS_ON) {
+    test(`${rule} is off nowhere — the exemptions are per-site instead`, () => {
       assert.deepEqual(
-        off.flatMap((block) => block.files ?? []),
-        [OFF_ONLY_FOR],
-        "the test suite's Probe pattern is the only thing this exemption is for"
+        blocksTurningOff(rule).map((block) => block.files),
+        [],
+        "a whole directory exempted again; #891 read 21 sites one at a time for this reason"
       );
     });
   }
+
+  test("globals is off for tests/native and nothing else", () => {
+    assert.deepEqual(
+      blocksTurningOff("react-hooks/globals").flatMap((block) => block.files ?? []),
+      [OFF_ONLY_FOR],
+      "the test suite's Probe pattern is the only thing this exemption is for"
+    );
+  });
 });
 
 describe("an exemption in app code says what it is for", () => {
@@ -71,13 +72,20 @@ describe("an exemption in app code says what it is for", () => {
     for (const file of files) {
       const lines = readFileSync(path.join(ROOT, file), "utf8").split("\n");
       lines.forEach((line, i) => {
-        const directive = /eslint-disable(-next-line|-line)?\s+([^\n]*)/.exec(line);
+        const directive = /eslint-disable(-next-line|-line)?([^\n]*)/.exec(line);
         if (!directive) return;
-        const rules = directive[2];
-        if (!ADOPTED.some((rule) => rules.includes(rule))) return;
+        const [, form, rest] = directive;
+        const rules = rest.split("--")[0];
+        // A directive naming no rule disables every rule, these three with the
+        // rest, and names none of them to be found by the check below.
+        const named = /[a-z][\w-]*\/[\w-]+/.test(rules)
+          ? ADOPTED.some((rule) => rules.includes(rule))
+          : true;
+        if (!named) return;
         const at = `${file}:${i + 1}`;
-        if (directive[1] !== "-next-line") offenders.push(`${at} — file-wide or trailing, not next-line`);
-        else if (!/--\s+\S+\s+\S+/.test(rules)) offenders.push(`${at} — no reason after \`--\``);
+        if (!rules.trim()) offenders.push(`${at} — names no rule, so it disables all of them`);
+        else if (form !== "-next-line") offenders.push(`${at} — file-wide or trailing, not next-line`);
+        else if (!/--\s+\S+\s+\S+/.test(rest)) offenders.push(`${at} — no reason after \`--\``);
       });
     }
     assert.deepEqual(offenders, []);

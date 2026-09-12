@@ -32,7 +32,7 @@ export default function VerifyEmailScreen() {
   // signed-in address in only once it lands, and only into an empty field.
   useEffect(() => {
     const signedInEmail = user?.email;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- see above: the address lands after first render, so useState cannot take it
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- the account's address lands after first render, so `useState` cannot take it
     if (signedInEmail) setEmail((current) => current || signedInEmail);
   }, [user?.email]);
   const [verified, setVerified] = useState(false);
