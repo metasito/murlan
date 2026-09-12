@@ -10,6 +10,7 @@
  * change, and blocking on one would make the check something to skip.
  *
  * Usage: node scripts/preflight.mjs
+ *        exit 0 - clear; exit 1 - a person has to act; exit 2 - not startable yet, ask again
  */
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
@@ -157,7 +158,10 @@ if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "
         `typecheck on phantom errors and fail test:native outright. node_modules is shared live ` +
         `across every worktree: check no peer session is mid-run before reinstalling.`
     );
-    process.exit(1);
+    // 2, not 1: drift is a state of the machine that repairs itself — `syncCheckout` reinstalls
+    // after a fast-forward that moved the lockfile, and an install running right now finishes.
+    // Read as "a person must intervene" it ended an unattended night on the loop's own merge.
+    process.exit(2);
   }
 
   console.log(`preflight: ${shared} is clean.`);

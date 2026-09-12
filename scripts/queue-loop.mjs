@@ -92,9 +92,25 @@ export function liveRoute(status) {
   };
 }
 
-function nextRoute() {
+/**
+ * `pinned` is a ticket the run is not finished with — a red CI round hands the same number back,
+ * and letting the picker choose again leaves that one labelled `in-progress` with an open pull
+ * request nothing will return to.
+ *
+ * A resumed route carries the ticket's size: without it `TURNS_BY_SIZE` fell through to the
+ * default, so a `size:L` ticket resumed for a fix round was given 150 turns where its first
+ * session had 320 — every resumed run of a large ticket bounded tighter than the one that had
+ * already failed to finish it.
+ *
+ * @param {number|null} [pinned]
+ */
+function nextRoute(pinned = null) {
   const live = liveRoute(derive());
-  if (live) return { ...live, size: null, queue: { implement: 0, triage: 0, wayfinder: 0 } };
+  if (live) return { ...live, size: ticketFacts(live.number).size, queue: null };
+  if (pinned) {
+    const { title, size } = ticketFacts(pinned);
+    return { skill: "implement", number: pinned, title, size, queue: null, resuming: true, phase: "C" };
+  }
   const stdout = execFileSync("node", ["scripts/next-ticket.mjs"], { encoding: "utf8" });
   return { ...parseRoute(stdout), queue: parseStatus(stdout), resuming: false };
 }
@@ -156,7 +172,7 @@ const PROTOCOL = ["CLAUDE.md", ".claude", "scripts"];
  * the checkout differs from origin until it is fast-forwarded — which is staleness, repaired here
  * rather than reported. Only an uncommitted edit is drift, and it belongs to someone.
  */
-export function syncCheckout(git, log) {
+export function syncCheckout(git, log, install = () => sh("npm", ["ci"], { stdio: "inherit" })) {
   const branch = git("rev-parse", "--abbrev-ref", "HEAD").trim();
   if (branch === "HEAD") {
     log("queue-loop: the shared checkout is on a detached HEAD — put it back on main first.");
@@ -185,22 +201,50 @@ export function syncCheckout(git, log) {
     }
   }
 
+  let was;
   try {
+    was = git("rev-parse", "HEAD").trim();
     git("fetch", "origin", "--quiet");
     git("merge", "--ff-only", "origin/main");
   } catch (err) {
     log(`queue-loop: cannot fast-forward main — ${String(err.message).split("\n")[0]}`);
     return false;
   }
+
+  // The loop's own merges are what move the lockfile, and `preflight` refuses to start a ticket on
+  // top of an install that has drifted from it. Left to the next iteration that is the loop
+  // poisoning its own precondition: the first ticket touching package.json ends the night, on a
+  // healthy machine, with a full queue. Reinstalling here is the repair, at the one moment no
+  // session is live to have its node_modules pulled out from under it.
+  try {
+    if (git("diff", "--name-only", was, "HEAD").split("\n").includes("package-lock.json")) {
+      log("queue-loop: the fast-forward moved package-lock.json — reinstalling before the next ticket");
+      install();
+    }
+  } catch (err) {
+    log(`queue-loop: could not reinstall after the fast-forward — ${String(err.message).split("\n")[0]}`);
+    return false;
+  }
   return true;
 }
 
 /**
- * `lib/loop/ciVerdict.ts` blocks in phase E waiting for a CI run, which regularly takes twenty
- * minutes and emits nothing while it does. Any ceiling at or under that reads a working run as a
- * stalled one.
+ * A session's own longest silence. Phase D's two review subagents emit nothing into the parent
+ * stream while they read, and a large diff keeps them there past twenty minutes. Any ceiling at or
+ * under that reads a working run as a stalled one.
  */
 export const STALL_MS = 30 * 60_000;
+
+/**
+ * The supervisor's half has no watchdog over it — `runTicket`'s watches the child and is cleared
+ * when the child closes — so everything after that is bounded here instead. `STEP` is one `npx tsx`
+ * call, generous enough for `gh run watch` to sit out a full ci.yml run; `DEADLINE` is the whole of
+ * `settle`, so a branch that keeps asking for one more round cannot hold the night open.
+ */
+export const SETTLE = { STEP_MS: 45 * 60_000, DEADLINE_MS: 90 * 60_000 };
+
+/** Consecutive red CI rounds on one ticket before it stops being the loop's to fix. */
+export const CI_ROUNDS = 3;
 
 /**
  * How long to wait out a spent usage window.
@@ -247,7 +291,12 @@ export function afterRefusal({ waits, blocked, blockedUntil, done }, now = Date.
       why: `refused ${waits} times running, each after waiting out the window it named`,
     };
   }
-  return { action: "wait", hold: waitFor({ blocked, blockedUntil, done }, now), waits: waits + 1 };
+  // Floored, always. A reset timestamp already in the past — a clock skew, a stale window, a
+  // seven-day limit reported with an expired short-window reset — made `waitFor` answer 0, and a
+  // hold of 0 is skipped entirely: twenty full `claude` spawns back to back, each paying its
+  // context creation, before the ceiling stopped it. A knob with no floor under it.
+  const hold = Math.max(waitFor({ blocked, blockedUntil, done }, now), WAIT.FLOOR);
+  return { action: "wait", hold, waits: waits + 1 };
 }
 
 // `npm` and `npx` are `.cmd` shims, and since the fix for CVE-2024-27980 node will not resolve one
@@ -256,17 +305,24 @@ export function afterRefusal({ waits, blocked, blockedUntil, done }, now = Date.
 // anything a ticket or the tracker supplies.
 const SHIMMED = new Set(["npm", "npx"]);
 
+/**
+ * `sh` reads a whole `gh` payload, and one of them carries four hundred lines of CI log — over
+ * node's 1 MB default that is an ENOBUFS throw, which `settle` catches and turns into a parked
+ * ticket. `ciVerdict.ts` sets a large buffer for exactly this; its caller has to as well.
+ */
+const SH_MAX_BUFFER = 64 * 1024 * 1024;
+
 const sh = (file, args, opts) => {
   const shell = SHIMMED.has(file) && process.platform === "win32";
-  // Under `shell` the arguments are concatenated, not passed through — and one of them is a
-  // worktree path, which carries whatever spaces the checkout's own location has.
-  const argv = shell ? args.map((a) => (/\s/.test(a) ? `"${a}"` : a)) : args;
-  return execFileSync(file, argv, {
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"],
-    shell,
-    ...opts,
-  });
+  const base = { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: SH_MAX_BUFFER, ...opts };
+  // A command line, not a file plus arguments: under `shell` node concatenates them anyway, and
+  // passing both is DEP0190. The quoting is this file's own, and one argument is a worktree path,
+  // which carries whatever spaces the checkout's location has.
+  if (shell) {
+    const line = [file, ...args.map((a) => (/[\s"]/.test(a) ? `"${a.replace(/"/g, '\\"')}"` : a))].join(" ");
+    return execFileSync(line, { ...base, shell: true });
+  }
+  return execFileSync(file, args, base);
 };
 
 /** One bad ticket is a ticket. Three in a row is the loop or the machine, and a night proving it. */
@@ -309,29 +365,46 @@ export function afterPush({ verdict, landing }) {
  */
 export function settleOutcome({ action }) {
   if (action === "merged") return { countsAsFailure: false, recorded: "landed" };
-  if (action === "fix") return { countsAsFailure: false, recorded: null };
+  // A row, because a ticket that goes red three times otherwise produced three whole sessions and
+  // nothing in the record: no cost, no turns, no count of how often the cap is reached.
+  if (action === "fix") return { countsAsFailure: false, recorded: "retry" };
   return { countsAsFailure: true, recorded: "stalled" };
 }
 
 /**
- * Whether a session's exit ended the ticket.
+ * What the session's exit leaves the supervisor to do.
  *
- * Only `settle()` ever says "landed", and only after a merge. This says whether the session did
- * its half — pushed a pull request with nothing left to explain. The predicate it replaces was
- * `after.ticket !== route.number`, which is true whenever the session worked a *different* ticket,
- * stood down on a lost claim race, or `derive()` could not tell which run was live.
+ * The pull request is the whole answer: an open one is settled, a merged one is a landing whoever
+ * merged it, a closed one and an absent one are both the owner's. It is asked for by ticket
+ * number, so phase F's teardown cannot hide it.
  *
- * @param {{pr: number|null, why: string|null}} run
+ * @param {{pr: {number: number, state: string}|null, why: string|null}} run
+ * @returns {{action: "settle"|"landed"|"park", pr?: number, why?: string}}
  */
 export function outcomeOf({ pr, why }) {
-  if (why) return { landed: false, why };
-  if (!pr) return { landed: false, why: "the session pushed no pull request" };
-  return { landed: false, why: null, pushed: pr };
+  if (why) return { action: "park", why };
+  if (!pr) return { action: "park", why: "the session pushed no pull request" };
+  if (pr.state === "MERGED")
+    return { action: "landed", pr: pr.number, why: `pull request #${pr.number} was already merged` };
+  if (pr.state !== "OPEN")
+    return { action: "park", pr: pr.number, why: `pull request #${pr.number} is ${String(pr.state).toLowerCase()}` };
+  return { action: "settle", pr: pr.number };
 }
 
-/** Why this session did not finish its ticket, or null if it did. */
+/**
+ * Why this session did not finish its ticket, or null if it did.
+ *
+ * @param {{status: number|string, phase?: string|null, stderr?: string, result?: object|null,
+ *   declared?: {pr: number|null, stoodDown: boolean, why: string|null}|null}} run
+ */
 export function reasonFor(run, after, ticket) {
-  if (after && after.ticket !== ticket) return `the session worked #${after.ticket}, not #${ticket}`;
+  const said = run.declared;
+  if (said?.stoodDown) return said.why ?? "the session stood down";
+  if (after?.ticket && after.ticket !== ticket) return `the session worked #${after.ticket}, not #${ticket}`;
+  // A pull request the session said it pushed is a fact its exit status cannot take back. From
+  // there CI and the merge are the supervisor's, and parking a pushed branch throws away the work
+  // and the claim both.
+  if (said?.pr) return null;
   // The only place "Budget limit reached ($15.08 of $15); stopping background agents." is ever
   // said — the result event for that session still reads subtype "success".
   if (/Budget limit reached/.test(run.stderr ?? "")) return "the session spent its budget mid-phase";
@@ -461,15 +534,19 @@ export function park(
   return { ok: failed.length === 0, failed };
 }
 
-const ERASE = "\r[2K";
+const ERASE = "\r\u001B[2K";
+const HIDE = "\u001B[?25l";
+const SHOW = "\u001B[?25h";
 const REDRAW_MS = 120;
 
 /**
  * The only thing in the loop that knows a cursor exists.
  *
- * Everything the run prints goes through `say` or `warn`, which erase the open phase's line before
- * writing and redraw it after — a write landing between two redraws otherwise leaves the tail of
- * the spinner in front of it, and that is the failure mode a person actually sees.
+ * Three rules, and the flicker was all three of them. **One write per frame** — erasing and then
+ * drawing is two writes with an empty row between them, and that blank is the flash a person sees.
+ * **Write only when the line changed** — eight identical repaints a second is eight chances to
+ * tear, and the line only moves when the spinner turns or a second ticks. **Hide the cursor while
+ * the line is live** — it sits at the end of the spinner, blinking and jumping a column per frame.
  *
  * At anything that is not a terminal — a pipe, a file, CI — every escape is suppressed and the
  * output is the append-only stream `loop-render.mjs` produces.
@@ -477,16 +554,19 @@ const REDRAW_MS = 120;
 export function ticker(out = process.stdout, err = process.stderr) {
   const live = Boolean(out.isTTY);
   let open = null;
-  let frame = 0;
   let timer = null;
-  let drawn = false;
+  let drawn = "";
+  let hidden = false;
 
-  // The escape clears the whole row whatever is on it. Counting the characters back instead is
-  // wrong for anything double-width, and a command in the detail can carry one.
-  const erase = () => {
-    if (!drawn) return;
-    out.write(ERASE);
-    drawn = false;
+  const hide = () => {
+    if (!live || hidden) return;
+    out.write(HIDE);
+    hidden = true;
+  };
+  const show = () => {
+    if (!hidden) return;
+    out.write(SHOW);
+    hidden = false;
   };
 
   // A line wider than the terminal wraps, after which a carriage return lands at the start of the
@@ -495,14 +575,24 @@ export function ticker(out = process.stdout, err = process.stderr) {
 
   const draw = () => {
     if (!live || !open) return;
-    erase();
-    const width = room();
-    const line = activeLine({ ...open, ms: Date.now() - open.startedAt, frame: frame++, width });
-    // `activeLine` sizes itself, but it counts characters and a command in the detail can carry a
-    // double-width one. This is the backstop that cannot be argued with.
-    const chars = [...line];
-    out.write(chars.length > width ? chars.slice(0, width).join("") : line);
-    drawn = true;
+    const ms = Date.now() - open.startedAt;
+    // The frame comes from the clock, not from a count of draws: a redraw prompted by a new tool
+    // call inside the same frame window would otherwise turn the spinner, which makes every line
+    // different from the last and defeats the only-write-on-change rule entirely.
+    const line = activeLine({ ...open, ms, frame: Math.floor(ms / REDRAW_MS), width: room() });
+    if (line === drawn) return;
+    hide();
+    // The erase clears the whole row whatever is on it — counting characters back is wrong for
+    // anything double-width, and a command in the detail can carry one. Joined to the line so the
+    // row is never briefly empty.
+    out.write(ERASE + line);
+    drawn = line;
+  };
+
+  /** Takes the live row down in the same write that puts the new text there. */
+  const over = (text) => {
+    out.write(live && drawn ? ERASE + text : text);
+    drawn = "";
   };
 
   const clear = () => {
@@ -514,19 +604,23 @@ export function ticker(out = process.stdout, err = process.stderr) {
   // not survive that.
   const api = {
     say(line) {
-      erase();
-      out.write(`${line}\n`);
+      over(`${line}\n`);
       draw();
     },
     warn(text) {
-      erase();
+      // The live row belongs to stdout and stderr cannot clear it, so the erase goes out on the
+      // stream that owns it before the warning prints on the other one.
+      if (live && drawn) {
+        out.write(ERASE);
+        drawn = "";
+      }
+      show();
       err.write(text.endsWith("\n") ? text : `${text}\n`);
       draw();
     },
     start(letter) {
       api.close();
       open = { letter, detail: "", startedAt: Date.now() };
-      frame = 0;
       if (!live) return;
       timer = setInterval(draw, REDRAW_MS);
       // A redraw must never be the reason the process is still alive.
@@ -549,35 +643,48 @@ export function ticker(out = process.stdout, err = process.stderr) {
         width: live ? room() : undefined,
       });
       clear();
-      erase();
       open = null;
-      out.write(`${done}\n`);
+      show();
+      over(`${done}\n`);
     },
     stop() {
       clear();
-      erase();
       open = null;
+      if (live && drawn) out.write(ERASE);
+      drawn = "";
+      show();
     },
   };
   return api;
 }
 
-/** One ticket's worth of the issue, for the header. Covers the resume path, which has no picker. */
+/**
+ * One ticket's worth of the issue, for the header, the turn bound and the record. Covers the
+ * resume path, which has no picker.
+ *
+ * The review rounds come from the same read: phase D's cap of four is the one number the record
+ * was never collecting, so whether $40 a ticket buys review rounds or burns turns could not be
+ * answered from the file kept to answer it.
+ */
+const VERDICT_LINE = /^VERDICT:\s*(LAND|HOLD)\b/m;
+
 function ticketFacts(number) {
   try {
     const issue = JSON.parse(
-      execFileSync("gh", ["issue", "view", String(number), "--json", "title,labels,url"], {
+      execFileSync("gh", ["issue", "view", String(number), "--json", "title,labels,url,comments"], {
         encoding: "utf8",
         stdio: ["ignore", "pipe", "ignore"],
+        maxBuffer: SH_MAX_BUFFER,
       }),
     );
     return {
       title: issue.title,
       url: issue.url,
       size: issue.labels.map((l) => l.name).find((n) => n.startsWith("size:")) ?? null,
+      reviewRounds: (issue.comments ?? []).filter((c) => VERDICT_LINE.test(c.body ?? "")).length,
     };
   } catch {
-    return { title: `ticket #${number}`, url: "", size: null };
+    return { title: `ticket #${number}`, url: "", size: null, reviewRounds: 0 };
   }
 }
 
@@ -618,13 +725,24 @@ export function runTicket(
 
   const state = {
     phase: at,
+    phaseAt: Date.now(),
+    phases: {},
     result: null,
+    declared: null,
     version: null,
     lastFactAt: Date.now(),
     blocked: false,
     blockedUntil: 0,
     stalled: false,
     stderr: "",
+  };
+
+  /** Seconds in the phase just left, so the record carries where a night's time actually goes. */
+  const closePhase = () => {
+    if (!state.phase) return;
+    const secs = Math.round((Date.now() - state.phaseAt) / 1000);
+    state.phases[state.phase] = (state.phases[state.phase] ?? 0) + secs;
+    state.phaseAt = Date.now();
   };
 
   screen.say(header({ number, ...facts(number), queue }));
@@ -651,29 +769,42 @@ export function runTicket(
     const fact = readLine(line);
     if (!fact) return;
     if (fact.kind === "init") state.version = fact.version;
-    if (fact.kind === "phase") {
-      state.phase = fact.letter;
-      screen.start(fact.letter);
+    if (fact.kind === "assistant") {
+      if (fact.letter && fact.letter !== state.phase) {
+        closePhase();
+        state.phase = fact.letter;
+        screen.start(fact.letter);
+      }
+      if (fact.declared) state.declared = fact.declared;
+      // The only sign of life during phase D, which is the longest one and the one that read as a
+      // hang: its work happens entirely inside two review subagents.
+      if (fact.calls.length) screen.detail(toolDetail(fact.calls.at(-1)));
     }
-    // The only sign of life during phase D, which is the longest one and the one that read as a
-    // hang: its work happens entirely inside two review subagents.
-    if (fact.kind === "tool" && fact.calls.length) screen.detail(toolDetail(fact.calls.at(-1)));
     // A session emits one result per turn, and a background task's wake-up is a turn. The real one
     // carries `origin: null`; every other carries origin.kind "task-notification". Last-wins
     // across all of them reported a 144-turn session as one turn.
     if (fact.kind === "result" && !fact.origin) state.result = fact;
-    if (fact.kind === "rate_limit" && fact.blocked && !state.blocked) {
-      state.blocked = true;
-      state.blockedUntil = fact.resetsAtMs ?? 0;
-      screen.say(
-        closing({
-          outcome: "rate_limited",
-          number,
-          why: `the ${fact.window ?? "usage"} limit is spent — resets ${clockAt(fact.resetsAt)}`,
-          ms: 0,
-          cost: 0,
-        }),
-      );
+    if (fact.kind === "rate_limit") {
+      // Cleared on the next reading that is not a refusal. Left sticky it pre-empted everything
+      // else: a session refused at minute 2 that recovered and pushed at minute 40 was reported
+      // `refused`, its pull request never looked for and its claim never released.
+      if (!fact.blocked && state.blocked) {
+        state.blocked = false;
+        state.blockedUntil = 0;
+      }
+      if (fact.blocked && !state.blocked) {
+        state.blocked = true;
+        state.blockedUntil = fact.resetsAtMs ?? 0;
+        screen.say(
+          closing({
+            outcome: "rate_limited",
+            number,
+            why: `the ${fact.window ?? "usage"} limit is spent — resets ${clockAt(fact.resetsAt)}`,
+            ms: 0,
+            cost: 0,
+          }),
+        );
+      }
     }
   });
 
@@ -691,6 +822,7 @@ export function runTicket(
 
     child.on("close", (status) => {
       clearInterval(watchdog);
+      closePhase();
       // The phase the session was in when it exited: closed here because the session emits no
       // marker for a phase it did not finish, and a mark of its own because a ✓ on a session that
       // stalled is the display saying the opposite of what happened.
@@ -703,7 +835,9 @@ export function runTicket(
           blocked: state.blocked,
           blockedUntil: state.blockedUntil,
           result: state.result,
+          declared: state.declared,
           phase: state.phase,
+          phases: state.phases,
           stderr: state.stderr,
           version: state.version,
           ms: Date.now() - startedAt,
@@ -717,21 +851,30 @@ export function runTicket(
 const git = (...args) => execFileSync("git", args, { encoding: "utf8" });
 
 /**
- * Written as each ticket ends rather than at exit, so a crash or a closed terminal keeps whatever
- * the night had already done.
+ * One file per run, named for when the run started — not per calendar day.
+ *
+ * A day is not a boundary the loop has: two processes on one day appended to the same file, so a
+ * closing total landed in the middle of it with five more rows underneath, and a run that crossed
+ * midnight opened its second file with the first one's total under the wrong heading. Rows are
+ * written as each ticket ends, so a crash keeps whatever the night had already done.
  */
-const today = () => new Date().toISOString().slice(0, 10);
-const reportPath = () => path.join(LOG_DIR, `run-${today()}.md`);
+const RUN_ID = new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-");
+const reportPath = () => path.join(LOG_DIR, `run-${RUN_ID}.md`);
 
 const NL = "\n";
+
+function report(line) {
+  mkdirSync(LOG_DIR, { recursive: true });
+  if (!fs.existsSync(reportPath())) {
+    fs.writeFileSync(reportPath(), `# queue-loop ${RUN_ID.replace(/-(\d\d)-(\d\d)$/, " $1:$2")}` + NL + NL, "utf8");
+  }
+  fs.appendFileSync(reportPath(), line + NL, "utf8");
+}
 
 function record(entry, line) {
   mkdirSync(LOG_DIR, { recursive: true });
   fs.appendFileSync(path.join(LOG_DIR, "tickets.jsonl"), JSON.stringify(entry) + NL, "utf8");
-  if (!fs.existsSync(reportPath())) {
-    fs.writeFileSync(reportPath(), `# queue-loop ${today()}` + NL + NL, "utf8");
-  }
-  fs.appendFileSync(reportPath(), line + NL, "utf8");
+  report(line);
 }
 
 /** A ticket's raw stream log is worth keeping for a week; after that it is only taking up disk. */
@@ -739,25 +882,60 @@ function pruneLogs(now = Date.now()) {
   const week = 7 * 24 * 60 * 60_000;
   if (!fs.existsSync(LOG_DIR)) return;
   for (const name of fs.readdirSync(LOG_DIR)) {
-    if (!name.endsWith(".jsonl") || name === "tickets.jsonl") continue;
+    if (!/\.(jsonl|log)$/.test(name) || name === "tickets.jsonl") continue;
     const file = path.join(LOG_DIR, name);
     if (now - fs.statSync(file).mtimeMs > week) fs.rmSync(file, { force: true });
   }
 }
 
-const tsx = (args) => JSON.parse(sh("npx", ["tsx", ...args]));
+const tsx = (args) => JSON.parse(sh("npx", ["tsx", ...args], { timeout: SETTLE.STEP_MS }));
+
+/**
+ * Where a red run's failed-log tail waits for the session that has to fix it.
+ *
+ * `ciVerdict` spends a megabyte-scale fetch building it and `afterPush` read three other fields and
+ * dropped it, so the fix session re-fetched CI itself — the one thing phase E tells it not to do.
+ * Phase A reads this file when it exists.
+ */
+export const ciLogPath = (ticket) => path.join(LOG_DIR, `ci-${ticket}.log`);
 
 /** land.ts merges when it can and otherwise names what it wants next; both shapes read the same. */
 const landingOf = (out) =>
   out.merged ? { action: "merge", reason: out.reason } : { action: out.next, reason: out.reason };
 
-/** The pull request this branch pushed, if it pushed one. */
-function pushedPr(branch) {
-  try {
-    const [pr] = JSON.parse(
-      sh("gh", ["pr", "list", "--head", branch, "--state", "open", "--json", "number", "--limit", "1"]),
+/**
+ * The pull request this ticket pushed, if it pushed one.
+ *
+ * Asked by ticket number, not only by branch: phase F tears the worktree down, `derive()` finds a
+ * run only by that directory, and so the branch the old lookup needed was gone at exactly the
+ * moment it was asked for. #891 pushed a green pull request, was reported as having pushed
+ * nothing, and was left labelled `in-progress` with no claim released — $36.38 and a permanently
+ * frozen ticket. The ticket number survives every teardown.
+ *
+ * `--state all`, because a pull request merged between the session's exit and this read — a peer,
+ * an auto-merge, the owner — is a landing, not a session that pushed nothing.
+ *
+ * @param {string|null} branch
+ * @param {number} ticket
+ * @returns {{number: number, state: string, head: string}|null}
+ */
+function pushedPr(branch, ticket) {
+  // Matched on the head ref rather than asked for by search: `#42` in a body also matches PR #942,
+  // and a head qualifier's prefix semantics are GitHub's to change. `gh` lists newest first.
+  const mine = (rows) =>
+    rows.filter((pr) =>
+      branch ? pr.headRefName === branch : new RegExp(`^agent/${ticket}-`).test(pr.headRefName ?? ""),
     );
-    return pr?.number ?? null;
+  try {
+    const rows = mine(
+      JSON.parse(
+        sh("gh", ["pr", "list", "--state", "all", "--limit", "100", "--json", "number,state,headRefName"]),
+      ),
+    );
+    const pr = rows.find((p) => p.state === "OPEN") ?? rows.find((p) => p.state === "MERGED") ?? rows[0];
+    // The head ref comes back too: once the worktree is gone it is the only place left that names
+    // the branch, and `ciVerdict` is asked for a branch's run, not a pull request's.
+    return pr ? { number: pr.number, state: pr.state, head: pr.headRefName ?? null } : null;
   } catch {
     return null;
   }
@@ -778,12 +956,16 @@ const SETTLE_PAUSE_MS = 15_000;
  * run passed, `land.ts` says whether the pull request can merge — which is why the session that
  * built the ticket has already exited by the time this runs.
  */
-async function settle(pending, log = console.log, pause = SETTLE_PAUSE_MS) {
+async function settle(pending, log = console.log, pause = SETTLE_PAUSE_MS, deadline = SETTLE.DEADLINE_MS) {
   const left = { ...SETTLE_ROUNDS };
+  const until = Date.now() + deadline;
   // Not unref'd, for the same reason `holdFor` is not: this is the only handle open while it waits.
   const wait = () => new Promise((r) => setTimeout(r, pause));
 
   for (;;) {
+    if (Date.now() > until) {
+      return { action: "park", why: `CI did not settle in ${Math.round(deadline / 60_000)}m` };
+    }
     let next;
     let asking = "retry";
     try {
@@ -793,13 +975,20 @@ async function settle(pending, log = console.log, pause = SETTLE_PAUSE_MS) {
         : undefined;
       if (landing?.action === "recheck") asking = "recheck";
       next = afterPush({ verdict, landing });
+      // Written before it is handed back, because the session that fixes it is a fresh process
+      // with no way to ask this one anything.
+      if (next.action === "fix" && verdict.output) {
+        mkdirSync(LOG_DIR, { recursive: true });
+        writeFileSync(ciLogPath(pending.ticket), verdict.output, "utf8");
+      }
     } catch (err) {
       // `gh` refusing, a rate limit, or anything that is not JSON. The ticket is pushed and its
       // branch is intact, so this stalls rather than ending the night.
       return { action: "park", why: `could not read CI — ${String(err.message).split("\n")[0]}` };
     }
 
-    if (next.action === "update-branch" && left.update-- > 0) {
+    if (next.action === "update-branch" && left.update > 0) {
+      left.update -= 1;
       log(`  ⏳ #${pending.ticket} main moved — updating the branch and reading CI again`);
       try {
         sh("gh", ["pr", "update-branch", String(pending.pr)]);
@@ -809,7 +998,8 @@ async function settle(pending, log = console.log, pause = SETTLE_PAUSE_MS) {
       await wait();
       continue;
     }
-    if (next.action === "retry-verdict" && left[asking]-- > 0) {
+    if (next.action === "retry-verdict" && left[asking] > 0) {
+      left[asking] -= 1;
       log(`  ⏳ #${pending.ticket} ${next.why} — asking once more`);
       await wait();
       continue;
@@ -829,7 +1019,7 @@ async function settle(pending, log = console.log, pause = SETTLE_PAUSE_MS) {
   }
 }
 
-/** Where the ticket stood when its session exited. */
+/** Where the ticket stood when its session exited, as far as git and the tracker can still say. */
 const standing = () => {
   const s = derive();
   return s.onTicket
@@ -847,69 +1037,126 @@ const standing = () => {
 };
 
 /**
+ * What the supervisor knows about the session that just exited.
+ *
+ * The session's own `LOOP-RESULT` first, `derive()` second. That order is the whole of the fix:
+ * derive is right for *resuming* a run nobody told you about and wrong for *closing* one that just
+ * told you, because every channel it reads — the worktree, its branch, its diff, its dirt — is
+ * something phase F is separately instructed to delete. The two disagree only when the declaration
+ * is missing, and then derive is all there is.
+ *
+ * @param {{declared: object|null, phase: string|null}} run
+ * @param {object|null} derived
+ */
+export function afterSession(run, derived) {
+  const said = run.declared;
+  if (!said && !derived) return null;
+  return {
+    ticket: said?.ticket ?? derived?.ticket ?? null,
+    branch: said?.branch ?? derived?.branch ?? null,
+    cwd: derived?.cwd ?? null,
+    dirty: derived?.dirty ?? false,
+    changed: derived?.changed ?? [],
+    // The session's own marker, not derive()'s: derive computes a phase from commit count and
+    // verdict, so it can only ever answer C, D, E or ?, and a park comment saying "phase E" of a
+    // session that died in B was the record contradicting the reason printed beside it.
+    phase: said?.phase ?? run.phase ?? derived?.phase ?? "?",
+  };
+}
+
+/**
  * One ticket, start to finish. Serialised deliberately: the previous design ran the next ticket
  * against the last one's CI wait, which bought ~22% wall clock and cost an in-memory pending pull
  * request that nothing recovered when the process died, a worktree released out from under a live
  * `derive()`, and two sessions merging each other's work to get past a branch cut from a `main`
  * that did not have it yet.
  *
- * @returns {Promise<{outcome: "landed"|"parked"|"stalled"|"stop"|"retry"|"refused",
+ * @param {object} io
+ * @param {number|null} [pinned] a ticket a previous pass handed back unfinished
+ * @returns {Promise<{outcome: "landed"|"parked"|"stalled"|"stop"|"hold"|"retry"|"refused",
  *   ticket?: number, why?: string, until?: number}>}
  */
-export async function runOnce(io) {
+export async function runOnce(io, pinned = null) {
   if (io.stopFile()) return { outcome: "stop", why: ".loop-stop" };
   if (!io.syncCheckout()) return { outcome: "stop", why: "the shared checkout is not usable" };
+  // Exit 2 is "this machine cannot start a ticket *now*" — drift, a peer's dirt, memory. Treated
+  // as a stop, the loop's own merges ended the night: the first ticket touching package-lock.json
+  // merged, the next iteration pulled it in and refused to start on it, and the loop called that
+  // "genuinely nothing to do".
   const pre = io.queuePre();
+  if (pre === 2) return { outcome: "hold", why: "queue-pre is not ready for a ticket yet" };
   if (pre !== 0) return { outcome: "stop", why: `queue-pre exited ${pre}` };
 
-  const route = io.pick();
+  const route = io.pick(pinned);
   if (route.skill === "handoff") return { outcome: "stop", why: route.title };
   if (route.skill === "ambiguous") return { outcome: "stop", why: route.title };
 
   const run = await io.spawn(route);
-  if (run.blocked)
-    return { outcome: "refused", ticket: route.number, until: run.blockedUntil ?? 0, run };
 
   const dirtied = io.sharedCheckoutDirty?.();
   if (dirtied) io.log(`queue-loop: #${route.number}'s session left the shared checkout dirty:\n${dirtied}`);
 
-  const after = io.standing();
-  const pr = after?.branch ? io.pushedPr(after.branch) : null;
-  const decided = outcomeOf({ pr, why: reasonFor(run, after, route.number) });
+  const after = afterSession(run, io.standing());
+  const pr = io.pushedPr(after?.branch ?? null, route.number);
+  // `blocked` is advisory, checked here rather than before the pull request is looked for: a
+  // session refused mid-run that recovered and pushed has done its half, and reporting it refused
+  // stranded the branch and left the claim on.
+  if (!pr && run.blocked)
+    return { outcome: "refused", ticket: route.number, until: run.blockedUntil ?? 0, run };
 
-  if (!decided.pushed) {
+  const decided = outcomeOf({ pr, why: reasonFor(run, after, route.number) });
+  const files = after?.changed?.length ?? 0;
+
+  if (decided.action === "park") {
     // A park is now only ever a decision the owner has to make, which is the whole of what the
     // bell is for. Not a landing, not a retry, not a settle failure.
     io.bell();
-    if (after)
-      io.park(route.number, {
-        phase: after.phase,
-        why: decided.why,
-        log: run.log,
-        cwd: after.cwd,
-        branch: after.branch,
-        dirty: after.dirty,
-      });
-    io.record({ number: route.number, outcome: "parked", why: decided.why, run, files: after?.changed?.length ?? 0 });
+    io.park(route.number, {
+      phase: after?.phase ?? "?",
+      why: decided.why,
+      log: run.log,
+      cwd: after?.cwd ?? null,
+      branch: after?.branch ?? null,
+      dirty: after?.dirty ?? false,
+    });
+    io.record({ number: route.number, outcome: "parked", why: decided.why, run, pr: decided.pr ?? null, files });
     return { outcome: "parked", ticket: route.number, why: decided.why };
+  }
+
+  if (decided.action === "landed") {
+    io.releaseClaim(route.number);
+    io.record({ number: route.number, outcome: "landed", why: decided.why, run, pr: decided.pr, merged: true, files });
+    return { outcome: "landed", ticket: route.number };
   }
 
   const settled = await io.settle({
     ticket: route.number,
-    pr,
-    branch: after.branch,
-    cwd: after.cwd,
+    pr: decided.pr,
+    branch: after?.branch ?? pr.head,
+    cwd: after?.cwd ?? null,
   });
   const cost = settleOutcome(settled);
-  if (cost.recorded === null) return { outcome: "retry", ticket: route.number, why: settled.why };
   io.record({
     number: route.number,
     outcome: cost.recorded,
     why: settled.why,
     run,
-    pr,
-    files: after.changed?.length ?? 0,
+    pr: decided.pr,
+    merged: cost.recorded === "landed",
+    files,
   });
+  // The worktree comes with it: if the rounds run out, `main` has to hand the ticket back, and a
+  // park that leaves the worktree standing is a run `derive()` resumes on the next iteration and
+  // every iteration after that.
+  if (cost.recorded === "retry") {
+    return {
+      outcome: "retry",
+      ticket: route.number,
+      why: settled.why,
+      cwd: after?.cwd ?? null,
+      branch: after?.branch ?? pr.head,
+    };
+  }
   return cost.countsAsFailure
     ? { outcome: "stalled", ticket: route.number, why: settled.why }
     : { outcome: "landed", ticket: route.number };
@@ -925,15 +1172,15 @@ function realIo(totals, screen) {
     syncCheckout: () => syncCheckout(git, (m) => screen.warn(m)),
     queuePre: () =>
       spawnSync(process.execPath, ["scripts/queue-pre.mjs"], { stdio: "inherit" }).status ?? 1,
-    pick: () => {
-      const route = nextRoute();
+    pick: (pinned) => {
+      const route = nextRoute(pinned);
       if (route.resuming) return route;
       if (before) screen.say(queueLine(before, route.queue));
       before = route.queue;
       return route;
     },
     spawn: (route) => {
-      if (!route.resuming) screen.say(`  · picking — ${route.queue.implement} takeable`);
+      if (!route.resuming) screen.say(`  · picking — ${route.queue?.implement ?? 0} takeable`);
       return runTicket(spawn, {
         number: route.number,
         queue: route.queue,
@@ -947,9 +1194,17 @@ function realIo(totals, screen) {
     settle: (pending) => settle(pending, (m) => screen.say(m)),
     park,
     bell,
+    // The merge is what mattered. A stuck label is visible on the tracker and costs one edit.
+    releaseClaim: (number) => {
+      try {
+        sh("gh", ["issue", "edit", String(number), "--remove-label", "in-progress"]);
+      } catch {
+        /* nothing here is worth ending a landed ticket over */
+      }
+    },
     sharedCheckoutDirty: () => git("status", "--porcelain").trim(),
     log: (m) => screen.warn(m),
-    record: ({ number, outcome, why, run, pr = null, files = 0 }) => {
+    record: ({ number, outcome, why, run, pr = null, merged = false, files = 0 }) => {
       totals.cost += run.result?.cost ?? 0;
       totals.ms += run.ms;
       const facts = ticketFacts(number);
@@ -971,12 +1226,12 @@ function realIo(totals, screen) {
           size: facts.size,
           outcome,
           pr,
-          phases: {},
+          phases: run.phases ?? {},
           result: run.result,
-          // `ci: {pass:false}` was written for every non-merged outcome. The loop does not know CI
-          // failed; it knows the merge did not happen.
-          ci: outcome === "landed" ? { pass: true } : null,
-          reviewRounds: 0,
+          // Named for what the loop actually knows. `ci: {pass:false}` was written for every
+          // non-merged outcome, and read back as "CI failed" on five tickets that merged.
+          merged,
+          reviewRounds: facts.reviewRounds,
           startedAt: new Date(Date.now() - run.ms).toISOString(),
           version: run.version,
         }),
@@ -997,8 +1252,11 @@ function realIo(totals, screen) {
 async function main() {
   let failures = 0;
   let waits = 0;
+  let holds = 0;
+  /** The ticket a red CI round handed back, and how many rounds it has had. */
+  let pinned = null;
+  let rounds = 0;
   const totals = { tickets: 0, landed: 0, parked: 0, cost: 0, ms: 0 };
-  pruneLogs();
 
   const screen = ticker();
   // An interrupted run must not leave a half-drawn spinner under the shell prompt, and the exit
@@ -1012,27 +1270,45 @@ async function main() {
   }
   const io = realIo(totals, screen);
 
+  /** Every exit writes the total. The clean stop used to print it to the screen and nowhere else. */
+  const finish = (code, why) => {
+    const total = runTotal(totals);
+    if (why) (code === 0 ? screen.say : screen.warn)(`queue-loop: ${why} — stopping`);
+    screen.say(total);
+    report(`\n${total}`);
+    bell();
+    return code;
+  };
+
   for (;;) {
+    // Per iteration, not once per process: a run that lasts past midnight never pruned, and
+    // .loop-logs was 33 MB for fifteen tickets.
+    pruneLogs();
+
     let pass;
     try {
-      pass = await runOnce(io);
+      pass = await runOnce(io, pinned);
     } catch (err) {
       screen.warn(`queue-loop: the iteration threw — ${String(err?.stack ?? err)}`);
       failures += 1;
-      if (shouldHalt(failures)) {
-        screen.warn(`queue-loop: ${failures} tickets in a row did not land — stopping`);
-        bell();
-        return 1;
-      }
+      if (shouldHalt(failures)) return finish(1, `${failures} tickets in a row did not land`);
       continue;
     }
 
-    if (pass.outcome === "stop") {
-      screen.say(`queue-loop: ${pass.why} — stopping`);
-      screen.say(runTotal(totals));
-      bell();
-      return 0;
+    if (pass.outcome === "stop") return finish(0, pass.why);
+
+    // Not a ticket and not a failure: something the machine has to settle before a ticket can
+    // start. Held and asked again, bounded by the same ceiling a usage refusal has.
+    if (pass.outcome === "hold") {
+      holds += 1;
+      if (holds > WAIT.TRIES) return finish(1, `${pass.why}, ${holds} times running`);
+      screen.say(`  ⏸ ${pass.why} (${holds}/${WAIT.TRIES}) — asking again shortly`);
+      if ((await holdFor(WAIT.FLOOR, undefined, undefined, (m) => screen.say(m))) === "stopped") {
+        return finish(0, ".loop-stop during the wait");
+      }
+      continue;
     }
+    holds = 0;
 
     // A refusal is not a failure and not a ticket: the account is out of usage, which the branch,
     // the pull request and the label all survive. It waits, then goes again — an exit here costs
@@ -1042,27 +1318,49 @@ async function main() {
       totals.ms += pass.run?.ms ?? 0;
       const step = afterRefusal({ waits, blocked: true, blockedUntil: pass.until });
       waits = step.waits;
-      if (step.action === "give-up") {
-        screen.warn(`queue-loop: ${step.why} — stopping`);
-        screen.say(runTotal(totals));
-        bell();
-        return 1;
-      }
+      if (step.action === "give-up") return finish(1, step.why);
       screen.say(
-        step.hold
-          ? `  ⏸ #${pass.ticket} the usage window is spent (${waits}/${WAIT.TRIES}) — back at ${clockAt(Date.now() + step.hold)}`
-          : `  ⏸ #${pass.ticket} refused, and the window has already reset — going again`,
+        `  ⏸ #${pass.ticket} the usage window is spent (${waits}/${WAIT.TRIES}) — back at ${clockAt(Date.now() + step.hold)}`,
       );
-      if (step.hold && (await holdFor(step.hold, undefined, undefined, (m) => screen.say(m))) === "stopped") {
-        screen.say("queue-loop: .loop-stop during the wait — stopping");
-        bell();
-        return 0;
+      if ((await holdFor(step.hold, undefined, undefined, (m) => screen.say(m))) === "stopped") {
+        return finish(0, ".loop-stop during the wait");
       }
       continue;
     }
 
     waits = 0;
-    if (pass.outcome === "retry") continue;
+
+    // A red CI round is the same ticket again, not the next one: the picker would leave this one
+    // labelled `in-progress` with an open pull request and take a different ticket, and nothing
+    // would ever come back to it. Bounded, because a ticket that cannot go green is not the
+    // loop's to keep paying for.
+    if (pass.outcome === "retry") {
+      rounds = pass.ticket === pinned ? rounds + 1 : 1;
+      pinned = pass.ticket;
+      if (rounds < CI_ROUNDS) {
+        screen.say(`  🔁 #${pass.ticket} ${pass.why} — fix round ${rounds + 1}/${CI_ROUNDS}`);
+        continue;
+      }
+      screen.warn(`queue-loop: #${pass.ticket} was red ${rounds} rounds running — handing it back`);
+      io.bell();
+      io.park(pass.ticket, {
+        phase: "E",
+        why: `${CI_ROUNDS} CI rounds on the same branch did not go green — last: ${pass.why}`,
+        log: ciLogPath(pass.ticket),
+        cwd: pass.cwd ?? null,
+        branch: pass.branch ?? null,
+        dirty: false,
+      });
+      pinned = null;
+      rounds = 0;
+      failures += 1;
+      totals.tickets += 1;
+      totals.parked += 1;
+      if (shouldHalt(failures)) return finish(1, `${failures} tickets in a row did not land`);
+      continue;
+    }
+    pinned = null;
+    rounds = 0;
     totals.tickets += 1;
     if (pass.outcome === "landed") {
       failures = 0;
@@ -1071,16 +1369,7 @@ async function main() {
       failures += 1;
       totals.parked += 1;
     }
-    if (shouldHalt(failures)) {
-      // Read before anything resets it: the old message printed "0 tickets in a row did not land".
-      const halted = failures;
-      screen.warn(`queue-loop: ${halted} tickets in a row did not land — stopping`);
-      const total = runTotal(totals);
-      screen.say(total);
-      fs.appendFileSync(reportPath(), `\n${total}\n`, "utf8");
-      bell();
-      return 1;
-    }
+    if (shouldHalt(failures)) return finish(1, `${failures} tickets in a row did not land`);
   }
 }
 

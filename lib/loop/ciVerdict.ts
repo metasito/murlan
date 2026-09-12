@@ -153,8 +153,20 @@ export function stripLogPrefix(line: string): string {
   return line.replace(/^[^\t]*\t[^\t]*\t\d{4}-\d\d-\d\dT[\d:.]+Z ?/, "");
 }
 
+/**
+ * `gh run watch` blocks for as long as ci.yml takes, and nothing watches this module while it
+ * does — `queue-loop`'s stall watchdog is cleared when the session's child closes. Without a
+ * ceiling here a wedged `gh` hangs the night with no line and no bell. Well above a full run.
+ */
+const GH_TIMEOUT_MS = 40 * 60_000;
+
 export function ghExecOptions(): ExecFileSyncOptionsWithStringEncoding {
-  return { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: GH_MAX_BUFFER };
+  return {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+    maxBuffer: GH_MAX_BUFFER,
+    timeout: GH_TIMEOUT_MS,
+  };
 }
 
 function gh(args: string[]): string {

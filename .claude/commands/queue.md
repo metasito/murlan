@@ -31,7 +31,9 @@ Three cases, and they are all of them:
   ```sh
   gh issue edit <n> --remove-label ready-for-agent --remove-label in-progress --add-label ready-for-human
   ```
-  then take the next ticket. The issue is the record; there is no parked-findings file.
+  then declare it and **exit** — `LOOP-RESULT {"ticket":<n>,"stoodDown":true,"why":"<one sentence>"}`,
+  the phase F form. The supervisor starts the next ticket; a session that picks a second one spends
+  one ticket's accounting on two. The issue is the record; there is no parked-findings file.
 
 Never ask the user a question while a run is live.
 
@@ -39,13 +41,14 @@ Never ask the user a question while a run is live.
 
 ## A — Start
 
-Say which phase you are in, as the whole of one message, before its first command:
+Say which phase you are in, on a line of its own, in the same message as that phase's first command:
 
 `PHASE A`
 
-The supervisor reads that line and nothing else about your progress. One line, on its own, no prose
-around it — a sentence mentioning the phase is not a phase report. Do the same at the top of every
-phase below.
+The supervisor reads that line and nothing else about your progress. A line of its own — a sentence
+mentioning the phase is not a phase report. Send it *with* the command, never as a message by
+itself: in print mode a turn that ends in text and no tool call is the final answer, so a marker
+alone can end the session on turn one. Do the same at the top of every phase below.
 
 **Run this first, before anything else, every time — including a fresh process that has never seen
 this ticket:**
@@ -54,9 +57,9 @@ this ticket:**
 node scripts/loop-status.mjs
 ```
 
-Silent means no run is live — continue to the picker below. Anything else means a ticket is already
-mid-run: resume at the phase it names, do not re-plan, do not re-scope, do not ask whether to
-continue, and **do not run the picker below at all.** A ticket already claimed and mid-build is not
+Silent means no live worktree — continue below. Anything else means a ticket is already mid-run:
+resume at the phase it names, do not re-plan, do not re-scope, do not ask whether to continue, and
+**do not run the picker below at all.** A ticket already claimed and mid-build is not
 a competing option next to a fresh one — picking a new ticket while this one is unfinished is the
 exact one-ticket-at-a-time violation this loop exists to prevent, not a matter of preference between
 two takeable tickets. Uncommitted changes in that worktree are your in-progress slice; finish it,
@@ -69,6 +72,19 @@ npm run queue:pre                         # by-hand runs only: the loop has alre
 node scripts/next-ticket.mjs $ARGUMENTS   # prints ROUTE, body, comments, blockers, takeability
 ```
 
+**Read that output for an open pull request on this ticket.** If there is one, this is a CI fix
+round: the ticket is already claimed, its Definition of done is already posted, and the branch
+already exists. Do not claim it again and do not start over.
+
+```sh
+git fetch origin --quiet
+git worktree add .worktrees/agent-<n> -B agent/<n>-<slug> origin/agent/<n>-<slug>
+cat .loop-logs/ci-<n>.log                 # the failed CI log, already fetched for you
+```
+
+Read that log, fix what it names, and go to **phase D** — the fix is a commit, the commit moves the
+head, and the head needs its own review before the gate will pass it. Skip phases A and B.
+
 `queue:pre` is the leftover worktree, the peer's uncommitted work and the orphaned processes — all
 loop-level, none of it about this ticket, which is why `queue-loop.mjs` runs it before it spawns you
 and you will normally see it already done.
@@ -80,9 +96,9 @@ If it fails, **halt** — do not work around it.
 argument picks from the live queue, which is the by-hand form.
 
 **You work the ticket you were given.** If it turns out to be wrong — the claim race is lost, the
-premise is false, a blocker is named in a comment — say so on the issue, remove your label, and
-**exit**. Do not pick another one: the supervisor starts the next process, and a session that picks
-a second ticket spends one ticket's accounting on two.
+premise is false, a blocker is named in a comment — say so on the issue, remove your label, declare
+it (`stoodDown`, phase F step 5) and **exit**. Do not pick another one: the supervisor starts the
+next process, and a session that picks a second ticket spends one ticket's accounting on two.
 
 This runs once, for exactly one ticket, then phases B–F carry it to a close. `scripts/queue-loop.mjs`
 is what keeps going — it is a fresh `claude -p "/queue"` invocation that starts the next ticket, not
@@ -90,7 +106,8 @@ this session continuing. There is no ticket-count budget: nothing survives past 
 to protect.
 
 Route `triage` runs `/triage`; route `wayfinder` runs `/wayfinder`; route `handoff` means no
-agent-takeable work is left — go to **Halt**. Only route `implement` continues here.
+agent-takeable work is left — go to **Halt**. Only route `implement` continues here. Those four are
+the whole set; anything else is a defect in `next-ticket.mjs`, not a route to improvise around.
 
 That output is already the whole ticket — **body and comments together**, which is why the picker
 prints both and you do not fetch them again. The comments are where the owner's ruling and the
@@ -305,9 +322,10 @@ model spending turns on a switch statement. `scripts/guard-bash.mjs` blocks `gh 
 session — two of them merged a peer's pull request to unblock themselves, and the supervisor then
 parked the ticket that had just landed.
 
-If CI goes red, the loop starts a fresh session on this same ticket — `derive()` finds it from the
-branch and the open pull request, exactly as it finds any live run — and that session fixes it from
-the failure the pull request shows, gets a fresh review of the new head, and pushes again.
+If CI goes red, the loop starts a fresh session on this same ticket and writes the failed log to
+`.loop-logs/ci-<n>.log` for it. That session picks up at phase A's fix-round branch above: it
+rebuilds the worktree from the pushed branch, fixes what the log names, gets a fresh review of the
+new head, and pushes again. Three red rounds on one branch and the ticket goes to the owner.
 
 ## F — Close out
 
@@ -340,7 +358,20 @@ the failure the pull request shows, gets a fresh review of the new head, and pus
    into the shared install and exits 0. `scripts/guard-bash.mjs` blocks the form; the reason is
    measured, not theorised.
 
-5. **Exit.** One ticket per process, by design: `scripts/queue-loop.mjs` starts the next ticket in a
+5. **Say what you did, on one line, as the last thing you emit.**
+
+   ```
+   LOOP-RESULT {"ticket":891,"branch":"agent/891-slug","pr":1003,"phase":"F","stoodDown":false}
+   ```
+
+   One line, valid JSON after the marker, in the same message as any command — the same rule the
+   phase markers follow. Every field is something only you know at that moment, and step 4 has just
+   deleted the worktree the supervisor would otherwise have had to reconstruct them from. Omit `pr`
+   only if you genuinely pushed none. `stoodDown` is true when you gave the ticket up — a lost claim
+   race, a false premise, a decision only the owner can make — and then `"why"` says which, in one
+   sentence; the supervisor releases the claim for you.
+
+6. **Exit.** One ticket per process, by design: `scripts/queue-loop.mjs` starts the next ticket in a
    clean process, so there is nothing here to reset and nothing that can leak forward. Do not loop
    back to phase A in this session.
 
@@ -365,9 +396,14 @@ failure · a decision only the owner can make **that parking cannot carry**. `qu
 for an empty queue before it even starts a process; this list is the fallback for a `/queue` run
 started by hand.
 
-Release the claim, run teardown, and say on the issue: the phase reached, what is committed and on
-which branch, the exact failure, and the one decision needed. Then five lines to the user. The issue
-is the handoff — it is where the owner is already looking, and it cannot be lost with the session.
+Release the claim, run teardown, declare it (`stoodDown`, phase F step 5), and say on the issue: the
+phase reached, what is committed and on which branch, the exact failure, and the one decision
+needed. Then five lines to the user. The issue is the handoff — it is where the owner is already
+looking, and it cannot be lost with the session.
+
+`.loop-stop` on disk drains the loop, but it is read only between tickets and during a wait, never
+mid-session. A stop dropped while you are building takes effect when you exit; it is not an
+instruction to abandon this ticket.
 
 ## Output
 

@@ -5,8 +5,18 @@
  * Nothing here writes, moves a cursor or reads a terminal — `ticker` in queue-loop.mjs is the only
  * thing in the loop that knows a cursor exists. The same strings have to be right in a terminal, in
  * a pipe, and in a file, and cursor control is right in exactly one of those.
+ *
+ * `styleText` is stdlib and decides for itself: escapes at a terminal, nothing down a pipe or into
+ * a file. Colour is applied only after a line's width is settled, because an escape is bytes with
+ * no width and measuring a painted string pads every line wrong — and only on lines that never
+ * reach `.loop-logs/run-*.md`, which `reportRow` and `runTotal` do.
  */
+import { styleText } from "node:util";
+
 const WIDTH = 78;
+
+/** @param {import("node:util").ForegroundColors[]|string[]} style */
+const paint = (style, text) => (text ? styleText(style, text) : text);
 
 /** @type {[string, string][]} */
 export const PHASES = [
@@ -42,35 +52,72 @@ export function clockAt(resetsAt, now = Date.now()) {
 const money = (n) => `$${Number(n ?? 0).toFixed(2)}`;
 const rule = "━".repeat(WIDTH);
 
-function fit(left, right, width = WIDTH) {
-  const gap = width - left.length - right.length;
-  if (gap >= 1) return left + " ".repeat(gap) + right;
-  return left.slice(0, Math.max(0, width - right.length - 2)) + "… " + right;
+/**
+ * `left` padded out to meet `right` at `width`, with `left` truncated rather than `right` — the
+ * right-hand side is the timer or the cost, which is the thing the line is being read for.
+ *
+ * `style` paints the two halves after the padding is computed, never before.
+ *
+ * @param {(l: string, r: string) => string} [style]
+ */
+function fit(left, right, width = WIDTH, style = (l, r) => l + r) {
+  const room = width - right.length;
+  const shown = left.length < room ? left : left.slice(0, Math.max(0, room - 2)) + "…";
+  return style(shown + " ".repeat(Math.max(1, room - shown.length)), right);
 }
 
 /**
- * @param {{number: number, title: string, url: string, queue: {implement: number, triage: number,
- *   wayfinder: number}, size?: string|null}} ticket
+ * The six phases as a progress trail: passed, here, not reached.
+ *
+ * `[3/6]` said how far along without saying what was behind it or what is left, which on a run
+ * that resumes mid-way is the only question a person watching actually has.
+ */
+export function trail(letter, here = "▸") {
+  const i = PHASES.findIndex(([l]) => l === letter);
+  return PHASES.map((_, n) => (n < i ? "✓" : n === i ? here : "·"));
+}
+
+const paintTrail = (letter, here, colour) =>
+  trail(letter, here)
+    .map((g, n) => paint(g === "·" ? ["dim"] : n < PHASES.findIndex(([l]) => l === letter) ? ["green"] : colour, g))
+    .join("");
+
+/**
+ * A resumed ticket never went through the picker, so it has no queue reading of its own — and
+ * printing the zeroes it does not have read as an empty queue on every resumed run.
+ *
+ * @param {{number: number, title: string, url: string, size?: string|null,
+ *   queue: {implement: number, triage: number, wayfinder: number}|null}} ticket
  */
 export function header({ number, title, size, url, queue }) {
-  const depths = `queue: ${queue.implement} · ${queue.triage} · ${queue.wayfinder}`;
+  const depths = queue
+    ? `queue: ${queue.implement} · ${queue.triage} · ${queue.wayfinder}`
+    : "resumed";
   return [
     "",
-    rule,
-    fit(` ⚙️  #${number} · ${title}`, size ? `${size} ` : ""),
-    fit(`    ${url}`, `${depths} `),
-    rule,
+    paint(["dim"], rule),
+    fit(` ⚙️  #${number} · ${title}`, size ? `${size} ` : "", WIDTH, (l, r) =>
+      l.replace(`#${number}`, paint(["bold", "cyan"], `#${number}`)) + paint(["dim"], r),
+    ),
+    fit(`    ${url}`, `${depths} `, WIDTH, (l, r) => paint(["dim"], l) + paint(["dim"], r)),
+    paint(["dim"], rule),
   ].join("\n");
 }
 
-const stepOf = (letter) => {
-  const i = PHASES.findIndex(([l]) => l === letter);
-  return { n: i < 0 ? "?" : String(i + 1), name: PHASES[i]?.[1] ?? "" };
-};
+const nameOf = (letter) => PHASES.find(([l]) => l === letter)?.[1] ?? "";
+
+const MARK_STYLE = { "✓": ["green"], "✗": ["red"], "↻": ["yellow"] };
 
 export function phaseLine({ letter, detail = "", ms, mark = "✓", width = WIDTH }) {
-  const { n, name } = stepOf(letter);
-  return fit(`  ${mark} [${n}/6] ${letter}  ${name.padEnd(9)}${detail}`, `${elapsed(ms)} `, width);
+  const name = nameOf(letter);
+  const glyphs = trail(letter, mark).join("");
+  return fit(
+    `  ${glyphs}  ${letter} ${name.padEnd(7)}${detail}`,
+    `${elapsed(ms)} `,
+    width,
+    (l, r) =>
+      l.replace(glyphs, paintTrail(letter, mark, MARK_STYLE[mark] ?? ["green"])) + paint(["dim"], r),
+  );
 }
 
 /** Braille, because every frame is one column wide in every terminal font. */
@@ -84,22 +131,31 @@ export const SPIN = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "�
  * the one thing on the line that a person is reading it for.
  */
 export function activeLine({ letter, detail = "", ms, frame = 0, width = WIDTH }) {
-  const { n, name } = stepOf(letter);
+  const name = nameOf(letter);
   const spin = SPIN[((frame % SPIN.length) + SPIN.length) % SPIN.length];
-  return fit(`  ${spin} [${n}/6] ${letter}  ${name.padEnd(9)}${detail}`, `${elapsed(ms)} `, width);
+  const glyphs = trail(letter, spin).join("");
+  return fit(
+    `  ${glyphs}  ${letter} ${name.padEnd(7)}${detail}`,
+    `${elapsed(ms)} `,
+    width,
+    (l, r) => l.replace(glyphs, paintTrail(letter, spin, ["cyan"])) + paint(["dim"], r),
+  );
 }
 
-// `activeLine`'s fixed prefix is 22 columns and its elapsed tail is up to 8, inside a WIDTH of 78.
+// `activeLine`'s fixed prefix is 20 columns and its elapsed tail is up to 8, inside a WIDTH of 78.
 const DETAIL = 44;
 
 /**
  * What the session is doing, as one short phrase. A middot marks a review subagent's call.
  *
+ * The command is shown whenever there is one, rather than for a named list of shell tools: this
+ * machine's primary shell is PowerShell and the list had only `Bash` in it for a while, so the
+ * loop's own board went blank for every command on the shell it actually runs.
+ *
  * @param {{name: string, command?: string, parent?: string|null}} call
  */
 export function toolDetail({ name, command = "", parent = null }) {
   const mark = parent ? "· " : "";
-  if (name !== "Bash" && name !== "PowerShell") return `${mark}${name}`;
   const first = command.split("\n")[0].trim();
   if (!first) return `${mark}${name}`;
   const room = DETAIL - mark.length;
@@ -112,9 +168,12 @@ export function toolDetail({ name, command = "", parent = null }) {
  * — a frontier that grows every ticket is the loop filing follow-ups faster than it lands them.
  */
 export function queueLine(before, after) {
-  if (!after.implement && !after.triage && !after.wayfinder) return "     queue empty";
+  if (!after.implement && !after.triage && !after.wayfinder) return paint(["dim"], "     queue empty");
   const moved = (k) => (before[k] === after[k] ? String(after[k]) : `${before[k]}→${after[k]}`);
-  return `     queue ${moved("implement")} implement · ${moved("triage")} triage · ${moved("wayfinder")} wayfinder`;
+  return paint(
+    ["dim"],
+    `     queue ${moved("implement")} implement · ${moved("triage")} triage · ${moved("wayfinder")} wayfinder`,
+  );
 }
 
 /**
@@ -130,7 +189,25 @@ export function bell(stream = process.stderr) {
   }
 }
 
-const MARK = { landed: "✅", merged: "✅", parked: "⚠️", stalled: "⚠️", failed: "❌", rate_limited: "⏸" };
+const OUTCOME_STYLE = {
+  landed: ["green"],
+  merged: ["green"],
+  retry: ["cyan"],
+  parked: ["yellow"],
+  stalled: ["yellow"],
+  rate_limited: ["yellow"],
+  failed: ["red"],
+};
+
+const MARK = {
+  landed: "✅",
+  merged: "✅",
+  parked: "⚠️",
+  stalled: "⚠️",
+  retry: "🔁",
+  failed: "❌",
+  rate_limited: "⏸",
+};
 
 /**
  * @param {{outcome: string, number: number, ms: number, cost: number,
@@ -138,11 +215,13 @@ const MARK = { landed: "✅", merged: "✅", parked: "⚠️", stalled: "⚠️"
  */
 export function closing({ outcome, number, files, turns, ms, cost, log, why }) {
   const mark = MARK[outcome] ?? "•";
+  const style = OUTCOME_STYLE[outcome] ?? ["dim"];
   const head =
     outcome === "landed" || outcome === "merged"
-      ? `  ${mark} #${number} ${outcome} · ${files} files · ${turns} turns · ${elapsed(ms)} · ${money(cost)}`
-      : `  ${mark} #${number} ${outcome.replace("_", " ")} — ${why}`;
-  return log ? `${head}\n     log ${log}` : head;
+      ? `  ${mark} ${paint(["bold"], `#${number}`)} ${paint(style, outcome)} · ${files} files · ` +
+        `${turns} turns · ${elapsed(ms)} · ${money(cost)}`
+      : `  ${mark} ${paint(["bold"], `#${number}`)} ${paint(style, outcome.replace("_", " "))} — ${why}`;
+  return log ? `${head}\n${paint(["dim"], `     log ${log}`)}` : head;
 }
 
 /**

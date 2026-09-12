@@ -15,6 +15,7 @@ import {
   runTotal,
   PHASES,
   clockAt,
+  trail,
 } from "../scripts/loop-render.mjs";
 
 describe("elapsed", () => {
@@ -75,9 +76,11 @@ describe("header", () => {
 });
 
 describe("phaseLine", () => {
-  test("numbers the phase out of six and keeps queue.md's letter", () => {
+  // `[3/6]` said how far along without saying what was behind it or what is left, which on a run
+  // that resumes mid-way is the only question a person watching actually has.
+  test("shows the six phases as a trail, and keeps queue.md's letter", () => {
     const line = phaseLine({ letter: "C", detail: "3 commits · 4 files", ms: 511_000 });
-    assert.match(line, /\[3\/6\]/);
+    assert.match(line, /✓✓✓···/, "two phases behind it, three still ahead");
     assert.match(line, /\bC\b/);
     assert.match(line, /build/);
     assert.match(line, /3 commits · 4 files/);
@@ -85,7 +88,7 @@ describe("phaseLine", () => {
   });
 
   test("the mark is the caller's, so a phase taken up does not read as a phase finished", () => {
-    assert.match(phaseLine({ letter: "C", detail: "resumed", ms: 0, mark: "↻" }), /↻ \[3\/6\]/);
+    assert.match(phaseLine({ letter: "C", detail: "resumed", ms: 0, mark: "↻" }), /✓✓↻···/);
     assert.equal(
       phaseLine({ letter: "C", detail: "x", ms: 0, mark: "↻" }).length,
       phaseLine({ letter: "C", detail: "x", ms: 0 }).length
@@ -187,23 +190,23 @@ describe("runTotal", () => {
 });
 
 describe("activeLine", () => {
-  test("names the phase, its number and how long it has been open", () => {
+  test("names the phase, what is behind it and how long it has been open", () => {
     const line = activeLine({ letter: "C", ms: 252_000 });
-    assert.match(line, /\[3\/6\] C/);
+    assert.match(line, /✓✓.···  C/);
     assert.match(line, /build/);
     assert.match(line, /4:12\s*$/);
   });
 
+  /** The spinner is the trail's own "here" glyph, so it sits at the phase's index, not at column 0. */
+  const spinner = (frame: number) => activeLine({ letter: "C", ms: 0, frame }).trim()[2];
+
   test("the spinner advances with the frame", () => {
-    assert.notEqual(
-      activeLine({ letter: "C", ms: 0, frame: 0 }).trim()[0],
-      activeLine({ letter: "C", ms: 0, frame: 1 }).trim()[0]
-    );
+    assert.notEqual(spinner(0), spinner(1));
   });
 
   test("the frame wraps rather than running off the end of the spinner", () => {
-    assert.equal(activeLine({ letter: "C", ms: 0, frame: SPIN.length }).trim()[0], SPIN[0]);
-    assert.equal(activeLine({ letter: "C", ms: 0, frame: SPIN.length * 3 + 2 }).trim()[0], SPIN[2]);
+    assert.equal(spinner(SPIN.length), SPIN[0]);
+    assert.equal(spinner(SPIN.length * 3 + 2), SPIN[2]);
   });
 
   // Every line this module emits is the same width, and the timer is what is redrawn in place: a
@@ -219,9 +222,17 @@ describe("activeLine", () => {
     assert.equal(activeLine({ letter: "C", ms: 0 }).length, phaseLine({ letter: "C", ms: 0 }).length);
   });
 
-  test("an unknown letter does not render a negative index", () => {
-    assert.doesNotMatch(activeLine({ letter: "Z", ms: 0 }), /\[0\/6\]/);
-    assert.doesNotMatch(phaseLine({ letter: "Z", ms: 0 }), /\[0\/6\]/);
+  test("an unknown letter leaves the whole trail unreached rather than inventing a position", () => {
+    assert.doesNotMatch(activeLine({ letter: "Z", ms: 0 }), /✓/);
+    assert.doesNotMatch(phaseLine({ letter: "Z", ms: 0 }), /✓/);
+  });
+
+  test("the trail is six glyphs, one per phase, however far along it is", () => {
+    for (const [letter] of [...PHASES, ["Z", ""]] as [string, string][]) {
+      assert.equal(trail(letter).length, PHASES.length, `${letter} drew a trail of the wrong length`);
+    }
+    assert.deepEqual(trail("A"), ["▸", "·", "·", "·", "·", "·"]);
+    assert.deepEqual(trail("F", "✗"), ["✓", "✓", "✓", "✓", "✓", "✗"]);
   });
 });
 

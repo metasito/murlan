@@ -56,7 +56,9 @@ describe("readLine", () => {
       },
     });
     assert.deepEqual(readLine(line), {
-      kind: "tool",
+      kind: "assistant",
+      letter: null,
+      declared: null,
       calls: [
         { name: "Bash", command: "git commit -m x", parent: null },
         { name: "Read", command: "", parent: null },
@@ -174,23 +176,95 @@ describe("rate_limit_event is a usage meter, not an alarm", () => {
 
 // The session is the only thing that knows what phase it is in.
 describe("a PHASE line from the session", () => {
-  const said = (text: string) =>
-    readLine(JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text }] } }));
+  const said = (text: string, extra: object[] = []) =>
+    readLine(
+      JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text }, ...extra] } }),
+    ) as any;
 
   test("on its own, it is a fact", () => {
-    assert.deepEqual(said("PHASE D"), { kind: "phase", letter: "D" });
+    assert.equal(said("PHASE D").letter, "D");
   });
 
   test("surrounding whitespace does not stop it being one", () => {
-    assert.deepEqual(said("  PHASE E\n"), { kind: "phase", letter: "E" });
+    assert.equal(said("  PHASE E\n").letter, "E");
   });
 
   test("prose mentioning a phase is not a fact", () => {
-    assert.notEqual(said("now in PHASE D of six")?.kind, "phase");
+    assert.equal(said("now in PHASE D of six"), null);
   });
 
   test("a letter outside A-F is not a phase", () => {
-    assert.notEqual(said("PHASE Z")?.kind, "phase");
+    assert.equal(said("PHASE Z"), null);
+  });
+
+  // A marker that has to be the whole of a message is a marker that ends the session: in print
+  // mode a turn with text and no tool call is the final answer. Run 1 of #942 died on `PHASE A`,
+  // seven seconds and one turn in; run 2 emitted the identical text and lived only because the
+  // model happened to attach a tool call to it. The marker and the command must share a turn.
+  test("it is still a fact in the same message as that phase's first command", () => {
+    const fact = said("PHASE C\nStarting the build.", [
+      { type: "tool_use", id: "t1", name: "Bash", input: { command: "git status" } },
+    ]);
+    assert.equal(fact.letter, "C");
+    assert.deepEqual(fact.calls, [{ name: "Bash", command: "git status", parent: null }]);
+  });
+
+  test("a line of prose above it does not hide it", () => {
+    assert.equal(said("Worktree is ready.\nPHASE B").letter, "B");
+  });
+});
+
+// Nine of the ten channels the supervisor reads a finished session through are inferences about a
+// process that has already exited, and phase F deletes five of them. This one is a statement.
+describe("the session's closing declaration", () => {
+  const said = (text: string) =>
+    readLine(JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text }] } })) as any;
+
+  test("carries the ticket, the branch, the pull request and the phase", () => {
+    const fact = said(
+      'LOOP-RESULT {"ticket":891,"branch":"agent/891-x","pr":1003,"phase":"F","stoodDown":false}',
+    );
+    assert.deepEqual(fact.declared, {
+      ticket: 891,
+      branch: "agent/891-x",
+      pr: 1003,
+      phase: "F",
+      stoodDown: false,
+      why: null,
+    });
+  });
+
+  test("a stand-down says why, which is what releases the claim", () => {
+    const fact = said('LOOP-RESULT {"ticket":42,"stoodDown":true,"why":"an older claim won the race"}');
+    assert.equal(fact.declared.stoodDown, true);
+    assert.match(fact.declared.why, /older claim/);
+    assert.equal(fact.declared.pr, null);
+  });
+
+  test("it rides in the same message as the teardown command", () => {
+    const fact = readLine(
+      JSON.stringify({
+        type: "assistant",
+        message: {
+          content: [
+            { type: "text", text: 'LOOP-RESULT {"ticket":7,"pr":9}' },
+            { type: "tool_use", id: "t1", name: "Bash", input: { command: "git worktree list" } },
+          ],
+        },
+      }),
+    ) as any;
+    assert.equal(fact.declared.pr, 9);
+    assert.equal(fact.calls.length, 1);
+  });
+
+  // Half a line, a truncated write, a model that decided to pretty-print it. The supervisor falls
+  // back to deriving; what it must not do is take a broken declaration as a good one.
+  test("a declaration that is not JSON is no declaration, not a throw", () => {
+    assert.equal(said("LOOP-RESULT {ticket: 891"), null);
+  });
+
+  test("prose about the marker is not a declaration", () => {
+    assert.equal(said("I will now emit LOOP-RESULT {\"ticket\":1} when done"), null);
   });
 });
 

@@ -1,7 +1,7 @@
 // tests/loopRecord.test.ts
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { row } from "../scripts/loop-record.mjs";
+import { row, SCHEMA } from "../scripts/loop-record.mjs";
 
 const RESULT = {
   kind: "result",
@@ -24,7 +24,7 @@ describe("row", () => {
     pr: 1204,
     phases: { A: 12, B: 92, C: 407, D: 212, E: 1375, F: 45 },
     result: RESULT,
-    ci: { runs: 1, red: 0 },
+    merged: true,
     reviewRounds: 2,
     startedAt: "2026-09-10T22:14:03Z",
     version: "2.1.251",
@@ -37,8 +37,27 @@ describe("row", () => {
     assert.equal(r.pr, 1204);
   });
 
+  // Three fields changed what they held mid-file — phase durations became `{}`, `ci` became null
+  // on non-merges, and `turns` was wrong until the origin filter landed — with nothing in the data
+  // saying where the boundary was. Any measurement taken across it mixed two meanings silently.
+  test("stamps the schema, so two readings of a field are never averaged together", () => {
+    assert.equal(r.schema, SCHEMA);
+    assert.ok(Number.isInteger(SCHEMA) && SCHEMA >= 2, "rows with no schema at all predate this one");
+  });
+
+  // Named for what the supervisor knows. `ci: {pass:false}` was written for every non-merged
+  // outcome and read back as "CI failed" on five tickets that merged.
+  test("says whether the merge happened, not what CI is imagined to have said", () => {
+    assert.equal(r.merged, true);
+    assert.equal("ci" in r, false, "the old field claimed a verdict the loop never held");
+  });
+
   test("keeps phase durations in seconds, so a night is comparable", () => {
     assert.deepEqual(r.phases, { A: 12, B: 92, C: 407, D: 212, E: 1375, F: 45 });
+  });
+
+  test("counts the review rounds phase D's cap of 4 is supposed to bound", () => {
+    assert.equal(r.review_rounds, 2);
   });
 
   test("collapses modelUsage to cost per model", () => {
@@ -57,7 +76,7 @@ describe("row", () => {
       pr: null,
       phases: { A: 5 },
       result: { ...RESULT, models: {}, subagents: null },
-      ci: null,
+      merged: false,
       reviewRounds: 0,
       startedAt: "2026-09-10T22:14:03Z",
       version: null,
@@ -65,6 +84,7 @@ describe("row", () => {
     assert.deepEqual(bare.models, {});
     assert.equal(bare.outcome, "parked");
     assert.equal(bare.pr, null);
+    assert.equal(bare.merged, false);
   });
 
   test("a run that produced no result event at all still produces a row", () => {
@@ -75,7 +95,7 @@ describe("row", () => {
       pr: null,
       phases: { A: 12, C: 900 },
       result: null,
-      ci: null,
+      merged: false,
       reviewRounds: 0,
       startedAt: "2026-09-10T22:14:03Z",
       version: null,
