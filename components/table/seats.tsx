@@ -499,10 +499,17 @@ function ReconnectingChip({
   const { t } = useTranslation();
   const [left, setLeft] = useState(seconds);
 
+  // Which grace window this is. A new one puts the countdown back to full in the
+  // same render, so its first frame is never the previous window's remainder.
+  const window = `${resetKey}|${seconds}`;
+  const [shownWindow, setShownWindow] = useState(window);
+  if (window !== shownWindow) {
+    setShownWindow(window);
+    setLeft(seconds);
+  }
+
   useEffect(() => {
     let remaining = seconds;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- the interval below owns this countdown; this is its first tick, a second before it fires
-    setLeft(remaining);
     const id = setInterval(() => {
       remaining -= 1;
       setLeft(Math.max(0, remaining));

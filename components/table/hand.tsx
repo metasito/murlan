@@ -536,10 +536,11 @@ export function StraightHand({
   // whose cards mount staggered. A single card arriving later (the exchange
   // give-back) mounts with the deal disarmed and simply appears in place.
   const [dealArmed, setDealArmed] = useState(true);
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- armed means "the hand was empty last render", which this render cannot see
-    setDealArmed(n === 0);
-  }, [n]);
+  const [shownCount, setShownCount] = useState(n);
+  if (n !== shownCount) {
+    setShownCount(n);
+    setDealArmed(shownCount === 0);
+  }
 
   // The overlap step is solved against the share, not against everything the
   // row could reach — a hand of three does not stretch across the felt, and a

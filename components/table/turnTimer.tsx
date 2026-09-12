@@ -36,14 +36,19 @@ export function TurnTimer({
     onExpireRef.current = onExpire;
   });
 
+  // Which clock is on the table. Anything that names a different one puts the
+  // countdown back to full in the same render, so the first frame of a turn
+  // never shows the last one's remainder.
+  const clock = `${resetKey}|${seconds}|${active}`;
+  const [shownClock, setShownClock] = useState(clock);
+  if (clock !== shownClock) {
+    setShownClock(clock);
+    setTimeLeft(seconds);
+  }
+
   useEffect(() => {
-    if (!active) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- the interval below owns this countdown; a turn that is not live shows it full
-      setTimeLeft(seconds);
-      return;
-    }
+    if (!active) return;
     let remaining = seconds;
-    setTimeLeft(remaining);
     const id = setInterval(() => {
       remaining -= 1;
       setTimeLeft(remaining);
