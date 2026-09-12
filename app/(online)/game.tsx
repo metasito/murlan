@@ -152,12 +152,17 @@ export default function OnlineGameScreen() {
     return () => clearTimeout(t);
   }, [error, clearError]);
 
+  // The latch belongs to one game-over, so the game-over passing is what clears
+  // it — online this screen is never unmounted between manches, and a latch left
+  // standing would let the next one skip its delay.
+  const [latchedOver, setLatchedOver] = useState(gameState?.gameOver);
+  if (gameState?.gameOver !== latchedOver) {
+    setLatchedOver(gameState?.gameOver);
+    if (!gameState?.gameOver) setShowGameOver(false);
+  }
+
   useEffect(() => {
-    if (!gameState?.gameOver) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- clears the latch, so the next game-over of the session waits out the delay too
-      setShowGameOver(false);
-      return;
-    }
+    if (!gameState?.gameOver) return;
     const t = setTimeout(() => setShowGameOver(true), GAME_OVER_DELAY);
     return () => clearTimeout(t);
   }, [gameState?.gameOver]);
@@ -169,20 +174,23 @@ export default function OnlineGameScreen() {
 
   // Another player abandoned the table — there is no game left to play, so
   // this one has no way out but the acknowledgement.
-  useEffect(() => {
-    if (!playerLeft) return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- playerLeft arrives on the socket, and this dialog is the only exit from it
-    setConfirming({
-      title: t("onlineGame.playerLeftTitle"),
-      body: t("onlineGame.playerLeftBody"),
-      confirmLabel: t("onlineGame.backToLobby"),
-      onConfirm: () => {
-        clearPlayerLeft();
-        leaveRoom();
-        goToLobby();
-      },
-    });
-  }, [playerLeft, clearPlayerLeft, leaveRoom, goToLobby, t]);
+  // Seeded empty: the notice can already be standing when this screen mounts.
+  const [announcedLeave, setAnnouncedLeave] = useState(false);
+  if (playerLeft !== announcedLeave) {
+    setAnnouncedLeave(playerLeft);
+    if (playerLeft) {
+      setConfirming({
+        title: t("onlineGame.playerLeftTitle"),
+        body: t("onlineGame.playerLeftBody"),
+        confirmLabel: t("onlineGame.backToLobby"),
+        onConfirm: () => {
+          clearPlayerLeft();
+          leaveRoom();
+          goToLobby();
+        },
+      });
+    }
+  }
 
   // A rejoin the server refused is not the player choosing to leave, so no
   // room:leave: the seat belongs to the 60s disconnect grace until it expires.

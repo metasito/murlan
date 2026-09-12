@@ -425,12 +425,14 @@ export default function TutorialScreen() {
     AsyncStorage.setItem(PROGRESS_KEY, String(stepIndex)).catch(() => {});
   }, [stepIndex, loaded]);
 
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- a new beat starts unanswered, and these three live above the view a key could remount
+  // A new beat starts unanswered.
+  const [shownStep, setShownStep] = useState(stepIndex);
+  if (stepIndex !== shownStep) {
+    setShownStep(stepIndex);
     setSelectedIds(new Set());
     setFeedback(null);
     setBeatDone(false);
-  }, [stepIndex]);
+  }
 
   if (!loaded) return null;
 

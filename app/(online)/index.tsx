@@ -69,32 +69,46 @@ export default function OnlineLobbyScreen() {
   // the socket is up: `joinRoom` emits, and an emit on a socket that has not
   // connected is dropped without a word, which would land the player here with
   // nothing happening and nothing said.
-  useEffect(() => {
-    if (!acceptedInvite) return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- the yes was given on another screen; it reaches this one as context
-    setJoiningInvite(true);
-    if (!connected) return;
-    clearAcceptedInvite();
-    joinRoom(acceptedInvite);
-  }, [acceptedInvite, connected, clearAcceptedInvite, joinRoom]);
+  // Seeded empty, not with the current value: both of these arrive as context
+  // from another screen, so they are usually already set on the first render
+  // here — which is the render that has to act on them.
+  const [answeredInvite, setAnsweredInvite] = useState<typeof acceptedInvite>(null);
+  if (acceptedInvite !== answeredInvite) {
+    setAnsweredInvite(acceptedInvite);
+    if (acceptedInvite) setJoiningInvite(true);
+  }
 
   // Either way the join is over. Success pushes the room *on top of* this
   // screen rather than replacing it, so back would come home to a banner still
   // claiming a join is in flight.
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- either answer from the socket ends the join, and dismissing the error must not bring the banner back
-    if (error || roomId) setJoiningInvite(false);
-  }, [error, roomId]);
+  const joinSettled = Boolean(error || roomId);
+  const [shownSettled, setShownSettled] = useState(false);
+  if (joinSettled !== shownSettled) {
+    setShownSettled(joinSettled);
+    if (joinSettled) setJoiningInvite(false);
+  }
 
   // An invite that merely arrived, on the other hand, has not been answered:
   // it prefills the code and asks.
-  useEffect(() => {
+  const [promptedFor, setPromptedFor] = useState<typeof pendingInvite>(null);
+  if (pendingInvite !== promptedFor) {
+    setPromptedFor(pendingInvite);
     if (pendingInvite) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- a pushed invite arrives as context; the prefilled modal is the answer to it
       setJoinCode(pendingInvite.roomCode);
       setJoinModalVisible(true);
-      clearInvite();
     }
+  }
+
+  useEffect(() => {
+    if (!acceptedInvite || !connected) return;
+    clearAcceptedInvite();
+    joinRoom(acceptedInvite);
+  }, [acceptedInvite, connected, clearAcceptedInvite, joinRoom]);
+
+  // The invite belongs to SocketContext, so retiring it is that provider's
+  // state and cannot be touched from this one's render.
+  useEffect(() => {
+    if (pendingInvite) clearInvite();
   }, [pendingInvite, clearInvite]);
 
   function handleCreate() {
