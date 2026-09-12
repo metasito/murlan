@@ -1,12 +1,13 @@
 // tests/hooksLint.test.ts — the three eslint-plugin-react-hooks 7 rules #891
-// adopted, and the shape of what was left exempt.
+// adopted stay adopted, and nothing switches one back off.
 //
-// The rules themselves catch a new violation. What nothing else catches is the
-// exemption going quiet: `"off"` back in eslint.config.js for app code, a
-// file-wide disable at the top of a screen, an inline `/* eslint rule: "off" */`
-// — which is not a disable directive at all and so looks like prose — or a bare
-// `eslint-disable-next-line` with no reason. Each reopens the whole class with
-// CI green, which is the state #891 started from.
+// A suppression of any of them costs its whole file its React Compiler pass, so
+// there is no such thing as a local one — `tests/reactCompiler.test.ts` proves
+// that against the compiler itself and refuses every suppression under `app/`,
+// `components/` and `context/`. Two things it cannot see are here: `lib/`, which
+// it does not scan, and `eslint.config.js`, where a rule can go `"off"` for a
+// whole directory without a single source file changing. Either reopens the
+// class with CI green, which is the state #891 started from.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
@@ -46,11 +47,11 @@ function sourceFiles(dir: string): string[] {
 }
 
 /**
- * What is wrong with `line` as an exemption, or null. One function, two callers:
+ * Why `line` switches an adopted rule off, or null. One function, two callers:
  * the scan runs it over the tree, and the case list runs it over strings — which
  * is how each form it must catch is watched failing without planting one.
  */
-function exemptionFault(line: string): string | null {
+function suppressionFault(line: string): string | null {
   // Only a directive opening its own comment counts. Prose *about* a directive —
   // this file is full of it — must not red the gate.
   const inline = /(?:\/\/|\/\*)\s*eslint\s+([^\n]*)/.exec(line);
@@ -59,15 +60,12 @@ function exemptionFault(line: string): string | null {
   }
   const directive = /(?:\/\/|\/\*)\s*eslint-disable(-next-line|-line)?\b([^\n]*)/.exec(line);
   if (!directive) return null;
-  const [, form, rest] = directive;
-  const rules = rest.split("--")[0].replace(/\*\/.*$/, "");
+  const rules = directive[2].split("--")[0].replace(/\*\/.*$/, "");
   // A directive naming no rule disables every rule, these three among them, and
   // is the one form that cannot be found by looking for their names.
   if (!rules.trim()) return "names no rule, so it disables all of them";
   if (!ADOPTED.some((rule) => rules.includes(rule))) return null;
-  if (form !== "-next-line") return "file-wide or trailing, not next-line";
-  if (!/--\s+\S+\s+\S+/.test(rest)) return "no reason after `--`";
-  return null;
+  return "switches an adopted rule off, which costs this file its compilation";
 }
 
 describe("the react-hooks 7 rules #891 adopted stay adopted", () => {
@@ -90,7 +88,7 @@ describe("the react-hooks 7 rules #891 adopted stay adopted", () => {
   });
 });
 
-describe("an exemption in app code says what it is for", () => {
+describe("no source file switches an adopted rule off", () => {
   const files = SOURCE_DIRS.flatMap(sourceFiles);
 
   test("the directories it scans are the ones the rule covers", () => {
@@ -106,42 +104,49 @@ describe("an exemption in app code says what it is for", () => {
   });
 
   test("each form that would reopen the class is a fault, and prose is not", () => {
-    // The scan below cannot go red on a form it has never been shown.
-    assert.match(exemptionFault("/* eslint-disable */") ?? "", /names no rule/);
+    // The scan below cannot go red on a form it has never been shown. A reason
+    // after `--` is among them: it reads as a local decision, and there is no
+    // such thing when the cost is the whole file's compilation.
+    assert.match(suppressionFault("/* eslint-disable */") ?? "", /names no rule/);
     assert.match(
-      exemptionFault("/* eslint-disable */ // see docs/agents/RULES.md") ?? "",
+      suppressionFault("/* eslint-disable */ // see docs/agents/RULES.md") ?? "",
       /names no rule/
     );
     assert.match(
-      exemptionFault('/* eslint react-hooks/set-state-in-effect: "off" */') ?? "",
+      suppressionFault('/* eslint react-hooks/set-state-in-effect: "off" */') ?? "",
       /inline rule config/
     );
     assert.match(
-      exemptionFault("/* eslint-disable react-hooks/globals */") ?? "",
-      /file-wide or trailing/
+      suppressionFault("/* eslint-disable react-hooks/globals */") ?? "",
+      /costs this file its compilation/
     );
     assert.match(
-      exemptionFault("// eslint-disable-next-line react-hooks/refs") ?? "",
-      /no reason/
+      suppressionFault("// eslint-disable-next-line react-hooks/refs") ?? "",
+      /costs this file its compilation/
     );
-    assert.equal(exemptionFault("// a bare `eslint-disable-next-line` reopens the class"), null);
-    assert.equal(exemptionFault("// eslint-disable-next-line no-console"), null);
-    assert.equal(
-      exemptionFault("// eslint-disable-next-line react-hooks/refs -- the reason, stated"),
-      null
+    assert.match(
+      suppressionFault("// eslint-disable-next-line react-hooks/refs -- the reason, stated") ?? "",
+      /costs this file its compilation/
     );
+    assert.equal(suppressionFault("// a bare `eslint-disable-next-line` reopens the class"), null);
+    assert.equal(suppressionFault("// eslint-disable-next-line no-console"), null);
   });
 
-  test("every suppression of an adopted rule is one line wide and carries a reason", () => {
+  test("there is no suppression of an adopted rule anywhere the rule is on", () => {
     const offenders: string[] = [];
     for (const file of files) {
       readFileSync(path.join(ROOT, file), "utf8")
         .split("\n")
         .forEach((line, i) => {
-          const fault = exemptionFault(line);
+          const fault = suppressionFault(line);
           if (fault) offenders.push(`${file}:${i + 1} — ${fault}`);
         });
     }
-    assert.deepEqual(offenders, []);
+    assert.deepEqual(
+      offenders,
+      [],
+      "a react-hooks suppression stops React Compiler compiling the file it sits in, so the " +
+        "effect is rewritten rather than silenced — see tests/reactCompiler.test.ts"
+    );
   });
 });

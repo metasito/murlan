@@ -53,14 +53,13 @@ module.exports = defineConfig([
       // on purpose already carries its own `eslint-disable-next-line` with a
       // reason, which this does not affect.
       "react-hooks/exhaustive-deps": "error",
-      // A `setState` in an effect body is a cascading render, and every site
-      // here was read one at a time for #891. The ones that remain are syncs
-      // to something React cannot see — a socket, a media query, a wall clock,
-      // an interval's first tick — and each carries its own
-      // `eslint-disable-next-line` naming that signal. The rule reports once
-      // per effect, so such a directive exempts the whole effect it sits in;
-      // what it catches is a *new* effect, and `tests/hooksLint` is what keeps
-      // the exemptions one line wide and answerable.
+      // A `setState` in an effect body is a cascading render. All 20 sites here
+      // were read one at a time for #891 and rewritten — reset in render against
+      // the previous value, derived outright, or read from the external thing
+      // itself through `useSyncExternalStore`. None is suppressed, because a
+      // suppression stops React Compiler compiling the file it sits in
+      // (`tests/reactCompiler.test.ts` proves that against the compiler), which
+      // is a worse trade than any effect it would excuse.
       "react-hooks/set-state-in-effect": "error",
       "no-restricted-syntax": [
         "error",
