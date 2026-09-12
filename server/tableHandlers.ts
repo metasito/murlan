@@ -186,16 +186,11 @@ export async function rehydrateGame(
       playerCount: restoredPlayers.length,
     }),
     handFlags: restored.handFlags,
-    // A hand restored after a restart has no record of who walked out of it:
-    // the map is memory-only and the restart emptied it.
-    abandonedSeats: new Map<number, string>(),
+    abandonedSeats: new Map(restored.seats.abandonedSeats),
     botSeatsAtStart: botSeatsFromPersonality(restoredPlayers),
-    releasedSeats: new Set<string>(),
-    // Memory-only, like releasedSeats above: a restart forgets who was mid
-    // reconnect grace, and a seat vacated before the restart is no longer
-    // reclaimable — the same courtesy releasedSeats already concedes.
-    vacatedSeats: new Map(),
-    weakSeats: new Set<number>(),
+    releasedSeats: new Set(restored.seats.releasedSeats),
+    vacatedSeats: new Map(restored.seats.vacatedSeats),
+    weakSeats: new Set(restored.seats.weakSeats),
     endMatchVotes: new Set<string>(),
     spectators: new Set<string>(),
     // The log is memory-only, so a hand restored after a restart produces no

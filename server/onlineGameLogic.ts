@@ -25,6 +25,66 @@ export function readPersistedPlayerMap(storedMap: unknown): Record<number, strin
   return map;
 }
 
+/**
+ * The vacate bookkeeping, as the stored row carries it: Maps as `[key, value]`
+ * pairs, Sets as plain arrays. Its four fields are the live collections of the
+ * same names on `OnlineGameState`, and they are persisted because Cloud Run
+ * replaces the process on every deploy (ADR-0003) — a restart that forgot them
+ * would void every vacated seat's reclaim, end-match vote and forfeit.
+ */
+export interface PersistedSeats {
+  vacatedSeats: [number, { userId: string; username: string }][];
+  releasedSeats: string[];
+  weakSeats: number[];
+  abandonedSeats: [number, string][];
+}
+
+const isSeat = (value: unknown): value is number =>
+  typeof value === "number" && Number.isInteger(value) && value >= 0;
+
+/** The pair entries of a stored Map whose values `readValue` accepts. */
+function readPersistedPairs<V>(
+  stored: unknown,
+  readValue: (value: unknown) => V | null
+): [number, V][] {
+  if (!Array.isArray(stored)) return [];
+  const pairs: [number, V][] = [];
+  for (const entry of stored) {
+    if (!Array.isArray(entry) || entry.length !== 2 || !isSeat(entry[0])) continue;
+    const value = readValue(entry[1]);
+    if (value !== null) pairs.push([entry[0], value]);
+  }
+  return pairs;
+}
+
+/**
+ * The vacate bookkeeping from a stored row, filtered entry by entry the way
+ * `readPersistedPlayerMap` is: an absent block reads back as four empty
+ * collections — which is what every row written before it existed restores to,
+ * and is the behaviour this replaced — and a malformed one never throws.
+ */
+export function readPersistedSeats(stored: unknown): PersistedSeats {
+  const block = stored && typeof stored === "object" && !Array.isArray(stored)
+    ? (stored as Record<string, unknown>)
+    : {};
+  return {
+    vacatedSeats: readPersistedPairs(block.vacatedSeats, (value) =>
+      value && typeof value === "object" &&
+      typeof (value as { userId?: unknown }).userId === "string" &&
+      typeof (value as { username?: unknown }).username === "string"
+        ? (value as { userId: string; username: string })
+        : null
+    ),
+    releasedSeats: Array.isArray(block.releasedSeats)
+      ? block.releasedSeats.filter((id): id is string => typeof id === "string")
+      : [],
+    weakSeats: Array.isArray(block.weakSeats) ? block.weakSeats.filter(isSeat) : [],
+    abandonedSeats: readPersistedPairs(block.abandonedSeats, (value) =>
+      typeof value === "string" ? value : null
+    ),
+  };
+}
+
 /** The seat a given user occupies, or null if they are not seated at all. */
 export function seatOfUser(
   playerMap: Record<number, string>,
@@ -257,6 +317,7 @@ export interface PersistedEnvelope<S> {
    */
   joinCode: string;
   match: PersistedMatch;
+  seats: PersistedSeats;
 }
 
 export function packPersistedState<S extends object>(
@@ -264,9 +325,10 @@ export function packPersistedState<S extends object>(
   handFlags: HandFlags,
   dealFirstSeat: number,
   joinCode: string,
-  match: PersistedMatch
+  match: PersistedMatch,
+  seats: PersistedSeats
 ): PersistedEnvelope<S> {
-  return { schemaVersion: GAME_SCHEMA_VERSION, gameState, handFlags, dealFirstSeat, joinCode, match };
+  return { schemaVersion: GAME_SCHEMA_VERSION, gameState, handFlags, dealFirstSeat, joinCode, match, seats };
 }
 
 export type PersistedRestore<S> =
@@ -299,6 +361,12 @@ export const persistedEnvelopeSchema = z.object({
     .string({ required_error: "no join code", invalid_type_error: "no join code" })
     .min(1, "no join code"),
   match: persistedMatchSchema,
+  // Absent on every row written before the block existed, which is why it is
+  // read through a filter rather than declared required: an old row restores to
+  // the four empty collections that used to be all a restart could offer, at
+  // the same GAME_SCHEMA_VERSION. A bump would dispose every live table at the
+  // deploy that shipped this.
+  seats: z.unknown().transform(readPersistedSeats),
 });
 
 /**
@@ -325,6 +393,7 @@ export function unpackPersistedState<S>(persisted: unknown): PersistedRestore<S>
     dealFirstSeat: number;
     joinCode: string;
     match: PersistedMatch;
+    seats: PersistedSeats;
   };
   return {
     ok: true,
@@ -333,6 +402,7 @@ export function unpackPersistedState<S>(persisted: unknown): PersistedRestore<S>
     dealFirstSeat: d.dealFirstSeat,
     joinCode: d.joinCode,
     match: d.match,
+    seats: d.seats,
   };
 }
 

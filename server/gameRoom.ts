@@ -47,8 +47,9 @@ export interface OnlineGameState {
    * tying the seat to a person. Cleared wherever a new hand deals: the forfeit
    * is recorded once, not in every remaining manche.
    *
-   * Memory only — persisting it would need a GAME_SCHEMA_VERSION bump, which
-   * disposes every live game.
+   * Persisted in the game_state envelope's `seats` block: Cloud Run replaces
+   * the process on every deploy (ADR-0003), so a restart that forgot it would
+   * lose the forfeit on a routine event.
    */
   abandonedSeats: Map<number, string>;
   /**
@@ -60,9 +61,9 @@ export interface OnlineGameState {
    * to claim it. Not in `playerMap`'s own shape (a `Record` can't say "was
    * never a key"), so it travels beside it rather than folding in.
    *
-   * Restored from `personality` on a restart (`botSeatsFromPersonality`),
-   * which is persisted, rather than left empty like the true memory-only
-   * fields below.
+   * Restored from `personality` on a restart (`botSeatsFromPersonality`)
+   * rather than from the `seats` block, because the engine state already
+   * carries enough to derive it.
    */
   botSeatsAtStart: Set<number>;
   /**
@@ -71,9 +72,8 @@ export interface OnlineGameState {
    * ran out from an account that never sat here — and answers both the same.
    *
    * Never cleared while the table lives: the whole point is to still recognise
-   * them manches later. Memory only, like `abandonedSeats` — persisting it
-   * would need a GAME_SCHEMA_VERSION bump, and a restart losing it costs a
-   * courtesy rather than a seat.
+   * them manches later. Persisted in the `seats` block, like `abandonedSeats` —
+   * losing it falls back to UNAUTHORIZED on a rejoin.
    */
   releasedSeats: Set<string>;
   /**
@@ -84,9 +84,9 @@ export interface OnlineGameState {
    * the sanitizer (the `vacated` flag), `resolveHandEnd` (a departed
    * player's frozen total) and the rejoin path (reclaiming the seat).
    *
-   * Memory only, like `abandonedSeats` and `releasedSeats` — a restart
-   * losing it costs the same courtesy those already do: the seat can no
-   * longer be told apart from one nobody ever sat in.
+   * Persisted in the `seats` block, like `abandonedSeats` and `releasedSeats`.
+   * It is what makes the seat reclaimable for the life of the match and what
+   * lets the table vote to end it, so a restart losing it is not a courtesy.
    */
   vacatedSeats: Map<number, { userId: string; username: string }>;
   /**
