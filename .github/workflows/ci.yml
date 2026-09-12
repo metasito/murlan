@@ -346,12 +346,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # check:comments diffs each changed file against the merge base.
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
       - run: npm ci
       - run: npm run lint
+      # Rides this job rather than a new one: it is a second-long file read, and
+      # billing a runner minute for it is the whole reason it used to be local —
+      # where it ran in whatever tree agent:check happened to be in, and so
+      # gated nothing.
+      - run: npm run check:comments
 
   # Nothing else in this workflow compiles the app for a device. `build` makes
   # the web bundle, the server bundle and the static Expo Go export, none of

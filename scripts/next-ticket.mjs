@@ -51,9 +51,7 @@ export function classify(openIssues) {
     else if (ls.some((l) => l.startsWith("wayfinder:") && l !== "wayfinder:map")) buckets.wayfinder.push(issue);
     else buckets.owner.push(issue);
   }
-  // Oldest first. Sorting by size first put every self-filed follow-up at the head of the
-  // frontier: the loop files a size:S ticket out of its own tooling and then serves it before
-  // anything older, which is how three consecutive sessions went to one local-only check.
+  // Oldest first: sorting by size put every self-filed size:S follow-up at the head.
   buckets.frontier.sort((a, b) => a.number - b.number);
   buckets.triage.sort((a, b) => a.number - b.number);
   buckets.wayfinder.sort((a, b) => a.number - b.number);
@@ -61,13 +59,8 @@ export function classify(openIssues) {
 }
 
 /**
- * Whether someone else is working this ticket.
- *
- * A branch alive on origin is not a claim: `delete_branch_on_merge` has been off for months, so
- * six merged branches were still there and each one froze its ticket for ever. An *open pull
- * request* is the claim, and it answers both halves of the question `issue-tracker.md` asks.
- *
- * Fails open, and this time the code does it.
+ * A branch alive on origin is not a claim — a merged one satisfies that and froze nine tickets.
+ * An open pull request is. Fails open: an unreachable tracker must not empty the queue.
  */
 export function claimedElsewhere(number, list) {
   try {
