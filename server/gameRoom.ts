@@ -47,8 +47,9 @@ export interface OnlineGameState {
    * tying the seat to a person. Cleared wherever a new hand deals: the forfeit
    * is recorded once, not in every remaining manche.
    *
-   * Memory only — persisting it would need a GAME_SCHEMA_VERSION bump, which
-   * disposes every live game.
+   * Persisted in the game_state envelope's `seats` block: which instance owns
+   * the table moves at any moment (ADR-0003), and the one taking it over reads
+   * the row and nothing else.
    */
   abandonedSeats: Map<number, string>;
   /**
@@ -60,9 +61,9 @@ export interface OnlineGameState {
    * to claim it. Not in `playerMap`'s own shape (a `Record` can't say "was
    * never a key"), so it travels beside it rather than folding in.
    *
-   * Restored from `personality` on a restart (`botSeatsFromPersonality`),
-   * which is persisted, rather than left empty like the true memory-only
-   * fields below.
+   * Restored from `personality` on a restart (`botSeatsFromPersonality`)
+   * rather than from the `seats` block, because the engine state already
+   * carries enough to derive it.
    */
   botSeatsAtStart: Set<number>;
   /**
@@ -70,23 +71,22 @@ export interface OnlineGameState {
    * forgotten them, so without this a rejoin cannot tell someone whose grace
    * ran out from an account that never sat here — and answers both the same.
    *
-   * Never cleared while the table lives: the whole point is to still recognise
-   * them manches later. Memory only, like `abandonedSeats` — persisting it
-   * would need a GAME_SCHEMA_VERSION bump, and a restart losing it costs a
-   * courtesy rather than a seat.
+   * Cleared only by a reclaim, and never by a new hand: the whole point is to
+   * still recognise them manches later. Persisted in the `seats` block, like
+   * `abandonedSeats` — losing it falls back to UNAUTHORIZED on a rejoin.
    */
   releasedSeats: Set<string>;
   /**
    * Seat -> the account that used to hold it, for a seat a human has left
    * while the table is still live. This is the seat's half of
-   * `releasedSeats`: that set answers "may this account never sit again",
+   * `releasedSeats`: that set answers "has this account given a seat up here",
    * this map answers "which seat, and who". Cleared on reclaim, and read by
    * the sanitizer (the `vacated` flag), `resolveHandEnd` (a departed
    * player's frozen total) and the rejoin path (reclaiming the seat).
    *
-   * Memory only, like `abandonedSeats` and `releasedSeats` — a restart
-   * losing it costs the same courtesy those already do: the seat can no
-   * longer be told apart from one nobody ever sat in.
+   * Persisted in the `seats` block, like `abandonedSeats` and `releasedSeats`.
+   * It is what makes the seat reclaimable for the life of the match and what
+   * lets the table vote to end it, so a restart losing it is not a courtesy.
    */
   vacatedSeats: Map<number, { userId: string; username: string }>;
   /**
@@ -95,6 +95,10 @@ export interface OnlineGameState {
    * (docs/BRIEF.md §3.1). Cleared at every `dealManche`, so a seat vacated
    * between hands is never weak: there is no hand in progress to protect, and
    * it plays properly from its first turn as a bot.
+   *
+   * Persisted in the `seats` block, with `abandonedSeats`, `releasedSeats` and
+   * `vacatedSeats`: a takeover mid-hand must hold the seat weak for the rest of
+   * that hand, not from the next deal.
    */
   weakSeats: Set<number>;
   /**

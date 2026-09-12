@@ -10,6 +10,7 @@ import {
   unpackPersistedState,
   type HandFlags,
   type PersistedMatch,
+  type PersistedSeats,
 } from "../server/onlineGameLogic.ts";
 
 const gameState = {
@@ -29,10 +30,17 @@ const match: PersistedMatch = {
   handsPlayed: 2,
 };
 
+const seats: PersistedSeats = {
+  vacatedSeats: [[1, { userId: "bob", username: "Bob" }]],
+  releasedSeats: ["bob"],
+  weakSeats: [1],
+  abandonedSeats: [[1, "bob"]],
+};
+
 const JOIN_CODE = "QW3RTY";
 
-const pack = (over: Partial<PersistedMatch> = {}) =>
-  packPersistedState(gameState, flags, 3, JOIN_CODE, { ...match, ...over });
+const pack = (over: Partial<PersistedMatch> = {}, seatsOver: Partial<PersistedSeats> = {}) =>
+  packPersistedState(gameState, flags, 3, JOIN_CODE, { ...match, ...over }, { ...seats, ...seatsOver });
 
 /** The restored side of a round trip, or a failure naming the rejection. */
 function restore(persisted: unknown) {
@@ -59,6 +67,26 @@ describe("persisted game_state envelope", () => {
     assert.equal(restore(pack()).joinCode, JOIN_CODE);
   });
 
+  test("the vacate bookkeeping survives a round trip", () => {
+    // Without these four a restart voids every vacated seat: no reclaim, no
+    // end-match vote, no forfeit recorded, and the takeover plays at full
+    // strength (#958, docs/BRIEF.md §3.1).
+    assert.deepEqual(restore(JSON.parse(JSON.stringify(pack()))).seats, seats);
+  });
+
+  test("a row written before the seat block existed restores as empty", () => {
+    // The same GAME_SCHEMA_VERSION on purpose: a bump would dispose every live
+    // table at the deploy that ships the fix.
+    const { seats: _dropped, ...older } = pack();
+    const restored = restore({ ...older, schemaVersion: GAME_SCHEMA_VERSION });
+    assert.deepEqual(restored.seats, {
+      vacatedSeats: [],
+      releasedSeats: [],
+      weakSeats: [],
+      abandonedSeats: [],
+    });
+  });
+
   test("the engine state comes back byte-for-byte, with no envelope fields on it", () => {
     // The restored state is broadcast to every client and compared against
     // engine output — a stray schemaVersion or handFlags on it is a real bug.
@@ -76,7 +104,7 @@ describe("persisted game_state envelope", () => {
 
   test("packing does not mutate the caller's game state", () => {
     const original = { ...gameState };
-    packPersistedState(gameState, flags, 0, JOIN_CODE, match);
+    packPersistedState(gameState, flags, 0, JOIN_CODE, match, seats);
     assert.deepEqual(gameState, original);
   });
 
@@ -150,5 +178,38 @@ describe("rows the restore path refuses", () => {
     // cannot read must not survive as one it can.
     const restored = restore(pack({ playerMap: { 0: "alice", x: "bob", 1: 42 } as never }));
     assert.deepEqual(restored.match.playerMap, { 0: "alice" });
+  });
+
+  test("a malformed seat block degrades to empty rather than refusing the row", () => {
+    // The row is attacker-influenced through gameplay, and a throw here loses
+    // the whole table rather than one courtesy.
+    assert.deepEqual(restore({ ...pack(), seats: "nonsense" }).seats, {
+      vacatedSeats: [],
+      releasedSeats: [],
+      weakSeats: [],
+      abandonedSeats: [],
+    });
+  });
+
+  test("a seat entry the restore path cannot read is dropped, not restored", () => {
+    const restored = restore(
+      pack({}, {
+        vacatedSeats: [
+          [1, { userId: "bob", username: "Bob" }],
+          ["x", { userId: "eve", username: "Eve" }],
+          [2, { userId: 7, username: "Eve" }],
+          [3],
+        ] as never,
+        releasedSeats: ["bob", 42] as never,
+        weakSeats: [1, "2", -1, 1.5] as never,
+        abandonedSeats: [[1, "bob"], [2, null]] as never,
+      }),
+    );
+    assert.deepEqual(restored.seats, {
+      vacatedSeats: [[1, { userId: "bob", username: "Bob" }]],
+      releasedSeats: ["bob"],
+      weakSeats: [1],
+      abandonedSeats: [[1, "bob"]],
+    });
   });
 });
