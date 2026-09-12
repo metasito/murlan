@@ -49,16 +49,30 @@ const diffAcross = (
 
 const unprefixed = (lines: string[]) => lines.map((l) => l.slice(1));
 
-// One change, run through a differently configured git by each format case below: seven comment
-// lines added to two of code, which is over budget only if the diff reaches the check intact.
+// One change, over budget only if the diff reaches the check intact, run through a differently
+// configured git by every case in `FORMATS`.
 const formatBefore = unprefixed(code(2));
 const formatAfter = [...formatBefore, ...unprefixed(comments(7)).map((l) => `${l} new`)];
 
-const gitConfig = (key: string, value: string) => ({
+const oneGitConfig = (key: string, value: string) => ({
   GIT_CONFIG_COUNT: "1",
   GIT_CONFIG_KEY_0: key,
   GIT_CONFIG_VALUE_0: value,
 });
+
+// Every way a machine's own git configuration can empty this check out, one per flag in `FORMAT`:
+// what to configure, and the shape `raw` takes once it fires. Drop that flag and its own case reds.
+const FORMATS: [string, Parameters<typeof diffAcross>[2], RegExp][] = [
+  ["rewrites diff headers", { config: oneGitConfig("diff.noprefix", "true") }, /^diff --git a\.mjs a\.mjs$/m],
+  ["marks a source file binary", { attributes: "*.mjs -diff" }, /^Binary files /m],
+  ["colours its diffs", { config: oneGitConfig("color.ui", "always") }, /^\x1b\[[\d;]*mdiff --git /m],
+  ["runs an external differ", { config: oneGitConfig("diff.external", "node --version") }, /^v\d+\.\d+/m],
+  [
+    "converts a file before diffing it",
+    { config: oneGitConfig("diff.blob.textconv", 'node -p "process.argv[1]"'), attributes: "*.mjs diff=blob" },
+    /^diff --git a\/a\.mjs b\/a\.mjs$/m,
+  ],
+];
 
 // The window has to reach the opener of a block comment as long as any this repo actually writes,
 // so that length is measured rather than restated: a docblock grown past `CONTEXT` reds the case
@@ -197,47 +211,17 @@ describe("comment budget", () => {
     assert.deepEqual(counts(diffAcross([...head, ...tail], [...head, ...added, ...tail]).pinned), [["a.mjs", 8, 0]]);
   });
 
-  // Without the format flags this is not a failure but a pass: every header stops matching, the
-  // check sees no file at all, and reports within budget. `raw` is asserted first, or the case
-  // would stay green on a day the config stopped reaching git and nothing was being rewritten.
-  test("a machine that rewrites diff headers cannot empty the check out", () => {
-    const config = gitConfig("diff.noprefix", "true");
-    const { pinned, raw } = diffAcross(formatBefore, formatAfter, { config });
-    assert.match(raw, /^diff --git a\.mjs a\.mjs$/m);
-    assert.deepEqual(counts(pinned), [["a.mjs", 7, 0]]);
-  });
-
-  // The other half of that class: the header still parses, and every line of content is gone.
-  test("a source file marked binary cannot empty the check out", () => {
-    const { pinned, raw } = diffAcross(formatBefore, formatAfter, { attributes: "*.mjs -diff" });
-    assert.match(raw, /^Binary files /m);
-    assert.deepEqual(counts(pinned), [["a.mjs", 7, 0]]);
-  });
-
-  test("a machine that colours its diffs cannot empty the check out", () => {
-    const { pinned, raw } = diffAcross(formatBefore, formatAfter, { config: gitConfig("color.ui", "always") });
-    assert.match(raw, /^\[[\d;]*mdiff --git /m);
-    assert.deepEqual(counts(pinned), [["a.mjs", 7, 0]]);
-  });
-
-  // An external differ replaces git's output with its own, so there is no header to find: any
-  // program will do, and `node` is the one this test is already running on.
-  test("a machine with an external differ cannot empty the check out", () => {
-    const { pinned, raw } = diffAcross(formatBefore, formatAfter, { config: gitConfig("diff.external", "node --version") });
-    assert.match(raw, /^v\d+\./m);
-    assert.doesNotMatch(raw, /^diff --git /m);
-    assert.deepEqual(counts(pinned), [["a.mjs", 7, 0]]);
-  });
-
-  // The one that reads as a working diff: the header stands and the hunks are real, but the lines
-  // under them are the filter's output rather than the file's — here, the blob's temporary path.
-  test("a machine with a textconv filter cannot empty the check out", () => {
-    const config = gitConfig("diff.blob.textconv", 'node -p "process.argv[1]"');
-    const { pinned, raw } = diffAcross(formatBefore, formatAfter, { config, attributes: "*.mjs diff=blob" });
-    assert.match(raw, /^diff --git a\/a\.mjs b\/a\.mjs$/m);
-    assert.doesNotMatch(raw, /line 0 new/);
-    assert.deepEqual(counts(pinned), [["a.mjs", 7, 0]]);
-  });
+  // Each of these is a pass rather than a failure without its flag: `budget` is handed a diff it
+  // finds no file in, or finds some other text under a header, and reports within budget. Both
+  // halves are asserted, or a case stays green on a day its misconfiguration stopped reaching git.
+  for (const [what, opts, fired] of FORMATS) {
+    test(`a machine that ${what} cannot empty the check out`, () => {
+      const { pinned, raw } = diffAcross(formatBefore, formatAfter, opts);
+      assert.match(raw, fired);
+      assert.deepEqual(budget(raw), [], raw);
+      assert.deepEqual(counts(pinned), [["a.mjs", 7, 0]]);
+    });
+  }
 
   test("a context line is counted in neither column", () => {
     const before = [...unprefixed(code(12)), ...unprefixed(comments(6))];
