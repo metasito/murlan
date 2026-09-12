@@ -51,7 +51,9 @@ export default defineConfig({
   // played-to-completion game is genuinely slower with more seats.
   timeout: 10 * 60_000,
   fullyParallel: false,
-  retries: 0,
+  // A retried-then-passed test is reported `flaky`, not `passed`, so the information survives.
+  // Locally still 0: a flake you cannot see is one nobody fixes.
+  retries: process.env.CI ? 1 : 0,
   // One worker, and not for want of trying: the runner is already CPU-bound
   // with a single Chromium driving this bundle, so a second and third lane
   // divide the same cores rather than adding any. Three ran the suite in the
