@@ -98,9 +98,10 @@ export const heldSeatGraceMs = () => Math.min(disconnectGraceMs(), lobbyGraceMs(
  * lowered by a config this harness never reads all break the premise while that
  * check still passes. A `SEAT_RELEASED` is that break observed.
  *
- * One-directional. `releasedSeats` is memory-only, so a server restart mid-match
- * downgrades the code back to `UNAUTHORIZED`: its presence means the window broke,
- * its absence never means the window held.
+ * One-directional. `releasedSeats` rides the persisted row, but a table whose row
+ * was discarded as unrestorable or swept has no memory of the release at all and
+ * answers `UNAUTHORIZED`: a `SEAT_RELEASED` means the window broke, its absence
+ * never means the window held.
  */
 export function rejoinFailure(
   seat: {

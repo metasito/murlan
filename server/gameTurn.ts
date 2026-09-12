@@ -359,7 +359,12 @@ export async function vacateSeat(
           )
         );
       disposeGame(roomId);
+      return;
     }
+    // The same write the mid-hand tail makes: the four collections above are
+    // only a restart away from gone, and a seat vacated between hands is as
+    // reclaimable as one vacated during one (docs/BRIEF.md §3.1).
+    persistGameState(roomId, game);
     return;
   }
 

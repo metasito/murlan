@@ -47,9 +47,9 @@ export interface OnlineGameState {
    * tying the seat to a person. Cleared wherever a new hand deals: the forfeit
    * is recorded once, not in every remaining manche.
    *
-   * Persisted in the game_state envelope's `seats` block: Cloud Run replaces
-   * the process on every deploy (ADR-0003), so a restart that forgot it would
-   * lose the forfeit on a routine event.
+   * Persisted in the game_state envelope's `seats` block: which instance owns
+   * the table moves at any moment (ADR-0003), and the one taking it over reads
+   * the row and nothing else.
    */
   abandonedSeats: Map<number, string>;
   /**
@@ -95,6 +95,9 @@ export interface OnlineGameState {
    * (docs/BRIEF.md §3.1). Cleared at every `dealManche`, so a seat vacated
    * between hands is never weak: there is no hand in progress to protect, and
    * it plays properly from its first turn as a bot.
+   *
+   * Persisted in the `seats` block, like the three above: a takeover mid-hand
+   * must hold the seat weak for the rest of that hand, not from the next deal.
    */
   weakSeats: Set<number>;
   /**

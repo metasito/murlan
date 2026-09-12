@@ -11,13 +11,16 @@ import type { GameResult } from "../lib/achievements.ts";
 import { exchangeAnnounceMs } from "../lib/exchangeCeremony.ts";
 import { z } from "zod";
 
+const isSeat = (value: unknown): value is number =>
+  typeof value === "number" && Number.isInteger(value) && value >= 0;
+
 /** seat -> userId from the persisted map, dropping any entry that is not one. */
 export function readPersistedPlayerMap(storedMap: unknown): Record<number, string> {
   const map: Record<number, string> = {};
   if (storedMap && typeof storedMap === "object" && !Array.isArray(storedMap)) {
     for (const [key, value] of Object.entries(storedMap as Record<string, unknown>)) {
       const seat = Number(key);
-      if (Number.isInteger(seat) && seat >= 0 && typeof value === "string") {
+      if (isSeat(seat) && typeof value === "string") {
         map[seat] = value;
       }
     }
@@ -28,9 +31,10 @@ export function readPersistedPlayerMap(storedMap: unknown): Record<number, strin
 /**
  * The vacate bookkeeping, as the stored row carries it: Maps as `[key, value]`
  * pairs, Sets as plain arrays. Its four fields are the live collections of the
- * same names on `OnlineGameState`, and they are persisted because Cloud Run
- * replaces the process on every deploy (ADR-0003) — a restart that forgot them
- * would void every vacated seat's reclaim, end-match vote and forfeit.
+ * same names on `OnlineGameState`, and the instance taking a table over reads
+ * them from here and nowhere else — they are what make a vacated seat
+ * reclaimable, the end-match vote reachable, the walkout a forfeit and the
+ * takeover weak for the rest of the hand (docs/BRIEF.md §3.1).
  */
 export interface PersistedSeats {
   vacatedSeats: [number, { userId: string; username: string }][];
@@ -38,9 +42,6 @@ export interface PersistedSeats {
   weakSeats: number[];
   abandonedSeats: [number, string][];
 }
-
-const isSeat = (value: unknown): value is number =>
-  typeof value === "number" && Number.isInteger(value) && value >= 0;
 
 /** The pair entries of a stored Map whose values `readValue` accepts. */
 function readPersistedPairs<V>(
@@ -60,8 +61,8 @@ function readPersistedPairs<V>(
 /**
  * The vacate bookkeeping from a stored row, filtered entry by entry the way
  * `readPersistedPlayerMap` is: an absent block reads back as four empty
- * collections — which is what every row written before it existed restores to,
- * and is the behaviour this replaced — and a malformed one never throws.
+ * collections, which is how a row written without one restores, and a
+ * malformed one never throws.
  */
 export function readPersistedSeats(stored: unknown): PersistedSeats {
   const block = stored && typeof stored === "object" && !Array.isArray(stored)
@@ -361,11 +362,9 @@ export const persistedEnvelopeSchema = z.object({
     .string({ required_error: "no join code", invalid_type_error: "no join code" })
     .min(1, "no join code"),
   match: persistedMatchSchema,
-  // Absent on every row written before the block existed, which is why it is
-  // read through a filter rather than declared required: an old row restores to
-  // the four empty collections that used to be all a restart could offer, at
-  // the same GAME_SCHEMA_VERSION. A bump would dispose every live table at the
-  // deploy that shipped this.
+  // Read through a filter rather than declared required, so a row without the
+  // block restores at this same GAME_SCHEMA_VERSION with four empty
+  // collections. Bumping the version instead disposes every live table.
   seats: z.unknown().transform(readPersistedSeats),
 });
 
@@ -374,9 +373,9 @@ export const persistedEnvelopeSchema = z.object({
  * checked before the parse — it answers "may this row be restored at all",
  * which a field schema cannot — and the schema's first complaint becomes the
  * reason. `gameState` and `handFlags` are only checked for being objects and
- * then cast, and `match.playerMap` is filtered entry by entry rather than
- * refused: a wholly malformed map reads back as an empty one, which the
- * caller's seat check turns into UNAUTHORIZED.
+ * then cast, and `match.playerMap` and `seats` are filtered entry by entry
+ * rather than refused: a wholly malformed map reads back as an empty one, which
+ * the caller's seat check turns into UNAUTHORIZED.
  */
 export function unpackPersistedState<S>(persisted: unknown): PersistedRestore<S> {
   if (!isPlainObject(persisted)) return { ok: false, reason: "not an object" };

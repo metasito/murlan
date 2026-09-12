@@ -130,11 +130,14 @@ function roomError(io: SocketServer, userId: string, payload: unknown): void {
  * the room.
  *
  * `forUserId` is the player whose action triggered the takeover, and they must
- * hold a seat in the persisted roster. Without that gate any authenticated
- * account could name any room id and pull that table into whichever instance it
- * is connected to — where `pruneStaleRooms` then skips it for holding a live
- * game, and the sweeper only disposes finished ones. `null` is the deal, which
- * has no persisted roster to check against and does its own host check.
+ * hold a seat in the persisted roster, or a seat the row records them as having
+ * vacated — a reclaim is the one case where the person entitled to the table is
+ * absent from `playerMap` (docs/BRIEF.md §3.1), and they may well be the first
+ * to come back to it. Without that gate any authenticated account could name any
+ * room id and pull that table into whichever instance it is connected to — where
+ * `pruneStaleRooms` then skips it for holding a live game, and the sweeper only
+ * disposes finished ones. `null` is the deal, which has no persisted roster to
+ * check against and does its own host check.
  *
  * The one place besides `startMatch` that writes `activeGames`, and both run
  * under a claim — `tests/tableOwnership.test.ts` pins that there is no third.
@@ -160,7 +163,13 @@ export async function rehydrateGame(
 
   const { playerMap, scores, gameMode, matchLength, matchTarget, maxPlayers, handsPlayed } =
     restored.match;
-  if (forUserId !== null && !Object.values(playerMap).includes(forUserId)) return "not_seated";
+  if (
+    forUserId !== null &&
+    !Object.values(playerMap).includes(forUserId) &&
+    !restored.seats.vacatedSeats.some(([, who]) => who.userId === forUserId)
+  ) {
+    return "not_seated";
+  }
   const restoredState = restored.gameState;
   const restoredPlayers = restoredState.players;
   activeGames.set(roomId, {
