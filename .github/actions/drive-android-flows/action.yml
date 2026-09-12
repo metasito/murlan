@@ -124,6 +124,20 @@ runs:
           # reboot, the locale and the install. Its absence is what tells
           # `maestro.yml` the device itself never arrived (#186).
           touch "$RUNNER_TEMP/emulator-booted"
+          # Half the resolution and half the density: the same screen in dp, a
+          # quarter of the pixels for the app to rasterize. The flows select on
+          # dp and cannot tell the difference, and
+          # `tests/emulatorDisplayOverride.test.ts` derives that from the
+          # profile above so the two cannot drift apart. #942 holds what this
+          # buys and the limits of it.
+          #
+          # Below the marker: a device that refuses the override is one that
+          # came up, and failing above it would report itself as #186 and spend
+          # two more 900s boots on it.
+          adb shell wm size 540x1200
+          adb shell wm density 210
+          adb shell wm size | tr -d '\r' | grep -q 'Override size: 540x1200' || { echo "::error::The display override did not take; the flows would run at full resolution."; exit 1; }
+          adb shell wm density | tr -d '\r' | grep -q 'Override density: 210' || { echo "::error::The density override did not take; layout would not match the resolution."; exit 1; }
           # A device that came up is not yet an app that runs. The app has
           # started, died within five seconds and left the launcher holding the
           # foreground for the whole deadline, and the flows then failed against
