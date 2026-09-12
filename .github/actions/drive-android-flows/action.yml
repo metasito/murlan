@@ -102,26 +102,6 @@ runs:
           # the dialog and nothing else, so every assertion fails. This hides
           # the system dialog only; an app that genuinely hangs still fails.
           adb shell settings put global hide_error_dialogs 1
-          # Half the resolution and half the density: pixel_6 is 1080x2400 at
-          # 420dpi, and 540x1200 at 210dpi is the same 411x914dp screen, so no
-          # flow can tell the difference and swiftshader rasterizes a quarter
-          # of the pixels.
-          #
-          # The graphics pipe is the fault, measured rather than argued (#942,
-          # run 34105243719): 537ms per frame on the game table against a turn
-          # timer that re-renders once a second leaves the main thread never
-          # quiet for the 500ms UiAutomator wants before it returns a
-          # hierarchy, so each read burned its timeout - 37s for `assertVisible
-          # id: game-table`, 20s for one tap, against 0.2-1.5s for the menus in
-          # the same run - and the flow asks for sixty of them. The host was
-          # calm throughout: 5.2GB available, loadavg falling.
-          #
-          # Verified, not assumed: `wm size` reports an override only if one
-          # took, and a silent no-op would look exactly like the fix working.
-          adb shell wm size 540x1200
-          adb shell wm density 210
-          adb shell wm size | tr -d '\r' | grep -q 'Override size: 540x1200' || { echo "::error::The display override did not take; the flows would run at full resolution."; exit 1; }
-          adb shell wm density | tr -d '\r' | grep -q 'Override density: 210' || { echo "::error::The density override did not take; layout would not match the resolution."; exit 1; }
           # Collected as it happens, not at the end. Maestro pulls the logcat
           # when a flow finishes, and the failure this is here to explain kills
           # the emulator - so the pull hits "device offline" and the run's only
@@ -144,6 +124,29 @@ runs:
           # reboot, the locale and the install. Its absence is what tells
           # `maestro.yml` the device itself never arrived (#186).
           touch "$RUNNER_TEMP/emulator-booted"
+          # Half the resolution and half the density, so the screen is the same
+          # size in dp and a quarter of the pixels for the app to rasterize.
+          # The flows select on dp and cannot tell the difference;
+          # `tests/emulatorDisplayOverride.test.ts` derives that from the
+          # profile above, so the two numbers cannot drift apart.
+          #
+          # Why the pixels are worth buying, measured on run 34105243719 (#942):
+          # the app's own eglSwapBuffers averages 537ms a frame on the game
+          # table, and UiAutomator will not return a view hierarchy until the
+          # main thread has been quiet for 500ms - so a read that costs 0.2-1.5s
+          # on the menus costs 13-37s there, and offline-game asks for about
+          # sixty of them. Whether that is also what ends up killing the
+          # emulator is not established: logcat simply stops. What the same
+          # artefact does rule out is the host, which this file argued unmeasured
+          # for two years - 5.2GB available and loadavg falling as it died.
+          #
+          # Below the marker deliberately. A device that refuses the override is
+          # a device that came up, and failing above it would spend two 900s
+          # boots reporting itself as #186.
+          adb shell wm size 540x1200
+          adb shell wm density 210
+          adb shell wm size | tr -d '\r' | grep -q 'Override size: 540x1200' || { echo "::error::The display override did not take; the flows would run at full resolution."; exit 1; }
+          adb shell wm density | tr -d '\r' | grep -q 'Override density: 210' || { echo "::error::The density override did not take; layout would not match the resolution."; exit 1; }
           # A device that came up is not yet an app that runs. The app has
           # started, died within five seconds and left the launcher holding the
           # foreground for the whole deadline, and the flows then failed against

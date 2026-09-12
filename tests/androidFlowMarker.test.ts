@@ -14,6 +14,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { actionScriptLines } from "./helpers/androidAction.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -21,24 +22,10 @@ function read(rel: string): string {
   return readFileSync(path.join(repoRoot, rel), "utf8");
 }
 
-const ACTION = ".github/actions/drive-android-flows/action.yml";
 const WORKFLOW = ".github/workflows/maestro.yml";
 
-/** The action's `script:` block, comments and blank lines dropped. */
-function scriptLines(): string[] {
-  const src = read(ACTION);
-  const start = src.indexOf("script: |");
-  assert.notEqual(start, -1, "the action no longer carries a script block");
-  return src
-    .slice(start)
-    .split("\n")
-    .slice(1)
-    .map((l) => l.trim())
-    .filter((l) => l !== "" && !l.startsWith("#"));
-}
-
 describe("the Android flow marker", () => {
-  const lines = scriptLines();
+  const lines = actionScriptLines(repoRoot);
 
   test("is the last thing the script does before running the flows", () => {
     const marker = lines.findIndex((l) => l.startsWith("touch") && l.includes("app-launched"));
