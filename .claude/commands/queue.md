@@ -237,8 +237,13 @@ it could not judge at all (not on a ticket branch, or the tracker is unreachable
 permission either.
 
 ```sh
-npm run agent:check
+npm run agent:check       # in the worktree — it judges the tree it is invoked from
 ```
+
+Unlike the gate, this one is not the shared checkout's to run: it judges whatever tree it is
+standing in, and refuses rather than passing when that tree holds nothing. Its verdict names the
+tree and the base, so read that line — it is what tells a green about your branch from a green about
+somebody else's.
 
 Say what it reported, including the checks it names as CI's — a green line standing for a suite
 nobody ran is not a pass.

@@ -28,6 +28,47 @@ export function classifyStatus(porcelain) {
   return { blocking, untracked };
 }
 
+/**
+ * The tree `agent:check` is judging, from that tree's own readings.
+ *
+ * A subject with nothing in it is a refusal rather than a pass: a check looking at no diff has
+ * nothing its green could be a statement about, and the loop only ever runs this before a push.
+ */
+export function checkSubject({ toplevel, baseSha, changed }) {
+  if (!toplevel) return { refuse: "no tree to judge — this is not inside a git worktree" };
+  if (!baseSha) return { refuse: "no base to judge against — origin/main does not resolve" };
+  if (!changed.trim()) {
+    return {
+      refuse: `nothing to judge in ${toplevel} — no commits against origin/main, nothing tracked changed`,
+    };
+  }
+  return { root: toplevel, base: baseSha.slice(0, 7) };
+}
+
+/**
+ * Those readings, taken from a given tree. Separate from the process's own cwd so two worktrees of
+ * one repository can be resolved side by side, which is the only way to test that they are judged
+ * apart.
+ */
+export function readSubject(cwd) {
+  const read = (...args) => {
+    try {
+      return git(args, cwd).trim();
+    } catch {
+      return null;
+    }
+  };
+  return checkSubject({
+    toplevel: read("rev-parse", "--show-toplevel"),
+    baseSha: read("rev-parse", "--verify", "origin/main"),
+    // Untracked files are excluded: a scratch file is not a change any verdict could be about.
+    changed: [
+      read("diff", "--name-only", "origin/main...HEAD"),
+      read("status", "--porcelain", "--untracked-files=no"),
+    ].join("\n"),
+  });
+}
+
 /** The primary worktree — `git worktree list` always prints it first. */
 export function primaryWorktree(porcelainList) {
   const first = porcelainList.split("\n").find((l) => l.startsWith("worktree "));

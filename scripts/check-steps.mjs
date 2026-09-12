@@ -14,5 +14,7 @@ export const STEPS = [
 ];
 
 export const cmd = (step) => `npm ${step.args.join(" ")}`;
+/** What a step announces itself with, so a test can tell that none of them ran. */
+export const BANNER = "=== ";
 export const LOCAL = STEPS.filter((s) => s.where === "local");
 export const DELEGATED = STEPS.filter((s) => s.where === "ci");

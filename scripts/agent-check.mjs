@@ -9,8 +9,8 @@ import { createHash } from "node:crypto";
 import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { primaryWorktree, checkLockDrift } from "./preflight.mjs";
-import { LOCAL, DELEGATED, cmd } from "./check-steps.mjs";
+import { primaryWorktree, checkLockDrift, readSubject } from "./preflight.mjs";
+import { LOCAL, DELEGATED, cmd, BANNER } from "./check-steps.mjs";
 
 /**
  * A wedged suite used to hang this check for ever, and an unattended run has nobody to notice.
@@ -19,10 +19,13 @@ import { LOCAL, DELEGATED, cmd } from "./check-steps.mjs";
  */
 const STEP_TIMEOUT_MS = 20 * 60_000;
 
-// What this left out is part of its verdict, named as a command so nobody has to invent one.
+// What this left out is part of its verdict, named as a command so nobody has to invent one, and
+// which tree it read is the first of those: a verdict that does not say cannot be told from a
+// vacuous one.
 const verdict = (outcome) =>
   [
     outcome,
+    `  judged:    ${subject.root} against origin/main@${subject.base}`,
     `  ran here:  ${LOCAL.map((s) => s.name).join(", ")}`,
     ...DELEGATED.map((s) => `  ci.yml ${s.job}:  ${cmd(s)}`),
   ].join("\n");
@@ -30,6 +33,15 @@ const verdict = (outcome) =>
 function git(...args) {
   return execFileSync("git", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
 }
+
+const subject = readSubject(process.cwd());
+if (subject.refuse) {
+  console.error(`agent:check: ${subject.refuse}`);
+  process.exit(1);
+}
+// Everything below — the tree hash, the cache, the steps — reads the tree being judged rather than
+// wherever the invoker happened to be standing. Moving once is what keeps them from disagreeing.
+process.chdir(subject.root);
 
 /**
  * Identifies the working tree by content, not by commit: HEAD alone would call an edited tree
@@ -110,7 +122,7 @@ if (!force && cache[key]?.pass) {
 
 const failed = [];
 for (const step of LOCAL) {
-  process.stdout.write(`\n=== ${step.name} ===\n`);
+  process.stdout.write(`\n${BANNER}${step.name} ===\n`);
   const run = spawnSync("npm", step.args, {
     stdio: "inherit",
     shell: process.platform === "win32",
