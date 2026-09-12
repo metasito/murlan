@@ -352,11 +352,16 @@ export function GameProvider({ children }: { children: ReactNode }) {
     commitState(resolveStuckExchange(gameState), gameState);
   }, [gameState, commitState]);
 
-  const clearSavedGame = useCallback(() => {
+  /** The stored row alone. Safe from an effect, which the flag below is not. */
+  const dropSavedRow = useCallback(() => {
     savedRef.current = null;
-    setHasSavedGame(false);
     AsyncStorage.removeItem(OFFLINE_SAVE_KEY).catch(() => {});
   }, []);
+
+  const clearSavedGame = useCallback(() => {
+    dropSavedRow();
+    setHasSavedGame(false);
+  }, [dropSavedRow]);
 
   const resetGame = useCallback(() => {
     setGameState(null);
@@ -399,11 +404,19 @@ export function GameProvider({ children }: { children: ReactNode }) {
    * next one costs a move; a debounce that loses the last write before a kill
    * costs the hand, which is the thing this exists to prevent.
    */
+  // The flag reports the stored row, so the match ending retires both — this
+  // half here because the row's removal belongs to the effect below and a flag
+  // does not.
+  const [flaggedForOver, setFlaggedForOver] = useState(match.over);
+  if (match.over !== flaggedForOver) {
+    setFlaggedForOver(match.over);
+    if (match.over && gameState) setHasSavedGame(false);
+  }
+
   useEffect(() => {
     if (!gameState) return;
     if (match.over) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- `clearSavedGame` drops `hasSavedGame` with the stored row, and the row is what the flag reports
-      clearSavedGame();
+      dropSavedRow();
       return;
     }
     AsyncStorage.setItem(
@@ -417,7 +430,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
         dealFirstSeat,
       })
     ).catch(() => {});
-  }, [gameState, match, rematchAnswers, savedPlayerConfigs, savedGameMode, dealFirstSeat, clearSavedGame]);
+  }, [gameState, match, rematchAnswers, savedPlayerConfigs, savedGameMode, dealFirstSeat, dropSavedRow]);
 
   // A computer has no preference worth recording, so an AI seat abstains from
   // the count and the total alike — the same policy the server applies to bot
