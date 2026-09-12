@@ -3,7 +3,7 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { classify, pickRoute, isInvokedDirectly } from "../scripts/next-ticket.mjs";
+import { classify, pickRoute, isInvokedDirectly, claimedElsewhere, sizeOf } from "../scripts/next-ticket.mjs";
 import { importUnderShellGuard } from "./helpers/importShellGuard.ts";
 
 function issue(number: number, labelNames: string[]) {
@@ -81,6 +81,36 @@ describe("classify's bucketing", () => {
     assert.equal(buckets.triage.length, 0);
     assert.equal(buckets.wayfinder.length, 0);
     assert.equal(buckets.owner.length, 0);
+  });
+});
+
+describe("the frontier's order", () => {
+  test("the oldest ticket comes first, whatever its size", () => {
+    const b = classify([issue(995, ["ready-for-agent", "size:S"]), issue(70, ["ready-for-agent", "size:L"])]);
+    assert.deepEqual(b.frontier.map((i) => i.number), [70, 995]);
+  });
+});
+
+describe("claimedElsewhere", () => {
+  // The comment promised fail-open and the code had no try/catch, so an unreachable origin threw
+  // out of takeable(), out of the picker, and took the supervisor's for(;;) with it.
+  test("an unreachable tracker does not empty the queue", () => {
+    const threw = () => {
+      throw new Error("could not read from remote repository");
+    };
+    assert.equal(claimedElsewhere(42, threw), false);
+  });
+
+  test("a claim is live only while its pull request is open", () => {
+    assert.equal(claimedElsewhere(42, () => [{ number: 984, state: "OPEN" }]), true);
+    assert.equal(claimedElsewhere(42, () => []), false);
+  });
+});
+
+describe("sizeOf", () => {
+  test("reads the size label the spawn's turn bound is derived from", () => {
+    assert.equal(sizeOf(issue(1, ["ready-for-agent", "size:L"])), "size:L");
+    assert.equal(sizeOf(issue(2, ["ready-for-agent"])), null);
   });
 });
 
