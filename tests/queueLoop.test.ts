@@ -690,6 +690,16 @@ describe("afterPush", () => {
     const r = afterPush({ verdict: { pass: false, infrastructure: true, failedStep: "browser" } });
     assert.equal(r.action, "retry-verdict");
   });
+
+  test("a recheck rides the retry budget instead of parking", () => {
+    const out = afterPush({ verdict: { pass: true }, landing: { action: "recheck", reason: "still computing" } });
+    assert.equal(out.action, "retry-verdict");
+  });
+
+  test("an already-merged pull request is a merge, not a park", () => {
+    const out = afterPush({ verdict: { pass: true }, landing: { action: "already-merged", reason: "already merged" } });
+    assert.equal(out.action, "merged");
+  });
 });
 
 describe("canStartNext", () => {

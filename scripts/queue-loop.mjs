@@ -300,6 +300,10 @@ export function afterPush({ verdict, landing }) {
       action: "retry-verdict",
       why: "a job completed having run zero steps",
     };
+  if (landing?.action === "already-merged")
+    return { action: "merged", why: landing.reason };
+  if (landing?.action === "recheck")
+    return { action: "retry-verdict", why: landing.reason };
   if (!verdict.pass)
     return {
       action: "fix",
@@ -813,7 +817,7 @@ function pushedPr(branch) {
  * busy night; a verdict asked for twice because the runner had nothing to say is a sick one. Sharing
  * a counter between them parks whichever happens to go second.
  */
-export const SETTLE_ROUNDS = { update: 3, retry: 3 };
+export const SETTLE_ROUNDS = { update: 3, retry: 3, recheck: 8 };
 
 /** GitHub re-points the pull request head asynchronously; asked at once, CI answers for the old one. */
 const SETTLE_PAUSE_MS = 15_000;
@@ -825,6 +829,10 @@ async function settle(pending, log = console.log, pause = SETTLE_PAUSE_MS) {
 
   for (;;) {
     let next;
+    // Which budget a retry-verdict spends: GitHub still computing mergeability is a healthy branch
+    // on a fast answer, a runner with nothing to say is a sick one. Sharing a counter between them
+    // parks whichever happens to go second.
+    let asking = "retry";
     try {
       const verdict = tsx([
         "lib/loop/ciVerdict.ts",
@@ -835,6 +843,7 @@ async function settle(pending, log = console.log, pause = SETTLE_PAUSE_MS) {
       const landing = verdict.pass
         ? landingOf(tsx(["lib/loop/land.ts", REPO, String(pending.pr)]))
         : undefined;
+      if (landing?.action === "recheck") asking = "recheck";
       next = afterPush({ verdict, landing });
     } catch (err) {
       // `gh` refusing, a rate limit, or anything that is not JSON. The ticket is pushed and its
@@ -853,15 +862,17 @@ async function settle(pending, log = console.log, pause = SETTLE_PAUSE_MS) {
       await wait();
       continue;
     }
-    if (next.action === "retry-verdict" && left.retry-- > 0) {
+    if (next.action === "retry-verdict" && left[asking]-- > 0) {
       log(`  ⏳ #${pending.ticket} ${next.why} — asking once more`);
       await wait();
       continue;
     }
     if (next.action === "update-branch" || next.action === "retry-verdict") {
+      const spent =
+        next.action === "update-branch" ? SETTLE_ROUNDS.update : SETTLE_ROUNDS[asking];
       return {
         action: "park",
-        why: `${next.action} did not settle in ${SETTLE_ROUNDS.update} rounds`,
+        why: `${next.action} did not settle in ${spent} rounds`,
       };
     }
     if (next.action === "merged") {
