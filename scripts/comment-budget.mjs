@@ -88,7 +88,7 @@ const CONTEXT = 40;
 
 // The output format is demanded rather than hoped for: an external differ, `diff.noprefix` and
 // `color.ui` leave this no file to parse; textconv, some other text's lines; `-diff`, no line.
-const FORMAT = ["--no-ext-diff", "--no-textconv", "--text", "--no-color", "--src-prefix=a/", "--dst-prefix=b/"];
+export const FORMAT = ["--no-ext-diff", "--no-textconv", "--text", "--no-color", "--src-prefix=a/", "--dst-prefix=b/"];
 
 export function diffOf(base, head = "HEAD", opts = {}) {
   const argv = ["diff", `-U${CONTEXT}`, ...FORMAT, `${base}...${head}`, "--", "*.mjs", "*.js", "*.ts", "*.tsx"];
