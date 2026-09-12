@@ -323,10 +323,31 @@ Deletes `holdFor`, `waitFor`, `WAIT`, `waits`, `waitsOn` and `afterRefusal`'s ho
 60 lines, and H5/H6/H7 go with them.
 
 Worth noting for whatever replaces it: `rate_limit_info.status` has a third value,
-**`allowed_warning`**, which is the only signal that arrives *before* work starts failing. The
-documented fields are `status`, `resetsAt`, `utilization`, `errorCode`, `canUserPurchaseCredits`,
-`hasChargeableSavedPaymentMethod` — there is **no `rateLimitType` and no `unifiedWindows`**, which
-`loop-stream.mjs:63-64` currently reads and gets `undefined` from.
+**`allowed_warning`**, which is the only signal that arrives *before* work starts failing.
+
+**Correction, verified against the installed binary.** An earlier draft of this section claimed
+`rateLimitType` and `unifiedWindows` do not exist and that `loop-stream.mjs` reads `undefined` from
+them. Both are real. The schema in `claude.exe` is:
+
+```
+status: enum(["allowed","allowed_warning","rejected"])
+resetsAt: int().optional()                     // "@internal ... unix epoch seconds"
+rateLimitType: enum(["five_hour","seven_day","seven_day_opus","seven_day_sonnet",
+                     "seven_day_overage_included","overage"]).optional()
+utilization: optional()
+unifiedWindows: { five_hour?, seven_day?, seven_day_overage_included? }
+                 each { utilization, resetsAt }
+```
+
+`rateLimitType` has six values and `unifiedWindows` three keys, so
+`info.unifiedWindows?.[info.rateLimitType]` is legitimately `undefined` for `seven_day_opus` — which
+is why `loop-stream.mjs` falls back to the top-level `resetsAt` and `utilization`, and why its
+comment saying so is correct. **The existing code is right; do not "fix" it.**
+
+`docs/research/2026-09-10-claude-headless-observability.md:65-66` already recorded the correct shape.
+This document contradicted a correct prior note in its own directory and nothing caught it — the
+lesson is that a claim of *absence* needs the same primary source as a claim of presence, and a
+subagent reporting a field list is not one.
 
 ### 5.3 What should the loop do about a red CI job unrelated to the diff?
 

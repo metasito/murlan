@@ -1472,26 +1472,35 @@ In `tests/loopStream.test.ts`:
 - [ ] **Step 2: Run it to verify it fails**
 
 Run: `node --test --test-timeout=30000 --test-force-exit tests/loopStream.test.ts`
-Expected: FAIL — `utilization` is `undefined` (the code reads `info.unifiedWindows?.[info.rateLimitType]?.utilization`, and neither field exists), and there is no `warning`.
+Expected: FAIL — there is no `warning` field.
+
+**Do not touch the `unifiedWindows` / `rateLimitType` reads.** An earlier draft of this step said
+those fields do not exist and told you to delete them. They are real — verified in `claude.exe`'s
+own schema — and the existing fallback is correct. Only the `warning` field is missing. The
+corrected replacement below reflects that.
 
 - [ ] **Step 3: Correct the field names**
 
 In `scripts/loop-stream.mjs`, replace the `rate_limit_event` branch:
 
 ```js
-  // Fields per the SDK's `SDKRateLimitEvent`: status, resetsAt, utilization, errorCode,
-  // canUserPurchaseCredits, hasChargeableSavedPaymentMethod. There is no `rateLimitType` and no
-  // `unifiedWindows` — reading those returned undefined on every event this loop has ever seen.
   if (e.type === "rate_limit_event") {
     const info = e.rate_limit_info ?? {};
+    // A window's own `resetsAt` is preferred over the top-level one. `rateLimitType` names six
+    // windows and `unifiedWindows` carries three, so the lookup is legitimately undefined for
+    // `seven_day_opus` and both reads fall back.
+    const window = info.unifiedWindows?.[info.rateLimitType];
     return {
       kind: "rate_limit",
       status: info.status ?? "unknown",
       blocked: info.status === "rejected",
       warning: info.status === "allowed_warning",
-      resetsAt: info.resetsAt ?? null,
-      resetsAtMs: info.resetsAt ? (info.resetsAt > 1e12 ? info.resetsAt : info.resetsAt * 1000) : 0,
-      utilization: info.utilization ?? null,
+      resetsAt: window?.resetsAt ?? info.resetsAt ?? null,
+      resetsAtMs: (() => {
+        const at = window?.resetsAt ?? info.resetsAt;
+        return at ? (at > 1e12 ? at : at * 1000) : 0;
+      })(),
+      utilization: window?.utilization ?? info.utilization ?? null,
       errorCode: info.errorCode ?? null,
     };
   }
@@ -1570,7 +1579,8 @@ when a usage refusal is a property of the account.
 .loop-stop is no longer consumed on read: holdFor honoured it without removing it and
 takeStopFile removed it, so a stop during a wait killed the next run too.
 
-rate_limit_info has no rateLimitType and no unifiedWindows; both reads were undefined."
+The only missing field was `warning` — status has a third value, allowed_warning, which is
+the only signal arriving before work starts failing."
 ```
 
 ---
