@@ -22,13 +22,11 @@ const counts = (d: string) =>
 // against a real repository: every fixture above hands `budget` a diff that was written by hand.
 // `env` reaches the measured diff and not only the setup, so a `GIT_CONFIG_GLOBAL` or
 // `GIT_CONFIG_SYSTEM` this machine keeps cannot red any of these — the rest of the environment is
-// still inherited. `raw` is the same diff without the flags that pin git's format: what the check
-// would have been handed had it not asked.
-const diffAcross = (
-  before: string[],
-  after: string[],
-  { config = {}, attributes = "" }: { config?: Record<string, string>; attributes?: string } = {},
-) => {
+// still inherited. `unpinned` is the same diff with the flags in `drop` taken away: what the check
+// would have been handed had it not asked for that much of the format.
+type GitSetup = { config?: Record<string, string>; attributes?: string; drop?: readonly string[] };
+
+const diffAcross = (before: string[], after: string[], { config = {}, attributes = "", drop = [] }: GitSetup = {}) => {
   const dir = mkdtempSync(join(tmpdir(), "comment-budget-"));
   const none = join(dir, "no-config");
   const env = { ...process.env, GIT_CONFIG_GLOBAL: none, GIT_CONFIG_SYSTEM: none, ...config };
@@ -41,65 +39,17 @@ const diffAcross = (
       git("add", "a.mjs");
       git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-m", `v${i}`);
     }
-    return { pinned: diffOf("HEAD~1", "HEAD", { cwd: dir, env }), raw: git("diff", "HEAD~1", "HEAD") };
+    const at = { cwd: dir, env };
+    return {
+      pinned: diffOf("HEAD~1", "HEAD", at),
+      unpinned: diffOf("HEAD~1", "HEAD", at, FORMAT.filter((f) => !drop.includes(f))),
+    };
   } finally {
     rmSync(dir, { recursive: true, force: true, maxRetries: 3 });
   }
 };
 
 const unprefixed = (lines: string[]) => lines.map((l) => l.slice(1));
-
-const oneGitConfig = (key: string, value: string) => ({
-  GIT_CONFIG_COUNT: "1",
-  GIT_CONFIG_KEY_0: key,
-  GIT_CONFIG_VALUE_0: value,
-});
-
-// One change, over budget only if the diff reaches the check intact, run through a git that has
-// been configured — or a repository that has been marked up — every way that can empty this check
-// out: what to set, the shape `raw` takes once it has fired, and the flags that are the answer.
-const formatBefore = unprefixed(code(2));
-const formatAfter = [...formatBefore, ...unprefixed(comments(7)).map((l) => `${l} new`)];
-
-const FORMATS: {
-  name: string;
-  opts: { config?: Record<string, string>; attributes?: string };
-  fired: RegExp[];
-  flags: string[];
-}[] = [
-  {
-    name: "a machine that rewrites diff headers",
-    opts: { config: oneGitConfig("diff.noprefix", "true") },
-    fired: [/^diff --git a\.mjs a\.mjs$/m],
-    flags: ["--src-prefix=a/", "--dst-prefix=b/"],
-  },
-  {
-    name: "a source file marked binary",
-    opts: { attributes: "*.mjs -diff" },
-    fired: [/^Binary files /m],
-    flags: ["--text"],
-  },
-  {
-    name: "a machine that colours its diffs",
-    opts: { config: oneGitConfig("color.ui", "always") },
-    fired: [/^\x1b\[[\d;]*mdiff --git /m],
-    flags: ["--no-color"],
-  },
-  {
-    name: "a machine with an external differ",
-    opts: { config: oneGitConfig("diff.external", "node --version") },
-    fired: [/^v\d+\.\d+/m],
-    flags: ["--no-ext-diff"],
-  },
-  {
-    name: "a source file converted before it is diffed",
-    opts: { config: oneGitConfig("diff.blob.textconv", 'node -p "process.argv[1]"'), attributes: "*.mjs diff=blob" },
-    // The hunk header is what separates this from the binary marker above: `budget` reads both as
-    // a file with nothing in it, and only this one arrives with content that is not the file's.
-    fired: [/^diff --git a\/a\.mjs b\/a\.mjs$/m, /^@@ /m],
-    flags: ["--no-textconv"],
-  },
-];
 
 // The window has to reach the opener of a block comment as long as any this repo actually writes,
 // so that length is measured rather than restated: a docblock grown past `CONTEXT` reds the case
@@ -238,15 +188,60 @@ describe("comment budget", () => {
     assert.deepEqual(counts(diffAcross([...head, ...tail], [...head, ...added, ...tail]).pinned), [["a.mjs", 8, 0]]);
   });
 
-  // Each of these is a pass rather than a failure without its flags. Both halves are asserted —
-  // that the setting reached git, and that the check really would have come back empty — or a case
-  // whose setting turns out harmless stays green while pinning a flag that does nothing.
+  // One change — over budget only if the diff reaches the check intact — run through a git
+  // configured, or a repository marked up, every way that can empty this check out.
+  const formatBefore = unprefixed(code(2));
+  const formatAfter = [...formatBefore, ...unprefixed(comments(7)).map((l) => `${l} new`)];
+
+  const oneGitConfig = (key: string, value: string) => ({
+    GIT_CONFIG_COUNT: "1",
+    GIT_CONFIG_KEY_0: key,
+    GIT_CONFIG_VALUE_0: value,
+  });
+
+  const FORMATS: { name: string; opts: GitSetup; fired: RegExp[]; flags: string[] }[] = [
+    {
+      name: "a machine that rewrites diff headers",
+      opts: { config: oneGitConfig("diff.noprefix", "true") },
+      fired: [/^diff --git a\.mjs a\.mjs$/m],
+      flags: ["--src-prefix=a/", "--dst-prefix=b/"],
+    },
+    {
+      name: "a source file marked binary",
+      opts: { attributes: "*.mjs -diff" },
+      fired: [/^Binary files /m],
+      flags: ["--text"],
+    },
+    {
+      name: "a machine that colours its diffs",
+      opts: { config: oneGitConfig("color.ui", "always") },
+      fired: [/^\x1b\[[\d;]*mdiff --git /m],
+      flags: ["--no-color"],
+    },
+    {
+      name: "a machine with an external differ",
+      opts: { config: oneGitConfig("diff.external", "node --version") },
+      fired: [/^v\d+\.\d+/m],
+      flags: ["--no-ext-diff"],
+    },
+    {
+      name: "a machine that converts a source file before diffing it",
+      opts: { config: oneGitConfig("diff.blob.textconv", 'node -p "process.argv[1]"'), attributes: "*.mjs diff=blob" },
+      // The hunk header is what separates this from the binary marker above: `budget` reads both as
+      // a file with nothing in it, and only this one arrives with content that is not the file's.
+      fired: [/^diff --git a\/a\.mjs b\/a\.mjs$/m, /^@@ /m],
+      flags: ["--no-textconv"],
+    },
+  ];
+
+  // Each case takes its own flags back off `FORMAT` and watches the check come back empty, so the
+  // flags an entry names are the flags that answer it — asserted, rather than true by adjacency.
   for (const { name, opts, fired, flags } of FORMATS) {
     test(`${name} cannot empty the check out`, () => {
-      const { pinned, raw: unpinned } = diffAcross(formatBefore, formatAfter, opts);
+      const { pinned, unpinned } = diffAcross(formatBefore, formatAfter, { ...opts, drop: flags });
       for (const shape of fired) assert.match(unpinned, shape);
       assert.deepEqual(budget(unpinned), [], unpinned);
-      assert.deepEqual(counts(pinned), [["a.mjs", 7, 0]], `${flags} left this diff unpinned:\n${pinned}`);
+      assert.deepEqual(counts(pinned), [["a.mjs", 7, 0]], pinned);
     });
   }
 

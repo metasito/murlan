@@ -88,10 +88,19 @@ const CONTEXT = 40;
 
 // The output format is demanded rather than hoped for: an external differ, `diff.noprefix` and
 // `color.ui` leave this no file to parse; textconv, some other text's lines; `-diff`, no line.
-export const FORMAT = ["--no-ext-diff", "--no-textconv", "--text", "--no-color", "--src-prefix=a/", "--dst-prefix=b/"];
+export const FORMAT = Object.freeze([
+  "--no-ext-diff",
+  "--no-textconv",
+  "--text",
+  "--no-color",
+  "--src-prefix=a/",
+  "--dst-prefix=b/",
+]);
 
-export function diffOf(base, head = "HEAD", opts = {}) {
-  const argv = ["diff", `-U${CONTEXT}`, ...FORMAT, `${base}...${head}`, "--", "*.mjs", "*.js", "*.ts", "*.tsx"];
+// `format` is a parameter so a test can run the same diff with one of those flags taken away and
+// watch the check come back empty. Nothing but a test has a reason to pass it.
+export function diffOf(base, head = "HEAD", opts = {}, format = FORMAT) {
+  const argv = ["diff", `-U${CONTEXT}`, ...format, `${base}...${head}`, "--", "*.mjs", "*.js", "*.ts", "*.tsx"];
   return execFileSync("git", argv, {
     ...opts,
     encoding: "utf8",
