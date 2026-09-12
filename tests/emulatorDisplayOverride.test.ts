@@ -40,7 +40,7 @@ function command(pattern: RegExp): RegExpExecArray | undefined {
 }
 
 describe("the emulator display override", () => {
-  const profile = config.flatMap((l) => /^profile:\s*(\S+)$/.exec(l)?.[1] ?? [])[0];
+  const profile = config.map((l) => /^profile:\s*(\S+)$/.exec(l)?.[1]).find(Boolean);
   const size = command(/^adb shell wm size (\d+)x(\d+)$/);
   const density = command(/^adb shell wm density (\d+)$/);
 
@@ -93,14 +93,27 @@ describe("the emulator display override", () => {
     );
   });
 
-  test("reads both overrides back rather than assuming they took", () => {
+  test("reads both overrides back, against the values it set", () => {
     // `wm size` reports an override only when one took. Without these, a device
     // that refused the override looks exactly like the fix working, right up to
     // the next death — the shape #942 was filed about.
-    const readsBack = (what: string) =>
-      script.some((l) => l.startsWith(`adb shell wm ${what} |`) && l.includes(`Override `));
-    assert.ok(readsBack("size"), "`wm size` is set but never read back");
-    assert.ok(readsBack("density"), "`wm density` is set but never read back");
+    //
+    // The expected value is the one set two lines above, not any value: a
+    // read-back that greps a figure nothing sets, or greps `size` under `wm
+    // density`, passes while checking nothing.
+    assert.ok(size && density);
+    const readsBack = (what: string, expected: string) =>
+      script.some(
+        (l) => l.startsWith(`adb shell wm ${what} |`) && l.includes(`Override ${what}: ${expected}`)
+      );
+    assert.ok(
+      readsBack("size", `${size[1]}x${size[2]}`),
+      `no read-back greps 'Override size: ${size[1]}x${size[2]}', the size the script sets`
+    );
+    assert.ok(
+      readsBack("density", density[1]),
+      `no read-back greps 'Override density: ${density[1]}', the density the script sets`
+    );
   });
 
   test("sits between the device-came-up marker and the app launch", () => {

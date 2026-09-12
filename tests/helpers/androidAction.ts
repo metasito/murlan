@@ -6,9 +6,9 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-export const ACTION = ".github/actions/drive-android-flows/action.yml";
+const ACTION = ".github/actions/drive-android-flows/action.yml";
 
-export function readAction(repoRoot: string): string {
+function readAction(repoRoot: string): string {
   return readFileSync(path.join(repoRoot, ACTION), "utf8");
 }
 
@@ -30,16 +30,20 @@ export function actionScriptLines(repoRoot: string): string[] {
 }
 
 /**
- * The action's `with:` block — everything above `script: |`, comments dropped.
- * `profile:` and the rest of the emulator's configuration live here rather than
- * in the script.
+ * The action's `with:` block — what configures the emulator, as opposed to what
+ * the script runs on it. Sliced from `with:` rather than from the top of the
+ * file: `description:` above it is folded prose, and a line in an English
+ * sentence can look enough like `profile: something` to answer for one.
  */
 export function actionConfigLines(repoRoot: string): string[] {
   const src = readAction(repoRoot);
+  const start = src.indexOf("with:");
   const end = src.indexOf("script: |");
-  if (end === -1) throw new Error("the action no longer carries a script block");
+  if (start === -1 || end === -1 || start > end) {
+    throw new Error("the action no longer carries a `with:` block above its script");
+  }
   return src
-    .slice(0, end)
+    .slice(start, end)
     .split("\n")
     .map((l) => l.trim())
     .filter((l) => l !== "" && !l.startsWith("#"));

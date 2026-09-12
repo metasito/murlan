@@ -124,25 +124,16 @@ runs:
           # reboot, the locale and the install. Its absence is what tells
           # `maestro.yml` the device itself never arrived (#186).
           touch "$RUNNER_TEMP/emulator-booted"
-          # Half the resolution and half the density, so the screen is the same
-          # size in dp and a quarter of the pixels for the app to rasterize.
-          # The flows select on dp and cannot tell the difference;
+          # Half the resolution and half the density: the same screen in dp, a
+          # quarter of the pixels for the app to rasterize. The flows select on
+          # dp and cannot tell the difference, and
           # `tests/emulatorDisplayOverride.test.ts` derives that from the
-          # profile above, so the two numbers cannot drift apart.
+          # profile above so the two cannot drift apart. #942 holds what this
+          # buys and the limits of it.
           #
-          # Why the pixels are worth buying, measured on run 34105243719 (#942):
-          # the app's own eglSwapBuffers averages 537ms a frame on the game
-          # table, and UiAutomator will not return a view hierarchy until the
-          # main thread has been quiet for 500ms - so a read that costs 0.2-1.5s
-          # on the menus costs 13-37s there, and offline-game asks for about
-          # sixty of them. Whether that is also what ends up killing the
-          # emulator is not established: logcat simply stops. What the same
-          # artefact does rule out is the host, which this file argued unmeasured
-          # for two years - 5.2GB available and loadavg falling as it died.
-          #
-          # Below the marker deliberately. A device that refuses the override is
-          # a device that came up, and failing above it would spend two 900s
-          # boots reporting itself as #186.
+          # Below the marker: a device that refuses the override is one that
+          # came up, and failing above it would report itself as #186 and spend
+          # two more 900s boots on it.
           adb shell wm size 540x1200
           adb shell wm density 210
           adb shell wm size | tr -d '\r' | grep -q 'Override size: 540x1200' || { echo "::error::The display override did not take; the flows would run at full resolution."; exit 1; }
