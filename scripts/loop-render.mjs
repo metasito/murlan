@@ -2,9 +2,9 @@
  * What the loop prints. Pure: state in, strings out, so every line is a unit test and none of it
  * needs a terminal.
  *
- * Append-only by design — one line as each phase closes, never a redraw. The same output has to be
- * right in a terminal, in a pipe, and in a file, and cursor control is right in exactly one of
- * those.
+ * Nothing here writes, moves a cursor or reads a terminal — `ticker` in queue-loop.mjs is the only
+ * thing in the loop that knows a cursor exists. The same strings have to be right in a terminal, in
+ * a pipe, and in a file, and cursor control is right in exactly one of those.
  */
 const WIDTH = 78;
 
@@ -42,10 +42,10 @@ export function clockAt(resetsAt, now = Date.now()) {
 const money = (n) => `$${Number(n ?? 0).toFixed(2)}`;
 const rule = "━".repeat(WIDTH);
 
-function fit(left, right) {
-  const gap = WIDTH - left.length - right.length;
+function fit(left, right, width = WIDTH) {
+  const gap = width - left.length - right.length;
   if (gap >= 1) return left + " ".repeat(gap) + right;
-  return left.slice(0, Math.max(0, WIDTH - right.length - 2)) + "… " + right;
+  return left.slice(0, Math.max(0, width - right.length - 2)) + "… " + right;
 }
 
 /**
@@ -63,70 +63,74 @@ export function header({ number, title, size, url, queue }) {
   ].join("\n");
 }
 
-/**
- * The in-progress twin of `phaseLine`, for a TTY only: same columns, a spinner where the tick goes,
- * and no newline of its own — the caller rewrites it in place and the phase's real line replaces it.
- * `BLANK` is what erases it, so nothing has to know the width from outside this file.
- */
-export const BLANK = " ".repeat(WIDTH);
-const SPIN = ["·", "•", "●", "•"];
-
-export function heartbeat({ letter, ms, at = 0 }) {
+const stepOf = (letter) => {
   const i = PHASES.findIndex(([l]) => l === letter);
-  const name = PHASES[i]?.[1] ?? "";
-  const mark = SPIN[at % SPIN.length];
-  return fit(`  ${mark} [${i + 1}/6] ${letter}  ${name.padEnd(9)}`, `${elapsed(ms)} `);
+  return { n: i < 0 ? "?" : String(i + 1), name: PHASES[i]?.[1] ?? "" };
+};
+
+export function phaseLine({ letter, detail = "", ms, mark = "✓", width = WIDTH }) {
+  const { n, name } = stepOf(letter);
+  return fit(`  ${mark} [${n}/6] ${letter}  ${name.padEnd(9)}${detail}`, `${elapsed(ms)} `, width);
 }
 
-export function phaseLine({ letter, detail, ms, mark = "✓" }) {
-  const i = PHASES.findIndex(([l]) => l === letter);
-  const name = PHASES[i]?.[1] ?? "";
-  return fit(`  ${mark} [${i + 1}/6] ${letter}  ${name.padEnd(9)}${detail}`, `${elapsed(ms)} `);
-}
-
-const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+/** Braille, because every frame is one column wide in every terminal font. */
+export const SPIN = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
 /**
- * What a phase has to show for itself, from the snapshot taken as it closed — the one line of the
- * board that makes a claim about the work, and so the one that is pure and unit-tested rather than
- * printed from somewhere only a live night reaches.
+ * The open phase, for redrawing in place while it runs. `phaseLine` is the same line once it is
+ * done, and the two are the same width so the finished one covers the live one exactly.
  *
- * An empty string is the honest answer for facts that were not readable. The row still says the
- * phase closed and when; a column guessing at a count would be worse than a blank one.
- *
- * @param {string} letter
- * `tasks` is the subagents dispatched *in that phase*, which is the count that means something:
- * dispatches in B are the scope, dispatches in D are review rounds.
- *
- * @param {{branch?: string|null, commits?: number, changed?: string[], dirty?: boolean,
- *   head?: string|null, verdict?: {decision: string}|null, trackerReadable?: boolean,
- *   tasks?: number}} snap
+ * `width` is what the terminal has room for: the detail is what gets cut, never the timer, which is
+ * the one thing on the line that a person is reading it for.
  */
-export function detailOf(letter, snap = {}) {
-  const files = snap.changed?.length ?? 0;
-  const head = snap.head ? snap.head.slice(0, 7) : "";
-  const parts = {
-    A: [snap.branch ?? ""],
-    B: [snap.tasks ? plural(snap.tasks, "subagent") : ""],
-    C: snap.commits
-      ? [plural(snap.commits, "commit"), plural(files, "file"), snap.dirty ? "dirty" : ""]
-      : [snap.dirty ? "uncommitted" : ""],
-    D: [
-      snap.trackerReadable === false
-        ? "tracker unreadable"
-        : snap.verdict
-          ? `${snap.verdict.decision} ${head}`
-          : head
-            ? `no verdict for ${head}`
-            : "",
-      snap.tasks ? plural(snap.tasks, "review") : "",
-    ],
-    E: [head ? `pushed ${head}` : "pushed", head ? plural(files, "file") : ""],
-  };
-  return (parts[letter] ?? []).filter(Boolean).join(" · ");
+export function activeLine({ letter, detail = "", ms, frame = 0, width = WIDTH }) {
+  const { n, name } = stepOf(letter);
+  const spin = SPIN[((frame % SPIN.length) + SPIN.length) % SPIN.length];
+  return fit(`  ${spin} [${n}/6] ${letter}  ${name.padEnd(9)}${detail}`, `${elapsed(ms)} `, width);
 }
 
-const MARK = { landed: "✅", merged: "✅", parked: "⚠️", failed: "❌", rate_limited: "⏸" };
+// `activeLine`'s fixed prefix is 22 columns and its elapsed tail is up to 8, inside a WIDTH of 78.
+const DETAIL = 44;
+
+/**
+ * What the session is doing, as one short phrase. A middot marks a review subagent's call.
+ *
+ * @param {{name: string, command?: string, parent?: string|null}} call
+ */
+export function toolDetail({ name, command = "", parent = null }) {
+  const mark = parent ? "· " : "";
+  if (name !== "Bash" && name !== "PowerShell") return `${mark}${name}`;
+  const first = command.split("\n")[0].trim();
+  if (!first) return `${mark}${name}`;
+  const room = DETAIL - mark.length;
+  return mark + (first.length > room ? `${first.slice(0, room - 1)}…` : first);
+}
+
+/**
+ * The queue after a ticket, against the queue before it. The header carries the depth already; what
+ * it cannot show is the direction, and across an unattended night the direction is the whole story
+ * — a frontier that grows every ticket is the loop filing follow-ups faster than it lands them.
+ */
+export function queueLine(before, after) {
+  if (!after.implement && !after.triage && !after.wayfinder) return "     queue empty";
+  const moved = (k) => (before[k] === after[k] ? String(after[k]) : `${before[k]}→${after[k]}`);
+  return `     queue ${moved("implement")} implement · ${moved("triage")} triage · ${moved("wayfinder")} wayfinder`;
+}
+
+/**
+ * Rings once, and only at a terminal a person could be sitting at. Wrapped because a run must never
+ * end on a closed pipe, and it goes to stderr so a piped stdout stays clean.
+ */
+export function bell(stream = process.stderr) {
+  if (!stream?.isTTY) return;
+  try {
+    stream.write("");
+  } catch {
+    /* a bell is never worth an exception */
+  }
+}
+
+const MARK = { landed: "✅", merged: "✅", parked: "⚠️", stalled: "⚠️", failed: "❌", rate_limited: "⏸" };
 
 /**
  * @param {{outcome: string, number: number, ms: number, cost: number,

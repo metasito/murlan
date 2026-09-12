@@ -17,9 +17,9 @@ function labelNames(issue) {
   return issue.labels.map((l) => l.name);
 }
 
-function sizeRank(issue) {
-  const i = SIZE_ORDER.findIndex((s) => labelNames(issue).includes(s));
-  return i === -1 ? SIZE_ORDER.length : i;
+/** The `size:*` label, or null. The supervisor derives the session's turn bound from it. */
+export function sizeOf(issue) {
+  return SIZE_ORDER.find((s) => labelNames(issue).includes(s)) ?? null;
 }
 
 // Precedence, encoded: an AFK session implements specified work first, then
@@ -51,28 +51,30 @@ export function classify(openIssues) {
     else if (ls.some((l) => l.startsWith("wayfinder:") && l !== "wayfinder:map")) buckets.wayfinder.push(issue);
     else buckets.owner.push(issue);
   }
-  buckets.frontier.sort((a, b) => sizeRank(a) - sizeRank(b) || a.number - b.number);
+  // Oldest first: sorting by size put every self-filed size:S follow-up at the head.
+  buckets.frontier.sort((a, b) => a.number - b.number);
   buckets.triage.sort((a, b) => a.number - b.number);
   buckets.wayfinder.sort((a, b) => a.number - b.number);
   return buckets;
 }
 
-function claimBranch(comments) {
-  for (let i = comments.length - 1; i >= 0; i--) {
-    const m = comments[i].body.match(/^Claim(?:ed by|ing)[^`\n]*`([^`]+)`/m);
-    if (m) return m[1];
+/**
+ * A branch alive on origin is not a claim — a merged one satisfies that and froze nine tickets.
+ * An open pull request is. Fails open: an unreachable tracker must not empty the queue.
+ */
+export function claimedElsewhere(number, list) {
+  try {
+    return list(number).some((pr) => pr.state === "OPEN");
+  } catch {
+    return false;
   }
-  return null;
 }
 
-function branchAlive(branch) {
-  // Fail open: an unreachable origin must not empty the whole queue. The
-  // post-claim race check remains the backstop for whatever slips through.
-  const out = execFileSync("git", ["ls-remote", "--heads", "origin", branch], {
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "ignore"],
-  });
-  return out.trim().length > 0;
+let openPrs = null;
+/** One listing per process, matched on the head ref: `#42` in a body also matches PR #942. */
+function openPrsFor(number) {
+  openPrs ??= ghJson(["pr", "list", "--state", "open", "--limit", "100", "--json", "number,state,headRefName"]);
+  return openPrs.filter((pr) => new RegExp(`^agent/${number}-`).test(pr.headRefName ?? ""));
 }
 
 function openBlockers(number) {
@@ -82,23 +84,20 @@ function openBlockers(number) {
   return edges.filter((e) => e.state === "open");
 }
 
-// The gate order per candidate: native blockers, then claims. A claim counts
-// even when its in-progress label write was lost - a claim comment naming a
-// branch that still lives on origin takes the ticket off the frontier.
+// The gate order per candidate: native blockers, then claims.
 function takeable(frontier, limit) {
   // No list endpoint carries the dependencies summary, so each candidate costs
   // one call; stop as soon as enough are in hand.
   const out = [];
   for (const issue of frontier) {
-    const { blocked_by } = ghJson(["api", `repos/{owner}/{repo}/issues/${issue.number}`]).issue_dependencies_summary;
-    if (blocked_by !== 0) continue;
-    const comments = ghJson(["api", `repos/{owner}/{repo}/issues/${issue.number}/comments?per_page=100`]);
-    const claim = claimBranch(comments);
-    if (claim && branchAlive(claim)) {
-      process.stderr.write(`SKIP\t${issue.number}\tclaimed on \`${claim}\` (branch alive)\n`);
+    const full = ghJson(["api", `repos/{owner}/{repo}/issues/${issue.number}`]);
+    if (full.issue_dependencies_summary.blocked_by !== 0) continue;
+    if (claimedElsewhere(issue.number, openPrsFor)) {
+      process.stderr.write(`SKIP\t${issue.number}\tan open pull request already claims it\n`);
       continue;
     }
-    out.push({ ...issue, _comments: comments });
+    const comments = ghJson(["api", `repos/{owner}/{repo}/issues/${issue.number}/comments?per_page=100`]);
+    out.push({ ...issue, _full: full, _comments: comments });
     if (out.length >= limit) break;
   }
   return out;
@@ -106,7 +105,7 @@ function takeable(frontier, limit) {
 
 export function pickRoute(buckets) {
   if (buckets.frontier.length > 0) {
-    const head = takeable(buckets.frontier, 3);
+    const head = takeable(buckets.frontier, 1);
     if (head.length > 0) return { skill: "implement", ticket: head[0] };
   }
   if (buckets.triage.length > 0) return { skill: "triage", ticket: buckets.triage[0] };
@@ -115,7 +114,7 @@ export function pickRoute(buckets) {
 }
 
 function printDetail(ticket, comments) {
-  const issue = ghJson(["api", `repos/{owner}/{repo}/issues/${ticket.number}`]);
+  const issue = ticket._full ?? ghJson(["api", `repos/{owner}/{repo}/issues/${ticket.number}`]);
   const ls = labelNames({ labels: issue.labels });
   const blockers = issue.issue_dependencies_summary?.blocked_by ?? 0;
   console.log(`\n===== TICKET #${issue.number} - ${issue.title} =====`);
@@ -197,7 +196,11 @@ if (invokedDirectly) {
   }
 
   const chosen = pickRoute(buckets);
-  console.log(`ROUTE\t${chosen.skill}\t${chosen.ticket?.number ?? 0}\t${chosen.ticket?.title ?? "nothing agent-takeable"}`);
+  console.log(
+    `ROUTE\t${chosen.skill}\t${chosen.ticket?.number ?? 0}` +
+      `\t${chosen.ticket?.title ?? "nothing agent-takeable"}` +
+      `\t${chosen.ticket ? (sizeOf(chosen.ticket) ?? "") : ""}`,
+  );
   console.log(
     `STATUS\timplement:${buckets.frontier.length}` +
     `\ttriage:${buckets.triage.length}` +

@@ -346,12 +346,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # check:comments diffs each changed file against the merge base.
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
       - run: npm ci
       - run: npm run lint
+      # Rides this job rather than a new one: it is a second-long file read, and
+      # billing a runner minute for it is the whole reason it used to be local —
+      # where it ran in whatever tree agent:check happened to be in, and so
+      # gated nothing.
+      - run: npm run check:comments
 
   # Nothing else in this workflow compiles the app for a device. `build` makes
   # the web bundle, the server bundle and the static Expo Go export, none of
@@ -581,11 +589,9 @@ jobs:
       - name: Regenerate tests/e2e/timings.json
         run: node scripts/e2e-timings.mjs merged-report.json
 
-      # Post-merge to `main` only: a PR branch regenerating and committing its
-      # own copy would race every other open PR over the same file. `main` has
-      # no branch protection blocking a direct push, and a push authored with
-      # the default GITHUB_TOKEN does not trigger a new workflow run, so this
-      # cannot loop.
+      # On the weekly schedule only, never per-merge. `main` has no branch
+      # protection blocking a direct push, and a push authored with the default
+      # GITHUB_TOKEN does not trigger a new workflow run, so this cannot loop.
       #
       # A red run is not a measurement: `merge-reports` exits 0 for a report
       # full of failures, and a test that fails at its timeout prices its spec
@@ -594,8 +600,17 @@ jobs:
       # committed, and lands as the lopsided split `tests/e2eShardSplit.test.ts`
       # reds the next pull request over — which is the defect this job exists
       # to end.
+      #
+      # Regenerating on every green main push moved `main` under every open
+      # pull request, which cost each one a branch update and a full extra run
+      # — and moved the tree out from under `scope`'s skip, so the next main
+      # push ran the whole suite and regenerated again. Nine such commits on
+      # 2026-09-11. `tests/e2eShardSplit.test.ts` tolerates 10% unmeasured
+      # specs, about five new specs at the current count, so a week is well
+      # inside the floor; if it ever trips it says so by name and a
+      # `workflow_dispatch` regenerates.
       - name: Commit the regenerated timings, if main's copy is stale
-        if: ${{ github.event_name == 'push' && needs.browser.result == 'success' }}
+        if: ${{ github.event_name == 'schedule' && needs.browser.result == 'success' }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"

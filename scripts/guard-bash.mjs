@@ -6,6 +6,7 @@
  *   git add -A / . / --all   sessions share an index; a bare add absorbs another session's work
  *   git checkout -- / restore  reverts to HEAD, discarding uncommitted work in the same file
  *   find / …                 a filesystem sweep; resolve packages with require.resolve instead
+ *   gh pr merge              merges an UNSTABLE (incl. queued) pull request on the spot
  *
  * Registered for both Bash and PowerShell in .claude/settings.json: the same `git` runs from
  * either, so guarding one shell only moves the mistake to the other.
@@ -213,6 +214,32 @@ const RULES = [
       '  node -e "console.log(require.resolve(\'<package>\'))"\n' +
       "The install directory is `dirname \"$(git rev-parse --path-format=absolute --git-common-dir)\"`. " +
       "To search the repo, use the Grep tool.",
+  },
+  {
+    // Reaching the merge from a session is how a pull request gets merged before its CI has been
+    // read: `gh pr merge` treats UNSTABLE — which includes *queued* — as immediately mergeable.
+    // Matched here rather than with --disallowedTools because a deny rule matches the invocation
+    // Claude usually writes and is documented as not a boundary around the program; a PreToolUse
+    // hook sees the whole line, and fires inside subagents too. It does not reach the supervisor:
+    // queue-loop.mjs merges from a child process, which no PreToolUse hook intercepts.
+    //
+    // The REST endpoint and both GraphQL mutations are here for the same reason the `$RUN` rerun
+    // is refused above: a guard that only blocks the spelling Claude usually writes is satisfied
+    // without the thing it guards being true.
+    test: (c) =>
+      new RegExp(AT_COMMAND_START + String.raw`gh\s+(?:-[A-Za-z]+\s+\S+\s+|--\S+(?:=\S+)?\s+)*pr\s+merge\b`, "m").test(c) ||
+      /\bpulls\/[^\s"'/]+\/merge\b/.test(c) ||
+      /\bmergePullRequest\s*\(/.test(c) ||
+      /\benablePullRequestAutoMerge\s*\(/.test(c),
+    message:
+      "gh pr merge is not yours to merge. The pull request's CI has not been judged yet, and " +
+      "`gh pr merge` merges an UNSTABLE pull request on the spot — UNSTABLE includes checks that " +
+      "have not started. Two sessions merged a peer's pull request this way and the supervisor " +
+      "then parked the ticket that had just landed.\n" +
+      "scripts/queue-loop.mjs reads the run for this head, polls mergeability, and merges. " +
+      "Push, open the pull request, and exit — that is the whole of phase E.\n" +
+      "Blocked on a predecessor's change? Say so on the issue and park; do not merge it yourself.\n" +
+      "Merging by hand is the owner's: ask them to run it, or run the loop.",
   },
 ];
 

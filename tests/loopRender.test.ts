@@ -5,14 +5,16 @@ import {
   elapsed,
   header,
   phaseLine,
+  activeLine,
+  toolDetail,
+  queueLine,
+  bell,
+  SPIN,
   closing,
   reportRow,
   runTotal,
   PHASES,
-  heartbeat,
-  BLANK,
   clockAt,
-  detailOf,
 } from "../scripts/loop-render.mjs";
 
 describe("elapsed", () => {
@@ -101,53 +103,6 @@ describe("phaseLine", () => {
   });
 });
 
-describe("detailOf", () => {
-  const snap = {
-    branch: "agent/953-rate-limiter-factory",
-    commits: 3,
-    changed: ["a.ts", "b.ts", "c.ts", "d.ts"],
-    dirty: false,
-    head: "6863af4cafebabe",
-    trackerReadable: true,
-    verdict: null as { decision: string } | null,
-  };
-
-  test("the claim shows the branch it made", () => {
-    assert.equal(detailOf("A", snap), "agent/953-rate-limiter-factory");
-  });
-
-  test("the scope counts the subagents it dispatched, singular when there was one", () => {
-    assert.equal(detailOf("B", { ...snap, tasks: 2 }), "2 subagents");
-    assert.equal(detailOf("B", { ...snap, tasks: 1 }), "1 subagent");
-  });
-
-  test("the build shows the commits and the diff, and says so when work is left uncommitted", () => {
-    assert.equal(detailOf("C", snap), "3 commits · 4 files");
-    assert.equal(detailOf("C", { ...snap, dirty: true }), "3 commits · 4 files · dirty");
-    assert.equal(detailOf("C", { ...snap, commits: 0 }), "");
-    assert.equal(detailOf("C", { ...snap, commits: 0, dirty: true }), "uncommitted");
-  });
-
-  test("the review names the verdict and the commit it covers, and its rounds", () => {
-    assert.equal(detailOf("D", { ...snap, verdict: { decision: "LAND" } }), "LAND 6863af4");
-    assert.equal(detailOf("D", { ...snap, verdict: { decision: "HOLD" }, tasks: 2 }), "HOLD 6863af4 · 2 reviews");
-    assert.equal(detailOf("D", snap), "no verdict for 6863af4");
-    assert.equal(detailOf("D", { ...snap, trackerReadable: false }), "tracker unreadable");
-  });
-
-  test("the push names the head CI will answer for", () => {
-    assert.equal(detailOf("E", snap), "pushed 6863af4 · 4 files");
-  });
-
-  // The board's phases are read from git and the tracker; a night that cannot reach either still has
-  // phases to draw, and a column inventing a count is worse than one saying nothing.
-  test("nothing readable is a blank column, never a guess", () => {
-    for (const [letter] of PHASES) {
-      assert.doesNotMatch(detailOf(letter, {}), /\d/, `${letter} invented a figure`);
-    }
-    assert.equal(detailOf("C", {}), "");
-  });
-});
 
 describe("closing", () => {
   test("a landed ticket leads with the tick and carries the figures", () => {
@@ -231,25 +186,138 @@ describe("runTotal", () => {
   });
 });
 
-// Drawn and erased in place, so it must fill exactly the phase line's columns.
-describe("heartbeat", () => {
-  test("stands in the same columns as the phase line it is replaced by", () => {
-    const beat = heartbeat({ letter: "C", ms: 511_000, at: 0 });
-    const real = phaseLine({ letter: "C", detail: "", ms: 511_000 });
-    assert.equal(beat.length, real.length);
-    assert.match(beat, /\[3\/6\] C\s+build/);
-    assert.match(beat, /8:31/);
+describe("activeLine", () => {
+  test("names the phase, its number and how long it has been open", () => {
+    const line = activeLine({ letter: "C", ms: 252_000 });
+    assert.match(line, /\[3\/6\] C/);
+    assert.match(line, /build/);
+    assert.match(line, /4:12\s*$/);
   });
 
-  test("turns, so a stopped clock is visibly a stopped loop", () => {
-    const letters = [0, 1, 2, 3, 4].map((at) => heartbeat({ letter: "C", ms: 1000, at })[2]);
-    assert.ok(new Set(letters).size > 1, "the spinner never changes");
-    assert.equal(letters[0], letters[4], "and it cycles");
+  test("the spinner advances with the frame", () => {
+    assert.notEqual(
+      activeLine({ letter: "C", ms: 0, frame: 0 }).trim()[0],
+      activeLine({ letter: "C", ms: 0, frame: 1 }).trim()[0]
+    );
   });
 
-  test("BLANK covers a whole line, which is what erases it", () => {
-    assert.equal(BLANK.length, phaseLine({ letter: "A", detail: "", ms: 0 }).length);
-    assert.equal(BLANK.trim(), "");
+  test("the frame wraps rather than running off the end of the spinner", () => {
+    assert.equal(activeLine({ letter: "C", ms: 0, frame: SPIN.length }).trim()[0], SPIN[0]);
+    assert.equal(activeLine({ letter: "C", ms: 0, frame: SPIN.length * 3 + 2 }).trim()[0], SPIN[2]);
+  });
+
+  // Every line this module emits is the same width, and the timer is what is redrawn in place: a
+  // line that changes width leaves the tail of the longer one on screen after the shorter one.
+  test("the width does not move as the detail grows", () => {
+    assert.equal(
+      activeLine({ letter: "C", ms: 0, detail: "git status" }).length,
+      activeLine({ letter: "C", ms: 0, detail: "x".repeat(200) }).length
+    );
+  });
+
+  test("it lines up with the finished line that replaces it", () => {
+    assert.equal(activeLine({ letter: "C", ms: 0 }).length, phaseLine({ letter: "C", ms: 0 }).length);
+  });
+
+  test("an unknown letter does not render a negative index", () => {
+    assert.doesNotMatch(activeLine({ letter: "Z", ms: 0 }), /\[0\/6\]/);
+    assert.doesNotMatch(phaseLine({ letter: "Z", ms: 0 }), /\[0\/6\]/);
+  });
+});
+
+describe("toolDetail", () => {
+  test("a shell call shows the command", () => {
+    assert.equal(
+      toolDetail({ name: "Bash", command: "git push -u origin agent/42-x" }),
+      "git push -u origin agent/42-x"
+    );
+  });
+
+  test("a non-shell tool shows its name", () => {
+    assert.equal(toolDetail({ name: "Read", command: "" }), "Read");
+  });
+
+  test("only the first line of a multi-line command", () => {
+    assert.equal(
+      toolDetail({ name: "Bash", command: "gh issue comment 42 \\\n  --body-file b.md" }),
+      "gh issue comment 42 \\"
+    );
+  });
+
+  test("a long command is truncated, not wrapped", () => {
+    const d = toolDetail({ name: "Bash", command: `git ${"x".repeat(200)}` });
+    assert.ok(d.length <= 44, `${d.length} chars`);
+    assert.match(d, /…$/);
+  });
+
+  // A review subagent's calls are the only sign of life during phase D, which is the longest phase
+  // and the one that looked like a hang.
+  test("a subagent's call is shown, and marked as one", () => {
+    assert.match(toolDetail({ name: "Bash", command: "git diff", parent: "toolu_1" }), /^· /);
+  });
+
+  test("a marked call is truncated to the same width as an unmarked one", () => {
+    const d = toolDetail({ name: "Bash", command: "y".repeat(200), parent: "toolu_1" });
+    assert.ok(d.length <= 44, `${d.length} chars`);
+  });
+
+  test("a command that is only whitespace falls back to the tool's name", () => {
+    assert.equal(toolDetail({ name: "Bash", command: "   \n  " }), "Bash");
+  });
+});
+
+describe("queueLine", () => {
+  const q = (implement: number, triage = 0, wayfinder = 0) => ({ implement, triage, wayfinder });
+
+  test("a bucket that moved shows both numbers", () => {
+    assert.match(queueLine(q(11), q(10)), /11→10 implement/);
+  });
+
+  test("a bucket that did not move shows one", () => {
+    const line = queueLine(q(11, 3), q(10, 3));
+    assert.match(line, /3 triage/);
+    assert.doesNotMatch(line, /3→3/);
+  });
+
+  // The frontier grew because the ticket filed follow-ups. That is the number worth seeing, and the
+  // arrow is the only thing that shows it.
+  test("a bucket that grew reads as growth", () => {
+    assert.match(queueLine(q(10), q(12)), /10→12 implement/);
+  });
+
+  test("an empty queue says so rather than printing three zeroes", () => {
+    assert.match(queueLine(q(1), q(0, 0, 0)), /empty/);
+  });
+});
+
+describe("bell", () => {
+  test("it rings at a terminal", () => {
+    const wrote: string[] = [];
+    bell({ isTTY: true, write: (s: string) => wrote.push(s) } as never);
+    assert.deepEqual(wrote, [""]);
+  });
+
+  // Piped to a file or a CI log a bell is a stray byte, and the loop's output is read that way more
+  // often than it is watched.
+  test("it is silent anywhere else", () => {
+    const wrote: string[] = [];
+    bell({ isTTY: false, write: (s: string) => wrote.push(s) } as never);
+    assert.deepEqual(wrote, []);
+  });
+
+  test("a stream that cannot be written to does not take the run down with it", () => {
+    assert.doesNotThrow(() =>
+      bell({
+        isTTY: true,
+        write: () => {
+          throw new Error("EPIPE");
+        },
+      } as never)
+    );
+  });
+
+  test("no stream at all is silent, not a crash", () => {
+    assert.doesNotThrow(() => bell(null as never));
   });
 });
 

@@ -238,3 +238,47 @@ describe("a rerun is read as its own command, with its own arguments", () => {
     assert.equal(check('MAESTRO_EVIDENCE_READ=1 gh run rerun "$RUN" --failed', ci), null);
   });
 });
+
+describe("gh pr merge", () => {
+  test("a bare merge is blocked", () => {
+    assert.match(String(check("gh pr merge 994 --merge --delete-branch")), /not yours to merge/);
+  });
+
+  // The forms a deny rule would miss. A PreToolUse hook sees the whole line, so it can.
+  test("a repo-scoped merge is blocked", () => {
+    assert.match(String(check("gh -R metasito/murlan pr merge 994 --merge")), /not yours to merge/);
+  });
+
+  test("a merge after a separator is blocked", () => {
+    assert.match(String(check("git push && gh pr merge 994 --merge")), /not yours to merge/);
+  });
+
+  test("the graphql mutation is blocked", () => {
+    assert.match(
+      String(check("gh api graphql -f query='mutation{mergePullRequest(input:{pullRequestId:\"x\"}){clientMutationId}}'")),
+      /not yours to merge/
+    );
+  });
+
+  // The words in a commit message or a PR body are prose about a command, not a command.
+  test("the phrase inside a heredoc is allowed", () => {
+    assert.equal(check("git commit -F - <<'EOF'\nsay why gh pr merge is the loop's job\nEOF"), null);
+  });
+
+  // A rule that only blocks the spelling Claude usually writes is satisfied without the thing it
+  // guards being true. The REST merge endpoint ignores checks exactly as gh pr merge does.
+  test("the REST merge endpoint is blocked", () => {
+    assert.match(
+      String(check("gh api --method PUT repos/metasito/murlan/pulls/994/merge -f merge_method=merge")),
+      /not yours to merge/
+    );
+  });
+
+  test("reading a pull request is allowed", () => {
+    assert.equal(check("gh pr view 994 --json state,mergeStateStatus"), null);
+  });
+
+  test("creating a pull request is allowed", () => {
+    assert.equal(check("gh pr create --base main --head agent/1-x --title t --body-file b.md"), null);
+  });
+});

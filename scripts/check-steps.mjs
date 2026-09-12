@@ -7,7 +7,7 @@ export const STEPS = [
   { name: "typecheck", args: ["run", "typecheck"], where: "local" },
   { name: "typecheck:strict", args: ["run", "typecheck:strict"], where: "local" },
   { name: "lint", args: ["run", "lint"], where: "local" },
-  { name: "comments", args: ["run", "check:comments"], where: "local" },
+  { name: "comments", args: ["run", "check:comments"], where: "ci", job: "lint" },
   { name: "test", args: ["test"], where: "ci", job: "verify" },
   { name: "test:native", args: ["run", "test:native"], where: "ci", job: "native" },
   { name: "test:e2e", args: ["run", "test:e2e"], where: "ci", job: "browser" },

@@ -47,6 +47,12 @@ export function decideVerdict(run: RunRow | undefined, jobs: JobRow[] = []): Ver
   if (run.conclusion === "success") {
     return { pass: true, runId: run.databaseId, reason: "ci.yml passed" };
   }
+  // ci.yml's concurrency group cancels an in-progress pull-request run on every new push, so this
+  // is the common path, not an edge. Asked through the jobs instead, the ones that never started
+  // carry conclusion null with zero steps and read as a stepless runner failure.
+  if (run.conclusion === "cancelled") {
+    return { pass: false, runId: run.databaseId, infrastructure: true, reason: "the run was cancelled" };
+  }
 
   // A job that actually failed outranks one that ran nothing, and the order matters: a run that
   // fails fast cancels its siblings, and a cancelled job that never reached its first step is
@@ -59,9 +65,11 @@ export function decideVerdict(run: RunRow | undefined, jobs: JobRow[] = []): Ver
   // than the runner never starting. `android-build`/`ios-build` skip whenever no native input
   // changed, so counting them here would call every genuinely red run infrastructure and stop
   // `driveToGreen` from ever sending a fix agent. `cancelled` is the same: the run was stopped
-  // from outside, so the job says nothing about the runner either.
+  // from outside, so the job says nothing about the runner either. `null` is a job that never
+  // started, which is the same: it is not evidence that the runner failed.
   const stepless = jobs.filter(
     (j) =>
+      j.conclusion !== null &&
       j.conclusion !== "success" &&
       j.conclusion !== "skipped" &&
       j.conclusion !== "cancelled" &&

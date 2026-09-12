@@ -9,21 +9,21 @@ import {
   parseRoute,
   shouldStop,
   queueLoopArgs,
+  TURNS_BY_SIZE,
+  TURNS_DEFAULT,
   liveRoute,
-  syncProtocol,
-  advance,
+  syncCheckout,
   parseStatus,
   runTicket,
-  stalled,
-  STALL_MS,
+  ticker,
   park,
-  madeProgress,
   shouldHalt,
   BREAKER,
   takeStopFile,
   afterPush,
-  canStartNext,
-  mergeSlot,
+  settleOutcome,
+  outcomeOf,
+  reasonFor,
   waitFor,
   afterRefusal,
   holdFor,
@@ -32,13 +32,27 @@ import {
 
 describe("parseRoute", () => {
   test("reads the ROUTE line next-ticket.mjs prints", () => {
-    const stdout = "ROUTE\timplement\t824\tFix the lamp swing\nSTATUS\timplement:3\ttriage:1\n";
-    assert.deepEqual(parseRoute(stdout), { skill: "implement", number: 824, title: "Fix the lamp swing" });
+    const stdout = "ROUTE\timplement\t824\tFix the lamp swing\tsize:M\nSTATUS\timplement:3\ttriage:1\n";
+    assert.deepEqual(parseRoute(stdout), {
+      skill: "implement",
+      number: 824,
+      title: "Fix the lamp swing",
+      size: "size:M",
+    });
   });
 
   test("handles the handoff route, which carries no ticket", () => {
-    const stdout = "ROUTE\thandoff\t0\tnothing agent-takeable\n";
-    assert.deepEqual(parseRoute(stdout), { skill: "handoff", number: 0, title: "nothing agent-takeable" });
+    const stdout = "ROUTE\thandoff\t0\tnothing agent-takeable\t\n";
+    assert.deepEqual(parseRoute(stdout), {
+      skill: "handoff",
+      number: 0,
+      title: "nothing agent-takeable",
+      size: null,
+    });
+  });
+
+  test("an unlabelled ticket reads as no size, not as the empty string", () => {
+    assert.equal(parseRoute("ROUTE\timplement\t70\tx\t\n").size, null);
   });
 
   test("throws on output with no ROUTE line, rather than silently looping forever", () => {
@@ -48,39 +62,70 @@ describe("parseRoute", () => {
 
 describe("queueLoopArgs", () => {
   test("runs /queue unattended, with no MCP tools an empty run could stall waiting on", () => {
-    const args = queueLoopArgs();
+    const args = queueLoopArgs(956);
     assert.ok(args.includes("-p"));
-    assert.ok(args.includes("/queue"));
     assert.equal(args[args.indexOf("--permission-mode") + 1], "auto");
     assert.ok(args.includes("--strict-mcp-config"));
   });
 
+  // The supervisor picked a ticket and then spawned a bare `/queue`, so the session picked again
+  // seconds later. Two picks, no handoff, and `landed` compared against a number the session was
+  // never told: #70 was reported landed with 34 files while the session resumed #955.
+  test("the spawn carries the ticket number", () => {
+    const args = queueLoopArgs(956);
+    assert.equal(args[args.indexOf("-p") + 1], "/queue 956");
+  });
+
   test("streams JSON, which print mode refuses without --verbose", () => {
-    const args = queueLoopArgs();
+    const args = queueLoopArgs(1);
     assert.equal(args[args.indexOf("--output-format") + 1], "stream-json");
     assert.ok(args.includes("--verbose"), "stream-json in print mode is refused without --verbose");
   });
-});
 
-describe("advance", () => {
-  test("moves the phase forward", () => {
-    assert.equal(advance("A", "C"), "C");
-    assert.equal(advance(null, "A"), "A");
+  // A dollar cap is checked after a turn settles, so its stopping point moves with the model and
+  // the context, and it resets on --resume. Turns are the bound that means something.
+  test("bounds turns as well as dollars", () => {
+    const args = queueLoopArgs(42, "size:S");
+    assert.ok(args.includes("--max-turns"));
+    assert.ok(args.includes("--max-budget-usd"));
   });
 
-  test("never moves it back — a late marker for an earlier phase is ignored", () => {
-    assert.equal(advance("D", "B"), "D");
-    assert.equal(advance("C", null), "C");
+  const turns = (size: string | null) => {
+    const args = queueLoopArgs(1, size);
+    return Number(args[args.indexOf("--max-turns") + 1]);
+  };
+
+  test("a larger ticket gets more turns", () => {
+    assert.ok(turns("size:L") > turns("size:S"), `got ${turns("size:L")} and ${turns("size:S")}`);
   });
 
-  test("an unknown letter does not move it at all", () => {
-    assert.equal(advance("C", "Z"), "C");
+  test("an unlabelled ticket still gets a bound", () => {
+    assert.equal(turns(null), TURNS_DEFAULT);
+    assert.ok(Number.isInteger(TURNS_DEFAULT) && TURNS_DEFAULT > 0);
+  });
+
+  test("every size the picker can emit has its own bound", () => {
+    for (const size of ["size:XS", "size:S", "size:M", "size:L", "size:XL"]) {
+      assert.ok((TURNS_BY_SIZE as Record<string, number>)[size] > 0, `${size} has no turn bound`);
+    }
   });
 });
 
 describe("liveRoute", () => {
   test("no route when no ticket is live — the picker should run", () => {
     assert.equal(liveRoute({ onTicket: false }), null);
+  });
+
+  test("a clean derive off a ticket is still no route", () => {
+    assert.equal(liveRoute({ onTicket: false, ambiguous: false, why: "not on an agent branch" }), null);
+  });
+
+  // locateRun refuses to guess between two live ticket worktrees, and that refusal is the whole
+  // point of it. Returning null turned it into "no run is live" and the picker took a third.
+  test("an ambiguous derive is a route, not an absence", () => {
+    const r = liveRoute({ onTicket: false, ambiguous: true, why: "2 live agent/* worktrees" });
+    assert.equal(r?.skill, "ambiguous");
+    assert.match(r!.title, /2 live/);
   });
 
   test("resumes the live ticket instead of asking the picker for a new one", () => {
@@ -98,7 +143,6 @@ describe("liveRoute", () => {
       skill: "implement",
       number: 911,
       title: "ticket #911",
-      // "?" is derive() saying it could not tell; the board starts at the build rather than lying.
       phase: "C",
       resuming: true,
     });
@@ -117,51 +161,83 @@ describe("shouldStop", () => {
   }
 });
 
-describe("syncProtocol", () => {
-  /** @param drifts one entry per `git diff` call, in order. */
-  const fakeGit = (drifts: string[], fails?: string, head = { branch: "main", own: "0" }) => {
+describe("syncCheckout", () => {
+  const fake = (answers: Record<string, string>, fails?: string) => {
     const calls: string[][] = [];
     const git = (...args: string[]) => {
       calls.push(args);
       if (fails && args[0] === fails) throw new Error(`fatal: ${fails} refused`);
-      if (args[0] === "diff") return drifts.shift() ?? "";
-      if (args[0] === "rev-parse") return head.branch;
-      if (args[0] === "rev-list") return head.own;
+      const key = args.join(" ");
+      for (const [k, v] of Object.entries(answers)) if (key.startsWith(k)) return v;
       return "";
     };
     return { git, calls };
   };
-  const ran = (calls: string[][], verb: string) => calls.some((c) => c[0] === verb);
+  const clean = { "rev-parse --abbrev-ref": "main", "status --porcelain": "" };
 
-  test("fetches, and goes straight through when nothing drifted", () => {
-    const { git, calls } = fakeGit([""]);
-    assert.equal(syncProtocol(git, () => {}), true);
-    assert.ok(ran(calls, "fetch"));
-    assert.equal(ran(calls, "checkout"), false);
-  });
-
-  test("moves the checkout back to main when the protocol drifted", () => {
-    const { git, calls } = fakeGit([".claude/commands/queue.md", ".claude/commands/queue.md", ""]);
-    assert.equal(syncProtocol(git, () => {}), true);
-    assert.deepEqual(
-      calls.filter((c) => !["diff", "fetch", "rev-parse", "rev-list"].includes(c[0])),
-      [
-        ["checkout", "main"],
-        ["merge", "--ff-only", "origin/main"],
-      ]
-    );
-  });
-
-  test("stops when git refuses the checkout, rather than running a stale protocol", () => {
-    const { git } = fakeGit(["CLAUDE.md", "CLAUDE.md"], "checkout");
+  test("a clean main fast-forwards and says nothing about drift", () => {
     const said: string[] = [];
-    assert.equal(syncProtocol(git, (m: string) => said.push(m)), false);
-    assert.match(said.join("\n"), /cannot restore main/);
+    const { git, calls } = fake(clean);
+    assert.equal(syncCheckout(git, (m: string) => said.push(m)), true);
+    assert.ok(calls.some((c) => c[0] === "fetch"));
+    assert.ok(calls.some((c) => c[0] === "merge"));
+    assert.deepEqual(said, []);
   });
 
-  test("stops when the drift survives the repair", () => {
-    const { git } = fakeGit(["CLAUDE.md", "CLAUDE.md", "CLAUDE.md"]);
-    assert.equal(syncProtocol(git, () => {}), false);
+  // The loop's own tickets edit scripts/. Diffing scripts/ against origin/main called that drift on
+  // every iteration; being behind is staleness, and staleness is repaired, not reported.
+  test("being behind origin is not drift", () => {
+    const said: string[] = [];
+    syncCheckout(fake(clean).git, (m: string) => said.push(m));
+    assert.equal(said.some((s) => /differs/.test(s)), false);
+  });
+
+  test("an uncommitted protocol edit on main refuses, and names the files", () => {
+    const said: string[] = [];
+    const { git, calls } = fake({
+      "rev-parse --abbrev-ref": "main",
+      "status --porcelain": " M scripts/queue-loop.mjs\n M .claude/commands/queue.md",
+    });
+    assert.equal(syncCheckout(git, (m: string) => said.push(m)), false);
+    assert.match(said.join("\n"), /scripts\/queue-loop\.mjs/);
+    assert.match(said.join("\n"), /queue\.md/);
+    assert.equal(calls.some((c) => c[0] === "merge"), false, "the ff-only merge is what refused and ended a run");
+  });
+
+  test("a foreign branch with its own commits refuses, and is not checked out of", () => {
+    const said: string[] = [];
+    const { git, calls } = fake({
+      "rev-parse --abbrev-ref": "fix/loop-rate-limit-wait",
+      "status --porcelain": "",
+      "rev-list --count": "2",
+    });
+    assert.equal(syncCheckout(git, (m: string) => said.push(m)), false);
+    assert.equal(calls.some((c) => c[0] === "checkout"), false);
+    assert.match(said.join("\n"), /fix\/loop-rate-limit-wait is checked out with 2 commit/);
+  });
+
+  test("a leftover branch with nothing of its own is repaired, which is what this is for", () => {
+    const { git, calls } = fake({
+      "rev-parse --abbrev-ref": "agent/900-old",
+      "status --porcelain": "",
+      "rev-list --count": "0",
+    });
+    assert.equal(syncCheckout(git, () => {}), true);
+    assert.ok(calls.some((c) => c[0] === "checkout" && c[1] === "main"));
+  });
+
+  test("a detached head refuses rather than checking main out from under it", () => {
+    const said: string[] = [];
+    const { git } = fake({ "rev-parse --abbrev-ref": "HEAD", "status --porcelain": "" });
+    assert.equal(syncCheckout(git, (m: string) => said.push(m)), false);
+    assert.match(said.join("\n"), /detached/);
+  });
+
+  test("a fast-forward that refuses is reported, not thrown", () => {
+    const said: string[] = [];
+    const { git } = fake(clean, "merge");
+    assert.equal(syncCheckout(git, (m: string) => said.push(m)), false);
+    assert.match(said.join("\n"), /cannot fast-forward main/);
   });
 });
 
@@ -188,46 +264,45 @@ describe("runTicket", () => {
   after(() => rmSync(SCRATCH, { recursive: true, force: true }));
 
   /** A `claude` that emits the given lines on stdout and then exits with `status`. */
-  const fakeSpawn = (lines: string[], status = 0) => () => {
+  const fakeSpawn = (lines: string[], status = 0, errLines: string[] = []) => () => {
     const child: any = new EventEmitter();
     child.stdout = Readable.from(lines.map((l) => `${l}\n`));
+    child.stderr = Readable.from(errLines.map((l) => `${l}\n`));
     child.stdout.on("end", () => setImmediate(() => child.emit("close", status)));
     return child;
   };
 
-  const tool = (name: string, command: string, parent: string | null = null) =>
+  const phase = (letter: string) =>
+    JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: `PHASE ${letter}` }] } });
+
+  const result = (over: object = {}) =>
     JSON.stringify({
-      type: "assistant",
-      parent_tool_use_id: parent,
-      message: { content: [{ type: "tool_use", id: "t", name, input: { command } }] },
+      type: "result",
+      subtype: "success",
+      is_error: false,
+      total_cost_usd: 1.82,
+      num_turns: 41,
+      duration_ms: 1000,
+      usage: { cache_creation_input_tokens: 10, cache_read_input_tokens: 20 },
+      ...over,
     });
 
-  const RESULT = JSON.stringify({
-    type: "result",
-    subtype: "success",
-    is_error: false,
-    total_cost_usd: 1.82,
-    num_turns: 41,
-    duration_ms: 1000,
-    usage: { cache_creation_input_tokens: 10, cache_read_input_tokens: 20 },
-  });
-
+  const RESULT = result();
   const facts = () => ({ title: "Rate limiter factory", url: "u", size: "size:S" });
   const queue = { implement: 1, triage: 0, wayfinder: 0 };
-
-  // What git and the tracker would say. Injected, because a closing row reads them for real and a
-  // unit test must not shell out to `git` and `gh` once per phase.
-  const look = () => ({
-    onTicket: true,
-    ticket: 953,
-    branch: "agent/953-rate-limiter-factory",
-    commits: 2,
-    changed: ["a.ts", "b.ts"],
-    dirty: false,
-    head: "ace650fdeadbeef",
-    trackerReadable: true,
-    verdict: null,
-    phase: "C",
+  /** A real ticker over a non-TTY stream: the lines the run would print, with no cursor control. */
+  const sink = () => {
+    const said: string[] = [];
+    const out = { isTTY: false, write: (s: string) => said.push(s.trimEnd()) };
+    return { said, screen: ticker(out as never, out as never) };
+  };
+  const opts = (extra: object = {}) => ({
+    number: 953,
+    queue,
+    screen: sink().screen,
+    facts,
+    dir: SCRATCH,
+    ...extra,
   });
 
   const meter = (status: string) =>
@@ -242,186 +317,73 @@ describe("runTicket", () => {
     });
 
   test("a refusal reaches the caller, as milliseconds", async () => {
-    const run = await runTicket(fakeSpawn([meter("rejected"), RESULT]), {
-      number: 962,
-      queue,
-      log: () => {},
-      facts,
-      look,
-      dir: SCRATCH,
-    });
+    const run = await runTicket(fakeSpawn([meter("rejected"), RESULT]), opts({ number: 962 }));
     assert.equal(run.blocked, true);
     assert.equal(run.blockedUntil, 1789134000000);
   });
 
   test("a healthy meter reading reaches it as nothing at all", async () => {
-    const said: string[] = [];
-    const run = await runTicket(fakeSpawn([meter("allowed"), meter("allowed"), RESULT]), {
-      number: 962,
-      queue,
-      log: (m: string) => said.push(m),
-      facts,
-      look,
-      dir: SCRATCH,
-    });
+    const { said, screen } = sink();
+    const run = await runTicket(
+      fakeSpawn([meter("allowed"), meter("allowed_warning"), RESULT]),
+      opts({ number: 962, screen }),
+    );
     assert.equal(run.blocked, false);
     assert.equal(run.blockedUntil, 0);
-    assert.doesNotMatch(said.join("\n"), /rate limited/, "a healthy session must not be announced as throttled");
+    assert.doesNotMatch(said.join("\n"), /rate limited/, "a warning is still being served");
   });
 
-  test("a resumed ticket draws its header at once, with no marker in the stream", async () => {
-    const said: string[] = [];
-    await runTicket(fakeSpawn([RESULT]), {
-      number: 962,
-      queue,
-      at: "D",
-      log: (m: string) => said.push(m),
-      facts,
-      look,
-      dir: SCRATCH,
-    });
-    const out = said.join("\n");
-    assert.match(out, /#962 · Rate limiter factory/);
-    assert.match(out, /\[4\/6\] D/);
-  });
-
-  test("draws the header once and a line per phase it sees", async () => {
-    const said: string[] = [];
+  test("the phase comes from the session's own line", async () => {
+    const { said, screen } = sink();
     const run = await runTicket(
-      fakeSpawn([
-        tool("Bash", "gh issue edit 953 --add-label in-progress"),
-        tool("Task", ""),
-        RESULT,
-      ]),
-      { number: 953, queue, log: (m: string) => said.push(m), facts, look, dir: SCRATCH }
+      fakeSpawn([phase("A"), phase("C"), phase("E"), RESULT]),
+      opts({ screen }),
     );
     const out = said.join("\n");
-    assert.equal(out.match(/#953 · Rate limiter factory/g)?.length, 1, "the header prints once");
     assert.match(out, /\[1\/6\] A/);
-    assert.match(out, /\[2\/6\] B/);
-    assert.equal(run.status, 0);
+    assert.match(out, /\[3\/6\] C/);
+    assert.match(out, /\[5\/6\] E/);
+    assert.equal(run.phase, "E");
   });
 
-  test("a phase's row carries what that phase produced, not an empty column", async () => {
-    const said: string[] = [];
-    await runTicket(
-      fakeSpawn([
-        tool("Bash", "gh issue edit 953 --add-label in-progress"),
-        tool("Task", ""),
-        // The build is derived, not marked: a commit is what makes the loop look again.
-        tool("Bash", "git commit -m one"),
-        tool("Bash", "git push -u origin agent/953-rate-limiter-factory"),
-        RESULT,
-      ]),
-      { number: 953, queue, log: (m: string) => said.push(m), facts, look, dir: SCRATCH }
-    );
-    const row = (letter: string) => said.find((l) => l.includes(`] ${letter}  `)) ?? "";
-    assert.match(row("A"), /agent\/953-rate-limiter-factory/, "the claim shows the branch it made");
-    assert.match(row("B"), /1 subagent/, "the scope shows the subagents it dispatched");
-    assert.match(row("C"), /2 commits · 2 files/, "the build shows the commits and the diff");
-    assert.match(row("E"), /pushed ace650f/, "the push shows the head CI will answer for");
+  test("draws the header once", async () => {
+    const { said, screen } = sink();
+    await runTicket(fakeSpawn([phase("A"), phase("C"), RESULT]), opts({ screen }));
+    assert.equal(said.join("\n").match(/#953 · Rate limiter factory/g)?.length, 1);
   });
 
-  test("the phase the session ended in still gets its row — that is where a stall happened", async () => {
-    const said: string[] = [];
-    await runTicket(fakeSpawn([tool("Task", ""), RESULT]), {
-      number: 953,
-      queue,
-      log: (m: string) => said.push(m),
-      facts,
-      look,
-      dir: SCRATCH,
-    });
-    assert.match(said.join("\n"), /\[2\/6\] B/, "B opened and never closed by a successor");
+  test("a resumed ticket says so, and does not read as a closed phase", async () => {
+    const { said, screen } = sink();
+    await runTicket(fakeSpawn([RESULT]), opts({ number: 962, at: "D", screen }));
+    const rows = said.filter((l) => l.includes("[4/6] D"));
+    assert.equal(rows.length, 1);
+    assert.match(rows[0], /↻.*resumed/);
   });
 
-  test("one ✓ row per phase — a resumed phase is marked as taken up, not as finished", async () => {
-    const said: string[] = [];
-    await runTicket(fakeSpawn([RESULT]), {
-      number: 962,
-      queue,
-      at: "C",
-      log: (m: string) => said.push(m),
-      facts,
-      look,
-      dir: SCRATCH,
-    });
-    const rows = said.filter((l) => l.includes("[3/6] C"));
-    assert.equal(rows.length, 2);
-    assert.match(rows[0], /↻.*resumed/, "the row for the phase being taken up cannot read as closed");
-    assert.equal(rows.filter((l) => l.includes("✓")).length, 1, "a phase closes once");
-  });
-
-  test("the review's row names the verdict and the commit it covers", async () => {
-    const said: string[] = [];
-    await runTicket(
-      fakeSpawn([
-        tool("Bash", "git commit -m one"),
-        tool("Bash", "git push -u origin agent/953-x"),
-        RESULT,
-      ]),
-      {
-        number: 953,
-        queue,
-        log: (m: string) => said.push(m),
-        facts,
-        look: () => ({ ...look(), phase: "D", verdict: { decision: "LAND" } }),
-        dir: SCRATCH,
-      }
-    );
-    assert.match(said.join("\n"), /LAND ace650f/);
-  });
-
-  test("the detail is read as the phase closes, never carried from an earlier reading", async () => {
-    let reads = 0;
-    const said: string[] = [];
-    await runTicket(
-      fakeSpawn([
-        tool("Bash", "gh issue edit 953 --add-label in-progress"),
-        tool("Bash", "git commit -m one"),
-        RESULT,
-      ]),
-      {
-        number: 953,
-        queue,
-        log: (m: string) => said.push(m),
-        facts,
-        // A growing count, so a row built from the first reading is distinguishable from one built
-        // at the close — the build is where a stale count does its damage.
-        look: () => ({ ...look(), commits: ++reads }),
-        dir: SCRATCH,
-      }
-    );
-    const build = said.find((l) => l.includes("] C  ")) ?? "";
-    assert.match(build, new RegExp(`${reads} commits`));
-    assert.doesNotMatch(build, /\b1 commit\b/, "the first reading is not what the row reports");
+  // The real turn carries `origin: null`; a background task's wake-up is a turn too and carries
+  // origin.kind "task-notification". Last-wins across all of them reported 144 turns as one.
+  test("a background task's result does not overwrite the session's", async () => {
+    const wake = result({ num_turns: 1, total_cost_usd: 0, origin: { kind: "task-notification" } });
+    const run = await runTicket(fakeSpawn([RESULT, wake]), opts());
+    assert.equal(run.result?.turns, 41);
+    assert.equal(run.result?.cost, 1.82);
   });
 
   test("carries the final result out, which is what the row and the closing line are built from", async () => {
-    const run = await runTicket(fakeSpawn([tool("Task", ""), RESULT]), {
-      number: 953,
-      queue,
-      log: () => {},
-      facts,
-      look,
-      dir: SCRATCH,
-    });
+    const run = await runTicket(fakeSpawn([phase("B"), RESULT]), opts());
     assert.equal(run.result?.cost, 1.82);
     assert.equal(run.result?.turns, 41);
     assert.deepEqual(run.result?.cache, { created: 10, read: 20 });
   });
 
-  test("a subagent's own tool calls do not move the board — phase B is one phase", async () => {
-    const said: string[] = [];
-    await runTicket(
-      fakeSpawn([
-        tool("Task", ""),
-        tool("Bash", "git push -u origin agent/953-x", "toolu_parent"),
-        RESULT,
-      ]),
-      { number: 953, queue, log: (m: string) => said.push(m), facts, look, dir: SCRATCH }
+  // The budget message is the only place a budget stop is ever said: the result event for that
+  // session still reads subtype "success".
+  test("the child's stderr is captured, not only inherited", async () => {
+    const run = await runTicket(
+      fakeSpawn([RESULT], 0, ["Budget limit reached ($15.08 of $15); stopping background agents."]),
+      opts(),
     );
-    assert.ok(!said.join("\n").includes("[5/6] E"), "a subagent cannot push the board to phase E");
+    assert.match(run.stderr, /Budget limit reached/);
   });
 
   test("a session that goes silent is killed and reported as stalled", async () => {
@@ -430,6 +392,7 @@ describe("runTicket", () => {
       const child: any = new EventEmitter();
       // Never ends on its own: the watchdog is the only thing that can close this run.
       child.stdout = new Readable({ read() {} });
+      child.stderr = new Readable({ read() {} });
       child.kill = (sig: string) => {
         killed.push(sig);
         child.stdout.push(null);
@@ -437,16 +400,7 @@ describe("runTicket", () => {
       };
       return child;
     };
-    const run = await runTicket(silent, {
-      number: 953,
-      queue,
-      log: () => {},
-      facts,
-      look,
-      dir: SCRATCH,
-      stallMs: 20,
-      tick: 10,
-    });
+    const run = await runTicket(silent, opts({ stallMs: 20, tick: 10 }));
     assert.equal(run.status, "stalled");
     assert.equal(killed[0], "SIGTERM", "SIGTERM is what takes the child's Bash tree with it");
   });
@@ -457,81 +411,48 @@ describe("runTicket", () => {
       const child: any = new EventEmitter();
       const s = new Readable({ read() {} });
       child.stdout = s;
+      child.stderr = new Readable({ read() {} });
       child.kill = (sig: string) => killed.push(sig);
       let n = 0;
       const timer = setInterval(() => {
-        s.push(`${tool("Read", "")}
-`);
+        s.push(`${phase("C")}\n`);
         if (++n === 8) {
           clearInterval(timer);
-          s.push(`${RESULT}
-`);
+          s.push(`${RESULT}\n`);
           s.push(null);
           setImmediate(() => child.emit("close", 0));
         }
       }, 5);
       return child;
     };
-    const run = await runTicket(chatty, {
-      number: 953,
-      queue,
-      log: () => {},
-      facts,
-      look,
-      dir: SCRATCH,
-      stallMs: 60,
-      tick: 10,
-    });
+    const run = await runTicket(chatty, opts({ stallMs: 60, tick: 10 }));
     assert.deepEqual(killed, [], "a session still emitting is working, not stalled");
     assert.equal(run.status, 0);
   });
 
   test("a non-zero exit is reported, not thrown", async () => {
-    const run = await runTicket(fakeSpawn([RESULT], 1), {
-      number: 953,
-      queue,
-      log: () => {},
-      facts,
-      look,
-      dir: SCRATCH,
-    });
+    const run = await runTicket(fakeSpawn([RESULT], 1), opts());
     assert.equal(run.status, 1);
   });
 
   test("keeps the raw stream in .loop-logs, which is the fallback for what the board omits", async () => {
-    const run = await runTicket(fakeSpawn([tool("Task", ""), RESULT]), {
-      number: 999,
-      queue,
-      log: () => {},
-      facts,
-      look,
-      dir: SCRATCH,
-    });
+    const run = await runTicket(fakeSpawn([phase("B"), RESULT]), opts({ number: 999 }));
     assert.match(run.log, /999\.jsonl$/);
     assert.ok(readFileSync(run.log, "utf8").includes('"type":"result"'));
     rmSync(run.log, { force: true });
   });
 });
 
-describe("stalled", () => {
-  test("silence past the ceiling is a stall", () => {
-    assert.equal(stalled(0, STALL_MS + 1), true);
-  });
-
-  test("silence inside it is not — a CI wait is legitimately quiet for twenty minutes", () => {
-    assert.equal(stalled(0, 20 * 60_000), false);
-    assert.ok(STALL_MS > 20 * 60_000, "the ceiling must clear a real ciVerdict wait");
-  });
-});
-
 describe("park", () => {
-  const recorder = () => {
+  /** `stillDirty` is what `git status --porcelain` answers on the re-read before the commit. */
+  const recorder = (throwOn?: string, stillDirty = " M a.ts") => {
     const calls: { file: string; args: string[] }[] = [];
     return {
       calls,
       run: (file: string, args: string[]) => {
         calls.push({ file, args });
-        return "";
+        if (throwOn && args.includes(throwOn)) throw new Error(`${file} refused ${throwOn}`);
+        return args.includes("--porcelain") ? stillDirty : "";
       },
     };
   };
@@ -557,11 +478,33 @@ describe("park", () => {
     assert.ok(removeAt > commitAt, "the worktree is removed only after its work is committed");
   });
 
-  test("releases the claim and hands the ticket to the owner", () => {
+  // `dirty` comes from a derive() up to twenty seconds old, so a session that committed in that
+  // window leaves `git add -A` nothing to stage — and `git commit` then exits 1.
+  test("a tree that went clean since the derive is not given an empty commit", () => {
+    const { calls, run } = recorder(undefined, "");
+    park(953, opts({ dirty: true, run }));
+    assert.equal(calls.some((c) => c.args.includes("commit")), false);
+  });
+
+  test("takes ready-for-agent off as well as in-progress", () => {
     const { calls, run } = recorder();
-    park(953, opts({ run }));
-    assert.ok(ran(calls, "--remove-label in-progress"));
-    assert.ok(ran(calls, "--add-label ready-for-human"));
+    park(42, opts({ run, cwd: null }));
+    const edit = calls.find((c) => c.args[0] === "issue" && c.args[1] === "edit");
+    assert.ok(edit, "park edits the issue's labels");
+    // Asserted as the whole argument list, not with `some(includes)`: the defect was a label that
+    // was never removed, and a positive-only assertion cannot see an absent argument.
+    assert.deepEqual([edit!.file, ...edit!.args], [
+      "gh",
+      "issue",
+      "edit",
+      "42",
+      "--remove-label",
+      "in-progress",
+      "--remove-label",
+      "ready-for-agent",
+      "--add-label",
+      "ready-for-human",
+    ]);
   });
 
   test("the reason goes on the issue through a file, never an inline body", () => {
@@ -580,12 +523,6 @@ describe("park", () => {
     assert.ok(!ran(calls, "worktree remove"), "a recursive delete follows the node_modules junction");
   });
 
-  test("a clean worktree is not given an empty commit", () => {
-    const { calls, run } = recorder();
-    park(953, opts({ run }));
-    assert.ok(!calls.some((c) => c.args.includes("commit")));
-  });
-
   test("the body it writes names the phase, the branch and the log", () => {
     let body = "";
     const { run } = recorder();
@@ -595,39 +532,26 @@ describe("park", () => {
     assert.match(body, /x\.jsonl/);
     assert.match(body, /stalled/);
   });
-});
 
-describe("madeProgress", () => {
-  test("a first sighting of a ticket is progress", () => {
-    assert.equal(madeProgress(null, { ticket: 953, head: "aaa", commits: 0 }), true);
+  // park is reached from the stop-file drain as well as from a bad session, so a throw here turned
+  // an orderly stop into an unhandled rejection and lost whatever the run still held.
+  test("a failing step is reported, not thrown", () => {
+    const { run } = recorder("commit");
+    const out = park(42, opts({ dirty: true, run, cwd: ".worktrees/agent-42" }));
+    assert.equal(out.ok, false);
+    assert.deepEqual(out.failed, ["commit"]);
   });
 
-  test("a different ticket is progress", () => {
-    assert.equal(
-      madeProgress({ ticket: 953, head: "aaa", commits: 2 }, { ticket: 961, head: "aaa", commits: 2 }),
-      true
-    );
+  test("still takes the label off when the comment fails", () => {
+    const { calls, run } = recorder("comment");
+    const out = park(42, opts({ run, cwd: null }));
+    assert.ok(calls.some((c) => c.args[1] === "edit"), "the label edit happened");
+    assert.deepEqual(out.failed, ["comment"]);
   });
 
-  test("the same ticket with a new head is progress", () => {
-    assert.equal(
-      madeProgress({ ticket: 953, head: "aaa", commits: 2 }, { ticket: 953, head: "bbb", commits: 3 }),
-      true
-    );
-  });
-
-  test("the same ticket, same head, same commits is not — this is the loop resuming forever", () => {
-    assert.equal(
-      madeProgress({ ticket: 953, head: "aaa", commits: 2 }, { ticket: 953, head: "aaa", commits: 2 }),
-      false
-    );
-  });
-
-  test("a first commit on a branch that had none is progress, even with no head yet recorded", () => {
-    assert.equal(
-      madeProgress({ ticket: 953, head: null, commits: 0 }, { ticket: 953, head: "aaa", commits: 1 }),
-      true
-    );
+  test("a clean park reports ok", () => {
+    const { run } = recorder();
+    assert.deepEqual(park(953, opts({ run })), { ok: true, failed: [] });
   });
 });
 
@@ -640,18 +564,17 @@ describe("shouldHalt", () => {
 });
 
 describe("takeStopFile", () => {
-  test("absent means carry on, and nothing is deleted", () => {
-    const calls: string[] = [];
-    const fs = { existsSync: () => false, rmSync: (p: string) => calls.push(p) };
-    assert.equal(takeStopFile(fs, ".loop-stop"), false);
-    assert.deepEqual(calls, []);
+  test("absent means carry on", () => {
+    assert.equal(takeStopFile({ existsSync: () => false }, ".loop-stop"), false);
   });
 
-  test("present means drain, and reading it removes it so it cannot go stale", () => {
-    const calls: string[] = [];
-    const fs = { existsSync: () => true, rmSync: (p: string) => calls.push(p) };
+  // holdFor honoured it without consuming it and takeStopFile consumed it, so a stop during a wait
+  // silently killed the next run too. A scheduled restart must see it as well.
+  test("present means drain, and the file survives being read", () => {
+    let removed = false;
+    const fs = { existsSync: () => true, rmSync: () => { removed = true; } };
     assert.equal(takeStopFile(fs, ".loop-stop"), true);
-    assert.deepEqual(calls, [".loop-stop"]);
+    assert.equal(removed, false);
   });
 });
 
@@ -690,115 +613,92 @@ describe("afterPush", () => {
     const r = afterPush({ verdict: { pass: false, infrastructure: true, failedStep: "browser" } });
     assert.equal(r.action, "retry-verdict");
   });
-});
 
-describe("canStartNext", () => {
-  test("nothing pending, so start", () => {
-    assert.equal(canStartNext({ pending: null }).ok, true);
+  test("a recheck rides the retry budget instead of parking", () => {
+    const out = afterPush({ verdict: { pass: true }, landing: { action: "recheck", reason: "still computing" } });
+    assert.equal(out.action, "retry-verdict");
   });
 
-  test("a pending ticket awaiting its first verdict does not block the next one", () => {
-    assert.equal(
-      canStartNext({ pending: { ticket: 953, state: "awaiting-ci", changed: ["lib/x.ts"] } }).ok,
-      true
-    );
-  });
-
-  // Red is `afterPush`'s call, not this one's: a drained ticket is no longer pending.
-  test("a red verdict hands the ticket back for a fix rather than parking it", () => {
-    const next = afterPush({ verdict: { pass: false, failedStep: "verify" } });
-    assert.equal(next.action, "fix");
-  });
-
-  test("a green verdict that cannot merge parks, and says why", () => {
-    const next = afterPush({ verdict: { pass: true }, landing: { action: "stop", reason: "CONFLICTING" } });
-    assert.equal(next.action, "park");
-    assert.match(next.why, /CONFLICTING/);
-  });
-
-  test("a dependency change drains before anything else starts", () => {
-    const r = canStartNext({
-      pending: { ticket: 953, state: "awaiting-ci", changed: ["package.json", "lib/x.ts"] },
-    });
-    assert.equal(r.ok, false);
-    assert.match(r.why, /node_modules|package\.json/);
-  });
-
-  test("package-lock.json counts the same as package.json", () => {
-    assert.equal(
-      canStartNext({ pending: { ticket: 953, state: "awaiting-ci", changed: ["package-lock.json"] } }).ok,
-      false
-    );
-  });
-
-  test("a lockfile deep in a worktree path is not this repo's shared install", () => {
-    assert.equal(
-      canStartNext({ pending: { ticket: 953, state: "awaiting-ci", changed: ["docs/package.json"] } }).ok,
-      true
-    );
+  test("an already-merged pull request is a merge, not a park", () => {
+    const out = afterPush({ verdict: { pass: true }, landing: { action: "already-merged", reason: "already merged" } });
+    assert.equal(out.action, "merged");
   });
 });
 
-/** One slot: it must be emptied before it is refilled, and a pushed ticket must give up its worktree. */
-describe("mergeSlot", () => {
-  const fakes = () => {
-    const calls: string[] = [];
-    const io = {
-      settle: async (t: any) => {
-        calls.push(`settle:${t.ticket}`);
-        return { action: "merged", why: "merged" };
-      },
-      release: (cwd: string) => calls.push(`release:${cwd}`),
-      reattach: (cwd: string) => calls.push(`reattach:${cwd}`),
-      log: () => {},
-    };
-    return { calls, io };
-  };
-
-  test("a second ticket cannot take the slot until the first has settled", async () => {
-    const { calls, io } = fakes();
-    const slot = mergeSlot(io);
-
-    await slot.adopt({ ticket: 953, cwd: ".worktrees/agent-953", at: Date.now() });
-    await slot.adopt({ ticket: 961, cwd: ".worktrees/agent-961", at: Date.now() });
-
-    assert.deepEqual(
-      calls,
-      ["release:.worktrees/agent-953", "settle:953", "release:.worktrees/agent-961"],
-      "#953 must have been settled before #961 took the slot"
-    );
-    assert.equal(slot.pending.ticket, 961);
+describe("settleOutcome", () => {
+  test("a merge is the landing, and costs the run nothing", () => {
+    assert.deepEqual(settleOutcome({ action: "merged" }), { countsAsFailure: false, recorded: "landed" });
   });
 
-  test("adopting reports what settled, so the caller can record it", async () => {
-    const { io } = fakes();
-    const slot = mergeSlot(io);
-    await slot.adopt({ ticket: 953, cwd: "a", at: Date.now() });
-    const settled = await slot.adopt({ ticket: 961, cwd: "b", at: Date.now() });
-    assert.equal(settled?.ticket.ticket, 953);
-    assert.equal(settled?.outcome.action, "merged");
+  test("a fix writes no row — the session that fixes it does", () => {
+    assert.equal(settleOutcome({ action: "fix" }).recorded, null);
   });
 
-  test("a pushed ticket gives up its worktree, so nothing derives it as a live run", async () => {
-    const { calls, io } = fakes();
-    const slot = mergeSlot(io);
-    await slot.adopt({ ticket: 953, cwd: ".worktrees/agent-953", at: Date.now() });
-    assert.ok(calls.includes("release:.worktrees/agent-953"));
+  // park() adds ready-for-human and classify() sends any issue carrying an owner label to the
+  // owner bucket, so every mechanical park was absorbing and the frontier drained 11 to 6.
+  test("a mechanical failure counts toward the breaker and reaches no label", () => {
+    const out = settleOutcome({ action: "park" });
+    assert.equal(out.countsAsFailure, true);
+    assert.equal(out.recorded, "stalled");
   });
 
-  test("red CI gets the worktree back, because the next session is its fix", async () => {
-    const { calls, io } = fakes();
-    const slot = mergeSlot({ ...io, settle: async () => ({ action: "fix", why: "CI failed at verify" }) });
-    await slot.adopt({ ticket: 953, cwd: ".worktrees/agent-953", branch: "agent/953-x", at: Date.now() });
-    const settled = await slot.drain();
-    assert.equal(settled?.outcome.action, "fix");
-    assert.ok(calls.includes("reattach:.worktrees/agent-953"));
-    assert.equal(slot.pending, null);
+  test("an unrecognised action still counts, rather than passing as a landing", () => {
+    assert.equal(settleOutcome({ action: "something-new" }).countsAsFailure, true);
+  });
+});
+
+describe("outcomeOf", () => {
+  test("a pushed pull request is not yet landed", () => {
+    assert.equal(outcomeOf({ pr: 984, why: null }).landed, false);
+    assert.equal(outcomeOf({ pr: 984, why: null }).pushed, 984);
   });
 
-  test("draining an empty slot is nothing, not a crash", async () => {
-    const { io } = fakes();
-    assert.equal(await mergeSlot(io).drain(), null);
+  // The session stood down on a lost claim race, or derive() could not read the run. Both used to
+  // read as "the worktree is gone, so it landed".
+  test("no pull request and no reason is not landed either", () => {
+    const o = outcomeOf({ pr: null, why: null });
+    assert.equal(o.landed, false);
+    assert.match(String(o.why), /pushed no pull request/);
+  });
+
+  test("a reason is never a landing", () => {
+    const o = outcomeOf({ pr: 984, why: "the session exited 1 in phase C" });
+    assert.equal(o.landed, false);
+    assert.equal(o.pushed, undefined);
+  });
+});
+
+describe("reasonFor", () => {
+  const run = (over: object = {}) => ({ status: 0, phase: "E", stderr: "", result: {}, ...over });
+  const after = { ticket: 42 };
+
+  test("a finished session has no reason", () => {
+    assert.equal(reasonFor(run(), after, 42), null);
+  });
+
+  test("a session that worked another ticket says so", () => {
+    assert.match(String(reasonFor(run(), { ticket: 955 }, 42)), /worked #955, not #42/);
+  });
+
+  test("a budget stop is read from stderr, because the result still says success", () => {
+    const r = reasonFor(run({ stderr: "Budget limit reached ($15.08 of $15)" }), after, 42);
+    assert.match(String(r), /spent its budget/);
+  });
+
+  test("running out of turns is named", () => {
+    assert.match(String(reasonFor(run({ result: { subtype: "error_max_turns" } }), after, 42)), /out of turns/);
+  });
+
+  test("a stall names the ceiling it passed", () => {
+    assert.match(String(reasonFor(run({ status: "stalled" }), after, 42)), /no output for 30m/);
+  });
+
+  test("a non-zero exit names the phase", () => {
+    assert.match(String(reasonFor(run({ status: 1 }), after, 42)), /exited 1 in phase E/);
+  });
+
+  test("no live ticket at all is not a reason on its own", () => {
+    assert.equal(reasonFor(run(), null, 42), null);
   });
 });
 
@@ -821,14 +721,16 @@ describe("waitFor", () => {
     assert.equal(waitFor({ blocked: true, blockedUntil: now - mins(5) }, now), 0);
   });
 
-  test("a refusal naming no reset looks again shortly, rather than parking the ticket", () => {
+  test("a refusal naming no reset looks again shortly, rather than giving up", () => {
     assert.equal(waitFor({ blocked: true, blockedUntil: 0 }, now), WAIT.FLOOR);
   });
 
-  test("a reset a year out is a bad field, not a year of sleep", () => {
+  // The cap bounds one hold, not the total: a seven-day window is waited out in pieces and asked
+  // again, so the loop resumes within CAP of the reset rather than exiting the night.
+  test("a reset a year out is held in one capped piece, not slept through", () => {
     const hold = waitFor({ blocked: true, blockedUntil: now + 365 * 24 * 60 * 60_000 }, now);
     assert.equal(hold, WAIT.CAP);
-    assert.ok(WAIT.CAP <= mins(360), "the longest window is five hours");
+    assert.ok(WAIT.CAP >= mins(330), "the five-hour window must be waited out in one piece");
   });
 
   test("a session that got the work done does not wait, whatever the meter said", () => {
@@ -837,58 +739,31 @@ describe("waitFor", () => {
 });
 
 describe("holdFor", () => {
-  test("a stop file ends the wait, so .loop-stop still works during a five-hour hold", async () => {
-    const out = await holdFor(60_000, () => true, 5);
-    assert.equal(out, "stopped");
+  test("a stop file ends the wait, so .loop-stop still works during a long hold", async () => {
+    assert.equal(await holdFor(60_000, () => true, 5), "stopped");
   });
 
   test("otherwise it waits the time out", async () => {
     assert.equal(await holdFor(10, () => false, 5), "waited");
   });
-});
 
-/** A background process may not move a checkout someone is working in. */
-describe("syncProtocol leaves someone else's branch alone", () => {
-  const fake = (branch: string, own: string) => {
-    const calls: string[][] = [];
-    const git = (...args: string[]) => {
-      calls.push(args);
-      if (args[0] === "diff") return "scripts/queue-loop.mjs";
-      if (args[0] === "rev-parse") return branch;
-      if (args[0] === "rev-list") return own;
-      return "";
-    };
-    return { git, calls };
-  };
-
-  test("a branch with commits of its own stops the loop instead of being checked out of", () => {
-    const { git, calls } = fake("fix/loop-rate-limit-wait", "1");
+  // The hold is the one stretch of the run that prints nothing, and for up to twelve hours. A
+  // silent terminal reads exactly like a dead one.
+  test("a long hold says it is still there, and says when it is back", async () => {
     const said: string[] = [];
-    assert.equal(syncProtocol(git, (m: string) => said.push(m)), false);
-    assert.equal(
-      calls.some((c) => c[0] === "checkout"),
-      false,
-      "the loop must not move a branch it did not create"
-    );
-    assert.match(said.join("\n"), /fix\/loop-rate-limit-wait is checked out with 1 commit/);
+    await holdFor(60, () => false, 5, (m: string) => said.push(m), 10);
+    assert.ok(said.length >= 3, `expected several heartbeats, saw ${said.length}`);
+    assert.match(said[0], /still waiting — back at \d/);
   });
 
-  test("a leftover branch with nothing of its own is still repaired, which is what this is for", () => {
-    const { git, calls } = fake("agent/900-old", "0");
-    syncProtocol(git, () => {});
-    assert.ok(calls.some((c) => c[0] === "checkout" && c[1] === "main"));
-  });
-
-  test("drift on main itself is repaired, branch or no branch", () => {
-    const { git, calls } = fake("main", "0");
-    syncProtocol(git, () => {});
-    assert.ok(calls.some((c) => c[0] === "checkout" && c[1] === "main"));
+  test("a hold nobody is watching stays silent", async () => {
+    assert.equal(await holdFor(30, () => false, 5, null, 10), "waited");
   });
 });
 
 describe("afterRefusal", () => {
   const now = 1_000_000_000_000;
-  const base = { ticket: 962, waits: 0, waitsOn: null, blocked: true, blockedUntil: now + 60_000 };
+  const base = { waits: 0, blocked: true, blockedUntil: now + 60_000 };
 
   test("a session that was not refused just proceeds", () => {
     const step = afterRefusal({ ...base, blocked: false }, now);
@@ -896,31 +771,32 @@ describe("afterRefusal", () => {
     assert.equal(step.waits, 0);
   });
 
-  test("a refusal retries and counts", () => {
+  test("a refusal waits and counts", () => {
     const step = afterRefusal(base, now);
-    assert.equal(step.action, "retry");
+    assert.equal(step.action, "wait");
     assert.equal(step.waits, 1);
     assert.ok(step.hold > 0);
   });
 
   // A reset already passed means go now. Falling through to the ordinary accounting instead would
-  // record a throttled session as "resumed with nothing committed" and count it toward the breaker.
-  test("a window that has already reset retries with no wait at all", () => {
+  // record a throttled session as a failed ticket and count it toward the breaker.
+  test("a window that has already reset goes again with no wait at all", () => {
     const step = afterRefusal({ ...base, blockedUntil: now - 1 }, now);
-    assert.equal(step.action, "retry");
+    assert.equal(step.action, "wait");
     assert.equal(step.hold, 0);
   });
 
-  test("a different ticket starts its own count", () => {
-    const step = afterRefusal({ ...base, ticket: 970, waits: 19, waitsOn: 962 }, now);
-    assert.equal(step.waits, 1);
-    assert.equal(step.waitsOn, 970);
+  // A usage refusal is a property of the account. Keyed per ticket the counter was inert —
+  // twenty tickets refused once each never reached the ceiling — and cruel when it did fire.
+  test("the count is the run's, not the ticket's", () => {
+    assert.equal(afterRefusal({ ...base, waits: 7 }, now).waits, 8);
   });
 
-  test("refused too often, it parks — and the reason survives into the row", () => {
-    const step = afterRefusal({ ...base, waits: WAIT.TRIES, waitsOn: 962 }, now);
-    assert.equal(step.action, "park");
+  test("refused past the ceiling gives up, and says what it tried", () => {
+    const step = afterRefusal({ ...base, waits: WAIT.TRIES }, now);
+    assert.equal(step.action, "give-up");
     assert.match(step.why ?? "", /refused 20 times running/);
+    assert.match(step.why ?? "", /after waiting out the window/);
   });
 
   test("a session that pushed never waits, whatever the meter said", () => {
