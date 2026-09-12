@@ -18,12 +18,15 @@ import { en as locale } from '@/locales/en';
 type Listener = (...args: unknown[]) => void;
 
 const emitted: { event: string; payload?: unknown }[] = [];
-const listeners = new Map<string, Listener>();
+// A set per event, as socket.io has: the provider registers more than one
+// `connect` handler, and a map of one would silently keep only the last.
+const listeners = new Map<string, Set<Listener>>();
 
 const mockSocket = {
   connected: true,
   on(event: string, fn: Listener) {
-    listeners.set(event, fn);
+    if (!listeners.has(event)) listeners.set(event, new Set());
+    listeners.get(event)!.add(fn);
   },
   off() {},
   emit(event: string, payload?: unknown) {
@@ -92,7 +95,7 @@ async function mountRejoining(roomId: string) {
 // before they set state, and a sync act() closes before that lands.
 const deliver = async (event: string, payload: unknown) => {
   await act(async () => {
-    listeners.get(event)?.(payload);
+    listeners.get(event)?.forEach((fn) => fn(payload));
   });
 };
 

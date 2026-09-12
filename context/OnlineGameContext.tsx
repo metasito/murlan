@@ -6,6 +6,7 @@ import React, {
   useEffect,
   useRef,
   useMemo,
+  useSyncExternalStore,
   ReactNode,
 } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -278,7 +279,6 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
   const qc = useQueryClient();
   const [room, setRoom] = useState<RoomState | null>(null);
   const [gameState, setGameState] = useState<GameState | null>(null);
-  const [connected, setConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [playerLeft, setPlayerLeft] = useState(false);
   const [entrySource, setEntrySource] = useState<"quickmatch" | "friends" | null>(null);
@@ -336,6 +336,26 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
   const [turnDeadline, setTurnDeadline] = useState<TurnDeadline>(NO_TURN_DEADLINE);
 
   const { socket } = useSocket();
+
+  // Listeners attached to a socket that is already connected have no `connect`
+  // left to hear, so anything holding this as its own state has to seed it by
+  // hand and is wrong for exactly as long as it has not.
+  const connected = useSyncExternalStore(
+    useCallback(
+      (onChange: () => void) => {
+        if (!socket) return () => {};
+        socket.on("connect", onChange);
+        socket.on("disconnect", onChange);
+        return () => {
+          socket.off("connect", onChange);
+          socket.off("disconnect", onChange);
+        };
+      },
+      [socket]
+    ),
+    () => socket?.connected ?? false,
+    () => false
+  );
 
   const persistActiveRoom = useCallback((roomId: string | null) => {
     persistedRoomIdRef.current = roomId;
@@ -473,10 +493,8 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
 
   useEffect(() => {
     const onConnect = () => {
-      setConnected(true);
       attemptRejoin();
     };
-    const onDisconnect = () => setConnected(false);
 
     const onRoomState = (data: RoomState) => {
       roomRef.current = data;
@@ -783,7 +801,6 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
 
     socket?.on("game:started", onGameStarted);
     socket?.on("connect", onConnect);
-    socket?.on("disconnect", onDisconnect);
     socket?.on("room:state", onRoomState);
     socket?.on("room:error", onRoomError);
     socket?.on("game:state", onGameState);
@@ -802,12 +819,9 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     socket?.on("game:player_reconnected", onPlayerReconnected);
     socket?.on("game:rejoin_failed", onRejoinFailed);
 
-    if (socket?.connected) setConnected(true);
-
     return () => {
       socket?.off("game:started", onGameStarted);
       socket?.off("connect", onConnect);
-      socket?.off("disconnect", onDisconnect);
       socket?.off("room:state", onRoomState);
       socket?.off("room:error", onRoomError);
       socket?.off("game:state", onGameState);
@@ -864,6 +878,10 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     setEntrySource("friends");
     setRejoinFailed(false);
     setIsSpectator(false);
+    // A new attempt retires the last one's refusal. The banner is dismissed by
+    // hand and by nothing else, so a standing error otherwise outlives the
+    // table it was about and hides this join's own answer behind it.
+    setError(null);
     socket?.emit("room:join", { code });
   }, [socket]);
 
@@ -871,6 +889,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     (code: string) => {
       setIsSpectator(true);
       setRejoinFailed(false);
+      setError(null);
       socket?.emit("room:spectate", { code: code.toUpperCase() });
     },
     [socket]

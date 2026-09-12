@@ -104,7 +104,11 @@ const idleState = () => ({
 
 function ShakeProbe({ shakeRef }: { shakeRef: React.MutableRefObject<((tier: ImpactTier) => void) | null> }) {
   const { shakeStyle, shake } = useTableFeedback(idleState());
-  shakeRef.current = shake;
+  // After commit, never during render: the only caller is the test body, which
+  // runs once the mount has settled.
+  React.useEffect(() => {
+    shakeRef.current = shake;
+  });
   return <Animated.View testID="shake-probe" style={shakeStyle} />;
 }
 

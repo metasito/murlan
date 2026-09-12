@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import { View, Text, TextInput, StyleSheet } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { ScreenHeader } from "@/components/ScreenHeader";
@@ -25,15 +25,18 @@ export default function VerifyEmailScreen() {
   const { t } = useTranslation();
   const { user, refreshUser } = useAuth();
   const params = useLocalSearchParams<{ email?: string }>();
-  const [email, setEmail] = useState(params.email ?? "");
+  const [email, setEmail] = useState(params.email || user?.email || "");
   const [code, setCode] = useState("");
 
-  // AuthContext's boot check resolves after first render, so this fills the
-  // signed-in address in only once it lands, and only into an empty field.
-  useEffect(() => {
-    const signedInEmail = user?.email;
+  // AuthContext's boot check usually resolves after first render, so the
+  // initialiser above catches the address only when it was already there. This
+  // is the other case, and like it, fills only an empty field.
+  const signedInEmail = user?.email;
+  const [filledFrom, setFilledFrom] = useState(signedInEmail);
+  if (signedInEmail !== filledFrom) {
+    setFilledFrom(signedInEmail);
     if (signedInEmail) setEmail((current) => current || signedInEmail);
-  }, [user?.email]);
+  }
   const [verified, setVerified] = useState(false);
   const [loading, setLoading] = useState(false);
   const [resending, setResending] = useState(false);

@@ -6,13 +6,20 @@ import React, {
   useRef,
   useCallback,
   useMemo,
+  useSyncExternalStore,
   ReactNode,
 } from "react";
 import { router } from "expo-router";
 import { useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/query-client";
 import { useAuth } from "@/context/AuthContext";
-import { connectSocket, disconnectSocket, setSocketAuthFailureHandler } from "@/lib/socket";
+import {
+  connectSocket,
+  disconnectSocket,
+  peekSocket,
+  setSocketAuthFailureHandler,
+  subscribeToSockets,
+} from "@/lib/socket";
 import { reportSocketClose } from "@/lib/errorReporting";
 import { useNotification } from "@/context/NotificationContext";
 import { SessionReplacedNotice } from "@/components/SessionReplacedNotice";
@@ -111,7 +118,13 @@ export function SocketProvider({ children }: { children: ReactNode }) {
   const userId = user?.id;
   const qc = useQueryClient();
   const { showNotification } = useNotification();
-  const [socket, setSocket] = useState<Socket | null>(null);
+  // `lib/socket`'s map is already the one socket per user, so a copy here would
+  // be a second answer to the same question for the effect below to keep in step.
+  const socket = useSyncExternalStore(
+    subscribeToSockets,
+    () => peekSocket(userId),
+    () => null
+  );
   const [connected, setConnected] = useState(false);
   const [onlineIds, setOnlineIds] = useState<Set<string>>(new Set());
   const [pendingInvite, setPendingInvite] = useState<PendingInvite | null>(null);
@@ -178,6 +191,18 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     socket.connect();
   }, []);
 
+  // Everything below describes one account's connection, so the account
+  // changing — signing out, or signing in as someone else — retires all of it in
+  // the same render. Left to the effect, a new session would read the previous
+  // one's answers for a frame.
+  const [shownUserId, setShownUserId] = useState(userId);
+  if (userId !== shownUserId) {
+    setShownUserId(userId);
+    setConnected(false);
+    setOnlineIds(new Set());
+    setSessionReplaced(null);
+  }
+
   useEffect(() => {
     if (!userId) {
       if (retryTimerRef.current) {
@@ -190,18 +215,13 @@ export function SocketProvider({ children }: { children: ReactNode }) {
         if (uid) disconnectSocket(uid);
         socketRef.current = null;
         connectedUserIdRef.current = null;
-        setSocket(null);
       }
-      setConnected(false);
-      setOnlineIds(new Set());
-      setSessionReplaced(null);
       return;
     }
 
     const socket = connectSocket(userId);
     socketRef.current = socket;
     connectedUserIdRef.current = userId;
-    setSocket(socket);
 
     // The ticket endpoint reported the session is dead (401): no amount of
     // retrying will ever succeed. Stop hammering it, log out locally and
