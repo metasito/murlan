@@ -11,6 +11,7 @@
  *        exit 0 - clear to start; exit non-zero - names the step that refused
  */
 import { spawnSync } from "node:child_process";
+import { existsSync, readdirSync } from "node:fs";
 
 // `--stale` takes only what is orphaned *and* old, so it cannot reach a peer session's live run.
 const STEPS = [
@@ -18,6 +19,37 @@ const STEPS = [
   ["preflight", ["scripts/preflight.mjs"]],
   ["reap", ["scripts/reap.mjs", "--stale"]],
 ];
+
+const WORKTREE_DIR = ".worktrees";
+
+/**
+ * `derive()` reads a worktree's *branch* to find the ticket and ignores a directory whose branch
+ * is not `agent/<n>-…`; `prune-worktrees` reads the *registration* and treats every directory
+ * under `.worktrees/` as first class. A `fix-971` is therefore invisible to the thing that decides
+ * whether a run is live and visible to the thing that deletes worktrees.
+ */
+export function misnamedWorktrees(dirs) {
+  return dirs.filter((d) => !/^agent-\d+$/.test(d.split(/[\\/]/).pop() ?? ""));
+}
+
+/** A red `main` is not a reason to refuse a ticket, and it is a reason to say so before one starts. */
+export function mainHealth(run = spawnSync, log = console.error) {
+  let last;
+  try {
+    const { stdout, status } = run(
+      "gh",
+      ["run", "list", "--branch", "main", "--limit", "1", "--json", "conclusion,headSha,url"],
+      { encoding: "utf8" },
+    );
+    if (status !== 0) return;
+    [last] = JSON.parse(stdout || "[]");
+  } catch {
+    return;
+  }
+  if (!last?.conclusion || last.conclusion === "success") return;
+  log(`queue-pre: main's last run was ${last.conclusion} at ${last.headSha?.slice(0, 8)} — ${last.url}`);
+  log("  A ticket cut from here inherits it. Read the run before blaming the diff.");
+}
 
 export function main(run = spawnSync, log = console.error) {
   for (const [name, args] of STEPS) {
@@ -27,6 +59,19 @@ export function main(run = spawnSync, log = console.error) {
       return status ?? 1;
     }
   }
+
+  if (existsSync(WORKTREE_DIR)) {
+    const bad = misnamedWorktrees(readdirSync(WORKTREE_DIR));
+    if (bad.length > 0) {
+      for (const name of bad) {
+        log(`queue-pre: ${WORKTREE_DIR}/${name} is not an agent-<n> worktree, so derive() cannot see it`);
+        log(`  npm run worktrees:remove -- ${WORKTREE_DIR}/${name}`);
+      }
+      return 1;
+    }
+  }
+
+  mainHealth();
   return 0;
 }
 

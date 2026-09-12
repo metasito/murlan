@@ -194,3 +194,30 @@ describe("a red job that cancelled its siblings", () => {
     assert.equal(v.infrastructure, true);
   });
 });
+
+// ci.yml's concurrency group cancels an in-progress pull-request run on every new push, and a job
+// that never started carries conclusion null with zero steps. null is not success, skipped or
+// cancelled, so it fell into `stepless` — the right answer by the wrong route, on a path the loop
+// exercises constantly.
+describe("a cancelled run", () => {
+  const run = { databaseId: 34703225931, status: "completed", conclusion: "cancelled" } as never;
+
+  test("says nothing about the diff, whatever its unstarted jobs report", () => {
+    const v = decideVerdict(run, [{ name: "Lint", conclusion: null, steps: 0 }] as never[]);
+    assert.equal(v.pass, false);
+    assert.equal(v.infrastructure, true);
+    assert.match(v.reason, /cancelled/);
+  });
+
+  test("a job that never started is not evidence of a runner failure", () => {
+    const v = decideVerdict(
+      { databaseId: 1, status: "completed", conclusion: "failure" } as never,
+      [
+        { name: "Lint", conclusion: null, steps: 0 },
+        { name: "Typecheck and tests", conclusion: "failure", steps: 11 },
+      ] as never[],
+    );
+    assert.notEqual(v.infrastructure, true);
+    assert.equal(v.failedStep, "Typecheck and tests");
+  });
+});
