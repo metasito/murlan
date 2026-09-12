@@ -6,7 +6,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { budget, diffOf } from "../scripts/comment-budget.mjs";
+import { budget, diffOf, FORMAT } from "../scripts/comment-budget.mjs";
 
 const diff = (file: string, lines: string[]) =>
   [`diff --git a/${file} b/${file}`, `--- a/${file}`, `+++ b/${file}`, "@@ -0,0 +1 @@", ...lines].join("\n");
@@ -22,13 +22,11 @@ const counts = (d: string) =>
 // against a real repository: every fixture above hands `budget` a diff that was written by hand.
 // `env` reaches the measured diff and not only the setup, so a `GIT_CONFIG_GLOBAL` or
 // `GIT_CONFIG_SYSTEM` this machine keeps cannot red any of these — the rest of the environment is
-// still inherited. `raw` is the same diff without the flags that pin git's format: what the check
-// would have been handed had it not asked.
-const diffAcross = (
-  before: string[],
-  after: string[],
-  { config = {}, attributes = "" }: { config?: Record<string, string>; attributes?: string } = {},
-) => {
+// still inherited. `unpinned` is the same diff with the flags in `drop` taken away: what the check
+// would have been handed had it not asked for that much of the format.
+type GitSetup = { config?: Record<string, string>; attributes?: string; drop?: readonly string[] };
+
+const diffAcross = (before: string[], after: string[], { config = {}, attributes = "", drop = [] }: GitSetup = {}) => {
   const dir = mkdtempSync(join(tmpdir(), "comment-budget-"));
   const none = join(dir, "no-config");
   const env = { ...process.env, GIT_CONFIG_GLOBAL: none, GIT_CONFIG_SYSTEM: none, ...config };
@@ -41,7 +39,11 @@ const diffAcross = (
       git("add", "a.mjs");
       git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-m", `v${i}`);
     }
-    return { pinned: diffOf("HEAD~1", "HEAD", { cwd: dir, env }), raw: git("diff", "HEAD~1", "HEAD") };
+    const at = { cwd: dir, env };
+    return {
+      pinned: diffOf("HEAD~1", "HEAD", at),
+      unpinned: diffOf("HEAD~1", "HEAD", at, FORMAT.filter((f) => !drop.includes(f))),
+    };
   } finally {
     rmSync(dir, { recursive: true, force: true, maxRetries: 3 });
   }
@@ -186,25 +188,67 @@ describe("comment budget", () => {
     assert.deepEqual(counts(diffAcross([...head, ...tail], [...head, ...added, ...tail]).pinned), [["a.mjs", 8, 0]]);
   });
 
-  // Without the format flags this is not a failure but a pass: every header stops matching, the
-  // check sees no file at all, and reports within budget. `raw` is asserted first, or the case
-  // would stay green on a day the config stopped reaching git and nothing was being rewritten.
-  test("a machine that rewrites diff headers cannot empty the check out", () => {
-    const before = unprefixed(code(2));
-    const after = [...before, ...unprefixed(comments(7)).map((l) => `${l} new`)];
-    const config = { GIT_CONFIG_COUNT: "1", GIT_CONFIG_KEY_0: "diff.noprefix", GIT_CONFIG_VALUE_0: "true" };
-    const { pinned, raw } = diffAcross(before, after, { config });
-    assert.match(raw, /^diff --git a\.mjs a\.mjs$/m);
-    assert.deepEqual(counts(pinned), [["a.mjs", 7, 0]]);
+  // One change — over budget only if the diff reaches the check intact — run through a git
+  // configured, or a repository marked up, every way that can empty this check out.
+  const formatBefore = unprefixed(code(2));
+  const formatAfter = [...formatBefore, ...unprefixed(comments(7)).map((l) => `${l} new`)];
+
+  const oneGitConfig = (key: string, value: string) => ({
+    GIT_CONFIG_COUNT: "1",
+    GIT_CONFIG_KEY_0: key,
+    GIT_CONFIG_VALUE_0: value,
   });
 
-  // The other half of that class: the header still parses, and every line of content is gone.
-  test("a source file marked binary cannot empty the check out", () => {
-    const before = unprefixed(code(2));
-    const after = [...before, ...unprefixed(comments(7)).map((l) => `${l} new`)];
-    const { pinned, raw } = diffAcross(before, after, { attributes: "*.mjs -diff" });
-    assert.match(raw, /^Binary files /m);
-    assert.deepEqual(counts(pinned), [["a.mjs", 7, 0]]);
+  const FORMATS: { name: string; opts: GitSetup; fired: RegExp[]; flags: string[] }[] = [
+    {
+      name: "a machine that rewrites diff headers",
+      opts: { config: oneGitConfig("diff.noprefix", "true") },
+      fired: [/^diff --git a\.mjs a\.mjs$/m],
+      flags: ["--src-prefix=a/", "--dst-prefix=b/"],
+    },
+    {
+      name: "a source file marked binary",
+      opts: { attributes: "*.mjs -diff" },
+      fired: [/^Binary files /m],
+      flags: ["--text"],
+    },
+    {
+      name: "a machine that colours its diffs",
+      opts: { config: oneGitConfig("color.ui", "always") },
+      fired: [/^\x1b\[[\d;]*mdiff --git /m],
+      flags: ["--no-color"],
+    },
+    {
+      name: "a machine with an external differ",
+      opts: { config: oneGitConfig("diff.external", "node --version") },
+      fired: [/^v\d+\.\d+/m],
+      flags: ["--no-ext-diff"],
+    },
+    {
+      name: "a machine that converts a source file before diffing it",
+      opts: { config: oneGitConfig("diff.blob.textconv", 'node -p "process.argv[1]"'), attributes: "*.mjs diff=blob" },
+      // The hunk header is what separates this from the binary marker above: `budget` reads both as
+      // a file with nothing in it, and only this one arrives with content that is not the file's.
+      fired: [/^diff --git a\/a\.mjs b\/a\.mjs$/m, /^@@ /m],
+      flags: ["--no-textconv"],
+    },
+  ];
+
+  // Each case takes its own flags back off `FORMAT` and watches the check come back empty, so the
+  // flags an entry names are the flags that answer it — asserted, rather than true by adjacency.
+  for (const { name, opts, fired, flags } of FORMATS) {
+    test(`${name} cannot empty the check out`, () => {
+      const { pinned, unpinned } = diffAcross(formatBefore, formatAfter, { ...opts, drop: flags });
+      for (const shape of fired) assert.match(unpinned, shape);
+      assert.deepEqual(budget(unpinned), [], unpinned);
+      assert.deepEqual(counts(pinned), [["a.mjs", 7, 0]], pinned);
+    });
+  }
+
+  // The list rather than each entry: a seventh flag added to `FORMAT` with no case reds here, where
+  // a sentence claiming one case per flag would have gone quietly wrong.
+  test("every flag pinning the format is the answer to a case", () => {
+    assert.deepEqual(FORMATS.flatMap((f) => f.flags).sort(), [...FORMAT].sort());
   });
 
   test("a context line is counted in neither column", () => {
