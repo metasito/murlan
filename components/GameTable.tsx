@@ -34,6 +34,7 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import {
   getValidGivebackCards,
   givebackIsFallback,
+  openingIsPending,
   sortHand,
   type Card,
   type GameState,
@@ -70,7 +71,7 @@ import {
   type ImpactTier,
   type PileState,
 } from "@/components/flightPhysics";
-import { canPassNow as canPassNowOf, openingIsPending, turnTimerActive } from "@/components/turnTimerUi";
+import { canPassNow as canPassNowOf, turnTimerActive } from "@/components/turnTimerUi";
 import { computeTableFrame } from "@/components/tableFrame";
 import { describeTableForA11y, type TableA11yExchange, type TableA11yLastPlay, type TableA11yOpponent } from "@/components/tableA11y";
 import { CARD_H, CARD_W, cardScale, FIELD_SCALE, HAND_SCALE, physicalTouchTarget } from "@/components/cardFaceModel";

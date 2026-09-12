@@ -15,8 +15,10 @@ import { Spacing } from "../lib/tokens.ts";
 // ─── Layout constants ─────────────────────────────────────────────────────────
 //
 // Both game screens are laid out around these, and changing one without the
-// other silently breaks a screen — `tests/gameTableModel.test.ts` is what pins
-// their values. The card dimensions belong to cardFaceModel.ts, which draws the
+// other silently breaks a screen — `tests/layoutConstantsPinned.test.ts` is what
+// pins their values, except `SEAT_DISC` and `FAN_DRAWN_CARDS`, which
+// `tests/flightPhysics.test.ts` pins against the throw origin they also decide.
+// The card dimensions belong to cardFaceModel.ts, which draws the
 // card; the rest are defined here rather than in the components/table/ files
 // that read them, so one module owns the number and the frame maths in
 // tableFrame.ts can use it directly.
@@ -137,25 +139,6 @@ export const HAND_WIDTH_SHARE = 0.56;
  * `tb.width * .55`; #193's "45%" is a misquote of that line, not a target.
  */
 export const FIELD_WIDTH_SHARE = 0.55;
-
-// ─── Card jitter ──────────────────────────────────────────────────────────────
-
-/**
- * Cards thrown onto a table do not land square, so a combination keeps a small
- * jitter on top of the arc it lands on. The bound stays small: past a few
- * degrees the overlap stops reading as one combination.
- */
-export const COMBO_MAX_TILT = 4.5;
-
-/**
- * A card's own jitter (deg), derived from its id so the same combination looks
- * the same on every client and in every frame of its throw.
- */
-export function cardTilt(id: string, maxTilt: number): number {
-  let hash = 0;
-  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) | 0;
-  return ((Math.abs(hash) % 200) / 100 - 1) * maxTilt;
-}
 
 // ─── Seating ──────────────────────────────────────────────────────────────────
 
@@ -386,7 +369,7 @@ export function topFanHeight(scale: number, displayedCount: number): number {
  * seat is a real player they are not, so every question of identity answers no
  * for them. Questions of *geometry* — which side a seat draws on — still use
  * `viewerSeat` raw, because a watcher's table is laid out from a seat all the
- * same. `tests/gameTableModel.test.ts` pins that identity never asks directly.
+ * same. `tests/seatLayout.test.ts` pins that identity never asks directly.
  */
 export function viewerOwnsSeat(
   seat: number | null,

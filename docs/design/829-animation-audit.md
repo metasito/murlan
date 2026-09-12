@@ -10,7 +10,7 @@ Gathered by the same grep the ticket used, re-verified against source rather tha
 one constant (`GAME_OVER_DELAY`) had moved onto the same shape since. `eslint.config.js`
 refuses a bare number for a timing; every row below is what it cannot see, because a number
 behind a name is not a bare literal (`tests/spacingLint.test.ts` pins that gap directly).
-`tests/gameTableModel.test.ts`'s `"a duration off the scale is a counted decision, not a
+`tests/motionEscapes.test.ts`'s `"a duration off the scale is a counted decision, not a
 silent drift"` suite is the mechanical check left behind: it counts every `_MS` constant in
 `components/` and pins the number this audit leaves at **23**, so the next one added has to
 either fold onto `Motion`/`Reading`/`Hold` or update the pin with a reason.
@@ -32,7 +32,7 @@ places had drifted from that decision to three different numbers:
 not a new aesthetic call, but the number the owner's own #126 decision always implied once
 `FLIGHT_MS` stopped contradicting it. `docs/design/FEEL-BAR.md` (the grounding line, the deal
 frame check, the card-landing frame check) and `tests/e2e/bombShakeBounds.spec.ts`'s comment
-are updated to match. `tests/gameTableModel.test.ts`'s impact-timing test is repinned to
+are updated to match. `tests/flightPhysics.test.ts`'s impact-timing test is repinned to
 213ms/260ms with the reason recorded inline.
 
 ## Moved onto the scale (renames, no value changes)

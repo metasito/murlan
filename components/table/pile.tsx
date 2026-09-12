@@ -21,8 +21,8 @@ import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
 import type { Card, Combination } from "@/lib/gameEngine";
 import { CARD_W, CARD_H, FIELD_SCALE, cardRadius } from "@/components/cardFaceModel";
-import { COMBO_MAX_TILT, cardTilt, type FlyDirection } from "@/components/seatLayout";
-import { FLIGHT_MS, flinchFor, impactDelayMs, landingHoldMs, landSquashScale, settleForMotion, type ImpactTier } from "@/components/flightPhysics";
+import { type FlyDirection } from "@/components/seatLayout";
+import { COMBO_MAX_TILT, cardTilt, FLIGHT_MS, flinchFor, impactDelayMs, landingHoldMs, landSquashScale, settleForMotion, type ImpactTier } from "@/components/flightPhysics";
 import { FIELD_ARC, solveArc } from "@/components/tableArc";
 
 const FLY_ROTS: Record<FlyDirection, number> = {

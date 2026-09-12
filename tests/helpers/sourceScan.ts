@@ -1,8 +1,38 @@
-import { readdirSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 
-/** The two trees that hold rendered UI. A guard that scans one of them scans both. */
+/** What `scannedFiles` walks: the two trees that hold rendered UI, never one without the other. */
 const SCANNED_DIRS = ["components", "app"];
+
+function sourcesUnder(repoRoot: string, dirs: string[]): [string, string][] {
+  return dirs.flatMap((dir) =>
+    readdirSync(path.join(repoRoot, dir), { recursive: true, encoding: "utf8" })
+      .filter((f) => f.endsWith(".ts") || f.endsWith(".tsx"))
+      .map((f): [string, string] => [
+        path.posix.join(dir, f.split(path.sep).join("/")),
+        readFileSync(path.join(repoRoot, dir, f), "utf8"),
+      ])
+  );
+}
+
+/** `app/`, `components/` and `lib/`, as `[repo-relative path, contents]`. */
+export function clientSources(repoRoot: string): [string, string][] {
+  return sourcesUnder(repoRoot, ["app", "components", "lib"]);
+}
+
+/** `components/` alone — for a rule about what draws, rather than about the client. */
+export function componentSources(repoRoot: string): [string, string][] {
+  return sourcesUnder(repoRoot, ["components"]);
+}
+
+/** Every match of `pattern`, as `path: match`, sorted, so a failure names where it found it. */
+export function scanSources(pattern: RegExp, sources: [string, string][]): string[] {
+  const hits: string[] = [];
+  for (const [file, src] of sources) {
+    for (const m of src.matchAll(pattern)) hits.push(`${file}: ${m[0]}`);
+  }
+  return hits.sort();
+}
 
 /** Every `.tsx` under the scanned trees, as a repo-relative path with `/` separators. */
 export function scannedFiles(repoRoot: string): string[] {
