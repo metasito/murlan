@@ -47,7 +47,7 @@ describe("what can reach the native suite", () => {
 
   test("the native tests' own edits run them", () => {
     assert.equal(reachesNative(["tests/native/render.test.tsx"]), true);
-    assert.equal(reachesNative(["tests/gameTableModel.test.ts"]), false);
+    assert.equal(reachesNative(["tests/flightPhysics.test.ts"]), false);
   });
 
   test("a root config the suite is built on runs it", () => {

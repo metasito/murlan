@@ -1,7 +1,7 @@
 // tests/native/tableShake.test.tsx — the escalation's own shake (#763).
 //
 // The tier→trauma mapping and the decay math are asserted directly against
-// the pure functions in `tests/gameTableModel.test.ts` — a `useAnimatedStyle`
+// the pure functions in `tests/flightPhysics.test.ts` — a `useAnimatedStyle`
 // read off a rendered node freezes at mount (`settleForMotion`, same file,
 // documents the trap) and cannot pin a later reactive change. This only pins
 // the shape `shakeStyle` starts at rest.

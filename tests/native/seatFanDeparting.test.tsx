@@ -3,7 +3,7 @@
 //
 // docs/adr/0002-a-play-leaves-the-seat-it-was-thrown-from.md derives the
 // throwing seat's displayed count and departing backs from two things:
-// `displayedHandCount` (the arithmetic, pinned in tests/gameTableModel.test.ts)
+// `displayedHandCount` (the arithmetic, pinned in tests/seatLayout.test.ts)
 // and `departing` actually reaching the seat during a flight, held until the
 // throw lands rather than until FlyingCards' own onDone. Node counting and
 // text are both visible to react-test-renderer, so this belongs here rather
