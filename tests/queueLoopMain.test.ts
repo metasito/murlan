@@ -31,6 +31,7 @@ const io = (over: Record<string, unknown> = {}) => ({
   pushedPr: () => 984,
   settle: async () => ({ action: "merged", why: "merged" }),
   park: () => {},
+  bell: () => {},
   record: () => {},
   sharedCheckoutDirty: () => "",
   log: () => {},
@@ -133,6 +134,21 @@ describe("runOnce", () => {
     assert.equal(r.outcome, "refused");
     assert.equal(r.until, 1789000000000);
     assert.deepEqual(parked, []);
+  });
+
+  // A bell on every ticket is a bell nobody hears. A park is the only outcome runOnce reaches
+  // that is a decision for the owner.
+  test("a park rings once and a landing does not", async () => {
+    let rings = 0;
+    const ring = () => { rings += 1; };
+    await runOnce(io({ bell: ring }));
+    assert.equal(rings, 0, "a landed ticket needs nobody");
+    await runOnce(io({ bell: ring, settle: async () => ({ action: "fix", why: "CI failed" }) }));
+    assert.equal(rings, 0, "a red verdict is the next session's, not a person's");
+    await runOnce(io({ bell: ring, settle: async () => ({ action: "park", why: "no settle" }) }));
+    assert.equal(rings, 0, "a mechanical failure is the loop's");
+    await runOnce(io({ bell: ring, pushedPr: () => null }));
+    assert.equal(rings, 1);
   });
 
   test("a dirtied shared checkout is named, not fatal", async () => {

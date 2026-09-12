@@ -5,6 +5,11 @@ import {
   elapsed,
   header,
   phaseLine,
+  activeLine,
+  toolDetail,
+  queueLine,
+  bell,
+  SPIN,
   closing,
   reportRow,
   runTotal,
@@ -181,7 +186,140 @@ describe("runTotal", () => {
   });
 });
 
-// Drawn and erased in place, so it must fill exactly the phase line's columns.
+describe("activeLine", () => {
+  test("names the phase, its number and how long it has been open", () => {
+    const line = activeLine({ letter: "C", ms: 252_000 });
+    assert.match(line, /\[3\/6\] C/);
+    assert.match(line, /build/);
+    assert.match(line, /4:12\s*$/);
+  });
+
+  test("the spinner advances with the frame", () => {
+    assert.notEqual(
+      activeLine({ letter: "C", ms: 0, frame: 0 }).trim()[0],
+      activeLine({ letter: "C", ms: 0, frame: 1 }).trim()[0]
+    );
+  });
+
+  test("the frame wraps rather than running off the end of the spinner", () => {
+    assert.equal(activeLine({ letter: "C", ms: 0, frame: SPIN.length }).trim()[0], SPIN[0]);
+    assert.equal(activeLine({ letter: "C", ms: 0, frame: SPIN.length * 3 + 2 }).trim()[0], SPIN[2]);
+  });
+
+  // Every line this module emits is the same width, and the timer is what is redrawn in place: a
+  // line that changes width leaves the tail of the longer one on screen after the shorter one.
+  test("the width does not move as the detail grows", () => {
+    assert.equal(
+      activeLine({ letter: "C", ms: 0, detail: "git status" }).length,
+      activeLine({ letter: "C", ms: 0, detail: "x".repeat(200) }).length
+    );
+  });
+
+  test("it lines up with the finished line that replaces it", () => {
+    assert.equal(activeLine({ letter: "C", ms: 0 }).length, phaseLine({ letter: "C", ms: 0 }).length);
+  });
+
+  test("an unknown letter does not render a negative index", () => {
+    assert.doesNotMatch(activeLine({ letter: "Z", ms: 0 }), /\[0\/6\]/);
+    assert.doesNotMatch(phaseLine({ letter: "Z", ms: 0 }), /\[0\/6\]/);
+  });
+});
+
+describe("toolDetail", () => {
+  test("a shell call shows the command", () => {
+    assert.equal(
+      toolDetail({ name: "Bash", command: "git push -u origin agent/42-x" }),
+      "git push -u origin agent/42-x"
+    );
+  });
+
+  test("a non-shell tool shows its name", () => {
+    assert.equal(toolDetail({ name: "Read", command: "" }), "Read");
+  });
+
+  test("only the first line of a multi-line command", () => {
+    assert.equal(
+      toolDetail({ name: "Bash", command: "gh issue comment 42 \\\n  --body-file b.md" }),
+      "gh issue comment 42 \\"
+    );
+  });
+
+  test("a long command is truncated, not wrapped", () => {
+    const d = toolDetail({ name: "Bash", command: `git ${"x".repeat(200)}` });
+    assert.ok(d.length <= 44, `${d.length} chars`);
+    assert.match(d, /…$/);
+  });
+
+  // A review subagent's calls are the only sign of life during phase D, which is the longest phase
+  // and the one that looked like a hang.
+  test("a subagent's call is shown, and marked as one", () => {
+    assert.match(toolDetail({ name: "Bash", command: "git diff", parent: "toolu_1" }), /^· /);
+  });
+
+  test("a marked call is truncated to the same width as an unmarked one", () => {
+    const d = toolDetail({ name: "Bash", command: "y".repeat(200), parent: "toolu_1" });
+    assert.ok(d.length <= 44, `${d.length} chars`);
+  });
+
+  test("a command that is only whitespace falls back to the tool's name", () => {
+    assert.equal(toolDetail({ name: "Bash", command: "   \n  " }), "Bash");
+  });
+});
+
+describe("queueLine", () => {
+  const q = (implement: number, triage = 0, wayfinder = 0) => ({ implement, triage, wayfinder });
+
+  test("a bucket that moved shows both numbers", () => {
+    assert.match(queueLine(q(11), q(10)), /11→10 implement/);
+  });
+
+  test("a bucket that did not move shows one", () => {
+    const line = queueLine(q(11, 3), q(10, 3));
+    assert.match(line, /3 triage/);
+    assert.doesNotMatch(line, /3→3/);
+  });
+
+  // The frontier grew because the ticket filed follow-ups. That is the number worth seeing, and the
+  // arrow is the only thing that shows it.
+  test("a bucket that grew reads as growth", () => {
+    assert.match(queueLine(q(10), q(12)), /10→12 implement/);
+  });
+
+  test("an empty queue says so rather than printing three zeroes", () => {
+    assert.match(queueLine(q(1), q(0, 0, 0)), /empty/);
+  });
+});
+
+describe("bell", () => {
+  test("it rings at a terminal", () => {
+    const wrote: string[] = [];
+    bell({ isTTY: true, write: (s: string) => wrote.push(s) } as never);
+    assert.deepEqual(wrote, [""]);
+  });
+
+  // Piped to a file or a CI log a bell is a stray byte, and the loop's output is read that way more
+  // often than it is watched.
+  test("it is silent anywhere else", () => {
+    const wrote: string[] = [];
+    bell({ isTTY: false, write: (s: string) => wrote.push(s) } as never);
+    assert.deepEqual(wrote, []);
+  });
+
+  test("a stream that cannot be written to does not take the run down with it", () => {
+    assert.doesNotThrow(() =>
+      bell({
+        isTTY: true,
+        write: () => {
+          throw new Error("EPIPE");
+        },
+      } as never)
+    );
+  });
+
+  test("no stream at all is silent, not a crash", () => {
+    assert.doesNotThrow(() => bell(null as never));
+  });
+});
 
 // A wait is only actionable as a time and a distance.
 describe("clockAt", () => {

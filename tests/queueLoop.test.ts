@@ -15,6 +15,7 @@ import {
   syncCheckout,
   parseStatus,
   runTicket,
+  ticker,
   park,
   shouldHalt,
   BREAKER,
@@ -289,10 +290,16 @@ describe("runTicket", () => {
   const RESULT = result();
   const facts = () => ({ title: "Rate limiter factory", url: "u", size: "size:S" });
   const queue = { implement: 1, triage: 0, wayfinder: 0 };
+  /** A real ticker over a non-TTY stream: the lines the run would print, with no cursor control. */
+  const sink = () => {
+    const said: string[] = [];
+    const out = { isTTY: false, write: (s: string) => said.push(s.trimEnd()) };
+    return { said, screen: ticker(out as never, out as never) };
+  };
   const opts = (extra: object = {}) => ({
     number: 953,
     queue,
-    log: () => {},
+    screen: sink().screen,
     facts,
     dir: SCRATCH,
     ...extra,
@@ -316,10 +323,10 @@ describe("runTicket", () => {
   });
 
   test("a healthy meter reading reaches it as nothing at all", async () => {
-    const said: string[] = [];
+    const { said, screen } = sink();
     const run = await runTicket(
       fakeSpawn([meter("allowed"), meter("allowed_warning"), RESULT]),
-      opts({ number: 962, log: (m: string) => said.push(m) }),
+      opts({ number: 962, screen }),
     );
     assert.equal(run.blocked, false);
     assert.equal(run.blockedUntil, 0);
@@ -327,10 +334,10 @@ describe("runTicket", () => {
   });
 
   test("the phase comes from the session's own line", async () => {
-    const said: string[] = [];
+    const { said, screen } = sink();
     const run = await runTicket(
       fakeSpawn([phase("A"), phase("C"), phase("E"), RESULT]),
-      opts({ log: (m: string) => said.push(m) }),
+      opts({ screen }),
     );
     const out = said.join("\n");
     assert.match(out, /\[1\/6\] A/);
@@ -340,14 +347,14 @@ describe("runTicket", () => {
   });
 
   test("draws the header once", async () => {
-    const said: string[] = [];
-    await runTicket(fakeSpawn([phase("A"), phase("C"), RESULT]), opts({ log: (m: string) => said.push(m) }));
+    const { said, screen } = sink();
+    await runTicket(fakeSpawn([phase("A"), phase("C"), RESULT]), opts({ screen }));
     assert.equal(said.join("\n").match(/#953 · Rate limiter factory/g)?.length, 1);
   });
 
   test("a resumed ticket says so, and does not read as a closed phase", async () => {
-    const said: string[] = [];
-    await runTicket(fakeSpawn([RESULT]), opts({ number: 962, at: "D", log: (m: string) => said.push(m) }));
+    const { said, screen } = sink();
+    await runTicket(fakeSpawn([RESULT]), opts({ number: 962, at: "D", screen }));
     const rows = said.filter((l) => l.includes("[4/6] D"));
     assert.equal(rows.length, 1);
     assert.match(rows[0], /↻.*resumed/);

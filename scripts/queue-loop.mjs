@@ -21,7 +21,18 @@ import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { derive } from "./loop-derive.mjs";
 import { readLine } from "./loop-stream.mjs";
-import { clockAt, closing, header, phaseLine, reportRow, runTotal } from "./loop-render.mjs";
+import {
+  activeLine,
+  bell,
+  clockAt,
+  closing,
+  header,
+  phaseLine,
+  queueLine,
+  reportRow,
+  runTotal,
+  toolDetail,
+} from "./loop-render.mjs";
 import { row } from "./loop-record.mjs";
 import { readAllowedTools } from "./loop-tools.mjs";
 
@@ -424,6 +435,107 @@ export function park(
   return { ok: failed.length === 0, failed };
 }
 
+const ERASE = "\r[2K";
+const REDRAW_MS = 120;
+
+/**
+ * The only thing in the loop that knows a cursor exists.
+ *
+ * Everything the run prints goes through `say` or `warn`, which erase the open phase's line before
+ * writing and redraw it after — a write landing between two redraws otherwise leaves the tail of
+ * the spinner in front of it, and that is the failure mode a person actually sees.
+ *
+ * At anything that is not a terminal — a pipe, a file, CI — every escape is suppressed and the
+ * output is the append-only stream `loop-render.mjs` produces.
+ */
+export function ticker(out = process.stdout, err = process.stderr) {
+  const live = Boolean(out.isTTY);
+  let open = null;
+  let frame = 0;
+  let timer = null;
+  let drawn = false;
+
+  // The escape clears the whole row whatever is on it. Counting the characters back instead is
+  // wrong for anything double-width, and a command in the detail can carry one.
+  const erase = () => {
+    if (!drawn) return;
+    out.write(ERASE);
+    drawn = false;
+  };
+
+  // A line wider than the terminal wraps, after which a carriage return lands at the start of the
+  // last visual row and the erase misses every row over it.
+  const room = () => Math.max(30, Math.min(78, (out.columns ?? 80) - 1));
+
+  const draw = () => {
+    if (!live || !open) return;
+    erase();
+    const width = room();
+    const line = activeLine({ ...open, ms: Date.now() - open.startedAt, frame: frame++, width });
+    // `activeLine` sizes itself, but it counts characters and a command in the detail can carry a
+    // double-width one. This is the backstop that cannot be argued with.
+    const chars = [...line];
+    out.write(chars.length > width ? chars.slice(0, width).join("") : line);
+    drawn = true;
+  };
+
+  const clear = () => {
+    if (timer) clearInterval(timer);
+    timer = null;
+  };
+
+  // `api.close()`, not `this.close()`: the object is destructured by its callers and `this` does
+  // not survive that.
+  const api = {
+    say(line) {
+      erase();
+      out.write(`${line}\n`);
+      draw();
+    },
+    warn(text) {
+      erase();
+      err.write(text.endsWith("\n") ? text : `${text}\n`);
+      draw();
+    },
+    start(letter) {
+      api.close();
+      open = { letter, detail: "", startedAt: Date.now() };
+      frame = 0;
+      if (!live) return;
+      timer = setInterval(draw, REDRAW_MS);
+      // A redraw must never be the reason the process is still alive.
+      timer.unref?.();
+      draw();
+    },
+    detail(text) {
+      if (!open) return;
+      open.detail = text;
+      draw();
+    },
+    close(mark = "✓") {
+      if (!open) return;
+      const done = phaseLine({
+        letter: open.letter,
+        ms: Date.now() - open.startedAt,
+        mark,
+        // The finished line replaces the live one, so it is sized the same way — otherwise the
+        // pair reads as two different lines at anything narrower than 79 columns.
+        width: live ? room() : undefined,
+      });
+      clear();
+      erase();
+      open = null;
+      out.write(`${done}\n`);
+    },
+    stop() {
+      clear();
+      erase();
+      open = null;
+    },
+  };
+  return api;
+}
+
 /** One ticket's worth of the issue, for the header. Covers the resume path, which has no picker. */
 function ticketFacts(number) {
   try {
@@ -455,8 +567,9 @@ function ticketFacts(number) {
  * `claude` binary.
  *
  * @param {Function} spawnFn
- * @param {{number: number, queue: object, size?: string|null, at?: string|null, log?: Function,
- *   facts?: Function, stallMs?: number, tick?: number, dir?: string}} opts
+ * @param {{number: number, queue: object, size?: string|null, at?: string|null,
+ *   screen?: ReturnType<typeof ticker>, facts?: Function, stallMs?: number, tick?: number,
+ *   dir?: string}} opts
  */
 export function runTicket(
   spawnFn,
@@ -465,7 +578,7 @@ export function runTicket(
     queue,
     size = null,
     at = null,
-    log = console.log,
+    screen = ticker(),
     facts = ticketFacts,
     stallMs = STALL_MS,
     tick = 30_000,
@@ -488,8 +601,8 @@ export function runTicket(
     stderr: "",
   };
 
-  log(header({ number, ...facts(number), queue }));
-  if (at) log(phaseLine({ letter: at, detail: "resumed", ms: 0, mark: "↻" }));
+  screen.say(header({ number, ...facts(number), queue }));
+  if (at) screen.say(phaseLine({ letter: at, detail: "resumed", ms: 0, mark: "↻" }));
 
   const child = spawnFn("claude", queueLoopArgs(number, size), {
     stdio: ["ignore", "pipe", "pipe"],
@@ -499,10 +612,11 @@ export function runTicket(
     env: { ...process.env, DISABLE_AUTOUPDATER: "1" },
   });
 
-  // Mirrored, not swallowed: a crash must still print itself.
+  // Mirrored, not swallowed: a crash must still print itself. Through the screen, because this is
+  // the highest-volume writer there is while the live phase line is turning.
   child.stderr?.on("data", (chunk) => {
     state.stderr += chunk;
-    process.stderr.write(chunk);
+    screen.warn(String(chunk));
   });
 
   createInterface({ input: child.stdout }).on("line", (line) => {
@@ -513,8 +627,11 @@ export function runTicket(
     if (fact.kind === "init") state.version = fact.version;
     if (fact.kind === "phase") {
       state.phase = fact.letter;
-      log(phaseLine({ letter: fact.letter, ms: Date.now() - startedAt }));
+      screen.start(fact.letter);
     }
+    // The only sign of life during phase D, which is the longest one and the one that read as a
+    // hang: its work happens entirely inside two review subagents.
+    if (fact.kind === "tool" && fact.calls.length) screen.detail(toolDetail(fact.calls.at(-1)));
     // A session emits one result per turn, and a background task's wake-up is a turn. The real one
     // carries `origin: null`; every other carries origin.kind "task-notification". Last-wins
     // across all of them reported a 144-turn session as one turn.
@@ -522,7 +639,7 @@ export function runTicket(
     if (fact.kind === "rate_limit" && fact.blocked && !state.blocked) {
       state.blocked = true;
       state.blockedUntil = fact.resetsAtMs ?? 0;
-      log(
+      screen.say(
         closing({
           outcome: "rate_limited",
           number,
@@ -548,6 +665,10 @@ export function runTicket(
 
     child.on("close", (status) => {
       clearInterval(watchdog);
+      // The phase the session was in when it exited: closed here because the session emits no
+      // marker for a phase it did not finish, and a mark of its own because a ✓ on a session that
+      // stalled is the display saying the opposite of what happened.
+      screen.close(state.stalled || status !== 0 ? "✗" : "✓");
       // Resolved on the sink's own finish, not on the child's close: `end()` only asks, and a
       // caller reading the log it was just handed would otherwise find it short.
       sink.end(() =>
@@ -731,6 +852,9 @@ export async function runOnce(io) {
   const decided = outcomeOf({ pr, why: reasonFor(run, after, route.number) });
 
   if (!decided.pushed) {
+    // A park is now only ever a decision the owner has to make, which is the whole of what the
+    // bell is for. Not a landing, not a retry, not a settle failure.
+    io.bell();
     if (after)
       io.park(route.number, {
         phase: after.phase,
@@ -766,33 +890,44 @@ export async function runOnce(io) {
 }
 
 /** The real IO, bound once so `runOnce` can be driven without git, the tracker or a binary. */
-function realIo(totals) {
+function realIo(totals, screen) {
+  // The queue as the *previous* pick read it. The direction is what a night is made of, and this
+  // is the one reading that costs nothing — the next pick is being made anyway.
+  let before = null;
   return {
     stopFile: () => takeStopFile(fs, STOP_FILE),
-    syncCheckout: () => syncCheckout(git, (m) => console.error(m)),
+    syncCheckout: () => syncCheckout(git, (m) => screen.warn(m)),
     queuePre: () =>
       spawnSync(process.execPath, ["scripts/queue-pre.mjs"], { stdio: "inherit" }).status ?? 1,
-    pick: nextRoute,
+    pick: () => {
+      const route = nextRoute();
+      if (route.resuming) return route;
+      if (before) screen.say(queueLine(before, route.queue));
+      before = route.queue;
+      return route;
+    },
     spawn: (route) => {
-      if (!route.resuming) console.log(`  · picking — ${route.queue.implement} takeable`);
+      if (!route.resuming) screen.say(`  · picking — ${route.queue.implement} takeable`);
       return runTicket(spawn, {
         number: route.number,
         queue: route.queue,
         size: route.size,
         at: route.resuming ? (route.phase ?? "C") : null,
+        screen,
       });
     },
     standing,
     pushedPr,
-    settle,
+    settle: (pending) => settle(pending, (m) => screen.say(m)),
     park,
+    bell,
     sharedCheckoutDirty: () => git("status", "--porcelain").trim(),
-    log: (m) => console.error(m),
+    log: (m) => screen.warn(m),
     record: ({ number, outcome, why, run, pr = null, files = 0 }) => {
       totals.cost += run.result?.cost ?? 0;
       totals.ms += run.ms;
       const facts = ticketFacts(number);
-      console.log(
+      screen.say(
         closing({
           outcome: outcome === "landed" ? "merged" : outcome,
           number,
@@ -839,23 +974,37 @@ async function main() {
   const totals = { tickets: 0, landed: 0, parked: 0, cost: 0, ms: 0 };
   pruneLogs();
 
+  const screen = ticker();
+  // An interrupted run must not leave a half-drawn spinner under the shell prompt, and the exit
+  // handler covers the paths a signal does not reach.
+  process.on("exit", () => screen.stop());
+  for (const sig of ["SIGINT", "SIGTERM"]) {
+    process.on(sig, () => {
+      screen.stop();
+      process.exit(130);
+    });
+  }
+  const io = realIo(totals, screen);
+
   for (;;) {
     let pass;
     try {
-      pass = await runOnce(realIo(totals));
+      pass = await runOnce(io);
     } catch (err) {
-      console.error(`queue-loop: the iteration threw — ${String(err?.stack ?? err)}`);
+      screen.warn(`queue-loop: the iteration threw — ${String(err?.stack ?? err)}`);
       failures += 1;
       if (shouldHalt(failures)) {
-        console.error(`queue-loop: ${failures} tickets in a row did not land — stopping`);
+        screen.warn(`queue-loop: ${failures} tickets in a row did not land — stopping`);
+        bell();
         return 1;
       }
       continue;
     }
 
     if (pass.outcome === "stop") {
-      console.log(`queue-loop: ${pass.why} — stopping`);
-      console.log(runTotal(totals));
+      screen.say(`queue-loop: ${pass.why} — stopping`);
+      screen.say(runTotal(totals));
+      bell();
       return 0;
     }
 
@@ -868,17 +1017,19 @@ async function main() {
       const step = afterRefusal({ waits, blocked: true, blockedUntil: pass.until });
       waits = step.waits;
       if (step.action === "give-up") {
-        console.error(`queue-loop: ${step.why} — stopping`);
-        console.log(runTotal(totals));
+        screen.warn(`queue-loop: ${step.why} — stopping`);
+        screen.say(runTotal(totals));
+        bell();
         return 1;
       }
-      console.log(
+      screen.say(
         step.hold
           ? `  ⏸ #${pass.ticket} the usage window is spent (${waits}/${WAIT.TRIES}) — back at ${clockAt(Date.now() + step.hold)}`
           : `  ⏸ #${pass.ticket} refused, and the window has already reset — going again`,
       );
       if (step.hold && (await holdFor(step.hold)) === "stopped") {
-        console.log("queue-loop: .loop-stop during the wait — stopping");
+        screen.say("queue-loop: .loop-stop during the wait — stopping");
+        bell();
         return 0;
       }
       continue;
@@ -897,10 +1048,11 @@ async function main() {
     if (shouldHalt(failures)) {
       // Read before anything resets it: the old message printed "0 tickets in a row did not land".
       const halted = failures;
-      console.error(`queue-loop: ${halted} tickets in a row did not land — stopping`);
+      screen.warn(`queue-loop: ${halted} tickets in a row did not land — stopping`);
       const total = runTotal(totals);
-      console.log(total);
+      screen.say(total);
       fs.appendFileSync(reportPath(), `\n${total}\n`, "utf8");
+      bell();
       return 1;
     }
   }
