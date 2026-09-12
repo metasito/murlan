@@ -426,6 +426,7 @@ export default function TutorialScreen() {
   }, [stepIndex, loaded]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- a new beat starts unanswered, and these three live above the view a key could remount
     setSelectedIds(new Set());
     setFeedback(null);
     setBeatDone(false);

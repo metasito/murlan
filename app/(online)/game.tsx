@@ -154,6 +154,7 @@ export default function OnlineGameScreen() {
 
   useEffect(() => {
     if (!gameState?.gameOver) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- follows the server's own gameOver, which this screen never sets
       setShowGameOver(false);
       return;
     }
@@ -170,6 +171,7 @@ export default function OnlineGameScreen() {
   // this one has no way out but the acknowledgement.
   useEffect(() => {
     if (!playerLeft) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- playerLeft arrives on the socket, and this dialog is the only exit from it
     setConfirming({
       title: t("onlineGame.playerLeftTitle"),
       body: t("onlineGame.playerLeftBody"),

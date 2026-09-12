@@ -192,6 +192,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
         connectedUserIdRef.current = null;
         setSocket(null);
       }
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- the teardown half of the socket's lifecycle: no user, so nothing is connected to report
       setConnected(false);
       setOnlineIds(new Set());
       setSessionReplaced(null);

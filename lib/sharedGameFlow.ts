@@ -139,6 +139,7 @@ export function useExchangeAnnouncement(
   useExchangeCeremonyExpiry(announcing, data?.bothJokersException, end, holdMsOverride);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- the server's phase is gone, so there is no ceremony left to announce
     if (announcing && !phasePresent) end();
   }, [announcing, phasePresent, end]);
 
@@ -165,6 +166,7 @@ export function useTradedCardsLanded(
   const [landed, setLanded] = useState(false);
   useEffect(() => {
     if (!announcing) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- the flight clock below owns this; nothing is in the air between ceremonies
       setLanded(false);
       return;
     }

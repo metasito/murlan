@@ -67,6 +67,7 @@ export function RoomSeatList({
 
   useEffect(() => {
     const arrived = Date.now();
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- the server sends a duration; turning it into a deadline reads the wall clock, which render must not
     setHolds(
       (seatHolds ?? []).map((hold) => ({
         seatIndex: hold.seatIndex,

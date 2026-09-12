@@ -363,6 +363,7 @@ export function GameTable({
   // manche is which, so a flag that outlived the opening would swallow the next
   // one whenever two deals ran the same way.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- see above: nothing in the state names the manche, so only the opening's end can clear this
     if (!openingPending) setOpeningSpent(false);
   }, [openingPending]);
   const holdingForStart = openingPending && !openingSpent;
@@ -579,6 +580,7 @@ export function GameTable({
   // let a staged combination survive into the next manche.
   const [exchangePick, setExchangePick] = useState<string | null>(null);
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- card ids repeat across deals, so a pick left standing is not inert
     if (!exchangeIsMine) setExchangePick(null);
   }, [exchangeIsMine]);
   const pickedGiveCard = exchangePick

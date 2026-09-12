@@ -501,6 +501,7 @@ function ReconnectingChip({
 
   useEffect(() => {
     let remaining = seconds;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- the interval below owns this countdown; this is its first tick, a second before it fires
     setLeft(remaining);
     const id = setInterval(() => {
       remaining -= 1;

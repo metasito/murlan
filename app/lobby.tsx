@@ -156,6 +156,7 @@ export default function LobbyScreen() {
   );
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- seat one follows the account name, which AuthContext resolves after first render
     setPlayers((prev) =>
       prev.map((p, i) => (i === 0 ? { ...p, name: myName } : p))
     );

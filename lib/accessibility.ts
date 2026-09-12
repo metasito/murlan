@@ -56,6 +56,7 @@ function useSystemReducedMotion(): boolean {
     if (Platform.OS === 'web') {
       if (typeof window === 'undefined' || !window.matchMedia) return;
       const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- the query's current answer, which only the subscription below can report after this
       setReduceMotion(mq.matches);
 
       const handler = (e: MediaQueryListEvent) => setReduceMotion(e.matches);

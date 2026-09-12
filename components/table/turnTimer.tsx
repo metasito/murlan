@@ -38,6 +38,7 @@ export function TurnTimer({
 
   useEffect(() => {
     if (!active) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- the interval below owns this countdown; a turn that is not live shows it full
       setTimeLeft(seconds);
       return;
     }

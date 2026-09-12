@@ -802,6 +802,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     socket?.on("game:player_reconnected", onPlayerReconnected);
     socket?.on("game:rejoin_failed", onRejoinFailed);
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- a socket already connected when these listeners attached has no `connect` left to emit
     if (socket?.connected) setConnected(true);
 
     return () => {

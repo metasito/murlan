@@ -71,6 +71,7 @@ export default function OnlineLobbyScreen() {
   // nothing happening and nothing said.
   useEffect(() => {
     if (!acceptedInvite) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- the yes was given on another screen; it reaches this one as context
     setJoiningInvite(true);
     if (!connected) return;
     clearAcceptedInvite();
@@ -81,6 +82,7 @@ export default function OnlineLobbyScreen() {
   // screen rather than replacing it, so back would come home to a banner still
   // claiming a join is in flight.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- the join ends on whichever of the socket's two answers lands first
     if (error || roomId) setJoiningInvite(false);
   }, [error, roomId]);
 
@@ -88,6 +90,7 @@ export default function OnlineLobbyScreen() {
   // it prefills the code and asks.
   useEffect(() => {
     if (pendingInvite) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- a pushed invite arrives as context; the prefilled modal is the answer to it
       setJoinCode(pendingInvite.roomCode);
       setJoinModalVisible(true);
       clearInvite();
