@@ -42,7 +42,7 @@ interface Client {
   heard: number;
 }
 
-function boot(databaseUrl: string): Promise<ChildProcess> {
+function boot(databaseUrl: string, extraEnv: Record<string, string> = {}): Promise<ChildProcess> {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, ["--experimental-strip-types", "server/index.ts"], {
       env: {
@@ -56,6 +56,7 @@ function boot(databaseUrl: string): Promise<ChildProcess> {
         // captures would be a table that changed for a reason that is not the
         // restart.
         MURLAN_AFK_TIMEOUT_MS: "600000",
+        ...extraEnv,
       },
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -130,6 +131,62 @@ async function persisted(databaseUrl: string, roomId: string): Promise<void> {
       ]);
       if (rowCount) return;
       assert.ok(Date.now() < deadline, "the deal was never persisted, so no restart could find it");
+      await sleep(200);
+    }
+  } finally {
+    await admin.end();
+  }
+}
+
+/**
+ * Whether a client's own view says that seat is a vacated one — the only thing
+ * the wire says about `vacatedSeats`, written by `sanitizeStateForPlayer`.
+ * `undefined` when that client has been sent no state yet.
+ */
+function vacatedAt(client: Client, seat: number): boolean | undefined {
+  return (client.game?.players as { vacated?: boolean }[] | undefined)?.[seat]?.vacated;
+}
+
+/** Waits for something the server says only through a state it broadcasts. */
+async function until(what: string, ready: () => boolean): Promise<void> {
+  const deadline = Date.now() + SETTLE_CEILING_MS;
+  while (!ready()) {
+    assert.ok(Date.now() < deadline, what);
+    await sleep(100);
+  }
+}
+
+interface RowSeats {
+  /** The envelope's `seats` block — the vacate bookkeeping a restore reads. */
+  seats: Record<string, unknown>;
+  updatedAt: number;
+}
+
+/**
+ * The row a replacement instance restores the table from, once `ready` accepts
+ * it. Polled rather than read once: `persistGameState` is fire-and-forget
+ * beside the broadcast, so the row lags the wire it was observed on.
+ */
+async function rowSeats(
+  databaseUrl: string,
+  roomId: string,
+  ready: (row: RowSeats) => boolean,
+  what: string
+): Promise<RowSeats> {
+  const admin = new pg.Pool({ connectionString: databaseUrl });
+  try {
+    const deadline = Date.now() + SETTLE_CEILING_MS;
+    for (;;) {
+      const { rows } = await admin.query<{
+        game_state: { seats?: Record<string, unknown> };
+        updated_at: Date;
+      }>("SELECT game_state, updated_at FROM active_games WHERE room_id = $1", [roomId]);
+      const stored = rows[0];
+      if (stored) {
+        const row = { seats: stored.game_state?.seats ?? {}, updatedAt: stored.updated_at.getTime() };
+        if (ready(row)) return row;
+      }
+      assert.ok(Date.now() < deadline, what);
       await sleep(200);
     }
   } finally {
@@ -300,6 +357,153 @@ describe(
           `${c.name} came back to a different room than it was holding`
         );
       }
+    });
+  }
+);
+
+/**
+ * The table above loses nothing because nobody left it. A seat vacated *before*
+ * the kill used to be voided by the restart outright (#958): the four
+ * collections `vacateSeat` writes were built empty on restore, so the leaver
+ * could not reclaim, the seats still there were refused `NO_VACANCY_TO_END`,
+ * and the forfeit was never recorded.
+ */
+describe(
+  "a seat vacated before the server was replaced",
+  { skip: hasDatabase() ? false : skipMessage() },
+  () => {
+    const schema = `restart_vacated_${Date.now()}_${Math.floor(Math.random() * 1e6)}`;
+    const baseUrl = process.env.DATABASE_URL!;
+    const scoped = `${baseUrl}${baseUrl.includes("?") ? "&" : "?"}options=-c%20search_path%3D${schema}`;
+    /** Long enough for the three joins above it, short enough to wait out. */
+    const GRACE_MS = 1_200;
+    const clients: Client[] = [];
+    let server: ChildProcess;
+    let table = { roomId: "", code: "" };
+
+    before(async () => {
+      const admin = new pg.Pool({ connectionString: baseUrl });
+      await admin.query(`CREATE SCHEMA "${schema}"`);
+      await admin.end();
+
+      server = await boot(scoped, { MURLAN_DISCONNECT_GRACE_MS: String(GRACE_MS) });
+
+      const tag = Date.now().toString(36);
+      for (const who of ["a", "b", "c"]) {
+        const name = `rv${who}${tag}`;
+        const cookie = await register(name);
+        const socket = await connect(cookie);
+        const client: Client = { name, cookie, socket, game: null, room: null, heard: 0 };
+        listen(client);
+        clients.push(client);
+      }
+    });
+
+    after(async () => {
+      for (const c of clients) c.socket.close();
+      server?.kill("SIGKILL");
+      const admin = new pg.Pool({ connectionString: baseUrl });
+      try {
+        await admin.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
+      } finally {
+        await admin.end();
+      }
+    });
+
+    test("the reclaim, the end-match vote and the forfeit all survive the restart", async () => {
+      const [a, b, c] = clients;
+
+      // Three seats, not two: a vacate that leaves one human disposes the
+      // table outright (`vacateSeat`), and there would be nothing to restore.
+      const madeTable = waitFor<{ code: string; roomId: string }>(a.socket, "room:state");
+      a.socket.emit("room:create", { gameMode: "free_for_all", maxPlayers: 3 });
+      const created = await madeTable;
+      assert.ok(created, "the table was never created");
+      table = { roomId: created.roomId, code: created.code };
+
+      for (const joiner of [b, c]) {
+        const heard = waitFor(a.socket, "room:state");
+        joiner.socket.emit("room:join", { code: table.code });
+        assert.ok(await heard, "a join never reached the host");
+      }
+
+      const dealt = waitFor(c.socket, "game:state", 20_000);
+      a.socket.emit("room:start");
+      assert.ok(await dealt, "the hand was never dealt");
+      const cSeat = c.game?.viewerSeatIndex as number;
+      assert.ok(Number.isInteger(cSeat), "the third seat never learned which seat it was");
+
+      // Mid-hand, so the walkout is a forfeit and the takeover is held weak:
+      // nobody has played, so no seat can have finished its hand.
+      c.socket.close();
+      await until(
+        "the grace expired without the seat being vacated",
+        () => vacatedAt(a, cSeat) === true
+      );
+      const beforeKill = await rowSeats(
+        scoped,
+        table.roomId,
+        ({ seats }) => (seats.vacatedSeats as unknown[] | undefined)?.length === 1,
+        "the vacate was never persisted, so no restart could find it"
+      );
+      const leaver = (beforeKill.seats.releasedSeats as string[])[0];
+      assert.deepEqual(beforeKill.seats, {
+        vacatedSeats: [[cSeat, { userId: leaver, username: c.name }]],
+        releasedSeats: [leaver],
+        weakSeats: [cSeat],
+        abandonedSeats: [[cSeat, leaver]],
+      });
+
+      server.kill("SIGKILL");
+      for (const client of [a, b]) client.socket.close();
+      await sleep(1_000);
+      server = await boot(scoped, { MURLAN_DISCONNECT_GRACE_MS: String(GRACE_MS) });
+
+      for (const client of [a, b]) {
+        client.socket = await connect(client.cookie);
+        client.heard = 0;
+        client.game = null;
+        client.room = null;
+        listen(client);
+        client.socket.emit("game:rejoin", { roomId: table.roomId });
+      }
+      await until(
+        "the replacement instance restored the table without the vacated seat",
+        () => [a, b].every((client) => vacatedAt(client, cSeat) === true)
+      );
+
+      // The vote the restart used to make unreachable: `endMatchVoteAction`
+      // refuses with NO_VACANCY_TO_END on an empty `vacatedSeats`, so before
+      // this fix the table had to play the match out against a bot.
+      const ended = waitFor(a.socket, "game:over", 15_000);
+      for (const client of [a, b]) client.socket.emit("game:end_match_vote", { wants: true });
+      assert.ok(await ended, "the seats still at the table could not vote the match to an end");
+
+      // `endMatchByAgreement` awaits its own persist, so a strictly newer
+      // `updated_at` is the restored table's own write — which is what makes
+      // this a claim about the restore rather than about the row it read.
+      const afterRestart = await rowSeats(
+        scoped,
+        table.roomId,
+        ({ updatedAt }) => updatedAt > beforeKill.updatedAt,
+        "the restored table never wrote the row back, so nothing here is about the restore"
+      );
+      assert.deepEqual(
+        afterRestart.seats,
+        beforeKill.seats,
+        "the restored table wrote back a different set of vacated seats than it restored"
+      );
+
+      // Last, because a reclaim is what clears `vacatedSeats`.
+      c.socket = await connect(c.cookie);
+      listen(c);
+      const refused = waitFor(c.socket, "game:rejoin_failed", 3_000);
+      c.socket.emit("game:rejoin", { roomId: table.roomId });
+      assert.equal(await refused, null, "the leaver was refused the seat it left");
+      await until(
+        "the seat never came back to the account that left it",
+        () => vacatedAt(a, cSeat) === false
+      );
     });
   }
 );
