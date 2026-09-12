@@ -102,6 +102,26 @@ runs:
           # the dialog and nothing else, so every assertion fails. This hides
           # the system dialog only; an app that genuinely hangs still fails.
           adb shell settings put global hide_error_dialogs 1
+          # Half the resolution and half the density: pixel_6 is 1080x2400 at
+          # 420dpi, and 540x1200 at 210dpi is the same 411x914dp screen, so no
+          # flow can tell the difference and swiftshader rasterizes a quarter
+          # of the pixels.
+          #
+          # The graphics pipe is the fault, measured rather than argued (#942,
+          # run 34105243719): 537ms per frame on the game table against a turn
+          # timer that re-renders once a second leaves the main thread never
+          # quiet for the 500ms UiAutomator wants before it returns a
+          # hierarchy, so each read burned its timeout - 37s for `assertVisible
+          # id: game-table`, 20s for one tap, against 0.2-1.5s for the menus in
+          # the same run - and the flow asks for sixty of them. The host was
+          # calm throughout: 5.2GB available, loadavg falling.
+          #
+          # Verified, not assumed: `wm size` reports an override only if one
+          # took, and a silent no-op would look exactly like the fix working.
+          adb shell wm size 540x1200
+          adb shell wm density 210
+          adb shell wm size | tr -d '\r' | grep -q 'Override size: 540x1200' || { echo "::error::The display override did not take; the flows would run at full resolution."; exit 1; }
+          adb shell wm density | tr -d '\r' | grep -q 'Override density: 210' || { echo "::error::The density override did not take; layout would not match the resolution."; exit 1; }
           # Collected as it happens, not at the end. Maestro pulls the logcat
           # when a flow finishes, and the failure this is here to explain kills
           # the emulator - so the pull hits "device offline" and the run's only
