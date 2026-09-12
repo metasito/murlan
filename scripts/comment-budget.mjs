@@ -82,8 +82,18 @@ export function budget(diff) {
   return [...files].filter(([, n]) => n.comment > 6 && n.comment > n.code);
 }
 
-export function diffOf(base, head = "HEAD") {
-  return execFileSync("git", ["diff", `${base}...${head}`, "--", "*.mjs", "*.js", "*.ts", "*.tsx"], {
+// Block state is per hunk, so the window must clear the longest block comment this repo writes —
+// `tests/commentBudget.test.ts` measures that and reds when this stops covering it.
+const CONTEXT = 40;
+
+// The output format is demanded rather than hoped for: an external differ, `diff.noprefix` and
+// `color.ui` leave this no file to parse; textconv, some other text's lines; `-diff`, no line.
+const FORMAT = ["--no-ext-diff", "--no-textconv", "--text", "--no-color", "--src-prefix=a/", "--dst-prefix=b/"];
+
+export function diffOf(base, head = "HEAD", opts = {}) {
+  const argv = ["diff", `-U${CONTEXT}`, ...FORMAT, `${base}...${head}`, "--", "*.mjs", "*.js", "*.ts", "*.tsx"];
+  return execFileSync("git", argv, {
+    ...opts,
     encoding: "utf8",
     maxBuffer: 64 * 1024 * 1024,
   });
