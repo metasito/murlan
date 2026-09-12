@@ -11,13 +11,38 @@ import { schemaStatements, assertRenamesApplied } from "../server/schemaDdl.ts";
 
 const statements = schemaStatements();
 
+/**
+ * The one statement shape allowed to delete: the dedupe that clears the way
+ * for a unique index added over live rows, without which `CREATE UNIQUE INDEX`
+ * fails and the server does not start.
+ *
+ * The exemption is earned, not declared. It is granted only to a statement
+ * that stands immediately in front of a unique index on its own table — which
+ * is what makes a second run delete nothing — and whose every candidate row is
+ * matched against a smaller sibling in the same table, which is what leaves one
+ * row of each group standing. A delete failing either half is judged by the
+ * guards below like any other.
+ */
+function dedupeTableFor(index: number): string | undefined {
+  const statement = statements[index] ?? "";
+  const shape = /^DELETE FROM ("[^"]+") AS a USING ("[^"]+") AS b\b/.exec(statement);
+  if (!shape || shape[1] !== shape[2]) return undefined;
+  if (!/\ba\."id" > b\."id"/.test(statement)) return undefined;
+  const next = statements[index + 1] ?? "";
+  const guarded = /^CREATE UNIQUE INDEX IF NOT EXISTS "[^"]+" ON ("[^"]+")/.exec(next);
+  return guarded?.[1] === shape[1] ? shape[1] : undefined;
+}
+
 test("every statement is idempotent", () => {
-  for (const statement of statements) {
+  for (const [i, statement] of statements.entries()) {
     const idempotent =
       /IF NOT EXISTS/i.test(statement) ||
       // CREATE TYPE has no IF NOT EXISTS, so enums are created inside a block
       // that swallows only duplicate_object.
-      /EXCEPTION WHEN duplicate_object/i.test(statement);
+      /EXCEPTION WHEN duplicate_object/i.test(statement) ||
+      // A dedupe's second run finds nothing, because the index it precedes
+      // forbids exactly what it deletes.
+      dedupeTableFor(i) !== undefined;
     assert.ok(
       idempotent,
       `not idempotent, so a second boot would fail:\n${statement}`
@@ -35,8 +60,10 @@ test("no statement can destroy or rewrite existing data", () => {
     /\bRENAME\b/i,
     /\bALTER\s+COLUMN\b/i,
   ];
-  for (const statement of statements) {
+  for (const [i, statement] of statements.entries()) {
+    const dedupe = dedupeTableFor(i);
     for (const pattern of forbidden) {
+      if (dedupe && pattern.source.includes("DELETE")) continue;
       assert.doesNotMatch(
         statement,
         pattern,
@@ -228,4 +255,33 @@ test("every renamed column is asked about, not just the first", async () => {
 test("boot proceeds once the rename has been applied", async () => {
   const current = { query: async () => ({ rows: [] }) } as unknown as Pick<Pool, "query">;
   await assertRenamesApplied(current);
+});
+
+test("the friends uniqueness indexes forbid every duplicate add/accept can race into (#959)", () => {
+  const accepted = statements.findIndex((s) => /friends_accepted_uq/.test(s));
+  assert.ok(accepted >= 0, "no friends_accepted_uq statement");
+  // Deliberately *not* symmetric: an accepted friendship is stored as one row
+  // per direction, so both directions of a pair have to be able to exist.
+  assert.match(statements[accepted], /ON "friends" \("user_id", "friend_user_id"\)/);
+  assert.match(statements[accepted], /WHERE "status" = 'accepted';$/);
+
+  const pending = statements.findIndex((s) => /friends_pending_pair_uq/.test(s));
+  assert.ok(pending >= 0, "no friends_pending_pair_uq statement");
+  // Symmetric, so a repeated request and a crossed pair are the same row to it:
+  // A→B and B→A cannot both be pending.
+  assert.match(
+    statements[pending],
+    /\(\(least\("user_id", "friend_user_id"\)\), \(greatest\("user_id", "friend_user_id"\)\)\)/
+  );
+  assert.match(statements[pending], /WHERE "status" = 'pending';$/);
+
+  // Each is added over a table that may already hold what it forbids, and a
+  // failed CREATE UNIQUE INDEX at boot is a server that does not start.
+  for (const at of [accepted, pending]) {
+    assert.equal(
+      dedupeTableFor(at - 1),
+      '"friends"',
+      `${statements[at]}\nis not preceded by a dedupe that lets it succeed against live rows`
+    );
+  }
 });

@@ -107,6 +107,18 @@ export const friends = pgTable(
   (t) => [
     index("friends_user_id_idx").on(t.userId),
     index("friends_friend_user_id_idx").on(t.friendUserId),
+    // An accepted friendship is two rows, one per direction, so this one is
+    // per-direction: symmetric here would forbid the second half of every
+    // friendship. It is what stops two accepts racing into a duplicate.
+    uniqueIndex("friends_accepted_uq")
+      .on(t.userId, t.friendUserId)
+      .where(sql`${t.status} = 'accepted'`),
+    // A request is one row, and who asked whom does not create a second one:
+    // symmetric, so a repeated A→B and a crossed A→B / B→A are both a
+    // duplicate of the pending row already there.
+    uniqueIndex("friends_pending_pair_uq")
+      .on(sql`least(${t.userId}, ${t.friendUserId})`, sql`greatest(${t.userId}, ${t.friendUserId})`)
+      .where(sql`${t.status} = 'pending'`),
   ]
 );
 

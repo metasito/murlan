@@ -271,6 +271,29 @@ const SESSION_TABLE_STATEMENTS = [
 ];
 
 /**
+ * What a unique index has to be able to assume about the rows already there.
+ *
+ * `CREATE UNIQUE INDEX` fails against a table that already holds what it
+ * forbids, and this module runs at boot — so an index added over live data
+ * stops the server starting rather than the writes it was added to stop. Each
+ * entry deletes exactly the rows its index would reject and is emitted
+ * immediately in front of it; the index behind it is what makes a second run
+ * find nothing. Every candidate row is matched against a smaller sibling, so
+ * one row of each group is always left standing.
+ */
+const INDEX_DEDUPE: Record<string, string> = {
+  friends_accepted_uq: `DELETE FROM "friends" AS a USING "friends" AS b
+ WHERE a."status" = 'accepted' AND b."status" = 'accepted'
+   AND a."user_id" = b."user_id" AND a."friend_user_id" = b."friend_user_id"
+   AND a."id" > b."id";`,
+  friends_pending_pair_uq: `DELETE FROM "friends" AS a USING "friends" AS b
+ WHERE a."status" = 'pending' AND b."status" = 'pending'
+   AND least(a."user_id", a."friend_user_id") = least(b."user_id", b."friend_user_id")
+   AND greatest(a."user_id", a."friend_user_id") = greatest(b."user_id", b."friend_user_id")
+   AND a."id" > b."id";`,
+};
+
+/**
  * Every statement needed to bring an empty or partially-populated database up
  * to `shared/schema.ts`, in application order: enum types, then tables, then
  * columns added to tables that already existed, then indexes (which may target
@@ -306,6 +329,7 @@ export function schemaStatements(): string[] {
   const tableStatements: string[] = [];
   const addColumnStatements: string[] = [];
   const indexStatements: string[] = [];
+  const declaredIndexes = new Set<string>();
 
   for (const { cfg } of inDependencyOrder(configs)) {
     const fkByColumn = foreignKeysByColumn(cfg);
@@ -353,9 +377,23 @@ export function schemaStatements(): string[] {
       const where = idx.config.where
         ? ` WHERE ${renderSqlExpression(idx.config.where, `index "${indexName}"'s WHERE clause`, cfg.name)}`
         : "";
+      declaredIndexes.add(indexName);
+      const dedupe = INDEX_DEDUPE[indexName];
+      if (dedupe) indexStatements.push(dedupe);
       indexStatements.push(
         `${kind} IF NOT EXISTS ${quoteIdent(indexName)} ON ${quoteIdent(cfg.name)}` +
           `${using} (${cols.join(", ")})${where};`
+      );
+    }
+  }
+
+  // A key naming an index nobody declares would emit nothing at all, and the
+  // index it was written for would be the one that fails at boot.
+  for (const indexName of Object.keys(INDEX_DEDUPE)) {
+    if (!declaredIndexes.has(indexName)) {
+      throw new Error(
+        `schemaStatements: INDEX_DEDUPE names "${indexName}", which no table ` +
+          `in shared/schema.ts declares — update server/schemaDdl.ts.`
       );
     }
   }
