@@ -57,7 +57,11 @@ const FLOOR = 6;
 
 export function over(before, after) {
   const comment = after.comment - before.comment;
-  return comment > FLOOR && comment > after.code - before.code;
+  // Against how much code the change *moved*, not its net: code deleted is code moved, and a
+  // rewrite that takes 122 lines out is not a change explaining itself. Compared against the net,
+  // any file that shrinks puts the bar below zero and every comment over the floor fails it.
+  // `abs` rather than a floor of zero, which would pass 50 comment lines beside one deletion.
+  return comment > FLOOR && comment > Math.abs(after.code - before.code);
 }
 
 const show = (rev, file) => {

@@ -70,4 +70,21 @@ describe("over", () => {
     const { before, after } = delta(["// 1", "// 2", "// 3", "// 4", "// 5", "// 6", "// 7", "// 8"].join("\n"), "const a = 1;");
     assert.equal(over(before, after), false);
   });
+
+  // Measured against the net, a file that shrinks puts the bar below zero: the rewrite that
+  // deleted 122 lines of queue-loop.mjs failed the check for sixteen JSDoc contracts.
+  test("a rewrite that deletes far more code than it adds comment is within budget", () => {
+    const code = (n: number) => Array.from({ length: n }, (_, i) => `const x${i} = ${i};`);
+    const prose = Array.from({ length: 16 }, (_, i) => `// why ${i}`);
+    const { before, after } = delta(code(200).join("\n"), [...prose, ...code(78)].join("\n"));
+    assert.equal(over(before, after), false);
+  });
+
+  // And the hole a plain `max(code, 0)` would have opened: deleting one line must not buy
+  // an unlimited comment budget.
+  test("a pile of prose beside one deletion is still named", () => {
+    const prose = Array.from({ length: 30 }, (_, i) => `// why ${i}`);
+    const { before, after } = delta(["const a = 1;", "const b = 2;"].join("\n"), [...prose, "const a = 1;"].join("\n"));
+    assert.equal(over(before, after), true);
+  });
 });
