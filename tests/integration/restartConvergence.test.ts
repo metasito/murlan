@@ -160,6 +160,27 @@ async function storedRow(
 }
 
 /**
+ * The deploy: the process that owns the room is replaced by one that has never
+ * seen it. Every caller closes its sockets *after* the kill, so no disconnect
+ * grace runs on a server that is still up to arm one.
+ *
+ * The sleep is the kernel releasing the listening socket, which is all this
+ * waits on: the room's advisory lock is session-scoped, and Postgres drops it
+ * when the killed backend dies.
+ */
+async function replaceServer(
+  dying: ChildProcess,
+  clients: Client[],
+  databaseUrl: string,
+  extraEnv: Record<string, string> = {}
+): Promise<ChildProcess> {
+  dying.kill("SIGKILL");
+  for (const c of clients) c.socket.close();
+  await sleep(1_000);
+  return boot(databaseUrl, extraEnv);
+}
+
+/**
  * Whether a client's own view says that seat is a vacated one — all a
  * `game:state` says about `vacatedSeats`, written by `sanitizeStateForPlayer`.
  * `undefined` when that client has been sent no state yet.
@@ -299,15 +320,7 @@ describe(
         "the lobby was never delivered, so the restart has nothing to lose"
       );
 
-      // The deploy: the process that owns both rooms is replaced by one that
-      // has never seen either of them.
-      server.kill("SIGKILL");
-      for (const c of clients) c.socket.close();
-      // Long enough for the kernel to release the listening socket, which is
-      // all this waits on: the room's advisory lock is session-scoped and
-      // Postgres drops it when the killed backend dies.
-      await sleep(1_000);
-      server = await boot(scoped);
+      server = await replaceServer(server, clients, scoped);
 
       // Every client comes back the way the real one does — a fresh socket,
       // then the rejoin it emits on connect (context/SocketContext.tsx).
@@ -444,16 +457,13 @@ describe(
         abandonedSeats: [[cSeat, leaver]],
       });
 
-      server.kill("SIGKILL");
-      for (const client of [a, b]) client.socket.close();
-      await sleep(1_000);
-      server = await boot(scoped, { MURLAN_DISCONNECT_GRACE_MS: String(GRACE_MS) });
+      server = await replaceServer(server, [a, b], scoped, {
+        MURLAN_DISCONNECT_GRACE_MS: String(GRACE_MS),
+      });
 
       for (const client of [a, b]) {
         client.socket = await connect(client.cookie);
-        client.heard = 0;
         client.game = null;
-        client.room = null;
         listen(client);
         client.socket.emit("game:rejoin", { roomId: table.roomId });
       }
@@ -462,38 +472,30 @@ describe(
         () => [a, b].every((client) => vacatedAt(client, cSeat) === true)
       );
 
-      // `endMatchVoteAction` refuses with NO_VACANCY_TO_END on an empty
-      // `vacatedSeats`, so this arriving is the restored map being read.
-      const ended = waitFor(a.socket, "game:over", 15_000);
-      for (const client of [a, b]) client.socket.emit("game:end_match_vote", { wants: true });
-      assert.ok(await ended, "the seats still at the table could not vote the match to an end");
-
-      // `endMatchByAgreement` awaits its own persist, so a strictly newer
-      // `updated_at` is the restored table's own write — which is what makes
-      // this a claim about the restore rather than about the row it read.
-      const afterRestart = await storedRow(
-        scoped,
-        table.roomId,
-        ({ updatedAt }) => updatedAt > beforeKill.updatedAt,
-        "the restored table never wrote the row back, so nothing here is about the restore"
-      );
-      assert.deepEqual(
-        afterRestart.seats,
-        beforeKill.seats,
-        "the restored table wrote back a different set of vacated seats than it restored"
+      // One vote of the two seats a human still holds, so the tally comes back
+      // and the match stays live. `endMatchVoteAction` refuses with
+      // NO_VACANCY_TO_END before it tallies anything when `vacatedSeats` is
+      // empty, so a tally arriving at all is the restored map being read.
+      const tally = waitFor<{ votes: string[] }>(a.socket, "game:end_match_vote_state");
+      a.socket.emit("game:end_match_vote", { wants: true });
+      assert.equal(
+        (await tally)?.votes.length,
+        1,
+        "the seats still at the table were refused the vote a vacancy opens"
       );
 
       // Replaced a second time, and this time the leaver is the first back: the
       // table is in no instance's memory, so its own `game:rejoin` is what pulls
       // it over. `rehydrateGame`'s gate reads the roster, which no longer holds
       // them, and the row's vacated seats are the only thing that still does.
-      server.kill("SIGKILL");
-      for (const client of [a, b]) client.socket.close();
-      await sleep(1_000);
-      server = await boot(scoped, { MURLAN_DISCONNECT_GRACE_MS: String(GRACE_MS) });
+      server = await replaceServer(server, [a, b], scoped, {
+        MURLAN_DISCONNECT_GRACE_MS: String(GRACE_MS),
+      });
 
       // Asserted on the seat coming back rather than on no `game:rejoin_failed`
       // arriving: a refusal is silence within a window, and so is a slow runner.
+      // The state c held before the kill satisfies both halves, so clearing it
+      // is what makes this about the reclaim.
       c.socket = await connect(c.cookie);
       c.game = null;
       listen(c);
@@ -502,6 +504,24 @@ describe(
         "the seat never came back to the account that left it",
         () => c.game?.viewerSeatIndex === cSeat && vacatedAt(c, cSeat) === false
       );
+
+      // The reclaim persists, so this row is the restored table's own write —
+      // which is what makes the two collections a reclaim does not clear a claim
+      // about what crossed two restarts rather than about the row they were read
+      // from. `weakSeats` is inert on a seat a human holds again; it is asserted
+      // because losing it is the defect, not because the seat is still weak.
+      const afterReclaim = await storedRow(
+        scoped,
+        table.roomId,
+        ({ updatedAt }) => updatedAt > beforeKill.updatedAt,
+        "the reclaim never wrote the row back, so nothing here is about the restore"
+      );
+      assert.deepEqual(afterReclaim.seats, {
+        vacatedSeats: [],
+        releasedSeats: [],
+        weakSeats: [cSeat],
+        abandonedSeats: [[cSeat, leaver]],
+      });
     });
   }
 );

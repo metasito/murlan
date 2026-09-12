@@ -74,8 +74,9 @@ export const REJOIN_BUDGET_MS = 5_000 * DEADLINE_SCALE;
  * How long a dropped seat stays away, and why it may not grow.
  *
  * The oracle below calls an unanswered rejoin a violation. That holds only while the seat
- * still exists; once the server has released it the refusal is correct, and it reads
- * `UNAUTHORIZED` either way, which is what makes the mistake invisible.
+ * still exists; once the server has released it the refusal is correct, and only
+ * `SEAT_RELEASED` says so — every other refusal reads the same as a seat that should have
+ * been there, which is what makes the mistake invisible.
  */
 export const AWAY_WINDOW_MS = { floor: 200, spread: 600 };
 
@@ -98,10 +99,11 @@ export const heldSeatGraceMs = () => Math.min(disconnectGraceMs(), lobbyGraceMs(
  * lowered by a config this harness never reads all break the premise while that
  * check still passes. A `SEAT_RELEASED` is that break observed.
  *
- * One-directional. `releasedSeats` rides the persisted row, but a table whose row
- * was discarded as unrestorable or swept has no memory of the release at all and
- * answers `UNAUTHORIZED`: a `SEAT_RELEASED` means the window broke, its absence
- * never means the window held.
+ * One-directional. `releasedSeats` rides the persisted row, but a row written before
+ * that block existed restores without it, and a table discarded as unrestorable or
+ * swept is refused before the release is ever consulted — `GAME_NO_LONGER_VALID`,
+ * `NO_LIVE_GAME` and `UNAUTHORIZED` all land in the same unanswered branch below. A
+ * `SEAT_RELEASED` means the window broke; its absence never means the window held.
  */
 export function rejoinFailure(
   seat: {

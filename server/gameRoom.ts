@@ -96,7 +96,7 @@ export interface OnlineGameState {
    * between hands is never weak: there is no hand in progress to protect, and
    * it plays properly from its first turn as a bot.
    *
-   * Persisted in the `seats` block, like the three above: a takeover mid-hand
+   * Persisted in the `seats` block, the fourth of its fields: a takeover mid-hand
    * must hold the seat weak for the rest of that hand, not from the next deal.
    */
   weakSeats: Set<number>;
