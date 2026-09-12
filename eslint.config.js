@@ -53,16 +53,13 @@ module.exports = defineConfig([
       // on purpose already carries its own `eslint-disable-next-line` with a
       // reason, which this does not affect.
       "react-hooks/exhaustive-deps": "error",
-      // eslint-plugin-react-hooks 7 (pulled in by eslint-config-expo's SDK 57
-      // bump) folds the React Compiler's static analysis into `recommended`,
-      // newly flagging every `setState` call reachable from a `useEffect`
-      // body — 17 of them here, all pre-existing and each one intentionally
-      // syncing state to an external signal (a socket teardown, a media
-      // query, a stored save). Adopting the rule means auditing each site for
-      // the cascading-render risk it describes, not a mechanical rename like
-      // `absoluteFillObject`; that audit is its own piece of work, tracked in
-      // #891, not a rider on an SDK bump.
-      "react-hooks/set-state-in-effect": "off",
+      // A `setState` in an effect body is a cascading render, and every site
+      // here was read one at a time for #891. The ones that remain are syncs
+      // to something React cannot see — a socket, a media query, a wall clock,
+      // an interval's first tick — and each carries its own
+      // `eslint-disable-next-line` naming that signal, so a new one of these
+      // arrives as an error rather than as company.
+      "react-hooks/set-state-in-effect": "error",
       "no-restricted-syntax": [
         "error",
         {
@@ -142,13 +139,13 @@ module.exports = defineConfig([
     rules: {
       "import/first": "off",
       "@typescript-eslint/no-require-imports": "off",
-      // A Probe/Harness component assigning a hook's return value to a
-      // module-scope `let` — so the test body, which renders nothing of its
-      // own, can call or read it — is this suite's standard way to reach a
-      // hook from outside a component. eslint-plugin-react-hooks 7's
-      // `globals` and `refs` rules (new in SDK 57's eslint-config-expo, see
-      // the note on `set-state-in-effect` above) read every one of those
-      // assignments as a component impurity. Tracked in #891 with the rest.
+      // `globals` and `refs` police render purity for the React Compiler,
+      // which never compiles this suite. What they flag is a Probe assigning a
+      // hook's return value to a module-scope `let` so the test body can drive
+      // it, and `renderHook` — the shape they accept — cannot stand in: these
+      // tests assert that a *consumer* re-rendered with the new value, which
+      // is what the Probe is there to be. Weighed site by site in #891; kept
+      // off here, and the `tests/hooksLint` pin refuses it anywhere else.
       "react-hooks/globals": "off",
       "react-hooks/refs": "off",
     },
