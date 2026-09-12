@@ -142,13 +142,15 @@ module.exports = defineConfig([
       "import/first": "off",
       "@typescript-eslint/no-require-imports": "off",
       // `globals` polices render purity for the React Compiler, which never
-      // compiles this suite. What it flags is a Probe assigning a hook's
-      // return value to a module-scope `let` so the test body can drive it,
-      // and `renderHook` — the shape it accepts — cannot stand in: these tests
-      // assert that a *consumer* re-rendered with the new value, which is what
-      // the Probe is there to be. Weighed site by site in #891; kept off here,
-      // and the `tests/hooksLint` pin refuses it anywhere else. `refs` is on:
-      // its one site was a write during render, which an effect does properly.
+      // compiles this suite. What it flags is a Probe assigning a hook's return
+      // value to a module-scope `let` so the test body can drive it. Counted in
+      // #891: 12 sites, of which four (`bannerMakesRoom`,
+      // `gameSettingsSheetRows`) assert what a *consumer* rendered, which
+      // `renderHook` cannot observe. The other eight could move to it, and #1002
+      // is that; until they do the rule is off for this directory, not narrower,
+      // because a glob naming eight files would be the same blanket misspelt.
+      // `refs` is on: its one site wrote a ref during render, which an effect
+      // does properly. `tests/hooksLint` refuses either one off anywhere else.
       "react-hooks/globals": "off",
     },
   },

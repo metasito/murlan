@@ -2,12 +2,11 @@
 // adopted, and the shape of what was left exempt.
 //
 // The rules themselves catch a new violation. What nothing else catches is the
-// exemption going quiet: `"off"` put back in eslint.config.js for app code, a
-// file-wide `/* eslint-disable */` at the top of a screen, or a bare
-// `eslint-disable-next-line` with no reason — each of which reopens the whole
-// class with CI green, which is the state #891 started from. A directive naming
-// no rule is the worst of the three and the hardest to see, so it is an
-// offender here on its own terms rather than for the rules it happens to cover.
+// exemption going quiet: `"off"` back in eslint.config.js for app code, a
+// file-wide disable at the top of a screen, an inline `/* eslint rule: "off" */`
+// — which is not a disable directive at all and so looks like prose — or a bare
+// `eslint-disable-next-line` with no reason. Each reopens the whole class with
+// CI green, which is the state #891 started from.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
@@ -18,10 +17,12 @@ import path from "node:path";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(import.meta.url);
 
-/** Every rule #891 adopted, and the only directory any of them may be off for. */
+/** Every rule #891 adopted. */
 const ADOPTED = ["react-hooks/set-state-in-effect", "react-hooks/globals", "react-hooks/refs"];
+/** The one rule left off, and the only directory it may be off for. */
+const OFF_FOR_TESTS = "react-hooks/globals";
 const OFF_ONLY_FOR = "tests/native/**/*.{ts,tsx}";
-const ALWAYS_ON = ["react-hooks/set-state-in-effect", "react-hooks/refs"];
+const ALWAYS_ON = ADOPTED.filter((rule) => rule !== OFF_FOR_TESTS);
 
 type Block = { files?: string[]; rules?: Record<string, unknown> };
 
@@ -44,6 +45,31 @@ function sourceFiles(dir: string): string[] {
   });
 }
 
+/**
+ * What is wrong with `line` as an exemption, or null. One function, two callers:
+ * the scan runs it over the tree, and the case list runs it over strings — which
+ * is how each form it must catch is watched failing without planting one.
+ */
+function exemptionFault(line: string): string | null {
+  // Only a directive opening its own comment counts. Prose *about* a directive —
+  // this file is full of it — must not red the gate.
+  const inline = /(?:\/\/|\/\*)\s*eslint\s+([^\n]*)/.exec(line);
+  if (inline && ADOPTED.some((rule) => inline[1].includes(rule))) {
+    return "inline rule config, which sets a level rather than asking for an exemption";
+  }
+  const directive = /(?:\/\/|\/\*)\s*eslint-disable(-next-line|-line)?\b([^\n]*)/.exec(line);
+  if (!directive) return null;
+  const [, form, rest] = directive;
+  const rules = rest.split("--")[0].replace(/\*\/.*$/, "");
+  // A directive naming no rule disables every rule, these three among them, and
+  // is the one form that cannot be found by looking for their names.
+  if (!rules.trim()) return "names no rule, so it disables all of them";
+  if (!ADOPTED.some((rule) => rules.includes(rule))) return null;
+  if (form !== "-next-line") return "file-wide or trailing, not next-line";
+  if (!/--\s+\S+\s+\S+/.test(rest)) return "no reason after `--`";
+  return null;
+}
+
 describe("the react-hooks 7 rules #891 adopted stay adopted", () => {
   for (const rule of ALWAYS_ON) {
     test(`${rule} is off nowhere — the exemptions are per-site instead`, () => {
@@ -55,9 +81,9 @@ describe("the react-hooks 7 rules #891 adopted stay adopted", () => {
     });
   }
 
-  test("globals is off for tests/native and nothing else", () => {
+  test(`${OFF_FOR_TESTS} is off for tests/native and nothing else`, () => {
     assert.deepEqual(
-      blocksTurningOff("react-hooks/globals").flatMap((block) => block.files ?? []),
+      blocksTurningOff(OFF_FOR_TESTS).flatMap((block) => block.files ?? []),
       [OFF_ONLY_FOR],
       "the test suite's Probe pattern is the only thing this exemption is for"
     );
@@ -66,30 +92,6 @@ describe("the react-hooks 7 rules #891 adopted stay adopted", () => {
 
 describe("an exemption in app code says what it is for", () => {
   const files = SOURCE_DIRS.flatMap(sourceFiles);
-
-  test("every suppression of an adopted rule is one line wide and carries a reason", () => {
-    const offenders: string[] = [];
-    for (const file of files) {
-      const lines = readFileSync(path.join(ROOT, file), "utf8").split("\n");
-      lines.forEach((line, i) => {
-        const directive = /eslint-disable(-next-line|-line)?([^\n]*)/.exec(line);
-        if (!directive) return;
-        const [, form, rest] = directive;
-        const rules = rest.split("--")[0];
-        // A directive naming no rule disables every rule, these three with the
-        // rest, and names none of them to be found by the check below.
-        const named = /[a-z][\w-]*\/[\w-]+/.test(rules)
-          ? ADOPTED.some((rule) => rules.includes(rule))
-          : true;
-        if (!named) return;
-        const at = `${file}:${i + 1}`;
-        if (!rules.trim()) offenders.push(`${at} — names no rule, so it disables all of them`);
-        else if (form !== "-next-line") offenders.push(`${at} — file-wide or trailing, not next-line`);
-        else if (!/--\s+\S+\s+\S+/.test(rest)) offenders.push(`${at} — no reason after \`--\``);
-      });
-    }
-    assert.deepEqual(offenders, []);
-  });
 
   test("the directories it scans are the ones the rule covers", () => {
     // A scan that misses a directory passes by construction, so the list comes
@@ -101,5 +103,45 @@ describe("an exemption in app code says what it is for", () => {
       .map((glob) => glob.split("/")[0]);
     assert.deepEqual(SOURCE_DIRS, covered);
     for (const dir of SOURCE_DIRS) assert.ok(sourceFiles(dir).length > 0, `${dir} is empty`);
+  });
+
+  test("each form that would reopen the class is a fault, and prose is not", () => {
+    // The scan below cannot go red on a form it has never been shown.
+    assert.match(exemptionFault("/* eslint-disable */") ?? "", /names no rule/);
+    assert.match(
+      exemptionFault("/* eslint-disable */ // see docs/agents/RULES.md") ?? "",
+      /names no rule/
+    );
+    assert.match(
+      exemptionFault('/* eslint react-hooks/set-state-in-effect: "off" */') ?? "",
+      /inline rule config/
+    );
+    assert.match(
+      exemptionFault("/* eslint-disable react-hooks/globals */") ?? "",
+      /file-wide or trailing/
+    );
+    assert.match(
+      exemptionFault("// eslint-disable-next-line react-hooks/refs") ?? "",
+      /no reason/
+    );
+    assert.equal(exemptionFault("// a bare `eslint-disable-next-line` reopens the class"), null);
+    assert.equal(exemptionFault("// eslint-disable-next-line no-console"), null);
+    assert.equal(
+      exemptionFault("// eslint-disable-next-line react-hooks/refs -- the reason, stated"),
+      null
+    );
+  });
+
+  test("every suppression of an adopted rule is one line wide and carries a reason", () => {
+    const offenders: string[] = [];
+    for (const file of files) {
+      readFileSync(path.join(ROOT, file), "utf8")
+        .split("\n")
+        .forEach((line, i) => {
+          const fault = exemptionFault(line);
+          if (fault) offenders.push(`${file}:${i + 1} — ${fault}`);
+        });
+    }
+    assert.deepEqual(offenders, []);
   });
 });
