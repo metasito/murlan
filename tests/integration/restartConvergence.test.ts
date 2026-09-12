@@ -120,36 +120,29 @@ function waitFor<T>(socket: Socket, event: string, ms = 10_000): Promise<T | nul
   });
 }
 
-interface StoredRow {
-  /** The envelope's `seats` block — the vacate bookkeeping a restore reads. */
-  seats: Record<string, unknown>;
-  updatedAt: number;
-}
-
 /**
- * The `active_games` row a replacement instance rehydrates the table from, once
- * `ready` accepts it. Polled rather than read once: `persistGameState` is
- * fire-and-forget beside the broadcast, so the row lags the wire the table was
- * observed on.
+ * The `seats` block of the `active_games` row a replacement instance rehydrates
+ * the table from, once `ready` accepts it. Polled rather than read once:
+ * `persistGameState` is fire-and-forget beside the broadcast, so the row lags
+ * the wire the table was observed on.
  */
-async function storedRow(
+async function storedSeats(
   databaseUrl: string,
   roomId: string,
-  ready: (row: StoredRow) => boolean,
+  ready: (seats: Record<string, unknown>) => boolean,
   what: string
-): Promise<StoredRow> {
+): Promise<Record<string, unknown>> {
   const admin = new pg.Pool({ connectionString: databaseUrl });
   try {
     const deadline = Date.now() + SETTLE_CEILING_MS;
     for (;;) {
-      const { rows } = await admin.query<{
-        game_state: { seats?: Record<string, unknown> };
-        updated_at: Date;
-      }>("SELECT game_state, updated_at FROM active_games WHERE room_id = $1", [roomId]);
-      const stored = rows[0];
-      if (stored) {
-        const row = { seats: stored.game_state?.seats ?? {}, updatedAt: stored.updated_at.getTime() };
-        if (ready(row)) return row;
+      const { rows } = await admin.query<{ game_state: { seats?: Record<string, unknown> } }>(
+        "SELECT game_state FROM active_games WHERE room_id = $1",
+        [roomId]
+      );
+      if (rows[0]) {
+        const seats = rows[0].game_state?.seats ?? {};
+        if (ready(seats)) return seats;
       }
       assert.ok(Date.now() < deadline, what);
       await sleep(200);
@@ -304,7 +297,7 @@ describe(
       // a hand the `active_games` row does not carry yet — and the replacement
       // rehydrates from that row alone. Killing before it lands fails this test
       // for a race in the test rather than anything about a restart.
-      await storedRow(
+      await storedSeats(
         scoped,
         table.roomId,
         () => true,
@@ -447,14 +440,14 @@ describe(
         "the grace expired without the seat being vacated",
         () => vacatedAt(a, cSeat) === true
       );
-      const beforeKill = await storedRow(
+      const beforeKill = await storedSeats(
         scoped,
         table.roomId,
-        ({ seats }) => (seats.vacatedSeats as unknown[] | undefined)?.length === 1,
+        (seats) => (seats.vacatedSeats as unknown[] | undefined)?.length === 1,
         "the vacate was never persisted, so no restart could find it"
       );
-      const leaver = (beforeKill.seats.releasedSeats as string[])[0];
-      assert.deepEqual(beforeKill.seats, {
+      const leaver = (beforeKill.releasedSeats as string[])[0];
+      assert.deepEqual(beforeKill, {
         vacatedSeats: [[cSeat, { userId: leaver, username: c.name }]],
         releasedSeats: [leaver],
         weakSeats: [cSeat],
@@ -508,16 +501,16 @@ describe(
       // Polled on the reclaim's own effect, not on the row being newer: the
       // vacated seat is a bot until this moment and `runBotTurn` persists after
       // every move, so a newer row can be one of those. An empty `vacatedSeats`
-      // is a row only `reclaimSeat` can have written, which is what makes the
-      // two collections it leaves alone evidence of the restore rather than of
-      // the row they were read from.
-      const afterReclaim = await storedRow(
+      // on a row that carried one is a row only `reclaimSeat` can have written,
+      // which makes the two collections it leaves alone evidence of the restore
+      // rather than of the row they were read from.
+      const afterReclaim = await storedSeats(
         scoped,
         table.roomId,
-        ({ seats }) => (seats.vacatedSeats as unknown[] | undefined)?.length === 0,
+        (seats) => (seats.vacatedSeats as unknown[] | undefined)?.length === 0,
         "the reclaim never wrote the row back, so nothing here is about the restore"
       );
-      assert.deepEqual(afterReclaim.seats, {
+      assert.deepEqual(afterReclaim, {
         vacatedSeats: [],
         releasedSeats: [],
         weakSeats: [cSeat],

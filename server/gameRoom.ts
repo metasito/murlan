@@ -71,15 +71,15 @@ export interface OnlineGameState {
    * forgotten them, so without this a rejoin cannot tell someone whose grace
    * ran out from an account that never sat here — and answers both the same.
    *
-   * Never cleared while the table lives: the whole point is to still recognise
-   * them manches later. Persisted in the `seats` block, like `abandonedSeats` —
-   * losing it falls back to UNAUTHORIZED on a rejoin.
+   * Cleared only by a reclaim, and never by a new hand: the whole point is to
+   * still recognise them manches later. Persisted in the `seats` block, like
+   * `abandonedSeats` — losing it falls back to UNAUTHORIZED on a rejoin.
    */
   releasedSeats: Set<string>;
   /**
    * Seat -> the account that used to hold it, for a seat a human has left
    * while the table is still live. This is the seat's half of
-   * `releasedSeats`: that set answers "may this account never sit again",
+   * `releasedSeats`: that set answers "has this account given a seat up here",
    * this map answers "which seat, and who". Cleared on reclaim, and read by
    * the sanitizer (the `vacated` flag), `resolveHandEnd` (a departed
    * player's frozen total) and the rejoin path (reclaiming the seat).
