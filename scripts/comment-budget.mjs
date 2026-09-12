@@ -58,9 +58,13 @@ const FLOOR = 6;
 export function over(before, after) {
   const comment = after.comment - before.comment;
   // Against how much code the change *moved*, not its net: code deleted is code moved, and a
-  // rewrite that takes 122 lines out is not a change explaining itself. Compared against the net,
-  // any file that shrinks puts the bar below zero and every comment over the floor fails it.
-  // `abs` rather than a floor of zero, which would pass 50 comment lines beside one deletion.
+  // rewrite that takes 122 lines out is not a change explaining itself. Against the net, any file
+  // that shrinks puts the bar below zero and every comment over the floor fails it; `max(code, 0)`
+  // does the same to every change that deletes more than it adds, which is most refactors.
+  //
+  // The cost is that a large deletion buys a comment budget the size of itself — #1001, which is
+  // where to go before changing this line. Two file totals cannot express "added" at all, which is
+  // the real limit and not something a comparison here can fix.
   return comment > FLOOR && comment > Math.abs(after.code - before.code);
 }
 

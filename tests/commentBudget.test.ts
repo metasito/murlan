@@ -80,8 +80,8 @@ describe("over", () => {
     assert.equal(over(before, after), false);
   });
 
-  // And the hole a plain `max(code, 0)` would have opened: deleting one line must not buy
-  // an unlimited comment budget.
+  // Deleting a line must not buy an unlimited comment budget. It buys one the size of the
+  // deletion, which is #1001.
   test("a pile of prose beside one deletion is still named", () => {
     const prose = Array.from({ length: 30 }, (_, i) => `// why ${i}`);
     const { before, after } = delta(["const a = 1;", "const b = 2;"].join("\n"), [...prose, "const a = 1;"].join("\n"));
