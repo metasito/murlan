@@ -347,11 +347,37 @@ export function takeStopFile(fs, file) {
   return fs.existsSync(file);
 }
 
-/** Sliced, so `.loop-stop` still reaches the loop across a long wait. */
-export async function holdFor(ms, exists = (f) => fs.existsSync(f), slice = 30_000) {
+/**
+ * How often a long hold says it is still there. The hold is the one stretch of the run that
+ * prints nothing, and a silent terminal reads exactly like a dead one — which is the complaint
+ * the live phase line exists to answer.
+ */
+export const HEARTBEAT_MS = 15 * 60_000;
+
+/**
+ * Sliced, so `.loop-stop` still reaches the loop across a long wait.
+ *
+ * @param {number} ms
+ * @param {(f: string) => boolean} [exists]
+ * @param {number} [slice]
+ * @param {((line: string) => void)|null} [say]
+ * @param {number} [beat]
+ */
+export async function holdFor(
+  ms,
+  exists = (f) => fs.existsSync(f),
+  slice = 30_000,
+  say = null,
+  beat = HEARTBEAT_MS,
+) {
   const until = Date.now() + ms;
+  let next = Date.now() + beat;
   while (Date.now() < until) {
     if (exists(STOP_FILE)) return "stopped";
+    if (say && Date.now() >= next) {
+      say(`  ⏸ still waiting — back at ${clockAt(until)}`);
+      next = Date.now() + beat;
+    }
     // Not unref'd: by now this is the only handle keeping the process alive.
     await new Promise((r) => setTimeout(r, Math.min(slice, until - Date.now())));
   }
@@ -1027,7 +1053,7 @@ async function main() {
           ? `  ⏸ #${pass.ticket} the usage window is spent (${waits}/${WAIT.TRIES}) — back at ${clockAt(Date.now() + step.hold)}`
           : `  ⏸ #${pass.ticket} refused, and the window has already reset — going again`,
       );
-      if (step.hold && (await holdFor(step.hold)) === "stopped") {
+      if (step.hold && (await holdFor(step.hold, undefined, undefined, (m) => screen.say(m))) === "stopped") {
         screen.say("queue-loop: .loop-stop during the wait — stopping");
         bell();
         return 0;

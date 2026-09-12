@@ -746,6 +746,19 @@ describe("holdFor", () => {
   test("otherwise it waits the time out", async () => {
     assert.equal(await holdFor(10, () => false, 5), "waited");
   });
+
+  // The hold is the one stretch of the run that prints nothing, and for up to twelve hours. A
+  // silent terminal reads exactly like a dead one.
+  test("a long hold says it is still there, and says when it is back", async () => {
+    const said: string[] = [];
+    await holdFor(60, () => false, 5, (m: string) => said.push(m), 10);
+    assert.ok(said.length >= 3, `expected several heartbeats, saw ${said.length}`);
+    assert.match(said[0], /still waiting — back at \d/);
+  });
+
+  test("a hold nobody is watching stays silent", async () => {
+    assert.equal(await holdFor(30, () => false, 5, null, 10), "waited");
+  });
 });
 
 describe("afterRefusal", () => {
