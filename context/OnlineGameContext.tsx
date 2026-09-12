@@ -878,6 +878,10 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     setEntrySource("friends");
     setRejoinFailed(false);
     setIsSpectator(false);
+    // A new attempt retires the last one's refusal. The banner is dismissed by
+    // hand and by nothing else, so a standing error otherwise outlives the
+    // table it was about and hides this join's own answer behind it.
+    setError(null);
     socket?.emit("room:join", { code });
   }, [socket]);
 
@@ -885,6 +889,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     (code: string) => {
       setIsSpectator(true);
       setRejoinFailed(false);
+      setError(null);
       socket?.emit("room:spectate", { code: code.toUpperCase() });
     },
     [socket]

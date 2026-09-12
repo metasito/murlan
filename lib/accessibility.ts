@@ -63,11 +63,18 @@ function publishSystemReduceMotion(next: boolean): void {
   systemListeners.forEach((fn) => fn());
 }
 
-/** Null where there is no `matchMedia` to ask — server rendering, and old browsers. */
+/**
+ * Null where there is no `matchMedia` to ask — server rendering, and old
+ * browsers. Held once it exists: every render of every card reads the snapshot
+ * through it, and a fresh `MediaQueryList` per read is a parse per read.
+ */
+let motionQueryOnce: MediaQueryList | null = null;
 function motionQuery(): MediaQueryList | null {
+  if (motionQueryOnce) return motionQueryOnce;
   if (Platform.OS !== 'web') return null;
   if (typeof window === 'undefined' || !window.matchMedia) return null;
-  return window.matchMedia('(prefers-reduced-motion: reduce)');
+  motionQueryOnce = window.matchMedia('(prefers-reduced-motion: reduce)');
+  return motionQueryOnce;
 }
 
 function subscribeSystemReduceMotion(fn: () => void): () => void {

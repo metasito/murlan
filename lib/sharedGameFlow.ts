@@ -130,17 +130,14 @@ export function useExchangeAnnouncement(
   const [opened, setOpened] = useState(false);
   const [data, setData] = useState<ExchangeAnnounceData | null>(null);
 
-  // The phase going away closes the ceremony for good, not merely while it is
-  // away: left open, the *next* phase to arrive would reopen it on the previous
-  // trade's `data`, before its own `announce` ran.
+  // Closed for good by the phase leaving, not merely while it is away: left
+  // open, the *next* phase would reopen it on the previous trade's `data`.
   const [shownPhase, setShownPhase] = useState(phasePresent);
   if (phasePresent !== shownPhase) {
     setShownPhase(phasePresent);
     if (!phasePresent) setOpened(false);
   }
 
-  // A ceremony whose record is gone is one nothing should show, and asking that
-  // during render is what makes it impossible to draw for even a frame.
   const announcing = opened && phasePresent;
 
   const announce = useCallback((next: ExchangeAnnounceData) => {

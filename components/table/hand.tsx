@@ -752,6 +752,10 @@ export function StraightHand({
     gap.value = null;
     setHeldId(null);
     setGapAt(null);
+    // A held card is out of the fan, so it re-mounts when it comes back — the
+    // one way a card mounts without the hand's count changing, and the only
+    // thing left that could still be holding the stagger armed from the mount.
+    setDealArmed(false);
   };
 
   const grab = (x: number) => {

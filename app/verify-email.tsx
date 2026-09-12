@@ -25,7 +25,7 @@ export default function VerifyEmailScreen() {
   const { t } = useTranslation();
   const { user, refreshUser } = useAuth();
   const params = useLocalSearchParams<{ email?: string }>();
-  const [email, setEmail] = useState(params.email ?? user?.email ?? "");
+  const [email, setEmail] = useState(params.email || user?.email || "");
   const [code, setCode] = useState("");
 
   // AuthContext's boot check usually resolves after first render, so the
