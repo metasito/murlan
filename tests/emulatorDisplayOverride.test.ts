@@ -98,22 +98,26 @@ describe("the emulator display override", () => {
     // that refused the override looks exactly like the fix working, right up to
     // the next death — the shape #942 was filed about.
     //
-    // The expected value is the one set two lines above, not any value: a
-    // read-back that greps a figure nothing sets, or greps `size` under `wm
-    // density`, passes while checking nothing.
+    // Three things, because dropping any one of them leaves a read-back that
+    // runs and reports nothing: it has to grep the value set two lines above
+    // rather than any value, and it has to *fail the step* when that value is
+    // absent. A `|| true` here would be a device check whose answer is discarded.
     assert.ok(size && density);
-    const readsBack = (what: string, expected: string) =>
-      script.some(
-        (l) => l.startsWith(`adb shell wm ${what} |`) && l.includes(`Override ${what}: ${expected}`)
+    const readsBack = (what: string, expected: string) => {
+      const line = script.find((l) => l.startsWith(`adb shell wm ${what} |`));
+      assert.ok(line, `nothing reads \`wm ${what}\` back`);
+      assert.ok(
+        line.includes(`Override ${what}: ${expected}`),
+        `the \`wm ${what}\` read-back does not grep 'Override ${what}: ${expected}', the value the script sets`
       );
-    assert.ok(
-      readsBack("size", `${size[1]}x${size[2]}`),
-      `no read-back greps 'Override size: ${size[1]}x${size[2]}', the size the script sets`
-    );
-    assert.ok(
-      readsBack("density", density[1]),
-      `no read-back greps 'Override density: ${density[1]}', the density the script sets`
-    );
+      assert.match(
+        line,
+        /\|\|.*exit 1/,
+        `the \`wm ${what}\` read-back does not fail the step, so its answer is discarded`
+      );
+    };
+    readsBack("size", `${size[1]}x${size[2]}`);
+    readsBack("density", density[1]);
   });
 
   test("sits between the device-came-up marker and the app launch", () => {
