@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 // Integration tests boot the real server. That is only possible if every server
-// module loads under Node's native type-stripping — no bundler, no path aliases.
+// module loads under Node's own loader — docs/agents/loops.md.
 // index.ts is excluded: importing it binds a port and installs signal handlers.
 const MODULES = readdirSync(path.join(repoRoot, "server"))
   .filter((f) => f.endsWith(".ts") && f !== "index.ts")

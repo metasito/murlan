@@ -1,8 +1,7 @@
 // The order an end-of-manche scoreboard is listed in.
 //
-// Kept free of runtime `@/` imports for the same reason lib/cardNames.ts is:
-// Node's built-in TypeScript loader (`node --test`) type-strips plain .ts but
-// cannot resolve the `@/` bundler alias at runtime.
+// Free of runtime `@/` imports, so `node --test` can load it — docs/agents/loops.md,
+// "Node's TypeScript loader".
 
 /**
  * One row of a scoreboard, however the screen showing it keys its players.

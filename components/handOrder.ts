@@ -1,8 +1,6 @@
 // The order a player has put their own hand in (#531).
 //
-// Kept free of JSX and of any import from a .tsx file, like handLayout.ts:
-// Node's TS loader type-strips plain .ts only, and `node --test` is what
-// covers this.
+// JSX-free, runtime imports relative — docs/agents/loops.md, "Node's TypeScript loader".
 import type { Card } from "../lib/gameEngine.ts";
 
 /**

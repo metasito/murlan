@@ -1,7 +1,6 @@
 // Pure layout math for StraightHand's card row (components/table/hand.tsx).
 //
-// Keep this file free of JSX and of any import from a .tsx file: Node's TS
-// loader type-strips plain .ts only, and `node --test` is what covers it.
+// JSX-free, runtime imports relative — docs/agents/loops.md, "Node's TypeScript loader".
 import { HAND_ARC } from "./tableArc.ts";
 
 // WCAG 2.2 SC 2.5.8 Level AA: 24x24 CSS px, or the undersized-target

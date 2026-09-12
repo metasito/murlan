@@ -1,8 +1,7 @@
 // What a match has decided, in the one shape both modes report it in.
 //
-// Relative imports and no `react-native`, for the same reason
-// lib/exchangeCeremony.ts has none: the server bundles this with no alias
-// resolution, and `node --test` type-strips plain .ts without resolving `@/`.
+// Relative imports and no `react-native`: the server bundles this unresolved, and
+// `node --test` loads it the same way — docs/agents/loops.md, "Node's TypeScript loader".
 import { aggregateTeamScores } from "./gameEngine.ts";
 import type { MatchLength } from "./gameEngine.ts";
 

@@ -1,11 +1,6 @@
 // What the play/pass controls say, and when the turn clock is running.
 //
-// This file is deliberately JSX-free, for the same reason components/handLayout.ts
-// is: Node's built-in TypeScript loader (`node --test tests/**/*.test.ts`) only
-// type-strips plain .ts source — it cannot parse a .tsx file, and it cannot
-// resolve the `@/` bundler alias at runtime. A runtime import must therefore be
-// relative and carry its .ts extension; `@/` is safe only in a type-only import,
-// which is erased before resolution.
+// JSX-free, runtime imports relative — docs/agents/loops.md, "Node's TypeScript loader".
 
 import type { Combination } from "@/lib/gameEngine";
 

@@ -1,11 +1,6 @@
 // Card-flight and pile physics, and the impact feedback a landing earns.
 //
-// This file is deliberately JSX-free, for the same reason components/handLayout.ts
-// is: Node's built-in TypeScript loader (`node --test tests/**/*.test.ts`) only
-// type-strips plain .ts source — it cannot parse a .tsx file, and it cannot
-// resolve the `@/` bundler alias at runtime. A runtime import must therefore be
-// relative and carry its .ts extension; `@/` is safe only in a type-only import,
-// which is erased before resolution.
+// JSX-free, runtime imports relative — docs/agents/loops.md, "Node's TypeScript loader".
 
 import type { Card, Combination, GameState, Player } from "@/lib/gameEngine";
 import type { ExchangeAnnounceData } from "@/lib/sharedGameFlow";

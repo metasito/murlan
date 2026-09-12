@@ -300,6 +300,24 @@ The `node --test` files that use it fail under `tsx` with `The "paths[0]" argume
 type string` — which reads as a bug in whatever you just touched. Rule 4's `node --test` runs them. Reaching for `tsx` because
 the file is TypeScript is the trap; two sessions hit it on the same day, on different files.
 
+## Node's TypeScript loader reaches plain `.ts` only
+
+`node --test` runs a file through Node's built-in TypeScript loader, which type-strips plain `.ts`
+source and does nothing else: it cannot parse a `.tsx` file, and it resolves no bundler alias, so a
+runtime `@/` import throws at load. A `@/` import is safe only when it is type-only, because that is
+erased before resolution.
+
+So a module whose logic a test has to reach stays free of JSX and of any import from a `.tsx` file,
+and its runtime imports are relative and carry the `.ts` extension (`tsconfig.json`'s
+`allowImportingTsExtensions` is what lets `tsc` accept that). That is the whole reason the pure-logic
+modules beside a component exist — `components/handLayout.ts` next to `table/hand.tsx`,
+`components/flightPhysics.ts` next to `GameTable.tsx`, and the rest of that family.
+
+This is the only place the constraint is written down. Every file it governs carries a one-line
+pointer here instead of its own restatement, and `tests/loaderConstraintIsSingleSourced.test.ts`
+holds the count at one — a copy corrected in one file leaves the rest quietly stale, and the stale
+one is whichever the next reader happens to open.
+
 ## Starvation looks exactly like a red suite
 
 Two sessions running a full suite each drove a 15.6 GB machine to 242 MB free, and processes

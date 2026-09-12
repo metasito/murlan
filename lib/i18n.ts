@@ -15,11 +15,9 @@
 //   English fallback for safety.
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useCallback, useSyncExternalStore } from "react";
-// Relative (not `@/`) on purpose: node's native TS loader, used by
-// `node --test` for tests/i18n.test.ts, does not resolve tsconfig `paths`
-// aliases, only relative specifiers with an explicit extension (see
-// tsconfig.json's `allowImportingTsExtensions` and tests/helpers.ts for the
-// same convention). Metro/Expo resolves either form fine at app runtime.
+// Relative (not `@/`) on purpose, so `node --test` can load this for
+// tests/i18n.test.ts — docs/agents/loops.md, "Node's TypeScript loader".
+// Metro/Expo resolves either form fine at app runtime.
 import {
   DEFAULT_LOCALE,
   SUPPORTED_LOCALES,

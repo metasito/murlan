@@ -1,8 +1,7 @@
 // The home screen's drifting card field: the depth bands, the cards placed in
 // them, and the geometry that keeps them card-shaped.
 //
-// JSX-free and relatively imported for the same reason flightPhysics.ts is —
-// Node's own loader runs the tests over it.
+// JSX-free, runtime imports relative — docs/agents/loops.md, "Node's TypeScript loader".
 //
 // A fixed table rather than values drawn per mount. The field is decoration,
 // but a composition that differs every time the screen opens is one no

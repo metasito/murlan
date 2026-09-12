@@ -6,8 +6,7 @@
 // This exists so a future palette edit can't silently regress accessibility —
 // see lib/theme.ts "Text colors" section.
 //
-// The .ts extension on the import is required by Node's ESM loader when it
-// type-strips these files (`node --test tests/**/*.test.ts`).
+// The .ts extension on the import is required — docs/agents/loops.md.
 // Imports lib/tokens (pure values) rather than lib/theme, because theme pulls in
 // react-native for its platform-aware Shadow helper and Node cannot parse RN's
 // Flow-typed entry point. tokens.ts is the same palette, no runtime RN dependency.
