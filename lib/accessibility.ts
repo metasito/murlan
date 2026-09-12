@@ -1,5 +1,5 @@
 import { AccessibilityInfo, Platform } from 'react-native';
-import { useState, useEffect, useSyncExternalStore } from 'react';
+import { useSyncExternalStore } from 'react';
 
 /**
  * Whether animation is reduced. "system" follows the OS (or browser) setting;
@@ -46,49 +46,71 @@ function automationReducedMotion(): boolean {
   return process.env.EXPO_PUBLIC_E2E_REDUCE_MOTION === '1';
 }
 
+/**
+ * The OS setting, read as a store rather than mirrored into state.
+ *
+ * Web answers synchronously, so the very first render already has the real
+ * value; native's `isReduceMotionEnabled` is a promise, so its answer arrives
+ * through the same notification as every change after it, and the snapshot
+ * below is what it lands in.
+ */
+let systemReduceMotion = false;
+const systemListeners = new Set<() => void>();
+
+function publishSystemReduceMotion(next: boolean): void {
+  if (next === systemReduceMotion) return;
+  systemReduceMotion = next;
+  systemListeners.forEach((fn) => fn());
+}
+
+/** Null where there is no `matchMedia` to ask — server rendering, and old browsers. */
+function motionQuery(): MediaQueryList | null {
+  if (Platform.OS !== 'web') return null;
+  if (typeof window === 'undefined' || !window.matchMedia) return null;
+  return window.matchMedia('(prefers-reduced-motion: reduce)');
+}
+
+function subscribeSystemReduceMotion(fn: () => void): () => void {
+  const mq = motionQuery();
+  if (mq) {
+    const handler = () => fn();
+    try {
+      mq.addEventListener('change', handler);
+      return () => mq.removeEventListener('change', handler);
+    } catch {
+      // Fallback for older browsers
+      mq.addListener(handler);
+      return () => mq.removeListener(handler);
+    }
+  }
+
+  if (Platform.OS === 'web') return () => {};
+
+  systemListeners.add(fn);
+  AccessibilityInfo.isReduceMotionEnabled().then(publishSystemReduceMotion).catch(() => {});
+  const sub = AccessibilityInfo.addEventListener('reduceMotionChanged', publishSystemReduceMotion);
+  return () => {
+    systemListeners.delete(fn);
+    sub?.remove();
+  };
+}
+
+function getSystemReduceMotion(): boolean {
+  return motionQuery()?.matches ?? systemReduceMotion;
+}
+
+/** Nothing has asked for reduced motion before there is a window to ask. */
+function getSystemReduceMotionServer(): boolean {
+  return false;
+}
+
 /** True when the OS (or browser) has asked for reduced motion. */
 function useSystemReducedMotion(): boolean {
-  const [reduceMotion, setReduceMotion] = useState(false);
-
-  useEffect(() => {
-    let mounted = true;
-
-    if (Platform.OS === 'web') {
-      if (typeof window === 'undefined' || !window.matchMedia) return;
-      const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- the query's current answer, which only the subscription below can report after this
-      setReduceMotion(mq.matches);
-
-      const handler = (e: MediaQueryListEvent) => setReduceMotion(e.matches);
-      try {
-        mq.addEventListener('change', handler);
-        return () => mq.removeEventListener('change', handler);
-      } catch {
-        // Fallback for older browsers
-        mq.addListener(handler);
-        return () => mq.removeListener(handler);
-      }
-    }
-
-    // Native: read the current value, then subscribe to changes.
-    AccessibilityInfo.isReduceMotionEnabled()
-      .then((v) => {
-        if (mounted) setReduceMotion(v);
-      })
-      .catch(() => {});
-
-    const sub = AccessibilityInfo.addEventListener(
-      'reduceMotionChanged',
-      (v: boolean) => setReduceMotion(v)
-    );
-
-    return () => {
-      mounted = false;
-      sub?.remove();
-    };
-  }, []);
-
-  return reduceMotion;
+  return useSyncExternalStore(
+    subscribeSystemReduceMotion,
+    getSystemReduceMotion,
+    getSystemReduceMotionServer
+  );
 }
 
 /**
