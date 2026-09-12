@@ -160,12 +160,12 @@ async function storedRow(
 }
 
 /**
- * The deploy: the process that owns the room is replaced by one that has never
- * seen it. Every caller closes its sockets *after* the kill, so no disconnect
- * grace runs on a server that is still up to arm one.
+ * The deploy: the process that owns the rooms is replaced by one that has never
+ * seen them. The sockets close after the kill, never before, so no disconnect
+ * grace is armed on a server still up to arm one.
  *
  * The sleep is the kernel releasing the listening socket, which is all this
- * waits on: the room's advisory lock is session-scoped, and Postgres drops it
+ * waits on: a room's advisory lock is session-scoped, and Postgres drops it
  * when the killed backend dies.
  */
 async function replaceServer(
@@ -375,8 +375,12 @@ describe(
     const schema = `restart_vacated_${Date.now()}_${Math.floor(Math.random() * 1e6)}`;
     const baseUrl = process.env.DATABASE_URL!;
     const scoped = `${baseUrl}${baseUrl.includes("?") ? "&" : "?"}options=-c%20search_path%3D${schema}`;
-    /** The wait between the leaver's socket closing and its seat being vacated. */
-    const GRACE_MS = 1_200;
+    /**
+     * The wait between the leaver's socket closing and its seat being vacated.
+     * Every boot in this block carries it, the replacements included: the
+     * default is a minute, and the seat has to go before the kill.
+     */
+    const SHORT_GRACE = { MURLAN_DISCONNECT_GRACE_MS: "1200" };
     const clients: Client[] = [];
     let server: ChildProcess;
     let table = { roomId: "", code: "" };
@@ -389,7 +393,7 @@ describe(
       // Both blocks boot on PORT, and the block above kills its own server in
       // an `after` that does not wait for the kernel to release the socket.
       await sleep(1_000);
-      server = await boot(scoped, { MURLAN_DISCONNECT_GRACE_MS: String(GRACE_MS) });
+      server = await boot(scoped, SHORT_GRACE);
 
       const tag = Date.now().toString(36);
       for (const who of ["a", "b", "c"]) {
@@ -457,9 +461,7 @@ describe(
         abandonedSeats: [[cSeat, leaver]],
       });
 
-      server = await replaceServer(server, [a, b], scoped, {
-        MURLAN_DISCONNECT_GRACE_MS: String(GRACE_MS),
-      });
+      server = await replaceServer(server, [a, b], scoped, SHORT_GRACE);
 
       for (const client of [a, b]) {
         client.socket = await connect(client.cookie);
@@ -488,9 +490,7 @@ describe(
       // table is in no instance's memory, so its own `game:rejoin` is what pulls
       // it over. `rehydrateGame`'s gate reads the roster, which no longer holds
       // them, and the row's vacated seats are the only thing that still does.
-      server = await replaceServer(server, [a, b], scoped, {
-        MURLAN_DISCONNECT_GRACE_MS: String(GRACE_MS),
-      });
+      server = await replaceServer(server, [a, b], scoped, SHORT_GRACE);
 
       // Asserted on the seat coming back rather than on no `game:rejoin_failed`
       // arriving: a refusal is silence within a window, and so is a slow runner.
@@ -505,15 +505,16 @@ describe(
         () => c.game?.viewerSeatIndex === cSeat && vacatedAt(c, cSeat) === false
       );
 
-      // The reclaim persists, so this row is the restored table's own write —
-      // which is what makes the two collections a reclaim does not clear a claim
-      // about what crossed two restarts rather than about the row they were read
-      // from. `weakSeats` is inert on a seat a human holds again; it is asserted
-      // because losing it is the defect, not because the seat is still weak.
+      // Polled on the reclaim's own effect, not on the row being newer: the
+      // vacated seat is a bot until this moment and `runBotTurn` persists after
+      // every move, so a newer row can be one of those. An empty `vacatedSeats`
+      // is a row only `reclaimSeat` can have written, which is what makes the
+      // two collections it leaves alone evidence of the restore rather than of
+      // the row they were read from.
       const afterReclaim = await storedRow(
         scoped,
         table.roomId,
-        ({ updatedAt }) => updatedAt > beforeKill.updatedAt,
+        ({ seats }) => (seats.vacatedSeats as unknown[] | undefined)?.length === 0,
         "the reclaim never wrote the row back, so nothing here is about the restore"
       );
       assert.deepEqual(afterReclaim.seats, {

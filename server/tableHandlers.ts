@@ -522,10 +522,11 @@ async function dealIfSeatLeftGateClosed(
 /**
  * The seat `userId` used to hold, if this table still has it open — the seat
  * is reclaimable by the same account for the life of the match
- * (docs/BRIEF.md §3.1). `SEAT_RELEASED` is left to answer once the table is
- * gone: a caller holding `game` has one in memory, and `vacatedSeats` is what
- * decides, so a match `endMatchByAgreement` closed still hands the seat back
- * while the table sits at its results screen.
+ * (docs/BRIEF.md §3.1). `vacatedSeats` is the whole of the decision, so a match
+ * `endMatchByAgreement` closed still hands the seat back while the table sits at
+ * its results screen. `SEAT_RELEASED` beside this is reachable only on a
+ * restored row that kept `releasedSeats` and lost the seat entry: the two are
+ * written together and cleared together everywhere else.
  */
 function reclaimableSeat(game: OnlineGameState, userId: string): number | null {
   for (const [seat, vacated] of game.vacatedSeats) {
