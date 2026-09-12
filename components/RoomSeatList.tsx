@@ -81,8 +81,11 @@ export function RoomSeatList({
       ...(seatHolds ?? []).filter((hold) => hold.expiresInMs > lapsedMs).map((h) => h.expiresInMs)
     );
     if (!Number.isFinite(soonest)) return;
+    // Everything already past, not just the one this timer was set for: a
+    // backgrounded tab comes back with several holds lapsed at once, and the
+    // clock is what says how many.
     const timer = setTimeout(
-      () => setLapsedMs(soonest),
+      () => setLapsedMs(Math.max(soonest, Date.now() - arrivedAtRef.current)),
       Math.max(0, arrivedAtRef.current + soonest - Date.now()) + HOLD_LAPSE_MARGIN_MS
     );
     return () => clearTimeout(timer);

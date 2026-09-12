@@ -118,9 +118,8 @@ export function SocketProvider({ children }: { children: ReactNode }) {
   const userId = user?.id;
   const qc = useQueryClient();
   const { showNotification } = useNotification();
-  // Read from `lib/socket`'s map rather than mirrored into state: the map is
-  // already the one socket per user, and a copy here is a second answer to the
-  // same question that the effect below would have to keep in step.
+  // `lib/socket`'s map is already the one socket per user, so a copy here would
+  // be a second answer to the same question for the effect below to keep in step.
   const socket = useSyncExternalStore(
     subscribeToSockets,
     () => peekSocket(userId),

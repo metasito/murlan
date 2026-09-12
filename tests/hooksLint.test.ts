@@ -4,10 +4,10 @@
 // A suppression of any of them costs its whole file its React Compiler pass, so
 // there is no such thing as a local one — `tests/reactCompiler.test.ts` proves
 // that against the compiler itself and refuses every suppression under `app/`,
-// `components/` and `context/`. Two things it cannot see are here: `lib/`, which
-// it does not scan, and `eslint.config.js`, where a rule can go `"off"` for a
-// whole directory without a single source file changing. Either reopens the
-// class with CI green, which is the state #891 started from.
+// `components/` and `context/`. Two things that scan cannot see are here:
+// `lib/`, which it compiles but does not scan for suppressions, and
+// `eslint.config.js`, where a rule can go `"off"` for a whole directory without
+// a single source file changing. Either reopens the class with CI green.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";

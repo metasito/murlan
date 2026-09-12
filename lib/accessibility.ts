@@ -47,7 +47,7 @@ function automationReducedMotion(): boolean {
 }
 
 /**
- * The OS setting, read as a store rather than mirrored into state.
+ * The OS setting, as a store.
  *
  * Web answers synchronously, so the very first render already has the real
  * value; native's `isReduceMotionEnabled` is a promise, so its answer arrives

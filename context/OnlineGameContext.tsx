@@ -337,9 +337,9 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
 
   const { socket } = useSocket();
 
-  // The socket's own answer rather than a copy of it. Listeners attached to a
-  // socket that is already connected have no `connect` left to hear, so a copy
-  // has to be seeded by hand and is wrong for exactly as long as it is not.
+  // Listeners attached to a socket that is already connected have no `connect`
+  // left to hear, so anything holding this as its own state has to seed it by
+  // hand and is wrong for exactly as long as it has not.
   const connected = useSyncExternalStore(
     useCallback(
       (onChange: () => void) => {

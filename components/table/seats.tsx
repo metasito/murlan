@@ -499,12 +499,12 @@ function ReconnectingChip({
   const { t } = useTranslation();
   const [left, setLeft] = useState(seconds);
 
-  // Which grace window this is. A new one puts the countdown back to full in the
-  // same render, so its first frame is never the previous window's remainder.
-  const window = `${resetKey}|${seconds}`;
-  const [shownWindow, setShownWindow] = useState(window);
-  if (window !== shownWindow) {
-    setShownWindow(window);
+  // A new grace window puts the countdown back to full in the same render, so
+  // its first frame is never the previous one's remainder.
+  const graceWindow = `${resetKey}|${seconds}`;
+  const [shownWindow, setShownWindow] = useState(graceWindow);
+  if (graceWindow !== shownWindow) {
+    setShownWindow(graceWindow);
     setLeft(seconds);
   }
 

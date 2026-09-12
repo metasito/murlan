@@ -425,7 +425,6 @@ export default function TutorialScreen() {
     AsyncStorage.setItem(PROGRESS_KEY, String(stepIndex)).catch(() => {});
   }, [stepIndex, loaded]);
 
-  // A new beat starts unanswered.
   const [shownStep, setShownStep] = useState(stepIndex);
   if (stepIndex !== shownStep) {
     setShownStep(stepIndex);

@@ -407,7 +407,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
   // The flag reports the stored row, so the match ending retires both — this
   // half here because the row's removal belongs to the effect below and a flag
   // does not.
-  const [flaggedForOver, setFlaggedForOver] = useState(match.over);
+  const [flaggedForOver, setFlaggedForOver] = useState(false);
   if (match.over !== flaggedForOver) {
     setFlaggedForOver(match.over);
     if (match.over && gameState) setHasSavedGame(false);

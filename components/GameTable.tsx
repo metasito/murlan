@@ -580,8 +580,8 @@ export function GameTable({
   // card, and folding it into a multi-select the play button also reads would
   // let a staged combination survive into the next manche.
   const [exchangePick, setExchangePick] = useState<string | null>(null);
-  // Dropped rather than masked: card ids repeat across deals, so a pick left
-  // standing would come back pointing at a different card.
+  // Card ids repeat across deals, so a pick that outlived its exchange would
+  // come back pointing at a different card.
   const [pickedWhileMine, setPickedWhileMine] = useState(exchangeIsMine);
   if (exchangeIsMine !== pickedWhileMine) {
     setPickedWhileMine(exchangeIsMine);
