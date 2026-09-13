@@ -15,6 +15,7 @@ import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { trackedRootFiles } from "./helpers/trackedFiles.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -259,10 +260,7 @@ const AUTOMATION_FLAG = /EXPO_PUBLIC_E2E_REDUCE_MOTION\s*[:=]/;
 function buildConfigFiles(): string[] {
   const workflows = readdirSync(path.join(repoRoot, ".github/workflows"))
     .map((name) => `.github/workflows/${name}`);
-  const roots = readdirSync(repoRoot, { withFileTypes: true })
-    .filter((e) => e.isFile())
-    .map((e) => e.name);
-  return [...workflows, ...roots];
+  return [...workflows, ...trackedRootFiles(repoRoot)];
 }
 
 test("only maestro.yml's build sets the automation flag", () => {

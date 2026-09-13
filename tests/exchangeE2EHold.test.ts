@@ -10,6 +10,7 @@ import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { trackedRootFiles } from "./helpers/trackedFiles.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (rel: string) => readFileSync(path.join(repoRoot, rel), "utf8");
@@ -59,9 +60,7 @@ describe("the offline exchange overlay's E2E hold", () => {
     const scripts = readdirSync(path.join(repoRoot, "scripts"), { withFileTypes: true })
       .filter((e) => e.isFile())
       .map((e) => `scripts/${e.name}`);
-    const roots = readdirSync(repoRoot, { withFileTypes: true })
-      .filter((e) => e.isFile())
-      .map((e) => e.name);
+    const roots = trackedRootFiles(repoRoot);
     const setters = [...workflows, ...scripts, ...roots].filter((rel) => FLAG.test(read(rel)));
 
     assert.deepEqual(
