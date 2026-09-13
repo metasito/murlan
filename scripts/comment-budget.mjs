@@ -48,23 +48,26 @@ function* classify(text) {
   }
 }
 
+const key = ([line, isComment]) => `${isComment ? "c" : "k"}${line}`;
+
 /**
- * The lines `after` holds that `before` did not, by multiset: every trimmed line of `before` is a
- * token one line of `after` may spend. Order is ignored on purpose, so a block moved within a file
- * or merely reindented is not "added" — the rule is about prose that is new, not prose that moved.
+ * By multiset, not by alignment: each line of `before` is a token one line of `after` may spend,
+ * so a line that only moved or was reindented is not added. That undercounts against a line diff
+ * in both columns at once and can only ever name more changes than one would, never fewer —
+ * spending a token requires the same text at the same kind to have been there already.
  */
 export function addedCounts(before, after) {
   const pool = new Map();
-  for (const [line] of classify(before)) pool.set(line, (pool.get(line) ?? 0) + 1);
+  for (const line of classify(before)) pool.set(key(line), (pool.get(key(line)) ?? 0) + 1);
   let comment = 0;
   let code = 0;
-  for (const [line, isComment] of classify(after)) {
-    const held = pool.get(line) ?? 0;
+  for (const line of classify(after)) {
+    const held = pool.get(key(line)) ?? 0;
     if (held) {
-      pool.set(line, held - 1);
+      pool.set(key(line), held - 1);
       continue;
     }
-    if (isComment) comment += 1;
+    if (line[1]) comment += 1;
     else code += 1;
   }
   return { comment, code };
@@ -86,7 +89,10 @@ const show = (rev, file) => {
 };
 
 export function budget(base, head = "HEAD") {
-  const files = git("diff", "--name-only", "--diff-filter=AMR", "-M", `${base}...${head}`,
+  // The same revision on both sides. `base...head` lists the files against the merge base, so
+  // reading their content at `base`'s tip would charge the branch for whatever main did meanwhile.
+  const from = git("merge-base", base, head).trim();
+  const files = git("diff", "--name-only", "--diff-filter=AMR", "-M", from, head,
     "--", "*.mjs", "*.js", "*.ts", "*.tsx").split("\n").filter(Boolean);
   const named = [];
   for (const file of files) {
@@ -96,7 +102,7 @@ export function budget(base, head = "HEAD") {
     } catch {
       continue; // deleted or renamed away; nothing was written
     }
-    const added = addedCounts(show(base, file), after);
+    const added = addedCounts(show(from, file), after);
     if (over(added)) named.push([file, added]);
   }
   return named;

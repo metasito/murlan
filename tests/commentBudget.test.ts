@@ -62,6 +62,21 @@ describe("addedCounts against a before", () => {
   test("deleting is never adding", () => {
     assert.deepEqual(addedCounts("// 1\n// 2\nconst a = 1;", "const a = 1;"), { comment: 0, code: 0 });
   });
+
+  // Both columns undercount a line diff, and the undercount is one-sided: it can only name a
+  // change a line diff would let through. Extracting a helper out of code that stays word for
+  // word buys no budget for the prose written about it.
+  test("code that only moved within the file is not added code", () => {
+    const body = ["const a = 1;", "const b = 2;"];
+    const before = body.join("\n");
+    const after = ["function f() {", ...body, "}", "f();"].join("\n");
+    assert.deepEqual(addedCounts(before, after), { comment: 0, code: 3 });
+  });
+
+  test("commenting a line out is prose, and uncommenting it is code", () => {
+    assert.deepEqual(addedCounts("const a = 1;", "// const a = 1;"), { comment: 1, code: 0 });
+    assert.deepEqual(addedCounts("/*\nconst a = 1;\n*/", "const a = 1;"), { comment: 0, code: 1 });
+  });
 });
 
 describe("over", () => {
@@ -85,13 +100,12 @@ describe("over", () => {
     assert.equal(over(delta(prose(8), ["const a = 1;"])), false);
   });
 
-  // Measured against the net, a file that shrinks puts the bar below zero: the rewrite that
-  // deleted 122 lines of queue-loop.mjs failed the check for sixteen JSDoc contracts.
+  // The tags matter: a rewrite emits code that is not the code it replaced, and lines that come
+  // back word for word are the moved-code case above, not this one.
   test("a rewrite that deletes far more code than it adds comment is within budget", () => {
     assert.equal(over(delta(code(200, "old"), [...prose(16), ...code(78, "new")])), false);
   });
 
-  // Measured against `abs`, a deletion bought a comment budget its own size: #1001.
   test("a large block of prose is named however much code the same change deleted", () => {
     assert.equal(over(delta(code(500), prose(400))), true);
   });
