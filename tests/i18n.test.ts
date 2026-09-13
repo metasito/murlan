@@ -553,31 +553,20 @@ describe("every sentence that names the opening card interpolates it", () => {
 });
 
 describe("interpolate()", () => {
-  test("replaces a single placeholder", () => {
-    assert.equal(interpolate("Hello {{name}}", { name: "Ana" }), "Hello Ana");
-  });
-
-  test("replaces multiple distinct placeholders", () => {
-    assert.equal(
-      interpolate("{{a}}/{{b}}", { a: 1, b: 2 }),
-      "1/2"
-    );
-  });
-
-  test("replaces every occurrence of a repeated placeholder", () => {
-    assert.equal(
-      interpolate("{{x}} and {{x}} again", { x: "3" }),
-      "3 and 3 again"
-    );
-  });
-
-  test("leaves a placeholder untouched when its param is missing", () => {
-    assert.equal(interpolate("Hi {{name}}", {}), "Hi {{name}}");
-  });
-
-  test("returns the template unchanged when no params are given", () => {
-    assert.equal(interpolate("plain text"), "plain text");
-  });
+  // One row per branch of interpolate(): substitution, the global sweep a
+  // first-only regex would fail, and the two shapes that must render the
+  // template rather than the string "undefined".
+  for (const [name, template, params, expected] of [
+    ["a single placeholder", "Hello {{name}}", { name: "Ana" }, "Hello Ana"],
+    ["multiple distinct placeholders", "{{a}}/{{b}}", { a: 1, b: 2 }, "1/2"],
+    ["every occurrence of a repeated placeholder", "{{x}} and {{x}} again", { x: "3" }, "3 and 3 again"],
+    ["a placeholder whose param is missing", "Hi {{name}}", {}, "Hi {{name}}"],
+    ["a template given no params at all", "plain text", undefined, "plain text"],
+  ] as [string, string, Record<string, string | number> | undefined, string][]) {
+    test(`interpolates ${name}`, () => {
+      assert.equal(interpolate(template, params), expected);
+    });
+  }
 });
 
 describe("translate() produces the expected output per locale", () => {

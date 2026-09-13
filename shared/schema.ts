@@ -1,7 +1,5 @@
 import { sql } from "drizzle-orm";
 import { pgTable, text, varchar, timestamp, integer, boolean, pgEnum, jsonb, index, uniqueIndex, primaryKey, bigserial, customType } from "drizzle-orm/pg-core";
-import { createInsertSchema } from "drizzle-zod";
-import { z } from "zod";
 import type { GameState } from "../lib/gameEngine.ts";
 import type { PersistedEnvelope } from "../server/onlineGameLogic.ts";
 import type { ReplayMove, ReplaySeat } from "../lib/replay.ts";
@@ -413,13 +411,10 @@ export const socketIoAttachments = pgTable(
   ]
 );
 
-export const insertUserSchema = createInsertSchema(users).pick({
-  username: true,
-  password: true,
-  email: true,
-});
-
-export type InsertUser = z.infer<typeof insertUserSchema>;
+// The three columns a signup supplies; every other column is defaulted or set
+// by the store. `$inferInsert` already carries each one's optionality, so email
+// stays optional here the way the column is.
+export type InsertUser = Pick<typeof users.$inferInsert, "username" | "password" | "email">;
 export type User = typeof users.$inferSelect;
 export type Room = typeof rooms.$inferSelect;
 export type RoomVisibility = (typeof roomVisibilityEnum.enumValues)[number];
