@@ -44,6 +44,7 @@ test("vacateSeat never sets personality on the seat it hands to the AI", async (
     vacatedSeats: new Map(),
     endMatchVotes: new Set<string>(),
     abandonedSeats: new Map<number, string>(),
+    weakSeats: new Set<number>(),
     gameState,
   } as unknown as OnlineGameState;
   activeGames.set(ROOM, game);
