@@ -45,8 +45,7 @@ const { NotificationProvider } =
   require('@/context/NotificationContext') as typeof import('@/context/NotificationContext');
 
 const mount = () => {
-  // One client per mount, as a fresh cache per test: created here rather than in
-  // the wrapper's body, which React re-runs on every render.
+  // Out here, not in the wrapper's body, which React re-runs on every render.
   const client = new QueryClient();
   return renderHook(() => useSocket(), {
     wrapper: ({ children }: { children: React.ReactNode }) => (

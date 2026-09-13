@@ -39,8 +39,7 @@ jest.mock('@/context/SocketContext', () => ({
 }));
 
 async function mountProvider() {
-  // One client per mount, as a fresh cache per test: created here rather than in
-  // the wrapper's body, which React re-runs on every render.
+  // Out here, not in the wrapper's body, which React re-runs on every render.
   const client = new QueryClient();
   return renderHook(() => useOnlineGame(), {
     wrapper: ({ children }: { children: React.ReactNode }) => (
@@ -81,57 +80,57 @@ describe('a refused spectate', () => {
   });
 
   it('leaves the next table by releasing the seat, not by unspectating', async () => {
-    const view = await mountProvider();
+    const { result, unmount } = await mountProvider();
 
-    await waitFor(() => view.result.current.spectateRoom('ZZZZZZ'));
+    await waitFor(() => result.current.spectateRoom('ZZZZZZ'));
     await deliver('room:error', { code: 'GAME_NOT_FOUND', message: 'Game not found' });
-    await waitFor(() => expect(view.result.current.isSpectator).toBe(false));
+    await waitFor(() => expect(result.current.isSpectator).toBe(false));
 
     emitted.length = 0;
-    await waitFor(() => view.result.current.leaveRoom());
+    await waitFor(() => result.current.leaveRoom());
 
     expect(emitted.map((e) => e.event)).toContain('room:leave');
     expect(emitted.map((e) => e.event)).not.toContain('room:unspectate');
 
-    await view.unmount();
+    await unmount();
   });
 
   // The refusal can be slow, or never rendered at all; taking a seat settles
   // the question on its own.
   it('does not survive into a room the player joins', async () => {
-    const view = await mountProvider();
+    const { result, unmount } = await mountProvider();
 
-    await waitFor(() => view.result.current.spectateRoom('ZZZZZZ'));
-    await waitFor(() => expect(view.result.current.isSpectator).toBe(true));
+    await waitFor(() => result.current.spectateRoom('ZZZZZZ'));
+    await waitFor(() => expect(result.current.isSpectator).toBe(true));
 
-    await waitFor(() => view.result.current.joinRoom('ABCDEF'));
-    await waitFor(() => expect(view.result.current.isSpectator).toBe(false));
+    await waitFor(() => result.current.joinRoom('ABCDEF'));
+    await waitFor(() => expect(result.current.isSpectator).toBe(false));
 
     emitted.length = 0;
-    await waitFor(() => view.result.current.leaveRoom());
+    await waitFor(() => result.current.leaveRoom());
 
     expect(emitted.map((e) => e.event)).toContain('room:leave');
     expect(emitted.map((e) => e.event)).not.toContain('room:unspectate');
 
-    await view.unmount();
+    await unmount();
   });
 
   // The flag still has to do its job for someone who really is watching —
   // `room:leave` from a spectator runs the seated teardown for a table this
   // socket holds no seat at.
   it('leaves a table it is genuinely watching with room:unspectate', async () => {
-    const view = await mountProvider();
+    const { result, unmount } = await mountProvider();
 
-    await waitFor(() => view.result.current.spectateRoom('ABCDEF'));
+    await waitFor(() => result.current.spectateRoom('ABCDEF'));
     await deliver('game:state', spectatorState());
-    await waitFor(() => expect(view.result.current.isSpectator).toBe(true));
+    await waitFor(() => expect(result.current.isSpectator).toBe(true));
 
     emitted.length = 0;
-    await waitFor(() => view.result.current.leaveRoom());
+    await waitFor(() => result.current.leaveRoom());
 
     expect(emitted.map((e) => e.event)).toContain('room:unspectate');
     expect(emitted.map((e) => e.event)).not.toContain('room:leave');
 
-    await view.unmount();
+    await unmount();
   });
 });

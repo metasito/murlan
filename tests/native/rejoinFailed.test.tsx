@@ -67,8 +67,7 @@ function roomState(roomId: string) {
 /** Mounts the provider with `roomId` already persisted, so it rejoins on mount. */
 async function mountRejoining(roomId: string) {
   await AsyncStorage.setItem(ACTIVE_ROOM_KEY, roomId);
-  // One client per mount, as a fresh cache per test: created here rather than in
-  // the wrapper's body, which React re-runs on every render.
+  // Out here, not in the wrapper's body, which React re-runs on every render.
   const client = new QueryClient();
   const view = await renderHook(useRejoin, {
     wrapper: ({ children }: { children: React.ReactNode }) => (
@@ -109,34 +108,34 @@ describe('game:rejoin_failed', () => {
   });
 
   it('ignores a reply for a room the player has already left behind', async () => {
-    const view = await mountRejoining('R1');
+    const { result, unmount } = await mountRejoining('R1');
 
     await deliver('room:state', roomState('R2'));
-    await waitFor(() => expect(view.result.current.game.room?.roomId).toBe('R2'));
+    await waitFor(() => expect(result.current.game.room?.roomId).toBe('R2'));
 
     await deliver('game:rejoin_failed', failure('R1'));
 
-    expect(view.result.current.game.room?.roomId).toBe('R2');
-    expect(view.result.current.game.rejoinFailed).toBe(false);
-    expect(view.result.current.notification).toBeNull();
+    expect(result.current.game.room?.roomId).toBe('R2');
+    expect(result.current.game.rejoinFailed).toBe(false);
+    expect(result.current.notification).toBeNull();
 
-    await view.unmount();
+    await unmount();
   });
 
   it('still tears down while that room is the outstanding attempt', async () => {
-    const view = await mountRejoining('R1');
+    const { result, unmount } = await mountRejoining('R1');
 
     await deliver('game:rejoin_failed', failure('R1'));
 
-    await waitFor(() => expect(view.result.current.game.rejoinFailed).toBe(true));
-    expect(view.result.current.game.room).toBeNull();
+    await waitFor(() => expect(result.current.game.rejoinFailed).toBe(true));
+    expect(result.current.game.room).toBeNull();
     // The whole point of the code: the player is told which failure this was,
     // in their own language, rather than watching the table disappear.
-    expect(view.result.current.notification?.message).toBe(locale['server.GAME_NOT_FOUND']);
+    expect(result.current.notification?.message).toBe(locale['server.GAME_NOT_FOUND']);
     // The seat is the disconnect grace timer's to release, not this path's.
     expect(emitted.map((e) => e.event)).not.toContain('room:leave');
 
-    await view.unmount();
+    await unmount();
   });
 
   // ── RES-03: SERVER_ERROR is the handler's blanket catch, not a verdict ───
@@ -144,12 +143,12 @@ describe('game:rejoin_failed', () => {
   it('retries a SERVER_ERROR without destroying the way back in', async () => {
     jest.useFakeTimers();
     try {
-      const view = await mountRejoining('R1');
+      const { result, unmount } = await mountRejoining('R1');
       emitted.length = 0;
 
       for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
         await deliver('game:rejoin_failed', { roomId: 'R1', code: 'SERVER_ERROR' });
-        expect(view.result.current.game.rejoinFailed).toBe(false);
+        expect(result.current.game.rejoinFailed).toBe(false);
         expect(await AsyncStorage.getItem(ACTIVE_ROOM_KEY)).toBe('R1');
         jest.advanceTimersByTime(RETRY_DELAY_MS);
       }
@@ -162,10 +161,10 @@ describe('game:rejoin_failed', () => {
       jest.advanceTimersByTime(RETRY_DELAY_MS * 4);
       expect(emitted).toHaveLength(MAX_RETRIES);
 
-      await waitFor(() => expect(view.result.current.game.rejoinFailed).toBe(true));
+      await waitFor(() => expect(result.current.game.rejoinFailed).toBe(true));
       expect(await AsyncStorage.getItem(ACTIVE_ROOM_KEY)).toBeNull();
 
-      await view.unmount();
+      await unmount();
     } finally {
       jest.useRealTimers();
     }
@@ -175,18 +174,18 @@ describe('game:rejoin_failed', () => {
   // every entry into a table as well as on the way out of one — a spectator
   // arriving with it still set is bounced out of the game screen on sight.
   it('does not survive into a spectated table', async () => {
-    const view = await mountRejoining('R1');
+    const { result, unmount } = await mountRejoining('R1');
 
     await deliver('game:rejoin_failed', failure('R1'));
-    await waitFor(() => expect(view.result.current.game.rejoinFailed).toBe(true));
+    await waitFor(() => expect(result.current.game.rejoinFailed).toBe(true));
 
-    await waitFor(() => view.result.current.game.spectateRoom('ABCDEF'));
-    await waitFor(() => expect(view.result.current.game.rejoinFailed).toBe(false));
+    await waitFor(() => result.current.game.spectateRoom('ABCDEF'));
+    await waitFor(() => expect(result.current.game.rejoinFailed).toBe(false));
     expect(emitted).toContainEqual({
       event: 'room:spectate',
       payload: { code: 'ABCDEF' },
     });
 
-    await view.unmount();
+    await unmount();
   });
 });

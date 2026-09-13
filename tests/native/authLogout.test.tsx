@@ -66,57 +66,57 @@ describe('a logout the server refuses', () => {
   });
 
   it('gives the device its push registration back', async () => {
-    const view = await signedIn();
+    const { result, unmount } = await signedIn();
 
     await act(async () => {
-      await expect(view.result.current.logout()).rejects.toThrow('logout failed');
+      await expect(result.current.logout()).rejects.toThrow('logout failed');
     });
 
     expect(mockUnregisterForPush).toHaveBeenCalledTimes(1);
     expect(mockRegisterForPush).toHaveBeenCalledTimes(1);
-    view.unmount();
+    unmount();
   });
 
   // `registerForPush` asks the OS for permission when it has not been asked,
   // so undoing a withdrawal that never happened is a dialog out of nowhere.
   it('leaves a device that was never registered alone', async () => {
     mockUnregisterForPush.mockResolvedValue(false);
-    const view = await signedIn();
+    const { result, unmount } = await signedIn();
 
     await act(async () => {
-      await expect(view.result.current.logout()).rejects.toThrow('logout failed');
+      await expect(result.current.logout()).rejects.toThrow('logout failed');
     });
 
     expect(mockRegisterForPush).not.toHaveBeenCalled();
-    view.unmount();
+    unmount();
   });
 
   it('leaves the player signed in, in state and in storage', async () => {
-    const view = await signedIn();
+    const { result, unmount } = await signedIn();
 
     await act(async () => {
-      await expect(view.result.current.logout()).rejects.toThrow('logout failed');
+      await expect(result.current.logout()).rejects.toThrow('logout failed');
     });
 
-    expect(view.result.current.user?.username).toBe('Ana');
+    expect(result.current.user?.username).toBe('Ana');
     expect(await AsyncStorage.getItem(STORAGE_KEY)).toBe(JSON.stringify(SIGNED_IN));
-    view.unmount();
+    unmount();
   });
 });
 
 describe('a logout the server accepts', () => {
   it('signs the player out, and leaves the device unregistered', async () => {
     mockApiRequest.mockResolvedValue({ ok: true });
-    const view = await signedIn();
+    const { result, unmount } = await signedIn();
 
     await act(async () => {
-      await view.result.current.logout();
+      await result.current.logout();
     });
 
-    expect(view.result.current.user).toBeNull();
+    expect(result.current.user).toBeNull();
     expect(await AsyncStorage.getItem(STORAGE_KEY)).toBeNull();
     expect(mockUnregisterForPush).toHaveBeenCalledTimes(1);
     expect(mockRegisterForPush).not.toHaveBeenCalled();
-    view.unmount();
+    unmount();
   });
 });

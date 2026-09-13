@@ -64,44 +64,44 @@ beforeEach(async () => {
 describe('renaming the signed-in account', () => {
   it('patches the account and shows the new name', async () => {
     mockApiRequest.mockResolvedValue({ json: async () => RENAMED });
-    const view = await signedIn();
+    const { result, unmount } = await signedIn();
 
     await act(async () => {
-      await view.result.current.rename('AnaBesi');
+      await result.current.rename('AnaBesi');
     });
 
     expect(mockApiRequest).toHaveBeenCalledWith('PATCH', '/api/users/me', {
       username: 'AnaBesi',
     });
-    await waitFor(() => expect(view.result.current.user?.username).toBe('AnaBesi'));
+    await waitFor(() => expect(result.current.user?.username).toBe('AnaBesi'));
 
-    await view.unmount();
+    await unmount();
   });
 
   it('writes the new name to storage, so it survives a restart offline', async () => {
     mockApiRequest.mockResolvedValue({ json: async () => RENAMED });
-    const view = await signedIn();
+    const { result, unmount } = await signedIn();
 
     await act(async () => {
-      await view.result.current.rename('AnaBesi');
+      await result.current.rename('AnaBesi');
     });
 
     const stored = JSON.parse((await AsyncStorage.getItem(STORAGE_KEY)) ?? 'null');
     expect(stored?.username).toBe('AnaBesi');
 
-    await view.unmount();
+    await unmount();
   });
 
   it('leaves the account alone when the server refuses', async () => {
     mockApiRequest.mockRejectedValue(new Error('409: taken'));
-    const view = await signedIn();
+    const { result, unmount } = await signedIn();
 
-    await expect(view.result.current.rename('AnaBesi')).rejects.toThrow();
+    await expect(result.current.rename('AnaBesi')).rejects.toThrow();
 
-    expect(view.result.current.user?.username).toBe('Ana');
+    expect(result.current.user?.username).toBe('Ana');
     const stored = JSON.parse((await AsyncStorage.getItem(STORAGE_KEY)) ?? 'null');
     expect(stored?.username).toBe('Ana');
 
-    await view.unmount();
+    await unmount();
   });
 });

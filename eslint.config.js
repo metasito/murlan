@@ -142,14 +142,12 @@ module.exports = defineConfig([
   {
     // `globals` polices render purity for the React Compiler, which never
     // compiles this suite. What it flags is a Probe assigning a hook's return
-    // value to a module-scope `let` so the test body can drive it. #891 counted
-    // 12 such sites; #1002 moved the eight that only ever read the hook's own
-    // return value onto `renderHook`. These three files are what is left, and
-    // each drives a hook whose effect it observes in a *sibling* consumer's
-    // render — an animated `paddingTop`, the settings sheet's rows, a banner the
-    // modal draws. `renderHook` renders the hook alone, so it cannot see any of
-    // them. `refs` is on: its one site wrote a ref during render, which an
-    // effect does properly. `tests/hooksLint` refuses either one off elsewhere.
+    // value to a module-scope `let` so the test body can drive it. A test that
+    // only reads that value wants `renderHook` instead; in these three the
+    // rendered consumer *is* the subject — an animated `paddingTop`, the
+    // settings sheet's rows, the banner `<SettingsModal>` draws — and the Probe
+    // is only how the hook gets driven. `tests/hooksLint` asks the rule which
+    // files still report, so this list cannot outlive what it is for.
     files: [
       "tests/native/bannerMakesRoom.test.tsx",
       "tests/native/gameSettingsSheetRows.test.tsx",
