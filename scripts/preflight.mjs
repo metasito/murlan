@@ -9,6 +9,10 @@
  * Untracked files are listed but do not block: a scratch directory is not someone's in-flight
  * change, and blocking on one would make the check something to skip.
  *
+ * Exit 0 is clear and exit 1 is "a person has to act". Exit 2 is "not startable yet, ask again" —
+ * a peer's uncommitted work and a drifted install both clear on their own, and the supervisor
+ * holds on them rather than ending an unattended night.
+ *
  * Usage: node scripts/preflight.mjs
  */
 import { execFileSync } from "node:child_process";
@@ -145,7 +149,7 @@ if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "
       "\nThey belong to a session that did not finish. Commit them on a branch, or ask their owner " +
         "to. Do not stash or discard them — that removes the work with nothing pointing at where it went."
     );
-    process.exit(1);
+    process.exit(2);
   }
 
   const drift = checkLockDrift(shared);
@@ -157,7 +161,7 @@ if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "
         `typecheck on phantom errors and fail test:native outright. node_modules is shared live ` +
         `across every worktree: check no peer session is mid-run before reinstalling.`
     );
-    process.exit(1);
+    process.exit(2);
   }
 
   console.log(`preflight: ${shared} is clean.`);

@@ -7,6 +7,7 @@ import { readFileSync, rmSync } from "node:fs";
 import path from "node:path";
 import {
   parseRoute,
+  pushedPr,
   shouldStop,
   queueLoopArgs,
   TURNS_BY_SIZE,
@@ -340,10 +341,48 @@ describe("runTicket", () => {
       opts({ screen }),
     );
     const out = said.join("\n");
-    assert.match(out, /\[1\/6\] A/);
-    assert.match(out, /\[3\/6\] C/);
-    assert.match(out, /\[5\/6\] E/);
+    assert.match(out, /✓·····  A/);
+    assert.match(out, /✓✓✓···  C/);
+    assert.match(out, /✓✓✓✓✓·  E/);
     assert.equal(run.phase, "E");
+  });
+
+  // `row()` has carried a `phases` field since the board was deleted and its only production
+  // caller passed `{}` — a test proving the function can hold a value nothing ever gives it. The
+  // durations exist here, in the one place that sees the markers arrive.
+  test("times each phase, which is what the record is built from", async () => {
+    const run = await runTicket(fakeSpawn([phase("A"), phase("C"), phase("F"), RESULT]), opts());
+    assert.deepEqual(Object.keys(run.phases).sort(), ["A", "C", "F"]);
+    for (const [letter, secs] of Object.entries(run.phases) as [string, number][]) {
+      assert.ok(Number.isInteger(secs) && secs >= 0, `phase ${letter} timed as ${secs}`);
+    }
+  });
+
+  // The marker is repeated on every message of a long phase, not only on the first.
+  test("a phase said twice running is one phase, not two openings", async () => {
+    const { said, screen } = sink();
+    await runTicket(fakeSpawn([phase("C"), phase("C"), phase("C"), RESULT]), opts({ screen }));
+    assert.equal(said.join("\n").match(/✓✓✓···  C/g)?.length, 1);
+  });
+
+  test("the session's closing declaration reaches the caller", async () => {
+    const declare = JSON.stringify({
+      type: "assistant",
+      message: {
+        content: [{ type: "text", text: 'LOOP-RESULT {"ticket":953,"branch":"agent/953-x","pr":1204,"phase":"F"}' }],
+      },
+    });
+    const run = await runTicket(fakeSpawn([phase("F"), declare, RESULT]), opts());
+    assert.equal(run.declared?.pr, 1204);
+    assert.equal(run.declared?.branch, "agent/953-x");
+  });
+
+  // Sticky, it pre-empted everything else: a session refused at minute 2 that recovered and
+  // pushed at minute 40 was reported refused, and its pull request was never looked for.
+  test("a refusal the session recovers from does not survive to the caller", async () => {
+    const run = await runTicket(fakeSpawn([meter("rejected"), meter("allowed"), RESULT]), opts({ number: 962 }));
+    assert.equal(run.blocked, false);
+    assert.equal(run.blockedUntil, 0);
   });
 
   test("draws the header once", async () => {
@@ -355,7 +394,7 @@ describe("runTicket", () => {
   test("a resumed ticket says so, and does not read as a closed phase", async () => {
     const { said, screen } = sink();
     await runTicket(fakeSpawn([RESULT]), opts({ number: 962, at: "D", screen }));
-    const rows = said.filter((l) => l.includes("[4/6] D"));
+    const rows = said.filter((l) => /✓✓✓↻··  D/.test(l));
     assert.equal(rows.length, 1);
     assert.match(rows[0], /↻.*resumed/);
   });
@@ -630,8 +669,12 @@ describe("settleOutcome", () => {
     assert.deepEqual(settleOutcome({ action: "merged" }), { countsAsFailure: false, recorded: "landed" });
   });
 
-  test("a fix writes no row — the session that fixes it does", () => {
-    assert.equal(settleOutcome({ action: "fix" }).recorded, null);
+  // A ticket red three times produced three whole sessions and zero rows, so its cost, its turns
+  // and the fact that it needed the rounds at all were absent from the file kept to measure them.
+  test("a fix writes a row of its own, and does not count as a failure", () => {
+    const out = settleOutcome({ action: "fix" });
+    assert.equal(out.recorded, "retry");
+    assert.equal(out.countsAsFailure, false);
   });
 
   // park() adds ready-for-human and classify() sends any issue carrying an owner label to the
@@ -648,23 +691,38 @@ describe("settleOutcome", () => {
 });
 
 describe("outcomeOf", () => {
-  test("a pushed pull request is not yet landed", () => {
-    assert.equal(outcomeOf({ pr: 984, why: null }).landed, false);
-    assert.equal(outcomeOf({ pr: 984, why: null }).pushed, 984);
+  const open = { number: 984, state: "OPEN", head: "agent/42-x" };
+
+  test("an open pull request is settled, not yet landed", () => {
+    assert.deepEqual(outcomeOf({ pr: open, why: null }), { action: "settle", pr: 984 });
+  });
+
+  // A peer, an auto-merge or the owner between the session's exit and this read. Asked with
+  // `--state open` this answered "pushed nothing" and false-parked a ticket that had landed.
+  test("one merged while the supervisor was not looking is a landing", () => {
+    const o = outcomeOf({ pr: { ...open, state: "MERGED" }, why: null });
+    assert.equal(o.action, "landed");
+    assert.equal(o.pr, 984);
+  });
+
+  test("one closed without merging is the owner's, and says so by number", () => {
+    const o = outcomeOf({ pr: { ...open, state: "CLOSED" }, why: null });
+    assert.equal(o.action, "park");
+    assert.match(String(o.why), /#984 is closed/);
   });
 
   // The session stood down on a lost claim race, or derive() could not read the run. Both used to
   // read as "the worktree is gone, so it landed".
   test("no pull request and no reason is not landed either", () => {
     const o = outcomeOf({ pr: null, why: null });
-    assert.equal(o.landed, false);
+    assert.equal(o.action, "park");
     assert.match(String(o.why), /pushed no pull request/);
   });
 
   test("a reason is never a landing", () => {
-    const o = outcomeOf({ pr: 984, why: "the session exited 1 in phase C" });
-    assert.equal(o.landed, false);
-    assert.equal(o.pushed, undefined);
+    const o = outcomeOf({ pr: open, why: "the session exited 1 in phase C" });
+    assert.equal(o.action, "park");
+    assert.equal(o.pr, undefined);
   });
 });
 
@@ -778,12 +836,20 @@ describe("afterRefusal", () => {
     assert.ok(step.hold > 0);
   });
 
-  // A reset already passed means go now. Falling through to the ordinary accounting instead would
-  // record a throttled session as a failed ticket and count it toward the breaker.
-  test("a window that has already reset goes again with no wait at all", () => {
+  // A hold of 0 is skipped entirely, so a refusal naming a reset already in the past — a clock
+  // skew, a stale window, a seven-day limit reported with an expired short-window reset — spun
+  // through twenty full `claude` spawns back to back, each paying its context creation.
+  test("a window that has already reset still waits the floor, never nothing", () => {
     const step = afterRefusal({ ...base, blockedUntil: now - 1 }, now);
     assert.equal(step.action, "wait");
-    assert.equal(step.hold, 0);
+    assert.equal(step.hold, WAIT.FLOOR);
+  });
+
+  test("no refusal ever produces a hold of zero", () => {
+    for (const blockedUntil of [0, now - 86_400_000, now - 1, now, now + 1, now + 600_000]) {
+      const step = afterRefusal({ ...base, blockedUntil }, now);
+      assert.ok(step.hold >= WAIT.FLOOR, `blockedUntil ${blockedUntil} held for ${step.hold}ms`);
+    }
   });
 
   // A usage refusal is a property of the account. Keyed per ticket the counter was inert —
@@ -801,5 +867,64 @@ describe("afterRefusal", () => {
 
   test("a session that pushed never waits, whatever the meter said", () => {
     assert.equal(afterRefusal({ ...base, done: true }, now).action, "proceed");
+  });
+});
+
+// What this function returns reaches `gh pr merge --merge --delete-branch`, unattended. Every
+// path through it therefore checks the head ref, including the one that trusts the number the
+// session declared — a number a model wrote into a line of text.
+describe("pushedPr only ever answers with this ticket's own pull request", () => {
+  const gh = (rows: object[], view: object | null = null) => {
+    return (_cmd: string, args: string[]) =>
+      args[1] === "view" ? JSON.stringify(view ?? {}) : JSON.stringify(rows);
+  };
+  const open = { number: 984, state: "OPEN", headRefName: "agent/42-x", mergedAt: null };
+
+  test("the branch's own pull request is taken", () => {
+    assert.deepEqual(pushedPr("agent/42-x", 42, null, 0, gh([open])), {
+      number: 984,
+      state: "OPEN",
+      head: "agent/42-x",
+    });
+  });
+
+  test("a pull request on another branch is not this ticket's, whatever gh returned", () => {
+    const other = { number: 990, state: "OPEN", headRefName: "agent/77-y", mergedAt: null };
+    assert.equal(pushedPr("agent/42-x", 42, null, 0, gh([other])), null);
+    assert.equal(pushedPr(null, 42, null, 0, gh([other])), null);
+  });
+
+  test("a declared number is checked against the head ref like everything else", () => {
+    const peer = { number: 1003, state: "OPEN", headRefName: "agent/891-rescue", mergedAt: null };
+    assert.equal(
+      pushedPr("agent/42-x", 42, 1003, 0, gh([], peer)),
+      null,
+      "a transposed number reached a peer's pull request",
+    );
+    const mine = { number: 1003, state: "OPEN", headRefName: "agent/42-x", mergedAt: null };
+    assert.equal(pushedPr("agent/42-x", 42, 1003, 0, gh([], mine))?.number, 1003);
+  });
+
+  // A ticket re-opened and re-queued still has its old agent/<n>-… pull request on the tracker.
+  // Read as a landing it releases the claim on a session that pushed nothing at all.
+  test("a merge older than this session is not this session's landing", () => {
+    const started = Date.UTC(2026, 8, 13, 9, 0);
+    const oldRow = {
+      number: 900,
+      state: "MERGED",
+      headRefName: "agent/42-x",
+      mergedAt: new Date(started - 86_400_000).toISOString(),
+    };
+    assert.equal(pushedPr("agent/42-x", 42, null, started, gh([oldRow])), null);
+
+    const freshRow = { ...oldRow, mergedAt: new Date(started + 60_000).toISOString() };
+    assert.equal(pushedPr("agent/42-x", 42, null, started, gh([freshRow]))?.state, "MERGED");
+  });
+
+  test("gh failing is not a pull request", () => {
+    const throws = () => {
+      throw new Error("gh: not authenticated");
+    };
+    assert.equal(pushedPr("agent/42-x", 42, 1003, 0, throws), null);
   });
 });

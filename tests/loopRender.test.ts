@@ -15,6 +15,8 @@ import {
   runTotal,
   PHASES,
   clockAt,
+  trail,
+  cols,
 } from "../scripts/loop-render.mjs";
 
 describe("elapsed", () => {
@@ -75,9 +77,11 @@ describe("header", () => {
 });
 
 describe("phaseLine", () => {
-  test("numbers the phase out of six and keeps queue.md's letter", () => {
+  // What is behind and what is left, not just how far along: the question a person watching a run
+  // that resumed mid-way actually has.
+  test("shows the six phases as a trail, and keeps queue.md's letter", () => {
     const line = phaseLine({ letter: "C", detail: "3 commits · 4 files", ms: 511_000 });
-    assert.match(line, /\[3\/6\]/);
+    assert.match(line, /✓✓✓···/, "two phases behind it, three still ahead");
     assert.match(line, /\bC\b/);
     assert.match(line, /build/);
     assert.match(line, /3 commits · 4 files/);
@@ -85,7 +89,7 @@ describe("phaseLine", () => {
   });
 
   test("the mark is the caller's, so a phase taken up does not read as a phase finished", () => {
-    assert.match(phaseLine({ letter: "C", detail: "resumed", ms: 0, mark: "↻" }), /↻ \[3\/6\]/);
+    assert.match(phaseLine({ letter: "C", detail: "resumed", ms: 0, mark: "↻" }), /✓✓↻···/);
     assert.equal(
       phaseLine({ letter: "C", detail: "x", ms: 0, mark: "↻" }).length,
       phaseLine({ letter: "C", detail: "x", ms: 0 }).length
@@ -187,23 +191,23 @@ describe("runTotal", () => {
 });
 
 describe("activeLine", () => {
-  test("names the phase, its number and how long it has been open", () => {
+  test("names the phase, what is behind it and how long it has been open", () => {
     const line = activeLine({ letter: "C", ms: 252_000 });
-    assert.match(line, /\[3\/6\] C/);
+    assert.match(line, /✓✓.···  C/);
     assert.match(line, /build/);
     assert.match(line, /4:12\s*$/);
   });
 
+  /** The spinner is the trail's own "here" glyph, so it sits at the phase's index, not at column 0. */
+  const spinner = (frame: number) => activeLine({ letter: "C", ms: 0, frame }).trim()[2];
+
   test("the spinner advances with the frame", () => {
-    assert.notEqual(
-      activeLine({ letter: "C", ms: 0, frame: 0 }).trim()[0],
-      activeLine({ letter: "C", ms: 0, frame: 1 }).trim()[0]
-    );
+    assert.notEqual(spinner(0), spinner(1));
   });
 
   test("the frame wraps rather than running off the end of the spinner", () => {
-    assert.equal(activeLine({ letter: "C", ms: 0, frame: SPIN.length }).trim()[0], SPIN[0]);
-    assert.equal(activeLine({ letter: "C", ms: 0, frame: SPIN.length * 3 + 2 }).trim()[0], SPIN[2]);
+    assert.equal(spinner(SPIN.length), SPIN[0]);
+    assert.equal(spinner(SPIN.length * 3 + 2), SPIN[2]);
   });
 
   // Every line this module emits is the same width, and the timer is what is redrawn in place: a
@@ -219,9 +223,17 @@ describe("activeLine", () => {
     assert.equal(activeLine({ letter: "C", ms: 0 }).length, phaseLine({ letter: "C", ms: 0 }).length);
   });
 
-  test("an unknown letter does not render a negative index", () => {
-    assert.doesNotMatch(activeLine({ letter: "Z", ms: 0 }), /\[0\/6\]/);
-    assert.doesNotMatch(phaseLine({ letter: "Z", ms: 0 }), /\[0\/6\]/);
+  test("an unknown letter leaves the whole trail unreached rather than inventing a position", () => {
+    assert.doesNotMatch(activeLine({ letter: "Z", ms: 0 }), /✓/);
+    assert.doesNotMatch(phaseLine({ letter: "Z", ms: 0 }), /✓/);
+  });
+
+  test("the trail is six glyphs, one per phase, however far along it is", () => {
+    for (const [letter] of [...PHASES, ["Z", ""]] as [string, string][]) {
+      assert.equal(trail(letter).length, PHASES.length, `${letter} drew a trail of the wrong length`);
+    }
+    assert.deepEqual(trail("A"), ["▸", "·", "·", "·", "·", "·"]);
+    assert.deepEqual(trail("F", "✗"), ["✓", "✓", "✓", "✓", "✓", "✗"]);
   });
 });
 
@@ -342,5 +354,101 @@ describe("clockAt", () => {
   test("a past or missing reset says so rather than counting backwards", () => {
     assert.doesNotMatch(clockAt(Math.floor(now / 1000) - 600, now), /in -/);
     assert.equal(clockAt(null), "an unknown time");
+  });
+});
+
+// Everything above runs with stdout not a TTY, where `styleText` emits nothing — so every
+// assertion on these lines passes just as well with the colour removed entirely. These force it
+// on, which is the only way the painting itself is under test.
+describe("colour, at a terminal", () => {
+  const painted = (fn: () => string) => {
+    const was = process.stdout.isTTY;
+    process.stdout.isTTY = true;
+    try {
+      return fn();
+    } finally {
+      process.stdout.isTTY = was;
+    }
+  };
+  const ESC = String.fromCharCode(27);
+
+  test("the trail is painted in three spans: passed, here, still to come", () => {
+    const line = painted(() => phaseLine({ letter: "C", detail: "d", ms: 1000 }));
+    assert.ok(line.includes(ESC), "no escapes at all — styleText was suppressed");
+    assert.equal(
+      (line.match(new RegExp(ESC + String.raw`\[\d`, "g")) ?? []).length >= 3,
+      true,
+      "fewer than three painted spans on the trail",
+    );
+  });
+
+  test("an outcome's colour follows its mark", () => {
+    const red = painted(() => phaseLine({ letter: "C", ms: 0, mark: "✗" }));
+    const green = painted(() => phaseLine({ letter: "C", ms: 0, mark: "✓" }));
+    assert.notEqual(red, green, "a failed phase renders identically to a passed one");
+  });
+
+  test("a painted line still covers the live one exactly, escapes not counted", () => {
+    const strip = (s: string) => s.replace(new RegExp(ESC + String.raw`\[[\d;?]*m`, "g"), "");
+    const live = painted(() => activeLine({ letter: "D", detail: "gh pr view", ms: 90_000 }));
+    const done = painted(() => phaseLine({ letter: "D", detail: "gh pr view", ms: 90_000 }));
+    assert.equal(strip(live).length, strip(done).length);
+  });
+
+  // reportRow and runTotal are written into .loop-logs/run-*.md, which no terminal ever reads.
+  test("the report's own lines are never painted", () => {
+    for (const line of [
+      painted(() => reportRow({ number: 42, title: "t", outcome: "parked", ms: 1, cost: 1, why: "w" })),
+      painted(() => runTotal({ tickets: 1, landed: 1, parked: 0, ms: 1, cost: 1 })),
+    ]) {
+      assert.ok(!line.includes(ESC), `an escape reached the report file: ${JSON.stringify(line)}`);
+    }
+  });
+});
+
+// A wrapped line puts the next carriage return on the wrong row, and from there every redraw is
+// wrong. Width is counted in terminal cells, so a character that takes two counts as two.
+describe("double-width characters", () => {
+  test("a CJK detail does not push the line past its width", () => {
+    for (const detail of ["日本語のコマンドをここに置く".repeat(4), "🔁🔁🔁".repeat(20), "x".repeat(200)]) {
+      assert.ok(
+        cols(activeLine({ letter: "C", detail, ms: 0, width: 60 })) <= 60,
+        `${detail.slice(0, 8)} rendered ${cols(activeLine({ letter: "C", detail, ms: 0, width: 60 }))} cells`,
+      );
+    }
+  });
+
+  test("cols counts cells, never UTF-16 units", () => {
+    assert.equal(cols("abc"), 3);
+    assert.equal(cols("日本"), 4);
+    assert.equal("🔁".length, 2, "the surrogate pair this is guarding against");
+    assert.equal(cols("🔁"), 2);
+  });
+});
+
+// The row exists to say why a ticket parked. A reason cut off before its content is a row that
+// cost a whole session and says nothing.
+describe("reportRow keeps the reason", () => {
+  const NEWLINE = String.fromCharCode(10);
+  const why = "3 CI rounds on the same branch did not go green — last: CI failed at Lint";
+
+  test("the reason survives a title long enough to crowd it out", () => {
+    const line = reportRow({
+      number: 1007,
+      title: "a ticket with a very long title indeed, going on and on past any width",
+      outcome: "parked",
+      ms: 5_400_000,
+      cost: 38.12,
+      why,
+    });
+    assert.match(line, /did not go green — last: CI failed at Lint/, `the reason was cut: ${line}`);
+    for (const l of line.split(NEWLINE)) assert.ok(cols(l) <= 78, `${cols(l)} cells: ${l}`);
+  });
+
+  test("the title still gives way first", () => {
+    const long = reportRow({ number: 1007, title: "t".repeat(90), outcome: "parked", ms: 1, cost: 1, why: "short" });
+    assert.match(long.split(NEWLINE)[0], /…/, "the title was not shortened");
+    assert.match(long, /short/);
+    for (const l of long.split(NEWLINE)) assert.ok(cols(l) <= 78);
   });
 });
