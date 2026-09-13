@@ -386,6 +386,22 @@ describe("runTicket", () => {
     assert.equal(run.blockedUntil, 0);
   });
 
+  // An hour of a healthy session printed nothing under the header: the board's only state was "a
+  // phase is open", and the marker it waited for never parsed. The row exists before one arrives.
+  test("the board is live before the session has named a phase", async () => {
+    const { said, screen } = sink();
+    await runTicket(fakeSpawn([RESULT]), opts({ screen }));
+    assert.match(said.join("\n"), /······  \?/, "a session that named no phase left no row at all");
+  });
+
+  test("the first marker replaces that row rather than closing it as a phase", async () => {
+    const { said, screen } = sink();
+    await runTicket(fakeSpawn([phase("A"), RESULT]), opts({ screen }));
+    const out = said.join("\n");
+    assert.equal(out.match(/······  \?/g), null, "the placeholder was reported as a finished phase");
+    assert.match(out, /✓·····  A/);
+  });
+
   test("draws the header once", async () => {
     const { said, screen } = sink();
     await runTicket(fakeSpawn([phase("A"), phase("C"), RESULT]), opts({ screen }));

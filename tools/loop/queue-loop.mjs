@@ -556,6 +556,9 @@ const HIDE = "\u001B[?25l";
 const SHOW = "\u001B[?25h";
 const REDRAW_MS = 120;
 
+/** The row the board shows before the session has named a phase. Never recorded as one. */
+const UNNAMED = "?";
+
 /**
  * The only thing in the loop that knows a cursor exists.
  *
@@ -635,7 +638,11 @@ export function ticker(out = process.stdout, err = process.stderr) {
       draw();
     },
     start(letter) {
-      api.close();
+      // A placeholder, not a phase: the first marker replaces it rather than closing it as one.
+      if (open?.letter === UNNAMED) {
+        clear();
+        open = null;
+      } else api.close();
       open = { letter, detail: "", startedAt: Date.now() };
       if (!live) return;
       timer = setInterval(draw, REDRAW_MS);
@@ -842,6 +849,11 @@ export function runTicket(
     // Opened here, not left for the session's own marker: `state.phase` is already this letter, so
     // the marker is read as "no change" and the board stays dark for the whole of that phase.
     screen.start(at);
+  } else {
+    // The board's only state was "a phase is open", so the spawn, the session's start-up, and the
+    // whole run if a marker is missed had nowhere to go and printed as a blank screen under the
+    // header. An unnamed row carries the same clock and tool detail, and says no phase is named yet.
+    screen.start(UNNAMED);
   }
 
   const budget = turnsFor(size);
