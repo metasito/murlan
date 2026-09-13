@@ -12,8 +12,7 @@
 // last test compares them to each other rather than checking each is non-empty.
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import React from 'react';
-import { Text } from 'react-native';
-import { act, render, waitFor } from '@testing-library/react-native';
+import { act, renderHook, waitFor } from '@testing-library/react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { AuthProvider, useAuth } from '@/context/AuthContext';
@@ -41,28 +40,16 @@ const RENAMED = { ...SIGNED_IN, username: 'AnaBesi' };
 
 const mockFetch = jest.fn<() => Promise<unknown>>();
 
-let rename: (username: string) => Promise<void>;
-function Probe() {
-  const auth = useAuth();
-  rename = auth.rename;
-  return (
-    <>
-      <Text testID="user">{auth.user ? auth.user.username : 'none'}</Text>
-      <Text testID="loading">{String(auth.loading)}</Text>
-    </>
-  );
-}
+const wrapper = ({ children }: { children: React.ReactNode }) => (
+  <AuthProvider>{children}</AuthProvider>
+);
 
 const signedIn = async () => {
   await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(SIGNED_IN));
-  const view = await render(
-    <AuthProvider>
-      <Probe />
-    </AuthProvider>
-  );
-  await waitFor(() => expect(view.getByTestId('loading').props.children).toBe('false'));
-  expect(view.getByTestId('user').props.children).toBe('Ana');
-  return view;
+  const hook = await renderHook(() => useAuth(), { wrapper });
+  await waitFor(() => expect(hook.result.current.loading).toBe(false));
+  expect(hook.result.current.user?.username).toBe('Ana');
+  return hook;
 };
 
 beforeEach(async () => {
@@ -77,44 +64,44 @@ beforeEach(async () => {
 describe('renaming the signed-in account', () => {
   it('patches the account and shows the new name', async () => {
     mockApiRequest.mockResolvedValue({ json: async () => RENAMED });
-    const view = await signedIn();
+    const { result, unmount } = await signedIn();
 
     await act(async () => {
-      await rename('AnaBesi');
+      await result.current.rename('AnaBesi');
     });
 
     expect(mockApiRequest).toHaveBeenCalledWith('PATCH', '/api/users/me', {
       username: 'AnaBesi',
     });
-    await waitFor(() => expect(view.getByTestId('user').props.children).toBe('AnaBesi'));
+    await waitFor(() => expect(result.current.user?.username).toBe('AnaBesi'));
 
-    await view.unmount();
+    await unmount();
   });
 
   it('writes the new name to storage, so it survives a restart offline', async () => {
     mockApiRequest.mockResolvedValue({ json: async () => RENAMED });
-    const view = await signedIn();
+    const { result, unmount } = await signedIn();
 
     await act(async () => {
-      await rename('AnaBesi');
+      await result.current.rename('AnaBesi');
     });
 
     const stored = JSON.parse((await AsyncStorage.getItem(STORAGE_KEY)) ?? 'null');
     expect(stored?.username).toBe('AnaBesi');
 
-    await view.unmount();
+    await unmount();
   });
 
   it('leaves the account alone when the server refuses', async () => {
     mockApiRequest.mockRejectedValue(new Error('409: taken'));
-    const view = await signedIn();
+    const { result, unmount } = await signedIn();
 
-    await expect(rename('AnaBesi')).rejects.toThrow();
+    await expect(result.current.rename('AnaBesi')).rejects.toThrow();
 
-    expect(view.getByTestId('user').props.children).toBe('Ana');
+    expect(result.current.user?.username).toBe('Ana');
     const stored = JSON.parse((await AsyncStorage.getItem(STORAGE_KEY)) ?? 'null');
     expect(stored?.username).toBe('Ana');
 
-    await view.unmount();
+    await unmount();
   });
 });

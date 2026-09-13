@@ -11,6 +11,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
+import { ESLint } from "eslint";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -20,9 +21,13 @@ const require = createRequire(import.meta.url);
 
 /** Every rule #891 adopted. */
 const ADOPTED = ["react-hooks/set-state-in-effect", "react-hooks/globals", "react-hooks/refs"];
-/** The one rule left off, and the only directory it may be off for. */
+/** The one rule left off, and the only files it may be off for. */
 const OFF_FOR_TESTS = "react-hooks/globals";
-const OFF_ONLY_FOR = "tests/native/**/*.{ts,tsx}";
+const OFF_ONLY_FOR = [
+  "tests/native/bannerMakesRoom.test.tsx",
+  "tests/native/gameSettingsSheetRows.test.tsx",
+  "tests/native/settingsOverlay.test.tsx",
+];
 const ALWAYS_ON = ADOPTED.filter((rule) => rule !== OFF_FOR_TESTS);
 
 type Block = { files?: string[]; rules?: Record<string, unknown> };
@@ -79,12 +84,36 @@ describe("the react-hooks 7 rules #891 adopted stay adopted", () => {
     });
   }
 
-  test(`${OFF_FOR_TESTS} is off for tests/native and nothing else`, () => {
+  test(`${OFF_FOR_TESTS} is off for the files on OFF_ONLY_FOR and nothing else`, () => {
+    const off = blocksTurningOff(OFF_FOR_TESTS);
+    // A block with no `files` applies to every file, which the `?? []` below
+    // would read as none — the one shape that turns the rule off repo-wide and
+    // still matches an empty list.
     assert.deepEqual(
-      blocksTurningOff(OFF_FOR_TESTS).flatMap((block) => block.files ?? []),
-      [OFF_ONLY_FOR],
-      "the test suite's Probe pattern is the only thing this exemption is for"
+      off.filter((block) => !block.files),
+      [],
+      "a block naming no files turns this rule off everywhere"
     );
+    assert.deepEqual(
+      off.flatMap((block) => block.files ?? []),
+      OFF_ONLY_FOR,
+      "a Probe whose sibling consumer is the subject is the only thing this exemption is for"
+    );
+  });
+
+  test(`every file ${OFF_FOR_TESTS} is off for still needs it`, async () => {
+    // The list above is a claim about what the rule would say; this asks it.
+    // The scan comes from the list too, so an exemption added anywhere is
+    // asked about. ESLint reads an empty path list as the whole repository,
+    // which is why the empty case is caught here rather than there.
+    if (OFF_ONLY_FOR.length === 0) return;
+    const lint = new ESLint({ overrideConfig: { rules: { [OFF_FOR_TESTS]: "error" } } });
+    const scanned = [...new Set(OFF_ONLY_FOR.map((file) => path.dirname(file)))];
+    const reporting = (await lint.lintFiles(scanned))
+      .filter((r) => r.messages.some((m) => m.ruleId === OFF_FOR_TESTS))
+      .map((r) => path.relative(ROOT, r.filePath).replaceAll(path.sep, "/"))
+      .sort();
+    assert.deepEqual(reporting, [...OFF_ONLY_FOR].sort());
   });
 });
 
