@@ -69,7 +69,7 @@ async function mountRejoining(roomId: string) {
   await AsyncStorage.setItem(ACTIVE_ROOM_KEY, roomId);
   // Out here, not in the wrapper's body, which React re-runs on every render.
   const client = new QueryClient();
-  const view = await renderHook(useRejoin, {
+  const hook = await renderHook(useRejoin, {
     wrapper: ({ children }: { children: React.ReactNode }) => (
       <QueryClientProvider client={client}>
         <NotificationProvider>
@@ -82,7 +82,7 @@ async function mountRejoining(roomId: string) {
   await waitFor(() =>
     expect(emitted).toContainEqual({ event: 'game:rejoin', payload: { roomId } })
   );
-  return view;
+  return hook;
 }
 
 // The provider's own listeners are what the socket calls at runtime. Async

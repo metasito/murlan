@@ -94,10 +94,11 @@ describe("the react-hooks 7 rules #891 adopted stay adopted", () => {
 
   test(`every file ${OFF_FOR_TESTS} is off for still needs it`, async () => {
     // The list above is a claim about what the rule would say; this asks it.
-    // Without that, a file converted to `renderHook` keeps its exemption for
-    // good — which is the shape #1002 closed, one directory wider.
+    // The directories come from the list too, so an exemption placed outside
+    // them is still looked at rather than silently unchecked.
     const lint = new ESLint({ overrideConfig: { rules: { [OFF_FOR_TESTS]: "error" } } });
-    const reporting = (await lint.lintFiles(["tests/native"]))
+    const scanned = [...new Set(OFF_ONLY_FOR.map((file) => path.dirname(file)))];
+    const reporting = (await lint.lintFiles(scanned))
       .filter((r) => r.messages.some((m) => m.ruleId === OFF_FOR_TESTS))
       .map((r) => path.relative(ROOT, r.filePath).replaceAll(path.sep, "/"))
       .sort();

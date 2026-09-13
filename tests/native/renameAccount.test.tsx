@@ -46,10 +46,10 @@ const wrapper = ({ children }: { children: React.ReactNode }) => (
 
 const signedIn = async () => {
   await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(SIGNED_IN));
-  const view = await renderHook(() => useAuth(), { wrapper });
-  await waitFor(() => expect(view.result.current.loading).toBe(false));
-  expect(view.result.current.user?.username).toBe('Ana');
-  return view;
+  const hook = await renderHook(() => useAuth(), { wrapper });
+  await waitFor(() => expect(hook.result.current.loading).toBe(false));
+  expect(hook.result.current.user?.username).toBe('Ana');
+  return hook;
 };
 
 beforeEach(async () => {
