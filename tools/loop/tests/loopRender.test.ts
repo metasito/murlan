@@ -2,23 +2,122 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import {
+  act,
+  activity,
+  bar,
+  bell,
+  capabilities,
+  clockAt,
+  closing,
+  cols,
   elapsed,
   header,
-  phaseLine,
-  activeLine,
-  toolDetail,
-  tasksDetail,
+  keybar,
+  phaseRow,
+  progress,
   queueLine,
-  bell,
-  SPIN,
-  closing,
   reportRow,
   runTotal,
+  stream,
+  tasksDetail,
+  theme,
+  thought,
+  wrap,
+  KEYS,
   PHASES,
-  clockAt,
-  trail,
-  cols,
+  PLAIN,
+  RECENT,
+  SPIN,
+  WIDTH,
 } from "../loop-render.mjs";
+import { ticker } from "../queue-loop.mjs";
+
+/** What a terminal reports. `getColorDepth` is the only signal the renderer reads for colour. */
+const term = (over: object = {}) =>
+  ({ isTTY: true, getColorDepth: () => 8, columns: WIDTH + 1, ...over }) as never;
+
+const t256 = theme(capabilities(term()));
+const t16 = theme(capabilities(term({ getColorDepth: () => 4 })));
+const tPlain = PLAIN();
+
+/** Every escape the renderer can emit: SGR, and an OSC 8 hyperlink's two halves. */
+const strip = (s: string) =>
+  s
+    .replace(new RegExp(`${String.fromCharCode(27)}\\]8;;[^${String.fromCharCode(7)}]*${String.fromCharCode(7)}`, "g"), "")
+    .replace(new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*[A-Za-z]`, "g"), "");
+
+const rows = (block: string) => block.split("\n");
+
+describe("capabilities", () => {
+  test("a pipe reports no colour, no links, and the full width", () => {
+    const caps = capabilities({ isTTY: false } as never, {});
+    assert.equal(caps.colour, false);
+    assert.equal(caps.links, false);
+    assert.equal(caps.width, WIDTH);
+  });
+
+  test("16-colour and 256-colour terminals are told apart", () => {
+    assert.equal(capabilities(term({ getColorDepth: () => 4 }), {}).c256, false);
+    assert.equal(capabilities(term({ getColorDepth: () => 8 }), {}).c256, true);
+    assert.equal(capabilities(term({ getColorDepth: () => 24 }), {}).c256, true);
+  });
+
+  // conhost prints the escape rather than consuming it, and the loop is read there as often as in
+  // Windows Terminal. There is no query for this — the terminal has to be recognised.
+  test("links are offered only where they are known to land", () => {
+    assert.equal(capabilities(term(), {}).links, false);
+    assert.equal(capabilities(term(), { WT_SESSION: "x" }).links, true);
+    assert.equal(capabilities(term({ getColorDepth: () => 1 }), { WT_SESSION: "x" }).links, false);
+  });
+
+  test("a narrow window narrows the board; a wide one does not widen it", () => {
+    assert.equal(capabilities(term({ columns: 47 }), {}).width, 46);
+    assert.equal(capabilities(term({ columns: 400 }), {}).width, WIDTH);
+  });
+
+  // A board wider than the window wraps, and a wrapped row puts the next carriage return on the
+  // wrong line — which is the whole of the redraw going wrong. So the floor that stops the layout
+  // computing a negative span must not itself be a width the terminal does not have.
+  test("the floor stops negative room without ever exceeding the window", () => {
+    assert.ok(capabilities(term({ columns: 1 }), {}).width >= 20);
+    for (const columns of [39, 40, 41, 47, 80]) {
+      assert.ok(
+        capabilities(term({ columns }), {}).width < columns,
+        `${columns} columns produced a board of ${capabilities(term({ columns }), {}).width}`,
+      );
+    }
+  });
+});
+
+describe("theme", () => {
+  test("nothing but the text comes out down a pipe", () => {
+    assert.equal(tPlain.paint("accent", "hello"), "hello");
+    assert.equal(tPlain.link("https://x", "hello"), "hello");
+  });
+
+  test("256 and 16 colour are different escapes for the same text", () => {
+    assert.match(t256.paint("accent", "x"), /38;5;39/);
+    assert.doesNotMatch(t16.paint("accent", "x"), /38;5;/);
+    assert.equal(strip(t256.paint("accent", "x")), "x");
+    assert.equal(strip(t16.paint("accent", "x")), "x");
+  });
+
+  // conhost renders italic as inverse video, which turns a de-emphasised row into the loudest
+  // thing on the board — the exact opposite of what it is for.
+  test("no italic anywhere", () => {
+    for (const role of ["bright", "text", "muted", "faint", "accent", "good", "warn", "bad"]) {
+      assert.doesNotMatch(t256.paint(role, "x"), /\[3m/);
+    }
+  });
+});
+
+describe("cols", () => {
+  test("counts code points, and emoji as the two cells they take", () => {
+    assert.equal(cols("abc"), 3);
+    assert.equal(cols("⚙️"), 2);
+    assert.equal(cols("日本"), 4);
+  });
+});
 
 describe("elapsed", () => {
   test("m:ss under an hour, zero-padded seconds", () => {
@@ -28,474 +127,467 @@ describe("elapsed", () => {
   });
 
   test("h:mm:ss over an hour", () => {
-    assert.equal(elapsed(3_723_000), "1:02:03");
+    assert.equal(elapsed(3_600_000), "1:00:00");
+    assert.equal(elapsed(5_425_000), "1:30:25");
+  });
+
+  test("a negative reading is zero, never a minus sign in the clock slot", () => {
+    assert.equal(elapsed(-5_000), "0:00");
+  });
+});
+
+describe("clockAt", () => {
+  const at = 1_789_134_000;
+
+  test("a wait is a time and a distance", () => {
+    assert.match(clockAt(at, at * 1000 - 25 * 60_000), /, in 25m$/);
+    assert.match(clockAt(at, at * 1000 - 95 * 60_000), /, in 1h35$/);
+  });
+
+  test("a window already open is just the time", () => {
+    assert.doesNotMatch(clockAt(at, at * 1000), /in /);
+  });
+
+  test("milliseconds and seconds both read as the same instant", () => {
+    assert.equal(clockAt(at, at * 1000), clockAt(at * 1000, at * 1000));
+  });
+
+  test("no reset time says so rather than printing an epoch", () => {
+    assert.equal(clockAt(0), "an unknown time");
+  });
+});
+
+describe("act", () => {
+  // The board showed the raw command. `description` is the line the model wrote for a person to
+  // read; the command is the one it wrote for a shell.
+  test("a shell call prefers the description it was given", () => {
+    assert.equal(
+      act({ name: "Bash", input: { command: "npm run loop:test -- --x", description: "run the loop suite" } }),
+      "run the loop suite",
+    );
+  });
+
+  test("and falls back to the command's first line when there is none", () => {
+    assert.equal(act({ name: "Bash", input: { command: "git status\ngit log" } }), "git status");
+  });
+
+  // The worktree prefix is the same forty characters on every row and says nothing.
+  test("a file call is its basename", () => {
+    assert.equal(act({ name: "Edit", input: { file_path: "C:\\w\\murlan\\lib\\theme.ts" } }), "theme.ts");
+    assert.equal(act({ name: "Read", input: { file_path: "tools/loop/land.ts" } }), "land.ts");
+  });
+
+  test("a search call is its pattern, an agent call its description", () => {
+    assert.equal(act({ name: "Grep", input: { pattern: "a11ySecondsLeft" } }), "a11ySecondsLeft");
+    assert.equal(act({ name: "Agent", input: { subagent_type: "reviewer" } }), "reviewer");
+  });
+
+  test("an unknown tool yields a string, never undefined in the middle of a row", () => {
+    assert.equal(act({ name: "Frobnicate" }), "");
+    assert.equal(act({ name: "Frobnicate", input: {} }), "");
+  });
+});
+
+describe("thought", () => {
+  test("the last line, because that is the one that describes what happens next", () => {
+    assert.equal(thought("Read the ticket.\nNow the review round."), "Now the review round.");
+  });
+
+  test("markdown written for a human is not written for a status row", () => {
+    assert.equal(thought("**Spec axis** — round `2`"), "Spec axis — round 2");
+    assert.equal(thought("- restoring the file"), "restoring the file");
+    assert.equal(thought("#### Phase D"), "Phase D");
+  });
+
+  test("nothing to say is null, not an empty row", () => {
+    assert.equal(thought(""), null);
+    assert.equal(thought("\n\n  \n"), null);
+    assert.equal(thought(undefined), null);
+  });
+});
+
+describe("bar", () => {
+  test("never escapes its width, whatever it is handed", () => {
+    for (const frac of [-1, 0, 0.5, 1, 2, NaN, Infinity]) {
+      assert.equal(cols(strip(bar(frac, 20, t256))), 20, `at ${frac}`);
+      assert.equal(cols(bar(frac, 20, tPlain)), 20, `at ${frac}, unpainted`);
+    }
+  });
+
+  test("full is full and empty is empty", () => {
+    assert.equal(bar(1, 8, tPlain), "█".repeat(8));
+    assert.equal(bar(0, 8, tPlain), "░".repeat(8));
+  });
+
+  // A bar that jumps a whole cell at a time reads as stalled between jumps.
+  test("a fraction of a cell shows as a fraction of a cell", () => {
+    assert.match(bar(0.5 + 1 / 32, 8, tPlain), /████[▏▎▍▌▋▊▉]/);
+  });
+});
+
+describe("progress", () => {
+  test("names the phase rather than its letter", () => {
+    assert.match(strip(progress({ letter: "D" }, t256)), /review/);
+    assert.doesNotMatch(strip(progress({ letter: "D" }, t256)), /\bD\b/);
+  });
+
+  test("an unnamed phase says so instead of showing a full bar", () => {
+    const line = strip(progress({ letter: "?" }, tPlain));
+    assert.match(line, /no phase/);
+    assert.doesNotMatch(line, /█/);
+  });
+
+  // A bar whose right edge moves as the label changes reads as jitter.
+  test("the bar is the same width at every phase", () => {
+    const widths = [...PHASES.map(([l]) => l), "?"].map((l) =>
+      strip(progress({ letter: l }, tPlain)).indexOf("▏"),
+    );
+    assert.equal(new Set(widths).size, 1, `edges at ${widths.join(", ")}`);
+  });
+});
+
+describe("phaseRow", () => {
+  test("a finished phase carries its name, its detail and its clock", () => {
+    const line = strip(phaseRow({ letter: "C", detail: "8 files", ms: 92_000 }, tPlain));
+    assert.match(line, /✓ {2}build/);
+    assert.match(line, /8 files/);
+    assert.match(line, /1:32$/);
+  });
+
+  test("a state of its own for a phase that did not finish", () => {
+    assert.match(strip(phaseRow({ letter: "C", ms: 1, state: "failed" }, tPlain)), /✗/);
+    assert.match(strip(phaseRow({ letter: "D", ms: 1, state: "resumed" }, tPlain)), /↻ {2}review/);
+  });
+
+  // `trail()` placed the mark by the letter's index, so an unrecognised letter dropped the glyph
+  // entirely and the row read as a phase that never closed.
+  test("a letter no phase owns still gets a row and a mark", () => {
+    const line = strip(phaseRow({ letter: "?", ms: 1_000 }, tPlain));
+    assert.match(line, /✓ {2}\?/);
+  });
+});
+
+describe("activity", () => {
+  const live = {
+    said: "Restoring and committing.",
+    recent: [
+      { name: "Bash", what: "run the loop suite" },
+      { name: "Edit", what: "useTurnCountdown.ts" },
+      { name: "Read", what: "RULES.md" },
+      { name: "Grep", what: "yourTurn" },
+      { name: "Glob", what: "**/*.ts" },
+    ],
+    ms: 260_000,
+    frame: 3,
+  };
+
+  test("the session's own sentence leads, with the calls under it", () => {
+    const out = rows(strip(activity(live, tPlain)));
+    assert.match(out[0], /Restoring and committing\./);
+    assert.match(out[1], /Bash/);
+    assert.match(out[0], /4:20$/);
+  });
+
+  test("with nothing said it falls back to the newest call, never to a blank row", () => {
+    assert.match(rows(strip(activity({ ...live, said: null }, tPlain)))[0], /Bash · run the loop suite/);
+    assert.match(rows(strip(activity({ said: null, recent: [], ms: 0, frame: 0 }, tPlain)))[0], /working/);
+  });
+
+  test("shows no more calls than it has room for", () => {
+    assert.equal(rows(activity(live, tPlain)).length, 1 + RECENT);
+  });
+
+  // Brightness is the only thing saying which row is now. If every row is painted the same the
+  // fade carries no information and the block reads as five equal things.
+  test("exactly one row is bright, and the calls under it actually fade", () => {
+    const out = rows(activity(live, t256));
+    assert.equal(out.filter((r) => r.includes("38;5;255")).length, 1);
+    // The colour of the call's own text, which is the only part the fade applies to — the tool
+    // name beside it is painted by position and would hide a fade that had stopped happening.
+    const shades = out.slice(1).map((r) => [...r.matchAll(/38;5;(\d+)/g)].at(-1)?.[1]);
+    assert.equal(new Set(shades).size, 3, `the fade is flat: ${shades.join(", ")}`);
+  });
+
+  test("the spinner turns with the frame, and a negative frame is still a frame", () => {
+    const at = (frame: number) => strip(activity({ ...live, frame }, tPlain))[3];
+    assert.notEqual(at(0), at(1));
+    assert.ok(SPIN.includes(strip(activity({ ...live, frame: -1 }, tPlain))[3]));
   });
 });
 
 describe("header", () => {
-  const h = header({
-    number: 953,
-    title: "Rate limiter factory",
-    size: "size:S",
-    url: "https://github.com/metasito/murlan/issues/953",
-    queue: { implement: 7, triage: 2, wayfinder: 1 },
+  const ticket = {
+    number: 1004,
+    title: "Give the turn countdown an accessible announcement",
+    size: "size:M",
+    url: "https://github.com/metasito/murlan/issues/1004",
+    queue: { implement: 9, triage: 0, wayfinder: 0 },
+  };
+
+  test("carries the number, the title and the size", () => {
+    const out = strip(header(ticket, tPlain));
+    assert.match(out, /#1004/);
+    assert.match(out, /Give the turn countdown/);
+    assert.match(out, /size:M/);
   });
 
-  test("names the ticket, its size and its link", () => {
-    assert.match(h, /#953/);
-    assert.match(h, /Rate limiter factory/);
-    assert.match(h, /size:S/);
-    assert.match(h, /github\.com\/metasito\/murlan\/issues\/953/);
+  // Printing zeroes for a ticket that never went through the picker reads as an empty queue.
+  test("a resumed ticket says resumed rather than showing a depth of zero", () => {
+    assert.match(strip(header({ ...ticket, queue: null }, tPlain)), /resumed/);
+    assert.doesNotMatch(strip(header({ ...ticket, queue: null }, tPlain)), /0 queued/);
   });
 
-  test("shows how much work is behind this one", () => {
-    assert.match(h, /queue: 7 · 2 · 1/);
+  test("the number is the link, so the URL costs no row of its own", () => {
+    const linked = theme(capabilities(term(), { WT_SESSION: "x" }));
+    assert.match(header(ticket, linked), /\]8;;https:\/\/github\.com/);
+    assert.doesNotMatch(strip(header(ticket, linked)), /https:\/\//);
   });
 
-  test("a ticket with no size label still renders", () => {
-    const none = header({
-      number: 1,
-      title: "x",
-      size: null,
-      url: "u",
-      queue: { implement: 0, triage: 0, wayfinder: 0 },
-    });
-    assert.match(none, /#1/);
-    assert.ok(!none.includes("null"));
-  });
-
-  test("a long title does not push the size label off the line", () => {
-    const long = header({
-      number: 953,
-      title: "A ticket title that is considerably longer than the eighty column budget allows for",
-      size: "size:XL",
-      url: "u",
-      queue: { implement: 1, triage: 0, wayfinder: 0 },
-    });
-    for (const line of long.split("\n")) assert.ok(line.length <= 78, `line over budget: ${line}`);
-    assert.match(long, /size:XL/);
+  test("a title far too long for the row is cut, not wrapped", () => {
+    const out = rows(strip(header({ ...ticket, title: "x".repeat(400) }, tPlain)));
+    assert.equal(out.length, 3);
+    for (const r of out) assert.ok(cols(r) <= WIDTH, `${cols(r)} cells`);
   });
 });
 
-describe("phaseLine", () => {
-  // What is behind and what is left, not just how far along: the question a person watching a run
-  // that resumed mid-way actually has.
-  test("shows the six phases as a trail, and keeps queue.md's letter", () => {
-    const line = phaseLine({ letter: "C", detail: "3 commits · 4 files", ms: 511_000 });
-    assert.match(line, /✓✓✓···/, "two phases behind it, three still ahead");
-    assert.match(line, /\bC\b/);
-    assert.match(line, /build/);
-    assert.match(line, /3 commits · 4 files/);
-    assert.match(line, /8:31/);
-  });
-
-  test("the mark is the caller's, so a phase taken up does not read as a phase finished", () => {
-    assert.match(phaseLine({ letter: "C", detail: "resumed", ms: 0, mark: "↻" }), /✓✓↻···/);
-    assert.equal(
-      phaseLine({ letter: "C", detail: "x", ms: 0, mark: "↻" }).length,
-      phaseLine({ letter: "C", detail: "x", ms: 0 }).length
-    );
-  });
-
-  test("every phase in PHASES renders and they are the six queue.md defines", () => {
-    assert.deepEqual(
-      PHASES.map(([l]: [string, string]) => l),
-      ["A", "B", "C", "D", "E", "F"]
-    );
-    for (const [letter] of PHASES) {
-      assert.match(phaseLine({ letter, detail: "", ms: 0 }), new RegExp(`\\b${letter}\\b`));
+describe("keybar", () => {
+  // A key bar that lies is worse than no key bar. Every letter it offers is pressed here, against
+  // the real handler, and has to do something.
+  test("offers nothing the ticker does not bind", () => {
+    for (const [k, word] of KEYS) {
+      const wrote: string[] = [];
+      const out = { isTTY: true, columns: WIDTH + 1, rows: 40, getColorDepth: () => 1, write: (s: string) => wrote.push(s) };
+      const tick = ticker(out as never, out as never, () => wrote.push("opened"));
+      tick.start("C");
+      tick.context({ url: "https://x", log: "x.jsonl" });
+      const before = wrote.length;
+      tick.key(k);
+      tick.stop();
+      assert.ok(wrote.length > before, `"${word}" is offered on ${k}, which does nothing`);
     }
   });
-});
 
-
-describe("closing", () => {
-  test("a landed ticket leads with the tick and carries the figures", () => {
-    const c = closing({
-      outcome: "landed",
-      number: 953,
-      files: 4,
-      turns: 41,
-      ms: 1_420_000,
-      cost: 1.82,
-      log: ".loop-logs/953.jsonl",
-    });
-    assert.match(c, /✅/);
-    assert.match(c, /#953/);
-    assert.match(c, /4 files/);
-    assert.match(c, /41 turns/);
-    assert.match(c, /\$1\.82/);
+  test("a toggled key says what pressing it again would do", () => {
+    assert.match(strip(keybar({ expanded: true }, tPlain)), /collapse/);
+    assert.match(strip(keybar({ expanded: false }, tPlain)), /expand/);
   });
 
-  test("a parked ticket says why, and says where the log is", () => {
-    const c = closing({
-      outcome: "parked",
-      number: 953,
-      why: "no output for 30m in phase C",
-      ms: 1_800_000,
-      cost: 0.9,
-      log: ".loop-logs/953.jsonl",
-    });
-    assert.match(c, /⚠️/);
-    assert.match(c, /no output for 30m in phase C/);
-    assert.match(c, /\.loop-logs\/953\.jsonl/);
+  // The pending stop rides on the key that set it: one place to look for what `s` did.
+  test("a pending stop is shown on its own key", () => {
+    assert.match(strip(keybar({ stopping: true }, tPlain)), /● stopping after this/);
   });
 
-  test("a rate limit says when it resets and is not an outcome", () => {
-    const c = closing({ outcome: "rate_limited", number: 953, why: "resets 04:10", ms: 0, cost: 0 });
-    assert.match(c, /⏸/);
-    assert.match(c, /04:10/);
+  test("keys are dropped from the right rather than cut in half", () => {
+    const narrow = theme(capabilities(term({ columns: 41 })));
+    const line = strip(keybar({ stopping: true }, narrow));
+    assert.ok(cols(line) <= narrow.width, `${cols(line)} cells in ${narrow.width}`);
+    assert.doesNotMatch(line, /sto$|expan$/);
   });
 });
 
-describe("reportRow", () => {
-  test("one fixed-width line per ticket, for the morning file", () => {
-    const row = reportRow({
-      number: 953,
-      title: "Rate limiter factory",
-      outcome: "landed",
-      pr: 1204,
-      ms: 1_420_000,
-      cost: 1.82,
-    });
-    assert.match(row, /#953/);
-    assert.match(row, /landed/);
-    assert.match(row, /1204/);
-    assert.ok(!row.includes("\n"), "a report row is one line");
+describe("stream", () => {
+  const feed = [
+    { kind: "call" as const, name: "Bash", what: "check for a live loop run" },
+    { kind: "said" as const, text: "Worktree ready. Scoping the change." },
+    { kind: "call" as const, name: "Edit", what: "ChipText.tsx" },
+  ];
+
+  test("shows the events themselves, said and called alike", () => {
+    const out = strip(stream(feed, { ms: 1_000, frame: 0, letter: "D" }, tPlain));
+    assert.match(out, /Worktree ready/);
+    assert.match(out, /ChipText\.tsx/);
+    assert.match(out, /review/);
   });
 
-  test("a parked row carries the reason instead of a PR", () => {
-    const row = reportRow({
-      number: 970,
-      title: "Reconnect backoff",
-      outcome: "parked",
-      pr: null,
-      ms: 900_000,
-      cost: 1.48,
-      why: "no review after 4 rounds",
-    });
-    assert.match(row, /parked/);
-    assert.match(row, /no review after 4 rounds/);
-    assert.ok(!row.includes("null"));
+  test("takes the newest, because the oldest have scrolled past anyway", () => {
+    const many = Array.from({ length: 40 }, (_, i) => ({ kind: "call" as const, name: "Bash", what: `step ${i}` }));
+    const out = strip(stream(many, { ms: 0, frame: 0, letter: "C" }, tPlain, 5));
+    assert.match(out, /step 39/);
+    assert.doesNotMatch(out, /step 30/);
+  });
+
+  test("a take of zero still leaves a readable block", () => {
+    assert.ok(rows(stream(feed, { ms: 0, frame: 0, letter: "C" }, tPlain, 0)).length >= 3);
   });
 });
 
-describe("runTotal", () => {
-  test("counts the night", () => {
-    const t = runTotal({ tickets: 3, landed: 2, parked: 1, ms: 11_520_000, cost: 6.4 });
-    assert.match(t, /3 tickets/);
-    assert.match(t, /2 landed/);
-    assert.match(t, /1 parked/);
-    assert.match(t, /\$6\.40/);
-    assert.match(t, /3:12:00/);
-  });
-});
-
-describe("activeLine", () => {
-  test("names the phase, what is behind it and how long it has been open", () => {
-    const line = activeLine({ letter: "C", ms: 252_000 });
-    assert.match(line, /✓✓.···  C/);
-    assert.match(line, /build/);
-    assert.match(line, /4:12\s*$/);
-  });
-
-  /** The spinner is the trail's own "here" glyph, so it sits at the phase's index, not at column 0. */
-  const spinner = (frame: number) => activeLine({ letter: "C", ms: 0, frame }).trim()[2];
-
-  test("the spinner advances with the frame", () => {
-    assert.notEqual(spinner(0), spinner(1));
-  });
-
-  test("the frame wraps rather than running off the end of the spinner", () => {
-    assert.equal(spinner(SPIN.length), SPIN[0]);
-    assert.equal(spinner(SPIN.length * 3 + 2), SPIN[2]);
-  });
-
-  // Every line this module emits is the same width, and the timer is what is redrawn in place: a
-  // line that changes width leaves the tail of the longer one on screen after the shorter one.
-  test("the width does not move as the detail grows", () => {
-    assert.equal(
-      activeLine({ letter: "C", ms: 0, detail: "git status" }).length,
-      activeLine({ letter: "C", ms: 0, detail: "x".repeat(200) }).length
-    );
-  });
-
-  test("it lines up with the finished line that replaces it", () => {
-    assert.equal(activeLine({ letter: "C", ms: 0 }).length, phaseLine({ letter: "C", ms: 0 }).length);
-  });
-
-  test("an unknown letter leaves the whole trail unreached rather than inventing a position", () => {
-    assert.doesNotMatch(activeLine({ letter: "Z", ms: 0 }), /✓/);
-    assert.doesNotMatch(phaseLine({ letter: "Z", ms: 0 }), /✓/);
-  });
-
-  test("the trail is six glyphs, one per phase, however far along it is", () => {
-    for (const [letter] of [...PHASES, ["Z", ""]] as [string, string][]) {
-      assert.equal(trail(letter).length, PHASES.length, `${letter} drew a trail of the wrong length`);
-    }
-    assert.deepEqual(trail("A"), ["▸", "·", "·", "·", "·", "·"]);
-    assert.deepEqual(trail("F", "✗"), ["✓", "✓", "✓", "✓", "✓", "✗"]);
-  });
-});
-
-describe("toolDetail", () => {
-  test("a shell call shows the command", () => {
-    assert.equal(
-      toolDetail({ name: "Bash", command: "git push -u origin agent/42-x" }),
-      "git push -u origin agent/42-x"
-    );
-  });
-
-  test("a non-shell tool shows its name", () => {
-    assert.equal(toolDetail({ name: "Read", command: "" }), "Read");
-  });
-
-  test("only the first line of a multi-line command", () => {
-    assert.equal(
-      toolDetail({ name: "Bash", command: "gh issue comment 42 \\\n  --body-file b.md" }),
-      "gh issue comment 42 \\"
-    );
-  });
-
-  test("a long command is truncated, not wrapped", () => {
-    const d = toolDetail({ name: "Bash", command: `git ${"x".repeat(200)}` });
-    assert.ok(d.length <= 44, `${d.length} chars`);
-    assert.match(d, /…$/);
-  });
-
-  // A review subagent's calls are the only sign of life during phase D, which is the longest phase
-  // and the one that looked like a hang.
-  test("a subagent's call is shown, and marked as one", () => {
-    assert.match(toolDetail({ name: "Bash", command: "git diff", parent: "toolu_1" }), /^· /);
-  });
-
-  test("a marked call is truncated to the same width as an unmarked one", () => {
-    const d = toolDetail({ name: "Bash", command: "y".repeat(200), parent: "toolu_1" });
-    assert.ok(d.length <= 44, `${d.length} chars`);
-  });
-
-  test("a command that is only whitespace falls back to the tool's name", () => {
-    assert.equal(toolDetail({ name: "Bash", command: "   \n  " }), "Bash");
-  });
-});
-
-// The board's only sign of life during a phase that runs entirely inside subagents.
 describe("tasksDetail", () => {
-  test("no running tasks falls back to whatever the caller draws today", () => {
+  test("nothing running is nothing to say", () => {
     assert.equal(tasksDetail([], 0), null);
   });
 
-  test("one task names it and how long its agents have been at it", () => {
-    const line = tasksDetail([{ what: "Reading exchangeE2EHold.test.ts", tool: "Read" }], 4 * 60_000, 60);
-    assert.match(line!, /^1 agent/);
-    assert.match(line!, /Reading exchangeE2EHold\.test\.ts/);
-    assert.match(line!, /4m$/);
+  test("names the agent that moved most recently, and how long the phase has run", () => {
+    const out = tasksDetail([{ what: "Spec axis", tool: null }, { what: "Standards", tool: null }], 8 * 60_000);
+    assert.match(out!, /2 agents/);
+    assert.match(out!, /Standards/);
+    assert.match(out!, /8m/);
   });
 
-  test("several tasks are counted, and the most recently touched one is shown", () => {
-    const line = tasksDetail(
-      [
-        { what: "Reading a.ts", tool: "Read" },
-        { what: "Searching for readdirSync", tool: "Grep" },
-        { what: "Reading exchangeE2EHold.test.ts", tool: "Read" },
-      ],
-      252_000,
-      60,
-    );
-    assert.match(line!, /^3 agents/);
-    assert.match(line!, /Reading exchangeE2EHold\.test\.ts/);
-    assert.doesNotMatch(line!, /Searching for readdirSync/);
-    assert.match(line!, /4m$/);
-  });
-
-  test("a task with no description falls back to its last tool", () => {
-    const line = tasksDetail([{ what: null, tool: "Grep" }], 0);
-    assert.match(line!, /Grep/);
-  });
-
-  // A line wider than its slot wraps the whole redraw onto the wrong row.
-  test("truncates to the given width, the same way toolDetail does", () => {
-    const line = tasksDetail(
-      [{ what: "x".repeat(200), tool: null }],
-      0,
-      20,
-    )!;
-    assert.ok(cols(line) <= 20, `${cols(line)} cells: ${line}`);
-    assert.match(line, /…$/);
+  test("one agent is not two", () => {
+    assert.match(tasksDetail([{ what: null, tool: "Agent" }], 0)!, /^1 agent · /);
   });
 });
 
 describe("queueLine", () => {
-  const q = (implement: number, triage = 0, wayfinder = 0) => ({ implement, triage, wayfinder });
-
-  test("a bucket that moved shows both numbers", () => {
-    assert.match(queueLine(q(11), q(10)), /11→10 implement/);
+  test("a depth that moved shows both readings", () => {
+    const out = queueLine({ implement: 9, triage: 1, wayfinder: 0 }, { implement: 7, triage: 1, wayfinder: 0 }, tPlain);
+    assert.match(out, /9→7 implement/);
+    assert.match(out, /1 triage/);
   });
 
-  test("a bucket that did not move shows one", () => {
-    const line = queueLine(q(11, 3), q(10, 3));
-    assert.match(line, /3 triage/);
-    assert.doesNotMatch(line, /3→3/);
+  test("an empty queue says so", () => {
+    assert.match(queueLine({ implement: 1, triage: 0, wayfinder: 0 }, { implement: 0, triage: 0, wayfinder: 0 }, tPlain), /queue empty/);
+  });
+});
+
+describe("closing", () => {
+  const landed = { outcome: "landed", number: 998, files: 9, turns: 132, ms: 1_424_000, cost: 3.9 };
+
+  test("a landed ticket carries its cost and its shape", () => {
+    const out = strip(closing(landed, tPlain));
+    assert.match(out, /#998/);
+    assert.match(out, /9 files · 132 turns · 23:44 · \$3\.90/);
   });
 
-  // The frontier grew because the ticket filed follow-ups. That is the number worth seeing, and the
-  // arrow is the only thing that shows it.
-  test("a bucket that grew reads as growth", () => {
-    assert.match(queueLine(q(10), q(12)), /10→12 implement/);
+  test("a parked one carries the reason instead, and its log", () => {
+    const out = strip(closing({ outcome: "parked", number: 1003, ms: 1, cost: 0, why: "needs device pixels", log: ".loop-logs/park.md" }, tPlain));
+    assert.match(out, /parked/);
+    assert.match(out, /needs device pixels/);
+    assert.match(out, /\.loop-logs\/park\.md/);
   });
 
-  test("an empty queue says so rather than printing three zeroes", () => {
-    assert.match(queueLine(q(1), q(0, 0, 0)), /empty/);
+  test("an outcome with no glyph of its own still prints a row", () => {
+    assert.match(strip(closing({ outcome: "surprised", number: 1, ms: 0, cost: 0, why: "x" }, tPlain)), /#1/);
+  });
+});
+
+describe("reportRow", () => {
+  const run = { number: 1002, title: "Convert the renderHook-able probes", outcome: "landed", pr: 1023, ms: 3_104_000, cost: 16.76 };
+
+  test("one line, with the clock and the money at the edge", () => {
+    const line = reportRow(run, tPlain);
+    assert.equal(rows(line).length, 1);
+    assert.match(line, /51:44 {3}\$16\.76$/);
+    assert.match(line, /PR #1023/);
+  });
+
+  // This is the file the morning is read from: a park exists to say why it parked.
+  test("a reason too long to sit beside the title goes under the row in full", () => {
+    const why = "the reviewer held it twice and this one needs device pixels rather than argument";
+    const out = rows(reportRow({ ...run, outcome: "parked", pr: null, why }, tPlain));
+    assert.ok(out.length > 1);
+    // Every word of it, wherever the wrap put them — the point is that none was cut away.
+    const said = out.join(" ").split(/\s+/).filter(Boolean);
+    for (const word of why.split(" ")) assert.ok(said.includes(word), `"${word}" was dropped`);
+  });
+
+  test("nothing escapes the width, at any width", () => {
+    for (const columns of [WIDTH + 1, 60, 47]) {
+      const t = PLAIN();
+      const narrow = theme(capabilities(term({ columns, getColorDepth: () => 1 })));
+      for (const line of rows(reportRow(run, narrow))) {
+        assert.ok(cols(line) <= narrow.width, `${cols(line)} cells in ${narrow.width}`);
+      }
+      assert.ok(cols(rows(reportRow(run, t))[0]) <= t.width);
+    }
+  });
+});
+
+describe("wrap", () => {
+  test("nothing is allowed past the room, including one long word", () => {
+    for (const line of wrap(`${"x".repeat(90)} and some words after it`, 20)) {
+      assert.ok(cols(line) <= 20, `${cols(line)} cells: ${line}`);
+    }
+  });
+});
+
+describe("runTotal", () => {
+  test("the night in one line", () => {
+    assert.equal(
+      runTotal({ tickets: 4, landed: 3, parked: 1, ms: 8_120_000, cost: 30.16 }),
+      "4 tickets · 3 landed · 1 parked · 2:15:20 · $30.16",
+    );
   });
 });
 
 describe("bell", () => {
-  test("it rings at a terminal", () => {
-    const wrote: string[] = [];
-    bell({ isTTY: true, write: (s: string) => wrote.push(s) } as never);
-    assert.deepEqual(wrote, [""]);
+  test("rings at a terminal and nowhere else", () => {
+    let rung = 0;
+    bell({ isTTY: true, write: () => (rung += 1) } as never);
+    bell({ isTTY: false, write: () => (rung += 1) } as never);
+    bell(undefined as never);
+    assert.equal(rung, 1);
   });
 
-  // Piped to a file or a CI log a bell is a stray byte, and the loop's output is read that way more
-  // often than it is watched.
-  test("it is silent anywhere else", () => {
-    const wrote: string[] = [];
-    bell({ isTTY: false, write: (s: string) => wrote.push(s) } as never);
-    assert.deepEqual(wrote, []);
-  });
-
-  test("a stream that cannot be written to does not take the run down with it", () => {
+  // A run must never end on a closed pipe.
+  test("a stream that throws is not worth an exception", () => {
     assert.doesNotThrow(() =>
       bell({
         isTTY: true,
         write: () => {
           throw new Error("EPIPE");
         },
-      } as never)
+      } as never),
     );
   });
-
-  test("no stream at all is silent, not a crash", () => {
-    assert.doesNotThrow(() => bell(null as never));
-  });
 });
 
-// A wait is only actionable as a time and a distance.
-describe("clockAt", () => {
-  const now = Date.UTC(2026, 8, 11, 9, 14);
-
-  test("reads as a time and a distance, never as an epoch", () => {
-    const s = clockAt(1789134000, now);
-    assert.doesNotMatch(s, /1789134000/);
-    assert.match(s, /in 4h/);
-  });
-
-  test("minutes under the hour", () => {
-    assert.match(clockAt(Math.floor(now / 1000) + 25 * 60, now), /in 25m/);
-  });
-
-  test("milliseconds are accepted too, since the shape is not guaranteed", () => {
-    assert.equal(clockAt(1789134000000, now), clockAt(1789134000, now));
-  });
-
-  test("a past or missing reset says so rather than counting backwards", () => {
-    assert.doesNotMatch(clockAt(Math.floor(now / 1000) - 600, now), /in -/);
-    assert.equal(clockAt(null), "an unknown time");
-  });
-});
-
-// Everything above runs with stdout not a TTY, where `styleText` emits nothing — so every
-// assertion on these lines passes just as well with the colour removed entirely. These force it
-// on, which is the only way the painting itself is under test.
-describe("colour, at a terminal", () => {
-  const painted = (fn: () => string) => {
-    const was = process.stdout.isTTY;
-    process.stdout.isTTY = true;
-    try {
-      return fn();
-    } finally {
-      process.stdout.isTTY = was;
-    }
+// A row one cell too wide wraps, and a wrapped row puts the next carriage return on the wrong line,
+// which takes the whole redraw with it. Four of these were live bugs the day this test was written.
+describe("every block fits the width it was given", () => {
+  const live = {
+    said: "Red for the stated reason. Restoring and committing.",
+    recent: [{ name: "Bash", what: "run the loop suite before the review round" }],
+    ms: 260_000,
+    frame: 3,
   };
-  const ESC = String.fromCharCode(27);
+  const ticket = {
+    number: 1004,
+    title: "Give the turn countdown an accessible announcement",
+    size: "size:M",
+    url: "https://github.com/metasito/murlan/issues/1004",
+    queue: { implement: 9, triage: 0, wayfinder: 0 },
+  };
+  const feed = [{ kind: "call" as const, name: "Agent", what: "Standards review of the diff" }];
 
-  test("the trail is painted in three spans: passed, here, still to come", () => {
-    const line = painted(() => phaseLine({ letter: "C", detail: "d", ms: 1000 }));
-    assert.ok(line.includes(ESC), "no escapes at all — styleText was suppressed");
-    assert.equal(
-      (line.match(new RegExp(ESC + String.raw`\[\d`, "g")) ?? []).length >= 3,
-      true,
-      "fewer than three painted spans on the trail",
-    );
-  });
-
-  test("an outcome's colour follows its mark", () => {
-    const red = painted(() => phaseLine({ letter: "C", ms: 0, mark: "✗" }));
-    const green = painted(() => phaseLine({ letter: "C", ms: 0, mark: "✓" }));
-    assert.notEqual(red, green, "a failed phase renders identically to a passed one");
-  });
-
-  test("a painted line still covers the live one exactly, escapes not counted", () => {
-    const strip = (s: string) => s.replace(new RegExp(ESC + String.raw`\[[\d;?]*m`, "g"), "");
-    const live = painted(() => activeLine({ letter: "D", detail: "gh pr view", ms: 90_000 }));
-    const done = painted(() => phaseLine({ letter: "D", detail: "gh pr view", ms: 90_000 }));
-    assert.equal(strip(live).length, strip(done).length);
-  });
-
-  // reportRow and runTotal are written into .loop-logs/run-*.md, which no terminal ever reads.
-  test("the report's own lines are never painted", () => {
-    for (const line of [
-      painted(() => reportRow({ number: 42, title: "t", outcome: "parked", ms: 1, cost: 1, why: "w" })),
-      painted(() => runTotal({ tickets: 1, landed: 1, parked: 0, ms: 1, cost: 1 })),
-    ]) {
-      assert.ok(!line.includes(ESC), `an escape reached the report file: ${JSON.stringify(line)}`);
-    }
-  });
-});
-
-// A wrapped line puts the next carriage return on the wrong row, and from there every redraw is
-// wrong. Width is counted in terminal cells, so a character that takes two counts as two.
-describe("double-width characters", () => {
-  test("a CJK detail does not push the line past its width", () => {
-    for (const detail of ["日本語のコマンドをここに置く".repeat(4), "🔁🔁🔁".repeat(20), "x".repeat(200)]) {
-      assert.ok(
-        cols(activeLine({ letter: "C", detail, ms: 0, width: 60 })) <= 60,
-        `${detail.slice(0, 8)} rendered ${cols(activeLine({ letter: "C", detail, ms: 0, width: 60 }))} cells`,
-      );
-    }
-  });
-
-  test("cols counts cells, never UTF-16 units", () => {
-    assert.equal(cols("abc"), 3);
-    assert.equal(cols("日本"), 4);
-    assert.equal("🔁".length, 2, "the surrogate pair this is guarding against");
-    assert.equal(cols("🔁"), 2);
-  });
-});
-
-// The row exists to say why a ticket parked. A reason cut off before its content is a row that
-// cost a whole session and says nothing.
-describe("reportRow keeps the reason", () => {
-  const NEWLINE = String.fromCharCode(10);
-  const why = "3 CI rounds on the same branch did not go green — last: CI failed at Lint";
-
-  test("the reason survives a title long enough to crowd it out", () => {
-    const line = reportRow({
-      number: 1007,
-      title: "a ticket with a very long title indeed, going on and on past any width",
-      outcome: "parked",
-      ms: 5_400_000,
-      cost: 38.12,
-      why,
+  for (const [name, caps] of [
+    ["a pipe", capabilities({ isTTY: false } as never, {})],
+    ["256 colours", capabilities(term(), {})],
+    ["16 colours", capabilities(term({ getColorDepth: () => 4 }), {})],
+    ["46 columns", capabilities(term({ columns: 47 }), {})],
+    ["links", capabilities(term(), { WT_SESSION: "x" })],
+  ] as const) {
+    test(name, () => {
+      const t = theme(caps);
+      const blocks = [
+        header(ticket, t),
+        phaseRow({ letter: "B", detail: "8 files · blocker #891 merged", ms: 92_000 }, t),
+        progress({ letter: "C" }, t),
+        activity(live, t),
+        stream(feed, { ms: 1, frame: 0, letter: "D" }, t),
+        keybar({ expanded: true, stopping: true }, t),
+        closing({ outcome: "landed", number: 998, files: 9, turns: 132, ms: 1_424_000, cost: 3.9 }, t),
+        reportRow({ number: 1002, title: "Convert the renderHook-able probes", outcome: "landed", pr: 1023, ms: 3_104_000, cost: 16.76 }, t),
+      ];
+      for (const block of blocks) {
+        for (const line of rows(strip(block))) {
+          assert.ok(cols(line) <= t.width, `${cols(line)} cells in ${t.width}: ${JSON.stringify(line)}`);
+        }
+      }
     });
-    assert.match(line, /did not go green — last: CI failed at Lint/, `the reason was cut: ${line}`);
-    for (const l of line.split(NEWLINE)) assert.ok(cols(l) <= 78, `${cols(l)} cells: ${l}`);
-  });
+  }
 
-  test("the title still gives way first", () => {
-    const long = reportRow({ number: 1007, title: "t".repeat(90), outcome: "parked", ms: 1, cost: 1, why: "short" });
-    assert.match(long.split(NEWLINE)[0], /…/, "the title was not shortened");
-    assert.match(long, /short/);
-    for (const l of long.split(NEWLINE)) assert.ok(cols(l) <= 78);
+  // `.loop-logs/run-*.md` is read in the morning as text. An escape in it is invisible there and
+  // mojibake everywhere else.
+  test("and a pipe gets no escapes at all", () => {
+    const t = PLAIN();
+    const out = [
+      header(ticket, t),
+      progress({ letter: "C" }, t),
+      activity(live, t),
+      keybar({}, t),
+      reportRow({ number: 1, title: "x", outcome: "landed", pr: 2, ms: 1, cost: 0 }, t),
+    ].join("\n");
+    assert.equal(out.indexOf(String.fromCharCode(27)), -1, "an escape reached a non-terminal");
   });
 });
