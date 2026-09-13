@@ -100,10 +100,10 @@ describe("over", () => {
     assert.equal(over(delta(prose(8), ["const a = 1;"])), false);
   });
 
-  // The tags matter: a rewrite emits code that is not the code it replaced, and lines that come
-  // back word for word are the moved-code case above, not this one.
+  // Half the surviving lines come back word for word and half are rewritten, because a rewrite is
+  // both: were every line new the fixture would pass on the rename alone.
   test("a rewrite that deletes far more code than it adds comment is within budget", () => {
-    assert.equal(over(delta(code(200, "old"), [...prose(16), ...code(78, "new")])), false);
+    assert.equal(over(delta(code(200), [...prose(16), ...code(40), ...code(38, "y")])), false);
   });
 
   test("a large block of prose is named however much code the same change deleted", () => {
