@@ -48,26 +48,31 @@ function* classify(text) {
   }
 }
 
-const key = ([line, isComment]) => `${isComment ? "c" : "k"}${line}`;
+const key = (line, isComment) => `${isComment ? "c" : "k"}${line}`;
 
 /**
  * By multiset, not by alignment: each line of `before` is a token one line of `after` may spend,
- * so a line that only moved or was reindented is not added. That undercounts against a line diff
- * in both columns at once and can only ever name more changes than one would, never fewer —
- * spending a token requires the same text at the same kind to have been there already.
+ * so a line that only moved or was reindented is not added. Both columns come out at or below what
+ * a line diff would report, which is the point — spending a token needs that exact text, at that
+ * kind, to have been in the file already, and prose that was already there is not prose the change
+ * wrote. Neither column is a bound on the other, so this is not a uniformly stricter rule.
  */
 export function addedCounts(before, after) {
   const pool = new Map();
-  for (const line of classify(before)) pool.set(key(line), (pool.get(key(line)) ?? 0) + 1);
+  for (const [line, isComment] of classify(before)) {
+    const k = key(line, isComment);
+    pool.set(k, (pool.get(k) ?? 0) + 1);
+  }
   let comment = 0;
   let code = 0;
-  for (const line of classify(after)) {
-    const held = pool.get(key(line)) ?? 0;
+  for (const [line, isComment] of classify(after)) {
+    const k = key(line, isComment);
+    const held = pool.get(k) ?? 0;
     if (held) {
-      pool.set(key(line), held - 1);
+      pool.set(k, held - 1);
       continue;
     }
-    if (line[1]) comment += 1;
+    if (isComment) comment += 1;
     else code += 1;
   }
   return { comment, code };
@@ -88,11 +93,12 @@ const show = (rev, file) => {
   }
 };
 
-export function budget(base, head = "HEAD") {
-  // The same revision on both sides. `base...head` lists the files against the merge base, so
-  // reading their content at `base`'s tip would charge the branch for whatever main did meanwhile.
-  const from = git("merge-base", base, head).trim();
-  const files = git("diff", "--name-only", "--diff-filter=AMR", "-M", from, head,
+export function budget(base) {
+  // One revision on the far side and the working tree on this one, for both the file list and the
+  // content. Reading content at `base`'s tip while listing files against the merge base charged
+  // the branch for whatever main removed meanwhile.
+  const from = git("merge-base", base, "HEAD").trim();
+  const files = git("diff", "--name-only", "--diff-filter=AMR", "-M", from,
     "--", "*.mjs", "*.js", "*.ts", "*.tsx").split("\n").filter(Boolean);
   const named = [];
   for (const file of files) {

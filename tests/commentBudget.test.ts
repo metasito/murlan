@@ -63,14 +63,19 @@ describe("addedCounts against a before", () => {
     assert.deepEqual(addedCounts("// 1\n// 2\nconst a = 1;", "const a = 1;"), { comment: 0, code: 0 });
   });
 
-  // Both columns undercount a line diff, and the undercount is one-sided: it can only name a
-  // change a line diff would let through. Extracting a helper out of code that stays word for
-  // word buys no budget for the prose written about it.
   test("code that only moved within the file is not added code", () => {
     const body = ["const a = 1;", "const b = 2;"];
     const before = body.join("\n");
     const after = ["function f() {", ...body, "}", "f();"].join("\n");
     assert.deepEqual(addedCounts(before, after), { comment: 0, code: 3 });
+  });
+
+  // A line diff reports the reorder as ten added comment lines against no code, and names it.
+  // Prose the file already held is not prose the change wrote, so neither column is a bound on
+  // the other and this is not a uniformly stricter rule than a line diff.
+  test("prose that only moved within the file is not added prose", () => {
+    const body = ["// why", "// how", "const a = 1;"];
+    assert.deepEqual(addedCounts(body.join("\n"), [body[2], body[0], body[1]].join("\n")), { comment: 0, code: 0 });
   });
 
   test("commenting a line out is prose, and uncommenting it is code", () => {
