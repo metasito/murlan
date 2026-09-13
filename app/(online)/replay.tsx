@@ -35,7 +35,7 @@ export default function ReplayScreen() {
   const { t } = useTranslation();
   const { id } = useLocalSearchParams<{ id: string }>();
   const [index, setIndex] = useState(-1);
-  const [playing, setPlaying] = useState(false);
+  const [playRequested, setPlayRequested] = useState(false);
   const [speedIndex, setSpeedIndex] = useState(0);
   const [movesOpen, setMovesOpen] = useState(false);
 
@@ -47,16 +47,16 @@ export default function ReplayScreen() {
   const total = replay ? replayMoveCount(replay) : 0;
   const atEnd = index >= total - 1;
   const speed = REPLAY_SPEEDS[speedIndex];
+  // The last move stops playback, and it does so in render: a request still
+  // standing when the tape runs out is not playing, so the transport shows
+  // play rather than a pause that moves nothing.
+  const playing = playRequested && !atEnd;
 
   useEffect(() => {
-    if (!playing || atEnd) return;
+    if (!playing) return;
     const timer = setTimeout(() => setIndex((i) => i + 1), Motion.replayStep / speed);
     return () => clearTimeout(timer);
-  }, [playing, atEnd, index, speed]);
-
-  useEffect(() => {
-    if (atEnd) setPlaying(false);
-  }, [atEnd]);
+  }, [playing, index, speed]);
 
   const clamp = useCallback((next: number) => Math.max(-1, Math.min(next, total - 1)), [total]);
 
@@ -66,7 +66,7 @@ export default function ReplayScreen() {
    */
   const scrubTo = useCallback(
     (next: number) => {
-      setPlaying(false);
+      setPlayRequested(false);
       setIndex(clamp(next));
     },
     [clamp]
@@ -82,7 +82,7 @@ export default function ReplayScreen() {
 
   const step = useCallback(
     (delta: number) => {
-      setPlaying(false);
+      setPlayRequested(false);
       setIndex((i) => clamp(i + delta));
       hapticSelection();
     },
@@ -172,7 +172,7 @@ export default function ReplayScreen() {
           onStep={step}
           onRestart={restart}
           onTogglePlay={() => {
-            setPlaying((p) => !p);
+            setPlayRequested((p) => !p);
             hapticSelection();
           }}
           onExit={() => {

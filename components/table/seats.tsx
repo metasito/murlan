@@ -499,9 +499,17 @@ function ReconnectingChip({
   const { t } = useTranslation();
   const [left, setLeft] = useState(seconds);
 
+  // A new grace window puts the countdown back to full in the same render, so
+  // its first frame is never the previous one's remainder.
+  const graceWindow = `${resetKey}|${seconds}`;
+  const [shownWindow, setShownWindow] = useState(graceWindow);
+  if (graceWindow !== shownWindow) {
+    setShownWindow(graceWindow);
+    setLeft(seconds);
+  }
+
   useEffect(() => {
     let remaining = seconds;
-    setLeft(remaining);
     const id = setInterval(() => {
       remaining -= 1;
       setLeft(Math.max(0, remaining));

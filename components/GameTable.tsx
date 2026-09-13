@@ -362,9 +362,11 @@ export function GameTable({
   // is never unmounted between manches, and nothing in the state names which
   // manche is which, so a flag that outlived the opening would swallow the next
   // one whenever two deals ran the same way.
-  useEffect(() => {
+  const [spentForPending, setSpentForPending] = useState(openingPending);
+  if (openingPending !== spentForPending) {
+    setSpentForPending(openingPending);
     if (!openingPending) setOpeningSpent(false);
-  }, [openingPending]);
+  }
   const holdingForStart = openingPending && !openingSpent;
 
   // A reader must not be left able to play through a gate a finger cannot get
@@ -578,9 +580,13 @@ export function GameTable({
   // card, and folding it into a multi-select the play button also reads would
   // let a staged combination survive into the next manche.
   const [exchangePick, setExchangePick] = useState<string | null>(null);
-  useEffect(() => {
+  // Card ids repeat across deals, so a pick that outlived its exchange would
+  // come back pointing at a different card.
+  const [pickedWhileMine, setPickedWhileMine] = useState(exchangeIsMine);
+  if (exchangeIsMine !== pickedWhileMine) {
+    setPickedWhileMine(exchangeIsMine);
     if (!exchangeIsMine) setExchangePick(null);
-  }, [exchangeIsMine]);
+  }
   const pickedGiveCard = exchangePick
     ? (sortedHand.find((c) => c.id === exchangePick) ?? null)
     : null;

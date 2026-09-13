@@ -536,9 +536,11 @@ export function StraightHand({
   // whose cards mount staggered. A single card arriving later (the exchange
   // give-back) mounts with the deal disarmed and simply appears in place.
   const [dealArmed, setDealArmed] = useState(true);
-  useEffect(() => {
-    setDealArmed(n === 0);
-  }, [n]);
+  const [shownCount, setShownCount] = useState(n);
+  if (n !== shownCount) {
+    setShownCount(n);
+    setDealArmed(shownCount === 0);
+  }
 
   // The overlap step is solved against the share, not against everything the
   // row could reach — a hand of three does not stretch across the felt, and a
@@ -750,6 +752,10 @@ export function StraightHand({
     gap.value = null;
     setHeldId(null);
     setGapAt(null);
+    // A held card is out of the fan, so it re-mounts when it comes back — the
+    // one way a card mounts without the hand's count changing, and the only
+    // thing left that could still be holding the stagger armed from the mount.
+    setDealArmed(false);
   };
 
   const grab = (x: number) => {
