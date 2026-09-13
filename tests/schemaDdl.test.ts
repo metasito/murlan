@@ -310,3 +310,17 @@ test("the friends uniqueness indexes forbid every duplicate add/accept can race 
     );
   }
 });
+
+test("boot deletes on its own authority only where this list says it may", () => {
+  // The shape check above cannot tell a table whose duplicates are meaningless
+  // from one whose duplicates are two people's accounts — it would exempt a
+  // dedupe on "users" as readily. Naming them is what makes widening the
+  // permission an edit somebody has to come here and make.
+  assert.deepEqual(
+    statements.flatMap((s, i) => (dedupeTableFor(statements, i) ? [statements[i + 1]] : [])).sort(),
+    [
+      `CREATE UNIQUE INDEX IF NOT EXISTS "friends_accepted_uq" ON "friends" ("user_id", "friend_user_id") WHERE "status" = 'accepted';`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS "friends_pending_pair_uq" ON "friends" ((least("user_id", "friend_user_id")), (greatest("user_id", "friend_user_id"))) WHERE "status" = 'pending';`,
+    ].sort()
+  );
+});

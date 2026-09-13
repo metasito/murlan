@@ -77,7 +77,7 @@ describe("simultaneous friend requests", {
     const loser = first.status === 409 ? first : second;
     assert.equal(await codeOf(loser), "FRIEND_REQUEST_ALREADY_SENT");
 
-    const rows = await friendRows();
+    const rows = (await friendRows()).filter((r) => r.userId === sender.user.id);
     assert.equal(rows.length, 1, `expected one pending row, got ${JSON.stringify(rows)}`);
   });
 
@@ -168,12 +168,13 @@ describe("simultaneous friend requests", {
       [carol.user.id, dave.user.id, "pending"],
       [dave.user.id, carol.user.id, "pending"],
     ];
-    // Stated rather than defaulted, so which row is the oldest is a fact of
-    // the fixture and not of how fast the loop ran.
+    // Written in descending age, so the oldest pending row is the last one in
+    // the table rather than the first: an order that only agrees with the heap
+    // is one a dedupe keeping an arbitrary row would also satisfy.
     for (const [i, [userId, friendUserId, status]] of values.entries()) {
       await pool.query(
         `INSERT INTO "friends" ("user_id", "friend_user_id", "status", "created_at")
-         VALUES ($1, $2, $3, now() + ($4 || ' seconds')::interval)`,
+         VALUES ($1, $2, $3, now() - ($4 || ' seconds')::interval)`,
         [userId, friendUserId, status, String(i)]
       );
     }
@@ -199,7 +200,7 @@ describe("simultaneous friend requests", {
     );
     assert.deepEqual(
       await pending(),
-      [`${carol.user.id}->${dave.user.id}`],
+      [`${dave.user.id}->${carol.user.id}`],
       "a request is one row whoever asked, and the one that survives is the " +
         "oldest — which is the direction the pair actually asked in first"
     );

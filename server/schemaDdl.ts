@@ -286,8 +286,9 @@ const DEDUPE_ON_BOOT = new Set(["friends_accepted_uq", "friends_pending_pair_uq"
  *
  * The key and the filter are that index's own, rendered once and used by both,
  * so the two cannot drift apart; a key holding NULL is left alone, because a
- * unique index does not forbid it. Oldest row wins, so every database that
- * runs this keeps the same one.
+ * unique index does not forbid it. The order decides which row that is, so it
+ * is stated rather than left to the heap: oldest first where the table dates
+ * its rows, and its key after that.
  */
 function dedupeForIndex(
   cfg: TableConfig,
