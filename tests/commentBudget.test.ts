@@ -83,16 +83,16 @@ describe("addedCounts against a before", () => {
     assert.deepEqual(addedCounts("const a = 1;", "// const a = 1;"), { comment: 1, code: 0 });
   });
 
-  // Wrapping code in block-comment delimiters is the case the kind in the key would otherwise
-  // charge twice: once for the lines it stopped counting as code, once for counting them as prose.
-  test("a line that only changed kind is neither added prose nor added code", () => {
+  // A pool blind to kind lets the deleted code pay for the prose, and twenty commented-out lines
+  // cost the two delimiters. The budget is what a reader has to get past, so they cost twenty-two.
+  test("commenting a block out is prose the change wrote, line for line", () => {
     const body = Array.from({ length: 20 }, (_, i) => `const x${i} = ${i};`);
-    assert.deepEqual(addedCounts(body.join("\n"), ["/*", ...body, "*/"].join("\n")), { comment: 2, code: 0 });
-    assert.deepEqual(addedCounts(["/*", ...body, "*/"].join("\n"), body.join("\n")), { comment: 0, code: 0 });
+    assert.deepEqual(addedCounts(body.join("\n"), ["/*", ...body, "*/"].join("\n")), { comment: 22, code: 0 });
   });
 
-  test("a line held at one kind pays for one copy, not both", () => {
-    assert.deepEqual(addedCounts("foo();", "foo();\n// foo();"), { comment: 1, code: 0 });
+  test("uncommenting a block is code the change wrote", () => {
+    const body = Array.from({ length: 20 }, (_, i) => `const x${i} = ${i};`);
+    assert.deepEqual(addedCounts(["/*", ...body, "*/"].join("\n"), body.join("\n")), { comment: 0, code: 20 });
   });
 });
 
