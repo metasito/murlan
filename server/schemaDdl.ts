@@ -271,27 +271,27 @@ const SESSION_TABLE_STATEMENTS = [
 ];
 
 /**
- * What a unique index has to be able to assume about the rows already there.
+ * Clears the way for a unique index over rows that already violate it.
  *
- * `CREATE UNIQUE INDEX` fails against a table that already holds what it
- * forbids, and this module runs at boot — so an index added over live data
- * stops the server starting rather than the writes it was added to stop. Each
- * entry deletes exactly the rows its index would reject and is emitted
- * immediately in front of it; the index behind it is what makes a second run
- * find nothing. Every candidate row is matched against a smaller sibling, so
- * one row of each group is always left standing.
+ * `CREATE UNIQUE INDEX` fails against such a table, and this module runs at
+ * boot — so an index added over live data would stop the server starting
+ * rather than the writes it was added to stop. The key and the filter are the
+ * index's own, rendered once and used by both, so this deletes exactly the
+ * rows that index rejects; once the index exists there is nothing left for a
+ * later run to find. A key holding NULL is excluded, because a unique index
+ * does not forbid it.
  */
-const INDEX_DEDUPE: Record<string, string> = {
-  friends_accepted_uq: `DELETE FROM "friends" AS a USING "friends" AS b
- WHERE a."status" = 'accepted' AND b."status" = 'accepted'
-   AND a."user_id" = b."user_id" AND a."friend_user_id" = b."friend_user_id"
-   AND a."id" > b."id";`,
-  friends_pending_pair_uq: `DELETE FROM "friends" AS a USING "friends" AS b
- WHERE a."status" = 'pending' AND b."status" = 'pending'
-   AND least(a."user_id", a."friend_user_id") = least(b."user_id", b."friend_user_id")
-   AND greatest(a."user_id", a."friend_user_id") = greatest(b."user_id", b."friend_user_id")
-   AND a."id" > b."id";`,
-};
+function dedupeForIndex(tableName: string, cols: string[], predicate: string | undefined): string {
+  const key = cols.join(", ");
+  const filter = [...cols.map((c) => `${c} IS NOT NULL`), ...(predicate ? [predicate] : [])].join(
+    " AND "
+  );
+  return (
+    `DELETE FROM ${quoteIdent(tableName)} WHERE "ctid" IN (SELECT "ctid" FROM ` +
+    `(SELECT "ctid", row_number() OVER (PARTITION BY ${key} ORDER BY "ctid") AS "dup" ` +
+    `FROM ${quoteIdent(tableName)} WHERE ${filter}) AS "d" WHERE "d"."dup" > 1);`
+  );
+}
 
 /**
  * Every statement needed to bring an empty or partially-populated database up
@@ -329,7 +329,6 @@ export function schemaStatements(): string[] {
   const tableStatements: string[] = [];
   const addColumnStatements: string[] = [];
   const indexStatements: string[] = [];
-  const declaredIndexes = new Set<string>();
 
   for (const { cfg } of inDependencyOrder(configs)) {
     const fkByColumn = foreignKeysByColumn(cfg);
@@ -374,26 +373,13 @@ export function schemaStatements(): string[] {
       // form can mean, so it is left implicit; anything else is named.
       const method = idx.config.method;
       const using = !method || method === "btree" ? "" : ` USING ${quoteIdent(method)}`;
-      const where = idx.config.where
-        ? ` WHERE ${renderSqlExpression(idx.config.where, `index "${indexName}"'s WHERE clause`, cfg.name)}`
-        : "";
-      declaredIndexes.add(indexName);
-      const dedupe = INDEX_DEDUPE[indexName];
-      if (dedupe) indexStatements.push(dedupe);
+      const predicate = idx.config.where
+        ? renderSqlExpression(idx.config.where, `index "${indexName}"'s WHERE clause`, cfg.name)
+        : undefined;
+      if (idx.config.unique) indexStatements.push(dedupeForIndex(cfg.name, cols, predicate));
       indexStatements.push(
         `${kind} IF NOT EXISTS ${quoteIdent(indexName)} ON ${quoteIdent(cfg.name)}` +
-          `${using} (${cols.join(", ")})${where};`
-      );
-    }
-  }
-
-  // A key naming an index nobody declares would emit nothing at all, and the
-  // index it was written for would be the one that fails at boot.
-  for (const indexName of Object.keys(INDEX_DEDUPE)) {
-    if (!declaredIndexes.has(indexName)) {
-      throw new Error(
-        `schemaStatements: INDEX_DEDUPE names "${indexName}", which no table ` +
-          `in shared/schema.ts declares — update server/schemaDdl.ts.`
+          `${using} (${cols.join(", ")})${predicate ? ` WHERE ${predicate}` : ""};`
       );
     }
   }

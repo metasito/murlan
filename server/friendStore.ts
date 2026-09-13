@@ -4,8 +4,8 @@ import { uniqueViolation } from "./userStore.ts";
 import { users, rooms, roomPlayers, friends, gameInvites } from "../shared/schema.ts";
 import type { User, Friend } from "../shared/schema.ts";
 
-/** `db`, or the handle inside `db.transaction` — the same query surface. */
-type Executor = Pick<typeof db, "select" | "insert" | "update">;
+/** `db`, or the handle inside `db.transaction` — the same read surface. */
+type Executor = Pick<typeof db, "select">;
 
 /** Why a friend request cannot exist, in the terms the route answers in. */
 export type AddFriendRefusal = "already_friends" | "already_sent" | "incoming_pending";
@@ -80,35 +80,33 @@ export const friendStore = {
    * both pass and both rows land.
    */
   async addFriend(userId: string, friendUserId: string): Promise<AddFriendResult> {
-    try {
-      return await db.transaction(async (tx): Promise<AddFriendResult> => {
-        if (await this.areFriends(userId, friendUserId, tx)) {
-          return { ok: false, reason: "already_friends" };
-        }
-        const pending = await this.pendingRequestBetween(userId, friendUserId, tx);
-        if (pending) {
-          return { ok: false, reason: pending === "sent" ? "already_sent" : "incoming_pending" };
-        }
-        const [row] = await tx
-          .insert(friends)
-          .values({ userId, friendUserId, status: "pending" })
-          .returning();
-        return { ok: true, request: row };
-      });
-    } catch (err) {
-      const violated = uniqueViolation(err);
-      if (violated?.includes("friends_accepted_uq")) {
-        return { ok: false, reason: "already_friends" };
+    // The row inserted here is always pending, so the pending index is the
+    // only one it can violate, and a violation means the request that blocked
+    // it committed while this transaction was deciding. The retry re-reads
+    // with that row visible: it refuses in the caller's own terms if the row
+    // is still there, and succeeds if it was cancelled in the meantime.
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        return await db.transaction(async (tx): Promise<AddFriendResult> => {
+          if (await this.areFriends(userId, friendUserId, tx)) {
+            return { ok: false, reason: "already_friends" };
+          }
+          const pending = await this.pendingRequestBetween(userId, friendUserId, tx);
+          if (pending) {
+            return { ok: false, reason: pending === "sent" ? "already_sent" : "incoming_pending" };
+          }
+          const [row] = await tx
+            .insert(friends)
+            .values({ userId, friendUserId, status: "pending" })
+            .returning();
+          return { ok: true, request: row };
+        });
+      } catch (err) {
+        if (!uniqueViolation(err)?.includes("friends_pending_pair_uq")) throw err;
       }
-      if (violated?.includes("friends_pending_pair_uq")) {
-        // Which way the request that won runs is what decides the answer, and
-        // only a read taken after it committed can tell — this transaction's
-        // own checks ran before it existed.
-        const direction = await this.pendingRequestBetween(userId, friendUserId);
-        return { ok: false, reason: direction === "received" ? "incoming_pending" : "already_sent" };
-      }
-      throw err;
     }
+    const direction = await this.pendingRequestBetween(userId, friendUserId);
+    return { ok: false, reason: direction === "received" ? "incoming_pending" : "already_sent" };
   },
 
   /**
@@ -117,39 +115,41 @@ export const friendStore = {
    * their own (IDOR).
    */
   async acceptFriend(id: string, accepterId: string): Promise<{ requesterId: string } | null> {
-    try {
-      return await db.transaction(async (tx) => {
-        const [f] = await tx
-          .update(friends)
-          .set({ status: "accepted" })
-          .where(
-            and(
-              eq(friends.id, id),
-              eq(friends.friendUserId, accepterId),
-              eq(friends.status, "pending")
+    // A violation means the reverse row landed between this transaction's read
+    // and its insert, and the rollback left the request pending. Retrying sees
+    // that row and only has to mark the request accepted — where returning
+    // "nothing to accept" would leave a request that can never be answered.
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        return await db.transaction(async (tx) => {
+          const [f] = await tx
+            .update(friends)
+            .set({ status: "accepted" })
+            .where(
+              and(
+                eq(friends.id, id),
+                eq(friends.friendUserId, accepterId),
+                eq(friends.status, "pending")
+              )
             )
-          )
-          .returning();
-        if (!f) return null;
+            .returning();
+          if (!f) return null;
 
-        const exists = await this.areFriends(f.friendUserId, f.userId, tx);
-        if (!exists) {
-          await tx.insert(friends).values({
-            userId: f.friendUserId,
-            friendUserId: f.userId,
-            status: "accepted",
-          });
-        }
-        return { requesterId: f.userId };
-      });
-    } catch (err) {
-      // Another accept for this pair committed between the update and the
-      // reverse insert, so the friendship it would have made already exists
-      // and this request no longer does — which is what the caller's "nothing
-      // to accept" answer says.
-      if (uniqueViolation(err)?.includes("friends_accepted_uq")) return null;
-      throw err;
+          const exists = await this.areFriends(f.friendUserId, f.userId, tx);
+          if (!exists) {
+            await tx.insert(friends).values({
+              userId: f.friendUserId,
+              friendUserId: f.userId,
+              status: "accepted",
+            });
+          }
+          return { requesterId: f.userId };
+        });
+      } catch (err) {
+        if (!uniqueViolation(err)?.includes("friends_accepted_uq")) throw err;
+      }
     }
+    return null;
   },
 
   async areFriends(

@@ -104,6 +104,10 @@ describe("simultaneous friend requests", {
     assert.equal((await friendRows()).length, before + 1);
   });
 
+  // The issue asks for two *crossed* requests accepted at once. The pending
+  // index makes a crossed pair unconstructible — the second request never
+  // becomes a row — so the same race is reached from the one request both
+  // halves of the UI can act on.
   test("the same request accepted twice at once makes the pair friends once", async () => {
     const sender = await register(server, "race_accept_sender");
     const recipient = await register(server, "race_accept_recipient");
@@ -121,14 +125,13 @@ describe("simultaneous friend requests", {
         headers: { cookie: recipient.cookie },
       });
     const [first, second] = await Promise.all([accept(), accept()]);
-    assert.ok(
-      [first.status, second.status].includes(200),
-      "neither accept was honoured"
+    assert.deepEqual(
+      [first.status, second.status].sort(),
+      [200, 404],
+      "a constraint the handler races into must surface as an answer, not a crash " +
+        "and not a second acceptance"
     );
-    assert.ok(
-      first.status !== 500 && second.status !== 500,
-      "a constraint the handler races into must surface as an answer, not a crash"
-    );
+    assert.equal(await codeOf(first.status === 404 ? first : second), "FRIEND_REQUEST_NOT_FOUND");
 
     for (const who of [sender, recipient]) {
       const list = await fetch(`${server.url}/api/friends`, { headers: { cookie: who.cookie } });
@@ -145,17 +148,25 @@ describe("simultaneous friend requests", {
   test("boot clears duplicates already in the table rather than refusing to start", async () => {
     const alice = await register(server, "dedupe_alice");
     const bob = await register(server, "dedupe_bob");
+    const carol = await register(server, "dedupe_carol");
+    const dave = await register(server, "dedupe_dave");
     const { pool } = await import("../../server/db.ts");
     const { ensureSchema } = await import("../../server/schemaDdl.ts");
 
     // The state a database upgraded into these indexes is already in: nothing
-    // forbade any of it until now.
+    // forbade any of it until now. Every shape each index forbids is seeded —
+    // a duplicate accepted row per direction, a repeated request and a crossed
+    // pair — because a dedupe that never meets a row it must delete is a
+    // CREATE UNIQUE INDEX that fails on Replit and nowhere else.
     await pool.query(`DROP INDEX "friends_accepted_uq", "friends_pending_pair_uq"`);
     const values = [
       [alice.user.id, bob.user.id, "accepted"],
       [bob.user.id, alice.user.id, "accepted"],
       [alice.user.id, bob.user.id, "accepted"],
       [bob.user.id, alice.user.id, "accepted"],
+      [carol.user.id, dave.user.id, "pending"],
+      [carol.user.id, dave.user.id, "pending"],
+      [dave.user.id, carol.user.id, "pending"],
     ];
     for (const [userId, friendUserId, status] of values) {
       await pool.query(
@@ -164,11 +175,13 @@ describe("simultaneous friend requests", {
       );
     }
 
-    const pair = async () =>
+    const rowsFor = async (ids: string[]) =>
       (await friendRows())
-        .filter((r) => [alice.user.id, bob.user.id].includes(r.userId))
+        .filter((r) => ids.includes(r.userId))
         .map((r) => `${r.userId}->${r.friendUserId}`)
         .sort();
+    const accepted = () => rowsFor([alice.user.id, bob.user.id]);
+    const pending = () => rowsFor([carol.user.id, dave.user.id]);
     const bothWays = [
       `${alice.user.id}->${bob.user.id}`,
       `${bob.user.id}->${alice.user.id}`,
@@ -176,14 +189,22 @@ describe("simultaneous friend requests", {
 
     await ensureSchema(pool);
     assert.deepEqual(
-      await pair(),
+      await accepted(),
       bothWays,
       "both directions must survive and neither twice: an accepted friendship is " +
         "one row each way, and a side missing its row cannot see the friend at all"
     );
+    assert.equal(
+      (await pending()).length,
+      1,
+      "a request is one row whoever asked, so three pending rows between two " +
+        "players must come out as the one the pair actually has"
+    );
 
     // The second boot is the one that proves nothing here is a migration.
+    const survivors = await pending();
     await ensureSchema(pool);
-    assert.deepEqual(await pair(), bothWays);
+    assert.deepEqual(await accepted(), bothWays);
+    assert.deepEqual(await pending(), survivors);
   });
 });

@@ -16,22 +16,32 @@ const statements = schemaStatements();
  * for a unique index added over live rows, without which `CREATE UNIQUE INDEX`
  * fails and the server does not start.
  *
- * The exemption is earned, not declared. It is granted only to a statement
- * that stands immediately in front of a unique index on its own table — which
- * is what makes a second run delete nothing — and whose every candidate row is
- * matched against a smaller sibling in the same table, which is what leaves one
- * row of each group standing. A delete failing either half is judged by the
- * guards below like any other.
+ * The exemption is earned, not declared, and what earns it is the
+ * correspondence — the delete must carry the *same* key and the same filter as
+ * the index standing immediately behind it, which is what makes it delete only
+ * what that index rejects and nothing on a second run. A delete that groups by
+ * anything else is judged by the guards below like any other.
  */
-function dedupeTableFor(index: number): string | undefined {
-  const statement = statements[index] ?? "";
-  const shape = /^DELETE FROM ("[^"]+") AS a USING ("[^"]+") AS b\b/.exec(statement);
-  if (!shape || shape[1] !== shape[2]) return undefined;
-  if (!/\ba\."id" > b\."id"/.test(statement)) return undefined;
-  const next = statements[index + 1] ?? "";
-  const guarded = /^CREATE UNIQUE INDEX IF NOT EXISTS "[^"]+" ON ("[^"]+")/.exec(next);
-  return guarded?.[1] === shape[1] ? shape[1] : undefined;
+function dedupeTableFor(list: string[], index: number): string | undefined {
+  const statement = list[index] ?? "";
+  if (!/^DELETE FROM /.test(statement)) return undefined;
+  const guarded =
+    /^CREATE UNIQUE INDEX IF NOT EXISTS "[^"]+" ON ("[^"]+")(?: USING "[^"]+")? \((.*)\)(?: WHERE (.*))?;$/.exec(
+      list[index + 1] ?? ""
+    );
+  if (!guarded) return undefined;
+  const [, table, key, predicate] = guarded;
+  if (!statement.startsWith(`DELETE FROM ${table} `)) return undefined;
+  if (!statement.includes(`PARTITION BY ${key} `)) return undefined;
+  if (predicate && !statement.includes(predicate)) return undefined;
+  return table;
 }
+
+test("a delete that does not group by its index's key is not exempt", () => {
+  const index = `CREATE UNIQUE INDEX IF NOT EXISTS "friends_accepted_uq" ON "friends" ("user_id", "friend_user_id") WHERE "status" = 'accepted';`;
+  const decoy = `DELETE FROM "friends" WHERE "ctid" IN (SELECT "ctid" FROM (SELECT "ctid", row_number() OVER (PARTITION BY "id" ORDER BY "ctid") AS "dup" FROM "friends" WHERE "id" IS NOT NULL) AS "d" WHERE "d"."dup" > 1);`;
+  assert.equal(dedupeTableFor([decoy, index], 0), undefined);
+});
 
 test("every statement is idempotent", () => {
   for (const [i, statement] of statements.entries()) {
@@ -42,7 +52,7 @@ test("every statement is idempotent", () => {
       /EXCEPTION WHEN duplicate_object/i.test(statement) ||
       // A dedupe's second run finds nothing, because the index it precedes
       // forbids exactly what it deletes.
-      dedupeTableFor(i) !== undefined;
+      dedupeTableFor(statements, i) !== undefined;
     assert.ok(
       idempotent,
       `not idempotent, so a second boot would fail:\n${statement}`
@@ -61,7 +71,7 @@ test("no statement can destroy or rewrite existing data", () => {
     /\bALTER\s+COLUMN\b/i,
   ];
   for (const [i, statement] of statements.entries()) {
-    const dedupe = dedupeTableFor(i);
+    const dedupe = dedupeTableFor(statements, i);
     for (const pattern of forbidden) {
       if (dedupe && pattern.source.includes("DELETE")) continue;
       assert.doesNotMatch(
@@ -279,7 +289,7 @@ test("the friends uniqueness indexes forbid every duplicate add/accept can race 
   // failed CREATE UNIQUE INDEX at boot is a server that does not start.
   for (const at of [accepted, pending]) {
     assert.equal(
-      dedupeTableFor(at - 1),
+      dedupeTableFor(statements, at - 1),
       '"friends"',
       `${statements[at]}\nis not preceded by a dedupe that lets it succeed against live rows`
     );
