@@ -18,7 +18,7 @@ import { tn } from '@/lib/i18n';
 const CLOCK_SECONDS = 30;
 const THRESHOLD = urgentThresholdSeconds(CLOCK_SECONDS);
 /** Shorter than the urgent threshold: a rejoin lands mid-turn on one of these. */
-const STUB_CLOCK = 3;
+const SHORT_CLOCK = 3;
 
 const secondsLeft = (n: number) => tn('gameTable.a11ySecondsLeft', n);
 
@@ -65,6 +65,23 @@ const advanceOneSecond = async () => {
   });
 };
 
+/** The region's label after every one of `ticks` seconds, and once before them. */
+const overTheTurn = async (ticks: number) => {
+  const spoken: string[] = [];
+  let last = '';
+  const sample = () => {
+    const label = heard();
+    if (label !== last && label !== '') spoken.push(label);
+    last = label;
+  };
+  sample();
+  for (let i = 0; i < ticks; i++) {
+    await advanceOneSecond();
+    sample();
+  }
+  return spoken;
+};
+
 beforeEach(() => {
   jest.useFakeTimers();
 });
@@ -78,21 +95,10 @@ describe('the turn countdown', () => {
       <TurnTimer seconds={CLOCK_SECONDS} active resetKey="turn-1" scale={1} />
     );
 
-    const spoken: string[] = [];
-    let last = '';
-    const sample = () => {
-      const label = heard();
-      if (label !== last && label !== '') spoken.push(label);
-      last = label;
-    };
-
-    sample();
-    for (let i = 0; i < CLOCK_SECONDS; i++) {
-      await advanceOneSecond();
-      sample();
-    }
-
-    expect(spoken).toEqual([secondsLeft(CLOCK_SECONDS), secondsLeft(THRESHOLD)]);
+    expect(await overTheTurn(CLOCK_SECONDS)).toEqual([
+      secondsLeft(CLOCK_SECONDS),
+      secondsLeft(THRESHOLD),
+    ]);
     await r.unmount();
   });
 
@@ -118,19 +124,10 @@ describe('the turn countdown', () => {
   // is the seconds really left — `urgentThresholdSeconds` floors at 5, so a
   // threshold read as the entry figure would tell a rejoining player 5 with 3.
   it('speaks the seconds it has when the clock is shorter than the threshold', async () => {
-    const r = await render(<TurnTimer seconds={STUB_CLOCK} active resetKey="turn-1" scale={1} />);
-    expect(urgentThresholdSeconds(STUB_CLOCK)).toBeGreaterThan(STUB_CLOCK);
+    const r = await render(<TurnTimer seconds={SHORT_CLOCK} active resetKey="turn-1" scale={1} />);
+    expect(urgentThresholdSeconds(SHORT_CLOCK)).toBeGreaterThan(SHORT_CLOCK);
 
-    const spoken: string[] = [];
-    let last = '';
-    for (let i = 0; i <= STUB_CLOCK; i++) {
-      const label = heard();
-      if (label !== last && label !== '') spoken.push(label);
-      last = label;
-      await advanceOneSecond();
-    }
-
-    expect(spoken).toEqual([secondsLeft(STUB_CLOCK)]);
+    expect(await overTheTurn(SHORT_CLOCK)).toEqual([secondsLeft(SHORT_CLOCK)]);
     await r.unmount();
   });
 
@@ -143,8 +140,13 @@ describe('the turn countdown', () => {
     );
 
     for (let i = CLOCK_SECONDS; i > 0; i--) {
-      expect(screen.queryByText(String(i))).not.toBeNull();
-      expect(screen.queryAllByLabelText(secondsLeft(i)).length).toBeGreaterThan(0);
+      // The digit's own node, not `*ByLabelText`: on the two announcing frames
+      // the region holds the identical sentence, so a query that took either
+      // would pass on the region alone and say nothing about the chip.
+      expect(screen.getByText(String(i)).props).toMatchObject({
+        accessible: true,
+        accessibilityLabel: secondsLeft(i),
+      });
       await advanceOneSecond();
     }
     expect(screen.queryByText('0')).not.toBeNull();

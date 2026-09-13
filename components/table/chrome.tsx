@@ -235,7 +235,9 @@ export function ChipText({
 } & Partial<
   Pick<
     TextProps,
+    | "accessible"
     | "accessibilityLabel"
+    | "role"
     | "testID"
     | "accessibilityElementsHidden"
     | "importantForAccessibility"
