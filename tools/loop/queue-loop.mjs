@@ -172,7 +172,7 @@ export function queueLoopArgs(number, size = null) {
 }
 
 // The session and the loop read these from the shared checkout, not from the ticket's worktree.
-const PROTOCOL = ["CLAUDE.md", ".claude", "tools/loop"];
+const PROTOCOL = ["CLAUDE.md", ".claude", "tools/loop", "scripts/lib"];
 
 /** Worktree directories someone else may be working in right now. */
 function peerWorktrees(dir = ".worktrees") {
@@ -187,9 +187,9 @@ function peerWorktrees(dir = ".worktrees") {
  * Leaves the shared checkout on an up-to-date `main`, or refuses and says why.
  *
  * It asks whether the protocol files are *dirty*, not whether they differ from `origin/main`.
- * Those are different questions: the loop's own tickets edit `scripts/`, so the moment one merges
- * the checkout differs from origin until it is fast-forwarded — which is staleness, repaired here
- * rather than reported. Only an uncommitted edit is drift, and it belongs to someone.
+ * Those are different questions: the loop's own tickets edit its own code, so the moment one
+ * merges the checkout differs from origin until it is fast-forwarded — which is staleness,
+ * repaired here rather than reported. Only an uncommitted edit is drift, and it belongs to someone.
  */
 export function syncCheckout(git, log, install = () => sh("npm", ["ci"], { stdio: "inherit" })) {
   const branch = git("rev-parse", "--abbrev-ref", "HEAD").trim();
@@ -1490,6 +1490,25 @@ export async function main({
   install(screen);
   io ??= realIo(book, screen);
 
+  /**
+   * The ticket phase A has claimed, so a throw anywhere in the iteration can still release it.
+   *
+   * `runOnce`'s own exits all route through `park`, but a throw routes through none of them, and
+   * an `in-progress` label nothing removes is a ticket `next-ticket.mjs` skips for good — the
+   * defect this branch closed on every other path. `io.pick` is the claim, so wrapping it is
+   * where the answer is knowable; `git status` on a contended shared index is the reachable way
+   * to get there.
+   */
+  let claimed = null;
+  const watched = {
+    ...io,
+    pick: (p) => {
+      const route = io.pick(p);
+      claimed = typeof route?.number === "number" ? route.number : null;
+      return route;
+    },
+  };
+
   /** Every exit writes the total. The clean stop used to print it to the screen and nowhere else. */
   const finish = (code, why) => {
     const total = runTotal(book.totals);
@@ -1505,10 +1524,28 @@ export async function main({
     pruneLogs();
 
     let pass;
+    claimed = null;
     try {
-      pass = await runOnce(io, pinned, rounds);
+      pass = await runOnce(watched, pinned, rounds);
     } catch (err) {
       screen.warn(`queue-loop: the iteration threw — ${String(err?.stack ?? err)}`);
+      // No row: there is no run to write one from, and inventing one is how the ledger came to be
+      // trusted while wrong. The claim is the part that strands the ticket, and it comes off here.
+      if (claimed !== null) {
+        try {
+          io.bell();
+          io.park(claimed, {
+            phase: "?",
+            why: `the loop threw: ${String(err?.message ?? err)}`,
+            log: streamLog(claimed),
+            cwd: null,
+            branch: null,
+            dirty: false,
+          });
+        } catch (unparked) {
+          screen.warn(`queue-loop: #${claimed} is still claimed — ${String(unparked?.message ?? unparked)}`);
+        }
+      }
       failures += 1;
       if (shouldHalt(failures)) return finish(1, `${failures} tickets in a row did not land`);
       continue;

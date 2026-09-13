@@ -1,10 +1,13 @@
-// tools/loop/tests/entry.test.ts — the one answer to "was this file run, or imported?"
+// tests/entry.test.ts — the one answer to "was this file run, or imported?"
 //
-// Written nine times in seven shapes across scripts/ before scripts/lib/entry.mjs. Three of
-// those shapes were wrong in ways that only show up under a real invocation: a bare suffix match
-// says yes to any same-named file anywhere on disk, and a comparison that never resolves the
-// path says no to the ordinary `node scripts/x.mjs` relative invocation. Both cases are pinned
-// here directly, once, rather than once per caller.
+// In the game's suite rather than the loop's because `scripts/lib/entry.mjs` is shared: twelve
+// scripts under `scripts/` import it against nine under `tools/loop/`, and a change to it sets
+// app=true.
+//
+// Two of the shapes it replaced were wrong in ways that only show up under a real invocation: a
+// bare suffix match says yes to any same-named file anywhere on disk, and a comparison that never
+// resolves the path says no to the ordinary `node scripts/x.mjs` relative invocation. Both cases
+// are pinned here directly, once, rather than once per caller.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";

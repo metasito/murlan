@@ -488,3 +488,72 @@ describe("main", () => {
     assert.equal(n, outcomes.length + 1);
   });
 });
+
+/**
+ * Every decision `runOnce` reaches goes through `park`, so no ticket loses its claim — but a throw
+ * reaches no decision at all. `io.sharedCheckoutDirty` is a bare `git status` on the *shared*
+ * index, which a peer's worktree can hold, and it runs after the session has already added
+ * `in-progress`. Left on, that label makes the ticket permanently unpickable (#1001's mechanism).
+ */
+describe("a throw mid-iteration", () => {
+  const book = () => ({
+    totals: { tickets: 0, landed: 0, parked: 0, cost: 0, ms: 0 },
+    record: () => {},
+    close: () => {},
+  });
+  const screen = () => ({ say: () => {}, warn: () => {}, stop: () => {} });
+
+  test("releases the claim on the ticket it was holding", async () => {
+    const parked: number[] = [];
+    let picked = 0;
+    const spy = {
+      ...(io() as any),
+      pick: () => ({ skill: "implement", number: 4200 + ++picked, title: "t", size: null, queue: null }),
+      spawn: async () => ({ status: 0, blocked: false, result: {}, ms: 1, log: "l", phase: "C", declared: null }),
+      sharedCheckoutDirty: () => {
+        throw new Error("fatal: Unable to create '.git/index.lock': File exists.");
+      },
+      park: (n: number) => parked.push(n),
+    };
+    const code = await main({ io: spy, book: book(), screen: screen(), install: () => {}, runId: "t" });
+    assert.equal(code, 1, "the breaker still ends the night");
+    assert.deepEqual(parked, [4201, 4202, 4203], "a claimed ticket was left claimed");
+  });
+
+  test("a throw before anything is claimed parks nothing", async () => {
+    const parked: number[] = [];
+    const spy = {
+      ...(io() as any),
+      queuePre: () => {
+        throw new Error("queue-pre blew up");
+      },
+      park: (n: number) => parked.push(n),
+    };
+    await main({ io: spy, book: book(), screen: screen(), install: () => {}, runId: "t" });
+    assert.deepEqual(parked, [], "parked a ticket nobody had picked");
+  });
+
+  test("a park that itself throws is reported, not raised", async () => {
+    let picked = 0;
+    const said: string[] = [];
+    const spy = {
+      ...(io() as any),
+      pick: () => ({ skill: "implement", number: 4300 + ++picked, title: "t", size: null, queue: null }),
+      spawn: async () => {
+        throw new Error("the session could not start");
+      },
+      park: () => {
+        throw new Error("gh is unreachable");
+      },
+    };
+    const code = await main({
+      io: spy,
+      book: book(),
+      screen: { say: () => {}, warn: (m: string) => said.push(m), stop: () => {} },
+      install: () => {},
+      runId: "t",
+    });
+    assert.equal(code, 1);
+    assert.match(said.join("\n"), /#4301 is still claimed/, "a ticket nobody can release must be named");
+  });
+});

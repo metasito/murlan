@@ -7,12 +7,13 @@ Every rule an agent must follow, in one place. No rationale here — the *why* l
 
 1. **Run `npm run agent:check` before you push.** `tools/loop/check-steps.mjs` is the list of what
    runs there and what `ci.yml` carries; the check prints both and replays on an unchanged tree.
-2. **Never run a whole suite by hand** — not `npm run verify`, `npm test`, `npm run test:native`,
-   `npm run test:e2e`. `ci.yml` runs them on your push, in parallel, with the Postgres the
-   integration suites need and this machine has not.
+2. **Never run a whole suite by hand** — not `npm run verify`, `npm test`, `npm run loop:test`,
+   `npm run test:native`, `npm run test:e2e`. `ci.yml` runs them on your push, in parallel, with
+   the Postgres the integration suites need and this machine has not.
 3. **One spec is still yours**, when only a browser can see what you changed:
    `npx playwright test --config tests/e2e/playwright.config.ts one.spec.ts`.
-4. **While iterating, run one file:** `node --test tests/x.test.ts`. That is where rule 6's
+4. **While iterating, run one file:** `node --test tests/x.test.ts`, or
+   `node --test tools/loop/tests/x.test.ts` for the loop's own. That is where rule 6's
    red-then-green is watched; everything wider rides CI.
 5. **Add `E2E_SKIP_BUILD=1` only when your edit is confined to a spec file.** Any change under
    `app/`, `components/` or `lib/` needs a rebuild, or the run tests a stale bundle.

@@ -180,9 +180,14 @@ describe("sessionRow", () => {
     assert.deepEqual(killed.cache, { created: 0, read: 0 });
   });
 
-  test("the row is JSON-serialisable, since it is written one per line", () => {
-    assert.doesNotThrow(() => JSON.stringify(r));
-    assert.ok(!JSON.stringify(r).includes("\n"));
+  // One row per line, so a value carrying a newline has to survive as an escape rather than
+  // splitting the row in two. `JSON.stringify` handles that; what it cannot handle is a value it
+  // drops silently, which is what the round trip checks.
+  test("the row survives the round trip it is written and read through", () => {
+    const withNewlines = sessionRow(session({ parkReason: "line one\nline two" }));
+    const line = JSON.stringify(withNewlines);
+    assert.equal(line.split("\n").length, 1, "a row spanning two lines is two rows to the reader");
+    assert.deepEqual(JSON.parse(line), withNewlines);
   });
 });
 

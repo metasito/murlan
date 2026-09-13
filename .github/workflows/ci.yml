@@ -134,7 +134,7 @@ jobs:
           if grep -qE '^\.github/workflows/ci\.yml$' <<< "$changed"; then
             echo "This workflow changed — it must exercise its own compile jobs."
             echo "native=true" >> "$GITHUB_OUTPUT"
-          elif [ -n "$native_trigger" ] && grep -qvE '^(app|components|context|lib|locales|shared|server|tests|docs|scripts|public|\.claude|\.agents|\.maestro|\.github)/|\.md$' <<< "$native_trigger"; then
+          elif [ -n "$native_trigger" ] && grep -qvE '^(app|components|context|lib|locales|shared|server|tests|docs|scripts|tools|public|\.claude|\.agents|\.maestro|\.github)/|\.md$' <<< "$native_trigger"; then
             echo "Something outside the JavaScript sources changed — compiling for both devices."
             echo "native=true" >> "$GITHUB_OUTPUT"
           else
@@ -164,8 +164,13 @@ jobs:
           elif [ -n "$changed" ] && ! grep -qvE '^(docs/|\.claude/)|\.md$' <<< "$changed"; then
             echo "Documentation only — skipping the app checks."
             echo "app=false" >> "$GITHUB_OUTPUT"
-          elif [ -n "$changed" ] && ! grep -qvE '^tools/loop/' <<< "$changed"; then
-            echo "The loop only — its own job covers this, and the game's suite says nothing about it."
+          # Deliberately the loop's *tests* and not the loop: `scripts/e2ePort.mjs` imports
+          # `tools/loop/reap.mjs` and `scripts/contextSurface.mjs` imports `tools/loop/loop-derive.mjs`,
+          # so a change to the loop's source can stop the browser suite booting. A directory can
+          # answer "can this reach the game?" only where the answer is no by construction, and a
+          # test file is the one place it is: nothing imports one.
+          elif [ -n "$changed" ] && ! grep -qvE '^tools/loop/tests/' <<< "$changed"; then
+            echo "The loop's own tests only — nothing imports a test, so the game cannot see this."
             echo "app=false" >> "$GITHUB_OUTPUT"
           else
             echo "app=true" >> "$GITHUB_OUTPUT"
@@ -368,6 +373,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # check:comments diffs each changed file against the merge base.
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -384,6 +392,9 @@ jobs:
       - run: npm run typecheck
       - run: npx eslint tools/loop
       - run: npm run loop:test
+      # Rides here as well as on `lint` for the same reason as the two above: the comment budget is
+      # a step of a job that a loop-tests-only change does not run.
+      - run: npm run check:comments
 
   lint:
     name: Lint

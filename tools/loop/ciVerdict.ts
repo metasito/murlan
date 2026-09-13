@@ -154,57 +154,71 @@ export function stripLogPrefix(line: string): string {
 }
 
 /**
- * `gh run watch` blocks for as long as ci.yml takes, and nothing watches this module while it
- * does — `queue-loop`'s stall watchdog is cleared when the session's child closes. Without a
- * ceiling here a wedged `gh` hangs the night with no line and no bell. Well above a full run.
+ * One read, end to end. `gh run watch` blocks for as long as ci.yml takes and nothing watches this
+ * module while it does — `queue-loop`'s stall watchdog is cleared when the session's child closes,
+ * and its `SETTLE.DEADLINE_MS` is only tested between rounds, never during one. Without a ceiling
+ * here a wedged `gh` hangs the night with no line and no bell. Well above a full run.
+ *
+ * It is the whole read rather than each call because a read makes up to sixteen `gh` calls in
+ * sequence — one `pr view`, twelve `run list` while the run appears, `run watch`, and two more
+ * after — and a per-call ceiling multiplies by sixteen while saying nothing about the total.
  */
-const GH_TIMEOUT_MS = 40 * 60_000;
+const READ_DEADLINE_MS = 45 * 60_000;
 
-export function ghExecOptions(): ExecFileSyncOptionsWithStringEncoding {
+/** Whatever is left of the read's budget, so sixteen calls cannot each take the whole of it. */
+export function ghExecOptions(until = Date.now() + READ_DEADLINE_MS): ExecFileSyncOptionsWithStringEncoding {
   return {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
     maxBuffer: GH_MAX_BUFFER,
-    timeout: GH_TIMEOUT_MS,
+    // Never zero or negative: `execFileSync` reads those as "no timeout", which is the opposite of
+    // what an exhausted budget means.
+    timeout: Math.max(1_000, until - Date.now()),
   };
 }
 
-function gh(args: string[]): string {
-  return execFileSync("gh", args, ghExecOptions());
+function gh(args: string[], until: number): string {
+  return execFileSync("gh", args, ghExecOptions(until));
 }
 
-function ghJson<T>(args: string[], fallback: T): T {
+function ghJson<T>(args: string[], fallback: T, until: number): T {
   try {
-    return JSON.parse(gh(args)) as T;
+    return JSON.parse(gh(args, until)) as T;
   } catch {
     return fallback;
   }
 }
 
-export function readVerdict(repo: string, branch: string, prNumber: number): Verdict {
+export function readVerdict(
+  repo: string,
+  branch: string,
+  prNumber: number,
+  until = Date.now() + READ_DEADLINE_MS
+): Verdict {
   // The pull request carries other checks — the Maestro suites — that settle on their own
   // schedule and are not the gate. Waiting on all of them cost eleven minutes a run for a job
   // that is red on main anyway, so only ci.yml's own run is watched.
   const headSha = ghJson<{ headRefOid?: string }>(
     ["pr", "view", String(prNumber), "--repo", repo, "--json", "headRefOid"],
-    {}
+    {},
+    until
   ).headRefOid;
 
   let run: RunRow | undefined;
   for (let attempt = 1; attempt <= RUN_APPEAR_ATTEMPTS; attempt++) {
-    run = runForHead(ghJson<RunRow[]>(runListArgs(repo, branch), []), headSha);
-    if (run) break;
+    run = runForHead(ghJson<RunRow[]>(runListArgs(repo, branch), [], until), headSha);
+    if (run || Date.now() >= until) break;
     pause(RUN_APPEAR_INTERVAL_MS);
   }
   if (run && run.status !== "completed") {
     try {
       // Blocks until that one run settles. Its exit status is deliberately ignored: piped, the
       // status belongs to the pipe, which is how a red branch once read as green.
-      gh(["run", "watch", String(run.databaseId), "--repo", repo, "--interval", "20"]);
+      gh(["run", "watch", String(run.databaseId), "--repo", repo, "--interval", "20"], until);
     } catch {
       // A non-zero exit means the run failed, which the row re-read below states properly.
     }
-    run = runForHead(ghJson<RunRow[]>(runListArgs(repo, branch), []), headSha) ?? run;
+    run = runForHead(ghJson<RunRow[]>(runListArgs(repo, branch), [], until), headSha) ?? run;
   }
   if (!run || run.conclusion === "success") return decideVerdict(run, []);
 
@@ -220,12 +234,13 @@ export function readVerdict(repo: string, branch: string, prNumber: number): Ver
       "--jq",
       "[.jobs[] | {name, conclusion, steps: (.steps | length)}]",
     ],
-    []
+    [],
+    until
   );
   const verdict = decideVerdict(run, jobs);
   if (!verdict.pass && !verdict.infrastructure) {
     try {
-      verdict.output = gh(["run", "view", String(run.databaseId), "--repo", repo, "--log-failed"])
+      verdict.output = gh(["run", "view", String(run.databaseId), "--repo", repo, "--log-failed"], until)
         .split("\n")
         .slice(-FAILED_LOG_LINES)
         .map(stripLogPrefix)

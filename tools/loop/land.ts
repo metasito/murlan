@@ -49,17 +49,19 @@ export function landing(pr: PrState, ci: CiVerdict): Landing {
     return { action: "recheck", reason: `the pull request state reads ${pr.state}` };
   }
 
+  // Ahead of both CI checks on purpose. A fix round rebuilds the worktree from the branch and
+  // commits to it, which cannot clear a conflict with main; and rechecking cannot either, so a
+  // conflict read as an infrastructure stall spends every retry round and then tells the owner the
+  // runner is sick. ci.yml's concurrency group cancels a superseded push, and a cancelled run is
+  // exactly what `infrastructure` means.
+  if (pr.mergeable === "CONFLICTING") {
+    return { action: "owner", reason: "the branch conflicts with main" };
+  }
+
   // Billing, a quota or a runner. It says nothing about the diff, so a fix round spent on it hunts
   // a defect no suite ever reported.
   if (ci.infrastructure) {
     return { action: "recheck", reason: "a job completed having run zero steps" };
-  }
-
-  // Ahead of the CI check on purpose: a fix round rebuilds the worktree from the branch and commits
-  // to it, which cannot clear a conflict with main, so handing a conflicted pull request back burns
-  // three rounds to arrive back here.
-  if (pr.mergeable === "CONFLICTING") {
-    return { action: "owner", reason: "the branch conflicts with main" };
   }
 
   if (ci.pass !== true) {

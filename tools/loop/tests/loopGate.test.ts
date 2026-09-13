@@ -6,6 +6,7 @@ import { mkdtempSync, rmSync, mkdirSync, appendFileSync, writeFileSync } from "n
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { MAX_REVIEW_ROUNDS, roundVerdict } from "../loop-gate.mjs";
 
 /**
  * Phase E branches on this command's exit code, so the exit code is what is asserted — never a
@@ -84,7 +85,8 @@ function gate(
   cwd: string,
   comments?: { body: string }[],
   base: string | undefined = BASE,
-  worktree?: string
+  worktree?: string,
+  args: string[] = []
 ): { code: number; out: string } {
   const env: NodeJS.ProcessEnv = { ...process.env };
   if (comments) env.LOOP_GH_SCRIPT = stubGh(comments);
@@ -94,7 +96,7 @@ function gate(
   // machine (this suite's own, or a peer's) cannot be mistaken for the one under test here.
   if (worktree) env.LOOP_WORKTREE = worktree;
   else delete env.LOOP_WORKTREE;
-  const r = spawnSync(process.execPath, [GATE], { cwd, encoding: "utf8", env });
+  const r = spawnSync(process.execPath, [GATE, ...args], { cwd, encoding: "utf8", env });
   return { code: r.status ?? -1, out: `${r.stderr}${r.stdout}` };
 }
 
@@ -347,4 +349,55 @@ test("LOOP_WORKTREE names the ticket directly, without a scan", () => {
   const { code, out } = gate(root, undefined, BASE, wt);
   assert.notEqual(code, 0, out);
   assert.match(out, /#9900015/);
+});
+
+/**
+ * Phase D's ceiling. It is the largest cost lever in the loop, and it was a sentence in `queue.md`
+ * that no test could fail until this branch moved it here — so the point of these is that editing
+ * `MAX_REVIEW_ROUNDS`, or relaxing either comparison, goes red.
+ */
+describe("the review-round cap", () => {
+  test("allows a round below the cap, and names which one it is", () => {
+    for (let rounds = 0; rounds < MAX_REVIEW_ROUNDS; rounds++) {
+      const v = roundVerdict({ reviewRounds: rounds });
+      assert.equal(v.ok, true, `round ${rounds + 1} was refused below the cap`);
+      assert.match(v.why, new RegExp(`round ${rounds + 1} of at most ${MAX_REVIEW_ROUNDS}`));
+    }
+  });
+
+  test("refuses at the cap, not one past it", () => {
+    const v = roundVerdict({ reviewRounds: MAX_REVIEW_ROUNDS });
+    assert.equal(v.ok, false, `a ${MAX_REVIEW_ROUNDS + 1}th round was allowed`);
+    assert.match(v.why, /the cap is/);
+  });
+
+  /**
+   * The whole reason `derive()` returns null rather than 0 here. Read as zero, an unreachable
+   * tracker buys an unbounded review — the failure mode is silent and costs opus pairs per round.
+   */
+  test("refuses when the tracker cannot be counted, rather than reading it as zero", () => {
+    for (const reviewRounds of [null, undefined]) {
+      const v = roundVerdict({ reviewRounds });
+      assert.equal(v.ok, false, `reviewRounds ${String(reviewRounds)} allowed a round`);
+      assert.match(v.why, /cannot reach the tracker/);
+    }
+  });
+
+  // The exit code is what phase D branches on, so it is asserted through the real CLI too.
+  test("the exit code phase D reads", () => {
+    const wt = worktree("agent/9900021-rounds");
+    commit(wt, "docs/probe.md");
+    // A round is a comment carrying a real verdict — the same shape `verdictFor` reads, since both
+    // go through one regex.
+    const verdict = (n: number) =>
+      Array.from({ length: n }, (_, i) => ({ body: `VERDICT: HOLD deadbee${i} — round ${i + 1}` }));
+
+    const under = gate(root, verdict(1), BASE, wt, ["--review-round"]);
+    assert.equal(under.code, 0, under.out);
+    assert.match(under.out, /round 2 of at most/);
+
+    const at = gate(root, verdict(MAX_REVIEW_ROUNDS), BASE, wt, ["--review-round"]);
+    assert.equal(at.code, 1, at.out);
+    assert.match(at.out, /the cap is/);
+  });
 });

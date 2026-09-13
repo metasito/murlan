@@ -171,13 +171,16 @@ describe("no test lists the repo root from the filesystem", () => {
   // `scripts/contextSurface.mjs`'s `walk(ROOT)` — is invisible to it. That one
   // is a hand-run CLI, never concurrent with `node --test`, so it has no race.
   test("every root scan goes through trackedRootFiles", () => {
-    const files = trackedFiles(repoRoot, "tests", "scripts").filter((f) =>
+    const files = trackedFiles(repoRoot, "tests", "scripts", "tools").filter((f) =>
       /\.(?:ts|tsx|mjs|cjs|js)$/.test(f)
     );
     // Three floors: that the scan reached both trees, that the exemption above
     // is an exemption rather than a no-op, and that dropping comment lines left
     // this file's real code behind. Any one of them failing passes everything.
-    assert.ok(files.includes(SELF) && files.some((f) => f.startsWith("scripts/")), "scan is empty");
+    for (const tree of ["scripts/", "tools/loop/"]) {
+      assert.ok(files.some((f) => f.startsWith(tree)), `the scan reached nothing under ${tree}`);
+    }
+    assert.ok(files.includes(SELF), "scan is empty");
     assert.match(readFileSync(path.join(repoRoot, SELF), "utf8"), ROOT_READDIR);
     assert.doesNotMatch(source(SELF), ROOT_READDIR);
     assert.match(source(SELF), /readdirSync\(dir/);

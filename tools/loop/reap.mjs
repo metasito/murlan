@@ -24,6 +24,25 @@ const E2E_PORT = process.env.E2E_PORT ?? "5199";
  * checkout: it keeps its browsers under `ms-playwright` in the user's profile, so a rule that knew
  * only the repo would leave behind the one process class that costs hundreds of megabytes.
  */
+/**
+ * The shared checkout every worktree hangs off — what `ownedByTooling` matches a command line
+ * against, so an answer one directory out silently classifies nothing as ours.
+ *
+ * Asked of git rather than counted in `..` segments from this file. A count is a claim about where
+ * this file sits that nothing fails when the file moves, and moving it into `tools/loop/` is
+ * exactly what turned the old count into the `tools/` directory. `cwd` is this file's own
+ * directory, so the answer does not depend on the caller's either.
+ */
+export function checkoutRoot(from = path.dirname(fileURLToPath(import.meta.url))) {
+  const top = execFileSync("git", ["rev-parse", "--show-toplevel"], {
+    cwd: from,
+    encoding: "utf8",
+  }).trim();
+  // Run from inside a worktree, `--show-toplevel` answers with the worktree; the checkout is its
+  // parent, above `.worktrees/`.
+  return top.split(new RegExp(`[\\\\/]${WORKTREE_DIR.replace(".", "\\.")}[\\\\/]`))[0];
+}
+
 export function toolingRoots({ repoRoot, env = process.env, platform = process.platform, home = os.homedir() }) {
   const browsers =
     env.PLAYWRIGHT_BROWSERS_PATH ||
@@ -389,12 +408,7 @@ if (isInvokedDirectly(process.argv[1], import.meta.url)) {
 
   const now = Date.now();
   const table = processTable();
-  // A worktree lives under the checkout, so naming the checkout covers every one of them —
-  // including the worktree this is running from, which is not necessarily the main one.
-  const checkout = path
-    .resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
-    .split(new RegExp(`[\\\\/]${WORKTREE_DIR.replace(".", "\\.")}[\\\\/]`))[0];
-  const roots = toolingRoots({ repoRoot: checkout, home: os.homedir() });
+  const roots = toolingRoots({ repoRoot: checkoutRoot(), home: os.homedir() });
   const ours = table.filter((p) => ownedByTooling(p.commandLine, roots));
   const keep = ancestry(table, process.pid);
   for (const pid of listeningPids()) keep.add(pid);

@@ -377,10 +377,12 @@ describe("the entrypoint fails open on a payload it cannot read", () => {
       const [, script] = command.split(/\s+/);
       assert.ok(script && existsSync(script), `${command}: ${script} does not exist`);
       const result = spawnSync(process.execPath, [script], { input: "{}", encoding: "utf8" });
-      assert.notEqual(
+      // Exactly 0: 1 is a crash, and 2 is a *block*. A hook that exits 2 on an empty payload
+      // refuses every tool call the matcher covers, which is as broken as one that never fires.
+      assert.equal(
         result.status,
-        1,
-        `${command} crashed rather than running: ${result.stderr.split("\n")[0]}`
+        0,
+        `${command} did not allow an empty payload: ${result.stderr.split("\n")[0]}`
       );
     }
   });
