@@ -11,18 +11,79 @@ import type { GameResult } from "../lib/achievements.ts";
 import { exchangeAnnounceMs } from "../lib/exchangeCeremony.ts";
 import { z } from "zod";
 
+const isSeat = (value: unknown): value is number =>
+  typeof value === "number" && Number.isInteger(value) && value >= 0;
+
 /** seat -> userId from the persisted map, dropping any entry that is not one. */
 export function readPersistedPlayerMap(storedMap: unknown): Record<number, string> {
   const map: Record<number, string> = {};
   if (storedMap && typeof storedMap === "object" && !Array.isArray(storedMap)) {
     for (const [key, value] of Object.entries(storedMap as Record<string, unknown>)) {
       const seat = Number(key);
-      if (Number.isInteger(seat) && seat >= 0 && typeof value === "string") {
+      if (isSeat(seat) && typeof value === "string") {
         map[seat] = value;
       }
     }
   }
   return map;
+}
+
+/**
+ * The vacate bookkeeping, as the stored row carries it: Maps as `[key, value]`
+ * pairs, Sets as plain arrays. Its four fields are the live collections of the
+ * same names on `OnlineGameState`, and the instance taking a table over reads
+ * them from here and nowhere else — they are what make a vacated seat
+ * reclaimable, the end-match vote reachable, the walkout a forfeit and the
+ * takeover weak for the rest of the hand (docs/BRIEF.md §3.1).
+ */
+export interface PersistedSeats {
+  vacatedSeats: [number, { userId: string; username: string }][];
+  releasedSeats: string[];
+  weakSeats: number[];
+  abandonedSeats: [number, string][];
+}
+
+/** The pair entries of a stored Map whose values `readValue` accepts. */
+function readPersistedPairs<V>(
+  stored: unknown,
+  readValue: (value: unknown) => V | null
+): [number, V][] {
+  if (!Array.isArray(stored)) return [];
+  const pairs: [number, V][] = [];
+  for (const entry of stored) {
+    if (!Array.isArray(entry) || entry.length !== 2 || !isSeat(entry[0])) continue;
+    const value = readValue(entry[1]);
+    if (value !== null) pairs.push([entry[0], value]);
+  }
+  return pairs;
+}
+
+/**
+ * The vacate bookkeeping from a stored row, filtered entry by entry the way
+ * `readPersistedPlayerMap` is: an absent block reads back as four empty
+ * collections, which is how a row written without one restores, and a
+ * malformed one never throws.
+ */
+export function readPersistedSeats(stored: unknown): PersistedSeats {
+  const block = stored && typeof stored === "object" && !Array.isArray(stored)
+    ? (stored as Record<string, unknown>)
+    : {};
+  return {
+    vacatedSeats: readPersistedPairs(block.vacatedSeats, (value) =>
+      value && typeof value === "object" &&
+      typeof (value as { userId?: unknown }).userId === "string" &&
+      typeof (value as { username?: unknown }).username === "string"
+        ? (value as { userId: string; username: string })
+        : null
+    ),
+    releasedSeats: Array.isArray(block.releasedSeats)
+      ? block.releasedSeats.filter((id): id is string => typeof id === "string")
+      : [],
+    weakSeats: Array.isArray(block.weakSeats) ? block.weakSeats.filter(isSeat) : [],
+    abandonedSeats: readPersistedPairs(block.abandonedSeats, (value) =>
+      typeof value === "string" ? value : null
+    ),
+  };
 }
 
 /** The seat a given user occupies, or null if they are not seated at all. */
@@ -257,6 +318,7 @@ export interface PersistedEnvelope<S> {
    */
   joinCode: string;
   match: PersistedMatch;
+  seats: PersistedSeats;
 }
 
 export function packPersistedState<S extends object>(
@@ -264,9 +326,10 @@ export function packPersistedState<S extends object>(
   handFlags: HandFlags,
   dealFirstSeat: number,
   joinCode: string,
-  match: PersistedMatch
+  match: PersistedMatch,
+  seats: PersistedSeats
 ): PersistedEnvelope<S> {
-  return { schemaVersion: GAME_SCHEMA_VERSION, gameState, handFlags, dealFirstSeat, joinCode, match };
+  return { schemaVersion: GAME_SCHEMA_VERSION, gameState, handFlags, dealFirstSeat, joinCode, match, seats };
 }
 
 export type PersistedRestore<S> =
@@ -299,6 +362,10 @@ export const persistedEnvelopeSchema = z.object({
     .string({ required_error: "no join code", invalid_type_error: "no join code" })
     .min(1, "no join code"),
   match: persistedMatchSchema,
+  // Read through a filter rather than declared required, so a row without the
+  // block restores at this same GAME_SCHEMA_VERSION with four empty
+  // collections. Bumping the version instead disposes every live table.
+  seats: z.unknown().transform(readPersistedSeats),
 });
 
 /**
@@ -306,9 +373,9 @@ export const persistedEnvelopeSchema = z.object({
  * checked before the parse — it answers "may this row be restored at all",
  * which a field schema cannot — and the schema's first complaint becomes the
  * reason. `gameState` and `handFlags` are only checked for being objects and
- * then cast, and `match.playerMap` is filtered entry by entry rather than
- * refused: a wholly malformed map reads back as an empty one, which the
- * caller's seat check turns into UNAUTHORIZED.
+ * then cast, and `match.playerMap` and `seats` are filtered entry by entry
+ * rather than refused: a wholly malformed map reads back as an empty one, which
+ * the caller's seat check turns into UNAUTHORIZED.
  */
 export function unpackPersistedState<S>(persisted: unknown): PersistedRestore<S> {
   if (!isPlainObject(persisted)) return { ok: false, reason: "not an object" };
@@ -325,6 +392,7 @@ export function unpackPersistedState<S>(persisted: unknown): PersistedRestore<S>
     dealFirstSeat: number;
     joinCode: string;
     match: PersistedMatch;
+    seats: PersistedSeats;
   };
   return {
     ok: true,
@@ -333,6 +401,7 @@ export function unpackPersistedState<S>(persisted: unknown): PersistedRestore<S>
     dealFirstSeat: d.dealFirstSeat,
     joinCode: d.joinCode,
     match: d.match,
+    seats: d.seats,
   };
 }
 

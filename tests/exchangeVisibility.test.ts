@@ -219,7 +219,7 @@ describe("visibleExchangePhase", () => {
           handsPlayed: 0,
           matchTarget: 1,
           maxPlayers: 4,
-        });
+        }, { vacatedSeats: [], releasedSeats: [], weakSeats: [], abandonedSeats: [] });
         const back = unpackPersistedState<{ exchangePhase: typeof settled }>(
           JSON.parse(JSON.stringify(stored))
         );

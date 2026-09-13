@@ -130,11 +130,14 @@ function roomError(io: SocketServer, userId: string, payload: unknown): void {
  * the room.
  *
  * `forUserId` is the player whose action triggered the takeover, and they must
- * hold a seat in the persisted roster. Without that gate any authenticated
- * account could name any room id and pull that table into whichever instance it
- * is connected to — where `pruneStaleRooms` then skips it for holding a live
- * game, and the sweeper only disposes finished ones. `null` is the deal, which
- * has no persisted roster to check against and does its own host check.
+ * hold a seat in the persisted roster, or a seat the row records them as having
+ * vacated — a reclaim is the one case where the person entitled to the table is
+ * absent from `playerMap` (docs/BRIEF.md §3.1), and they may well be the first
+ * to come back to it. Without that gate any authenticated account could name any
+ * room id and pull that table into whichever instance it is connected to — where
+ * `pruneStaleRooms` then skips it for holding a live game, and the sweeper only
+ * disposes finished ones. `null` is the deal, which has no persisted roster to
+ * check against and does its own host check.
  *
  * The one place besides `startMatch` that writes `activeGames`, and both run
  * under a claim — `tests/tableOwnership.test.ts` pins that there is no third.
@@ -160,7 +163,13 @@ export async function rehydrateGame(
 
   const { playerMap, scores, gameMode, matchLength, matchTarget, maxPlayers, handsPlayed } =
     restored.match;
-  if (forUserId !== null && !Object.values(playerMap).includes(forUserId)) return "not_seated";
+  if (
+    forUserId !== null &&
+    !Object.values(playerMap).includes(forUserId) &&
+    !restored.seats.vacatedSeats.some(([, who]) => who.userId === forUserId)
+  ) {
+    return "not_seated";
+  }
   const restoredState = restored.gameState;
   const restoredPlayers = restoredState.players;
   activeGames.set(roomId, {
@@ -186,16 +195,11 @@ export async function rehydrateGame(
       playerCount: restoredPlayers.length,
     }),
     handFlags: restored.handFlags,
-    // A hand restored after a restart has no record of who walked out of it:
-    // the map is memory-only and the restart emptied it.
-    abandonedSeats: new Map<number, string>(),
+    abandonedSeats: new Map(restored.seats.abandonedSeats),
     botSeatsAtStart: botSeatsFromPersonality(restoredPlayers),
-    releasedSeats: new Set<string>(),
-    // Memory-only, like releasedSeats above: a restart forgets who was mid
-    // reconnect grace, and a seat vacated before the restart is no longer
-    // reclaimable — the same courtesy releasedSeats already concedes.
-    vacatedSeats: new Map(),
-    weakSeats: new Set<number>(),
+    releasedSeats: new Set(restored.seats.releasedSeats),
+    vacatedSeats: new Map(restored.seats.vacatedSeats),
+    weakSeats: new Set(restored.seats.weakSeats),
     endMatchVotes: new Set<string>(),
     spectators: new Set<string>(),
     // The log is memory-only, so a hand restored after a restart produces no
@@ -518,9 +522,11 @@ async function dealIfSeatLeftGateClosed(
 /**
  * The seat `userId` used to hold, if this table still has it open — the seat
  * is reclaimable by the same account for the life of the match
- * (docs/BRIEF.md §3.1). `SEAT_RELEASED` is left to answer only once the
- * table itself is finished or disposed, which is a state `game` cannot be
- * in here (a caller holding it has a live one).
+ * (docs/BRIEF.md §3.1). `vacatedSeats` is the whole of the decision, so a match
+ * `endMatchByAgreement` closed still hands the seat back while the table sits at
+ * its results screen. `SEAT_RELEASED` beside this is reachable only on a
+ * restored row that kept `releasedSeats` and lost the seat entry: the two are
+ * written together and cleared together everywhere else.
  */
 function reclaimableSeat(game: OnlineGameState, userId: string): number | null {
   for (const [seat, vacated] of game.vacatedSeats) {

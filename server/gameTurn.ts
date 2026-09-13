@@ -359,7 +359,13 @@ export async function vacateSeat(
           )
         );
       disposeGame(roomId);
+      return;
     }
+    // The same write the mid-hand tail makes. Nothing above this branch forfeits
+    // a hand there is none of, but `releasedSeats` and `vacatedSeats` were both
+    // written, and a seat vacated between hands is as reclaimable as one vacated
+    // during one (docs/BRIEF.md §3.1).
+    persistGameState(roomId, game);
     return;
   }
 
