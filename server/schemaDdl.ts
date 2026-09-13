@@ -271,25 +271,43 @@ const SESSION_TABLE_STATEMENTS = [
 ];
 
 /**
- * Clears the way for a unique index over rows that already violate it.
+ * The unique indexes whose duplicates boot may clear for itself.
  *
- * `CREATE UNIQUE INDEX` fails against such a table, and this module runs at
- * boot — so an index added over live data would stop the server starting
- * rather than the writes it was added to stop. The key and the filter are the
- * index's own, rendered once and used by both, so this deletes exactly the
- * rows that index rejects; once the index exists there is nothing left for a
- * later run to find. A key holding NULL is excluded, because a unique index
- * does not forbid it.
+ * Named one at a time and never derived from `unique: true`, because the
+ * alternative to deleting is a `CREATE UNIQUE INDEX` that fails and a server
+ * that does not start — loud, and the operator's call to make with
+ * `docs/DEPLOY-RUNBOOK.md` open. Only a table whose duplicates are meaningless
+ * on their own belongs here; `users` never does.
  */
-function dedupeForIndex(tableName: string, cols: string[], predicate: string | undefined): string {
-  const key = cols.join(", ");
-  const filter = [...cols.map((c) => `${c} IS NOT NULL`), ...(predicate ? [predicate] : [])].join(
-    " AND "
-  );
+const DEDUPE_ON_BOOT = new Set(["friends_accepted_uq", "friends_pending_pair_uq"]);
+
+/**
+ * Deletes what its index is about to reject, all but one row of each group.
+ *
+ * The key and the filter are that index's own, rendered once and used by both,
+ * so the two cannot drift apart; a key holding NULL is left alone, because a
+ * unique index does not forbid it. Oldest row wins, so every database that
+ * runs this keeps the same one.
+ */
+function dedupeForIndex(
+  cfg: TableConfig,
+  cols: string[],
+  predicate: string | undefined
+): string {
+  const table = quoteIdent(cfg.name);
+  const filter = [
+    ...cols.map((c) => `${c} IS NOT NULL`),
+    ...(predicate ? [`(${predicate})`] : []),
+  ].join(" AND ");
+  const order = [
+    ...cfg.columns.filter((c) => c.name === "created_at"),
+    ...cfg.columns.filter((c) => c.primary),
+  ].map((c) => quoteIdent(c.name));
   return (
-    `DELETE FROM ${quoteIdent(tableName)} WHERE "ctid" IN (SELECT "ctid" FROM ` +
-    `(SELECT "ctid", row_number() OVER (PARTITION BY ${key} ORDER BY "ctid") AS "dup" ` +
-    `FROM ${quoteIdent(tableName)} WHERE ${filter}) AS "d" WHERE "d"."dup" > 1);`
+    `DELETE FROM ${table} WHERE "ctid" IN (SELECT "ctid" FROM ` +
+    `(SELECT "ctid", row_number() OVER (PARTITION BY ${cols.join(", ")} ` +
+    `ORDER BY ${[...order, `"ctid"`].join(", ")}) AS "dup" ` +
+    `FROM ${table} WHERE ${filter}) AS "d" WHERE "d"."dup" > 1);`
   );
 }
 
@@ -329,6 +347,7 @@ export function schemaStatements(): string[] {
   const tableStatements: string[] = [];
   const addColumnStatements: string[] = [];
   const indexStatements: string[] = [];
+  const declaredDedupes = new Set<string>();
 
   for (const { cfg } of inDependencyOrder(configs)) {
     const fkByColumn = foreignKeysByColumn(cfg);
@@ -376,10 +395,24 @@ export function schemaStatements(): string[] {
       const predicate = idx.config.where
         ? renderSqlExpression(idx.config.where, `index "${indexName}"'s WHERE clause`, cfg.name)
         : undefined;
-      if (idx.config.unique) indexStatements.push(dedupeForIndex(cfg.name, cols, predicate));
+      if (DEDUPE_ON_BOOT.has(indexName)) {
+        declaredDedupes.add(indexName);
+        indexStatements.push(dedupeForIndex(cfg, cols, predicate));
+      }
       indexStatements.push(
         `${kind} IF NOT EXISTS ${quoteIdent(indexName)} ON ${quoteIdent(cfg.name)}` +
           `${using} (${cols.join(", ")})${predicate ? ` WHERE ${predicate}` : ""};`
+      );
+    }
+  }
+
+  // A name nobody declares emits nothing at all, and the index it was written
+  // for is the one that fails at boot.
+  for (const indexName of DEDUPE_ON_BOOT) {
+    if (!declaredDedupes.has(indexName)) {
+      throw new Error(
+        `schemaStatements: DEDUPE_ON_BOOT names "${indexName}", which no table ` +
+          `in shared/schema.ts declares — update server/schemaDdl.ts.`
       );
     }
   }

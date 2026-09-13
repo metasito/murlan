@@ -168,10 +168,13 @@ describe("simultaneous friend requests", {
       [carol.user.id, dave.user.id, "pending"],
       [dave.user.id, carol.user.id, "pending"],
     ];
-    for (const [userId, friendUserId, status] of values) {
+    // Stated rather than defaulted, so which row is the oldest is a fact of
+    // the fixture and not of how fast the loop ran.
+    for (const [i, [userId, friendUserId, status]] of values.entries()) {
       await pool.query(
-        `INSERT INTO "friends" ("user_id", "friend_user_id", "status") VALUES ($1, $2, $3)`,
-        [userId, friendUserId, status]
+        `INSERT INTO "friends" ("user_id", "friend_user_id", "status", "created_at")
+         VALUES ($1, $2, $3, now() + ($4 || ' seconds')::interval)`,
+        [userId, friendUserId, status, String(i)]
       );
     }
 
@@ -194,11 +197,11 @@ describe("simultaneous friend requests", {
       "both directions must survive and neither twice: an accepted friendship is " +
         "one row each way, and a side missing its row cannot see the friend at all"
     );
-    assert.equal(
-      (await pending()).length,
-      1,
-      "a request is one row whoever asked, so three pending rows between two " +
-        "players must come out as the one the pair actually has"
+    assert.deepEqual(
+      await pending(),
+      [`${carol.user.id}->${dave.user.id}`],
+      "a request is one row whoever asked, and the one that survives is the " +
+        "oldest — which is the direction the pair actually asked in first"
     );
 
     // The second boot is the one that proves nothing here is a migration.

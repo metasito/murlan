@@ -80,12 +80,10 @@ export const friendStore = {
    * both pass and both rows land.
    */
   async addFriend(userId: string, friendUserId: string): Promise<AddFriendResult> {
-    // The row inserted here is always pending, so the pending index is the
-    // only one it can violate, and a violation means the request that blocked
-    // it committed while this transaction was deciding. The retry re-reads
-    // with that row visible: it refuses in the caller's own terms if the row
-    // is still there, and succeeds if it was cancelled in the meantime.
-    for (let attempt = 0; attempt < 2; attempt++) {
+    // A violation means the request that blocked this insert committed while
+    // the transaction was deciding, so the retry is what reads it: refusing in
+    // the caller's own terms if it is still there, succeeding if it is not.
+    for (let attempt = 0; attempt < 3; attempt++) {
       try {
         return await db.transaction(async (tx): Promise<AddFriendResult> => {
           if (await this.areFriends(userId, friendUserId, tx)) {
@@ -105,8 +103,15 @@ export const friendStore = {
         if (!uniqueViolation(err)?.includes("friends_pending_pair_uq")) throw err;
       }
     }
+    // Three lost races running. "Already sent" is the refusal a player can act
+    // on if it is wrong — asking again works — where "accept theirs" sends
+    // them looking for a request that is not there.
     const direction = await this.pendingRequestBetween(userId, friendUserId);
-    return { ok: false, reason: direction === "received" ? "incoming_pending" : "already_sent" };
+    if (direction) {
+      return { ok: false, reason: direction === "received" ? "incoming_pending" : "already_sent" };
+    }
+    const friendsAlready = await this.areFriends(userId, friendUserId);
+    return { ok: false, reason: friendsAlready ? "already_friends" : "already_sent" };
   },
 
   /**
@@ -117,9 +122,9 @@ export const friendStore = {
   async acceptFriend(id: string, accepterId: string): Promise<{ requesterId: string } | null> {
     // A violation means the reverse row landed between this transaction's read
     // and its insert, and the rollback left the request pending. Retrying sees
-    // that row and only has to mark the request accepted — where returning
-    // "nothing to accept" would leave a request that can never be answered.
-    for (let attempt = 0; attempt < 2; attempt++) {
+    // that row and only has to mark the request accepted — answering "nothing
+    // to accept" instead leaves a request nobody can ever answer.
+    for (let attempt = 0; attempt < 3; attempt++) {
       try {
         return await db.transaction(async (tx) => {
           const [f] = await tx

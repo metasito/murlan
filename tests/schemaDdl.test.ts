@@ -18,9 +18,10 @@ const statements = schemaStatements();
  *
  * The exemption is earned, not declared, and what earns it is the
  * correspondence — the delete must carry the *same* key and the same filter as
- * the index standing immediately behind it, which is what makes it delete only
- * what that index rejects and nothing on a second run. A delete that groups by
- * anything else is judged by the guards below like any other.
+ * the index standing immediately behind it, and must spare the first row of
+ * each group. Those two are what make it delete only what that index rejects
+ * and nothing at all on a second run. A delete failing either is judged by the
+ * guards below like any other.
  */
 function dedupeTableFor(list: string[], index: number): string | undefined {
   const statement = list[index] ?? "";
@@ -34,13 +35,27 @@ function dedupeTableFor(list: string[], index: number): string | undefined {
   if (!statement.startsWith(`DELETE FROM ${table} `)) return undefined;
   if (!statement.includes(`PARTITION BY ${key} `)) return undefined;
   if (predicate && !statement.includes(predicate)) return undefined;
+  if (!statement.includes(`"d"."dup" > 1`)) return undefined;
   return table;
 }
 
-test("a delete that does not group by its index's key is not exempt", () => {
+test("a delete is exempt only for the rows its own index rejects", () => {
   const index = `CREATE UNIQUE INDEX IF NOT EXISTS "friends_accepted_uq" ON "friends" ("user_id", "friend_user_id") WHERE "status" = 'accepted';`;
-  const decoy = `DELETE FROM "friends" WHERE "ctid" IN (SELECT "ctid" FROM (SELECT "ctid", row_number() OVER (PARTITION BY "id" ORDER BY "ctid") AS "dup" FROM "friends" WHERE "id" IS NOT NULL) AS "d" WHERE "d"."dup" > 1);`;
-  assert.equal(dedupeTableFor([decoy, index], 0), undefined);
+  const dedupe = (key: string, keep: string) =>
+    `DELETE FROM "friends" WHERE "ctid" IN (SELECT "ctid" FROM (SELECT "ctid", row_number() ` +
+    `OVER (PARTITION BY ${key} ORDER BY "ctid") AS "dup" FROM "friends" ` +
+    `WHERE ("status" = 'accepted')) AS "d" WHERE ${keep});`;
+  assert.equal(
+    dedupeTableFor([dedupe(`"user_id", "friend_user_id"`, `"d"."dup" > 1`), index], 0),
+    '"friends"'
+  );
+  // Grouping by anything but the index's key deletes rows it would have allowed.
+  assert.equal(dedupeTableFor([dedupe(`"id"`, `"d"."dup" > 1`), index], 0), undefined);
+  // Sparing nobody empties the group the index only wanted thinned.
+  assert.equal(
+    dedupeTableFor([dedupe(`"user_id", "friend_user_id"`, `"d"."dup" >= 1`), index], 0),
+    undefined
+  );
 });
 
 test("every statement is idempotent", () => {
