@@ -101,9 +101,22 @@ describe("phase A's housekeeping belongs to the supervisor", () => {
 // progress. Inferring it from outside by regexing queue.md's commands missed 74 of 131 markers,
 // because queue.md itself prescribes `git add -- <paths>` before committing.
 describe("every phase of queue.md reports itself", () => {
+  // Taken from the document verbatim and read by the parser that will read it off the session. The
+  // test used to assert a second spelling of its own, so queue.md could be decorated in a way the
+  // reader rejects outright and both sides would still pass.
+  const marker = (letter: string) =>
+    read(QUEUE)
+      .split("\n")
+      .find((line) => new RegExp("^\\W*PHASE " + letter + "\\W*$").test(line));
+
   for (const letter of ["A", "B", "C", "D", "E", "F"]) {
-    test(`phase ${letter} echoes its own letter`, () => {
-      assert.match(read(QUEUE), new RegExp("^`PHASE " + letter + "`$", "m"), `phase ${letter} has no echo`);
+    test(`phase ${letter}'s marker is one the supervisor reads`, () => {
+      const line = marker(letter);
+      assert.ok(line, `phase ${letter} has no echo`);
+      const fact = readLine(
+        JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: line }] } }),
+      ) as any;
+      assert.equal(fact?.letter, letter, `the supervisor cannot read ${JSON.stringify(line)}`);
     });
   }
 

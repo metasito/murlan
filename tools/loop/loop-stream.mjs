@@ -5,7 +5,9 @@
  */
 
 /** One line of its own, anywhere in the message. Prose mentioning a phase is not a phase report. */
-const PHASE = /^[ \t]*PHASE ([A-F])[ \t]*$/m;
+// The fence is optional because the session's echo of it is: from queue.md's one fenced marker the
+// same model returned it bare in four runs of eight, fenced in three, and both ways inside one.
+const PHASE = /^[ \t]*`?PHASE ([A-F])`?[ \t]*$/m;
 
 /**
  * What the session says it did, once, before it exits — the one channel that is a statement rather
