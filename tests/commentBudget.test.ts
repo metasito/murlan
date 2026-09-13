@@ -74,17 +74,25 @@ describe("addedCounts against a before", () => {
     assert.deepEqual(addedCounts(before, after), { comment: 0, code: 3 });
   });
 
-  // A line diff reports the reorder as ten added comment lines against no code, and names it.
-  // Prose the file already held is not prose the change wrote, so neither column is a bound on
-  // the other and this is not a uniformly stricter rule than a line diff.
   test("prose that only moved within the file is not added prose", () => {
     const body = ["// why", "// how", "const a = 1;"];
     assert.deepEqual(addedCounts(body.join("\n"), [body[2], body[0], body[1]].join("\n")), { comment: 0, code: 0 });
   });
 
-  test("commenting a line out is prose, and uncommenting it is code", () => {
+  test("prefixing a line with // is prose the change wrote", () => {
     assert.deepEqual(addedCounts("const a = 1;", "// const a = 1;"), { comment: 1, code: 0 });
-    assert.deepEqual(addedCounts("/*\nconst a = 1;\n*/", "const a = 1;"), { comment: 0, code: 1 });
+  });
+
+  // Wrapping code in block-comment delimiters is the case the kind in the key would otherwise
+  // charge twice: once for the lines it stopped counting as code, once for counting them as prose.
+  test("a line that only changed kind is neither added prose nor added code", () => {
+    const body = Array.from({ length: 20 }, (_, i) => `const x${i} = ${i};`);
+    assert.deepEqual(addedCounts(body.join("\n"), ["/*", ...body, "*/"].join("\n")), { comment: 2, code: 0 });
+    assert.deepEqual(addedCounts(["/*", ...body, "*/"].join("\n"), body.join("\n")), { comment: 0, code: 0 });
+  });
+
+  test("a line held at one kind pays for one copy, not both", () => {
+    assert.deepEqual(addedCounts("foo();", "foo();\n// foo();"), { comment: 1, code: 0 });
   });
 });
 
@@ -125,34 +133,46 @@ describe("over", () => {
 });
 
 describe("budget", () => {
-  const run = (dir: string, ...args: string[]) => execFileSync("git", args, { cwd: dir, encoding: "utf8" });
+  // The caller's own git config reaches a temp repo: a global `commit.gpgsign` or `core.hooksPath`
+  // fails or hangs the commits below.
+  const run = (dir: string, ...args: string[]) =>
+    execFileSync("git", args, {
+      cwd: dir,
+      encoding: "utf8",
+      env: { ...process.env, GIT_CONFIG_GLOBAL: join(dir, "nonexistent"), GIT_CONFIG_SYSTEM: join(dir, "nonexistent") },
+    });
 
   // The one thing reading the source cannot settle: which revision the "before" content comes
-  // from. At `base`'s tip the branch is charged for prose main deleted after the branch point.
+  // from. Taken from `base`'s tip, the branch is charged for prose main drops after it forked.
   test("content comes from the merge base, not the base's tip", () => {
     const dir = mkdtempSync(join(tmpdir(), "comment-budget-"));
     const cwd = process.cwd();
+    const file = join(dir, "a.mjs");
     try {
       run(dir, "init", "-q", "-b", "main");
       run(dir, "config", "user.email", "t@example.com");
       run(dir, "config", "user.name", "t");
-      const prose = Array.from({ length: 20 }, (_, i) => `// why ${i}`);
-      writeFileSync(join(dir, "a.mjs"), [...prose, "const a = 1;"].join("\n"));
-      run(dir, "add", "-A");
+      const prose = (tag: string) => Array.from({ length: 20 }, (_, i) => `// ${tag} ${i}`);
+      writeFileSync(file, [...prose("why"), "const a = 1;"].join("\n"));
+      run(dir, "add", "--", "a.mjs");
       run(dir, "commit", "-qm", "base");
       run(dir, "checkout", "-qb", "branch");
-      writeFileSync(join(dir, "a.mjs"), [...prose, "const a = 1;", "const b = 2;"].join("\n"));
+      writeFileSync(file, [...prose("why"), "const a = 1;", "const b = 2;"].join("\n"));
       run(dir, "commit", "-qam", "one line of code");
       run(dir, "checkout", "-q", "main");
-      writeFileSync(join(dir, "a.mjs"), "const a = 1;");
+      writeFileSync(file, "const a = 1;");
       run(dir, "commit", "-qam", "main drops the prose");
       run(dir, "checkout", "-q", "branch");
-
       process.chdir(dir);
+
       assert.deepEqual(budget("main"), []);
+
+      // The control: the same file, examined by the same call, is named when the prose is new.
+      writeFileSync(file, [...prose("why"), ...prose("how"), "const a = 1;", "const b = 2;"].join("\n"));
+      assert.deepEqual(budget("main"), [["a.mjs", { comment: 20, code: 1 }]]);
     } finally {
       process.chdir(cwd);
-      rmSync(dir, { recursive: true, force: true });
+      rmSync(dir, { recursive: true, force: true, maxRetries: 5 });
     }
   });
 });

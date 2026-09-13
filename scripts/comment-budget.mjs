@@ -50,12 +50,22 @@ function* classify(text) {
 
 const key = (line, isComment) => `${isComment ? "c" : "k"}${line}`;
 
+const spend = (pool, k) => {
+  const held = pool.get(k) ?? 0;
+  if (!held) return false;
+  pool.set(k, held - 1);
+  return true;
+};
+
 /**
  * By multiset, not by alignment: each line of `before` is a token one line of `after` may spend,
- * so a line that only moved or was reindented is not added. Both columns come out at or below what
- * a line diff would report, which is the point — spending a token needs that exact text, at that
- * kind, to have been in the file already, and prose that was already there is not prose the change
- * wrote. Neither column is a bound on the other, so this is not a uniformly stricter rule.
+ * so a line counts as added only when that text was not in the file already. Text that was there
+ * is not text the change wrote — including text that only changed kind, which is why a second
+ * pass spends the other kind's token and counts the line as neither: wrapping a block of code in
+ * block-comment delimiters writes no prose, and unwrapping it writes no code.
+ *
+ * This is not a line diff and neither bounds the other, in either column. The tests are what say
+ * what it does; do not reason from the two being close.
  */
 export function addedCounts(before, after) {
   const pool = new Map();
@@ -63,15 +73,14 @@ export function addedCounts(before, after) {
     const k = key(line, isComment);
     pool.set(k, (pool.get(k) ?? 0) + 1);
   }
+  const unspent = [];
+  for (const [line, isComment] of classify(after)) {
+    if (!spend(pool, key(line, isComment))) unspent.push([line, isComment]);
+  }
   let comment = 0;
   let code = 0;
-  for (const [line, isComment] of classify(after)) {
-    const k = key(line, isComment);
-    const held = pool.get(k) ?? 0;
-    if (held) {
-      pool.set(k, held - 1);
-      continue;
-    }
+  for (const [line, isComment] of unspent) {
+    if (spend(pool, key(line, !isComment))) continue;
     if (isComment) comment += 1;
     else code += 1;
   }
@@ -95,20 +104,18 @@ const show = (rev, file) => {
 
 export function budget(base) {
   // One revision on the far side and the working tree on this one, for both the file list and the
-  // content. Reading content at `base`'s tip while listing files against the merge base charged
-  // the branch for whatever main removed meanwhile.
+  // content. Reading content at `base`'s tip while listing files against the merge base would
+  // charge the branch for whatever main removes meanwhile. `quotePath` off, or a path with a
+  // non-ASCII byte arrives escaped and in quotes, and is skipped below without a word.
   const from = git("merge-base", base, "HEAD").trim();
-  const files = git("diff", "--name-only", "--diff-filter=AMR", "-M", from,
-    "--", "*.mjs", "*.js", "*.ts", "*.tsx").split("\n").filter(Boolean);
+  const files = git("-c", "core.quotePath=false", "diff", "--name-only", "--diff-filter=AMR", "-M",
+    from, "--", "*.mjs", "*.js", "*.ts", "*.tsx").split("\n").filter(Boolean);
   const named = [];
   for (const file of files) {
-    let after;
-    try {
-      after = readFileSync(file, "utf8");
-    } catch {
-      continue; // deleted or renamed away; nothing was written
-    }
-    const added = addedCounts(show(from, file), after);
+    // No skip on a read failure: `AMR` never emits a deletion and `-M` emits a rename's
+    // destination, so every path here exists. A swallowed read is a check that passes by not
+    // looking at the one file it could not open.
+    const added = addedCounts(show(from, file), readFileSync(file, "utf8"));
     if (over(added)) named.push([file, added]);
   }
   return named;
