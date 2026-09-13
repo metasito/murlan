@@ -94,8 +94,12 @@ describe("the react-hooks 7 rules #891 adopted stay adopted", () => {
 
   test(`every file ${OFF_FOR_TESTS} is off for still needs it`, async () => {
     // The list above is a claim about what the rule would say; this asks it.
-    // The directories come from the list too, so an exemption placed outside
-    // them is still looked at rather than silently unchecked.
+    // The scope comes from the list too, so an exemption placed outside
+    // `tests/native` reds as out of scope rather than as no longer needed.
+    // Nothing to ask once the list empties — and an empty list must be caught
+    // here, because ESLint reads no paths at all as the whole repository. The
+    // test above has already pinned that no block turns the rule off then.
+    if (OFF_ONLY_FOR.length === 0) return;
     const lint = new ESLint({ overrideConfig: { rules: { [OFF_FOR_TESTS]: "error" } } });
     const scanned = [...new Set(OFF_ONLY_FOR.map((file) => path.dirname(file)))];
     const reporting = (await lint.lintFiles(scanned))
