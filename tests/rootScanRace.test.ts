@@ -9,34 +9,63 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { trackedFiles, trackedRootFiles } from "./helpers/trackedFiles.ts";
-import { blankComments } from "./helpers/sourceScan.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const SELF = "tests/rootScanRace.test.ts";
 
 /** A directory listing of somewhere named like a repo root, however spelt. */
-const ROOT_READDIR = /(?:readdirSync|opendirSync|readdir|opendir)\(\s*\w*(?:[Rr]oot|ROOT)\w*\s*[,)]/;
-
-/** Spellings the pattern has to catch, so an empty offender list means something. */
-const PLANTED = [
-  "readdirSync(repoRoot)",
-  "readdirSync(REPO_ROOT, { withFileTypes: true })",
-  "readdirSync(ROOT)",
-  "readdirSync(ROOT_DIR, { recursive: true })",
-  "await readdir(projectRoot)",
-];
+const ROOT_READDIR =
+  /(?:readdirSync|opendirSync|readdir|opendir)\(\s*\w*(?:[Rr]oot|ROOT)(?:Dir|_DIR|Path|_PATH)?\s*[,)]/;
 
 /**
- * The two declarations above, as they are written here. Blanked in this file
- * only: the guard has to spell the pattern out and has to hold one sample of
- * each spelling, and exempting the whole file would exempt the guard.
+ * Every spelling this file has to hold, on both sides. One `planted` sample
+ * per alternative of the pattern, so an empty offender list means the scan
+ * looked; `clean` is what must not red, because a guard that reds on a
+ * subdirectory listing is a guard someone deletes.
  */
-const SELF_EXEMPT = [/const ROOT_READDIR =[\s\S]*?;/, /const PLANTED = \[[\s\S]*?\];/];
+const SAMPLES = {
+  planted: [
+    "readdirSync(repoRoot)",
+    "readdirSync(REPO_ROOT, { withFileTypes: true })",
+    "readdirSync(ROOT)",
+    "readdirSync(ROOT_DIR, { recursive: true })",
+    "opendirSync(rootDir)",
+    "await readdir(projectRoot)",
+    "await opendir(ROOT)",
+  ],
+  clean: [
+    'readdirSync(path.join(repoRoot, "scripts"))',
+    "readdirSync(dir, { recursive: true })",
+    "readdirSync(roots)",
+    "readdirSync(rootedAt)",
+  ],
+  lines: ["// readdirSync(repoRoot)", " * readdirSync(ROOT)", "readdirSync(repoRoot);"],
+};
 
-/** Comments only. Blanking strings as well would eat the code — see #1015. */
+/**
+ * The two declarations above, blanked in this file only: the guard has to
+ * spell the pattern out and hold a sample of each spelling, and exempting the
+ * whole file would exempt the guard.
+ */
+const SELF_EXEMPT = [/const ROOT_READDIR =[\s\S]*?;/, /const SAMPLES = \{[\s\S]*?\n\};/];
+
+/** A comment line, including a block comment's opener and its continuations. */
+const COMMENT_LINE = /^\s*(?:\/\/|\/\*|\*)/;
+
+/**
+ * Comment lines dropped, nothing else touched. Not `blankComments`: its
+ * `/\*` … `*\/` pass starts at a `/*` inside a string or a regex literal and
+ * runs to the next `*\/`, which over `scripts/loop-status.mjs` deletes 45
+ * lines of live code (#1015). A scan whose input can vanish reports clean.
+ */
 function source(rel: string): string {
-  const text = blankComments(readFileSync(path.join(repoRoot, rel), "utf8"));
-  return rel === SELF ? SELF_EXEMPT.reduce((s, re) => s.replace(re, ""), text) : text;
+  const text = readFileSync(path.join(repoRoot, rel), "utf8")
+    .split("\n")
+    .filter((line) => !COMMENT_LINE.test(line))
+    .join("\n");
+  return rel === SELF
+    ? SELF_EXEMPT.reduce((s, re) => s.replace(re, (m) => m.replace(/[^\n]/g, " ")), text)
+    : text;
 }
 
 /** The scan this replaces, as it was written, so the counterfactual can run it. */
@@ -104,13 +133,18 @@ describe("a root-level scan survives a file appearing and vanishing mid-scan", (
 
 describe("no test lists the repo root from the filesystem", () => {
   test("the pattern catches a root listing under any of its spellings", () => {
-    for (const planted of PLANTED) {
+    for (const planted of SAMPLES.planted) {
       assert.ok(ROOT_READDIR.test(planted), `${planted} slipped past ROOT_READDIR`);
     }
-    // A subdirectory is not the root: `tests/i18n.test.ts` lists one per locale
-    // directory, and a scan that reds on those is a scan nobody keeps.
-    assert.ok(!ROOT_READDIR.test('readdirSync(path.join(repoRoot, "scripts"))'));
-    assert.ok(!ROOT_READDIR.test("readdirSync(dir, { recursive: true })"));
+    // The tax is the name: a local holding a subdirectory must not be called
+    // `root`, which is why `tests/i18n.test.ts` calls its `base`.
+    for (const clean of SAMPLES.clean) {
+      assert.ok(!ROOT_READDIR.test(clean), `${clean} is not a root listing`);
+    }
+  });
+
+  test("a comment is not code, and code is not a comment", () => {
+    assert.deepEqual(SAMPLES.lines.map((l) => COMMENT_LINE.test(l)), [true, true, false]);
   });
 
   // The scan reads call sites, so a listing reached through a helper —
@@ -121,8 +155,8 @@ describe("no test lists the repo root from the filesystem", () => {
       /\.(?:ts|tsx|mjs|cjs|js)$/.test(f)
     );
     // Three floors: that the scan reached both trees, that the exemption above
-    // is an exemption rather than a no-op, and that blanking left this file's
-    // real code behind. Any one of them failing passes everything.
+    // is an exemption rather than a no-op, and that dropping comment lines left
+    // this file's real code behind. Any one of them failing passes everything.
     assert.ok(files.includes(SELF) && files.some((f) => f.startsWith("scripts/")), "scan is empty");
     assert.match(readFileSync(path.join(repoRoot, SELF), "utf8"), ROOT_READDIR);
     assert.doesNotMatch(source(SELF), ROOT_READDIR);
