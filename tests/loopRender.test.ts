@@ -7,6 +7,7 @@ import {
   phaseLine,
   activeLine,
   toolDetail,
+  tasksDetail,
   queueLine,
   bell,
   SPIN,
@@ -275,6 +276,52 @@ describe("toolDetail", () => {
 
   test("a command that is only whitespace falls back to the tool's name", () => {
     assert.equal(toolDetail({ name: "Bash", command: "   \n  " }), "Bash");
+  });
+});
+
+// The board's only sign of life during a phase that runs entirely inside subagents.
+describe("tasksDetail", () => {
+  test("no running tasks falls back to whatever the caller draws today", () => {
+    assert.equal(tasksDetail([], 0), null);
+  });
+
+  test("one task names it and how long its agents have been at it", () => {
+    const line = tasksDetail([{ what: "Reading exchangeE2EHold.test.ts", tool: "Read" }], 4 * 60_000, 60);
+    assert.match(line!, /^1 agent/);
+    assert.match(line!, /Reading exchangeE2EHold\.test\.ts/);
+    assert.match(line!, /4m$/);
+  });
+
+  test("several tasks are counted, and the most recently touched one is shown", () => {
+    const line = tasksDetail(
+      [
+        { what: "Reading a.ts", tool: "Read" },
+        { what: "Searching for readdirSync", tool: "Grep" },
+        { what: "Reading exchangeE2EHold.test.ts", tool: "Read" },
+      ],
+      252_000,
+      60,
+    );
+    assert.match(line!, /^3 agents/);
+    assert.match(line!, /Reading exchangeE2EHold\.test\.ts/);
+    assert.doesNotMatch(line!, /Searching for readdirSync/);
+    assert.match(line!, /4m$/);
+  });
+
+  test("a task with no description falls back to its last tool", () => {
+    const line = tasksDetail([{ what: null, tool: "Grep" }], 0);
+    assert.match(line!, /Grep/);
+  });
+
+  // A line wider than its slot wraps the whole redraw onto the wrong row.
+  test("truncates to the given width, the same way toolDetail does", () => {
+    const line = tasksDetail(
+      [{ what: "x".repeat(200), tool: null }],
+      0,
+      20,
+    )!;
+    assert.ok(cols(line) <= 20, `${cols(line)} cells: ${line}`);
+    assert.match(line, /…$/);
   });
 });
 

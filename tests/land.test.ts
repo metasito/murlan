@@ -1,69 +1,265 @@
 // tests/land.test.ts
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { decideLanding, mergeArgs } from "../lib/loop/land.ts";
+import {
+  landing,
+  mergeArgs,
+  branchSurvives,
+  type CiVerdict,
+  type Landing,
+  type PrState,
+} from "../lib/loop/land.ts";
 
-const pr = (over: Partial<Parameters<typeof decideLanding>[0]> = {}) => ({
+const ACTIONS: readonly Landing["action"][] = [
+  "merge",
+  "already-merged",
+  "update-branch",
+  "recheck",
+  "hand-back",
+  "owner",
+];
+
+const pr = (over: Partial<PrState> = {}): PrState => ({
   state: "OPEN",
   mergeable: "MERGEABLE",
   mergeStateStatus: "CLEAN",
   ...over,
 });
 
-describe("decideLanding", () => {
-  // A merged pull request answers UNKNOWN/UNKNOWN on both fields. Measured on #985, #986,
-  // #994 and #996. Read `state` before either of them or a landed ticket reads as unlandable.
-  test("a MERGED pull request is already merged, whatever its merge state says", () => {
-    const d = decideLanding(pr({ state: "MERGED", mergeable: "UNKNOWN", mergeStateStatus: "UNKNOWN" }));
-    assert.equal(d.action, "already-merged");
+const GREEN: CiVerdict = { pass: true };
+const RED: CiVerdict = { pass: false, failedStep: "Browser tests", output: "expect(received)…" };
+const NAMELESS: CiVerdict = { pass: false };
+// What a merged branch's own run reads: ci.yml's concurrency group stops it when the merge lands.
+const CANCELLED: CiVerdict = { pass: false, infrastructure: true };
+const SILENT: CiVerdict = {};
+
+interface Case {
+  name: string;
+  pr: PrState;
+  ci: CiVerdict;
+  action: Landing["action"];
+  reason?: RegExp;
+}
+
+// Every merge state named in the function, crossed with the verdicts that change the answer, plus
+// values the function names nowhere. A merged pull request answers UNKNOWN on both mergeability
+// fields, and so does one GitHub has not finished computing — the same two values for "done" and
+// "not yet", which is why `state` is read first.
+const cases: Case[] = [
+  {
+    name: "a MERGED pull request is landed before CI is consulted",
+    pr: pr({ state: "MERGED", mergeable: "UNKNOWN", mergeStateStatus: "UNKNOWN" }),
+    ci: CANCELLED,
+    action: "already-merged",
+  },
+  {
+    name: "a MERGED pull request is landed under a plainly red verdict too",
+    pr: pr({ state: "MERGED", mergeable: "UNKNOWN", mergeStateStatus: "UNKNOWN" }),
+    ci: RED,
+    action: "already-merged",
+  },
+  {
+    name: "a MERGED pull request is landed under no verdict at all",
+    pr: pr({ state: "MERGED", mergeable: "UNKNOWN", mergeStateStatus: "UNKNOWN" }),
+    ci: SILENT,
+    action: "already-merged",
+  },
+  {
+    name: "a CLOSED pull request is the owner's",
+    pr: pr({ state: "CLOSED", mergeable: "UNKNOWN", mergeStateStatus: "UNKNOWN" }),
+    ci: GREEN,
+    action: "owner",
+    reason: /closed without merging/,
+  },
+  {
+    name: "an unrecognised pull request state is a reading, so it asks again",
+    pr: pr({ state: "LOCKED" }),
+    ci: GREEN,
+    action: "recheck",
+    reason: /LOCKED/,
+  },
+  {
+    name: "an empty pull request state asks again",
+    pr: pr({ state: "" }),
+    ci: GREEN,
+    action: "recheck",
+  },
+  {
+    name: "a stepless run says nothing about the diff, so it asks again",
+    pr: pr(),
+    ci: CANCELLED,
+    action: "recheck",
+    reason: /zero steps/,
+  },
+  {
+    name: "CONFLICTING is the owner's even when CI is green",
+    pr: pr({ mergeable: "CONFLICTING" }),
+    ci: GREEN,
+    action: "owner",
+    reason: /conflicts with main/,
+  },
+  {
+    name: "CONFLICTING is the owner's rather than a fix round when CI is red",
+    pr: pr({ mergeable: "CONFLICTING" }),
+    ci: RED,
+    action: "owner",
+  },
+  {
+    name: "red CI on a clean branch is handed back, named",
+    pr: pr(),
+    ci: RED,
+    action: "hand-back",
+    reason: /Browser tests/,
+  },
+  {
+    name: "red CI with no step named still says so",
+    pr: pr(),
+    ci: NAMELESS,
+    action: "hand-back",
+    reason: /an unnamed step/,
+  },
+  {
+    name: "a verdict that claims nothing is not a pass",
+    pr: pr(),
+    ci: SILENT,
+    action: "hand-back",
+  },
+  {
+    name: "mergeable UNKNOWN asks again even when the merge state reads CLEAN",
+    pr: pr({ mergeable: "UNKNOWN" }),
+    ci: GREEN,
+    action: "recheck",
+    reason: /computing mergeability/,
+  },
+  {
+    name: "mergeStateStatus UNKNOWN asks again",
+    pr: pr({ mergeStateStatus: "UNKNOWN" }),
+    ci: GREEN,
+    action: "recheck",
+  },
+  {
+    name: "BEHIND updates the branch",
+    pr: pr({ mergeStateStatus: "BEHIND" }),
+    ci: GREEN,
+    action: "update-branch",
+  },
+  {
+    name: "BLOCKED is the owner's, named",
+    pr: pr({ mergeStateStatus: "BLOCKED" }),
+    ci: GREEN,
+    action: "owner",
+    reason: /BLOCKED/,
+  },
+  {
+    name: "DIRTY is the owner's, named",
+    pr: pr({ mergeStateStatus: "DIRTY" }),
+    ci: GREEN,
+    action: "owner",
+    reason: /DIRTY/,
+  },
+  {
+    name: "CLEAN merges",
+    pr: pr(),
+    ci: GREEN,
+    action: "merge",
+  },
+  {
+    name: "CLEAN on a red run is handed back rather than merged",
+    pr: pr(),
+    ci: RED,
+    action: "hand-back",
+  },
+  {
+    name: "HAS_HOOKS merges",
+    pr: pr({ mergeStateStatus: "HAS_HOOKS" }),
+    ci: GREEN,
+    action: "merge",
+  },
+  // UNSTABLE is "mergeable with non-passing commit status", and non-passing includes *queued*. gh
+  // merges it on the spot. Reaching this arm means the verdict passed the run for this head, which
+  // is the only reading under which a pending check is ignorable.
+  {
+    name: "UNSTABLE merges, and says that CI was already judged",
+    pr: pr({ mergeStateStatus: "UNSTABLE" }),
+    ci: GREEN,
+    action: "merge",
+    reason: /ciVerdict/,
+  },
+  {
+    name: "UNSTABLE on a red run is handed back",
+    pr: pr({ mergeStateStatus: "UNSTABLE" }),
+    ci: RED,
+    action: "hand-back",
+  },
+  // A merge state this function has never seen is not a verdict. Anything terminal here leaves
+  // `in-progress` on the issue, and `next-ticket.mjs` skips a labelled ticket forever.
+  {
+    name: "an unrecognised merge state names itself and asks again",
+    pr: pr({ mergeStateStatus: "SOMETHING_NEW" }),
+    ci: GREEN,
+    action: "recheck",
+    reason: /SOMETHING_NEW/,
+  },
+  {
+    name: "DRAFT asks again",
+    pr: pr({ mergeStateStatus: "DRAFT" }),
+    ci: GREEN,
+    action: "recheck",
+    reason: /DRAFT/,
+  },
+  {
+    name: "an empty merge state asks again",
+    pr: pr({ mergeStateStatus: "" }),
+    ci: GREEN,
+    action: "recheck",
+  },
+];
+
+describe("landing", () => {
+  for (const c of cases) {
+    test(c.name, () => {
+      const d = landing(c.pr, c.ci);
+      assert.equal(d.action, c.action);
+      if (c.reason) assert.match(d.reason, c.reason);
+      assert.ok(d.reason.length > 0);
+    });
+  }
+
+  // The point of making the function total: no input reaches an unhandled path, and no input is
+  // answered with silence. Asserted over the cross-product rather than over a list of cases,
+  // because the values that strand a ticket are the ones nobody thought to write down.
+  test("every combination answers with one of the six actions and never throws", () => {
+    const states = ["OPEN", "MERGED", "CLOSED", "LOCKED", ""];
+    const statuses = ["CLEAN", "HAS_HOOKS", "UNSTABLE", "BEHIND", "BLOCKED", "DIRTY", "UNKNOWN", "DRAFT", ""];
+    const mergeables = ["MERGEABLE", "CONFLICTING", "UNKNOWN", ""];
+    const verdicts = [GREEN, RED, NAMELESS, CANCELLED, SILENT];
+
+    let seen = 0;
+    for (const state of states) {
+      for (const mergeStateStatus of statuses) {
+        for (const mergeable of mergeables) {
+          for (const ci of verdicts) {
+            const d = landing({ state, mergeStateStatus, mergeable }, ci);
+            assert.ok(
+              ACTIONS.includes(d.action),
+              `${state}/${mergeStateStatus}/${mergeable} answered ${d.action}`,
+            );
+            assert.equal(typeof d.reason, "string");
+            assert.ok(d.reason.length > 0);
+            seen += 1;
+          }
+        }
+      }
+    }
+    assert.equal(seen, states.length * statuses.length * mergeables.length * verdicts.length);
   });
 
-  test("a CLOSED pull request is not a merge and not a retry", () => {
-    const d = decideLanding(pr({ state: "CLOSED", mergeable: "UNKNOWN", mergeStateStatus: "UNKNOWN" }));
-    assert.equal(d.action, "stop");
-    assert.match(d.reason, /closed without merging/);
-  });
-
-  test("an open pull request still being computed asks again", () => {
-    const d = decideLanding(pr({ mergeable: "UNKNOWN", mergeStateStatus: "UNKNOWN" }));
-    assert.equal(d.action, "recheck");
-  });
-
-  test("mergeable UNKNOWN asks again even when the merge state reads CLEAN", () => {
-    const d = decideLanding(pr({ mergeable: "UNKNOWN", mergeStateStatus: "CLEAN" }));
-    assert.equal(d.action, "recheck");
-  });
-
-  test("CONFLICTING stops", () => {
-    assert.equal(decideLanding(pr({ mergeable: "CONFLICTING" })).action, "stop");
-  });
-
-  test("BEHIND updates the branch", () => {
-    assert.equal(decideLanding(pr({ mergeStateStatus: "BEHIND" })).action, "update-branch");
-  });
-
-  test("CLEAN merges", () => {
-    assert.equal(decideLanding(pr()).action, "merge");
-  });
-
-  test("HAS_HOOKS merges", () => {
-    assert.equal(decideLanding(pr({ mergeStateStatus: "HAS_HOOKS" })).action, "merge");
-  });
-
-  // UNSTABLE means "mergeable with non-passing commit status", and non-passing includes
-  // *queued*. gh merges it on the spot. The CI verdict is read before this function is
-  // called at all, so reaching here on UNSTABLE means the suite was green and a non-required
-  // check is pending — which is the only reading under which merging is right.
-  test("UNSTABLE merges, and says that CI was already judged", () => {
-    const d = decideLanding(pr({ mergeStateStatus: "UNSTABLE" }));
-    assert.equal(d.action, "merge");
-    assert.match(d.reason, /ciVerdict/);
-  });
-
-  test("an unrecognised state names itself and stops", () => {
-    const d = decideLanding(pr({ mergeStateStatus: "SOMETHING_NEW" }));
-    assert.equal(d.action, "stop");
-    assert.match(d.reason, /SOMETHING_NEW/);
+  test("no open pull request is ever abandoned without a person or a fresh session", () => {
+    const terminal = ["owner", "hand-back"];
+    for (const mergeStateStatus of ["SOMETHING_NEW", "DRAFT", ""]) {
+      const d = landing(pr({ mergeStateStatus }), GREEN);
+      assert.ok(!terminal.includes(d.action), `${mergeStateStatus} answered ${d.action}`);
+    }
   });
 });
 
@@ -79,5 +275,18 @@ describe("mergeArgs", () => {
     assert.ok(!args.includes("--squash"));
     assert.ok(!args.includes("--rebase"));
     assert.ok(!args.includes("--admin"));
+  });
+});
+
+describe("branchSurvives", () => {
+  test("no output means the remote branch is gone", () => {
+    assert.equal(branchSurvives(""), false);
+    assert.equal(branchSurvives("\n"), false);
+    assert.equal(branchSurvives("  \n"), false);
+  });
+
+  test("a ref line means --delete-branch did not take", () => {
+    const line = "9f1c2d3e4b5a67890abcdef1234567890abcdef1\trefs/heads/agent/958-persist-vacated-seats\n";
+    assert.equal(branchSurvives(line), true);
   });
 });

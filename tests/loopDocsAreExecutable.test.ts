@@ -4,7 +4,8 @@ import assert from "node:assert/strict";
 import { readFileSync, existsSync } from "node:fs";
 import { allowedTools } from "../scripts/loop-tools.mjs";
 import { readLine } from "../scripts/loop-stream.mjs";
-import { ciLogPath, queueLoopArgs } from "../scripts/queue-loop.mjs";
+import { queueLoopArgs } from "../scripts/queue-loop.mjs";
+import { ciLogPath } from "../scripts/loop-logs.mjs";
 
 /**
  * The loop's instructions name commands and files. Prose cannot be run, so every one of those
@@ -160,6 +161,47 @@ describe("the session declares what it did before it exits", () => {
     assert.notEqual(teardown, -1, "phase F no longer names the teardown");
     assert.notEqual(declaration, -1, "phase F no longer asks for the declaration");
     assert.ok(teardown < declaration, "the declaration is the last thing the session emits");
+  });
+
+  /**
+   * The general form of the defect, and the only one a reader would not catch: two sections of one
+   * document both instructing the session what its final line is. Both were obeyable, the session
+   * obeyed the later one, and `LOOP-RESULT` — the supervisor's only channel that is a statement
+   * rather than an inference — reached it in two runs of nineteen.
+   *
+   * A protocol document needs a test that the protocol it describes is self-consistent, the same
+   * way `rulesAreSingleSourced.test.ts` pins the rules list.
+   */
+  test("every instruction to emit a line is bound to the one line the supervisor reads", () => {
+    const text = read(QUEUE);
+    // Instructions to *emit*, not prose that happens to use the words: "the last thing you emit",
+    // "Between tickets, exactly one line". Prose about a shell command's last line is neither.
+    const instructions = [...text.matchAll(/^.*\b(?:you emit|exactly one line)\b.*$/gim)];
+    assert.ok(instructions.length > 0, "nothing in queue.md says what the session emits any more");
+    // Within the instruction's own paragraph, because the template follows the sentence rather
+    // than sitting on it.
+    const WINDOW = 400;
+    const orphans = instructions
+      .filter((m) => !text.slice(m.index, m.index + WINDOW).includes("LOOP-RESULT"))
+      .map((m) => m[0].trim());
+    assert.deepEqual(
+      orphans,
+      [],
+      "a second instruction claims the session's output; the supervisor only reads LOOP-RESULT",
+    );
+  });
+
+  test("the Output section points at the declaration rather than asking for a summary of its own", () => {
+    const text = read(QUEUE);
+    const from = text.indexOf("## Output");
+    assert.notEqual(from, -1, "the Output section has moved");
+    const out = text.slice(from);
+    assert.match(out, /LOOP-RESULT/, "Output must defer to the declaration");
+    assert.doesNotMatch(
+      out,
+      /^\s*`?[✅✓]\s*#</m,
+      "the between-tickets summary line is what LOOP-RESULT lost the final line to",
+    );
   });
 });
 

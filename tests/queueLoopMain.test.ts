@@ -4,7 +4,7 @@
 // with no test: every export was unit-tested and the way they were put together was not.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { runOnce, afterSession } from "../scripts/queue-loop.mjs";
+import { runOnce, afterSession, main } from "../scripts/queue-loop.mjs";
 
 const io = (over: Record<string, unknown> = {}) => ({
   stopFile: () => false,
@@ -37,12 +37,12 @@ const io = (over: Record<string, unknown> = {}) => ({
     phase: "E",
   }),
   pushedPr: () => ({ number: 984, state: "OPEN", head: "agent/42-x" }),
-  settle: async () => ({ action: "merged", why: "merged" }),
+  settle: async () => ({ action: "merge", reason: "merged" }),
   park: () => {},
   teardown: () => {},
   bell: () => {},
   record: () => {},
-  releaseClaim: () => {},
+
   sharedCheckoutDirty: () => "",
   log: () => {},
   ...over,
@@ -67,23 +67,36 @@ describe("runOnce", () => {
         },
         settle: async () => {
           order.push("settle");
-          return { action: "merged", why: "" };
+          return { action: "merge", reason: "" };
         },
       }),
     );
     assert.deepEqual(order, ["spawn", "settle"]);
   });
 
-  test("a settle that does not merge counts as a failure and parks nothing", async () => {
+  // #1001, exactly: the settle ended in a verdict nothing recognised, `runOnce` wrote its row, tore
+  // the worktree down and returned — without calling park. `in-progress` stayed on the issue, and
+  // classify() skips those for good, so the ticket became unpickable and needed a hand rescue.
+  test("a settle only a person can move parks the ticket rather than dropping it", async () => {
     const parked: number[] = [];
     const r = await runOnce(
       io({
-        settle: async () => ({ action: "park", why: "update-branch did not settle in 3 rounds" }),
+        settle: async () => ({ action: "owner", reason: "update-branch did not settle in 3 rounds" }),
         park: (n: number) => parked.push(n),
       }),
     );
-    assert.equal(r.outcome, "stalled");
-    assert.deepEqual(parked, [], "a mechanical failure is the loop's, not the owner's");
+    assert.equal(r.outcome, "parked");
+    assert.deepEqual(parked, [42], "no exit path may tear the worktree down and keep the claim");
+    assert.match(String(r.why), /did not settle/);
+  });
+
+  test("an unrecognised settle action parks too, rather than returning silently", async () => {
+    const parked: number[] = [];
+    const r = await runOnce(
+      io({ settle: async () => ({ action: "something-new", reason: "?" }), park: (n: number) => parked.push(n) }),
+    );
+    assert.equal(r.outcome, "parked");
+    assert.deepEqual(parked, [42]);
   });
 
   // Three full sessions on a ticket that kept going red produced three sessions and zero rows: no
@@ -92,7 +105,7 @@ describe("runOnce", () => {
   test("a red verdict hands the ticket back, and still writes its row", async () => {
     const rows: any[] = [];
     const r = await runOnce(
-      io({ settle: async () => ({ action: "fix", why: "CI failed at Lint" }), record: (x: unknown) => rows.push(x) }),
+      io({ settle: async () => ({ action: "hand-back", reason: "CI failed at Lint" }), record: (x: unknown) => rows.push(x) }),
     );
     assert.equal(r.outcome, "retry");
     assert.equal(r.ticket, 42);
@@ -137,12 +150,12 @@ describe("runOnce", () => {
   // A peer, an auto-merge or the owner between the session's exit and this read. `--state open`
   // answered "pushed nothing" and false-parked a ticket that had landed.
   test("a pull request already merged is a landing, and the claim comes off", async () => {
-    const released: number[] = [];
+    const released: (number | undefined)[] = [];
     const settled: number[] = [];
     const r = await runOnce(
       io({
         pushedPr: () => ({ number: 984, state: "MERGED", head: "agent/42-x" }),
-        releaseClaim: (n: number) => released.push(n),
+        teardown: (_cwd: string | null, n: number) => released.push(n),
         settle: async () => settled.push(1) as never,
       }),
     );
@@ -151,18 +164,40 @@ describe("runOnce", () => {
     assert.deepEqual(settled, [], "there is nothing left to settle");
   });
 
-  // Phase F removes its own worktree, but every path that skips phase F leaves one standing, and
-  // a standing worktree is a run derive() resumes on every iteration after.
-  test("a worktree the session left behind is torn down on every terminal outcome", async () => {
+  // Releasing the claim beside each teardown call let an exit path take one without the other, and
+  // one did. Tied to the teardown, no path can tear down and keep the claim.
+  test("every teardown is told which ticket's claim it is releasing", async () => {
     for (const over of [
       { pushedPr: () => ({ number: 984, state: "MERGED", head: "agent/42-x" }) },
-      { settle: async () => ({ action: "merged", why: "merged" }) },
-      { settle: async () => ({ action: "park", why: "no settle" }) },
+      { settle: async () => ({ action: "merge", reason: "merged" }) },
+    ]) {
+      const torn: unknown[][] = [];
+      await runOnce(io({ ...over, teardown: (...args: unknown[]) => torn.push(args) }));
+      assert.deepEqual(torn, [[".worktrees/agent-42", 42]], JSON.stringify(Object.keys(over)));
+    }
+  });
+
+  // Phase F removes its own worktree, but every path that skips phase F leaves one standing, and
+  // a standing worktree is a run derive() resumes on every iteration after. `park` removes its own,
+  // so a parked ticket is checked through park's arguments rather than through teardown's.
+  test("no terminal outcome leaves the worktree standing", async () => {
+    for (const over of [
+      { pushedPr: () => ({ number: 984, state: "MERGED", head: "agent/42-x" }) },
+      { settle: async () => ({ action: "merge", reason: "merged" }) },
     ]) {
       const gone: (string | null)[] = [];
       await runOnce(io({ ...over, teardown: (cwd: string | null) => gone.push(cwd) }));
       assert.deepEqual(gone, [".worktrees/agent-42"], JSON.stringify(Object.keys(over)));
     }
+
+    const handed: (string | null)[] = [];
+    await runOnce(
+      io({
+        settle: async () => ({ action: "owner", reason: "no settle" }),
+        park: (_n: number, ctx: { cwd: string | null }) => handed.push(ctx.cwd),
+      }),
+    );
+    assert.deepEqual(handed, [".worktrees/agent-42"]);
   });
 
   // The same worktree is what the next round works in, so this is the one outcome that keeps it.
@@ -170,7 +205,7 @@ describe("runOnce", () => {
     const gone: (string | null)[] = [];
     const r = await runOnce(
       io({
-        settle: async () => ({ action: "fix", why: "CI failed at Lint" }),
+        settle: async () => ({ action: "hand-back", reason: "CI failed at Lint" }),
         teardown: (cwd: string | null) => gone.push(cwd),
       }),
     );
@@ -307,12 +342,14 @@ describe("runOnce", () => {
     const ring = () => { rings += 1; };
     await runOnce(io({ bell: ring }));
     assert.equal(rings, 0, "a landed ticket needs nobody");
-    await runOnce(io({ bell: ring, settle: async () => ({ action: "fix", why: "CI failed" }) }));
+    await runOnce(io({ bell: ring, settle: async () => ({ action: "hand-back", reason: "CI failed" }) }));
     assert.equal(rings, 0, "a red verdict is the next session's, not a person's");
-    await runOnce(io({ bell: ring, settle: async () => ({ action: "park", why: "no settle" }) }));
-    assert.equal(rings, 0, "a mechanical failure is the loop's");
     await runOnce(io({ bell: ring, pushedPr: () => null }));
     assert.equal(rings, 1);
+    // A settle that ends in `owner` now goes to the tracker with `ready-for-human` on it, so it is
+    // a hand-off like any other. Left silent, it was a ticket dropped without anyone being told.
+    await runOnce(io({ bell: ring, settle: async () => ({ action: "owner", reason: "no settle" }) }));
+    assert.equal(rings, 2);
   });
 
   test("a dirtied shared checkout is named, not fatal", async () => {
@@ -371,5 +408,83 @@ describe("afterSession", () => {
   test("the worktree's own readings are never taken from the declaration", () => {
     const a = of({ ticket: 42, branch: "agent/42-x" }, "F", derived);
     assert.deepEqual(a.changed, ["a.ts"], "what changed is git's answer, not the session's");
+  });
+});
+
+// `main` carried five locals mutated across six branches and was module-private, so the breaker,
+// the fix-round ceiling and the refusal ceiling — the three things that decide whether an
+// unattended night ends well — appeared in no test at all.
+describe("main", () => {
+  const book = () => {
+    const rows: any[] = [];
+    return {
+      rows,
+      totals: { tickets: 0, landed: 0, parked: 0, cost: 0, ms: 0 },
+      record: (s: any) => rows.push(s),
+      close: () => {},
+    };
+  };
+  const screen = () => ({ say: () => {}, warn: () => {}, stop: () => {} });
+
+  test("three tickets in a row that do not land stop the night", async () => {
+    let calls = 0;
+    const spy = {
+      ...(io() as any),
+      pick: () => {
+        calls += 1;
+        return { skill: "implement", number: calls, title: "t", size: null, queue: null };
+      },
+      spawn: async () => ({ status: 1, blocked: false, result: {}, ms: 1, log: "l", phase: "C", declared: null }),
+      pushedPr: () => null,
+      standing: () => null,
+    };
+    const code = await main({ io: spy, book: book(), screen: screen(), install: () => {}, runId: "t" });
+    assert.equal(code, 1, "the breaker ends the run rather than burning the night");
+    assert.equal(calls, 3, "three, not two and not four");
+  });
+
+  test("a stop file ends the night cleanly, before anything is picked", async () => {
+    let picked = 0;
+    const code = await main({
+      io: { ...(io() as any), stopFile: () => true, pick: () => (picked += 1) as never },
+      book: book(),
+      screen: screen(),
+      install: () => {},
+      runId: "t",
+    });
+    assert.equal(code, 0);
+    assert.equal(picked, 0);
+  });
+
+  test("a landing clears the breaker, so a bad ticket between good ones is not fatal", async () => {
+    let n = 0;
+    const outcomes = [1, 0, 1, 0, 1, 0, 1];
+    const code = await main({
+      io: {
+        ...(io() as any),
+        pick: () => {
+          n += 1;
+          if (n > outcomes.length) return { skill: "handoff", number: 0, title: "queue empty" };
+          return { skill: "implement", number: n, title: "t", size: null, queue: null };
+        },
+        spawn: async () => ({
+          status: outcomes[n - 1],
+          blocked: false,
+          result: {},
+          ms: 1,
+          log: "l",
+          phase: "C",
+          declared: null,
+        }),
+        pushedPr: () => (outcomes[n - 1] === 0 ? { number: 9, state: "MERGED", head: "agent/1-x" } : null),
+        standing: () => null,
+      },
+      book: book(),
+      screen: screen(),
+      install: () => {},
+      runId: "t",
+    });
+    assert.equal(code, 0, "alternating park and land never reaches three in a row");
+    assert.equal(n, outcomes.length + 1);
   });
 });

@@ -34,6 +34,45 @@ function declaredIn(text) {
   }
 }
 
+// A dispatched subagent and a plain shell task share one task_id key space but close through
+// different subtypes: a shell task's task_started/task_notification pair carries a flat `status`;
+// a subagent's task_started/task_progress chain is closed by task_updated, whose only content is
+// a `patch` — sometimes the closing `{status, end_time}` (an `error` string too, if it failed),
+// sometimes mid-run just `{is_backgrounded: true}`. One mapping covers all four by reading through
+// to `patch` wherever the flat field is absent, which is also the only way a subagent's phase ever
+// shows a sign of life: it is the one caller of readLine() that never emits an `assistant` fact.
+const TASK_EVENT = {
+  task_started: "started",
+  task_progress: "progress",
+  task_notification: "notification",
+  task_updated: "updated",
+};
+
+/** @param {unknown} s */
+function trimmedOrNull(s) {
+  if (typeof s !== "string") return null;
+  const t = s.trim();
+  return t || null;
+}
+
+/** @param {string} event */
+function taskFact(event, e) {
+  return {
+    kind: "task",
+    event,
+    id: e.task_id,
+    of: e.tool_use_id ?? null,
+    what: trimmedOrNull(e.description ?? e.summary ?? e.patch?.error),
+    agent: e.subagent_type ?? null,
+    tool: e.last_tool_name ?? null,
+    status: e.status ?? e.patch?.status ?? null,
+    background: e.is_backgrounded ?? e.patch?.is_backgrounded ?? false,
+    tokens: e.usage?.total_tokens ?? 0,
+    toolUses: e.usage?.tool_uses ?? 0,
+    ms: e.usage?.duration_ms ?? 0,
+  };
+}
+
 export function readLine(line) {
   let e;
   try {
@@ -43,6 +82,10 @@ export function readLine(line) {
   }
   if (e.type === "system" && e.subtype === "init") {
     return { kind: "init", sessionId: e.session_id ?? null, version: e.claude_code_version ?? null };
+  }
+  if (e.type === "system" && TASK_EVENT[e.subtype]) {
+    if (!e.task_id) return null;
+    return taskFact(TASK_EVENT[e.subtype], e);
   }
   // A meter, not an alarm: it ticks several times a minute on a healthy session, carrying
   // `status: "allowed"`. Only "rejected" is work refused — a warning is still being served.

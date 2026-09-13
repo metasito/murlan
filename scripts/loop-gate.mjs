@@ -18,8 +18,55 @@
  * Usage: node scripts/loop-gate.mjs
  *        exit 0 - built, clean, and cleared by a review of this exact head
  *        exit 1 - says what is missing; exit 2 - not on a ticket, or cannot judge
+ *
+ *        node scripts/loop-gate.mjs --review-round
+ *        exit 0 - phase D may run another round; exit 1 - the cap is reached
  */
 import { derive } from "./loop-derive.mjs";
+import { isInvokedDirectly } from "./lib/entry.mjs";
+
+/**
+ * Phase D's ceiling, here rather than in `queue.md`'s prose, because that is the difference
+ * between a bound a test can fail and a sentence.
+ *
+ * It is the largest cost lever in the loop: phase D is 78% of a run's clock and every round is two
+ * opus reviewers, so this one number multiplied out is 126 of the last 144 subagents. A ceiling,
+ * never a target — phase D stops earlier when a round raises nothing new.
+ */
+export const MAX_REVIEW_ROUNDS = 4;
+
+/** @param {{reviewRounds?: number|null}} s */
+export function roundVerdict({ reviewRounds }) {
+  // Fails closed, the same way the push gate does on an unreadable tracker: a count nobody could
+  // read is not a count of zero, and reading it as one buys an unbounded review.
+  if (reviewRounds == null) return { ok: false, why: "cannot reach the tracker to count the review rounds" };
+  if (reviewRounds >= MAX_REVIEW_ROUNDS) {
+    return {
+      ok: false,
+      why: `${reviewRounds} review round(s) already on the issue — the cap is ${MAX_REVIEW_ROUNDS}`,
+    };
+  }
+  return { ok: true, why: `round ${reviewRounds + 1} of at most ${MAX_REVIEW_ROUNDS}` };
+}
+
+function reviewRound() {
+  const s = derive();
+  if (!s.onTicket) {
+    console.error(`loop-gate: ${s.why} (${s.branch ?? "no branch"}) — nothing to judge`);
+    return 2;
+  }
+  const round = roundVerdict(s);
+  if (round.ok) {
+    console.log(`loop-gate: #${s.ticket} — ${round.why}`);
+    return 0;
+  }
+  console.error(
+    `loop-gate: #${s.ticket} — ${round.why}\n\n` +
+      "  Do not park for this. Fix anything that is an actual blocker, then post your own\n" +
+      "  VERDICT: LAND <sha> naming what you are accepting, and go to phase E on that head.",
+  );
+  return 1;
+}
 
 function main() {
   const s = derive();
@@ -67,9 +114,11 @@ function main() {
 
   console.log(
     `loop-gate: #${s.ticket} — ${s.commits} commit(s), ${s.changed.length} file(s), ` +
-      `reviewed at ${s.head.slice(0, 7)}: ${s.verdict.line}`
+      `${s.reviewRounds ?? "?"} review round(s), reviewed at ${s.head.slice(0, 7)}: ${s.verdict.line}`
   );
   return 0;
 }
 
-if (process.argv[1]?.endsWith("loop-gate.mjs")) process.exit(main());
+if (isInvokedDirectly(process.argv[1], import.meta.url)) {
+  process.exit(process.argv.includes("--review-round") ? reviewRound() : main());
+}

@@ -15,6 +15,10 @@
  */
 import { readFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
+import { isInvokedDirectly } from "./lib/entry.mjs";
+
+/** A failure's first line — enough to name it on stderr without dumping a stack there. */
+const firstLine = (err) => String(err?.message ?? err).split("\n")[0];
 
 // A command actually runs only at the start of the line or after a separator. Without this the
 // guard fires on the same text quoted inside an argument — a grep pattern, a heredoc, a message —
@@ -84,26 +88,24 @@ function rerunTargets(command) {
 }
 
 /**
- * The workflow a target belongs to, or null when `gh` cannot say.
+ * The workflow a target belongs to. Throws when `gh` cannot say — network, auth, rate limit —
+ * and leaves that to `check()`'s wrapper, which is the one place deciding to allow and saying
+ * why, rather than this function choosing to allow silently.
  *
- * Silence here allows: `gh` is also how the rerun would be dispatched, so a guard that blocked
- * on it would forbid the honest path and protect nothing. That reasoning covers a `gh` which
- * cannot answer — never a question this asked wrongly, which is why an unreadable id is
- * refused before it gets here rather than resolved to null.
+ * Allowing on that failure is deliberate: `gh` is also how the rerun would be dispatched, so a
+ * guard that blocked here would forbid the honest path and protect nothing. That reasoning
+ * covers a `gh` which cannot answer — never a question this asked wrongly, which is why an
+ * unreadable id is refused before it gets here rather than resolved to null.
  */
 function askGitHub({ run, job }) {
   const which = job ? [`--job=${job}`] : [run];
-  try {
-    return (
-      execFileSync("gh", ["run", "view", ...which, "--json", "workflowName", "-q", ".workflowName"], {
-        encoding: "utf8",
-        timeout: 15_000,
-        stdio: ["ignore", "pipe", "ignore"],
-      }).trim() || null
-    );
-  } catch {
-    return null;
-  }
+  return (
+    execFileSync("gh", ["run", "view", ...which, "--json", "workflowName", "-q", ".workflowName"], {
+      encoding: "utf8",
+      timeout: 15_000,
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim() || null
+  );
 }
 
 const RULES = [
@@ -243,19 +245,41 @@ const RULES = [
   },
 ];
 
+/**
+ * Wraps whatever resolves a rerun's workflow so a failure there — `gh` down, or a fault this
+ * asked wrongly — allows and says so, instead of taking the whole hook down with it. Logged
+ * once per call to `check()` even when a rule asks more than once for one command line.
+ */
 export function check(command, workflowOfRun = askGitHub) {
   const runnable = withoutQuotedBodies(command);
-  for (const rule of RULES) if (rule.test(runnable, workflowOfRun)) return rule.message;
+  let warned = false;
+  const readWorkflow = (target) => {
+    try {
+      return workflowOfRun(target);
+    } catch (err) {
+      if (!warned) {
+        warned = true;
+        process.stderr.write(
+          `guard-bash: could not look up the rerun's workflow (${firstLine(err)}); allowing it unchecked.\n`
+        );
+      }
+      return null;
+    }
+  };
+  for (const rule of RULES) if (rule.test(runnable, readWorkflow)) return rule.message;
   return null;
 }
 
-if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop())) {
+if (isInvokedDirectly(process.argv[1], import.meta.url)) {
   let command = "";
   try {
     const payload = JSON.parse(readFileSync(0, "utf8") || "{}");
     command = (payload.tool_input ?? payload).command ?? "";
-  } catch {
-    process.exit(0); // unreadable payload must never block a tool call
+  } catch (err) {
+    // unreadable payload must never block a tool call, but silence here is the other half of
+    // the same bug the RULES above exist to catch — say what could not be checked.
+    process.stderr.write(`guard-bash: could not read the tool call on stdin (${firstLine(err)}); allowing it.\n`);
+    process.exit(0);
   }
   const message = check(command);
   if (message) {

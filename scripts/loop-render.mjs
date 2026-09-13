@@ -170,6 +170,29 @@ export function toolDetail({ name, command = "", parent = null }) {
   return mark + clamp(first, DETAIL - mark.length);
 }
 
+const MINUTE_MS = 60_000;
+
+/**
+ * The phase line's detail slot while work is happening inside a subagent: `readLine()` sees no
+ * `assistant` fact from in there, so without this the board sits on whatever it last showed for
+ * the whole phase. `tasks` is the caller's live set, most recently touched last — the closing
+ * subtypes (`task_notification`, `task_updated`) are the caller's cue to drop an entry, never this
+ * function's to reason about, so what it shows is whichever task was touched most recently.
+ *
+ * @param {{what: string|null, tool: string|null}[]} tasks
+ * @param {number} ms
+ */
+export function tasksDetail(tasks, ms, width = DETAIL) {
+  if (!tasks.length) return null;
+  const last = tasks[tasks.length - 1];
+  const parts = [
+    `${tasks.length} agent${tasks.length === 1 ? "" : "s"}`,
+    last.what ?? last.tool ?? null,
+    `${Math.floor(ms / MINUTE_MS)}m`,
+  ].filter(Boolean);
+  return clamp(parts.join(" · "), width);
+}
+
 /**
  * The queue after a ticket, against the queue before it. The header carries the depth; the
  * direction is what matters across an unattended night — a frontier that grows every ticket is the

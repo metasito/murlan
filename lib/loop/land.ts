@@ -1,5 +1,4 @@
 // lib/loop/land.ts
-import { execFileSync } from "node:child_process";
 
 export interface PrState {
   state: string;
@@ -7,58 +6,97 @@ export interface PrState {
   mergeable: string;
 }
 
-export type LandAction =
+export interface CiVerdict {
+  pass?: boolean;
+  infrastructure?: boolean;
+  failedStep?: string;
+  output?: string;
+}
+
+export type Landing =
   | { action: "merge"; reason: string }
   | { action: "already-merged"; reason: string }
-  | { action: "recheck"; reason: string }
   | { action: "update-branch"; reason: string }
-  | { action: "stop"; reason: string };
+  | { action: "recheck"; reason: string }
+  /** CI is red and a fresh session can fix it. */
+  | { action: "hand-back"; reason: string }
+  /** Only a person can move this. */
+  | { action: "owner"; reason: string };
 
 /**
- * What to do with a green pull request.
+ * What to do with a pushed pull request, over the pull request and the CI verdict together.
  *
- * `state` is read before either mergeability field because a merged pull request answers
- * `UNKNOWN` on both, and so does one GitHub has not finished computing — the same two values for
- * "done" and "not yet".
+ * Six arms rather than four, because the caller genuinely does something different for
+ * `already-merged` (skip the merge call), `update-branch` (`gh pr update-branch`) and `recheck`
+ * (wait and ask again) — collapsing them and re-splitting downstream rebuilds the same fan-out one
+ * layer lower.
  *
- * `mergeable: UNKNOWN` is the async signal: GitHub starts a background job when asked and the
- * documented remedy is to resubmit the request, so it is a recheck rather than a verdict.
- *
- * BEHIND means main moved: merging then builds a tree no run has tested. Updating the branch
- * first costs one run instead of two.
- *
- * Anything conflicted or blocked stops rather than reaching for `--admin`: a merge that needs a
- * flag to force it is a decision, not a step.
+ * Total by construction: every pair of inputs has an answer, and the answer for an input this
+ * function does not recognise is to ask again rather than to assert anything about it.
  */
-export function decideLanding(pr: PrState): LandAction {
+export function landing(pr: PrState, ci: CiVerdict): Landing {
+  // Before CI is consulted at all. A merged branch's ci.yml run commonly reads `cancelled` — the
+  // concurrency group stops it when the merge lands — and there is nothing left to fix on a branch
+  // whose work is on main.
   if (pr.state === "MERGED") {
     return { action: "already-merged", reason: "the pull request is already merged" };
   }
   if (pr.state === "CLOSED") {
-    return { action: "stop", reason: "the pull request was closed without merging" };
+    return { action: "owner", reason: "the pull request was closed without merging" };
   }
+  // An unrecognised state is a reading, not a verdict.
+  if (pr.state !== "OPEN") {
+    return { action: "recheck", reason: `the pull request state reads ${pr.state}` };
+  }
+
+  // Billing, a quota or a runner. It says nothing about the diff, so a fix round spent on it hunts
+  // a defect no suite ever reported.
+  if (ci.infrastructure) {
+    return { action: "recheck", reason: "a job completed having run zero steps" };
+  }
+
+  // Ahead of the CI check on purpose: a fix round rebuilds the worktree from the branch and commits
+  // to it, which cannot clear a conflict with main, so handing a conflicted pull request back burns
+  // three rounds to arrive back here.
+  if (pr.mergeable === "CONFLICTING") {
+    return { action: "owner", reason: "the branch conflicts with main" };
+  }
+
+  if (ci.pass !== true) {
+    return { action: "hand-back", reason: `CI failed at ${ci.failedStep ?? "an unnamed step"}` };
+  }
+
+  // GitHub computes mergeability in a background job it starts when asked, and the documented
+  // remedy is to ask again. A merged pull request answers UNKNOWN on both fields too, which is why
+  // `state` is read first.
   if (pr.mergeable === "UNKNOWN" || pr.mergeStateStatus === "UNKNOWN") {
     return { action: "recheck", reason: "GitHub is still computing mergeability" };
   }
-  if (pr.mergeable === "CONFLICTING") {
-    return { action: "stop", reason: "the branch conflicts with main and needs a human" };
-  }
+
+  // Main moved: merging now builds a tree no run has tested. Updating first costs one run, not two.
   if (pr.mergeStateStatus === "BEHIND") {
-    return { action: "update-branch", reason: "main moved; update the branch and let it go green on that tree" };
+    return { action: "update-branch", reason: "main moved; update the branch and read CI on that tree" };
   }
+
+  // Reaching for `--admin` is a decision, not a step.
   if (pr.mergeStateStatus === "BLOCKED" || pr.mergeStateStatus === "DIRTY") {
-    return { action: "stop", reason: `mergeStateStatus is ${pr.mergeStateStatus}` };
+    return { action: "owner", reason: `mergeStateStatus is ${pr.mergeStateStatus}` };
   }
+
   if (pr.mergeStateStatus === "CLEAN" || pr.mergeStateStatus === "HAS_HOOKS") {
     return { action: "merge", reason: `mergeStateStatus is ${pr.mergeStateStatus}` };
   }
-  // UNSTABLE is "mergeable with non-passing commit status", and non-passing includes queued —
-  // gh merges it on the spot either way. Reaching here means ciVerdict already read the run for
-  // this head and passed it, which is the only reading under which a pending check is ignorable.
+
+  // UNSTABLE is "mergeable with non-passing commit status", and non-passing includes queued — gh
+  // merges it on the spot either way. Reaching here means the verdict above passed the run for this
+  // head, which is the only reading under which a pending check is ignorable.
   if (pr.mergeStateStatus === "UNSTABLE") {
     return { action: "merge", reason: "mergeStateStatus is UNSTABLE; ciVerdict already passed this head" };
   }
-  return { action: "stop", reason: `unrecognised mergeStateStatus ${pr.mergeStateStatus}` };
+
+  // "I have never seen this value" is not a verdict, and a verdict here is a ticket nobody can pick
+  // up again: the caller's stall path leaves `in-progress` on the issue.
+  return { action: "recheck", reason: `unrecognised mergeStateStatus ${pr.mergeStateStatus}` };
 }
 
 /**
@@ -69,28 +107,17 @@ export function mergeArgs(repo: string, prNumber: number): string[] {
   return ["pr", "merge", String(prNumber), "--repo", repo, "--merge", "--delete-branch"];
 }
 
-function gh(args: string[]): string {
-  return execFileSync("gh", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
-}
-
-if (process.argv[1]?.endsWith("land.ts")) {
-  const [repo, prNumber] = process.argv.slice(2);
-  if (!repo || !prNumber) {
-    console.error("usage: npx tsx lib/loop/land.ts <repo> <prNumber>");
-    process.exit(1);
-  }
-  const pr: PrState = JSON.parse(
-    gh(["pr", "view", prNumber, "--repo", repo, "--json", "state,mergeStateStatus,mergeable"])
-  );
-  const decision = decideLanding(pr);
-  if (decision.action === "merge") {
-    gh(mergeArgs(repo, Number(prNumber)));
-    process.stdout.write(JSON.stringify({ merged: true, prNumber: Number(prNumber), reason: decision.reason }));
-  } else if (decision.action === "already-merged") {
-    process.stdout.write(JSON.stringify({ merged: true, prNumber: Number(prNumber), reason: decision.reason }));
-  } else {
-    process.stdout.write(
-      JSON.stringify({ merged: false, prNumber: Number(prNumber), next: decision.action, reason: decision.reason })
-    );
-  }
+/**
+ * Whether `git ls-remote origin <branch>` still finds the branch — RULES.md rule 14's confirmation
+ * that `--delete-branch` took effect. A worktree still holding the local branch makes the delete
+ * fail and the remote copy survives with it.
+ *
+ * Harmless over a merged branch; over an unmerged one it is #294, where a branch on origin with no
+ * open pull request satisfies `issue-tracker.md`'s staleness test and the ticket can never be
+ * picked up again.
+ *
+ * A string predicate: the caller owns the command.
+ */
+export function branchSurvives(lsRemoteStdout: string): boolean {
+  return lsRemoteStdout.trim().length > 0;
 }

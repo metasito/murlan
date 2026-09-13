@@ -21,8 +21,9 @@ import {
   shouldHalt,
   BREAKER,
   takeStopFile,
-  afterPush,
   settleOutcome,
+  watchBuild,
+  UNCOMMITTED_SHARE,
   outcomeOf,
   reasonFor,
   waitFor,
@@ -474,9 +475,15 @@ describe("runTicket", () => {
     assert.equal(run.status, 1);
   });
 
-  test("keeps the raw stream in .loop-logs, which is the fallback for what the board omits", async () => {
+  test("keeps the raw stream in the log directory, the fallback for what the board omits", async () => {
     const run = await runTicket(fakeSpawn([phase("B"), RESULT]), opts({ number: 999 }));
     assert.match(run.log, /999\.jsonl$/);
+    // Before the removal, and before anything else: every fixture here names a live ticket, so a
+    // `dir` the callee quietly ignores has this line deleting a real night's stream log.
+    assert.ok(
+      path.resolve(run.log).startsWith(path.resolve(SCRATCH)),
+      `runTicket wrote outside the scratch directory: ${run.log}`,
+    );
     assert.ok(readFileSync(run.log, "utf8").includes('"type":"result"'));
     rmSync(run.log, { force: true });
   });
@@ -617,96 +624,62 @@ describe("takeStopFile", () => {
   });
 });
 
-describe("afterPush", () => {
-  test("green and clean merges", () => {
-    const r = afterPush({ verdict: { pass: true }, landing: { action: "merge", reason: "CLEAN" } });
-    assert.equal(r.action, "merged");
-  });
-
-  test("green but behind updates the branch first, and does not merge on the old verdict", () => {
-    const r = afterPush({ verdict: { pass: true }, landing: { action: "update-branch", reason: "BEHIND" } });
-    assert.equal(r.action, "update-branch");
-  });
-
-  test("red hands the ticket back to a session rather than parking it", () => {
-    const r = afterPush({ verdict: { pass: false, failedStep: "lint", output: "..." } });
-    assert.equal(r.action, "fix");
-    assert.match(r.why, /lint/);
-  });
-
-  test("a job that ran zero steps says nothing about the diff, so it is asked again, not fixed", () => {
-    const r = afterPush({ verdict: { pass: false, infrastructure: true } });
-    assert.equal(r.action, "retry-verdict");
-  });
-
-  test("a conflicting branch parks — a merge that needs forcing is a decision", () => {
-    const r = afterPush({
-      verdict: { pass: true },
-      landing: { action: "stop", reason: "the branch conflicts with main" },
-    });
-    assert.equal(r.action, "park");
-    assert.match(r.why, /conflicts/);
-  });
-
-  test("infrastructure wins over a failed step: it says nothing about the diff either way", () => {
-    const r = afterPush({ verdict: { pass: false, infrastructure: true, failedStep: "browser" } });
-    assert.equal(r.action, "retry-verdict");
-  });
-
-  test("a recheck rides the retry budget instead of parking", () => {
-    const out = afterPush({ verdict: { pass: true }, landing: { action: "recheck", reason: "still computing" } });
-    assert.equal(out.action, "retry-verdict");
-  });
-
-  test("an already-merged pull request is a merge, not a park", () => {
-    const out = afterPush({ verdict: { pass: true }, landing: { action: "already-merged", reason: "already merged" } });
-    assert.equal(out.action, "merged");
-  });
-});
-
 describe("settleOutcome", () => {
   test("a merge is the landing, and costs the run nothing", () => {
-    assert.deepEqual(settleOutcome({ action: "merged" }), { countsAsFailure: false, recorded: "landed" });
+    assert.deepEqual(settleOutcome({ action: "merge" }), {
+      countsAsFailure: false,
+      recorded: "landed",
+      handBack: false,
+    });
+  });
+
+  test("one already merged is a landing too, not a settle failure", () => {
+    assert.equal(settleOutcome({ action: "already-merged" }).recorded, "landed");
   });
 
   // A ticket red three times produced three whole sessions and zero rows, so its cost, its turns
   // and the fact that it needed the rounds at all were absent from the file kept to measure them.
-  test("a fix writes a row of its own, and does not count as a failure", () => {
-    const out = settleOutcome({ action: "fix" });
+  test("a hand-back writes a row of its own, and does not count as a failure", () => {
+    const out = settleOutcome({ action: "hand-back" });
     assert.equal(out.recorded, "retry");
     assert.equal(out.countsAsFailure, false);
+    assert.equal(out.handBack, false);
   });
 
-  // park() adds ready-for-human and classify() sends any issue carrying an owner label to the
-  // owner bucket, so every mechanical park was absorbing and the frontier drained 11 to 6.
-  test("a mechanical failure counts toward the breaker and reaches no label", () => {
-    const out = settleOutcome({ action: "park" });
+  // Recording the row and tearing the worktree down without releasing the claim leaves the issue
+  // carrying `in-progress`, which classify() skips for good — a ticket nothing returns to.
+  test("an owner decision is parked, and goes through park rather than a bare teardown", () => {
+    const out = settleOutcome({ action: "owner" });
     assert.equal(out.countsAsFailure, true);
-    assert.equal(out.recorded, "stalled");
+    assert.equal(out.recorded, "parked");
+    assert.equal(out.handBack, true);
   });
 
-  test("an unrecognised action still counts, rather than passing as a landing", () => {
-    assert.equal(settleOutcome({ action: "something-new" }).countsAsFailure, true);
+  test("an unrecognised action parks rather than passing as a landing", () => {
+    const out = settleOutcome({ action: "something-new" });
+    assert.equal(out.countsAsFailure, true);
+    assert.equal(out.handBack, true);
   });
 });
 
 describe("outcomeOf", () => {
   const open = { number: 984, state: "OPEN", head: "agent/42-x" };
+  const fine = { why: null, hard: false };
 
   test("an open pull request is settled, not yet landed", () => {
-    assert.deepEqual(outcomeOf({ pr: open, why: null }), { action: "settle", pr: 984 });
+    assert.deepEqual(outcomeOf({ pr: open, reason: fine }), { action: "settle", pr: 984 });
   });
 
   // A peer, an auto-merge or the owner between the session's exit and this read. Asked with
   // `--state open` this answered "pushed nothing" and false-parked a ticket that had landed.
   test("one merged while the supervisor was not looking is a landing", () => {
-    const o = outcomeOf({ pr: { ...open, state: "MERGED" }, why: null });
+    const o = outcomeOf({ pr: { ...open, state: "MERGED" }, reason: fine });
     assert.equal(o.action, "landed");
     assert.equal(o.pr, 984);
   });
 
   test("one closed without merging is the owner's, and says so by number", () => {
-    const o = outcomeOf({ pr: { ...open, state: "CLOSED" }, why: null });
+    const o = outcomeOf({ pr: { ...open, state: "CLOSED" }, reason: fine });
     assert.equal(o.action, "park");
     assert.match(String(o.why), /#984 is closed/);
   });
@@ -714,49 +687,149 @@ describe("outcomeOf", () => {
   // The session stood down on a lost claim race, or derive() could not read the run. Both used to
   // read as "the worktree is gone, so it landed".
   test("no pull request and no reason is not landed either", () => {
-    const o = outcomeOf({ pr: null, why: null });
+    const o = outcomeOf({ pr: null, reason: fine });
     assert.equal(o.action, "park");
     assert.match(String(o.why), /pushed no pull request/);
   });
 
-  test("a reason is never a landing", () => {
-    const o = outcomeOf({ pr: open, why: "the session exited 1 in phase C" });
+  // Eleven tickets whose pull requests merged were written down as parks, because how the session
+  // ended was read before what it had already pushed.
+  test("a soft reason never beats a pushed pull request", () => {
+    const o = outcomeOf({ pr: open, reason: { why: "the session ran out of turns", hard: false } });
+    assert.deepEqual(o, { action: "settle", pr: 984 });
+  });
+
+  test("a soft reason on a merged pull request is still a landing", () => {
+    const o = outcomeOf({
+      pr: { ...open, state: "MERGED" },
+      reason: { why: "the session exited without a LOOP-RESULT", hard: false },
+    });
+    assert.equal(o.action, "landed");
+  });
+
+  test("a hard reason parks even over an open pull request, and keeps its number", () => {
+    const o = outcomeOf({ pr: open, reason: { why: "the session stood down", hard: true } });
     assert.equal(o.action, "park");
-    assert.equal(o.pr, undefined);
+    assert.equal(o.pr, 984);
+    assert.match(String(o.why), /stood down/);
+  });
+
+  test("a soft reason is what a pull-request-less park is named after", () => {
+    const o = outcomeOf({ pr: null, reason: { why: "the session ran out of turns", hard: false } });
+    assert.equal(o.action, "park");
+    assert.match(String(o.why), /out of turns/);
   });
 });
 
 describe("reasonFor", () => {
-  const run = (over: object = {}) => ({ status: 0, phase: "E", stderr: "", result: {}, ...over });
+  const run = (over: object = {}) =>
+    ({ status: 0, phase: "E", stderr: "", result: {}, declared: { pr: 9, stoodDown: false }, ...over }) as never;
   const after = { ticket: 42 };
 
   test("a finished session has no reason", () => {
-    assert.equal(reasonFor(run(), after, 42), null);
+    assert.deepEqual(reasonFor(run(), after, 42), { why: null, hard: false });
   });
 
-  test("a session that worked another ticket says so", () => {
-    assert.match(String(reasonFor(run(), { ticket: 955 }, 42)), /worked #955, not #42/);
+  test("standing down is hard: the session's own branch is not this ticket's answer", () => {
+    const r = reasonFor(run({ declared: { stoodDown: true, why: "lost the claim race" } }), after, 42);
+    assert.equal(r.hard, true);
+    assert.match(String(r.why), /claim race/);
+  });
+
+  test("a session that worked another ticket says so, and that is hard too", () => {
+    const r = reasonFor(run(), { ticket: 955 }, 42);
+    assert.equal(r.hard, true);
+    assert.match(String(r.why), /worked #955, not #42/);
   });
 
   test("a budget stop is read from stderr, because the result still says success", () => {
     const r = reasonFor(run({ stderr: "Budget limit reached ($15.08 of $15)" }), after, 42);
-    assert.match(String(r), /spent its budget/);
+    assert.match(String(r.why), /spent its budget/);
+    assert.equal(r.hard, false);
   });
 
-  test("running out of turns is named", () => {
-    assert.match(String(reasonFor(run({ result: { subtype: "error_max_turns" } }), after, 42)), /out of turns/);
+  test("running out of turns is named, and yields to a pushed branch", () => {
+    const r = reasonFor(run({ result: { subtype: "error_max_turns" } }), after, 42);
+    assert.match(String(r.why), /out of turns/);
+    assert.equal(r.hard, false);
   });
 
   test("a stall names the ceiling it passed", () => {
-    assert.match(String(reasonFor(run({ status: "stalled" }), after, 42)), /no output for 30m/);
+    assert.match(String(reasonFor(run({ status: "stalled" }), after, 42).why), /no output for 30m/);
   });
 
   test("a non-zero exit names the phase", () => {
-    assert.match(String(reasonFor(run({ status: 1 }), after, 42)), /exited 1 in phase E/);
+    assert.match(String(reasonFor(run({ status: 1 }), after, 42).why), /exited 1 in phase E/);
+  });
+
+  // Seventeen of nineteen sessions never emitted one, and the supervisor absorbed that silently by
+  // inferring every fact about them from side effects phase F had just been told to delete.
+  test("a clean exit with no LOOP-RESULT is an error, not a silent fallback", () => {
+    const r = reasonFor(run({ declared: null }), after, 42);
+    assert.match(String(r.why), /without a LOOP-RESULT/);
+    assert.equal(r.hard, false);
   });
 
   test("no live ticket at all is not a reason on its own", () => {
-    assert.equal(reasonFor(run(), null, 42), null);
+    assert.deepEqual(reasonFor(run(), null, 42), { why: null, hard: false });
+  });
+});
+
+describe("watchBuild", () => {
+  const state = (over: object = {}) => ({
+    phase: "C",
+    buildTurns: 0,
+    committed: false,
+    warnedUncommitted: false,
+    ...over,
+  });
+  const edits = { calls: [{ name: "Edit", command: "" }] };
+  const commits = { calls: [{ name: "Bash", command: "git add -- a.ts && git commit -m 'x'" }] };
+  const said: string[] = [];
+  const warn = (m: string) => said.push(m);
+
+  test("a commit in phase C is what it is watching for, and ends the watch", () => {
+    const s = state();
+    watchBuild(s, commits, 200, warn);
+    assert.equal(s.committed, true);
+    assert.equal(s.buildTurns, 0);
+  });
+
+  test("`git -C <dir> commit` counts, because that is how a worktree is committed to", () => {
+    const s = state();
+    watchBuild(s, { calls: [{ name: "Bash", command: "git -C .worktrees/agent-42 commit -m 'y'" }] }, 200, warn);
+    assert.equal(s.committed, true);
+  });
+
+  test("a `git add` is not a commit — the one failed ticket made ten of them and no commits", () => {
+    const s = state();
+    watchBuild(s, { calls: [{ name: "Bash", command: "git add -- lib/x.ts" }] }, 200, warn);
+    assert.equal(s.committed, false);
+    assert.equal(s.buildTurns, 1);
+  });
+
+  test("it says so once, and only once, past its share of the budget", () => {
+    const s = state();
+    const lines: string[] = [];
+    for (let i = 0; i < 200; i++) watchBuild(s, edits, 100, (m) => lines.push(m));
+    assert.equal(lines.length, 1);
+    assert.match(lines[0], /no commit/);
+    assert.match(lines[0], /100-turn budget/);
+  });
+
+  test("the threshold moves with the budget, so an XS ticket is not warned on turn one", () => {
+    const small = state();
+    for (let i = 0; i < Math.round(60 * UNCOMMITTED_SHARE) - 1; i++) watchBuild(small, edits, 60, warn);
+    assert.equal(small.warnedUncommitted, false);
+    watchBuild(small, edits, 60, warn);
+    assert.equal(small.warnedUncommitted, true);
+  });
+
+  test("phase D is not the build phase, and its turns are not counted against it", () => {
+    const s = state({ phase: "D" });
+    for (let i = 0; i < 500; i++) watchBuild(s, edits, 60, warn);
+    assert.equal(s.buildTurns, 0);
+    assert.equal(s.warnedUncommitted, false);
   });
 });
 

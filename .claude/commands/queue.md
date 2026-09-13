@@ -206,6 +206,13 @@ How to solve it is yours. What follows constrains the process, never the design:
 Before leaving C, `git rev-list --count origin/main..HEAD` must be non-zero. Your account of what
 you did is not evidence; git is.
 
+**You have a turn budget, and it is the bound that actually stops you.** The supervisor sets it from
+the ticket's size label and passes it as `$LOOP_TURNS`; `echo $LOOP_TURNS` reads it. Reaching it
+ends the session wherever it stands, mid-edit, with no chance to commit and no message of its own —
+which is why the commit rule above is the first rule of this phase and not a tidiness note. An
+uncommitted edit at the budget is gone, and so is everything it was part of. If you are past two
+thirds of it with nothing committed, commit what works now and narrow the slice.
+
 ## D — Review
 
 `PHASE D`
@@ -246,13 +253,24 @@ That is the whole record of the review, and the sha is what makes it trustworthy
 a verdict only if it names the commit being pushed. Commit again after a review and it stops
 counting, so there is no way to land a diff nobody read, and nothing to remember.
 
-Fix everything real, commit, re-review — every new head gets its own verdict. A review will
-always find *something*; that alone is not a reason to stop. Keep going while each round is
-fixing real, newly-raised findings, up to a hard cap of **4 review rounds**, regardless of
-ticket size.
+Fix everything real, commit, re-review — every new head gets its own verdict. Ask before each
+round after the first:
 
-At the cap, do not park for this reason alone. If round 4 landed, you're done. If it's still a
-HOLD, read its findings yourself: fix anything that is an actual blocker (breaks behaviour,
+```sh
+node scripts/loop-gate.mjs --review-round
+```
+
+It counts the verdicts already on the issue and exits non-zero at the cap, naming the count. The
+cap is a number in `scripts/loop-gate.mjs`, not in this sentence — a ceiling stated only in prose
+is one no test can fail, and this one bounds the most expensive phase there is.
+
+**Stop before the cap when a round earns nothing.** A review will always find *something*, which
+is exactly why a fixed count over-buys: a round that raises no finding the previous round did not
+already raise ends the review on that head, and you post your `VERDICT: LAND`. The cap is the
+ceiling, never the target.
+
+At the cap, do not park for this reason alone. If the last round landed, you're done. If it's still
+a HOLD, read its findings yourself: fix anything that is an actual blocker (breaks behaviour,
 loses data, a security hole) — that fix doesn't spend another round. For what's left — style,
 a missing edge case in dev-only scaffolding, a nitpick — post your own
 `VERDICT: LAND <sha>` naming what you're accepting and why the cap makes that the right call,
@@ -373,6 +391,14 @@ new head, and pushes again. Three red rounds on one branch and the ticket goes t
    race, a false premise, a decision only the owner can make — and then `"why"` says which, in one
    sentence; the supervisor releases the claim for you.
 
+   **This is not optional and there is no fallback.** A session that exits without it is recorded as
+   an error, and its ticket's row carries `no LOOP-RESULT` as the reason. Everything the supervisor
+   would otherwise have to infer — which ticket, which branch, which pull request, how far you got
+   — it infers from side effects step 4 has just been told to delete, and an inference is what
+   writes a merged ticket down as a park. Emit it even when the news is bad: a stood-down ticket, a
+   phase you never reached, a pull request you never pushed are all facts, and all of them are
+   worth more stated than guessed at.
+
 6. **Exit.** One ticket per process, by design: `scripts/queue-loop.mjs` starts the next ticket in a
    clean process, so there is nothing here to reset and nothing that can leak forward. Do not loop
    back to phase A in this session.
@@ -409,8 +435,9 @@ instruction to abandon this ticket.
 
 ## Output
 
-Between tickets, exactly one line:
-
-`✅ #<n> <title> — <files> files, <tests> tests, <verdict>`
+Phase F step 5's `LOOP-RESULT` line is the last thing you emit, and it is the only summary you
+write. The supervisor renders the human-readable board from that JSON. Exactly one section of this
+file may claim the final line, and it is that one — a second summary here competes for the same
+position, and the one the supervisor actually reads is the one that loses.
 
 If you catch yourself narrating, invoke `caveman`.

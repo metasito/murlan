@@ -1,7 +1,27 @@
 // tests/guardBash.test.ts
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { check } from "../scripts/guard-bash.mjs";
+
+const SCRIPT = fileURLToPath(new URL("../scripts/guard-bash.mjs", import.meta.url));
+
+/** Runs a function with process.stderr.write captured rather than printed, then restores it. */
+function captureStderr(fn: () => void): string {
+  const original = process.stderr.write.bind(process.stderr);
+  let out = "";
+  process.stderr.write = ((chunk: string | Uint8Array) => {
+    out += chunk.toString();
+    return true;
+  }) as typeof process.stderr.write;
+  try {
+    fn();
+  } finally {
+    process.stderr.write = original;
+  }
+  return out;
+}
 
 describe("the bash guard blocks what has a correct alternative", () => {
   for (const cmd of [
@@ -280,5 +300,64 @@ describe("gh pr merge", () => {
 
   test("creating a pull request is allowed", () => {
     assert.equal(check("gh pr create --base main --head agent/1-x --title t --body-file b.md"), null);
+  });
+});
+
+describe("a workflow lookup that fails is announced, not swallowed", () => {
+  test("a throwing lookup still allows the dispatch, and names what could not be checked", () => {
+    let calls = 0;
+    let message: string | null = null;
+    const stderr = captureStderr(() => {
+      message = check("gh run rerun 33428375221 --failed", () => {
+        calls += 1;
+        throw new Error("connect ETIMEDOUT");
+      });
+    });
+    assert.equal(message, null, "a lookup failure must still allow the dispatch");
+    assert.equal(calls, 1);
+    assert.match(stderr, /could not look up the rerun's workflow/);
+    assert.match(stderr, /ETIMEDOUT/);
+  });
+
+  test("logs the failure once even when a line asks more than once", () => {
+    let calls = 0;
+    const stderr = captureStderr(() => {
+      check("gh run rerun 111\ngh run rerun 222", () => {
+        calls += 1;
+        throw new Error("rate limited");
+      });
+    });
+    assert.equal(calls, 2, "both reruns are still checked");
+    assert.equal(
+      stderr.split("\n").filter(Boolean).length,
+      1,
+      "the skipped check is named once, not once per rerun"
+    );
+  });
+});
+
+describe("the entrypoint fails open on a payload it cannot read", () => {
+  for (const [what, stdin] of [
+    ["text that is not JSON", "not json"],
+    ["JSON of the wrong shape", "null"],
+  ] as const) {
+    test(`${what}: exits 0 and says what could not be checked`, () => {
+      const result = spawnSync(process.execPath, [SCRIPT], { input: stdin, encoding: "utf8" });
+      assert.equal(result.status, 0, "an unreadable payload must never block a tool call");
+      assert.match(
+        result.stderr,
+        /guard-bash: could not read the tool call on stdin/,
+        "a silent allow is the part that makes this self-defeating"
+      );
+    });
+  }
+
+  test("a well-formed payload is still checked and can still block", () => {
+    const result = spawnSync(process.execPath, [SCRIPT], {
+      input: JSON.stringify({ tool_input: { command: "git add -A" } }),
+      encoding: "utf8",
+    });
+    assert.equal(result.status, 2);
+    assert.match(result.stderr, /pathspec/);
   });
 });
