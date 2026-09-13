@@ -24,6 +24,7 @@ import {
   thought,
   wrap,
   KEYS,
+  MIN_WIDTH,
   PHASES,
   PLAIN,
   RECENT,
@@ -78,14 +79,19 @@ describe("capabilities", () => {
   // A board wider than the window wraps, and a wrapped row puts the next carriage return on the
   // wrong line — which is the whole of the redraw going wrong. So the floor that stops the layout
   // computing a negative span must not itself be a width the terminal does not have.
-  test("the floor stops negative room without ever exceeding the window", () => {
-    assert.ok(capabilities(term({ columns: 1 }), {}).width >= 20);
-    for (const columns of [39, 40, 41, 47, 80]) {
-      assert.ok(
-        capabilities(term({ columns }), {}).width < columns,
-        `${columns} columns produced a board of ${capabilities(term({ columns }), {}).width}`,
-      );
+  test("the board is never wider than the window, at any window", () => {
+    for (const columns of [1, 2, 20, 24, 39, 40, 41, 47, 80, 400]) {
+      const caps = capabilities(term({ columns }), {});
+      assert.ok(caps.width < columns || columns < 2, `${columns} columns gave a board of ${caps.width}`);
     }
+  });
+
+  // Every row is budgeted to land at exactly `width`, so there is no such thing as a board that
+  // is merely cramped: below the layout's own minimum the caller is told to draw no block at all.
+  test("and says so rather than quietly overflowing when the window is smaller than the layout", () => {
+    assert.equal(capabilities(term({ columns: 24 }), {}).tight, true);
+    assert.equal(capabilities(term({ columns: 80 }), {}).tight, false);
+    assert.equal(capabilities(term({ columns: MIN_WIDTH + 1 }), {}).tight, false);
   });
 });
 

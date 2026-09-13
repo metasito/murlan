@@ -1,7 +1,7 @@
 // tools/loop/tests/ticker.test.ts
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ticker } from "../queue-loop.mjs";
@@ -9,6 +9,8 @@ import { ticker } from "../queue-loop.mjs";
 const ESC = String.fromCharCode(27);
 const BEL = String.fromCharCode(7);
 const ERASE = `${ESC}[2K`;
+/** The redraw interval, as queue-loop.mjs sets it. */
+const REDRAW_MS = 120;
 const HIDE = `${ESC}[?25l`;
 const SHOW = `${ESC}[?25h`;
 
@@ -121,14 +123,41 @@ describe("ticker", () => {
 
   // A block that scrolls the terminal as it is drawn moves its own origin out from under the
   // next frame, and every frame after it erases the wrong rows.
+  // Collapsed as well as expanded. The collapsed block is nine rows whatever the window is, and
+  // the version of this test that only pressed `e` first passed against a collapsed branch that
+  // ignored `out.rows` entirely.
   test("the block never grows taller than the window", (t) => {
     t.mock.timers.enable({ apis: ["setInterval", "Date"] });
-    const out = fake(true, 80, 12);
+    for (const rows of [6, 9, 12, 40]) {
+      for (const expand of [false, true]) {
+        const out = fake(true, 80, rows);
+        const tick = ticker(out as never);
+        tick.start("C");
+        if (expand) tick.key("e");
+        for (let i = 0; i < 60; i += 1) tick.call("Bash", `step ${i}`);
+        tick.said("a sentence the session wrote");
+        assert.ok(
+          down(out.wrote.at(-1) ?? "") < rows,
+          `${expand ? "expanded" : "collapsed"} block filled a ${rows}-row window`,
+        );
+      }
+    }
+  });
+
+  // Every row is budgeted to land at exactly the board's width, so a board wider than the window
+  // wraps every row it draws and the cursor arithmetic never recovers. Below the width the layout
+  // needs, there is no block to draw — only the append-only stream.
+  test("a window too narrow to lay a row out in gets no block at all", (t) => {
+    t.mock.timers.enable({ apis: ["setInterval", "Date"] });
+    const out = fake(true, 24);
     const tick = ticker(out as never);
     tick.start("C");
-    tick.key("e");
-    for (let i = 0; i < 60; i += 1) tick.call("Bash", `step ${i}`);
-    assert.ok(down(out.wrote.at(-1) ?? "") < 12, "the block is as tall as the terminal or taller");
+    tick.said("building");
+    t.mock.timers.tick(1_000);
+    tick.close();
+    assert.ok(!all(out).includes(ERASE), "a 24-column window was drawn into");
+    assert.equal(up(all(out)), 0, "the cursor was walked back up a window with no block in it");
+    assert.match(visible(all(out)), /✓ {2}build/, "and the permanent record is still printed");
   });
 
   // Eight identical repaints a second is eight chances to tear, and the block only moves when the
@@ -138,10 +167,16 @@ describe("ticker", () => {
     const out = fake();
     const tick = ticker(out as never);
     tick.start("C");
+    // Said twice, not skipped twice: an empty string returns before `draw()` is even reached, so
+    // the comparison this test is named for would never have run.
+    tick.said("building");
     const after = out.wrote.length;
-    tick.said("");
-    tick.said("");
+    tick.said("building");
     assert.equal(out.wrote.length, after, "an unchanged block must not be repainted");
+    t.mock.timers.tick(REDRAW_MS - 1);
+    assert.equal(out.wrote.length, after, "a sub-frame tick repainted an identical block");
+    t.mock.timers.tick(REDRAW_MS);
+    assert.ok(out.wrote.length > after, "the spinner stopped turning");
   });
 
   // It sits at the end of the spinner, blinking and jumping a column with every frame.
@@ -346,6 +381,21 @@ describe("ticker", () => {
     assert.match(visible(out.wrote.at(-1) ?? ""), /4:12/);
   });
 
+  // A window resized mid-run leaves a board wider than the terminal, and every row of it then
+  // wraps — which is the redraw broken for the rest of the night.
+  test("a window resized mid-run narrows the board with it", (t) => {
+    t.mock.timers.enable({ apis: ["setInterval", "Date"] });
+    const out = fake(true, 80);
+    const tick = ticker(out as never);
+    tick.start("C");
+    out.columns = 50;
+    t.mock.timers.tick(140);
+    for (const row of visible(out.wrote.at(-1) ?? "").split("\n")) {
+      assert.ok([...row].length < 50, `${[...row].length} columns after the window went to 50`);
+    }
+    assert.ok(tick.theme.width < 50, "the painter kept the width the terminal used to have");
+  });
+
   test("a terminal that reports no width is assumed to be wide enough", (t) => {
     t.mock.timers.enable({ apis: ["setInterval", "Date"] });
     const out = fake(true, undefined);
@@ -444,6 +494,70 @@ describe("ticker", () => {
       tick.key("o");
       tick.key("l");
       assert.deepEqual(opened, ["https://x/1004", ".loop-logs/1004.jsonl"]);
+    });
+
+    // Raw flowing mode delivers whatever arrived in one read, not one keystroke: an autorepeat,
+    // two quick presses or a paste arrive as one chunk. Compared whole, none of them matched —
+    // including the interrupt, which raw mode has already taken off the OS's hands.
+    test("a chunk carrying several keys is several presses", (t) => {
+      t.mock.timers.enable({ apis: ["setInterval", "Date"] });
+      const out = fake();
+      const opened: string[] = [];
+      const tick = ticker(out as never, fake() as never, (x: string) => opened.push(x));
+      tick.start("C");
+      tick.context({ url: "https://x", log: "x.jsonl" });
+      tick.key("eo");
+      assert.match(visible(out.wrote.at(-1) ?? ""), /events/, "the e in a two-key chunk was lost");
+      assert.deepEqual(opened, ["https://x"], "the o in a two-key chunk was lost");
+    });
+
+    // `process.kill(process.pid, "SIGINT")` does not raise a signal on win32 — libuv terminates
+    // the process outright, so neither the SIGINT handler nor the exit handler runs, the ticket
+    // keeps its in-progress label and the session stays attached to the worktree.
+    test("^C anywhere in a chunk runs the handlers a real signal would", (t) => {
+      t.mock.timers.enable({ apis: ["setInterval", "Date"] });
+      let caught = 0;
+      const onInt = () => {
+        caught += 1;
+      };
+      process.on("SIGINT", onInt);
+      try {
+        const tick = ticker(fake() as never);
+        tick.start("C");
+        tick.key(`x${String.fromCharCode(3)}`);
+        assert.equal(caught, 1, "the interrupt did not reach the process's own handlers");
+      } finally {
+        process.off("SIGINT", onInt);
+      }
+    });
+
+    // The bar reported what it had been asked for rather than what happened, so a press whose
+    // write or removal failed left it promising something the loop would not do. `takeStopFile`
+    // is `existsSync`, so the disk is the only thing that decides, and the bar has to say the same.
+    test("s reports the disk, not the press", (t) => {
+      t.mock.timers.enable({ apis: ["setInterval", "Date"] });
+      const out = fake();
+      const dir = mkdtempSync(join(tmpdir(), "loop-stop-"));
+      const cwd = process.cwd();
+      // A directory where the file should be: both the write and the removal fail, and the loop
+      // still reads it as a stop.
+      mkdirSync(join(dir, ".loop-stop"));
+      process.chdir(dir);
+      try {
+        const tick = ticker(out as never, fake() as never);
+        tick.start("C");
+        tick.key("s");
+        tick.key("s");
+        assert.ok(existsSync(".loop-stop"), "the fixture stopped being a stop");
+        assert.match(
+          visible(out.wrote.at(-1) ?? ""),
+          /stopping after this/,
+          "the bar took the stop back while the loop will still stop",
+        );
+      } finally {
+        process.chdir(cwd);
+        rmSync(dir, { recursive: true, force: true });
+      }
     });
 
     test("a key nothing is bound to changes nothing", (t) => {

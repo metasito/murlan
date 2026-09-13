@@ -565,11 +565,20 @@ const HIDE = "\u001B[?25l";
 const SHOW = "\u001B[?25h";
 const REDRAW_MS = 120;
 const ESC = String.fromCharCode(27);
-const UP = (n) => `${ESC}[${n}A`;
+// `[0A` is not "up none": ECMA-48 reads a parameter of 0 as 1, so an unguarded zero moves the
+// cursor a row it was never asked to move.
+const UP = (n) => (n > 0 ? `${ESC}[${n}A` : "");
 const CTRL_C = String.fromCharCode(3);
 
 /** Rows the block never claims: the header above it, and slack so it cannot scroll itself. */
 const CHROME = 8;
+
+/**
+ * How much of the stream the `e` key can reach back through. A phase can run for hours and both
+ * `call()` and `said()` push on every turn, while `stream()` only ever reads the last screenful —
+ * so without a ceiling this grows all night and nothing past the first screen is reachable anyway.
+ */
+const FEED = 200;
 
 /**
  * The only thing in the loop that knows a cursor or a keyboard exists.
@@ -593,8 +602,24 @@ const CHROME = 8;
  * is the append-only stream `loop-render.mjs` produces, which is what `.loop-logs/run-*.md` wants.
  */
 export function ticker(out = process.stdout, err = process.stderr, reveal = openExternally) {
-  const live = Boolean(out.isTTY);
-  const t = theme(capabilities(out));
+  // A window too narrow to lay a row out in is a window the block cannot be drawn in: every row
+  // would wrap, and a wrapped row is the cursor arithmetic wrong for the rest of the run. The
+  // append-only stream is what such a terminal gets, the same as a pipe — and it can become one
+  // mid-run, so this is re-read on resize rather than settled at start-up.
+  let live = Boolean(out.isTTY) && !capabilities(out).tight;
+  let t = theme(capabilities(out));
+  // A window resized mid-run leaves a board wider than the terminal, and every row of it then
+  // wraps — which puts the next carriage return on the wrong line and takes the redraw with it for
+  // the rest of the night. Rebuilt only when the width actually moves, since the block is
+  // reassembled eight times a second and the detection is not free.
+  const resized = () => {
+    const caps = capabilities(out);
+    const drawable = Boolean(out.isTTY) && !caps.tight;
+    if (caps.width === t.width && drawable === live) return false;
+    t = theme(caps);
+    live = drawable;
+    return true;
+  };
   let open = null;
   let timer = null;
   let drawn = [];
@@ -620,23 +645,29 @@ export function ticker(out = process.stdout, err = process.stderr, reveal = open
     // call inside the same frame window would otherwise turn the spinner, which makes every frame
     // different from the last and defeats the only-write-on-change rule entirely.
     const frame = Math.floor(ms / REDRAW_MS);
+    // Both branches, not just the expanded one. The collapsed block is nine rows whatever the
+    // window is, and at nine rows or fewer drawing it scrolls the terminal — after which `[<n>A`
+    // clamps at the top of the viewport and the block walks down the screen at eight frames a
+    // second for the rest of the night.
+    const room = Math.max(3, (out.rows ?? 30) - CHROME);
     const body = view.expanded
-      ? streamBlock(
-          open.feed,
-          { ms, frame, letter: open.letter },
-          t,
-          Math.max(3, (out.rows ?? 30) - CHROME),
-        )
+      ? streamBlock(open.feed, { ms, frame, letter: open.letter }, t, room)
       : [
           progress({ letter: open.letter }, t),
           "",
-          activity({ said: open.said, recent: open.recent, ms, frame }, t),
+          activity({ said: open.said, recent: open.recent, ms, frame }, t, room - 4),
         ].join("\n");
-    return [body, "", keybar(view, t)].join("\n").split("\n");
+    return [body, "", keybar(view, t)].join("\n").split("\n").slice(0, room);
   };
 
   const draw = () => {
-    if (!live || !open) return;
+    if (!out.isTTY || !open) return;
+    // Before the `live` gate, not after: a window narrowed past the point of drawing has to be
+    // able to widen back. A narrower window also means the rows already on screen have wrapped and
+    // their count is no longer what the cursor maths assumes — repainting from scratch is the only
+    // honest recovery, and it leaves the wrapped rows behind as a one-time smear.
+    if (resized()) drawn = [];
+    if (!live) return;
     const rows = block();
     if (rows.length === drawn.length && rows.every((r, i) => r === drawn[i])) return;
     hide();
@@ -663,13 +694,17 @@ export function ticker(out = process.stdout, err = process.stderr, reveal = open
    */
   const over = (text) => {
     const line = text ? `${text}\n` : "";
+    // A resize since the last frame means the rows on screen have wrapped and their count is no
+    // longer what walking back up assumes. Leaving them is a one-time smear; walking up by a
+    // number that is now wrong erases rows belonging to the scrollback above.
+    if (live && drawn.length && resized()) drawn = [];
     if (!live || !drawn.length) {
-      if (line) out.write(line);
+      if (line) out.write(live ? line.replace(/\n/g, "\r\n") : line);
       return;
     }
     let blank = `${UP(drawn.length - 1)}\r`;
     for (let i = 0; i < drawn.length; i += 1) blank += ERASE + (i < drawn.length - 1 ? "\r\n" : "");
-    if (drawn.length > 1) blank += UP(drawn.length - 1);
+    blank += UP(drawn.length - 1);
     drawn = [];
     out.write(`${blank}\r${line.replace(/\n/g, "\r\n")}`);
   };
@@ -679,29 +714,65 @@ export function ticker(out = process.stdout, err = process.stderr, reveal = open
     timer = null;
   };
 
-  const keys = (k) => {
-    // Raw mode takes SIGINT off the table, so ^C is handled by hand or the run cannot be stopped
-    // from the keyboard at all.
-    if (k === CTRL_C) {
-      api.stop();
-      process.kill(process.pid, "SIGINT");
-      return;
-    }
+  const remember = (event) => {
+    open.feed.push(event);
+    if (open.feed.length > FEED) open.feed.splice(0, open.feed.length - FEED);
+  };
+
+  /**
+   * One chunk from the keyboard, which is not one keystroke: raw flowing mode delivers whatever
+   * arrived in one read, so an autorepeat, two quick presses or a paste come through as `"es"` or
+   * `"x"`. Compared whole, none of those matched anything — including the interrupt, which
+   * raw mode has already taken off the OS's hands.
+   */
+  const keys = (chunk) => {
+    const text = String(chunk);
+    if (text.includes(CTRL_C)) return interrupt();
+    let moved = false;
+    for (const k of text) moved = press(k) || moved;
+    if (moved) draw();
+  };
+
+  /**
+   * Ctrl+C, by hand, because raw mode cleared the input flag that made the console deliver it.
+   *
+   * The teardown runs here rather than through a signal: `process.kill(process.pid, "SIGINT")` on
+   * win32 does not raise a signal at all — libuv terminates the process outright — so neither the
+   * SIGINT handler nor the `exit` handler would run, and the ticket would keep its in-progress
+   * label with the session still attached to the worktree. `emit` reaches the same handlers a real
+   * signal would, on every platform.
+   */
+  const interrupt = () => {
+    api.stop();
+    if (process.listenerCount("SIGINT")) process.emit("SIGINT");
+    else process.exit(130);
+  };
+
+  /** @returns {boolean} whether the board has anything new to show */
+  const press = (k) => {
     if (k === "e") view.expanded = !view.expanded;
-    else if (k === "s") {
-      view.stopping = !view.stopping;
-      // The same file a person would write by hand, so the key and the shell agree, and so a stop
-      // asked for here survives this process dying before it acts on it.
-      try {
-        if (view.stopping) writeFileSync(STOP_FILE, "asked for from the board\n");
-        else fs.rmSync(STOP_FILE, { force: true });
-      } catch (e) {
-        api.warn(`queue-loop: could not ${view.stopping ? "write" : "remove"} ${STOP_FILE} — ${e}`);
-      }
-    } else if (k === "o" && ctx.url) reveal(ctx.url);
+    else if (k === "s") askStop(!view.stopping);
+    else if (k === "o" && ctx.url) reveal(ctx.url);
     else if (k === "l" && ctx.log) reveal(ctx.log);
-    else return;
-    draw();
+    else return false;
+    return true;
+  };
+
+  /**
+   * The same file a person would write by hand, so the key and the shell agree, and so a stop asked
+   * for here survives this process dying before it acts on it. The flag follows the file rather
+   * than leading it: a bar reading "stopping after this" over a write that failed is the board
+   * promising something the loop will not do.
+   */
+  const askStop = (wanted) => {
+    try {
+      if (wanted) writeFileSync(STOP_FILE, "asked for from the board\n");
+      else fs.rmSync(STOP_FILE, { force: true });
+      view.stopping = wanted;
+    } catch (e) {
+      api.warn(`queue-loop: could not ${wanted ? "write" : "remove"} ${STOP_FILE} — ${e}`);
+      view.stopping = fs.existsSync(STOP_FILE);
+    }
   };
 
   const listen = () => {
@@ -721,9 +792,12 @@ export function ticker(out = process.stdout, err = process.stderr, reveal = open
   // `api.close()`, not `this.close()`: the object is destructured by its callers and `this` does
   // not survive that.
   const api = {
-    // The painter this screen was built with, so a caller rendering a permanent line paints it for
-    // the same terminal the live block is drawn for — one detection, not one per call site.
-    theme: t,
+    // The painter this screen is drawing with, so a caller rendering a permanent line paints it
+    // for the same terminal the live block is drawn for — one detection, not one per call site.
+    // A getter, because a resize replaces it and a snapshot taken at start-up would outlive it.
+    get theme() {
+      return t;
+    },
     say(line) {
       over(line);
       draw();
@@ -765,14 +839,14 @@ export function ticker(out = process.stdout, err = process.stderr, reveal = open
       if (!open) return;
       open.recent.unshift({ name, what });
       open.recent.length = Math.min(open.recent.length, RECENT);
-      open.feed.push({ kind: "call", name, what });
+      remember({ kind: "call", name, what });
       draw();
     },
     /** The session's own account of what it is doing — the only channel that says why. */
     said(text) {
       if (!open || !text) return;
       open.said = text;
-      open.feed.push({ kind: "said", text });
+      remember({ kind: "said", text });
       draw();
     },
     close(state = "done", detail = "") {
@@ -804,8 +878,16 @@ export function ticker(out = process.stdout, err = process.stderr, reveal = open
   return api;
 }
 
-/** Hands a URL or a path to whatever the desktop opens it with. Never fatal, never awaited. */
+/**
+ * Hands a URL or a path to whatever the desktop opens it with. Never fatal, never awaited.
+ *
+ * On Windows the opener is `cmd`, and `spawn` only quotes an argument carrying whitespace or a
+ * quote — so `&`, `|` and `^` would reach the shell as syntax. Both targets are ours today (a URL
+ * from `gh`, a log path this file generated); this is the one place a string that is not entirely
+ * ours is handed to a shell, so it is refused rather than escaped.
+ */
 function openExternally(target) {
+  if (/[&|^<>"'`\r\n]/.test(target)) return;
   const [cmd, args] =
     process.platform === "win32"
       ? ["cmd", ["/c", "start", "", target]]

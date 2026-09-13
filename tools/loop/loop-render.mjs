@@ -19,11 +19,16 @@
  */
 
 export const WIDTH = 78;
-// The width below which the layout's fixed parts no longer leave a positive remainder for the bar
-// and the detail. A terminal narrower than this overflows rather than computing a negative span —
-// but the floor must never *exceed* what the terminal has, or the board wraps every row it draws
-// and takes the redraw with it.
-const MIN_WIDTH = 38;
+/**
+ * The width below which the layout's fixed parts no longer leave room for anything that varies.
+ *
+ * It is not a floor on the board's width — every row is budgeted to land at exactly `width`, so a
+ * board wider than the window wraps every row it draws and the redraw's cursor arithmetic never
+ * recovers. `tight` is how a caller asks whether the window is too narrow to draw a live block in
+ * at all; the renderer's own `Math.max(0, …)` guards keep it from computing a negative span in the
+ * meantime.
+ */
+export const MIN_WIDTH = 38;
 
 /**
  * What the attached terminal can actually do. Taken from the stream rather than from TERM: Windows
@@ -44,7 +49,10 @@ export function capabilities(stream = process.stdout, env = process.env) {
     // conhost prints an OSC 8 hyperlink instead of consuming it, so the link is offered only where
     // it is known to land. Windows Terminal is the one that advertises itself.
     links: depth >= 4 && Boolean(env.WT_SESSION),
-    width: Math.max(MIN_WIDTH, Math.min(WIDTH, (stream?.columns ?? WIDTH + 1) - 1)),
+    // Never wider than the window, whatever the window is. A floor applied over this is a board
+    // that wraps every row it draws.
+    width: Math.max(1, Math.min(WIDTH, (stream?.columns ?? WIDTH + 1) - 1)),
+    tight: Math.max(1, Math.min(WIDTH, (stream?.columns ?? WIDTH + 1) - 1)) < MIN_WIDTH,
   };
 }
 
@@ -259,7 +267,6 @@ const MARK = {
   done: ["✓", "good"],
   failed: ["✗", "bad"],
   resumed: ["↻", "warn"],
-  held: ["!", "warn"],
 };
 
 /**
@@ -333,7 +340,7 @@ const spin = (frame) => SPIN[((frame % SPIN.length) + SPIN.length) % SPIN.length
  *
  * @param {{said: string|null, recent: {name: string, what: string}[], ms: number, frame: number}} live
  */
-export function activity({ said, recent = [], ms, frame = 0 }, t) {
+export function activity({ said, recent = [], ms, frame = 0 }, t, take = RECENT) {
   const head = said ?? (recent[0] ? `${recent[0].name} · ${recent[0].what}` : "working");
   const rows = [
     row(
@@ -347,7 +354,7 @@ export function activity({ said, recent = [], ms, frame = 0 }, t) {
       t,
     ),
   ];
-  recent.slice(0, RECENT).forEach(({ name, what }, i) => {
+  recent.slice(0, Math.max(0, Math.min(RECENT, take))).forEach(({ name, what }, i) => {
     rows.push(
       row(
         [
@@ -551,16 +558,22 @@ export function closing({ outcome, number, files, turns, ms, cost, why, log }, t
   const facts = landed
     ? `${files} files · ${turns} turns · ${elapsed(ms)} · ${money(cost)}`
     : (why ?? "");
+  const state = outcome.replace("_", " ");
+  const id = `#${number}`;
+  // Measured from the pieces themselves. A budget written as a constant was right for a four-digit
+  // number and the outcome words of the day, and wrong — by one wrapped row — for the first five
+  // digit issue.
+  const fixed = 3 + cols(glyph) + 2 + cols(id) + 1 + cols(state) + 2;
   const head = row(
     [
       { t: "   ", c: "faint" },
       { t: glyph, c: colour, b: true },
       { t: "  ", c: "faint" },
-      { t: `#${number}`, c: "bright", b: true },
+      { t: id, c: "bright", b: true },
       { t: " ", c: "faint" },
-      { t: outcome.replace("_", " "), c: colour },
+      { t: state, c: colour },
       { t: "  ", c: "faint" },
-      { t: clamp(facts, Math.max(0, t.width - 26)), c: "muted" },
+      { t: clamp(facts, Math.max(0, t.width - fixed)), c: "muted" },
     ],
     null,
     t,
