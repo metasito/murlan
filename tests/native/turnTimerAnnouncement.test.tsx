@@ -141,8 +141,8 @@ describe('the turn countdown', () => {
 
     for (let i = CLOCK_SECONDS; i > 0; i--) {
       // The default query excludes what an ancestor has withdrawn, so this is
-      // reachability and not merely rendering: silence is the region's job, and
-      // taking the digit out of the tree with it is the other way to fail.
+      // reachability rather than rendering: silencing the digit too is the
+      // other way to fail.
       expect(screen.queryByText(String(i))).not.toBeNull();
       await advanceOneSecond();
     }

@@ -84,10 +84,10 @@ export function TurnTimer({
           than being landed on (CLAUDE.md). */}
       <A11yStatus label={announce} />
       {active && (
-        // Drawn, and left alone: a reader who goes looking mid-turn reads the
-        // digit for itself. A sentence here would have to be a name on a
-        // role-less <Text>, which the DOM prohibits one on, and the announcement
-        // above is where the seconds are put into words.
+        // Unnamed by choice, not by necessity: a name here is a second reading
+        // of the same value on web, and the only DOM role that would carry one
+        // — `timer` — inherits `polite` from `status`, which is the per-second
+        // announcement back again.
         <ChipText scale={scale} strong urgent={timeLeft <= threshold}>
           {timeLeft}
         </ChipText>
