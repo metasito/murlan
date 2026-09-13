@@ -3,12 +3,11 @@
  * being clear." That rule was in context for every change this repo has ever seen, and it is broken
  * regularly — so it is a check rather than a sentence.
  *
- * Compares each changed file's comment and code counts before and after. Not a diff: "is this line
- * a comment" is a property of the file, and a unified diff is a lossy window over pairs of files
- * rendered through the caller's git configuration — `diff.external`, `color.ui`, `textconv`,
- * `diff.noprefix` and a `.gitattributes` `-diff` marker each change what arrives. `git show
- * <rev>:<path>` and `readFileSync` both return bytes, so none of that surface exists here, and a
- * comment moved between two files nets to zero across the pair without being tracked.
+ * Counts the lines a change *adds*, comment against code. "Is this line a comment" is a property
+ * of the whole file — block state has no hunk window to fall out of — so both revisions are read
+ * as bytes (`git show <rev>:<path>`, `readFileSync`) and the added lines are found here rather
+ * than parsed out of a rendered diff, which `diff.external`, `color.ui`, `textconv`,
+ * `diff.noprefix` and a `.gitattributes` `-diff` marker each reshape under the caller.
  *
  * Usage: node scripts/comment-budget.mjs [base]   (default origin/main)
  *        exit 0 - within budget; exit 1 - names the files over it
@@ -26,28 +25,47 @@ const git = (...args) =>
     maxBuffer: 64 * 1024 * 1024,
   });
 
-export function countComments(text) {
-  let comment = 0;
-  let code = 0;
+function* classify(text) {
   let block = false;
   for (const raw of text.split("\n")) {
     const line = raw.trim();
     if (!line) continue;
     if (block) {
-      comment += 1;
+      yield [line, true];
       if (line.includes("*/")) block = false;
       continue;
     }
     if (line.startsWith("//")) {
-      comment += 1;
+      yield [line, true];
       continue;
     }
     if (line.startsWith("/*")) {
-      comment += 1;
+      yield [line, true];
       block = !line.includes("*/", 2);
       continue;
     }
-    code += 1;
+    yield [line, false];
+  }
+}
+
+/**
+ * The lines `after` holds that `before` did not, by multiset: every trimmed line of `before` is a
+ * token one line of `after` may spend. Order is ignored on purpose, so a block moved within a file
+ * or merely reindented is not "added" — the rule is about prose that is new, not prose that moved.
+ */
+export function addedCounts(before, after) {
+  const pool = new Map();
+  for (const [line] of classify(before)) pool.set(line, (pool.get(line) ?? 0) + 1);
+  let comment = 0;
+  let code = 0;
+  for (const [line, isComment] of classify(after)) {
+    const held = pool.get(line) ?? 0;
+    if (held) {
+      pool.set(line, held - 1);
+      continue;
+    }
+    if (isComment) comment += 1;
+    else code += 1;
   }
   return { comment, code };
 }
@@ -55,17 +73,8 @@ export function countComments(text) {
 /** A handful of comments on a small change is not a ratio worth policing. */
 const FLOOR = 6;
 
-export function over(before, after) {
-  const comment = after.comment - before.comment;
-  // Against how much code the change *moved*, not its net: code deleted is code moved, and a
-  // rewrite that takes 122 lines out is not a change explaining itself. Against the net, any file
-  // that shrinks puts the bar below zero and every comment over the floor fails it; `max(code, 0)`
-  // does the same to every change that deletes more than it adds, which is most refactors.
-  //
-  // The cost is that a large deletion buys a comment budget the size of itself — #1001, which is
-  // where to go before changing this line. Two file totals cannot express "added" at all, which is
-  // the real limit and not something a comparison here can fix.
-  return comment > FLOOR && comment > Math.abs(after.code - before.code);
+export function over(added) {
+  return added.comment > FLOOR && added.comment > added.code;
 }
 
 const show = (rev, file) => {
@@ -81,16 +90,14 @@ export function budget(base, head = "HEAD") {
     "--", "*.mjs", "*.js", "*.ts", "*.tsx").split("\n").filter(Boolean);
   const named = [];
   for (const file of files) {
-    const before = countComments(show(base, file));
     let after;
     try {
-      after = countComments(readFileSync(file, "utf8"));
+      after = readFileSync(file, "utf8");
     } catch {
       continue; // deleted or renamed away; nothing was written
     }
-    if (over(before, after)) {
-      named.push([file, { comment: after.comment - before.comment, code: after.code - before.code }]);
-    }
+    const added = addedCounts(show(base, file), after);
+    if (over(added)) named.push([file, added]);
   }
   return named;
 }
