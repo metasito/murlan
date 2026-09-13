@@ -94,21 +94,6 @@ export function a11yGroup(label: string): AccessibilityProps {
   return props;
 }
 
-/**
- * Names a drawn countdown, so the digit reads as a clock rather than a number.
- *
- * Same two halves as `a11yGroup`, for the same reason: a label on a bare
- * `<Text>` reaches the DOM on a role-less `<span>`, whose role is `generic` and
- * for which a name is prohibited. `timer` is the ARIA role for a count of time
- * remaining, and its implicit `aria-live` is `off` — this names the value a
- * reader goes looking for, it does not announce one.
- */
-export function a11yTimer(label: string): AccessibilityProps {
-  const props: AccessibilityProps = { accessible: true, accessibilityLabel: label };
-  if (isWeb) props.role = "timer";
-  return props;
-}
-
 /** Hides a decorative subtree from assistive technology on both platforms. */
 export function a11yHidden(hidden = true): AccessibilityProps {
   return {

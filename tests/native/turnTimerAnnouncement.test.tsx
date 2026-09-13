@@ -65,8 +65,8 @@ const advanceOneSecond = async () => {
   });
 };
 
-/** The region's label after every one of `ticks` seconds, and once before them. */
-const overTheTurn = async (ticks: number) => {
+/** Every distinct, non-empty sentence the region holds over `ticks` seconds. */
+const utterancesOver = async (ticks: number) => {
   const spoken: string[] = [];
   let last = '';
   const sample = () => {
@@ -95,7 +95,7 @@ describe('the turn countdown', () => {
       <TurnTimer seconds={CLOCK_SECONDS} active resetKey="turn-1" scale={1} />
     );
 
-    expect(await overTheTurn(CLOCK_SECONDS)).toEqual([
+    expect(await utterancesOver(CLOCK_SECONDS)).toEqual([
       secondsLeft(CLOCK_SECONDS),
       secondsLeft(THRESHOLD),
     ]);
@@ -127,26 +127,23 @@ describe('the turn countdown', () => {
     const r = await render(<TurnTimer seconds={SHORT_CLOCK} active resetKey="turn-1" scale={1} />);
     expect(urgentThresholdSeconds(SHORT_CLOCK)).toBeGreaterThan(SHORT_CLOCK);
 
-    expect(await overTheTurn(SHORT_CLOCK)).toEqual([secondsLeft(SHORT_CLOCK)]);
+    expect(await utterancesOver(SHORT_CLOCK)).toEqual([secondsLeft(SHORT_CLOCK)]);
     await r.unmount();
   });
 
   // Silence is not stillness: the number on the chip goes on falling once a
-  // second, and stays reachable, so a reader who goes looking mid-turn is told
-  // the seconds actually left rather than the last ones announced.
+  // second, and stays in the accessibility tree, so a reader who goes looking
+  // mid-turn reads the seconds actually left.
   it('still draws every second of the countdown, and keeps it readable', async () => {
     const r = await render(
       <TurnTimer seconds={CLOCK_SECONDS} active resetKey="turn-1" scale={1} />
     );
 
     for (let i = CLOCK_SECONDS; i > 0; i--) {
-      // The digit's own node, not `*ByLabelText`: on the two announcing frames
-      // the region holds the identical sentence, so a query that took either
-      // would pass on the region alone and say nothing about the chip.
-      expect(screen.getByText(String(i)).props).toMatchObject({
-        accessible: true,
-        accessibilityLabel: secondsLeft(i),
-      });
+      // The default query excludes what an ancestor has withdrawn, so this is
+      // reachability and not merely rendering: silence is the region's job, and
+      // taking the digit out of the tree with it is the other way to fail.
+      expect(screen.queryByText(String(i))).not.toBeNull();
       await advanceOneSecond();
     }
     expect(screen.queryByText('0')).not.toBeNull();

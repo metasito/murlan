@@ -4,7 +4,7 @@
 // that draws a chip or a rail.
 import { useEffect, useRef, useState } from "react";
 import { ChipText } from "./chrome";
-import { A11yStatus, a11yTimer } from "@/lib/a11y";
+import { A11yStatus } from "@/lib/a11y";
 import { useTranslation } from "@/lib/i18n";
 import { playUrgentTick } from "@/lib/sounds";
 import { urgentThresholdSeconds, URGENT_TICK_SECONDS } from "@/components/turnTimerUi";
@@ -85,15 +85,11 @@ export function TurnTimer({
           than being landed on (CLAUDE.md). */}
       <A11yStatus label={announce} />
       {active && (
-        // Named, not hidden: the region is deliberately silent between those two
-        // moments, so this is where a reader who goes looking mid-turn finds the
-        // seconds actually left.
-        <ChipText
-          scale={scale}
-          strong
-          urgent={timeLeft <= threshold}
-          {...a11yTimer(tn("gameTable.a11ySecondsLeft", timeLeft))}
-        >
+        // Drawn, and left alone: a reader who goes looking mid-turn reads the
+        // digit for itself. A sentence here would have to be a name on a
+        // role-less <Text>, which the DOM prohibits one on, and the announcement
+        // above is where the seconds are put into words.
+        <ChipText scale={scale} strong urgent={timeLeft <= threshold}>
           {timeLeft}
         </ChipText>
       )}
