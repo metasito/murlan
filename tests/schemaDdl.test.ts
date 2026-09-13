@@ -11,13 +11,63 @@ import { schemaStatements, assertRenamesApplied } from "../server/schemaDdl.ts";
 
 const statements = schemaStatements();
 
+/**
+ * The one statement shape allowed to delete: the dedupe that clears the way
+ * for a unique index added over live rows, without which `CREATE UNIQUE INDEX`
+ * fails and the server does not start.
+ *
+ * The exemption is earned, not declared, and what earns it is the
+ * correspondence — the delete must carry the *same* key and the same filter as
+ * the index standing immediately behind it, and must spare the first row of
+ * each group. Those two are what make it delete only what that index rejects
+ * and nothing at all on a second run. A delete failing either is judged by the
+ * guards below like any other.
+ */
+function dedupeTableFor(list: string[], index: number): string | undefined {
+  const statement = list[index] ?? "";
+  if (!/^DELETE FROM /.test(statement)) return undefined;
+  const guarded =
+    /^CREATE UNIQUE INDEX IF NOT EXISTS "[^"]+" ON ("[^"]+")(?: USING "[^"]+")? \((.*)\)(?: WHERE (.*))?;$/.exec(
+      list[index + 1] ?? ""
+    );
+  if (!guarded) return undefined;
+  const [, table, key, predicate] = guarded;
+  if (!statement.startsWith(`DELETE FROM ${table} `)) return undefined;
+  if (!statement.includes(`PARTITION BY ${key} `)) return undefined;
+  if (predicate && !statement.includes(predicate)) return undefined;
+  if (!statement.includes(`"d"."dup" > 1`)) return undefined;
+  return table;
+}
+
+test("a delete is exempt only for the rows its own index rejects", () => {
+  const index = `CREATE UNIQUE INDEX IF NOT EXISTS "friends_accepted_uq" ON "friends" ("user_id", "friend_user_id") WHERE "status" = 'accepted';`;
+  const dedupe = (key: string, keep: string) =>
+    `DELETE FROM "friends" WHERE "ctid" IN (SELECT "ctid" FROM (SELECT "ctid", row_number() ` +
+    `OVER (PARTITION BY ${key} ORDER BY "ctid") AS "dup" FROM "friends" ` +
+    `WHERE ("status" = 'accepted')) AS "d" WHERE ${keep});`;
+  assert.equal(
+    dedupeTableFor([dedupe(`"user_id", "friend_user_id"`, `"d"."dup" > 1`), index], 0),
+    '"friends"'
+  );
+  // Grouping by anything but the index's key deletes rows it would have allowed.
+  assert.equal(dedupeTableFor([dedupe(`"id"`, `"d"."dup" > 1`), index], 0), undefined);
+  // Sparing nobody empties the group the index only wanted thinned.
+  assert.equal(
+    dedupeTableFor([dedupe(`"user_id", "friend_user_id"`, `"d"."dup" >= 1`), index], 0),
+    undefined
+  );
+});
+
 test("every statement is idempotent", () => {
-  for (const statement of statements) {
+  for (const [i, statement] of statements.entries()) {
     const idempotent =
       /IF NOT EXISTS/i.test(statement) ||
       // CREATE TYPE has no IF NOT EXISTS, so enums are created inside a block
       // that swallows only duplicate_object.
-      /EXCEPTION WHEN duplicate_object/i.test(statement);
+      /EXCEPTION WHEN duplicate_object/i.test(statement) ||
+      // A dedupe's second run finds nothing, because the index it precedes
+      // forbids exactly what it deletes.
+      dedupeTableFor(statements, i) !== undefined;
     assert.ok(
       idempotent,
       `not idempotent, so a second boot would fail:\n${statement}`
@@ -35,8 +85,10 @@ test("no statement can destroy or rewrite existing data", () => {
     /\bRENAME\b/i,
     /\bALTER\s+COLUMN\b/i,
   ];
-  for (const statement of statements) {
+  for (const [i, statement] of statements.entries()) {
+    const dedupe = dedupeTableFor(statements, i);
     for (const pattern of forbidden) {
+      if (dedupe && pattern.source.includes("DELETE")) continue;
       assert.doesNotMatch(
         statement,
         pattern,
@@ -228,4 +280,46 @@ test("every renamed column is asked about, not just the first", async () => {
 test("boot proceeds once the rename has been applied", async () => {
   const current = { query: async () => ({ rows: [] }) } as unknown as Pick<Pool, "query">;
   await assertRenamesApplied(current);
+});
+
+test("the friends uniqueness indexes forbid every duplicate add/accept can race into (#959)", () => {
+  const accepted = statements.findIndex((s) => /friends_accepted_uq/.test(s));
+  assert.ok(accepted >= 0, "no friends_accepted_uq statement");
+  // Deliberately *not* symmetric: an accepted friendship is stored as one row
+  // per direction, so both directions of a pair have to be able to exist.
+  assert.match(statements[accepted], /ON "friends" \("user_id", "friend_user_id"\)/);
+  assert.match(statements[accepted], /WHERE "status" = 'accepted';$/);
+
+  const pending = statements.findIndex((s) => /friends_pending_pair_uq/.test(s));
+  assert.ok(pending >= 0, "no friends_pending_pair_uq statement");
+  // Symmetric, so a repeated request and a crossed pair are the same row to it:
+  // A→B and B→A cannot both be pending.
+  assert.match(
+    statements[pending],
+    /\(\(least\("user_id", "friend_user_id"\)\), \(greatest\("user_id", "friend_user_id"\)\)\)/
+  );
+  assert.match(statements[pending], /WHERE "status" = 'pending';$/);
+
+  // Each is added over a table that may already hold what it forbids, and a
+  // failed CREATE UNIQUE INDEX at boot is a server that does not start.
+  for (const at of [accepted, pending]) {
+    assert.equal(
+      dedupeTableFor(statements, at - 1),
+      '"friends"',
+      `${statements[at]}\nis not preceded by a dedupe that lets it succeed against live rows`
+    );
+  }
+});
+
+test("boot deletes on its own authority only where this list says it may", () => {
+  // The shape check above cannot tell a table whose duplicates are meaningless
+  // from one whose duplicates are two people's accounts — it would exempt a
+  // dedupe on "users" as readily. Naming them is what makes widening the
+  // permission an edit somebody has to come here and make.
+  const cleared = statements.flatMap((s, i) =>
+    dedupeTableFor(statements, i)
+      ? [/CREATE UNIQUE INDEX IF NOT EXISTS ("[^"]+")/.exec(statements[i + 1])?.[1] ?? statements[i + 1]]
+      : []
+  );
+  assert.deepEqual(cleared.sort(), [`"friends_accepted_uq"`, `"friends_pending_pair_uq"`]);
 });

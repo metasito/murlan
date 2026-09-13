@@ -2,7 +2,7 @@ import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "node:http";
 import bcrypt from "bcryptjs";
 import { routeLimiter } from "./rateLimit.ts";
-import { friendStore } from "./friendStore.ts";
+import { friendStore, type AddFriendRefusal } from "./friendStore.ts";
 import { userStore, UsernameTakenError, EmailTakenError } from "./userStore.ts";
 import { deleteUser } from "./deleteAccount.ts";
 import { friendRequestRow, friendRow } from "./friendRows.ts";
@@ -244,6 +244,17 @@ const resendVerificationLimiter = routeLimiter({
   keyBy: "session",
   message: payload("RATE_LIMITED"),
 });
+
+/**
+ * What each refusal is called to a player. The same three answers whether the
+ * store's own checks refused or the constraint did, so a request losing a race
+ * reads exactly as one arriving second.
+ */
+const ADD_FRIEND_REFUSAL = {
+  already_friends: "ALREADY_FRIENDS",
+  already_sent: "FRIEND_REQUEST_ALREADY_SENT",
+  incoming_pending: "FRIEND_REQUEST_INCOMING_PENDING",
+} as const satisfies Record<AddFriendRefusal, string>;
 
 const friendLimiter = routeLimiter({
   windowMs: 60 * 1000,
@@ -860,24 +871,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return;
     }
 
-    const already = await friendStore.areFriends(req.session.userId!, friend.id);
-    if (already) {
-      res.status(409).json({ ...payload("ALREADY_FRIENDS") });
-      return;
-    }
-
-    const pending = await friendStore.pendingRequestBetween(req.session.userId!, friend.id);
-    if (pending === "sent") {
-      res.status(409).json({ ...payload("FRIEND_REQUEST_ALREADY_SENT") });
-      return;
-    }
-    if (pending === "received") {
-      res.status(409).json({ ...payload("FRIEND_REQUEST_INCOMING_PENDING") });
+    const result = await friendStore.addFriend(req.session.userId!, friend.id);
+    if (!result.ok) {
+      res.status(409).json({ ...payload(ADD_FRIEND_REFUSAL[result.reason]) });
       return;
     }
 
     const sender = await userStore.getUser(req.session.userId!);
-    const request = await friendStore.addFriend(req.session.userId!, friend.id);
+    const request = result.request;
 
     // The row travels with the announcement: the recipient's cache holds the
     // request on the frame the banner goes up, rather than seconds later when

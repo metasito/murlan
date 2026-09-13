@@ -1,7 +1,18 @@
 import { eq, and, or, sql, desc, inArray } from "drizzle-orm";
 import { db } from "./db.ts";
+import { uniqueViolation } from "./userStore.ts";
 import { users, rooms, roomPlayers, friends, gameInvites } from "../shared/schema.ts";
 import type { User, Friend } from "../shared/schema.ts";
+
+/** `db`, or the handle inside `db.transaction` — the same read surface. */
+type Executor = Pick<typeof db, "select">;
+
+/** Why a friend request cannot exist, in the terms the route answers in. */
+export type AddFriendRefusal = "already_friends" | "already_sent" | "incoming_pending";
+
+export type AddFriendResult =
+  | { ok: true; request: Friend | undefined }
+  | { ok: false; reason: AddFriendRefusal };
 
 /**
  * An object rather than bare exported functions:
@@ -39,9 +50,10 @@ export const friendStore = {
    */
   async pendingRequestBetween(
     userId: string,
-    friendUserId: string
+    friendUserId: string,
+    exec: Executor = db
   ): Promise<"sent" | "received" | null> {
-    const [row] = await db
+    const [row] = await exec
       .select()
       .from(friends)
       .where(
@@ -57,13 +69,49 @@ export const friendStore = {
     return row.userId === userId ? "sent" : "received";
   },
 
-  /** Returns the row it created, so the caller can push it rather than make the recipient ask for it. */
-  async addFriend(userId: string, friendUserId: string): Promise<Friend | undefined> {
-    const [row] = await db
-      .insert(friends)
-      .values({ userId, friendUserId, status: "pending" })
-      .returning();
-    return row;
+  /**
+   * Creates the request, or says why it cannot exist. Returns the row it
+   * created, so the caller can push it rather than make the recipient ask.
+   *
+   * The checks and the insert are one transaction, and the two partial unique
+   * indexes on `friends` are behind them: the checks answer the ordinary case
+   * in the caller's own terms, and the constraint is what two requests
+   * arriving at the same moment actually collide on. Without it the checks
+   * both pass and both rows land.
+   */
+  async addFriend(userId: string, friendUserId: string): Promise<AddFriendResult> {
+    // A violation means the request that blocked this insert committed while
+    // the transaction was deciding, so the retry is what reads it: refusing in
+    // the caller's own terms if it is still there, succeeding if it is not.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        return await db.transaction(async (tx): Promise<AddFriendResult> => {
+          if (await this.areFriends(userId, friendUserId, tx)) {
+            return { ok: false, reason: "already_friends" };
+          }
+          const pending = await this.pendingRequestBetween(userId, friendUserId, tx);
+          if (pending) {
+            return { ok: false, reason: pending === "sent" ? "already_sent" : "incoming_pending" };
+          }
+          const [row] = await tx
+            .insert(friends)
+            .values({ userId, friendUserId, status: "pending" })
+            .returning();
+          return { ok: true, request: row };
+        });
+      } catch (err) {
+        if (!uniqueViolation(err)?.includes("friends_pending_pair_uq")) throw err;
+      }
+    }
+    // Three lost races running. "Already sent" is the refusal a player can act
+    // on if it is wrong — asking again works — where "accept theirs" sends
+    // them looking for a request that is not there.
+    const direction = await this.pendingRequestBetween(userId, friendUserId);
+    if (direction) {
+      return { ok: false, reason: direction === "received" ? "incoming_pending" : "already_sent" };
+    }
+    const friendsAlready = await this.areFriends(userId, friendUserId);
+    return { ok: false, reason: friendsAlready ? "already_friends" : "already_sent" };
   },
 
   /**
@@ -72,32 +120,62 @@ export const friendStore = {
    * their own (IDOR).
    */
   async acceptFriend(id: string, accepterId: string): Promise<{ requesterId: string } | null> {
-    const [f] = await db
-      .update(friends)
-      .set({ status: "accepted" })
-      .where(
-        and(
-          eq(friends.id, id),
-          eq(friends.friendUserId, accepterId),
-          eq(friends.status, "pending")
-        )
-      )
-      .returning();
-    if (!f) return null;
+    // A violation from the insert means the reverse row landed underneath this
+    // transaction, and the retry sees it and only marks the request accepted.
+    // One from the update means something no retry can move — resolved after
+    // the loop — and either way answering "nothing to accept" on its own
+    // leaves a request nobody can ever answer.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        return await db.transaction(async (tx) => {
+          const [f] = await tx
+            .update(friends)
+            .set({ status: "accepted" })
+            .where(
+              and(
+                eq(friends.id, id),
+                eq(friends.friendUserId, accepterId),
+                eq(friends.status, "pending")
+              )
+            )
+            .returning();
+          if (!f) return null;
 
-    const exists = await this.areFriends(f.friendUserId, f.userId);
-    if (!exists) {
-      await db.insert(friends).values({
-        userId: f.friendUserId,
-        friendUserId: f.userId,
-        status: "accepted",
-      });
+          const exists = await this.areFriends(f.friendUserId, f.userId, tx);
+          if (!exists) {
+            await tx.insert(friends).values({
+              userId: f.friendUserId,
+              friendUserId: f.userId,
+              status: "accepted",
+            });
+          }
+          return { requesterId: f.userId };
+        });
+      } catch (err) {
+        if (!uniqueViolation(err)?.includes("friends_accepted_uq")) throw err;
+      }
     }
-    return { requesterId: f.userId };
+    // A request whose own direction is already an accepted friendship: the
+    // update can never move it, because that row's key is in the index
+    // already. It is a leftover of a request and an accept that crossed, so
+    // clearing it is what the accept would have done.
+    const [stale] = await db
+      .select()
+      .from(friends)
+      .where(
+        and(eq(friends.id, id), eq(friends.friendUserId, accepterId), eq(friends.status, "pending"))
+      );
+    if (!stale || !(await this.areFriends(stale.userId, accepterId))) return null;
+    await db.delete(friends).where(eq(friends.id, id));
+    return { requesterId: stale.userId };
   },
 
-  async areFriends(userId: string, friendUserId: string): Promise<boolean> {
-    const [row] = await db
+  async areFriends(
+    userId: string,
+    friendUserId: string,
+    exec: Executor = db
+  ): Promise<boolean> {
+    const [row] = await exec
       .select()
       .from(friends)
       .where(
