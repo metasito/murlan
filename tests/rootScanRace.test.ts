@@ -9,13 +9,35 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { trackedFiles, trackedRootFiles } from "./helpers/trackedFiles.ts";
-import { blankCommentsAndStrings } from "./helpers/sourceScan.ts";
+import { blankComments } from "./helpers/sourceScan.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const SELF = "tests/rootScanRace.test.ts";
 
 /** A directory listing of somewhere named like a repo root, however spelt. */
-const ROOT_READDIR = /(?:readdirSync|opendirSync|readdir)\(\s*\w*(?:[Rr]oot|ROOT)\b/;
+const ROOT_READDIR = /(?:readdirSync|opendirSync|readdir|opendir)\(\s*\w*(?:[Rr]oot|ROOT)\w*\s*[,)]/;
+
+/** Spellings the pattern has to catch, so an empty offender list means something. */
+const PLANTED = [
+  "readdirSync(repoRoot)",
+  "readdirSync(REPO_ROOT, { withFileTypes: true })",
+  "readdirSync(ROOT)",
+  "readdirSync(ROOT_DIR, { recursive: true })",
+  "await readdir(projectRoot)",
+];
+
+/**
+ * The two declarations above, as they are written here. Blanked in this file
+ * only: the guard has to spell the pattern out and has to hold one sample of
+ * each spelling, and exempting the whole file would exempt the guard.
+ */
+const SELF_EXEMPT = [/const ROOT_READDIR =[\s\S]*?;/, /const PLANTED = \[[\s\S]*?\];/];
+
+/** Comments only. Blanking strings as well would eat the code — see #1015. */
+function source(rel: string): string {
+  const text = blankComments(readFileSync(path.join(repoRoot, rel), "utf8"));
+  return rel === SELF ? SELF_EXEMPT.reduce((s, re) => s.replace(re, ""), text) : text;
+}
 
 /** The scan this replaces, as it was written, so the counterfactual can run it. */
 const listFromDisk = (dir: string): string[] =>
@@ -24,14 +46,18 @@ const listFromDisk = (dir: string): string[] =>
     .map((e) => e.name);
 
 /** A throwaway repo with one tracked file, so nothing here writes to this one. */
-function tempRepo(): string {
+function withTempRepo(body: (dir: string) => void): void {
   const dir = mkdtempSync(path.join(tmpdir(), "root-scan-"));
-  const git = (...args: string[]) => execFileSync("git", args, { cwd: dir, stdio: "ignore" });
-  git("init", "-q");
-  writeFileSync(path.join(dir, "tracked.json"), "{}");
-  // The index is what `git ls-files` reads; a commit would add nothing.
-  git("add", "--", "tracked.json");
-  return dir;
+  try {
+    const git = (...args: string[]) => execFileSync("git", args, { cwd: dir, stdio: "ignore" });
+    git("init", "-q");
+    writeFileSync(path.join(dir, "tracked.json"), "{}");
+    // The index is what `git ls-files` reads; a commit would add nothing.
+    git("add", "--", "tracked.json");
+    body(dir);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 /**
@@ -54,25 +80,19 @@ describe("a root-level scan survives a file appearing and vanishing mid-scan", (
   // The counterfactual, first: without it a green below could mean the helper
   // works, or could mean the fixture never had the race to begin with.
   test("a filesystem listing is the thing that fails", () => {
-    const dir = tempRepo();
-    try {
+    withTempRepo((dir) =>
       assert.throws(
         () => scanAcrossAVanishingFile(dir, listFromDisk),
         /ENOENT[\s\S]*scratch\.vanishing\.json/
-      );
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
+      )
+    );
   });
 
   test("trackedRootFiles never lists a file git does not track", () => {
-    const dir = tempRepo();
-    try {
+    withTempRepo((dir) => {
       assert.deepEqual(trackedRootFiles(dir), ["tracked.json"]);
       assert.doesNotThrow(() => scanAcrossAVanishingFile(dir, trackedRootFiles));
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
+    });
   });
 
   test("this repo's own root listing is readable, name by name", () => {
@@ -83,28 +103,30 @@ describe("a root-level scan survives a file appearing and vanishing mid-scan", (
 });
 
 describe("no test lists the repo root from the filesystem", () => {
-  // Planted defects, so an empty offender list below means nobody does it
-  // rather than that the pattern stopped matching.
   test("the pattern catches a root listing under any of its spellings", () => {
-    for (const planted of [
-      "readdirSync(repoRoot)",
-      "readdirSync(REPO_ROOT, { withFileTypes: true })",
-      "readdirSync(ROOT)",
-      "await readdir(projectRoot)",
-    ]) {
+    for (const planted of PLANTED) {
       assert.ok(ROOT_READDIR.test(planted), `${planted} slipped past ROOT_READDIR`);
     }
+    // A subdirectory is not the root: `tests/i18n.test.ts` lists one per locale
+    // directory, and a scan that reds on those is a scan nobody keeps.
     assert.ok(!ROOT_READDIR.test('readdirSync(path.join(repoRoot, "scripts"))'));
+    assert.ok(!ROOT_READDIR.test("readdirSync(dir, { recursive: true })"));
   });
 
+  // The scan reads call sites, so a listing reached through a helper —
+  // `scripts/contextSurface.mjs`'s `walk(ROOT)` — is invisible to it. That one
+  // is a hand-run CLI, never concurrent with `node --test`, so it has no race.
   test("every root scan goes through trackedRootFiles", () => {
     const files = trackedFiles(repoRoot, "tests", "scripts").filter((f) =>
       /\.(?:ts|tsx|mjs|cjs|js)$/.test(f)
     );
-    // Two floors under the scan: that it reached both trees, and that blanking
-    // left the code it reads behind. Either one empty passes everything.
+    // Three floors: that the scan reached both trees, that the exemption above
+    // is an exemption rather than a no-op, and that blanking left this file's
+    // real code behind. Any one of them failing passes everything.
     assert.ok(files.includes(SELF) && files.some((f) => f.startsWith("scripts/")), "scan is empty");
-    assert.match(source(SELF), /readdirSync\(/);
+    assert.match(readFileSync(path.join(repoRoot, SELF), "utf8"), ROOT_READDIR);
+    assert.doesNotMatch(source(SELF), ROOT_READDIR);
+    assert.match(source(SELF), /readdirSync\(dir/);
 
     const offenders = files.filter((f) => ROOT_READDIR.test(source(f)));
     assert.deepEqual(
@@ -116,8 +138,3 @@ describe("no test lists the repo root from the filesystem", () => {
     );
   });
 });
-
-/** Strings blanked too: the planted defects above are string literals in this file. */
-function source(rel: string): string {
-  return blankCommentsAndStrings(readFileSync(path.join(repoRoot, rel), "utf8"));
-}

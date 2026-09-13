@@ -827,10 +827,10 @@ describe("no key outlives its last reader", () => {
 
   function readerSources(): { file: string; source: string }[] {
     return READER_DIRS.flatMap((dir) => {
-      const root = path.join(REPO_ROOT, dir);
-      return readdirSync(root, { recursive: true, encoding: "utf8" })
+      const base = path.join(REPO_ROOT, dir);
+      return readdirSync(base, { recursive: true, encoding: "utf8" })
         .filter((f) => /\.tsx?$/.test(f))
-        .map((f) => ({ file: `${dir}/${f}`, source: readFileSync(path.join(root, f), "utf8") }));
+        .map((f) => ({ file: `${dir}/${f}`, source: readFileSync(path.join(base, f), "utf8") }));
     });
   }
 
