@@ -127,20 +127,26 @@ export function useExchangeAnnouncement(
   phasePresent: boolean,
   holdMsOverride?: number
 ): ExchangeAnnouncement {
-  const [announcing, setAnnouncing] = useState(false);
+  const [opened, setOpened] = useState(false);
   const [data, setData] = useState<ExchangeAnnounceData | null>(null);
+
+  // Closed for good by the phase leaving, not merely while it is away: left
+  // open, the *next* phase would reopen it on the previous trade's `data`.
+  const [shownPhase, setShownPhase] = useState(phasePresent);
+  if (phasePresent !== shownPhase) {
+    setShownPhase(phasePresent);
+    if (!phasePresent) setOpened(false);
+  }
+
+  const announcing = opened && phasePresent;
 
   const announce = useCallback((next: ExchangeAnnounceData) => {
     setData(next);
-    setAnnouncing(true);
+    setOpened(true);
   }, []);
-  const end = useCallback(() => setAnnouncing(false), []);
+  const end = useCallback(() => setOpened(false), []);
 
   useExchangeCeremonyExpiry(announcing, data?.bothJokersException, end, holdMsOverride);
-
-  useEffect(() => {
-    if (announcing && !phasePresent) end();
-  }, [announcing, phasePresent, end]);
 
   return { announcing, data, announce, end };
 }
@@ -162,18 +168,20 @@ export function useTradedCardsLanded(
   announcing: boolean,
   bothJokersException: boolean | undefined
 ): boolean {
-  const [landed, setLanded] = useState(false);
+  const [flightOver, setFlightOver] = useState(false);
+  // The clock belongs to one ceremony, so the ceremony ending is what retires
+  // it — carried over, the next trade would land before its cards left.
+  const [wasAnnouncing, setWasAnnouncing] = useState(announcing);
+  if (announcing !== wasAnnouncing) {
+    setWasAnnouncing(announcing);
+    if (!announcing) setFlightOver(false);
+  }
+
   useEffect(() => {
-    if (!announcing) {
-      setLanded(false);
-      return;
-    }
-    if (bothJokersException) {
-      setLanded(true);
-      return;
-    }
-    const land = setTimeout(() => setLanded(true), EXCHANGE_FLIGHT_MS);
+    if (!announcing || bothJokersException) return;
+    const land = setTimeout(() => setFlightOver(true), EXCHANGE_FLIGHT_MS);
     return () => clearTimeout(land);
   }, [announcing, bothJokersException]);
-  return landed;
+
+  return announcing && (bothJokersException === true || flightOver);
 }

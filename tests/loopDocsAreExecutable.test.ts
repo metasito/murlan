@@ -3,7 +3,8 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, existsSync } from "node:fs";
 import { allowedTools } from "../scripts/loop-tools.mjs";
-import { queueLoopArgs } from "../scripts/queue-loop.mjs";
+import { readLine } from "../scripts/loop-stream.mjs";
+import { ciLogPath, queueLoopArgs } from "../scripts/queue-loop.mjs";
 
 /**
  * The loop's instructions name commands and files. Prose cannot be run, so every one of those
@@ -112,7 +113,71 @@ describe("every phase of queue.md reports itself", () => {
 
   test("the echo is a line of its own, which is what the reader matches", () => {
     // A sentence mentioning the phase is not a phase report, so the instruction has to say so.
-    assert.match(read(QUEUE), /as the whole of one message/);
+    assert.match(read(QUEUE), /on a line of its own/);
+  });
+
+  // In print mode a turn that ends in text and no tool call is the final answer, so a marker the
+  // model is told to send by itself can end the session on turn one — #942's first run died on
+  // `PHASE A`, seven seconds and one turn in. The previous version of this test asserted that
+  // exact wording, pinning the hazard as the requirement.
+  test("it never asks for the marker as a message of its own", () => {
+    const text = read(QUEUE);
+    assert.doesNotMatch(text, /as the whole of one message/);
+    assert.match(text, /in the same message as that phase's first command/);
+  });
+});
+
+// Nine of the ten channels the supervisor reads a finished session through are inferences about a
+// process that has already exited, and phase F's teardown destroys five of them at once.
+describe("the session declares what it did before it exits", () => {
+  test("phase F asks for the LOOP-RESULT line, in the parser's own shape", () => {
+    const text = read(QUEUE);
+    assert.match(text, /^\s*LOOP-RESULT \{.*"ticket".*\}$/m, "queue.md must show the literal shape");
+    assert.match(text, /"stoodDown"/, "a stand-down is the case the supervisor cannot otherwise see");
+  });
+
+  // The example in the instructions is also a test fixture: a model copies its shape, so a shape
+  // the parser rejects is an instruction to emit something unreadable.
+  test("the example it prints is one the parser reads", () => {
+    const example = /^\s*(LOOP-RESULT \{.*\})\s*$/m.exec(read(QUEUE))?.[1];
+    assert.ok(example, "no LOOP-RESULT example in queue.md");
+    const fact = readLine(
+      JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: example }] } }),
+    ) as any;
+    assert.ok(fact?.declared?.ticket, `queue.md's own example does not parse: ${example}`);
+  });
+
+  test("the teardown it names still runs before the declaration, so the facts are final", () => {
+    const text = read(QUEUE);
+    const from = text.indexOf("## F — Close out");
+    assert.notEqual(from, -1, "phase F's heading has moved");
+    const f = text.slice(from);
+    // Each position is asserted present before they are compared: `indexOf` answers -1 for a line
+    // that is gone, and -1 sorts before everything, so the comparison alone passes on an absent
+    // teardown.
+    const teardown = f.indexOf("worktrees:remove -- .worktrees/agent-<n>");
+    const declaration = f.indexOf("LOOP-RESULT");
+    assert.notEqual(teardown, -1, "phase F no longer names the teardown");
+    assert.notEqual(declaration, -1, "phase F no longer asks for the declaration");
+    assert.ok(teardown < declaration, "the declaration is the last thing the session emits");
+  });
+});
+
+// The supervisor hands a red CI round back to a fresh session on the same ticket. That session has
+// no worktree — phase F removed it — so the protocol has to say how it gets one back.
+describe("a CI fix round is a documented path, not an improvisation", () => {
+  test("phase A names how to rebuild the worktree from the pushed branch", () => {
+    // Flags before the path: `git worktree add <path> -B <branch>` parses, and then does not mean
+    // what phase A's own `-b` form means two sections above it.
+    assert.match(read(QUEUE), /git worktree add -B agent\/<n>-<slug> \.worktrees\/agent-<n>/);
+  });
+
+  // Resolved through the function that writes it, not scanned for as text: a path spelled the
+  // same in two files is a premise that decays, and a scan cannot tell a mention from a caller.
+  test("the log path it names is the one the supervisor writes", () => {
+    const named = /\.loop-logs\/ci-<n>\.log/.exec(read(QUEUE))?.[0];
+    assert.ok(named, "queue.md never tells the fix session where its CI log is");
+    assert.equal(ciLogPath(953).replace(/\\/g, "/"), named.replace("<n>", "953"));
   });
 });
 

@@ -3,8 +3,15 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { ticker } from "../scripts/queue-loop.mjs";
 
-const ESC = "";
-const BEL = "";
+const ESC = String.fromCharCode(27);
+const BEL = String.fromCharCode(7);
+const ERASE = `\r${ESC}[2K`;
+const HIDE = `${ESC}[?25l`;
+const SHOW = `${ESC}[?25h`;
+
+/** Phase C, as the trail renders it: two behind, the third either live or finished. */
+const LIVE_C = /✓✓.···  C/;
+const DONE_C = /✓ *✓✓✓···  C|✓✓✓···  C/;
 
 const fake = (isTTY = true, columns: number | undefined = 80) => {
   const wrote: string[] = [];
@@ -19,6 +26,8 @@ const fake = (isTTY = true, columns: number | undefined = 80) => {
   };
 };
 const all = (out: { wrote: string[] }) => out.wrote.join("");
+/** Everything a terminal would not show: CSI sequences and the carriage return before them. */
+const visible = (s: string) => s.replace(new RegExp(`${ESC}\\[[0-9;?]*[a-zA-Z]`, "g"), "").replace(/\r/g, "");
 
 describe("ticker", () => {
   test("a phase opens with a line and closes with the finished one", (t) => {
@@ -26,24 +35,68 @@ describe("ticker", () => {
     const out = fake();
     const tick = ticker(out as never);
     tick.start("C");
-    assert.match(all(out), /\[3\/6\] C/);
+    assert.match(all(out), LIVE_C);
     tick.close();
-    assert.match(all(out), /✓ \[3\/6\] C/);
+    assert.match(all(out), DONE_C);
+  });
+
+  // The flicker, measured. Erasing and then drawing is two writes with an empty row between them,
+  // and at eight frames a second that blank is what a person sees.
+  test("a frame is one write, never an erase followed by a draw", (t) => {
+    t.mock.timers.enable({ apis: ["setInterval", "Date"] });
+    const out = fake();
+    ticker(out as never).start("C");
+    t.mock.timers.tick(1_200);
+    const bare = out.wrote.filter((w) => w === ERASE);
+    assert.deepEqual(bare, [], "an erase on its own leaves the row blank until the next write");
+    for (const w of out.wrote) {
+      if (w.includes(ERASE)) assert.ok(w.length > ERASE.length, `erase written alone: ${JSON.stringify(w)}`);
+    }
+  });
+
+  // Eight identical repaints a second is eight chances to tear, and the line only moves when the
+  // spinner turns or a second ticks.
+  test("a redraw with nothing to change writes nothing", (t) => {
+    t.mock.timers.enable({ apis: ["setInterval", "Date"] });
+    const out = fake();
+    const tick = ticker(out as never);
+    tick.start("C");
+    const after = out.wrote.length;
+    tick.detail("");
+    tick.detail("");
+    assert.equal(out.wrote.length, after, "an unchanged line must not be repainted");
+  });
+
+  // It sits at the end of the spinner, blinking and jumping a column with every frame.
+  test("the cursor is hidden while the line is live and restored when it is not", (t) => {
+    t.mock.timers.enable({ apis: ["setInterval", "Date"] });
+    const out = fake();
+    const tick = ticker(out as never);
+    tick.start("C");
+    assert.ok(all(out).includes(HIDE), "the spinner must not blink a cursor at its own tail");
+    tick.close();
+    assert.ok(all(out).lastIndexOf(SHOW) > all(out).lastIndexOf(HIDE), "a closed phase gives it back");
+  });
+
+  test("stop() restores the cursor, which is what the exit handler is for", (t) => {
+    t.mock.timers.enable({ apis: ["setInterval", "Date"] });
+    const out = fake();
+    const tick = ticker(out as never);
+    tick.start("C");
+    tick.stop();
+    assert.ok(all(out).endsWith(SHOW), "an interrupted run must not leave the cursor hidden");
   });
 
   // The trap: a console.log landing between two redraws leaves the tail of the spinner line in
-  // front of it. Everything the loop prints goes through say(), which erases first.
+  // front of it. Everything the loop prints goes through say(), which takes the row with it.
   test("a line printed while a phase is open is not written into the spinner line", (t) => {
     t.mock.timers.enable({ apis: ["setInterval", "Date"] });
     const out = fake();
     const tick = ticker(out as never);
     tick.start("C");
     tick.say("something happened");
-    const text = all(out);
-    const at = text.indexOf("something happened");
-    assert.ok(at > 0);
-    // The erase has to be the thing immediately before it.
-    assert.ok(text.slice(0, at).endsWith(`${ESC}[2K`), "say() must erase the live line first");
+    const said = out.wrote.find((w) => w.includes("something happened"));
+    assert.ok(said?.startsWith(ERASE), "say() must take the live row down in its own write");
   });
 
   test("the message keeps its own line and the spinner comes back under it", (t) => {
@@ -52,11 +105,11 @@ describe("ticker", () => {
     const tick = ticker(out as never);
     tick.start("C");
     tick.say("hello");
-    assert.match(all(out).split("hello\n")[1] ?? "", /\[3\/6\] C/);
+    assert.match(all(out).split("hello\n")[1] ?? "", LIVE_C);
   });
 
   // The child's stderr is mirrored while the spinner turns, and it is the highest-volume writer
-  // there is. It goes to stderr, so it cannot share say()'s stream.
+  // there is. It goes to stderr, so the erase has to go out on the stream that owns the row.
   test("a warning erases the live line and goes to stderr, not stdout", (t) => {
     t.mock.timers.enable({ apis: ["setInterval", "Date"] });
     const out = fake();
@@ -66,8 +119,8 @@ describe("ticker", () => {
     tick.warn("a warning");
     assert.ok(!all(out).includes("a warning"), "a warning must not reach stdout");
     assert.match(all(err), /a warning\n/);
-    assert.ok(out.wrote.at(-2)?.endsWith(`${ESC}[2K`), "warn() must erase the live line first");
-    assert.match(out.wrote.at(-1) ?? "", /\[3\/6\] C/, "and redraw it after");
+    assert.ok(all(out).includes(ERASE), "warn() must take the live row down before printing");
+    assert.match(out.wrote.at(-1) ?? "", LIVE_C, "and redraw it after");
   });
 
   // A chunk with no trailing newline would otherwise share its row with the redrawn spinner, and
@@ -117,17 +170,20 @@ describe("ticker", () => {
     assert.equal(out.wrote.length, after);
   });
 
-  test("starting a phase closes the one before it, and leaves one timer running", (t) => {
+  // Two intervals drawing two different phases onto one row is the state the old close-then-start
+  // ordering could leave behind, and it reads as the spinner flipping between phases.
+  test("starting a phase closes the one before it, and leaves only its own timer drawing", (t) => {
     t.mock.timers.enable({ apis: ["setInterval", "Date"] });
     const out = fake();
     const tick = ticker(out as never);
     tick.start("C");
     tick.start("D");
-    assert.match(all(out), /✓ \[3\/6\] C/);
+    assert.match(all(out), DONE_C);
     out.wrote.length = 0;
     t.mock.timers.tick(1_200);
-    const draws = all(out).split("[4/6] D").length - 1;
-    assert.ok(draws >= 8 && draws <= 12, `expected one timer's worth of redraws, saw ${draws}`);
+    const drawn = visible(all(out));
+    assert.ok(drawn.includes("D review"), "the open phase must still be drawing");
+    assert.doesNotMatch(drawn, /✓✓.···  C/, "the closed phase's timer is still running");
   });
 
   test("close on nothing open writes nothing", () => {
@@ -142,7 +198,7 @@ describe("ticker", () => {
     const tick = ticker(out as never);
     tick.start("C");
     tick.close("✗");
-    assert.match(all(out), /✗ \[3\/6\] C/);
+    assert.match(visible(all(out)), /✓✓✗···  C/);
   });
 
   // The trap: piped to a file or a CI log, cursor control is line noise. It is also the shape the
@@ -160,7 +216,7 @@ describe("ticker", () => {
     assert.ok(!text.includes(ESC), "no escape sequences outside a terminal");
     assert.ok(!text.includes("\r"), "no carriage returns outside a terminal");
     assert.match(text, /hello\n/);
-    assert.match(text, /✓ \[3\/6\] C/);
+    assert.match(text, DONE_C);
   });
 
   // The trap: a line wider than the terminal wraps, and a carriage return then lands at the start
@@ -173,11 +229,10 @@ describe("ticker", () => {
     tick.start("C");
     tick.detail("x".repeat(200));
     for (const chunk of out.wrote) {
-      for (const line of chunk.split("\n")) {
-        const visible = line.split(ESC).join("").replace(/\[2K/g, "").replace(/\r/g, "");
+      for (const line of visible(chunk).split("\n")) {
         assert.ok(
-          [...visible].length < 40,
-          `wrote ${[...visible].length} columns into a 40-column terminal`
+          [...line].length < 40,
+          `wrote ${[...line].length} columns into a 40-column terminal`
         );
       }
     }
@@ -201,9 +256,10 @@ describe("ticker", () => {
       const out = fake(true, columns);
       const tick = ticker(out as never);
       tick.start("C");
-      const width = (out.wrote.at(-1) ?? "").length;
+      const width = [...visible(out.wrote.at(-1) ?? "")].length;
       tick.close();
-      assert.equal((out.wrote.at(-1) ?? "").replace(/\n$/, "").length, width, `at ${columns} columns`);
+      const done = [...visible(out.wrote.at(-1) ?? "").replace(/\n$/, "")].length;
+      assert.equal(done, width, `at ${columns} columns`);
     }
   });
 

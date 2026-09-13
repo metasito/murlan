@@ -22,18 +22,35 @@ export function sizeOf(issue) {
   return SIZE_ORDER.find((s) => labelNames(issue).includes(s)) ?? null;
 }
 
-// Precedence, encoded: an AFK session implements specified work first, then
-// converts unspecified input (triage), then resolves decisions (wayfinder),
-// and otherwise hands off to the owner. Each stage manufactures work for the
-// stages above it, which is why they run bottom-up here, top-down in value.
-//
-// `owner` means labelled, with the label saying a human decides.
 /**
+ * Which skill works this issue, from its labels alone; `null` means the owner's.
+ *
+ * Precedence, encoded: an AFK session implements specified work first, then converts unspecified
+ * input (triage), then resolves decisions (wayfinder), and otherwise hands off. An owner label
+ * wins over `ready-for-agent`, and a ticket carrying both is the normal case — releasing one to
+ * the owner adds `ready-for-human` beside the label already there.
+ *
  * @typedef {{ number: number, title: string, labels: { name: string }[] }} Issue
+ * @param {Issue} issue
+ */
+export function routeOf(issue) {
+  const ls = labelNames(issue);
+  if (ls.some((l) => OWNER_LABELS.has(l))) return null;
+  if (ls.includes("ready-for-agent")) return "implement";
+  if (ls.includes("needs-triage") || ls.length === 0) return "triage";
+  if (ls.some((l) => l.startsWith("wayfinder:") && l !== "wayfinder:map")) return "wayfinder";
+  return null;
+}
+
+/** The bucket each route lands in. `owner` is where anything with no route goes. */
+const BUCKET = { implement: "frontier", triage: "triage", wayfinder: "wayfinder" };
+
+/**
  * @param {Issue[]} openIssues
  * @returns {{ frontier: Issue[], triage: Issue[], wayfinder: Issue[], owner: Issue[] }}
  */
 export function classify(openIssues) {
+  /** @type {{frontier: Issue[], triage: Issue[], wayfinder: Issue[], owner: Issue[]}} */
   const buckets = { frontier: [], triage: [], wayfinder: [], owner: [] };
   for (const issue of openIssues) {
     const ls = labelNames(issue);
@@ -41,20 +58,10 @@ export function classify(openIssues) {
     // `blocked` keeps `ready-for-agent`: the label carries a decision already
     // made, and taking it off to un-jam the queue is how that decision is lost.
     if (ls.includes("blocked")) continue;
-    // An owner label wins over `ready-for-agent`, and a ticket carrying both is the normal case:
-    // releasing one to the owner adds `ready-for-human` beside the label that is already there.
-    // Without this the frontier takes it, the pipeline claims it and the gate escalates it again —
-    // and because it sorts to the same place every time, the queue serves it forever.
-    if (ls.some((l) => OWNER_LABELS.has(l))) buckets.owner.push(issue);
-    else if (ls.includes("ready-for-agent")) buckets.frontier.push(issue);
-    else if (ls.includes("needs-triage") || ls.length === 0) buckets.triage.push(issue);
-    else if (ls.some((l) => l.startsWith("wayfinder:") && l !== "wayfinder:map")) buckets.wayfinder.push(issue);
-    else buckets.owner.push(issue);
+    buckets[BUCKET[routeOf(issue)] ?? "owner"].push(issue);
   }
   // Oldest first: sorting by size put every self-filed size:S follow-up at the head.
-  buckets.frontier.sort((a, b) => a.number - b.number);
-  buckets.triage.sort((a, b) => a.number - b.number);
-  buckets.wayfinder.sort((a, b) => a.number - b.number);
+  for (const b of Object.values(BUCKET)) buckets[b].sort((a, x) => a.number - x.number);
   return buckets;
 }
 
@@ -125,6 +132,11 @@ function printDetail(ticket, comments) {
       console.log(`  blocked by #${b.number} ${b.title}`);
     }
   }
+  // A CI fix round is handed back by ticket number, and that session's first question — does the
+  // branch already exist — cannot be answered from labels.
+  for (const pr of openPrsFor(issue.number)) {
+    if (pr.state === "OPEN") console.log(`Open pull request: #${pr.number} on ${pr.headRefName}`);
+  }
   const reasons = [];
   if (blockers > 0) reasons.push("has open blockers");
   if (ls.includes("in-progress")) reasons.push("labelled in-progress");
@@ -172,7 +184,8 @@ if (invokedDirectly) {
       console.error(`#${explicit} not found (is it a pull request?)`);
       process.exit(1);
     }
-    console.log(`ROUTE\tshow\t${explicit}\t${issue.title}`);
+    // `queue.md` branches on implement / triage / wayfinder / handoff and has no fifth case.
+    console.log(`ROUTE\t${routeOf(issue) ?? "handoff"}\t${explicit}\t${issue.title}\t${sizeOf(issue) ?? ""}`);
     printDetail(issue, comments);
     process.exit(0);
   }

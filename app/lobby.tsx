@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
@@ -155,11 +155,13 @@ export default function LobbyScreen() {
     buildDefaultPlayers(2, "free_for_all")
   );
 
-  useEffect(() => {
-    setPlayers((prev) =>
-      prev.map((p, i) => (i === 0 ? { ...p, name: myName } : p))
-    );
-  }, [myName]);
+  // Seat one is the account's, and AuthContext resolves the name after first
+  // render — so the seat follows it whenever it lands or changes.
+  const [seatedAs, setSeatedAs] = useState(myName);
+  if (myName !== seatedAs) {
+    setSeatedAs(myName);
+    setPlayers((prev) => prev.map((p, i) => (i === 0 ? { ...p, name: myName } : p)));
+  }
 
   const handleCountChange = (count: number) => {
     setPlayerCount(count);

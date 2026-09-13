@@ -271,6 +271,48 @@ const SESSION_TABLE_STATEMENTS = [
 ];
 
 /**
+ * The unique indexes whose duplicates boot may clear for itself.
+ *
+ * Named one at a time and never derived from `unique: true`, because the
+ * alternative to deleting is a `CREATE UNIQUE INDEX` that fails and a server
+ * that does not start — loud, and the operator's call to make with
+ * `docs/DEPLOY-RUNBOOK.md` open. Only a table whose duplicates are meaningless
+ * on their own belongs here; `users` never does.
+ */
+const DEDUPE_ON_BOOT = new Set(["friends_accepted_uq", "friends_pending_pair_uq"]);
+
+/**
+ * Deletes what its index is about to reject, all but one row of each group.
+ *
+ * The key and the filter are that index's own, rendered once and used by both,
+ * so the two cannot drift apart; a key holding NULL is left alone, because a
+ * unique index does not forbid it. The order decides which row that is, so it
+ * is stated rather than left to the heap: oldest first where the table dates
+ * its rows, and its key after that.
+ */
+function dedupeForIndex(
+  cfg: TableConfig,
+  cols: string[],
+  predicate: string | undefined
+): string {
+  const table = quoteIdent(cfg.name);
+  const filter = [
+    ...cols.map((c) => `${c} IS NOT NULL`),
+    ...(predicate ? [`(${predicate})`] : []),
+  ].join(" AND ");
+  const order = [
+    ...cfg.columns.filter((c) => c.name === "created_at"),
+    ...cfg.columns.filter((c) => c.primary),
+  ].map((c) => quoteIdent(c.name));
+  return (
+    `DELETE FROM ${table} WHERE "ctid" IN (SELECT "ctid" FROM ` +
+    `(SELECT "ctid", row_number() OVER (PARTITION BY ${cols.join(", ")} ` +
+    `ORDER BY ${[...order, `"ctid"`].join(", ")}) AS "dup" ` +
+    `FROM ${table} WHERE ${filter}) AS "d" WHERE "d"."dup" > 1);`
+  );
+}
+
+/**
  * Every statement needed to bring an empty or partially-populated database up
  * to `shared/schema.ts`, in application order: enum types, then tables, then
  * columns added to tables that already existed, then indexes (which may target
@@ -306,6 +348,7 @@ export function schemaStatements(): string[] {
   const tableStatements: string[] = [];
   const addColumnStatements: string[] = [];
   const indexStatements: string[] = [];
+  const declaredDedupes = new Set<string>();
 
   for (const { cfg } of inDependencyOrder(configs)) {
     const fkByColumn = foreignKeysByColumn(cfg);
@@ -350,12 +393,27 @@ export function schemaStatements(): string[] {
       // form can mean, so it is left implicit; anything else is named.
       const method = idx.config.method;
       const using = !method || method === "btree" ? "" : ` USING ${quoteIdent(method)}`;
-      const where = idx.config.where
-        ? ` WHERE ${renderSqlExpression(idx.config.where, `index "${indexName}"'s WHERE clause`, cfg.name)}`
-        : "";
+      const predicate = idx.config.where
+        ? renderSqlExpression(idx.config.where, `index "${indexName}"'s WHERE clause`, cfg.name)
+        : undefined;
+      if (DEDUPE_ON_BOOT.has(indexName)) {
+        declaredDedupes.add(indexName);
+        indexStatements.push(dedupeForIndex(cfg, cols, predicate));
+      }
       indexStatements.push(
         `${kind} IF NOT EXISTS ${quoteIdent(indexName)} ON ${quoteIdent(cfg.name)}` +
-          `${using} (${cols.join(", ")})${where};`
+          `${using} (${cols.join(", ")})${predicate ? ` WHERE ${predicate}` : ""};`
+      );
+    }
+  }
+
+  // A name nobody declares emits nothing at all, and the index it was written
+  // for is the one that fails at boot.
+  for (const indexName of DEDUPE_ON_BOOT) {
+    if (!declaredDedupes.has(indexName)) {
+      throw new Error(
+        `schemaStatements: DEDUPE_ON_BOOT names "${indexName}", which no table ` +
+          `in shared/schema.ts declares — update server/schemaDdl.ts.`
       );
     }
   }
