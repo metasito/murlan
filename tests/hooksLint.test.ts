@@ -85,8 +85,17 @@ describe("the react-hooks 7 rules #891 adopted stay adopted", () => {
   }
 
   test(`${OFF_FOR_TESTS} is off for the files on OFF_ONLY_FOR and nothing else`, () => {
+    const off = blocksTurningOff(OFF_FOR_TESTS);
+    // A block with no `files` applies to every file, which the `?? []` below
+    // would read as none — the one shape that turns the rule off repo-wide and
+    // still matches an empty list.
     assert.deepEqual(
-      blocksTurningOff(OFF_FOR_TESTS).flatMap((block) => block.files ?? []),
+      off.filter((block) => !block.files),
+      [],
+      "a block naming no files turns this rule off everywhere"
+    );
+    assert.deepEqual(
+      off.flatMap((block) => block.files ?? []),
       OFF_ONLY_FOR,
       "a Probe whose sibling consumer is the subject is the only thing this exemption is for"
     );
@@ -94,11 +103,9 @@ describe("the react-hooks 7 rules #891 adopted stay adopted", () => {
 
   test(`every file ${OFF_FOR_TESTS} is off for still needs it`, async () => {
     // The list above is a claim about what the rule would say; this asks it.
-    // The scope comes from the list too, so an exemption placed outside
-    // `tests/native` reds as out of scope rather than as no longer needed.
-    // Nothing to ask once the list empties — and an empty list must be caught
-    // here, because ESLint reads no paths at all as the whole repository. The
-    // test above has already pinned that no block turns the rule off then.
+    // The scan comes from the list too, so an exemption added anywhere is
+    // asked about. ESLint reads an empty path list as the whole repository,
+    // which is why the empty case is caught here rather than there.
     if (OFF_ONLY_FOR.length === 0) return;
     const lint = new ESLint({ overrideConfig: { rules: { [OFF_FOR_TESTS]: "error" } } });
     const scanned = [...new Set(OFF_ONLY_FOR.map((file) => path.dirname(file)))];
