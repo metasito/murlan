@@ -1,20 +1,29 @@
 import { execFileSync } from "node:child_process";
+import { existsSync } from "node:fs";
+import path from "node:path";
 
 /**
- * The repo-root files git tracks, as bare names.
- *
- * Not `readdirSync(repoRoot)`: `tests/checkStrictIndexed.test.ts` writes and
- * deletes `scratch.strictIndexed.*.json` in the repo root, and under
- * `node --test`'s parallel file execution another file's listing and that
- * cleanup interleave — the name is listed, then read after it is gone (#999).
- * git's index cannot hold a file nobody committed, so the race is gone by
- * construction rather than avoided by timing.
+ * The files git tracks under `pathspec`, as repo-relative paths, minus any
+ * deleted from the working tree — the index lists those and a reader of the
+ * list would open them.
  */
-export function trackedRootFiles(repoRoot: string): string[] {
-  return execFileSync("git", ["ls-files", "-z", "--", ":(glob)*"], {
+export function trackedFiles(repoRoot: string, ...pathspec: string[]): string[] {
+  return execFileSync("git", ["ls-files", "-z", "--", ...pathspec], {
     cwd: repoRoot,
     encoding: "utf8",
   })
     .split("\0")
-    .filter(Boolean);
+    .filter((f) => f && existsSync(path.join(repoRoot, f)));
+}
+
+/**
+ * The repo-root files git tracks.
+ *
+ * Not `readdirSync(repoRoot)`: git's index cannot hold a file nobody added, so
+ * a listing taken from it cannot name the scratch tsconfigs
+ * `tests/checkStrictIndexed.test.ts` writes and deletes in the repo root —
+ * where a directory listing races them under `node --test`'s parallel files.
+ */
+export function trackedRootFiles(repoRoot: string): string[] {
+  return trackedFiles(repoRoot, ":(glob)*");
 }

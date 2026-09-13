@@ -253,7 +253,8 @@ test("the flush — the sweep (moments.tsx) and the pile's own catch (pile.tsx) 
 // that lives in a comment, and a comment cannot fail.
 //
 // EXPO_PUBLIC_* is inlined at build time, so a setter only matters where a
-// build is configured: the workflows, and the config files at the root.
+// build is configured: the workflows, and the tracked config files at the
+// root. Tracked, because an untracked one configures nobody else's build.
 
 const AUTOMATION_FLAG = /EXPO_PUBLIC_E2E_REDUCE_MOTION\s*[:=]/;
 

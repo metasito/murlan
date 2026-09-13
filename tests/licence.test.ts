@@ -28,9 +28,7 @@ const LICENCE_LIKE = /^(licen[cs]e|copying)(\.|$)/i;
 describe("the licence position", () => {
   test("there is no licence file, under any spelling", () => {
     assert.deepEqual(
-      // Tracked files, not the directory: an untracked licence is one GitHub
-      // never shows anyway, and listing the root races the scratch configs
-      // `tests/checkStrictIndexed.test.ts` writes there (#999).
+      // Tracked, not on disk: an untracked licence is one GitHub never shows.
       trackedRootFiles(repoRoot).filter((name) => LICENCE_LIKE.test(name)),
       [],
       "a licence file appeared. #297 decided this source is not licensed for reuse — if that " +
