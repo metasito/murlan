@@ -212,6 +212,17 @@ describe("a PHASE line from the session", () => {
   test("a line of prose above it does not hide it", () => {
     assert.equal(said("Worktree is ready.\nPHASE B").letter, "B");
   });
+
+  // Which of the two the session sends is not stable: the same model, from the same fenced line in
+  // queue.md, sent it bare in four runs of eight, fenced in three, and both ways inside one.
+  test("the fenced form is the same fact as the bare one", () => {
+    assert.equal(said("`PHASE A`").letter, "A");
+    assert.equal(said("Worktree ready, claim confirmed.\n\n`PHASE B`").letter, "B");
+  });
+
+  test("a fence does not turn prose into a fact", () => {
+    assert.equal(said("`PHASE E` is next"), null);
+  });
 });
 
 // Nine of the ten channels the supervisor reads a finished session through are inferences about a
