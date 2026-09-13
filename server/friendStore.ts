@@ -120,10 +120,11 @@ export const friendStore = {
    * their own (IDOR).
    */
   async acceptFriend(id: string, accepterId: string): Promise<{ requesterId: string } | null> {
-    // A violation means the reverse row landed between this transaction's read
-    // and its insert, and the rollback left the request pending. Retrying sees
-    // that row and only has to mark the request accepted — answering "nothing
-    // to accept" instead leaves a request nobody can ever answer.
+    // A violation from the insert means the reverse row landed underneath this
+    // transaction, and the retry sees it and only marks the request accepted.
+    // One from the update means something no retry can move — resolved after
+    // the loop — and either way answering "nothing to accept" on its own
+    // leaves a request nobody can ever answer.
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
         return await db.transaction(async (tx) => {
@@ -154,7 +155,19 @@ export const friendStore = {
         if (!uniqueViolation(err)?.includes("friends_accepted_uq")) throw err;
       }
     }
-    return null;
+    // A request whose own direction is already an accepted friendship: the
+    // update can never move it, because that row's key is in the index
+    // already. It is a leftover of a request and an accept that crossed, so
+    // clearing it is what the accept would have done.
+    const [stale] = await db
+      .select()
+      .from(friends)
+      .where(
+        and(eq(friends.id, id), eq(friends.friendUserId, accepterId), eq(friends.status, "pending"))
+      );
+    if (!stale || !(await this.areFriends(stale.userId, accepterId))) return null;
+    await db.delete(friends).where(eq(friends.id, id));
+    return { requesterId: stale.userId };
   },
 
   async areFriends(

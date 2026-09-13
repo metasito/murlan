@@ -27,7 +27,10 @@ are deliberately absent: `package.json`, `ls` and `docs/RULES.md` never go stale
   *syntax* only, so a Node-24-only builtin compiles at exit 0 and throws on Replit. CI's `build`
   job is the one that catches that.
 - **`server/schemaDdl.ts` is the only thing that creates tables**, at boot, from
-  `shared/schema.ts`. Every statement is additive and idempotent (`tests/schemaDdl.test.ts`).
+  `shared/schema.ts`. Every statement is additive and idempotent, bar one shape: a unique index
+  named in `DEDUPE_ON_BOOT` is preceded by a delete of the rows it would reject, without which
+  the `CREATE UNIQUE INDEX` fails and the server does not start. `tests/schemaDdl.test.ts` grants
+  that exemption only to a delete carrying its index's own key, and only for a listed index.
   A second creator is how `session` came to exist on one database and nowhere else.
 - **`session` table** — `createTableIfMissing: false`, deliberately absent from
   `shared/schema.ts`, excluded from drizzle-kit by `tablesFilter`. Clear its rows; never drop it

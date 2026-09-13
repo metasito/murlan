@@ -35,7 +35,9 @@ function add(server: TestServer, from: Account, to: Account): Promise<Response> 
  * Imported inside the call rather than at module scope — `server/db.ts` builds
  * its pool as it loads, and `startTestServer` sets `DATABASE_URL` first.
  */
-async function friendRows(): Promise<{ userId: string; friendUserId: string; status: string }[]> {
+async function friendRows(): Promise<
+  { id: string; userId: string; friendUserId: string; status: string }[]
+> {
   const { db } = await import("../../server/db.ts");
   const { friends } = await import("../../shared/schema.ts");
   return db.select().from(friends);
@@ -77,14 +79,15 @@ describe("simultaneous friend requests", {
     const loser = first.status === 409 ? first : second;
     assert.equal(await codeOf(loser), "FRIEND_REQUEST_ALREADY_SENT");
 
-    const rows = (await friendRows()).filter((r) => r.userId === sender.user.id);
+    const pair = [sender.user.id, recipient.user.id];
+    const rows = (await friendRows()).filter((r) => pair.includes(r.userId));
     assert.equal(rows.length, 1, `expected one pending row, got ${JSON.stringify(rows)}`);
   });
 
   test("crossed requests leave one row, and the loser is told one is waiting", async () => {
     const alice = await register(server, "race_crossed_alice");
     const bob = await register(server, "race_crossed_bob");
-    const before = (await friendRows()).length;
+    const pair = [alice.user.id, bob.user.id];
 
     const [aToB, bToA] = await Promise.all([
       add(server, alice, bob),
@@ -101,7 +104,8 @@ describe("simultaneous friend requests", {
         "leaves no way to learn that accepting is the move"
     );
 
-    assert.equal((await friendRows()).length, before + 1);
+    const rows = (await friendRows()).filter((r) => pair.includes(r.userId));
+    assert.equal(rows.length, 1, `expected one pending row, got ${JSON.stringify(rows)}`);
   });
 
   // The issue asks for two *crossed* requests accepted at once. The pending
@@ -143,6 +147,48 @@ describe("simultaneous friend requests", {
       );
     }
   });
+  test("a request left over beside the friendship it asked for is cleared, not refused forever", async () => {
+    const alice = await register(server, "stale_alice");
+    const bob = await register(server, "stale_bob");
+    const { pool } = await import("../../server/db.ts");
+
+    // What an add and an accept crossing leaves behind: neither partial index
+    // forbids a pending row beside an accepted one in the same direction, and
+    // accepting it is an update onto a key the accepted index already holds.
+    for (const [userId, friendUserId, status] of [
+      [alice.user.id, bob.user.id, "accepted"],
+      [bob.user.id, alice.user.id, "accepted"],
+      [alice.user.id, bob.user.id, "pending"],
+    ]) {
+      await pool.query(
+        `INSERT INTO "friends" ("user_id", "friend_user_id", "status") VALUES ($1, $2, $3)`,
+        [userId, friendUserId, status]
+      );
+    }
+    const [request] = (await friendRows()).filter(
+      (r) => r.userId === alice.user.id && r.status === "pending"
+    );
+    assert.ok(request, "the leftover request was seeded");
+
+    const res = await fetch(`${server.url}/api/friends/accept/${request.id}`, {
+      method: "POST",
+      headers: { cookie: bob.cookie },
+    });
+    assert.equal(
+      res.status,
+      200,
+      "the update can never move that row, so retrying it answers 404 to a " +
+        "request that stays in the list forever"
+    );
+    assert.deepEqual(
+      (await friendRows())
+        .filter((r) => [alice.user.id, bob.user.id].includes(r.userId))
+        .map((r) => r.status)
+        .sort(),
+      ["accepted", "accepted"]
+    );
+  });
+
   // Last in the file: it drops the indexes the tests above rely on, and puts
   // them back through the boot path itself.
   test("boot clears duplicates already in the table rather than refusing to start", async () => {
