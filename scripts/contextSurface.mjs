@@ -14,9 +14,11 @@
  */
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
+import { isInvokedDirectly } from "./lib/entry.mjs";
+import { WORKTREE_DIR } from "./loop-derive.mjs";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
-const SKIP = new Set(["node_modules", ".git", "dist", ".expo", ".worktrees"]);
+const SKIP = new Set(["node_modules", ".git", "dist", ".expo", WORKTREE_DIR]);
 
 export function walk(dir, out = []) {
   for (const entry of readdirSync(dir)) {
@@ -112,7 +114,7 @@ export function readersOf(fields, files, hookName) {
   return readers;
 }
 
-if (import.meta.filename === process.argv[1]) {
+if (isInvokedDirectly(process.argv[1], import.meta.url)) {
   const files = walk(ROOT).filter((f) => !/[\\/]context[\\/](Online)?GameContext\.tsx$/.test(f));
   for (const [file, iface, hook] of [
     ["context/OnlineGameContext.tsx", "OnlineGameContextValue", "useOnlineGame"],

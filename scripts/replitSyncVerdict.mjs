@@ -1,4 +1,4 @@
-import { pathToFileURL } from "node:url";
+import { isInvokedDirectly } from "./lib/entry.mjs";
 
 /**
  * Whether a Replit dev-preview sync attempt is a stopped workspace, a real
@@ -24,7 +24,7 @@ export function verdict({ code, status }) {
 }
 
 // CLI entry point for the workflow: `node replitSyncVerdict.mjs <code> <status>`.
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (isInvokedDirectly(process.argv[1], import.meta.url)) {
   const [, , code, status] = process.argv;
   process.stdout.write(verdict({ code, status: Number(status) }));
 }

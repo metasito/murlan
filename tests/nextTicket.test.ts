@@ -3,7 +3,7 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { classify, pickRoute, isInvokedDirectly, claimedElsewhere, sizeOf } from "../scripts/next-ticket.mjs";
+import { classify, pickRoute, claimedElsewhere, sizeOf } from "../scripts/next-ticket.mjs";
 import { importUnderShellGuard } from "./helpers/importShellGuard.ts";
 
 function issue(number: number, labelNames: string[]) {
@@ -115,15 +115,6 @@ describe("sizeOf", () => {
 });
 
 describe("isInvokedDirectly", () => {
-  test("is true only when argv1 resolves to the module's own path", () => {
-    const self = path.resolve("scripts/next-ticket.mjs");
-    const moduleUrl = pathToFileURL(self).href;
-
-    assert.equal(isInvokedDirectly(self, moduleUrl), true);
-    assert.equal(isInvokedDirectly(path.resolve("scripts/other.mjs"), moduleUrl), false);
-    assert.equal(isInvokedDirectly(undefined, moduleUrl), false);
-  });
-
   test("importing the module (not running it) never shells out to `gh`", () => {
     const moduleUrl = pathToFileURL(path.resolve("scripts/next-ticket.mjs")).href;
 

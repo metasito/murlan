@@ -37,11 +37,8 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
-
-export function isInvokedDirectly(argv1, moduleUrl) {
-  return Boolean(argv1) && path.resolve(argv1) === fileURLToPath(moduleUrl);
-}
+import { isInvokedDirectly } from "./lib/entry.mjs";
+import { WORKTREE_DIR } from "./loop-derive.mjs";
 
 /**
  * Parses `git worktree list --porcelain` into one entry per worktree, in
@@ -260,12 +257,6 @@ function samePath(a, b) {
   const [ra, rb] = [path.resolve(a), path.resolve(b)];
   return process.platform === "win32" ? ra.toLowerCase() === rb.toLowerCase() : ra === rb;
 }
-
-/**
- * `.worktrees/` is the worktree root named by `/queue` phase A - it is not imported
- * here because that module is TypeScript and this script runs under plain `node`.
- */
-const WORKTREE_DIR = ".worktrees";
 
 /** [] both when the directory is empty and when it does not exist at all. */
 export function listWorktreeDirNames(worktreesDir) {

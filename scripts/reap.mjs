@@ -12,6 +12,8 @@ import { execFileSync } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { isInvokedDirectly } from "./lib/entry.mjs";
+import { WORKTREE_DIR } from "./loop-derive.mjs";
 
 const ORPHAN_AGE_MS = 2 * 60 * 60 * 1000;
 const STALE_AGE_MS = 24 * 60 * 60 * 1000;
@@ -360,7 +362,7 @@ export function clearPort(port, { dryRun = false } = {}) {
   return pids;
 }
 
-if (import.meta.filename === process.argv[1]) {
+if (isInvokedDirectly(process.argv[1], import.meta.url)) {
   const dryRun = process.argv.includes("--dry-run");
   const verb = dryRun ? "would clear" : "cleared";
 
@@ -391,7 +393,7 @@ if (import.meta.filename === process.argv[1]) {
   // including the worktree this is running from, which is not necessarily the main one.
   const checkout = path
     .resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
-    .split(/[\\/]\.worktrees[\\/]/)[0];
+    .split(new RegExp(`[\\\\/]${WORKTREE_DIR.replace(".", "\\.")}[\\\\/]`))[0];
   const roots = toolingRoots({ repoRoot: checkout, home: os.homedir() });
   const ours = table.filter((p) => ownedByTooling(p.commandLine, roots));
   const keep = ancestry(table, process.pid);

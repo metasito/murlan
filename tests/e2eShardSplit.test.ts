@@ -6,7 +6,6 @@ import { fileURLToPath } from "node:url";
 import {
   assignShards,
   filesForShard,
-  isInvokedDirectly,
   readTimings,
   specFilesIn,
   UNMEASURED_SECONDS,
@@ -117,12 +116,5 @@ describe("the shard argument", () => {
     assert.throws(() => filesForShard(0, SHARDS), /shard index/);
     assert.throws(() => filesForShard(SHARDS + 1, SHARDS), /shard index/);
     assert.throws(() => assignShards([], {}, 0), /positive integer/);
-  });
-
-  test("importing the module never runs the CLI body", () => {
-    const self = path.join(repoRoot, "scripts", "e2e-shard.mjs");
-
-    assert.equal(isInvokedDirectly(undefined, `file:///${self}`), false);
-    assert.equal(isInvokedDirectly(path.join(repoRoot, "scripts", "other.mjs"), "file:///x"), false);
   });
 });

@@ -41,6 +41,8 @@ Every rule an agent must follow, in one place. No rationale here — the *why* l
 14. **Merge with `--merge --delete-branch`, never `--squash`, and confirm the remote branch
     is actually gone** (`git ls-remote origin <branch>` returns nothing). A worktree still
     holding the local branch makes `--delete-branch` fail, and the remote one survives with it.
+    Inside the loop the supervisor merges and performs that confirmation itself; this is the rule
+    for a merge you make by hand.
 15. **Bring a stale branch up to date before merging** (`gh pr update-branch`), not after.
 
 ## Reading and writing code

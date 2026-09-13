@@ -15,7 +15,7 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { pathToFileURL } from "node:url";
+import { isInvokedDirectly } from "./lib/entry.mjs";
 
 const git = (...args) =>
   execFileSync("git", args, {
@@ -118,7 +118,7 @@ export function budget(base) {
   return named;
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (isInvokedDirectly(process.argv[1], import.meta.url)) {
   const named = budget(process.argv[2] ?? "origin/main");
   for (const [file, n] of named) {
     console.error(`comment-budget: ${file} adds ${n.comment} comment lines to ${n.code} of code`);

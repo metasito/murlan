@@ -1,8 +1,12 @@
 // tests/loopDerive.test.ts
-import { test, describe } from "node:test";
+import { test, describe, before, after } from "node:test";
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
-import { ticketOf, verdictFor, BRANCH } from "../scripts/loop-derive.mjs";
+import { ticketOf, verdictFor, reviewRounds, derive, BRANCH } from "../scripts/loop-derive.mjs";
 import { report } from "../scripts/loop-status.mjs";
 
 /**
@@ -102,6 +106,87 @@ ${fence}` }], sha),
 
   test("lowercase prose is not a review", () => {
     assert.equal(verdictFor([{ body: `verdict: land ${short}` }], sha), null);
+  });
+});
+
+describe("counting review rounds", () => {
+  test("one VERDICT comment is one round", () => {
+    assert.equal(reviewRounds([{ body: "VERDICT: LAND abc1234" }]), 1);
+  });
+
+  test("a HOLD counts as a round the same as a LAND", () => {
+    assert.equal(
+      reviewRounds([{ body: "VERDICT: HOLD abc1234 — no" }, { body: "VERDICT: LAND def5678" }]),
+      2
+    );
+  });
+
+  test("a verdict quoted inside a fence does not count", () => {
+    const fence = "```";
+    assert.equal(reviewRounds([{ body: `see:\n${fence}\nVERDICT: LAND abc1234\n${fence}` }]), 0);
+  });
+
+  test("a VERDICT: line with no sha does not count", () => {
+    assert.equal(reviewRounds([{ body: "VERDICT: LAND" }]), 0);
+  });
+
+  test("no comments is zero rounds", () => {
+    assert.equal(reviewRounds([]), 0);
+  });
+});
+
+/**
+ * `derive()` distils `reviewRounds` from the same comment list it already reads for `verdictFor`,
+ * so `loop-gate.mjs` gets both without a second call to the tracker.
+ */
+describe("derive()'s review-round count", () => {
+  let dir: string;
+  const priorScript = process.env.LOOP_GH_SCRIPT;
+
+  before(() => {
+    dir = mkdtempSync(join(tmpdir(), "loop-derive-"));
+    const git = (...args: string[]) => execFileSync("git", args, { cwd: dir });
+    git("init", "-q", "-b", "main");
+    git("config", "user.email", "t@t");
+    git("config", "user.name", "t");
+    writeFileSync(join(dir, "a.txt"), "1");
+    git("add", "-A");
+    git("commit", "-qm", "base");
+    git("checkout", "-qb", "agent/1234-x");
+    writeFileSync(join(dir, "b.txt"), "2");
+    git("add", "-A");
+    git("commit", "-qm", "work");
+  });
+
+  after(() => {
+    rmSync(dir, { recursive: true, force: true });
+    if (priorScript === undefined) delete process.env.LOOP_GH_SCRIPT;
+    else process.env.LOOP_GH_SCRIPT = priorScript;
+  });
+
+  function stubGh(comments: { body: string }[]): string {
+    const js = join(dir, `fake-gh-${Math.random().toString(36).slice(2)}.mjs`);
+    writeFileSync(js, `console.log(JSON.stringify(${JSON.stringify({ comments })}));`);
+    return js;
+  }
+
+  test("counts one round per VERDICT comment on a normal read", () => {
+    const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd: dir, encoding: "utf8" }).trim();
+    process.env.LOOP_GH_SCRIPT = stubGh([
+      { body: "looks ok" },
+      { body: `VERDICT: HOLD ${head} — one more pass` },
+      { body: `VERDICT: LAND ${head}` },
+    ]);
+    const result = derive({ cwd: dir, base: "main" });
+    assert.equal(result.trackerReadable, true);
+    assert.equal(result.reviewRounds, 2);
+  });
+
+  test("null, not zero, when the tracker cannot be read", () => {
+    process.env.LOOP_GH_SCRIPT = join(dir, "does-not-exist.mjs");
+    const result = derive({ cwd: dir, base: "main" });
+    assert.equal(result.trackerReadable, false);
+    assert.equal(result.reviewRounds, null);
   });
 });
 

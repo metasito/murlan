@@ -14,6 +14,7 @@ import fs from "node:fs";
 import path from "node:path";
 import zlib from "node:zlib";
 import { fileURLToPath } from "node:url";
+import { isInvokedDirectly } from "./lib/entry.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
@@ -82,10 +83,7 @@ export function report(total, files, budget = BUDGET_BYTES) {
   };
 }
 
-const invokedDirectly =
-  process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
-
-if (invokedDirectly) {
+if (isInvokedDirectly(process.argv[1], import.meta.url)) {
   const { total, files } = gzippedJsSize(BUNDLE_DIR);
   const { over, message } = report(total, files);
   console.log(message);

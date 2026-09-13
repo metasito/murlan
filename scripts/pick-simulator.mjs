@@ -1,7 +1,6 @@
 // Chooses the iPhone simulator `ios.yml` drives, from `xcrun simctl list
 // devices available -j` on stdin, and writes its UDID to stdout.
-import { pathToFileURL } from "node:url";
-import path from "node:path";
+import { isInvokedDirectly } from "./lib/entry.mjs";
 
 /**
  * `macos-latest` ships a fixed set of pre-created simulators rather than a
@@ -43,13 +42,6 @@ export function pickSimulator(listing) {
     .filter(usable)
     .sort((a, b) => a.name.localeCompare(b.name, "en", { numeric: true }));
   return { runtime, device: iphones[iphones.length - 1] };
-}
-
-// The same shape `scripts/e2e-shard.mjs`, `next-ticket.mjs`, `native-scope.mjs`
-// and `prune-worktrees.mjs` use. Each keeps its own copy because every one of
-// them runs on import, so importing the helper would run its script.
-export function isInvokedDirectly(argv1, moduleUrl) {
-  return Boolean(argv1) && pathToFileURL(path.resolve(argv1)).href === moduleUrl;
 }
 
 if (isInvokedDirectly(process.argv[1], import.meta.url)) {

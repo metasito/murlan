@@ -20,7 +20,18 @@ import { basename } from "node:path";
 
 export const BRANCH = /^agent\/(\d+)-/;
 
+/** The worktree root `/queue` phase A creates ticket worktrees under. */
+export const WORKTREE_DIR = ".worktrees";
+
+/** A ticket worktree's own directory name, under `WORKTREE_DIR` — never its branch. */
+export const AGENT_DIR = /^agent-\d+$/;
+
 const run = (file, args, cwd) => execFileSync(file, args, { encoding: "utf8", cwd }).trim();
+
+/** The one shape `verdictFor` and `reviewRounds` both look for, so they cannot drift apart. */
+const VERDICT_RE = /^VERDICT:\s*(LAND|HOLD)\b[^\n]*?\b([0-9a-f]{7,40})\b/m;
+
+const fenceStripped = (body) => (body ?? "").replace(/```[\s\S]*?```/g, "");
 
 /** @returns {string|null} */
 export function currentBranch(cwd) {
@@ -109,7 +120,7 @@ export function locateRun(cwd, worktree) {
     };
   }
 
-  const loose = list.find((w) => w.detached && /^agent-\d+$/.test(basename(w.dir ?? "")));
+  const loose = list.find((w) => w.detached && AGENT_DIR.test(basename(w.dir ?? "")));
   if (loose) {
     return {
       cwd: loose.dir,
@@ -142,13 +153,26 @@ export function verdictFor(comments, head) {
   const covers = (sha) => head.startsWith(sha) || sha.startsWith(short);
   let land = null;
   for (let i = comments.length - 1; i >= 0; i--) {
-    const body = (comments[i].body ?? "").replace(/```[\s\S]*?```/g, "");
-    const m = /^VERDICT:\s*(LAND|HOLD)\b[^\n]*?\b([0-9a-f]{7,40})\b/m.exec(body);
+    const body = fenceStripped(comments[i].body);
+    const m = VERDICT_RE.exec(body);
     if (!m || !covers(m[2])) continue;
     if (m[1] === "HOLD") return { decision: "HOLD", line: m[0].trim() };
     land ??= { decision: "LAND", line: m[0].trim() };
   }
   return land;
+}
+
+/**
+ * One review round per comment carrying a real verdict — not scoped to a head, since a round
+ * spent on an earlier commit was still spent. `derive()` returns this alongside `verdictFor`'s
+ * answer so `loop-gate.mjs` need not read the tracker twice.
+ */
+export function reviewRounds(comments) {
+  let rounds = 0;
+  for (const comment of comments) {
+    if (VERDICT_RE.test(fenceStripped(comment.body))) rounds += 1;
+  }
+  return rounds;
 }
 
 /**
@@ -183,6 +207,8 @@ function readComments(ticket, cwd) {
  * `LOOP_WORKTREE` is the same kind of seam, and the same kind of hazard if it ever became a real
  * flag: pointed at a worktree other than the one about to be pushed, it clears a review that never
  * looked at this branch's head. Like `LOOP_BASE`, nothing in the loop itself may ever set it.
+ *
+ * @param {{ cwd?: string, base?: string, worktree?: string }} [options]
  */
 export function derive({
   cwd = undefined,
@@ -245,6 +271,9 @@ export function derive({
     commits,
     changed,
     dirty,
+    // Null, not 0, when the tracker can't be read: a count nobody could take is not a count of
+    // zero rounds, and `loop-gate.mjs` fails closed on the same distinction `verdict` already does.
+    reviewRounds: trackerReadable ? reviewRounds(comments) : null,
     trackerReadable,
     verdict,
     phase,

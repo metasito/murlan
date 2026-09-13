@@ -11,7 +11,6 @@ import {
   classifyWorktree,
   parseWorktreeList,
   hasUncommittedChanges,
-  isInvokedDirectly,
   listWorktreeDirNames,
   findOrphanedWorktreeDirs,
 } from "../scripts/prune-worktrees.mjs";
@@ -270,15 +269,6 @@ describe("findOrphanedWorktreeDirs", () => {
 });
 
 describe("isInvokedDirectly", () => {
-  test("is true only when argv1 resolves to the module's own path", () => {
-    const self = path.resolve("scripts/prune-worktrees.mjs");
-    const moduleUrl = pathToFileURL(self).href;
-
-    assert.equal(isInvokedDirectly(self, moduleUrl), true);
-    assert.equal(isInvokedDirectly(path.resolve("scripts/other.mjs"), moduleUrl), false);
-    assert.equal(isInvokedDirectly(undefined, moduleUrl), false);
-  });
-
   test("importing the module (not running it) never shells out to git or gh", () => {
     const moduleUrl = pathToFileURL(path.resolve("scripts/prune-worktrees.mjs")).href;
 

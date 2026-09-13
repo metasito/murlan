@@ -12,6 +12,8 @@
  */
 import { spawnSync } from "node:child_process";
 import { existsSync, readdirSync } from "node:fs";
+import { isInvokedDirectly } from "./lib/entry.mjs";
+import { AGENT_DIR, WORKTREE_DIR } from "./loop-derive.mjs";
 
 // `--stale` takes only what is orphaned *and* old, so it cannot reach a peer session's live run.
 const STEPS = [
@@ -20,8 +22,6 @@ const STEPS = [
   ["reap", ["scripts/reap.mjs", "--stale"]],
 ];
 
-const WORKTREE_DIR = ".worktrees";
-
 /**
  * `derive()` reads a worktree's *branch* to find the ticket and ignores a directory whose branch
  * is not `agent/<n>-…`; `prune-worktrees` reads the *registration* and treats every directory
@@ -29,7 +29,7 @@ const WORKTREE_DIR = ".worktrees";
  * whether a run is live and visible to the thing that deletes worktrees.
  */
 export function misnamedWorktrees(dirs) {
-  return dirs.filter((d) => !/^agent-\d+$/.test(d.split(/[\\/]/).pop() ?? ""));
+  return dirs.filter((d) => !AGENT_DIR.test(d.split(/[\\/]/).pop() ?? ""));
 }
 
 /** A red `main` is not a reason to refuse a ticket, and it is a reason to say so before one starts. */
@@ -75,4 +75,4 @@ export function main(run = spawnSync, log = console.error) {
   return 0;
 }
 
-if (process.argv[1]?.endsWith("queue-pre.mjs")) process.exit(main());
+if (isInvokedDirectly(process.argv[1], import.meta.url)) process.exit(main());

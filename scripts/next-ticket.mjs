@@ -1,10 +1,6 @@
 import { execFileSync } from "node:child_process";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-
-export function isInvokedDirectly(argv1, moduleUrl) {
-  return Boolean(argv1) && path.resolve(argv1) === fileURLToPath(moduleUrl);
-}
+import { isInvokedDirectly } from "./lib/entry.mjs";
+import { BRANCH } from "./loop-derive.mjs";
 
 const SIZE_ORDER = ["size:XS", "size:S", "size:M", "size:L", "size:XL"];
 const OWNER_LABELS = new Set(["ready-for-human", "needs-info", "rejected"]);
@@ -81,7 +77,7 @@ let openPrs = null;
 /** One listing per process, matched on the head ref: `#42` in a body also matches PR #942. */
 function openPrsFor(number) {
   openPrs ??= ghJson(["pr", "list", "--state", "open", "--limit", "100", "--json", "number,state,headRefName"]);
-  return openPrs.filter((pr) => new RegExp(`^agent/${number}-`).test(pr.headRefName ?? ""));
+  return openPrs.filter((pr) => Number(BRANCH.exec(pr.headRefName ?? "")?.[1]) === number);
 }
 
 function openBlockers(number) {

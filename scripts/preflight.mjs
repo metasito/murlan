@@ -18,6 +18,7 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { isInvokedDirectly } from "./lib/entry.mjs";
 
 export function classifyStatus(porcelain) {
   const blocking = [];
@@ -129,7 +130,7 @@ export function checkLockDrift(root) {
   return lockDrift(packageJson, packageLock, installed);
 }
 
-if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop())) {
+if (isInvokedDirectly(process.argv[1], import.meta.url)) {
   const shared = primaryWorktree(git(["worktree", "list", "--porcelain"]));
   if (!shared) {
     console.error("preflight: could not find the primary worktree");

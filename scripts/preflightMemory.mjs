@@ -13,8 +13,7 @@
  * one is an npm lifecycle script rather than a fourth call site.
  */
 import os from "node:os";
-import { fileURLToPath } from "node:url";
-import path from "node:path";
+import { isInvokedDirectly } from "./lib/entry.mjs";
 
 const GB = 1024 ** 3;
 const WANTED = 1.5 * GB;
@@ -135,7 +134,7 @@ export default async function preflightMemory({
 //
 // `exitCode` and not `exit()`: a piped stdout is written asynchronously, and exiting on the spot
 // can take the message with it.
-if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
+if (isInvokedDirectly(process.argv[1], import.meta.url)) {
   // For a reader at a prompt who wants the verdict rather than the wait. One settle and rule,
   // which is a single poll — the settle is not part of the waiting, it is what keeps a reading
   // taken inside another suite's teardown burst from being the one that decides.
