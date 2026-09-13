@@ -15,6 +15,7 @@ import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { trackedRootFiles } from "./helpers/trackedFiles.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -252,17 +253,15 @@ test("the flush — the sweep (moments.tsx) and the pile's own catch (pile.tsx) 
 // that lives in a comment, and a comment cannot fail.
 //
 // EXPO_PUBLIC_* is inlined at build time, so a setter only matters where a
-// build is configured: the workflows, and the config files at the root.
+// build is configured: the workflows, and the tracked config files at the
+// root. Tracked, because an untracked one configures nobody else's build.
 
 const AUTOMATION_FLAG = /EXPO_PUBLIC_E2E_REDUCE_MOTION\s*[:=]/;
 
 function buildConfigFiles(): string[] {
   const workflows = readdirSync(path.join(repoRoot, ".github/workflows"))
     .map((name) => `.github/workflows/${name}`);
-  const roots = readdirSync(repoRoot, { withFileTypes: true })
-    .filter((e) => e.isFile())
-    .map((e) => e.name);
-  return [...workflows, ...roots];
+  return [...workflows, ...trackedRootFiles(repoRoot)];
 }
 
 test("only maestro.yml's build sets the automation flag", () => {

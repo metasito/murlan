@@ -6,9 +6,10 @@
 // default gets mistaken for a gap and "fixed".
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { readdirSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { trackedRootFiles } from "./helpers/trackedFiles.ts";
 
 // Resolved from this file, never from the cwd: a cwd-relative `existsSync`
 // passes from any directory that happens not to hold a licence, which is every
@@ -27,7 +28,8 @@ const LICENCE_LIKE = /^(licen[cs]e|copying)(\.|$)/i;
 describe("the licence position", () => {
   test("there is no licence file, under any spelling", () => {
     assert.deepEqual(
-      readdirSync(repoRoot).filter((name) => LICENCE_LIKE.test(name)),
+      // Tracked, not on disk: an untracked licence is one GitHub never shows.
+      trackedRootFiles(repoRoot).filter((name) => LICENCE_LIKE.test(name)),
       [],
       "a licence file appeared. #297 decided this source is not licensed for reuse — if that " +
         "changed, the decision goes on #297 and README.md's own statement changes with it"
