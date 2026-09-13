@@ -230,7 +230,16 @@ export function ChipText({
   /** Caps this run so an unbounded value (a username) ellipsizes instead of widening the chip. */
   maxWidth?: number;
   children: ReactNode;
-} & Partial<Pick<TextProps, "accessibilityLabel" | "accessibilityLiveRegion" | "testID">>) {
+  // No `accessibilityLiveRegion`: a chip's text is a drawn value, and a live
+  // region on one announces every change of it. What should be spoken goes on
+  // an `A11yStatus` beside the chip, which changes when there is something to
+  // say rather than when the number does.
+} & Partial<
+  Pick<
+    TextProps,
+    "accessibilityLabel" | "testID" | "accessibilityElementsHidden" | "importantForAccessibility"
+  >
+> & { "aria-hidden"?: boolean }) {
   return (
     <TableText
       numberOfLines={1}

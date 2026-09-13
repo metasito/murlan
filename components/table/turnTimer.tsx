@@ -4,6 +4,7 @@
 // that draws a chip or a rail.
 import { useEffect, useRef, useState } from "react";
 import { ChipText } from "./chrome";
+import { A11yStatus, a11yHidden } from "@/lib/a11y";
 import { useTranslation } from "@/lib/i18n";
 import { playUrgentTick } from "@/lib/sounds";
 import { urgentThresholdSeconds, URGENT_TICK_SECONDS } from "@/components/turnTimerUi";
@@ -62,16 +63,23 @@ export function TurnTimer({
   }, [active, resetKey, seconds]);
 
   if (!active) return null;
-  const urgent = timeLeft <= urgentThresholdSeconds(seconds);
+  const threshold = urgentThresholdSeconds(seconds);
+  const urgent = timeLeft <= threshold;
+  // A live region speaks every time its text changes, so a per-second label is
+  // thirty interruptions a turn and a reader hears nothing else all manche.
+  // Two moments are worth one: the clock starting, and it turning urgent. The
+  // label holds still between them, and holding still is what silence is.
+  // "It's your turn" is not repeated here — the table's own status node
+  // (`GameTable.tsx`'s `A11yStatus`) already says it on the same change.
+  const spoken = timeLeft > threshold ? seconds : threshold;
   return (
-    <ChipText
-      scale={scale}
-      strong
-      urgent={urgent}
-      accessibilityLiveRegion="polite"
-      accessibilityLabel={tn("gameTable.a11ySecondsLeft", timeLeft)}
-    >
-      {timeLeft}
-    </ChipText>
+    <>
+      {/* Its own node, never the countdown: a live region announces rather
+          than being landed on (CLAUDE.md). */}
+      <A11yStatus label={tn("gameTable.a11ySecondsLeft", spoken)} />
+      <ChipText scale={scale} strong urgent={urgent} {...a11yHidden()}>
+        {timeLeft}
+      </ChipText>
+    </>
   );
 }
