@@ -67,9 +67,8 @@ export function TurnTimer({
   // seconds is an interruption a second for the length of the manche. Two
   // moments in a turn are worth one — the clock starting and it turning urgent
   // — and the region is empty between them, because an unchanged label and an
-  // absent one are the same silence. "It's your turn" is not among them: the
-  // table's own status node (`GameTable.tsx`'s `A11yStatus`) already says it on
-  // the same change.
+  // absent one are the same silence. Whose turn it is is not said here: that
+  // sentence is `describeTableForA11y`'s, on the table's own status node.
   //
   // Empty rather than unmounted or veiled between turns: a live region that
   // arrives with its text already in it announces nothing, on the web or on
