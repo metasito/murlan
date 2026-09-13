@@ -63,17 +63,13 @@ export function TurnTimer({
   }, [active, resetKey, seconds]);
 
   const threshold = urgentThresholdSeconds(seconds);
-  // A live region speaks every time its text changes, so a label holding the
-  // seconds is an interruption a second for the length of the manche. Two
-  // moments in a turn are worth one — the clock starting and it turning urgent
-  // — and the region is empty between them, because an unchanged label and an
-  // absent one are the same silence. Whose turn it is is not said here: that
-  // sentence is `describeTableForA11y`'s, on the table's own status node.
+  // A live region speaks every time its text changes, so seconds in its label
+  // are an interruption a second for the length of the manche. Two moments in a
+  // turn are worth one; between them an empty label and an unchanged one are
+  // the same silence. Whose turn it is is `describeTableForA11y`'s sentence.
   //
-  // Empty rather than unmounted or veiled between turns: a live region that
-  // arrives with its text already in it announces nothing, on the web or on
-  // Android, so the node has to outlive the turn for the turn's start to be
-  // spoken at all.
+  // Empty rather than unmounted or veiled: a region that arrives with its text
+  // already in it announces nothing, so the node has to outlive the turn.
   const announce =
     active && (timeLeft === seconds || timeLeft === threshold)
       ? tn("gameTable.a11ySecondsLeft", timeLeft)
@@ -84,10 +80,9 @@ export function TurnTimer({
           than being landed on (CLAUDE.md). */}
       <A11yStatus label={announce} />
       {active && (
-        // Unnamed by choice, not by necessity: a name here is a second reading
-        // of the same value on web, and the only DOM role that would carry one
-        // — `timer` — inherits `polite` from `status`, which is the per-second
-        // announcement back again.
+        // Unnamed by choice: the only DOM role that would carry a name here,
+        // `timer`, inherits `polite` from `status` — the per-second
+        // announcement back again (#1028).
         <ChipText scale={scale} strong urgent={timeLeft <= threshold}>
           {timeLeft}
         </ChipText>
