@@ -3,18 +3,18 @@
  * being clear." That rule was in context for every change this repo has ever seen, and it is broken
  * regularly — so it is a check rather than a sentence.
  *
- * Compares each changed file's comment and code counts before and after. Not a diff: "is this line
- * a comment" is a property of the file, and a unified diff is a lossy window over pairs of files
- * rendered through the caller's git configuration — `diff.external`, `color.ui`, `textconv`,
- * `diff.noprefix` and a `.gitattributes` `-diff` marker each change what arrives. `git show
- * <rev>:<path>` and `readFileSync` both return bytes, so none of that surface exists here, and a
- * comment moved between two files nets to zero across the pair without being tracked.
+ * Counts the lines a change *adds*, comment against code. "Is this line a comment" is a property
+ * of the whole file — block state has no hunk window to fall out of — so both revisions are read
+ * as bytes (`git show <rev>:<path>`, `readFileSync`) and the added lines are found here rather
+ * than parsed out of a rendered diff, which `diff.external`, `color.ui`, `textconv`,
+ * `diff.noprefix` and a `.gitattributes` `-diff` marker each reshape under the caller.
  *
  * Usage: node scripts/comment-budget.mjs [base]   (default origin/main)
  *        exit 0 - within budget; exit 1 - names the files over it
  */
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
 const git = (...args) =>
@@ -26,28 +26,57 @@ const git = (...args) =>
     maxBuffer: 64 * 1024 * 1024,
   });
 
-export function countComments(text) {
-  let comment = 0;
-  let code = 0;
+function* classify(text) {
   let block = false;
   for (const raw of text.split("\n")) {
     const line = raw.trim();
     if (!line) continue;
     if (block) {
-      comment += 1;
+      yield [line, true];
       if (line.includes("*/")) block = false;
       continue;
     }
     if (line.startsWith("//")) {
-      comment += 1;
+      yield [line, true];
       continue;
     }
     if (line.startsWith("/*")) {
-      comment += 1;
+      yield [line, true];
       block = !line.includes("*/", 2);
       continue;
     }
-    code += 1;
+    yield [line, false];
+  }
+}
+
+const key = (line, isComment) => `${isComment ? "c" : "k"}${line}`;
+
+/**
+ * By multiset, not by alignment: each line of `before` is a token one line of `after` may spend,
+ * so a line counts as added only when that text, at that kind, was not in the file already. The
+ * kind is in the key on purpose — a line that stops being code and starts being prose is prose
+ * the change wrote, and the budget is about how much prose a reader now has to get past.
+ *
+ * This is not a line diff and neither bounds the other, in either column. The tests are what say
+ * what it does; do not reason from the two being close.
+ */
+export function addedCounts(before, after) {
+  const pool = new Map();
+  for (const [line, isComment] of classify(before)) {
+    const k = key(line, isComment);
+    pool.set(k, (pool.get(k) ?? 0) + 1);
+  }
+  let comment = 0;
+  let code = 0;
+  for (const [line, isComment] of classify(after)) {
+    const k = key(line, isComment);
+    const held = pool.get(k) ?? 0;
+    if (held) {
+      pool.set(k, held - 1);
+      continue;
+    }
+    if (isComment) comment += 1;
+    else code += 1;
   }
   return { comment, code };
 }
@@ -55,17 +84,8 @@ export function countComments(text) {
 /** A handful of comments on a small change is not a ratio worth policing. */
 const FLOOR = 6;
 
-export function over(before, after) {
-  const comment = after.comment - before.comment;
-  // Against how much code the change *moved*, not its net: code deleted is code moved, and a
-  // rewrite that takes 122 lines out is not a change explaining itself. Against the net, any file
-  // that shrinks puts the bar below zero and every comment over the floor fails it; `max(code, 0)`
-  // does the same to every change that deletes more than it adds, which is most refactors.
-  //
-  // The cost is that a large deletion buys a comment budget the size of itself — #1001, which is
-  // where to go before changing this line. Two file totals cannot express "added" at all, which is
-  // the real limit and not something a comparison here can fix.
-  return comment > FLOOR && comment > Math.abs(after.code - before.code);
+export function over(added) {
+  return added.comment > FLOOR && added.comment > added.code;
 }
 
 const show = (rev, file) => {
@@ -76,21 +96,24 @@ const show = (rev, file) => {
   }
 };
 
-export function budget(base, head = "HEAD") {
-  const files = git("diff", "--name-only", "--diff-filter=AMR", "-M", `${base}...${head}`,
-    "--", "*.mjs", "*.js", "*.ts", "*.tsx").split("\n").filter(Boolean);
+export function budget(base) {
+  // One revision on the far side and the working tree on this one, for both the file list and the
+  // content. Reading content at `base`'s tip while listing files against the merge base would
+  // charge the branch for whatever main removes meanwhile. `quotePath` off, or a path with a
+  // non-ASCII byte arrives escaped and in quotes. `--no-relative` plus the root makes both halves
+  // agree from any cwd: git's own default is relative to the caller's directory only sometimes.
+  const from = git("merge-base", base, "HEAD").trim();
+  const root = git("rev-parse", "--show-toplevel").trim();
+  const files = git("-c", "core.quotePath=false", "diff", "--name-only", "--no-relative",
+    "--diff-filter=AMR", "-M", from, "--", "*.mjs", "*.js", "*.ts", "*.tsx")
+    .split("\n").filter(Boolean);
   const named = [];
   for (const file of files) {
-    const before = countComments(show(base, file));
-    let after;
-    try {
-      after = countComments(readFileSync(file, "utf8"));
-    } catch {
-      continue; // deleted or renamed away; nothing was written
-    }
-    if (over(before, after)) {
-      named.push([file, { comment: after.comment - before.comment, code: after.code - before.code }]);
-    }
+    // No skip on a read failure: `AMR` never emits a deletion and `-M` emits a rename's
+    // destination, so every path here exists. A swallowed read is a check that passes by not
+    // looking at the one file it could not open.
+    const added = addedCounts(show(from, file), readFileSync(join(root, file), "utf8"));
+    if (over(added)) named.push([file, added]);
   }
   return named;
 }

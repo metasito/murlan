@@ -442,6 +442,12 @@ Full sweeps, for the end of an item only: `npx tsc --noEmit` (~5s) → `npm test
 `npx jest` (~50s, 527) → `npx eslint components lib tests app` (~25s).
 `docs/agents/issue-tracker.md` covers when CI runs instead.
 
+**`check:comments` is not in any of those, nor in `npm run lint`.** It is a step of CI's Lint job
+in its own right, so the comment budget — added comment lines against added code lines — is first
+heard from on CI. Run `npm run check:comments` before you push if the change is prose-heavy — it
+lists files with `git diff` against the merge base, which reads the working tree, so an uncommitted
+edit counts but a file git does not track yet is not listed at all.
+
 **A `tsc` error about a route that plainly exists is a stale `.expo/types/router.d.ts`.** Typed
 routes are generated there by the dev server, the file is gitignored, and it is never regenerated
 by `tsc` — so a checkout where the dev server last ran before a route was added reports that
