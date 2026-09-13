@@ -56,6 +56,7 @@ jobs:
     outputs:
       app: ${{ steps.scope.outputs.app }}
       native: ${{ steps.scope.outputs.native }}
+      harness: ${{ steps.scope.outputs.harness }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -87,6 +88,7 @@ jobs:
               echo "Identical tree to #$num at $head, which this workflow already passed."
               echo "app=false" >> "$GITHUB_OUTPUT"
               echo "native=false" >> "$GITHUB_OUTPUT"
+              echo "harness=false" >> "$GITHUB_OUTPUT"
               exit 0
             fi
             echo "No green pull-request run covers this tree — running everything."
@@ -100,6 +102,7 @@ jobs:
             echo "No usable base commit — running everything."
             echo "app=true" >> "$GITHUB_OUTPUT"
             echo "native=true" >> "$GITHUB_OUTPUT"
+            echo "harness=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           changed=$(git diff --name-only "$base" HEAD)
@@ -131,7 +134,7 @@ jobs:
           if grep -qE '^\.github/workflows/ci\.yml$' <<< "$changed"; then
             echo "This workflow changed — it must exercise its own compile jobs."
             echo "native=true" >> "$GITHUB_OUTPUT"
-          elif [ -n "$native_trigger" ] && grep -qvE '^(app|components|context|lib|locales|shared|server|tests|docs|scripts|public|\.claude|\.agents|\.maestro|\.github)/|\.md$' <<< "$native_trigger"; then
+          elif [ -n "$native_trigger" ] && grep -qvE '^(app|components|context|lib|locales|shared|server|tests|docs|scripts|tools|public|\.claude|\.agents|\.maestro|\.github)/|\.md$' <<< "$native_trigger"; then
             echo "Something outside the JavaScript sources changed — compiling for both devices."
             echo "native=true" >> "$GITHUB_OUTPUT"
           else
@@ -144,11 +147,30 @@ jobs:
           # is the one change that must run it, and the allowlist below would
           # skip it. The failure would surface later, on whichever unrelated
           # code change ran the suite next.
+          # The loop is a second product in this repository (docs/agents/loops.md). A change confined
+          # to `tools/loop/` runs its suite *instead of* the game's, which is the whole point of the
+          # split; the two are not exclusive, and a queue.md edit is read by both and runs both.
+          # The rest of the list is what its suite asserts on beyond its own code: the protocol
+          # files, `.claude/settings.json`'s hook paths, package.json's script names, and this
+          # workflow, whose job names `check-steps.mjs` pins each delegated step to.
+          if grep -qE '^(tools/loop/|docs/agents/|\.claude/|CLAUDE\.md$|package\.json$|\.github/workflows/ci\.yml$)' <<< "$changed"; then
+            echo "harness=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "harness=false" >> "$GITHUB_OUTPUT"
+          fi
           if grep -qE '^(docs/agents/|\.claude/commands/|CLAUDE\.md$)' <<< "$changed"; then
             echo "Documentation the suite asserts on — running everything."
             echo "app=true" >> "$GITHUB_OUTPUT"
           elif [ -n "$changed" ] && ! grep -qvE '^(docs/|\.claude/)|\.md$' <<< "$changed"; then
             echo "Documentation only — skipping the app checks."
+            echo "app=false" >> "$GITHUB_OUTPUT"
+          # Deliberately the loop's *tests* and not the loop: `scripts/e2ePort.mjs` imports
+          # `tools/loop/reap.mjs` and `scripts/contextSurface.mjs` imports `tools/loop/loop-derive.mjs`,
+          # so a change to the loop's source can stop the browser suite booting. A directory can
+          # answer "can this reach the game?" only where the answer is no by construction, and a
+          # test file is the one place it is: nothing imports one.
+          elif [ -n "$changed" ] && ! grep -qvE '^tools/loop/tests/' <<< "$changed"; then
+            echo "The loop's own tests only — nothing imports a test, so the game cannot see this."
             echo "app=false" >> "$GITHUB_OUTPUT"
           else
             echo "app=true" >> "$GITHUB_OUTPUT"
@@ -338,6 +360,41 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run test:native
+
+  # The ticket loop's own suite. It needs no Postgres, no browser and no native
+  # project: it drives `git` and a stubbed `gh` against scratch checkouts, which
+  # is why it is 40 seconds rather than the game's several minutes. `git config`
+  # because several of its tests commit into a repository they create, and the
+  # runner has no identity of its own.
+  harness:
+    name: Loop harness
+    needs: scope
+    if: needs.scope.outputs.harness == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # check:comments diffs each changed file against the merge base.
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - name: Identify the runner to git
+        run: |
+          git config --global user.email "ci@example.com"
+          git config --global user.name "CI"
+      # Typechecked and linted here as well as in the game's jobs, because on a
+      # loop-only change those do not run: `scope` sets app=false for a diff
+      # confined to tools/loop/, and an untypechecked supervisor is exactly the
+      # thing this split would otherwise have made cheaper to break.
+      - run: npm run typecheck
+      - run: npx eslint tools/loop
+      - run: npm run loop:test
+      # Rides here as well as on `lint` for the same reason as the two above: the comment budget is
+      # a step of a job that a loop-tests-only change does not run.
+      - run: npm run check:comments
 
   lint:
     name: Lint

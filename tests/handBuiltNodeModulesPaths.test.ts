@@ -31,12 +31,12 @@ const SKIP_DIRS = new Set([
  * resolved to find where a package lives. #275 names it explicitly as
  * correct and untouched.
  *
- * tests/preflight.test.ts's `install()` helper builds a fake install under a
+ * tools/loop/tests/preflight.test.ts's `install()` helper builds a fake install under a
  * `mkdtempSync` root it created itself, to give `checkLockDrift` a real disk
  * fixture — it is not locating an existing package relative to a worktree,
  * so the flat-layout assumption this scan protects against never applies.
  *
- * scripts/preflight.mjs's `installedVersion` reads an arbitrary root's own
+ * tools/loop/preflight.mjs's `installedVersion` reads an arbitrary root's own
  * node_modules from outside — the shared checkout, inspected for drift, not
  * this process's own dependency graph — so Node's resolver is the wrong
  * tool, not just an unproven one: `require.resolve` rejects a bare
@@ -47,8 +47,8 @@ const SKIP_DIRS = new Set([
  */
 const IGNORE_LIST = new Set([
   "tests/typeSuppressions.test.ts",
-  "tests/preflight.test.ts",
-  "scripts/preflight.mjs",
+  "tools/loop/tests/preflight.test.ts",
+  "tools/loop/preflight.mjs",
 ]);
 
 function sourceFiles(dir: string): string[] {

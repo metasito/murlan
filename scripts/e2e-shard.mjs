@@ -10,7 +10,8 @@
 
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
+import { isInvokedDirectly } from "./lib/entry.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const E2E_DIR = path.join(here, "..", "tests", "e2e");
@@ -74,10 +75,6 @@ export function filesForShard(index, total, files = specFilesIn(), timings = rea
     throw new Error(`shard index must be 1..${total}, got ${index}`);
   }
   return assignShards(files, timings, total)[index - 1].files;
-}
-
-export function isInvokedDirectly(argv1, moduleUrl) {
-  return Boolean(argv1) && pathToFileURL(path.resolve(argv1)).href === moduleUrl;
 }
 
 if (isInvokedDirectly(process.argv[1], import.meta.url)) {

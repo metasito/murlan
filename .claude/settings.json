@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node scripts/guard-bash.mjs"
+            "command": "node tools/loop/guard-bash.mjs"
           }
         ]
       },
@@ -15,7 +15,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node scripts/hint-test-traps.mjs"
+            "command": "node tools/loop/hint-test-traps.mjs"
           }
         ]
       }
@@ -26,7 +26,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node scripts/loop-status.mjs"
+            "command": "node tools/loop/loop-status.mjs"
           }
         ]
       }

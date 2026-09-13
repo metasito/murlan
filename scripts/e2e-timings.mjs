@@ -19,7 +19,8 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { isInvokedDirectly, specFilesIn } from "./e2e-shard.mjs";
+import { isInvokedDirectly } from "./lib/entry.mjs";
+import { specFilesIn } from "./e2e-shard.mjs";
 
 const repoRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const TIMINGS = path.join(repoRoot, "tests", "e2e", "timings.json");

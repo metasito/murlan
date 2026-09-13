@@ -8,8 +8,7 @@
 // whether a change can reach what the *native compile jobs* build.
 
 import { execFileSync } from "node:child_process";
-import path from "node:path";
-import { pathToFileURL } from "node:url";
+import { isInvokedDirectly } from "./lib/entry.mjs";
 
 /** Nothing under these is importable from tests/native/**. */
 const NATIVE_BLIND = [
@@ -67,10 +66,6 @@ export function nativeScope(paths) {
   return reaching.length > 0
     ? { run: true, reason: `${reaching.length} changed path(s) reach it, e.g. ${reaching[0]}` }
     : { run: false, reason: `all ${files.length} changed path(s) are outside its reach` };
-}
-
-export function isInvokedDirectly(argv1, moduleUrl) {
-  return Boolean(argv1) && pathToFileURL(path.resolve(argv1)).href === moduleUrl;
 }
 
 if (isInvokedDirectly(process.argv[1], import.meta.url)) {

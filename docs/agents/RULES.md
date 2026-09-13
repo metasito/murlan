@@ -5,14 +5,15 @@ Every rule an agent must follow, in one place. No rationale here — the *why* l
 
 ## Checking your work
 
-1. **Run `npm run agent:check` before you push.** `scripts/check-steps.mjs` is the list of what
+1. **Run `npm run agent:check` before you push.** `tools/loop/check-steps.mjs` is the list of what
    runs there and what `ci.yml` carries; the check prints both and replays on an unchanged tree.
-2. **Never run a whole suite by hand** — not `npm run verify`, `npm test`, `npm run test:native`,
-   `npm run test:e2e`. `ci.yml` runs them on your push, in parallel, with the Postgres the
-   integration suites need and this machine has not.
+2. **Never run a whole suite by hand** — not `npm run verify`, `npm test`, `npm run loop:test`,
+   `npm run test:native`, `npm run test:e2e`. `ci.yml` runs them on your push, in parallel, with
+   the Postgres the integration suites need and this machine has not.
 3. **One spec is still yours**, when only a browser can see what you changed:
    `npx playwright test --config tests/e2e/playwright.config.ts one.spec.ts`.
-4. **While iterating, run one file:** `node --test tests/x.test.ts`. That is where rule 6's
+4. **While iterating, run one file:** `node --test tests/x.test.ts`, or
+   `node --test tools/loop/tests/x.test.ts` for the loop's own. That is where rule 6's
    red-then-green is watched; everything wider rides CI.
 5. **Add `E2E_SKIP_BUILD=1` only when your edit is confined to a spec file.** Any change under
    `app/`, `components/` or `lib/` needs a rebuild, or the run tests a stale bundle.
@@ -41,6 +42,8 @@ Every rule an agent must follow, in one place. No rationale here — the *why* l
 14. **Merge with `--merge --delete-branch`, never `--squash`, and confirm the remote branch
     is actually gone** (`git ls-remote origin <branch>` returns nothing). A worktree still
     holding the local branch makes `--delete-branch` fail, and the remote one survives with it.
+    Inside the loop the supervisor merges and performs that confirmation itself; this is the rule
+    for a merge you make by hand.
 15. **Bring a stale branch up to date before merging** (`gh pr update-branch`), not after.
 
 ## Reading and writing code
@@ -56,7 +59,7 @@ Every rule an agent must follow, in one place. No rationale here — the *why* l
 
 ## Taking work
 
-21. **Take one item at a time. Don't ask which, or whether to proceed.** `node scripts/next-ticket.mjs`
+21. **Take one item at a time. Don't ask which, or whether to proceed.** `node tools/loop/next-ticket.mjs`
     picks it and prints the route.
 22. **Claim it before you touch anything**: add `in-progress`, comment naming your branch, then
     re-read the issue and stand down if an older claim is there.
@@ -79,7 +82,7 @@ Every rule an agent must follow, in one place. No rationale here — the *why* l
 
 30. **Report what you actually did.** A gap named is worth more than a green report.
 31. **Never leave an edit uncommitted in the shared checkout.** Commit it on a branch before you
-    stop. `node scripts/preflight.mjs` blocks a run that would start on top of one.
+    stop. `node tools/loop/preflight.mjs` blocks a run that would start on top of one.
 32. **Leave no residue** — no stray branches, worktrees, scratch files or uncommitted edits in the
     shared checkout.
 33. **Outstanding work goes in a GitHub issue**, never a `TODO` or a markdown backlog.

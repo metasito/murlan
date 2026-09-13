@@ -40,9 +40,10 @@ table, `trust proxy`, deployment shape) are documented in `replit.md`, not here.
 ```sh
 npm run typecheck    # tsc --noEmit
 npm test             # node --test, everything under tests/
+npm run loop:test    # node --test, the ticket loop under tools/loop/tests/
 npm run test:native  # jest, the tests/native/ renderer suites
 npm run lint         # npx expo lint
-npm run verify       # all four of the above, lint last
+npm run verify       # typecheck, test, test:native and lint — the game's sweep, lint last
 npm run test:e2e     # Playwright — needs Docker and a built web bundle
 ```
 

@@ -28,7 +28,7 @@ Issues and specs for this repo live as GitHub issues. Use the `gh` CLI for all o
   until something external returns — a dead CI, an unreleased dependency. It sits *alongside*
   `ready-for-agent`, never instead of it: that label often carries a decision the owner has
   already made, and removing it to stop the picker routing there throws the decision away.
-  `scripts/next-ticket.mjs` skips a `blocked` item the same way it skips `in-progress`. Take
+  `tools/loop/next-ticket.mjs` skips a `blocked` item the same way it skips `in-progress`. Take
   the label off when the dependency returns, and say so on the issue.
 - **Close**: `gh issue close <number> --comment "..."`
 
@@ -47,7 +47,7 @@ Sessions run in parallel against one repo, and every one of them authenticates a
 GitHub account — so `--add-assignee @me` cannot tell two sessions apart. The branch name
 can, and that is what the claim carries.
 
-- **Pick** — `node scripts/next-ticket.mjs` (`--all` lists the frontier in pick
+- **Pick** — `node tools/loop/next-ticket.mjs` (`--all` lists the frontier in pick
   order; a bare issue number inspects that ticket without picking it).
   The script encodes the precedence itself — implement the unblocked `ready-for-agent`
   frontier (native blockers applied, smallest `size:*` first) → triage → wayfinder →

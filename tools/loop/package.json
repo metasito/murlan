@@ -1,0 +1,6 @@
+{
+  "name": "murlan-loop",
+  "private": true,
+  "type": "module",
+  "description": "The ticket loop: supervisor, gate, picker and the workspace tools they run. A separate product from the game in the same repository, with its own suite, so a change to a card animation does not wait on worktree pruning and a change here does not run the game every time. This file carries no scripts and no dependencies on purpose: the suite is `npm run loop:test` from the repo root, because these tests read the repository itself — ci.yml, the protocol files, the worktree registrations — and every one of them would be looking in the wrong place with the cwd npm sets here. What it is for is `type: \"module\"`, which is what stops Node reparsing land.ts and ciVerdict.ts on every supervisor start, and marking where the loop ends and the game begins."
+}

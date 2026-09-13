@@ -8,8 +8,7 @@
 
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
-import path from "node:path";
-import { pathToFileURL } from "node:url";
+import { isInvokedDirectly } from "./lib/entry.mjs";
 
 const INSTALL_LIFECYCLE_SCRIPTS = ["preinstall", "install", "postinstall", "prepare"];
 
@@ -43,10 +42,6 @@ export function packageJsonTouchesNative(beforeText, afterText) {
     return true;
   }
   return JSON.stringify(normalize(before)) !== JSON.stringify(normalize(after));
-}
-
-export function isInvokedDirectly(argv1, moduleUrl) {
-  return Boolean(argv1) && pathToFileURL(path.resolve(argv1)).href === moduleUrl;
 }
 
 if (isInvokedDirectly(process.argv[1], import.meta.url)) {

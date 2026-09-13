@@ -15,8 +15,7 @@
 //     out/maestro-debug/work/_temp/logcat.txt
 
 import { readFileSync } from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { isInvokedDirectly } from "./lib/entry.mjs";
 
 const DEFAULT_PACKAGE = "com.murlan.cardgame";
 
@@ -179,10 +178,6 @@ export function toMarkdownTable(rows) {
         ).toFixed(1)}s | ${r.fetchMeanMs}ms | ${r.jankCount} | ${r.jankMeanMs}ms |`
     );
   return [header, sep, ...lines].join("\n");
-}
-
-function isInvokedDirectly(argv1, moduleUrl) {
-  return Boolean(argv1) && path.resolve(argv1) === fileURLToPath(moduleUrl);
 }
 
 if (isInvokedDirectly(process.argv[1], import.meta.url)) {

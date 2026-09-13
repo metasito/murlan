@@ -11,7 +11,8 @@
 import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { clearPort, portListeners, staleAmong } from "./reap.mjs";
+import { isInvokedDirectly } from "./lib/entry.mjs";
+import { clearPort, portListeners, staleAmong } from "../tools/loop/reap.mjs";
 
 export const BASE_PORT = 5199;
 /** Enough for every run a machine can host at once; a wall this wide is a leak, not a queue. */
@@ -131,4 +132,4 @@ export function takeE2ePort(base = Number(process.env.E2E_PORT ?? BASE_PORT), ow
   return chosen.port;
 }
 
-if (import.meta.filename === process.argv[1]) console.log(takeE2ePort(undefined, process.ppid));
+if (isInvokedDirectly(process.argv[1], import.meta.url)) console.log(takeE2ePort(undefined, process.ppid));

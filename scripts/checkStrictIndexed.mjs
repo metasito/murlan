@@ -22,6 +22,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
+import { isInvokedDirectly } from "./lib/entry.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = path.resolve(__dirname, "..");
@@ -133,10 +134,7 @@ export function runStrictIndexedCheck(configPath = DEFAULT_CONFIG, repoRoot = RE
   return { ok: true, message: `noUncheckedIndexedAccess clean: ${areas.join(", ")}` };
 }
 
-const invokedDirectly =
-  process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
-
-if (invokedDirectly) {
+if (isInvokedDirectly(process.argv[1], import.meta.url)) {
   const configPath = process.argv[2] ? path.resolve(REPO_ROOT, process.argv[2]) : DEFAULT_CONFIG;
   const { ok, message } = runStrictIndexedCheck(configPath);
   if (ok) console.log(message);
