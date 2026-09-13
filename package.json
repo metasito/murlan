@@ -55,7 +55,6 @@
     "compression": "^1.8.1",
     "connect-pg-simple": "^10.0.0",
     "drizzle-orm": "^0.45.2",
-    "drizzle-zod": "^0.7.0",
     "expo": "~57.0.21",
     "expo-asset": "~57.0.16",
     "expo-audio": "~57.0.4",

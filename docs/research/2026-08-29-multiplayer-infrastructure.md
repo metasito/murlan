@@ -26,8 +26,9 @@ reported falls through it.
 
 ## 2. It reproduces
 
-`scripts/repro-544.mjs`, committed alongside this document. Two server processes against one
-database, one room, one join:
+`tests/integration/crossInstance.test.ts`. Two server processes against one database, one room,
+one join — originally a standalone script committed alongside this document, now a suite CI
+runs:
 
 ```
 two instances up on 5551 and 5552, sharing one database
@@ -42,8 +43,9 @@ A was told B arrived:           NO  <- the defect
 B's seat is claimed, the row is written, B's own screen is correct. A is never told. The
 broadcast — `io.to(roomId).emit("room:state", …)` — reached only instance 2's sockets.
 
-Run it yourself: `DATABASE_URL=… node scripts/repro-544.mjs`. It exits 1 when the split
-occurs and 0 when it does not, so it is also the check the fix has to turn green.
+Run it yourself: `DATABASE_URL=… node --test tests/integration/crossInstance.test.ts`. The case
+is "a room broadcast reaches the player on the other instance"; it goes red when the split
+occurs, so it is also the check the fix has to turn green.
 
 ---
 
@@ -286,7 +288,7 @@ seat is still held and the host role has not moved.
 in the deploy, and already the source of truth for rooms. This is what lifts the cap from
 step 0.
 
-**Check:** `scripts/repro-544.mjs` exits 0 — the same script that exits 1 today.
+**Check:** `tests/integration/crossInstance.test.ts` goes green — the same case that is red today.
 
 ### Step 4 — Delivery the client can prove it received
 
