@@ -4,7 +4,7 @@
 // that draws a chip or a rail.
 import { useEffect, useRef, useState } from "react";
 import { ChipText } from "./chrome";
-import { A11yStatus, a11yHidden } from "@/lib/a11y";
+import { A11yStatus } from "@/lib/a11y";
 import { useTranslation } from "@/lib/i18n";
 import { playUrgentTick } from "@/lib/sounds";
 import { urgentThresholdSeconds, URGENT_TICK_SECONDS } from "@/components/turnTimerUi";
@@ -62,24 +62,40 @@ export function TurnTimer({
     return () => clearInterval(id);
   }, [active, resetKey, seconds]);
 
-  if (!active) return null;
   const threshold = urgentThresholdSeconds(seconds);
-  const urgent = timeLeft <= threshold;
-  // A live region speaks every time its text changes, so a per-second label is
-  // thirty interruptions a turn and a reader hears nothing else all manche.
-  // Two moments are worth one: the clock starting, and it turning urgent. The
-  // label holds still between them, and holding still is what silence is.
-  // "It's your turn" is not repeated here — the table's own status node
-  // (`GameTable.tsx`'s `A11yStatus`) already says it on the same change.
-  const spoken = timeLeft > threshold ? seconds : threshold;
+  // A live region speaks every time its text changes, so a label holding the
+  // seconds is an interruption a second for the length of the manche. Only two
+  // moments in a turn are worth one — the clock starting and it turning urgent
+  // — so the region carries a sentence on those and is empty the rest of the
+  // time, which is both the silence and the guarantee that what it holds is
+  // never out of date. When the clock is shorter than the urgent threshold the
+  // two moments are the same one, and it speaks once.
+  //
+  // Empty rather than unmounted between turns: a live region inserted with its
+  // text already in it announces nothing, on the web or on Android, so the node
+  // has to outlive the turn for the turn's start to be spoken at all.
+  const announce =
+    active && (timeLeft === seconds || timeLeft === threshold)
+      ? tn("gameTable.a11ySecondsLeft", timeLeft)
+      : "";
   return (
     <>
       {/* Its own node, never the countdown: a live region announces rather
           than being landed on (CLAUDE.md). */}
-      <A11yStatus label={tn("gameTable.a11ySecondsLeft", spoken)} />
-      <ChipText scale={scale} strong urgent={urgent} {...a11yHidden()}>
-        {timeLeft}
-      </ChipText>
+      <A11yStatus label={announce} />
+      {active && (
+        // Labelled, not hidden: the announcement is deliberately silent between
+        // those two moments, so this is where a reader who goes looking mid-turn
+        // finds the seconds actually left.
+        <ChipText
+          scale={scale}
+          strong
+          urgent={timeLeft <= threshold}
+          accessibilityLabel={tn("gameTable.a11ySecondsLeft", timeLeft)}
+        >
+          {timeLeft}
+        </ChipText>
+      )}
     </>
   );
 }
