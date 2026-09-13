@@ -137,16 +137,25 @@ module.exports = defineConfig([
     rules: {
       "import/first": "off",
       "@typescript-eslint/no-require-imports": "off",
-      // `globals` polices render purity for the React Compiler, which never
-      // compiles this suite. What it flags is a Probe assigning a hook's return
-      // value to a module-scope `let` so the test body can drive it. Counted in
-      // #891: 12 sites, of which four (`bannerMakesRoom`,
-      // `gameSettingsSheetRows`) assert what a *consumer* rendered, which
-      // `renderHook` cannot observe. The other eight could move to it, and #1002
-      // is that; until they do the rule is off for this directory, not narrower,
-      // because a glob naming eight files would be the same blanket misspelt.
-      // `refs` is on: its one site wrote a ref during render, which an effect
-      // does properly. `tests/hooksLint` refuses either one off anywhere else.
+    },
+  },
+  {
+    // `globals` polices render purity for the React Compiler, which never
+    // compiles this suite. What it flags is a Probe assigning a hook's return
+    // value to a module-scope `let` so the test body can drive it. #891 counted
+    // 12 such sites; #1002 moved the eight that only ever read the hook's own
+    // return value onto `renderHook`. These three files are what is left, and
+    // each drives a hook whose effect it observes in a *sibling* consumer's
+    // render — an animated `paddingTop`, the settings sheet's rows, a banner the
+    // modal draws. `renderHook` renders the hook alone, so it cannot see any of
+    // them. `refs` is on: its one site wrote a ref during render, which an
+    // effect does properly. `tests/hooksLint` refuses either one off elsewhere.
+    files: [
+      "tests/native/bannerMakesRoom.test.tsx",
+      "tests/native/gameSettingsSheetRows.test.tsx",
+      "tests/native/settingsOverlay.test.tsx",
+    ],
+    rules: {
       "react-hooks/globals": "off",
     },
   },

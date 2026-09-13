@@ -4,8 +4,7 @@
 // path is where that ordering has to be undone.
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import React from 'react';
-import { Text } from 'react-native';
-import { act, render, waitFor } from '@testing-library/react-native';
+import { act, renderHook, waitFor } from '@testing-library/react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { AuthProvider, useAuth } from '@/context/AuthContext';
@@ -36,24 +35,16 @@ const SIGNED_IN = { id: 'u1', username: 'Ana', tutorialSeenAt: null };
 
 const mockFetch = jest.fn<() => Promise<unknown>>();
 
-let logout: () => Promise<void>;
-function Probe() {
-  const auth = useAuth();
-  logout = auth.logout;
-  return (
-    <>
-      <Text testID="user">{auth.user ? auth.user.username : 'none'}</Text>
-      <Text testID="loading">{String(auth.loading)}</Text>
-    </>
-  );
-}
+const wrapper = ({ children }: { children: React.ReactNode }) => (
+  <AuthProvider>{children}</AuthProvider>
+);
 
 /** A player signed in on this device, with the boot check already settled. */
 const signedIn = async () => {
   await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(SIGNED_IN));
-  const view = await render(<AuthProvider><Probe /></AuthProvider>);
-  await waitFor(() => expect(view.getByTestId('loading').props.children).toBe('false'));
-  expect(view.getByTestId('user').props.children).toBe('Ana');
+  const view = await renderHook(() => useAuth(), { wrapper });
+  await waitFor(() => expect(view.result.current.loading).toBe(false));
+  expect(view.result.current.user?.username).toBe('Ana');
   return view;
 };
 
@@ -78,7 +69,7 @@ describe('a logout the server refuses', () => {
     const view = await signedIn();
 
     await act(async () => {
-      await expect(logout()).rejects.toThrow('logout failed');
+      await expect(view.result.current.logout()).rejects.toThrow('logout failed');
     });
 
     expect(mockUnregisterForPush).toHaveBeenCalledTimes(1);
@@ -93,7 +84,7 @@ describe('a logout the server refuses', () => {
     const view = await signedIn();
 
     await act(async () => {
-      await expect(logout()).rejects.toThrow('logout failed');
+      await expect(view.result.current.logout()).rejects.toThrow('logout failed');
     });
 
     expect(mockRegisterForPush).not.toHaveBeenCalled();
@@ -104,10 +95,10 @@ describe('a logout the server refuses', () => {
     const view = await signedIn();
 
     await act(async () => {
-      await expect(logout()).rejects.toThrow('logout failed');
+      await expect(view.result.current.logout()).rejects.toThrow('logout failed');
     });
 
-    expect(view.getByTestId('user').props.children).toBe('Ana');
+    expect(view.result.current.user?.username).toBe('Ana');
     expect(await AsyncStorage.getItem(STORAGE_KEY)).toBe(JSON.stringify(SIGNED_IN));
     view.unmount();
   });
@@ -119,10 +110,10 @@ describe('a logout the server accepts', () => {
     const view = await signedIn();
 
     await act(async () => {
-      await logout();
+      await view.result.current.logout();
     });
 
-    expect(view.getByTestId('user').props.children).toBe('none');
+    expect(view.result.current.user).toBeNull();
     expect(await AsyncStorage.getItem(STORAGE_KEY)).toBeNull();
     expect(mockUnregisterForPush).toHaveBeenCalledTimes(1);
     expect(mockRegisterForPush).not.toHaveBeenCalled();

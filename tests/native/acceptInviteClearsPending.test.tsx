@@ -8,9 +8,8 @@
 // flight (#398).
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import React from 'react';
-import { Text } from 'react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, act } from '@testing-library/react-native';
+import { renderHook, act } from '@testing-library/react-native';
 
 type Listener = (...args: unknown[]) => void;
 
@@ -45,23 +44,20 @@ const { SocketProvider, useSocket } =
 const { NotificationProvider } =
   require('@/context/NotificationContext') as typeof import('@/context/NotificationContext');
 
-let ctx: ReturnType<typeof useSocket>;
-
-function Probe() {
-  ctx = useSocket();
-  return <Text>probe</Text>;
-}
-
-const mount = () =>
-  render(
-    <QueryClientProvider client={new QueryClient()}>
-      <NotificationProvider>
-        <SocketProvider>
-          <Probe />
-        </SocketProvider>
-      </NotificationProvider>
-    </QueryClientProvider>
-  );
+const mount = () => {
+  // One client per mount, as a fresh cache per test: created here rather than in
+  // the wrapper's body, which React re-runs on every render.
+  const client = new QueryClient();
+  return renderHook(() => useSocket(), {
+    wrapper: ({ children }: { children: React.ReactNode }) => (
+      <QueryClientProvider client={client}>
+        <NotificationProvider>
+          <SocketProvider>{children}</SocketProvider>
+        </NotificationProvider>
+      </QueryClientProvider>
+    ),
+  });
+};
 
 /** What the server sends when a friend invites this player to their table. */
 const invite = async () => {
@@ -76,25 +72,25 @@ beforeEach(() => {
 
 describe('accepting an invite', () => {
   it('takes the arrival down with it', async () => {
-    const r = await mount();
+    const { result, unmount } = await mount();
     await invite();
-    expect(ctx.pendingInvite).not.toBeNull();
+    expect(result.current.pendingInvite).not.toBeNull();
 
-    await act(async () => ctx.acceptInvite('ABC123'));
+    await act(async () => result.current.acceptInvite('ABC123'));
 
-    expect(ctx.acceptedInvite).toBe('ABC123');
-    expect(ctx.pendingInvite).toBeNull();
+    expect(result.current.acceptedInvite).toBe('ABC123');
+    expect(result.current.pendingInvite).toBeNull();
 
-    await r.unmount();
+    await unmount();
   });
 
   it('leaves an invite nobody answered standing', async () => {
-    const r = await mount();
+    const { result, unmount } = await mount();
     await invite();
 
-    expect(ctx.pendingInvite).toEqual({ from: 'ana', roomCode: 'ABC123' });
-    expect(ctx.acceptedInvite).toBeNull();
+    expect(result.current.pendingInvite).toEqual({ from: 'ana', roomCode: 'ABC123' });
+    expect(result.current.acceptedInvite).toBeNull();
 
-    await r.unmount();
+    await unmount();
   });
 });

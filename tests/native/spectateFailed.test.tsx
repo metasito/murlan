@@ -8,10 +8,9 @@
 // while their own screen shows the lobby.
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import React from 'react';
-import { Text } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, render, waitFor } from '@testing-library/react-native';
+import { act, renderHook, waitFor } from '@testing-library/react-native';
 
 import { OnlineGameProvider, useOnlineGame } from '@/context/OnlineGameContext';
 import { NotificationProvider } from '@/context/NotificationContext';
@@ -39,28 +38,19 @@ jest.mock('@/context/SocketContext', () => ({
   useSocket: () => ({ socket: mockSocket }),
 }));
 
-let spectate: ((code: string) => void) | null = null;
-let join: ((code: string) => void) | null = null;
-let leave: (() => void) | null = null;
-
-function Probe() {
-  const { spectateRoom, joinRoom, leaveRoom, isSpectator } = useOnlineGame();
-  spectate = spectateRoom;
-  join = joinRoom;
-  leave = leaveRoom;
-  return <Text testID="watching">{String(isSpectator)}</Text>;
-}
-
 async function mountProvider() {
-  return render(
-    <QueryClientProvider client={new QueryClient()}>
-      <NotificationProvider>
-        <OnlineGameProvider userId="u1">
-          <Probe />
-        </OnlineGameProvider>
-      </NotificationProvider>
-    </QueryClientProvider>
-  );
+  // One client per mount, as a fresh cache per test: created here rather than in
+  // the wrapper's body, which React re-runs on every render.
+  const client = new QueryClient();
+  return renderHook(() => useOnlineGame(), {
+    wrapper: ({ children }: { children: React.ReactNode }) => (
+      <QueryClientProvider client={client}>
+        <NotificationProvider>
+          <OnlineGameProvider userId="u1">{children}</OnlineGameProvider>
+        </NotificationProvider>
+      </QueryClientProvider>
+    ),
+  });
 }
 
 // The provider's own listeners are what the socket calls at runtime. Async
@@ -87,21 +77,18 @@ describe('a refused spectate', () => {
   beforeEach(async () => {
     emitted.length = 0;
     listeners.clear();
-    spectate = null;
-    join = null;
-    leave = null;
     await AsyncStorage.clear();
   });
 
   it('leaves the next table by releasing the seat, not by unspectating', async () => {
     const view = await mountProvider();
 
-    await waitFor(() => spectate!('ZZZZZZ'));
+    await waitFor(() => view.result.current.spectateRoom('ZZZZZZ'));
     await deliver('room:error', { code: 'GAME_NOT_FOUND', message: 'Game not found' });
-    await waitFor(() => expect(view.getByTestId('watching').props.children).toBe('false'));
+    await waitFor(() => expect(view.result.current.isSpectator).toBe(false));
 
     emitted.length = 0;
-    await waitFor(() => leave!());
+    await waitFor(() => view.result.current.leaveRoom());
 
     expect(emitted.map((e) => e.event)).toContain('room:leave');
     expect(emitted.map((e) => e.event)).not.toContain('room:unspectate');
@@ -114,14 +101,14 @@ describe('a refused spectate', () => {
   it('does not survive into a room the player joins', async () => {
     const view = await mountProvider();
 
-    await waitFor(() => spectate!('ZZZZZZ'));
-    await waitFor(() => expect(view.getByTestId('watching').props.children).toBe('true'));
+    await waitFor(() => view.result.current.spectateRoom('ZZZZZZ'));
+    await waitFor(() => expect(view.result.current.isSpectator).toBe(true));
 
-    await waitFor(() => join!('ABCDEF'));
-    await waitFor(() => expect(view.getByTestId('watching').props.children).toBe('false'));
+    await waitFor(() => view.result.current.joinRoom('ABCDEF'));
+    await waitFor(() => expect(view.result.current.isSpectator).toBe(false));
 
     emitted.length = 0;
-    await waitFor(() => leave!());
+    await waitFor(() => view.result.current.leaveRoom());
 
     expect(emitted.map((e) => e.event)).toContain('room:leave');
     expect(emitted.map((e) => e.event)).not.toContain('room:unspectate');
@@ -135,12 +122,12 @@ describe('a refused spectate', () => {
   it('leaves a table it is genuinely watching with room:unspectate', async () => {
     const view = await mountProvider();
 
-    await waitFor(() => spectate!('ABCDEF'));
+    await waitFor(() => view.result.current.spectateRoom('ABCDEF'));
     await deliver('game:state', spectatorState());
-    await waitFor(() => expect(view.getByTestId('watching').props.children).toBe('true'));
+    await waitFor(() => expect(view.result.current.isSpectator).toBe(true));
 
     emitted.length = 0;
-    await waitFor(() => leave!());
+    await waitFor(() => view.result.current.leaveRoom());
 
     expect(emitted.map((e) => e.event)).toContain('room:unspectate');
     expect(emitted.map((e) => e.event)).not.toContain('room:leave');

@@ -10,7 +10,7 @@
 // a single source file changing. Either reopens the class with CI green.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -20,9 +20,17 @@ const require = createRequire(import.meta.url);
 
 /** Every rule #891 adopted. */
 const ADOPTED = ["react-hooks/set-state-in-effect", "react-hooks/globals", "react-hooks/refs"];
-/** The one rule left off, and the only directory it may be off for. */
+/**
+ * The one rule left off, and the only files it may be off for: each drives a
+ * hook whose effect it observes in a sibling consumer's render, which
+ * `renderHook` — where #1002 moved the other eight sites — cannot see.
+ */
 const OFF_FOR_TESTS = "react-hooks/globals";
-const OFF_ONLY_FOR = "tests/native/**/*.{ts,tsx}";
+const OFF_ONLY_FOR = [
+  "tests/native/bannerMakesRoom.test.tsx",
+  "tests/native/gameSettingsSheetRows.test.tsx",
+  "tests/native/settingsOverlay.test.tsx",
+];
 const ALWAYS_ON = ADOPTED.filter((rule) => rule !== OFF_FOR_TESTS);
 
 type Block = { files?: string[]; rules?: Record<string, unknown> };
@@ -79,12 +87,17 @@ describe("the react-hooks 7 rules #891 adopted stay adopted", () => {
     });
   }
 
-  test(`${OFF_FOR_TESTS} is off for tests/native and nothing else`, () => {
+  test(`${OFF_FOR_TESTS} is off for three named files and nothing else`, () => {
     assert.deepEqual(
       blocksTurningOff(OFF_FOR_TESTS).flatMap((block) => block.files ?? []),
-      [OFF_ONLY_FOR],
-      "the test suite's Probe pattern is the only thing this exemption is for"
+      OFF_ONLY_FOR,
+      "a Probe whose sibling consumer is the subject is the only thing this exemption is for"
     );
+    // Named files, not a glob: an exemption for a file that no longer exists is
+    // one nothing can fail, and renaming the file is how it gets there.
+    for (const file of OFF_ONLY_FOR) {
+      assert.ok(existsSync(path.join(ROOT, file)), `${file} is exempted but does not exist`);
+    }
   });
 });
 
