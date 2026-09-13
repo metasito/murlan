@@ -56,6 +56,7 @@ jobs:
     outputs:
       app: ${{ steps.scope.outputs.app }}
       native: ${{ steps.scope.outputs.native }}
+      harness: ${{ steps.scope.outputs.harness }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -87,6 +88,7 @@ jobs:
               echo "Identical tree to #$num at $head, which this workflow already passed."
               echo "app=false" >> "$GITHUB_OUTPUT"
               echo "native=false" >> "$GITHUB_OUTPUT"
+              echo "harness=false" >> "$GITHUB_OUTPUT"
               exit 0
             fi
             echo "No green pull-request run covers this tree — running everything."
@@ -100,6 +102,7 @@ jobs:
             echo "No usable base commit — running everything."
             echo "app=true" >> "$GITHUB_OUTPUT"
             echo "native=true" >> "$GITHUB_OUTPUT"
+            echo "harness=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           changed=$(git diff --name-only "$base" HEAD)
@@ -144,11 +147,25 @@ jobs:
           # is the one change that must run it, and the allowlist below would
           # skip it. The failure would surface later, on whichever unrelated
           # code change ran the suite next.
+          # The loop is a second product in this repository (docs/agents/loops.md). A change confined
+          # to `tools/loop/` runs its suite *instead of* the game's, which is the whole point of the
+          # split; the two are not exclusive, and a queue.md edit is read by both and runs both.
+          # The rest of the list is what its suite asserts on beyond its own code: the protocol
+          # files, `.claude/settings.json`'s hook paths, package.json's script names, and this
+          # workflow, whose job names `check-steps.mjs` pins each delegated step to.
+          if grep -qE '^(tools/loop/|docs/agents/|\.claude/|CLAUDE\.md$|package\.json$|\.github/workflows/ci\.yml$)' <<< "$changed"; then
+            echo "harness=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "harness=false" >> "$GITHUB_OUTPUT"
+          fi
           if grep -qE '^(docs/agents/|\.claude/commands/|CLAUDE\.md$)' <<< "$changed"; then
             echo "Documentation the suite asserts on — running everything."
             echo "app=true" >> "$GITHUB_OUTPUT"
           elif [ -n "$changed" ] && ! grep -qvE '^(docs/|\.claude/)|\.md$' <<< "$changed"; then
             echo "Documentation only — skipping the app checks."
+            echo "app=false" >> "$GITHUB_OUTPUT"
+          elif [ -n "$changed" ] && ! grep -qvE '^tools/loop/' <<< "$changed"; then
+            echo "The loop only — its own job covers this, and the game's suite says nothing about it."
             echo "app=false" >> "$GITHUB_OUTPUT"
           else
             echo "app=true" >> "$GITHUB_OUTPUT"
@@ -338,6 +355,35 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run test:native
+
+  # The ticket loop's own suite. It needs no Postgres, no browser and no native
+  # project: it drives `git` and a stubbed `gh` against scratch checkouts, which
+  # is why it is 40 seconds rather than the game's several minutes. `git config`
+  # because several of its tests commit into a repository they create, and the
+  # runner has no identity of its own.
+  harness:
+    name: Loop harness
+    needs: scope
+    if: needs.scope.outputs.harness == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - name: Identify the runner to git
+        run: |
+          git config --global user.email "ci@example.com"
+          git config --global user.name "CI"
+      # Typechecked and linted here as well as in the game's jobs, because on a
+      # loop-only change those do not run: `scope` sets app=false for a diff
+      # confined to tools/loop/, and an untypechecked supervisor is exactly the
+      # thing this split would otherwise have made cheaper to break.
+      - run: npm run typecheck
+      - run: npx eslint tools/loop
+      - run: npm run loop:test
 
   lint:
     name: Lint

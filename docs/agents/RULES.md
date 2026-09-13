@@ -5,7 +5,7 @@ Every rule an agent must follow, in one place. No rationale here — the *why* l
 
 ## Checking your work
 
-1. **Run `npm run agent:check` before you push.** `scripts/check-steps.mjs` is the list of what
+1. **Run `npm run agent:check` before you push.** `tools/loop/check-steps.mjs` is the list of what
    runs there and what `ci.yml` carries; the check prints both and replays on an unchanged tree.
 2. **Never run a whole suite by hand** — not `npm run verify`, `npm test`, `npm run test:native`,
    `npm run test:e2e`. `ci.yml` runs them on your push, in parallel, with the Postgres the
@@ -58,7 +58,7 @@ Every rule an agent must follow, in one place. No rationale here — the *why* l
 
 ## Taking work
 
-21. **Take one item at a time. Don't ask which, or whether to proceed.** `node scripts/next-ticket.mjs`
+21. **Take one item at a time. Don't ask which, or whether to proceed.** `node tools/loop/next-ticket.mjs`
     picks it and prints the route.
 22. **Claim it before you touch anything**: add `in-progress`, comment naming your branch, then
     re-read the issue and stand down if an older claim is there.
@@ -81,7 +81,7 @@ Every rule an agent must follow, in one place. No rationale here — the *why* l
 
 30. **Report what you actually did.** A gap named is worth more than a green report.
 31. **Never leave an edit uncommitted in the shared checkout.** Commit it on a branch before you
-    stop. `node scripts/preflight.mjs` blocks a run that would start on top of one.
+    stop. `node tools/loop/preflight.mjs` blocks a run that would start on top of one.
 32. **Leave no residue** — no stray branches, worktrees, scratch files or uncommitted edits in the
     shared checkout.
 33. **Outstanding work goes in a GitHub issue**, never a `TODO` or a markdown backlog.

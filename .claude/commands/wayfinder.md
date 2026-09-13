@@ -1,7 +1,7 @@
 ---
 description: Work one wayfinder child against its map — resolve the question, record the decision, redraw the fog.
 argument-hint: "[loop]"
-allowed-tools: Read, Grep, Glob, Write, Edit, Skill, WebSearch, WebFetch, Bash(node scripts/next-ticket.mjs), Bash(gh issue:*), Bash(gh api:*)
+allowed-tools: Read, Grep, Glob, Write, Edit, Skill, WebSearch, WebFetch, Bash(node tools/loop/next-ticket.mjs), Bash(gh issue:*), Bash(gh api:*)
 ---
 Every rule you follow while doing this is in `docs/agents/RULES.md` — read it first.
 
@@ -11,7 +11,7 @@ stop**; `loop` means **child after child until the user says stop**.
 
 ## Pick
 
-`node scripts/next-ticket.mjs`. Take the child it prints only if the route is `wayfinder` — the
+`node tools/loop/next-ticket.mjs`. Take the child it prints only if the route is `wayfinder` — the
 picker reaches this route when nothing in the frontier is *takeable* and nothing needs triage.
 
 **Read the child's blockers and assignee yourself before starting.** The wayfinder bucket is not

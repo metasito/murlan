@@ -71,7 +71,7 @@ const COMMENT_LINE = /^\s*(?:\/\/|\/\*|\*(?:\s|\/|$))/;
 /**
  * A line's code. Nothing here reaches past the line it started on, which is
  * why it is not `blankComments`: that runs from a `/*` inside a string or a
- * regex literal to the next `*\/`, and over `scripts/loop-status.mjs` it
+ * regex literal to the next `*\/`, and over `tools/loop/loop-status.mjs` it
  * deletes most of the file (#1015). A scan whose input can vanish reads clean.
  */
 function codeOf(line: string): string {

@@ -139,9 +139,9 @@ Each of these produced a confident, wrong "fixed" in one session:
 - **A stale `node_modules` reads as a real defect.** An install can leave
   `react-native`/`react-native-worklets` on a looser resolution than `package-lock.json` pins,
   silently — #926 spent a full ticket + review cycle on phantom `TS2698` errors from exactly
-  this, and #928 hit the same install again. `scripts/preflight.mjs` exports `checkLockDrift`,
+  this, and #928 hit the same install again. `tools/loop/preflight.mjs` exports `checkLockDrift`,
   which diffs every direct dependency's installed version against the lockfile; `preflight.mjs`
-  calls it once at the start of a run, and `scripts/agent-check.mjs` calls it again on every
+  calls it once at the start of a run, and `tools/loop/agent-check.mjs` calls it again on every
   invocation, uncached, because its own PASS cache is keyed on tracked git content
   (`treeHash()`) and so cannot see a node_modules-only drift landing mid-session from a peer's
   `npm install` — node_modules is shared live across every worktree (#938). Both point at
@@ -384,7 +384,7 @@ A command line that could not be read claims nothing.
 nothing waiting on the port, so a holder still attached to a live launcher is somebody's run and
 stays — parentage is the signal, and a holder the process table cannot describe is left alone.
 `--port` is the blunt form, kept for cleaning up after a run that is already over
-(`scripts/reap.mjs`); no run takes that path on its way in any more.
+(`tools/loop/reap.mjs`); no run takes that path on its way in any more.
 
 Starting a run used to, and that is what made two sessions collide: Playwright refuses a busy port
 *before* it runs the `webServer` command, so freeing it was the only way to boot — and the run
@@ -437,10 +437,40 @@ process that is still serving as a corpse.
 | Tokens, contrast, roles | `node --test tests/contrast.test.ts tests/tokenRoles.test.ts tests/cosmetics.test.ts` | AA floors | ~1s |
 | The server, the socket protocol, auth or storage | `tests/integration/` — see below, it needs a database | the routes and handlers end to end | ~10s a file |
 | Anything the app must **boot and stay drivable through on iOS** | `.github/workflows/ios.yml`, dispatched by hand | a crash, a screen that never renders, a control the flows tap going missing — on a real simulator | 10–15 min over three runs on 2026-08-31, none of which finished the flow (#620); run 33899179508 ran all four flows to completion (one, offline-game, failed on its own assertion, unrelated to #55) inside ~13 min of flow time, comfortably inside the job's 100 min ceiling |
+| **The ticket loop** (`tools/loop/`) | `npm run loop:test` | the supervisor, the gate, the picker, the workspace tools | ~40s, 684 |
 
 Full sweeps, for the end of an item only: `npx tsc --noEmit` (~5s) → `npm test` (~12s, 1066) →
 `npx jest` (~50s, 527) → `npx eslint components lib tests app` (~25s).
 `docs/agents/issue-tracker.md` covers when CI runs instead.
+
+## The loop is a second product, with its own gate
+
+`tools/loop/` is the ticket loop — supervisor, gate, picker, and the workspace tools they run —
+and `tools/loop/tests/` is its suite. The game's `npm test` does not run it and `npm run loop:test`
+does not run the game's, because the two share nothing but this repository: a card animation used
+to wait on the worktree-pruning tests, and those are exactly the files a loop session is most
+likely to be mid-edit on when a peer's run triggers them.
+
+`ci.yml`'s `scope` job decides which side runs. A diff confined to `tools/loop/` sets `app=false`
+and `harness=true`; anything else sets `app=true`; the protocol files (`docs/agents/`,
+`.claude/commands/`, `CLAUDE.md`) set **both**, because both suites read them —
+`tests/rulesAreSingleSourced.test.ts` on the game's side, `tools/loop/tests/loopDocsAreExecutable.test.ts`
+on the loop's. The harness job runs `npm run typecheck` and `npx eslint tools/loop` as well as the
+suite, since on a loop-only change the game's jobs that would otherwise do that are skipped.
+
+Run `npm run loop:test` **from the repository root**, never `npm --prefix tools/loop`. These tests
+read the repository itself — `ci.yml`, the protocol files, the worktree registrations — so the cwd
+npm would set inside the package sends every one of them looking in the wrong place, and most fail
+by reporting a missing file rather than a wrong answer. `tools/loop/package.json` carries no
+scripts for that reason; what it is there for is `"type": "module"`, which stops Node reparsing
+`land.ts` and `ciVerdict.ts` on every supervisor start.
+
+**Move by subject, not by filename.** `tests/contextSlices.test.ts` imports `scripts/contextSurface.mjs`
+and reads like harness tooling; what it asserts is that the game's React contexts stay a partition,
+so it stays in the game's suite and so does the script it drives. `tests/rootScanRace.test.ts`
+scans every test file in the repository, the game's included, so it stays there too — and
+`scripts/lib/entry.mjs` is shared by twelve game scripts as well as the loop, which is why it did
+not move either.
 
 **`check:comments` is not in any of those, nor in `npm run lint`.** It is a step of CI's Lint job
 in its own right, so the comment budget — added comment lines against added code lines — is first
@@ -533,12 +563,12 @@ like a broken branch.
 throwaway junction target: it deletes straight through the link into the target, empties it,
 and **exits 0** with nothing in its output to notice. `--force` is what an agent reaches for
 the moment the plain remove refuses — which it does whenever a shell is standing in the
-directory — so the two failures compose. `scripts/guard-bash.mjs` now blocks the raw
+directory — so the two failures compose. `tools/loop/guard-bash.mjs` now blocks the raw
 `--force` and points at `npm run worktrees:remove`. Note that this paragraph, the one above
-and `tests/worktreeRemoveCommand.test.ts` were all already in place when it happened again:
+and `tools/loop/tests/worktreeRemoveCommand.test.ts` were all already in place when it happened again:
 for a rule this mechanical, a guard that refuses the command is the only thing that holds.
 
-`tests/worktreeRemoveCommand.test.ts` plants that defect — it asserts the raw command *does*
+`tools/loop/tests/worktreeRemoveCommand.test.ts` plants that defect — it asserts the raw command *does*
 destroy a junctioned install. **That floor is live on Windows only, and CI is Linux**, where a
 `junction` is an ordinary symlink nothing recurses into: there the same file passes whether or
 not the links are detached at all, and it asserts that vacuity rather than skipping quietly. So
@@ -606,9 +636,9 @@ Every port this repo's local tooling binds — including the local-substitute pa
 | --- | --- | --- |
 | `5000` | The Express server (`PORT`) | `server/index.ts`, `.replit` (`[[ports]]` localPort/externalPort, `[env] PORT`, `waitForPort`), `package.json` (`expo:dev`, `expo:dev:clean`) |
 | `8081` | Metro (`npx expo start` / `npm start`) | `scripts/build.js`, `.replit` |
-| `5199`+ | Playwright's e2e webServer (`E2E_PORT`) — the base, and the first free port above it when a neighbour holds it | chosen by `scripts/e2ePort.mjs`, used by `tests/e2e/playwright.config.ts` and `scripts/e2e-server.mjs`; a leftover is freed by `scripts/reap.mjs` |
+| `5199`+ | Playwright's e2e webServer (`E2E_PORT`) — the base, and the first free port above it when a neighbour holds it | chosen by `scripts/e2ePort.mjs`, used by `tests/e2e/playwright.config.ts` and `scripts/e2e-server.mjs`; a leftover is freed by `tools/loop/reap.mjs` |
 | `55432`+ | The dev-stack's disposable Postgres (`MURLAN_DEV_PG_PORT`) — the base, and the first port above it the Docker daemon will accept when something already holds it. Ask `dev-stack env` rather than assuming 55432 | `murlan-dev-pg` container — `scripts/dev-stack.mjs`, `scripts/devStackPort.mjs`, `scripts/e2e-server.mjs` |
-| `55433` | The verify-only Postgres substituted for CI's database | `murlan-verify-pg` container — freed by `scripts/reap.mjs` |
+| `55433` | The verify-only Postgres substituted for CI's database | `murlan-verify-pg` container — freed by `tools/loop/reap.mjs` |
 
 ## Playwright, locally
 

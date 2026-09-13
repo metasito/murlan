@@ -15,7 +15,7 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { isInvokedDirectly } from "./lib/entry.mjs";
-import { WORKTREE_DIR } from "./loop-derive.mjs";
+import { WORKTREE_DIR } from "../tools/loop/loop-derive.mjs";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
 const SKIP = new Set(["node_modules", ".git", "dist", ".expo", WORKTREE_DIR]);

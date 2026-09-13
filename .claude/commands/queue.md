@@ -1,5 +1,5 @@
 ---
-description: Work one ticket, then exit — scripts/queue-loop.mjs starts the next process
+description: Work one ticket, then exit — tools/loop/queue-loop.mjs starts the next process
 argument-hint: "[issue-number]"
 allowed-tools: Read, Write, Edit, Grep, Glob, Bash, Task, Skill, SlashCommand, TodoWrite
 model: opus
@@ -8,13 +8,13 @@ model: opus
 The only loop protocol in this repo. `docs/agents/RULES.md` is the ruleset; this file is the
 procedure. Where they disagree, RULES.md wins and this file is stale — fix it.
 
-One ticket at a time, one ticket per process: `scripts/queue-loop.mjs` starts the next process when
+One ticket at a time, one ticket per process: `tools/loop/queue-loop.mjs` starts the next process when
 this one exits, so working more than one ticket concurrently is not a mode this procedure has.
 
 **Nothing about the run is written down, because nothing needs to be.** Git knows the branch, the
 commits and the diff; the tracker knows the ticket, its comments and the review. Every question the
 loop asks is answered from those two, so there is no record to keep in sync and none that can go
-stale. `node scripts/loop-status.mjs` computes the answer at any moment.
+stale. `node tools/loop/loop-status.mjs` computes the answer at any moment.
 
 The branch name is the binding: `agent/<n>-<slug>` says which ticket the work belongs to, and git
 will not let you be on two at once.
@@ -54,7 +54,7 @@ alone can end the session on turn one. Do the same at the top of every phase bel
 this ticket:**
 
 ```sh
-node scripts/loop-status.mjs
+node tools/loop/loop-status.mjs
 ```
 
 Silent means no live worktree — continue below. Anything else means a ticket is already mid-run:
@@ -69,7 +69,7 @@ Only once `loop-status.mjs` is silent:
 
 ```sh
 npm run queue:pre                         # by-hand runs only: the loop has already run it
-node scripts/next-ticket.mjs $ARGUMENTS   # prints ROUTE, body, comments, blockers, takeability
+node tools/loop/next-ticket.mjs $ARGUMENTS   # prints ROUTE, body, comments, blockers, takeability
 ```
 
 **Read that output for an open pull request on this ticket.** If there is one, this is a CI fix
@@ -93,7 +93,7 @@ and you will normally see it already done.
 
 If it fails, **halt** — do not work around it.
 
-`scripts/queue-loop.mjs` passes the ticket number, so `$ARGUMENTS` is normally set and
+`tools/loop/queue-loop.mjs` passes the ticket number, so `$ARGUMENTS` is normally set and
 `next-ticket.mjs $ARGUMENTS` inspects *that* ticket rather than picking. A bare `/queue` with no
 argument picks from the live queue, which is the by-hand form.
 
@@ -102,7 +102,7 @@ premise is false, a blocker is named in a comment — say so on the issue, remov
 it (`stoodDown`, phase F step 5) and **exit**. Do not pick another one: the supervisor starts the
 next process, and a session that picks a second ticket spends one ticket's accounting on two.
 
-This runs once, for exactly one ticket, then phases B–F carry it to a close. `scripts/queue-loop.mjs`
+This runs once, for exactly one ticket, then phases B–F carry it to a close. `tools/loop/queue-loop.mjs`
 is what keeps going — it is a fresh `claude -p "/queue"` invocation that starts the next ticket, not
 this session continuing. There is no ticket-count budget: nothing survives past phase F for a budget
 to protect.
@@ -257,11 +257,11 @@ Fix everything real, commit, re-review — every new head gets its own verdict. 
 round after the first:
 
 ```sh
-node scripts/loop-gate.mjs --review-round
+node tools/loop/loop-gate.mjs --review-round
 ```
 
 It counts the verdicts already on the issue and exits non-zero at the cap, naming the count. The
-cap is a number in `scripts/loop-gate.mjs`, not in this sentence — a ceiling stated only in prose
+cap is a number in `tools/loop/loop-gate.mjs`, not in this sentence — a ceiling stated only in prose
 is one no test can fail, and this one bounds the most expensive phase there is.
 
 **Stop before the cap when a round earns nothing.** A review will always find *something*, which
@@ -286,7 +286,7 @@ Where you disagree with a finding, one line in the commit body — never a softe
 `PHASE E`
 
 ```sh
-node scripts/loop-gate.mjs
+node tools/loop/loop-gate.mjs
 ```
 
 It reads git and the issue, and refuses the push naming what is wrong when any of these is true:
@@ -335,10 +335,10 @@ Write that file with the Write tool or a bash heredoc. PowerShell's `Set-Content
 on this machine and mangles every em-dash in it — and the body you are writing is a paragraph of
 this repo's prose, which is full of them.
 
-CI is not yours to read, and neither is the merge. `scripts/queue-loop.mjs` waits for the run this
+CI is not yours to read, and neither is the merge. `tools/loop/queue-loop.mjs` waits for the run this
 push started, updates the branch if main moved, merges when it is green and takes `in-progress` off.
 None of that is a judgement, and a model reading a CI log to decide that green means merge is a
-model spending turns on a switch statement. `scripts/guard-bash.mjs` blocks `gh pr merge` from a
+model spending turns on a switch statement. `tools/loop/guard-bash.mjs` blocks `gh pr merge` from a
 session — two of them merged a peer's pull request to unblock themselves, and the supervisor then
 parked the ticket that had just landed.
 
@@ -375,7 +375,7 @@ new head, and pushes again. Three red rounds on one branch and the ticket goes t
    not the supervisor's. If the removal refuses, **read what it names** — that is work you have not
    committed. Commit it to your branch and push again, or say on the issue what it is. Never pass
    `--force` and never `rm -rf`: a `--force` removal walks *through* the `node_modules` junction
-   into the shared install and exits 0. `scripts/guard-bash.mjs` blocks the form; the reason is
+   into the shared install and exits 0. `tools/loop/guard-bash.mjs` blocks the form; the reason is
    measured, not theorised.
 
 5. **Say what you did, on one line, as the last thing you emit.**
@@ -399,7 +399,7 @@ new head, and pushes again. Three red rounds on one branch and the ticket goes t
    phase you never reached, a pull request you never pushed are all facts, and all of them are
    worth more stated than guessed at.
 
-6. **Exit.** One ticket per process, by design: `scripts/queue-loop.mjs` starts the next ticket in a
+6. **Exit.** One ticket per process, by design: `tools/loop/queue-loop.mjs` starts the next ticket in a
    clean process, so there is nothing here to reset and nothing that can leak forward. Do not loop
    back to phase A in this session.
 
@@ -410,7 +410,7 @@ A run that cost forty minutes and stopped is the one whose record is worth havin
 Context is kept flat by delegating: phase B and phase D run in subagents whose tool output never
 enters this conversation, so a ticket costs roughly what its own diff costs.
 
-When auto-compaction fires, the `SessionStart` hook runs `scripts/loop-status.mjs`, which recomputes
+When auto-compaction fires, the `SessionStart` hook runs `tools/loop/loop-status.mjs`, which recomputes
 where the run stands from git and the tracker. Nothing depends on what survived the summary, and
 nothing can be restored wrongly, because nothing was stored.
 

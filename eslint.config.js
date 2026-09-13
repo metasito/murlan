@@ -115,7 +115,7 @@ module.exports = defineConfig([
     // Everything here runs under Node, not in the app bundle, so it gets
     // Node's globals instead of the browser set `eslint-config-expo` assumes
     // for the client.
-    files: ["*.config.{js,ts}", "scripts/**", "server/**", "tests/**"],
+    files: ["*.config.{js,ts}", "scripts/**", "tools/**", "server/**", "tests/**"],
     languageOptions: { globals: globals.node },
     rules: {
       // Both rules exist because Metro inlines `process.env.X` into the client

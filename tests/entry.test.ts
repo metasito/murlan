@@ -1,4 +1,4 @@
-// tests/entry.test.ts — the one answer to "was this file run, or imported?"
+// tools/loop/tests/entry.test.ts — the one answer to "was this file run, or imported?"
 //
 // Written nine times in seven shapes across scripts/ before scripts/lib/entry.mjs. Three of
 // those shapes were wrong in ways that only show up under a real invocation: a bare suffix match
