@@ -15,7 +15,7 @@ const SELF = "tests/rootScanRace.test.ts";
 
 /** A directory listing of somewhere named like a repo root, however spelt. */
 const ROOT_READDIR =
-  /(?:readdirSync|opendirSync|readdir|opendir)\(\s*\w*(?:[Rr]oot|ROOT)(?:Dir|_DIR|Path|_PATH)?\s*[,)]/;
+  /(?:readdirSync|opendirSync|readdir|opendir)\(\s*\w*(?:[Rr]oot|ROOT)(?![a-z])\w*\s*[,)]/;
 
 /**
  * Every spelling this file has to hold, on both sides. One `planted` sample
@@ -30,6 +30,8 @@ const SAMPLES = {
     "readdirSync(ROOT)",
     "readdirSync(ROOT_DIR, { recursive: true })",
     "opendirSync(rootDir)",
+    "readdirSync(rootDirectory)",
+    "readdirSync(root_dir)",
     "await readdir(projectRoot)",
     "await opendir(ROOT)",
   ],
@@ -39,30 +41,46 @@ const SAMPLES = {
     "readdirSync(roots)",
     "readdirSync(rootedAt)",
   ],
-  lines: ["// readdirSync(repoRoot)", " * readdirSync(ROOT)", "readdirSync(repoRoot);"],
 };
+
+/** A line, and whether it is comment-only. A generator method is not a comment. */
+const LINES: [string, boolean][] = [
+  ["// readdirSync(repoRoot)", true],
+  [" * readdirSync(ROOT)", true],
+  ["   */", true],
+  ["/* readdirSync(ROOT) is prose here */", true],
+  ["readdirSync(repoRoot);", false],
+  ["  *walk() { return readdirSync(repoRoot); }", false],
+  ["/* eslint-disable */ const y = readdirSync(ROOT);", false],
+];
 
 /**
  * The two declarations above, blanked in this file only: the guard has to
  * spell the pattern out and hold a sample of each spelling, and exempting the
  * whole file would exempt the guard.
  */
-const SELF_EXEMPT = [/const ROOT_READDIR =[\s\S]*?;/, /const SAMPLES = \{[\s\S]*?\n\};/];
+const SELF_EXEMPT = [
+  /const ROOT_READDIR =[\s\S]*?;/,
+  /const SAMPLES = \{[\s\S]*?\n\};/,
+  /const LINES: \[string, boolean\]\[\] = \[[\s\S]*?\n\];/,
+];
 
-/** A comment line, including a block comment's opener and its continuations. */
-const COMMENT_LINE = /^\s*(?:\/\/|\/\*|\*)/;
+/** `*` only where a block comment continues it — `*walk()` is a generator. */
+const COMMENT_LINE = /^\s*(?:\/\/|\/\*|\*(?:\s|\/|$))/;
 
 /**
- * Comment lines dropped, nothing else touched. Not `blankComments`: its
- * `/\*` … `*\/` pass starts at a `/*` inside a string or a regex literal and
- * runs to the next `*\/`, which over `scripts/loop-status.mjs` deletes 45
- * lines of live code (#1015). A scan whose input can vanish reports clean.
+ * A line's code. Nothing here reaches past the line it started on, which is
+ * why it is not `blankComments`: that runs from a `/*` inside a string or a
+ * regex literal to the next `*\/`, and over `scripts/loop-status.mjs` it
+ * deletes most of the file (#1015). A scan whose input can vanish reads clean.
  */
+function codeOf(line: string): string {
+  const rest = line.replace(/^\s*\/\*.*?\*\//, "");
+  return COMMENT_LINE.test(rest) ? "" : rest;
+}
+
 function source(rel: string): string {
-  const text = readFileSync(path.join(repoRoot, rel), "utf8")
-    .split("\n")
-    .filter((line) => !COMMENT_LINE.test(line))
-    .join("\n");
+  const text = readFileSync(path.join(repoRoot, rel), "utf8").split("\n").map(codeOf).join("\n");
   return rel === SELF
     ? SELF_EXEMPT.reduce((s, re) => s.replace(re, (m) => m.replace(/[^\n]/g, " ")), text)
     : text;
@@ -144,7 +162,9 @@ describe("no test lists the repo root from the filesystem", () => {
   });
 
   test("a comment is not code, and code is not a comment", () => {
-    assert.deepEqual(SAMPLES.lines.map((l) => COMMENT_LINE.test(l)), [true, true, false]);
+    for (const [line, isComment] of LINES) {
+      assert.equal(codeOf(line) === "", isComment, line);
+    }
   });
 
   // The scan reads call sites, so a listing reached through a helper —
@@ -168,7 +188,9 @@ describe("no test lists the repo root from the filesystem", () => {
       [],
       `${offenders.join(", ")} lists the repo root from the filesystem, so a scratch file another ` +
         "test writes there can be listed and then read after it is gone. Use " +
-        "`trackedRootFiles(repoRoot)` from tests/helpers/trackedFiles.ts."
+        "`trackedRootFiles(repoRoot)` from tests/helpers/trackedFiles.ts. If it is a " +
+        "subdirectory, the guard is reading the name: call the variable something without `root` " +
+        "in it, the way tests/i18n.test.ts calls its `base`."
     );
   });
 });
