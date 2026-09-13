@@ -11,8 +11,9 @@ horizontal scaling until player count demands it." `.replit` sets `deploymentTar
 "cloudrun"` with no `maxInstances` — Cloud Run's default is uncapped autoscaling, and it also
 runs two revisions concurrently during every deploy.
 
-`docs/research/2026-08-29-multiplayer-infrastructure.md` reproduced this directly
-(`scripts/repro-544.mjs`): two instances against one database silently split broadcasts, and
+`docs/research/2026-08-29-multiplayer-infrastructure.md` reproduced this directly, and the
+reproduction is now a suite CI runs (`tests/integration/crossInstance.test.ts`): two instances
+against one database silently split broadcasts, and
 states "it is the running configuration," not a risk to check. Scaling was never deferred — it
 was already the deployed shape before anyone decided it.
 
