@@ -59,9 +59,12 @@ describe("readLine", () => {
       kind: "assistant",
       letter: null,
       declared: null,
+      text: "",
+      // Whole, not just the command: what names a call best differs by tool, and choosing between
+      // a path, a pattern and a description is the renderer's job rather than this one's.
       calls: [
-        { name: "Bash", command: "git commit -m x", parent: null },
-        { name: "Read", command: "", parent: null },
+        { name: "Bash", command: "git commit -m x", input: { command: "git commit -m x" }, parent: null },
+        { name: "Read", command: "", input: { file_path: "a.ts" }, parent: null },
       ],
     });
   });
@@ -206,7 +209,12 @@ describe("a PHASE line from the session", () => {
       { type: "tool_use", id: "t1", name: "Bash", input: { command: "git status" } },
     ]);
     assert.equal(fact.letter, "C");
-    assert.deepEqual(fact.calls, [{ name: "Bash", command: "git status", parent: null }]);
+    assert.deepEqual(fact.calls, [
+      { name: "Bash", command: "git status", input: { command: "git status" }, parent: null },
+    ]);
+    // The prose around the marker, which the board shows as the session's own account of itself.
+    // Two markers were parsed out of this text and the rest of it was dropped.
+    assert.equal(fact.text, "PHASE C\nStarting the build.");
   });
 
   test("a line of prose above it does not hide it", () => {

@@ -342,9 +342,9 @@ describe("runTicket", () => {
       opts({ screen }),
     );
     const out = said.join("\n");
-    assert.match(out, /✓·····  A/);
-    assert.match(out, /✓✓✓···  C/);
-    assert.match(out, /✓✓✓✓✓·  E/);
+    assert.match(out, /✓ {2}claim/);
+    assert.match(out, /✓ {2}build/);
+    assert.match(out, /✓ {2}push/);
     assert.equal(run.phase, "E");
   });
 
@@ -363,7 +363,7 @@ describe("runTicket", () => {
   test("a phase said twice running is one phase, not two openings", async () => {
     const { said, screen } = sink();
     await runTicket(fakeSpawn([phase("C"), phase("C"), phase("C"), RESULT]), opts({ screen }));
-    assert.equal(said.join("\n").match(/✓✓✓···  C/g)?.length, 1);
+    assert.equal(said.join("\n").match(/✓ {2}build/g)?.length, 1);
   });
 
   test("the session's closing declaration reaches the caller", async () => {
@@ -391,27 +391,27 @@ describe("runTicket", () => {
   test("the board is live before the session has named a phase", async () => {
     const { said, screen } = sink();
     await runTicket(fakeSpawn([RESULT]), opts({ screen }));
-    assert.match(said.join("\n"), /······  \?/, "a session that named no phase left no row at all");
+    assert.match(said.join("\n"), /✓ {2}\?/, "a session that named no phase left no row at all");
   });
 
   test("the first marker replaces that row rather than closing it as a phase", async () => {
     const { said, screen } = sink();
     await runTicket(fakeSpawn([phase("A"), RESULT]), opts({ screen }));
     const out = said.join("\n");
-    assert.equal(out.match(/······  \?/g), null, "the placeholder was reported as a finished phase");
-    assert.match(out, /✓·····  A/);
+    assert.equal(out.match(/✓ {2}\?/g), null, "the placeholder was reported as a finished phase");
+    assert.match(out, /✓ {2}claim/);
   });
 
   test("draws the header once", async () => {
     const { said, screen } = sink();
     await runTicket(fakeSpawn([phase("A"), phase("C"), RESULT]), opts({ screen }));
-    assert.equal(said.join("\n").match(/#953 · Rate limiter factory/g)?.length, 1);
+    assert.equal(said.join("\n").match(/#953 {2}Rate limiter factory/g)?.length, 1);
   });
 
   test("a resumed ticket says so, and does not read as a closed phase", async () => {
     const { said, screen } = sink();
     await runTicket(fakeSpawn([RESULT]), opts({ number: 962, at: "D", screen }));
-    const rows = said.filter((l) => /✓✓✓↻··  D/.test(l));
+    const rows = said.filter((l) => /↻ {2}review/.test(l));
     assert.equal(rows.length, 1);
     assert.match(rows[0], /↻.*resumed/);
   });

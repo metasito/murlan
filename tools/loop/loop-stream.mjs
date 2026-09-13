@@ -126,11 +126,17 @@ export function readLine(line) {
       .map((b) => ({
         name: b.name,
         command: String(b.input?.command ?? ""),
+        // Whole, because what names a call best differs by tool: a path for Read, a pattern for
+        // Grep, and for Bash the `description` the model wrote for a person rather than the command
+        // it wrote for a shell. Choosing between them is the renderer's job, not this one's.
+        input: b.input ?? {},
         parent: e.parent_tool_use_id ?? null,
       }));
     const declared = declaredIn(text);
     if (!phase && !declared && !calls.length) return null;
-    return { kind: "assistant", letter: phase?.[1] ?? null, declared, calls };
+    // The prose around the marker, which the board shows as the session's own account of what it is
+    // doing. Two markers were parsed out of it and the rest was dropped.
+    return { kind: "assistant", letter: phase?.[1] ?? null, declared, calls, text };
   }
   if (e.type === "result") {
     return {

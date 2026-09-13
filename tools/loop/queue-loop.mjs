@@ -20,17 +20,26 @@ import { createInterface } from "node:readline";
 import { derive, reviewRounds } from "./loop-derive.mjs";
 import { readLine } from "./loop-stream.mjs";
 import {
-  activeLine,
+  act,
+  activity,
   bell,
+  capabilities,
   clockAt,
   closing,
   header,
-  phaseLine,
+  keybar,
+  phaseRow,
+  progress,
   queueLine,
+  PLAIN,
   reportRow,
   runTotal,
+  stream as streamBlock,
   tasksDetail,
-  toolDetail,
+  theme,
+  thought,
+  RECENT,
+  UNNAMED,
 } from "./loop-render.mjs";
 import {
   DIR,
@@ -555,27 +564,69 @@ const ERASE = "\r\u001B[2K";
 const HIDE = "\u001B[?25l";
 const SHOW = "\u001B[?25h";
 const REDRAW_MS = 120;
+const ESC = String.fromCharCode(27);
+// `[0A` is not "up none": ECMA-48 reads a parameter of 0 as 1, so an unguarded zero moves the
+// cursor a row it was never asked to move.
+const UP = (n) => (n > 0 ? `${ESC}[${n}A` : "");
+const CTRL_C = String.fromCharCode(3);
 
-/** The row the board shows before the session has named a phase. Never recorded as one. */
-const UNNAMED = "?";
+/** Rows the block never claims: the header above it, and slack so it cannot scroll itself. */
+const CHROME = 8;
 
 /**
- * The only thing in the loop that knows a cursor exists.
- *
- * Three rules against flicker. **One write per frame**: erase and draw joined, because two writes
- * leave an empty row between them and that blank is the flash. **Write only when the line changed**,
- * which suppresses the repaints a tool call prompts between timer ticks. **Hide the cursor while
- * the line is live**, or it blinks at the end of the spinner and jumps a column per frame.
- *
- * At anything that is not a terminal every escape is suppressed, and the output is the append-only
- * stream `loop-render.mjs` produces.
+ * How much of the stream the `e` key can reach back through. A phase can run for hours and both
+ * `call()` and `said()` push on every turn, while `stream()` only ever reads the last screenful —
+ * so without a ceiling this grows all night and nothing past the first screen is reachable anyway.
  */
-export function ticker(out = process.stdout, err = process.stderr) {
-  const live = Boolean(out.isTTY);
+const FEED = 200;
+
+/**
+ * The only thing in the loop that knows a cursor or a keyboard exists.
+ *
+ * The board is a block, not a line, and a block is redrawn by counting rows back up. Three rules
+ * hold that together, and each was a bug before it was a rule.
+ *
+ * **Erase before the text, never after.** `[2K` clears the whole row the cursor sits on, so a row
+ * written and then erased is a row that was never on screen.
+ *
+ * **Rows are joined with `\r\n`.** Without the carriage return each row starts one indent further
+ * right than the last and the block walks diagonally off the screen.
+ *
+ * **The block is never taller than the window.** `[<n>A` counts rows, so a block that scrolls the
+ * terminal as it is drawn moves its own origin out from under the next frame.
+ *
+ * Finished phases are written above the block as ordinary scrollback, so the record is what is
+ * still on screen in the morning and the moving part is only ever the bottom few rows.
+ *
+ * At anything that is not a terminal every escape is suppressed and nothing is redrawn: the output
+ * is the append-only stream `loop-render.mjs` produces, which is what `.loop-logs/run-*.md` wants.
+ */
+export function ticker(out = process.stdout, err = process.stderr, reveal = openExternally) {
+  // A window too narrow to lay a row out in is a window the block cannot be drawn in: every row
+  // would wrap, and a wrapped row is the cursor arithmetic wrong for the rest of the run. The
+  // append-only stream is what such a terminal gets, the same as a pipe — and it can become one
+  // mid-run, so this is re-read on resize rather than settled at start-up.
+  let live = Boolean(out.isTTY) && !capabilities(out).tight;
+  let t = theme(capabilities(out));
+  // A window resized mid-run leaves a board wider than the terminal, and every row of it then
+  // wraps — which puts the next carriage return on the wrong line and takes the redraw with it for
+  // the rest of the night. Rebuilt only when the width actually moves, since the block is
+  // reassembled eight times a second and the detection is not free.
+  const resized = () => {
+    const caps = capabilities(out);
+    const drawable = Boolean(out.isTTY) && !caps.tight;
+    if (caps.width === t.width && drawable === live) return false;
+    t = theme(caps);
+    live = drawable;
+    return true;
+  };
   let open = null;
   let timer = null;
-  let drawn = "";
+  let drawn = [];
   let hidden = false;
+  let raw = false;
+  const view = { expanded: false, stopping: false };
+  let ctx = { url: null, log: null };
 
   const hide = () => {
     if (!live || hidden) return;
@@ -588,30 +639,74 @@ export function ticker(out = process.stdout, err = process.stderr) {
     hidden = false;
   };
 
-  // A line wider than the terminal wraps, after which a carriage return lands at the start of the
-  // last visual row and the erase misses every row over it.
-  const room = () => Math.max(30, Math.min(78, (out.columns ?? 80) - 1));
-
-  const draw = () => {
-    if (!live || !open) return;
+  const block = () => {
     const ms = Date.now() - open.startedAt;
     // The frame comes from the clock, not from a count of draws: a redraw prompted by a new tool
-    // call inside the same frame window would otherwise turn the spinner, which makes every line
+    // call inside the same frame window would otherwise turn the spinner, which makes every frame
     // different from the last and defeats the only-write-on-change rule entirely.
-    const line = activeLine({ ...open, ms, frame: Math.floor(ms / REDRAW_MS), width: room() });
-    if (line === drawn) return;
-    hide();
-    // The erase clears the whole row whatever is on it — counting characters back is wrong for
-    // anything double-width, and a command in the detail can carry one. Joined to the line so the
-    // row is never briefly empty.
-    out.write(ERASE + line);
-    drawn = line;
+    const frame = Math.floor(ms / REDRAW_MS);
+    // Both branches, not just the expanded one. The collapsed block is nine rows whatever the
+    // window is, and at nine rows or fewer drawing it scrolls the terminal — after which `[<n>A`
+    // clamps at the top of the viewport and the block walks down the screen at eight frames a
+    // second for the rest of the night.
+    const room = Math.max(3, (out.rows ?? 30) - CHROME);
+    const body = view.expanded
+      ? streamBlock(open.feed, { ms, frame, letter: open.letter }, t, room)
+      : [
+          progress({ letter: open.letter }, t),
+          "",
+          activity({ said: open.said, recent: open.recent, ms, frame }, t, room - 4),
+        ].join("\n");
+    return [body, "", keybar(view, t)].join("\n").split("\n").slice(0, room);
   };
 
-  /** Takes the live row down in the same write that puts the new text there. */
+  const draw = () => {
+    if (!out.isTTY || !open) return;
+    // Before the `live` gate, not after: a window narrowed past the point of drawing has to be
+    // able to widen back. A narrower window also means the rows already on screen have wrapped and
+    // their count is no longer what the cursor maths assumes — repainting from scratch is the only
+    // honest recovery, and it leaves the wrapped rows behind as a one-time smear.
+    if (resized()) drawn = [];
+    if (!live) return;
+    const rows = block();
+    if (rows.length === drawn.length && rows.every((r, i) => r === drawn[i])) return;
+    hide();
+    // Every row of the old block is painted over, including the ones a shorter new block does not
+    // reach — otherwise a block that shrinks leaves the tail of the last one under it forever.
+    const span = Math.max(rows.length, drawn.length);
+    let text = drawn.length ? `${UP(drawn.length - 1)}\r` : "";
+    for (let i = 0; i < span; i += 1) {
+      text += ERASE + (rows[i] ?? "");
+      if (i < span - 1) text += "\r\n";
+    }
+    if (span > rows.length) text += UP(span - rows.length);
+    out.write(`${text}\r`);
+    drawn = rows;
+  };
+
+  /**
+   * Takes the block down, in one write, so `text` lands where the block's first row was. `text` is
+   * a line to keep, or "" for the block alone.
+   *
+   * Every newline in it becomes a carriage return and a newline: raw mode turns off the output
+   * translation that would otherwise supply the return, so a line ending in a bare `\n` leaves the
+   * cursor at the column it ended on and the block redrawn under it starts there too.
+   */
   const over = (text) => {
-    out.write(live && drawn ? ERASE + text : text);
-    drawn = "";
+    const line = text ? `${text}\n` : "";
+    // A resize since the last frame means the rows on screen have wrapped and their count is no
+    // longer what walking back up assumes. Leaving them is a one-time smear; walking up by a
+    // number that is now wrong erases rows belonging to the scrollback above.
+    if (live && drawn.length && resized()) drawn = [];
+    if (!live || !drawn.length) {
+      if (line) out.write(live ? line.replace(/\n/g, "\r\n") : line);
+      return;
+    }
+    let blank = `${UP(drawn.length - 1)}\r`;
+    for (let i = 0; i < drawn.length; i += 1) blank += ERASE + (i < drawn.length - 1 ? "\r\n" : "");
+    blank += UP(drawn.length - 1);
+    drawn = [];
+    out.write(`${blank}\r${line.replace(/\n/g, "\r\n")}`);
   };
 
   const clear = () => {
@@ -619,23 +714,111 @@ export function ticker(out = process.stdout, err = process.stderr) {
     timer = null;
   };
 
+  const remember = (event) => {
+    open.feed.push(event);
+    if (open.feed.length > FEED) open.feed.splice(0, open.feed.length - FEED);
+  };
+
+  /**
+   * One chunk from the keyboard, which is not one keystroke: raw flowing mode delivers whatever
+   * arrived in one read, so an autorepeat, two quick presses or a paste come through as `"es"` or
+   * `"x"`. Compared whole, none of those matched anything — including the interrupt, which
+   * raw mode has already taken off the OS's hands.
+   */
+  const keys = (chunk) => {
+    const text = String(chunk);
+    if (text.includes(CTRL_C)) return interrupt();
+    let moved = false;
+    for (const k of text) moved = press(k) || moved;
+    if (moved) draw();
+  };
+
+  /**
+   * Ctrl+C, by hand, because raw mode cleared the input flag that made the console deliver it.
+   *
+   * The teardown runs here rather than through a signal: `process.kill(process.pid, "SIGINT")` on
+   * win32 does not raise a signal at all — libuv terminates the process outright — so neither the
+   * SIGINT handler nor the `exit` handler would run, and the ticket would keep its in-progress
+   * label with the session still attached to the worktree. `emit` reaches the same handlers a real
+   * signal would, on every platform.
+   */
+  const interrupt = () => {
+    api.stop();
+    if (process.listenerCount("SIGINT")) process.emit("SIGINT");
+    else process.exit(130);
+  };
+
+  /** @returns {boolean} whether the board has anything new to show */
+  const press = (k) => {
+    if (k === "e") view.expanded = !view.expanded;
+    else if (k === "s") askStop(!view.stopping);
+    else if (k === "o" && ctx.url) reveal(ctx.url);
+    else if (k === "l" && ctx.log) reveal(ctx.log);
+    else return false;
+    return true;
+  };
+
+  /**
+   * The same file a person would write by hand, so the key and the shell agree, and so a stop asked
+   * for here survives this process dying before it acts on it. The flag follows the file rather
+   * than leading it: a bar reading "stopping after this" over a write that failed is the board
+   * promising something the loop will not do.
+   */
+  const askStop = (wanted) => {
+    try {
+      if (wanted) writeFileSync(STOP_FILE, "asked for from the board\n");
+      else fs.rmSync(STOP_FILE, { force: true });
+      view.stopping = wanted;
+    } catch (e) {
+      api.warn(`queue-loop: could not ${wanted ? "write" : "remove"} ${STOP_FILE} — ${e}`);
+      view.stopping = fs.existsSync(STOP_FILE);
+    }
+  };
+
+  const listen = () => {
+    if (raw || !live || !process.stdin.isTTY) return;
+    try {
+      process.stdin.setRawMode(true);
+      process.stdin.setEncoding("utf8");
+      process.stdin.on("data", keys);
+      // The keyboard must never be the reason the process is still alive.
+      process.stdin.unref?.();
+      raw = true;
+    } catch {
+      /* no keyboard is not a reason to stop printing */
+    }
+  };
+
   // `api.close()`, not `this.close()`: the object is destructured by its callers and `this` does
   // not survive that.
   const api = {
+    // The painter this screen is drawing with, so a caller rendering a permanent line paints it
+    // for the same terminal the live block is drawn for — one detection, not one per call site.
+    // A getter, because a resize replaces it and a snapshot taken at start-up would outlive it.
+    get theme() {
+      return t;
+    },
     say(line) {
-      over(`${line}\n`);
+      over(line);
       draw();
     },
     warn(text) {
-      // The live row belongs to stdout and stderr cannot clear it, so the erase goes out on the
+      // The block belongs to stdout and stderr cannot clear it, so the erase goes out on the
       // stream that owns it before the warning prints on the other one.
-      if (live && drawn) {
-        out.write(ERASE);
-        drawn = "";
-      }
+      over("");
       show();
-      err.write(text.endsWith("\n") ? text : `${text}\n`);
+      const said = text.endsWith("\n") ? text : `${text}\n`;
+      err.write(live ? said.replace(/\n/g, "\r\n") : said);
       draw();
+    },
+    // The same entry point the keyboard uses, so what the key bar offers can be checked against
+    // what a press actually does. `process.stdin` is not a terminal under the test runner, and a
+    // bar pinned against a handler nothing can call is a bar that pins nothing.
+    key: (k) => keys(k),
+    /** What the `o` and `l` keys open. Set once per ticket, beside its header. */
+    context(next = {}) {
+      ctx = { url: null, log: null, ...next };
+      view.stopping = fs.existsSync(STOP_FILE);
     },
     start(letter) {
       // A placeholder, not a phase: the first marker replaces it rather than closing it as one.
@@ -643,42 +826,79 @@ export function ticker(out = process.stdout, err = process.stderr) {
         clear();
         open = null;
       } else api.close();
-      open = { letter, detail: "", startedAt: Date.now() };
+      open = { letter, startedAt: Date.now(), said: null, recent: [], feed: [] };
       if (!live) return;
+      listen();
       timer = setInterval(draw, REDRAW_MS);
       // A redraw must never be the reason the process is still alive.
       timer.unref?.();
       draw();
     },
-    detail(text) {
+    /** One tool call. Newest first, and what falls off the board is kept for the `e` key. */
+    call(name, what) {
       if (!open) return;
-      open.detail = text;
+      open.recent.unshift({ name, what });
+      open.recent.length = Math.min(open.recent.length, RECENT);
+      remember({ kind: "call", name, what });
       draw();
     },
-    close(mark = "✓") {
+    /** The session's own account of what it is doing — the only channel that says why. */
+    said(text) {
+      if (!open || !text) return;
+      open.said = text;
+      remember({ kind: "said", text });
+      draw();
+    },
+    close(state = "done", detail = "") {
       if (!open) return;
-      const done = phaseLine({
-        letter: open.letter,
-        ms: Date.now() - open.startedAt,
-        mark,
-        // The finished line replaces the live one, so it is sized the same way — otherwise the
-        // pair reads as two different lines at anything narrower than 79 columns.
-        width: live ? room() : undefined,
-      });
+      const done = phaseRow(
+        { letter: open.letter, ms: Date.now() - open.startedAt, state, detail },
+        t,
+      );
       clear();
       open = null;
       show();
-      over(`${done}\n`);
+      over(done);
     },
     stop() {
       clear();
       open = null;
-      if (live && drawn) out.write(ERASE);
-      drawn = "";
+      over("");
       show();
+      if (!raw) return;
+      try {
+        process.stdin.setRawMode(false);
+        process.stdin.off("data", keys);
+      } catch {
+        /* the terminal is going away anyway */
+      }
+      raw = false;
     },
   };
   return api;
+}
+
+/**
+ * Hands a URL or a path to whatever the desktop opens it with. Never fatal, never awaited.
+ *
+ * On Windows the opener is `cmd`, and `spawn` only quotes an argument carrying whitespace or a
+ * quote — so `&`, `|` and `^` would reach the shell as syntax. Both targets are ours today (a URL
+ * from `gh`, a log path this file generated); this is the one place a string that is not entirely
+ * ours is handed to a shell, so it is refused rather than escaped.
+ */
+function openExternally(target) {
+  if (/[&|^<>"'`\r\n]/.test(target)) return;
+  const [cmd, args] =
+    process.platform === "win32"
+      ? ["cmd", ["/c", "start", "", target]]
+      : process.platform === "darwin"
+        ? ["open", [target]]
+        : ["xdg-open", [target]];
+  try {
+    spawn(cmd, args, { stdio: "ignore", detached: true }).unref();
+  } catch {
+    /* a key that opens nothing is not a reason to stop the run */
+  }
 }
 
 /**
@@ -843,9 +1063,11 @@ export function runTicket(
     state.phaseAt = Date.now();
   };
 
-  screen.say(header({ number, ...facts(number), queue }));
+  const about = facts(number);
+  screen.say(header({ number, ...about, queue }, screen.theme));
+  screen.context({ url: about.url, log: logPath });
   if (at) {
-    screen.say(phaseLine({ letter: at, detail: "resumed", ms: 0, mark: "↻" }));
+    screen.say(phaseRow({ letter: at, detail: "resumed", ms: 0, state: "resumed" }, screen.theme));
     // Opened here, not left for the session's own marker: `state.phase` is already this letter, so
     // the marker is read as "no change" and the board stays dark for the whole of that phase.
     screen.start(at);
@@ -891,7 +1113,11 @@ export function runTicket(
       if (fact.declared) state.declared = fact.declared;
       // The only sign of life during phase D, which is the longest one and the one that read as a
       // hang: its work happens entirely inside two review subagents.
-      if (fact.calls.length) screen.detail(toolDetail(fact.calls.at(-1)));
+      // Both halves, in the order a person reads them: what the session said about what it is
+      // doing, then the calls it made saying it. Only two markers were ever taken out of the text
+      // and the rest — the one channel that says *why* — was thrown away.
+      screen.said(thought(fact.text));
+      for (const call of fact.calls) screen.call(call.name, act(call));
       watchBuild(state, fact, budget, (m) => screen.warn(m));
     }
     // A foreground subagent emits nothing else into the parent stream, so without these the phase
@@ -907,7 +1133,7 @@ export function runTicket(
         state.tasks.set(fact.id, fact);
       }
       const detail = tasksDetail([...state.tasks.values()], Date.now() - state.phaseAt);
-      if (detail) screen.detail(detail);
+      if (detail) screen.said(detail);
     }
     // A session emits one result per turn, and a background task's wake-up is a turn. The real one
     // carries `origin: null`; every other carries origin.kind "task-notification". Last-wins
@@ -930,7 +1156,9 @@ export function runTicket(
             why: `the ${fact.window ?? "usage"} limit is spent — resets ${clockAt(fact.resetsAt)}`,
             ms: 0,
             cost: 0,
-          }),
+          },
+          screen.theme,
+        ),
         );
       }
     }
@@ -954,7 +1182,7 @@ export function runTicket(
       // The phase the session was in when it exited: closed here because the session emits no
       // marker for a phase it did not finish, and a mark of its own because a ✓ on a session that
       // stalled is the display saying the opposite of what happened.
-      screen.close(state.stalled || status !== 0 ? "✗" : "✓");
+      screen.close(state.stalled || status !== 0 ? "failed" : "done");
       // Resolved on the sink's own finish, not on the child's close: `end()` only asks, and a
       // caller reading the log it was just handed would otherwise find it short.
       sink.end(() =>
@@ -1360,7 +1588,7 @@ function realIo(book, screen) {
     pick: (pinned) => {
       const route = nextRoute(pinned);
       if (route.resuming) return route;
-      if (before) screen.say(queueLine(before, route.queue));
+      if (before) screen.say(queueLine(before, route.queue, screen.theme));
       before = route.queue;
       return route;
     },
@@ -1422,8 +1650,10 @@ function realIo(book, screen) {
           cost: run.result?.cost ?? 0,
           why: why ?? undefined,
           log: outcome === "landed" ? undefined : run.log,
-        }),
-      );
+        },
+        screen.theme,
+      ),
+    );
       book.record(
         {
           number,
@@ -1447,15 +1677,18 @@ function realIo(book, screen) {
         {
           runId: RUN_ID,
           counts,
-          line: reportRow({
-            number,
-            title: facts.title,
-            outcome,
-            pr,
-            ms: run.ms,
-            cost: run.result?.cost ?? 0,
-            why: why ?? undefined,
-          }),
+          line: reportRow(
+            {
+              number,
+              title: facts.title,
+              outcome,
+              pr,
+              ms: run.ms,
+              cost: run.result?.cost ?? 0,
+              why: why ?? undefined,
+            },
+            PLAIN(),
+          ),
         },
       );
     },
