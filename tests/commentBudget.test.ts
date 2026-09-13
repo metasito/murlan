@@ -1,7 +1,11 @@
 // tests/commentBudget.test.ts
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { addedCounts, over } from "../scripts/comment-budget.mjs";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { addedCounts, budget, over } from "../scripts/comment-budget.mjs";
 
 const added = (...lines: string[]) => addedCounts("", lines.join("\n"));
 
@@ -117,5 +121,38 @@ describe("over", () => {
 
   test("a pile of prose beside one deletion is still named", () => {
     assert.equal(over(delta(["const a = 1;", "const b = 2;"], [...prose(30), "const a = 1;"])), true);
+  });
+});
+
+describe("budget", () => {
+  const run = (dir: string, ...args: string[]) => execFileSync("git", args, { cwd: dir, encoding: "utf8" });
+
+  // The one thing reading the source cannot settle: which revision the "before" content comes
+  // from. At `base`'s tip the branch is charged for prose main deleted after the branch point.
+  test("content comes from the merge base, not the base's tip", () => {
+    const dir = mkdtempSync(join(tmpdir(), "comment-budget-"));
+    const cwd = process.cwd();
+    try {
+      run(dir, "init", "-q", "-b", "main");
+      run(dir, "config", "user.email", "t@example.com");
+      run(dir, "config", "user.name", "t");
+      const prose = Array.from({ length: 20 }, (_, i) => `// why ${i}`);
+      writeFileSync(join(dir, "a.mjs"), [...prose, "const a = 1;"].join("\n"));
+      run(dir, "add", "-A");
+      run(dir, "commit", "-qm", "base");
+      run(dir, "checkout", "-qb", "branch");
+      writeFileSync(join(dir, "a.mjs"), [...prose, "const a = 1;", "const b = 2;"].join("\n"));
+      run(dir, "commit", "-qam", "one line of code");
+      run(dir, "checkout", "-q", "main");
+      writeFileSync(join(dir, "a.mjs"), "const a = 1;");
+      run(dir, "commit", "-qam", "main drops the prose");
+      run(dir, "checkout", "-q", "branch");
+
+      process.chdir(dir);
+      assert.deepEqual(budget("main"), []);
+    } finally {
+      process.chdir(cwd);
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
