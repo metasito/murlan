@@ -42,6 +42,9 @@ export function routeOf(issue) {
   return null;
 }
 
+/** The bucket each route lands in. `owner` is where anything with no route goes. */
+const BUCKET = { implement: "frontier", triage: "triage", wayfinder: "wayfinder" };
+
 /**
  * @param {Issue[]} openIssues
  * @returns {{ frontier: Issue[], triage: Issue[], wayfinder: Issue[], owner: Issue[] }}
@@ -55,15 +58,10 @@ export function classify(openIssues) {
     // `blocked` keeps `ready-for-agent`: the label carries a decision already
     // made, and taking it off to un-jam the queue is how that decision is lost.
     if (ls.includes("blocked")) continue;
-    const route = routeOf(issue);
-    if (route === "implement") buckets.frontier.push(issue);
-    else if (route) buckets[route].push(issue);
-    else buckets.owner.push(issue);
+    buckets[BUCKET[routeOf(issue)] ?? "owner"].push(issue);
   }
   // Oldest first: sorting by size put every self-filed size:S follow-up at the head.
-  buckets.frontier.sort((a, b) => a.number - b.number);
-  buckets.triage.sort((a, b) => a.number - b.number);
-  buckets.wayfinder.sort((a, b) => a.number - b.number);
+  for (const b of Object.values(BUCKET)) buckets[b].sort((a, x) => a.number - x.number);
   return buckets;
 }
 

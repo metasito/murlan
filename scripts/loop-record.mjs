@@ -5,11 +5,10 @@
  * answered by a measurement rather than an estimate — which is how the decision to overlap the CI
  * wait was made, and how the prompt-cache flag will be judged.
  *
- * `schema` is what makes that possible across a change of meaning: three fields silently changed
- * what they held mid-file, and a measurement taken over the whole of it mixed both readings with
- * nothing saying where the boundary was. Rows with no `schema` predate this one.
+ * `schema` is what lets a measurement span a change of meaning: a field that starts holding
+ * something else gets a new number here, and rows with no `schema` predate the first one.
  */
-export const SCHEMA = 2;
+const SCHEMA = 2;
 
 /**
  * @param {{number: number, size: string|null, outcome: string, pr: number|null,

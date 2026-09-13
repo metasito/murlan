@@ -148,12 +148,18 @@ describe("the session declares what it did before it exits", () => {
   });
 
   test("the teardown it names still runs before the declaration, so the facts are final", () => {
-    const f = read(QUEUE).slice(read(QUEUE).indexOf("## F — Close out"));
-    assert.ok(f.length > 0, "phase F's heading has moved");
-    assert.ok(
-      f.indexOf("worktrees:remove -- .worktrees/agent-<n>") < f.indexOf("LOOP-RESULT"),
-      "the declaration is the last thing the session emits",
-    );
+    const text = read(QUEUE);
+    const from = text.indexOf("## F — Close out");
+    assert.notEqual(from, -1, "phase F's heading has moved");
+    const f = text.slice(from);
+    // Each position is asserted present before they are compared: `indexOf` answers -1 for a line
+    // that is gone, and -1 sorts before everything, so the comparison alone passes on an absent
+    // teardown.
+    const teardown = f.indexOf("worktrees:remove -- .worktrees/agent-<n>");
+    const declaration = f.indexOf("LOOP-RESULT");
+    assert.notEqual(teardown, -1, "phase F no longer names the teardown");
+    assert.notEqual(declaration, -1, "phase F no longer asks for the declaration");
+    assert.ok(teardown < declaration, "the declaration is the last thing the session emits");
   });
 });
 
@@ -169,10 +175,9 @@ describe("a CI fix round is a documented path, not an improvisation", () => {
   // Resolved through the function that writes it, not scanned for as text: a path spelled the
   // same in two files is a premise that decays, and a scan cannot tell a mention from a caller.
   test("the log path it names is the one the supervisor writes", () => {
-    const named = /`(\.loop-logs\/ci-<n>\.log)`|(\.loop-logs\/ci-<n>\.log)/.exec(read(QUEUE));
+    const named = /\.loop-logs\/ci-<n>\.log/.exec(read(QUEUE))?.[0];
     assert.ok(named, "queue.md never tells the fix session where its CI log is");
-    const real = ciLogPath(953).replace(/\\/g, "/");
-    assert.equal(real, (named[1] ?? named[2]).replace("<n>", "953"));
+    assert.equal(ciLogPath(953).replace(/\\/g, "/"), named.replace("<n>", "953"));
   });
 });
 

@@ -7,6 +7,7 @@ import { readFileSync, rmSync } from "node:fs";
 import path from "node:path";
 import {
   parseRoute,
+  pushedPr,
   shouldStop,
   queueLoopArgs,
   TURNS_BY_SIZE,
@@ -866,5 +867,64 @@ describe("afterRefusal", () => {
 
   test("a session that pushed never waits, whatever the meter said", () => {
     assert.equal(afterRefusal({ ...base, done: true }, now).action, "proceed");
+  });
+});
+
+// What this function returns reaches `gh pr merge --merge --delete-branch`, unattended. Every
+// path through it therefore checks the head ref, including the one that trusts the number the
+// session declared — a number a model wrote into a line of text.
+describe("pushedPr only ever answers with this ticket's own pull request", () => {
+  const gh = (rows: object[], view: object | null = null) => {
+    return (_cmd: string, args: string[]) =>
+      args[1] === "view" ? JSON.stringify(view ?? {}) : JSON.stringify(rows);
+  };
+  const open = { number: 984, state: "OPEN", headRefName: "agent/42-x", mergedAt: null };
+
+  test("the branch's own pull request is taken", () => {
+    assert.deepEqual(pushedPr("agent/42-x", 42, null, 0, gh([open])), {
+      number: 984,
+      state: "OPEN",
+      head: "agent/42-x",
+    });
+  });
+
+  test("a pull request on another branch is not this ticket's, whatever gh returned", () => {
+    const other = { number: 990, state: "OPEN", headRefName: "agent/77-y", mergedAt: null };
+    assert.equal(pushedPr("agent/42-x", 42, null, 0, gh([other])), null);
+    assert.equal(pushedPr(null, 42, null, 0, gh([other])), null);
+  });
+
+  test("a declared number is checked against the head ref like everything else", () => {
+    const peer = { number: 1003, state: "OPEN", headRefName: "agent/891-rescue", mergedAt: null };
+    assert.equal(
+      pushedPr("agent/42-x", 42, 1003, 0, gh([], peer)),
+      null,
+      "a transposed number reached a peer's pull request",
+    );
+    const mine = { number: 1003, state: "OPEN", headRefName: "agent/42-x", mergedAt: null };
+    assert.equal(pushedPr("agent/42-x", 42, 1003, 0, gh([], mine))?.number, 1003);
+  });
+
+  // A ticket re-opened and re-queued still has its old agent/<n>-… pull request on the tracker.
+  // Read as a landing it releases the claim on a session that pushed nothing at all.
+  test("a merge older than this session is not this session's landing", () => {
+    const started = Date.UTC(2026, 8, 13, 9, 0);
+    const oldRow = {
+      number: 900,
+      state: "MERGED",
+      headRefName: "agent/42-x",
+      mergedAt: new Date(started - 86_400_000).toISOString(),
+    };
+    assert.equal(pushedPr("agent/42-x", 42, null, started, gh([oldRow])), null);
+
+    const freshRow = { ...oldRow, mergedAt: new Date(started + 60_000).toISOString() };
+    assert.equal(pushedPr("agent/42-x", 42, null, started, gh([freshRow]))?.state, "MERGED");
+  });
+
+  test("gh failing is not a pull request", () => {
+    const throws = () => {
+      throw new Error("gh: not authenticated");
+    };
+    assert.equal(pushedPr("agent/42-x", 42, 1003, 0, throws), null);
   });
 });

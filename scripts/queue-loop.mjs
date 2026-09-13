@@ -162,6 +162,15 @@ export function queueLoopArgs(number, size = null) {
 // The session and the loop read these from the shared checkout, not from the ticket's worktree.
 const PROTOCOL = ["CLAUDE.md", ".claude", "scripts"];
 
+/** Worktree directories someone else may be working in right now. */
+function peerWorktrees(dir = ".worktrees") {
+  try {
+    return fs.readdirSync(dir).filter((name) => name.startsWith("agent-"));
+  } catch {
+    return [];
+  }
+}
+
 /**
  * Leaves the shared checkout on an up-to-date `main`, or refuses and says why.
  *
@@ -209,13 +218,18 @@ export function syncCheckout(git, log, install = () => sh("npm", ["ci"], { stdio
     return false;
   }
 
-  // The loop's own merges are what move the lockfile, and `preflight` refuses to start a ticket on
-  // top of an install that has drifted from it. Left to the next iteration that is the loop
-  // poisoning its own precondition: the first ticket touching package.json ends the night, on a
-  // healthy machine, with a full queue. Reinstalling here is the repair, at the one moment no
-  // session is live to have its node_modules pulled out from under it.
+  // The loop's own merges move the lockfile, and `preflight` refuses to start a ticket on top of
+  // an install that has drifted from it — so leaving the repair to the next iteration is the loop
+  // poisoning its own precondition. It runs here because this is between tickets, and it runs only
+  // when no ticket worktree is standing: every worktree's node_modules is a junction into this
+  // install, so reinstalling under a live session empties the tree it is working in.
   try {
     if (git("diff", "--name-only", was, "HEAD").split("\n").includes("package-lock.json")) {
+      const live = peerWorktrees();
+      if (live.length) {
+        log(`queue-loop: package-lock.json moved, but ${live.join(", ")} is live — not reinstalling`);
+        return true;
+      }
       log("queue-loop: the fast-forward moved package-lock.json — reinstalling before the next ticket");
       install();
     }
@@ -362,8 +376,7 @@ export function afterPush({ verdict, landing }) {
  */
 export function settleOutcome({ action }) {
   if (action === "merged") return { countsAsFailure: false, recorded: "landed" };
-  // A row, because a ticket that goes red three times otherwise produced three whole sessions and
-  // nothing in the record: no cost, no turns, no count of how often the cap is reached.
+  // Recorded, not silent: each fix round is a whole session, with its own cost and turns.
   if (action === "fix") return { countsAsFailure: false, recorded: "retry" };
   return { countsAsFailure: true, recorded: "stalled" };
 }
@@ -742,7 +755,12 @@ export function runTicket(
   };
 
   screen.say(header({ number, ...facts(number), queue }));
-  if (at) screen.say(phaseLine({ letter: at, detail: "resumed", ms: 0, mark: "↻" }));
+  if (at) {
+    screen.say(phaseLine({ letter: at, detail: "resumed", ms: 0, mark: "↻" }));
+    // Opened here, not left for the session's own marker: `state.phase` is already this letter, so
+    // the marker is read as "no change" and the board stays dark for the whole of that phase.
+    screen.start(at);
+  }
 
   const child = spawnFn("claude", queueLoopArgs(number, size), {
     stdio: ["ignore", "pipe", "pipe"],
@@ -912,32 +930,48 @@ const landingOf = (out) =>
  * `declared` is the number the session stated on its way out, asked for directly when the listing
  * has not caught up or does not reach back far enough.
  *
+ * `since` bounds what counts as merged. A ticket re-opened and re-queued still has its old
+ * `agent/<n>-…` pull request on the tracker, and reading that as a landing releases the claim on a
+ * session that pushed nothing.
+ *
  * @param {string|null} branch
  * @param {number} ticket
  * @param {number|null} [declared]
+ * @param {number} [since] epoch ms; a merge older than this is not this session's
+ * @param {Function} [run]
  * @returns {{number: number, state: string, head: string}|null}
  */
-function pushedPr(branch, ticket, declared = null) {
+export function pushedPr(branch, ticket, declared = null, since = 0, run = sh) {
   // Matched on the head ref rather than by search: `#42` in a body also matches PR #942. With a
   // branch in hand `--head` is exact; without one the newest 100 are scanned, which reaches back
   // far enough for a branch pushed minutes ago. `gh` lists newest first.
-  const json = ["--json", "number,state,headRefName"];
+  const json = ["--json", "number,state,headRefName,mergedAt"];
+  // The head ref is the only thing that makes a pull request this ticket's, and it is checked on
+  // every path including the declared one. `declared` is a number a model wrote into a line of
+  // text, and what it reaches is `gh pr merge`.
+  const mine = (pr) =>
+    branch ? pr?.headRefName === branch : new RegExp(`^agent/${ticket}-`).test(pr?.headRefName ?? "");
+  const stale = (pr) =>
+    pr.state === "MERGED" && since > 0 && Date.parse(pr.mergedAt ?? "") < since;
+  const take = (pr) =>
+    pr && mine(pr) && !stale(pr)
+      ? { number: pr.number, state: pr.state, head: pr.headRefName }
+      : null;
   const query = branch
     ? ["pr", "list", "--state", "all", "--head", branch, "--limit", "20", ...json]
     : ["pr", "list", "--state", "all", "--limit", "100", ...json];
   try {
-    const rows = JSON.parse(sh("gh", query)).filter((pr) =>
-      branch ? pr.headRefName === branch : new RegExp(`^agent/${ticket}-`).test(pr.headRefName ?? ""),
+    const rows = JSON.parse(run("gh", query)).filter((pr) => mine(pr) && !stale(pr));
+    const found = take(
+      rows.find((p) => p.state === "OPEN") ?? rows.find((p) => p.state === "MERGED") ?? rows[0],
     );
-    const pr = rows.find((p) => p.state === "OPEN") ?? rows.find((p) => p.state === "MERGED") ?? rows[0];
-    if (pr) return { number: pr.number, state: pr.state, head: pr.headRefName ?? null };
+    if (found) return found;
   } catch {
     /* falls through to the declared number */
   }
   if (!declared) return null;
   try {
-    const pr = JSON.parse(sh("gh", ["pr", "view", String(declared), "--json", "number,state,headRefName"]));
-    return { number: pr.number, state: pr.state, head: pr.headRefName ?? null };
+    return take(JSON.parse(run("gh", ["pr", "view", String(declared), "--json", "number,state,headRefName"])));
   } catch {
     return null;
   }
@@ -1060,8 +1094,7 @@ export function afterSession(run, derived) {
     dirty: derived?.dirty ?? false,
     changed: derived?.changed ?? [],
     // The session's own marker, not derive()'s: derive computes a phase from commit count and
-    // verdict, so it can only ever answer C, D, E or ?, and a park comment saying "phase E" of a
-    // session that died in B was the record contradicting the reason printed beside it.
+    // verdict, so it can only ever answer C, D, E or ?.
     phase: said?.phase ?? run.phase ?? derived?.phase ?? "?",
   };
 }
@@ -1081,10 +1114,8 @@ export function afterSession(run, derived) {
 export async function runOnce(io, pinned = null) {
   if (io.stopFile()) return { outcome: "stop", why: ".loop-stop" };
   if (!io.syncCheckout()) return { outcome: "stop", why: "the shared checkout is not usable" };
-  // Exit 2 is "this machine cannot start a ticket *now*" — drift, a peer's dirt, memory. Treated
-  // as a stop, the loop's own merges ended the night: the first ticket touching package-lock.json
-  // merged, the next iteration pulled it in and refused to start on it, and the loop called that
-  // "genuinely nothing to do".
+  // Exit 2 is "this machine cannot start a ticket *now*" — drift, a peer's dirt, memory. Every one
+  // of those clears on its own, including the drift the loop's own merge of a lockfile creates.
   const pre = io.queuePre();
   if (pre === 2) return { outcome: "hold", why: "queue-pre is not ready for a ticket yet" };
   if (pre !== 0) return { outcome: "stop", why: `queue-pre exited ${pre}` };
@@ -1099,7 +1130,7 @@ export async function runOnce(io, pinned = null) {
   if (dirtied) io.log(`queue-loop: #${route.number}'s session left the shared checkout dirty:\n${dirtied}`);
 
   const after = afterSession(run, io.standing());
-  const pr = io.pushedPr(after?.branch ?? null, route.number, run.declared?.pr ?? null);
+  const pr = io.pushedPr(after?.branch ?? null, route.number, run.declared?.pr ?? null, Date.now() - run.ms);
   // `blocked` is advisory, checked here rather than before the pull request is looked for: a
   // session refused mid-run that recovered and pushed has done its half, and reporting it refused
   // stranded the branch and left the claim on.
@@ -1147,8 +1178,8 @@ export async function runOnce(io, pinned = null) {
     merged: cost.recorded === "landed",
     files,
   });
-  // The worktree and the run come with it: if the rounds run out, `main` parks the ticket, and a
-  // park that leaves the worktree standing is a run `derive()` resumes on every iteration after.
+  // The worktree and the run come with it: the next round works in that worktree, and if the
+  // rounds run out `main` hands both to `park`, which is what removes it.
   if (cost.recorded === "retry") {
     return {
       outcome: "retry",
@@ -1218,8 +1249,11 @@ function realIo(totals, screen) {
     },
     sharedCheckoutDirty: () => git("status", "--porcelain").trim(),
     log: (m) => screen.warn(m),
-    // `counted` is for a row about a session whose cost a previous row already added.
+    // `counted` says a previous row already carries this session's cost and turns. The row is
+    // still written — it is a different fact about the ticket — but with the money zeroed, or the
+    // one session appears twice in the file the record exists to make measurable.
     record: ({ number, outcome, why, run, pr = null, merged = false, files = 0, counted = false }) => {
+      const spent = counted ? { ...run.result, cost: 0, turns: 0 } : run.result;
       if (!counted) {
         totals.cost += run.result?.cost ?? 0;
         totals.ms += run.ms;
@@ -1230,9 +1264,9 @@ function realIo(totals, screen) {
           outcome: outcome === "landed" ? "merged" : outcome,
           number,
           files,
-          turns: run.result?.turns ?? 0,
-          ms: run.ms,
-          cost: run.result?.cost ?? 0,
+          turns: spent?.turns ?? 0,
+          ms: counted ? 0 : run.ms,
+          cost: spent?.cost ?? 0,
           why: why ?? undefined,
           log: outcome === "landed" ? undefined : run.log,
         }),
@@ -1243,8 +1277,8 @@ function realIo(totals, screen) {
           size: facts.size,
           outcome,
           pr,
-          phases: run.phases ?? {},
-          result: run.result,
+          phases: counted ? {} : (run.phases ?? {}),
+          result: spent,
           // Named for what the loop knows: whether it merged, not a CI verdict it never read.
           merged,
           reviewRounds: facts.reviewRounds,
@@ -1256,8 +1290,8 @@ function realIo(totals, screen) {
           title: facts.title,
           outcome,
           pr,
-          ms: run.ms,
-          cost: run.result?.cost ?? 0,
+          ms: counted ? 0 : run.ms,
+          cost: spent?.cost ?? 0,
           why: why ?? undefined,
         }),
       );
@@ -1360,7 +1394,7 @@ async function main() {
       io.park(pass.ticket, {
         phase: "E",
         why,
-        log: ciLogPath(pass.ticket),
+        log: fs.existsSync(ciLogPath(pass.ticket)) ? ciLogPath(pass.ticket) : (pass.run?.log ?? "none"),
         cwd: pass.cwd ?? null,
         branch: pass.branch ?? null,
         dirty: false,

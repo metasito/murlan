@@ -82,8 +82,10 @@ git worktree add -B agent/<n>-<slug> .worktrees/agent-<n> origin/agent/<n>-<slug
 cat .loop-logs/ci-<n>.log                 # the failed CI log, already fetched for you
 ```
 
-Read that log, fix what it names, and go to **phase D** — the fix is a commit, the commit moves the
-head, and the head needs its own review before the gate will pass it. Skip phases A and B.
+Rebuilding the worktree is the rest of phase A for a fix round — the claim is already yours and the
+branch already exists, so there is nothing else here to do. Then read that log, fix what it names,
+and go straight to **phase D**: the fix is a commit, the commit moves the head, and the head needs
+its own review before the gate will pass it. Skip phases B and C's planning.
 
 `queue:pre` is the leftover worktree, the peer's uncommitted work and the orphaned processes — all
 loop-level, none of it about this ticket, which is why `queue-loop.mjs` runs it before it spawns you

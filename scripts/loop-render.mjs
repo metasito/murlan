@@ -47,6 +47,32 @@ export function clockAt(resetsAt, now = Date.now()) {
 const money = (n) => `$${Number(n ?? 0).toFixed(2)}`;
 const rule = "━".repeat(WIDTH);
 
+// Emoji and the CJK blocks take two terminal cells each. Measuring them as one is what makes a
+// line that fits on paper wrap in a terminal, and a wrapped line puts the next `\r` on the wrong
+// row — which is the whole of the redraw going wrong.
+const WIDE =
+  /[\u1100-\u115F\u2E80-\uA4CF\uA960-\uA97F\uAC00-\uD7A3\uF900-\uFAFF\uFE10-\uFE19\uFE30-\uFE6F\uFF00-\uFF60\uFFE0-\uFFE6]|[\u{1F000}-\u{1FAFF}]/u;
+
+/** How many terminal cells a string takes. Counts code points, never UTF-16 units. */
+export function cols(text) {
+  let n = 0;
+  for (const ch of text) n += WIDE.test(ch) ? 2 : 1;
+  return n;
+}
+
+/** The longest prefix of `text` that fits in `room` cells. */
+function cut(text, room) {
+  let n = 0;
+  let out = "";
+  for (const ch of text) {
+    const w = WIDE.test(ch) ? 2 : 1;
+    if (n + w > room) break;
+    out += ch;
+    n += w;
+  }
+  return out;
+}
+
 /**
  * `left` padded out to meet `right` at `width`. `left` is what gets truncated: the right-hand side
  * is the timer or the cost, which is what the line is read for. `style` paints after the padding.
@@ -54,9 +80,9 @@ const rule = "━".repeat(WIDTH);
  * @param {(l: string, r: string) => string} [style]
  */
 function fit(left, right, width = WIDTH, style = (l, r) => l + r) {
-  const room = width - right.length;
-  const shown = left.length < room ? left : left.slice(0, Math.max(0, room - 2)) + "…";
-  return style(shown + " ".repeat(Math.max(1, room - shown.length)), right);
+  const room = width - cols(right);
+  const shown = cols(left) < room ? left : `${cut(left, Math.max(0, room - 2))}…`;
+  return style(shown + " ".repeat(Math.max(1, room - cols(shown))), right);
 }
 
 /** The six phases as a progress trail: passed, here, not reached. */
@@ -66,6 +92,8 @@ export function trail(letter, here = "▸") {
 }
 
 const MARK_STYLE = { "✓": ["green"], "✗": ["red"], "↻": ["yellow"] };
+
+const INDENT = "  ";
 
 /**
  * One phase's row: the trail, the letter, its name, the detail, the clock. `here` is the glyph
@@ -85,10 +113,13 @@ function phaseRow({ letter, detail = "", ms, here, width = WIDTH }) {
         paint(MARK_STYLE[here] ?? ["cyan"], glyphs[at]) +
         paint(["dim"], glyphs.slice(at + 1));
   return fit(
-    `  ${glyphs}  ${letter} ${(PHASES[at]?.[1] ?? "").padEnd(7)}${detail}`,
+    `${INDENT}${glyphs}  ${letter} ${(PHASES[at]?.[1] ?? "").padEnd(7)}${detail}`,
     `${elapsed(ms)} `,
     width,
-    (l, r) => l.replace(glyphs, painted) + paint(["dim"], r),
+    // Sliced at the offset this line was built at, not searched for: `fit` only ever cuts from the
+    // right, so the glyph run is still exactly where it was put.
+    (l, r) =>
+      INDENT + painted + l.slice(INDENT.length + glyphs.length) + paint(["dim"], r),
   );
 }
 
@@ -127,8 +158,8 @@ export function header({ number, title, size, url, queue }) {
 /**
  * What the session is doing, as one short phrase. A middot marks a review subagent's call.
  *
- * Any tool carrying a command shows it: naming the shell tools instead means the board goes blank
- * on whichever shell is not on the list, and this machine's primary shell is PowerShell.
+ * Any tool carrying a command shows it. Branching on a list of shell tool names instead leaves the
+ * board blank for whichever shell is not on the list.
  *
  * @param {{name: string, command?: string, parent?: string|null}} call
  */
@@ -136,8 +167,7 @@ export function toolDetail({ name, command = "", parent = null }) {
   const mark = parent ? "· " : "";
   const first = command.split("\n")[0].trim();
   if (!first) return `${mark}${name}`;
-  const room = DETAIL - mark.length;
-  return mark + (first.length > room ? `${first.slice(0, room - 1)}…` : first);
+  return mark + clamp(first, DETAIL - mark.length);
 }
 
 /**
@@ -202,22 +232,52 @@ export function closing({ outcome, number, files, turns, ms, cost, log, why }) {
   return log ? `${head}\n${paint(["dim"], `     log ${log}`)}` : head;
 }
 
+const clamp = (text, room) => (cols(text) > room ? `${cut(text, Math.max(0, room - 1))}…` : text);
+
+const TITLE_FLOOR = 14;
+
 /**
- * The title is shortened when the line will not fit, never the reason: a parked row exists to say
- * why it parked.
+ * The title gives way to the reason, which a parked row exists to carry. Both are clamped here
+ * rather than left to `fit`, which cuts from the right and so would take the reason first.
  *
  * @param {{number: number, title: string, outcome: string, ms: number, cost: number,
  *   pr?: number|null, why?: string}} run
  */
 export function reportRow({ number, title, outcome, pr, ms, cost, why }) {
-  const tail = pr ? `PR #${pr}` : (why ?? "");
   const right = `${elapsed(ms)}  ${money(cost)}`;
   const label = `${MARK[outcome] ?? "•"} #${number} `;
-  const middle = `${outcome.padEnd(8)}${tail}`;
-  const room = WIDTH - right.length - label.length - middle.length - 2;
-  const shown = title.length > room ? `${title.slice(0, Math.max(0, room - 1))}…` : title;
-  return fit(`${label}${shown}`.padEnd(WIDTH - right.length - middle.length - 1) + middle, right);
+  const state = outcome.padEnd(8);
+  // Everything the fixed parts leave, shared by the title and the reason.
+  const room = WIDTH - cols(right) - cols(label) - state.length - 2;
+  const reason = pr ? `PR #${pr}` : (why ?? "");
+  // A reason too long to sit beside the title goes under the row in full rather than being cut to
+  // its first few words. A parked row exists to say why it parked, and this is the file the
+  // morning is read from.
+  const wraps = cols(reason) > room - TITLE_FLOOR;
+  const middle = state + (wraps ? "" : reason);
+  const shown = clamp(title, Math.max(0, room - cols(middle) + state.length));
+  const pad = " ".repeat(Math.max(1, WIDTH - cols(right) - cols(label) - cols(shown) - cols(middle) - 1));
+  const line = fit(`${label}${shown}${pad}${middle}`, right);
+  if (!wraps) return line;
+  const indent = "     ";
+  return [line, ...wrap(reason, WIDTH - indent.length).map((l) => indent + l)].join("\n");
 }
+
+/** Greedy word wrap. A word longer than the room is cut; nothing here is allowed past `room`. */
+function wrap(text, room) {
+  const out = [];
+  let line = "";
+  for (const word of text.split(/\s+/).filter(Boolean)) {
+    const piece = cols(word) > room ? `${cut(word, room - 1)}…` : word;
+    if (line && cols(line) + 1 + cols(piece) > room) {
+      out.push(line);
+      line = piece;
+    } else line = line ? `${line} ${piece}` : piece;
+  }
+  if (line) out.push(line);
+  return out;
+}
+
 
 export function runTotal({ tickets, landed, parked, ms, cost }) {
   return `${tickets} tickets · ${landed} landed · ${parked} parked · ${elapsed(ms)} · ${money(cost)}`;

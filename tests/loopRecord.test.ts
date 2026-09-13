@@ -1,7 +1,7 @@
 // tests/loopRecord.test.ts
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { row, SCHEMA } from "../scripts/loop-record.mjs";
+import { row } from "../scripts/loop-record.mjs";
 
 const RESULT = {
   kind: "result",
@@ -37,12 +37,10 @@ describe("row", () => {
     assert.equal(r.pr, 1204);
   });
 
-  // Three fields changed what they held mid-file — phase durations became `{}`, `ci` became null
-  // on non-merges, and `turns` was wrong until the origin filter landed — with nothing in the data
-  // saying where the boundary was. Any measurement taken across it mixed two meanings silently.
   test("stamps the schema, so two readings of a field are never averaged together", () => {
-    assert.equal(r.schema, SCHEMA);
-    assert.ok(Number.isInteger(SCHEMA) && SCHEMA >= 2, "rows with no schema at all predate this one");
+    // The literal, not the module's own constant: a test that reads the value it is pinning moves
+    // with it and pins nothing. Bump it here deliberately when a field changes what it holds.
+    assert.equal(r.schema, 2);
   });
 
   // Named for what the supervisor knows. `ci: {pass:false}` was written for every non-merged
