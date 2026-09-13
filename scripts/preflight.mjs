@@ -146,7 +146,9 @@ if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "
       "\nThey belong to a session that did not finish. Commit them on a branch, or ask their owner " +
         "to. Do not stash or discard them — that removes the work with nothing pointing at where it went."
     );
-    process.exit(1);
+    // 2, like drift below: a peer's uncommitted work is transient, and the supervisor holds and
+    // asks again rather than ending the night on it.
+    process.exit(2);
   }
 
   const drift = checkLockDrift(shared);
@@ -158,9 +160,8 @@ if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "
         `typecheck on phantom errors and fail test:native outright. node_modules is shared live ` +
         `across every worktree: check no peer session is mid-run before reinstalling.`
     );
-    // 2, not 1: drift is a state of the machine that repairs itself — `syncCheckout` reinstalls
-    // after a fast-forward that moved the lockfile, and an install running right now finishes.
-    // Read as "a person must intervene" it ended an unattended night on the loop's own merge.
+    // 2, not 1: drift repairs itself — `syncCheckout` reinstalls after a fast-forward that moved
+    // the lockfile, and an install running right now finishes.
     process.exit(2);
   }
 

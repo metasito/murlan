@@ -1,15 +1,10 @@
 /**
- * What the loop prints. Pure: state in, strings out, so every line is a unit test and none of it
- * needs a terminal.
+ * What the loop prints: state in, strings out. Nothing here writes or moves a cursor — `ticker` in
+ * queue-loop.mjs is the only thing in the loop that knows a cursor exists.
  *
- * Nothing here writes, moves a cursor or reads a terminal — `ticker` in queue-loop.mjs is the only
- * thing in the loop that knows a cursor exists. The same strings have to be right in a terminal, in
- * a pipe, and in a file, and cursor control is right in exactly one of those.
- *
- * `styleText` is stdlib and decides for itself: escapes at a terminal, nothing down a pipe or into
- * a file. Colour is applied only after a line's width is settled, because an escape is bytes with
- * no width and measuring a painted string pads every line wrong — and only on lines that never
- * reach `.loop-logs/run-*.md`, which `reportRow` and `runTotal` do.
+ * `styleText` emits escapes at a terminal and nothing down a pipe. Two rules follow: paint only
+ * after a line's width is settled, since an escape is bytes with no width; and leave `reportRow`
+ * and `runTotal` unpainted, because those go into `.loop-logs/run-*.md`.
  */
 import { styleText } from "node:util";
 
@@ -53,10 +48,8 @@ const money = (n) => `$${Number(n ?? 0).toFixed(2)}`;
 const rule = "━".repeat(WIDTH);
 
 /**
- * `left` padded out to meet `right` at `width`, with `left` truncated rather than `right` — the
- * right-hand side is the timer or the cost, which is the thing the line is being read for.
- *
- * `style` paints the two halves after the padding is computed, never before.
+ * `left` padded out to meet `right` at `width`. `left` is what gets truncated: the right-hand side
+ * is the timer or the cost, which is what the line is read for. `style` paints after the padding.
  *
  * @param {(l: string, r: string) => string} [style]
  */
@@ -66,25 +59,52 @@ function fit(left, right, width = WIDTH, style = (l, r) => l + r) {
   return style(shown + " ".repeat(Math.max(1, room - shown.length)), right);
 }
 
-/**
- * The six phases as a progress trail: passed, here, not reached.
- *
- * `[3/6]` said how far along without saying what was behind it or what is left, which on a run
- * that resumes mid-way is the only question a person watching actually has.
- */
+/** The six phases as a progress trail: passed, here, not reached. */
 export function trail(letter, here = "▸") {
   const i = PHASES.findIndex(([l]) => l === letter);
   return PHASES.map((_, n) => (n < i ? "✓" : n === i ? here : "·"));
 }
 
-const paintTrail = (letter, here, colour) =>
-  trail(letter, here)
-    .map((g, n) => paint(g === "·" ? ["dim"] : n < PHASES.findIndex(([l]) => l === letter) ? ["green"] : colour, g))
-    .join("");
+const MARK_STYLE = { "✓": ["green"], "✗": ["red"], "↻": ["yellow"] };
 
 /**
- * A resumed ticket never went through the picker, so it has no queue reading of its own — and
- * printing the zeroes it does not have read as an empty queue on every resumed run.
+ * One phase's row: the trail, the letter, its name, the detail, the clock. `here` is the glyph
+ * standing on the current phase — a spinner frame while it runs, an outcome mark once it is done —
+ * so the finished line covers the live one exactly.
+ *
+ * The trail is painted in three spans rather than six: the live row is rewritten eight times a
+ * second and each escape is paid again every frame.
+ */
+function phaseRow({ letter, detail = "", ms, here, width = WIDTH }) {
+  const at = PHASES.findIndex(([l]) => l === letter);
+  const glyphs = trail(letter, here).join("");
+  const painted =
+    at < 0
+      ? paint(["dim"], glyphs)
+      : paint(["green"], glyphs.slice(0, at)) +
+        paint(MARK_STYLE[here] ?? ["cyan"], glyphs[at]) +
+        paint(["dim"], glyphs.slice(at + 1));
+  return fit(
+    `  ${glyphs}  ${letter} ${(PHASES[at]?.[1] ?? "").padEnd(7)}${detail}`,
+    `${elapsed(ms)} `,
+    width,
+    (l, r) => l.replace(glyphs, painted) + paint(["dim"], r),
+  );
+}
+
+export const phaseLine = ({ mark = "✓", ...row }) => phaseRow({ ...row, here: mark });
+
+/** Braille, because every frame is one column wide in every terminal font. */
+export const SPIN = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+
+export const activeLine = ({ frame = 0, ...row }) =>
+  phaseRow({ ...row, here: SPIN[((frame % SPIN.length) + SPIN.length) % SPIN.length] });
+
+const DETAIL = 44;
+
+/**
+ * A resumed ticket never went through the picker, so it has no queue depths; printing zeroes for
+ * them would read as an empty queue.
  *
  * @param {{number: number, title: string, url: string, size?: string|null,
  *   queue: {implement: number, triage: number, wayfinder: number}|null}} ticket
@@ -99,58 +119,16 @@ export function header({ number, title, size, url, queue }) {
     fit(` ⚙️  #${number} · ${title}`, size ? `${size} ` : "", WIDTH, (l, r) =>
       l.replace(`#${number}`, paint(["bold", "cyan"], `#${number}`)) + paint(["dim"], r),
     ),
-    fit(`    ${url}`, `${depths} `, WIDTH, (l, r) => paint(["dim"], l) + paint(["dim"], r)),
+    fit(`    ${url}`, `${depths} `, WIDTH, (l, r) => paint(["dim"], l + r)),
     paint(["dim"], rule),
   ].join("\n");
 }
 
-const nameOf = (letter) => PHASES.find(([l]) => l === letter)?.[1] ?? "";
-
-const MARK_STYLE = { "✓": ["green"], "✗": ["red"], "↻": ["yellow"] };
-
-export function phaseLine({ letter, detail = "", ms, mark = "✓", width = WIDTH }) {
-  const name = nameOf(letter);
-  const glyphs = trail(letter, mark).join("");
-  return fit(
-    `  ${glyphs}  ${letter} ${name.padEnd(7)}${detail}`,
-    `${elapsed(ms)} `,
-    width,
-    (l, r) =>
-      l.replace(glyphs, paintTrail(letter, mark, MARK_STYLE[mark] ?? ["green"])) + paint(["dim"], r),
-  );
-}
-
-/** Braille, because every frame is one column wide in every terminal font. */
-export const SPIN = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
-
-/**
- * The open phase, for redrawing in place while it runs. `phaseLine` is the same line once it is
- * done, and the two are the same width so the finished one covers the live one exactly.
- *
- * `width` is what the terminal has room for: the detail is what gets cut, never the timer, which is
- * the one thing on the line that a person is reading it for.
- */
-export function activeLine({ letter, detail = "", ms, frame = 0, width = WIDTH }) {
-  const name = nameOf(letter);
-  const spin = SPIN[((frame % SPIN.length) + SPIN.length) % SPIN.length];
-  const glyphs = trail(letter, spin).join("");
-  return fit(
-    `  ${glyphs}  ${letter} ${name.padEnd(7)}${detail}`,
-    `${elapsed(ms)} `,
-    width,
-    (l, r) => l.replace(glyphs, paintTrail(letter, spin, ["cyan"])) + paint(["dim"], r),
-  );
-}
-
-// `activeLine`'s fixed prefix is 20 columns and its elapsed tail is up to 8, inside a WIDTH of 78.
-const DETAIL = 44;
-
 /**
  * What the session is doing, as one short phrase. A middot marks a review subagent's call.
  *
- * The command is shown whenever there is one, rather than for a named list of shell tools: this
- * machine's primary shell is PowerShell and the list had only `Bash` in it for a while, so the
- * loop's own board went blank for every command on the shell it actually runs.
+ * Any tool carrying a command shows it: naming the shell tools instead means the board goes blank
+ * on whichever shell is not on the list, and this machine's primary shell is PowerShell.
  *
  * @param {{name: string, command?: string, parent?: string|null}} call
  */
@@ -163,9 +141,9 @@ export function toolDetail({ name, command = "", parent = null }) {
 }
 
 /**
- * The queue after a ticket, against the queue before it. The header carries the depth already; what
- * it cannot show is the direction, and across an unattended night the direction is the whole story
- * — a frontier that grows every ticket is the loop filing follow-ups faster than it lands them.
+ * The queue after a ticket, against the queue before it. The header carries the depth; the
+ * direction is what matters across an unattended night — a frontier that grows every ticket is the
+ * loop filing follow-ups faster than it lands them.
  */
 export function queueLine(before, after) {
   if (!after.implement && !after.triage && !after.wayfinder) return paint(["dim"], "     queue empty");
@@ -225,8 +203,8 @@ export function closing({ outcome, number, files, turns, ms, cost, log, why }) {
 }
 
 /**
- * The title is what gets shortened when the line will not fit, never the reason: a parked row
- * exists to say why it parked, and a row reading "no review …" has thrown away its only content.
+ * The title is shortened when the line will not fit, never the reason: a parked row exists to say
+ * why it parked.
  *
  * @param {{number: number, title: string, outcome: string, ms: number, cost: number,
  *   pr?: number|null, why?: string}} run

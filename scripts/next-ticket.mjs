@@ -22,25 +22,15 @@ export function sizeOf(issue) {
   return SIZE_ORDER.find((s) => labelNames(issue).includes(s)) ?? null;
 }
 
-// Precedence, encoded: an AFK session implements specified work first, then
-// converts unspecified input (triage), then resolves decisions (wayfinder),
-// and otherwise hands off to the owner. Each stage manufactures work for the
-// stages above it, which is why they run bottom-up here, top-down in value.
-//
-// `owner` means labelled, with the label saying a human decides.
-/**
- * @typedef {{ number: number, title: string, labels: { name: string }[] }} Issue
- * @param {Issue[]} openIssues
- * @returns {{ frontier: Issue[], triage: Issue[], wayfinder: Issue[], owner: Issue[] }}
- */
 /**
  * Which skill works this issue, from its labels alone; `null` means the owner's.
  *
- * An owner label wins over `ready-for-agent`, and a ticket carrying both is the normal case:
- * releasing one to the owner adds `ready-for-human` beside the label that is already there.
- * Without that the frontier takes it, the pipeline claims it and the gate escalates it again —
- * and because it sorts to the same place every time, the queue serves it forever.
+ * Precedence, encoded: an AFK session implements specified work first, then converts unspecified
+ * input (triage), then resolves decisions (wayfinder), and otherwise hands off. An owner label
+ * wins over `ready-for-agent`, and a ticket carrying both is the normal case — releasing one to
+ * the owner adds `ready-for-human` beside the label already there.
  *
+ * @typedef {{ number: number, title: string, labels: { name: string }[] }} Issue
  * @param {Issue} issue
  */
 export function routeOf(issue) {
@@ -52,6 +42,10 @@ export function routeOf(issue) {
   return null;
 }
 
+/**
+ * @param {Issue[]} openIssues
+ * @returns {{ frontier: Issue[], triage: Issue[], wayfinder: Issue[], owner: Issue[] }}
+ */
 export function classify(openIssues) {
   /** @type {{frontier: Issue[], triage: Issue[], wayfinder: Issue[], owner: Issue[]}} */
   const buckets = { frontier: [], triage: [], wayfinder: [], owner: [] };
@@ -140,8 +134,8 @@ function printDetail(ticket, comments) {
       console.log(`  blocked by #${b.number} ${b.title}`);
     }
   }
-  // The supervisor hands a red CI round back by ticket number, and that session's first question
-  // is whether the branch already exists. It cannot be answered from labels.
+  // A CI fix round is handed back by ticket number, and that session's first question — does the
+  // branch already exist — cannot be answered from labels.
   for (const pr of openPrsFor(issue.number)) {
     if (pr.state === "OPEN") console.log(`Open pull request: #${pr.number} on ${pr.headRefName}`);
   }
@@ -192,9 +186,7 @@ if (invokedDirectly) {
       console.error(`#${explicit} not found (is it a pull request?)`);
       process.exit(1);
     }
-    // `queue.md` branches on implement / triage / wayfinder / handoff and has no case for a
-    // fifth word, so a session handed its own ticket number was handed a route its protocol
-    // could not follow.
+    // `queue.md` branches on implement / triage / wayfinder / handoff and has no fifth case.
     console.log(`ROUTE\t${routeOf(issue) ?? "handoff"}\t${explicit}\t${issue.title}\t${sizeOf(issue) ?? ""}`);
     printDetail(issue, comments);
     process.exit(0);

@@ -39,6 +39,7 @@ const io = (over: Record<string, unknown> = {}) => ({
   pushedPr: () => ({ number: 984, state: "OPEN", head: "agent/42-x" }),
   settle: async () => ({ action: "merged", why: "merged" }),
   park: () => {},
+  teardown: () => {},
   bell: () => {},
   record: () => {},
   releaseClaim: () => {},
@@ -148,6 +149,35 @@ describe("runOnce", () => {
     assert.equal(r.outcome, "landed");
     assert.deepEqual(released, [42]);
     assert.deepEqual(settled, [], "there is nothing left to settle");
+  });
+
+  // Phase F removes its own worktree, but every path that skips phase F leaves one standing, and
+  // a standing worktree is a run derive() resumes on every iteration after.
+  test("a worktree the session left behind is torn down on every terminal outcome", async () => {
+    for (const over of [
+      { pushedPr: () => ({ number: 984, state: "MERGED", head: "agent/42-x" }) },
+      { settle: async () => ({ action: "merged", why: "merged" }) },
+      { settle: async () => ({ action: "park", why: "no settle" }) },
+    ]) {
+      const gone: (string | null)[] = [];
+      await runOnce(io({ ...over, teardown: (cwd: string | null) => gone.push(cwd) }));
+      assert.deepEqual(gone, [".worktrees/agent-42"], JSON.stringify(Object.keys(over)));
+    }
+  });
+
+  // The same worktree is what the next round works in, so this is the one outcome that keeps it.
+  test("a CI fix round keeps the worktree, and hands it back", async () => {
+    const gone: (string | null)[] = [];
+    const r = await runOnce(
+      io({
+        settle: async () => ({ action: "fix", why: "CI failed at Lint" }),
+        teardown: (cwd: string | null) => gone.push(cwd),
+      }),
+    );
+    assert.equal(r.outcome, "retry");
+    assert.equal(r.cwd, ".worktrees/agent-42");
+    assert.ok(r.run, "main records the park when the rounds run out, and needs the session's cost");
+    assert.deepEqual(gone, []);
   });
 
   test("a pull request closed without merging is the owner's", async () => {

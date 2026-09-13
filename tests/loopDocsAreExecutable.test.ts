@@ -161,7 +161,9 @@ describe("the session declares what it did before it exits", () => {
 // no worktree — phase F removed it — so the protocol has to say how it gets one back.
 describe("a CI fix round is a documented path, not an improvisation", () => {
   test("phase A names how to rebuild the worktree from the pushed branch", () => {
-    assert.match(read(QUEUE), /git worktree add \.worktrees\/agent-<n> -B agent\/<n>-<slug>/);
+    // Flags before the path: `git worktree add <path> -B <branch>` parses, and then does not mean
+    // what phase A's own `-b` form means two sections above it.
+    assert.match(read(QUEUE), /git worktree add -B agent\/<n>-<slug> \.worktrees\/agent-<n>/);
   });
 
   // Resolved through the function that writes it, not scanned for as text: a path spelled the

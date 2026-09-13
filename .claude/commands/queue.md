@@ -78,7 +78,7 @@ already exists. Do not claim it again and do not start over.
 
 ```sh
 git fetch origin --quiet
-git worktree add .worktrees/agent-<n> -B agent/<n>-<slug> origin/agent/<n>-<slug>
+git worktree add -B agent/<n>-<slug> .worktrees/agent-<n> origin/agent/<n>-<slug>
 cat .loop-logs/ci-<n>.log                 # the failed CI log, already fetched for you
 ```
 
