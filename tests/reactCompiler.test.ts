@@ -15,6 +15,7 @@ import { execFileSync } from "node:child_process";
 import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { directives } from "./helpers/hookSuppression.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 // The shared checkout, via `--git-common-dir` rather than `--show-toplevel` (RULES.md rule 10:
@@ -251,25 +252,54 @@ test("a bailout in a plain .ts hook is what the widened gate catches", () => {
 });
 
 /**
- * Every `eslint-disable` directive, in either comment syntax, with its rule
- * list — which a block comment may spread over several lines.
+ * Where `source` switches a react-hooks rule off, one line each.
+ *
+ * Every rule under the `react-hooks/` prefix, not the three `tests/hooksLint`
+ * names, and every form ESLint honours, including the ones the compiler's own
+ * suppression parser does not read. What is refused is a comment deciding
+ * locally about a rule whose blast radius is the whole file — which of them the
+ * compiler charges for is its configuration's to change, and #1043 is where that
+ * list stops being something this file assumes.
+ *
+ * `tests/hooksLint` asks a narrower question, whether the rules #891 adopted
+ * stay on, and keeps its narrower list.
  */
-const DIRECTIVE =
-  /\/\*\s*(eslint-disable(?:-next-line|-line)?)(?![\w-])([\s\S]*?)\*\/|\/\/\s*(eslint-disable(?:-next-line|-line)?)(?![\w-])([^\n]*)/g;
-
-/**
- * A directive that switches react-hooks off. Naming no rule at all switches
- * off every rule, react-hooks among them, so a bare `/* eslint-disable *\/`
- * counts — it costs the file its compilation exactly as a named one does.
- */
-function disablesReactHooks(body: string): boolean {
-  const rules = body
-    .split("--")[0]
-    .split(",")
-    .map((r) => r.trim())
-    .filter(Boolean);
-  return rules.length === 0 || rules.some((r) => r.startsWith("react-hooks/"));
+function suppressions(source: string, file: string): string[] {
+  return directives(source, file)
+    .filter(
+      ({ keyword, rules }) =>
+        (keyword !== "eslint" && rules.length === 0) ||
+        rules.some((rule) => rule.startsWith("react-hooks/"))
+    )
+    .map(({ line, keyword, rules }) =>
+      `${file}:${line} — ${keyword} ${rules.join(", ")}`.trimEnd()
+    );
 }
+
+test("each form the gate refuses is found, and a quoted one is not", () => {
+  const found = (source: string) => suppressions(source, "components/X.tsx");
+  assert.equal(found("/* eslint-disable */").length, 1);
+  assert.equal(found('/* eslint react-hooks/refs: "off" */').length, 1);
+  assert.equal(found('/* eslint react-hooks/refs: "error" */').length, 1);
+  // Each disable syntax by its own text: a file-wide one and a single-line one
+  // are a different amount of damage to report.
+  assert.deepEqual(found("/* eslint-disable react-hooks/refs */"), [
+    "components/X.tsx:1 — eslint-disable react-hooks/refs",
+  ]);
+  assert.deepEqual(found("// eslint-disable-next-line react-hooks/exhaustive-deps"), [
+    "components/X.tsx:1 — eslint-disable-next-line react-hooks/exhaustive-deps",
+  ]);
+  assert.deepEqual(found("// eslint-disable-line react-hooks/refs"), [
+    "components/X.tsx:1 — eslint-disable-line react-hooks/refs",
+  ]);
+  assert.deepEqual(found("// eslint-disable-next-line no-console"), []);
+  assert.deepEqual(found("// the `react-hooks/refs` rule, which we do not disable"), []);
+  // A directive is a directive only outside a string. This one is a fixture in
+  // a test that asserts about suppressions, and the scan reads it as the thing
+  // it describes.
+  assert.deepEqual(found('const s = "/* eslint-disable */";'), []);
+  assert.deepEqual(found("const s = `// eslint-disable-next-line react-hooks/refs`;"), []);
+});
 
 test("no react-hooks rule is switched off under app/, components/ or context/", () => {
   const found = ["app", "components", "context"]
@@ -278,17 +308,7 @@ test("no react-hooks rule is switched off under app/, components/ or context/", 
         .filter((f) => f.endsWith(".ts") || f.endsWith(".tsx"))
         .map((f) => `${dir}/${f.split(path.sep).join("/")}`)
     )
-    .flatMap((rel) => {
-      const source = readFileSync(path.join(repoRoot, rel), "utf8");
-      return [...source.matchAll(DIRECTIVE)]
-        .map((m) => ({
-          directive: m[1] ?? m[3],
-          body: m[2] ?? m[4] ?? "",
-          line: source.slice(0, m.index).split("\n").length,
-        }))
-        .filter((d) => disablesReactHooks(d.body))
-        .map((d) => `${rel}:${d.line} — ${d.directive} ${d.body.trim()}`.trimEnd());
-    });
+    .flatMap((rel) => suppressions(readFileSync(path.join(repoRoot, rel), "utf8"), rel));
   assert.deepEqual(
     found,
     [],
