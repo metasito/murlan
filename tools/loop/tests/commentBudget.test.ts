@@ -99,36 +99,61 @@ describe("addedCounts against a before", () => {
 describe("over", () => {
   const code = (n: number, tag = "x") => Array.from({ length: n }, (_, i) => `const ${tag}${i} = ${i};`);
   const prose = (n: number) => Array.from({ length: n }, (_, i) => `// why ${i}`);
-  const delta = (before: string[], after: string[]) => addedCounts(before.join("\n"), after.join("\n"));
+  const delta = (before: string[], after: string[]) =>
+    over(addedCounts(before.join("\n"), after.join("\n")), "src/a.mjs");
 
   test("a change that is mostly prose is named", () => {
-    assert.equal(over(delta(["const a = 1;"], [...prose(7), "const a = 1;"])), true);
+    assert.equal(delta(["const a = 1;"], [...prose(7), "const a = 1;"]), true);
   });
 
   test("a handful of comments on a small change is not policed", () => {
-    assert.equal(over(delta(["const a = 1;"], [...prose(2), "const a = 1;"])), false);
+    assert.equal(delta(["const a = 1;"], [...prose(2), "const a = 1;"]), false);
   });
 
   test("plenty of comments alongside plenty of code is within budget", () => {
-    assert.equal(over(delta([], [...prose(20), ...code(40)])), false);
+    assert.equal(delta([], [...prose(20), ...code(40)]), false);
   });
 
   test("deleting comments is always free", () => {
-    assert.equal(over(delta(prose(8), ["const a = 1;"])), false);
+    assert.equal(delta(prose(8), ["const a = 1;"]), false);
   });
 
   // Half the surviving lines come back word for word and half are rewritten, because a rewrite is
   // both: were every line new the fixture would pass on the rename alone.
   test("a rewrite that deletes far more code than it adds comment is within budget", () => {
-    assert.equal(over(delta(code(200), [...prose(16), ...code(40), ...code(38, "y")])), false);
+    assert.equal(delta(code(200), [...prose(16), ...code(40), ...code(38, "y")]), false);
   });
 
   test("a large block of prose is named however much code the same change deleted", () => {
-    assert.equal(over(delta(code(500), prose(400))), true);
+    assert.equal(delta(code(500), prose(400)), true);
   });
 
   test("a pile of prose beside one deletion is still named", () => {
-    assert.equal(over(delta(["const a = 1;", "const b = 2;"], [...prose(30), "const a = 1;"])), true);
+    assert.equal(delta(["const a = 1;", "const b = 2;"], [...prose(30), "const a = 1;"]), true);
+  });
+});
+
+describe("the budget's floors", () => {
+  test("a comment-only change cannot be saved by the ratio arm", () => {
+    assert.equal(over({ comment: 4, code: 0 }, "src/x.ts"), true);
+  });
+
+  test("a one-line comment-only change still passes", () => {
+    assert.equal(over({ comment: 1, code: 0 }, "src/x.ts"), false);
+  });
+
+  test("a test file gets the tighter floor", () => {
+    assert.equal(over({ comment: 4, code: 2 }, "src/x.ts"), false);
+    assert.equal(over({ comment: 4, code: 2 }, "tools/loop/tests/x.test.ts"), true);
+  });
+
+  test("source keeps the floor it had", () => {
+    assert.equal(over({ comment: 6, code: 2 }, "src/x.ts"), false);
+    assert.equal(over({ comment: 7, code: 2 }, "src/x.ts"), true);
+  });
+
+  test("a comment marker inside a string was never a comment", () => {
+    assert.deepEqual(addedCounts("", `const s = "// x";`), { comment: 0, code: 1 });
   });
 });
 
