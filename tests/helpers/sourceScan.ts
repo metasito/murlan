@@ -4,10 +4,13 @@ import path from "node:path";
 /** What `scannedFiles` walks: the two trees that hold rendered UI, never one without the other. */
 const SCANNED_DIRS = ["components", "app"];
 
-function sourcesUnder(repoRoot: string, dirs: string[]): [string, string][] {
+/** The sources under `dirs`, as `[repo-relative path, contents]`. */
+export function sourcesUnder(repoRoot: string, dirs: string[], keep = /\.tsx?$/): [string, string][] {
   return dirs.flatMap((dir) =>
     readdirSync(path.join(repoRoot, dir), { recursive: true, encoding: "utf8" })
-      .filter((f) => f.endsWith(".ts") || f.endsWith(".tsx"))
+      // match, not test: a caller's `/g` pattern would carry lastIndex from one
+      // file to the next and drop every other one.
+      .filter((f) => f.match(keep))
       .map((f): [string, string] => [
         path.posix.join(dir, f.split(path.sep).join("/")),
         readFileSync(path.join(repoRoot, dir, f), "utf8"),
@@ -49,30 +52,141 @@ export function scannedFiles(repoRoot: string): string[] {
 }
 
 /**
+ * What may sit immediately before a `/` that opens a regex literal. `}` and
+ * `<` are left out on purpose: both are how JSX writes `{…} />` and `</Tag>`,
+ * and reading either as a regex swallows the rest of the file.
+ *
+ * Read against the source, never against the buffer being blanked: a blanked
+ * `a="b"` ends in `=`, which would make the two modes tokenise differently.
+ */
+const OPENS_REGEX =
+  /(?:[(,=:[!&|?;+\-*%^~{]|=>|\b(?:return|typeof|instanceof|in|of|case|new|delete|void|throw|do|else|yield|await))\s*$/;
+
+/**
+ * One left-to-right pass: whichever of a comment, a string, a template or a
+ * regex literal opens first owns the span up to its own closer, so a quote
+ * inside a string is content rather than an opener.
+ *
  * Blanking, not removing: every offset in the result still points at the line
  * it came from, so a scan can report where it found something.
  *
  * A source scan that reads comments as code fails on prose — a comment naming
  * `<Modal>` is not a modal, and the report is a red run with nothing to fix.
  */
-const blank = (m: string) => m.replace(/[^\n]/g, " ");
+function blankSpans(source: string, blankStrings: boolean): string {
+  // split(""), not [...source]: the spread yields code points, so blanking an
+  // astral character would replace two UTF-16 units with one space and shift
+  // every offset after it.
+  const out = source.split("");
+  const erase = (from: number, to: number) => {
+    for (let k = from; k < to && k < out.length; k++) if (out[k] !== "\n") out[k] = " ";
+  };
 
-/** `//` and block comments. `[^:]` leaves the `//` of a URL alone. */
+  // A `'…'` or `"…"` cannot cross a line break it has not escaped, so an
+  // apostrophe in prose ends at the newline rather than running on through the
+  // code below it.
+  const quoted = (start: number): number => {
+    let i = start + 1;
+    while (i < source.length && source[i] !== source[start] && source[i] !== "\n") {
+      i += source[i] === "\\" ? 2 : 1;
+    }
+    const end = Math.min(i + 1, source.length);
+    if (blankStrings) erase(start, end);
+    return end;
+  };
+
+  const regexLiteral = (start: number): number => {
+    let i = start + 1;
+    let inClass = false;
+    while (i < source.length && source[i] !== "\n") {
+      const c = source[i];
+      if (c === "\\") {
+        i += 2;
+        continue;
+      }
+      if (c === "[") inClass = true;
+      else if (c === "]") inClass = false;
+      else if (c === "/" && !inClass) return i + 1;
+      i++;
+    }
+    return start + 1; // unterminated: it was a division after all
+  };
+
+  const template = (start: number): number => {
+    if (blankStrings) erase(start, start + 1);
+    let i = start + 1;
+    while (i < source.length) {
+      const c = source[i];
+      if (c === "\\") {
+        if (blankStrings) erase(i, i + 2);
+        i += 2;
+      } else if (c === "`") {
+        if (blankStrings) erase(i, i + 1);
+        return i + 1;
+      } else if (c === "$" && source[i + 1] === "{") {
+        i = walk(i + 2, true); // the interpolation holds code, not literal text
+      } else {
+        if (blankStrings) erase(i, i + 1);
+        i++;
+      }
+    }
+    return i;
+  };
+
+  /** From `from` to end of input, or just past the `}` closing an interpolation. */
+  function walk(from: number, untilBrace: boolean): number {
+    let i = from;
+    let depth = 0;
+    while (i < source.length) {
+      const c = source[i];
+      const two = c + source[i + 1];
+      if (two === "/*") {
+        const close = source.indexOf("*/", i + 2);
+        const end = close < 0 ? source.length : close + 2;
+        erase(i, end);
+        i = end;
+      } else if (two === "//" && source[i - 1] !== ":") {
+        const nl = source.indexOf("\n", i);
+        const end = nl < 0 ? source.length : nl;
+        erase(i, end);
+        i = end;
+      } else if (c === '"' || c === "'") {
+        i = quoted(i);
+      } else if (c === "`") {
+        i = template(i);
+      } else if (c === "/" && OPENS_REGEX.test(source.slice(Math.max(0, i - 16), i))) {
+        i = regexLiteral(i);
+      } else {
+        if (untilBrace && c === "{") depth++;
+        else if (untilBrace && c === "}") {
+          if (depth === 0) return i + 1;
+          depth--;
+        }
+        i++;
+      }
+    }
+    return i;
+  }
+
+  walk(0, false);
+  return out.join("");
+}
+
+/** `//` and block comments. A `//` behind a `:` is a URL's, not a comment's. */
 export function blankComments(source: string): string {
-  return source
-    .replace(/\/\*[\s\S]*?\*\//g, blank)
-    .replace(/(^|[^:])(\/\/[^\n]*)/g, (_, before: string, comment: string) => before + blank(comment));
+  return blankSpans(source, false);
 }
 
 /**
  * Comments and every string literal. Use this only when the scan is looking
  * for code: a scan reading JSX attribute values needs the strings kept.
+ *
+ * Nothing here reads JSX, so an apostrophe in prose — `<Text>don't</Text>` —
+ * opens a literal that takes the rest of that line. The line break bounds it,
+ * and `blankComments` does not have the defect at all.
  */
 export function blankCommentsAndStrings(source: string): string {
-  return blankComments(source)
-    .replace(/`(?:\\.|\$\{[^}]*\}|[^`\\])*`/g, blank)
-    .replace(/'(?:\\.|[^'\\])*'/g, blank)
-    .replace(/"(?:\\.|[^"\\])*"/g, blank);
+  return blankSpans(source, true);
 }
 
 /**
