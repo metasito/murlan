@@ -15,7 +15,7 @@ import { execFileSync } from "node:child_process";
 import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { ADOPTED } from "./helpers/adoptedHookRules.ts";
+import { ADOPTED, SHIPPED } from "./helpers/adoptedHookRules.ts";
 import { directives } from "./helpers/hookSuppression.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -252,11 +252,6 @@ test("a bailout in a plain .ts hook is what the widened gate catches", () => {
   );
 });
 
-/** Every rule `eslint-plugin-react-hooks` ships, so one added upstream is measured too. */
-const REACT_HOOKS_RULES = Object.keys(
-  (require("eslint-plugin-react-hooks") as { rules: Record<string, unknown> }).rules
-).map((name) => `react-hooks/${name}`);
-
 const PROBE_REL = "components/suppressionProbe.tsx";
 
 /**
@@ -289,7 +284,7 @@ function bailoutReasons(rule: string): string[] {
  * through `compile()` is the only reading that cannot drift from the options
  * this suite compiles with (docs/adr/0005).
  */
-const CHARGED_FOR = REACT_HOOKS_RULES.filter((rule) =>
+const CHARGED_FOR = SHIPPED.filter((rule) =>
   bailoutReasons(rule).some((reason) => reason.includes("ESLint"))
 );
 
@@ -315,7 +310,7 @@ test("a suppression of a rule #891 adopted costs the compiler nothing", () => {
   // about three names nothing ships, which is the shape of pass this measurement
   // exists to replace.
   assert.deepEqual(
-    ADOPTED.filter((rule) => !REACT_HOOKS_RULES.includes(rule)),
+    ADOPTED.filter((rule) => !SHIPPED.includes(rule)),
     [],
     "eslint-plugin-react-hooks no longer ships these, so what both gates are about has been " +
       "renamed out from under them"
@@ -406,7 +401,7 @@ test("a suppressed react-hooks rule is what the compiler refuses to compile", ()
   // Named here rather than left to interpolate as `undefined`, which reads in
   // `reasonsFor`'s message as an anchor that missed.
   const [charged] = CHARGED_FOR;
-  assert.ok(charged, "the probe CHARGED_FOR is measured from found no rule to suppress");
+  assert.ok(charged, "CHARGED_FOR is empty, so there is no rule to suppress here");
   const reasons = reasonsFor(
     rel,
     `${source.slice(0, match.index)}${match[1]}// eslint-disable-next-line ${charged}\n${source.slice(match.index)}`
