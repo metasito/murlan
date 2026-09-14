@@ -14,7 +14,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { actionScriptLines } from "./helpers/androidAction.ts";
+import { actionScriptLines, markerIndex } from "./helpers/androidAction.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -23,17 +23,28 @@ function read(rel: string): string {
 }
 
 const WORKFLOW = ".github/workflows/maestro.yml";
+const ACTION = ".github/actions/drive-android-flows/action.yml";
+
+/**
+ * Every `::error::`/`::warning::` a run can actually print, from both files. The
+ * leading `[^#\n]*` is what drops the comments that quote one: a claim about
+ * what a run says to its reader must not be answerable by prose about it.
+ */
+function annotations(): string[] {
+  return [WORKFLOW, ACTION]
+    .flatMap((f) => [...read(f).matchAll(/^[^#\n]*::(?:error|warning)::.*$/gm)])
+    .map((m) => m[0].trim());
+}
 
 describe("the Android flow marker", () => {
   const lines = actionScriptLines(repoRoot);
 
   test("is the last thing the script does before running the flows", () => {
-    const marker = lines.findIndex((l) => l.startsWith("touch") && l.includes("app-launched"));
+    const marker = markerIndex(lines, "app-launched");
     // Any Maestro invocation: the flags between `maestro` and `test` are the
     // device and the app id, and pinning their spelling here would fail the
     // next time either is added rather than when the ordering breaks.
     const flows = lines.findIndex((l) => /^maestro\b.*\btest\b/.test(l));
-    assert.notEqual(marker, -1, "the script no longer writes the marker at all");
     assert.notEqual(flows, -1, "the script no longer runs the flows");
     assert.equal(
       marker + 1,
@@ -48,9 +59,8 @@ describe("the Android flow marker", () => {
     // One marker cannot say both. A device that came up and an app that then
     // died within five seconds is neither the runner failing to arrive nor a
     // verdict on the diff, and reporting it as either is what #647 was.
-    const booted = lines.findIndex((l) => l.startsWith("touch") && l.includes("emulator-booted"));
-    const launched = lines.findIndex((l) => l.startsWith("touch") && l.includes("app-launched"));
-    assert.notEqual(booted, -1, "nothing marks the device coming up any more");
+    const booted = markerIndex(lines, "emulator-booted");
+    const launched = markerIndex(lines, "app-launched");
     assert.ok(
       booted < launched,
       "the app-launch marker must come after the device one, or a device that never " +
@@ -60,6 +70,27 @@ describe("the Android flow marker", () => {
       lines.slice(booted + 1, launched).some((l) => /\bam start\b|\bmonkey\b/.test(l)),
       "nothing between the two markers launches the app, so the second proves nothing",
     );
+  });
+
+  test("nothing above the device marker touches what this branch built", () => {
+    // The whole weight of the verdict's "that is the runner and not this branch"
+    // rests on this: the marker is absent for everything above it alike, so one
+    // line up there consuming the branch's own build is a bad APK reported as a
+    // sick runner.
+    // The names come from the build step's own `$GITHUB_ENV` writes, so a third
+    // export consumed up there is caught without this test being told about it.
+    const exported = [...read(WORKFLOW).matchAll(/echo "(\w+)=[^"]*" >> "\$GITHUB_ENV"/g)].map(
+      (m) => m[1],
+    );
+    assert.ok(exported.length >= 2, "the build no longer exports what it built, or the scan broke");
+    const built = new RegExp(`${exported.join("|")}|\\.apk\\b`);
+    for (const l of lines.slice(0, markerIndex(lines, "emulator-booted"))) {
+      assert.doesNotMatch(
+        l,
+        built,
+        `the verdict calls a failure here the runner's, but this line runs the branch's build: ${l}`,
+      );
+    }
   });
 
   test("each attempt clears the markers it is about to write", () => {
@@ -82,7 +113,7 @@ describe("the Android flow marker", () => {
     // the boundary as well.
     const collectors = lines.filter((l) => l.startsWith("nohup"));
     assert.equal(collectors.length, 2, "the logcat stream and the host vitals");
-    const launched = lines.findIndex((l) => l.startsWith("touch") && l.includes("app-launched"));
+    const launched = markerIndex(lines, "app-launched");
     for (const c of collectors) {
       assert.ok(lines.indexOf(c) < launched, `an instrument starts after the app-launch marker: ${c}`);
       assert.match(c, /&\s*true$/, `an instrument whose failure is not absorbed: ${c}`);
@@ -99,8 +130,10 @@ describe("the Android flow marker", () => {
     // A job that overruns timeout-minutes is cancelled, not failed. `failure()` is
     // then false, so the verdict step and both artefact uploads never run — in
     // exactly the case they exist to explain.
+    // Every shape that blocks on the device, not only the one named
+    // `wait-for-device`: the install and the launch wait on it just as hard.
     const unbounded = lines.filter(
-      (l) => l.includes("wait-for-device") && !l.startsWith("timeout "),
+      (l) => /wait-for-device|^adb install\b|\bmonkey\b/.test(l) && !l.startsWith("timeout "),
     );
     assert.deepEqual(unbounded, [], "an adb wait with no timeout can hang the job to cancellation");
 
@@ -131,6 +164,19 @@ describe("maestro.yml reads that marker", () => {
       1,
       "more than one state withholds the retry",
     );
+    // The retry reads `started == 'false'`, which an unset output also fails. A
+    // branch that classifies and then says nothing withholds the retry without
+    // meaning to.
+    assert.equal(
+      (kind.match(/started=false/g) ?? []).length,
+      2,
+      "a state that neither withholds the retry nor asks for it",
+    );
+    assert.equal(
+      (kind.match(/booted=/g) ?? []).length,
+      3,
+      "a state that does not record whether the first attempt came up",
+    );
     const launched = kind.indexOf("app-launched");
     assert.ok(
       launched < kind.indexOf("started=true"),
@@ -138,20 +184,69 @@ describe("maestro.yml reads that marker", () => {
     );
   });
 
-  test("the verdict names the app launch rather than blaming the branch for it", () => {
+  test("no annotation routes a reader to an issue number", () => {
+    // A comment may cite a closed issue - the record is still the record. An
+    // annotation is a call to act, and nothing in a workflow can tell that the
+    // issue behind one has been answered, so every one of these goes on sending
+    // the reader of a failed run somewhere nobody is listening.
+    const printed = annotations();
+    // Both halves of the floor are load-bearing: a regex that matched nothing
+    // would pass this test by finding no issue to object to, and one that
+    // matched only the file it was written against would answer for both.
+    assert.ok(printed.length >= 15, `only ${printed.length} annotations found; the scan is broken`);
+    for (const f of [WORKFLOW, ACTION]) {
+      assert.ok(
+        printed.some((a) => read(f).includes(a)),
+        `the scan found nothing in ${f}, so it is answering about one file`,
+      );
+    }
+    for (const a of printed) {
+      assert.doesNotMatch(a, /#\d+/, `an annotation naming an issue: ${a}`);
+    }
+  });
+
+  test("the verdict's 'twice' reads the first attempt's own record", () => {
+    // The retry clears both markers before writing them, so afterwards they
+    // describe that attempt alone; `kind` ran before it and is the only account
+    // of the first.
     const verdict = src.slice(src.indexOf("The run's real verdict"));
-    const blame = verdict.indexOf("result about the diff");
-    const launch = verdict.indexOf("app-launched");
-    assert.notEqual(launch, -1, "the verdict cannot see whether the app ever launched");
-    assert.ok(
-      launch < blame,
-      "the diff is blamed before the app launch is checked, which is the defect itself",
+    const twice = verdict.search(/::error::[^\n]*twice/);
+    assert.notEqual(twice, -1, "no branch of the verdict claims anything happened twice");
+    const guard = verdict.slice(verdict.lastIndexOf("if [", twice), twice);
+    assert.match(
+      guard,
+      /steps\.kind\.outputs\.booted\s*\}\}"\s*!=\s*"true"/,
+      "the verdict calls a boot failure twice without reading what the first attempt reached",
+    );
+    assert.match(
+      guard,
+      /!\s+-f\s+"\$RUNNER_TEMP\/emulator-booted"/,
+      "the verdict calls a boot failure twice on a retry whose device did come up",
+    );
+    assert.doesNotMatch(
+      guard,
+      /\|\|/,
+      "the verdict claims twice on any one of its conditions rather than all of them",
     );
   });
 
+  test("the verdict reads its markers narrowest-first", () => {
+    // Narrowest condition first: no marker at all, then a device that came up,
+    // then an app that launched. Read in any other order the broadest answer
+    // arrives first and every failure becomes the diff's, which is the defect
+    // itself.
+    const verdict = src.slice(src.indexOf("The run's real verdict"));
+    const blame = verdict.indexOf("result about the diff");
+    const launch = verdict.indexOf("app-launched");
+    const booted = verdict.indexOf("emulator-booted");
+    assert.notEqual(launch, -1, "the verdict cannot see whether the app ever launched");
+    assert.notEqual(booted, -1, "the verdict cannot see whether the device ever came up");
+    assert.ok(booted < launch && launch < blame, "the verdict's branches are out of order");
+  });
+
   test("the verdict is stated before the steps whose `if: failure()` uploads the artefacts", () => {
-    // The step that decides, not the step that classifies: both mention #186, and
-    // only this one reads the retry's outcome.
+    // The step that decides, not the step that classifies: both read the same
+    // markers, and only this one reads the retry's outcome.
     const verdict = src.indexOf("steps.retry.outcome");
     // A real key, not the prose about it: the comment above the verdict step quotes
     // `if: failure()` verbatim, and matching that would put the artefacts first.

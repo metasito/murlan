@@ -15,7 +15,7 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { actionConfigLines, actionScriptLines } from "./helpers/androidAction.ts";
+import { actionConfigLines, actionScriptLines, markerIndex } from "./helpers/androidAction.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const script = actionScriptLines(repoRoot);
@@ -131,16 +131,15 @@ describe("the emulator display override", () => {
     // After the marker, because everything above that line is the device coming
     // up, and `maestro.yml` reads a failure there as the emulator never having
     // arrived — so a device that merely refused the override would report
-    // itself as #186 and be retried through another 900s boot.
+    // itself as the environment never having come up.
     assert.ok(size);
     const applied = script.findIndex((l) => l.startsWith("adb shell wm size "));
-    const marker = script.findIndex((l) => l.startsWith("touch") && l.includes("emulator-booted"));
+    const marker = markerIndex(script, "emulator-booted");
     const launched = script.findIndex((l) => l.includes("android.intent.category.LAUNCHER"));
-    assert.notEqual(marker, -1, "the script no longer marks the device as having come up");
     assert.notEqual(launched, -1, "nothing in the script launches the app any more");
     assert.ok(
       applied > marker,
-      "the display override runs above the device-came-up marker, so refusing it reads as #186"
+      "the display override runs above the device-came-up marker, so refusing it reads as the environment never coming up"
     );
     assert.ok(
       applied < launched,

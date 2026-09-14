@@ -1,4 +1,4 @@
-// The Maestro Android action, as the two things a test can ask about it: the
+// The Maestro Android action, as the things a test can ask about it: the
 // commands its script actually runs, and the `with:` block that configures the
 // emulator. Shared because a second copy is how one of them ends up weaker than
 // the other — a scan over the raw file text is satisfied by a commented-out
@@ -27,6 +27,14 @@ export function actionScriptLines(repoRoot: string): string[] {
     .slice(1)
     .map((l) => l.trim())
     .filter((l) => l !== "" && !l.startsWith("#"));
+}
+
+// Throws rather than returning -1, which would silently turn a caller's "above
+// the marker" into a claim about the whole script.
+export function markerIndex(lines: string[], name: string): number {
+  const i = lines.findIndex((l) => l.startsWith("touch") && l.includes(name));
+  if (i === -1) throw new Error(`nothing marks ${name} any more`);
+  return i;
 }
 
 /**
