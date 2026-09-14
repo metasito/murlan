@@ -29,12 +29,14 @@ import {
   header,
   keybar,
   LAND,
+  notice,
   phaseRow,
   progress,
   queueLine,
   PLAIN,
   reportRow,
   runTotal,
+  stepRow,
   stream as streamBlock,
   tasksDetail,
   theme,
@@ -52,6 +54,7 @@ import {
   usageSplit,
 } from "./loop-logs.mjs";
 import { readAllowedTools } from "./loop-tools.mjs";
+import { MAX_REVIEW_ROUNDS } from "./loop-gate.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import { branchSurvives, landing, mergeArgs } from "./land.ts";
 import { readVerdict } from "./ciVerdict.ts";
@@ -120,9 +123,9 @@ export function liveRoute(status) {
  *
  * @param {number|null} [pinned]
  */
-function nextRoute(pinned = null) {
+function nextRoute(pinned = null, at = null) {
   const live = liveRoute(derive());
-  if (live) return { ...live, size: ticketFacts(live.number).size, queue: null };
+  if (live) return { ...live, phase: at ?? live.phase, size: ticketFacts(live.number).size, queue: null };
   if (pinned) {
     const { title, size } = ticketFacts(pinned);
     // Phase A: phase F removed the worktree, so queue.md's fix round rebuilds it from the branch.
@@ -147,6 +150,26 @@ export const TURNS_BY_SIZE = {
 };
 export const TURNS_DEFAULT = 150;
 const TICKET_BUDGET_USD = "40";
+
+/**
+ * What one ticket may cost across every process it is spawned as.
+ *
+ * `TICKET_BUDGET_USD` bounds a single session and is unchanged; with phase handoffs a ticket is up
+ * to `MAX_HANDOFFS` of them, so the per-ticket figure has to be kept here, where the supervisor is
+ * the only thing that survives them all. Set above the fleet median for the size
+ * (`docs/research/2026-09-14-loop-efficiency.md` §5), so it catches a runaway and never a healthy run.
+ */
+export const USD_BY_SIZE = {
+  "size:XS": 20,
+  "size:S": 30,
+  "size:M": 45,
+  "size:L": 70,
+  "size:XL": 90,
+};
+export const USD_DEFAULT = 40;
+
+/** @param {number} spent @param {string|null} size */
+export const overSpend = (spent, size) => spent >= (USD_BY_SIZE[size ?? ""] ?? USD_DEFAULT);
 
 /** @param {string|null} [size] a `size:*` label, or null */
 export const turnsFor = (size) => TURNS_BY_SIZE[size ?? ""] ?? TURNS_DEFAULT;
@@ -203,28 +226,31 @@ function peerWorktrees(dir = ".worktrees") {
 export function syncCheckout(git, log, install = () => sh("npm", ["ci"], { stdio: "inherit" })) {
   const branch = git("rev-parse", "--abbrev-ref", "HEAD").trim();
   if (branch === "HEAD") {
-    log("queue-loop: the shared checkout is on a detached HEAD — put it back on main first.");
+    log("the shared checkout is on a detached HEAD — put it back on main first.");
     return false;
   }
 
   const dirty = git("status", "--porcelain", "--", ...PROTOCOL).trim();
   if (dirty) {
-    log("queue-loop: the protocol files in the shared checkout have uncommitted edits:");
-    for (const line of dirty.split("\n")) log(`  ${line}`);
-    log("  Commit them, or put them somewhere else. Nothing here will discard them.");
+    // One call, not one per file: the caller renders a message as a row and its note, and a line at
+    // a time gives each file a row of its own with nothing in the column that says what they are.
+    log(
+      `the protocol files here have uncommitted edits:\n${dirty}\n` +
+        `Commit them, or put them somewhere else. Nothing here will discard them.`,
+    );
     return false;
   }
 
   if (branch !== "main") {
     const own = Number(git("rev-list", "--count", "origin/main..HEAD").trim()) || 0;
     if (own > 0) {
-      log(`queue-loop: ${branch} is checked out with ${own} commit(s) of its own — not moving it.`);
+      log(`${branch} is checked out with ${own} commit(s) of its own — not moving it.`);
       return false;
     }
     try {
       git("checkout", "main");
     } catch (err) {
-      log(`queue-loop: cannot return to main — ${String(err.message).split("\n")[0]}`);
+      log(`cannot return to main — ${String(err.message).split("\n")[0]}`);
       return false;
     }
   }
@@ -235,7 +261,7 @@ export function syncCheckout(git, log, install = () => sh("npm", ["ci"], { stdio
     git("fetch", "origin", "--quiet");
     git("merge", "--ff-only", "origin/main");
   } catch (err) {
-    log(`queue-loop: cannot fast-forward main — ${String(err.message).split("\n")[0]}`);
+    log(`cannot fast-forward main — ${String(err.message).split("\n")[0]}`);
     return false;
   }
 
@@ -248,14 +274,14 @@ export function syncCheckout(git, log, install = () => sh("npm", ["ci"], { stdio
     if (git("diff", "--name-only", was, "HEAD").split("\n").includes("package-lock.json")) {
       const live = peerWorktrees();
       if (live.length) {
-        log(`queue-loop: package-lock.json moved, but ${live.join(", ")} is live — not reinstalling`);
+        log(`package-lock.json moved, but ${live.join(", ")} is live — not reinstalling`);
         return true;
       }
-      log("queue-loop: the fast-forward moved package-lock.json — reinstalling before the next ticket");
+      log("the fast-forward moved package-lock.json — reinstalling before the next ticket");
       install();
     }
   } catch (err) {
-    log(`queue-loop: could not reinstall after the fast-forward — ${String(err.message).split("\n")[0]}`);
+    log(`could not reinstall after the fast-forward — ${String(err.message).split("\n")[0]}`);
     return false;
   }
   return true;
@@ -278,6 +304,18 @@ export const SETTLE = { DEADLINE_MS: 90 * 60_000 };
 
 /** Consecutive red CI rounds on one ticket before it stops being the loop's to fix. */
 export const CI_ROUNDS = 3;
+
+/**
+ * Processes one ticket may be spawned as. A+B+C is one, each review round is one, E+F is one — six
+ * for a ticket that uses every round, and the slack is for a resume that re-enters a phase.
+ *
+ * A ceiling, not a budget: the thing that actually stops a runaway ticket is `overSpend`.
+ */
+export const MAX_HANDOFFS = 8;
+export const overHandoffs = (n) => n >= MAX_HANDOFFS;
+
+/** @param {{declared: {handoff?: string|null, stoodDown?: boolean}|null}} run */
+export const handoffOf = (run) => (run.declared?.stoodDown ? null : (run.declared?.handoff ?? null));
 
 /**
  * How long to wait out a spent usage window.
@@ -653,7 +691,7 @@ export function ticker(out = process.stdout, err = process.stderr, reveal = open
     const body = view.expanded
       ? streamBlock(open.feed, { ms, frame, letter: open.letter }, t, room)
       : [
-          progress({ letter: open.letter, ms }, t),
+          progress({ letter: open.letter, ms, round: open.round }, t),
           "",
           activity({ said: open.said, recent: open.recent, ms, frame }, t, room - 4),
         ].join("\n");
@@ -770,7 +808,7 @@ export function ticker(out = process.stdout, err = process.stderr, reveal = open
       else fs.rmSync(STOP_FILE, { force: true });
       view.stopping = wanted;
     } catch (e) {
-      api.warn(`queue-loop: could not ${wanted ? "write" : "remove"} ${STOP_FILE} — ${e}`);
+      api.notice("stop", `could not ${wanted ? "write" : "remove"} ${STOP_FILE} — ${e}`);
       view.stopping = fs.existsSync(STOP_FILE);
     }
   };
@@ -802,6 +840,11 @@ export function ticker(out = process.stdout, err = process.stderr, reveal = open
       over(line);
       draw();
     },
+    /** The supervisor's own word. Board content, so stdout and the scrollback, not stderr. */
+    notice(label, text) {
+      over(notice(label, text, t));
+      draw();
+    },
     warn(text) {
       // The block belongs to stdout and stderr cannot clear it, so the erase goes out on the
       // stream that owns it before the warning prints on the other one.
@@ -820,13 +863,13 @@ export function ticker(out = process.stdout, err = process.stderr, reveal = open
       ctx = { url: null, log: null, ...next };
       view.stopping = fs.existsSync(STOP_FILE);
     },
-    start(letter) {
+    start(letter, round = null) {
       // A placeholder, not a phase: the first marker replaces it rather than closing it as one.
       if (open?.letter === UNNAMED) {
         clear();
         open = null;
       } else api.close();
-      open = { letter, startedAt: Date.now(), said: null, recent: [], feed: [] };
+      open = { letter, round, startedAt: Date.now(), said: null, recent: [], feed: [] };
       if (!live) return;
       listen();
       timer = setInterval(draw, REDRAW_MS);
@@ -852,7 +895,7 @@ export function ticker(out = process.stdout, err = process.stderr, reveal = open
     close(state = "done", detail = "") {
       if (!open) return;
       const done = phaseRow(
-        { letter: open.letter, ms: Date.now() - open.startedAt, state, detail },
+        { letter: open.letter, round: open.round, ms: Date.now() - open.startedAt, state, detail },
         t,
       );
       clear();
@@ -998,6 +1041,22 @@ export function watchBuild(state, fact, budget, warn) {
 }
 
 /**
+ * Turns that spent a full context read on one shell command.
+ *
+ * Not a warning and not a gate: nothing at the call site can tell a command that had to wait for the
+ * last one from a command that did not. It is a number in the ledger, so "did the batching
+ * instruction work" is a question the record can answer.
+ *
+ * @param {{soloBash: number, turns: number}} state
+ * @param {{calls: {name: string}[]}} fact
+ */
+export function watchCalls(state, fact) {
+  if (!fact.calls.length) return;
+  state.turns += 1;
+  if (fact.calls.length === 1 && fact.calls[0].name === "Bash") state.soloBash += 1;
+}
+
+/**
  * Spawns one session and reports what it did.
  *
  * The phase comes from the session's own `PHASE <letter>` line. Inferring it from outside by
@@ -1051,6 +1110,8 @@ export function runTicket(
     buildTurns: 0,
     committed: false,
     warnedUncommitted: false,
+    soloBash: 0,
+    turns: 0,
     /** Subagents running right now, in the order they were last heard from. */
     tasks: new Map(),
   };
@@ -1064,13 +1125,20 @@ export function runTicket(
   };
 
   const about = facts(number);
+  // `reviewRounds` counts the verdicts already on the issue, so the round about to run is the next
+  // one. Null when the tracker could not be read — a number nobody could take is not a count of none.
+  const round = () =>
+    state.phase === "D" && about.reviewRounds != null
+      ? { n: about.reviewRounds + 1, of: MAX_REVIEW_ROUNDS }
+      : null;
+
   screen.say(header({ number, ...about, queue }, screen.theme));
   screen.context({ url: about.url, log: logPath });
   if (at) {
-    screen.say(phaseRow({ letter: at, detail: "resumed", ms: 0, state: "resumed" }, screen.theme));
+    screen.say(phaseRow({ letter: at, detail: "resumed", ms: 0, state: "resumed", round: round() }, screen.theme));
     // Opened here, not left for the session's own marker: `state.phase` is already this letter, so
     // the marker is read as "no change" and the board stays dark for the whole of that phase.
-    screen.start(at);
+    screen.start(at, round());
   } else {
     // The board's only state was "a phase is open", so the spawn, the session's start-up, and the
     // whole run if a marker is missed had nowhere to go and printed as a blank screen under the
@@ -1115,7 +1183,7 @@ export function runTicket(
       if (fact.letter && fact.letter !== state.phase) {
         closePhase();
         state.phase = fact.letter;
-        screen.start(fact.letter);
+        screen.start(fact.letter, round());
       }
       if (fact.declared) state.declared = fact.declared;
       // The only sign of life during phase D, which is the longest one and the one that read as a
@@ -1126,6 +1194,7 @@ export function runTicket(
       screen.said(thought(fact.text));
       for (const call of fact.calls) screen.call(call.name, act(call));
       watchBuild(state, fact, budget, (m) => screen.warn(m));
+      watchCalls(state, fact);
     }
     // A foreground subagent emits nothing else into the parent stream, so without these the phase
     // line freezes on its last fact for the whole of phase D — 78% of a run's clock — and a working
@@ -1199,9 +1268,12 @@ export function runTicket(
           blockedUntil: state.blockedUntil,
           result: state.result,
           declared: state.declared,
+          size,
           phase: state.phase,
           phases: state.phases,
           committed: state.committed,
+          soloBash: state.soloBash,
+          callTurns: state.turns,
           stderr: state.stderr,
           version: state.version,
           ms: Date.now() - startedAt,
@@ -1249,13 +1321,13 @@ const RUN_ID = new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-");
  * @param {number|null} [declared]
  * @param {number} [since] epoch ms; a merge older than this is not this session's
  * @param {Function} [run]
- * @returns {{number: number, state: string, head: string}|null}
+ * @returns {{number: number, state: string, head: string, changedFiles: number}|null}
  */
 export function pushedPr(branch, ticket, declared = null, since = 0, run = sh) {
   // Matched on the head ref rather than by search: `#42` in a body also matches PR #942. With a
   // branch in hand `--head` is exact; without one the newest 100 are scanned, which reaches back
   // far enough for a branch pushed minutes ago. `gh` lists newest first.
-  const json = ["--json", "number,state,headRefName,mergedAt"];
+  const json = ["--json", "number,state,headRefName,mergedAt,changedFiles"];
   // The head ref is the only thing that makes a pull request this ticket's, and it is checked on
   // every path including the declared one. `declared` is a number a model wrote into a line of
   // text, and what it reaches is `gh pr merge`.
@@ -1265,7 +1337,7 @@ export function pushedPr(branch, ticket, declared = null, since = 0, run = sh) {
     pr.state === "MERGED" && since > 0 && Date.parse(pr.mergedAt ?? "") < since;
   const take = (pr) =>
     pr && mine(pr) && !stale(pr)
-      ? { number: pr.number, state: pr.state, head: pr.headRefName }
+      ? { number: pr.number, state: pr.state, head: pr.headRefName, changedFiles: pr.changedFiles ?? 0 }
       : null;
   const query = branch
     ? ["pr", "list", "--state", "all", "--head", branch, "--limit", "20", ...json]
@@ -1281,7 +1353,9 @@ export function pushedPr(branch, ticket, declared = null, since = 0, run = sh) {
   }
   if (!declared) return null;
   try {
-    return take(JSON.parse(run("gh", ["pr", "view", String(declared), "--json", "number,state,headRefName"])));
+    return take(
+      JSON.parse(run("gh", ["pr", "view", String(declared), "--json", "number,state,headRefName,changedFiles"])),
+    );
   } catch {
     return null;
   }
@@ -1377,9 +1451,11 @@ async function poll(pending, log, pause, deadline) {
     // is a sick branch; a mergeability job still computing is neither sick nor healthy, and it
     // answers on its own in seconds. One counter for both parks whichever goes second.
     let asking = "recheck";
+    let stillRunning = null;
     try {
       const verdict = readVerdict(REPO, pending.branch, pending.pr);
       if (verdict.infrastructure) asking = "retry";
+      stillRunning = verdict.waiting ? verdict.reason : null;
       next = readLanding(pending.pr, verdict);
       // Written before it is handed back, because the session that fixes it is a fresh process
       // with no way to ask this one anything.
@@ -1401,6 +1477,14 @@ async function poll(pending, log, pause, deadline) {
       } catch (err) {
         return { action: "owner", reason: `could not update the branch — ${String(err.message).split("\n")[0]}` };
       }
+      await wait();
+      continue;
+    }
+    // A run that has not finished is not a round spent: `left.recheck` is eight of them, and any
+    // real ci.yml outlasts that. Its ceiling is `deadline`, read at the top of this loop — which no
+    // round could reach while `gh run watch` held the process inside one.
+    if (stillRunning && next.action === "recheck") {
+      log(stillRunning);
       await wait();
       continue;
     }
@@ -1479,11 +1563,12 @@ export function afterSession(run, derived) {
  * @param {object} io
  * @param {number|null} [pinned] a ticket a previous pass handed back unfinished
  * @param {number} [roundsUsed] red CI rounds this ticket has already had
- * @returns {Promise<{outcome: "landed"|"parked"|"stop"|"hold"|"retry"|"refused",
+ * @param {string|null} [at] the phase a handoff said the next process starts at
+ * @returns {Promise<{outcome: "landed"|"parked"|"stop"|"hold"|"retry"|"refused"|"handoff",
  *   ticket?: number, why?: string, until?: number, cwd?: string|null, branch?: string|null,
- *   pr?: number, files?: number, run?: object}>}
+ *   pr?: number, files?: number, phase?: string, run?: any}>}
  */
-export async function runOnce(io, pinned = null, roundsUsed = 0) {
+export async function runOnce(io, pinned = null, roundsUsed = 0, at = null) {
   if (io.stopFile()) return { outcome: "stop", why: ".loop-stop" };
   if (!io.syncCheckout()) return { outcome: "stop", why: "the shared checkout is not usable" };
   // Exit 2 is "this machine cannot start a ticket *now*" — drift, a peer's dirt, memory. Every one
@@ -1492,16 +1577,23 @@ export async function runOnce(io, pinned = null, roundsUsed = 0) {
   if (pre === 2) return { outcome: "hold", why: "queue-pre is not ready for a ticket yet" };
   if (pre !== 0) return { outcome: "stop", why: `queue-pre exited ${pre}` };
 
-  const route = io.pick(pinned);
+  const route = io.pick(pinned, at);
   if (route.skill === "handoff") return { outcome: "stop", why: route.title };
   if (route.skill === "ambiguous") return { outcome: "stop", why: route.title };
 
   const run = await io.spawn(route);
 
   const dirtied = io.sharedCheckoutDirty?.();
-  if (dirtied) io.log(`queue-loop: #${route.number}'s session left the shared checkout dirty:\n${dirtied}`);
+  if (dirtied) io.log(`#${route.number}'s session left the shared checkout dirty:\n${dirtied}`, "session");
 
   const after = afterSession(run, io.standing());
+  // Before the pull request is looked for: a session that handed off has not pushed and is not
+  // finished, and every reading below is about a session that meant to be its ticket's last.
+  const handoff = handoffOf(run);
+  if (handoff) {
+    io.record({ number: route.number, outcome: "handoff", why: `phase ${handoff} next`, run, counts: false });
+    return { outcome: "handoff", ticket: route.number, phase: handoff, run };
+  }
   const pr = io.pushedPr(after?.branch ?? null, route.number, run.declared?.pr ?? null, Date.now() - run.ms);
   // `blocked` is advisory, checked here rather than before the pull request is looked for: a
   // session refused mid-run that recovered and pushed has done its half, and reporting it refused
@@ -1522,7 +1614,9 @@ export async function runOnce(io, pinned = null, roundsUsed = 0) {
 
   const reason = reasonFor(run, after, route.number);
   const decided = outcomeOf({ pr, reason });
-  const files = after?.changed?.length ?? 0;
+  // The pull request's own count when the worktree is gone: phase F removes it before it declares,
+  // so `derive()` reads no diff at all and every landed ticket was recorded as touching 0 files.
+  const files = after?.changed?.length || pr?.changedFiles || 0;
 
   const handBack = (why, phase, log = run.log) => {
     // A park is only ever a decision the owner has to make, which is the whole of what the bell is
@@ -1548,11 +1642,15 @@ export async function runOnce(io, pinned = null, roundsUsed = 0) {
     return { outcome: "landed", ticket: route.number };
   }
 
+  const landFrom = Date.now();
   const settled = await io.settle({
     ticket: route.number,
     pr: decided.pr,
     branch: after?.branch ?? pr.head,
   });
+  // The land is the ticket's longest stretch and the session that built it has already exited, so
+  // the row's clock is the only place it can be counted. Every exit below records from `run.ms`.
+  run.ms += Date.now() - landFrom;
   const cost = settleOutcome(settled);
 
   // Every exit from a settle that did not merge and is not a fix round goes through `park` — the
@@ -1609,18 +1707,41 @@ function realIo(book, screen) {
   let before = null;
   return {
     stopFile: () => takeStopFile(fs, STOP_FILE),
-    syncCheckout: () => syncCheckout(git, (m) => screen.warn(m)),
+    syncCheckout: () => syncCheckout(git, (m) => screen.notice("checkout", m)),
     queuePre: () =>
       spawnSync(process.execPath, [HERE + "/queue-pre.mjs"], { stdio: "inherit" }).status ?? 1,
-    pick: (pinned) => {
-      const route = nextRoute(pinned);
+    pick: (pinned, at) => {
+      const route = nextRoute(pinned, at);
       if (route.resuming) return route;
       if (before) screen.say(queueLine(before, route.queue, screen.theme));
       before = route.queue;
       return route;
     },
     spawn: (route) => {
-      if (!route.resuming) screen.say(`  · picking — ${route.queue?.implement ?? 0} takeable`);
+      if (!route.resuming) {
+        screen.say(`  · picking — ${route.queue?.implement ?? 0} takeable`);
+        // A lost race exits 1, which `sh` raises. It is not a failure of this run: the ticket is
+        // someone else's, and the shape that says so is the stand-down every other path already
+        // reads — so the session is never spawned and `runOnce` parks it from the declaration.
+        try {
+          const claimed = sh("node", [HERE + "/claim.mjs", String(route.number), route.title]);
+          screen.say(
+            stepRow({ label: "claim", detail: claimed.split("\t").slice(1, 3).join(" "), ms: null }, screen.theme),
+          );
+        } catch (err) {
+          const why = String(err.stdout ?? "").split("\t").at(-1)?.trim() || "the claim did not stand";
+          screen.say(stepRow({ label: "claim", detail: why, ms: null, state: "failed" }, screen.theme));
+          return Promise.resolve({
+            status: 0,
+            blocked: false,
+            result: null,
+            ms: 0,
+            log: streamLog(route.number),
+            phases: {},
+            declared: { ticket: route.number, branch: null, pr: null, phase: "A", handoff: null, stoodDown: true, why },
+          });
+        }
+      }
       return runTicket(spawn, {
         number: route.number,
         queue: route.queue,
@@ -1646,20 +1767,22 @@ function realIo(book, screen) {
       if (number) {
         try {
           sh("gh", ["issue", "edit", String(number), "--remove-label", "in-progress"]);
-        } catch {
-          // The work is what mattered. A stuck label is visible on the tracker and costs one edit.
+        } catch (err) {
+          // Said out loud, because silence here is permanent: the picker skips `in-progress`, so a
+          // swallowed failure leaves a finished ticket nothing will ever take again. #1026 merged.
+          screen.notice("claim", `#${number} is still in-progress — ${String(err.message).split("\n")[0]}`);
         }
       }
       if (!cwd || !fs.existsSync(cwd)) return;
       try {
         sh("npm", ["run", "worktrees:remove", "--", cwd]);
       } catch {
-        screen.warn(`queue-loop: ${cwd} is still standing — derive() will read it as a live run`);
+        screen.notice("worktree", `${cwd} is still standing — derive() will read it as a live run`);
       }
     },
     bell,
     sharedCheckoutDirty: () => git("status", "--porcelain").trim(),
-    log: (m) => screen.warn(m),
+    log: (m, label = "loop") => screen.notice(label, m),
     /**
      * One session, one row, one writer. `counts` says whether this session closed a *ticket* — a
      * CI fix round and a usage refusal are sessions that spent money without one — and it changes
@@ -1700,6 +1823,7 @@ function realIo(book, screen) {
           version: run.version,
           usage: run.usage ?? null,
           committed: run.committed ?? null,
+          soloBash: run.soloBash ?? null,
         },
         {
           runId: RUN_ID,
@@ -1758,6 +1882,10 @@ export async function main({
   /** The ticket a red CI round handed back, and how many rounds it has had. */
   let pinned = null;
   let rounds = 0;
+  let handoffs = 0;
+  let nextPhase = null;
+  /** What the pinned ticket has cost across every process it has been spawned as. */
+  let spent = 0;
 
   install(screen);
   io ??= realIo(book, screen);
@@ -1784,7 +1912,10 @@ export async function main({
   /** Every exit writes the total. The clean stop used to print it to the screen and nowhere else. */
   const finish = (code, why) => {
     const total = runTotal(book.totals);
-    if (why) (code === 0 ? screen.say : screen.warn)(`queue-loop: ${why} — stopping`);
+    if (why) {
+      if (code === 0) screen.say(`   ${why} — stopping`);
+      else screen.notice("stopping", why);
+    }
     screen.say(total);
     book.close(runId, total);
     bell();
@@ -1798,7 +1929,7 @@ export async function main({
     let pass;
     claimed = null;
     try {
-      pass = await runOnce(watched, pinned, rounds);
+      pass = await runOnce(watched, pinned, rounds, nextPhase);
     } catch (err) {
       screen.warn(`queue-loop: the iteration threw — ${String(err?.stack ?? err)}`);
       // No row: there is no run to write one from, and inventing one is how the ledger came to be
@@ -1815,7 +1946,7 @@ export async function main({
             dirty: false,
           });
         } catch (unparked) {
-          screen.warn(`queue-loop: #${claimed} is still claimed — ${String(unparked?.message ?? unparked)}`);
+          screen.notice("claim", `#${claimed} is still claimed — ${String(unparked?.message ?? unparked)}`);
         }
       }
       failures += 1;
@@ -1858,6 +1989,49 @@ export async function main({
     // labelled `in-progress` with an open pull request and take a different ticket, and nothing
     // would ever come back to it. `runOnce` owns the ceiling, so reaching here means there is
     // another round to spend.
+    if (pass.outcome === "handoff") {
+      const cost = pass.run.result?.cost ?? 0;
+      spent = pass.ticket === pinned ? spent + cost : cost;
+      handoffs = pass.ticket === pinned ? handoffs + 1 : 1;
+      pinned = pass.ticket;
+      nextPhase = pass.phase;
+      if (overSpend(spent, pass.run.size ?? null)) {
+        io.bell();
+        io.park(pass.ticket, {
+          phase: pass.phase,
+          why: `$${spent.toFixed(2)} across ${handoffs + 1} processes — over this ticket's ceiling`,
+          log: pass.run.log,
+          cwd: null,
+          branch: null,
+          dirty: false,
+        });
+        pinned = null;
+        nextPhase = null;
+        handoffs = 0;
+        spent = 0;
+        failures += 1;
+        if (shouldHalt(failures)) return finish(1, `${failures} tickets in a row did not land`);
+        continue;
+      }
+      if (overHandoffs(handoffs)) {
+        io.park(pinned, {
+          phase: pass.phase,
+          why: `${handoffs} phase handoffs on one ticket`,
+          log: pass.run.log,
+          cwd: null,
+          branch: null,
+          dirty: false,
+        });
+        pinned = null;
+        nextPhase = null;
+        handoffs = 0;
+        failures += 1;
+        if (shouldHalt(failures)) return finish(1, `${failures} tickets in a row did not land`);
+        continue;
+      }
+      continue;
+    }
+
     if (pass.outcome === "retry") {
       rounds = pass.ticket === pinned ? rounds + 1 : 1;
       pinned = pass.ticket;
@@ -1866,6 +2040,8 @@ export async function main({
     }
     pinned = null;
     rounds = 0;
+    handoffs = 0;
+    nextPhase = null;
     if (pass.outcome === "landed") {
       failures = 0;
       // Only a landing clears the refusal counter. Cleared on any non-refused outcome, refusals

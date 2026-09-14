@@ -1,7 +1,7 @@
 // #293
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { classify, pickRoute, claimedElsewhere, sizeOf } from "../next-ticket.mjs";
+import { classify, pickRoute, claimedElsewhere, sizeOf, stranded } from "../next-ticket.mjs";
 import { importUnderShellGuard } from "../../../tests/helpers/importShellGuard.ts";
 
 function issue(number: number, labelNames: string[]) {
@@ -70,10 +70,10 @@ describe("classify's bucketing", () => {
   });
 
   test("in-progress and blocked are still skipped regardless of other labels", () => {
-    const buckets = classify([
-      issue(8, ["in-progress"]),
-      issue(9, ["ready-for-agent", "blocked"]),
-    ]);
+    const buckets = classify(
+      [issue(8, ["in-progress"]), issue(9, ["ready-for-agent", "blocked"])],
+      { openPr: () => false, liveWorktrees: () => new Set<number>() },
+    );
 
     assert.equal(buckets.frontier.length, 0);
     assert.equal(buckets.triage.length, 0);
@@ -86,6 +86,45 @@ describe("the frontier's order", () => {
   test("the oldest ticket comes first, whatever its size", () => {
     const b = classify([issue(995, ["ready-for-agent", "size:S"]), issue(70, ["ready-for-agent", "size:L"])]);
     assert.deepEqual(b.frontier.map((i) => i.number), [70, 995]);
+  });
+});
+
+describe("a ticket stranded between CI rounds", () => {
+  const inProgress = {
+    number: 1043,
+    title: "t",
+    labels: [{ name: "in-progress" }, { name: "ready-for-agent" }],
+  };
+
+  test("an in-progress ticket with an open PR and no live worktree is stranded", () => {
+    assert.equal(stranded(inProgress, { openPr: true, liveWorktree: false }), true);
+  });
+
+  test("an in-progress ticket whose worktree is standing belongs to a live run", () => {
+    assert.equal(stranded(inProgress, { openPr: true, liveWorktree: true }), false);
+  });
+
+  test("an in-progress ticket that never pushed is mid-build, not stranded", () => {
+    assert.equal(stranded(inProgress, { openPr: false, liveWorktree: false }), false);
+  });
+
+  test("a ticket carrying no claim is never stranded, whatever else is true of it", () => {
+    const fresh = { number: 1100, title: "u", labels: [{ name: "ready-for-agent" }] };
+    assert.equal(stranded(fresh, { openPr: true, liveWorktree: false }), false);
+  });
+
+  test("a stranded ticket reaches the frontier ahead of fresh work", () => {
+    const fresh = { number: 1100, title: "u", labels: [{ name: "ready-for-agent" }] };
+    const io = { openPr: (n: number) => n === 1043, liveWorktrees: () => new Set<number>() };
+    assert.deepEqual(
+      classify([fresh, inProgress], io).frontier.map((i) => i.number),
+      [1043, 1100],
+    );
+  });
+
+  test("git unreadable reads every claimed ticket as live, rather than as free", () => {
+    const io = { openPr: () => true, liveWorktrees: () => null };
+    assert.deepEqual(classify([inProgress], io).frontier, []);
   });
 });
 

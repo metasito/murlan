@@ -17,6 +17,9 @@ export const PHASE = /^[ \t]*`?PHASE ([A-F])`?[ \t]*$/m;
  */
 const DECLARED = /^[ \t]*LOOP-RESULT (\{.*\})[ \t]*$/m;
 
+/** A handoff names the phase the next process starts at, so an unknown letter is no handoff. */
+export const HANDOFF = /^[A-F]$/;
+
 /** @param {string} text */
 function declaredIn(text) {
   const m = DECLARED.exec(text);
@@ -28,6 +31,7 @@ function declaredIn(text) {
       branch: d.branch ?? null,
       pr: Number(d.pr) || null,
       phase: d.phase ?? null,
+      handoff: HANDOFF.test(String(d.handoff ?? "")) ? String(d.handoff) : null,
       stoodDown: Boolean(d.stoodDown),
       why: d.why ?? null,
     };

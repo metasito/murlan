@@ -164,7 +164,7 @@ export const SPIN = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "�
 /** The row the board shows before the session has named a phase. Never recorded as one. */
 export const UNNAMED = "?";
 
-const LABEL = 8;
+const LABEL = 12;
 const TITLE_FLOOR = 14;
 const DETAIL = 44;
 const MINUTE_MS = 60_000;
@@ -274,7 +274,7 @@ const MARK = {
   skipped: ["·", "faint"],
 };
 
-const LABEL_W = 9;
+const LABEL_W = 10;
 
 /**
  * One thing that happened, as one row: a mark, what it was, what came of it, how long it took.
@@ -299,10 +299,33 @@ export function stepRow({ label, detail = "", ms = null, state = "done" }, t) {
   );
 }
 
-/** A finished phase: a step whose name the protocol spells as a letter. A person reads "build". */
-export function phaseRow({ letter, detail = "", ms, state = "done" }, t) {
+/**
+ * The supervisor's own word, in the same column as everything else it prints.
+ *
+ * These used to go out as raw `queue-loop: …` lines on stderr, which read as a crash report landing
+ * on a board that had just drawn a tidy row. First line is the row; the rest is its note.
+ */
+export function notice(label, text, t) {
+  const [head, ...rest] = String(text ?? "").split("\n");
+  const rows = [stepRow({ label, detail: head, ms: null, state: "warned" }, t)];
+  if (rest.length) rows.push(note(rest.join("\n"), t));
+  return rows.filter(Boolean).join("\n");
+}
+
+/** "review 2/4" where there is a round to name, else the plain label. */
+const labelFor = (letter, round) => {
   const at = PHASES.findIndex(([l]) => l === letter);
-  return stepRow({ label: PHASES[at]?.[1] ?? letter, detail, ms, state }, t);
+  const name = at >= 0 ? PHASES[at][1] : letter;
+  return round ? `${name} ${round.n}/${round.of}` : name;
+};
+
+/**
+ * A finished phase: a step whose name the protocol spells as a letter. A person reads "build".
+ * @param {{letter: string, detail?: string, ms: number, state?: string,
+ *   round?: {n: number, of: number}|null}} phase
+ */
+export function phaseRow({ letter, detail = "", ms, state = "done", round = null }, t) {
+  return stepRow({ label: labelFor(letter, round), detail, ms, state }, t);
 }
 
 /**
@@ -342,11 +365,12 @@ export function bar(frac, width, t) {
 
 /**
  * Median minutes a phase takes: A–F from `npm run loop:cost`, G from `gh run list --workflow
- * ci.yml`. Re-read them there rather than trusting these.
+ * ci.yml`. Re-read them there rather than trusting these. D is one review round rather than the
+ * whole phase: that output's phase D median divided by the median review rounds beside it.
  *
  * @type {Record<string, number>}
  */
-export const PHASE_MINUTES = { A: 1.2, B: 3.3, C: 8, D: 26, E: 1.9, F: 0.8, G: 5.7 };
+export const PHASE_MINUTES = { A: 1.2, B: 3.3, C: 8, D: 8.2, E: 1.9, F: 0.8, G: 5.7 };
 
 /** Each phase's slice of the bar, by what it costs in wall clock rather than by an even seventh. */
 const SPAN = (() => {
@@ -377,15 +401,16 @@ const MOST = 0.999;
  * The label slot is fixed and the bar takes what is left, so the bar's right edge does not move
  * between "review" and "no phase" — a bar that changes length as it fills reads as jitter.
  *
- * @param {{letter: string, ms?: number, frac?: number|null}} at `ms` is time in *this* phase.
+ * @param {{letter: string, ms?: number, frac?: number|null,
+ *   round?: {n: number, of: number}|null}} at `ms` is time in *this* phase.
  */
-export function progress({ letter, ms = 0, frac = null }, t) {
+export function progress({ letter, ms = 0, frac = null, round = null }, t) {
   const at = PHASES.findIndex(([l]) => l === letter);
   const known = at >= 0;
   const [from, to] = SPAN[letter] ?? [0, 0];
   const live = () => Math.min(from + (to - from) * creep(ms / 6e4 / PHASE_MINUTES[letter]), MOST);
   const share = frac ?? (known ? live() : 0);
-  const name = clamp(known ? PHASES[at][1] : "no phase", LABEL).padEnd(LABEL);
+  const name = clamp(known ? labelFor(letter, round) : "no phase", LABEL).padEnd(LABEL);
   // Floored, so only a caller naming a finished ticket's own `frac` can print 100.
   const pct = known ? `${String(Math.floor(share * 100)).padStart(3)}%` : "   —";
   const width = t.width - LABEL - 11;
@@ -613,6 +638,7 @@ const OUTCOME = {
   stalled: ["!", "warn"],
   rate_limited: ["⏸", "warn"],
   retry: ["↻", "accent"],
+  handoff: ["→", "muted"],
   failed: ["✗", "bad"],
 };
 

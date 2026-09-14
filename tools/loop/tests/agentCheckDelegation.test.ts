@@ -2,7 +2,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { STEPS, LOCAL, DELEGATED, cmd } from "../check-steps.mjs";
+import { STEPS, LOCAL, DELEGATED, byName, cmd } from "../check-steps.mjs";
 
 type Step = { name: string; args: string[]; where: "local" | "ci"; job?: string };
 const steps = STEPS as Step[];
@@ -45,5 +45,24 @@ describe("a check delegated to CI is a check CI runs", () => {
   test("the match would catch a delegated command CI does not run", () => {
     assert.equal(runs("npm run definitely-not-a-real-script"), false);
     assert.equal(/npm run verify/.test(raw) && runs("npm run verify"), false);
+  });
+});
+
+describe("the verdict says what it stands for", () => {
+  test("the verdict never prints a bare PASS", () => {
+    // A word in a comment is not a word anything prints, and its quotes derail the scan below.
+    const src = readFileSync(new URL("../agent-check.mjs", import.meta.url), "utf8")
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/^\s*\/\/.*$/gm, "");
+    for (const m of src.matchAll(/["'`][^"'`]*\bPASS\b[^"'`]*["'`]/g)) {
+      assert.match(m[0], /LOCAL PASS/, `${m[0]} is a pass a reader will take for the whole suite`);
+    }
+  });
+
+  test("the verdict says how many suites it did not run", () => {
+    assert.ok(DELEGATED.length > 0);
+    assert.equal(byName("test")?.where, "ci");
+    assert.equal(byName("lint")?.where, "local");
+    assert.equal(byName("nope"), undefined);
   });
 });

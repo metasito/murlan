@@ -32,7 +32,31 @@ import {
   holdFor,
   WAIT,
   settle,
+  runOnce,
+  overHandoffs,
+  MAX_HANDOFFS,
+  overSpend,
+  USD_BY_SIZE,
+  USD_DEFAULT,
+  watchCalls,
 } from "../queue-loop.mjs";
+
+/** Enough IO for `runOnce` to reach a decision without git, the tracker or a `claude` binary. */
+const stubIo = () => ({
+  stopFile: () => false,
+  syncCheckout: () => true,
+  queuePre: () => 0,
+  pick: () => ({ skill: "implement", number: 42, title: "t", size: "size:S", queue: null }),
+  spawn: async () => ({ status: 0, blocked: false, result: { cost: 1 }, ms: 1, log: "l", declared: null }),
+  standing: () => null,
+  pushedPr: () => null,
+  settle: async () => ({ action: "merge", reason: "" }),
+  park: () => {},
+  teardown: () => {},
+  bell: () => {},
+  record: () => {},
+  log: () => {},
+});
 
 describe("parseRoute", () => {
   test("reads the ROUTE line next-ticket.mjs prints", () => {
@@ -994,6 +1018,7 @@ describe("pushedPr only ever answers with this ticket's own pull request", () =>
       number: 984,
       state: "OPEN",
       head: "agent/42-x",
+      changedFiles: 0,
     });
   });
 
@@ -1097,5 +1122,71 @@ describe("the land phase", () => {
       },
     });
     assert.ok(screen.rows.some((r) => r.startsWith("said main moved")));
+  });
+});
+
+describe("a phase handoff", () => {
+  test("a handoff re-spawns the same ticket instead of parking it", async () => {
+    const spawned: number[] = [];
+    const io = {
+      ...stubIo(),
+      pick: (pinned: number | null) => ({
+        skill: "implement",
+        number: pinned ?? 41,
+        title: "t",
+        size: "size:S",
+        queue: null,
+      }),
+      spawn: (route: { number: number }) => {
+        spawned.push(route.number);
+        return Promise.resolve({
+          status: 0,
+          ms: 1,
+          log: "x",
+          result: { cost: 1 },
+          declared: { ticket: 41, phase: "C", handoff: "D", stoodDown: false },
+        });
+      },
+    };
+    const pass = await runOnce(io as never, null, 0);
+    assert.equal(pass.outcome, "handoff");
+    assert.equal(pass.phase, "D");
+    assert.deepEqual(spawned, [41]);
+  });
+
+  test("a handoff cannot run for ever", () => {
+    assert.equal(overHandoffs(MAX_HANDOFFS), true);
+    assert.equal(overHandoffs(MAX_HANDOFFS - 1), false);
+  });
+
+  test("a ticket's ceiling is its size's, and an unlabelled one gets the default", () => {
+    assert.equal(overSpend(5, "size:S"), false);
+    assert.equal(overSpend(USD_BY_SIZE["size:S"], "size:S"), true);
+    assert.equal(overSpend(USD_DEFAULT, null), true);
+  });
+
+  test("every size's ceiling is above the fleet median it is meant to bound", () => {
+    for (const [size, cap] of Object.entries(USD_BY_SIZE)) {
+      assert.ok(cap >= 20, `${size} at $${cap} would park a healthy ticket`);
+    }
+  });
+});
+
+describe("watchCalls", () => {
+  test("a turn making one Bash call and nothing else is counted", () => {
+    const state = { soloBash: 0, turns: 0 };
+    watchCalls(state, { calls: [{ name: "Bash", command: "git status" }] } as never);
+    watchCalls(state, {
+      calls: [{ name: "Bash", command: "ls" }, { name: "Bash", command: "pwd" }],
+    } as never);
+    watchCalls(state, { calls: [{ name: "Read", command: "" }] } as never);
+    assert.equal(state.soloBash, 1);
+    assert.equal(state.turns, 3);
+  });
+
+  test("a turn with no calls at all is not a turn that could have batched", () => {
+    const state = { soloBash: 0, turns: 0 };
+    watchCalls(state, { calls: [] } as never);
+    assert.equal(state.turns, 0);
   });
 });

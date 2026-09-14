@@ -117,8 +117,10 @@ export function usageSplit(text) {
  * overwrote the reading of the first and the money it spent left no trace, which is the shape the
  * stream logs always had and the ledger never did; grouping on `n` is now the reader's job, and
  * `tests/` can check the file against those logs because both count the same thing.
+ *
+ * 4 adds `solo_bash_turns`, which is null on every row written before it.
  */
-export const SCHEMA = 3;
+export const SCHEMA = 4;
 
 /**
  * One session, as one line of the ledger.
@@ -135,7 +137,7 @@ export const SCHEMA = 3;
  * @param {{number: number, size: string|null, outcome: string, parkReason?: string|null,
  *   pr: number|null, phases: Record<string, number>, result: object|null, merged: boolean,
  *   reviewRounds: number|null, startedAt: string, ms: number, version: string|null,
- *   usage?: object|null, committed?: boolean|null}} session
+ *   usage?: object|null, committed?: boolean|null, soloBash?: number|null}} session
  */
 export function sessionRow({
   number,
@@ -152,6 +154,7 @@ export function sessionRow({
   version,
   usage = null,
   committed = null,
+  soloBash = null,
 }) {
   const models = Object.fromEntries(
     Object.entries(result?.models ?? {}).map(([name, u]) => [name, u.costUSD ?? 0]),
@@ -175,6 +178,8 @@ export function sessionRow({
     // Whether phase C ever ran `git commit`. The one ticket in nineteen that produced nothing made
     // 74 edits and no commits, and the record it left said only "parked".
     committed,
+    /** Turns that spent a whole context read on one shell command. See queue-loop's `watchCalls`. */
+    solo_bash_turns: soloBash ?? null,
     review_rounds: reviewRounds ?? null,
     claude_version: version ?? null,
     started: startedAt,

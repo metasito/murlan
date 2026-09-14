@@ -26,6 +26,7 @@
     "worktrees:prune": "node tools/loop/prune-worktrees.mjs",
     "worktrees:remove": "node tools/loop/prune-worktrees.mjs --remove",
     "reap": "node tools/loop/reap.mjs",
+    "queue:claim": "node tools/loop/claim.mjs",
     "queue:loop": "node tools/loop/queue-loop.mjs",
     "queue:pre": "node tools/loop/queue-pre.mjs",
     "db:reset": "node scripts/reset-db.mjs && drizzle-kit push",

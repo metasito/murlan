@@ -220,4 +220,15 @@ describe("a cancelled run", () => {
     assert.notEqual(v.infrastructure, true);
     assert.equal(v.failedStep, "Typecheck and tests");
   });
+
+  // `settle` waits on `waiting` without spending a round; without the flag a seven-minute run
+  // exhausts an eight-round recheck budget and parks a healthy branch.
+  test("a run that has not finished says so, rather than reading as a failure to budget", () => {
+    assert.equal(decideVerdict({ databaseId: 1, status: "in_progress", conclusion: null } as never).waiting, true);
+    assert.equal(decideVerdict(undefined).waiting, true);
+    assert.equal(
+      decideVerdict({ databaseId: 1, status: "completed", conclusion: "failure" } as never).waiting,
+      undefined,
+    );
+  });
 });

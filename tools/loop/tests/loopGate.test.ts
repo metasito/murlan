@@ -6,7 +6,7 @@ import { mkdtempSync, rmSync, mkdirSync, appendFileSync, writeFileSync } from "n
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { MAX_REVIEW_ROUNDS, roundVerdict } from "../loop-gate.mjs";
+import { MAX_REVIEW_ROUNDS, roundVerdict, pushVerdict } from "../loop-gate.mjs";
 
 /**
  * Phase E branches on this command's exit code, so the exit code is what is asserted — never a
@@ -208,12 +208,24 @@ describe("the review decides the exit code", () => {
     return execFileSync("git", ["rev-parse", "HEAD"], { cwd: wt, encoding: "utf8" }).trim();
   }
 
+  const reviewBody = (sha: string) =>
+    `REVIEW ${sha}\n\n## Standards\n\nNothing that affects correctness.\n\n## Spec\n\nEvery box closed.`;
+
   test("a LAND naming this commit allows the push", () => {
     const wt = worktree("agent/9900010-land");
     commit(wt, "docs/probe.md");
-    const { code, out } = gate(wt, [{ body: `VERDICT: LAND ${head(wt).slice(0, 7)}` }]);
+    const sha = head(wt).slice(0, 7);
+    const { code, out } = gate(wt, [{ body: reviewBody(sha) }, { body: `VERDICT: LAND ${sha}` }]);
     assert.equal(code, 0, out);
     assert.match(out, /reviewed at/);
+  });
+
+  test("a LAND with no report behind it is refused by the real binary", () => {
+    const wt = worktree("agent/9900016-unbacked");
+    commit(wt, "docs/probe.md");
+    const { code, out } = gate(wt, [{ body: `VERDICT: LAND ${head(wt).slice(0, 7)}` }]);
+    assert.equal(code, 1, out);
+    assert.match(out, /no review report/);
   });
 
   test("a HOLD refuses it", () => {
@@ -340,6 +352,31 @@ test("LOOP_WORKTREE names the ticket directly, without a scan", () => {
   const { code, out } = gate(root, undefined, BASE, wt);
   assert.notEqual(code, 0, out);
   assert.match(out, /#9900015/);
+});
+
+describe("a LAND is only as good as the report behind it", () => {
+  const state = (extra: Record<string, unknown>) => ({
+    onTicket: true, ticket: 1, branch: "agent/1-x", phase: "E" as const, commits: 1,
+    changed: ["a.ts"], head: "abc1234def", base: "origin/main", cwd: ".", dirty: false,
+    trackerReadable: true, reviewRounds: 1, why: "reviewed and cleared",
+    verdict: { decision: "LAND", line: "VERDICT: LAND abc1234" }, review: null, ...extra,
+  });
+
+  test("a LAND with no review report on the issue is refused", () => {
+    const v = pushVerdict(state({}));
+    assert.equal(v.ok, false);
+    assert.match(String(v.why), /no review report/);
+  });
+
+  test("a LAND backed by a report for the same head passes", () => {
+    assert.equal(pushVerdict(state({ review: { line: "REVIEW abc1234" } })).ok, true);
+  });
+
+  test("an unreadable tracker carries no lines, which is what makes it exit 2", () => {
+    const v = pushVerdict(state({ trackerReadable: false }));
+    assert.equal(v.ok, false);
+    assert.equal(v.lines, undefined);
+  });
 });
 
 /**

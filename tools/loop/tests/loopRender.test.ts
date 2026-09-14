@@ -13,6 +13,7 @@ import {
   elapsed,
   header,
   keybar,
+  notice,
   PHASE_MINUTES,
   phaseRow,
   progress,
@@ -638,5 +639,27 @@ describe("every block fits the width it was given", () => {
       reportRow({ number: 1, title: "x", outcome: "landed", pr: 2, ms: 1, cost: 0 }, t),
     ].join("\n");
     assert.equal(out.indexOf(String.fromCharCode(27)), -1, "an escape reached a non-terminal");
+  });
+});
+
+describe("the review round on the board", () => {
+  test("the bar names which review round it is", () => {
+    assert.match(strip(progress({ letter: "D", ms: 0, round: { n: 2, of: 4 } }, tPlain)), /review 2\/4/);
+  });
+
+  test("a phase with no round reads exactly as it did", () => {
+    assert.match(strip(progress({ letter: "C", ms: 0 }, tPlain)), /build/);
+    assert.doesNotMatch(strip(progress({ letter: "C", ms: 0 }, tPlain)), /\//);
+  });
+
+  test("a finished review round keeps its number in the scrollback", () => {
+    assert.match(strip(phaseRow({ letter: "D", ms: 1000, round: { n: 3, of: 4 } }, tPlain)), /review 3\/4/);
+  });
+
+  test("a supervisor's own word is a row with its detail beneath, not a raw stderr line", () => {
+    const out = strip(notice("checkout", "the protocol files here have uncommitted edits:\n M CLAUDE.md", tPlain));
+    assert.match(out.split("\n")[0], /^\s+!\s+checkout\s+the protocol files/);
+    assert.match(out, /M CLAUDE\.md/);
+    assert.equal(strip(notice("stop", "one line", tPlain)).split("\n").length, 1);
   });
 });

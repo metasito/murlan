@@ -248,6 +248,7 @@ describe("the session's closing declaration", () => {
       branch: "agent/891-x",
       pr: 1003,
       phase: "F",
+      handoff: null,
       stoodDown: false,
       why: null,
     });
@@ -284,6 +285,14 @@ describe("the session's closing declaration", () => {
 
   test("prose about the marker is not a declaration", () => {
     assert.equal(said("I will now emit LOOP-RESULT {\"ticket\":1} when done"), null);
+  });
+
+  test("a declaration carries the phase it hands off at", () => {
+    assert.equal(said('LOOP-RESULT {"ticket":7,"phase":"C","handoff":"D"}').declared.handoff, "D");
+  });
+
+  test("a handoff that is not a phase letter is dropped", () => {
+    assert.equal(said('LOOP-RESULT {"ticket":7,"handoff":"done"}').declared.handoff, null);
   });
 });
 
