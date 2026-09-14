@@ -17,6 +17,7 @@ import {
   Spacing,
 } from "../lib/tokens.ts";
 import type { Card, Combination } from "../lib/gameEngine.ts";
+import type { ExchangeAnnounceData } from "../lib/sharedGameFlow.ts";
 import {
   HAND_ZONE_H,
   arrangeOpponents,
@@ -33,6 +34,7 @@ import {
   arrivingCard,
   readHandArrival,
   readThrownPlay,
+  readExchangeTrips,
   flightOrigin,
   exchangeFlight,
   comboKey,
@@ -1811,5 +1813,93 @@ describe("readThrownPlay", () => {
     assert.ok(origins[0]!.dx > 0, "the right seat throws from the right");
     assert.ok(origins[2]!.dx < 0, "the left seat throws from the left");
     assert.equal(origins[1]!.dx, 0, "the top seat throws straight down the middle");
+  });
+});
+
+describe("readExchangeTrips", () => {
+  const card = (id: string) =>
+    ({ id, suit: "clubs", rank: "5", isJoker: false }) as Card;
+  const seat = (id: string, cards: number) =>
+    ({
+      id,
+      name: id,
+      type: "ai",
+      hand: Array.from({ length: cards }, (_, i) => card(`${id}_${i}`)),
+    }) as unknown as Player;
+
+  /** Four seats, the viewer at 0: 1 is right, 2 is top, 3 is left. */
+  const players = [seat("me", 5), seat("right", 6), seat("top", 7), seat("left", 8)];
+
+  const trips = (winnerIdx: number, loserIdx: number) =>
+    readExchangeTrips({
+      announce: { winnerIdx, loserIdx } as ExchangeAnnounceData,
+      viewerSeat: 0,
+      players,
+      opponents: arrangeOpponents(players, 0),
+      scale: 1,
+      windowWidth: 844,
+      windowHeight: 390,
+      tableLeft: 20,
+      tableRight: 20,
+      tableTop: 12,
+      surplus: 0,
+      bottomPad: 8,
+      handCardH: 90,
+    });
+
+  /**
+   * The two cards of a trade travel the same line in opposite directions, so
+   * either one's departure point is the other's arrival point once each is
+   * taken out of its own lane. A trip built from the wrong pair of seats
+   * cannot satisfy this, which is the defect the table's own geometry risks.
+   */
+  test("each card leaves from where the other one arrives", () => {
+    const { toWinner, toLoser } = trips(1, 2);
+    const unlaned = (p: { dx: number; dy: number }, lane: { dx: number; dy: number }) => ({
+      dx: p.dx - lane.dx,
+      dy: p.dy - lane.dy,
+    });
+    assert.deepEqual(
+      unlaned(toWinner.from, toWinner.lane),
+      unlaned(toLoser.to, toLoser.lane),
+      "the winner's card departs the loser's seat, which is where the loser's card lands"
+    );
+    assert.deepEqual(
+      unlaned(toWinner.to, toWinner.lane),
+      unlaned(toLoser.from, toLoser.lane)
+    );
+  });
+
+  test("swapping who won swaps the two trips", () => {
+    const asIs = trips(1, 3);
+    const swapped = trips(3, 1);
+    assert.deepEqual(asIs.toWinner.to, swapped.toLoser.to);
+    assert.deepEqual(asIs.toLoser.to, swapped.toWinner.to);
+  });
+
+  /**
+   * A seat's fan sets where its own cards sit, so the trip has to start from
+   * the seat's real count rather than from a table-wide guess.
+   */
+  test("the top seat's own hand places the card it trades", () => {
+    const short = [seat("me", 5), seat("right", 6), seat("top", 1), seat("left", 8)];
+    const long = [seat("me", 5), seat("right", 6), seat("top", 5), seat("left", 8)];
+    const at = (table: Player[]) =>
+      readExchangeTrips({
+        announce: { winnerIdx: 2, loserIdx: 0 } as ExchangeAnnounceData,
+        viewerSeat: 0,
+        players: table,
+        opponents: arrangeOpponents(table, 0),
+        scale: 1,
+        windowWidth: 844,
+        windowHeight: 390,
+        tableLeft: 20,
+        tableRight: 20,
+        tableTop: 12,
+        surplus: 0,
+        bottomPad: 8,
+        handCardH: 90,
+      }).toWinner.to;
+    assert.notDeepEqual(at(short), at(long));
   });
 });

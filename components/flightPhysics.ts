@@ -19,6 +19,7 @@ import {
   viewerOwnsSeat,
 } from "./seatLayout.ts";
 import type { FlyDirection, OpponentArrangement } from "./seatLayout.ts";
+import { CARD_W, CARD_H, FIELD_SCALE } from "./cardFaceModel.ts";
 
 // ─── Pile state ───────────────────────────────────────────────────────────────
 //
@@ -890,5 +891,49 @@ export function readThrownPlay(input: ThrownPlayInput): ThrownPlay {
       topDisplayedCount,
       sideDisplayedCount,
     }),
+  };
+}
+
+export interface ExchangeTripsInput
+  extends Omit<ThrownPlayInput, "combo" | "playedBy"> {
+  announce: ExchangeAnnounceData;
+}
+
+/**
+ * Both trips an exchange's cards make, from the seats that traded them.
+ *
+ * Measured here rather than at the announcement, for the same reason a throw's
+ * origin is: this is where the table's geometry lives, and a second
+ * measurement is how a card comes to land somewhere its seat is not. Nothing
+ * is in flight when an exchange resolves, so each seat's displayed count is
+ * simply the hand it holds.
+ */
+export function readExchangeTrips(input: ExchangeTripsInput): {
+  toWinner: ExchangeFlight;
+  toLoser: ExchangeFlight;
+} {
+  const { announce, players, opponents } = input;
+  const geometry = {
+    scale: input.scale,
+    windowWidth: input.windowWidth,
+    windowHeight: input.windowHeight,
+    tableLeft: input.tableLeft,
+    tableRight: input.tableRight,
+    tableTop: input.tableTop,
+    surplus: input.surplus,
+    handZoneH: HAND_ZONE_H(input.handCardH, input.bottomPad),
+    topDisplayedCount: opponents.top ? handCountOf(opponents.top.player) : 0,
+    sideDisplayedCounts: {
+      left: opponents.left ? handCountOf(opponents.left.player) : 0,
+      right: opponents.right ? handCountOf(opponents.right.player) : 0,
+    },
+    cardW: CARD_W(input.scale * FIELD_SCALE),
+    cardH: CARD_H(input.scale * FIELD_SCALE),
+  };
+  const winnerDir = seatDirection(announce.winnerIdx, input.viewerSeat, players.length);
+  const loserDir = seatDirection(announce.loserIdx, input.viewerSeat, players.length);
+  return {
+    toWinner: exchangeFlight({ ...geometry, from: loserDir, to: winnerDir }),
+    toLoser: exchangeFlight({ ...geometry, from: winnerDir, to: loserDir }),
   };
 }

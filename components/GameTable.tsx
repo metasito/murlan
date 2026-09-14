@@ -22,13 +22,7 @@ import {
 } from "react-native";
 import { TableText } from "@/components/table/TableText";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Animated, {
-  useAnimatedStyle,
-  useSharedValue,
-  withTiming,
-  cancelAnimation,
-  FadeIn,
-} from "react-native-reanimated";
+import Animated, { FadeIn } from "react-native-reanimated";
 import * as ScreenOrientation from "expo-screen-orientation";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import {
@@ -56,8 +50,6 @@ import {
   type OpponentSide,
 } from "@/components/seatLayout";
 import {
-  exchangeFlight,
-  type ExchangeFlight,
   advancePile,
   comboKey,
   readHandArrival,
@@ -67,6 +59,7 @@ import {
   landingTier,
   passedSeats,
   readExchange,
+  readExchangeTrips,
   roundClosedWithWinner,
   type ImpactTier,
   type PileState,
@@ -74,13 +67,14 @@ import {
 import { canPassNow as canPassNowOf, turnTimerActive } from "@/components/turnTimerUi";
 import { computeTableFrame } from "@/components/tableFrame";
 import { describeTableForA11y, type TableA11yExchange, type TableA11yLastPlay, type TableA11yOpponent } from "@/components/tableA11y";
-import { CARD_H, CARD_W, cardScale, FIELD_SCALE, HAND_SCALE, physicalTouchTarget } from "@/components/cardFaceModel";
+import { CARD_H, cardScale, FIELD_SCALE, HAND_SCALE, physicalTouchTarget } from "@/components/cardFaceModel";
 import { useTranslation } from "@/lib/i18n";
 import {
   CHIP_NAME_MAX_W,
   ChipDot,
   ChipText,
   ControlRail,
+  useFocusFade,
   useHandLift,
   RailKnob,
   sharedTableStyles,
@@ -391,23 +385,7 @@ export function GameTable({
   const [playOnLeft, setPlayOnLeft] = useState(false);
   const closeSettings = useCallback(() => setSettingsOpen(false), [setSettingsOpen]);
 
-  // The HUD chips and the reactions trigger fade rather than vanish under
-  // focus mode — kept mounted throughout, so a timer or an in-flight
-  // animation living inside them (the turn countdown included) is never torn
-  // down and restarted by a toggle that is about decluttering the felt, not
-  // about the turn itself.
-  const focusFade = useSharedValue(1);
-  useEffect(() => {
-    const target = focusMode ? 0 : 1;
-    if (reduceMotion) {
-      cancelAnimation(focusFade);
-      focusFade.value = target;
-      return;
-    }
-    focusFade.value = withTiming(target, { duration: Motion.duration.travel });
-    return () => cancelAnimation(focusFade);
-  }, [focusMode, reduceMotion, focusFade]);
-  const focusFadeStyle = useAnimatedStyle(() => ({ opacity: focusFade.value }));
+  const focusFadeStyle = useFocusFade(focusMode);
 
   // The seat that took the last round and a counter of how many rounds have
   // closed. The counter is what makes an identical repeat a new announcement:
@@ -1093,38 +1071,24 @@ export function GameTable({
     pileState.playedBy === null ? undefined : players[pileState.playedBy];
   const pileFlushed = !!pileThrower && handCountOf(pileThrower) === 0;
 
-  // The two trips the exchange's cards make, derived here for the same reason
-  // the throw's origin is: this is where the table's own measurements live, and
-  // a second measurement is how a card comes to land somewhere its seat is not.
   const announce = exchangeAnnouncement?.data;
-  const exchangeTrips = ((): { toWinner: ExchangeFlight; toLoser: ExchangeFlight } | null => {
-    if (!announce) return null;
-    const geometry = {
-      scale,
-      windowWidth: W,
-      windowHeight: H,
-      tableLeft: frame.tableLeft,
-      tableRight: frame.tableRight,
-      tableTop: frame.tableTop,
-      surplus: frame.surplus,
-      handZoneH: HAND_ZONE_H(handCardH, frame.bottomPad),
-      // Nothing is in flight when an exchange resolves, so each seat's
-      // displayed count is simply the hand it holds.
-      topDisplayedCount: opponents.top ? handCountOf(opponents.top.player) : 0,
-      sideDisplayedCounts: {
-        left: opponents.left ? handCountOf(opponents.left.player) : 0,
-        right: opponents.right ? handCountOf(opponents.right.player) : 0,
-      },
-      cardW: CARD_W(scale * FIELD_SCALE),
-      cardH: CARD_H(scale * FIELD_SCALE),
-    };
-    const winnerDir = seatDirection(announce.winnerIdx, viewerSeat, players.length);
-    const loserDir = seatDirection(announce.loserIdx, viewerSeat, players.length);
-    return {
-      toWinner: exchangeFlight({ ...geometry, from: loserDir, to: winnerDir }),
-      toLoser: exchangeFlight({ ...geometry, from: winnerDir, to: loserDir }),
-    };
-  })();
+  const exchangeTrips = announce
+    ? readExchangeTrips({
+        announce,
+        viewerSeat,
+        players,
+        opponents,
+        scale,
+        windowWidth: W,
+        windowHeight: H,
+        tableLeft: frame.tableLeft,
+        tableRight: frame.tableRight,
+        tableTop: frame.tableTop,
+        surplus: frame.surplus,
+        bottomPad: frame.bottomPad,
+        handCardH,
+      })
+    : null;
 
   return (
     <View style={[styles.root, WEB_CLIP]}>
