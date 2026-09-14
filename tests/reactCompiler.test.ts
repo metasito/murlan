@@ -15,6 +15,7 @@ import { execFileSync } from "node:child_process";
 import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { ADOPTED, SHIPPED } from "./helpers/adoptedHookRules.ts";
 import { directives } from "./helpers/hookSuppression.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -251,15 +252,79 @@ test("a bailout in a plain .ts hook is what the widened gate catches", () => {
   );
 });
 
+const PROBE_REL = "components/suppressionProbe.tsx";
+
+/**
+ * A component that compiles clean, with one suppression inside it. The plugin
+ * reads a suppression only where it overlaps a function the compiler visits, so
+ * this goes in the body — the same comment above the `export` is free.
+ */
+const probeSuppressing = (rule: string) => `import { useState } from "react";
+  export function Probe() {
+    const [n, setN] = useState(0);
+    // eslint-disable-next-line ${rule}
+    return <div onClick={() => setN(n + 1)}>{n}</div>;
+  }
+`;
+
+function bailoutReasons(rule: string): string[] {
+  return compile(PROBE_REL, probeSuppressing(rule)).map(
+    (e) => e.detail?.reason ?? e.detail?.description ?? ""
+  );
+}
+
+/**
+ * Which react-hooks rules a suppression of costs a file its compilation, asked
+ * of the compiler rather than read off a list.
+ *
+ * `babel-plugin-react-compiler` honours only the rules on its
+ * `eslintSuppressionRules` option; neither babel-preset-expo nor
+ * `COMPILER_OPTIONS` sets one, so the plugin's own default stands — and that
+ * default is a module-local constant the package does not export. Measuring it
+ * through `compile()` is the only reading that cannot drift from the options
+ * this suite compiles with (docs/adr/0005).
+ */
+const CHARGED_FOR = SHIPPED.filter((rule) =>
+  bailoutReasons(rule).some((reason) => reason.includes("ESLint"))
+);
+
+test("the compiler is measured charging for a suppression, and only for that", () => {
+  // Without this the list below can go empty — the probe stops compiling, or the
+  // reason stops saying "ESLint" — and every assertion resting on it passes by
+  // finding nothing.
+  assert.ok(
+    CHARGED_FOR.length > 0,
+    "no react-hooks rule costs a file its compilation any more, which is either the probe no " +
+      "longer reaching the compiler or the plugin dropping the mechanism"
+  );
+  assert.deepEqual(
+    bailoutReasons("no-console"),
+    [],
+    "the probe bails out over a rule that is not the compiler's business, so what it measures " +
+      "is the probe rather than the suppression"
+  );
+});
+
+test("a suppression of a rule #891 adopted costs the compiler nothing", () => {
+  // That these three are rules the plugin still ships is `adoptedHookRules.ts`'s
+  // to refuse, at import — a renamed rule would leave this answering "none of
+  // them" about three names nothing ships.
+  assert.deepEqual(
+    ADOPTED.filter((rule) => CHARGED_FOR.includes(rule)),
+    [],
+    "the compiler now charges for one of the three, so the reason tests/hooksLint.test.ts and " +
+      "eslint.config.js give for refusing a suppression of it is no longer only the ESLint one"
+  );
+});
+
 /**
  * Where `source` switches a react-hooks rule off, one line each.
  *
  * Every rule under the `react-hooks/` prefix, not the three `tests/hooksLint`
  * names, and every form ESLint honours, including the ones the compiler's own
- * suppression parser does not read. What is refused is a comment deciding
- * locally about a rule whose blast radius is the whole file — which of them the
- * compiler charges for is its configuration's to change, and #1043 is where that
- * list stops being something this file assumes.
+ * suppression parser does not read. What is refused is a comment taking a rule
+ * out of `eslint.config.js`'s hands one site at a time — an ESLint question,
+ * which is why this is wider than `CHARGED_FOR`.
  *
  * `tests/hooksLint` asks a narrower question, whether the rules #891 adopted
  * stay on, and keeps its narrower list.
@@ -312,9 +377,9 @@ test("no react-hooks rule is switched off under app/, components/ or context/", 
   assert.deepEqual(
     found,
     [],
-    "the compiler skips any component whose React ESLint rules were switched off, so a " +
-      "suppression is not a local decision — it silently opts the file out of the optimisation " +
-      "the build is paying for"
+    "a suppression takes a react-hooks rule out of eslint.config.js's hands for one site, with " +
+      "nothing repo-wide recording that it went. For the rules on CHARGED_FOR it also silently " +
+      "opts the file out of the optimisation the build is paying for"
   );
 });
 
@@ -322,14 +387,18 @@ test("no react-hooks rule is switched off under app/, components/ or context/", 
 // so the assertions above cannot be satisfied by weakening the compiler options.
 test("a suppressed react-hooks rule is what the compiler refuses to compile", () => {
   const rel = "components/CardView.tsx";
-  // The suppression, not the effect it precedes: a react-hooks rule being off
-  // anywhere inside a component is what costs it its compilation, so nothing
-  // here reads a dependency array — the construct an exhaustive-deps autofix
-  // rewrites unprompted.
+  // The suppression, not the effect it precedes: a rule the compiler charges for
+  // being off anywhere inside a component is what costs it its compilation, so
+  // nothing here reads a dependency array — the construct an exhaustive-deps
+  // autofix rewrites unprompted.
   const { source, match } = anchored(rel, FIRST_EFFECT, "`useEffect(` call of its own");
+  // Named here rather than left to interpolate as `undefined`, which reads in
+  // `reasonsFor`'s message as an anchor that missed.
+  const [charged] = CHARGED_FOR;
+  assert.ok(charged, "CHARGED_FOR is empty, so there is no rule to suppress here");
   const reasons = reasonsFor(
     rel,
-    `${source.slice(0, match.index)}${match[1]}// eslint-disable-next-line react-hooks/exhaustive-deps\n${source.slice(match.index)}`
+    `${source.slice(0, match.index)}${match[1]}// eslint-disable-next-line ${charged}\n${source.slice(match.index)}`
   );
   assert.ok(
     reasons.some((r) => r.includes("ESLint")),

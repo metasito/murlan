@@ -52,10 +52,8 @@ module.exports = defineConfig([
       // reason, which this does not affect.
       "react-hooks/exhaustive-deps": "error",
       // A `setState` in an effect body is a cascading render. There is no local
-      // exemption from this one: a suppression stops React Compiler compiling
-      // the whole file it sits in (`tests/reactCompiler.test.ts` proves that
-      // against the compiler itself), which is a worse trade than any single
-      // effect could be worth. Reset in render against the previous value,
+      // exemption from this one: a comment cannot take one site out of what
+      // this file decides (ADR-0005). Reset in render against the previous value,
       // derive it, or read the external thing through `useSyncExternalStore`.
       "react-hooks/set-state-in-effect": "error",
       "no-restricted-syntax": [

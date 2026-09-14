@@ -1,10 +1,14 @@
 // tests/hooksLint.test.ts — the three eslint-plugin-react-hooks 7 rules #891
 // adopted stay adopted, and nothing switches one back off.
 //
-// A suppression of any of them costs its whole file its React Compiler pass, so
-// there is no such thing as a local one — `tests/reactCompiler.test.ts` proves
-// that against the compiler itself and refuses every suppression under `app/`,
-// `components/` and `context/`. Two things that scan cannot see are here:
+// What a suppression of one of them is refused for is an ESLint matter: which of
+// the three is on is `eslint.config.js`'s to say, and a comment taking one out of
+// its hands for a single site leaves nothing repo-wide recording that it went.
+// Not the React Compiler, which charges for a suppression only of the rules on its
+// own list, and none of these three are on it — `tests/reactCompiler.test.ts`
+// measures that rather than assuming it (ADR-0005), and refuses every suppression
+// under `app/`, `components/` and `context/` on the same ESLint ground. Two things
+// that scan cannot see are here:
 // `lib/`, which it compiles but does not scan for suppressions, and
 // `eslint.config.js`, where a rule can go `"off"` for a whole directory without
 // a single source file changing. Either reopens the class with CI green.
@@ -15,13 +19,12 @@ import { ESLint } from "eslint";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { ADOPTED } from "./helpers/adoptedHookRules.ts";
 import { directives, syntaxErrors, type Directive } from "./helpers/hookSuppression.ts";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(import.meta.url);
 
-/** Every rule #891 adopted. */
-const ADOPTED = ["react-hooks/set-state-in-effect", "react-hooks/globals", "react-hooks/refs"];
 /** The one rule left off, and the only files it may be off for. */
 const OFF_FOR_TESTS = "react-hooks/globals";
 const OFF_ONLY_FOR = [
@@ -52,6 +55,9 @@ function sourceFiles(dir: string): string[] {
   });
 }
 
+/** The offender text, once, so the cases below can assert against it rather than restate it. */
+const ADOPTED_FAULT = "switches an adopted rule off, which is eslint.config.js's call";
+
 /**
  * Why each comment in `source` switches an adopted rule off, with the line it
  * sits on. Two callers: the scan runs it over the tree, and the case list runs
@@ -59,9 +65,9 @@ function sourceFiles(dir: string): string[] {
  * without planting one.
  *
  * Only the three rules `ADOPTED` names, where `tests/reactCompiler.test.ts`
- * takes every rule under the `react-hooks/` prefix: what that gate asks is
- * whether a file still compiles, and any of the plugin's rules going off costs
- * it that. What this one asks is narrower — whether the rules #891 adopted are
+ * takes every rule under the `react-hooks/` prefix: that gate stands over the
+ * directories the compiler builds and refuses a local exemption from any of
+ * them. What this one asks is narrower — whether the rules #891 adopted are
  * still on — and a rule nobody adopted going off is not an answer to it.
  */
 function suppressionFaults(source: string, file = "scan.tsx"): { line: number; why: string }[] {
@@ -81,10 +87,18 @@ function faultOf(keyword: Directive["keyword"], rules: string[]): string | null 
   // on, these three among them, and is the one form that cannot be found by
   // looking for their names.
   if (rules.length === 0) return "names no rule, so it disables all of them";
-  return adopted ? "switches an adopted rule off, which costs this file its compilation" : null;
+  return adopted ? ADOPTED_FAULT : null;
 }
 
 describe("the react-hooks 7 rules #891 adopted stay adopted", () => {
+  test("the reason a suppression is refused is the ESLint one", () => {
+    // The compiler charges nothing for these three — `tests/reactCompiler.test.ts`
+    // measures that — so an offender told a suppression costs it a compilation is
+    // told wrong.
+    assert.match(ADOPTED_FAULT, /eslint\.config\.js/);
+    assert.doesNotMatch(ADOPTED_FAULT, /compil/i);
+  });
+
   for (const rule of ALWAYS_ON) {
     test(`${rule} is off nowhere — the exemptions are per-site instead`, () => {
       assert.deepEqual(
@@ -145,8 +159,8 @@ describe("no source file switches an adopted rule off", () => {
 
   test("each form that would reopen the class is a fault, and prose is not", () => {
     // The scan below cannot go red on a form it has never been shown. A reason
-    // after `--` is among them: it reads as a local decision, and there is no
-    // such thing when the cost is the whole file's compilation.
+    // after `--` is among them: it reads as a local decision, and whether one of
+    // these three is on is not a decision a single site gets to take.
     const why = (source: string) => suppressionFaults(source).map((fault) => fault.why);
     // One fault, not "at least one": a form that also raises a spurious second
     // would otherwise pass here and go on annoying somebody in the scan.
@@ -159,17 +173,11 @@ describe("no source file switches an adopted rule off", () => {
     assert.match(only("/* eslint-disable */"), /names no rule/);
     assert.match(only("/* eslint-disable */ // see docs/agents/RULES.md"), /names no rule/);
     assert.match(only('/* eslint react-hooks/set-state-in-effect: "off" */'), /inline rule config/);
-    assert.match(
-      only("/* eslint-disable react-hooks/globals */"),
-      /costs this file its compilation/
-    );
-    assert.match(
-      only("// eslint-disable-next-line react-hooks/refs"),
-      /costs this file its compilation/
-    );
-    assert.match(
+    assert.equal(only("/* eslint-disable react-hooks/globals */"), ADOPTED_FAULT);
+    assert.equal(only("// eslint-disable-next-line react-hooks/refs"), ADOPTED_FAULT);
+    assert.equal(
       only("// eslint-disable-next-line react-hooks/refs -- the reason, stated"),
-      /costs this file its compilation/
+      ADOPTED_FAULT
     );
     assert.deepEqual(why("// a bare `eslint-disable-next-line` reopens the class"), []);
     assert.deepEqual(why("// eslint-disable-next-line no-console"), []);
@@ -181,10 +189,7 @@ describe("no source file switches an adopted rule off", () => {
     // that reads best is rarely the first — a per-line scan sees the opener and
     // the rule name as two lines with no directive between them.
     assert.match(only('/* eslint\n   react-hooks/globals: "off" */'), /inline rule config/);
-    assert.match(
-      only("/* eslint-disable\n   react-hooks/refs */"),
-      /costs this file its compilation/
-    );
+    assert.equal(only("/* eslint-disable\n   react-hooks/refs */"), ADOPTED_FAULT);
 
     // Prose is what does not open its own comment with the directive, and a
     // directive quoted in a string is not a directive at all.
@@ -197,38 +202,35 @@ describe("no source file switches an adopted rule off", () => {
     // A sentence opening with the directive is faulted whatever it meant. This
     // one ESLint does not honour; the same words with a comma after the rule it
     // does, and that is not a distinction to rest a gate on.
-    assert.match(
+    assert.equal(
       only("// eslint-disable-next-line react-hooks/refs is banned here"),
-      /costs this file its compilation/
+      ADOPTED_FAULT
     );
-    assert.match(
+    assert.equal(
       only("// eslint-disable-next-line react-hooks/refs, and never do this"),
-      /costs this file its compilation/
+      ADOPTED_FAULT
     );
 
     // A backtick inside a regex literal: the case the parse exists for, since
     // nothing reading text can tell it from a template opener, and a template
     // spans lines, so there is no bound to give one.
-    assert.match(
+    assert.equal(
       only("const q = /[`]/;\n// eslint-disable-next-line react-hooks/refs\nconst n = `y`;"),
-      /costs this file its compilation/
+      ADOPTED_FAULT
     );
 
     // A comment inside a template substitution is a comment, and ESLint reads a
     // directive there as one.
-    assert.match(
-      only("const s = `a${/* eslint-disable react-hooks/refs */ 1}b`;"),
-      /costs this file its compilation/
-    );
+    assert.equal(only("const s = `a${/* eslint-disable react-hooks/refs */ 1}b`;"), ADOPTED_FAULT);
 
     // `<string>foo` is a type assertion in a .ts file and an unclosed JSX tag
     // in a .tsx one, which swallows the rest of the file. The name decides, so
     // a `.ts` file gets read as one.
     const assertionThenDirective =
       "const a = <string>foo;\n// eslint-disable-next-line react-hooks/refs\n";
-    assert.match(
+    assert.equal(
       suppressionFaults(assertionThenDirective, "lib/x.ts")[0]?.why ?? "",
-      /costs this file its compilation/
+      ADOPTED_FAULT
     );
 
     // The line is what makes the scan's offender list actionable, so it is the
@@ -275,8 +277,9 @@ describe("no source file switches an adopted rule off", () => {
     assert.deepEqual(
       offenders,
       [],
-      "a react-hooks suppression stops React Compiler compiling the file it sits in, so the " +
-        "effect is rewritten rather than silenced — see tests/reactCompiler.test.ts"
+      "which of these three is on is eslint.config.js's to say, so the effect is rewritten " +
+        "rather than silenced. React Compiler does not charge for suppressing one of them — " +
+        "tests/reactCompiler.test.ts measures which rules it does charge for"
     );
   });
 });

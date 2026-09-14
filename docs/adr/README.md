@@ -11,6 +11,7 @@ An ADR is history and is never rewritten. A decision that no longer holds gets
 | [0002](0002-a-play-leaves-the-seat-it-was-thrown-from.md) | A play leaves the seat it was thrown from | Accepted | A flight starts at the throwing seat's real position, not a fixed unscaled offset in the pile's frame. |
 | [0003](0003-cloud-run-already-runs-multiple-instances.md) | Cloud Run already runs the app on multiple instances | Accepted | Multi-instance is the deployed reality today, not a deferred future — the ownership/routing protocol is load-bearing, not speculative. |
 | [0004](0004-the-queue-loop-serialises-and-owns-the-merge.md) | The queue loop serialises its tickets and the supervisor owns the merge | Accepted | One ticket at a time and nothing held in memory: ~22% of wall clock buys away the whole class of defect where the supervisor and the session disagree about which ticket is live. |
+| [0005](0005-the-compiler-is-not-the-enforcer-of-the-adopted-rules.md) | The React Compiler is not the enforcer of the three rules #891 adopted | Accepted | `eslintSuppressionRules` stays unset: the compiler's penalty is an unmemoized component in production, which is a worse answer than the lint error two source scans already give. |
 
 ## Writing one
 
