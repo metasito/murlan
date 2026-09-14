@@ -536,18 +536,33 @@ describe("checkoutRoot", () => {
   /**
    * A repository of its own, because the answer has to differ from the question: CI checks out one
    * worktree and nothing else, so a case that reads only the tree it runs in agrees with every
-   * wrong implementation there and reds for nobody but an agent on this machine.
+   * wrong answer there and reds for nobody but an agent on this machine.
+   *
+   * Anywhere but `.worktrees/`, which is the one layout in which trimming that prefix off the
+   * toplevel is right by luck rather than by asking. Rule 39 does not reach this `rmSync`: the
+   * junction it protects belongs to a worktree of *this* repo, and `worktrees:remove` cannot be
+   * pointed at a foreign one.
    */
   test("from inside a worktree, answers the checkout and not the worktree", () => {
     const repo = mkdtempSync(path.join(tmpdir(), "reap-checkout-"));
     const git = (...args: string[]) =>
-      execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args], { cwd: repo, encoding: "utf8" });
+      execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false", ...args], {
+        cwd: repo,
+        encoding: "utf8",
+      });
     try {
       git("init", "-q");
       git("commit", "-q", "--allow-empty", "-m", "root");
-      const worktree = path.join(repo, ".worktrees", "agent-1");
+      const worktree = path.join(repo, "elsewhere", "wt");
       git("worktree", "add", "-q", "--detach", worktree, "HEAD");
 
+      const toplevelOf = (cwd: string) =>
+        execFileSync("git", ["rev-parse", "--show-toplevel"], { cwd, encoding: "utf8" }).trim();
+      assert.notEqual(
+        toplevelOf(worktree),
+        mainWorktreeOf(repo),
+        "the fixture is not a second worktree, so nothing here tells the two answers apart"
+      );
       assert.equal(checkoutRoot(worktree), mainWorktreeOf(repo));
     } finally {
       rmSync(repo, { recursive: true, force: true });
