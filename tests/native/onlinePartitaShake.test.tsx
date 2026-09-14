@@ -1,8 +1,9 @@
 // tests/native/onlinePartitaShake.test.tsx — the partita rung, online.
 //
 // `game:state` (gameOver true) and `game:over` (matchOver true) are two
-// socket packets, two renders — `matchOverRef` (components/GameTable.tsx)
-// is what lets the impact timeout scheduled on the first read the second
+// socket packets, two renders — `matchOverRef` (`usePileFlight`, in
+// components/table/pile.tsx) is what lets the impact timeout scheduled on the
+// first read the second
 // when it fires, rather than the value closed over when it was scheduled.
 import { describe, it, expect, jest, beforeEach, afterEach } from '@jest/globals';
 import React from 'react';

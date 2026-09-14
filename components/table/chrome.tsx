@@ -13,6 +13,7 @@ import {
   Colors,
   FontSize,
   makeShadow,
+  Motion,
   Radius,
   Reading,
   Scrim,
@@ -544,6 +545,30 @@ export function useHandLift(active: boolean, scale: number) {
   }, [active, scale, reduceMotion, lift]);
 
   return useAnimatedStyle(() => ({ transform: [{ translateY: lift.value }] }));
+}
+
+/**
+ * The HUD chips and the reactions trigger fade rather than vanish under focus
+ * mode — kept mounted throughout, so a timer or an in-flight animation living
+ * inside them (the turn countdown included) is never torn down and restarted
+ * by a toggle that is about decluttering the felt, not about the turn itself.
+ */
+export function useFocusFade(focusMode: boolean) {
+  const fade = useSharedValue(1);
+  const reduceMotion = usePrefersReducedMotion();
+
+  useEffect(() => {
+    const target = focusMode ? 0 : 1;
+    if (reduceMotion) {
+      cancelAnimation(fade);
+      fade.value = target;
+      return;
+    }
+    fade.value = withTiming(target, { duration: Motion.duration.travel });
+    return () => cancelAnimation(fade);
+  }, [focusMode, reduceMotion, fade]);
+
+  return useAnimatedStyle(() => ({ opacity: fade.value }));
 }
 
 /**
