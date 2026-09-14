@@ -64,12 +64,18 @@ function sourceFiles(dir: string): string[] {
 const COMMENT_OR_STRING =
   /"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'|`(?:\\[\s\S]|[^`\\])*`|\/\*[\s\S]*?\*\/|\/\/[^\n]*/g;
 
-/** Every comment in `source`, opener included, with the 1-based line it starts on. */
-function comments(source: string): { line: number; text: string }[] {
+/**
+ * Every comment in `source`, opener included, with the 1-based line it starts
+ * on and the offset it starts at — the offset because the oracle below compares
+ * against a parse, and two identical comments in one file would otherwise agree
+ * by text while one of them was being swallowed.
+ */
+function comments(source: string): { line: number; pos: number; text: string }[] {
   return [...source.matchAll(COMMENT_OR_STRING)]
     .filter((match) => match[0].startsWith("/"))
     .map((match) => ({
       line: source.slice(0, match.index).split("\n").length,
+      pos: match.index,
       text: match[0],
     }));
 }
@@ -251,15 +257,16 @@ describe("no source file switches an adopted rule off", () => {
     const swallowed: string[] = [];
     for (const file of files) {
       const source = readFileSync(path.join(ROOT, file), "utf8");
-      const found = new Set(comments(source).map((comment) => comment.text));
+      const found = new Set(comments(source).map((comment) => comment.pos));
       const parsed = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
       const seen = new Set<number>();
       const visit = (node: ts.Node) => {
         for (const range of ts.getLeadingCommentRanges(source, node.pos) ?? []) {
           if (seen.has(range.pos)) continue;
           seen.add(range.pos);
+          if (found.has(range.pos)) continue;
           const text = source.slice(range.pos, range.end);
-          if (!found.has(text)) swallowed.push(`${file}:${range.pos} — ${text.slice(0, 60)}`);
+          swallowed.push(`${file}:${range.pos} — ${text.slice(0, 60)}`);
         }
         for (const child of node.getChildren(parsed)) visit(child);
       };
