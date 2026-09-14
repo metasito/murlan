@@ -563,6 +563,39 @@ describe("a throw mid-iteration", () => {
   });
 });
 
+describe("a handoff", () => {
+  const book = () => ({ totals: { tickets: 0, landed: 0, parked: 0, cost: 0, ms: 0 }, record: () => {}, close: () => {} });
+  const screen = () => ({ say: () => {}, warn: () => {}, notice: () => {}, stop: () => {} });
+
+  // The phase reaching the picker is the whole of task 1: without it the next process asks derive(),
+  // which can only ever answer C, D, E or ?, and every handoff restarts at a phase it already ran.
+  test("starts the next process at the phase the session named", async () => {
+    const at: (string | null)[] = [];
+    let n = 0;
+    const spy = {
+      ...(io() as any),
+      pick: (_pinned: number | null, phase: string | null) => {
+        at.push(phase);
+        return { skill: "implement", number: 41, title: "t", size: "size:S", queue: null };
+      },
+      spawn: async () => ({
+        status: 0,
+        blocked: false,
+        result: { cost: 1, turns: 2 },
+        ms: 1,
+        log: "l",
+        phase: "C",
+        size: "size:S",
+        declared: n++ === 0 ? { ticket: 41, phase: "C", handoff: "D", stoodDown: false } : null,
+      }),
+      pushedPr: () => null,
+      standing: () => null,
+    };
+    await main({ io: spy, book: book(), screen: screen(), install: () => {}, runId: "t" });
+    assert.deepEqual(at.slice(0, 2), [null, "D"], "the second pick must be told which phase to start");
+  });
+});
+
 describe("what a ticket's clock covers", () => {
   // The land is the longest stretch of a ticket and the session that built it has already exited.
   test("the recorded time carries the land, not just the session", async () => {

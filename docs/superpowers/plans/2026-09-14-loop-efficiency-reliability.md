@@ -6,7 +6,7 @@
 
 **Architecture:** The loop is already a state machine derived from git and the tracker (`loop-derive.mjs`), and the supervisor already re-spawns a fresh process per ticket. This plan makes the session exit at a phase boundary so the supervisor re-spawns per *phase* — the same machine, one more transition — which drops the 200k of history phase D currently carries. Beside that, three verdicts that could be green without evidence are made to need evidence: a `LAND` needs a posted review, `agent:check` may not say `PASS` for a suite it did not run, and a ticket stranded mid-fix becomes takeable again.
 
-**Tech Stack:** Node 24 (native type-stripping, `node --test`), `.mjs` supervisor + `.ts` tests under `tools/loop/tests/`, `gh` CLI, Claude Code `-p --output-format stream-json`.
+**Tech Stack:** Node 24 under the loader constraint `docs/agents/loops.md` states, `node --test`, `.mjs` supervisor + `.ts` tests under `tools/loop/tests/`, `gh` CLI, Claude Code `-p --output-format stream-json`.
 
 **Spec:** `docs/research/2026-09-14-loop-efficiency.md`
 

@@ -17,8 +17,10 @@ export interface JobRow {
 
 export interface Verdict {
   pass: boolean;
-  /** The run has not answered yet, which is not a failure. `settle` waits on this rather than budgeting it. */
+  /** A live run has not answered yet, which is not a failure: `settle` waits rather than budgeting it. */
   waiting?: boolean;
+  /** No run at all yet — waited for on its own budget, since one that never appears never will. */
+  appearing?: boolean;
   runId?: number;
   failedStep?: string;
   output?: string;
@@ -41,7 +43,7 @@ export interface Verdict {
  */
 export function decideVerdict(run: RunRow | undefined, jobs: JobRow[] = []): Verdict {
   if (!run) {
-    return { pass: false, waiting: true, infrastructure: true, reason: "no run found for this branch" };
+    return { pass: false, appearing: true, infrastructure: true, reason: "no run found for this branch" };
   }
   if (run.status !== "completed") {
     return { pass: false, waiting: true, runId: run.databaseId, reason: `run is still ${run.status}` };

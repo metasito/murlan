@@ -30,7 +30,7 @@ export function slugOf(title) {
  * The steps, in the one order that makes the race check mean anything: the label is the write, and
  * the read that decides who won has to come after it.
  */
-export function claimSteps(number, title, noteFile = "") {
+export function claimSteps(number, title, noteFile = "", base = "origin/main") {
   const branch = `agent/${number}-${slugOf(title)}`;
   return [
     { name: "label", file: "gh", args: ["issue", "edit", String(number), "--add-label", "in-progress"] },
@@ -40,13 +40,32 @@ export function claimSteps(number, title, noteFile = "") {
     {
       name: "worktree",
       file: "git",
-      args: ["worktree", "add", "-b", branch, `${WORKTREE_DIR}/agent-${number}`, "origin/main"],
+      // `-B` off the branch's own remote, never off main: a ticket whose supervisor died between CI
+      // rounds already has that branch, and cutting a fresh one discards what it pushed.
+      args: [
+        "worktree",
+        "add",
+        base === "origin/main" ? "-b" : "-B",
+        branch,
+        `${WORKTREE_DIR}/agent-${number}`,
+        base,
+      ],
     },
   ];
 }
 
 /** Every claim comment on the thread, by the branch it names. A fresh one per read: `g` is stateful. */
 const claims = () => /Claimed by `(agent\/\d+-[^`]*)`/g;
+
+/** Whether the branch is already pushed — asked after the fetch, so the answer is current. */
+function onOrigin(branch, run) {
+  try {
+    run("git", ["rev-parse", "--verify", "--quiet", `refs/remotes/origin/${branch}`]);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 export function claim(number, title, run = (file, args) => execFileSync(file, args, { encoding: "utf8" })) {
   const branch = `agent/${number}-${slugOf(title)}`;
@@ -55,13 +74,16 @@ export function claim(number, title, run = (file, args) => execFileSync(file, ar
   writeFileSync(noteFile, `Claimed by \`${branch}\`.\n`, "utf8");
 
   for (const step of claimSteps(number, title, noteFile)) {
-    const out = run(step.file, step.args);
+    const args =
+      step.name === "worktree" && onOrigin(branch, run)
+        ? claimSteps(number, title, noteFile, `origin/${branch}`).at(-1).args
+        : step.args;
+    const out = run(step.file, args);
     if (step.name !== "race") continue;
     const others = [...String(out).matchAll(claims())].map((m) => m[1]).filter((b) => b !== branch);
-    if (others.length) {
-      run("gh", ["issue", "edit", String(number), "--remove-label", "in-progress"]);
-      return { branch, cwd, won: false, why: `${others[0]} claimed it first` };
-    }
+    // The label stays on. It is one shared label, so taking it off on a lost race takes it off the
+    // peer who won, and the picker then serves their live ticket to a third process.
+    if (others.length) return { branch, cwd, won: false, why: `${others[0]} claimed it first` };
   }
   return { branch, cwd, won: true, why: null };
 }

@@ -225,10 +225,15 @@ describe("a cancelled run", () => {
   // exhausts an eight-round recheck budget and parks a healthy branch.
   test("a run that has not finished says so, rather than reading as a failure to budget", () => {
     assert.equal(decideVerdict({ databaseId: 1, status: "in_progress", conclusion: null } as never).waiting, true);
-    assert.equal(decideVerdict(undefined).waiting, true);
     assert.equal(
       decideVerdict({ databaseId: 1, status: "completed", conclusion: "failure" } as never).waiting,
       undefined,
     );
+  });
+
+  test("a run that never appeared is not the same wait, because it may never appear", () => {
+    const none = decideVerdict(undefined);
+    assert.equal(none.waiting, undefined, "an absent run would wait out the whole deadline");
+    assert.equal(none.appearing, true);
   });
 });

@@ -6,7 +6,7 @@
 
 **Architecture:** Five changes, each independently revertable, none moving orchestration. One comment classifier serves both the write-time deny hook and the CI-time budget, so the rule cannot mean two things. A measurement instrument lands first-class, because this plan's central assumption is an estimate and has to be falsifiable.
 
-**Tech Stack:** Node 24 native TypeScript type-stripping (`.mjs` importing `.ts` directly), `node --test`, Claude Code `PreToolUse` hooks, `gh` CLI.
+**Tech Stack:** Node 24 under the loader constraint `docs/agents/loops.md` states, `node --test`, Claude Code `PreToolUse` hooks, `gh` CLI.
 
 **Spec:** `docs/research/2026-09-14-agent-loop-overhaul.md`
 

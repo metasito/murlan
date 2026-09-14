@@ -124,7 +124,16 @@ const force = process.argv.includes("--force");
 // fixing it and pushing again to find out. Named, never a wildcard: `--also` picking up every
 // delegated step is `npm run verify` behind a memory preflight this machine refuses.
 const also = process.argv.indexOf("--also");
-const extra = also >= 0 ? [byName(process.argv[also + 1])].filter(Boolean) : [];
+const extra = also >= 0 ? [byName(process.argv[also + 1])] : [];
+// Refused, not dropped: a mistyped suite that fell out of the list would print the same LOCAL PASS,
+// and the fix round would believe it had run the one CI named.
+if (extra.some((s) => !s)) {
+  console.error(
+    `agent:check  --also ${process.argv[also + 1] ?? ""} is not a step. One of: ` +
+      STEPS.map((s) => s.name).join(", "),
+  );
+  process.exit(1);
+}
 
 // Keyed with them, so a `--also` run cannot replay as a plain one — or a plain one as a `--also`.
 const key = treeHash() + (extra.length ? `+${extra.map((s) => s.name).join(",")}` : "");

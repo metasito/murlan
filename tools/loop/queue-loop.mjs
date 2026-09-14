@@ -1362,11 +1362,12 @@ export function pushedPr(branch, ticket, declared = null, since = 0, run = sh) {
 }
 
 /**
- * Three budgets, not one. A branch updated twice because main moved twice is a healthy branch on a
- * busy night; a verdict asked for twice because the runner had nothing to say is a sick one; and a
- * mergeability job still running is neither. Sharing a counter parks whichever goes second.
+ * Four budgets, not one. A branch updated twice because main moved twice is a healthy branch on a
+ * busy night; a verdict asked for twice because the runner had nothing to say is a sick one; a
+ * mergeability job still running is neither; and a run that has not registered yet is a push seconds
+ * old. Sharing a counter parks whichever goes second. A run that *is* running spends none of these.
  */
-export const SETTLE_ROUNDS = { update: 3, retry: 3, recheck: 8 };
+export const SETTLE_ROUNDS = { update: 3, retry: 3, recheck: 8, appear: 12 };
 
 /** GitHub re-points the pull request head asynchronously; asked at once, CI answers for the old one. */
 const SETTLE_PAUSE_MS = 15_000;
@@ -1454,7 +1455,7 @@ async function poll(pending, log, pause, deadline) {
     let stillRunning = null;
     try {
       const verdict = readVerdict(REPO, pending.branch, pending.pr);
-      if (verdict.infrastructure) asking = "retry";
+      if (verdict.infrastructure) asking = verdict.appearing ? "appear" : "retry";
       stillRunning = verdict.waiting ? verdict.reason : null;
       next = readLanding(pending.pr, verdict);
       // Written before it is handed back, because the session that fixes it is a fresh process
@@ -1592,7 +1593,16 @@ export async function runOnce(io, pinned = null, roundsUsed = 0, at = null) {
   const handoff = handoffOf(run);
   if (handoff) {
     io.record({ number: route.number, outcome: "handoff", why: `phase ${handoff} next`, run, counts: false });
-    return { outcome: "handoff", ticket: route.number, phase: handoff, run };
+    // The worktree comes with it: a handoff leaves one standing on purpose, so a park that does not
+    // carry it leaves `derive()` a live run to resume — the ticket it just handed to the owner.
+    return {
+      outcome: "handoff",
+      ticket: route.number,
+      phase: handoff,
+      run,
+      cwd: after?.cwd ?? null,
+      branch: after?.branch ?? null,
+    };
   }
   const pr = io.pushedPr(after?.branch ?? null, route.number, run.declared?.pr ?? null, Date.now() - run.ms);
   // `blocked` is advisory, checked here rather than before the pull request is looked for: a
@@ -1902,8 +1912,8 @@ export async function main({
   let claimed = null;
   const watched = {
     ...io,
-    pick: (p) => {
-      const route = io.pick(p);
+    pick: (p, at) => {
+      const route = io.pick(p, at);
       claimed = typeof route?.number === "number" ? route.number : null;
       return route;
     },
@@ -2001,8 +2011,8 @@ export async function main({
           phase: pass.phase,
           why: `$${spent.toFixed(2)} across ${handoffs + 1} processes — over this ticket's ceiling`,
           log: pass.run.log,
-          cwd: null,
-          branch: null,
+          cwd: pass.cwd,
+          branch: pass.branch,
           dirty: false,
         });
         pinned = null;
@@ -2018,13 +2028,14 @@ export async function main({
           phase: pass.phase,
           why: `${handoffs} phase handoffs on one ticket`,
           log: pass.run.log,
-          cwd: null,
-          branch: null,
+          cwd: pass.cwd,
+          branch: pass.branch,
           dirty: false,
         });
         pinned = null;
         nextPhase = null;
         handoffs = 0;
+        spent = 0;
         failures += 1;
         if (shouldHalt(failures)) return finish(1, `${failures} tickets in a row did not land`);
         continue;
@@ -2034,6 +2045,7 @@ export async function main({
 
     if (pass.outcome === "retry") {
       rounds = pass.ticket === pinned ? rounds + 1 : 1;
+      if (pass.ticket !== pinned) spent = 0;
       pinned = pass.ticket;
       screen.say(`  🔁 #${pass.ticket} ${pass.why} — fix round ${rounds + 1}/${CI_ROUNDS}`);
       continue;
@@ -2041,6 +2053,7 @@ export async function main({
     pinned = null;
     rounds = 0;
     handoffs = 0;
+    spent = 0;
     nextPhase = null;
     if (pass.outcome === "landed") {
       failures = 0;
