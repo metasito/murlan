@@ -386,8 +386,8 @@ export function useTableFeedback({
     if (prevGameOverRef.current) return;
     // The manche/partita shake itself is NOT fired here — this effect answers
     // `gameOver` the instant the state arrives, well ahead of the winning
-    // card's own landing. `GameTable.tsx` fires `shake(landingTier(...))`
-    // from the same `impactDelayMs` timeout everything else on the table
+    // card's own landing. `usePileFlight` (components/table/pile.tsx) fires
+    // `shake(landingTier(...))` from the `impactDelayMs` timeout everything else
     // waits for, so the shake lands with the card rather than ahead of it.
     // `rankings` holds engine player ids (`player_0`), never display names.
     // Routed through the one function the results board's own haptic reads

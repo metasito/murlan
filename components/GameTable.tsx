@@ -787,10 +787,11 @@ export function GameTable({
     playCardPlay();
     onExchangeGive(exchangePick);
   };
-  // Asked again rather than closing over `canPass`: that value is also handed
-  // to `useTableFeedback`, and React Compiler will not preserve a manual memo
-  // over a dependency another hook may be holding
-  // (scripts/react-compiler-probe.mjs).
+  // Asked again rather than closing over `canPass`: with `canPass` as the
+  // dependency, `react-hooks/preserve-manual-memoization` refuses this memo and
+  // React Compiler skips the whole component. Bisected, not reasoned to — the
+  // pile effect that used to sit above here was what kept the scopes apart, so
+  // this went red only once that effect moved to `usePileFlight`.
   const handlePass = useCallback(() => {
     if (!canPassNowOf({ isMyTurn, isFinished, isNewRound })) return;
     // Haptic only: the pass sound follows the committed state, so firing it

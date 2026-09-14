@@ -93,10 +93,10 @@ export function FlyingCards({
   const rockRot = SETTLE_ROCK_ROTS[direction];
   const reduceMotion = usePrefersReducedMotion();
 
-  // The caller passes a fresh onDone closure on every render; a ref keeps the
-  // flight effect below from restarting mid-flight when that happens. The ref
-  // is written after commit, never during render — the only reader is a timer
-  // or an animation callback, both of which fire later.
+  // A ref rather than the prop, so a caller handing over a fresh closure
+  // cannot restart the flight effect below mid-flight. The ref is written
+  // after commit, never during render — the only reader is a timer or an
+  // animation callback, both of which fire later.
   const onDoneRef = useRef(onDone);
   useEffect(() => {
     onDoneRef.current = onDone;
@@ -500,7 +500,7 @@ export function getComboLabel(
   return label;
 }
 
-// ─── Styles ───────────────────────────────────────────────────────────────────
+// ─── usePileFlight ────────────────────────────────────────────────────────────
 
 // How long the round-winner tag stays over the pile. A domain beat, not a
 // generic UI transition, so it is not a Motion token.
@@ -789,6 +789,8 @@ export function usePileFlight({
     onFlightDone,
   };
 }
+
+// ─── Styles ───────────────────────────────────────────────────────────────────
 
 const pileStyles = StyleSheet.create({
   flyingContainer: {
