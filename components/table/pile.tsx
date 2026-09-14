@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { View, StyleSheet } from "react-native";
 import { TableText } from "./TableText";
 import Animated, {
@@ -22,7 +22,7 @@ import { useTranslation, type TranslationKey } from "@/lib/i18n";
 import type { Card, Combination } from "@/lib/gameEngine";
 import { CARD_W, CARD_H, FIELD_SCALE, cardRadius } from "@/components/cardFaceModel";
 import { type FlyDirection } from "@/components/seatLayout";
-import { COMBO_MAX_TILT, cardTilt, FLIGHT_MS, flinchFor, impactDelayMs, landingHoldMs, landSquashScale, settleForMotion, type ImpactTier } from "@/components/flightPhysics";
+import { COMBO_MAX_TILT, advancePile, cardTilt, comboKey, EMPTY_PILE, FLIGHT_MS, flinchFor, impactDelayMs, landingHoldMs, landingTier, landSquashScale, readThrownPlay, roundClosedWithWinner, settleForMotion, type ImpactTier, type PileState, type ThrownPlayInput } from "@/components/flightPhysics";
 import { FIELD_ARC, solveArc } from "@/components/tableArc";
 
 const FLY_ROTS: Record<FlyDirection, number> = {
@@ -501,6 +501,294 @@ export function getComboLabel(
 }
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
+
+// How long the round-winner tag stays over the pile. A domain beat, not a
+// generic UI transition, so it is not a Motion token.
+const ROUND_WINNER_MS = 1800;
+
+export interface PileFlightInput extends Omit<ThrownPlayInput, "combo" | "playedBy"> {
+  lastPlayedCombination: Combination | null;
+  lastPlayedBy: number;
+  roundWinner: number | null;
+  gameOver: boolean;
+  /**
+   * Online, `matchOver` arrives on its own socket packet after `gameOver` — a
+   * second render the dedupe below skips, so the impact timeout reads a ref
+   * (current at the moment it fires) rather than the `matchOver` its own
+   * scheduling render closed over.
+   */
+  matchOver: boolean;
+  /**
+   * Every beat a landing earns, passed in rather than reached for: the table
+   * owns `useTableFeedback`, and `tests/native` loads this module on its own,
+   * where the audio native module has no JS implementation to import.
+   */
+  playImpact: (heavy: boolean) => void;
+  shake: (tier: ImpactTier) => void;
+  burst: (tier: ImpactTier) => void;
+  celebrateFlush: () => void;
+  playRoundStart: () => void;
+  playRoundWin: () => void;
+}
+
+/**
+ * The flying card, the pile under it and the round-winner tag over it, derived
+ * straight from the game state so a card can never be shown twice or dropped.
+ * CLAUDE.md marks this load-bearing.
+ */
+export function usePileFlight({
+  lastPlayedCombination,
+  lastPlayedBy,
+  roundWinner,
+  gameOver,
+  matchOver,
+  viewerSeat,
+  players,
+  opponents,
+  scale,
+  windowWidth,
+  windowHeight,
+  tableLeft,
+  tableRight,
+  tableTop,
+  surplus,
+  bottomPad,
+  handCardH,
+  playImpact,
+  shake,
+  burst,
+  celebrateFlush,
+  playRoundStart,
+  playRoundWin,
+}: PileFlightInput) {
+  const reduceMotion = usePrefersReducedMotion();
+
+  // The seat that took the last round and a counter of how many rounds have
+  // closed. The counter is what makes an identical repeat a new announcement:
+  // the seat that wins a round leads the next one, so the same seat winning
+  // twice running is ordinary play.
+  const [roundWinnerTag, setRoundWinnerTag] = useState<{ seat: number; closure: number } | null>(
+    null
+  );
+  const [pileState, setPileState] = useState<PileState>(EMPTY_PILE);
+  const [bounceTrigger, setBounceTrigger] = useState(0);
+  // The beaten pile's own reaction (#764): fired from the same impactDelayMs()
+  // landing the shake and the impact sound wait for, never a second guess at it.
+  const [flinchTrigger, setFlinchTrigger] = useState(0);
+  const [flinchTier, setFlinchTier] = useState<ImpactTier>("ordinary");
+  const [flyInfo, setFlyInfo] = useState<{
+    key: string;
+    dir: FlyDirection;
+    cards: Card[];
+    /** Where the throw starts — components/flightPhysics.ts `flightOrigin`. */
+    origin: { dx: number; dy: number };
+  } | null>(null);
+  // False for exactly impactDelayMs() from the moment a flight begins — the
+  // throwing seat's own held count and departing backs read off this, not off
+  // flyInfo's own lifetime, which runs past the landing to cover `FlyingCards`'
+  // settle spring too.
+  const [flightLanded, setFlightLanded] = useState(true);
+  const landTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Impact feedback is scheduled for the moment the thrown card lands, so it
+  // has to be cancellable: a fast next play, or leaving the table, must not
+  // fire a bang for a card that is no longer in the air.
+  const impactTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Non-null while the winning combination is being held on the felt under the
+  // round-winner tag. Its presence is what tells the pile effect the felt is
+  // spoken for.
+  const roundHoldTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prevComboKeyRef = useRef<string>("");
+  const roundClosedRef = useRef(false);
+  const matchOverRef = useRef(matchOver);
+  useEffect(() => {
+    matchOverRef.current = matchOver;
+  }, [matchOver]);
+
+  useEffect(
+    () => () => {
+      if (impactTimerRef.current) clearTimeout(impactTimerRef.current);
+      if (roundHoldTimerRef.current) clearTimeout(roundHoldTimerRef.current);
+      if (landTimerRef.current) clearTimeout(landTimerRef.current);
+    },
+    []
+  );
+
+  // The dedupe on `prevComboKeyRef` comes before anything with an effect, so a
+  // re-run for one of the other dependencies leaves the pile, the flying card
+  // and the pending impact exactly as they were.
+  useEffect(() => {
+    // A flight ending early — a new lead before it landed, the table leaving —
+    // must not leave a stale hold on the throwing seat's own count.
+    const clearLanding = () => {
+      if (landTimerRef.current) {
+        clearTimeout(landTimerRef.current);
+        landTimerRef.current = null;
+      }
+      setFlightLanded(true);
+    };
+
+    // Clearing the felt and announcing a new round are one beat, whether it
+    // happens now or after the winning cards have been held.
+    const openNewRound = () => {
+      playRoundStart();
+      setPileState(EMPTY_PILE);
+      setFlyInfo(null);
+      clearLanding();
+    };
+
+    const combo = lastPlayedCombination;
+    if (combo === null) {
+      // The winning cards are being held for the tag; nothing may take the
+      // felt out from under them until the hold expires or a new lead arrives.
+      if (roundHoldTimerRef.current) return;
+      if (prevComboKeyRef.current === "") {
+        setPileState(EMPTY_PILE);
+        setFlyInfo(null);
+        clearLanding();
+        return;
+      }
+      if (impactTimerRef.current) clearTimeout(impactTimerRef.current);
+      prevComboKeyRef.current = "";
+      if (roundClosedWithWinner({ lastPlayedCombination: combo, roundWinner })) {
+        roundHoldTimerRef.current = setTimeout(() => {
+          roundHoldTimerRef.current = null;
+          openNewRound();
+        }, ROUND_WINNER_MS);
+        return;
+      }
+      openNewRound();
+      return;
+    }
+    const key = comboKey(combo, lastPlayedBy);
+    if (key === prevComboKeyRef.current) return;
+    if (impactTimerRef.current) clearTimeout(impactTimerRef.current);
+    // A lead inside the hold window ends it early: the new card has to fly
+    // onto a cleared pile, not onto the combination it did not beat.
+    if (roundHoldTimerRef.current) {
+      clearTimeout(roundHoldTimerRef.current);
+      roundHoldTimerRef.current = null;
+      openNewRound();
+    }
+    prevComboKeyRef.current = key;
+    setPileState((s) => advancePile(s, combo, lastPlayedBy));
+
+    const thrown = readThrownPlay({
+      combo,
+      playedBy: lastPlayedBy,
+      viewerSeat,
+      players,
+      opponents,
+      scale,
+      windowWidth,
+      windowHeight,
+      tableLeft,
+      tableRight,
+      tableTop,
+      surplus,
+      bottomPad,
+      handCardH,
+    });
+
+    // The card is thrown here and arrives ~213ms later, so everything that
+    // reads as *impact* waits for it. Announced for every seat, not only the
+    // viewer's: the sound belongs to a card landing, not to a tap.
+    impactTimerRef.current = setTimeout(() => {
+      const tier = landingTier({
+        comboType: combo.type,
+        handOver: gameOver,
+        matchOver: matchOverRef.current,
+      });
+      playImpact(thrown.heavy);
+      shake(tier);
+      burst(tier);
+      setFlinchTier(tier);
+      setFlinchTrigger((t) => t + 1);
+      if (thrown.emptiedHand) celebrateFlush();
+    }, impactDelayMs(reduceMotion));
+
+    // The throwing seat's held count and departing backs read off this same
+    // boundary — the fan and the badge drop the instant the impact fires,
+    // not whenever FlyingCards' settle spring happens to finish.
+    if (landTimerRef.current) clearTimeout(landTimerRef.current);
+    setFlightLanded(false);
+    landTimerRef.current = setTimeout(() => {
+      landTimerRef.current = null;
+      setFlightLanded(true);
+    }, impactDelayMs(reduceMotion));
+
+    setFlyInfo({ key, dir: thrown.dir, cards: thrown.cards, origin: thrown.origin });
+  }, [
+    lastPlayedCombination,
+    lastPlayedBy,
+    roundWinner,
+    gameOver,
+    viewerSeat,
+    players.length,
+    reduceMotion,
+    playImpact,
+    shake,
+    burst,
+    celebrateFlush,
+    playRoundStart,
+    players,
+    opponents,
+    scale,
+    windowWidth,
+    windowHeight,
+    tableLeft,
+    tableRight,
+    tableTop,
+    surplus,
+    bottomPad,
+    handCardH,
+  ]);
+
+  // Round-winner tag over the pile, keyed on the round *closing* rather than on
+  // the value of `roundWinner`: processPlay leaves that field standing through
+  // the round the winner goes on to lead, so with two players it never changes
+  // and every win after the first would go unannounced. The seat is what is
+  // stored, not the name — the name is looked up at render, so a game update
+  // that only changes the player list cannot restart the banner's own timers.
+  useEffect(() => {
+    if (!roundClosedWithWinner({ lastPlayedCombination, roundWinner })) {
+      roundClosedRef.current = false;
+      return;
+    }
+    if (roundClosedRef.current) return;
+    roundClosedRef.current = true;
+    const seat = roundWinner!;
+    setRoundWinnerTag((prev) => ({ seat, closure: (prev?.closure ?? 0) + 1 }));
+  }, [lastPlayedCombination, roundWinner]);
+
+  // A round closes on a pass, never on a play, so nothing is in flight here and
+  // the sting is the first sound of the beat — ahead of the round-start sting,
+  // which the pile effect has deferred for as long as this tag is up.
+  useEffect(() => {
+    if (roundWinnerTag === null) return;
+    playRoundWin();
+    const dismiss = setTimeout(() => setRoundWinnerTag(null), ROUND_WINNER_MS);
+    return () => clearTimeout(dismiss);
+  }, [roundWinnerTag, playRoundWin]);
+
+  // The settle is what ends a flight, so the bounce the pile answers with is
+  // bumped from the same callback that takes the flying cards away.
+  const onFlightDone = useCallback(() => {
+    setFlyInfo(null);
+    setBounceTrigger((t) => t + 1);
+  }, []);
+
+  return {
+    pileState,
+    flyInfo,
+    flightLanded,
+    flinchTrigger,
+    flinchTier,
+    bounceTrigger,
+    roundWinnerTag,
+    onFlightDone,
+  };
+}
 
 const pileStyles = StyleSheet.create({
   flyingContainer: {

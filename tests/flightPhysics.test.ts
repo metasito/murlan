@@ -851,12 +851,12 @@ describe("the beaten pile's flinch (#764)", () => {
   // just the pure function is what would have caught that.
   test("the flinch fires from the same impactDelayMs() landing the shake and the impact sound wait for — never a second derivation", () => {
     const src = blankComments(
-      readFileSync(path.join(repoRoot, "components", "GameTable.tsx"), "utf8")
+      readFileSync(path.join(repoRoot, "components", "table", "pile.tsx"), "utf8")
     );
     const block = src.match(
       /impactTimerRef\.current = setTimeout\(\(\) => \{[\s\S]*?\}, impactDelayMs\(reduceMotion\)\);/
     );
-    assert.ok(block, "expected the impact timeout in GameTable.tsx");
+    assert.ok(block, "expected the impact timeout in usePileFlight");
     assert.match(block![0], /shake\(tier\)/, "the shake must read the same tier the flinch does");
     assert.match(
       block![0],

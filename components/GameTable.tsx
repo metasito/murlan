@@ -10,7 +10,7 @@
 // slot (`topBarExtra`, `banners`, `overlays`, `turnTimer`) — never an
 // `isOnline &&` branch threaded through the render.
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   View,
   StyleSheet,
@@ -46,23 +46,14 @@ import {
   lightPosition,
   seatDirection,
   viewerOwnsSeat,
-  type FlyDirection,
   type OpponentSide,
 } from "@/components/seatLayout";
 import {
-  advancePile,
   comboKey,
   readHandArrival,
-  EMPTY_PILE,
-  readThrownPlay,
-  impactDelayMs,
-  landingTier,
   passedSeats,
   readExchange,
   readExchangeTrips,
-  roundClosedWithWinner,
-  type ImpactTier,
-  type PileState,
 } from "@/components/flightPhysics";
 import { canPassNow as canPassNowOf, turnTimerActive } from "@/components/turnTimerUi";
 import { computeTableFrame } from "@/components/tableFrame";
@@ -101,7 +92,7 @@ import { GameSettingsSheet } from "@/components/table/settingsSheet";
 import { useTableFeedback } from "@/components/useTableFeedback";
 import { useHandOrder } from "@/components/useHandOrder";
 import { useRailSide } from "@/components/useRailSide";
-import { FlyingCards, PlayedPile, getComboLabel } from "@/components/table/pile";
+import { FlyingCards, PlayedPile, getComboLabel, usePileFlight } from "@/components/table/pile";
 import { warmCourtArt } from "@/components/CardView";
 import { BombBurst, LampLift, Sweep } from "@/components/table/moments";
 import { TopOppSlot, SideOppSlot } from "@/components/table/seats";
@@ -122,9 +113,6 @@ import { Colors, FontSize, Motion, Radius, Reading, Scrim, Spacing, Layer } from
 import { useTableFelt } from "@/lib/cosmetics";
 import { A11yStatus, a11yGroup, a11yHidden, a11yVeiled } from "@/lib/a11y";
 
-// How long the round-winner tag stays over the pile. A domain beat, not a
-// generic UI transition, so it is not a Motion token.
-const ROUND_WINNER_MS = 1800;
 // Whole-pixel travel, mirroring components/MenuButton.tsx: PASSA/GIOCA hold
 // text labels, and React Native rasterises text before transforming it, so a
 // fractional offset resamples the glyphs. 2px down is the smallest offset
@@ -386,50 +374,6 @@ export function GameTable({
   const closeSettings = useCallback(() => setSettingsOpen(false), [setSettingsOpen]);
 
   const focusFadeStyle = useFocusFade(focusMode);
-
-  // The seat that took the last round and a counter of how many rounds have
-  // closed. The counter is what makes an identical repeat a new announcement:
-  // the seat that wins a round leads the next one, so the same seat winning
-  // twice running is ordinary play.
-  const [roundWinnerTag, setRoundWinnerTag] = useState<{ seat: number; closure: number } | null>(null);
-  const [pileState, setPileState] = useState<PileState>(EMPTY_PILE);
-  const [pileBounceTrigger, setPileBounceTrigger] = useState(0);
-  // The beaten pile's own reaction (#764): fired from the same impactDelayMs()
-  // landing the shake and the impact sound wait for, never a second guess at it.
-  const [flinchTrigger, setFlinchTrigger] = useState(0);
-  const [flinchTier, setFlinchTier] = useState<ImpactTier>("ordinary");
-  const [flyInfo, setFlyInfo] = useState<{
-    key: string;
-    dir: FlyDirection;
-    cards: Card[];
-    /** Where the throw starts — components/flightPhysics.ts `flightOrigin`. */
-    origin: { dx: number; dy: number };
-  } | null>(null);
-  // False for exactly impactDelayMs() from the moment a flight begins — the
-  // throwing seat's own held count and departing backs read off this, not off
-  // flyInfo's own lifetime, which runs past the landing to cover the settle
-  // spring too (components/table/pile.tsx `FlyingCards`).
-  const [flightLanded, setFlightLanded] = useState(true);
-  const landTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Impact feedback is scheduled for the moment the thrown card lands, so it
-  // has to be cancellable: a fast next play, or leaving the table, must not
-  // fire a bang for a card that is no longer in the air.
-  const impactTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Non-null while the winning combination is being held on the felt under the
-  // round-winner tag. Its presence is what tells the pile effect the felt is
-  // spoken for.
-  const roundHoldTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const prevComboKeyRef = useRef<string>("");
-  const roundClosedRef = useRef(false);
-  // Online, `matchOver` arrives on its own socket packet after `gameOver` —
-  // a second render the pile effect's own `prevComboKeyRef` guard skips, so
-  // the impact timeout below reads this ref (current at the moment it
-  // fires) rather than the `matchOver` its own scheduling render closed over.
-  const matchOverRef = useRef(matchOver);
-  useEffect(() => {
-    matchOverRef.current = matchOver;
-  }, [matchOver]);
 
   // The reason a tap on an unavailable GIOCA was refused, spelled out. Keyed by
   // a counter so tapping again restarts the dwell instead of being swallowed as
@@ -707,6 +651,41 @@ export function GameTable({
     scale
   );
 
+  const {
+    pileState,
+    flyInfo,
+    flightLanded,
+    flinchTrigger,
+    flinchTier,
+    bounceTrigger,
+    roundWinnerTag,
+    onFlightDone,
+  } = usePileFlight({
+    lastPlayedCombination: gameState.lastPlayedCombination,
+    lastPlayedBy: gameState.lastPlayedBy,
+    roundWinner: gameState.roundWinner,
+    gameOver: gameState.gameOver,
+    matchOver,
+    viewerSeat,
+    players,
+    opponents,
+    scale,
+    windowWidth: W,
+    windowHeight: H,
+    tableLeft: frame.tableLeft,
+    tableRight: frame.tableRight,
+    tableTop: frame.tableTop,
+    surplus: frame.surplus,
+    bottomPad: frame.bottomPad,
+    handCardH,
+    playImpact,
+    shake,
+    burst,
+    celebrateFlush,
+    playRoundStart,
+    playRoundWin,
+  });
+
   // ── Lifecycle ───────────────────────────────────────────────────────────────
 
   useEffect(() => {
@@ -728,178 +707,6 @@ export function GameTable({
       unloadSounds();
     };
   }, []);
-
-  // Flying card + pile state, derived straight from the game state so a card
-  // can never be shown twice or dropped. CLAUDE.md marks this load-bearing.
-  useEffect(
-    () => () => {
-      if (impactTimerRef.current) clearTimeout(impactTimerRef.current);
-      if (roundHoldTimerRef.current) clearTimeout(roundHoldTimerRef.current);
-      if (landTimerRef.current) clearTimeout(landTimerRef.current);
-    },
-    []
-  );
-
-  // The dedupe on `prevComboKeyRef` comes before anything with an effect, so a
-  // re-run for one of the other dependencies leaves the pile, the flying card
-  // and the pending impact exactly as they were.
-  useEffect(() => {
-    // A flight ending early — a new lead before it landed, the table leaving —
-    // must not leave a stale hold on the throwing seat's own count.
-    const clearLanding = () => {
-      if (landTimerRef.current) {
-        clearTimeout(landTimerRef.current);
-        landTimerRef.current = null;
-      }
-      setFlightLanded(true);
-    };
-
-    // Clearing the felt and announcing a new round are one beat, whether it
-    // happens now or after the winning cards have been held.
-    const openNewRound = () => {
-      playRoundStart();
-      setPileState(EMPTY_PILE);
-      setFlyInfo(null);
-      clearLanding();
-    };
-
-    const combo = gameState.lastPlayedCombination;
-    if (combo === null) {
-      // The winning cards are being held for the tag; nothing may take the
-      // felt out from under them until the hold expires or a new lead arrives.
-      if (roundHoldTimerRef.current) return;
-      if (prevComboKeyRef.current === "") {
-        setPileState(EMPTY_PILE);
-        setFlyInfo(null);
-        clearLanding();
-        return;
-      }
-      if (impactTimerRef.current) clearTimeout(impactTimerRef.current);
-      prevComboKeyRef.current = "";
-      if (roundClosedWithWinner({ lastPlayedCombination: combo, roundWinner: gameState.roundWinner })) {
-        roundHoldTimerRef.current = setTimeout(() => {
-          roundHoldTimerRef.current = null;
-          openNewRound();
-        }, ROUND_WINNER_MS);
-        return;
-      }
-      openNewRound();
-      return;
-    }
-    const key = comboKey(combo, gameState.lastPlayedBy);
-    if (key === prevComboKeyRef.current) return;
-    if (impactTimerRef.current) clearTimeout(impactTimerRef.current);
-    // A lead inside the hold window ends it early: the new card has to fly
-    // onto a cleared pile, not onto the combination it did not beat.
-    if (roundHoldTimerRef.current) {
-      clearTimeout(roundHoldTimerRef.current);
-      roundHoldTimerRef.current = null;
-      openNewRound();
-    }
-    prevComboKeyRef.current = key;
-    setPileState((s) => advancePile(s, combo, gameState.lastPlayedBy));
-
-    const thrown = readThrownPlay({
-      combo,
-      playedBy: gameState.lastPlayedBy,
-      viewerSeat,
-      players,
-      opponents,
-      scale,
-      windowWidth: W,
-      windowHeight: H,
-      tableLeft: frame.tableLeft,
-      tableRight: frame.tableRight,
-      tableTop: frame.tableTop,
-      surplus: frame.surplus,
-      bottomPad: frame.bottomPad,
-      handCardH,
-    });
-
-    // The card is thrown here and arrives ~213ms later, so everything that
-    // reads as *impact* waits for it. Announced for every seat, not only the
-    // viewer's: the sound belongs to a card landing, not to a tap.
-    impactTimerRef.current = setTimeout(() => {
-      const tier = landingTier({
-        comboType: combo.type,
-        handOver: gameState.gameOver,
-        matchOver: matchOverRef.current,
-      });
-      playImpact(thrown.heavy);
-      shake(tier);
-      burst(tier);
-      setFlinchTier(tier);
-      setFlinchTrigger((t) => t + 1);
-      if (thrown.emptiedHand) celebrateFlush();
-    }, impactDelayMs(reduceMotion));
-
-    // The throwing seat's held count and departing backs read off this same
-    // boundary — the fan and the badge drop the instant the impact fires,
-    // not whenever FlyingCards' settle spring happens to finish.
-    if (landTimerRef.current) clearTimeout(landTimerRef.current);
-    setFlightLanded(false);
-    landTimerRef.current = setTimeout(() => {
-      landTimerRef.current = null;
-      setFlightLanded(true);
-    }, impactDelayMs(reduceMotion));
-
-    setFlyInfo({ key, dir: thrown.dir, cards: thrown.cards, origin: thrown.origin });
-  }, [
-    gameState.lastPlayedCombination,
-    gameState.lastPlayedBy,
-    gameState.roundWinner,
-    gameState.gameOver,
-    viewerSeat,
-    players.length,
-    reduceMotion,
-    playImpact,
-    shake,
-    burst,
-    celebrateFlush,
-    players,
-    opponents,
-    scale,
-    W,
-    H,
-    frame.tableLeft,
-    frame.tableRight,
-    frame.tableTop,
-    frame.surplus,
-    frame.bottomPad,
-    handCardH,
-  ]);
-
-  // Round-winner tag over the pile, keyed on the round *closing* rather than on
-  // the value of `roundWinner`: processPlay leaves that field standing through
-  // the round the winner goes on to lead, so with two players it never changes
-  // and every win after the first would go unannounced. The seat is what is
-  // stored, not the name — the name is looked up at render, so a game update
-  // that only changes the player list cannot restart the banner's own timers.
-  useEffect(() => {
-    if (
-      !roundClosedWithWinner({
-        lastPlayedCombination: gameState.lastPlayedCombination,
-        roundWinner: gameState.roundWinner,
-      })
-    ) {
-      roundClosedRef.current = false;
-      return;
-    }
-    if (roundClosedRef.current) return;
-    roundClosedRef.current = true;
-    const seat = gameState.roundWinner!;
-    setRoundWinnerTag((prev) => ({ seat, closure: (prev?.closure ?? 0) + 1 }));
-  }, [gameState.lastPlayedCombination, gameState.roundWinner]);
-
-  // A round closes on a pass, never on a play, so nothing is in flight here and
-  // the sting is the first sound of the beat — ahead of the round-start sting,
-  // which the pile effect has deferred for as long as this tag is up.
-  useEffect(() => {
-    if (roundWinnerTag === null) return;
-    playRoundWin();
-    const dismiss = setTimeout(() => setRoundWinnerTag(null), ROUND_WINNER_MS);
-    return () => clearTimeout(dismiss);
-  }, [roundWinnerTag]);
 
   useEffect(() => {
     if (rejectHint === null) return;
@@ -980,13 +787,17 @@ export function GameTable({
     playCardPlay();
     onExchangeGive(exchangePick);
   };
+  // Asked again rather than closing over `canPass`: that value is also handed
+  // to `useTableFeedback`, and React Compiler will not preserve a manual memo
+  // over a dependency another hook may be holding
+  // (scripts/react-compiler-probe.mjs).
   const handlePass = useCallback(() => {
-    if (!canPass) return;
+    if (!canPassNowOf({ isMyTurn, isFinished, isNewRound })) return;
     // Haptic only: the pass sound follows the committed state, so firing it
     // here as well would double the viewer's own pass.
     hapticLight();
     onPass();
-  }, [canPass, onPass]);
+  }, [isMyTurn, isFinished, isNewRound, onPass]);
 
   // ── Render ──────────────────────────────────────────────────────────────────
 
@@ -1351,7 +1162,7 @@ export function GameTable({
                     current={flyInfo ? null : pileState.current}
                     comboLabel={flightLanded ? pileState.current : null}
                     roundWinner={roundWinnerTag === null ? null : players[roundWinnerTag.seat]?.name ?? ""}
-                    bounceTrigger={pileBounceTrigger}
+                    bounceTrigger={bounceTrigger}
                     catchTrigger={pileFlushed ? flushTrigger : undefined}
                     flinchTrigger={flinchTrigger}
                     flinchTier={flinchTier}
@@ -1391,10 +1202,7 @@ export function GameTable({
                     cards={flyInfo.cards}
                     direction={flyInfo.dir}
                     origin={flyInfo.origin}
-                    onDone={() => {
-                      setFlyInfo(null);
-                      setPileBounceTrigger((t) => t + 1);
-                    }}
+                    onDone={onFlightDone}
                     roomW={frame.fieldRoomW}
                     scale={scale}
                   />
