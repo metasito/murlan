@@ -1,7 +1,15 @@
 // tools/loop/tests/queuePre.test.ts
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { misnamedWorktrees, mainHealth } from "../queue-pre.mjs";
+import {
+  CHECKS,
+  main,
+  misnamedWorktrees,
+  namedWorktrees,
+  redMain,
+  script,
+  summarise,
+} from "../queue-pre.mjs";
 
 describe("misnamedWorktrees", () => {
   test("names a worktree that does not follow the convention", () => {
@@ -19,38 +27,165 @@ describe("misnamedWorktrees", () => {
   });
 });
 
-describe("mainHealth", () => {
-  const run = (conclusion: string | null) => () => ({
-    status: 0,
-    stdout: JSON.stringify([{ conclusion, headSha: "abcdef1234", url: "https://x/1" }]),
+describe("summarise", () => {
+  test("takes the step's last word, which is the one it writes knowing how it went", () => {
+    assert.equal(summarise("Primary: C:/x / LIVE\nRemoved 0 of 1; kept 1.\n"), "Removed 0 of 1; kept 1.");
   });
 
+  test("drops the step's own name, which the row already carries", () => {
+    assert.equal(summarise("reap: no orphan is burning CPU"), "no orphan is burning CPU");
+  });
+
+  test("keeps a colon that is part of the sentence", () => {
+    assert.equal(summarise("preflight: C:/Users/roton/murlan is clean."), "C:/Users/roton/murlan is clean.");
+    assert.equal(summarise("started at 10:32"), "started at 10:32");
+  });
+
+  test("silence summarises to nothing rather than to undefined", () => {
+    for (const empty of ["", "   \n\n", null, undefined]) assert.equal(summarise(empty as never), "");
+  });
+});
+
+
+describe("script", () => {
+  const ran = (status: number | null, stdout: string, stderr = "") =>
+    script(["x.mjs"], (() => ({ status, stdout, stderr })) as never)();
+
+  test("a clean run is one row carrying the step's last word, and nothing else", () => {
+    assert.deepEqual(ran(0, "noise\nreap: no orphan is burning CPU"), {
+      state: "done",
+      detail: "no orphan is burning CPU",
+      note: "",
+    });
+  });
+
+  test("a refusal stops the preamble with the script's own exit code", () => {
+    const row = ran(3, "half a sentence", "the reason it refused");
+    assert.equal(row?.state, "failed");
+    assert.equal(row?.stop, 3, "the exit code is the script's, so the caller can tell them apart");
+    assert.match(row?.note ?? "", /half a sentence/);
+    assert.match(row?.note ?? "", /the reason it refused/, "a capture that eats the reason is worse than none");
+  });
+
+  test("a clean exit that wrote to stderr is a warning, and shows what it wrote", () => {
+    const row = ran(0, "fine", "but note this");
+    assert.equal(row?.state, "warned");
+    assert.equal(row?.stop, undefined, "a warning must not refuse the ticket");
+    assert.match(row?.note ?? "", /but note this/);
+  });
+
+  /** A spawn that never started answers with a null status, which is not a success. */
+  test("a step that could not be spawned refuses rather than passing", () => {
+    const row = ran(null, "", "");
+    assert.equal(row?.state, "failed");
+    assert.equal(row?.stop, 1);
+  });
+});
+
+describe("namedWorktrees", () => {
+  test("says nothing when every worktree follows the convention", () => {
+    assert.equal(namedWorktrees(["agent-42", "agent-7"]), null);
+  });
+
+  test("refuses, and says what to run", () => {
+    const row = namedWorktrees(["agent-42", "fix-971"]);
+    assert.equal(row?.state, "failed");
+    assert.equal(row?.stop, 1);
+    assert.match(row?.note ?? "", /worktrees:remove -- .*fix-971/);
+  });
+});
+
+describe("redMain", () => {
+  const gh = (conclusion: string | null, status = "completed") => (args: string[]) => {
+    if (args[0] === "run" && args[1] === "list") {
+      return JSON.stringify([{ databaseId: 7, conclusion, status, headSha: "abcdef1234", url: "https://x/1" }]);
+    }
+    if (args[1] === "view") {
+      return JSON.stringify({ jobs: [{ name: "Typecheck and tests", conclusion: "failure", steps: [1, 2] }] });
+    }
+    if (args[1] === "list") return "[]";
+    return "https://github.com/metasito/murlan/issues/5\n";
+  };
+
   test("says nothing when main is green", () => {
-    const said: string[] = [];
-    mainHealth(run("success") as never, (m: string) => said.push(m));
-    assert.deepEqual(said, []);
+    assert.equal(redMain(gh("success")), null);
   });
 
   test("names a red main, and does not refuse the ticket", () => {
-    const said: string[] = [];
-    const blocked = mainHealth(run("failure") as never, (m: string) => said.push(m));
-    assert.equal(blocked, undefined, "a red main is a warning, never a refusal");
-    assert.match(said.join("\n"), /failure/);
-    assert.match(said.join("\n"), /abcdef12/);
+    const row = redMain(gh("failure"));
+    assert.equal(row?.state, "warned");
+    assert.equal(row?.stop, undefined, "a red main is a warning plus a ticket, never a refusal");
+    assert.match(row?.detail ?? "", /Typecheck and tests/);
+    assert.match(row?.note ?? "", /issues\/5/, "the row points at the issue that outlives this process");
   });
 
   test("an unreachable tracker is silent rather than fatal", () => {
-    const said: string[] = [];
-    mainHealth((() => {
-      throw new Error("gh: not logged in");
-    }) as never, (m: string) => said.push(m));
-    assert.deepEqual(said, []);
+    assert.equal(
+      redMain(() => {
+        throw new Error("gh: not logged in");
+      }),
+      null,
+    );
   });
 
-  // A run still going has no conclusion yet, and that is not a red main.
-  test("a run with no conclusion says nothing", () => {
-    const said: string[] = [];
-    mainHealth(run(null) as never, (m: string) => said.push(m));
-    assert.deepEqual(said, []);
+  test("a run still going says nothing", () => {
+    assert.equal(redMain(gh(null, "in_progress")), null);
+  });
+});
+
+describe("main", () => {
+  const check = (label: string, result: unknown = { state: "done", detail: "" }) =>
+    ({ label, run: () => result }) as never;
+
+  test("one row per check, in order, under the list's own label", () => {
+    const said: { label: string }[] = [];
+    const code = main((s) => said.push(s as never), [check("worktrees"), check("preflight"), check("reap")]);
+    assert.equal(code, 0);
+    assert.deepEqual(said.map((s) => s.label), ["worktrees", "preflight", "reap"]);
+  });
+
+  test("a check with nothing to say prints no row", () => {
+    const said: unknown[] = [];
+    assert.equal(main((s) => said.push(s as never), [check("worktrees", null), check("reap")]), 0);
+    assert.equal(said.length, 1, "a quiet check must not leave an empty row behind");
+  });
+
+  test("a refusal stops the rest and carries its exit code out", () => {
+    const said: { label: string }[] = [];
+    const code = main((s) => said.push(s as never), [
+      check("preflight", { state: "failed", stop: 3 }),
+      check("reap"),
+    ]);
+    assert.equal(code, 3);
+    assert.deepEqual(said.map((s) => s.label), ["preflight"], "nothing runs after a refusal");
+  });
+
+  test("every row is timed", () => {
+    const said: { ms?: number }[] = [];
+    main((s) => said.push(s as never), [check("reap")]);
+    assert.equal(typeof said[0].ms, "number");
+  });
+});
+
+/**
+ * Read, never run: these spawn real scripts and prune real worktrees. A check dropped from the
+ * list is a check that silently stops running, and the list is the only place that can be seen.
+ */
+describe("the shipped check list", () => {
+  test("is every check this file defines, in the order the later ones depend on", () => {
+    assert.deepEqual(
+      CHECKS.map((c) => c.label),
+      ["worktrees", "preflight", "reap", "worktrees", "main"],
+    );
+  });
+
+  test("the naming check runs after the prune, not before it", () => {
+    const pruned = CHECKS.findIndex((c) => c.run !== namedWorktrees && c.label === "worktrees");
+    const named = CHECKS.findIndex((c) => c.run === namedWorktrees);
+    assert.ok(pruned >= 0 && named > pruned, "otherwise it refuses over a worktree about to go");
+  });
+
+  test("a red main is the last word, so a refusal is never buried under it", () => {
+    assert.equal(CHECKS.at(-1)?.run, redMain);
   });
 });
