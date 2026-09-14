@@ -1088,7 +1088,14 @@ export function runTicket(
     // `LOOP_TURNS` is the bound that actually stops a session, and it was invisible to the session
     // subject to it: the word "turn" appeared in none of queue.md, RULES.md, loops.md or CLAUDE.md,
     // so phase C's commit rule arrived with no stated reason to hurry.
-    env: { ...process.env, DISABLE_AUTOUPDATER: "1", LOOP_TURNS: String(budget) },
+    env: {
+      ...process.env,
+      DISABLE_AUTOUPDATER: "1",
+      LOOP_TURNS: String(budget),
+      // `-p` leaves fork mode off, so subagents default to background and the session spends a turn
+      // each time it asks one whether it is done. Foreground makes the Agent call an await.
+      CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1",
+    },
   });
 
   // Mirrored, not swallowed: a crash must still print itself. Through the screen, because this is
