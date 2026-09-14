@@ -153,9 +153,10 @@ describe("no test lists the repo root from the filesystem", () => {
     }
     assert.ok(files.includes(SELF), "scan is empty");
     const selfText = readFileSync(path.join(repoRoot, SELF), "utf8");
+    const selfCode = blankCommentsAndStrings(selfText);
     assert.match(selfText, ROOT_READDIR);
-    assert.doesNotMatch(blankCommentsAndStrings(selfText), ROOT_READDIR);
-    assert.match(blankCommentsAndStrings(selfText), /readdirSync\(dir/);
+    assert.doesNotMatch(selfCode, ROOT_READDIR);
+    assert.match(selfCode, /readdirSync\(dir/);
 
     const offenders = files.filter((rel) =>
       ROOT_READDIR.test(blankCommentsAndStrings(readFileSync(path.join(repoRoot, rel), "utf8")))
