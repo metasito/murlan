@@ -200,12 +200,15 @@ jobs:
           # attempt reached.
           if [ -f "$RUNNER_TEMP/app-launched" ]; then
             echo "started=true" >> "$GITHUB_OUTPUT"
+            echo "booted=true" >> "$GITHUB_OUTPUT"
             echo "The app launched and the flows ran; the flows themselves failed."
           elif [ -f "$RUNNER_TEMP/emulator-booted" ]; then
             echo "started=false" >> "$GITHUB_OUTPUT"
+            echo "booted=true" >> "$GITHUB_OUTPUT"
             echo "::warning::The device came up but the app never reached a usable state on it, so this run is no answer about the flows. Retrying once."
           else
             echo "started=false" >> "$GITHUB_OUTPUT"
+            echo "booted=false" >> "$GITHUB_OUTPUT"
             echo "::warning::The environment never got as far as the flows, so this run says nothing about the diff. Retrying once."
           fi
 
@@ -252,7 +255,7 @@ jobs:
           if [ "${{ steps.flows.outcome }}" = "success" ] || [ "${{ steps.retry.outcome }}" = "success" ]; then
             exit 0
           fi
-          if [ "${{ steps.retry.outcome }}" = "failure" ] && [ ! -f "$RUNNER_TEMP/emulator-booted" ]; then
+          if [ "${{ steps.retry.outcome }}" = "failure" ] && [ ! -f "$RUNNER_TEMP/emulator-booted" ] && [ "${{ steps.kind.outputs.booted }}" != "true" ]; then
             echo "::error::The environment never got as far as running the flows, twice. That is the runner and not this branch."
             exit 1
           fi

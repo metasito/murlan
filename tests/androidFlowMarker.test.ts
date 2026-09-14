@@ -172,6 +172,11 @@ describe("maestro.yml reads that marker", () => {
       2,
       "a state that neither withholds the retry nor asks for it",
     );
+    assert.equal(
+      (kind.match(/booted=/g) ?? []).length,
+      3,
+      "a state that does not record whether the first attempt came up",
+    );
     const launched = kind.indexOf("app-launched");
     assert.ok(
       launched < kind.indexOf("started=true"),
@@ -198,6 +203,20 @@ describe("maestro.yml reads that marker", () => {
     for (const a of printed) {
       assert.doesNotMatch(a, /#\d+/, `an annotation naming an issue: ${a}`);
     }
+  });
+
+  test("the verdict's 'twice' reads the first attempt's own record", () => {
+    // The retry clears both markers before writing them, so afterwards they
+    // describe that attempt alone; `kind` ran before it and is the only account
+    // of the first.
+    const verdict = src.slice(src.indexOf("The run's real verdict")).split("\n");
+    const twice = verdict.findIndex((l) => l.includes("::error::") && l.includes("twice"));
+    assert.notEqual(twice, -1, "no branch of the verdict claims anything happened twice");
+    assert.match(
+      verdict[twice - 1],
+      /steps\.kind\.outputs\.booted/,
+      "the verdict calls a boot failure twice without reading what the first attempt reached",
+    );
   });
 
   test("the verdict reads its markers narrowest-first", () => {
