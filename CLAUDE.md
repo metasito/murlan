@@ -126,10 +126,14 @@ authority. Name which of the four before you write it; if you cannot, it does no
 Never: restating the line below; any history of what it was or when it was fixed; **explaining
 the defect you just fixed** — that belongs in the commit message.
 
-**This is a budget with a number, not a preference.** A change is over it when it adds more than six
-comment lines — three in a test — *and* more comment lines than code. `tools/loop/guard-comments.mjs`
-refuses the write; `npm run check:comments` fails the branch. Write to the budget: prose written past
-it is a refused turn, and trimming it afterwards has already spent one.
+A change adding more comment lines than code is explaining itself instead of being clear.
+
+**That is a budget with a number, not a preference.** A change is over it when it adds more than six
+comment lines — three in a test — *and* more comment lines than code; a change that adds no code at
+all is over it at three. Counted against `origin/main`, over the whole branch, so committing between
+edits buys nothing. `tools/loop/guard-comments.mjs` refuses the write and `npm run check:comments`
+fails the branch. Write to the budget: prose written past it is a refused turn, and trimming it
+afterwards has already spent one.
 
 ## Working agreement
 

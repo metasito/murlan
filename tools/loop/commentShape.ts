@@ -3,17 +3,13 @@
  * decides what a comment line is — `comment-budget.mjs` and the write-time hook both read it here,
  * so the rule cannot come to mean two things.
  *
- * Two detectors, both narrow: this feeds a `PreToolUse` deny, and a false positive stops an
+ * One detector, narrow on purpose: this feeds a `PreToolUse` deny, and a false positive stops an
  * unattended ticket. "Restates the line below" is deliberately absent — it is the one that cannot
- * be decided without guessing, and the ratio arm covers its practical case.
- *
- * `history` is a property of a line and is never wrong about a fragment. `ratio` is a property of a
- * *file*, so a caller holding only part of one reports the first and leaves the second to whoever
- * can see the whole.
+ * be decided without guessing, and the budget's ratio covers its practical case.
  */
 
 export type Line = { n: number; text: string; kind: "comment" | "code" | "blank" };
-export type Violation = { rule: "history" | "ratio"; line: number; text: string; why: string };
+export type Violation = { rule: "history"; line: number; text: string; why: string };
 
 /**
  * Each phrase names the code's own past, which is the one thing a comment may never do. Anchored on
@@ -78,28 +74,19 @@ export function classify(text: string): Line[] {
   return out;
 }
 
-export function violations(text: string, path: string): Violation[] {
-  const lines = classify(text);
-  const comments = lines.filter((l) => l.kind === "comment");
-  const code = lines.filter((l) => l.kind === "code").length;
-
-  const found: Violation[] = comments
-    .filter((c) => HISTORY.test(c.text))
+/**
+ * Ratio is not here. It is a property of what a *change* adds, which needs the revision the change
+ * started from — so both enforcers ask `addedCounts` against that revision and compare on
+ * `floorFor`. A whole-file ratio computed here would be a third reading of one rule, and the two
+ * that can be reached would not be the one under test.
+ */
+export function violations(text: string): Violation[] {
+  return classify(text)
+    .filter((l) => l.kind === "comment" && HISTORY.test(l.text))
     .map((c) => ({
       rule: "history" as const,
       line: c.n,
       text: c.text,
       why: "CLAUDE.md: never any history of what the code was. That belongs in the commit message.",
     }));
-
-  const floor = floorFor(path);
-  if (comments.length > floor && comments.length > code) {
-    found.push({
-      rule: "ratio",
-      line: comments[0].n,
-      text: `${comments.length} comment lines to ${code} of code`,
-      why: "CLAUDE.md: a change adding more comment lines than code is explaining itself instead of being clear.",
-    });
-  }
-  return found;
 }

@@ -1,7 +1,7 @@
 // tools/loop/tests/loopCost.test.ts
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { readTicket, report } from "../loop-cost.mjs";
+import { readTicket, report, wanted } from "../loop-cost.mjs";
 
 const at = (min: number) => new Date(Date.UTC(2026, 8, 14, 10, min)).toISOString();
 const say = (text: string, min: number, model = "claude-opus-5", parent: string | null = null) =>
@@ -51,6 +51,19 @@ describe("readTicket", () => {
     assert.equal(Math.round((sonnet / opus) * 10) / 10, 0.4);
   });
 
+  /** The logs carry four spellings of two models; an exact-match table charged sonnet at opus. */
+  test("every spelling of a family prices as that family", () => {
+    const rate = (model: string) => readTicket([say("PHASE D", 0, model)]).phases.D.usd;
+    assert.equal(rate("sonnet"), rate("claude-sonnet-5"));
+    assert.equal(rate("claude-opus-5[1m]"), rate("opus"));
+    assert.notEqual(rate("sonnet"), rate("opus"));
+  });
+
+  test("an id belonging to no family is named rather than quietly charged as opus", () => {
+    assert.deepEqual(readTicket([say("PHASE D", 0, "<synthetic>")]).unpriced, ["<synthetic>"]);
+    assert.deepEqual(readTicket([say("PHASE D", 0, "claude-haiku-4-5-20251001")]).unpriced, []);
+  });
+
   test("a log with no phase markers is read, not dropped", () => {
     const t = readTicket([say("no marker here", 0), result(3)]);
     assert.equal(t.usd, 3);
@@ -67,6 +80,30 @@ describe("readTicket", () => {
     const unstamped = JSON.stringify({ type: "assistant", message: { model: "claude-opus-5", content: [], usage: {} } });
     const t = readTicket([say("PHASE C", 0), unstamped, say("done", 10)]);
     assert.equal(t.phases.C.minutes, 10);
+  });
+});
+
+/**
+ * Task 6 asks whether a change moved the median. Averaged over every ticket on disk it cannot: the
+ * five runs after a change are outvoted by the twenty before it.
+ */
+describe("wanted", () => {
+  const files = ["70.jsonl", "955.jsonl", "1049.jsonl", "1050.jsonl", "tickets.jsonl", "run-a.md", "ci-1049.log"];
+
+  test("with no argument, every ticket stream and nothing else", () => {
+    assert.deepEqual(wanted(files), ["70.jsonl", "955.jsonl", "1049.jsonl", "1050.jsonl"]);
+  });
+
+  test("a bare number is that one ticket", () => {
+    assert.deepEqual(wanted(files, "1049"), ["1049.jsonl"]);
+  });
+
+  test("a trailing + is that ticket and every later one", () => {
+    assert.deepEqual(wanted(files, "1049+"), ["1049.jsonl", "1050.jsonl"]);
+  });
+
+  test("the ledger is never a ticket, whatever the argument", () => {
+    assert.deepEqual(wanted(["tickets.jsonl"], "1+"), []);
   });
 });
 

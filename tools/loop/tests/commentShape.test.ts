@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { ARCHEOLOGY, HISTORY, classify, floorFor, violations } from "../commentShape.ts";
 
 const kinds = (text: string) => classify(text).map((l) => l.kind);
-const rules = (text: string, path = "src/x.ts") => violations(text, path).map((v) => v.rule);
+const rules = (text: string) => violations(text).map((v) => v.rule);
 
 describe("classify", () => {
   test("names each line comment, code or blank", () => {
@@ -87,41 +87,20 @@ describe("the history rule", () => {
   }
 });
 
-describe("the ratio rule", () => {
-  const prose = (n: number) => Array.from({ length: n }, (_, i) => `// line ${i} of prose`);
-
-  test("more comment than code, above the floor", () => {
-    assert.deepEqual(rules([...prose(8), "const x = 1;"].join("\n")), ["ratio"]);
-  });
-
-  test("a long docblock over a long function is not a violation", () => {
-    const code = Array.from({ length: 20 }, (_, i) => `const v${i} = ${i};`);
-    assert.deepEqual(rules([...prose(8), ...code].join("\n")), []);
-  });
-
-  test("a handful of comments on a small change is not a ratio worth policing", () => {
-    assert.deepEqual(rules([...prose(3), "const x = 1;"].join("\n")), []);
-  });
-
-  test("blank lines count as neither, in either column", () => {
-    assert.deepEqual(rules([...prose(4), "", "", "const x = 1;"].join("\n")), []);
-  });
-
-  test("a blank line inside a block comment is comment, not a discount on it", () => {
-    const block = ["/**", ...Array.from({ length: 6 }, () => " * prose."), "", " */", "const x = 1;"];
-    assert.deepEqual(rules(block.join("\n")), ["ratio"]);
-  });
-
-  test("a test file gets the tighter floor", () => {
-    const text = [...prose(4), "const x = 1;"].join("\n");
-    assert.deepEqual(rules(text, "src/x.ts"), []);
-    assert.deepEqual(rules(text, "tools/loop/tests/x.test.ts"), ["ratio"]);
-  });
-
+describe("the floor both enforcers compare on", () => {
   test("floorFor names the two budgets", () => {
     assert.equal(floorFor("src/x.ts"), 6);
     assert.equal(floorFor("tools/loop/tests/x.test.ts"), 3);
     assert.equal(floorFor("tests/native/Hand.test.tsx"), 3);
+  });
+
+  /**
+   * Ratio is a property of what a change adds, so it needs a base revision and is judged by
+   * `comment-budget.mjs` and the write-time hook, never here. Nothing but history is reported.
+   */
+  test("a file that is nothing but prose raises no violation of its own", () => {
+    const prose = Array.from({ length: 40 }, (_, i) => `// line ${i} of prose`);
+    assert.deepEqual(rules([...prose, "const x = 1;"].join("\n")), []);
   });
 });
 

@@ -2,9 +2,10 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { floorFor } from "../commentShape.ts";
 import { addedCounts, budget, over } from "../comment-budget.mjs";
 
 const added = (...lines: string[]) => addedCounts("", lines.join("\n"));
@@ -130,6 +131,45 @@ describe("over", () => {
 
   test("a pile of prose beside one deletion is still named", () => {
     assert.equal(delta(["const a = 1;", "const b = 2;"], [...prose(30), "const a = 1;"]), true);
+  });
+});
+
+/**
+ * Three sites quote CLAUDE.md at a model whose write they refuse, and the budget they enforce is
+ * published there as a number. An authority quoted from memory is one the next edit to it silently
+ * falsifies — this branch deleted that very sentence and left all three citing it.
+ */
+describe("the budget CLAUDE.md publishes is the budget the code enforces", () => {
+  // Whitespace collapsed: the file is hard-wrapped, so every phrase worth pinning straddles a line.
+  const claude = readFileSync(new URL("../../../CLAUDE.md", import.meta.url), "utf8")
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+  const says = (text: string) =>
+    assert.ok(claude.includes(text.toLowerCase()), `CLAUDE.md no longer says "${text}"`);
+
+  test("the sentence the enforcers quote back is still in it", () => {
+    says("a change adding more comment lines than code is explaining itself instead of being clear");
+  });
+
+  test("the history rule the hook denies on is still in it", () => {
+    says("history of what it was");
+  });
+
+  test("the floors it publishes are the floors floorFor returns", () => {
+    assert.equal(floorFor("src/x.ts"), 6);
+    says("more than six comment lines");
+    assert.equal(floorFor("x.test.ts"), 3);
+    says("three in a test");
+  });
+
+  test("the prose-only floor is published too, not only enforced", () => {
+    assert.equal(over({ comment: 3, code: 0 }, "src/x.ts"), true);
+    assert.equal(over({ comment: 2, code: 0 }, "src/x.ts"), false);
+    says("adds no code at all is over it at three");
+  });
+
+  test("it says which revision the count is against", () => {
+    says("origin/main");
   });
 });
 

@@ -16,15 +16,24 @@ import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 const REVIEW = /\b(spec|standards) review\b/i;
 const ORDER = ["pre", "A", "B", "C", "D", "E", "F"];
 
-/** $/MTok: base input, cache write, cache read, output. */
+/**
+ * $/MTok by family: base input, cache write, cache read, output.
+ *
+ * Keyed on the family word rather than on a full id, because the logs carry four spellings of two
+ * models — `claude-opus-5`, `opus`, `claude-opus-5[1m]`, `sonnet` — and an exact-match table priced
+ * 64 sonnet turns at opus's rate. `report` scales absolutes onto Anthropic's reported total, so a
+ * misprice lands entirely in the share column, which is the one number this file exists to give.
+ */
 export const PRICE = {
-  "claude-opus-5": [5, 6.25, 0.5, 25],
-  "claude-sonnet-5": [2, 2.5, 0.2, 10],
-  "claude-haiku-4-5-20251001": [1, 1.25, 0.1, 5],
+  opus: [5, 6.25, 0.5, 25],
+  sonnet: [2, 2.5, 0.2, 10],
+  haiku: [1, 1.25, 0.1, 5],
 };
 
+export const familyOf = (model) => Object.keys(PRICE).find((f) => String(model).includes(f)) ?? null;
+
 const priceOf = (model, u) => {
-  const [i, w, r, o] = PRICE[model] ?? PRICE["claude-opus-5"];
+  const [i, w, r, o] = PRICE[familyOf(model) ?? "opus"];
   return (
     ((u.input_tokens ?? 0) * i + (u.cache_creation_input_tokens ?? 0) * w +
       (u.cache_read_input_tokens ?? 0) * r + (u.output_tokens ?? 0) * o) / 1e6
@@ -42,6 +51,7 @@ export function readTicket(lines, ticket = "") {
   let first = null;
   let last = null;
   let reviewers = 0;
+  const unpriced = new Set();
 
   /**
    * Charges the open phase for the time since the last stamped record, then moves to `to`. A record
@@ -85,10 +95,12 @@ export function readTicket(lines, ticket = "") {
     }
 
     const u = j.message.usage;
+    const model = j.message.model ?? "";
+    if (!familyOf(model)) unpriced.add(model);
     const row = (phases[phase] ??= bucket());
     row.turns++;
     row.tokens += (u.input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0);
-    row.usd += priceOf(j.message.model ?? "", u);
+    row.usd += priceOf(model, u);
     advance(phase, t);
   }
 
@@ -98,6 +110,7 @@ export function readTicket(lines, ticket = "") {
     minutes: first && last ? (last - first) / 6e4 : 0,
     rounds: Math.floor(reviewers / 2),
     marked: Object.keys(phases).some((k) => k !== "pre"),
+    unpriced: [...unpriced],
     phases,
   };
 }
@@ -141,8 +154,13 @@ export function report(tickets) {
       ` ${median(r.mins).toFixed(1).padStart(8)}`;
   });
 
+  // Named, never swallowed: an id with no family is priced at opus's rate, and a reader comparing
+  // two runs has to know the share column was guessed at rather than read.
+  const guessed = [...new Set(done.flatMap((t) => t.unpriced ?? []))];
+
   return [
     `loop-cost: ${done.length} tickets, $${reported.toFixed(2)} reported${note}`,
+    ...(guessed.length ? [`priced at opus's rate, family unrecognised: ${guessed.join(", ")}`] : []),
     "phase  turns  tokens  $/tkt  share  med min",
     ...rows,
     `\nper ticket: $${(reported / done.length).toFixed(2)} mean, $${median(done.map((t) => t.usd)).toFixed(2)} median,` +
@@ -151,11 +169,26 @@ export function report(tickets) {
   ].join("\n");
 }
 
+/**
+ * `<n>` is one ticket; `<n>+` is that ticket and every later one.
+ *
+ * The second is what a before-and-after is asked with. Every ticket in the directory averaged
+ * together dilutes the runs a change actually touched by the twenty that came before it, and a
+ * median that cannot move is a gate that cannot fail.
+ */
+export function wanted(files, arg = "") {
+  const from = /^\d+\+$/.test(arg) ? Number.parseInt(arg, 10) : null;
+  const one = /^\d+$/.test(arg) ? `${arg}.jsonl` : null;
+  return files.filter((f) => {
+    if (!ARTEFACTS.stream.name.test(f)) return false;
+    if (one) return f === one;
+    if (from !== null) return Number.parseInt(f, 10) >= from;
+    return true;
+  });
+}
+
 if (isInvokedDirectly(process.argv[1], import.meta.url)) {
-  const only = process.argv[2];
-  const files = existsSync(DIR)
-    ? readdirSync(DIR).filter((f) => ARTEFACTS.stream.name.test(f) && (!only || f === `${only}.jsonl`))
-    : [];
+  const files = wanted(existsSync(DIR) ? readdirSync(DIR) : [], process.argv[2]);
   console.log(report(files.map((f) =>
     readTicket(readFileSync(join(DIR, f), "utf8").split("\n"), f.replace(".jsonl", "")))));
 }

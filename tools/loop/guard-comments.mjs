@@ -17,22 +17,36 @@ import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 
 const JUDGED = /\.(mjs|cjs|js|jsx|ts|tsx)$/;
 
+/** `comment-budget.mjs`'s own default base, so the two measure from the same revision. */
+const BASE = "origin/main";
+
 export const io = {
   /**
-   * "" for a path git does not have, which is what an added file's base is.
+   * The file at the branch's merge base, which is the revision `comment-budget.mjs` measures from.
+   * `HEAD` would be a baseline that advances with every commit, and phase C commits every slice —
+   * so a branch could add its prose a commit at a time and never be over against any of them.
    *
-   * `-C` its own directory and `:./` against that, because the hook is handed an absolute path and
-   * `git show HEAD:C:/…` resolves for no file — which would count every line of every file as added
-   * and deny the next edit to anything.
+   * "" for a path git does not have, which is what an added file's base is. `-C` its own directory
+   * and `:./` against that, because the hook is handed an absolute path and `<rev>:C:/…` resolves
+   * for no file — which would count every line of every file as added and deny the next edit to
+   * anything.
    */
   committed: (file) => {
-    try {
-      return execFileSync("git", ["show", `HEAD:./${basename(file)}`], {
+    const git = (...args) =>
+      execFileSync("git", args, {
         cwd: dirname(file),
         encoding: "utf8",
         stdio: ["ignore", "pipe", "ignore"],
         maxBuffer: 64 * 1024 * 1024,
       });
+    let from = "HEAD";
+    try {
+      from = git("merge-base", BASE, "HEAD").trim();
+    } catch {
+      // No `origin/main` here — a fresh clone, or a repo that names its trunk something else.
+    }
+    try {
+      return git("show", `${from}:./${basename(file)}`);
     } catch {
       return "";
     }
@@ -47,9 +61,18 @@ export const io = {
   },
 };
 
-/** Edit's own semantics: the first occurrence, or every one under `replace_all`. */
-const applied = (before, { old_string: from, new_string: to, replace_all: all }) =>
-  all ? before.split(from).join(to) : before.replace(from, to);
+/**
+ * Edit's own semantics: the first occurrence, or every one under `replace_all`.
+ *
+ * By index, never `String.replace` with a string: that reads `$&`, `$1` and `` $` `` in the
+ * replacement, so an edit whose new text is itself about a regex would be simulated as something
+ * the file will never hold, and judged on it.
+ */
+const applied = (before, { old_string: from, new_string: to, replace_all: all }) => {
+  if (all) return before.split(from).join(to);
+  const at = before.indexOf(from);
+  return at < 0 ? before : before.slice(0, at) + to + before.slice(at + from.length);
+};
 
 export function decide(payload, { committed = io.committed, disk = io.disk } = {}) {
   const input = payload?.tool_input;
@@ -60,7 +83,7 @@ export function decide(payload, { committed = io.committed, disk = io.disk } = {
   const text = whole ? input.content : input.new_string;
   if (typeof text !== "string" || !text) return { deny: false };
 
-  const found = violations(text, path).filter((v) => v.rule === "history");
+  const found = violations(text);
 
   const before = disk(path);
   const after = whole ? text : typeof input.old_string === "string" && before !== null
