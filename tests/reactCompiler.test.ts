@@ -32,7 +32,7 @@ const require = createRequire(path.join(repoRoot, "package.json"));
 // has no `node_modules` of its own and depends on the ancestor lookup
 // finding the real one.
 const presetRequire = createRequire(require.resolve("babel-preset-expo/package.json"));
-const { transformSync } = require("@babel/core");
+const { transformSync, loadOptions } = require("@babel/core");
 const reactCompiler = presetRequire("babel-plugin-react-compiler");
 
 /**
@@ -126,12 +126,43 @@ const COMPILED = [
   ...compiledUnder("lib"),
 ];
 
-/** babel-preset-expo/build/index.js, for a production client build. */
-const COMPILER_OPTIONS = {
-  target: "19",
-  environment: { enableResetCacheOnSourceFileChanges: false },
-  panicThreshold: "NONE",
-};
+/**
+ * What babel-preset-expo passes babel-plugin-react-compiler for this repo,
+ * asked of the preset rather than copied from it. `getReactCompilerPlugin` is
+ * not exported and takes an options object the preset assembles internally, so
+ * running babel.config.js through `loadOptions` is the only reading that cannot
+ * drift from the build's. The caller is Metro's for a production client bundle;
+ * get a flag wrong and the preset omits the plugin entirely rather than
+ * erroring, which is what the assertion below is for.
+ */
+const COMPILER_OPTIONS = (() => {
+  const { plugins } = loadOptions({
+    root: repoRoot,
+    configFile: path.join(repoRoot, "babel.config.js"),
+    babelrc: false,
+    filename: path.join(repoRoot, "components", "CardView.tsx"),
+    caller: {
+      name: "metro",
+      bundler: "metro",
+      platform: "ios",
+      isDev: false,
+      isServer: false,
+      isReactServer: false,
+      isNodeModule: false,
+      isHMREnabled: false,
+      supportsReactCompiler: true,
+      supportsStaticESM: true,
+    },
+  }) as { plugins: { key: string; options?: Record<string, unknown> }[] };
+  const entry = plugins.find((p) => p.key === "react-forget");
+  assert.ok(
+    entry?.options,
+    "babel-preset-expo returned no babel-plugin-react-compiler entry for a production client " +
+      "build, so either app.json stopped turning the compiler on or the caller flags this asks " +
+      "with no longer reach it — and nothing below is compiling under the compiler at all"
+  );
+  return entry.options;
+})();
 
 type CompilerEvent = {
   kind: string;
@@ -402,8 +433,9 @@ test("a suppressed react-hooks rule is what the compiler refuses to compile", ()
   );
   assert.ok(
     reasons.some((r) => r.includes("ESLint")),
-    "adding a react-hooks suppression back no longer costs the component its compilation — " +
-      "either the compiler options here drifted from babel-preset-expo's, or the plugin changed"
+    "adding a react-hooks suppression back no longer costs the component its compilation. The " +
+      "options come from babel-preset-expo itself, so this is the plugin changing: either it " +
+      "stopped charging for a suppression, or the preset turned that off"
   );
 });
 
