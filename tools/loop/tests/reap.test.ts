@@ -514,16 +514,23 @@ describe("preflightMemory", () => {
 describe("checkoutRoot", () => {
   /**
    * The one input `ownedByTooling` is matched against. One directory out and every class — orphan,
-   * stale, CPU burner — quietly matches nothing, and `--dry-run` reports a clean machine. The
-   * assertion is that it equals what git says from the repository root, so it holds wherever in
-   * the tree reap.mjs is moved to; a `..` count written against one location cannot.
+   * stale, CPU burner — quietly matches nothing, and `--dry-run` reports a clean machine.
+   *
+   * The expectation is the main worktree `git worktree list` names first, which is the same
+   * directory whether this suite runs from the checkout or from `.worktrees/agent-<n>`, and is a
+   * different question from the `--git-common-dir` `checkoutRoot` asks — so the two agreeing is a
+   * check rather than the implementation restated. An expectation taken from `--show-toplevel`
+   * here is neither: it answers with whichever tree ran the suite.
    */
-  test("is the checkout, wherever in the tree reap.mjs sits", () => {
-    const fromRepo = execFileSync("git", ["rev-parse", "--show-toplevel"], {
-      cwd: path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", ".."),
+  test("is the shared checkout, run from a worktree as much as from the checkout", () => {
+    const mainWorktree = execFileSync("git", ["worktree", "list", "--porcelain"], {
+      cwd: path.dirname(fileURLToPath(import.meta.url)),
       encoding: "utf8",
-    }).trim();
-    assert.equal(checkoutRoot(), fromRepo);
+    })
+      .split("\n")[0]
+      .replace(/^worktree /, "")
+      .trim();
+    assert.equal(checkoutRoot(), mainWorktree);
     assert.ok(
       ownedByTooling(`node ${path.join(checkoutRoot(), "tools", "loop", "queue-loop.mjs")}`, toolingRoots({ repoRoot: checkoutRoot() })),
       "the root it derives does not match a process running out of this checkout"
