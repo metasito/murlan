@@ -1,6 +1,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
@@ -512,29 +513,45 @@ describe("preflightMemory", () => {
 });
 
 describe("checkoutRoot", () => {
-  /**
-   * The one input `ownedByTooling` is matched against. One directory out and every class — orphan,
-   * stale, CPU burner — quietly matches nothing, and `--dry-run` reports a clean machine.
-   *
-   * The expectation is the main worktree `git worktree list` names first, which is the same
-   * directory whether this suite runs from the checkout or from `.worktrees/agent-<n>`, and is a
-   * different question from the `--git-common-dir` `checkoutRoot` asks — so the two agreeing is a
-   * check rather than the implementation restated. An expectation taken from `--show-toplevel`
-   * here is neither: it answers with whichever tree ran the suite.
-   */
-  test("is the shared checkout, run from a worktree as much as from the checkout", () => {
-    const mainWorktree = execFileSync("git", ["worktree", "list", "--porcelain"], {
-      cwd: path.dirname(fileURLToPath(import.meta.url)),
-      encoding: "utf8",
-    })
+  /** The main worktree, which `git worktree list` names first — a different question from the one
+   * `checkoutRoot` asks, so the two agreeing is a check and not the implementation restated. */
+  const mainWorktreeOf = (cwd: string) =>
+    execFileSync("git", ["worktree", "list", "--porcelain"], { cwd, encoding: "utf8" })
       .split("\n")[0]
       .replace(/^worktree /, "")
       .trim();
-    assert.equal(checkoutRoot(), mainWorktree);
+
+  /**
+   * The one input `ownedByTooling` is matched against. One directory out and every class — orphan,
+   * stale, CPU burner — quietly matches nothing, and `--dry-run` reports a clean machine.
+   */
+  test("is the checkout the suite's own tree hangs off", () => {
+    assert.equal(checkoutRoot(), mainWorktreeOf(path.dirname(fileURLToPath(import.meta.url))));
     assert.ok(
       ownedByTooling(`node ${path.join(checkoutRoot(), "tools", "loop", "queue-loop.mjs")}`, toolingRoots({ repoRoot: checkoutRoot() })),
       "the root it derives does not match a process running out of this checkout"
     );
+  });
+
+  /**
+   * A repository of its own, because the answer has to differ from the question: CI checks out one
+   * worktree and nothing else, so a case that reads only the tree it runs in agrees with every
+   * wrong implementation there and reds for nobody but an agent on this machine.
+   */
+  test("from inside a worktree, answers the checkout and not the worktree", () => {
+    const repo = mkdtempSync(path.join(tmpdir(), "reap-checkout-"));
+    const git = (...args: string[]) =>
+      execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args], { cwd: repo, encoding: "utf8" });
+    try {
+      git("init", "-q");
+      git("commit", "-q", "--allow-empty", "-m", "root");
+      const worktree = path.join(repo, ".worktrees", "agent-1");
+      git("worktree", "add", "-q", "--detach", worktree, "HEAD");
+
+      assert.equal(checkoutRoot(worktree), mainWorktreeOf(repo));
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
   });
 });
 

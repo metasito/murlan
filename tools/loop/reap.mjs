@@ -29,7 +29,7 @@ const E2E_PORT = process.env.E2E_PORT ?? "5199";
  * directory, so the answer does not depend on the caller's either.
  *
  * `--git-common-dir`, never `--show-toplevel` (RULES.md rule 10): the latter answers with the
- * worktree, and trimming `.worktrees/<n>` back off it only holds while every worktree lives there.
+ * worktree.
  */
 export function checkoutRoot(from = path.dirname(fileURLToPath(import.meta.url))) {
   const gitDir = execFileSync("git", ["rev-parse", "--path-format=absolute", "--git-common-dir"], {

@@ -1,8 +1,6 @@
 // #293
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import path from "node:path";
-import { pathToFileURL } from "node:url";
 import { classify, pickRoute, claimedElsewhere, sizeOf } from "../next-ticket.mjs";
 import { importUnderShellGuard } from "../../../tests/helpers/importShellGuard.ts";
 
@@ -116,7 +114,7 @@ describe("sizeOf", () => {
 
 describe("isInvokedDirectly", () => {
   test("importing the module (not running it) never shells out to `gh`", () => {
-    const moduleUrl = pathToFileURL(path.resolve("tools/loop/next-ticket.mjs")).href;
+    const moduleUrl = new URL("../next-ticket.mjs", import.meta.url).href;
 
     const { shelledOutTo } = importUnderShellGuard(moduleUrl);
 
