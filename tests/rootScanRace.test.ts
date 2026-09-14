@@ -57,21 +57,6 @@ const SNIPPETS: [string, boolean][] = [
   ['const sample = "readdirSync(repoRoot)"; readdirSync(ROOT_DIR);', true],
 ];
 
-/**
- * `ROOT_READDIR` alone, blanked in this file only: the guard has to spell the
- * pattern out, and exempting the whole file would exempt the guard. The
- * samples need no entry — they are string literals, and `blankCommentsAndStrings`
- * blanks those; a regex literal it walks past intact.
- */
-const SELF_EXEMPT = [/const ROOT_READDIR =[\s\S]*?;/];
-
-function source(rel: string): string {
-  const text = blankCommentsAndStrings(readFileSync(path.join(repoRoot, rel), "utf8"));
-  return rel === SELF
-    ? SELF_EXEMPT.reduce((s, re) => s.replace(re, (m) => m.replace(/[^\n]/g, " ")), text)
-    : text;
-}
-
 /** The scan this replaces, as it was written, so the counterfactual can run it. */
 const listFromDisk = (dir: string): string[] =>
   readdirSync(dir, { withFileTypes: true })
@@ -167,11 +152,14 @@ describe("no test lists the repo root from the filesystem", () => {
       assert.ok(files.some((f) => f.startsWith(tree)), `the scan reached nothing under ${tree}`);
     }
     assert.ok(files.includes(SELF), "scan is empty");
-    assert.match(readFileSync(path.join(repoRoot, SELF), "utf8"), ROOT_READDIR);
-    assert.doesNotMatch(source(SELF), ROOT_READDIR);
-    assert.match(source(SELF), /readdirSync\(dir/);
+    const selfText = readFileSync(path.join(repoRoot, SELF), "utf8");
+    assert.match(selfText, ROOT_READDIR);
+    assert.doesNotMatch(blankCommentsAndStrings(selfText), ROOT_READDIR);
+    assert.match(blankCommentsAndStrings(selfText), /readdirSync\(dir/);
 
-    const offenders = files.filter((f) => ROOT_READDIR.test(source(f)));
+    const offenders = files.filter((rel) =>
+      ROOT_READDIR.test(blankCommentsAndStrings(readFileSync(path.join(repoRoot, rel), "utf8")))
+    );
     assert.deepEqual(
       offenders,
       [],
