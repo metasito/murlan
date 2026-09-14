@@ -1,10 +1,9 @@
-// The ranked ladder's arithmetic. Loads under `node --test` — docs/agents/loops.md,
-// "Node's TypeScript loader" — and stays clear of the db because the profile and
-// leaderboard screens import it, so it rides into the app bundle.
+// The ranked ladder's arithmetic. No db, so it rides into the profile and leaderboard
+// screens' bundle; loads under `node --test` — docs/agents/loops.md, "Node's TypeScript loader".
+import type { TranslationKey } from "./i18n.ts";
 //
 // Every constant here carries its own reasoning; the two that are conventions
 // rather than measurements (SEASON_CARRY, the K tiers) say so.
-import type { TranslationKey } from "./i18n.ts";
 
 /** Where an unrated player starts, and the centre a season's soft reset pulls toward. */
 export const START_RATING = 1000;

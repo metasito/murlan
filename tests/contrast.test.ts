@@ -6,9 +6,8 @@
 // This exists so a future palette edit can't silently regress accessibility —
 // see lib/theme.ts "Text colors" section.
 //
-// Imports lib/tokens rather than lib/theme, whose platform-aware Shadow helper pulls
-// react-native in; tokens.ts is the same palette. The extension on that import is
-// required — docs/agents/loops.md, "Node's TypeScript loader".
+// Imports lib/tokens — the same palette — not lib/theme, whose Shadow helper pulls
+// react-native in; that and the extension — docs/agents/loops.md, "Node's TypeScript loader".
 import { Colors, Garnet, Gradient, Scrim, FeltGradients } from "../lib/tokens.ts";
 import { test } from "node:test";
 import assert from "node:assert/strict";
