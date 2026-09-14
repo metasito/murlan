@@ -7,7 +7,7 @@
 // Android and wrong on iOS shows up as one red project rather than a pass.
 //
 // Tests are .test.tsx on purpose: `npm test` globs tests/**/*.test.ts and must
-// not pick these up, since Node's type stripper cannot load react-native.
+// not pick these up — docs/agents/loops.md, "Node's TypeScript loader".
 // Paths are interpolated rather than written as `<rootDir>/…`: substituting
 // that token puts the checkout's own separators back into the glob, and on
 // Windows micromatch reads a backslash as an escape rather than a separator. A

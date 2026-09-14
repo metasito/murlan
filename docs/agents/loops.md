@@ -313,6 +313,13 @@ and its runtime imports are relative and carry the `.ts` extension (`tsconfig.js
 modules beside a component exist — `components/handLayout.ts` next to `table/hand.tsx`,
 `components/flightPhysics.ts` next to `GameTable.tsx`, and the rest of that family.
 
+The same loader cannot load `react-native` itself. That package's entry point is Flow-typed rather
+than TypeScript, and type stripping has no plugin for Flow, so it throws on the first annotation it
+meets. A file `node --test` runs therefore stays free of any `react-native` import, transitive ones
+included — which is why `lib/tokens.ts` holds the palette that `lib/theme.ts` wraps in its
+platform-aware helpers, and why the suites that do need the renderer are named `.test.tsx` and run
+under jest, where Metro resolves the package instead.
+
 This is the only place the constraint is written down. Every file it governs carries a one-line
 pointer here instead of its own restatement, and `tests/loaderConstraintIsSingleSourced.test.ts`
 holds the count at one — a copy corrected in one file leaves the rest quietly stale, and the stale

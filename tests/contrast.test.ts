@@ -6,10 +6,9 @@
 // This exists so a future palette edit can't silently regress accessibility —
 // see lib/theme.ts "Text colors" section.
 //
-// The .ts extension on the import is required — docs/agents/loops.md.
-// Imports lib/tokens (pure values) rather than lib/theme, because theme pulls in
-// react-native for its platform-aware Shadow helper and Node cannot parse RN's
-// Flow-typed entry point. tokens.ts is the same palette, no runtime RN dependency.
+// Imports lib/tokens rather than lib/theme, whose platform-aware Shadow helper pulls
+// react-native in; tokens.ts is the same palette. The extension on that import is
+// required — docs/agents/loops.md, "Node's TypeScript loader".
 import { Colors, Garnet, Gradient, Scrim, FeltGradients } from "../lib/tokens.ts";
 import { test } from "node:test";
 import assert from "node:assert/strict";

@@ -2,7 +2,7 @@
 // strategy tier plus two knobs that re-rank an already-legal candidate list —
 // it never changes what is legal, which stays entirely in getAllValidPlays.
 //
-// Pure: no react-native import, so `node --test` can load it directly.
+// Loads under `node --test` — docs/agents/loops.md, "Node's TypeScript loader".
 import type { AIDifficulty } from "./gameEngine.ts";
 import type { TranslationKey } from "./i18n.ts";
 

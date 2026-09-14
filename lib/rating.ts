@@ -1,10 +1,10 @@
-// The ranked ladder's arithmetic. Pure — no react-native import, no db — so
-// both the server and `node --test` load it directly. The one type import is
-// erased at compile time and pulls nothing in.
-import type { TranslationKey } from "./i18n.ts";
+// The ranked ladder's arithmetic. Loads under `node --test` — docs/agents/loops.md,
+// "Node's TypeScript loader" — and stays clear of the db because the profile and
+// leaderboard screens import it, so it rides into the app bundle.
 //
 // Every constant here carries its own reasoning; the two that are conventions
 // rather than measurements (SEASON_CARRY, the K tiers) say so.
+import type { TranslationKey } from "./i18n.ts";
 
 /** Where an unrated player starts, and the centre a season's soft reset pulls toward. */
 export const START_RATING = 1000;
