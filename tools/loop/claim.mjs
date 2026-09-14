@@ -55,6 +55,12 @@ export function claimSteps(number, title, noteFile = "", base = "origin/main") {
   ];
 }
 
+/** git's two ways of saying the directory is spoken for. Its other failures are not this one. */
+const taken = (err, cwd) => {
+  const said = String(err?.message ?? err);
+  return said.includes("already used by worktree") || (said.includes(cwd) && said.includes("already exists"));
+};
+
 /** Whether the branch is already pushed — asked after the fetch, so the answer is current. */
 function onOrigin(branch, run) {
   try {
@@ -79,9 +85,9 @@ export function claim(number, title, run = (file, args) => execFileSync(file, ar
     try {
       run(step.file, args);
     } catch (err) {
-      if (step.name !== "worktree") throw err;
-      // The label stays on: it is one shared label, and taking it off here takes it off whoever is
-      // holding the worktree we just failed to take.
+      // Only the path being taken means a peer holds this ticket. A stale local branch is a
+      // different failure, and reporting it as a peer leaves `in-progress` on for ever.
+      if (step.name !== "worktree" || !taken(err, cwd)) throw err;
       return { branch, cwd, won: false, why: `${cwd} is already standing` };
     }
   }

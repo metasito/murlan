@@ -38,7 +38,10 @@ function ghFake({ script, pr = prRow(), jobs = [], log = "Native tests\tRun test
 }) {
   const asked: string[][] = [];
   let listed = 0;
-  const gh = (args: string[]) => {
+  // The executable is checked, not dropped: `mergeAndConfirm` reaches for `git ls-remote` through
+  // the same injected runner, and a fake that answers everything cannot catch a misrouted call.
+  const gh = (args: string[], file = "gh") => {
+    assert.equal(file, "gh", `a ${file} call reached the gh fake: ${args.join(" ")}`);
     asked.push(args);
     if (args[0] === "pr" && args[1] === "view" && args.includes("headRefOid")) {
       return JSON.stringify({ headRefOid: SHA });
@@ -59,11 +62,12 @@ function ghFake({ script, pr = prRow(), jobs = [], log = "Native tests\tRun test
 }
 
 /** `poll`'s io, with the real `readVerdict` wired to the fake subprocess. */
-const io = (gh: (args: string[]) => string, written: string[][] = []) => ({
-  run: (_file: string, args: string[]) => gh(args),
+const io = (gh: (args: string[], file?: string) => string, written: string[][] = []) => ({
+  run: (file: string, args: string[]) => (file === "git" ? "" : gh(args, file)),
   verdictOf: (repo: string, branch: string, pr: number) =>
     readVerdict(repo, branch, pr, Date.now() + 60_000, (args) => gh(args)),
   write: (path: string, body: string) => written.push([path, body]),
+  mkdir: () => undefined,
 });
 
 const DEADLINE = 60_000;
@@ -125,6 +129,16 @@ describe("settle, replayed against recorded gh payloads", () => {
     const out = await poll(PENDING, (m: string) => said.push(m), 0, DEADLINE, io(gh));
     assert.equal(out.action, "owner");
     assert.equal(said.length, SETTLE_ROUNDS.appear, "it asks its budget and stops, never the deadline");
+  });
+
+  // The arm that fires a real `gh pr update-branch` if the io seam is not total.
+  test("a branch behind main is updated through the injected runner, not the real gh", async () => {
+    const { gh, asked } = ghFake({
+      script: [runRow("completed", "success")],
+      pr: prRow({ mergeStateStatus: "BEHIND" }),
+    });
+    await poll(PENDING, () => {}, 0, 1, io(gh));
+    assert.ok(asked.some((a) => a[0] === "pr" && a[1] === "update-branch"), "the fake must see it");
   });
 
   test("the deadline is reachable during a round, which it was not while gh run watch blocked", async () => {

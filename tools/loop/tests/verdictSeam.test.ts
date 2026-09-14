@@ -25,7 +25,12 @@ const PR_STATES: PrState[] = [
   { state: "OPEN", mergeable: "MERGEABLE", mergeStateStatus: "CLEAN" },
   { state: "OPEN", mergeable: "MERGEABLE", mergeStateStatus: "UNSTABLE" },
   { state: "OPEN", mergeable: "MERGEABLE", mergeStateStatus: "BLOCKED" },
+  { state: "OPEN", mergeable: "MERGEABLE", mergeStateStatus: "BEHIND" },
+  { state: "OPEN", mergeable: "MERGEABLE", mergeStateStatus: "DIRTY" },
+  { state: "OPEN", mergeable: "CONFLICTING", mergeStateStatus: "DIRTY" },
   { state: "OPEN", mergeable: "UNKNOWN", mergeStateStatus: "UNKNOWN" },
+  { state: "MERGED", mergeable: "UNKNOWN", mergeStateStatus: "UNKNOWN" },
+  { state: "CLOSED", mergeable: "UNKNOWN", mergeStateStatus: "UNKNOWN" },
 ];
 
 type Case = { run: RunRow | undefined; jobs: string; pr: PrState };
@@ -69,13 +74,17 @@ describe("what landing may do with every verdict decideVerdict can produce", () 
     }
   });
 
-  test("every verdict maps to an action the supervisor handles", () => {
+  test("every verdict maps to an action the supervisor handles, and each is reachable", () => {
     const handled = new Set(["merge", "already-merged", "update-branch", "recheck", "hand-back", "owner"]);
+    const seen = new Set<string>();
     for (const c of every()) {
       const out = landing(c.pr, decideVerdict(c.run, JOB_SETS[c.jobs]));
       assert.ok(handled.has(out.action), `${describeCase(c)} produced ${out.action}`);
       assert.ok(out.reason, `${describeCase(c)} produced an action with no reason`);
+      seen.add(out.action);
     }
+    // Naming an action the walk never produces is a branch this suite claims to cover and does not.
+    assert.deepEqual([...handled].filter((a) => !seen.has(a)), []);
   });
 
   // The floor. With the guard removed this walk must go red, or it is pinning nothing.

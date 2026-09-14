@@ -1438,7 +1438,7 @@ export async function settle(pending, screen, opts = {}) {
 }
 
 export async function poll(pending, log, pause, deadline, io = {}) {
-  const { run = sh, verdictOf = readVerdict, write = writeFileSync } = io;
+  const { run = sh, verdictOf = readVerdict, write = writeFileSync, mkdir = mkdirSync } = io;
   const left = { ...SETTLE_ROUNDS };
   const until = Date.now() + deadline;
   // Not unref'd, for the same reason `holdFor` is not: this is the only handle open while it waits.
@@ -1459,9 +1459,10 @@ export async function poll(pending, log, pause, deadline, io = {}) {
       if (verdict.infrastructure) asking = verdict.appearing ? "appear" : "retry";
       next = readLanding(pending.pr, verdict, run);
       // Written before it is handed back, because the session that fixes it is a fresh process
-      // with no way to ask this one anything.
-      if (next.action === "hand-back" && verdict.output) {
-        mkdirSync(DIR, { recursive: true });
+      // with no way to ask this one anything. Never when `output` is the reason rather than the log:
+      // round one's real failure is already in that file, and this would paint over it.
+      if (next.action === "hand-back" && verdict.output && !verdict.logUnread) {
+        mkdir(DIR, { recursive: true });
         write(ciLogPath(pending.ticket), verdict.output, "utf8");
       }
     } catch (err) {
@@ -1474,7 +1475,7 @@ export async function poll(pending, log, pause, deadline, io = {}) {
       left.update -= 1;
       log("main moved — updating the branch and reading CI again");
       try {
-        sh("gh", ["pr", "update-branch", String(pending.pr)]);
+        run("gh", ["pr", "update-branch", String(pending.pr)]);
       } catch (err) {
         return { action: "owner", reason: `could not update the branch — ${String(err.message).split("\n")[0]}` };
       }
