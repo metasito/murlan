@@ -260,12 +260,16 @@ test("a bailout in a plain .ts hook is what the widened gate catches", () => {
  * `refs` does. `tests/hooksLint` asks a narrower question, whether the rules it
  * names stay on, and keeps its narrower list.
  *
- * Naming no rule at all switches off every rule, react-hooks among them, so a
- * bare `/* eslint-disable *\/` counts as a named one does. So does an inline
- * `eslint` config comment at any level, `"error"` included — wider than the
- * compiler, which reads only `eslint-disable` and `eslint-disable-next-line`
- * (`babel-plugin-react-compiler`'s own two patterns), and deliberately so: a
- * comment free to set the level is free to set it to `"off"` tomorrow.
+ * Wider than the compiler, deliberately. `babel-plugin-react-compiler` builds
+ * two patterns and no more — `eslint-disable <rule>` and
+ * `eslint-disable-next-line <rule>`, each wanting a rule name after a space — so
+ * three of the forms refused here cost it nothing today: a bare
+ * `/* eslint-disable *\/`, an `eslint-disable-line`, and an inline `eslint`
+ * config comment at any level, `"error"` included. What the gate is about is
+ * what ESLint honours, which is the wider of the two: every one of those does
+ * take a rule with a whole file's blast radius out of `eslint.config.js`'s
+ * hands, and the compiler's parser growing a third pattern is a smaller change
+ * than any of them.
  */
 function suppressions(source: string, file: string): string[] {
   return directives(source, file)
@@ -279,14 +283,13 @@ function suppressions(source: string, file: string): string[] {
     );
 }
 
-test("each form that costs a file its compilation is found, and a quoted one is not", () => {
+test("each form the gate refuses is found, and a quoted one is not", () => {
   const found = (source: string) => suppressions(source, "components/X.tsx");
   assert.equal(found("/* eslint-disable */").length, 1);
   assert.equal(found('/* eslint react-hooks/refs: "off" */').length, 1);
   assert.equal(found('/* eslint react-hooks/refs: "error" */').length, 1);
   // Each disable syntax by its own text: a file-wide one and a single-line one
-  // are a different amount of damage, and an offender list that prints the same
-  // words for both cannot say which it found.
+  // are a different amount of damage to report.
   assert.deepEqual(found("/* eslint-disable react-hooks/refs */"), [
     "components/X.tsx:1 — eslint-disable react-hooks/refs",
   ]);
