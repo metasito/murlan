@@ -14,6 +14,8 @@ export const STEPS = [
   { name: "test:e2e", args: ["run", "test:e2e"], where: "ci", job: "browser" },
 ];
 
+export const byName = (name) => STEPS.find((s) => s.name === name);
+
 export const cmd = (step) => `npm ${step.args.join(" ")}`;
 /** What a step announces itself with, so a test can tell that none of them ran. */
 export const BANNER = "=== ";

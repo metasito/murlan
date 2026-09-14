@@ -10,7 +10,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { primaryWorktree, checkLockDrift, readSubject } from "./preflight.mjs";
-import { LOCAL, DELEGATED, cmd, BANNER } from "./check-steps.mjs";
+import { STEPS, LOCAL, DELEGATED, byName, cmd, BANNER } from "./check-steps.mjs";
 
 /**
  * A wedged suite used to hang this check for ever, and an unattended run has nobody to notice.
@@ -26,9 +26,17 @@ const verdict = (outcome) =>
   [
     outcome,
     `  judged:    ${subject.root} against origin/main@${subject.base}`,
-    `  ran here:  ${LOCAL.map((s) => s.name).join(", ")}`,
-    ...DELEGATED.map((s) => `  ci.yml ${s.job}:  ${cmd(s)}`),
+    `  ran here:  ${ran().map((s) => s.name).join(", ")}`,
+    `  NOT run:   ${skipped().length} suite(s) — a green line here stands for none of them`,
+    ...skipped().map((s) => `  ci.yml ${s.job}:  ${cmd(s)}`),
   ].join("\n");
+
+function ran() {
+  return [...LOCAL, ...extra];
+}
+function skipped() {
+  return DELEGATED.filter((s) => !extra.includes(s));
+}
 
 function git(...args) {
   return execFileSync("git", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
@@ -111,17 +119,25 @@ if (drift.length) {
 }
 
 const force = process.argv.includes("--force");
-const key = treeHash();
+
+// A red CI round knows which suite failed, and running only that one here is the difference between
+// fixing it and pushing again to find out. Named, never a wildcard: `--also` picking up every
+// delegated step is `npm run verify` behind a memory preflight this machine refuses.
+const also = process.argv.indexOf("--also");
+const extra = also >= 0 ? [byName(process.argv[also + 1])].filter(Boolean) : [];
+
+// Keyed with them, so a `--also` run cannot replay as a plain one — or a plain one as a `--also`.
+const key = treeHash() + (extra.length ? `+${extra.map((s) => s.name).join(",")}` : "");
 const cache = readCache();
 
 if (!force && cache[key]?.pass) {
-  console.log(verdict(`agent:check  CACHED PASS for tree ${key} (${cache[key].at})`));
+  console.log(verdict(`agent:check  CACHED LOCAL PASS for tree ${key} (${cache[key].at})`));
   console.log("Nothing changed since that run. Use --force to run the suites anyway.");
   process.exit(0);
 }
 
 const failed = [];
-for (const step of LOCAL) {
+for (const step of ran()) {
   process.stdout.write(`\n${BANNER}${step.name} ===\n`);
   const run = spawnSync("npm", step.args, {
     stdio: "inherit",
@@ -149,4 +165,6 @@ if (failed.length) {
   console.error(verdict(`\nagent:check  FAIL — ${failed.join(", ")}`));
   process.exit(1);
 }
-console.log(verdict(`\nagent:check  PASS  (tree ${key})`));
+console.log(
+  verdict(`\nagent:check  LOCAL PASS  (tree ${key}) — ${ran().length} of ${STEPS.length} suites`)
+);

@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
-import { BRANCH } from "./loop-derive.mjs";
+import { BRANCH, ticketOf, worktrees } from "./loop-derive.mjs";
 
 const SIZE_ORDER = ["size:XS", "size:S", "size:M", "size:L", "size:XL"];
 const OWNER_LABELS = new Set(["ready-for-human", "needs-info", "rejected"]);
@@ -42,23 +42,72 @@ export function routeOf(issue) {
 const BUCKET = { implement: "frontier", triage: "triage", wayfinder: "wayfinder" };
 
 /**
- * @param {Issue[]} openIssues
- * @returns {{ frontier: Issue[], triage: Issue[], wayfinder: Issue[], owner: Issue[] }}
+ * A ticket whose supervisor died between CI rounds.
+ *
+ * A red round is handed back in the supervisor's own memory, so a fresh one runs the picker — which
+ * skips `in-progress` — and #1043 now holds a claim, an open red pull request and a log nothing will
+ * read. The three facts together are the whole test: claimed, pushed, and no worktree on this
+ * machine standing for it.
+ *
+ * The worktree half is local by design. This loop runs on one machine, and `.worktrees/` is the only
+ * evidence separating "a peer is working it right now" from "nobody is" — the one distinction that
+ * must not be got wrong in the direction of taking a live ticket.
+ *
+ * @param {Issue} issue @param {{openPr: boolean, liveWorktree: boolean}} evidence
  */
-export function classify(openIssues) {
-  /** @type {{frontier: Issue[], triage: Issue[], wayfinder: Issue[], owner: Issue[]}} */
-  const buckets = { frontier: [], triage: [], wayfinder: [], owner: [] };
+export function stranded(issue, { openPr, liveWorktree }) {
+  return labelNames(issue).includes("in-progress") && openPr && !liveWorktree;
+}
+
+/**
+ * @param {Issue[]} openIssues
+ * @returns {{ frontier: Issue[], triage: Issue[], wayfinder: Issue[], owner: Issue[], stranded: Issue[] }}
+ */
+export function classify(openIssues, io = realClassifyIo()) {
+  /** @type {{frontier: Issue[], triage: Issue[], wayfinder: Issue[], owner: Issue[], stranded: Issue[]}} */
+  const buckets = { frontier: [], triage: [], wayfinder: [], owner: [], stranded: [] };
+  // Asked once, and only if an in-progress ticket is here at all: it costs a subprocess.
+  let live;
   for (const issue of openIssues) {
     const ls = labelNames(issue);
-    if (ls.includes("in-progress")) continue;
+    if (ls.includes("in-progress")) {
+      if (live === undefined) live = io.liveWorktrees();
+      // `live === null` is git unreadable: every ticket reads as live, which fails closed.
+      const evidence = { openPr: io.openPr(issue.number), liveWorktree: !live || live.has(issue.number) };
+      if (stranded(issue, evidence)) buckets.stranded.push(issue);
+      continue;
+    }
     // `blocked` keeps `ready-for-agent`: the label carries a decision already
     // made, and taking it off to un-jam the queue is how that decision is lost.
     if (ls.includes("blocked")) continue;
     buckets[BUCKET[routeOf(issue)] ?? "owner"].push(issue);
   }
   // Oldest first: sorting by size put every self-filed size:S follow-up at the head.
-  for (const b of Object.values(BUCKET)) buckets[b].sort((a, x) => a.number - x.number);
+  for (const b of [...Object.values(BUCKET), "stranded"]) buckets[b].sort((a, x) => a.number - x.number);
+  // A branch already pushed and already reviewed is the cheapest work in the queue, and leaving it
+  // is the one outcome nothing else recovers from.
+  buckets.frontier = [...buckets.stranded, ...buckets.frontier];
   return buckets;
+}
+
+function realClassifyIo() {
+  return {
+    openPr: (n) => claimedElsewhere(n, openPrsFor),
+    liveWorktrees: () => {
+      try {
+        const live = new Set();
+        for (const w of worktrees()) {
+          const n = ticketOf(w.branch);
+          if (n) live.add(n);
+        }
+        return live;
+      } catch {
+        // Unreadable git is not evidence that nothing is running — and an empty set would say every
+        // ticket is stranded, so refuse instead: `stranded` is then asked with liveWorktree true.
+        return null;
+      }
+    },
+  };
 }
 
 /**
@@ -95,7 +144,10 @@ function takeable(frontier, limit) {
   for (const issue of frontier) {
     const full = ghJson(["api", `repos/{owner}/{repo}/issues/${issue.number}`]);
     if (full.issue_dependencies_summary.blocked_by !== 0) continue;
-    if (claimedElsewhere(issue.number, openPrsFor)) {
+    // A stranded candidate is exactly the shape `claimedElsewhere` refuses — its own open pull
+    // request — and it reached the frontier because nothing on this machine is working it.
+    const isStranded = stranded(issue, { openPr: true, liveWorktree: false });
+    if (!isStranded && claimedElsewhere(issue.number, openPrsFor)) {
       process.stderr.write(`SKIP\t${issue.number}\tan open pull request already claims it\n`);
       continue;
     }
