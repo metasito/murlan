@@ -120,9 +120,11 @@ runs:
           nohup adb logcat -v time -b all > "$RUNNER_TEMP/logcat.txt" 2>&1 & true
           nohup sh -c 'while true; do date -u +%H:%M:%S; cat /proc/loadavg; free -m | head -2; sleep 5; done' > "$RUNNER_TEMP/host-vitals.txt" 2>&1 & true
           adb install -r "$APP_APK"
-          # Everything above this line is the device coming up: the boot, the
-          # reboot, the locale and the install. Its absence is what tells
-          # `maestro.yml` the device itself never arrived (#186).
+          # Everything above this line is the environment coming up: the boot,
+          # the reboot, the locale, the framework and the install. Its absence
+          # tells `maestro.yml` that one of those did not finish - not which, and
+          # not that the device itself never arrived, which is why each of them
+          # prints its own error rather than leaving the verdict to guess.
           touch "$RUNNER_TEMP/emulator-booted"
           # Half the resolution and half the density: the same screen in dp, a
           # quarter of the pixels for the app to rasterize. The flows select on
@@ -132,8 +134,8 @@ runs:
           # buys and the limits of it.
           #
           # Below the marker: a device that refuses the override is one that
-          # came up, and failing above it would report itself as #186 and spend
-          # two more 900s boots on it.
+          # came up, and failing above it would be reported as the environment
+          # never arriving and spend a second 900s boot on it.
           adb shell wm size 540x1200
           adb shell wm density 210
           adb shell wm size | tr -d '\r' | grep -q 'Override size: 540x1200' || { echo "::error::The display override did not take; the flows would run at full resolution."; exit 1; }

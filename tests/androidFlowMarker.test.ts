@@ -23,6 +23,18 @@ function read(rel: string): string {
 }
 
 const WORKFLOW = ".github/workflows/maestro.yml";
+const ACTION = ".github/actions/drive-android-flows/action.yml";
+
+/**
+ * Every `::error::`/`::warning::` a run can actually print, from both files. The
+ * leading `[^#\n]*` is what drops the comments that quote one: a claim about
+ * what a run says to its reader must not be answerable by prose about it.
+ */
+function annotations(): string[] {
+  return [WORKFLOW, ACTION]
+    .flatMap((f) => [...read(f).matchAll(/^[^#\n]*::(?:error|warning)::.*$/gm)])
+    .map((m) => m[0].trim());
+}
 
 describe("the Android flow marker", () => {
   const lines = actionScriptLines(repoRoot);
@@ -120,10 +132,18 @@ describe("maestro.yml reads that marker", () => {
     assert.match(block, /steps\.kind\.outputs\.started == 'false'/);
   });
 
-  test("it tells three states apart, and retries the two it can", () => {
+  test("it answers the retry's question and classifies nothing", () => {
+    // One boundary, because it drives one decision. Which kind of failure it was
+    // is stated once, by the verdict below: two copies of that classification is
+    // how both of them came to route their reader to the same closed issue.
     const kind = src.slice(src.indexOf("id: kind"), src.indexOf("id: retry"));
     assert.match(kind, /app-launched/, "the app-launch state is not distinguished at all");
-    assert.match(kind, /emulator-booted/, "the device state is not distinguished at all");
+    assert.doesNotMatch(
+      kind,
+      /emulator-booted/,
+      "this step reads a marker the retry does not turn on, which makes it a second " +
+        "classification to keep in step with the verdict's",
+    );
     // `started=true` is what withholds the retry, so exactly one branch may set
     // it: the one where the app actually launched.
     assert.equal(
@@ -136,6 +156,31 @@ describe("maestro.yml reads that marker", () => {
       launched < kind.indexOf("started=true"),
       "the retry is withheld before the app-launch marker is read",
     );
+  });
+
+  test("no annotation routes a reader to an issue number", () => {
+    // #186 was closed while the branch naming it went unexecuted, so every failed
+    // run went on pointing its reader at an answered issue - and so did four more
+    // annotations in these two files. A comment may cite a closed issue, because
+    // the record is still the record; an annotation is a call to act, and nothing
+    // in a workflow can tell that the thing behind one has been dealt with.
+    const printed = annotations();
+    assert.ok(printed.length >= 15, `only ${printed.length} annotations found; the scan is broken`);
+    for (const a of printed) {
+      assert.doesNotMatch(a, /#\d+/, `an annotation naming an issue: ${a}`);
+    }
+  });
+
+  test("the verdict reads the markers narrowest-first", () => {
+    // Each branch is a superset of the one above it: no marker at all, then a
+    // device that came up, then an app that launched. Read in any other order,
+    // the broadest answer arrives first and every failure is the diff's.
+    const verdict = src.slice(src.indexOf("The run's real verdict"), src.indexOf("id: crash"));
+    const booted = verdict.indexOf("emulator-booted");
+    const launched = verdict.indexOf("app-launched");
+    const blame = verdict.indexOf("result about the diff");
+    assert.ok(booted !== -1, "the verdict cannot see whether the device ever came up");
+    assert.ok(booted < launched && launched < blame, "the verdict's branches are out of order");
   });
 
   test("the verdict names the app launch rather than blaming the branch for it", () => {
@@ -240,5 +285,30 @@ describe("maestro.yml reads that marker", () => {
       invocations[1][1].trim(),
       "a retry configured differently from the first attempt is not a retry",
     );
+  });
+});
+
+describe("what the verdict is allowed to claim", () => {
+  const lines = actionScriptLines(repoRoot);
+  const booted = lines.findIndex((l) => l.startsWith("touch") && l.includes("emulator-booted"));
+  const failable = lines.slice(0, booted).filter((l) => /\bexit 1\b/.test(l));
+
+  test("more than one failure lands on a missing device marker", () => {
+    // Which is why the verdict names none of them: the marker is one bit over
+    // the boot, the framework, the locale and the install alike. Derived from the
+    // action rather than stated, so a fifth cannot be added under a verdict that
+    // still reads as though there were one.
+    assert.ok(
+      failable.length > 1,
+      "one failure now reaches the marker's absence, so the verdict could name it",
+    );
+  });
+
+  test("so each of them says what it was", () => {
+    // The verdict can only say "not this branch". The cause has to come from the
+    // step that hit it, or a failed run carries no classification at all.
+    for (const l of failable) {
+      assert.match(l, /::error::/, `a failure above the device marker with nothing to say: ${l}`);
+    }
   });
 });
