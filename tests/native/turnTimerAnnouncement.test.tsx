@@ -9,6 +9,7 @@ import { act, render, screen } from '@testing-library/react-native';
 
 jest.mock('@/lib/sounds', () => ({
   playUrgentTick: jest.fn(async () => {}),
+  ensureAudioMode: jest.fn(async () => {}),
 }));
 
 import { TurnTimer } from '@/components/table/turnTimer';
