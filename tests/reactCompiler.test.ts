@@ -261,16 +261,17 @@ test("a bailout in a plain .ts hook is what the widened gate catches", () => {
  * names stay on, and keeps its narrower list.
  *
  * Naming no rule at all switches off every rule, react-hooks among them, so a
- * bare `/* eslint-disable *\/` counts as a named one does. An inline `eslint`
- * config comment counts at any level, `"error"` among them: it is a local
- * decision about a rule whose cost is the whole file either way, and one free to
- * write `"error"` today is free to write `"off"` tomorrow.
+ * bare `/* eslint-disable *\/` counts as a named one does. So does an inline
+ * `eslint` config comment at any level, `"error"` included — wider than the
+ * compiler, which reads only `eslint-disable` and `eslint-disable-next-line`
+ * (`babel-plugin-react-compiler`'s own two patterns), and deliberately so: a
+ * comment free to set the level is free to set it to `"off"` tomorrow.
  */
 function suppressions(source: string, file: string): string[] {
   return directives(source, file)
     .filter(
-      ({ form, rules }) =>
-        (form === "disable" && rules.length === 0) ||
+      ({ keyword, rules }) =>
+        (keyword !== "eslint" && rules.length === 0) ||
         rules.some((rule) => rule.startsWith("react-hooks/"))
     )
     .map(({ line, keyword, rules }) =>
@@ -280,14 +281,20 @@ function suppressions(source: string, file: string): string[] {
 
 test("each form that costs a file its compilation is found, and a quoted one is not", () => {
   const found = (source: string) => suppressions(source, "components/X.tsx");
-  assert.equal(found("// eslint-disable-next-line react-hooks/exhaustive-deps").length, 1);
   assert.equal(found("/* eslint-disable */").length, 1);
   assert.equal(found('/* eslint react-hooks/refs: "off" */').length, 1);
   assert.equal(found('/* eslint react-hooks/refs: "error" */').length, 1);
-  // The offender list names the form as written, so a file-wide disable and a
-  // single-line one do not read alike.
+  // Each disable syntax by its own text: a file-wide one and a single-line one
+  // are a different amount of damage, and an offender list that prints the same
+  // words for both cannot say which it found.
   assert.deepEqual(found("/* eslint-disable react-hooks/refs */"), [
     "components/X.tsx:1 — eslint-disable react-hooks/refs",
+  ]);
+  assert.deepEqual(found("// eslint-disable-next-line react-hooks/exhaustive-deps"), [
+    "components/X.tsx:1 — eslint-disable-next-line react-hooks/exhaustive-deps",
+  ]);
+  assert.deepEqual(found("// eslint-disable-line react-hooks/refs"), [
+    "components/X.tsx:1 — eslint-disable-line react-hooks/refs",
   ]);
   assert.deepEqual(found("// eslint-disable-next-line no-console"), []);
   assert.deepEqual(found("// the `react-hooks/refs` rule, which we do not disable"), []);

@@ -65,15 +65,15 @@ function sourceFiles(dir: string): string[] {
  * still on — and a rule nobody adopted going off is not an answer to it.
  */
 function suppressionFaults(source: string, file = "scan.tsx"): { line: number; why: string }[] {
-  return directives(source, file).flatMap(({ line, form, rules }) => {
-    const why = faultOf(form, rules);
+  return directives(source, file).flatMap(({ line, keyword, rules }) => {
+    const why = faultOf(keyword, rules);
     return why ? [{ line, why }] : [];
   });
 }
 
-function faultOf(form: Directive["form"], rules: string[]): string | null {
+function faultOf(keyword: Directive["keyword"], rules: string[]): string | null {
   const adopted = rules.some((rule) => ADOPTED.includes(rule));
-  if (form === "inline config") {
+  if (keyword === "eslint") {
     if (!adopted) return null;
     return "inline rule config, which sets a level rather than asking for an exemption";
   }

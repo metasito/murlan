@@ -9,12 +9,15 @@ import ts from "typescript";
 
 type Comment = { line: number; text: string };
 
-/** A directive comment: which form, the keyword as written, and the rule names it lists. */
+/**
+ * A directive comment: the keyword it opens with, and the rule names it lists.
+ *
+ * The keyword as written, not a coarser kind, because it is what tells a
+ * file-wide disable from a `-next-line` one in an offender list; `eslint` is the
+ * inline-config form, and an empty `rules` under a disable means every rule.
+ */
 export type Directive = {
-  /** `disable` is `eslint-disable` in any of its three forms; an empty `rules` means all of them. */
-  form: "disable" | "inline config";
-  /** As written, so an offender list can tell a file-wide disable from a `-next-line` one. */
-  keyword: string;
+  keyword: "eslint" | "eslint-disable" | "eslint-disable-line" | "eslint-disable-next-line";
   rules: string[];
 };
 
@@ -103,12 +106,14 @@ function ruleNames(tail: string): string[] {
  * `refs, and never do this` suppresses and `refs is banned here` does not.
  */
 function directive(comment: string): Directive | null {
-  const inline = /^(?:\/\/|\/\*)\s*(eslint)\s+([\s\S]*)/.exec(comment);
-  if (inline) return { form: "inline config", keyword: inline[1], rules: ruleNames(inline[2]) };
+  const inline = /^(?:\/\/|\/\*)\s*eslint\s+([\s\S]*)/.exec(comment);
+  if (inline) return { keyword: "eslint", rules: ruleNames(inline[1]) };
   const disable = /^(?:\/\/|\/\*)\s*(eslint-disable(?:-next-line|-line)?)(?![\w-])([\s\S]*)/.exec(
     comment
   );
-  return disable ? { form: "disable", keyword: disable[1], rules: ruleNames(disable[2]) } : null;
+  return disable
+    ? { keyword: disable[1] as Directive["keyword"], rules: ruleNames(disable[2]) }
+    : null;
 }
 
 /**
