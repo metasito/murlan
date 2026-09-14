@@ -51,6 +51,12 @@ test("an escaped quote does not close the literal", () => {
   assert.ok(!out.includes("it"), out);
 });
 
+test("an unclosed quote ends at the line break, as the language says it does", () => {
+  const src = `<Text>don't</Text>\nreaddirSync(repoRoot);`;
+
+  assert.match(blankCommentsAndStrings(src), /readdirSync\(repoRoot\);/);
+});
+
 test("a /* inside a string does not open a comment", () => {
   const src = `const a = "agent/* worktree";\nreaddirSync(repoRoot);\nconst b = "x */ y";`;
 
