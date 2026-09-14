@@ -52,7 +52,7 @@ function sourceFiles(dir: string): string[] {
   });
 }
 
-type Comment = { line: number; pos: number; text: string };
+type Comment = { line: number; text: string };
 
 function parseFile(source: string, file: string): ts.SourceFile {
   // The kind comes from the name because it is not a formality: in TSX,
@@ -100,12 +100,17 @@ function comments(source: string, file: string): Comment[] {
     .sort(([a], [b]) => a - b)
     .map(([pos, end]) => ({
       line: source.slice(0, pos).split("\n").length,
-      pos,
       text: source.slice(pos, end),
     }));
 }
 
-/** The syntax errors in `source`, which is what a parse losing comments looks like. */
+/**
+ * The syntax errors in `source` — what a parse losing comments looks like.
+ *
+ * `transpileModule` rather than the `SourceFile`'s own `parseDiagnostics`,
+ * which is not on the public type. It takes its `ScriptKind` from the file name
+ * as `parseFile` does, so it is the same parse; the case below pins that.
+ */
 function syntaxErrors(source: string, file: string): readonly ts.Diagnostic[] {
   return ts.transpileModule(source, { fileName: file, reportDiagnostics: true }).diagnostics ?? [];
 }
@@ -132,8 +137,9 @@ function commentFault(comment: string): string | null {
   // Only a directive opening its own comment counts, which is what anchoring
   // buys and is the whole of what it buys: prose that mentions a directive
   // part-way through — this file is full of it — reaches ESLint as prose too.
-  // Prose that *opens* with `eslint-disable` is a directive to ESLint whatever
-  // the rest of the sentence meant, so it is a fault here for the same reason.
+  // A comment that *opens* with one is a fault whether or not ESLint honours
+  // it, because a comma is what decides: `refs, and never do this` suppresses
+  // and `refs is banned here` does not.
   const inline = /^(?:\/\/|\/\*)\s*eslint\s+([\s\S]*)/.exec(comment);
   if (inline && ADOPTED.some((rule) => inline[1].includes(rule))) {
     return "inline rule config, which sets a level rather than asking for an exemption";
@@ -141,8 +147,9 @@ function commentFault(comment: string): string | null {
   const directive = /^(?:\/\/|\/\*)\s*eslint-disable(-next-line|-line)?\b([\s\S]*)/.exec(comment);
   if (!directive) return null;
   const rules = directive[2].split("--")[0].replace(/\*\/\s*$/, "");
-  // A directive naming no rule disables every rule, these three among them, and
-  // is the one form that cannot be found by looking for their names.
+  // `/* eslint-disable */` with nothing after it disables every rule from there
+  // on, these three among them, and is the one form that cannot be found by
+  // looking for their names.
   if (!rules.trim()) return "names no rule, so it disables all of them";
   if (!ADOPTED.some((rule) => rules.includes(rule))) return null;
   return "switches an adopted rule off, which costs this file its compilation";
@@ -255,17 +262,21 @@ describe("no source file switches an adopted rule off", () => {
     assert.deepEqual(why("// see the `/* eslint-disable */` above"), []);
     assert.deepEqual(why("/* a block explaining /* eslint-disable */"), []);
 
-    // A sentence that opens with the directive is one, whatever it went on to
-    // mean — ESLint reads it that way, so the gate has to.
+    // A sentence opening with the directive is faulted whatever it meant. This
+    // one ESLint does not honour; the same words with a comma after the rule it
+    // does, and that is not a distinction to rest a gate on.
     assert.match(
       only("// eslint-disable-next-line react-hooks/refs is banned here"),
       /costs this file its compilation/
     );
+    assert.match(
+      only("// eslint-disable-next-line react-hooks/refs, and never do this"),
+      /costs this file its compilation/
+    );
 
-    // The backtick a regex literal holds is what hides a directive from anything
-    // matching text: it pairs with the next backtick and everything between the
-    // two stops being source. Nothing bounds it, because a template really does
-    // span lines. A parse is not reading text, so it is unmoved.
+    // A backtick inside a regex literal: the case the parse exists for, since
+    // nothing reading text can tell it from a template opener, and a template
+    // spans lines, so there is no bound to give one.
     assert.match(
       only("const q = /[`]/;\n// eslint-disable-next-line react-hooks/refs\nconst n = `y`;"),
       /costs this file its compilation/
