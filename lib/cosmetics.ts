@@ -7,7 +7,7 @@
 // authoritative about. If cosmetics ever become unlockable, the entitlement is
 // what needs a table; the choice still would not.
 //
-// No react-native import, so tests load it directly.
+// Loads under `node --test` — docs/agents/loops.md, "Node's TypeScript loader".
 import { useSyncExternalStore } from "react";
 import { CardBacks, FeltGradients } from "./tokens.ts";
 import type { TranslationKey } from "./i18n.ts";

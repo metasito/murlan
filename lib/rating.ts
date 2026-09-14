@@ -1,6 +1,5 @@
-// The ranked ladder's arithmetic. Pure — no react-native import, no db — so
-// both the server and `node --test` load it directly. The one type import is
-// erased at compile time and pulls nothing in.
+// The ranked ladder's arithmetic. No db, so it rides into the profile and leaderboard
+// screens' bundle; loads under `node --test` — docs/agents/loops.md, "Node's TypeScript loader".
 import type { TranslationKey } from "./i18n.ts";
 //
 // Every constant here carries its own reasoning; the two that are conventions

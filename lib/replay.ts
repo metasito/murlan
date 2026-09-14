@@ -5,7 +5,8 @@
 // stayed in it, so every player's `hand` is empty and the table draws from
 // `handCount` exactly as it does for a spectator.
 //
-// Pure — no react-native import — so `node --test` and the server both load it.
+// Loads under `node --test`, and under the server — docs/agents/loops.md,
+// "Node's TypeScript loader".
 import type { Combination, GameMode, GameState, Player } from "./gameEngine.ts";
 
 export interface ReplaySeat {

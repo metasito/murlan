@@ -11,6 +11,9 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."
 /** Where the constraint is explained. Every file it governs points here instead. */
 const AUTHORITY = "docs/agents/loops.md";
 
+/** The section within it. Each pattern below is required to match inside this, not the file. */
+const SECTION = "Node's TypeScript loader reaches plain `.ts` only";
+
 /**
  * A pointer, as written: the path, then the section it quotes. The class between the two
  * absorbs a wrap — three of these run past the margin and carry the quote on the next
@@ -21,15 +24,28 @@ const POINTER = /docs\/agents\/loops\.md[,)]?[\s/#*]*"([^"\n]+)"/g;
 const SELF = "tests/loaderConstraintIsSingleSourced.test.ts";
 
 /**
- * The wordings a restatement reaches for. The authority uses them too, which is what makes the
- * list checkable rather than a guess: the assertion below names the file that must match. It
- * catches a paste and a near-paraphrase; a restatement in wholly fresh words would pass, and
- * widening this on the day one appears is the maintenance it asks for. The structural
+ * A floor under the pointers, not a count of them: the tree carries well over this many, and the
+ * `> 0` it replaces was satisfied by a single survivor. Set below the true figure on purpose, so
+ * that adding or moving a pointer is not a test edit; the failure message reports the live count.
+ */
+const POINTER_FLOOR = 20;
+
+/**
+ * The wordings a restatement reaches for, one pattern per distinct wording so the floor below can
+ * fail each on its own. The authority uses them all, which is what makes the list checkable rather
+ * than a guess. It catches a paste and a near-paraphrase; a restatement in wholly fresh words would
+ * pass, and widening this on the day one appears is the maintenance it asks for. The structural
  * alternative — flagging any long comment block about the loader — trips on unrelated blocks
  * in this tree, so it would ship with an exemption list instead.
  */
-const EXPLAINS =
-  /type-strip|strips plain|cannot parse (a |the )?(\.tsx|JSX)|(?:bundler|tsconfig|`paths`)[\s\S]{0,30}alias/i;
+const EXPLAINS = [
+  /type-strip/i,
+  /cannot parse (a |the )?(`?\.tsx`?|JSX)/i,
+  /(?:bundler|tsconfig|`paths`)[\s\S]{0,30}alias/i,
+  /cannot load `?react-native`?/i,
+  /(?:free of|no)(?: any)? `?react-native`? import/i,
+  /Flow-typed/i,
+];
 
 /** Everything above, as it is written here. Blanked in this file only — see `source`. */
 const DECLARATION = /const EXPLAINS =[\s\S]*?;/;
@@ -54,10 +70,22 @@ function source(file: string): string {
 }
 
 describe("the Node loader constraint is written down once", () => {
-  // One assertion pins the count *and* the place, and it is its own floor: a pattern that
-  // stopped matching, or an authority that was deleted, empties the list and fails here.
+  // The floor, and it is per pattern: matching the whole file would let a wording lifted from
+  // the starvation or Reanimated sections satisfy a pattern that then catches nothing.
+  test(`every pattern matches ${AUTHORITY} § "${SECTION}"`, () => {
+    const body = source(AUTHORITY)
+      .split(/^## /m)
+      .find((s) => s.startsWith(SECTION));
+    assert.ok(body, `${AUTHORITY} no longer has a section headed "${SECTION}"`);
+    assert.deepEqual(
+      EXPLAINS.filter((p) => !p.test(body)).map(String),
+      [],
+      "these patterns match nothing in the section they are meant to describe"
+    );
+  });
+
   test(`only ${AUTHORITY} explains it`, () => {
-    const offenders = tracked.filter((f) => EXPLAINS.test(source(f)));
+    const offenders = tracked.filter((f) => EXPLAINS.some((p) => p.test(source(f))));
     assert.deepEqual(
       offenders,
       [AUTHORITY],
@@ -73,7 +101,11 @@ describe("the Node loader constraint is written down once", () => {
     const cited = tracked.flatMap((f) =>
       [...source(f).matchAll(POINTER)].map(([, section]) => ({ file: f, section }))
     );
-    assert.ok(cited.length > 0, `nothing cites a section of ${AUTHORITY}; the pointers went away`);
+    assert.ok(
+      new Set(cited.map((c) => c.file)).size >= POINTER_FLOOR,
+      `only ${new Set(cited.map((c) => c.file)).size} files still cite a section of ${AUTHORITY}; ` +
+        `either the pointers are going away or ${POINTER}'s shape no longer reads them`
+    );
     const dangling = cited.filter((c) => !headings.some((h) => h.includes(c.section)));
     assert.deepEqual(
       dangling.map((c) => `${c.file} → "${c.section}"`),

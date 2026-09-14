@@ -98,7 +98,7 @@ unexercised by anything.
 | `motionPreference.test.tsx` | the animation setting overrides the OS reduce-motion preference in both directions |
 
 Tests are named `.test.tsx` on purpose: `npm test` globs `tests/**/*.test.ts`
-and must not pick them up, since Node's type stripper cannot load `react-native`.
+and must not pick them up — docs/agents/loops.md, "Node's TypeScript loader".
 
 `hapticsBypass.test.tsx` exists because the bug it now prevents shipped: eight
 screens imported `expo-haptics` directly, so the haptics setting was a no-op

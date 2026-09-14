@@ -8,7 +8,7 @@
 // FloatingReactions subscribes here on its own, so the writes reach it and
 // nothing else.
 //
-// No react-native import, so tests load it directly.
+// Loads under `node --test` — docs/agents/loops.md, "Node's TypeScript loader".
 import { useSyncExternalStore } from "react";
 
 export interface TableReaction {
