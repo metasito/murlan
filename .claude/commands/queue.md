@@ -222,18 +222,34 @@ sha the previous round reviewed — that delta, plus the findings that round lef
 the deltas together cover every line at its final state, so re-reading the whole diff each round
 buys nothing.
 
-Two fresh `opus` subagents (rule 29's independent-review tier) that did not write the code, each
+Two fresh `sonnet` subagents (rule 29's independent-review tier) that did not write the code, each
 given the diff and nothing else — never your reasoning, which is the frame the review exists to
 escape:
 
 - **Standards** — sources: `docs/agents/RULES.md` plus the skill's own Fowler smell baseline (paste
-  it in full; the subagent has no other access to it). Brief: report every documented-rule violation
-  by number, and any baseline smell, named and quoted; skip what tooling enforces. Around 25 lines.
+  it in full; the subagent has no other access to it). Brief: report only what affects correctness
+  or breaks a documented rule, by number, quoted. A smell with no correctness cost is not a
+  finding. Skip what tooling enforces. Around 15 lines.
 - **Spec** — source: issue #N's body and comments, already fetched in phase A. Brief: report
   requirements missing or partial, behaviour not asked for, and anything implemented but wrong,
-  quoting the issue for each. Around 25 lines.
+  quoting the issue for each. Around 15 lines.
 
-Both: `Do not spawn any subagent. Report findings only — what checked out is not reported.`
+Both: `Do not spawn any subagent. Report findings only — what checked out is not reported. Every
+finding names a file:line and either the rule number it breaks, a quoted line of the issue, or the
+input that makes it go wrong. A finding carrying none of those three is a note, and notes are not
+reported.` The tier is `sonnet` because the measured failure of this phase is precision, not depth:
+automated review scores under 10% precision across the field, and is at its worst on exactly the
+prose findings that cost this loop its third and fourth rounds.
+
+Then one more `sonnet` subagent, given both reports and the same diff, and nothing else:
+
+> For each finding below, try to kill it. A finding survives only if you can state the input or the
+> sequence that makes the code wrong, or quote the rule or the issue line it breaks. Answer with the
+> surviving findings and one sentence each on what killed the rest. Do not spawn any subagent, and
+> do not review the diff for anything the reports did not raise.
+
+Its output is what reaches the verdict. A third subagent for the *findings*, never for the verdict —
+that stays this session's own read, which is what keeps `loop-gate.mjs`'s single sha-bound line.
 
 Post both reports on the issue, under `## Standards` and `## Spec`, unmerged — the skill's own rule,
 because a change can pass one axis and fail the other. Then read both yourself and write the one
@@ -245,9 +261,6 @@ note, not a HOLD. Post that verdict as its own comment, first line the VERDICT:
 ```sh
 gh issue comment <n> --body-file <file>   # first line: VERDICT: LAND <sha>
 ```
-
-Two opus subagents plus this session's own read, not a third subagent for the verdict — that keeps
-`loop-gate.mjs`'s single sha-bound line while still running the skill's real shape.
 
 That is the whole record of the review, and the sha is what makes it trustworthy: the gate accepts
 a verdict only if it names the commit being pushed. Commit again after a review and it stops
@@ -264,10 +277,15 @@ It counts the verdicts already on the issue and exits non-zero at the cap, namin
 cap is a number in `tools/loop/loop-gate.mjs`, not in this sentence — a ceiling stated only in prose
 is one no test can fail, and this one bounds the most expensive phase there is.
 
-**Stop before the cap when a round earns nothing.** A review will always find *something*, which
-is exactly why a fixed count over-buys: a round that raises no finding the previous round did not
+**Stop before the cap when a round earns nothing.** A review will always find *something*, which is
+exactly why a fixed count over-buys: a round that raises no finding the previous round did not
 already raise ends the review on that head, and you post your `VERDICT: LAND`. The cap is the
 ceiling, never the target.
+
+That stopping rule is a judgement, not a measurement. No published work measures defects-per-round
+across LLM review iterations, and the nearest evidence points the other way — parallel aggregation
+improves findings, which is why the refutation pass above exists and a fifth sequential round does
+not. It is the best available heuristic; say so if it is ever cited as more.
 
 At the cap, do not park for this reason alone. If the last round landed, you're done. If it's still
 a HOLD, read its findings yourself: fix anything that is an actual blocker (breaks behaviour,
