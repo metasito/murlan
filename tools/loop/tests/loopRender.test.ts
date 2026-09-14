@@ -13,6 +13,7 @@ import {
   elapsed,
   header,
   keybar,
+  PHASE_MINUTES,
   phaseRow,
   progress,
   queueLine,
@@ -251,6 +252,41 @@ describe("progress", () => {
       strip(progress({ letter: l }, tPlain)).lastIndexOf("▏"),
     );
     assert.equal(new Set(widths).size, 1, `edges at ${widths.join(", ")}`);
+  });
+});
+
+describe("the bar's pace", () => {
+  const pct = (letter: string, ms = 0) =>
+    Number(/(\d+)%/.exec(strip(progress({ letter, ms }, tPlain)))?.[1] ?? "-1");
+  const MIN = 60_000;
+
+  test("every phase the board can show has a duration to pace it", () => {
+    assert.deepEqual(PHASES.map(([l]) => l).filter((l) => !PHASE_MINUTES[l]), []);
+  });
+
+  test("review takes the widest slice, because it takes most of the wall clock", () => {
+    const order = Object.entries(PHASE_MINUTES).sort((a, b) => b[1] - a[1]);
+    assert.equal(order[0][0], "D");
+  });
+
+  test("it moves inside a phase, not only at its boundaries", () => {
+    assert.ok(pct("D", 10 * MIN) > pct("D", 0), "review sat still for ten minutes");
+  });
+
+  test("it never goes backwards, however far a phase runs over", () => {
+    const walk = PHASES.flatMap(([l]) => [0, 1, 30, 600].map((m) => pct(l, m * MIN)));
+    assert.deepEqual(walk, [...walk].sort((a, b) => a - b), walk.join(" "));
+  });
+
+  test("an overrunning phase approaches the next one's slice without entering it", () => {
+    assert.ok(pct("C", 600 * MIN) <= pct("D", 0));
+    assert.ok(pct("C", 600 * MIN) > pct("C", 8 * MIN));
+  });
+
+  test("no phase still running ever reads 100%", () => {
+    const last = PHASES.at(-1)![0];
+    assert.ok(pct(last, 600 * MIN) < 100, "the board said done while the supervisor was still waiting");
+    assert.equal(Number(/(\d+)%/.exec(strip(progress({ letter: last, frac: 1 }, tPlain)))?.[1]), 100);
   });
 });
 

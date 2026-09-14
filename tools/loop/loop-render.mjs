@@ -341,18 +341,61 @@ export function bar(frac, width, t) {
 }
 
 /**
+ * Median minutes a phase takes: A–F from `npm run loop:cost`, G from the CI runs it waits on
+ * (`gh run list --workflow ci.yml`). Re-read them there rather than trusting these; they are a
+ * measurement with a date on it, and `tests/loopRender.test.ts` only holds them to the phase list.
+ *
+ * @type {Record<string, number>}
+ */
+export const PHASE_MINUTES = { A: 1.2, B: 3.3, C: 8, D: 26, E: 1.9, F: 0.8, G: 5.7 };
+
+/** Each phase's slice of the bar, by what it costs in wall clock rather than by an even seventh. */
+const SPAN = (() => {
+  const total = PHASES.reduce((n, [l]) => n + PHASE_MINUTES[l], 0);
+  let at = 0;
+  return Object.fromEntries(
+    PHASES.map(([l]) => {
+      const from = at / total;
+      at += PHASE_MINUTES[l];
+      return [l, [from, at / total]];
+    }),
+  );
+})();
+
+/**
+ * Nine tenths of the phase's slice at its median, asymptotic after. Half of all runs are longer
+ * than the median, and a bar that reaches the next phase's slice before the marker does has to go
+ * backwards when it arrives — which is the one thing a progress bar may never do.
+ */
+const creep = (x) => 1 - 0.1 ** x;
+
+/**
+ * A ticket still moving is never full. `creep` saturates to exactly 1 in floating point long before
+ * the work does, and a bar reading 100% beside a spinner is what makes a reader stop believing the
+ * rest of the board. Only a caller naming a finished ticket's own `frac` reaches the end.
+ */
+const MOST = 0.999;
+
+/**
  * Where the ticket is. The letter is deliberately absent: a person reads "review", not "D", and the
  * phase letters are an artefact of the protocol rather than something the board owes anyone.
  *
  * The label slot is fixed and the bar takes what is left, so the bar's right edge does not move
  * between "review" and "no phase" — a bar that changes length as it fills reads as jitter.
+ *
+ * @param {{letter: string, ms?: number, frac?: number|null}} at `ms` is time in *this* phase.
  */
-export function progress({ letter, frac = null }, t) {
+export function progress({ letter, ms = 0, frac = null }, t) {
   const at = PHASES.findIndex(([l]) => l === letter);
   const known = at >= 0;
-  const share = frac ?? (known ? (at + 0.5) / PHASES.length : 0);
+  const [from, to] = SPAN[letter] ?? [0, 0];
+  const live = () => Math.min(from + (to - from) * creep(ms / 6e4 / PHASE_MINUTES[letter]), MOST);
+  const share = frac ?? (known ? live() : 0);
   const name = clamp(known ? PHASES[at][1] : "no phase", LABEL).padEnd(LABEL);
-  const pct = known ? `${String(Math.round(share * 100)).padStart(3)}%` : "   —";
+  // Floored, not rounded: `creep` never reaches the end of a phase, so only a caller naming a
+  // finished ticket's `frac` can print 100 — and a bar sitting at 100% while work goes on is the
+  // one reading that makes every other figure on the board untrustworthy.
+  const pct = known ? `${String(Math.floor(share * 100)).padStart(3)}%` : "   —";
   const width = t.width - LABEL - 11;
   return (
     `   ${t.paint("faint", "▕")}${bar(share, width, t)}${t.paint("faint", "▏")}` +

@@ -653,7 +653,7 @@ export function ticker(out = process.stdout, err = process.stderr, reveal = open
     const body = view.expanded
       ? streamBlock(open.feed, { ms, frame, letter: open.letter }, t, room)
       : [
-          progress({ letter: open.letter }, t),
+          progress({ letter: open.letter, ms }, t),
           "",
           activity({ said: open.said, recent: open.recent, ms, frame }, t, room - 4),
         ].join("\n");
