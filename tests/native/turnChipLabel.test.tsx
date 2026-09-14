@@ -1,0 +1,85 @@
+// tests/native/turnChipLabel.test.tsx — the turn chip is one node with one name.
+//
+// #1004 took the digit's own label off and put nothing in its place, so a reader
+// landing on the chip heard the bare number beside a separate chip reading "Your
+// turn". The group's name has to carry both, and the drawn words must not be a
+// second stop for the same sentence.
+import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
+import React from 'react';
+import { act, render, screen } from '@testing-library/react-native';
+
+jest.mock('@/lib/sounds', () => ({
+  playUrgentTick: jest.fn(async () => {}),
+  ensureAudioMode: jest.fn(async () => {}),
+}));
+
+import { TurnChip } from '@/components/table/turnChip';
+import { tn } from '@/lib/i18n';
+
+const CLOCK_SECONDS = 30;
+/** What `gameTable.a11yYourTurn` and `gameShared.yourTurn` are to this chip. */
+const SPOKEN_SEAT = "It's your turn.";
+const DRAWN_SEAT = 'Your turn';
+
+const secondsLeft = (n: number) => tn('gameTable.a11ySecondsLeft', n);
+
+const chip = (active = true) => (
+  <TurnChip
+    seconds={CLOCK_SECONDS}
+    active={active}
+    resetKey="turn-1"
+    scale={1}
+    lit
+    chipText={DRAWN_SEAT}
+    spokenSeat={SPOKEN_SEAT}
+  />
+);
+
+beforeEach(() => {
+  jest.useFakeTimers();
+});
+afterEach(() => {
+  jest.useRealTimers();
+});
+
+describe('the turn chip', () => {
+  it('reads the seat state and the seconds left as one node', async () => {
+    const r = await render(chip());
+    expect(
+      screen.getAllByLabelText(`${SPOKEN_SEAT} ${secondsLeft(CLOCK_SECONDS)}`)
+    ).toHaveLength(1);
+    await r.unmount();
+  });
+
+  it('offers neither its drawn words nor its digit as a second stop', async () => {
+    const r = await render(chip());
+    expect(screen.queryByText(DRAWN_SEAT)).toBeNull();
+    expect(screen.queryByText(String(CLOCK_SECONDS))).toBeNull();
+    // Withdrawn from a reader, still drawn on the screen.
+    expect(screen.queryByText(DRAWN_SEAT, { includeHiddenElements: true })).not.toBeNull();
+    expect(
+      screen.queryByText(String(CLOCK_SECONDS), { includeHiddenElements: true })
+    ).not.toBeNull();
+    await r.unmount();
+  });
+
+  // A name is spoken on landing, not on change, so it may hold the seconds the
+  // live region deliberately stops saying — and a reader going looking mid-turn
+  // has to get the seconds really left, not the turn's opening figure.
+  it('follows the clock down, every second of it', async () => {
+    const r = await render(chip());
+    for (let i = CLOCK_SECONDS; i > 0; i--) {
+      expect(screen.getAllByLabelText(`${SPOKEN_SEAT} ${secondsLeft(i)}`)).toHaveLength(1);
+      await act(async () => {
+        jest.advanceTimersByTime(1000);
+      });
+    }
+    await r.unmount();
+  });
+
+  it('names the seat alone when no clock is running', async () => {
+    const r = await render(chip(false));
+    expect(screen.getAllByLabelText(SPOKEN_SEAT)).toHaveLength(1);
+    await r.unmount();
+  });
+});

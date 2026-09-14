@@ -12,7 +12,7 @@ jest.mock('@/lib/sounds', () => ({
   ensureAudioMode: jest.fn(async () => {}),
 }));
 
-import { TurnTimer } from '@/components/table/turnTimer';
+import { TurnChip } from '@/components/table/turnChip';
 import { urgentThresholdSeconds } from '@/components/turnTimerUi';
 import { tn } from '@/lib/i18n';
 
@@ -22,6 +22,12 @@ const THRESHOLD = urgentThresholdSeconds(CLOCK_SECONDS);
 const SHORT_CLOCK = 3;
 
 const secondsLeft = (n: number) => tn('gameTable.a11ySecondsLeft', n);
+
+const seat = { lit: true, chipText: 'Your turn', spokenSeat: "It's your turn." } as const;
+
+const clock = (seconds: number, active: boolean) => (
+  <TurnChip seconds={seconds} active={active} resetKey="turn-1" scale={1} {...seat} />
+);
 
 type Rendered = { props?: Record<string, unknown>; children?: unknown[] | null };
 
@@ -92,9 +98,7 @@ afterEach(() => {
 
 describe('the turn countdown', () => {
   it('announces twice in a turn, not once a second', async () => {
-    const r = await render(
-      <TurnTimer seconds={CLOCK_SECONDS} active resetKey="turn-1" scale={1} />
-    );
+    const r = await render(clock(CLOCK_SECONDS, true));
 
     expect(await utterancesOver(CLOCK_SECONDS)).toEqual([
       secondsLeft(CLOCK_SECONDS),
@@ -105,16 +109,14 @@ describe('the turn countdown', () => {
 
   // The half a mounted-and-active render cannot see. A region inserted with its
   // text already in it announces nothing — the node has to be there first and
-  // change afterwards — and `TurnTimer` is inactive between the viewer's turns,
+  // change afterwards — and the chip is inactive between the viewer's turns,
   // so this is every turn's opening announcement, not an edge case.
   it('has the region in place before the turn starts, and speaks by changing it', async () => {
-    const r = await render(
-      <TurnTimer seconds={CLOCK_SECONDS} active={false} resetKey="turn-1" scale={1} />
-    );
+    const r = await render(clock(CLOCK_SECONDS, false));
     expect(heard()).toBe('');
 
     await act(async () => {
-      r.rerender(<TurnTimer seconds={CLOCK_SECONDS} active resetKey="turn-1" scale={1} />);
+      r.rerender(clock(CLOCK_SECONDS, true));
     });
     expect(heard()).toBe(secondsLeft(CLOCK_SECONDS));
 
@@ -125,7 +127,7 @@ describe('the turn countdown', () => {
   // is the seconds really left — `urgentThresholdSeconds` floors at 5, so a
   // threshold read as the entry figure would tell a rejoining player 5 with 3.
   it('speaks the seconds it has when the clock is shorter than the threshold', async () => {
-    const r = await render(<TurnTimer seconds={SHORT_CLOCK} active resetKey="turn-1" scale={1} />);
+    const r = await render(clock(SHORT_CLOCK, true));
     expect(urgentThresholdSeconds(SHORT_CLOCK)).toBeGreaterThan(SHORT_CLOCK);
 
     expect(await utterancesOver(SHORT_CLOCK)).toEqual([secondsLeft(SHORT_CLOCK)]);
@@ -133,21 +135,16 @@ describe('the turn countdown', () => {
   });
 
   // Silence is not stillness: the number on the chip goes on falling once a
-  // second, and stays in the accessibility tree, so a reader who goes looking
-  // mid-turn reads the seconds actually left.
-  it('still draws every second of the countdown, and keeps it readable', async () => {
-    const r = await render(
-      <TurnTimer seconds={CLOCK_SECONDS} active resetKey="turn-1" scale={1} />
-    );
+  // second while the region says nothing. What a reader hears for it is the
+  // chip's own name, which `turnChipLabel.test.tsx` follows down.
+  it('still draws every second of the countdown', async () => {
+    const r = await render(clock(CLOCK_SECONDS, true));
 
     for (let i = CLOCK_SECONDS; i > 0; i--) {
-      // The default query excludes what an ancestor has withdrawn, so this is
-      // reachability rather than rendering: silencing the digit too is the
-      // other way to fail.
-      expect(screen.queryByText(String(i))).not.toBeNull();
+      expect(screen.queryByText(String(i), { includeHiddenElements: true })).not.toBeNull();
       await advanceOneSecond();
     }
-    expect(screen.queryByText('0')).not.toBeNull();
+    expect(screen.queryByText('0', { includeHiddenElements: true })).not.toBeNull();
 
     await r.unmount();
   });

@@ -104,16 +104,26 @@ const YOUR_TURN = locale['gameTable.a11yYourTurn'];
 const spokenNodes = (pattern: RegExp) =>
   screen.queryAllByLabelText(pattern).filter((n) => n.props.accessible === true);
 
+// Two nodes say whose turn it is: the description announces it, and the turn
+// chip is named with it. `spokenNodes` cannot tell them apart; the live region
+// can.
+const describedTable = (pattern: RegExp) =>
+  spokenNodes(pattern).filter((n) => n.props.accessibilityLiveRegion === 'polite');
+const chipNames = (pattern: RegExp) =>
+  spokenNodes(pattern).filter((n) => n.props.accessibilityLiveRegion !== 'polite');
+
+const HIDDEN_TOO = { includeHiddenElements: true };
+
 describe('the table description reaches a screen reader', () => {
   it('is an accessibility element carrying the spoken state', async () => {
     const r = await render(table(state(0)));
-    expect(spokenNodes(new RegExp(YOUR_TURN))).toHaveLength(1);
+    expect(describedTable(new RegExp(YOUR_TURN))).toHaveLength(1);
     await r.unmount();
   });
 
   it('announces itself when the turn changes rather than waiting to be found', async () => {
     const r = await render(table(state(0)));
-    const [node] = spokenNodes(new RegExp(YOUR_TURN));
+    const [node] = describedTable(new RegExp(YOUR_TURN));
     expect(node.props.accessibilityLiveRegion).toBe('polite');
     await r.unmount();
   });
@@ -165,7 +175,8 @@ const dealt = (turn: number): GameState => ({
 
 /** `chipDotLit` is the only thing that separates a lit dot from an unlit one. */
 const turnDotIsLit = () => {
-  const style = screen.getByTestId('turn-chip-dot').props.style;
+  // The chip's face is withdrawn by design — its name is on the group around it.
+  const style = screen.getByTestId('turn-chip-dot', { includeHiddenElements: true }).props.style;
   return JSON.stringify(style).includes(Colors.goldLit);
 };
 
@@ -175,7 +186,8 @@ describe('a watcher is never the player on move', () => {
   it.each([0, 1, 2, 3])('the turn chip is silent and dark, at seat %i', async (turn) => {
     const r = await render(table(state(turn), true));
     const hud = within(screen.getByTestId('game-hud-stack'));
-    expect(hud.queryByText(locale['gameShared.yourTurn'])).toBeNull();
+    expect(hud.queryByText(locale['gameShared.yourTurn'], HIDDEN_TOO)).toBeNull();
+    expect(chipNames(new RegExp(YOUR_TURN))).toHaveLength(0);
     expect(turnDotIsLit()).toBe(false);
     await r.unmount();
   });
@@ -204,7 +216,8 @@ describe('a seated player is still the player on move', () => {
   it('the turn chip speaks and lights', async () => {
     const r = await render(table(state(0)));
     const hud = within(screen.getByTestId('game-hud-stack'));
-    expect(hud.queryByText(locale['gameShared.yourTurn'])).not.toBeNull();
+    expect(hud.queryByText(locale['gameShared.yourTurn'], HIDDEN_TOO)).not.toBeNull();
+    expect(chipNames(new RegExp(YOUR_TURN))).toHaveLength(1);
     expect(turnDotIsLit()).toBe(true);
     await r.unmount();
   });

@@ -62,7 +62,6 @@ import { CARD_H, cardScale, FIELD_SCALE, HAND_SCALE, physicalTouchTarget } from 
 import { useTranslation } from "@/lib/i18n";
 import {
   CHIP_NAME_MAX_W,
-  ChipDot,
   ChipText,
   ControlRail,
   useFocusFade,
@@ -82,7 +81,7 @@ import {
   topBarLabel,
 } from "@/components/table/spokenLabels";
 import { readStagedPlay } from "@/components/table/stagedPlay";
-import { TurnTimer } from "@/components/table/turnTimer";
+import { TurnChip } from "@/components/table/turnChip";
 import { GiocaButton, PassaButton } from "@/components/table/actions";
 import { RematchPromptPanel, type RematchAnswers } from "@/components/table/rematchPrompt";
 import { FeltPool } from "@/components/table/felt";
@@ -846,6 +845,9 @@ export function GameTable({
 
   const topBarA11yLabel = topBarLabel(pileState.current, playedByViewer, lastPlayName, t);
 
+  const viewerOnMove = isMyTurn && !isFinished;
+  const onMoveName = players[gameState.currentTurnIndex]?.name ?? "";
+
   // The seat on move sweeps its own rim over the same window the viewer's chip
   // counts down, so both are armed by one gate. There is no per-seat deadline
   // to read — online the server arms one window per turn, offline there is none
@@ -977,23 +979,22 @@ export function GameTable({
           ]}
         >
           <A11yVeil veil={clockVeil}>
-          <TableChip scale={scale} lit={isMyTurn && !isFinished}>
-            <ChipDot testID="turn-chip-dot" scale={scale} lit={isMyTurn && !isFinished} />
-            <ChipText scale={scale} lit={isMyTurn && !isFinished}>
-              {isMyTurn && !isFinished
-                ? t("gameShared.yourTurn")
-                : t("gameShared.turnOf", {
-                    name: players[gameState.currentTurnIndex]?.name ?? "",
-                  })}
-            </ChipText>
-            <TurnTimer
+            <TurnChip
+              scale={scale}
+              lit={viewerOnMove}
+              chipText={
+                viewerOnMove ? t("gameShared.yourTurn") : t("gameShared.turnOf", { name: onMoveName })
+              }
+              spokenSeat={
+                viewerOnMove
+                  ? t("gameTable.a11yYourTurn")
+                  : t("gameTable.a11yTurnOf", { name: onMoveName })
+              }
               seconds={turnTimer?.seconds ?? 0}
               active={timerActive}
               resetKey={`${turnToken}|${turnTimer?.resetKey ?? ""}`}
               onExpire={turnTimer?.onExpire}
-              scale={scale}
             />
-          </TableChip>
           </A11yVeil>
         </Animated.View>
 

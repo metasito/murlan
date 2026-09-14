@@ -33,6 +33,7 @@ jest.mock('@/lib/accessibility', () => ({
 }));
 
 import { GameTable, type TurnTimerConfig } from '@/components/GameTable';
+import { t, tn } from '@/lib/i18n';
 import { RANK_SLOTS, type Card, type GameState, type Player } from '@/lib/gameEngine';
 
 const INSETS = { top: 0, left: 47, right: 0, bottom: 21 };
@@ -238,10 +239,15 @@ describe('the manche-opening announcement', () => {
     const view = await render(table(state(OPENER), { viewerSeat: OPENER, turnTimer: serverClock }));
 
     expect(screen.getByTestId('start-reason-gate', { includeHiddenElements: true })).toBeTruthy();
+    const clock = screen.getByText(String(serverClock.seconds), { includeHiddenElements: true });
     // Reachable, not merely rendered: the default query excludes anything an
     // ancestor has withdrawn, which is what the hold does to the rest of the
-    // table. `withdrawn` reads a node's own props and so cannot say this.
-    const clock = screen.getByText('20');
+    // table. The digit is withdrawn by design, so the reader's stop is the name.
+    expect(
+      screen.getByLabelText(
+        `${t('gameTable.a11yYourTurn')} ${tn('gameTable.a11ySecondsLeft', serverClock.seconds)}`
+      )
+    ).toBeTruthy();
 
     const gateZ = Number(
       (
