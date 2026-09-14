@@ -341,9 +341,8 @@ export function bar(frac, width, t) {
 }
 
 /**
- * Median minutes a phase takes: A–F from `npm run loop:cost`, G from the CI runs it waits on
- * (`gh run list --workflow ci.yml`). Re-read them there rather than trusting these; they are a
- * measurement with a date on it, and `tests/loopRender.test.ts` only holds them to the phase list.
+ * Median minutes a phase takes: A–F from `npm run loop:cost`, G from `gh run list --workflow
+ * ci.yml`. Re-read them there rather than trusting these.
  *
  * @type {Record<string, number>}
  */
@@ -363,17 +362,12 @@ const SPAN = (() => {
 })();
 
 /**
- * Nine tenths of the phase's slice at its median, asymptotic after. Half of all runs are longer
- * than the median, and a bar that reaches the next phase's slice before the marker does has to go
- * backwards when it arrives — which is the one thing a progress bar may never do.
+ * Nine tenths of the phase's slice at its median, asymptotic after: half of all runs are longer
+ * than the median, and a bar that entered the next phase's slice early would have to go backwards
+ * when the marker arrived. `MOST` caps it because `creep` saturates to exactly 1 in floating point
+ * long before the work does, and a full bar beside a turning spinner discredits the whole board.
  */
 const creep = (x) => 1 - 0.1 ** x;
-
-/**
- * A ticket still moving is never full. `creep` saturates to exactly 1 in floating point long before
- * the work does, and a bar reading 100% beside a spinner is what makes a reader stop believing the
- * rest of the board. Only a caller naming a finished ticket's own `frac` reaches the end.
- */
 const MOST = 0.999;
 
 /**
@@ -392,9 +386,7 @@ export function progress({ letter, ms = 0, frac = null }, t) {
   const live = () => Math.min(from + (to - from) * creep(ms / 6e4 / PHASE_MINUTES[letter]), MOST);
   const share = frac ?? (known ? live() : 0);
   const name = clamp(known ? PHASES[at][1] : "no phase", LABEL).padEnd(LABEL);
-  // Floored, not rounded: `creep` never reaches the end of a phase, so only a caller naming a
-  // finished ticket's `frac` can print 100 — and a bar sitting at 100% while work goes on is the
-  // one reading that makes every other figure on the board untrustworthy.
+  // Floored, so only a caller naming a finished ticket's own `frac` can print 100.
   const pct = known ? `${String(Math.floor(share * 100)).padStart(3)}%` : "   —";
   const width = t.width - LABEL - 11;
   return (
