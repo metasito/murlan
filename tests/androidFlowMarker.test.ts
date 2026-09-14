@@ -212,10 +212,21 @@ describe("maestro.yml reads that marker", () => {
     const verdict = src.slice(src.indexOf("The run's real verdict"));
     const twice = verdict.search(/::error::[^\n]*twice/);
     assert.notEqual(twice, -1, "no branch of the verdict claims anything happened twice");
+    const guard = verdict.slice(verdict.lastIndexOf("if [", twice), twice);
     assert.match(
-      verdict.slice(verdict.lastIndexOf("if [", twice), twice),
+      guard,
       /steps\.kind\.outputs\.booted\s*\}\}"\s*!=\s*"true"/,
       "the verdict calls a boot failure twice without reading what the first attempt reached",
+    );
+    assert.match(
+      guard,
+      /!\s+-f\s+"\$RUNNER_TEMP\/emulator-booted"/,
+      "the verdict calls a boot failure twice on a retry whose device did come up",
+    );
+    assert.doesNotMatch(
+      guard,
+      /\|\|/,
+      "the verdict claims twice on any one of its conditions rather than all of them",
     );
   });
 
