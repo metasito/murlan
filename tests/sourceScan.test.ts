@@ -84,6 +84,7 @@ test("an unterminated block comment is reported, not silently erased", () => {
 // last line of a file that does not end in a newline.
 test("a string literal left open at the end of the input is reported", () => {
   assert.throws(() => blankCommentsAndStrings(`const a = "x`), /unterminated string literal at line 1/);
+  assert.throws(() => blankComments(`const a = "x`), /unterminated string literal at line 1/);
   assert.doesNotThrow(() => blankCommentsAndStrings(`const a = "x"`));
   assert.doesNotThrow(() => blankCommentsAndStrings(`const a = "x\nconst b = 2;`));
 });
@@ -100,12 +101,14 @@ function lastKept(src: string): number {
  * backtick planted at the top of a scanned file.
  *
  * No file here is classified by whether the floor fired. A plant the floor let
- * through has to show its tail standing, character for character — so a floor
- * that never fires fails this — and a floor that fired on everything instead
- * reds `no file any scan reads has a construct the blanking ran off the end
- * of`, where the tree as it is must blank without a word. A plant closing
- * again on the file's own next backtick is not a runaway and not this floor's
- * to catch; `blanking leaves every top-level declaration behind` reads those.
+ * through has to show the last character the clean blanking kept still
+ * standing — so a floor that never fires fails this — and a floor that fired
+ * on everything instead reds `no file any scan reads has a construct the
+ * blanking ran off the end of`, where the tree as it is must blank without a
+ * word. Nothing is exempt: the files whose plant closes again on their own
+ * next backtick pass because that character does survive, not because they
+ * were excused. What those plants still erase above it is read by `blanking
+ * leaves every top-level declaration behind`.
  */
 test("a backtick planted at the top of a scanned file reds the floor", () => {
   const missed: string[] = [];
@@ -116,7 +119,10 @@ test("a backtick planted at the top of a scanned file reds the floor", () => {
     try {
       // `kept + 2` is the same character of the same file: the plant is two long.
       if (blankCommentsAndStrings("`\n" + src)[kept + 2] !== src[kept]) missed.push(file);
-    } catch {
+    } catch (e) {
+      // Read the report, rather than counting the throw: a TypeError out of the
+      // walker is not this floor firing, and would otherwise pass for it.
+      assert.match((e as Error).message, /^unterminated /, file);
       reported++;
     }
   }
