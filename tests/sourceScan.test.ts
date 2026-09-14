@@ -131,7 +131,8 @@ test("a backtick planted at the top of a scanned file reds the floor", () => {
 });
 
 // One mode, because reporting is outside every `blankStrings` branch — which
-// the two fixtures above assert of both modes, where a corpus walk is free.
+// the three fixtures above assert of both modes, one per kind, where a corpus
+// walk is free.
 test("no file any scan reads has a construct the blanking ran off the end of", () => {
   const unclosed: string[] = [];
   for (const [file, src] of sources()) {
