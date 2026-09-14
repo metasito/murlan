@@ -320,6 +320,24 @@ describe("runTicket", () => {
       },
     });
 
+  test("subagents run in the foreground, so a poll turn is unreachable", async () => {
+    let env: Record<string, string> | undefined;
+    const capturing = (_cmd: string, _args: string[], o: any) => {
+      env = o.env;
+      const child: any = new EventEmitter();
+      child.stdout = Readable.from([`${RESULT}\n`]);
+      child.stderr = Readable.from([]);
+      child.stdout.on("end", () => setImmediate(() => child.emit("close", 0)));
+      return child;
+    };
+    await runTicket(capturing as never, opts());
+    assert.equal(
+      env?.CLAUDE_CODE_DISABLE_BACKGROUND_TASKS,
+      "1",
+      "without it `-p` leaves fork mode off, subagents default to background, and the session polls them",
+    );
+  });
+
   test("a refusal reaches the caller, as milliseconds", async () => {
     const run = await runTicket(fakeSpawn([meter("rejected"), RESULT]), opts({ number: 962 }));
     assert.equal(run.blocked, true);

@@ -2,9 +2,10 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { floorFor } from "../commentShape.ts";
 import { addedCounts, budget, over } from "../comment-budget.mjs";
 
 const added = (...lines: string[]) => addedCounts("", lines.join("\n"));
@@ -99,36 +100,100 @@ describe("addedCounts against a before", () => {
 describe("over", () => {
   const code = (n: number, tag = "x") => Array.from({ length: n }, (_, i) => `const ${tag}${i} = ${i};`);
   const prose = (n: number) => Array.from({ length: n }, (_, i) => `// why ${i}`);
-  const delta = (before: string[], after: string[]) => addedCounts(before.join("\n"), after.join("\n"));
+  const delta = (before: string[], after: string[]) =>
+    over(addedCounts(before.join("\n"), after.join("\n")), "src/a.mjs");
 
   test("a change that is mostly prose is named", () => {
-    assert.equal(over(delta(["const a = 1;"], [...prose(7), "const a = 1;"])), true);
+    assert.equal(delta(["const a = 1;"], [...prose(7), "const a = 1;"]), true);
   });
 
   test("a handful of comments on a small change is not policed", () => {
-    assert.equal(over(delta(["const a = 1;"], [...prose(2), "const a = 1;"])), false);
+    assert.equal(delta(["const a = 1;"], [...prose(2), "const a = 1;"]), false);
   });
 
   test("plenty of comments alongside plenty of code is within budget", () => {
-    assert.equal(over(delta([], [...prose(20), ...code(40)])), false);
+    assert.equal(delta([], [...prose(20), ...code(40)]), false);
   });
 
   test("deleting comments is always free", () => {
-    assert.equal(over(delta(prose(8), ["const a = 1;"])), false);
+    assert.equal(delta(prose(8), ["const a = 1;"]), false);
   });
 
   // Half the surviving lines come back word for word and half are rewritten, because a rewrite is
   // both: were every line new the fixture would pass on the rename alone.
   test("a rewrite that deletes far more code than it adds comment is within budget", () => {
-    assert.equal(over(delta(code(200), [...prose(16), ...code(40), ...code(38, "y")])), false);
+    assert.equal(delta(code(200), [...prose(16), ...code(40), ...code(38, "y")]), false);
   });
 
   test("a large block of prose is named however much code the same change deleted", () => {
-    assert.equal(over(delta(code(500), prose(400))), true);
+    assert.equal(delta(code(500), prose(400)), true);
   });
 
   test("a pile of prose beside one deletion is still named", () => {
-    assert.equal(over(delta(["const a = 1;", "const b = 2;"], [...prose(30), "const a = 1;"])), true);
+    assert.equal(delta(["const a = 1;", "const b = 2;"], [...prose(30), "const a = 1;"]), true);
+  });
+});
+
+/**
+ * Three sites quote CLAUDE.md at a model whose write they refuse, and the budget they enforce is
+ * published there as a number. An authority quoted from memory is one the next edit to it silently
+ * falsifies — this branch deleted that very sentence and left all three citing it.
+ */
+describe("the budget CLAUDE.md publishes is the budget the code enforces", () => {
+  // Whitespace collapsed: the file is hard-wrapped, so every phrase worth pinning straddles a line.
+  const claude = readFileSync(new URL("../../../CLAUDE.md", import.meta.url), "utf8")
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+  const says = (text: string) =>
+    assert.ok(claude.includes(text.toLowerCase()), `CLAUDE.md no longer says "${text}"`);
+
+  test("the sentence the enforcers quote back is still in it", () => {
+    says("a change adding more comment lines than code is explaining itself instead of being clear");
+  });
+
+  test("the history rule the hook denies on is still in it", () => {
+    says("history of what it was");
+  });
+
+  test("the floors it publishes are the floors floorFor returns", () => {
+    assert.equal(floorFor("src/x.ts"), 6);
+    says("more than six comment lines");
+    assert.equal(floorFor("x.test.ts"), 3);
+    says("three in a test");
+  });
+
+  test("the prose-only floor is published too, not only enforced", () => {
+    assert.equal(over({ comment: 3, code: 0 }, "src/x.ts"), true);
+    assert.equal(over({ comment: 2, code: 0 }, "src/x.ts"), false);
+    says("adds no code at all is over it at three");
+  });
+
+  test("it says which revision the count is against", () => {
+    says("origin/main");
+  });
+});
+
+describe("the budget's floors", () => {
+  test("a comment-only change cannot be saved by the ratio arm", () => {
+    assert.equal(over({ comment: 4, code: 0 }, "src/x.ts"), true);
+  });
+
+  test("a one-line comment-only change still passes", () => {
+    assert.equal(over({ comment: 1, code: 0 }, "src/x.ts"), false);
+  });
+
+  test("a test file gets the tighter floor", () => {
+    assert.equal(over({ comment: 4, code: 2 }, "src/x.ts"), false);
+    assert.equal(over({ comment: 4, code: 2 }, "tools/loop/tests/x.test.ts"), true);
+  });
+
+  test("source keeps the floor it had", () => {
+    assert.equal(over({ comment: 6, code: 2 }, "src/x.ts"), false);
+    assert.equal(over({ comment: 7, code: 2 }, "src/x.ts"), true);
+  });
+
+  test("a comment marker inside a string was never a comment", () => {
+    assert.deepEqual(addedCounts("", `const s = "// x";`), { comment: 0, code: 1 });
   });
 });
 

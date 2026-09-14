@@ -16,6 +16,10 @@
           {
             "type": "command",
             "command": "node tools/loop/hint-test-traps.mjs"
+          },
+          {
+            "type": "command",
+            "command": "node tools/loop/guard-comments.mjs"
           }
         ]
       }

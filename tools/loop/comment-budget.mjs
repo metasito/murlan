@@ -15,6 +15,7 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { classify, floorFor } from "./commentShape.ts";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 
 const git = (...args) =>
@@ -25,29 +26,6 @@ const git = (...args) =>
     stdio: ["ignore", "pipe", "pipe"],
     maxBuffer: 64 * 1024 * 1024,
   });
-
-function* classify(text) {
-  let block = false;
-  for (const raw of text.split("\n")) {
-    const line = raw.trim();
-    if (!line) continue;
-    if (block) {
-      yield [line, true];
-      if (line.includes("*/")) block = false;
-      continue;
-    }
-    if (line.startsWith("//")) {
-      yield [line, true];
-      continue;
-    }
-    if (line.startsWith("/*")) {
-      yield [line, true];
-      block = !line.includes("*/", 2);
-      continue;
-    }
-    yield [line, false];
-  }
-}
 
 const key = (line, isComment) => `${isComment ? "c" : "k"}${line}`;
 
@@ -62,30 +40,36 @@ const key = (line, isComment) => `${isComment ? "c" : "k"}${line}`;
  */
 export function addedCounts(before, after) {
   const pool = new Map();
-  for (const [line, isComment] of classify(before)) {
-    const k = key(line, isComment);
+  for (const { text, kind } of classify(before)) {
+    if (kind === "blank") continue;
+    const k = key(text, kind === "comment");
     pool.set(k, (pool.get(k) ?? 0) + 1);
   }
   let comment = 0;
   let code = 0;
-  for (const [line, isComment] of classify(after)) {
-    const k = key(line, isComment);
+  for (const { text, kind } of classify(after)) {
+    if (kind === "blank") continue;
+    const k = key(text, kind === "comment");
     const held = pool.get(k) ?? 0;
     if (held) {
       pool.set(k, held - 1);
       continue;
     }
-    if (isComment) comment += 1;
+    if (kind === "comment") comment += 1;
     else code += 1;
   }
   return { comment, code };
 }
 
-/** A handful of comments on a small change is not a ratio worth policing. */
-const FLOOR = 6;
+/**
+ * A change with no code at all cannot be judged by ratio — `comment > code` is true at one line —
+ * so the floor is the whole check there, and it is a lower one.
+ */
+const PROSE_ONLY_FLOOR = 2;
 
-export function over(added) {
-  return added.comment > FLOOR && added.comment > added.code;
+export function over(added, path) {
+  const floor = added.code === 0 ? PROSE_ONLY_FLOOR : floorFor(path);
+  return added.comment > floor && added.comment > added.code;
 }
 
 const show = (rev, file) => {
@@ -113,7 +97,7 @@ export function budget(base) {
     // destination, so every path here exists. A swallowed read is a check that passes by not
     // looking at the one file it could not open.
     const added = addedCounts(show(from, file), readFileSync(join(root, file), "utf8"));
-    if (over(added)) named.push([file, added]);
+    if (over(added, file)) named.push([file, added]);
   }
   return named;
 }
