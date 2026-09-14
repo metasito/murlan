@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { ticketOf, verdictFor, reviewRounds, derive, locateRun, BRANCH } from "../loop-derive.mjs";
+import { ticketOf, verdictFor, reviewFor, reviewRounds, derive, locateRun, BRANCH } from "../loop-derive.mjs";
 import { report } from "../loop-status.mjs";
 
 /**
@@ -107,6 +107,32 @@ ${fence}` }], sha),
 
   test("lowercase prose is not a review", () => {
     assert.equal(verdictFor([{ body: `verdict: land ${short}` }], sha), null);
+  });
+});
+
+describe("whether the review behind a verdict is on the issue", () => {
+  const reviewBody = (sha: string) =>
+    `REVIEW ${sha}\n\n## Standards\n\nNothing that affects correctness.\n\n## Spec\n\nEvery box closed.`;
+
+  test("a review report is found for the head it names", () => {
+    assert.ok(reviewFor([{ body: reviewBody("abc1234") }], "abc1234def"));
+  });
+
+  test("a review of an earlier head does not cover this one", () => {
+    assert.equal(reviewFor([{ body: reviewBody("0000000") }], "abc1234def"), null);
+  });
+
+  test("a report missing an axis is not a review", () => {
+    assert.equal(reviewFor([{ body: "REVIEW abc1234\n\n## Standards\n\nfine." }], "abc1234def"), null);
+  });
+
+  test("a report inside a code fence is not a review", () => {
+    const fence = "```";
+    assert.equal(reviewFor([{ body: `${fence}\n${reviewBody("abc1234")}\n${fence}` }], "abc1234def"), null);
+  });
+
+  test("no comments at all is no report", () => {
+    assert.equal(reviewFor([], "abc1234def"), null);
   });
 });
 

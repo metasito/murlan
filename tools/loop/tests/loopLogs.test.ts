@@ -115,7 +115,7 @@ describe("sessionRow", () => {
   test("stamps the schema, so two readings of a field are never averaged together", () => {
     // The literal, not the module's own constant: a test that reads the value it is pinning moves
     // with it and pins nothing. Bump it here deliberately when a field changes what it holds.
-    assert.equal(r.schema, 3);
+    assert.equal(r.schema, 4);
   });
 
   // Six tickets ran two sessions and the ledger kept only the second, so a fifth of the money

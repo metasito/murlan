@@ -17,6 +17,10 @@ export interface JobRow {
 
 export interface Verdict {
   pass: boolean;
+  /** A live run has not answered yet, which is not a failure: `settle` waits rather than budgeting it. */
+  waiting?: boolean;
+  /** No run at all yet — waited for on its own budget, since one that never appears never will. */
+  appearing?: boolean;
   runId?: number;
   failedStep?: string;
   output?: string;
@@ -39,10 +43,10 @@ export interface Verdict {
  */
 export function decideVerdict(run: RunRow | undefined, jobs: JobRow[] = []): Verdict {
   if (!run) {
-    return { pass: false, infrastructure: true, reason: "no run found for this branch" };
+    return { pass: false, appearing: true, infrastructure: true, reason: "no run found for this branch" };
   }
   if (run.status !== "completed") {
-    return { pass: false, runId: run.databaseId, reason: `run is still ${run.status}` };
+    return { pass: false, waiting: true, runId: run.databaseId, reason: `run is still ${run.status}` };
   }
   if (run.conclusion === "success") {
     return { pass: true, runId: run.databaseId, reason: "ci.yml passed" };
@@ -118,17 +122,6 @@ export function runForHead(runs: RunRow[], headSha: string | undefined): RunRow 
   return runs.find((r) => r.headSha === headSha);
 }
 
-// A push and the run it starts are not the same instant, and the API is reachable across a whole
-// ci.yml run and then not for the second it is asked for the verdict. Both read as "no run
-// found" with the branch underneath green — which is how #342 was handed back as red.
-const RUN_APPEAR_ATTEMPTS = 12;
-const RUN_APPEAR_INTERVAL_MS = 10_000;
-
-/** Blocking on purpose: this module is a one-shot CLI whose caller is waiting on stdout. */
-function pause(ms: number): void {
-  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
-}
-
 /**
  * `gh run view --log-failed` for a browser-test job runs to several megabytes, and
  * `execFileSync`'s default 1MB buffer turns that into an ENOBUFS throw rather than a short read.
@@ -154,14 +147,10 @@ export function stripLogPrefix(line: string): string {
 }
 
 /**
- * One read, end to end. `gh run watch` blocks for as long as ci.yml takes and nothing watches this
- * module while it does — `queue-loop`'s stall watchdog is cleared when the session's child closes,
- * and its `SETTLE.DEADLINE_MS` is only tested between rounds, never during one. Without a ceiling
- * here a wedged `gh` hangs the night with no line and no bell. Well above a full run.
- *
- * It is the whole read rather than each call because a read makes up to sixteen `gh` calls in
- * sequence — one `pr view`, twelve `run list` while the run appears, `run watch`, and two more
- * after — and a per-call ceiling multiplies by sixteen while saying nothing about the total.
+ * The ceiling on one read. Every call here is synchronous, so a wedged `gh` with no timeout is the
+ * supervisor's whole event loop — no board, no clock, no bell. It is the whole read rather than
+ * each call because a read makes four `gh` calls in sequence and a per-call ceiling multiplies by
+ * four while saying nothing about the total.
  */
 const READ_DEADLINE_MS = 45 * 60_000;
 
@@ -204,23 +193,11 @@ export function readVerdict(
     until
   ).headRefOid;
 
-  let run: RunRow | undefined;
-  for (let attempt = 1; attempt <= RUN_APPEAR_ATTEMPTS; attempt++) {
-    run = runForHead(ghJson<RunRow[]>(runListArgs(repo, branch), [], until), headSha);
-    if (run || Date.now() >= until) break;
-    pause(RUN_APPEAR_INTERVAL_MS);
+  // Waiting belongs to `settle`, which polls anyway; `gh run watch` here froze the whole event loop.
+  const run = runForHead(ghJson<RunRow[]>(runListArgs(repo, branch), [], until), headSha);
+  if (!run || run.status !== "completed" || run.conclusion === "success") {
+    return decideVerdict(run, []);
   }
-  if (run && run.status !== "completed") {
-    try {
-      // Blocks until that one run settles. Its exit status is deliberately ignored: piped, the
-      // status belongs to the pipe, which is how a red branch once read as green.
-      gh(["run", "watch", String(run.databaseId), "--repo", repo, "--interval", "20"], until);
-    } catch {
-      // A non-zero exit means the run failed, which the row re-read below states properly.
-    }
-    run = runForHead(ghJson<RunRow[]>(runListArgs(repo, branch), [], until), headSha) ?? run;
-  }
-  if (!run || run.conclusion === "success") return decideVerdict(run, []);
 
   const jobs = ghJson<JobRow[]>(
     [

@@ -147,13 +147,17 @@ describe("the session declares what it did before it exits", () => {
 
   // The example in the instructions is also a test fixture: a model copies its shape, so a shape
   // the parser rejects is an instruction to emit something unreadable.
-  test("the example it prints is one the parser reads", () => {
-    const example = /^\s*(LOOP-RESULT \{.*\})\s*$/m.exec(read(QUEUE))?.[1];
-    assert.ok(example, "no LOOP-RESULT example in queue.md");
-    const fact = readLine(
-      JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: example }] } }),
-    ) as any;
-    assert.ok(fact?.declared?.ticket, `queue.md's own example does not parse: ${example}`);
+  test("every example it prints is one the parser reads", () => {
+    const examples = [...read(QUEUE).matchAll(/^\s*(LOOP-RESULT \{.*\})\s*$/gm)].map((m) => m[1]);
+    assert.ok(examples.length, "no LOOP-RESULT example in queue.md");
+    for (const example of examples) {
+      // `<n>` is the doc's placeholder for a ticket number, which is the one thing the parser needs.
+      const text = example.replace(/<n>/g, "7");
+      const fact = readLine(
+        JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text }] } }),
+      ) as any;
+      assert.ok(fact?.declared?.ticket, `queue.md's own example does not parse: ${example}`);
+    }
   });
 
   test("the teardown it names still runs before the declaration, so the facts are final", () => {

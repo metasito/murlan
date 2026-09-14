@@ -49,6 +49,40 @@ export function roundVerdict({ reviewRounds }) {
   return { ok: true, why: `round ${reviewRounds + 1} of at most ${MAX_REVIEW_ROUNDS}` };
 }
 
+/**
+ * Whether this head may be pushed. Fails closed on every unknown: an unreachable tracker is not a
+ * review, a verdict on an older commit is not this diff's, and a `LAND` with no report behind it is
+ * the shape that put two red branches on origin.
+ *
+ * The unreadable-tracker refusal is the one that carries no `lines`, and `main` reads that as
+ * "cannot judge" — exit 2 — rather than as a refusal.
+ *
+ * @param {ReturnType<import("./loop-derive.mjs").derive>} s
+ * @returns {{ok: boolean, why?: string, lines?: string[]}}
+ */
+export function pushVerdict(s) {
+  if (s.commits === 0 || s.changed.length === 0)
+    return { ok: false, why: "nothing was built on this branch", lines: [
+      `${s.commits} commit(s), ${s.changed.length} changed file(s) against ${s.base} in ${s.cwd}`,
+      "Phase C commits each slice as it lands.",
+    ] };
+  if (!s.trackerReadable) return { ok: false, why: `cannot reach the tracker to read the review of #${s.ticket}` };
+  if (!s.verdict) return { ok: false, why: `no review of ${s.head.slice(0, 7)} on the issue`, lines: [
+    "Phase D posts the reviewer's verdict as a comment on the issue, naming the commit it read:",
+    `  VERDICT: LAND ${s.head.slice(0, 7)}   (or VERDICT: HOLD ${s.head.slice(0, 7)} — reason)`,
+    "A commit made after a review moves the head, so that review no longer covers this diff.",
+  ] };
+  if (s.verdict.decision !== "LAND") return { ok: false, why: "the reviewer held this diff", lines: [s.verdict.line] };
+  if (!s.review) return { ok: false, why: `no review report for ${s.head.slice(0, 7)} on the issue`, lines: [
+    "A verdict is the session's read of two reports, and those reports are the record. Post them",
+    "as their own comment before the verdict, first line the head they read:",
+    `  REVIEW ${s.head.slice(0, 7)}`,
+    "then `## Standards` and `## Spec`, unmerged. A LAND with nothing behind it is what put two",
+    "red branches on origin.",
+  ] };
+  return { ok: true };
+}
+
 function reviewRound() {
   const s = derive();
   if (!s.onTicket) {
@@ -88,28 +122,13 @@ function main() {
     return 2;
   }
 
-  if (s.commits === 0 || s.changed.length === 0) {
-    return refuse("nothing was built on this branch", [
-      `${s.commits} commit(s), ${s.changed.length} changed file(s) against ${base} in ${s.cwd}`,
-      "Phase C commits each slice as it lands.",
-    ]);
-  }
-
-  // Fail closed. An unreachable tracker is not a review, and neither is a hold or a review of an
-  // older commit.
-  if (!s.trackerReadable) {
-    console.error(`loop-gate: cannot reach the tracker to read the review of #${s.ticket}`);
-    return 2;
-  }
-  if (!s.verdict) {
-    return refuse(`no review of ${s.head.slice(0, 7)} on the issue`, [
-      "Phase D posts the reviewer's verdict as a comment on the issue, naming the commit it read:",
-      `  VERDICT: LAND ${s.head.slice(0, 7)}   (or VERDICT: HOLD ${s.head.slice(0, 7)} — reason)`,
-      "A commit made after a review moves the head, so that review no longer covers this diff.",
-    ]);
-  }
-  if (s.verdict.decision !== "LAND") {
-    return refuse("the reviewer held this diff", [s.verdict.line]);
+  const v = pushVerdict({ ...s, base });
+  if (!v.ok) {
+    if (!v.lines) {
+      console.error(`loop-gate: ${v.why}`);
+      return 2;
+    }
+    return refuse(v.why, v.lines);
   }
 
   console.log(

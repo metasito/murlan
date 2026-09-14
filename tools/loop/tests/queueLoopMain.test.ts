@@ -424,7 +424,7 @@ describe("main", () => {
       close: () => {},
     };
   };
-  const screen = () => ({ say: () => {}, warn: () => {}, stop: () => {} });
+  const screen = () => ({ say: () => {}, warn: () => {}, notice: () => {}, stop: () => {} });
 
   test("three tickets in a row that do not land stop the night", async () => {
     let calls = 0;
@@ -501,7 +501,7 @@ describe("a throw mid-iteration", () => {
     record: () => {},
     close: () => {},
   });
-  const screen = () => ({ say: () => {}, warn: () => {}, stop: () => {} });
+  const screen = () => ({ say: () => {}, warn: () => {}, notice: () => {}, stop: () => {} });
 
   test("releases the claim on the ticket it was holding", async () => {
     const parked: number[] = [];
@@ -549,11 +549,67 @@ describe("a throw mid-iteration", () => {
     const code = await main({
       io: spy,
       book: book(),
-      screen: { say: () => {}, warn: (m: string) => said.push(m), stop: () => {} },
+      screen: {
+        say: () => {},
+        warn: (m: string) => said.push(m),
+        notice: (_l: string, m: string) => said.push(m),
+        stop: () => {},
+      },
       install: () => {},
       runId: "t",
     });
     assert.equal(code, 1);
     assert.match(said.join("\n"), /#4301 is still claimed/, "a ticket nobody can release must be named");
+  });
+});
+
+describe("a handoff", () => {
+  const book = () => ({ totals: { tickets: 0, landed: 0, parked: 0, cost: 0, ms: 0 }, record: () => {}, close: () => {} });
+  const screen = () => ({ say: () => {}, warn: () => {}, notice: () => {}, stop: () => {} });
+
+  // The phase reaching the picker is the whole of task 1: without it the next process asks derive(),
+  // which can only ever answer C, D, E or ?, and every handoff restarts at a phase it already ran.
+  test("starts the next process at the phase the session named", async () => {
+    const at: (string | null)[] = [];
+    let n = 0;
+    const spy = {
+      ...(io() as any),
+      pick: (_pinned: number | null, phase: string | null) => {
+        at.push(phase);
+        return { skill: "implement", number: 41, title: "t", size: "size:S", queue: null };
+      },
+      spawn: async () => ({
+        status: 0,
+        blocked: false,
+        result: { cost: 1, turns: 2 },
+        ms: 1,
+        log: "l",
+        phase: "C",
+        size: "size:S",
+        declared: n++ === 0 ? { ticket: 41, phase: "C", handoff: "D", stoodDown: false } : null,
+      }),
+      pushedPr: () => null,
+      standing: () => null,
+    };
+    await main({ io: spy, book: book(), screen: screen(), install: () => {}, runId: "t" });
+    assert.deepEqual(at.slice(0, 2), [null, "D"], "the second pick must be told which phase to start");
+  });
+});
+
+describe("what a ticket's clock covers", () => {
+  // The land is the longest stretch of a ticket and the session that built it has already exited.
+  test("the recorded time carries the land, not just the session", async () => {
+    const rows: any[] = [];
+    await runOnce(
+      io({
+        settle: async () => {
+          await new Promise((r) => setTimeout(r, 30));
+          return { action: "merge", reason: "merged" };
+        },
+        record: (x: unknown) => rows.push(x),
+      }),
+    );
+    assert.equal(rows.length, 1);
+    assert.ok(rows[0].run.ms > 1000, `the row's clock is still the session's ${rows[0].run.ms}ms`);
   });
 });

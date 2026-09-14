@@ -79,8 +79,15 @@ already exists. Do not claim it again and do not start over.
 ```sh
 git fetch origin --quiet
 git worktree add -B agent/<n>-<slug> .worktrees/agent-<n> origin/agent/<n>-<slug>
-cat .loop-logs/ci-<n>.log                 # the failed CI log, already fetched for you
+cat .loop-logs/ci-<n>.log 2>/dev/null \
+  || gh run list --branch agent/<n>-<slug> --limit 1 --json databaseId --jq '.[0].databaseId' \
+     | xargs -I{} gh run view {} --log-failed
 ```
+
+The log file is this machine's and the supervisor that wrote it may be gone — a ticket left
+`in-progress` with an open pull request and no worktree is picked up again by `next-ticket.mjs`, and
+that session reads CI itself. Then `npm run agent:check -- --also <suite>` on the fix, naming the
+suite that actually failed.
 
 Rebuilding the worktree is the rest of phase A for a fix round — the claim is already yours and the
 branch already exists, so there is nothing else here to do. Then read that log, fix what it names,
@@ -116,34 +123,14 @@ prints both and you do not fetch them again. The comments are where the owner's 
 answer to the body's own question live, and **a later comment overrides the body**. Read to the end
 of the thread before scoping.
 
-Claim it as the first write, before any code:
+**The claim and the worktree are already done.** The supervisor ran `tools/loop/claim.mjs` before it
+spawned you: the `in-progress` label, the claim comment, the race check against a peer, the fetch and
+`git worktree add -b agent/<n>-<slug> .worktrees/agent-<n> origin/main`. `loop-status.mjs` above
+named the worktree; work only in it, and never change the shared checkout's branch. A by-hand
+`/queue` does the same with `npm run queue:claim -- <n> "<title>"`.
 
-```sh
-gh issue edit <n> --add-label in-progress
-gh issue comment <n> --body-file <file>   # the file holds: Claimed by `agent/<n>-<slug>`.
-gh issue view <n> --json title,body,comments --jq '.title, .body, (.comments[]|"--- "+.author.login+": "+.body)'
-```
-
-That last line is the race check: a fresh read *after* the write. It is rule 25's form, because
-`--comments` prints the thread *instead of* the body and `--json body` alone drops the thread —
-either one alone hides half of what decides whether you may take the ticket.
-
-The claim goes through a file, not an inline `--body`. PowerShell eats the backticks around the
-branch name — `` `agent/824-x` `` arrives as a BEL character — and `claimBranch()` in
-`next-ticket.mjs` matches the claim *by* those backticks. An inline claim is a claim no peer can
-see, and it fails silently.
-
-Every session authenticates as the same account, so the branch name is the claim. That last read is
-not a repeat of the picker's: it is the only way to see a peer who claimed the same ticket between
-the pick and the write. An older claim comment wins — remove your label, say so in one line, take
-the next ticket.
-
-```sh
-git fetch origin --quiet
-git worktree add -b agent/<n>-<slug> .worktrees/agent-<n> origin/main
-```
-
-Work only in that worktree. Never change the shared checkout's branch.
+None of that needed a judgement, and as six model turns it was 17 turns and 1.2 minutes of phase A
+for work a subprocess does in a second.
 
 **Post the ticket's Definition of done as a comment on the issue, now, before any code.** That
 checklist is the contract, it is what phase F is judged against, and on the issue it is visible to
@@ -202,6 +189,8 @@ How to solve it is yours. What follows constrains the process, never the design:
 - A bug three levels under the bug in hand: file it, do not follow it.
 - **Commit each slice as you finish it** — `git add -- <paths>`, never `-A`. An unstaged edit is the
   only work this loop can lose.
+- **Batch what does not depend on the last answer.** A ticket's 97 `Bash` calls were mostly one
+  one-liner each, and each paid a full context read. `.loop-logs` counts the turns that did that.
 
 Before leaving C, `git rev-list --count origin/main..HEAD` must be non-zero. Your account of what
 you did is not evidence; git is.
@@ -212,6 +201,16 @@ ends the session wherever it stands, mid-edit, with no chance to commit and no m
 which is why the commit rule above is the first rule of this phase and not a tidiness note. An
 uncommitted edit at the budget is gone, and so is everything it was part of. If you are past two
 thirds of it with nothing committed, commit what works now and narrow the slice.
+
+**Then stop.** Commit the last slice, say what you did, and exit:
+
+```
+LOOP-RESULT {"ticket":<n>,"branch":"agent/<n>-slug","phase":"C","handoff":"D"}
+```
+
+The supervisor starts phase D in a fresh process, which is the point: review is 81% of a ticket's
+cost and most of that is this conversation being re-read on every one of its turns. Your worktree
+stays standing and the next process finds it from git. Do not review your own build here.
 
 ## D — Review
 
@@ -251,8 +250,26 @@ Then one more `sonnet` subagent, given both reports and the same diff, and nothi
 Its output is what reaches the verdict. A third subagent for the *findings*, never for the verdict —
 that stays this session's own read, which is what keeps `loop-gate.mjs`'s single sha-bound line.
 
-Post both reports on the issue, under `## Standards` and `## Spec`, unmerged — the skill's own rule,
-because a change can pass one axis and fail the other. Then read both yourself and write the one
+Post both reports as one comment on the issue, unmerged — the skill's own rule, because a change can
+pass one axis and fail the other. Its first line names the head they read, and the two headings are
+exactly `## Standards` and `## Spec`:
+
+```
+REVIEW <sha>
+
+## Standards
+...
+## Spec
+...
+```
+
+`loop-gate.mjs` refuses a `VERDICT: LAND` for a head with no `REVIEW` comment behind it. #1043 spent
+$20.26 over four rounds and posted one line — `VERDICT: LAND` — and the branch went out red; the
+reports existed and reached nothing that could stop it. Each round posts its own comment naming its
+own head: a round appended to the previous round's comment is a report for a sha that is no longer
+the one being pushed.
+
+Then read both yourself and write the one
 line `loop-gate.mjs` needs: `VERDICT: LAND <sha>`, or `VERDICT: HOLD <sha> — <one sentence>`, where
 `<sha>` is `git rev-parse --short HEAD` in that worktree. HOLD on any hard Standards violation or any
 missing/wrong Spec finding; a baseline smell alone, or added behaviour with no correctness cost, is a
@@ -299,6 +316,15 @@ Park only for what parking was for: a decision only the owner can make.
 
 Where you disagree with a finding, one line in the commit body — never a softened summary of it.
 
+**A round is a process.** When you post a `HOLD`, fix what it named, commit, and hand off — the
+re-review is a fresh reader of a new head, and it must not inherit this round's transcript:
+
+```
+LOOP-RESULT {"ticket":<n>,"branch":"agent/<n>-slug","phase":"D","handoff":"D"}
+```
+
+When you post a `LAND`, hand off to E the same way, with `"handoff":"E"`.
+
 ## E — Land
 
 `PHASE E`
@@ -331,8 +357,15 @@ standing in, and refuses rather than passing when that tree holds nothing. Its v
 tree and the base, so read that line — it is what tells a green about your branch from a green about
 somebody else's.
 
-Say what it reported, including the checks it names as CI's — a green line standing for a suite
-nobody ran is not a pass.
+Its headline is `LOCAL PASS`, never `PASS`, and it prints how many suites it did not run. Say both
+numbers in the pull request body. CI is the gate; this is a filter in front of it, and #1043 read a
+`PASS` that stood for three of eight steps and pushed a branch whose `npm test` was red.
+
+On a fix round, run the suite CI actually named as well:
+
+```sh
+npm run agent:check -- --also test        # or loop:test, test:native, comments
+```
 
 **If it is red, you are back in phase C.** Fix it, commit the fix, then go round again from phase D:
 the new commit moves the head, so the review you were holding no longer covers what you would push,
@@ -369,7 +402,7 @@ new head, and pushes again. Three red rounds on one branch and the ticket goes t
 
 `PHASE F`
 
-1. Re-read the issue, rule 25's way — the same command phase A ends with. A ruling can land while
+1. Re-read the issue, rule 25's way — body and thread in one read. A ruling can land while
    you were building, and a ticket answered against its first version is answered against the wrong
    one.
 
@@ -408,6 +441,9 @@ new head, and pushes again. Three red rounds on one branch and the ticket goes t
    only if you genuinely pushed none. `stoodDown` is true when you gave the ticket up — a lost claim
    race, a false premise, a decision only the owner can make — and then `"why"` says which, in one
    sentence; the supervisor releases the claim for you.
+
+   `handoff` is the opposite of this line's usual job: with it, you are saying the ticket is *not*
+   finished and which phase takes it next. Phase F never sets it — this is the ticket's last process.
 
    **This is not optional and there is no fallback.** A session that exits without it is recorded as
    an error, and its ticket's row carries `no LOOP-RESULT` as the reason. Everything the supervisor

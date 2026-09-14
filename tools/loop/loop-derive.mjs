@@ -34,6 +34,12 @@ const run = (file, args, cwd) => execFileSync(file, args, { encoding: "utf8", cw
 /** The one shape `verdictFor` and `reviewRounds` both look for, so they cannot drift apart. */
 const VERDICT_RE = /^VERDICT:\s*(LAND|HOLD)\b[^\n]*?\b([0-9a-f]{7,40})\b/m;
 
+/** The review's own comment, naming the head it read. The same sha binding the verdict carries. */
+const REVIEW_RE = /^REVIEW\s+([0-9a-f]{7,40})\b/m;
+
+/** What "this head" means, for the verdict and the report both, so the two cannot disagree. */
+const covers = (head, sha) => head.startsWith(sha) || sha.startsWith(head.slice(0, 7));
+
 const fenceStripped = (body) => (body ?? "").replace(/```[\s\S]*?```/g, "");
 
 /** @returns {string|null} */
@@ -156,17 +162,36 @@ export function locateRun(cwd, worktree) {
  * @param {string} head
  */
 export function verdictFor(comments, head) {
-  const short = head.slice(0, 7);
-  const covers = (sha) => head.startsWith(sha) || sha.startsWith(short);
   let land = null;
   for (let i = comments.length - 1; i >= 0; i--) {
     const body = fenceStripped(comments[i].body);
     const m = VERDICT_RE.exec(body);
-    if (!m || !covers(m[2])) continue;
+    if (!m || !covers(head, m[2])) continue;
     if (m[1] === "HOLD") return { decision: "HOLD", line: m[0].trim() };
     land ??= { decision: "LAND", line: m[0].trim() };
   }
   return land;
+}
+
+/**
+ * The review reports for this head, which is what makes a `LAND` mean anything. #1043 posted one
+ * comment — `VERDICT: LAND` — over four rounds and went out red: the reports existed, and reached
+ * nothing that could refuse the push.
+ *
+ * **Its ceiling, stated:** both headings carrying no findings satisfies this. It is a check against
+ * omission, which is the measured failure, not against a forged report.
+ *
+ * @param {{body: string}[]} comments @param {string} head
+ */
+export function reviewFor(comments, head) {
+  for (let i = comments.length - 1; i >= 0; i--) {
+    const body = fenceStripped(comments[i].body);
+    const m = REVIEW_RE.exec(body);
+    if (!m || !covers(head, m[1])) continue;
+    if (!/^##\s+Standards\s*$/m.test(body) || !/^##\s+Spec\s*$/m.test(body)) continue;
+    return { line: m[0].trim() };
+  }
+  return null;
 }
 
 /**
@@ -283,6 +308,7 @@ export function derive({
     reviewRounds: trackerReadable ? reviewRounds(comments) : null,
     trackerReadable,
     verdict,
+    review: trackerReadable ? reviewFor(comments, head) : null,
     phase,
     why:
       commits === 0
