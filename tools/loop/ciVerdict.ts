@@ -21,6 +21,8 @@ export interface Verdict {
   waiting?: boolean;
   /** No run at all yet — waited for on its own budget, since one that never appears never will. */
   appearing?: boolean;
+  /** `output` is the reason the log is missing, not the log. A fix round cannot be built on it. */
+  logUnread?: boolean;
   runId?: number;
   failedStep?: string;
   output?: string;
@@ -166,11 +168,11 @@ export function ghExecOptions(until = Date.now() + READ_DEADLINE_MS): ExecFileSy
   };
 }
 
-function gh(args: string[], until: number): string {
-  return execFileSync("gh", args, ghExecOptions(until));
-}
+export type GhExec = (args: string[], until: number) => string;
 
-function ghJson<T>(args: string[], fallback: T, until: number): T {
+const realGh: GhExec = (args, until) => execFileSync("gh", args, ghExecOptions(until));
+
+function ghJson<T>(gh: GhExec, args: string[], fallback: T, until: number): T {
   try {
     return JSON.parse(gh(args, until)) as T;
   } catch {
@@ -182,24 +184,27 @@ export function readVerdict(
   repo: string,
   branch: string,
   prNumber: number,
-  until = Date.now() + READ_DEADLINE_MS
+  until = Date.now() + READ_DEADLINE_MS,
+  gh: GhExec = realGh
 ): Verdict {
   // The pull request carries other checks — the Maestro suites — that settle on their own
   // schedule and are not the gate. Waiting on all of them cost eleven minutes a run for a job
   // that is red on main anyway, so only ci.yml's own run is watched.
   const headSha = ghJson<{ headRefOid?: string }>(
+    gh,
     ["pr", "view", String(prNumber), "--repo", repo, "--json", "headRefOid"],
     {},
     until
   ).headRefOid;
 
   // Waiting belongs to `settle`, which polls anyway; `gh run watch` here froze the whole event loop.
-  const run = runForHead(ghJson<RunRow[]>(runListArgs(repo, branch), [], until), headSha);
+  const run = runForHead(ghJson<RunRow[]>(gh, runListArgs(repo, branch), [], until), headSha);
   if (!run || run.status !== "completed" || run.conclusion === "success") {
     return decideVerdict(run, []);
   }
 
   const jobs = ghJson<JobRow[]>(
+    gh,
     [
       "run",
       "view",
@@ -224,7 +229,9 @@ export function readVerdict(
         .join("\n");
     } catch (error) {
       // Naming the reason: a fix agent told only that the log is unreadable cannot tell a tooling
-      // failure from a job that logged nothing, and reproduces the run either way.
+      // failure from a job that logged nothing, and reproduces the run either way. `logUnread` says
+      // the same thing to the supervisor, which must not spend a fix round on a sentence.
+      verdict.logUnread = true;
       verdict.output = `(the failed log could not be read: ${(error as Error)?.message ?? error})`;
     }
   }

@@ -1321,13 +1321,13 @@ const RUN_ID = new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-");
  * @param {number|null} [declared]
  * @param {number} [since] epoch ms; a merge older than this is not this session's
  * @param {Function} [run]
- * @returns {{number: number, state: string, head: string, changedFiles: number}|null}
+ * @returns {{number: number, state: string, head: string, sha: string|null, changedFiles: number}|null}
  */
 export function pushedPr(branch, ticket, declared = null, since = 0, run = sh) {
   // Matched on the head ref rather than by search: `#42` in a body also matches PR #942. With a
   // branch in hand `--head` is exact; without one the newest 100 are scanned, which reaches back
   // far enough for a branch pushed minutes ago. `gh` lists newest first.
-  const json = ["--json", "number,state,headRefName,mergedAt,changedFiles"];
+  const json = ["--json", "number,state,headRefName,headRefOid,mergedAt,changedFiles"];
   // The head ref is the only thing that makes a pull request this ticket's, and it is checked on
   // every path including the declared one. `declared` is a number a model wrote into a line of
   // text, and what it reaches is `gh pr merge`.
@@ -1337,7 +1337,7 @@ export function pushedPr(branch, ticket, declared = null, since = 0, run = sh) {
     pr.state === "MERGED" && since > 0 && Date.parse(pr.mergedAt ?? "") < since;
   const take = (pr) =>
     pr && mine(pr) && !stale(pr)
-      ? { number: pr.number, state: pr.state, head: pr.headRefName, changedFiles: pr.changedFiles ?? 0 }
+      ? { number: pr.number, state: pr.state, head: pr.headRefName, sha: pr.headRefOid ?? null, changedFiles: pr.changedFiles ?? 0 }
       : null;
   const query = branch
     ? ["pr", "list", "--state", "all", "--head", branch, "--limit", "20", ...json]
@@ -1354,7 +1354,7 @@ export function pushedPr(branch, ticket, declared = null, since = 0, run = sh) {
   if (!declared) return null;
   try {
     return take(
-      JSON.parse(run("gh", ["pr", "view", String(declared), "--json", "number,state,headRefName,changedFiles"])),
+      JSON.parse(run("gh", ["pr", "view", String(declared), "--json", "number,state,headRefName,headRefOid,changedFiles"])),
     );
   } catch {
     return null;
@@ -1437,7 +1437,8 @@ export async function settle(pending, screen, opts = {}) {
   }
 }
 
-async function poll(pending, log, pause, deadline) {
+export async function poll(pending, log, pause, deadline, io = {}) {
+  const { run = sh, verdictOf = readVerdict, write = writeFileSync } = io;
   const left = { ...SETTLE_ROUNDS };
   const until = Date.now() + deadline;
   // Not unref'd, for the same reason `holdFor` is not: this is the only handle open while it waits.
@@ -1452,17 +1453,16 @@ async function poll(pending, log, pause, deadline) {
     // is a sick branch; a mergeability job still computing is neither sick nor healthy, and it
     // answers on its own in seconds. One counter for both parks whichever goes second.
     let asking = "recheck";
-    let stillRunning = null;
+    let verdict = {};
     try {
-      const verdict = readVerdict(REPO, pending.branch, pending.pr);
+      verdict = verdictOf(REPO, pending.branch, pending.pr);
       if (verdict.infrastructure) asking = verdict.appearing ? "appear" : "retry";
-      stillRunning = verdict.waiting ? verdict.reason : null;
-      next = readLanding(pending.pr, verdict);
+      next = readLanding(pending.pr, verdict, run);
       // Written before it is handed back, because the session that fixes it is a fresh process
       // with no way to ask this one anything.
       if (next.action === "hand-back" && verdict.output) {
         mkdirSync(DIR, { recursive: true });
-        writeFileSync(ciLogPath(pending.ticket), verdict.output, "utf8");
+        write(ciLogPath(pending.ticket), verdict.output, "utf8");
       }
     } catch (err) {
       // `gh` refusing, a rate limit, or anything that is not JSON. The ticket is pushed and its
@@ -1484,10 +1484,21 @@ async function poll(pending, log, pause, deadline) {
     // A run that has not finished is not a round spent: `left.recheck` is eight of them, and any
     // real ci.yml outlasts that. Its ceiling is `deadline`, read at the top of this loop — which no
     // round could reach while `gh run watch` held the process inside one.
-    if (stillRunning && next.action === "recheck") {
-      log(stillRunning);
+    if (verdict.waiting && next.action === "recheck") {
+      log(verdict.reason);
       await wait();
       continue;
+    }
+    // A hand-back's whole payload is the log the fix round reads. Without it that round is five
+    // turns of phase A and a close — #1028 spent three of them, and only the park said anything.
+    if (next.action === "hand-back" && (!verdict.output || verdict.logUnread)) {
+      if (left.retry > 0) {
+        left.retry -= 1;
+        log("CI is red but named no log — asking once more");
+        await wait();
+        continue;
+      }
+      return { action: "owner", reason: `CI is red and its log could not be read — ${next.reason}` };
     }
     if (next.action === "recheck" && left[asking] > 0) {
       left[asking] -= 1;
@@ -1501,7 +1512,7 @@ async function poll(pending, log, pause, deadline) {
     }
     if (next.action === "merge") {
       try {
-        const survivor = mergeAndConfirm(pending.pr, pending.branch);
+        const survivor = mergeAndConfirm(pending.pr, pending.branch, run);
         if (survivor) log(`  ⚠️ #${pending.ticket} ${survivor} is still on origin after --delete-branch`);
       } catch (err) {
         return { action: "owner", reason: `the merge failed — ${String(err.message).split("\n")[0]}` };
@@ -1702,6 +1713,9 @@ export async function runOnce(io, pinned = null, roundsUsed = 0, at = null) {
       cwd: after?.cwd ?? null,
       branch: after?.branch ?? pr.head,
       pr: decided.pr,
+      // What the next round is judged against: a round that leaves this where it was cannot change
+      // what CI answers, so `main` refuses to spend one on it.
+      sha: pr?.sha ?? null,
       files,
       run,
     };
@@ -1896,6 +1910,8 @@ export async function main({
   let nextPhase = null;
   /** What the pinned ticket has cost across every process it has been spawned as. */
   let spent = 0;
+  /** The head the last red round was judged on, so a round that moved nothing is not spent. */
+  let lastSha = null;
 
   install(screen);
   io ??= realIo(book, screen);
@@ -2044,9 +2060,33 @@ export async function main({
     }
 
     if (pass.outcome === "retry") {
+      // A round that left the head where it found it cannot change what CI answers, so spending the
+      // next one on it buys nothing. #1028 spent two — five turns of phase A and a close, twice —
+      // and the park at the end was the first anyone heard of it.
+      if (pass.ticket === pinned && pass.sha && pass.sha === lastSha) {
+        io.bell();
+        io.park(pass.ticket, {
+          phase: "E",
+          why: `the fix round pushed no commit — CI would answer ${pass.why} again`,
+          log: pass.run.log,
+          cwd: pass.cwd ?? null,
+          branch: pass.branch ?? null,
+          dirty: false,
+        });
+        pinned = null;
+        rounds = 0;
+        spent = 0;
+        handoffs = 0;
+        nextPhase = null;
+        lastSha = null;
+        failures += 1;
+        if (shouldHalt(failures)) return finish(1, `${failures} tickets in a row did not land`);
+        continue;
+      }
       rounds = pass.ticket === pinned ? rounds + 1 : 1;
       if (pass.ticket !== pinned) spent = 0;
       pinned = pass.ticket;
+      lastSha = pass.sha ?? null;
       screen.say(`  🔁 #${pass.ticket} ${pass.why} — fix round ${rounds + 1}/${CI_ROUNDS}`);
       continue;
     }
@@ -2055,6 +2095,7 @@ export async function main({
     handoffs = 0;
     spent = 0;
     nextPhase = null;
+    lastSha = null;
     if (pass.outcome === "landed") {
       failures = 0;
       // Only a landing clears the refusal counter. Cleared on any non-refused outcome, refusals

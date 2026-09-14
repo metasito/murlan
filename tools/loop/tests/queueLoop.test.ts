@@ -1018,6 +1018,7 @@ describe("pushedPr only ever answers with this ticket's own pull request", () =>
       number: 984,
       state: "OPEN",
       head: "agent/42-x",
+      sha: null,
       changedFiles: 0,
     });
   });

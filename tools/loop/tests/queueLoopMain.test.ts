@@ -596,6 +596,34 @@ describe("a handoff", () => {
   });
 });
 
+describe("a fix round that changed nothing", () => {
+  const book = () => ({ totals: { tickets: 0, landed: 0, parked: 0, cost: 0, ms: 0 }, record: () => {}, close: () => {} });
+  const screen = () => ({ say: () => {}, warn: () => {}, notice: () => {}, stop: () => {} });
+
+  // #1028's rounds 2 and 3 were byte-identical no-ops — five turns of phase A and a close, twice —
+  // and each counted against the three the ticket gets.
+  test("does not spend the next one, because CI would answer the same", async () => {
+    const parked: string[] = [];
+    let spawns = 0;
+    const spy = {
+      ...(io() as any),
+      spawn: async () => {
+        spawns += 1;
+        return { status: 0, blocked: false, result: { cost: 1 }, ms: 1, log: "l", phase: "F", declared: null };
+      },
+      pushedPr: () => ({ number: 984, state: "OPEN", head: "agent/42-x", sha: "aaa111", changedFiles: 2 }),
+      settle: async () => ({ action: "hand-back", reason: "CI failed at Native tests" }),
+      park: (_n: number, note: { why: string }) => parked.push(note.why),
+    };
+    await main({ io: spy, book: book(), screen: screen(), install: () => {}, runId: "t" });
+    // Three tickets before the breaker ends the night, and two rounds each — never the third that
+    // `CI_ROUNDS` would otherwise allow, because the second one moved nothing.
+    assert.equal(parked.length, 3);
+    assert.equal(spawns, 6, "two rounds per ticket; a third would be nine");
+    assert.match(parked[0] ?? "", /pushed no commit/);
+  });
+});
+
 describe("what a ticket's clock covers", () => {
   // The land is the longest stretch of a ticket and the session that built it has already exited.
   test("the recorded time carries the land, not just the session", async () => {
