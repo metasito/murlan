@@ -255,21 +255,14 @@ test("a bailout in a plain .ts hook is what the widened gate catches", () => {
  * Where `source` switches a react-hooks rule off, one line each.
  *
  * Every rule under the `react-hooks/` prefix, not the three `tests/hooksLint`
- * names: what costs a file its compilation is the plugin being switched off at
- * all, so `exhaustive-deps` — which #891 never adopted — costs it just as
- * `refs` does. `tests/hooksLint` asks a narrower question, whether the rules it
- * names stay on, and keeps its narrower list.
+ * names, and every form ESLint honours, including the ones the compiler's own
+ * suppression parser does not read. What is refused is a comment deciding
+ * locally about a rule whose blast radius is the whole file — which of them the
+ * compiler charges for is its configuration's to change, and #1043 is where that
+ * list stops being something this file assumes.
  *
- * Wider than the compiler, deliberately. `babel-plugin-react-compiler` builds
- * two patterns and no more — `eslint-disable <rule>` and
- * `eslint-disable-next-line <rule>`, each wanting a rule name after a space — so
- * three of the forms refused here cost it nothing today: a bare
- * `/* eslint-disable *\/`, an `eslint-disable-line`, and an inline `eslint`
- * config comment at any level, `"error"` included. What the gate is about is
- * what ESLint honours, which is the wider of the two: every one of those does
- * take a rule with a whole file's blast radius out of `eslint.config.js`'s
- * hands, and the compiler's parser growing a third pattern is a smaller change
- * than any of them.
+ * `tests/hooksLint` asks a narrower question, whether the rules #891 adopted
+ * stay on, and keeps its narrower list.
  */
 function suppressions(source: string, file: string): string[] {
   return directives(source, file)
