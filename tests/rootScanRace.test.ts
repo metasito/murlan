@@ -8,6 +8,7 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "n
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { blankCommentsAndStrings } from "./helpers/sourceScan.ts";
 import { trackedFiles, trackedRootFiles } from "./helpers/trackedFiles.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -43,48 +44,18 @@ const SAMPLES = {
   ],
 };
 
-/** A line, and whether it is comment-only. A generator method is not a comment. */
-const LINES: [string, boolean][] = [
-  ["// readdirSync(repoRoot)", true],
-  [" * readdirSync(ROOT)", true],
-  ["   */", true],
-  ["/* readdirSync(ROOT) is prose here */", true],
-  ["readdirSync(repoRoot);", false],
-  ["  *walk() { return readdirSync(repoRoot); }", false],
-  ["/* eslint-disable */ const y = readdirSync(ROOT);", false],
+/** A snippet, and whether the scan should read a root listing in it. */
+const SNIPPETS: [string, boolean][] = [
+  ["// readdirSync(repoRoot)", false],
+  ["/*\n * readdirSync(ROOT)\n */", false],
+  ["/* readdirSync(ROOT) is prose here */", false],
+  ['const sample = "readdirSync(repoRoot)";', false],
+  ["const pattern = `await readdir(projectRoot)`;", false],
+  ["readdirSync(repoRoot);", true],
+  ["  *walk() { return readdirSync(repoRoot); }", true],
+  ["/* eslint-disable */ const y = readdirSync(ROOT);", true],
+  ['const sample = "readdirSync(repoRoot)"; readdirSync(ROOT_DIR);', true],
 ];
-
-/**
- * The two declarations above, blanked in this file only: the guard has to
- * spell the pattern out and hold a sample of each spelling, and exempting the
- * whole file would exempt the guard.
- */
-const SELF_EXEMPT = [
-  /const ROOT_READDIR =[\s\S]*?;/,
-  /const SAMPLES = \{[\s\S]*?\n\};/,
-  /const LINES: \[string, boolean\]\[\] = \[[\s\S]*?\n\];/,
-];
-
-/** `*` only where a block comment continues it — `*walk()` is a generator. */
-const COMMENT_LINE = /^\s*(?:\/\/|\/\*|\*(?:\s|\/|$))/;
-
-/**
- * A line's code. Nothing here reaches past the line it started on, which is
- * why it is not `blankComments`: that runs from a `/*` inside a string or a
- * regex literal to the next `*\/`, and over `tools/loop/loop-status.mjs` it
- * deletes most of the file (#1015). A scan whose input can vanish reads clean.
- */
-function codeOf(line: string): string {
-  const rest = line.replace(/^\s*\/\*.*?\*\//, "");
-  return COMMENT_LINE.test(rest) ? "" : rest;
-}
-
-function source(rel: string): string {
-  const text = readFileSync(path.join(repoRoot, rel), "utf8").split("\n").map(codeOf).join("\n");
-  return rel === SELF
-    ? SELF_EXEMPT.reduce((s, re) => s.replace(re, (m) => m.replace(/[^\n]/g, " ")), text)
-    : text;
-}
 
 /** The scan this replaces, as it was written, so the counterfactual can run it. */
 const listFromDisk = (dir: string): string[] =>
@@ -161,9 +132,9 @@ describe("no test lists the repo root from the filesystem", () => {
     }
   });
 
-  test("a comment is not code, and code is not a comment", () => {
-    for (const [line, isComment] of LINES) {
-      assert.equal(codeOf(line) === "", isComment, line);
+  test("a quoted sample is not a call, and a comment is not code", () => {
+    for (const [snippet, isRootListing] of SNIPPETS) {
+      assert.equal(ROOT_READDIR.test(blankCommentsAndStrings(snippet)), isRootListing, snippet);
     }
   });
 
@@ -174,18 +145,22 @@ describe("no test lists the repo root from the filesystem", () => {
     const files = trackedFiles(repoRoot, "tests", "scripts", "tools").filter((f) =>
       /\.(?:ts|tsx|mjs|cjs|js)$/.test(f)
     );
-    // Three floors: that the scan reached both trees, that the exemption above
-    // is an exemption rather than a no-op, and that dropping comment lines left
-    // this file's real code behind. Any one of them failing passes everything.
+    // Three floors: that the scan reached both trees, that blanking this file's
+    // samples and comments is a subtraction rather than a no-op, and that it
+    // left the real code behind. Any one of them failing passes everything.
     for (const tree of ["scripts/", "tools/loop/"]) {
       assert.ok(files.some((f) => f.startsWith(tree)), `the scan reached nothing under ${tree}`);
     }
     assert.ok(files.includes(SELF), "scan is empty");
-    assert.match(readFileSync(path.join(repoRoot, SELF), "utf8"), ROOT_READDIR);
-    assert.doesNotMatch(source(SELF), ROOT_READDIR);
-    assert.match(source(SELF), /readdirSync\(dir/);
+    const selfText = readFileSync(path.join(repoRoot, SELF), "utf8");
+    const selfCode = blankCommentsAndStrings(selfText);
+    assert.match(selfText, ROOT_READDIR);
+    assert.doesNotMatch(selfCode, ROOT_READDIR);
+    assert.match(selfCode, /readdirSync\(dir/);
 
-    const offenders = files.filter((f) => ROOT_READDIR.test(source(f)));
+    const offenders = files.filter((rel) =>
+      ROOT_READDIR.test(blankCommentsAndStrings(readFileSync(path.join(repoRoot, rel), "utf8")))
+    );
     assert.deepEqual(
       offenders,
       [],
