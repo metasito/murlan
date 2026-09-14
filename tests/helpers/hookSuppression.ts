@@ -1,20 +1,20 @@
-// tests/helpers/hookSuppression.ts — what an ESLint directive comment asks for,
-// for the two gates that refuse a react-hooks suppression: `hooksLint` over
-// `app/`, `components/`, `context/` and `lib/`, and `reactCompiler` over the
-// first three.
+// tests/helpers/hookSuppression.ts — reading TS source for ESLint directive
+// comments, and for the parse health that finding them depends on. Shared by the
+// gates that refuse a react-hooks suppression: `tests/hooksLint.test.ts` and
+// `tests/reactCompiler.test.ts`.
 //
-// One module because the two of them once each carried their own answer to
-// "is this comment a suppression", agreeing by luck: a blind spot closed in
-// either stayed open in the other. Which rules count is *not* here — the two
-// gates cover deliberately different breadths, and that is the caller's to say.
+// Which rules count is *not* here: the two gates cover deliberately different
+// breadths, and that is each caller's to state.
 import ts from "typescript";
 
-export type Comment = { line: number; text: string };
+type Comment = { line: number; text: string };
 
-/** A directive comment: which form, and the rule names it lists. */
+/** A directive comment: which form, the keyword as written, and the rule names it lists. */
 export type Directive = {
   /** `disable` is `eslint-disable` in any of its three forms; an empty `rules` means all of them. */
   form: "disable" | "inline config";
+  /** As written, so an offender list can tell a file-wide disable from a `-next-line` one. */
+  keyword: string;
   rules: string[];
 };
 
@@ -47,7 +47,7 @@ function parseFile(source: string, file: string): ts.SourceFile {
  * only after a line break, so on its own it returns no trailing `//` and no
  * same-line JSX `{/* … *\/}` at all.
  */
-export function comments(source: string, file: string): Comment[] {
+function comments(source: string, file: string): Comment[] {
   const parsed = parseFile(source, file);
   const ends = new Map<number, number>();
   const visit = (node: ts.Node) => {
@@ -102,13 +102,13 @@ function ruleNames(tail: string): string[] {
  * reported whether or not ESLint honours it, because a comma is what decides:
  * `refs, and never do this` suppresses and `refs is banned here` does not.
  */
-export function directive(comment: string): Directive | null {
-  const inline = /^(?:\/\/|\/\*)\s*eslint\s+([\s\S]*)/.exec(comment);
-  if (inline) return { form: "inline config", rules: ruleNames(inline[1]) };
-  const disable = /^(?:\/\/|\/\*)\s*eslint-disable(?:-next-line|-line)?(?![\w-])([\s\S]*)/.exec(
+function directive(comment: string): Directive | null {
+  const inline = /^(?:\/\/|\/\*)\s*(eslint)\s+([\s\S]*)/.exec(comment);
+  if (inline) return { form: "inline config", keyword: inline[1], rules: ruleNames(inline[2]) };
+  const disable = /^(?:\/\/|\/\*)\s*(eslint-disable(?:-next-line|-line)?)(?![\w-])([\s\S]*)/.exec(
     comment
   );
-  return disable ? { form: "disable", rules: ruleNames(disable[1]) } : null;
+  return disable ? { form: "disable", keyword: disable[1], rules: ruleNames(disable[2]) } : null;
 }
 
 /**

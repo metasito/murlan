@@ -66,12 +66,12 @@ function sourceFiles(dir: string): string[] {
  */
 function suppressionFaults(source: string, file = "scan.tsx"): { line: number; why: string }[] {
   return directives(source, file).flatMap(({ line, form, rules }) => {
-    const why = fault(form, rules);
+    const why = faultOf(form, rules);
     return why ? [{ line, why }] : [];
   });
 }
 
-function fault(form: Directive["form"], rules: string[]): string | null {
+function faultOf(form: Directive["form"], rules: string[]): string | null {
   const adopted = rules.some((rule) => ADOPTED.includes(rule));
   if (form === "inline config") {
     if (!adopted) return null;
@@ -259,7 +259,8 @@ describe("no source file switches an adopted rule off", () => {
     const broken = "const x = <string>y;\n// eslint-disable-next-line react-hooks/refs\n";
     assert.ok(syntaxErrors(broken, "components/X.tsx").length > 0);
     // The same source under the name that makes it a type assertion: this is
-    // what `comments()` keys the ScriptKind off, and it has to stay legal.
+    // what `tests/helpers/hookSuppression.ts` keys the ScriptKind off, and it
+    // has to stay legal.
     assert.deepEqual(syntaxErrors(broken, "lib/x.ts"), []);
   });
 
