@@ -2,10 +2,10 @@
 // React Compiler.
 //
 // app.json turns on `experiments.reactCompiler`, which babel-preset-expo turns
-// into babel-plugin-react-compiler with `panicThreshold: 'NONE'` for a
-// production build: a component the compiler cannot handle is left uncompiled
-// with no error and no warning, and the hand is rebuilt three to five times per
-// move. So this compiles the app the way the build does and reads the plugin's
+// into babel-plugin-react-compiler on a panic threshold that swallows failures:
+// a component the compiler cannot handle is left uncompiled with no error and
+// no warning, and the hand is rebuilt three to five times per move. So this
+// compiles the app the way the build does and reads the plugin's
 // own diagnostics, rather than grepping for the shapes that cause a bailout —
 // there are several, and only the compiler knows which of them are present.
 import { test } from "node:test";
@@ -17,6 +17,8 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { ADOPTED, SHIPPED } from "./helpers/adoptedHookRules.ts";
 import { directives } from "./helpers/hookSuppression.ts";
+import { presetRequire, reactCompiler, reactCompilerOptions } from "../scripts/reactCompilerOptions.mjs";
+import { scanSources, sourcesUnder } from "./helpers/sourceScan.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 // The shared checkout, via `--git-common-dir` rather than `--show-toplevel` (RULES.md rule 10:
@@ -28,12 +30,7 @@ const sharedCheckout = path.dirname(
   }).trim()
 );
 const require = createRequire(path.join(repoRoot, "package.json"));
-// Resolved through Node, not `repoRoot + "node_modules/…"`: a git worktree
-// has no `node_modules` of its own and depends on the ancestor lookup
-// finding the real one.
-const presetRequire = createRequire(require.resolve("babel-preset-expo/package.json"));
-const { transformSync, loadOptions } = require("@babel/core");
-const reactCompiler = presetRequire("babel-plugin-react-compiler");
+const { transformSync } = require("@babel/core");
 
 /**
  * Every occurrence of `name` anywhere in an `npm ls --json` dependency tree,
@@ -126,43 +123,31 @@ const COMPILED = [
   ...compiledUnder("lib"),
 ];
 
-/**
- * What babel-preset-expo passes babel-plugin-react-compiler for this repo,
- * asked of the preset rather than copied from it. `getReactCompilerPlugin` is
- * not exported and takes an options object the preset assembles internally, so
- * running babel.config.js through `loadOptions` is the only reading that cannot
- * drift from the build's. The caller is Metro's for a production client bundle;
- * get a flag wrong and the preset omits the plugin entirely rather than
- * erroring, which is what the assertion below is for.
- */
-const COMPILER_OPTIONS = (() => {
-  const { plugins } = loadOptions({
-    root: repoRoot,
-    configFile: path.join(repoRoot, "babel.config.js"),
-    babelrc: false,
-    filename: path.join(repoRoot, "components", "CardView.tsx"),
-    caller: {
-      name: "metro",
-      bundler: "metro",
-      platform: "ios",
-      isDev: false,
-      isServer: false,
-      isReactServer: false,
-      isNodeModule: false,
-      isHMREnabled: false,
-      supportsReactCompiler: true,
-      supportsStaticESM: true,
-    },
-  }) as { plugins: { key: string; options?: Record<string, unknown> }[] };
-  const entry = plugins.find((p) => p.key === "react-forget");
-  assert.ok(
-    entry?.options,
-    "babel-preset-expo returned no babel-plugin-react-compiler entry for a production client " +
-      "build, so either app.json stopped turning the compiler on or the caller flags this asks " +
-      "with no longer reach it — and nothing below is compiling under the compiler at all"
+const COMPILER_OPTIONS = reactCompilerOptions();
+
+const OPTIONS_OWNER = "scripts/reactCompilerOptions.mjs";
+
+// The field names come from the options themselves rather than a list here,
+// which is why the scan is narrowed to files that configure the compiler at
+// all: two of those names are ninety unrelated object keys across tests/.
+test(`only ${OPTIONS_OWNER} writes out a field of the compiler's options`, () => {
+  const configuringFiles = sourcesUnder(repoRoot, ["scripts", "tests"], /\.(?:mjs|cjs|js|ts|tsx)$/).filter(
+    ([file, source]) => file !== OPTIONS_OWNER && /react-?compiler/i.test(source)
   );
-  return entry.options;
-})();
+  assert.ok(
+    configuringFiles.length > 0,
+    `no file outside ${OPTIONS_OWNER} mentions the react compiler any more, so this scan passes ` +
+      `by reaching nothing`
+  );
+  assert.deepEqual(
+    scanSources(new RegExp(`\\b(?:${Object.keys(COMPILER_OPTIONS).join("|")})\\s*:`, "g"), configuringFiles),
+    [],
+    `a field of babel-preset-expo's compiler options is written out here as well as derived in ` +
+      `${OPTIONS_OWNER}. A copy is what its holder compiles with until an SDK bump moves the ` +
+      `preset and leaves it green about a compiler the build does not use — call ` +
+      `\`reactCompilerOptions()\` instead`
+  );
+});
 
 type CompilerEvent = {
   kind: string;
