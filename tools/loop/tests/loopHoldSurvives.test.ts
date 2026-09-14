@@ -4,7 +4,6 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { writeFileSync, rmSync, mkdirSync } from "node:fs";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
 
 /**
  * A real process, because only one with nothing else to do can fail: under the test runner something
@@ -16,7 +15,7 @@ describe("a hold survives in a process with nothing else to do", () => {
   test("the line after the wait actually runs", () => {
     mkdirSync(DIR, { recursive: true });
     const probe = path.join(DIR, "probe.mjs");
-    const loop = pathToFileURL(path.resolve("tools/loop/queue-loop.mjs")).href;
+    const loop = new URL("../queue-loop.mjs", import.meta.url).href;
 
     writeFileSync(
       probe,

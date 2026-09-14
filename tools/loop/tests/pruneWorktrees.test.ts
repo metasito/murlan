@@ -5,7 +5,6 @@ import path from "node:path";
 import fs from "node:fs";
 import os from "node:os";
 import { execFileSync } from "node:child_process";
-import { pathToFileURL } from "node:url";
 import { importUnderShellGuard } from "../../../tests/helpers/importShellGuard.ts";
 import {
   classifyWorktree,
@@ -270,7 +269,7 @@ describe("findOrphanedWorktreeDirs", () => {
 
 describe("isInvokedDirectly", () => {
   test("importing the module (not running it) never shells out to git or gh", () => {
-    const moduleUrl = pathToFileURL(path.resolve("tools/loop/prune-worktrees.mjs")).href;
+    const moduleUrl = new URL("../prune-worktrees.mjs", import.meta.url).href;
 
     const { shelledOutTo } = importUnderShellGuard(moduleUrl);
 

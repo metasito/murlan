@@ -1,6 +1,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
@@ -512,22 +513,56 @@ describe("preflightMemory", () => {
 });
 
 describe("checkoutRoot", () => {
+  /** The main worktree, which `git worktree list` names first — a different question from the one
+   * `checkoutRoot` asks, so the two agreeing is a check and not the implementation restated. */
+  const mainWorktreeOf = (cwd: string) =>
+    execFileSync("git", ["worktree", "list", "--porcelain"], { cwd, encoding: "utf8" })
+      .split("\n")[0]
+      .replace(/^worktree /, "")
+      .trim();
+
   /**
    * The one input `ownedByTooling` is matched against. One directory out and every class — orphan,
-   * stale, CPU burner — quietly matches nothing, and `--dry-run` reports a clean machine. The
-   * assertion is that it equals what git says from the repository root, so it holds wherever in
-   * the tree reap.mjs is moved to; a `..` count written against one location cannot.
+   * stale, CPU burner — quietly matches nothing, and `--dry-run` reports a clean machine.
    */
-  test("is the checkout, wherever in the tree reap.mjs sits", () => {
-    const fromRepo = execFileSync("git", ["rev-parse", "--show-toplevel"], {
-      cwd: path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", ".."),
-      encoding: "utf8",
-    }).trim();
-    assert.equal(checkoutRoot(), fromRepo);
+  test("is the checkout the suite's own tree hangs off", () => {
+    assert.equal(checkoutRoot(), mainWorktreeOf(path.dirname(fileURLToPath(import.meta.url))));
     assert.ok(
       ownedByTooling(`node ${path.join(checkoutRoot(), "tools", "loop", "queue-loop.mjs")}`, toolingRoots({ repoRoot: checkoutRoot() })),
       "the root it derives does not match a process running out of this checkout"
     );
+  });
+
+  /**
+   * A repository of its own, because the answer has to differ from the question: CI checks out one
+   * worktree and nothing else, so a case that reads only the tree it runs in agrees with every
+   * wrong answer there and reds for nobody but an agent on this machine.
+   *
+   * The fixture sits outside `.worktrees/` on purpose. Inside it, a root derived from the
+   * worktree's own path lands on the checkout anyway and the case stops discriminating.
+   */
+  test("from inside a worktree, answers the checkout and not the worktree", () => {
+    const repo = mkdtempSync(path.join(tmpdir(), "reap-checkout-"));
+    const git = (cwd: string, ...args: string[]) =>
+      execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false", ...args], {
+        cwd,
+        encoding: "utf8",
+      }).trim();
+    try {
+      git(repo, "init", "-q");
+      git(repo, "commit", "-q", "--allow-empty", "-m", "root");
+      const worktree = path.join(repo, "elsewhere", "wt");
+      git(repo, "worktree", "add", "-q", "--detach", worktree, "HEAD");
+
+      assert.notEqual(
+        git(worktree, "rev-parse", "--show-toplevel"),
+        mainWorktreeOf(repo),
+        "the fixture is not a second worktree, so nothing here tells the two answers apart"
+      );
+      assert.equal(checkoutRoot(worktree), mainWorktreeOf(repo));
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
   });
 });
 

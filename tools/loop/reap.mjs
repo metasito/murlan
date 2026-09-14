@@ -13,36 +13,37 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
-import { WORKTREE_DIR } from "./loop-derive.mjs";
 
 const ORPHAN_AGE_MS = 2 * 60 * 60 * 1000;
 const STALE_AGE_MS = 24 * 60 * 60 * 1000;
 const E2E_PORT = process.env.E2E_PORT ?? "5199";
 
 /**
- * Where this repo's tooling runs from. Playwright is the reason this is a list rather than the
- * checkout: it keeps its browsers under `ms-playwright` in the user's profile, so a rule that knew
- * only the repo would leave behind the one process class that costs hundreds of megabytes.
- */
-/**
- * The shared checkout every worktree hangs off — what `ownedByTooling` matches a command line
- * against, so an answer one directory out silently classifies nothing as ours.
+ * The shared checkout every worktree hangs off, never the worktree the caller stands in — what
+ * `ownedByTooling` matches a command line against, so an answer one directory out silently
+ * classifies nothing as ours.
  *
  * Asked of git rather than counted in `..` segments from this file. A count is a claim about where
  * this file sits that nothing fails when the file moves, and moving it into `tools/loop/` is
  * exactly what turned the old count into the `tools/` directory. `cwd` is this file's own
  * directory, so the answer does not depend on the caller's either.
+ *
+ * `--git-common-dir`, never `--show-toplevel` (RULES.md rule 10): the latter answers with the
+ * worktree.
  */
 export function checkoutRoot(from = path.dirname(fileURLToPath(import.meta.url))) {
-  const top = execFileSync("git", ["rev-parse", "--show-toplevel"], {
+  const gitDir = execFileSync("git", ["rev-parse", "--path-format=absolute", "--git-common-dir"], {
     cwd: from,
     encoding: "utf8",
   }).trim();
-  // Run from inside a worktree, `--show-toplevel` answers with the worktree; the checkout is its
-  // parent, above `.worktrees/`.
-  return top.split(new RegExp(`[\\\\/]${WORKTREE_DIR.replace(".", "\\.")}[\\\\/]`))[0];
+  return path.dirname(gitDir);
 }
 
+/**
+ * Where this repo's tooling runs from. Playwright is the reason this is a list rather than the
+ * checkout: it keeps its browsers under `ms-playwright` in the user's profile, so a rule that knew
+ * only the repo would leave behind the one process class that costs hundreds of megabytes.
+ */
 export function toolingRoots({ repoRoot, env = process.env, platform = process.platform, home = os.homedir() }) {
   const browsers =
     env.PLAYWRIGHT_BROWSERS_PATH ||
