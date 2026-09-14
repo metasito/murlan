@@ -52,6 +52,8 @@ function sourceFiles(dir: string): string[] {
   });
 }
 
+type Comment = { line: number; pos: number; text: string };
+
 /**
  * Every comment in `source`, opener included, with the 1-based line it starts
  * on and the offset it starts at.
@@ -68,13 +70,16 @@ function sourceFiles(dir: string): string[] {
  * same-line JSX `{/* … *\/}` — 84 of this repo's 4041, and the reason a parse
  * looks like the wrong tool for this until the second call is added.
  */
-function comments(source: string): { line: number; pos: number; text: string }[] {
+function comments(source: string, file = "scan.tsx"): Comment[] {
+  // The kind comes from the name because it is not a formality: in TSX,
+  // `<string>foo` opens a JSX element rather than asserting a type, and the
+  // rest of the file goes inside it — comments and any directive among them.
   const parsed = ts.createSourceFile(
-    "scan.tsx",
+    file,
     source,
     ts.ScriptTarget.Latest,
     true,
-    ts.ScriptKind.TSX
+    file.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS
   );
   const ends = new Map<number, number>();
   const visit = (node: ts.Node) => {
@@ -114,8 +119,8 @@ const COMMENT_OR_STRING =
  * may name its rule on any line of itself, and because a directive is only a
  * directive outside a string — neither is decidable one line at a time.
  */
-function suppressionFaults(source: string): { line: number; why: string }[] {
-  return comments(source).flatMap(({ line, text }) => {
+function suppressionFaults(source: string, file?: string): { line: number; why: string }[] {
+  return comments(source, file).flatMap(({ line, text }) => {
     const why = commentFault(text);
     return why ? [{ line, why }] : [];
   });
@@ -270,6 +275,16 @@ describe("no source file switches an adopted rule off", () => {
       /costs this file its compilation/
     );
 
+    // `<string>foo` is a type assertion in a .ts file and an unclosed JSX tag
+    // in a .tsx one, which swallows the rest of the file. The name decides, so
+    // a `.ts` file gets read as one.
+    const assertionThenDirective =
+      "const a = <string>foo;\n// eslint-disable-next-line react-hooks/refs\n";
+    assert.match(
+      suppressionFaults(assertionThenDirective, "lib/x.ts")[0]?.why ?? "",
+      /costs this file its compilation/
+    );
+
     // The line is what makes the scan's offender list actionable, so it is the
     // count of newlines before the comment, not before the file's first fault.
     assert.deepEqual(suppressionFaults('const a = 1;\n\n/* eslint-disable */')[0]?.line, 3);
@@ -289,7 +304,7 @@ describe("no source file switches an adopted rule off", () => {
     const disagreed: string[] = [];
     for (const file of files) {
       const source = readFileSync(path.join(ROOT, file), "utf8");
-      const parsed = new Set(comments(source).map((comment) => comment.pos));
+      const parsed = new Set(comments(source, file).map((comment) => comment.pos));
       const matched = new Set(
         [...source.matchAll(COMMENT_OR_STRING)]
           .filter((match) => match[0].startsWith("/"))
@@ -313,7 +328,7 @@ describe("no source file switches an adopted rule off", () => {
     const offenders: string[] = [];
     for (const file of files) {
       const source = readFileSync(path.join(ROOT, file), "utf8");
-      for (const fault of suppressionFaults(source)) {
+      for (const fault of suppressionFaults(source, file)) {
         offenders.push(`${file}:${fault.line} — ${fault.why}`);
       }
     }
