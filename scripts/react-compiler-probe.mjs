@@ -1,14 +1,12 @@
 import { createRequire } from "node:module";
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import { reactCompiler, reactCompilerOptions } from "./reactCompilerOptions.mjs";
 const require = createRequire(path.join(process.cwd(), "package.json"));
-// Resolved through Node, not `cwd + "node_modules/…"`: a git worktree has no
-// `node_modules` of its own and depends on the ancestor lookup finding the
-// real one.
-const presetRequire = createRequire(require.resolve("babel-preset-expo/package.json"));
 const { transformSync } = require("@babel/core");
-const reactCompiler = presetRequire("babel-plugin-react-compiler");
-const OPTS = { target: "19", environment: { enableResetCacheOnSourceFileChanges: false }, panicThreshold: "NONE" };
+// The same options tests/reactCompiler.test.ts compiles with, because this is
+// what its failure message sends you to for the reason behind a bailout.
+const OPTS = reactCompilerOptions();
 
 for (const file of process.argv.slice(2)) {
   const events = [];

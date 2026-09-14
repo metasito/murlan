@@ -2,10 +2,10 @@
 // React Compiler.
 //
 // app.json turns on `experiments.reactCompiler`, which babel-preset-expo turns
-// into babel-plugin-react-compiler with `panicThreshold: 'NONE'` for a
-// production build: a component the compiler cannot handle is left uncompiled
-// with no error and no warning, and the hand is rebuilt three to five times per
-// move. So this compiles the app the way the build does and reads the plugin's
+// into babel-plugin-react-compiler on a panic threshold that swallows failures:
+// a component the compiler cannot handle is left uncompiled with no error and
+// no warning, and the hand is rebuilt three to five times per move. So this
+// compiles the app the way the build does and reads the plugin's
 // own diagnostics, rather than grepping for the shapes that cause a bailout —
 // there are several, and only the compiler knows which of them are present.
 import { test } from "node:test";
@@ -17,6 +17,8 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { ADOPTED, SHIPPED } from "./helpers/adoptedHookRules.ts";
 import { directives } from "./helpers/hookSuppression.ts";
+import { presetRequire, reactCompiler, reactCompilerOptions } from "../scripts/reactCompilerOptions.mjs";
+import { scanSources, sourcesUnder } from "./helpers/sourceScan.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 // The shared checkout, via `--git-common-dir` rather than `--show-toplevel` (RULES.md rule 10:
@@ -28,12 +30,7 @@ const sharedCheckout = path.dirname(
   }).trim()
 );
 const require = createRequire(path.join(repoRoot, "package.json"));
-// Resolved through Node, not `repoRoot + "node_modules/…"`: a git worktree
-// has no `node_modules` of its own and depends on the ancestor lookup
-// finding the real one.
-const presetRequire = createRequire(require.resolve("babel-preset-expo/package.json"));
 const { transformSync } = require("@babel/core");
-const reactCompiler = presetRequire("babel-plugin-react-compiler");
 
 /**
  * Every occurrence of `name` anywhere in an `npm ls --json` dependency tree,
@@ -126,12 +123,31 @@ const COMPILED = [
   ...compiledUnder("lib"),
 ];
 
-/** babel-preset-expo/build/index.js, for a production client build. */
-const COMPILER_OPTIONS = {
-  target: "19",
-  environment: { enableResetCacheOnSourceFileChanges: false },
-  panicThreshold: "NONE",
-};
+const COMPILER_OPTIONS = reactCompilerOptions();
+
+const OPTIONS_OWNER = "scripts/reactCompilerOptions.mjs";
+
+// The field names come from the options themselves rather than a list here,
+// which is why the scan is narrowed to files that configure the compiler at
+// all: two of those names are ninety unrelated object keys across tests/.
+test(`only ${OPTIONS_OWNER} writes out a field of the compiler's options`, () => {
+  const configuringFiles = sourcesUnder(repoRoot, ["scripts", "tests"], /\.(?:mjs|cjs|js|ts|tsx)$/).filter(
+    ([file, source]) => file !== OPTIONS_OWNER && /react-?compiler/i.test(source)
+  );
+  assert.ok(
+    configuringFiles.length > 0,
+    `no file outside ${OPTIONS_OWNER} mentions the react compiler any more, so this scan passes ` +
+      `by reaching nothing`
+  );
+  assert.deepEqual(
+    scanSources(new RegExp(`\\b(?:${Object.keys(COMPILER_OPTIONS).join("|")})\\s*:`, "g"), configuringFiles),
+    [],
+    `a field of babel-preset-expo's compiler options is written out here as well as derived in ` +
+      `${OPTIONS_OWNER}. A copy is what its holder compiles with until an SDK bump moves the ` +
+      `preset and leaves it green about a compiler the build does not use — call ` +
+      `\`reactCompilerOptions()\` instead`
+  );
+});
 
 type CompilerEvent = {
   kind: string;
@@ -402,8 +418,9 @@ test("a suppressed react-hooks rule is what the compiler refuses to compile", ()
   );
   assert.ok(
     reasons.some((r) => r.includes("ESLint")),
-    "adding a react-hooks suppression back no longer costs the component its compilation — " +
-      "either the compiler options here drifted from babel-preset-expo's, or the plugin changed"
+    "adding a react-hooks suppression back no longer costs the component its compilation. The " +
+      "options come from babel-preset-expo itself, so this is the plugin changing: either it " +
+      "stopped charging for a suppression, or the preset turned that off"
   );
 });
 
