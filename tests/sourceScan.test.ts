@@ -97,47 +97,42 @@ function lastKept(src: string): number {
 
 /**
  * The counterfactual, over real files rather than a fixture: an unterminated
- * backtick planted at the top of a scanned file, and the floor reading it.
+ * backtick planted at the top of a scanned file.
  *
- * Which plants run away is decided without asking the floor — a plant has run
- * away when the character the clean blanking left standing last is gone — so
- * a floor that never fires fails this rather than emptying it. The files where
- * the plant closes again on the file's own next backtick are not runaways and
- * are not this floor's to catch; `blanking leaves every top-level declaration
- * behind`, below, is what reads those.
+ * No file here is classified by whether the floor fired. A plant the floor let
+ * through has to show its tail standing, character for character — so a floor
+ * that never fires fails this — and a floor that fired on everything instead
+ * reds `no file any scan reads has a construct the blanking ran off the end
+ * of`, where the tree as it is must blank without a word. A plant closing
+ * again on the file's own next backtick is not a runaway and not this floor's
+ * to catch; `blanking leaves every top-level declaration behind` reads those.
  */
 test("a backtick planted at the top of a scanned file reds the floor", () => {
   const missed: string[] = [];
-  let runaways = 0;
+  let reported = 0;
   for (const [file, src] of sources()) {
     const kept = lastKept(src);
     if (kept < 0) continue;
-    const planted = "`\n" + src;
-    let threw = false;
-    let erasedTheTail = false;
     try {
-      erasedTheTail = blankCommentsAndStrings(planted)[kept + 2] !== src[kept];
+      // `kept + 2` is the same character of the same file: the plant is two long.
+      if (blankCommentsAndStrings("`\n" + src)[kept + 2] !== src[kept]) missed.push(file);
     } catch {
-      threw = true;
-      erasedTheTail = true;
+      reported++;
     }
-    if (!erasedTheTail) continue;
-    runaways++;
-    if (!threw) missed.push(file);
   }
   assert.deepEqual(missed, [], `${missed.length} files lost their tail with nothing reported`);
-  assert.ok(runaways > 0, "no planted backtick ran away, so this test asserted nothing");
+  assert.ok(reported > 0, "no planted backtick was reported, so this test asserted nothing");
 });
 
+// One mode, because reporting is outside every `blankStrings` branch — which
+// the two fixtures above assert of both modes, where a corpus walk is free.
 test("no file any scan reads has a construct the blanking ran off the end of", () => {
   const unclosed: string[] = [];
   for (const [file, src] of sources()) {
-    for (const blank of [blankComments, blankCommentsAndStrings]) {
-      try {
-        blank(src);
-      } catch (e) {
-        unclosed.push(`${file}: ${(e as Error).message}`);
-      }
+    try {
+      blankCommentsAndStrings(src);
+    } catch (e) {
+      unclosed.push(`${file}: ${(e as Error).message}`);
     }
   }
   assert.deepEqual(unclosed, []);
