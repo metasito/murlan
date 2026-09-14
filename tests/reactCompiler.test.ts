@@ -260,11 +260,11 @@ const PROBE_REL = "components/suppressionProbe.tsx";
  * this goes in the body — the same comment above the `export` is free.
  */
 const probeSuppressing = (rule: string) => `import { useState } from "react";
-export function Probe() {
-  const [n, setN] = useState(0);
-  // eslint-disable-next-line ${rule}
-  return <div onClick={() => setN(n + 1)}>{n}</div>;
-}
+  export function Probe() {
+    const [n, setN] = useState(0);
+    // eslint-disable-next-line ${rule}
+    return <div onClick={() => setN(n + 1)}>{n}</div>;
+  }
 `;
 
 function bailoutReasons(rule: string): string[] {

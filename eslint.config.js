@@ -51,11 +51,10 @@ module.exports = defineConfig([
       // on purpose already carries its own `eslint-disable-next-line` with a
       // reason, which this does not affect.
       "react-hooks/exhaustive-deps": "error",
-      // A `setState` in an effect body is a cascading render. Whether this rule
-      // is on is decided here, and there is no local exemption from it: a
-      // comment cannot take one site out of that (ADR-0005). Reset in render
-      // against the previous value, derive it, or read the external thing
-      // through `useSyncExternalStore`.
+      // A `setState` in an effect body is a cascading render. There is no local
+      // exemption from this one: a comment cannot take one site out of what
+      // this file decides (ADR-0005). Reset in render against the previous value,
+      // derive it, or read the external thing through `useSyncExternalStore`.
       "react-hooks/set-state-in-effect": "error",
       "no-restricted-syntax": [
         "error",
