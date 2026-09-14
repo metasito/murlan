@@ -1035,7 +1035,7 @@ export function watchBuild(state, fact, budget, warn) {
   if (state.warnedUncommitted || state.buildTurns < Math.round(budget * UNCOMMITTED_SHARE)) return;
   state.warnedUncommitted = true;
   warn(
-    `queue-loop: ${state.buildTurns} turns into phase C of a ${budget}-turn budget with no commit` +
+    `${state.buildTurns} turns into phase C of a ${budget}-turn budget with no commit` +
       " — an unstaged edit is the only work this loop can lose",
   );
 }
@@ -1193,7 +1193,7 @@ export function runTicket(
       // and the rest — the one channel that says *why* — was thrown away.
       screen.said(thought(fact.text));
       for (const call of fact.calls) screen.call(call.name, act(call));
-      watchBuild(state, fact, budget, (m) => screen.warn(m));
+      watchBuild(state, fact, budget, (m) => screen.notice("uncommitted", m));
       watchCalls(state, fact);
     }
     // A foreground subagent emits nothing else into the parent stream, so without these the phase

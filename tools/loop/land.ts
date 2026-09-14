@@ -8,6 +8,9 @@ export interface PrState {
 
 export interface CiVerdict {
   pass?: boolean;
+  /** The run has not finished. Not a failure, and `pass: false` on it is not one either. */
+  waiting?: boolean;
+  reason?: string;
   infrastructure?: boolean;
   failedStep?: string;
   output?: string;
@@ -56,6 +59,12 @@ export function landing(pr: PrState, ci: CiVerdict): Landing {
   // exactly what `infrastructure` means.
   if (pr.mergeable === "CONFLICTING") {
     return { action: "owner", reason: "the branch conflicts with main" };
+  }
+
+  // A run still going is not a verdict. `pr.mergeStateStatus` reads UNSTABLE the moment one job
+  // goes red, so without this the fix round is handed a branch with no failed step and no log.
+  if (ci.waiting) {
+    return { action: "recheck", reason: ci.reason ?? "the run has not finished" };
   }
 
   // Billing, a quota or a runner. It says nothing about the diff, so a fix round spent on it hunts

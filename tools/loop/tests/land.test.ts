@@ -134,6 +134,15 @@ const cases: Case[] = [
     ci: SILENT,
     action: "hand-back",
   },
+  // The pull request reads UNSTABLE the moment one job goes red, while the rest are still running.
+  // Handed back there, the fix round gets no failed step and no log — three empty rounds and a park.
+  {
+    name: "a run that has not finished is asked again, never handed back",
+    pr: pr({ mergeStateStatus: "UNSTABLE" }),
+    ci: { pass: false, waiting: true, reason: "run is still in_progress" },
+    action: "recheck",
+    reason: /still in_progress/,
+  },
   {
     name: "mergeable UNKNOWN asks again even when the merge state reads CLEAN",
     pr: pr({ mergeable: "UNKNOWN" }),
