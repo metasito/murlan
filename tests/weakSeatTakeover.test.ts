@@ -5,10 +5,14 @@
 // own `!game.gameState.gameOver` guard), and `autoMoveForSeat`'s `useAi=false`
 // path — what `runBotTurn` calls once it reads `weakSeats` — always resolving
 // the seat's turn, since a seat that cannot act stalls the whole table.
+//
+// The third suite is a different concern reached through the same function:
+// which of `vacateSeat`'s exits write the room's row (#1008).
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import type { Server as SocketServer } from "socket.io";
 import { vacateSeat, autoMoveForSeat } from "../server/gameTurn.ts";
+import { gameOverWriters } from "../server/gamePersistence.ts";
 import { activeGames } from "../server/gameRoom.ts";
 import { clearRoomTimers } from "../server/gameTimers.ts";
 import type { OnlineGameState } from "../server/gameRoom.ts";
@@ -86,7 +90,7 @@ describe("a mid-hand takeover is weak only for the hand it happened on (#850 cla
     activeGames.set(ROOM, game);
 
     try {
-      await vacateSeat(io, ROOM, "drita", "Drita");
+      await vacateSeat(io, ROOM, "drita", "Drita", gameOverWriters);
 
       assert.ok(game.weakSeats.has(3), "the seat just vacated mid-hand must be weak");
       assert.equal(game.vacatedSeats.get(3)?.userId, "drita");
@@ -118,7 +122,7 @@ describe("a mid-hand takeover is weak only for the hand it happened on (#850 cla
     activeGames.set(ROOM, game);
 
     try {
-      await vacateSeat(io, ROOM, "drita", "Drita");
+      await vacateSeat(io, ROOM, "drita", "Drita", gameOverWriters);
       assert.ok(!game.weakSeats.has(1));
     } finally {
       clearRoomTimers(ROOM);
@@ -128,16 +132,35 @@ describe("a mid-hand takeover is weak only for the hand it happened on (#850 cla
 });
 
 describe("vacateSeat writes the row on every exit the table survives (#1008)", () => {
-  /** Only the one writer vacateSeat's surviving exits reach. */
+  /**
+   * Every writer recorded, not just the persist: `vacateSeat` hands this same
+   * set to `handleGameOver` and `voidAbandonedMatch`, so a one-key stub would
+   * throw `undefined is not a function` on a branch instead of naming it.
+   */
   function persistSpy() {
-    const wrote: string[] = [];
+    const wrote: { roomId: string; seats: string[] }[] = [];
+    const reached: (keyof GameOverWriters)[] = [];
+    const record =
+      (name: keyof GameOverWriters) =>
+      async (): Promise<void> => {
+        reached.push(name);
+      };
     return {
       wrote,
+      reached,
       writers: {
-        persistGameState: async (roomId: string) => {
-          wrote.push(roomId);
+        updateRoomStatus: record("updateRoomStatus"),
+        recordGameResult: record("recordGameResult"),
+        recordRatedResult: record("recordRatedResult"),
+        saveReplay: record("saveReplay"),
+        previewRatedDeltas: async () => new Map<string, number>(),
+        // The roster is read here rather than after the call: the persist is
+        // fire-and-forget, and `playerMap` goes on being mutated behind it.
+        persistGameState: async (roomId: string, game: OnlineGameState) => {
+          reached.push("persistGameState");
+          wrote.push({ roomId, seats: Object.keys(game.playerMap) });
         },
-      } as unknown as GameOverWriters,
+      } satisfies GameOverWriters,
     };
   }
 
@@ -168,7 +191,11 @@ describe("vacateSeat writes the row on every exit the table survives (#1008)", (
 
     try {
       await vacateSeat(io, ROOM, "drita", "Drita", spy.writers);
-      assert.deepEqual(spy.wrote, [ROOM], "the surviving table's new roster must reach the row");
+      assert.deepEqual(
+        spy.wrote,
+        [{ roomId: ROOM, seats: ["0", "1", "2"] }],
+        "the surviving table's new roster — Drita's seat gone — must reach the writer"
+      );
     } finally {
       clearRoomTimers(ROOM);
       activeGames.delete(ROOM);
@@ -193,7 +220,11 @@ describe("vacateSeat writes the row on every exit the table survives (#1008)", (
 
     try {
       await vacateSeat(io, ROOM, "drita", "Drita", spy.writers);
-      assert.deepEqual(spy.wrote, [ROOM], "a seat vacated between hands is still reclaimable");
+      assert.deepEqual(
+        spy.wrote,
+        [{ roomId: ROOM, seats: ["0"] }],
+        "a seat vacated between hands is still reclaimable — Alice's row must be written without it"
+      );
     } finally {
       clearRoomTimers(ROOM);
       activeGames.delete(ROOM);
@@ -220,6 +251,7 @@ describe("vacateSeat writes the row on every exit the table survives (#1008)", (
       await vacateSeat(io, ROOM, "drita", "Drita", spy.writers);
       assert.deepEqual(spy.wrote, [], "persisting a table being disposed of races its own delete");
       assert.equal(activeGames.has(ROOM), false, "the table is gone, not merely unwritten");
+      assert.deepEqual(spy.reached, [], "no writer at all on the path that deletes the row");
     } finally {
       clearRoomTimers(ROOM);
       activeGames.delete(ROOM);

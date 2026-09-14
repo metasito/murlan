@@ -22,8 +22,7 @@ import {
   persistGameState,
   safeTimer,
 } from "./gamePersistence.ts";
-import { handleGameOver, voidAbandonedMatch } from "./gameOver.ts";
-import type { GameOverWriters } from "./gameOver.ts";
+import { handleGameOver, voidAbandonedMatch, type GameOverWriters } from "./gameOver.ts";
 import { appendReplayMove } from "./replayShape.ts";
 import {
   autoMoveForSeat as sharedAutoMove,
@@ -297,7 +296,10 @@ export async function vacateSeat(
   roomId: string,
   userId: string,
   username: string,
-  writers: GameOverWriters = gameOverWriters
+  // Required, not defaulted: a caller that forgets it would get the production
+  // writer, whose own `.catch` swallows the failure, and the write would be
+  // unobservable again (#1008).
+  writers: GameOverWriters
 ) {
   const game = activeGames.get(roomId);
   if (!game) return;

@@ -7,6 +7,7 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import type { Server as SocketServer } from "socket.io";
 import { vacateSeat } from "../server/gameTurn.ts";
+import { gameOverWriters } from "../server/gamePersistence.ts";
 import { activeGames } from "../server/gameRoom.ts";
 import { clearRoomTimers } from "../server/gameTimers.ts";
 import type { OnlineGameState } from "../server/gameRoom.ts";
@@ -84,7 +85,7 @@ describe("a match abandoned with no hand yet decided is voided, not scored (#850
     activeGames.set(ROOM, game);
 
     try {
-      await vacateSeat(io, ROOM, "bob", "Bob");
+      await vacateSeat(io, ROOM, "bob", "Bob", gameOverWriters);
 
       const over = emitted.find((e) => e.event === "game:over")?.payload as
         | GameOverPayload
@@ -113,7 +114,7 @@ describe("a match abandoned with no hand yet decided is voided, not scored (#850
     activeGames.set(ROOM, game);
 
     try {
-      await vacateSeat(io, ROOM, "bob", "Bob");
+      await vacateSeat(io, ROOM, "bob", "Bob", gameOverWriters);
 
       const over = emitted.find((e) => e.event === "game:over")?.payload as
         | GameOverPayload

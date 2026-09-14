@@ -815,7 +815,7 @@ function seatLostAction(
               "Failed to delete the room_players row after the disconnect grace expired — the seat stays counted as taken"
             )
           );
-        await vacateSeat(io, roomId, userId, username);
+        await vacateSeat(io, roomId, userId, username, gameOverWriters);
         // The hand may well have ended inside the grace, which puts this seat
         // in the rematch tally it is now leaving.
         await dealIfSeatLeftGateClosed(io, roomId);
@@ -889,8 +889,8 @@ async function applyTableAction(
       // game knows whether the seat is still held. Removing the DB row alone
       // leaves it live — auto-playing the leaver's hand, or blocking the
       // rematch gate.
-      return vacateSeat(io, action.roomId, action.userId, action.username).then(() =>
-        dealIfSeatLeftGateClosed(io, action.roomId)
+      return vacateSeat(io, action.roomId, action.userId, action.username, gameOverWriters).then(
+        () => dealIfSeatLeftGateClosed(io, action.roomId)
       );
   }
 }
