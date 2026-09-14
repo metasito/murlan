@@ -1064,7 +1064,7 @@ export function GameTable({
             },
           ]}
         >
-          {banners}
+          <A11yVeil veil={behindVeil}>{banners}</A11yVeil>
         </View>
 
 
@@ -1377,7 +1377,7 @@ export function GameTable({
           </Animated.View>
         )}
 
-        {overlays?.(behindSheetOnly)}
+        <A11yVeil veil={behindSheetOnly}>{overlays?.(behindSheetOnly)}</A11yVeil>
 
         {W < H && <RotateOverlay />}
       </Animated.View>

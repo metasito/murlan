@@ -28,7 +28,11 @@ jest.mock('@/lib/accessibility', () => ({
 
 import { GameTable } from '@/components/GameTable';
 import type { Card, GameState, Player } from '@/lib/gameEngine';
+import { A11yStatus } from '@/lib/a11y';
 import { tn } from '@/lib/i18n';
+
+/** A caller's own live region, in the slot the table veils along with itself. */
+const BANNER = 'P1 has left the table.';
 
 const INSETS = { top: 0, left: 47, right: 34, bottom: 0 };
 const METRICS = { frame: { x: 0, y: 0, width: WINDOW.width, height: WINDOW.height }, insets: INSETS };
@@ -79,6 +83,7 @@ const tree = (tableCovered: boolean, turnTimer?: { seconds: number; resetKey: st
     <SafeAreaProvider initialMetrics={METRICS}>
       <GameTable
         turnTimer={turnTimer && { ...turnTimer, includeNewRound: true, onExpire: noop }}
+        banners={<A11yStatus label={BANNER} />}
         gameState={gameState}
         viewerSeat={0}
         selectedIds={[]}
@@ -144,10 +149,10 @@ describe('a cover in the overlays slot', () => {
     await r.unmount();
   });
 
-  // The turn countdown's region lives under the hud stack's own veil, so its
-  // sentence changes where nobody can hear it and it comes back already holding
-  // it. #1004's node is the one this has to reach, not a region of its own.
-  it('gives the turn countdown back its sentence when the cover lifts', async () => {
+  // Every region the table veils changes its sentence where nobody can hear it
+  // and comes back already holding it — the countdown under the hud stack's own
+  // veil (#1004), and a caller's banner in the slot the table veils with itself.
+  it('gives every region it veils its sentence back when the cover lifts', async () => {
     // Fake timers, because the empty frame and the sentence are one task apart
     // and the harness's own `await` would run that task before either is read.
     jest.useFakeTimers();
@@ -156,13 +161,14 @@ describe('a cover in the overlays slot', () => {
     expect(liveRegions()).toHaveLength(0);
 
     await r.rerender(tree(false, timer));
-    const countdown = () => liveRegions().map((n) => String(n.props.accessibilityLabel ?? ''));
-    expect(countdown()).not.toContain(tn('gameTable.a11ySecondsLeft', 30));
+    const spoken = () => liveRegions().map((n) => String(n.props.accessibilityLabel ?? ''));
+    expect(spoken().filter(Boolean)).toEqual([]);
 
     await act(async () => {
       jest.advanceTimersByTime(1);
     });
-    expect(countdown()).toContain(tn('gameTable.a11ySecondsLeft', 30));
+    expect(spoken()).toContain(tn('gameTable.a11ySecondsLeft', 30));
+    expect(spoken()).toContain(BANNER);
 
     await r.unmount();
     jest.useRealTimers();
