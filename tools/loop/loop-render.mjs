@@ -145,7 +145,7 @@ export function row(segs, right, t, width = t.width) {
   return left + " ".repeat(gap) + (right ? t.paint(right.c ?? "faint", right.t) : "");
 }
 
-/** @type {[string, string][]} */
+/** A–F are the session's own; `G` is the supervisor's, after it has exited. @type {[string, string][]} */
 export const PHASES = [
   ["A", "claim"],
   ["B", "scope"],
@@ -153,7 +153,10 @@ export const PHASES = [
   ["D", "review"],
   ["E", "push"],
   ["F", "close"],
+  ["G", "land"],
 ];
+
+export const LAND = "G";
 
 /** Braille, because every frame is one column wide in every terminal font. */
 export const SPIN = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
@@ -267,27 +270,57 @@ const MARK = {
   done: ["✓", "good"],
   failed: ["✗", "bad"],
   resumed: ["↻", "warn"],
+  warned: ["!", "warn"],
+  skipped: ["·", "faint"],
 };
 
+const LABEL_W = 9;
+
 /**
- * A finished phase. These accumulate as the permanent record — the thing still on screen in the
- * morning — so they are quiet by construction: grey name, near-black detail, one green tick.
+ * One thing that happened, as one row: a mark, what it was, what came of it, how long it took.
+ *
+ * Every settled line the loop prints is this shape, so the marks make one column down the side
+ * rather than each arriving in its own format. Brightness is spent on what is happening now, and
+ * none of these is.
  */
-export function phaseRow({ letter, detail = "", ms, state = "done" }, t) {
-  const at = PHASES.findIndex(([l]) => l === letter);
+export function stepRow({ label, detail = "", ms = null, state = "done" }, t) {
   const [glyph, colour] = MARK[state] ?? MARK.done;
-  const name = (PHASES[at]?.[1] ?? letter).padEnd(7);
+  const right = ms == null ? null : { t: elapsed(ms), c: "faint" };
   return row(
     [
       { t: "   ", c: "faint" },
       { t: glyph, c: colour },
       { t: "  ", c: "faint" },
-      { t: name, c: "muted" },
-      { t: clamp(detail, Math.max(0, t.width - 22)), c: "faint" },
+      { t: clamp(label, LABEL_W).padEnd(LABEL_W + 1), c: "muted" },
+      { t: clamp(detail, Math.max(0, t.width - LABEL_W - 16)), c: "faint" },
     ],
-    { t: elapsed(ms), c: "faint" },
+    right,
     t,
   );
+}
+
+/** A finished phase: a step whose name the protocol spells as a letter. A person reads "build". */
+export function phaseRow({ letter, detail = "", ms, state = "done" }, t) {
+  const at = PHASES.findIndex(([l]) => l === letter);
+  return stepRow({ label: PHASES[at]?.[1] ?? letter, detail, ms, state }, t);
+}
+
+/**
+ * What a step said, under the row that names it. Wrapped rather than cut: a row is a summary and
+ * may give way at the edge, but losing the end of these is losing the reason for a refusal.
+ */
+export function note(text, t, indent = 8) {
+  const room = Math.max(8, t.width - indent - 1);
+  return String(text ?? "")
+    .split("\n")
+    .flatMap((line) => {
+      // A step's own continuation indent is kept, inside ours, so its shape survives the move.
+      const lead = Math.min(/^\s*/.exec(line)?.[0].length ?? 0, 4);
+      const body = line.trim();
+      if (!body) return [];
+      return wrap(body, room - lead).map((l) => t.paint("faint", " ".repeat(indent + lead) + l));
+    })
+    .join("\n");
 }
 
 // Eighth-blocks, so the bar advances a fraction of a cell rather than jumping a whole one. The

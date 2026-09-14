@@ -17,7 +17,7 @@
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import fs, { createWriteStream, mkdirSync, writeFileSync } from "node:fs";
 import { createInterface } from "node:readline";
-import { derive, reviewRounds } from "./loop-derive.mjs";
+import { derive, REPO, reviewRounds } from "./loop-derive.mjs";
 import { readLine } from "./loop-stream.mjs";
 import {
   act,
@@ -28,6 +28,7 @@ import {
   closing,
   header,
   keybar,
+  LAND,
   phaseRow,
   progress,
   queueLine,
@@ -60,7 +61,6 @@ import { readVerdict } from "./ciVerdict.ts";
 const HERE = import.meta.dirname;
 
 const STOP_FILE = ".loop-stop";
-const REPO = "metasito/murlan";
 
 /** @returns {{ skill: string, number: number, title: string, size: string|null }} */
 export function parseRoute(stdout) {
@@ -1334,8 +1334,28 @@ function mergeAndConfirm(prNumber, branch, run = sh) {
  * Waits for the pushed branch's CI and lands it. No judgement here — `readVerdict` says whether the
  * run passed and `landing()` says what that plus the merge state means — which is why the session
  * that built the ticket has already exited by the time this runs.
+ *
+ * It owns a phase of its own because it is the longest stretch of a ticket and the session is gone:
+ * without a row with a clock on it, a board that has just ticked `close` reads as finished, and a
+ * twenty-minute CI wait reads as a hang.
  */
-async function settle(pending, log = console.log, pause = SETTLE_PAUSE_MS, deadline = SETTLE.DEADLINE_MS) {
+export async function settle(pending, screen, opts = {}) {
+  const { pause = SETTLE_PAUSE_MS, deadline = SETTLE.DEADLINE_MS, watch = poll } = opts;
+  screen.start(LAND);
+  screen.said(`waiting for ci.yml on ${pending.branch}`);
+  try {
+    const out = await watch(pending, (m) => screen.said(m), pause, deadline);
+    const landed = out.action === "merge";
+    screen.close(landed ? "done" : "failed", landed ? `#${pending.pr} merged` : out.reason);
+    return out;
+  } catch (err) {
+    // An open phase is a spinner with no end. Whatever else is wrong, the row has to settle.
+    screen.close("failed", String(err.message).split("\n")[0]);
+    throw err;
+  }
+}
+
+async function poll(pending, log, pause, deadline) {
   const left = { ...SETTLE_ROUNDS };
   const until = Date.now() + deadline;
   // Not unref'd, for the same reason `holdFor` is not: this is the only handle open while it waits.
@@ -1368,7 +1388,7 @@ async function settle(pending, log = console.log, pause = SETTLE_PAUSE_MS, deadl
 
     if (next.action === "update-branch" && left.update > 0) {
       left.update -= 1;
-      log(`  ⏳ #${pending.ticket} main moved — updating the branch and reading CI again`);
+      log("main moved — updating the branch and reading CI again");
       try {
         sh("gh", ["pr", "update-branch", String(pending.pr)]);
       } catch (err) {
@@ -1379,7 +1399,7 @@ async function settle(pending, log = console.log, pause = SETTLE_PAUSE_MS, deadl
     }
     if (next.action === "recheck" && left[asking] > 0) {
       left[asking] -= 1;
-      log(`  ⏳ #${pending.ticket} ${next.reason} — asking once more`);
+      log(`${next.reason} — asking once more`);
       await wait();
       continue;
     }
@@ -1604,7 +1624,7 @@ function realIo(book, screen) {
     },
     standing,
     pushedPr,
-    settle: (pending) => settle(pending, (m) => screen.say(m)),
+    settle: (pending) => settle(pending, screen),
     park,
     /**
      * Phase F removes its own worktree; this covers the paths where the session never got there.

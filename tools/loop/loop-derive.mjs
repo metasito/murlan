@@ -16,9 +16,12 @@
  * git will not let you be on two at once.
  */
 import { execFileSync } from "node:child_process";
-import { basename } from "node:path";
+import { basename, dirname } from "node:path";
 
 export const BRANCH = /^agent\/(\d+)-/;
+
+/** The repository every `gh` call in the loop names, so no two of them can name different ones. */
+export const REPO = "metasito/murlan";
 
 /** The worktree root `/queue` phase A creates ticket worktrees under. */
 export const WORKTREE_DIR = ".worktrees";
@@ -80,25 +83,36 @@ export function worktrees(cwd) {
  *
  * @param {string} [cwd]
  * @param {string} [worktree]
- * @returns {{cwd: string|undefined, branch: string|null, ticket: number|null, detached: boolean,
+ * @returns {{cwd: string, branch: string|null, ticket: number|null, detached: boolean,
  *   ambiguous?: number, worktrees?: string[]}}
  */
 export function locateRun(cwd, worktree) {
-  const at = worktree || cwd;
+  // Resolved, not passed through: git reads the process's own directory when given none, so a
+  // caller omitting both arguments is answered *about* that directory, and must be told which.
+  const at = worktree || cwd || process.cwd();
   const here = currentBranch(at);
-  if (ticketOf(here)) return { cwd: at, branch: here, ticket: ticketOf(here), detached: false };
-  if (worktree) return { cwd: at, branch: here, ticket: null, detached: here === "HEAD" };
 
-  // Only worktrees under the checkout's own `.worktrees/`, which is where phase A puts them. The
-  // scan answers "is a run live", so it must not adopt an unrelated `agent/` branch someone left
-  // checked out somewhere else on the disk and call it this session's run.
+  // Every "nothing is running here" answer, in one place: the tree it names cannot then be right
+  // in three branches and wrong in the fourth.
+  const idle = (extra) => ({
+    cwd: at,
+    branch: here,
+    ticket: null,
+    detached: here === "HEAD",
+    ...extra,
+  });
+
+  if (ticketOf(here)) return { cwd: at, branch: here, ticket: ticketOf(here), detached: false };
+  if (worktree) return idle();
+
+  // `git worktree list` already answers for this repository alone, so sitting in a `.worktrees/`
+  // is the whole test — and asking the directory rather than a path derived from here is what lets
+  // it be found from a worktree that is not the one the `.worktrees/` hangs off.
   let list = [];
   try {
-    const top = run("git", ["rev-parse", "--show-toplevel"], cwd).replace(/\\/g, "/");
-    const home = `${top}/.worktrees/`;
-    list = worktrees(cwd).filter((w) => (w.dir ?? "").replace(/\\/g, "/").startsWith(home));
+    list = worktrees(at).filter((w) => w.dir && basename(dirname(w.dir)) === WORKTREE_DIR);
   } catch {
-    return { cwd, branch: here, ticket: null, detached: here === "HEAD" };
+    return idle();
   }
 
   const onBranch = list.filter((w) => ticketOf(w.branch));
@@ -110,14 +124,7 @@ export function locateRun(cwd, worktree) {
   // leftover from a crashed run, sitting next to the one actually in progress. Refuse rather
   // than guess.
   if (onBranch.length > 1) {
-    return {
-      cwd,
-      branch: here,
-      ticket: null,
-      detached: here === "HEAD",
-      ambiguous: onBranch.length,
-      worktrees: onBranch.map((w) => w.branch),
-    };
+    return idle({ ambiguous: onBranch.length, worktrees: onBranch.map((w) => w.branch) });
   }
 
   const loose = list.find((w) => w.detached && AGENT_DIR.test(basename(w.dir ?? "")));
@@ -129,7 +136,7 @@ export function locateRun(cwd, worktree) {
       detached: true,
     };
   }
-  return { cwd, branch: here, ticket: null, detached: here === "HEAD" };
+  return idle();
 }
 
 /**

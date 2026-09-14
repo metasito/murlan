@@ -2,11 +2,12 @@
 import { test, describe, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 
-import { ticketOf, verdictFor, reviewRounds, derive, BRANCH } from "../loop-derive.mjs";
+import { ticketOf, verdictFor, reviewRounds, derive, locateRun, BRANCH } from "../loop-derive.mjs";
 import { report } from "../loop-status.mjs";
 
 /**
@@ -258,5 +259,126 @@ describe("the compaction brief", () => {
     });
     assert.notEqual(out, "");
     assert.match(out, /agent\/1-a/);
+  });
+});
+
+/**
+ * `locateRun` is what `loop-status.mjs` and the `SessionStart` hook print, and what decides
+ * whether a run is live at all. Both of its failure modes are silent: an answer that names the
+ * wrong tree, and an answer that names none.
+ */
+describe("locateRun", () => {
+  const git = (cwd: string, ...args: string[]) =>
+    execFileSync(
+      "git",
+      ["-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false", ...args],
+      { cwd, encoding: "utf8" },
+    ).trim();
+
+  const made: string[] = [];
+  const newRepo = (tag: string) => {
+    const dir = mkdtempSync(join(tmpdir(), `locate-run-${tag}-`));
+    made.push(dir);
+    git(dir, "init", "-q", "-b", "main");
+    git(dir, "commit", "-q", "--allow-empty", "-m", "root");
+    return dir;
+  };
+
+  /**
+   * A ticket worktree under `.worktrees/`, and a second worktree that is neither on a ticket
+   * branch nor under `.worktrees/` — a conflicted rebase, a probe tree, a worktree on main. That
+   * second tree is the case: derived from it with `--show-toplevel`, the home to scan is its own
+   * `.worktrees/`, which does not exist.
+   */
+  let repo = "";
+  let probe = "";
+  let ticketTree = "";
+
+  before(() => {
+    repo = newRepo("repo");
+    ticketTree = join(repo, ".worktrees", "agent-42");
+    probe = join(repo, "probe");
+    git(repo, "worktree", "add", "-q", "-b", "agent/42-a-thing", ticketTree, "HEAD");
+    git(repo, "worktree", "add", "-q", "-b", "probe", probe, "HEAD");
+  });
+
+  after(() => {
+    for (const dir of made) rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("the fixture's two trees disagree, or the case below tests nothing", () => {
+    assert.notEqual(
+      resolve(git(probe, "rev-parse", "--show-toplevel")),
+      resolve(git(repo, "rev-parse", "--show-toplevel")),
+    );
+  });
+
+  test("finds the live run from a worktree that is not on a ticket branch", () => {
+    const at = locateRun(probe);
+    assert.equal(at.ticket, 42, "the scan must reach the checkout's .worktrees, not the probe's");
+    assert.equal(at.branch, "agent/42-a-thing");
+    assert.equal(resolve(at.cwd), resolve(ticketTree));
+  });
+
+  /** `git worktree list` answers for the repository, so a stray tree would otherwise be adopted. */
+  test("an agent branch outside .worktrees/ is not this session's run", () => {
+    const stray = join(repo, "stray");
+    git(repo, "worktree", "add", "-q", "-b", "agent/9999-elsewhere", stray, "HEAD");
+    try {
+      assert.equal(locateRun(probe).ticket, 42, "the stray is not under a .worktrees/, so it is not a run");
+    } finally {
+      git(repo, "worktree", "remove", "--force", stray);
+      git(repo, "branch", "-qD", "agent/9999-elsewhere");
+    }
+  });
+
+  test("standing on the ticket branch needs no scan at all", () => {
+    const at = locateRun(ticketTree);
+    assert.equal(at.ticket, 42);
+    assert.equal(at.cwd, ticketTree);
+  });
+
+  test("a worktree given explicitly is answered about itself, and named", () => {
+    const at = locateRun(undefined, probe);
+    assert.equal(at.ticket, null);
+    assert.equal(at.cwd, probe);
+  });
+
+  test("a checkout with no ticket worktree reports itself, not nothing", () => {
+    const at = locateRun(newRepo("bare"));
+    assert.equal(at.ticket, null);
+    assert.ok(existsSync(at.cwd));
+  });
+
+  test("outside a repository, answers rather than throwing", () => {
+    const nowhere = mkdtempSync(join(tmpdir(), "locate-run-nogit-"));
+    made.push(nowhere);
+    const at = locateRun(nowhere);
+    assert.equal(at.ticket, null);
+    assert.equal(at.cwd, nowhere);
+  });
+
+  /**
+   * In a child process, and in a repository with nothing live in it: the only way to ask
+   * `locateRun()` about a directory is to stand in it, and asked from this suite's own checkout
+   * the answer comes from whichever ticket worktree happens to exist today.
+   */
+  test("asked about nothing in particular, still names a real directory", () => {
+    const bare = newRepo("cwd");
+    const module = pathToFileURL(join(import.meta.dirname, "..", "loop-derive.mjs")).href;
+    const out = execFileSync(
+      process.execPath,
+      [
+        "--input-type=module",
+        "-e",
+        `import { locateRun } from ${JSON.stringify(module)};
+         process.stdout.write(JSON.stringify(locateRun()));`,
+      ],
+      { cwd: bare, encoding: "utf8" },
+    );
+    const at = JSON.parse(out);
+    assert.equal(at.ticket, null, "the fixture has no live run, so this is the no-run answer");
+    assert.equal(typeof at.cwd, "string", "an answer naming no tree is the defect");
+    assert.equal(resolve(at.cwd), resolve(bare));
   });
 });

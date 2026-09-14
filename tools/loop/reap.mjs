@@ -13,6 +13,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
+import { checkoutRoot as sharedRoot } from "../../scripts/lib/checkoutRoot.mjs";
 
 const ORPHAN_AGE_MS = 2 * 60 * 60 * 1000;
 const STALE_AGE_MS = 24 * 60 * 60 * 1000;
@@ -23,21 +24,10 @@ const E2E_PORT = process.env.E2E_PORT ?? "5199";
  * `ownedByTooling` matches a command line against, so an answer one directory out silently
  * classifies nothing as ours.
  *
- * Asked of git rather than counted in `..` segments from this file. A count is a claim about where
- * this file sits that nothing fails when the file moves, and moving it into `tools/loop/` is
- * exactly what turned the old count into the `tools/` directory. `cwd` is this file's own
- * directory, so the answer does not depend on the caller's either.
- *
- * `--git-common-dir`, never `--show-toplevel` (RULES.md rule 10): the latter answers with the
- * worktree.
+ * Asked from this file's own directory rather than the caller's, so the answer does not depend on
+ * where the sweep was started from.
  */
-export function checkoutRoot(from = path.dirname(fileURLToPath(import.meta.url))) {
-  const gitDir = execFileSync("git", ["rev-parse", "--path-format=absolute", "--git-common-dir"], {
-    cwd: from,
-    encoding: "utf8",
-  }).trim();
-  return path.dirname(gitDir);
-}
+export const checkoutRoot = (from = path.dirname(fileURLToPath(import.meta.url))) => sharedRoot(from);
 
 /**
  * Where this repo's tooling runs from. Playwright is the reason this is a list rather than the
