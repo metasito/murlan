@@ -58,29 +58,33 @@ type Comment = { line: number; pos: number; text: string };
  * Every comment in `source`, opener included, with the 1-based line it starts
  * on and the offset it starts at.
  *
- * A parse, because the alternative is deciding where a comment starts by
- * matching text, and nothing that matches text knows a regex literal from a
- * division: the quote in `/['"]/` pairs with the next quote in the file and
- * every directive between the two disappears. That is the one way this can be
- * too lax and the only direction that costs anything, so it is worth the
- * parser `tests/hooksLint.test.ts` did not previously load.
+ * A parse rather than a text match, because nothing matching text tells a regex
+ * literal from a division: the backtick in ``/[`]/`` pairs with the next
+ * backtick and every directive between the two stops looking like source. A
+ * quote can be held to its own line the way JavaScript holds one, so `/['"]/`
+ * is containable; a template legitimately spans lines and a backtick is not.
+ * Losing a directive is the one way this can be too lax and the only direction
+ * that costs anything, which is what buys the parser.
  *
- * Leading and trailing ranges both. `getLeadingCommentRanges` starts collecting
- * only after a line break, so on its own it never returns a trailing `//` or a
- * same-line JSX `{/* … *\/}` — 84 of this repo's 4041, and the reason a parse
- * looks like the wrong tool for this until the second call is added.
+ * Leading and trailing ranges both: `getLeadingCommentRanges` starts collecting
+ * only after a line break, so on its own it returns no trailing `//` and no
+ * same-line JSX `{/* … *\/}` at all.
  */
-function comments(source: string, file = "scan.tsx"): Comment[] {
+function parseFile(source: string, file: string): ts.SourceFile {
   // The kind comes from the name because it is not a formality: in TSX,
   // `<string>foo` opens a JSX element rather than asserting a type, and the
   // rest of the file goes inside it — comments and any directive among them.
-  const parsed = ts.createSourceFile(
+  return ts.createSourceFile(
     file,
     source,
     ts.ScriptTarget.Latest,
     true,
     file.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS
   );
+}
+
+function comments(source: string, file = "scan.tsx"): Comment[] {
+  const parsed = parseFile(source, file);
   const ends = new Map<number, number>();
   const visit = (node: ts.Node) => {
     for (const range of ts.getLeadingCommentRanges(source, node.pos) ?? []) {
@@ -292,35 +296,53 @@ describe("no source file switches an adopted rule off", () => {
 
   test("the scan and a plain text match agree on every comment in the tree", () => {
     // The case list is hand-written source, and the way comment extraction
-    // fails is on source nobody thought to write. So the two mechanisms are
-    // run against each other over every real file instead: they share no code
-    // and fail differently, and on 4041 comments they name the same offsets.
+    // fails is on source nobody thought to write. So the two mechanisms are run
+    // against each other over every real file instead: they share no code and
+    // fail differently, so a file that blinds one of them shows up as a
+    // disagreement rather than as nothing at all.
     //
-    // Equality, not one set inside the other, is what puts a floor under this.
-    // A parse that quietly degrades — a file it chokes on, a `ScriptKind` that
-    // stops fitting — yields fewer offsets; a text match that swallows yields
-    // fewer too. A subset check in either direction would call one of those
-    // green, and the one it called green is the one that costs a suppression.
+    // The two directions do not mean the same thing and are reported apart. The
+    // parse missing one is a suppression that can hide; the text match missing
+    // one is that swallow, harmless here because the text match decides nothing
+    // — a backtick in a regex literal is enough to cause it.
+    //
+    // What they cannot do is catch the file that blinds them both, and a parse
+    // goes blind by choking. So its own diagnostics are the floor: equality
+    // would report nothing on a file where the parse gave up early and the
+    // text match swallowed from the same construct.
     const disagreed: string[] = [];
+    const unparsed: string[] = [];
     for (const file of files) {
       const source = readFileSync(path.join(ROOT, file), "utf8");
       const parsed = new Set(comments(source, file).map((comment) => comment.pos));
+      const tree = parseFile(source, file);
       const matched = new Set(
         [...source.matchAll(COMMENT_OR_STRING)]
           .filter((match) => match[0].startsWith("/"))
           .map((match) => match.index)
       );
       for (const pos of parsed) {
-        if (!matched.has(pos)) disagreed.push(`${file}:${pos} — only the parse sees this`);
+        if (!matched.has(pos)) disagreed.push(`${file}:${pos} — the text match swallowed this`);
       }
       for (const pos of matched) {
-        if (!parsed.has(pos)) disagreed.push(`${file}:${pos} — only the text match sees this`);
+        if (!parsed.has(pos)) disagreed.push(`${file}:${pos} — the scan cannot see this`);
       }
+      // `parseDiagnostics` is not on the public type, and there is no public
+      // way to ask a lone SourceFile what it failed to read — a Program would
+      // answer it and would cost the whole type-check.
+      const syntax = (tree as unknown as { parseDiagnostics?: unknown[] }).parseDiagnostics;
+      if (syntax?.length) unparsed.push(`${file} — ${syntax.length} syntax errors`);
     }
+    assert.deepEqual(
+      unparsed,
+      [],
+      "the scan reads a file it cannot parse as a file with no comments in it"
+    );
     assert.deepEqual(
       disagreed,
       [],
-      "the two disagree about where a comment is, and a suppression can hide in the gap"
+      "'the scan cannot see this' is a suppression that can hide; 'the text match " +
+        "swallowed this' is the cross-check itself losing its grip, and costs nothing"
     );
   });
 
