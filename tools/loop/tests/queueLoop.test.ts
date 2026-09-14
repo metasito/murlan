@@ -5,6 +5,7 @@ import { EventEmitter } from "node:events";
 import { Readable } from "node:stream";
 import { readFileSync, rmSync } from "node:fs";
 import path from "node:path";
+import { LAND } from "../loop-render.mjs";
 import {
   parseRoute,
   pushedPr,
@@ -30,6 +31,7 @@ import {
   afterRefusal,
   holdFor,
   WAIT,
+  settle,
 } from "../queue-loop.mjs";
 
 describe("parseRoute", () => {
@@ -1015,5 +1017,67 @@ describe("pushedPr only ever answers with this ticket's own pull request", () =>
       throw new Error("gh: not authenticated");
     };
     assert.equal(pushedPr("agent/42-x", 42, 1003, 0, throws), null);
+  });
+});
+
+/**
+ * The stretch after the session exits, which is the longest part of a ticket and the part the
+ * board used to show nothing for: `close` ticked green and a twenty-minute CI wait read as a hang.
+ */
+describe("the land phase", () => {
+  const board = () => {
+    const rows: string[] = [];
+    return {
+      rows,
+      start: (letter: string) => rows.push(`start ${letter}`),
+      said: (text: string) => rows.push(`said ${text}`),
+      close: (state: string, detail: string) => rows.push(`close ${state} ${detail}`),
+    };
+  };
+  const pending = { ticket: 42, pr: 1049, branch: "agent/42-a-thing" };
+
+  test("opens a phase before the wait and says what is being waited on", async () => {
+    const screen = board();
+    await settle(pending, screen as never, { watch: async () => ({ action: "merge" }) });
+    assert.equal(screen.rows[0], `start ${LAND}`);
+    assert.match(screen.rows[1], /waiting for ci\.yml on agent\/42-a-thing/);
+  });
+
+  test("a merge closes it green, naming the pull request that landed", async () => {
+    const screen = board();
+    await settle(pending, screen as never, { watch: async () => ({ action: "merge" }) });
+    assert.equal(screen.rows.at(-1), "close done #1049 merged");
+  });
+
+  test("anything else closes it red, carrying the reason out to the row", async () => {
+    const screen = board();
+    const out = await settle(pending, screen as never, {
+      watch: async () => ({ action: "owner", reason: "CI did not settle in 40m" }),
+    });
+    assert.equal(screen.rows.at(-1), "close failed CI did not settle in 40m");
+    assert.equal(out.action, "owner", "the caller still decides; this only renders");
+  });
+
+  test("a wait that throws still settles the row, rather than spinning forever", async () => {
+    const screen = board();
+    await assert.rejects(() =>
+      settle(pending, screen as never, {
+        watch: async () => {
+          throw new Error(["gh: rate limited", "second line"].join("\n"));
+        },
+      }),
+    );
+    assert.equal(screen.rows.at(-1), "close failed gh: rate limited");
+  });
+
+  test("what the wait says on the way reaches the board, not the scrollback", async () => {
+    const screen = board();
+    await settle(pending, screen as never, {
+      watch: async (_p: unknown, log: (m: string) => void) => {
+        log("main moved — updating the branch and reading CI again");
+        return { action: "merge" };
+      },
+    });
+    assert.ok(screen.rows.some((r) => r.startsWith("said main moved")));
   });
 });

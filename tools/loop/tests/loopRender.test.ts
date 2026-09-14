@@ -24,6 +24,7 @@ import {
   thought,
   wrap,
   KEYS,
+  LAND,
   MIN_WIDTH,
   PHASES,
   PLAIN,
@@ -243,16 +244,22 @@ describe("progress", () => {
     assert.doesNotMatch(line, /█/);
   });
 
-  // A bar whose right edge moves as the label changes reads as jitter.
+  // A bar whose right edge moves as the label changes reads as jitter. `lastIndexOf`, because the
+  // closing bracket and the eighth-block partial fill are the same character.
   test("the bar is the same width at every phase", () => {
     const widths = [...PHASES.map(([l]) => l), "?"].map((l) =>
-      strip(progress({ letter: l }, tPlain)).indexOf("▏"),
+      strip(progress({ letter: l }, tPlain)).lastIndexOf("▏"),
     );
     assert.equal(new Set(widths).size, 1, `edges at ${widths.join(", ")}`);
   });
 });
 
 describe("phaseRow", () => {
+  test("the supervisor's own phase is one the list knows, and reads as a word", () => {
+    assert.ok(PHASES.some(([l]) => l === LAND), `${LAND} names no phase, so its row would say the letter`);
+    assert.match(strip(phaseRow({ letter: LAND, ms: 0 }, tPlain)), /land/);
+  });
+
   test("a finished phase carries its name, its detail and its clock", () => {
     const line = strip(phaseRow({ letter: "C", detail: "8 files", ms: 92_000 }, tPlain));
     assert.match(line, /✓ {2}build/);
