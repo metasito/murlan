@@ -1,6 +1,6 @@
-// The Maestro Android action, as the two things a test can ask about it: the
-// commands its script actually runs, and the `with:` block that configures the
-// emulator. Shared because a second copy is how one of them ends up weaker than
+// The Maestro Android action, as the things a test can ask about it: the
+// commands its script actually runs, where its markers sit among them, and the
+// `with:` block that configures the emulator. Shared because a second copy is how one of them ends up weaker than
 // the other — a scan over the raw file text is satisfied by a commented-out
 // command, which is the one failure a test about a CI script must not have.
 import { readFileSync } from "node:fs";

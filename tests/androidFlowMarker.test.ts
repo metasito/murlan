@@ -75,12 +75,19 @@ describe("the Android flow marker", () => {
   test("nothing above the device marker touches what this branch built", () => {
     // The whole weight of the verdict's "that is the runner and not this branch"
     // rests on this: the marker is absent for everything above it alike, so one
-    // line up there consuming the branch's own APK is a bad build reported as a
-    // sick runner. `adb install` was that line, and the class the ticket named.
+    // line up there consuming the branch's own build is a bad APK reported as a
+    // sick runner.
+    // The names come from the build step's own `$GITHUB_ENV` writes, so a third
+    // export consumed up there is caught without this test being told about it.
+    const exported = [...read(WORKFLOW).matchAll(/echo "(\w+)=[^"]*" >> "\$GITHUB_ENV"/g)].map(
+      (m) => m[1],
+    );
+    assert.ok(exported.length >= 2, "the build no longer exports what it built, or the scan broke");
+    const built = new RegExp(`${exported.join("|")}|\\.apk\\b`);
     for (const l of lines.slice(0, markerIndex(lines, "emulator-booted"))) {
       assert.doesNotMatch(
         l,
-        /\$(APP_APK|APP_ID)\b|\$\{(APP_APK|APP_ID)\}/,
+        built,
         `the verdict calls a failure here the runner's, but this line runs the branch's build: ${l}`,
       );
     }
@@ -123,8 +130,10 @@ describe("the Android flow marker", () => {
     // A job that overruns timeout-minutes is cancelled, not failed. `failure()` is
     // then false, so the verdict step and both artefact uploads never run — in
     // exactly the case they exist to explain.
+    // Every shape that blocks on the device, not only the one named
+    // `wait-for-device`: the install and the launch wait on it just as hard.
     const unbounded = lines.filter(
-      (l) => l.includes("wait-for-device") && !l.startsWith("timeout "),
+      (l) => /wait-for-device|^adb install\b|\bmonkey\b/.test(l) && !l.startsWith("timeout "),
     );
     assert.deepEqual(unbounded, [], "an adb wait with no timeout can hang the job to cancellation");
 
@@ -179,7 +188,7 @@ describe("maestro.yml reads that marker", () => {
     // Both halves of the floor are load-bearing: a regex that matched nothing
     // would pass this test by finding no issue to object to, and one that
     // matched only the file it was written against would answer for both.
-    assert.ok(printed.length >= 10, `only ${printed.length} annotations found; the scan is broken`);
+    assert.ok(printed.length >= 15, `only ${printed.length} annotations found; the scan is broken`);
     for (const f of [WORKFLOW, ACTION]) {
       assert.ok(
         printed.some((a) => read(f).includes(a)),

@@ -220,13 +220,15 @@ jobs:
           pkill -f 'emulator -port 5554' || true
           adb kill-server || true
 
-      # It keeps the first attempt's full 900s, and has to: what it retries is
-      # the slow-but-real boot that number exists to allow (the action pins why
-      # 900 and not less). A cheaper retry would fail that boot and reach the
-      # double-timeout verdict from a single flake, which is the one outcome
-      # this branch exists to avoid. The job's 100 minutes is sized for two of
-      # them (above) rather than against them, so the pair costs nothing that
-      # was not already budgeted.
+      # It keeps the first attempt's full 900s, and has to. It retries both the
+      # states that never reached the flows, and for one of them - a boot that
+      # never finished - 900 is the slow-but-real boot the number exists to
+      # allow (the action pins why 900 and not less). A cheaper retry would fail
+      # that boot and reach the double-timeout verdict from a single flake,
+      # which is the one outcome this branch exists to avoid. For the other
+      # state it is a ceiling rather than a spend: an app that will not launch
+      # fails long before it. The job's 100 minutes is sized for two of them
+      # (above) rather than against them.
       - name: Retry, and only when the flows never started
         id: retry
         if: steps.flows.outcome == 'failure' && steps.kind.outputs.started == 'false'
@@ -243,7 +245,7 @@ jobs:
       # It says whose problem the run was and nothing beyond that, because
       # nothing beyond that is what it knows: `emulator-booted` is one bit,
       # absent alike for a device that never came up and for the reboot, the
-      # locale, the framework or the install failing on one that did. An issue
+      # locale or the framework failing on one that did. An issue
       # number here is worth less still - a workflow cannot tell that the issue
       # behind an annotation has been closed, and one of these went on routing
       # every reader of a failed run to a closed #186.
@@ -257,7 +259,7 @@ jobs:
             exit 1
           fi
           if [ ! -f "$RUNNER_TEMP/app-launched" ]; then
-            echo "::error::The device came up, and the app never reached a usable state on it - twice. Either the build does not run or the device could not run it, but nothing here is an answer about the flows."
+            echo "::error::The device came up, and the app never reached a usable state on it; the retry did not change that. Either the build does not run or the device could not run it, but nothing here is an answer about the flows."
             exit 1
           fi
           echo "::error::The flows ran on an app that launched, so this is a result about the diff."
