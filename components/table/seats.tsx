@@ -484,7 +484,7 @@ function PassedChip({ scale }: { scale: number }) {
 /**
  * A seat's own disconnect countdown, for the whole grace (docs/BRIEF.md
  * §3.1) — not the ten-second banner it replaces. Ticks locally off the
- * server's own `seconds`, restarted by `resetKey` the same way `TurnTimer`
+ * server's own `seconds`, restarted by `resetKey` the same way `TurnChip`
  * is; there is no clock of its own to invent.
  */
 function ReconnectingChip({
