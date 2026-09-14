@@ -6,7 +6,7 @@
 import { describe, it, expect, jest } from '@jest/globals';
 import React from 'react';
 import { View } from 'react-native';
-import { render, screen } from '@testing-library/react-native';
+import { act, render, screen } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 const WINDOW = { width: 568, height: 320, scale: 2, fontScale: 1 };
@@ -28,6 +28,11 @@ jest.mock('@/lib/accessibility', () => ({
 
 import { GameTable } from '@/components/GameTable';
 import type { Card, GameState, Player } from '@/lib/gameEngine';
+import { A11yStatus } from '@/lib/a11y';
+import { tn } from '@/lib/i18n';
+
+/** A caller's own live region, in the slot the table veils along with itself. */
+const BANNER = 'P1 has left the table.';
 
 const INSETS = { top: 0, left: 47, right: 34, bottom: 0 };
 const METRICS = { frame: { x: 0, y: 0, width: WINDOW.width, height: WINDOW.height }, insets: INSETS };
@@ -74,10 +79,11 @@ const withdrawn = (props: Record<string, unknown>) =>
   props.importantForAccessibility === 'no-hide-descendants' ||
   props['aria-hidden'] === true;
 
-async function mount(tableCovered: boolean) {
-  return render(
+const tree = (tableCovered: boolean, turnTimer?: { seconds: number; resetKey: string }) => (
     <SafeAreaProvider initialMetrics={METRICS}>
       <GameTable
+        turnTimer={turnTimer && { ...turnTimer, includeNewRound: true, onExpire: noop }}
+        banners={<A11yStatus label={BANNER} />}
         gameState={gameState}
         viewerSeat={0}
         selectedIds={[]}
@@ -92,7 +98,10 @@ async function mount(tableCovered: boolean) {
         overlays={(veiled) => <View testID="the-cover" {...veiled} />}
       />
     </SafeAreaProvider>
-  );
+);
+
+async function mount(tableCovered: boolean) {
+  return render(tree(tableCovered));
 }
 
 describe('a cover in the overlays slot', () => {
@@ -138,6 +147,31 @@ describe('a cover in the overlays slot', () => {
       withdrawn(screen.getByTestId('control-rail', { includeHiddenElements: true }).props)
     ).toBe(true);
     await r.unmount();
+  });
+
+  // Every region the table veils changes its sentence where nobody can hear it
+  // and comes back already holding it — the countdown under the hud stack's own
+  // veil (#1004), and a caller's banner in the slot the table veils with itself.
+  it('gives every region it veils its sentence back when the cover lifts', async () => {
+    // Fake timers, because the empty frame and the sentence are one task apart
+    // and the harness's own `await` would run that task before either is read.
+    jest.useFakeTimers();
+    const timer = { seconds: 30, resetKey: 'turn-1' };
+    const r = await render(tree(true, timer));
+    expect(liveRegions()).toHaveLength(0);
+
+    await r.rerender(tree(false, timer));
+    const spoken = () => liveRegions().map((n) => String(n.props.accessibilityLabel ?? ''));
+    expect(spoken().filter(Boolean)).toEqual([]);
+
+    await act(async () => {
+      jest.advanceTimersByTime(1);
+    });
+    expect(spoken()).toContain(tn('gameTable.a11ySecondsLeft', 30));
+    expect(spoken()).toContain(BANNER);
+
+    await r.unmount();
+    jest.useRealTimers();
   });
 
   it('withdraws nothing while no cover is up', async () => {

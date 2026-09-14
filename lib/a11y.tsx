@@ -1,4 +1,4 @@
-import { useEffect, useId } from "react";
+import { createContext, useContext, useEffect, useId, useState } from "react";
 import { Platform, StyleSheet, Text } from "react-native";
 import type { AccessibilityProps, AccessibilityRole, AccessibilityState } from "react-native";
 
@@ -119,6 +119,30 @@ export function a11yVeiled(veiled: boolean): AccessibilityProps {
   return props;
 }
 
+const VeilContext = createContext(false);
+
+/**
+ * Tells the live regions inside a veiled subtree that they are withdrawn, which
+ * nothing in the accessibility props themselves can: they hide descendants the
+ * platform never reports back down the tree. Renders no view, so it costs the
+ * layout nothing. `veil` is the object being spread onto the subtree's own
+ * element, so the condition stays written once.
+ */
+export function A11yVeil({
+  veil,
+  children,
+}: {
+  veil: AccessibilityProps;
+  children: React.ReactNode;
+}) {
+  const above = useContext(VeilContext);
+  return (
+    <VeilContext.Provider value={above || veil.accessibilityElementsHidden === true}>
+      {children}
+    </VeilContext.Provider>
+  );
+}
+
 /**
  * A control's hint. `props` goes on the control, `node` beside it — the DOM
  * carries a description only by reference, so the text has to exist somewhere.
@@ -209,11 +233,29 @@ export function A11yStatus({
    *  implicit assertiveness is not always what a layer wants. */
   live?: "polite" | "assertive";
 }) {
+  const veiledAbove = useContext(VeilContext);
+  const hidden = veiled || veiledAbove;
+  const [armed, setArmed] = useState(!hidden);
+  const [veilSeen, setVeilSeen] = useState(hidden);
+  if (veilSeen !== hidden) {
+    setVeilSeen(hidden);
+    setArmed(false);
+  }
+  useEffect(() => {
+    if (hidden) return;
+    // A region re-exposed with its text already in it announces nothing, so the
+    // empty frame has to reach the platform on its own before the sentence
+    // does. A task rather than React's next commit: the same one can carry both.
+    const id = setTimeout(() => setArmed(true), 0);
+    return () => clearTimeout(id);
+  }, [hidden]);
+  const spoken = hidden || !armed ? "" : label;
+
   return (
     <Text
       accessible
       accessibilityRole={role}
-      accessibilityLabel={label}
+      accessibilityLabel={spoken}
       {...(isWeb
         ? // `text` is one of the roles react-native-web maps to nothing, which
           // would leave the sentence on a role-less node — `generic`, for which
@@ -223,7 +265,7 @@ export function A11yStatus({
       {...a11yVeiled(veiled)}
       style={styles.srOnly}
     >
-      {label}
+      {spoken}
     </Text>
   );
 }
