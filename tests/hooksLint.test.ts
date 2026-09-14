@@ -54,22 +54,6 @@ function sourceFiles(dir: string): string[] {
 
 type Comment = { line: number; pos: number; text: string };
 
-/**
- * Every comment in `source`, opener included, with the 1-based line it starts
- * on and the offset it starts at.
- *
- * A parse rather than a text match, because nothing matching text tells a regex
- * literal from a division: the backtick in ``/[`]/`` pairs with the next
- * backtick and every directive between the two stops looking like source. A
- * quote can be held to its own line the way JavaScript holds one, so `/['"]/`
- * is containable; a template legitimately spans lines and a backtick is not.
- * Losing a directive is the one way this can be too lax and the only direction
- * that costs anything, which is what buys the parser.
- *
- * Leading and trailing ranges both: `getLeadingCommentRanges` starts collecting
- * only after a line break, so on its own it returns no trailing `//` and no
- * same-line JSX `{/* … *\/}` at all.
- */
 function parseFile(source: string, file: string): ts.SourceFile {
   // The kind comes from the name because it is not a formality: in TSX,
   // `<string>foo` opens a JSX element rather than asserting a type, and the
@@ -83,7 +67,23 @@ function parseFile(source: string, file: string): ts.SourceFile {
   );
 }
 
-function comments(source: string, file = "scan.tsx"): Comment[] {
+/**
+ * Every comment in `source`, opener included, with the 1-based line it starts
+ * on and the offset it starts at.
+ *
+ * A parse rather than a text match, because nothing matching text tells a regex
+ * literal from a division: the backtick in ``/[`]/`` pairs with the next
+ * backtick and every directive between the two stops looking like source. A
+ * quote can be held to its own line the way JavaScript holds one; a template
+ * legitimately spans lines, so a backtick cannot be. Losing a directive is the
+ * one way this can be too lax and the only direction that costs anything, which
+ * is what buys the parser.
+ *
+ * Leading and trailing ranges both: `getLeadingCommentRanges` starts collecting
+ * only after a line break, so on its own it returns no trailing `//` and no
+ * same-line JSX `{/* … *\/}` at all.
+ */
+function comments(source: string, file: string): Comment[] {
   const parsed = parseFile(source, file);
   const ends = new Map<number, number>();
   const visit = (node: ts.Node) => {
@@ -105,13 +105,10 @@ function comments(source: string, file = "scan.tsx"): Comment[] {
     }));
 }
 
-// The text-matching route the parse replaced, kept as the thing it is checked
-// against: two mechanisms with nothing in common that must name the same
-// offsets on every file scanned. Its known hole — an unpaired quote or backtick
-// swallowing what follows — is exactly what makes it a useful second opinion,
-// since the parse cannot have that hole and a drift shows up as a disagreement.
-const COMMENT_OR_STRING =
-  /"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'|`(?:\\[\s\S]|[^`\\])*`|\/\*[\s\S]*?\*\/|\/\/[^\n]*/g;
+/** The syntax errors in `source`, which is what a parse losing comments looks like. */
+function syntaxErrors(source: string, file: string): readonly ts.Diagnostic[] {
+  return ts.transpileModule(source, { fileName: file, reportDiagnostics: true }).diagnostics ?? [];
+}
 
 /**
  * Why each comment in `source` switches an adopted rule off, with the line it
@@ -123,7 +120,7 @@ const COMMENT_OR_STRING =
  * may name its rule on any line of itself, and because a directive is only a
  * directive outside a string — neither is decidable one line at a time.
  */
-function suppressionFaults(source: string, file?: string): { line: number; why: string }[] {
+function suppressionFaults(source: string, file = "scan.tsx"): { line: number; why: string }[] {
   return comments(source, file).flatMap(({ line, text }) => {
     const why = commentFault(text);
     return why ? [{ line, why }] : [];
@@ -265,17 +262,19 @@ describe("no source file switches an adopted rule off", () => {
       /costs this file its compilation/
     );
 
-    // A quote or a backtick a regex literal holds is what can hide a real
-    // directive from anything matching text: it pairs with the next one in the
-    // file and everything between the two stops being source. Both forms, and
-    // the backtick because a template legitimately spans lines, so bounding it
-    // the way a string is bounded is not open to us.
-    assert.match(
-      only("const q = /['\"]/;\n// eslint-disable-next-line react-hooks/refs\nconst n = 'x';"),
-      /costs this file its compilation/
-    );
+    // The backtick a regex literal holds is what hides a directive from anything
+    // matching text: it pairs with the next backtick and everything between the
+    // two stops being source. Nothing bounds it, because a template really does
+    // span lines. A parse is not reading text, so it is unmoved.
     assert.match(
       only("const q = /[`]/;\n// eslint-disable-next-line react-hooks/refs\nconst n = `y`;"),
+      /costs this file its compilation/
+    );
+
+    // A comment inside a template substitution is a comment, and ESLint reads a
+    // directive there as one.
+    assert.match(
+      only("const s = `a${/* eslint-disable react-hooks/refs */ 1}b`;"),
       /costs this file its compilation/
     );
 
@@ -294,56 +293,31 @@ describe("no source file switches an adopted rule off", () => {
     assert.deepEqual(suppressionFaults('const a = 1;\n\n/* eslint-disable */')[0]?.line, 3);
   });
 
-  test("the scan and a plain text match agree on every comment in the tree", () => {
-    // The case list is hand-written source, and the way comment extraction
-    // fails is on source nobody thought to write. So the two mechanisms are run
-    // against each other over every real file instead: they share no code and
-    // fail differently, so a file that blinds one of them shows up as a
-    // disagreement rather than as nothing at all.
-    //
-    // The two directions do not mean the same thing and are reported apart. The
-    // parse missing one is a suppression that can hide; the text match missing
-    // one is that swallow, harmless here because the text match decides nothing
-    // — a backtick in a regex literal is enough to cause it.
-    //
-    // What they cannot do is catch the file that blinds them both, and a parse
-    // goes blind by choking. So its own diagnostics are the floor: equality
-    // would report nothing on a file where the parse gave up early and the
-    // text match swallowed from the same construct.
-    const disagreed: string[] = [];
-    const unparsed: string[] = [];
-    for (const file of files) {
-      const source = readFileSync(path.join(ROOT, file), "utf8");
-      const parsed = new Set(comments(source, file).map((comment) => comment.pos));
-      const tree = parseFile(source, file);
-      const matched = new Set(
-        [...source.matchAll(COMMENT_OR_STRING)]
-          .filter((match) => match[0].startsWith("/"))
-          .map((match) => match.index)
-      );
-      for (const pos of parsed) {
-        if (!matched.has(pos)) disagreed.push(`${file}:${pos} — the text match swallowed this`);
-      }
-      for (const pos of matched) {
-        if (!parsed.has(pos)) disagreed.push(`${file}:${pos} — the scan cannot see this`);
-      }
-      // `parseDiagnostics` is not on the public type, and there is no public
-      // way to ask a lone SourceFile what it failed to read — a Program would
-      // answer it and would cost the whole type-check.
-      const syntax = (tree as unknown as { parseDiagnostics?: unknown[] }).parseDiagnostics;
-      if (syntax?.length) unparsed.push(`${file} — ${syntax.length} syntax errors`);
-    }
+  test("every file the scan reads parses, so none of them reads as having no comments", () => {
+    // The scan finds comments by parsing, and a parse that gives up part way
+    // reports what it managed rather than an error — a file with an unclosed
+    // JSX tag in it has no comments after that tag and no complaint about it.
+    // Nothing else here would notice, because the scan going quiet and a file
+    // holding no suppression look the same from the outside.
+    const unparsed = files.flatMap((file) => {
+      const errors = syntaxErrors(readFileSync(path.join(ROOT, file), "utf8"), file);
+      return errors.length ? [`${file} — ${errors.length} syntax errors`] : [];
+    });
     assert.deepEqual(
       unparsed,
       [],
       "the scan reads a file it cannot parse as a file with no comments in it"
     );
-    assert.deepEqual(
-      disagreed,
-      [],
-      "'the scan cannot see this' is a suppression that can hide; 'the text match " +
-        "swallowed this' is the cross-check itself losing its grip, and costs nothing"
-    );
+  });
+
+  test("a file that does not parse is reported as one, rather than as clean", () => {
+    // The check above is only worth its runtime if it can say no, and what it
+    // asks is a `?? []` away from answering "none" forever.
+    const broken = "const x = <string>y;\n// eslint-disable-next-line react-hooks/refs\n";
+    assert.ok(syntaxErrors(broken, "components/X.tsx").length > 0);
+    // The same source under the name that makes it a type assertion: this is
+    // what `comments()` keys the ScriptKind off, and it has to stay legal.
+    assert.deepEqual(syntaxErrors(broken, "lib/x.ts"), []);
   });
 
   test("there is no suppression of an adopted rule anywhere the rule is on", () => {
