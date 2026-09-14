@@ -3,9 +3,24 @@
 // gates that refuse a react-hooks suppression: `tests/hooksLint.test.ts` and
 // `tests/reactCompiler.test.ts`.
 //
-// Which rules count is *not* here: the two gates cover deliberately different
-// breadths, and that is each caller's to state.
+// How wide each gate casts is *not* here: the two cover deliberately different
+// breadths, and that is each caller's to state. The three names below are, because
+// they are the subject of both — one refuses a suppression of them, the other
+// measures what the compiler charges for one.
 import ts from "typescript";
+
+/**
+ * Every rule #891 adopted.
+ *
+ * `react-hooks/refs` and `react-hooks/globals` are on by default and named
+ * nowhere in `eslint.config.js`, so this cannot be derived from the config the
+ * way the directories it covers are.
+ */
+export const ADOPTED = [
+  "react-hooks/set-state-in-effect",
+  "react-hooks/globals",
+  "react-hooks/refs",
+];
 
 type Comment = { line: number; text: string };
 

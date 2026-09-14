@@ -15,13 +15,11 @@ import { ESLint } from "eslint";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { directives, syntaxErrors, type Directive } from "./helpers/hookSuppression.ts";
+import { ADOPTED, directives, syntaxErrors, type Directive } from "./helpers/hookSuppression.ts";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(import.meta.url);
 
-/** Every rule #891 adopted. */
-const ADOPTED = ["react-hooks/set-state-in-effect", "react-hooks/globals", "react-hooks/refs"];
 /** The one rule left off, and the only files it may be off for. */
 const OFF_FOR_TESTS = "react-hooks/globals";
 const OFF_ONLY_FOR = [
