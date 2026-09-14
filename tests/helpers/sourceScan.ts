@@ -4,10 +4,11 @@ import path from "node:path";
 /** What `scannedFiles` walks: the two trees that hold rendered UI, never one without the other. */
 const SCANNED_DIRS = ["components", "app"];
 
-function sourcesUnder(repoRoot: string, dirs: string[]): [string, string][] {
+/** The sources under `dirs`, as `[repo-relative path, contents]`. */
+export function sourcesUnder(repoRoot: string, dirs: string[], keep = /\.tsx?$/): [string, string][] {
   return dirs.flatMap((dir) =>
     readdirSync(path.join(repoRoot, dir), { recursive: true, encoding: "utf8" })
-      .filter((f) => f.endsWith(".ts") || f.endsWith(".tsx"))
+      .filter((f) => keep.test(f))
       .map((f): [string, string] => [
         path.posix.join(dir, f.split(path.sep).join("/")),
         readFileSync(path.join(repoRoot, dir, f), "utf8"),
@@ -52,6 +53,9 @@ export function scannedFiles(repoRoot: string): string[] {
  * What may sit immediately before a `/` that opens a regex literal. `}` and
  * `<` are left out on purpose: both are how JSX writes `{…} />` and `</Tag>`,
  * and reading either as a regex swallows the rest of the file.
+ *
+ * Read against the source, never against the buffer being blanked: a blanked
+ * `a="b"` ends in `=`, which would make the two modes tokenise differently.
  */
 const OPENS_REGEX =
   /(?:[(,=:[!&|?;+\-*%^~{]|=>|\b(?:return|typeof|instanceof|in|of|case|new|delete|void|throw|do|else|yield|await))\s*$/;
@@ -76,14 +80,17 @@ function blankSpans(source: string, blankStrings: boolean): string {
     for (let k = from; k < to && k < out.length; k++) if (out[k] !== "\n") out[k] = " ";
   };
 
-  // A `'…'` or `"…"` cannot span a line break, so an apostrophe in prose ends
-  // at the newline rather than running on through the code below it.
+  // A `'…'` or `"…"` cannot cross a line break it has not escaped, so an
+  // apostrophe in prose ends at the newline rather than running on through the
+  // code below it.
   const quoted = (start: number): number => {
     let i = start + 1;
     while (i < source.length && source[i] !== source[start] && source[i] !== "\n") {
       i += source[i] === "\\" ? 2 : 1;
     }
-    return Math.min(i + 1, source.length);
+    const end = Math.min(i + 1, source.length);
+    if (blankStrings) erase(start, end);
+    return end;
   };
 
   const regexLiteral = (start: number): number => {
@@ -128,7 +135,6 @@ function blankSpans(source: string, blankStrings: boolean): string {
   function walk(from: number, untilBrace: boolean): number {
     let i = from;
     let depth = 0;
-    let prev = "";
     while (i < source.length) {
       const c = source[i];
       const two = c + source[i + 1];
@@ -137,29 +143,23 @@ function blankSpans(source: string, blankStrings: boolean): string {
         const end = close < 0 ? source.length : close + 2;
         erase(i, end);
         i = end;
-      } else if (two === "//" && prev !== ":") {
+      } else if (two === "//" && source[i - 1] !== ":") {
         const nl = source.indexOf("\n", i);
         const end = nl < 0 ? source.length : nl;
         erase(i, end);
         i = end;
       } else if (c === '"' || c === "'") {
-        const end = quoted(i);
-        if (blankStrings) erase(i, end);
-        prev = c;
-        i = end;
+        i = quoted(i);
       } else if (c === "`") {
         i = template(i);
-        prev = "`";
-      } else if (c === "/" && OPENS_REGEX.test(out.slice(Math.max(0, i - 16), i).join(""))) {
+      } else if (c === "/" && OPENS_REGEX.test(source.slice(Math.max(0, i - 16), i))) {
         i = regexLiteral(i);
-        prev = "/";
       } else {
         if (untilBrace && c === "{") depth++;
         else if (untilBrace && c === "}") {
           if (depth === 0) return i + 1;
           depth--;
         }
-        if (!/\s/.test(c)) prev = c;
         i++;
       }
     }
