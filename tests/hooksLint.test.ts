@@ -12,6 +12,7 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import { ESLint } from "eslint";
+import ts from "typescript";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -51,49 +52,52 @@ function sourceFiles(dir: string): string[] {
   });
 }
 
-// Every comment, every string and every template in one alternation, so that
-// whichever opens first consumes the other: a `/*` inside a string is the
-// string's, and a quote or backtick inside a comment is the comment's. Both
-// directions matter — the second is why a raw `ts.createScanner` is no use
-// here, since this repo's prose is full of backticks and it desynced on 50 of
-// the 139 files scanned. A real parse loses instead in the direction that
-// counts: walking nodes for their comment ranges misses every JSX `{/* */}`
-// and every trailing `//`, 84 comments the alternation below finds.
-//
-// A quoted string stops at its own newline, as JavaScript's does. Nothing here
-// knows a regex literal from a division, so `/['"]/` offers a quote that would
-// otherwise pair with the next one in the file and swallow every directive
-// between — the one way this can be too lax, and the only direction that costs
-// anything. A stray backtick still can, because a template really does span
-// lines; no source under `SOURCE_DIRS` carries one outside a comment or string.
+// Comments, strings and templates in one alternation, so that whichever opens
+// first consumes the other: a `/*` inside a string is the string's, and a quote
+// or backtick inside a comment is the comment's. A quoted string stops at its
+// own newline, as JavaScript's does — nothing here knows a regex literal from a
+// division, so `/['"]/` offers a quote that would otherwise pair with the next
+// one in the file and swallow every directive between. Swallowing is the one
+// way this can be too lax and the only direction that costs anything, which is
+// why `comments()` is held against a real parse over every file scanned rather
+// than trusted.
 const COMMENT_OR_STRING =
   /"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'|`(?:\\[\s\S]|[^`\\])*`|\/\*[\s\S]*?\*\/|\/\/[^\n]*/g;
 
+/** Every comment in `source`, opener included, with the 1-based line it starts on. */
+function comments(source: string): { line: number; text: string }[] {
+  return [...source.matchAll(COMMENT_OR_STRING)]
+    .filter((match) => match[0].startsWith("/"))
+    .map((match) => ({
+      line: source.slice(0, match.index).split("\n").length,
+      text: match[0],
+    }));
+}
+
 /**
  * Why each comment in `source` switches an adopted rule off, with the line it
- * sits on. One function, two callers: the scan runs it over the tree, and the
- * case list runs it over strings — which is how each form it must catch is
- * watched failing without planting one.
+ * sits on. Two callers: the scan runs it over the tree, and the case list runs
+ * it over strings — which is how each form it must catch is watched failing
+ * without planting one.
  *
  * It takes the whole text rather than a line because an `eslint` config comment
  * may name its rule on any line of itself, and because a directive is only a
  * directive outside a string — neither is decidable one line at a time.
  */
 function suppressionFaults(source: string): { line: number; why: string }[] {
-  const faults: { line: number; why: string }[] = [];
-  for (const match of source.matchAll(COMMENT_OR_STRING)) {
-    if (!match[0].startsWith("/")) continue;
-    const why = commentFault(match[0]);
-    if (why) faults.push({ line: source.slice(0, match.index).split("\n").length, why });
-  }
-  return faults;
+  return comments(source).flatMap(({ line, text }) => {
+    const why = commentFault(text);
+    return why ? [{ line, why }] : [];
+  });
 }
 
 /** Why `comment` — a whole comment, opener included — switches an adopted rule off. */
 function commentFault(comment: string): string | null {
   // Only a directive opening its own comment counts, which is what anchoring
-  // buys: prose *about* a directive — this file is full of it — reaches ESLint
-  // as prose, and must not red the gate either.
+  // buys and is the whole of what it buys: prose that mentions a directive
+  // part-way through — this file is full of it — reaches ESLint as prose too.
+  // Prose that *opens* with `eslint-disable` is a directive to ESLint whatever
+  // the rest of the sentence meant, so it is a fault here for the same reason.
   const inline = /^(?:\/\/|\/\*)\s*eslint\s+([\s\S]*)/.exec(comment);
   if (inline && ADOPTED.some((rule) => inline[1].includes(rule))) {
     return "inline rule config, which sets a level rather than asking for an exemption";
@@ -172,23 +176,27 @@ describe("no source file switches an adopted rule off", () => {
     // after `--` is among them: it reads as a local decision, and there is no
     // such thing when the cost is the whole file's compilation.
     const why = (source: string) => suppressionFaults(source).map((fault) => fault.why);
+    // One fault, not "at least one": a form that also raises a spurious second
+    // would otherwise pass here and go on annoying somebody in the scan.
+    const only = (source: string) => {
+      const faults = why(source);
+      assert.equal(faults.length, 1, `expected one fault, got ${faults.length}`);
+      return faults[0];
+    };
 
-    assert.match(why("/* eslint-disable */")[0] ?? "", /names no rule/);
+    assert.match(only("/* eslint-disable */"), /names no rule/);
+    assert.match(only("/* eslint-disable */ // see docs/agents/RULES.md"), /names no rule/);
+    assert.match(only('/* eslint react-hooks/set-state-in-effect: "off" */'), /inline rule config/);
     assert.match(
-      why("/* eslint-disable */ // see docs/agents/RULES.md")[0] ?? "",
-      /names no rule/
-    );
-    assert.match(why('/* eslint react-hooks/set-state-in-effect: "off" */')[0] ?? "", /inline rule config/);
-    assert.match(
-      why("/* eslint-disable react-hooks/globals */")[0] ?? "",
+      only("/* eslint-disable react-hooks/globals */"),
       /costs this file its compilation/
     );
     assert.match(
-      why("// eslint-disable-next-line react-hooks/refs")[0] ?? "",
+      only("// eslint-disable-next-line react-hooks/refs"),
       /costs this file its compilation/
     );
     assert.match(
-      why("// eslint-disable-next-line react-hooks/refs -- the reason, stated")[0] ?? "",
+      only("// eslint-disable-next-line react-hooks/refs -- the reason, stated"),
       /costs this file its compilation/
     );
     assert.deepEqual(why("// a bare `eslint-disable-next-line` reopens the class"), []);
@@ -197,34 +205,71 @@ describe("no source file switches an adopted rule off", () => {
     // A config comment names its rule on whichever line it likes, and the one
     // that reads best is rarely the first — a per-line scan sees the opener and
     // the rule name as two lines with no directive between them.
+    assert.match(only('/* eslint\n   react-hooks/globals: "off" */'), /inline rule config/);
     assert.match(
-      why('/* eslint\n   react-hooks/globals: "off" */')[0] ?? "",
-      /inline rule config/
-    );
-    assert.match(
-      why("/* eslint-disable\n   react-hooks/refs */")[0] ?? "",
+      only("/* eslint-disable\n   react-hooks/refs */"),
       /costs this file its compilation/
     );
 
-    // Prose is every shape that is not a directive at the head of its own
-    // comment, and a directive quoted in a string is not a directive at all.
+    // Prose is what does not open its own comment with the directive, and a
+    // directive quoted in a string is not a directive at all.
     assert.deepEqual(why('const s = "/* eslint-disable */";'), []);
     assert.deepEqual(why("const s = '// eslint-disable-next-line react-hooks/refs';"), []);
     assert.deepEqual(why("const s = `/* eslint-disable */`;"), []);
     assert.deepEqual(why("// see the `/* eslint-disable */` above"), []);
     assert.deepEqual(why("/* a block explaining /* eslint-disable */"), []);
 
+    // A sentence that opens with the directive is one, whatever it went on to
+    // mean — ESLint reads it that way, so the gate has to.
+    assert.match(
+      only("// eslint-disable-next-line react-hooks/refs is banned here"),
+      /costs this file its compilation/
+    );
+
     // The quote a regex literal holds is the one thing that can hide a real
     // directive, by pairing with the next quote in the file and swallowing
     // everything between. A string that ends at its own newline cannot.
     assert.match(
-      why("const q = /['\"]/;\n// eslint-disable-next-line react-hooks/refs\nconst n = 'x';")[0] ?? "",
+      only("const q = /['\"]/;\n// eslint-disable-next-line react-hooks/refs\nconst n = 'x';"),
       /costs this file its compilation/
     );
 
     // The line is what makes the scan's offender list actionable, so it is the
     // count of newlines before the comment, not before the file's first fault.
     assert.deepEqual(suppressionFaults('const a = 1;\n\n/* eslint-disable */')[0]?.line, 3);
+  });
+
+  test("no real file hides a comment from the scan", () => {
+    // The case list is hand-written source, and the way this extraction fails
+    // is on source nobody thought to write: an unpaired quote or backtick that
+    // pairs with a later one and swallows a directive between. So the parser
+    // is the oracle here even though it is not the implementation — it is
+    // authoritative about where a comment is and cannot be fooled by any of
+    // that, and it is only the wrong tool in the other direction, missing the
+    // JSX and trailing comments it never visits. Every comment it finds must be
+    // one `comments()` found, or `comments()` has swallowed something.
+    const swallowed: string[] = [];
+    for (const file of files) {
+      const source = readFileSync(path.join(ROOT, file), "utf8");
+      const found = new Set(comments(source).map((comment) => comment.text));
+      const parsed = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+      const seen = new Set<number>();
+      const visit = (node: ts.Node) => {
+        for (const range of ts.getLeadingCommentRanges(source, node.pos) ?? []) {
+          if (seen.has(range.pos)) continue;
+          seen.add(range.pos);
+          const text = source.slice(range.pos, range.end);
+          if (!found.has(text)) swallowed.push(`${file}:${range.pos} — ${text.slice(0, 60)}`);
+        }
+        for (const child of node.getChildren(parsed)) visit(child);
+      };
+      visit(parsed);
+    }
+    assert.deepEqual(
+      swallowed,
+      [],
+      "a comment the parser sees and the scan does not is a suppression that could hide there"
+    );
   });
 
   test("there is no suppression of an adopted rule anywhere the rule is on", () => {
