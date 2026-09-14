@@ -259,9 +259,10 @@ describe("vacateSeat writes the row on every exit the table survives (#1008)", (
       await vacateSeat(io, ROOM, "drita", "Drita", spy.writers);
       assert.deepEqual(spy.wrote, [], "persisting a table being disposed of races its own delete");
       assert.equal(activeGames.has(ROOM), false, "the table is gone, not merely unwritten");
-      // roomStore.updateRoomStatus is what this branch does write, and it sits
-      // outside the seam — so this says only that no GameOverWriters member ran,
-      // which is what rules out handleGameOver and voidAbandonedMatch.
+      // This branch does write — roomStore.updateRoomStatus, and disposeGame's
+      // own delete of the row — but both sit outside the seam, so all this can
+      // say is that no GameOverWriters member ran. That is what rules out
+      // handleGameOver and voidAbandonedMatch, each of which persists.
       assert.deepEqual(spy.reached, [], "no GameOverWriters member on the path that deletes the row");
     } finally {
       clearRoomTimers(ROOM);
