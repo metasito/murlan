@@ -30,6 +30,17 @@ export function actionScriptLines(repoRoot: string): string[] {
 }
 
 /**
+ * Where `touch "$RUNNER_TEMP/<name>"` sits in that script. Throws rather than
+ * returning -1: every claim in these tests is "above the marker" or "below it",
+ * and a -1 silently turns one of those into a claim about the whole script.
+ */
+export function markerIndex(lines: string[], name: string): number {
+  const i = lines.findIndex((l) => l.startsWith("touch") && l.includes(name));
+  if (i === -1) throw new Error(`nothing marks ${name} any more`);
+  return i;
+}
+
+/**
  * The action's `with:` block — what configures the emulator, as opposed to what
  * the script runs on it. Sliced from `with:` rather than from the top of the
  * file: `description:` above it is folded prose, and a line in an English

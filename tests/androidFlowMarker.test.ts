@@ -14,7 +14,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { actionScriptLines } from "./helpers/androidAction.ts";
+import { actionScriptLines, markerIndex } from "./helpers/androidAction.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -40,12 +40,11 @@ describe("the Android flow marker", () => {
   const lines = actionScriptLines(repoRoot);
 
   test("is the last thing the script does before running the flows", () => {
-    const marker = lines.findIndex((l) => l.startsWith("touch") && l.includes("app-launched"));
+    const marker = markerIndex(lines, "app-launched");
     // Any Maestro invocation: the flags between `maestro` and `test` are the
     // device and the app id, and pinning their spelling here would fail the
     // next time either is added rather than when the ordering breaks.
     const flows = lines.findIndex((l) => /^maestro\b.*\btest\b/.test(l));
-    assert.notEqual(marker, -1, "the script no longer writes the marker at all");
     assert.notEqual(flows, -1, "the script no longer runs the flows");
     assert.equal(
       marker + 1,
@@ -60,9 +59,8 @@ describe("the Android flow marker", () => {
     // One marker cannot say both. A device that came up and an app that then
     // died within five seconds is neither the runner failing to arrive nor a
     // verdict on the diff, and reporting it as either is what #647 was.
-    const booted = lines.findIndex((l) => l.startsWith("touch") && l.includes("emulator-booted"));
-    const launched = lines.findIndex((l) => l.startsWith("touch") && l.includes("app-launched"));
-    assert.notEqual(booted, -1, "nothing marks the device coming up any more");
+    const booted = markerIndex(lines, "emulator-booted");
+    const launched = markerIndex(lines, "app-launched");
     assert.ok(
       booted < launched,
       "the app-launch marker must come after the device one, or a device that never " +
@@ -72,6 +70,20 @@ describe("the Android flow marker", () => {
       lines.slice(booted + 1, launched).some((l) => /\bam start\b|\bmonkey\b/.test(l)),
       "nothing between the two markers launches the app, so the second proves nothing",
     );
+  });
+
+  test("nothing above the device marker touches what this branch built", () => {
+    // The whole weight of the verdict's "that is the runner and not this branch"
+    // rests on this: the marker is absent for everything above it alike, so one
+    // line up there consuming the branch's own APK is a bad build reported as a
+    // sick runner. `adb install` was that line, and the class the ticket named.
+    for (const l of lines.slice(0, markerIndex(lines, "emulator-booted"))) {
+      assert.doesNotMatch(
+        l,
+        /\$(APP_APK|APP_ID)\b|\$\{(APP_APK|APP_ID)\}/,
+        `the verdict calls a failure here the runner's, but this line runs the branch's build: ${l}`,
+      );
+    }
   });
 
   test("each attempt clears the markers it is about to write", () => {
@@ -94,7 +106,7 @@ describe("the Android flow marker", () => {
     // the boundary as well.
     const collectors = lines.filter((l) => l.startsWith("nohup"));
     assert.equal(collectors.length, 2, "the logcat stream and the host vitals");
-    const launched = lines.findIndex((l) => l.startsWith("touch") && l.includes("app-launched"));
+    const launched = markerIndex(lines, "app-launched");
     for (const c of collectors) {
       assert.ok(lines.indexOf(c) < launched, `an instrument starts after the app-launch marker: ${c}`);
       assert.match(c, /&\s*true$/, `an instrument whose failure is not absorbed: ${c}`);
@@ -143,6 +155,14 @@ describe("maestro.yml reads that marker", () => {
       1,
       "more than one state withholds the retry",
     );
+    // The retry reads `started == 'false'`, which an unset output also fails. A
+    // branch that classifies and then says nothing withholds the retry without
+    // meaning to.
+    assert.equal(
+      (kind.match(/started=false/g) ?? []).length,
+      2,
+      "a state that neither withholds the retry nor asks for it",
+    );
     const launched = kind.indexOf("app-launched");
     assert.ok(
       launched < kind.indexOf("started=true"),
@@ -156,6 +176,10 @@ describe("maestro.yml reads that marker", () => {
     // issue behind one has been answered, so every one of these goes on sending
     // the reader of a failed run somewhere nobody is listening.
     const printed = annotations();
+    // Both halves of the floor are load-bearing: a regex that matched nothing
+    // would pass this test by finding no issue to object to, and one that
+    // matched only the file it was written against would answer for both.
+    assert.ok(printed.length >= 10, `only ${printed.length} annotations found; the scan is broken`);
     for (const f of [WORKFLOW, ACTION]) {
       assert.ok(
         printed.some((a) => read(f).includes(a)),
@@ -167,7 +191,7 @@ describe("maestro.yml reads that marker", () => {
     }
   });
 
-  test("the verdict names the app launch rather than blaming the branch for it", () => {
+  test("the verdict reads its markers narrowest-first", () => {
     // Narrowest condition first: no marker at all, then a device that came up,
     // then an app that launched. Read in any other order the broadest answer
     // arrives first and every failure becomes the diff's, which is the defect

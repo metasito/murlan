@@ -2,7 +2,7 @@ name: Drive the Maestro flows on an Android emulator
 description: >
   Boots the emulator, installs the app, and runs the flows. Lives here rather
   than inline so `maestro.yml` can invoke it twice - once, and again only when
-  the emulator never booted - without a second copy of this configuration to
+  the flows never started - without a second copy of this configuration to
   drift out of step with the first.
 
 inputs:
@@ -49,8 +49,8 @@ runs:
         # The boot itself is intermittently slow on a runner - three runs have
         # ended on "Timeout waiting for emulator to boot", including one on
         # these very defaults, so it is the runner rather than anything
-        # configured here. The action's own cap is 600s and each of those runs
-        # spent all of it; this gives it half as long again. Unverified: it
+        # configured here. The action's own default is 600s and each of those
+        # runs spent all of it; this gives it half as long again. Unverified: it
         # cannot be proven except by hitting the flake again. #186.
         emulator-boot-timeout: ${{ inputs.emulator-boot-timeout }}
         script: |
@@ -119,11 +119,13 @@ runs:
           # Neither may fail the step - an instrument is not a verdict.
           nohup adb logcat -v time -b all > "$RUNNER_TEMP/logcat.txt" 2>&1 & true
           nohup sh -c 'while true; do date -u +%H:%M:%S; cat /proc/loadavg; free -m | head -2; sleep 5; done' > "$RUNNER_TEMP/host-vitals.txt" 2>&1 & true
-          adb install -r "$APP_APK"
-          # Everything above this line is the environment coming up: the boot,
-          # the reboot, the locale, the framework and the install. Its absence
-          # tells `maestro.yml` that one of those did not finish - not which, and
-          # not that the device itself never arrived.
+          # Everything above this line is the environment coming up, and nothing
+          # above it touches anything this branch built: `maestro.yml` reads the
+          # marker's absence as "the runner, not this branch", so a line here
+          # that consumed `$APP_APK` would report a bad build as the runner's
+          # fault (`tests/androidFlowMarker.test.ts` pins that). Its absence says
+          # one of the boot, the reboot, the locale or the framework did not
+          # finish - not which, and not that the device never arrived.
           touch "$RUNNER_TEMP/emulator-booted"
           # Half the resolution and half the density: the same screen in dp, a
           # quarter of the pixels for the app to rasterize. The flows select on
@@ -145,6 +147,7 @@ runs:
           # a screen the app never drew — reported as a verdict on the branch,
           # because the only boundary was the one above (#647). So the app is
           # taken to a usable state here, where failing is still retryable.
+          adb install -r "$APP_APK"
           timeout 120 adb shell monkey -p "$APP_ID" -c android.intent.category.LAUNCHER 1
           # Resumed for ten consecutive seconds, not merely resumed once: the
           # process that dies takes several seconds to do it, and a single poll

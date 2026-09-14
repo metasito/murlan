@@ -20,8 +20,8 @@ on:
   workflow_dispatch:
     inputs:
       emulator-boot-timeout:
-        # The retry below only fires when the device never came up, which on a
-        # healthy runner it always does. Lowering this is the only way to make
+        # The retry below fires only when the flows never started, which on a
+        # healthy runner they always do. Lowering this is the only way to make
         # that branch run on demand instead of waiting for the flake.
         description: Seconds to allow for the emulator to boot (lower it to exercise the retry)
         required: false
@@ -172,10 +172,11 @@ jobs:
 
       # api-level and target match the AVD documented in docs/TESTING.md §5, so
       # a failure here and a failure locally mean the same thing.
-      # A boot timeout is the runner's environment; a failing flow is a real
-      # answer about the diff. Retrying both would double a genuine red to
-      # arrive at the same red, so the retry fires only for a boot that never
-      # happened - which the marker written inside the action distinguishes.
+      # A run that never reached the flows says nothing about the diff; a
+      # failing flow is a real answer about it. Retrying both would double a
+      # genuine red to arrive at the same red, so the retry fires only where the
+      # flows never started - which the markers written inside the action
+      # distinguish.
       #
       # The step itself lives in .github/actions/drive-android-flows so that
       # running it twice does not mean two copies of its configuration.
@@ -194,15 +195,15 @@ jobs:
           # and so answers one question only: did the run get far enough for its
           # failure to be about the branch?
           #
-          # Not a duplicate of the verdict below, which reads the same markers
-          # after the retry has overwritten them: this is the only account of
-          # what the *first* attempt reached.
+          # The verdict below reads the same markers after the retry has
+          # overwritten them, so this is the only account of what the *first*
+          # attempt reached.
           if [ -f "$RUNNER_TEMP/app-launched" ]; then
             echo "started=true" >> "$GITHUB_OUTPUT"
             echo "The app launched and the flows ran; the flows themselves failed."
           elif [ -f "$RUNNER_TEMP/emulator-booted" ]; then
             echo "started=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::The device came up but the app never reached a usable state, so this run says nothing about the diff. Retrying once."
+            echo "::warning::The device came up but the app never reached a usable state on it, so this run is no answer about the flows. Retrying once."
           else
             echo "started=false" >> "$GITHUB_OUTPUT"
             echo "::warning::The environment never got as far as the flows, so this run says nothing about the diff. Retrying once."
@@ -219,18 +220,13 @@ jobs:
           pkill -f 'emulator -port 5554' || true
           adb kill-server || true
 
-      # It keeps the first attempt's full 900s, and has to: what it is retrying
-      # is the slow-but-real boot that number exists to allow (the action pins
-      # why 900 and not less). A cheaper retry would fail that boot and reach the
-      # double-timeout verdict from a single flake, which is the one outcome this
-      # branch exists to avoid, and the job's 100 minutes is sized for two of
-      # them (above) rather than against them.
-      #
-      # Measured rather than reasoned: of the 47 dispatches since this step
-      # landed, it has run twice - 33356839749 and 33357537855, both on
-      # 2026-08-31 with `emulator-boot-timeout: 30` to exercise it - and no run
-      # has ever reached it on the default. The pair of 900s waits is a ceiling
-      # nobody has paid.
+      # It keeps the first attempt's full 900s, and has to: what it retries is
+      # the slow-but-real boot that number exists to allow (the action pins why
+      # 900 and not less). A cheaper retry would fail that boot and reach the
+      # double-timeout verdict from a single flake, which is the one outcome
+      # this branch exists to avoid. The job's 100 minutes is sized for two of
+      # them (above) rather than against them, so the pair costs nothing that
+      # was not already budgeted.
       - name: Retry, and only when the flows never started
         id: retry
         if: steps.flows.outcome == 'failure' && steps.kind.outputs.started == 'false'
@@ -261,7 +257,7 @@ jobs:
             exit 1
           fi
           if [ ! -f "$RUNNER_TEMP/app-launched" ]; then
-            echo "::error::The app never reached a usable state, and the retry did not change that. Nothing here is a result about this branch."
+            echo "::error::The device came up, and the app never reached a usable state on it - twice. Either the build does not run or the device could not run it, but nothing here is an answer about the flows."
             exit 1
           fi
           echo "::error::The flows ran on an app that launched, so this is a result about the diff."
