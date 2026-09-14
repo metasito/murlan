@@ -8,7 +8,9 @@ const SCANNED_DIRS = ["components", "app"];
 export function sourcesUnder(repoRoot: string, dirs: string[], keep = /\.tsx?$/): [string, string][] {
   return dirs.flatMap((dir) =>
     readdirSync(path.join(repoRoot, dir), { recursive: true, encoding: "utf8" })
-      .filter((f) => keep.test(f))
+      // match, not test: a caller's `/g` pattern would carry lastIndex from one
+      // file to the next and drop every other one.
+      .filter((f) => f.match(keep))
       .map((f): [string, string] => [
         path.posix.join(dir, f.split(path.sep).join("/")),
         readFileSync(path.join(repoRoot, dir, f), "utf8"),
@@ -178,6 +180,10 @@ export function blankComments(source: string): string {
 /**
  * Comments and every string literal. Use this only when the scan is looking
  * for code: a scan reading JSX attribute values needs the strings kept.
+ *
+ * Nothing here reads JSX, so an apostrophe in prose — `<Text>don't</Text>` —
+ * opens a literal that takes the rest of that line. The line break bounds it,
+ * and `blankComments` does not have the defect at all.
  */
 export function blankCommentsAndStrings(source: string): string {
   return blankSpans(source, true);
