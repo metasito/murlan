@@ -12,10 +12,10 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import { ESLint } from "eslint";
-import ts from "typescript";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { directives, syntaxErrors, type Directive } from "./helpers/hookSuppression.ts";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(import.meta.url);
@@ -52,107 +52,36 @@ function sourceFiles(dir: string): string[] {
   });
 }
 
-type Comment = { line: number; text: string };
-
-function parseFile(source: string, file: string): ts.SourceFile {
-  // The kind comes from the name because it is not a formality: in TSX,
-  // `<string>foo` opens a JSX element rather than asserting a type, and the
-  // rest of the file goes inside it — comments and any directive among them.
-  return ts.createSourceFile(
-    file,
-    source,
-    ts.ScriptTarget.Latest,
-    true,
-    file.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS
-  );
-}
-
-/**
- * Every comment in `source`, opener included, with the 1-based line it starts
- * on and the offset it starts at.
- *
- * A parse rather than a text match, because nothing matching text tells a regex
- * literal from a division: the backtick in ``/[`]/`` pairs with the next
- * backtick and every directive between the two stops looking like source. A
- * quote can be held to its own line the way JavaScript holds one; a template
- * legitimately spans lines, so a backtick cannot be. Losing a directive is the
- * one way this can be too lax and the only direction that costs anything, which
- * is what buys the parser.
- *
- * Leading and trailing ranges both: `getLeadingCommentRanges` starts collecting
- * only after a line break, so on its own it returns no trailing `//` and no
- * same-line JSX `{/* … *\/}` at all.
- */
-function comments(source: string, file: string): Comment[] {
-  const parsed = parseFile(source, file);
-  const ends = new Map<number, number>();
-  const visit = (node: ts.Node) => {
-    for (const range of ts.getLeadingCommentRanges(source, node.pos) ?? []) {
-      ends.set(range.pos, range.end);
-    }
-    for (const range of ts.getTrailingCommentRanges(source, node.end) ?? []) {
-      ends.set(range.pos, range.end);
-    }
-    for (const child of node.getChildren(parsed)) visit(child);
-  };
-  visit(parsed);
-  return [...ends]
-    .sort(([a], [b]) => a - b)
-    .map(([pos, end]) => ({
-      line: source.slice(0, pos).split("\n").length,
-      text: source.slice(pos, end),
-    }));
-}
-
-/**
- * The syntax errors in `source` — what a parse losing comments looks like.
- *
- * `transpileModule` rather than the `SourceFile`'s own `parseDiagnostics`,
- * which is not on the public type. It takes its `ScriptKind` from the file name
- * as `parseFile` does, so it is the same parse; the case below pins that.
- */
-function syntaxErrors(source: string, file: string): readonly ts.Diagnostic[] {
-  return ts.transpileModule(source, { fileName: file, reportDiagnostics: true }).diagnostics ?? [];
-}
-
 /**
  * Why each comment in `source` switches an adopted rule off, with the line it
  * sits on. Two callers: the scan runs it over the tree, and the case list runs
  * it over strings — which is how each form it must catch is watched failing
  * without planting one.
  *
- * It takes the whole text rather than a line because an `eslint` config comment
- * may name its rule on any line of itself, and because a directive is only a
- * directive outside a string — neither is decidable one line at a time.
+ * Only the three rules `ADOPTED` names, where `tests/reactCompiler.test.ts`
+ * takes every rule under the `react-hooks/` prefix: what that gate asks is
+ * whether a file still compiles, and any of the plugin's rules going off costs
+ * it that. What this one asks is narrower — whether the rules #891 adopted are
+ * still on — and a rule nobody adopted going off is not an answer to it.
  */
 function suppressionFaults(source: string, file = "scan.tsx"): { line: number; why: string }[] {
-  return comments(source, file).flatMap(({ line, text }) => {
-    const why = commentFault(text);
+  return directives(source, file).flatMap(({ line, form, rules }) => {
+    const why = fault(form, rules);
     return why ? [{ line, why }] : [];
   });
 }
 
-/** Why `comment` — a whole comment, opener included — switches an adopted rule off. */
-function commentFault(comment: string): string | null {
-  // Only a directive opening its own comment counts, which is what anchoring
-  // buys and is the whole of what it buys: prose that mentions a directive
-  // part-way through — this file is full of it — reaches ESLint as prose too.
-  // A comment that *opens* with one is a fault whether or not ESLint honours
-  // it, because a comma is what decides: `refs, and never do this` suppresses
-  // and `refs is banned here` does not.
-  const inline = /^(?:\/\/|\/\*)\s*eslint\s+([\s\S]*)/.exec(comment);
-  if (inline && ADOPTED.some((rule) => inline[1].includes(rule))) {
+function fault(form: Directive["form"], rules: string[]): string | null {
+  const adopted = rules.some((rule) => ADOPTED.includes(rule));
+  if (form === "inline config") {
+    if (!adopted) return null;
     return "inline rule config, which sets a level rather than asking for an exemption";
   }
-  const directive = /^(?:\/\/|\/\*)\s*eslint-disable(-next-line|-line)?\b([\s\S]*)/.exec(comment);
-  if (!directive) return null;
-  const rules = directive[2].split("--")[0].replace(/\*\/\s*$/, "");
   // `/* eslint-disable */` with nothing after it disables every rule from there
   // on, these three among them, and is the one form that cannot be found by
   // looking for their names.
-  if (!rules.trim()) return "names no rule, so it disables all of them";
-  if (!ADOPTED.some((rule) => rules.includes(rule))) return null;
-  return "switches an adopted rule off, which costs this file its compilation";
+  if (rules.length === 0) return "names no rule, so it disables all of them";
+  return adopted ? "switches an adopted rule off, which costs this file its compilation" : null;
 }
 
 describe("the react-hooks 7 rules #891 adopted stay adopted", () => {
@@ -244,6 +173,9 @@ describe("no source file switches an adopted rule off", () => {
     );
     assert.deepEqual(why("// a bare `eslint-disable-next-line` reopens the class"), []);
     assert.deepEqual(why("// eslint-disable-next-line no-console"), []);
+    // A rule whose name opens with an adopted one is a different rule. Matching
+    // the list's text would read this as `react-hooks/refs`.
+    assert.deepEqual(why("// eslint-disable-next-line react-hooks/refs-in-render"), []);
 
     // A config comment names its rule on whichever line it likes, and the one
     // that reads best is rarely the first — a per-line scan sees the opener and
