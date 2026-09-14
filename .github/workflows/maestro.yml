@@ -245,10 +245,8 @@ jobs:
       # It says whose problem the run was and nothing beyond that, because
       # nothing beyond that is what it knows: `emulator-booted` is one bit,
       # absent alike for a device that never came up and for the reboot, the
-      # locale or the framework failing on one that did. An issue
-      # number here is worth less still - a workflow cannot tell that the issue
-      # behind an annotation has been closed, and one of these went on routing
-      # every reader of a failed run to a closed #186.
+      # locale or the framework failing on one that did. No issue number: a
+      # workflow cannot tell that the issue behind an annotation has been closed.
       - name: The run's real verdict
         run: |
           if [ "${{ steps.flows.outcome }}" = "success" ] || [ "${{ steps.retry.outcome }}" = "success" ]; then
