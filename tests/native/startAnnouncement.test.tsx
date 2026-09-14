@@ -238,8 +238,10 @@ describe('the manche-opening announcement', () => {
     const view = await render(table(state(OPENER), { viewerSeat: OPENER, turnTimer: serverClock }));
 
     expect(screen.getByTestId('start-reason-gate', { includeHiddenElements: true })).toBeTruthy();
+    // Reachable, not merely rendered: the default query excludes anything an
+    // ancestor has withdrawn, which is what the hold does to the rest of the
+    // table. `withdrawn` reads a node's own props and so cannot say this.
     const clock = screen.getByText('20');
-    expect(withdrawn(clock.props)).toBe(false);
 
     const gateZ = Number(
       (

@@ -1,5 +1,5 @@
 import { useEffect, useRef, type ReactNode } from "react";
-import { View, StyleSheet, Pressable, type TextProps, type AccessibilityProps } from "react-native";
+import { View, StyleSheet, Pressable, type AccessibilityProps } from "react-native";
 import { TableText } from "./TableText";
 import {
   Easing,
@@ -220,8 +220,8 @@ export function ChipText({
   lit = false,
   urgent = false,
   maxWidth,
+  testID,
   children,
-  ...a11y
 }: {
   scale: number;
   strong?: boolean;
@@ -229,12 +229,16 @@ export function ChipText({
   urgent?: boolean;
   /** Caps this run so an unbounded value (a username) ellipsizes instead of widening the chip. */
   maxWidth?: number;
+  testID?: string;
   children: ReactNode;
-} & Partial<Pick<TextProps, "accessibilityLabel" | "accessibilityLiveRegion" | "testID">>) {
+  // Nothing accessibility-shaped: what a chip should say goes on the
+  // `A11yStatus` beside it, which changes when there is something to say rather
+  // than whenever the drawn value does.
+}) {
   return (
     <TableText
       numberOfLines={1}
-      {...a11y}
+      testID={testID}
       style={[
         chipStyles.chipLabel,
         {
