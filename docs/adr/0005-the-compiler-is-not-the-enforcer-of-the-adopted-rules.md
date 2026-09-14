@@ -6,10 +6,12 @@
 ## Context
 
 `babel-plugin-react-compiler` refuses to compile a component that holds an ESLint suppression
-naming one of the rules on its `eslintSuppressionRules` option. Nothing in this repo sets that
-option — `app.json` sets `experiments.reactCompiler: true`, a boolean, so `babel-preset-expo`
-spreads no options object — which leaves the plugin's own default of `react-hooks/exhaustive-deps`
-and `react-hooks/rules-of-hooks`.
+naming one of the rules on its `eslintSuppressionRules` option. The one place this repo could set
+it is `babel.config.js`, whose `babel-preset-expo` options are what the preset spreads into the
+plugin (`...reactCompilerOptions`, from `platformOptions['react-compiler']`); it passes only
+`unstable_transformImportMeta`. `app.json`'s `experiments.reactCompiler: true` travels a different
+path — it is the on switch, not an options object. So the plugin's own default of
+`react-hooks/exhaustive-deps` and `react-hooks/rules-of-hooks` stands.
 
 The three rules #891 adopted (`react-hooks/set-state-in-effect`, `react-hooks/globals`,
 `react-hooks/refs`) are on neither list, so suppressing one of them costs the file nothing at the
@@ -20,7 +22,8 @@ would make the claim true rather than correcting it.
 
 ## Decision
 
-Leave `eslintSuppressionRules` unset. The gate against a local suppression stands on ESLint
+Leave `eslintSuppressionRules` unset, which means leaving `babel.config.js`'s preset options
+alone. The gate against a local suppression stands on ESLint
 semantics — which rules are on is `eslint.config.js`'s to decide, and a comment must not take one
 site out of that — and `tests/reactCompiler.test.ts` derives the compiler's real list by putting
 every `eslint-plugin-react-hooks` rule to the compiler rather than naming any.

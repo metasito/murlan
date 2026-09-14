@@ -15,7 +15,8 @@ import { execFileSync } from "node:child_process";
 import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { ADOPTED, directives } from "./helpers/hookSuppression.ts";
+import { ADOPTED } from "./helpers/adoptedHookRules.ts";
+import { directives } from "./helpers/hookSuppression.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 // The shared checkout, via `--git-common-dir` rather than `--show-toplevel` (RULES.md rule 10:
@@ -310,6 +311,15 @@ test("the compiler is measured charging for a suppression, and only for that", (
 });
 
 test("a suppression of a rule #891 adopted costs the compiler nothing", () => {
+  // A rule renamed upstream would leave the filter below answering "none of them"
+  // about three names nothing ships, which is the shape of pass this measurement
+  // exists to replace.
+  assert.deepEqual(
+    ADOPTED.filter((rule) => !REACT_HOOKS_RULES.includes(rule)),
+    [],
+    "eslint-plugin-react-hooks no longer ships these, so what both gates are about has been " +
+      "renamed out from under them"
+  );
   assert.deepEqual(
     ADOPTED.filter((rule) => CHARGED_FOR.includes(rule)),
     [],
@@ -393,9 +403,13 @@ test("a suppressed react-hooks rule is what the compiler refuses to compile", ()
   // nothing here reads a dependency array — the construct an exhaustive-deps
   // autofix rewrites unprompted.
   const { source, match } = anchored(rel, FIRST_EFFECT, "`useEffect(` call of its own");
+  // Named here rather than left to interpolate as `undefined`, which reads in
+  // `reasonsFor`'s message as an anchor that missed.
+  const [charged] = CHARGED_FOR;
+  assert.ok(charged, "the probe CHARGED_FOR is measured from found no rule to suppress");
   const reasons = reasonsFor(
     rel,
-    `${source.slice(0, match.index)}${match[1]}// eslint-disable-next-line ${CHARGED_FOR[0]}\n${source.slice(match.index)}`
+    `${source.slice(0, match.index)}${match[1]}// eslint-disable-next-line ${charged}\n${source.slice(match.index)}`
   );
   assert.ok(
     reasons.some((r) => r.includes("ESLint")),
