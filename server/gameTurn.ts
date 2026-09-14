@@ -22,7 +22,7 @@ import {
   persistGameState,
   safeTimer,
 } from "./gamePersistence.ts";
-import { handleGameOver, voidAbandonedMatch } from "./gameOver.ts";
+import { handleGameOver, voidAbandonedMatch, type GameOverWriters } from "./gameOver.ts";
 import { appendReplayMove } from "./replayShape.ts";
 import {
   autoMoveForSeat as sharedAutoMove,
@@ -295,7 +295,11 @@ export async function vacateSeat(
   io: SocketServer,
   roomId: string,
   userId: string,
-  username: string
+  username: string,
+  // Required rather than defaulting to `gameOverWriters`: the production
+  // persist swallows its own failure, so a caller handed it by default writes
+  // nothing a test can see.
+  writers: GameOverWriters
 ) {
   const game = activeGames.get(roomId);
   if (!game) return;
@@ -365,7 +369,7 @@ export async function vacateSeat(
     // a hand there is none of, but `releasedSeats` and `vacatedSeats` were both
     // written, and a seat vacated between hands is as reclaimable as one vacated
     // during one (docs/BRIEF.md §3.1).
-    persistGameState(roomId, game);
+    writers.persistGameState(roomId, game);
     return;
   }
 
@@ -385,7 +389,7 @@ export async function vacateSeat(
       // included (docs/BRIEF.md §3.1). A conceded hand's forced placements
       // are not a genuine finish, so scoring them as the match's own first
       // hand would defeat the point of the rule.
-      await voidAbandonedMatch(io, roomId, game, gameOverWriters);
+      await voidAbandonedMatch(io, roomId, game, writers);
       disposeGame(roomId);
       return;
     }
@@ -400,7 +404,7 @@ export async function vacateSeat(
     concedeHand(game, survivorSeat);
     // Sets rooms.status = "finished" and writes the row itself; the write is
     // awaited so the disposal below deletes a row that already exists.
-    await handleGameOver(io, roomId, game, gameOverWriters);
+    await handleGameOver(io, roomId, game, writers);
     disposeGame(roomId);
     return;
   }
@@ -419,6 +423,6 @@ export async function vacateSeat(
   });
 
   broadcastGameState(io, game);
-  persistGameState(roomId, game);
+  writers.persistGameState(roomId, game);
   armTurn(io, roomId);
 }

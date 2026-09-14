@@ -8,6 +8,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { Server as SocketServer } from "socket.io";
 import { vacateSeat } from "../server/gameTurn.ts";
+import { gameOverWriters } from "../server/gamePersistence.ts";
 import { activeGames } from "../server/gameRoom.ts";
 import type { OnlineGameState } from "../server/gameRoom.ts";
 import type { GameState, Player } from "../lib/gameEngine.ts";
@@ -49,7 +50,7 @@ test("vacateSeat never sets personality on the seat it hands to the AI", async (
   } as unknown as OnlineGameState;
   activeGames.set(ROOM, game);
 
-  await vacateSeat(io, ROOM, "u_drita", "drita");
+  await vacateSeat(io, ROOM, "u_drita", "drita", gameOverWriters);
 
   const vacated = game.gameState.players[1];
   assert.equal(vacated?.type, "ai");
