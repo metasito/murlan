@@ -65,6 +65,84 @@ test("an unclosed quote ends at the line break, and takes the rest of that line"
   assert.ok(!out.includes("<Modal />"), out);
 });
 
+test("an unterminated template literal is reported, not silently erased", () => {
+  const src = "const a = `x;\nscanSources(pattern);\n";
+
+  assert.throws(() => blankCommentsAndStrings(src), /unterminated template literal/);
+  assert.throws(() => blankComments(src), /unterminated template literal/);
+});
+
+test("an unterminated block comment is reported, not silently erased", () => {
+  const src = "const a = 1;\n/* x\nscanSources(pattern);\n";
+
+  assert.throws(() => blankCommentsAndStrings(src), /unterminated block comment at line 2/);
+  assert.throws(() => blankComments(src), /unterminated block comment at line 2/);
+});
+
+// A quote's other closer is the line break, which the test above this one
+// states — so the only string that reaches the end of the input is one on the
+// last line of a file that does not end in a newline.
+test("a string literal left open at the end of the input is reported", () => {
+  assert.throws(() => blankCommentsAndStrings(`const a = "x`), /unterminated string literal at line 1/);
+  assert.doesNotThrow(() => blankCommentsAndStrings(`const a = "x"`));
+  assert.doesNotThrow(() => blankCommentsAndStrings(`const a = "x\nconst b = 2;`));
+});
+
+/** The index of the last character `blankCommentsAndStrings` left standing. */
+function lastKept(src: string): number {
+  const out = blankCommentsAndStrings(src);
+  for (let i = src.length - 1; i >= 0; i--) if (out[i] === src[i] && src[i].trim()) return i;
+  return -1;
+}
+
+/**
+ * The counterfactual, over real files rather than a fixture: an unterminated
+ * backtick planted at the top of a scanned file, and the floor reading it.
+ *
+ * Which plants run away is decided without asking the floor — a plant has run
+ * away when the character the clean blanking left standing last is gone — so
+ * a floor that never fires fails this rather than emptying it. The files where
+ * the plant closes again on the file's own next backtick are not runaways and
+ * are not this floor's to catch; `blanking leaves every top-level declaration
+ * behind`, below, is what reads those.
+ */
+test("a backtick planted at the top of a scanned file reds the floor", () => {
+  const missed: string[] = [];
+  let runaways = 0;
+  for (const [file, src] of sources()) {
+    const kept = lastKept(src);
+    if (kept < 0) continue;
+    const planted = "`\n" + src;
+    let threw = false;
+    let erasedTheTail = false;
+    try {
+      erasedTheTail = blankCommentsAndStrings(planted)[kept + 2] !== src[kept];
+    } catch {
+      threw = true;
+      erasedTheTail = true;
+    }
+    if (!erasedTheTail) continue;
+    runaways++;
+    if (!threw) missed.push(file);
+  }
+  assert.deepEqual(missed, [], `${missed.length} files lost their tail with nothing reported`);
+  assert.ok(runaways > 0, "no planted backtick ran away, so this test asserted nothing");
+});
+
+test("no file any scan reads has a construct the blanking ran off the end of", () => {
+  const unclosed: string[] = [];
+  for (const [file, src] of sources()) {
+    for (const blank of [blankComments, blankCommentsAndStrings]) {
+      try {
+        blank(src);
+      } catch (e) {
+        unclosed.push(`${file}: ${(e as Error).message}`);
+      }
+    }
+  }
+  assert.deepEqual(unclosed, []);
+});
+
 // The shape no file in the corpus has: blanking `a="b"` leaves an `=` in the
 // buffer, and a lookbehind reading the buffer rather than the source takes the
 // `/` of `/>` for a regex opener — in one of the two modes only.

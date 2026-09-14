@@ -62,6 +62,9 @@ export function scannedFiles(repoRoot: string): string[] {
 const OPENS_REGEX =
   /(?:[(,=:[!&|?;+\-*%^~{]|=>|\b(?:return|typeof|instanceof|in|of|case|new|delete|void|throw|do|else|yield|await))\s*$/;
 
+/** Where the walker opened something the input never closed. */
+type Unclosed = { kind: "block comment" | "template literal" | "string literal"; at: number };
+
 /**
  * One left-to-right pass: whichever of a comment, a string, a template or a
  * regex literal opens first owns the span up to its own closer, so a quote
@@ -78,6 +81,10 @@ function blankSpans(source: string, blankStrings: boolean): string {
   // astral character would replace two UTF-16 units with one space and shift
   // every offset after it.
   const out = source.split("");
+  const unclosed: Unclosed[] = [];
+  const ranOff = (kind: Unclosed["kind"], at: number) => {
+    unclosed.push({ kind, at });
+  };
   const erase = (from: number, to: number) => {
     for (let k = from; k < to && k < out.length; k++) if (out[k] !== "\n") out[k] = " ";
   };
@@ -90,6 +97,7 @@ function blankSpans(source: string, blankStrings: boolean): string {
     while (i < source.length && source[i] !== source[start] && source[i] !== "\n") {
       i += source[i] === "\\" ? 2 : 1;
     }
+    if (i >= source.length) ranOff("string literal", start);
     const end = Math.min(i + 1, source.length);
     if (blankStrings) erase(start, end);
     return end;
@@ -130,6 +138,7 @@ function blankSpans(source: string, blankStrings: boolean): string {
         i++;
       }
     }
+    ranOff("template literal", start);
     return i;
   };
 
@@ -143,6 +152,7 @@ function blankSpans(source: string, blankStrings: boolean): string {
       if (two === "/*") {
         const close = source.indexOf("*/", i + 2);
         const end = close < 0 ? source.length : close + 2;
+        if (close < 0) ranOff("block comment", i);
         erase(i, end);
         i = end;
       } else if (two === "//" && source[i - 1] !== ":") {
@@ -169,7 +179,28 @@ function blankSpans(source: string, blankStrings: boolean): string {
   }
 
   walk(0, false);
+  // The earliest opener, not the first reported: an unterminated construct
+  // nested inside another runs off the end before the one that swallowed it,
+  // and where the erasure begins is what names the file's defect.
+  const [first] = unclosed.sort((a, b) => a.at - b.at);
+  if (first) throw unclosedError(source, first.kind, first.at);
   return out.join("");
+}
+
+/**
+ * A construct opened and never closed is the one unambiguous sign that the
+ * blanking erased the file rather than subtracted from it: a share of what
+ * survived cannot tell the two apart, since the honest low is below the
+ * runaway's. It throws rather than returning a flag, so that every scan built
+ * on these helpers has the floor whether or not it asked for one.
+ */
+function unclosedError(source: string, kind: Unclosed["kind"], at: number): Error {
+  const line = source.slice(0, at).split("\n").length;
+  const text = source.slice(at).split("\n")[0].trim().slice(0, 60);
+  return new Error(
+    `unterminated ${kind} at line ${line} (${text}) — the blanking erased the rest of the file, ` +
+      `so a scan of it reads clean by not reading it. Close it, or the scan is blind.`
+  );
 }
 
 /** `//` and block comments. A `//` behind a `:` is a URL's, not a comment's. */
