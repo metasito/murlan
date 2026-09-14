@@ -2,29 +2,87 @@
  * PreToolUse deny for Write/Edit. CLAUDE.md's comment rules are documented as advisory, and 26% of
  * this repo's line churn is comments — the measurement saying advisory did not hold.
  *
- * Denies with a reason the model is shown, so it rewrites the edit rather than losing the turn. It
- * sees one write; `comment-budget.mjs` reads committed bytes in CI and covers every other route in.
+ * Denies with a reason the model is shown, so it rewrites the edit rather than losing the turn.
+ *
+ * Ratio is judged on the file the write will leave behind, against the revision it was committed
+ * at — the same quantity `comment-budget.mjs` reports in CI, from the same functions. Judging the
+ * fragment instead lets a file go over six edits at a time, none of them over on its own.
  */
+import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
-import { violations } from "./commentShape.ts";
+import { basename, dirname } from "node:path";
+import { floorFor, violations } from "./commentShape.ts";
+import { addedCounts } from "./comment-budget.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 
 const JUDGED = /\.(mjs|cjs|js|jsx|ts|tsx)$/;
 
-export function decide(payload) {
-  const input = payload?.tool_input;
-  if (!input?.file_path || !JUDGED.test(input.file_path)) return { deny: false };
+export const io = {
+  /**
+   * "" for a path git does not have, which is what an added file's base is.
+   *
+   * `-C` its own directory and `:./` against that, because the hook is handed an absolute path and
+   * `git show HEAD:C:/…` resolves for no file — which would count every line of every file as added
+   * and deny the next edit to anything.
+   */
+  committed: (file) => {
+    try {
+      return execFileSync("git", ["show", `HEAD:./${basename(file)}`], {
+        cwd: dirname(file),
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
+        maxBuffer: 64 * 1024 * 1024,
+      });
+    } catch {
+      return "";
+    }
+  },
+  /** null, not "": a file that cannot be read is one whose ratio nothing here may claim to know. */
+  disk: (path) => {
+    try {
+      return readFileSync(path, "utf8");
+    } catch {
+      return null;
+    }
+  },
+};
 
-  // A Write carries the whole file; an Edit carries a fragment, and a fragment has no ratio — a
-  // docblock added above an existing function is all comment and no code, and is exactly what
-  // CLAUDE.md's four exceptions allow. The file's ratio is `comment-budget.mjs`'s to judge.
+/** Edit's own semantics: the first occurrence, or every one under `replace_all`. */
+const applied = (before, { old_string: from, new_string: to, replace_all: all }) =>
+  all ? before.split(from).join(to) : before.replace(from, to);
+
+export function decide(payload, { committed = io.committed, disk = io.disk } = {}) {
+  const input = payload?.tool_input;
+  const path = input?.file_path;
+  if (!path || !JUDGED.test(path)) return { deny: false };
+
   const whole = payload.tool_name === "Write";
   const text = whole ? input.content : input.new_string;
   if (typeof text !== "string" || !text) return { deny: false };
 
-  const found = violations(text, input.file_path).filter((v) => whole || v.rule === "history");
-  if (!found.length) return { deny: false };
+  const found = violations(text, path).filter((v) => v.rule === "history");
 
+  const before = disk(path);
+  const after = whole ? text : typeof input.old_string === "string" && before !== null
+    ? applied(before, input)
+    : null;
+  if (after !== null) {
+    const added = addedCounts(committed(path), after);
+    // `comment-budget.mjs`'s floor, deliberately without its prose-only one. Rewording three lines
+    // of an existing comment adds three comment lines and no code, and denying that would stop an
+    // unattended ticket over an improvement. The tighter floor stays CI's, where a miss costs a
+    // report rather than a turn.
+    if (added.comment > floorFor(path) && added.comment > added.code) {
+      found.push({
+        rule: "ratio",
+        line: 1,
+        text: `${added.comment} comment lines to ${added.code} of code, across the whole file`,
+        why: "CLAUDE.md: a change adding more comment lines than code is explaining itself instead of being clear.",
+      });
+    }
+  }
+
+  if (!found.length) return { deny: false };
   const said = found.map((v) => `  line ${v.line}: ${v.text}\n    ${v.why}`).join("\n");
   return { deny: true, reason: `This write breaks CLAUDE.md's comment rules. Rewrite without them:\n${said}` };
 }

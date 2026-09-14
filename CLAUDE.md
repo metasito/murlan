@@ -118,13 +118,18 @@ Verify against source before changing any.
 
 ## Comments
 
-**Default is no comment.** Four things earn one: an invisible constraint (an ordering that
-prevents a race, a platform quirk); a *why* where the obvious approach is wrong and someone will
-"fix" it back; a contract the types can't carry; a pointer to the authority.
+**Default is no comment, and the default is what almost every line gets.** Four things earn one: an
+invisible constraint (an ordering that prevents a race, a platform quirk); a *why* where the obvious
+approach is wrong and someone will "fix" it back; a contract the types can't carry; a pointer to the
+authority. Name which of the four before you write it; if you cannot, it does not go in.
 
 Never: restating the line below; any history of what it was or when it was fixed; **explaining
-the defect you just fixed** — that belongs in the commit message. A change adding more comment
-lines than code lines is explaining itself instead of being clear.
+the defect you just fixed** — that belongs in the commit message.
+
+**This is a budget with a number, not a preference.** A change is over it when it adds more than six
+comment lines — three in a test — *and* more comment lines than code. `tools/loop/guard-comments.mjs`
+refuses the write; `npm run check:comments` fails the branch. Write to the budget: prose written past
+it is a refused turn, and trimming it afterwards has already spent one.
 
 ## Working agreement
 
