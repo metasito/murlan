@@ -209,12 +209,12 @@ describe("maestro.yml reads that marker", () => {
     // The retry clears both markers before writing them, so afterwards they
     // describe that attempt alone; `kind` ran before it and is the only account
     // of the first.
-    const verdict = src.slice(src.indexOf("The run's real verdict")).split("\n");
-    const twice = verdict.findIndex((l) => l.includes("::error::") && l.includes("twice"));
+    const verdict = src.slice(src.indexOf("The run's real verdict"));
+    const twice = verdict.search(/::error::[^\n]*twice/);
     assert.notEqual(twice, -1, "no branch of the verdict claims anything happened twice");
     assert.match(
-      verdict[twice - 1],
-      /steps\.kind\.outputs\.booted/,
+      verdict.slice(verdict.lastIndexOf("if [", twice), twice),
+      /steps\.kind\.outputs\.booted\s*\}\}"\s*!=\s*"true"/,
       "the verdict calls a boot failure twice without reading what the first attempt reached",
     );
   });
