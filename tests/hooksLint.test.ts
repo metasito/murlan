@@ -52,33 +52,57 @@ function sourceFiles(dir: string): string[] {
   });
 }
 
-// Comments, strings and templates in one alternation, so that whichever opens
-// first consumes the other: a `/*` inside a string is the string's, and a quote
-// or backtick inside a comment is the comment's. A quoted string stops at its
-// own newline, as JavaScript's does — nothing here knows a regex literal from a
-// division, so `/['"]/` offers a quote that would otherwise pair with the next
-// one in the file and swallow every directive between. Swallowing is the one
-// way this can be too lax and the only direction that costs anything, which is
-// why `comments()` is held against a real parse over every file scanned rather
-// than trusted.
-const COMMENT_OR_STRING =
-  /"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'|`(?:\\[\s\S]|[^`\\])*`|\/\*[\s\S]*?\*\/|\/\/[^\n]*/g;
-
 /**
  * Every comment in `source`, opener included, with the 1-based line it starts
- * on and the offset it starts at — the offset because the oracle below compares
- * against a parse, and two identical comments in one file would otherwise agree
- * by text while one of them was being swallowed.
+ * on and the offset it starts at.
+ *
+ * A parse, because the alternative is deciding where a comment starts by
+ * matching text, and nothing that matches text knows a regex literal from a
+ * division: the quote in `/['"]/` pairs with the next quote in the file and
+ * every directive between the two disappears. That is the one way this can be
+ * too lax and the only direction that costs anything, so it is worth the
+ * parser `tests/hooksLint.test.ts` did not previously load.
+ *
+ * Leading and trailing ranges both. `getLeadingCommentRanges` starts collecting
+ * only after a line break, so on its own it never returns a trailing `//` or a
+ * same-line JSX `{/* … *\/}` — 84 of this repo's 4041, and the reason a parse
+ * looks like the wrong tool for this until the second call is added.
  */
 function comments(source: string): { line: number; pos: number; text: string }[] {
-  return [...source.matchAll(COMMENT_OR_STRING)]
-    .filter((match) => match[0].startsWith("/"))
-    .map((match) => ({
-      line: source.slice(0, match.index).split("\n").length,
-      pos: match.index,
-      text: match[0],
+  const parsed = ts.createSourceFile(
+    "scan.tsx",
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX
+  );
+  const ends = new Map<number, number>();
+  const visit = (node: ts.Node) => {
+    for (const range of ts.getLeadingCommentRanges(source, node.pos) ?? []) {
+      ends.set(range.pos, range.end);
+    }
+    for (const range of ts.getTrailingCommentRanges(source, node.end) ?? []) {
+      ends.set(range.pos, range.end);
+    }
+    for (const child of node.getChildren(parsed)) visit(child);
+  };
+  visit(parsed);
+  return [...ends]
+    .sort(([a], [b]) => a - b)
+    .map(([pos, end]) => ({
+      line: source.slice(0, pos).split("\n").length,
+      pos,
+      text: source.slice(pos, end),
     }));
 }
+
+// The text-matching route the parse replaced, kept as the thing it is checked
+// against: two mechanisms with nothing in common that must name the same
+// offsets on every file scanned. Its known hole — an unpaired quote or backtick
+// swallowing what follows — is exactly what makes it a useful second opinion,
+// since the parse cannot have that hole and a drift shows up as a disagreement.
+const COMMENT_OR_STRING =
+  /"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'|`(?:\\[\s\S]|[^`\\])*`|\/\*[\s\S]*?\*\/|\/\/[^\n]*/g;
 
 /**
  * Why each comment in `source` switches an adopted rule off, with the line it
@@ -186,7 +210,7 @@ describe("no source file switches an adopted rule off", () => {
     // would otherwise pass here and go on annoying somebody in the scan.
     const only = (source: string) => {
       const faults = why(source);
-      assert.equal(faults.length, 1, `expected one fault, got ${faults.length}`);
+      assert.equal(faults.length, 1, `expected one fault from ${JSON.stringify(source)}`);
       return faults[0];
     };
 
@@ -232,11 +256,17 @@ describe("no source file switches an adopted rule off", () => {
       /costs this file its compilation/
     );
 
-    // The quote a regex literal holds is the one thing that can hide a real
-    // directive, by pairing with the next quote in the file and swallowing
-    // everything between. A string that ends at its own newline cannot.
+    // A quote or a backtick a regex literal holds is what can hide a real
+    // directive from anything matching text: it pairs with the next one in the
+    // file and everything between the two stops being source. Both forms, and
+    // the backtick because a template legitimately spans lines, so bounding it
+    // the way a string is bounded is not open to us.
     assert.match(
       only("const q = /['\"]/;\n// eslint-disable-next-line react-hooks/refs\nconst n = 'x';"),
+      /costs this file its compilation/
+    );
+    assert.match(
+      only("const q = /[`]/;\n// eslint-disable-next-line react-hooks/refs\nconst n = `y`;"),
       /costs this file its compilation/
     );
 
@@ -245,37 +275,37 @@ describe("no source file switches an adopted rule off", () => {
     assert.deepEqual(suppressionFaults('const a = 1;\n\n/* eslint-disable */')[0]?.line, 3);
   });
 
-  test("no real file hides a comment from the scan", () => {
-    // The case list is hand-written source, and the way this extraction fails
-    // is on source nobody thought to write: an unpaired quote or backtick that
-    // pairs with a later one and swallows a directive between. So the parser
-    // is the oracle here even though it is not the implementation — it is
-    // authoritative about where a comment is and cannot be fooled by any of
-    // that, and it is only the wrong tool in the other direction, missing the
-    // JSX and trailing comments it never visits. Every comment it finds must be
-    // one `comments()` found, or `comments()` has swallowed something.
-    const swallowed: string[] = [];
+  test("the scan and a plain text match agree on every comment in the tree", () => {
+    // The case list is hand-written source, and the way comment extraction
+    // fails is on source nobody thought to write. So the two mechanisms are
+    // run against each other over every real file instead: they share no code
+    // and fail differently, and on 4041 comments they name the same offsets.
+    //
+    // Equality, not one set inside the other, is what puts a floor under this.
+    // A parse that quietly degrades — a file it chokes on, a `ScriptKind` that
+    // stops fitting — yields fewer offsets; a text match that swallows yields
+    // fewer too. A subset check in either direction would call one of those
+    // green, and the one it called green is the one that costs a suppression.
+    const disagreed: string[] = [];
     for (const file of files) {
       const source = readFileSync(path.join(ROOT, file), "utf8");
-      const found = new Set(comments(source).map((comment) => comment.pos));
-      const parsed = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
-      const seen = new Set<number>();
-      const visit = (node: ts.Node) => {
-        for (const range of ts.getLeadingCommentRanges(source, node.pos) ?? []) {
-          if (seen.has(range.pos)) continue;
-          seen.add(range.pos);
-          if (found.has(range.pos)) continue;
-          const text = source.slice(range.pos, range.end);
-          swallowed.push(`${file}:${range.pos} — ${text.slice(0, 60)}`);
-        }
-        for (const child of node.getChildren(parsed)) visit(child);
-      };
-      visit(parsed);
+      const parsed = new Set(comments(source).map((comment) => comment.pos));
+      const matched = new Set(
+        [...source.matchAll(COMMENT_OR_STRING)]
+          .filter((match) => match[0].startsWith("/"))
+          .map((match) => match.index)
+      );
+      for (const pos of parsed) {
+        if (!matched.has(pos)) disagreed.push(`${file}:${pos} — only the parse sees this`);
+      }
+      for (const pos of matched) {
+        if (!parsed.has(pos)) disagreed.push(`${file}:${pos} — only the text match sees this`);
+      }
     }
     assert.deepEqual(
-      swallowed,
+      disagreed,
       [],
-      "a comment the parser sees and the scan does not is a suppression that could hide there"
+      "the two disagree about where a comment is, and a suppression can hide in the gap"
     );
   });
 
