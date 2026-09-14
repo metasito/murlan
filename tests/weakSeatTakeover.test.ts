@@ -138,7 +138,7 @@ describe("vacateSeat writes the row on every exit the table survives (#1008)", (
    * throw `undefined is not a function` on a branch instead of naming it.
    */
   function persistSpy() {
-    const wrote: { roomId: string; seats: string[] }[] = [];
+    const wrote: { roomId: string; seats: string[]; vacated: number[] }[] = [];
     const reached: (keyof GameOverWriters)[] = [];
     const record =
       (name: keyof GameOverWriters) =>
@@ -153,12 +153,20 @@ describe("vacateSeat writes the row on every exit the table survives (#1008)", (
         recordGameResult: record("recordGameResult"),
         recordRatedResult: record("recordRatedResult"),
         saveReplay: record("saveReplay"),
-        previewRatedDeltas: async () => new Map<string, number>(),
-        // The roster is read here rather than after the call: the persist is
-        // fire-and-forget, and `playerMap` goes on being mutated behind it.
+        previewRatedDeltas: async () => {
+          reached.push("previewRatedDeltas");
+          return new Map<string, number>();
+        },
+        // Copied here, not read from `game` after the call: the stub is handed
+        // the live table by reference, and what the row must carry is what
+        // these fields held at the moment the write was made.
         persistGameState: async (roomId: string, game: OnlineGameState) => {
           reached.push("persistGameState");
-          wrote.push({ roomId, seats: Object.keys(game.playerMap) });
+          wrote.push({
+            roomId,
+            seats: Object.keys(game.playerMap),
+            vacated: [...game.vacatedSeats.keys()],
+          });
         },
       } satisfies GameOverWriters,
     };
@@ -193,8 +201,8 @@ describe("vacateSeat writes the row on every exit the table survives (#1008)", (
       await vacateSeat(io, ROOM, "drita", "Drita", spy.writers);
       assert.deepEqual(
         spy.wrote,
-        [{ roomId: ROOM, seats: ["0", "1", "2"] }],
-        "the surviving table's new roster — Drita's seat gone — must reach the writer"
+        [{ roomId: ROOM, seats: ["0", "1", "2"], vacated: [3] }],
+        "the surviving table's new roster — Drita's seat gone, and recorded as reclaimable"
       );
     } finally {
       clearRoomTimers(ROOM);
@@ -222,8 +230,8 @@ describe("vacateSeat writes the row on every exit the table survives (#1008)", (
       await vacateSeat(io, ROOM, "drita", "Drita", spy.writers);
       assert.deepEqual(
         spy.wrote,
-        [{ roomId: ROOM, seats: ["0"] }],
-        "a seat vacated between hands is still reclaimable — Alice's row must be written without it"
+        [{ roomId: ROOM, seats: ["0"], vacated: [1] }],
+        "a seat vacated between hands is still reclaimable — off the roster, on vacatedSeats"
       );
     } finally {
       clearRoomTimers(ROOM);
@@ -251,7 +259,10 @@ describe("vacateSeat writes the row on every exit the table survives (#1008)", (
       await vacateSeat(io, ROOM, "drita", "Drita", spy.writers);
       assert.deepEqual(spy.wrote, [], "persisting a table being disposed of races its own delete");
       assert.equal(activeGames.has(ROOM), false, "the table is gone, not merely unwritten");
-      assert.deepEqual(spy.reached, [], "no writer at all on the path that deletes the row");
+      // roomStore.updateRoomStatus is what this branch does write, and it sits
+      // outside the seam — so this says only that no GameOverWriters member ran,
+      // which is what rules out handleGameOver and voidAbandonedMatch.
+      assert.deepEqual(spy.reached, [], "no GameOverWriters member on the path that deletes the row");
     } finally {
       clearRoomTimers(ROOM);
       activeGames.delete(ROOM);

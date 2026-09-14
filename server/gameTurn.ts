@@ -296,9 +296,9 @@ export async function vacateSeat(
   roomId: string,
   userId: string,
   username: string,
-  // Required, not defaulted: a caller that forgets it would get the production
-  // writer, whose own `.catch` swallows the failure, and the write would be
-  // unobservable again (#1008).
+  // Required rather than defaulting to `gameOverWriters`: the production
+  // persist swallows its own failure, so a caller handed it by default writes
+  // nothing a test can see.
   writers: GameOverWriters
 ) {
   const game = activeGames.get(roomId);
