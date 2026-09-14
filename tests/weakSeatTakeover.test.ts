@@ -14,6 +14,7 @@ import { clearRoomTimers } from "../server/gameTimers.ts";
 import type { OnlineGameState } from "../server/gameRoom.ts";
 import { emptyRankTally, sortHand } from "../lib/gameEngine.ts";
 import type { GameState, Player } from "../lib/gameEngine.ts";
+import type { GameOverWriters } from "../server/gameOver.ts";
 
 const ROOM = "weak-seat-room";
 
@@ -119,6 +120,106 @@ describe("a mid-hand takeover is weak only for the hand it happened on (#850 cla
     try {
       await vacateSeat(io, ROOM, "drita", "Drita");
       assert.ok(!game.weakSeats.has(1));
+    } finally {
+      clearRoomTimers(ROOM);
+      activeGames.delete(ROOM);
+    }
+  });
+});
+
+describe("vacateSeat writes the row on every exit the table survives (#1008)", () => {
+  /** Only the one writer vacateSeat's surviving exits reach. */
+  function persistSpy() {
+    const wrote: string[] = [];
+    return {
+      wrote,
+      writers: {
+        persistGameState: async (roomId: string) => {
+          wrote.push(roomId);
+        },
+      } as unknown as GameOverWriters,
+    };
+  }
+
+  test("mid-hand, with the table still playing on", async () => {
+    const gameState: GameState = {
+      players: [
+        player("p0", "Alice", [{ rank: "4", suit: "spades" } as never]),
+        player("p1", "Bob", [{ rank: "5", suit: "spades" } as never]),
+        player("p2", "Carl", [{ rank: "6", suit: "spades" } as never]),
+        player("p3", "Drita", [{ rank: "7", suit: "spades" } as never]),
+      ],
+      currentTurnIndex: 0,
+      lastPlayedCombination: null,
+      lastPlayedBy: -1,
+      passCount: 0,
+      gameMode: "free_for_all",
+      roundWinner: null,
+      gameOver: false,
+      rankings: [],
+      firstPlayMade: true,
+      playedRanks: emptyRankTally(),
+    };
+    activeGames.set(
+      ROOM,
+      baseGame({ gameState, playerMap: { 0: "alice", 1: "bob", 2: "carl", 3: "drita" } })
+    );
+    const spy = persistSpy();
+
+    try {
+      await vacateSeat(io, ROOM, "drita", "Drita", spy.writers);
+      assert.deepEqual(spy.wrote, [ROOM], "the surviving table's new roster must reach the row");
+    } finally {
+      clearRoomTimers(ROOM);
+      activeGames.delete(ROOM);
+    }
+  });
+
+  test("between hands, with someone left to deal to", async () => {
+    const gameState: GameState = {
+      players: [player("p0", "Alice", []), player("p1", "Drita", [])],
+      currentTurnIndex: 0,
+      lastPlayedCombination: null,
+      lastPlayedBy: -1,
+      passCount: 0,
+      gameMode: "free_for_all",
+      roundWinner: null,
+      gameOver: true,
+      rankings: ["p0", "p1"],
+      firstPlayMade: true,
+    };
+    activeGames.set(ROOM, baseGame({ gameState, playerMap: { 0: "alice", 1: "drita" } }));
+    const spy = persistSpy();
+
+    try {
+      await vacateSeat(io, ROOM, "drita", "Drita", spy.writers);
+      assert.deepEqual(spy.wrote, [ROOM], "a seat vacated between hands is still reclaimable");
+    } finally {
+      clearRoomTimers(ROOM);
+      activeGames.delete(ROOM);
+    }
+  });
+
+  test("the last player leaving between hands writes nothing — the row is deleted", async () => {
+    const gameState: GameState = {
+      players: [player("p0", "Drita", [])],
+      currentTurnIndex: 0,
+      lastPlayedCombination: null,
+      lastPlayedBy: -1,
+      passCount: 0,
+      gameMode: "free_for_all",
+      roundWinner: null,
+      gameOver: true,
+      rankings: ["p0"],
+      firstPlayMade: true,
+    };
+    activeGames.set(ROOM, baseGame({ gameState, playerMap: { 0: "drita" } }));
+    const spy = persistSpy();
+
+    try {
+      await vacateSeat(io, ROOM, "drita", "Drita", spy.writers);
+      assert.deepEqual(spy.wrote, [], "persisting a table being disposed of races its own delete");
+      assert.equal(activeGames.has(ROOM), false, "the table is gone, not merely unwritten");
     } finally {
       clearRoomTimers(ROOM);
       activeGames.delete(ROOM);
