@@ -19,7 +19,7 @@ import { ESLint } from "eslint";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { ADOPTED, SHIPPED } from "./helpers/adoptedHookRules.ts";
+import { ADOPTED } from "./helpers/adoptedHookRules.ts";
 import { directives, syntaxErrors, type Directive } from "./helpers/hookSuppression.ts";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -91,21 +91,10 @@ function faultOf(keyword: Directive["keyword"], rules: string[]): string | null 
 }
 
 describe("the react-hooks 7 rules #891 adopted stay adopted", () => {
-  test("the three are rules the plugin still ships", () => {
-    // Renamed upstream, every check in this file goes quiet rather than red: the
-    // scan matches nothing, and a rule nothing ships is off nowhere.
-    assert.deepEqual(
-      ADOPTED.filter((rule) => !SHIPPED.includes(rule)),
-      [],
-      "eslint-plugin-react-hooks no longer ships these, so this whole file passes by asking " +
-        "about rules that do not exist"
-    );
-  });
-
   test("the reason a suppression is refused is the ESLint one", () => {
-    // The claim #1043 corrected, in the one place it is now written down. The
-    // compiler charges nothing for these three (tests/reactCompiler.test.ts
-    // measures that), so an offender told it costs a compilation is told wrong.
+    // The compiler charges nothing for these three — `tests/reactCompiler.test.ts`
+    // measures that — so an offender told a suppression costs it a compilation is
+    // told wrong.
     assert.match(ADOPTED_FAULT, /eslint\.config\.js/);
     assert.doesNotMatch(ADOPTED_FAULT, /compil/i);
   });

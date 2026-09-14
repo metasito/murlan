@@ -306,15 +306,9 @@ test("the compiler is measured charging for a suppression, and only for that", (
 });
 
 test("a suppression of a rule #891 adopted costs the compiler nothing", () => {
-  // A rule renamed upstream would leave the filter below answering "none of them"
-  // about three names nothing ships, which is the shape of pass this measurement
-  // exists to replace.
-  assert.deepEqual(
-    ADOPTED.filter((rule) => !SHIPPED.includes(rule)),
-    [],
-    "eslint-plugin-react-hooks no longer ships these, so what both gates are about has been " +
-      "renamed out from under them"
-  );
+  // That these three are rules the plugin still ships is `adoptedHookRules.ts`'s
+  // to refuse, at import — a renamed rule would leave this answering "none of
+  // them" about three names nothing ships.
   assert.deepEqual(
     ADOPTED.filter((rule) => CHARGED_FOR.includes(rule)),
     [],
