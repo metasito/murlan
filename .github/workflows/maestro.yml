@@ -190,17 +190,22 @@ jobs:
         id: kind
         if: steps.flows.outcome == 'failure'
         run: |
-          # One boundary, because this step drives one decision: did the run get
-          # far enough for its failure to be about the branch? Which kind of
-          # failure it was, when the answer is no, is the verdict step's to say
-          # and only its own. Stating it twice is how both copies came to route a
-          # reader to the same closed issue without either being noticed.
+          # Three states, because there are three. `started` drives the retry
+          # and so answers one question only: did the run get far enough for its
+          # failure to be about the branch?
+          #
+          # Not a duplicate of the verdict below, which reads the same markers
+          # after the retry has overwritten them: this is the only account of
+          # what the *first* attempt reached.
           if [ -f "$RUNNER_TEMP/app-launched" ]; then
             echo "started=true" >> "$GITHUB_OUTPUT"
             echo "The app launched and the flows ran; the flows themselves failed."
+          elif [ -f "$RUNNER_TEMP/emulator-booted" ]; then
+            echo "started=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::The device came up but the app never reached a usable state, so this run says nothing about the diff. Retrying once."
           else
             echo "started=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::The run never got as far as a result about this branch. Retrying once."
+            echo "::warning::The environment never got as far as the flows, so this run says nothing about the diff. Retrying once."
           fi
 
       # The retry asks for the same AVD on the same port inside the same job. A
@@ -215,15 +220,17 @@ jobs:
           adb kill-server || true
 
       # It keeps the first attempt's full 900s, and has to: what it is retrying
-      # is the slow-but-real boot that number exists to allow, and 600 - the
-      # action's own cap - is the number three runs exhausted before #186 raised
-      # it. A cheaper retry would fail that boot and print the double-timeout
-      # verdict from a single flake, which is the one outcome this branch exists
-      # to avoid. The job's 100 minutes was sized for two of them (above), and
-      # nothing has ever paid it: this step is `skipped` in all twenty dispatches
-      # since it landed, so the retry's cost is a ceiling, not a bill.
-      # `emulator-boot-timeout` is how the branch is exercised without waiting
-      # for the flake.
+      # is the slow-but-real boot that number exists to allow (the action pins
+      # why 900 and not less). A cheaper retry would fail that boot and reach the
+      # double-timeout verdict from a single flake, which is the one outcome this
+      # branch exists to avoid, and the job's 100 minutes is sized for two of
+      # them (above) rather than against them.
+      #
+      # Measured rather than reasoned: of the 47 dispatches since this step
+      # landed, it has run twice - 33356839749 and 33357537855, both on
+      # 2026-08-31 with `emulator-boot-timeout: 30` to exercise it - and no run
+      # has ever reached it on the default. The pair of 900s waits is a ceiling
+      # nobody has paid.
       - name: Retry, and only when the flows never started
         id: retry
         if: steps.flows.outcome == 'failure' && steps.kind.outputs.started == 'false'
@@ -237,20 +244,20 @@ jobs:
       # to be stated here. Before the artefact steps below, because their
       # `if: failure()` is what uploads them.
       #
-      # Nothing here names an issue. One branch did, for as long as it went
-      # unexecuted: #186 was closed and the annotation went on sending every
-      # reader of a failed run to it. And a verdict cannot name a cause anyway -
-      # `emulator-booted` is one bit, absent alike for a device that never came
-      # up and for the reboot, the locale, the framework or the install failing
-      # on one that did. Whichever it was has already said so itself, in its own
-      # error, in this log; what only this step knows is whose problem it is.
+      # It says whose problem the run was and nothing beyond that, because
+      # nothing beyond that is what it knows: `emulator-booted` is one bit,
+      # absent alike for a device that never came up and for the reboot, the
+      # locale, the framework or the install failing on one that did. An issue
+      # number here is worth less still - a workflow cannot tell that the issue
+      # behind an annotation has been closed, and one of these went on routing
+      # every reader of a failed run to a closed #186.
       - name: The run's real verdict
         run: |
           if [ "${{ steps.flows.outcome }}" = "success" ] || [ "${{ steps.retry.outcome }}" = "success" ]; then
             exit 0
           fi
           if [ "${{ steps.retry.outcome }}" = "failure" ] && [ ! -f "$RUNNER_TEMP/emulator-booted" ]; then
-            echo "::error::The environment never got as far as running the flows, twice - see the error above for which part of it. That is the runner and not this branch."
+            echo "::error::The environment never got as far as running the flows, twice. That is the runner and not this branch."
             exit 1
           fi
           if [ ! -f "$RUNNER_TEMP/app-launched" ]; then

@@ -2,8 +2,8 @@ name: Drive the Maestro flows on an Android emulator
 description: >
   Boots the emulator, installs the app, and runs the flows. Lives here rather
   than inline so `maestro.yml` can invoke it twice - once, and again only when
-  the emulator never booted (#186) - without a second copy of this
-  configuration to drift out of step with the first.
+  the emulator never booted - without a second copy of this configuration to
+  drift out of step with the first.
 
 inputs:
   emulator-boot-timeout:
@@ -123,8 +123,7 @@ runs:
           # Everything above this line is the environment coming up: the boot,
           # the reboot, the locale, the framework and the install. Its absence
           # tells `maestro.yml` that one of those did not finish - not which, and
-          # not that the device itself never arrived, which is why each of them
-          # prints its own error rather than leaving the verdict to guess.
+          # not that the device itself never arrived.
           touch "$RUNNER_TEMP/emulator-booted"
           # Half the resolution and half the density: the same screen in dp, a
           # quarter of the pixels for the app to rasterize. The flows select on
