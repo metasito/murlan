@@ -27,15 +27,16 @@ export function slugOf(title) {
 }
 
 /**
- * The steps, in the one order that makes the race check mean anything: the label is the write, and
- * the read that decides who won has to come after it.
+ * The steps. `worktree` is last because it is the mutex: `.worktrees/agent-<n>` is one directory and
+ * `git worktree add` refuses a second claim on it atomically, which a comment-reading race check
+ * cannot do — the slug is derived from the title now, so a real peer writes the *same* branch name
+ * and reads as us, while a dead run's model-chosen slug reads as a peer. #1043 was parked by that.
  */
 export function claimSteps(number, title, noteFile = "", base = "origin/main") {
   const branch = `agent/${number}-${slugOf(title)}`;
   return [
     { name: "label", file: "gh", args: ["issue", "edit", String(number), "--add-label", "in-progress"] },
     { name: "comment", file: "gh", args: ["issue", "comment", String(number), "--body-file", noteFile] },
-    { name: "race", file: "gh", args: ["issue", "view", String(number), "--json", "comments"] },
     { name: "fetch", file: "git", args: ["fetch", "origin", "--quiet"] },
     {
       name: "worktree",
@@ -54,8 +55,11 @@ export function claimSteps(number, title, noteFile = "", base = "origin/main") {
   ];
 }
 
-/** Every claim comment on the thread, by the branch it names. A fresh one per read: `g` is stateful. */
-const claims = () => /Claimed by `(agent\/\d+-[^`]*)`/g;
+/** git's two ways of saying the directory is spoken for. Its other failures are not this one. */
+const taken = (err, cwd) => {
+  const said = String(err?.message ?? err);
+  return said.includes("already used by worktree") || (said.includes(cwd) && said.includes("already exists"));
+};
 
 /** Whether the branch is already pushed — asked after the fetch, so the answer is current. */
 function onOrigin(branch, run) {
@@ -78,12 +82,14 @@ export function claim(number, title, run = (file, args) => execFileSync(file, ar
       step.name === "worktree" && onOrigin(branch, run)
         ? claimSteps(number, title, noteFile, `origin/${branch}`).at(-1).args
         : step.args;
-    const out = run(step.file, args);
-    if (step.name !== "race") continue;
-    const others = [...String(out).matchAll(claims())].map((m) => m[1]).filter((b) => b !== branch);
-    // The label stays on. It is one shared label, so taking it off on a lost race takes it off the
-    // peer who won, and the picker then serves their live ticket to a third process.
-    if (others.length) return { branch, cwd, won: false, why: `${others[0]} claimed it first` };
+    try {
+      run(step.file, args);
+    } catch (err) {
+      // Only the path being taken means a peer holds this ticket. A stale local branch is a
+      // different failure, and reporting it as a peer leaves `in-progress` on for ever.
+      if (step.name !== "worktree" || !taken(err, cwd)) throw err;
+      return { branch, cwd, won: false, why: `${cwd} is already standing` };
+    }
   }
   return { branch, cwd, won: true, why: null };
 }

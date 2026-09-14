@@ -1007,17 +1007,34 @@ describe("afterRefusal", () => {
 // path through it therefore checks the head ref, including the one that trusts the number the
 // session declared — a number a model wrote into a line of text.
 describe("pushedPr only ever answers with this ticket's own pull request", () => {
+  // Projected to the fields the call actually asked for, the way `gh` itself answers. A fake that
+  // hands back the whole row lets a field dropped from `--json` pass every assertion below.
+  const only = (row: object, args: string[]) => {
+    const asked = (args[args.indexOf("--json") + 1] ?? "").split(",");
+    return Object.fromEntries(Object.entries(row).filter(([k]) => asked.includes(k)));
+  };
   const gh = (rows: object[], view: object | null = null) => {
     return (_cmd: string, args: string[]) =>
-      args[1] === "view" ? JSON.stringify(view ?? {}) : JSON.stringify(rows);
+      args[1] === "view"
+        ? JSON.stringify(view ? only(view, args) : {})
+        : JSON.stringify(rows.map((r) => only(r, args)));
   };
-  const open = { number: 984, state: "OPEN", headRefName: "agent/42-x", mergedAt: null };
+  const open = {
+    number: 984,
+    state: "OPEN",
+    headRefName: "agent/42-x",
+    headRefOid: "5bb5dcf22b863994fc138ab773976e9539d78539",
+    mergedAt: null,
+  };
 
   test("the branch's own pull request is taken", () => {
     assert.deepEqual(pushedPr("agent/42-x", 42, null, 0, gh([open])), {
       number: 984,
       state: "OPEN",
       head: "agent/42-x",
+      // The head the no-op-round guard in `main` is judged on. Asserted against a projecting fake,
+      // so dropping `headRefOid` from the query reds this rather than answering null for ever.
+      sha: "5bb5dcf22b863994fc138ab773976e9539d78539",
       changedFiles: 0,
     });
   });

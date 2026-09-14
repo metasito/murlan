@@ -233,6 +233,15 @@ escape:
   requirements missing or partial, behaviour not asked for, and anything implemented but wrong,
   quoting the issue for each. Around 15 lines.
 
+**When the diff changes a contract, that is the Spec reviewer's subject.** A contract is what a
+function promises its callers beyond its types: an order, a precondition, a thing it never returns.
+Name it in the brief and ask for *every consumer that relied on the old one* — never for a list of
+your own suspicions, which is a review of your suspicions. #1052 changed `readVerdict` from "blocks
+until the run settles" to "answers now"; `land.ts` was the only consumer of that promise, nothing
+opened it, every unit stayed green, and the next night handed three fix rounds a branch with no log.
+The extra line is: `The diff changes this promise: <old> → <new>. Find every caller that still
+assumes the old one, and every test that would pass either way.`
+
 Both: `Do not spawn any subagent. Report findings only — what checked out is not reported. Every
 finding names a file:line and either the rule number it breaks, a quoted line of the issue, or the
 input that makes it go wrong. A finding carrying none of those three is a note, and notes are not
