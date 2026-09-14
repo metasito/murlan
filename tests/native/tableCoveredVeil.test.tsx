@@ -6,7 +6,7 @@
 import { describe, it, expect, jest } from '@jest/globals';
 import React from 'react';
 import { View } from 'react-native';
-import { render, screen } from '@testing-library/react-native';
+import { act, render, screen } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 const WINDOW = { width: 568, height: 320, scale: 2, fontScale: 1 };
@@ -28,6 +28,7 @@ jest.mock('@/lib/accessibility', () => ({
 
 import { GameTable } from '@/components/GameTable';
 import type { Card, GameState, Player } from '@/lib/gameEngine';
+import { tn } from '@/lib/i18n';
 
 const INSETS = { top: 0, left: 47, right: 34, bottom: 0 };
 const METRICS = { frame: { x: 0, y: 0, width: WINDOW.width, height: WINDOW.height }, insets: INSETS };
@@ -74,10 +75,10 @@ const withdrawn = (props: Record<string, unknown>) =>
   props.importantForAccessibility === 'no-hide-descendants' ||
   props['aria-hidden'] === true;
 
-async function mount(tableCovered: boolean) {
-  return render(
+const tree = (tableCovered: boolean, turnTimer?: { seconds: number; resetKey: string }) => (
     <SafeAreaProvider initialMetrics={METRICS}>
       <GameTable
+        turnTimer={turnTimer && { ...turnTimer, includeNewRound: true, onExpire: noop }}
         gameState={gameState}
         viewerSeat={0}
         selectedIds={[]}
@@ -92,7 +93,10 @@ async function mount(tableCovered: boolean) {
         overlays={(veiled) => <View testID="the-cover" {...veiled} />}
       />
     </SafeAreaProvider>
-  );
+);
+
+async function mount(tableCovered: boolean) {
+  return render(tree(tableCovered));
 }
 
 describe('a cover in the overlays slot', () => {
@@ -138,6 +142,30 @@ describe('a cover in the overlays slot', () => {
       withdrawn(screen.getByTestId('control-rail', { includeHiddenElements: true }).props)
     ).toBe(true);
     await r.unmount();
+  });
+
+  // The turn countdown's region lives under the hud stack's own veil, so its
+  // sentence changes where nobody can hear it and it comes back already holding
+  // it. #1004's node is the one this has to reach, not a region of its own.
+  it('gives the turn countdown back its sentence when the cover lifts', async () => {
+    // Fake timers, because the empty frame and the sentence are one task apart
+    // and the harness's own `await` would run that task before either is read.
+    jest.useFakeTimers();
+    const timer = { seconds: 30, resetKey: 'turn-1' };
+    const r = await render(tree(true, timer));
+    expect(liveRegions()).toHaveLength(0);
+
+    await r.rerender(tree(false, timer));
+    const countdown = () => liveRegions().map((n) => String(n.props.accessibilityLabel ?? ''));
+    expect(countdown()).not.toContain(tn('gameTable.a11ySecondsLeft', 30));
+
+    await act(async () => {
+      jest.advanceTimersByTime(1);
+    });
+    expect(countdown()).toContain(tn('gameTable.a11ySecondsLeft', 30));
+
+    await r.unmount();
+    jest.useRealTimers();
   });
 
   it('withdraws nothing while no cover is up', async () => {

@@ -111,7 +111,7 @@ import { hapticLight, hapticMedium, hapticRigid, hapticSelection } from "@/lib/h
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { Colors, FontSize, Motion, Radius, Reading, Scrim, Spacing, Layer } from "@/lib/theme";
 import { useTableFelt } from "@/lib/cosmetics";
-import { A11yStatus, a11yGroup, a11yHidden, a11yVeiled } from "@/lib/a11y";
+import { A11yStatus, A11yVeil, a11yGroup, a11yHidden, a11yVeiled } from "@/lib/a11y";
 
 // Whole-pixel travel, mirroring components/MenuButton.tsx: PASSA/GIOCA hold
 // text labels, and React Native rasterises text before transforming it, so a
@@ -976,6 +976,7 @@ export function GameTable({
             focusFadeStyle,
           ]}
         >
+          <A11yVeil veil={clockVeil}>
           <TableChip scale={scale} lit={isMyTurn && !isFinished}>
             <ChipDot testID="turn-chip-dot" scale={scale} lit={isMyTurn && !isFinished} />
             <ChipText scale={scale} lit={isMyTurn && !isFinished}>
@@ -993,6 +994,7 @@ export function GameTable({
               scale={scale}
             />
           </TableChip>
+          </A11yVeil>
         </Animated.View>
 
         {/* Over the whole table rather than inside the mid band: it holds the
@@ -1092,6 +1094,7 @@ export function GameTable({
             },
           ]}
         >
+          <A11yVeil veil={behindVeil}>
           <Animated.View style={[sharedTableStyles.tableContent, shakeStyle]}>
             <View testID="table-top-section" style={sharedTableStyles.topSection}>
               {opponents.top ? (
@@ -1331,6 +1334,7 @@ export function GameTable({
               )}
             </Animated.View>
           </Animated.View>
+          </A11yVeil>
         </View>
 
 

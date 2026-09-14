@@ -236,11 +236,13 @@ export function A11yStatus({
   const veiledAbove = useContext(VeilContext);
   const hidden = veiled || veiledAbove;
   const [armed, setArmed] = useState(!hidden);
+  const [veilSeen, setVeilSeen] = useState(hidden);
+  if (veilSeen !== hidden) {
+    setVeilSeen(hidden);
+    setArmed(false);
+  }
   useEffect(() => {
-    if (hidden) {
-      setArmed(false);
-      return;
-    }
+    if (hidden) return;
     // A region re-exposed with its text already in it announces nothing, so the
     // empty frame has to reach the platform on its own before the sentence
     // does. A task rather than React's next commit: the same one can carry both.
