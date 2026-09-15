@@ -16,10 +16,12 @@ import {
   type TestServer,
 } from "../helpers/testServer.ts";
 import { connectAs, waitFor } from "../helpers/client.ts";
+import { befriend } from "../helpers/friends.ts";
 
 interface RoomState {
   code: string;
   roomId: string;
+  visibility: string;
   players: { id: string }[];
 }
 
@@ -158,6 +160,114 @@ describe("room visibility", { skip: hasDatabase() ? false : skipMessage() }, () 
     const arrival = await player("orphan_arrival");
     const landed = await quickmatch(arrival);
     assert.notEqual(landed.roomId, opened.roomId, "an empty room is not a room to join");
+  });
+
+  async function createRoom(client: { socket: Socket }, maxPlayers = 2) {
+    const made = waitFor<RoomState>(client.socket, "room:state");
+    client.socket.emit("room:create", { gameMode: "free_for_all", maxPlayers });
+    return made;
+  }
+
+  async function setVisibility(client: { socket: Socket }, visibility: "public" | "private") {
+    const next = waitFor<RoomState>(client.socket, "room:state");
+    client.socket.emit("room:setVisibility", { visibility });
+    return next;
+  }
+
+  test("a host opens a private room to matchmaking and a stranger is seated into it", async () => {
+    const host = await player("flip_host");
+    const stranger = await player("flip_stranger");
+
+    const room = await createRoom(host);
+    const opened = await setVisibility(host, "public");
+    assert.equal(opened.visibility, "public", "flipping the toggle on must make the room public");
+
+    // Leaves the host's room as the only thing the matcher can pick, so the
+    // assertion below is about this flip and not about which of several
+    // waiting rooms other suites happened to leave behind first.
+    const { roomStore } = await import("../../server/roomStore.ts");
+    for (const rival of await roomStore.findWaitingPublicRooms()) {
+      if (rival.room.id !== room.roomId) {
+        await roomStore.updateRoomVisibility(rival.room.id, "private");
+      }
+    }
+
+    const landed = await quickmatch(stranger);
+    assert.equal(
+      landed.roomId,
+      room.roomId,
+      "a room created private and opened later must be findable by the matcher"
+    );
+  });
+
+  test("closing the room again shuts matchmaking back out", async () => {
+    const host = await player("close_host");
+    const stranger = await player("close_stranger");
+
+    const room = await createRoom(host);
+    await setVisibility(host, "public");
+    const closed = await setVisibility(host, "private");
+    assert.equal(closed.visibility, "private", "the same control has to work both ways");
+
+    const landed = await quickmatch(stranger);
+    assert.notEqual(landed.roomId, room.roomId, "a closed room must not take a stranger");
+  });
+
+  test("every seated player is told the moment the room opens", async () => {
+    const host = await player("tell_host");
+    const mate = await player("tell_mate");
+
+    const room = await createRoom(host, 4);
+    const joined = waitFor<RoomState>(mate.socket, "room:state");
+    mate.socket.emit("room:join", { code: room.code });
+    await joined;
+
+    const seenByMate = waitFor<RoomState>(mate.socket, "room:state");
+    host.socket.emit("room:setVisibility", { visibility: "public" });
+    assert.equal(
+      (await seenByMate).visibility,
+      "public",
+      "becoming visible to strangers is a privacy transition, never silent"
+    );
+  });
+
+  test("a seated player who is not the host cannot open the room", async () => {
+    const host = await player("auth_host");
+    const mate = await player("auth_mate");
+
+    const room = await createRoom(host, 4);
+    const joined = waitFor<RoomState>(mate.socket, "room:state");
+    mate.socket.emit("room:join", { code: room.code });
+    await joined;
+
+    const refused = waitFor<{ code: string }>(mate.socket, "room:error");
+    mate.socket.emit("room:setVisibility", { visibility: "public" });
+    assert.equal((await refused).code, "NOT_HOST");
+
+    const { roomStore } = await import("../../server/roomStore.ts");
+    const row = await roomStore.getRoomById(room.roomId);
+    assert.equal(row?.visibility, "private", "only the host decides who may see the room");
+  });
+
+  test("an opened room still holds the seat its invited friend was promised", async () => {
+    const host = await player("held_host");
+    const friend = await player("held_friend");
+    const stranger = await player("held_stranger");
+    await befriend(server, host, friend);
+
+    const room = await createRoom(host);
+    const invited = waitFor<RoomState>(host.socket, "room:state");
+    host.socket.emit("friend:invite", { friendUserId: friend.user.id, roomCode: room.code });
+    await invited;
+
+    await setVisibility(host, "public");
+
+    const landed = await quickmatch(stranger);
+    assert.notEqual(
+      landed.roomId,
+      room.roomId,
+      "the last seat is held for the invited friend, so the matcher has nowhere to sit"
+    );
   });
 
 });

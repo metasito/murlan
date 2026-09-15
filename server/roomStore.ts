@@ -85,6 +85,10 @@ export const roomStore = {
     await db.update(rooms).set({ hostUserId }).where(eq(rooms.id, roomId));
   },
 
+  async updateRoomVisibility(roomId: string, visibility: RoomVisibility) {
+    await db.update(rooms).set({ visibility }).where(eq(rooms.id, roomId));
+  },
+
   async getRoomPlayers(roomId: string): Promise<(RoomPlayer & { user: User })[]> {
     const rows = await db
       .select()

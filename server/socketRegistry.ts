@@ -8,7 +8,7 @@ import { logger } from "./logger.ts";
 import { friendStore } from "./friendStore.ts";
 import { socketRoomMap, userRoom, userSocketMap } from "./gameRoom.ts";
 import { safeTimer } from "./gamePersistence.ts";
-import { announceSeatHoldsChanged, handleSeatRelease } from "./socketTable.ts";
+import { announceRoomChanged, handleSeatRelease } from "./socketTable.ts";
 import { applyOrForward } from "./tableRouter.ts";
 
 let _io: SocketServer | null = null;
@@ -131,10 +131,10 @@ export async function declineGameInviteAndNotify(
 ): Promise<void> {
   // Deliberately unguarded: a decline that did not happen must reach the
   // caller as a failure, not as an ok with the invite still standing.
-  // `announceSeatHoldsChanged` swallows its own read failures.
+  // `announceRoomChanged` swallows its own read failures.
   const roomId = await friendStore.declineGameInvite(inviteeId, roomCode);
   if (!roomId || !_io) return;
-  await announceSeatHoldsChanged(_io, roomId);
+  await announceRoomChanged(_io, roomId);
 }
 
 /**

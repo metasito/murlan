@@ -271,19 +271,20 @@ function tellInvitees(
 }
 
 /**
- * Tells the room its seat holds changed. The row an invite lives in *is* the
- * hold, so every path that deletes one routes through here — a lobby's
- * "held for" must clear on the same event that frees the seat, not on
- * whatever broadcast happens to come along next.
+ * Re-reads a waiting room and tells everyone seated in it what it now is.
+ * Every path that changes a seat hold or the room's own visibility routes
+ * through here — a lobby's "held for", and whether strangers can see the
+ * room, must change on the same event that changed it, not on whatever
+ * broadcast happens to come along next.
  */
-export async function announceSeatHoldsChanged(io: SocketServer, roomId: string): Promise<void> {
+export async function announceRoomChanged(io: SocketServer, roomId: string): Promise<void> {
   const room = await roomStore.getRoomById(roomId).catch((err: unknown) => {
-    logger.warn({ err, roomId }, "Failed to read the room while announcing a seat-hold change");
+    logger.warn({ err, roomId }, "Failed to read the room while announcing a room change");
     return null;
   });
   if (!room) return;
   const players = await roomStore.getRoomPlayers(roomId).catch((err: unknown) => {
-    logger.warn({ err, roomId }, "Failed to read the roster while announcing a seat-hold change");
+    logger.warn({ err, roomId }, "Failed to read the roster while announcing a room change");
     return null;
   });
   if (!players) return;
@@ -301,7 +302,7 @@ export async function retireRoomInvites(
     return [] as string[];
   });
   tellInvitees(io, invitees, "friend:invite_retired", { roomCode });
-  if (invitees.length > 0) await announceSeatHoldsChanged(io, roomId);
+  if (invitees.length > 0) await announceRoomChanged(io, roomId);
 }
 
 /**

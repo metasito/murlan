@@ -71,6 +71,7 @@ export const en = {
   "server.SEAT_HELD": "Every free seat is being held for a friend",
   "server.ALREADY_IN_ROOM": "You're already in the room",
   "server.NOT_IN_ROOM": "You're not in this room",
+  "server.NOT_HOST": "Only the host can change this",
   "server.MIN_PLAYERS_REQUIRED": "At least 2 players are required",
   "server.TEAMS_REQUIRE_FOUR": "Teams mode needs exactly 4 players",
   "server.MATCH_IN_PROGRESS": "A match is already in progress",
