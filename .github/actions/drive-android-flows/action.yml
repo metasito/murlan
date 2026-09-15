@@ -119,6 +119,10 @@ runs:
           # Neither may fail the step - an instrument is not a verdict.
           nohup adb logcat -v time -b all > "$RUNNER_TEMP/logcat.txt" 2>&1 & true
           nohup sh -c 'while true; do date -u +%H:%M:%S; cat /proc/loadavg; free -m | head -2; sleep 5; done' > "$RUNNER_TEMP/host-vitals.txt" 2>&1 & true
+          # Neither of the two above can say whether the VM died, wedged or was
+          # alive the whole time with only its ADB transport gone - the question
+          # three dispatches of #1062 could not answer from their own artefacts.
+          nohup sh -c 'while true; do date -u +%H:%M:%S; ps -eo pid,stat,rss,etime,comm | grep -iE "qemu|emulator|crashpad" | grep -v grep || echo "no emulator process"; adb devices; sleep 2; done' > "$RUNNER_TEMP/emulator-proc.txt" 2>&1 & true
           # Everything above this line is the environment coming up, and nothing
           # above it touches anything this branch built: `maestro.yml` reads the
           # marker's absence as "the runner, not this branch", so a line here

@@ -36,6 +36,15 @@ function annotations(): string[] {
     .map((m) => m[0].trim());
 }
 
+/** Every `$RUNNER_TEMP` file the script streams a running command into. */
+const STREAMED = [
+  ...new Set(
+    actionScriptLines(repoRoot).flatMap((l) =>
+      [...l.matchAll(/>\s*"\$RUNNER_TEMP\/([\w.-]+)"/g)].map((m) => m[1]),
+    ),
+  ),
+];
+
 describe("the Android flow marker", () => {
   const lines = actionScriptLines(repoRoot);
 
@@ -112,7 +121,7 @@ describe("the Android flow marker", () => {
     // one started below `app-launched` would do it on the un-retryable side of
     // the boundary as well.
     const collectors = lines.filter((l) => l.startsWith("nohup"));
-    assert.equal(collectors.length, 2, "the logcat stream and the host vitals");
+    assert.equal(collectors.length, 3, "the logcat stream, the host vitals and the emulator process");
     const launched = markerIndex(lines, "app-launched");
     for (const c of collectors) {
       assert.ok(lines.indexOf(c) < launched, `an instrument starts after the app-launch marker: ${c}`);
@@ -123,6 +132,11 @@ describe("the Android flow marker", () => {
       collectors.some((l) => /loadavg/.test(l) && /free -m/.test(l)),
       "nothing samples the host's own CPU and memory, which is the only thing that " +
         "tells an exhausted runner apart from a graphics fault",
+    );
+    assert.ok(
+      collectors.some((l) => /ps -eo/.test(l) && /adb devices/.test(l)),
+      "nothing samples the emulator process beside the transport, which is the only thing that " +
+        "tells a VM that died apart from one still running behind a dead ADB connection",
     );
   });
 
@@ -310,10 +324,12 @@ describe("maestro.yml reads that marker", () => {
   test("what the instruments write is what gets uploaded", () => {
     // They are collected outside `~/.maestro/tests` on purpose — they have to
     // outlive the device — so the artefact path has to name them, and a
-    // collector whose output nobody uploads is not an instrument.
+    // collector whose output nobody uploads is not an instrument. Derived from
+    // the script rather than listed: a list is silent about the next one added.
     const upload = src.slice(src.indexOf("name: maestro-debug"), src.indexOf("if-no-files-found"));
-    for (const file of ["logcat\\.txt", "host-vitals\\.txt"]) {
-      assert.match(upload, new RegExp(file), `${file} is collected and then not uploaded`);
+    assert.ok(STREAMED.length >= 3, `only ${STREAMED.length} instrument output(s) found; the scan broke`);
+    for (const file of STREAMED) {
+      assert.ok(upload.includes(file), `${file} is collected and then not uploaded`);
     }
   });
 
