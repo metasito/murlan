@@ -325,7 +325,7 @@ describe("the --if-found answer", () => {
     try {
       const done = spawn(dir, [IF_FOUND]);
       assert.match(done.stdout, /ORPHAN\t/, done.stdout);
-      assert.notEqual(done.status, FOUND_NOTHING, done.stdout);
+      assert.equal(done.status, 0, done.stdout);
     } finally {
       process.chdir(here);
       fs.chmodSync(orphan, 0o700);
