@@ -357,6 +357,7 @@ jobs:
             ${{ runner.temp }}/logcat.txt
             ${{ runner.temp }}/host-vitals.txt
             ${{ runner.temp }}/emulator-proc.txt
+            ${{ runner.temp }}/emulator-stdouterr.txt
             ${{ runner.temp }}/emulator-logs/
             ${{ runner.temp }}/dmesg-oom.txt
           if-no-files-found: ignore

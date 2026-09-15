@@ -17,6 +17,14 @@ inputs:
 runs:
   using: composite
   steps:
+    # `-stdouterr-file` opens its target `O_APPEND | O_WRONLY`, with no
+    # `O_CREAT` (external/qemu `android/emulator/main-emulator.cpp`), so a file
+    # that does not exist yet makes the launcher exit "cannot open" instead of
+    # booting a VM.
+    - name: Give the emulator a file to write its own output into
+      shell: bash
+      run: touch "${{ runner.temp }}/emulator-stdouterr.txt"
+
     - name: Run the flows
       uses: reactivecircus/android-emulator-runner@v2
       with:
@@ -28,7 +36,13 @@ runs:
         # ships in the system image, so the emulator falls back to
         # swiftshader_indirect regardless
         # (developer.android.com/studio/run/emulator-acceleration).
-        emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -camera-back none
+        #
+        # `-stdouterr-file` is the VM's own account of its death. The launcher
+        # `dup2`s both descriptors onto that file before it execs the real
+        # emulator binary, which is the only way past the orphaned pipe
+        # `reactivecircus/android-emulator-runner` leaves its stdout and stderr
+        # on. Linux-only in the emulator source, which this runner is.
+        emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -camera-back none -stdouterr-file ${{ runner.temp }}/emulator-stdouterr.txt
         # Left on. #35 names this as the first knob to try for a struggling
         # emulator and it was tried, but it is the wrong one: Reanimated reads
         # the system scales as a reduced-motion signal and disables animations

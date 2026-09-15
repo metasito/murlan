@@ -333,6 +333,24 @@ describe("maestro.yml reads that marker", () => {
     }
   });
 
+  test("the emulator writes its own output to a file that exists by then and is uploaded", () => {
+    // The flag's target is opened without `O_CREAT`, so the creating step has to
+    // come before the launch or the VM never boots; and three places have to
+    // name one path, which is why all three are read rather than one asserted.
+    const action = read(ACTION);
+    const told = /-stdouterr-file \$\{\{ runner\.temp \}\}\/([\w.-]+)/.exec(action);
+    assert.ok(told, "nothing tells the emulator where to write its own stdout and stderr");
+    const file = told[1];
+    const created = action.indexOf(`touch "\${{ runner.temp }}/${file}"`);
+    assert.notEqual(created, -1, `${file} is never created, so the launcher exits "cannot open"`);
+    assert.ok(
+      created < action.indexOf("uses: reactivecircus/android-emulator-runner"),
+      `${file} is created after the emulator that has to open it`,
+    );
+    const upload = src.slice(src.indexOf("name: maestro-debug"), src.indexOf("if-no-files-found"));
+    assert.ok(upload.includes(file), `${file} is written and then not uploaded`);
+  });
+
   test("the emulator's own files are swept up, and an empty sweep still says so", () => {
     // The VM's stderr is orphaned by the launcher (#1062), so what it leaves on
     // disk is the whole of its own account. A sweep that wrote nothing when it
