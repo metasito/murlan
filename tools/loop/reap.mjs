@@ -14,6 +14,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import { checkoutRoot as sharedRoot } from "../../scripts/lib/checkoutRoot.mjs";
+import { FOUND_NOTHING, IF_FOUND } from "./loop-derive.mjs";
 
 const ORPHAN_AGE_MS = 2 * 60 * 60 * 1000;
 const STALE_AGE_MS = 24 * 60 * 60 * 1000;
@@ -476,12 +477,20 @@ if (isInvokedDirectly(process.argv[1], import.meta.url)) {
   // A container is not owned by the session that started it, so only the single-run ones go by
   // default. The dev stack backs whatever else is running — another session's e2e most of the
   // time — and taking it is a decision, not a tidy-up.
+  let containers = 0;
   for (const name of ["murlan-verify-pg", "murlan-verify-boot"]) {
     if (removeContainer(name, dryRun)) {
       console.log(`reap: ${dryRun ? "would remove" : "removed"} container ${name}`);
+      containers++;
     }
   }
   if (process.argv.includes("--docker") && removeContainer("murlan-dev-pg", dryRun)) {
     console.log(`reap: ${dryRun ? "would remove" : "removed"} container murlan-dev-pg`);
+    containers++;
   }
+
+  // A port left to a live run is somebody else working, not a leftover, so it is not counted.
+  const found =
+    staleHolders.length + parentless.length + stale.length + burning.length + containers;
+  if (process.argv.includes(IF_FOUND) && found === 0) process.exit(FOUND_NOTHING);
 }

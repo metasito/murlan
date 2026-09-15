@@ -452,6 +452,23 @@ describe("runTicket", () => {
     assert.equal(said.join("\n").match(/#953 {2}Rate limiter factory/g)?.length, 1);
   });
 
+  // Four phases printed four header boxes, so one ticket read as four things having happened.
+  test("a ticket handed off across phases draws its header once for the run", async () => {
+    const { said, screen } = sink();
+    await runTicket(fakeSpawn([phase("C"), RESULT]), opts({ screen }));
+    await runTicket(fakeSpawn([RESULT]), opts({ at: "D", screen }));
+    assert.equal(said.join("\n").match(/#953 {2}Rate limiter factory/g)?.length, 1);
+  });
+
+  test("the next ticket on the same screen gets its own header", async () => {
+    const { said, screen } = sink();
+    await runTicket(fakeSpawn([RESULT]), opts({ screen }));
+    await runTicket(fakeSpawn([RESULT]), opts({ number: 962, screen }));
+    const out = said.join("\n");
+    assert.equal(out.match(/#953 {2}Rate limiter factory/g)?.length, 1);
+    assert.equal(out.match(/#962 {2}Rate limiter factory/g)?.length, 1);
+  });
+
   test("a resumed ticket says so, and does not read as a closed phase", async () => {
     const { said, screen } = sink();
     await runTicket(fakeSpawn([RESULT]), opts({ number: 962, at: "D", screen }));

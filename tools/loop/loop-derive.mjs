@@ -29,6 +29,15 @@ export const WORKTREE_DIR = ".worktrees";
 /** A ticket worktree's own directory name, under `WORKTREE_DIR` — never its branch. */
 export const AGENT_DIR = /^agent-\d+$/;
 
+/** Asks a housekeeping script to answer `FOUND_NOTHING` when it found nothing to do. */
+export const IF_FOUND = "--if-found";
+
+/**
+ * Exited only when `IF_FOUND` was passed, so a by-hand `npm run reap` keeps its exit 0, and
+ * distinct from every refusal code the same scripts already use.
+ */
+export const FOUND_NOTHING = 4;
+
 const run = (file, args, cwd) => execFileSync(file, args, { encoding: "utf8", cwd }).trim();
 
 /** The one shape `verdictFor` and `reviewRounds` both look for, so they cannot drift apart. */

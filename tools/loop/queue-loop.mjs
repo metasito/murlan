@@ -660,6 +660,7 @@ export function ticker(out = process.stdout, err = process.stderr, reveal = open
   };
   let open = null;
   let timer = null;
+  let headed = null;
   let drawn = [];
   let hidden = false;
   let raw = false;
@@ -858,6 +859,16 @@ export function ticker(out = process.stdout, err = process.stderr, reveal = open
     // what a press actually does. `process.stdin` is not a terminal under the test runner, and a
     // bar pinned against a handler nothing can call is a bar that pins nothing.
     key: (k) => keys(k),
+    /**
+     * Whether this ticket still wants a header box, and a record that it has now had one. `main()`
+     * re-enters `runTicket` once per handoff, and the screen is the only thing that outlives a
+     * phase — the child process is new every time.
+     */
+    needsHeader(number) {
+      if (headed === number) return false;
+      headed = number;
+      return true;
+    },
     /** What the `o` and `l` keys open. Set once per ticket, beside its header. */
     context(next = {}) {
       ctx = { url: null, log: null, ...next };
@@ -1132,7 +1143,7 @@ export function runTicket(
       ? { n: about.reviewRounds + 1, of: MAX_REVIEW_ROUNDS }
       : null;
 
-  screen.say(header({ number, ...about, queue }, screen.theme));
+  if (screen.needsHeader(number)) screen.say(header({ number, ...about, queue }, screen.theme));
   screen.context({ url: about.url, log: logPath });
   if (at) {
     screen.say(phaseRow({ letter: at, detail: "resumed", ms: 0, state: "resumed", round: round() }, screen.theme));

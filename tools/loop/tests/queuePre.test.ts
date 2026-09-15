@@ -10,6 +10,7 @@ import {
   script,
   summarise,
 } from "../queue-pre.mjs";
+import { FOUND_NOTHING, IF_FOUND } from "../loop-derive.mjs";
 
 describe("misnamedWorktrees", () => {
   test("names a worktree that does not follow the convention", () => {
@@ -79,6 +80,35 @@ describe("script", () => {
     const row = ran(null, "", "");
     assert.equal(row?.state, "failed");
     assert.equal(row?.stop, 1);
+  });
+
+  const asked = (status: number, stdout: string, stderr = "") =>
+    script(["x.mjs", IF_FOUND], (() => ({ status, stdout, stderr })) as never)();
+
+  test("a step that found nothing earns no row at all", () => {
+    assert.equal(asked(FOUND_NOTHING, "reap: no orphan is burning CPU"), null);
+  });
+
+  test("a step that found nothing but raised a warning still earns one", () => {
+    const row = asked(FOUND_NOTHING, "nothing to do", "but note this");
+    assert.equal(row?.state, "warned");
+    assert.equal(row?.stop, undefined);
+  });
+
+  test("that code is a refusal from a step this never asked the question of", () => {
+    const row = ran(FOUND_NOTHING, "half a sentence", "");
+    assert.equal(row?.state, "failed");
+    assert.equal(row?.stop, FOUND_NOTHING);
+  });
+});
+
+describe("CHECKS", () => {
+  test("every spawned step is asked to answer only when it found something", () => {
+    const spawned = CHECKS.filter((c) => c.run.args);
+    assert.equal(spawned.length, 3);
+    for (const { label, run } of spawned) {
+      assert.ok(run.args?.includes(IF_FOUND), `${label} still prints on a no-op`);
+    }
   });
 });
 

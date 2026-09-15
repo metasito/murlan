@@ -38,7 +38,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
-import { WORKTREE_DIR } from "./loop-derive.mjs";
+import { FOUND_NOTHING, IF_FOUND, WORKTREE_DIR } from "./loop-derive.mjs";
 
 /**
  * Parses `git worktree list --porcelain` into one entry per worktree, in
@@ -289,6 +289,16 @@ export function findOrphanedWorktreeDirs(dirNames, registeredPaths) {
   });
 }
 
+/**
+ * What a run found worth a `queue-pre` row. A kept *candidate* is the loop's own live worktree,
+ * every phase of every ticket, so it is never news — but an orphan is news whether or not it came
+ * away: held open by another process it still counts, and it reports only on stdout, so nothing
+ * downstream would otherwise see it.
+ */
+export function newsCount({ dryRun, total, kept, removed, orphansFound }) {
+  return dryRun ? total - kept : removed + orphansFound;
+}
+
 /** Whether `child` is `parent` itself or sits underneath it. */
 function isAtOrUnder(child, parent) {
   const [c, p] = [path.resolve(child), path.resolve(parent)];
@@ -509,4 +519,6 @@ if (invokedDirectly && process.argv.includes("--remove")) {
       ? `Dry run: ${total - kept} of ${total} would be removed, ${kept} kept.`
       : `Removed ${totalRemoved} of ${total}; kept ${kept}.`,
   );
+  const news = newsCount({ dryRun, total, kept, removed, orphansFound: orphanNames.length });
+  if (process.argv.includes(IF_FOUND) && news === 0) process.exit(FOUND_NOTHING);
 }

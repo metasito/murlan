@@ -15,7 +15,7 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, readdirSync } from "node:fs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
-import { AGENT_DIR, REPO, WORKTREE_DIR } from "./loop-derive.mjs";
+import { AGENT_DIR, FOUND_NOTHING, IF_FOUND, REPO, WORKTREE_DIR } from "./loop-derive.mjs";
 import { checkMain } from "./mainHealth.ts";
 import { capabilities, note, stepRow, theme } from "./loop-render.mjs";
 
@@ -26,7 +26,10 @@ import { capabilities, note, stepRow, theme } from "./loop-render.mjs";
  *   line, `note` the words folded behind it, `stop` an exit code that refuses the ticket. The
  *   label belongs to the list, not the check.
  *
- * @typedef {{ label: string, run: () => Result }} Check
+ * @typedef {(() => Result) & { args?: string[] }} Check_run the check itself; `args` is what it
+ *   spawns, present only on the ones that spawn something.
+ *
+ * @typedef {{ label: string, run: Check_run }} Check
  */
 
 // A sibling is found by this file's own directory, not the cwd: nothing guarantees the supervisor
@@ -51,13 +54,19 @@ export function summarise(stdout) {
   return last ? last.replace(SPEAKERS, "") : "";
 }
 
-/** @returns {() => Result} a check that runs a sibling script and reports what it said. */
+/** @returns {Check_run} a check that runs a sibling script and reports what it said. */
 export function script(args, run = spawnSync) {
-  return () => {
+  const check = () => {
     const { status, stdout, stderr } = run(process.execPath, args, {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
     });
+    // Nothing found, so nothing to print — `main`'s `if (!result) continue` is what suppresses the
+    // row, the same machinery `redMain` has always used. A warning it chose to raise still earns
+    // one. Read only when this call asked for the answer, so an unrelated exit 4 stays a refusal.
+    if (status === FOUND_NOTHING && args.includes(IF_FOUND)) {
+      return stderr?.trim() ? { state: "warned", detail: summarise(stdout), note: stderr } : null;
+    }
     if (status !== 0) {
       // A spawn that never started answers with a null status, which is not a pass.
       return {
@@ -71,6 +80,8 @@ export function script(args, run = spawnSync) {
     // the routine account on stdout stays folded behind the row.
     return { state: stderr?.trim() ? "warned" : "done", detail: summarise(stdout), note: stderr };
   };
+  check.args = args;
+  return check;
 }
 
 /**
@@ -127,9 +138,9 @@ export function redMain(gh = ghCli) {
  * @type {Check[]}
  */
 export const CHECKS = [
-  { label: "worktrees", run: script([HERE + "/prune-worktrees.mjs"]) },
-  { label: "preflight", run: script([HERE + "/preflight.mjs"]) },
-  { label: "reap", run: script([HERE + "/reap.mjs", "--stale"]) },
+  { label: "worktrees", run: script([HERE + "/prune-worktrees.mjs", IF_FOUND]) },
+  { label: "preflight", run: script([HERE + "/preflight.mjs", IF_FOUND]) },
+  { label: "reap", run: script([HERE + "/reap.mjs", "--stale", IF_FOUND]) },
   { label: "worktrees", run: namedWorktrees },
   { label: "main", run: redMain },
 ];

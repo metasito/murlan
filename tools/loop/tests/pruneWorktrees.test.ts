@@ -4,14 +4,17 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import fs from "node:fs";
 import os from "node:os";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { importUnderShellGuard } from "../../../tests/helpers/importShellGuard.ts";
+import { FOUND_NOTHING, IF_FOUND, WORKTREE_DIR } from "../loop-derive.mjs";
 import {
   classifyWorktree,
   parseWorktreeList,
   hasUncommittedChanges,
   listWorktreeDirNames,
   findOrphanedWorktreeDirs,
+  newsCount,
 } from "../prune-worktrees.mjs";
 
 function baseState(overrides = {}) {
@@ -274,5 +277,74 @@ describe("isInvokedDirectly", () => {
     const { shelledOutTo } = importUnderShellGuard(moduleUrl);
 
     assert.equal(shelledOutTo, null, "importing the module must not shell out to git or gh");
+  });
+});
+
+describe("the --if-found answer", () => {
+  const lonelyRepo = (t: { after: (fn: () => void) => void }) => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "prune-lonely-"));
+    t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+    git(dir, ["init", "-b", "main"]);
+    fs.writeFileSync(path.join(dir, "readme.txt"), "hello\n");
+    git(dir, ["add", "-A"]);
+    git(dir, ["commit", "-m", "init", "--no-gpg-sign"], {
+      GIT_AUTHOR_NAME: "t",
+      GIT_AUTHOR_EMAIL: "t@t",
+      GIT_COMMITTER_NAME: "t",
+      GIT_COMMITTER_EMAIL: "t@t",
+    });
+    return dir;
+  };
+  const spawn = (dir: string, args: string[]) =>
+    spawnSync(process.execPath, [fileURLToPath(new URL("../prune-worktrees.mjs", import.meta.url)), ...args], {
+      cwd: dir,
+      encoding: "utf8",
+    });
+
+  test("removing nothing is still exit 0 when nobody asked", (t) => {
+    const done = spawn(lonelyRepo(t), []);
+    assert.equal(done.status, 0, done.stderr);
+    assert.match(done.stdout, /Removed 0 of 0/);
+  });
+
+  test("and answers FOUND_NOTHING when asked, so queue-pre can drop its row", (t) => {
+    assert.equal(spawn(lonelyRepo(t), [IF_FOUND]).status, FOUND_NOTHING);
+  });
+
+  test("an orphan that will not come away still answers exit 0, through the CLI", (t) => {
+    const dir = lonelyRepo(t);
+    const orphan = path.join(dir, WORKTREE_DIR, "agent-999");
+    fs.mkdirSync(orphan, { recursive: true });
+    fs.writeFileSync(path.join(orphan, "held"), "x");
+    // Block the delete the way a live process blocks it, on either platform and without a branch:
+    // Windows refuses to remove any process's working directory, POSIX refuses to unlink out of a
+    // directory it cannot write.
+    const here = process.cwd();
+    process.chdir(orphan);
+    fs.chmodSync(orphan, 0o500);
+    try {
+      const done = spawn(dir, [IF_FOUND]);
+      assert.match(done.stdout, /ORPHAN\t/, done.stdout);
+      assert.equal(done.status, 0, done.stdout);
+    } finally {
+      process.chdir(here);
+      fs.chmodSync(orphan, 0o700);
+    }
+  });
+
+  test("an orphan held open by another process is still news", () => {
+    // It reports on stdout and increments `kept`, so counting removals alone hid the one case the
+    // row exists for.
+    assert.equal(newsCount({ dryRun: false, total: 1, kept: 1, removed: 0, orphansFound: 1 }), 1);
+  });
+
+  test("a live worktree the run deliberately kept is not", () => {
+    assert.equal(newsCount({ dryRun: false, total: 1, kept: 1, removed: 0, orphansFound: 0 }), 0);
+    assert.equal(newsCount({ dryRun: true, total: 1, kept: 1, removed: 0, orphansFound: 0 }), 0);
+  });
+
+  test("a removal, and a dry run's candidate for one, are both news", () => {
+    assert.equal(newsCount({ dryRun: false, total: 2, kept: 1, removed: 1, orphansFound: 0 }), 1);
+    assert.equal(newsCount({ dryRun: true, total: 2, kept: 1, removed: 0, orphansFound: 0 }), 1);
   });
 });
