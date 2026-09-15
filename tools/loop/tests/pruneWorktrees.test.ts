@@ -14,6 +14,7 @@ import {
   hasUncommittedChanges,
   listWorktreeDirNames,
   findOrphanedWorktreeDirs,
+  newsCount,
 } from "../prune-worktrees.mjs";
 
 function baseState(overrides = {}) {
@@ -308,5 +309,21 @@ describe("the --if-found answer", () => {
 
   test("and answers FOUND_NOTHING when asked, so queue-pre can drop its row", (t) => {
     assert.equal(spawn(lonelyRepo(t), [IF_FOUND]).status, FOUND_NOTHING);
+  });
+
+  test("an orphan held open by another process is still news", () => {
+    // It reports on stdout and increments `kept`, so counting removals alone hid the one case the
+    // row exists for.
+    assert.equal(newsCount({ dryRun: false, total: 1, kept: 1, removed: 0, orphansFound: 1 }), 1);
+  });
+
+  test("a live worktree the run deliberately kept is not", () => {
+    assert.equal(newsCount({ dryRun: false, total: 1, kept: 1, removed: 0, orphansFound: 0 }), 0);
+    assert.equal(newsCount({ dryRun: true, total: 1, kept: 1, removed: 0, orphansFound: 0 }), 0);
+  });
+
+  test("a removal, and a dry run's candidate for one, are both news", () => {
+    assert.equal(newsCount({ dryRun: false, total: 2, kept: 1, removed: 1, orphansFound: 0 }), 1);
+    assert.equal(newsCount({ dryRun: true, total: 2, kept: 1, removed: 0, orphansFound: 0 }), 1);
   });
 });
