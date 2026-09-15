@@ -121,6 +121,8 @@ interface OnlineGameContextValue {
   isSpectator: boolean;
   leaveRoom: () => void;
   quickmatch: (maxPlayers: number, gameMode: "free_for_all" | "teams") => void;
+  /** Host-only: whether the matcher may seat strangers into the empty seats. */
+  setRoomVisibility: (visibility: "public" | "private") => void;
   startGame: (opts?: {
     fillWithBots?: boolean;
     botPersonality?: BotPersonalityId;
@@ -180,6 +182,7 @@ type RoomSlice = Pick<
   | "spectateRoom"
   | "leaveRoom"
   | "quickmatch"
+  | "setRoomVisibility"
   | "startGame"
 >;
 type TableSlice = Pick<
@@ -935,6 +938,10 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     socket?.emit("room:quickmatch", { maxPlayers, gameMode });
   }, [socket]);
 
+  const setRoomVisibility = useCallback((visibility: "public" | "private") => {
+    socket?.emit("room:setVisibility", { visibility });
+  }, [socket]);
+
   const startGame = useCallback((opts?: {
     fillWithBots?: boolean;
     botPersonality?: BotPersonalityId;
@@ -1038,9 +1045,10 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       spectateRoom,
       leaveRoom,
       quickmatch,
+      setRoomVisibility,
       startGame,
     }),
-    [room, entrySource, isSpectator, createRoom, joinRoom, spectateRoom, leaveRoom, quickmatch, startGame]
+    [room, entrySource, isSpectator, createRoom, joinRoom, spectateRoom, leaveRoom, quickmatch, setRoomVisibility, startGame]
   );
 
   const tableValue = useMemo(

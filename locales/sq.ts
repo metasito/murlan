@@ -813,6 +813,10 @@ export const sq: Record<keyof typeof en, string> = {
   "room.fillWithBotsSubtitle": "Vendet e lira do të zihen nga lojtarë virtualë",
   "room.fillWithBotsA11yLabel": "Plotëso vendet e lira me bot",
   "room.fillWithBotsA11yHint": "Aktivizoje që kompjuteri të kontrollojë vendet e lira kur fillon loja",
+  "room.fillWithMatchmakingLabel": "Plotëso me matchmaking",
+  "room.fillWithMatchmakingSubtitle": "Lër lojtarë që nuk i njeh të zënë vendet e lira ndërsa pret",
+  "room.fillWithMatchmakingA11yLabel": "Plotëso vendet e lira me matchmaking",
+  "room.fillWithMatchmakingA11yHint": "Aktivizoje për ta hapur dhomën për lojtarë të panjohur. Çaktivizoje për ta mbyllur sërish",
   "room.formatLabel": "FORMATI",
 
   // ---------------------------------------------------------------- friends.*

@@ -813,6 +813,10 @@ export const en = {
   "room.fillWithBotsSubtitle": "Empty seats will be taken by virtual players",
   "room.fillWithBotsA11yLabel": "Fill empty seats with bots",
   "room.fillWithBotsA11yHint": "Turn on to have the computer control empty seats when the game starts",
+  "room.fillWithMatchmakingLabel": "Fill with matchmaking",
+  "room.fillWithMatchmakingSubtitle": "Let players you don’t know take the empty seats while you wait",
+  "room.fillWithMatchmakingA11yLabel": "Fill empty seats with matchmaking",
+  "room.fillWithMatchmakingA11yHint": "Turn on to open the room so players you don’t know can be seated. Turn off to close it again",
   "room.formatLabel": "FORMAT",
 
   // ---------------------------------------------------------------- friends.*

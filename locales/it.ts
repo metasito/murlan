@@ -806,6 +806,10 @@ export const it: Record<keyof typeof en, string> = {
   "room.fillWithBotsSubtitle": "I posti liberi saranno occupati da giocatori virtuali",
   "room.fillWithBotsA11yLabel": "Riempi i posti liberi con bot",
   "room.fillWithBotsA11yHint": "Attiva per far controllare al computer i posti liberi quando la partita inizia",
+  "room.fillWithMatchmakingLabel": "Riempi con matchmaking",
+  "room.fillWithMatchmakingSubtitle": "Lascia che sconosciuti prendano i posti liberi mentre aspetti",
+  "room.fillWithMatchmakingA11yLabel": "Riempi i posti liberi con il matchmaking",
+  "room.fillWithMatchmakingA11yHint": "Attiva per aprire la stanza a giocatori sconosciuti. Disattiva per richiuderla",
   "room.formatLabel": "FORMATO",
 
   // ---------------------------------------------------------------- friends.*

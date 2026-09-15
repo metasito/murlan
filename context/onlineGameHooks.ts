@@ -77,6 +77,7 @@ export function useOnlineRoom() {
     spectateRoom,
     leaveRoom,
     quickmatch,
+    setRoomVisibility,
     startGame,
   } = useRoomSlice();
   return useMemo(
@@ -89,6 +90,7 @@ export function useOnlineRoom() {
       spectateRoom,
       leaveRoom,
       quickmatch,
+      setRoomVisibility,
       startGame,
     }),
     [
@@ -100,6 +102,7 @@ export function useOnlineRoom() {
       spectateRoom,
       leaveRoom,
       quickmatch,
+      setRoomVisibility,
       startGame,
     ]
   );

@@ -202,7 +202,7 @@ describe("room visibility", { skip: hasDatabase() ? false : skipMessage() }, () 
 
   test("closing the room again shuts matchmaking back out", async () => {
     const host = await player("close_host");
-    const stranger = await player("close_stranger");
+    const stranger = await player("cl_stranger");
 
     const room = await createRoom(host);
     await setVisibility(host, "public");
@@ -231,6 +231,21 @@ describe("room visibility", { skip: hasDatabase() ? false : skipMessage() }, () 
     );
   });
 
+  test("opening a room does not change what its code admits", async () => {
+    const host = await player("oc_host");
+    const holder = await player("oc_holder");
+
+    const room = await createRoom(host, 4);
+    await setVisibility(host, "public");
+
+    const joined = waitFor<RoomState>(holder.socket, "room:state");
+    holder.socket.emit("room:join", { code: room.code });
+    const after = await joined;
+
+    assert.equal(after.roomId, room.roomId);
+    assert.equal(after.players.length, 2, "the code holder must be seated, not merely subscribed");
+  });
+
   test("a seated player who is not the host cannot open the room", async () => {
     const host = await player("auth_host");
     const mate = await player("auth_mate");
@@ -252,7 +267,7 @@ describe("room visibility", { skip: hasDatabase() ? false : skipMessage() }, () 
   test("an opened room still holds the seat its invited friend was promised", async () => {
     const host = await player("held_host");
     const friend = await player("held_friend");
-    const stranger = await player("held_stranger");
+    const stranger = await player("hd_stranger");
     await befriend(server, host, friend);
 
     const room = await createRoom(host);

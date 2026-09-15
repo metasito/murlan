@@ -62,7 +62,7 @@ const ONLINE: Record<string, string[]> = {
   ],
   useOnlineRoom: [
     "room", "entrySource", "isSpectator", "createRoom", "joinRoom",
-    "spectateRoom", "leaveRoom", "quickmatch", "startGame",
+    "spectateRoom", "leaveRoom", "quickmatch", "setRoomVisibility", "startGame",
   ],
   useOnlineTable: ["gameState", "mySeatIndex", "playCards", "pass", "sendReaction", "disconnectedSeats"],
   useOnlineTurnClock: ["turnSeconds", "turnDeadlineMs"],
