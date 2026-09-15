@@ -64,7 +64,7 @@ export const it: Record<keyof typeof en, string> = {
   "server.SEAT_HELD": "Ogni posto libero è riservato a un amico",
   "server.ALREADY_IN_ROOM": "Sei già nella stanza",
   "server.NOT_IN_ROOM": "Non sei in questa stanza",
-  "server.NOT_HOST": "Solo l’host può cambiare questa impostazione",
+  "server.NOT_HOST": "Solo l'host può cambiare questa impostazione",
   "server.MIN_PLAYERS_REQUIRED": "Servono almeno 2 giocatori",
   "server.TEAMS_REQUIRE_FOUR": "La modalità a squadre richiede esattamente 4 giocatori",
   "server.MATCH_IN_PROGRESS": "C'è già una partita in corso",
