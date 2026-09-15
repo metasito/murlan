@@ -90,11 +90,24 @@ test("a string literal left open at the end of the input is reported", () => {
 });
 
 /** The index of the last character `blankCommentsAndStrings` left standing. */
-function lastKept(src: string): number {
-  const out = blankCommentsAndStrings(src);
+function lastKept(src: string, out: string): number {
   for (let i = src.length - 1; i >= 0; i--) if (out[i] === src[i] && src[i].trim()) return i;
   return -1;
 }
+
+// Membership: the planted template re-closes on a later backtick, and the span it
+// erased holds no column-0 declaration — so neither floor below reads it. #1046.
+const NEITHER_FLOOR_READS = [
+  "lib/fonts.web.ts",
+  "scripts/build-fonts.mjs",
+  "scripts/pick-simulator.mjs",
+  "tests/integration/friendRowTravelsWithTheEvent.test.ts",
+  "tests/native/friendsPresenceRow.test.tsx",
+  "tests/native/replayControls.test.tsx",
+  "tests/pickSimulator.test.ts",
+  "tests/resultActionLabels.test.ts",
+  "tests/retentionOffWritePath.test.ts",
+];
 
 /**
  * The counterfactual, over real files rather than a fixture: an unterminated
@@ -112,22 +125,29 @@ function lastKept(src: string): number {
  */
 test("a backtick planted at the top of a scanned file reds the floor", () => {
   const missed: string[] = [];
+  const unread: string[] = [];
   let reported = 0;
   for (const [file, src] of sources()) {
-    const kept = lastKept(src);
+    const clean = blankCommentsAndStrings(src);
+    const kept = lastKept(src, clean);
     if (kept < 0) continue;
+    let planted: string;
     try {
-      // `kept + 2` is the same character of the same file: the plant is two long.
-      if (blankCommentsAndStrings("`\n" + src)[kept + 2] !== src[kept]) missed.push(file);
+      planted = blankCommentsAndStrings("`\n" + src);
     } catch (e) {
       // Read the report, rather than counting the throw: a TypeError out of the
       // walker is not this floor firing, and would otherwise pass for it.
       assert.match((e as Error).message, /^unterminated /, file);
       reported++;
+      continue;
     }
+    // `kept + 2` is the same character of the same file: the plant is two long.
+    if (planted[kept + 2] !== src[kept]) missed.push(file);
+    if (declarations(planted) >= declarations(clean)) unread.push(file);
   }
   assert.deepEqual(missed, [], `${missed.length} files lost their tail with nothing reported`);
   assert.ok(reported > 0, "no planted backtick was reported, so this test asserted nothing");
+  assert.deepEqual(unread.sort(), NEITHER_FLOOR_READS);
 });
 
 // One mode, because reporting is outside every `blankStrings` branch — which
@@ -220,9 +240,10 @@ test("blanking preserves every offset, so a scan can name the line it found", ()
  */
 const TOP_LEVEL = /^(?:import|export|const|function|async function|class|type|interface)\b/gm;
 
+const declarations = (s: string) => s.match(TOP_LEVEL)?.length ?? 0;
+
 test("blanking leaves every top-level declaration behind", () => {
   const eaten: string[] = [];
-  const declarations = (s: string) => s.match(TOP_LEVEL)?.length ?? 0;
   for (const [file, src] of sources()) {
     const comments = blankComments(src);
     for (const [name, want, got] of [
