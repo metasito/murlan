@@ -165,6 +165,23 @@ export function summarize(windows, fetches, jank) {
   });
 }
 
+/**
+ * Scoped to the flow's own span: one logcat carries every flow while the CLI is invoked per
+ * flow. A span and not a sum over the rows, because a nested command charges one fetch to both.
+ * @param {number} pid
+ * @param {ReturnType<typeof parseCommandWindows>} windows
+ * @param {ReturnType<typeof parseHierarchyFetches>} fetches
+ * @param {ReturnType<typeof parseJankFrames>} jank
+ */
+export function headline(pid, windows, fetches, jank) {
+  const span = windows.reduce(
+    (a, w) => ({ ...a, startMs: Math.min(a.startMs, w.startMs), endMs: Math.max(a.endMs, w.endMs) }),
+    { label: "", status: "", startMs: Infinity, endMs: -Infinity, elapsedMs: 0 }
+  );
+  const [row] = summarize([span], fetches, jank);
+  return `pid ${pid}, ${row.fetchCount} hierarchy fetches, ${row.jankCount} janky frames in this flow`;
+}
+
 /** @param {ReturnType<typeof summarize>} rows */
 export function toMarkdownTable(rows) {
   const header = "| Command | Status | Elapsed | Fetches | Fetch total | Fetch mean | Janky frames | Jank mean |";
@@ -204,6 +221,6 @@ if (isInvokedDirectly(process.argv[1], import.meta.url)) {
   const jank = parseJankFrames(logcat, pid);
   const rows = summarize(windows, fetches, jank);
 
-  process.stdout.write(`pid ${pid}, ${fetches.length} hierarchy fetches, ${jank.length} janky frames in the run\n\n`);
+  process.stdout.write(`${headline(pid, windows, fetches, jank)}\n\n`);
   process.stdout.write(`${toMarkdownTable(rows)}\n`);
 }

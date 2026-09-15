@@ -6,6 +6,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   appPidAt,
+  headline,
   parseCommandWindows,
   parseHierarchyFetches,
   parseJankFrames,
@@ -69,6 +70,19 @@ test("a fetch is charged to the command it started inside, not the one it return
   assert.equal(gameTable?.fetchCount, 1, "the 5000ms fetch returned inside this window but began before it");
   assert.equal(gameTable?.fetchTotalMs, 72800);
   assert.equal(gameTable?.jankCount, 2);
+});
+
+test("the headline counts this flow's own span, not the whole logcat", () => {
+  const windows = parseCommandWindows(MAESTRO_LOG, timeOfDayMsFixture("16:56:00.000"));
+  const fetches = parseHierarchyFetches(LOGCAT);
+  assert.equal(fetches.length, 2, "the logcat holds two fetches across the run");
+  const line = headline(1234, windows, fetches, parseJankFrames(LOGCAT, 1234));
+  assert.match(line, /pid 1234, 1 hierarchy fetches, 2 janky frames in this flow/);
+});
+
+test("a flow that never ran a command is reported as empty, not as the run's totals", () => {
+  const line = headline(5674, [], parseHierarchyFetches(LOGCAT), parseJankFrames(LOGCAT, 1234));
+  assert.match(line, /pid 5674, 0 hierarchy fetches, 0 janky frames in this flow/);
 });
 
 test("a run that crosses midnight is refused rather than reported backwards", () => {
