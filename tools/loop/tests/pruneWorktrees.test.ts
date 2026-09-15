@@ -7,7 +7,7 @@ import os from "node:os";
 import { execFileSync, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { importUnderShellGuard } from "../../../tests/helpers/importShellGuard.ts";
-import { FOUND_NOTHING, IF_FOUND } from "../loop-derive.mjs";
+import { FOUND_NOTHING, IF_FOUND, WORKTREE_DIR } from "../loop-derive.mjs";
 import {
   classifyWorktree,
   parseWorktreeList,
@@ -309,6 +309,27 @@ describe("the --if-found answer", () => {
 
   test("and answers FOUND_NOTHING when asked, so queue-pre can drop its row", (t) => {
     assert.equal(spawn(lonelyRepo(t), [IF_FOUND]).status, FOUND_NOTHING);
+  });
+
+  test("an orphan that will not come away still answers exit 0, through the CLI", (t) => {
+    const dir = lonelyRepo(t);
+    const orphan = path.join(dir, WORKTREE_DIR, "agent-999");
+    fs.mkdirSync(orphan, { recursive: true });
+    fs.writeFileSync(path.join(orphan, "held"), "x");
+    // Block the delete the way a live process blocks it, on either platform and without a branch:
+    // Windows refuses to remove any process's working directory, POSIX refuses to unlink out of a
+    // directory it cannot write.
+    const here = process.cwd();
+    process.chdir(orphan);
+    fs.chmodSync(orphan, 0o500);
+    try {
+      const done = spawn(dir, [IF_FOUND]);
+      assert.match(done.stdout, /ORPHAN\t/, done.stdout);
+      assert.notEqual(done.status, FOUND_NOTHING, done.stdout);
+    } finally {
+      process.chdir(here);
+      fs.chmodSync(orphan, 0o700);
+    }
   });
 
   test("an orphan held open by another process is still news", () => {
