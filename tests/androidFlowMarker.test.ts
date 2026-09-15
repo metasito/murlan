@@ -333,6 +333,17 @@ describe("maestro.yml reads that marker", () => {
     }
   });
 
+  test("the emulator's own files are swept up, and an empty sweep still says so", () => {
+    // The VM's stderr is orphaned by the launcher (#1062), so what it leaves on
+    // disk is the whole of its own account. A sweep that wrote nothing when it
+    // found nothing would be indistinguishable from one that never ran.
+    const step = src.slice(src.indexOf("Collect whatever the emulator wrote"), src.indexOf("Upload Maestro debug output"));
+    assert.match(step, /if: always\(\)/, "the sweep skips the runs it exists for");
+    assert.match(step, /\[ -s "\$out\/found\.txt" \] \|\|/, "an empty sweep leaves no record of having searched");
+    const upload = src.slice(src.indexOf("name: maestro-debug"), src.indexOf("if-no-files-found"));
+    assert.ok(upload.includes("emulator-logs/"), "the sweep's output is collected and then not uploaded");
+  });
+
   test("the tombstone search reads the stream that survives the device", () => {
     const step = src.slice(src.indexOf("id: crash"), src.indexOf("Upload Maestro debug output"));
     assert.match(
