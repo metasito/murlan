@@ -7,6 +7,8 @@ import React from 'react';
 import { render, screen, within } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { isLiveRegion } from '../helpers/liveRegions';
+
 jest.mock('@/lib/sounds', () => ({
   playCardSelect: jest.fn(async () => {}),
   playCardPlay: jest.fn(async () => {}),
@@ -107,10 +109,8 @@ const spokenNodes = (pattern: RegExp) =>
 // Two nodes say whose turn it is: the description announces it, and the turn
 // chip is named with it. `spokenNodes` cannot tell them apart; the live region
 // can.
-const describedTable = (pattern: RegExp) =>
-  spokenNodes(pattern).filter((n) => n.props.accessibilityLiveRegion === 'polite');
-const chipNames = (pattern: RegExp) =>
-  spokenNodes(pattern).filter((n) => n.props.accessibilityLiveRegion !== 'polite');
+const describedTable = (pattern: RegExp) => spokenNodes(pattern).filter(isLiveRegion);
+const chipNames = (pattern: RegExp) => spokenNodes(pattern).filter((n) => !isLiveRegion(n));
 
 const HIDDEN_TOO = { includeHiddenElements: true };
 
@@ -231,9 +231,7 @@ describe('a seated player is still the player on move', () => {
   // The top-left chip carries the same sentence, so this names the description.
   it('the spoken description still says the viewer played', async () => {
     const r = await render(table(led(0)));
-    const described = spokenNodes(/You played/).filter(
-      (n) => n.props.accessibilityLiveRegion === 'polite'
-    );
+    const described = spokenNodes(/You played/).filter(isLiveRegion);
     expect(described).toHaveLength(1);
     await r.unmount();
   });

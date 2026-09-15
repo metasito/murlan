@@ -15,6 +15,7 @@ jest.mock('@/lib/sounds', () => ({
 import { TurnChip } from '@/components/table/turnChip';
 import { urgentThresholdSeconds } from '@/components/turnTimerUi';
 import { tn } from '@/lib/i18n';
+import { liveRegions } from '../helpers/liveRegions';
 
 const CLOCK_SECONDS = 30;
 const THRESHOLD = urgentThresholdSeconds(CLOCK_SECONDS);
@@ -29,29 +30,6 @@ const clock = (seconds: number, active: boolean) => (
   <TurnChip seconds={seconds} active={active} resetKey="turn-1" scale={1} {...seat} />
 );
 
-type Rendered = { props?: Record<string, unknown>; children?: unknown[] | null };
-
-const nodes = (tree: unknown, out: Rendered[] = []): Rendered[] => {
-  if (Array.isArray(tree)) tree.forEach((n) => nodes(n, out));
-  else if (tree && typeof tree === 'object') {
-    const node = tree as Rendered;
-    out.push(node);
-    nodes(node.children ?? [], out);
-  }
-  return out;
-};
-
-/**
- * Whatever asks a reader to speak, in either platform's spelling. Read off the
- * rendered tree rather than through `*ByLabelText`, which matches no node whose
- * label is empty — and a region saying nothing is exactly the state this file
- * exists to tell apart from a region that is not there.
- */
-const liveRegions = () =>
-  nodes(screen.toJSON()).filter(
-    (n) => n.props?.accessibilityLiveRegion === 'polite' || n.props?.['aria-live'] === 'polite'
-  );
-
 /**
  * The sentences a reader would actually hear: a region announces a change of
  * its text, so an unchanged label is silence and so is an empty one.
@@ -61,9 +39,9 @@ const liveRegions = () =>
  * notice.
  */
 const heard = () => {
-  const regions = liveRegions();
+  const regions = liveRegions(screen);
   expect(regions).toHaveLength(1);
-  return String(regions[0].props?.accessibilityLabel ?? '');
+  return String(regions[0].props.accessibilityLabel ?? '');
 };
 
 const advanceOneSecond = async () => {
