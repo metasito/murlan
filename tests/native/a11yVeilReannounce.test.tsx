@@ -8,27 +8,12 @@ import React from 'react';
 import { act, render, screen } from '@testing-library/react-native';
 
 import { A11yStatus, A11yVeil, a11yVeiled } from '@/lib/a11y';
+import { liveRegions } from '../helpers/liveRegions';
 
-type Rendered = { props?: Record<string, unknown>; children?: unknown[] | null };
-
-const nodes = (tree: unknown, out: Rendered[] = []): Rendered[] => {
-  if (Array.isArray(tree)) tree.forEach((n) => nodes(n, out));
-  else if (tree && typeof tree === 'object') {
-    const node = tree as Rendered;
-    out.push(node);
-    nodes(node.children ?? [], out);
-  }
-  return out;
-};
-
-// Read off the rendered tree rather than through `*ByLabelText`, which matches
-// no node whose label is empty — and the empty frame is the subject here.
 const spoken = () => {
-  const regions = nodes(screen.toJSON()).filter(
-    (n) => n.props?.accessibilityLiveRegion === 'polite' || n.props?.['aria-live'] === 'polite'
-  );
+  const regions = liveRegions(screen);
   expect(regions).toHaveLength(1);
-  return String(regions[0].props?.accessibilityLabel ?? '');
+  return String(regions[0].props.accessibilityLabel ?? '');
 };
 
 const nextTask = async () => {

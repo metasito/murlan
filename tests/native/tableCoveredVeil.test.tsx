@@ -6,8 +6,15 @@
 import { describe, it, expect, jest } from '@jest/globals';
 import React from 'react';
 import { View } from 'react-native';
-import { act, render, screen } from '@testing-library/react-native';
+import {
+  act,
+  isHiddenFromAccessibility,
+  render,
+  screen,
+} from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+
+import { liveRegions } from '../helpers/liveRegions';
 
 const WINDOW = { width: 568, height: 320, scale: 2, fontScale: 1 };
 jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({
@@ -61,17 +68,13 @@ const gameState: GameState = {
 const noop = () => {};
 
 /**
-  * The `A11yStatus` nodes a screen reader can still reach — the table's spoken
-  * description and the hand's. The default query already excludes anything
-  * withdrawn, by its own props or by an ancestor's, which is the question.
-  */
-const liveRegions = () =>
-  screen
-    .queryAllByRole('text')
-    .filter(
-      (n) =>
-        n.props.accessibilityLiveRegion === 'polite' || n.props['aria-live'] === 'polite'
-    );
+ * The `A11yStatus` nodes a screen reader can still reach — the table's spoken
+ * description and the hand's. Narrowed from the shared finder, which reports a
+ * withdrawn region too: whether an ancestor's veil reached this node is the
+ * question here, and `isHiddenFromAccessibility` is what walks that chain.
+ */
+const reachableRegions = () =>
+  liveRegions(screen).filter((n) => !isHiddenFromAccessibility(n));
 
 /** True when this node is withdrawn from the accessibility tree on either platform. */
 const withdrawn = (props: Record<string, unknown>) =>
@@ -121,7 +124,7 @@ describe('a cover in the overlays slot', () => {
   // the fix half-applied, and the three testIDs above cannot see it.
   it('withdraws the spoken table description with it', async () => {
     const r = await mount(true);
-    expect(liveRegions()).toHaveLength(0);
+    expect(reachableRegions()).toHaveLength(0);
     await r.unmount();
   });
 
@@ -158,10 +161,10 @@ describe('a cover in the overlays slot', () => {
     jest.useFakeTimers();
     const timer = { seconds: 30, resetKey: 'turn-1' };
     const r = await render(tree(true, timer));
-    expect(liveRegions()).toHaveLength(0);
+    expect(reachableRegions()).toHaveLength(0);
 
     await r.rerender(tree(false, timer));
-    const spoken = () => liveRegions().map((n) => String(n.props.accessibilityLabel ?? ''));
+    const spoken = () => reachableRegions().map((n) => String(n.props.accessibilityLabel ?? ''));
     expect(spoken().filter(Boolean)).toEqual([]);
 
     await act(async () => {
@@ -178,7 +181,7 @@ describe('a cover in the overlays slot', () => {
     const r = await mount(false);
     expect(withdrawn(screen.getByTestId('game-table').props)).toBe(false);
     expect(withdrawn(screen.getByTestId('game-top-bar').props)).toBe(false);
-    expect(liveRegions().length).toBeGreaterThan(0);
+    expect(reachableRegions().length).toBeGreaterThan(0);
     await r.unmount();
   });
 });
