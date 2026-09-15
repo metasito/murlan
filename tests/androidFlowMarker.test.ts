@@ -36,6 +36,15 @@ function annotations(): string[] {
     .map((m) => m[0].trim());
 }
 
+/** Every `$RUNNER_TEMP` file the script streams a running command into. */
+const STREAMED = [
+  ...new Set(
+    actionScriptLines(repoRoot).flatMap((l) =>
+      [...l.matchAll(/>\s*"\$RUNNER_TEMP\/([\w.-]+)"/g)].map((m) => m[1]),
+    ),
+  ),
+];
+
 describe("the Android flow marker", () => {
   const lines = actionScriptLines(repoRoot);
 
@@ -112,7 +121,7 @@ describe("the Android flow marker", () => {
     // one started below `app-launched` would do it on the un-retryable side of
     // the boundary as well.
     const collectors = lines.filter((l) => l.startsWith("nohup"));
-    assert.equal(collectors.length, 2, "the logcat stream and the host vitals");
+    assert.equal(collectors.length, 3, "the logcat stream, the host vitals and the emulator process");
     const launched = markerIndex(lines, "app-launched");
     for (const c of collectors) {
       assert.ok(lines.indexOf(c) < launched, `an instrument starts after the app-launch marker: ${c}`);
@@ -123,6 +132,11 @@ describe("the Android flow marker", () => {
       collectors.some((l) => /loadavg/.test(l) && /free -m/.test(l)),
       "nothing samples the host's own CPU and memory, which is the only thing that " +
         "tells an exhausted runner apart from a graphics fault",
+    );
+    assert.ok(
+      collectors.some((l) => /ps -eo/.test(l) && /adb devices/.test(l)),
+      "nothing samples the emulator process beside the transport, which is the only thing that " +
+        "tells a VM that died apart from one still running behind a dead ADB connection",
     );
   });
 
@@ -310,11 +324,42 @@ describe("maestro.yml reads that marker", () => {
   test("what the instruments write is what gets uploaded", () => {
     // They are collected outside `~/.maestro/tests` on purpose — they have to
     // outlive the device — so the artefact path has to name them, and a
-    // collector whose output nobody uploads is not an instrument.
+    // collector whose output nobody uploads is not an instrument. Derived from
+    // the script rather than listed: a list is silent about the next one added.
     const upload = src.slice(src.indexOf("name: maestro-debug"), src.indexOf("if-no-files-found"));
-    for (const file of ["logcat\\.txt", "host-vitals\\.txt"]) {
-      assert.match(upload, new RegExp(file), `${file} is collected and then not uploaded`);
+    assert.ok(STREAMED.length >= 3, `only ${STREAMED.length} instrument output(s) found; the scan broke`);
+    for (const file of STREAMED) {
+      assert.ok(upload.includes(file), `${file} is collected and then not uploaded`);
     }
+  });
+
+  test("the emulator writes its own output to a file that exists by then and is uploaded", () => {
+    // The flag's target is opened without `O_CREAT`, so the creating step has to
+    // come before the launch or the VM never boots; and three places have to
+    // name one path, which is why all three are read rather than one asserted.
+    const action = read(ACTION);
+    const told = /-stdouterr-file \$\{\{ runner\.temp \}\}\/([\w.-]+)/.exec(action);
+    assert.ok(told, "nothing tells the emulator where to write its own stdout and stderr");
+    const file = told[1];
+    const created = action.indexOf(`touch "\${{ runner.temp }}/${file}"`);
+    assert.notEqual(created, -1, `${file} is never created, so the launcher exits "cannot open"`);
+    assert.ok(
+      created < action.indexOf("uses: reactivecircus/android-emulator-runner"),
+      `${file} is created after the emulator that has to open it`,
+    );
+    const upload = src.slice(src.indexOf("name: maestro-debug"), src.indexOf("if-no-files-found"));
+    assert.ok(upload.includes(file), `${file} is written and then not uploaded`);
+  });
+
+  test("the emulator's own files are swept up, and an empty sweep still says so", () => {
+    // The VM's stderr is orphaned by the launcher (#1062), so what it leaves on
+    // disk is the whole of its own account. A sweep that wrote nothing when it
+    // found nothing would be indistinguishable from one that never ran.
+    const step = src.slice(src.indexOf("Collect whatever the emulator wrote"), src.indexOf("Upload Maestro debug output"));
+    assert.match(step, /if: always\(\)/, "the sweep skips the runs it exists for");
+    assert.match(step, /\[ -s "\$out\/found\.txt" \] \|\|/, "an empty sweep leaves no record of having searched");
+    const upload = src.slice(src.indexOf("name: maestro-debug"), src.indexOf("if-no-files-found"));
+    assert.ok(upload.includes("emulator-logs/"), "the sweep's output is collected and then not uploaded");
   });
 
   test("the tombstone search reads the stream that survives the device", () => {

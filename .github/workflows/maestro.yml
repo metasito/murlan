@@ -320,6 +320,24 @@ jobs:
             echo "dmesg unavailable (exit $status); this run says nothing about an OOM kill." >> "$RUNNER_TEMP/dmesg-oom.txt"
           fi
 
+      # #1062: `reactivecircus/android-emulator-runner` launches the VM as
+      # `sh -c "emulator … &"` under `@actions/exec`, so its stderr is orphaned
+      # onto a pipe that closes when that `sh` exits and reaches no log at all.
+      # What it writes to disk of its own accord is the only record of its own
+      # side of a death - and where it writes is a runner detail, so this
+      # searches rather than naming a path, and says what it searched when it
+      # finds nothing.
+      - name: Collect whatever the emulator wrote about itself
+        if: always()
+        run: |
+          out="$RUNNER_TEMP/emulator-logs"
+          mkdir -p "$out"
+          find "$HOME/.android" "${TMPDIR:-/tmp}" -maxdepth 4 -type f -size -20M \
+            \( -iname '*.dmp' -o -iname '*crash*' -o -iname '*.log' -o -iname 'hardware-qemu.ini' \) \
+            2>/dev/null > "$out/found.txt" || true
+          while read -r f; do cp "$f" "$out/$(printf %s "${f#/}" | tr / _)" 2>/dev/null || true; done < "$out/found.txt"
+          [ -s "$out/found.txt" ] || printf '%s\n' "searched $HOME/.android and ${TMPDIR:-/tmp}: the emulator left no dump, log or qemu config behind" > "$out/found.txt"
+
       # Recordings, logs and screenshots from a failed flow are the only way to
       # tell a real regression from an emulator that fell over.
       #
@@ -338,5 +356,8 @@ jobs:
             ~/.maestro/tests/
             ${{ runner.temp }}/logcat.txt
             ${{ runner.temp }}/host-vitals.txt
+            ${{ runner.temp }}/emulator-proc.txt
+            ${{ runner.temp }}/emulator-stdouterr.txt
+            ${{ runner.temp }}/emulator-logs/
             ${{ runner.temp }}/dmesg-oom.txt
           if-no-files-found: ignore
