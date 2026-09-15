@@ -4,8 +4,10 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import fs from "node:fs";
 import os from "node:os";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { importUnderShellGuard } from "../../../tests/helpers/importShellGuard.ts";
+import { FOUND_NOTHING, IF_FOUND } from "../loop-derive.mjs";
 import {
   classifyWorktree,
   parseWorktreeList,
@@ -274,5 +276,37 @@ describe("isInvokedDirectly", () => {
     const { shelledOutTo } = importUnderShellGuard(moduleUrl);
 
     assert.equal(shelledOutTo, null, "importing the module must not shell out to git or gh");
+  });
+});
+
+describe("the --if-found answer", () => {
+  const lonelyRepo = (t: { after: (fn: () => void) => void }) => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "prune-lonely-"));
+    t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+    git(dir, ["init", "-b", "main"]);
+    fs.writeFileSync(path.join(dir, "readme.txt"), "hello\n");
+    git(dir, ["add", "-A"]);
+    git(dir, ["commit", "-m", "init", "--no-gpg-sign"], {
+      GIT_AUTHOR_NAME: "t",
+      GIT_AUTHOR_EMAIL: "t@t",
+      GIT_COMMITTER_NAME: "t",
+      GIT_COMMITTER_EMAIL: "t@t",
+    });
+    return dir;
+  };
+  const spawn = (dir: string, args: string[]) =>
+    spawnSync(process.execPath, [fileURLToPath(new URL("../prune-worktrees.mjs", import.meta.url)), ...args], {
+      cwd: dir,
+      encoding: "utf8",
+    });
+
+  test("removing nothing is still exit 0 when nobody asked", (t) => {
+    const done = spawn(lonelyRepo(t), []);
+    assert.equal(done.status, 0, done.stderr);
+    assert.match(done.stdout, /Removed 0 of 0/);
+  });
+
+  test("and answers FOUND_NOTHING when asked, so queue-pre can drop its row", (t) => {
+    assert.equal(spawn(lonelyRepo(t), [IF_FOUND]).status, FOUND_NOTHING);
   });
 });

@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { readFileSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
+import { FOUND_NOTHING, IF_FOUND } from "../loop-derive.mjs";
 import path from "node:path";
 import {
   orphans,
@@ -821,5 +822,17 @@ describe("parseWindowsProcessJson", () => {
 
   test("no output is no processes, not a parse error", () => {
     assert.deepEqual(parseWindowsProcessJson("  \n"), []);
+  });
+});
+
+describe("the --if-found answer", () => {
+  test("exits FOUND_NOTHING exactly when it named nothing to take", () => {
+    const done = spawnSync(
+      process.execPath,
+      [fileURLToPath(new URL("../reap.mjs", import.meta.url)), "--dry-run", IF_FOUND],
+      { encoding: "utf8" },
+    );
+    const named = /would (kill|clear|remove)/.test(done.stdout);
+    assert.equal(done.status, named ? 0 : FOUND_NOTHING, done.stdout);
   });
 });

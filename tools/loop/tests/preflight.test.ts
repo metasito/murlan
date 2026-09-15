@@ -4,7 +4,10 @@ import assert from "node:assert/strict";
 import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { execFileSync, spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { classifyStatus, primaryWorktree, lockDrift, checkLockDrift } from "../preflight.mjs";
+import { FOUND_NOTHING, IF_FOUND } from "../loop-derive.mjs";
 
 describe("what blocks a run from starting", () => {
   test("a modified tracked file blocks", () => {
@@ -145,5 +148,41 @@ describe("checkLockDrift reads a real root, not just in-memory objects", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("the --if-found answer", () => {
+  const cleanCheckout = (t: { after: (fn: () => void) => void }) => {
+    const dir = mkdtempSync(join(tmpdir(), "preflight-clean-"));
+    t.after(() => rmSync(dir, { recursive: true, force: true }));
+    const env = {
+      ...process.env,
+      GIT_AUTHOR_NAME: "t",
+      GIT_AUTHOR_EMAIL: "t@t",
+      GIT_COMMITTER_NAME: "t",
+      GIT_COMMITTER_EMAIL: "t@t",
+    };
+    const git = (...args: string[]) => execFileSync("git", args, { cwd: dir, encoding: "utf8", env });
+    git("init", "-b", "main");
+    writeFileSync(join(dir, "package.json"), JSON.stringify({ name: "t", version: "1.0.0" }));
+    writeFileSync(join(dir, "package-lock.json"), JSON.stringify({ name: "t", packages: {} }));
+    git("add", "-A");
+    git("commit", "-m", "init", "--no-gpg-sign");
+    return dir;
+  };
+  const spawn = (dir: string, args: string[]) =>
+    spawnSync(process.execPath, [fileURLToPath(new URL("../preflight.mjs", import.meta.url)), ...args], {
+      cwd: dir,
+      encoding: "utf8",
+    });
+
+  test("a clean checkout still exits 0 and says so when nobody asked", (t) => {
+    const done = spawn(cleanCheckout(t), []);
+    assert.equal(done.status, 0, done.stderr);
+    assert.match(done.stdout, /is clean/);
+  });
+
+  test("and answers FOUND_NOTHING when asked, so queue-pre can drop its row", (t) => {
+    assert.equal(spawn(cleanCheckout(t), [IF_FOUND]).status, FOUND_NOTHING);
   });
 });

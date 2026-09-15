@@ -38,7 +38,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
-import { WORKTREE_DIR } from "./loop-derive.mjs";
+import { FOUND_NOTHING, IF_FOUND, WORKTREE_DIR } from "./loop-derive.mjs";
 
 /**
  * Parses `git worktree list --porcelain` into one entry per worktree, in
@@ -509,4 +509,8 @@ if (invokedDirectly && process.argv.includes("--remove")) {
       ? `Dry run: ${total - kept} of ${total} would be removed, ${kept} kept.`
       : `Removed ${totalRemoved} of ${total}; kept ${kept}.`,
   );
+  // A worktree it deliberately kept is the loop's own, every phase of every ticket. Only a removal
+  // — or a dry run's candidate for one — is news.
+  const acted = dryRun ? total - kept : totalRemoved;
+  if (process.argv.includes(IF_FOUND) && acted === 0) process.exit(FOUND_NOTHING);
 }

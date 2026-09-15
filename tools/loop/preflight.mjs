@@ -19,6 +19,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
+import { FOUND_NOTHING, IF_FOUND } from "./loop-derive.mjs";
 
 export function classifyStatus(porcelain) {
   const blocking = [];
@@ -166,4 +167,5 @@ if (isInvokedDirectly(process.argv[1], import.meta.url)) {
   }
 
   console.log(`preflight: ${shared} is clean.`);
+  if (process.argv.includes(IF_FOUND)) process.exit(FOUND_NOTHING);
 }
