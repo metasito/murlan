@@ -203,7 +203,7 @@ function wrappedEventsIn(source: string): string[] {
   return [...source.matchAll(WRAPPED_RE)].map((m) => m[2]);
 }
 
-const WRAPPED_EVENT_COUNT = 18; // #850 clause 8 added game:end_match_vote.
+const WRAPPED_EVENT_COUNT = 19; // #840 added room:setVisibility.
 
 /**
  * The files the connection handler registers from. One list, so a family split

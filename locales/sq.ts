@@ -80,6 +80,7 @@ export const sq: Record<keyof typeof en, string> = {
   "server.SEAT_HELD": "Çdo vend i lirë është i rezervuar për një mik",
   "server.ALREADY_IN_ROOM": "Je tashmë në dhomë",
   "server.NOT_IN_ROOM": "Nuk je në këtë dhomë",
+  "server.NOT_HOST": "Vetëm pritsi mund ta ndryshojë këtë",
   "server.MIN_PLAYERS_REQUIRED": "Nevojiten të paktën 2 lojtarë",
   "server.TEAMS_REQUIRE_FOUR": "Modaliteti me skuadra kërkon saktësisht 4 lojtarë",
   "server.MATCH_IN_PROGRESS": "Një ndeshje është tashmë në vazhdim",
@@ -812,6 +813,10 @@ export const sq: Record<keyof typeof en, string> = {
   "room.fillWithBotsSubtitle": "Vendet e lira do të zihen nga lojtarë virtualë",
   "room.fillWithBotsA11yLabel": "Plotëso vendet e lira me bot",
   "room.fillWithBotsA11yHint": "Aktivizoje që kompjuteri të kontrollojë vendet e lira kur fillon loja",
+  "room.fillWithMatchmakingLabel": "Plotëso me matchmaking",
+  "room.fillWithMatchmakingSubtitle": "Lër lojtarë që nuk i njeh të zënë vendet e lira ndërsa pret",
+  "room.fillWithMatchmakingA11yLabel": "Plotëso vendet e lira me matchmaking",
+  "room.fillWithMatchmakingA11yHint": "Aktivizoje për ta hapur dhomën për lojtarë të panjohur. Çaktivizoje për ta mbyllur sërish",
   "room.formatLabel": "FORMATI",
 
   // ---------------------------------------------------------------- friends.*

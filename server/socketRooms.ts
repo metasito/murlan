@@ -17,6 +17,7 @@ import {
   roomStatePayload,
   teamsSizeRefusal,
   announceIfFilled,
+  announceRoomChanged,
 } from "./socketTable.ts";
 import { applyOrForward } from "./tableRouter.ts";
 import {
@@ -26,6 +27,7 @@ import {
   RoomRejoinSchema,
   RoomSpectateSchema,
   RoomQuickmatchSchema,
+  RoomSetVisibilitySchema,
   RoomStartSchema,
 } from "./socketSchemas.ts";
 
@@ -212,6 +214,38 @@ export function registerRoomHandlers({ io, socket, userId, username }: RoomHandl
           socket.data?.username ?? username,
           { socket, source: "leave" }
         );
+      },
+      { limit: 20, windowMs: 60_000 }
+    );
+
+    // Making a room visible to strangers is the host's act and nobody else's,
+    // so the seat that asked is checked against the row rather than against
+    // whatever the client believes about who is hosting.
+    onEvent(
+      socket,
+      "room:setVisibility",
+      RoomSetVisibilitySchema,
+      async ({ visibility }) => {
+        const roomId = socketRoomMap.get(socket.id);
+        if (!roomId) return { ok: false, code: "NOT_AT_A_TABLE" };
+
+        const room = await roomStore.getRoomById(roomId);
+        if (!room) {
+          socket.emit("room:error", payload("ROOM_NOT_FOUND"));
+          return { ok: false, code: "ROOM_NOT_FOUND" };
+        }
+        if (room.hostUserId !== userId) {
+          socket.emit("room:error", payload("NOT_HOST"));
+          return { ok: false, code: "NOT_HOST" };
+        }
+        if (room.status !== "waiting") {
+          socket.emit("room:error", payload("GAME_ALREADY_STARTED"));
+          return { ok: false, code: "GAME_ALREADY_STARTED" };
+        }
+
+        await roomStore.updateRoomVisibility(roomId, visibility);
+        await announceRoomChanged(io, roomId);
+        return { ok: true };
       },
       { limit: 20, windowMs: 60_000 }
     );

@@ -41,6 +41,10 @@ export const RoomSpectateSchema = RoomJoinSchema;
  */
 export const RoomRejoinSchema = RoomJoinSchema;
 
+export const RoomSetVisibilitySchema = z.object({
+  visibility: z.enum(["public", "private"]),
+});
+
 export const RoomQuickmatchSchema = z.object({
   maxPlayers: z.number().int().min(2).max(4),
   gameMode: GameModeSchema,

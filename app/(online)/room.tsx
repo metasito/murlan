@@ -48,6 +48,13 @@ const MODE_ICON = 13;
 /** Long enough to read as a confirmation rather than as a flicker. */
 const COPIED_FOR_MS = Motion.duration.dwell;
 
+/**
+ * How long the host waits before bots are offered at all. Not a `Motion` step
+ * and not a `Reading` one: this is how much patience a lobby is given, and the
+ * offer arriving late is what keeps a bot from ever looking like the default.
+ */
+export const BOTS_OFFERED_AFTER_MS = 30_000;
+
 function BotFillControls({
   fillWithBots,
   onToggleFillWithBots,
@@ -89,6 +96,36 @@ function BotFillControls({
           <Text style={botFillStyles.sublabel}>{t(botBlurbKey(botPersonality))}</Text>
         </>
       )}
+    </View>
+  );
+}
+
+function MatchmakingToggle({
+  open,
+  onChange,
+}: {
+  open: boolean;
+  onChange: (value: boolean) => void;
+}) {
+  const { t } = useTranslation();
+
+  return (
+    <View style={botFillStyles.section}>
+      <View style={botFillStyles.row}>
+        <View style={botFillStyles.rowText}>
+          <Text style={botFillStyles.label}>{t("room.fillWithMatchmakingLabel")}</Text>
+          <Text style={botFillStyles.sublabel}>{t("room.fillWithMatchmakingSubtitle")}</Text>
+        </View>
+        <Toggle
+          value={open}
+          onValueChange={(value) => {
+            onChange(value);
+            hapticSelection();
+          }}
+          a11yLabel={t("room.fillWithMatchmakingA11yLabel")}
+          a11yHint={t("room.fillWithMatchmakingA11yHint")}
+        />
+      </View>
     </View>
   );
 }
@@ -289,12 +326,13 @@ export default function RoomScreen() {
   const reduceMotion = usePrefersReducedMotion();
   const entering = reduceMotion ? undefined : FadeIn.duration(Motion.duration.travel);
   const { user } = useAuth();
-  const { room, leaveRoom, startGame, entrySource } = useOnlineRoom();
+  const { room, leaveRoom, startGame, setRoomVisibility, entrySource } = useOnlineRoom();
   const { gameState } = useOnlineTable();
   const { error, clearError } = useOnlineConnection();
   const { showNotification } = useNotification();
 
   const [fillWithBots, setFillWithBots] = useState(false);
+  const [botsOffered, setBotsOffered] = useState(false);
   const [botPersonality, setBotPersonality] = useState<BotPersonalityId>(DEFAULT_BOT_PERSONALITY);
   const [matchLength, setMatchLength] = useState<MatchLength>("match");
   const [confirming, setConfirming] = useState<ConfirmRequest | null>(null);
@@ -303,6 +341,11 @@ export default function RoomScreen() {
   useEffect(() => () => clearTimeout(copiedTimer.current), []);
 
   const isLandscape = useIsLandscape();
+
+  useEffect(() => {
+    const timer = setTimeout(() => setBotsOffered(true), BOTS_OFFERED_AFTER_MS);
+    return () => clearTimeout(timer);
+  }, []);
 
   const hasGameState = !!gameState;
   useEffect(() => {
@@ -342,7 +385,11 @@ export default function RoomScreen() {
     room.gameMode === "teams" && seatsAtStart !== TEAMS_PLAYER_COUNT;
   const canStart =
     isHost && !notEnoughPlayers && !teamsNeedFour && room.status === "waiting";
-  const showBotFillControls = isHost && room.status === "waiting" && hasEmptySeats;
+  // Offered, never assumed: the card is not on screen until the host has
+  // actually been kept waiting, so a bot can only ever be something they
+  // reached for.
+  const showBotFillControls = isHost && room.status === "waiting" && hasEmptySeats && botsOffered;
+  const showMatchmakingToggle = isHost && room.status === "waiting" && hasEmptySeats;
 
   // The button's face is the only feedback there is: nothing else on the
   // screen changes when the code reaches the clipboard, and the haptic below
@@ -396,6 +443,13 @@ export default function RoomScreen() {
 
   const formatControls = isHost && room.status === "waiting" ? (
     <MatchLengthControls value={matchLength} onChange={setMatchLength} seats={maxSeats} />
+  ) : null;
+
+  const matchmakingControls = showMatchmakingToggle ? (
+    <MatchmakingToggle
+      open={room.visibility === "public"}
+      onChange={(value) => setRoomVisibility(value ? "public" : "private")}
+    />
   ) : null;
 
   const botFillControls = showBotFillControls ? (
@@ -511,6 +565,7 @@ export default function RoomScreen() {
               {modePill}
 
               {formatControls}
+              {matchmakingControls}
               {botFillControls}
             </ScrollView>
 
@@ -564,6 +619,7 @@ export default function RoomScreen() {
         {modePill}
 
         {formatControls}
+        {matchmakingControls}
         {botFillControls}
 
         <View style={{ gap: Spacing.slim }}>

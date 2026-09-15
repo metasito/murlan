@@ -64,6 +64,7 @@ export const it: Record<keyof typeof en, string> = {
   "server.SEAT_HELD": "Ogni posto libero è riservato a un amico",
   "server.ALREADY_IN_ROOM": "Sei già nella stanza",
   "server.NOT_IN_ROOM": "Non sei in questa stanza",
+  "server.NOT_HOST": "Solo l'host può cambiare questa impostazione",
   "server.MIN_PLAYERS_REQUIRED": "Servono almeno 2 giocatori",
   "server.TEAMS_REQUIRE_FOUR": "La modalità a squadre richiede esattamente 4 giocatori",
   "server.MATCH_IN_PROGRESS": "C'è già una partita in corso",
@@ -805,6 +806,10 @@ export const it: Record<keyof typeof en, string> = {
   "room.fillWithBotsSubtitle": "I posti liberi saranno occupati da giocatori virtuali",
   "room.fillWithBotsA11yLabel": "Riempi i posti liberi con bot",
   "room.fillWithBotsA11yHint": "Attiva per far controllare al computer i posti liberi quando la partita inizia",
+  "room.fillWithMatchmakingLabel": "Riempi con matchmaking",
+  "room.fillWithMatchmakingSubtitle": "Lascia che sconosciuti prendano i posti liberi mentre aspetti",
+  "room.fillWithMatchmakingA11yLabel": "Riempi i posti liberi con il matchmaking",
+  "room.fillWithMatchmakingA11yHint": "Attiva per aprire la stanza a giocatori sconosciuti. Disattiva per richiuderla",
   "room.formatLabel": "FORMATO",
 
   // ---------------------------------------------------------------- friends.*
