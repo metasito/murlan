@@ -24,11 +24,38 @@ const POINTER = /docs\/agents\/loops\.md[,)]?[\s/#*]*"([^"\n]+)"/g;
 const SELF = "tests/loaderConstraintIsSingleSourced.test.ts";
 
 /**
- * A floor under the pointers, not a count of them: the tree carries well over this many, and the
- * `> 0` it replaces was satisfied by a single survivor. Set below the true figure on purpose, so
- * that adding or moving a pointer is not a test edit; the failure message reports the live count.
+ * The files that carry a pointer, named rather than counted: any floor on a count is satisfied
+ * by any surviving majority, so it cannot say which one went. Gaining a pointer is not a test
+ * edit; losing one is, and the diff has to name the file that stopped needing it.
  */
-const POINTER_FLOOR = 20;
+const PINNED = [
+  ".github/workflows/ci.yml",
+  "components/cardFaceModel.ts",
+  "components/flightPhysics.ts",
+  "components/handLayout.ts",
+  "components/handOrder.ts",
+  "components/homeCardField.ts",
+  "components/seatLayout.ts",
+  "components/table/stagedPlay.ts",
+  "components/tableA11y.ts",
+  "components/tableArc.ts",
+  "components/tableFrame.ts",
+  "components/turnTimerUi.ts",
+  "docs/TESTING.md",
+  "jest.config.js",
+  "lib/autoMove.ts",
+  "lib/botPersonalities.ts",
+  "lib/cardNames.ts",
+  "lib/cosmetics.ts",
+  "lib/i18n.ts",
+  "lib/matchState.ts",
+  "lib/rating.ts",
+  "lib/reactions.ts",
+  "lib/replay.ts",
+  "lib/sharedGameFlow.ts",
+  "lib/standings.ts",
+  "tests/contrast.test.ts",
+];
 
 /**
  * The wordings a restatement reaches for, one pattern per distinct wording so the floor below can
@@ -101,10 +128,12 @@ describe("the Node loader constraint is written down once", () => {
     const cited = tracked.flatMap((f) =>
       [...source(f).matchAll(POINTER)].map(([, section]) => ({ file: f, section }))
     );
-    assert.ok(
-      new Set(cited.map((c) => c.file)).size >= POINTER_FLOOR,
-      `only ${new Set(cited.map((c) => c.file)).size} files still cite a section of ${AUTHORITY}; ` +
-        `either the pointers are going away or ${POINTER}'s shape no longer reads them`
+    const citing = new Set(cited.map((c) => c.file));
+    assert.deepEqual(
+      PINNED.filter((f) => !citing.has(f)),
+      [],
+      `these files cited a section of ${AUTHORITY} and no longer do. Restore the pointer, or ` +
+        `drop the file from PINNED in the commit that says why it stopped needing one.`
     );
     const dangling = cited.filter((c) => !headings.some((h) => h.includes(c.section)));
     assert.deepEqual(
