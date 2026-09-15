@@ -53,7 +53,7 @@ const COPIED_FOR_MS = Motion.duration.dwell;
  * and not a `Reading` one: this is how much patience a lobby is given, and the
  * offer arriving late is what keeps a bot from ever looking like the default.
  */
-const BOTS_OFFERED_AFTER_MS = 30_000;
+export const BOTS_OFFERED_AFTER_MS = 30_000;
 
 function BotFillControls({
   fillWithBots,

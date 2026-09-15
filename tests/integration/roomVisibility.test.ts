@@ -22,7 +22,8 @@ interface RoomState {
   code: string;
   roomId: string;
   visibility: string;
-  players: { id: string }[];
+  players: { seatIndex: number; userId: string }[];
+  seatHolds: { seatIndex: number; username: string }[];
 }
 
 describe("room visibility", { skip: hasDatabase() ? false : skipMessage() }, () => {
@@ -47,9 +48,13 @@ describe("room visibility", { skip: hasDatabase() ? false : skipMessage() }, () 
     return client;
   }
 
-  async function quickmatch(client: { socket: Socket }, maxPlayers = 2) {
+  async function quickmatch(
+    client: { socket: Socket },
+    maxPlayers = 2,
+    gameMode = "free_for_all"
+  ) {
     const state = waitFor<RoomState>(client.socket, "room:state");
-    client.socket.emit("room:quickmatch", { maxPlayers, gameMode: "free_for_all" });
+    client.socket.emit("room:quickmatch", { maxPlayers, gameMode });
     return state;
   }
 
@@ -162,9 +167,9 @@ describe("room visibility", { skip: hasDatabase() ? false : skipMessage() }, () 
     assert.notEqual(landed.roomId, opened.roomId, "an empty room is not a room to join");
   });
 
-  async function createRoom(client: { socket: Socket }, maxPlayers = 2) {
+  async function createRoom(client: { socket: Socket }, maxPlayers = 2, gameMode = "free_for_all") {
     const made = waitFor<RoomState>(client.socket, "room:state");
-    client.socket.emit("room:create", { gameMode: "free_for_all", maxPlayers });
+    client.socket.emit("room:create", { gameMode, maxPlayers });
     return made;
   }
 
@@ -172,6 +177,20 @@ describe("room visibility", { skip: hasDatabase() ? false : skipMessage() }, () 
     const next = waitFor<RoomState>(client.socket, "room:state");
     client.socket.emit("room:setVisibility", { visibility });
     return next;
+  }
+
+  /**
+   * Leaves `roomId` as the only room the matcher can pick, so an assertion
+   * about which room a stranger landed in is about the flip under test and
+   * not about which of several waiting rooms another case left behind first.
+   */
+  async function onlyPublicRoom(roomId: string) {
+    const { roomStore } = await import("../../server/roomStore.ts");
+    for (const rival of await roomStore.findWaitingPublicRooms()) {
+      if (rival.room.id !== roomId) {
+        await roomStore.updateRoomVisibility(rival.room.id, "private");
+      }
+    }
   }
 
   test("a host opens a private room to matchmaking and a stranger is seated into it", async () => {
@@ -182,15 +201,7 @@ describe("room visibility", { skip: hasDatabase() ? false : skipMessage() }, () 
     const opened = await setVisibility(host, "public");
     assert.equal(opened.visibility, "public", "flipping the toggle on must make the room public");
 
-    // Leaves the host's room as the only thing the matcher can pick, so the
-    // assertion below is about this flip and not about which of several
-    // waiting rooms other suites happened to leave behind first.
-    const { roomStore } = await import("../../server/roomStore.ts");
-    for (const rival of await roomStore.findWaitingPublicRooms()) {
-      if (rival.room.id !== room.roomId) {
-        await roomStore.updateRoomVisibility(rival.room.id, "private");
-      }
-    }
+    await onlyPublicRoom(room.roomId);
 
     const landed = await quickmatch(stranger);
     assert.equal(
@@ -264,24 +275,82 @@ describe("room visibility", { skip: hasDatabase() ? false : skipMessage() }, () 
     assert.equal(row?.visibility, "private", "only the host decides who may see the room");
   });
 
-  test("an opened room still holds the seat its invited friend was promised", async () => {
-    const host = await player("held_host");
-    const friend = await player("held_friend");
-    const stranger = await player("hd_stranger");
+  async function joinByCode(client: { socket: Socket }, code: string) {
+    const joined = waitFor<RoomState>(client.socket, "room:state");
+    client.socket.emit("room:join", { code });
+    return joined;
+  }
+
+  // Teams, because a hold only exists on a table with sides: `heldSeats`
+  // returns nothing at all for a free-for-all (docs/BRIEF.md §3.3), so the
+  // same case written free-for-all would pass without a hold ever existing.
+  async function teamsRoomHoldingASeat(tag: string) {
+    const host = await player(`${tag}_host`);
+    const friend = await player(`${tag}_friend`);
     await befriend(server, host, friend);
 
-    const room = await createRoom(host);
+    const room = await createRoom(host, 4, "teams");
     const invited = waitFor<RoomState>(host.socket, "room:state");
     host.socket.emit("friend:invite", { friendUserId: friend.user.id, roomCode: room.code });
-    await invited;
+    const held = await invited;
+    assert.equal(held.seatHolds.length, 1, "the invite row is the hold");
+
+    return { host, room, held };
+  }
+
+  test("invite, open, and a stranger is seated beside the friend still expected", async () => {
+    const { host, room } = await teamsRoomHoldingASeat("mix");
+    const stranger = await player("mx_stranger");
 
     await setVisibility(host, "public");
+    await onlyPublicRoom(room.roomId);
 
-    const landed = await quickmatch(stranger);
+    const landed = await quickmatch(stranger, 4, "teams");
+    assert.equal(landed.roomId, room.roomId, "an opened room with a free seat must take a stranger");
+
+    const seat = landed.players.find((p) => p.userId === stranger.user.id);
+    assert.ok(seat, "the stranger must be seated, not merely subscribed");
+    assert.ok(
+      !landed.seatHolds.some((h) => h.seatIndex === seat.seatIndex),
+      "a stranger may take an open seat, never the one promised to the friend"
+    );
+    assert.equal(landed.seatHolds.length, 1, "the friend's hold outlives the stranger's arrival");
+  });
+
+  test("an opened room still holds the seat its invited friend was promised", async () => {
+    const { host, room } = await teamsRoomHoldingASeat("held");
+    const first = await player("held_first");
+    const second = await player("held_second");
+    const stranger = await player("hd_stranger");
+
+    await joinByCode(first, room.code);
+    const full = await joinByCode(second, room.code);
+    assert.equal(full.players.length, 3, "three seated leaves exactly the held seat free");
+
+    await setVisibility(host, "public");
+    await onlyPublicRoom(room.roomId);
+
+    const landed = await quickmatch(stranger, 4, "teams");
     assert.notEqual(
       landed.roomId,
       room.roomId,
       "the last seat is held for the invited friend, so the matcher has nowhere to sit"
+    );
+  });
+
+  test("a three-seat room opened to matchmaking takes a stranger too", async () => {
+    const host = await player("trio_host");
+    const stranger = await player("trio_str");
+
+    const room = await createRoom(host, 3);
+    await setVisibility(host, "public");
+    await onlyPublicRoom(room.roomId);
+
+    const landed = await quickmatch(stranger, 3);
+    assert.equal(
+      landed.roomId,
+      room.roomId,
+      "the toggle opens every shape of room, not the four-seat table alone"
     );
   });
 

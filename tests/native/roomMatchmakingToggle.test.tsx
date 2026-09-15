@@ -6,7 +6,7 @@
 // whole point of both is what they emit, so this renders the screen.
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import React from 'react';
-import { render, fireEvent } from '@testing-library/react-native';
+import { render, fireEvent, act } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { en as locale } from '@/locales/en';
@@ -48,7 +48,12 @@ jest.mock('@/context/onlineGameHooks', () => ({
   useOnlineConnection: () => ({ error: null, clearError: jest.fn() }),
 }));
 
-const RoomScreen = (require('@/app/(online)/room') as { default: React.ComponentType }).default;
+const roomModule = require('@/app/(online)/room') as {
+  default: React.ComponentType;
+  BOTS_OFFERED_AFTER_MS: number;
+};
+const RoomScreen = roomModule.default;
+const { BOTS_OFFERED_AFTER_MS } = roomModule;
 
 const METRICS = {
   frame: { x: 0, y: 0, width: 390, height: 844 },
@@ -112,9 +117,24 @@ describe('the room screen matchmaking toggle', () => {
   });
 
   it('does not offer bots until the host has actually been kept waiting', async () => {
-    const view = await renderRoom();
-    expect(view.queryByRole('switch', { name: BOTS })).toBeNull();
+    jest.useFakeTimers();
+    try {
+      const view = await renderRoom();
+      expect(view.queryByRole('switch', { name: BOTS })).toBeNull();
 
-    await view.unmount();
+      await act(async () => {
+        jest.advanceTimersByTime(BOTS_OFFERED_AFTER_MS - 1);
+      });
+      expect(view.queryByRole('switch', { name: BOTS })).toBeNull();
+
+      await act(async () => {
+        jest.advanceTimersByTime(1);
+      });
+      expect(view.getByRole('switch', { name: BOTS, checked: false })).toBeTruthy();
+
+      await view.unmount();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });
