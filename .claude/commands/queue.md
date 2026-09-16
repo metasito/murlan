@@ -171,8 +171,14 @@ How to solve it is yours. What follows constrains the process, never the design:
 - **Fix the root cause across every caller**, not the instance the ticket names.
 - **A diff that describes code is traced here, not in phase D** (rule 20). The review confirms a
   map; it does not build one.
-- Scope is exactly the ticket. A finding outside it is filed as its own issue, never folded into the
-  diff: `gh issue create --title "<what>" --body-file <file> --label <label> --label size:<size>`.
+- **The ticket's scope grows to what you find in its area.** A defect in a file the diff already
+  touches, another instance of the class the ticket names, or a gap your own change opens, is fixed
+  in this diff: add it to the Definition-of-done comment as a new box and name it in the PR body.
+  A follow-up issue for work this session could have finished is the failure this rule exists for —
+  #1072 added a list and filed #1114 for the sweep that list needed.
+  File separately only when the finding needs an owner decision, lives in a subsystem the ticket
+  never touches, or would not fit in the turn budget below — then commit what you have and file the
+  rest: `gh issue create --title "<what>" --body-file <file> --label <label> --label size:<size>`.
   **Choose that label, because it decides who the queue serves the ticket to.** `ready-for-agent`
   when you can write a Definition of done with no open box — research it and state the answer, the
   way you would have if the ticket were yours. `ready-for-human` only when closing it needs an
@@ -186,7 +192,10 @@ How to solve it is yours. What follows constrains the process, never the design:
   ```sh
   gh api -X POST repos/{owner}/{repo}/issues/<new>/dependencies/blocked_by -f issue_id=<this>
   ```
-- A bug three levels under the bug in hand: file it, do not follow it.
+- A bug three levels under the bug in hand, in another subsystem: file it, do not follow it.
+- **A ticket's prescribed form is a proposal, not a contract.** If a test or a commit already rules
+  it out, build what satisfies the ticket's intent, say why in the commit, and tick the box against
+  that. Park only when no form can satisfy the intent without an owner decision.
 - **Commit each slice as you finish it** — `git add -- <paths>`, never `-A`. An unstaged edit is the
   only work this loop can lose.
 - **Batch what does not depend on the last answer.** A ticket's 97 `Bash` calls were mostly one
