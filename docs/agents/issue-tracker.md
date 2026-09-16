@@ -138,7 +138,7 @@ Eight sections, in this order. Drop any that would be empty — an empty heading
 ## Constraints         ← `> [!IMPORTANT]` — the invariants this change can break, and how.
 ## Definition of done  ← `- [ ]` per artefact. What must exist for this to close.
 ## Checks              ← what to run while iterating, and what to run once before pushing.
-## Not this ticket     ← the adjacent work it will be tempting to absorb, with issue numbers.
+## Not this ticket     ← only work owned by another open issue or needing another decision, with issue numbers.
 ```
 
 What makes the difference in practice:
@@ -177,13 +177,22 @@ What makes the difference in practice:
   cheaply than describing it.
 - **`> [!IMPORTANT]` and `> [!WARNING]` are load-bearing**, not decoration — they survive
   skimming, and constraints are what get skimmed past.
-- **State what is out of scope.** Scope creep in an autonomous queue is the failure mode,
-  because nobody is watching the diff grow.
+- **Scope the ticket to an area, not to a list.** The queue fixes what it meets in the files and
+  the defect class the ticket names, and adds a box for each (`queue.md` phase C). So
+  `## Not this ticket` names only work another issue owns or a decision not yet made — never a
+  same-area defect, which the session would otherwise file back as a follow-up.
+- **Check every prescribed form against what already pins the current one.** Grep the tests and
+  `git log -S` for the command, pattern or path you tell the agent to use. #1071 prescribed
+  `node "$CLAUDE_PROJECT_DIR"/…`, which `loopDocsAreExecutable.test.ts` forbids since de84b7e1,
+  and the session could only park. Where you are unsure, state the intent and let the agent pick.
+- **A box a loop session is refused cannot be `ready-for-agent`.** Its permission classifier
+  refuses edits to `.claude/settings.json` as self-modification. Such a box is the owner's: label
+  the ticket `ready-for-human`, or move that box into a ticket of its own that is.
 - **Cite the source.** A research file path or the issue that surfaced it, so the next reader
+  can check the claim instead of re-deriving it.
 - **Point at `CLAUDE.md`, don't copy it.** It is already in the agent's context every turn, so restating an invariant in the body pays tokens to say nothing and creates a second copy that goes stale. Write only the part that is *not* discoverable: how this particular change collides with that invariant.
 - **Make the done-condition checkable and exhaustive.** "Every modified locale accounted for" forces the work; "update the locales" does not. A vague bound invites stopping early, with attention already on the next ticket.
 - **Prompt the positive.** "Bound every query" lands; "don't write unbounded queries" drags the unbounded query into context and makes it more available. Keep prohibitions for hard guardrails, and pair them with the target.
-  can check the claim instead of re-deriving it.
 
 Verify the body's own claims before filing. An issue that asserts a defect at a line that
 does not contain it sends an agent down a hole with no way out.
