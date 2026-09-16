@@ -16,7 +16,7 @@ export const RegisterSchema = z.object({
   email: z.string().trim().min(3).max(254).email(),
 });
 
-/** `code` is the 6-digit value mailed by mintAuthCode — see server/authTokens.ts. */
+/** `code` is the 6-digit value mailed by replaceEmailVerifyCode — see server/authTokens.ts. */
 export const VerifyEmailSchema = z.object({
   email: RegisterSchema.shape.email,
   code: z.string().regex(/^\d{6}$/, "6 digits"),
