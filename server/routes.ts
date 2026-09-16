@@ -446,11 +446,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     // into whatever session the registration request already carried —
     // otherwise an attacker who planted a cookie on this origin before the
     // victim signed up would inherit their session.
+    const priorSession = { userId: req.session.userId, sid: req.sessionID };
     req.session.regenerate((regenErr) => {
       if (regenErr) {
         logger.error({ err: regenErr }, "Session regenerate failed on register");
         void rollbackRegistration(req, user.id, res);
         return;
+      }
+      if (priorSession.userId) {
+        void revokeAccountSockets(priorSession.userId, { onlySid: priorSession.sid });
       }
       req.session.userId = user.id;
       req.session.save((err) => {
@@ -492,11 +496,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     // See the register route above: regenerate first so a session id planted
     // by an attacker before this login can never end up holding this user.
+    const priorSession = { userId: req.session.userId, sid: req.sessionID };
     req.session.regenerate((regenErr) => {
       if (regenErr) {
         logger.error({ err: regenErr }, "Session regenerate failed on login");
         res.status(500).json({ ...payload("INTERNAL_SERVER_ERROR") });
         return;
+      }
+      if (priorSession.userId) {
+        void revokeAccountSockets(priorSession.userId, { onlySid: priorSession.sid });
       }
       req.session.userId = user.id;
       req.session.save((err) => {
