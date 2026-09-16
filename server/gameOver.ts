@@ -206,10 +206,8 @@ export async function handleGameOver(
         if (committed.size < ratingDeltasByUser.size) {
           logger.warn({ roomId }, "The ladder declined a hand its preview rated");
         }
-        await writers.recordGameResult(gameResults, mode, finishedAt, committed).catch((err) =>
-          logger.error({ err, roomId }, "Failed to record game results")
-        );
-      });
+        await writers.recordGameResult(gameResults, mode, finishedAt, committed);
+      }).catch((err) => logger.error({ err, roomId }, "Failed to record game results"));
     }
 
     // On the same `recordable` gate as the stats above: a replay is reached

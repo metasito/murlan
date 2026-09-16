@@ -463,11 +463,11 @@ describe("email at signup", { skip: hasDatabase() ? false : skipMessage() }, () 
       assert.equal(res.status, 400, await res.text());
 
       const rows = await admin.query(
-          `SELECT 1 FROM "${server.schema}".auth_tokens t
-             JOIN "${server.schema}".users u ON u.id = t.user_id
-            WHERE u.username = $1 AND t.purpose = 'email_verify'`,
-          ["verify_no_sweep"]
-        );
+        `SELECT 1 FROM "${server.schema}".auth_tokens t
+           JOIN "${server.schema}".users u ON u.id = t.user_id
+          WHERE u.username = $1 AND t.purpose = 'email_verify'`,
+        ["verify_no_sweep"]
+      );
       assert.equal(
         rows.rowCount,
         1,
