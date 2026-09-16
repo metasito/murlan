@@ -152,13 +152,14 @@ jobs:
           # split; the two are not exclusive, and a queue.md edit is read by both and runs both.
           # The rest of the list is what its suite asserts on beyond its own code: the protocol
           # files, `.claude/settings.json`'s hook paths, package.json's script names, and this
-          # workflow, whose job names `check-steps.mjs` pins each delegated step to.
-          if grep -qE '^(tools/loop/|docs/agents/|\.claude/|CLAUDE\.md$|package\.json$|\.github/workflows/ci\.yml$)' <<< "$changed"; then
+          # workflow, whose job names `check-steps.mjs` pins each delegated step to. Both lists are
+          # derived by `tests/ciScope.test.ts`, which reds on a path they miss.
+          if grep -qE '^(tools/loop/|scripts/lib/(checkoutRoot|entry)\.mjs$|scripts/preflightMemory\.mjs$|tests/helpers/importShellGuard\.ts$|docs/agents/|\.claude/|CLAUDE\.md$|package\.json$|\.github/workflows/ci\.yml$)' <<< "$changed"; then
             echo "harness=true" >> "$GITHUB_OUTPUT"
           else
             echo "harness=false" >> "$GITHUB_OUTPUT"
           fi
-          if grep -qE '^(docs/agents/|\.claude/commands/|CLAUDE\.md$)' <<< "$changed"; then
+          if grep -qE '^(docs/agents/|docs/(PRIVACY|RULES|TESTING)\.md$|docs/design/57-polish-audit/|\.claude/commands/|CLAUDE\.md$)' <<< "$changed"; then
             echo "Documentation the suite asserts on — running everything."
             echo "app=true" >> "$GITHUB_OUTPUT"
           elif [ -n "$changed" ] && ! grep -qvE '^(docs/|\.claude/)|\.md$' <<< "$changed"; then
@@ -322,7 +323,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          npm test | tee test-output.txt
+          npm test 2>&1 | tee test-output.txt
 
       # A skipped integration suite still exits 0, so without this a removed or
       # broken Postgres service would turn the socket-layer tests into a no-op
@@ -339,7 +340,18 @@ jobs:
             echo "This is the only test proving a dump actually restores; see the 'Install postgresql-client' step above."
             exit 1
           fi
-          echo "Integration suites ran against Postgres."
+          # A narrowed glob loads no integration file and prints no skip, so the files that ran are counted.
+          expected=$(ls tests/integration/*.test.ts | wc -l)
+          ran=$(grep -oE "^test files run in tests/integration: [0-9]+" test-output.txt | grep -oE "[0-9]+$" || echo 0)
+          if [ "$expected" -lt 40 ]; then
+            echo "::error::Only $expected integration files found on disk — the suite moved, and this count no longer sees it."
+            exit 1
+          fi
+          if [ "$ran" -lt "$expected" ]; then
+            echo "::error::npm test ran $ran of the $expected files in tests/integration."
+            exit 1
+          fi
+          echo "Integration suites ran against Postgres: $ran files."
 
   # React Native's own renderer, with Platform.OS set to ios and android — the
   # one thing the Playwright suite structurally cannot do. It rode in `verify`
@@ -549,7 +561,7 @@ jobs:
       # suite and is left alone: it is a hang detector, not a budget.
       - name: Browser tests
         timeout-minutes: 20
-        run: npm run test:e2e -- $(node scripts/e2e-shard.mjs ${{ matrix.shard }} 6)
+        run: npm run test:e2e -- $(node scripts/e2e-shard.mjs ${{ matrix.shard }} ${{ strategy.job-total }})
 
       # Uploaded on success too, not just on failure: a green shard with no
       # blob is a shard that skipped the suite, and `if-no-files-found: error`
@@ -642,6 +654,9 @@ jobs:
       # on the branch that broke it rather than surfacing only on `main`.
       - name: Merge into one report — JSON, for timings
         run: npx playwright merge-reports --reporter json ./all-blob-reports > merged-report.json
+
+      - name: Name the tests that passed only on a retry
+        run: node scripts/e2e-flaky.mjs merged-report.json
 
       - name: Regenerate tests/e2e/timings.json
         run: node scripts/e2e-timings.mjs merged-report.json

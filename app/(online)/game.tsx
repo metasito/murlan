@@ -480,6 +480,7 @@ export default function OnlineGameScreen() {
 /** Keeps the lone button off the screen edges in landscape, where it is the
  *  full width of a phone lying down. */
 const CONNECTING_ACTION_W = 280;
+const BANNER_FONT = FontSize.xs + 1;
 
 const styles = StyleSheet.create({
   connecting: {
@@ -508,7 +509,7 @@ const styles = StyleSheet.create({
   },
   reconnectBannerText: {
     fontFamily: "Inter_500Medium",
-    fontSize: FontSize.xs + 1,
+    fontSize: BANNER_FONT,
     color: Colors.gold,
   },
   reconnectBannerAlert: {
@@ -539,7 +540,7 @@ const styles = StyleSheet.create({
   },
   errorText: {
     fontFamily: "Inter_500Medium",
-    fontSize: FontSize.xs + 1,
+    fontSize: BANNER_FONT,
     color: Colors.white,
     flexShrink: 1,
   },

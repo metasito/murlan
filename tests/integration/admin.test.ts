@@ -14,7 +14,7 @@ import {
   skipMessage,
   type TestServer,
 } from "../helpers/testServer.ts";
-import { register } from "../helpers/client.ts";
+import { DEADLINE_SCALE, register } from "../helpers/client.ts";
 
 describe("the admin dashboard", { skip: hasDatabase() ? false : skipMessage() }, () => {
   let server: TestServer;
@@ -133,7 +133,7 @@ describe("the admin dashboard", { skip: hasDatabase() ? false : skipMessage() },
 
     // The write is fire-and-forget, so give it a moment to land before
     // asserting on what it did *not* also do.
-    await new Promise((r) => setTimeout(r, 300));
+    await new Promise((r) => setTimeout(r, 300 * DEADLINE_SCALE));
 
     const afterWrite = await dbPool.query(
       `SELECT 1 FROM "${server.schema}".client_errors WHERE message = $1`,

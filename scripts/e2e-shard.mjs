@@ -24,13 +24,19 @@ const TIMINGS = path.join(E2E_DIR, "timings.json");
  */
 export const UNMEASURED_SECONDS = 60;
 
+const CONFIG = path.join(E2E_DIR, "playwright.config.ts");
+
 /**
- * `webPerf` is excluded here for the same reason playwright.config.ts ignores it.
+ * What Playwright runs from `dir`: a recursive walk under its default testMatch, minus the
+ * config's `testIgnore`, as paths relative to `dir` — the form timings.json keys take.
  * @returns {string[]}
  */
 export function specFilesIn(dir = E2E_DIR) {
-  return readdirSync(dir)
-    .filter((name) => name.endsWith(".spec.ts") && name !== "webPerf.spec.ts")
+  const ignore = /testIgnore: \/(.+)\/,$/m.exec(readFileSync(CONFIG, "utf8"));
+  if (!ignore) throw new Error(`${CONFIG} declares no testIgnore regex`);
+  return readdirSync(dir, { recursive: true })
+    .map((name) => String(name).split(path.sep).join("/"))
+    .filter((name) => /\.(spec|test)\.[cm]?[jt]sx?$/.test(name) && !new RegExp(ignore[1]).test(name))
     .sort();
 }
 

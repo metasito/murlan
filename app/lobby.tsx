@@ -106,6 +106,7 @@ function PlayerRow({ index, config, onChange, isHuman, lobbyMode }: PlayerRowPro
 
 /** Full match first: it is the canonical Murlan game (docs/RULES.md §12). */
 const FORMAT_OPTIONS: readonly MatchLength[] = ["match", "single"];
+const START_BAR_CLEARANCE = 120;
 
 export default function LobbyScreen() {
   const insets = useSafeAreaInsets();
@@ -298,19 +299,19 @@ export default function LobbyScreen() {
             <ScrollView contentContainerStyle={styles.landscapeRightScroll} showsVerticalScrollIndicator={false}>
               {playerListSection}
             </ScrollView>
-            <View style={[styles.landscapeStartWrap, { paddingBottom: bottomInset + 8 }]}>
+            <View style={[styles.landscapeStartWrap, { paddingBottom: bottomInset + Spacing.sm }]}>
               {startButton}
             </View>
           </View>
         </View>
       ) : (
         <>
-          <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: bottomInset + 120 }]} showsVerticalScrollIndicator={false}>
+          <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: bottomInset + START_BAR_CLEARANCE }]} showsVerticalScrollIndicator={false}>
             {configSection}
             {playerListSection}
           </ScrollView>
 
-          <View style={[styles.startContainer, { paddingBottom: bottomInset + 16 }]} pointerEvents="box-none">
+          <View style={[styles.startContainer, { paddingBottom: bottomInset + Spacing.md }]} pointerEvents="box-none">
             <LinearGradient colors={["transparent", Colors.bg, Colors.bg]} style={StyleSheet.absoluteFill} pointerEvents="none" />
             {startButton}
           </View>
@@ -377,17 +378,17 @@ const styles = StyleSheet.create({
   },
   formatRow: {
     flexDirection: "row",
-    gap: Spacing.sm + 2,
+    gap: Spacing.snug,
   },
   formatBtn: {
     flex: 1,
     minHeight: TOUCH_TARGET_MIN,
-    paddingVertical: Spacing.sm + 2,
+    paddingVertical: Spacing.snug,
     paddingHorizontal: Spacing.sm,
     borderRadius: Radius.md,
     alignItems: "center",
     justifyContent: "center",
-    gap: Spacing.xs / 2,
+    gap: Spacing.xxs,
     backgroundColor: Colors.bgSurface,
     borderWidth: 1,
     borderColor: Colors.border,

@@ -63,7 +63,7 @@ restart it.
 - the artifact link;
 - the numbers of the issues you filed;
 - every failed lens;
-- every finding that needs an iOS or Android capture before it can close (RULES 36).
+- every finding `docs/agents/RULES.md` rule 36 applies to.
 
 ## Owner context the code cannot tell you
 

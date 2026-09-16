@@ -75,6 +75,16 @@ describe("the bare-number rule covers the whole scale", () => {
     });
   }
 
+  test("a bare number inside a conditional, logical or arithmetic value is refused", () => {
+    assert.ok(flagged("const s = { fontSize: isLandscape ? 14 : 18 };"), "a conditional value");
+    assert.ok(flagged("const s = { paddingBottom: inset || 12 };"), "a logical value");
+    assert.ok(flagged("const s = { paddingBottom: bottomInset + 120 };"), "an arithmetic value");
+    assert.ok(flagged("const s = { fontSize: FontSize.xs - 2 };"), "an offset from a token");
+    assert.equal(flagged("const s = { fontSize: isLandscape ? FontSize.sm : FontSize.md };"), false);
+    assert.equal(flagged("const s = { borderRadius: size / 2 };"), false, "a ratio is not a step");
+    assert.ok(flagged("const s = { borderRadius: size / 2 + 4 };"), "an offset beside a ratio");
+  });
+
   test("a negative literal is refused too — it parses as a unary expression", () => {
     // One selector alone leaves half the scale unguarded, which is the whole
     // reason there are two.

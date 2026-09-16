@@ -189,7 +189,7 @@ export default function OnlineLobbyScreen() {
                 accessibilityLabel={t("lobby.playerCountOptionA11yLabel", { n })}
                 {...a11yState({ role: "radio", selected: createPlayers === n })}
               >
-                <Text {...a11yHidden()} style={[styles.toggleText, createPlayers === n && styles.toggleTextActive, { fontSize: isLandscape ? 14 : 18 }]}>
+                <Text {...a11yHidden()} style={[styles.toggleText, createPlayers === n && styles.toggleTextActive, { fontSize: isLandscape ? COMPACT_COUNT_FONT : FontSize.lg }]}>
                   {n}
                 </Text>
               </Pressable>
@@ -201,7 +201,7 @@ export default function OnlineLobbyScreen() {
           <Text style={styles.warn}>{t("onlineLobby.teamsRequire4")}</Text>
         )}
 
-        <View style={{ marginTop: isLandscape ? 4 : 8 }}>
+        <View style={{ marginTop: isLandscape ? Spacing.xs : Spacing.sm }}>
           <MenuButton
             label={t("onlineLobby.createRoom")}
             onPress={handleCreate}
@@ -219,7 +219,7 @@ export default function OnlineLobbyScreen() {
   const JoinSection = (
     <View style={sectionFlex}>
       <MenuCard title={t("onlineLobby.joinRoomTitle")} style={isLandscape ? styles.compactCard : undefined}>
-        <View style={{ paddingVertical: isLandscape ? 2 : 4 }}>
+        <View style={{ paddingVertical: isLandscape ? Spacing.xxs : Spacing.xs }}>
           <MenuButton
             label={t("onlineLobby.enterRoomCode")}
             onPress={() => setJoinModalVisible(true)}
@@ -431,6 +431,8 @@ export default function OnlineLobbyScreen() {
   );
 }
 
+const COMPACT_COUNT_FONT = 14;
+
 const styles = StyleSheet.create({
   errorBanner: {
     flexDirection: "row",
@@ -505,6 +507,7 @@ const styles = StyleSheet.create({
   toggleBtn: {
     flex: 1,
     minWidth: 80,
+    minHeight: TOUCH_TARGET_MIN,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",

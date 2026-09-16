@@ -261,6 +261,7 @@ for (const size of SIZES) {
     await goToOnlineLobby(page);
     await settled(page, 2500);
     await expectNoBuriedControls(page, "online lobby", 6);
+    expect(await sweepSizes(page, []), "online lobby").toEqual([]);
 
     // The waiting room carries the most controls of any menu screen — format,
     // bot fill, five personality pills, the code actions and the start button —
@@ -268,6 +269,7 @@ for (const size of SIZES) {
     await createRoom(page, { playerCount: 4, gameMode: "free_for_all" });
     await settled(page, 2500);
     await expectNoBuriedControls(page, "room, waiting for players", 4);
+    expect(await sweepSizes(page, []), "room, waiting for players").toEqual([]);
   });
 
   test(`no control is buried on the profile and ladder — ${size.name}`, async ({ page, baseURL }) => {

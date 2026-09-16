@@ -1025,7 +1025,7 @@ const styles = StyleSheet.create({
   },
   doorText: { ...Type.label, color: Colors.gold },
 
-  ratingBlock: { alignItems: "center", gap: Spacing.xs / 2, paddingBottom: Spacing.md },
+  ratingBlock: { alignItems: "center", gap: Spacing.xxs, paddingBottom: Spacing.md },
   ratingValue: { fontFamily: "Rajdhani_700Bold", fontSize: FontSize.hero, color: Colors.gold },
   ratingSeason: { ...Type.label },
   ratingGames: { ...Type.caption, textAlign: "center" },

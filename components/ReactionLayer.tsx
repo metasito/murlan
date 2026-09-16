@@ -28,6 +28,7 @@ const EMOJI_Z = Layer.held + 1;
 /** How long a reaction stays on screen as it rises. */
 const RISE_MS = 1800;
 const RISE_PX = -80;
+const PANEL_RADIUS = Radius.md + 4;
 
 function FloatingReaction({ reaction }: { reaction: TableReaction }) {
   const y = useSharedValue(0);
@@ -145,7 +146,7 @@ const styles = StyleSheet.create({
   panel: {
     position: "absolute",
     backgroundColor: Colors.bgSurface,
-    borderRadius: Radius.md + 4,
+    borderRadius: PANEL_RADIUS,
     borderWidth: 1,
     borderColor: Colors.border,
     flexDirection: "row",

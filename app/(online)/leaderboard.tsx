@@ -115,7 +115,7 @@ const styles = StyleSheet.create({
 
   selfBlock: {
     alignItems: "center",
-    gap: Spacing.xs / 2,
+    gap: Spacing.xxs,
     paddingVertical: Spacing.md,
   },
   selfRating: {

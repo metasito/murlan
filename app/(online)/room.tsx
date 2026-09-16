@@ -192,7 +192,7 @@ const formatStyles = StyleSheet.create({
     minHeight: TOUCH_TARGET_MIN,
     alignItems: "center",
     justifyContent: "center",
-    gap: Spacing.xs / 2,
+    gap: Spacing.xxs,
     paddingVertical: Spacing.sm,
     paddingHorizontal: Spacing.sm,
     borderRadius: Radius.md,
@@ -263,7 +263,7 @@ function InviteFriendsPanel({
 
   return (
     <View style={{ flex: 1, minHeight: isLandscape ? 80 : 110 }}>
-      <Text style={[styles.slotsSectionTitle, { color: Colors.gold, marginBottom: isLandscape ? 4 : 6 }]}>
+      <Text style={[styles.slotsSectionTitle, { color: Colors.gold, marginBottom: isLandscape ? Spacing.xs : Spacing.slim }]}>
         {t("room.inviteFriendsTitle")}
       </Text>
       {onlineFriendsNotInRoom.length === 0 ? (

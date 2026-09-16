@@ -11,11 +11,11 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { basename, dirname } from "node:path";
-import { floorFor, violations } from "./commentShape.ts";
+import { floorFor, JUDGED_EXTENSIONS, violations } from "./commentShape.ts";
 import { addedCounts } from "./comment-budget.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 
-const JUDGED = /\.(mjs|cjs|js|jsx|ts|tsx)$/;
+const JUDGED = new RegExp(`\\.(${JUDGED_EXTENSIONS.join("|")})$`);
 
 /** `comment-budget.mjs`'s own default base, so the two measure from the same revision. */
 const BASE = "origin/main";
