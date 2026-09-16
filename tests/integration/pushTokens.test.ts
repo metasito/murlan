@@ -19,6 +19,7 @@ import { connectAs, waitFor } from "../helpers/client.ts";
 import type { Socket } from "socket.io-client";
 import { translate } from "../../shared/i18n.ts";
 import { createServer, type Server } from "node:http";
+import { whileUserLocked } from "../helpers/userLock.ts";
 
 /**
  * Stands in for Expo's push service.
@@ -383,6 +384,25 @@ describe("push token registry", { skip: hasDatabase() ? false : skipMessage() },
     } finally {
       ana.socket.close();
       ben.socket.close();
+    }
+  });
+
+  test("two devices registering at the cap wait on the row lock, and both are kept", async () => {
+    const ana = await connectAs(server, "push_race");
+    try {
+      for (let i = 0; i < maxDevices; i++) {
+        const token = `ExponentPushToken[old${String(i).padStart(18, "0")}]`;
+        assert.equal((await post(ana.cookie, { token, platform: "ios" })).status, 200);
+      }
+      const { savePushToken } = await import("../../server/push.ts");
+      const fresh = ["ExponentPushToken[race000000000000000001]", "ExponentPushToken[race000000000000000002]"];
+      await whileUserLocked(dbPool, [ana.user.id], () => fresh.map((t) => savePushToken(ana.user.id, t, "ios", "en")));
+
+      const kept = (await rowsFor(ana.user.id)).map((r) => r.token as string);
+      assert.equal(kept.length, maxDevices);
+      for (const t of fresh) assert.ok(kept.includes(t), `${t} was pruned by the other registration`);
+    } finally {
+      ana.socket.close();
     }
   });
 });

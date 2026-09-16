@@ -16,7 +16,8 @@ import {
   skipMessage,
   type TestServer,
 } from "../helpers/testServer.ts";
-import { connectAs, waitFor } from "../helpers/client.ts";
+import { connectAs, waitFor, register } from "../helpers/client.ts";
+import { whileUserLocked } from "../helpers/userLock.ts";
 import { driveHumansToGameOver, waitForRow, type RoomState } from "../helpers/gameDriver.ts";
 import { START_RATING, seasonKey } from "../../lib/rating.ts";
 import type { ReplayMove, ReplaySeat } from "../../lib/replay.ts";
@@ -408,6 +409,28 @@ describe("ladder and replay writes", { skip: hasDatabase() ? false : skipMessage
     } finally {
       alice.socket.close();
       bob.socket.close();
+    }
+  });
+
+  test("two rated hands for one pair wait on the row lock, and both deltas land", async () => {
+    const { user: ann } = await register(server, "ladder_race_ann");
+    const { user: ben } = await register(server, "ladder_race_ben");
+    const { recordRatedResult } = await import("../../server/ratings.ts");
+    const now = new Date();
+    const hand = (winner: string, loser: string) =>
+      recordRatedResult([{ userId: winner, placement: 1 }, { userId: loser, placement: 2 }], "free_for_all", now);
+
+    const committed = await whileUserLocked(dbPool, [ann.id, ben.id], () => [hand(ann.id, ben.id), hand(ben.id, ann.id)]);
+
+    const rows = await dbPool.query(
+      "SELECT user_id, rating, games FROM user_ratings WHERE season = $1 AND user_id = ANY($2)",
+      [seasonKey(now), [ann.id, ben.id]]
+    );
+    for (const id of [ann.id, ben.id]) {
+      const row = rows.rows.find((r) => r.user_id === id);
+      assert.equal(row?.games, 2, "both hands are counted");
+      const summed = committed.reduce((sum, deltas) => sum + (deltas.get(id) ?? 0), 0);
+      assert.equal(row?.rating, START_RATING + summed, "neither hand's delta was overwritten");
     }
   });
 });

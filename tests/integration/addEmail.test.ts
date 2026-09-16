@@ -5,12 +5,21 @@
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
 import { startTestServer, hasDatabase, skipMessage, type TestServer } from "../helpers/testServer.ts";
+import pg from "pg";
 import { register, waitForPendingCode } from "../helpers/client.ts";
+import { whileUserLocked } from "../helpers/userLock.ts";
 
 describe("add-email migration nudge", { skip: hasDatabase() ? false : skipMessage() }, () => {
   let server: TestServer;
-  before(async () => { server = await startTestServer(); });
-  after(async () => { if (server) await server.stop(); });
+  let pool: pg.Pool;
+  before(async () => {
+    server = await startTestServer();
+    pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+  });
+  after(async () => {
+    await pool?.end();
+    if (server) await server.stop();
+  });
 
   function addEmail(cookie: string, email: string) {
     return fetch(`${server.url}/api/auth/add-email`, {
@@ -208,5 +217,49 @@ describe("add-email migration nudge", { skip: hasDatabase() ? false : skipMessag
   test("a signed-out request is rejected", async () => {
     const res = await addEmail("", "nobody@example.test");
     assert.equal(res.status, 401);
+  });
+
+  test("concurrent add-email calls leave at most one live email_verify row", async () => {
+    const { user, cookie } = await legacyAccount("nudge_concurrent");
+    await Promise.all([
+      addEmail(cookie, "nudge_concurrent_a@example.test"),
+      addEmail(cookie, "nudge_concurrent_b@example.test"),
+    ]);
+    const live = await pool.query(
+      "SELECT 1 FROM auth_tokens WHERE user_id = $1 AND purpose = 'email_verify' AND used_at IS NULL",
+      [user.id]
+    );
+    assert.ok((live.rowCount ?? 0) <= 1, `${live.rowCount} live codes`);
+  });
+
+  test("two mints for one user wait on its row lock, and one code survives", async () => {
+    const { user } = await register(server, "nudge_lock");
+    await waitForPendingCode(user.id);
+    const { replaceEmailVerifyCode } = await import("../../server/authTokens.ts");
+    const mint = () => replaceEmailVerifyCode({ userId: user.id, email: user.email!, ttlMs: 60_000 });
+    await whileUserLocked(pool, [user.id], () => [mint(), mint()]);
+    const rows = await pool.query("SELECT 1 FROM auth_tokens WHERE user_id = $1 AND purpose = 'email_verify'", [
+      user.id,
+    ]);
+    assert.equal(rows.rowCount, 1);
+  });
+
+  test("a code minted for one address does not verify the address the account holds now", async () => {
+    const { user, cookie } = await legacyAccount("nudge_moved");
+    const minted = "nudge_moved_a@example.test";
+    const { replaceEmailVerifyCode } = await import("../../server/authTokens.ts");
+    const code = await replaceEmailVerifyCode({ userId: user.id, email: minted, ttlMs: 60_000 });
+    await pool.query("UPDATE users SET email = 'nudge_moved_b@example.test' WHERE id = $1", [user.id]);
+
+    const res = await fetch(`${server.url}/api/auth/verify-email`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email: minted, code }),
+    });
+    assert.equal(res.status, 400, await res.text());
+
+    const meBody = await (await me(cookie)).json();
+    assert.equal(meBody.email, "nudge_moved_b@example.test");
+    assert.equal(meBody.emailVerified, false);
   });
 });

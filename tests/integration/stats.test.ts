@@ -17,6 +17,7 @@ import {
 
 } from "../helpers/gameDriver.ts";
 import { waitForDeal } from "../helpers/table.ts";
+import { whileUserLocked } from "../helpers/userLock.ts";
 
 /**
  * recordGameResult is called (fire-and-forget) from the game-over path.
@@ -461,5 +462,36 @@ describe("stats persistence (Task 8)", { skip: hasDatabase() ? false : skipMessa
     const achievements = await getUserAchievements(user.id);
     const unlocked = achievements.filter((a) => a.unlocked).map((a) => a.id).sort();
     assert.deepEqual(unlocked, ["duelist", "first_win", "minimalist", "purist"]);
+  });
+
+  test("two hands for one player wait on the row lock, and both history rows survive the prune", async () => {
+    const { user } = await register(server, "stats_race_user");
+    await dbPool.query(
+      `INSERT INTO match_history (user_id, finished_at, game_mode, placement, player_count, points)
+       SELECT $1, now() - make_interval(hours => g), 'free_for_all', 2, 2, 0 FROM generate_series(1, $2::int) g`,
+      [user.id, 50]
+    );
+    const { recordGameResult, MAX_HISTORY_ROWS_PER_USER } = await import("../../server/stats.ts");
+    const result: GameResult = {
+      userId: user.id,
+      placement: 1,
+      playerCount: 2,
+      playedBomb: false,
+      playedJoker: false,
+      matchWon: false,
+      opponentsFinished: 0,
+    };
+    const ends = [new Date(Date.now() + 1_000), new Date(Date.now() + 2_000)];
+    await whileUserLocked(dbPool, [user.id], () => ends.map((end) => recordGameResult([result], "free_for_all", end)));
+
+    const rows = await dbPool.query(
+      "SELECT (extract(epoch FROM finished_at) * 1000)::bigint AS ms FROM match_history WHERE user_id = $1",
+      [user.id]
+    );
+    assert.equal(rows.rowCount, MAX_HISTORY_ROWS_PER_USER);
+    const kept = rows.rows.map((r) => Number(r.ms));
+    for (const end of ends) assert.ok(kept.includes(end.getTime()), `the hand ending ${end.toISOString()} was pruned`);
+    const stats = await dbPool.query("SELECT games_played FROM user_stats WHERE user_id = $1", [user.id]);
+    assert.equal(Number(stats.rows[0].games_played), 2);
   });
 });

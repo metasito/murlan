@@ -1,7 +1,7 @@
 import type pg from "pg";
 
 /**
- * Holds `userId`'s row lock from a side connection, starts `calls`, waits
+ * Holds these users' row locks from a side connection, starts `calls`, waits
  * until every one of them is blocked behind it, then releases and settles them.
  * A writer that skips `lockUsers` never waits, so this throws.
  *
@@ -10,22 +10,28 @@ import type pg from "pg";
  */
 export async function whileUserLocked<T>(
   pool: pg.Pool,
-  userId: string,
+  userIds: string[],
   calls: () => Promise<T>[]
 ): Promise<T[]> {
   const side = await pool.connect();
   let started: Promise<PromiseSettledResult<T>[]> | undefined;
   try {
     await side.query("BEGIN");
-    await side.query("SELECT id FROM users WHERE id = $1 FOR NO KEY UPDATE", [userId]);
+    await side.query("SELECT id FROM users WHERE id = ANY($1) FOR NO KEY UPDATE", [userIds]);
     const { rows } = await side.query<{ pid: number }>("SELECT pg_backend_pid() AS pid");
     const running = calls();
     started = Promise.allSettled(running);
 
     const deadline = Date.now() + 5_000;
     for (;;) {
+      // Transitively: a second waiter queues behind the first one's tuple
+      // lock, so only the first names the side connection as its blocker.
       const blocked = await pool.query<{ n: number }>(
-        "SELECT count(*)::int AS n FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid))",
+        `WITH RECURSIVE blocked(pid) AS (
+           SELECT pid FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid))
+           UNION
+           SELECT a.pid FROM pg_stat_activity a JOIN blocked b ON b.pid = ANY(pg_blocking_pids(a.pid))
+         ) SELECT count(*)::int AS n FROM blocked`,
         [rows[0]!.pid]
       );
       if (blocked.rows[0]!.n >= running.length) break;
