@@ -20,7 +20,7 @@ export type StartClose =
   | { ok: false; reason: "no_room" | "not_host" | "not_waiting" }
   | { ok: false; reason: "refused"; roster: SeatedUser[] };
 
-/** The only way into these writes: every read-then-write on a room waits on its row. */
+/** Seating, release and start each take this first, so none reads a roster another is changing. */
 async function lockRoom(tx: Tx, roomId: string): Promise<Room | undefined> {
   const [room] = await tx.select().from(rooms).where(eq(rooms.id, roomId)).for("update");
   return room;
