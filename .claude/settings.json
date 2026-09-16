@@ -6,7 +6,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node tools/loop/guard-bash.mjs"
+            "command": "node",
+            "args": ["${CLAUDE_PROJECT_DIR}/tools/loop/guard-bash.mjs"]
           }
         ]
       },
@@ -15,11 +16,13 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node tools/loop/hint-test-traps.mjs"
+            "command": "node",
+            "args": ["${CLAUDE_PROJECT_DIR}/tools/loop/hint-test-traps.mjs"]
           },
           {
             "type": "command",
-            "command": "node tools/loop/guard-comments.mjs"
+            "command": "node",
+            "args": ["${CLAUDE_PROJECT_DIR}/tools/loop/guard-comments.mjs"]
           }
         ]
       }
@@ -30,7 +33,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node tools/loop/loop-status.mjs"
+            "command": "node",
+            "args": ["${CLAUDE_PROJECT_DIR}/tools/loop/loop-status.mjs"]
           }
         ]
       }

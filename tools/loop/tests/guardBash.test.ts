@@ -393,24 +393,36 @@ describe("the entrypoint fails open on a payload it cannot read", () => {
 });
 
 describe("the hooks settings.json registers", () => {
-  type Entry = { matcher: string; hooks: { command: string }[] };
+  type Hook = { command: string; args?: string[] };
+  type Entry = { matcher: string; hooks: Hook[] };
   const settings = JSON.parse(readFileSync(join(ROOT, ".claude/settings.json"), "utf8"));
   const entries = (event: string) => settings.hooks[event] as Entry[];
+  const allHooks = () => Object.values(settings.hooks as Record<string, Entry[]>).flat().flatMap((e) => e.hooks);
+  const text = (h: Hook) => [h.command, ...(h.args ?? [])].join(" ");
   const matched = (event: string, script: string) =>
     entries(event)
-      .filter((e) => e.hooks.some((h) => h.command.includes(script)))
+      .filter((e) => e.hooks.some((h) => text(h).includes(script)))
       .flatMap((e) => e.matcher.split("|"));
-  const commandOf = (script: string) =>
-    Object.values(settings.hooks as Record<string, Entry[]>)
-      .flat()
-      .flatMap((e) => e.hooks.map((h) => h.command))
-      .find((c) => c.includes(script))!;
-  const SHELLS: [string, (command: string) => string[]][] = [
-    ["bash", (command) => ["-c", command]],
-    [process.platform === "win32" ? "powershell" : "pwsh", (command) => ["-NoProfile", "-NonInteractive", "-Command", `${command}; exit $LASTEXITCODE`]],
-  ];
-  const runAsWritten = ([shell, argv]: (typeof SHELLS)[number], command: string, payload: unknown) =>
-    spawnSync(shell, argv(command), { cwd: ROOT, input: JSON.stringify(payload), encoding: "utf8" });
+  const hookOf = (script: string) => allHooks().find((h) => text(h).includes(script))!;
+  // Exec form, as Claude Code runs it: the placeholder is substituted as a plain string and no shell sees the command.
+  const project = (arg: string) => arg.replaceAll("${CLAUDE_PROJECT_DIR}", ROOT);
+  const CWDS = [ROOT, join(ROOT, "tools", "loop")];
+  const runAsWritten = (cwd: string, hook: Hook, payload: unknown) =>
+    spawnSync(hook.command, (hook.args ?? []).map(project), { cwd, input: JSON.stringify(payload), encoding: "utf8" });
+
+  test("every hook is exec form rooted at the project, so no shell and no cwd decides what runs", () => {
+    assert.ok(allHooks().length >= 4, "no hook commands found; the shape of settings.json has changed");
+    for (const hook of allHooks()) {
+      assert.equal(hook.command, "node", text(hook));
+      assert.ok(hook.args?.[0]?.startsWith("${CLAUDE_PROJECT_DIR}/"), `${text(hook)} resolves against the cwd`);
+    }
+  });
+
+  test("a relative script path is what the subdirectory run catches", () => {
+    const relative = { command: "node", args: ["tools/loop/guard-bash.mjs"] };
+    const fromSubdir = runAsWritten(CWDS[1], relative, { cwd: ROOT, tool_input: { command: "git add -A" } });
+    assert.notEqual(fromSubdir.status, 2, "the planted relative hook must not block from a subdirectory");
+  });
 
   test("cover every tool and every session start they guard", () => {
     for (const tool of ["Bash", "PowerShell"]) assert.ok(matched("PreToolUse", "guard-bash.mjs").includes(tool), tool);
@@ -420,28 +432,24 @@ describe("the hooks settings.json registers", () => {
     }
   });
 
-  for (const shell of SHELLS) {
-    test(`run as written under ${shell[0]}, each blocks what it guards`, () => {
-      const bash = runAsWritten(shell, commandOf("guard-bash.mjs"), { cwd: ROOT, tool_input: { command: "git add -A" } });
+  for (const cwd of CWDS) {
+    test(`run as written from ${cwd === ROOT ? "the root" : "tools/loop"}, each blocks what it guards`, () => {
+      const bash = runAsWritten(cwd, hookOf("guard-bash.mjs"), { cwd: ROOT, tool_input: { command: "git add -A" } });
       assert.equal(bash.status, 2, bash.stderr);
       assert.match(bash.stderr, ADD);
 
-      const comments = runAsWritten(shell, commandOf("guard-comments.mjs"), {
+      const comments = runAsWritten(cwd, hookOf("guard-comments.mjs"), {
         tool_name: "Write",
         tool_input: { file_path: join(ROOT, "src", "never-written.ts"), content: "// previously this returned null\nconst x = 1;\n" },
       });
       assert.match(comments.stdout, /"permissionDecision":\s*"deny"/, comments.stderr);
     });
 
-    test(`run as written under ${shell[0]}, every hook exists and allows an empty payload`, () => {
-      const commands = Object.values(settings.hooks as Record<string, Entry[]>)
-        .flat()
-        .flatMap((e) => e.hooks.map((h) => h.command));
-      assert.ok(commands.length >= 3, "no hook commands found; the shape of settings.json has changed");
-      for (const command of commands) {
-        assert.ok(existsSync(join(ROOT, command.replace(/^node\s+/, ""))), command);
-        const result = runAsWritten(shell, command, {});
-        assert.equal(result.status, 0, `${command} did not allow an empty payload: ${result.stderr.split("\n")[0]}`);
+    test(`run as written from ${cwd === ROOT ? "the root" : "tools/loop"}, every hook exists and allows an empty payload`, () => {
+      for (const hook of allHooks()) {
+        assert.ok(existsSync(project(hook.args![0])), text(hook));
+        const result = runAsWritten(cwd, hook, {});
+        assert.equal(result.status, 0, `${text(hook)} did not allow an empty payload: ${result.stderr.split("\n")[0]}`);
       }
     });
   }
