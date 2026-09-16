@@ -23,9 +23,13 @@ const SCALED_PROPS = `fontSize|borderRadius|${SPACING_PROPS}`;
 // green. `-8` parses as a UnaryExpression over the literal, hence the second
 // selector — one alone leaves half the scale unguarded.
 const BARE_NUMBER = 'Literal[raw=/^[1-9][0-9.]*$/]';
+// A divisor or factor is a ratio, not a step: `size / 2` is a circle's radius at any size.
+const COMPUTED_VALUE = ':matches(ConditionalExpression, LogicalExpression, BinaryExpression)';
+const OFFSET_NUMBER = `${BARE_NUMBER}:not(BinaryExpression[operator=/^[*\/%]$/] > Literal)`;
 const SCALED_LITERAL =
   `Property[key.name=/^(${SCALED_PROPS})$/] > ${BARE_NUMBER}, ` +
-  `Property[key.name=/^(${SCALED_PROPS})$/] > UnaryExpression > ${BARE_NUMBER}`;
+  `Property[key.name=/^(${SCALED_PROPS})$/] > UnaryExpression > ${BARE_NUMBER}, ` +
+  `Property[key.name=/^(${SCALED_PROPS})$/] > ${COMPUTED_VALUE} ${OFFSET_NUMBER}`;
 
 // The single value, not the whole scale: banning bare numbers on these properties
 // outright would flag `minWidth: 0` (the flex truncation idiom), a 28pt badge and

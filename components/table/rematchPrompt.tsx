@@ -113,7 +113,7 @@ const styles = StyleSheet.create({
     zIndex: Layer.rail,
     gap: Spacing.xs,
     paddingVertical: Spacing.sm,
-    paddingHorizontal: Spacing.xs + 2,
+    paddingHorizontal: Spacing.slim,
     borderRadius: Radius.md,
     backgroundColor: Scrim.heavy,
     borderWidth: 1,
@@ -128,7 +128,7 @@ const styles = StyleSheet.create({
   },
   rematchSubtitle: {
     ...Type.caption,
-    fontSize: FontSize.xs - 2,
+    fontSize: FontSize.xxs,
     textAlign: "center",
   },
   rematchButtons: { alignSelf: "stretch", gap: Spacing.xs },
@@ -159,6 +159,6 @@ const styles = StyleSheet.create({
   },
   rematchTally: {
     ...Type.caption,
-    fontSize: FontSize.xs - 2,
+    fontSize: FontSize.xxs,
   },
 });
