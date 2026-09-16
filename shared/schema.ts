@@ -368,7 +368,6 @@ export const socketTicketNonces = pgTable("socket_ticket_nonces", {
  * Expired rows are swept on a schedule (server/retention.ts), not on the
  * write or redemption path — see that module for why.
  */
-
 export const authTokens = pgTable(
   "auth_tokens",
   {
