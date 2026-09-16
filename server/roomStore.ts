@@ -1,4 +1,4 @@
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, asc, sql } from "drizzle-orm";
 import { db } from "./db.ts";
 import { users, rooms, roomPlayers, gameInvites } from "../shared/schema.ts";
 import type { User, Room, RoomPlayer, RoomVisibility } from "../shared/schema.ts";
@@ -8,8 +8,33 @@ import { seatHoldMs } from "./gameTimers.ts";
 import { randomCode } from "./codes.ts";
 
 export type SeatClaim =
-  | { ok: true; seatIndex: number }
-  | { ok: false; reason: "no_room" | "not_waiting" | "full" | "already_joined" | "held" };
+  | { ok: true; seatIndex: number; room: Room }
+  | { ok: false; reason: "already_joined"; room: Room }
+  | { ok: false; reason: "no_room" | "not_waiting" | "full" | "held" | "not_public" | "empty" };
+
+type SeatedUser = RoomPlayer & { user: User };
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+export type StartClose =
+  | { ok: true; room: Room; roster: SeatedUser[] }
+  | { ok: false; reason: "no_room" | "not_host" | "not_waiting" }
+  | { ok: false; reason: "refused"; roster: SeatedUser[] };
+
+/** Seating, release and start each take this first, so none reads a roster another is changing. */
+async function lockRoom(tx: Tx, roomId: string): Promise<Room | undefined> {
+  const [room] = await tx.select().from(rooms).where(eq(rooms.id, roomId)).for("update");
+  return room;
+}
+
+async function seatedUsers(tx: Tx | typeof db, roomId: string): Promise<SeatedUser[]> {
+  const rows = await tx
+    .select()
+    .from(roomPlayers)
+    .innerJoin(users, eq(roomPlayers.userId, users.id))
+    .where(eq(roomPlayers.roomId, roomId))
+    .orderBy(asc(roomPlayers.seatIndex));
+  return rows.map((r) => ({ ...r.room_players, user: r.users }));
+}
 
 export interface JoinableRoom {
   room: Room;
@@ -81,23 +106,83 @@ export const roomStore = {
     await db.update(rooms).set({ status }).where(eq(rooms.id, roomId));
   },
 
-  async updateRoomHost(roomId: string, hostUserId: string) {
-    await db.update(rooms).set({ hostUserId }).where(eq(rooms.id, roomId));
-  },
-
   async updateRoomVisibility(roomId: string, visibility: RoomVisibility) {
     await db.update(rooms).set({ visibility }).where(eq(rooms.id, roomId));
   },
 
-  async getRoomPlayers(roomId: string): Promise<(RoomPlayer & { user: User })[]> {
-    const rows = await db
-      .select()
-      .from(roomPlayers)
-      .innerJoin(users, eq(roomPlayers.userId, users.id))
-      .where(eq(roomPlayers.roomId, roomId))
-      .orderBy(roomPlayers.seatIndex);
+  async getRoomPlayers(roomId: string): Promise<SeatedUser[]> {
+    return seatedUsers(db, roomId);
+  },
 
-    return rows.map((r) => ({ ...r.room_players, user: r.users }));
+  /**
+   * Closes the lobby to a start: host and status checked, roster read and the
+   * room set `in_progress`, all under the row lock a claim or a release waits
+   * on, so the roster dealt is the roster seated. `liveMatch` admits a room
+   * still reading `in_progress` from the match that just ended.
+   *
+   * `renumber` closes gaps in the seat numbers, because an all-human engine
+   * seats by roster position and a rejoin writes that position back.
+   */
+  async closeForStart(
+    roomId: string,
+    userId: string,
+    opts: { liveMatch: boolean; renumber: boolean; admits: (roster: SeatedUser[]) => boolean }
+  ): Promise<StartClose> {
+    return db.transaction(async (tx): Promise<StartClose> => {
+      const room = await lockRoom(tx, roomId);
+      if (!room) return { ok: false, reason: "no_room" };
+      if (room.hostUserId !== userId) return { ok: false, reason: "not_host" };
+      if (!opts.liveMatch && room.status !== "waiting" && room.status !== "finished") {
+        return { ok: false, reason: "not_waiting" };
+      }
+      const roster = await seatedUsers(tx, roomId);
+      if (!opts.admits(roster)) return { ok: false, reason: "refused", roster };
+
+      if (opts.renumber) {
+        // Ascending, and never upwards, so no step collides on the seat index.
+        for (const [position, p] of roster.entries()) {
+          if (p.seatIndex === position) continue;
+          await tx.update(roomPlayers).set({ seatIndex: position }).where(eq(roomPlayers.id, p.id));
+          p.seatIndex = position;
+        }
+      }
+      const [closed] = await tx
+        .update(rooms)
+        .set({ status: "in_progress" })
+        .where(eq(rooms.id, roomId))
+        .returning();
+      return { ok: true, room: closed!, roster };
+    });
+  },
+
+  /**
+   * Frees a seat and settles who holds the room: a lobby left empty is
+   * finished, and otherwise a host who is no longer seated hands it to the
+   * lowest seat. `emptied` says this release is the one that finished it.
+   */
+  async releaseSeat(
+    roomId: string,
+    userId: string
+  ): Promise<{ room: Room; remaining: SeatedUser[]; emptied: boolean } | null> {
+    return db.transaction(async (tx) => {
+      const room = await lockRoom(tx, roomId);
+      if (!room) return null;
+      await tx
+        .delete(roomPlayers)
+        .where(and(eq(roomPlayers.roomId, roomId), eq(roomPlayers.userId, userId)));
+      const remaining = await seatedUsers(tx, roomId);
+
+      const emptied = remaining.length === 0 && room.status === "waiting";
+      const [next] = remaining;
+      const set = emptied
+        ? { status: "finished" as const }
+        : next && !remaining.some((p) => p.userId === room.hostUserId)
+          ? { hostUserId: next.userId }
+          : null;
+      if (!set) return { room, remaining, emptied };
+      const [updated] = await tx.update(rooms).set(set).where(eq(rooms.id, roomId)).returning();
+      return { room: updated!, remaining, emptied };
+    });
   },
 
   async addRoomPlayer(roomId: string, userId: string, seatIndex: number) {
@@ -132,17 +217,19 @@ export const roomStore = {
   /**
    * Seats a player under a row lock on the room, so two simultaneous joins
    * cannot race into the same seat — and so the invites the hold is read from
-   * cannot change between the read and the insert.
+   * cannot change between the read and the insert. Quick-match's own filters
+   * are asked again here, because its candidate list was read without the lock.
    */
-  async claimRoomSeat(roomId: string, userId: string): Promise<SeatClaim> {
+  async claimRoomSeat(
+    roomId: string,
+    userId: string,
+    opts: { requirePublic?: boolean; requireOccupied?: boolean } = {}
+  ): Promise<SeatClaim> {
     return db.transaction(async (tx): Promise<SeatClaim> => {
-      const [room] = await tx
-        .select()
-        .from(rooms)
-        .where(eq(rooms.id, roomId))
-        .for("update");
+      const room = await lockRoom(tx, roomId);
       if (!room) return { ok: false, reason: "no_room" };
       if (room.status !== "waiting") return { ok: false, reason: "not_waiting" };
+      if (opts.requirePublic && room.visibility !== "public") return { ok: false, reason: "not_public" };
 
       const seated = await tx
         .select()
@@ -150,7 +237,8 @@ export const roomStore = {
         .where(eq(roomPlayers.roomId, roomId));
 
       if (seated.some((p) => p.userId === userId))
-        return { ok: false, reason: "already_joined" };
+        return { ok: false, reason: "already_joined", room };
+      if (opts.requireOccupied && seated.length === 0) return { ok: false, reason: "empty" };
       if (seated.length >= room.maxPlayers) return { ok: false, reason: "full" };
 
       const invites = await tx
@@ -174,7 +262,7 @@ export const roomStore = {
       if (seatIndex === null) return { ok: false, reason: "held" };
 
       await tx.insert(roomPlayers).values({ roomId, userId, seatIndex });
-      return { ok: true, seatIndex };
+      return { ok: true, seatIndex, room };
     });
   },
 

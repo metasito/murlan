@@ -30,6 +30,7 @@ import {
   visibleExchangePhase,
   markExchangeSettled,
   packPersistedState,
+  type PersistedEnvelope,
 } from "./onlineGameLogic.ts";
 import type { GameState, Card } from "../lib/gameEngine.ts";
 
@@ -112,50 +113,72 @@ export function disposeGame(roomId: string, deleteRow = true) {
   // protected is a room nobody can ever take over.
   void releaseRoom(roomId);
   if (deleteRow) {
-    db.delete(activeGamesTable)
-      .where(eq(activeGamesTable.roomId, roomId))
-      .catch((err: unknown) =>
-        logger.error({ err, roomId }, "Failed to delete persisted game")
-      );
+    void inRoomOrder(roomId, () =>
+      db.delete(activeGamesTable)
+        .where(eq(activeGamesTable.roomId, roomId))
+        .catch((err: unknown) =>
+          logger.error({ err, roomId }, "Failed to delete persisted game")
+        )
+    );
   }
 }
 
+/** An object rather than a bare function so a test can hold one write, as with `roomStore`. */
+export const persistence = {
+  async writeActiveGame(roomId: string, gameState: PersistedEnvelope<GameState>) {
+    const updatedAt = new Date();
+    await db
+      .insert(activeGamesTable)
+      .values({ roomId, gameState, updatedAt })
+      .onConflictDoUpdate({ target: activeGamesTable.roomId, set: { gameState, updatedAt } });
+  },
+};
+
+const roomWriteTails = new Map<string, Promise<unknown>>();
+
 /**
- * Writes the room's live state. Failures are logged, never thrown — a
- * persistence problem must not break a table. The promise is returned so a
- * caller that is about to delete the same row can order itself after it.
+ * Runs `write` after every earlier `active_games` write for this room. Only
+ * the instance that owns a table writes its row, so an in-process order is
+ * the whole order; without it a slow earlier snapshot can land last.
+ * `write` must not reject.
+ */
+function inRoomOrder(roomId: string, write: () => Promise<unknown>): Promise<unknown> {
+  const tail = (roomWriteTails.get(roomId) ?? Promise.resolve()).then(write);
+  roomWriteTails.set(roomId, tail);
+  void tail.finally(() => {
+    if (roomWriteTails.get(roomId) === tail) roomWriteTails.delete(roomId);
+  });
+  return tail;
+}
+
+/**
+ * Writes the room's live state as it is at the call, after any earlier write
+ * for the room. Failures are logged, never thrown — a persistence problem must
+ * not break a table. The promise is returned so a caller that is about to
+ * delete the same row can order itself after it.
  */
 export function persistGameState(roomId: string, game: OnlineGameState): Promise<unknown> {
   // Stamped so a restart can tell a current-shape row from a stale one (see
   // GAME_SCHEMA_VERSION) rather than restoring a corrupt hand silently.
-  const values = {
-    roomId,
-    gameState: packPersistedState(game.gameState, game.handFlags, game.dealFirstSeat, game.joinCode, {
-      playerMap: game.playerMap,
-      scores: game.cumulativeScores,
-      gameMode: game.gameMode,
-      matchLength: game.matchLength,
-      matchTarget: game.matchTarget,
-      maxPlayers: game.maxPlayers,
-      handsPlayed: game.handsPlayed,
-    }, {
-      vacatedSeats: [...game.vacatedSeats],
-      releasedSeats: [...game.releasedSeats],
-      weakSeats: [...game.weakSeats],
-      abandonedSeats: [...game.abandonedSeats],
-    }),
-    updatedAt: new Date(),
-  };
-  return db
-    .insert(activeGamesTable)
-    .values(values)
-    .onConflictDoUpdate({
-      target: activeGamesTable.roomId,
-      set: { gameState: values.gameState, updatedAt: values.updatedAt },
-    })
-    .catch((err: unknown) =>
-      logger.error({ err, roomId }, "Failed to persist game state")
-    );
+  const gameState = packPersistedState(game.gameState, game.handFlags, game.dealFirstSeat, game.joinCode, {
+    playerMap: game.playerMap,
+    scores: game.cumulativeScores,
+    gameMode: game.gameMode,
+    matchLength: game.matchLength,
+    matchTarget: game.matchTarget,
+    maxPlayers: game.maxPlayers,
+    handsPlayed: game.handsPlayed,
+  }, {
+    vacatedSeats: [...game.vacatedSeats],
+    releasedSeats: [...game.releasedSeats],
+    weakSeats: [...game.weakSeats],
+    abandonedSeats: [...game.abandonedSeats],
+  });
+  return inRoomOrder(roomId, () =>
+    persistence
+      .writeActiveGame(roomId, gameState)
+      .catch((err: unknown) => logger.error({ err, roomId }, "Failed to persist game state"))
+  );
 }
 
 /**

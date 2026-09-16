@@ -357,60 +357,28 @@ export async function handleSeatRelease(
 ) {
   clearAllTimersForUser(userId, roomId);
 
-  await roomStore
-    .removeRoomPlayer(roomId, userId)
-    .catch((err) =>
-      logger.warn(
-        { err, roomId, userId, source: opts.source },
-        "Failed to delete the room_players row after a seat was released — the seat stays counted as taken"
-      )
+  const released = await roomStore.releaseSeat(roomId, userId).catch((err) => {
+    logger.warn(
+      { err, roomId, userId, source: opts.source },
+      "Failed to release the room_players row — the seat stays counted as taken"
     );
-  opts.socket?.leave(roomId);
-
-  const room = await roomStore.getRoomById(roomId).catch((err) => {
-    logger.warn({ err, roomId, userId }, "Failed to read the rooms row while releasing a seat");
     return null;
   });
-  if (!room) return;
+  opts.socket?.leave(roomId);
 
-  if (room.status === "waiting") {
-    // `null`, not `[]`: an unreadable roster and an empty one lead opposite
-    // ways, and the branch below deletes rows on the strength of the answer.
-    const remaining = await roomStore.getRoomPlayers(roomId).catch((err: unknown) => {
-      logger.warn({ err, roomId }, "Failed to read the remaining lobby players");
-      return null;
-    });
-    if (!remaining) return;
-    if (remaining.length === 0) {
-      await roomStore
-        .updateRoomStatus(roomId, "finished")
-        .catch((err) =>
-          logger.warn(
-            { err, roomId },
-            "Failed to set rooms.status = finished after the last player left the lobby"
-          )
-        );
-      await retireRoomInvites(io, roomId, room.code);
-      return;
-    }
-    let newHostId = room.hostUserId;
-    if (room.hostUserId === userId) {
-      const [nextHost] = remaining.sort((a, b) => a.seatIndex - b.seatIndex);
-      if (!nextHost) throw new Error(`releaseSeat: room ${roomId} has no remaining players to host`);
-      newHostId = nextHost.userId;
-      await roomStore
-        .updateRoomHost(roomId, newHostId)
-        .catch((err) =>
-          logger.warn(
-            { err, roomId, userId, newHostId },
-            "Failed to update rooms.host_user_id after the host left the lobby"
-          )
-        );
-    }
-    io.to(roomId).emit(
-      "room:state",
-      await roomStatePayload({ ...room, hostUserId: newHostId }, remaining)
-    );
+  // A failed release says nothing about whether a game holds the seat, and a
+  // held seat must still go to a bot; a room with no game answers the vacate
+  // with a refusal and nothing else.
+  if (!released) {
+    await applyOrForward(io, { kind: "vacate", roomId, userId, username });
+    return;
+  }
+  const { room, remaining, emptied } = released;
+
+  if (emptied) {
+    await retireRoomInvites(io, roomId, room.code);
+  } else if (room.status === "waiting") {
+    io.to(roomId).emit("room:state", await roomStatePayload(room, remaining));
     // Only the edge, matching the filling side: a 4-seat lobby going 2 → 1 was
     // joinable before and after, and its invitees have nothing to re-ask.
     if (remaining.length === room.maxPlayers - 1) {
