@@ -68,3 +68,23 @@ describe("what CI greps for is what the suites actually print", () => {
     assert.deepEqual(strays, [], "these name a phrase ci.yml greps for");
   });
 });
+
+describe("the integration guard counts the files that ran, not only the skips", () => {
+  const workflow = readRepoFile(".github", "workflows", "ci.yml");
+  const step = /Assert the integration suites actually ran[\s\S]*?(?=\n  [a-z])/.exec(workflow)?.[0] ?? "";
+
+  test("npm test loads the reporter that prints the per-directory count", () => {
+    const script = JSON.parse(readRepoFile("package.json")).scripts.test as string;
+    assert.match(script, /--test-reporter=spec --test-reporter-destination=stdout /);
+    assert.match(script, /--test-reporter=\.\/tests\/helpers\/filesRunReporter\.mjs --test-reporter-destination=stdout /);
+  });
+
+  test("the step compares that count with the integration files on disk, under a floor", () => {
+    const printed = /yield `([^$`]+)\$\{dir\}: /.exec(readRepoFile("tests", "helpers", "filesRunReporter.mjs"));
+    assert.ok(printed, "the reporter no longer prints a per-directory line");
+    assert.ok(step.includes(`${printed[1]}tests/integration: `), "the step greps for a line nothing prints");
+    assert.match(step, /ls tests\/integration\/\*\.test\.ts \| wc -l/);
+    assert.match(step, /\[ "\$ran" -lt "\$expected" \]/);
+    assert.match(step, /\[ "\$expected" -lt \d{2} \]/);
+  });
+});

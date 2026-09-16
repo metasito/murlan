@@ -340,7 +340,18 @@ jobs:
             echo "This is the only test proving a dump actually restores; see the 'Install postgresql-client' step above."
             exit 1
           fi
-          echo "Integration suites ran against Postgres."
+          # A narrowed glob loads no integration file and prints no skip, so the files that ran are counted.
+          expected=$(ls tests/integration/*.test.ts | wc -l)
+          ran=$(grep -oE "^test files run in tests/integration: [0-9]+" test-output.txt | grep -oE "[0-9]+$" || echo 0)
+          if [ "$expected" -lt 40 ]; then
+            echo "::error::Only $expected integration files found on disk — the suite moved, and this count no longer sees it."
+            exit 1
+          fi
+          if [ "$ran" -lt "$expected" ]; then
+            echo "::error::npm test ran $ran of the $expected files in tests/integration."
+            exit 1
+          fi
+          echo "Integration suites ran against Postgres: $ran files."
 
   # React Native's own renderer, with Platform.OS set to ios and android — the
   # one thing the Playwright suite structurally cannot do. It rode in `verify`
