@@ -323,7 +323,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          npm test | tee test-output.txt
+          npm test 2>&1 | tee test-output.txt
 
       # A skipped integration suite still exits 0, so without this a removed or
       # broken Postgres service would turn the socket-layer tests into a no-op

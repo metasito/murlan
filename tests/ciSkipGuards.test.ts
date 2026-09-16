@@ -1,6 +1,8 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -73,10 +75,22 @@ describe("the integration guard counts the files that ran, not only the skips", 
   const workflow = readRepoFile(".github", "workflows", "ci.yml");
   const step = /Assert the integration suites actually ran[\s\S]*?(?=\n  [a-z])/.exec(workflow)?.[0] ?? "";
 
-  test("npm test loads the reporter that prints the per-directory count", () => {
+  test("npm test's own flags put the per-directory count in the log the step reads", () => {
     const script = JSON.parse(readRepoFile("package.json")).scripts.test as string;
-    assert.match(script, /--test-reporter=spec --test-reporter-destination=stdout /);
-    assert.match(script, /--test-reporter=\.\/tests\/helpers\/filesRunReporter\.mjs --test-reporter-destination=stdout /);
+    const args = script.split(" ").slice(1, -1);
+    assert.ok(args.includes("--test-reporter=./tests/helpers/filesRunReporter.mjs"));
+    assert.match(workflow, /npm test 2>&1 \| tee test-output\.txt/);
+
+    const dir = mkdtempSync(path.join(tmpdir(), "files-run-"));
+    try {
+      writeFileSync(path.join(dir, "one.test.mjs"), 'import test from "node:test";\ntest("x", () => {});\n');
+      const env = { ...process.env };
+      delete env.NODE_TEST_CONTEXT;
+      const run = spawnSync(process.execPath, [...args, path.join(dir, "one.test.mjs")], { cwd: repoRoot, env, encoding: "utf8" });
+      assert.match(run.stdout + run.stderr, /^test files run in .+: 1$/m);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   test("the step compares that count with the integration files on disk, under a floor", () => {

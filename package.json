@@ -36,7 +36,7 @@
     "pretest": "node scripts/preflightMemory.mjs",
     "preloop:test": "node scripts/preflightMemory.mjs",
     "loop:test": "node --test --test-timeout=30000 --test-force-exit \"tools/loop/tests/**/*.test.ts\"",
-    "test": "node --test --test-timeout=30000 --test-force-exit --test-reporter=spec --test-reporter-destination=stdout --test-reporter=./tests/helpers/filesRunReporter.mjs --test-reporter-destination=stdout \"tests/**/*.test.ts\"",
+    "test": "node --test --test-timeout=30000 --test-force-exit --test-reporter=spec --test-reporter-destination=stdout --test-reporter=./tests/helpers/filesRunReporter.mjs --test-reporter-destination=stderr \"tests/**/*.test.ts\"",
     "test:native": "jest",
     "perf:web": "playwright test --config tests/e2e/playwright.perf.config.ts --reporter=line",
     "test:e2e": "playwright test --config tests/e2e/playwright.config.ts",
