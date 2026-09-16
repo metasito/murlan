@@ -33,7 +33,10 @@ export const ARCHEOLOGY = [
 
 export const HISTORY = new RegExp(`\\b(${ARCHEOLOGY.join("|")})\\b`, "i");
 
-const TEST_PATH = /(^|[\\/])tests?[\\/]|\.(test|spec)\.[jt]sx?$/;
+/** What both the write hook and the branch check judge; one list, or a file one sees slips the other. */
+export const JUDGED_EXTENSIONS = ["mjs", "cjs", "js", "jsx", "ts", "tsx"];
+
+const TEST_PATH =/(^|[\\/])tests?[\\/]|\.(test|spec)\.[jt]sx?$/;
 
 /** A test's own description says what it covers, so its prose budget is tighter than source's. */
 export function floorFor(path: string): number {

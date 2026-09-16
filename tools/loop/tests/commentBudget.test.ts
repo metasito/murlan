@@ -234,10 +234,50 @@ describe("budget", () => {
 
       // The control: the same file, examined by the same call, is named when the prose is new.
       writeFileSync(file, [...prose("why"), ...prose("how"), "const a = 1;", "const b = 2;"].join("\n"));
-      assert.deepEqual(budget("main"), [["a.mjs", { comment: 20, code: 1 }]]);
+      assert.deepEqual(budget("main"), [
+        ["a.mjs", { comment: 20, code: 1 }],
+        ["(branch total)", { comment: 20, code: 1 }],
+      ]);
     } finally {
       process.chdir(cwd);
       rmSync(dir, { recursive: true, force: true, maxRetries: 5 });
     }
+  });
+
+  const onBranch = (files: Record<string, string>) => {
+    const dir = mkdtempSync(join(tmpdir(), "comment-budget-"));
+    const cwd = process.cwd();
+    try {
+      run(dir, "init", "-q", "-b", "main");
+      run(dir, "config", "user.email", "t@example.com");
+      run(dir, "config", "user.name", "t");
+      run(dir, "commit", "-q", "--allow-empty", "-m", "base");
+      run(dir, "checkout", "-qb", "branch");
+      for (const [name, text] of Object.entries(files)) writeFileSync(join(dir, name), text);
+      run(dir, "add", "--", ...Object.keys(files));
+      run(dir, "commit", "-qm", "branch");
+      process.chdir(dir);
+      return budget("main");
+    } finally {
+      process.chdir(cwd);
+      rmSync(dir, { recursive: true, force: true, maxRetries: 5 });
+    }
+  };
+  const shaped = (tag: string, comments: number, code: number) =>
+    [
+      ...Array.from({ length: comments }, (_, i) => `// ${tag} why ${i}`),
+      ...Array.from({ length: code }, (_, i) => `const ${tag}${i} = ${i};`),
+    ].join("\n");
+
+  test("prose spread thinly across files is judged as the branch's total", () => {
+    const files = Object.fromEntries(Array.from({ length: 10 }, (_, i) => [`f${i}.mjs`, shaped(`f${i}`, 6, 1)]));
+    assert.deepEqual(onBranch(files), [["(branch total)", { comment: 60, code: 10 }]]);
+  });
+
+  test("a .cjs file is counted, as the write hook judges it", () => {
+    assert.deepEqual(onBranch({ "a.cjs": shaped("a", 7, 1) }), [
+      ["a.cjs", { comment: 7, code: 1 }],
+      ["(branch total)", { comment: 7, code: 1 }],
+    ]);
   });
 });

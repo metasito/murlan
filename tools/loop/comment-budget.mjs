@@ -15,7 +15,7 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { classify, floorFor } from "./commentShape.ts";
+import { classify, floorFor, JUDGED_EXTENSIONS } from "./commentShape.ts";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 
 const git = (...args) =>
@@ -72,6 +72,9 @@ export function over(added, path) {
   return added.comment > floor && added.comment > added.code;
 }
 
+/** Judged at source's floor: the budget CLAUDE.md publishes is per branch, not per file. */
+const BRANCH_TOTAL = "(branch total)";
+
 const show = (rev, file) => {
   try {
     return git("show", `${rev}:${file}`);
@@ -89,16 +92,20 @@ export function budget(base) {
   const from = git("merge-base", base, "HEAD").trim();
   const root = git("rev-parse", "--show-toplevel").trim();
   const files = git("-c", "core.quotePath=false", "diff", "--name-only", "--no-relative",
-    "--diff-filter=AMR", "-M", from, "--", "*.mjs", "*.js", "*.ts", "*.tsx")
+    "--diff-filter=AMR", "-M", from, "--", ...JUDGED_EXTENSIONS.map((ext) => `*.${ext}`))
     .split("\n").filter(Boolean);
   const named = [];
+  const total = { comment: 0, code: 0 };
   for (const file of files) {
     // No skip on a read failure: `AMR` never emits a deletion and `-M` emits a rename's
     // destination, so every path here exists. A swallowed read is a check that passes by not
     // looking at the one file it could not open.
     const added = addedCounts(show(from, file), readFileSync(join(root, file), "utf8"));
     if (over(added, file)) named.push([file, added]);
+    total.comment += added.comment;
+    total.code += added.code;
   }
+  if (over(total, BRANCH_TOTAL)) named.push([BRANCH_TOTAL, total]);
   return named;
 }
 
