@@ -283,7 +283,16 @@ export function gitAt(base) {
       return false;
     }
   };
+  const answer = (args, dir) => {
+    try {
+      return execFileSync("git", args, { cwd: resolve(base, dir ?? "."), encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 15_000 }).trim();
+    } catch {
+      return null;
+    }
+  };
   return {
+    branch: (dir) => answer(["symbolic-ref", "--short", "-q", "HEAD"], dir),
+    pushTarget: (dir) => answer(["rev-parse", "--abbrev-ref", "@{push}"], dir),
     isRef: (arg, dir) => quietly(["rev-parse", "--verify", "-q", `${arg}^{commit}`], dir),
     // A git error reads as "not clean", so it blocks.
     pathsClean: (paths, dir) => quietly(["diff", "--quiet", "HEAD", "--", ...paths], dir),
@@ -357,14 +366,23 @@ function discards(c, repo) {
   }
 }
 
-function pushesMain(c) {
+function pushesMain(c, repo) {
   if (c.cmd !== "git" || c.args[0] !== "push") return false;
   const operands = [];
   for (let i = 1; i < c.args.length; i++) {
     if (/^(-o|--push-option|--repo|--receive-pack|--exec)$/.test(c.args[i])) i += 1;
     else if (!c.args[i].startsWith("-")) operands.push(c.args[i]);
   }
-  return operands.slice(1).some((ref) => /^(refs\/heads\/)?main$/.test(ref.replace(/^\+/, "").split(":").pop()));
+  const isMain = (ref) => /^(refs\/heads\/)?main$/.test(ref);
+  const refs = operands.slice(1);
+  if (!refs.length) {
+    const target = repo.pushTarget(c.dir);
+    return target ? /^[^/]+\/main$/.test(target) : repo.branch(c.dir) === "main";
+  }
+  return refs.some((ref) => {
+    const dest = ref.replace(/^\+/, "").split(":").pop();
+    return /^(HEAD|@)$/.test(dest) ? repo.branch(c.dir) === "main" : isMain(dest);
+  });
 }
 
 function deletesWorktree(c) {
@@ -419,7 +437,7 @@ const RULES = [
       "resolves up to the parent's node_modules on its own.",
   },
   {
-    test: (c) => pushesMain(c),
+    test: (c, { repo }) => pushesMain(c, repo),
     message:
       "Pushing to main is blocked: it lands code no CI run has judged (RULES.md rule 12).\n" +
       "Push your ticket branch and open a pull request:\n" +

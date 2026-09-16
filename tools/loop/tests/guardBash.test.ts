@@ -28,6 +28,8 @@ function captureStderr(fn: () => void): string {
 
 const REFS = new Set(["main", "HEAD", "origin/main", "HEAD~1"]);
 const repo = {
+  branch: () => "agent/1-x",
+  pushTarget: () => "origin/agent/1-x",
   isRef: (arg: string) => REFS.has(arg),
   pathsClean: (paths: string[]) => !paths.some((p) => p.includes("dirty")),
 };
@@ -144,8 +146,16 @@ describe("the bash guard blocks what has a correct alternative, however it is sp
     }
   }
 
+  test("a push with no refspec, or HEAD, is blocked from main", () => {
+    const onMain = { ...repo, branch: () => "main", pushTarget: () => null };
+    for (const cmd of ["git push", "git push origin", "git push origin HEAD", "git -C d push -f origin @"]) {
+      assert.match(String(check(cmd, device, onMain)), /pull request/, cmd);
+    }
+    assert.match(String(check("git push", device, { ...repo, pushTarget: () => "origin/main" })), /pull request/);
+  });
+
   test("a sourced checkout is blocked when git cannot answer", () => {
-    assert.ok(check("git checkout HEAD -- a.ts", device, { isRef: () => true, pathsClean: () => false }));
+    assert.ok(check("git checkout HEAD -- a.ts", device, { ...repo, isRef: () => true, pathsClean: () => false }));
   });
 });
 
@@ -184,6 +194,8 @@ describe("the bash guard allows correct usage", () => {
     "rm -rf /tmp/scratch",
     "git push -u origin agent/1071-x",
     "git push origin main:agent/1-x",
+    "git push",
+    "git push origin HEAD",
     "git commit -m @'\nBlocked now:\n\n  git checkout -- <path>\n  git worktree remove --force\n'@",
     "gh pr create --body @\"\nRun `git restore x` and it reverts.\n\"@",
     "cat <<'EOF' > note.md\ngit checkout -- a.ts is what broke it\nEOF",
