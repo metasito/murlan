@@ -15,7 +15,7 @@ import {
   type TestServer,
 } from "../helpers/testServer.ts";
 import { connectAs, waitFor } from "../helpers/client.ts";
-import { befriend } from "../helpers/friends.ts";
+import { befriend, inviteRowsFor } from "../helpers/friends.ts";
 import { teamForSeat, TEAMS_PLAYER_COUNT } from "../../lib/gameEngine.ts";
 
 interface RoomState {
@@ -285,6 +285,13 @@ describe(
       // Armed before the decline lands, over HTTP rather than the socket: the
       // room must be told on the decline's own event, not on whatever
       // broadcast happens along next.
+      const forged = await fetch(`${server.url}/api/friends/invites/${room.code}`, {
+        method: "DELETE",
+        headers: { cookie: strangerA.cookie },
+      });
+      assert.equal(forged.status, 200, await forged.text());
+      assert.equal((await inviteRowsFor(room.roomId)).length, 1, "an account never invited declined the friend's invite");
+
       const freed = waitFor<RoomState>(host.socket, "room:state");
       const decline = await fetch(`${server.url}/api/friends/invites/${room.code}`, {
         method: "DELETE",
