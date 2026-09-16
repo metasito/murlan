@@ -10,6 +10,8 @@
 // are pinned here directly, once, rather than once per caller.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync, symlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -31,6 +33,18 @@ describe("isInvokedDirectly", () => {
   test("a same-basename file in a different directory is not a match", () => {
     const decoy = path.join(path.dirname(self), "..", "entry.mjs");
     assert.equal(isInvokedDirectly(decoy, moduleUrl), false);
+  });
+
+  test("an argv1 reached through a junction or symlink", () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "entry-link-"));
+    try {
+      const link = path.join(dir, "lib");
+      symlinkSync(path.dirname(self), link, "junction");
+      assert.equal(isInvokedDirectly(path.join(link, "entry.mjs"), moduleUrl), true);
+    } finally {
+      rmSync(path.join(dir, "lib"), { force: true });
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   test("undefined argv1 — importing the module, not running it", () => {

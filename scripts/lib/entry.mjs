@@ -1,9 +1,11 @@
 /**
  * "Was this file run, or imported?" — one answer, for every script that has both jobs.
  *
- * Both sides resolve to a filesystem path before comparing. A suffix match says yes to any
- * same-named file invoked from elsewhere; comparing unresolved says no to a relative invocation.
+ * Both sides resolve to a real path before comparing, so a junction or subst drive matches too.
+ * A suffix match says yes to any same-named file invoked from elsewhere; comparing unresolved
+ * says no to a relative invocation.
  */
+import { realpathSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -14,7 +16,7 @@ import { fileURLToPath } from "node:url";
 export function isInvokedDirectly(argv1, moduleUrl) {
   if (!argv1) return false;
   try {
-    return path.resolve(argv1) === fileURLToPath(moduleUrl);
+    return realpathSync(path.resolve(argv1)) === realpathSync(fileURLToPath(moduleUrl));
   } catch {
     return false;
   }

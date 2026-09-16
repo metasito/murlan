@@ -3,10 +3,12 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { check } from "../guard-bash.mjs";
 
 const SCRIPT = fileURLToPath(new URL("../guard-bash.mjs", import.meta.url));
+const ROOT = fileURLToPath(new URL("../../../", import.meta.url));
 
 /** Runs a function with process.stderr.write captured rather than printed, then restores it. */
 function captureStderr(fn: () => void): string {
@@ -24,55 +26,127 @@ function captureStderr(fn: () => void): string {
   return out;
 }
 
-describe("the bash guard blocks what has a correct alternative", () => {
-  for (const cmd of [
-    "git add -A",
-    "git add .",
-    "git add --all",
-    "git commit -q -m x && git add -A",
-    "cd /c/repo && git add -A -- .",
-  ]) {
-    test(`blocks: ${cmd}`, () => {
-      assert.ok(check(cmd), `expected ${cmd} to be blocked`);
-      assert.match(check(cmd)!, /pathspec/);
-    });
+const REFS = new Set(["main", "HEAD", "origin/main", "HEAD~1"]);
+const repo = {
+  isRef: (arg: string) => REFS.has(arg),
+  pathsClean: (paths: string[]) => !paths.some((p) => p.includes("dirty")),
+};
+const device = () => "iOS UI (Maestro)";
+const guard = (cmd: string) => check(cmd, device, repo);
+
+const ADD = /pathspec/;
+const DISCARD = /Edit tool/;
+const FORCE_DELETE = /worktrees:remove/;
+const DEVICE = /MAESTRO_EVIDENCE_READ=1 <your command>/;
+const UNREADABLE = /literal id/;
+const MERGE = /not yours to merge/;
+
+const BLOCKED: [string, RegExp][] = [
+  ["git add -A", ADD],
+  ["git add .", ADD],
+  ["git add --all", ADD],
+  ["git add -u", ADD],
+  ["git commit -q -m x && git add -A", ADD],
+  ["cd /c/repo && git add -A -- .", ADD],
+  ["git -C d add -A", ADD],
+  ["FOO=1 git add -A", ADD],
+  ["for f in x; do git add .; done", ADD],
+  ["echo x | xargs git add -A", ADD],
+  ["env -u X git add -A", ADD],
+  ['echo "$(git add -A)"', ADD],
+  ["bash <<'EOF'\ngit add -A\nEOF", ADD],
+  ["cat <<'EOF' | sh\ngit add -A\nEOF", ADD],
+  ["iex @'\ngit add -A\n'@", ADD],
+  ['pwsh -Command "git add -A"', ADD],
+  ["bash <<< 'git add -A'", ADD],
+  ["/usr/bin/git add -A", ADD],
+  ["git.exe add -A", ADD],
+  ["find / -iname node_modules", /require\.resolve/],
+  ["find /c/ -name x", /require\.resolve/],
+  ["find C:\\ -name x", /require\.resolve/],
+  ["git checkout -- components/MenuLayout.tsx", DISCARD],
+  ["git restore components/MenuLayout.tsx", DISCARD],
+  ["git restore -- a.ts", DISCARD],
+  ["npm test; git checkout -- a.ts b.ts", DISCARD],
+  ["git checkout --  spaced.ts", DISCARD],
+  ["git restore --staged --worktree a.ts", DISCARD],
+  ["git restore --source=HEAD dirty.ts", DISCARD],
+  ["git checkout .", DISCARD],
+  ["git checkout a.tsx", DISCARD],
+  ["git checkout main a.tsx", DISCARD],
+  ["git checkout HEAD -- dirty.ts", DISCARD],
+  ["git checkout -f main", DISCARD],
+  ["git reset --hard", DISCARD],
+  ["git reset --hard origin/main", DISCARD],
+  ["git clean -fd", DISCARD],
+  ["git clean --force", DISCARD],
+  ["git switch --discard-changes main", DISCARD],
+  ["git stash drop", DISCARD],
+  ["git stash clear", DISCARD],
+  ["git worktree remove .worktrees/w589 --force", FORCE_DELETE],
+  ["git worktree remove --force .worktrees/w589", FORCE_DELETE],
+  ["git worktree remove -f .worktrees/w589", FORCE_DELETE],
+  ["npm test; git worktree remove .worktrees/x --force", FORCE_DELETE],
+  ["git commit -m @'\nmsg\n'@; git worktree remove .worktrees/x --force", FORCE_DELETE],
+  ["bash <<'EOF'\ngit worktree remove --force .worktrees/x\nEOF", FORCE_DELETE],
+  ["rm -rf .worktrees/agent-7", FORCE_DELETE],
+  ["rm -r --force ./.worktrees", FORCE_DELETE],
+  ["Remove-Item -Recurse -Force .worktrees\\agent-7", FORCE_DELETE],
+  ["ri -r C:\\repo\\.worktrees\\agent-7", FORCE_DELETE],
+  ["cmd /c rmdir /s /q .worktrees\\agent-7", FORCE_DELETE],
+  ["git push origin HEAD:main", /pull request/],
+  ["git push origin main", /pull request/],
+  ["git push -f origin +agent/1-x:refs/heads/main", /pull request/],
+  ["git push origin --delete main", /pull request/],
+  ["gh workflow run ios.yml --ref agent/353-ios-offline-game", DEVICE],
+  ["gh workflow run maestro.yml", DEVICE],
+  ['gh workflow run "iOS UI (Maestro)"', DEVICE],
+  ["gh workflow run IOS.YML", DEVICE],
+  ["gh workflow run 123456", DEVICE],
+  ["gh api -X POST repos/o/r/actions/workflows/ios.yml/dispatches -f ref=main", DEVICE],
+  ["gh api -X POST repos/o/r/Actions/Workflows/Maestro.yml/Dispatches", DEVICE],
+  ["echo MAESTRO_EVIDENCE_READ=1; gh workflow run ios.yml", DEVICE],
+  ["gh workflow run ios.yml # MAESTRO_EVIDENCE_READ=1", DEVICE],
+  ["gh run rerun 33428375221 --failed", DEVICE],
+  ["gh -R o/r run rerun 33428375221", DEVICE],
+  ["gh api -X POST repos/o/r/actions/runs/33428375221/rerun", DEVICE],
+  ["gh api -X POST repos/o/r/actions/jobs/99710945601/rerun", DEVICE],
+  ["gh api -X POST repos/o/r/actions/runs/$RUN/rerun-failed-jobs", UNREADABLE],
+  ["gh pr merge 994 --merge --delete-branch", MERGE],
+  ["gh -R metasito/murlan pr merge 994 --merge", MERGE],
+  ["gh --repo o/r pr merge 5", MERGE],
+  ["gh --repo=o/r pr merge 5", MERGE],
+  ["gh --hostname github.com pr merge 5", MERGE],
+  ["GH_REPO=o/r gh pr merge 5", MERGE],
+  ["git push && gh pr merge 994 --merge", MERGE],
+  ["gh api graphql -f query='mutation{mergePullRequest(input:{pullRequestId:\"x\"}){clientMutationId}}'", MERGE],
+  ["gh api --method PUT repos/metasito/murlan/pulls/994/merge -f merge_method=merge", MERGE],
+];
+
+const PREFIXES: [string, (cmd: string) => string | null][] = [
+  ["as written", (cmd) => cmd],
+  ["git -C", (cmd) => (cmd.startsWith("git ") ? cmd.replace(/^git /, "git -C d ") : null)],
+  ["gh --repo", (cmd) => (cmd.startsWith("gh ") ? cmd.replace(/^gh /, "gh --repo o/r ") : null)],
+  ["an assignment", (cmd) => `X=1 ${cmd}`],
+  ["do", (cmd) => `do ${cmd}`],
+  ["a subshell", (cmd) => `(${cmd})`],
+  ["bash -c", (cmd) => (cmd.includes("'") ? null : `bash -c '${cmd}'`)],
+];
+
+describe("the bash guard blocks what has a correct alternative, however it is spelled", () => {
+  for (const [cmd, why] of BLOCKED) {
+    for (const [prefix, spell] of PREFIXES) {
+      const spelled = spell(cmd);
+      if (spelled === null) continue;
+      test(`blocks (${prefix}): ${JSON.stringify(spelled)}`, () => {
+        assert.match(String(guard(spelled)), why);
+      });
+    }
   }
 
-  for (const cmd of ["find / -iname node_modules", "find /c/ -name x", "find C:\\ -name x"]) {
-    test(`blocks: ${cmd}`, () => {
-      assert.ok(check(cmd), `expected ${cmd} to be blocked`);
-      assert.match(check(cmd)!, /require\.resolve/);
-    });
-  }
-
-  for (const cmd of [
-    "git checkout -- components/MenuLayout.tsx",
-    "git restore components/MenuLayout.tsx",
-    "git restore -- a.ts",
-    "npm test; git checkout -- a.ts b.ts",
-    "git checkout --  spaced.ts",
-    // --staged is safe on its own; adding --worktree is what discards the edits.
-    "git restore --staged --worktree a.ts",
-  ]) {
-    test(`blocks: ${cmd}`, () => {
-      assert.ok(check(cmd), `expected ${cmd} to be blocked`);
-      assert.match(check(cmd)!, /Edit tool/);
-    });
-  }
-
-  for (const cmd of [
-    "git worktree remove .worktrees/w589 --force",
-    "git worktree remove --force .worktrees/w589",
-    "git worktree remove -f .worktrees/w589",
-    "npm test; git worktree remove .worktrees/x --force",
-    // Blanking a here-string body must not blind the guard to a real command beside it.
-    "git commit -m @'\nmsg\n'@; git worktree remove .worktrees/x --force",
-  ]) {
-    test(`blocks: ${cmd}`, () => {
-      assert.ok(check(cmd), `expected ${cmd} to be blocked`);
-      assert.match(check(cmd)!, /worktrees:remove/);
-    });
-  }
+  test("a sourced checkout is blocked when git cannot answer", () => {
+    assert.ok(check("git checkout HEAD -- a.ts", device, { isRef: () => true, pathsClean: () => false }));
+  });
 });
 
 // The floor. A guard that blocks everything passes every assertion above and makes the repo
@@ -82,64 +156,60 @@ describe("the bash guard allows correct usage", () => {
     "git add -- scripts/x.mjs tests/x.test.ts",
     "git add scripts/",
     "git add -p",
+    "git add -- .",
+    "git -C .worktrees/agent-7 add -- a.ts",
     "git status --short",
     "git commit -q -m 'x'",
     "find components -iname '*rail*'",
     "find . -maxdepth 2 -name package.json",
     "npm test",
     "gh pr create --title x",
-    // The text as data, not as a command. A guard that fires on these blocks work that runs
-    // nothing — it caught its own author writing a regex containing the phrase.
-    // Naming a source is the deliberate, documented way back — and the only safe one, because
-    // it is reached after the work being protected is committed.
     "git checkout HEAD -- components/MenuLayout.tsx",
     "git restore --source=HEAD~1 a.ts",
     "git restore --staged a.ts",
-    // Moving between branches is not touching the working tree's contents.
     "git checkout -b agent/589-x origin/main",
     "git checkout main",
     "git checkout --track origin/x",
-    // The plain remove refuses rather than deleting through a link, so it needs no guard.
+    "git checkout -",
+    "git switch agent/1-x",
+    "git reset --soft HEAD~1",
+    "git clean -nd",
+    "git stash list",
     "git worktree remove .worktrees/w589",
     "git worktree list",
     "git worktree prune",
-    // A here-string body is data — a commit message, a PR body — and its lines start at a line
-    // start like any other. The guard blocked its own introducing commit over this.
+    "npm run worktrees:remove -- .worktrees/agent-7",
+    "ls .worktrees/agent-7",
+    "rm -f .worktrees/agent-7/tmp.txt",
+    "rm -rf /tmp/scratch",
+    "git push -u origin agent/1071-x",
+    "git push origin main:agent/1-x",
     "git commit -m @'\nBlocked now:\n\n  git checkout -- <path>\n  git worktree remove --force\n'@",
     "gh pr create --body @\"\nRun `git restore x` and it reverts.\n\"@",
     "cat <<'EOF' > note.md\ngit checkout -- a.ts is what broke it\nEOF",
+    "git commit -F - <<'EOF'\nsay why gh pr merge is the loop's job\nEOF",
+    "gh pr create --body-file - <<'EOF'\ngit add -A and rm -rf .worktrees/x\nEOF",
     "grep -n 'git add -A' docs/agents/RULES.md",
+    "grep -rn \"gh pr merge\\|git push origin main\" tools",
     "gh issue comment 5 --body 'never run git checkout -- on that file'",
     "node -e \"const p=/git add -A/; console.log(p)\"",
-    "gh issue comment 5 --body 'do not use git add -A here'",
+    "gh issue comment 5 --body 'do not use git add -A here; or rm -rf .worktrees'",
     "echo 'find / is slow' > note.txt",
-    // The marker is the acknowledgement that the last failure's artefact was read. Reading it
-    // is the point, so every command that does the reading has to stay open.
+    "git add -- a.ts 2>&1 | tail -3",
     "MAESTRO_EVIDENCE_READ=1 gh workflow run ios.yml --ref agent/353-x",
     "MAESTRO_EVIDENCE_READ=1 gh run rerun 33428375221 --failed",
+    "MAESTRO_EVIDENCE_READ=1 gh api -X POST repos/o/r/actions/workflows/ios.yml/dispatches",
     "gh run download 33428373840 -n maestro-debug-ios -D /tmp/art",
     "gh run view 33428373840 --json jobs",
-    // Only the device workflows are gated: a browser or unit run has no pixels to read.
     "gh workflow run ci.yml --ref main",
+    "gh workflow run ci.yml --ref agent/353-ios-offline-game",
+    "gh workflow view ios.yml",
+    "gh api repos/o/r/actions/workflows/ios.yml/runs",
+    "gh pr view 994 --json state,mergeStateStatus",
+    "gh pr create --base main --head agent/1-x --title t --body-file b.md",
   ]) {
-    test(`allows: ${cmd}`, () => {
-      assert.equal(check(cmd), null, `expected ${cmd} to be allowed`);
-    });
-  }
-});
-
-describe("a device run is gated on having read the last failure's artefact", () => {
-  // A dispatch is ~25 minutes and the previous artefact usually already answers the question.
-  // Run 33428373840 was spent rediscovering a screen the run before it had screenshotted.
-  for (const cmd of [
-    "gh workflow run ios.yml --ref agent/353-ios-offline-game",
-    "gh workflow run maestro.yml",
-  ]) {
-    test(`blocks: ${cmd}`, () => {
-      const message = check(cmd);
-      assert.ok(message, `expected ${cmd} to be blocked`);
-      assert.match(String(message), /MAESTRO_EVIDENCE_READ=1/);
-      assert.match(String(message), /screen-hierarchy|screenshot/);
+    test(`allows: ${JSON.stringify(cmd)}`, () => {
+      assert.equal(guard(cmd), null, `expected ${cmd} to be allowed`);
     });
   }
 });
@@ -260,50 +330,6 @@ describe("a rerun is read as its own command, with its own arguments", () => {
   });
 });
 
-describe("gh pr merge", () => {
-  test("a bare merge is blocked", () => {
-    assert.match(String(check("gh pr merge 994 --merge --delete-branch")), /not yours to merge/);
-  });
-
-  // The forms a deny rule would miss. A PreToolUse hook sees the whole line, so it can.
-  test("a repo-scoped merge is blocked", () => {
-    assert.match(String(check("gh -R metasito/murlan pr merge 994 --merge")), /not yours to merge/);
-  });
-
-  test("a merge after a separator is blocked", () => {
-    assert.match(String(check("git push && gh pr merge 994 --merge")), /not yours to merge/);
-  });
-
-  test("the graphql mutation is blocked", () => {
-    assert.match(
-      String(check("gh api graphql -f query='mutation{mergePullRequest(input:{pullRequestId:\"x\"}){clientMutationId}}'")),
-      /not yours to merge/
-    );
-  });
-
-  // The words in a commit message or a PR body are prose about a command, not a command.
-  test("the phrase inside a heredoc is allowed", () => {
-    assert.equal(check("git commit -F - <<'EOF'\nsay why gh pr merge is the loop's job\nEOF"), null);
-  });
-
-  // A rule that only blocks the spelling Claude usually writes is satisfied without the thing it
-  // guards being true. The REST merge endpoint ignores checks exactly as gh pr merge does.
-  test("the REST merge endpoint is blocked", () => {
-    assert.match(
-      String(check("gh api --method PUT repos/metasito/murlan/pulls/994/merge -f merge_method=merge")),
-      /not yours to merge/
-    );
-  });
-
-  test("reading a pull request is allowed", () => {
-    assert.equal(check("gh pr view 994 --json state,mergeStateStatus"), null);
-  });
-
-  test("creating a pull request is allowed", () => {
-    assert.equal(check("gh pr create --base main --head agent/1-x --title t --body-file b.md"), null);
-  });
-});
-
 describe("a workflow lookup that fails is announced, not swallowed", () => {
   test("a throwing lookup still allows the dispatch, and names what could not be checked", () => {
     let calls = 0;
@@ -352,38 +378,64 @@ describe("the entrypoint fails open on a payload it cannot read", () => {
       );
     });
   }
+});
 
-  test("a well-formed payload is still checked and can still block", () => {
-    const result = spawnSync(process.execPath, [SCRIPT], {
-      input: JSON.stringify({ tool_input: { command: "git add -A" } }),
-      encoding: "utf8",
-    });
-    assert.equal(result.status, 2);
-    assert.match(result.stderr, /pathspec/);
-  });
-
-  // Failing open is what makes the hook safe to have; it is also what makes a wrong path in
-  // settings.json invisible. Claude Code runs each `command` from the repository root and reports
-  // nothing when the file is not there, so a hook pointed at a script that moved guards nothing and
-  // says so to no one. Every command named there is run here, against a payload it must allow.
-  test("every hook settings.json registers is a script that exists and runs", () => {
-    const settings = JSON.parse(readFileSync(".claude/settings.json", "utf8"));
-    const commands = Object.values(settings.hooks as Record<string, { hooks: { command: string }[] }[]>)
+describe("the hooks settings.json registers", () => {
+  type Entry = { matcher: string; hooks: { command: string }[] };
+  const settings = JSON.parse(readFileSync(join(ROOT, ".claude/settings.json"), "utf8"));
+  const entries = (event: string) => settings.hooks[event] as Entry[];
+  const matched = (event: string, script: string) =>
+    entries(event)
+      .filter((e) => e.hooks.some((h) => h.command.includes(script)))
+      .flatMap((e) => e.matcher.split("|"));
+  const commandOf = (script: string) =>
+    Object.values(settings.hooks as Record<string, Entry[]>)
       .flat()
-      .flatMap((m) => m.hooks.map((h) => h.command));
-    assert.ok(commands.length >= 3, "no hook commands found; the shape of settings.json has changed");
+      .flatMap((e) => e.hooks.map((h) => h.command))
+      .find((c) => c.includes(script))!;
+  const runAsWritten = (command: string, cwd: string, payload: unknown) =>
+    spawnSync("bash", ["-c", command], {
+      cwd,
+      input: JSON.stringify(payload),
+      encoding: "utf8",
+      env: { ...process.env, CLAUDE_PROJECT_DIR: ROOT },
+    });
 
-    for (const command of commands) {
-      const [, script] = command.split(/\s+/);
-      assert.ok(script && existsSync(script), `${command}: ${script} does not exist`);
-      const result = spawnSync(process.execPath, [script], { input: "{}", encoding: "utf8" });
-      // Exactly 0: 1 is a crash, and 2 is a *block*. A hook that exits 2 on an empty payload
-      // refuses every tool call the matcher covers, which is as broken as one that never fires.
-      assert.equal(
-        result.status,
-        0,
-        `${command} did not allow an empty payload: ${result.stderr.split("\n")[0]}`
-      );
+  test("cover every tool and every session start they guard", () => {
+    for (const tool of ["Bash", "PowerShell"]) assert.ok(matched("PreToolUse", "guard-bash.mjs").includes(tool), tool);
+    for (const tool of ["Write", "Edit"]) assert.ok(matched("PreToolUse", "guard-comments.mjs").includes(tool), tool);
+    for (const source of ["startup", "resume", "compact", "clear"]) {
+      assert.ok(matched("SessionStart", "loop-status.mjs").includes(source), source);
     }
   });
+
+  for (const [where, cwd] of [
+    ["the repository root", ROOT],
+    ["a subdirectory", join(ROOT, "tools", "loop")],
+  ]) {
+    test(`run as written from ${where}, each blocks what it guards`, () => {
+      const bash = runAsWritten(commandOf("guard-bash.mjs"), cwd, { cwd, tool_input: { command: "git add -A" } });
+      assert.equal(bash.status, 2, bash.stderr);
+      assert.match(bash.stderr, ADD);
+
+      const comments = runAsWritten(commandOf("guard-comments.mjs"), cwd, {
+        tool_name: "Write",
+        tool_input: { file_path: join(ROOT, "src", "never-written.ts"), content: "// previously this returned null\nconst x = 1;\n" },
+      });
+      assert.match(comments.stdout, /"permissionDecision":\s*"deny"/, comments.stderr);
+    });
+
+    test(`run as written from ${where}, every hook exists and allows an empty payload`, () => {
+      const commands = Object.values(settings.hooks as Record<string, Entry[]>)
+        .flat()
+        .flatMap((e) => e.hooks.map((h) => h.command));
+      assert.ok(commands.length >= 3, "no hook commands found; the shape of settings.json has changed");
+      for (const command of commands) {
+        assert.match(command, /^node "\$CLAUDE_PROJECT_DIR"\/tools\/loop\/[\w-]+\.mjs$/, command);
+        assert.ok(existsSync(join(ROOT, command.split("/").slice(1).join("/"))), command);
+        const result = runAsWritten(command, cwd, {});
+        assert.equal(result.status, 0, `${command} did not allow an empty payload: ${result.stderr.split("\n")[0]}`);
+      }
+    });
+  }
 });
