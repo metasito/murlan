@@ -505,6 +505,7 @@ const styles = StyleSheet.create({
   toggleBtn: {
     flex: 1,
     minWidth: 80,
+    minHeight: TOUCH_TARGET_MIN,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",

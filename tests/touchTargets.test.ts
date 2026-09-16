@@ -43,6 +43,33 @@ const SIZED_AT_RUNTIME: [string, number, string][] = [
 ];
 
 /**
+ * Controls declaring the height floor whose width is the row they fill or their own label plus
+ * padding, neither of which a source scan can measure. `tests/e2e/tapTargets.spec.ts` sweeps the
+ * rendered rect of the screens that hold them.
+ */
+const WIDTH_FROM_LAYOUT: [string, number, string][] = [
+  ["components/DifficultyLadder.tsx", 1, "a ladder segment, `flex: 1` in the ladder row"],
+  ["components/GameOverOverlay.tsx", 1, "the breakdown toggle, a labelled row"],
+  ["components/HandBreakdown.tsx", 2, "retry and replay, a label plus horizontal padding"],
+  ["components/HistoryRow.tsx", 1, "a history row, the list's full width"],
+  ["components/NotificationBanner.tsx", 1, "the banner body, the banner's full width"],
+  ["components/ReplayControls.tsx", 1, "a move row, the move list's full width"],
+  ["components/ResultBoard.tsx", 2, "home is `HOME_BTN_W` wide, rematch is `flex: 1`"],
+  ["components/SettingsModal.tsx", 5, "segments and rows filling the modal's width"],
+  ["components/table/rematchPrompt.tsx", 2, "yes and no, labelled choices sharing the prompt's row"],
+  ["components/table/settingsSheet.tsx", 1, "a sheet row, the sheet's full width"],
+  ["app/(online)/friends.tsx", 1, "join, a label plus `Spacing.wide` each side"],
+  ["app/(online)/index.tsx", 3, "the modal's cancel and confirm buttons, `flex: 1` in its row"],
+  ["app/(online)/room.tsx", 3, "a format option filling its row, and copy/share, an icon plus a label"],
+  ["app/auth.tsx", 1, "a tab, `flex: 1` in the tab bar"],
+  ["app/capture.tsx", 1, "a capture row, the list's full width"],
+  ["app/index.tsx", 6, "the hero, the mode tiles, the rules link, the avatar and the invite buttons, each a labelled block"],
+  ["app/lobby.tsx", 3, "count, mode and format options sharing their rows"],
+  ["app/profile.tsx", 1, "a door row, the card's full width"],
+  ["app/rules.tsx", 2, "an FAQ question and the tutorial link, each a labelled row"],
+];
+
+/**
  * Pressables that are not control-sized boxes: a whole card, a surface, a dismiss scrim. The
  * count per file is the point — a file named here would otherwise absorb the next real
  * control added to it silently, which is the curated list's blind spot one level up.
@@ -130,11 +157,9 @@ export function pressableBoxes(files: string[], read: (rel: string) => string): 
   return out;
 }
 
-/** A dimension a style declares must reach the floor; one none of them declares is a question. */
+/** Both dimensions must be declared and reach the floor; an undeclared one is a question. */
 const measuresUp = (c: Candidate) =>
-  (c.width !== null || c.height !== null) &&
-  (c.width ?? TOUCH_TARGET_MIN) >= TOUCH_TARGET_MIN &&
-  (c.height ?? TOUCH_TARGET_MIN) >= TOUCH_TARGET_MIN;
+  c.width !== null && c.height !== null && c.width >= TOUCH_TARGET_MIN && c.height >= TOUCH_TARGET_MIN;
 
 const read = (rel: string) => readFileSync(path.join(repoRoot, rel), "utf8");
 
@@ -153,7 +178,7 @@ test("every control's touch size has been ruled on", () => {
     byFile.set(c.file, [...(byFile.get(c.file) ?? []), c]);
   }
 
-  const lists = [SIZED_AT_RUNTIME, NOT_A_TARGET, UNDER_THE_FLOOR].flat();
+  const lists = [SIZED_AT_RUNTIME, WIDTH_FROM_LAYOUT, NOT_A_TARGET, UNDER_THE_FLOOR].flat();
   const claimed = (file: string) =>
     lists.filter(([f]) => f === file).reduce((n, [, c]) => n + c, 0);
 
@@ -173,7 +198,7 @@ test("every control's touch size has been ruled on", () => {
   assert.deepEqual(
     wrong,
     [],
-    "each of these needs one entry in SIZED_AT_RUNTIME, NOT_A_TARGET or UNDER_THE_FLOOR, and no " +
+    "each of these needs one entry in SIZED_AT_RUNTIME, WIDTH_FROM_LAYOUT, NOT_A_TARGET or UNDER_THE_FLOOR, and no " +
       "more: a control nobody has ruled on is a control nobody has measured, and a claim with " +
       "nothing left to cover is one the next control will inherit"
   );
@@ -204,7 +229,7 @@ test("the scan finds the app's controls, and reads a real box", () => {
     `controls found in only ${filesWithControls.size} files — the reader has stopped parsing`
   );
   assert.ok(
-    candidates.filter(measuresUp).length > 50,
+    candidates.filter((c) => c.width !== null || c.height !== null).length > 50,
     "no candidate has a box the reader could measure"
   );
   // MenuButton is the in-repo reference for what this project considers a correct control.
@@ -221,8 +246,9 @@ test("a box has to clear the floor in both dimensions, and only its own", () => 
   assert.deepEqual(box("width: 200, height: 20"), { width: 200, height: 20 });
   assert.equal(measuresUp(at(200, 20)), false);
   assert.equal(measuresUp(at(44, 44)), true);
-  // One dimension declared and one from padding: the declared half is all there is to check.
-  assert.equal(measuresUp(at(null, 44)), true);
+  // A width-only chip is ~30pt tall in landscape: the undeclared half is not a pass.
+  assert.equal(measuresUp(at(null, 44)), false);
+  assert.equal(measuresUp(at(44, null)), false);
   assert.equal(measuresUp(at(null, 20)), false);
   assert.equal(measuresUp(at(null, null)), false, "an undeclared box is a question, not a pass");
 
