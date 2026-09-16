@@ -35,13 +35,15 @@ function literalsOf(expr: ts.Expression, sf: ts.SourceFile, unread: string[]): s
     return [...literalsOf(expr.whenTrue, sf, unread), ...literalsOf(expr.whenFalse, sf, unread)];
   }
   const decl = ts.isIdentifier(expr) ? declarationOf(expr) : undefined;
-  if (decl && ts.isVariableDeclaration(decl) && decl.initializer) return literalsOf(decl.initializer, sf, unread);
+  const isConst = (d: ts.Node): d is ts.VariableDeclaration =>
+    ts.isVariableDeclaration(d) && (d.parent.flags & ts.NodeFlags.Const) !== 0;
+  if (decl && isConst(decl) && decl.initializer) return literalsOf(decl.initializer, sf, unread);
   const helper = decl && ts.isParameter(decl) ? decl.parent.parent : undefined;
-  if (decl && helper && ts.isVariableDeclaration(helper) && ts.isIdentifier(helper.name)) {
+  if (decl && helper && isConst(helper)) {
     const index = (decl.parent as ts.SignatureDeclaration).parameters.indexOf(decl as ts.ParameterDeclaration);
     const args: ts.Expression[] = [];
     const findCalls = (n: ts.Node) => {
-      if (ts.isCallExpression(n) && ts.isIdentifier(n.expression) && n.expression.text === helper.name.getText()) {
+      if (ts.isCallExpression(n) && ts.isIdentifier(n.expression) && declarationOf(n.expression) === helper) {
         if (n.arguments[index]) args.push(n.arguments[index]);
       }
       ts.forEachChild(n, findCalls);
@@ -54,12 +56,15 @@ function literalsOf(expr: ts.Expression, sf: ts.SourceFile, unread: string[]): s
 }
 
 /** Every code an object literal saying `ok: false` can carry, and every such `code` the scan could not resolve. */
-function refusalCodes(): { codes: Map<string, string>; unread: string[] } {
+function refusalCodes(
+  files: [string, string][] = readdirSync(path.join(REPO_ROOT, "server"))
+    .filter((f) => f.endsWith(".ts"))
+    .map((f) => [`server/${f}`, readFileSync(path.join(REPO_ROOT, "server", f), "utf8")])
+): { codes: Map<string, string>; unread: string[] } {
   const codes = new Map<string, string>();
   const unread: string[] = [];
-  for (const file of readdirSync(path.join(REPO_ROOT, "server")).filter((f) => f.endsWith(".ts"))) {
-    const source = readFileSync(path.join(REPO_ROOT, "server", file), "utf8");
-    const sf = ts.createSourceFile(`server/${file}`, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  for (const [file, source] of files) {
+    const sf = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
     const visit = (node: ts.Node) => {
       if (ts.isObjectLiteralExpression(node)) {
         const prop = (name: string) =>
@@ -77,6 +82,19 @@ function refusalCodes(): { codes: Map<string, string>; unread: string[] } {
   }
   return { codes, unread };
 }
+
+test("a reassigned code is unread, and a same-named helper elsewhere is not followed", () => {
+  const { codes, unread } = refusalCodes([
+    ["a.ts", `function f(bad) { let code = "FIRST"; if (bad) code = "UNSEEN"; return { ok: false, code }; }`],
+    [
+      "b.ts",
+      `function g() { const refuse = (code) => ({ ok: false, code }); return refuse("REAL"); }
+       function h() { const refuse = (label) => ({ label }); return refuse("LABEL"); }`,
+    ],
+  ]);
+  assert.deepEqual([...codes.keys()], ["REAL"]);
+  assert.equal(unread.length, 1);
+});
 
 test("every refusal code the server returns is named by a test", () => {
   const { codes, unread } = refusalCodes();
