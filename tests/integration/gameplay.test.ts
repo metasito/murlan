@@ -2,7 +2,7 @@ import { test, before, after, describe, mock } from "node:test";
 import assert from "node:assert/strict";
 import { io as ioClient, type Socket } from "socket.io-client";
 import { logger } from "../../server/logger.ts";
-import { createDeck } from "../../lib/gameEngine.ts";
+import { createDeck, getAllValidPlays } from "../../lib/gameEngine.ts";
 import {
   startTestServer,
   hasDatabase,
@@ -63,6 +63,9 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
   });
 
   const makeClients = (usernames: string[]) => makeClientsOn(server, usernames);
+
+  const refusal = (client: Client, event: string, ...args: unknown[]) =>
+    client.socket.timeout(5_000).emitWithAck(event, ...args) as Promise<{ ok: boolean; code?: string }>;
 
   // ── Test 0 ──────────────────────────────────────────────────────────────
 
@@ -196,6 +199,11 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
     winner!.socket.emit("game:pass");
     const passErr = await passRejected;
     assert.equal(passErr.code, "EXCHANGE_PENDING");
+
+    // Heads-up, the loser can name a card the winner holds; only the seat check refuses it.
+    const loser = [alice, bob].find((c) => c !== winner)!;
+    const stolen = await refusal(loser, "game:exchange_give_card", { cardId: handBefore[0].id });
+    assert.equal(stolen.code, "NOT_YOUR_EXCHANGE");
 
     // The rejection must not just fail to reply — re-fetch the authoritative
     // state (game:rejoin is a safe, idempotent read) and confirm the
@@ -774,6 +782,62 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
       after.players.map((p) => p.handCount),
       before.players.map((p) => p.handCount)
     );
+  });
+
+  test("a room is started by its host, with a second player, and is hidden or shown only before", async () => {
+    const [host, guest] = await makeClients(["start_refusal_host", "start_refusal_guest"]);
+    const created = waitFor<RoomState>(host.socket, "room:state");
+    host.socket.emit("room:create", { gameMode: "free_for_all", maxPlayers: 2 });
+    const { code } = await created;
+    assert.equal((await refusal(host, "room:start")).code, "MIN_PLAYERS_REQUIRED");
+
+    const joined = waitFor<RoomState>(guest.socket, "room:state");
+    guest.socket.emit("room:join", { code });
+    await joined;
+    assert.equal((await refusal(guest, "room:start")).code, "NOT_THE_HOST");
+
+    await startGame([host, guest]);
+    const late = await refusal(host, "room:setVisibility", { visibility: "public" });
+    assert.equal(late.code, "GAME_ALREADY_STARTED");
+  });
+
+  test("moves the table cannot take are refused by code, and the table stays put", async () => {
+    const [alice, bob] = await makeClients(["refusal_alice", "refusal_bob"]);
+    const room = await setUpRoom([alice, bob], 2);
+    const states = await startGame([alice, bob]);
+    const leadIdx = states.findIndex((s) => s.viewerSeatIndex === s.currentTurnIndex);
+    const lead = [alice, bob][leadIdx]!;
+    const other = [alice, bob][1 - leadIdx]!;
+    const before = states[leadIdx]!;
+    const hand = before.players[before.viewerSeatIndex].hand;
+    const start = before.startCard!;
+    const offRank = hand.find((c) => !c.isJoker && c.rank !== start.rank);
+    assert.ok(offRank, "a fourteen-card hand holds a second rank");
+
+    assert.equal((await refusal(lead, "game:pass")).code, "CANNOT_PASS");
+    const mixed = await refusal(lead, "game:play", { cardIds: [start.id, offRank.id] });
+    assert.equal(mixed.code, "INVALID_COMBINATION");
+    const unowed = await refusal(lead, "game:exchange_give_card", { cardId: hand[0].id });
+    assert.equal(unowed.code, "NO_EXCHANGE");
+    assert.equal((await refusal(lead, "room:spectate", { code: room.code })).code, "ALREADY_IN_ROOM");
+
+    const unmoved = await authoritativeState(lead, room.roomId);
+    assert.equal(unmoved.currentTurnIndex, before.currentTurnIndex);
+    assert.equal(unmoved.firstPlayMade, false);
+
+    assert.equal((await refusal(lead, "game:play", { cardIds: [start.id] })).ok, true);
+    const otherBefore = states[1 - leadIdx]!;
+    const otherHand = otherBefore.players[otherBefore.viewerSeatIndex].hand;
+    const wrongShape = getAllValidPlays(otherHand, null, true).find(
+      (p) => p.cards.length > 1 && p.type !== "bomb" && p.type !== "royal_straight"
+    );
+    assert.ok(wrongShape, "a fourteen-card hand holds a pair or a run");
+    const unbeaten = await refusal(other, "game:play", { cardIds: wrongShape.cards.map((c) => c.id) });
+    assert.equal(unbeaten.code, "INVALID_MOVE");
+
+    const after = await authoritativeState(other, room.roomId);
+    assert.equal(after.currentTurnIndex, otherBefore.viewerSeatIndex);
+    assert.equal(after.players[otherBefore.viewerSeatIndex].handCount, otherHand.length);
   });
 
   // ── Test 13 ─────────────────────────────────────────────────────────────
