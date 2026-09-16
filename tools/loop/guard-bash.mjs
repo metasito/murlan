@@ -3,10 +3,16 @@
  * alternative always exists, and says what to run instead.
  *
  * Blocked:
- *   git add -A / . / --all   sessions share an index; a bare add absorbs another session's work
- *   git checkout -- / restore  reverts to HEAD, discarding uncommitted work in the same file
- *   find / …                 a filesystem sweep; resolve packages with require.resolve instead
- *   gh pr merge              merges an UNSTABLE (incl. queued) pull request on the spot
+ *   git add -A / . / --all / -u      sessions share an index; a bare add absorbs another session's work
+ *   git checkout <path> / restore / reset --hard / clean -f / stash drop   discard uncommitted work
+ *   git worktree remove --force, rm -r .worktrees/…   delete through a node_modules junction
+ *   git push … main                  lands code with no CI
+ *   find / …                         a filesystem sweep; resolve packages with require.resolve instead
+ *   gh pr merge                      merges an UNSTABLE (incl. queued) pull request on the spot
+ *   a device workflow dispatch or rerun, until its last artefact has been read
+ *
+ * Every rule reads the same parsed commands (`commands()`), never the raw text: a rule that matches
+ * one spelling is passed by `git -C d add -A`, `X=1 git …`, `do git …` or `bash -c '…'`.
  *
  * Registered for both Bash and PowerShell in .claude/settings.json: the same `git` runs from
  * either, so guarding one shell only moves the mistake to the other.
@@ -15,40 +21,188 @@
  */
 import { readFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
+import { resolve } from "node:path";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 
 /** A failure's first line — enough to name it on stderr without dumping a stack there. */
 const firstLine = (err) => String(err?.message ?? err).split("\n")[0];
 
-// A command actually runs only at the start of the line or after a separator. Without this the
-// guard fires on the same text quoted inside an argument — a grep pattern, a heredoc, a message —
-// and blocks work that runs nothing.
-const AT_COMMAND_START = String.raw`(?:^|[;&|]\s*|\$\(\s*|^\s*)`;
+const SHELL = /^(bash|sh|zsh|dash|pwsh|powershell|cmd|iex|invoke-expression)$/;
+const PIPED_TO_SHELL = /^[^\n]*\|\s*(?:\S*[\\/])?(bash|sh|zsh|dash|pwsh|powershell|iex|invoke-expression)\b/i;
+const WRAPPER = new Set(["env", "xargs", "time", "do", "then", "else", "elif", "if", "while", "until", "!", "exec", "nohup", "command", "sudo", "nice"]);
+const WRAPPER_TAKES_A_VALUE = /^-(?:[IinPdLEsau]|-(?:max-args|max-procs|delimiter|replace|arg-file|unset))$/;
+const GIT_TAKES_A_VALUE = /^(-C|-c|--git-dir|--work-tree|--namespace|--config-env|--super-prefix)$/;
+const GH_TAKES_A_VALUE = /^(-R|--repo|--hostname)$/;
+const REDIRECT = /^\d*(?:[<>]+|&>>?)(\S*)$/;
+const MAX_DEPTH = 5;
+
+const commandName = (word) => (word ?? "").replace(/\\/g, "/").split("/").pop().replace(/\.(exe|cmd)$/i, "").toLowerCase();
+
+/** Index of the `)` closing the `(` at `open`, or the end of the text. */
+function closing(text, open) {
+  let depth = 0;
+  for (let i = open; i < text.length; i++) {
+    if (text[i] === "(") depth += 1;
+    else if (text[i] === ")" && --depth === 0) return i;
+  }
+  return text.length;
+}
 
 /**
- * Blanks the bodies of here-strings and heredocs before any rule reads the command.
+ * The words of each simple command, quote-aware: a separator inside quotes is data, and a
+ * `$( … )` anywhere, quoted or not, is a command of its own. Backslash is literal (PowerShell and
+ * Windows paths) except before a quote or a newline.
+ */
+function segments(text, depth) {
+  const out = [];
+  let words = [];
+  let word = null;
+  let quote = null;
+  const endWord = () => {
+    if (word !== null) words.push(word);
+    word = null;
+  };
+  const endSegment = () => {
+    endWord();
+    if (words.length) out.push(words);
+    words = [];
+  };
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (quote === "'") {
+      if (ch === "'") quote = null;
+      else word += ch;
+      continue;
+    }
+    if (ch === "$" && text[i + 1] === "(") {
+      const end = closing(text, i + 1);
+      if (depth < MAX_DEPTH) out.push(...segments(text.slice(i + 2, end), depth + 1));
+      word = (word ?? "") + text.slice(i, end + 1);
+      i = end;
+      continue;
+    }
+    if (ch === "\\" && /["'\n]/.test(text[i + 1] ?? "")) {
+      if (text[i + 1] === "\n") endWord();
+      else word = (word ?? "") + text[i + 1];
+      i += 1;
+      continue;
+    }
+    if (quote === '"') {
+      if (ch === '"') quote = null;
+      else word += ch;
+      continue;
+    }
+    if (ch === "'" || ch === '"') {
+      quote = ch;
+      word ??= "";
+    } else if (ch === "$" && text[i + 1] === "{") {
+      const end = text.indexOf("}", i);
+      const stop = end < 0 ? text.length : end;
+      word = (word ?? "") + text.slice(i, stop + 1);
+      i = stop;
+    } else if (ch === "`" && text[i + 1] === "\n") {
+      endWord();
+      i += 1;
+    } else if (/[;&|\n(){}`]/.test(ch)) {
+      endSegment();
+    } else if (/\s/.test(ch)) {
+      endWord();
+    } else {
+      word = (word ?? "") + ch;
+    }
+  }
+  endSegment();
+  return out;
+}
+
+/**
+ * One segment as `{ cmd, env, dir, args }`: leading assignments, wrappers and redirections gone,
+ * a shell's `-c` body parsed in its place, and git's or gh's global options taken off so `args[0]`
+ * is the verb. `env` holds the leading assignments; `dir` is git's last `-C`.
+ */
+function normalize(words, depth) {
+  const env = {};
+  let i = 0;
+  for (; i < words.length; i++) {
+    const assign = /^([A-Za-z_]\w*)=([\s\S]*)$/.exec(words[i]);
+    if (assign) {
+      env[assign[1]] = assign[2];
+    } else if (REDIRECT.test(words[i])) {
+      if (!REDIRECT.exec(words[i])[1]) i += 1;
+    } else if (WRAPPER.has(commandName(words[i]))) {
+      while (words[i + 1]?.startsWith("-")) i += WRAPPER_TAKES_A_VALUE.test(words[i + 1]) ? 2 : 1;
+    } else {
+      break;
+    }
+  }
+  if (i >= words.length) return [];
+  const cmd = commandName(words[i]);
+  const rest = words.slice(i + 1);
+
+  if (SHELL.test(cmd) && depth < MAX_DEPTH) {
+    const herestring = rest.indexOf("<<<");
+    const flag = rest.findIndex((a) => /^(-c|-command|\/c|\/k)$/i.test(a));
+    const body =
+      herestring >= 0
+        ? rest[herestring + 1]
+        : flag < 0
+          ? rest[0] && !rest[0].startsWith("-") && /^(iex|invoke-expression)$/.test(cmd) ? rest.join(" ") : null
+          : /^(pwsh|powershell|cmd)$/.test(cmd)
+            ? rest.slice(flag + 1).join(" ")
+            : rest[flag + 1];
+    if (body) return commands(body, depth + 1);
+  }
+
+  const args = [];
+  for (let j = 0; j < rest.length; j++) {
+    const redirect = REDIRECT.exec(rest[j]);
+    if (redirect) j += redirect[1] ? 0 : 1;
+    else args.push(rest[j]);
+  }
+  let dir = null;
+  const globals = cmd === "git" ? GIT_TAKES_A_VALUE : cmd === "gh" ? GH_TAKES_A_VALUE : null;
+  while (globals && args[0]?.startsWith("-")) {
+    const takes = globals.test(args[0]);
+    if (cmd === "git" && args[0] === "-C") dir = args[1] ?? dir;
+    args.splice(0, takes ? 2 : 1);
+  }
+  return [{ cmd, env, dir, args }];
+}
+
+function commands(text, depth = 0) {
+  return segments(text, depth).flatMap((words) => normalize(words, depth));
+}
+
+/**
+ * Blanks the bodies of here-strings and heredocs before any rule reads the command — unless the
+ * body is fed to a shell, where it is the command.
  *
- * Their content is data — a commit message, a PR body, a doc — and a line inside one begins at
- * a line start like any other, so a rule anchored there fires on prose *about* a command. The
- * guard blocked the very commit that introduced it, whose message quotes the two commands it
- * refuses. Blanked rather than deleted so nothing on either side is joined into a new match.
+ * Their content is otherwise data — a commit message, a PR body, a doc — and a line inside one
+ * begins at a line start like any other, so a rule would fire on prose *about* a command.
+ * Blanked rather than deleted so nothing on either side is joined into a new match.
  */
 function withoutQuotedBodies(command) {
+  const blank = (s) => s.replace(/[^\n]/g, " ");
+  const lineBefore = (all, offset) => all.slice(all.lastIndexOf("\n", offset - 1) + 1, offset);
+  const feedsShell = (before, after) => {
+    const last = commands(before).pop();
+    return (last && SHELL.test(last.cmd) && !has(last.args, /^[^-]/)) || PIPED_TO_SHELL.test(after);
+  };
   return command
-    .replace(/@(['"])[\s\S]*?\1@/g, (m) => " ".repeat(m.length)) // PowerShell @'…'@ / @"…"@
-    .replace(/<<-?\s*(['"]?)(\w+)\1[\s\S]*?^\t*\2$/gm, (m) => " ".repeat(m.length)); // sh <<EOF
+    .replace(/@(['"])([\s\S]*?)\1@/g, (m, _q, body, offset, all) =>
+      feedsShell(lineBefore(all, offset), all.slice(offset + m.length)) ? `  ${body}  ` : blank(m)
+    )
+    .replace(/<<-?\s*(['"]?)(\w+)\1([^\n]*\n)([\s\S]*?^\t*\2$)/gm, (m, _q, _tag, rest, body, offset, all) => {
+      const opener = m.slice(0, m.length - rest.length - body.length);
+      return blank(opener) + rest + (feedsShell(lineBefore(all, offset), rest) ? body : blank(body));
+    });
 }
 
-/**
- * Both device workflows are named for Maestro, and a new one will be, so a workflow's name
- * is the answer once something asks for it.
- */
-const DEVICE_WORKFLOW = /maestro/i;
+/** Both device workflows are named for Maestro, and the iOS one's file is `ios.yml`. */
+const DEVICE_WORKFLOW = /maestro|\bios\b/i;
 
-/** Arguments belong to the command that carries them, and a newline ends one as surely as `;`. */
-function eachCommand(line) {
-  return line.split(/[|;&\n]+/);
-}
+const MARKED = (c) => c.env.MAESTRO_EVIDENCE_READ === "1";
+const HTTP_CLIENT = /^(gh|curl|wget|invoke-restmethod|invoke-webrequest|irm|iwr)$/;
 
 /** The only `gh run rerun` flags that consume the token after them. */
 const TAKES_A_VALUE = /^(-j|--job|-R|--repo)$/;
@@ -61,8 +215,7 @@ const JOB_FLAG = /^(?:--job|-j)$/;
  * A job id is not a run id: `gh run view <job-id>` answers 404, so reading one as the other
  * resolves to nothing and waves through the ~25 minute simulator job it names.
  */
-function target(args) {
-  const tokens = args.trim().split(/\s+/).filter(Boolean);
+function target(tokens) {
   for (let i = 0; i < tokens.length; i++) {
     const inlineJob = /^(?:--job|-j)=(.+)$/.exec(tokens[i]);
     if (inlineJob) return { job: inlineJob[1] };
@@ -77,14 +230,26 @@ function target(args) {
   return {};
 }
 
-/** Every rerun on the line — all of them, because any one of them can be the device run. */
-function rerunTargets(command) {
-  const targets = [];
-  for (const one of eachCommand(command)) {
-    const rerun = new RegExp(AT_COMMAND_START + String.raw`gh\s+run\s+rerun\b(.*)$`, "m").exec(one);
-    if (rerun) targets.push(target(rerun[1]));
+/** The run or job this command would re-dispatch, or null when it reruns nothing. */
+function rerunOf(c) {
+  if (c.cmd === "gh" && c.args[0] === "run" && c.args[1] === "rerun") return target(c.args.slice(2));
+  const rest = HTTP_CLIENT.test(c.cmd) && /actions\/(runs|jobs)\/([^\s/?]+)\/rerun/i.exec(c.args.join(" "));
+  if (!rest) return null;
+  if (!/^\d+$/.test(rest[2])) return {};
+  return rest[1].toLowerCase() === "jobs" ? { job: rest[2] } : { run: rest[2] };
+}
+
+/** The workflow this command dispatches, or null when it dispatches none. */
+function dispatchOf(c) {
+  if (c.cmd === "gh" && c.args[0] === "workflow" && c.args[1] === "run") {
+    for (let i = 2; i < c.args.length; i++) {
+      if (/^(-r|--ref|-f|--raw-field|-F|--field|-R|--repo)$/.test(c.args[i])) i += 1;
+      else if (!c.args[i].startsWith("-")) return c.args[i];
+    }
+    return "";
   }
-  return targets;
+  const rest = HTTP_CLIENT.test(c.cmd) && /actions\/workflows\/([^\s/?]+)\/dispatches/i.exec(c.args.join(" "));
+  return rest ? rest[1] : null;
 }
 
 /**
@@ -108,53 +273,145 @@ function askGitHub({ run, job }) {
   );
 }
 
+/** Git as the discard rule asks it, from the directory the tool call runs in. */
+export function gitAt(base) {
+  const quietly = (args, dir) => {
+    try {
+      execFileSync("git", args, { cwd: resolve(base, dir ?? "."), stdio: "ignore", timeout: 15_000 });
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  return {
+    isRef: (arg, dir) => quietly(["rev-parse", "--verify", "-q", `${arg}^{commit}`], dir),
+    // A git error reads as "not clean", so it blocks.
+    pathsClean: (paths, dir) => quietly(["diff", "--quiet", "HEAD", "--", ...paths], dir),
+  };
+}
+
+const has = (args, re) => args.some((a) => re.test(a));
+
+/**
+ * `git checkout` discards when an operand is a path rather than a ref. Naming a source before
+ * `--` is the documented way back, so it passes once those paths hold nothing uncommitted.
+ */
+function checkoutDiscards(rest, c, repo) {
+  const dash = rest.indexOf("--");
+  const before = dash < 0 ? rest : rest.slice(0, dash);
+  const paths = dash < 0 ? [] : rest.slice(dash + 1);
+  if (has(before, /^(-f|--force|--pathspec-from-file(=.*)?)$/)) return true;
+  const operands = [];
+  let branching = false;
+  for (let i = 0; i < before.length; i++) {
+    if (/^(-b|-B|--orphan)$/.test(before[i])) {
+      branching = true;
+      i += 1;
+    } else if (/^(-t|--track(=.*)?|--detach|--orphan=.*)$/.test(before[i])) {
+      branching = true;
+    } else if (!before[i].startsWith("-")) {
+      operands.push(before[i]);
+    }
+  }
+  if (paths.length) return !operands.length || !repo.pathsClean(paths, c.dir);
+  return !branching && operands.some((a) => !repo.isRef(a, c.dir));
+}
+
+function restoreDiscards(rest, c, repo) {
+  const staged = has(rest, /^(--staged|-S[A-Za-z]*)$/);
+  const worktree = has(rest, /^(--worktree|-[A-Za-z]*W[A-Za-z]*)$/);
+  if (staged && !worktree) return false;
+  const paths = [];
+  let source = false;
+  for (let i = 0; i < rest.length; i++) {
+    if (/^(-s|--source)$/.test(rest[i])) {
+      source = true;
+      i += 1;
+    } else if (/^--source=/.test(rest[i])) {
+      source = true;
+    } else if (!rest[i].startsWith("-")) {
+      paths.push(rest[i]);
+    }
+  }
+  return !source || !paths.length || !repo.pathsClean(paths, c.dir);
+}
+
+function discards(c, repo) {
+  if (c.cmd !== "git") return false;
+  const [verb, ...rest] = c.args;
+  switch (verb) {
+    case "checkout":
+      return checkoutDiscards(rest, c, repo);
+    case "restore":
+      return restoreDiscards(rest, c, repo);
+    case "reset":
+      return has(rest, /^--hard$/);
+    case "clean":
+      return has(rest, /^(-[A-Za-z]*f[A-Za-z]*|--force)$/) && !has(rest, /^(-[A-Za-z]*n[A-Za-z]*|--dry-run)$/);
+    case "switch":
+      return has(rest, /^(--discard-changes|-f|--force)$/);
+    case "stash":
+      return rest[0] === "drop" || rest[0] === "clear";
+    default:
+      return false;
+  }
+}
+
+function pushesMain(c) {
+  if (c.cmd !== "git" || c.args[0] !== "push") return false;
+  const operands = [];
+  for (let i = 1; i < c.args.length; i++) {
+    if (/^(-o|--push-option|--repo|--receive-pack|--exec)$/.test(c.args[i])) i += 1;
+    else if (!c.args[i].startsWith("-")) operands.push(c.args[i]);
+  }
+  return operands.slice(1).some((ref) => /^(refs\/heads\/)?main$/.test(ref.replace(/^\+/, "").split(":").pop()));
+}
+
+function deletesWorktree(c) {
+  if (!has(c.args, /(^|[\\/])\.worktrees([\\/]|$)/)) return false;
+  if (c.cmd === "rm") return has(c.args, /^(-[A-Za-z]*[rR][A-Za-z]*|--recursive)$/);
+  if (/^(remove-item|ri|del|erase|rmdir|rd)$/.test(c.cmd)) return has(c.args, /^(-r(e(c(u(r(s(e)?)?)?)?)?)?(:\S*)?|\/s)$/i);
+  return false;
+}
+
 const RULES = [
   {
-    // `git add -A`, `git add .`, `git add --all`. `-A` stages everything even after a `--`, so it
-    // is blocked regardless; a bare `.` after `--` is a real pathspec and is left alone.
+    // `-A` stages everything even after a `--`, so it is blocked regardless; a bare `.` after
+    // `--` is a real pathspec and is left alone.
     test: (c) =>
-      new RegExp(AT_COMMAND_START + String.raw`git\s+add\b[^|;&]*(\s-A\b|\s--all\b)`, "m").test(c) ||
-      new RegExp(AT_COMMAND_START + String.raw`git\s+add\b(?![^|;&]*\s--\s)[^|;&]*\s\.(\s|$)`, "m").test(c),
+      c.cmd === "git" &&
+      c.args[0] === "add" &&
+      (has(c.args, /^(-A|--all|-u|--update)$/) ||
+        (!c.args.includes("--") && c.args.includes("."))),
     message:
-      "git add -A/./--all is blocked: this checkout is shared, and a bare add stages another " +
+      "git add -A/./--all/-u is blocked: this checkout is shared, and a bare add stages another " +
       "session's in-flight edits into your commit. Stage by pathspec instead:\n" +
       "  git add -- path/to/file another/file\n" +
       "Check what you are about to stage with `git status --short` first.",
   },
   {
-    // `git checkout -- <paths>` and `git restore <paths>` discard the working tree. Both are
-    // allowed once a source is named (`git checkout HEAD -- x`, `git restore --source=x`):
-    // that form is only ever reached deliberately, and it is the documented way back once the
-    // work being protected is committed.
-    // `--staged` alone only unstages; it is `--worktree` (the default) that discards edits.
-    test: (c) =>
-      new RegExp(AT_COMMAND_START + String.raw`git\s+checkout\s+--\s`, "m").test(c) ||
-      new RegExp(
-        AT_COMMAND_START +
-          String.raw`git\s+restore\s+(?![^|;&]*(--source|--staged(?![^|;&]*--worktree)))[^|;&]*\S`,
-        "m"
-      ).test(c),
+    test: (c, { repo }) => discards(c, repo),
     message:
-      "git checkout -- / git restore is blocked: it reverts the file to HEAD and throws away " +
-      "every uncommitted change in it — including a fix you have not committed yet. This has " +
-      "cost real work four times.\n" +
+      "This git command is blocked: checkout of a path, restore, reset --hard, clean -f, " +
+      "switch --discard-changes and stash drop/clear all throw away uncommitted or stashed work — " +
+      "including a fix you have not committed yet, or a peer's stash on the shared stack. This " +
+      "has cost real work four times.\n" +
       "Undoing a seeded defect? Reverse it with the Edit tool — the same replacement backwards.\n" +
-      "Really want the file back from a commit? Commit your work first, then name the source:\n" +
+      "Switching branch? `git switch <branch>` refuses rather than discarding.\n" +
+      "Really want a file back from a commit? Commit your work first, then name the source:\n" +
       "  git checkout HEAD -- path/to/file\n" +
       "Confirm with `git status --short` and `git diff` afterwards.",
   },
   {
-    // Measured, not theorised: `git worktree remove --force` on a worktree whose node_modules
-    // is a junction deletes through it into the target and exits 0, silently. That is how the
-    // shared install came to be empty. `worktrees:remove` detaches the link first.
+    // Measured, not theorised: a recursive delete of a worktree whose node_modules is a junction
+    // deletes through it into the target and exits 0. `worktrees:remove` detaches the link first.
     test: (c) =>
-      new RegExp(
-        AT_COMMAND_START + String.raw`git\s+worktree\s+remove\b[^|;&]*(\s--force\b|\s-f\b)`,
-        "m"
-      ).test(c),
+      deletesWorktree(c) ||
+      (c.cmd === "git" && c.args[0] === "worktree" && c.args[1] === "remove" && has(c.args, /^(--force|-f+)$/)),
     message:
-      "git worktree remove --force is blocked: if the worktree's node_modules is a junction, " +
-      "it deletes through the link into the shared install and still exits 0. That is how " +
+      "Deleting a worktree by force is blocked: if its node_modules is a junction, " +
+      "git worktree remove --force, rm -r and Remove-Item -Recurse delete through the link into " +
+      "the shared install and still exit 0. That is how " +
       "C:\\Users\\roton\\murlan\\node_modules was emptied.\n" +
       "Use the script that detaches the link first:\n" +
       "  npm run worktrees:remove -- .worktrees/<name>\n" +
@@ -162,20 +419,23 @@ const RULES = [
       "resolves up to the parent's node_modules on its own.",
   },
   {
+    test: (c) => pushesMain(c),
+    message:
+      "Pushing to main is blocked: it lands code no CI run has judged (RULES.md rule 12).\n" +
+      "Push your ticket branch and open a pull request:\n" +
+      "  git push -u origin agent/<n>-<slug>",
+  },
+  {
     // A device run costs ~25 minutes and its artefact already holds the answer to the next
-    // one. Run 33428373840 was spent discovering a screen the previous run's screenshot had
-    // captured: the flow gated its opening move on the 3 of Spades, the deal held the 3 of
-    // Hearts, and every later tap went into a button that cannot enable until someone opens.
-    // Reading the artefact is the rule; this is the only thing that has ever made it happen.
-    test: (c, workflowOfRun) =>
-      !/MAESTRO_EVIDENCE_READ=1/.test(c) &&
-      (new RegExp(
-        AT_COMMAND_START + String.raw`gh\s+workflow\s+run\s+\S*(ios|maestro)\b`,
-        "m"
-      ).test(c) ||
-        rerunTargets(c)
-          .filter((t) => t.run || t.job)
-          .some((t) => DEVICE_WORKFLOW.test(workflowOfRun(t) ?? ""))),
+    // one. Reading the artefact is the rule; this is the only thing that has ever made it happen.
+    // A numeric workflow id cannot be read, so it is treated as the device one.
+    test: (c, { workflowOf }) => {
+      if (MARKED(c)) return false;
+      const dispatched = dispatchOf(c);
+      if (dispatched !== null) return DEVICE_WORKFLOW.test(dispatched) || /^\d*$/.test(dispatched);
+      const t = rerunOf(c);
+      return Boolean(t && (t.run || t.job) && DEVICE_WORKFLOW.test(workflowOf(t) ?? ""));
+    },
     message:
       "Dispatching a device run is blocked until you have read the last failure's own pixels.\n" +
       "A run is ~25 minutes; the artefact is already on disk and usually holds the answer.\n" +
@@ -184,16 +444,19 @@ const RULES = [
       "  - Read the screenshot under */screenshots/ with the Read tool. Look at it.\n" +
       "  - Dump the labelled nodes from */screen-hierarchy/*.json and check your selectors\n" +
       "    against the real text, including index: and regex matches.\n" +
-      "Having actually done that, re-run the same command with the marker:\n" +
+      "Having actually done that, re-run the same command with the marker as its own prefix:\n" +
       "  MAESTRO_EVIDENCE_READ=1 <your command>\n" +
+      "Not a device workflow? Name it by its file (ci.yml), not a numeric id.\n" +
       "The marker is a claim that you looked. Do not set it to get past this message.",
   },
   {
     // The rule above allows a rerun once GitHub says the run is not a device one. A target it
     // cannot read is not an answer, and defaulting to allow there would make `$RUN` the way
     // past the rule rather than a way to write it.
-    test: (c) =>
-      !/MAESTRO_EVIDENCE_READ=1/.test(c) && rerunTargets(c).some((t) => !t.run && !t.job),
+    test: (c) => {
+      const t = !MARKED(c) && rerunOf(c);
+      return Boolean(t && !t.run && !t.job);
+    },
     message:
       "This rerun does not name a run this guard can look up, and a rerun it cannot identify " +
       "might be the ~25 minute device job.\n" +
@@ -204,12 +467,7 @@ const RULES = [
       "above applies: read the last failure's artefact, then add MAESTRO_EVIDENCE_READ=1.",
   },
   {
-    // A sweep rooted at /, a mounted drive root (/c/, /mnt/c/) or a Windows drive root.
-    test: (c) =>
-      new RegExp(
-        AT_COMMAND_START + String.raw`find\s+(\/(\s|$)|\/(mnt\/)?[a-z]\/(\s|$)|[A-Za-z]:[\\/](\s|$))`,
-        "m"
-      ).test(c),
+    test: (c) => c.cmd === "find" && /^(\/|\/(mnt\/)?[a-z]\/?|[A-Za-z]:[\\/]?)$/.test(c.args[0] ?? ""),
     message:
       "A filesystem-wide `find` is blocked: it takes minutes and finds nothing useful here. " +
       "To locate an installed package, ask Node:\n" +
@@ -218,21 +476,13 @@ const RULES = [
       "To search the repo, use the Grep tool.",
   },
   {
-    // Reaching the merge from a session is how a pull request gets merged before its CI has been
-    // read: `gh pr merge` treats UNSTABLE — which includes *queued* — as immediately mergeable.
-    // Matched here rather than with --disallowedTools because a deny rule matches the invocation
-    // Claude usually writes and is documented as not a boundary around the program; a PreToolUse
-    // hook sees the whole line, and fires inside subagents too. It does not reach the supervisor:
-    // queue-loop.mjs merges from a child process, which no PreToolUse hook intercepts.
-    //
-    // The REST endpoint and both GraphQL mutations are here for the same reason the `$RUN` rerun
-    // is refused above: a guard that only blocks the spelling Claude usually writes is satisfied
-    // without the thing it guards being true.
-    test: (c) =>
-      new RegExp(AT_COMMAND_START + String.raw`gh\s+(?:-[A-Za-z]+\s+\S+\s+|--\S+(?:=\S+)?\s+)*pr\s+merge\b`, "m").test(c) ||
-      /\bpulls\/[^\s"'/]+\/merge\b/.test(c) ||
-      /\bmergePullRequest\s*\(/.test(c) ||
-      /\benablePullRequestAutoMerge\s*\(/.test(c),
+    // `gh pr merge` treats UNSTABLE — which includes *queued* — as immediately mergeable. A
+    // PreToolUse hook sees the whole line and fires inside subagents too; it does not reach the
+    // supervisor, which merges from a child process no hook intercepts. The REST endpoint and
+    // both GraphQL mutations are matched on the whole text for the same reason.
+    test: (c) => c.cmd === "gh" && c.args[0] === "pr" && c.args[1] === "merge",
+    text: (t) =>
+      /\bpulls\/[^\s"'/]+\/merge\b/.test(t) || /\bmergePullRequest\s*\(/.test(t) || /\benablePullRequestAutoMerge\s*\(/.test(t),
     message:
       "gh pr merge is not yours to merge. The pull request's CI has not been judged yet, and " +
       "`gh pr merge` merges an UNSTABLE pull request on the spot — UNSTABLE includes checks that " +
@@ -250,12 +500,13 @@ const RULES = [
  * asked wrongly — allows and says so, instead of taking the whole hook down with it. Logged
  * once per call to `check()` even when a rule asks more than once for one command line.
  */
-export function check(command, workflowOfRun = askGitHub) {
+export function check(command, workflowOfRun = askGitHub, repo = gitAt(process.cwd())) {
   const runnable = withoutQuotedBodies(command);
+  const parsed = commands(runnable);
   let warned = false;
-  const readWorkflow = (target) => {
+  const workflowOf = (t) => {
     try {
-      return workflowOfRun(target);
+      return workflowOfRun(t);
     } catch (err) {
       if (!warned) {
         warned = true;
@@ -266,22 +517,26 @@ export function check(command, workflowOfRun = askGitHub) {
       return null;
     }
   };
-  for (const rule of RULES) if (rule.test(runnable, readWorkflow)) return rule.message;
+  for (const rule of RULES) {
+    if (rule.text?.(runnable) || parsed.some((c) => rule.test(c, { workflowOf, repo }))) return rule.message;
+  }
   return null;
 }
 
 if (isInvokedDirectly(process.argv[1], import.meta.url)) {
   let command = "";
+  let cwd = process.cwd();
   try {
     const payload = JSON.parse(readFileSync(0, "utf8") || "{}");
     command = (payload.tool_input ?? payload).command ?? "";
+    cwd = payload.cwd ?? cwd;
   } catch (err) {
     // unreadable payload must never block a tool call, but silence here is the other half of
     // the same bug the RULES above exist to catch — say what could not be checked.
     process.stderr.write(`guard-bash: could not read the tool call on stdin (${firstLine(err)}); allowing it.\n`);
     process.exit(0);
   }
-  const message = check(command);
+  const message = check(command, askGitHub, gitAt(cwd));
   if (message) {
     process.stderr.write(message + "\n");
     process.exit(2);
