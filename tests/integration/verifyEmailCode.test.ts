@@ -7,7 +7,7 @@
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
 import { startTestServer, hasDatabase, skipMessage, type TestServer } from "../helpers/testServer.ts";
-import { register } from "../helpers/client.ts";
+import { register, waitForPendingCode } from "../helpers/client.ts";
 
 describe("verify-email code guessing is capped per credential", { skip: hasDatabase() ? false : skipMessage() }, () => {
   let server: TestServer;
@@ -22,34 +22,11 @@ describe("verify-email code guessing is capped per credential", { skip: hasDatab
     });
   }
 
-  // register() replies before minting (#897), so its own email_verify token
-  // can land any time after — including after this test's own mint, whose
-  // invalidatePendingAuthTokens+INSERT would then race register's identical
-  // DELETE+INSERT chain. Waiting for register's row to exist first (same
-  // poll as tests/integration/auth.test.ts's "mints exactly one" test) means
-  // that chain has already finished before this test invalidates and mints
-  // its own — no later DELETE can still be in flight to remove it.
-  async function waitForPendingCode(userId: string): Promise<void> {
-    const { db } = await import("../../server/db.ts");
-    const { authTokens } = await import("../../shared/schema.ts");
-    const { eq, and } = await import("drizzle-orm");
-    for (let attempt = 0; attempt < 20; attempt++) {
-      const rows = await db
-        .select()
-        .from(authTokens)
-        .where(and(eq(authTokens.userId, userId), eq(authTokens.purpose, "email_verify")));
-      if (rows.length > 0) return;
-      await new Promise((r) => setTimeout(r, 50));
-    }
-    throw new Error(`register's background mint for ${userId} never landed`);
-  }
-
   test("a wrong code fails with the generic failure", async () => {
     const { user } = await register(server, "code_wrong");
     await waitForPendingCode(user.id);
-    const { mintAuthCode, invalidatePendingAuthTokens } = await import("../../server/authTokens.ts");
-    await invalidatePendingAuthTokens(user.id, "email_verify");
-    await mintAuthCode({ userId: user.id, email: user.email!, purpose: "email_verify", ttlMs: 60_000 });
+    const { replaceEmailVerifyCode } = await import("../../server/authTokens.ts");
+    await replaceEmailVerifyCode({ userId: user.id, email: user.email!, ttlMs: 60_000 });
 
     const res = await verify(user.email!, "000000");
     const text = await res.text();
@@ -66,12 +43,11 @@ describe("verify-email code guessing is capped per credential", { skip: hasDatab
 
   test("MAX_CODE_ATTEMPTS wrong guesses force a resend — the right code stops working before its TTL runs out", async () => {
     const { user } = await register(server, "code_capped");
-    const { mintAuthCode, invalidatePendingAuthTokens, MAX_CODE_ATTEMPTS } = await import(
+    const { replaceEmailVerifyCode, MAX_CODE_ATTEMPTS } = await import(
       "../../server/authTokens.ts"
     );
     await waitForPendingCode(user.id);
-    await invalidatePendingAuthTokens(user.id, "email_verify");
-    const code = await mintAuthCode({ userId: user.id, email: user.email!, purpose: "email_verify", ttlMs: 60_000 });
+    const code = await replaceEmailVerifyCode({ userId: user.id, email: user.email!, ttlMs: 60_000 });
 
     // Wrong guesses, each guaranteed not to collide with the real code.
     const wrong = code === "000000" ? "111111" : "000000";
@@ -99,15 +75,13 @@ describe("verify-email code guessing is capped per credential", { skip: hasDatab
   test("a code minted for one account does not redeem for a different account, even with the right digits", async () => {
     const { user: alice } = await register(server, "code_salt_alice");
     const { user: bob } = await register(server, "code_salt_bob");
-    const { mintAuthCode, redeemAuthCode, invalidatePendingAuthTokens } = await import(
+    const { replaceEmailVerifyCode, redeemAuthCode } = await import(
       "../../server/authTokens.ts"
     );
     await waitForPendingCode(alice.id);
-    await invalidatePendingAuthTokens(alice.id, "email_verify");
-    const aliceCode = await mintAuthCode({
+    const aliceCode = await replaceEmailVerifyCode({
       userId: alice.id,
       email: alice.email!,
-      purpose: "email_verify",
       ttlMs: 60_000,
     });
 
@@ -123,12 +97,11 @@ describe("verify-email code guessing is capped per credential", { skip: hasDatab
 
   test("fewer than MAX_CODE_ATTEMPTS wrong guesses still allow the right code through", async () => {
     const { user } = await register(server, "code_recovers");
-    const { mintAuthCode, invalidatePendingAuthTokens, MAX_CODE_ATTEMPTS } = await import(
+    const { replaceEmailVerifyCode, MAX_CODE_ATTEMPTS } = await import(
       "../../server/authTokens.ts"
     );
     await waitForPendingCode(user.id);
-    await invalidatePendingAuthTokens(user.id, "email_verify");
-    const code = await mintAuthCode({ userId: user.id, email: user.email!, purpose: "email_verify", ttlMs: 60_000 });
+    const code = await replaceEmailVerifyCode({ userId: user.id, email: user.email!, ttlMs: 60_000 });
 
     const wrong = code === "000000" ? "111111" : "000000";
     for (let i = 0; i < MAX_CODE_ATTEMPTS - 1; i++) {
@@ -158,18 +131,14 @@ describe("verify-email code guessing is capped per credential", { skip: hasDatab
     await db.update(users).set({ email: sharedEmail, emailVerifiedAt: null }).where(eq(users.id, alice.id));
     await db.update(users).set({ email: sharedEmail, emailVerifiedAt: null }).where(eq(users.id, bob.id));
 
-    const { mintAuthCode, invalidatePendingAuthTokens } = await import("../../server/authTokens.ts");
-    await invalidatePendingAuthTokens(alice.id, "email_verify");
-    await invalidatePendingAuthTokens(bob.id, "email_verify");
-    await invalidatePendingAuthTokens(carol.id, "email_verify");
-    const aliceCode = await mintAuthCode({
+    const { replaceEmailVerifyCode } = await import("../../server/authTokens.ts");
+    const aliceCode = await replaceEmailVerifyCode({
       userId: alice.id,
       email: sharedEmail,
-      purpose: "email_verify",
       ttlMs: 60_000,
     });
-    const bobCode = await mintAuthCode({ userId: bob.id, email: sharedEmail, purpose: "email_verify", ttlMs: 60_000 });
-    await mintAuthCode({ userId: carol.id, email: carol.email!, purpose: "email_verify", ttlMs: 60_000 });
+    const bobCode = await replaceEmailVerifyCode({ userId: bob.id, email: sharedEmail, ttlMs: 60_000 });
+    await replaceEmailVerifyCode({ userId: carol.id, email: carol.email!, ttlMs: 60_000 });
 
     const wrong = [aliceCode, bobCode].includes("000000") ? "111111" : "000000";
     const res = await verify(sharedEmail, wrong);

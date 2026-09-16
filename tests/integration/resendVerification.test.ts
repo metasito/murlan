@@ -7,7 +7,7 @@
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
 import { startTestServer, hasDatabase, skipMessage, type TestServer } from "../helpers/testServer.ts";
-import { register } from "../helpers/client.ts";
+import { register, waitForPendingCode } from "../helpers/client.ts";
 
 describe("resend-verification", { skip: hasDatabase() ? false : skipMessage() }, () => {
   let server: TestServer;
@@ -45,7 +45,7 @@ describe("resend-verification", { skip: hasDatabase() ? false : skipMessage() },
   test("an already-verified account is refused", async () => {
     const { user, cookie } = await register(server, "resend_already_verified");
     const { userStore } = await import("../../server/userStore.ts");
-    await userStore.markEmailVerified(user.id);
+    await userStore.markEmailVerified(user.id, user.email!);
 
     const res = await resend(cookie);
     const text = await res.text();
@@ -60,17 +60,17 @@ describe("resend-verification", { skip: hasDatabase() ? false : skipMessage() },
 
   test("a resend invalidates whatever email_verify code was pending, and mints exactly one fresh one", async () => {
     const { user, cookie } = await register(server, "resend_invalidates");
-    const { mintAuthCode, redeemAuthCode } = await import("../../server/authTokens.ts");
+    await waitForPendingCode(user.id);
+    const { replaceEmailVerifyCode, redeemAuthCode } = await import("../../server/authTokens.ts");
 
     // Stands in for the code register() already minted in the background —
     // the same technique tests/integration/addEmail.test.ts's own
     // invalidation test uses, so this assertion cannot race register()'s own
     // fire-and-forget mint: whichever code is live when resend runs, the
-    // route's own invalidate-then-mint clears every pending row regardless.
-    const pending = await mintAuthCode({
+    // route's own replace clears every pending row regardless.
+    const pending = await replaceEmailVerifyCode({
       userId: user.id,
       email: user.email!,
-      purpose: "email_verify",
       ttlMs: 60_000,
     });
 

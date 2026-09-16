@@ -4,8 +4,9 @@
 // docs/superpowers/specs/2026-08-17-push-notifications-design.md and comes down
 // to the two clocks in server/socket.ts: a player is auto-passed after 30s and
 // loses the seat to a bot after 60s, which no notification can beat.
-import { and, desc, eq, inArray, notInArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "./db.ts";
+import { lockUsers } from "./userLock.ts";
 import { pushTokens } from "../shared/schema.ts";
 import type { Locale } from "../shared/i18n.ts";
 import { logger } from "./logger.ts";
@@ -35,36 +36,38 @@ const EXPO_PUSH_URL =
  */
 export const MAX_DEVICES_PER_USER = 5;
 
-/** Registers, or re-registers, one device, and forgets the account's oldest. */
+/**
+ * Registers, or re-registers, one device, and forgets the account's oldest.
+ * Under the user's row lock: two devices registering at once would otherwise
+ * each prune with a keep-list that has not seen the other.
+ */
 export async function savePushToken(
   userId: string,
   token: string,
   platform: string,
   locale: Locale
 ): Promise<void> {
-  await db
-    .insert(pushTokens)
-    .values({ token, userId, platform, locale, updatedAt: new Date() })
-    .onConflictDoUpdate({
-      target: pushTokens.token,
-      set: { userId, platform, locale, updatedAt: new Date() },
-    });
-
-  const keep = await db
-    .select({ token: pushTokens.token })
-    .from(pushTokens)
-    .where(eq(pushTokens.userId, userId))
-    .orderBy(desc(pushTokens.updatedAt))
-    .limit(MAX_DEVICES_PER_USER);
-
-  if (keep.length < MAX_DEVICES_PER_USER) return;
-
-  await db.delete(pushTokens).where(
-    and(
-      eq(pushTokens.userId, userId),
-      notInArray(pushTokens.token, keep.map((r) => r.token))
-    )
-  );
+  await db.transaction(async (tx) => {
+    await lockUsers(tx, [userId]);
+    await tx
+      .insert(pushTokens)
+      .values({ token, userId, platform, locale, updatedAt: new Date() })
+      .onConflictDoUpdate({
+        target: pushTokens.token,
+        set: { userId, platform, locale, updatedAt: new Date() },
+      });
+    await tx.delete(pushTokens).where(
+      and(
+        eq(pushTokens.userId, userId),
+        sql`${pushTokens.token} NOT IN (
+          SELECT ${pushTokens.token} FROM ${pushTokens}
+          WHERE ${pushTokens.userId} = ${userId}
+          ORDER BY ${pushTokens.updatedAt} DESC, ${pushTokens.token} DESC
+          LIMIT ${MAX_DEVICES_PER_USER}
+        )`
+      )
+    );
+  });
 }
 
 /**

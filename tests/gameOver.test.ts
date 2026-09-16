@@ -9,6 +9,7 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import type { Server as SocketServer } from "socket.io";
 import { handleGameOver } from "../server/gameOver.ts";
+import { logger } from "../server/logger.ts";
 import type { GameOverWriters } from "../server/gameOver.ts";
 import type { OnlineGameState } from "../server/gameRoom.ts";
 import type { GameState, Player } from "../lib/gameEngine.ts";
@@ -48,7 +49,8 @@ function stubServer(overrides: Partial<Record<keyof GameOverWriters, Error>> = {
       order.push(name);
       calls.push({ name, args });
       const failure = overrides[name];
-      return failure ? Promise.reject(failure) : Promise.resolve(undefined);
+      if (failure) return Promise.reject(failure);
+      return Promise.resolve(name === "recordRatedResult" ? new Map<string, number>() : undefined);
     };
 
   const writers = {
@@ -239,6 +241,7 @@ describe("handleGameOver — the writes", () => {
     const game = makeGame();
 
     await handleGameOver(s.io, ROOM, game, s.writers);
+    await game.resultWrites;
 
     assert.deepEqual(s.names(), [
       // First, and a read: the delta it returns cannot be recovered once the
@@ -246,9 +249,9 @@ describe("handleGameOver — the writes", () => {
       "previewRatedDeltas",
       "updateRoomStatus",
       "persistGameState",
-      "recordGameResult",
-      "recordRatedResult",
       "saveReplay",
+      "recordRatedResult",
+      "recordGameResult",
     ]);
 
     assert.deepEqual(s.of("updateRoomStatus")[0].args, [ROOM, "finished"]);
@@ -344,8 +347,10 @@ describe("handleGameOver — the writes", () => {
 describe("handleGameOver — a failing write is not the table's problem", () => {
   test("the room status failing does not stop the row being written", async () => {
     const s = stubServer({ updateRoomStatus: new Error("no rooms row") });
+    const game = makeGame();
 
-    await handleGameOver(s.io, ROOM, makeGame(), s.writers);
+    await handleGameOver(s.io, ROOM, game, s.writers);
+    await game.resultWrites;
 
     assert.equal(s.of("persistGameState").length, 1);
     assert.equal(s.of("recordGameResult").length, 1);
@@ -368,5 +373,65 @@ describe("handleGameOver — a failing write is not the table's problem", () => 
       ["game:over"],
       "the table still heard the result"
     );
+  });
+});
+
+describe("handleGameOver — the ladder and history chain", () => {
+  test("a declined rated write leaves history's delta null and says so", async (t) => {
+    const warn = t.mock.method(logger, "warn", () => undefined);
+    const s = stubServer();
+    const writers = {
+      ...s.writers,
+      previewRatedDeltas: async () => new Map([["u_alice", 8], ["u_bob", -8]]),
+    };
+    const game = makeGame();
+
+    await handleGameOver(s.io, ROOM, game, writers);
+    await game.resultWrites;
+
+    const deltas = s.of("recordGameResult")[0].args[3] as Map<string, number>;
+    assert.equal(deltas.get("u_alice"), undefined, "persisted as null, not the preview's +8");
+    assert.ok(
+      warn.mock.calls.some((c) => String(c.arguments[1]).includes("declined")),
+      "the decline is logged"
+    );
+  });
+
+  test("a hand's writes wait for the previous hand's to settle", async () => {
+    const s = stubServer();
+    const finished: string[] = [];
+    let releaseFirst!: () => void;
+    let calls = 0;
+    const writers = {
+      ...s.writers,
+      recordGameResult: (...args: unknown[]) => {
+        const hand = ++calls;
+        void s.writers.recordGameResult(...(args as Parameters<GameOverWriters["recordGameResult"]>));
+        if (hand > 1) {
+          finished.push("hand 2");
+          return Promise.resolve();
+        }
+        return new Promise<void>((resolve) => {
+          releaseFirst = () => {
+            finished.push("hand 1");
+            resolve();
+          };
+        });
+      },
+    };
+    const game = makeGame();
+
+    await handleGameOver(s.io, ROOM, game, writers);
+    await handleGameOver(s.io, ROOM, game, writers);
+    await new Promise((r) => setImmediate(r));
+
+    assert.equal(s.of("recordGameResult").length, 1, "hand 2 has not started while hand 1 is pending");
+    assert.equal(s.of("recordRatedResult").length, 1);
+
+    releaseFirst();
+    await game.resultWrites;
+
+    assert.deepEqual(finished, ["hand 1", "hand 2"]);
+    assert.equal(s.of("recordRatedResult").length, 2);
   });
 });

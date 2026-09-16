@@ -1,6 +1,7 @@
 import { randomBytes, randomInt, createHash } from "node:crypto";
-import { sql, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "./db.ts";
+import { lockUsers, type Tx } from "./userLock.ts";
 import { userStore, uniqueViolation } from "./userStore.ts";
 import { authTokens } from "../shared/schema.ts";
 import type { AuthTokenPurpose } from "../shared/schema.ts";
@@ -31,14 +32,14 @@ function codeHashInput(email: string, purpose: AuthTokenPurpose, code: string): 
   return `${email.trim().toLowerCase()}:${purpose}:${code}`;
 }
 
-async function insertCredential(params: {
+async function insertCredential(executor: typeof db | Tx, params: {
   userId: string;
   purpose: AuthTokenPurpose;
   tokenHash: string;
   ttlMs: number;
 }): Promise<void> {
   const { userId, purpose, tokenHash, ttlMs } = params;
-  await db.insert(authTokens).values({
+  await executor.insert(authTokens).values({
     userId,
     purpose,
     tokenHash,
@@ -78,7 +79,7 @@ export async function mintAuthToken(
   ttlMs: number
 ): Promise<string> {
   const raw = randomBytes(32).toString("base64url");
-  await insertCredential({ userId, purpose, tokenHash: hashToken(raw), ttlMs });
+  await insertCredential(db, { userId, purpose, tokenHash: hashToken(raw), ttlMs });
   return raw;
 }
 
@@ -92,21 +93,33 @@ export async function redeemAuthToken(rawToken: string, purpose: AuthTokenPurpos
 
 /**
  * Mints a 6-digit numeric code for `email`, stores only its salted hash, and
- * returns the raw digits to send. A collision on `auth_tokens_token_hash_uq`
- * (two mints landing on the same digits, ~1-in-1,000,000 per pair) retries
- * with a fresh code rather than failing the mint outright.
+ * returns the raw digits to send.
+ *
+ * At most one `email_verify` row may exist per user, whichever mint runs
+ * last: a second live code is the address-takeover window #900's review
+ * flagged. The delete and the insert run under the user's row lock, so two
+ * concurrent mints cannot each delete before the other inserts.
+ *
+ * A collision on `auth_tokens_token_hash_uq` (~1-in-1,000,000 per pair)
+ * retries with a fresh code rather than failing the mint outright.
  */
-export async function mintAuthCode(params: {
+export async function replaceEmailVerifyCode(params: {
   userId: string;
   email: string;
-  purpose: AuthTokenPurpose;
   ttlMs: number;
 }): Promise<string> {
-  const { userId, email, purpose, ttlMs } = params;
+  const { userId, email, ttlMs } = params;
+  const purpose = "email_verify";
   for (let attempt = 0; ; attempt++) {
     const code = randomInt(0, 1_000_000).toString().padStart(6, "0");
     try {
-      await insertCredential({ userId, purpose, tokenHash: hashToken(codeHashInput(email, purpose, code)), ttlMs });
+      await db.transaction(async (tx) => {
+        await lockUsers(tx, [userId]);
+        await tx
+          .delete(authTokens)
+          .where(and(eq(authTokens.userId, userId), eq(authTokens.purpose, purpose), isNull(authTokens.usedAt)));
+        await insertCredential(tx, { userId, purpose, tokenHash: hashToken(codeHashInput(email, purpose, code)), ttlMs });
+      });
       return code;
     } catch (err) {
       if (attempt >= 2 || uniqueViolation(err) !== "auth_tokens_token_hash_uq") throw err;
@@ -160,28 +173,6 @@ export async function invalidateAuthTokens(userId: string, purpose: AuthTokenPur
   await db.execute(sql`
     UPDATE auth_tokens
     SET used_at = now()
-    WHERE user_id = ${userId}
-      AND purpose = ${purpose}
-      AND used_at IS NULL
-  `);
-}
-
-/**
- * Unlike `password_reset` (invalidated only on redemption — an outstanding
- * link the user is about to click must survive a second request), every
- * `email_verify` mint retires every other outstanding one for that user
- * first. Two live `email_verify` tokens is the address-takeover window
- * #900's review flagged: redeem one and lose the race (email cleared to
- * NULL by markEmailVerified), then add-email a different address and
- * redeem the still-live second one — verifying an address never proven.
- * A hard DELETE, not a soft `used_at` mark: at most one row may exist for
- * a user+purpose at a time is the actual invariant, not just "at most one
- * redeemable" — whichever mint runs last always wins, regardless of which
- * of register's fire-and-forget mint or add-email's own lands first.
- */
-export async function invalidatePendingAuthTokens(userId: string, purpose: AuthTokenPurpose): Promise<void> {
-  await db.execute(sql`
-    DELETE FROM auth_tokens
     WHERE user_id = ${userId}
       AND purpose = ${purpose}
       AND used_at IS NULL
