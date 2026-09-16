@@ -48,7 +48,7 @@ import { trackEvent } from "./events.ts";
 import { DEFAULT_LOCALE, translate } from "../shared/i18n.ts";
 import { activeGames as activeGamesTable } from "../shared/schema.ts";
 import type { EventOutcome } from "./socketSafety.ts";
-import { activeGames, scoreKeyForSeat, seatOfUser, userRoom } from "./gameRoom.ts";
+import { activeGames, scoreKeyForSeat, seatName, seatOfUser, userRoom } from "./gameRoom.ts";
 import { isUserOnline } from "./socketRegistry.ts";
 import type { OnlineGameState } from "./gameRoom.ts";
 import {
@@ -556,7 +556,7 @@ async function rejoinAction(
   game: OnlineGameState,
   action: Extract<TableAction, { kind: "rejoin" }>
 ): Promise<EventOutcome> {
-  const { roomId, userId, username } = action;
+  const { roomId, userId } = action;
   let seat = seatOfUser(game, userId);
   if (seat === null) {
     const reclaim = reclaimableSeat(game, userId);
@@ -590,7 +590,7 @@ async function rejoinAction(
     .upsertRoomPlayer(roomId, userId, seat)
     .catch((err: unknown) => logger.warn({ err, roomId, userId }, "upsertRoomPlayer failed"));
 
-  await announceRejoin(io, userId, username, roomId, game);
+  await announceRejoin(io, userId, roomId, game);
   logger.info({ userId, roomId }, "Player rejoined game");
   return OK;
 }
@@ -652,7 +652,7 @@ async function startMatchAction(
     const seated = await roomStore.getRoomPlayers(room.id);
     for (const p of seated.filter((p) => absent.has(p.userId))) {
       clearLobbyGrace(roomId, p.userId);
-      await handleSeatRelease(io, roomId, p.userId, p.user.username, { source: "disconnect" });
+      await handleSeatRelease(io, roomId, p.userId, { source: "disconnect" });
     }
   }
 
@@ -776,16 +776,17 @@ function seatLostAction(
   game: OnlineGameState,
   action: Extract<TableAction, { kind: "seatLost" }>
 ): Promise<EventOutcome> | EventOutcome {
-  const { roomId, userId, username } = action;
+  const { roomId, userId } = action;
   const seat = seatOfUser(game, userId);
   if (seat === null) return { ok: false, code: "NOT_SEATED" };
+  const username = seatName(game, seat);
 
   if (game.gameState.gameOver) {
     // The lobby grace, not the disconnect one: a seat between hands counts
     // towards the rematch gate, so the table cannot wait a full minute on it.
     // Its expiry also asks the right question — back in *this* room, not
     // merely back online.
-    const releasing = armLobbyGrace(io, roomId, userId, username);
+    const releasing = armLobbyGrace(io, roomId, userId);
     return releasing ? releasing.then(() => OK) : OK;
   }
 
@@ -827,7 +828,7 @@ function seatLostAction(
               "Failed to delete the room_players row after the disconnect grace expired — the seat stays counted as taken"
             )
           );
-        await vacateSeat(io, roomId, userId, username, gameOverWriters);
+        await vacateSeat(io, roomId, userId, gameOverWriters);
         // The hand may well have ended inside the grace, which puts this seat
         // in the rematch tally it is now leaving.
         await dealIfSeatLeftGateClosed(io, roomId);
@@ -863,7 +864,7 @@ async function applyTableAction(
       io.to(action.roomId).emit("game:reaction", {
         emoji: action.emoji,
         fromSeat: seat,
-        username: action.username,
+        username: seatName(game, seat),
       });
       return OK;
     }
@@ -901,7 +902,7 @@ async function applyTableAction(
       // game knows whether the seat is still held. Removing the DB row alone
       // leaves it live — auto-playing the leaver's hand, or blocking the
       // rematch gate.
-      return vacateSeat(io, action.roomId, action.userId, action.username, gameOverWriters).then(
+      return vacateSeat(io, action.roomId, action.userId, gameOverWriters).then(
         () => dealIfSeatLeftGateClosed(io, action.roomId)
       );
   }

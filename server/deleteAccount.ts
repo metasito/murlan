@@ -18,13 +18,16 @@ import {
  * All of it in one transaction, which is why it writes the rows itself rather
  * than calling the stores — each of those opens its own.
  */
-export async function deleteUser(userId: string): Promise<void> {
-  await db.transaction(async (tx) => {
+export async function deleteUser(userId: string): Promise<string[]> {
+  return db.transaction(async (tx) => {
     await tx
       .delete(friends)
       .where(or(eq(friends.userId, userId), eq(friends.friendUserId, userId)));
 
-    await tx.delete(roomPlayers).where(eq(roomPlayers.userId, userId));
+    const seated = await tx
+      .delete(roomPlayers)
+      .where(eq(roomPlayers.userId, userId))
+      .returning({ roomId: roomPlayers.roomId });
 
     const hosted = await tx
       .select({ id: rooms.id })
@@ -74,5 +77,6 @@ export async function deleteUser(userId: string): Promise<void> {
     );
 
     await tx.delete(users).where(eq(users.id, userId));
+    return seated.map((r) => r.roomId);
   });
 }

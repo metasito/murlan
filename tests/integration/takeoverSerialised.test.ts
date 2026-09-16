@@ -43,7 +43,6 @@ const play = (roomId: string, userId: string): TableActionDraft => ({
   kind: "play",
   roomId,
   userId,
-  username: userId,
   cardIds: [],
 });
 
@@ -51,7 +50,6 @@ const start = (roomId: string, userId: string): TableActionDraft => ({
   kind: "startMatch",
   roomId,
   userId,
-  username: userId,
 });
 
 describe("two actions for one room in the same tick", () => {

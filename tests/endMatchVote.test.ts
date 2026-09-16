@@ -88,7 +88,6 @@ function vote(io: SocketServer, userId: string, wants = true) {
     kind: "endMatchVote",
     roomId: ROOM,
     userId,
-    username: userId,
     wants,
   });
 }

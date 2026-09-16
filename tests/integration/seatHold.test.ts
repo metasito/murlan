@@ -222,6 +222,32 @@ describe(
       }
     });
 
+    test("unfriending withdraws the invite and frees the seat it held", async () => {
+      const { host, friend, room, held } = await roomWithAnInvite("unf");
+      assert.deepEqual(held.seatHolds.map((h) => h.seatIndex), [2]);
+      await joins(await player("unf_sA"), room.code, host.socket);
+      await joins(await player("unf_sB"), room.code, host.socket);
+
+      const freed = waitFor<RoomState>(host.socket, "room:state");
+      const unfriend = await fetch(`${server.url}/api/friends/${friend.user.id}`, {
+        method: "DELETE",
+        headers: { cookie: host.cookie },
+      });
+      assert.equal(unfriend.status, 200, await unfriend.text());
+      assert.deepEqual((await freed).seatHolds, [], "the room hears the hold is gone");
+
+      const { friendStore } = await import("../../server/friendStore.ts");
+      assert.deepEqual(await friendStore.getGameInvites(friend.user.id), []);
+
+      const latecomer = await player("unf_late");
+      const seated = await joins(latecomer, room.code, host.socket);
+      assert.equal(
+        seated.players.find((p) => p.userId === latecomer.user.id)?.seatIndex,
+        2,
+        "the freed seat is claimable, not held"
+      );
+    });
+
     test("declining an invite frees the seat and tells the room on the same event", async () => {
       const host = await player("dec_host");
       const friend = await player("dec_friend");

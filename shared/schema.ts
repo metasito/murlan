@@ -344,6 +344,14 @@ export const pushTokens = pgTable("push_tokens", {
   index("push_tokens_user_id_idx").on(t.userId),
 ]);
 
+/** Redeemed socket-ticket nonces: a ticket is single-use across every instance. */
+export const socketTicketNonces = pgTable("socket_ticket_nonces", {
+  nonce: text("nonce").primaryKey(),
+  expiresAt: timestamp("expires_at").notNull(),
+}, (t) => [
+  index("socket_ticket_nonces_expires_idx").on(t.expiresAt),
+]);
+
 /**
  * A proof-of-mailbox-control credential — one shape for both email
  * verification and password reset, per
@@ -355,8 +363,7 @@ export const pushTokens = pgTable("push_tokens", {
  *
  * Read by two plain HTTP routes only (verify-email, reset-password) — never
  * by the socket handshake in server/ticket.ts, which this shape is
- * deliberately not reused from (a reset/verify credential survives a server
- * restart; a signed in-memory-nonce ticket does not).
+ * deliberately not reused from.
  *
  * Expired rows are swept on a schedule (server/retention.ts), not on the
  * write or redemption path — see that module for why.

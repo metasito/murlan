@@ -21,7 +21,6 @@ export interface TableActionBase {
   id: string;
   roomId: string;
   userId: string;
-  username: string;
 }
 
 export type TableAction =

@@ -102,7 +102,6 @@ describe("a vacated seat is reclaimable by the account that left it (#850 clause
         kind: "rejoin",
         roomId: ROOM,
         userId: "drita",
-        username: "Drita",
       });
 
       assert.equal(outcome.ok, true);
@@ -135,7 +134,6 @@ describe("a vacated seat is reclaimable by the account that left it (#850 clause
         kind: "rejoin",
         roomId: ROOM,
         userId: "drita",
-        username: "Drita",
       });
       assert.deepEqual(outcome, { ok: false, code: "SEAT_RELEASED" });
     } finally {
@@ -156,7 +154,6 @@ describe("a vacated seat is reclaimable by the account that left it (#850 clause
         kind: "rejoin",
         roomId: ROOM,
         userId: "ghost",
-        username: "Ghost",
       });
       assert.deepEqual(outcome, { ok: false, code: "UNAUTHORIZED" });
     } finally {
@@ -187,7 +184,6 @@ describe("a vacated seat is reclaimable by the account that left it (#850 clause
         kind: "rejoin",
         roomId: ROOM,
         userId: "drita",
-        username: "Drita",
       });
 
       await new Promise((r) => setTimeout(r, 40));
@@ -271,7 +267,6 @@ describe("a reclaim merges the vacated seat's carried points into the returning 
         kind: "rejoin",
         roomId: ROOM,
         userId: "drita",
-        username: "Drita",
       });
       assert.equal(outcome.ok, true);
 
@@ -334,7 +329,7 @@ describe("a reclaim merges the vacated seat's carried points into the returning 
       game.handsPlayed += 1;
       assert.equal(first.matchOver, false, "8 and 3 apart do not yet reach 12 either way");
 
-      await applyOrForward(io, { kind: "rejoin", roomId: ROOM, userId: "drita", username: "Drita" });
+      await applyOrForward(io, { kind: "rejoin", roomId: ROOM, userId: "drita" });
       assert.equal(game.cumulativeScores.drita, 11, "the reclaim already merged the carried 3 points");
 
       // Hand 2, seat 1 now drita's own again: she finishes first a second

@@ -10,6 +10,7 @@ import { socketRoomMap, userRoom, userSocketMap } from "./gameRoom.ts";
 import { safeTimer } from "./gamePersistence.ts";
 import { announceRoomChanged, handleSeatRelease } from "./socketTable.ts";
 import { applyOrForward } from "./tableRouter.ts";
+import { payload } from "./payload.ts";
 
 let _io: SocketServer | null = null;
 
@@ -68,45 +69,66 @@ export async function onlineUserIds(): Promise<Set<string>> {
 }
 
 /**
- * Throws an account off the server once its `users` row is gone: a socket
- * authenticates once and `socket.data.userId` is never re-checked.
+ * Ends an account's sockets on every instance: a socket authenticates once, so
+ * a credential that stops being valid does not end the sockets it opened.
+ * `onlySid` cuts the sockets one session opened, `exceptSid` spares them.
+ *
+ * Call only after the write that revoked the credential has committed. Never
+ * throws: that write has already happened, and a caller cannot undo it.
+ */
+export async function revokeAccountSockets(
+  userId: string,
+  { onlySid, exceptSid }: { onlySid?: string; exceptSid?: string } = {}
+): Promise<void> {
+  if (!_io) return;
+  try {
+    for (const socket of await _io.in(userRoom(userId)).fetchSockets()) {
+      const sid = socket.data?.sid as string | undefined;
+      if (onlySid !== undefined && sid !== onlySid) continue;
+      if (exceptSid !== undefined && sid === exceptSid) continue;
+      socket.emit("socket:error", payload("SESSION_REVOKED"));
+      socket.disconnect(true);
+    }
+  } catch (err) {
+    logger.error({ err, userId }, "Failed to revoke an account's sockets");
+  }
+}
+
+/**
+ * Throws an account off the server once its `users` row is gone, and gives up
+ * every seat it held. `seatedRoomIds` comes from the delete itself: the socket
+ * may be on another instance, where this process cannot read its room.
  *
  * Call only after the delete has committed — releasing the seat can end the
  * hand, and the hand's writes must not race the transaction. Never throws.
  */
-export async function evictUser(userId: string): Promise<void> {
+export async function evictUser(userId: string, seatedRoomIds: readonly string[]): Promise<void> {
   const io = _io;
   if (!io) return;
+  const roomIds = new Set(seatedRoomIds);
   const socketId = userSocketMap.get(userId);
-  if (!socketId) return;
   userSocketMap.delete(userId);
-  const socket = io.sockets.sockets.get(socketId);
-  if (!socket) return;
+  const socket = socketId ? io.sockets.sockets.get(socketId) : undefined;
+  if (socket) {
+    // Taken here so the disconnect below cannot release the same seat a second
+    // time. Spectator state is left to it, which drops it correctly.
+    const roomId = socketRoomMap.get(socket.id);
+    socketRoomMap.delete(socket.id);
+    if (roomId) {
+      roomIds.add(roomId);
+      socket.leave(roomId);
+    }
+  }
 
-  // Taken here so the disconnect below cannot release the same seat a second
-  // time. Spectator state is left to it, which drops it correctly.
-  const roomId = socketRoomMap.get(socketId);
-  socketRoomMap.delete(socketId);
-  const username = (socket.data?.username as string) ?? "";
-
-  if (roomId) {
+  for (const roomId of roomIds) {
     try {
       // Not handleSeatRelease when a game is live: deleting an account also
       // deletes the rooms rows it hosted, and that path reads the room back and
       // returns when it is gone — leaving the seat live in a hand still being
       // played. Routed, because the game may be held by another instance.
-      socket.leave(roomId);
-      const vacated = await applyOrForward(io, {
-        kind: "vacate",
-        roomId,
-        userId,
-        username,
-      });
+      const vacated = await applyOrForward(io, { kind: "vacate", roomId, userId });
       if (!vacated.ok) {
-        await handleSeatRelease(io, roomId, userId, username, {
-          socket,
-          source: "leave",
-        });
+        await handleSeatRelease(io, roomId, userId, { socket, source: "leave" });
       }
     } catch (err) {
       logger.error(
@@ -116,7 +138,7 @@ export async function evictUser(userId: string): Promise<void> {
     }
   }
 
-  socket.disconnect(true);
+  await revokeAccountSockets(userId);
 }
 
 /**
@@ -135,6 +157,13 @@ export async function declineGameInviteAndNotify(
   const roomId = await friendStore.declineGameInvite(inviteeId, roomCode);
   if (!roomId || !_io) return;
   await announceRoomChanged(_io, roomId);
+}
+
+/** An invite rides the friendship, so ending one frees the seats the other held. */
+export async function removeFriendAndNotify(userId: string, friendUserId: string): Promise<void> {
+  const roomIds = await friendStore.removeFriend(userId, friendUserId);
+  if (!_io) return;
+  for (const roomId of roomIds) await announceRoomChanged(_io, roomId);
 }
 
 /**

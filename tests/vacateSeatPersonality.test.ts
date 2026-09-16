@@ -50,7 +50,7 @@ test("vacateSeat never sets personality on the seat it hands to the AI", async (
   } as unknown as OnlineGameState;
   activeGames.set(ROOM, game);
 
-  await vacateSeat(io, ROOM, "u_drita", "drita", gameOverWriters);
+  await vacateSeat(io, ROOM, "u_drita", gameOverWriters);
 
   const vacated = game.gameState.players[1];
   assert.equal(vacated?.type, "ai");

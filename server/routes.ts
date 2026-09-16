@@ -26,7 +26,14 @@ import {
 } from "./schemas.ts";
 import { deletePushToken, savePushToken } from "./push.ts";
 import { DEFAULT_LOCALE, type Locale } from "../shared/i18n.ts";
-import { declineGameInviteAndNotify, emitToUser, evictUser, isUserOnline } from "./socket.ts";
+import {
+  declineGameInviteAndNotify,
+  emitToUser,
+  evictUser,
+  isUserOnline,
+  removeFriendAndNotify,
+  revokeAccountSockets,
+} from "./socket.ts";
 import { mintSocketTicket } from "./ticket.ts";
 import {
   mintAuthToken,
@@ -439,11 +446,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     // into whatever session the registration request already carried —
     // otherwise an attacker who planted a cookie on this origin before the
     // victim signed up would inherit their session.
+    const priorSession = { userId: req.session.userId, sid: req.sessionID };
     req.session.regenerate((regenErr) => {
       if (regenErr) {
         logger.error({ err: regenErr }, "Session regenerate failed on register");
         void rollbackRegistration(req, user.id, res);
         return;
+      }
+      if (priorSession.userId) {
+        void revokeAccountSockets(priorSession.userId, { onlySid: priorSession.sid });
       }
       req.session.userId = user.id;
       req.session.save((err) => {
@@ -485,11 +496,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     // See the register route above: regenerate first so a session id planted
     // by an attacker before this login can never end up holding this user.
+    const priorSession = { userId: req.session.userId, sid: req.sessionID };
     req.session.regenerate((regenErr) => {
       if (regenErr) {
         logger.error({ err: regenErr }, "Session regenerate failed on login");
         res.status(500).json({ ...payload("INTERNAL_SERVER_ERROR") });
         return;
+      }
+      if (priorSession.userId) {
+        void revokeAccountSockets(priorSession.userId, { onlySid: priorSession.sid });
       }
       req.session.userId = user.id;
       req.session.save((err) => {
@@ -505,7 +520,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.post("/api/auth/logout", (req, res) => {
-    req.session.destroy(() => {
+    const { userId } = req.session;
+    const sid = req.sessionID;
+    req.session.destroy(async () => {
+      if (userId) await revokeAccountSockets(userId, { onlySid: sid });
       res.json({ ok: true });
     });
   });
@@ -562,6 +580,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     const passwordHash = await bcrypt.hash(newPassword, 10);
     await userStore.changePassword(userId, passwordHash, req.sessionID);
+    await revokeAccountSockets(userId, { exceptSid: req.sessionID });
     logger.info({ userId }, "Password changed");
     res.json({ ok: true });
   });
@@ -717,6 +736,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const passwordHash = await bcrypt.hash(newPassword, 10);
       await userStore.resetPassword(user.id, passwordHash);
+      await revokeAccountSockets(user.id);
       // The token this request redeemed is already used_at-stamped; this
       // only reaches its unredeemed siblings (design doc, Box 2) — the same
       // "live credential" class as the sessions userStore.resetPassword just
@@ -730,7 +750,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Mints the short-lived, single-use ticket the socket handshake accepts in
   // place of a session cookie (native clients do not send cookies on upgrade).
   app.post("/api/auth/socket-ticket", requireAuth, ticketLimiter, (req, res) => {
-    const { ticket, expiresAt } = mintSocketTicket(req.session.userId!);
+    const { ticket, expiresAt } = mintSocketTicket(req.session.userId!, req.sessionID);
     res.json({ ticket, expiresAt });
   });
 
@@ -785,13 +805,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete("/api/users/me", requireAuth, async (req, res) => {
     try {
       const userId = req.session.userId!;
-      await deleteUser(userId);
+      const seatedRoomIds = await deleteUser(userId);
       req.session.destroy(() => {});
       // After the delete has committed, never before: the account's live
       // socket outlives its session, and a seat still held by an id no `users`
       // row answers to fails every write the hand's end makes for the whole
       // table.
-      await evictUser(userId);
+      await evictUser(userId, seatedRoomIds);
       logger.info({ userId }, "User account deleted");
       res.json({ ...payload("ACCOUNT_DELETED") });
     } catch (err) {
@@ -939,7 +959,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete("/api/friends/:friendUserId", requireAuth, async (req, res) => {
     const friendUserId = readParam(res, req.params.friendUserId);
     if (friendUserId === null) return;
-    await friendStore.removeFriend(req.session.userId!, friendUserId);
+    await removeFriendAndNotify(req.session.userId!, friendUserId);
     res.json({ ok: true });
   });
 

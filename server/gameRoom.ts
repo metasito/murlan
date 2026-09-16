@@ -208,3 +208,8 @@ export function scoreKeyForSeat(game: OnlineGameState, seat: number): string {
 export function seatOfUser(game: OnlineGameState, userId: string): number | null {
   return seatOfUserInMap(game.playerMap, userId);
 }
+
+/** The name a table shows for a seat: read from the database at the deal, never from a socket. */
+export function seatName(game: OnlineGameState, seat: number | null): string {
+  return seat === null ? "" : (game.gameState.players[seat]?.name ?? "");
+}

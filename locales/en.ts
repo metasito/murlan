@@ -92,6 +92,7 @@ export const en = {
   "server.PLAYER_DISCONNECTED_GRACE": "{{username}} disconnected. They have {{seconds}} seconds to rejoin.",
   "server.PLAYER_RECONNECTED": "{{username}} is back.",
   "server.SESSION_REPLACED": "Your account was opened somewhere else. This session has been closed.",
+  "server.SESSION_REVOKED": "You have been signed out on this device. Sign in again to keep playing.",
   "server.MATCH_ENDED_BY_AGREEMENT": "The table agreed to end the match. Nobody is penalised.",
   "server.NO_VACANCY_TO_END": "There's nobody to vote on ending the match yet",
 

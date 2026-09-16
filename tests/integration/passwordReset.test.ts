@@ -19,7 +19,7 @@ import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { startTestServer, hasDatabase, skipMessage, type TestServer } from "../helpers/testServer.ts";
-import { register } from "../helpers/client.ts";
+import { dropped, reconnectWith, register } from "../helpers/client.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const script = path.join(repoRoot, "scripts", "reset-password.mjs");
@@ -345,6 +345,17 @@ describe("password reset", { skip: hasDatabase() ? false : skipMessage() }, () =
     assert.equal((await me(deviceA)).status, 401, "a session predating the reset must be cleared");
     assert.equal((await me(deviceB!)).status, 401, "every session for the account must be cleared");
     assert.equal((await me(bystander.cookie)).status, 200, "a different account's session must survive");
+  });
+
+  test("a successful reset cuts the account's socket", async () => {
+    const { user, cookie } = await verifiedUser("reset_cuts_socket");
+    const socket = await reconnectWith(server, cookie);
+    const cut = dropped(socket);
+
+    const { mintAuthToken } = await import("../../server/authTokens.ts");
+    const token = await mintAuthToken(user.id, "password_reset", 60_000);
+    assert.equal((await submitReset(token, "post-reset-pw-2")).status, 200);
+    assert.equal(await cut, true, "a socket opened before the reset must not outlive it");
   });
 
   test("a completed reset makes a second outstanding token for that user unredeemable", async () => {

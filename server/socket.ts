@@ -7,7 +7,7 @@ import { userStore } from "./userStore.ts";
 import { logger } from "./logger.ts";
 import { trackEvent } from "./events.ts";
 import { sessionMiddleware } from "./session.ts";
-import { consumeSocketTicket } from "./ticket.ts";
+import { redeemSocketTicket, verifySocketTicket } from "./ticket.ts";
 import { isAllowedOrigin } from "./cors.ts";
 import { createSocketAdapter } from "./socketAdapter.ts";
 import { registerRoomHandlers } from "./socketRooms.ts";
@@ -34,6 +34,8 @@ export {
   emitToUser,
   evictUser,
   isUserOnline,
+  removeFriendAndNotify,
+  revokeAccountSockets,
   onlineUserIds,
   __testables,
 } from "./socketRegistry.ts";
@@ -63,6 +65,7 @@ const HANDSHAKE_WINDOW_MS = 60_000;
  */
 type HandshakeRequest = IncomingMessage & {
   session?: Session & Partial<SessionData>;
+  sessionID?: string;
 };
 
 export function setupSocket(httpServer: HttpServer) {
@@ -111,10 +114,11 @@ export function setupSocket(httpServer: HttpServer) {
     try {
       const req = socket.request as HandshakeRequest;
       const sessionUserId = req.session?.userId;
-      const claimedUserId =
-        sessionUserId ?? consumeSocketTicket(socket.handshake.auth?.ticket);
+      const ticket = sessionUserId ? null : verifySocketTicket(socket.handshake.auth?.ticket);
+      const claimedUserId = sessionUserId ?? ticket?.userId;
 
       if (!claimedUserId) return next(new Error("Not authenticated"));
+      socket.data.sid = sessionUserId ? req.sessionID : ticket?.sid;
 
       // The session or the ticket has already proved this id, so the budget is
       // keyed on it and spent *before* the account's first query rather than
@@ -132,10 +136,11 @@ export function setupSocket(httpServer: HttpServer) {
         return next(new Error("Too many connections"));
       }
 
+      if (ticket && !(await redeemSocketTicket(ticket))) {
+        return next(new Error("Not authenticated"));
+      }
       const user = await userStore.getUser(claimedUserId).catch(() => null);
       if (!user) return next(new Error("Not authenticated"));
-
-      socket.data.username = user.username;
       return next();
     } catch (err) {
       logger.error({ err }, "Socket handshake failed");
@@ -145,7 +150,6 @@ export function setupSocket(httpServer: HttpServer) {
 
   io.on("connection", async (socket: Socket) => {
     const userId = socket.data.userId as string;
-    const username = socket.data.username as string;
     // The mapping has to name the new socket before the old one is closed —
     // see evictReplacedSession for what reads it on the way out.
     const replacedSocketId = userSocketMap.get(userId);
@@ -160,7 +164,7 @@ export function setupSocket(httpServer: HttpServer) {
       evictReplacedSession(io, userId, replacedSocketId, socket);
     }
     evictRemoteSessions(io, userId, socket.id, replacedSocketId);
-    logger.debug({ userId, username, socketId: socket.id }, "Socket connected");
+    logger.debug({ userId, socketId: socket.id }, "Socket connected");
 
     // Every registration below must run before this function's first `await`.
     // Socket.io delivers packets the instant the transport is up, and a client
@@ -168,7 +172,7 @@ export function setupSocket(httpServer: HttpServer) {
     // game:rejoin there — beats an `await` placed ahead of them. A packet with
     // no listener is dropped silently. The work that needs the database runs
     // after instead.
-    const ctx = { io, socket, userId, username };
+    const ctx = { io, socket, userId };
     registerRoomHandlers(ctx);
     registerGameplayHandlers(ctx);
     registerFriendHandlers(ctx);

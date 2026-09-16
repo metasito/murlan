@@ -5,7 +5,7 @@
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
 import { startTestServer, hasDatabase, skipMessage, type TestServer } from "../helpers/testServer.ts";
-import { register } from "../helpers/client.ts";
+import { dropped, reconnectWith, register } from "../helpers/client.ts";
 
 describe("in-app change password", { skip: hasDatabase() ? false : skipMessage() }, () => {
   let server: TestServer;
@@ -69,6 +69,23 @@ describe("in-app change password", { skip: hasDatabase() ? false : skipMessage()
     assert.equal(withNew.status, 200, await withNew.text());
     const withOld = await login(username, "password123");
     assert.equal(withOld.status, 401);
+  });
+
+  test("a change cuts another session's socket", async () => {
+    const { deviceA, deviceB } = await twoSessions("change_pw_sock_other");
+    const socket = await reconnectWith(server, deviceA);
+    const cut = dropped(socket);
+    assert.equal((await changePassword(deviceB, "password123", "new-password-456")).status, 200);
+    assert.equal(await cut, true, "the other device's socket must be cut");
+  });
+
+  test("a change keeps the caller's own socket", async () => {
+    const { deviceB } = await twoSessions("change_pw_sock_own");
+    const socket = await reconnectWith(server, deviceB);
+    const cut = dropped(socket, 1_500);
+    assert.equal((await changePassword(deviceB, "password123", "new-password-456")).status, 200);
+    assert.equal(await cut, false, "the socket the change came from must survive");
+    socket.close();
   });
 
   test("a wrong current password changes nothing and leaves every session intact", async () => {

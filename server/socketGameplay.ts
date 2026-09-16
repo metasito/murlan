@@ -60,14 +60,12 @@ export interface GameplayHandlerContext {
   io: SocketServer;
   socket: Socket;
   userId: string;
-  username: string;
 }
 
 export function registerGameplayHandlers({
   io,
   socket,
   userId,
-  username,
 }: GameplayHandlerContext) {
 
     /** The table this socket is at, or the refusal to send back. */
@@ -80,7 +78,7 @@ export function registerGameplayHandlers({
       async ({ cardIds }) => {
         const roomId = atTable();
         if (!roomId) return { ok: false, code: "NOT_AT_A_TABLE" };
-        return applyOrForward(io, { kind: "play", roomId, userId, username, cardIds });
+        return applyOrForward(io, { kind: "play", roomId, userId, cardIds });
       },
       { limit: GAME_ACTION_RATE_LIMIT, windowMs: 60_000 }
     );
@@ -92,7 +90,7 @@ export function registerGameplayHandlers({
       async () => {
         const roomId = atTable();
         if (!roomId) return { ok: false, code: "NOT_AT_A_TABLE" };
-        return applyOrForward(io, { kind: "pass", roomId, userId, username });
+        return applyOrForward(io, { kind: "pass", roomId, userId });
       },
       { limit: GAME_ACTION_RATE_LIMIT, windowMs: 60_000 }
     );
@@ -104,7 +102,7 @@ export function registerGameplayHandlers({
       async ({ wants }) => {
         const roomId = atTable();
         if (!roomId) return { ok: false, code: "NOT_AT_A_TABLE" };
-        return applyOrForward(io, { kind: "rematchIntent", roomId, userId, username, wants });
+        return applyOrForward(io, { kind: "rematchIntent", roomId, userId, wants });
       },
       { limit: 20, windowMs: 60_000 }
     );
@@ -116,7 +114,7 @@ export function registerGameplayHandlers({
       async () => {
         const roomId = atTable();
         if (!roomId) return { ok: false, code: "NOT_AT_A_TABLE" };
-        return applyOrForward(io, { kind: "rematchVote", roomId, userId, username });
+        return applyOrForward(io, { kind: "rematchVote", roomId, userId });
       },
       { limit: 20, windowMs: 60_000 }
     );
@@ -128,7 +126,7 @@ export function registerGameplayHandlers({
       async ({ wants }) => {
         const roomId = atTable();
         if (!roomId) return { ok: false, code: "NOT_AT_A_TABLE" };
-        return applyOrForward(io, { kind: "endMatchVote", roomId, userId, username, wants });
+        return applyOrForward(io, { kind: "endMatchVote", roomId, userId, wants });
       },
       { limit: 20, windowMs: 60_000 }
     );
@@ -143,7 +141,7 @@ export function registerGameplayHandlers({
         // here must resolve as game:rejoin_failed instead.
         let outcome: EventOutcome;
         try {
-          outcome = await applyOrForward(io, { kind: "rejoin", roomId, userId, username });
+          outcome = await applyOrForward(io, { kind: "rejoin", roomId, userId });
         } catch (err) {
           logger.error({ err, roomId, userId }, "game:rejoin failed");
           outcome = { ok: false, code: "SERVER_ERROR" };
@@ -168,7 +166,7 @@ export function registerGameplayHandlers({
       async ({ emoji }) => {
         const roomId = atTable();
         if (!roomId) return { ok: false, code: "NOT_AT_A_TABLE" };
-        return applyOrForward(io, { kind: "reaction", roomId, userId, username, emoji });
+        return applyOrForward(io, { kind: "reaction", roomId, userId, emoji });
       },
       { limit: 8, windowMs: 10_000 }
     );
@@ -180,7 +178,7 @@ export function registerGameplayHandlers({
       async ({ cardId }) => {
         const roomId = atTable();
         if (!roomId) return { ok: false, code: "NOT_AT_A_TABLE" };
-        return applyOrForward(io, { kind: "exchange", roomId, userId, username, cardId });
+        return applyOrForward(io, { kind: "exchange", roomId, userId, cardId });
       },
       { limit: 30, windowMs: 60_000 }
     );

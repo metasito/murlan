@@ -108,6 +108,17 @@ export async function reconnectWith(server: TestServer, cookie: string): Promise
   return socket;
 }
 
+/** Whether the server closes `socket` within `ms`. */
+export function dropped(socket: Socket, ms = 5_000): Promise<boolean> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(false), ms);
+    socket.once("disconnect", () => {
+      clearTimeout(timer);
+      resolve(true);
+    });
+  });
+}
+
 export async function connectAs(
   server: TestServer,
   username: string
