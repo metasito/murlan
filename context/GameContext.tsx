@@ -148,7 +148,7 @@ interface GameContextValue {
   setupGame: (players: PlayerSetupConfig[], mode: GameMode, length?: MatchLength) => void;
   startNextHand: () => void;
   startNewMatch: () => void;
-  answerRematch: (wants: boolean) => void;
+  answerRematch: (playerId: string, wants: boolean) => void;
   chooseExchangeCard: (cardId: string) => void;
   acknowledgeExchange: () => void;
   selectCard: (cardId: string) => void;
@@ -266,11 +266,9 @@ export function GameProvider({ children }: { children: ReactNode }) {
     [gameState, match]
   );
 
-  const answerRematch = useCallback((wants: boolean) => {
-    const human = gameState?.players.find((p) => p.type === "human");
-    if (!human) return;
-    setRematchAnswers((prev) => ({ ...prev, [human.id]: wants }));
-  }, [gameState]);
+  const answerRematch = useCallback((playerId: string, wants: boolean) => {
+    setRematchAnswers((prev) => ({ ...prev, [playerId]: wants }));
+  }, []);
 
   const chooseExchangeCard = useCallback(
     (cardId: string) => {

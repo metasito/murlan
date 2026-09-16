@@ -9,7 +9,7 @@ import { test, expect } from "@jest/globals";
 import React from "react";
 import { Text, Pressable } from "react-native";
 import { render, act, fireEvent } from "@testing-library/react-native";
-import { GameProvider, useGame } from "@/context/GameContext";
+import { GameProvider, useGame, type PlayerSetupConfig } from "@/context/GameContext";
 
 const ONE_HUMAN_THREE_BOTS = [
   { name: "Ana", type: "human" as const },
@@ -18,27 +18,28 @@ const ONE_HUMAN_THREE_BOTS = [
   { name: "Gent", type: "ai" as const, personality: "gent" as const },
 ];
 
-function Probe() {
-  const { gameState, rematchTally, tableWantsRematch, setupGame, answerRematch } = useGame();
+function Probe({ seats, answerer }: { seats: PlayerSetupConfig[]; answerer: string }) {
+  const { gameState, rematchAnswers, rematchTally, tableWantsRematch, setupGame, answerRematch } = useGame();
   return (
     <>
-      <Pressable testID="deal" onPress={() => setupGame(ONE_HUMAN_THREE_BOTS, "free_for_all")}>
+      <Pressable testID="deal" onPress={() => setupGame(seats, "free_for_all")}>
         <Text>deal</Text>
       </Pressable>
-      <Pressable testID="yes" onPress={() => answerRematch(true)}>
+      <Pressable testID="yes" onPress={() => answerRematch(answerer, true)}>
         <Text>yes</Text>
       </Pressable>
       <Text testID="seats">{gameState ? String(gameState.players.length) : "-"}</Text>
+      <Text testID="answers">{JSON.stringify(rematchAnswers)}</Text>
       <Text testID="tally">{`${rematchTally.yes}/${rematchTally.total}`}</Text>
       <Text testID="verdict">{tableWantsRematch ? "again" : "stop"}</Text>
     </>
   );
 }
 
-const mount = () =>
+const mount = (seats: PlayerSetupConfig[] = ONE_HUMAN_THREE_BOTS, answerer = "player_0") =>
   render(
     <GameProvider>
-      <Probe />
+      <Probe seats={seats} answerer={answerer} />
     </GameProvider>
   );
 
@@ -64,4 +65,16 @@ test("only the human seat is asked, and its yes carries the table", async () => 
 
   expect(shown(view, "tally")).toBe("1/1");
   expect(shown(view, "verdict")).toBe("again");
+});
+
+test("pass and play records a yes under the seat that gave it", async () => {
+  const view = await mount([
+    { name: "Ana", type: "human" },
+    { name: "Besi", type: "human" },
+  ], "player_1");
+  await press(view, "deal");
+  await press(view, "yes");
+
+  expect(shown(view, "answers")).toBe('{"player_1":true}');
+  expect(shown(view, "tally")).toBe("1/2");
 });

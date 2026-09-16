@@ -214,7 +214,9 @@ export default function GameScreen() {
         myAnswer,
         yesCount: rematchTally.yes,
         seatCount: rematchTally.total || gameState.players.length,
-        onAnswer: answerRematch,
+        onAnswer: (wants) => {
+          if (humanId !== undefined) answerRematch(humanId, wants);
+        },
       }}
       overlays={() => <ConfirmDialog request={confirming} onClose={() => setConfirming(null)} />}
     />
