@@ -11,6 +11,8 @@ import {
 
 export interface OnlineGameState {
   gameState: GameState;
+  /** The last finished hand's stats and ladder writes; never rejects. */
+  resultWrites?: Promise<void>;
   /** engine seat index -> userId. A missing seat is a vacated (bot) seat. */
   playerMap: Record<number, string>;
   roomId: string;

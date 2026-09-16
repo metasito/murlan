@@ -128,7 +128,7 @@ describe("password reset", { skip: hasDatabase() ? false : skipMessage() }, () =
   async function verifiedUser(username: string) {
     const { user, cookie } = await register(server, username);
     const { userStore } = await import("../../server/userStore.ts");
-    await userStore.markEmailVerified(user.id);
+    await userStore.markEmailVerified(user.id, user.email!);
     return { user, cookie, email: `${username.toLowerCase()}@example.test` };
   }
 
@@ -208,7 +208,7 @@ describe("password reset", { skip: hasDatabase() ? false : skipMessage() }, () =
     const owner = await ownerMe.json();
 
     const { userStore } = await import("../../server/userStore.ts");
-    await userStore.markEmailVerified(owner.id);
+    await userStore.markEmailVerified(owner.id, email);
 
     const res = await requestReset(email);
     assert.equal(res.status, 200, await res.text());

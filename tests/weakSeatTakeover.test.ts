@@ -151,7 +151,10 @@ describe("vacateSeat writes the row on every exit the table survives (#1008)", (
       writers: {
         updateRoomStatus: record("updateRoomStatus"),
         recordGameResult: record("recordGameResult"),
-        recordRatedResult: record("recordRatedResult"),
+        recordRatedResult: async () => {
+          await record("recordRatedResult")();
+          return new Map<string, number>();
+        },
         saveReplay: record("saveReplay"),
         previewRatedDeltas: async () => {
           reached.push("previewRatedDeltas");

@@ -17,7 +17,7 @@ describe("markEmailVerified's three outcomes", { skip: hasDatabase() ? false : s
     const { user } = await register(server, "markverify_ok");
     const { userStore } = await import("../../server/userStore.ts");
 
-    const result = await userStore.markEmailVerified(user.id);
+    const result = await userStore.markEmailVerified(user.id, user.email!);
     assert.equal(result, "verified");
 
     const stored = await userStore.getUser(user.id);
@@ -36,8 +36,8 @@ describe("markEmailVerified's three outcomes", { skip: hasDatabase() ? false : s
     await db.update(users).set({ email: "markverify_race@example.test" }).where(eq(users.id, second.id));
     const { userStore } = await import("../../server/userStore.ts");
 
-    assert.equal(await userStore.markEmailVerified(first.id), "verified");
-    assert.equal(await userStore.markEmailVerified(second.id), "lost_race");
+    assert.equal(await userStore.markEmailVerified(first.id, "markverify_race@example.test"), "verified");
+    assert.equal(await userStore.markEmailVerified(second.id, "markverify_race@example.test"), "lost_race");
 
     const loser = await userStore.getUser(second.id);
     assert.equal(loser?.email, null, "the loser's own claim must be cleared, not left colliding");
@@ -56,7 +56,7 @@ describe("markEmailVerified's three outcomes", { skip: hasDatabase() ? false : s
     await db.update(users).set({ email: null }).where(eq(users.id, user.id));
     const { userStore } = await import("../../server/userStore.ts");
 
-    const result = await userStore.markEmailVerified(user.id);
+    const result = await userStore.markEmailVerified(user.id, user.email!);
     assert.equal(result, "not_found", "an UPDATE matching zero rows must not report success");
 
     const stored = await userStore.getUser(user.id);
@@ -69,7 +69,7 @@ describe("markEmailVerified's three outcomes", { skip: hasDatabase() ? false : s
     const { userStore } = await import("../../server/userStore.ts");
     await deleteUser(user.id);
 
-    const result = await userStore.markEmailVerified(user.id);
+    const result = await userStore.markEmailVerified(user.id, user.email!);
     assert.equal(result, "not_found", "a deleted account must not read back as verified");
   });
 });

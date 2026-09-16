@@ -1,5 +1,6 @@
-import { and, desc, eq, notInArray, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "./db.ts";
+import { lockUsers } from "./userLock.ts";
 import { logger } from "./logger.ts";
 import { userStats, matchHistory, userAchievements } from "../shared/schema.ts";
 import type { UserStats, MatchHistory } from "../shared/schema.ts";
@@ -71,6 +72,7 @@ export async function recordGameResult(
       .transaction(async (tx) => {
         const { userId, placement, playerCount, playedBomb, matchWon, abandoned } = result;
         const won = placement === 1;
+        await lockUsers(tx, [userId]);
 
         // Single atomic UPSERT: in the UPDATE branch, referencing
         // userStats.currentStreak/bestStreak reads the existing row being
@@ -123,23 +125,20 @@ export async function recordGameResult(
         });
 
         // Prune in the same transaction as the insert above, so the table
-        // cannot grow without bound. The row just inserted is always among the
-        // kept set.
-        const keep = await tx
-          .select({ id: matchHistory.id })
-          .from(matchHistory)
-          .where(eq(matchHistory.userId, userId))
-          .orderBy(desc(matchHistory.finishedAt))
-          .limit(MAX_HISTORY_ROWS_PER_USER);
+        // cannot grow without bound. One statement under the row lock, so no
+        // other hand's row can commit between choosing what to keep and
+        // deleting the rest.
         await tx
           .delete(matchHistory)
           .where(
             and(
               eq(matchHistory.userId, userId),
-              notInArray(
-                matchHistory.id,
-                keep.map((r) => r.id)
-              )
+              sql`${matchHistory.id} NOT IN (
+                SELECT ${matchHistory.id} FROM ${matchHistory}
+                WHERE ${matchHistory.userId} = ${userId}
+                ORDER BY ${matchHistory.finishedAt} DESC, ${matchHistory.id} DESC
+                LIMIT ${MAX_HISTORY_ROWS_PER_USER}
+              )`
             )
           );
 

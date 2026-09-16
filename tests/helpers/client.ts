@@ -202,3 +202,23 @@ export function waitFor<T = unknown>(socket: Socket, event: string, ms = 5000): 
     });
   });
 }
+
+/**
+ * register() replies before it mints (#897), and its mint replaces every
+ * pending code — so a test minting its own must wait for register's to land,
+ * or register's can delete it afterwards.
+ */
+export async function waitForPendingCode(userId: string): Promise<void> {
+  const { db } = await import("../../server/db.ts");
+  const { authTokens } = await import("../../shared/schema.ts");
+  const { eq, and } = await import("drizzle-orm");
+  for (let attempt = 0; attempt < 100; attempt++) {
+    const rows = await db
+      .select()
+      .from(authTokens)
+      .where(and(eq(authTokens.userId, userId), eq(authTokens.purpose, "email_verify")));
+    if (rows.length > 0) return;
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  throw new Error(`register's background mint for ${userId} never landed`);
+}

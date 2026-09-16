@@ -1,6 +1,7 @@
 import { and, desc, eq, gte, inArray, sql } from "drizzle-orm";
 import { db } from "./db.ts";
 import { userRatings, users } from "../shared/schema.ts";
+import { lockUsers } from "./userLock.ts";
 import {
   PROVISIONAL_GAMES,
   ratedFinishers,
@@ -132,20 +133,23 @@ export async function previewRatedDeltas(
  * One transaction, so a hand moves every seat or none. Which is why the seats
  * are checked against `users` first: an account deleted mid-hand still holds a
  * seat, and its foreign key would abort everyone else's rating with it.
+ *
+ * Returns the deltas it committed, empty when it rated nobody.
  */
 export async function recordRatedResult(
   seatResults: { userId: string; placement: number }[],
   gameMode: string,
   finishedAt: Date
-): Promise<void> {
+): Promise<Map<string, number>> {
   const season = seasonKey(finishedAt);
 
-  await db.transaction(async (tx) => {
-    // Resolved inside the transaction, not taken from the preview: the write
-    // is what the ladder answers to, so it reads the rows it is about to
-    // update rather than trusting a number read before it.
+  return db.transaction(async (tx) => {
+    // Resolved inside the transaction and under every seat's row lock, not
+    // taken from the preview: the absolute values written below are only
+    // right if no other hand's write lands between this read and them.
+    await lockUsers(tx, ratedFinishers(seatResults).map((f) => f.userId));
     const seats = await ratedSeatsOf(seatResults, gameMode, season, tx);
-    if (seats.length < 2) return;
+    if (seats.length < 2) return new Map<string, number>();
 
     const deltas = ratingDeltas(seats);
     for (const seat of seats) {
@@ -167,6 +171,7 @@ export async function recordRatedResult(
           },
         });
     }
+    return deltas;
   });
 }
 

@@ -39,11 +39,12 @@ export interface GameOverWriters {
     gameMode: string,
     finishedAt: Date
   ) => Promise<Map<string, number>>;
+  /** Resolves to the deltas it committed, empty when it rated nobody. */
   recordRatedResult: (
     seatResults: { userId: string; placement: number }[],
     gameMode: string,
     finishedAt: Date
-  ) => Promise<void>;
+  ) => Promise<Map<string, number>>;
   saveReplay: (input: {
     roomId: string;
     finishedAt: Date;
@@ -188,16 +189,27 @@ export async function handleGameOver(
     } else {
       // Deliberately not awaited: a stats write must never be able to block
       // or delay whatever runs after handleGameOver at any of its call sites.
-      writers.recordGameResult(gameResults, game.gameMode, finishedAt, ratingDeltasByUser).catch((err) =>
-        logger.error({ err, roomId }, "Failed to record game results")
-      );
+      // Chained behind the previous hand's writes, because the streak upsert
+      // reads whatever the last committed hand left.
+      //
       // The ladder moves on the same gate as stats: a bot-majority table
       // awards nothing, or a private room of bots would be free rating.
       // recordRatedResult declines a teams result on its own (placement
-      // belongs to the pair, not to either partner).
-      writers.recordRatedResult(gameResults, game.gameMode, finishedAt).catch((err) =>
-        logger.error({ err, roomId }, "Failed to record rated result")
-      );
+      // belongs to the pair, not to either partner). History records what the
+      // ladder committed, not the preview, so a declined write leaves null.
+      const mode = game.gameMode;
+      game.resultWrites = (game.resultWrites ?? Promise.resolve()).then(async () => {
+        const committed = await writers.recordRatedResult(gameResults, mode, finishedAt).catch((err) => {
+          logger.error({ err, roomId }, "Failed to record rated result");
+          return new Map<string, number>();
+        });
+        if (committed.size < ratingDeltasByUser.size) {
+          logger.warn({ roomId }, "The ladder declined a hand its preview rated");
+        }
+        await writers.recordGameResult(gameResults, mode, finishedAt, committed).catch((err) =>
+          logger.error({ err, roomId }, "Failed to record game results")
+        );
+      });
     }
 
     // On the same `recordable` gate as the stats above: a replay is reached

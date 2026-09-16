@@ -2,7 +2,7 @@ import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
 import pg from "pg";
 import { startTestServer, hasDatabase, skipMessage, type TestServer } from "../helpers/testServer.ts";
-import { register, connect as connectRaw } from "../helpers/client.ts";
+import { register, connect as connectRaw, waitForPendingCode } from "../helpers/client.ts";
 
 // One server for the whole file, shared by both describe blocks below.
 // server/db.ts's pool is a module-level singleton created on first import;
@@ -392,8 +392,9 @@ describe("email at signup", { skip: hasDatabase() ? false : skipMessage() }, () 
 
   test("verify-email redeems a code once, and a second redemption fails", async () => {
     const { user } = await register(server, "verify_once");
-    const { mintAuthCode, redeemAuthCode } = await import("../../server/authTokens.ts");
-    const code = await mintAuthCode({ userId: user.id, email: user.email!, purpose: "email_verify", ttlMs: 60_000 });
+    await waitForPendingCode(user.id);
+    const { replaceEmailVerifyCode, redeemAuthCode } = await import("../../server/authTokens.ts");
+    const code = await replaceEmailVerifyCode({ userId: user.id, email: user.email!, ttlMs: 60_000 });
 
     const first = await fetch(`${server.url}/api/auth/verify-email`, {
       method: "POST",
@@ -422,11 +423,11 @@ describe("email at signup", { skip: hasDatabase() ? false : skipMessage() }, () 
 
   test("an expired code fails to redeem", async () => {
     const { user } = await register(server, "verify_expired");
-    const { mintAuthCode, redeemAuthCode } = await import("../../server/authTokens.ts");
-    const code = await mintAuthCode({
+    await waitForPendingCode(user.id);
+    const { replaceEmailVerifyCode, redeemAuthCode } = await import("../../server/authTokens.ts");
+    const code = await replaceEmailVerifyCode({
       userId: user.id,
       email: user.email!,
-      purpose: "email_verify",
       ttlMs: -60_000,
     });
 
@@ -448,8 +449,9 @@ describe("email at signup", { skip: hasDatabase() ? false : skipMessage() }, () 
   // refused without touching a row it has nothing to do with.
   test("a POST to verify-email does not sweep an unrelated expired row", async () => {
     const { user } = await register(server, "verify_no_sweep");
-    const { mintAuthCode } = await import("../../server/authTokens.ts");
-    await mintAuthCode({ userId: user.id, email: user.email!, purpose: "email_verify", ttlMs: -60_000 });
+    await waitForPendingCode(user.id);
+    const { replaceEmailVerifyCode } = await import("../../server/authTokens.ts");
+    await replaceEmailVerifyCode({ userId: user.id, email: user.email!, ttlMs: -60_000 });
 
     const admin = new pg.Pool({ connectionString: process.env.DATABASE_URL! });
     try {
@@ -460,25 +462,15 @@ describe("email at signup", { skip: hasDatabase() ? false : skipMessage() }, () 
       });
       assert.equal(res.status, 400, await res.text());
 
-      // Two rows for this user: the one register() itself minted, and the
-      // expired one above — both must survive the failed POST. register()
-      // replies before minting (#897), so — same as the poll above — the
-      // row is not guaranteed to exist yet at this exact instant.
-      const countRows = () =>
-        admin.query(
+      const rows = await admin.query(
           `SELECT 1 FROM "${server.schema}".auth_tokens t
              JOIN "${server.schema}".users u ON u.id = t.user_id
             WHERE u.username = $1 AND t.purpose = 'email_verify'`,
           ["verify_no_sweep"]
         );
-      let rows = await countRows();
-      for (let attempt = 0; attempt < 20 && (rows.rowCount ?? 0) < 2; attempt++) {
-        await new Promise((r) => setTimeout(r, 50));
-        rows = await countRows();
-      }
       assert.equal(
         rows.rowCount,
-        2,
+        1,
         "an expired row must still be there — the sweep is on a schedule (server/retention.ts), not this route"
       );
     } finally {

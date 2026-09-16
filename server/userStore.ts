@@ -114,19 +114,22 @@ export const userStore = {
    * prior race, or a second outstanding token — #894 review, finding 3 —
    * redeemed after the first already cleared it). Scoping the UPDATE to
    * `email IS NOT NULL` is what makes that second case return "not_found"
-   * instead of silently re-verifying a claim that no longer exists.
+   * instead of silently re-verifying a claim that no longer exists. `email`
+   * is the address the redeemed code was minted for: a claim that has since
+   * moved to another address is "not_found", never verified by that code.
    */
-  async markEmailVerified(userId: string): Promise<"verified" | "lost_race" | "not_found"> {
+  async markEmailVerified(userId: string, email: string): Promise<"verified" | "lost_race" | "not_found"> {
+    const ownClaim = and(eq(users.id, userId), sql`lower(${users.email}) = lower(${email})`);
     try {
       const [row] = await db
         .update(users)
         .set({ emailVerifiedAt: new Date() })
-        .where(and(eq(users.id, userId), isNotNull(users.email)))
+        .where(ownClaim)
         .returning({ id: users.id });
       return row ? "verified" : "not_found";
     } catch (err) {
       if (!uniqueViolation(err)?.includes("email")) throw err;
-      await db.update(users).set({ email: null }).where(eq(users.id, userId));
+      await db.update(users).set({ email: null }).where(ownClaim);
       return "lost_race";
     }
   },

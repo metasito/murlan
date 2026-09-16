@@ -31,10 +31,9 @@ import { mintSocketTicket } from "./ticket.ts";
 import {
   mintAuthToken,
   redeemAuthToken,
-  mintAuthCode,
+  replaceEmailVerifyCode,
   redeemAuthCode,
   invalidateAuthTokens,
-  invalidatePendingAuthTokens,
   EMAIL_VERIFY_CODE_TTL_MS,
   PASSWORD_RESET_TOKEN_TTL_MS,
 } from "./authTokens.ts";
@@ -461,11 +460,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // A provider outage must not block signup — mint and fire without
         // awaiting the send, and only after the reply: the mint is an INSERT,
         // and doing it before the reply would reopen the timing gap #897
-        // exists to close. invalidatePendingAuthTokens first: a brand-new
-        // user has nothing to retire, but this mint can still land after
-        // add-email's own — see authTokens.ts.
-        invalidatePendingAuthTokens(user.id, "email_verify")
-          .then(() => mintAuthCode({ userId: user.id, email, purpose: "email_verify", ttlMs: EMAIL_VERIFY_CODE_TTL_MS }))
+        // exists to close.
+        replaceEmailVerifyCode({ userId: user.id, email, ttlMs: EMAIL_VERIFY_CODE_TTL_MS })
           .then((code) => sendVerificationEmail(email, username, code, user.id))
           .catch((err) => logger.error({ err, userId: user.id }, "Failed to mint the verification code"));
       });
@@ -603,8 +599,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       throw err;
     }
 
-    await invalidatePendingAuthTokens(userId, "email_verify");
-    const code = await mintAuthCode({ userId, email, purpose: "email_verify", ttlMs: EMAIL_VERIFY_CODE_TTL_MS });
+    const code = await replaceEmailVerifyCode({ userId, email, ttlMs: EMAIL_VERIFY_CODE_TTL_MS });
     sendVerificationEmail(email, user.username, code, userId);
     logger.info({ userId }, "Email added, pending verification");
     res.json(sessionUser(user));
@@ -624,12 +619,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(400).json({ ...payload("INVALID_TOKEN") });
       return;
     }
-    const result = await userStore.markEmailVerified(userId);
+    const result = await userStore.markEmailVerified(userId, email);
     if (result === "not_found") {
       // #894 review, finding 3: the account this token names is gone, or its
       // own email claim already is (a second outstanding token, redeemed
       // after the first already cleared it) — either way there is nothing
-      // left to verify. Same generic failure the redeem step above uses.
+      // left to verify, or it now claims a different address than the code
+      // was minted for. Same generic failure the redeem step above uses.
       logger.info({ userId }, "Email verification token redeemed nothing left to verify");
       res.status(400).json({ ...payload("INVALID_TOKEN") });
       return;
@@ -650,7 +646,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
    * #893: without this, a mint older than its TTL (EMAIL_VERIFY_CODE_TTL_MS)
    * leaves an account permanently unverifiable — add-email refuses a second
    * call once an address is set (EMAIL_ALREADY_SET), and nothing else mints
-   * an email_verify code. Same invalidate-then-mint shape as add-email,
+   * an email_verify code. Same replace-the-code shape as add-email,
    * keyed on the session rather than a submitted address: the address to
    * resend to is the one already on the caller's own row.
    */
@@ -670,13 +666,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return;
     }
 
-    await invalidatePendingAuthTokens(userId, "email_verify");
-    const code = await mintAuthCode({
-      userId,
-      email: user.email,
-      purpose: "email_verify",
-      ttlMs: EMAIL_VERIFY_CODE_TTL_MS,
-    });
+    const code = await replaceEmailVerifyCode({ userId, email: user.email, ttlMs: EMAIL_VERIFY_CODE_TTL_MS });
     sendVerificationEmail(user.email, user.username, code, userId);
     logger.info({ userId }, "Verification email resent");
     res.json({ ok: true });
