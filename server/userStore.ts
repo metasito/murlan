@@ -1,6 +1,6 @@
 import { eq, and, sql, isNull, isNotNull } from "drizzle-orm";
 import { db } from "./db.ts";
-import { users } from "../shared/schema.ts";
+import { pushTokens, users } from "../shared/schema.ts";
 import type { User, InsertUser } from "../shared/schema.ts";
 import { randomCode } from "./codes.ts";
 
@@ -183,6 +183,8 @@ export const userStore = {
       await tx.execute(
         sql`DELETE FROM session WHERE sess->>'userId' = ${userId} AND sid != ${keepSid}`
       );
+      // A push token has no session to tie it to; the kept device registers again.
+      await tx.delete(pushTokens).where(eq(pushTokens.userId, userId));
     });
   },
 
@@ -195,6 +197,7 @@ export const userStore = {
     await db.transaction(async (tx) => {
       await tx.update(users).set({ password: passwordHash }).where(eq(users.id, userId));
       await tx.execute(sql`DELETE FROM session WHERE sess->>'userId' = ${userId}`);
+      await tx.delete(pushTokens).where(eq(pushTokens.userId, userId));
     });
   },
 

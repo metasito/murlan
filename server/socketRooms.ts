@@ -35,10 +35,9 @@ export interface RoomHandlerContext {
   io: SocketServer;
   socket: Socket;
   userId: string;
-  username: string;
 }
 
-export function registerRoomHandlers({ io, socket, userId, username }: RoomHandlerContext) {
+export function registerRoomHandlers({ io, socket, userId }: RoomHandlerContext) {
 
     onEvent(
       socket,
@@ -79,7 +78,6 @@ export function registerRoomHandlers({ io, socket, userId, username }: RoomHandl
           kind: "spectate",
           roomId: room.id,
           userId,
-          username,
         });
         if (!admitted.ok) {
           socket.emit(
@@ -93,7 +91,7 @@ export function registerRoomHandlers({ io, socket, userId, username }: RoomHandl
 
         const previous = spectatorRoomMap.get(socket.id);
         if (previous && previous !== room.id) {
-          await applyOrForward(io, { kind: "unspectate", roomId: previous, userId, username });
+          await applyOrForward(io, { kind: "unspectate", roomId: previous, userId });
           socket.leave(previous);
         }
         spectatorRoomMap.set(socket.id, room.id);
@@ -115,7 +113,7 @@ export function registerRoomHandlers({ io, socket, userId, username }: RoomHandl
         if (!roomId) return;
         spectatorRoomMap.delete(socket.id);
         socket.leave(roomId);
-        await applyOrForward(io, { kind: "unspectate", roomId, userId, username });
+        await applyOrForward(io, { kind: "unspectate", roomId, userId });
       },
       // Matches room:spectate: leaving cannot be cheaper to spam than joining.
       { limit: 10, windowMs: 60_000 }
@@ -207,13 +205,7 @@ export function registerRoomHandlers({ io, socket, userId, username }: RoomHandl
         if (!leavingRoomId) return;
         socketRoomMap.delete(socket.id);
 
-        await handleSeatRelease(
-          io,
-          leavingRoomId,
-          userId,
-          socket.data?.username ?? username,
-          { socket, source: "leave" }
-        );
+        await handleSeatRelease(io, leavingRoomId, userId, { socket, source: "leave" });
       },
       { limit: 20, windowMs: 60_000 }
     );
@@ -317,7 +309,6 @@ export function registerRoomHandlers({ io, socket, userId, username }: RoomHandl
           kind: "startMatch",
           roomId,
           userId,
-          username,
           fillWithBots,
           botPersonality,
           matchLength,

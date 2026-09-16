@@ -90,7 +90,7 @@ describe("a mid-hand takeover is weak only for the hand it happened on (#850 cla
     activeGames.set(ROOM, game);
 
     try {
-      await vacateSeat(io, ROOM, "drita", "Drita", gameOverWriters);
+      await vacateSeat(io, ROOM, "drita",gameOverWriters);
 
       assert.ok(game.weakSeats.has(3), "the seat just vacated mid-hand must be weak");
       assert.equal(game.vacatedSeats.get(3)?.userId, "drita");
@@ -122,7 +122,7 @@ describe("a mid-hand takeover is weak only for the hand it happened on (#850 cla
     activeGames.set(ROOM, game);
 
     try {
-      await vacateSeat(io, ROOM, "drita", "Drita", gameOverWriters);
+      await vacateSeat(io, ROOM, "drita",gameOverWriters);
       assert.ok(!game.weakSeats.has(1));
     } finally {
       clearRoomTimers(ROOM);
@@ -201,7 +201,7 @@ describe("vacateSeat writes the row on every exit the table survives (#1008)", (
     const spy = persistSpy();
 
     try {
-      await vacateSeat(io, ROOM, "drita", "Drita", spy.writers);
+      await vacateSeat(io, ROOM, "drita",spy.writers);
       assert.deepEqual(
         spy.wrote,
         [{ roomId: ROOM, seats: ["0", "1", "2"], vacated: [3] }],
@@ -230,7 +230,7 @@ describe("vacateSeat writes the row on every exit the table survives (#1008)", (
     const spy = persistSpy();
 
     try {
-      await vacateSeat(io, ROOM, "drita", "Drita", spy.writers);
+      await vacateSeat(io, ROOM, "drita",spy.writers);
       assert.deepEqual(
         spy.wrote,
         [{ roomId: ROOM, seats: ["0"], vacated: [1] }],
@@ -259,7 +259,7 @@ describe("vacateSeat writes the row on every exit the table survives (#1008)", (
     const spy = persistSpy();
 
     try {
-      await vacateSeat(io, ROOM, "drita", "Drita", spy.writers);
+      await vacateSeat(io, ROOM, "drita",spy.writers);
       assert.deepEqual(spy.wrote, [], "persisting a table being disposed of races its own delete");
       assert.equal(activeGames.has(ROOM), false, "the table is gone, not merely unwritten");
       // This branch does write — roomStore.updateRoomStatus, and disposeGame's

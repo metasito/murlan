@@ -10,6 +10,7 @@ import { roomStore } from "./roomStore.ts";
 import { logger } from "./logger.ts";
 import {
   isShuttingDown,
+  seatName,
   seatOfUser,
   socketRoomMap,
   userRoom,
@@ -179,10 +180,11 @@ export function joinSocketToRoom(socket: Socket, roomId: string) {
 export async function announceRejoin(
   io: SocketServer,
   userId: string,
-  username: string,
   roomId: string,
   game: OnlineGameState
 ) {
+  const seatIndex = seatOfUser(game, userId);
+  const username = seatName(game, seatIndex);
   // Caught, not propagated: the handler's blanket catch would turn a failed
   // roster refresh into a SERVER_ERROR that forfeits a live game.
   await emitRoomStateTo(io, userId, roomId, game).catch((err: unknown) =>
@@ -205,7 +207,7 @@ export async function announceRejoin(
   io.to(roomId).emit("game:player_reconnected", {
     userId,
     username,
-    seatIndex: seatOfUser(game, userId),
+    seatIndex,
     ...payload("PLAYER_RECONNECTED", { username }),
   });
   armTurnIfIdle(io, roomId);
@@ -221,14 +223,13 @@ export async function announceRejoin(
 export function armLobbyGrace(
   io: SocketServer,
   roomId: string,
-  userId: string,
-  username: string
+  userId: string
 ): Promise<void> | void {
   // A shutdown is not a blip. Holding the seat would leave a `waiting` lobby
   // full of players who are already gone, and the next process has no memory
   // of the timer that was going to clear it.
   if (isShuttingDown()) {
-    return handleSeatRelease(io, roomId, userId, username, { source: "disconnect" });
+    return handleSeatRelease(io, roomId, userId, { source: "disconnect" });
   }
   clearLobbyGrace(roomId, userId);
   const timer = setTimeout(() => {
@@ -240,7 +241,7 @@ export function armLobbyGrace(
         // asking only whether they have a socket would leave it held.
         const liveSocket = userSocketMap.get(userId);
         if (liveSocket && socketRoomMap.get(liveSocket) === roomId) return;
-        await handleSeatRelease(io, roomId, userId, username, { source: "disconnect" });
+        await handleSeatRelease(io, roomId, userId, { source: "disconnect" });
         logger.info({ userId, roomId }, "Lobby grace expired — seat released");
       } catch (err) {
         logger.error({ err, userId, roomId }, "Lobby grace handler failed");
@@ -349,7 +350,6 @@ export async function handleSeatRelease(
   io: SocketServer,
   roomId: string,
   userId: string,
-  username: string,
   opts: {
     socket?: { id: string; leave: (r: string) => void };
     source: "leave" | "disconnect";
@@ -370,7 +370,7 @@ export async function handleSeatRelease(
   // held seat must still go to a bot; a room with no game answers the vacate
   // with a refusal and nothing else.
   if (!released) {
-    await applyOrForward(io, { kind: "vacate", roomId, userId, username });
+    await applyOrForward(io, { kind: "vacate", roomId, userId });
     return;
   }
   const { room, remaining, emptied } = released;
@@ -388,6 +388,6 @@ export async function handleSeatRelease(
     // Routed rather than read out of this process's own map: the seat is live
     // in whichever instance holds the game, and reading `activeGames` here
     // found nothing whenever the player's socket had landed anywhere else.
-    await applyOrForward(io, { kind: "vacate", roomId, userId, username });
+    await applyOrForward(io, { kind: "vacate", roomId, userId });
   }
 }

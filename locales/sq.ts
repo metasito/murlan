@@ -101,6 +101,7 @@ export const sq: Record<keyof typeof en, string> = {
   "server.PLAYER_DISCONNECTED_GRACE": "{{username}} humbi lidhjen. Ka {{seconds}} sekonda për t'u rikthyer.",
   "server.PLAYER_RECONNECTED": "{{username}} është sërish në lojë.",
   "server.SESSION_REPLACED": "Llogaria jote u hap diku tjetër. Kjo seancë u mbyll.",
+  "server.SESSION_REVOKED": "U nxore nga llogaria në këtë pajisje. Hyr sërish për të vazhduar lojën.",
   "server.MATCH_ENDED_BY_AGREEMENT": "Tavolina vendosi ta përfundojë ndeshjen. Askush nuk penalizohet.",
   "server.NO_VACANCY_TO_END": "Ende s'ka njeri për të votuar përfundimin e ndeshjes",
 

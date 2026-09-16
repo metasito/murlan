@@ -3,7 +3,7 @@ import { roomStore } from "./roomStore.ts";
 import { emitVoteState } from "./emit.ts";
 import { logger } from "./logger.ts";
 import { DEFAULT_LOCALE, translate } from "../shared/i18n.ts";
-import { activeGames, seatOfUser } from "./gameRoom.ts";
+import { activeGames, seatName, seatOfUser } from "./gameRoom.ts";
 import { payload } from "./payload.ts";
 import type { OnlineGameState } from "./gameRoom.ts";
 import {
@@ -295,7 +295,6 @@ export async function vacateSeat(
   io: SocketServer,
   roomId: string,
   userId: string,
-  username: string,
   // Required rather than defaulting to `gameOverWriters`: the production
   // persist swallows its own failure, so a caller handed it by default writes
   // nothing a test can see.
@@ -307,6 +306,7 @@ export async function vacateSeat(
   game.rematchVotes.delete(userId);
   const seat = seatOfUser(game, userId);
   if (seat === null) return;
+  const username = seatName(game, seat);
 
   game.releasedSeats.add(userId);
   delete game.playerMap[seat];

@@ -361,6 +361,18 @@ export const pushTokens = pgTable("push_tokens", {
  * Expired rows are swept on a schedule (server/retention.ts), not on the
  * write or redemption path — see that module for why.
  */
+/**
+ * Socket-ticket nonces already redeemed, so a ticket is single-use across every
+ * instance rather than once per process. A row outlives its ticket by nothing:
+ * past `expires_at` the signature check refuses the ticket anyway.
+ */
+export const socketTicketNonces = pgTable("socket_ticket_nonces", {
+  nonce: text("nonce").primaryKey(),
+  expiresAt: timestamp("expires_at").notNull(),
+}, (t) => [
+  index("socket_ticket_nonces_expires_idx").on(t.expiresAt),
+]);
+
 export const authTokens = pgTable(
   "auth_tokens",
   {

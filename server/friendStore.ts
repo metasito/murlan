@@ -296,13 +296,26 @@ export const friendStore = {
     return row?.roomId ?? null;
   },
 
-  async removeFriend(userId: string, friendUserId: string): Promise<void> {
-    await db.delete(friends).where(
-      or(
-        and(eq(friends.userId, userId), eq(friends.friendUserId, friendUserId)),
-        and(eq(friends.userId, friendUserId), eq(friends.friendUserId, userId))
-      )
-    );
+  /** Returns the rooms whose invites between the pair were withdrawn with it. */
+  async removeFriend(userId: string, friendUserId: string): Promise<string[]> {
+    return db.transaction(async (tx) => {
+      await tx.delete(friends).where(
+        or(
+          and(eq(friends.userId, userId), eq(friends.friendUserId, friendUserId)),
+          and(eq(friends.userId, friendUserId), eq(friends.friendUserId, userId))
+        )
+      );
+      const withdrawn = await tx
+        .delete(gameInvites)
+        .where(
+          or(
+            and(eq(gameInvites.inviterId, userId), eq(gameInvites.inviteeId, friendUserId)),
+            and(eq(gameInvites.inviterId, friendUserId), eq(gameInvites.inviteeId, userId))
+          )
+        )
+        .returning({ roomId: gameInvites.roomId });
+      return [...new Set(withdrawn.map((r) => r.roomId))];
+    });
   },
 
   /** Only the recipient may decline a pending request. */

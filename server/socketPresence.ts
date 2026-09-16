@@ -39,10 +39,9 @@ export interface PresenceContext {
   io: SocketServer;
   socket: Socket;
   userId: string;
-  username: string;
 }
 
-export function registerFriendHandlers({ io, socket, userId, username }: PresenceContext) {
+export function registerFriendHandlers({ io, socket, userId }: PresenceContext) {
 
     onEvent(
       socket,
@@ -83,6 +82,9 @@ export function registerFriendHandlers({ io, socket, userId, username }: Presenc
         // empty one until something else happens to broadcast.
         io.to(room.id).emit("room:state", await roomStatePayload(room, seated));
 
+        // Read now, not at the handshake: a rename in between would send the
+        // name a stranger may have registered since.
+        const username = (await userStore.getUser(userId))?.username ?? "";
         const friendIsHere = await isUserOnline(friendUserId);
         if (friendIsHere) {
           io.to(userRoom(friendUserId)).emit("friend:invite", {
@@ -129,15 +131,15 @@ export function registerFriendHandlers({ io, socket, userId, username }: Presenc
  * Deliberately after every listener is registered — these awaits are exactly
  * the window in which a packet arriving with no listener would be dropped.
  */
-export async function announcePresence({ io, socket, userId, username }: PresenceContext) {
+export async function announcePresence({ io, socket, userId }: PresenceContext) {
 
     if (clearDisconnectGrace(userId)) {
       for (const [roomId, game] of activeGames.entries()) {
         if (seatOfUser(game, userId) === null || game.gameState.gameOver) continue;
         joinSocketToRoom(socket, roomId);
-        await announceRejoin(io, userId, username, roomId, game);
+        await announceRejoin(io, userId, roomId, game);
         logger.info(
-          { userId, username, roomId },
+          { userId, roomId },
           "Player reconnected within grace period"
         );
         break;
@@ -163,7 +165,7 @@ export async function announcePresence({ io, socket, userId, username }: Presenc
     }
 }
 
-export function registerDisconnect({ io, socket, userId, username }: PresenceContext) {
+export function registerDisconnect({ io, socket, userId }: PresenceContext) {
 
     socket.on("disconnect", (reason: DisconnectReason) => {
       trackEvent("socket.closed", userId, { reason });
@@ -178,7 +180,6 @@ export function registerDisconnect({ io, socket, userId, username }: PresenceCon
               kind: "unspectate",
               roomId: spectatingRoom,
               userId,
-              username,
             });
           }
           // Only blank the mapping if it still points at THIS socket: a second
@@ -229,7 +230,6 @@ export function registerDisconnect({ io, socket, userId, username }: PresenceCon
             kind: "seatLost",
             roomId: currentRoomId,
             userId,
-            username,
           });
           // Only "no game anywhere" is a lobby. `NOT_SEATED` is the owner
           // saying the table is live and this account holds no seat at it, and
@@ -241,7 +241,7 @@ export function registerDisconnect({ io, socket, userId, username }: PresenceCon
           // seat is still theirs: releasing it on the disconnect itself made a
           // two-second hiccup cost a player their place in a room they were
           // waiting in.
-          await armLobbyGrace(io, currentRoomId, userId, username);
+          await armLobbyGrace(io, currentRoomId, userId);
         } catch (err) {
           logger.error({ err, userId }, "disconnect handler failed");
         }
@@ -278,6 +278,7 @@ export function evictRemoteSessions(
 ) {
   let targets = io.in(userRoom(userId)).except(keepSocketId);
   if (locallyHandledSocketId) targets = targets.except(locallyHandledSocketId);
+  targets.emit("socket:error", payload("SESSION_REPLACED"));
   targets.disconnectSockets(true);
 }
 

@@ -85,7 +85,7 @@ describe("a match abandoned with no hand yet decided is voided, not scored (#850
     activeGames.set(ROOM, game);
 
     try {
-      await vacateSeat(io, ROOM, "bob", "Bob", gameOverWriters);
+      await vacateSeat(io, ROOM, "bob", gameOverWriters);
 
       const over = emitted.find((e) => e.event === "game:over")?.payload as
         | GameOverPayload
@@ -114,7 +114,7 @@ describe("a match abandoned with no hand yet decided is voided, not scored (#850
     activeGames.set(ROOM, game);
 
     try {
-      await vacateSeat(io, ROOM, "bob", "Bob", gameOverWriters);
+      await vacateSeat(io, ROOM, "bob", gameOverWriters);
 
       const over = emitted.find((e) => e.event === "game:over")?.payload as
         | GameOverPayload
