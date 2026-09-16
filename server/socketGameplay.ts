@@ -78,7 +78,7 @@ export function registerGameplayHandlers({
       async ({ cardIds }) => {
         const roomId = atTable();
         if (!roomId) return { ok: false, code: "NOT_AT_A_TABLE" };
-        return applyOrForward(io, { kind: "play", roomId, userId,cardIds });
+        return applyOrForward(io, { kind: "play", roomId, userId, cardIds });
       },
       { limit: GAME_ACTION_RATE_LIMIT, windowMs: 60_000 }
     );
@@ -102,7 +102,7 @@ export function registerGameplayHandlers({
       async ({ wants }) => {
         const roomId = atTable();
         if (!roomId) return { ok: false, code: "NOT_AT_A_TABLE" };
-        return applyOrForward(io, { kind: "rematchIntent", roomId, userId,wants });
+        return applyOrForward(io, { kind: "rematchIntent", roomId, userId, wants });
       },
       { limit: 20, windowMs: 60_000 }
     );
@@ -126,7 +126,7 @@ export function registerGameplayHandlers({
       async ({ wants }) => {
         const roomId = atTable();
         if (!roomId) return { ok: false, code: "NOT_AT_A_TABLE" };
-        return applyOrForward(io, { kind: "endMatchVote", roomId, userId,wants });
+        return applyOrForward(io, { kind: "endMatchVote", roomId, userId, wants });
       },
       { limit: 20, windowMs: 60_000 }
     );
@@ -166,7 +166,7 @@ export function registerGameplayHandlers({
       async ({ emoji }) => {
         const roomId = atTable();
         if (!roomId) return { ok: false, code: "NOT_AT_A_TABLE" };
-        return applyOrForward(io, { kind: "reaction", roomId, userId,emoji });
+        return applyOrForward(io, { kind: "reaction", roomId, userId, emoji });
       },
       { limit: 8, windowMs: 10_000 }
     );
@@ -178,7 +178,7 @@ export function registerGameplayHandlers({
       async ({ cardId }) => {
         const roomId = atTable();
         if (!roomId) return { ok: false, code: "NOT_AT_A_TABLE" };
-        return applyOrForward(io, { kind: "exchange", roomId, userId,cardId });
+        return applyOrForward(io, { kind: "exchange", roomId, userId, cardId });
       },
       { limit: 30, windowMs: 60_000 }
     );
