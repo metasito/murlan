@@ -14,10 +14,11 @@
 // that stops reproducing on a fast day.
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
+import pg from "pg";
 import type { Server as SocketServer } from "socket.io";
 import { applyOrForward, setTableHandlers } from "../../server/tableRouter.ts";
 import { activeGames } from "../../server/gameRoom.ts";
-import { closeOwnership, releaseRoom } from "../../server/gameOwnership.ts";
+import { closeOwnership, ownershipKey, releaseRoom } from "../../server/gameOwnership.ts";
 import type { OnlineGameState } from "../../server/gameRoom.ts";
 import type { TableAction, TableActionDraft } from "../../server/tableActions.ts";
 import { hasDatabase, skipMessage } from "../helpers/testServer.ts";
@@ -137,6 +138,25 @@ describe("two actions for one room in the same tick", () => {
       assert.equal(restores, 0, "a resident room was restored over");
 
       activeGames.delete(roomId);
+    }
+  );
+
+  test(
+    "a room locked by an instance that never answers is unreachable, not ownerless",
+    { skip: hasDatabase() ? false : skipMessage() },
+    async () => {
+      const roomId = `unreachable-${Date.now()}`;
+      const holder = new pg.Client({ connectionString: process.env.DATABASE_URL });
+      await holder.connect();
+      try {
+        await holder.query("SELECT pg_advisory_lock($1::bigint)", [ownershipKey(roomId)]);
+        restores = 0;
+        const outcome = await applyOrForward(io, play(roomId, "u1"));
+        assert.equal(outcome.code, "TABLE_UNREACHABLE");
+        assert.equal(restores, 0, "a room another session holds was restored here");
+      } finally {
+        await holder.end();
+      }
     }
   );
 });

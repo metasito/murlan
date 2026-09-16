@@ -2,94 +2,44 @@
 // decision with no enforced default. Two `/api/auth/*` routes shipped with
 // none at all (verify-email, change-password) and were only found by a
 // review agent reading every mounting by hand. This is that reading, done
-// once and pinned: every `app.<verb>("/api/auth/…", …)` call in
-// server/routes.ts must name at least one `*Limiter` identifier in its
-// argument list, with three named, deliberate exceptions.
-//
-// The exact set of discovered paths is asserted against a written list —
-// RULES §6's decoy failure mode is a scan that matches nothing and passes,
-// so a route that stops being found this way has to fail as loudly as one
-// that arrives unprotected.
+// once and pinned: every `/api/auth/*` route, and every route naming any
+// limiter, names exactly the limiters written below.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-import path from "node:path";
-import ts from "typescript";
+import { routeMountings } from "./helpers/routeMountings.ts";
 
-const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const ROUTES_FILE = path.join(REPO_ROOT, "server", "routes.ts");
-
-const HTTP_VERBS = new Set(["get", "post", "put", "delete", "patch"]);
-
-/**
- * Routes deliberately left without a rate limiter, and why — see #892's
- * design doc. Any `/api/auth/*` mounting not in this set must name a
- * `*Limiter` identifier among its arguments.
- */
-const NO_LIMITER_BY_DESIGN = new Set([
+const LIMITERS: Record<string, string[]> = {
+  "POST /api/auth/register": ["authLimiter", "registerEmailLimiter"],
+  "POST /api/auth/login": ["authLimiter", "loginUsernameLimiter"],
   // Destroys the session; there is nothing here to amplify or brute-force.
-  "/api/auth/logout",
-  // A read of the caller's own session — cheap, and answers 401 for anyone
-  // without one. No account or provider cost an attacker can spend.
-  "/api/auth/me",
-]);
+  "POST /api/auth/logout": [],
+  // A read of the caller's own session — cheap, and answers 401 for anyone without one.
+  "GET /api/auth/me": [],
+  "POST /api/auth/change-password": ["changePasswordLimiter"],
+  "POST /api/auth/add-email": ["addEmailLimiter"],
+  "POST /api/auth/verify-email": ["authLimiter"],
+  "POST /api/auth/resend-verification": ["resendVerificationLimiter"],
+  "POST /api/auth/request-password-reset": ["authLimiter", "passwordResetRequestLimiter"],
+  "POST /api/auth/reset-password": ["resetPasswordLimiter"],
+  "POST /api/auth/socket-ticket": ["ticketLimiter"],
+  "POST /api/push/token": ["pushLimiter"],
+  "DELETE /api/push/token": ["pushLimiter"],
+  "PATCH /api/users/me": ["renameLimiter"],
+  "POST /api/friends/add": ["friendLimiter"],
+  "POST /api/client-errors": ["errorReportLimiter"],
+  "POST /api/bug-reports": ["errorReportLimiter"],
+};
 
-/** Every `/api/auth/*` route mounting in server/routes.ts, with whether it names a `*Limiter`. */
-function authRouteMountings(): { path: string; hasLimiter: boolean }[] {
-  const source = readFileSync(ROUTES_FILE, "utf8");
-  const sourceFile = ts.createSourceFile(ROUTES_FILE, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
-  const found: { path: string; hasLimiter: boolean }[] = [];
-
-  const visit = (node: ts.Node) => {
-    if (
-      ts.isCallExpression(node) &&
-      ts.isPropertyAccessExpression(node.expression) &&
-      ts.isIdentifier(node.expression.expression) &&
-      node.expression.expression.text === "app" &&
-      HTTP_VERBS.has(node.expression.name.text)
-    ) {
-      const [routePath, ...rest] = node.arguments;
-      if (routePath && ts.isStringLiteral(routePath) && routePath.text.startsWith("/api/auth/")) {
-        const hasLimiter = rest.some((arg) => ts.isIdentifier(arg) && /Limiter$/.test(arg.text));
-        found.push({ path: routePath.text, hasLimiter });
-      }
-    }
-    ts.forEachChild(node, visit);
-  };
-  visit(sourceFile);
-  return found;
-}
-
-test("every unlimited /api/auth/* route is a named exception, and no others exist", () => {
-  const mountings = authRouteMountings();
-
-  assert.deepEqual(
-    mountings.map((m) => m.path).sort(),
-    [
-      "/api/auth/add-email",
-      "/api/auth/change-password",
-      "/api/auth/login",
-      "/api/auth/logout",
-      "/api/auth/me",
-      "/api/auth/register",
-      "/api/auth/resend-verification",
-      "/api/auth/reset-password",
-      "/api/auth/socket-ticket",
-      "/api/auth/verify-email",
-      "/api/auth/request-password-reset",
-    ].sort(),
-    "the set of /api/auth/* mountings the scan finds has changed — update " +
-      "this list (and NO_LIMITER_BY_DESIGN, if the change is a deliberate " +
-      "new exception) rather than widening the assertion to pass"
+test("every auth route and every limited route names exactly its written limiters", () => {
+  const isLimiter = (name: string) => /Limiter$/.test(name);
+  const found = Object.fromEntries(
+    routeMountings()
+      .filter((m) => m.route.includes(" /api/auth/") || m.middleware.some(isLimiter))
+      .map((m) => [m.route, m.middleware.filter(isLimiter)])
   );
-
-  const unprotected = mountings.filter((m) => !m.hasLimiter && !NO_LIMITER_BY_DESIGN.has(m.path));
   assert.deepEqual(
-    unprotected.map((m) => m.path),
-    [],
-    "an /api/auth/* route with no *Limiter in its argument list, and not " +
-      "in NO_LIMITER_BY_DESIGN — #892 was two of these found only by a " +
-      "human reading every mounting"
+    found,
+    LIMITERS,
+    "a route's limiters changed — update LIMITERS deliberately rather than widening the check"
   );
 });

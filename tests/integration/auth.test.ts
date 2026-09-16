@@ -53,9 +53,16 @@ describe("socket authentication", { skip: hasDatabase() ? false : skipMessage() 
     assert.equal(second.ok, false, "a consumed ticket must not authenticate a second socket");
   });
 
-  test("a forged ticket is rejected", async () => {
-    const r = await connect({ ticket: "not.a.real.ticket" });
-    assert.equal(r.ok, false);
+  test("a live ticket with a tampered signature is rejected", async () => {
+    const { cookie } = await register(server, "holder_forge");
+    const res = await fetch(`${server.url}/api/auth/socket-ticket`, { method: "POST", headers: { cookie } });
+    const { ticket } = (await res.json()) as { ticket: string };
+    const parts = ticket.split(".");
+    parts[4] = (parts[4]![0] === "A" ? "B" : "A") + parts[4]!.slice(1);
+    const forged = await connect({ ticket: parts.join(".") });
+    assert.equal(forged.ok, false, "a ticket whose signature no longer matches must not authenticate");
+    const genuine = await connect({ ticket });
+    assert.ok(genuine.ok, genuine.err ?? "the untampered ticket was rejected, so the forged one proved nothing");
   });
 });
 
