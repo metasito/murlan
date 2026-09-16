@@ -1,6 +1,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { readdirSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -13,8 +14,20 @@ import {
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const E2E_DIR = path.join(repoRoot, "tests", "e2e");
-/** Kept in step with .github/workflows/ci.yml's `shard:` matrix. */
-const SHARDS = 6;
+const ciYml = readFileSync(path.join(repoRoot, ".github", "workflows", "ci.yml"), "utf8");
+const matrix = /^\s*shard: \[([\d, ]+)\]$/m.exec(ciYml);
+assert.ok(matrix, "ci.yml has no `shard:` matrix");
+const SHARDS = matrix[1].split(",").length;
+
+const config = readFileSync(path.join(E2E_DIR, "playwright.config.ts"), "utf8");
+const ignore = /testIgnore: \/(.+)\/,$/m.exec(config);
+assert.ok(ignore, "playwright.config.ts no longer declares a testIgnore regex");
+/** Playwright's own walk: recursive from `testDir`, its default testMatch, minus the config's ignore. */
+const playwrightRuns = (dir: string) =>
+  (readdirSync(dir, { recursive: true }) as string[])
+    .map((f) => f.split(path.sep).join("/"))
+    .filter((f) => /\.(spec|test)\.[cm]?[jt]sx?$/.test(f) && !new RegExp(ignore[1]).test(f))
+    .sort();
 
 /**
  * How much of the suite may sit at `UNMEASURED_SECONDS` before the evenness
@@ -25,8 +38,30 @@ const SHARDS = 6;
 const UNMEASURED_SHARE = 0.1;
 
 describe("every browser spec reaches exactly one shard", () => {
+  test("the splitter sees every spec Playwright would run, under a floor", () => {
+    const files = playwrightRuns(E2E_DIR);
+    assert.ok(files.length >= 40, `only ${files.length} specs found`);
+    assert.ok(SHARDS >= 2, `ci.yml runs ${SHARDS} shard`);
+    assert.match(ciYml, /e2e-shard\.mjs \$\{\{ matrix\.shard \}\} \$\{\{ strategy\.job-total \}\}/);
+    assert.deepEqual(specFilesIn(E2E_DIR), files);
+  });
+
+  test("a spec in a subdirectory is placed, as Playwright would run it", () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "e2e-shard-"));
+    try {
+      mkdirSync(path.join(dir, "online"));
+      for (const f of ["a.spec.ts", "online/b.spec.ts", "webPerf.spec.ts", "helper.ts"]) {
+        writeFileSync(path.join(dir, f), "");
+      }
+      assert.deepEqual(playwrightRuns(dir), ["a.spec.ts", "online/b.spec.ts"]);
+      assert.deepEqual(specFilesIn(dir), playwrightRuns(dir));
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test("the union of the shards is the whole suite, with nothing repeated", () => {
-    const files = specFilesIn(E2E_DIR);
+    const files = playwrightRuns(E2E_DIR);
     const assigned = assignShards(files, readTimings(), SHARDS).flatMap((s) => s.files);
 
     assert.deepEqual([...assigned].sort(), [...files].sort());
