@@ -99,7 +99,7 @@ export function worktrees(cwd) {
  * @param {string} [cwd]
  * @param {string} [worktree]
  * @returns {{cwd: string, branch: string|null, ticket: number|null, detached: boolean,
- *   ambiguous?: number, worktrees?: string[]}}
+ *   ambiguous?: number, worktrees?: string[], phase?: string, why?: string}}
  */
 export function locateRun(cwd, worktree) {
   // Resolved, not passed through: git reads the process's own directory when given none, so a
