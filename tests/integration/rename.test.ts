@@ -8,7 +8,8 @@
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
 import { startTestServer, hasDatabase, skipMessage, type TestServer } from "../helpers/testServer.ts";
-import { register } from "../helpers/client.ts";
+import { connectAs, register, waitFor } from "../helpers/client.ts";
+import { befriend } from "../helpers/friends.ts";
 
 // Lowered so the cap is reachable in a test without renaming a hundred times.
 // Read at module scope by server/routes.ts, so it must be set before the app is
@@ -91,6 +92,25 @@ describe("renaming an account", { skip: hasDatabase() ? false : skipMessage() },
     const seen = new Set<number>();
     for (let i = 0; i < RENAME_LIMIT + 1; i++) seen.add((await rename(cookie, `ren_cy_${i}`)).status);
     assert.ok(seen.has(429), `never hit the cap in ${RENAME_LIMIT + 1} renames: saw ${[...seen]}`);
+  });
+
+  test("an invite sent after a rename carries the new name", async () => {
+    const host = await connectAs(server, "ren_inviter");
+    const friend = await connectAs(server, "ren_invitee");
+    try {
+      await befriend(server, host, friend);
+      const made = waitFor<{ code: string }>(host.socket, "room:state");
+      host.socket.emit("room:create", { gameMode: "free_for_all", maxPlayers: 2 });
+      const room = await made;
+
+      assert.equal((await rename(host.cookie, "ren_inviter_now")).status, 200);
+      const invite = waitFor<{ from: string }>(friend.socket, "friend:invite");
+      host.socket.emit("friend:invite", { friendUserId: friend.user.id, roomCode: room.code });
+      assert.equal((await invite).from, "ren_inviter_now");
+    } finally {
+      host.socket.close();
+      friend.socket.close();
+    }
   });
 
   test("a signed-out request cannot rename anyone", async () => {

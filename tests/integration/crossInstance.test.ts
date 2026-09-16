@@ -217,6 +217,7 @@ describe("broadcasts cross server instances", {
       first.once("disconnect", (reason: string) => resolve(reason));
       setTimeout(() => resolve("still connected"), 6_000);
     });
+    const told = waitFor<{ code: string }>(first, "socket:error");
 
     const second = await connectSocket(PORTS[1], extraCookie);
     sockets.push(second);
@@ -227,6 +228,140 @@ describe("broadcasts cross server instances", {
       "the socket on the other instance stayed live — one account now has two"
     );
     assert.equal(second.connected, true, "the arriving socket must be the one that survives");
+    assert.equal((await told)?.code, "SESSION_REPLACED", "the replaced client must be told why");
+  });
+
+  async function post(port: number, path: string, cookie: string, body?: unknown) {
+    return fetch(`http://127.0.0.1:${port}${path}`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify(body ?? {}),
+    });
+  }
+
+  async function login(port: number, username: string): Promise<string> {
+    const res = await post(port, "/api/auth/login", "", { username, password: "cross-instance-pw" });
+    assert.equal(res.status, 200, await res.text());
+    return (res.headers.getSetCookie?.() ?? []).map((c) => c.split(";")[0]).join("; ");
+  }
+
+  async function userIdOf(cookie: string): Promise<string> {
+    const res = await fetch(`http://127.0.0.1:${PORTS[0]}/api/auth/me`, { headers: { cookie } });
+    return ((await res.json()) as { id: string }).id;
+  }
+
+  async function ticketFor(cookie: string): Promise<string> {
+    const res = await post(PORTS[0], "/api/auth/socket-ticket", cookie);
+    assert.equal(res.status, 200);
+    return ((await res.json()) as { ticket: string }).ticket;
+  }
+
+  function connectTicket(port: number, ticket: string): Promise<Socket | null> {
+    return new Promise((resolve) => {
+      const s = ioClient(`http://127.0.0.1:${port}`, {
+        transports: ["websocket"],
+        auth: { ticket },
+        reconnection: false,
+      });
+      s.once("connect", () => resolve(s));
+      s.once("connect_error", () => {
+        s.close();
+        resolve(null);
+      });
+    });
+  }
+
+  function closed(socket: Socket, ms = 6_000): Promise<boolean> {
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => resolve(false), ms);
+      socket.once("disconnect", () => {
+        clearTimeout(timer);
+        resolve(true);
+      });
+    });
+  }
+
+  /** Signed in over instance 1, socket on instance 2. */
+  async function accountOnSecond(tag: string) {
+    const name = `x${tag}${Date.now().toString(36)}`;
+    const cookie = await register(PORTS[0], name);
+    const socket = await connectSocket(PORTS[1], cookie);
+    sockets.push(socket);
+    return { name, cookie, socket, id: await userIdOf(cookie) };
+  }
+
+  test("a password reset on one instance cuts the socket on the other", async () => {
+    const acct = await accountOnSecond("rs");
+    process.env.DATABASE_URL = scoped;
+    const { userStore } = await import("../../server/userStore.ts");
+    const { mintAuthToken } = await import("../../server/authTokens.ts");
+    await userStore.markEmailVerified(acct.id, `${acct.name}@example.test`);
+    const token = await mintAuthToken(acct.id, "password_reset", 60_000);
+
+    const cut = closed(acct.socket);
+    const res = await post(PORTS[0], "/api/auth/reset-password", "", {
+      token,
+      newPassword: "cross-instance-pw-2",
+    });
+    assert.equal(res.status, 200, await res.text());
+    assert.equal(await cut, true, "the socket on the other instance outlived the reset");
+  });
+
+  test("a password change on one instance cuts another session's socket on the other", async () => {
+    const acct = await accountOnSecond("cp");
+    const otherDevice = await login(PORTS[0], acct.name);
+    const cut = closed(acct.socket);
+    const res = await post(PORTS[0], "/api/auth/change-password", otherDevice, {
+      currentPassword: "cross-instance-pw",
+      newPassword: "cross-instance-pw-2",
+    });
+    assert.equal(res.status, 200, await res.text());
+    assert.equal(await cut, true, "the socket on the other instance outlived the change");
+  });
+
+  test("a logout on one instance cuts that session's socket on the other", async () => {
+    const acct = await accountOnSecond("lo");
+    const cut = closed(acct.socket);
+    assert.equal((await post(PORTS[0], "/api/auth/logout", acct.cookie)).status, 200);
+    assert.equal(await cut, true, "the socket on the other instance outlived the logout");
+  });
+
+  test("a ticket is single-use across instances, and dies with its session", async () => {
+    const cookie = await register(PORTS[0], `xtk${Date.now().toString(36)}`);
+    const ticket = await ticketFor(cookie);
+    const first = await connectTicket(PORTS[0], ticket);
+    assert.ok(first, "a fresh ticket must connect");
+    sockets.push(first);
+    assert.equal(await connectTicket(PORTS[1], ticket), null, "the other instance accepted a spent ticket");
+
+    const unspent = await ticketFor(cookie);
+    assert.equal((await post(PORTS[0], "/api/auth/logout", cookie)).status, 200);
+    assert.equal(await connectTicket(PORTS[1], unspent), null, "a ticket outlived its session");
+  });
+
+  test("deleting an account on one instance ends its seat and socket on the other", async () => {
+    const host = await accountOnSecond("dh");
+    const leaver = await accountOnSecond("dl");
+    const created = waitFor<{ code: string }>(host.socket, "room:state");
+    host.socket.emit("room:create", { gameMode: "free_for_all", maxPlayers: 2 });
+    const room = await created;
+    assert.ok(room, "instance 2 never answered room:create");
+    const joined = waitFor(host.socket, "room:state");
+    leaver.socket.emit("room:join", { code: room.code });
+    assert.ok(await joined, "the join never reached the host");
+    const dealt = waitFor(leaver.socket, "game:state", 15_000);
+    host.socket.emit("room:start");
+    assert.ok(await dealt, "the game never started");
+
+    const left = waitFor<{ userId: string }>(host.socket, "game:player_left");
+    const cut = closed(leaver.socket);
+    const res = await fetch(`http://127.0.0.1:${PORTS[0]}/api/users/me`, {
+      method: "DELETE",
+      headers: { cookie: leaver.cookie },
+    });
+    assert.equal(res.status, 200, await res.text());
+    assert.equal(await cut, true, "the deleted account's socket on the other instance stayed live");
+    assert.equal((await left)?.userId, leaver.id, "the deleted account's seat was never vacated");
   });
 
   test("an acknowledged game:state is not re-sent across instances", async () => {

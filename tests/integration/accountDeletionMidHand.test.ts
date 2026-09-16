@@ -97,6 +97,8 @@ describe(
 
         await over;
         assert.equal(deleteStatus, 200, "the delete itself must still answer 200");
+        const me = await fetch(`${server.url}/api/auth/me`, { headers: { cookie: leaver.cookie } });
+        assert.equal(me.status, 401, "the deleted account's cookie must sign nobody in");
 
         for (const { user } of [alice, bob]) {
           const stats = await waitForRow(async () => {
