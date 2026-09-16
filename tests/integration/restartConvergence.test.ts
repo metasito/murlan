@@ -485,6 +485,20 @@ describe(
       // them, and the row's vacated seats are the only thing that still does.
       server = await replaceServer(server, [a, b], scoped, SHORT_GRACE);
 
+      const stranger = await connect(await register(`rvx${Date.now().toString(36)}`));
+      try {
+        const failed = waitFor<{ code: string }>(stranger, "game:rejoin_failed");
+        stranger.emit("game:rejoin", { roomId: table.roomId });
+        assert.equal((await failed)?.code, "UNAUTHORIZED");
+        // Spectating never revives a table, so it is admitted only if the refused rejoin restored one.
+        const watch = (await stranger.timeout(10_000).emitWithAck("room:spectate", { code: table.code })) as {
+          code?: string;
+        };
+        assert.equal(watch.code, "NO_LIVE_GAME", "a never-seated account pulled the table into memory");
+      } finally {
+        stranger.close();
+      }
+
       // Asserted on the seat coming back rather than on no `game:rejoin_failed`
       // arriving: a refusal is silence within a window, and so is a slow runner.
       // The state c held before the kill satisfies both halves, so clearing it
