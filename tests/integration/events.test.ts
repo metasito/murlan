@@ -14,7 +14,7 @@ import {
   skipMessage,
   type TestServer,
 } from "../helpers/testServer.ts";
-import { register } from "../helpers/client.ts";
+import { DEADLINE_SCALE, register } from "../helpers/client.ts";
 import { EVENT_NAMES } from "../../shared/events.ts";
 
 describe("funnel events", { skip: hasDatabase() ? false : skipMessage() }, () => {
@@ -80,7 +80,7 @@ describe("funnel events", { skip: hasDatabase() ? false : skipMessage() }, () =>
     // device knows and the account does not. That is not a second player
     // opening the tutorial.
     assert.equal((await seen()).status, 200);
-    await new Promise((r) => setTimeout(r, 300));
+    await new Promise((r) => setTimeout(r, 300 * DEADLINE_SCALE));
 
     assert.equal((await rowsNamed("tutorial.started")).length, 1);
   });

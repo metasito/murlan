@@ -18,7 +18,7 @@ import {
   skipMessage,
   type TestServer,
 } from "../helpers/testServer.ts";
-import { connectAs, reconnectWith, waitFor } from "../helpers/client.ts";
+import { connectAs, DEADLINE_SCALE, reconnectWith, waitFor } from "../helpers/client.ts";
 import { befriend, inviteRowsFor } from "../helpers/friends.ts";
 
 interface RoomState {
@@ -112,7 +112,7 @@ describe("a game invite outlives the socket that would have carried it", {
       });
       await new Promise((r) => setTimeout(r, 120));
     }
-    await new Promise((r) => setTimeout(r, 300));
+    await new Promise((r) => setTimeout(r, 300 * DEADLINE_SCALE));
 
     assert.equal((await invitesFor(friend.cookie)).length, 1);
   });
