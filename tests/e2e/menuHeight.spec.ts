@@ -37,6 +37,8 @@ interface Screen {
    * random gets disabled and then lies (#118).
    */
   fill: number;
+  /** Whether the tall window still scrolls; one that does has no slack, so `fill` is not owed. */
+  scrolls: boolean;
   open: (page: Page) => Promise<void>;
 }
 
@@ -46,6 +48,7 @@ const SCREENS: Screen[] = [
   {
     name: "/(online)",
     fill: 0.6,
+    scrolls: false,
     open: async (page) => {
       await goToOnlineLobby(page);
     },
@@ -56,6 +59,7 @@ const SCREENS: Screen[] = [
   {
     name: "/(online)/room",
     fill: 0.9,
+    scrolls: false,
     open: async (page) => {
       await goToOnlineLobby(page);
       await createRoom(page, { playerCount: 4, gameMode: "free_for_all" });
@@ -67,6 +71,7 @@ const SCREENS: Screen[] = [
   {
     name: "/friends",
     fill: 0.8,
+    scrolls: false,
     open: async (page) => {
       await page.goto("/friends");
       await page.getByText("Amici", { exact: true }).first().waitFor();
@@ -76,6 +81,7 @@ const SCREENS: Screen[] = [
   {
     name: "/leaderboard",
     fill: 0.85,
+    scrolls: false,
     open: async (page) => {
       await page.goto("/leaderboard");
       await page.getByText("Classifica", { exact: true }).first().waitFor();
@@ -205,10 +211,8 @@ for (const screen of SCREENS) {
       // A screen with more content than the tall window holds scrolls; it has
       // no slack to strand, and an identical bottom there means "the same
       // content", not "a void" (/rules, /profile).
-      test.skip(
-        await scrolls(page),
-        `the screen scrolls at ${tall.height}px, so it has no slack to strand`
-      );
+      expect(await scrolls(page), `whether ${screen.name} scrolls at ${tall.height}px`).toBe(screen.scrolls);
+      if (screen.scrolls) return;
 
       expect(
         onTablet,
