@@ -784,7 +784,7 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
     );
   });
 
-  test("a room is started by its host, with a second player, and is hidden or shown only before", async () => {
+  test("only the host starts a room or its next match, never alone, and visibility is fixed once dealt", async () => {
     const [host, guest] = await makeClients(["start_refusal_host", "start_refusal_guest"]);
     const created = waitFor<RoomState>(host.socket, "room:state");
     host.socket.emit("room:create", { gameMode: "free_for_all", maxPlayers: 2 });
@@ -796,7 +796,13 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
     await joined;
     assert.equal((await refusal(guest, "room:start")).code, "NOT_THE_HOST");
 
-    await startGame([host, guest]);
+    const single = await driveHandToExchangeOrOver([host, guest], () => {
+      host.socket.emit("room:start", { matchLength: "single" });
+    });
+    assert.equal(single.stoppedOn, "gameOver");
+    // After a match, the guest's start would count as a vote before `closeForStart` checks the host.
+    assert.equal((await refusal(guest, "room:start")).code, "NOT_THE_HOST");
+
     const late = await refusal(host, "room:setVisibility", { visibility: "public" });
     assert.equal(late.code, "GAME_ALREADY_STARTED");
   });
