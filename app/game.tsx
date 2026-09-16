@@ -72,7 +72,15 @@ export default function GameScreen() {
     releaseStuckRef.current = releaseStuckExchange;
   });
 
-  const humanIdx = gameState?.players.findIndex((p) => p.type === "human") ?? -1;
+  // Pass and play seats several humans at one device, so the table belongs to
+  // whichever of them is on move; a bot's turn leaves it with the first human.
+  const seatOnMove = gameState?.exchangePhase?.active
+    ? gameState.exchangePhase.winnerIdx
+    : gameState?.currentTurnIndex;
+  const humanIdx =
+    seatOnMove !== undefined && gameState?.players[seatOnMove]?.type === "human"
+      ? seatOnMove
+      : (gameState?.players.findIndex((p) => p.type === "human") ?? -1);
 
   // Every hook runs unconditionally, before the null guard below.
 
