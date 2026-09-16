@@ -42,6 +42,7 @@ describe("every browser spec reaches exactly one shard", () => {
     const files = playwrightRuns(E2E_DIR);
     assert.ok(files.length >= 40, `only ${files.length} specs found`);
     assert.ok(SHARDS >= 2, `ci.yml runs ${SHARDS} shard`);
+    assert.match(ciYml, new RegExp(String.raw`if \[ "\$found" -ne ${SHARDS} \]`), "the report job counts another shard total");
     assert.match(ciYml, /e2e-shard\.mjs \$\{\{ matrix\.shard \}\} \$\{\{ strategy\.job-total \}\}/);
     assert.deepEqual(specFilesIn(E2E_DIR), files);
   });

@@ -655,6 +655,9 @@ jobs:
       - name: Merge into one report — JSON, for timings
         run: npx playwright merge-reports --reporter json ./all-blob-reports > merged-report.json
 
+      - name: Name the tests that passed only on a retry
+        run: node scripts/e2e-flaky.mjs merged-report.json
+
       - name: Regenerate tests/e2e/timings.json
         run: node scripts/e2e-timings.mjs merged-report.json
 
