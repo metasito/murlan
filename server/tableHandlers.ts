@@ -643,43 +643,58 @@ async function startMatchAction(
   // a hand gives the table a player who cannot play it and whom no disconnect
   // can ever hand to a bot, because their disconnect already happened. Release
   // the seat instead; they can rejoin the next lobby.
-  const seated = await roomStore.getRoomPlayers(room.id);
   const absent = new Set(usersInLobbyGrace(roomId));
   // The finished match's tally, discarded before any seat leaves: releasing one
   // lowers the rematch gate, and a stale full count would deal that match one
   // more manche underneath the new one being dealt here.
   previous?.rematchVotes.clear();
-  for (const p of seated.filter((p) => absent.has(p.userId))) {
-    clearLobbyGrace(roomId, p.userId);
-    await handleSeatRelease(io, roomId, p.userId, p.user.username, { source: "disconnect" });
+  if (absent.size > 0) {
+    const seated = await roomStore.getRoomPlayers(room.id);
+    for (const p of seated.filter((p) => absent.has(p.userId))) {
+      clearLobbyGrace(roomId, p.userId);
+      await handleSeatRelease(io, roomId, p.userId, p.user.username, { source: "disconnect" });
+    }
   }
-  const players = seated.filter((p) => !absent.has(p.userId));
-  // With bots filling every empty seat, one seated human is enough — the min-2
-  // guard only matters for an all-human table.
-  if (!fillWithBots && players.length < 2) {
-    roomError(io, userId, payload("MIN_PLAYERS_REQUIRED"));
-    return { ok: false, code: "MIN_PLAYERS_REQUIRED" };
+
+  // Engine seat index is the position in this roster, sorted by seat, and
+  // playerMap is keyed the same way. Bot seats are left out of playerMap,
+  // which armTurn already reads as "drive this seat with the AI".
+  const rosterOf = (seated: { seatIndex: number; userId: string; user: { username: string } }[]) =>
+    buildSeatRoster(
+      seated.map((p) => ({ seatIndex: p.seatIndex, userId: p.userId, username: p.user.username })),
+      room.maxPlayers,
+      { fillWithBots, botPersonality }
+    );
+  const refusal = (
+    seated: Parameters<typeof rosterOf>[0],
+    report: (p: { message: string; code: string }) => void
+  ): EventOutcome | null => {
+    // With bots filling every empty seat, one seated human is enough — the
+    // min-2 guard only matters for an all-human table.
+    if (!fillWithBots && seated.length < 2) {
+      report(payload("MIN_PLAYERS_REQUIRED"));
+      return { ok: false, code: "MIN_PLAYERS_REQUIRED" };
+    }
+    if (seated.length < 1) return { ok: false, code: "MIN_PLAYERS_REQUIRED" };
+    return teamsSizeRefusal(report, room.gameMode, rosterOf(seated).length);
+  };
+
+  const closed = await roomStore.closeForStart(roomId, userId, {
+    liveMatch: previous !== undefined,
+    renumber: !fillWithBots,
+    admits: (seated) => refusal(seated, () => {}) === null,
+  });
+  if (!closed.ok) {
+    if (closed.reason === "refused") {
+      return refusal(closed.roster, (p) => roomError(io, userId, p)) ?? { ok: false, code: "MIN_PLAYERS_REQUIRED" };
+    }
+    return { ok: false, code: closed.reason === "not_waiting" ? "ROOM_NOT_WAITING" : "NOT_THE_HOST" };
   }
-  if (players.length < 1) return { ok: false, code: "MIN_PLAYERS_REQUIRED" };
+  const players = closed.roster;
 
   clearRoomTimers(roomId);
 
-  const humans = players.map((p) => ({
-    seatIndex: p.seatIndex,
-    userId: p.userId,
-    username: p.user.username,
-  }));
-  // Engine seat index is the position in this roster, sorted by seat, and
-  // playerMap is keyed the same way — so a gap in the DB seat numbering cannot
-  // shift a hand onto the wrong player. Bot seats are left out of playerMap,
-  // which armTurn already reads as "drive this seat with the AI".
-  const roster = buildSeatRoster(humans, room.maxPlayers, { fillWithBots, botPersonality });
-  const wrongSize = teamsSizeRefusal(
-    (p) => roomError(io, userId, p),
-    room.gameMode,
-    roster.length
-  );
-  if (wrongSize) return wrongSize;
+  const roster = rosterOf(players);
 
   const playerSetup = roster.map((r, idx) => ({
     name: r.username,
@@ -720,12 +735,9 @@ async function startMatchAction(
     // or `previous.matchOver`), so `matchOver` is unconditionally `true`.
     dealFirstSeat: dealFirstSeatFor(true, 0, roster.length),
   };
-  // Before the game exists, not after: `claimRoomSeat` re-reads the status
-  // under its own row lock, so a room that is no longer `waiting` cannot take a
-  // straggler. Leaving it to dealManche would open a window the width of one
-  // round-trip in which quick-match can seat someone into a hand whose roster
-  // is already frozen.
-  await roomStore.updateRoomStatus(roomId, "in_progress");
+  // `closeForStart` read this roster and closed the room in one transaction
+  // under the rooms row lock, which every claim and release also takes: nobody
+  // can be seated or unseated between the roster and this deal.
   // Not awaited: nothing below reads the rows, and the deal must not wait on it.
   void retireRoomInvites(io, roomId, room.code).catch((err: unknown) =>
     logger.warn({ err, roomId }, "Failed to retire the invites of a room that started")
@@ -741,7 +753,7 @@ async function startMatchAction(
   // resolving any one player.
   io.to(roomId).emit(
     "room:state",
-    await roomStatePayload({ ...room, status: "in_progress" }, players)
+    await roomStatePayload(closed.room, players)
   );
 
   await dealManche(io, newGame, gameState);
@@ -808,7 +820,7 @@ function seatLostAction(
         if (await isUserOnline(userId)) return;
 
         await roomStore
-          .removeRoomPlayer(roomId, userId)
+          .releaseSeat(roomId, userId)
           .catch((err) =>
             logger.warn(
               { err, roomId, userId },

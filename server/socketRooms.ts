@@ -148,10 +148,10 @@ export function registerRoomHandlers({ io, socket, userId, username }: RoomHandl
         const updatedPlayers = await roomStore.getRoomPlayers(room.id);
         trackEvent("room.joined", userId, {
           playerCount: updatedPlayers.length,
-          gameMode: room.gameMode,
+          gameMode: claim.room.gameMode,
         });
-        io.to(room.id).emit("room:state", await roomStatePayload(room, updatedPlayers));
-        await announceIfFilled(io, room, updatedPlayers.length);
+        io.to(room.id).emit("room:state", await roomStatePayload(claim.room, updatedPlayers));
+        await announceIfFilled(io, claim.room, updatedPlayers.length);
       },
       { limit: 10, windowMs: 60_000 }
     );
@@ -193,7 +193,7 @@ export function registerRoomHandlers({ io, socket, userId, username }: RoomHandl
         clearLobbyGrace(room.id, userId);
 
         const players = await roomStore.getRoomPlayers(room.id);
-        io.to(room.id).emit("room:state", await roomStatePayload(room, players));
+        io.to(room.id).emit("room:state", await roomStatePayload(claim.room, players));
       },
       { limit: 20, windowMs: 60_000 }
     );
@@ -273,7 +273,10 @@ export function registerRoomHandlers({ io, socket, userId, username }: RoomHandl
           )
             continue;
 
-          const claim = await roomStore.claimRoomSeat(candidate.room.id, userId);
+          const claim = await roomStore.claimRoomSeat(candidate.room.id, userId, {
+            requirePublic: true,
+            requireOccupied: true,
+          });
           if (!claim.ok) continue;
 
           const roomId = candidate.room.id;
@@ -281,11 +284,8 @@ export function registerRoomHandlers({ io, socket, userId, username }: RoomHandl
           socketRoomMap.set(socket.id, roomId);
 
           const updatedPlayers = await roomStore.getRoomPlayers(roomId);
-          io.to(roomId).emit(
-            "room:state",
-            await roomStatePayload(candidate.room, updatedPlayers)
-          );
-          await announceIfFilled(io, candidate.room, updatedPlayers.length);
+          io.to(roomId).emit("room:state", await roomStatePayload(claim.room, updatedPlayers));
+          await announceIfFilled(io, claim.room, updatedPlayers.length);
           joinedRoomId = roomId;
           break;
         }
@@ -338,4 +338,6 @@ const SEAT_CLAIM_REFUSAL = {
   full: payload("ROOM_FULL"),
   held: payload("SEAT_HELD"),
   already_joined: payload("ALREADY_IN_ROOM"),
+  not_public: payload("ROOM_NOT_FOUND"),
+  empty: payload("ROOM_NOT_FOUND"),
 };
