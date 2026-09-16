@@ -384,6 +384,14 @@ describe("locateRun", () => {
     assert.equal(at.cwd, nowhere);
   });
 
+  test("a worktree list git cannot give is not read as no run", () => {
+    const nowhere = mkdtempSync(join(tmpdir(), "locate-run-nolist-"));
+    made.push(nowhere);
+    assert.equal(locateRun(nowhere).phase, "?");
+    const brief = report(derive({ cwd: nowhere }));
+    assert.match(brief, /could not determine the run: .+; do not pick a ticket until resolved/);
+  });
+
   /**
    * In a child process, and in a repository with nothing live in it: the only way to ask
    * `locateRun()` about a directory is to stand in it, and asked from this suite's own checkout

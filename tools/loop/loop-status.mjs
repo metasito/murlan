@@ -8,11 +8,15 @@
  *
  * It runs in the shared checkout, never in the run's worktree — `derive` finds that itself.
  *
- * Silent off a ticket branch, and never non-zero — a broken brief must not take the session down.
+ * Silent only when it knows no run is live, and never non-zero — a broken brief must not take the
+ * session down, and queue.md reads silence as "pick a ticket".
  */
 import { derive } from "./loop-derive.mjs";
 
+const unknown = (why) => `loop-status could not determine the run: ${why}; do not pick a ticket until resolved`;
+
 export function report(s) {
+  if (!s.onTicket && s.phase === "?") return unknown(s.why);
   if (!s.onTicket) {
     if (!s.ambiguous) return "";
     return [
@@ -60,6 +64,6 @@ export function report(s) {
 try {
   const out = report(derive());
   if (out) console.log(out);
-} catch {
-  /* no git, no repo, nothing to restore and nothing to say about it */
+} catch (err) {
+  console.log(unknown(String(err?.message ?? err).split("\n")[0]));
 }

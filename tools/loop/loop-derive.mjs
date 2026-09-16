@@ -99,7 +99,7 @@ export function worktrees(cwd) {
  * @param {string} [cwd]
  * @param {string} [worktree]
  * @returns {{cwd: string, branch: string|null, ticket: number|null, detached: boolean,
- *   ambiguous?: number, worktrees?: string[]}}
+ *   ambiguous?: number, worktrees?: string[], phase?: string, why?: string}}
  */
 export function locateRun(cwd, worktree) {
   // Resolved, not passed through: git reads the process's own directory when given none, so a
@@ -126,8 +126,8 @@ export function locateRun(cwd, worktree) {
   let list = [];
   try {
     list = worktrees(at).filter((w) => w.dir && basename(dirname(w.dir)) === WORKTREE_DIR);
-  } catch {
-    return idle();
+  } catch (err) {
+    return idle({ phase: "?", why: `cannot list worktrees (${String(err?.message ?? err).split("\n")[0]})` });
   }
 
   const onBranch = list.filter((w) => ticketOf(w.branch));
@@ -266,6 +266,9 @@ export function derive({
       phase: "?",
       why: `#${at.ticket}'s worktree is on a detached HEAD — a rebase or checkout left it without a branch`,
     };
+  }
+  if (at.phase === "?") {
+    return { onTicket: false, branch: at.branch, phase: "?", why: at.why, ambiguous: true };
   }
   if (!at.ticket) {
     const why = at.ambiguous

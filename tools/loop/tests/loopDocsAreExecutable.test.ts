@@ -66,16 +66,19 @@ describe("the loop's instructions name only things that exist", () => {
   // and forever. This branch shipped with all three broken that way.
   test("no hook depends on a shell expansion or on shell syntax", () => {
     const settings = JSON.parse(read(".claude/settings.json"));
-    const commands: string[] = Object.values(settings.hooks ?? {})
+    const hooks: { command: string; args?: string[] }[] = Object.values(settings.hooks ?? {})
       .flat()
-      .flatMap((g: any) => (g.hooks ?? []).map((h: any) => h.command));
-    assert.ok(commands.length > 0, "no hooks configured; this guard is watching nothing");
+      .flatMap((g: any) => g.hooks ?? []);
+    assert.ok(hooks.length > 0, "no hooks configured; this guard is watching nothing");
 
-    for (const c of commands) {
-      assert.doesNotMatch(c, /\$\w|\$\{/, `hook relies on shell variable expansion: ${c}`);
-      assert.doesNotMatch(c, /&&|\|\||\[\s+-\w\s/, `hook relies on POSIX shell syntax: ${c}`);
-      const script = /node\s+([\w./-]+)/.exec(c)?.[1];
-      if (script) assert.ok(existsSync(script), `hook runs a script that does not exist: ${script}`);
+    for (const { command, args } of hooks) {
+      assert.doesNotMatch(command, /\$|&&|\|\||\s/, `hook command is shell form: ${command}`);
+      assert.ok(args, `hook without args runs through a shell: ${command}`);
+      for (const arg of args) {
+        const script = arg.replace(/^\$\{CLAUDE_PROJECT_DIR\}\//, "");
+        assert.doesNotMatch(script, /\$/, `hook arg uses a placeholder Claude Code does not substitute: ${arg}`);
+        assert.ok(existsSync(script), `hook runs a script that does not exist: ${arg}`);
+      }
     }
   });
 });
