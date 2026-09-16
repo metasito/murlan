@@ -126,9 +126,9 @@ export function teamsSizeRefusal(
   playerCount: number
 ): EventOutcome | null {
   if (gameMode !== "teams" || playerCount === TEAMS_PLAYER_COUNT) return null;
-  const refusal = payload("TEAMS_REQUIRE_FOUR");
-  refuse(refusal);
-  return { ok: false, code: refusal.code };
+  const code = "TEAMS_REQUIRE_FOUR";
+  refuse(payload(code));
+  return { ok: false, code };
 }
 
 /**

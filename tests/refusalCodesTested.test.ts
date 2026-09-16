@@ -8,48 +8,95 @@ import { sourcesUnder } from "./helpers/sourceScan.ts";
 const REPO_ROOT = path.resolve(import.meta.dirname, "..");
 const SELF = path.basename(import.meta.filename);
 
-/** Every string literal inside the `code` of an object literal that also says `ok: false`. */
-function refusalCodes(): Map<string, string> {
+function declarationOf(name: ts.Identifier): ts.VariableDeclaration | ts.ParameterDeclaration | undefined {
+  for (let scope: ts.Node | undefined = name.parent; scope; scope = scope.parent) {
+    if (ts.isFunctionLike(scope)) {
+      const param = scope.parameters.find((p) => ts.isIdentifier(p.name) && p.name.text === name.text);
+      if (param) return param;
+    }
+    const statements = ts.isBlock(scope) || ts.isSourceFile(scope) ? scope.statements : [];
+    for (const statement of statements) {
+      if (!ts.isVariableStatement(statement)) continue;
+      const found = statement.declarationList.declarations.find(
+        (d) => ts.isIdentifier(d.name) && d.name.text === name.text
+      );
+      if (found) return found;
+    }
+  }
+  return undefined;
+}
+
+/** The literals an expression can evaluate to, following constants, ternary branches and a helper's parameter back to its calls. */
+function literalsOf(expr: ts.Expression, sf: ts.SourceFile, unread: string[]): string[] {
+  const where = () => `${sf.fileName}:${sf.getLineAndCharacterOfPosition(expr.getStart()).line + 1}`;
+  if (ts.isStringLiteralLike(expr)) return [expr.text];
+  if (ts.isParenthesizedExpression(expr)) return literalsOf(expr.expression, sf, unread);
+  if (ts.isConditionalExpression(expr)) {
+    return [...literalsOf(expr.whenTrue, sf, unread), ...literalsOf(expr.whenFalse, sf, unread)];
+  }
+  const decl = ts.isIdentifier(expr) ? declarationOf(expr) : undefined;
+  if (decl && ts.isVariableDeclaration(decl) && decl.initializer) return literalsOf(decl.initializer, sf, unread);
+  const helper = decl && ts.isParameter(decl) ? decl.parent.parent : undefined;
+  if (decl && helper && ts.isVariableDeclaration(helper) && ts.isIdentifier(helper.name)) {
+    const index = (decl.parent as ts.SignatureDeclaration).parameters.indexOf(decl as ts.ParameterDeclaration);
+    const args: ts.Expression[] = [];
+    const findCalls = (n: ts.Node) => {
+      if (ts.isCallExpression(n) && ts.isIdentifier(n.expression) && n.expression.text === helper.name.getText()) {
+        if (n.arguments[index]) args.push(n.arguments[index]);
+      }
+      ts.forEachChild(n, findCalls);
+    };
+    findCalls(sf);
+    if (args.length > 0) return args.flatMap((arg) => literalsOf(arg, sf, unread));
+  }
+  unread.push(where());
+  return [];
+}
+
+/** Every code an object literal saying `ok: false` can carry, and every such `code` the scan could not resolve. */
+function refusalCodes(): { codes: Map<string, string>; unread: string[] } {
   const codes = new Map<string, string>();
+  const unread: string[] = [];
   for (const file of readdirSync(path.join(REPO_ROOT, "server")).filter((f) => f.endsWith(".ts"))) {
     const source = readFileSync(path.join(REPO_ROOT, "server", file), "utf8");
-    const sf = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+    const sf = ts.createSourceFile(`server/${file}`, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
     const visit = (node: ts.Node) => {
       if (ts.isObjectLiteralExpression(node)) {
         const prop = (name: string) =>
-          node.properties.find(
-            (p): p is ts.PropertyAssignment =>
-              ts.isPropertyAssignment(p) && ts.isIdentifier(p.name) && p.name.text === name
-          );
+          node.properties.find((p) => (ts.isPropertyAssignment(p) || ts.isShorthandPropertyAssignment(p)) && p.name.getText() === name);
         const ok = prop("ok");
         const code = prop("code");
-        if (ok?.initializer.kind === ts.SyntaxKind.FalseKeyword && code) {
-          const collect = (n: ts.Node) => {
-            if (ts.isStringLiteral(n)) codes.set(n.text, `server/${file}`);
-            ts.forEachChild(n, collect);
-          };
-          collect(code.initializer);
+        if (ok && ts.isPropertyAssignment(ok) && ok.initializer.kind === ts.SyntaxKind.FalseKeyword && code) {
+          const expr = ts.isPropertyAssignment(code) ? code.initializer : (code as ts.ShorthandPropertyAssignment).name;
+          for (const literal of literalsOf(expr, sf, unread)) codes.set(literal, sf.fileName);
         }
       }
       ts.forEachChild(node, visit);
     };
     visit(sf);
   }
-  return codes;
+  return { codes, unread };
 }
 
 test("every refusal code the server returns is named by a test", () => {
-  const codes = refusalCodes();
-  for (const known of ["NOT_THE_HOST", "NOT_YOUR_EXCHANGE", "ROOM_NOT_WAITING", "TABLE_UNREACHABLE"]) {
+  const { codes, unread } = refusalCodes();
+  assert.deepEqual(unread, [], "a refusal code the scan cannot resolve to a literal is one it exempts");
+  for (const known of ["NOT_THE_HOST", "ROOM_NOT_WAITING", "NOT_THIS_INSTANCE", "SEAT_RELEASED", "MIN_PLAYERS_REQUIRED"]) {
     assert.ok(codes.has(known), `the scan no longer finds ${known}, so it is not reading what it claims to`);
   }
+  assert.ok(!codes.has("not_waiting"), "the scan read a ternary's condition as a code");
 
-  const tests = sourcesUnder(REPO_ROOT, ["tests"], /\.(ts|tsx|mjs)$/)
-    .filter(([file]) => path.basename(file) !== SELF)
-    .map(([, source]) => source)
-    .join("\n");
+  const named = new Set<string>();
+  for (const [file, source] of sourcesUnder(REPO_ROOT, ["tests"], /\.(ts|tsx|mjs)$/)) {
+    if (path.basename(file) === SELF) continue;
+    const collect = (n: ts.Node) => {
+      if (ts.isStringLiteralLike(n)) named.add(n.text);
+      ts.forEachChild(n, collect);
+    };
+    collect(ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true));
+  }
   const untested = [...codes]
-    .filter(([code]) => !new RegExp(`["'\`]${code}["'\`]`).test(tests))
+    .filter(([code]) => !named.has(code))
     .map(([code, where]) => `${code} (${where})`);
   assert.deepEqual(untested, [], "a refusal no test provokes is a guard a refactor can delete with CI green");
 });

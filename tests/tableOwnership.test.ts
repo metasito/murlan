@@ -73,16 +73,14 @@ describe("a forwarded action is applied once, however often it is sent", () => {
   // adapter's acknowledgement window, and `CLAUDE.md` is explicit that a card
   // appears exactly once — a replayed `game:pass` takes a turn twice. #544 asks
   // for the de-duplication in the same change as the retry, not after it.
-  async function respondTwice(ids: [string, string]): Promise<number> {
-    const { activeGames } = await import("../server/gameRoom.ts");
+  async function responder() {
     const { TABLE_ACTION_EVENT, registerTableRouting, setTableHandlers } = await import(
       "../server/tableRouter.ts"
     );
-
-    let applied = 0;
+    const counter = { applied: 0 };
     setTableHandlers(
       async () => {
-        applied += 1;
+        counter.applied += 1;
         return { ok: true };
       },
       async () => "missing"
@@ -95,6 +93,12 @@ describe("a forwarded action is applied once, however often it is sent", () => {
       },
     } as never);
     assert.ok(receive, "the router registered no listener for forwarded actions");
+    return { receive, counter };
+  }
+
+  async function respondTwice(ids: [string, string]): Promise<number> {
+    const { activeGames } = await import("../server/gameRoom.ts");
+    const { receive, counter } = await responder();
 
     const roomId = `dedupe-${ids.join("-")}`;
     // The responder only asks whether this process holds the room.
@@ -102,14 +106,23 @@ describe("a forwarded action is applied once, however often it is sent", () => {
     try {
       for (const id of ids) {
         await new Promise((resolve) =>
-          receive!({ id, kind: "pass", roomId, userId: "u", username: "u" }, resolve)
+          receive({ id, kind: "pass", roomId, userId: "u", username: "u" }, resolve)
         );
       }
     } finally {
       activeGames.delete(roomId);
     }
-    return applied;
+    return counter.applied;
   }
+
+  test("an instance that does not hold the room disowns it and applies nothing", async () => {
+    const { receive, counter } = await responder();
+    const reply = await new Promise((resolve) =>
+      receive({ id: "stray", kind: "pass", roomId: "held-elsewhere", userId: "u", username: "u" }, resolve)
+    );
+    assert.deepEqual(reply, { ok: false, code: "NOT_THIS_INSTANCE" });
+    assert.equal(counter.applied, 0);
+  });
 
   test("the same action arriving twice is applied once", async () => {
     assert.equal(await respondTwice(["one", "one"]), 1);
