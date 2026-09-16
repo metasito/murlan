@@ -1,19 +1,19 @@
 // tests/rulesAreSingleSourced.test.ts
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, readdirSync } from "node:fs";
 
 const RULES = "docs/agents/RULES.md";
 
 // Files that instruct an agent. Each may point at a rule; none may restate one.
 const INSTRUCTION_FILES = [
   "CLAUDE.md",
-  ".claude/commands/queue.md",
-  ".claude/commands/triage.md",
-  ".claude/commands/wayfinder.md",
-  "docs/agents/issue-tracker.md",
-  "docs/agents/loops.md",
-  "docs/agents/domain.md",
+  ...[".claude/commands", "docs/agents"].flatMap((dir) =>
+    readdirSync(dir)
+      .filter((name) => name.endsWith(".md"))
+      .map((name) => `${dir}/${name}`)
+      .filter((file) => file !== RULES),
+  ),
 ];
 
 /**
@@ -152,6 +152,7 @@ describe("every agent rule is written down exactly once", () => {
   // empty file, which is clean under every assertion here. Without this, moving
   // one of these files takes it out of the guard silently.
   test("every instruction file is still where the list says", () => {
+    assert.ok(INSTRUCTION_FILES.length >= 8, `only ${INSTRUCTION_FILES.length} instruction files found`);
     const gone = INSTRUCTION_FILES.filter((f) => !existsSync(f));
     assert.deepEqual(gone, [], `listed but missing: ${gone.join(", ")}`);
   });
