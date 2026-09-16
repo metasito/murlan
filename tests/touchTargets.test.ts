@@ -44,8 +44,8 @@ const SIZED_AT_RUNTIME: [string, number, string][] = [
 
 /**
  * Controls declaring the height floor whose width is the row they fill or their own label plus
- * padding, neither of which a source scan can measure. `tests/e2e/tapTargets.spec.ts` sweeps the
- * rendered rect of the screens that hold them.
+ * padding, neither of which a source scan can measure. `tests/e2e/tapTargets.spec.ts` sweeps only
+ * home, the lobbies, the room and a table mid-play; the rest are unmeasured until #1114.
  */
 const WIDTH_FROM_LAYOUT: [string, number, string][] = [
   ["components/DifficultyLadder.tsx", 1, "a ladder segment, `flex: 1` in the ladder row"],
