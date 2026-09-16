@@ -28,7 +28,7 @@ export interface ClientErrorGroup {
   fingerprint: string | null;
   message: string;
   count: number;
-  lastSeen: Date;
+  lastSeen: string;
   stack: string | null;
 }
 
@@ -85,7 +85,7 @@ export async function recentClientErrorGroups(limit = CLIENT_ERROR_PAGE): Promis
     fingerprint: string | null;
     message: string;
     count: number;
-    lastSeen: Date;
+    lastSeen: string;
     stack: string | null;
   }>(sql`
     SELECT

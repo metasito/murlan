@@ -253,4 +253,22 @@ describe("the admin dashboard", { skip: hasDatabase() ? false : skipMessage() },
       assert.equal(res.status, 404);
     }
   });
+  test("text a player wrote reaches the page escaped, never as markup", async () => {
+    const hostile = `<img src=x onerror=1> "'&`;
+    await dbPool.query(
+      `INSERT INTO "${server.schema}".client_errors (message, occurred_at) VALUES ($1, now())`,
+      [`crash ${hostile}`]
+    );
+    await dbPool.query(
+      `INSERT INTO "${server.schema}".bug_reports (user_id, description)
+       SELECT id, $1 FROM "${server.schema}".users WHERE username = 'a_player'`,
+      [`report ${hostile}`]
+    );
+
+    const body = await (await get(ownerCookie)).text();
+    const escaped = "&lt;img src=x onerror=1&gt; &quot;&#39;&amp;";
+    assert.ok(body.includes(`crash ${escaped}`), "the crash message is missing or unescaped");
+    assert.ok(body.includes(`report ${escaped}`), "the bug report is missing or unescaped");
+    assert.ok(!body.includes("<img src=x"), "a player's markup reached the admin page raw");
+  });
 });

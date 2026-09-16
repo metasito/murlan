@@ -66,9 +66,10 @@ export async function recordBugReport(input: BugReportInput): Promise<void> {
 
 /** Newest first, for /admin. The reporter's name, so a reply is possible by hand. */
 export async function recentBugReports(limit = BUG_REPORT_PAGE): Promise<BugReportRow[]> {
+  // `db.execute` hands a timestamp back as text; only drizzle's query builder parses it.
   const rows = await db.execute<{
     id: string;
-    created_at: Date;
+    created_at: string;
     username: string | null;
     description: string;
     screen: string | null;
@@ -86,7 +87,7 @@ export async function recentBugReports(limit = BUG_REPORT_PAGE): Promise<BugRepo
   `);
   return rows.rows.map((r) => ({
     id: r.id,
-    createdAt: r.created_at,
+    createdAt: new Date(r.created_at),
     username: r.username,
     description: r.description,
     screen: r.screen,
