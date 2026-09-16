@@ -1,6 +1,7 @@
 import { test, before, after, describe, mock } from "node:test";
 import assert from "node:assert/strict";
 import { io as ioClient, type Socket } from "socket.io-client";
+import { eq } from "drizzle-orm";
 import { logger } from "../../server/logger.ts";
 import { createDeck, getAllValidPlays } from "../../lib/gameEngine.ts";
 import {
@@ -844,6 +845,19 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
     const after = await authoritativeState(other, room.roomId);
     assert.equal(after.currentTurnIndex, otherBefore.viewerSeatIndex);
     assert.equal(after.players[otherBefore.viewerSeatIndex].handCount, otherHand.length);
+
+    // A restart that lost the game leaves exactly this: a room row mid-game, and nothing to deal into.
+    const { disposeGame } = await import("../../server/gamePersistence.ts");
+    const { db } = await import("../../server/db.ts");
+    const { activeGames: activeGamesTable } = await import("../../shared/schema.ts");
+    disposeGame(room.roomId);
+    for (let tries = 0; ; tries++) {
+      const rows = await db.select().from(activeGamesTable).where(eq(activeGamesTable.roomId, room.roomId));
+      if (rows.length === 0) break;
+      assert.ok(tries < 50, "the persisted game was never deleted");
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    assert.equal((await refusal(alice, "room:start")).code, "ROOM_NOT_WAITING");
   });
 
   // ── Test 13 ─────────────────────────────────────────────────────────────
