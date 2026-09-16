@@ -90,6 +90,17 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
     assert.equal(ticketRes.status, 200, ticketText);
     const { ticket } = JSON.parse(ticketText) as { ticket: string };
 
+    // The handler's first await is this read. Held until the reply arrives, an
+    // await moved above the registrations fails every run, not only on a slow database.
+    const { friendStore } = await import("../../server/friendStore.ts");
+    const realGetFriends = friendStore.getFriends;
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    friendStore.getFriends = async function (userId: string) {
+      if (userId === user.id) await gate;
+      return realGetFriends.call(this, userId);
+    };
+
     const socket: Socket = ioClient(server.url, {
       auth: { ticket },
       transports: ["websocket"],
@@ -107,6 +118,8 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
       assert.ok(state.roomId, "room:create emitted on connect must still get a reply");
       assert.equal(state.hostUserId, user.id);
     } finally {
+      release();
+      friendStore.getFriends = realGetFriends;
       socket.close();
     }
   });
