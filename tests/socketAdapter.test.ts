@@ -9,7 +9,9 @@
 // `game:state` would wait for replies that were never owed.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { channelPrefix, listenPattern } from "../server/socketAdapter.ts";
+import { EventEmitter } from "node:events";
+import { Pool } from "pg";
+import { channelPrefix, listenPattern, meterPool } from "../server/socketAdapter.ts";
 
 test("production, with no search_path, keeps the adapter's own default", () => {
   assert.equal(channelPrefix("postgres://u:p@host:5432/murlan"), "socket.io");
@@ -93,4 +95,36 @@ test("the readiness pattern matches the LISTEN the adapter actually issues", () 
     issued.startsWith(literal),
     `the adapter listens on ${issued}, which ${pattern} cannot match`
   );
+});
+
+class FakeClient extends EventEmitter {
+  connection = { stream: { unref() {}, ref() {} } };
+  connect(cb: (err?: Error) => void) {
+    setImmediate(() => cb());
+  }
+  end(cb?: () => void) {
+    cb?.();
+    return Promise.resolve();
+  }
+  ref() {}
+  unref() {}
+}
+
+test("the adapter pool reports who is queued for a client and how long they waited", async () => {
+  const pool = new Pool({ Client: FakeClient as never, max: 1 });
+  const stats = meterPool(pool);
+  assert.deepEqual(stats(), { total: 0, idle: 0, waiting: 0, waits: 0, longestWaitMs: 0 });
+
+  const first = await pool.connect();
+  const second = pool.connect();
+  assert.equal(stats().waiting, 1);
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  first.release();
+  (await second).release();
+
+  const after = stats();
+  assert.equal(after.waiting, 0);
+  assert.equal(after.waits, 2);
+  assert.ok(after.longestWaitMs >= 25, `longest wait ${after.longestWaitMs}ms`);
+  await pool.end();
 });

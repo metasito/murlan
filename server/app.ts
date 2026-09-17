@@ -7,6 +7,7 @@ import type { SocketServer as SocketIOServer } from "./socketTypes.ts";
 import { createRequestLogger, logger } from "./logger.ts";
 import { sessionMiddleware } from "./session.ts";
 import { pool } from "./db.ts";
+import { socketAdapterPoolStats } from "./socketAdapter.ts";
 import { errorHandler } from "./errorHandler.ts";
 import { installServerErrorRecorder } from "./serverErrors.ts";
 import { registerRoutes } from "./routes.ts";
@@ -298,6 +299,7 @@ export async function createApp(): Promise<CreatedApp> {
         uptime: Math.floor(process.uptime()),
         env: process.env.NODE_ENV,
         commit: runningCommitSha,
+        adapterPool: socketAdapterPoolStats(),
       });
     } catch (err) {
       logger.error({ err }, "Health check DB failure");
