@@ -273,7 +273,16 @@ export const en = {
 
   // -------------------------------------------------------- reactionLayer.*
   "reactionLayer.triggerA11yLabel": "Send a reaction",
-  "reactionLayer.emojiA11yLabel": "Reaction {{emoji}}",
+  "reactionLayer.emojiA11yLabel": "Reaction: {{emoji}}",
+  // A word per glyph, because a screen reader's emoji pronunciation is the OS's, not ours.
+  "reactionLayer.emoji.laugh": "laughing",
+  "reactionLayer.emoji.fire": "fire",
+  "reactionLayer.emoji.frustrated": "frustrated",
+  "reactionLayer.emoji.applause": "applause",
+  "reactionLayer.emoji.shock": "shocked",
+  "reactionLayer.emoji.clown": "clown",
+  "reactionLayer.emoji.bomb": "bomb",
+  "reactionLayer.emoji.crown": "crown",
 
   // ----------------------------------------------------------------- exchange.*
   // Under the card the loser gave, on the felt. The card is the prompt, so the

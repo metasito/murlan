@@ -471,7 +471,7 @@ describe("one name per card", () => {
         for (const alias of aliases) {
           const expected = catalogue[canonical];
           assert.ok(expected, `${name} has no key "${canonical}"`);
-          if (catalogue[alias].toLowerCase() !== expected.toLowerCase()) {
+          if (catalogue[alias] !== expected) {
             violations.push(`${name}:${alias} is "${catalogue[alias]}", not "${expected}"`);
           }
         }

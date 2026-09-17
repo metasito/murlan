@@ -17,10 +17,21 @@ import Animated, {
 import { Colors, FontSize, Layer, Motion, Radius, Scrim, Spacing, TOUCH_TARGET_MIN } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTableReactions, type TableReaction } from "@/lib/reactions";
-import { useTranslation } from "@/lib/i18n";
+import { useTranslation, type TranslationKey } from "@/lib/i18n";
 import { a11yHidden } from "@/lib/a11y";
 
-export const EMOJIS = ["😂", "🔥", "😤", "👏", "😱", "🤡", "💣", "👑"];
+// The spoken word travels with the glyph: a label built from the glyph alone leaves
+// the announcement to the OS's emoji pronunciation.
+export const EMOJIS = [
+  { glyph: "😂", labelKey: "reactionLayer.emoji.laugh" },
+  { glyph: "🔥", labelKey: "reactionLayer.emoji.fire" },
+  { glyph: "😤", labelKey: "reactionLayer.emoji.frustrated" },
+  { glyph: "👏", labelKey: "reactionLayer.emoji.applause" },
+  { glyph: "😱", labelKey: "reactionLayer.emoji.shock" },
+  { glyph: "🤡", labelKey: "reactionLayer.emoji.clown" },
+  { glyph: "💣", labelKey: "reactionLayer.emoji.bomb" },
+  { glyph: "👑", labelKey: "reactionLayer.emoji.crown" },
+] as const satisfies readonly { glyph: string; labelKey: TranslationKey }[];
 
 /** Above the picker it flies out of; the gap itself carries no meaning. */
 const EMOJI_Z = Layer.held + 1;
@@ -111,18 +122,18 @@ export function ReactionPanel({
       entering={reduceMotion ? undefined : SlideInLeft.duration(Motion.duration.shift)}
       style={[styles.panel, { left, bottom }]}
     >
-      {EMOJIS.map((e) => (
+      {EMOJIS.map(({ glyph, labelKey }) => (
         <Pressable
-          key={e}
+          key={glyph}
           onPress={() => {
-            onSelect(e);
+            onSelect(glyph);
             onClose();
           }}
           style={({ pressed }) => [styles.emojiBtn, pressed && styles.emojiBtnPressed]}
           accessibilityRole="button"
-          accessibilityLabel={t("reactionLayer.emojiA11yLabel", { emoji: e })}
+          accessibilityLabel={t("reactionLayer.emojiA11yLabel", { emoji: t(labelKey) })}
         >
-          <Text style={styles.emojiBtnText} {...a11yHidden()}>{e}</Text>
+          <Text style={styles.emojiBtnText} {...a11yHidden()}>{glyph}</Text>
         </Pressable>
       ))}
     </Animated.View>
