@@ -61,9 +61,9 @@ const fireConnectError = async () => {
   });
 };
 
-// RETRY_BASE_MS in context/SocketContext.tsx — the first attempt's delay, and
-// what identifies this handler's timer among the renderer's and react-query's.
-const RETRY_BASE_MS = 2000;
+// The first attempt's delay with Math.random pinned below (lib/reconnectDelay.ts),
+// and what identifies this handler's timer among the renderer's and react-query's.
+const FIRST_RETRY_MS = 246;
 
 describe('connect_error', () => {
   let setTimeoutSpy: jest.Spied<typeof setTimeout>;
@@ -71,6 +71,7 @@ describe('connect_error', () => {
   beforeEach(() => {
     jest.useFakeTimers();
     setTimeoutSpy = jest.spyOn(globalThis, 'setTimeout');
+    jest.spyOn(Math, 'random').mockReturnValue(0.123);
     mockSocket.connected = false;
     mockSocket.active = true;
     mockSocket.listeners.clear();
@@ -78,12 +79,12 @@ describe('connect_error', () => {
   });
 
   afterEach(() => {
-    setTimeoutSpy.mockRestore();
+    jest.restoreAllMocks();
     jest.useRealTimers();
   });
 
   const scheduledRetries = () =>
-    setTimeoutSpy.mock.calls.filter((call) => call[1] === RETRY_BASE_MS).length;
+    setTimeoutSpy.mock.calls.filter((call) => call[1] === FIRST_RETRY_MS).length;
 
   it('schedules no retry while socket.io is still reconnecting', async () => {
     const view = await mount();

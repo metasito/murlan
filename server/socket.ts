@@ -1,6 +1,7 @@
 import { Server } from "socket.io";
 import type { GameSocket as Socket, SocketServer } from "./socketTypes.ts";
 import {
+  AUTH_UNAVAILABLE,
   CLIENT_OUTDATED,
   MIN_PROTOCOL_VERSION,
   type ClientToServerEvents,
@@ -151,12 +152,12 @@ export function setupSocket(httpServer: HttpServer) {
       if (ticket && !(await redeemSocketTicket(ticket))) {
         return next(new Error("Not authenticated"));
       }
-      const user = await userStore.getUser(claimedUserId).catch(() => null);
+      const user = await userStore.getUser(claimedUserId);
       if (!user) return next(new Error("Not authenticated"));
       return next();
     } catch (err) {
       logger.error({ err }, "Socket handshake failed");
-      return next(new Error("Not authenticated"));
+      return next(new Error(AUTH_UNAVAILABLE));
     }
   });
 

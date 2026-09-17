@@ -9,14 +9,15 @@
 // retry upon reconnection". The acknowledgement is the guarantee.
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
-import type { Socket } from "socket.io-client";
+import { io as ioClient, type Socket } from "socket.io-client";
 import {
   startTestServer,
   hasDatabase,
   skipMessage,
   type TestServer,
 } from "../helpers/testServer.ts";
-import { connectAs, waitFor } from "../helpers/client.ts";
+import { PROTOCOL_AUTH, connectAs, waitFor } from "../helpers/client.ts";
+import { AUTH_UNAVAILABLE } from "../../shared/protocol.ts";
 import type { SanitizedState } from "../helpers/table.ts";
 import type { EventOutcome } from "../../server/socketSafety.ts";
 
@@ -205,6 +206,30 @@ describe("an intent is acknowledged", { skip: hasDatabase() ? false : skipMessag
     const reply = (await ackOf(c.socket, "game:rejoin", { roomId: 42 })) as EventOutcome;
     assert.equal(reply.code, "INVALID_PAYLOAD");
     assert.equal((await failed).code, "INVALID_PAYLOAD");
+  });
+
+  test("a handshake the database could not check is refused apart from a spent ticket", async () => {
+    const { socket, cookie } = await player("authdown");
+    socket.close();
+    const res = await fetch(`${server.url}/api/auth/socket-ticket`, { method: "POST", headers: { cookie } });
+    const { ticket } = (await res.json()) as { ticket: string };
+    const refusal = () =>
+      new Promise<string>((resolve) => {
+        const s = ioClient(server.url, { auth: { ...PROTOCOL_AUTH, ticket }, transports: ["websocket"], reconnection: false });
+        s.once("connect", () => resolve("connected"));
+        s.once("connect_error", (e) => resolve(e.message));
+      });
+    const { userStore } = await import("../../server/userStore.ts");
+    const getUser = userStore.getUser;
+    userStore.getUser = async () => {
+      throw new Error("database down");
+    };
+    try {
+      assert.equal(await refusal(), AUTH_UNAVAILABLE);
+    } finally {
+      userStore.getUser = getUser;
+    }
+    assert.equal(await refusal(), "Not authenticated", "the ticket was spent by the first attempt");
   });
 
   test("the server answers a pass", async () => {
