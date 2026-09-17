@@ -17,6 +17,7 @@ import {
   TURNS_DEFAULT,
   liveRoute,
   syncCheckout,
+  reinstall,
   parseStatus,
   runTicket,
   ticker,
@@ -219,7 +220,13 @@ describe("shouldStop", () => {
 });
 
 describe("syncCheckout", () => {
-  const fake = (answers: Record<string, string>, fails?: string) => {
+  test("the reinstall captures npm's output rather than printing it over the board", () => {
+    const calls: unknown[][] = [];
+    reinstall((...args: unknown[]) => String(calls.push(args)));
+    assert.deepEqual(calls, [["npm", ["ci", "--no-audit", "--no-fund"]]], "no stdio option: sh pipes by default");
+  });
+
+  const fake =(answers: Record<string, string>, fails?: string) => {
     const calls: string[][] = [];
     const git = (...args: string[]) => {
       calls.push(args);
