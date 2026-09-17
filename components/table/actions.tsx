@@ -326,10 +326,8 @@ const styles = StyleSheet.create({
   passBtnLabel: { color: Garnet.label },
 
   // The armed bloom, as a childless sibling behind the button: the glow is
-  // fixed and only this view's opacity is animated. The fill is what the
-  // shadow is cast from — a layer with transparent contents has nothing for
-  // iOS to blur and gives Android's elevation no outline — and the button's
-  // own gradient covers it exactly, so only the spill is ever seen.
+  // fixed and only this view's opacity is animated. The button's own gradient
+  // covers it exactly, so only the spill is ever seen.
   playBtnGlow: {
     position: "absolute",
     top: 0,
