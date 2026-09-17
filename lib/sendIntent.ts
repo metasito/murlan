@@ -48,16 +48,19 @@ function mintIntentId(): string {
   return `${Date.now().toString(36)}-${minted.toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-/** Resolves once the table answers the rejoin with its state, or after `ms`. */
+/** A table answers `game:rejoin` with its state, a waiting lobby `room:rejoin` with its own. */
+const REJOIN_ANSWERS = ["game:state", "room:state"] as const;
+
+/** Resolves once either rejoin is answered, or after `ms`. */
 function rejoined(socket: Socket, ms: number): Promise<void> {
   return new Promise((resolve) => {
     const done = () => {
       clearTimeout(timer);
-      socket.off("game:state", done);
+      for (const event of REJOIN_ANSWERS) socket.off(event, done);
       resolve();
     };
     const timer = setTimeout(done, ms);
-    socket.once("game:state", done);
+    for (const event of REJOIN_ANSWERS) socket.once(event, done);
   });
 }
 

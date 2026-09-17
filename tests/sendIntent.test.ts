@@ -16,12 +16,12 @@ type Ack = (err: unknown, reply?: { ok: boolean; code?: string }) => void;
  * `null` is silence: the timeout fires and `emit` reports the error, which is
  * what the real client does.
  */
-function fakeSocket(script: ({ ok: boolean; code?: string } | null)[]) {
+function fakeSocket(script: ({ ok: boolean; code?: string } | null)[], rejoinAnswer = "game:state") {
   const sent: { event: string; args: unknown[] }[] = [];
   let attempt = 0;
   const socket = {
-    once(_event: string, listener: () => void) {
-      queueMicrotask(listener);
+    once(event: string, listener: () => void) {
+      if (event === rejoinAnswer) queueMicrotask(listener);
     },
     off() {},
     timeout() {
@@ -92,6 +92,12 @@ describe("sendIntent", () => {
   test("a socket not yet back at its table is retried, not taken as a refusal", async () => {
     const { socket, sent } = fakeSocket([{ ok: false, code: "NOT_AT_A_TABLE" }, { ok: true }]);
     assert.deepEqual(await sendIntent(socket, "game:play", { cardIds: ["a"] }), { ok: true });
+    assert.equal(sent.length, 2);
+  });
+
+  test("a lobby intent is retried as soon as the lobby rejoin answers", { timeout: 1000 }, async () => {
+    const { socket, sent } = fakeSocket([{ ok: false, code: "NOT_AT_A_TABLE" }, { ok: true }], "room:state");
+    assert.deepEqual(await sendIntent(socket, "room:start", {}, { timeoutMs: 3000 }), { ok: true });
     assert.equal(sent.length, 2);
   });
 
