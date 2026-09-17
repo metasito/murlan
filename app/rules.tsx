@@ -275,7 +275,7 @@ const styles = StyleSheet.create({
   },
   sectionLabel: {
     fontFamily: "Inter_600SemiBold",
-    fontSize: FontSize.xxs,
+    fontSize: FontSize.xs,
     color: Colors.textMuted,
     letterSpacing: 2,
     textTransform: "uppercase",
@@ -305,7 +305,7 @@ const styles = StyleSheet.create({
   },
   strengthLabel: {
     fontFamily: "Inter_400Regular",
-    fontSize: FontSize.xxs,
+    fontSize: FontSize.xs,
     color: Colors.textMuted,
     textAlign: "center",
   },

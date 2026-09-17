@@ -121,7 +121,7 @@ function RankCard({
     <Animated.View style={[styles.rankCard, isWinner && styles.rankCardWinner, anim]}>
       {isWinner && (
         <LinearGradient
-          colors={[Colors.goldMuted, "transparent"]}
+          colors={[Colors.goldMuted, Colors.goldClear]}
           style={StyleSheet.absoluteFill}
         />
       )}
@@ -740,7 +740,7 @@ const styles = StyleSheet.create({
 
   sectionTitle: {
     fontFamily: "Inter_600SemiBold",
-    fontSize: FontSize.xxs,
+    fontSize: FontSize.xs,
     color: Colors.textMuted,
     letterSpacing: 2,
     textTransform: "uppercase",
@@ -790,7 +790,7 @@ const styles = StyleSheet.create({
   totalScoreWinner: { color: Colors.gold },
   scoreSub: {
     fontFamily: "Inter_400Regular",
-    fontSize: FontSize.xxs,
+    fontSize: FontSize.xs,
     color: Colors.textMuted,
   },
 });

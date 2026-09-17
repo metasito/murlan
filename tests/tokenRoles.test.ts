@@ -135,6 +135,28 @@ function smallDangerText(files: [string, string][]): string[] {
   return out;
 }
 
+function transparentStops(files: [string, string][]): string[] {
+  const out: string[] = [];
+  for (const [file, src] of files) {
+    for (const m of src.matchAll(/colors=\{\[[^\]]*["']transparent["']/g)) {
+      out.push(`${file}:${src.slice(0, m.index).split("\n").length}`);
+    }
+  }
+  return out;
+}
+
+function mutedTinyText(files: [string, string][]): string[] {
+  const out: string[] = [];
+  for (const [file, src] of files) {
+    for (const block of src.matchAll(/\{[^{}]*\}/g)) {
+      if (/FontSize\.xxs\b/.test(block[0]) && /Colors\.textMuted\b/.test(block[0])) {
+        out.push(`${file}:${src.slice(0, block.index).split("\n").length}`);
+      }
+    }
+  }
+  return out;
+}
+
 describe("design tokens are used in the role they were designed for", () => {
   test("no fill, border or scrim token is used as a text or icon colour", () => {
     const fills = fillOnlyTokens();
@@ -217,6 +239,19 @@ describe("design tokens are used in the role they were designed for", () => {
       0
     );
     assert.ok(hits > 20, `expected many token-driven text colours, found ${hits}`);
+  });
+
+  // A gradient blends non-premultiplied, so a `transparent` stop greys the fade (lib/tokens.ts, bgClear).
+  test("no gradient stop is the literal transparent", () => {
+    const offenders = transparentStops(sourceFiles());
+    assert.deepEqual(offenders, [], offenders.join("\n"));
+    assert.deepEqual(transparentStops([["x.tsx", `<G colors={[Colors.gold, "transparent"]} />`]]), ["x.tsx:1"]);
+  });
+
+  test("FontSize.xxs is never muted text", () => {
+    const offenders = mutedTinyText([...sourceFiles(), ["lib/tokens.ts", readFileSync(path.join(repoRoot, "lib/tokens.ts"), "utf8")]]);
+    assert.deepEqual(offenders, [], `FontSize.xxs is for badges and pips:\n${offenders.join("\n")}`);
+    assert.deepEqual(mutedTinyText([["x.tsx", "  a: {\n fontSize: FontSize.xxs, color: Colors.textMuted },\n"]]), ["x.tsx:1"]);
   });
 
   test("a JSX colour prop's capture stops at its own closing brace", () => {

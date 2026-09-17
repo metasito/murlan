@@ -104,7 +104,7 @@ export function StartReasonBanner({
       >
         <View style={startReasonStyles.card}>
           <LinearGradient
-            colors={[Colors.goldMuted, "transparent"]}
+            colors={[Colors.goldMuted, Colors.goldClear]}
             start={{ x: 0, y: 0 }}
             end={{ x: 0, y: 1 }}
             style={StyleSheet.absoluteFill}

@@ -176,7 +176,7 @@ const styles = StyleSheet.create({
   floatingEmojiText: { fontSize: FontSize.hero },
   floatingEmojiName: {
     fontFamily: "Inter_400Regular",
-    fontSize: FontSize.xxs,
+    fontSize: FontSize.xs,
     color: Colors.textMuted,
     backgroundColor: Scrim.heavy,
     borderRadius: Radius.sm / 2,

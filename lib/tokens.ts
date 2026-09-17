@@ -14,6 +14,7 @@ export const Colors = {
   // than 'transparent': a gradient blends its stops non-premultiplied, so a
   // stop of another hue reads as grey at half strength (see `clear`, below).
   bgClear:      'rgba(3,16,8,0)',
+  goldClear:    'rgba(201,168,76,0)',
   bgCard:       '#0A1F18',
   bgSurface:    '#0E2920',
   bgElevated:   '#142E24',
