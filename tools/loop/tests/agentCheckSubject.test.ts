@@ -8,7 +8,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { checkSubject, readSubject } from "../preflight.mjs";
 import { BANNER } from "../check-steps.mjs";
-import { cacheEntry, cleanPassFor, replays, runStep } from "../agent-check.mjs";
+import { cacheEntry, cleanPassFor, replays, runAll, runStep } from "../agent-check.mjs";
 
 const REAP = { recursive: true, force: true, maxRetries: 3, retryDelay: 100 } as const;
 // A refusal exits at once; a regression that stops short-circuiting would otherwise run the real
@@ -158,16 +158,16 @@ describe("the cached verdict and what a failure prints", () => {
   const numbered = (n: number) => Array.from({ length: n }, (_, i) => `line ${i + 1}`).join("\n");
   const quiet = () => undefined;
 
-  test("a long failing step prints its first 10 and last 30 lines", () => {
-    const run = runStep({ name: "lint", args: ["run", "lint"] }, fake({ status: 1, stdout: numbered(100), stderr: "" }), quiet);
+  test("a long failing step prints its first 10 and last 30 lines", async () => {
+    const run = await runStep({ name: "lint", args: ["run", "lint"] }, fake({ status: 1, stdout: numbered(100), stderr: "" }), quiet);
     assert.equal(run.failed, "lint");
     assert.match(run.text, /line 10\n… 60 lines omitted …\nline 71\n/);
     assert.doesNotMatch(run.text, /line 11\b|line 70\b/);
     assert.match(run.text, /line 100\b/);
   });
 
-  test("a failing step of 40 lines or fewer prints all of them", () => {
-    const run = runStep({ name: "lint", args: [] }, fake({ status: 1, stdout: numbered(40), stderr: "" }), quiet);
+  test("a failing step of 40 lines or fewer prints all of them", async () => {
+    const run = await runStep({ name: "lint", args: [] }, fake({ status: 1, stdout: numbered(40), stderr: "" }), quiet);
     assert.match(run.text, /line 1\n[\s\S]*line 40\b/);
     assert.equal((run.text.match(/^line \d+$/gm) ?? []).length, 40);
     assert.doesNotMatch(run.text, /omitted/);
@@ -185,15 +185,35 @@ describe("the cached verdict and what a failure prints", () => {
     assert.equal(events[1], "spawn");
   });
 
-  test("a passing step prints none of its output", () => {
-    const run = runStep({ name: "lint", args: [] }, fake({ status: 0, stdout: "noise\n", stderr: "" }), quiet);
+  test("a passing step prints none of its output", async () => {
+    const run = await runStep({ name: "lint", args: [] }, fake({ status: 0, stdout: "noise\n", stderr: "" }), quiet);
     assert.equal(run.failed, null);
     assert.doesNotMatch(run.text, /noise/);
   });
 
-  test("a timed-out step is a failure named as one", () => {
+  test("a timed-out step is a failure named as one", async () => {
     const timedOut = fake({ status: null, stdout: "", stderr: "", error: { code: "ETIMEDOUT" } });
-    const run = runStep({ name: "lint", args: [] }, timedOut, quiet);
+    const run = await runStep({ name: "lint", args: [] }, timedOut, quiet);
     assert.equal(run.failed, "lint (timed out)");
+  });
+
+  test("the local steps start together, and an --also suite only after they end", async () => {
+    const events: string[] = [];
+    const run = async (step: { name: string }) => {
+      events.push(`start ${step.name}`);
+      await new Promise((r) => setImmediate(r));
+      events.push(`end ${step.name}`);
+      return { failed: null, text: step.name };
+    };
+    const runs = await runAll([{ name: "a" }, { name: "b" }], [{ name: "x" }], run as never);
+    assert.deepEqual(events, ["start a", "start b", "end a", "end b", "start x", "end x"]);
+    assert.deepEqual(runs.map((r) => r.text), ["a", "b", "x"]);
+  });
+
+  test("the real runner reports a failing command's exit and output", async () => {
+    const step = { name: "nope", args: ["run", "definitely-not-a-script"] };
+    const run = await runStep(step, undefined, quiet);
+    assert.equal(run.failed, "nope");
+    assert.match(run.text, /=== nope === FAILED\n[\s\S]*definitely-not-a-script/);
   });
 });

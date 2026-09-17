@@ -38,10 +38,11 @@ Say which phase you are in, on a line of its own, in the same message as that ph
 The supervisor reads that line and nothing else about your progress. Never send it alone: in print
 mode a turn that ends in text and no tool call is the final answer. Do the same in every phase.
 
-**The `SessionStart` hook has already run `loop-status.mjs`.** Its report is above, or, in a loop
-process (`$LOOP_TURNS` is set), its silence is the answer. Do not run it again. Run it yourself
-only when there is no hook report (a by-hand session), or when your own commit, fetch or claim has
-made that report stale:
+**In a loop process (`$LOOP_TURNS` is set), your first command is `loop-status.mjs`**, sent before
+any `PHASE` line, since its report names the phase: the startup hook stays silent there, which keeps
+every process's prompt prefix cacheable. Elsewhere the `SessionStart` hook has already run it and
+its report is above. Do not run it again, except when there is no hook report, or when your own
+commit, fetch or claim has made that report stale:
 
 ```sh
 node tools/loop/loop-status.mjs
@@ -107,10 +108,11 @@ it.
 
 One subagent (`sonnet`), so the codebase never enters this context:
 
-> Investigate issue #N in the worktree `.worktrees/agent-N`. Report: which files the change has to
-> touch, existing patterns worth reusing, the risks, and whether the ticket makes sense at all. If
-> it is ambiguous, its premise is wrong, or the codebase already does it, say so plainly. Around 30
-> lines. Do not spawn any subagent, and do not run `npm run agent:check`.
+> Investigate issue #N in the worktree `.worktrees/agent-N`. Report: every place the change has to
+> touch as `path:start-end — what that range does`, never a bare file name; existing patterns worth
+> reusing, the same way; the risks; and whether the ticket makes sense at all. If it is ambiguous,
+> its premise is wrong, or the codebase already does it, say so plainly. Around 30 lines. Do not
+> spawn any subagent, and do not run `npm run agent:check`.
 
 No file is out of scope; if the recon names the schema, the socket protocol, `.replit` or a
 workflow, say in the PR body what it costs to get wrong.
@@ -133,8 +135,8 @@ gh run list --branch agent/<n>-<slug> --limit 1 --json databaseId --jq '.[0].dat
 
 The `CI-RED` comment's `shared:` line says whether the failure is red elsewhere too:
 `#<m> owned here` means this branch owns shared issue #<m> — fix its root cause in this diff and put
-`Closes #<m>` in the PR body beside `Closes #<n>` (the PR exists: phase E edits its body). Any other `#<m>` is another branch's to fix; do
-not re-investigate it.
+`Closes #<m>` in the PR body beside `Closes #<n>` (the PR exists: phase E edits its body). Any
+other `#<m>` is another branch's to fix; do not re-investigate it.
 
 Fix what CI named, then run the suite it named as well as the usual check:
 
@@ -156,6 +158,10 @@ gh issue comment <n> --body-file <file>   # first line: FIX-NOTES <sha>
 
 How to solve it is yours. What constrains the process:
 
+- **Read ranges, not files.** Every line you read is re-read on every later turn. Read the ranges
+  phase B named. A question spanning files ("where is X used", "how does Y flow"), a long log or a
+  file you will not edit goes to one `sonnet` subagent that answers in a few lines. A failing
+  check: its summary first, then only the failure you are fixing.
 - **Watch the check fail first, for the reason you claim.**
 - **Fix the root cause across every caller.**
 - **A diff that describes code is traced here, not in phase D** (rule 20).
@@ -172,7 +178,8 @@ How to solve it is yours. What constrains the process:
   ```
 - **A ticket's prescribed form is a proposal.** If a test rules it out, build its intent and say
   why in the commit.
-- **Commit each slice as you finish it**, by pathspec.
+- **Commit each slice as you finish it**, by pathspec, the message ending in
+  `Co-Authored-By: <your model's name> <noreply@anthropic.com>`.
 - **Batch what does not depend on the last answer.**
 
 **You have a turn budget**, `$LOOP_TURNS`, and it ends the session wherever it stands, with no
@@ -183,15 +190,17 @@ slice.
 from git with none of this conversation.
 
 Before leaving C, `git rev-list --count origin/main..HEAD` must be non-zero. Then, in this order:
+read `git diff origin/main...HEAD` against phase D's two briefs and fix what either would raise;
 commit the last slice; run `npm run agent:check`; run `node tools/loop/loop-gate.mjs --build`,
 which must exit 0; only then declare handoff D and exit. The supervisor sends a handoff with no
-local pass on a clean HEAD back to C.
+local pass on a clean HEAD back to C; with one, it pushes the branch and opens a draft pull
+request, so CI runs while D reviews.
 
 ```
 LOOP-RESULT {"ticket":<n>,"branch":"agent/<n>-slug","phase":"C","handoff":"D"}
 ```
 
-Phase D runs in a fresh process. Do not review your own build here.
+The independent review is phase D's, in a fresh process; the diff read above does not replace it.
 
 ## D — Review
 
@@ -211,8 +220,8 @@ If its `lines` is at most 80: one `sonnet` reviewer, given that delta and the `C
 both briefs below, and no refuter. Its comment's first line is `REVIEW <sha> fix`, still with both
 headings. Otherwise, the full review below.
 
-The full review: two fresh `sonnet` subagents (rule 29's independent reviewers), each given the diff
-and nothing else — never your reasoning:
+The full review: two fresh `sonnet` subagents (rule 29's independent reviewers), dispatched in one
+message so they run at once, each given the diff and nothing else — never your reasoning:
 
 - **Standards** — sources: `docs/agents/RULES.md` plus the skill's Fowler smell baseline (paste it
   in full). Report only what affects correctness or breaks a documented rule, by number, quoted.
@@ -250,6 +259,14 @@ REVIEW <sha>
 `loop-gate.mjs` refuses a `VERDICT: LAND` for a head with no `REVIEW` comment behind it. Each round
 posts its own comment for its own head.
 
+CI has been running on this head since the handoff. If it has already failed, its failure is a
+finding too:
+
+```sh
+gh run list --branch agent/<n>-<slug> --commit <full sha> --limit 1 --json databaseId,conclusion
+gh run view <databaseId> --log-failed | tail -40       # only when conclusion is failure
+```
+
 Then read them yourself and post the verdict as its own comment, where `<sha>` is
 `git rev-parse --short HEAD`:
 
@@ -275,17 +292,20 @@ security hole) without spending a round; for the rest, post your own `VERDICT: L
 what you accept and why, and say it in phase F's Definition-of-done comment. Park only for a
 decision only the owner can make. Where you disagree with a finding, one line in the commit body.
 
-**A round is a process.** After a `HOLD`, fix what it named, commit, and hand off:
+**A round is a process.** After a `HOLD`, fix what it named, commit, run `npm run agent:check` and
+`node tools/loop/loop-gate.mjs --build` as phase C does, and hand off:
 
 ```
 LOOP-RESULT {"ticket":<n>,"branch":"agent/<n>-slug","phase":"D","handoff":"D"}
 ```
 
-After a `LAND`, hand off the same way with `"handoff":"E"`.
+After a `LAND`, go straight on to phase E and F in this process.
 
 ## E — Land
 
 `PHASE E`
+
+Phase D's LAND continues here; a process starts at E only when resuming one.
 
 ```sh
 node tools/loop/loop-gate.mjs
@@ -300,8 +320,9 @@ that phase, never push past it**; exit 2 means it could not judge.
 npm run agent:check       # in the worktree — it judges the tree it is invoked from
 ```
 
-Read its verdict line: it names the tree and the base. Its headline is `LOCAL PASS` and it prints
-how many suites it did not run; say both in the PR body.
+Read its verdict line: it names the tree and the base. Its headline is `LOCAL PASS` (`CACHED` when
+the tree is the one phase C checked) and it prints how many suites it did not run; say both in the
+PR body.
 
 **If it is red, do not fix it here.** Hand off to C, which fixes it and goes round again through D:
 
@@ -312,12 +333,13 @@ LOOP-RESULT {"ticket":<n>,"branch":"agent/<n>-slug","phase":"E","handoff":"C"}
 Never push a red check, and never re-run it hoping for a different answer.
 
 ```sh
-git push -u origin agent/<n>-<slug>
-gh pr create --base main --head agent/<n>-<slug> --title "<title>" --body-file <file>
+git push -u origin agent/<n>-<slug>                  # a no-op when the handoff already pushed it
+gh pr edit <pr> --body-file <file>
 ```
 
-On a fix round the pull request already exists: skip `gh pr create`, push, and rewrite its body
-with `gh pr edit <pr> --body-file <file>` when it changed (a new `Closes #<m>`).
+The supervisor opened the pull request as a draft when review started; only if none is open,
+`gh pr create --base main --head agent/<n>-<slug> --title "<title>" --body-file <file>`. Never
+mark it ready: the supervisor does, once CI is green on a head a `VERDICT: LAND` covers.
 
 The body says what changed, how you know, and which Definition-of-done boxes are closed. `Closes #<n>`
 goes in the **body**, never in a commit message. Write the file with the Write tool or a bash

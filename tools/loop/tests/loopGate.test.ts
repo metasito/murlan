@@ -6,7 +6,7 @@ import { mkdtempSync, rmSync, mkdirSync, appendFileSync, writeFileSync } from "n
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { MAX_REVIEW_ROUNDS, roundVerdict, pushVerdict, buildPassed } from "../loop-gate.mjs";
+import { MAX_REVIEW_ROUNDS, roundVerdict, pushVerdict, buildPassed, mergeCleared } from "../loop-gate.mjs";
 
 /**
  * Phase E branches on this command's exit code, so the exit code is what is asserted — never a
@@ -476,6 +476,70 @@ describe("--build gates review on a cached local pass", () => {
     assert.equal(buildPassed(wt), false);
     const { code } = gate(wt, [], BASE, wt, ["--build"]);
     assert.equal(code, 1);
+  });
+});
+
+describe("mergeCleared", () => {
+  let repo: string;
+  const git = (args: string[]) =>
+    execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args], { cwd: repo, encoding: "utf8" }).trim();
+  const edit = (file: string, body: string) => {
+    writeFileSync(join(repo, file), body);
+    git(["add", file]);
+    git(["commit", "-q", "-m", file]);
+    return git(["rev-parse", "HEAD"]);
+  };
+  const said = (...lines: string[]) => lines.map((body) => ({ body }));
+  const cleared = (sha: string) => [
+    `REVIEW ${sha.slice(0, 7)}\n\n## Standards\n\n## Spec\n`,
+    `VERDICT: LAND ${sha.slice(0, 7)}`,
+  ];
+  let landed: string;
+  let merged: string;
+
+  before(() => {
+    repo = mkdtempSync(join(tmpdir(), "merge-cleared-"));
+    git(["init", "-q", "-b", "main"]);
+    edit("base.txt", "base\n");
+    git(["switch", "-q", "-c", "agent/1-x"]);
+    landed = edit("mine.txt", "mine\n");
+    git(["switch", "-q", "main"]);
+    edit("theirs.txt", "theirs\n");
+    git(["switch", "-q", "agent/1-x"]);
+    git(["merge", "-q", "--no-edit", "main"]);
+    merged = git(["rev-parse", "HEAD"]);
+  });
+  after(() => rmSync(repo, { recursive: true, force: true }));
+
+  const check = (comments: { body: string }[], sha: string) => mergeCleared(comments, sha, git, "main");
+
+  test("a head its LAND and report cover is cleared; a LAND alone, a HOLD or silence is not", () => {
+    assert.equal(check(said(...cleared(landed)), landed), true);
+    assert.equal(check(said(`VERDICT: LAND ${landed.slice(0, 7)}`), landed), false);
+    assert.equal(check(said(...cleared(landed), `VERDICT: HOLD ${landed.slice(0, 7)} — no`), landed), false);
+    assert.equal(check([], landed), false);
+  });
+
+  test("a clean merge of main into a cleared head is cleared", () => {
+    assert.equal(check(said(...cleared(landed)), merged), true);
+  });
+
+  test("a merge carrying an edit of its own, or of a commit off main, is not", () => {
+    git(["switch", "-q", "-c", "agent/1-evil", merged]);
+    writeFileSync(join(repo, "mine.txt"), "changed in the merge\n");
+    git(["commit", "-q", "--amend", "-a", "--no-edit"]);
+    assert.equal(check(said(...cleared(landed)), git(["rev-parse", "HEAD"])), false);
+
+    git(["switch", "-q", "-c", "side", landed]);
+    const side = edit("side.txt", "side\n");
+    git(["switch", "-q", "-c", "agent/1-side", landed]);
+    git(["merge", "-q", "--no-edit", side]);
+    assert.equal(check(said(...cleared(landed)), git(["rev-parse", "HEAD"])), false);
+  });
+
+  test("an unreviewed commit on a cleared head is not cleared", () => {
+    git(["switch", "-q", "-c", "agent/1-more", landed]);
+    assert.equal(check(said(...cleared(landed)), edit("more.txt", "more\n")), false);
   });
 });
 

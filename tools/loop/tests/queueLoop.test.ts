@@ -489,6 +489,18 @@ describe("runTicket", () => {
     assert.ok(CHECK_BASH_TIMEOUT_MS > 600_000 && CHECK_BASH_TIMEOUT_MS < STALL_MS);
   });
 
+  test("nothing that varies between processes sits ahead of the cached prompt prefix", async () => {
+    let seen: { args: string[]; env: Record<string, string> } | undefined;
+    const capturing = (_cmd: string, args: string[], o: any) => {
+      seen = { args, env: o.env };
+      return fakeSpawn([RESULT])();
+    };
+    await runTicket(capturing as never, opts());
+    assert.ok(seen?.args.includes("--exclude-dynamic-system-prompt-sections"));
+    assert.equal(seen?.env.CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS, "1", "the git status would break the prefix");
+    assert.ok(seen?.env.LOOP_TURNS, "loop-status's startup hook is silent only where LOOP_TURNS is set");
+  });
+
   test("a refusal reaches the caller, as milliseconds", async () => {
     const run = await runTicket(fakeSpawn([meter("rejected"), RESULT]), opts({ number: 962 }));
     assert.equal(run.blocked, true);

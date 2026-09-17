@@ -80,12 +80,13 @@ function ghFake({
 }
 
 /** `poll`'s io, with the real `readVerdict` wired to the fake subprocess. */
-const io = (gh: (args: string[], file?: string) => string, written: string[][] = []) => ({
+const io = (gh: (args: string[], file?: string) => string, written: string[][] = [], cleared = (_sha: string) => true) => ({
   run: (file: string, args: string[]) => (file === "git" ? "" : gh(args, file)),
   verdictOf: (repo: string, branch: string, pr: number) =>
     readVerdict(repo, branch, pr, Date.now() + 60_000, (args) => gh(args)),
   write: (path: string, body: string) => written.push([path, body]),
   mkdir: () => undefined,
+  cleared,
 });
 
 const DEADLINE = 60_000;
@@ -120,6 +121,40 @@ describe("settle, replayed against recorded gh payloads", () => {
     const out = await poll(PENDING, () => {}, 0, DEADLINE, io(gh));
     assert.equal(out.action, "merge");
     assert.ok(asked.some((a) => a[0] === "pr" && a[1] === "merge"), "the merge is what makes it a landing");
+  });
+
+  test("a green head no LAND covers is the owner's, and is never merged", async () => {
+    const { gh, asked } = ghFake({ script: [runRow("completed", "success")], pr: prRow({ mergeStateStatus: "CLEAN" }) });
+    const judged: string[] = [];
+    const out = await poll(PENDING, () => {}, 0, DEADLINE, io(gh, [], (sha) => (judged.push(sha), false)));
+    assert.equal(out.action, "owner");
+    assert.match(String(out.reason), /not cleared/);
+    assert.deepEqual(judged, [SHA], "the head CI judged is the head cleared");
+    assert.ok(!asked.some((a) => a[1] === "merge" || a[1] === "ready"));
+  });
+
+  test("a green draft is marked ready, then merged at the head CI judged", async () => {
+    const pr: Record<string, unknown> = prRow({ mergeStateStatus: "DRAFT" });
+    pr.isDraft = true;
+    const { gh, asked } = ghFake({ script: [runRow("completed", "success")], pr: pr as Record<string, string> });
+    const readying = (args: string[], file?: string) => {
+      if (args[1] === "ready") Object.assign(pr, { isDraft: false, mergeStateStatus: "CLEAN" });
+      return gh(args, file);
+    };
+    const out = await poll(PENDING, () => {}, 0, DEADLINE, io(readying));
+    assert.equal(out.action, "merge");
+    const order = asked.filter((a) => a[1] === "ready" || a[1] === "merge");
+    assert.deepEqual(order.map((a) => a[1]), ["ready", "merge"]);
+    assert.deepEqual(order[1].slice(-2), ["--match-head-commit", SHA]);
+  });
+
+  test("a draft that stays a draft is the owner's once its budget is spent", async () => {
+    const pr: Record<string, unknown> = prRow({ mergeStateStatus: "DRAFT" });
+    pr.isDraft = true;
+    const { gh, asked } = ghFake({ script: [runRow("completed", "success")], pr: pr as Record<string, string> });
+    const out = await poll(PENDING, () => {}, 0, DEADLINE, io(gh));
+    assert.equal(out.action, "owner");
+    assert.equal(asked.filter((a) => a[1] === "ready").length, SETTLE_ROUNDS.ready);
   });
 
   test("a pull request someone else merged is not a fix round", async () => {

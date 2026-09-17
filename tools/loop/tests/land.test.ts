@@ -17,6 +17,7 @@ const ACTIONS: readonly Landing["action"][] = [
   "recheck",
   "hand-back",
   "owner",
+  "ready",
 ];
 
 const pr = (over: Partial<PrState> = {}): PrState => ({
@@ -227,6 +228,24 @@ const cases: Case[] = [
     reason: /DRAFT/,
   },
   {
+    name: "a green draft is marked ready, never merged",
+    pr: pr({ mergeStateStatus: "DRAFT", isDraft: true }),
+    ci: GREEN,
+    action: "ready",
+  },
+  {
+    name: "a red draft is still a fix round",
+    pr: pr({ mergeStateStatus: "DRAFT", isDraft: true }),
+    ci: RED,
+    action: "hand-back",
+  },
+  {
+    name: "a draft whose run is going waits for it",
+    pr: pr({ mergeStateStatus: "DRAFT", isDraft: true }),
+    ci: { waiting: true, reason: "still in_progress" },
+    action: "recheck",
+  },
+  {
     name: "an empty merge state asks again",
     pr: pr({ mergeStateStatus: "" }),
     ci: GREEN,
@@ -247,7 +266,7 @@ describe("landing", () => {
   // The point of making the function total: no input reaches an unhandled path, and no input is
   // answered with silence. Asserted over the cross-product rather than over a list of cases,
   // because the values that strand a ticket are the ones nobody thought to write down.
-  test("every combination answers with one of the six actions and never throws", () => {
+  test("every combination answers with one of the seven actions and never throws", () => {
     const states = ["OPEN", "MERGED", "CLOSED", "LOCKED", ""];
     const statuses = ["CLEAN", "HAS_HOOKS", "UNSTABLE", "BEHIND", "BLOCKED", "DIRTY", "UNKNOWN", "DRAFT", ""];
     const mergeables = ["MERGEABLE", "CONFLICTING", "UNKNOWN", ""];
@@ -258,19 +277,22 @@ describe("landing", () => {
       for (const mergeStateStatus of statuses) {
         for (const mergeable of mergeables) {
           for (const ci of verdicts) {
-            const d = landing({ state, mergeStateStatus, mergeable }, ci);
-            assert.ok(
-              ACTIONS.includes(d.action),
-              `${state}/${mergeStateStatus}/${mergeable} answered ${d.action}`,
-            );
-            assert.equal(typeof d.reason, "string");
-            assert.ok(d.reason.length > 0);
-            seen += 1;
+            for (const isDraft of [false, true]) {
+              const d = landing({ state, mergeStateStatus, mergeable, isDraft }, ci);
+              assert.ok(
+                ACTIONS.includes(d.action),
+                `${state}/${mergeStateStatus}/${mergeable}/${isDraft} answered ${d.action}`,
+              );
+              assert.ok(!(isDraft && d.action === "merge"), "a draft is never merged");
+              assert.equal(typeof d.reason, "string");
+              assert.ok(d.reason.length > 0);
+              seen += 1;
+            }
           }
         }
       }
     }
-    assert.equal(seen, states.length * statuses.length * mergeables.length * verdicts.length);
+    assert.equal(seen, states.length * statuses.length * mergeables.length * verdicts.length * 2);
   });
 
   test("no open pull request is ever abandoned without a person or a fresh session", () => {
@@ -283,14 +305,16 @@ describe("landing", () => {
 });
 
 describe("mergeArgs", () => {
-  test("merges with a merge commit and deletes the branch", () => {
-    assert.deepEqual(mergeArgs("o/r", 7), ["pr", "merge", "7", "--repo", "o/r", "--merge", "--delete-branch"]);
+  test("merges the cleared head with a merge commit and deletes the branch", () => {
+    assert.deepEqual(mergeArgs("o/r", 7, "abc"), [
+      "pr", "merge", "7", "--repo", "o/r", "--merge", "--delete-branch", "--match-head-commit", "abc",
+    ]);
   });
 
   // The floor. Asserted as absences because a merge that needs forcing is a decision, and
   // `--squash` throws away the branch history a later bisect reads.
   test("never squashes, rebases or forces", () => {
-    const args = mergeArgs("metasito/murlan", 42);
+    const args = mergeArgs("metasito/murlan", 42, "abc");
     assert.ok(!args.includes("--squash"));
     assert.ok(!args.includes("--rebase"));
     assert.ok(!args.includes("--admin"));

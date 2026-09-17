@@ -71,7 +71,14 @@ export function report(s, reason = process.env.LOOP_REASON) {
   ].join("\n");
 }
 
-if (isInvokedDirectly(process.argv[1], import.meta.url)) {
+/**
+ * A loop process's own start. The hook's output lands ahead of CLAUDE.md and queue.md in the
+ * prompt, so a report that differs by phase re-bills ~26k cached tokens per process; queue.md has
+ * the session run this itself instead, which puts the report at the end.
+ */
+export const silentAt = (argv, env) => argv.includes("--startup") && Boolean(env.LOOP_TURNS);
+
+if (isInvokedDirectly(process.argv[1], import.meta.url) && !silentAt(process.argv, process.env)) {
   try {
     const out = report(derive({ ci: true }));
     if (out) console.log(out);

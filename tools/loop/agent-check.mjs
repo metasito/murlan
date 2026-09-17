@@ -6,7 +6,7 @@
  *        npm run agent:check -- --force   ignore the cache
  */
 import { createHash } from "node:crypto";
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { primaryWorktree, checkLockDrift, readSubject } from "./preflight.mjs";
@@ -44,11 +44,21 @@ export function clip(output) {
   return [...head, `… ${lines.length - SHOWN_LINES} lines omitted …`, ...tail, ""].join("\n");
 }
 
-export function runStep(step, spawn = spawnSync, write = (s) => void process.stdout.write(s)) {
-  write(`\n${BANNER}${step.name} ===\n▸ ${step.name} …\n`);
-  const run = spawn("npm", step.args, {
+const spawnAsync = (file, args, opts) =>
+  new Promise((resolve) => {
+    // One command line under `shell`: node joins them anyway, and passing both is DEP0190.
+    const [cmdLine, argv] = opts.shell ? [[file, ...args].join(" "), []] : [file, args];
+    execFile(cmdLine, argv, opts, (err, stdout, stderr) => {
+      const status = err ? (typeof err.code === "number" ? err.code : null) : 0;
+      const error = err?.killed ? { code: "ETIMEDOUT" } : status === null ? err : undefined;
+      resolve({ status, stdout, stderr, error });
+    });
+  });
+
+export async function runStep(step, spawn = spawnAsync, write = (s) => void process.stdout.write(s)) {
+  write(`▸ ${step.name} …\n`);
+  const run = await spawn("npm", step.args, {
     encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"],
     shell: process.platform === "win32",
     timeout: STEP_TIMEOUT_MS,
     maxBuffer: 256 * 1024 * 1024,
@@ -56,13 +66,21 @@ export function runStep(step, spawn = spawnSync, write = (s) => void process.std
   // A timeout leaves `status` null and sets `error.code` to ETIMEDOUT. Both are failures, but
   // only one of them says anything about the code, so they are reported apart.
   const timedOut = run.error?.code === "ETIMEDOUT";
-  if (!timedOut && run.status === 0) return { failed: null, text: "ok\n" };
+  const title = `${BANNER}${step.name} ===`;
+  if (!timedOut && run.status === 0) return { failed: null, text: `${title} ok\n` };
   const shown = clip(`${run.stdout ?? ""}${run.stderr ?? ""}`.replace(/\n$/, ""));
-  if (!timedOut) return { failed: step.name, text: shown };
+  if (!timedOut) return { failed: step.name, text: `\n${title} FAILED\n${shown}` };
   return {
     failed: `${step.name} (timed out)`,
-    text: `${shown}${step.name} timed out after ${STEP_TIMEOUT_MS / 60_000} minutes\n`,
+    text: `\n${title} FAILED\n${shown}${step.name} timed out after ${STEP_TIMEOUT_MS / 60_000} minutes\n`,
   };
+}
+
+/** The local steps at once; an `--also` suite after them, since it competes for the same memory. */
+export async function runAll(local, also, run = runStep) {
+  const runs = await Promise.all(local.map((step) => run(step)));
+  for (const step of also) runs.push(await run(step));
+  return runs;
 }
 
 let subject;
@@ -140,7 +158,7 @@ function readCache() {
   }
 }
 
-function main() {
+async function main() {
   subject = readSubject(process.cwd());
   if (subject.refuse) {
     console.error(`agent:check: ${subject.refuse}`);
@@ -197,12 +215,9 @@ function main() {
 
   const head = git("rev-parse", "HEAD").trim();
   const clean = git("status", "--porcelain").trim() === "";
-  const failed = [];
-  for (const step of ran()) {
-    const run = runStep(step);
-    process.stdout.write(run.text);
-    if (run.failed) failed.push(run.failed);
-  }
+  const runs = await runAll(LOCAL, extra);
+  for (const run of runs) process.stdout.write(run.text);
+  const failed = runs.flatMap((run) => (run.failed ? [run.failed] : []));
 
   // Only a pass is cached. A failure has to re-run: the fix for it lands in the same tree the
   // failure was recorded against only when nothing else moved, and replaying a red verdict would
