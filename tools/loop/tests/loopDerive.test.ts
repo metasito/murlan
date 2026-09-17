@@ -16,6 +16,7 @@ import {
   ciRedPosted,
   derive,
   locateRun,
+  fixDelta,
   BRANCH,
 } from "../loop-derive.mjs";
 import { report } from "../loop-status.mjs";
@@ -146,6 +147,10 @@ describe("whether the review behind a verdict is on the issue", () => {
   test("no comments at all is no report", () => {
     assert.equal(reviewFor([], "abc1234def"), null);
   });
+
+  test("a fix round's REVIEW <sha> fix still satisfies reviewFor", () => {
+    assert.ok(reviewFor([{ body: reviewBody("abc1234").replace("REVIEW abc1234", "REVIEW abc1234 fix") }], "abc1234def"));
+  });
 });
 
 describe("counting review rounds", () => {
@@ -171,6 +176,50 @@ describe("counting review rounds", () => {
 
   test("no comments is zero rounds", () => {
     assert.equal(reviewRounds([]), 0);
+  });
+
+  test("a verdict whose REVIEW is marked fix does not count toward the cap", () => {
+    const comments = [
+      { body: "VERDICT: LAND abc1234" },
+      { body: "REVIEW def5678 fix\n\n## Standards\n\nok\n\n## Spec\n\nok" },
+      { body: "VERDICT: LAND def5678" },
+    ];
+    assert.equal(reviewRounds(comments), 1);
+  });
+});
+
+describe("fixDelta", () => {
+  let dir: string;
+  const git = (...args: string[]) =>
+    execFileSync(
+      "git",
+      ["-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false", ...args],
+      { cwd: dir, encoding: "utf8" }
+    ).trim();
+
+  before(() => {
+    dir = mkdtempSync(join(tmpdir(), "loop-fixdelta-"));
+    git("init", "-q", "-b", "main");
+    git("commit", "-q", "--allow-empty", "-m", "base");
+  });
+
+  after(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("counts a fix commit's own diff, ignoring an update-branch merge", () => {
+    const land = git("rev-parse", "HEAD");
+    git("checkout", "-qb", "work");
+    writeFileSync(join(dir, "fix.txt"), "one line\n");
+    git("add", "-A");
+    git("commit", "-qm", "fix work");
+    git("checkout", "-q", "main");
+    writeFileSync(join(dir, "main2.txt"), "main moved on\n");
+    git("add", "-A");
+    git("commit", "-qm", "main moved on");
+    git("checkout", "-q", "work");
+    git("merge", "-q", "--no-ff", "main", "-m", "update branch");
+    assert.deepEqual(fixDelta(dir, land), { files: 1, lines: 1 });
   });
 });
 

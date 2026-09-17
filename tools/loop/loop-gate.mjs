@@ -21,9 +21,39 @@
  *
  *        node tools/loop/loop-gate.mjs --review-round
  *        exit 0 - phase D may run another round; exit 1 - the cap is reached
+ *
+ *        node tools/loop/loop-gate.mjs --build            exit 0 iff a cached LOCAL PASS for a clean HEAD
+ *        node tools/loop/loop-gate.mjs --fix-delta <sha>  prints {"files","lines"} since <sha>
  */
-import { derive } from "./loop-derive.mjs";
+import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { derive, fixDelta, locateRun } from "./loop-derive.mjs";
+import { cleanPassFor } from "./agent-check.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
+
+function git(args, cwd) {
+  return execFileSync("git", args, { encoding: "utf8", cwd }).trim();
+}
+
+/** A supervisor calls this in-process; the CLI below is the same read from a fresh one. */
+export function buildPassed(cwd) {
+  let head, dirty, gitDir;
+  try {
+    head = git(["rev-parse", "HEAD"], cwd);
+    dirty = git(["status", "--porcelain"], cwd).length > 0;
+    gitDir = git(["rev-parse", "--absolute-git-dir"], cwd);
+  } catch {
+    return false;
+  }
+  if (dirty) return false;
+  try {
+    const cache = JSON.parse(readFileSync(join(gitDir, "agent-check-cache.json"), "utf8"));
+    return Boolean(cleanPassFor(cache, head));
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Phase D's ceiling, here rather than in `queue.md`'s prose, because that is the difference
@@ -102,6 +132,32 @@ function reviewRound() {
   return 1;
 }
 
+function buildGate() {
+  const at = locateRun(undefined, process.env.LOOP_WORKTREE);
+  if (!at.ticket) {
+    console.error(`loop-gate: not on a ticket (${at.branch ?? "no branch"}) — nothing to judge`);
+    return 2;
+  }
+  if (buildPassed(at.cwd)) {
+    console.log(`loop-gate: #${at.ticket} — cached LOCAL PASS on a clean tree`);
+    return 0;
+  }
+  console.error(
+    `loop-gate: #${at.ticket} — no cached LOCAL PASS for HEAD on a clean tree; run \`npm run agent:check\`.`
+  );
+  return 1;
+}
+
+function fixDeltaCli(landSha) {
+  const at = locateRun(undefined, process.env.LOOP_WORKTREE);
+  if (!at.ticket) {
+    console.error(`loop-gate: not on a ticket (${at.branch ?? "no branch"}) — nothing to judge`);
+    return 2;
+  }
+  console.log(JSON.stringify(fixDelta(at.cwd, landSha)));
+  return 0;
+}
+
 function main() {
   const s = derive();
   const base = s.base ?? "origin/main";
@@ -139,5 +195,14 @@ function main() {
 }
 
 if (isInvokedDirectly(process.argv[1], import.meta.url)) {
-  process.exit(process.argv.includes("--review-round") ? reviewRound() : main());
+  const args = process.argv.slice(2);
+  const fixDeltaAt = args.indexOf("--fix-delta");
+  const code = args.includes("--review-round")
+    ? reviewRound()
+    : args.includes("--build")
+      ? buildGate()
+      : fixDeltaAt >= 0
+        ? fixDeltaCli(args[fixDeltaAt + 1])
+        : main();
+  process.exit(code);
 }

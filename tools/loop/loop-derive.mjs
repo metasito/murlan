@@ -47,6 +47,9 @@ const VERDICT_RE = /^VERDICT:\s*(LAND|HOLD)\b[^\n]*?\b([0-9a-f]{7,40})\b/m;
 /** The review's own comment, naming the head it read. The same sha binding the verdict carries. */
 const REVIEW_RE = /^REVIEW\s+([0-9a-f]{7,40})\b/m;
 
+/** A fix round's own `REVIEW` marks itself, so `reviewRounds` can size the cap to full rounds. */
+const REVIEW_FIX_RE = /^REVIEW\s+([0-9a-f]{7,40})\s+fix\b/m;
+
 /** What "this head" means, for the verdict and the report both, so the two cannot disagree. */
 const covers = (head, sha) => head.startsWith(sha) || sha.startsWith(head.slice(0, 7));
 
@@ -245,11 +248,43 @@ export function reviewFor(comments, head) {
  * answer so `loop-gate.mjs` need not read the tracker twice.
  */
 export function reviewRounds(comments) {
+  const bodies = comments.map((c) => fenceStripped(c.body));
   let rounds = 0;
-  for (const comment of comments) {
-    if (VERDICT_RE.test(fenceStripped(comment.body))) rounds += 1;
+  for (const body of bodies) {
+    const v = VERDICT_RE.exec(body);
+    if (!v) continue;
+    const fix = bodies.some((b) => {
+      const m = REVIEW_FIX_RE.exec(b);
+      return m && covers(v[2], m[1]);
+    });
+    if (!fix) rounds += 1;
   }
   return rounds;
+}
+
+/**
+ * The size of a fix round's own diff, not the ticket's whole history. `--first-parent` keeps an
+ * update-branch merge off the walk entirely — including what it carried in — and `--no-merges`
+ * drops the merge commit's own (empty) entry too.
+ *
+ * @param {string} worktree @param {string} landSha
+ * @returns {{files: number, lines: number}}
+ */
+export function fixDelta(worktree, landSha) {
+  const out = run(
+    "git",
+    ["log", "--first-parent", "--no-merges", "--format=", "--numstat", `${landSha}..HEAD`],
+    worktree
+  );
+  const files = new Set();
+  let lines = 0;
+  for (const line of out.split("\n")) {
+    const m = /^(\d+|-)\t(\d+|-)\t(.+)$/.exec(line);
+    if (!m) continue;
+    files.add(m[3]);
+    lines += (m[1] === "-" ? 0 : Number(m[1])) + (m[2] === "-" ? 0 : Number(m[2]));
+  }
+  return { files: files.size, lines };
 }
 
 /**
