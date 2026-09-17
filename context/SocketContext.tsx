@@ -139,6 +139,14 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     enabled: !!userId,
     refetchOnWindowFocus: true,
   });
+  // The cached lists are one account's and their keys do not say whose. Cleared
+  // here, after this commit disabled every observer: a clear that lands first lets
+  // an earlier render's pending effect refetch them with the dead session.
+  const signedInRef = useRef(userId);
+  useEffect(() => {
+    if (signedInRef.current && !userId) qc.clear();
+    signedInRef.current = userId;
+  }, [userId, qc]);
   const gameInvites = useMemo<PendingInvite[]>(
     () => inviteRows.map((row) => ({ from: row.fromUsername, roomCode: row.roomCode })),
     [inviteRows]
@@ -237,11 +245,6 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       retryAttemptRef.current = 0;
       socket.io.reconnection(false);
       socket.disconnect();
-      // The cached lists are one account's — friends, requests, invitations —
-      // and the query keys do not name whose. The deliberate logout in
-      // SettingsModal clears them; this path is a logout too, and the next
-      // account to sign in on this device would otherwise be served them.
-      qc.clear();
       void logout().finally(() => router.replace("/auth"));
     };
     setSocketAuthFailureHandler(onAuthFailure);
