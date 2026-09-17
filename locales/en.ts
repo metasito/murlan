@@ -888,7 +888,7 @@ export const en = {
   "errorFallback.restart": "Restart the app",
   "errorFallback.restartA11yHint": "Fully reload the application",
   "errorFallback.continue": "Continue",
-  "errorFallback.continueA11yHint": "Try to go back to the previous screen without restarting",
+  "errorFallback.continueA11yHint": "Go back to the home screen without restarting",
   "errorFallback.detailsTitle": "Error details",
   "errorFallback.closeDetailsA11yLabel": "Close error details",
   "updateRequired.title": "Update required",

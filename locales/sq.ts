@@ -888,7 +888,7 @@ export const sq: Record<keyof typeof en, string> = {
   "errorFallback.restart": "Rinis aplikacionin",
   "errorFallback.restartA11yHint": "Ringarko plotësisht aplikacionin",
   "errorFallback.continue": "Vazhdo",
-  "errorFallback.continueA11yHint": "Provo të kthehesh te ekrani i mëparshëm pa rinisur",
+  "errorFallback.continueA11yHint": "Kthehu te ekrani kryesor pa rinisur",
   "errorFallback.detailsTitle": "Detajet e gabimit",
   "errorFallback.closeDetailsA11yLabel": "Mbyll detajet e gabimit",
   "updateRequired.title": "Duhet përditësim",
