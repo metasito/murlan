@@ -15,7 +15,6 @@ import {
 } from "@/components/seatLayout";
 import { impactDelayMs } from "@/components/flightPhysics";
 import Animated, {
-  useAnimatedProps,
   useAnimatedStyle,
   useSharedValue,
   withTiming,
@@ -25,7 +24,7 @@ import Animated, {
   cancelAnimation,
   type SharedValue,
 } from "react-native-reanimated";
-import Svg, { Circle } from "react-native-svg";
+import Svg, { Path } from "react-native-svg";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { LinearGradient } from "expo-linear-gradient";
 import { CardView } from "@/components/CardView";
@@ -243,7 +242,6 @@ const RING_STROKE = 2;
  */
 const RING_PING_SCALE = 1.45;
 
-const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
 /**
  * The turn clock, drawn as an arc around the seat on move. It is a display of
@@ -265,7 +263,6 @@ function CountdownRing({
   const stroke = RING_STROKE * scale;
   const box = size + RING_GAP * 2 * scale;
   const r = (box - stroke) / 2;
-  const circumference = 2 * Math.PI * r;
   const swept = useSharedValue(0);
   const reduceMotion = usePrefersReducedMotion();
 
@@ -276,32 +273,45 @@ function CountdownRing({
     return () => cancelAnimation(swept);
   }, [resetKey, seconds, reduceMotion, swept]);
 
-  const arc = useAnimatedProps(() => ({
-    strokeDashoffset: circumference * swept.value,
+  // Each half of the ring turns out of its own clip, clockwise from twelve
+  // o'clock: a transform the compositor runs, where an animated stroke prop
+  // re-rasterises the SVG every frame.
+  const rightTurn = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${Math.min(swept.value, 0.5) * 360}deg` }],
   }));
+  const leftTurn = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${Math.max(swept.value - 0.5, 0) * 360}deg` }],
+  }));
+  const c = box / 2;
+  const half = (d: string) => (
+    <Svg width={box} height={box}>
+      <Path d={d} stroke={Colors.goldLit} strokeWidth={stroke} strokeLinecap="round" fill="none" />
+    </Svg>
+  );
 
   return (
-    <Svg
+    <View
       testID="seat-turn-clock"
       pointerEvents="none"
-      width={box}
-      height={box}
-      style={[seatStyles.ringSvg, { top: -RING_GAP * scale, left: -RING_GAP * scale }]}
+      style={[seatStyles.ring, { top: -RING_GAP * scale, left: -RING_GAP * scale, width: box, height: box }]}
     >
-      <AnimatedCircle
-        cx={box / 2}
-        cy={box / 2}
-        r={r}
-        stroke={Colors.goldLit}
-        strokeWidth={stroke}
-        strokeLinecap="round"
-        fill="none"
-        strokeDasharray={circumference}
-        animatedProps={arc}
-        // Twelve o'clock, clockwise — a clock face, not an arbitrary sweep.
-        transform={`rotate(-90 ${box / 2} ${box / 2})`}
-      />
-    </Svg>
+      <View style={[seatStyles.ringClip, { left: c, width: c, height: box }]}>
+        <Animated.View
+          testID="seat-turn-clock-right"
+          style={[seatStyles.ring, { left: -c, width: box, height: box }, rightTurn]}
+        >
+          {half(`M ${c} ${c - r} A ${r} ${r} 0 0 1 ${c} ${c + r}`)}
+        </Animated.View>
+      </View>
+      <View style={[seatStyles.ringClip, { left: 0, width: c, height: box }]}>
+        <Animated.View
+          testID="seat-turn-clock-left"
+          style={[seatStyles.ring, { left: 0, width: box, height: box }, leftTurn]}
+        >
+          {half(`M ${c} ${c + r} A ${r} ${r} 0 0 1 ${c} ${c - r}`)}
+        </Animated.View>
+      </View>
+    </View>
   );
 }
 
@@ -912,7 +922,8 @@ const seatStyles = StyleSheet.create({
     color: Colors.text,
     letterSpacing: 0.5,
   },
-  ringSvg: { position: "absolute" },
+  ring: { position: "absolute", top: 0 },
+  ringClip: { position: "absolute", top: 0, overflow: "hidden" },
   ringPing: {
     position: "absolute",
     borderColor: Colors.goldStrong,

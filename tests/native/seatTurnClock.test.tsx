@@ -14,6 +14,7 @@ import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals
 import React from 'react';
 import { act, render, screen } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { getAnimatedStyle } from 'react-native-reanimated';
 
 jest.mock('@/lib/sounds', () => ({
   playCardSelect: jest.fn(async () => {}),
@@ -35,8 +36,9 @@ jest.mock('@/lib/sounds', () => ({
   ensureAudioMode: jest.fn(async () => {}),
 }));
 
+const mockReduceMotion = { on: true };
 jest.mock('@/lib/accessibility', () => ({
-  usePrefersReducedMotion: () => true,
+  usePrefersReducedMotion: () => mockReduceMotion.on,
   setMotionPreference: () => {},
   getMotionPreference: () => 'off',
 }));
@@ -129,6 +131,7 @@ describe("a seat's turn clock", () => {
   });
   afterEach(() => {
     jest.useRealTimers();
+    mockReduceMotion.on = true;
   });
 
   // The two states that must still sweep. Without them every assertion below
@@ -136,6 +139,22 @@ describe("a seat's turn clock", () => {
   it('sweeps for the seat on move once a combination is down', async () => {
     await renderSettled(table(state({ lastPlayedCombination: single(KING), lastPlayedBy: 0 }), OFFLINE_TIMER));
     expect(clocks()).toBe(1);
+  });
+
+  it('sweeps by turning its two halves, three quarters through the window', async () => {
+    mockReduceMotion.on = false;
+    await renderSettled(table(state({ lastPlayedCombination: single(KING), lastPlayedBy: 0 }), OFFLINE_TIMER));
+    await act(async () => {
+      jest.advanceTimersByTime((OFFLINE_TIMER.seconds * 1000 * 3) / 4);
+    });
+    const turn = (testID: string) => {
+      const style = getAnimatedStyle(screen.getByTestId(testID)) as { transform: { rotate: string }[] };
+      return parseFloat(style.transform[0].rotate);
+    };
+    expect(turn('seat-turn-clock-right')).toBeCloseTo(180, 0);
+    // Settling the mount runs its pending timers, which moves the clock a little further.
+    expect(turn('seat-turn-clock-left')).toBeGreaterThan(80);
+    expect(turn('seat-turn-clock-left')).toBeLessThan(120);
   });
 
   it('sweeps for another seat online after the viewer has gone out', async () => {
