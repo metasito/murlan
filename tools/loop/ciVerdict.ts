@@ -28,6 +28,8 @@ export interface Verdict {
   output?: string;
   infrastructure?: boolean;
   head?: string | null;
+  /** Every failing test id the full log named — never just the tail `output` carries. */
+  testIds?: string[];
   reason: string;
 }
 
@@ -296,6 +298,7 @@ export function readVerdict(
 
   // Waiting belongs to `settle`, which polls anyway; `gh run watch` here froze the whole event loop.
   const run = runForHead(ghJson<RunRow[]>(gh, runListArgs(repo, branch), [], until), headSha);
-  return { ...jobsAndLog(repo, run, gh, until).verdict, head: headSha ?? null };
+  const { verdict, testIds } = jobsAndLog(repo, run, gh, until);
+  return { ...verdict, head: headSha ?? null, testIds };
 }
 

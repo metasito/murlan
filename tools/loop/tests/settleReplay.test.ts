@@ -237,6 +237,43 @@ describe("poll posts CI-RED once per red head", () => {
     await poll(PENDING, () => {}, 0, DEADLINE, io(gh));
     assert.equal(comment(asked).length, 0);
   });
+
+  // `verdict.output` is only the log's last 400 lines; `readVerdict` now carries `testIds` from
+  // the full failed log jobsAndLog already read, so an id outside that tail must still reach here.
+  test("a failing id outside the 400-line tail still reaches the CI-RED body", async () => {
+    const old =
+      "Native tests\tRun tests\t2026-09-14T00:00:00Z   1) [chromium] › tests/e2e/old.spec.ts:9:5 › ancient failure";
+    const filler = Array.from({ length: 450 }, (_, i) => `Native tests\tRun tests\t2026-09-14T00:00:00Z filler ${i}`);
+    const written: string[][] = [];
+    const { gh, asked } = ghFake({
+      script: [runRow("completed", "failure")],
+      jobs: [{ name: "Native tests", conclusion: "failure", steps: 11 }],
+      log: [old, ...filler].join("\n"),
+    });
+    await poll(PENDING, () => {}, 0, DEADLINE, io(gh, written));
+    const file = comment(asked)[0]?.[comment(asked)[0].indexOf("--body-file") + 1];
+    const body = String(written.find(([path]) => path === file)?.[1]);
+    assert.match(body, /tests\/e2e\/old\.spec\.ts › ancient failure/);
+  });
+
+  test("both gh calls it makes pass a bounded timeout", async () => {
+    const calls: { args: string[]; opts?: { timeout?: number } }[] = [];
+    const { gh } = redFake();
+    const run = (file: string, args: string[], opts?: { timeout?: number }) => {
+      if (file === "git") return "";
+      if (args[0] === "issue") calls.push({ args, opts });
+      return gh(args, file);
+    };
+    await poll(PENDING, () => {}, 0, DEADLINE, {
+      run,
+      verdictOf: (repo: string, branch: string, pr: number) =>
+        readVerdict(repo, branch, pr, Date.now() + 60_000, (a) => gh(a)),
+      write: () => {},
+      mkdir: () => {},
+    });
+    assert.equal(calls.length, 2);
+    for (const c of calls) assert.equal(c.opts?.timeout, 30_000);
+  });
 });
 
 describe("ciRedBody", () => {

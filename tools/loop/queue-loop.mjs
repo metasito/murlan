@@ -62,7 +62,7 @@ import { readAllowedTools } from "./loop-tools.mjs";
 import { MAX_REVIEW_ROUNDS } from "./loop-gate.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import { branchSurvives, landing, mergeArgs } from "./land.ts";
-import { failingTestIds, readVerdict } from "./ciVerdict.ts";
+import { readVerdict } from "./ciVerdict.ts";
 
 // Spawning a sibling by its own directory, not the cwd: the supervisor runs from the repo root,
 // but nothing guarantees that, and the sibling is beside this file either way.
@@ -1583,6 +1583,9 @@ export function ciRedBody({ sha, runUrl, failedStep, testIds = [], excerpt = "",
   ].join("\n");
 }
 
+/** Bounds each `gh` call `postCiRedOnce` makes, so a wedged one cannot stall the supervisor. */
+const CI_RED_TIMEOUT_MS = 30_000;
+
 /**
  * Posted once per red head, checked against the tracker rather than a local marker: a marker
  * surviving only on this machine is exactly what stranded #1077's second fix session with nothing
@@ -1593,7 +1596,9 @@ function postCiRedOnce(ticket, verdict, run, write, log) {
   if (!sha) return;
   let comments;
   try {
-    comments = JSON.parse(run("gh", ["issue", "view", String(ticket), "--json", "comments"])).comments;
+    comments = JSON.parse(
+      run("gh", ["issue", "view", String(ticket), "--json", "comments"], { timeout: CI_RED_TIMEOUT_MS }),
+    ).comments;
   } catch (err) {
     log(`CI-RED: could not read the tracker — ${String(err.message).split("\n")[0]}`);
     return;
@@ -1603,13 +1608,13 @@ function postCiRedOnce(ticket, verdict, run, write, log) {
     sha,
     runUrl: `https://github.com/${REPO}/actions/runs/${verdict.runId}`,
     failedStep: verdict.failedStep,
-    testIds: failingTestIds(verdict.output),
+    testIds: verdict.testIds ?? [],
     excerpt: verdict.output,
   });
   try {
     const file = ciRedNotePath(ticket);
     write(file, body, "utf8");
-    run("gh", ["issue", "comment", String(ticket), "--body-file", file]);
+    run("gh", ["issue", "comment", String(ticket), "--body-file", file], { timeout: CI_RED_TIMEOUT_MS });
   } catch (err) {
     log(`CI-RED: could not post — ${String(err.message).split("\n")[0]}`);
   }
