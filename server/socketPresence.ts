@@ -171,11 +171,27 @@ export async function announcePresence({ io, socket, userId }: PresenceContext) 
     }
 }
 
+const pendingDisconnects = new Set<Promise<void>>();
+
+/**
+ * Resolves once every disconnect handler already started has finished, or at
+ * `timeoutMs`. `io.close()` starts them and waits for none, and a seat lost at a
+ * table another instance owns is forwarded over the adapter pool.
+ */
+export async function settleDisconnects(timeoutMs: number): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  await Promise.race([
+    Promise.allSettled([...pendingDisconnects]),
+    new Promise((resolve) => { timer = setTimeout(resolve, timeoutMs); }),
+  ]);
+  clearTimeout(timer);
+}
+
 export function registerDisconnect({ io, socket, userId }: PresenceContext) {
 
     socket.on("disconnect", (reason: DisconnectReason) => {
       trackEvent("socket.closed", userId, { reason });
-      void (async () => {
+      const handled = (async () => {
         try {
           // A spectator holds no seat, so none of the grace/AFK machinery below
           // applies to them; they are simply dropped.
@@ -259,6 +275,8 @@ export function registerDisconnect({ io, socket, userId }: PresenceContext) {
           logger.error({ err, userId }, "disconnect handler failed");
         }
       })();
+      pendingDisconnects.add(handled);
+      void handled.finally(() => pendingDisconnects.delete(handled));
     });
 }
 

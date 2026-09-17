@@ -86,6 +86,15 @@ describe("a table outlives losing its owner", { skip: hasDatabase() ? false : sk
     host.socket.emit("room:start");
     await dealt;
 
+    const { userStore } = await import("../../server/userStore.ts");
+    const updateLastSeen = userStore.updateLastSeen;
+    // The forward must still go out when the disconnect handler is slower than the teardown.
+    userStore.updateLastSeen = async (id) => {
+      await new Promise((r) => setTimeout(r, 1_000));
+      return updateLastSeen.call(userStore, id);
+    };
+    after(() => { userStore.updateLastSeen = updateLastSeen; });
+
     const told = waitFor<{ userId: string }>(host.socket, "game:player_disconnected", 15_000);
     await shutdown("SIGTERM", { io: local.io, server: local.httpServer, exit: () => {} });
     assert.equal((await told).userId, guest.user.id);
