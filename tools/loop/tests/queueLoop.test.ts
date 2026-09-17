@@ -1,5 +1,5 @@
 // tools/loop/tests/queueLoop.test.ts
-import { test, describe, after } from "node:test";
+import { test, describe, after, mock } from "node:test";
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { Readable } from "node:stream";
@@ -209,11 +209,25 @@ describe("syncCheckout", () => {
     return { git, calls };
   };
   const clean = { "rev-parse --abbrev-ref": "main", "status --porcelain": "" };
+  const noInstall = { stamp: { current: () => "same", stored: () => "same", write: () => {}, peers: () => [] } };
+  /** @param {Partial<{current: string, stored: string, peers: string[]}>} over */
+  const stampOf = (over: Partial<{ current: string; stored: string; peers: string[] }> = {}) => {
+    const writes: string[] = [];
+    return {
+      writes,
+      stamp: {
+        current: () => over.current ?? "new-hash",
+        stored: () => over.stored ?? "old-hash",
+        write: (h: string) => writes.push(h),
+        peers: () => over.peers ?? [],
+      },
+    };
+  };
 
   test("a clean main fast-forwards and says nothing about drift", () => {
     const said: string[] = [];
     const { git, calls } = fake(clean);
-    assert.equal(syncCheckout(git, (m: string) => said.push(m)), true);
+    assert.equal(syncCheckout(git, (m: string) => said.push(m), undefined, noInstall), true);
     assert.ok(calls.some((c) => c[0] === "fetch"));
     assert.ok(calls.some((c) => c[0] === "merge"));
     assert.deepEqual(said, []);
@@ -223,8 +237,48 @@ describe("syncCheckout", () => {
   // every iteration; being behind is staleness, and staleness is repaired, not reported.
   test("being behind origin is not drift", () => {
     const said: string[] = [];
-    syncCheckout(fake(clean).git, (m: string) => said.push(m));
+    syncCheckout(fake(clean).git, (m: string) => said.push(m), undefined, noInstall);
     assert.equal(said.some((s) => /differs/.test(s)), false);
+  });
+
+  test("the stamp differs, no ff diff → reinstall", () => {
+    const said: string[] = [];
+    const install = mock.fn((): string => "");
+    const { stamp, writes } = stampOf();
+    assert.equal(syncCheckout(fake(clean).git, (m: string) => said.push(m), install, { stamp }), true);
+    assert.equal(install.mock.calls.length, 1);
+    assert.deepEqual(writes, ["new-hash"]);
+  });
+
+  test("a peer worktree is live → skip, and retry next call", () => {
+    const said: string[] = [];
+    const install = mock.fn((): string => "");
+    const { stamp, writes } = stampOf({ peers: ["agent-999"] });
+    const ok = syncCheckout(fake(clean).git, (m: string) => said.push(m), install, { stamp, pinned: 123 });
+    assert.equal(ok, true);
+    assert.equal(install.mock.calls.length, 0);
+    assert.deepEqual(writes, []);
+    assert.match(said.join("\n"), /agent-999/);
+  });
+
+  test("only the pinned ticket's worktree is live → reinstall", () => {
+    const install = mock.fn((): string => "");
+    const { stamp, writes } = stampOf({ peers: ["agent-123"] });
+    const ok = syncCheckout(fake(clean).git, () => {}, install, { stamp, pinned: 123 });
+    assert.equal(ok, true);
+    assert.equal(install.mock.calls.length, 1);
+    assert.deepEqual(writes, ["new-hash"]);
+  });
+
+  test("reinstall fails → the stamp is unchanged", () => {
+    const said: string[] = [];
+    const install = mock.fn(() => {
+      throw new Error("npm ci failed");
+    });
+    const { stamp, writes } = stampOf();
+    const ok = syncCheckout(fake(clean).git, (m: string) => said.push(m), install, { stamp });
+    assert.equal(ok, false);
+    assert.deepEqual(writes, []);
   });
 
   test("an uncommitted protocol edit on main refuses, and names the files", () => {
@@ -257,7 +311,7 @@ describe("syncCheckout", () => {
       "status --porcelain": "",
       "rev-list --count": "0",
     });
-    assert.equal(syncCheckout(git, () => {}), true);
+    assert.equal(syncCheckout(git, () => {}, undefined, noInstall), true);
     assert.ok(calls.some((c) => c[0] === "checkout" && c[1] === "main"));
   });
 

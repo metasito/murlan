@@ -15,6 +15,7 @@
  * Usage: node tools/loop/queue-loop.mjs
  */
 import { execFileSync, spawn, spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import fs, { createWriteStream, mkdirSync, writeFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { ciRedRounds, derive, REPO, reviewRounds } from "./loop-derive.mjs";
@@ -224,6 +225,28 @@ function peerWorktrees(dir = ".worktrees") {
   }
 }
 
+const LOCK_STAMP = "node_modules/.loop-lock-hash";
+
+/** The install's own record of the lockfile it was run against — a fact about `node_modules`. */
+const defaultStamp = {
+  current: () => {
+    try {
+      return createHash("sha256").update(fs.readFileSync("package-lock.json")).digest("hex");
+    } catch {
+      return null;
+    }
+  },
+  stored: () => {
+    try {
+      return fs.readFileSync(LOCK_STAMP, "utf8").trim();
+    } catch {
+      return null;
+    }
+  },
+  write: (hash) => writeFileSync(LOCK_STAMP, hash),
+  peers: peerWorktrees,
+};
+
 /**
  * Leaves the shared checkout on an up-to-date `main`, or refuses and says why.
  *
@@ -231,8 +254,17 @@ function peerWorktrees(dir = ".worktrees") {
  * Those are different questions: the loop's own tickets edit its own code, so the moment one
  * merges the checkout differs from origin until it is fast-forwarded — which is staleness,
  * repaired here rather than reported. Only an uncommitted edit is drift, and it belongs to someone.
+ *
+ * @param {{current: () => string|null, stored: () => string|null, write: (hash: string) => void,
+ *   peers: () => string[]}} [stamp]
+ * @param {number|null} [pinned] the ticket whose own worktree, if any, is not another session
  */
-export function syncCheckout(git, log, install = () => sh("npm", ["ci"], { stdio: "inherit" })) {
+export function syncCheckout(
+  git,
+  log,
+  install = () => sh("npm", ["ci"], { stdio: "inherit" }),
+  { stamp = defaultStamp, pinned = /** @type {number|null} */ (null) } = {},
+) {
   const branch = git("rev-parse", "--abbrev-ref", "HEAD").trim();
   if (branch === "HEAD") {
     log("the shared checkout is on a detached HEAD — put it back on main first.");
@@ -264,9 +296,7 @@ export function syncCheckout(git, log, install = () => sh("npm", ["ci"], { stdio
     }
   }
 
-  let was;
   try {
-    was = git("rev-parse", "HEAD").trim();
     git("fetch", "origin", "--quiet");
     git("merge", "--ff-only", "origin/main");
   } catch (err) {
@@ -274,23 +304,26 @@ export function syncCheckout(git, log, install = () => sh("npm", ["ci"], { stdio
     return false;
   }
 
-  // The loop's own merges move the lockfile, and `preflight` refuses to start a ticket on top of
-  // an install that has drifted from it — so leaving the repair to the next iteration is the loop
-  // poisoning its own precondition. It runs here because this is between tickets, and it runs only
-  // when no ticket worktree is standing: every worktree's node_modules is a junction into this
-  // install, so reinstalling under a live session empties the tree it is working in.
+  // Keyed on the installed stamp, not the fast-forward's own diff: a diff seen once and skipped
+  // for a live peer is gone for good, so a worktree standing at merge time must not cost the loop
+  // its only chance to notice. `preflight` refuses to start a ticket on top of a drifted install,
+  // so leaving the repair to the next iteration is the loop poisoning its own precondition. It
+  // runs only when no *other* ticket's worktree is standing: every worktree's node_modules is a
+  // junction into this install, so reinstalling under a live session empties the tree it is in.
   try {
-    if (git("diff", "--name-only", was, "HEAD").split("\n").includes("package-lock.json")) {
-      const live = peerWorktrees();
+    const current = stamp.current();
+    if (current !== null && current !== stamp.stored()) {
+      const live = stamp.peers().filter((name) => name !== `agent-${pinned}`);
       if (live.length) {
-        log(`package-lock.json moved, but ${live.join(", ")} is live — not reinstalling`);
+        log(`package-lock.json differs from the last install, but ${live.join(", ")} is live — not reinstalling`);
         return true;
       }
-      log("the fast-forward moved package-lock.json — reinstalling before the next ticket");
+      log("package-lock.json differs from the last install — reinstalling before the next ticket");
       install();
+      stamp.write(current);
     }
   } catch (err) {
-    log(`could not reinstall after the fast-forward — ${String(err.message).split("\n")[0]}`);
+    log(`could not reinstall — ${String(err.message).split("\n")[0]}`);
     return false;
   }
   return true;
@@ -1630,7 +1663,7 @@ export function parkAndRecord(io, number, { run = null, pr = null, files = 0, ..
  */
 export async function runOnce(io, pinned = null, at = null) {
   if (io.stopFile()) return { outcome: "stop", why: ".loop-stop" };
-  if (!io.syncCheckout()) return { outcome: "stop", why: "the shared checkout is not usable" };
+  if (!io.syncCheckout(pinned)) return { outcome: "stop", why: "the shared checkout is not usable" };
   // Exit 2 is "this machine cannot start a ticket *now*" — drift, a peer's dirt, memory. Every one
   // of those clears on its own, including the drift the loop's own merge of a lockfile creates.
   const pre = io.queuePre();
@@ -1784,7 +1817,7 @@ function realIo(book, screen) {
   let picked = null;
   return {
     stopFile: () => takeStopFile(fs, STOP_FILE),
-    syncCheckout: () => syncCheckout(git, (m) => screen.notice("checkout", m)),
+    syncCheckout: (pinned) => syncCheckout(git, (m) => screen.notice("checkout", m), undefined, { pinned }),
     queuePre: () =>
       spawnSync(process.execPath, [HERE + "/queue-pre.mjs"], { stdio: "inherit" }).status ?? 1,
     pick: (pinned, at) => {
