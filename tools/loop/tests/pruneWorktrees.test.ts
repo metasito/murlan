@@ -9,7 +9,10 @@ import { fileURLToPath } from "node:url";
 import { importUnderShellGuard } from "../../../tests/helpers/importShellGuard.ts";
 import { FOUND_NOTHING, IF_FOUND, WORKTREE_DIR } from "../loop-derive.mjs";
 import {
+  classifyEntry,
+  classifyOrSkip,
   classifyWorktree,
+  issueInProgress,
   parseWorktreeList,
   hasUncommittedChanges,
   listWorktreeDirNames,
@@ -90,7 +93,7 @@ describe("classifyWorktree's other classifications", () => {
     const result = classifyWorktree(baseState({ prState: "OPEN", issueInProgress: false }));
     assert.equal(result.status, "stale");
     assert.match(result.reason, /not in-progress/);
-    assert.deepEqual(["merged", "gone", "stale", "live"].map(removable), [true, true, true, false]);
+    assert.deepEqual(["merged", "gone", "stale", "live", "skip"].map(removable), [true, true, true, false, false]);
   });
 
   test("a branch on neither remote nor local, with no PR, is gone", () => {
@@ -124,6 +127,50 @@ describe("classifyWorktree's other classifications", () => {
   test("a vanished directory is gone even when it also reported uncommitted changes", () => {
     const result = classifyWorktree(baseState({ directoryMissing: true, hasUncommittedChanges: true }));
     assert.equal(result.status, "gone");
+  });
+});
+
+describe("classifyEntry's wiring", () => {
+  const entry = { path: os.tmpdir(), branch: "agent/42-x", locked: false };
+  const probe = (pr: string, inProgress: () => boolean, asked: string[] = []) => ({
+    dirty: () => false,
+    branchOnRemote: () => true,
+    branchOnLocal: () => true,
+    mergedIntoMain: () => false,
+    prState: () => pr,
+    issueInProgress: (branch: string) => {
+      asked.push(branch);
+      return inProgress();
+    },
+  });
+
+  test("only an open pull request asks the issue", () => {
+    const asked: string[] = [];
+    assert.equal(classifyEntry(entry, probe("MERGED", () => false, asked)).status, "merged");
+    assert.deepEqual(asked, []);
+    assert.equal(classifyEntry(entry, probe("OPEN", () => false, asked)).status, "stale");
+    assert.deepEqual(asked, ["agent/42-x"]);
+  });
+
+  test("an issue read that throws is a SKIP, and the tree is kept", () => {
+    const out = classifyOrSkip(
+      entry,
+      probe("OPEN", () => {
+        throw new Error("gh: HTTP 502");
+      }),
+    );
+    assert.equal(out.status, "skip");
+    assert.match(out.reason, /HTTP 502/);
+    assert.equal(removable(out.status), false);
+  });
+
+  test("a ticket-less branch counts as in-progress without asking gh; labels split on CRLF", () => {
+    const refuse = () => {
+      throw new Error("gh must not be asked");
+    };
+    assert.equal(issueInProgress("feature/x", refuse), true);
+    assert.equal(issueInProgress("agent/42-x", () => "bug\r\nin-progress\r\n"), true);
+    assert.equal(issueInProgress("agent/42-x", () => "bug\r\n"), false);
   });
 });
 

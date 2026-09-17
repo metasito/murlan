@@ -309,7 +309,7 @@ function readCi(cwd, branch, head) {
   const failed = [];
   const read = readHeadCi(REPO, branch, ciGh(cwd, until, failed), until);
   if (read.remoteSha === null && !failed.includes("api")) {
-    return { pushed: false, pr: read.pr, state: "none", step: null };
+    return { pushed: false, pr: read.pr, sha: read.remoteSha, state: "none", step: null };
   }
   const pushed = read.remoteSha !== null && under(cwd, head, read.remoteSha, branch, until, failed);
   const v = read.verdict;
@@ -324,7 +324,7 @@ function readCi(cwd, branch, head) {
           : v.infrastructure
             ? "infrastructure"
             : "red";
-  return { pushed, pr: read.pr, state, step: v.failedStep ?? null };
+  return { pushed, pr: read.pr, sha: read.remoteSha, state, step: v.failedStep ?? null };
 }
 
 /**

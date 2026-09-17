@@ -12,6 +12,7 @@ import {
   nextRoute,
   park,
   refreshWorktree,
+  removeLanded,
   removeWorktree,
   MAX_HANDOFFS,
   USD_BY_SIZE,
@@ -144,9 +145,9 @@ describe("runOnce", () => {
     assert.match(String(r.why), /pushed no pull request/);
   });
 
-  // The case that cost $36.38 and froze #891 for good. Phase F tears the worktree down, so
-  // derive() finds nothing — which is not the same as the session having done nothing. The pull
-  // request is asked for by ticket number, which survives the teardown; the fixture has one to
+  // The case that cost $36.38 and froze #891 for good. With no worktree left to read, derive()
+  // finds nothing — which is not the same as the session having done nothing. The pull request
+  // is asked for by ticket number, which survives a missing worktree; the fixture has one to
   // find, which the version pinning the old answer did not.
   test("a torn-down worktree with a pull request open is settled, not parked", async () => {
     const parked: number[] = [];
@@ -199,8 +200,8 @@ describe("runOnce", () => {
     }
   });
 
-  // Phase F removes its own worktree, but every path that skips phase F leaves one standing, and
-  // a standing worktree is a run derive() resumes on every iteration after. `park` removes its own,
+  // Phase F leaves the worktree standing, and only the supervisor removes it; a worktree left
+  // behind is a run derive() resumes on every iteration after. `park` removes its own,
   // so a parked ticket is checked through park's arguments rather than through teardown's.
   test("no terminal outcome leaves the worktree standing", async () => {
     for (const over of [
@@ -452,7 +453,7 @@ describe("runOnce", () => {
     const facts = () => ({ title: "t", url: "", size: null, labels: ["in-progress"], reviewRounds: 1, ciRounds: 0 });
     const ledger = () => [{ n: 42, outcome: "handoff", cost: 0, park_reason: "phase E next", head: null }];
     const g = nextRoute(null, null, {
-      read: () => ({ onTicket: true, ticket: 42, branch: "agent/42-x", cwd: "w", phase: "G", fix: false }),
+      read: () => ({ onTicket: true, ticket: 42, branch: "agent/42-x", cwd: "w", phase: "G", fix: false, ci: { pushed: true } }),
       facts,
       ledger,
     } as never);
@@ -515,6 +516,157 @@ describe("runOnce", () => {
     for (const [file, args, opts] of removals) {
       assert.deepEqual([file, args, path.resolve(opts?.cwd ?? "")], ["npm", ["run", "worktrees:remove", "--", "w"], ROOT]);
     }
+  });
+
+  test("an unreadable CI read on a head not known pushed is not a no-spawn G", () => {
+    const route: any = nextRoute(null, null, {
+      read: () => ({
+        onTicket: true,
+        ticket: 42,
+        branch: "agent/42-x",
+        cwd: "w",
+        phase: "G",
+        fix: false,
+        ci: { state: "unreadable", pushed: false, pr: 5 },
+      }),
+      facts: () => ({ title: "t", url: "", size: null, labels: ["in-progress"], reviewRounds: 1, ciRounds: 0 }),
+      ledger: () => [],
+    } as never);
+    assert.equal(route.phase, "E");
+  });
+
+  test("a handed phase wins over a derived fix; only a pushed G outranks it", () => {
+    const status = { onTicket: true, ticket: 42, branch: "agent/42-x", cwd: "w", fix: true };
+    const deps = (s: object) =>
+      ({
+        read: () => s,
+        facts: () => ({ title: "t", url: "", size: null, labels: ["in-progress"], reviewRounds: 1, ciRounds: 0 }),
+        ledger: () => [],
+      }) as never;
+    const handed: any = nextRoute(42, "D" as never, deps({ ...status, phase: "C", ci: { pushed: true, state: "red" } }));
+    assert.deepEqual([handed.phase, handed.fix], ["D", true]);
+    const settling: any = nextRoute(42, "D" as never, deps({ ...status, fix: false, phase: "G", ci: { pushed: true } }));
+    assert.equal(settling.phase, "G");
+  });
+
+  const fixRoute = (head: string) => ({
+    skill: "implement",
+    number: 42,
+    title: "t",
+    size: null,
+    queue: null,
+    resuming: true,
+    phase: "C",
+    fix: true,
+    head,
+    cwd: ".worktrees/agent-42",
+    branch: "agent/42-x",
+  });
+  const retryRow = (head: string) => ({ n: 42, outcome: "retry", cost: 1, park_reason: null, head });
+
+  test("a red round nobody recorded counts toward the cap, and the last one parks before the refresh", async () => {
+    const ledger: any[] = [retryRow("h1"), retryRow("h2")];
+    const order: string[] = [];
+    const r = await runOnce(
+      io(
+        {
+          pick: () => fixRoute("h3"),
+          refreshWorktree: () => order.push("refresh"),
+          spawn: async () => order.push("spawn") as never,
+          park: (_n: number, c: { why: string }) => order.push(c.why),
+        },
+        ledger,
+      ),
+      42,
+    );
+    assert.equal(r.outcome, "parked");
+    assert.equal(order.length, 1);
+    assert.match(order[0], /3 CI rounds/);
+    assert.deepEqual(ledger.filter((x) => x.outcome === "parked").length, 1);
+  });
+
+  test("a red round nobody recorded is written down before the fix round; a recorded one is not", async () => {
+    const spawn = async () => ({ status: 0, blocked: false, result: {}, ms: 1, log: "l", phase: "F", declared: null });
+    const unrecorded: any[] = [retryRow("h1")];
+    await runOnce(io({ pick: () => fixRoute("h2"), refreshWorktree: () => {}, spawn }, unrecorded), 42);
+    assert.deepEqual(unrecorded.map((x) => [x.outcome, x.head, x.cost]), [
+      ["retry", "h1", 1],
+      ["retry", "h2", 0],
+      ["landed", null, 0],
+    ]);
+    const recorded: any[] = [retryRow("h1")];
+    await runOnce(io({ pick: () => fixRoute("h1"), refreshWorktree: () => {}, spawn }, recorded), 42);
+    assert.deepEqual(recorded.map((x) => x.outcome), ["retry", "landed"]);
+  });
+
+  test("a G pass with no open pull request says so", async () => {
+    const parked: string[] = [];
+    await runOnce(
+      io({
+        pick: () => ({ skill: "implement", number: 42, title: "t", size: null, queue: null, resuming: true, phase: "G" }),
+        pushedPr: () => null,
+        park: (_n: number, c: { why: string }) => parked.push(c.why),
+      }),
+    );
+    assert.deepEqual(parked, ["phase G found no open pull request for the pushed head"]);
+  });
+
+  test("the retry row carries the head CI judged, not the one before update-branch", async () => {
+    const rows: any[] = [];
+    const r = await runOnce(
+      io({
+        pushedPr: () => ({ number: 984, state: "OPEN", head: "agent/42-x", sha: "before" }),
+        settle: async () => ({ action: "hand-back", reason: "CI failed at Lint", head: "judged" }),
+        record: (x: unknown) => rows.push(x),
+      }),
+    );
+    assert.deepEqual([rows[0].head, (r as { sha?: string }).sha], ["judged", "judged"]);
+  });
+
+  const landedRun = (dirty: string, failWrite = false) => {
+    const calls: [string, string[], { cwd?: string; encoding?: string } | undefined][] = [];
+    const written: string[] = [];
+    const said: string[] = [];
+    removeLanded(".worktrees/agent-42", 42, {
+      run: (file: string, args: string[], opts?: { cwd?: string; encoding?: string }) => {
+        calls.push([file, args, opts]);
+        if (args.includes("--porcelain")) return dirty;
+        return args.includes("--binary") ? Buffer.from("PATCH") : "";
+      },
+      write: (file: string, body: Buffer) => {
+        if (failWrite) throw new Error("EACCES");
+        written.push(`${file}=${body}`);
+      },
+      say: (m: string) => said.push(m),
+    } as never);
+    const removals = calls.filter(([, args]) => args.includes("worktrees:remove"));
+    return { calls, written, said, removals };
+  };
+
+  test("a landed worktree with leftovers is saved as a binary patch, then force-removed", () => {
+    const { calls, written, said, removals } = landedRun("?? stray.png\n");
+    assert.ok(calls.some(([, a]) => a.join(" ") === "-C .worktrees/agent-42 add -A"));
+    const diff = calls.find(([, a]) => a.includes("--binary"));
+    assert.deepEqual(diff?.[1], ["-C", ".worktrees/agent-42", "diff", "--cached", "--binary", "HEAD"]);
+    assert.equal(diff?.[2]?.encoding, "buffer");
+    assert.equal(written.length, 1);
+    assert.match(written[0], /leftover-42\.patch=PATCH$/);
+    assert.match(said.join("\n"), /leftover-42\.patch/);
+    assert.deepEqual(removals.map(([, a, o]) => [a, path.resolve(o?.cwd ?? "")]), [
+      [["run", "worktrees:remove", "--", ".worktrees/agent-42", "--force"], ROOT],
+    ]);
+  });
+
+  test("a leftover patch that cannot be written keeps the worktree", () => {
+    const { removals, said } = landedRun("?? stray.png\n", true);
+    assert.deepEqual(removals, []);
+    assert.match(said.join("\n"), /EACCES/);
+  });
+
+  test("a clean landed worktree is removed without --force", () => {
+    const { removals, written } = landedRun("");
+    assert.deepEqual(written, []);
+    assert.deepEqual(removals.map(([, a]) => a), [["run", "worktrees:remove", "--", ".worktrees/agent-42"]]);
   });
 
   test("a dirtied shared checkout is named, not fatal", async () => {

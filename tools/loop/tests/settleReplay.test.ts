@@ -98,6 +98,7 @@ describe("settle, replayed against recorded gh payloads", () => {
     });
     const out = await poll(PENDING, (m: string) => said.push(m), 0, DEADLINE, io(gh, written));
     assert.equal(out.action, "hand-back");
+    assert.equal((out as { head?: string }).head, SHA, "the retry row records the head CI judged");
     assert.match(String(out.reason), /Native tests/);
     assert.equal(written.length, 1, "the fix round's only input is that log");
     assert.match(written[0][0], /ci-1028\.log$/);

@@ -119,7 +119,7 @@ export function classifyWorktree(state) {
 }
 
 /** @param {string} status */
-export const removable = (status) => status !== "live";
+export const removable = (status) => ["merged", "gone", "stale"].includes(status);
 
 /**
  * The names among these entries that are links rather than real directories. A Windows junction
@@ -212,18 +212,29 @@ function prState(branch) {
   return rows[0]?.state ?? null;
 }
 
-function issueInProgress(branch) {
+const ghLabels = (ticket) =>
+  execFileSync("gh", ["issue", "view", String(ticket), "--json", "labels", "--jq", ".labels[].name"], {
+    encoding: "utf8",
+  });
+
+export function issueInProgress(branch, labelsOf = ghLabels) {
   const ticket = ticketOf(branch);
   // A branch no ticket names is nobody's claim to lapse, so its open pull request keeps it.
   if (!ticket) return true;
-  const labels = execFileSync("gh", ["issue", "view", String(ticket), "--json", "labels", "--jq", ".labels[].name"], {
-    encoding: "utf8",
-  });
-  return labels.split("\n").includes("in-progress");
+  return labelsOf(ticket).split(/\r?\n/).includes("in-progress");
 }
 
+const realProbe = {
+  dirty: hasUncommittedChanges,
+  branchOnRemote,
+  branchOnLocal,
+  mergedIntoMain,
+  prState,
+  issueInProgress: (branch) => issueInProgress(branch),
+};
+
 /** Resolves one worktree entry's full state, skipping network calls once the floor already applies. */
-function classifyEntry(entry) {
+export function classifyEntry(entry, probe = realProbe) {
   if (entry.locked) {
     return classifyWorktree({
       branch: entry.branch,
@@ -247,7 +258,7 @@ function classifyEntry(entry) {
       directoryMissing: true,
     });
   }
-  const dirty = hasUncommittedChanges(entry.path);
+  const dirty = probe.dirty(entry.path);
   if (dirty || entry.branch === null) {
     return classifyWorktree({
       branch: entry.branch,
@@ -259,17 +270,30 @@ function classifyEntry(entry) {
       prState: null,
     });
   }
-  const pr = prState(entry.branch);
+  const pr = probe.prState(entry.branch);
   return classifyWorktree({
     branch: entry.branch,
     hasUncommittedChanges: false,
     locked: false,
-    branchOnRemote: branchOnRemote(entry.branch),
-    branchOnLocal: branchOnLocal(entry.branch),
-    mergedIntoMain: mergedIntoMain(entry.branch),
+    branchOnRemote: probe.branchOnRemote(entry.branch),
+    branchOnLocal: probe.branchOnLocal(entry.branch),
+    mergedIntoMain: probe.mergedIntoMain(entry.branch),
     prState: pr,
-    issueInProgress: pr === "OPEN" && issueInProgress(entry.branch),
+    issueInProgress: pr === "OPEN" && probe.issueInProgress(entry.branch),
   });
+}
+
+/**
+ * A worktree this run cannot inspect - gh unauthenticated, the network down, git in a state the
+ * checks did not anticipate - is never removed on a guess. Same floor as uncommitted changes.
+ * @returns {{ status: string, reason: string }}
+ */
+export function classifyOrSkip(entry, probe = realProbe) {
+  try {
+    return classifyEntry(entry, probe);
+  } catch (err) {
+    return { status: "skip", reason: `could not classify: ${err.message}` };
+  }
 }
 
 function samePath(a, b) {
@@ -458,15 +482,9 @@ if (invokedDirectly && process.argv.includes("--remove")) {
     }
 
     for (const entry of candidates) {
-      let result;
-      try {
-        result = classifyEntry(entry);
-      } catch (err) {
-        // A worktree this run cannot inspect - gh unauthenticated, the
-        // network down, git in a state the checks above didn't anticipate -
-        // is never removed on a guess. Same floor as uncommitted changes:
-        // unreadable stays put.
-        console.error(`SKIP\t${entry.path}\tcould not classify: ${err.message}`);
+      const result = classifyOrSkip(entry);
+      if (result.status === "skip") {
+        console.error(`SKIP\t${entry.path}\t${result.reason}`);
         kept++;
         continue;
       }

@@ -386,7 +386,7 @@ describe("derive({ ci: true }) resumes from what CI said about the pushed head",
     assert.equal(s.phase, "C");
     assert.equal(s.fix, true);
     assert.equal(s.ciRounds, 2);
-    assert.deepEqual(s.ci, { pushed: true, pr: 5, state: "red", step: "npm test" });
+    assert.deepEqual(s.ci, { pushed: true, pr: 5, sha: head, state: "red", step: "npm test" });
   });
 
   test("LAND + update-branch merge commit on the remote → still pushed", () => {

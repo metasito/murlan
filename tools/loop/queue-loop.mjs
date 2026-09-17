@@ -48,6 +48,7 @@ import {
 import {
   DIR,
   ciLogPath,
+  leftoverPath,
   ledger as openLedger,
   parkNotePath,
   prune as pruneLogs,
@@ -137,14 +138,16 @@ export function nextRoute(pinned = null, at = null, { read = derive, facts = tic
   const known = status.onTicket && status.ticket ? facts(status.ticket) : null;
   const live = liveRoute(status, known?.labels ?? null);
   if (live) {
-    const phase =
-      live.phase === "G"
-        ? "G"
-        : (at ?? (status.fix ? "C" : null) ?? ticketTally(live.number, ledger()).lastHandoff ?? live.phase);
+    const settles = live.phase === "G" && status.ci?.pushed === true;
+    const derived = live.phase === "G" ? "E" : live.phase;
+    const phase = settles
+      ? "G"
+      : (at ?? (status.fix ? "C" : null) ?? ticketTally(live.number, ledger()).lastHandoff ?? derived);
     return {
       ...live,
       phase,
       fix: Boolean(status.fix),
+      head: status.ci?.sha ?? status.head ?? null,
       cwd: status.cwd ?? null,
       branch: status.branch ?? null,
       dirty: status.dirty ?? false,
@@ -657,6 +660,30 @@ export function park(
 /** From the main checkout: `removeOneWorktree` refuses a caller standing inside the tree it removes. */
 export function removeWorktree(cwd, run = sh) {
   return run("npm", ["run", "worktrees:remove", "--", cwd], { cwd: ROOT });
+}
+
+const writeLeftover = (file, body) => {
+  mkdirSync(path.dirname(file), { recursive: true });
+  writeFileSync(file, body);
+};
+
+/**
+ * Only after a confirmed merge. `--force` is safe here because the script detaches the junction
+ * before removing, and the leftovers are on disk first; a patch that cannot be written keeps the tree.
+ */
+export function removeLanded(cwd, number, { run = sh, write = writeLeftover, say = console.error } = {}) {
+  if (!run("git", ["-C", cwd, "status", "--porcelain"]).trim()) return removeWorktree(cwd, run);
+  const file = leftoverPath(number);
+  try {
+    run("git", ["-C", cwd, "add", "-A"]);
+    const patch = run("git", ["-C", cwd, "diff", "--cached", "--binary", "HEAD"], { encoding: "buffer" });
+    write(file, patch);
+  } catch (err) {
+    say(`#${number}'s worktree has uncommitted leftovers and ${file} could not be written — ${String(err.message).split("\n")[0]}`);
+    return null;
+  }
+  say(`#${number} landed with uncommitted leftovers in its worktree — saved to ${file}`);
+  return run("npm", ["run", "worktrees:remove", "--", cwd, "--force"], { cwd: ROOT });
 }
 
 /** A red round's `update-branch` moved the remote head, and the fix is built on top of it. */
@@ -1597,7 +1624,7 @@ export async function poll(pending, log, pause, deadline, io = {}) {
         return { action: "owner", reason: `the merge failed — ${String(err.message).split("\n")[0]}` };
       }
     }
-    return next;
+    return next.action === "hand-back" ? { ...next, head: verdict.head ?? null } : next;
   }
 }
 
@@ -1693,21 +1720,39 @@ export async function runOnce(io, pinned = null, at = null) {
   const route = io.pick(pinned, at);
   if (route.skill === "handoff") return { outcome: "stop", why: route.title };
   if (route.skill === "ambiguous") return { outcome: "stop", why: route.title };
-  const tally = io.tally(route.number);
+  let tally = io.tally(route.number);
   const size = route.size ?? null;
 
   if (route.fix) {
-    try {
-      io.refreshWorktree(route.cwd, route.branch);
-    } catch (err) {
-      return parkAndRecord(io, route.number, {
+    const parkFix = (why) =>
+      parkAndRecord(io, route.number, {
         phase: "C",
-        why: `could not fast-forward the worktree before the fix round — ${String(err.stderr || err.message).trim().split("\n")[0]}`,
+        why,
         log: streamLog(route.number),
         cwd: route.cwd ?? null,
         branch: route.branch ?? null,
         dirty: route.dirty ?? false,
       });
+    if (route.head && route.head !== tally.lastRedHead) {
+      if (Math.max(tally.retries, tally.ciRounds ?? 0) + 1 >= CI_ROUNDS) {
+        return parkFix(`${CI_ROUNDS} CI rounds on the same branch did not go green — the last one while the loop was down`);
+      }
+      io.record({
+        number: route.number,
+        outcome: "retry",
+        why: "CI went red while the loop was down",
+        run: { result: null, ms: 0, log: streamLog(route.number), phases: {} },
+        counts: false,
+        head: route.head,
+      });
+      tally = io.tally(route.number);
+    }
+    try {
+      io.refreshWorktree(route.cwd, route.branch);
+    } catch (err) {
+      return parkFix(
+        `could not fast-forward the worktree before the fix round — ${String(err.stderr || err.message).trim().split("\n")[0]}`,
+      );
     }
   }
 
@@ -1755,7 +1800,10 @@ export async function runOnce(io, pinned = null, at = null) {
     return { outcome: "refused", ticket: route.number, until: run.blockedUntil ?? 0, run };
   }
 
-  const reason = reasonFor(run, after, route.number);
+  const reason =
+    settling && !pr
+      ? { why: "phase G found no open pull request for the pushed head", hard: false }
+      : reasonFor(run, after, route.number);
   const decided = outcomeOf({ pr, reason });
   // The pull request's own count when derive() read no worktree.
   const files = after?.changed?.length || pr?.changedFiles || 0;
@@ -1822,7 +1870,7 @@ export async function runOnce(io, pinned = null, at = null) {
     merged: cost.recorded === "landed",
     files,
     counts: cost.recorded !== "retry",
-    head: pr?.sha ?? null,
+    head: settled.head ?? pr?.sha ?? null,
   });
   // The worktree and the run come with it: the next round works in that worktree.
   if (cost.recorded === "retry") {
@@ -1835,7 +1883,7 @@ export async function runOnce(io, pinned = null, at = null) {
       pr: decided.pr,
       // What the next round is judged against: a round that leaves this where it was cannot change
       // what CI answers, so `main` refuses to spend one on it.
-      sha: pr?.sha ?? null,
+      sha: settled.head ?? pr?.sha ?? null,
       files,
       run,
       size,
@@ -1927,7 +1975,7 @@ function realIo(book, screen) {
       }
       if (!cwd || !fs.existsSync(cwd)) return;
       try {
-        removeWorktree(cwd);
+        removeLanded(cwd, number, { say: (m) => screen.notice("worktree", m) });
       } catch {
         screen.notice("worktree", `${cwd} is still standing — derive() will read it as a live run`);
       }
