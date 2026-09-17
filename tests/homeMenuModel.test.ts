@@ -81,6 +81,26 @@ test("signed in, nothing is disabled", () => {
   }
 });
 
+test("a table still holding a seat outranks every other hero", () => {
+  for (const state of STATES) {
+    const menu = homeMenu({ ...state, activeRoom: true });
+    assert.equal(menu.hero, "returnToTable", describe(state));
+    assert.equal(menu.heroNeedsAccount, false, describe(state));
+    assert.deepEqual(
+      menu.tiles.map((t) => t.action),
+      ["offline", "friends", "online", "passAndPlay"],
+      `${describe(state)}: returning to a table took a way to play out of the grid`
+    );
+  }
+});
+
+test("returnToTable is never the hero without a room to return to", () => {
+  for (const state of STATES) {
+    assert.notEqual(homeMenu({ ...state, activeRoom: false }).hero, "returnToTable");
+    assert.notEqual(homeMenu(state).hero, "returnToTable");
+  }
+});
+
 test("the hero states it leads to signing in, and only then", () => {
   assert.equal(homeMenu({ savedGame: false, account: false }).heroNeedsAccount, true);
   assert.equal(homeMenu({ savedGame: false, account: true }).heroNeedsAccount, false);

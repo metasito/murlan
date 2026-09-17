@@ -26,6 +26,9 @@ import {
   clearAllTimersForUser,
   disconnectDeadlines,
   disconnectTimers,
+  autoStartDelayMs,
+  autoStartTimers,
+  clearAutoStart,
 } from "./gameTimers.ts";
 import { broadcastRematchIntents } from "./gameOver.ts";
 import { sendGameStateTo } from "./gamePersistence.ts";
@@ -354,11 +357,59 @@ export async function announceRoomJoinable(
  */
 export async function announceIfFilled(
   io: SocketServer,
-  room: { id: string; code: string; maxPlayers: number },
+  room: {
+    id: string;
+    code: string;
+    maxPlayers: number;
+    hostUserId: string | null;
+    autoStart: boolean;
+  },
   seated: number
 ): Promise<void> {
   if (seated < room.maxPlayers) return;
   await announceRoomJoinable(io, room.id, room.code, false);
+  scheduleAutoStart(io, room);
+}
+
+/**
+ * Deals a matchmade table on its own once it is full.
+ *
+ * Strangers matched together have nobody among them who agreed to host, so
+ * waiting on the seat quickmatch happened to create first is waiting on
+ * someone who never asked for the job (#1088). A room from `room:create` is
+ * `autoStart: false` and still waits for its host.
+ *
+ * The room is read again when the timer fires rather than trusted from the
+ * moment it was armed: a seat can empty in between, and dealing then would
+ * start a match the table no longer has.
+ */
+function scheduleAutoStart(
+  io: SocketServer,
+  room: { id: string; hostUserId: string | null; autoStart: boolean }
+): void {
+  if (!room.autoStart || autoStartTimers.has(room.id)) return;
+
+  const timer = setTimeout(() => {
+    autoStartTimers.delete(room.id);
+    void (async () => {
+      try {
+        const current = await roomStore.getRoomById(room.id);
+        if (!current || current.status !== "waiting" || !current.hostUserId) return;
+        const players = await roomStore.getRoomPlayers(room.id);
+        if (players.length < current.maxPlayers) return;
+        await applyOrForward(io, {
+          kind: "startMatch",
+          roomId: room.id,
+          userId: current.hostUserId,
+          fillWithBots: false,
+        });
+      } catch (err) {
+        logger.warn({ err, roomId: room.id }, "Matchmade table failed to deal itself");
+      }
+    })();
+  }, autoStartDelayMs());
+  timer.unref?.();
+  autoStartTimers.set(room.id, timer);
 }
 
 /**
@@ -379,6 +430,7 @@ export async function handleSeatRelease(
   }
 ) {
   clearAllTimersForUser(userId, roomId);
+  clearAutoStart(roomId);
 
   const released = await roomStore.releaseSeat(roomId, userId).catch((err) => {
     logger.warn(

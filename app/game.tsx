@@ -32,8 +32,13 @@ const E2E_FAST = process.env.EXPO_PUBLIC_E2E_FAST === "1";
 const AI_DELAY = E2E_FAST ? 0 : 1100;
 /** How long an AI takes to pick its giveback card in the exchange phase. */
 const AI_EXCHANGE_DELAY = E2E_FAST ? 0 : 600;
-/** Local response deadline. Offline there is no server, so the client enforces it. */
-const HUMAN_TURN_SECONDS = 20;
+/**
+ * Local response deadline. Offline there is no server, so the client enforces
+ * it — at the same 30 s the server's AFK timer gives an online seat
+ * (`server/gameTimers.ts`), so learning offline does not train a faster clock
+ * than the online table allows (docs/BRIEF.md §3.1).
+ */
+const HUMAN_TURN_SECONDS = 30;
 /** Beat before the results screen takes over, so the last play is seen. */
 const RESULT_DELAY = E2E_FAST ? 0 : 800;
 /** Whether a capture state has asked the loop to hold (`lib/e2eAiSuspend.ts`). */

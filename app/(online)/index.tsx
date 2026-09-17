@@ -405,7 +405,11 @@ export default function OnlineLobbyScreen() {
                 <Pressable
                   onPress={handleSpectate}
                   disabled={joinCode.length < 4}
-                  style={({ pressed }) => [styles.modalCancelBtn, pressed && { opacity: 0.85 }]}
+                  style={({ pressed }) => [
+                    styles.modalCancelBtn,
+                    joinCode.length < 4 && styles.modalBtnDisabled,
+                    pressed && { opacity: PRESSED_OPACITY },
+                  ]}
                   accessibilityLabel={t("onlineLobby.watch")}
                   {...watchHint.props}
                   {...a11yState({ role: "button", disabled: joinCode.length < 4 })}
@@ -416,7 +420,11 @@ export default function OnlineLobbyScreen() {
                 <Pressable
                   onPress={handleJoin}
                   disabled={joinCode.length < 4}
-                  style={({ pressed }) => [styles.modalOkBtn, pressed && { opacity: 0.85 }]}
+                  style={({ pressed }) => [
+                    styles.modalOkBtn,
+                    joinCode.length < 4 && styles.modalBtnDisabled,
+                    pressed && { opacity: PRESSED_OPACITY },
+                  ]}
                   accessibilityLabel={t("onlineLobby.enter")}
                   {...a11yState({ role: "button", disabled: joinCode.length < 4 })}
                 >
@@ -432,6 +440,8 @@ export default function OnlineLobbyScreen() {
 }
 
 const COMPACT_COUNT_FONT = 14;
+const PRESSED_OPACITY = 0.85;
+const DISABLED_OPACITY = 0.4;
 
 const styles = StyleSheet.create({
   errorBanner: {
@@ -583,6 +593,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   modalCancelText: { fontFamily: "Rajdhani_600SemiBold", fontSize: FontSize.md, color: Colors.textMuted },
+  modalBtnDisabled: { opacity: DISABLED_OPACITY },
   modalOkBtn: {
     flex: 1,
     minHeight: TOUCH_TARGET_MIN,

@@ -20,6 +20,7 @@ import { useTranslation } from "@/lib/i18n";
 import { serverErrorMessage } from "@/lib/apiError";
 import { a11yHidden, a11yState, useA11yHint } from "@/lib/a11y";
 import { EmptyBlock } from "@/components/StateBlock";
+import { destinationAfterAuth } from "@/lib/authRedirect";
 
 type Tab = "login" | "register";
 
@@ -34,7 +35,8 @@ export default function AuthScreen() {
   const emailHint = useA11yHint(t("auth.emailA11yHint"));
   const passwordHint = useA11yHint(t("auth.passwordA11yHint"));
   const { login, register, user } = useAuth();
-  const params = useLocalSearchParams<{ notice?: string }>();
+  const params = useLocalSearchParams<{ notice?: string; next?: string }>();
+  const afterAuth = destinationAfterAuth(params.next);
   const [tab, setTab] = useState<Tab>("login");
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
@@ -65,7 +67,7 @@ export default function AuthScreen() {
     try {
       if (tab === "login") {
         await login(username.trim(), password);
-        router.replace("/");
+        router.replace(afterAuth as Parameters<typeof router.replace>[0]);
       } else {
         // #897: the response never says whether the address was free — the
         // client only learns whether *this device* ended up signed in, and
@@ -93,7 +95,7 @@ export default function AuthScreen() {
 
   function continueFromCheckEmail() {
     if (checkEmail?.signedIn) {
-      router.replace("/");
+      router.replace(afterAuth as Parameters<typeof router.replace>[0]);
       return;
     }
     setCheckEmail(null);
