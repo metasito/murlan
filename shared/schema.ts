@@ -157,7 +157,7 @@ export const gameInvites = pgTable(
 );
 
 // One live table. Everything about it rides the versioned `game_state`
-// envelope — see `PersistedEnvelope` in server/onlineGameLogic.ts.
+// envelope — see `PersistedEnvelope` in shared/persistedEnvelope.ts.
 export const activeGames = pgTable("active_games", {
   roomId:     text("room_id").primaryKey(),
   gameState:  jsonb("game_state").$type<PersistedEnvelope<GameState>>().notNull(),

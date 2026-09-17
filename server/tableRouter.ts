@@ -38,6 +38,8 @@ const UNOWNED: EventOutcome = { ok: false, code: "NO_LIVE_GAME" };
  */
 const UNREACHABLE: EventOutcome = { ok: false, code: "TABLE_UNREACHABLE" };
 
+export const UNKNOWN_ACTION: EventOutcome = { ok: false, code: "UNKNOWN_ACTION" };
+
 /** How many times an unanswered forward is tried again before giving up. */
 const ASK_ATTEMPTS = 3;
 const RETRY_BASE_MS = 120;
@@ -57,15 +59,14 @@ type Applier = (io: SocketServer, action: TableAction) => Promise<EventOutcome>;
 /**
  * Puts a persisted game back in memory, for the caller named by `forUserId`.
  *
- * Three failures, not one: a row written under a shape this build cannot
+ * Four failures, not one: a row written under a shape this build cannot
  * restore is a different thing to tell the player than a table that was never
- * there, and a caller who holds no seat in the persisted roster must not be
- * able to pull a table into this instance's memory at all.
+ * there, a row a newer revision wrote is that revision's to serve, and a caller
+ * who holds no seat in the persisted roster must not be able to pull a table
+ * into this instance's memory at all.
  */
-type Rehydrator = (
-  roomId: string,
-  forUserId: string | null
-) => Promise<"restored" | "missing" | "unrestorable" | "not_seated">;
+export type RehydrateOutcome = "restored" | "missing" | "unrestorable" | "newer" | "not_seated";
+type Rehydrator = (roomId: string, forUserId: string | null) => Promise<RehydrateOutcome>;
 
 let apply: Applier = async () => UNOWNED;
 let rehydrate: Rehydrator = async () => "missing";
@@ -147,8 +148,10 @@ function askOtherInstances(
       TABLE_ACTION_EVENT,
       action,
       (err: unknown, replies: EventOutcome[] = []) => {
-        const owner = replies.find((r) => r?.code !== NOT_MINE);
-        if (owner) return resolve(owner);
+        // An owner running a revision without a `default` for this kind acks
+        // with nothing; it answered, and it did not apply the action.
+        const owner = replies.findIndex((r) => r?.code !== NOT_MINE);
+        if (owner !== -1) return resolve(replies[owner] ?? UNKNOWN_ACTION);
         // An error means some instance did not answer in time. Reading that as
         // "no owner" is how a slow owner's table gets taken over underneath it.
         if (err) {
@@ -193,6 +196,10 @@ async function takeOverAndApply(
 ): Promise<EventOutcome> {
   const { roomId } = action;
   const restored = await rehydrate(roomId, mayCreate ? null : action.userId);
+  if (restored === "newer") {
+    await releaseRoom(roomId);
+    return UNREACHABLE;
+  }
   if (restored !== "restored" && !mayCreate) {
     // Nothing to own, or nothing this caller may own. Holding the lock would
     // keep the room off every other instance for the life of this process.

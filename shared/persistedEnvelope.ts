@@ -166,7 +166,7 @@ export function packPersistedState<S extends object>(
 
 export type PersistedRestore<S> =
   | ({ ok: true } & Omit<PersistedEnvelope<S>, "schemaVersion">)
-  | { ok: false; reason: string };
+  | { ok: false; reason: string; newer?: true };
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -211,7 +211,11 @@ export const persistedEnvelopeSchema = z.object({
  */
 export function unpackPersistedState<S>(persisted: unknown): PersistedRestore<S> {
   if (!isPlainObject(persisted)) return { ok: false, reason: "not an object" };
-  if (persisted.schemaVersion !== GAME_SCHEMA_VERSION) {
+  const version = persisted.schemaVersion;
+  if (typeof version === "number" && version > GAME_SCHEMA_VERSION) {
+    return { ok: false, newer: true, reason: `schema version ${version} is newer` };
+  }
+  if (version !== GAME_SCHEMA_VERSION) {
     return { ok: false, reason: `schema version ${String(persisted.schemaVersion)}` };
   }
   const parsed = persistedEnvelopeSchema.safeParse(persisted);

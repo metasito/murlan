@@ -29,16 +29,20 @@ const TRANSLATED = LOCALE_NAMES.filter((name) => name !== "en");
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const SERVER_DIR = path.join(REPO_ROOT, "server");
 
+/** The server's sources, plus the shared module whose schema is the restore path's refusal text. */
 function serverSources(): { file: string; source: string }[] {
-  return readdirSync(SERVER_DIR, { recursive: true, encoding: "utf8" })
-    .filter((f) => f.endsWith(".ts"))
-    .map((file) => ({ file, source: readFileSync(path.join(SERVER_DIR, file), "utf8") }));
+  return [
+    ...readdirSync(SERVER_DIR, { recursive: true, encoding: "utf8" })
+      .filter((f) => f.endsWith(".ts"))
+      .map((f) => path.join(SERVER_DIR, f)),
+    path.join(REPO_ROOT, "shared", "persistedEnvelope.ts"),
+  ].map((full) => ({ file: path.relative(REPO_ROOT, full), source: readFileSync(full, "utf8") }));
 }
 
 /**
  * The property names a payload puts a sentence in. The last two are zod's: a
  * schema states its own refusal text there, and `unpackPersistedState`
- * (server/onlineGameLogic.ts) hands the first complaint back as a `reason`, so
+ * (shared/persistedEnvelope.ts) hands the first complaint back as a `reason`, so
  * a schema is a payload's wording however far it sits from the payload.
  */
 const TEXT_FIELDS = new Set([
@@ -258,7 +262,7 @@ describe("no server string assumes the player's gender", () => {
     // which is a thing that can be answered by lowering the count.
     assert.ok(
       sentences.includes("no join code"),
-      "the scan no longer reaches a schema's own refusal text (server/onlineGameLogic.ts) — " +
+      "the scan no longer reaches a schema's own refusal text (shared/persistedEnvelope.ts) — " +
         "if that sentence was reworded, name the new one here rather than dropping the check"
     );
     // A floor of its own for the trailing-argument half of the scan
