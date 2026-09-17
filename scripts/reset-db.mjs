@@ -1,7 +1,7 @@
 /**
  * Destructive: wipes ALL application data so the schema can be re-pushed clean.
  *
- * Deletes every row from users, rooms, room_players, friends and active_games,
+ * TRUNCATE ... CASCADE empties TABLES below *and every table with an FK into them*,
  * and clears all login sessions. Intended for a deliberate clean slate — it is
  * NOT a migration and it preserves nothing.
  *

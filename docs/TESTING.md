@@ -13,7 +13,8 @@ blocker documented below rather than glossed over.
 | Web e2e | `npm run test:e2e` | Playwright, chromium — gameplay, reconnect, a tap-target sweep of every screen at three sizes, and a check that no part of the table renders off the side of one | Docker + a built web bundle |
 | Android UI (Maestro) | `maestro test .maestro/*.yaml` | 4 flows | Android SDK + emulator + Maestro, see §5 |
 
-`npm run verify` runs typecheck, unit/integration, the native suite and lint. It does not
+`npm run verify` runs typecheck, `typecheck:strict`, unit/integration, the native suite and lint,
+in that order. It does not
 run `loop:test`: the loop is a separate product, and `verify` is the game's sweep — ci.yml runs
 the two on separate triggers.
 The web e2e suite is deliberately excluded — it builds the Expo web bundle and
