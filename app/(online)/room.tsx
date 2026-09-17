@@ -7,6 +7,7 @@ import {
   ScrollView,
   Share,
   FlatList,
+  Platform,
 } from "react-native";
 import { useIsLandscape } from "@/lib/orientation";
 import { router } from "expo-router";
@@ -41,6 +42,8 @@ import { useTranslation } from "@/lib/i18n";
 import { A11yStatus, a11yHidden, a11yState } from "@/lib/a11y";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import type { FriendInfo } from "@/lib/wire";
+import { LoadingBlock, ErrorBlock } from "@/components/StateBlock";
+import { INTENT_ACK_TIMEOUT_MS } from "@/lib/sendIntent";
 
 const CODE_ICON = 15;
 const MODE_ICON = 13;
@@ -230,12 +233,13 @@ function InviteFriendsPanel({
   const { t } = useTranslation();
   const { onlineIds, socket } = useSocket();
   const [sentIds, setSentIds] = useState<Set<string>>(new Set());
+  const [sendingIds, setSendingIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (socket) socket.emit("friend:get_online_list");
   }, [socket]);
 
-  const { data: friends = [] } = useQuery<FriendInfo[]>({
+  const { data: friends = [], isLoading, isError, refetch } = useQuery<FriendInfo[]>({
     queryKey: ["/api/friends"],
   });
 
@@ -243,16 +247,24 @@ function InviteFriendsPanel({
     (f) => onlineIds.has(f.id) && !playerUserIds.includes(f.id)
   );
 
+  const forget = (set: React.Dispatch<React.SetStateAction<Set<string>>>, id: string) =>
+    set((prev) => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+
   function handleInvite(friend: FriendInfo) {
-    socket?.emit("friend:invite", { friendUserId: friend.id, roomCode });
-    setSentIds((prev) => new Set(prev).add(friend.id));
-    setTimeout(() => {
-      setSentIds((prev) => {
-        const next = new Set(prev);
-        next.delete(friend.id);
-        return next;
+    if (!socket) return;
+    setSendingIds((prev) => new Set(prev).add(friend.id));
+    socket
+      .timeout(INTENT_ACK_TIMEOUT_MS)
+      .emit("friend:invite", { friendUserId: friend.id, roomCode }, (err: unknown, reply?: { ok: boolean }) => {
+        forget(setSendingIds, friend.id);
+        if (err || !reply?.ok) return;
+        setSentIds((prev) => new Set(prev).add(friend.id));
+        setTimeout(() => forget(setSentIds, friend.id), 2000);
       });
-    }, 2000);
   }
 
   // The list does not scroll, so its height is exactly the rows it shows: landscape keeps
@@ -266,7 +278,14 @@ function InviteFriendsPanel({
       <Text style={[styles.slotsSectionTitle, { color: Colors.gold, marginBottom: isLandscape ? Spacing.xs : Spacing.slim }]}>
         {t("room.inviteFriendsTitle")}
       </Text>
-      {onlineFriendsNotInRoom.length === 0 ? (
+      {isLoading ? (
+        <LoadingBlock label={t("common.loading")} />
+      ) : isError ? (
+        <ErrorBlock
+          title={t("friends.loadErrorTitle")}
+          retry={{ label: t("common.retry"), a11yLabel: t("friends.loadRetryA11yLabel"), onPress: () => refetch() }}
+        />
+      ) : onlineFriendsNotInRoom.length === 0 ? (
         <View style={[inviteStyles.emptyContainer, { backgroundColor: Colors.bgCard, borderRadius: Radius.sm }]}>
           <Text style={inviteStyles.emptyText}>{t("room.noFriendsOnline")}</Text>
         </View>
@@ -289,14 +308,14 @@ function InviteFriendsPanel({
             return (
               <Pressable
                 onPress={() => handleInvite(friend)}
-                disabled={sent}
+                disabled={sent || sendingIds.has(friend.id)}
                 style={({ pressed }) => [
                   inviteStyles.row,
                   { height: ROW_H },
                   pressed && { opacity: 0.8 },
                 ]}
                 accessibilityLabel={sent ? t("room.inviteSentA11yLabel", { username: friend.username }) : t("room.inviteA11yLabel", { username: friend.username })}
-                {...a11yState({ role: "button", disabled: sent })}
+                {...a11yState({ role: "button", disabled: sent || sendingIds.has(friend.id) })}
               >
                 <Avatar name={friend.username} size="sm" online />
                 <Text style={inviteStyles.friendName} numberOfLines={1} {...a11yHidden()}>
@@ -400,8 +419,16 @@ export default function RoomScreen() {
   // reaches them as a live region instead.
   const copyFace = t(copied ? "common.copied" : "common.copy");
 
+  const showShareError = () =>
+    showNotification({ type: "game_error", title: t("common.error"), message: t("room.shareFailed") });
+
   async function handleCopyCode() {
-    await Clipboard.setStringAsync(room!.code);
+    try {
+      await Clipboard.setStringAsync(room!.code);
+    } catch {
+      showShareError();
+      return;
+    }
     hapticSuccess();
     setCopied(true);
     clearTimeout(copiedTimer.current);
@@ -409,7 +436,14 @@ export default function RoomScreen() {
   }
 
   async function handleShare() {
-    await Share.share({ message: t("room.shareMessage", { code: room!.code }) });
+    if (Platform.OS === "web" && typeof globalThis.navigator?.share !== "function") {
+      return handleCopyCode();
+    }
+    try {
+      await Share.share({ message: t("room.shareMessage", { code: room!.code }) });
+    } catch (e) {
+      if ((e as Error)?.name !== "AbortError") showShareError();
+    }
   }
 
   function handleLeave() {

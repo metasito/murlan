@@ -797,6 +797,7 @@ export const en = {
   "room.kindPrivateBody": "Only people with this code can join.",
   "room.kindPublicBody": "Anyone can join while there is a free seat.",
   "room.share": "Share",
+  "room.shareFailed": "Couldn't share the room code.",
   "room.modeAndPlayers": "{{mode}} · {{n}} players",
   "room.modeTeams": "Teams",
   "room.modeFreeForAll": "Free-for-all",
