@@ -13,6 +13,8 @@ export interface ReplaySeat {
   seatIndex: number;
   /** null for a bot seat. */
   userId: string | null;
+  /** Who left this seat: it holds no userId, but a person is still behind it. */
+  vacatedBy?: string | null;
   name: string;
 }
 

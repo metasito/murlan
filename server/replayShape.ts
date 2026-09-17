@@ -8,11 +8,15 @@ import type { ReplayMove, ReplaySeat } from "../lib/replay.ts";
 /** Seat list for a replay row: every seat, with its user id or null for a bot. */
 export function replaySeatsOf(
   players: { name: string }[],
-  playerMap: Record<number, string>
+  playerMap: Record<number, string>,
+  vacatedSeats: ReadonlyMap<number, { userId: string }> = new Map()
 ): ReplaySeat[] {
   return players.map((p, seatIndex) => ({
     seatIndex,
     userId: playerMap[seatIndex] ?? null,
+    // Deliberately outside `replayPlayerIdsOf` below: a leaver keeps no read
+    // access to the replay, this only says whose name the seat still carries.
+    vacatedBy: playerMap[seatIndex] ? null : vacatedSeats.get(seatIndex)?.userId ?? null,
     name: p.name,
   }));
 }

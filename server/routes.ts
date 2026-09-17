@@ -758,7 +758,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Nothing stores a username as history: `matchHistory.userId`, `replays.playerIds` and every
   // stats, rating and friends table key on the id, so each read projects whatever the name is
-  // now. A rename is one column, with no backfill behind it.
+  // now. A rename is one column, with no backfill behind it. `match_replays.seats.name` is the
+  // one stored copy, and `server/replays.ts` resolves it against the account on every read.
   //
   // Seated players keep the name the room was joined under — rewriting live room state mid-hand
   // would change an opponent's name under the other players for no benefit. The table catches up

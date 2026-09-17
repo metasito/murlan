@@ -32,9 +32,19 @@ test("a replay with no human seat belongs to nobody", () => {
 
 test("seats come from the engine state and the player map together", () => {
   assert.deepEqual(replaySeatsOf([{ name: "Ana" }, { name: "Gent" }], { 0: "u1" }), [
-    { seatIndex: 0, userId: "u1", name: "Ana" },
-    { seatIndex: 1, userId: null, name: "Gent" },
+    { seatIndex: 0, userId: "u1", vacatedBy: null, name: "Ana" },
+    { seatIndex: 1, userId: null, vacatedBy: null, name: "Gent" },
   ]);
+});
+
+test("a seat somebody left still says who left it, without granting them the replay", () => {
+  const seats = replaySeatsOf(
+    [{ name: "Ana" }, { name: "Drita" }],
+    { 1: "u2" },
+    new Map([[0, { userId: "u1" }]])
+  );
+  assert.deepEqual(seats[0], { seatIndex: 0, userId: null, vacatedBy: "u1", name: "Ana" });
+  assert.deepEqual(replayPlayerIdsOf(seats), ["u2"]);
 });
 
 test("a play records its combination and the counts that followed", () => {
