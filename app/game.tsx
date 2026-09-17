@@ -2,7 +2,7 @@
 //
 // Everything visual lives in components/GameTable.tsx. What is left here is
 // exactly what is true offline and nowhere else: the AI turn loop, the AI's
-// side of the exchange phase, a local 20s response timer that auto-passes,
+// side of the exchange phase, a local response timer that auto-passes,
 // and navigation to the results screen.
 
 import React, { useEffect, useRef, useState } from "react";
@@ -32,12 +32,7 @@ const E2E_FAST = process.env.EXPO_PUBLIC_E2E_FAST === "1";
 const AI_DELAY = E2E_FAST ? 0 : 1100;
 /** How long an AI takes to pick its giveback card in the exchange phase. */
 const AI_EXCHANGE_DELAY = E2E_FAST ? 0 : 600;
-/**
- * Local response deadline. Offline there is no server, so the client enforces
- * it — at the same 30 s the server's AFK timer gives an online seat
- * (`server/gameTimers.ts`), so learning offline does not train a faster clock
- * than the online table allows (docs/BRIEF.md §3.1).
- */
+/** Local response deadline, equal to the server's AFK timer on purpose (docs/BRIEF.md §3.1). */
 const HUMAN_TURN_SECONDS = 30;
 /** Beat before the results screen takes over, so the last play is seen. */
 const RESULT_DELAY = E2E_FAST ? 0 : 800;

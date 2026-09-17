@@ -94,9 +94,8 @@ const URGENT_FRACTION = 0.4;
 
 /**
  * When the countdown turns red, given how long it runs for. Proportional
- * rather than fixed because the offline clock is 20s against the server's 30s,
- * and a warning that arrives five seconds from the end of the shorter one
- * arrives too late to act on. The audible tick keeps its own fixed, later
+ * rather than fixed because a five-second warning on a short clock arrives
+ * too late to act on. The audible tick keeps its own fixed, later
  * threshold — a warning you can see for twelve seconds is fine, one you can
  * hear for twelve seconds is nagging.
  */
