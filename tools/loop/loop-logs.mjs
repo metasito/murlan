@@ -118,9 +118,10 @@ export function usageSplit(text) {
  * stream logs always had and the ledger never did; grouping on `n` is now the reader's job, and
  * `tests/` can check the file against those logs because both count the same thing.
  *
- * 4 adds `solo_bash_turns`, which is null on every row written before it.
+ * 4 adds `solo_bash_turns`, which is null on every row written before it. 5 adds `head` and
+ * `run_id`, both null on rows written before it.
  */
-export const SCHEMA = 4;
+export const SCHEMA = 5;
 
 /**
  * One session, as one line of the ledger.
@@ -137,7 +138,8 @@ export const SCHEMA = 4;
  * @param {{number: number, size: string|null, outcome: string, parkReason?: string|null,
  *   pr: number|null, phases: Record<string, number>, result: object|null, merged: boolean,
  *   reviewRounds: number|null, startedAt: string, ms: number, version: string|null,
- *   usage?: object|null, committed?: boolean|null, soloBash?: number|null}} session
+ *   usage?: object|null, committed?: boolean|null, soloBash?: number|null,
+ *   head?: string|null, runId?: string|null}} session
  */
 export function sessionRow({
   number,
@@ -155,6 +157,8 @@ export function sessionRow({
   usage = null,
   committed = null,
   soloBash = null,
+  head = null,
+  runId = null,
 }) {
   const models = Object.fromEntries(
     Object.entries(result?.models ?? {}).map(([name, u]) => [name, u.costUSD ?? 0]),
@@ -183,6 +187,8 @@ export function sessionRow({
     review_rounds: reviewRounds ?? null,
     claude_version: version ?? null,
     started: startedAt,
+    head,
+    run_id: runId,
   };
 }
 
@@ -218,7 +224,7 @@ export function ledger(io = {}) {
      *   whether this session closes a ticket — a retry round is a session, not a ticket.
      */
     record(session, { runId, line, counts = true }) {
-      const entry = sessionRow(session);
+      const entry = sessionRow({ ...session, runId });
       mkdir();
       append(ledgerPath(), `${JSON.stringify(entry)}\n`);
 
@@ -242,4 +248,55 @@ export function ledger(io = {}) {
       append(reportPath(runId), `\n${line}\n`);
     },
   };
+}
+
+/** @param {string} [file] */
+export function readLedger(file = ledgerPath()) {
+  if (!fsNode.existsSync(file)) return [];
+  const rows = [];
+  for (const line of fsNode.readFileSync(file, "utf8").split("\n")) {
+    if (!line.trim()) continue;
+    try {
+      rows.push(JSON.parse(line));
+    } catch {
+      continue;
+    }
+  }
+  return rows;
+}
+
+const HANDOFF_RE = /phase\s+([A-Za-z])\s+next/;
+
+/**
+ * A ticket's rounds, spend and handoffs, rebuilt from the rows a restart cannot otherwise see:
+ * everything for `n` since its last `landed` or `parked` row, which is where the tally must have
+ * read zero even before this session existed.
+ *
+ * @param {number} n @param {object[]} rows
+ */
+export function ticketTally(n, rows) {
+  const forTicket = rows.filter((r) => r.n === n);
+  let start = 0;
+  forTicket.forEach((r, i) => {
+    if (r.outcome === "landed" || r.outcome === "parked") start = i + 1;
+  });
+  const since = forTicket.slice(start);
+
+  let spend = 0;
+  let handoffsThisRound = 0;
+  let lastHandoff = null;
+  let retries = 0;
+  let lastRedHead = null;
+  for (const r of since) {
+    spend += r.cost ?? 0;
+    if (r.outcome === "retry") {
+      retries += 1;
+      handoffsThisRound = 0;
+      lastRedHead = r.head ?? null;
+    } else if (r.outcome === "handoff") {
+      handoffsThisRound += 1;
+      lastHandoff = HANDOFF_RE.exec(r.park_reason ?? "")?.[1] ?? lastHandoff;
+    }
+  }
+  return { sessions: since.length, spend, handoffsThisRound, lastHandoff, lastRedHead, retries };
 }

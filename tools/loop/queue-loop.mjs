@@ -1715,6 +1715,7 @@ export async function runOnce(io, pinned = null, roundsUsed = 0, at = null) {
     merged: cost.recorded === "landed",
     files,
     counts: cost.recorded !== "retry",
+    head: pr?.sha ?? null,
   });
   // The worktree and the run come with it: the next round works in that worktree.
   if (cost.recorded === "retry") {
@@ -1824,7 +1825,7 @@ function realIo(book, screen) {
      * CI fix round and a usage refusal are sessions that spent money without one — and it changes
      * only which counter moves, never whether the money is recorded.
      */
-    record: ({ number, outcome, why, run, pr = null, merged = false, files = 0, counts = true }) => {
+    record: ({ number, outcome, why, run, pr = null, merged = false, files = 0, counts = true, head = null }) => {
       const facts = ticketFacts(number);
       screen.say(
         closing({
@@ -1860,6 +1861,7 @@ function realIo(book, screen) {
           usage: run.usage ?? null,
           committed: run.committed ?? null,
           soloBash: run.soloBash ?? null,
+          head,
         },
         {
           runId: RUN_ID,

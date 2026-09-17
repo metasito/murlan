@@ -1,8 +1,19 @@
 // tools/loop/tests/loopLogs.test.ts
-import { test, describe } from "node:test";
+import { test, describe, before, after } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
-import { ARTEFACTS, ledger, prunable, prune, sessionRow, usageSplit } from "../loop-logs.mjs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import {
+  ARTEFACTS,
+  ledger,
+  prunable,
+  prune,
+  readLedger,
+  sessionRow,
+  ticketTally,
+  usageSplit,
+} from "../loop-logs.mjs";
 
 const RESULT = {
   kind: "result",
@@ -115,7 +126,17 @@ describe("sessionRow", () => {
   test("stamps the schema, so two readings of a field are never averaged together", () => {
     // The literal, not the module's own constant: a test that reads the value it is pinning moves
     // with it and pins nothing. Bump it here deliberately when a field changes what it holds.
-    assert.equal(r.schema, 4);
+    assert.equal(r.schema, 5);
+  });
+
+  test("carries the head and the run that wrote it", () => {
+    const withHead = sessionRow(session({ head: "aaa1111", runId: "2026-09-17-07-14" }));
+    assert.equal(withHead.head, "aaa1111");
+    assert.equal(withHead.run_id, "2026-09-17-07-14");
+  });
+
+  test("a row with neither is still valid, not a throw", () => {
+    assert.equal(r.head, null);
   });
 
   // Six tickets ran two sessions and the ledger kept only the second, so a fifth of the money
@@ -305,5 +326,105 @@ describe("ledger", () => {
     book.record(session({ outcome: "parked", merged: false }), { runId: "r", line: "x" });
     assert.equal(book.totals.parked, 1);
     assert.equal(book.totals.landed, 0);
+  });
+
+  test("the row carries the run that wrote it, without the caller repeating it in session", () => {
+    const { io } = spy();
+    const book = ledger(io);
+    const entry = book.record(session(), { runId: "2026-09-13-04-12", line: "x" });
+    assert.equal(entry.run_id, "2026-09-13-04-12");
+  });
+});
+
+describe("ticketTally", () => {
+  const row = (over: object) => ({ n: 1, cost: 0, ...over });
+
+  test("handoffs since the last terminal row, restarting the streak on a retry", () => {
+    const t = ticketTally(1, [
+      row({ outcome: "handoff", park_reason: "phase D next" }),
+      row({ outcome: "handoff", park_reason: "phase D next" }),
+      row({ outcome: "retry", head: "a" }),
+      row({ outcome: "handoff", park_reason: "phase D next" }),
+    ]);
+    assert.equal(t.sessions, 4);
+    assert.equal(t.handoffsThisRound, 1);
+    assert.equal(t.lastHandoff, "D");
+    assert.equal(t.lastRedHead, "a");
+    assert.equal(t.retries, 1);
+  });
+
+  test("a landed row starts the next tally from zero", () => {
+    const t = ticketTally(1, [
+      row({ outcome: "retry", head: "x" }),
+      row({ outcome: "landed" }),
+      row({ outcome: "handoff", park_reason: "phase E next" }),
+    ]);
+    assert.equal(t.sessions, 1);
+    assert.equal(t.lastHandoff, "E");
+    assert.equal(t.lastRedHead, null);
+    assert.equal(t.retries, 0);
+  });
+
+  test("a parked row starts the next tally from zero too", () => {
+    const t = ticketTally(1, [row({ outcome: "retry" }), row({ outcome: "parked" }), row({ outcome: "retry" })]);
+    assert.equal(t.sessions, 1);
+    assert.equal(t.retries, 1);
+  });
+
+  test("spend sums every row, including retry and refused rows", () => {
+    const t = ticketTally(1, [
+      row({ outcome: "retry", cost: 1 }),
+      row({ outcome: "refused", cost: 0.5 }),
+      row({ outcome: "handoff", cost: 0.2, park_reason: "phase D next" }),
+    ]);
+    assert.equal(t.spend, 1.7);
+  });
+
+  test("a schema-4 row with no head gives lastRedHead null rather than throwing", () => {
+    assert.doesNotThrow(() => ticketTally(1, [row({ outcome: "retry" })]));
+    assert.equal(ticketTally(1, [row({ outcome: "retry" })]).lastRedHead, null);
+  });
+
+  test("a ticket with no rows at all is an empty tally, not a throw", () => {
+    assert.deepEqual(ticketTally(1, []), {
+      sessions: 0,
+      spend: 0,
+      handoffsThisRound: 0,
+      lastHandoff: null,
+      lastRedHead: null,
+      retries: 0,
+    });
+  });
+
+  test("another ticket's rows in the same file are not counted", () => {
+    const t = ticketTally(1, [row({ n: 2, outcome: "retry", cost: 5 })]);
+    assert.equal(t.sessions, 0);
+    assert.equal(t.spend, 0);
+  });
+});
+
+describe("readLedger", () => {
+  let dir: string;
+  before(() => {
+    dir = mkdtempSync(path.join(tmpdir(), "read-ledger-"));
+  });
+  after(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("a missing file is no rows, not a throw", () => {
+    assert.deepEqual(readLedger(path.join(dir, "nope.jsonl")), []);
+  });
+
+  test("skips a line it cannot parse", () => {
+    const file = path.join(dir, "tickets.jsonl");
+    writeFileSync(file, '{"n":1}\nnot json\n\n{"n":2}\n', "utf8");
+    assert.deepEqual(readLedger(file), [{ n: 1 }, { n: 2 }]);
+  });
+
+  test("an empty file is no rows", () => {
+    const file = path.join(dir, "empty.jsonl");
+    writeFileSync(file, "", "utf8");
+    assert.deepEqual(readLedger(file), []);
   });
 });

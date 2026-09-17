@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { ticketOf, verdictFor, reviewFor, reviewRounds, derive, locateRun, BRANCH } from "../loop-derive.mjs";
+import { ticketOf, verdictFor, reviewFor, reviewRounds, ciRedRounds, derive, locateRun, BRANCH } from "../loop-derive.mjs";
 import { report } from "../loop-status.mjs";
 
 /**
@@ -159,6 +159,35 @@ describe("counting review rounds", () => {
 
   test("no comments is zero rounds", () => {
     assert.equal(reviewRounds([]), 0);
+  });
+});
+
+describe("ciRedRounds", () => {
+  const claim = { body: "Claimed by `agent/9-x`." };
+
+  test("counts CI-RED comments after the newest claim, not before it", () => {
+    const n = ciRedRounds([{ body: "CI-RED aaaaaaa" }, { body: "CI-RED bbbbbbb" }, claim, { body: "CI-RED ccccccc" }]);
+    assert.equal(n, 1);
+  });
+
+  test("distinct shas, not distinct comments", () => {
+    const n = ciRedRounds([claim, { body: "CI-RED aaaaaaa" }, { body: "CI-RED aaaaaaa" }]);
+    assert.equal(n, 1);
+  });
+
+  test("a reclaim resets what counts, so only the newest claim's tail is read", () => {
+    const n = ciRedRounds([{ body: "CI-RED aaaaaaa" }, claim, { body: "CI-RED bbbbbbb" }, claim, { body: "CI-RED ccccccc" }]);
+    assert.equal(n, 1);
+  });
+
+  test("a CI-RED quoted inside a fence does not count", () => {
+    const fence = "```";
+    const n = ciRedRounds([claim, { body: `see:\n${fence}\nCI-RED aaaaaaa\n${fence}` }]);
+    assert.equal(n, 0);
+  });
+
+  test("no claim at all still counts the CI-RED comments there are", () => {
+    assert.equal(ciRedRounds([{ body: "CI-RED aaaaaaa" }]), 1);
   });
 });
 

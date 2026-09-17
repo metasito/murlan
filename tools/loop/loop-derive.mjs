@@ -51,6 +51,31 @@ const covers = (head, sha) => head.startsWith(sha) || sha.startsWith(head.slice(
 
 const fenceStripped = (body) => (body ?? "").replace(/```[\s\S]*?```/g, "");
 
+/** The claim comment `claim.mjs` posts — its literal text is the only marker there is. */
+const CLAIM_RE = /^Claimed by `/m;
+
+const CI_RED_RE = /^CI-RED\s+([0-9a-f]{7,40})\b/m;
+
+/**
+ * How many CI rounds have gone red since the ticket was last claimed — the newest claim, not the
+ * first, so a ticket reclaimed after a restart starts the count over rather than inheriting a run
+ * that already ended.
+ *
+ * @param {{body: string}[]} comments
+ */
+export function ciRedRounds(comments) {
+  let since = 0;
+  comments.forEach((c, i) => {
+    if (CLAIM_RE.test(fenceStripped(c.body))) since = i + 1;
+  });
+  const shas = new Set();
+  for (let i = since; i < comments.length; i++) {
+    const m = CI_RED_RE.exec(fenceStripped(comments[i].body));
+    if (m) shas.add(m[1]);
+  }
+  return shas.size;
+}
+
 /** @returns {string|null} */
 export function currentBranch(cwd) {
   try {
