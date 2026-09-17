@@ -63,14 +63,21 @@ node tools/loop/next-ticket.mjs $ARGUMENTS   # prints ROUTE, body, comments, blo
 ```
 
 If that output shows an open pull request on this ticket, it is already claimed and its Definition
-of done is posted. Do not claim it again; rebuild the worktree and resume where the second
-`loop-status.mjs` says:
+of done is posted. Do not claim it again; rebuild the worktree:
 
 ```sh
 git fetch origin --quiet
 git worktree add -B agent/<n>-<slug> .worktrees/agent-<n> origin/agent/<n>-<slug>
-node tools/loop/loop-status.mjs
 ```
+
+If it was blocked on a shared issue that is now closed — its last `CI-RED`'s `shared:` line names
+another branch's `#<m>` — main has that fix and this branch does not. Merge it in first:
+
+```sh
+git -C .worktrees/agent-<n> merge --no-edit origin/main
+```
+
+Then resume where `node tools/loop/loop-status.mjs` says.
 
 If `queue:pre` fails, **halt**. `$ARGUMENTS` is the ticket the supervisor passed; a bare `/queue`
 picks from the live queue.
@@ -123,7 +130,7 @@ gh run list --branch agent/<n>-<slug> --limit 1 --json databaseId --jq '.[0].dat
 
 The `CI-RED` comment's `shared:` line says whether the failure is red elsewhere too:
 `#<m> owned here` means this branch owns shared issue #<m> — fix its root cause in this diff and put
-`Closes #<m>` in the PR body beside `Closes #<n>`. Any other `#<m>` is another branch's to fix; do
+`Closes #<m>` in the PR body beside `Closes #<n>` (the PR exists: phase E edits its body). Any other `#<m>` is another branch's to fix; do
 not re-investigate it.
 
 Fix what CI named, then run the suite it named as well as the usual check:
@@ -154,7 +161,8 @@ How to solve it is yours. What constrains the process:
   needs an account, a device, a design or a policy call. If it cannot start until this lands:
 
   ```sh
-  gh api -X POST repos/{owner}/{repo}/issues/<new>/dependencies/blocked_by -f issue_id=<this>
+  gh api -X POST repos/{owner}/{repo}/issues/<new>/dependencies/blocked_by \
+    -F issue_id="$(gh api repos/{owner}/{repo}/issues/<this> --jq .id)"   # the database id, not #<this>
   ```
 - **A ticket's prescribed form is a proposal.** If a test rules it out, build its intent and say
   why in the commit.
@@ -168,10 +176,10 @@ slice.
 **On the context notice, commit and declare `handoff` = your phase.** A fresh process resumes
 from git with none of this conversation.
 
-Before leaving C, `git rev-list --count origin/main..HEAD` must be non-zero. Run
-`npm run agent:check` and `node tools/loop/loop-gate.mjs --build` before declaring handoff D; the
-supervisor sends a handoff with no local pass on a clean HEAD back to C. Then commit the last slice
-and exit:
+Before leaving C, `git rev-list --count origin/main..HEAD` must be non-zero. Then, in this order:
+commit the last slice; run `npm run agent:check`; run `node tools/loop/loop-gate.mjs --build`,
+which must exit 0; only then declare handoff D and exit. The supervisor sends a handoff with no
+local pass on a clean HEAD back to C.
 
 ```
 LOOP-RESULT {"ticket":<n>,"branch":"agent/<n>-slug","phase":"C","handoff":"D"}
@@ -301,6 +309,9 @@ Never push a red check, and never re-run it hoping for a different answer.
 git push -u origin agent/<n>-<slug>
 gh pr create --base main --head agent/<n>-<slug> --title "<title>" --body-file <file>
 ```
+
+On a fix round the pull request already exists: skip `gh pr create`, push, and rewrite its body
+with `gh pr edit <pr> --body-file <file>` when it changed (a new `Closes #<m>`).
 
 The body says what changed, how you know, and which Definition-of-done boxes are closed. `Closes #<n>`
 goes in the **body**, never in a commit message. Write the file with the Write tool or a bash

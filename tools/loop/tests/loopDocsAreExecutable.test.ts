@@ -225,6 +225,18 @@ describe("a CI fix round is a documented path, not an improvisation", () => {
 
   // Resolved through the function that writes it, not scanned for as text: a path spelled the
   // same in two files is a premise that decays, and a scan cannot tell a mention from a caller.
+  test("phase C commits before the check, and the build gate runs last, before handoff D", () => {
+    const c = read(QUEUE).split("## C — Build")[1]?.split("## D — Review")[0] ?? "";
+    const at = ["commit the last slice", "npm run agent:check", "loop-gate.mjs --build", "handoff D"].map((s) =>
+      c.lastIndexOf(s),
+    );
+    assert.ok(at.every((i, k) => i >= 0 && (k === 0 || i > at[k - 1])), `out of order: ${at.join(", ")}`);
+  });
+
+  test("a stranded rebuild whose blocker closed merges main before it resumes", () => {
+    assert.match(read(QUEUE), /merge --no-edit origin\/main[\s\S]*Then resume where `node tools\/loop\/loop-status\.mjs` says/);
+  });
+
   test("the log path it names is the one the supervisor writes", () => {
     const named = /\.loop-logs\/ci-<n>\.log/.exec(read(QUEUE))?.[0];
     assert.ok(named, "queue.md never tells the fix session where its CI log is");
