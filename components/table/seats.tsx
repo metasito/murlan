@@ -242,7 +242,6 @@ const RING_STROKE = 2;
  */
 const RING_PING_SCALE = 1.45;
 
-
 /**
  * The turn clock, drawn as an arc around the seat on move. It is a display of
  * the same window the viewer's own chip counts down, so it is armed by the
