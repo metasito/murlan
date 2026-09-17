@@ -163,19 +163,13 @@ describe("the session declares what it did before it exits", () => {
     }
   });
 
-  test("the teardown it names still runs before the declaration, so the facts are final", () => {
+  test("phase F declares and leaves its worktree standing for the supervisor", () => {
     const text = read(QUEUE);
     const from = text.indexOf("## F — Close out");
     assert.notEqual(from, -1, "phase F's heading has moved");
     const f = text.slice(from);
-    // Each position is asserted present before they are compared: `indexOf` answers -1 for a line
-    // that is gone, and -1 sorts before everything, so the comparison alone passes on an absent
-    // teardown.
-    const teardown = f.indexOf("worktrees:remove -- .worktrees/agent-<n>");
-    const declaration = f.indexOf("LOOP-RESULT");
-    assert.notEqual(teardown, -1, "phase F no longer names the teardown");
-    assert.notEqual(declaration, -1, "phase F no longer asks for the declaration");
-    assert.ok(teardown < declaration, "the declaration is the last thing the session emits");
+    assert.notEqual(f.indexOf("LOOP-RESULT"), -1, "phase F no longer asks for the declaration");
+    assert.doesNotMatch(f, /worktrees:remove|Tear down your worktree/);
   });
 
   /**
@@ -238,16 +232,13 @@ describe("a CI fix round is a documented path, not an improvisation", () => {
   });
 });
 
-// The session is the only process that knows whether its tree is dirty. The supervisor removed it
-// without --force against a post-push tree that is always dirty, the removal refused, and the
-// surviving directory made derive() report a live run.
-describe("the session tears down its own worktree", () => {
-  test("phase F names the script that detaches the junction first", () => {
-    assert.match(read(QUEUE), /npm run worktrees:remove -- \.worktrees\/agent-<n>/);
+describe("the supervisor tears the worktree down", () => {
+  test("with the script that detaches the junction first", () => {
+    assert.match(read("tools/loop/queue-loop.mjs"), /"worktrees:remove", "--"/);
   });
 
-  test("nothing still claims the supervisor does it", () => {
-    assert.doesNotMatch(read(QUEUE), /The loop tears the worktree down/);
+  test("no step of queue.md still points at a phase F step 5", () => {
+    assert.doesNotMatch(read(QUEUE), /phase F step 5/i);
   });
 });
 

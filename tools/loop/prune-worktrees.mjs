@@ -14,9 +14,10 @@
  *            gone too), or its directory has already vanished from disk -
  *            there is nothing left there to lose, so this skips the merge
  *            and pull-request checks entirely.
+ *   stale  - an open pull request whose issue no longer carries `in-progress`.
  *   live   - an open pull request, or anything uncommitted in the tree.
  *
- * Only `merged` and `gone` are removed. `live` is printed and left alone,
+ * Every other status is removed. `live` is printed and left alone,
  * and so is a worktree with uncommitted changes, checked first and
  * unconditionally, regardless of what its branch or pull request say -
  * that is the floor: this script must never be the reason unpushed work is
@@ -38,7 +39,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
-import { FOUND_NOTHING, IF_FOUND, WORKTREE_DIR } from "./loop-derive.mjs";
+import { FOUND_NOTHING, IF_FOUND, ticketOf, WORKTREE_DIR } from "./loop-derive.mjs";
 
 /**
  * Parses `git worktree list --porcelain` into one entry per worktree, in
@@ -78,11 +79,12 @@ export function parseWorktreeList(porcelain) {
  *   mergedIntoMain: boolean,
  *   prState: "OPEN" | "MERGED" | "CLOSED" | null,
  *   directoryMissing?: boolean,
+ *   issueInProgress: boolean,
  * }} state
- * @returns {{ status: "merged" | "gone" | "live", reason: string }}
+ * @returns {{ status: "merged" | "gone" | "stale" | "live", reason: string }}
  */
 export function classifyWorktree(state) {
-  const { branch, hasUncommittedChanges, locked, branchOnRemote, branchOnLocal, mergedIntoMain, prState, directoryMissing } = state;
+  const { branch, hasUncommittedChanges, locked, branchOnRemote, branchOnLocal, mergedIntoMain, prState, directoryMissing, issueInProgress } = state;
 
   // The floor, checked before anything else can override it.
   if (locked) {
@@ -100,7 +102,9 @@ export function classifyWorktree(state) {
     return { status: "gone", reason: "detached HEAD, no branch to track" };
   }
   if (prState === "OPEN") {
-    return { status: "live", reason: "open pull request" };
+    return issueInProgress
+      ? { status: "live", reason: "open pull request" }
+      : { status: "stale", reason: "open pull request, but its issue is not in-progress" };
   }
   if (mergedIntoMain) {
     return { status: "merged", reason: "branch is merged into origin/main" };
@@ -113,6 +117,9 @@ export function classifyWorktree(state) {
   }
   return { status: "live", reason: "unmerged, with no closed or open pull request found" };
 }
+
+/** @param {string} status */
+export const removable = (status) => status !== "live";
 
 /**
  * The names among these entries that are links rather than real directories. A Windows junction
@@ -205,6 +212,16 @@ function prState(branch) {
   return rows[0]?.state ?? null;
 }
 
+function issueInProgress(branch) {
+  const ticket = ticketOf(branch);
+  // A branch no ticket names is nobody's claim to lapse, so its open pull request keeps it.
+  if (!ticket) return true;
+  const labels = execFileSync("gh", ["issue", "view", String(ticket), "--json", "labels", "--jq", ".labels[].name"], {
+    encoding: "utf8",
+  });
+  return labels.split("\n").includes("in-progress");
+}
+
 /** Resolves one worktree entry's full state, skipping network calls once the floor already applies. */
 function classifyEntry(entry) {
   if (entry.locked) {
@@ -242,6 +259,7 @@ function classifyEntry(entry) {
       prState: null,
     });
   }
+  const pr = prState(entry.branch);
   return classifyWorktree({
     branch: entry.branch,
     hasUncommittedChanges: false,
@@ -249,7 +267,8 @@ function classifyEntry(entry) {
     branchOnRemote: branchOnRemote(entry.branch),
     branchOnLocal: branchOnLocal(entry.branch),
     mergedIntoMain: mergedIntoMain(entry.branch),
-    prState: prState(entry.branch),
+    prState: pr,
+    issueInProgress: pr === "OPEN" && issueInProgress(entry.branch),
   });
 }
 
@@ -453,7 +472,7 @@ if (invokedDirectly && process.argv.includes("--remove")) {
       }
       console.log(`${result.status.toUpperCase()}\t${entry.path}\t${entry.branch ?? "(detached)"}\t${result.reason}`);
 
-      if (result.status !== "merged" && result.status !== "gone") {
+      if (!removable(result.status)) {
         kept++;
         continue;
       }

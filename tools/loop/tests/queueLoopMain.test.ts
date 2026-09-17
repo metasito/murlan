@@ -4,8 +4,21 @@
 // with no test: every export was unit-tested and the way they were put together was not.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { runOnce, afterSession, main, MAX_HANDOFFS, USD_BY_SIZE } from "../queue-loop.mjs";
+import path from "node:path";
+import {
+  runOnce,
+  afterSession,
+  main,
+  nextRoute,
+  park,
+  refreshWorktree,
+  removeWorktree,
+  MAX_HANDOFFS,
+  USD_BY_SIZE,
+} from "../queue-loop.mjs";
 import { ticketTally } from "../loop-logs.mjs";
+
+const ROOT = path.resolve(import.meta.dirname, "..", "..", "..");
 
 const rowOf = (x: any) => ({
   n: x.number,
@@ -361,6 +374,149 @@ describe("runOnce", () => {
     assert.equal(rings, 2);
   });
 
+  test("a G route settles without spawning", async () => {
+    const rows: any[] = [];
+    const torn: unknown[] = [];
+    let spawns = 0;
+    const r = await runOnce(
+      io({
+        pick: () => ({ skill: "implement", number: 42, title: "t", size: "size:S", queue: null, resuming: true, phase: "G" }),
+        spawn: async () => (spawns += 1) as never,
+        pushedPr: (_b: unknown, _n: unknown, _d: unknown, since: number) =>
+          since === 0 ? { number: 984, state: "OPEN", head: "agent/42-x" } : null,
+        record: (x: unknown) => rows.push(x),
+        teardown: (cwd: string | null) => torn.push(cwd),
+      }),
+    );
+    assert.equal(spawns, 0);
+    assert.equal(r.outcome, "landed");
+    assert.deepEqual(torn, [".worktrees/agent-42"]);
+    assert.deepEqual(
+      rows.map((x) => [x.outcome, x.run.result, x.run.declared]),
+      [["landed", null, null]],
+    );
+  });
+
+  test("the prune in queue-pre runs before the pick", async () => {
+    const order: string[] = [];
+    await runOnce(
+      io({
+        queuePre: () => (order.push("pre"), 0),
+        pick: () => (order.push("pick"), { skill: "implement", number: 42, title: "t", size: null, queue: null }),
+      }),
+    );
+    assert.deepEqual(order, ["pre", "pick"]);
+  });
+
+  test("a red settle leaves the worktree standing and the next pass spawns C with the fix", async () => {
+    const torn: unknown[] = [];
+    const parked: number[] = [];
+    const red = await runOnce(
+      io({
+        settle: async () => ({ action: "hand-back", reason: "CI failed at Lint" }),
+        teardown: (cwd: string | null) => torn.push(cwd),
+        park: (n: number) => parked.push(n),
+      }),
+    );
+    assert.equal(red.outcome, "retry");
+    assert.deepEqual([torn, parked], [[], []]);
+
+    const asked: unknown[] = [];
+    const route: any = nextRoute(42, null, {
+      read: (o: unknown) => {
+        asked.push(o);
+        return { onTicket: true, ticket: 42, branch: "agent/42-x", cwd: red.cwd, dirty: false, phase: "C", fix: true };
+      },
+      facts: () => ({ title: "t", url: "", size: "size:S", labels: ["in-progress"], reviewRounds: 1, ciRounds: 1 }),
+      ledger: () => [{ n: 42, outcome: "handoff", cost: 0, park_reason: "phase E next", head: null }],
+    } as never);
+    assert.deepEqual(asked, [{ ci: true }]);
+    assert.deepEqual([route.phase, route.fix, route.cwd, route.branch], ["C", true, red.cwd, "agent/42-x"]);
+
+    const order: string[] = [];
+    await runOnce(
+      io({
+        pick: () => route,
+        refreshWorktree: (cwd: string, branch: string) => order.push(`refresh ${cwd} ${branch}`),
+        spawn: async (r: { phase: string }) => {
+          order.push(`spawn ${r.phase}`);
+          return { status: 0, blocked: false, result: {}, ms: 1, log: "l", phase: "F", declared: null };
+        },
+      }),
+      42,
+    );
+    assert.deepEqual(order, [`refresh ${red.cwd} agent/42-x`, "spawn C"]);
+  });
+
+  test("nextRoute: a derived G outranks a stale handoff, and a pinned ticket with no worktree rebuilds at A", () => {
+    const facts = () => ({ title: "t", url: "", size: null, labels: ["in-progress"], reviewRounds: 1, ciRounds: 0 });
+    const ledger = () => [{ n: 42, outcome: "handoff", cost: 0, park_reason: "phase E next", head: null }];
+    const g = nextRoute(null, null, {
+      read: () => ({ onTicket: true, ticket: 42, branch: "agent/42-x", cwd: "w", phase: "G", fix: false }),
+      facts,
+      ledger,
+    } as never);
+    assert.equal(g.phase, "G");
+    const stranded = nextRoute(42, null, { read: () => ({ onTicket: false, phase: "A" }), facts, ledger } as never);
+    assert.deepEqual([stranded.phase, stranded.resuming], ["A", true]);
+  });
+
+  test("an ff failure before a fix parks", async () => {
+    const parked: { n: number; why: string }[] = [];
+    let spawns = 0;
+    const r = await runOnce(
+      io({
+        pick: () => ({
+          skill: "implement",
+          number: 42,
+          title: "t",
+          size: null,
+          queue: null,
+          resuming: true,
+          phase: "C",
+          fix: true,
+          cwd: ".worktrees/agent-42",
+          branch: "agent/42-x",
+        }),
+        refreshWorktree: () => {
+          throw Object.assign(new Error("Command failed: git merge"), {
+            stderr: "fatal: Not possible to fast-forward, aborting.\nhint: x",
+          });
+        },
+        spawn: async () => (spawns += 1) as never,
+        park: (n: number, c: { why: string }) => parked.push({ n, why: c.why }),
+      }),
+    );
+    assert.equal(spawns, 0);
+    assert.equal(r.outcome, "parked");
+    assert.equal(parked.length, 1);
+    assert.match(parked[0].why, /Not possible to fast-forward, aborting\.$/);
+  });
+
+  test("refreshWorktree fetches the branch and fast-forwards onto it", () => {
+    const calls: unknown[] = [];
+    refreshWorktree("w", "agent/42-x", (file: string, args: string[]) => String(calls.push([file, ...args])));
+    assert.deepEqual(calls, [
+      ["git", "-C", "w", "fetch", "--quiet", "origin", "agent/42-x"],
+      ["git", "-C", "w", "merge", "--ff-only", "origin/agent/42-x"],
+    ]);
+  });
+
+  test("a landed or parked ticket removes the worktree from the main checkout", () => {
+    const calls: [string, string[], { cwd?: string } | undefined][] = [];
+    const run = (file: string, args: string[], opts?: { cwd?: string }) => {
+      calls.push([file, args, opts]);
+      return "";
+    };
+    removeWorktree("w", run);
+    park(42, { phase: "E", why: "x", log: "l", cwd: "w", branch: "b", dirty: false, run, write: () => {} });
+    const removals = calls.filter(([, args]) => args.includes("worktrees:remove"));
+    assert.equal(removals.length, 2);
+    for (const [file, args, opts] of removals) {
+      assert.deepEqual([file, args, path.resolve(opts?.cwd ?? "")], ["npm", ["run", "worktrees:remove", "--", "w"], ROOT]);
+    }
+  });
+
   test("a dirtied shared checkout is named, not fatal", async () => {
     const said: string[] = [];
     const r = await runOnce(
@@ -540,6 +696,24 @@ describe("a throw mid-iteration", () => {
     };
     await main({ io: spy, book: book(), screen: screen(), install: () => {}, runId: "t" });
     assert.deepEqual(parked, [], "parked a ticket nobody had picked");
+  });
+
+  test("a standing() that throws still releases the claim", async () => {
+    const parked: number[] = [];
+    let picked = 0;
+    const spy = {
+      ...(io() as any),
+      pick: () => ({ skill: "implement", number: 4400 + ++picked, title: "t", size: null, queue: null }),
+      spawn: async () => {
+        throw new Error("the session could not start");
+      },
+      standing: () => {
+        throw new Error("git worktree list failed");
+      },
+      park: (n: number) => parked.push(n),
+    };
+    await main({ io: spy, book: book(), screen: screen(), install: () => {}, runId: "t" });
+    assert.deepEqual(parked, [4401, 4402, 4403]);
   });
 
   test("a park that itself throws is reported, not raised", async () => {

@@ -5,8 +5,7 @@
  *
  * The split: this picks one ticket, passes its number to the session, waits for the session to
  * exit, reads CI, polls mergeability, merges, and records. The session owns claim → build →
- * review → gate → push and its own worktree teardown, because it is the only process that knows
- * whether its tree is dirty. Tickets are serialised, so there is no pending pull request held in
+ * review → gate → push. Tickets are serialised, so there is no pending pull request held in
  * memory for a crash to orphan.
  *
  * It exits only when there is genuinely nothing to do. A spent usage window is a wait, not an end:
@@ -17,8 +16,9 @@
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import fs, { createWriteStream, mkdirSync, writeFileSync } from "node:fs";
+import path from "node:path";
 import { createInterface } from "node:readline";
-import { ciRedRounds, derive, REPO, reviewRounds } from "./loop-derive.mjs";
+import { ciRedRounds, derive, REPO, reviewRounds, WORKTREE_DIR } from "./loop-derive.mjs";
 import { readLine } from "./loop-stream.mjs";
 import {
   act,
@@ -65,6 +65,7 @@ import { readVerdict } from "./ciVerdict.ts";
 // Spawning a sibling by its own directory, not the cwd: the supervisor runs from the repo root,
 // but nothing guarantees that, and the sibling is beside this file either way.
 const HERE = import.meta.dirname;
+const ROOT = path.resolve(HERE, "..", "..");
 
 const STOP_FILE = ".loop-stop";
 
@@ -126,19 +127,34 @@ export function liveRoute(status, labels = null) {
  * A resumed route carries the ticket's size, or `TURNS_BY_SIZE` falls through to the default and
  * bounds the second attempt tighter than the one that already failed to finish.
  *
+ * A pushed head's own reading — CI to settle, or a red run to fix — outranks a handoff the ledger
+ * still holds from before the push.
+ *
  * @param {number|null} [pinned]
  */
-function nextRoute(pinned = null, at = null) {
-  const status = derive();
-  const facts = status.onTicket && status.ticket ? ticketFacts(status.ticket) : null;
-  const live = liveRoute(status, facts?.labels ?? null);
+export function nextRoute(pinned = null, at = null, { read = derive, facts = ticketFacts, ledger = readLedger } = {}) {
+  const status = read({ ci: true });
+  const known = status.onTicket && status.ticket ? facts(status.ticket) : null;
+  const live = liveRoute(status, known?.labels ?? null);
   if (live) {
-    const phase = at ?? ticketTally(live.number, readLedger()).lastHandoff ?? live.phase;
-    return { ...live, phase, size: facts?.size ?? null, ciRounds: facts?.ciRounds ?? 0, queue: null };
+    const phase =
+      live.phase === "G"
+        ? "G"
+        : (at ?? (status.fix ? "C" : null) ?? ticketTally(live.number, ledger()).lastHandoff ?? live.phase);
+    return {
+      ...live,
+      phase,
+      fix: Boolean(status.fix),
+      cwd: status.cwd ?? null,
+      branch: status.branch ?? null,
+      dirty: status.dirty ?? false,
+      size: known?.size ?? null,
+      ciRounds: known?.ciRounds ?? 0,
+      queue: null,
+    };
   }
   if (pinned) {
-    const { title, size, ciRounds } = ticketFacts(pinned);
-    // Phase A: phase F removed the worktree, so queue.md's fix round rebuilds it from the branch.
+    const { title, size, ciRounds } = facts(pinned);
     return { skill: "implement", number: pinned, title, size, ciRounds, queue: null, resuming: true, phase: "A" };
   }
   const stdout = execFileSync("node", [HERE + "/next-ticket.mjs"], { encoding: "utf8" });
@@ -473,8 +489,6 @@ export function settleOutcome({ action }) {
  * The two exceptions are the two things only the session can know: it stood the ticket down, or it
  * worked a different one. Both make its branch not this ticket's answer, so neither yields.
  *
- * It is asked for by ticket number, so phase F's teardown cannot hide it.
- *
  * @param {{pr: {number: number, state: string}|null,
  *   reason: {why: string|null, hard: boolean}}} run
  * @returns {{action: "settle"|"landed"|"park", pr?: number, why?: string}}
@@ -514,9 +528,9 @@ export function reasonFor(run, after, ticket) {
   if (run.status === "stalled")
     return soft(`no output for ${Math.round(STALL_MS / 60_000)}m in phase ${run.phase ?? "?"}`);
   if (run.status !== 0) return soft(`the session exited ${run.status} in phase ${run.phase ?? "?"}`);
-  // Phase F step 5 is not optional, and this is where its absence becomes visible rather than
+  // Phase F's LOOP-RESULT is not optional, and this is where its absence becomes visible rather than
   // absorbed. A session that exits clean without declaring has left every fact about itself to be
-  // inferred from side effects phase F was separately told to delete.
+  // inferred.
   if (!said) return soft("the session exited without a LOOP-RESULT");
   return soft(null);
 }
@@ -635,9 +649,20 @@ export function park(
     run("gh", ["issue", "comment", String(number), "--body-file", file]);
   });
 
-  if (cwd) step("worktree", () => run("npm", ["run", "worktrees:remove", "--", cwd]));
+  if (cwd) step("worktree", () => removeWorktree(cwd, run));
 
   return { ok: failed.length === 0, failed };
+}
+
+/** From the main checkout: `removeOneWorktree` refuses a caller standing inside the tree it removes. */
+export function removeWorktree(cwd, run = sh) {
+  return run("npm", ["run", "worktrees:remove", "--", cwd], { cwd: ROOT });
+}
+
+/** A red round's `update-branch` moved the remote head, and the fix is built on top of it. */
+export function refreshWorktree(cwd, branch, run = sh) {
+  run("git", ["-C", cwd, "fetch", "--quiet", "origin", branch]);
+  run("git", ["-C", cwd, "merge", "--ff-only", `origin/${branch}`]);
 }
 
 const ERASE = "\r\u001B[2K";
@@ -1356,9 +1381,7 @@ const RUN_ID = new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-");
 /**
  * The pull request this ticket pushed, if it pushed one.
  *
- * Falls back to the ticket number when the branch is unknown: phase F tears the worktree down and
- * `derive()` finds a run only by that directory, so the branch is gone at exactly the moment the
- * lookup needs it. The ticket number survives every teardown.
+ * Falls back to the ticket number when the branch is unknown.
  *
  * `--state all`, because a pull request merged between the session's exit and this read — a peer,
  * an auto-merge, the owner — is a landing, not a session that pushed nothing. The head ref comes
@@ -1598,11 +1621,8 @@ const standing = () => {
 /**
  * What the supervisor knows about the session that just exited.
  *
- * The session's own `LOOP-RESULT` first, `derive()` second. That order is the whole of the fix:
- * derive is right for *resuming* a run nobody told you about and wrong for *closing* one that just
- * told you, because every channel it reads — the worktree, its branch, its diff, its dirt — is
- * something phase F is separately instructed to delete. The two disagree only when the declaration
- * is missing, and then derive is all there is.
+ * The session's own `LOOP-RESULT` first, `derive()` second, which is all there is when the
+ * declaration is missing.
  *
  * @param {{declared: object|null, phase: string|null}} run
  * @param {object|null} derived
@@ -1676,7 +1696,25 @@ export async function runOnce(io, pinned = null, at = null) {
   const tally = io.tally(route.number);
   const size = route.size ?? null;
 
-  const run = await io.spawn(route);
+  if (route.fix) {
+    try {
+      io.refreshWorktree(route.cwd, route.branch);
+    } catch (err) {
+      return parkAndRecord(io, route.number, {
+        phase: "C",
+        why: `could not fast-forward the worktree before the fix round — ${String(err.stderr || err.message).trim().split("\n")[0]}`,
+        log: streamLog(route.number),
+        cwd: route.cwd ?? null,
+        branch: route.branch ?? null,
+        dirty: route.dirty ?? false,
+      });
+    }
+  }
+
+  const settling = route.phase === "G";
+  const run = settling
+    ? { status: 0, result: null, declared: null, ms: 0, log: streamLog(route.number), phase: "G", phases: {} }
+    : await io.spawn(route);
 
   const dirtied = io.sharedCheckoutDirty?.();
   if (dirtied) io.log(`#${route.number}'s session left the shared checkout dirty:\n${dirtied}`, "session");
@@ -1699,7 +1737,7 @@ export async function runOnce(io, pinned = null, at = null) {
       branch: after?.branch ?? null,
     };
   }
-  const pr = io.pushedPr(after?.branch ?? null, route.number, run.declared?.pr ?? null, Date.now() - run.ms);
+  const pr = io.pushedPr(after?.branch ?? null, route.number, run.declared?.pr ?? null, settling ? 0 : Date.now() - run.ms);
   // `blocked` is advisory, checked here rather than before the pull request is looked for: a
   // session refused mid-run that recovered and pushed has done its half, and reporting it refused
   // stranded the branch and left the claim on.
@@ -1719,8 +1757,7 @@ export async function runOnce(io, pinned = null, at = null) {
 
   const reason = reasonFor(run, after, route.number);
   const decided = outcomeOf({ pr, reason });
-  // The pull request's own count when the worktree is gone: phase F removes it before it declares,
-  // so `derive()` reads no diff at all and every landed ticket was recorded as touching 0 files.
+  // The pull request's own count when derive() read no worktree.
   const files = after?.changed?.length || pr?.changedFiles || 0;
 
   const handBack = (why, phase, log = run.log) =>
@@ -1867,12 +1904,11 @@ function realIo(book, screen) {
       ciRounds: picked?.number === n ? (picked.ciRounds ?? 0) : 0,
     }),
     standing,
+    refreshWorktree: (cwd, branch) => refreshWorktree(cwd, branch),
     pushedPr,
     settle: (pending) => settle(pending, screen),
     park,
     /**
-     * Phase F removes its own worktree; this covers the paths where the session never got there.
-     *
      * **The claim comes off here, and nowhere else on the success paths.** Releasing it beside each
      * teardown call meant an exit path could take one without the other, and one did: a settle that
      * ended in a verdict nothing recognised wrote its row, removed the worktree and returned, with
@@ -1891,7 +1927,7 @@ function realIo(book, screen) {
       }
       if (!cwd || !fs.existsSync(cwd)) return;
       try {
-        sh("npm", ["run", "worktrees:remove", "--", cwd]);
+        removeWorktree(cwd);
       } catch {
         screen.notice("worktree", `${cwd} is still standing — derive() will read it as a live run`);
       }
@@ -2048,8 +2084,14 @@ export async function main({
       // trusted while wrong. The claim is the part that strands the ticket, and it comes off here.
       if (claimed !== null) {
         try {
-          const at = io.standing();
-          const own = at?.ticket === claimed ? at : null;
+          let own = null;
+          try {
+            const at = io.standing();
+            own = at?.ticket === claimed ? at : null;
+          } catch {
+            const kept = path.join(ROOT, WORKTREE_DIR, `agent-${claimed}`);
+            own = fs.existsSync(kept) ? { cwd: kept, branch: null, dirty: false } : null;
+          }
           parkAndRecord(io, claimed, {
             phase: "?",
             why: `the loop threw: ${String(err?.message ?? err)}`,

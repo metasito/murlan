@@ -104,7 +104,7 @@ argument picks from the live queue, which is the by-hand form.
 
 **You work the ticket you were given.** If it turns out to be wrong — the claim race is lost, the
 premise is false, a blocker is named in a comment — say so on the issue, remove your label, declare
-it (`stoodDown`, phase F step 5) and **exit**. Do not pick another one: the supervisor starts the
+it (`stoodDown`, phase F step 4) and **exit**. Do not pick another one: the supervisor starts the
 next process, and a session that picks a second ticket spends one ticket's accounting on two.
 
 This runs once, for exactly one ticket, then phases B–F carry it to a close. `tools/loop/queue-loop.mjs`
@@ -441,30 +441,20 @@ fixes what CI named, gets a fresh review of the new head, and pushes again. Thre
    close is named there, with why. An honest gap is worth more than a green report.
 3. In that same comment, one line on the effective diff in plain language — "the hand fans from the
    left edge", not "edited handLayout.ts".
-4. **Tear down your worktree.**
+   **Leave your worktree standing.** A red CI round resumes in it, and the supervisor removes it
+   from the main checkout once the ticket lands or parks. `git -C .worktrees/agent-<n> status
+   --short` should print nothing: anything it names is work you have not committed, so commit it
+   and push again, or say on the issue what it is.
 
-   ```sh
-   git -C .worktrees/agent-<n> status --short      # nothing unexpected left behind?
-   npm run worktrees:remove -- .worktrees/agent-<n>
-   git worktree list                               # yours is gone
-   ```
-
-   You are the only process that knows whether that tree is dirty, which is why this is yours and
-   not the supervisor's. If the removal refuses, **read what it names** — that is work you have not
-   committed. Commit it to your branch and push again, or say on the issue what it is. Never pass
-   `--force` and never `rm -rf`: a `--force` removal walks *through* the `node_modules` junction
-   into the shared install and exits 0. `tools/loop/guard-bash.mjs` blocks the form; the reason is
-   measured, not theorised.
-
-5. **Say what you did, on one line, as the last thing you emit.**
+4. **Say what you did, on one line, as the last thing you emit.**
 
    ```
    LOOP-RESULT {"ticket":891,"branch":"agent/891-slug","pr":1003,"phase":"F","stoodDown":false}
    ```
 
    One line, valid JSON after the marker, in the same message as any command — the same rule the
-   phase markers follow. Every field is something only you know at that moment, and step 4 has just
-   deleted the worktree the supervisor would otherwise have had to reconstruct them from. Omit `pr`
+   phase markers follow. Every field is something you know for certain at that moment, and the
+   supervisor would otherwise have to reconstruct it from the worktree. Omit `pr`
    only if you genuinely pushed none. `stoodDown` is true when you gave the ticket up — a lost claim
    race, a false premise, a decision only the owner can make — and then `"why"` says which, in one
    sentence; the supervisor releases the claim for you.
@@ -475,12 +465,12 @@ fixes what CI named, gets a fresh review of the new head, and pushes again. Thre
    **This is not optional and there is no fallback.** A session that exits without it is recorded as
    an error, and its ticket's row carries `no LOOP-RESULT` as the reason. Everything the supervisor
    would otherwise have to infer — which ticket, which branch, which pull request, how far you got
-   — it infers from side effects step 4 has just been told to delete, and an inference is what
+   — it infers from side effects, and an inference is what
    writes a merged ticket down as a park. Emit it even when the news is bad: a stood-down ticket, a
    phase you never reached, a pull request you never pushed are all facts, and all of them are
    worth more stated than guessed at.
 
-6. **Exit.** One ticket per process, by design: `tools/loop/queue-loop.mjs` starts the next ticket in a
+5. **Exit.** One ticket per process, by design: `tools/loop/queue-loop.mjs` starts the next ticket in a
    clean process, so there is nothing here to reset and nothing that can leak forward. Do not loop
    back to phase A in this session.
 
@@ -505,7 +495,7 @@ failure · a decision only the owner can make **that parking cannot carry**. `qu
 for an empty queue before it even starts a process; this list is the fallback for a `/queue` run
 started by hand.
 
-Release the claim, run teardown, declare it (`stoodDown`, phase F step 5), and say on the issue: the
+Release the claim, declare it (`stoodDown`, phase F step 4), and say on the issue: the
 phase reached, what is committed and on which branch, the exact failure, and the one decision
 needed. Then five lines to the user. The issue is the handoff — it is where the owner is already
 looking, and it cannot be lost with the session.
@@ -516,7 +506,7 @@ instruction to abandon this ticket.
 
 ## Output
 
-Phase F step 5's `LOOP-RESULT` line is the last thing you emit, and it is the only summary you
+Phase F step 4's `LOOP-RESULT` line is the last thing you emit, and it is the only summary you
 write. The supervisor renders the human-readable board from that JSON. Exactly one section of this
 file may claim the final line, and it is that one — a second summary here competes for the same
 position, and the one the supervisor actually reads is the one that loses.

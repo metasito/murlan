@@ -15,6 +15,7 @@ import {
   listWorktreeDirNames,
   findOrphanedWorktreeDirs,
   newsCount,
+  removable,
 } from "../prune-worktrees.mjs";
 
 function baseState(overrides = {}) {
@@ -26,6 +27,7 @@ function baseState(overrides = {}) {
     branchOnLocal: true,
     mergedIntoMain: false,
     prState: null,
+    issueInProgress: true,
     ...overrides,
   };
 }
@@ -82,6 +84,13 @@ describe("classifyWorktree's other classifications", () => {
     );
     assert.equal(result.status, "live");
     assert.match(result.reason, /open pull request/);
+  });
+
+  test("open PR but not in-progress → stale", () => {
+    const result = classifyWorktree(baseState({ prState: "OPEN", issueInProgress: false }));
+    assert.equal(result.status, "stale");
+    assert.match(result.reason, /not in-progress/);
+    assert.deepEqual(["merged", "gone", "stale", "live"].map(removable), [true, true, true, false]);
   });
 
   test("a branch on neither remote nor local, with no PR, is gone", () => {
@@ -202,6 +211,7 @@ describe("hasUncommittedChanges against a real worktree", () => {
       branchOnLocal: true,
       mergedIntoMain: true,
       prState: "MERGED",
+      issueInProgress: false,
     });
     assert.equal(state.status, "live", "an untracked file must keep the worktree live even when everything else says remove it");
   });
