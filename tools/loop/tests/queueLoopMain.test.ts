@@ -531,6 +531,39 @@ describe("runOnce", () => {
     assert.deepEqual([stranded.phase, stranded.resuming], ["A", true]);
   });
 
+  test("a closed ticket whose worktree still stands is torn down and the queue picked again, with no spawn on it", async () => {
+    const facts = (state: string, labels: string[]) => () =>
+      ({ title: "t", url: "", size: null, labels, reviewRounds: 1, ciRounds: 0, state }) as never;
+    const status = { onTicket: true, ticket: 7, branch: "agent/7-x", cwd: "w7", phase: "C", fix: false };
+    for (const labels of [["in-progress"], []]) {
+      const route: any = nextRoute(null, null, { read: () => status, facts: facts("CLOSED", labels), ledger: () => [] } as never);
+      assert.deepEqual([route.skill, route.number, route.cwd], ["closed", 7, "w7"]);
+    }
+    const open: any = nextRoute(null, null, { read: () => status, facts: facts("OPEN", ["in-progress"]), ledger: () => [] } as never);
+    assert.equal(open.skill, "implement");
+
+    const picks: unknown[] = [];
+    const torn: unknown[] = [];
+    const spawned: number[] = [];
+    const routes = [{ skill: "closed", number: 7, title: "t", cwd: "w7", queue: null, resuming: false }, undefined];
+    const r = await runOnce(
+      io({
+        pick: (p: unknown, at: unknown) => {
+          picks.push([p, at]);
+          return routes.shift() ?? io().pick();
+        },
+        teardown: (cwd: string | null, n: number) => torn.push([cwd, n]),
+        spawn: async (s: { number: number }) => {
+          spawned.push(s.number);
+          return io().spawn();
+        },
+      }),
+      7,
+      "C",
+    );
+    assert.deepEqual([torn[0], spawned, picks, r.ticket], [["w7", 7], [42], [[7, "C"], [null, null]], 42]);
+  });
+
   test("an ff failure before a fix parks", async () => {
     const parked: { n: number; why: string }[] = [];
     let spawns = 0;

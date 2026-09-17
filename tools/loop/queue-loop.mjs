@@ -139,6 +139,9 @@ export function liveRoute(status, labels = null) {
 export function nextRoute(pinned = null, at = null, { read = derive, facts = ticketFacts, ledger = readLedger } = {}) {
   const status = read({ ci: true });
   const known = status.onTicket && status.ticket ? facts(status.ticket) : null;
+  if (known?.state === "CLOSED") {
+    return { skill: "closed", number: status.ticket, title: known.title, cwd: status.cwd ?? null, resuming: true, queue: null };
+  }
   const live = liveRoute(status, known?.labels ?? null);
   if (live) {
     const settles = live.phase === "G" && status.ci?.pushed === true;
@@ -1083,7 +1086,7 @@ function openExternally(target) {
 function ticketFacts(number) {
   try {
     const issue = JSON.parse(
-      execFileSync("gh", ["issue", "view", String(number), "--json", "title,labels,url,comments"], {
+      execFileSync("gh", ["issue", "view", String(number), "--json", "title,labels,url,comments,state"], {
         encoding: "utf8",
         stdio: ["ignore", "pipe", "ignore"],
         maxBuffer: SH_MAX_BUFFER,
@@ -1096,6 +1099,7 @@ function ticketFacts(number) {
       labels: issue.labels.map((l) => l.name),
       reviewRounds: reviewRounds(issue.comments ?? []),
       ciRounds: ciRedRounds(issue.comments ?? []),
+      state: issue.state,
     };
   } catch {
     return { title: `ticket #${number}`, url: "", size: null, labels: null, reviewRounds: null, ciRounds: 0 };
@@ -1890,7 +1894,12 @@ export async function runOnce(io, pinned = null, at = null) {
   if (pre === 2) return { outcome: "hold", why: "queue-pre is not ready for a ticket yet" };
   if (pre !== 0) return { outcome: "stop", why: `queue-pre exited ${pre}` };
 
-  const route = io.pick(pinned, at);
+  let route = io.pick(pinned, at);
+  if (route.skill === "closed") {
+    io.teardown(route.cwd, route.number);
+    route = io.pick(null, null);
+    if (route.skill === "closed") return { outcome: "stop", why: `#${route.number} is closed and its worktree still stands` };
+  }
   if (route.skill === "handoff") return { outcome: "stop", why: route.title };
   if (route.skill === "ambiguous") return { outcome: "stop", why: route.title };
   let tally = io.tally(route.number);
