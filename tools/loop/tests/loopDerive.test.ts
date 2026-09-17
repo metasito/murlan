@@ -318,16 +318,16 @@ function fakeGh(dir: string, answers: GhAnswers): string {
   writeFileSync(
     js,
     `import { appendFileSync } from "node:fs";
-const m = ${JSON.stringify(answers)};
-const a = process.argv.slice(2);
-if (m.calls) appendFileSync(m.calls, a.join(" ") + "\\n");
-const key = a[0] === "issue" ? "issue" : a[0] === "api" ? "ref" : a[0] === "pr" ? "prs"
-  : a[1] === "list" ? "runs" : a.includes("--log-failed") ? "log" : "jobs";
-if ((m.fail ?? []).includes(key)) { process.stderr.write("gh: connection reset\\n"); process.exit(1); }
-if (key === "ref" && m.ref === undefined) { process.stderr.write("gh: Not Found (HTTP 404)\\n"); process.exit(1); }
-const v = m[key] ?? { prs: [], runs: [], jobs: [], log: "" }[key];
-if (v === undefined) process.exit(1);
-process.stdout.write(typeof v === "string" ? v : JSON.stringify(v));
+  const m = ${JSON.stringify(answers)};
+  const a = process.argv.slice(2);
+  if (m.calls) appendFileSync(m.calls, a.join(" ") + "\\n");
+  const key = a[0] === "issue" ? "issue" : a[0] === "api" ? "ref" : a[0] === "pr" ? "prs"
+    : a[1] === "list" ? "runs" : a.includes("--log-failed") ? "log" : "jobs";
+  if ((m.fail ?? []).includes(key)) { process.stderr.write("gh: connection reset\\n"); process.exit(1); }
+  if (key === "ref" && m.ref === undefined) { process.stderr.write("gh: Not Found (HTTP 404)\\n"); process.exit(1); }
+  const v = m[key] ?? { prs: [], runs: [], jobs: [], log: "" }[key];
+  if (v === undefined) process.exit(1);
+  process.stdout.write(typeof v === "string" ? v : JSON.stringify(v));
 `,
   );
   return js;
