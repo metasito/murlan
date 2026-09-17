@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { failingTestIds, stripLogPrefix, type GhExec } from "./ciVerdict.ts";
+import { DIR as LOOP_LOGS_DIR, redCachePath as artefactRedCachePath } from "./loop-logs.mjs";
 
 /**
  * Owns a test id failing on more than one branch (or on `main`) in one tracker issue, so a second
@@ -23,6 +24,8 @@ export interface SharedIssue {
   title: string;
   url?: string;
   state?: string;
+  /** ISO timestamp; only `fixLandedOnMain` reads it, and only once `state` is `"closed"`. */
+  closedAt?: string;
 }
 
 export type SharedDecision =
@@ -32,9 +35,10 @@ export type SharedDecision =
   | { kind: "reopen"; issue: SharedIssue; testId: string };
 
 export const SHARED_RED_LABEL = "shared-red";
-export const DEFAULT_CACHE_DIR = ".loop-logs";
+export const DEFAULT_CACHE_DIR = LOOP_LOGS_DIR;
 const DEFAULT_BUDGET_MS = 45 * 60_000;
 const WINDOW_MS = 48 * 60 * 60_000;
+const MAIN_LOOKBACK_LIMIT = 10;
 
 export const titleFor = (testId: string): string => `shared red: ${testId}`;
 
@@ -67,7 +71,7 @@ export function sharedBody(testId: string, evidence: RedRun): string {
 }
 
 export function redCachePath(runId: number, cacheDir: string = DEFAULT_CACHE_DIR): string {
-  return join(cacheDir, `red-${runId}.ids`);
+  return artefactRedCachePath(runId, cacheDir);
 }
 
 function readCache(runId: number, cacheDir: string): string[] | undefined {
@@ -170,14 +174,41 @@ export function decideShared(
   return { kind: "none" };
 }
 
+interface MainRunRow {
+  databaseId: number;
+  conclusion: string | null;
+  status: string;
+  createdAt?: string;
+}
+
+export function mainRunsSinceArgs(repo: string, limit: number = MAIN_LOOKBACK_LIMIT): string[] {
+  // prettier-ignore
+  return [
+    "run", "list", "--repo", repo, "--branch", "main",
+    "--workflow", "ci.yml", "--limit", String(limit),
+    "--json", "databaseId,conclusion,status,createdAt",
+  ];
+}
+
 /**
- * Pure signal for the supervisor's "known, fix already on main" branch: true once no run in
- * `others` on `main` still names `testId`, inside the same window `others` was read from. It does
- * not itself decide `pr update-branch` vs. `blocked_by` — that reads a live PR the core has no seam
- * for, so the wiring layer calls this and takes the branch.
+ * Signal for the supervisor's "known, fix already on main" branch, from positive evidence only:
+ * `issue` must be closed, and the newest completed `ci.yml` run on `main` that started after it
+ * closed must have concluded success. No run since the close, a still-red one, or an unreadable
+ * read all answer false — main's silence is not proof a fix landed.
  */
-export function fixLandedOnMain(testId: string, others: RedRun[]): boolean {
-  return !others.some((r) => r.branch === "main" && r.testIds.includes(testId));
+export function fixLandedOnMain(
+  repo: string,
+  gh: GhExec,
+  issue: SharedIssue,
+  until: number = Date.now() + DEFAULT_BUDGET_MS,
+): boolean {
+  if (issue.state !== "closed" || !issue.closedAt) return false;
+  const closedAt = Date.parse(issue.closedAt);
+  const runs = ghJson<MainRunRow[]>(gh, mainRunsSinceArgs(repo), until, []);
+  const since = runs
+    .filter((r) => r.status === "completed" && Date.parse(r.createdAt ?? "") >= closedAt)
+    .sort((a, b) => Date.parse(b.createdAt ?? "") - Date.parse(a.createdAt ?? ""));
+  return since[0]?.conclusion === "success";
 }
 
 function fileSharedIssue(

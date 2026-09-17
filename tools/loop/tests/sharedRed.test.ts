@@ -65,12 +65,47 @@ describe("decideShared", () => {
 });
 
 describe("fixLandedOnMain", () => {
-  test("true once main's recent runs stop naming the id", () => {
-    assert.equal(fixLandedOnMain(TEST_ID, [run({ branch: "agent/x" })]), true);
+  const closedIssue = (over: Partial<SharedIssue> = {}): SharedIssue => ({
+    number: 5,
+    title: titleFor(TEST_ID),
+    state: "closed",
+    closedAt: "2026-09-16T12:00:00Z",
+    ...over,
+  });
+  const mainRuns = (rows: object[]) => (args: string[]) => {
+    if (args[0] === "run" && args[1] === "list") return JSON.stringify(rows);
+    throw new Error(`unexpected gh call: ${args.join(" ")}`);
+  };
+
+  test("no main run at all is false", () => {
+    assert.equal(fixLandedOnMain("metasito/murlan", mainRuns([]), closedIssue()), false);
   });
 
-  test("false while a recent main run still names it", () => {
-    assert.equal(fixLandedOnMain(TEST_ID, [run({ branch: "main" })]), false);
+  test("main green after the close is true", () => {
+    const gh = mainRuns([{ databaseId: 1, status: "completed", conclusion: "success", createdAt: "2026-09-16T13:00:00Z" }]);
+    assert.equal(fixLandedOnMain("metasito/murlan", gh, closedIssue()), true);
+  });
+
+  test("main green only before the close is false", () => {
+    const gh = mainRuns([{ databaseId: 1, status: "completed", conclusion: "success", createdAt: "2026-09-16T11:00:00Z" }]);
+    assert.equal(fixLandedOnMain("metasito/murlan", gh, closedIssue()), false);
+  });
+
+  test("main red after the close is false", () => {
+    const gh = mainRuns([{ databaseId: 1, status: "completed", conclusion: "failure", createdAt: "2026-09-16T13:00:00Z" }]);
+    assert.equal(fixLandedOnMain("metasito/murlan", gh, closedIssue()), false);
+  });
+
+  test("a gh that throws is false, never a throw", () => {
+    const gh = (): string => {
+      throw new Error("gh: could not connect");
+    };
+    assert.equal(fixLandedOnMain("metasito/murlan", gh, closedIssue()), false);
+  });
+
+  test("an issue still open is false, whatever main says", () => {
+    const gh = mainRuns([{ databaseId: 1, status: "completed", conclusion: "success", createdAt: "2026-09-17T00:00:00Z" }]);
+    assert.equal(fixLandedOnMain("metasito/murlan", gh, closedIssue({ state: "open" })), false);
   });
 });
 
