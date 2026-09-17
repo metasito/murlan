@@ -56,7 +56,7 @@ export function sharedIssueArgs(repo: string): string[] {
   return [
     "issue", "list", "--repo", repo,
     "--label", SHARED_RED_LABEL, "--state", "all", "--limit", "100",
-    "--json", "number,title,url,state",
+    "--json", "number,title,url,state,closedAt",
   ];
 }
 

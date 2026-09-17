@@ -245,5 +245,7 @@ describe("the gh arguments", () => {
     const args = sharedIssueArgs("metasito/murlan");
     assert.equal(args[args.indexOf("--label") + 1], SHARED_RED_LABEL);
     assert.equal(args[args.indexOf("--state") + 1], "all", "a closed issue still means this id was reported");
+    const fields = args[args.indexOf("--json") + 1].split(",");
+    assert.ok(fields.includes("closedAt"), "fixLandedOnMain needs it without a second read");
   });
 });
