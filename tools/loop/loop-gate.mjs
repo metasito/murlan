@@ -30,7 +30,7 @@ import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
  * between a bound a test can fail and a sentence.
  *
  * It is the largest cost lever in the loop: phase D is 78% of a run's clock and every round is two
- * opus reviewers, so this one number multiplied out is 126 of the last 144 subagents. A ceiling,
+ * sonnet reviewers, so this one number multiplied out is 126 of the last 144 subagents. A ceiling,
  * never a target — phase D stops earlier when a round raises nothing new.
  */
 export const MAX_REVIEW_ROUNDS = 4;

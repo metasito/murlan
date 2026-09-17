@@ -75,8 +75,9 @@ Every rule an agent must follow, in one place. No rationale here — the *why* l
     through `/wayfinder`.
 28. **An item needing an owner decision gets `ready-for-human`, not closed** — and
     `ready-for-agent` comes off at the same time.
-29. **Name a model on every sub-agent.** Mechanical work: haiku. Recon and verification: sonnet.
-    Implementing and independent review: opus. Give every dispatch a label.
+29. **Name a model on every sub-agent.** Implementing: opus. Independent review: sonnet reviewers
+    plus a sonnet refuter (precision, not depth, is the measured failure). Recon and verification:
+    sonnet. Mechanical: haiku. Give every dispatch a label.
 
 ## Finishing
 

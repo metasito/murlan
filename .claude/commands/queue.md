@@ -230,7 +230,7 @@ sha the previous round reviewed — that delta, plus the findings that round lef
 the deltas together cover every line at its final state, so re-reading the whole diff each round
 buys nothing.
 
-Two fresh `sonnet` subagents (rule 29's independent-review tier) that did not write the code, each
+Two fresh `sonnet` subagents (rule 29's independent-review reviewers) that did not write the code, each
 given the diff and nothing else — never your reasoning, which is the frame the review exists to
 escape:
 
