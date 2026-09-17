@@ -28,6 +28,7 @@ import type { Card, StartReason } from "@/lib/gameEngine";
 import { getCardDisplayRank, getSuitSymbol } from "@/lib/gameEngine";
 import { CHIP_H, SIDE_SECTION_W } from "@/components/seatLayout";
 import { type RailSide } from "@/components/tableFrame";
+import { tableFontSize } from "@/components/cardFaceModel";
 
 // ─── StartReasonBanner ────────────────────────────────────────────────────────
 
@@ -242,7 +243,7 @@ export function ChipText({
       style={[
         chipStyles.chipLabel,
         {
-          fontSize: FontSize.xxs * scale,
+          fontSize: tableFontSize(FontSize.xxs, scale),
           // Tracking is `em` in the prototype, so it grows with the type it is
           // set in — a fixed px value is a different letterspacing per handset.
           letterSpacing: (strong ? CHIP_TRACKING_STRONG : CHIP_TRACKING) * scale,

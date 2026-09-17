@@ -23,6 +23,7 @@ import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { cardSpokenName } from "@/lib/cardNames";
 import { Colors, Garnet, Gradient, Highlight, Layer, makeShadow, Motion, Shadow, Spacing, TopEdgeLight } from "@/lib/theme";
 import type { Card } from "@/lib/gameEngine";
+import { tableFontSize } from "@/components/cardFaceModel";
 
 const BTN_PRESS_SCALE = 0.94;
 const BTN_RADIUS = 14;
@@ -170,13 +171,13 @@ export function GiocaButton({
               style={[
                 styles.actionBtnLabel,
                 styles.playBtnLabel,
-                { fontSize: BTN_LABEL_FS * scale, letterSpacing: BTN_TRACKING * scale },
+                { fontSize: tableFontSize(BTN_LABEL_FS, scale), letterSpacing: BTN_TRACKING * scale },
               ]}
             >
               {label}
             </TableText>
             {selectedCount > 1 && (
-              <TableText {...a11yHidden()} style={[styles.playBtnSub, { fontSize: BTN_SUB_FS * scale }]}>
+              <TableText {...a11yHidden()} style={[styles.playBtnSub, { fontSize: tableFontSize(BTN_SUB_FS, scale) }]}>
                 {t("gameTable.selectedCountSuffix", { n: selectedCount })}
               </TableText>
             )}
@@ -194,7 +195,7 @@ export function GiocaButton({
               style={[
                 styles.actionBtnLabel,
                 styles.btnDimLabel,
-                { fontSize: BTN_LABEL_FS * scale, letterSpacing: BTN_TRACKING * scale },
+                { fontSize: tableFontSize(BTN_LABEL_FS, scale), letterSpacing: BTN_TRACKING * scale },
               ]}
             >
               {label}
@@ -283,7 +284,7 @@ export function PassaButton({
             style={[
               styles.actionBtnLabel,
               canPass ? styles.passBtnLabel : styles.btnDimLabel,
-              { fontSize: BTN_LABEL_FS * scale, letterSpacing: BTN_TRACKING * scale },
+              { fontSize: tableFontSize(BTN_LABEL_FS, scale), letterSpacing: BTN_TRACKING * scale },
             ]}
           >
             {t("gameTable.passLabel")}

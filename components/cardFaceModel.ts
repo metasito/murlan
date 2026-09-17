@@ -23,6 +23,12 @@ export function cardScale(shortEdge: number): number {
   return Math.min(shortEdge, MAX_SHORT_EDGE) / BASE_SHORT_EDGE;
 }
 
+const TABLE_TEXT_MIN = 10;
+
+export function tableFontSize(base: number, scale: number): number {
+  return Math.max(base * scale, TABLE_TEXT_MIN);
+}
+
 // A card face (lying on the felt or standing in a hand) at scale 1.
 const FACE_W = 64;
 const FACE_H = 90;

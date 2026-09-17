@@ -31,7 +31,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { CardView } from "@/components/CardView";
 import type { ArcCard } from "@/components/tableArc";
 import type { OpponentSide } from "@/components/seatLayout";
-import { BACK_SCALE } from "@/components/cardFaceModel";
+import { BACK_SCALE, tableFontSize } from "@/components/cardFaceModel";
 import { Colors, makeShadow, Motion, Radius, Spacing } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
@@ -425,7 +425,7 @@ function SeatRing({
             : makeShadow(Colors.shadow, 0, SEAT_SHADOW_Y * scale, 0.62, SEAT_SHADOW * scale, 0),
         ]}
       >
-        <TableText style={[seatStyles.discInitials, { fontSize: SEAT_INITIAL_FS * scale }]}>
+        <TableText style={[seatStyles.discInitials, { fontSize: tableFontSize(SEAT_INITIAL_FS, scale) }]}>
           {initials}
         </TableText>
       </LinearGradient>
@@ -455,7 +455,7 @@ function SeatRing({
           {finishPos !== undefined ? (
             <Ionicons testID="seat-finish-trophy" name="trophy" size={badge * 0.5} color={Colors.gold} />
           ) : (
-            <TableText style={[seatStyles.countBubbleText, { fontSize: SEAT_BADGE_FS * scale }]}>
+            <TableText style={[seatStyles.countBubbleText, { fontSize: tableFontSize(SEAT_BADGE_FS, scale) }]}>
               {cardCount}
             </TableText>
           )}
@@ -700,7 +700,7 @@ function SeatWho({
               seatStyles.oppName,
               // The cap rides the scale the glyphs do; fixed, it ellipsises
               // every name above a phone's own scale.
-              { fontSize: SEAT_NAME_FS * scale, maxWidth: labelW },
+              { fontSize: tableFontSize(SEAT_NAME_FS, scale), maxWidth: labelW },
               isActive && seatStyles.oppNameActive,
             ]}
             numberOfLines={1}
