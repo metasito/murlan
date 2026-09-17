@@ -45,7 +45,7 @@ function inlineScriptHashes(): string[] {
     return [];
   }
   return [...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g)]
-    .map((m) => createHash("sha256").update(m[1], "utf8").digest("base64"))
+    .map((m) => createHash("sha256").update(m[1] ?? "", "utf8").digest("base64"))
     .map((digest) => `'sha256-${digest}'`);
 }
 
