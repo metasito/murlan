@@ -212,8 +212,8 @@ function prState(branch) {
   return rows[0]?.state ?? null;
 }
 
-const ghLabels = (ticket) =>
-  execFileSync("gh", ["issue", "view", String(ticket), "--json", "labels", "--jq", ".labels[].name"], {
+export const ghLabels = (ticket, exec = execFileSync) =>
+  exec("gh", ["issue", "view", String(ticket), "--json", "labels", "--jq", ".labels[].name"], {
     encoding: "utf8",
     timeout: 30_000,
   });

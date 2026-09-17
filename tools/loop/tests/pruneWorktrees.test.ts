@@ -13,6 +13,7 @@ import {
   classifyOrSkip,
   classifyWorktree,
   issueInProgress,
+  ghLabels,
   parseWorktreeList,
   hasUncommittedChanges,
   listWorktreeDirNames,
@@ -171,6 +172,17 @@ describe("classifyEntry's wiring", () => {
     assert.equal(issueInProgress("feature/x", refuse), true);
     assert.equal(issueInProgress("agent/42-x", () => "bug\r\nin-progress\r\n"), true);
     assert.equal(issueInProgress("agent/42-x", () => "bug\r\n"), false);
+  });
+
+  test("the label read is bounded, so a wedged gh cannot hold the prune", () => {
+    const seen: { file: string; args: string[]; timeout?: number }[] = [];
+    const exec = (file: string, args: string[], opts: { timeout?: number }) => {
+      seen.push({ file, args, timeout: opts.timeout });
+      return "in-progress\n";
+    };
+    assert.equal(ghLabels(42, exec as never), "in-progress\n");
+    assert.deepEqual(seen.map((s) => [s.file, s.args.slice(0, 3)]), [["gh", ["issue", "view", "42"]]]);
+    assert.equal(seen[0].timeout, 30_000);
   });
 });
 
