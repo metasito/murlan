@@ -1108,6 +1108,17 @@ export function processPlay(state: GameState, combination: Combination): GameSta
   return newState;
 }
 
+/**
+ * Consecutive passes that close a round: every OTHER player still holding
+ * cards. A last player who has gone out is no longer among them, so every
+ * remaining active player must be given a chance to answer — hence no −1
+ * there. `lib/replay.ts` reads the same threshold to fold a stored log back
+ * into a pile, which is why it is exported rather than inline.
+ */
+export function passesToCloseRound(activeCount: number, lastPlayerStillActive: boolean): number {
+  return Math.max(1, lastPlayerStillActive ? activeCount - 1 : activeCount);
+}
+
 export function processPass(state: GameState): GameState {
   // A player leading a new round must play something — passing is not a legal
   // move for them. The engine is the server-authoritative path, so it refuses
@@ -1118,16 +1129,11 @@ export function processPass(state: GameState): GameState {
   const newState = structuredClone(state);
   newState.passCount += 1;
 
-  // The round closes once every OTHER player still holding cards has passed
-  // consecutively. If the player who made the last play has already gone out
-  // they are no longer among the active players, so every remaining active
-  // player must be given a chance to answer — hence the +1 in that case.
   const activeCount = newState.players.filter((p) => p.hand.length > 0).length;
   const lastPlayer = newState.players[newState.lastPlayedBy];
-  const lastPlayerStillActive = !!lastPlayer && lastPlayer.hand.length > 0;
-  const passesNeeded = Math.max(
-    1,
-    lastPlayerStillActive ? activeCount - 1 : activeCount
+  const passesNeeded = passesToCloseRound(
+    activeCount,
+    !!lastPlayer && lastPlayer.hand.length > 0
   );
 
   if (newState.passCount >= passesNeeded) {

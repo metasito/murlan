@@ -51,11 +51,32 @@ test("a state carries the pile and the counts of the move it names", () => {
   assert.equal(state.currentTurnIndex, 1, "the turn shows whoever moved next");
 });
 
-test("a pass leaves the pile standing and takes nothing off the hand", () => {
+test("a pass takes nothing off the hand, and the round-closing one clears the pile", () => {
   const state = replayStateAt(REPLAY, 2);
-  assert.deepEqual(state.lastPlayedCombination?.cards.map((x) => x.id), ["5_hearts"]);
-  assert.equal(state.lastPlayedBy, 1);
+  assert.equal(state.lastPlayedCombination, null, "the round closed on that pass");
   assert.deepEqual(handCounts(REPLAY, 2), [2, 2]);
+});
+
+test("a pass short of the threshold leaves the pile standing", () => {
+  const threeUp: ReplayDto = {
+    ...REPLAY,
+    seats: [
+      { seatIndex: 0, userId: "u1", name: "Ana" },
+      { seatIndex: 1, userId: null, name: "Gent" },
+      { seatIndex: 2, userId: "u3", name: "Besnik" },
+    ],
+    rankings: ["player_0", "player_1", "player_2"],
+    moves: [
+      { seat: 0, combo: single("3", "spades"), handCounts: [2, 3, 3] },
+      { seat: 1, combo: single("5", "hearts"), handCounts: [2, 2, 3] },
+      { seat: 2, combo: null, handCounts: [2, 2, 3] },
+      { seat: 0, combo: null, handCounts: [2, 2, 3] },
+    ],
+  };
+  const standing = replayStateAt(threeUp, 2);
+  assert.deepEqual(standing.lastPlayedCombination?.cards.map((x) => x.id), ["5_hearts"]);
+  assert.equal(standing.lastPlayedBy, 1);
+  assert.equal(replayStateAt(threeUp, 3).lastPlayedCombination, null, "the second pass closed it");
 });
 
 test("the last index is the finished hand", () => {
