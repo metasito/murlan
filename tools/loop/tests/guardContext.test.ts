@@ -50,33 +50,33 @@ const call = (transcript_path: string, extra: object = {}) => ({
 
 describe("the context ceiling", () => {
   test("under the ceiling is silent", () => {
-    assert.equal(run(call(transcript([assistant(149_000)]))), "");
+    assert.equal(run(call(transcript([assistant(199_000)]))), "");
   });
 
-  const ceiling = "Context is past 150k. Commit what works and hand off to the phase of your last PHASE line.";
+  const ceiling = "Context is past 200k. Commit what works and hand off to the phase of your last PHASE line.";
 
   test("over the ceiling says so once, pointing at the session's own phase, never the one it started in", () => {
-    const out = JSON.parse(run(call(transcript([assistant(10_000), assistant(151_000)]))));
+    const out = JSON.parse(run(call(transcript([assistant(10_000), assistant(201_000)]))));
     assert.equal(out.hookSpecificOutput.hookEventName, "PostToolUse");
     assert.equal(out.hookSpecificOutput.additionalContext, ceiling);
   });
 
   test("the notice is the same with or without LOOP_PHASE", () => {
-    const out = run(call(transcript([assistant(151_000)])), { LOOP_TURNS: "40" });
+    const out = run(call(transcript([assistant(201_000)])), { LOOP_TURNS: "40" });
     assert.equal(JSON.parse(out).hookSpecificOutput.additionalContext, ceiling);
   });
 
   test("a notice already in the transcript is not repeated", () => {
     const said = ceiling;
-    assert.equal(run(call(transcript([assistant(151_000), noticed(said), assistant(160_000)]))), "");
+    assert.equal(run(call(transcript([assistant(201_000), noticed(said), assistant(210_000)]))), "");
   });
 
   test("a subagent is silent", () => {
-    assert.equal(run(call(transcript([assistant(151_000)]), { agent_id: "a1" })), "");
+    assert.equal(run(call(transcript([assistant(201_000)]), { agent_id: "a1" })), "");
   });
 
   test("outside the loop is silent", () => {
-    assert.equal(run(call(transcript([assistant(151_000)])), {}), "");
+    assert.equal(run(call(transcript([assistant(201_000)])), {}), "");
   });
 });
 

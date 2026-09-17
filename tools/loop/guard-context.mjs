@@ -8,7 +8,7 @@
 import { createHash } from "node:crypto";
 import { closeSync, fstatSync, openSync, readFileSync, readSync } from "node:fs";
 
-export const CONTEXT_CEILING = 150_000;
+export const CONTEXT_CEILING = 200_000;
 export const TAIL_BYTES = 4 * 1024 * 1024;
 const REPEATS = 3;
 
@@ -47,7 +47,7 @@ function notices(payload) {
   const said = [];
 
   const last = all.findLast((r) => r.type === "assistant" && r.message?.usage);
-  const ceiling = "Context is past 150k. Commit what works and hand off to the phase of your last PHASE line.";
+  const ceiling = "Context is past 200k. Commit what works and hand off to the phase of your last PHASE line.";
   if (last && contextOf(last.message.usage) > CONTEXT_CEILING && !text.includes(ceiling)) said.push(ceiling);
 
   const command = payload.tool_name === "Bash" ? payload.tool_input?.command : undefined;
