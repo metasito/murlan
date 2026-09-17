@@ -10,7 +10,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { poll, SETTLE_ROUNDS } from "../queue-loop.mjs";
-import { readVerdict } from "../ciVerdict.ts";
+import { readHeadCi, readVerdict } from "../ciVerdict.ts";
 
 const PENDING = { ticket: 1028, pr: 1053, branch: "agent/1028-the-turn-chip" };
 const SHA = "5bb5dcf22b863994fc138ab773976e9539d78539";
@@ -30,11 +30,20 @@ const prRow = (over: Record<string, string> = {}) => ({
  * One fake `gh`. `script` answers the run listing per call, so a run can finish between rounds the
  * way a real one does; everything else is fixed for the scenario.
  */
-function ghFake({ script, pr = prRow(), jobs = [], log = "Native tests\tRun tests\t2026-09-14T00:00:00Z FAIL" }: {
+function ghFake({
+  script,
+  pr = prRow(),
+  jobs = [],
+  log = "Native tests\tRun tests\t2026-09-14T00:00:00Z FAIL",
+  remoteSha = SHA,
+  prList = [{ number: PENDING.pr, headRefOid: SHA }],
+}: {
   script: unknown[][];
   pr?: Record<string, string>;
   jobs?: unknown[];
   log?: string | null;
+  remoteSha?: string | null;
+  prList?: unknown[];
 }) {
   const asked: string[][] = [];
   let listed = 0;
@@ -43,6 +52,11 @@ function ghFake({ script, pr = prRow(), jobs = [], log = "Native tests\tRun test
   const gh = (args: string[], file = "gh") => {
     assert.equal(file, "gh", `a ${file} call reached the gh fake: ${args.join(" ")}`);
     asked.push(args);
+    if (args[0] === "api") {
+      if (remoteSha === null) throw new Error("gh: not found");
+      return remoteSha;
+    }
+    if (args[0] === "pr" && args[1] === "list") return JSON.stringify(prList);
     if (args[0] === "pr" && args[1] === "view" && args.includes("headRefOid")) {
       return JSON.stringify({ headRefOid: SHA });
     }
@@ -146,5 +160,38 @@ describe("settle, replayed against recorded gh payloads", () => {
     const out = await poll(PENDING, () => {}, 0, -1, io(gh));
     assert.equal(out.action, "owner");
     assert.match(String(out.reason), /did not settle in/);
+  });
+});
+
+describe("readHeadCi, replayed against recorded gh payloads", () => {
+  test("answers the remote head, its open PR, the verdict and every failing test id", () => {
+    const { gh } = ghFake({
+      script: [runRow("completed", "failure")],
+      jobs: [{ name: "Native tests", conclusion: "failure", steps: 11 }],
+      log: "Native tests\tRun tests\t2026-09-14T00:00:00Z   1) [chromium] › tests/e2e/x.spec.ts:9:5 › some test",
+    });
+    const out = readHeadCi(
+      "metasito/murlan",
+      PENDING.branch,
+      (args) => gh(args),
+      Date.now() + 60_000
+    );
+    assert.equal(out.remoteSha, SHA);
+    assert.equal(out.pr, PENDING.pr);
+    assert.equal(out.verdict.pass, false);
+    assert.deepEqual(out.testIds, ["tests/e2e/x.spec.ts › some test"]);
+  });
+
+  test("a branch with no open pull request reads pr as null", () => {
+    const { gh } = ghFake({ script: [runRow("completed", "success")], prList: [] });
+    const out = readHeadCi("metasito/murlan", PENDING.branch, (args) => gh(args), Date.now() + 60_000);
+    assert.equal(out.pr, null);
+    assert.equal(out.verdict.pass, true);
+  });
+
+  test("a remote sha that cannot be read reads as null, not a throw", () => {
+    const { gh } = ghFake({ script: [runRow("completed", "success")], remoteSha: null });
+    const out = readHeadCi("metasito/murlan", PENDING.branch, (args) => gh(args), Date.now() + 60_000);
+    assert.equal(out.remoteSha, null);
   });
 });

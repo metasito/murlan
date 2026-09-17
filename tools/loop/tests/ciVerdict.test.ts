@@ -3,6 +3,7 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import {
   decideVerdict,
+  failingTestIds,
   ghExecOptions,
   runForHead,
   runListArgs,
@@ -235,5 +236,47 @@ describe("a cancelled run", () => {
     const none = decideVerdict(undefined);
     assert.equal(none.waiting, undefined, "an absent run would wait out the whole deadline");
     assert.equal(none.appearing, true);
+  });
+});
+
+describe("failing test ids from a CI log", () => {
+  test("a Playwright failure names its file and title, line:col dropped, retries de-duplicated", () => {
+    const log = [
+      "  1) [chromium] › tests/e2e/accountRecovery.spec.ts:9:5 › account recovery — verify a fresh address, then reset a forgotten password ",
+      "",
+      "    Error: no console errors/warnings during account recovery",
+      "",
+      "    Retry #1 ───────────────────────────────────────────────────────────────────────────────────────",
+      "",
+      "    Error: no console errors/warnings during account recovery",
+      "",
+      "  1 failed",
+      "    [chromium] › tests/e2e/accountRecovery.spec.ts:9:5 › account recovery — verify a fresh address, then reset a forgotten password ",
+      "  26 passed (3.6m)",
+    ].join("\n");
+    assert.deepEqual(failingTestIds(log), [
+      "tests/e2e/accountRecovery.spec.ts › account recovery — verify a fresh address, then reset a forgotten password",
+    ]);
+  });
+
+  test("a node:test failure names its file and the failing subtest", () => {
+    const log = [
+      "# Subtest: tools/loop/tests/ciVerdict.test.ts",
+      "    # Subtest: reading ci.yml's verdict",
+      "        not ok 3 - a failed run does not pass, and names the failing job",
+    ].join("\n");
+    assert.deepEqual(failingTestIds(log), [
+      "tools/loop/tests/ciVerdict.test.ts › a failed run does not pass, and names the failing job",
+    ]);
+  });
+
+  test("a jest failure names its file", () => {
+    assert.deepEqual(failingTestIds("FAIL tests/native/x.test.tsx"), ["tests/native/x.test.tsx"]);
+  });
+
+  test("a log with no failures names none", () => {
+    const log =
+      "  ✓  27 [chromium] › tests/e2e/reconnect.spec.ts:21:5 › online — a dropped connection says so, and the table comes back (33.5s)\n  28 passed (1.2m)";
+    assert.deepEqual(failingTestIds(log), []);
   });
 });
