@@ -21,12 +21,14 @@ Roughly a minute. It is **not** part of `npm run test:e2e` — the default suite
 ignores the file, and this runs from its own config
 (`tests/e2e/playwright.perf.config.ts`).
 
-It prints three lines:
+It prints five lines:
 
 ```
 [web-perf] deal {...}
 [web-perf] idle {...}
 [web-perf] drag {...}
+[web-perf] online-idle {...}
+[web-perf] throttled-load {...}
 ```
 
 `deal` records for three seconds from the click that starts the game, which is
@@ -52,6 +54,12 @@ refuses to publish a number unless the hand's order actually changed.
 | `longTasks`, `longTaskMs` | main-thread tasks over 50ms, via `PerformanceObserver` |
 | `transformed` | elements carrying a non-identity transform when sampled |
 | `domNodes` | elements in the document |
+
+`online-idle` is `idle` on a two-seat online table, under reduced motion (the helper sets it).
+`throttled-load` opens home under Lighthouse's mobile throttling (4x CPU, 150ms RTT, 1.6 Mbps)
+and reports `fcp`, `lcp` and `tbt` (the sum of every long task's time past 50ms) in milliseconds.
+
+Server capacity is `npm run soak -- --tables 8 --minutes 1`: moves/sec and broadcast p50/p99.
 
 ## The baseline
 

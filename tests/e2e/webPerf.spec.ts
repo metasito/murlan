@@ -14,6 +14,7 @@
 import { test, expect } from "./fixtures";
 import { openApp, startOfflineGame } from "./helpers/navigation";
 import { openSeededGame } from "./helpers/offlineSeed";
+import { openOnlineTable } from "./helpers/onlineTable";
 import { HAND_CARDS } from "./helpers/selectors";
 import { PAST_HOLD_MS } from "./helpers/press";
 
@@ -200,5 +201,58 @@ test.describe("web frame performance", () => {
     ).not.toEqual(before);
     expect(drag.frames, "no frames were observed during the drag").toBeGreaterThan(20);
     expect(drag.domNodes, "the table never rendered").toBeGreaterThan(100);
+  });
+
+  test("records a settled online table", async ({ browser, baseURL }) => {
+    test.setTimeout(3 * 60_000);
+    const table = await openOnlineTable(browser, baseURL!, {
+      playerCount: 2,
+      gameMode: "free_for_all",
+      viewport: { width: 844, height: 390 },
+    });
+    try {
+      await table.page.waitForTimeout(2_000);
+      const onlineIdle = await record(table.page, 2_000);
+      console.log(`[web-perf] online-idle ${JSON.stringify(onlineIdle)}`);
+      expect(onlineIdle.frames, "no frames were observed on the online table").toBeGreaterThan(20);
+      expect(onlineIdle.domNodes, "the table never rendered").toBeGreaterThan(100);
+    } finally {
+      await table.close();
+    }
+  });
+
+  // Lighthouse's mobile preset: 4x CPU, 150ms RTT, 1.6 Mbps down, 750 kbps up.
+  test("records first load on a throttled phone", async ({ page, baseURL }) => {
+    test.setTimeout(3 * 60_000);
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send("Emulation.setCPUThrottlingRate", { rate: 4 });
+    await cdp.send("Network.enable");
+    await cdp.send("Network.emulateNetworkConditions", {
+      offline: false,
+      latency: 150,
+      downloadThroughput: (1_600 * 1024) / 8,
+      uploadThroughput: (750 * 1024) / 8,
+    });
+    await page.addInitScript(() => {
+      const seen = { lcp: 0, blocking: 0 };
+      (window as unknown as { __load: typeof seen }).__load = seen;
+      new PerformanceObserver((list) => {
+        for (const entry of list.getEntries()) seen.lcp = entry.startTime;
+      }).observe({ type: "largest-contentful-paint", buffered: true });
+      new PerformanceObserver((list) => {
+        for (const entry of list.getEntries()) seen.blocking += Math.max(0, entry.duration - 50);
+      }).observe({ type: "longtask", buffered: true });
+    });
+
+    await openApp(page, baseURL!);
+    await page.waitForTimeout(3_000);
+    const load = await page.evaluate(() => {
+      const seen = (window as unknown as { __load: { lcp: number; blocking: number } }).__load;
+      const fcp = performance.getEntriesByName("first-contentful-paint")[0]?.startTime ?? 0;
+      return { fcp: +fcp.toFixed(0), lcp: +seen.lcp.toFixed(0), tbt: +seen.blocking.toFixed(0) };
+    });
+    console.log(`[web-perf] throttled-load ${JSON.stringify(load)}`);
+
+    expect(load.lcp, "no largest-contentful-paint was observed").toBeGreaterThan(0);
   });
 });
