@@ -55,6 +55,7 @@ const stubIo = () => ({
   teardown: () => {},
   bell: () => {},
   record: () => {},
+  tally: () => ({ sessions: 0, spend: 0, handoffsThisRound: 0, lastHandoff: null, lastRedHead: null, retries: 0, ciRounds: 0 }),
   log: () => {},
 });
 
@@ -164,6 +165,12 @@ describe("liveRoute", () => {
       phase: "D",
       resuming: true,
     });
+  });
+
+  test("skips a ticket not labelled in-progress", () => {
+    const live = { onTicket: true, ticket: 911, branch: "agent/911-x", phase: "D" };
+    assert.equal(liveRoute(live, ["ready-for-human"]), null);
+    assert.equal(liveRoute(live, ["in-progress"])?.number, 911);
   });
 
   test("falls back to a bare ticket label when derive() found no branch (the stuck/'?' case)", () => {
@@ -1182,7 +1189,7 @@ describe("a phase handoff", () => {
         });
       },
     };
-    const pass = await runOnce(io as never, null, 0);
+    const pass = await runOnce(io as never, null);
     assert.equal(pass.outcome, "handoff");
     assert.equal(pass.phase, "D");
     assert.deepEqual(spawned, [41]);

@@ -353,6 +353,11 @@ describe("ticketTally", () => {
     assert.equal(t.retries, 1);
   });
 
+  test("a retry clears the phase the last handoff named", () => {
+    const t = ticketTally(1, [row({ outcome: "handoff", park_reason: "phase E next" }), row({ outcome: "retry" })]);
+    assert.equal(t.lastHandoff, null);
+  });
+
   test("a landed row starts the next tally from zero", () => {
     const t = ticketTally(1, [
       row({ outcome: "retry", head: "x" }),

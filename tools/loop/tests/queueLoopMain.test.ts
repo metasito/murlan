@@ -4,9 +4,18 @@
 // with no test: every export was unit-tested and the way they were put together was not.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { runOnce, afterSession, main } from "../queue-loop.mjs";
+import { runOnce, afterSession, main, MAX_HANDOFFS, USD_BY_SIZE } from "../queue-loop.mjs";
+import { ticketTally } from "../loop-logs.mjs";
 
-const io = (over: Record<string, unknown> = {}) => ({
+const rowOf = (x: any) => ({
+  n: x.number,
+  outcome: x.outcome,
+  cost: x.run?.result?.cost ?? 0,
+  park_reason: x.outcome === "landed" || x.outcome === "retry" ? null : (x.why ?? null),
+  head: x.head ?? null,
+});
+
+const io = (over: Record<string, unknown> = {}, ledger: any[] = []) => ({
   stopFile: () => false,
   syncCheckout: () => true,
   queuePre: () => 0,
@@ -41,8 +50,8 @@ const io = (over: Record<string, unknown> = {}) => ({
   park: () => {},
   teardown: () => {},
   bell: () => {},
-  record: () => {},
-
+  record: (x: unknown) => ledger.push(rowOf(x)),
+  tally: (n: number) => ({ ...ticketTally(n, ledger), ciRounds: 0 }),
   sharedCheckoutDirty: () => "",
   log: () => {},
   ...over,
@@ -639,5 +648,128 @@ describe("what a ticket's clock covers", () => {
     );
     assert.equal(rows.length, 1);
     assert.ok(rows[0].run.ms > 1000, `the row's clock is still the session's ${rows[0].run.ms}ms`);
+  });
+});
+
+describe("a ticket's tally comes from the ledger, not from memory", () => {
+  const book = () => ({ totals: { tickets: 0, landed: 0, parked: 0, cost: 0, ms: 0 }, record: () => {}, close: () => {} });
+  const screen = () => ({ say: () => {}, warn: () => {}, notice: () => {}, stop: () => {} });
+  const go = (spy: unknown) => main({ io: spy as never, book: book(), screen: screen(), install: () => {}, runId: "t" });
+  const ticket = { skill: "implement", number: 42, title: "t", size: "size:S", queue: null };
+  const done = { skill: "handoff", number: 0, title: "queue empty" };
+  const once = (route: object) => {
+    let n = 0;
+    return () => (n++ === 0 ? route : done);
+  };
+  const red = (sha: string) => ({
+    pushedPr: () => ({ number: 984, state: "OPEN", head: "agent/42-x", sha }),
+    settle: async () => ({ action: "hand-back", reason: "CI failed at Lint" }),
+  });
+  const session = (cost: number, handoff: string | null) => ({
+    status: 0,
+    blocked: false,
+    result: { cost },
+    ms: 1,
+    log: "l",
+    phase: "C",
+    declared: handoff ? { ticket: 42, phase: "C", handoff, stoodDown: false } : null,
+  });
+  const retryRow = (head: string) => ({ n: 42, outcome: "retry", cost: 1, park_reason: null, head });
+  const handoffRow = () => ({ n: 42, outcome: "handoff", cost: 0, park_reason: "phase D next", head: null });
+  const plan = (sessions: object[]) => {
+    let s = 0;
+    return {
+      pick: (_p: number | null, at: string | null) => (s < sessions.length ? { ...ticket, at } : done),
+      spawn: async () => sessions[s++],
+    };
+  };
+
+  test("a restart mid fix round keeps the round count: the third red run parks", async () => {
+    const why: string[] = [];
+    const ledger = [retryRow("h1"), retryRow("h2")];
+    await go(io({ pick: once(ticket), ...red("h3"), park: (_n: number, c: { why: string }) => why.push(c.why) }, ledger));
+    assert.equal(why.length, 1);
+    assert.match(why[0], /3 CI rounds/);
+  });
+
+  test("a retry resets handoffsThisRound and the handed phase", async () => {
+    const at: (string | null)[] = [];
+    const parked: string[] = [];
+    const sessions = [...Array(MAX_HANDOFFS - 1).fill(0).map(() => session(1, "D")), session(1, null), session(1, "E")];
+    const p = plan(sessions);
+    await go(
+      io({
+        ...p,
+        pick: (pin: number | null, phase: string | null) => {
+          at.push(phase);
+          return p.pick(pin, phase);
+        },
+        ...red("h1"),
+        park: (_n: number, c: { why: string }) => parked.push(c.why),
+      }),
+    );
+    assert.deepEqual(parked, []);
+    assert.deepEqual(at, [null, ...Array(MAX_HANDOFFS - 1).fill("D"), null, "E"]);
+  });
+
+  test("the retry session's cost counts toward the spend ceiling", async () => {
+    const parked: string[] = [];
+    const ceiling = USD_BY_SIZE["size:S"];
+    await go(
+      io({
+        ...plan([session(ceiling - 1, null), session(2, "D")]),
+        ...red("h1"),
+        park: (_n: number, c: { why: string }) => parked.push(c.why),
+      }),
+    );
+    assert.equal(parked.length, 1);
+    assert.match(parked[0], /over this ticket's ceiling/);
+  });
+
+  test("a fix round whose head equals lastRedHead parks even after a restart", async () => {
+    const why: string[] = [];
+    await go(
+      io({ pick: once(ticket), ...red("aaa111"), park: (_n: number, c: { why: string }) => why.push(c.why) }, [
+        retryRow("aaa111"),
+      ]),
+    );
+    assert.equal(why.length, 1);
+    assert.match(why[0], /pushed no commit/);
+  });
+
+  test("overSpend, overHandoffs, the no-commit park and a thrown iteration each write exactly one parked row", async () => {
+    const cases: Record<string, [Record<string, unknown>, object[]]> = {
+      overSpend: [{ ...plan([session(1000, "D")]) }, []],
+      overHandoffs: [{ ...plan([session(0, "D")]) }, Array(MAX_HANDOFFS - 1).fill(0).map(handoffRow)],
+      noCommit: [{ pick: once(ticket), ...red("aaa111") }, [retryRow("aaa111")]],
+      thrown: [
+        {
+          pick: once(ticket),
+          sharedCheckoutDirty: () => {
+            throw new Error("index.lock");
+          },
+        },
+        [],
+      ],
+    };
+    for (const [name, [over, seed]] of Object.entries(cases)) {
+      const ledger: any[] = [...seed];
+      await go(io(over, ledger));
+      assert.equal(ledger.filter((r) => r.outcome === "parked").length, 1, name);
+    }
+  });
+
+  test("a throw during a resumed run parks with standing().cwd", async () => {
+    const cwds: (string | null)[] = [];
+    await go(
+      io({
+        pick: once({ ...ticket, resuming: true, phase: "C" }),
+        sharedCheckoutDirty: () => {
+          throw new Error("index.lock");
+        },
+        park: (_n: number, c: { cwd: string | null }) => cwds.push(c.cwd),
+      }),
+    );
+    assert.deepEqual(cwds, [".worktrees/agent-42"]);
   });
 });

@@ -265,7 +265,7 @@ function gh(args, cwd, timeout) {
 }
 
 function readComments(ticket, cwd) {
-  return gh(["issue", "view", String(ticket), "--json", "comments"], cwd);
+  return gh(["issue", "view", String(ticket), "--json", "comments"], cwd, CI_BUDGET_MS);
 }
 
 const SETTLE = "G";

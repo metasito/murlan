@@ -292,6 +292,7 @@ export function ticketTally(n, rows) {
     if (r.outcome === "retry") {
       retries += 1;
       handoffsThisRound = 0;
+      lastHandoff = null;
       lastRedHead = r.head ?? null;
     } else if (r.outcome === "handoff") {
       handoffsThisRound += 1;
