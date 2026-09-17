@@ -1,5 +1,5 @@
 // tools/loop/tests/sharedRed.test.ts
-import { test, describe } from "node:test";
+import { test, describe, after } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, writeFileSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -159,16 +159,18 @@ const LOG_1077 =
   "job\tstep\t2026-09-16T00:00:00Z 1) [chromium] › tests/e2e/accountRecovery.spec.ts:40:3 › resend keeps the same code\n";
 
 describe("checkShared", () => {
+  const CACHE = mkdtempSync(join(tmpdir(), "shared-red-check-"));
+  after(() => rmSync(CACHE, { recursive: true, force: true }));
   test("files once, then reports known for the same failing id", () => {
     const other = run({ runId: 1077, branch: "agent/1077-resend" });
     const hub = fakeGh([other], { 1077: LOG_1077 });
     const mine = { branch: "agent/1082-recovery-copy", testIds: [TEST_ID] };
 
-    const first = checkShared({ repo: "metasito/murlan", gh: hub.gh, mine });
+    const first = checkShared({ cacheDir: CACHE, repo: "metasito/murlan", gh: hub.gh, mine });
     assert.equal(first.kind, "file");
     assert.equal(first.kind === "file" && first.issue?.number, 901);
 
-    const second = checkShared({ repo: "metasito/murlan", gh: hub.gh, mine });
+    const second = checkShared({ cacheDir: CACHE, repo: "metasito/murlan", gh: hub.gh, mine });
     assert.equal(second.kind, "known");
     assert.equal(second.kind === "known" && second.issue.number, 901);
   });
@@ -178,10 +180,10 @@ describe("checkShared", () => {
     const run1082 = run({ runId: 1082, branch: "agent/1082-recovery-copy", url: "https://github.com/metasito/murlan/actions/runs/1082" });
     const hub = fakeGh([run1077, run1082], { 1077: LOG_1077, 1082: LOG_1077 });
 
-    const fromA = checkShared({ repo: "metasito/murlan", gh: hub.gh, mine: { branch: "agent/1077-resend", testIds: [TEST_ID] } });
+    const fromA = checkShared({ cacheDir: CACHE, repo: "metasito/murlan", gh: hub.gh, mine: { branch: "agent/1077-resend", testIds: [TEST_ID] } });
     assert.equal(fromA.kind, "file");
 
-    const fromB = checkShared({ repo: "metasito/murlan", gh: hub.gh, mine: { branch: "agent/1082-recovery-copy", testIds: [TEST_ID] } });
+    const fromB = checkShared({ cacheDir: CACHE, repo: "metasito/murlan", gh: hub.gh, mine: { branch: "agent/1082-recovery-copy", testIds: [TEST_ID] } });
     assert.equal(fromB.kind, "known");
   });
 
@@ -194,7 +196,7 @@ describe("checkShared", () => {
         args.includes("--branch")
           ? JSON.stringify([{ databaseId: 9, status: "completed", conclusion: mainConclusion, createdAt: "2026-09-16T13:00:00Z" }])
           : hub.gh(args);
-      const decision = checkShared({ repo: "metasito/murlan", gh, mine: { branch: "agent/1082-recovery-copy", testIds: [TEST_ID] } });
+      const decision = checkShared({ cacheDir: CACHE, repo: "metasito/murlan", gh, mine: { branch: "agent/1082-recovery-copy", testIds: [TEST_ID] } });
       return { decision, reopened: hub.calls.some((c) => c[1] === "reopen") };
     };
     const green = closed("success");
@@ -218,7 +220,7 @@ describe("checkShared", () => {
   test("the filed issue carries the shared-red label", () => {
     const other = run({ runId: 1077, branch: "agent/1077-resend" });
     const hub = fakeGh([other], { 1077: LOG_1077 });
-    checkShared({ repo: "metasito/murlan", gh: hub.gh, mine: { branch: "agent/1082-recovery-copy", testIds: [TEST_ID] } });
+    checkShared({ cacheDir: CACHE, repo: "metasito/murlan", gh: hub.gh, mine: { branch: "agent/1082-recovery-copy", testIds: [TEST_ID] } });
     const [create] = hub.calls.filter((c) => c[0] === "issue" && c[1] === "create");
     const labels = create.flatMap((a, i) => (a === "--label" ? [create[i + 1]] : []));
     assert.ok(labels.includes(SHARED_RED_LABEL));
