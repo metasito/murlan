@@ -36,7 +36,7 @@ test("a cached build still reports an error a dependency's edit introduces, run 
       path.join(dir, "tsconfig.json"),
       JSON.stringify({ compilerOptions: { strict: true, incremental, noEmit }, include: ["*.ts"] }),
     );
-    fs.writeFileSync(path.join(dir, "b.ts"), 'import { v } from "./a";\nexport const w: number = v;\n');
+    fs.writeFileSync(path.join(dir, "b.ts"), `import { v } from ${JSON.stringify("./a")};\nexport const w: number = v;\n`);
     const write = (body: string) => fs.writeFileSync(path.join(dir, "a.ts"), body);
     const tsc = () => spawnSync(process.execPath, [TSC, "-p", dir], { encoding: "utf8" });
 
