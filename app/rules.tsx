@@ -19,6 +19,7 @@ import { ScreenHeader } from "@/components/ScreenHeader";
 import { MenuLayout } from "@/components/MenuLayout";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
+import { dealCards } from "@/lib/gameEngine";
 import { a11yHidden, a11yState } from "@/lib/a11y";
 
 interface FAQ {
@@ -27,6 +28,10 @@ interface FAQ {
 }
 
 const FAQ_COUNT = 18;
+
+/** What the heads-up deal leaves face down, from the deal itself rather than a
+ *  number in the copy that a change to `HEADS_UP_HAND` would leave behind. */
+const HEADS_UP_UNDEALT = dealCards(2).excluded.length;
 
 const CTA_ICON = 18;
 const FAQ_ICON = 16;
@@ -40,7 +45,7 @@ function useFaqs(): FAQ[] {
         const n = i + 1;
         return {
           question: t(`rules.faq.q${n}` as TranslationKey),
-          answer: t(`rules.faq.a${n}` as TranslationKey),
+          answer: t(`rules.faq.a${n}` as TranslationKey, { undealt: HEADS_UP_UNDEALT }),
         };
       }),
     [t]

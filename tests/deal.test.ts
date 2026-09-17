@@ -361,3 +361,33 @@ describe("findStartingPlayer (defect 4)", () => {
     }
   });
 });
+
+describe("the rules screen's undealt count", () => {
+  const locales = ["en", "it", "sq"] as const;
+
+  test("every locale takes it from the deal rather than stating a number", () => {
+    for (const locale of locales) {
+      const src = readFileSync(path.join(repoRoot, "locales", `${locale}.ts`), "utf8");
+      const answer = /"rules\.faq\.a2": "([^\n]*)",$/m.exec(src)?.[1];
+      assert.ok(answer, `${locale}.ts has no rules.faq.a2`);
+      assert.ok(
+        answer.includes("{{undealt}}"),
+        `${locale}'s a2 must carry the {{undealt}} placeholder`
+      );
+      assert.ok(
+        !/\b(12|26)\b/.test(answer),
+        `${locale}'s a2 states an undealt count as a literal`
+      );
+    }
+  });
+
+  test("app/rules.tsx fills the placeholder from dealCards", () => {
+    const src = readFileSync(path.join(repoRoot, "app", "rules.tsx"), "utf8");
+    assert.match(src, /dealCards\(2\)\.excluded\.length/);
+    assert.match(src, /undealt:\s*HEADS_UP_UNDEALT/);
+  });
+
+  test("the heads-up deal leaves 26 cards face down", () => {
+    assert.equal(dealCards(2).excluded.length, createDeck().length - 2 * 14);
+  });
+});
