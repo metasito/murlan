@@ -49,13 +49,13 @@ describe("decideShared", () => {
   test("an open shared-red issue already naming the id is known", () => {
     const issue: SharedIssue = { number: 5, title: titleFor(TEST_ID), state: "OPEN" };
     const decision = decideShared(mine, [run()], [issue]);
-    assert.deepEqual(decision, { kind: "known", issue, testId: TEST_ID });
+    assert.deepEqual(decision, { kind: "known", issue, testId: TEST_ID, sharedIds: [TEST_ID] });
   });
 
   test("a closed shared-red issue whose id fails again is reopen, as gh's own uppercase state", () => {
     const issue: SharedIssue = { number: 5, title: titleFor(TEST_ID), state: "CLOSED" };
     const decision = decideShared(mine, [run()], [issue]);
-    assert.deepEqual(decision, { kind: "reopen", issue, testId: TEST_ID });
+    assert.deepEqual(decision, { kind: "reopen", issue, testId: TEST_ID, sharedIds: [TEST_ID] });
   });
 
   test("a closed issue owned by another ticket is reopened, never blocked on", () => {
@@ -67,6 +67,13 @@ describe("decideShared", () => {
   test("an issue for a longer id that merely contains this one is not this id's issue", () => {
     const longer: SharedIssue = { number: 6, title: titleFor(`${TEST_ID} again`), state: "OPEN" };
     assert.equal(decideShared(mine, [run()], [longer]).kind, "file");
+  });
+
+  test("names every shared id in order, deciding on the first", () => {
+    const ids = ["a › own", "b › shared", "c › shared"];
+    const decision = decideShared({ ...mine, testIds: ids }, [run({ testIds: [ids[2], ids[1]] })], []);
+    assert.equal(decision.kind === "file" && decision.testId, ids[1]);
+    assert.deepEqual(decision.kind !== "none" && decision.sharedIds, [ids[1], ids[2]]);
   });
 
   test("the branch's own older run does not count as shared", () => {

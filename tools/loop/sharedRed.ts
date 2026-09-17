@@ -36,9 +36,9 @@ export interface SharedOwner {
 
 export type SharedDecision =
   | { kind: "none"; why?: string }
-  | { kind: "file"; testId: string; evidence: RedRun; issue?: SharedIssue }
-  | { kind: "known"; issue: SharedIssue; testId: string; evidence?: RedRun }
-  | { kind: "reopen"; issue: SharedIssue; testId: string; evidence?: RedRun; landed?: boolean };
+  | { kind: "file"; testId: string; sharedIds: string[]; evidence: RedRun; issue?: SharedIssue }
+  | { kind: "known"; issue: SharedIssue; testId: string; sharedIds: string[]; evidence?: RedRun }
+  | { kind: "reopen"; issue: SharedIssue; testId: string; sharedIds: string[]; evidence?: RedRun; landed?: boolean };
 
 export const SHARED_RED_LABEL = "shared-red";
 export const DEFAULT_CACHE_DIR = LOOP_LOGS_DIR;
@@ -198,14 +198,13 @@ export function decideShared(
   issues: SharedIssue[],
 ): SharedDecision {
   const elsewhere = others.filter((r) => r.branch !== mine.branch);
-  for (const testId of mine.testIds) {
-    const evidence = elsewhere.find((r) => r.testIds.includes(testId));
-    if (!evidence) continue;
-    const issue = issueForTestId(testId, issues);
-    if (!issue) return { kind: "file", testId, evidence };
-    return isClosed(issue.state) ? { kind: "reopen", issue, testId } : { kind: "known", issue, testId };
-  }
-  return { kind: "none" };
+  const sharedIds = mine.testIds.filter((id) => elsewhere.some((r) => r.testIds.includes(id)));
+  const [testId] = sharedIds;
+  if (testId === undefined) return { kind: "none" };
+  const evidence = elsewhere.find((r) => r.testIds.includes(testId)) as RedRun;
+  const issue = issueForTestId(testId, issues);
+  if (!issue) return { kind: "file", testId, sharedIds, evidence };
+  return { kind: isClosed(issue.state) ? "reopen" : "known", issue, testId, sharedIds };
 }
 
 interface MainRunRow {
