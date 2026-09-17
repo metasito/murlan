@@ -711,8 +711,12 @@ export function removeLanded(cwd, number, { run = sh, write = writeLeftover, say
 export function blockOnShared(number, blocker, cwd, run = sh) {
   const opts = { timeout: CI_RED_TIMEOUT_MS };
   const id = run("gh", ["api", `repos/${REPO}/issues/${blocker}`, "--jq", ".id"], opts).trim();
-  run("gh", ["api", "-X", "POST", `repos/${REPO}/issues/${number}/dependencies/blocked_by`, "-F", `issue_id=${id}`], opts);
   if (cwd) removeWorktree(cwd, run);
+  try {
+    run("gh", ["api", "-X", "POST", `repos/${REPO}/issues/${number}/dependencies/blocked_by`, "-F", `issue_id=${id}`], opts);
+  } catch (err) {
+    throw Object.assign(err, { removed: true });
+  }
 }
 
 /** A red round's `update-branch` moved the remote head, and the fix is built on top of it. */
@@ -2025,14 +2029,14 @@ export async function runOnce(io, pinned = null, at = null) {
   // The pull request's own count when derive() read no worktree.
   const files = after?.changed?.length || pr?.changedFiles || 0;
 
-  const handBack = (why, phase, log = run.log) =>
+  const handBack = (why, phase, log = run.log, standing = true) =>
     parkAndRecord(io, route.number, {
       phase,
       why,
       log,
-      cwd: after?.cwd ?? null,
+      cwd: standing ? (after?.cwd ?? null) : null,
       branch: after?.branch ?? null,
-      dirty: after?.dirty ?? false,
+      dirty: standing && (after?.dirty ?? false),
       run,
       pr: decided.pr ?? null,
       files,
@@ -2068,7 +2072,9 @@ export async function runOnce(io, pinned = null, at = null) {
     try {
       io.block(route.number, settled.blockedBy, after?.cwd ?? null);
     } catch (err) {
-      return handBack(`${why}, and the block could not be recorded — ${String(err.message).split("\n")[0]}`, "E");
+      const gone = err.removed ? "; the worktree is already gone, so the ticket is safe to rebuild" : "";
+      const failed = String(err.message).split("\n")[0];
+      return handBack(`${why}, and the block could not be recorded — ${failed}${gone}`, "E", run.log, !err.removed);
     }
     io.record({
       number: route.number,

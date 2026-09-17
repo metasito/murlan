@@ -807,9 +807,48 @@ describe("runOnce", () => {
     });
     assert.deepEqual(calls, [
       ["gh", "api", "repos/metasito/murlan/issues/900", "--jq", ".id"],
-      ["gh", "api", "-X", "POST", "repos/metasito/murlan/issues/42/dependencies/blocked_by", "-F", "issue_id=123456"],
       ["npm", "run", "worktrees:remove", "--", "w"],
+      ["gh", "api", "-X", "POST", "repos/metasito/murlan/issues/42/dependencies/blocked_by", "-F", "issue_id=123456"],
     ]);
+  });
+
+  test("a worktree that will not go writes no edge, and the park keeps the worktree", async () => {
+    const calls: string[] = [];
+    const dirty = (file: string, args: string[]) => {
+      calls.push(args.join(" "));
+      if (file === "npm") throw new Error("worktree is dirty");
+      return "1\n";
+    };
+    assert.throws(() => blockOnShared(42, 900, "w", dirty), /dirty/);
+    assert.equal(calls.some((c) => c.includes("blocked_by")), false);
+
+    const parked: { why: string; cwd: string | null }[] = [];
+    await runOnce(
+      io({
+        settle: async () => ({ action: "hand-back", reason: "CI failed", blockedBy: 900 }),
+        block: (n: number, b: number, cwd: string) => blockOnShared(n, b, cwd, dirty),
+        park: (_n: number, c: { why: string; cwd: string | null }) => parked.push(c),
+      }),
+    );
+    assert.deepEqual(parked.map((p) => p.cwd), [".worktrees/agent-42"]);
+  });
+
+  test("an edge that fails after the worktree went parks without one, and says the ticket can be rebuilt", async () => {
+    const noEdge = (_file: string, args: string[]) => {
+      if (args.includes("POST")) throw new Error("HTTP 502");
+      return "1\n";
+    };
+    const parked: { why: string; cwd: string | null }[] = [];
+    const r = await runOnce(
+      io({
+        settle: async () => ({ action: "hand-back", reason: "CI failed", blockedBy: 900 }),
+        block: (n: number, b: number, cwd: string) => blockOnShared(n, b, cwd, noEdge),
+        park: (_n: number, c: { why: string; cwd: string | null }) => parked.push(c),
+      }),
+    );
+    assert.equal(r.outcome, "parked");
+    assert.equal(parked[0].cwd, null);
+    assert.match(parked[0].why, /HTTP 502.*safe to rebuild/);
   });
 
   test("a block that cannot be recorded parks instead", async () => {
