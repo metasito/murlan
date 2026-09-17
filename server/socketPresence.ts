@@ -254,7 +254,7 @@ export function registerDisconnect({ io, socket, userId }: PresenceContext) {
             isShuttingDown() &&
             (await roomStore.getRoomById(currentRoomId))?.status === "waiting";
           const seat = lobby
-            ? { code: "NO_LIVE_GAME" }
+            ? { ok: false, code: "NO_LIVE_GAME" }
             : await applyOrForward(io, {
                 kind: "seatLost",
                 roomId: currentRoomId,

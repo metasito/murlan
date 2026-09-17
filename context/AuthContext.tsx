@@ -114,10 +114,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const cached = parseCachedUser(raw);
         if (cached) setUser(cached);
         settled = await confirm();
-      } finally {
-        if (!cancelled) setLoading(false);
+      } catch {
+        // Unanswered: retried below once connectivity returns.
       }
-      if (cancelled || settled) return;
+      if (cancelled) return;
+      setLoading(false);
+      if (settled) return;
 
       // Unanswered: the cached user stands until connectivity comes back and
       // the server can be asked again. Only an explicit false means offline —

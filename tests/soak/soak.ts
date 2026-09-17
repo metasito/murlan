@@ -530,8 +530,10 @@ export async function runSoak(opts: Options, log = console.log): Promise<SoakRes
   const seats: Seat[] = [];
   let result: SoakResult;
   let leaks: Violation[] = [];
+  let roomId: string | undefined;
   try {
     const room = await openTable(server, opts.seats, seats);
+    roomId = room.roomId;
     log(`soak: seed ${opts.seed}, ${opts.seats} seats, room ${room.code}`);
 
     const violations: Violation[] = [];
@@ -654,7 +656,7 @@ export async function runSoak(opts: Options, log = console.log): Promise<SoakRes
       moveLog,
     };
   } finally {
-    for (const seat of seats) if (seat.socket.connected) seat.socket.emit("room:leave");
+    for (const seat of seats) if (roomId && seat.socket.connected) seat.leave(roomId);
     await sleep(SETTLE_QUIET_MS);
     for (const seat of seats) if (seat.socket.connected) seat.socket.close();
     leaks = await drainedMaps();
