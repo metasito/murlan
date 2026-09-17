@@ -301,8 +301,8 @@ const styles = StyleSheet.create({
   // gradient happens one level in, on the face.
   actionBtn: { ...Shadow.dark },
   // Off the viewer's turn a key is dark rather than a faded version of its lit
-  // self: the prototype's resting `.btn` (#199) is its own ink at a third over
-  // a third of black, with no gradient and no border behind it to fight.
+  // self: muted ink on a heavy scrim, the pair held to 3:1 by
+  // tests/contrast.test.ts, with no gradient and no border behind it to fight.
   btnDimFace: { backgroundColor: Scrim.heavy },
   btnDimLabel: { color: Colors.textMuted },
   actionBtnInner: { flex: 1 },
