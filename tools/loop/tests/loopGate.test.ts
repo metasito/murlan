@@ -359,7 +359,8 @@ describe("a LAND is only as good as the report behind it", () => {
     onTicket: true, ticket: 1, branch: "agent/1-x", phase: "E" as const, commits: 1,
     changed: ["a.ts"], head: "abc1234def", base: "origin/main", cwd: ".", dirty: false,
     trackerReadable: true, reviewRounds: 1, why: "reviewed and cleared",
-    verdict: { decision: "LAND", line: "VERDICT: LAND abc1234" }, review: null, ...extra,
+    verdict: { decision: "LAND", line: "VERDICT: LAND abc1234" }, review: null,
+    ci: null, fix: false, ciRounds: 0, ...extra,
   });
 
   test("a LAND with no review report on the issue is refused", () => {

@@ -2,7 +2,7 @@
 import { test, describe, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -191,6 +191,37 @@ describe("ciRedRounds", () => {
   });
 });
 
+interface GhAnswers {
+  issue?: unknown;
+  ref?: string;
+  prs?: unknown;
+  runs?: unknown;
+  jobs?: unknown;
+  log?: string;
+  fail?: string[];
+  calls?: string;
+}
+
+function fakeGh(dir: string, answers: GhAnswers): string {
+  const js = join(dir, `fake-gh-${Math.random().toString(36).slice(2)}.mjs`);
+  writeFileSync(
+    js,
+    `import { appendFileSync } from "node:fs";
+const m = ${JSON.stringify(answers)};
+const a = process.argv.slice(2);
+if (m.calls) appendFileSync(m.calls, a.join(" ") + "\\n");
+const key = a[0] === "issue" ? "issue" : a[0] === "api" ? "ref" : a[0] === "pr" ? "prs"
+  : a[1] === "list" ? "runs" : a.includes("--log-failed") ? "log" : "jobs";
+if ((m.fail ?? []).includes(key)) { process.stderr.write("gh: connection reset\\n"); process.exit(1); }
+if (key === "ref" && m.ref === undefined) { process.stderr.write("gh: Not Found (HTTP 404)\\n"); process.exit(1); }
+const v = m[key] ?? { prs: [], runs: [], jobs: [], log: "" }[key];
+if (v === undefined) process.exit(1);
+process.stdout.write(typeof v === "string" ? v : JSON.stringify(v));
+`,
+  );
+  return js;
+}
+
 /**
  * `derive()` distils `reviewRounds` from the same comment list it already reads for `verdictFor`,
  * so `loop-gate.mjs` gets both without a second call to the tracker.
@@ -220,11 +251,7 @@ describe("derive()'s review-round count", () => {
     else process.env.LOOP_GH_SCRIPT = priorScript;
   });
 
-  function stubGh(comments: { body: string }[]): string {
-    const js = join(dir, `fake-gh-${Math.random().toString(36).slice(2)}.mjs`);
-    writeFileSync(js, `console.log(JSON.stringify(${JSON.stringify({ comments })}));`);
-    return js;
-  }
+  const stubGh = (comments: { body: string }[]) => fakeGh(dir, { issue: { comments } });
 
   test("counts one round per VERDICT comment on a normal read", () => {
     const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd: dir, encoding: "utf8" }).trim();
@@ -243,6 +270,157 @@ describe("derive()'s review-round count", () => {
     const result = derive({ cwd: dir, base: "main" });
     assert.equal(result.trackerReadable, false);
     assert.equal(result.reviewRounds, null);
+  });
+});
+
+describe("derive({ ci: true }) resumes from what CI said about the pushed head", () => {
+  const BR = "agent/1234-x";
+  let root = "";
+  let dir = "";
+  let head = "";
+  let mainSha = "";
+  let merged = "";
+  const prior = { script: process.env.LOOP_GH_SCRIPT, phase: process.env.LOOP_PHASE };
+  const git = (cwd: string, ...args: string[]) =>
+    execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false", ...args], {
+      cwd,
+      encoding: "utf8",
+    }).trim();
+
+  before(() => {
+    root = mkdtempSync(join(tmpdir(), "loop-derive-ci-"));
+    const origin = join(root, "origin.git");
+    dir = join(root, "work");
+    git(root, "init", "-q", "--bare", "-b", "main", origin);
+    git(root, "init", "-q", "-b", "main", dir);
+    git(dir, "remote", "add", "origin", origin);
+    git(dir, "commit", "-q", "--allow-empty", "-m", "base");
+    mainSha = git(dir, "rev-parse", "HEAD");
+    git(dir, "checkout", "-qb", BR);
+    writeFileSync(join(dir, "b.txt"), "2");
+    git(dir, "add", "b.txt");
+    git(dir, "commit", "-qm", "work");
+    head = git(dir, "rev-parse", "HEAD");
+    git(dir, "push", "-q", "origin", BR, "main");
+    const other = join(root, "other");
+    git(root, "clone", "-q", "-b", BR, origin, other);
+    merged = git(other, "commit-tree", "HEAD^{tree}", "-p", "HEAD", "-p", "origin/main", "-m", "update branch");
+    git(other, "push", "-q", "origin", `${merged}:refs/heads/${BR}`);
+  });
+
+  after(() => {
+    rmSync(root, { recursive: true, force: true });
+    for (const [k, v] of [["LOOP_GH_SCRIPT", prior.script], ["LOOP_PHASE", prior.phase]] as const) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  });
+
+  const land = () => [{ body: "Claimed by `agent/1234-x`." }, { body: `VERDICT: LAND ${head}` }];
+  const run = (conclusion: string | null, status = "completed", sha = head) => [
+    { databaseId: 7, status, conclusion, headSha: sha },
+  ];
+  const at = (answers: GhAnswers, opts: { base?: string; ci?: boolean; phase?: string } = {}) => {
+    process.env.LOOP_GH_SCRIPT = fakeGh(root, answers);
+    if (opts.phase === undefined) delete process.env.LOOP_PHASE;
+    else process.env.LOOP_PHASE = opts.phase;
+    return derive({ cwd: dir, base: opts.base ?? "main", ci: opts.ci ?? true }) as any;
+  };
+  const pushed = (extra: GhAnswers) => ({ issue: { comments: land() }, ref: head, prs: [{ number: 5 }], ...extra });
+
+  test("nothing committed → C, no fix", () => {
+    const s = at({ issue: { comments: land() } }, { base: BR });
+    assert.equal(s.phase, "C");
+    assert.equal(s.fix, false);
+  });
+
+  test("no verdict → D, no fix", () => {
+    const s = at({ issue: { comments: [] }, ref: head, prs: [{ number: 5 }], runs: run("failure") });
+    assert.equal(s.phase, "D");
+    assert.equal(s.fix, false);
+  });
+
+  test("HOLD → C, no fix", () => {
+    const s = at({ issue: { comments: [{ body: `VERDICT: HOLD ${head} — no` }] }, ref: head, runs: run("failure") });
+    assert.equal(s.phase, "C");
+    assert.equal(s.fix, false);
+  });
+
+  test("LAND, never pushed → E", () => {
+    const s = at({ issue: { comments: land() } });
+    assert.equal(s.phase, "E");
+    assert.equal(s.ci.pushed, false);
+    assert.equal(s.fix, false);
+  });
+
+  test("LAND, remote on a commit this head is not under → E", () => {
+    const s = at(pushed({ ref: mainSha, runs: run("failure", "completed", mainSha) }));
+    assert.equal(s.phase, "E");
+    assert.equal(s.ci.pushed, false);
+  });
+
+  test("LAND, pushed, no open PR → E", () => {
+    const s = at(pushed({ prs: [], runs: run("success") }));
+    assert.equal(s.phase, "E");
+    assert.equal(s.ci.pr, null);
+  });
+
+  for (const [name, runs, state] of [
+    ["pending", () => run(null, "in_progress"), "pending"],
+    ["green", () => run("success"), "green"],
+    ["no run yet", () => [], "none"],
+    ["infrastructure", () => run("cancelled"), "infrastructure"],
+  ] as const) {
+    test(`LAND, pushed, CI ${name} → G, no fix`, () => {
+      const s = at(pushed({ runs: runs() }));
+      assert.equal(s.phase, "G");
+      assert.equal(s.ci.state, state);
+      assert.equal(s.ci.pushed, true);
+      assert.equal(s.fix, false);
+    });
+  }
+
+  test("LAND + pushed + red → C with fix and ciRounds from comments", () => {
+    const comments = [...land(), { body: "CI-RED aaaaaaa" }, { body: `CI-RED ${head.slice(0, 7)}` }];
+    const s = at(pushed({ issue: { comments }, runs: run("failure"), jobs: [{ name: "npm test", conclusion: "failure", steps: 4 }] }));
+    assert.equal(s.phase, "C");
+    assert.equal(s.fix, true);
+    assert.equal(s.ciRounds, 2);
+    assert.deepEqual(s.ci, { pushed: true, pr: 5, state: "red", step: "npm test" });
+  });
+
+  test("LAND + update-branch merge commit on the remote → still pushed", () => {
+    const s = at(pushed({ ref: merged, runs: run("success", "completed", merged) }));
+    assert.equal(s.ci.pushed, true, "the merge commit is fetched once and HEAD is under it");
+    assert.equal(s.phase, "G");
+  });
+
+  test("gh throws → G with state unreadable, never E", () => {
+    for (const fail of ["ref", "prs", "runs", "jobs"]) {
+      const s = at(pushed({ runs: run("failure"), fail: [fail] }));
+      assert.equal(s.phase, "G", `a failing ${fail} read resumed at ${s.phase}`);
+      assert.equal(s.ci.state, "unreadable");
+      assert.equal(s.fix, false);
+    }
+  });
+
+  test("ci:false never calls gh beyond issue view", () => {
+    const calls = join(root, "calls.txt");
+    const s = at(pushed({ runs: run("failure"), calls }), { ci: false });
+    assert.equal(s.phase, "E");
+    assert.equal(s.ci, null);
+    assert.deepEqual(readFileSync(calls, "utf8").trim().split("\n").map((l) => l.split(" ").slice(0, 2).join(" ")), ["issue view"]);
+  });
+
+  test("LOOP_PHASE=C wins over a head with no verdict", () => {
+    assert.equal(at({ issue: { comments: [] } }, { phase: "C" }).phase, "C");
+    assert.equal(at({ issue: { comments: [] } }, { phase: "Z" }).phase, "D", "only a phase letter is honoured");
+  });
+
+  test("a handed phase still computes the fix round", () => {
+    const s = at(pushed({ runs: run("failure") }), { phase: "D" });
+    assert.equal(s.phase, "D");
+    assert.equal(s.fix, true);
   });
 });
 
@@ -275,6 +453,34 @@ describe("the compaction brief", () => {
     assert.match(out, /agent-621/);
     assert.match(out, /D — Review/);
     assert.doesNotMatch(out, /uncommitted/i, "claimed an in-progress slice on a clean tree");
+  });
+
+  const live = {
+    onTicket: true,
+    ticket: 8,
+    branch: "agent/8-x",
+    cwd: "/wt",
+    base: "origin/main",
+    head: "abcdef1",
+    commits: 2,
+    changed: ["a.ts"],
+    dirty: false,
+    verdict: { decision: "LAND", line: "VERDICT: LAND abcdef1" },
+  };
+
+  test("a pushed head waiting on CI resumes at the settle phase", () => {
+    const out = report({ ...live, phase: "G", fix: false, ci: { pushed: true, pr: 3, state: "pending" }, why: "x" });
+    assert.match(out, /G — Settle\. Pushed and waiting for CI; declare \{"phase":"G"\} and exit, the supervisor lands it\./);
+  });
+
+  test("a red pushed head resumes at a numbered fix round naming the failed step", () => {
+    const ci = { pushed: true, pr: 3, state: "red", step: "npm test" };
+    const out = report({ ...live, phase: "C", fix: true, ciRounds: 2, ci, why: "x" });
+    assert.match(out, /C \(fix round 2\) — CI failed at npm test; read the CI-RED comment, fix, hand off to D\./);
+  });
+
+  test("a handed phase with no resume text of its own still names it", () => {
+    assert.match(report({ ...live, phase: "B", why: "x" }), /resume at {2}B\b/);
   });
 
   test("mentions the in-progress slice only when the worktree is dirty", () => {

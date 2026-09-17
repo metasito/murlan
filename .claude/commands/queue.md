@@ -65,6 +65,13 @@ exact one-ticket-at-a-time violation this loop exists to prevent, not a matter o
 two takeable tickets. Uncommitted changes in that worktree are your in-progress slice; finish it,
 don't start over.
 
+If it names **G**, the head is pushed and CI is the supervisor's to settle — or could not be read,
+which is the same answer. Declare it and exit, touching nothing:
+
+```
+LOOP-RESULT {"ticket":<n>,"phase":"G"}
+```
+
 Only once `loop-status.mjs` is silent:
 
 ```sh
@@ -72,27 +79,18 @@ npm run queue:pre                         # by-hand runs only: the loop has alre
 node tools/loop/next-ticket.mjs $ARGUMENTS   # prints ROUTE, body, comments, blockers, takeability
 ```
 
-**Read that output for an open pull request on this ticket.** If there is one, this is a CI fix
-round: the ticket is already claimed, its Definition of done is already posted, and the branch
-already exists. Do not claim it again and do not start over.
+**Read that output for an open pull request on this ticket.** If there is one, the ticket is
+already claimed, its Definition of done is already posted, and the branch already exists — a ticket
+left `in-progress` with an open pull request and no worktree, whose supervisor may be gone. Do not
+claim it again and do not start over. Rebuild the worktree, which is the rest of phase A here:
 
 ```sh
 git fetch origin --quiet
 git worktree add -B agent/<n>-<slug> .worktrees/agent-<n> origin/agent/<n>-<slug>
-cat .loop-logs/ci-<n>.log 2>/dev/null \
-  || gh run list --branch agent/<n>-<slug> --limit 1 --json databaseId --jq '.[0].databaseId' \
-     | xargs -I{} gh run view {} --log-failed
+node tools/loop/loop-status.mjs
 ```
 
-The log file is this machine's and the supervisor that wrote it may be gone — a ticket left
-`in-progress` with an open pull request and no worktree is picked up again by `next-ticket.mjs`, and
-that session reads CI itself. Then `npm run agent:check -- --also <suite>` on the fix, naming the
-suite that actually failed.
-
-Rebuilding the worktree is the rest of phase A for a fix round — the claim is already yours and the
-branch already exists, so there is nothing else here to do. Then read that log, fix what it names,
-and go straight to **phase D**: the fix is a commit, the commit moves the head, and the head needs
-its own review before the gate will pass it. Skip phases B and C's planning.
+and resume where that second `loop-status.mjs` says.
 
 `queue:pre` is the leftover worktree, the peer's uncommitted work and the orphaned processes — all
 loop-level, none of it about this ticket, which is why `queue-loop.mjs` runs it before it spawns you
@@ -164,6 +162,24 @@ costs to get wrong — not a reason to hand it back. The review in phase D is th
 `mattpocock-skills:tdd`. A bug goes through `mattpocock-skills:diagnosing-bugs` first. Those two, by
 those exact names — inside this loop they outrank any general instruction to reach for a superpowers
 process skill, which would otherwise answer the same trigger differently each ticket.
+
+**A fix round** is phase C when `loop-status.mjs` says `fix round`: CI failed on the pushed head.
+Skip the planning. Read what failed — the `CI-RED` comment on the issue, else
+`.loop-logs/ci-<n>.log` (this machine's, and the supervisor that wrote it may be gone), else CI
+itself:
+
+```sh
+gh run list --branch agent/<n>-<slug> --limit 1 --json databaseId --jq '.[0].databaseId' \
+  | xargs -I{} gh run view {} --log-failed
+```
+
+Fix what it names, then run the suite CI actually named as well as the usual check:
+
+```sh
+npm run agent:check -- --also test        # or loop:test, test:native, comments
+```
+
+Commit and hand off to D: the fix moves the head, and the new head needs its own review.
 
 How to solve it is yours. What follows constrains the process, never the design:
 
@@ -379,12 +395,6 @@ Its headline is `LOCAL PASS`, never `PASS`, and it prints how many suites it did
 numbers in the pull request body. CI is the gate; this is a filter in front of it, and #1043 read a
 `PASS` that stood for three of eight steps and pushed a branch whose `npm test` was red.
 
-On a fix round, run the suite CI actually named as well:
-
-```sh
-npm run agent:check -- --also test        # or loop:test, test:native, comments
-```
-
 **If it is red, you are back in phase C.** Fix it, commit the fix, then go round again from phase D:
 the new commit moves the head, so the review you were holding no longer covers what you would push,
 and the gate says so. Never push a red check, and never re-run it hoping for a different answer — a
@@ -412,9 +422,8 @@ session — two of them merged a peer's pull request to unblock themselves, and 
 parked the ticket that had just landed.
 
 If CI goes red, the loop starts a fresh session on this same ticket and writes the failed log to
-`.loop-logs/ci-<n>.log` for it. That session picks up at phase A's fix-round branch above: it
-rebuilds the worktree from the pushed branch, fixes what the log names, gets a fresh review of the
-new head, and pushes again. Three red rounds on one branch and the ticket goes to the owner.
+`.loop-logs/ci-<n>.log` for it. `loop-status.mjs` names that session's phase C a fix round: it
+fixes what CI named, gets a fresh review of the new head, and pushes again. Three red rounds on one branch and the ticket goes to the owner.
 
 ## F — Close out
 

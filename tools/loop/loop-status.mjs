@@ -39,11 +39,18 @@ export function report(s) {
       "restart the ticket.",
     ].join("\n");
   }
-  const next = {
-    C: "C — Build. Commit each slice as you finish it.",
-    D: "D — Review. A fresh subagent reads the diff; post its verdict on the issue.",
-    E: "E — Land. Run the gate, then the check, then push.",
-  }[s.phase];
+  const next =
+    {
+      C: s.fix
+        ? `C (fix round ${s.ciRounds || 1}) — CI failed at ${s.ci?.step ?? "an unnamed step"}; ` +
+          "read the CI-RED comment, fix, hand off to D."
+        : "C — Build. Commit each slice as you finish it.",
+      D: "D — Review. A fresh subagent reads the diff; post its verdict on the issue.",
+      E: "E — Land. Run the gate, then the check, then push.",
+      G: 'G — Settle. Pushed and waiting for CI; declare {"phase":"G"} and exit, the supervisor lands it.',
+    }[s.phase] ?? `${s.phase} — queue.md's section ${s.phase}.`;
+  const pr = s.ci?.pr ? `, PR #${s.ci.pr}` : "";
+  const ci = s.ci ? [`  ci         ${s.ci.pushed ? "pushed" : "not pushed"}${pr}, ${s.ci.state}`] : [];
   return [
     `An autonomous ticket run is live: #${s.ticket} on \`${s.branch}\`, in ${s.cwd}.`,
     "Resume where it says. Do not re-plan, do not restart the ticket, do not ask whether to",
@@ -51,6 +58,7 @@ export function report(s) {
     "",
     `  commits    ${s.commits ?? "?"} against ${s.base}, ${s.changed?.length ?? "?"} file(s)`,
     `  review     ${s.verdict ? s.verdict.line : `none for ${s.head?.slice(0, 7) ?? "this head"}`}`,
+    ...ci,
     `  resume at  ${next}`,
     "",
     `Because: ${s.why}.` +
@@ -62,7 +70,7 @@ export function report(s) {
 }
 
 try {
-  const out = report(derive());
+  const out = report(derive({ ci: true }));
   if (out) console.log(out);
 } catch (err) {
   console.log(unknown(String(err?.message ?? err).split("\n")[0]));

@@ -291,6 +291,12 @@ describe("the session's closing declaration", () => {
     assert.equal(said('LOOP-RESULT {"ticket":7,"phase":"C","handoff":"D"}').declared.handoff, "D");
   });
 
+  test("a settle declaration keeps its phase", () => {
+    const fact = said('LOOP-RESULT {"ticket":7,"phase":"G"}');
+    assert.equal(fact.declared.phase, "G");
+    assert.equal(fact.declared.handoff, null);
+  });
+
   test("a handoff that is not a phase letter is dropped", () => {
     assert.equal(said('LOOP-RESULT {"ticket":7,"handoff":"done"}').declared.handoff, null);
   });
