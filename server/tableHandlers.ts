@@ -200,7 +200,7 @@ export async function rehydrateGame(
       handOver: restoredState.gameOver,
       scores,
       target: matchTarget,
-      teamOfKey: teamKeyMap(playerMap, restoredPlayers, botSeatsAtStart),
+      teamOfKey: teamKeyMap(playerMap, restoredPlayers, new Map(restored.seats.vacatedSeats)),
       playerCount: restoredPlayers.length,
     }),
     handFlags: restored.handFlags,

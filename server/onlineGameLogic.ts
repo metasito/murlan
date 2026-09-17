@@ -262,21 +262,22 @@ export function botSeatsFromPersonality(players: readonly { personality?: BotPer
 }
 
 /**
- * Scoring key -> team id, for the win-eligible seats only — the same set
- * `resolveHandEnd`'s `winEligible` passes: seated humans, and seats dealt to a
- * bot at match start. A seat a human vacated is left out, so its points never
- * count towards the pair and it is never named a winner.
+ * Scoring key -> team id, for every key whose points belong to a pair: the
+ * seat's own key, plus the frozen row of a player who left it. A pair keeps a
+ * departed partner's points (docs/BRIEF.md §3.1); who may be *named* a winner
+ * is `resolveHandEnd`'s `winEligible`, not this map.
  */
 export function teamKeyMap(
   playerMap: Record<number, string>,
   players: { team?: "A" | "B" }[],
-  botSeatsAtStart: Set<number>
+  vacatedSeats: Map<number, { userId: string }> = new Map()
 ): Record<string, string> {
   const map: Record<string, string> = {};
   players.forEach((p, seat) => {
     if (!p.team) return;
-    if (playerMap[seat] !== undefined) map[playerMap[seat]] = p.team;
-    else if (botSeatsAtStart.has(seat)) map[botSeatKey(seat)] = p.team;
+    map[scoreKeyForSeat(playerMap, seat)] = p.team;
+    const vacated = vacatedSeats.get(seat);
+    if (vacated) map[vacated.userId] = p.team;
   });
   return map;
 }
@@ -405,6 +406,11 @@ export function resolveHandEnd(input: ResolveHandEndInput): ResolveHandEndResult
       return seat !== null && botSeatsAtStart.has(seat);
     },
     teamOf,
+    frozenKeysOf: (engineId) => {
+      const seat = seatOfEngineId.get(engineId);
+      const vacated = seat === undefined ? undefined : vacatedSeats.get(seat);
+      return vacated ? [vacated.userId] : [];
+    },
   });
 
   // One row per seat, carrying every identity the clients index it by. It was
