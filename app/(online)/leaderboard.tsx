@@ -43,6 +43,14 @@ export default function LeaderboardScreen() {
       <ScreenHeader title={t("ladder.title")} />
 
       <MenuCard grow>
+        {meQuery.isLoading && <LoadingBlock label={t("ladder.meLoadingA11yLabel")} />}
+        {meQuery.isError && (
+          <ErrorBlock
+            stale={me !== undefined}
+            title={t("ladder.meErrorTitle")}
+            retry={{ label: t("common.retry"), a11yLabel: t("ladder.meRetryA11yLabel"), onPress: () => meQuery.refetch() }}
+          />
+        )}
         {me && (
           <View
             style={styles.selfBlock}
@@ -61,6 +69,7 @@ export default function LeaderboardScreen() {
 
         {boardQuery.isError && (
           <ErrorBlock
+            stale={boardQuery.data !== undefined}
             title={t("ladder.errorTitle")}
             retry={{ label: t("ladder.errorRetry"), a11yLabel: t("ladder.errorRetry"), onPress: () => boardQuery.refetch() }}
           />

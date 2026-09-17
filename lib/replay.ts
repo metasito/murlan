@@ -64,6 +64,24 @@ export const MAX_REPLAY_MOVES = 1000;
 /** Table seats carry a count instead of a hand, the shape the server sanitises to. */
 type ReplayPlayer = Player & { handCount: number };
 
+export const replayQueryKey = (id: string) => ["/api/replays", id];
+
+/** Whether every move carries what `replayStateAt` reads; a stored row is not typed. */
+export function isReadableReplay(replay: ReplayDto): boolean {
+  return (
+    Array.isArray(replay.seats) &&
+    Array.isArray(replay.moves) &&
+    replay.moves.every(
+      (m) =>
+        Array.isArray(m?.handCounts) &&
+        m.handCounts.length === replay.seats.length &&
+        Number.isInteger(m.seat) &&
+        m.seat >= 0 &&
+        m.seat < replay.seats.length
+    )
+  );
+}
+
 export function replayMoveCount(replay: ReplayDto): number {
   return replay.moves.length;
 }

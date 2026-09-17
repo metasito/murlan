@@ -14,7 +14,7 @@ import { Colors, FontSize, Radius, Spacing, TOUCH_TARGET_MIN } from "@/lib/theme
 import { useTranslation } from "@/lib/i18n";
 import { a11yGroup, a11yHidden } from "@/lib/a11y";
 import { recentForm } from "@/lib/profileStats";
-import { bombsPlayedBy } from "@/lib/replay";
+import { bombsPlayedBy, replayQueryKey } from "@/lib/replay";
 import type { ReplayDto } from "@/lib/replay";
 
 import { PROVISIONAL_GAMES } from "@/lib/rating";
@@ -102,7 +102,7 @@ export function HandBreakdown({
   const replayId = thisHand?.replayId ?? undefined;
 
   const replayQuery = useQuery<ReplayDto>({
-    queryKey: ["/api/replays", replayId ?? ""],
+    queryKey: replayQueryKey(replayId ?? ""),
     enabled: !!replayId,
     ...fresh,
   });

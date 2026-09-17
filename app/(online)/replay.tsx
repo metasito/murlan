@@ -11,7 +11,8 @@ import { GameTable } from "@/components/GameTable";
 import { MenuLayout } from "@/components/MenuLayout";
 import { MenuCard } from "@/components/MenuCard";
 import { MenuButton } from "@/components/MenuButton";
-import { LoadingBlock, TerminalErrorBlock } from "@/components/StateBlock";
+import { LoadingBlock, ErrorBlock, TerminalErrorBlock } from "@/components/StateBlock";
+import { ApiError } from "@/lib/apiError";
 import {
   ReplayTransport,
   ReplayMoveList,
@@ -22,6 +23,8 @@ import {
   replayStateAt,
   replayMoments,
   nextMoment,
+  isReadableReplay,
+  replayQueryKey,
   type ReplayDto,
 } from "@/lib/replay";
 import { Motion } from "@/lib/theme";
@@ -39,10 +42,12 @@ export default function ReplayScreen() {
   const [speedIndex, setSpeedIndex] = useState(0);
   const [movesOpen, setMovesOpen] = useState(false);
 
-  const { data: replay, isError, isLoading } = useQuery<ReplayDto>({
-    queryKey: [`/api/replays/${id}`],
+  const { data, isError, isLoading, error, refetch } = useQuery<ReplayDto>({
+    queryKey: replayQueryKey(id ?? ""),
     enabled: !!id,
   });
+  const replay = data && isReadableReplay(data) ? data : null;
+  const gone = error instanceof ApiError && error.status === 404 && error.payload?.code === "REPLAY_NOT_FOUND";
 
   const total = replay ? replayMoveCount(replay) : 0;
   const atEnd = index >= total - 1;
@@ -131,6 +136,20 @@ export default function ReplayScreen() {
       <MenuLayout>
         <MenuCard title={t("replay.title")}>
           <LoadingBlock label={t("replay.loadingA11yLabel")} />
+          {back}
+        </MenuCard>
+      </MenuLayout>
+    );
+  }
+
+  if (isError && !gone) {
+    return (
+      <MenuLayout>
+        <MenuCard title={t("replay.title")}>
+          <ErrorBlock
+            title={t("replay.loadFailedTitle")}
+            retry={{ label: t("common.retry"), a11yLabel: t("replay.retryA11yLabel"), onPress: () => refetch() }}
+          />
           {back}
         </MenuCard>
       </MenuLayout>

@@ -6,6 +6,7 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { MenuButton } from "@/components/MenuButton";
 import { Colors, Spacing, Type } from "@/lib/theme";
 import { a11yGroup, a11yHidden } from "@/lib/a11y";
+import { useTranslation } from "@/lib/i18n";
 
 type IconName = React.ComponentProps<typeof Ionicons>["name"];
 
@@ -34,11 +35,30 @@ export function ErrorBlock({
   title,
   body,
   retry,
+  stale = false,
 }: {
   title: string;
   body?: string;
   retry: { label: string; a11yLabel: string; onPress: () => void };
+  /** Older data is still on screen: say only that it could not refresh. */
+  stale?: boolean;
 }) {
+  const { t } = useTranslation();
+  if (stale) {
+    return (
+      <View style={styles.staleRow}>
+        <Text style={styles.body}>{t("common.refreshFailed")}</Text>
+        <MenuButton
+          label={retry.label}
+          onPress={retry.onPress}
+          variant="ghost"
+          size="sm"
+          fullWidth={false}
+          accessibilityLabel={retry.a11yLabel}
+        />
+      </View>
+    );
+  }
   return (
     <View style={styles.block}>
       <Ionicons
@@ -108,6 +128,7 @@ export function EmptyBlock({
 
 const styles = StyleSheet.create({
   block: { alignItems: "center", paddingVertical: Spacing.lg, gap: Spacing.sm },
+  staleRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: Spacing.xs },
   title: { ...Type.label, textAlign: "center" },
   body: { ...Type.caption, textAlign: "center", lineHeight: BODY_LINE_H, maxWidth: BODY_MAX_W },
 });
