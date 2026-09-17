@@ -99,12 +99,7 @@ export const Shadow = {
     ],
     3
   ),
-  /**
-   * A card held above the cloth — selected, or in a hand on your turn. No
-   * component switches to this on selection yet: `CardView`'s `selected` prop
-   * lifts the card with a `translateY` animation but still spreads
-   * `Shadow.card`, so the shadow does not yet travel with it.
-   */
+  /** A card held above the cloth. */
   cardLifted: makeLayeredShadow(
     [
       { color: '#000000', offsetY: 1, opacity: 0.34, radius: 3 },
