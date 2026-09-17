@@ -462,6 +462,8 @@ export const it: Record<keyof typeof en, string> = {
   "replay.restartA11yLabel": "Ricomincia",
   "replay.loadErrorTitle": "Replay non disponibile",
   "replay.loadErrorBody": "Questa mano non è più disponibile.",
+  "replay.loadFailedTitle": "Impossibile caricare il replay",
+  "replay.retryA11yLabel": "Riprova a caricare il replay",
   "replay.deletedPlayer": "Giocatore eliminato",
   "replay.back": "Chiudi",
   "replay.scrubA11yLabel": "Posizione nella manche",

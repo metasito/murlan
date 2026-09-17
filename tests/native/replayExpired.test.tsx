@@ -25,7 +25,7 @@ jest.mock('expo-router', () => ({
   useLocalSearchParams: () => ({ id: 'expired-replay-id' }),
 }));
 
-let mockQueryResult: { data: unknown; isError: boolean; isLoading: boolean } = {
+let mockQueryResult: { data: unknown; isError: boolean; isLoading: boolean; error?: unknown; refetch?: () => void } = {
   data: undefined,
   isError: false,
   isLoading: true,
@@ -40,6 +40,9 @@ import { render, fireEvent, act } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { translate, DEFAULT_LOCALE } from '@/shared/i18n';
 import type { TranslationKey } from '@/shared/i18n';
+
+const { ApiError } = require('@/lib/apiError') as typeof import('@/lib/apiError');
+const GONE = new ApiError(404, { code: 'REPLAY_NOT_FOUND' }, '');
 
 const ReplayScreen = require('@/app/(online)/replay').default as React.ComponentType;
 
@@ -59,7 +62,7 @@ const show = () =>
 
 describe('a replay that no longer exists', () => {
   it('says so, instead of rendering a table it has no state for', async () => {
-    mockQueryResult = { data: undefined, isError: true, isLoading: false };
+    mockQueryResult = { data: undefined, isError: true, isLoading: false, error: GONE };
 
     const view = await show();
     await act(async () => {});
@@ -72,7 +75,7 @@ describe('a replay that no longer exists', () => {
   });
 
   it('offers the way back out, and it works', async () => {
-    mockQueryResult = { data: undefined, isError: true, isLoading: false };
+    mockQueryResult = { data: undefined, isError: true, isLoading: false, error: GONE };
     mockBack.mockClear();
 
     const view = await show();
@@ -116,5 +119,62 @@ describe('a replay that no longer exists', () => {
 
     expect(view.getByLabelText(new RegExp(t('replay.loadErrorTitle')))).toBeTruthy();
     expect(view.getByLabelText(t('replay.back'))).toBeTruthy();
+  });
+});
+
+describe('a replay that failed to load for any other reason', () => {
+  it('offers a retry rather than calling the hand gone', async () => {
+    const refetch = jest.fn();
+    mockQueryResult = { data: undefined, isError: true, isLoading: false, error: new Error('Network request failed'), refetch };
+
+    const view = await show();
+    await act(async () => {});
+
+    expect(view.queryByLabelText(new RegExp(t('replay.loadErrorBody')))).toBeNull();
+    await fireEvent.press(view.getByLabelText(t('replay.retryA11yLabel')));
+    expect(refetch).toHaveBeenCalled();
+    await view.unmount();
+  });
+});
+
+const REPLAY = {
+  id: 'r1',
+  finishedAt: '2026-08-20T10:00:00.000Z',
+  gameMode: 'free_for_all',
+  seats: [
+    { seatIndex: 0, userId: 'u1', name: 'Ana' },
+    { seatIndex: 1, userId: null, name: '' },
+  ],
+  rankings: [],
+  moves: [
+    { seat: 0, combo: { type: 'single', cards: [{ id: '3_spades', rank: '3', suit: 'spades', isJoker: false }], strength: 1 }, handCounts: [2, 3] },
+    { seat: 1, combo: null, handCounts: [2, 3] },
+  ],
+};
+
+describe('a stored replay', () => {
+  it('lands on the unavailable card when a move lacks its hand counts', async () => {
+    mockQueryResult = {
+      data: { ...REPLAY, moves: [{ seat: 0, combo: null }] },
+      isError: false,
+      isLoading: false,
+    };
+
+    const view = await show();
+    await act(async () => {});
+
+    expect(view.getByLabelText(new RegExp(t('replay.loadErrorTitle')))).toBeTruthy();
+    await view.unmount();
+  });
+
+  it('names a deleted player in the reader’s language', async () => {
+    mockQueryResult = { data: REPLAY, isError: false, isLoading: false };
+
+    const view = await show();
+    await act(async () => {});
+    await fireEvent.press(view.getByLabelText(t('replay.movesToggleA11yLabel')));
+
+    expect(view.getAllByLabelText(new RegExp(t('replay.deletedPlayer'))).length).toBeGreaterThan(0);
+    await view.unmount();
   });
 });

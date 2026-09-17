@@ -469,6 +469,8 @@ export const en = {
   "replay.restartA11yLabel": "Restart",
   "replay.loadErrorTitle": "Replay unavailable",
   "replay.loadErrorBody": "This hand is no longer available.",
+  "replay.loadFailedTitle": "Couldn't load this replay",
+  "replay.retryA11yLabel": "Try loading the replay again",
   "replay.deletedPlayer": "Deleted player",
   "replay.back": "Close",
   "replay.scrubA11yLabel": "Move position",

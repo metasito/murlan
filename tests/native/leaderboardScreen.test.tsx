@@ -34,7 +34,9 @@ const show = () =>
     </SafeAreaProvider>
   );
 
-beforeEach(() => mockRefetchMe.mockClear());
+beforeEach(() => {
+  mockRefetchMe.mockClear();
+});
 
 describe("the viewer's own rating", () => {
   it('says it is loading', async () => {

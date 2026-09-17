@@ -53,11 +53,11 @@ const SEED: Record<string, unknown[]> = {
 };
 
 async function mount(failing: string[] = []) {
-  const qc = new QueryClient({
+  const qc: QueryClient = new QueryClient({
     defaultOptions: {
       queries: {
         retry: false,
-        queryFn: async ({ queryKey }) => {
+        queryFn: async ({ queryKey }): Promise<unknown> => {
           const key = String(queryKey[0]);
           if (failing.includes(key)) throw new Error('offline');
           return qc.getQueryData(queryKey) ?? SEED[key];
@@ -76,7 +76,9 @@ async function mount(failing: string[] = []) {
 }
 
 describe('a refused friend action is undone and reported', () => {
-  beforeEach(() => mockShowNotification.mockClear());
+  beforeEach(() => {
+    mockShowNotification.mockClear();
+  });
 
   const cases: [string, RegExp, string][] = [
     ['accept', /accept dora/i, 'Dora'],
