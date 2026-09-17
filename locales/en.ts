@@ -21,6 +21,7 @@ export const en = {
   "common.notice": "Notice",
   "common.unknownError": "An unexpected error occurred.",
   "common.retry": "Retry",
+  "common.refreshFailed": "Couldn't refresh",
   "common.copy": "Copy",
   "common.copied": "Copied!",
   "common.pointsAbbrev": "{{n}}pt",

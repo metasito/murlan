@@ -27,7 +27,16 @@ jest.mock('@/context/AuthContext', () => ({
   useAuth: () => ({ user: { id: 'u1', username: 'Ana' }, logout: async () => {} }),
 }));
 
+const mockScrollTo = jest.fn();
+jest.mock('@/components/MenuLayout', () => ({
+  MenuLayout: ({ children, scrollRef }: { children: unknown; scrollRef?: { current: unknown } }) => {
+    if (scrollRef) scrollRef.current = { scrollTo: mockScrollTo };
+    return children;
+  },
+}));
+
 const mockData: Record<string, unknown> = {};
+let mockState: Record<string, unknown> = {};
 jest.mock('@tanstack/react-query', () => ({
   useQuery: ({ queryKey }: { queryKey: string[] }) => ({
     data: mockData[queryKey[0]],
@@ -35,6 +44,7 @@ jest.mock('@tanstack/react-query', () => ({
     isError: false,
     isSuccess: true,
     refetch: jest.fn(),
+    ...mockState,
   }),
   useQueryClient: () => ({ setQueryData: jest.fn(), invalidateQueries: jest.fn() }),
 }));
@@ -89,6 +99,7 @@ function show(history: unknown[]) {
 
 beforeEach(() => {
   for (const key of Object.keys(mockData)) delete mockData[key];
+  mockState = {};
   mockBack.mockClear();
 });
 
@@ -150,6 +161,42 @@ describe('the full history screen', () => {
 
     expect(view.getByLabelText(new RegExp(t('history.emptyTitle')))).toBeTruthy();
     expect(view.queryByLabelText(t('history.nextA11yLabel'))).toBeNull();
+    await view.unmount();
+  });
+});
+
+describe('a refresh that fails over hands already shown', () => {
+  it('keeps the hands and offers a compact retry, not the full error', async () => {
+    mockState = { isError: true, isSuccess: false };
+    const view = await show(hands(4));
+    await act(async () => {});
+
+    expect(view.getByLabelText(seats('Seat0'))).toBeTruthy();
+    expect(view.queryByText(t('history.errorTitle'))).toBeNull();
+    expect(view.getByText(t('common.refreshFailed'))).toBeTruthy();
+    expect(view.getByLabelText(t('history.retryA11yLabel'))).toBeTruthy();
+    await view.unmount();
+  });
+
+  it('shows the full error when there is nothing to fall back on', async () => {
+    mockState = { isError: true, isSuccess: false };
+    const view = await show(undefined as unknown as unknown[]);
+    await act(async () => {});
+
+    expect(view.getByText(t('history.errorTitle'))).toBeTruthy();
+    expect(view.queryByText(t('common.refreshFailed'))).toBeNull();
+    await view.unmount();
+  });
+});
+
+describe('changing page', () => {
+  it('scrolls back to the top of the list', async () => {
+    const view = await show(hands(23));
+    await act(async () => {});
+    mockScrollTo.mockClear();
+
+    await fireEvent.press(view.getByLabelText(t('history.nextA11yLabel')));
+    expect(mockScrollTo).toHaveBeenCalledWith(expect.objectContaining({ y: 0 }));
     await view.unmount();
   });
 });

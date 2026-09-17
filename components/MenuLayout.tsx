@@ -75,6 +75,7 @@ interface MenuLayoutProps {
    * brings its own avoidance, and this one would move the screen behind it.
    */
   avoidsKeyboard?: boolean;
+  scrollRef?: React.Ref<ScrollView>;
 }
 
 export function MenuLayout({
@@ -85,6 +86,7 @@ export function MenuLayout({
   contentPad = CONTENT_H_PAD,
   maxWidth = MENU_MAX_W,
   avoidsKeyboard = true,
+  scrollRef,
 }: MenuLayoutProps) {
   const insets = useSafeAreaInsets();
   const bannerBottom = useBannerBottom();
@@ -146,6 +148,7 @@ export function MenuLayout({
         {scrollable ? (
           <View style={styles.fill}>
             <ScrollView
+              ref={scrollRef}
               style={styles.fill}
               contentContainerStyle={styles.scroll}
               keyboardShouldPersistTaps="handled"

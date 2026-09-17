@@ -36,12 +36,13 @@ jest.mock('@/lib/query-client', () => ({
 }));
 
 const mockData: Record<string, unknown> = {};
+const mockFailing = new Set<string>();
 jest.mock('@tanstack/react-query', () => ({
   useQuery: ({ queryKey }: { queryKey: string[] }) => ({
     data: mockData[queryKey[0]],
     isLoading: false,
-    isError: false,
-    isSuccess: true,
+    isError: mockFailing.has(queryKey[0]),
+    isSuccess: !mockFailing.has(queryKey[0]),
     refetch: jest.fn(),
   }),
   useQueryClient: () => ({ setQueryData: jest.fn(), invalidateQueries: jest.fn() }),
@@ -124,6 +125,7 @@ function show(history: unknown[]) {
 
 beforeEach(() => {
   for (const key of Object.keys(mockData)) delete mockData[key];
+  mockFailing.clear();
   mockPush.mockClear();
 });
 
@@ -218,6 +220,19 @@ describe('the door out of the card', () => {
       view.getByLabelText(t('history.doorA11yLabel', { n: 8 }))
     );
     expect(mockPush).toHaveBeenCalledWith('/(online)/history');
+    await view.unmount();
+  });
+});
+
+describe('a failed refresh of the card', () => {
+  it('keeps the hands it has and says only that it could not refresh', async () => {
+    mockFailing.add('/api/stats/history');
+    const view = await show([hand('a', [{ name: 'Bea', bot: false }], null)]);
+    await act(async () => {});
+
+    expect(view.getByLabelText(seats('Bea'))).toBeTruthy();
+    expect(view.queryByText(t('history.errorTitle'))).toBeNull();
+    expect(view.getByText(t('common.refreshFailed'))).toBeTruthy();
     await view.unmount();
   });
 });

@@ -14,6 +14,7 @@ export const it: Record<keyof typeof en, string> = {
   "common.notice": "Avviso",
   "common.unknownError": "Si è verificato un errore imprevisto.",
   "common.retry": "Riprova",
+  "common.refreshFailed": "Aggiornamento non riuscito",
   "common.copy": "Copia",
   "common.copied": "Copiato!",
   "common.pointsAbbrev": "{{n}}pt",

@@ -739,6 +739,7 @@ export default function ProfileScreen() {
               {historyQuery.isLoading && <LoadingBlock label={t("history.loadingA11yLabel")} />}
               {historyQuery.isError && (
                 <ErrorBlock
+                  stale={historyQuery.data !== undefined}
                   title={t("history.errorTitle")}
                   retry={{ label: t("common.retry"), a11yLabel: t("history.retryA11yLabel"), onPress: () => historyQuery.refetch() }}
                 />

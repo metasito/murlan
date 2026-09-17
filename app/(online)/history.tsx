@@ -4,8 +4,8 @@
 // MAX_HISTORY_ROWS_PER_USER per account, and the profile already fetches every
 // row for its trend panels, so this screen pages over a list it is holding
 // anyway.
-import React, { useState } from "react";
-import { View, Text, StyleSheet } from "react-native";
+import React, { useRef, useState } from "react";
+import { View, Text, StyleSheet, ScrollView } from "react-native";
 import { useQuery } from "@tanstack/react-query";
 import { MenuLayout } from "@/components/MenuLayout";
 import { ScreenHeader } from "@/components/ScreenHeader";
@@ -33,8 +33,14 @@ export default function HistoryScreen() {
   const rows = history.slice(current * PAGE_SIZE, (current + 1) * PAGE_SIZE);
   const pageLabel = t("history.pageLabel", { page: current + 1, total: pageCount });
 
+  const scrollRef = useRef<ScrollView>(null);
+  function goTo(next: number) {
+    setPage(next);
+    scrollRef.current?.scrollTo({ y: 0, animated: false });
+  }
+
   return (
-    <MenuLayout scrollable centered={false}>
+    <MenuLayout scrollable centered={false} scrollRef={scrollRef}>
       <ScreenHeader title={t("history.title")} />
 
       <MenuCard grow>
@@ -42,6 +48,7 @@ export default function HistoryScreen() {
 
         {historyQuery.isError && (
           <ErrorBlock
+            stale={historyQuery.data !== undefined}
             title={t("history.errorTitle")}
             retry={{ label: t("common.retry"), a11yLabel: t("history.retryA11yLabel"), onPress: () => historyQuery.refetch() }}
           />
@@ -68,7 +75,7 @@ export default function HistoryScreen() {
           <View style={styles.pager}>
             <MenuButton
               label={t("history.prev")}
-              onPress={() => setPage(current - 1)}
+              onPress={() => goTo(current - 1)}
               disabled={current === 0}
               variant="secondary"
               size="sm"
@@ -80,7 +87,7 @@ export default function HistoryScreen() {
             </Text>
             <MenuButton
               label={t("history.next")}
-              onPress={() => setPage(current + 1)}
+              onPress={() => goTo(current + 1)}
               disabled={current >= pageCount - 1}
               variant="secondary"
               size="sm"

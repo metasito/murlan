@@ -30,6 +30,7 @@ export const sq: Record<keyof typeof en, string> = {
   "common.notice": "Njoftim",
   "common.unknownError": "Ndodhi një gabim i papritur.",
   "common.retry": "Provo përsëri",
+  "common.refreshFailed": "Nuk u rifreskua",
   "common.copy": "Kopjo",
   "common.copied": "U kopjua!",
   "common.pointsAbbrev": "{{n}}p",
