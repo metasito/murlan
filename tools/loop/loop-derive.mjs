@@ -249,13 +249,15 @@ export function reviewFor(comments, head) {
  */
 export function reviewRounds(comments) {
   const bodies = comments.map((c) => fenceStripped(c.body));
+  const claimed = bodies.findLastIndex((b) => CLAIM_RE.test(b));
+  const firstRed = bodies.findIndex((b, i) => i > claimed && CI_RED_RE.test(b));
   let rounds = 0;
   for (const body of bodies) {
     const v = VERDICT_RE.exec(body);
     if (!v) continue;
-    const fix = bodies.some((b) => {
+    const fix = bodies.some((b, i) => {
       const m = REVIEW_FIX_RE.exec(b);
-      return m && covers(v[2], m[1]);
+      return m && firstRed >= 0 && i > firstRed && covers(v[2], m[1]);
     });
     if (!fix) rounds += 1;
   }

@@ -178,13 +178,23 @@ describe("counting review rounds", () => {
     assert.equal(reviewRounds([]), 0);
   });
 
-  test("a verdict whose REVIEW is marked fix does not count toward the cap", () => {
+  const fixReview = { body: "REVIEW def5678 fix\n\n## Standards\n\nok\n\n## Spec\n\nok" };
+
+  test("a verdict whose REVIEW is marked fix, after a CI-RED, does not count toward the cap", () => {
     const comments = [
       { body: "VERDICT: LAND abc1234" },
-      { body: "REVIEW def5678 fix\n\n## Standards\n\nok\n\n## Spec\n\nok" },
+      { body: "CI-RED abc1234\nrun: x · step: y" },
+      fixReview,
       { body: "VERDICT: LAND def5678" },
     ];
     assert.equal(reviewRounds(comments), 1);
+  });
+
+  test("a fix label with no CI-RED before it, since the latest claim, still counts", () => {
+    const hold = { body: "VERDICT: HOLD def5678 — no" };
+    assert.equal(reviewRounds([{ body: "VERDICT: HOLD abc1234 — no" }, fixReview, hold]), 2);
+    const stale = [{ body: "CI-RED 0000000" }, { body: "Claimed by `agent/42-x`" }, fixReview, hold];
+    assert.equal(reviewRounds(stale), 1);
   });
 });
 
