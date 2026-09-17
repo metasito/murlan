@@ -105,7 +105,7 @@ export function MenuButton({
             <Text
               {...a11yHidden()}
               style={[styles.label, labelStyles[variant], sizeLabelStyles[size]]}
-              numberOfLines={1}
+              numberOfLines={2}
             >
               {label}
             </Text>
@@ -134,7 +134,9 @@ const styles = StyleSheet.create({
   // iOS reads `overflow: hidden` as masksToBounds, and a masked layer casts no shadow.
   shell: { borderRadius: Radius.full, marginVertical: Spacing.xs },
   fullWidth: { width: '100%' },
-  label: {},
+  // Two lines and a shrink, because the longest label is not English's: sq's
+  // "Shkruaj kodin e dhomës" clips against an icon at iPhone SE landscape.
+  label: { flexShrink: 1, textAlign: 'center' },
   topHighlight: TopEdgeLight,
 
   primary: { backgroundColor: Colors.gold },
