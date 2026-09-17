@@ -46,7 +46,9 @@ export function clip(output) {
 
 const spawnAsync = (file, args, opts) =>
   new Promise((resolve) => {
-    execFile(file, args, opts, (err, stdout, stderr) => {
+    // One command line under `shell`: node joins them anyway, and passing both is DEP0190.
+    const [cmdLine, argv] = opts.shell ? [[file, ...args].join(" "), []] : [file, args];
+    execFile(cmdLine, argv, opts, (err, stdout, stderr) => {
       const status = err ? (typeof err.code === "number" ? err.code : null) : 0;
       const error = err?.killed ? { code: "ETIMEDOUT" } : status === null ? err : undefined;
       resolve({ status, stdout, stderr, error });
