@@ -11,11 +11,12 @@
  * Silent only when it knows no run is live, and never non-zero — a broken brief must not take the
  * session down, and queue.md reads silence as "pick a ticket".
  */
+import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import { derive } from "./loop-derive.mjs";
 
 const unknown = (why) => `loop-status could not determine the run: ${why}; do not pick a ticket until resolved`;
 
-export function report(s) {
+export function report(s, reason = process.env.LOOP_REASON) {
   if (!s.onTicket && s.phase === "?") return unknown(s.why);
   if (!s.onTicket) {
     if (!s.ambiguous) return "";
@@ -60,6 +61,7 @@ export function report(s) {
     `  review     ${s.verdict ? s.verdict.line : `none for ${s.head?.slice(0, 7) ?? "this head"}`}`,
     ...ci,
     `  resume at  ${next}`,
+    ...(reason ? [`  handed     ${reason}`] : []),
     "",
     `Because: ${s.why}.` +
       (s.dirty
@@ -69,9 +71,11 @@ export function report(s) {
   ].join("\n");
 }
 
-try {
-  const out = report(derive({ ci: true }));
-  if (out) console.log(out);
-} catch (err) {
-  console.log(unknown(String(err?.message ?? err).split("\n")[0]));
+if (isInvokedDirectly(process.argv[1], import.meta.url)) {
+  try {
+    const out = report(derive({ ci: true }));
+    if (out) console.log(out);
+  } catch (err) {
+    console.log(unknown(String(err?.message ?? err).split("\n")[0]));
+  }
 }

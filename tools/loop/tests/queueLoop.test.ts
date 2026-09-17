@@ -583,6 +583,14 @@ describe("runTicket", () => {
     assert.equal(resumed.seen.args[resumed.seen.args.indexOf("--model") + 1], "opus");
   });
 
+  test("a handed reason reaches the session as LOOP_REASON, and none is sent without one", async () => {
+    const told = spawned([RESULT]);
+    await runTicket(told.spawnFn as never, opts({ at: "C", reason: "phase E's agent:check was red" }));
+    const plain = spawned([RESULT]);
+    await runTicket(plain.spawnFn as never, opts({ at: "C" }));
+    assert.deepEqual([told.seen.env.LOOP_REASON, plain.seen.env.LOOP_REASON], ["phase E's agent:check was red", undefined]);
+  });
+
   test("an init model of no family the loop knows is named, not parked", async () => {
     const { said, screen } = sink();
     const odd = spawned([init("some-future-model"), RESULT]);

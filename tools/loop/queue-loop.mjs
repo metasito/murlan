@@ -1214,6 +1214,7 @@ export function runTicket(
     at = null,
     fix = false,
     retryCount = 0,
+    reason = null,
     screen = ticker(),
     facts = ticketFacts,
     stallMs = STALL_MS,
@@ -1300,6 +1301,7 @@ export function runTicket(
       LOOP_TURNS: String(budget),
       // A is where derive() starts anyway; handing it would pin a rebuilt worktree to A.
       LOOP_PHASE: at && at !== "A" ? at : undefined,
+      LOOP_REASON: reason ?? undefined,
       // `-p` leaves fork mode off, so subagents default to background and the session spends a turn
       // each time it asks one whether it is done. Foreground makes the Agent call an await.
       CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1",
@@ -1943,7 +1945,11 @@ export async function runOnce(io, pinned = null, at = null) {
   if (settling) io.announce(route);
   const run = settling
     ? { status: 0, result: null, declared: null, ms: 0, log: streamLog(route.number), phase: "G", phases: {} }
-    : await io.spawn({ ...route, retryCount: Math.max(tally.retries, tally.ciRounds ?? 0) });
+    : await io.spawn({
+        ...route,
+        retryCount: Math.max(tally.retries, tally.ciRounds ?? 0),
+        reason: route.phase === tally.lastHandoff ? tally.handoffWhy : null,
+      });
 
   const dirtied = io.sharedCheckoutDirty?.();
   if (dirtied) io.log(`#${route.number}'s session left the shared checkout dirty:\n${dirtied}`, "session");
@@ -1963,12 +1969,17 @@ export async function runOnce(io, pinned = null, at = null) {
   // Before the pull request is looked for: a session that handed off has not pushed and is not
   // finished, and every reading below is about a session that meant to be its ticket's last.
   let handoff = handoffOf(run);
+  let because = null;
   if (handoff === "D" && after?.phase === "C" && !io.buildPassed(after?.cwd ?? null)) {
     io.log(`#${route.number} handed off to review with no local pass on a clean HEAD — back to C`, "build");
     handoff = "C";
+    because = "the D handoff had no local pass on a clean HEAD: commit, agent:check, then loop-gate --build";
+  } else if (handoff === "C" && after?.phase === "E") {
+    because = "phase E's agent:check was red: fix what it names, then go through D again";
   }
   if (handoff) {
-    io.record({ number: route.number, outcome: "handoff", why: `phase ${handoff} next`, run, counts: false });
+    const why = `phase ${handoff} next${because ? ` — ${because}` : ""}`;
+    io.record({ number: route.number, outcome: "handoff", why, run, counts: false });
     // The worktree comes with it: a handoff leaves one standing on purpose, so a park that does not
     // carry it leaves `derive()` a live run to resume — the ticket it just handed to the owner.
     return {
@@ -2164,6 +2175,7 @@ function realIo(book, screen) {
         at: route.resuming ? (route.phase ?? "C") : null,
         fix: Boolean(route.fix),
         retryCount: route.retryCount ?? 0,
+        reason: route.reason ?? null,
         screen,
       });
     },

@@ -446,6 +446,27 @@ describe("runOnce", () => {
     assert.equal(passed.phase, "D");
   });
 
+  test("a C handoff out of a refused D or a red E carries its reason to the next C session only", async () => {
+    const next = async (ledger: any[], phase: string) => {
+      const seen: unknown[] = [];
+      const pick = () => ({ skill: "implement", number: 42, title: "t", size: null, queue: null, resuming: true, phase });
+      await runOnce(io({ pick, spawn: async (s: { reason?: string | null }) => (seen.push(s.reason), handingOff(phase, "F")()) }, ledger), 42, phase);
+      return seen[0];
+    };
+    const cases: [string, string, boolean, string, RegExp | null][] = [
+      ["C", "D", false, "C", /no local pass on a clean HEAD/],
+      ["E", "C", true, "C", /phase E's agent:check was red/],
+      ["C", "D", true, "D", null],
+    ];
+    for (const [from, to, passes, phase, reason] of cases) {
+      const ledger: any[] = [];
+      await runOnce(io({ spawn: handingOff(from, to), buildPassed: () => passes }, ledger));
+      const got = await next(ledger, phase);
+      if (reason) assert.match(String(got), reason);
+      else assert.equal(got ?? null, null);
+    }
+  });
+
   test("a session on the wrong model parks with the reason", async () => {
     const parked: string[] = [];
     const r = await runOnce(

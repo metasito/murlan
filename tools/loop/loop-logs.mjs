@@ -271,7 +271,7 @@ export function readLedger(file = ledgerPath()) {
   return rows;
 }
 
-const HANDOFF_RE = /phase\s+([A-Za-z])\s+next/;
+const HANDOFF_RE = /phase\s+([A-Za-z])\s+next(?: — (.+))?/;
 
 /**
  * A ticket's rounds, spend and handoffs, rebuilt from the rows a restart cannot otherwise see:
@@ -291,6 +291,7 @@ export function ticketTally(n, rows) {
   let spend = 0;
   let handoffsThisRound = 0;
   let lastHandoff = null;
+  let handoffWhy = null;
   let retries = 0;
   let lastRedHead = null;
   for (const r of since) {
@@ -299,14 +300,17 @@ export function ticketTally(n, rows) {
       retries += 1;
       handoffsThisRound = 0;
       lastHandoff = null;
+      handoffWhy = null;
       lastRedHead = r.head ?? null;
     } else if (r.outcome === "blocked") {
       handoffsThisRound = 0;
       lastHandoff = null;
+      handoffWhy = null;
     } else if (r.outcome === "handoff") {
       handoffsThisRound += 1;
-      lastHandoff = HANDOFF_RE.exec(r.park_reason ?? "")?.[1] ?? lastHandoff;
+      const m = HANDOFF_RE.exec(r.park_reason ?? "");
+      if (m) [lastHandoff, handoffWhy] = [m[1], m[2] ?? null];
     }
   }
-  return { sessions: since.length, spend, handoffsThisRound, lastHandoff, lastRedHead, retries };
+  return { sessions: since.length, spend, handoffsThisRound, lastHandoff, handoffWhy, lastRedHead, retries };
 }

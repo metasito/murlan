@@ -369,6 +369,14 @@ describe("ticketTally", () => {
     assert.equal(t.retries, 1);
   });
 
+  test("the last handoff's reason is what follows its phase, and a retry clears it", () => {
+    const why = (rows: object[]) => ticketTally(1, rows).handoffWhy;
+    const rerouted = row({ outcome: "handoff", park_reason: "phase C next — no local pass" });
+    assert.equal(why([rerouted]), "no local pass");
+    assert.equal(why([rerouted, row({ outcome: "handoff", park_reason: "phase D next" })]), null);
+    assert.equal(why([rerouted, row({ outcome: "retry" })]), null);
+  });
+
   test("a retry clears the phase the last handoff named", () => {
     const t = ticketTally(1, [row({ outcome: "handoff", park_reason: "phase E next" }), row({ outcome: "retry" })]);
     assert.equal(t.lastHandoff, null);
@@ -412,6 +420,7 @@ describe("ticketTally", () => {
       spend: 0,
       handoffsThisRound: 0,
       lastHandoff: null,
+      handoffWhy: null,
       lastRedHead: null,
       retries: 0,
     });
