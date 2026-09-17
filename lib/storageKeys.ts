@@ -9,4 +9,5 @@ export const WAITING_ROOM_KEY = "@murlan_waiting_room";
 export const OFFLINE_SAVE_KEY = "@murlan_offline_game";
 export const TUTORIAL_SEEN_KEY = "@murlan_tutorial_seen";
 export const TUTORIAL_PROGRESS_KEY = "@murlan_tutorial_progress";
+export const PENDING_CRASH_REPORTS_KEY = "@murlan_pending_crash_reports";
 export const E2E_SUSPEND_AI_KEY = "@murlan_e2e_suspend_ai";

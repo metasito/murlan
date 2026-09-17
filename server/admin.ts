@@ -12,6 +12,7 @@ import { sql } from "drizzle-orm";
 import { db } from "./db.ts";
 import { funnel, type FunnelStep } from "./events.ts";
 import { recentClientErrorGroups, topFrame, type ClientErrorGroup } from "./clientErrors.ts";
+import { recentServerErrorGroups, serverErrorsThisWeek, type ServerErrorGroup } from "./serverErrors.ts";
 import { recentBugReports } from "./bugReports.ts";
 import { symbolicate } from "./sourceMaps.ts";
 import { mailHealth, type MailHealth } from "./mail.ts";
@@ -42,6 +43,8 @@ export interface AdminSnapshot {
   staleGames: number;
   crashesThisWeek: number;
   crashGroups: { message: string; count: number; lastSeen: string; location: string }[];
+  serverErrorsThisWeek: number;
+  serverErrorGroups: ServerErrorGroup[];
   bugReports: { at: string; who: string; description: string; where: string; build: string }[];
   funnel: FunnelStep[];
   mail: MailHealth;
@@ -227,6 +230,8 @@ export async function adminSnapshot(provisionalGames: number): Promise<AdminSnap
     crashGroupRows,
     funnelRows,
     bugReportRows,
+    serverWeek,
+    serverGroupRows,
   ] = await Promise.all([
     signups(),
     totalUsers(),
@@ -244,6 +249,8 @@ export async function adminSnapshot(provisionalGames: number): Promise<AdminSnap
     recentClientErrorGroups(ROW_LIMIT),
     funnel(WINDOW_DAYS),
     recentBugReports(ROW_LIMIT),
+    serverErrorsThisWeek(),
+    recentServerErrorGroups(ROW_LIMIT),
   ]);
 
   return {
@@ -262,6 +269,8 @@ export async function adminSnapshot(provisionalGames: number): Promise<AdminSnap
     staleGames: stale,
     crashesThisWeek: crashes,
     crashGroups: await forDisplay(crashGroupRows),
+    serverErrorsThisWeek: serverWeek,
+    serverErrorGroups: serverGroupRows.map((g) => ({ ...g, lastSeen: new Date(g.lastSeen).toISOString() })),
     funnel: funnelRows,
     mail: mailHealth(),
     bugReports: bugReportRows.map((r) => ({

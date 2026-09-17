@@ -183,7 +183,7 @@ function askOtherInstances(
  * a deal that is still running. So the whole of a takeover is serialised per
  * room, and everything else waits and then finds the game in memory.
  */
-const inFlight = new Map<string, Promise<unknown>>();
+export const inFlight = new Map<string, Promise<unknown>>();
 
 /**
  * What `askClaimAndApply` returns when this attempt settled nothing: another
@@ -284,11 +284,14 @@ export async function applyOrForward(
   const { roomId } = action;
   const mode = takeoverMode(action.kind);
 
-  // A process on its way out routes nothing: its sockets are closing, its
-  // ownership connection goes with them, and the next process restores every
-  // table from `active_games`. Answering "no owner" is what puts the disconnect
-  // path back on the lobby teardown a shutdown needs it to run.
-  if (!activeGames.has(roomId) && isShuttingDown()) return UNOWNED;
+  // A process on its way out takes nothing over: its ownership connection is
+  // closing and the next process restores every table from `active_games`. It
+  // still asks, because a table held elsewhere must hear that its player left.
+  if (!activeGames.has(roomId) && isShuttingDown()) {
+    const answer = await askOtherInstances(io, action);
+    if (answer) return answer;
+    return answer === null ? UNOWNED : UNREACHABLE;
+  }
 
   for (let attempt = 0; attempt < ASK_ATTEMPTS; attempt++) {
     // Another action may be restoring this very room; wait it out rather than

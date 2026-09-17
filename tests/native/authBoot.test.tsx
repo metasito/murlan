@@ -16,6 +16,12 @@ jest.mock('@/lib/query-client', () => ({
   apiRequest: jest.fn(),
 }));
 
+jest.mock('@/lib/errorReporting', () => ({
+  flushPendingCrashReports: jest.fn(async () => {}),
+}));
+const flush = (require('@/lib/errorReporting') as { flushPendingCrashReports: jest.Mock })
+  .flushPendingCrashReports;
+
 jest.mock('@react-native-community/netinfo', () => ({
   __esModule: true,
   default: { addEventListener: jest.fn(() => () => {}) },
@@ -48,6 +54,7 @@ const bootWithCachedUser = async () => {
 beforeEach(async () => {
   await AsyncStorage.clear();
   mockFetch.mockReset();
+  flush.mockClear();
   (globalThis as { fetch: unknown }).fetch = mockFetch;
 });
 
@@ -82,6 +89,71 @@ describe('the boot check', () => {
     await waitFor(() => expect(view.getByTestId('user').props.children).toBe('none'));
     expect(await AsyncStorage.getItem(STORAGE_KEY)).toBeNull();
 
+    await view.unmount();
+  });
+});
+
+describe('crash reports kept while signed out', () => {
+  it('are sent once a user is signed in', async () => {
+    mockFetch.mockResolvedValue({ status: 200, ok: true, json: async () => CACHED });
+    const view = await mount();
+    await waitFor(() => expect(flush).toHaveBeenCalledTimes(1));
+    await view.unmount();
+  });
+
+  it('wait while nobody is', async () => {
+    mockFetch.mockResolvedValue({ status: 401, ok: false });
+    const view = await mount();
+    await waitFor(() => expect(view.getByTestId('loading').props.children).toBe('false'));
+    expect(flush).not.toHaveBeenCalled();
+    await view.unmount();
+  });
+});
+
+describe('a storage failure', () => {
+  const diskFull = () => Promise.reject(new Error('disk full'));
+
+  it('still ends the boot when the cache cannot be read', async () => {
+    jest.spyOn(AsyncStorage, 'getItem').mockImplementationOnce(diskFull);
+    mockFetch.mockResolvedValue({ status: 503, ok: false });
+
+    const view = await mount();
+
+    await waitFor(() => expect(view.getByTestId('loading').props.children).toBe('false'));
+    await view.unmount();
+  });
+
+  it('still ends the boot when the answer cannot be cached', async () => {
+    jest.spyOn(AsyncStorage, 'setItem').mockImplementationOnce(diskFull);
+    mockFetch.mockResolvedValue({ status: 200, ok: true, json: async () => CACHED });
+
+    const view = await mount();
+
+    await waitFor(() => expect(view.getByTestId('loading').props.children).toBe('false'));
+    expect(view.getByTestId('user').props.children).toBe('Ana');
+    await view.unmount();
+  });
+
+  it('does not fail a sign-in, rename or email change that already landed', async () => {
+    mockFetch.mockResolvedValue({ status: 401, ok: false });
+    const { apiRequest } = require('@/lib/query-client') as { apiRequest: jest.Mock };
+    apiRequest.mockImplementation(async () => ({ json: async () => CACHED }));
+    const auth: { current?: ReturnType<typeof useAuth> } = {};
+    function Capture() {
+      const value = useAuth();
+      React.useEffect(() => {
+        auth.current = value;
+      });
+      return null;
+    }
+    const view = await render(<AuthProvider><Capture /></AuthProvider>);
+    await waitFor(() => expect(auth.current?.loading).toBe(false));
+
+    jest.spyOn(AsyncStorage, 'setItem').mockImplementation(diskFull);
+    await expect(auth.current!.login('Ana', 'pw')).resolves.toBeUndefined();
+    await expect(auth.current!.rename('Ana')).resolves.toBeUndefined();
+    await expect(auth.current!.addEmail('a@b.c')).resolves.toBeUndefined();
+    jest.restoreAllMocks();
     await view.unmount();
   });
 });

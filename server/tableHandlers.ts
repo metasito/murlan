@@ -48,8 +48,8 @@ import { trackEvent } from "./events.ts";
 import { DEFAULT_LOCALE, translate } from "../shared/i18n.ts";
 import { activeGames as activeGamesTable } from "../shared/schema.ts";
 import type { EventOutcome } from "./socketSafety.ts";
-import { activeGames, scoreKeyForSeat, seatName, seatOfUser, userRoom } from "./gameRoom.ts";
-import { isUserOnline } from "./socketRegistry.ts";
+import { activeGames, isShuttingDown, scoreKeyForSeat, seatName, seatOfUser, userRoom } from "./gameRoom.ts";
+import { isUserOnline, onlineUserIds } from "./socketRegistry.ts";
 import type { OnlineGameState } from "./gameRoom.ts";
 import {
   broadcastGameState,
@@ -64,7 +64,7 @@ import {
   handleGameOver,
   tableWantsRematch,
 } from "./gameOver.ts";
-import { armTurn, recordPlayFlags, vacateSeat } from "./gameTurn.ts";
+import { armTurn, armTurnIfIdle, recordPlayFlags, vacateSeat } from "./gameTurn.ts";
 import { exchangeAnnounceMs } from "../lib/exchangeCeremony.ts";
 import {
   disconnectGraceMs,
@@ -814,7 +814,7 @@ function seatLostAction(
 
   // A vacant seat must keep playing while we wait, or the table stalls for a
   // full minute on this player's turn.
-  armTurn(io, roomId);
+  armTurnIfIdle(io, roomId);
 
   const prevTimer = disconnectTimers.get(userId);
   if (prevTimer) clearTimeout(prevTimer);
@@ -907,6 +907,9 @@ async function applyTableAction(
       return OK;
     case "seatLost":
       return seatLostAction(io, game, action);
+    case "resume":
+      armTurnIfIdle(io, action.roomId);
+      return OK;
     case "vacate":
       // `rooms.status` reads "finished" between manches too, so only the live
       // game knows whether the seat is still held. Removing the DB row alone
@@ -918,6 +921,27 @@ async function applyTableAction(
     default:
       // A newer revision forwards kinds this one has never heard of.
       return UNKNOWN_ACTION;
+  }
+}
+
+/**
+ * Takes over every persisted table no instance holds while one of its seats is
+ * online. Nothing else wakes a table whose owner died on a turn no connected
+ * player takes; a table nobody is watching stays asleep.
+ */
+export async function resumeOrphanedTables(io: SocketServer): Promise<void> {
+  if (isShuttingDown()) return;
+  const rows = await db
+    .select({ roomId: activeGamesTable.roomId, gameState: activeGamesTable.gameState })
+    .from(activeGamesTable);
+  const online = await onlineUserIds();
+  for (const row of rows) {
+    if (activeGames.has(row.roomId) || isShuttingDown()) continue;
+    const restored = unpackPersistedState<GameState>(row.gameState);
+    if (!restored.ok || restored.gameState.gameOver) continue;
+    const userId = Object.values(restored.match.playerMap).find((id) => online.has(id));
+    if (userId === undefined) continue;
+    await applyOrForward(io, { kind: "resume", roomId: row.roomId, userId });
   }
 }
 

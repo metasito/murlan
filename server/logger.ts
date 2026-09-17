@@ -21,6 +21,29 @@ export const REDACT_PATHS = [
   "payload.roomCode",
 ];
 
+type ErrorRecorder = (entry: Record<string, unknown>) => void;
+let recordError: ErrorRecorder | undefined;
+
+/** Receives every written line at `error` or above, after redaction. */
+export function setErrorRecorder(recorder: ErrorRecorder | undefined): void {
+  recordError = recorder;
+}
+
+const ERROR_LEVEL = 50;
+
+function tapErrors(line: string): string {
+  const level = Number(/"level":(\d+)/.exec(line)?.[1]);
+  if (recordError && level >= ERROR_LEVEL) {
+    try {
+      recordError(JSON.parse(line) as Record<string, unknown>);
+    } catch (err) {
+      // Never through the logger: a failing recorder would feed itself.
+      process.stderr.write(`server error recorder failed: ${String(err)}\n`);
+    }
+  }
+  return line;
+}
+
 /**
  * Builds the app's pino instance, optionally against a caller-supplied stream.
  *
@@ -32,6 +55,7 @@ export function createLogger(destination?: pino.DestinationStream) {
   return pino(
     {
       level: process.env.NODE_ENV === "production" ? "info" : "debug",
+      hooks: { streamWrite: tapErrors },
       redact: {
         paths: REDACT_PATHS,
         censor: "[redacted]",
@@ -108,6 +132,7 @@ export function createRequestLogger(target: pino.Logger = logger) {
     // point. `quietResLogger` is what drops the early binding — leave it out
     // and the line carries both, the second one still holding the address.
     quietResLogger: true,
+    quietReqLogger: true,
     customSuccessObject: (req: LoggedRequest, _res: ServerResponse, line: object) => ({ ...line, req }),
     customErrorObject: (req: LoggedRequest, _res: ServerResponse, _err: Error, line: object) => ({
       ...line,

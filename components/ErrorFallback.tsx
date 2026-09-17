@@ -1,5 +1,6 @@
 import React, { useContext, useState } from "react";
 import { reloadAppAsync } from "expo";
+import { router } from "expo-router";
 import {
   StyleSheet,
   View,
@@ -98,7 +99,10 @@ export function ErrorFallback({ error, resetError }: ErrorFallbackProps) {
           />
           <MenuButton
             label={t("errorFallback.continue")}
-            onPress={resetError}
+            onPress={() => {
+              router.replace("/");
+              resetError();
+            }}
             variant="ghost"
             disabled={restarting}
             hint={t("errorFallback.continueA11yHint")}

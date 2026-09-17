@@ -10,6 +10,7 @@ import { useIsLandscape } from "@/lib/orientation";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, {
+  cancelAnimation,
   useAnimatedStyle,
   useSharedValue,
   withTiming,
@@ -105,6 +106,10 @@ function FloatingCard({ spec }: { spec: FloatingCardSpec }) {
   useEffect(() => {
     lift.value = phased(restLift, 0, 1, band.driftMs / 2, reduceMotion);
     swing.value = phased(restSwing, -1, 1, band.tiltMs / 2, reduceMotion);
+    return () => {
+      cancelAnimation(lift);
+      cancelAnimation(swing);
+    };
   }, [band, lift, reduceMotion, restLift, restSwing, swing]);
 
   const animStyle = useAnimatedStyle(() => ({

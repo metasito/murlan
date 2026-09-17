@@ -7,7 +7,8 @@ import type { SocketServer as SocketIOServer } from "./socketTypes.ts";
 import { createRequestLogger, logger } from "./logger.ts";
 import { sessionMiddleware } from "./session.ts";
 import { pool } from "./db.ts";
-import { payload } from "./payload.ts";
+import { errorHandler } from "./errorHandler.ts";
+import { installServerErrorRecorder } from "./serverErrors.ts";
 import { registerRoutes } from "./routes.ts";
 import { ensureSchema } from "./schemaDdl.ts";
 import { isAllowedOrigin, isBehindProxy } from "./cors.ts";
@@ -232,34 +233,6 @@ function configureExpoAndLanding(app: express.Application) {
   }
 }
 
-function setupErrorHandler(app: express.Application) {
-  app.use(
-    (err: unknown, _req: Request, res: Response, next: NextFunction) => {
-      const error = err as {
-        status?: number;
-        statusCode?: number;
-        message?: string;
-      };
-      const status = error.status || error.statusCode || 500;
-      logger.error({ err }, "Internal Server Error");
-      // Delegating destroys the socket, which a finished response does not
-      // deserve: express-session saves after `res.end`, so a store failing
-      // there would drop a connection the client is still pooling.
-      if (res.writableEnded) return;
-      if (res.headersSent) return next(err);
-      // A 4xx message was chosen for the caller (a body-parse failure, say);
-      // a 5xx message is whatever internal thing threw, and has leaked
-      // Postgres errors naming tables and columns straight into the UI.
-      if (status >= 500) {
-        return res.status(status).json({ ...payload("INTERNAL_SERVER_ERROR") });
-      }
-      return res
-        .status(status)
-        .json({ message: error.message || "Bad request", code: "INVALID_PAYLOAD" });
-    }
-  );
-}
-
 export interface CreatedApp {
   app: express.Express;
   server: HttpServer;
@@ -276,6 +249,7 @@ export interface CreatedApp {
  * real PORT.
  */
 export async function createApp(): Promise<CreatedApp> {
+  installServerErrorRecorder();
   const app = express();
 
   // Exactly one proxy hop (Replit's TLS terminator). Without this the secure
@@ -339,7 +313,7 @@ export async function createApp(): Promise<CreatedApp> {
   const { setupSocket } = await import("./socket.ts");
   const io = setupSocket(server);
 
-  setupErrorHandler(app);
+  app.use(errorHandler);
 
   return { app, server, io };
 }

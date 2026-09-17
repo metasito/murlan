@@ -39,6 +39,8 @@ interface NotificationContextValue {
   reportBannerBottom: (bottom: number) => void;
 }
 
+export const NOTIFICATION_QUEUE_MAX = 3;
+
 const NotificationContext = createContext<NotificationContextValue | null>(null);
 
 export function useNotification() {
@@ -63,7 +65,16 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   const [queue, setQueue] = useState<NotificationData[]>([]);
 
   const showNotification = useCallback((n: NotificationData) => {
-    setQueue((prev) => [...prev, n]);
+    setQueue((prev) => {
+      const same = (q: NotificationData) =>
+        q.type === n.type && q.title === n.title && q.message === n.message;
+      if (prev.some(same)) return prev;
+      const next = [...prev, n];
+      // The banner on screen stays; the stalest of those waiting behind it go.
+      return next.length > NOTIFICATION_QUEUE_MAX
+        ? [...next.slice(0, 1), ...next.slice(next.length - NOTIFICATION_QUEUE_MAX + 1)]
+        : next;
+    });
   }, []);
 
   const notification = queue[0] ?? null;

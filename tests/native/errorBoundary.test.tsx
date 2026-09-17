@@ -8,7 +8,7 @@ import { readFileSync } from 'fs';
 import { join } from 'path';
 import React from 'react';
 import { QueryClientProvider, QueryClient } from '@tanstack/react-query';
-import { render } from '@testing-library/react-native';
+import { fireEvent, render } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
@@ -29,6 +29,9 @@ jest.mock('@/lib/query-client', () => ({
   apiRequest: jest.fn(() => Promise.resolve({ ok: true })),
   getApiUrl: () => 'http://localhost',
 }));
+
+jest.mock('expo-router', () => ({ router: { replace: jest.fn() } }));
+const replace = (require('expo-router') as { router: { replace: jest.Mock } }).router.replace;
 
 const apiRequest = (require('@/lib/query-client') as { apiRequest: jest.Mock })
   .apiRequest;
@@ -129,5 +132,19 @@ it('renders with no SafeAreaProvider anywhere', async () => {
   expect(view.getByText(t('errorFallback.title'))).toBeTruthy();
   expect(view.getByRole('button', { name: t('errorFallback.restart') })).toBeTruthy();
 
+  await view.unmount();
+});
+
+it('Continue leaves the crashed route before clearing the error', async () => {
+  const calls: string[] = [];
+  replace.mockImplementation(() => calls.push('replace'));
+  const view = await render(
+    <ErrorFallback error={new Error('boom')} resetError={() => calls.push('reset')} />
+  );
+
+  await fireEvent.press(view.getByRole('button', { name: t('errorFallback.continue') }));
+
+  expect(replace).toHaveBeenCalledWith('/');
+  expect(calls).toEqual(['replace', 'reset']);
   await view.unmount();
 });

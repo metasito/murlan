@@ -881,7 +881,7 @@ export const it: Record<keyof typeof en, string> = {
   "errorFallback.restart": "Riavvia l'app",
   "errorFallback.restartA11yHint": "Ricarica completamente l'applicazione",
   "errorFallback.continue": "Continua",
-  "errorFallback.continueA11yHint": "Prova a tornare alla schermata precedente senza riavviare",
+  "errorFallback.continueA11yHint": "Torna alla schermata principale senza riavviare",
   "errorFallback.detailsTitle": "Dettagli errore",
   "errorFallback.closeDetailsA11yLabel": "Chiudi dettagli errore",
   "updateRequired.title": "Aggiornamento necessario",

@@ -273,6 +273,7 @@ const friendLimiter = routeLimiter({
 const ticketLimiter = routeLimiter({
   windowMs: 60 * 1000,
   defaultMax: 60,
+  envVar: "MURLAN_TICKET_RATE_LIMIT",
   message: payload("RATE_LIMITED"),
 });
 

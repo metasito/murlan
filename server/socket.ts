@@ -30,7 +30,7 @@ import { setSocketServer } from "./socketRegistry.ts";
 import { allowSocketAction, answerUnknownEvents } from "./socketSafety.ts";
 import { userRoom, userSocketMap } from "./gameRoom.ts";
 import { startSweeper } from "./gamePersistence.ts";
-import { installTableHandlers } from "./tableHandlers.ts";
+import { installTableHandlers, resumeOrphanedTables } from "./tableHandlers.ts";
 import { reopenOwnership } from "./gameOwnership.ts";
 
 // The account-facing surface lives in socketRegistry.ts, apart from this file
@@ -195,7 +195,7 @@ export function setupSocket(httpServer: HttpServer) {
     await announcePresence(ctx);
   });
 
-  startSweeper(io);
+  startSweeper(io, resumeOrphanedTables);
 
   return io;
 }

@@ -235,6 +235,17 @@ export const clientErrors = pgTable("client_errors", {
   index("client_errors_fingerprint_idx").on(t.fingerprint),
 ]);
 
+/** Every server log line at `error` or above, kept SERVER_ERROR_RETENTION_DAYS. */
+export const serverErrors = pgTable("server_errors", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  occurredAt: timestamp("occurred_at").defaultNow().notNull(),
+  level: integer("level").notNull(),
+  message: text("message").notNull(),
+  context: jsonb("context").notNull().default({}),
+}, (t) => [
+  index("server_errors_occurred_idx").on(t.occurredAt),
+]);
+
 /**
  * What a player says is wrong, in their own words, plus the context they would
  * otherwise have to be asked for. Kept for BUG_REPORT_RETENTION_DAYS.

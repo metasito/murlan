@@ -9,60 +9,16 @@
 // So this spawns two real servers against one schema and asserts across them.
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
-import { spawn, type ChildProcess } from "node:child_process";
 import pg from "pg";
 import { io as ioClient, type Socket } from "socket.io-client";
 import { PROTOCOL_AUTH } from "../helpers/client.ts";
 import { hasDatabase, skipMessage } from "../helpers/testServer.ts";
+import { boot, type Instance } from "../helpers/instance.ts";
 import { driveHumansToGameOver } from "../helpers/gameDriver.ts";
 
 const PORTS = [5561, 5562] as const;
 /** Short, so the "was it re-sent?" window below is seconds rather than tens. */
 const ACK_TIMEOUT_MS = 700;
-
-interface Instance {
-  port: number;
-  child: ChildProcess;
-}
-
-function boot(port: number, databaseUrl: string): Promise<Instance> {
-  return new Promise((resolve, reject) => {
-    const child = spawn(
-      process.execPath,
-      ["--experimental-strip-types", "server/index.ts"],
-      {
-        env: {
-          ...process.env,
-          DATABASE_URL: databaseUrl,
-          PORT: String(port),
-          SESSION_SECRET: "cross-instance-secret",
-          LOG_LEVEL: "silent",
-          NODE_ENV: "development",
-          MURLAN_STATE_ACK_TIMEOUT_MS: String(ACK_TIMEOUT_MS),
-          // Nothing here plays a hand; an AFK auto-move mid-assertion would be
-          // state arriving for a reason that is not a re-send.
-          MURLAN_AFK_TIMEOUT_MS: "600000",
-        },
-        stdio: ["ignore", "pipe", "pipe"],
-      }
-    );
-    const giveUp = setTimeout(
-      () => reject(new Error(`instance on ${port} never came up`)),
-      45_000
-    );
-    const watch = (buf: unknown) => {
-      const line = String(buf);
-      if (line.includes(String(port)) || line.includes("listening")) {
-        clearTimeout(giveUp);
-        // The port is logged from the listen callback; the socket server is
-        // attached by then, but the adapter's LISTEN is still in flight.
-        setTimeout(() => resolve({ port, child }), 600);
-      }
-    };
-    child.stdout?.on("data", watch);
-    child.stderr?.on("data", watch);
-  });
-}
 
 async function register(port: number, username: string): Promise<string> {
   const res = await fetch(`http://127.0.0.1:${port}/api/auth/register`, {
@@ -122,7 +78,12 @@ describe("broadcasts cross server instances", {
 
     // Sequentially: both run `ensureSchema` against the same empty schema, and
     // `CREATE TYPE` is not idempotent against a concurrent identical one.
-    for (const port of PORTS) instances.push(await boot(port, scoped));
+    for (const port of PORTS) instances.push(await boot(port, scoped, {
+      MURLAN_STATE_ACK_TIMEOUT_MS: String(ACK_TIMEOUT_MS),
+      // Nothing here plays a hand; an AFK auto-move mid-assertion would be
+      // state arriving for a reason that is not a re-send.
+      MURLAN_AFK_TIMEOUT_MS: "600000",
+    }));
 
     const tag = Date.now().toString(36);
     aName = `xa${tag}`;

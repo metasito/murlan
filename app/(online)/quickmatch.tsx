@@ -9,6 +9,7 @@ import {
 } from "react-native";
 import { useOrientedWindow } from "@/lib/orientation";
 import Animated, {
+  cancelAnimation,
   Easing,
   useAnimatedStyle,
   useSharedValue,
@@ -125,12 +126,14 @@ export default function QuickmatchScreen() {
 
   useEffect(() => {
     if (phase !== "searching" || reduceMotion) {
+      cancelAnimation(pulse);
       pulse.value = 1;
       return;
     }
     const breath = (to: number) =>
       withTiming(to, { duration: Motion.duration.dwell, easing: Easing.inOut(Easing.sin) });
     pulse.value = withRepeat(withSequence(breath(1.15), breath(1)), -1, false);
+    return () => cancelAnimation(pulse);
   }, [phase, pulse, reduceMotion]);
 
   // After the effect above, not before it: reading a shared value here freezes

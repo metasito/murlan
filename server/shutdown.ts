@@ -7,6 +7,7 @@ import { drainPool } from "./drainPool.ts";
 import { beginShutdown } from "./gameRoom.ts";
 import { socketAdapterPool, socketAdapterReady } from "./socketAdapter.ts";
 import { closeOwnership } from "./gameOwnership.ts";
+import { settleDisconnects } from "./socketPresence.ts";
 
 /**
  * Replit Cloud Run sends SIGTERM and SIGKILLs roughly ten seconds later. The
@@ -22,11 +23,14 @@ export const PLATFORM_GRACE_MS = 10_000;
  */
 export const DRAIN_TIMEOUT_MS = QUERY_TIMEOUT_MS + 1_000;
 
+/** How long a departing player's seat has to reach the instance that owns their table. */
+export const DISCONNECT_SETTLE_MS = 1_500;
+
 /**
  * Last resort. Strictly after the drain, so the ordinary path always reaches
  * exit(0) first, and strictly inside PLATFORM_GRACE_MS, so it can fire at all.
  */
-export const FORCED_EXIT_MS = DRAIN_TIMEOUT_MS + 2_000;
+export const FORCED_EXIT_MS = DISCONNECT_SETTLE_MS + DRAIN_TIMEOUT_MS + 2_000;
 
 export interface ShutdownDeps {
   io: SocketIOServer;
@@ -74,6 +78,7 @@ export async function shutdown(
     // Closes the adapter too, which releases the client parked on `LISTEN` and
     // stops its cleanup timer — so the pool below has nothing checked out.
     await io.close();
+    await settleDisconnects(DISCONNECT_SETTLE_MS);
     // After `io.close()`, never before: the locks go with this connection, and
     // handing a room back while its game is still in memory and still being
     // played lets another instance restore the same table and write over it.

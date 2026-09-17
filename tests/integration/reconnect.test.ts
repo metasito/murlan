@@ -39,6 +39,8 @@ process.env.MURLAN_AFK_TIMEOUT_MS = "400";
 // one of its own turns) never races the seat's own disconnect-grace vacate —
 // `handleGameOver` cancels that timer once the hand actually ends.
 process.env.MURLAN_DISCONNECT_GRACE_MS = "20000";
+// The reconnect loops below buy a ticket every few hundred milliseconds.
+process.env.MURLAN_TICKET_RATE_LIMIT = "1000";
 
 interface ReconnectNotice {
   userId: string;
@@ -187,6 +189,24 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
     return () => clearInterval(handle);
   }
 
+  /** Drops and re-opens the client's socket, rejoining each time, until stopped. */
+  function reconnectOnALoop(client: Client, roomId: string): () => Promise<void> {
+    let running = true;
+    const done = (async () => {
+      while (running) {
+        client.socket.disconnect();
+        await new Promise((resolve) => setTimeout(resolve, AFK_MS / 4));
+        client.socket = await reconnectAs(server, client);
+        client.socket.emit("game:rejoin", { roomId });
+        await new Promise((resolve) => setTimeout(resolve, AFK_MS / 4));
+      }
+    })();
+    return async () => {
+      running = false;
+      await done;
+    };
+  }
+
   /** Waits for the `active_games` row the rehydration branch reads. */
   async function waitForPersistedGame(roomId: string): Promise<void> {
     const { db } = await import("../../server/db.ts");
@@ -300,6 +320,62 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
       await closeTable(table);
     }
   });
+
+  test("a rejoin that throws still sends the friend list", async () => {
+    const { activeGames } = await import("../../server/gameRoom.ts");
+    const alice = await connectAs(server, "rejoin_throw_alice");
+    const bob = await connectAs(server, "rejoin_throw_bob");
+    const room = await setUpRoom([alice, bob], 2);
+    const table = [alice, bob];
+    try {
+      await startGame(table);
+      const gone = waitFor(alice.socket, "game:player_disconnected", 5_000);
+      bob.socket.disconnect();
+      await gone;
+      const game = activeGames.get(room.roomId)!;
+      const votes = game.endMatchVotes;
+      game.endMatchVotes = { [Symbol.iterator]: () => { throw new Error("planted rejoin fault"); } } as unknown as Set<string>;
+      try {
+        bob.socket = await reconnectAs(server, bob);
+        await waitFor(bob.socket, "friend:online_list", 5_000);
+      } finally {
+        game.endMatchVotes = votes;
+      }
+    } finally {
+      await closeTable(table);
+    }
+  });
+
+  for (const who of ["the player to move", "a bystander"] as const) {
+    test(`a disconnect/reconnect loop by ${who} does not hold the turn open`, async () => {
+      const tag = who === "a bystander" ? "by" : "mv";
+      const table = [
+        await connectAs(server, `afk_drop_${tag}_a`),
+        await connectAs(server, `afk_drop_${tag}_b`),
+        await connectAs(server, `afk_drop_${tag}_c`),
+      ];
+      const room = await setUpRoom(table, 3);
+      try {
+        const states = await startGame(table);
+        const actor = clientOnTurn(table, states);
+        const others = table.filter((c) => c !== actor);
+        const looper = who === "a bystander" ? others[0] : actor;
+        const passes = collectAfkPasses(others[1].socket);
+        const stop = reconnectOnALoop(looper, room.roomId);
+        try {
+          await waitUntil(
+            () => passes.includes(actor.user.username),
+            `${who}'s dropped sockets re-armed the acting seat's AFK window`,
+            AFK_MS * 2.5 + OPENING_GRACE_MS
+          );
+        } finally {
+          await stop();
+        }
+      } finally {
+        await closeTable(table);
+      }
+    });
+  }
 
   // ── Test 4 ──────────────────────────────────────────────────────────────
 

@@ -18,6 +18,7 @@ import { trackEvent } from "./events.ts";
 import { onEvent } from "./socketSafety.ts";
 import {
   activeGames,
+  isShuttingDown,
   seatOfUser,
   socketRoomMap,
   spectatorRoomMap,
@@ -138,11 +139,15 @@ export async function announcePresence({ io, socket, userId }: PresenceContext) 
       for (const [roomId, game] of activeGames.entries()) {
         if (seatOfUser(game, userId) === null || game.gameState.gameOver) continue;
         joinSocketToRoom(socket, roomId);
-        await announceRejoin(io, userId, roomId, game);
-        logger.info(
-          { userId, roomId },
-          "Player reconnected within grace period"
-        );
+        try {
+          await announceRejoin(io, userId, roomId, game);
+          logger.info(
+            { userId, roomId },
+            "Player reconnected within grace period"
+          );
+        } catch (err) {
+          logger.error({ err, userId, roomId }, "grace rejoin failed");
+        }
         break;
       }
     }
@@ -166,11 +171,27 @@ export async function announcePresence({ io, socket, userId }: PresenceContext) 
     }
 }
 
+const pendingDisconnects = new Set<Promise<void>>();
+
+/**
+ * Resolves once every disconnect handler already started has finished, or at
+ * `timeoutMs`. `io.close()` starts them and waits for none, and a seat lost at a
+ * table another instance owns is forwarded over the adapter pool.
+ */
+export async function settleDisconnects(timeoutMs: number): Promise<void> {
+  let timer: NodeJS.Timeout | undefined;
+  await Promise.race([
+    Promise.allSettled([...pendingDisconnects]),
+    new Promise((resolve) => { timer = setTimeout(resolve, timeoutMs); }),
+  ]);
+  clearTimeout(timer);
+}
+
 export function registerDisconnect({ io, socket, userId }: PresenceContext) {
 
     socket.on("disconnect", (reason: DisconnectReason) => {
       trackEvent("socket.closed", userId, { reason });
-      void (async () => {
+      const handled = (async () => {
         try {
           // A spectator holds no seat, so none of the grace/AFK machinery below
           // applies to them; they are simply dropped.
@@ -227,11 +248,18 @@ export function registerDisconnect({ io, socket, userId }: PresenceContext) {
           // lobby is a question about the game, which lives in one instance's
           // memory — and not necessarily this one. Reading `activeGames` here
           // read every table held elsewhere as a lobby and released the seat.
-          const seat = await applyOrForward(io, {
-            kind: "seatLost",
-            roomId: currentRoomId,
-            userId,
-          });
+          // A lobby has no game anywhere, so a process on its way out need not
+          // spend its last seconds asking.
+          const lobby =
+            isShuttingDown() &&
+            (await roomStore.getRoomById(currentRoomId))?.status === "waiting";
+          const seat = lobby
+            ? { ok: false, code: "NO_LIVE_GAME" }
+            : await applyOrForward(io, {
+                kind: "seatLost",
+                roomId: currentRoomId,
+                userId,
+              });
           // Only "no game anywhere" is a lobby. `NOT_SEATED` is the owner
           // saying the table is live and this account holds no seat at it, and
           // `TABLE_UNREACHABLE` is nobody having answered — releasing a seat on
@@ -247,6 +275,8 @@ export function registerDisconnect({ io, socket, userId }: PresenceContext) {
           logger.error({ err, userId }, "disconnect handler failed");
         }
       })();
+      pendingDisconnects.add(handled);
+      void handled.finally(() => pendingDisconnects.delete(handled));
     });
 }
 
