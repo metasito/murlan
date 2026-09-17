@@ -1292,7 +1292,8 @@ export function runTicket(
       ...process.env,
       DISABLE_AUTOUPDATER: "1",
       LOOP_TURNS: String(budget),
-      LOOP_PHASE: at ?? "A",
+      // A is where derive() starts anyway; handing it would pin a rebuilt worktree to A.
+      LOOP_PHASE: at && at !== "A" ? at : undefined,
       // `-p` leaves fork mode off, so subagents default to background and the session spends a turn
       // each time it asks one whether it is done. Foreground makes the Agent call an await.
       CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1",
@@ -1313,7 +1314,9 @@ export function runTicket(
     if (!fact) return;
     if (fact.kind === "init") {
       state.version = fact.version;
-      if (fact.model && familyOf(fact.model) !== planned && !state.wrongModel) {
+      const family = fact.model ? familyOf(fact.model) : null;
+      if (fact.model && !family) screen.warn(`the session started on ${fact.model}, a model of no known family\n`);
+      if (family && family !== planned && !state.wrongModel) {
         state.wrongModel = `the session started on ${fact.model}, but phase ${at ?? "A"} runs on ${planned}`;
         child.kill("SIGTERM");
         setTimeout(() => child.kill("SIGKILL"), 10_000).unref();

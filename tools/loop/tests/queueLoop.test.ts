@@ -562,13 +562,33 @@ describe("runTicket", () => {
   };
   const init = (model: string) => JSON.stringify({ type: "system", subtype: "init", session_id: "s", model });
 
-  test("the session is told the phase it resumes at, and a fresh one is at A", async () => {
+  test("the session is told the phase it resumes at; a fresh one is told none and derives its own", async () => {
     const resumed = spawned([RESULT]);
     await runTicket(resumed.spawnFn as never, opts({ at: "D" }));
+    const prior = process.env.LOOP_PHASE;
+    process.env.LOOP_PHASE = "C";
     const fresh = spawned([RESULT]);
-    await runTicket(fresh.spawnFn as never, opts());
-    assert.deepEqual([resumed.seen.env.LOOP_PHASE, fresh.seen.env.LOOP_PHASE], ["D", "A"]);
+    const rebuilt = spawned([RESULT]);
+    try {
+      await runTicket(fresh.spawnFn as never, opts());
+      await runTicket(rebuilt.spawnFn as never, opts({ at: "A" }));
+    } finally {
+      if (prior === undefined) delete process.env.LOOP_PHASE;
+      else process.env.LOOP_PHASE = prior;
+    }
+    assert.deepEqual(
+      [resumed.seen.env.LOOP_PHASE, fresh.seen.env.LOOP_PHASE, rebuilt.seen.env.LOOP_PHASE],
+      ["D", undefined, undefined],
+    );
     assert.equal(resumed.seen.args[resumed.seen.args.indexOf("--model") + 1], "opus");
+  });
+
+  test("an init model of no family the loop knows is named, not parked", async () => {
+    const { said, screen } = sink();
+    const odd = spawned([init("some-future-model"), RESULT]);
+    const run = await runTicket(odd.spawnFn as never, opts({ at: "E", screen }));
+    assert.deepEqual([odd.seen.killed, run.wrongModel], [[], null]);
+    assert.match(said.join("\n"), /some-future-model/);
   });
 
   test("an init model other than planned kills the session and says why", async () => {
