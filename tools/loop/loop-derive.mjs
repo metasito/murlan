@@ -15,7 +15,8 @@
  * The branch name is the binding. `agent/<n>-<slug>` says which ticket this work belongs to, and
  * git will not let you be on two at once.
  */
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
+import { createRequire } from "node:module";
 import { basename, dirname } from "node:path";
 
 export const BRANCH = /^agent\/(\d+)-/;
@@ -46,10 +47,48 @@ const VERDICT_RE = /^VERDICT:\s*(LAND|HOLD)\b[^\n]*?\b([0-9a-f]{7,40})\b/m;
 /** The review's own comment, naming the head it read. The same sha binding the verdict carries. */
 const REVIEW_RE = /^REVIEW\s+([0-9a-f]{7,40})\b/m;
 
+/** A fix round's own `REVIEW` marks itself, so `reviewRounds` can size the cap to full rounds. */
+const REVIEW_FIX_RE = /^REVIEW\s+([0-9a-f]{7,40})\s+fix\b/m;
+
 /** What "this head" means, for the verdict and the report both, so the two cannot disagree. */
 const covers = (head, sha) => head.startsWith(sha) || sha.startsWith(head.slice(0, 7));
 
 const fenceStripped = (body) => (body ?? "").replace(/```[\s\S]*?```/g, "");
+
+/** The claim comment `claim.mjs` posts — its literal text is the only marker there is. */
+const CLAIM_RE = /^Claimed by `/m;
+
+const CI_RED_RE = /^CI-RED\s+([0-9a-f]{7,40})\b/m;
+
+/**
+ * How many CI rounds have gone red since the ticket was last claimed — the newest claim, not the
+ * first, so a ticket reclaimed after a restart starts the count over rather than inheriting a run
+ * that already ended.
+ *
+ * @param {{body: string}[]} comments
+ */
+export function ciRedRounds(comments) {
+  let since = 0;
+  comments.forEach((c, i) => {
+    if (CLAIM_RE.test(fenceStripped(c.body))) since = i + 1;
+  });
+  const shas = new Set();
+  for (let i = since; i < comments.length; i++) {
+    const m = CI_RED_RE.exec(fenceStripped(comments[i].body));
+    if (m) shas.add(m[1]);
+  }
+  return shas.size;
+}
+
+/**
+ * Whether a `CI-RED <sha>` comment for this exact head is already on the thread — the dedup the
+ * supervisor checks before posting another one for the same red head.
+ *
+ * @param {{body: string}[]} comments @param {string} sha
+ */
+export function ciRedPosted(comments, sha) {
+  return comments.some((c) => CI_RED_RE.exec(fenceStripped(c.body))?.[1] === sha);
+}
 
 /** @returns {string|null} */
 export function currentBranch(cwd) {
@@ -209,11 +248,45 @@ export function reviewFor(comments, head) {
  * answer so `loop-gate.mjs` need not read the tracker twice.
  */
 export function reviewRounds(comments) {
+  const bodies = comments.map((c) => fenceStripped(c.body));
+  const claimed = bodies.findLastIndex((b) => CLAIM_RE.test(b));
+  const firstRed = bodies.findIndex((b, i) => i > claimed && CI_RED_RE.test(b));
   let rounds = 0;
-  for (const comment of comments) {
-    if (VERDICT_RE.test(fenceStripped(comment.body))) rounds += 1;
+  for (const body of bodies) {
+    const v = VERDICT_RE.exec(body);
+    if (!v) continue;
+    const fix = bodies.some((b, i) => {
+      const m = REVIEW_FIX_RE.exec(b);
+      return m && firstRed >= 0 && i > firstRed && covers(v[2], m[1]);
+    });
+    if (!fix) rounds += 1;
   }
   return rounds;
+}
+
+/**
+ * The size of a fix round's own diff, not the ticket's whole history. `--first-parent` keeps an
+ * update-branch merge off the walk entirely — including what it carried in — and `--no-merges`
+ * drops the merge commit's own (empty) entry too.
+ *
+ * @param {string} worktree @param {string} landSha
+ * @returns {{files: number, lines: number}}
+ */
+export function fixDelta(worktree, landSha) {
+  const out = run(
+    "git",
+    ["log", "--first-parent", "--no-merges", "--format=", "--numstat", `${landSha}..HEAD`],
+    worktree
+  );
+  const files = new Set();
+  let lines = 0;
+  for (const line of out.split("\n")) {
+    const m = /^(\d+|-)\t(\d+|-)\t(.+)$/.exec(line);
+    if (!m) continue;
+    files.add(m[3]);
+    lines += (m[1] === "-" ? 0 : Number(m[1])) + (m[2] === "-" ? 0 : Number(m[2]));
+  }
+  return { files: files.size, lines };
 }
 
 /**
@@ -225,16 +298,82 @@ export function reviewRounds(comments) {
  * stub is unreachable and the only testable review state is "tracker unreadable" — which is how
  * a mutant that lands a HOLD passed every test in the previous suite.
  */
-function readComments(ticket, cwd) {
-  const args = ["issue", "view", String(ticket), "--json", "comments"];
+function gh(args, cwd, timeout) {
   const file = process.env.LOOP_GH_SCRIPT;
-  // stderr discarded: an unreachable tracker is reported as "cannot read the review", and `gh`'s
-  // own GraphQL complaint printed mid-brief reads as the brief having failed.
+  // stderr captured, never printed: an unreachable tracker is reported as "cannot read the review",
+  // and `gh`'s own GraphQL complaint printed mid-brief reads as the brief having failed.
   return execFileSync(file ? process.execPath : "gh", file ? [file, ...args] : args, {
     encoding: "utf8",
     cwd,
-    stdio: ["ignore", "pipe", "ignore"],
+    stdio: ["ignore", "pipe", "pipe"],
+    maxBuffer: 64 * 1024 * 1024,
+    timeout,
   }).trim();
+}
+
+function readComments(ticket, cwd, exec) {
+  return exec(["issue", "view", String(ticket), "--json", "comments"], cwd, CI_BUDGET_MS);
+}
+
+const SETTLE = "G";
+
+/** The SessionStart hook runs this, so a wedged `gh` must not hold the session. */
+export const CI_BUDGET_MS = 10_000;
+
+const HANDED = /^[A-G]$/;
+
+function ciGh(cwd, until, failed, exec) {
+  return (args, deadline) => {
+    try {
+      const left = Math.min(until, deadline) - Date.now();
+      if (left <= 0) throw new Error("CI read budget spent");
+      return exec(args, cwd, left);
+    } catch (err) {
+      const absent = args[0] === "api" && /HTTP 404/.test(String(err?.stderr ?? ""));
+      if (!absent) failed.push(args[0]);
+      throw err;
+    }
+  };
+}
+
+function under(cwd, head, remote, branch, until, failed) {
+  if (remote === head) return true;
+  const git = (args) =>
+    spawnSync("git", args, { cwd, stdio: "ignore", timeout: Math.max(1, until - Date.now()) }).status;
+  const ancestor = () => git(["merge-base", "--is-ancestor", head, remote]);
+  const first = ancestor();
+  if (first === 0 || first === 1) return first === 0;
+  if (Date.now() >= until) {
+    failed.push("git");
+    return false;
+  }
+  git(["fetch", "--quiet", "origin", branch]);
+  return ancestor() === 0;
+}
+
+function readCi(cwd, branch, head, exec) {
+  const until = Date.now() + CI_BUDGET_MS;
+  const failed = [];
+  // Loaded on use: a static .ts import plus process.exit aborts node on Windows (nodejs/node#56645).
+  const { readHeadCi } = createRequire(import.meta.url)("./ciVerdict.ts");
+  const read = readHeadCi(REPO, branch, ciGh(cwd, until, failed, exec), until, { withLog: false });
+  if (read.remoteSha === null && !failed.includes("api")) {
+    return { pushed: false, pr: read.pr, sha: read.remoteSha, state: "none", step: null };
+  }
+  const pushed = read.remoteSha !== null && under(cwd, head, read.remoteSha, branch, until, failed);
+  const v = read.verdict;
+  const state = failed.length
+    ? "unreadable"
+    : v.pass
+      ? "green"
+      : v.waiting
+        ? "pending"
+        : v.appearing
+          ? "none"
+          : v.infrastructure
+            ? "infrastructure"
+            : "red";
+  return { pushed, pr: read.pr, sha: read.remoteSha, state, step: v.failedStep ?? null };
 }
 
 /**
@@ -249,12 +388,16 @@ function readComments(ticket, cwd) {
  * flag: pointed at a worktree other than the one about to be pushed, it clears a review that never
  * looked at this branch's head. Like `LOOP_BASE`, nothing in the loop itself may ever set it.
  *
- * @param {{ cwd?: string, base?: string, worktree?: string }} [options]
+ * `ci` is opt-in because it costs `gh` calls on every read; the gate never needs it.
+ *
+ * @param {{ cwd?: string, base?: string, worktree?: string, ci?: boolean, exec?: typeof gh }} [options]
  */
 export function derive({
   cwd = undefined,
   base = process.env.LOOP_BASE || "origin/main",
   worktree = process.env.LOOP_WORKTREE,
+  ci = false,
+  exec = gh,
 } = {}) {
   const at = locateRun(cwd, worktree);
   if (at.detached && at.ticket) {
@@ -297,13 +440,45 @@ export function derive({
   let comments = [];
   let trackerReadable = true;
   try {
-    comments = JSON.parse(readComments(ticket, cwd)).comments;
+    comments = JSON.parse(readComments(ticket, cwd, exec)).comments;
   } catch {
     trackerReadable = false;
   }
 
   const verdict = trackerReadable ? verdictFor(comments, head) : null;
-  const phase = commits === 0 ? "C" : !verdict ? "D" : verdict.decision === "LAND" ? "E" : "C";
+  const land = commits > 0 && verdict?.decision === "LAND";
+  const ciRead = ci && land ? readCi(cwd, branch, head, exec) : null;
+  const fix = Boolean(ciRead?.pushed && ciRead.pr !== null && ciRead.state === "red");
+  let phase = commits === 0 ? "C" : !verdict ? "D" : land ? "E" : "C";
+  let why =
+    commits === 0
+      ? "nothing committed yet"
+      : !trackerReadable
+        ? "cannot reach the tracker to read the review"
+        : !verdict
+          ? `no review of ${head?.slice(0, 7)} on the issue`
+          : land
+            ? "reviewed and cleared"
+            : "the reviewer held it";
+  if (ciRead?.state === "unreadable") {
+    phase = SETTLE;
+    why = "reviewed and cleared, but CI could not be read in time — the supervisor settles it";
+  } else if (ciRead && !ciRead.pushed) {
+    why = "reviewed and cleared, and this head is not pushed yet";
+  } else if (ciRead && ciRead.pr === null) {
+    why = "pushed, but no pull request is open for it";
+  } else if (fix) {
+    phase = "C";
+    why = `CI failed at ${ciRead.step ?? "an unnamed step"} on the pushed head`;
+  } else if (ciRead) {
+    phase = SETTLE;
+    why = `pushed, and CI is ${ciRead.state}`;
+  }
+  const handed = process.env.LOOP_PHASE ?? "";
+  if (HANDED.test(handed)) {
+    phase = handed;
+    why = `${why}; the supervisor handed this session phase ${handed}`;
+  }
 
   return {
     onTicket: true,
@@ -321,16 +496,10 @@ export function derive({
     trackerReadable,
     verdict,
     review: trackerReadable ? reviewFor(comments, head) : null,
+    ci: ciRead,
+    fix,
+    ciRounds: trackerReadable ? ciRedRounds(comments) : null,
     phase,
-    why:
-      commits === 0
-        ? "nothing committed yet"
-        : !trackerReadable
-          ? "cannot reach the tracker to read the review"
-          : !verdict
-            ? `no review of ${head?.slice(0, 7)} on the issue`
-            : verdict.decision === "LAND"
-              ? "reviewed and cleared"
-              : "the reviewer held it",
+    why,
   };
 }

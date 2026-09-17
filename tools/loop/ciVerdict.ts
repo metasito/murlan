@@ -27,6 +27,9 @@ export interface Verdict {
   failedStep?: string;
   output?: string;
   infrastructure?: boolean;
+  head?: string | null;
+  /** Every failing test id the full log named — never just the tail `output` carries. */
+  testIds?: string[];
   reason: string;
 }
 
@@ -148,6 +151,28 @@ export function stripLogPrefix(line: string): string {
   return line.replace(/^[^\t]*\t[^\t]*\t\d{4}-\d\d-\d\dT[\d:.]+Z ?/, "");
 }
 
+const PLAYWRIGHT_FAILURE = /^\s*(?:\d+\)\s*)?\[[\w.-]+\]\s*›\s*(\S+):\d+:\d+\s*›\s*(.+?)\s*$/gm;
+const JEST_FAILURE = /^FAIL\s+(\S+)/gm;
+// `npm test`'s spec reporter, not TAP: each recap entry is this file:line:col line immediately
+// followed by the `✖ <name> (<n>ms)` line naming it (.loop-logs/ci-1079.log:318-319).
+const NODE_TEST_FAILURE = /^test at (\S+):\d+:\d+\r?\n✖ (.+?) \([\d.]+ms\)\s*$/gm;
+
+export function failingTestIds(fullLog: string): string[] {
+  const ids: string[] = [];
+  const seen = new Set<string>();
+  const add = (id: string) => {
+    if (seen.has(id)) return;
+    seen.add(id);
+    ids.push(id);
+  };
+
+  for (const m of fullLog.matchAll(PLAYWRIGHT_FAILURE)) add(`${m[1]} › ${m[2]}`);
+  for (const m of fullLog.matchAll(JEST_FAILURE)) add(m[1]);
+  for (const m of fullLog.matchAll(NODE_TEST_FAILURE)) add(`${m[1]} › ${m[2]}`);
+
+  return ids;
+}
+
 /**
  * The ceiling on one read. Every call here is synchronous, so a wedged `gh` with no timeout is the
  * supervisor's whole event loop — no board, no clock, no bell. It is the whole read rather than
@@ -180,6 +205,87 @@ function ghJson<T>(gh: GhExec, args: string[], fallback: T, until: number): T {
   }
 }
 
+function jobsAndLog(
+  repo: string,
+  run: RunRow | undefined,
+  gh: GhExec,
+  until: number,
+  withLog = true
+): { verdict: Verdict; testIds: string[] } {
+  if (!run || run.status !== "completed" || run.conclusion === "success") {
+    return { verdict: decideVerdict(run, []), testIds: [] };
+  }
+  const jobs = ghJson<JobRow[]>(
+    gh,
+    [
+      "run",
+      "view",
+      String(run.databaseId),
+      "--repo",
+      repo,
+      "--json",
+      "jobs",
+      "--jq",
+      "[.jobs[] | {name, conclusion, steps: (.steps | length)}]",
+    ],
+    [],
+    until
+  );
+  const verdict = decideVerdict(run, jobs);
+  let testIds: string[] = [];
+  if (withLog && !verdict.pass && !verdict.infrastructure) {
+    try {
+      const strippedLines = gh(["run", "view", String(run.databaseId), "--repo", repo, "--log-failed"], until)
+        .split("\n")
+        .map(stripLogPrefix);
+      testIds = failingTestIds(strippedLines.join("\n"));
+      verdict.output = strippedLines.slice(-FAILED_LOG_LINES).join("\n");
+    } catch (error) {
+      // Naming the reason: a fix agent told only that the log is unreadable cannot tell a tooling
+      // failure from a job that logged nothing, and reproduces the run either way. `logUnread` says
+      // the same thing to the supervisor, which must not spend a fix round on a sentence.
+      verdict.logUnread = true;
+      verdict.output = `(the failed log could not be read: ${(error as Error)?.message ?? error})`;
+    }
+  }
+  return { verdict, testIds };
+}
+
+export interface HeadCi {
+  remoteSha: string | null;
+  pr: number | null;
+  verdict: Verdict;
+  testIds: string[];
+}
+
+/**
+ * Reads for the branch's real remote head, not a PR's `headRefOid`, so the verdict still belongs
+ * to what is actually pushed after a `gh pr update-branch` moves the head without a new push.
+ */
+export function readHeadCi(
+  repo: string,
+  branch: string,
+  gh: GhExec,
+  until = Date.now() + READ_DEADLINE_MS,
+  { withLog = true } = {}
+): HeadCi {
+  let remoteSha: string | null;
+  try {
+    remoteSha = gh(["api", `repos/${repo}/git/ref/heads/${branch}`, "--jq", ".object.sha"], until).trim() || null;
+  } catch {
+    remoteSha = null;
+  }
+  const prRows = ghJson<{ number: number }[]>(
+    gh,
+    ["pr", "list", "--repo", repo, "--head", branch, "--state", "open", "--json", "number"],
+    [],
+    until
+  );
+  const run = runForHead(ghJson<RunRow[]>(gh, runListArgs(repo, branch), [], until), remoteSha ?? undefined);
+  const { verdict, testIds } = jobsAndLog(repo, run, gh, until, withLog);
+  return { remoteSha, pr: prRows[0]?.number ?? null, verdict, testIds };
+}
+
 export function readVerdict(
   repo: string,
   branch: string,
@@ -199,42 +305,7 @@ export function readVerdict(
 
   // Waiting belongs to `settle`, which polls anyway; `gh run watch` here froze the whole event loop.
   const run = runForHead(ghJson<RunRow[]>(gh, runListArgs(repo, branch), [], until), headSha);
-  if (!run || run.status !== "completed" || run.conclusion === "success") {
-    return decideVerdict(run, []);
-  }
-
-  const jobs = ghJson<JobRow[]>(
-    gh,
-    [
-      "run",
-      "view",
-      String(run.databaseId),
-      "--repo",
-      repo,
-      "--json",
-      "jobs",
-      "--jq",
-      "[.jobs[] | {name, conclusion, steps: (.steps | length)}]",
-    ],
-    [],
-    until
-  );
-  const verdict = decideVerdict(run, jobs);
-  if (!verdict.pass && !verdict.infrastructure) {
-    try {
-      verdict.output = gh(["run", "view", String(run.databaseId), "--repo", repo, "--log-failed"], until)
-        .split("\n")
-        .slice(-FAILED_LOG_LINES)
-        .map(stripLogPrefix)
-        .join("\n");
-    } catch (error) {
-      // Naming the reason: a fix agent told only that the log is unreadable cannot tell a tooling
-      // failure from a job that logged nothing, and reproduces the run either way. `logUnread` says
-      // the same thing to the supervisor, which must not spend a fix round on a sentence.
-      verdict.logUnread = true;
-      verdict.output = `(the failed log could not be read: ${(error as Error)?.message ?? error})`;
-    }
-  }
-  return verdict;
+  const { verdict, testIds } = jobsAndLog(repo, run, gh, until);
+  return { ...verdict, head: headSha ?? null, testIds };
 }
 

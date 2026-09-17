@@ -8,6 +8,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { checkSubject, readSubject } from "../preflight.mjs";
 import { BANNER } from "../check-steps.mjs";
+import { cacheEntry, cleanPassFor, replays, runStep } from "../agent-check.mjs";
 
 const REAP = { recursive: true, force: true, maxRetries: 3, retryDelay: 100 } as const;
 // A refusal exits at once; a regression that stops short-circuiting would otherwise run the real
@@ -121,5 +122,78 @@ describe("the refusal is the script's, not only the helper's", () => {
     } finally {
       fs.rmSync(outside, REAP);
     }
+  });
+});
+
+type Spawn = NonNullable<Parameters<typeof runStep>[1]>;
+const fake = (result: object) => (() => result) as unknown as Spawn;
+
+describe("the cached verdict and what a failure prints", () => {
+  test("an entry records the head it judged and whether the tree was clean", () => {
+    const entry = cacheEntry({ failed: [], head: "abc", clean: true });
+    assert.equal(entry.pass, true);
+    assert.equal(entry.head, "abc");
+    assert.equal(entry.clean, true);
+    assert.equal(replays(entry), true);
+  });
+
+  test("an entry without a head is a miss, not a crash", () => {
+    assert.equal(replays({ pass: true, at: "2026-09-01T00:00:00Z", failed: [] }), false);
+    assert.equal(replays(undefined), false);
+    assert.equal(replays("junk"), false);
+  });
+
+  test("a clean pass is found by head; a dirty or failed one is not", () => {
+    const cache: Record<string, object> = {
+      k1: cacheEntry({ failed: [], head: "h1", clean: false }),
+      k2: cacheEntry({ failed: ["lint"], head: "h1", clean: true }),
+      old: { pass: true, at: "x", failed: [] },
+    };
+    assert.equal(cleanPassFor(cache, "h1"), undefined);
+    cache.k3 = cacheEntry({ failed: [], head: "h1", clean: true });
+    assert.equal(cleanPassFor(cache, "h1"), cache.k3);
+    assert.equal(cleanPassFor(cache, "h2"), undefined);
+  });
+
+  const numbered = (n: number) => Array.from({ length: n }, (_, i) => `line ${i + 1}`).join("\n");
+  const quiet = () => undefined;
+
+  test("a long failing step prints its first 10 and last 30 lines", () => {
+    const run = runStep({ name: "lint", args: ["run", "lint"] }, fake({ status: 1, stdout: numbered(100), stderr: "" }), quiet);
+    assert.equal(run.failed, "lint");
+    assert.match(run.text, /line 10\n… 60 lines omitted …\nline 71\n/);
+    assert.doesNotMatch(run.text, /line 11\b|line 70\b/);
+    assert.match(run.text, /line 100\b/);
+  });
+
+  test("a failing step of 40 lines or fewer prints all of them", () => {
+    const run = runStep({ name: "lint", args: [] }, fake({ status: 1, stdout: numbered(40), stderr: "" }), quiet);
+    assert.match(run.text, /line 1\n[\s\S]*line 40\b/);
+    assert.equal((run.text.match(/^line \d+$/gm) ?? []).length, 40);
+    assert.doesNotMatch(run.text, /omitted/);
+  });
+
+  test("a step announces itself before it runs", () => {
+    const events: string[] = [];
+    const spawn = (() => {
+      events.push("spawn");
+      return { status: 0, stdout: "", stderr: "" };
+    }) as unknown as Spawn;
+    runStep({ name: "lint", args: [] }, spawn, (s: string) => void events.push(s));
+    assert.equal(events.length, 2);
+    assert.match(events[0], /▸ lint …/);
+    assert.equal(events[1], "spawn");
+  });
+
+  test("a passing step prints none of its output", () => {
+    const run = runStep({ name: "lint", args: [] }, fake({ status: 0, stdout: "noise\n", stderr: "" }), quiet);
+    assert.equal(run.failed, null);
+    assert.doesNotMatch(run.text, /noise/);
+  });
+
+  test("a timed-out step is a failure named as one", () => {
+    const timedOut = fake({ status: null, stdout: "", stderr: "", error: { code: "ETIMEDOUT" } });
+    const run = runStep({ name: "lint", args: [] }, timedOut, quiet);
+    assert.equal(run.failed, "lint (timed out)");
   });
 });

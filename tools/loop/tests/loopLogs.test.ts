@@ -1,8 +1,21 @@
 // tools/loop/tests/loopLogs.test.ts
-import { test, describe } from "node:test";
+import { test, describe, before, after } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
-import { ARTEFACTS, ledger, prunable, prune, sessionRow, usageSplit } from "../loop-logs.mjs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import {
+  ARTEFACTS,
+  ledger,
+  parkReasonOf,
+  prunable,
+  prune,
+  readLedger,
+  sessionRow,
+  ticketTally,
+  usageSplit,
+  windowCost,
+} from "../loop-logs.mjs";
 
 const RESULT = {
   kind: "result",
@@ -59,7 +72,12 @@ describe("artefact names", () => {
   test("a stream log, a CI tail and a park note are", () => {
     assert.equal(prunable("999.jsonl"), true);
     assert.equal(prunable("ci-999.log"), true);
+    assert.equal(prunable("ci-red-999.md"), true);
     assert.equal(prunable("park-999.md"), true);
+  });
+
+  test("a shared-red id cache is too", () => {
+    assert.equal(prunable("red-999.ids"), true);
   });
 
   test("something nobody named is left alone rather than deleted on an extension match", () => {
@@ -89,12 +107,13 @@ describe("prune", () => {
       "999.jsonl": now - 2 * week,
       "998.jsonl": now - 1_000,
       "ci-999.log": now - 2 * week,
+      "red-999.ids": now - 2 * week,
       "tickets.jsonl": now - 50 * week,
       "run-old.md": now - 50 * week,
     });
     const swept = prune(now, fs as never);
-    assert.deepEqual(swept.sort(), ["999.jsonl", "ci-999.log"]);
-    assert.deepEqual(gone.sort(), ["999.jsonl", "ci-999.log"]);
+    assert.deepEqual(swept.sort(), ["999.jsonl", "ci-999.log", "red-999.ids"]);
+    assert.deepEqual(gone.sort(), ["999.jsonl", "ci-999.log", "red-999.ids"]);
   });
 
   test("no directory is nothing to sweep, not a throw", () => {
@@ -115,7 +134,17 @@ describe("sessionRow", () => {
   test("stamps the schema, so two readings of a field are never averaged together", () => {
     // The literal, not the module's own constant: a test that reads the value it is pinning moves
     // with it and pins nothing. Bump it here deliberately when a field changes what it holds.
-    assert.equal(r.schema, 4);
+    assert.equal(r.schema, 5);
+  });
+
+  test("carries the head and the run that wrote it", () => {
+    const withHead = sessionRow(session({ head: "aaa1111", runId: "2026-09-17-07-14" }));
+    assert.equal(withHead.head, "aaa1111");
+    assert.equal(withHead.run_id, "2026-09-17-07-14");
+  });
+
+  test("a row with neither is still valid, not a throw", () => {
+    assert.equal(r.head, null);
   });
 
   // Six tickets ran two sessions and the ledger kept only the second, so a fifth of the money
@@ -305,5 +334,158 @@ describe("ledger", () => {
     book.record(session({ outcome: "parked", merged: false }), { runId: "r", line: "x" });
     assert.equal(book.totals.parked, 1);
     assert.equal(book.totals.landed, 0);
+  });
+
+  test("the row carries the run that wrote it, without the caller repeating it in session", () => {
+    const { io } = spy();
+    const book = ledger(io);
+    const entry = book.record(session(), { runId: "2026-09-13-04-12", line: "x" });
+    assert.equal(entry.run_id, "2026-09-13-04-12");
+  });
+});
+
+describe("ticketTally", () => {
+  const row = (over: object) => ({ n: 1, cost: 0, ...over });
+
+  test("a blocked round restarts the handoff streak but is not a CI round, and names no red head", () => {
+    const t = ticketTally(1, [
+      row({ outcome: "retry", head: "a" }),
+      row({ outcome: "handoff", park_reason: "phase D next" }),
+      row({ outcome: "blocked", head: "b" }),
+      row({ outcome: "blocked", head: "c" }),
+    ]);
+    assert.deepEqual([t.retries, t.handoffsThisRound, t.lastHandoff, t.lastRedHead], [1, 0, null, "a"]);
+  });
+
+  test("handoffs since the last terminal row, restarting the streak on a retry", () => {
+    const t = ticketTally(1, [
+      row({ outcome: "handoff", park_reason: "phase D next" }),
+      row({ outcome: "handoff", park_reason: "phase D next" }),
+      row({ outcome: "retry", head: "a" }),
+      row({ outcome: "handoff", park_reason: "phase D next" }),
+    ]);
+    assert.equal(t.sessions, 4);
+    assert.equal(t.handoffsThisRound, 1);
+    assert.equal(t.lastHandoff, "D");
+    assert.equal(t.lastRedHead, "a");
+    assert.equal(t.retries, 1);
+  });
+
+  test("the last handoff's reason is what follows its phase, and a retry clears it", () => {
+    const why = (rows: object[]) => ticketTally(1, rows).handoffWhy;
+    const rerouted = row({ outcome: "handoff", park_reason: "phase C next — no local pass" });
+    assert.equal(why([rerouted]), "no local pass");
+    assert.equal(why([rerouted, row({ outcome: "handoff", park_reason: "phase D next" })]), null);
+    assert.equal(why([rerouted, row({ outcome: "retry" })]), null);
+  });
+
+  test("a retry clears the phase the last handoff named", () => {
+    const t = ticketTally(1, [row({ outcome: "handoff", park_reason: "phase E next" }), row({ outcome: "retry" })]);
+    assert.equal(t.lastHandoff, null);
+  });
+
+  test("a landed row starts the next tally from zero", () => {
+    const t = ticketTally(1, [
+      row({ outcome: "retry", head: "x" }),
+      row({ outcome: "landed" }),
+      row({ outcome: "handoff", park_reason: "phase E next" }),
+    ]);
+    assert.equal(t.sessions, 1);
+    assert.equal(t.lastHandoff, "E");
+    assert.equal(t.lastRedHead, null);
+    assert.equal(t.retries, 0);
+  });
+
+  test("a parked row starts the next tally from zero too", () => {
+    const t = ticketTally(1, [row({ outcome: "retry" }), row({ outcome: "parked" }), row({ outcome: "retry" })]);
+    assert.equal(t.sessions, 1);
+    assert.equal(t.retries, 1);
+  });
+
+  test("spend sums every row, including retry and refused rows", () => {
+    const t = ticketTally(1, [
+      row({ outcome: "retry", cost: 1 }),
+      row({ outcome: "refused", cost: 0.5 }),
+      row({ outcome: "handoff", cost: 0.2, park_reason: "phase D next" }),
+    ]);
+    assert.equal(t.spend, 1.7);
+  });
+
+  test("a schema-4 row with no head gives lastRedHead null rather than throwing", () => {
+    assert.doesNotThrow(() => ticketTally(1, [row({ outcome: "retry" })]));
+    assert.equal(ticketTally(1, [row({ outcome: "retry" })]).lastRedHead, null);
+  });
+
+  test("a ticket with no rows at all is an empty tally, not a throw", () => {
+    assert.deepEqual(ticketTally(1, []), {
+      sessions: 0,
+      spend: 0,
+      handoffsThisRound: 0,
+      lastHandoff: null,
+      handoffWhy: null,
+      lastRedHead: null,
+      retries: 0,
+    });
+  });
+
+  test("a pushed row and its settle row are one session", () => {
+    const t = ticketTally(1, [row({ outcome: "pushed", cost: 2 }), row({ outcome: "retry" })]);
+    assert.equal(t.sessions, 1);
+    assert.equal(t.spend, 2);
+  });
+
+  test("another ticket's rows in the same file are not counted", () => {
+    const t = ticketTally(1, [row({ n: 2, outcome: "retry", cost: 5 })]);
+    assert.equal(t.sessions, 0);
+    assert.equal(t.spend, 0);
+  });
+});
+
+describe("windowCost", () => {
+  const pushed = { n: 1, outcome: "pushed", cost: 4 };
+
+  test("a settle row shows the cost of the pushed row its window opened with", () => {
+    assert.equal(windowCost({ n: 1, outcome: "landed", own: 0.5 }, [pushed]), 4.5);
+    assert.equal(windowCost({ n: 1, outcome: "retry", own: 0 }, [pushed, { n: 2, outcome: "landed", cost: 9 }]), 4);
+  });
+
+  test("a row with no pushed row before it shows its own cost", () => {
+    assert.equal(windowCost({ n: 1, outcome: "landed", own: 2 }, [pushed, { n: 1, outcome: "retry", cost: 0 }]), 2);
+    assert.equal(windowCost({ n: 1, outcome: "pushed", own: 3 }, [pushed]), 3);
+    assert.equal(windowCost({ n: 1, outcome: "parked", own: 1 }, []), 1);
+  });
+});
+
+describe("parkReasonOf", () => {
+  test("a landed, retry or pushed row carries no park reason", () => {
+    for (const outcome of ["landed", "retry", "pushed"]) assert.equal(parkReasonOf(outcome, "CI next"), null);
+    assert.equal(parkReasonOf("parked", "held twice"), "held twice");
+    assert.equal(parkReasonOf("parked", undefined), null);
+  });
+});
+
+describe("readLedger", () => {
+  let dir: string;
+  before(() => {
+    dir = mkdtempSync(path.join(tmpdir(), "read-ledger-"));
+  });
+  after(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("a missing file is no rows, not a throw", () => {
+    assert.deepEqual(readLedger(path.join(dir, "nope.jsonl")), []);
+  });
+
+  test("skips a line it cannot parse", () => {
+    const file = path.join(dir, "tickets.jsonl");
+    writeFileSync(file, '{"n":1}\nnot json\n\n{"n":2}\n', "utf8");
+    assert.deepEqual(readLedger(file), [{ n: 1 }, { n: 2 }]);
+  });
+
+  test("an empty file is no rows", () => {
+    const file = path.join(dir, "empty.jsonl");
+    writeFileSync(file, "", "utf8");
+    assert.deepEqual(readLedger(file), []);
   });
 });

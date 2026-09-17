@@ -4,9 +4,33 @@
 // with no test: every export was unit-tested and the way they were put together was not.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { runOnce, afterSession, main } from "../queue-loop.mjs";
+import path from "node:path";
+import {
+  runOnce,
+  afterSession,
+  main,
+  nextRoute,
+  park,
+  blockOnShared,
+  refreshWorktree,
+  removeLanded,
+  removeWorktree,
+  MAX_HANDOFFS,
+  USD_BY_SIZE,
+} from "../queue-loop.mjs";
+import { parkReasonOf, ticketTally } from "../loop-logs.mjs";
 
-const io = (over: Record<string, unknown> = {}) => ({
+const ROOT = path.resolve(import.meta.dirname, "..", "..", "..");
+
+const rowOf = (x: any) => ({
+  n: x.number,
+  outcome: x.outcome,
+  cost: x.run?.result?.cost ?? 0,
+  park_reason: parkReasonOf(x.outcome, x.why),
+  head: x.head ?? null,
+});
+
+const io = (over: Record<string, unknown> = {}, ledger: any[] = []) => ({
   stopFile: () => false,
   syncCheckout: () => true,
   queuePre: () => 0,
@@ -41,10 +65,13 @@ const io = (over: Record<string, unknown> = {}) => ({
   park: () => {},
   teardown: () => {},
   bell: () => {},
-  record: () => {},
-
+  record: (x: unknown) => ledger.push(rowOf(x)),
+  tally: (n: number) => ({ ...ticketTally(n, ledger), ciRounds: 0 }),
   sharedCheckoutDirty: () => "",
   log: () => {},
+  buildPassed: () => true,
+  announce: () => {},
+  block: () => {},
   ...over,
 });
 
@@ -109,9 +136,13 @@ describe("runOnce", () => {
     );
     assert.equal(r.outcome, "retry");
     assert.equal(r.ticket, 42);
-    assert.equal(rows.length, 1, "a session that ran and cost money is a row");
-    assert.equal(rows[0].outcome, "retry");
-    assert.equal(rows[0].merged, false);
+    assert.deepEqual(
+      rows.map((x) => [x.outcome, x.run.result?.cost ?? 0, x.merged ?? false]),
+      [
+        ["pushed", 1, false],
+        ["retry", 0, false],
+      ],
+    );
   });
 
   test("a session that pushed nothing parks the ticket", async () => {
@@ -122,9 +153,9 @@ describe("runOnce", () => {
     assert.match(String(r.why), /pushed no pull request/);
   });
 
-  // The case that cost $36.38 and froze #891 for good. Phase F tears the worktree down, so
-  // derive() finds nothing — which is not the same as the session having done nothing. The pull
-  // request is asked for by ticket number, which survives the teardown; the fixture has one to
+  // The case that cost $36.38 and froze #891 for good. With no worktree left to read, derive()
+  // finds nothing — which is not the same as the session having done nothing. The pull request
+  // is asked for by ticket number, which survives a missing worktree; the fixture has one to
   // find, which the version pinning the old answer did not.
   test("a torn-down worktree with a pull request open is settled, not parked", async () => {
     const parked: number[] = [];
@@ -177,8 +208,8 @@ describe("runOnce", () => {
     }
   });
 
-  // Phase F removes its own worktree, but every path that skips phase F leaves one standing, and
-  // a standing worktree is a run derive() resumes on every iteration after. `park` removes its own,
+  // Phase F leaves the worktree standing, and only the supervisor removes it; a worktree left
+  // behind is a run derive() resumes on every iteration after. `park` removes its own,
   // so a parked ticket is checked through park's arguments rather than through teardown's.
   test("no terminal outcome leaves the worktree standing", async () => {
     for (const over of [
@@ -350,6 +381,564 @@ describe("runOnce", () => {
     // a hand-off like any other. Left silent, it was a ticket dropped without anyone being told.
     await runOnce(io({ bell: ring, settle: async () => ({ action: "owner", reason: "no settle" }) }));
     assert.equal(rings, 2);
+  });
+
+  test("a G route settles without spawning", async () => {
+    const rows: any[] = [];
+    const torn: unknown[] = [];
+    let spawns = 0;
+    const r = await runOnce(
+      io({
+        pick: () => ({ skill: "implement", number: 42, title: "t", size: "size:S", queue: null, resuming: true, phase: "G" }),
+        spawn: async () => (spawns += 1) as never,
+        pushedPr: (_b: unknown, _n: unknown, _d: unknown, since: number) =>
+          since === 0 ? { number: 984, state: "OPEN", head: "agent/42-x" } : null,
+        record: (x: unknown) => rows.push(x),
+        teardown: (cwd: string | null) => torn.push(cwd),
+      }),
+    );
+    assert.equal(spawns, 0);
+    assert.equal(r.outcome, "landed");
+    assert.deepEqual(torn, [".worktrees/agent-42"]);
+    assert.deepEqual(
+      rows.map((x) => [x.outcome, x.run.result, x.run.declared]),
+      [["landed", null, null]],
+    );
+  });
+
+  test("a G route announces itself before it settles", async () => {
+    const order: string[] = [];
+    await runOnce(
+      io({
+        pick: () => ({ skill: "implement", number: 42, title: "t", size: null, queue: null, resuming: true, phase: "G" }),
+        announce: (r: { number: number; phase: string }) => order.push(`announce ${r.number} ${r.phase}`),
+        settle: async () => (order.push("settle"), { action: "merge", reason: "merged" }),
+      }),
+    );
+    assert.deepEqual(order, ["announce 42 G", "settle"]);
+  });
+
+  const handingOff = (from: string, to: string) => async () => ({
+    status: 0,
+    blocked: false,
+    result: { cost: 1 },
+    ms: 1,
+    log: "l",
+    phase: from,
+    declared: { ticket: 42, phase: from, handoff: to, stoodDown: false },
+  });
+
+  test("a D handoff without a --build pass re-routes to C, recorded as a C handoff", async () => {
+    const ledger: any[] = [];
+    const checked: unknown[] = [];
+    const said: string[] = [];
+    const r = await runOnce(
+      io(
+        {
+          spawn: handingOff("C", "D"),
+          buildPassed: (cwd: string) => (checked.push(cwd), false),
+          log: (m: string) => said.push(m),
+        },
+        ledger,
+      ),
+    );
+    assert.deepEqual([r.outcome, r.phase, checked], ["handoff", "C", [".worktrees/agent-42"]]);
+    assert.equal(ticketTally(42, ledger).lastHandoff, "C");
+    assert.match(said.join("\n"), /no local pass/);
+
+    const passed = await runOnce(io({ spawn: handingOff("C", "D") }, []));
+    assert.equal(passed.phase, "D");
+  });
+
+  test("a C handoff out of a refused D or a red E carries its reason to the next C session only", async () => {
+    const next = async (ledger: any[], phase: string) => {
+      const seen: unknown[] = [];
+      const pick = () => ({ skill: "implement", number: 42, title: "t", size: null, queue: null, resuming: true, phase });
+      await runOnce(io({ pick, spawn: async (s: { reason?: string | null }) => (seen.push(s.reason), handingOff(phase, "F")()) }, ledger), 42, phase);
+      return seen[0];
+    };
+    const cases: [string, string, boolean, string, RegExp | null][] = [
+      ["C", "D", false, "C", /no local pass on a clean HEAD/],
+      ["E", "C", true, "C", /phase E's agent:check was red/],
+      ["C", "D", true, "D", null],
+    ];
+    for (const [from, to, passes, phase, reason] of cases) {
+      const ledger: any[] = [];
+      await runOnce(io({ spawn: handingOff(from, to), buildPassed: () => passes }, ledger));
+      const got = await next(ledger, phase);
+      if (reason) assert.match(String(got), reason);
+      else assert.equal(got ?? null, null);
+    }
+  });
+
+  test("a session on the wrong model parks with the reason", async () => {
+    const parked: string[] = [];
+    const r = await runOnce(
+      io({
+        spawn: async () => ({
+          status: 1,
+          blocked: false,
+          result: null,
+          ms: 1,
+          log: "l",
+          phase: null,
+          declared: null,
+          wrongModel: "the session started on claude-opus-5, but phase E runs on sonnet",
+        }),
+        park: (_n: number, c: { why: string }) => parked.push(c.why),
+      }),
+    );
+    assert.equal(r.outcome, "parked");
+    assert.deepEqual(parked, ["the session started on claude-opus-5, but phase E runs on sonnet"]);
+  });
+
+  test("the prune in queue-pre runs before the pick", async () => {
+    const order: string[] = [];
+    await runOnce(
+      io({
+        queuePre: () => (order.push("pre"), 0),
+        pick: () => (order.push("pick"), { skill: "implement", number: 42, title: "t", size: null, queue: null }),
+      }),
+    );
+    assert.deepEqual(order, ["pre", "pick"]);
+  });
+
+  test("a red settle leaves the worktree standing and the next pass spawns C with the fix", async () => {
+    const torn: unknown[] = [];
+    const parked: number[] = [];
+    const red = await runOnce(
+      io({
+        settle: async () => ({ action: "hand-back", reason: "CI failed at Lint" }),
+        teardown: (cwd: string | null) => torn.push(cwd),
+        park: (n: number) => parked.push(n),
+      }),
+    );
+    assert.equal(red.outcome, "retry");
+    assert.deepEqual([torn, parked], [[], []]);
+
+    const asked: unknown[] = [];
+    const route: any = nextRoute(42, null, {
+      read: (o: unknown) => {
+        asked.push(o);
+        return { onTicket: true, ticket: 42, branch: "agent/42-x", cwd: red.cwd, dirty: false, phase: "C", fix: true };
+      },
+      facts: () => ({ title: "t", url: "", size: "size:S", labels: ["in-progress"], reviewRounds: 1, ciRounds: 1 }),
+      ledger: () => [{ n: 42, outcome: "handoff", cost: 0, park_reason: "phase E next", head: null }],
+    } as never);
+    assert.deepEqual(asked, [{ ci: true }]);
+    assert.deepEqual([route.phase, route.fix, route.cwd, route.branch], ["C", true, red.cwd, "agent/42-x"]);
+
+    const order: string[] = [];
+    await runOnce(
+      io({
+        pick: () => route,
+        refreshWorktree: (cwd: string, branch: string) => order.push(`refresh ${cwd} ${branch}`),
+        spawn: async (r: { phase: string }) => {
+          order.push(`spawn ${r.phase}`);
+          return { status: 0, blocked: false, result: {}, ms: 1, log: "l", phase: "F", declared: null };
+        },
+      }),
+      42,
+    );
+    assert.deepEqual(order, [`refresh ${red.cwd} agent/42-x`, "spawn C"]);
+  });
+
+  test("nextRoute: a derived G outranks a stale handoff, and a pinned ticket with no worktree rebuilds at A", () => {
+    const facts = () => ({ title: "t", url: "", size: null, labels: ["in-progress"], reviewRounds: 1, ciRounds: 0 });
+    const ledger = () => [{ n: 42, outcome: "handoff", cost: 0, park_reason: "phase E next", head: null }];
+    const g = nextRoute(null, null, {
+      read: () => ({ onTicket: true, ticket: 42, branch: "agent/42-x", cwd: "w", phase: "G", fix: false, ci: { pushed: true } }),
+      facts,
+      ledger,
+    } as never);
+    assert.equal(g.phase, "G");
+    const stranded = nextRoute(42, null, { read: () => ({ onTicket: false, phase: "A" }), facts, ledger } as never);
+    assert.deepEqual([stranded.phase, stranded.resuming], ["A", true]);
+  });
+
+  test("a closed ticket whose worktree still stands is torn down and the queue picked again, with no spawn on it", async () => {
+    const facts = (state: string, labels: string[]) => () =>
+      ({ title: "t", url: "", size: null, labels, reviewRounds: 1, ciRounds: 0, state }) as never;
+    const status = { onTicket: true, ticket: 7, branch: "agent/7-x", cwd: "w7", phase: "C", fix: false };
+    for (const labels of [["in-progress"], []]) {
+      const route: any = nextRoute(null, null, { read: () => status, facts: facts("CLOSED", labels), ledger: () => [] } as never);
+      assert.deepEqual([route.skill, route.number, route.cwd], ["closed", 7, "w7"]);
+    }
+    const open: any = nextRoute(null, null, { read: () => status, facts: facts("OPEN", ["in-progress"]), ledger: () => [] } as never);
+    assert.equal(open.skill, "implement");
+
+    const picks: unknown[] = [];
+    const torn: unknown[] = [];
+    const spawned: number[] = [];
+    const routes = [{ skill: "closed", number: 7, title: "t", cwd: "w7", queue: null, resuming: false }, undefined];
+    const r = await runOnce(
+      io({
+        pick: (p: unknown, at: unknown) => {
+          picks.push([p, at]);
+          return routes.shift() ?? io().pick();
+        },
+        teardown: (cwd: string | null, n: number) => torn.push([cwd, n]),
+        spawn: async (s: { number: number }) => {
+          spawned.push(s.number);
+          return io().spawn();
+        },
+      }),
+      7,
+      "C",
+    );
+    assert.deepEqual([torn[0], spawned, picks, r.ticket], [["w7", 7], [42], [[7, "C"], [null, null]], 42]);
+  });
+
+  test("a closed ticket unrelated to the pinned one keeps the pin, and its phase, on re-pick", async () => {
+    const picks: unknown[] = [];
+    const routes = [{ skill: "closed", number: 7, title: "t", cwd: "w7", queue: null, resuming: false }, undefined];
+    await runOnce(
+      io({
+        pick: (p: unknown, at: unknown) => {
+          picks.push([p, at]);
+          return routes.shift() ?? io().pick();
+        },
+        teardown: () => {},
+      }),
+      99,
+      "D",
+    );
+    assert.deepEqual(picks, [[99, "D"], [99, "D"]]);
+  });
+
+  test("an ff failure before a fix parks", async () => {
+    const parked: { n: number; why: string }[] = [];
+    let spawns = 0;
+    const r = await runOnce(
+      io({
+        pick: () => ({
+          skill: "implement",
+          number: 42,
+          title: "t",
+          size: null,
+          queue: null,
+          resuming: true,
+          phase: "C",
+          fix: true,
+          cwd: ".worktrees/agent-42",
+          branch: "agent/42-x",
+        }),
+        refreshWorktree: () => {
+          throw Object.assign(new Error("Command failed: git merge"), {
+            stderr: "fatal: Not possible to fast-forward, aborting.\nhint: x",
+          });
+        },
+        spawn: async () => (spawns += 1) as never,
+        park: (n: number, c: { why: string }) => parked.push({ n, why: c.why }),
+      }),
+    );
+    assert.equal(spawns, 0);
+    assert.equal(r.outcome, "parked");
+    assert.equal(parked.length, 1);
+    assert.match(parked[0].why, /Not possible to fast-forward, aborting\.$/);
+  });
+
+  test("refreshWorktree fetches the branch and fast-forwards onto it", () => {
+    const calls: unknown[] = [];
+    const timeouts: unknown[] = [];
+    refreshWorktree("w", "agent/42-x", (file: string, args: string[], o?: { timeout?: number }) => {
+      timeouts.push(o?.timeout);
+      return String(calls.push([file, ...args]));
+    });
+    assert.ok(timeouts.every((t) => typeof t === "number" && t > 0), `unbounded: ${timeouts.join(", ")}`);
+    assert.deepEqual(calls, [
+      ["git", "-C", "w", "fetch", "--quiet", "origin", "agent/42-x"],
+      ["git", "-C", "w", "merge", "--ff-only", "origin/agent/42-x"],
+    ]);
+  });
+
+  test("a landed or parked ticket removes the worktree from the main checkout", () => {
+    const calls: [string, string[], { cwd?: string } | undefined][] = [];
+    const run = (file: string, args: string[], opts?: { cwd?: string }) => {
+      calls.push([file, args, opts]);
+      return "";
+    };
+    removeWorktree("w", run);
+    park(42, { phase: "E", why: "x", log: "l", cwd: "w", branch: "b", dirty: false, run, write: () => {} });
+    const removals = calls.filter(([, args]) => args.includes("worktrees:remove"));
+    assert.equal(removals.length, 2);
+    for (const [file, args, opts] of removals) {
+      assert.deepEqual([file, args, path.resolve(opts?.cwd ?? "")], ["npm", ["run", "worktrees:remove", "--", "w"], ROOT]);
+    }
+  });
+
+  test("an unreadable CI read on a head not known pushed is not a no-spawn G", () => {
+    const route: any = nextRoute(null, null, {
+      read: () => ({
+        onTicket: true,
+        ticket: 42,
+        branch: "agent/42-x",
+        cwd: "w",
+        phase: "G",
+        fix: false,
+        ci: { state: "unreadable", pushed: false, pr: 5 },
+      }),
+      facts: () => ({ title: "t", url: "", size: null, labels: ["in-progress"], reviewRounds: 1, ciRounds: 0 }),
+      ledger: () => [],
+    } as never);
+    assert.equal(route.phase, "E");
+  });
+
+  test("a handed phase wins over a derived fix; only a pushed G outranks it", () => {
+    const status = { onTicket: true, ticket: 42, branch: "agent/42-x", cwd: "w", fix: true };
+    const deps = (s: object) =>
+      ({
+        read: () => s,
+        facts: () => ({ title: "t", url: "", size: null, labels: ["in-progress"], reviewRounds: 1, ciRounds: 0 }),
+        ledger: () => [],
+      }) as never;
+    const handed: any = nextRoute(42, "D" as never, deps({ ...status, phase: "C", ci: { pushed: true, state: "red" } }));
+    assert.deepEqual([handed.phase, handed.fix], ["D", true]);
+    const settling: any = nextRoute(42, "D" as never, deps({ ...status, fix: false, phase: "G", ci: { pushed: true } }));
+    assert.equal(settling.phase, "G");
+  });
+
+  const fixRoute = (head: string) => ({
+    skill: "implement",
+    number: 42,
+    title: "t",
+    size: null,
+    queue: null,
+    resuming: true,
+    phase: "C",
+    fix: true,
+    head,
+    cwd: ".worktrees/agent-42",
+    branch: "agent/42-x",
+  });
+  const retryRow = (head: string) => ({ n: 42, outcome: "retry", cost: 1, park_reason: null, head });
+
+  test("a red round nobody recorded counts toward the cap, and the last one parks before the refresh", async () => {
+    const ledger: any[] = [retryRow("h1"), retryRow("h2")];
+    const order: string[] = [];
+    const r = await runOnce(
+      io(
+        {
+          pick: () => fixRoute("h3"),
+          refreshWorktree: () => order.push("refresh"),
+          spawn: async () => order.push("spawn") as never,
+          park: (_n: number, c: { why: string }) => order.push(c.why),
+        },
+        ledger,
+      ),
+      42,
+    );
+    assert.equal(r.outcome, "parked");
+    assert.equal(order.length, 1);
+    assert.match(order[0], /3 CI rounds/);
+    assert.deepEqual(ledger.filter((x) => x.outcome === "parked").length, 1);
+  });
+
+  test("a CI-RED already posted for the unrecorded head counts that round once, not twice", async () => {
+    const pass = async (rows: any[], ciRounds: number, red: boolean) => {
+      const ledger = [...rows];
+      const spawned: number[] = [];
+      const r = await runOnce(
+        io(
+          {
+            pick: () => fixRoute("h2"),
+            refreshWorktree: () => {},
+            tally: (n: number) => ({ ...ticketTally(n, ledger), ciRounds }),
+            spawn: async (s: { retryCount: number }) => {
+              spawned.push(s.retryCount);
+              return { status: 0, blocked: false, result: {}, ms: 1, log: "l", phase: "F", declared: null };
+            },
+            settle: async () => (red ? { action: "hand-back", reason: "CI failed" } : { action: "merge", reason: "" }),
+          },
+          ledger,
+        ),
+        42,
+      );
+      return [r.outcome, spawned[0] ?? null];
+    };
+    assert.deepEqual(await pass([retryRow("h1")], 2, false), ["landed", 2]);
+    assert.deepEqual(await pass([retryRow("h1")], 2, true), ["parked", 2]);
+    assert.deepEqual(await pass([], 2, false), ["landed", 2]);
+    assert.deepEqual(await pass([], 2, true), ["parked", 2]);
+    assert.deepEqual(await pass([], 3, false), ["parked", null]);
+    assert.deepEqual(await pass([retryRow("h1")], 1, false), ["landed", 2]);
+    assert.deepEqual(await pass([retryRow("h1")], 1, true), ["parked", 2]);
+  });
+
+  test("a red round nobody recorded is written down before the fix round; a recorded one is not", async () => {
+    const spawn = async () => ({ status: 0, blocked: false, result: {}, ms: 1, log: "l", phase: "F", declared: null });
+    const unrecorded: any[] = [retryRow("h1")];
+    await runOnce(io({ pick: () => fixRoute("h2"), refreshWorktree: () => {}, spawn }, unrecorded), 42);
+    assert.deepEqual(unrecorded.map((x) => [x.outcome, x.head, x.cost]), [
+      ["retry", "h1", 1],
+      ["retry", "h2", 0],
+      ["pushed", null, 0],
+      ["landed", null, 0],
+    ]);
+    const recorded: any[] = [retryRow("h1")];
+    await runOnce(io({ pick: () => fixRoute("h1"), refreshWorktree: () => {}, spawn }, recorded), 42);
+    assert.deepEqual(recorded.map((x) => x.outcome), ["retry", "pushed", "landed"]);
+  });
+
+  test("a fix round's spawn carries the rounds already spent", async () => {
+    const seen: unknown[] = [];
+    const spawn = async (r: { fix: boolean; retryCount: number }) => {
+      seen.push([r.fix, r.retryCount]);
+      return { status: 0, blocked: false, result: {}, ms: 1, log: "l", phase: "F", declared: null };
+    };
+    await runOnce(io({ pick: () => fixRoute("h2"), refreshWorktree: () => {}, spawn }, [retryRow("h1")]), 42);
+    assert.deepEqual(seen, [[true, 2]]);
+  });
+
+  test("known with the fix not on main removes the worktree and records blocked_by", async () => {
+    const blocked: unknown[] = [];
+    const parked: number[] = [];
+    const rows: any[] = [];
+    const r = await runOnce(
+      io({
+        settle: async () => ({ action: "hand-back", reason: "CI failed at Lint", head: "h1", blockedBy: 900 }),
+        block: (n: number, blocker: number, cwd: string | null) => blocked.push([n, blocker, cwd]),
+        park: (n: number) => parked.push(n),
+        record: (x: unknown) => rows.push(rowOf(x)),
+      }),
+    );
+    assert.deepEqual([r.outcome, blocked, parked], ["blocked", [[42, 900, ".worktrees/agent-42"]], []]);
+    assert.deepEqual(rows.map((x) => [x.outcome, x.head]), [["pushed", null], ["blocked", "h1"]]);
+
+    const calls: string[][] = [];
+    blockOnShared(42, 900, "w", (file: string, args: string[]) => {
+      calls.push([file, ...args]);
+      return args.includes(".id") ? "123456\n" : "";
+    });
+    assert.deepEqual(calls, [
+      ["gh", "api", "repos/metasito/murlan/issues/900", "--jq", ".id"],
+      ["npm", "run", "worktrees:remove", "--", "w"],
+      ["gh", "api", "-X", "POST", "repos/metasito/murlan/issues/42/dependencies/blocked_by", "-F", "issue_id=123456"],
+    ]);
+  });
+
+  test("a worktree that will not go writes no edge, and the park keeps the worktree", async () => {
+    const calls: string[] = [];
+    const dirty = (file: string, args: string[]) => {
+      calls.push(args.join(" "));
+      if (file === "npm") throw new Error("worktree is dirty");
+      return "1\n";
+    };
+    assert.throws(() => blockOnShared(42, 900, "w", dirty), /dirty/);
+    assert.equal(calls.some((c) => c.includes("blocked_by")), false);
+
+    const parked: { why: string; cwd: string | null }[] = [];
+    await runOnce(
+      io({
+        settle: async () => ({ action: "hand-back", reason: "CI failed", blockedBy: 900 }),
+        block: (n: number, b: number, cwd: string) => blockOnShared(n, b, cwd, dirty),
+        park: (_n: number, c: { why: string; cwd: string | null }) => parked.push(c),
+      }),
+    );
+    assert.deepEqual(parked.map((p) => p.cwd), [".worktrees/agent-42"]);
+  });
+
+  test("an edge that fails after the worktree went parks without one, and says the ticket can be rebuilt", async () => {
+    const noEdge = (_file: string, args: string[]) => {
+      if (args.includes("POST")) throw new Error("HTTP 502");
+      return "1\n";
+    };
+    const parked: { why: string; cwd: string | null }[] = [];
+    const r = await runOnce(
+      io({
+        settle: async () => ({ action: "hand-back", reason: "CI failed", blockedBy: 900 }),
+        block: (n: number, b: number, cwd: string) => blockOnShared(n, b, cwd, noEdge),
+        park: (_n: number, c: { why: string; cwd: string | null }) => parked.push(c),
+      }),
+    );
+    assert.equal(r.outcome, "parked");
+    assert.equal(parked[0].cwd, null);
+    assert.match(parked[0].why, /HTTP 502.*safe to rebuild/);
+  });
+
+  test("a block that cannot be recorded parks instead", async () => {
+    const parked: string[] = [];
+    const r = await runOnce(
+      io({
+        settle: async () => ({ action: "hand-back", reason: "CI failed at Lint", blockedBy: 900 }),
+        block: () => {
+          throw new Error("HTTP 404");
+        },
+        park: (_n: number, c: { why: string }) => parked.push(c.why),
+      }),
+    );
+    assert.equal(r.outcome, "parked");
+    assert.match(parked[0], /#900.*HTTP 404/);
+  });
+
+  test("a G pass with no open pull request says so", async () => {
+    const parked: string[] = [];
+    await runOnce(
+      io({
+        pick: () => ({ skill: "implement", number: 42, title: "t", size: null, queue: null, resuming: true, phase: "G" }),
+        pushedPr: () => null,
+        park: (_n: number, c: { why: string }) => parked.push(c.why),
+      }),
+    );
+    assert.deepEqual(parked, ["phase G found no open pull request for the pushed head"]);
+  });
+
+  test("the retry row carries the head CI judged, not the one before update-branch", async () => {
+    const rows: any[] = [];
+    const r = await runOnce(
+      io({
+        pushedPr: () => ({ number: 984, state: "OPEN", head: "agent/42-x", sha: "before" }),
+        settle: async () => ({ action: "hand-back", reason: "CI failed at Lint", head: "judged" }),
+        record: (x: unknown) => rows.push(x),
+      }),
+    );
+    assert.deepEqual([rows.map((x) => x.head), (r as { sha?: string }).sha], [["before", "judged"], "judged"]);
+  });
+
+  const landedRun = (dirty: string, failWrite = false) => {
+    const calls: [string, string[], { cwd?: string; encoding?: string } | undefined][] = [];
+    const written: string[] = [];
+    const said: string[] = [];
+    removeLanded(".worktrees/agent-42", 42, {
+      run: (file: string, args: string[], opts?: { cwd?: string; encoding?: string }) => {
+        calls.push([file, args, opts]);
+        if (args.includes("--porcelain")) return dirty;
+        return args.includes("--binary") ? Buffer.from("PATCH") : "";
+      },
+      write: (file: string, body: Buffer) => {
+        if (failWrite) throw new Error("EACCES");
+        written.push(`${file}=${body}`);
+      },
+      say: (m: string) => said.push(m),
+    } as never);
+    const removals = calls.filter(([, args]) => args.includes("worktrees:remove"));
+    return { calls, written, said, removals };
+  };
+
+  test("a landed worktree with leftovers is saved as a binary patch, then force-removed", () => {
+    const { calls, written, said, removals } = landedRun("?? stray.png\n");
+    assert.ok(calls.some(([, a]) => a.join(" ") === "-C .worktrees/agent-42 add -A"));
+    const diff = calls.find(([, a]) => a.includes("--binary"));
+    assert.deepEqual(diff?.[1], ["-C", ".worktrees/agent-42", "diff", "--cached", "--binary", "HEAD"]);
+    assert.equal(diff?.[2]?.encoding, "buffer");
+    assert.equal(written.length, 1);
+    assert.match(written[0], /leftover-42\.patch=PATCH$/);
+    assert.match(said.join("\n"), /leftover-42\.patch/);
+    assert.deepEqual(removals.map(([, a, o]) => [a, path.resolve(o?.cwd ?? "")]), [
+      [["run", "worktrees:remove", "--", ".worktrees/agent-42", "--force"], ROOT],
+    ]);
+  });
+
+  test("a leftover patch that cannot be written keeps the worktree", () => {
+    const { removals, said } = landedRun("?? stray.png\n", true);
+    assert.deepEqual(removals, []);
+    assert.match(said.join("\n"), /EACCES/);
+  });
+
+  test("a clean landed worktree is removed without --force", () => {
+    const { removals, written } = landedRun("");
+    assert.deepEqual(written, []);
+    assert.deepEqual(removals.map(([, a]) => a), [["run", "worktrees:remove", "--", ".worktrees/agent-42"]]);
   });
 
   test("a dirtied shared checkout is named, not fatal", async () => {
@@ -533,6 +1122,24 @@ describe("a throw mid-iteration", () => {
     assert.deepEqual(parked, [], "parked a ticket nobody had picked");
   });
 
+  test("a standing() that throws still releases the claim", async () => {
+    const parked: number[] = [];
+    let picked = 0;
+    const spy = {
+      ...(io() as any),
+      pick: () => ({ skill: "implement", number: 4400 + ++picked, title: "t", size: null, queue: null }),
+      spawn: async () => {
+        throw new Error("the session could not start");
+      },
+      standing: () => {
+        throw new Error("git worktree list failed");
+      },
+      park: (n: number) => parked.push(n),
+    };
+    await main({ io: spy, book: book(), screen: screen(), install: () => {}, runId: "t" });
+    assert.deepEqual(parked, [4401, 4402, 4403]);
+  });
+
   test("a park that itself throws is reported, not raised", async () => {
     let picked = 0;
     const said: string[] = [];
@@ -624,6 +1231,35 @@ describe("a fix round that changed nothing", () => {
   });
 });
 
+describe("a session's cost is in the ledger before CI is waited on", () => {
+  test("a supervisor that dies in the CI wait still counts the session, and the restarted G pass adds nothing", async () => {
+    const ledger: any[] = [];
+    const died = runOnce(io({ settle: () => Promise.reject(new Error("killed")) }, ledger));
+    await assert.rejects(died, /killed/);
+    assert.equal(ticketTally(42, ledger).spend, 1);
+
+    const g = { skill: "implement", number: 42, title: "t", size: null, queue: null, resuming: true, phase: "G" };
+    const r = await runOnce(io({ pick: () => g }, ledger));
+    assert.equal(r.outcome, "landed");
+    assert.equal(ledger.reduce((a, x) => a + x.cost, 0), 1);
+  });
+
+  for (const [name, verdict] of Object.entries({
+    merged: { action: "merge", reason: "merged" },
+    red: { action: "hand-back", reason: "CI failed" },
+    owner: { action: "owner", reason: "no settle" },
+    blocked: { action: "hand-back", reason: "CI failed", blockedBy: 900 },
+  })) {
+    test(`${name}: the session is counted once, and the tally reads as before`, async () => {
+      const ledger: any[] = [];
+      await runOnce(io({ settle: async () => verdict }, ledger));
+      assert.equal(ledger.reduce((a, x) => a + x.cost, 0), 1);
+      const t = ticketTally(42, ledger);
+      assert.deepEqual([t.handoffsThisRound, t.lastHandoff, t.retries], [0, null, name === "red" ? 1 : 0]);
+    });
+  }
+});
+
 describe("what a ticket's clock covers", () => {
   // The land is the longest stretch of a ticket and the session that built it has already exited.
   test("the recorded time carries the land, not just the session", async () => {
@@ -637,7 +1273,152 @@ describe("what a ticket's clock covers", () => {
         record: (x: unknown) => rows.push(x),
       }),
     );
-    assert.equal(rows.length, 1);
-    assert.ok(rows[0].run.ms > 1000, `the row's clock is still the session's ${rows[0].run.ms}ms`);
+    assert.deepEqual(rows.map((x) => x.outcome), ["pushed", "landed"]);
+    assert.equal(rows[0].run.ms, 1000);
+    assert.ok(rows[1].run.ms >= 25, `the land's row has no clock of its own: ${rows[1].run.ms}ms`);
+  });
+});
+
+describe("a ticket's tally comes from the ledger, not from memory", () => {
+  const book = () => ({ totals: { tickets: 0, landed: 0, parked: 0, cost: 0, ms: 0 }, record: () => {}, close: () => {} });
+  const screen = () => ({ say: () => {}, warn: () => {}, notice: () => {}, stop: () => {} });
+  const go = (spy: unknown) => main({ io: spy as never, book: book(), screen: screen(), install: () => {}, runId: "t" });
+  const ticket = { skill: "implement", number: 42, title: "t", size: "size:S", queue: null };
+  const done = { skill: "handoff", number: 0, title: "queue empty" };
+  const once = (route: object) => {
+    let n = 0;
+    return () => (n++ === 0 ? route : done);
+  };
+  const red = (sha: string) => ({
+    pushedPr: () => ({ number: 984, state: "OPEN", head: "agent/42-x", sha }),
+    settle: async () => ({ action: "hand-back", reason: "CI failed at Lint" }),
+  });
+  const session = (cost: number, handoff: string | null) => ({
+    status: 0,
+    blocked: false,
+    result: { cost },
+    ms: 1,
+    log: "l",
+    phase: "C",
+    declared: handoff ? { ticket: 42, phase: "C", handoff, stoodDown: false } : null,
+  });
+  const retryRow = (head: string) => ({ n: 42, outcome: "retry", cost: 1, park_reason: null, head });
+  const handoffRow = () => ({ n: 42, outcome: "handoff", cost: 0, park_reason: "phase D next", head: null });
+  const plan = (sessions: object[]) => {
+    let s = 0;
+    return {
+      pick: (_p: number | null, at: string | null) => (s < sessions.length ? { ...ticket, at } : done),
+      spawn: async () => sessions[s++],
+    };
+  };
+
+  test("a restart mid fix round keeps the round count: the third red run parks", async () => {
+    const why: string[] = [];
+    const ledger = [retryRow("h1"), retryRow("h2")];
+    await go(io({ pick: once(ticket), ...red("h3"), park: (_n: number, c: { why: string }) => why.push(c.why) }, ledger));
+    assert.equal(why.length, 1);
+    assert.match(why[0], /3 CI rounds/);
+  });
+
+  test("a retry resets handoffsThisRound and the handed phase", async () => {
+    const at: (string | null)[] = [];
+    const parked: string[] = [];
+    const sessions = [...Array(MAX_HANDOFFS - 1).fill(0).map(() => session(1, "D")), session(1, null), session(1, "E")];
+    const p = plan(sessions);
+    await go(
+      io({
+        ...p,
+        pick: (pin: number | null, phase: string | null) => {
+          at.push(phase);
+          return p.pick(pin, phase);
+        },
+        ...red("h1"),
+        park: (_n: number, c: { why: string }) => parked.push(c.why),
+      }),
+    );
+    assert.deepEqual(parked, []);
+    assert.deepEqual(at, [null, ...Array(MAX_HANDOFFS - 1).fill("D"), null, "E"]);
+  });
+
+  test("the retry session's cost counts toward the spend ceiling", async () => {
+    const parked: string[] = [];
+    const ceiling = USD_BY_SIZE["size:S"];
+    await go(
+      io({
+        ...plan([session(ceiling - 1, null), session(2, "D")]),
+        ...red("h1"),
+        park: (_n: number, c: { why: string }) => parked.push(c.why),
+      }),
+    );
+    assert.equal(parked.length, 1);
+    assert.match(parked[0], /over this ticket's ceiling/);
+  });
+
+  test("a fix round whose head equals lastRedHead parks even after a restart", async () => {
+    const why: string[] = [];
+    await go(
+      io({ pick: once(ticket), ...red("aaa111"), park: (_n: number, c: { why: string }) => why.push(c.why) }, [
+        retryRow("aaa111"),
+      ]),
+    );
+    assert.equal(why.length, 1);
+    assert.match(why[0], /pushed no commit/);
+  });
+
+  test("overSpend, overHandoffs, the no-commit park and a thrown iteration each write exactly one parked row", async () => {
+    const cases: Record<string, [Record<string, unknown>, object[]]> = {
+      overSpend: [{ ...plan([session(1000, "D")]) }, []],
+      overHandoffs: [{ ...plan([session(0, "D")]) }, Array(MAX_HANDOFFS - 1).fill(0).map(handoffRow)],
+      noCommit: [{ pick: once(ticket), ...red("aaa111") }, [retryRow("aaa111")]],
+      thrown: [
+        {
+          pick: once(ticket),
+          sharedCheckoutDirty: () => {
+            throw new Error("index.lock");
+          },
+        },
+        [],
+      ],
+    };
+    for (const [name, [over, seed]] of Object.entries(cases)) {
+      const ledger: any[] = [...seed];
+      await go(io(over, ledger));
+      assert.equal(ledger.filter((r) => r.outcome === "parked").length, 1, name);
+    }
+  });
+
+  test("a blocked ticket is let go: the next pick is unpinned, and the night is not failing", async () => {
+    const pins: (number | null)[] = [];
+    let n = 0;
+    const code = await go(
+      io({
+        pick: (p: number | null) => (pins.push(p), n++ < 3 ? ticket : done),
+        settle: async () => ({ action: "hand-back", reason: "CI failed at Lint", blockedBy: 900 }),
+      }),
+    );
+    assert.deepEqual([code, pins], [0, [null, null, null, null]]);
+  });
+
+  test("blocked twice then unblocked: the next red is round 1, not round 3", async () => {
+    const parked: string[] = [];
+    const blockedRow = (head: string) => ({ n: 42, outcome: "blocked", cost: 1, park_reason: "blocked by #900", head });
+    const ledger: any[] = [blockedRow("h1"), blockedRow("h2")];
+    await go(io({ pick: once(ticket), ...red("h3"), park: (_n: number, c: { why: string }) => parked.push(c.why) }, ledger));
+    assert.deepEqual(parked, []);
+    assert.equal(ticketTally(42, ledger).retries, 1);
+  });
+
+  test("a throw during a resumed run parks with standing().cwd", async () => {
+    const cwds: (string | null)[] = [];
+    await go(
+      io({
+        pick: once({ ...ticket, resuming: true, phase: "C" }),
+        sharedCheckoutDirty: () => {
+          throw new Error("index.lock");
+        },
+        park: (_n: number, c: { cwd: string | null }) => cwds.push(c.cwd),
+      }),
+    );
+    assert.deepEqual(cwds, [".worktrees/agent-42"]);
   });
 });

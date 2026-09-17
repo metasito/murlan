@@ -2,6 +2,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, existsSync, readdirSync } from "node:fs";
+import { MODEL_BY_PHASE } from "../tools/loop/loop-cost.mjs";
 
 const RULES = "docs/agents/RULES.md";
 
@@ -107,14 +108,20 @@ describe("every agent rule is written down exactly once", () => {
     );
   });
 
-  test("queue.md builds each ticket at opus", () => {
+  test("every ticket is built at opus, whether the loop or a person starts it", () => {
+    for (const phase of ["A", "B", "C", "D"] as const) {
+      assert.equal(
+        MODEL_BY_PHASE[phase],
+        "opus",
+        `phase ${phase} is planned on ${MODEL_BY_PHASE[phase]}; rule 29 puts implementing at opus. ` +
+          "A cheaper builder pushes the tracing into phase D's reviewers."
+      );
+    }
     const queue = read(".claude/commands/queue.md");
-    const model = queue.match(/^model:\s*(\S+)/m)?.[1];
     assert.equal(
-      model,
-      "opus",
-      "queue.md's own frontmatter model runs phase C directly, and rule 29 puts implementing at " +
-        "opus. A cheaper builder pushes the tracing into phase D's reviewers."
+      queue.match(/^model:\s*(\S+)/m)?.[1],
+      MODEL_BY_PHASE.A,
+      "a by-hand /queue gets no --model flag, so the frontmatter is what builds its ticket"
     );
   });
 

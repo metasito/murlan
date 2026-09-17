@@ -75,6 +75,14 @@ describe("script", () => {
     assert.match(row?.note ?? "", /but note this/);
   });
 
+  test("a refusal's note keeps the first 10 and last 30 lines of a long capture", () => {
+    const out = Array.from({ length: 100 }, (_, i) => `line ${i + 1}`).join("\n");
+    const note = ran(1, out)?.note ?? "";
+    assert.match(note, /line 10\n… 60 lines omitted …\nline 71\n/);
+    assert.doesNotMatch(note, /line 11\n/);
+    assert.match(note, /line 100/);
+  });
+
   /** A spawn that never started answers with a null status, which is not a success. */
   test("a step that could not be spawned refuses rather than passing", () => {
     const row = ran(null, "", "");

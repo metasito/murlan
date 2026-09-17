@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { readFileSync, existsSync } from "node:fs";
 import { allowedTools } from "../loop-tools.mjs";
 import { readLine } from "../loop-stream.mjs";
-import { queueLoopArgs } from "../queue-loop.mjs";
+import { queueLoopArgs, CHECK_BASH_TIMEOUT_MS, STALL_MS } from "../queue-loop.mjs";
 import { ciLogPath } from "../loop-logs.mjs";
 
 /**
@@ -98,6 +98,12 @@ describe("phase A's housekeeping belongs to the supervisor", () => {
   test("loop-status.mjs stays, because it is what tells a fresh session a run is live", () => {
     assert.match(read(QUEUE), /node tools\/loop\/loop-status\.mjs/);
   });
+
+  test("phase A reuses the SessionStart hook's report instead of running loop-status again", () => {
+    const a = read(QUEUE).split("## A — Start")[1].split("## B")[0];
+    assert.match(a, /SessionStart[\s\S]*Do not run it again[\s\S]*no hook report[\s\S]*stale/);
+    assert.doesNotMatch(a, /Run this first, every time/);
+  });
 });
 
 // The supervisor reads the session's own `PHASE <letter>` line and nothing else about its
@@ -163,19 +169,13 @@ describe("the session declares what it did before it exits", () => {
     }
   });
 
-  test("the teardown it names still runs before the declaration, so the facts are final", () => {
+  test("phase F declares and leaves its worktree standing for the supervisor", () => {
     const text = read(QUEUE);
     const from = text.indexOf("## F — Close out");
     assert.notEqual(from, -1, "phase F's heading has moved");
     const f = text.slice(from);
-    // Each position is asserted present before they are compared: `indexOf` answers -1 for a line
-    // that is gone, and -1 sorts before everything, so the comparison alone passes on an absent
-    // teardown.
-    const teardown = f.indexOf("worktrees:remove -- .worktrees/agent-<n>");
-    const declaration = f.indexOf("LOOP-RESULT");
-    assert.notEqual(teardown, -1, "phase F no longer names the teardown");
-    assert.notEqual(declaration, -1, "phase F no longer asks for the declaration");
-    assert.ok(teardown < declaration, "the declaration is the last thing the session emits");
+    assert.notEqual(f.indexOf("LOOP-RESULT"), -1, "phase F no longer asks for the declaration");
+    assert.doesNotMatch(f, /worktrees:remove|Tear down your worktree/);
   });
 
   /**
@@ -231,6 +231,24 @@ describe("a CI fix round is a documented path, not an improvisation", () => {
 
   // Resolved through the function that writes it, not scanned for as text: a path spelled the
   // same in two files is a premise that decays, and a scan cannot tell a mention from a caller.
+  test("phase C commits before the check, and the build gate runs last, before handoff D", () => {
+    const c = read(QUEUE).split("## C — Build")[1]?.split("## D — Review")[0] ?? "";
+    const at = ["commit the last slice", "npm run agent:check", "loop-gate.mjs --build", "handoff D"].map((s) =>
+      c.lastIndexOf(s),
+    );
+    assert.ok(at.every((i, k) => i >= 0 && (k === 0 || i > at[k - 1])), `out of order: ${at.join(", ")}`);
+  });
+
+  test("agent:check is run under the ceiling the supervisor raises, which stays below the stall watchdog", () => {
+    const asked = Number(/`agent:check` run[^.]*`timeout: (\d+)`/.exec(read(QUEUE))?.[1]);
+    assert.equal(asked, CHECK_BASH_TIMEOUT_MS);
+    assert.ok(asked < STALL_MS);
+  });
+
+  test("a stranded rebuild whose blocker closed merges main before it resumes", () => {
+    assert.match(read(QUEUE), /merge --no-edit origin\/main[\s\S]*Then resume where `node tools\/loop\/loop-status\.mjs` says/);
+  });
+
   test("the log path it names is the one the supervisor writes", () => {
     const named = /\.loop-logs\/ci-<n>\.log/.exec(read(QUEUE))?.[0];
     assert.ok(named, "queue.md never tells the fix session where its CI log is");
@@ -238,16 +256,13 @@ describe("a CI fix round is a documented path, not an improvisation", () => {
   });
 });
 
-// The session is the only process that knows whether its tree is dirty. The supervisor removed it
-// without --force against a post-push tree that is always dirty, the removal refused, and the
-// surviving directory made derive() report a live run.
-describe("the session tears down its own worktree", () => {
-  test("phase F names the script that detaches the junction first", () => {
-    assert.match(read(QUEUE), /npm run worktrees:remove -- \.worktrees\/agent-<n>/);
+describe("the supervisor tears the worktree down", () => {
+  test("with the script that detaches the junction first", () => {
+    assert.match(read("tools/loop/queue-loop.mjs"), /"worktrees:remove", "--"/);
   });
 
-  test("nothing still claims the supervisor does it", () => {
-    assert.doesNotMatch(read(QUEUE), /The loop tears the worktree down/);
+  test("no step of queue.md still points at a phase F step 5", () => {
+    assert.doesNotMatch(read(QUEUE), /phase F step 5/i);
   });
 });
 

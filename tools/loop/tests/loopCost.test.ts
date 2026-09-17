@@ -1,7 +1,7 @@
 // tools/loop/tests/loopCost.test.ts
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { readTicket, report, wanted } from "../loop-cost.mjs";
+import { ledgerSummary, mismatchedModel, readTicket, report, wanted } from "../loop-cost.mjs";
 
 const at = (min: number) => new Date(Date.UTC(2026, 8, 14, 10, min)).toISOString();
 const say = (text: string, min: number, model = "claude-opus-5", parent: string | null = null) =>
@@ -123,5 +123,91 @@ describe("report", () => {
 
   test("nothing marked says so rather than printing an empty table", () => {
     assert.match(report([unmarked()]), /no priced tickets in .*1 skipped/);
+  });
+
+  test("ORDER carries phase G, for a settle round's own accounting", () => {
+    const g = { ticket: "3", usd: 4, minutes: 5, rounds: 0, marked: true, unpriced: [],
+      phases: { G: { turns: 1, tokens: 200000, usd: 4, minutes: 5 } } };
+    assert.match(report([g]), /^G /m);
+  });
+
+  test("says nothing about fix rounds or processes with no ledger rows given", () => {
+    assert.doesNotMatch(report([marked()]), /fix rounds|processes\/ticket/);
+  });
+
+  test("prints fix-round spend and processes/ticket from the ledger it is given", () => {
+    const rows = [
+      { n: 1, outcome: "retry", cost: 2, phases: { C: 60 }, models: { opus: 2 } },
+      { n: 1, outcome: "landed", cost: 1, phases: { E: 60 }, models: { sonnet: 1 } },
+    ];
+    const out = report([marked()], rows);
+    assert.match(out, /fix rounds: \$1\.00 \(33%\)/);
+    assert.match(out, /processes\/ticket: median 2/);
+  });
+});
+
+describe("mismatchedModel", () => {
+  test("flags a row whose model family is not the phase's own", () => {
+    assert.equal(mismatchedModel({ phases: { E: 60 }, models: { "claude-opus-5": 1 } }), true);
+    assert.equal(mismatchedModel({ phases: { E: 60 }, models: { "claude-sonnet-5": 1 } }), false);
+  });
+
+  test("judges the session's costliest model against the phase it started at", () => {
+    assert.equal(mismatchedModel({ phases: { C: 60, E: 9 }, models: { "claude-sonnet-5": 3, "claude-opus-5": 0.2 } }), true);
+    assert.equal(mismatchedModel({ phases: { D: 60, E: 9 }, models: { "claude-opus-5": 3 } }), false);
+    assert.equal(mismatchedModel({ phases: { E: 60 }, models: { "claude-sonnet-5": 1, "claude-opus-5": 0.1 } }), false);
+  });
+
+  test("a row naming no phase or no model has nothing to compare", () => {
+    assert.equal(mismatchedModel({ phases: {}, models: { opus: 1 } }), false);
+    assert.equal(mismatchedModel({ phases: { A: 1 }, models: {} }), false);
+  });
+
+  test("a model with no known family is not a mismatch", () => {
+    assert.equal(mismatchedModel({ phases: { E: 60 }, models: { "<synthetic>": 1 } }), false);
+  });
+});
+
+describe("ledgerSummary", () => {
+  const row = (n: number, outcome: string, cost: number, phases: object, models: object) =>
+    ({ n, outcome, cost, phases, models });
+
+  test("fix-round spend is what a ticket's rows cost after its first retry row", () => {
+    const rows = [
+      row(1, "handoff", 1, { A: 60 }, { opus: 1 }),
+      row(1, "retry", 2, { C: 60 }, { opus: 2 }),
+      row(1, "retry", 1.5, { C: 60 }, { opus: 1.5 }),
+      row(1, "landed", 0.5, { E: 60 }, { sonnet: 0.5 }),
+    ];
+    const out = ledgerSummary(rows);
+    assert.equal(out.fixCost, 2);
+    assert.equal(out.fixShare, 40);
+  });
+
+  test("a ticket that never retried has no fix spend", () => {
+    assert.equal(ledgerSummary([row(2, "landed", 3, { C: 60 }, { opus: 3 })]).fixCost, 0);
+  });
+
+  test("processes/ticket is the median session count across closed windows", () => {
+    const rows = [
+      row(1, "handoff", 1, {}, {}),
+      row(1, "retry", 1, {}, {}),
+      row(1, "retry", 1, {}, {}),
+      row(1, "landed", 1, {}, {}),
+      row(2, "landed", 1, {}, {}),
+    ];
+    assert.equal(ledgerSummary(rows).processesMedian, 4);
+  });
+
+  test("a pushed row and its settle row are one process", () => {
+    const rows = [row(1, "pushed", 3, { C: 60 }, {}), row(1, "landed", 0, {}, {})];
+    assert.equal(ledgerSummary(rows).processesMedian, 1);
+  });
+
+  test("names every row whose model family does not match its phase", () => {
+    assert.deepEqual(
+      ledgerSummary([row(9, "landed", 1, { E: 60 }, { opus: 1 })]).mismatches.map((r: { n: number }) => r.n),
+      [9],
+    );
   });
 });

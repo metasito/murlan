@@ -9,8 +9,8 @@
 // returns. Only the subprocess is fake.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { poll, SETTLE_ROUNDS } from "../queue-loop.mjs";
-import { readVerdict } from "../ciVerdict.ts";
+import { ciRedBody, poll, SETTLE_ROUNDS, sharedPlan } from "../queue-loop.mjs";
+import { readHeadCi, readVerdict } from "../ciVerdict.ts";
 
 const PENDING = { ticket: 1028, pr: 1053, branch: "agent/1028-the-turn-chip" };
 const SHA = "5bb5dcf22b863994fc138ab773976e9539d78539";
@@ -30,11 +30,22 @@ const prRow = (over: Record<string, string> = {}) => ({
  * One fake `gh`. `script` answers the run listing per call, so a run can finish between rounds the
  * way a real one does; everything else is fixed for the scenario.
  */
-function ghFake({ script, pr = prRow(), jobs = [], log = "Native tests\tRun tests\t2026-09-14T00:00:00Z FAIL" }: {
+function ghFake({
+  script,
+  pr = prRow(),
+  jobs = [],
+  log = "Native tests\tRun tests\t2026-09-14T00:00:00Z FAIL",
+  remoteSha = SHA,
+  prList = [{ number: PENDING.pr, headRefOid: SHA }],
+  issueComments = [],
+}: {
   script: unknown[][];
   pr?: Record<string, string>;
   jobs?: unknown[];
   log?: string | null;
+  remoteSha?: string | null;
+  prList?: unknown[];
+  issueComments?: { body: string }[];
 }) {
   const asked: string[][] = [];
   let listed = 0;
@@ -43,10 +54,17 @@ function ghFake({ script, pr = prRow(), jobs = [], log = "Native tests\tRun test
   const gh = (args: string[], file = "gh") => {
     assert.equal(file, "gh", `a ${file} call reached the gh fake: ${args.join(" ")}`);
     asked.push(args);
+    if (args[0] === "api") {
+      if (remoteSha === null) throw new Error("gh: not found");
+      return remoteSha;
+    }
+    if (args[0] === "pr" && args[1] === "list") return JSON.stringify(prList);
     if (args[0] === "pr" && args[1] === "view" && args.includes("headRefOid")) {
       return JSON.stringify({ headRefOid: SHA });
     }
     if (args[0] === "pr" && args[1] === "view") return JSON.stringify(pr);
+    if (args[0] === "issue" && args[1] === "view") return JSON.stringify({ comments: issueComments });
+    if (args[0] === "issue" && args[1] === "comment") return "";
     if (args[0] === "run" && args[1] === "list") {
       const at = Math.min(listed++, script.length - 1);
       return JSON.stringify(script[at]);
@@ -84,8 +102,9 @@ describe("settle, replayed against recorded gh payloads", () => {
     });
     const out = await poll(PENDING, (m: string) => said.push(m), 0, DEADLINE, io(gh, written));
     assert.equal(out.action, "hand-back");
+    assert.equal((out as { head?: string }).head, SHA, "the retry row records the head CI judged");
     assert.match(String(out.reason), /Native tests/);
-    assert.equal(written.length, 1, "the fix round's only input is that log");
+    assert.equal(written.length, 2, "the log, plus the CI-RED note posted alongside it");
     assert.match(written[0][0], /ci-1028\.log$/);
     assert.ok(
       said.filter((s) => /still in_progress/.test(s)).length >= 2,
@@ -146,5 +165,239 @@ describe("settle, replayed against recorded gh payloads", () => {
     const out = await poll(PENDING, () => {}, 0, -1, io(gh));
     assert.equal(out.action, "owner");
     assert.match(String(out.reason), /did not settle in/);
+  });
+});
+
+describe("readHeadCi, replayed against recorded gh payloads", () => {
+  test("answers the remote head, its open PR, the verdict and every failing test id", () => {
+    const { gh } = ghFake({
+      script: [runRow("completed", "failure")],
+      jobs: [{ name: "Native tests", conclusion: "failure", steps: 11 }],
+      log: "Native tests\tRun tests\t2026-09-14T00:00:00Z   1) [chromium] › tests/e2e/x.spec.ts:9:5 › some test",
+    });
+    const out = readHeadCi(
+      "metasito/murlan",
+      PENDING.branch,
+      (args) => gh(args),
+      Date.now() + 60_000
+    );
+    assert.equal(out.remoteSha, SHA);
+    assert.equal(out.pr, PENDING.pr);
+    assert.equal(out.verdict.pass, false);
+    assert.deepEqual(out.testIds, ["tests/e2e/x.spec.ts › some test"]);
+  });
+
+  test("a branch with no open pull request reads pr as null", () => {
+    const { gh } = ghFake({ script: [runRow("completed", "success")], prList: [] });
+    const out = readHeadCi("metasito/murlan", PENDING.branch, (args) => gh(args), Date.now() + 60_000);
+    assert.equal(out.pr, null);
+    assert.equal(out.verdict.pass, true);
+  });
+
+  test("a remote sha that cannot be read reads as null, not a throw", () => {
+    const { gh } = ghFake({ script: [runRow("completed", "success")], remoteSha: null });
+    const out = readHeadCi("metasito/murlan", PENDING.branch, (args) => gh(args), Date.now() + 60_000);
+    assert.equal(out.remoteSha, null);
+  });
+});
+
+describe("poll posts CI-RED once per red head", () => {
+  const redFake = (issueComments: { body: string }[] = []) =>
+    ghFake({
+      script: [runRow("completed", "failure")],
+      jobs: [{ name: "Native tests", conclusion: "failure", steps: 11 }],
+      log: "Native tests\tRun tests\t2026-09-14T00:00:00Z   1) [chromium] › tests/e2e/x.spec.ts:9:5 › some test",
+      issueComments,
+    });
+  const comment = (asked: string[][]) => asked.filter((a) => a[0] === "issue" && a[1] === "comment");
+
+  test("hand-back posts one CI-RED comment per red head", async () => {
+    const written: string[][] = [];
+    const { gh, asked } = redFake();
+    await poll(PENDING, () => {}, 0, DEADLINE, io(gh, written));
+    const posted = comment(asked);
+    assert.equal(posted.length, 1);
+    const file = posted[0][posted[0].indexOf("--body-file") + 1];
+    const body = written.find(([path]) => path === file)?.[1];
+    assert.match(String(body), new RegExp(`^CI-RED ${SHA}`));
+  });
+
+  test("the same head red twice posts once", async () => {
+    const { gh, asked } = redFake([{ body: `CI-RED ${SHA}\nrun: x · step: y\nfailing: z\nshared: none` }]);
+    await poll(PENDING, () => {}, 0, DEADLINE, io(gh));
+    assert.equal(comment(asked).length, 0);
+  });
+
+  test("an unreadable tracker skips posting rather than posting blind", async () => {
+    const { gh: base, asked } = redFake();
+    const gh = (args: string[], file = "gh") => {
+      if (args[0] === "issue" && args[1] === "view") throw new Error("gh: connection reset");
+      return base(args, file);
+    };
+    await poll(PENDING, () => {}, 0, DEADLINE, io(gh));
+    assert.equal(comment(asked).length, 0);
+  });
+
+  // `verdict.output` is only the log's last 400 lines; `readVerdict` now carries `testIds` from
+  // the full failed log jobsAndLog already read, so an id outside that tail must still reach here.
+  test("a failing id outside the 400-line tail still reaches the CI-RED body", async () => {
+    const old =
+      "Native tests\tRun tests\t2026-09-14T00:00:00Z   1) [chromium] › tests/e2e/old.spec.ts:9:5 › ancient failure";
+    const filler = Array.from({ length: 450 }, (_, i) => `Native tests\tRun tests\t2026-09-14T00:00:00Z filler ${i}`);
+    const written: string[][] = [];
+    const { gh, asked } = ghFake({
+      script: [runRow("completed", "failure")],
+      jobs: [{ name: "Native tests", conclusion: "failure", steps: 11 }],
+      log: [old, ...filler].join("\n"),
+    });
+    await poll(PENDING, () => {}, 0, DEADLINE, io(gh, written));
+    const file = comment(asked)[0]?.[comment(asked)[0].indexOf("--body-file") + 1];
+    const body = String(written.find(([path]) => path === file)?.[1]);
+    assert.match(body, /tests\/e2e\/old\.spec\.ts › ancient failure/);
+  });
+
+  test("every gh call it makes past the verdict passes a bounded timeout", async () => {
+    const calls: { args: string[]; opts?: { timeout?: number } }[] = [];
+    const { gh } = redFake();
+    const run = (file: string, args: string[], opts?: { timeout?: number }) => {
+      if (file === "git") return "";
+      if (args[0] !== "pr") calls.push({ args, opts });
+      return gh(args, file);
+    };
+    await poll(PENDING, () => {}, 0, DEADLINE, {
+      run,
+      verdictOf: (repo: string, branch: string, pr: number) =>
+        readVerdict(repo, branch, pr, Date.now() + 60_000, (a) => gh(a)),
+      write: () => {},
+      mkdir: () => {},
+    });
+    assert.deepEqual(
+      calls.map((c) => c.args.slice(0, 2).join(" ")),
+      ["issue view", "run list", "issue list", "issue comment"],
+    );
+    for (const c of calls) assert.equal(c.opts?.timeout, 30_000);
+  });
+});
+
+describe("a red head shared with another branch", () => {
+  const issue = { number: 900, title: "shared red: x", state: "OPEN" };
+  const evidence = { runId: 7, branch: "agent/1077-x", url: "https://example.test/runs/7", testIds: ["x"] };
+  const red = (over: { issueComments?: { body: string }[] } = {}) =>
+    ghFake({
+      script: [runRow("completed", "failure")],
+      jobs: [{ name: "Native tests", conclusion: "failure", steps: 11 }],
+      ...over,
+    });
+  const bodyOf = (asked: string[][], written: string[][]) => {
+    const post = asked.find((a) => a[0] === "issue" && a[1] === "comment");
+    return post ? String(written.find(([p]) => p === post[post.indexOf("--body-file") + 1])?.[1]) : null;
+  };
+  const withShared = (gh: (a: string[], f?: string) => string, written: string[][], decision: object) => ({
+    ...io(gh, written),
+    shared: () => decision,
+  });
+
+  test("another branch's open issue blocks this ticket and is named on CI-RED", async () => {
+    const written: string[][] = [];
+    const { gh, asked } = red();
+    const out = await poll(PENDING, () => {}, 0, DEADLINE, withShared(gh, written, { kind: "known", issue, testId: "x", evidence }));
+    assert.deepEqual([out.action, (out as { blockedBy?: number }).blockedBy], ["hand-back", 900]);
+    assert.match(String(bodyOf(asked, written)), /^shared: #900 \(also red on agent\/1077-x https:\/\/example\.test\/runs\/7\)$/m);
+  });
+
+  test("an issue this ticket filed stays its own even when that round's CI-RED never posted", async () => {
+    const mine = { ...issue, body: `Failing test id: \`x\`\n\nowner: #${PENDING.ticket} (${PENDING.branch})` };
+    const { gh: base } = red();
+    const unpostable = (args: string[], file = "gh") => {
+      if (args[0] === "issue" && args[1] === "comment") throw new Error("gh: HTTP 502");
+      return base(args, file);
+    };
+    const filed = await poll(PENDING, () => {}, 0, DEADLINE, withShared(unpostable, [], { kind: "file", issue: mine, testId: "x" }));
+    const written: string[][] = [];
+    const { gh, asked } = red();
+    const next = await poll(PENDING, () => {}, 0, DEADLINE, withShared(gh, written, { kind: "known", issue: mine, testId: "x" }));
+    assert.deepEqual([filed, next].map((o) => (o as { blockedBy?: number }).blockedBy), [undefined, undefined]);
+    assert.match(String(bodyOf(asked, written)), /^shared: #900 owned here$/m);
+  });
+
+  test("a shared check that could not answer says why in the log", async () => {
+    const said: string[] = [];
+    const { gh } = red();
+    const why = "could not check shared red — gh: HTTP 422";
+    await poll(PENDING, (m: string) => said.push(m), 0, DEADLINE, withShared(gh, [], { kind: "none", why }));
+    assert.ok(said.some((m) => m.includes(why)), said.join("\n"));
+  });
+
+  test("a landed fix still red on a branch that has it is reopened and taken over by this ticket", async () => {
+    const { gh, asked } = red();
+    const landed = { kind: "reopen", landed: true, issue: { ...issue, state: "CLOSED" }, testId: "x", evidence };
+    const out = await poll(PENDING, () => {}, 0, DEADLINE, withShared(gh, [], landed));
+    assert.equal((out as { blockedBy?: number }).blockedBy, undefined);
+    assert.deepEqual(
+      asked.filter((a) => a[0] === "issue" && ["reopen", "edit"].includes(a[1])).map((a) => a.slice(0, 3)),
+      [["issue", "reopen", "900"], ["issue", "edit", "900"]],
+    );
+  });
+
+  test("a fix already on main updates the branch and settles again, with no CI-RED and no session", async () => {
+    const written: string[][] = [];
+    let behind = true;
+    const { gh: base, asked } = red();
+    const gh = (args: string[], file = "gh") => {
+      if (args[0] === "pr" && args[1] === "update-branch") behind = false;
+      if (args[0] === "pr" && args[1] === "view" && !args.includes("headRefOid")) {
+        return JSON.stringify(prRow({ mergeStateStatus: behind ? "BEHIND" : "CLEAN" }));
+      }
+      if (args[0] === "run" && args[1] === "list" && !behind) return JSON.stringify(runRow("completed", "success"));
+      return base(args, file);
+    };
+    const landed = { kind: "reopen", landed: true, issue: { ...issue, state: "CLOSED" }, testId: "x" };
+    const out = await poll(PENDING, () => {}, 0, DEADLINE, withShared(gh, written, landed));
+    assert.equal(out.action, "merge");
+    assert.ok(asked.some((a) => a[1] === "update-branch"));
+    assert.equal(bodyOf(asked, written), null);
+  });
+});
+
+describe("sharedPlan", () => {
+  const issue = { number: 900, title: "t", state: "OPEN" };
+  const at = { ticket: 42, behind: false };
+  test("reads each decision into a CI-RED line and what the supervisor does", () => {
+    assert.deepEqual(sharedPlan({ kind: "none" }, at), { line: "none", action: null });
+    assert.deepEqual(sharedPlan({ kind: "file", testId: "x", issue }, at), { line: "#900 owned here", action: null });
+    const landed = { kind: "reopen", landed: true, issue, testId: "x" };
+    assert.equal(sharedPlan(landed, { ...at, behind: true }).action, "update");
+    assert.deepEqual(sharedPlan(landed, at), { line: "#900 owned here", action: "claim", issue: 900 });
+  });
+
+  test("a known issue is blocked on only when its owner line names another ticket", () => {
+    const known = (body?: string) => sharedPlan({ kind: "known", testId: "x", issue: { ...issue, body } }, at);
+    assert.deepEqual(known("owner: #42 (agent/42-x)"), { line: "#900 owned here", action: null });
+    assert.deepEqual(known("owner: #420 (agent/420-y)"), { line: "#900", action: "block", issue: 900 });
+    assert.equal(known(undefined).action, "block");
+  });
+});
+
+describe("ciRedBody", () => {
+  const runUrl = "https://github.com/metasito/murlan/actions/runs/1";
+
+  test("names the head, the run and step, and the excerpt is fenced", () => {
+    const body = ciRedBody({ sha: SHA, runUrl, failedStep: "Native tests", testIds: ["a"], excerpt: "boom" });
+    const lines = body.split("\n");
+    assert.equal(lines[0], `CI-RED ${SHA}`);
+    assert.match(lines[1], /^run: .+ · step: Native tests$/);
+    assert.deepEqual(lines.slice(-3), ["```", "boom", "```"]);
+    assert.match(body, /^shared: none$/m);
+  });
+
+  test("stays within 15 lines with 30 failing test ids, truncated with '+N more'", () => {
+    const testIds = Array.from({ length: 30 }, (_, i) => `tests/e2e/x.spec.ts › case ${i} does a thing`);
+    const excerpt = Array.from({ length: 20 }, (_, i) => `log line ${i}`).join("\n");
+    const body = ciRedBody({ sha: SHA, runUrl, failedStep: "Native tests", testIds, excerpt });
+    const lines = body.split("\n");
+    assert.ok(lines.length <= 15, `${lines.length} lines`);
+    assert.match(body, /\+\d+ more/);
+    const failing = lines.find((l) => l.startsWith("failing:"));
+    assert.ok(failing && failing.length <= 210, "the failing: line must stay short too");
   });
 });

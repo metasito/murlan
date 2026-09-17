@@ -1,10 +1,12 @@
 // tools/loop/tests/queueLoop.test.ts
-import { test, describe, after } from "node:test";
+import { test, describe, after, mock } from "node:test";
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { Readable } from "node:stream";
 import { readFileSync, rmSync } from "node:fs";
 import path from "node:path";
+import { execFileSync } from "node:child_process";
+import { pathToFileURL } from "node:url";
 import { LAND } from "../loop-render.mjs";
 import {
   parseRoute,
@@ -39,6 +41,9 @@ import {
   USD_BY_SIZE,
   USD_DEFAULT,
   watchCalls,
+  CHECK_BASH_TIMEOUT_MS,
+  STALL_MS,
+  ticketFacts,
 } from "../queue-loop.mjs";
 
 /** Enough IO for `runOnce` to reach a decision without git, the tracker or a `claude` binary. */
@@ -55,7 +60,11 @@ const stubIo = () => ({
   teardown: () => {},
   bell: () => {},
   record: () => {},
+  tally: () => ({ sessions: 0, spend: 0, handoffsThisRound: 0, lastHandoff: null, lastRedHead: null, retries: 0, ciRounds: 0 }),
   log: () => {},
+  buildPassed: () => true,
+  announce: () => {},
+  block: () => {},
 });
 
 describe("parseRoute", () => {
@@ -123,6 +132,20 @@ describe("queueLoopArgs", () => {
     return Number(args[args.indexOf("--max-turns") + 1]);
   };
 
+  test("each phase is spawned on the model MODEL_BY_PHASE plans for it", () => {
+    const model = (phase: string | null) => {
+      const args = queueLoopArgs(1, "size:S", phase);
+      return args[args.indexOf("--model") + 1];
+    };
+    assert.deepEqual([model("E"), model("F"), model("C"), model("D"), model(null)], [
+      "sonnet",
+      "sonnet",
+      "opus",
+      "opus",
+      "opus",
+    ]);
+  });
+
   test("a larger ticket gets more turns", () => {
     assert.ok(turns("size:L") > turns("size:S"), `got ${turns("size:L")} and ${turns("size:S")}`);
   });
@@ -166,6 +189,12 @@ describe("liveRoute", () => {
     });
   });
 
+  test("skips a ticket not labelled in-progress", () => {
+    const live = { onTicket: true, ticket: 911, branch: "agent/911-x", phase: "D" };
+    assert.equal(liveRoute(live, ["ready-for-human"]), null);
+    assert.equal(liveRoute(live, ["in-progress"])?.number, 911);
+  });
+
   test("falls back to a bare ticket label when derive() found no branch (the stuck/'?' case)", () => {
     assert.deepEqual(liveRoute({ onTicket: true, ticket: 911, branch: null, phase: "?" }), {
       skill: "implement",
@@ -202,11 +231,57 @@ describe("syncCheckout", () => {
     return { git, calls };
   };
   const clean = { "rev-parse --abbrev-ref": "main", "status --porcelain": "" };
+  const noInstall = {
+    stamp: { current: () => "same", stored: () => "same", write: () => {}, peers: () => [], drifted: () => false },
+  };
+  const stampOf = (over: Partial<{ current: string; stored: string; peers: string[]; drifted: boolean }> = {}) => {
+    const writes: string[] = [];
+    let stored = over.stored ?? "old-hash";
+    return {
+      writes,
+      stamp: {
+        current: () => over.current ?? "new-hash",
+        stored: () => stored,
+        write: (h: string) => {
+          writes.push(h);
+          stored = h;
+        },
+        peers: () => over.peers ?? [],
+        drifted: () => over.drifted ?? false,
+      },
+    };
+  };
+
+  test("drift with an unchanged lockfile reinstalls once for that lockfile, then holds", () => {
+    const said: string[] = [];
+    const install = mock.fn((): string => "");
+    const { stamp, writes } = stampOf({ current: "h", stored: "h", drifted: true });
+    for (let pass = 0; pass < 3; pass++) {
+      assert.equal(syncCheckout(fake(clean).git, (m: string) => said.push(m), install, { stamp }), true);
+    }
+    assert.equal(install.mock.calls.length, 1);
+    assert.deepEqual(writes, ["h drift-reinstalled"]);
+    assert.match(said.join("\n"), /drifted/);
+  });
+
+  test("drift waits for a live peer like a lockfile change does", () => {
+    const install = mock.fn((): string => "");
+    const { stamp, writes } = stampOf({ current: "h", stored: "h", drifted: true, peers: ["agent-7"] });
+    assert.equal(syncCheckout(fake(clean).git, () => {}, install, { stamp }), true);
+    assert.deepEqual([install.mock.calls.length, writes], [0, []]);
+  });
+
+  test("a new lockfile after a drift reinstall reinstalls again", () => {
+    const install = mock.fn((): string => "");
+    const { stamp, writes } = stampOf({ current: "h2", stored: "h drift-reinstalled", drifted: true });
+    syncCheckout(fake(clean).git, () => {}, install, { stamp });
+    assert.deepEqual([install.mock.calls.length, writes], [1, ["h2"]]);
+  });
 
   test("a clean main fast-forwards and says nothing about drift", () => {
     const said: string[] = [];
     const { git, calls } = fake(clean);
-    assert.equal(syncCheckout(git, (m: string) => said.push(m)), true);
+    assert.equal(syncCheckout(git, (m: string) => said.push(m), undefined, noInstall), true);
     assert.ok(calls.some((c) => c[0] === "fetch"));
     assert.ok(calls.some((c) => c[0] === "merge"));
     assert.deepEqual(said, []);
@@ -216,8 +291,48 @@ describe("syncCheckout", () => {
   // every iteration; being behind is staleness, and staleness is repaired, not reported.
   test("being behind origin is not drift", () => {
     const said: string[] = [];
-    syncCheckout(fake(clean).git, (m: string) => said.push(m));
+    syncCheckout(fake(clean).git, (m: string) => said.push(m), undefined, noInstall);
     assert.equal(said.some((s) => /differs/.test(s)), false);
+  });
+
+  test("the stamp differs, no ff diff → reinstall", () => {
+    const said: string[] = [];
+    const install = mock.fn((): string => "");
+    const { stamp, writes } = stampOf();
+    assert.equal(syncCheckout(fake(clean).git, (m: string) => said.push(m), install, { stamp }), true);
+    assert.equal(install.mock.calls.length, 1);
+    assert.deepEqual(writes, ["new-hash"]);
+  });
+
+  test("a peer worktree is live → skip, and retry next call", () => {
+    const said: string[] = [];
+    const install = mock.fn((): string => "");
+    const { stamp, writes } = stampOf({ peers: ["agent-999"] });
+    const ok = syncCheckout(fake(clean).git, (m: string) => said.push(m), install, { stamp, pinned: 123 });
+    assert.equal(ok, true);
+    assert.equal(install.mock.calls.length, 0);
+    assert.deepEqual(writes, []);
+    assert.match(said.join("\n"), /agent-999/);
+  });
+
+  test("only the pinned ticket's worktree is live → reinstall", () => {
+    const install = mock.fn((): string => "");
+    const { stamp, writes } = stampOf({ peers: ["agent-123"] });
+    const ok = syncCheckout(fake(clean).git, () => {}, install, { stamp, pinned: 123 });
+    assert.equal(ok, true);
+    assert.equal(install.mock.calls.length, 1);
+    assert.deepEqual(writes, ["new-hash"]);
+  });
+
+  test("reinstall fails → the stamp is unchanged", () => {
+    const said: string[] = [];
+    const install = mock.fn(() => {
+      throw new Error("npm ci failed");
+    });
+    const { stamp, writes } = stampOf();
+    const ok = syncCheckout(fake(clean).git, (m: string) => said.push(m), install, { stamp });
+    assert.equal(ok, false);
+    assert.deepEqual(writes, []);
   });
 
   test("an uncommitted protocol edit on main refuses, and names the files", () => {
@@ -250,7 +365,7 @@ describe("syncCheckout", () => {
       "status --porcelain": "",
       "rev-list --count": "0",
     });
-    assert.equal(syncCheckout(git, () => {}), true);
+    assert.equal(syncCheckout(git, () => {}, undefined, noInstall), true);
     assert.ok(calls.some((c) => c[0] === "checkout" && c[1] === "main"));
   });
 
@@ -362,6 +477,18 @@ describe("runTicket", () => {
     );
   });
 
+  test("the session's Bash calls may run as long as agent:check, and stop short of the stall watchdog", async () => {
+    let env: Record<string, string> | undefined;
+    const capturing = (_cmd: string, _args: string[], o: any) => {
+      env = o.env;
+      return fakeSpawn([RESULT])();
+    };
+    await runTicket(capturing as never, opts());
+    assert.equal(env?.BASH_MAX_TIMEOUT_MS, String(CHECK_BASH_TIMEOUT_MS));
+    assert.equal(env?.BASH_DEFAULT_TIMEOUT_MS, String(CHECK_BASH_TIMEOUT_MS));
+    assert.ok(CHECK_BASH_TIMEOUT_MS > 600_000 && CHECK_BASH_TIMEOUT_MS < STALL_MS);
+  });
+
   test("a refusal reaches the caller, as milliseconds", async () => {
     const run = await runTicket(fakeSpawn([meter("rejected"), RESULT]), opts({ number: 962 }));
     assert.equal(run.blocked, true);
@@ -467,6 +594,74 @@ describe("runTicket", () => {
     const out = said.join("\n");
     assert.equal(out.match(/#953 {2}Rate limiter factory/g)?.length, 1);
     assert.equal(out.match(/#962 {2}Rate limiter factory/g)?.length, 1);
+  });
+
+  const spawned = (lines: string[]) => {
+    const seen: { args: string[]; env: Record<string, string>; killed: string[] } = { args: [], env: {}, killed: [] };
+    const spawnFn = (_cmd: string, args: string[], o: any) => {
+      Object.assign(seen, { args, env: o.env });
+      const child: any = new EventEmitter();
+      child.stdout = Readable.from(lines.map((l) => `${l}\n`));
+      child.stderr = Readable.from([]);
+      child.kill = (sig: string) => seen.killed.push(sig);
+      child.stdout.on("end", () => setImmediate(() => child.emit("close", 0)));
+      return child;
+    };
+    return { seen, spawnFn };
+  };
+  const init = (model: string) => JSON.stringify({ type: "system", subtype: "init", session_id: "s", model });
+
+  test("the session is told the phase it resumes at; a fresh one is told none and derives its own", async () => {
+    const resumed = spawned([RESULT]);
+    await runTicket(resumed.spawnFn as never, opts({ at: "D" }));
+    const prior = process.env.LOOP_PHASE;
+    process.env.LOOP_PHASE = "C";
+    const fresh = spawned([RESULT]);
+    const rebuilt = spawned([RESULT]);
+    try {
+      await runTicket(fresh.spawnFn as never, opts());
+      await runTicket(rebuilt.spawnFn as never, opts({ at: "A" }));
+    } finally {
+      if (prior === undefined) delete process.env.LOOP_PHASE;
+      else process.env.LOOP_PHASE = prior;
+    }
+    assert.deepEqual(
+      [resumed.seen.env.LOOP_PHASE, fresh.seen.env.LOOP_PHASE, rebuilt.seen.env.LOOP_PHASE],
+      ["D", undefined, undefined],
+    );
+    assert.equal(resumed.seen.args[resumed.seen.args.indexOf("--model") + 1], "opus");
+  });
+
+  test("a handed reason reaches the session as LOOP_REASON, and none is sent without one", async () => {
+    const told = spawned([RESULT]);
+    await runTicket(told.spawnFn as never, opts({ at: "C", reason: "phase E's agent:check was red" }));
+    const plain = spawned([RESULT]);
+    await runTicket(plain.spawnFn as never, opts({ at: "C" }));
+    assert.deepEqual([told.seen.env.LOOP_REASON, plain.seen.env.LOOP_REASON], ["phase E's agent:check was red", undefined]);
+  });
+
+  test("an init model of no family the loop knows is named, not parked", async () => {
+    const { said, screen } = sink();
+    const odd = spawned([init("some-future-model"), RESULT]);
+    const run = await runTicket(odd.spawnFn as never, opts({ at: "E", screen }));
+    assert.deepEqual([odd.seen.killed, run.wrongModel], [[], null]);
+    assert.match(said.join("\n"), /some-future-model/);
+  });
+
+  test("an init model other than planned kills the session and says why", async () => {
+    const wrong = spawned([init("claude-opus-5"), RESULT]);
+    const run = await runTicket(wrong.spawnFn as never, opts({ at: "E" }));
+    assert.deepEqual(wrong.seen.killed, ["SIGTERM"]);
+    assert.match(String(run.wrongModel), /claude-opus-5.*sonnet/);
+    const right = spawned([init("claude-sonnet-5"), RESULT]);
+    const ok = await runTicket(right.spawnFn as never, opts({ at: "E" }));
+    assert.deepEqual([right.seen.killed, ok.wrongModel], [[], null]);
+  });
+
+  test("a fix round is named on the board with its round", async () => {
+    const { said, screen } = sink();
+    await runTicket(fakeSpawn([RESULT]), opts({ at: "C", fix: true, retryCount: 1, screen }));
+    assert.match(said.join("\n"), /fix 2\/3/);
   });
 
   test("a resumed ticket says so, and does not read as a closed phase", async () => {
@@ -1182,7 +1377,7 @@ describe("a phase handoff", () => {
         });
       },
     };
-    const pass = await runOnce(io as never, null, 0);
+    const pass = await runOnce(io as never, null);
     assert.equal(pass.outcome, "handoff");
     assert.equal(pass.phase, "D");
     assert.deepEqual(spawned, [41]);
@@ -1222,5 +1417,30 @@ describe("watchCalls", () => {
     const state = { soloBash: 0, turns: 0 };
     watchCalls(state, { calls: [] } as never);
     assert.equal(state.turns, 0);
+  });
+});
+
+function tsLoadedBy(url: string): string[] {
+  const probe =
+    "const seen = []; require('node:module').registerHooks({ load(u, c, next) { if (u.endsWith('.ts')) seen.push(u); return next(u, c); } });" +
+    `import(${JSON.stringify(url)}).then(() => { console.log(JSON.stringify(seen)); process.exit(0); });`;
+  return JSON.parse(execFileSync(process.execPath, ["-e", probe], { encoding: "utf8" }));
+}
+
+test("importing the supervisor strips no TypeScript, so an exit right after it cannot abort node", () => {
+  assert.deepEqual(tsLoadedBy(pathToFileURL(path.join(import.meta.dirname, "..", "queue-loop.mjs")).href), []);
+});
+
+describe("ticketFacts", () => {
+  test("its gh read is bounded, and a timeout is the failed-read shape rather than a throw", () => {
+    const seen: any[] = [];
+    const timedOut = (_cmd: string, _args: string[], o: object) => {
+      seen.push(o);
+      throw Object.assign(new Error("spawnSync gh ETIMEDOUT"), { code: "ETIMEDOUT" });
+    };
+    const facts = ticketFacts(7, timedOut as never);
+    assert.equal(seen[0].timeout, 30_000);
+    assert.equal(facts.reviewRounds, null);
+    assert.equal(facts.title, "ticket #7");
   });
 });

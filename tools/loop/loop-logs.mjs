@@ -25,7 +25,10 @@ export const DIR = ".loop-logs";
 export const ARTEFACTS = {
   stream: { path: (t, dir = DIR) => path.join(dir, `${t}.jsonl`), name: /^\d+\.jsonl$/, ephemeral: true },
   ciTail: { path: (t, dir = DIR) => path.join(dir, `ci-${t}.log`), name: /^ci-\d+\.log$/, ephemeral: true },
+  ciRedNote: { path: (t, dir = DIR) => path.join(dir, `ci-red-${t}.md`), name: /^ci-red-\d+\.md$/, ephemeral: true },
+  redCache: { path: (t, dir = DIR) => path.join(dir, `red-${t}.ids`), name: /^red-\d+\.ids$/, ephemeral: true },
   parkNote: { path: (t, dir = DIR) => path.join(dir, `park-${t}.md`), name: /^park-\d+\.md$/, ephemeral: true },
+  leftover: { path: (t, dir = DIR) => path.join(dir, `leftover-${t}.patch`), name: /^leftover-\d+\.patch$/, ephemeral: false },
   report: { path: (runId, dir = DIR) => path.join(dir, `run-${runId}.md`), name: /^run-.+\.md$/, ephemeral: false },
   // `_` so every builder takes the same two arguments: the table is only useful if one loop can
   // call all of them.
@@ -34,8 +37,11 @@ export const ARTEFACTS = {
 
 export const streamLog = ARTEFACTS.stream.path;
 export const ciLogPath = ARTEFACTS.ciTail.path;
+export const ciRedNotePath = ARTEFACTS.ciRedNote.path;
+export const redCachePath = ARTEFACTS.redCache.path;
 export const parkNotePath = ARTEFACTS.parkNote.path;
 export const reportPath = ARTEFACTS.report.path;
+export const leftoverPath = ARTEFACTS.leftover.path;
 export const ledgerPath = ARTEFACTS.ledger.path;
 
 /** A file in `.loop-logs/` the pruner may delete once it is old enough. */
@@ -118,9 +124,10 @@ export function usageSplit(text) {
  * stream logs always had and the ledger never did; grouping on `n` is now the reader's job, and
  * `tests/` can check the file against those logs because both count the same thing.
  *
- * 4 adds `solo_bash_turns`, which is null on every row written before it.
+ * 4 adds `solo_bash_turns`, which is null on every row written before it. 5 adds `head` and
+ * `run_id`, both null on rows written before it.
  */
-export const SCHEMA = 4;
+export const SCHEMA = 5;
 
 /**
  * One session, as one line of the ledger.
@@ -137,7 +144,8 @@ export const SCHEMA = 4;
  * @param {{number: number, size: string|null, outcome: string, parkReason?: string|null,
  *   pr: number|null, phases: Record<string, number>, result: object|null, merged: boolean,
  *   reviewRounds: number|null, startedAt: string, ms: number, version: string|null,
- *   usage?: object|null, committed?: boolean|null, soloBash?: number|null}} session
+ *   usage?: object|null, committed?: boolean|null, soloBash?: number|null,
+ *   head?: string|null, runId?: string|null}} session
  */
 export function sessionRow({
   number,
@@ -155,6 +163,8 @@ export function sessionRow({
   usage = null,
   committed = null,
   soloBash = null,
+  head = null,
+  runId = null,
 }) {
   const models = Object.fromEntries(
     Object.entries(result?.models ?? {}).map(([name, u]) => [name, u.costUSD ?? 0]),
@@ -183,6 +193,8 @@ export function sessionRow({
     review_rounds: reviewRounds ?? null,
     claude_version: version ?? null,
     started: startedAt,
+    head,
+    run_id: runId,
   };
 }
 
@@ -218,7 +230,7 @@ export function ledger(io = {}) {
      *   whether this session closes a ticket — a retry round is a session, not a ticket.
      */
     record(session, { runId, line, counts = true }) {
-      const entry = sessionRow(session);
+      const entry = sessionRow({ ...session, runId });
       mkdir();
       append(ledgerPath(), `${JSON.stringify(entry)}\n`);
 
@@ -242,4 +254,79 @@ export function ledger(io = {}) {
       append(reportPath(runId), `\n${line}\n`);
     },
   };
+}
+
+/** @param {string} [file] */
+export function readLedger(file = ledgerPath()) {
+  if (!fsNode.existsSync(file)) return [];
+  const rows = [];
+  for (const line of fsNode.readFileSync(file, "utf8").split("\n")) {
+    if (!line.trim()) continue;
+    try {
+      rows.push(JSON.parse(line));
+    } catch {
+      continue;
+    }
+  }
+  return rows;
+}
+
+const HANDOFF_RE = /phase\s+([A-Za-z])\s+next(?: — (.+))?/;
+
+/** @param {string} outcome @param {string|null|undefined} why */
+export const parkReasonOf = (outcome, why) =>
+  outcome === "landed" || outcome === "retry" || outcome === "pushed" ? null : (why ?? null);
+
+/**
+ * What a row's report line shows: its own cost, plus that of the `pushed` row its window opened
+ * with. The ledger keeps the money on the `pushed` row alone.
+ *
+ * @param {{n: number, outcome: string, own: number}} row @param {object[]} rows
+ */
+export function windowCost({ n, outcome, own }, rows) {
+  const last = rows.filter((r) => r.n === n).at(-1);
+  return own + (outcome !== "pushed" && last?.outcome === "pushed" ? (last.cost ?? 0) : 0);
+}
+
+/**
+ * A ticket's rounds, spend and handoffs, rebuilt from the rows a restart cannot otherwise see:
+ * everything for `n` since its last `landed` or `parked` row, which is where the tally must have
+ * read zero even before this session existed.
+ *
+ * @param {number} n @param {object[]} rows
+ */
+export function ticketTally(n, rows) {
+  const forTicket = rows.filter((r) => r.n === n);
+  let start = 0;
+  forTicket.forEach((r, i) => {
+    if (r.outcome === "landed" || r.outcome === "parked") start = i + 1;
+  });
+  const since = forTicket.slice(start);
+
+  let spend = 0;
+  let handoffsThisRound = 0;
+  let lastHandoff = null;
+  let handoffWhy = null;
+  let retries = 0;
+  let lastRedHead = null;
+  for (const r of since) {
+    spend += r.cost ?? 0;
+    if (r.outcome === "retry") {
+      retries += 1;
+      handoffsThisRound = 0;
+      lastHandoff = null;
+      handoffWhy = null;
+      lastRedHead = r.head ?? null;
+    } else if (r.outcome === "blocked") {
+      handoffsThisRound = 0;
+      lastHandoff = null;
+      handoffWhy = null;
+    } else if (r.outcome === "handoff") {
+      handoffsThisRound += 1;
+      const m = HANDOFF_RE.exec(r.park_reason ?? "");
+      if (m) [lastHandoff, handoffWhy] = [m[1], m[2] ?? null];
+    }
+  }
+  const sessions = since.filter((r) => r.outcome !== "pushed").length;
+  return { sessions, spend, handoffsThisRound, lastHandoff, handoffWhy, lastRedHead, retries };
 }

@@ -5,8 +5,7 @@
  *
  * The split: this picks one ticket, passes its number to the session, waits for the session to
  * exit, reads CI, polls mergeability, merges, and records. The session owns claim → build →
- * review → gate → push and its own worktree teardown, because it is the only process that knows
- * whether its tree is dirty. Tickets are serialised, so there is no pending pull request held in
+ * review → gate → push. Tickets are serialised, so there is no pending pull request held in
  * memory for a crash to orphan.
  *
  * It exits only when there is genuinely nothing to do. A spent usage window is a wait, not an end:
@@ -15,9 +14,11 @@
  * Usage: node tools/loop/queue-loop.mjs
  */
 import { execFileSync, spawn, spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import fs, { createWriteStream, mkdirSync, writeFileSync } from "node:fs";
+import path from "node:path";
 import { createInterface } from "node:readline";
-import { derive, REPO, reviewRounds } from "./loop-derive.mjs";
+import { ciRedPosted, ciRedRounds, derive, REPO, reviewRounds, WORKTREE_DIR } from "./loop-derive.mjs";
 import { readLine } from "./loop-stream.mjs";
 import {
   act,
@@ -47,21 +48,32 @@ import {
 import {
   DIR,
   ciLogPath,
+  ciRedNotePath,
+  leftoverPath,
   ledger as openLedger,
   parkNotePath,
+  parkReasonOf,
   prune as pruneLogs,
+  readLedger,
   streamLog,
+  ticketTally,
   usageSplit,
+  windowCost,
 } from "./loop-logs.mjs";
 import { readAllowedTools } from "./loop-tools.mjs";
-import { MAX_REVIEW_ROUNDS } from "./loop-gate.mjs";
+import { checkLockDrift } from "./preflight.mjs";
+import { buildPassed, MAX_REVIEW_ROUNDS } from "./loop-gate.mjs";
+import { familyOf, MODEL_BY_PHASE } from "./loop-cost.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
-import { branchSurvives, landing, mergeArgs } from "./land.ts";
-import { readVerdict } from "./ciVerdict.ts";
+import { createRequire } from "node:module";
+
+// Loaded on use: a static .ts import plus process.exit aborts node on Windows (nodejs/node#56645).
+const ts = (file) => createRequire(import.meta.url)(file);
 
 // Spawning a sibling by its own directory, not the cwd: the supervisor runs from the repo root,
 // but nothing guarantees that, and the sibling is beside this file either way.
 const HERE = import.meta.dirname;
+const ROOT = path.resolve(HERE, "..", "..");
 
 const STOP_FILE = ".loop-stop";
 
@@ -90,9 +102,10 @@ export function shouldStop(route) {
 }
 
 /**
+ * @param {string[]|null} [labels] the live ticket's labels, null when the tracker could not say
  * @returns {{skill: string, number: number, title: string, phase?: string, resuming: boolean}|null}
  */
-export function liveRoute(status) {
+export function liveRoute(status, labels = null) {
   // locateRun refuses to guess between two live ticket worktrees, and that refusal is the whole
   // point of it — returning null here turned it into "no run is live" and the picker took a third.
   if (status.ambiguous)
@@ -103,6 +116,7 @@ export function liveRoute(status) {
       resuming: false,
     };
   if (!status.onTicket || !status.ticket) return null;
+  if (labels && !labels.includes("in-progress")) return null;
   return {
     skill: "implement",
     number: status.ticket,
@@ -121,15 +135,40 @@ export function liveRoute(status) {
  * A resumed route carries the ticket's size, or `TURNS_BY_SIZE` falls through to the default and
  * bounds the second attempt tighter than the one that already failed to finish.
  *
+ * A pushed head's own reading — CI to settle, or a red run to fix — outranks a handoff the ledger
+ * still holds from before the push.
+ *
  * @param {number|null} [pinned]
  */
-function nextRoute(pinned = null, at = null) {
-  const live = liveRoute(derive());
-  if (live) return { ...live, phase: at ?? live.phase, size: ticketFacts(live.number).size, queue: null };
+export function nextRoute(pinned = null, at = null, { read = derive, facts = ticketFacts, ledger = readLedger } = {}) {
+  const status = read({ ci: true });
+  const known = status.onTicket && status.ticket ? facts(status.ticket) : null;
+  if (known?.state === "CLOSED") {
+    return { skill: "closed", number: status.ticket, title: known.title, cwd: status.cwd ?? null, resuming: true, queue: null };
+  }
+  const live = liveRoute(status, known?.labels ?? null);
+  if (live) {
+    const settles = live.phase === "G" && status.ci?.pushed === true;
+    const derived = live.phase === "G" ? "E" : live.phase;
+    const phase = settles
+      ? "G"
+      : (at ?? (status.fix ? "C" : null) ?? ticketTally(live.number, ledger()).lastHandoff ?? derived);
+    return {
+      ...live,
+      phase,
+      fix: Boolean(status.fix),
+      head: status.ci?.sha ?? status.head ?? null,
+      cwd: status.cwd ?? null,
+      branch: status.branch ?? null,
+      dirty: status.dirty ?? false,
+      size: known?.size ?? null,
+      ciRounds: known?.ciRounds ?? 0,
+      queue: null,
+    };
+  }
   if (pinned) {
-    const { title, size } = ticketFacts(pinned);
-    // Phase A: phase F removed the worktree, so queue.md's fix round rebuilds it from the branch.
-    return { skill: "implement", number: pinned, title, size, queue: null, resuming: true, phase: "A" };
+    const { title, size, ciRounds } = facts(pinned);
+    return { skill: "implement", number: pinned, title, size, ciRounds, queue: null, resuming: true, phase: "A" };
   }
   const stdout = execFileSync("node", [HERE + "/next-ticket.mjs"], { encoding: "utf8" });
   return { ...parseRoute(stdout), queue: parseStatus(stdout), resuming: false };
@@ -174,11 +213,15 @@ export const overSpend = (spent, size) => spent >= (USD_BY_SIZE[size ?? ""] ?? U
 /** @param {string|null} [size] a `size:*` label, or null */
 export const turnsFor = (size) => TURNS_BY_SIZE[size ?? ""] ?? TURNS_DEFAULT;
 
+/** @param {string|null} [phase] */
+const plannedModel = (phase) => MODEL_BY_PHASE[phase ?? "A"] ?? MODEL_BY_PHASE.A;
+
 /**
  * @param {number} number
  * @param {string|null} [size] a `size:*` label, or null
+ * @param {string|null} [phase] the phase the session resumes at, null for a fresh one
  */
-export function queueLoopArgs(number, size = null) {
+export function queueLoopArgs(number, size = null, phase = null) {
   return [
     "-p",
     `/queue ${number}`,
@@ -200,6 +243,8 @@ export function queueLoopArgs(number, size = null) {
     String(turnsFor(size)),
     "--max-budget-usd",
     TICKET_BUDGET_USD,
+    "--model",
+    plannedModel(phase),
   ];
 }
 
@@ -215,6 +260,30 @@ function peerWorktrees(dir = ".worktrees") {
   }
 }
 
+const LOCK_STAMP = "node_modules/.loop-lock-hash";
+
+/** The install's own record of the lockfile it was run against — a fact about `node_modules`. */
+const defaultStamp = {
+  current: () => {
+    try {
+      return createHash("sha256").update(fs.readFileSync("package-lock.json")).digest("hex");
+    } catch {
+      return null;
+    }
+  },
+  stored: () => {
+    try {
+      return fs.readFileSync(LOCK_STAMP, "utf8").trim();
+    } catch {
+      return null;
+    }
+  },
+  write: (hash) => writeFileSync(LOCK_STAMP, hash),
+  peers: peerWorktrees,
+  drifted: () => checkLockDrift(".").length > 0,
+};
+const DRIFT_MARK = "drift-reinstalled";
+
 /**
  * Leaves the shared checkout on an up-to-date `main`, or refuses and says why.
  *
@@ -222,8 +291,17 @@ function peerWorktrees(dir = ".worktrees") {
  * Those are different questions: the loop's own tickets edit its own code, so the moment one
  * merges the checkout differs from origin until it is fast-forwarded — which is staleness,
  * repaired here rather than reported. Only an uncommitted edit is drift, and it belongs to someone.
+ *
+ * @param {{current: () => string|null, stored: () => string|null, write: (hash: string) => void,
+ *   peers: () => string[], drifted: () => boolean}} [stamp]
+ * @param {number|null} [pinned] the ticket whose own worktree, if any, is not another session
  */
-export function syncCheckout(git, log, install = () => sh("npm", ["ci"], { stdio: "inherit" })) {
+export function syncCheckout(
+  git,
+  log,
+  install = () => sh("npm", ["ci"], { stdio: "inherit" }),
+  { stamp = defaultStamp, pinned = /** @type {number|null} */ (null) } = {},
+) {
   const branch = git("rev-parse", "--abbrev-ref", "HEAD").trim();
   if (branch === "HEAD") {
     log("the shared checkout is on a detached HEAD — put it back on main first.");
@@ -255,9 +333,7 @@ export function syncCheckout(git, log, install = () => sh("npm", ["ci"], { stdio
     }
   }
 
-  let was;
   try {
-    was = git("rev-parse", "HEAD").trim();
     git("fetch", "origin", "--quiet");
     git("merge", "--ff-only", "origin/main");
   } catch (err) {
@@ -265,23 +341,29 @@ export function syncCheckout(git, log, install = () => sh("npm", ["ci"], { stdio
     return false;
   }
 
-  // The loop's own merges move the lockfile, and `preflight` refuses to start a ticket on top of
-  // an install that has drifted from it — so leaving the repair to the next iteration is the loop
-  // poisoning its own precondition. It runs here because this is between tickets, and it runs only
-  // when no ticket worktree is standing: every worktree's node_modules is a junction into this
-  // install, so reinstalling under a live session empties the tree it is working in.
+  // Keyed on the installed stamp, not the fast-forward's own diff: a diff seen once and skipped
+  // for a live peer is gone for good, so a worktree standing at merge time must not cost the loop
+  // its only chance to notice. `preflight` refuses to start a ticket on top of a drifted install,
+  // so leaving the repair to the next iteration is the loop poisoning its own precondition. It
+  // runs only when no *other* ticket's worktree is standing: every worktree's node_modules is a
+  // junction into this install, so reinstalling under a live session empties the tree it is in.
   try {
-    if (git("diff", "--name-only", was, "HEAD").split("\n").includes("package-lock.json")) {
-      const live = peerWorktrees();
+    const current = stamp.current();
+    const [stored, mark] = (stamp.stored() ?? "").split(" ");
+    const changed = current !== stored;
+    if (current !== null && (changed || (mark !== DRIFT_MARK && stamp.drifted()))) {
+      const what = changed ? "package-lock.json differs from the last install" : "node_modules has drifted from package-lock.json";
+      const live = stamp.peers().filter((name) => name !== `agent-${pinned}`);
       if (live.length) {
-        log(`package-lock.json moved, but ${live.join(", ")} is live — not reinstalling`);
+        log(`${what}, but ${live.join(", ")} is live — not reinstalling`);
         return true;
       }
-      log("the fast-forward moved package-lock.json — reinstalling before the next ticket");
+      log(`${what} — reinstalling before the next ticket`);
       install();
+      stamp.write(changed ? current : `${current} ${DRIFT_MARK}`);
     }
   } catch (err) {
-    log(`could not reinstall after the fast-forward — ${String(err.message).split("\n")[0]}`);
+    log(`could not reinstall — ${String(err.message).split("\n")[0]}`);
     return false;
   }
   return true;
@@ -293,6 +375,9 @@ export function syncCheckout(git, log, install = () => sh("npm", ["ci"], { stdio
  * under that reads a working run as a stalled one.
  */
 export const STALL_MS = 30 * 60_000;
+
+/** The session's Bash ceiling, which `agent:check -- --also test:native` needs and a stall must outlast. */
+export const CHECK_BASH_TIMEOUT_MS = STALL_MS - 5 * 60_000;
 
 /**
  * The supervisor's half has no watchdog over it — `runTicket`'s watches the child and is cleared
@@ -431,8 +516,6 @@ export function settleOutcome({ action }) {
  * The two exceptions are the two things only the session can know: it stood the ticket down, or it
  * worked a different one. Both make its branch not this ticket's answer, so neither yields.
  *
- * It is asked for by ticket number, so phase F's teardown cannot hide it.
- *
  * @param {{pr: {number: number, state: string}|null,
  *   reason: {why: string|null, hard: boolean}}} run
  * @returns {{action: "settle"|"landed"|"park", pr?: number, why?: string}}
@@ -472,9 +555,9 @@ export function reasonFor(run, after, ticket) {
   if (run.status === "stalled")
     return soft(`no output for ${Math.round(STALL_MS / 60_000)}m in phase ${run.phase ?? "?"}`);
   if (run.status !== 0) return soft(`the session exited ${run.status} in phase ${run.phase ?? "?"}`);
-  // Phase F step 5 is not optional, and this is where its absence becomes visible rather than
+  // Phase F's LOOP-RESULT is not optional, and this is where its absence becomes visible rather than
   // absorbed. A session that exits clean without declaring has left every fact about itself to be
-  // inferred from side effects phase F was separately told to delete.
+  // inferred.
   if (!said) return soft("the session exited without a LOOP-RESULT");
   return soft(null);
 }
@@ -593,10 +676,62 @@ export function park(
     run("gh", ["issue", "comment", String(number), "--body-file", file]);
   });
 
-  if (cwd) step("worktree", () => run("npm", ["run", "worktrees:remove", "--", cwd]));
+  if (cwd) step("worktree", () => removeWorktree(cwd, run));
 
   return { ok: failed.length === 0, failed };
 }
+
+/** From the main checkout: `removeOneWorktree` refuses a caller standing inside the tree it removes. */
+export function removeWorktree(cwd, run = sh) {
+  return run("npm", ["run", "worktrees:remove", "--", cwd], { cwd: ROOT });
+}
+
+const writeLeftover = (file, body) => {
+  mkdirSync(path.dirname(file), { recursive: true });
+  writeFileSync(file, body);
+};
+
+/**
+ * Only after a confirmed merge. `--force` is safe here because the script detaches the junction
+ * before removing, and the leftovers are on disk first; a patch that cannot be written keeps the tree.
+ */
+export function removeLanded(cwd, number, { run = sh, write = writeLeftover, say = console.error } = {}) {
+  if (!run("git", ["-C", cwd, "status", "--porcelain"]).trim()) return removeWorktree(cwd, run);
+  const file = leftoverPath(number);
+  try {
+    run("git", ["-C", cwd, "add", "-A"]);
+    const patch = run("git", ["-C", cwd, "diff", "--cached", "--binary", "HEAD"], { encoding: "buffer" });
+    write(file, patch);
+  } catch (err) {
+    say(`#${number}'s worktree has uncommitted leftovers and ${file} could not be written — ${String(err.message).split("\n")[0]}`);
+    return null;
+  }
+  say(`#${number} landed with uncommitted leftovers in its worktree — saved to ${file}`);
+  return run("npm", ["run", "worktrees:remove", "--", cwd, "--force"], { cwd: ROOT });
+}
+
+/**
+ * Held behind another branch's shared-red issue: `next-ticket.mjs` skips a ticket with an open
+ * blocker and serves it again, as stranded, once the blocker closes.
+ */
+export function blockOnShared(number, blocker, cwd, run = sh) {
+  const opts = { timeout: CI_RED_TIMEOUT_MS };
+  const id = run("gh", ["api", `repos/${REPO}/issues/${blocker}`, "--jq", ".id"], opts).trim();
+  if (cwd) removeWorktree(cwd, run);
+  try {
+    run("gh", ["api", "-X", "POST", `repos/${REPO}/issues/${number}/dependencies/blocked_by`, "-F", `issue_id=${id}`], opts);
+  } catch (err) {
+    throw Object.assign(err, { removed: true });
+  }
+}
+
+/** A red round's `update-branch` moved the remote head, and the fix is built on top of it. */
+export function refreshWorktree(cwd, branch, run = sh) {
+  const opts = { timeout: REFRESH_TIMEOUT_MS };
+  run("git", ["-C", cwd, "fetch", "--quiet", "origin", branch], opts);
+  run("git", ["-C", cwd, "merge", "--ff-only", `origin/${branch}`], opts);
+}
+const REFRESH_TIMEOUT_MS = 2 * 60_000;
 
 const ERASE = "\r\u001B[2K";
 const HIDE = "\u001B[?25l";
@@ -966,23 +1101,27 @@ function openExternally(target) {
  *
  * `reviewRounds: null` on a failed read, never 0: a count nobody could take is not a count of none.
  */
-function ticketFacts(number) {
+export function ticketFacts(number, exec = execFileSync) {
   try {
     const issue = JSON.parse(
-      execFileSync("gh", ["issue", "view", String(number), "--json", "title,labels,url,comments"], {
+      exec("gh",["issue", "view", String(number), "--json", "title,labels,url,comments,state"], {
         encoding: "utf8",
         stdio: ["ignore", "pipe", "ignore"],
         maxBuffer: SH_MAX_BUFFER,
+        timeout: 30_000,
       }),
     );
     return {
       title: issue.title,
       url: issue.url,
       size: issue.labels.map((l) => l.name).find((n) => n.startsWith("size:")) ?? null,
+      labels: issue.labels.map((l) => l.name),
       reviewRounds: reviewRounds(issue.comments ?? []),
+      ciRounds: ciRedRounds(issue.comments ?? []),
+      state: issue.state,
     };
   } catch {
-    return { title: `ticket #${number}`, url: "", size: null, reviewRounds: null };
+    return { title: `ticket #${number}`, url: "", size: null, labels: null, reviewRounds: null, ciRounds: 0 };
   }
 }
 
@@ -1090,6 +1229,9 @@ export function runTicket(
     queue,
     size = null,
     at = null,
+    fix = false,
+    retryCount = 0,
+    reason = null,
     screen = ticker(),
     facts = ticketFacts,
     stallMs = STALL_MS,
@@ -1116,6 +1258,7 @@ export function runTicket(
     blocked: false,
     blockedUntil: 0,
     stalled: false,
+    wrongModel: null,
     stderr: "",
     /** Turns spent in phase C, and whether any of them committed. */
     buildTurns: 0,
@@ -1138,10 +1281,11 @@ export function runTicket(
   const about = facts(number);
   // `reviewRounds` counts the verdicts already on the issue, so the round about to run is the next
   // one. Null when the tracker could not be read — a number nobody could take is not a count of none.
-  const round = () =>
-    state.phase === "D" && about.reviewRounds != null
-      ? { n: about.reviewRounds + 1, of: MAX_REVIEW_ROUNDS }
-      : null;
+  const round = () => {
+    if (state.phase === "D" && about.reviewRounds != null) return { n: about.reviewRounds + 1, of: MAX_REVIEW_ROUNDS };
+    if (state.phase === "C" && fix) return { n: retryCount + 1, of: CI_ROUNDS, fix: true };
+    return null;
+  };
 
   if (screen.needsHeader(number)) screen.say(header({ number, ...about, queue }, screen.theme));
   screen.context({ url: about.url, log: logPath });
@@ -1158,7 +1302,8 @@ export function runTicket(
   }
 
   const budget = turnsFor(size);
-  const child = spawnFn("claude", queueLoopArgs(number, size), {
+  const planned = plannedModel(at);
+  const child = spawnFn("claude", queueLoopArgs(number, size, at), {
     stdio: ["ignore", "pipe", "pipe"],
     // A background update landing at 2am changes the system prompt, and every remaining ticket of
     // the night then rebuilds its cached prefix at full price, with nothing to see. Whether to
@@ -1171,9 +1316,14 @@ export function runTicket(
       ...process.env,
       DISABLE_AUTOUPDATER: "1",
       LOOP_TURNS: String(budget),
+      // A is where derive() starts anyway; handing it would pin a rebuilt worktree to A.
+      LOOP_PHASE: at && at !== "A" ? at : undefined,
+      LOOP_REASON: reason ?? undefined,
       // `-p` leaves fork mode off, so subagents default to background and the session spends a turn
       // each time it asks one whether it is done. Foreground makes the Agent call an await.
       CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1",
+      BASH_MAX_TIMEOUT_MS: String(CHECK_BASH_TIMEOUT_MS),
+      BASH_DEFAULT_TIMEOUT_MS: String(CHECK_BASH_TIMEOUT_MS),
     },
   });
 
@@ -1189,7 +1339,16 @@ export function runTicket(
     state.lastFactAt = Date.now();
     const fact = readLine(line);
     if (!fact) return;
-    if (fact.kind === "init") state.version = fact.version;
+    if (fact.kind === "init") {
+      state.version = fact.version;
+      const family = fact.model ? familyOf(fact.model) : null;
+      if (fact.model && !family) screen.warn(`the session started on ${fact.model}, a model of no known family\n`);
+      if (family && family !== planned && !state.wrongModel) {
+        state.wrongModel = `the session started on ${fact.model}, but phase ${at ?? "A"} runs on ${planned}`;
+        child.kill("SIGTERM");
+        setTimeout(() => child.kill("SIGKILL"), 10_000).unref();
+      }
+    }
     if (fact.kind === "assistant") {
       if (fact.letter && fact.letter !== state.phase) {
         closePhase();
@@ -1287,6 +1446,7 @@ export function runTicket(
           callTurns: state.turns,
           stderr: state.stderr,
           version: state.version,
+          wrongModel: state.wrongModel,
           ms: Date.now() - startedAt,
           log: logPath,
           // Read now rather than accumulated as the lines arrived: the sink has just closed, so the
@@ -1312,9 +1472,7 @@ const RUN_ID = new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-");
 /**
  * The pull request this ticket pushed, if it pushed one.
  *
- * Falls back to the ticket number when the branch is unknown: phase F tears the worktree down and
- * `derive()` finds a run only by that directory, so the branch is gone at exactly the moment the
- * lookup needs it. The ticket number survives every teardown.
+ * Falls back to the ticket number when the branch is unknown.
  *
  * `--state all`, because a pull request merged between the session's exit and this read — a peer,
  * an auto-merge, the owner — is a landing, not a session that pushed nothing. The head ref comes
@@ -1397,7 +1555,7 @@ function readLanding(prNumber, verdict, run = sh) {
   const pr = JSON.parse(
     run("gh", ["pr", "view", String(prNumber), "--repo", REPO, "--json", "state,mergeStateStatus,mergeable"]),
   );
-  return landing(pr, verdict);
+  return { ...ts("./land.ts").landing(pr, verdict), behind: pr.mergeStateStatus === "BEHIND" };
 }
 
 /**
@@ -1413,10 +1571,10 @@ function readLanding(prNumber, verdict, run = sh) {
  * @returns {string|null} the branch, if it is still on origin
  */
 function mergeAndConfirm(prNumber, branch, run = sh) {
-  run("gh", mergeArgs(REPO, prNumber));
+  run("gh", ts("./land.ts").mergeArgs(REPO, prNumber));
   if (!branch) return null;
   try {
-    return branchSurvives(run("git", ["ls-remote", "origin", branch])) ? branch : null;
+    return ts("./land.ts").branchSurvives(run("git", ["ls-remote", "origin", branch])) ? branch : null;
   } catch {
     // The merge is what mattered, and an unreadable `ls-remote` is not evidence of a survivor.
     return null;
@@ -1448,8 +1606,126 @@ export async function settle(pending, screen, opts = {}) {
   }
 }
 
+/** The `failing:` line's ceiling, so one long test id cannot itself carry the line over budget. */
+const FAILING_LINE_MAX = 200;
+
+/** The fenced excerpt's ceiling, which is what keeps `ciRedBody` inside its own 15-line budget. */
+const EXCERPT_LINES = 8;
+
+function failingLine(testIds) {
+  if (testIds.length === 0) return "failing: (no test ids parsed)";
+  const shown = [];
+  let used = 0;
+  for (const id of testIds) {
+    const width = (shown.length ? "; " : "").length + id.length;
+    if (shown.length > 0 && used + width > FAILING_LINE_MAX) break;
+    shown.push(id);
+    used += width;
+  }
+  const rest = testIds.length - shown.length;
+  return `failing: ${shown.join("; ")}${rest > 0 ? ` +${rest} more` : ""}`;
+}
+
+/**
+ * The CI-RED comment's exact shape, so `ciRedRounds` can count it and a fix round can read it
+ * without re-fetching the run. `shared` is `sharedPlan`'s line.
+ *
+ * @param {{sha: string, runUrl: string, failedStep?: string, testIds?: string[], excerpt?: string,
+ *   shared?: string}} args
+ */
+export function ciRedBody({ sha, runUrl, failedStep, testIds = [], excerpt = "", shared = "none" }) {
+  return [
+    `CI-RED ${sha}`,
+    `run: ${runUrl} · step: ${failedStep ?? "an unnamed step"}`,
+    failingLine(testIds),
+    `shared: ${shared}`,
+    "```",
+    ...excerpt.split("\n").slice(-EXCERPT_LINES),
+    "```",
+  ].join("\n");
+}
+
+/** Bounds each `gh` call `postCiRedOnce` makes, so a wedged one cannot stall the supervisor. */
+const CI_RED_TIMEOUT_MS = 30_000;
+
+/** Null when the tracker cannot be read, which is a reason to skip posting, never to post blind. */
+function readTicketComments(ticket, run, log) {
+  try {
+    return JSON.parse(
+      run("gh", ["issue", "view", String(ticket), "--json", "comments"], { timeout: CI_RED_TIMEOUT_MS }),
+    ).comments;
+  } catch (err) {
+    log(`CI-RED: could not read the tracker — ${String(err.message).split("\n")[0]}`);
+    return null;
+  }
+}
+
+/** Bounds the whole shared-red read, which may fetch one failed log per recent red run. */
+const SHARED_BUDGET_MS = 5 * 60_000;
+
+const ghVia = (run) => (args, until) =>
+  run("gh", args, { timeout: Math.max(1_000, Math.min(CI_RED_TIMEOUT_MS, until - Date.now())) });
+
+/**
+ * A red head's shared failure, as the `shared:` line of its CI-RED and what the supervisor does
+ * about it. A `known` issue is this ticket's only if the issue's own owner line names it; the
+ * CI-RED's `owned here` is display.
+ *
+ * @param {{kind: string, testId?: string, issue?: {number: number, title?: string, body?: string},
+ *   evidence?: {branch: string, url?: string}, landed?: boolean}} decision
+ * @param {{ticket: number, behind: boolean}} at
+ * @returns {{line: string, action: "update"|"claim"|"block"|null, issue?: number}}
+ */
+export function sharedPlan(decision, { ticket, behind }) {
+  const n = decision.issue?.number;
+  if (decision.kind === "none" || !Number.isInteger(n)) return { line: "none", action: null };
+  const ev = decision.evidence;
+  const where = ev ? ` (also red on ${[ev.branch, ev.url].filter(Boolean).join(" ")})` : "";
+  if (decision.landed) {
+    return behind
+      ? { line: `#${n}${where}`, action: "update", issue: n }
+      : { line: `#${n} owned here${where}`, action: "claim", issue: n };
+  }
+  if (decision.kind !== "known" || ts("./sharedRed.ts").ownerOf({ title: "", ...decision.issue }) === ticket) {
+    return { line: `#${n} owned here${where}`, action: null };
+  }
+  return { line: `#${n}${where}`, action: "block", issue: n };
+}
+
+/**
+ * Posted once per red head, checked against the tracker rather than a local marker: the fix
+ * session may run on another machine, or after a restart, and reads only the tracker.
+ */
+function postCiRedOnce(ticket, verdict, shared, comments, run, write, log) {
+  const sha = verdict.head;
+  if (!sha || !comments || ciRedPosted(comments, sha)) return;
+  const body = ciRedBody({
+    sha,
+    runUrl: `https://github.com/${REPO}/actions/runs/${verdict.runId}`,
+    failedStep: verdict.failedStep,
+    testIds: verdict.testIds ?? [],
+    excerpt: verdict.output,
+    shared,
+  });
+  try {
+    const file = ciRedNotePath(ticket);
+    write(file, body, "utf8");
+    run("gh", ["issue", "comment", String(ticket), "--body-file", file], { timeout: CI_RED_TIMEOUT_MS });
+  } catch (err) {
+    log(`CI-RED: could not post — ${String(err.message).split("\n")[0]}`);
+  }
+}
+
 export async function poll(pending, log, pause, deadline, io = {}) {
-  const { run = sh, verdictOf = readVerdict, write = writeFileSync, mkdir = mkdirSync } = io;
+  const {
+    run = sh,
+    verdictOf = (...args) => ts("./ciVerdict.ts").readVerdict(...args),
+    write = writeFileSync,
+    mkdir = mkdirSync,
+    shared = (mine, owner) =>
+      ts("./sharedRed.ts").checkShared({ repo: REPO, gh: ghVia(run), mine, owner, until: Date.now() + SHARED_BUDGET_MS }),
+  } = io;
+  const owner = { number: pending.ticket, branch: pending.branch };
   const left = { ...SETTLE_ROUNDS };
   const until = Date.now() + deadline;
   // Not unref'd, for the same reason `holdFor` is not: this is the only handle open while it waits.
@@ -1475,6 +1751,23 @@ export async function poll(pending, log, pause, deadline, io = {}) {
       if (next.action === "hand-back" && verdict.output && !verdict.logUnread) {
         mkdir(DIR, { recursive: true });
         write(ciLogPath(pending.ticket), verdict.output, "utf8");
+        const comments = readTicketComments(pending.ticket, run, log);
+        const decision = shared({ branch: pending.branch, testIds: verdict.testIds ?? [] }, owner);
+        if (decision.why) log(`shared red: ${decision.why}`);
+        const plan = sharedPlan(decision, { ticket: pending.ticket, behind: next.behind });
+        if (plan.action === "update") {
+          next = { action: "update-branch", reason: `#${plan.issue}'s fix is on main` };
+        } else {
+          if (plan.action === "claim") {
+            try {
+              ts("./sharedRed.ts").claimShared(REPO, ghVia(run), decision, owner, Date.now() + CI_RED_TIMEOUT_MS);
+            } catch (err) {
+              log(`shared red: could not reopen #${plan.issue} — ${String(err.message).split("\n")[0]}`);
+            }
+          }
+          postCiRedOnce(pending.ticket, verdict, plan.line, comments, run, write, log);
+          if (plan.action === "block") next = { ...next, blockedBy: plan.issue };
+        }
       }
     } catch (err) {
       // `gh` refusing, a rate limit, or anything that is not JSON. The ticket is pushed and its
@@ -1486,7 +1779,7 @@ export async function poll(pending, log, pause, deadline, io = {}) {
       left.update -= 1;
       log("main moved — updating the branch and reading CI again");
       try {
-        run("gh", ["pr", "update-branch", String(pending.pr)]);
+        run("gh", ["pr", "update-branch", String(pending.pr)], { timeout: CI_RED_TIMEOUT_MS });
       } catch (err) {
         return { action: "owner", reason: `could not update the branch — ${String(err.message).split("\n")[0]}` };
       }
@@ -1530,7 +1823,7 @@ export async function poll(pending, log, pause, deadline, io = {}) {
         return { action: "owner", reason: `the merge failed — ${String(err.message).split("\n")[0]}` };
       }
     }
-    return next;
+    return next.action === "hand-back" ? { ...next, head: verdict.head ?? null } : next;
   }
 }
 
@@ -1554,11 +1847,8 @@ const standing = () => {
 /**
  * What the supervisor knows about the session that just exited.
  *
- * The session's own `LOOP-RESULT` first, `derive()` second. That order is the whole of the fix:
- * derive is right for *resuming* a run nobody told you about and wrong for *closing* one that just
- * told you, because every channel it reads — the worktree, its branch, its diff, its dirt — is
- * something phase F is separately instructed to delete. The two disagree only when the declaration
- * is missing, and then derive is all there is.
+ * The session's own `LOOP-RESULT` first, `derive()` second, which is all there is when the
+ * declaration is missing.
  *
  * @param {{declared: object|null, phase: string|null}} run
  * @param {object|null} derived
@@ -1579,6 +1869,32 @@ export function afterSession(run, derived) {
 }
 
 /**
+ * The one way a ticket is handed to the owner, and its one `parked` row: the row closes the
+ * ledger window `ticketTally` counts from, so a park that writes none leaves the next claim
+ * inheriting this one's rounds and spend.
+ *
+ * @param {object} io
+ * @param {number} number
+ * @param {{phase: string, why: string, log: string, cwd: string|null, branch: string|null,
+ *   dirty: boolean, run?: object, pr?: number|null, files?: number}} ctx `run` only when this park
+ *   is the session's own row; otherwise its cost is already recorded and the row carries none.
+ */
+export function parkAndRecord(io, number, { run = null, pr = null, files = 0, ...ctx }) {
+  io.bell();
+  io.park(number, ctx);
+  io.record({
+    number,
+    outcome: "parked",
+    why: ctx.why,
+    run: run ?? { result: null, ms: 0, log: ctx.log, phases: {} },
+    pr,
+    files,
+    counts: true,
+  });
+  return { outcome: "parked", ticket: number, why: ctx.why };
+}
+
+/**
  * One ticket, start to finish. Serialised deliberately: overlapping the next ticket with the last
  * one's CI wait buys ~22% wall clock and costs pending state nothing recovers when the process
  * dies, a worktree released under a live `derive()`, and two sessions cutting branches from a
@@ -1586,36 +1902,104 @@ export function afterSession(run, derived) {
  *
  * @param {object} io
  * @param {number|null} [pinned] a ticket a previous pass handed back unfinished
- * @param {number} [roundsUsed] red CI rounds this ticket has already had
  * @param {string|null} [at] the phase a handoff said the next process starts at
- * @returns {Promise<{outcome: "landed"|"parked"|"stop"|"hold"|"retry"|"refused"|"handoff",
+ * @returns {Promise<{outcome: "landed"|"parked"|"stop"|"hold"|"retry"|"refused"|"handoff"|"blocked",
  *   ticket?: number, why?: string, until?: number, cwd?: string|null, branch?: string|null,
- *   pr?: number, files?: number, phase?: string, run?: any}>}
+ *   pr?: number, files?: number, phase?: string, run?: any, size?: string|null, tally?: any}>}
  */
-export async function runOnce(io, pinned = null, roundsUsed = 0, at = null) {
+export async function runOnce(io, pinned = null, at = null) {
   if (io.stopFile()) return { outcome: "stop", why: ".loop-stop" };
-  if (!io.syncCheckout()) return { outcome: "stop", why: "the shared checkout is not usable" };
+  if (!io.syncCheckout(pinned)) return { outcome: "stop", why: "the shared checkout is not usable" };
   // Exit 2 is "this machine cannot start a ticket *now*" — drift, a peer's dirt, memory. Every one
   // of those clears on its own, including the drift the loop's own merge of a lockfile creates.
   const pre = io.queuePre();
   if (pre === 2) return { outcome: "hold", why: "queue-pre is not ready for a ticket yet" };
   if (pre !== 0) return { outcome: "stop", why: `queue-pre exited ${pre}` };
 
-  const route = io.pick(pinned, at);
+  let route = io.pick(pinned, at);
+  if (route.skill === "closed") {
+    io.teardown(route.cwd, route.number);
+    const stillPinned = pinned !== null && pinned !== route.number;
+    route = io.pick(stillPinned ? pinned : null, stillPinned ? at : null);
+    if (route.skill === "closed") return { outcome: "stop", why: `#${route.number} is closed and its worktree still stands` };
+  }
   if (route.skill === "handoff") return { outcome: "stop", why: route.title };
   if (route.skill === "ambiguous") return { outcome: "stop", why: route.title };
+  let tally = io.tally(route.number);
+  const size = route.size ?? null;
 
-  const run = await io.spawn(route);
+  if (route.fix) {
+    const parkFix = (why) =>
+      parkAndRecord(io, route.number, {
+        phase: "C",
+        why,
+        log: streamLog(route.number),
+        cwd: route.cwd ?? null,
+        branch: route.branch ?? null,
+        dirty: route.dirty ?? false,
+      });
+    if (route.head && route.head !== tally.lastRedHead) {
+      if (Math.max(tally.retries + 1, tally.ciRounds ?? 0) >= CI_ROUNDS) {
+        return parkFix(`${CI_ROUNDS} CI rounds on the same branch did not go green — the last one while the loop was down`);
+      }
+      io.record({
+        number: route.number,
+        outcome: "retry",
+        why: "CI went red while the loop was down",
+        run: { result: null, ms: 0, log: streamLog(route.number), phases: {} },
+        counts: false,
+        head: route.head,
+      });
+      tally = io.tally(route.number);
+    }
+    try {
+      io.refreshWorktree(route.cwd, route.branch);
+    } catch (err) {
+      return parkFix(
+        `could not fast-forward the worktree before the fix round — ${String(err.stderr || err.message).trim().split("\n")[0]}`,
+      );
+    }
+  }
+
+  const settling = route.phase === "G";
+  if (settling) io.announce(route);
+  const run = settling
+    ? { status: 0, result: null, declared: null, ms: 0, log: streamLog(route.number), phase: "G", phases: {} }
+    : await io.spawn({
+        ...route,
+        retryCount: Math.max(tally.retries, tally.ciRounds ?? 0),
+        reason: route.phase === tally.lastHandoff ? tally.handoffWhy : null,
+      });
 
   const dirtied = io.sharedCheckoutDirty?.();
   if (dirtied) io.log(`#${route.number}'s session left the shared checkout dirty:\n${dirtied}`, "session");
 
   const after = afterSession(run, io.standing());
+  if (run.wrongModel) {
+    return parkAndRecord(io, route.number, {
+      phase: after?.phase ?? route.phase ?? "A",
+      why: run.wrongModel,
+      log: run.log,
+      cwd: after?.cwd ?? null,
+      branch: after?.branch ?? null,
+      dirty: after?.dirty ?? false,
+      run,
+    });
+  }
   // Before the pull request is looked for: a session that handed off has not pushed and is not
   // finished, and every reading below is about a session that meant to be its ticket's last.
-  const handoff = handoffOf(run);
+  let handoff = handoffOf(run);
+  let because = null;
+  if (handoff === "D" && after?.phase === "C" && !io.buildPassed(after?.cwd ?? null)) {
+    io.log(`#${route.number} handed off to review with no local pass on a clean HEAD — back to C`, "build");
+    handoff = "C";
+    because = "the D handoff had no local pass on a clean HEAD: commit, agent:check, then loop-gate --build";
+  } else if (handoff === "C" && after?.phase === "E") {
+    because = "phase E's agent:check was red: fix what it names, then go through D again";
+  }
   if (handoff) {
-    io.record({ number: route.number, outcome: "handoff", why: `phase ${handoff} next`, run, counts: false });
+    const why = `phase ${handoff} next${because ? ` — ${because}` : ""}`;
+    io.record({ number: route.number, outcome: "handoff", why, run, counts: false });
     // The worktree comes with it: a handoff leaves one standing on purpose, so a park that does not
     // carry it leaves `derive()` a live run to resume — the ticket it just handed to the owner.
     return {
@@ -1623,11 +2007,12 @@ export async function runOnce(io, pinned = null, roundsUsed = 0, at = null) {
       ticket: route.number,
       phase: handoff,
       run,
+      size,
       cwd: after?.cwd ?? null,
       branch: after?.branch ?? null,
     };
   }
-  const pr = io.pushedPr(after?.branch ?? null, route.number, run.declared?.pr ?? null, Date.now() - run.ms);
+  const pr = io.pushedPr(after?.branch ?? null, route.number, run.declared?.pr ?? null, settling ? 0 : Date.now() - run.ms);
   // `blocked` is advisory, checked here rather than before the pull request is looked for: a
   // session refused mid-run that recovered and pushed has done its half, and reporting it refused
   // stranded the branch and left the claim on.
@@ -1645,27 +2030,27 @@ export async function runOnce(io, pinned = null, roundsUsed = 0, at = null) {
     return { outcome: "refused", ticket: route.number, until: run.blockedUntil ?? 0, run };
   }
 
-  const reason = reasonFor(run, after, route.number);
+  const reason =
+    settling && !pr
+      ? { why: "phase G found no open pull request for the pushed head", hard: false }
+      : reasonFor(run, after, route.number);
   const decided = outcomeOf({ pr, reason });
-  // The pull request's own count when the worktree is gone: phase F removes it before it declares,
-  // so `derive()` reads no diff at all and every landed ticket was recorded as touching 0 files.
+  // The pull request's own count when derive() read no worktree.
   const files = after?.changed?.length || pr?.changedFiles || 0;
 
-  const handBack = (why, phase, log = run.log) => {
-    // A park is only ever a decision the owner has to make, which is the whole of what the bell is
-    // for. Not a landing, not a retry, not a settle failure.
-    io.bell();
-    io.park(route.number, {
+  let billed = run;
+  const handBack = (why, phase, log = billed.log, standing = true) =>
+    parkAndRecord(io, route.number, {
       phase,
       why,
       log,
-      cwd: after?.cwd ?? null,
+      cwd: standing ? (after?.cwd ?? null) : null,
       branch: after?.branch ?? null,
-      dirty: after?.dirty ?? false,
+      dirty: standing && (after?.dirty ?? false),
+      run: billed,
+      pr: decided.pr ?? null,
+      files,
     });
-    io.record({ number: route.number, outcome: "parked", why, run, pr: decided.pr ?? null, files });
-    return { outcome: "parked", ticket: route.number, why };
-  };
 
   if (decided.action === "park") return handBack(decided.why, after?.phase ?? "?");
 
@@ -1675,15 +2060,20 @@ export async function runOnce(io, pinned = null, roundsUsed = 0, at = null) {
     return { outcome: "landed", ticket: route.number };
   }
 
+  // The session's own row, before a wait the supervisor may not survive: every row below is the
+  // land alone, so a restarted G pass adds its clock and never the session's cost a second time.
+  if (!settling) {
+    const head = pr?.sha ?? null;
+    io.record({ number: route.number, outcome: "pushed", why: "CI next", run, pr: decided.pr, files, counts: false, head });
+    billed = { result: null, ms: 0, log: run.log, phases: {} };
+  }
   const landFrom = Date.now();
   const settled = await io.settle({
     ticket: route.number,
     pr: decided.pr,
     branch: after?.branch ?? pr.head,
   });
-  // The land is the ticket's longest stretch and the session that built it has already exited, so
-  // the row's clock is the only place it can be counted. Every exit below records from `run.ms`.
-  run.ms += Date.now() - landFrom;
+  billed.ms += Date.now() - landFrom;
   const cost = settleOutcome(settled);
 
   // Every exit from a settle that did not merge and is not a fix round goes through `park` — the
@@ -1692,10 +2082,33 @@ export async function runOnce(io, pinned = null, roundsUsed = 0, at = null) {
   // good, which is a ticket nothing will ever return to.
   if (cost.handBack) return handBack(settled.reason, "E");
 
+  if (settled.blockedBy) {
+    const why = `blocked by #${settled.blockedBy}, a failure shared with another branch whose fix is not on main`;
+    try {
+      io.block(route.number, settled.blockedBy, after?.cwd ?? null);
+    } catch (err) {
+      const gone = err.removed ? "; the worktree is already gone, so the ticket is safe to rebuild" : "";
+      const failed = String(err.message).split("\n")[0];
+      return handBack(`${why}, and the block could not be recorded — ${failed}${gone}`, "E", run.log, !err.removed);
+    }
+    io.record({
+      number: route.number,
+      outcome: "blocked",
+      why,
+      run: billed,
+      pr: decided.pr,
+      files,
+      counts: false,
+      head: settled.head ?? pr?.sha ?? null,
+    });
+    return { outcome: "blocked", ticket: route.number, why };
+  }
+
   // A ticket that cannot go green is not the loop's to keep paying for, and the ceiling is checked
   // here rather than by the caller so that a ticket which runs out of rounds takes the same exit as
   // every other hand-back: one park, one row, one release of the claim. Counted from the round this
   // session is, so the last red round is a park rather than a retry nothing comes back to.
+  const roundsUsed = Math.max(tally.retries, tally.ciRounds ?? 0);
   if (cost.recorded === "retry" && roundsUsed + 1 >= CI_ROUNDS) {
     return handBack(
       `${CI_ROUNDS} CI rounds on the same branch did not go green — last: ${settled.reason}`,
@@ -1710,11 +2123,12 @@ export async function runOnce(io, pinned = null, roundsUsed = 0, at = null) {
     number: route.number,
     outcome: cost.recorded,
     why: settled.reason,
-    run,
+    run: billed,
     pr: decided.pr,
     merged: cost.recorded === "landed",
     files,
     counts: cost.recorded !== "retry",
+    head: settled.head ?? pr?.sha ?? null,
   });
   // The worktree and the run come with it: the next round works in that worktree.
   if (cost.recorded === "retry") {
@@ -1727,9 +2141,11 @@ export async function runOnce(io, pinned = null, roundsUsed = 0, at = null) {
       pr: decided.pr,
       // What the next round is judged against: a round that leaves this where it was cannot change
       // what CI answers, so `main` refuses to spend one on it.
-      sha: pr?.sha ?? null,
+      sha: settled.head ?? pr?.sha ?? null,
       files,
       run,
+      size,
+      tally,
     };
   }
   io.teardown(after?.cwd ?? null, route.number);
@@ -1741,13 +2157,15 @@ function realIo(book, screen) {
   // The queue as the *previous* pick read it. The direction is what a night is made of, and this
   // is the one reading that costs nothing — the next pick is being made anyway.
   let before = null;
+  let picked = null;
   return {
     stopFile: () => takeStopFile(fs, STOP_FILE),
-    syncCheckout: () => syncCheckout(git, (m) => screen.notice("checkout", m)),
+    syncCheckout: (pinned) => syncCheckout(git, (m) => screen.notice("checkout", m), undefined, { pinned }),
     queuePre: () =>
       spawnSync(process.execPath, [HERE + "/queue-pre.mjs"], { stdio: "inherit" }).status ?? 1,
     pick: (pinned, at) => {
       const route = nextRoute(pinned, at);
+      picked = route;
       if (route.resuming) return route;
       if (before) screen.say(queueLine(before, route.queue, screen.theme));
       before = route.queue;
@@ -1783,16 +2201,37 @@ function realIo(book, screen) {
         queue: route.queue,
         size: route.size,
         at: route.resuming ? (route.phase ?? "C") : null,
+        fix: Boolean(route.fix),
+        retryCount: route.retryCount ?? 0,
+        reason: route.reason ?? null,
         screen,
       });
     },
+    announce: (route) => {
+      if (screen.needsHeader(route.number)) {
+        screen.say(header({ number: route.number, ...ticketFacts(route.number), queue: route.queue }, screen.theme));
+      }
+      screen.say(phaseRow({ letter: "G", detail: "resumed", ms: 0, state: "resumed" }, screen.theme));
+    },
+    block: (number, blocker, cwd) => blockOnShared(number, blocker, cwd && fs.existsSync(cwd) ? cwd : null),
+    buildPassed: (cwd) => {
+      try {
+        return Boolean(cwd) && buildPassed(cwd);
+      } catch {
+        return false;
+      }
+    },
+    // A fresh pick has no CI rounds: its claim comment is newer than any CI-RED before it.
+    tally: (n) => ({
+      ...ticketTally(n, readLedger()),
+      ciRounds: picked?.number === n ? (picked.ciRounds ?? 0) : 0,
+    }),
     standing,
+    refreshWorktree: (cwd, branch) => refreshWorktree(cwd, branch),
     pushedPr,
     settle: (pending) => settle(pending, screen),
     park,
     /**
-     * Phase F removes its own worktree; this covers the paths where the session never got there.
-     *
      * **The claim comes off here, and nowhere else on the success paths.** Releasing it beside each
      * teardown call meant an exit path could take one without the other, and one did: a settle that
      * ended in a verdict nothing recognised wrote its row, removed the worktree and returned, with
@@ -1811,7 +2250,7 @@ function realIo(book, screen) {
       }
       if (!cwd || !fs.existsSync(cwd)) return;
       try {
-        sh("npm", ["run", "worktrees:remove", "--", cwd]);
+        removeLanded(cwd, number, { say: (m) => screen.notice("worktree", m) });
       } catch {
         screen.notice("worktree", `${cwd} is still standing — derive() will read it as a live run`);
       }
@@ -1824,8 +2263,9 @@ function realIo(book, screen) {
      * CI fix round and a usage refusal are sessions that spent money without one — and it changes
      * only which counter moves, never whether the money is recorded.
      */
-    record: ({ number, outcome, why, run, pr = null, merged = false, files = 0, counts = true }) => {
+    record: ({ number, outcome, why, run, pr = null, merged = false, files = 0, counts = true, head = null }) => {
       const facts = ticketFacts(number);
+      const cost = windowCost({ n: number, outcome, own: run.result?.cost ?? 0 }, readLedger());
       screen.say(
         closing({
           outcome: outcome === "landed" ? "merged" : outcome,
@@ -1833,7 +2273,7 @@ function realIo(book, screen) {
           files,
           turns: run.result?.turns ?? 0,
           ms: run.ms,
-          cost: run.result?.cost ?? 0,
+          cost,
           why: why ?? undefined,
           log: outcome === "landed" ? undefined : run.log,
         },
@@ -1847,7 +2287,7 @@ function realIo(book, screen) {
           outcome,
           // The sentence, not the outcome: a park written by a turn cap, one written by a review
           // deadlock and one written by a genuine blocker were the same four characters in the file.
-          parkReason: outcome === "landed" || outcome === "retry" ? null : (why ?? null),
+          parkReason: parkReasonOf(outcome, why),
           pr,
           phases: run.phases ?? {},
           result: run.result,
@@ -1860,6 +2300,7 @@ function realIo(book, screen) {
           usage: run.usage ?? null,
           committed: run.committed ?? null,
           soloBash: run.soloBash ?? null,
+          head,
         },
         {
           runId: RUN_ID,
@@ -1871,7 +2312,7 @@ function realIo(book, screen) {
               outcome,
               pr,
               ms: run.ms,
-              cost: run.result?.cost ?? 0,
+              cost,
               why: why ?? undefined,
             },
             PLAIN(),
@@ -1915,15 +2356,8 @@ export async function main({
   let failures = 0;
   let waits = 0;
   let holds = 0;
-  /** The ticket a red CI round handed back, and how many rounds it has had. */
+  /** The ticket a red CI round or a handoff handed back. Its counts are the ledger's. */
   let pinned = null;
-  let rounds = 0;
-  let handoffs = 0;
-  let nextPhase = null;
-  /** What the pinned ticket has cost across every process it has been spawned as. */
-  let spent = 0;
-  /** The head the last red round was judged on, so a round that moved nothing is not spent. */
-  let lastSha = null;
 
   install(screen);
   io ??= realIo(book, screen);
@@ -1967,21 +2401,28 @@ export async function main({
     let pass;
     claimed = null;
     try {
-      pass = await runOnce(watched, pinned, rounds, nextPhase);
+      pass = await runOnce(watched, pinned, pinned ? io.tally(pinned).lastHandoff : null);
     } catch (err) {
       screen.warn(`queue-loop: the iteration threw — ${String(err?.stack ?? err)}`);
       // No row: there is no run to write one from, and inventing one is how the ledger came to be
       // trusted while wrong. The claim is the part that strands the ticket, and it comes off here.
       if (claimed !== null) {
         try {
-          io.bell();
-          io.park(claimed, {
+          let own = null;
+          try {
+            const at = io.standing();
+            own = at?.ticket === claimed ? at : null;
+          } catch {
+            const kept = path.join(ROOT, WORKTREE_DIR, `agent-${claimed}`);
+            own = fs.existsSync(kept) ? { cwd: kept, branch: null, dirty: false } : null;
+          }
+          parkAndRecord(io, claimed, {
             phase: "?",
             why: `the loop threw: ${String(err?.message ?? err)}`,
             log: streamLog(claimed),
-            cwd: null,
-            branch: null,
-            dirty: false,
+            cwd: own?.cwd ?? null,
+            branch: own?.branch ?? null,
+            dirty: own?.dirty ?? false,
           });
         } catch (unparked) {
           screen.notice("claim", `#${claimed} is still claimed — ${String(unparked?.message ?? unparked)}`);
@@ -2023,91 +2464,53 @@ export async function main({
       continue;
     }
 
+    const giveUp = (why) => {
+      parkAndRecord(io, pass.ticket, {
+        phase: pass.phase ?? "E",
+        why,
+        log: pass.run.log,
+        cwd: pass.cwd ?? null,
+        branch: pass.branch ?? null,
+        dirty: false,
+      });
+      pinned = null;
+      failures += 1;
+      return shouldHalt(failures);
+    };
+    const halted = () => finish(1, `${failures} tickets in a row did not land`);
+
     // A red CI round is the same ticket again, not the next one: the picker would leave this one
     // labelled `in-progress` with an open pull request and take a different ticket, and nothing
     // would ever come back to it. `runOnce` owns the ceiling, so reaching here means there is
     // another round to spend.
-    if (pass.outcome === "handoff") {
-      const cost = pass.run.result?.cost ?? 0;
-      spent = pass.ticket === pinned ? spent + cost : cost;
-      handoffs = pass.ticket === pinned ? handoffs + 1 : 1;
-      pinned = pass.ticket;
-      nextPhase = pass.phase;
-      if (overSpend(spent, pass.run.size ?? null)) {
-        io.bell();
-        io.park(pass.ticket, {
-          phase: pass.phase,
-          why: `$${spent.toFixed(2)} across ${handoffs + 1} processes — over this ticket's ceiling`,
-          log: pass.run.log,
-          cwd: pass.cwd,
-          branch: pass.branch,
-          dirty: false,
-        });
-        pinned = null;
-        nextPhase = null;
-        handoffs = 0;
-        spent = 0;
-        failures += 1;
-        if (shouldHalt(failures)) return finish(1, `${failures} tickets in a row did not land`);
-        continue;
-      }
-      if (overHandoffs(handoffs)) {
-        io.park(pinned, {
-          phase: pass.phase,
-          why: `${handoffs} phase handoffs on one ticket`,
-          log: pass.run.log,
-          cwd: pass.cwd,
-          branch: pass.branch,
-          dirty: false,
-        });
-        pinned = null;
-        nextPhase = null;
-        handoffs = 0;
-        spent = 0;
-        failures += 1;
-        if (shouldHalt(failures)) return finish(1, `${failures} tickets in a row did not land`);
-        continue;
-      }
-      continue;
-    }
-
-    if (pass.outcome === "retry") {
+    if (pass.outcome === "handoff" || pass.outcome === "retry") {
       // A round that left the head where it found it cannot change what CI answers, so spending the
-      // next one on it buys nothing. #1028 spent two — five turns of phase A and a close, twice —
-      // and the park at the end was the first anyone heard of it.
-      if (pass.ticket === pinned && pass.sha && pass.sha === lastSha) {
-        io.bell();
-        io.park(pass.ticket, {
-          phase: "E",
-          why: `the fix round pushed no commit — CI would answer ${pass.why} again`,
-          log: pass.run.log,
-          cwd: pass.cwd ?? null,
-          branch: pass.branch ?? null,
-          dirty: false,
-        });
-        pinned = null;
-        rounds = 0;
-        spent = 0;
-        handoffs = 0;
-        nextPhase = null;
-        lastSha = null;
-        failures += 1;
-        if (shouldHalt(failures)) return finish(1, `${failures} tickets in a row did not land`);
+      // next one on it buys nothing.
+      if (pass.outcome === "retry" && pass.sha && pass.sha === pass.tally?.lastRedHead) {
+        if (giveUp(`the fix round pushed no commit — CI would answer ${pass.why} again`)) return halted();
         continue;
       }
-      rounds = pass.ticket === pinned ? rounds + 1 : 1;
-      if (pass.ticket !== pinned) spent = 0;
       pinned = pass.ticket;
-      lastSha = pass.sha ?? null;
-      screen.say(`  🔁 #${pass.ticket} ${pass.why} — fix round ${rounds + 1}/${CI_ROUNDS}`);
+      const tally = io.tally(pass.ticket);
+      if (overSpend(tally.spend, pass.size ?? null)) {
+        const why = `$${tally.spend.toFixed(2)} across ${tally.sessions} processes — over this ticket's ceiling`;
+        if (giveUp(why)) return halted();
+        continue;
+      }
+      if (overHandoffs(tally.handoffsThisRound)) {
+        if (giveUp(`${tally.handoffsThisRound} phase handoffs on one ticket`)) return halted();
+        continue;
+      }
+      if (pass.outcome === "retry") {
+        screen.say(`  🔁 #${pass.ticket} ${pass.why} — fix round ${tally.retries + 1}/${CI_ROUNDS}`);
+      }
       continue;
     }
     pinned = null;
-    rounds = 0;
-    handoffs = 0;
-    spent = 0;
-    nextPhase = null;
-    lastSha = null;
+    if (pass.outcome === "blocked") {
+      screen.say(`  ⏸ #${pass.ticket} ${pass.why}`);
+      continue;
+    }
     if (pass.outcome === "landed") {
       failures = 0;
       // Only a landing clears the refusal counter. Cleared on any non-refused outcome, refusals

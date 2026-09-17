@@ -6,7 +6,7 @@ import { mkdtempSync, rmSync, mkdirSync, appendFileSync, writeFileSync } from "n
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { MAX_REVIEW_ROUNDS, roundVerdict, pushVerdict } from "../loop-gate.mjs";
+import { MAX_REVIEW_ROUNDS, roundVerdict, pushVerdict, buildPassed } from "../loop-gate.mjs";
 
 /**
  * Phase E branches on this command's exit code, so the exit code is what is asserted — never a
@@ -359,7 +359,8 @@ describe("a LAND is only as good as the report behind it", () => {
     onTicket: true, ticket: 1, branch: "agent/1-x", phase: "E" as const, commits: 1,
     changed: ["a.ts"], head: "abc1234def", base: "origin/main", cwd: ".", dirty: false,
     trackerReadable: true, reviewRounds: 1, why: "reviewed and cleared",
-    verdict: { decision: "LAND", line: "VERDICT: LAND abc1234" }, review: null, ...extra,
+    verdict: { decision: "LAND", line: "VERDICT: LAND abc1234" }, review: null,
+    ci: null, fix: false, ciRounds: 0, ...extra,
   });
 
   test("a LAND with no review report on the issue is refused", () => {
@@ -428,4 +429,61 @@ describe("the review-round cap", () => {
     assert.equal(at.code, 1, at.out);
     assert.match(at.out, /the cap is/);
   });
+});
+
+describe("--build gates review on a cached local pass", () => {
+  function head(wt: string): string {
+    return execFileSync("git", ["rev-parse", "HEAD"], { cwd: wt, encoding: "utf8" }).trim();
+  }
+  function cachePath(wt: string): string {
+    const gitDir = execFileSync("git", ["rev-parse", "--absolute-git-dir"], { cwd: wt, encoding: "utf8" }).trim();
+    return join(gitDir, "agent-check-cache.json");
+  }
+  function writeCache(wt: string, entry: Record<string, unknown>) {
+    writeFileSync(cachePath(wt), JSON.stringify({ k: entry }));
+  }
+
+  test("no cache at all refuses", () => {
+    const wt = worktree("agent/9900040-build-nocache");
+    commit(wt, "docs/probe.md");
+    assert.equal(buildPassed(wt), false);
+    const { code, out } = gate(wt, [], BASE, wt, ["--build"]);
+    assert.equal(code, 1, out);
+    assert.match(out, /no cached LOCAL PASS/);
+  });
+
+  test("a cache entry for a different head refuses", () => {
+    const wt = worktree("agent/9900041-build-otherhead");
+    commit(wt, "docs/probe.md");
+    writeCache(wt, { pass: true, head: "0".repeat(40), clean: true });
+    assert.equal(buildPassed(wt), false);
+  });
+
+  test("a passing cache entry for HEAD, on a clean tree, is accepted", () => {
+    const wt = worktree("agent/9900042-build-pass");
+    commit(wt, "docs/probe.md");
+    writeCache(wt, { pass: true, head: head(wt), clean: true });
+    assert.equal(buildPassed(wt), true);
+    const { code, out } = gate(wt, [], BASE, wt, ["--build"]);
+    assert.equal(code, 0, out);
+  });
+
+  test("a dirty tree refuses even with a passing cache entry for HEAD", () => {
+    const wt = worktree("agent/9900043-build-dirty");
+    commit(wt, "docs/probe.md");
+    writeCache(wt, { pass: true, head: head(wt), clean: true });
+    appendFileSync(join(wt, "docs", "probe.md"), "uncommitted\n");
+    assert.equal(buildPassed(wt), false);
+    const { code } = gate(wt, [], BASE, wt, ["--build"]);
+    assert.equal(code, 1);
+  });
+});
+
+test("--fix-delta prints the size of a fix round's own diff", () => {
+  const wt = worktree("agent/9900044-fixdelta");
+  const land = execFileSync("git", ["rev-parse", "HEAD"], { cwd: wt, encoding: "utf8" }).trim();
+  commit(wt, "docs/probe.md");
+  const { code, out } = gate(wt, [], BASE, wt, ["--fix-delta", land]);
+  assert.equal(code, 0, out);
+  assert.deepEqual(JSON.parse(out.trim()), { files: 1, lines: 2 });
 });
