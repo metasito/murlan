@@ -1,12 +1,16 @@
 import { Platform } from "react-native";
 import Constants from "expo-constants";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { apiRequest } from "@/lib/query-client";
+import { PENDING_CRASH_REPORTS_KEY } from "@/lib/storageKeys";
 
 const MESSAGE_MAX = 500;
 const STACK_MAX = 4000;
 const SCREEN_MAX = 120;
 /** Two reports of the same thing inside this window are one report. */
 const DEDUP_MS = 10_000;
+
+export const PENDING_CRASH_REPORTS_MAX = 5;
 
 const APP_VERSION = Constants.expoConfig?.version ?? undefined;
 
@@ -43,6 +47,48 @@ function alreadyReported(error: unknown, signature: string, now: number): boolea
   return false;
 }
 
+type CrashReport = Record<string, unknown>;
+
+let pendingWrite: Promise<void> = Promise.resolve();
+
+/** Serialised: two crashes failing at once must not both read the same list. */
+function updatePending(change: (reports: CrashReport[]) => CrashReport[]): Promise<void> {
+  pendingWrite = pendingWrite
+    .then(async () => {
+      const stored: unknown = JSON.parse((await AsyncStorage.getItem(PENDING_CRASH_REPORTS_KEY)) ?? "[]");
+      const next = change(Array.isArray(stored) ? stored : []).slice(-PENDING_CRASH_REPORTS_MAX);
+      await AsyncStorage.setItem(PENDING_CRASH_REPORTS_KEY, JSON.stringify(next));
+    })
+    .catch(() => {});
+  return pendingWrite;
+}
+
+/**
+ * The endpoint requires a session (`server/routes.ts`), so a crash while signed
+ * out or offline is refused; it waits on the device for the next sign-in.
+ */
+function send(report: CrashReport): Promise<void> {
+  let posted: Promise<unknown>;
+  try {
+    posted = apiRequest("POST", "/api/client-errors", report);
+  } catch (err) {
+    posted = Promise.reject(err);
+  }
+  return posted.then(
+    () => {},
+    () => updatePending((reports) => [...reports, report])
+  );
+}
+
+export async function flushPendingCrashReports(): Promise<void> {
+  let taken: CrashReport[] = [];
+  await updatePending((reports) => {
+    taken = reports;
+    return [];
+  });
+  await Promise.all(taken.map(send));
+}
+
 /** The schema accepts these three and rejects anything else. */
 function reportablePlatform(): "ios" | "android" | "web" | undefined {
   return Platform.OS === "ios" || Platform.OS === "android" || Platform.OS === "web"
@@ -68,14 +114,14 @@ export function reportError(error: unknown, componentStack?: string): boolean {
     const stack = typeof thrown?.stack === "string" ? thrown.stack.slice(0, STACK_MAX) : undefined;
     if (alreadyReported(error, `${message} @@ ${stack ?? ""}`, Date.now())) return false;
 
-    void apiRequest("POST", "/api/client-errors", {
+    void send({
       message,
       stack,
       componentStack: componentStack?.slice(0, STACK_MAX),
       screen: currentScreen?.slice(0, SCREEN_MAX),
       platform: reportablePlatform(),
       appVersion: APP_VERSION,
-    }).catch(() => {});
+    });
     return true;
   } catch {
     return false;
@@ -101,17 +147,12 @@ const CLIENT_ONLY_CLOSE_REASONS = new Set(["transport error", "parse error"]);
 
 export function reportSocketClose(reason: string): void {
   if (!CLIENT_ONLY_CLOSE_REASONS.has(reason)) return;
-  try {
-    void apiRequest("POST", "/api/client-errors", {
-      message: `socket disconnect: ${reason}`,
-      screen: currentScreen?.slice(0, SCREEN_MAX),
-      platform: reportablePlatform(),
-      appVersion: APP_VERSION,
-    }).catch(() => {});
-  } catch {
-    // Called straight from a socket "disconnect" handler — never allowed to
-    // throw back into it.
-  }
+  void send({
+    message: `socket disconnect: ${reason}`,
+    screen: currentScreen?.slice(0, SCREEN_MAX),
+    platform: reportablePlatform(),
+    appVersion: APP_VERSION,
+  });
 }
 
 type GlobalHandler = (error: unknown, isFatal?: boolean) => void;

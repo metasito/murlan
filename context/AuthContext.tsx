@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, ReactNode } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { flushPendingCrashReports } from "@/lib/errorReporting";
 import NetInfo from "@react-native-community/netinfo";
 import { apiRequest, getApiUrl } from "@/lib/query-client";
 import { registerForPush, unregisterForPush } from "@/lib/pushRegistration";
@@ -136,6 +137,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       unsubscribe?.();
     };
   }, []);
+
+  const userId = user?.id;
+  useEffect(() => {
+    if (userId) void flushPendingCrashReports();
+  }, [userId]);
 
   const login = useCallback(async (username: string, password: string) => {
     const res = await apiRequest("POST", "/api/auth/login", { username, password });

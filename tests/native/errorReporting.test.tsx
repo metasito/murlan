@@ -11,13 +11,18 @@ jest.mock('@/lib/query-client', () => ({
   getApiUrl: () => 'http://localhost',
 }));
 
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
+  PENDING_CRASH_REPORTS_MAX,
+  flushPendingCrashReports,
   installGlobalErrorHandlers,
   reportError,
   reportSocketClose,
   setCurrentScreen,
   resetErrorReportingForTests,
 } from '@/lib/errorReporting';
+
+import { PENDING_CRASH_REPORTS_KEY } from '@/lib/storageKeys';
 
 const apiRequest = (require('@/lib/query-client') as { apiRequest: jest.Mock }).apiRequest;
 
@@ -171,6 +176,41 @@ describe('reportSocketClose', () => {
     });
 
     expect(() => reportSocketClose('transport error')).not.toThrow();
+  });
+});
+
+describe('a report the server never took', () => {
+  const refused = () => Promise.reject(new Error('401: sign in first'));
+  const kept = async () =>
+    JSON.parse((await AsyncStorage.getItem(PENDING_CRASH_REPORTS_KEY)) ?? '[]') as { message: string }[];
+  const eventually = async (check: () => Promise<boolean>) => {
+    for (let i = 0; i < 50 && !(await check()); i++) await new Promise((r) => setTimeout(r, 0));
+  };
+
+  beforeEach(() => AsyncStorage.clear());
+
+  it('is kept on the device and sent after the next sign-in', async () => {
+    apiRequest.mockImplementationOnce(refused);
+    reportError(new Error('signed-out crash'));
+    await eventually(async () => (await kept()).length > 0);
+    expect((await kept()).map((r) => r.message)).toEqual(['signed-out crash']);
+
+    apiRequest.mockClear();
+    await flushPendingCrashReports();
+
+    expect(sent().map((r) => r.message)).toEqual(['signed-out crash']);
+    expect(await kept()).toEqual([]);
+  });
+
+  it('keeps only the newest few', async () => {
+    apiRequest.mockImplementation(refused);
+    const count = PENDING_CRASH_REPORTS_MAX + 2;
+    for (let i = 0; i < count; i++) reportError(new Error(`crash ${i}`));
+    await eventually(async () => (await kept()).some((r) => r.message === `crash ${count - 1}`));
+    expect((await kept()).map((r) => r.message)).toEqual(
+      Array.from({ length: PENDING_CRASH_REPORTS_MAX }, (_, i) => `crash ${i + 2}`)
+    );
+    apiRequest.mockImplementation(() => Promise.resolve({ ok: true }));
   });
 });
 
