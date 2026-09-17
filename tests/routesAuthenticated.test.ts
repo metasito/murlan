@@ -44,7 +44,7 @@ const SIGNED_IN = [
   "GET /api/stats/achievements",
 ];
 
-const ADMIN = ["GET /admin"];
+const ADMIN = ["GET /admin", "GET /api/admin/version"];
 
 const sorted = (list: string[]) => [...list].sort();
 
