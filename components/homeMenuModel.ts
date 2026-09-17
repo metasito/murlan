@@ -51,9 +51,13 @@ export function homeMenu(has: {
   return {
     hero,
     heroNeedsAccount: hero === "online" && !has.account,
-    tiles: WAYS_TO_PLAY.filter((a) => a !== hero).map((action) => ({
-      action,
-      disabled: !has.account && NEEDS_ACCOUNT.includes(action),
-    })),
+    // `resume` is offered nowhere else, so promoting anything over it has to
+    // put it back in the grid rather than drop it.
+    tiles: [...(has.savedGame ? (["resume"] as HomeAction[]) : []), ...WAYS_TO_PLAY]
+      .filter((a) => a !== hero)
+      .map((action) => ({
+        action,
+        disabled: !has.account && NEEDS_ACCOUNT.includes(action),
+      })),
   };
 }

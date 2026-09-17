@@ -75,7 +75,9 @@ describe('the home screen and a table still holding a seat', () => {
       includeHiddenElements: true,
     });
     expect(hero).toBeTruthy();
-    expect(screen.queryByText(t('home.resumeGame'), { includeHiddenElements: true })).toBeNull();
+    expect(
+      screen.getByText(t('home.resumeGame'), { includeHiddenElements: true })
+    ).toBeTruthy();
 
     await view.unmount();
   });

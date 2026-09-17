@@ -88,9 +88,31 @@ test("a table still holding a seat outranks every other hero", () => {
     assert.equal(menu.heroNeedsAccount, false, describe(state));
     assert.deepEqual(
       menu.tiles.map((t) => t.action),
-      ["offline", "friends", "online", "passAndPlay"],
+      [
+        ...(state.savedGame ? ["resume"] : []),
+        "offline",
+        "friends",
+        "online",
+        "passAndPlay",
+      ],
       `${describe(state)}: returning to a table took a way to play out of the grid`
     );
+  }
+});
+
+// A save has exactly one entry point, so whatever displaces it as the hero has
+// to leave it somewhere, or it is unreachable until the room is gone.
+test("a save is reachable whatever else outranks it", () => {
+  for (const activeRoom of [false, true]) {
+    for (const account of [false, true]) {
+      const menu = homeMenu({ savedGame: true, account, activeRoom });
+      const offered = [menu.hero, ...menu.tiles.map((t) => t.action)];
+      assert.equal(
+        offered.filter((a) => a === "resume").length,
+        1,
+        `activeRoom ${activeRoom}, account ${account}: resume is offered ${offered.filter((a) => a === "resume").length} times`
+      );
+    }
   }
 });
 
