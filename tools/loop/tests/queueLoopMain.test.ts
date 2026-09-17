@@ -136,9 +136,13 @@ describe("runOnce", () => {
     );
     assert.equal(r.outcome, "retry");
     assert.equal(r.ticket, 42);
-    assert.equal(rows.length, 1, "a session that ran and cost money is a row");
-    assert.equal(rows[0].outcome, "retry");
-    assert.equal(rows[0].merged, false);
+    assert.deepEqual(
+      rows.map((x) => [x.outcome, x.run.result?.cost ?? 0, x.merged ?? false]),
+      [
+        ["pushed", 1, false],
+        ["retry", 0, false],
+      ],
+    );
   });
 
   test("a session that pushed nothing parks the ticket", async () => {
@@ -768,11 +772,12 @@ describe("runOnce", () => {
     assert.deepEqual(unrecorded.map((x) => [x.outcome, x.head, x.cost]), [
       ["retry", "h1", 1],
       ["retry", "h2", 0],
+      ["pushed", null, 0],
       ["landed", null, 0],
     ]);
     const recorded: any[] = [retryRow("h1")];
     await runOnce(io({ pick: () => fixRoute("h1"), refreshWorktree: () => {}, spawn }, recorded), 42);
-    assert.deepEqual(recorded.map((x) => x.outcome), ["retry", "landed"]);
+    assert.deepEqual(recorded.map((x) => x.outcome), ["retry", "pushed", "landed"]);
   });
 
   test("a fix round's spawn carries the rounds already spent", async () => {
@@ -798,7 +803,7 @@ describe("runOnce", () => {
       }),
     );
     assert.deepEqual([r.outcome, blocked, parked], ["blocked", [[42, 900, ".worktrees/agent-42"]], []]);
-    assert.deepEqual(rows.map((x) => [x.outcome, x.head]), [["blocked", "h1"]]);
+    assert.deepEqual(rows.map((x) => [x.outcome, x.head]), [["pushed", null], ["blocked", "h1"]]);
 
     const calls: string[][] = [];
     blockOnShared(42, 900, "w", (file: string, args: string[]) => {
@@ -887,7 +892,7 @@ describe("runOnce", () => {
         record: (x: unknown) => rows.push(x),
       }),
     );
-    assert.deepEqual([rows[0].head, (r as { sha?: string }).sha], ["judged", "judged"]);
+    assert.deepEqual([rows.map((x) => x.head), (r as { sha?: string }).sha], [["before", "judged"], "judged"]);
   });
 
   const landedRun = (dirty: string, failWrite = false) => {
@@ -1226,6 +1231,35 @@ describe("a fix round that changed nothing", () => {
   });
 });
 
+describe("a session's cost is in the ledger before CI is waited on", () => {
+  test("a supervisor that dies in the CI wait still counts the session, and the restarted G pass adds nothing", async () => {
+    const ledger: any[] = [];
+    const died = runOnce(io({ settle: () => Promise.reject(new Error("killed")) }, ledger));
+    await assert.rejects(died, /killed/);
+    assert.equal(ticketTally(42, ledger).spend, 1);
+
+    const g = { skill: "implement", number: 42, title: "t", size: null, queue: null, resuming: true, phase: "G" };
+    const r = await runOnce(io({ pick: () => g }, ledger));
+    assert.equal(r.outcome, "landed");
+    assert.equal(ledger.reduce((a, x) => a + x.cost, 0), 1);
+  });
+
+  for (const [name, verdict] of Object.entries({
+    merged: { action: "merge", reason: "merged" },
+    red: { action: "hand-back", reason: "CI failed" },
+    owner: { action: "owner", reason: "no settle" },
+    blocked: { action: "hand-back", reason: "CI failed", blockedBy: 900 },
+  })) {
+    test(`${name}: the session is counted once, and the tally reads as before`, async () => {
+      const ledger: any[] = [];
+      await runOnce(io({ settle: async () => verdict }, ledger));
+      assert.equal(ledger.reduce((a, x) => a + x.cost, 0), 1);
+      const t = ticketTally(42, ledger);
+      assert.deepEqual([t.handoffsThisRound, t.lastHandoff, t.retries], [0, null, name === "red" ? 1 : 0]);
+    });
+  }
+});
+
 describe("what a ticket's clock covers", () => {
   // The land is the longest stretch of a ticket and the session that built it has already exited.
   test("the recorded time carries the land, not just the session", async () => {
@@ -1239,8 +1273,9 @@ describe("what a ticket's clock covers", () => {
         record: (x: unknown) => rows.push(x),
       }),
     );
-    assert.equal(rows.length, 1);
-    assert.ok(rows[0].run.ms > 1000, `the row's clock is still the session's ${rows[0].run.ms}ms`);
+    assert.deepEqual(rows.map((x) => x.outcome), ["pushed", "landed"]);
+    assert.equal(rows[0].run.ms, 1000);
+    assert.ok(rows[1].run.ms >= 25, `the land's row has no clock of its own: ${rows[1].run.ms}ms`);
   });
 });
 

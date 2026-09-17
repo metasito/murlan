@@ -2030,7 +2030,8 @@ export async function runOnce(io, pinned = null, at = null) {
   // The pull request's own count when derive() read no worktree.
   const files = after?.changed?.length || pr?.changedFiles || 0;
 
-  const handBack = (why, phase, log = run.log, standing = true) =>
+  let billed = run;
+  const handBack = (why, phase, log = billed.log, standing = true) =>
     parkAndRecord(io, route.number, {
       phase,
       why,
@@ -2038,7 +2039,7 @@ export async function runOnce(io, pinned = null, at = null) {
       cwd: standing ? (after?.cwd ?? null) : null,
       branch: after?.branch ?? null,
       dirty: standing && (after?.dirty ?? false),
-      run,
+      run: billed,
       pr: decided.pr ?? null,
       files,
     });
@@ -2051,15 +2052,20 @@ export async function runOnce(io, pinned = null, at = null) {
     return { outcome: "landed", ticket: route.number };
   }
 
+  // The session's own row, before a wait the supervisor may not survive: every row below is the
+  // land alone, so a restarted G pass adds its clock and never the session's cost a second time.
+  if (!settling) {
+    const head = pr?.sha ?? null;
+    io.record({ number: route.number, outcome: "pushed", why: "CI next", run, pr: decided.pr, files, counts: false, head });
+    billed = { result: null, ms: 0, log: run.log, phases: {} };
+  }
   const landFrom = Date.now();
   const settled = await io.settle({
     ticket: route.number,
     pr: decided.pr,
     branch: after?.branch ?? pr.head,
   });
-  // The land is the ticket's longest stretch and the session that built it has already exited, so
-  // the row's clock is the only place it can be counted. Every exit below records from `run.ms`.
-  run.ms += Date.now() - landFrom;
+  billed.ms += Date.now() - landFrom;
   const cost = settleOutcome(settled);
 
   // Every exit from a settle that did not merge and is not a fix round goes through `park` — the
@@ -2081,7 +2087,7 @@ export async function runOnce(io, pinned = null, at = null) {
       number: route.number,
       outcome: "blocked",
       why,
-      run,
+      run: billed,
       pr: decided.pr,
       files,
       counts: false,
@@ -2109,7 +2115,7 @@ export async function runOnce(io, pinned = null, at = null) {
     number: route.number,
     outcome: cost.recorded,
     why: settled.reason,
-    run,
+    run: billed,
     pr: decided.pr,
     merged: cost.recorded === "landed",
     files,
