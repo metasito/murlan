@@ -303,8 +303,8 @@ describe("handleGameOver — the writes", () => {
       finishedAt: historyFinishedAt,
       gameMode: "free_for_all",
       seats: [
-        { seatIndex: 0, userId: "u_alice", name: "Alice" },
-        { seatIndex: 1, userId: "u_bob", name: "Bob" },
+        { seatIndex: 0, userId: "u_alice", vacatedBy: null, name: "Alice" },
+        { seatIndex: 1, userId: "u_bob", vacatedBy: null, name: "Bob" },
       ],
       moves: [A_MOVE],
       rankings: ["player_0", "player_1"],

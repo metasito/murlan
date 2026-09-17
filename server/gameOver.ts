@@ -222,7 +222,7 @@ export async function handleGameOver(
         roomId,
         finishedAt,
         gameMode: game.gameMode,
-        seats: replaySeatsOf(state.players, game.playerMap),
+        seats: replaySeatsOf(state.players, game.playerMap, game.vacatedSeats),
         moves: game.moveLog,
         rankings: state.rankings,
       }).catch((err) => logger.error({ err, roomId }, "Failed to save replay"));

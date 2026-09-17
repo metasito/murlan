@@ -4,7 +4,9 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { __testables } from "../server/app.ts";
 
-const { safeHost, renderLandingPage, CSP_DIRECTIVES } = __testables;
+const { safeHost, renderLandingPage, cspDirectives, landingPageCsp } = __testables;
+
+const CSP_DIRECTIVES = cspDirectives();
 
 const template = fs.readFileSync(
   path.resolve(import.meta.dirname, "..", "server", "templates", "landing-page.html"),
@@ -49,10 +51,12 @@ test("the only third-party script the page loads carries an integrity hash", () 
   const tag = external[0][0];
   assert.match(tag, /integrity="sha(256|384|512)-[A-Za-z0-9+/=]+"/);
   assert.match(tag, /crossorigin=/);
-  assert.ok(
+  assert.equal(
     CSP_DIRECTIVES["script-src"].includes(new URL(external[0][1]).origin),
-    "the script's origin is not in script-src"
+    false,
+    "unpkg is allowed app-wide, not just on the page that loads it"
   );
+  assert.match(landingPageCsp("n0nce"), /script-src [^;]*https:\/\/unpkg\.com/);
 });
 
 test("the CSP names an origin for every fetch the app makes", () => {
@@ -61,4 +65,22 @@ test("the CSP names an origin for every fetch the app makes", () => {
   assert.deepEqual(CSP_DIRECTIVES["frame-ancestors"], ["'none'"]);
   // Relative subresource URLs on the http dev server would be rewritten to https.
   assert.equal("upgrade-insecure-requests" in CSP_DIRECTIVES, false);
+});
+
+test("no inline script runs on the strength of being inline", () => {
+  assert.equal(CSP_DIRECTIVES["script-src"].includes("'unsafe-inline'"), false);
+  assert.equal(/script-src [^;]*'unsafe-inline'/.test(landingPageCsp("n0nce")), false);
+  assert.match(landingPageCsp("n0nce"), /'nonce-n0nce'/);
+});
+
+test("every script the landing page carries is nonced", () => {
+  const html = renderLandingPage(template, "host.test", "Murlan", "n0nce");
+  const tags = [...html.matchAll(/<script[ \n>][^>]*>/g)].map((m) => m[0]);
+  assert.ok(tags.length > 0);
+  for (const tag of tags) assert.match(tag, /nonce="n0nce"/, tag);
+});
+
+test("connect-src names hosts rather than every websocket on the internet", () => {
+  assert.equal(CSP_DIRECTIVES["connect-src"].includes("ws:"), false);
+  assert.equal(CSP_DIRECTIVES["connect-src"].includes("wss:"), false);
 });

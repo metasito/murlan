@@ -53,7 +53,12 @@ export async function deleteUser(userId: string): Promise<string[]> {
     const theirReplays = await tx
       .select({ id: matchReplays.id, playerIds: matchReplays.playerIds, seats: matchReplays.seats })
       .from(matchReplays)
-      .where(sql`${matchReplays.playerIds} @> ${JSON.stringify([userId])}::jsonb`);
+      // A seat left mid-match keeps the person's name without their id ever
+      // reaching `player_ids`, so the ownership filter alone never finds it.
+      .where(
+        sql`${matchReplays.playerIds} @> ${JSON.stringify([userId])}::jsonb
+          OR ${matchReplays.seats} @> ${JSON.stringify([{ vacatedBy: userId }])}::jsonb`
+      );
 
     for (const row of theirReplays) {
       const playerIds = row.playerIds.filter((id) => id !== userId);
@@ -64,7 +69,9 @@ export async function deleteUser(userId: string): Promise<string[]> {
       // An empty name is the signal to the client to render its own
       // localized "deleted player" label — the row itself keeps no wording.
       const seats = row.seats.map((seat) =>
-        seat.userId === userId ? { ...seat, userId: null, name: "" } : seat
+        seat.userId === userId || seat.vacatedBy === userId
+          ? { ...seat, userId: null, vacatedBy: null, name: "" }
+          : seat
       );
       await tx
         .update(matchReplays)

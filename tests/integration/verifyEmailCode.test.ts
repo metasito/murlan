@@ -72,6 +72,42 @@ describe("verify-email code guessing is capped per credential", { skip: hasDatab
     assert.equal(JSON.parse(finalText).code, "INVALID_TOKEN");
   });
 
+  test("a resend does not hand back a fresh five guesses", async () => {
+    const { user } = await register(server, "code_resend_cap");
+    const { replaceEmailVerifyCode, MAX_CODE_ATTEMPTS } = await import("../../server/authTokens.ts");
+    await waitForPendingCode(user.id);
+    const first = await replaceEmailVerifyCode({ userId: user.id, email: user.email!, ttlMs: 60_000 });
+
+    const wrong = first === "000000" ? "111111" : "000000";
+    for (let i = 0; i < MAX_CODE_ATTEMPTS; i++) {
+      assert.equal((await verify(user.email!, wrong)).status, 400, `attempt ${i}`);
+    }
+
+    const second = await replaceEmailVerifyCode({ userId: user.id, email: user.email!, ttlMs: 60_000 });
+    const res = await verify(user.email!, second);
+    const text = await res.text();
+    assert.equal(res.status, 400, `the resent code redeemed past the cap: ${text}`);
+    assert.equal(JSON.parse(text).code, "INVALID_TOKEN");
+  });
+
+  test("a code that outlived its TTL carries nothing onto its replacement", async () => {
+    const { user } = await register(server, "code_resend_expired");
+    const { replaceEmailVerifyCode, MAX_CODE_ATTEMPTS } = await import("../../server/authTokens.ts");
+    const { db } = await import("../../server/db.ts");
+    const { authTokens } = await import("../../shared/schema.ts");
+    const { eq } = await import("drizzle-orm");
+    await waitForPendingCode(user.id);
+    await replaceEmailVerifyCode({ userId: user.id, email: user.email!, ttlMs: 60_000 });
+    await db
+      .update(authTokens)
+      .set({ attempts: MAX_CODE_ATTEMPTS, expiresAt: new Date(Date.now() - 1000) })
+      .where(eq(authTokens.userId, user.id));
+
+    const fresh = await replaceEmailVerifyCode({ userId: user.id, email: user.email!, ttlMs: 60_000 });
+    const res = await verify(user.email!, fresh);
+    assert.equal(res.status, 200, await res.text());
+  });
+
   test("a code minted for one account does not redeem for a different account, even with the right digits", async () => {
     const { user: alice } = await register(server, "code_salt_alice");
     const { user: bob } = await register(server, "code_salt_bob");

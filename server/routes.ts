@@ -9,6 +9,7 @@ import { friendRequestRow, friendRow } from "./friendRows.ts";
 import type { FriendRequestAccepted, FriendRequestIncoming } from "../lib/wire.ts";
 import type { User } from "../shared/schema.ts";
 import { logger } from "./logger.ts";
+import { runningCommitSha } from "./buildInfo.ts";
 import { validate } from "./validate.ts";
 import {
   RegisterSchema,
@@ -757,7 +758,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Nothing stores a username as history: `matchHistory.userId`, `replays.playerIds` and every
   // stats, rating and friends table key on the id, so each read projects whatever the name is
-  // now. A rename is one column, with no backfill behind it.
+  // now. A rename is one column, with no backfill behind it. `match_replays.seats.name` is the
+  // one stored copy, and `server/replays.ts` resolves it against the account on every read.
   //
   // Seated players keep the name the room was joined under — rewriting live room state mid-hand
   // would change an opponent's name under the other players for no benefit. The table catches up
@@ -995,6 +997,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       logger.error({ err }, "Failed to build the admin snapshot");
       res.status(500).type("text/plain").send("Snapshot failed");
     }
+  });
+
+  app.get("/api/admin/version", requireAdmin, (_req, res) => {
+    res.json({ env: process.env.NODE_ENV, commit: runningCommitSha });
   });
 
   app.get("/api/ratings/leaderboard", requireAuth, async (_req, res) => {

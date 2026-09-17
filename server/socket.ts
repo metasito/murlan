@@ -87,6 +87,11 @@ export function setupSocket(httpServer: HttpServer) {
       methods: ["GET", "POST"],
       credentials: true,
     },
+    // `cors` only shapes response headers, and a websocket upgrade carries
+    // none of them: without this a disallowed origin still connects.
+    allowRequest: (req, callback) => {
+      callback(null, isAllowedOrigin(req.headers.origin));
+    },
     // Websocket only. The Postgres adapter's own documentation requires sticky
     // sessions, because an HTTP long-polling handshake is spread across several
     // requests that must all reach one instance — and this platform cannot

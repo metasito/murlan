@@ -682,3 +682,37 @@ describe("what an error leaves beyond the log line", () => {
     assert.equal(JSON.stringify(recorded).includes("ABCD"), false);
   });
 });
+
+describe("what a failed query leaves in the log", () => {
+  /** The shape drizzle's DrizzleQueryError renders: statement, then bindings. */
+  function drizzleError(): Error & { params?: string[] } {
+    const err: Error & { params?: string[] } = new Error(
+      'Failed query: insert into "users" ("email", "password") values ($1, $2)\nparams: player@example.com,$2b$10$abcdefghijklmnopqrstuv'
+    );
+    err.params = ["player@example.com", "$2b$10$abcdefghijklmnopqrstuv"];
+    return err;
+  }
+
+  test("the bound parameters of a failed query are not written", () => {
+    const { sink, written } = captureSink();
+    createLogger(sink).error({ err: drizzleError() }, "Internal Server Error");
+    const line = written();
+    assert.equal(line.includes("player@example.com"), false, line);
+    assert.equal(line.includes("$2b$10$"), false, line);
+    assert.match(line, /Failed query: insert into/);
+  });
+
+  test("a cause carrying them is not a way round it", () => {
+    const { sink, written } = captureSink();
+    const outer: Error & { cause?: unknown } = new Error("Internal");
+    outer.cause = drizzleError();
+    createLogger(sink).error({ err: outer }, "Internal Server Error");
+    assert.equal(written().includes("player@example.com"), false, written());
+  });
+
+  test("an error carrying no parameters keeps its message whole", () => {
+    const { sink, written } = captureSink();
+    createLogger(sink).error({ err: new Error("connection terminated") }, "boom");
+    assert.match(written(), /connection terminated/);
+  });
+});

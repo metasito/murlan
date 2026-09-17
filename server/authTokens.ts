@@ -18,7 +18,7 @@ import type { AuthTokenPurpose } from "../shared/schema.ts";
 export const EMAIL_VERIFY_CODE_TTL_MS = 15 * 60 * 1000;
 export const PASSWORD_RESET_TOKEN_TTL_MS = 30 * 60 * 1000;
 
-/** #925: wrong guesses against one outstanding code before it must be resent. */
+/** #925: wrong guesses against one live code, resends included. */
 export const MAX_CODE_ATTEMPTS = 5;
 
 function hashToken(raw: string): string {
@@ -37,12 +37,14 @@ async function insertCredential(executor: typeof db | Tx, params: {
   purpose: AuthTokenPurpose;
   tokenHash: string;
   ttlMs: number;
+  attempts?: number;
 }): Promise<void> {
-  const { userId, purpose, tokenHash, ttlMs } = params;
+  const { userId, purpose, tokenHash, ttlMs, attempts } = params;
   await executor.insert(authTokens).values({
     userId,
     purpose,
     tokenHash,
+    attempts,
     expiresAt: new Date(Date.now() + ttlMs),
   });
 }
@@ -92,6 +94,17 @@ export async function redeemAuthToken(rawToken: string, purpose: AuthTokenPurpos
 }
 
 /**
+ * Guesses the replaced code already cost, carried onto its replacement so a
+ * resend cannot re-arm MAX_CODE_ATTEMPTS at will. Only a code still inside its
+ * own TTL charges: an expired one could be guessed no further anyway, and
+ * forgetting it is what keeps five typos from locking an account out for good.
+ */
+function spentAttempts(replaced: { attempts: number; expiresAt: Date }[]): number {
+  const now = Date.now();
+  return Math.max(0, ...replaced.filter((r) => r.expiresAt.getTime() > now).map((r) => r.attempts));
+}
+
+/**
  * Mints a 6-digit numeric code for `email`, stores only its salted hash, and
  * returns the raw digits to send.
  *
@@ -115,10 +128,17 @@ export async function replaceEmailVerifyCode(params: {
     try {
       await db.transaction(async (tx) => {
         await lockUsers(tx, [userId]);
-        await tx
+        const replaced = await tx
           .delete(authTokens)
-          .where(and(eq(authTokens.userId, userId), eq(authTokens.purpose, purpose), isNull(authTokens.usedAt)));
-        await insertCredential(tx, { userId, purpose, tokenHash: hashToken(codeHashInput(email, purpose, code)), ttlMs });
+          .where(and(eq(authTokens.userId, userId), eq(authTokens.purpose, purpose), isNull(authTokens.usedAt)))
+          .returning({ attempts: authTokens.attempts, expiresAt: authTokens.expiresAt });
+        await insertCredential(tx, {
+          userId,
+          purpose,
+          tokenHash: hashToken(codeHashInput(email, purpose, code)),
+          ttlMs,
+          attempts: spentAttempts(replaced),
+        });
       });
       return code;
     } catch (err) {

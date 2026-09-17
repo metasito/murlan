@@ -7,11 +7,12 @@
 // spread that one's imports across every caller and test of it.
 import { and, inArray, sql } from "drizzle-orm";
 import { db } from "./db.ts";
-import { matchReplays, users } from "../shared/schema.ts";
+import { matchReplays } from "../shared/schema.ts";
 import type { MatchHistory } from "../shared/schema.ts";
 import type { ReplaySeat } from "../lib/replay.ts";
 import { botSeatIndex, isBotSeatKey } from "./botSeat.ts";
 import { getMatchHistory } from "./stats.ts";
+import { namesOf } from "./userNames.ts";
 
 /** One of the other seats at a hand the reader played. */
 export interface HistoryParticipant {
@@ -57,16 +58,6 @@ function replaysByInstant(
   return byInstant;
 }
 
-/** Display names for the account ids given, skipping any that no longer exist. */
-async function namesOf(ids: string[]): Promise<Map<string, string>> {
-  const unique = [...new Set(ids)];
-  if (unique.length === 0) return new Map();
-  const rows = await db
-    .select({ id: users.id, username: users.username })
-    .from(users)
-    .where(inArray(users.id, unique));
-  return new Map(rows.map((r) => [r.id, r.username]));
-}
 
 /**
  * `match_history` and `match_replays` share no key. They do share the hand's

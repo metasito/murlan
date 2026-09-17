@@ -21,6 +21,23 @@ export const REDACT_PATHS = [
   "payload.roomCode",
 ];
 
+// drizzle's DrizzleQueryError renders the failed statement's bound parameters
+// into its own `message` — and, through the merged `caused by:` text, into
+// `stack` — so an insert into `users` that trips a constraint writes the email
+// and the bcrypt hash to the log. Every `logger.error({ err }, ...)` in the
+// server reaches this one serializer.
+const PARAMS_LINE = /\nparams:[^\n]*/g;
+
+function stripParams(err: Error): Record<string, unknown> {
+  const line = pino.stdSerializers.err(err) as Record<string, unknown>;
+  delete line.params;
+  for (const key of ["message", "stack"] as const) {
+    const value = line[key];
+    if (typeof value === "string") line[key] = value.replace(PARAMS_LINE, "\nparams: [redacted]");
+  }
+  return line;
+}
+
 type ErrorRecorder = (entry: Record<string, unknown>) => void;
 let recordError: ErrorRecorder | undefined;
 
@@ -60,6 +77,7 @@ export function createLogger(destination?: pino.DestinationStream) {
         paths: REDACT_PATHS,
         censor: "[redacted]",
       },
+      serializers: { err: stripParams },
       transport:
         !destination && process.env.NODE_ENV !== "production"
           ? { target: "pino-pretty", options: { colorize: true } }

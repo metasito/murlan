@@ -2,6 +2,7 @@ import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "./db.ts";
 import { matchReplays } from "../shared/schema.ts";
 import { replayPlayerIdsOf } from "./replayShape.ts";
+import { namesOf } from "./userNames.ts";
 import type { ReplayDto, ReplayMove, ReplaySeat, ReplaySummary } from "../lib/replay.ts";
 import type { GameMode } from "../lib/gameEngine.ts";
 
@@ -11,6 +12,23 @@ export const MAX_REPLAYS_LISTED = 20;
 /** Rows whose player_ids contain this user — the only ones they may read. */
 const ownedBy = (userId: string) =>
   sql`${matchReplays.playerIds} @> ${JSON.stringify([userId])}::jsonb`;
+
+/**
+ * `seats[].name` is a copy taken when the hand ended, so a rename never reaches
+ * it and a departed player's own erasure has to. Whoever the seat still names
+ * is asked for live; a seat behind no account — a bot, or a deleted one — keeps
+ * what was stored.
+ */
+async function withLiveNames(rows: { seats: ReplaySeat[] }[]): Promise<void> {
+  const seats = rows.flatMap((r) => r.seats);
+  const live = await namesOf(
+    seats.map((s) => s.userId ?? s.vacatedBy).filter((id): id is string => !!id)
+  );
+  for (const seat of seats) {
+    const name = live.get(seat.userId ?? seat.vacatedBy ?? "");
+    if (name) seat.name = name;
+  }
+}
 
 export async function saveReplay(input: {
   roomId: string;
@@ -53,6 +71,7 @@ export async function listReplaysForUser(userId: string): Promise<ReplaySummary[
     .orderBy(desc(matchReplays.finishedAt))
     .limit(MAX_REPLAYS_LISTED);
 
+  await withLiveNames(rows);
   return rows.map((r) => ({
     id: r.id,
     finishedAt: r.finishedAt.toISOString(),
@@ -74,6 +93,7 @@ export async function getReplayForUser(
     .where(and(eq(matchReplays.id, id), ownedBy(userId)))
     .limit(1);
   if (!row) return null;
+  await withLiveNames([row]);
   return {
     id: row.id,
     finishedAt: row.finishedAt.toISOString(),
