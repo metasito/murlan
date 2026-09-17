@@ -41,14 +41,13 @@ function rows(text) {
 const contextOf = (u) =>
   (u.input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0);
 
-function notices(payload, env) {
+function notices(payload) {
   const text = tail(payload.transcript_path);
   const all = rows(text);
   const said = [];
 
   const last = all.findLast((r) => r.type === "assistant" && r.message?.usage);
-  const phase = env.LOOP_PHASE ? `phase ${env.LOOP_PHASE}` : "your phase";
-  const ceiling = `Context is past 150k. Commit what works and hand off to ${phase}.`;
+  const ceiling = "Context is past 150k. Commit what works and hand off to the phase of your last PHASE line.";
   if (last && contextOf(last.message.usage) > CONTEXT_CEILING && !text.includes(ceiling)) said.push(ceiling);
 
   const command = payload.tool_name === "Bash" ? payload.tool_input?.command : undefined;
@@ -70,7 +69,7 @@ function notices(payload, env) {
 try {
   const payload = JSON.parse(readFileSync(0, "utf8") || "{}");
   if (process.env.LOOP_TURNS && !payload.agent_id && payload.transcript_path) {
-    const said = notices(payload, process.env);
+    const said = notices(payload);
     if (said.length) {
       process.stdout.write(
         JSON.stringify({

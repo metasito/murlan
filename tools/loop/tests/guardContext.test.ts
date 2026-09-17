@@ -53,22 +53,21 @@ describe("the context ceiling", () => {
     assert.equal(run(call(transcript([assistant(149_000)]))), "");
   });
 
-  test("over the ceiling says so once, naming the phase", () => {
+  const ceiling = "Context is past 150k. Commit what works and hand off to the phase of your last PHASE line.";
+
+  test("over the ceiling says so once, pointing at the session's own phase, never the one it started in", () => {
     const out = JSON.parse(run(call(transcript([assistant(10_000), assistant(151_000)]))));
     assert.equal(out.hookSpecificOutput.hookEventName, "PostToolUse");
-    assert.equal(
-      out.hookSpecificOutput.additionalContext,
-      "Context is past 150k. Commit what works and hand off to phase C."
-    );
+    assert.equal(out.hookSpecificOutput.additionalContext, ceiling);
   });
 
-  test("an unset phase is named as yours", () => {
+  test("the notice is the same with or without LOOP_PHASE", () => {
     const out = run(call(transcript([assistant(151_000)])), { LOOP_TURNS: "40" });
-    assert.match(out, /hand off to your phase\./);
+    assert.equal(JSON.parse(out).hookSpecificOutput.additionalContext, ceiling);
   });
 
   test("a notice already in the transcript is not repeated", () => {
-    const said = "Context is past 150k. Commit what works and hand off to phase C.";
+    const said = ceiling;
     assert.equal(run(call(transcript([assistant(151_000), noticed(said), assistant(160_000)]))), "");
   });
 
