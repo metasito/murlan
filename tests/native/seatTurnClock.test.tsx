@@ -29,7 +29,7 @@ jest.mock('@/lib/sounds', () => ({
   playDeal: jest.fn(async () => {}),
   playExchange: jest.fn(async () => {}),
   preloadSounds: jest.fn(async () => {}),
-  unloadSounds: jest.fn(() => {}),
+  holdSounds: jest.fn(() => () => {}),
   setSoundsMasterEnabled: jest.fn(() => {}),
   setSoundsMasterVolume: jest.fn(() => {}),
   ensureAudioMode: jest.fn(async () => {}),

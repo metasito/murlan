@@ -13,6 +13,7 @@ jest.mock('expo-haptics', () => ({
 }));
 
 jest.mock('expo-router', () => ({ router: { replace: jest.fn(), push: jest.fn() } }));
+jest.mock('expo-audio', () => ({ createAudioPlayer: jest.fn(), setAudioModeAsync: jest.fn() }));
 
 // Hoisted above the imports, so it reads these back at render time rather than
 // closing over them — which is what the `mock` prefix permits.

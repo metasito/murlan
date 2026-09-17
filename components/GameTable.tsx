@@ -103,8 +103,8 @@ import {
   playRoundStart,
   playRoundWin,
   playDeal,
+  holdSounds,
   preloadSounds,
-  unloadSounds,
 } from "@/lib/sounds";
 import { hapticLight, hapticMedium, hapticRigid, hapticSelection } from "@/lib/haptics";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
@@ -694,8 +694,9 @@ export function GameTable({
     // Fast game -> result -> game navigation makes these cancel each other, and an
     // unhandled rejection here is fatal on device.
     ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE).catch(() => {});
-    // Guarded: the cleanup removes every native player, so resolving after unmount
-    // would play through a released one.
+    // Guarded: the cleanup may remove every native player, so resolving after
+    // unmount would play through a released one.
+    const releaseSounds = holdSounds();
     preloadSounds()
       .then(() => {
         if (mounted) playDeal();
@@ -705,7 +706,7 @@ export function GameTable({
     return () => {
       mounted = false;
       ScreenOrientation.unlockAsync().catch(() => {});
-      unloadSounds();
+      releaseSounds();
     };
   }, []);
 

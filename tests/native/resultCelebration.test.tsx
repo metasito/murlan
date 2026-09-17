@@ -17,6 +17,7 @@ jest.mock('expo-haptics', () => ({
 }));
 
 jest.mock('expo-router', () => ({ router: { replace: jest.fn(), push: jest.fn() } }));
+jest.mock('expo-audio', () => ({ createAudioPlayer: jest.fn(), setAudioModeAsync: jest.fn() }));
 
 // The factory is hoisted above every import, so it cannot close over a const
 // declared below — it reads these back at render time instead, which is what
