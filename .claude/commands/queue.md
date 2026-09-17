@@ -38,7 +38,10 @@ Say which phase you are in, on a line of its own, in the same message as that ph
 The supervisor reads that line and nothing else about your progress. Never send it alone: in print
 mode a turn that ends in text and no tool call is the final answer. Do the same in every phase.
 
-**Run this first, every time:**
+**The `SessionStart` hook has already run `loop-status.mjs`.** Its report is above, or, in a loop
+process (`$LOOP_TURNS` is set), its silence is the answer. Do not run it again. Run it yourself
+only when there is no hook report (a by-hand session), or when your own commit, fetch or claim has
+made that report stale:
 
 ```sh
 node tools/loop/loop-status.mjs
@@ -55,7 +58,7 @@ nothing:
 LOOP-RESULT {"ticket":<n>,"phase":"G"}
 ```
 
-Only once `loop-status.mjs` is silent:
+Only once that report is silent:
 
 ```sh
 npm run queue:pre                         # by-hand runs only: the loop has already run it

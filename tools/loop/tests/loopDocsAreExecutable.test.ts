@@ -98,6 +98,12 @@ describe("phase A's housekeeping belongs to the supervisor", () => {
   test("loop-status.mjs stays, because it is what tells a fresh session a run is live", () => {
     assert.match(read(QUEUE), /node tools\/loop\/loop-status\.mjs/);
   });
+
+  test("phase A reuses the SessionStart hook's report instead of running loop-status again", () => {
+    const a = read(QUEUE).split("## A — Start")[1].split("## B")[0];
+    assert.match(a, /SessionStart[\s\S]*Do not run it again[\s\S]*no hook report[\s\S]*stale/);
+    assert.doesNotMatch(a, /Run this first, every time/);
+  });
 });
 
 // The supervisor reads the session's own `PHASE <letter>` line and nothing else about its
