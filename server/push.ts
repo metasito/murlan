@@ -11,6 +11,7 @@ import { pushTokens } from "../shared/schema.ts";
 import type { Locale } from "../shared/i18n.ts";
 import { logger } from "./logger.ts";
 import { buildPushRequest, deadTokens, type ExpoTicket, type PushDevice, type PushMessage } from "./pushShape.ts";
+import { testOnlyEnv } from "./testOnlyEnv.ts";
 
 export type { PushMessage };
 
@@ -23,7 +24,7 @@ export type { PushMessage };
  * endpoint, so an unset variable is the shipping behaviour.
  */
 const EXPO_PUSH_URL =
-  process.env.MURLAN_EXPO_PUSH_URL ?? "https://exp.host/--/api/v2/push/send";
+  testOnlyEnv("MURLAN_EXPO_PUSH_URL") ?? "https://exp.host/--/api/v2/push/send";
 
 /**
  * How many devices one account may be reachable on.

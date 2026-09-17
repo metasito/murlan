@@ -3,6 +3,7 @@
 // rateLimit() under server/.
 import { rateLimit, type RateLimitExceededEventHandler } from "express-rate-limit";
 import type { Request, RequestHandler } from "express";
+import { testOnlyEnv } from "./testOnlyEnv.ts";
 
 /**
  * What a limiter counts against. `ip` is express-rate-limit's own key, which
@@ -42,9 +43,9 @@ type LimiterSpec = {
 export type LimiterOptions = LimiterSpec &
   ({ message: object; handler?: never } | { handler: RateLimitExceededEventHandler; message?: never });
 
-function maxFrom(envVar: string | undefined, defaultMax: number): number {
+export function maxFrom(envVar: string | undefined, defaultMax: number): number {
   if (!envVar) return defaultMax;
-  const parsed = Number(process.env[envVar]);
+  const parsed = Number(testOnlyEnv(envVar));
   return Number.isInteger(parsed) && parsed > 0 ? parsed : defaultMax;
 }
 

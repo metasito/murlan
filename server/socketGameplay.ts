@@ -28,6 +28,7 @@ import {
   GameRematchIntentSchema,
   GameEndMatchVoteSchema,
 } from "./socketSchemas.ts";
+import { testOnlyEnv } from "./testOnlyEnv.ts";
 
 /**
  * Read once at module scope — same shape as authMaxFromEnv in routes.ts — so
@@ -37,7 +38,7 @@ import {
  * headroom a live session never does.
  */
 function gameActionLimitFromEnv(): number {
-  const parsed = Number(process.env.MURLAN_GAME_ACTION_RATE_LIMIT);
+  const parsed = Number(testOnlyEnv("MURLAN_GAME_ACTION_RATE_LIMIT"));
   return Number.isInteger(parsed) && parsed > 0 ? parsed : 60;
 }
 const GAME_ACTION_RATE_LIMIT = gameActionLimitFromEnv();

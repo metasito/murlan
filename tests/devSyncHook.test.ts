@@ -307,3 +307,29 @@ test("with nothing local to sync, syncing twice reports updated only once", asyn
   assert.equal(second.updated, false);
   assert.equal(second.sha, first.sha);
 });
+
+test("answers 404 in production even to a valid signature, without syncing", async (t) => {
+  const nodeEnv = process.env.NODE_ENV;
+  process.env.NODE_ENV = "production";
+  t.after(() => {
+    if (nodeEnv === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = nodeEnv;
+  });
+  let synced = false;
+  const res = response();
+  const handler = createGithubDevSyncHandler({
+    secret: "test-secret",
+    sync: async () => {
+      synced = true;
+      return { updated: true, sha: "abc123" };
+    },
+  });
+
+  await handler(
+    request({ ref: "refs/heads/main" }, "test-secret") as Request,
+    res as unknown as Response
+  );
+
+  assert.equal(res.result.status, 404);
+  assert.equal(synced, false);
+});
