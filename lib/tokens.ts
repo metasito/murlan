@@ -54,7 +54,7 @@ export const Colors = {
   info:         '#6b8ef5',
   // Alarm: error state and destructive action. Pick by role, not by eye.
   danger:       '#E53935',              // fills, borders, icons, text at the large-text bar
-  dangerDim:    '#C9655E',              // the same alarm below that bar
+  dangerDim:    '#E8857E',              // the same alarm below that bar
   dangerScrim:  'rgba(229,57,53,0.92)', // error toast over the felt
   redMuted:     'rgba(239,68,68,0.15)', // the error box's wash, bordered by dangerDim
 

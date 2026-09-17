@@ -21,7 +21,7 @@ import { a11yHidden, a11yState } from "@/lib/a11y";
 import { useTranslation } from "@/lib/i18n";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { cardSpokenName } from "@/lib/cardNames";
-import { Colors, Garnet, Gradient, Highlight, Layer, makeShadow, Motion, Shadow, Spacing, TopEdgeLight } from "@/lib/theme";
+import { Colors, Garnet, Gradient, Highlight, Layer, makeShadow, Motion, Scrim, Shadow, Spacing, TopEdgeLight } from "@/lib/theme";
 import type { Card } from "@/lib/gameEngine";
 import { tableFontSize } from "@/components/cardFaceModel";
 
@@ -303,8 +303,8 @@ const styles = StyleSheet.create({
   // Off the viewer's turn a key is dark rather than a faded version of its lit
   // self: the prototype's resting `.btn` (#199) is its own ink at a third over
   // a third of black, with no gradient and no border behind it to fight.
-  btnDimFace: { backgroundColor: "rgba(0,0,0,0.3)" },
-  btnDimLabel: { color: "rgba(239,234,219,0.3)" },
+  btnDimFace: { backgroundColor: Scrim.heavy },
+  btnDimLabel: { color: Colors.textMuted },
   actionBtnInner: { flex: 1 },
   actionBtnFace: {
     flex: 1,
@@ -350,6 +350,6 @@ const styles = StyleSheet.create({
   playBtnLabel: { color: Colors.bg },
   playBtnSub: {
     fontFamily: "Rajdhani_500Medium",
-    color: Colors.bg, opacity: 0.7,
+    color: Colors.bg,
   },
 });

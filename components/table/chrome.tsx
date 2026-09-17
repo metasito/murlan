@@ -153,7 +153,7 @@ const startReasonStyles = StyleSheet.create({
   },
   eyebrow: {
     ...Type.caption,
-    color: Colors.goldDim,
+    color: Colors.gold,
     letterSpacing: 3,
     textTransform: "uppercase",
   },

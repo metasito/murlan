@@ -15,7 +15,7 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { Colors, Scrim, Highlight, Lantern } from "../lib/tokens.ts";
+import { Colors, Scrim, Highlight, Lantern, Type } from "../lib/tokens.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -145,11 +145,21 @@ function transparentStops(files: [string, string][]): string[] {
   return out;
 }
 
+const MUTED_TYPE = new Set(
+  Object.entries(Type).filter(([, style]) => (style as { color?: string }).color === Colors.textMuted).map(([name]) => name)
+);
+
+function isMuted(block: string): boolean {
+  const own = /(?<![A-Za-z])color: Colors\.(\w+)/.exec(block);
+  if (own) return own[1] === "textMuted";
+  return [...block.matchAll(/\.\.\.Type\.(\w+)/g)].some((m) => MUTED_TYPE.has(m[1]));
+}
+
 function mutedTinyText(files: [string, string][]): string[] {
   const out: string[] = [];
   for (const [file, src] of files) {
     for (const block of src.matchAll(/\{[^{}]*\}/g)) {
-      if (/FontSize\.xxs\b/.test(block[0]) && /Colors\.textMuted\b/.test(block[0])) {
+      if (/FontSize\.xxs\b/.test(block[0]) && isMuted(block[0])) {
         out.push(`${file}:${src.slice(0, block.index).split("\n").length}`);
       }
     }
@@ -252,6 +262,7 @@ describe("design tokens are used in the role they were designed for", () => {
     const offenders = mutedTinyText([...sourceFiles(), ["lib/tokens.ts", readFileSync(path.join(repoRoot, "lib/tokens.ts"), "utf8")]]);
     assert.deepEqual(offenders, [], `FontSize.xxs is for badges and pips:\n${offenders.join("\n")}`);
     assert.deepEqual(mutedTinyText([["x.tsx", "  a: {\n fontSize: FontSize.xxs, color: Colors.textMuted },\n"]]), ["x.tsx:1"]);
+    assert.deepEqual(mutedTinyText([["x.tsx", "  a: {\n ...Type.caption, fontSize: FontSize.xxs },\n"]]), ["x.tsx:1"]);
   });
 
   test("a JSX colour prop's capture stops at its own closing brace", () => {

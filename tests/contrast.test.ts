@@ -8,7 +8,7 @@
 //
 // Imports lib/tokens — the same palette — not lib/theme, whose Shadow helper pulls
 // react-native in; that and the extension — docs/agents/loops.md, "Node's TypeScript loader".
-import { Colors, Garnet, Gradient, Scrim, FeltGradients } from "../lib/tokens.ts";
+import { Colors, Garnet, Gradient, Scrim, FeltGradients, Type } from "../lib/tokens.ts";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
@@ -88,26 +88,101 @@ const SURFACES = {
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-const COMPONENTS = readdirSync(path.join(repoRoot, "components"), { recursive: true, encoding: "utf8" })
-  .filter((f) => f.endsWith(".tsx"))
-  .map((f) => readFileSync(path.join(repoRoot, "components", f), "utf8"))
-  .join("\n");
 const PALETTES: Record<string, Record<string, string>> = { Colors, Scrim, Garnet };
 
-/** The body of a `name: { … }` entry in one of the table's StyleSheets. */
-function styleBlock(style: string): string {
-  const open = `\n  ${style}: {\n`;
-  const at = COMPONENTS.indexOf(open);
-  assert.notEqual(at, -1, `no component declares a style named ${style}`);
-  assert.equal(COMPONENTS.indexOf(open, at + 1), -1, `${style} is defined more than once`);
-  const close = COMPONENTS.indexOf("\n  },", at + open.length);
-  return COMPONENTS.slice(at + open.length, close);
+const COMPONENT_FILES: [string, string][] = readdirSync(path.join(repoRoot, "components"), { recursive: true, encoding: "utf8" })
+  .filter((f) => f.endsWith(".tsx"))
+  .map((f) => [f.split(path.sep).join("/"), readFileSync(path.join(repoRoot, "components", f), "utf8")]);
+const COMPONENTS = COMPONENT_FILES.map(([, src]) => src).join("\n");
+
+/** From an opening bracket at `at` to its matching closer, inclusive. */
+function balanced(src: string, at: number): string {
+  let depth = 0;
+  for (let i = at; i < src.length; i++) {
+    if ("{[(".includes(src[i])) depth++;
+    else if ("}])".includes(src[i]) && --depth === 0) return src.slice(at, i + 1);
+  }
+  throw new Error(`unbalanced from ${at}`);
 }
 
-/** A style's `color` or `backgroundColor`, resolved to its token value. */
-function styleColor(style: string, prop: "color" | "backgroundColor"): string | null {
-  const m = new RegExp(String.raw`\b${prop}: ([A-Za-z]+)\.([A-Za-z]+)`).exec(styleBlock(style));
-  return m ? PALETTES[m[1]]?.[m[2]] ?? null : null;
+/**
+ * `sheet.key`'s body as written. `styles` is file-local, so it is looked up in
+ * the call site's own file; a named sheet may be exported from another.
+ */
+function styleEntry(file: string, ref: string): string {
+  const [sheet, key] = ref.split(".");
+  const files = sheet === "styles" ? COMPONENT_FILES.filter(([f]) => f === file) : COMPONENT_FILES;
+  const defs = files.flatMap(([, src]) => {
+    const at = src.search(new RegExp(String.raw`\bconst ${sheet} = StyleSheet\.create\(`));
+    return at === -1 ? [] : [balanced(src, src.indexOf("{", at))];
+  });
+  assert.equal(defs.length, 1, `${file}: ${sheet} is declared ${defs.length} times`);
+  const m = new RegExp(String.raw`\n\s*${key}: \{`).exec(defs[0]);
+  assert.ok(m, `${file}: ${ref} is not declared`);
+  return balanced(defs[0], m.index + m[0].length - 1);
+}
+
+const COLOUR = String.raw`([A-Za-z]+\.[A-Za-z]+|"[^"]+"|'[^']+')`;
+
+function colourValue(written: string): string {
+  if (/^["']/.test(written)) return written.slice(1, -1);
+  const [ns, key] = written.split(".");
+  const val = PALETTES[ns]?.[key];
+  assert.ok(val, `unresolved colour ${written}`);
+  return val;
+}
+
+/** A style's `backgroundColor`, resolved. */
+function styleFill(file: string, ref: string): string | null {
+  const m = new RegExp(String.raw`\bbackgroundColor: ${COLOUR}`).exec(styleEntry(file, ref));
+  return m ? colourValue(m[1]) : null;
+}
+
+/** A style's ink with its own `opacity` folded in, or null for a style that sets neither. */
+function styleInk(file: string, ref: string): string | null {
+  const body = styleEntry(file, ref);
+  const own = new RegExp(String.raw`(?<![A-Za-z])color: ${COLOUR}`).exec(body);
+  const typed = /\.\.\.Type\.(\w+)/.exec(body);
+  const ink = own ? colourValue(own[1]) : typed ? (Type as Record<string, { color?: string }>)[typed[1]]?.color : undefined;
+  const opacity = /\bopacity: ([\d.]+)/.exec(body);
+  if (!ink) {
+    assert.ok(!opacity, `${file}: ${ref} sets an opacity but no colour`);
+    return null;
+  }
+  return opacity ? withOpacity(ink, Number(opacity[1])) : ink;
+}
+
+function withOpacity(color: string, opacity: number): string {
+  const m = /rgba\((\d+),\s*(\d+),\s*(\d+),\s*([\d.]+)\)/.exec(color);
+  const [r, g, b] = m ? [m[1], m[2], m[3]].map(Number) : hexToRgb(color);
+  return `rgba(${r},${g},${b},${(m ? Number(m[4]) : 1) * opacity})`;
+}
+
+function openingTag(src: string, at: number): string {
+  let depth = 0;
+  for (let i = at; i < src.length; i++) {
+    if (src[i] === "{") depth++;
+    else if (src[i] === "}") depth--;
+    else if (src[i] === ">" && depth === 0) return src.slice(at, i);
+  }
+  throw new Error(`unclosed tag at ${at}`);
+}
+
+/** `[file, sheet.key]` for every style a `<TableText>` element names. */
+function tableTextStyles(): [string, string][] {
+  const out = new Map<string, [string, string]>();
+  for (const [file, src] of COMPONENT_FILES) {
+    for (const m of src.matchAll(/<TableText\b/g)) {
+      const tag = openingTag(src, m.index);
+      const style = /\bstyle=\{/.exec(tag);
+      if (!style) continue;
+      const expr = balanced(tag, style.index + style[0].length - 1);
+      for (const ref of expr.matchAll(/\b(\w*[sS]tyles)\.(\w+)/g)) {
+        out.set(`${file}:${ref[1]}.${ref[2]}`, [file, `${ref[1]}.${ref[2]}`]);
+      }
+    }
+  }
+  return [...out.values()];
 }
 
 /**
@@ -136,45 +211,97 @@ function sourceArray(name: string): string[] {
 const ANY_STOP = [0, 1, 2, 3, 4];
 
 /**
- * Every text style drawn inside the table, with the style whose fill it sits
- * on. `plate: null` means straight onto the felt.
+ * What each inked `<TableText>` style is painted over, keyed `file:sheet.key`.
+ * `plate` is a style whose fill sits between it and the felt; `gradient` is a
+ * fill given as `colors`, which no style can name. Neither means bare felt.
  */
-const ON_FELT_TEXT: { text: string; plate: string | null; stops: number[] }[] = [
-  { text: "oppName", plate: "oppName", stops: ANY_STOP },
-  // One chip construction now carries the HUD, the bot badge and the passed
-  // marker, so measuring `chip` measures all three. They sit wherever the lamp
-  // is not, and on the seat it is standing directly over.
-  { text: "chipLabel", plate: "chip", stops: ANY_STOP },
-  { text: "chipLabelStrong", plate: "chip", stops: ANY_STOP },
-  { text: "comboChipText", plate: "comboChip", stops: ANY_STOP },
-  { text: "comboChipTextPower", plate: "comboChip", stops: ANY_STOP },
-  { text: "winnerText", plate: "winnerTag", stops: ANY_STOP },
-  // Under a lamp that moves, no text sits on bare cloth: the brightest felt on
-  // the table is wherever the light is, so every stop is in play for all of it.
-  { text: "emptyHandText", plate: "emptyHandText", stops: ANY_STOP },
-  // The initials sit on the disc's own gradient (SEAT_DISC_FILL — its own
-  // tokens, not any felt), so the darkest two stops are a stand-in; each is
-  // lighter than the disc colour it stands in for, which keeps this
-  // conservative.
-  { text: "discInitials", plate: null, stops: [3, 4] },
-  { text: "countBubbleText", plate: "countBubble", stops: ANY_STOP },
-];
+type Backdrop = { plate?: string | string[]; gradient?: readonly string[]; stops?: number[] };
+const SELF = "self";
+const GIOCA = [...Gradient.playButton, ...sourceArray("GIOCA_GRADIENT_PRESSED")];
+const PASSA = [...Gradient.garnet, ...sourceArray("PASS_GRADIENT_PRESSED")];
+const SHEET = sourceArray("SHEET_GRADIENT");
+const START_REASON = { plate: "startReasonStyles.card" };
+const CHIP = { plate: "chipStyles.chip" };
+const REMATCH = { plate: "styles.rematchPanel" };
+const ON_TABLE: Record<string, Backdrop> = {
+  "ExchangeAnnouncement.tsx:styles.noSwap": { plate: SELF },
+  "GameTable.tsx:styles.finishedText": { plate: SELF },
+  "GameTable.tsx:styles.rejectHintText": { plate: SELF },
+  "table/actions.tsx:styles.playBtnLabel": { gradient: GIOCA },
+  "table/actions.tsx:styles.playBtnSub": { gradient: GIOCA },
+  // PASSA's dim fill is a sibling of its label, not an ancestor; both buttons draw the same one.
+  "table/actions.tsx:styles.btnDimLabel": { plate: "styles.btnDimFace" },
+  "table/actions.tsx:styles.passBtnLabel": { gradient: PASSA },
+  "table/chrome.tsx:startReasonStyles.eyebrow": START_REASON,
+  "table/chrome.tsx:startReasonStyles.main": START_REASON,
+  "table/chrome.tsx:startReasonStyles.sub": START_REASON,
+  "table/chrome.tsx:startReasonStyles.hint": START_REASON,
+  "table/chrome.tsx:chipStyles.chipLabel": CHIP,
+  "table/chrome.tsx:chipStyles.chipLabelStrong": CHIP,
+  "table/chrome.tsx:chipStyles.chipLabelLit": CHIP,
+  "table/chrome.tsx:chipStyles.chipLabelUrgent": CHIP,
+  "table/chrome.tsx:startCardStyles.glyph": { plate: "startCardStyles.banner" },
+  "table/chrome.tsx:startCardStyles.text": { plate: "startCardStyles.banner" },
+  "table/ExchangeFlight.tsx:styles.tag": { plate: SELF },
+  "table/ExchangePrompt.tsx:styles.line": { plate: SELF },
+  "table/ExchangePrompt.tsx:styles.rule": { plate: SELF },
+  "table/hand.tsx:handStyles.emptyHandText": { plate: SELF },
+  "table/pile.tsx:pileStyles.winnerText": { plate: "pileStyles.winnerTag" },
+  "table/pile.tsx:pileStyles.comboChipText": { plate: "pileStyles.comboChip" },
+  "table/pile.tsx:pileStyles.comboChipTextPower": { plate: "pileStyles.comboChip" },
+  "table/rematchPrompt.tsx:styles.rematchTally": REMATCH,
+  "table/rematchPrompt.tsx:styles.rematchTitle": REMATCH,
+  "table/rematchPrompt.tsx:styles.rematchSubtitle": REMATCH,
+  "table/rematchPrompt.tsx:styles.rematchChoiceLabel": { plate: ["styles.rematchPanel", "styles.rematchChoice"] },
+  "table/rematchPrompt.tsx:styles.rematchChoiceYesLabel": { plate: ["styles.rematchPanel", "styles.rematchChoiceYes"] },
+  "table/rotateOverlay.tsx:portraitOverlayStyles.title": { plate: "portraitOverlayStyles.overlay" },
+  "table/rotateOverlay.tsx:portraitOverlayStyles.sub": { plate: "portraitOverlayStyles.overlay" },
+  // The disc's own gradient is darker than both stand-in stops.
+  "table/seats.tsx:seatStyles.discInitials": { stops: [3, 4] },
+  "table/seats.tsx:seatStyles.countBubbleText": { plate: "seatStyles.countBubble" },
+  "table/seats.tsx:seatStyles.oppName": { plate: SELF },
+  "table/seats.tsx:seatStyles.oppNameActive": { plate: "seatStyles.oppName" },
+  "table/settingsSheet.tsx:sheetStyles.rowLabel": { gradient: SHEET },
+  "table/settingsSheet.tsx:sheetStyles.rowHint": { gradient: SHEET },
+  "table/settingsSheet.tsx:sheetStyles.header": { gradient: SHEET },
+  "table/settingsSheet.tsx:sheetStyles.foot": { gradient: SHEET },
+  "table/settingsSheet.tsx:sheetStyles.exitLabel": { gradient: Gradient.garnet },
+};
 
-for (const { text, plate, stops } of ON_FELT_TEXT) {
-  test(`the table's ${text} clears body text contrast on every felt stop`, () => {
-    const ink = styleColor(text, "color");
-    assert.ok(ink, `${text} has no color`);
-    const fill = plate ? styleColor(plate, "backgroundColor") : null;
-    assert.ok(!plate || fill, `${plate} no longer paints a background`);
+/** A disabled control's label is held to the large-text bar, WCAG's floor for inactive UI. */
+const DISABLED = new Set(["table/actions.tsx:styles.btnDimLabel"]);
+
+const TABLE_TEXT = tableTextStyles();
+
+test("every inked <TableText> style says what it is painted over", () => {
+  assert.ok(TABLE_TEXT.length > 30, `found only ${TABLE_TEXT.length} <TableText> styles`);
+  const unclassified = TABLE_TEXT.filter(([file, ref]) => styleInk(file, ref) !== null && !(`${file}:${ref}` in ON_TABLE));
+  assert.deepEqual(unclassified, [], "add these to ON_TABLE");
+  const stale = Object.keys(ON_TABLE).filter((id) => !TABLE_TEXT.some(([file, ref]) => `${file}:${ref}` === id));
+  assert.deepEqual(stale, [], "no <TableText> names these any more");
+});
+
+for (const [file, ref] of TABLE_TEXT) {
+  const id = `${file}:${ref}`;
+  const backdrop = ON_TABLE[id];
+  if (!backdrop) continue;
+  const min = DISABLED.has(id) ? LARGE_MIN : BODY_MIN;
+  test(`the table's ${ref} clears ${min}:1 on every felt stop`, () => {
+    const ink = styleInk(file, ref);
+    assert.ok(ink, `${id} has no color`);
+    const fills = [backdrop.plate ?? []].flat().map((plate) => {
+      const fill = styleFill(file, plate === SELF ? ref : plate);
+      assert.ok(fill, `${plate} no longer paints a background`);
+      return fill;
+    });
 
     for (const [felt, gradient] of Object.entries(FeltGradients)) {
-      for (const stop of stops) {
-        const backdrop = fill ? resolve(fill, gradient[stop]) : gradient[stop];
-        const ratio = contrastRatio(resolve(ink, backdrop), backdrop);
-        assert.ok(
-          ratio >= BODY_MIN,
-          `${text} over ${felt} stop ${stop} is only ${ratio.toFixed(2)}:1, needs >=${BODY_MIN}:1`
-        );
+      for (const stop of backdrop.stops ?? ANY_STOP) {
+        for (const over of backdrop.gradient ?? [gradient[stop]]) {
+          const surface = fills.reduce((under, fill) => resolve(fill, under), resolve(over, gradient[stop]));
+          const ratio = contrastRatio(resolve(ink, surface), surface);
+          assert.ok(ratio >= min, `${id} over ${felt} stop ${stop} (${over}) is only ${ratio.toFixed(2)}:1, needs >=${min}:1`);
+        }
       }
     }
   });
