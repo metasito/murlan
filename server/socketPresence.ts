@@ -18,6 +18,7 @@ import { trackEvent } from "./events.ts";
 import { onEvent } from "./socketSafety.ts";
 import {
   activeGames,
+  isShuttingDown,
   seatOfUser,
   socketRoomMap,
   spectatorRoomMap,
@@ -231,11 +232,18 @@ export function registerDisconnect({ io, socket, userId }: PresenceContext) {
           // lobby is a question about the game, which lives in one instance's
           // memory — and not necessarily this one. Reading `activeGames` here
           // read every table held elsewhere as a lobby and released the seat.
-          const seat = await applyOrForward(io, {
-            kind: "seatLost",
-            roomId: currentRoomId,
-            userId,
-          });
+          // A lobby has no game anywhere, so a process on its way out need not
+          // spend its last seconds asking.
+          const lobby =
+            isShuttingDown() &&
+            (await roomStore.getRoomById(currentRoomId))?.status === "waiting";
+          const seat = lobby
+            ? { code: "NO_LIVE_GAME" }
+            : await applyOrForward(io, {
+                kind: "seatLost",
+                roomId: currentRoomId,
+                userId,
+              });
           // Only "no game anywhere" is a lobby. `NOT_SEATED` is the owner
           // saying the table is live and this account holds no seat at it, and
           // `TABLE_UNREACHABLE` is nobody having answered — releasing a seat on
