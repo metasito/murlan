@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { flushPendingCrashReports } from "@/lib/errorReporting";
 import NetInfo from "@react-native-community/netinfo";
-import { apiRequest, getApiUrl, queryClient } from "@/lib/query-client";
+import { apiRequest, getApiUrl } from "@/lib/query-client";
 import { forgetPushRegistration } from "@/lib/pushRegistration";
 import { ACCOUNT_KEYS, AUTH_USER_KEY as STORAGE_KEY } from "@/lib/storageKeys";
 
@@ -211,7 +211,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await apiRequest("POST", "/api/auth/logout");
     forgetPushRegistration();
     setUser(null);
-    queryClient.clear();
     await AsyncStorage.multiRemove(ACCOUNT_KEYS).catch(() => {});
   }, []);
 
