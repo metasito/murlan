@@ -12,6 +12,8 @@ import { render, act, fireEvent, waitFor } from "@testing-library/react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { GameProvider, useGame } from "@/context/GameContext";
 import { OFFLINE_SAVE_KEY, OFFLINE_SAVE_VERSION, decodeOfflineSave } from "@/lib/offlineSave";
+import { NotificationProvider, useNotification } from "@/context/NotificationContext";
+import { t } from "@/lib/i18n";
 
 const SETUP = [
   { name: "Ana", type: "human" as const },
@@ -103,8 +105,21 @@ function Probe() {
   );
 }
 
+function NoticeProbe() {
+  const { notification } = useNotification();
+  return <Text testID="notice">{notification?.title ?? "none"}</Text>;
+}
+
 // This RNTL renders on a concurrent root, so render() is a promise.
-const mount = () => render(<GameProvider><Probe /></GameProvider>);
+const mount = () =>
+  render(
+    <NotificationProvider>
+      <GameProvider>
+        <Probe />
+        <NoticeProbe />
+      </GameProvider>
+    </NotificationProvider>
+  );
 type View = Awaited<ReturnType<typeof mount>>;
 
 // Tearing a concurrent root down outside act() leaves the next render with an
@@ -179,6 +194,20 @@ test("with nothing stored, there is nothing to offer", async () => {
   await waitFor(() => expect(textOf(r, "saved")).toBe("false"));
   await press(r, "resume");
   expect(textOf(r, "hand")).toBe("none");
+  expect(textOf(r, "notice")).toBe("none");
+  await unmount(r);
+});
+
+test("a save an update can no longer read is removed, and the player is told", async () => {
+  const stale = JSON.parse(midExchangeSave());
+  stale.version = OFFLINE_SAVE_VERSION - 1;
+  await AsyncStorage.setItem(OFFLINE_SAVE_KEY, JSON.stringify(stale));
+
+  const r = await mount();
+  await waitFor(() => expect(textOf(r, "notice")).toBe(t("offlineGame.saveDiscardedTitle")));
+  await waitFor(async () => expect(await AsyncStorage.getItem(OFFLINE_SAVE_KEY)).toBeNull());
+  expect(textOf(r, "saved")).toBe("false");
+  await unmount(r);
 });
 
 // The exchange is driven entirely by gameState.exchangePhase, which is

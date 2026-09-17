@@ -434,6 +434,8 @@ export const it: Record<keyof typeof en, string> = {
   "offlineGame.quitConfirmTitle": "Abbandona",
   "offlineGame.quitConfirmBody": "Vuoi uscire dalla partita?",
   "offlineGame.quitConfirmConfirm": "Esci",
+  "offlineGame.saveDiscardedTitle": "Partita salvata non ripristinata",
+  "offlineGame.saveDiscardedBody": "Un aggiornamento ha cambiato il modo in cui le partite vengono salvate, quindi la tua partita offline in corso non può essere ripresa.",
 
   // -------------------------------------------------------------- onlineGame.*
   "onlineGame.reconnecting": "Connessione persa — riconnessione…",

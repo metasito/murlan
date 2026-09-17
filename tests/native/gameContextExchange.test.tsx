@@ -12,6 +12,7 @@ import { Text, Pressable } from "react-native";
 import { render, act, fireEvent, waitFor } from "@testing-library/react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { GameProvider, useGame } from "@/context/GameContext";
+import { NotificationProvider } from "@/context/NotificationContext";
 import { encodeOfflineSave, OFFLINE_SAVE_KEY } from "@/lib/offlineSave";
 import type { GameState } from "@/lib/gameEngine";
 
@@ -101,9 +102,11 @@ function Probe() {
 
 const mount = () =>
   render(
-    <GameProvider>
-      <Probe />
-    </GameProvider>
+    <NotificationProvider>
+      <GameProvider>
+        <Probe />
+      </GameProvider>
+    </NotificationProvider>
   );
 
 type View = Awaited<ReturnType<typeof mount>>;

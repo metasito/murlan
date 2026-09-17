@@ -41,8 +41,17 @@ export function encodeOfflineSave(save: Omit<OfflineSave, "version">): string {
 const isObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
 
+export type OfflineDecode =
+  | { kind: "none" }
+  | { kind: "incompatible" }
+  | { kind: "ok"; save: OfflineSave };
+
+const NONE: OfflineDecode = { kind: "none" };
+const INCOMPATIBLE: OfflineDecode = { kind: "incompatible" };
+
 /**
- * A stored blob, or null if there is any doubt at all.
+ * A stored blob; `incompatible` when a save was there and cannot be trusted,
+ * which the player is told about, and `none` when there was never one.
  *
  * Deliberately shallow. The version is what actually protects against a shape
  * change; re-validating every card would be a second copy of the engine's types
@@ -51,28 +60,28 @@ const isObject = (v: unknown): v is Record<string, unknown> =>
  * thing, so a truncated or hand-edited blob fails here rather than as
  * `Cannot read property 'cards' of null` three screens later.
  */
-export function decodeOfflineSave(raw: string | null): OfflineSave | null {
-  if (!raw) return null;
+export function decodeOfflineSave(raw: string | null): OfflineDecode {
+  if (!raw) return NONE;
 
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
   } catch {
-    return null;
+    return NONE;
   }
-  if (!isObject(parsed)) return null;
-  if (parsed.version !== OFFLINE_SAVE_VERSION) return null;
+  if (!isObject(parsed)) return NONE;
+  if (parsed.version !== OFFLINE_SAVE_VERSION) return INCOMPATIBLE;
 
   const { gameState, match, rematchAnswers, players, gameMode, dealFirstSeat } = parsed;
-  if (!isObject(gameState) || !Array.isArray(gameState.players)) return null;
-  if (gameState.players.length === 0) return null;
-  if (!isObject(match) || !isObject(match.scores) || !Array.isArray(match.hands)) return null;
-  if (!isObject(rematchAnswers)) return null;
-  if (!Array.isArray(players) || players.length !== gameState.players.length) return null;
-  if (gameMode !== "free_for_all" && gameMode !== "teams") return null;
-  if (!Number.isInteger(dealFirstSeat)) return null;
+  if (!isObject(gameState) || !Array.isArray(gameState.players)) return INCOMPATIBLE;
+  if (gameState.players.length === 0) return INCOMPATIBLE;
+  if (!isObject(match) || !isObject(match.scores) || !Array.isArray(match.hands)) return INCOMPATIBLE;
+  if (!isObject(rematchAnswers)) return INCOMPATIBLE;
+  if (!Array.isArray(players) || players.length !== gameState.players.length) return INCOMPATIBLE;
+  if (gameMode !== "free_for_all" && gameMode !== "teams") return INCOMPATIBLE;
+  if (!Number.isInteger(dealFirstSeat)) return INCOMPATIBLE;
 
-  return parsed as unknown as OfflineSave;
+  return { kind: "ok", save: parsed as unknown as OfflineSave };
 }
 
 /**

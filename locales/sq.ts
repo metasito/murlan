@@ -441,6 +441,8 @@ export const sq: Record<keyof typeof en, string> = {
   "offlineGame.quitConfirmTitle": "Braktis",
   "offlineGame.quitConfirmBody": "Dëshiron të dalësh nga loja?",
   "offlineGame.quitConfirmConfirm": "Dil",
+  "offlineGame.saveDiscardedTitle": "Ndeshja e ruajtur nuk u rikthye",
+  "offlineGame.saveDiscardedBody": "Një përditësim ndryshoi mënyrën si ruhen ndeshjet, prandaj ndeshja jote offline e papërfunduar nuk mund të vazhdohet.",
 
   // -------------------------------------------------------------- onlineGame.*
   "onlineGame.reconnecting": "Lidhja u humb — po rilidhet…",

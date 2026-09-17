@@ -10,6 +10,7 @@ import React from "react";
 import { Text, Pressable } from "react-native";
 import { render, act, fireEvent } from "@testing-library/react-native";
 import { GameProvider, useGame, type PlayerSetupConfig } from "@/context/GameContext";
+import { NotificationProvider } from "@/context/NotificationContext";
 
 const ONE_HUMAN_THREE_BOTS = [
   { name: "Ana", type: "human" as const },
@@ -38,9 +39,11 @@ function Probe({ seats, answerer }: { seats: PlayerSetupConfig[]; answerer: stri
 
 const mount = (seats: PlayerSetupConfig[] = ONE_HUMAN_THREE_BOTS, answerer = "player_0") =>
   render(
-    <GameProvider>
-      <Probe seats={seats} answerer={answerer} />
-    </GameProvider>
+    <NotificationProvider>
+      <GameProvider>
+        <Probe seats={seats} answerer={answerer} />
+      </GameProvider>
+    </NotificationProvider>
   );
 
 type View = Awaited<ReturnType<typeof mount>>;

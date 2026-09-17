@@ -13,6 +13,7 @@ import { render, act, fireEvent, waitFor } from "@testing-library/react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { GameProvider, useGame } from "@/context/GameContext";
 import { OFFLINE_SAVE_KEY, OFFLINE_SAVE_VERSION, decodeOfflineSave } from "@/lib/offlineSave";
+import { NotificationProvider } from "@/context/NotificationContext";
 
 const FOUR_PLAYERS = [
   { name: "Ana", type: "human" as const },
@@ -78,9 +79,11 @@ function Probe() {
 
 const mount = () =>
   render(
-    <GameProvider>
-      <Probe />
-    </GameProvider>
+    <NotificationProvider>
+      <GameProvider>
+        <Probe />
+      </GameProvider>
+    </NotificationProvider>
   );
 type View = Awaited<ReturnType<typeof mount>>;
 
@@ -97,8 +100,8 @@ const press = async (r: View, id: string) => {
 const textOf = (r: View, id: string) => r.getByTestId(id).props.children as string;
 
 const savedDealFirstSeat = async () => {
-  const save = decodeOfflineSave(await AsyncStorage.getItem(OFFLINE_SAVE_KEY));
-  return save?.dealFirstSeat ?? null;
+  const stored = decodeOfflineSave(await AsyncStorage.getItem(OFFLINE_SAVE_KEY));
+  return stored.kind === "ok" ? stored.save.dealFirstSeat : null;
 };
 
 beforeEach(async () => {

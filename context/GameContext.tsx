@@ -32,7 +32,10 @@ import {
   decodeOfflineSave,
   encodeOfflineSave,
   isResumable,
+  type OfflineSave,
 } from "@/lib/offlineSave";
+import { useNotification } from "@/context/NotificationContext";
+import { t } from "@/lib/i18n";
 import {
   buildExchangeAnnounce,
   rematchPromptOpen as isRematchPromptOpen,
@@ -154,7 +157,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
    * up. Loaded once on mount; the home screen offers it, `resumeGame` takes it.
    */
   const [hasSavedGame, setHasSavedGame] = useState(false);
-  const savedRef = useRef<ReturnType<typeof decodeOfflineSave>>(null);
+  const savedRef = useRef<OfflineSave | null>(null);
+  const { showNotification } = useNotification();
 
   const exchangeHoldMsOverride = E2E_FAST ? E2E_EXCHANGE_HOLD_MS : undefined;
   const {
@@ -360,12 +364,21 @@ export function GameProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     AsyncStorage.getItem(OFFLINE_SAVE_KEY)
       .then((raw) => {
-        const save = decodeOfflineSave(raw);
+        const stored = decodeOfflineSave(raw);
+        if (stored.kind === "incompatible") {
+          AsyncStorage.removeItem(OFFLINE_SAVE_KEY).catch(() => {});
+          showNotification({
+            type: "game_info",
+            title: t("offlineGame.saveDiscardedTitle"),
+            message: t("offlineGame.saveDiscardedBody"),
+          });
+        }
+        const save = stored.kind === "ok" ? stored.save : null;
         savedRef.current = save;
         setHasSavedGame(isResumable(save));
       })
       .catch(() => {});
-  }, []);
+  }, [showNotification]);
 
   /**
    * Written on every change to anything the restore needs.
