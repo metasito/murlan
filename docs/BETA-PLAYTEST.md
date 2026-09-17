@@ -16,9 +16,9 @@ Record the result next to each line: ✅, or what happened.
 
 ## Account recovery
 - [ ] One player registers, then adds an email from their profile. Does the verification
-      mail arrive, and does tapping its link land on a screen that says it worked?
-- [ ] That same player logs out and uses "forgot password" on their email. Reset the
-      password from the link and log in with the new one.
+      mail arrive, and does typing its code in land on a screen that says it worked?
+- [ ] That same player logs out and uses "forgot password" on their email. Type the
+      emailed code into the reset form, set a new password, and log in with it.
 - [ ] Ask for a reset on an address nobody registered. Does the screen say the same thing
       it says for a real one — no hint about which addresses exist?
 
@@ -65,8 +65,9 @@ Record the result next to each line: ✅, or what happened.
       table, each in their own seat, with nobody left waiting?
 - [ ] In that quickmatched room, can the host start the match, and is it clear to the other
       three who the host is while they wait?
-- [ ] With the app backgrounded, have someone send an invite. Tap the push notification —
-      does it open on the room it names, not on the home screen?
+- [ ] With the app backgrounded, have someone send an invite. Does a push notification
+      arrive naming the room? (Tapping it only reopens the app — routing to the room is
+      not built.)
 - [ ] Start a room with bot-fill and one human. Does it play a full match?
 
 ## The awkward ones
