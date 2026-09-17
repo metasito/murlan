@@ -271,4 +271,33 @@ describe("the admin dashboard", { skip: hasDatabase() ? false : skipMessage() },
     assert.ok(body.includes(`report ${escaped}`), "the bug report is missing or unescaped");
     assert.ok(!body.includes("<img src=x"), "a player's markup reached the admin page raw");
   });
+
+  test("a server error becomes a row, is shown on the page and ages out", async () => {
+    const { logger } = await import("../../server/logger.ts");
+    const { SERVER_ERROR_RETENTION_DAYS } = await import("../../server/serverErrors.ts");
+    const rows = (message: string) =>
+      dbPool.query(`SELECT context FROM "${server.schema}".server_errors WHERE message = $1`, [message]);
+
+    logger.error({ roomId: "r-planted" }, "a planted server failure");
+    let found: { context: { roomId?: string } }[] = [];
+    for (let attempt = 0; attempt < 40 && found.length === 0; attempt++) {
+      found = (await rows("a planted server failure")).rows;
+      if (found.length === 0) await new Promise((r) => setTimeout(r, 50));
+    }
+    assert.equal(found.length, 1, "the error line was never stored");
+    assert.equal(found[0].context.roomId, "r-planted");
+
+    const body = await (await get(ownerCookie)).text();
+    assert.ok(body.includes("Server errors"), "the page has no server-error panel");
+    assert.ok(body.includes("a planted server failure"), "the stored error is not on the page");
+
+    await dbPool.query(
+      `INSERT INTO "${server.schema}".server_errors (level, message, occurred_at)
+       VALUES (50, $1, now() - make_interval(days => $2))`,
+      ["an ancient server failure", SERVER_ERROR_RETENTION_DAYS + 1]
+    );
+    await sweepRetention();
+    assert.equal((await rows("an ancient server failure")).rowCount, 0);
+    assert.equal((await rows("a planted server failure")).rowCount, 1);
+  });
 });

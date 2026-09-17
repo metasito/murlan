@@ -24,7 +24,8 @@ import express from "express";
 import { once } from "node:events";
 import type { AddressInfo } from "node:net";
 import { Writable } from "node:stream";
-import { createLogger, createRequestLogger, REDACT_PATHS } from "../server/logger.ts";
+import { createLogger, createRequestLogger, REDACT_PATHS, setErrorRecorder } from "../server/logger.ts";
+import { errorHandler } from "../server/errorHandler.ts";
 import { ANSWERED_BY_SHELL, unmatchedKind } from "../server/staticPaths.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -634,5 +635,50 @@ describe("what a completed request leaves in the log", () => {
     } finally {
       process.env.NODE_ENV = before;
     }
+  });
+});
+
+describe("what an error leaves beyond the log line", () => {
+  test("a completed request line carries its request id", async () => {
+    const line = await completedRequestLine("/api/anything", { route: "/api/anything" });
+    assert.notEqual(line.reqId, undefined);
+  });
+
+  test("the error handler logs through the request's own logger", async () => {
+    const { sink, written } = captureSink();
+    const app = express();
+    app.use(createRequestLogger(createLogger(sink)));
+    app.get("/boom", () => {
+      throw new Error("planted");
+    });
+    app.use(errorHandler);
+    const server = http.createServer(app);
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    try {
+      const { port } = server.address() as AddressInfo;
+      assert.equal((await fetch(`http://127.0.0.1:${port}/boom`)).status, 500);
+      const lines = written().trim().split("\n").map((l) => JSON.parse(l));
+      const failure = lines.find((l) => l.msg === "Internal Server Error");
+      assert.ok(failure, "the handler logged nothing");
+      assert.notEqual(failure.reqId, undefined, "two concurrent 500s cannot be told apart");
+    } finally {
+      server.close();
+    }
+  });
+
+  test("every line at error and above reaches the recorder, redacted, and nothing below", () => {
+    const recorded: Record<string, unknown>[] = [];
+    setErrorRecorder((entry) => recorded.push(entry));
+    try {
+      const log = createLogger(captureSink().sink);
+      log.warn("only a warning");
+      log.error({ payload: { roomCode: "ABCD" } }, "a real failure");
+      log.fatal("worse");
+    } finally {
+      setErrorRecorder(undefined);
+    }
+    assert.deepEqual(recorded.map((e) => e.msg), ["a real failure", "worse"]);
+    assert.equal(JSON.stringify(recorded).includes("ABCD"), false);
   });
 });

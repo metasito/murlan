@@ -44,6 +44,10 @@ describe("docs/PRIVACY.md states the retention the code enforces", () => {
       () => `${constantFrom("server/clientErrors.ts", "CLIENT_ERROR_RETENTION_DAYS")} days`,
     ],
     [
+      "server error records",
+      () => `${constantFrom("server/serverErrors.ts", "SERVER_ERROR_RETENTION_DAYS")} days`,
+    ],
+    [
       "bug reports",
       () => `${constantFrom("server/bugReports.ts", "BUG_REPORT_RETENTION_DAYS")} days`,
     ],

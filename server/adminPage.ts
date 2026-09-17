@@ -8,6 +8,7 @@ import type { AdminSnapshot } from "./admin.ts";
 import { WINDOW_DAYS } from "./admin.ts";
 import { CLIENT_ERROR_RETENTION_DAYS } from "./clientErrors.ts";
 import { BUG_REPORT_RETENTION_DAYS } from "./bugReports.ts";
+import { SERVER_ERROR_RETENTION_DAYS } from "./serverErrors.ts";
 
 /**
  * Everything interpolated below goes through this. Nothing here is written by
@@ -149,6 +150,17 @@ export function renderAdminPage(snapshot: AdminSnapshot): string {
       ) +
         `<p class="meta">A player's own words, newest first, kept for ` +
         `${BUG_REPORT_RETENTION_DAYS} days. No game state is collected.</p>`
+    ),
+    panel(
+      12,
+      "Server errors",
+      `<p>${snapshot.serverErrorsThisWeek} logged in the last 7 days.</p>` +
+        table(
+          ["Error", "Count", "Last seen"],
+          snapshot.serverErrorGroups.map((g) => [g.message, g.count, g.lastSeen])
+        ) +
+        `<p class="meta">Every server log line at error level or above, one row per message, ` +
+        `kept ${SERVER_ERROR_RETENTION_DAYS} days. The full line is in the server_errors table.</p>`
     ),
   ].join("");
 

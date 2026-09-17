@@ -129,7 +129,7 @@ a copy of your data.
 | Room and your seat in it | Swept once the room is more than 24 hours old |
 | Oversized game messages in transit | Seconds, then discarded automatically |
 | Replays | 14 days after the hand |
-| Crash reports, bug reports, usage events | 90 days |
+| Crash reports, server error records, bug reports, usage events | 90 days |
 | Email confirmation and password-reset codes | Until they expire, minutes after being sent |
 | Push token | Until you sign out, register a sixth device (we keep your five most recent), give the device to someone who signs in on it, delete your account, or a later notification finds the device gone |
 | Session cookie | 30 days, or until you sign out or delete your account. Changing your password ends your other sessions; resetting it ends all of them |

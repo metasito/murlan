@@ -1,0 +1,23 @@
+# Production's /health, asked on a schedule. Red when PROD_URL is unset too:
+# a probe with nowhere to point is not a passing probe.
+name: Production health
+
+on:
+  schedule:
+    - cron: "41 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    name: Probe /health
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Probe
+        env:
+          PROD_URL: ${{ vars.PROD_URL }}
+        run: node scripts/probe-health.mjs
