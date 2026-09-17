@@ -19,8 +19,8 @@ describe('ChoiceChips', () => {
     expect(chips[0].props.accessibilityState.selected).toBe(true);
     expect(chips[1].props.accessibilityState.selected).toBe(false);
     // The words are the chip's own name, so they must not be reachable twice.
-    expect(view.queryByText('MATCH')?.props.accessibilityElementsHidden).toBe(true);
-    expect(view.queryByText('first to 100')?.props.accessibilityElementsHidden).toBe(true);
+    expect(view.getByText('MATCH', { includeHiddenElements: true }).props.accessibilityElementsHidden).toBe(true);
+    expect(view.getByText('first to 100', { includeHiddenElements: true }).props.accessibilityElementsHidden).toBe(true);
     await view.unmount();
   });
 

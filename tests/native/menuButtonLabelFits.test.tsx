@@ -11,7 +11,7 @@ describe('MenuButton gives a long label room rather than an ellipsis', () => {
     const view = await render(
       <MenuButton label={sq['onlineLobby.enterRoomCode']} onPress={() => {}} />
     );
-    const text = view.getByText(sq['onlineLobby.enterRoomCode']);
+    const text = view.getByText(sq['onlineLobby.enterRoomCode'], { includeHiddenElements: true });
     expect(text.props.numberOfLines).toBeGreaterThan(1);
     expect(StyleSheet.flatten(text.props.style).flexShrink).toBe(1);
     await view.unmount();
