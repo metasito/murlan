@@ -74,6 +74,19 @@ function parseCachedUser(raw: string | null): AuthUser | null {
   }
 }
 
+/**
+ * Storage only caches state that is already set, so a failed write must not
+ * fail the call that set it.
+ */
+async function cacheUser(data: AuthUser | null): Promise<void> {
+  try {
+    if (data) await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    else await AsyncStorage.removeItem(STORAGE_KEY);
+  } catch {
+    // The next boot asks the server anyway.
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
@@ -88,20 +101,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (cancelled) return true;
       if (result === undefined) return false;
       setUser(result);
-      if (result) await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(result));
-      else await AsyncStorage.removeItem(STORAGE_KEY);
+      await cacheUser(result);
       return true;
     };
 
     (async () => {
-      const cached = parseCachedUser(await AsyncStorage.getItem(STORAGE_KEY));
-      if (cancelled) return;
-      if (cached) setUser(cached);
-
-      const settled = await confirm();
-      if (cancelled) return;
-      setLoading(false);
-      if (settled) return;
+      let settled = false;
+      try {
+        const raw = await AsyncStorage.getItem(STORAGE_KEY).catch(() => null);
+        if (cancelled) return;
+        const cached = parseCachedUser(raw);
+        if (cached) setUser(cached);
+        settled = await confirm();
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+      if (cancelled || settled) return;
 
       // Unanswered: the cached user stands until connectivity comes back and
       // the server can be asked again. Only an explicit false means offline —
@@ -126,7 +141,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const res = await apiRequest("POST", "/api/auth/login", { username, password });
     const data = await res.json();
     setUser(data);
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    await cacheUser(data);
   }, []);
 
   // The response body carries no user (#897 — it is the same neutral
@@ -142,8 +157,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const data = await fetchMe();
     if (data === undefined) return undefined;
     setUser(data);
-    if (data) await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-    else await AsyncStorage.removeItem(STORAGE_KEY);
+    await cacheUser(data);
     return data;
   }, []);
 
@@ -155,7 +169,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const res = await apiRequest("PATCH", "/api/users/me", { username });
     const data = await res.json();
     setUser(data);
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    await cacheUser(data);
   }, []);
 
   // No local state to update: unlike rename, a password change doesn't touch
@@ -172,7 +186,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const res = await apiRequest("POST", "/api/auth/add-email", { email });
     const data = await res.json();
     setUser(data);
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    await cacheUser(data);
   }, []);
 
   // verify-email is the only caller today: redeeming a token changes one
@@ -182,8 +196,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const data = await fetchMe();
     if (data === undefined) return;
     setUser(data);
-    if (data) await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-    else await AsyncStorage.removeItem(STORAGE_KEY);
+    await cacheUser(data);
   }, []);
 
   const logout = useCallback(async () => {
@@ -199,7 +212,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       throw e;
     }
     setUser(null);
-    await AsyncStorage.removeItem(STORAGE_KEY);
+    await cacheUser(null);
   }, []);
 
   const contextValue = useMemo(
