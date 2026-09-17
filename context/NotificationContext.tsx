@@ -72,7 +72,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       const next = [...prev, n];
       // The banner on screen stays; the stalest of those waiting behind it go.
       return next.length > NOTIFICATION_QUEUE_MAX
-        ? [next[0], ...next.slice(next.length - NOTIFICATION_QUEUE_MAX + 1)]
+        ? [...next.slice(0, 1), ...next.slice(next.length - NOTIFICATION_QUEUE_MAX + 1)]
         : next;
     });
   }, []);

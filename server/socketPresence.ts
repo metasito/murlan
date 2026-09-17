@@ -179,7 +179,7 @@ const pendingDisconnects = new Set<Promise<void>>();
  * table another instance owns is forwarded over the adapter pool.
  */
 export async function settleDisconnects(timeoutMs: number): Promise<void> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
+  let timer: NodeJS.Timeout | undefined;
   await Promise.race([
     Promise.allSettled([...pendingDisconnects]),
     new Promise((resolve) => { timer = setTimeout(resolve, timeoutMs); }),
