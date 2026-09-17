@@ -273,6 +273,27 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
     await closeTable(room.roomId, nadia);
   });
 
+  test("a rejoin at the results screen is told the rematch answers and votes so far", async () => {
+    const [pia, remy] = await makeClients(server, ["rejoin_tally_pia", "rejoin_tally_remy"]);
+    const room = await setUpRoom([pia, remy], 2);
+    gameOverOf(
+      await driveHandToExchangeOrOver([pia, remy], () => {
+        pia.socket.emit("room:start", { matchLength: "single" });
+      })
+    );
+    const answered = waitFor(pia.socket, "game:rematch_intents", 5_000);
+    remy.socket.emit("game:rematch_intent", { wants: true });
+    await answered;
+
+    const intents = waitFor<{ answers: Record<string, boolean> }>(pia.socket, "game:rematch_intents", 5_000);
+    const votes = waitFor<{ votes: string[] }>(pia.socket, "game:vote_state", 5_000);
+    pia.socket.emit("game:rejoin", { roomId: room.roomId });
+    assert.deepEqual((await intents).answers, { [remy.user.id]: true });
+    assert.deepEqual((await votes).votes, []);
+    remy.socket.emit("room:leave");
+    await closeTable(room.roomId, pia);
+  });
+
   test("a rematch that cannot proceed says why and leaves the vote retryable", async () => {
     const [liam] = await makeClients(server, ["rematch_error_liam"]);
     const room = await setUpRoom([liam], 2);
