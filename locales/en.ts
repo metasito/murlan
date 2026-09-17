@@ -785,6 +785,7 @@ export const en = {
   "onlineLobby.watchA11yHint": "Join as a spectator, without taking a seat",
 
   // ------------------------------------------------------------------- room.*
+  "room.requestNotDelivered": "That request did not reach the server. Check your connection and try again.",
   "room.inviteFriendsTitle": "INVITE FRIENDS",
   "room.noFriendsOnline": "No friends online",
   "room.invite": "Invite",

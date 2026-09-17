@@ -168,6 +168,23 @@ describe("an intent is acknowledged", { skip: hasDatabase() ? false : skipMessag
     );
   });
 
+  test("a pass retried under one intentId is answered as the pass that landed", async () => {
+    const { c: leader, s: state, waiting } = await dealtPair("passretry");
+    const lead = state.players[state.viewerSeatIndex]?.hand.find((c) => c.id === state.startCard?.id);
+    assert.ok(lead);
+    assert.deepEqual(await ackOf(leader.socket, "game:play", { cardIds: [lead.id] }), { ok: true });
+
+    const retry = { intentId: "pass-retry-1" };
+    assert.deepEqual(await ackOf(waiting.socket, "game:pass", retry), { ok: true });
+    assert.deepEqual(
+      await ackOf(waiting.socket, "game:pass", retry),
+      { ok: true },
+      "the retry is the same intent, not a second pass out of turn"
+    );
+    const fresh = (await ackOf(waiting.socket, "game:pass", { intentId: "pass-retry-2" })) as EventOutcome;
+    assert.equal(fresh.code, "NOT_YOUR_TURN", "a new intent is judged on its own");
+  });
+
   test("the server answers a pass", async () => {
     const { host } = await table("pass");
     assert.notEqual(await ackOf(host.socket, "game:pass", undefined), null);

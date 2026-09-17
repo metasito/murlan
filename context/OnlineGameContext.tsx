@@ -15,7 +15,7 @@ import { useSocket } from "@/context/SocketContext";
 import { useNotification } from "@/context/NotificationContext";
 import { t, translateServerPayload, type ServerPayload } from "@/lib/i18n";
 import { Reading } from "@/lib/theme";
-import { sendIntent } from "@/lib/sendIntent";
+import { send, undelivered, type IntentEvent } from "@/lib/sendIntent";
 import { MATCH_TARGETS } from "@/lib/gameEngine";
 import {
   gameOverSchema,
@@ -395,13 +395,13 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     const playing = currentRoom?.status === "in_progress";
     if (currentRoom && ((currentGame && !currentGame.gameOver) || playing)) {
       requestedRoomIdRef.current = currentRoom.roomId;
-      socket?.emit("game:rejoin", { roomId: currentRoom.roomId });
+      void send(socket, "game:rejoin", { roomId: currentRoom.roomId }, { retry: false });
       return true;
     }
     // Cold start / remounted provider: no in-memory room, but storage may hold one.
     if (!currentRoom && persistedRoomIdRef.current) {
       requestedRoomIdRef.current = persistedRoomIdRef.current;
-      socket?.emit("game:rejoin", { roomId: persistedRoomIdRef.current });
+      void send(socket, "game:rejoin", { roomId: persistedRoomIdRef.current }, { retry: false });
       return true;
     }
 
@@ -417,7 +417,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       : persistedWaitingCodeRef.current;
     if (waitingCode) {
       rejoiningRoomCodeRef.current = waitingCode;
-      socket?.emit("room:rejoin", { code: waitingCode });
+      void send(socket, "room:rejoin", { code: waitingCode }, { retry: false });
       return true;
     }
     return false;
@@ -869,6 +869,25 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     announce,
   ]);
 
+  /**
+   * Every intent waits to be told it arrived and says so if it never was — a
+   * move that vanished used to look exactly like a player who did not move.
+   */
+  const deliver = useCallback(
+    (event: IntentEvent, payload?: object, options?: { retry?: boolean }) => {
+      void send(socket, event, payload, options).then((outcome) => {
+        if (!undelivered(outcome)) return;
+        showNotification({
+          type: "game_error",
+          title: t("common.error"),
+          message: t(event.startsWith("game:") ? "game.moveNotDelivered" : "room.requestNotDelivered"),
+          duration: Reading.notice,
+        });
+      });
+    },
+    [socket, showNotification]
+  );
+
   const createRoom = useCallback((gameMode: "free_for_all" | "teams", maxPlayers: number) => {
     setEntrySource("friends");
     // A rejoin_failed latched by an earlier, unrelated room (e.g. a
@@ -880,8 +899,8 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     // Taking a seat is not watching, whatever an earlier spectate attempt left
     // behind: the flag decides whether leaving this room releases the seat.
     setIsSpectator(false);
-    socket?.emit("room:create", { gameMode, maxPlayers });
-  }, [socket]);
+    deliver("room:create", { gameMode, maxPlayers }, { retry: false });
+  }, [deliver]);
 
   const joinRoom = useCallback((code: string) => {
     setEntrySource("friends");
@@ -891,17 +910,17 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     // hand and by nothing else, so a standing error otherwise outlives the
     // table it was about and hides this join's own answer behind it.
     setError(null);
-    socket?.emit("room:join", { code });
-  }, [socket]);
+    deliver("room:join", { code }, { retry: false });
+  }, [deliver]);
 
   const spectateRoom = useCallback(
     (code: string) => {
       setIsSpectator(true);
       setRejoinFailed(false);
       setError(null);
-      socket?.emit("room:spectate", { code: code.toUpperCase() });
+      deliver("room:spectate", { code: code.toUpperCase() });
     },
-    [socket]
+    [deliver]
   );
 
   const leaveRoom = useCallback(() => {
@@ -909,10 +928,10 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     // sending it anyway would run the seated teardown for a table this socket
     // does not occupy.
     if (isSpectator) {
-      socket?.emit("room:unspectate");
+      deliver("room:unspectate");
       setIsSpectator(false);
     } else {
-      socket?.emit("room:leave");
+      deliver("room:leave");
     }
     persistActiveRoom(null);
     // Leaving is deliberate: neither handle may bring this room back on the
@@ -935,38 +954,38 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     setMySeatIndex(-1);
     prevBothJokersExceptionRef.current = false;
     prevExchangeActiveRef.current = false;
-  }, [socket, isSpectator, persistActiveRoom, persistWaitingRoom, forgetRejoinAttempt]);
+  }, [deliver, isSpectator, persistActiveRoom, persistWaitingRoom, forgetRejoinAttempt]);
 
   const quickmatch = useCallback((maxPlayers: number, gameMode: "free_for_all" | "teams") => {
     setEntrySource("quickmatch");
     setRejoinFailed(false);
     setIsSpectator(false);
-    socket?.emit("room:quickmatch", { maxPlayers, gameMode });
-  }, [socket]);
+    deliver("room:quickmatch", { maxPlayers, gameMode }, { retry: false });
+  }, [deliver]);
 
   const setRoomVisibility = useCallback((visibility: "public" | "private") => {
-    socket?.emit("room:setVisibility", { visibility });
-  }, [socket]);
+    deliver("room:setVisibility", { visibility });
+  }, [deliver]);
 
   const startGame = useCallback((opts?: {
     fillWithBots?: boolean;
     botPersonality?: BotPersonalityId;
     matchLength?: MatchLength;
   }) => {
-    socket?.emit("room:start", opts);
-  }, [socket]);
+    deliver("room:start", opts);
+  }, [deliver]);
 
   const voteRematch = useCallback(() => {
-    socket?.emit("game:rematch_vote");
-  }, [socket]);
+    deliver("game:rematch_vote");
+  }, [deliver]);
 
   const voteToEndMatch = useCallback((wants: boolean) => {
-    socket?.emit("game:end_match_vote", { wants });
-  }, [socket]);
+    deliver("game:end_match_vote", { wants });
+  }, [deliver]);
 
   const answerRematch = useCallback((wants: boolean) => {
-    socket?.emit("game:rematch_intent", { wants });
-  }, [socket]);
+    deliver("game:rematch_intent", { wants });
+  }, [deliver]);
 
   // Same predicate as the offline table (lib/gameEngine), fed by the sanitized
   // state: opponents' hands are blanked but `handCount` is not.
@@ -983,41 +1002,21 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     [gameState, matchState, cumulativeScores]
   );
 
-  /**
-   * The three intents that decide a hand. Each waits to be told it arrived and
-   * says so if it never was — a move that vanished used to look exactly like a
-   * player who did not move, and cost them the turn.
-   */
-  const sendMove = useCallback(
-    (event: string, payload?: unknown) => {
-      void sendIntent(socket, event, payload).then((outcome) => {
-        if (outcome.ok || outcome.code) return;
-        showNotification({
-          type: "game_error",
-          title: t("common.error"),
-          message: t("game.moveNotDelivered"),
-          duration: Reading.notice,
-        });
-      });
-    },
-    [socket, showNotification]
-  );
-
   const playCards = useCallback(
-    (cardIds: string[]) => sendMove("game:play", { cardIds }),
-    [sendMove]
+    (cardIds: string[]) => deliver("game:play", { cardIds }),
+    [deliver]
   );
 
-  const pass = useCallback(() => sendMove("game:pass"), [sendMove]);
+  const pass = useCallback(() => deliver("game:pass"), [deliver]);
 
   const giveExchangeCard = useCallback(
-    (cardId: string) => sendMove("game:exchange_give_card", { cardId }),
-    [sendMove]
+    (cardId: string) => deliver("game:exchange_give_card", { cardId }),
+    [deliver]
   );
 
   const sendReaction = useCallback((emoji: string) => {
-    socket?.emit("game:reaction", { emoji });
-  }, [socket]);
+    deliver("game:reaction", { emoji });
+  }, [deliver]);
 
   const clearError = useCallback(() => setError(null), []);
   const clearPlayerLeft = useCallback(() => setPlayerLeft(false), []);

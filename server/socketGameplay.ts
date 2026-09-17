@@ -75,10 +75,10 @@ export function registerGameplayHandlers({
       socket,
       "game:play",
       GamePlaySchema,
-      async ({ cardIds }) => {
+      async ({ cardIds }, { intentId }) => {
         const roomId = atTable();
         if (!roomId) return { ok: false, code: "NOT_AT_A_TABLE" };
-        return applyOrForward(io, { kind: "play", roomId, userId, cardIds });
+        return applyOrForward(io, { kind: "play", roomId, userId, cardIds, intentId });
       },
       { limit: GAME_ACTION_RATE_LIMIT, windowMs: 60_000 }
     );
@@ -87,10 +87,10 @@ export function registerGameplayHandlers({
       socket,
       "game:pass",
       NoPayloadSchema,
-      async () => {
+      async (_payload, { intentId }) => {
         const roomId = atTable();
         if (!roomId) return { ok: false, code: "NOT_AT_A_TABLE" };
-        return applyOrForward(io, { kind: "pass", roomId, userId });
+        return applyOrForward(io, { kind: "pass", roomId, userId, intentId });
       },
       { limit: GAME_ACTION_RATE_LIMIT, windowMs: 60_000 }
     );
@@ -99,10 +99,10 @@ export function registerGameplayHandlers({
       socket,
       "game:rematch_intent",
       GameRematchIntentSchema,
-      async ({ wants }) => {
+      async ({ wants }, { intentId }) => {
         const roomId = atTable();
         if (!roomId) return { ok: false, code: "NOT_AT_A_TABLE" };
-        return applyOrForward(io, { kind: "rematchIntent", roomId, userId, wants });
+        return applyOrForward(io, { kind: "rematchIntent", roomId, userId, wants, intentId });
       },
       { limit: 20, windowMs: 60_000 }
     );
@@ -111,10 +111,10 @@ export function registerGameplayHandlers({
       socket,
       "game:rematch_vote",
       NoPayloadSchema,
-      async () => {
+      async (_payload, { intentId }) => {
         const roomId = atTable();
         if (!roomId) return { ok: false, code: "NOT_AT_A_TABLE" };
-        return applyOrForward(io, { kind: "rematchVote", roomId, userId });
+        return applyOrForward(io, { kind: "rematchVote", roomId, userId, intentId });
       },
       { limit: 20, windowMs: 60_000 }
     );
@@ -123,10 +123,10 @@ export function registerGameplayHandlers({
       socket,
       "game:end_match_vote",
       GameEndMatchVoteSchema,
-      async ({ wants }) => {
+      async ({ wants }, { intentId }) => {
         const roomId = atTable();
         if (!roomId) return { ok: false, code: "NOT_AT_A_TABLE" };
-        return applyOrForward(io, { kind: "endMatchVote", roomId, userId, wants });
+        return applyOrForward(io, { kind: "endMatchVote", roomId, userId, wants, intentId });
       },
       { limit: 20, windowMs: 60_000 }
     );
@@ -163,10 +163,10 @@ export function registerGameplayHandlers({
       socket,
       "game:reaction",
       GameReactionSchema,
-      async ({ emoji }) => {
+      async ({ emoji }, { intentId }) => {
         const roomId = atTable();
         if (!roomId) return { ok: false, code: "NOT_AT_A_TABLE" };
-        return applyOrForward(io, { kind: "reaction", roomId, userId, emoji });
+        return applyOrForward(io, { kind: "reaction", roomId, userId, emoji, intentId });
       },
       { limit: 8, windowMs: 10_000 }
     );
@@ -175,10 +175,10 @@ export function registerGameplayHandlers({
       socket,
       "game:exchange_give_card",
       GameExchangeGiveCardSchema,
-      async ({ cardId }) => {
+      async ({ cardId }, { intentId }) => {
         const roomId = atTable();
         if (!roomId) return { ok: false, code: "NOT_AT_A_TABLE" };
-        return applyOrForward(io, { kind: "exchange", roomId, userId, cardId });
+        return applyOrForward(io, { kind: "exchange", roomId, userId, cardId, intentId });
       },
       { limit: 30, windowMs: 60_000 }
     );

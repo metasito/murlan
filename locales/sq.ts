@@ -785,6 +785,7 @@ export const sq: Record<keyof typeof en, string> = {
   "onlineLobby.watchA11yHint": "Hyr si spektator, pa zënë vend në tavolinë",
 
   // ------------------------------------------------------------------- room.*
+  "room.requestNotDelivered": "Kërkesa nuk arriti te serveri. Kontrollo lidhjen dhe provo përsëri.",
   "room.inviteFriendsTitle": "FTO MIQ",
   "room.noFriendsOnline": "Asnjë mik online",
   "room.invite": "Fto",

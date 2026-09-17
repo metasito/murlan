@@ -11,6 +11,56 @@ import type { Socket } from "./socket.ts";
 export const INTENT_ACK_TIMEOUT_MS = 4000;
 export const INTENT_ATTEMPTS = 3;
 
+/**
+ * Every event the client sends. Anything not listed here has no path to the
+ * server: `tests/intentsGoThroughSend.test.ts` refuses a bare emit.
+ */
+export type IntentEvent =
+  | "room:create"
+  | "room:join"
+  | "room:rejoin"
+  | "room:spectate"
+  | "room:unspectate"
+  | "room:leave"
+  | "room:quickmatch"
+  | "room:setVisibility"
+  | "room:start"
+  | "game:play"
+  | "game:pass"
+  | "game:exchange_give_card"
+  | "game:rejoin"
+  | "game:reaction"
+  | "game:rematch_vote"
+  | "game:end_match_vote"
+  | "game:rematch_intent";
+
+/**
+ * Refusals that mean "not yet" rather than "no": the socket is between a
+ * reconnect and its rejoin, or the table's instance was slow to answer.
+ */
+export const RETRYABLE_CODES: ReadonlySet<string> = new Set(["NOT_AT_A_TABLE", "TABLE_UNREACHABLE"]);
+
+let minted = 0;
+
+/** A dedupe key the server scopes by user, not a secret. */
+function mintIntentId(): string {
+  minted += 1;
+  return `${Date.now().toString(36)}-${minted.toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+/** Resolves once the table answers the rejoin with its state, or after `ms`. */
+function rejoined(socket: Socket, ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    const done = () => {
+      clearTimeout(timer);
+      socket.off("game:state", done);
+      resolve();
+    };
+    const timer = setTimeout(done, ms);
+    socket.once("game:state", done);
+  });
+}
+
 export interface IntentOutcome {
   ok: boolean;
   /** Set when the server answered and refused. Absent when it never answered. */
@@ -26,33 +76,53 @@ export interface IntentOutcome {
  * — so a play emitted into a failing connection simply vanished, and the only
  * thing the player saw was their turn running out and passing itself.
  *
- * Retrying is safe here because the server resolves card ids against the hand
- * it holds: a replay of a play that already landed matches nothing and is
- * refused, so the second copy cannot play the same card twice. That is asserted
- * in `tests/integration/intentAcknowledged.test.ts`, not assumed.
+ * Every attempt carries the same `intentId`, and the server answers a repeat
+ * of an intent it already applied with the first answer rather than applying it
+ * again — asserted in `tests/integration/intentAcknowledged.test.ts`.
  *
- * A refusal ends it. Repeating something the server has already rejected only
- * delays telling the player.
+ * A refusal ends it, unless it is one of `RETRYABLE_CODES`. Repeating
+ * something the server has already rejected only delays telling the player.
  */
 export async function sendIntent(
   socket: Socket | null,
-  event: string,
-  payload?: unknown,
+  event: IntentEvent,
+  payload?: object,
   { attempts = INTENT_ATTEMPTS, timeoutMs = INTENT_ACK_TIMEOUT_MS } = {}
 ): Promise<IntentOutcome> {
   if (!socket) return { ok: false };
+  const message = { ...payload, intentId: mintIntentId() };
 
+  let last: IntentOutcome = { ok: false };
   for (let attempt = 0; attempt < attempts; attempt++) {
     const outcome = await new Promise<IntentOutcome | null>((resolve) => {
-      const done = (reply: IntentOutcome | null) => resolve(reply);
-      const args: unknown[] = payload === undefined ? [] : [payload];
       socket
         .timeout(timeoutMs)
-        .emit(event, ...args, (err: unknown, reply: IntentOutcome | undefined) =>
-          done(err ? null : (reply ?? { ok: true }))
+        .emit(event, message, (err: unknown, reply: IntentOutcome | undefined) =>
+          resolve(err ? null : (reply ?? { ok: true }))
         );
     });
-    if (outcome) return outcome;
+    if (!outcome) continue;
+    if (!RETRYABLE_CODES.has(outcome.code ?? "")) return outcome;
+    last = outcome;
+    if (attempt < attempts - 1) await rejoined(socket, timeoutMs);
   }
-  return { ok: false };
+  return last;
+}
+
+/**
+ * The only way the client talks to the server. `retry: false` is for an
+ * intent the server does not dedupe, where a second copy is a second room.
+ */
+export function send(
+  socket: Socket | null,
+  event: IntentEvent,
+  payload?: object,
+  { retry = true }: { retry?: boolean } = {}
+): Promise<IntentOutcome> {
+  return sendIntent(socket, event, payload, { attempts: retry ? INTENT_ATTEMPTS : 1 });
+}
+
+/** Whether the player should be told the intent never landed. */
+export function undelivered(outcome: IntentOutcome): boolean {
+  return !outcome.ok && (!outcome.code || RETRYABLE_CODES.has(outcome.code));
 }

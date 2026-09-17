@@ -154,11 +154,27 @@ export interface EventOutcome {
  */
 type EventResult = void | EventOutcome;
 
+/**
+ * The client's name for one logical intent, the same on every retry of it. A
+ * dedupe key only: the handler still judges the intent on its merits.
+ */
+export interface EventContext {
+  intentId?: string;
+}
+
+const IntentIdSchema = z.string().min(1).max(64).optional();
+
+function intentIdOf(raw: unknown): { ok: true; intentId?: string } | { ok: false } {
+  const candidate = raw && typeof raw === "object" ? (raw as { intentId?: unknown }).intentId : undefined;
+  const parsed = IntentIdSchema.safeParse(candidate);
+  return parsed.success ? { ok: true, intentId: parsed.data } : { ok: false };
+}
+
 export function onEvent<S extends z.ZodTypeAny>(
   socket: Socket,
   event: string,
   schema: S,
-  handler: (payload: z.infer<S>) => EventResult | Promise<EventResult>,
+  handler: (payload: z.infer<S>, context: EventContext) => EventResult | Promise<EventResult>,
   options: EventOptions = {}
 ): void {
   socket.on(event, (...args: unknown[]) => {
@@ -191,14 +207,15 @@ export function onEvent<S extends z.ZodTypeAny>(
         }
 
         const parsed = schema.safeParse(rawPayload);
-        if (!parsed.success) {
+        const intent = intentIdOf(rawPayload);
+        if (!parsed.success || !intent.ok) {
           logRefusal(event, socket, "INVALID_PAYLOAD");
           socket.emit(errorEventFor(event), payload("INVALID_PAYLOAD"));
           answer({ ok: false, code: "INVALID_PAYLOAD" });
           return;
         }
 
-        const outcome = (await handler(parsed.data)) ?? { ok: true };
+        const outcome = (await handler(parsed.data, { intentId: intent.intentId })) ?? { ok: true };
         if (!outcome.ok) {
           logRefusal(event, socket, outcome.code ?? "UNSPECIFIED", { payload: parsed.data });
         }

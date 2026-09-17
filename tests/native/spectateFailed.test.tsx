@@ -29,6 +29,10 @@ const mockSocket = {
     listeners.get(event)!.add(fn);
   },
   off() {},
+  once() {},
+  timeout() {
+    return mockSocket;
+  },
   emit(event: string, payload?: unknown) {
     emitted.push({ event, payload });
   },

@@ -77,9 +77,9 @@ export function setTableHandlers(applier: Applier, rehydrator: Rehydrator): void
 }
 
 /** Every action this process has already applied, by id. */
-const applied = new Map<string, { outcome: EventOutcome; at: number }>();
+const applied = new Map<string, { outcome: Promise<EventOutcome>; at: number }>();
 
-function remember(id: string, outcome: EventOutcome): EventOutcome {
+function remember(id: string, outcome: Promise<EventOutcome>): Promise<EventOutcome> {
   const now = Date.now();
   for (const [key, entry] of applied) {
     if (now - entry.at > APPLIED_TTL_MS) applied.delete(key);
@@ -96,10 +96,16 @@ function remember(id: string, outcome: EventOutcome): EventOutcome {
   return outcome;
 }
 
-async function applyOnce(io: SocketServer, action: TableAction): Promise<EventOutcome> {
+/**
+ * Remembered before it settles: a client retry can arrive on another socket
+ * while the first attempt is still being applied.
+ */
+function applyOnce(io: SocketServer, action: TableAction): Promise<EventOutcome> {
   const seen = applied.get(action.id);
   if (seen && Date.now() - seen.at <= APPLIED_TTL_MS) return seen.outcome;
-  return remember(action.id, await apply(io, action));
+  const outcome = apply(io, action);
+  outcome.catch(() => applied.delete(action.id));
+  return remember(action.id, outcome);
 }
 
 /**
@@ -271,7 +277,10 @@ export async function applyOrForward(
 ): Promise<EventOutcome> {
   // Stamped once and kept across every retry below: a forward whose answer was
   // slow is re-sent, and the owner must recognise it rather than play it again.
-  const action: TableAction = { ...draft, id: randomUUID() } as TableAction;
+  // Scoped by user so one player's id can never answer for another's intent.
+  const { intentId, ...rest } = draft;
+  const id = intentId ? `${draft.userId}:${intentId}` : randomUUID();
+  const action: TableAction = { ...rest, id } as TableAction;
   const { roomId } = action;
   const mode = takeoverMode(action.kind);
 

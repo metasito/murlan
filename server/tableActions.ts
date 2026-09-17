@@ -14,9 +14,9 @@ import type { MatchLength } from "../lib/gameEngine.ts";
 /** Every action names the room it is about; that is how the owner is found. */
 export interface TableActionBase {
   /**
-   * Stamped by the router, unique per attempt-set. A forward whose answer did
-   * not come back in time is sent again, and the owner has to be able to tell
-   * that from a second `game:pass` — replaying one would take a turn twice.
+   * Stamped by the router, the same for every attempt of one intent — the
+   * router's own forward retries and, when the client named its intent, the
+   * client's retries too. Replaying a `game:pass` would take a turn twice.
    */
   id: string;
   roomId: string;
@@ -54,7 +54,8 @@ export type TableAction =
 export type TableActionKind = TableAction["kind"];
 
 /**
- * An action as a call site writes it; the router stamps the `id`.
+ * An action as a call site writes it; the router stamps the `id`, from
+ * `intentId` when the client sent one.
  *
  * Distributed over the union rather than a plain `Omit`, which collapses a
  * union to the properties every member shares — dropping `cardIds`, `emoji`
@@ -62,7 +63,7 @@ export type TableActionKind = TableAction["kind"];
  */
 export type TableActionDraft = TableAction extends infer T
   ? T extends TableAction
-    ? Omit<T, "id">
+    ? Omit<T, "id"> & { intentId?: string }
     : never
   : never;
 
