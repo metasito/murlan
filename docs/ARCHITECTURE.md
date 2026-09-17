@@ -62,7 +62,7 @@ lib/gameEngine.ts (offline: called directly)   server/socket.ts (online: handsha
   flight), `hand.tsx` (the viewer's card row) and `chrome.tsx` (the vignette, the billboard,
   the banners and the shared table styles); `components/useTableFeedback.ts` answers a state
   change with a sound, a haptic or a wobble. `app/game.tsx` (offline) and
-  `app/(online)/game.tsx` (online) are thin adapters — see §5.
+  `app/(online)/game.tsx` (online) are thin adapters — see §6.
 
 - **`lib/` is client code, except for the modules `server/` and `shared/` import.** That set is
   not a list anyone maintains: `tests/serverLoadable.test.ts` derives it by scanning the

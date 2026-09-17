@@ -1,10 +1,9 @@
 /**
  * Destructive: wipes ALL application data so the schema can be re-pushed clean.
  *
- * The invariant is not the `TABLES` list below: `TRUNCATE ... CASCADE` empties
- * every table with a foreign key into those, so anything referencing `users`
- * goes too, named here or not. Nothing outside `session` survives. Intended for
- * a deliberate clean slate — it is NOT a migration and it preserves nothing.
+ * TRUNCATE ... CASCADE empties TABLES below *and every table with an FK into them*,
+ * and clears all login sessions. Intended for a deliberate clean slate — it is
+ * NOT a migration and it preserves nothing.
  *
  * The `session` table is left in place — connect-pg-simple runs with
  * createTableIfMissing:false — and only its rows are cleared.
