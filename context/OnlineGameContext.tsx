@@ -693,6 +693,8 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       qc.invalidateQueries({ queryKey: ["/api/stats/me"] });
       qc.invalidateQueries({ queryKey: ["/api/stats/history"] });
       qc.invalidateQueries({ queryKey: ["/api/stats/achievements"] });
+      qc.invalidateQueries({ queryKey: ["/api/ratings/me"] });
+      qc.invalidateQueries({ queryKey: ["/api/ratings/leaderboard"] });
     };
 
     const onVoteState = (vs: RematchVoteState) => setRematchVoteState(vs);
