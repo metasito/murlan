@@ -5,6 +5,7 @@
     // Tests import .ts specifiers directly (Node strips types natively).
     "allowImportingTsExtensions": true,
     "noEmit": true,
+    "incremental": true,
     "paths": {
       "@/*": [
         "./*"
