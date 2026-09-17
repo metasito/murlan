@@ -309,6 +309,25 @@ describe("phaseRow", () => {
     assert.match(strip(phaseRow({ letter: "D", ms: 1, state: "resumed" }, tPlain)), /↻ {2}review/);
   });
 
+  test("a resumed A row reads start, not claim — there is no claim left to make", () => {
+    const line = strip(phaseRow({ letter: "A", ms: 0, state: "resumed" }, tPlain));
+    assert.match(line, /↻ {2}start/);
+    assert.doesNotMatch(line, /claim/);
+    assert.match(strip(phaseRow({ letter: "A", ms: 0 }, tPlain)), /claim/);
+  });
+
+  test("a resumed G row reads settle, not land — the outcome is not decided yet", () => {
+    const line = strip(phaseRow({ letter: LAND, ms: 0, state: "resumed" }, tPlain));
+    assert.match(line, /↻ {2}settle/);
+    assert.doesNotMatch(line, /\bland\b/);
+  });
+
+  test("a fix round names itself against the CI-round cap, not the phase's own name", () => {
+    const line = strip(phaseRow({ letter: "C", ms: 0, round: { n: 2, of: 3, fix: true } }, tPlain));
+    assert.match(line, /fix 2\/3/);
+    assert.doesNotMatch(line, /build/);
+  });
+
   // `trail()` placed the mark by the letter's index, so an unrecognised letter dropped the glyph
   // entirely and the row read as a phase that never closed.
   test("a letter no phase owns still gets a row and a mark", () => {
@@ -397,6 +416,15 @@ describe("header", () => {
     const out = rows(strip(header({ ...ticket, title: "x".repeat(400) }, tPlain)));
     assert.equal(out.length, 3);
     for (const r of out) assert.ok(cols(r) <= WIDTH, `${cols(r)} cells`);
+  });
+
+  // A settle pass skipped this call entirely (queue-loop's `settling` branch never runs
+  // `runTicket`), so the board's G row appeared under no header. Neither render call is
+  // conditional on the phase — the caller owes both, the same as any other resumed phase.
+  test("a settle pass gets the same header a resumed phase does", () => {
+    const out = strip([header({ ...ticket, queue: null }, tPlain), phaseRow({ letter: LAND, ms: 0, state: "resumed" }, tPlain)].join("\n"));
+    assert.match(out, /#1004/);
+    assert.match(out, /settle/);
   });
 });
 
@@ -654,6 +682,10 @@ describe("the review round on the board", () => {
 
   test("a finished review round keeps its number in the scrollback", () => {
     assert.match(strip(phaseRow({ letter: "D", ms: 1000, round: { n: 3, of: 4 } }, tPlain)), /review 3\/4/);
+  });
+
+  test("the live bar names a fix round the same way the finished row does", () => {
+    assert.match(strip(progress({ letter: "C", ms: 0, round: { n: 1, of: 3, fix: true } }, tPlain)), /fix 1\/3/);
   });
 
   test("a supervisor's own word is a row with its detail beneath, not a raw stderr line", () => {

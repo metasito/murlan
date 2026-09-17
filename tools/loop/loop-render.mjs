@@ -312,20 +312,26 @@ export function notice(label, text, t) {
   return rows.filter(Boolean).join("\n");
 }
 
-/** "review 2/4" where there is a round to name, else the plain label. */
-const labelFor = (letter, round) => {
+// A resumed process re-enters a phase rather than starting it fresh — "claim" and "land" both
+// name a one-shot action neither row is doing.
+const RESUMED_LABEL = { A: "start", G: "settle" };
+
+/** "review 2/4" where there is a round to name, "fix 2/3" where the round is a CI retry. */
+const labelFor = (letter, round, resumed = false) => {
   const at = PHASES.findIndex(([l]) => l === letter);
-  const name = at >= 0 ? PHASES[at][1] : letter;
+  const base = at >= 0 ? PHASES[at][1] : letter;
+  const name = resumed ? (RESUMED_LABEL[letter] ?? base) : base;
+  if (round?.fix) return `fix ${round.n}/${round.of}`;
   return round ? `${name} ${round.n}/${round.of}` : name;
 };
 
 /**
  * A finished phase: a step whose name the protocol spells as a letter. A person reads "build".
  * @param {{letter: string, detail?: string, ms: number, state?: string,
- *   round?: {n: number, of: number}|null}} phase
+ *   round?: {n: number, of: number, fix?: boolean}|null}} phase
  */
 export function phaseRow({ letter, detail = "", ms, state = "done", round = null }, t) {
-  return stepRow({ label: labelFor(letter, round), detail, ms, state }, t);
+  return stepRow({ label: labelFor(letter, round, state === "resumed"), detail, ms, state }, t);
 }
 
 /**
@@ -402,7 +408,7 @@ const MOST = 0.999;
  * between "review" and "no phase" — a bar that changes length as it fills reads as jitter.
  *
  * @param {{letter: string, ms?: number, frac?: number|null,
- *   round?: {n: number, of: number}|null}} at `ms` is time in *this* phase.
+ *   round?: {n: number, of: number, fix?: boolean}|null}} at `ms` is time in *this* phase.
  */
 export function progress({ letter, ms = 0, frac = null, round = null }, t) {
   const at = PHASES.findIndex(([l]) => l === letter);

@@ -10,11 +10,18 @@
 import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { PHASE } from "./loop-stream.mjs";
-import { DIR, ARTEFACTS } from "./loop-logs.mjs";
+import { DIR, ARTEFACTS, readLedger } from "./loop-logs.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 
 const REVIEW = /\b(spec|standards) review\b/i;
-const ORDER = ["pre", "A", "B", "C", "D", "E", "F"];
+const ORDER = ["pre", "A", "B", "C", "D", "E", "F", "G"];
+
+/**
+ * The model each phase is meant to run on (T11). Defined here, not in `queue-loop.mjs`: that file
+ * statically imports `.ts` sources, which crashes a light CLI importing it on Windows. `queue-loop`
+ * imports this instead.
+ */
+export const MODEL_BY_PHASE = { A: "opus", B: "opus", C: "opus", D: "opus", E: "sonnet", F: "sonnet" };
 
 /**
  * $/MTok by family: base input, cache write, cache read, output.
@@ -117,13 +124,59 @@ export function readTicket(lines, ticket = "") {
 
 const median = (a) => [...a].sort((x, y) => x - y)[Math.floor(a.length / 2)] ?? 0;
 
+/** A ledger row (one session) whose `models` ran a family MODEL_BY_PHASE did not plan for. */
+export function mismatchedModel(row) {
+  const ran = new Set(Object.keys(row.models ?? {}).map(familyOf).filter(Boolean));
+  return Object.keys(row.phases ?? {}).some((l) => {
+    const want = MODEL_BY_PHASE[l];
+    return want && ran.size && !ran.has(want);
+  });
+}
+
+/** A ticket's rows since its last `landed`/`parked` close — an open window still counts. */
+function windows(rows) {
+  const byTicket = new Map();
+  for (const r of rows) (byTicket.get(r.n) ?? byTicket.set(r.n, []).get(r.n)).push(r);
+  return [...byTicket.values()].flatMap((forTicket) => {
+    const out = [];
+    let win = [];
+    for (const r of forTicket) {
+      win.push(r);
+      if (r.outcome === "landed" || r.outcome === "parked") {
+        out.push(win);
+        win = [];
+      }
+    }
+    return win.length ? [...out, win] : out;
+  });
+}
+
+/**
+ * Fix-round spend, sessions per ticket, and any row that ran the wrong model — from `tickets.jsonl`
+ * rather than the stream logs `readTicket` reads, because a fix round and a model are ledger facts.
+ */
+export function ledgerSummary(rows) {
+  const groups = windows(rows);
+  const total = rows.reduce((a, r) => a + (r.cost ?? 0), 0);
+  const fixCost = groups.reduce((a, win) => {
+    const first = win.findIndex((r) => r.outcome === "retry");
+    return first < 0 ? a : a + win.slice(first + 1).reduce((x, r) => x + (r.cost ?? 0), 0);
+  }, 0);
+  return {
+    fixCost,
+    fixShare: total ? (fixCost / total) * 100 : 0,
+    processesMedian: median(groups.map((w) => w.length)),
+    mismatches: rows.filter(mismatchedModel),
+  };
+}
+
 /**
  * A ticket whose session emitted no phase marker charges its whole spend to `pre`, which is a
  * statement about the log rather than about the loop — eleven of thirty-one such logs put `pre` at
  * 27% of a table whose job is to say which phase to attack. They are dropped and counted, because
  * the gate this feeds compares a before against an after and only marked runs are in both.
  */
-export function report(tickets) {
+export function report(tickets, ledgerRows = []) {
   const priceable = tickets.filter((t) => t.usd > 0);
   const done = priceable.filter((t) => t.marked);
   const skipped = priceable.length - done.length;
@@ -157,6 +210,7 @@ export function report(tickets) {
   // Named, never swallowed: an id with no family is priced at opus's rate, and a reader comparing
   // two runs has to know the share column was guessed at rather than read.
   const guessed = [...new Set(done.flatMap((t) => t.unpriced ?? []))];
+  const ledger = ledgerRows.length ? ledgerSummary(ledgerRows) : null;
 
   return [
     `loop-cost: ${done.length} tickets, $${reported.toFixed(2)} reported${note}`,
@@ -166,6 +220,15 @@ export function report(tickets) {
     `\nper ticket: $${(reported / done.length).toFixed(2)} mean, $${median(done.map((t) => t.usd)).toFixed(2)} median,` +
       ` ${median(done.map((t) => t.minutes)).toFixed(0)} min median,` +
       ` ${median(done.filter((t) => t.rounds).map((t) => t.rounds))} review rounds median`,
+    ...(ledger
+      ? [
+          `fix rounds: $${ledger.fixCost.toFixed(2)} (${ledger.fixShare.toFixed(0)}%)`,
+          `processes/ticket: median ${ledger.processesMedian}`,
+          ...(ledger.mismatches.length
+            ? [`model mismatch: ${ledger.mismatches.map((r) => `#${r.n}`).join(", ")}`]
+            : []),
+        ]
+      : []),
   ].join("\n");
 }
 
@@ -189,6 +252,8 @@ export function wanted(files, arg = "") {
 
 if (isInvokedDirectly(process.argv[1], import.meta.url)) {
   const files = wanted(existsSync(DIR) ? readdirSync(DIR) : [], process.argv[2]);
-  console.log(report(files.map((f) =>
-    readTicket(readFileSync(join(DIR, f), "utf8").split("\n"), f.replace(".jsonl", "")))));
+  console.log(report(
+    files.map((f) => readTicket(readFileSync(join(DIR, f), "utf8").split("\n"), f.replace(".jsonl", ""))),
+    readLedger(),
+  ));
 }
