@@ -1814,6 +1814,8 @@ export const CLOSING_HAND_CARDS = 5;
  * whether they want another one — true once the current manche is nearly
  * played out *and* it can be the last one, either because the game is a
  * single manche or because the leader can reach the target from it.
+ * With a non-empty `teamOfKey` the leader is a pair (docs/RULES.md §11),
+ * which can take the manche's two best awards.
  */
 export function matchIsClosing(args: {
   length: MatchLength;
@@ -1821,13 +1823,18 @@ export function matchIsClosing(args: {
   cumulative: Record<string, number>;
   handCounts: number[];
   playerCount: number;
+  teamOfKey?: Record<string, string>;
 }): boolean {
   const { length, target, cumulative, handCounts, playerCount } = args;
   if (handCounts.length === 0) return false;
   if (Math.min(...handCounts) > CLOSING_HAND_CARDS) return false;
   if (length === "single") return true;
-  const leader = Math.max(0, ...Object.values(cumulative));
-  return leader + (playerCount - 1) >= target;
+  const teamOfKey = args.teamOfKey ?? {};
+  const teams = Object.keys(teamOfKey).length > 0;
+  const totals = teams ? aggregateTeamScores(cumulative, teamOfKey) : cumulative;
+  const leader = Math.max(0, ...Object.values(totals));
+  const reach = teams ? 2 * playerCount - 3 : playerCount - 1;
+  return leader + reach >= target;
 }
 
 /** Strictly more than half. A table split down the middle stops. */

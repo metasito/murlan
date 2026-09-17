@@ -153,7 +153,7 @@ describe("restoredMatchOver (rehydrating a match after a restart)", () => {
         scores: { a1: 11, b1: 5, a2: 11, b2: 4 },
         target: 21,
         playerCount: 4,
-        teamOfKey: teamKeyMap(seats, teamed),
+        teamOfKey: teamKeyMap(seats, teamed, new Set()),
       }),
       true
     );
@@ -183,7 +183,7 @@ describe("restoredMatchOver (rehydrating a match after a restart)", () => {
         scores: { a1: 9, b1: 5, a2: 9, b2: 4 },
         target: 21,
         playerCount: 4,
-        teamOfKey: teamKeyMap(seats, teamed),
+        teamOfKey: teamKeyMap(seats, teamed, new Set()),
       }),
       false
     );
@@ -192,7 +192,7 @@ describe("restoredMatchOver (rehydrating a match after a restart)", () => {
   test("a vacated partner's seat is not counted towards the pair", () => {
     // teamKeyMap omits the seat with no playerMap entry, so a2's 11 points
     // are outside the team total and the pair is short of 21.
-    const withVacancy = teamKeyMap({ 0: "a1", 1: "b1", 3: "b2" }, teamed);
+    const withVacancy = teamKeyMap({ 0: "a1", 1: "b1", 3: "b2" }, teamed, new Set());
     assert.deepEqual(withVacancy, { a1: "A", b1: "B", b2: "B" });
     assert.equal(
       restoredMatchOver({
@@ -208,6 +208,23 @@ describe("restoredMatchOver (rehydrating a match after a restart)", () => {
     );
   });
 
+  test("a partner seat dealt to a bot counts towards the pair", () => {
+    const withBot = teamKeyMap({ 0: "a1", 1: "b1", 3: "b2" }, teamed, new Set([2]));
+    assert.deepEqual(withBot, { a1: "A", b1: "B", "bot:2": "A", b2: "B" });
+    assert.equal(
+      restoredMatchOver({
+        matchLength: "match",
+        gameMode: "teams",
+        handOver: true,
+        scores: { a1: 12, b1: 5, "bot:2": 10, b2: 4 },
+        target: 21,
+        playerCount: 4,
+        teamOfKey: withBot,
+      }),
+      true
+    );
+  });
+
   test("a single-manche game is over exactly when its hand is", () => {
     const single = (handOver: boolean) =>
       restoredMatchOver({
@@ -217,7 +234,7 @@ describe("restoredMatchOver (rehydrating a match after a restart)", () => {
         scores: {},
         target: 21,
         playerCount: 4,
-        teamOfKey: teamKeyMap(seats, teamed),
+        teamOfKey: teamKeyMap(seats, teamed, new Set()),
       });
     assert.equal(single(true), true);
     assert.equal(single(false), false);
