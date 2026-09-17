@@ -2320,15 +2320,19 @@ function realIo(book, screen) {
      */
     record: ({ number, outcome, why, run, pr = null, merged = false, files = 0, counts = true, head = null }) => {
       const facts = ticketFacts(number);
-      const cost = windowCost({ n: number, outcome, own: run.result?.cost ?? 0 }, readLedger());
+      const rows = readLedger();
+      const cost = windowCost({ n: number, outcome, own: run.result?.cost ?? 0 }, rows);
+      // The merged row is the ticket's whole bill; the land session alone has no turns and no spend.
+      const whole = outcome === "landed" ? ticketTally(number, rows) : null;
+      const bill = whole
+        ? { ms: whole.ms + run.ms, turns: whole.turns + (run.result?.turns ?? 0), cost: whole.spend + (run.result?.cost ?? 0) }
+        : { ms: run.ms, turns: run.result?.turns ?? 0, cost };
       screen.say(
         closing({
           outcome: outcome === "landed" ? "merged" : outcome,
           number,
           files,
-          turns: run.result?.turns ?? 0,
-          ms: run.ms,
-          cost,
+          ...bill,
           why: why ?? undefined,
           log: outcome === "landed" ? undefined : run.log,
         },
@@ -2366,8 +2370,8 @@ function realIo(book, screen) {
               title: facts.title,
               outcome,
               pr,
-              ms: run.ms,
-              cost,
+              ms: bill.ms,
+              cost: bill.cost,
               why: why ?? undefined,
             },
             PLAIN(),

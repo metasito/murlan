@@ -304,6 +304,8 @@ export function ticketTally(n, rows) {
   const since = forTicket.slice(start);
 
   let spend = 0;
+  let ms = 0;
+  let turns = 0;
   let handoffsThisRound = 0;
   let lastHandoff = null;
   let handoffWhy = null;
@@ -311,6 +313,8 @@ export function ticketTally(n, rows) {
   let lastRedHead = null;
   for (const r of since) {
     spend += r.cost ?? 0;
+    ms += r.ms ?? 0;
+    turns += r.turns ?? 0;
     if (r.outcome === "retry") {
       retries += 1;
       handoffsThisRound = 0;
@@ -328,5 +332,5 @@ export function ticketTally(n, rows) {
     }
   }
   const sessions = since.filter((r) => r.outcome !== "pushed").length;
-  return { sessions, spend, handoffsThisRound, lastHandoff, handoffWhy, lastRedHead, retries };
+  return { sessions, spend, ms, turns, handoffsThisRound, lastHandoff, handoffWhy, lastRedHead, retries };
 }

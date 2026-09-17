@@ -371,6 +371,16 @@ describe("ticketTally", () => {
     assert.equal(t.retries, 1);
   });
 
+  test("time, turns and spend add up every session since the last terminal row", () => {
+    const t = ticketTally(1, [
+      row({ outcome: "landed", ms: 9, turns: 9, cost: 9 }),
+      row({ outcome: "handoff", ms: 100, turns: 10, cost: 1 }),
+      row({ outcome: "retry", ms: 50, turns: 0, cost: 0 }),
+      row({ outcome: "pushed", ms: 20, turns: 3, cost: 0.5 }),
+    ]);
+    assert.deepEqual([t.ms, t.turns, t.spend], [170, 13, 1.5]);
+  });
+
   test("the last handoff's reason is what follows its phase, and a retry clears it", () => {
     const why = (rows: object[]) => ticketTally(1, rows).handoffWhy;
     const rerouted = row({ outcome: "handoff", park_reason: "phase C next — no local pass" });
@@ -420,6 +430,8 @@ describe("ticketTally", () => {
     assert.deepEqual(ticketTally(1, []), {
       sessions: 0,
       spend: 0,
+      ms: 0,
+      turns: 0,
       handoffsThisRound: 0,
       lastHandoff: null,
       handoffWhy: null,
