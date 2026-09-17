@@ -20,6 +20,7 @@ import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
  */
 const STEP_TIMEOUT_MS = 20 * 60_000;
 const SHOWN_LINES = 40;
+const HEAD_LINES = 10;
 
 export const cacheEntry = ({ failed, head, clean }) => ({
   pass: failed.length === 0,
@@ -35,7 +36,16 @@ export const replays = (entry) => entry?.pass === true && typeof entry.head === 
 export const cleanPassFor = (cache, head) =>
   Object.values(cache).find((e) => replays(e) && e.head === head && e.clean === true);
 
-export function runStep(step, spawn = spawnSync) {
+function clip(output) {
+  const lines = output.split("\n");
+  if (lines.length <= SHOWN_LINES) return `${output}\n`;
+  const head = lines.slice(0, HEAD_LINES);
+  const tail = lines.slice(HEAD_LINES - SHOWN_LINES);
+  return [...head, `… ${lines.length - SHOWN_LINES} lines omitted …`, ...tail, ""].join("\n");
+}
+
+export function runStep(step, spawn = spawnSync, write = (s) => void process.stdout.write(s)) {
+  write(`\n${BANNER}${step.name} ===\n▸ ${step.name} …\n`);
   const run = spawn("npm", step.args, {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
@@ -43,18 +53,15 @@ export function runStep(step, spawn = spawnSync) {
     timeout: STEP_TIMEOUT_MS,
     maxBuffer: 256 * 1024 * 1024,
   });
-  const banner = `\n${BANNER}${step.name} ===\n`;
   // A timeout leaves `status` null and sets `error.code` to ETIMEDOUT. Both are failures, but
   // only one of them says anything about the code, so they are reported apart.
   const timedOut = run.error?.code === "ETIMEDOUT";
-  if (!timedOut && run.status === 0) return { failed: null, text: `${banner}ok\n` };
-  const lines = `${run.stdout ?? ""}${run.stderr ?? ""}`.split("\n");
-  const more = lines.length - SHOWN_LINES;
-  const shown = lines.slice(0, SHOWN_LINES).join("\n") + (more > 0 ? `\n... ${more} more lines\n` : "\n");
-  if (!timedOut) return { failed: step.name, text: banner + shown };
+  if (!timedOut && run.status === 0) return { failed: null, text: "ok\n" };
+  const shown = clip(`${run.stdout ?? ""}${run.stderr ?? ""}`.replace(/\n$/, ""));
+  if (!timedOut) return { failed: step.name, text: shown };
   return {
     failed: `${step.name} (timed out)`,
-    text: `${banner}${shown}${step.name} timed out after ${STEP_TIMEOUT_MS / 60_000} minutes\n`,
+    text: `${shown}${step.name} timed out after ${STEP_TIMEOUT_MS / 60_000} minutes\n`,
   };
 }
 

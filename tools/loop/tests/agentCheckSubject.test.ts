@@ -155,25 +155,45 @@ describe("the cached verdict and what a failure prints", () => {
     assert.equal(cleanPassFor(cache, "h2"), undefined);
   });
 
-  test("a failing step prints its first 40 lines only", () => {
-    const out = Array.from({ length: 100 }, (_, i) => `line ${i + 1}`).join("\n");
-    const spawn = fake({ status: 1, stdout: out, stderr: "" });
-    const run = runStep({ name: "lint", args: ["run", "lint"] }, spawn);
+  const numbered = (n: number) => Array.from({ length: n }, (_, i) => `line ${i + 1}`).join("\n");
+  const quiet = () => undefined;
+
+  test("a long failing step prints its first 10 and last 30 lines", () => {
+    const run = runStep({ name: "lint", args: ["run", "lint"] }, fake({ status: 1, stdout: numbered(100), stderr: "" }), quiet);
     assert.equal(run.failed, "lint");
-    assert.match(run.text, /line 40\n/);
-    assert.doesNotMatch(run.text, /line 41\b/);
-    assert.match(run.text, /60 more lines/);
+    assert.match(run.text, /line 10\n… 60 lines omitted …\nline 71\n/);
+    assert.doesNotMatch(run.text, /line 11\b|line 70\b/);
+    assert.match(run.text, /line 100\b/);
+  });
+
+  test("a failing step of 40 lines or fewer prints all of them", () => {
+    const run = runStep({ name: "lint", args: [] }, fake({ status: 1, stdout: numbered(40), stderr: "" }), quiet);
+    assert.match(run.text, /line 1\n[\s\S]*line 40\b/);
+    assert.equal((run.text.match(/^line \d+$/gm) ?? []).length, 40);
+    assert.doesNotMatch(run.text, /omitted/);
+  });
+
+  test("a step announces itself before it runs", () => {
+    const events: string[] = [];
+    const spawn = (() => {
+      events.push("spawn");
+      return { status: 0, stdout: "", stderr: "" };
+    }) as unknown as Spawn;
+    runStep({ name: "lint", args: [] }, spawn, (s: string) => void events.push(s));
+    assert.equal(events.length, 2);
+    assert.match(events[0], /▸ lint …/);
+    assert.equal(events[1], "spawn");
   });
 
   test("a passing step prints none of its output", () => {
-    const run = runStep({ name: "lint", args: [] }, fake({ status: 0, stdout: "noise\n", stderr: "" }));
+    const run = runStep({ name: "lint", args: [] }, fake({ status: 0, stdout: "noise\n", stderr: "" }), quiet);
     assert.equal(run.failed, null);
     assert.doesNotMatch(run.text, /noise/);
   });
 
   test("a timed-out step is a failure named as one", () => {
     const timedOut = fake({ status: null, stdout: "", stderr: "", error: { code: "ETIMEDOUT" } });
-    const run = runStep({ name: "lint", args: [] }, timedOut);
+    const run = runStep({ name: "lint", args: [] }, timedOut, quiet);
     assert.equal(run.failed, "lint (timed out)");
   });
 });
