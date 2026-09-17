@@ -64,7 +64,7 @@ import {
   handleGameOver,
   tableWantsRematch,
 } from "./gameOver.ts";
-import { armTurn, recordPlayFlags, vacateSeat } from "./gameTurn.ts";
+import { armTurn, armTurnIfIdle, recordPlayFlags, vacateSeat } from "./gameTurn.ts";
 import { exchangeAnnounceMs } from "../lib/exchangeCeremony.ts";
 import {
   disconnectGraceMs,
@@ -814,7 +814,7 @@ function seatLostAction(
 
   // A vacant seat must keep playing while we wait, or the table stalls for a
   // full minute on this player's turn.
-  armTurn(io, roomId);
+  armTurnIfIdle(io, roomId);
 
   const prevTimer = disconnectTimers.get(userId);
   if (prevTimer) clearTimeout(prevTimer);

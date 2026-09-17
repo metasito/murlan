@@ -187,6 +187,24 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
     return () => clearInterval(handle);
   }
 
+  /** Drops and re-opens the client's socket, rejoining each time, until stopped. */
+  function reconnectOnALoop(client: Client, roomId: string): () => Promise<void> {
+    let running = true;
+    const done = (async () => {
+      while (running) {
+        client.socket.disconnect();
+        await new Promise((resolve) => setTimeout(resolve, AFK_MS / 4));
+        client.socket = await reconnectAs(server, client);
+        client.socket.emit("game:rejoin", { roomId });
+        await new Promise((resolve) => setTimeout(resolve, AFK_MS / 4));
+      }
+    })();
+    return async () => {
+      running = false;
+      await done;
+    };
+  }
+
   /** Waits for the `active_games` row the rehydration branch reads. */
   async function waitForPersistedGame(roomId: string): Promise<void> {
     const { db } = await import("../../server/db.ts");
@@ -300,6 +318,37 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
       await closeTable(table);
     }
   });
+
+  for (const who of ["the player to move", "a bystander"] as const) {
+    test(`a disconnect/reconnect loop by ${who} does not hold the turn open`, async () => {
+      const tag = who === "a bystander" ? "by" : "mv";
+      const table = [
+        await connectAs(server, `afk_drop_${tag}_a`),
+        await connectAs(server, `afk_drop_${tag}_b`),
+        await connectAs(server, `afk_drop_${tag}_c`),
+      ];
+      const room = await setUpRoom(table, 3);
+      try {
+        const states = await startGame(table);
+        const actor = clientOnTurn(table, states);
+        const others = table.filter((c) => c !== actor);
+        const looper = who === "a bystander" ? others[0] : actor;
+        const passes = collectAfkPasses(others[1].socket);
+        const stop = reconnectOnALoop(looper, room.roomId);
+        try {
+          await waitUntil(
+            () => passes.includes(actor.user.username),
+            `${who}'s dropped sockets re-armed the acting seat's AFK window`,
+            AFK_MS * 2.5 + OPENING_GRACE_MS
+          );
+        } finally {
+          await stop();
+        }
+      } finally {
+        await closeTable(table);
+      }
+    });
+  }
 
   // ── Test 4 ──────────────────────────────────────────────────────────────
 
