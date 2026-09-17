@@ -804,6 +804,7 @@ export const sq: Record<keyof typeof en, string> = {
   "room.kindPublicBody": "Kushdo mund të hyjë sa ka një vend të lirë.",
   "room.share": "Ndaj",
   "room.shareFailed": "Kodi i dhomës nuk u nda dot.",
+  "room.copyFailed": "Kodi i dhomës nuk u kopjua dot.",
   "room.modeAndPlayers": "{{mode}} · {{n}} lojtarë",
   "room.modeTeams": "Në çifte",
   "room.modeFreeForAll": "Të gjithë kundër të gjithëve",

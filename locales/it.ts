@@ -797,6 +797,7 @@ export const it: Record<keyof typeof en, string> = {
   "room.kindPublicBody": "Chiunque può entrare finché c'è un posto libero.",
   "room.share": "Condividi",
   "room.shareFailed": "Impossibile condividere il codice della stanza.",
+  "room.copyFailed": "Impossibile copiare il codice della stanza.",
   "room.modeAndPlayers": "{{mode}} · {{n}} giocatori",
   "room.modeTeams": "A coppie",
   "room.modeFreeForAll": "Tutti contro tutti",

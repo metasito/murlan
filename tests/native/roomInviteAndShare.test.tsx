@@ -155,7 +155,7 @@ describe('share', () => {
     const spy = jest.spyOn(Share, 'share').mockRejectedValue(new Error('boom'));
     const view = await renderRoom();
     await fireEvent.press(view.getByLabelText(locale['room.share']));
-    expect(mockShowNotification).toHaveBeenCalledWith(expect.objectContaining({ type: 'game_error' }));
+    expect(mockShowNotification).toHaveBeenCalledWith(expect.objectContaining({ type: 'game_error', message: locale['room.shareFailed'] }));
     spy.mockRestore();
     await view.unmount();
   });
@@ -176,7 +176,7 @@ describe('share', () => {
     mockSetString.mockRejectedValueOnce(new Error('denied'));
     const view = await renderRoom();
     await fireEvent.press(view.getByLabelText(locale['common.copy']));
-    expect(mockShowNotification).toHaveBeenCalledWith(expect.objectContaining({ type: 'game_error' }));
+    expect(mockShowNotification).toHaveBeenCalledWith(expect.objectContaining({ type: 'game_error', message: locale['room.copyFailed'] }));
     await view.unmount();
   });
 });

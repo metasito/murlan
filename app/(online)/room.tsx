@@ -419,14 +419,14 @@ export default function RoomScreen() {
   // reaches them as a live region instead.
   const copyFace = t(copied ? "common.copied" : "common.copy");
 
-  const showShareError = () =>
-    showNotification({ type: "game_error", title: t("common.error"), message: t("room.shareFailed") });
+  const showShareError = (key: "room.shareFailed" | "room.copyFailed") =>
+    showNotification({ type: "game_error", title: t("common.error"), message: t(key) });
 
   async function handleCopyCode() {
     try {
       await Clipboard.setStringAsync(room!.code);
     } catch {
-      showShareError();
+      showShareError("room.copyFailed");
       return;
     }
     hapticSuccess();
@@ -442,7 +442,7 @@ export default function RoomScreen() {
     try {
       await Share.share({ message: t("room.shareMessage", { code: room!.code }) });
     } catch (e) {
-      if ((e as Error)?.name !== "AbortError") showShareError();
+      if ((e as Error)?.name !== "AbortError") showShareError("room.shareFailed");
     }
   }
 
