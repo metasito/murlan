@@ -239,6 +239,89 @@ describe("the end-match vote, offered only after a vacancy, decided by unanimity
   });
 });
 
+describe("a match ended by the vote is never rematched (docs/BRIEF.md 3.1)", () => {
+  function partlyRanked(): GameState {
+    const state = midHandOneVacated();
+    // Two of the four seats finished before the table agreed to stop.
+    return { ...state, rankings: ["p0", "p2"] };
+  }
+
+  async function endByVote(game: OnlineGameState, io: SocketServer) {
+    activeGames.set(ROOM, game);
+    await vote(io, "alice");
+    await vote(io, "carl");
+    await vote(io, "dee");
+  }
+
+  const vacated = new Map([[1, { userId: "drita", username: "Drita" }]]);
+
+  test("the rematch vote is refused, so no deal reads the partial rankings", async () => {
+    const { io } = stubIo();
+    const game = baseGame({
+      gameState: partlyRanked(),
+      playerMap: { 0: "alice", 2: "carl", 3: "dee" },
+      vacatedSeats: vacated,
+    });
+
+    try {
+      await endByVote(game, io);
+      assert.equal(game.endedByVote, true);
+      game.rematchIntents = new Map([
+        ["alice", true],
+        ["carl", true],
+        ["dee", true],
+      ]);
+
+      const outcome = await applyOrForward(io, {
+        kind: "rematchVote",
+        roomId: ROOM,
+        userId: "alice",
+      });
+      assert.deepEqual(outcome, { ok: false, code: "REMATCH_DECLINED" });
+      assert.equal(game.gameState.exchangePhase, undefined, "nothing was dealt");
+      assert.deepEqual(game.gameState.rankings, ["p0", "p2"]);
+    } finally {
+      clearRoomTimers(ROOM);
+      activeGames.delete(ROOM);
+    }
+  });
+
+  test("an intent sent after game:over cannot reverse the verdict", async () => {
+    const { io } = stubIo();
+    const game = baseGame({
+      gameState: partlyRanked(),
+      playerMap: { 0: "alice", 2: "carl", 3: "dee" },
+      vacatedSeats: vacated,
+    });
+
+    try {
+      await endByVote(game, io);
+      // Every seated human asking for one: enough to carry the verdict the
+      // other way, if a late intent could still be recorded.
+      for (const userId of ["alice", "carl", "dee"]) {
+        const outcome = await applyOrForward(io, {
+          kind: "rematchIntent",
+          roomId: ROOM,
+          userId,
+          wants: true,
+        });
+        assert.deepEqual(outcome, { ok: false, code: "REMATCH_DECLINED" });
+      }
+      assert.equal(game.rematchIntents.size, 0, "no intent was recorded");
+
+      const vote = await applyOrForward(io, {
+        kind: "rematchVote",
+        roomId: ROOM,
+        userId: "alice",
+      });
+      assert.deepEqual(vote, { ok: false, code: "REMATCH_DECLINED" }, "still refused");
+    } finally {
+      clearRoomTimers(ROOM);
+      activeGames.delete(ROOM);
+    }
+  });
+});
+
 describe("GameEndMatchVoteSchema — an old client's absent payload must still vote yes", () => {
   test("no payload at all defaults to wants: true", () => {
     assert.deepEqual(GameEndMatchVoteSchema.parse(undefined), { wants: true });
