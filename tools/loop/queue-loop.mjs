@@ -63,9 +63,10 @@ import { checkLockDrift } from "./preflight.mjs";
 import { buildPassed, MAX_REVIEW_ROUNDS } from "./loop-gate.mjs";
 import { familyOf, MODEL_BY_PHASE } from "./loop-cost.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
-import { branchSurvives, landing, mergeArgs } from "./land.ts";
-import { readVerdict } from "./ciVerdict.ts";
-import { checkShared, claimShared, ownerOf } from "./sharedRed.ts";
+import { createRequire } from "node:module";
+
+// Loaded on use: a static .ts import plus process.exit aborts node on Windows (nodejs/node#56645).
+const ts = (file) => createRequire(import.meta.url)(file);
 
 // Spawning a sibling by its own directory, not the cwd: the supervisor runs from the repo root,
 // but nothing guarantees that, and the sibling is beside this file either way.
@@ -1546,7 +1547,7 @@ function readLanding(prNumber, verdict, run = sh) {
   const pr = JSON.parse(
     run("gh", ["pr", "view", String(prNumber), "--repo", REPO, "--json", "state,mergeStateStatus,mergeable"]),
   );
-  return { ...landing(pr, verdict), behind: pr.mergeStateStatus === "BEHIND" };
+  return { ...ts("./land.ts").landing(pr, verdict), behind: pr.mergeStateStatus === "BEHIND" };
 }
 
 /**
@@ -1562,10 +1563,10 @@ function readLanding(prNumber, verdict, run = sh) {
  * @returns {string|null} the branch, if it is still on origin
  */
 function mergeAndConfirm(prNumber, branch, run = sh) {
-  run("gh", mergeArgs(REPO, prNumber));
+  run("gh", ts("./land.ts").mergeArgs(REPO, prNumber));
   if (!branch) return null;
   try {
-    return branchSurvives(run("git", ["ls-remote", "origin", branch])) ? branch : null;
+    return ts("./land.ts").branchSurvives(run("git", ["ls-remote", "origin", branch])) ? branch : null;
   } catch {
     // The merge is what mattered, and an unreadable `ls-remote` is not evidence of a survivor.
     return null;
@@ -1677,7 +1678,7 @@ export function sharedPlan(decision, { ticket, behind }) {
       ? { line: `#${n}${where}`, action: "update", issue: n }
       : { line: `#${n} owned here${where}`, action: "claim", issue: n };
   }
-  if (decision.kind !== "known" || ownerOf({ title: "", ...decision.issue }) === ticket) {
+  if (decision.kind !== "known" || ts("./sharedRed.ts").ownerOf({ title: "", ...decision.issue }) === ticket) {
     return { line: `#${n} owned here${where}`, action: null };
   }
   return { line: `#${n}${where}`, action: "block", issue: n };
@@ -1710,11 +1711,11 @@ function postCiRedOnce(ticket, verdict, shared, comments, run, write, log) {
 export async function poll(pending, log, pause, deadline, io = {}) {
   const {
     run = sh,
-    verdictOf = readVerdict,
+    verdictOf = (...args) => ts("./ciVerdict.ts").readVerdict(...args),
     write = writeFileSync,
     mkdir = mkdirSync,
     shared = (mine, owner) =>
-      checkShared({ repo: REPO, gh: ghVia(run), mine, owner, until: Date.now() + SHARED_BUDGET_MS }),
+      ts("./sharedRed.ts").checkShared({ repo: REPO, gh: ghVia(run), mine, owner, until: Date.now() + SHARED_BUDGET_MS }),
   } = io;
   const owner = { number: pending.ticket, branch: pending.branch };
   const left = { ...SETTLE_ROUNDS };
@@ -1751,7 +1752,7 @@ export async function poll(pending, log, pause, deadline, io = {}) {
         } else {
           if (plan.action === "claim") {
             try {
-              claimShared(REPO, ghVia(run), decision, owner, Date.now() + CI_RED_TIMEOUT_MS);
+              ts("./sharedRed.ts").claimShared(REPO, ghVia(run), decision, owner, Date.now() + CI_RED_TIMEOUT_MS);
             } catch (err) {
               log(`shared red: could not reopen #${plan.issue} — ${String(err.message).split("\n")[0]}`);
             }

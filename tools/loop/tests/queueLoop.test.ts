@@ -5,6 +5,8 @@ import { EventEmitter } from "node:events";
 import { Readable } from "node:stream";
 import { readFileSync, rmSync } from "node:fs";
 import path from "node:path";
+import { execFileSync } from "node:child_process";
+import { pathToFileURL } from "node:url";
 import { LAND } from "../loop-render.mjs";
 import {
   parseRoute,
@@ -1401,4 +1403,15 @@ describe("watchCalls", () => {
     watchCalls(state, { calls: [] } as never);
     assert.equal(state.turns, 0);
   });
+});
+
+function tsLoadedBy(url: string): string[] {
+  const probe =
+    "const seen = []; require('node:module').registerHooks({ load(u, c, next) { if (u.endsWith('.ts')) seen.push(u); return next(u, c); } });" +
+    `import(${JSON.stringify(url)}).then(() => { console.log(JSON.stringify(seen)); process.exit(0); });`;
+  return JSON.parse(execFileSync(process.execPath, ["-e", probe], { encoding: "utf8" }));
+}
+
+test("importing the supervisor strips no TypeScript, so an exit right after it cannot abort node", () => {
+  assert.deepEqual(tsLoadedBy(pathToFileURL(path.join(import.meta.dirname, "..", "queue-loop.mjs")).href), []);
 });
