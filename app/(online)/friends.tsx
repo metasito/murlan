@@ -76,29 +76,40 @@ export default function FriendsScreen() {
     refetchOnWindowFocus: true,
   });
 
-  const { data: requests = [] } = useQuery<FriendRequestInfo[]>({
+  const requestsQuery = useQuery<FriendRequestInfo[]>({
     queryKey: ["/api/friends/requests"],
     refetchOnWindowFocus: true,
   });
-
-  const { data: sentRequests = [] } = useQuery<FriendRequestInfo[]>({
+  const sentQuery = useQuery<FriendRequestInfo[]>({
     queryKey: ["/api/friends/sent"],
     refetchOnWindowFocus: true,
   });
+  const requests = requestsQuery.data ?? [];
+  const sentRequests = sentQuery.data ?? [];
+  const pendingLoading = requestsQuery.isLoading || sentQuery.isLoading;
+  const pendingErrored = requestsQuery.isError || sentQuery.isError;
 
   const pendingCount = requests.length + sentRequests.length;
+
+  // A row leaves its list at once and comes back if the server refuses.
+  const dropRow = (key: string) => ({
+    onMutate: async (id: string) => {
+      await qc.cancelQueries({ queryKey: [key] });
+      const previous = qc.getQueryData<{ id: string }[]>([key]);
+      qc.setQueryData<{ id: string }[]>([key], (old = []) => old.filter((r) => r.id !== id));
+      return { previous };
+    },
+    onError: (e: unknown, _id: string, context?: { previous?: { id: string }[] }) => {
+      qc.setQueryData([key], context?.previous);
+      showError(serverErrorMessage(e, t("friends.actionFailed")));
+    },
+  });
 
   const acceptMutation = useMutation({
     mutationFn: async (id: string) => {
       await apiRequest("POST", `/api/friends/accept/${id}`);
     },
-    onMutate: async (id) => {
-      await qc.cancelQueries({ queryKey: ["/api/friends/requests"] });
-      qc.setQueryData(
-        ["/api/friends/requests"],
-        (old: FriendRequestInfo[] = []) => old.filter((r) => r.id !== id)
-      );
-    },
+    ...dropRow("/api/friends/requests"),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/friends"] });
       qc.invalidateQueries({ queryKey: ["/api/friends/requests"] });
@@ -109,6 +120,7 @@ export default function FriendsScreen() {
     mutationFn: async (id: string) => {
       await apiRequest("POST", `/api/friends/decline/${id}`);
     },
+    ...dropRow("/api/friends/requests"),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/friends/requests"] });
     },
@@ -118,6 +130,7 @@ export default function FriendsScreen() {
     mutationFn: async (requestId: string) => {
       await apiRequest("DELETE", `/api/friends/requests/${requestId}`);
     },
+    ...dropRow("/api/friends/sent"),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/friends/sent"] });
     },
@@ -127,6 +140,7 @@ export default function FriendsScreen() {
     mutationFn: async (friendId: string) => {
       await apiRequest("DELETE", `/api/friends/${friendId}`);
     },
+    ...dropRow("/api/friends"),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/friends"] });
     },
@@ -394,7 +408,24 @@ export default function FriendsScreen() {
           count={pendingCount > 0 ? pendingCount : undefined}
         />
         <View style={[styles.bandSurface, styles.band]}>
-        {requests.length === 0 && sentRequests.length === 0 && (
+        {pendingLoading && (
+          <ActivityIndicator
+            color={Colors.gold}
+            style={{ marginVertical: Spacing.md }}
+            accessibilityLabel={t("common.loading")}
+          />
+        )}
+        {!pendingLoading && pendingErrored && (
+          <ErrorBlock
+            title={t("friends.pendingLoadErrorTitle")}
+            retry={{
+              label: t("common.retry"),
+              a11yLabel: t("friends.pendingLoadRetryA11yLabel"),
+              onPress: () => { requestsQuery.refetch(); sentQuery.refetch(); },
+            }}
+          />
+        )}
+        {!pendingLoading && !pendingErrored && requests.length === 0 && sentRequests.length === 0 && (
           <EmptyBlock icon="hourglass-outline" title={t("friends.emptyPending")} />
         )}
         {requests.length > 0 && (
