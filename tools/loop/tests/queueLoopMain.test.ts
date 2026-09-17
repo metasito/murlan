@@ -68,6 +68,9 @@ const io = (over: Record<string, unknown> = {}, ledger: any[] = []) => ({
   tally: (n: number) => ({ ...ticketTally(n, ledger), ciRounds: 0 }),
   sharedCheckoutDirty: () => "",
   log: () => {},
+  buildPassed: () => true,
+  announce: () => {},
+  block: () => {},
   ...over,
 });
 
@@ -398,6 +401,71 @@ describe("runOnce", () => {
     );
   });
 
+  test("a G route announces itself before it settles", async () => {
+    const order: string[] = [];
+    await runOnce(
+      io({
+        pick: () => ({ skill: "implement", number: 42, title: "t", size: null, queue: null, resuming: true, phase: "G" }),
+        announce: (r: { number: number; phase: string }) => order.push(`announce ${r.number} ${r.phase}`),
+        settle: async () => (order.push("settle"), { action: "merge", reason: "merged" }),
+      }),
+    );
+    assert.deepEqual(order, ["announce 42 G", "settle"]);
+  });
+
+  const handingOff = (from: string, to: string) => async () => ({
+    status: 0,
+    blocked: false,
+    result: { cost: 1 },
+    ms: 1,
+    log: "l",
+    phase: from,
+    declared: { ticket: 42, phase: from, handoff: to, stoodDown: false },
+  });
+
+  test("a D handoff without a --build pass re-routes to C, recorded as a C handoff", async () => {
+    const ledger: any[] = [];
+    const checked: unknown[] = [];
+    const said: string[] = [];
+    const r = await runOnce(
+      io(
+        {
+          spawn: handingOff("C", "D"),
+          buildPassed: (cwd: string) => (checked.push(cwd), false),
+          log: (m: string) => said.push(m),
+        },
+        ledger,
+      ),
+    );
+    assert.deepEqual([r.outcome, r.phase, checked], ["handoff", "C", [".worktrees/agent-42"]]);
+    assert.equal(ticketTally(42, ledger).lastHandoff, "C");
+    assert.match(said.join("\n"), /no local pass/);
+
+    const passed = await runOnce(io({ spawn: handingOff("C", "D") }, []));
+    assert.equal(passed.phase, "D");
+  });
+
+  test("a session on the wrong model parks with the reason", async () => {
+    const parked: string[] = [];
+    const r = await runOnce(
+      io({
+        spawn: async () => ({
+          status: 1,
+          blocked: false,
+          result: null,
+          ms: 1,
+          log: "l",
+          phase: null,
+          declared: null,
+          wrongModel: "the session started on claude-opus-5, but phase E runs on sonnet",
+        }),
+        park: (_n: number, c: { why: string }) => parked.push(c.why),
+      }),
+    );
+    assert.equal(r.outcome, "parked");
+    assert.deepEqual(parked, ["the session started on claude-opus-5, but phase E runs on sonnet"]);
+  });
+
   test("the prune in queue-pre runs before the pick", async () => {
     const order: string[] = [];
     await runOnce(
@@ -597,6 +665,16 @@ describe("runOnce", () => {
     const recorded: any[] = [retryRow("h1")];
     await runOnce(io({ pick: () => fixRoute("h1"), refreshWorktree: () => {}, spawn }, recorded), 42);
     assert.deepEqual(recorded.map((x) => x.outcome), ["retry", "landed"]);
+  });
+
+  test("a fix round's spawn carries the rounds already spent", async () => {
+    const seen: unknown[] = [];
+    const spawn = async (r: { fix: boolean; retryCount: number }) => {
+      seen.push([r.fix, r.retryCount]);
+      return { status: 0, blocked: false, result: {}, ms: 1, log: "l", phase: "F", declared: null };
+    };
+    await runOnce(io({ pick: () => fixRoute("h2"), refreshWorktree: () => {}, spawn }, [retryRow("h1")]), 42);
+    assert.deepEqual(seen, [[true, 2]]);
   });
 
   test("a G pass with no open pull request says so", async () => {

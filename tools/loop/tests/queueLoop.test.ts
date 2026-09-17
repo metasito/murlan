@@ -57,6 +57,9 @@ const stubIo = () => ({
   record: () => {},
   tally: () => ({ sessions: 0, spend: 0, handoffsThisRound: 0, lastHandoff: null, lastRedHead: null, retries: 0, ciRounds: 0 }),
   log: () => {},
+  buildPassed: () => true,
+  announce: () => {},
+  block: () => {},
 });
 
 describe("parseRoute", () => {
@@ -123,6 +126,20 @@ describe("queueLoopArgs", () => {
     const args = queueLoopArgs(1, size);
     return Number(args[args.indexOf("--max-turns") + 1]);
   };
+
+  test("each phase is spawned on the model MODEL_BY_PHASE plans for it", () => {
+    const model = (phase: string | null) => {
+      const args = queueLoopArgs(1, "size:S", phase);
+      return args[args.indexOf("--model") + 1];
+    };
+    assert.deepEqual([model("E"), model("F"), model("C"), model("D"), model(null)], [
+      "sonnet",
+      "sonnet",
+      "opus",
+      "opus",
+      "opus",
+    ]);
+  });
 
   test("a larger ticket gets more turns", () => {
     assert.ok(turns("size:L") > turns("size:S"), `got ${turns("size:L")} and ${turns("size:S")}`);
@@ -528,6 +545,46 @@ describe("runTicket", () => {
     const out = said.join("\n");
     assert.equal(out.match(/#953 {2}Rate limiter factory/g)?.length, 1);
     assert.equal(out.match(/#962 {2}Rate limiter factory/g)?.length, 1);
+  });
+
+  const spawned = (lines: string[]) => {
+    const seen: { args: string[]; env: Record<string, string>; killed: string[] } = { args: [], env: {}, killed: [] };
+    const spawnFn = (_cmd: string, args: string[], o: any) => {
+      Object.assign(seen, { args, env: o.env });
+      const child: any = new EventEmitter();
+      child.stdout = Readable.from(lines.map((l) => `${l}\n`));
+      child.stderr = Readable.from([]);
+      child.kill = (sig: string) => seen.killed.push(sig);
+      child.stdout.on("end", () => setImmediate(() => child.emit("close", 0)));
+      return child;
+    };
+    return { seen, spawnFn };
+  };
+  const init = (model: string) => JSON.stringify({ type: "system", subtype: "init", session_id: "s", model });
+
+  test("the session is told the phase it resumes at, and a fresh one is at A", async () => {
+    const resumed = spawned([RESULT]);
+    await runTicket(resumed.spawnFn as never, opts({ at: "D" }));
+    const fresh = spawned([RESULT]);
+    await runTicket(fresh.spawnFn as never, opts());
+    assert.deepEqual([resumed.seen.env.LOOP_PHASE, fresh.seen.env.LOOP_PHASE], ["D", "A"]);
+    assert.equal(resumed.seen.args[resumed.seen.args.indexOf("--model") + 1], "opus");
+  });
+
+  test("an init model other than planned kills the session and says why", async () => {
+    const wrong = spawned([init("claude-opus-5"), RESULT]);
+    const run = await runTicket(wrong.spawnFn as never, opts({ at: "E" }));
+    assert.deepEqual(wrong.seen.killed, ["SIGTERM"]);
+    assert.match(String(run.wrongModel), /claude-opus-5.*sonnet/);
+    const right = spawned([init("claude-sonnet-5"), RESULT]);
+    const ok = await runTicket(right.spawnFn as never, opts({ at: "E" }));
+    assert.deepEqual([right.seen.killed, ok.wrongModel], [[], null]);
+  });
+
+  test("a fix round is named on the board with its round", async () => {
+    const { said, screen } = sink();
+    await runTicket(fakeSpawn([RESULT]), opts({ at: "C", fix: true, retryCount: 1, screen }));
+    assert.match(said.join("\n"), /fix 2\/3/);
   });
 
   test("a resumed ticket says so, and does not read as a closed phase", async () => {

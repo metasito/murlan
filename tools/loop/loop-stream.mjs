@@ -87,7 +87,12 @@ export function readLine(line) {
     return null;
   }
   if (e.type === "system" && e.subtype === "init") {
-    return { kind: "init", sessionId: e.session_id ?? null, version: e.claude_code_version ?? null };
+    return {
+      kind: "init",
+      sessionId: e.session_id ?? null,
+      version: e.claude_code_version ?? null,
+      model: e.model ?? null,
+    };
   }
   if (e.type === "system" && TASK_EVENT[e.subtype]) {
     if (!e.task_id) return null;

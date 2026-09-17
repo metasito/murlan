@@ -59,7 +59,8 @@ import {
   usageSplit,
 } from "./loop-logs.mjs";
 import { readAllowedTools } from "./loop-tools.mjs";
-import { MAX_REVIEW_ROUNDS } from "./loop-gate.mjs";
+import { buildPassed, MAX_REVIEW_ROUNDS } from "./loop-gate.mjs";
+import { familyOf, MODEL_BY_PHASE } from "./loop-cost.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import { branchSurvives, landing, mergeArgs } from "./land.ts";
 import { readVerdict } from "./ciVerdict.ts";
@@ -204,11 +205,15 @@ export const overSpend = (spent, size) => spent >= (USD_BY_SIZE[size ?? ""] ?? U
 /** @param {string|null} [size] a `size:*` label, or null */
 export const turnsFor = (size) => TURNS_BY_SIZE[size ?? ""] ?? TURNS_DEFAULT;
 
+/** @param {string|null} [phase] */
+const plannedModel = (phase) => MODEL_BY_PHASE[phase ?? "A"] ?? MODEL_BY_PHASE.A;
+
 /**
  * @param {number} number
  * @param {string|null} [size] a `size:*` label, or null
+ * @param {string|null} [phase] the phase the session resumes at, null for a fresh one
  */
-export function queueLoopArgs(number, size = null) {
+export function queueLoopArgs(number, size = null, phase = null) {
   return [
     "-p",
     `/queue ${number}`,
@@ -230,6 +235,8 @@ export function queueLoopArgs(number, size = null) {
     String(turnsFor(size)),
     "--max-budget-usd",
     TICKET_BUDGET_USD,
+    "--model",
+    plannedModel(phase),
   ];
 }
 
@@ -1187,6 +1194,8 @@ export function runTicket(
     queue,
     size = null,
     at = null,
+    fix = false,
+    retryCount = 0,
     screen = ticker(),
     facts = ticketFacts,
     stallMs = STALL_MS,
@@ -1213,6 +1222,7 @@ export function runTicket(
     blocked: false,
     blockedUntil: 0,
     stalled: false,
+    wrongModel: null,
     stderr: "",
     /** Turns spent in phase C, and whether any of them committed. */
     buildTurns: 0,
@@ -1235,10 +1245,11 @@ export function runTicket(
   const about = facts(number);
   // `reviewRounds` counts the verdicts already on the issue, so the round about to run is the next
   // one. Null when the tracker could not be read — a number nobody could take is not a count of none.
-  const round = () =>
-    state.phase === "D" && about.reviewRounds != null
-      ? { n: about.reviewRounds + 1, of: MAX_REVIEW_ROUNDS }
-      : null;
+  const round = () => {
+    if (state.phase === "D" && about.reviewRounds != null) return { n: about.reviewRounds + 1, of: MAX_REVIEW_ROUNDS };
+    if (state.phase === "C" && fix) return { n: retryCount + 1, of: CI_ROUNDS, fix: true };
+    return null;
+  };
 
   if (screen.needsHeader(number)) screen.say(header({ number, ...about, queue }, screen.theme));
   screen.context({ url: about.url, log: logPath });
@@ -1255,7 +1266,8 @@ export function runTicket(
   }
 
   const budget = turnsFor(size);
-  const child = spawnFn("claude", queueLoopArgs(number, size), {
+  const planned = plannedModel(at);
+  const child = spawnFn("claude", queueLoopArgs(number, size, at), {
     stdio: ["ignore", "pipe", "pipe"],
     // A background update landing at 2am changes the system prompt, and every remaining ticket of
     // the night then rebuilds its cached prefix at full price, with nothing to see. Whether to
@@ -1268,6 +1280,7 @@ export function runTicket(
       ...process.env,
       DISABLE_AUTOUPDATER: "1",
       LOOP_TURNS: String(budget),
+      LOOP_PHASE: at ?? "A",
       // `-p` leaves fork mode off, so subagents default to background and the session spends a turn
       // each time it asks one whether it is done. Foreground makes the Agent call an await.
       CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1",
@@ -1286,7 +1299,14 @@ export function runTicket(
     state.lastFactAt = Date.now();
     const fact = readLine(line);
     if (!fact) return;
-    if (fact.kind === "init") state.version = fact.version;
+    if (fact.kind === "init") {
+      state.version = fact.version;
+      if (fact.model && familyOf(fact.model) !== planned && !state.wrongModel) {
+        state.wrongModel = `the session started on ${fact.model}, but phase ${at ?? "A"} runs on ${planned}`;
+        child.kill("SIGTERM");
+        setTimeout(() => child.kill("SIGKILL"), 10_000).unref();
+      }
+    }
     if (fact.kind === "assistant") {
       if (fact.letter && fact.letter !== state.phase) {
         closePhase();
@@ -1384,6 +1404,7 @@ export function runTicket(
           callTurns: state.turns,
           stderr: state.stderr,
           version: state.version,
+          wrongModel: state.wrongModel,
           ms: Date.now() - startedAt,
           log: logPath,
           // Read now rather than accumulated as the lines arrived: the sink has just closed, so the
@@ -1836,17 +1857,33 @@ export async function runOnce(io, pinned = null, at = null) {
   }
 
   const settling = route.phase === "G";
+  if (settling) io.announce(route);
   const run = settling
     ? { status: 0, result: null, declared: null, ms: 0, log: streamLog(route.number), phase: "G", phases: {} }
-    : await io.spawn(route);
+    : await io.spawn({ ...route, retryCount: Math.max(tally.retries, tally.ciRounds ?? 0) });
 
   const dirtied = io.sharedCheckoutDirty?.();
   if (dirtied) io.log(`#${route.number}'s session left the shared checkout dirty:\n${dirtied}`, "session");
 
   const after = afterSession(run, io.standing());
+  if (run.wrongModel) {
+    return parkAndRecord(io, route.number, {
+      phase: after?.phase ?? route.phase ?? "A",
+      why: run.wrongModel,
+      log: run.log,
+      cwd: after?.cwd ?? null,
+      branch: after?.branch ?? null,
+      dirty: after?.dirty ?? false,
+      run,
+    });
+  }
   // Before the pull request is looked for: a session that handed off has not pushed and is not
   // finished, and every reading below is about a session that meant to be its ticket's last.
-  const handoff = handoffOf(run);
+  let handoff = handoffOf(run);
+  if (handoff === "D" && after?.phase === "C" && !io.buildPassed(after?.cwd ?? null)) {
+    io.log(`#${route.number} handed off to review with no local pass on a clean HEAD — back to C`, "build");
+    handoff = "C";
+  }
   if (handoff) {
     io.record({ number: route.number, outcome: "handoff", why: `phase ${handoff} next`, run, counts: false });
     // The worktree comes with it: a handoff leaves one standing on purpose, so a park that does not
@@ -2022,8 +2059,23 @@ function realIo(book, screen) {
         queue: route.queue,
         size: route.size,
         at: route.resuming ? (route.phase ?? "C") : null,
+        fix: Boolean(route.fix),
+        retryCount: route.retryCount ?? 0,
         screen,
       });
+    },
+    announce: (route) => {
+      if (screen.needsHeader(route.number)) {
+        screen.say(header({ number: route.number, ...ticketFacts(route.number), queue: route.queue }, screen.theme));
+      }
+      screen.say(phaseRow({ letter: "G", detail: "resumed", ms: 0, state: "resumed" }, screen.theme));
+    },
+    buildPassed: (cwd) => {
+      try {
+        return Boolean(cwd) && buildPassed(cwd);
+      } catch {
+        return false;
+      }
     },
     // A fresh pick has no CI rounds: its claim comment is newer than any CI-RED before it.
     tally: (n) => ({
