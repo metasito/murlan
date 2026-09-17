@@ -14,6 +14,20 @@ Record the result next to each line: ✅, or what happened.
       login — a taken username, a too-short password. Does the error show in that
       language, not Italian?
 
+## Account recovery
+- [ ] One player registers, then adds an email from their profile. Does the verification
+      mail arrive, and does tapping its link land on a screen that says it worked?
+- [ ] That same player logs out and uses "forgot password" on their email. Reset the
+      password from the link and log in with the new one.
+- [ ] Ask for a reset on an address nobody registered. Does the screen say the same thing
+      it says for a real one — no hint about which addresses exist?
+
+## Alone on one device
+- [ ] From the home menu, play a pass-and-play match end to end on a single device. Does
+      the handoff screen hide the previous player's hand before the next one picks up?
+- [ ] A player who has never played opens the tutorial and finishes it. Does it explain
+      the exchange, and does it hand back to the menu rather than dead-ending?
+
 ## A full match, uninterrupted
 - [ ] Host creates a room, the other three join by code.
 - [ ] Play a whole match to the target. Between manches, watch the card exchange happen.
@@ -47,6 +61,12 @@ Record the result next to each line: ✅, or what happened.
 - [ ] Two players add each other as friends. Does the online dot appear?
 - [ ] One invites the other to a room. Does the banner arrive, and does tapping it work?
 - [ ] Quickmatch with only one person waiting. What happens?
+- [ ] All four hit quickmatch within a few seconds of each other. Do they land at the same
+      table, each in their own seat, with nobody left waiting?
+- [ ] In that quickmatched room, can the host start the match, and is it clear to the other
+      three who the host is while they wait?
+- [ ] With the app backgrounded, have someone send an invite. Tap the push notification —
+      does it open on the room it names, not on the home screen?
 - [ ] Start a room with bot-fill and one human. Does it play a full match?
 
 ## The awkward ones

@@ -1,9 +1,10 @@
 /**
  * Destructive: wipes ALL application data so the schema can be re-pushed clean.
  *
- * Deletes every row from users, rooms, room_players, friends and active_games,
- * and clears all login sessions. Intended for a deliberate clean slate — it is
- * NOT a migration and it preserves nothing.
+ * The invariant is not the `TABLES` list below: `TRUNCATE ... CASCADE` empties
+ * every table with a foreign key into those, so anything referencing `users`
+ * goes too, named here or not. Nothing outside `session` survives. Intended for
+ * a deliberate clean slate — it is NOT a migration and it preserves nothing.
  *
  * The `session` table is left in place — connect-pg-simple runs with
  * createTableIfMissing:false — and only its rows are cleared.
