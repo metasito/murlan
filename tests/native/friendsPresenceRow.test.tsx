@@ -24,7 +24,7 @@ jest.mock('expo-router', () => {
 
 jest.mock('@/lib/pushRegistration', () => ({
   registerForPush: async () => {},
-  unregisterForPush: async () => true,
+  forgetPushRegistration: () => {},
 }));
 
 jest.mock('@/context/SocketContext', () => ({

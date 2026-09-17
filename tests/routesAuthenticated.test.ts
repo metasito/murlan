@@ -15,7 +15,6 @@ const PUBLIC = [
 
 const SIGNED_IN = [
   "POST /api/push/token",
-  "DELETE /api/push/token",
   "POST /api/auth/change-password",
   "POST /api/auth/add-email",
   "POST /api/auth/resend-verification",

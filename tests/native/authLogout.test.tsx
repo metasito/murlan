@@ -1,28 +1,27 @@
-// tests/native/authLogout.test.tsx — logout withdraws the push registration
-// before it asks the server to end the session, because the endpoint needs the
-// cookie. Everything after the POST is skipped when it throws, so the failure
-// path is where that ordering has to be undone.
+// tests/native/authLogout.test.tsx — logout itself retires everything the
+// signed-in account left on this device, and a refused logout retires nothing.
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import React from 'react';
 import { act, renderHook, waitFor } from '@testing-library/react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { AuthProvider, useAuth } from '@/context/AuthContext';
+import { queryClient } from '@/lib/query-client';
 
 const mockApiRequest = jest.fn<(...args: unknown[]) => Promise<unknown>>();
-const mockRegisterForPush = jest.fn<() => Promise<void>>();
-const mockUnregisterForPush = jest.fn<() => Promise<boolean>>();
+const mockForgetPushRegistration = jest.fn<() => void>();
 
 jest.mock('@/lib/query-client', () => ({
   getApiUrl: () => 'http://localhost',
   apiRequest: (...args: unknown[]) => mockApiRequest(...args),
+  queryClient: new (jest.requireActual('@tanstack/react-query') as typeof import('@tanstack/react-query')).QueryClient(),
 }));
 
 // Called through rather than handed over: the factory runs while AuthContext
 // is being imported, before the consts above have initialised.
 jest.mock('@/lib/pushRegistration', () => ({
-  registerForPush: () => mockRegisterForPush(),
-  unregisterForPush: () => mockUnregisterForPush(),
+  registerForPush: async () => {},
+  forgetPushRegistration: () => mockForgetPushRegistration(),
 }));
 
 jest.mock('@react-native-community/netinfo', () => ({
@@ -30,7 +29,12 @@ jest.mock('@react-native-community/netinfo', () => ({
   default: { addEventListener: jest.fn(() => () => {}) },
 }));
 
-import { AUTH_USER_KEY as STORAGE_KEY } from '@/lib/storageKeys';
+import {
+  ACCOUNT_KEYS,
+  ACTIVE_ROOM_KEY,
+  AUTH_USER_KEY as STORAGE_KEY,
+  WAITING_ROOM_KEY,
+} from '@/lib/storageKeys';
 const SIGNED_IN = { id: 'u1', username: 'Ana', tutorialSeenAt: null };
 
 const mockFetch = jest.fn<() => Promise<unknown>>();
@@ -39,9 +43,12 @@ const wrapper = ({ children }: { children: React.ReactNode }) => (
   <AuthProvider>{children}</AuthProvider>
 );
 
-/** A player signed in on this device, with the boot check already settled. */
+/** A player signed in on this device, mid-game, with a friends list cached. */
 const signedIn = async () => {
   await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(SIGNED_IN));
+  await AsyncStorage.setItem(ACTIVE_ROOM_KEY, 'room-1');
+  await AsyncStorage.setItem(WAITING_ROOM_KEY, 'ABCD');
+  queryClient.setQueryData(['/api/friends'], [{ id: 'u2' }]);
   const hook = await renderHook(() => useAuth(), { wrapper });
   await waitFor(() => expect(hook.result.current.loading).toBe(false));
   expect(hook.result.current.user?.username).toBe('Ana');
@@ -51,9 +58,7 @@ const signedIn = async () => {
 beforeEach(async () => {
   jest.clearAllMocks();
   await AsyncStorage.clear();
-  mockRegisterForPush.mockResolvedValue(undefined);
-  // Signed in on a device that took a registration.
-  mockUnregisterForPush.mockResolvedValue(true);
+  queryClient.clear();
   // `fetchMe` uses a raw fetch rather than apiRequest, so the boot check is
   // steered here and every apiRequest below belongs to logout itself.
   mockFetch.mockResolvedValue({ status: 200, ok: true, json: async () => SIGNED_IN });
@@ -65,33 +70,7 @@ describe('a logout the server refuses', () => {
     mockApiRequest.mockRejectedValue(new Error('500: logout failed'));
   });
 
-  it('gives the device its push registration back', async () => {
-    const { result, unmount } = await signedIn();
-
-    await act(async () => {
-      await expect(result.current.logout()).rejects.toThrow('logout failed');
-    });
-
-    expect(mockUnregisterForPush).toHaveBeenCalledTimes(1);
-    expect(mockRegisterForPush).toHaveBeenCalledTimes(1);
-    unmount();
-  });
-
-  // `registerForPush` asks the OS for permission when it has not been asked,
-  // so undoing a withdrawal that never happened is a dialog out of nowhere.
-  it('leaves a device that was never registered alone', async () => {
-    mockUnregisterForPush.mockResolvedValue(false);
-    const { result, unmount } = await signedIn();
-
-    await act(async () => {
-      await expect(result.current.logout()).rejects.toThrow('logout failed');
-    });
-
-    expect(mockRegisterForPush).not.toHaveBeenCalled();
-    unmount();
-  });
-
-  it('leaves the player signed in, in state and in storage', async () => {
+  it('leaves the account signed in and every piece of its state in place', async () => {
     const { result, unmount } = await signedIn();
 
     await act(async () => {
@@ -100,12 +79,15 @@ describe('a logout the server refuses', () => {
 
     expect(result.current.user?.username).toBe('Ana');
     expect(await AsyncStorage.getItem(STORAGE_KEY)).toBe(JSON.stringify(SIGNED_IN));
+    expect(await AsyncStorage.getItem(ACTIVE_ROOM_KEY)).toBe('room-1');
+    expect(queryClient.getQueryData(['/api/friends'])).toEqual([{ id: 'u2' }]);
+    expect(mockForgetPushRegistration).not.toHaveBeenCalled();
     unmount();
   });
 });
 
 describe('a logout the server accepts', () => {
-  it('signs the player out, and leaves the device unregistered', async () => {
+  it('retires every account-scoped key, the query cache and the push registration', async () => {
     mockApiRequest.mockResolvedValue({ ok: true });
     const { result, unmount } = await signedIn();
 
@@ -113,10 +95,11 @@ describe('a logout the server accepts', () => {
       await result.current.logout();
     });
 
+    expect(mockApiRequest).toHaveBeenCalledWith('POST', '/api/auth/logout');
     expect(result.current.user).toBeNull();
-    expect(await AsyncStorage.getItem(STORAGE_KEY)).toBeNull();
-    expect(mockUnregisterForPush).toHaveBeenCalledTimes(1);
-    expect(mockRegisterForPush).not.toHaveBeenCalled();
+    for (const key of ACCOUNT_KEYS) expect(await AsyncStorage.getItem(key)).toBeNull();
+    expect(queryClient.getQueryCache().getAll()).toHaveLength(0);
+    expect(mockForgetPushRegistration).toHaveBeenCalledTimes(1);
     unmount();
   });
 });

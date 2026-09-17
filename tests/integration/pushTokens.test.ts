@@ -92,12 +92,15 @@ describe("push token registry", { skip: hasDatabase() ? false : skipMessage() },
     throw new Error("no push was sent");
   }
 
-  const post = (cookie: string, body: unknown, method = "POST") =>
+  const post = (cookie: string, body: unknown) =>
     fetch(`${server.url}/api/push/token`, {
-      method,
+      method: "POST",
       headers: { cookie, "content-type": "application/json" },
       body: JSON.stringify(body),
     });
+
+  const logout = (cookie: string) =>
+    fetch(`${server.url}/api/auth/logout`, { method: "POST", headers: { cookie } });
 
   const rowsFor = async (userId: string) =>
     (await dbPool.query("SELECT token, platform FROM push_tokens WHERE user_id = $1", [userId]))
@@ -127,13 +130,19 @@ describe("push token registry", { skip: hasDatabase() ? false : skipMessage() },
     }
   });
 
-  test("logging out withdraws only this device", async () => {
+  test("logging out withdraws only this session's device", async () => {
     const ana = await connectAs(server, "push_out");
     try {
+      const secondPhone = await fetch(`${server.url}/api/auth/login`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ username: "push_out", password: "password123" }),
+      });
+      assert.equal(secondPhone.status, 200, await secondPhone.clone().text());
       await post(ana.cookie, { token: TOKEN_A, platform: "ios" });
-      await post(ana.cookie, { token: TOKEN_B, platform: "android" });
+      await post(secondPhone.headers.get("set-cookie")!, { token: TOKEN_B, platform: "android" });
 
-      const res = await post(ana.cookie, { token: TOKEN_A, platform: "ios" }, "DELETE");
+      const res = await logout(ana.cookie);
       assert.equal(res.status, 200);
 
       const rows = await rowsFor(ana.user.id);
@@ -143,25 +152,23 @@ describe("push token registry", { skip: hasDatabase() ? false : skipMessage() },
     }
   });
 
-  // A token is keyed on itself, so the value alone cannot be what authorises
-  // the delete: anyone who learns it would be able to unregister that phone.
-  test("a token the caller does not own survives the delete", async () => {
+  // The phone changed hands after Ana registered it: her logout must not
+  // unregister it from Ben.
+  test("a logout leaves a device another account has since taken", async () => {
     const ana = await connectAs(server, "push_idor_a");
     const ben = await connectAs(server, "push_idor_b");
     try {
+      await post(ana.cookie, { token: TOKEN_A, platform: "ios" });
       await post(ben.cookie, { token: TOKEN_A, platform: "ios" });
 
-      const res = await post(ana.cookie, { token: TOKEN_A, platform: "ios" }, "DELETE");
-      assert.equal(res.status, 200);
+      assert.equal((await logout(ana.cookie)).status, 200);
       assert.deepEqual(
         (await rowsFor(ben.user.id)).map((r) => r.token),
         [TOKEN_A],
         "Ana unregistered Ben's phone"
       );
 
-      // The floor: a delete that reaches nothing would pass the line above even
-      // if the route stopped deleting entirely.
-      await post(ben.cookie, { token: TOKEN_A, platform: "ios" }, "DELETE");
+      assert.equal((await logout(ben.cookie)).status, 200);
       assert.equal((await rowsFor(ben.user.id)).length, 0);
     } finally {
       ana.socket.close();

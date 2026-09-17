@@ -520,18 +520,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   });
 
-  app.post("/api/auth/logout", (req, res) => {
-    const { userId } = req.session;
+  app.post("/api/auth/logout", async (req, res) => {
+    const { userId, pushToken } = req.session;
     const sid = req.sessionID;
+    // Before the destroy: a delete that throws must leave the session standing,
+    // since the client then keeps both.
+    if (userId && pushToken) await deletePushToken(userId, pushToken);
     req.session.destroy(async () => {
       if (userId) await revokeAccountSockets(userId, { onlySid: sid });
       res.json({ ok: true });
     });
   });
 
-  // Notification registration. The DELETE is what logout calls: the next
-  // person to hold this phone must not receive the last one's invites, and
-  // the cascade on users only covers an account being deleted.
+  // The token rides the session so /api/auth/logout can withdraw it: a client
+  // cold-started since registering no longer knows it.
   app.post("/api/push/token", requireAuth, pushLimiter, validate(PushTokenSchema), async (req, res) => {
     const { token, platform, locale } = req.body as {
       token: string;
@@ -539,11 +541,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       locale?: Locale;
     };
     await savePushToken(req.session.userId!, token, platform, locale ?? DEFAULT_LOCALE);
-    res.json({ ok: true });
-  });
-
-  app.delete("/api/push/token", requireAuth, pushLimiter, validate(PushTokenSchema), async (req, res) => {
-    await deletePushToken(req.session.userId!, (req.body as { token: string }).token);
+    req.session.pushToken = token;
     res.json({ ok: true });
   });
 

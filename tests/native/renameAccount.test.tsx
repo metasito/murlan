@@ -26,7 +26,7 @@ jest.mock('@/lib/query-client', () => ({
 
 jest.mock('@/lib/pushRegistration', () => ({
   registerForPush: async () => {},
-  unregisterForPush: async () => true,
+  forgetPushRegistration: () => {},
 }));
 
 jest.mock('@react-native-community/netinfo', () => ({
