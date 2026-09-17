@@ -1904,7 +1904,7 @@ export async function runOnce(io, pinned = null, at = null) {
         dirty: route.dirty ?? false,
       });
     if (route.head && route.head !== tally.lastRedHead) {
-      if (Math.max(tally.retries, tally.ciRounds ?? 0) + 1 >= CI_ROUNDS) {
+      if (Math.max(tally.retries + 1, tally.ciRounds ?? 0) >= CI_ROUNDS) {
         return parkFix(`${CI_ROUNDS} CI rounds on the same branch did not go green — the last one while the loop was down`);
       }
       io.record({

@@ -654,6 +654,37 @@ describe("runOnce", () => {
     assert.deepEqual(ledger.filter((x) => x.outcome === "parked").length, 1);
   });
 
+  test("a CI-RED already posted for the unrecorded head counts that round once, not twice", async () => {
+    const pass = async (rows: any[], ciRounds: number, red: boolean) => {
+      const ledger = [...rows];
+      const spawned: number[] = [];
+      const r = await runOnce(
+        io(
+          {
+            pick: () => fixRoute("h2"),
+            refreshWorktree: () => {},
+            tally: (n: number) => ({ ...ticketTally(n, ledger), ciRounds }),
+            spawn: async (s: { retryCount: number }) => {
+              spawned.push(s.retryCount);
+              return { status: 0, blocked: false, result: {}, ms: 1, log: "l", phase: "F", declared: null };
+            },
+            settle: async () => (red ? { action: "hand-back", reason: "CI failed" } : { action: "merge", reason: "" }),
+          },
+          ledger,
+        ),
+        42,
+      );
+      return [r.outcome, spawned[0] ?? null];
+    };
+    assert.deepEqual(await pass([retryRow("h1")], 2, false), ["landed", 2]);
+    assert.deepEqual(await pass([retryRow("h1")], 2, true), ["parked", 2]);
+    assert.deepEqual(await pass([], 2, false), ["landed", 2]);
+    assert.deepEqual(await pass([], 2, true), ["parked", 2]);
+    assert.deepEqual(await pass([], 3, false), ["parked", null]);
+    assert.deepEqual(await pass([retryRow("h1")], 1, false), ["landed", 2]);
+    assert.deepEqual(await pass([retryRow("h1")], 1, true), ["parked", 2]);
+  });
+
   test("a red round nobody recorded is written down before the fix round; a recorded one is not", async () => {
     const spawn = async () => ({ status: 0, blocked: false, result: {}, ms: 1, log: "l", phase: "F", declared: null });
     const unrecorded: any[] = [retryRow("h1")];
