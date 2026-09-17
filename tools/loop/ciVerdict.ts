@@ -150,8 +150,9 @@ export function stripLogPrefix(line: string): string {
 
 const PLAYWRIGHT_FAILURE = /^\s*(?:\d+\)\s*)?\[[\w.-]+\]\s*›\s*(\S+):\d+:\d+\s*›\s*(.+?)\s*$/gm;
 const JEST_FAILURE = /^FAIL\s+(\S+)/gm;
-const NODE_TEST_FILE = /^\s*#\s*Subtest:\s*(\S+\.[jt]sx?)\s*$/;
-const NODE_TEST_FAILURE = /^\s*not ok \d+ - (.+?)\s*$/;
+// `npm test`'s spec reporter, not TAP: each recap entry is this file:line:col line immediately
+// followed by the `✖ <name> (<n>ms)` line naming it (.loop-logs/ci-1079.log:318-319).
+const NODE_TEST_FAILURE = /^test at (\S+):\d+:\d+\r?\n✖ (.+?) \([\d.]+ms\)\s*$/gm;
 
 export function failingTestIds(fullLog: string): string[] {
   const ids: string[] = [];
@@ -164,17 +165,7 @@ export function failingTestIds(fullLog: string): string[] {
 
   for (const m of fullLog.matchAll(PLAYWRIGHT_FAILURE)) add(`${m[1]} › ${m[2]}`);
   for (const m of fullLog.matchAll(JEST_FAILURE)) add(m[1]);
-
-  let file: string | null = null;
-  for (const line of fullLog.split("\n")) {
-    const fileMatch = line.match(NODE_TEST_FILE);
-    if (fileMatch) {
-      file = fileMatch[1];
-      continue;
-    }
-    const failMatch = line.match(NODE_TEST_FAILURE);
-    if (failMatch && file) add(`${file} › ${failMatch[1]}`);
-  }
+  for (const m of fullLog.matchAll(NODE_TEST_FAILURE)) add(`${m[1]} › ${m[2]}`);
 
   return ids;
 }

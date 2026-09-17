@@ -259,14 +259,21 @@ describe("failing test ids from a CI log", () => {
     ]);
   });
 
-  test("a node:test failure names its file and the failing subtest", () => {
+  test("a node:test failure (spec reporter) names its file and the failing test", () => {
     const log = [
-      "# Subtest: tools/loop/tests/ciVerdict.test.ts",
-      "    # Subtest: reading ci.yml's verdict",
-      "        not ok 3 - a failed run does not pass, and names the failing job",
+      "✖ failing tests:",
+      "",
+      "test at tests/i18n.test.ts:635:3",
+      "✖ every error code the server can emit has a server.* key (11.81613ms)",
+      "  AssertionError [ERR_ASSERTION]: these codes have no server.* translation: NO_LIVE_GAME",
+      "",
+      "test at tests/reactCompiler.test.ts:176:1",
+      "✖ every screen and component compiles with no bailouts (12178.66072ms)",
+      "  AssertionError [ERR_ASSERTION]: the React Compiler silently skipped these.",
     ].join("\n");
     assert.deepEqual(failingTestIds(log), [
-      "tools/loop/tests/ciVerdict.test.ts › a failed run does not pass, and names the failing job",
+      "tests/i18n.test.ts › every error code the server can emit has a server.* key",
+      "tests/reactCompiler.test.ts › every screen and component compiles with no bailouts",
     ]);
   });
 
@@ -274,9 +281,12 @@ describe("failing test ids from a CI log", () => {
     assert.deepEqual(failingTestIds("FAIL tests/native/x.test.tsx"), ["tests/native/x.test.tsx"]);
   });
 
-  test("a log with no failures names none", () => {
-    const log =
-      "  ✓  27 [chromium] › tests/e2e/reconnect.spec.ts:21:5 › online — a dropped connection says so, and the table comes back (33.5s)\n  28 passed (1.2m)";
+  test("a log with no failures names none, a TAP-shaped line included", () => {
+    const log = [
+      "  ✓  27 [chromium] › tests/e2e/reconnect.spec.ts:21:5 › online — a dropped connection says so, and the table comes back (33.5s)",
+      "  28 passed (1.2m)",
+      "not ok 3 - a line from some other reporter",
+    ].join("\n");
     assert.deepEqual(failingTestIds(log), []);
   });
 });
