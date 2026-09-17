@@ -33,7 +33,7 @@ const AI_DELAY = E2E_FAST ? 0 : 1100;
 /** How long an AI takes to pick its giveback card in the exchange phase. */
 const AI_EXCHANGE_DELAY = E2E_FAST ? 0 : 600;
 /** Local response deadline, equal to the server's AFK timer on purpose (docs/BRIEF.md §3.1). */
-const HUMAN_TURN_SECONDS = 30;
+export const HUMAN_TURN_SECONDS = 30;
 /** Beat before the results screen takes over, so the last play is seen. */
 const RESULT_DELAY = E2E_FAST ? 0 : 800;
 /** Whether a capture state has asked the loop to hold (`lib/e2eAiSuspend.ts`). */

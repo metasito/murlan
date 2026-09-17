@@ -30,7 +30,7 @@ jest.mock('@/lib/haptics', () => ({
   hapticWarn: jest.fn(),
 }));
 
-jest.mock('@/lib/sounds', () => ({ holdSounds: () => () => {} }));
+jest.mock('@/lib/sounds', () => ({ holdSounds: () => () => {}, ensureAudioMode: jest.fn() }));
 
 const PLAYERS = [
   { id: 'player_0', name: 'Ana', type: 'human', cards: [] },
