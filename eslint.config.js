@@ -24,6 +24,7 @@ module.exports = defineConfig([
     // Generated output and agent tooling — never app code, never worth linting.
     ignores: [
       "dist/**",
+      "dist-e2e/**",
       "static-build/**",
       "server_dist/**",
       ".expo/**",

@@ -14,7 +14,7 @@ function guard(files: Record<string, string>, env: Record<string, string> = {}) 
   const clean = Object.fromEntries(
     Object.entries(process.env).filter(([k]) => !k.startsWith("EXPO_PUBLIC_E2E_") && k !== "NODE_ENV")
   );
-  return spawnSync(process.execPath, [SCRIPT], { cwd, env: { ...clean, ...env }, encoding: "utf8" });
+  return spawnSync(process.execPath, [SCRIPT], { cwd, env: { ...clean, ...env } as NodeJS.ProcessEnv, encoding: "utf8" });
 }
 
 test("passes a project with no test-only flag", () => {

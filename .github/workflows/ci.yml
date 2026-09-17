@@ -773,6 +773,10 @@ jobs:
           EXPO_PUBLIC_DOMAIN: example.invalid
         run: npm run expo:static:build
 
+      # lib/e2eBuildMark.ts survives only in a bundle built with a test-only flag.
+      - name: Neither production bundle carries a test-only flag
+        run: node scripts/e2eBuildMark.mjs --absent dist static-build
+
       # The bundle esbuild produces is otherwise first executed by a Replit
       # deploy. /health answers only once the pool has reached Postgres.
       - name: The built server boots and reaches the database

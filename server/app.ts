@@ -15,6 +15,7 @@ import { isAllowedOrigin, isBehindProxy } from "./cors.ts";
 import { registerGithubDevSyncHook } from "./devSyncHook.ts";
 import { checkMailConfigOnBoot } from "./mail.ts";
 import { ANSWERED_BY_SHELL, CONTENT_HASHED } from "./staticPaths.ts";
+import { testOnlyEnv } from "./testOnlyEnv.ts";
 import { execFileSync } from "node:child_process";
 import * as fs from "fs";
 import * as path from "path";
@@ -169,7 +170,7 @@ function setDistCacheControl(res: Response, filePath: string) {
 }
 
 function configureExpoAndLanding(app: express.Application) {
-  const distPath = path.resolve(process.cwd(), "dist");
+  const distPath = path.resolve(process.cwd(), testOnlyEnv("MURLAN_WEB_DIST") ?? "dist");
   const webIndexPath = path.join(distPath, "index.html");
   const hasWebBuild = fs.existsSync(webIndexPath);
 
