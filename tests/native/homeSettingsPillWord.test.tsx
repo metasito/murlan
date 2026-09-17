@@ -13,6 +13,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 jest.mock('expo-router', () => ({
   router: { push: jest.fn(), replace: jest.fn(), back: jest.fn() },
+  useIsFocused: () => true,
 }));
 
 jest.mock('@/components/SettingsModal', () => ({ SettingsModal: () => null }));

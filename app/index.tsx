@@ -7,7 +7,7 @@ import {
   ScrollView,
 } from "react-native";
 import { useIsLandscape } from "@/lib/orientation";
-import { router } from "expo-router";
+import { router, useIsFocused } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, {
   cancelAnimation,
@@ -95,8 +95,8 @@ function phased(at: number, from: number, to: number, halfMs: number, reduceMoti
  * do. Both start part-way through their first leg, so the field is already in
  * motion on first paint (components/homeCardField.ts).
  */
-function FloatingCard({ spec }: { spec: FloatingCardSpec }) {
-  const reduceMotion = usePrefersReducedMotion();
+function FloatingCard({ spec, covered }: { spec: FloatingCardSpec; covered: boolean }) {
+  const still = usePrefersReducedMotion() || covered;
   const band = DEPTH_BANDS[spec.depth];
   const { width, height } = cardBox(spec.depth);
   const { rise: restLift, swing: restSwing } = restingPose(spec);
@@ -104,13 +104,13 @@ function FloatingCard({ spec }: { spec: FloatingCardSpec }) {
   const swing = useSharedValue(restSwing);
 
   useEffect(() => {
-    lift.value = phased(restLift, 0, 1, band.driftMs / 2, reduceMotion);
-    swing.value = phased(restSwing, -1, 1, band.tiltMs / 2, reduceMotion);
+    lift.value = phased(restLift, 0, 1, band.driftMs / 2, still);
+    swing.value = phased(restSwing, -1, 1, band.tiltMs / 2, still);
     return () => {
       cancelAnimation(lift);
       cancelAnimation(swing);
     };
-  }, [band, lift, reduceMotion, restLift, restSwing, swing]);
+  }, [band, lift, still, restLift, restSwing, swing]);
 
   const animStyle = useAnimatedStyle(() => ({
     transform: [
@@ -152,10 +152,12 @@ function FloatingCard({ spec }: { spec: FloatingCardSpec }) {
 /** The whole field, decorative and out of reach of both the tab order and
  * assistive technology. */
 function CardField({ cards }: { cards: FloatingCardSpec[] }) {
+  // A pushed screen leaves home mounted underneath it, still animating.
+  const covered = !useIsFocused();
   return (
     <View testID="card-field" style={StyleSheet.absoluteFill} pointerEvents="none" {...a11yHidden()}>
       {cards.map((spec) => (
-        <FloatingCard key={`${spec.depth}-${spec.x}`} spec={spec} />
+        <FloatingCard key={`${spec.depth}-${spec.x}`} spec={spec} covered={covered} />
       ))}
     </View>
   );

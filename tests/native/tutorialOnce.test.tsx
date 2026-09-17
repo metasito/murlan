@@ -16,6 +16,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 jest.mock('expo-router', () => ({
   router: { push: jest.fn(), replace: jest.fn(), back: jest.fn() },
+  useIsFocused: () => true,
 }));
 
 // The settings sheet reaches for SettingsProvider and has nothing to do with
