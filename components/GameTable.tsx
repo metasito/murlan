@@ -89,6 +89,7 @@ import { RotateOverlay } from "@/components/table/rotateOverlay";
 import { GameSettingsSheet } from "@/components/table/settingsSheet";
 import { useTableFeedback } from "@/components/useTableFeedback";
 import { useHandOrder } from "@/components/useHandOrder";
+import { useSameCards } from "@/components/useSameCards";
 import { useRailSide } from "@/components/useRailSide";
 import { FlyingCards, PlayedPile, getComboLabel, usePileFlight } from "@/components/table/pile";
 import { warmCourtArt } from "@/components/CardView";
@@ -102,8 +103,8 @@ import {
   playRoundStart,
   playRoundWin,
   playDeal,
+  holdSounds,
   preloadSounds,
-  unloadSounds,
 } from "@/lib/sounds";
 import { hapticLight, hapticMedium, hapticRigid, hapticSelection } from "@/lib/haptics";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
@@ -390,7 +391,7 @@ export function GameTable({
   // A spectator receives every hand blanked, so the bottom seat's cards come
   // from its count. They carry synthetic ids because nothing may identify a
   // card the watcher is not entitled to see.
-  const sortedHand = React.useMemo(() => {
+  const dealtHand = React.useMemo(() => {
     if (spectating) {
       const count = viewer ? handCountOf(viewer) : 0;
       return Array.from({ length: count }, (_, i) => ({
@@ -402,6 +403,7 @@ export function GameTable({
     }
     return sortHand(viewer?.hand ?? []);
   }, [spectating, viewer]);
+  const sortedHand = useSameCards(dealtHand);
   // The engine's order is the fallback; what the player sees is whatever they
   // have arranged on top of it (#531). Spectated hands are excluded by the
   // seat's own cards being synthetic above — there is nothing there to arrange.
@@ -426,8 +428,9 @@ export function GameTable({
     landed: tradedCardsLanded,
     reduceMotion,
   });
-  const handOnTable =
-    withheldId === undefined ? shownHand : shownHand.filter((c) => c.id !== withheldId);
+  const handOnTable = useSameCards(
+    withheldId === undefined ? shownHand : shownHand.filter((c) => c.id !== withheldId)
+  );
   // Where the last move put a card. A drag shows its own answer; the discrete
   // actions behind it (WCAG 2.5.7) move a card with nothing on screen changing
   // for whoever asked, so the live region below says where it went.
@@ -691,8 +694,9 @@ export function GameTable({
     // Fast game -> result -> game navigation makes these cancel each other, and an
     // unhandled rejection here is fatal on device.
     ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE).catch(() => {});
-    // Guarded: the cleanup removes every native player, so resolving after unmount
-    // would play through a released one.
+    // Guarded: the cleanup may remove every native player, so resolving after
+    // unmount would play through a released one.
+    const releaseSounds = holdSounds();
     preloadSounds()
       .then(() => {
         if (mounted) playDeal();
@@ -702,7 +706,7 @@ export function GameTable({
     return () => {
       mounted = false;
       ScreenOrientation.unlockAsync().catch(() => {});
-      unloadSounds();
+      releaseSounds();
     };
   }, []);
 

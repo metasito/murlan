@@ -66,6 +66,13 @@ let webGeneration = 0;
 /** Schedule this far ahead, and top up twice as often. */
 const LOOKAHEAD_S = 2;
 
+/** A decoded loop is raw PCM, many times its file size, so only the one wanted and the one it replaces are kept. */
+function forgetWebBuffers(keep: (MusicTrack | null)[]): void {
+  for (const key of Object.keys(webBuffers) as MusicTrack[]) {
+    if (!keep.includes(key)) delete webBuffers[key];
+  }
+}
+
 async function webBuffer(track: MusicTrack, ctx: AudioContext): Promise<AudioBuffer | null> {
   const cached = webBuffers[track];
   if (cached) return cached;
@@ -73,6 +80,7 @@ async function webBuffer(track: MusicTrack, ctx: AudioContext): Promise<AudioBuf
     const url = TRACKS[track]() as unknown as string;
     const bytes = await (await fetch(url)).arrayBuffer();
     const buffer = await ctx.decodeAudioData(bytes);
+    forgetWebBuffers([track, webPlaying]);
     webBuffers[track] = buffer;
     return buffer;
   } catch {
@@ -405,6 +413,7 @@ export function unloadMusic(): void {
   }
   nativePlaying = null;
   webPlaying = null;
+  forgetWebBuffers([]);
 }
 
 if (Platform.OS === "web") {

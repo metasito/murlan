@@ -58,11 +58,55 @@ export function listenPattern(databaseUrl: string | undefined): string {
   return `LISTEN "${prefix}%`;
 }
 
+export interface PoolStats {
+  total: number;
+  idle: number;
+  waiting: number;
+  /** Checkouts since the pool was metered; with `longestWaitMs`, never reset. */
+  waits: number;
+  longestWaitMs: number;
+}
+
+/** Times every checkout of `pool` from request to hand-over. */
+export function meterPool(pool: Pool): () => PoolStats {
+  let waits = 0;
+  let longestWaitMs = 0;
+  const connect = pool.connect.bind(pool);
+  const note = (from: number) => {
+    waits += 1;
+    longestWaitMs = Math.max(longestWaitMs, Date.now() - from);
+  };
+  // `pool.query` checks out through the callback form, so both forms are timed.
+  pool.connect = ((cb?: Parameters<Pool["connect"]>[0]) => {
+    const from = Date.now();
+    if (cb) {
+      return connect((err, client, done) => {
+        note(from);
+        cb(err, client, done);
+      });
+    }
+    return connect().finally(() => note(from));
+  }) as Pool["connect"];
+  return () => ({
+    total: pool.totalCount,
+    idle: pool.idleCount,
+    waiting: pool.waitingCount,
+    waits,
+    longestWaitMs,
+  });
+}
+
 let adapterPool: Pool | null = null;
+let adapterPoolStats: (() => PoolStats) | null = null;
 
 /** The adapter's pool, once `createSocketAdapter()` has built one. */
 export function socketAdapterPool(): Pool | null {
   return adapterPool;
+}
+
+/** Contention on the adapter's pool, where every broadcast queues for a client. */
+export function socketAdapterPoolStats(): PoolStats | null {
+  return adapterPoolStats?.() ?? null;
 }
 
 /**
@@ -120,6 +164,7 @@ export function createSocketAdapter() {
   });
   pool.on("error", (err) => logger.error({ err }, "Idle Postgres client error (socket adapter)"));
   adapterPool = pool;
+  adapterPoolStats = meterPool(pool);
 
   return createAdapter(pool, {
     channelPrefix: channelPrefix(process.env.DATABASE_URL),

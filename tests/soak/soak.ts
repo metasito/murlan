@@ -8,6 +8,7 @@
 // checks only that the clients and the server still agree with each other.
 //
 // Run: npm run soak -- --seats 4 --minutes 2 --seed 12345
+// Throughput: npm run soak -- --tables 8 --minutes 1 (moves/sec and broadcast p99)
 import { setTimeout as sleep } from "node:timers/promises";
 import { pathToFileURL } from "node:url";
 import type { Socket } from "socket.io-client";
@@ -205,6 +206,8 @@ interface Options {
   seed: number;
   /** Chance per move taken that the chaos driver does something. */
   chaos: number;
+  /** Set, the run measures throughput across this many tables instead of hunting disagreement. */
+  tables?: number;
 }
 
 /**
@@ -267,6 +270,7 @@ function parseArgs(argv: string[]): Options {
     minutes: read("minutes", 2),
     seed: read("seed", Math.floor(Math.random() * 1e9)),
     chaos: read("chaos", 0.05),
+    tables: read("tables", 0),
   };
 }
 
@@ -666,6 +670,110 @@ export async function runSoak(opts: Options, log = console.log): Promise<SoakRes
   return result;
 }
 
+export interface ThroughputResult {
+  tables: number;
+  seconds: number;
+  moves: number;
+  movesPerSec: number;
+  /** From a seat's emit to the next `game:state` that seat hears. */
+  p50Ms: number;
+  p99Ms: number;
+  unanswered: number;
+  refusals: Record<string, number>;
+}
+
+async function playTable(
+  seats: Seat[],
+  rng: () => number,
+  until: number,
+  latencies: number[]
+): Promise<{ moves: number; unanswered: number }> {
+  let moves = 0;
+  let unanswered = 0;
+  while (Date.now() < until) {
+    if (seats.every((s) => s.state?.gameOver)) {
+      for (const seat of seats) {
+        seat.socket.emit("game:rematch_intent", { wants: true });
+        seat.socket.emit("game:rematch_vote");
+      }
+      await sleep(700);
+      continue;
+    }
+    let acted = false;
+    for (const seat of seats) {
+      let heard = () => {};
+      const answered = new Promise<boolean>((resolve) => {
+        heard = () => resolve(true);
+        seat.socket.once("game:state", heard);
+      });
+      const sentAt = performance.now();
+      if (!seat.act(rng)) {
+        seat.socket.off("game:state", heard);
+        continue;
+      }
+      acted = true;
+      moves += 1;
+      const timer = sleep(REJOIN_BUDGET_MS, false, { ref: false });
+      if (await Promise.race([answered, timer])) latencies.push(performance.now() - sentAt);
+      else {
+        seat.socket.off("game:state", heard);
+        unanswered += 1;
+      }
+    }
+    if (!acted) await sleep(5);
+  }
+  return { moves, unanswered };
+}
+
+/** Plays `opts.tables` tables at once on one server, with no chaos, and reports how fast. */
+export async function runThroughput(
+  opts: Options & { tables: number },
+  log = console.log
+): Promise<ThroughputResult> {
+  const rng = makeRng(opts.seed);
+  const server: TestServer = await startTestServer();
+  const tables: { seats: Seat[]; roomId?: string }[] = [];
+  try {
+    for (let i = 0; i < opts.tables; i++) {
+      const table: { seats: Seat[]; roomId?: string } = { seats: [] };
+      tables.push(table);
+      table.roomId = (await openTable(server, opts.seats, table.seats)).roomId;
+    }
+    await Promise.all(tables.map((t) => settle(t.seats)));
+    log(`soak: ${opts.tables} tables of ${opts.seats} open, playing for ${opts.minutes} min`);
+
+    const latencies: number[] = [];
+    const started = performance.now();
+    const until = Date.now() + opts.minutes * 60_000;
+    const played = await Promise.all(tables.map((t) => playTable(t.seats, rng, until, latencies)));
+    const seconds = (performance.now() - started) / 1000;
+
+    const sorted = latencies.sort((a, b) => a - b);
+    const at = (q: number) => +(sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * q))] ?? 0).toFixed(1);
+    const moves = played.reduce((sum, p) => sum + p.moves, 0);
+    return {
+      tables: opts.tables,
+      seconds: +seconds.toFixed(1),
+      moves,
+      movesPerSec: +(moves / seconds).toFixed(1),
+      p50Ms: at(0.5),
+      p99Ms: at(0.99),
+      unanswered: played.reduce((sum, p) => sum + p.unanswered, 0),
+      refusals: tables.flatMap((t) => t.seats).reduce<Record<string, number>>((all, seat) => {
+        for (const [key, count] of seat.refusals) all[key] = (all[key] ?? 0) + count;
+        return all;
+      }, {}),
+    };
+  } finally {
+    for (const { seats, roomId } of tables) {
+      for (const seat of seats) if (roomId && seat.socket.connected) seat.leave(roomId);
+    }
+    await sleep(SETTLE_QUIET_MS);
+    for (const seat of tables.flatMap((t) => t.seats)) if (seat.socket.connected) seat.socket.close();
+    await server.stop();
+  }
+}
+
 /** Waits out the seat graces for the module maps to empty, then reports what did not. */
 async function drainedMaps(): Promise<Violation[]> {
   const { activeGames, socketRoomMap, spectatorRoomMap, userSocketMap } = await import("../../server/gameRoom.ts");
@@ -686,6 +794,14 @@ async function main() {
     process.exit(2);
   }
   const opts = parseArgs(process.argv.slice(2));
+  if (opts.tables) {
+    const t = await runThroughput({ ...opts, tables: opts.tables });
+    console.log(
+      `soak: ${t.tables} tables, ${t.moves} moves in ${t.seconds}s = ${t.movesPerSec} moves/sec; ` +
+        `broadcast p50 ${t.p50Ms}ms, p99 ${t.p99Ms}ms, ${t.unanswered} unanswered, ${formatRefusals(t.refusals)}`
+    );
+    return;
+  }
   const result = await runSoak(opts);
 
   console.log(

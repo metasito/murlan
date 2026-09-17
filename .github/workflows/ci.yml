@@ -162,7 +162,7 @@ jobs:
           else
             echo "harness=false" >> "$GITHUB_OUTPUT"
           fi
-          if grep -qE '^(docs/agents/|docs/(PRIVACY|RULES|TESTING)\.md$|docs/design/57-polish-audit/|\.claude/commands/|CLAUDE\.md$)' <<< "$changed"; then
+          if grep -qE '^(docs/agents/|docs/(PRIVACY|RULES|TESTING|WEB-PERF)\.md$|docs/design/57-polish-audit/|\.claude/commands/|CLAUDE\.md$)' <<< "$changed"; then
             echo "Documentation the suite asserts on — running everything."
             echo "app=true" >> "$GITHUB_OUTPUT"
           elif [ -n "$changed" ] && ! grep -qvE '^(docs/|\.claude/)|\.md$' <<< "$changed"; then

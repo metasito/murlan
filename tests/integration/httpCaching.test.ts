@@ -129,6 +129,16 @@ describe("static asset compression and caching", { skip: hasDatabase() ? false :
     }
   });
 
+  test("health reports contention on the socket adapter's pool", async () => {
+    const body = (await (await fetch(`${server.url}/health`)).json()) as {
+      adapterPool: Record<string, number> | null;
+    };
+    assert.ok(body.adapterPool, "no adapterPool in /health");
+    for (const key of ["total", "idle", "waiting", "waits", "longestWaitMs"]) {
+      assert.equal(typeof body.adapterPool[key], "number", key);
+    }
+  });
+
   test("an unhashed asset under dist/ is not cached — its URL outlives its bytes", async () => {
     const res = await fetch(`${server.url}/favicon.ico`);
     assert.equal(res.status, 200);

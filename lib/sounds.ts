@@ -304,6 +304,33 @@ export async function preloadSounds(): Promise<void> {
   }
 }
 
+let holders = 0;
+let pendingUnload: ReturnType<typeof setTimeout> | null = null;
+
+/**
+ * Keeps the players loaded until the returned release. The unload waits a
+ * tick, because a navigating screen may unmount before the one replacing it
+ * mounts, and a hold taken in between keeps every player.
+ */
+export function holdSounds(): () => void {
+  holders += 1;
+  if (pendingUnload) {
+    clearTimeout(pendingUnload);
+    pendingUnload = null;
+  }
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    holders -= 1;
+    if (holders > 0) return;
+    pendingUnload = setTimeout(() => {
+      pendingUnload = null;
+      if (holders === 0) unloadSounds();
+    }, 0);
+  };
+}
+
 export function unloadSounds(): void {
   Object.values(soundCache).forEach((p) => {
     try {

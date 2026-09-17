@@ -2,6 +2,7 @@ import React, { useEffect } from "react";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { hapticLight, hapticMedium } from "@/lib/haptics";
+import { holdSounds } from "@/lib/sounds";
 import { useLocalMatch, useLocalSession, useLocalTable } from "@/context/gameHooks";
 import { standings } from "@/lib/standings";
 import { celebratesViewer, celebration, isDrawnHand, handOutcomeFor } from "@/lib/matchState";
@@ -19,6 +20,8 @@ export default function ResultScreen() {
   useEffect(() => {
     if (!gameState) router.replace("/");
   }, [gameState]);
+  // The next manche's table takes these over; holding them here spares it a reload.
+  useEffect(() => holdSounds(), []);
 
   if (!gameState) return null;
 

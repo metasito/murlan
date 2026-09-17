@@ -598,6 +598,8 @@ export function StraightHand({
   // until the hold fires a moving finger scrolls the row itself.
   const holding = useSharedValue(false);
   const holdTimer = useSharedValue(0);
+  /** Whether a hold clock may be running, so a move hops to JS once to stop it rather than every frame. */
+  const armed = useSharedValue(false);
   /** Set on the UI thread the frame the pick is scheduled, so it is scheduled once. */
   const picking = useSharedValue(false);
   const grabX = useSharedValue(0);
@@ -849,6 +851,7 @@ export function StraightHand({
       grabX.value = touch.x;
       grabY.value = touch.y;
       panFrom.value = pan.value;
+      armed.value = true;
       scheduleOnRN(armHold);
     })
     .onTouchesMove((e, state) => {
@@ -876,7 +879,10 @@ export function StraightHand({
       // Not held: the finger is reading the hand, so it moves the row rather
       // than a card. Anything but a horizontal drag is somebody else's gesture.
       if (Math.abs(dx) > Math.abs(dy)) {
-        scheduleOnRN(disarmHold);
+        if (armed.value) {
+          armed.value = false;
+          scheduleOnRN(disarmHold);
+        }
         if (overhang > 0) pan.value = panFrom.value - dx;
       }
     })
@@ -907,6 +913,7 @@ export function StraightHand({
     // edge — never reaches onEnd, and the card it lifted would float there for
     // the rest of the hand.
     .onFinalize(() => {
+      armed.value = false;
       scheduleOnRN(disarmHold);
       if (landing.value) return;
       scheduleOnRN(releaseHeld);

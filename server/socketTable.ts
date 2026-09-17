@@ -148,14 +148,16 @@ export async function emitRoomStateTo(
   roomId: string,
   game: OnlineGameState
 ) {
-  const room = await roomStore.getRoomById(roomId).catch((err: unknown) => {
-    logger.warn({ err, roomId }, "getRoomById failed; answering from the live game");
-    return undefined;
-  });
-  const players = await roomStore.getRoomPlayers(roomId).catch((err: unknown) => {
-    logger.warn({ err, roomId }, "getRoomPlayers failed; answering from the live roster");
-    return [];
-  });
+  const [room, players] = await Promise.all([
+    roomStore.getRoomById(roomId).catch((err: unknown) => {
+      logger.warn({ err, roomId }, "getRoomById failed; answering from the live game");
+      return undefined;
+    }),
+    roomStore.getRoomPlayers(roomId).catch((err: unknown) => {
+      logger.warn({ err, roomId }, "getRoomPlayers failed; answering from the live roster");
+      return [];
+    }),
+  ]);
   // A running game always seats at least one human, so an empty roster is the
   // rows being gone rather than the table being empty.
   const payload = await roomStatePayload(
@@ -299,16 +301,17 @@ function tellInvitees(
  * broadcast happens to come along next.
  */
 export async function announceRoomChanged(io: SocketServer, roomId: string): Promise<void> {
-  const room = await roomStore.getRoomById(roomId).catch((err: unknown) => {
-    logger.warn({ err, roomId }, "Failed to read the room while announcing a room change");
-    return null;
-  });
-  if (!room) return;
-  const players = await roomStore.getRoomPlayers(roomId).catch((err: unknown) => {
-    logger.warn({ err, roomId }, "Failed to read the roster while announcing a room change");
-    return null;
-  });
-  if (!players) return;
+  const [room, players] = await Promise.all([
+    roomStore.getRoomById(roomId).catch((err: unknown) => {
+      logger.warn({ err, roomId }, "Failed to read the room while announcing a room change");
+      return null;
+    }),
+    roomStore.getRoomPlayers(roomId).catch((err: unknown) => {
+      logger.warn({ err, roomId }, "Failed to read the roster while announcing a room change");
+      return null;
+    }),
+  ]);
+  if (!room || !players) return;
   io.to(roomId).emit("room:state", await roomStatePayload(room, players));
 }
 
