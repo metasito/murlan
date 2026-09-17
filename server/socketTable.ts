@@ -408,7 +408,6 @@ function scheduleAutoStart(
       }
     })();
   }, autoStartDelayMs());
-  timer.unref?.();
   autoStartTimers.set(room.id, timer);
 }
 
