@@ -3,11 +3,7 @@
 // scenarios) registration.
 
 import type { Page } from "@playwright/test";
-
-// `lib/tutorialSeen.ts`'s SEEN_KEY. AsyncStorage on web writes straight to
-// localStorage with the key unprefixed, so seeding it here is the same write
-// the app itself makes. tests/tutorialSeenKey.test.ts pins the two together.
-const TUTORIAL_SEEN_KEY = "@murlan_tutorial_seen";
+import { TUTORIAL_SEEN_KEY } from "../../../lib/storageKeys.ts";
 
 /**
  * How long the home screen has to become interactive.

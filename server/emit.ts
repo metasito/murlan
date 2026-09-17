@@ -1,4 +1,4 @@
-import type { Server as SocketServer } from "socket.io";
+import type { SocketServer } from "./socketTypes.ts";
 import type { OnlineGameState } from "./gameRoom.ts";
 import { scoresByEngineId } from "./gameOver.ts";
 

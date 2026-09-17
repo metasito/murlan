@@ -10,6 +10,7 @@ import { openApp, registerNewAccount, uniqueUsername } from "./helpers/navigatio
 import { en } from "../../locales/en";
 import { it as itCopy } from "../../locales/it";
 import { sq } from "../../locales/sq";
+import { LOCALE_KEY } from "../../lib/storageKeys";
 
 const PORTRAIT = { width: 390, height: 844 };
 // Narrower than the phones the other home specs use: the brand column most
@@ -23,7 +24,7 @@ const LOCALES = [
 ] as const;
 
 async function setLocale(page: Page, key: string): Promise<void> {
-  await page.evaluate((l) => window.localStorage.setItem("murlan.locale", l), key);
+  await page.evaluate(([k, l]) => window.localStorage.setItem(k, l), [LOCALE_KEY, key] as const);
   await page.reload();
   await page
     .locator('[data-testid="home-account-pair"]:visible')

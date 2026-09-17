@@ -13,7 +13,7 @@ import type { Page } from "@playwright/test";
 import { openApp } from "./navigation";
 import { createDeck, dealCards } from "../../../lib/gameEngine";
 import { captureGameState, type CaptureState } from "../../../lib/captureStates";
-import { E2E_SUSPEND_AI_KEY } from "../../../lib/e2eAiSuspend";
+import { E2E_SUSPEND_AI_KEY, OFFLINE_SAVE_KEY } from "../../../lib/storageKeys";
 
 /** Bot names and personalities as app/lobby.tsx fills empty seats. */
 const BOTS = [
@@ -169,7 +169,7 @@ export async function openCaptureState(
 export async function resumeSaved(page: Page, baseURL: string, save: object): Promise<void> {
   await page.addInitScript(
     ({ key, value }) => window.localStorage.setItem(key, value),
-    { key: "@murlan_offline_game", value: JSON.stringify(save) }
+    { key: OFFLINE_SAVE_KEY, value: JSON.stringify(save) }
   );
   await openApp(page, baseURL);
   // Waited for, not clicked at. `openApp` returns on networkidle, which is the

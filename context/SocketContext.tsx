@@ -19,14 +19,17 @@ import {
   peekSocket,
   setSocketAuthFailureHandler,
   subscribeToSockets,
+  type Socket,
 } from "@/lib/socket";
+import { requireUpdate } from "@/lib/updateRequired";
+import { CLIENT_OUTDATED } from "@/shared/protocol";
 import { reportSocketClose } from "@/lib/errorReporting";
 import { useNotification } from "@/context/NotificationContext";
 import { SessionReplacedNotice } from "@/components/SessionReplacedNotice";
 import { t, translateServerPayload, type ServerPayload } from "@/lib/i18n";
 import { Reading } from "@/lib/theme";
 import type { FriendRequestAccepted, FriendRequestIncoming } from "@/lib/wire";
-import type { Socket } from "socket.io-client";
+import type { Socket as UntypedSocket } from "socket.io-client";
 
 /**
  * Seats a row the server sent with its announcement into the list a fetch
@@ -136,6 +139,14 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     enabled: !!userId,
     refetchOnWindowFocus: true,
   });
+  // The cached lists are one account's and their keys do not say whose. Cleared
+  // here, after this commit disabled every observer: a clear that lands first lets
+  // an earlier render's pending effect refetch them with the dead session.
+  const signedInRef = useRef(userId);
+  useEffect(() => {
+    if (signedInRef.current && !userId) qc.clear();
+    signedInRef.current = userId;
+  }, [userId, qc]);
   const gameInvites = useMemo<PendingInvite[]>(
     () => inviteRows.map((row) => ({ from: row.fromUsername, roomCode: row.roomCode })),
     [inviteRows]
@@ -234,11 +245,6 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       retryAttemptRef.current = 0;
       socket.io.reconnection(false);
       socket.disconnect();
-      // The cached lists are one account's — friends, requests, invitations —
-      // and the query keys do not name whose. The deliberate logout in
-      // SettingsModal clears them; this path is a logout too, and the next
-      // account to sign in on this device would otherwise be served them.
-      qc.clear();
       void logout().finally(() => router.replace("/auth"));
     };
     setSocketAuthFailureHandler(onAuthFailure);
@@ -256,7 +262,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       for (const queryKey of RECONCILED_ON_CONNECT) qc.invalidateQueries({ queryKey });
     };
 
-    const onDisconnect = (reason: Socket.DisconnectReason) => {
+    const onDisconnect = (reason: UntypedSocket.DisconnectReason) => {
       setConnected(false);
       reportSocketClose(reason);
     };
@@ -267,8 +273,10 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     // off exponentially (capped) while the auth callback mints a fresh ticket
     // per attempt. While `active` is true the library's own reconnection is
     // still running and owns the retry.
-    const onConnectError = () => {
+    const onConnectError = (err: Error) => {
       setConnected(false);
+      // Retrying cannot help: this bundle is below the server's floor.
+      if (err.message === CLIENT_OUTDATED) return requireUpdate();
       if (socket.active) return;
       if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
       const attempt = retryAttemptRef.current++;

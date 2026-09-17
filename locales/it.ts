@@ -434,6 +434,8 @@ export const it: Record<keyof typeof en, string> = {
   "offlineGame.quitConfirmTitle": "Abbandona",
   "offlineGame.quitConfirmBody": "Vuoi uscire dalla partita?",
   "offlineGame.quitConfirmConfirm": "Esci",
+  "offlineGame.saveDiscardedTitle": "Partita salvata non ripristinata",
+  "offlineGame.saveDiscardedBody": "Un aggiornamento ha cambiato il modo in cui le partite vengono salvate, quindi la tua partita offline in corso non può essere ripresa.",
 
   // -------------------------------------------------------------- onlineGame.*
   "onlineGame.reconnecting": "Connessione persa — riconnessione…",
@@ -881,6 +883,9 @@ export const it: Record<keyof typeof en, string> = {
   "errorFallback.continueA11yHint": "Prova a tornare alla schermata precedente senza riavviare",
   "errorFallback.detailsTitle": "Dettagli errore",
   "errorFallback.closeDetailsA11yLabel": "Chiudi dettagli errore",
+  "updateRequired.title": "Aggiornamento necessario",
+  "updateRequired.body": "Il server usa una versione più recente del gioco. Ricarica per continuare.",
+  "updateRequired.reload": "Ricarica",
   "errorFallback.errorLabel": "Errore: {{message}}\n\n",
   "errorFallback.stackTraceLabel": "Stack trace:\n{{stack}}",
 

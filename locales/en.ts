@@ -441,6 +441,8 @@ export const en = {
   "offlineGame.quitConfirmTitle": "Quit",
   "offlineGame.quitConfirmBody": "Do you want to leave the game?",
   "offlineGame.quitConfirmConfirm": "Leave",
+  "offlineGame.saveDiscardedTitle": "Saved match not restored",
+  "offlineGame.saveDiscardedBody": "An update changed how matches are saved, so your unfinished offline match could not be picked up.",
 
   // -------------------------------------------------------------- onlineGame.*
   "onlineGame.reconnecting": "Connection lost — reconnecting…",
@@ -888,6 +890,9 @@ export const en = {
   "errorFallback.continueA11yHint": "Try to go back to the previous screen without restarting",
   "errorFallback.detailsTitle": "Error details",
   "errorFallback.closeDetailsA11yLabel": "Close error details",
+  "updateRequired.title": "Update required",
+  "updateRequired.body": "The server has moved on to a newer version of the game. Reload to continue.",
+  "updateRequired.reload": "Reload",
   "errorFallback.errorLabel": "Error: {{message}}\n\n",
   "errorFallback.stackTraceLabel": "Stack trace:\n{{stack}}",
 

@@ -1,13 +1,13 @@
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
 import { io as ioClient, type Socket } from "socket.io-client";
+import { PROTOCOL_AUTH, connectAs, waitFor, DEADLINE_SCALE } from "../helpers/client.ts";
 import {
   startTestServer,
   hasDatabase,
   skipMessage,
   type TestServer,
 } from "../helpers/testServer.ts";
-import { connectAs, waitFor, DEADLINE_SCALE } from "../helpers/client.ts";
 import { activeGames, socketRoomMap, userSocketMap } from "../../server/gameRoom.ts";
 import { disconnectGraceMs } from "../../server/gameTimers.ts";
 import {
@@ -78,7 +78,7 @@ describe(
       const { ticket } = JSON.parse(text) as { ticket: string };
 
       const socket = ioClient(server.url, {
-        auth: { ticket },
+        auth: { ...PROTOCOL_AUTH, ticket },
         transports: ["websocket"],
         reconnection: false,
       });

@@ -49,6 +49,7 @@ jest.mock('@/lib/accessibility', () => ({
 import { router } from 'expo-router';
 import TutorialScreen from '@/app/tutorial';
 import { t } from '@/lib/i18n';
+import { TUTORIAL_PROGRESS_KEY } from '@/lib/storageKeys';
 
 const METRICS = {
   frame: { x: 0, y: 0, width: 390, height: 844 },
@@ -87,7 +88,7 @@ describe('skipping the tutorial', () => {
     await pressSkip();
 
     expect(jest.mocked(router.replace)).toHaveBeenCalledWith('/');
-    expect(await AsyncStorage.getItem('@murlan_tutorial_progress')).toBeNull();
+    expect(await AsyncStorage.getItem(TUTORIAL_PROGRESS_KEY)).toBeNull();
     await r.unmount();
   });
 

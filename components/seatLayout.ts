@@ -2,7 +2,6 @@
 //
 // JSX-free, runtime imports relative — docs/agents/loops.md, "Node's TypeScript loader".
 
-import type { Player } from "@/lib/gameEngine";
 import { CARD_BACK_H, CARD_BACK_W, BACK_SCALE } from "./cardFaceModel.ts";
 import { arcBounds, solveArc, SEAT_ARC } from "./tableArc.ts";
 import { Spacing } from "../lib/tokens.ts";
@@ -240,24 +239,6 @@ export function arrangeOpponents<T>(
     if (out[dir] === null) out[dir] = { player: players[seat], seat };
   }
   return out;
-}
-
-/**
- * Cards left in a seat's hand. Online the server blanks other players' hands
- * and ships a `handCount` alongside; offline the hand itself is authoritative.
- */
-export function handCountOf(player: Player | (Player & { handCount?: number })): number {
-  const count = (player as { handCount?: number }).handCount;
-  return typeof count === "number" ? count : player.hand.length;
-}
-
-/**
- * Whether a seat is a human's that left, played on by the engine — never
- * true offline, which vacates nobody. The flag travels on the wire
- * (`sanitizeStateForPlayer`); `name` stays the person's own.
- */
-export function vacatedOf(player: Player | (Player & { vacated?: boolean })): boolean {
-  return (player as { vacated?: boolean }).vacated === true;
 }
 
 /**

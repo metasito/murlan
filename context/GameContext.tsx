@@ -11,7 +11,6 @@ import React, {
 import {
   GameState,
   GameMode,
-  PlayerType,
   MatchLength,
   dealFirstSeatFor,
   firstTargetFor,
@@ -33,16 +32,18 @@ import {
   decodeOfflineSave,
   encodeOfflineSave,
   isResumable,
+  type OfflineSave,
 } from "@/lib/offlineSave";
+import { useNotification } from "@/context/NotificationContext";
+import { t } from "@/lib/i18n";
 import {
   buildExchangeAnnounce,
   rematchPromptOpen as isRematchPromptOpen,
   useExchangeAnnouncement,
   type ExchangeAnnounceData,
 } from "@/lib/sharedGameFlow";
-import { handCountOf } from "@/components/seatLayout";
-import type { MatchVerdict } from "@/lib/matchState";
-import type { BotPersonalityId } from "@/lib/botPersonalities";
+import { handCountOf } from "@/shared/protocol";
+import type { HandResult, MatchState, PlayerSetupConfig, RematchAnswers } from "@/lib/matchState";
 
 // Read once at module scope, matching app/game.tsx's own E2E_FAST — inlined
 // at bundle build time, so this only ever takes the fast path in a build the
@@ -59,32 +60,7 @@ const MEASURED_TAP_RETURN_MS = 8200;
 const E2E_EXCHANGE_HOLD_MARGIN_MS = 4000;
 const E2E_EXCHANGE_HOLD_MS = MEASURED_TAP_RETURN_MS + E2E_EXCHANGE_HOLD_MARGIN_MS;
 
-export interface PlayerSetupConfig {
-  name: string;
-  type: PlayerType;
-  personality?: BotPersonalityId;
-  team?: "A" | "B";
-}
-
-/** One played-out manche, keyed by engine player id (`player_0`). */
-export interface HandResult {
-  rankings: string[];
-  pointsAwarded: Record<string, number>;
-}
-
-/**
- * The match the manches belong to. Offline mirror of the server's
- * `OnlineGameState` match fields, folded forward by the same
- * `lib/gameEngine` function, so the two modes cannot drift apart.
- */
-export interface MatchState extends MatchVerdict {
-  /** Engine player id -> cumulative match points. */
-  scores: Record<string, number>;
-  hands: HandResult[];
-}
-
-/** Each seat's answer to the rematch question, by engine player id. */
-export type RematchAnswers = Record<string, boolean>;
+export type { PlayerSetupConfig, HandResult, MatchState, RematchAnswers };
 
 function freshMatch(length: MatchLength, playerCount: number): MatchState {
   return {
@@ -181,7 +157,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
    * up. Loaded once on mount; the home screen offers it, `resumeGame` takes it.
    */
   const [hasSavedGame, setHasSavedGame] = useState(false);
-  const savedRef = useRef<ReturnType<typeof decodeOfflineSave>>(null);
+  const savedRef = useRef<OfflineSave | null>(null);
+  const { showNotification } = useNotification();
 
   const exchangeHoldMsOverride = E2E_FAST ? E2E_EXCHANGE_HOLD_MS : undefined;
   const {
@@ -387,12 +364,21 @@ export function GameProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     AsyncStorage.getItem(OFFLINE_SAVE_KEY)
       .then((raw) => {
-        const save = decodeOfflineSave(raw);
+        const stored = decodeOfflineSave(raw);
+        if (stored.kind === "incompatible") {
+          AsyncStorage.removeItem(OFFLINE_SAVE_KEY).catch(() => {});
+          showNotification({
+            type: "game_info",
+            title: t("offlineGame.saveDiscardedTitle"),
+            message: t("offlineGame.saveDiscardedBody"),
+          });
+        }
+        const save = stored.kind === "ok" ? stored.save : null;
         savedRef.current = save;
         setHasSavedGame(isResumable(save));
       })
       .catch(() => {});
-  }, []);
+  }, [showNotification]);
 
   /**
    * Written on every change to anything the restore needs.

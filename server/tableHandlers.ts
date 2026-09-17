@@ -37,7 +37,7 @@
 // `vacateSeat`'s forfeit branch reach it too. Inside, it resolves the hand
 // through `onlineGameLogic.ts` `resolveHandEnd`, emits `game:over`, then
 // writes it through the `GameOverWriters` `gamePersistence.ts` implements.
-import type { Server as SocketServer } from "socket.io";
+import type { SocketServer } from "./socketTypes.ts";
 import { eq } from "drizzle-orm";
 import { db } from "./db.ts";
 import { roomStore } from "./roomStore.ts";
@@ -107,9 +107,11 @@ import { appendReplayMove, startReplayLog } from "./replayShape.ts";
 import { dealManche } from "./dealManche.ts";
 import type { TableAction } from "./tableActions.ts";
 import {
+  UNKNOWN_ACTION,
   applyOrForward,
   registerTableRouting,
   setTableHandlers,
+  type RehydrateOutcome,
 } from "./tableRouter.ts";
 import { setRoomLostHandler } from "./gameOwnership.ts";
 
@@ -145,13 +147,18 @@ function roomError(io: SocketServer, userId: string, payload: unknown): void {
 export async function rehydrateGame(
   roomId: string,
   forUserId: string | null
-): Promise<"restored" | "missing" | "unrestorable" | "not_seated"> {
+): Promise<RehydrateOutcome> {
   const row = await db.query.activeGames.findFirst({
     where: eq(activeGamesTable.roomId, roomId),
   });
   if (!row) return "missing";
 
   const restored = unpackPersistedState<GameState>(row.gameState);
+  if (!restored.ok && restored.newer) {
+    // Mid-deploy, the revision that wrote this row is still serving it.
+    logger.warn({ roomId, reason: restored.reason }, "Leaving a newer revision's persisted game alone");
+    return "newer";
+  }
   if (!restored.ok) {
     // Written under an older persisted shape, or holding a value the restore
     // path would carry straight into the engine. Restoring it deals a silently
@@ -905,6 +912,9 @@ async function applyTableAction(
       return vacateSeat(io, action.roomId, action.userId, gameOverWriters).then(
         () => dealIfSeatLeftGateClosed(io, action.roomId)
       );
+    default:
+      // A newer revision forwards kinds this one has never heard of.
+      return UNKNOWN_ACTION;
   }
 }
 

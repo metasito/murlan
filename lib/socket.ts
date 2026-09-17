@@ -1,5 +1,12 @@
-import { io, Socket } from "socket.io-client";
+import { io, type Socket as UntypedSocket } from "socket.io-client";
 import { getApiUrl } from "@/lib/query-client";
+import {
+  PROTOCOL_VERSION,
+  type ClientToServerEvents,
+  type ServerToClientEvents,
+} from "@/shared/protocol";
+
+export type Socket = UntypedSocket<ServerToClientEvents, ClientToServerEvents>;
 
 const socketMap = new Map<string, Socket>();
 
@@ -70,7 +77,9 @@ export function connectSocket(userId: string): Socket {
     // Called before every connection attempt, including each reconnect, so a
     // fresh ticket is minted every time (tickets are single-use).
     auth: (cb: (data: Record<string, unknown>) => void) => {
-      void fetchSocketTicket().then((ticket) => cb(ticket ? { ticket } : {}));
+      void fetchSocketTicket().then((ticket) =>
+        cb(ticket ? { ticket, protocolVersion: PROTOCOL_VERSION } : { protocolVersion: PROTOCOL_VERSION })
+      );
     },
     withCredentials: true,
     // Websocket only, matching the server. An HTTP long-polling handshake is

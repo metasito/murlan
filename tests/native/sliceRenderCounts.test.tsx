@@ -26,7 +26,6 @@ import {
   useOnlineTurnClock,
 } from '@/context/onlineGameHooks';
 import { NotificationProvider } from '@/context/NotificationContext';
-import type { GameState } from '@/lib/gameEngine';
 
 type Listener = (...args: unknown[]) => void;
 
@@ -94,10 +93,10 @@ const deliver = async (event: string, payload: Broadcast['payloads'][number]) =>
   });
 };
 
-const gameState: GameState = {
+const gameState: Omit<GameStateBroadcast, 'viewerSeatIndex' | 'turnSecondsRemaining'> = {
   players: [
-    { id: 'player_0', name: 'Ana', hand: [], type: 'human' },
-    { id: 'player_1', name: 'Besi', hand: [], type: 'human' },
+    { id: 'player_0', name: 'Ana', hand: [], type: 'human', handCount: 0, vacated: false },
+    { id: 'player_1', name: 'Besi', hand: [], type: 'human', handCount: 0, vacated: false },
   ],
   currentTurnIndex: 0,
   lastPlayedCombination: null,

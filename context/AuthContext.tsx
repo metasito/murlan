@@ -3,6 +3,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import NetInfo from "@react-native-community/netinfo";
 import { apiRequest, getApiUrl } from "@/lib/query-client";
 import { registerForPush, unregisterForPush } from "@/lib/pushRegistration";
+import { AUTH_USER_KEY as STORAGE_KEY } from "@/lib/storageKeys";
 
 export interface AuthUser {
   id: string;
@@ -43,7 +44,6 @@ interface AuthContextValue {
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
-const STORAGE_KEY = "murlan_user";
 
 /**
  * Asks the server who we are.

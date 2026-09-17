@@ -16,7 +16,7 @@ import {
   skipMessage,
   type TestServer,
 } from "../helpers/testServer.ts";
-import { connectAs, waitFor } from "../helpers/client.ts";
+import { PROTOCOL_AUTH, connectAs, waitFor } from "../helpers/client.ts";
 import { io as ioClient } from "socket.io-client";
 import type { SanitizedState } from "../helpers/table.ts";
 
@@ -74,7 +74,7 @@ describe("lobby disconnect grace", { skip: hasDatabase() ? false : skipMessage()
     });
     const { ticket } = (await res.json()) as { ticket: string };
     const socket = ioClient(server.url, {
-      auth: { ticket },
+      auth: { ...PROTOCOL_AUTH, ticket },
       transports: ["websocket"],
       reconnection: false,
     });

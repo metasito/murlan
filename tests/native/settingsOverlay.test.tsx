@@ -9,7 +9,6 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 jest.mock('@/lib/query-client', () => ({
   apiRequest: jest.fn(),
-  queryClient: { clear: () => {} },
 }));
 jest.mock('@react-native-community/netinfo', () => ({
   __esModule: true,

@@ -11,6 +11,7 @@
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { openApp, startOfflineGame } from "./helpers/navigation";
+import { OFFLINE_SAVE_KEY } from "../../lib/storageKeys";
 
 import { HAND_CARDS, TABLE } from "./helpers/selectors.ts";
 
@@ -108,8 +109,8 @@ test("the exchange leaves reachable exactly the cards the rules allow", async ({
   test.setTimeout(120_000);
   await openApp(page, baseURL!);
   await page.evaluate(
-    (save) => window.localStorage.setItem("@murlan_offline_game", JSON.stringify(save)),
-    midExchangeSave()
+    ({ key, save }) => window.localStorage.setItem(key, JSON.stringify(save)),
+    { key: OFFLINE_SAVE_KEY, save: midExchangeSave() }
   );
   await page.reload();
   await page.waitForLoadState("networkidle");

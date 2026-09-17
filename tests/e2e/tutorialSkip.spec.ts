@@ -1,22 +1,17 @@
 // tests/e2e/tutorialSkip.spec.ts — Skip leaves the tutorial, in a browser.
 //
 // #619 reports the control doing nothing on Android. Every other test in this
-// suite seeds `@murlan_tutorial_seen` before loading the app (helpers/
+// suite seeds `TUTORIAL_SEEN_KEY` before loading the app (helpers/
 // navigation.ts) precisely so the tutorial never appears, which is why nothing
 // has ever driven this control end to end. Whatever the device turns out to be
 // doing, the browser's answer has to be on record first: it is the difference
 // between a defect and a platform difference.
 
 import { test, expect } from "./fixtures";
+import { TUTORIAL_SEEN_KEY as SEEN_KEY } from "../../lib/storageKeys";
 
 // iPhone 12, the handset the layout suite runs on.
 const VIEWPORT = { width: 390, height: 844 };
-
-// `lib/tutorialSeen.ts`'s SEEN_KEY. Every other spec seeds it through
-// `openApp`; this one is the exception `tests/onlineTableHarness.test.ts`
-// allows for, because the first-run tutorial is what it is about — so it
-// asserts on the key rather than setting it.
-const SEEN_KEY = "@murlan_tutorial_seen";
 
 test("skipping the first-run tutorial lands on the home screen", async ({ page, baseURL }) => {
   test.setTimeout(90_000);

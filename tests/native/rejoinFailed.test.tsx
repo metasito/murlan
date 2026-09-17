@@ -37,8 +37,7 @@ jest.mock('@/context/SocketContext', () => ({
   useSocket: () => ({ socket: mockSocket }),
 }));
 
-// context/OnlineGameContext.tsx ACTIVE_ROOM_KEY — the cold-start rejoin handle.
-const ACTIVE_ROOM_KEY = '@murlan_active_room';
+import { ACTIVE_ROOM_KEY } from '@/lib/storageKeys';
 // REJOIN_RETRY_DELAY_MS / MAX_REJOIN_RETRIES, same file.
 const RETRY_DELAY_MS = 2000;
 const MAX_RETRIES = 3;

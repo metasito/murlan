@@ -53,8 +53,7 @@ import TutorialScreen from '@/app/tutorial';
 import HomeScreen from '@/app/index';
 import { t } from '@/lib/i18n';
 
-const SEEN_KEY = '@murlan_tutorial_seen';
-const PROGRESS_KEY = '@murlan_tutorial_progress';
+import { TUTORIAL_SEEN_KEY as SEEN_KEY, TUTORIAL_PROGRESS_KEY as PROGRESS_KEY } from '@/lib/storageKeys';
 
 const METRICS = {
   frame: { x: 0, y: 0, width: 390, height: 844 },
@@ -127,11 +126,20 @@ describe('opening the tutorial is what marks it seen', () => {
   it('still resumes at the beat the player left', async () => {
     // Backing out keeps the resume marker: the flag says "offered", the
     // progress says "where", and they are not the same question.
-    await AsyncStorage.setItem(PROGRESS_KEY, '2');
+    await AsyncStorage.setItem(PROGRESS_KEY, 'respond');
     const r = await render(withSafeArea(<TutorialScreen />));
 
     await waitFor(() => expect(screen.getByText(/^3 \/ \d+$/)).toBeTruthy());
-    expect(await AsyncStorage.getItem(PROGRESS_KEY)).toBe('2');
+    expect(await AsyncStorage.getItem(PROGRESS_KEY)).toBe('respond');
+    await r.unmount();
+  });
+
+  it.each(['a-beat-since-removed', '2'])('starts at the first beat when the stored beat %s is unknown', async (stored) => {
+    await AsyncStorage.setItem(PROGRESS_KEY, stored);
+    const r = await render(withSafeArea(<TutorialScreen />));
+
+    await waitFor(() => expect(screen.getByText(/^1 \/ \d+$/)).toBeTruthy());
+    await waitFor(async () => expect(await AsyncStorage.getItem(PROGRESS_KEY)).toBe('welcome'));
     await r.unmount();
   });
 });

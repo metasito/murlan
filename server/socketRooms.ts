@@ -4,7 +4,7 @@
 // Registration is synchronous and runs before the connection handler's first
 // `await`, exactly as it did inline. Socket.IO drops a packet that arrives
 // with no listener attached, and the client emits on its own `connect`.
-import type { Server as SocketServer, Socket } from "socket.io";
+import type { SocketServer, GameSocket as Socket } from "./socketTypes.ts";
 import { roomStore } from "./roomStore.ts";
 import { logger } from "./logger.ts";
 import { trackEvent } from "./events.ts";

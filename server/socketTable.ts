@@ -4,7 +4,7 @@
 // These are shared by the room handlers, the gameplay handlers and the
 // disconnect path alike, so they live apart from all three: leaving them in
 // socket.ts while socket.ts imports the room family would be a cycle.
-import type { Server as SocketServer, Socket } from "socket.io";
+import type { SocketServer, GameSocket as Socket } from "./socketTypes.ts";
 import { friendStore } from "./friendStore.ts";
 import { roomStore } from "./roomStore.ts";
 import { logger } from "./logger.ts";
@@ -31,6 +31,7 @@ import { armTurnIfIdle } from "./gameTurn.ts";
 import { payload } from "./payload.ts";
 import { TEAMS_PLAYER_COUNT } from "../lib/gameEngine.ts";
 import type { EventOutcome } from "./socketSafety.ts";
+import type { WireRoomState } from "../shared/protocol.ts";
 
 /**
  * Async because the seat holds are part of the room, not an extra message:
@@ -43,13 +44,13 @@ export async function roomStatePayload(
     id: string;
     code: string;
     hostUserId: string | null;
-    status: string;
-    gameMode: string;
+    status: WireRoomState["status"];
+    gameMode: WireRoomState["gameMode"];
     maxPlayers: number;
-    visibility: string;
+    visibility: WireRoomState["visibility"];
   },
   players: { seatIndex: number; userId: string; user: { username: string } }[]
-) {
+): Promise<WireRoomState> {
   const holds =
     room.status === "waiting"
       ? await roomStore.getRoomSeatHolds(room, players).catch((err: unknown) => {
@@ -106,7 +107,7 @@ export function roomOf(game: OnlineGameState) {
     // Reached only when the rooms row could not be read, and a running game
     // takes nobody either way. Private is the answer that cannot mislead.
     visibility: "private",
-  };
+  } as const;
 }
 
 /**

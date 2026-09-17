@@ -20,7 +20,7 @@ import { OfflineBanner } from "@/components/OfflineBanner";
 import { Slider } from "@/components/Slider";
 import { Toggle } from "@/components/Toggle";
 import { ConfirmDialog, type ConfirmRequest } from "@/components/ConfirmDialog";
-import { apiRequest, queryClient } from "@/lib/query-client";
+import { apiRequest } from "@/lib/query-client";
 import { hapticSelection } from "@/lib/haptics";
 import { Colors, Spacing, Radius, FontSize, Type, Shadow, TOUCH_TARGET_MIN } from "@/lib/theme";
 import { keyboardBehavior } from "@/lib/keyboard";
@@ -189,10 +189,7 @@ export function SettingsModal({ visible, onClose }: Props) {
   async function handleLogout() {
     setLoggingOut(true);
     try {
-      // Cleared after the session dies, not before: a query still in flight
-      // would refetch against a live cookie and repopulate what was cleared.
       await logout();
-      queryClient.clear();
       onClose();
       router.replace("/auth");
     } catch {
@@ -214,7 +211,6 @@ export function SettingsModal({ visible, onClose }: Props) {
       // apiRequest throws on a non-ok response, so a failed deletion always
       // lands in the catch below instead of silently logging the user out.
       await apiRequest("DELETE", "/api/users/me");
-      queryClient.clear();
       onClose();
       await logout();
       router.replace("/auth");

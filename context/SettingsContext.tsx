@@ -3,6 +3,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { setSoundsMasterVolume } from "@/lib/sounds";
 import { setMusicMasterEnabled, setMusicMasterVolume } from "@/lib/music";
 import { setHapticsMasterEnabled } from "@/lib/haptics";
+import { SETTINGS_KEY as STORAGE_KEY } from "@/lib/storageKeys";
 import { setMotionPreference, type MotionPreference } from "@/lib/accessibility";
 import { migrateAudio, withEnabled, withVolume, type AudioLevel } from "@/lib/audioLevel";
 import {
@@ -48,7 +49,6 @@ interface SettingsContextValue extends Settings {
   setTableFelt: (v: TableFeltId) => void;
 }
 
-const STORAGE_KEY = "@murlan_settings";
 const DEFAULT_SOUND_VOLUME = 1;
 const DEFAULT_MUSIC_VOLUME = 0.5;
 

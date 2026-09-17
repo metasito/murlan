@@ -94,7 +94,7 @@ test("nothing in the browser suite opens the app's root without seeding the tuto
   for (const file of files) {
     const source = blankComments(readFileSync(file, "utf8"));
     if (!ROOT_GOTO.test(source)) continue;
-    if (source.includes("openApp") || source.includes("@murlan_tutorial_seen")) continue;
+    if (source.includes("openApp") || source.includes("TUTORIAL_SEEN_KEY")) continue;
     offenders.push(rel(file));
   }
 

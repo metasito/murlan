@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { io as ioClient, type Socket } from "socket.io-client";
 import type { TestServer } from "./testServer.ts";
+import { PROTOCOL_VERSION } from "../../shared/protocol.ts";
+
+export const PROTOCOL_AUTH = { protocolVersion: PROTOCOL_VERSION };
 
 /**
  * Shared low-level test client helpers for integration suites, so each
@@ -59,7 +62,7 @@ export function connect(
   auth: Record<string, unknown>
 ): Promise<{ ok: boolean; err?: string; socket?: Socket }> {
   return new Promise((resolve) => {
-    const s = ioClient(server.url, { auth, transports: ["websocket"], reconnection: false });
+    const s = ioClient(server.url, { auth: { ...PROTOCOL_AUTH, ...auth }, transports: ["websocket"], reconnection: false });
     s.on("connect", () => resolve({ ok: true, socket: s }));
     s.on("connect_error", (e) => {
       s.close();
@@ -92,7 +95,7 @@ export async function reconnectWith(server: TestServer, cookie: string): Promise
   const { ticket } = JSON.parse(text) as { ticket: string };
 
   const socket = ioClient(server.url, {
-    auth: { ticket },
+    auth: { ...PROTOCOL_AUTH, ticket },
     transports: ["websocket"],
     reconnection: false,
   });
@@ -133,7 +136,7 @@ export async function connectAs(
   const { ticket } = JSON.parse(text) as { ticket: string };
 
   const socket = ioClient(server.url, {
-    auth: { ticket },
+    auth: { ...PROTOCOL_AUTH, ticket },
     transports: ["websocket"],
     reconnection: false,
   });
@@ -167,7 +170,7 @@ export async function reconnectAs(
   const { ticket } = JSON.parse(text) as { ticket: string };
 
   const socket = ioClient(server.url, {
-    auth: { ticket },
+    auth: { ...PROTOCOL_AUTH, ticket },
     transports: ["websocket"],
     reconnection: false,
   });

@@ -138,6 +138,29 @@ describe("rows the restore path refuses", () => {
     assert.match(refusal({ ...pack(), schemaVersion: 1 }), /schema version 1/);
   });
 
+  test("a row a newer revision wrote is refused and kept; an older one is deleted", async (t) => {
+    const { db } = await import("../server/db.ts");
+    const { rehydrateGame } = await import("../server/tableHandlers.ts");
+    let deletes = 0;
+    let stored: unknown;
+    t.mock.method(db.query.activeGames, "findFirst", async () => ({ roomId: "r", gameState: stored }));
+    t.mock.method(db, "delete", () => {
+      deletes += 1;
+      return { where: () => ({ catch: async () => {} }) };
+    });
+    const outcome = async (schemaVersion: number) => {
+      stored = { ...pack(), schemaVersion };
+      const result = await rehydrateGame(`version-${schemaVersion}`, null);
+      await new Promise((r) => setTimeout(r, 20));
+      return result;
+    };
+
+    assert.equal(await outcome(GAME_SCHEMA_VERSION + 1), "newer");
+    assert.equal(deletes, 0, "a newer revision's live row was deleted");
+    assert.equal(await outcome(GAME_SCHEMA_VERSION - 1), "unrestorable");
+    assert.equal(deletes, 1, "the older row was not deleted, so the check above proves nothing");
+  });
+
   test("a row with no version stamp at all", () => {
     assert.match(refusal({ ...gameState }), /schema version undefined/);
     assert.match(refusal(null), /not an object/);

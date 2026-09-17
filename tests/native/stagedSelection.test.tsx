@@ -43,6 +43,7 @@ import * as Haptics from 'expo-haptics';
 import { playCardSelect } from '@/lib/sounds';
 import { GameTable } from '@/components/GameTable';
 import { GameProvider, useGame } from '@/context/GameContext';
+import { NotificationProvider } from '@/context/NotificationContext';
 import { cardSpokenName } from '@/lib/cardNames';
 import { t, type TranslationKey } from '@/lib/i18n';
 import type { Card, GameState, Player, Rank, Suit } from '@/lib/gameEngine';
@@ -212,9 +213,11 @@ describe('an AI taking its turn offline', () => {
     // Two AI seats, so whichever holds the 3♠ is on move and `runAITurn` has a
     // turn to take without the test having to play one first.
     const r = await render(
-      <GameProvider>
-        <AiTurnProbe />
-      </GameProvider>
+      <NotificationProvider>
+        <GameProvider>
+          <AiTurnProbe />
+        </GameProvider>
+      </NotificationProvider>
     );
 
     await act(async () => {

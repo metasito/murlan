@@ -1,7 +1,7 @@
 import { sql } from "drizzle-orm";
 import { pgTable, text, varchar, timestamp, integer, boolean, pgEnum, jsonb, index, uniqueIndex, primaryKey, bigserial, customType } from "drizzle-orm/pg-core";
 import type { GameState } from "../lib/gameEngine.ts";
-import type { PersistedEnvelope } from "../server/onlineGameLogic.ts";
+import type { PersistedEnvelope } from "./persistedEnvelope.ts";
 import type { ReplayMove, ReplaySeat } from "../lib/replay.ts";
 
 export const users = pgTable(
@@ -157,7 +157,7 @@ export const gameInvites = pgTable(
 );
 
 // One live table. Everything about it rides the versioned `game_state`
-// envelope — see `PersistedEnvelope` in server/onlineGameLogic.ts.
+// envelope — see `PersistedEnvelope` in shared/persistedEnvelope.ts.
 export const activeGames = pgTable("active_games", {
   roomId:     text("room_id").primaryKey(),
   gameState:  jsonb("game_state").$type<PersistedEnvelope<GameState>>().notNull(),

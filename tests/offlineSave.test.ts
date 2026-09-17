@@ -2,12 +2,20 @@
 // stored blob has to look like before it is trusted.
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
   OFFLINE_SAVE_VERSION,
-  decodeOfflineSave,
+  decodeOfflineSave as decode,
   encodeOfflineSave,
   isResumable,
 } from "../lib/offlineSave.ts";
+import { buildCombination, processPlay } from "../lib/gameEngine.ts";
+
+const decodeOfflineSave = (raw: string | null) => {
+  const result = decode(raw);
+  return result.kind === "ok" ? result.save : null;
+};
+const kindOf = (raw: string | null) => decode(raw).kind;
 
 const save = (over = false) => ({
   gameState: {
@@ -48,25 +56,45 @@ test("a save round-trips", () => {
 test("a save with no deal rotation at all is not trusted", () => {
   const blob = JSON.parse(encodeOfflineSave(save()));
   delete blob.dealFirstSeat;
-  assert.equal(decodeOfflineSave(JSON.stringify(blob)), null);
+  assert.equal(kindOf(JSON.stringify(blob)), "incompatible");
 });
 
 // The version is the real guard. A blob from an older build is discarded rather
 // than migrated, because restoring a hand into a shape the engine no longer
 // expects corrupts a game silently, while losing one abandoned match costs
 // nothing — the same call active_games makes.
-test("a save from another version is discarded, not migrated", () => {
+test("a save from another version is discarded, not migrated, and says so", () => {
   const older = JSON.parse(encodeOfflineSave(save()));
   older.version = OFFLINE_SAVE_VERSION - 1;
-  assert.equal(decodeOfflineSave(JSON.stringify(older)), null);
+  assert.equal(kindOf(JSON.stringify(older)), "incompatible");
   older.version = OFFLINE_SAVE_VERSION + 1;
-  assert.equal(decodeOfflineSave(JSON.stringify(older)), null);
+  assert.equal(kindOf(JSON.stringify(older)), "incompatible");
+  assert.equal(kindOf(encodeOfflineSave(save())), "ok");
 });
 
 test("nothing stored, or nothing parseable, is simply nothing", () => {
   for (const raw of [null, "", "not json", "[]", '"a string"', "null", "42"]) {
-    assert.equal(decodeOfflineSave(raw), null, JSON.stringify(raw));
+    assert.equal(kindOf(raw), "none", JSON.stringify(raw));
   }
+});
+
+test("the golden save of this version still decodes and plays a legal move", () => {
+  const raw = readFileSync(new URL("./fixtures/offlineSave.v2.json", import.meta.url), "utf8");
+  assert.equal(
+    JSON.parse(raw).version,
+    OFFLINE_SAVE_VERSION,
+    "OFFLINE_SAVE_VERSION moved: commit a fixture written by this version beside the old one and point this test at it"
+  );
+  const restored = decodeOfflineSave(raw);
+  assert.ok(restored, "the fixture no longer decodes");
+  const { gameState } = restored;
+  const start = gameState.players[gameState.currentTurnIndex].hand.find((c) => c.id === gameState.startCard?.id);
+  assert.ok(start, "the seat on move does not hold the start card");
+  const combo = buildCombination([start]);
+  assert.ok(combo);
+  const after = processPlay(gameState, combo);
+  assert.equal(after.firstPlayMade, true);
+  assert.notEqual(after.currentTurnIndex, gameState.currentTurnIndex);
 });
 
 // Each of these is a field the restore path dereferences immediately, so a
@@ -87,7 +115,7 @@ test("a blob missing anything the restore path needs is refused", () => {
   for (const [what, mutate] of mutations) {
     const blob = JSON.parse(encodeOfflineSave(save()));
     mutate(blob);
-    assert.equal(decodeOfflineSave(JSON.stringify(blob)), null, what);
+    assert.equal(kindOf(JSON.stringify(blob)), "incompatible", what);
   }
 });
 

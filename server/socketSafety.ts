@@ -1,4 +1,4 @@
-import type { Socket } from "socket.io";
+import type { GameSocket as Socket } from "./socketTypes.ts";
 import { z } from "zod";
 import { logger } from "./logger.ts";
 import { payload } from "./payload.ts";

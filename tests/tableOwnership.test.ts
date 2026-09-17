@@ -133,6 +133,37 @@ describe("a forwarded action is applied once, however often it is sent", () => {
   });
 });
 
+describe("an action kind the owner does not know", () => {
+  const future = (roomId: string) => ({ kind: "future", roomId, userId: "u", username: "u" }) as never;
+
+  test("is refused with a code by an owner that holds the room", async () => {
+    const { installTableHandlers, applyOrForward } = await import("../server/tableHandlers.ts");
+    const { activeGames } = await import("../server/gameRoom.ts");
+    installTableHandlers({ on: () => {} } as never);
+    activeGames.set("future-owned", {} as never);
+    try {
+      assert.deepEqual(await applyOrForward({} as never, future("future-owned")), {
+        ok: false,
+        code: "UNKNOWN_ACTION",
+      });
+    } finally {
+      activeGames.delete("future-owned");
+    }
+  });
+
+  test("is a refusal, not a missing owner, when an older owner answers with nothing", async () => {
+    const { applyOrForward } = await import("../server/tableRouter.ts");
+    const io = {
+      serverSideEmit: (_e: string, _a: unknown, ack: (err: unknown, replies: unknown[]) => void) =>
+        ack(null, [{ ok: false, code: "NOT_THIS_INSTANCE" }, undefined]),
+    };
+    assert.deepEqual(await applyOrForward(io as never, future("future-elsewhere")), {
+      ok: false,
+      code: "UNKNOWN_ACTION",
+    });
+  });
+});
+
 describe("ownershipKey", () => {
   test("is stable, and fits the bigint pg_try_advisory_lock takes", () => {
     const key = ownershipKey("11111111-2222-3333-4444-555555555555");
