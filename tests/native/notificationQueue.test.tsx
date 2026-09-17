@@ -24,8 +24,8 @@ const note = (message: string): NotificationData => ({ type: 'connection', title
 
 async function drain(): Promise<string[]> {
   const seen: string[] = [];
-  while (ctx().notification) {
-    seen.push(ctx().notification.message);
+  for (let shown = ctx().notification; shown; shown = ctx().notification) {
+    seen.push(shown.message);
     await act(async () => ctx().dismissNotification());
   }
   return seen;
