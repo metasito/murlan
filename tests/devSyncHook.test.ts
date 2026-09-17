@@ -312,7 +312,7 @@ test("answers 404 in production even to a valid signature, without syncing", asy
   const nodeEnv = process.env.NODE_ENV;
   process.env.NODE_ENV = "production";
   t.after(() => {
-    if (nodeEnv === undefined) delete process.env.NODE_ENV;
+    if (nodeEnv === undefined) Reflect.deleteProperty(process.env, "NODE_ENV");
     else process.env.NODE_ENV = nodeEnv;
   });
   let synced = false;

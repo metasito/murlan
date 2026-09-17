@@ -13,8 +13,10 @@
 // navigate to and not to photograph. Nothing here advances the turn unless the
 // swing knob is pressed.
 //
-// Development builds only. In a production bundle the route renders nothing at
-// all, so a capture harness can never be a way into a real player's app.
+// Development builds only, so a capture harness can never be a way into a real
+// player's app: `app/_layout.tsx`'s `Stack.Protected guard={__DEV__}` keeps the
+// route off the navigator, and `CaptureScreen`'s own `!__DEV__` return below
+// shows an unavailable message if the route is reached anyway.
 import React, { useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
@@ -46,18 +48,6 @@ const COPY = {
 } as const;
 
 export default function CaptureScreen() {
-  const { state: stateId } = useLocalSearchParams<{ state?: string }>();
-  const picked = captureStateById(stateId);
-  // Before the null guard, and before the __DEV__ guard: both branches below
-  // return early, and a hook that runs on one render and not the next is the
-  // error this ordering exists to prevent.
-  const [live, setLive] = useState<GameState | null>(null);
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const seeded = React.useMemo(
-    () => (picked ? captureGameState(picked) : null),
-    [picked]
-  );
-
   if (!__DEV__) {
     return (
       <MenuLayout>
@@ -65,6 +55,20 @@ export default function CaptureScreen() {
       </MenuLayout>
     );
   }
+  return <CaptureHarness />;
+}
+
+function CaptureHarness() {
+  const { state: stateId } = useLocalSearchParams<{ state?: string }>();
+  const picked = captureStateById(stateId);
+  // Before the null guard: a hook that runs on one render and not the next is
+  // the error this ordering exists to prevent.
+  const [live, setLive] = useState<GameState | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const seeded = React.useMemo(
+    () => (picked ? captureGameState(picked) : null),
+    [picked]
+  );
 
   if (!picked || !seeded) return <CaptureList />;
 

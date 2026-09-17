@@ -79,4 +79,19 @@ describe('the capture screen', () => {
     expect(screen.getByLabelText('Move the lamp to the next seat')).toBeTruthy();
     await view.unmount();
   });
+
+  it('outside a development build, shows only that it is unavailable', async () => {
+    mockParams = { state: CAPTURE_STATES[0].id };
+    const g = globalThis as { __DEV__?: boolean };
+    const dev = g.__DEV__;
+    g.__DEV__ = false;
+    try {
+      const view = await mount();
+      expect(screen.getByText('The capture screen is a development build only.')).toBeTruthy();
+      expect(screen.queryByTestId('game-table')).toBeNull();
+      await view.unmount();
+    } finally {
+      g.__DEV__ = dev;
+    }
+  });
 });
