@@ -181,7 +181,7 @@ export const spectatorRoomMap = new Map<string, string>();
  * disposing of it. Each is answered with `io.sockets.sockets.get(...)`, which
  * only ever knows about this process — so the map is exactly as wide as its
  * remaining job. The cluster-wide half of the singleton rule is
- * `evictRemoteSessions` in `server/socket.ts`.
+ * `evictRemoteSessions` in `server/socketPresence.ts`.
  */
 export const userSocketMap = new Map<string, string>();
 
