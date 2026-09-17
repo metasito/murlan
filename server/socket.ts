@@ -26,7 +26,7 @@ import {
   registerFriendHandlers,
 } from "./socketPresence.ts";
 import { setSocketServer } from "./socketRegistry.ts";
-import { allowSocketAction } from "./socketSafety.ts";
+import { allowSocketAction, answerUnknownEvents } from "./socketSafety.ts";
 import { userRoom, userSocketMap } from "./gameRoom.ts";
 import { startSweeper } from "./gamePersistence.ts";
 import { installTableHandlers } from "./tableHandlers.ts";
@@ -185,6 +185,7 @@ export function setupSocket(httpServer: HttpServer) {
     // no listener is dropped silently. The work that needs the database runs
     // after instead.
     const ctx = { io, socket, userId };
+    answerUnknownEvents(socket);
     registerRoomHandlers(ctx);
     registerGameplayHandlers(ctx);
     registerFriendHandlers(ctx);

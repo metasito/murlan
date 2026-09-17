@@ -42,6 +42,12 @@ export interface EventOptions {
   limit?: number;
   /** Window length in ms (default 10s). */
   windowMs?: number;
+  /**
+   * Tells the client about a refusal this wrapper made itself. Defaults to the
+   * namespace's error event; an event whose client listens on a channel of its
+   * own must say so here, or its refusal reaches nothing that acts on it.
+   */
+  refuse?: (code: "RATE_LIMITED" | "INVALID_PAYLOAD" | "SERVER_ERROR", raw: unknown) => void;
 }
 
 /**
@@ -194,14 +200,19 @@ export function onEvent<S extends z.ZodTypeAny>(
       ack?.(reply);
     };
 
-    void (async () => {
+    const refuse = options.refuse ?? ((code) => socket.emit(errorEventFor(event), payload(code)));
+
+    // One socket's intents run in the order it sent them: a leave sent straight
+    // after a create must not run first and find no room to leave.
+    const previous: Promise<unknown> = socket.data.intentQueue ?? Promise.resolve();
+    const run = previous.then(async () => {
       try {
         if (
           options.limit !== undefined &&
           // Records its own refusal, once per window rather than per packet.
           !allowSocketAction(socket, event, options.limit, options.windowMs ?? 10_000)
         ) {
-          socket.emit(errorEventFor(event), payload("RATE_LIMITED"));
+          refuse("RATE_LIMITED", rawPayload);
           answer({ ok: false, code: "RATE_LIMITED" });
           return;
         }
@@ -210,7 +221,7 @@ export function onEvent<S extends z.ZodTypeAny>(
         const intent = intentIdOf(rawPayload);
         if (!parsed.success || !intent.ok) {
           logRefusal(event, socket, "INVALID_PAYLOAD");
-          socket.emit(errorEventFor(event), payload("INVALID_PAYLOAD"));
+          refuse("INVALID_PAYLOAD", rawPayload);
           answer({ ok: false, code: "INVALID_PAYLOAD" });
           return;
         }
@@ -225,10 +236,26 @@ export function onEvent<S extends z.ZodTypeAny>(
           { err, event, userId: socket.data?.userId, code: "SERVER_ERROR" },
           "Socket handler threw — contained"
         );
-        socket.emit(errorEventFor(event), payload("SERVER_ERROR"));
         answer({ ok: false, code: "SERVER_ERROR" });
+        refuse("SERVER_ERROR", rawPayload);
       }
-    })();
+    });
+    socket.data.intentQueue = run.catch((err: unknown) => {
+      logger.error({ err, event, userId: socket.data?.userId }, "Socket refusal could not be sent");
+    });
+  });
+}
+
+/**
+ * Answers an event nothing is registered for, which is a client newer than
+ * this server. Must be installed before the connection handler's first
+ * `await`, with the handlers it defers to.
+ */
+export function answerUnknownEvents(socket: Socket): void {
+  socket.onAny((event: string, ...args: unknown[]) => {
+    if (socket.listeners(event).length > 0) return;
+    const ack = args[args.length - 1];
+    if (typeof ack === "function") ack({ ok: false, code: "CLIENT_OUTDATED" });
   });
 }
 

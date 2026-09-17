@@ -53,6 +53,7 @@ const REJOIN_FAILURE: Record<string, ReturnType<typeof payload>> = {
   SEAT_RELEASED: payload("SEAT_RELEASED"),
   NO_LIVE_GAME: payload("GAME_NOT_FOUND"),
   GAME_NO_LONGER_VALID: payload("GAME_NO_LONGER_VALID"),
+  INVALID_PAYLOAD: payload("INVALID_PAYLOAD"),
   SERVER_ERROR: payload("SERVER_ERROR"),
 };
 
@@ -67,6 +68,11 @@ export function registerGameplayHandlers({
   socket,
   userId,
 }: GameplayHandlerContext) {
+
+    const rejoinFailed = (code: string, roomId: unknown) => {
+      const failure = REJOIN_FAILURE[code] ?? REJOIN_FAILURE.SERVER_ERROR;
+      socket.emit("game:rejoin_failed", { ...failure, roomId: typeof roomId === "string" ? roomId : undefined });
+    };
 
     /** The table this socket is at, or the refusal to send back. */
     const atTable = (): string | null => socketRoomMap.get(socket.id) ?? null;
@@ -147,8 +153,7 @@ export function registerGameplayHandlers({
           outcome = { ok: false, code: "SERVER_ERROR" };
         }
         if (!outcome.ok) {
-          const failure = REJOIN_FAILURE[outcome.code ?? ""] ?? REJOIN_FAILURE.SERVER_ERROR;
-          socket.emit("game:rejoin_failed", { ...failure, roomId });
+          rejoinFailed(outcome.code ?? "", roomId);
           return outcome;
         }
         // Only once the table has accepted them: a socket joined to a room it
@@ -156,7 +161,11 @@ export function registerGameplayHandlers({
         joinSocketToRoom(socket, roomId);
         return outcome;
       },
-      { limit: 20, windowMs: 60_000 }
+      {
+        limit: 20,
+        windowMs: 60_000,
+        refuse: (code, raw) => rejoinFailed(code, (raw as { roomId?: unknown } | undefined)?.roomId),
+      }
     );
 
     onEvent(

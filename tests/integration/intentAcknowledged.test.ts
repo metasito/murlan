@@ -185,6 +185,28 @@ describe("an intent is acknowledged", { skip: hasDatabase() ? false : skipMessag
     assert.equal(fresh.code, "NOT_YOUR_TURN", "a new intent is judged on its own");
   });
 
+  test("two intents from one socket land in the order they were sent", async () => {
+    const c = await player("order");
+    const created = ackOf(c.socket, "room:create", { gameMode: "free_for_all", maxPlayers: 2 });
+    const left = ackOf(c.socket, "room:leave", undefined);
+    await Promise.all([created, left]);
+    const reply = (await ackOf(c.socket, "room:setVisibility", { visibility: "public" })) as EventOutcome;
+    assert.equal(reply.code, "NOT_AT_A_TABLE", "the leave ran after the create, not before it");
+  });
+
+  test("an event this server has no handler for is answered, not dropped", async () => {
+    const c = await player("unknown");
+    assert.deepEqual(await ackOf(c.socket, "game:from_the_future", {}), { ok: false, code: "CLIENT_OUTDATED" });
+  });
+
+  test("a rejoin refused at the boundary is answered on the rejoin's own channel", async () => {
+    const c = await player("badrejoin");
+    const failed = waitFor<{ code: string }>(c.socket, "game:rejoin_failed");
+    const reply = (await ackOf(c.socket, "game:rejoin", { roomId: 42 })) as EventOutcome;
+    assert.equal(reply.code, "INVALID_PAYLOAD");
+    assert.equal((await failed).code, "INVALID_PAYLOAD");
+  });
+
   test("the server answers a pass", async () => {
     const { host } = await table("pass");
     assert.notEqual(await ackOf(host.socket, "game:pass", undefined), null);

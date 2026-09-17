@@ -255,6 +255,7 @@ const TERMINAL_ROOM_REJOIN_CODES = new Set([
   "GAME_ALREADY_STARTED",
   "ROOM_FULL",
   "SEAT_HELD",
+  "INVALID_PAYLOAD",
 ]);
 
 export interface TurnDeadline {
