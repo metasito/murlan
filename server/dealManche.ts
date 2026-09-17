@@ -1,4 +1,4 @@
-import type { Server as SocketServer } from "socket.io";
+import type { SocketServer } from "./socketTypes.ts";
 import { roomStore } from "./roomStore.ts";
 import { rollMatchForward } from "./gameOver.ts";
 import { emitMatchState } from "./emit.ts";

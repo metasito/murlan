@@ -1,4 +1,4 @@
-import type { Socket } from "socket.io-client";
+import type { Socket } from "./socket.ts";
 
 /**
  * How long to wait for the server to say it heard an intent, and how many times

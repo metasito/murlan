@@ -19,14 +19,17 @@ import {
   peekSocket,
   setSocketAuthFailureHandler,
   subscribeToSockets,
+  type Socket,
 } from "@/lib/socket";
+import { requireUpdate } from "@/lib/updateRequired";
+import { CLIENT_OUTDATED } from "@/shared/protocol";
 import { reportSocketClose } from "@/lib/errorReporting";
 import { useNotification } from "@/context/NotificationContext";
 import { SessionReplacedNotice } from "@/components/SessionReplacedNotice";
 import { t, translateServerPayload, type ServerPayload } from "@/lib/i18n";
 import { Reading } from "@/lib/theme";
 import type { FriendRequestAccepted, FriendRequestIncoming } from "@/lib/wire";
-import type { Socket } from "socket.io-client";
+import type { Socket as UntypedSocket } from "socket.io-client";
 
 /**
  * Seats a row the server sent with its announcement into the list a fetch
@@ -256,7 +259,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       for (const queryKey of RECONCILED_ON_CONNECT) qc.invalidateQueries({ queryKey });
     };
 
-    const onDisconnect = (reason: Socket.DisconnectReason) => {
+    const onDisconnect = (reason: UntypedSocket.DisconnectReason) => {
       setConnected(false);
       reportSocketClose(reason);
     };
@@ -267,8 +270,10 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     // off exponentially (capped) while the auth callback mints a fresh ticket
     // per attempt. While `active` is true the library's own reconnection is
     // still running and owns the retry.
-    const onConnectError = () => {
+    const onConnectError = (err: Error) => {
       setConnected(false);
+      // Retrying cannot help: this bundle is below the server's floor.
+      if (err.message === CLIENT_OUTDATED) return requireUpdate();
       if (socket.active) return;
       if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
       const attempt = retryAttemptRef.current++;

@@ -1,5 +1,11 @@
-import { Server as SocketServer } from "socket.io";
-import type { Socket } from "socket.io";
+import { Server } from "socket.io";
+import type { GameSocket as Socket, SocketServer } from "./socketTypes.ts";
+import {
+  CLIENT_OUTDATED,
+  MIN_PROTOCOL_VERSION,
+  type ClientToServerEvents,
+  type ServerToClientEvents,
+} from "../shared/protocol.ts";
 import type { IncomingMessage, Server as HttpServer } from "node:http";
 import type { NextFunction, Request, Response } from "express";
 import type { Session, SessionData } from "express-session";
@@ -69,7 +75,7 @@ type HandshakeRequest = IncomingMessage & {
 };
 
 export function setupSocket(httpServer: HttpServer) {
-  const io = new SocketServer(httpServer, {
+  const io: SocketServer = new Server<ClientToServerEvents, ServerToClientEvents>(httpServer, {
     cors: {
       // Mirrors the Express allowlist. `origin: "*"` with credentials is both
       // invalid and permissive.
@@ -112,6 +118,12 @@ export function setupSocket(httpServer: HttpServer) {
    */
   io.use(async (socket, next) => {
     try {
+      // Before the ticket is redeemed: an outdated bundle keeps its ticket and
+      // spends none of the handshake budget on a connection it cannot use.
+      const version: unknown = socket.handshake.auth?.protocolVersion;
+      if (typeof version !== "number" || version < MIN_PROTOCOL_VERSION) {
+        return next(new Error(CLIENT_OUTDATED));
+      }
       const req = socket.request as HandshakeRequest;
       const sessionUserId = req.session?.userId;
       const ticket = sessionUserId ? null : verifySocketTicket(socket.handshake.auth?.ticket);

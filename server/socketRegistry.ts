@@ -3,7 +3,7 @@
 //
 // Apart from socket.ts because both the presence family and socket.ts itself
 // need these: keeping them next to `setupSocket` made an import cycle.
-import type { Server as SocketServer } from "socket.io";
+import type { SocketServer } from "./socketTypes.ts";
 import { logger } from "./logger.ts";
 import { friendStore } from "./friendStore.ts";
 import { socketRoomMap, userRoom, userSocketMap } from "./gameRoom.ts";

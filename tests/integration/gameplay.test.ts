@@ -1,6 +1,7 @@
 import { test, before, after, describe, mock } from "node:test";
 import assert from "node:assert/strict";
 import { io as ioClient, type Socket } from "socket.io-client";
+import { PROTOCOL_AUTH, reconnectAs, register, waitFor } from "../helpers/client.ts";
 import { eq } from "drizzle-orm";
 import { logger } from "../../server/logger.ts";
 import { createDeck, getAllValidPlays } from "../../lib/gameEngine.ts";
@@ -11,7 +12,6 @@ import {
   type TestServer,
 } from "../helpers/testServer.ts";
 import { lobbyGraceMs } from "../../server/gameTimers.ts";
-import { reconnectAs, register, waitFor } from "../helpers/client.ts";
 import {
   assertHandSecrecy,
   driveHandToExchangeOrOver,
@@ -106,7 +106,7 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
     };
 
     const socket: Socket = ioClient(server.url, {
-      auth: { ticket },
+      auth: { ...PROTOCOL_AUTH, ticket },
       transports: ["websocket"],
       reconnection: false,
     });

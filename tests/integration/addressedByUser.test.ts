@@ -12,13 +12,13 @@ import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
 import type { Socket } from "socket.io-client";
 import { io as ioClient } from "socket.io-client";
+import { PROTOCOL_AUTH, connectAs, waitFor } from "../helpers/client.ts";
 import {
   startTestServer,
   hasDatabase,
   skipMessage,
   type TestServer,
 } from "../helpers/testServer.ts";
-import { connectAs, waitFor } from "../helpers/client.ts";
 import type { SanitizedState } from "../helpers/table.ts";
 
 interface RoomState {
@@ -56,7 +56,7 @@ describe("a message for a person", { skip: hasDatabase() ? false : skipMessage()
     });
     const { ticket } = (await res.json()) as { ticket: string };
     const socket = ioClient(server.url, {
-      auth: { ticket },
+      auth: { ...PROTOCOL_AUTH, ticket },
       transports: ["websocket"],
       reconnection: false,
     });

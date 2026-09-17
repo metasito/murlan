@@ -10,7 +10,6 @@ import {
   SEAT_DISC,
   SIDE_SECTION_W,
   displayedHandCount,
-  handCountOf,
   seatDirection,
   seatGap,
   seatLabelH,
@@ -19,6 +18,7 @@ import {
   viewerOwnsSeat,
 } from "./seatLayout.ts";
 import type { FlyDirection, OpponentArrangement } from "./seatLayout.ts";
+import { handCountOf } from "../shared/protocol.ts";
 import { CARD_W, CARD_H, FIELD_SCALE } from "./cardFaceModel.ts";
 
 // ─── Pile state ───────────────────────────────────────────────────────────────

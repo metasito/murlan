@@ -1,6 +1,6 @@
 import type { Server as HttpServer } from "node:http";
 import type { Pool } from "pg";
-import type { Server as SocketIOServer } from "socket.io";
+import type { SocketServer as SocketIOServer } from "./socketTypes.ts";
 import { logger } from "./logger.ts";
 import { pool as appPool, QUERY_TIMEOUT_MS } from "./db.ts";
 import { drainPool } from "./drainPool.ts";

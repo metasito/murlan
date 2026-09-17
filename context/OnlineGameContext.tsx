@@ -17,7 +17,16 @@ import { t, translateServerPayload, type ServerPayload } from "@/lib/i18n";
 import { Reading } from "@/lib/theme";
 import { sendIntent } from "@/lib/sendIntent";
 import { MATCH_TARGETS } from "@/lib/gameEngine";
-import { handCountOf } from "@/components/seatLayout";
+import {
+  gameOverSchema,
+  gameStateSchema,
+  handCountOf,
+  roomStateSchema,
+  type WireGameState,
+  type WireRoomState,
+} from "@/shared/protocol";
+import { requireUpdate } from "@/lib/updateRequired";
+import { reportError } from "@/lib/errorReporting";
 import { clearReactions, pushReaction } from "@/lib/reactions";
 import { ACTIVE_ROOM_KEY, WAITING_ROOM_KEY } from "@/lib/storageKeys";
 import type { GameState, MatchLength } from "@/lib/gameEngine";
@@ -30,22 +39,7 @@ import {
 } from "@/lib/sharedGameFlow";
 import type { BotPersonalityId } from "@/lib/botPersonalities";
 
-export interface RoomState {
-  roomId: string;
-  code: string;
-  hostUserId: string | null;
-  status: "waiting" | "in_progress" | "finished";
-  gameMode: "free_for_all" | "teams";
-  visibility: "public" | "private";
-  maxPlayers: number;
-  players: { seatIndex: number; userId: string; username: string }[];
-  /**
-   * Seats held for someone who has been invited and has not arrived. The
-   * server measures the remaining time, because only the two clocks' difference
-   * would be left of a hold this short.
-   */
-  seatHolds?: { seatIndex: number; username: string; expiresInMs: number }[];
-}
+export type RoomState = WireRoomState;
 
 export interface RematchVoteState {
   votes: string[];
@@ -268,9 +262,7 @@ export interface TurnDeadline {
   turnSecondsRemaining: number;
 }
 
-// Optional because the handler tolerates their absence, not because the server
-// omits them: `sanitizeStateForPlayer` stamps every broadcast with all three.
-export type GameStateBroadcast = GameState & { viewerSeatIndex?: number | null } & Partial<TurnDeadline>;
+export type GameStateBroadcast = WireGameState;
 
 const NO_TURN_DEADLINE: TurnDeadline = { turnSecondsRemaining: 0 };
 
@@ -496,7 +488,18 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       attemptRejoin();
     };
 
-    const onRoomState = (data: RoomState) => {
+    // Rendering is all the parse protects; the server decides every outcome.
+    // The room is forgotten so a cold start does not rejoin into the same payload.
+    const unreadable = (event: string, error: unknown) => {
+      persistActiveRoom(null);
+      reportError(new Error(`${event} does not match this bundle's protocol: ${String(error)}`));
+      requireUpdate();
+    };
+
+    const onRoomState = (raw: unknown) => {
+      const parsed = roomStateSchema.safeParse(raw);
+      if (!parsed.success) return unreadable("room:state", parsed.error);
+      const data = parsed.data as unknown as RoomState;
       roomRef.current = data;
       setRoom(data);
       forgetRejoinAttempt();
@@ -532,12 +535,15 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     };
 
     const onGameState = (
-      state: GameStateBroadcast,
+      raw: unknown,
       // Answering is the whole point: a broadcast nobody confirms is re-sent,
       // and the last state of a hand has no later one to correct it.
       ack?: () => void
     ) => {
       ack?.();
+      const parsed = gameStateSchema.safeParse(raw);
+      if (!parsed.success) return unreadable("game:state", parsed.error);
+      const state = parsed.data as unknown as GameStateBroadcast;
       forgetRejoinAttempt();
       if (typeof state.turnSecondsRemaining === "number") {
         setTurnDeadline({
@@ -645,18 +651,21 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
 
     const onRematchIntents = (state: RematchIntentState) => setRematchIntents(state);
 
-    const onGameOver = ({
-      scores,
-      matchTarget,
-      matchLength,
-      handsPlayed,
-      matchOver,
-      matchWinnerIds,
-      matchContinues,
-      isDraw,
-      ratingDeltas,
-      recorded,
-    }: GameOverPayload) => {
+    const onGameOver = (raw: unknown) => {
+      const parsed = gameOverSchema.safeParse(raw);
+      if (!parsed.success) return unreadable("game:over", parsed.error);
+      const {
+        scores,
+        matchTarget,
+        matchLength,
+        handsPlayed,
+        matchOver,
+        matchWinnerIds,
+        matchContinues,
+        isDraw,
+        ratingDeltas,
+        recorded,
+      } = parsed.data as unknown as GameOverPayload;
       // Kept whole and keyed by user id: this context has no identity of its
       // own, and the overlay that shows the number already knows whose it is.
       // Undefined and empty are the same answer — the hand rated nobody.

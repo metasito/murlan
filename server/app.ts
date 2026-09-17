@@ -3,7 +3,7 @@ import type { Request, Response, NextFunction } from "express";
 import compression from "compression";
 import helmet from "helmet";
 import type { Server as HttpServer } from "node:http";
-import type { Server as SocketIOServer } from "socket.io";
+import type { SocketServer as SocketIOServer } from "./socketTypes.ts";
 import { createRequestLogger, logger } from "./logger.ts";
 import { sessionMiddleware } from "./session.ts";
 import { pool } from "./db.ts";

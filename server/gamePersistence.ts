@@ -1,4 +1,4 @@
-import type { Server as SocketServer } from "socket.io";
+import type { SocketServer } from "./socketTypes.ts";
 import { eq, inArray, lt } from "drizzle-orm";
 import { roomStore } from "./roomStore.ts";
 import { logger } from "./logger.ts";
@@ -33,6 +33,7 @@ import {
   type PersistedEnvelope,
 } from "./onlineGameLogic.ts";
 import type { GameState, Card } from "../lib/gameEngine.ts";
+import type { WireGameState } from "../shared/protocol.ts";
 
 /**
  * How long an `active_games` row may sit untouched before it is abandoned.
@@ -69,7 +70,7 @@ export function sanitizeStateForPlayer(
   playerMap: Record<number, string>,
   turnDeadlineMs?: number,
   vacatedSeats?: ReadonlyMap<number, { userId: string; username: string }>
-) {
+): WireGameState {
   // The server knows which seat the viewer occupies authoritatively; ship it
   // with every state so the client never has to derive it (e.g. from a lobby
   // `room` object that is null across a cold-start rejoin).

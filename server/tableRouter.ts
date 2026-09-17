@@ -11,7 +11,7 @@
 // already implements with acknowledgements. No second channel, and it inherits
 // the adapter's delivery rather than inventing one.
 import { randomUUID } from "node:crypto";
-import type { Server as SocketServer } from "socket.io";
+import type { SocketServer } from "./socketTypes.ts";
 import { logger } from "./logger.ts";
 import { activeGames, isShuttingDown } from "./gameRoom.ts";
 import { claimRoom, ownsRoom, releaseRoom } from "./gameOwnership.ts";

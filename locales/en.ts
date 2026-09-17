@@ -890,6 +890,9 @@ export const en = {
   "errorFallback.continueA11yHint": "Try to go back to the previous screen without restarting",
   "errorFallback.detailsTitle": "Error details",
   "errorFallback.closeDetailsA11yLabel": "Close error details",
+  "updateRequired.title": "Update required",
+  "updateRequired.body": "The server has moved on to a newer version of the game. Reload to continue.",
+  "updateRequired.reload": "Reload",
   "errorFallback.errorLabel": "Error: {{message}}\n\n",
   "errorFallback.stackTraceLabel": "Stack trace:\n{{stack}}",
 

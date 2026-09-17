@@ -890,6 +890,9 @@ export const sq: Record<keyof typeof en, string> = {
   "errorFallback.continueA11yHint": "Provo të kthehesh te ekrani i mëparshëm pa rinisur",
   "errorFallback.detailsTitle": "Detajet e gabimit",
   "errorFallback.closeDetailsA11yLabel": "Mbyll detajet e gabimit",
+  "updateRequired.title": "Duhet përditësim",
+  "updateRequired.body": "Serveri përdor një version më të ri të lojës. Ringarko për të vazhduar.",
+  "updateRequired.reload": "Ringarko",
   "errorFallback.errorLabel": "Gabim: {{message}}\n\n",
   "errorFallback.stackTraceLabel": "Stack trace:\n{{stack}}",
 

@@ -42,7 +42,7 @@ import {
   useExchangeAnnouncement,
   type ExchangeAnnounceData,
 } from "@/lib/sharedGameFlow";
-import { handCountOf } from "@/components/seatLayout";
+import { handCountOf } from "@/shared/protocol";
 import type { HandResult, MatchState, PlayerSetupConfig, RematchAnswers } from "@/lib/matchState";
 
 // Read once at module scope, matching app/game.tsx's own E2E_FAST — inlined

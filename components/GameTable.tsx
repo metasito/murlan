@@ -41,13 +41,12 @@ import {
   HAND_ZONE_GAP,
   arrangeOpponents,
   LAMP_CENTRE,
-  handCountOf,
-  vacatedOf,
   lightPosition,
   seatDirection,
   viewerOwnsSeat,
   type OpponentSide,
 } from "@/components/seatLayout";
+import { handCountOf, vacatedOf } from "@/shared/protocol";
 import {
   comboKey,
   readHandArrival,

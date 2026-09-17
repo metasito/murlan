@@ -11,7 +11,7 @@
 // `await`, exactly as it did inline — `game:rejoin` in particular is emitted
 // by the client from its own `connect` handler, and a packet that arrives
 // with no listener attached is dropped.
-import type { Server as SocketServer, Socket } from "socket.io";
+import type { SocketServer, GameSocket as Socket } from "./socketTypes.ts";
 import { logger } from "./logger.ts";
 import { onEvent } from "./socketSafety.ts";
 import type { EventOutcome } from "./socketSafety.ts";

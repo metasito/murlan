@@ -37,7 +37,7 @@
 // `vacateSeat`'s forfeit branch reach it too. Inside, it resolves the hand
 // through `onlineGameLogic.ts` `resolveHandEnd`, emits `game:over`, then
 // writes it through the `GameOverWriters` `gamePersistence.ts` implements.
-import type { Server as SocketServer } from "socket.io";
+import type { SocketServer } from "./socketTypes.ts";
 import { eq } from "drizzle-orm";
 import { db } from "./db.ts";
 import { roomStore } from "./roomStore.ts";

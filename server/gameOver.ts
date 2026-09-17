@@ -1,4 +1,4 @@
-import type { Server as SocketServer } from "socket.io";
+import type { SocketServer } from "./socketTypes.ts";
 import { logger } from "./logger.ts";
 import { clearRoomTimers, clearRoomDisconnectTimers } from "./gameTimers.ts";
 import type { OnlineGameState } from "./gameRoom.ts";

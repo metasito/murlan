@@ -7,7 +7,8 @@
 // `registerDisconnect` registers synchronously, before `announcePresence`'s
 // own awaits (server/socket.ts): a socket that closes while those are still
 // running has no other listener that will ever see it.
-import type { DisconnectReason, Server as SocketServer, Socket } from "socket.io";
+import type { DisconnectReason } from "socket.io";
+import type { SocketServer, GameSocket as Socket } from "./socketTypes.ts";
 import { friendStore } from "./friendStore.ts";
 import { roomStore } from "./roomStore.ts";
 import { userStore } from "./userStore.ts";

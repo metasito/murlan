@@ -1,13 +1,13 @@
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
 import { io as ioClient, type Socket } from "socket.io-client";
+import { PROTOCOL_AUTH, DEADLINE_SCALE, register } from "../helpers/client.ts";
 import {
   startTestServer,
   hasDatabase,
   skipMessage,
   type TestServer,
 } from "../helpers/testServer.ts";
-import { DEADLINE_SCALE, register } from "../helpers/client.ts";
 
 /**
  * SEC-05: the socket.io handshake is the one entry point no Express limiter
@@ -94,6 +94,7 @@ describe(
       return new Promise((resolve) => {
         const socket = ioClient(server.url, {
           transports: ["websocket"],
+          auth: PROTOCOL_AUTH,
           extraHeaders: { cookie },
           reconnection: false,
         });

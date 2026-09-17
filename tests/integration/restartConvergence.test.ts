@@ -20,6 +20,7 @@ import assert from "node:assert/strict";
 import { spawn, type ChildProcess } from "node:child_process";
 import pg from "pg";
 import { io as ioClient, type Socket } from "socket.io-client";
+import { PROTOCOL_AUTH } from "../helpers/client.ts";
 import { hasDatabase, skipMessage } from "../helpers/testServer.ts";
 
 const PORT = 5571;
@@ -89,6 +90,7 @@ function connect(cookie: string): Promise<Socket> {
   return new Promise((resolve, reject) => {
     const s = ioClient(`http://127.0.0.1:${PORT}`, {
       transports: ["websocket"],
+      auth: PROTOCOL_AUTH,
       extraHeaders: { Cookie: cookie },
       reconnection: false,
     });

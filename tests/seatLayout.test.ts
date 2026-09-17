@@ -11,12 +11,11 @@ import {
   getOpponentPosition,
   seatDirection,
   arrangeOpponents,
-  handCountOf,
-  vacatedOf,
   displayedHandCount,
   fanCounts,
   viewerOwnsSeat,
 } from "../components/seatLayout.ts";
+import { handCountOf, vacatedOf } from "../shared/protocol.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 

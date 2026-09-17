@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import pg from "pg";
 import { startTestServer, hasDatabase, skipMessage, type TestServer } from "../helpers/testServer.ts";
 import { register, connect as connectRaw, waitForPendingCode } from "../helpers/client.ts";
+import { CLIENT_OUTDATED, MIN_PROTOCOL_VERSION } from "../../shared/protocol.ts";
 
 // One server for the whole file, shared by both describe blocks below.
 // server/db.ts's pool is a module-level singleton created on first import;
@@ -51,6 +52,18 @@ describe("socket authentication", { skip: hasDatabase() ? false : skipMessage() 
     assert.ok(first.ok, first.err ?? "the socket was rejected with no reason given");
     const second = await connect({ ticket });
     assert.equal(second.ok, false, "a consumed ticket must not authenticate a second socket");
+  });
+
+  test("a bundle below the protocol floor is refused as CLIENT_OUTDATED, and keeps its ticket", async () => {
+    const { cookie } = await register(server, "holder_old");
+    const res = await fetch(`${server.url}/api/auth/socket-ticket`, { method: "POST", headers: { cookie } });
+    const { ticket } = await res.json();
+    for (const protocolVersion of [MIN_PROTOCOL_VERSION - 1, undefined, "1"]) {
+      const r = await connect({ ticket, protocolVersion });
+      assert.deepEqual(r, { ok: false, err: CLIENT_OUTDATED }, `protocolVersion ${String(protocolVersion)}`);
+    }
+    const current = await connect({ ticket });
+    assert.ok(current.ok, current.err ?? "the refused handshakes spent the ticket");
   });
 
   test("a live ticket with a tampered signature is rejected", async () => {
