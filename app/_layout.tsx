@@ -22,6 +22,7 @@ import { bindWebAudioUnlock } from "@/lib/sounds";
 import { installGlobalErrorHandlers, setCurrentScreen } from "@/lib/errorReporting";
 import { playMusic, type MusicTrack } from "@/lib/music";
 import { UpdateRequired } from "@/components/UpdateRequired";
+import "@/lib/e2eBuildMark";
 
 SplashScreen.preventAutoHideAsync();
 

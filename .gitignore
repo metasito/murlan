@@ -12,6 +12,7 @@ node_modules/
 # Expo
 .expo/
 dist/
+dist-e2e/
 static-build/
 web-build/
 expo-env.d.ts

@@ -1,6 +1,7 @@
 import { appendFile } from "node:fs/promises";
 import { logger } from "./logger.ts";
 import { trackEvent } from "./events.ts";
+import { testOnlyEnv } from "./testOnlyEnv.ts";
 
 /** Since this process started — reset by every restart, like the rest of memory. */
 const counts = { attempted: 0, succeeded: 0, failed: 0 };
@@ -47,11 +48,10 @@ export async function sendMail(
   counts.attempted += 1;
 
   // #893: an e2e run cannot get a raw token any other way — only its hash is
-  // stored, and the real send goes to Resend. `NODE_ENV !== "production"`
-  // is load-bearing, not a formality: this writes the credential itself to a
-  // file on the server's own host.
-  const sink = process.env.MURLAN_MAIL_SINK;
-  if (sink && process.env.NODE_ENV !== "production") {
+  // stored, and the real send goes to Resend. This writes the credential itself
+  // to a file on the server's own host, which is why it is test-only.
+  const sink = testOnlyEnv("MURLAN_MAIL_SINK");
+  if (sink) {
     try {
       await appendFile(sink, `${JSON.stringify({ to, subject, text })}\n`);
       counts.succeeded += 1;

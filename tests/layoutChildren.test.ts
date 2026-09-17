@@ -57,10 +57,8 @@ describe("a navigator's children", () => {
     assert.ok(!CONDITIONAL_SCREEN.test("<Stack.Screen name=\"index\" />"));
   });
 
-  // What a player can actually reach is decided by `app/capture.tsx`, which
-  // renders nothing outside a development build. `Protected` takes the screen
-  // off the navigator; it does not take the route out of the tree, so this
-  // pins the guard rather than the bundle.
+  // `Protected` takes the screen off the navigator, not the route out of the
+  // tree, so `app/capture.tsx` keeps a guard of its own — pinned below.
   test("the capture harness stays off the navigator outside a development build", () => {
     const root = layouts().find(({ file }) => file === "_layout.tsx");
     assert.ok(root, "app/_layout.tsx is missing");
@@ -69,5 +67,10 @@ describe("a navigator's children", () => {
       /<Stack\.Protected guard=\{__DEV__\}> <Stack\.Screen name="capture" \/> <\/Stack\.Protected>/,
       "the capture harness must stay behind a __DEV__ guard"
     );
+  });
+
+  test("the capture screen returns before anything else outside a development build", () => {
+    const source = readFileSync(path.join(appDir, "capture.tsx"), "utf8");
+    assert.match(source, /export default function CaptureScreen\(\) \{\s*if \(!__DEV__\) \{/);
   });
 });

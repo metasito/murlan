@@ -1,11 +1,12 @@
 /**
  * Boots the exact stack the E2E suite drives: the disposable Postgres dev
  * stack, a fresh Expo web build, and the real Express server serving both —
- * the same `dist/` + API split Replit runs in production (server/app.ts
- * `configureExpoAndLanding`). Playwright's `webServer` config invokes this
+ * the same static-bundle + API split Replit runs in production (server/app.ts
+ * `configureExpoAndLanding`), from `dist-e2e/` so a flagged build never sits
+ * where a production server looks. Playwright's `webServer` config invokes this
  * directly; `npm run test:e2e` does not need its own orchestration.
  *
- * Set E2E_SKIP_BUILD=1 to reuse an existing dist/ build across repeated
+ * Set E2E_SKIP_BUILD=1 to reuse an existing dist-e2e/ build across repeated
  * local runs — the suite itself never sets it, so CI always builds fresh.
  *
  * EXPO_PUBLIC_E2E_FAST=1 is set before the build so app/game.tsx and
@@ -20,10 +21,12 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { assertBundleHasRoutes } from "./bundleRoutes.mjs";
+import { assertMark } from "./e2eBuildMark.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const PORT = process.env.E2E_PORT ?? "5199";
 const DEV_STACK = path.join(ROOT, "scripts", "dev-stack.mjs");
+const DIST = "dist-e2e";
 
 function run(cmd, args, useShell) {
   const result = spawnSync(cmd, args, { cwd: ROOT, stdio: "inherit", shell: useShell });
@@ -55,15 +58,21 @@ process.env.MURLAN_DISCONNECT_GRACE_MS ??= "5000";
 
 run(process.execPath, [DEV_STACK, "up"]);
 
-if (process.env.E2E_SKIP_BUILD !== "1" || !existsSync(path.join(ROOT, "dist", "index.html"))) {
-  run(process.platform === "win32" ? "npx.cmd" : "npx", ["expo", "export", "--platform", "web"], process.platform === "win32");
+if (process.env.E2E_SKIP_BUILD !== "1" || !existsSync(path.join(ROOT, DIST, "index.html"))) {
+  run(
+    process.platform === "win32" ? "npx.cmd" : "npx",
+    ["expo", "export", "--platform", "web", "--output-dir", DIST],
+    process.platform === "win32"
+  );
 }
 
-assertBundleHasRoutes(path.join(ROOT, "dist"), path.join(ROOT, "app"));
+assertBundleHasRoutes(path.join(ROOT, DIST), path.join(ROOT, "app"));
+assertMark("--present", [path.join(ROOT, DIST)]);
 
 process.env.DATABASE_URL = databaseUrl();
 process.env.SESSION_SECRET = "e2e-test-secret";
 process.env.PORT = PORT;
+process.env.MURLAN_WEB_DIST = DIST;
 
 run(
   process.platform === "win32" ? "npx.cmd" : "npx",

@@ -607,8 +607,10 @@ watching, so `dist/` carries `_layout`, no routes at all, and nothing fails unti
 The second serves one build's inlined constants to another: a plain `npx expo export` poisons
 the next e2e export into a bundle whose AI is never suspended, and — the direction that
 matters — an e2e export poisons the next production build into a zero-delay one.
-`scripts/assertNotE2EFast.js` checks the environment variable, which a cached transform has
-already outlived.
+`scripts/assertNotE2EFast.js` checks the environment and the `.env` files, which a cached
+transform has already outlived; CI's build job reads the built output itself for
+`lib/e2eBuildMark.ts`'s string (`scripts/e2eBuildMark.mjs`), and `scripts/e2e-server.mjs`
+exports to `dist-e2e/`, never to the `dist/` a production server serves.
 
 `metro.config.js` puts both into `cacheVersion`. It is not the only reachable part of that key
 (`transformer.globalPrefix` is hashed too, and `cacheStores` could give each checkout its own

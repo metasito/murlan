@@ -1,4 +1,5 @@
 import type { OnlineGameState } from "./gameRoom.ts";
+import { testOnlyEnv } from "./testOnlyEnv.ts";
 
 // Timers. Every entry added here has exactly one matching delete — see
 // clearAfkTimer / clearRoomTimers / clearAllTimersForUser / disposeGame.
@@ -21,7 +22,7 @@ export const botTimers = new Map<string, ReturnType<typeof setTimeout>>();
  * Pinned by `tests/timerEnvIsLive.test.ts`.
  */
 function timeoutFromEnv(name: string, defaultMs: number): number {
-  const raw = process.env[name];
+  const raw = testOnlyEnv(name);
   if (!raw) return defaultMs;
   const parsed = Number(raw);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : defaultMs;

@@ -87,7 +87,7 @@ describe('a logout the server refuses', () => {
 });
 
 describe('a logout the server accepts', () => {
-  it('retires every account-scoped key, the query cache and the push registration', async () => {
+  it('retires every account-scoped key and the push registration, and leaves the cache to SocketProvider', async () => {
     mockApiRequest.mockResolvedValue({ ok: true });
     const { result, unmount } = await signedIn();
 
@@ -98,7 +98,7 @@ describe('a logout the server accepts', () => {
     expect(mockApiRequest).toHaveBeenCalledWith('POST', '/api/auth/logout');
     expect(result.current.user).toBeNull();
     for (const key of ACCOUNT_KEYS) expect(await AsyncStorage.getItem(key)).toBeNull();
-    expect(queryClient.getQueryCache().getAll()).toHaveLength(0);
+    expect(queryClient.getQueryData(['/api/friends'])).toEqual([{ id: 'u2' }]);
     expect(mockForgetPushRegistration).toHaveBeenCalledTimes(1);
     unmount();
   });

@@ -25,6 +25,7 @@ import {
   evictReplacedSession,
   registerDisconnect,
   registerFriendHandlers,
+  registerSessionEviction,
 } from "./socketPresence.ts";
 import { setSocketServer } from "./socketRegistry.ts";
 import { allowSocketAction, answerUnknownEvents } from "./socketSafety.ts";
@@ -104,6 +105,7 @@ export function setupSocket(httpServer: HttpServer) {
   // listener exists is answered by nobody.
   reopenOwnership();
   installTableHandlers(io);
+  registerSessionEviction(io);
 
   // Inject session into socket requests. `next` is cast because express and
   // socket.io disagree about it, not about the session: express overloads it
@@ -176,7 +178,7 @@ export function setupSocket(httpServer: HttpServer) {
     if (replacedSocketId && replacedSocketId !== socket.id) {
       evictReplacedSession(io, userId, replacedSocketId, socket);
     }
-    evictRemoteSessions(io, userId, socket.id, replacedSocketId);
+    evictRemoteSessions(io, userId, socket);
     logger.debug({ userId, socketId: socket.id }, "Socket connected");
 
     // Every registration below must run before this function's first `await`.

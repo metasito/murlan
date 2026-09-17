@@ -1,0 +1,76 @@
+import { test, describe, afterEach } from "node:test";
+import assert from "node:assert/strict";
+import { mkdtemp, readFile } from "node:fs/promises";
+import { readFileSync, readdirSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { afkTimeoutMs } from "../server/gameTimers.ts";
+import { sendMail } from "../server/mail.ts";
+import { maxFrom } from "../server/rateLimit.ts";
+import { testOnlyEnv } from "../server/testOnlyEnv.ts";
+import { logger } from "../server/logger.ts";
+
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const saved = { ...process.env };
+
+afterEach(() => {
+  for (const key of Object.keys(process.env)) if (!(key in saved)) delete process.env[key];
+  Object.assign(process.env, saved);
+});
+
+describe("a test-only MURLAN_* override in production", () => {
+  test("is ignored by the timers and the rate limits", () => {
+    process.env.NODE_ENV = "production";
+    process.env.MURLAN_AFK_TIMEOUT_MS = "5";
+    process.env.MURLAN_AUTH_RATE_LIMIT = "100000";
+    assert.equal(afkTimeoutMs(), 30_000);
+    assert.equal(maxFrom("MURLAN_AUTH_RATE_LIMIT", 100), 100);
+  });
+
+  test("still applies outside production", () => {
+    process.env.NODE_ENV = "test";
+    process.env.MURLAN_AFK_TIMEOUT_MS = "5";
+    assert.equal(afkTimeoutMs(), 5);
+  });
+
+  test("never writes the mail sink", async (t) => {
+    const sink = path.join(await mkdtemp(path.join(tmpdir(), "murlan-sink-")), "sink.jsonl");
+    process.env.NODE_ENV = "production";
+    process.env.MURLAN_MAIL_SINK = sink;
+    process.env.RESEND_API_KEY = "key";
+    process.env.MAIL_FROM_ADDRESS = "from@example.com";
+    t.mock.method(globalThis, "fetch", async () => new Response("{}"));
+    await sendMail("a@example.com", "subject", "token", "user-1");
+    await assert.rejects(readFile(sink), { code: "ENOENT" });
+  });
+
+  test("is reported once per name", (t) => {
+    process.env.NODE_ENV = "production";
+    process.env.MURLAN_ONCE_PROBE = "1";
+    const warn = t.mock.method(logger, "warn");
+    assert.equal(testOnlyEnv("MURLAN_ONCE_PROBE"), undefined);
+    assert.equal(testOnlyEnv("MURLAN_ONCE_PROBE"), undefined);
+    assert.equal(warn.mock.callCount(), 1);
+  });
+});
+
+// Production tuning, not a test seam: these are meant to be set on a deployment.
+const PRODUCTION_CONFIG = new Set([
+  "MURLAN_PG_POOL_MAX",
+  "MURLAN_SOCKET_ADAPTER_POOL_MAX",
+  "MURLAN_DEV_SYNC_TRIGGER_FILE",
+]);
+
+test("every other MURLAN_* the server reads goes through testOnlyEnv", () => {
+  const dir = path.join(repoRoot, "server");
+  const bare = readdirSync(dir, { recursive: true, encoding: "utf8" })
+    .filter((f) => f.endsWith(".ts"))
+    .flatMap((f) =>
+      [...readFileSync(path.join(dir, f), "utf8").matchAll(/process\.env(?:\.|\[")(MURLAN_\w+)/g)]
+        .map((m) => m[1])
+        .filter((name) => !PRODUCTION_CONFIG.has(name))
+        .map((name) => `${f}: ${name}`)
+    );
+  assert.deepEqual(bare, []);
+});

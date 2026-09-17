@@ -3,6 +3,7 @@ const path = require("path");
 const { spawn, execSync } = require("child_process");
 const { Readable } = require("stream");
 const { pipeline } = require("stream/promises");
+const { assertNoE2EFlags } = require("./assertNotE2EFast");
 
 let metroProcess = null;
 
@@ -517,9 +518,7 @@ function updateManifests(manifests, timestamp, baseUrl, assetsByHash) {
 async function main() {
   console.log("Building static Expo Go deployment...");
 
-  if (process.env.EXPO_PUBLIC_E2E_FAST) {
-    exitWithError("EXPO_PUBLIC_E2E_FAST is set — this would ship a zero-delay build.");
-  }
+  assertNoE2EFlags();
 
   setupSignalHandlers();
 

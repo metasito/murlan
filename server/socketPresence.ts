@@ -287,13 +287,14 @@ export function registerDisconnect({ io, socket, userId }: PresenceContext) {
  * `userSocketMap` and `io.sockets.sockets` are both process-local, so before
  * the adapter a second connection on another instance simply went unnoticed
  * and the account held two live sockets — the singleton invariant held only
- * inside one process. A room-scoped disconnect is the one form of this that
- * crosses instances.
+ * inside one process. The broadcast carries the arriving socket's handshake
+ * time and each instance closes only what connected before it: the adapter can
+ * deliver one connection's eviction after the next connection has arrived,
+ * so excluding only the arriving socket's id would let it close a newer one.
  *
- * Both exclusions matter: the arriving socket must survive, and a *local*
- * predecessor belongs to `evictReplacedSession`, which moves the room
- * association across before closing it. Cutting it here instead would strand
- * the seat.
+ * A *local* predecessor belongs to `evictReplacedSession`, which moves the room
+ * association across before closing it — and has closed it by the time this
+ * runs, so it is no longer in the room.
  *
  * Not gated on there being more than one instance, though the adapter would
  * answer that for free: it answers from the heartbeat's view of its peers, and
@@ -301,16 +302,35 @@ export function registerDisconnect({ io, socket, userId }: PresenceContext) {
  * exactly when a player is most likely to be handed to it. One `pg_notify` per
  * connection is far below the queries this handler already runs.
  */
-export function evictRemoteSessions(
-  io: SocketServer,
-  userId: string,
-  keepSocketId: string,
-  locallyHandledSocketId: string | undefined
-) {
-  let targets = io.in(userRoom(userId)).except(keepSocketId);
-  if (locallyHandledSocketId) targets = targets.except(locallyHandledSocketId);
-  targets.emit("socket:error", payload("SESSION_REPLACED"));
-  targets.disconnectSockets(true);
+export function evictRemoteSessions(io: SocketServer, userId: string, keep: Socket) {
+  const eviction: Eviction = { userId, keepSocketId: keep.id, connectedAt: keep.handshake.issued };
+  evictOlderSessions(io, eviction);
+  io.serverSideEmit(SESSION_EVICTION_EVENT, eviction);
+}
+
+export const SESSION_EVICTION_EVENT = "murlan:evict-session";
+
+interface Eviction {
+  userId: string;
+  keepSocketId: string;
+  connectedAt: number;
+}
+
+// ponytail: each instance stamps with its own clock, so two connections closer together than the skew between instances can still be misordered; a shared sequence fixes that if it is ever seen.
+export function evictOlderSessions(io: SocketServer, { userId, keepSocketId, connectedAt }: Eviction) {
+  for (const id of [...(io.sockets.adapter.rooms.get(userRoom(userId)) ?? [])]) {
+    const socket = io.sockets.sockets.get(id);
+    if (!socket || id === keepSocketId) continue;
+    const issued = socket.handshake.issued;
+    // Two instances stamping the same millisecond each receive the other's eviction; the id breaks the tie so exactly one closes.
+    if (issued > connectedAt || (issued === connectedAt && id > keepSocketId)) continue;
+    socket.emit("socket:error", payload("SESSION_REPLACED"));
+    socket.disconnect(true);
+  }
+}
+
+export function registerSessionEviction(io: SocketServer) {
+  io.on(SESSION_EVICTION_EVENT, (eviction: Eviction) => evictOlderSessions(io, eviction));
 }
 
 /**

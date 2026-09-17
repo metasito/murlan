@@ -74,6 +74,26 @@ describe('signing out', () => {
     await view.unmount();
   });
 
+  it('is the only place the app clears anything but its own Set or Map', () => {
+    const { readdirSync, readFileSync } = jest.requireActual('fs') as typeof import('fs');
+    const { join } = jest.requireActual('path') as typeof import('path');
+    const root = join(__dirname, '..', '..');
+    const calls: string[] = [];
+    for (const dir of ['app', 'components', 'context', 'lib']) {
+      for (const file of readdirSync(join(root, dir), { recursive: true }) as string[]) {
+        if (!/\.tsx?$/.test(file)) continue;
+        for (const [, receiver] of readFileSync(join(root, dir, file), 'utf8').matchAll(/([\w.]+)\.clear\(\)/g)) {
+          calls.push(`${dir}/${file.replace(/\\/g, '/')}:${receiver}`);
+        }
+      }
+    }
+    expect(calls.sort()).toEqual([
+      'context/SocketContext.tsx:qc',
+      'lib/errorReporting.ts:reportedSignatures',
+      'lib/reactions.ts:timers',
+    ]);
+  });
+
   it('keeps the cache of a visitor who was never signed in', async () => {
     mockUser = null;
     const qc = new QueryClient({ defaultOptions: { queries: { staleTime: Infinity, enabled: false } } });
