@@ -2227,7 +2227,8 @@ function realIo(book, screen) {
         if (screen.needsHeader(route.number)) {
           const { tickets, ms, cost } = book.totals;
           const run = { nth: tickets + 1, runMs: tickets ? ms : null, spend: tickets ? cost : null };
-          screen.say(header({ number: route.number, title: route.title, size: route.size, queue: route.queue, ...run }, screen.theme));
+          const url = `https://github.com/${REPO}/issues/${route.number}`;
+          screen.say(header({ number: route.number, title: route.title, size: route.size, url, queue: route.queue, ...run }, screen.theme));
         }
         // A lost race exits 1, which `sh` raises. It is not a failure of this run: the ticket is
         // someone else's, and the shape that says so is the stand-down every other path already
