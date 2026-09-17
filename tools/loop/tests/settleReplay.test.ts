@@ -9,7 +9,7 @@
 // returns. Only the subprocess is fake.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { ciRedBody, poll, SETTLE_ROUNDS } from "../queue-loop.mjs";
+import { ciRedBody, poll, SETTLE_ROUNDS, sharedPlan } from "../queue-loop.mjs";
 import { readHeadCi, readVerdict } from "../ciVerdict.ts";
 
 const PENDING = { ticket: 1028, pr: 1053, branch: "agent/1028-the-turn-chip" };
@@ -256,12 +256,12 @@ describe("poll posts CI-RED once per red head", () => {
     assert.match(body, /tests\/e2e\/old\.spec\.ts › ancient failure/);
   });
 
-  test("both gh calls it makes pass a bounded timeout", async () => {
+  test("every gh call it makes past the verdict passes a bounded timeout", async () => {
     const calls: { args: string[]; opts?: { timeout?: number } }[] = [];
     const { gh } = redFake();
     const run = (file: string, args: string[], opts?: { timeout?: number }) => {
       if (file === "git") return "";
-      if (args[0] === "issue") calls.push({ args, opts });
+      if (args[0] !== "pr") calls.push({ args, opts });
       return gh(args, file);
     };
     await poll(PENDING, () => {}, 0, DEADLINE, {
@@ -271,8 +271,84 @@ describe("poll posts CI-RED once per red head", () => {
       write: () => {},
       mkdir: () => {},
     });
-    assert.equal(calls.length, 2);
+    assert.deepEqual(
+      calls.map((c) => c.args.slice(0, 2).join(" ")),
+      ["issue view", "run list", "issue list", "issue comment"],
+    );
     for (const c of calls) assert.equal(c.opts?.timeout, 30_000);
+  });
+});
+
+describe("a red head shared with another branch", () => {
+  const issue = { number: 900, title: "shared red: x", state: "open" };
+  const evidence = { runId: 7, branch: "agent/1077-x", url: "https://example.test/runs/7", testIds: ["x"] };
+  const red = (over: { issueComments?: { body: string }[] } = {}) =>
+    ghFake({
+      script: [runRow("completed", "failure")],
+      jobs: [{ name: "Native tests", conclusion: "failure", steps: 11 }],
+      ...over,
+    });
+  const bodyOf = (asked: string[][], written: string[][]) => {
+    const post = asked.find((a) => a[0] === "issue" && a[1] === "comment");
+    return post ? String(written.find(([p]) => p === post[post.indexOf("--body-file") + 1])?.[1]) : null;
+  };
+  const withShared = (gh: (a: string[], f?: string) => string, written: string[][], decision: object) => ({
+    ...io(gh, written),
+    shared: () => decision,
+  });
+
+  test("another branch's open issue blocks this ticket and is named on CI-RED", async () => {
+    const written: string[][] = [];
+    const { gh, asked } = red();
+    const out = await poll(PENDING, () => {}, 0, DEADLINE, withShared(gh, written, { kind: "known", issue, testId: "x", evidence }));
+    assert.deepEqual([out.action, (out as { blockedBy?: number }).blockedBy], ["hand-back", 900]);
+    assert.match(String(bodyOf(asked, written)), /^shared: #900 \(also red on agent\/1077-x https:\/\/example\.test\/runs\/7\)$/m);
+  });
+
+  test("an issue this ticket filed on an earlier round stays its own to fix", async () => {
+    const written: string[][] = [];
+    const { gh, asked } = red({ issueComments: [{ body: "CI-RED old\nrun: r · step: s\nfailing: x\nshared: #900 owned here" }] });
+    const out = await poll(PENDING, () => {}, 0, DEADLINE, withShared(gh, written, { kind: "known", issue, testId: "x" }));
+    assert.equal((out as { blockedBy?: number }).blockedBy, undefined);
+    assert.match(String(bodyOf(asked, written)), /^shared: #900 owned here$/m);
+  });
+
+  test("a fix already on main updates the branch and settles again, with no CI-RED and no session", async () => {
+    const written: string[][] = [];
+    let behind = true;
+    const { gh: base, asked } = red();
+    const gh = (args: string[], file = "gh") => {
+      if (args[0] === "pr" && args[1] === "update-branch") behind = false;
+      if (args[0] === "pr" && args[1] === "view" && !args.includes("headRefOid")) {
+        return JSON.stringify(prRow({ mergeStateStatus: behind ? "BEHIND" : "CLEAN" }));
+      }
+      if (args[0] === "run" && args[1] === "list" && !behind) return JSON.stringify(runRow("completed", "success"));
+      return base(args, file);
+    };
+    const landed = { kind: "reopen", landed: true, issue: { ...issue, state: "closed" }, testId: "x" };
+    const out = await poll(PENDING, () => {}, 0, DEADLINE, withShared(gh, written, landed));
+    assert.equal(out.action, "merge");
+    assert.ok(asked.some((a) => a[1] === "update-branch"));
+    assert.equal(bodyOf(asked, written), null);
+  });
+});
+
+describe("sharedPlan", () => {
+  const issue = { number: 900, title: "t", state: "open" };
+  test("reads each decision into a CI-RED line and what the supervisor does", () => {
+    assert.deepEqual(sharedPlan({ kind: "none" }, { comments: [], behind: false }), { line: "none", action: null });
+    assert.deepEqual(sharedPlan({ kind: "file", testId: "x", issue }, { comments: [], behind: false }), {
+      line: "#900 owned here",
+      action: null,
+    });
+    const landed = { kind: "reopen", landed: true, issue, testId: "x" };
+    assert.equal(sharedPlan(landed, { comments: [], behind: true }).action, "update");
+    assert.deepEqual(sharedPlan(landed, { comments: [], behind: false }), {
+      line: "#900 owned here",
+      action: "reopen",
+      issue: 900,
+    });
+    assert.equal(sharedPlan({ kind: "known", issue, testId: "x" }, { comments: null, behind: false }).action, null);
   });
 });
 

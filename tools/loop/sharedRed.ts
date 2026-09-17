@@ -31,8 +31,8 @@ export interface SharedIssue {
 export type SharedDecision =
   | { kind: "none"; why?: string }
   | { kind: "file"; testId: string; evidence: RedRun; issue?: SharedIssue }
-  | { kind: "known"; issue: SharedIssue; testId: string }
-  | { kind: "reopen"; issue: SharedIssue; testId: string };
+  | { kind: "known"; issue: SharedIssue; testId: string; evidence?: RedRun }
+  | { kind: "reopen"; issue: SharedIssue; testId: string; evidence?: RedRun; landed?: boolean };
 
 export const SHARED_RED_LABEL = "shared-red";
 export const DEFAULT_CACHE_DIR = LOOP_LOGS_DIR;
@@ -239,8 +239,8 @@ function fileSharedIssue(
 
 /**
  * Never throws: this runs alongside a fix round, and GitHub being briefly unreachable must not
- * block it. On "file" it creates the issue; on "reopen" it reopens the existing one; "known" and
- * "none" are read-only.
+ * block it. On "file" it creates the issue; on "reopen" it reopens the existing one unless its fix
+ * is on main, which it answers as `landed`; "known" and "none" are read-only.
  */
 export function checkShared({
   repo,
@@ -264,8 +264,13 @@ export function checkShared({
     const issues = ghJson<SharedIssue[]>(gh, sharedIssueArgs(repo), until, []);
     const decision = decideShared(mine, others, issues);
     if (decision.kind === "file") return fileSharedIssue(repo, gh, decision, until, labels);
-    if (decision.kind === "reopen") gh(["issue", "reopen", String(decision.issue.number), "--repo", repo], until);
-    return decision;
+    if (decision.kind === "none") return decision;
+    const evidence = others.find((r) => r.branch !== mine.branch && r.testIds.includes(decision.testId));
+    if (decision.kind === "reopen") {
+      if (fixLandedOnMain(repo, gh, decision.issue, until)) return { ...decision, evidence, landed: true };
+      gh(["issue", "reopen", String(decision.issue.number), "--repo", repo], until);
+    }
+    return { ...decision, evidence };
   } catch (e) {
     const [first] = String((e as Error)?.message ?? e).split("\n");
     return { kind: "none", why: `could not check shared red — ${first}` };

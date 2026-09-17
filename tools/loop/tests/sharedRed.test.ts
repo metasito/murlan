@@ -185,6 +185,25 @@ describe("checkShared", () => {
     assert.equal(fromB.kind, "known");
   });
 
+  test("a closed issue whose fix main has since run green is landed, and is not reopened", () => {
+    const other = run({ runId: 1077, branch: "agent/1077-resend" });
+    const closed = (mainConclusion: string) => {
+      const hub = fakeGh([other], { 1077: LOG_1077 });
+      hub.issues.push({ number: 5, title: titleFor(TEST_ID), state: "closed", closedAt: "2026-09-16T12:00:00Z" });
+      const gh = (args: string[]) =>
+        args.includes("--branch")
+          ? JSON.stringify([{ databaseId: 9, status: "completed", conclusion: mainConclusion, createdAt: "2026-09-16T13:00:00Z" }])
+          : hub.gh(args);
+      const decision = checkShared({ repo: "metasito/murlan", gh, mine: { branch: "agent/1082-recovery-copy", testIds: [TEST_ID] } });
+      return { decision, reopened: hub.calls.some((c) => c[1] === "reopen") };
+    };
+    const green = closed("success");
+    assert.deepEqual([green.decision.kind, (green.decision as { landed?: boolean }).landed, green.reopened], ["reopen", true, false]);
+    assert.equal((green.decision as { evidence?: RedRun }).evidence?.branch, "agent/1077-resend");
+    const red = closed("failure");
+    assert.deepEqual([(red.decision as { landed?: boolean }).landed, red.reopened], [undefined, true]);
+  });
+
   test("an unreachable gh is none, never a throw", () => {
     const decision = checkShared({
       repo: "metasito/murlan",
