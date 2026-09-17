@@ -5,6 +5,7 @@ import {
   decideVerdict,
   failingTestIds,
   ghExecOptions,
+  readHeadCi,
   runForHead,
   runListArgs,
   stripLogPrefix,
@@ -288,5 +289,20 @@ describe("failing test ids from a CI log", () => {
       "not ok 3 - a line from some other reporter",
     ].join("\n");
     assert.deepEqual(failingTestIds(log), []);
+  });
+});
+
+describe("readHeadCi", () => {
+  const asked: string[][] = [];
+  const gh = (args: string[]) => {
+    asked.push(args);
+    return args[0] === "api" ? "abc" : "[]";
+  };
+
+  test("asks the pull request list only for the number it returns", () => {
+    const out = readHeadCi("o/r", "agent/1-x", gh, Date.now() + 60_000);
+    assert.equal(out.pr, null);
+    const list = asked.find((a) => a[0] === "pr" && a[1] === "list");
+    assert.equal(list?.[list.indexOf("--json") + 1], "number");
   });
 });

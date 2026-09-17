@@ -311,26 +311,26 @@ function gh(args, cwd, timeout) {
   }).trim();
 }
 
-function readComments(ticket, cwd) {
-  return gh(["issue", "view", String(ticket), "--json", "comments"], cwd, CI_BUDGET_MS);
+function readComments(ticket, cwd, exec) {
+  return exec(["issue", "view", String(ticket), "--json", "comments"], cwd, CI_BUDGET_MS);
 }
 
 const SETTLE = "G";
 
 /** The SessionStart hook runs this, so a wedged `gh` must not hold the session. */
-const CI_BUDGET_MS = 10_000;
+export const CI_BUDGET_MS = 10_000;
 
 const HANDED = /^[A-G]$/;
 
-function ciGh(cwd, until, failed) {
+function ciGh(cwd, until, failed, exec) {
   return (args, deadline) => {
     try {
       const left = Math.min(until, deadline) - Date.now();
       if (left <= 0) throw new Error("CI read budget spent");
-      return gh(args, cwd, left);
+      return exec(args, cwd, left);
     } catch (err) {
       const absent = args[0] === "api" && /HTTP 404/.test(String(err?.stderr ?? ""));
-      if (!absent && !args.includes("--log-failed")) failed.push(args[0]);
+      if (!absent) failed.push(args[0]);
       throw err;
     }
   };
@@ -351,12 +351,12 @@ function under(cwd, head, remote, branch, until, failed) {
   return ancestor() === 0;
 }
 
-function readCi(cwd, branch, head) {
+function readCi(cwd, branch, head, exec) {
   const until = Date.now() + CI_BUDGET_MS;
   const failed = [];
   // Loaded on use: a static .ts import plus process.exit aborts node on Windows (nodejs/node#56645).
   const { readHeadCi } = createRequire(import.meta.url)("./ciVerdict.ts");
-  const read = readHeadCi(REPO, branch, ciGh(cwd, until, failed), until);
+  const read = readHeadCi(REPO, branch, ciGh(cwd, until, failed, exec), until, { withLog: false });
   if (read.remoteSha === null && !failed.includes("api")) {
     return { pushed: false, pr: read.pr, sha: read.remoteSha, state: "none", step: null };
   }
@@ -390,13 +390,14 @@ function readCi(cwd, branch, head) {
  *
  * `ci` is opt-in because it costs `gh` calls on every read; the gate never needs it.
  *
- * @param {{ cwd?: string, base?: string, worktree?: string, ci?: boolean }} [options]
+ * @param {{ cwd?: string, base?: string, worktree?: string, ci?: boolean, exec?: typeof gh }} [options]
  */
 export function derive({
   cwd = undefined,
   base = process.env.LOOP_BASE || "origin/main",
   worktree = process.env.LOOP_WORKTREE,
   ci = false,
+  exec = gh,
 } = {}) {
   const at = locateRun(cwd, worktree);
   if (at.detached && at.ticket) {
@@ -439,14 +440,14 @@ export function derive({
   let comments = [];
   let trackerReadable = true;
   try {
-    comments = JSON.parse(readComments(ticket, cwd)).comments;
+    comments = JSON.parse(readComments(ticket, cwd, exec)).comments;
   } catch {
     trackerReadable = false;
   }
 
   const verdict = trackerReadable ? verdictFor(comments, head) : null;
   const land = commits > 0 && verdict?.decision === "LAND";
-  const ciRead = ci && land ? readCi(cwd, branch, head) : null;
+  const ciRead = ci && land ? readCi(cwd, branch, head, exec) : null;
   const fix = Boolean(ciRead?.pushed && ciRead.pr !== null && ciRead.state === "red");
   let phase = commits === 0 ? "C" : !verdict ? "D" : land ? "E" : "C";
   let why =

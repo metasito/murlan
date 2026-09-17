@@ -18,6 +18,7 @@ import {
   locateRun,
   fixDelta,
   BRANCH,
+  CI_BUDGET_MS,
 } from "../loop-derive.mjs";
 import { report } from "../loop-status.mjs";
 import { ciRedBody } from "../queue-loop.mjs";
@@ -521,6 +522,33 @@ describe("derive({ ci: true }) resumes from what CI said about the pushed head",
     assert.equal(s.phase, "E");
     assert.equal(s.ci, null);
     assert.deepEqual(readFileSync(calls, "utf8").trim().split("\n").map((l) => l.split(" ").slice(0, 2).join(" ")), ["issue view"]);
+  });
+
+  test("a red head is judged from its jobs, and its failed log is never downloaded", () => {
+    const calls = join(root, "calls-red.txt");
+    const jobs = [{ name: "npm test", conclusion: "failure", steps: 4 }];
+    const s = at(pushed({ runs: run("failure"), jobs, log: "FAIL x", calls }));
+    assert.equal(s.ci.step, "npm test");
+    assert.ok(readFileSync(calls, "utf8").includes("run view 7"), "the jobs were read");
+    assert.doesNotMatch(readFileSync(calls, "utf8"), /--log-failed/);
+  });
+
+  test("every gh call, tracker and CI alike, runs under CI_BUDGET_MS", () => {
+    delete process.env.LOOP_PHASE;
+    const timeouts: (number | undefined)[] = [];
+    const answer = (a: string[]) =>
+      a[0] === "issue" ? { comments: land() } : a[0] === "api" ? head : a[0] === "pr" ? [{ number: 5 }]
+        : a[1] === "list" ? run("failure") : [{ name: "npm test", conclusion: "failure", steps: 4 }];
+    const exec = (a: string[], _cwd: string, timeout?: number) => {
+      timeouts.push(timeout);
+      const v = answer(a);
+      return typeof v === "string" ? v : JSON.stringify(v);
+    };
+    const s = (derive as any)({ cwd: dir, base: "main", ci: true, exec });
+    assert.equal(s.ci.state, "red");
+    assert.equal(CI_BUDGET_MS, 10_000);
+    assert.equal(timeouts.length, 5);
+    for (const t of timeouts) assert.ok(t !== undefined && t > 0 && t <= CI_BUDGET_MS, `timeout ${t}`);
   });
 
   test("LOOP_PHASE=C wins over a head with no verdict", () => {

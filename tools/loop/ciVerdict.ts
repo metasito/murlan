@@ -205,7 +205,13 @@ function ghJson<T>(gh: GhExec, args: string[], fallback: T, until: number): T {
   }
 }
 
-function jobsAndLog(repo: string, run: RunRow | undefined, gh: GhExec, until: number): { verdict: Verdict; testIds: string[] } {
+function jobsAndLog(
+  repo: string,
+  run: RunRow | undefined,
+  gh: GhExec,
+  until: number,
+  withLog = true
+): { verdict: Verdict; testIds: string[] } {
   if (!run || run.status !== "completed" || run.conclusion === "success") {
     return { verdict: decideVerdict(run, []), testIds: [] };
   }
@@ -227,7 +233,7 @@ function jobsAndLog(repo: string, run: RunRow | undefined, gh: GhExec, until: nu
   );
   const verdict = decideVerdict(run, jobs);
   let testIds: string[] = [];
-  if (!verdict.pass && !verdict.infrastructure) {
+  if (withLog && !verdict.pass && !verdict.infrastructure) {
     try {
       const strippedLines = gh(["run", "view", String(run.databaseId), "--repo", repo, "--log-failed"], until)
         .split("\n")
@@ -260,7 +266,8 @@ export function readHeadCi(
   repo: string,
   branch: string,
   gh: GhExec,
-  until = Date.now() + READ_DEADLINE_MS
+  until = Date.now() + READ_DEADLINE_MS,
+  { withLog = true } = {}
 ): HeadCi {
   let remoteSha: string | null;
   try {
@@ -270,12 +277,12 @@ export function readHeadCi(
   }
   const prRows = ghJson<{ number: number }[]>(
     gh,
-    ["pr", "list", "--repo", repo, "--head", branch, "--state", "open", "--json", "number,headRefOid"],
+    ["pr", "list", "--repo", repo, "--head", branch, "--state", "open", "--json", "number"],
     [],
     until
   );
   const run = runForHead(ghJson<RunRow[]>(gh, runListArgs(repo, branch), [], until), remoteSha ?? undefined);
-  const { verdict, testIds } = jobsAndLog(repo, run, gh, until);
+  const { verdict, testIds } = jobsAndLog(repo, run, gh, until, withLog);
   return { remoteSha, pr: prRows[0]?.number ?? null, verdict, testIds };
 }
 
