@@ -239,6 +239,22 @@ describe("a CI fix round is a documented path, not an improvisation", () => {
     assert.ok(at.every((i, k) => i >= 0 && (k === 0 || i > at[k - 1])), `out of order: ${at.join(", ")}`);
   });
 
+  test("review dispatches its two reviewers together, and a LAND lands in the same process", () => {
+    const d = read(QUEUE).split("## D — Review")[1]?.split("## E — Land")[0] ?? "";
+    assert.match(d, /two fresh `sonnet` subagents[^.]*dispatched in one\s+message/);
+    assert.match(d, /After a `LAND`, go straight on to phase E and F in this process/);
+    assert.doesNotMatch(read(QUEUE), /"handoff":"E"/);
+  });
+
+  test("a HOLD fix is checked locally before it goes back to review, as the supervisor requires", () => {
+    const d = read(QUEUE).split("## D — Review")[1]?.split("## E — Land")[0] ?? "";
+    assert.match(d, /After a `HOLD`[^`]*commit, run `npm run agent:check` and\s+`node tools\/loop\/loop-gate\.mjs --build`/);
+  });
+
+  test("no session marks the draft ready: that is the supervisor's, behind the LAND check", () => {
+    assert.doesNotMatch(read(QUEUE), /gh pr ready/);
+  });
+
   test("agent:check is run under the ceiling the supervisor raises, which stays below the stall watchdog", () => {
     const asked = Number(/`agent:check` run[^.]*`timeout: (\d+)`/.exec(read(QUEUE))?.[1]);
     assert.equal(asked, CHECK_BASH_TIMEOUT_MS);

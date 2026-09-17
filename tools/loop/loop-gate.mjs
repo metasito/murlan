@@ -28,7 +28,7 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { derive, fixDelta, locateRun } from "./loop-derive.mjs";
+import { derive, fixDelta, locateRun, reviewFor, verdictFor } from "./loop-derive.mjs";
 import { cleanPassFor } from "./agent-check.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 
@@ -111,6 +111,38 @@ export function pushVerdict(s) {
     "red branches on origin.",
   ] };
   return { ok: true };
+}
+
+/** How many update-branch merges `mergeCleared` walks back through before it gives up. */
+const MERGE_WALK = 8;
+
+/**
+ * Whether the merge may take `sha`. The branch is pushed when review starts, so the push is no
+ * longer the gate: a LAND and its report must cover `sha`, or `sha` must be a merge of a commit on
+ * `main` into a head they cover whose tree is exactly what a clean merge gives — which is what
+ * `gh pr update-branch` makes, and not a merge carrying edits of its own. Fails closed.
+ *
+ * @param {{body: string}[]} comments
+ * @param {string} sha
+ * @param {(args: string[]) => string} git trimmed stdout; throws on a non-zero exit
+ */
+export function mergeCleared(comments, sha, git, main = "origin/main") {
+  try {
+    let at = sha;
+    for (let i = 0; i < MERGE_WALK; i++) {
+      const verdict = verdictFor(comments, at);
+      if (verdict) return verdict.decision === "LAND" && reviewFor(comments, at) !== null;
+      const [, mine, theirs, ...more] = git(["rev-list", "--parents", "-n", "1", at]).split(" ");
+      if (!theirs || more.length) return false;
+      git(["merge-base", "--is-ancestor", theirs, main]);
+      const clean = git(["merge-tree", "--write-tree", mine, theirs]).split("\n")[0];
+      if (clean !== git(["rev-parse", `${at}^{tree}`])) return false;
+      at = mine;
+    }
+    return false;
+  } catch {
+    return false;
+  }
 }
 
 function reviewRound() {

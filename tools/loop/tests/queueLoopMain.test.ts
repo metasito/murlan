@@ -13,6 +13,7 @@ import {
   park,
   blockOnShared,
   refreshWorktree,
+  publishForReview,
   removeLanded,
   removeWorktree,
   MAX_HANDOFFS,
@@ -70,6 +71,7 @@ const io = (over: Record<string, unknown> = {}, ledger: any[] = []) => ({
   sharedCheckoutDirty: () => "",
   log: () => {},
   buildPassed: () => true,
+  publish: () => {},
   announce: () => {},
   block: () => {},
   ...over,
@@ -446,8 +448,26 @@ describe("runOnce", () => {
     assert.equal(ticketTally(42, ledger).lastHandoff, "C");
     assert.match(said.join("\n"), /no local pass/);
 
-    const passed = await runOnce(io({ spawn: handingOff("C", "D") }, []));
+    const published: unknown[][] = [];
+    const passed = await runOnce(io({ spawn: handingOff("C", "D"), publish: (...a: unknown[]) => published.push(a) }, []));
     assert.equal(passed.phase, "D");
+    assert.deepEqual(published, [[42, "agent/42-x", ".worktrees/agent-42"]], "a head handed to review is pushed for CI");
+  });
+
+  test("a HOLD fix handed back to D needs the local pass too, and is pushed only with it", async () => {
+    for (const passes of [false, true]) {
+      const published: unknown[] = [];
+      const r = await runOnce(
+        io({ spawn: handingOff("D", "D"), buildPassed: () => passes, publish: (n: unknown) => published.push(n) }, []),
+      );
+      assert.deepEqual([r.phase, published.length], passes ? ["D", 1] : ["C", 0]);
+    }
+  });
+
+  test("a handoff anywhere but D pushes nothing", async () => {
+    const published: unknown[] = [];
+    await runOnce(io({ spawn: handingOff("E", "C"), publish: (n: unknown) => published.push(n) }, []));
+    assert.deepEqual(published, []);
   });
 
   test("a C handoff out of a refused D or a red E carries its reason to the next C session only", async () => {
@@ -650,6 +670,28 @@ describe("runOnce", () => {
       ["git", "-C", "w", "fetch", "--quiet", "origin", "agent/42-x"],
       ["git", "-C", "w", "merge", "--ff-only", "origin/agent/42-x"],
     ]);
+  });
+
+  test("publishForReview pushes, then opens a draft only when no pull request is open", () => {
+    for (const open of [[], [{ number: 7 }]]) {
+      const calls: string[][] = [];
+      const timeouts: unknown[] = [];
+      publishForReview(42, "agent/42-x", "w", "the title", (file: string, args: string[], o?: { timeout?: number }) => {
+        calls.push([file, ...args]);
+        timeouts.push(o?.timeout);
+        return args[1] === "list" ? JSON.stringify(open) : "";
+      });
+      assert.ok(timeouts.every((t) => typeof t === "number" && t > 0));
+      assert.deepEqual(calls[0], ["git", "-C", "w", "push", "--quiet", "-u", "origin", "agent/42-x"]);
+      const create = calls.find((c) => c[2] === "create");
+      if (open.length) {
+        assert.equal(create, undefined);
+        continue;
+      }
+      assert.ok(create?.includes("--draft"));
+      assert.match(String(create?.[create.indexOf("--body") + 1]), /^Closes #42\n/);
+      assert.equal(create?.[create.indexOf("--head") + 1], "agent/42-x");
+    }
   });
 
   test("a landed or parked ticket removes the worktree from the main checkout", () => {

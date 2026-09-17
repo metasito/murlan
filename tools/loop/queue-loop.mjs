@@ -62,7 +62,7 @@ import {
 } from "./loop-logs.mjs";
 import { readAllowedTools } from "./loop-tools.mjs";
 import { checkLockDrift } from "./preflight.mjs";
-import { buildPassed, MAX_REVIEW_ROUNDS } from "./loop-gate.mjs";
+import { buildPassed, MAX_REVIEW_ROUNDS, mergeCleared } from "./loop-gate.mjs";
 import { familyOf, MODEL_BY_PHASE } from "./loop-cost.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import { createRequire } from "node:module";
@@ -723,6 +723,21 @@ export function blockOnShared(number, blocker, cwd, run = sh) {
   } catch (err) {
     throw Object.assign(err, { removed: true });
   }
+}
+
+/**
+ * Pushes the head review is about to read, and opens a draft for it when no pull request is open,
+ * so CI runs while the review does. Not a gate: phase D's land step pushes again if this failed.
+ */
+export function publishForReview(number, branch, cwd, title, run = sh) {
+  const opts = { timeout: REFRESH_TIMEOUT_MS };
+  run("git", ["-C", cwd, "push", "--quiet", "-u", "origin", branch], opts);
+  const open = JSON.parse(
+    run("gh", ["pr", "list", "--repo", REPO, "--head", branch, "--state", "open", "--json", "number"], opts),
+  );
+  if (open.length > 0) return;
+  const body = `Closes #${number}\n\nOpened as a draft when review started. Phase D writes this description on LAND.`;
+  run("gh", ["pr", "create", "--repo", REPO, "--draft", "--base", "main", "--head", branch, "--title", title, "--body", body], opts);
 }
 
 /** A red round's `update-branch` moved the remote head, and the fix is built on top of it. */
@@ -1531,12 +1546,12 @@ export function pushedPr(branch, ticket, declared = null, since = 0, run = sh) {
 }
 
 /**
- * Four budgets, not one. A branch updated twice because main moved twice is a healthy branch on a
+ * Separate budgets, not one. A branch updated twice because main moved twice is a healthy branch on a
  * busy night; a verdict asked for twice because the runner had nothing to say is a sick one; a
  * mergeability job still running is neither; and a run that has not registered yet is a push seconds
  * old. Sharing a counter parks whichever goes second. A run that *is* running spends none of these.
  */
-export const SETTLE_ROUNDS = { update: 3, retry: 3, recheck: 8, appear: 12 };
+export const SETTLE_ROUNDS = { update: 3, retry: 3, recheck: 8, appear: 12, ready: 2 };
 
 /** GitHub re-points the pull request head asynchronously; asked at once, CI answers for the old one. */
 const SETTLE_PAUSE_MS = 15_000;
@@ -1553,7 +1568,7 @@ const SETTLE_PAUSE_MS = 15_000;
  */
 function readLanding(prNumber, verdict, run = sh) {
   const pr = JSON.parse(
-    run("gh", ["pr", "view", String(prNumber), "--repo", REPO, "--json", "state,mergeStateStatus,mergeable"]),
+    run("gh", ["pr", "view", String(prNumber), "--repo", REPO, "--json", "state,mergeStateStatus,mergeable,isDraft"]),
   );
   return { ...ts("./land.ts").landing(pr, verdict), behind: pr.mergeStateStatus === "BEHIND" };
 }
@@ -1570,8 +1585,8 @@ function readLanding(prNumber, verdict, run = sh) {
  *
  * @returns {string|null} the branch, if it is still on origin
  */
-function mergeAndConfirm(prNumber, branch, run = sh) {
-  run("gh", ts("./land.ts").mergeArgs(REPO, prNumber));
+function mergeAndConfirm(prNumber, branch, sha, run = sh) {
+  run("gh", ts("./land.ts").mergeArgs(REPO, prNumber, sha));
   if (!branch) return null;
   try {
     return ts("./land.ts").branchSurvives(run("git", ["ls-remote", "origin", branch])) ? branch : null;
@@ -1724,6 +1739,16 @@ export async function poll(pending, log, pause, deadline, io = {}) {
     mkdir = mkdirSync,
     shared = (mine, owner) =>
       ts("./sharedRed.ts").checkShared({ repo: REPO, gh: ghVia(run), mine, owner, until: Date.now() + SHARED_BUDGET_MS }),
+    cleared = (sha) => {
+      const comments = readTicketComments(pending.ticket, run, log);
+      if (!comments || !sha) return false;
+      try {
+        run("git", ["fetch", "--quiet", "origin", pending.branch, "main"], { timeout: REFRESH_TIMEOUT_MS });
+      } catch {
+        return false;
+      }
+      return mergeCleared(comments, sha, (args) => run("git", args).trim());
+    },
   } = io;
   const owner = { number: pending.ticket, branch: pending.branch };
   const left = { ...SETTLE_ROUNDS };
@@ -1815,9 +1840,24 @@ export async function poll(pending, log, pause, deadline, io = {}) {
       const spent = next.action === "update-branch" ? SETTLE_ROUNDS.update : SETTLE_ROUNDS[asking];
       return { action: "owner", reason: `${next.action} did not settle in ${spent} rounds — last: ${next.reason}` };
     }
+    if ((next.action === "merge" || next.action === "ready") && !cleared(verdict.head)) {
+      const at = String(verdict.head ?? "an unread head").slice(0, 7);
+      return { action: "owner", reason: `no VERDICT: LAND and review cover ${at} — it was pushed for review, not cleared` };
+    }
+    if (next.action === "ready") {
+      if (left.ready === 0) return { action: "owner", reason: "the draft is still a draft after gh pr ready" };
+      left.ready -= 1;
+      try {
+        run("gh", ["pr", "ready", String(pending.pr), "--repo", REPO], { timeout: CI_RED_TIMEOUT_MS });
+      } catch (err) {
+        return { action: "owner", reason: `could not mark the draft ready — ${String(err.message).split("\n")[0]}` };
+      }
+      await wait();
+      continue;
+    }
     if (next.action === "merge") {
       try {
-        const survivor = mergeAndConfirm(pending.pr, pending.branch, run);
+        const survivor = mergeAndConfirm(pending.pr, pending.branch, verdict.head, run);
         if (survivor) log(`  ⚠️ #${pending.ticket} ${survivor} is still on origin after --delete-branch`);
       } catch (err) {
         return { action: "owner", reason: `the merge failed — ${String(err.message).split("\n")[0]}` };
@@ -1990,10 +2030,13 @@ export async function runOnce(io, pinned = null, at = null) {
   // finished, and every reading below is about a session that meant to be its ticket's last.
   let handoff = handoffOf(run);
   let because = null;
-  if (handoff === "D" && after?.phase === "C" && !io.buildPassed(after?.cwd ?? null)) {
+  if (handoff === "D" && !io.buildPassed(after?.cwd ?? null)) {
     io.log(`#${route.number} handed off to review with no local pass on a clean HEAD — back to C`, "build");
     handoff = "C";
     because = "the D handoff had no local pass on a clean HEAD: commit, agent:check, then loop-gate --build";
+  } else if (handoff === "D" && after?.branch) {
+    // CI runs while the review does; `poll` merges only a head a LAND covers.
+    io.publish(route.number, after.branch, after.cwd);
   } else if (handoff === "C" && after?.phase === "E") {
     because = "phase E's agent:check was red: fix what it names, then go through D again";
   }
@@ -2228,6 +2271,13 @@ function realIo(book, screen) {
     }),
     standing,
     refreshWorktree: (cwd, branch) => refreshWorktree(cwd, branch),
+    publish: (number, branch, cwd) => {
+      try {
+        publishForReview(number, branch, cwd, ticketFacts(number).title);
+      } catch (err) {
+        screen.notice("publish", `#${number} is not pushed for review — ${String(err.message).split("\n")[0]}`);
+      }
+    },
     pushedPr,
     settle: (pending) => settle(pending, screen),
     park,

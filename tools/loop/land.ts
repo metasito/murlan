@@ -4,6 +4,7 @@ export interface PrState {
   state: string;
   mergeStateStatus: string;
   mergeable: string;
+  isDraft?: boolean;
 }
 
 export interface CiVerdict {
@@ -21,6 +22,8 @@ export type Landing =
   | { action: "already-merged"; reason: string }
   | { action: "update-branch"; reason: string }
   | { action: "recheck"; reason: string }
+  /** Green, and still the draft opened when review started. */
+  | { action: "ready"; reason: string }
   /** CI is red and a fresh session can fix it. */
   | { action: "hand-back"; reason: string }
   /** Only a person can move this. */
@@ -77,6 +80,11 @@ export function landing(pr: PrState, ci: CiVerdict): Landing {
     return { action: "hand-back", reason: `CI failed at ${ci.failedStep ?? "an unnamed step"}` };
   }
 
+  // Before mergeability: a draft reads DRAFT there, which is no verdict on the branch.
+  if (pr.isDraft) {
+    return { action: "ready", reason: "CI passed on the draft opened for review" };
+  }
+
   // GitHub computes mergeability in a background job it starts when asked, and the documented
   // remedy is to ask again. A merged pull request answers UNKNOWN on both fields too, which is why
   // `state` is read first.
@@ -112,10 +120,11 @@ export function landing(pr: PrState, ci: CiVerdict): Landing {
 
 /**
  * `--merge`, never `--squash`: the branch's own history is what a later bisect reads.
- * `--delete-branch` removes the remote copy, which nothing else does.
+ * `--delete-branch` removes the remote copy, which nothing else does. `--match-head-commit` makes
+ * GitHub refuse the merge if the head moved past the commit that was cleared.
  */
-export function mergeArgs(repo: string, prNumber: number): string[] {
-  return ["pr", "merge", String(prNumber), "--repo", repo, "--merge", "--delete-branch"];
+export function mergeArgs(repo: string, prNumber: number, sha: string): string[] {
+  return ["pr", "merge", String(prNumber), "--repo", repo, "--merge", "--delete-branch", "--match-head-commit", sha];
 }
 
 /**
