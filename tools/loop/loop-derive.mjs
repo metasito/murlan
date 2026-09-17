@@ -354,7 +354,7 @@ function under(cwd, head, remote, branch, until, failed) {
 function readCi(cwd, branch, head) {
   const until = Date.now() + CI_BUDGET_MS;
   const failed = [];
-  // ponytail: loaded on use, not at import — a .ts import plus process.exit aborts on Windows (nodejs/node#56645).
+  // Loaded on use: a static .ts import plus process.exit aborts node on Windows (nodejs/node#56645).
   const { readHeadCi } = createRequire(import.meta.url)("./ciVerdict.ts");
   const read = readHeadCi(REPO, branch, ciGh(cwd, until, failed), until);
   if (read.remoteSha === null && !failed.includes("api")) {

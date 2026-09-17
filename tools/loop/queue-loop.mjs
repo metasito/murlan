@@ -711,9 +711,11 @@ export function blockOnShared(number, blocker, cwd, run = sh) {
 
 /** A red round's `update-branch` moved the remote head, and the fix is built on top of it. */
 export function refreshWorktree(cwd, branch, run = sh) {
-  run("git", ["-C", cwd, "fetch", "--quiet", "origin", branch]);
-  run("git", ["-C", cwd, "merge", "--ff-only", `origin/${branch}`]);
+  const opts = { timeout: REFRESH_TIMEOUT_MS };
+  run("git", ["-C", cwd, "fetch", "--quiet", "origin", branch], opts);
+  run("git", ["-C", cwd, "merge", "--ff-only", `origin/${branch}`], opts);
 }
+const REFRESH_TIMEOUT_MS = 2 * 60_000;
 
 const ERASE = "\r\u001B[2K";
 const HIDE = "\u001B[?25l";
@@ -1670,9 +1672,8 @@ export function sharedPlan(decision, { ticket, behind }) {
 }
 
 /**
- * Posted once per red head, checked against the tracker rather than a local marker: a marker
- * surviving only on this machine is exactly what stranded #1077's second fix session with nothing
- * to read.
+ * Posted once per red head, checked against the tracker rather than a local marker: the fix
+ * session may run on another machine, or after a restart, and reads only the tracker.
  */
 function postCiRedOnce(ticket, verdict, shared, comments, run, write, log) {
   const sha = verdict.head;

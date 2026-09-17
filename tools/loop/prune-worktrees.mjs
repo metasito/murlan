@@ -215,6 +215,7 @@ function prState(branch) {
 const ghLabels = (ticket) =>
   execFileSync("gh", ["issue", "view", String(ticket), "--json", "labels", "--jq", ".labels[].name"], {
     encoding: "utf8",
+    timeout: 30_000,
   });
 
 export function issueInProgress(branch, labelsOf = ghLabels) {

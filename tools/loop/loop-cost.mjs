@@ -17,7 +17,7 @@ const REVIEW = /\b(spec|standards) review\b/i;
 const ORDER = ["pre", "A", "B", "C", "D", "E", "F", "G"];
 
 /**
- * The model each phase is meant to run on (T11). Defined here, not in `queue-loop.mjs`: that file
+ * The model each phase is meant to run on. Defined here, not in `queue-loop.mjs`: that file
  * statically imports `.ts` sources, which crashes a light CLI importing it on Windows. `queue-loop`
  * imports this instead.
  */

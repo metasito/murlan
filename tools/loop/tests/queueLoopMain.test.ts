@@ -598,7 +598,12 @@ describe("runOnce", () => {
 
   test("refreshWorktree fetches the branch and fast-forwards onto it", () => {
     const calls: unknown[] = [];
-    refreshWorktree("w", "agent/42-x", (file: string, args: string[]) => String(calls.push([file, ...args])));
+    const timeouts: unknown[] = [];
+    refreshWorktree("w", "agent/42-x", (file: string, args: string[], o?: { timeout?: number }) => {
+      timeouts.push(o?.timeout);
+      return String(calls.push([file, ...args]));
+    });
+    assert.ok(timeouts.every((t) => typeof t === "number" && t > 0), `unbounded: ${timeouts.join(", ")}`);
     assert.deepEqual(calls, [
       ["git", "-C", "w", "fetch", "--quiet", "origin", "agent/42-x"],
       ["git", "-C", "w", "merge", "--ff-only", "origin/agent/42-x"],
