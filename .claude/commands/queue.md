@@ -135,8 +135,8 @@ gh run list --branch agent/<n>-<slug> --limit 1 --json databaseId --jq '.[0].dat
 
 The `CI-RED` comment's `shared:` line says whether the failure is red elsewhere too:
 `#<m> owned here` means this branch owns shared issue #<m> — fix its root cause in this diff and put
-`Closes #<m>` in the PR body beside `Closes #<n>` (the PR exists: phase E edits its body). Any other `#<m>` is another branch's to fix; do
-not re-investigate it.
+`Closes #<m>` in the PR body beside `Closes #<n>` (the PR exists: phase E edits its body). Any
+other `#<m>` is another branch's to fix; do not re-investigate it.
 
 Fix what CI named, then run the suite it named as well as the usual check:
 
@@ -200,7 +200,7 @@ request, so CI runs while D reviews.
 LOOP-RESULT {"ticket":<n>,"branch":"agent/<n>-slug","phase":"C","handoff":"D"}
 ```
 
-Phase D runs in a fresh process. Do not review your own build here.
+The independent review is phase D's, in a fresh process; the diff read above does not replace it.
 
 ## D — Review
 

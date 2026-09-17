@@ -150,9 +150,9 @@ export function nextRoute(pinned = null, at = null, { read = derive, facts = tic
   if (live) {
     const settles = live.phase === "G" && status.ci?.pushed === true;
     const derived = live.phase === "G" ? "E" : live.phase;
-    const phase = settles
-      ? "G"
-      : (at ?? (status.fix ? "C" : null) ?? ticketTally(live.number, ledger()).lastHandoff ?? derived);
+    const handed = at ?? (status.fix ? "C" : null) ?? ticketTally(live.number, ledger()).lastHandoff;
+    // A LAND on this head ends the review the handoff was for; D lands its own, so no row says E.
+    const phase = settles ? "G" : handed === "D" && derived === "E" ? "E" : (handed ?? derived);
     return {
       ...live,
       phase,
@@ -391,8 +391,8 @@ export const SETTLE = { DEADLINE_MS: 90 * 60_000 };
 export const CI_ROUNDS = 3;
 
 /**
- * Processes one ticket may be spawned as. A+B+C is one, each review round is one, E+F is one — six
- * for a ticket that uses every round, and the slack is for a resume that re-enters a phase.
+ * Processes one ticket may be spawned as. A+B+C is one, each review round is one and the last also
+ * lands — five for a ticket that uses every round, and the slack is for a resume that re-enters a phase.
  *
  * A ceiling, not a budget: the thing that actually stops a runaway ticket is `overSpend`.
  */

@@ -576,6 +576,18 @@ describe("runOnce", () => {
     assert.deepEqual([stranded.phase, stranded.resuming], ["A", true]);
   });
 
+  test("nextRoute: a LAND on the head outranks a handoff to review, and nothing else does", () => {
+    const facts = () => ({ title: "t", url: "", size: null, labels: ["in-progress"], reviewRounds: 1, ciRounds: 0 });
+    const toReview = () => [{ n: 42, outcome: "handoff", cost: 0, park_reason: "phase D next", head: null }];
+    const at = (phase: string, pinned: string | null = null) =>
+      nextRoute(42, pinned, {
+        read: () => ({ onTicket: true, ticket: 42, branch: "agent/42-x", cwd: "w", phase, fix: false }),
+        facts,
+        ledger: toReview,
+      } as never).phase;
+    assert.deepEqual([at("E"), at("E", "D"), at("D"), at("C")], ["E", "E", "D", "D"]);
+  });
+
   test("a closed ticket whose worktree still stands is torn down and the queue picked again, with no spawn on it", async () => {
     const facts = (state: string, labels: string[]) => () =>
       ({ title: "t", url: "", size: null, labels, reviewRounds: 1, ciRounds: 0, state }) as never;
