@@ -163,3 +163,13 @@ export function checkAll(
     ...checkTotalNeverGrows(views, highWaterMark),
   ];
 }
+
+/** A module map the server should have emptied once every seat has left. */
+export function checkTeardown(maps: Record<string, { size: number }>): Violation[] {
+  return Object.entries(maps)
+    .filter(([, map]) => map.size > 0)
+    .map(([name, map]) => ({
+      kind: "teardown-leak",
+      detail: `${name} still holds ${map.size} entries after teardown`,
+    }));
+}

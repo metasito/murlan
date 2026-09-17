@@ -21,7 +21,7 @@ import {
   type Card,
   type Combination,
 } from "../../lib/gameEngine.ts";
-import { checkAll, type SeatView, type Violation } from "./invariants.ts";
+import { checkAll, checkTeardown, type SeatView, type Violation } from "./invariants.ts";
 import { SETTLE_CAP_MS } from "./gateBudget.ts";
 
 interface SanitizedPlayer {
@@ -528,6 +528,8 @@ export async function runSoak(opts: Options, log = console.log): Promise<SoakRes
 
   const server: TestServer = await startTestServer();
   const seats: Seat[] = [];
+  let result: SoakResult;
+  let leaks: Violation[] = [];
   try {
     const room = await openTable(server, opts.seats, seats);
     log(`soak: seed ${opts.seed}, ${opts.seats} seats, room ${room.code}`);
@@ -635,7 +637,7 @@ export async function runSoak(opts: Options, log = console.log): Promise<SoakRes
     const finalViews = seats.map((s) => s.view()).filter((v): v is SeatView => v !== null);
     violations.push(...checkAll(finalViews, deckSize, highWaterMark));
 
-    return {
+    result = {
       violations,
       moves,
       manches,
@@ -652,9 +654,28 @@ export async function runSoak(opts: Options, log = console.log): Promise<SoakRes
       moveLog,
     };
   } finally {
+    for (const seat of seats) if (seat.socket.connected) seat.socket.emit("room:leave");
+    await sleep(SETTLE_QUIET_MS);
     for (const seat of seats) if (seat.socket.connected) seat.socket.close();
+    leaks = await drainedMaps();
     await server.stop();
   }
+  result.violations.push(...leaks);
+  return result;
+}
+
+/** Waits out the seat graces for the module maps to empty, then reports what did not. */
+async function drainedMaps(): Promise<Violation[]> {
+  const { activeGames, socketRoomMap, spectatorRoomMap, userSocketMap } = await import("../../server/gameRoom.ts");
+  const { afkTimers, disconnectTimers, lobbyGraceTimers, botTimers } = await import("../../server/gameTimers.ts");
+  const { inFlight } = await import("../../server/tableRouter.ts");
+  const maps = {
+    activeGames, socketRoomMap, spectatorRoomMap, userSocketMap,
+    afkTimers, disconnectTimers, lobbyGraceTimers, botTimers, inFlight,
+  };
+  const deadline = Date.now() + Math.max(disconnectGraceMs(), lobbyGraceMs()) + SETTLE_CAP_MS;
+  while (checkTeardown(maps).length > 0 && Date.now() < deadline) await sleep(SETTLE_QUIET_MS);
+  return checkTeardown(maps);
 }
 
 async function main() {

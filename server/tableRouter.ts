@@ -183,7 +183,7 @@ function askOtherInstances(
  * a deal that is still running. So the whole of a takeover is serialised per
  * room, and everything else waits and then finds the game in memory.
  */
-const inFlight = new Map<string, Promise<unknown>>();
+export const inFlight = new Map<string, Promise<unknown>>();
 
 /**
  * What `askClaimAndApply` returns when this attempt settled nothing: another

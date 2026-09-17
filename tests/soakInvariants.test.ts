@@ -8,6 +8,7 @@ import assert from "node:assert/strict";
 import {
   checkAgreement,
   checkAll,
+  checkTeardown,
   checkCards,
   checkTotalNeverGrows,
   checkTurnIsSeated,
@@ -106,5 +107,19 @@ describe("the soak's oracle", () => {
     const total = before[0].handCounts.reduce((a, b) => a + b, 0);
     assert.deepEqual(checkTotalNeverGrows(after, total), []);
     assert.deepEqual(checkAll(after, DECK, total), []);
+  });
+});
+
+describe("the soak's teardown check", () => {
+  test("says nothing when every map is empty", () => {
+    assert.deepEqual(checkTeardown({ activeGames: new Map(), inFlight: new Set() }), []);
+  });
+
+  test("names each map still holding entries", () => {
+    const found = checkTeardown({ activeGames: new Map([["r", 1]]), botTimers: new Map(), inFlight: new Set(["a", "b"]) });
+    assert.deepEqual(found.map((v) => v.detail), [
+      "activeGames still holds 1 entries after teardown",
+      "inFlight still holds 2 entries after teardown",
+    ]);
   });
 });

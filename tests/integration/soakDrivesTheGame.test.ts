@@ -27,6 +27,9 @@ describe("the soak harness drives a real game", {
   let restore: (() => void) | undefined;
 
   before(() => {
+    // No chaos here, so no seat relies on a grace; the teardown check waits them out.
+    process.env.MURLAN_DISCONNECT_GRACE_MS = "1000";
+    process.env.MURLAN_LOBBY_GRACE_MS = "1000";
     // The runner's own progress lines would drown the test output.
     const original = console.log;
     console.log = () => {};
