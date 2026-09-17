@@ -19,7 +19,7 @@ describe("what a replay seat names", { skip: hasDatabase() ? false : skipMessage
     await saveReplay({
       roomId: `room-${tag}`,
       finishedAt: new Date(),
-      gameMode: "classic",
+      gameMode: "free_for_all",
       seats: [
         { seatIndex: 0, userId: stayer.id, vacatedBy: null, name: stayer.username },
         { seatIndex: 1, userId: null, vacatedBy: leaver.id, name: leaver.username },

@@ -12,11 +12,12 @@ import { errorHandler } from "./errorHandler.ts";
 import { installServerErrorRecorder } from "./serverErrors.ts";
 import { registerRoutes } from "./routes.ts";
 import { ensureSchema } from "./schemaDdl.ts";
-import { isAllowedOrigin, isBehindProxy } from "./cors.ts";
+import { allowedOrigins, isAllowedOrigin, isBehindProxy } from "./cors.ts";
 import { registerGithubDevSyncHook } from "./devSyncHook.ts";
 import { checkMailConfigOnBoot } from "./mail.ts";
 import { ANSWERED_BY_SHELL, CONTENT_HASHED } from "./staticPaths.ts";
 import { testOnlyEnv } from "./testOnlyEnv.ts";
+import { createHash, randomBytes } from "node:crypto";
 import * as fs from "fs";
 import * as path from "path";
 
@@ -26,25 +27,72 @@ declare module "http" {
   }
 }
 
-// `unsafe-inline` for both scripts and styles is forced by what Expo emits:
-// `dist/index.html` carries an inline bootstrap script and two inline <style>
-// blocks, and react-native-web injects its rules at runtime. unpkg is the QR
-// library the Expo Go landing page loads, pinned by an integrity hash.
-// `upgrade-insecure-requests` is deliberately absent — it breaks the http
-// dev server.
-const CSP_DIRECTIVES = {
+function distRoot(): string {
+  return path.resolve(process.cwd(), testOnlyEnv("MURLAN_WEB_DIST") ?? "dist");
+}
+
+/**
+ * Every inline <script> Expo exported, as a CSP hash. Read from the built file
+ * rather than pinned as a literal: a value written down here would go stale on
+ * the next export with nothing to catch it, and a script-src that no longer
+ * names the bootstrap is a blank page.
+ */
+function inlineScriptHashes(): string[] {
+  let html: string;
+  try {
+    html = fs.readFileSync(path.join(distRoot(), "index.html"), "utf-8");
+  } catch {
+    return [];
+  }
+  return [...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g)]
+    .map((m) => createHash("sha256").update(m[1], "utf8").digest("base64"))
+    .map((digest) => `'sha256-${digest}'`);
+}
+
+/**
+ * The websocket origins the client is allowed to open, mirroring
+ * `isAllowedOrigin` — a bare `ws:`/`wss:` names every host on the internet.
+ */
+function socketOrigins(): string[] {
+  const origins = [...allowedOrigins()].map((o) => o.replace(/^https:/, "wss:"));
+  if (process.env.NODE_ENV !== "production")
+    origins.push("ws://localhost:*", "ws://127.0.0.1:*");
+  return origins;
+}
+
+// `unsafe-inline` for styles is forced by what Expo emits: `dist/index.html`
+// carries two inline <style> blocks and react-native-web injects its rules at
+// runtime, neither of which a hash can cover. Its inline *scripts* are hashed
+// above. `upgrade-insecure-requests` is deliberately absent — it breaks the
+// http dev server.
+const cspDirectives = () => ({
   "default-src": ["'self'"],
-  "script-src": ["'self'", "'unsafe-inline'", "https://unpkg.com"],
+  "script-src": ["'self'", ...inlineScriptHashes()],
   "style-src": ["'self'", "'unsafe-inline'"],
   "img-src": ["'self'", "data:", "blob:"],
   "font-src": ["'self'", "data:"],
-  "connect-src": ["'self'", "ws:", "wss:"],
+  "connect-src": ["'self'", ...socketOrigins()],
   "worker-src": ["'self'", "blob:"],
   "object-src": ["'none'"],
   "base-uri": ["'self'"],
   "frame-ancestors": ["'none'"],
   "form-action": ["'self'"],
-};
+});
+
+/**
+ * The landing page's own header. Its inline script interpolates the request's
+ * host, so its bytes differ per request and no hash can name it; the QR library
+ * it loads is wanted nowhere else in the app.
+ */
+function landingPageCsp(nonce: string): string {
+  const directives = {
+    ...cspDirectives(),
+    "script-src": ["'self'", `'nonce-${nonce}'`, "https://unpkg.com"],
+  };
+  return Object.entries(directives)
+    .map(([name, values]) => [name, ...values].join(" "))
+    .join("; ");
+}
 
 function setupCors(app: express.Application) {
   app.use((req, res, next) => {
@@ -115,11 +163,12 @@ function safeHost(raw: string | undefined): string {
   );
 }
 
-function renderLandingPage(template: string, host: string, appName: string): string {
+function renderLandingPage(template: string, host: string, appName: string, nonce = ""): string {
   // Function replacements: a string one expands `$&`, `` $` `` and `$'`.
   return template
     .replace(/EXPS_URL_PLACEHOLDER/g, () => host)
-    .replace(/APP_NAME_PLACEHOLDER/g, () => appName);
+    .replace(/APP_NAME_PLACEHOLDER/g, () => appName)
+    .replace(/NONCE_PLACEHOLDER/g, () => nonce);
 }
 
 function serveLandingPage({
@@ -134,11 +183,13 @@ function serveLandingPage({
   appName: string;
 }) {
   const host = safeHost(req.header("x-forwarded-host") || req.get("host"));
+  const nonce = randomBytes(16).toString("base64");
   res.setHeader("Content-Type", "text/html; charset=utf-8");
-  res.status(200).send(renderLandingPage(landingPageTemplate, host, appName));
+  res.setHeader("Content-Security-Policy", landingPageCsp(nonce));
+  res.status(200).send(renderLandingPage(landingPageTemplate, host, appName, nonce));
 }
 
-export const __testables = { safeHost, renderLandingPage, CSP_DIRECTIVES };
+export const __testables = { safeHost, renderLandingPage, cspDirectives, landingPageCsp };
 
 /**
  * Cache-Control for one file under `dist/`. Content-hashed files get a year;
@@ -156,7 +207,7 @@ function setDistCacheControl(res: Response, filePath: string) {
 }
 
 function configureExpoAndLanding(app: express.Application) {
-  const distPath = path.resolve(process.cwd(), testOnlyEnv("MURLAN_WEB_DIST") ?? "dist");
+  const distPath = distRoot();
   const webIndexPath = path.join(distPath, "index.html");
   const hasWebBuild = fs.existsSync(webIndexPath);
 
@@ -250,7 +301,7 @@ export async function createApp(): Promise<CreatedApp> {
     helmet({
       contentSecurityPolicy: {
         useDefaults: false,
-        directives: CSP_DIRECTIVES,
+        directives: cspDirectives(),
       },
       crossOriginEmbedderPolicy: false,
     })

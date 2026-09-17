@@ -25,7 +25,10 @@ const ASSET_DIR = path.join("_expo", "static", "js", "web");
 const ASSET_NAME = "app-fixture.deadbeefcafebabe0123456789abcdef.js";
 
 // The server refuses to serve dist/ at all without an index.html.
-const FIXTURE_INDEX_HTML = `<!doctype html><div id="root"></div>`;
+// Expo's own export carries an inline bootstrap script; the fixture carries one
+// too, because the hash that lets it run is derived from the file at boot.
+const FIXTURE_INLINE_SCRIPT = `window.__murlan_boot = true;`;
+const FIXTURE_INDEX_HTML = `<!doctype html><div id="root"></div><script>${FIXTURE_INLINE_SCRIPT}</script>`;
 // Large enough to clear compression's default 1 KB threshold.
 const FIXTURE_JS = `// synthetic content-hashed asset\n${"x".repeat(4000)}`;
 // Only its URL matters here, not its bytes — the browser fetches /favicon.ico
@@ -123,7 +126,9 @@ describe("static asset compression and caching", { skip: hasDatabase() ? false :
       const csp = res.headers.get("content-security-policy");
       assert.ok(csp, `no Content-Security-Policy on ${route}`);
       assert.match(csp, /default-src 'self'/);
-      assert.match(csp, /script-src [^;]*https:\/\/unpkg\.com/);
+      assert.equal(/script-src [^;]*unpkg/.test(csp), false, "unpkg is allowed off the page that needs it");
+      assert.equal(/script-src [^;]*'unsafe-inline'/.test(csp), false, csp);
+      assert.equal(/connect-src [^;]*wss?:(?!\/)/.test(csp), false, csp);
       assert.match(csp, /object-src 'none'/);
       assert.equal(/upgrade-insecure-requests/.test(csp), false);
     }
@@ -134,6 +139,13 @@ describe("static asset compression and caching", { skip: hasDatabase() ? false :
     assert.deepEqual(Object.keys(body).sort(), ["adapterPool", "db", "status", "uptime"]);
     const version = await fetch(`${server.url}/api/admin/version`);
     assert.equal(version.status, 404, "the version route answered a signed-out caller");
+  });
+
+  test("the inline script dist/ actually holds is the one script-src names", async () => {
+    const { createHash } = await import("node:crypto");
+    const expected = createHash("sha256").update(FIXTURE_INLINE_SCRIPT, "utf8").digest("base64");
+    const csp = (await fetch(`${server.url}/`)).headers.get("content-security-policy")!;
+    assert.ok(csp.includes(`'sha256-${expected}'`), csp);
   });
 
   test("health reports contention on the socket adapter's pool", async () => {

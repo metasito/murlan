@@ -7,7 +7,7 @@
 // spread that one's imports across every caller and test of it.
 import { and, inArray, sql } from "drizzle-orm";
 import { db } from "./db.ts";
-import { matchReplays, users } from "../shared/schema.ts";
+import { matchReplays } from "../shared/schema.ts";
 import type { MatchHistory } from "../shared/schema.ts";
 import type { ReplaySeat } from "../lib/replay.ts";
 import { botSeatIndex, isBotSeatKey } from "./botSeat.ts";
