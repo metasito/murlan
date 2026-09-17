@@ -296,10 +296,13 @@ const DRIFT_MARK = "drift-reinstalled";
  *   peers: () => string[], drifted: () => boolean}} [stamp]
  * @param {number|null} [pinned] the ticket whose own worktree, if any, is not another session
  */
+/** Captured, not inherited: npm's own report would draw over the board. A failure still carries it. */
+export const reinstall = (run = sh) => run("npm", ["ci", "--no-audit", "--no-fund"]);
+
 export function syncCheckout(
   git,
   log,
-  install = () => sh("npm", ["ci"], { stdio: "inherit" }),
+  install = reinstall,
   { stamp = defaultStamp, pinned = /** @type {number|null} */ (null) } = {},
 ) {
   const branch = git("rev-parse", "--abbrev-ref", "HEAD").trim();
