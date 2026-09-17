@@ -18,7 +18,7 @@ import {
   MAX_HANDOFFS,
   USD_BY_SIZE,
 } from "../queue-loop.mjs";
-import { ticketTally } from "../loop-logs.mjs";
+import { parkReasonOf, ticketTally } from "../loop-logs.mjs";
 
 const ROOT = path.resolve(import.meta.dirname, "..", "..", "..");
 
@@ -26,7 +26,7 @@ const rowOf = (x: any) => ({
   n: x.number,
   outcome: x.outcome,
   cost: x.run?.result?.cost ?? 0,
-  park_reason: x.outcome === "landed" || x.outcome === "retry" ? null : (x.why ?? null),
+  park_reason: parkReasonOf(x.outcome, x.why),
   head: x.head ?? null,
 });
 

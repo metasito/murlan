@@ -52,11 +52,13 @@ import {
   leftoverPath,
   ledger as openLedger,
   parkNotePath,
+  parkReasonOf,
   prune as pruneLogs,
   readLedger,
   streamLog,
   ticketTally,
   usageSplit,
+  windowCost,
 } from "./loop-logs.mjs";
 import { readAllowedTools } from "./loop-tools.mjs";
 import { checkLockDrift } from "./preflight.mjs";
@@ -373,6 +375,9 @@ export function syncCheckout(
  * under that reads a working run as a stalled one.
  */
 export const STALL_MS = 30 * 60_000;
+
+/** The session's Bash ceiling, which `agent:check -- --also test:native` needs and a stall must outlast. */
+export const CHECK_BASH_TIMEOUT_MS = STALL_MS - 5 * 60_000;
 
 /**
  * The supervisor's half has no watchdog over it — `runTicket`'s watches the child and is cleared
@@ -1096,13 +1101,14 @@ function openExternally(target) {
  *
  * `reviewRounds: null` on a failed read, never 0: a count nobody could take is not a count of none.
  */
-function ticketFacts(number) {
+export function ticketFacts(number, exec = execFileSync) {
   try {
     const issue = JSON.parse(
-      execFileSync("gh", ["issue", "view", String(number), "--json", "title,labels,url,comments,state"], {
+      exec("gh",["issue", "view", String(number), "--json", "title,labels,url,comments,state"], {
         encoding: "utf8",
         stdio: ["ignore", "pipe", "ignore"],
         maxBuffer: SH_MAX_BUFFER,
+        timeout: 30_000,
       }),
     );
     return {
@@ -1316,6 +1322,8 @@ export function runTicket(
       // `-p` leaves fork mode off, so subagents default to background and the session spends a turn
       // each time it asks one whether it is done. Foreground makes the Agent call an await.
       CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1",
+      BASH_MAX_TIMEOUT_MS: String(CHECK_BASH_TIMEOUT_MS),
+      BASH_DEFAULT_TIMEOUT_MS: String(CHECK_BASH_TIMEOUT_MS),
     },
   });
 
@@ -2257,6 +2265,7 @@ function realIo(book, screen) {
      */
     record: ({ number, outcome, why, run, pr = null, merged = false, files = 0, counts = true, head = null }) => {
       const facts = ticketFacts(number);
+      const cost = windowCost({ n: number, outcome, own: run.result?.cost ?? 0 }, readLedger());
       screen.say(
         closing({
           outcome: outcome === "landed" ? "merged" : outcome,
@@ -2264,7 +2273,7 @@ function realIo(book, screen) {
           files,
           turns: run.result?.turns ?? 0,
           ms: run.ms,
-          cost: run.result?.cost ?? 0,
+          cost,
           why: why ?? undefined,
           log: outcome === "landed" ? undefined : run.log,
         },
@@ -2278,7 +2287,7 @@ function realIo(book, screen) {
           outcome,
           // The sentence, not the outcome: a park written by a turn cap, one written by a review
           // deadlock and one written by a genuine blocker were the same four characters in the file.
-          parkReason: outcome === "landed" || outcome === "retry" ? null : (why ?? null),
+          parkReason: parkReasonOf(outcome, why),
           pr,
           phases: run.phases ?? {},
           result: run.result,
@@ -2303,7 +2312,7 @@ function realIo(book, screen) {
               outcome,
               pr,
               ms: run.ms,
-              cost: run.result?.cost ?? 0,
+              cost,
               why: why ?? undefined,
             },
             PLAIN(),

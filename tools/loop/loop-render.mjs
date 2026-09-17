@@ -645,6 +645,7 @@ const OUTCOME = {
   rate_limited: ["⏸", "warn"],
   retry: ["↻", "accent"],
   handoff: ["→", "muted"],
+  pushed: ["↑", "muted"],
   failed: ["✗", "bad"],
 };
 

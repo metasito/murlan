@@ -41,6 +41,9 @@ import {
   USD_BY_SIZE,
   USD_DEFAULT,
   watchCalls,
+  CHECK_BASH_TIMEOUT_MS,
+  STALL_MS,
+  ticketFacts,
 } from "../queue-loop.mjs";
 
 /** Enough IO for `runOnce` to reach a decision without git, the tracker or a `claude` binary. */
@@ -472,6 +475,18 @@ describe("runTicket", () => {
       "1",
       "without it `-p` leaves fork mode off, subagents default to background, and the session polls them",
     );
+  });
+
+  test("the session's Bash calls may run as long as agent:check, and stop short of the stall watchdog", async () => {
+    let env: Record<string, string> | undefined;
+    const capturing = (_cmd: string, _args: string[], o: any) => {
+      env = o.env;
+      return fakeSpawn([RESULT])();
+    };
+    await runTicket(capturing as never, opts());
+    assert.equal(env?.BASH_MAX_TIMEOUT_MS, String(CHECK_BASH_TIMEOUT_MS));
+    assert.equal(env?.BASH_DEFAULT_TIMEOUT_MS, String(CHECK_BASH_TIMEOUT_MS));
+    assert.ok(CHECK_BASH_TIMEOUT_MS > 600_000 && CHECK_BASH_TIMEOUT_MS < STALL_MS);
   });
 
   test("a refusal reaches the caller, as milliseconds", async () => {
@@ -1414,4 +1429,18 @@ function tsLoadedBy(url: string): string[] {
 
 test("importing the supervisor strips no TypeScript, so an exit right after it cannot abort node", () => {
   assert.deepEqual(tsLoadedBy(pathToFileURL(path.join(import.meta.dirname, "..", "queue-loop.mjs")).href), []);
+});
+
+describe("ticketFacts", () => {
+  test("its gh read is bounded, and a timeout is the failed-read shape rather than a throw", () => {
+    const seen: any[] = [];
+    const timedOut = (_cmd: string, _args: string[], o: object) => {
+      seen.push(o);
+      throw Object.assign(new Error("spawnSync gh ETIMEDOUT"), { code: "ETIMEDOUT" });
+    };
+    const facts = ticketFacts(7, timedOut as never);
+    assert.equal(seen[0].timeout, 30_000);
+    assert.equal(facts.reviewRounds, null);
+    assert.equal(facts.title, "ticket #7");
+  });
 });

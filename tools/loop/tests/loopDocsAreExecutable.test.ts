@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { readFileSync, existsSync } from "node:fs";
 import { allowedTools } from "../loop-tools.mjs";
 import { readLine } from "../loop-stream.mjs";
-import { queueLoopArgs } from "../queue-loop.mjs";
+import { queueLoopArgs, CHECK_BASH_TIMEOUT_MS, STALL_MS } from "../queue-loop.mjs";
 import { ciLogPath } from "../loop-logs.mjs";
 
 /**
@@ -239,8 +239,10 @@ describe("a CI fix round is a documented path, not an improvisation", () => {
     assert.ok(at.every((i, k) => i >= 0 && (k === 0 || i > at[k - 1])), `out of order: ${at.join(", ")}`);
   });
 
-  test("agent:check is run under the Bash tool's ceiling, not its two-minute default", () => {
-    assert.match(read(QUEUE), /`agent:check` run[^.]*`timeout: 600000`/);
+  test("agent:check is run under the ceiling the supervisor raises, which stays below the stall watchdog", () => {
+    const asked = Number(/`agent:check` run[^.]*`timeout: (\d+)`/.exec(read(QUEUE))?.[1]);
+    assert.equal(asked, CHECK_BASH_TIMEOUT_MS);
+    assert.ok(asked < STALL_MS);
   });
 
   test("a stranded rebuild whose blocker closed merges main before it resumes", () => {

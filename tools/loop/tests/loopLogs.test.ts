@@ -7,12 +7,14 @@ import { tmpdir } from "node:os";
 import {
   ARTEFACTS,
   ledger,
+  parkReasonOf,
   prunable,
   prune,
   readLedger,
   sessionRow,
   ticketTally,
   usageSplit,
+  windowCost,
 } from "../loop-logs.mjs";
 
 const RESULT = {
@@ -426,10 +428,39 @@ describe("ticketTally", () => {
     });
   });
 
+  test("a pushed row and its settle row are one session", () => {
+    const t = ticketTally(1, [row({ outcome: "pushed", cost: 2 }), row({ outcome: "retry" })]);
+    assert.equal(t.sessions, 1);
+    assert.equal(t.spend, 2);
+  });
+
   test("another ticket's rows in the same file are not counted", () => {
     const t = ticketTally(1, [row({ n: 2, outcome: "retry", cost: 5 })]);
     assert.equal(t.sessions, 0);
     assert.equal(t.spend, 0);
+  });
+});
+
+describe("windowCost", () => {
+  const pushed = { n: 1, outcome: "pushed", cost: 4 };
+
+  test("a settle row shows the cost of the pushed row its window opened with", () => {
+    assert.equal(windowCost({ n: 1, outcome: "landed", own: 0.5 }, [pushed]), 4.5);
+    assert.equal(windowCost({ n: 1, outcome: "retry", own: 0 }, [pushed, { n: 2, outcome: "landed", cost: 9 }]), 4);
+  });
+
+  test("a row with no pushed row before it shows its own cost", () => {
+    assert.equal(windowCost({ n: 1, outcome: "landed", own: 2 }, [pushed, { n: 1, outcome: "retry", cost: 0 }]), 2);
+    assert.equal(windowCost({ n: 1, outcome: "pushed", own: 3 }, [pushed]), 3);
+    assert.equal(windowCost({ n: 1, outcome: "parked", own: 1 }, []), 1);
+  });
+});
+
+describe("parkReasonOf", () => {
+  test("a landed, retry or pushed row carries no park reason", () => {
+    for (const outcome of ["landed", "retry", "pushed"]) assert.equal(parkReasonOf(outcome, "CI next"), null);
+    assert.equal(parkReasonOf("parked", "held twice"), "held twice");
+    assert.equal(parkReasonOf("parked", undefined), null);
   });
 });
 

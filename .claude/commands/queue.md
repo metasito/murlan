@@ -142,7 +142,7 @@ Fix what CI named, then run the suite it named as well as the usual check:
 npm run agent:check -- --also test        # or loop:test, test:native, comments
 ```
 
-Give every `agent:check` run the Bash tool's `timeout: 600000`; its two-minute default is shorter
+Give every `agent:check` run the Bash tool's `timeout: 1500000`; its two-minute default is shorter
 than the check, and a killed run leaves no verdict.
 
 Before handing off, post what this round ruled out, at most 15 lines, each hypothesis and its

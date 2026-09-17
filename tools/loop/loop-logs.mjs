@@ -273,6 +273,21 @@ export function readLedger(file = ledgerPath()) {
 
 const HANDOFF_RE = /phase\s+([A-Za-z])\s+next(?: — (.+))?/;
 
+/** @param {string} outcome @param {string|null|undefined} why */
+export const parkReasonOf = (outcome, why) =>
+  outcome === "landed" || outcome === "retry" || outcome === "pushed" ? null : (why ?? null);
+
+/**
+ * What a row's report line shows: its own cost, plus that of the `pushed` row its window opened
+ * with. The ledger keeps the money on the `pushed` row alone.
+ *
+ * @param {{n: number, outcome: string, own: number}} row @param {object[]} rows
+ */
+export function windowCost({ n, outcome, own }, rows) {
+  const last = rows.filter((r) => r.n === n).at(-1);
+  return own + (outcome !== "pushed" && last?.outcome === "pushed" ? (last.cost ?? 0) : 0);
+}
+
 /**
  * A ticket's rounds, spend and handoffs, rebuilt from the rows a restart cannot otherwise see:
  * everything for `n` since its last `landed` or `parked` row, which is where the tally must have
@@ -312,5 +327,6 @@ export function ticketTally(n, rows) {
       if (m) [lastHandoff, handoffWhy] = [m[1], m[2] ?? null];
     }
   }
-  return { sessions: since.length, spend, handoffsThisRound, lastHandoff, handoffWhy, lastRedHead, retries };
+  const sessions = since.filter((r) => r.outcome !== "pushed").length;
+  return { sessions, spend, handoffsThisRound, lastHandoff, handoffWhy, lastRedHead, retries };
 }

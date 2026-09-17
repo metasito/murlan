@@ -131,7 +131,8 @@ const median = (a) => [...a].sort((x, y) => x - y)[Math.floor(a.length / 2)] ?? 
 export function mismatchedModel(row) {
   const want = MODEL_BY_PHASE[Object.keys(row.phases ?? {})[0]];
   const [top] = Object.entries(row.models ?? {}).sort((a, b) => b[1] - a[1]);
-  return Boolean(want && top && familyOf(top[0]) !== want);
+  const family = top && familyOf(top[0]);
+  return Boolean(want && family && family !== want);
 }
 
 /** A ticket's rows since its last `landed`/`parked` close — an open window still counts. */
@@ -166,7 +167,7 @@ export function ledgerSummary(rows) {
   return {
     fixCost,
     fixShare: total ? (fixCost / total) * 100 : 0,
-    processesMedian: median(groups.map((w) => w.length)),
+    processesMedian: median(groups.map((w) => w.filter((r) => r.outcome !== "pushed").length)),
     mismatches: rows.filter(mismatchedModel),
   };
 }

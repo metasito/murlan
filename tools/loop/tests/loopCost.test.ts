@@ -162,6 +162,10 @@ describe("mismatchedModel", () => {
     assert.equal(mismatchedModel({ phases: {}, models: { opus: 1 } }), false);
     assert.equal(mismatchedModel({ phases: { A: 1 }, models: {} }), false);
   });
+
+  test("a model with no known family is not a mismatch", () => {
+    assert.equal(mismatchedModel({ phases: { E: 60 }, models: { "<synthetic>": 1 } }), false);
+  });
 });
 
 describe("ledgerSummary", () => {
@@ -193,6 +197,11 @@ describe("ledgerSummary", () => {
       row(2, "landed", 1, {}, {}),
     ];
     assert.equal(ledgerSummary(rows).processesMedian, 4);
+  });
+
+  test("a pushed row and its settle row are one process", () => {
+    const rows = [row(1, "pushed", 3, { C: 60 }, {}), row(1, "landed", 0, {}, {})];
+    assert.equal(ledgerSummary(rows).processesMedian, 1);
   });
 
   test("names every row whose model family does not match its phase", () => {

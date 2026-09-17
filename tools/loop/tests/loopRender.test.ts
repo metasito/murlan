@@ -534,6 +534,12 @@ describe("closing", () => {
     assert.match(out, /\.loop-logs\/park\.md/);
   });
 
+  test("a pushed session has a glyph of its own", () => {
+    const glyph = (s: string) => s.trim().split(/\s+/)[0];
+    assert.notEqual(glyph(strip(closing({ outcome: "pushed", number: 1, ms: 0, cost: 0, why: "CI next" }, tPlain))), "·");
+    assert.notEqual(glyph(reportRow({ number: 1, title: "t", outcome: "pushed", ms: 0, cost: 1 }, tPlain)), "·");
+  });
+
   test("an outcome with no glyph of its own still prints a row", () => {
     assert.match(strip(closing({ outcome: "surprised", number: 1, ms: 0, cost: 0, why: "x" }, tPlain)), /#1/);
   });
