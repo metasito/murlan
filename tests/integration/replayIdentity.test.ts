@@ -14,7 +14,7 @@ describe("what a replay seat names", { skip: hasDatabase() ? false : skipMessage
 
   async function replayWithLeaver(tag: string) {
     const { user: stayer, cookie } = await register(server, `${tag}_stayer`);
-    const { user: leaver } = await register(server, `${tag}_leaver`);
+    const { user: leaver, cookie: leaverCookie } = await register(server, `${tag}_leaver`);
     const { saveReplay } = await import("../../server/replays.ts");
     await saveReplay({
       roomId: `room-${tag}`,
@@ -27,7 +27,16 @@ describe("what a replay seat names", { skip: hasDatabase() ? false : skipMessage
       moves: [],
       rankings: [],
     });
-    return { stayer, leaver, cookie };
+    return { stayer, leaver, cookie, leaverCookie };
+  }
+
+  async function rename(cookie: string, username: string) {
+    const res = await fetch(`${server.url}/api/users/me`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ username }),
+    });
+    assert.equal(res.status, 200, await res.text());
   }
 
   test("a departed player's account deletion reaches the seat they left", async () => {
@@ -48,12 +57,7 @@ describe("what a replay seat names", { skip: hasDatabase() ? false : skipMessage
     const { stayer, leaver, cookie } = await replayWithLeaver("renamed");
     const { listReplaysForUser } = await import("../../server/replays.ts");
 
-    const res = await fetch(`${server.url}/api/users/me`, {
-      method: "PATCH",
-      headers: { "content-type": "application/json", cookie },
-      body: JSON.stringify({ username: "renamed_after" }),
-    });
-    assert.equal(res.status, 200, await res.text());
+    await rename(cookie, "renamed_after");
 
     const [replay] = await listReplaysForUser(stayer.id);
     assert.equal(replay.seats.find((s) => s.seatIndex === 0)!.name, "renamed_after");
@@ -62,5 +66,19 @@ describe("what a replay seat names", { skip: hasDatabase() ? false : skipMessage
       leaver.username,
       "the seat nobody renamed is untouched"
     );
+  });
+
+  // #1087 settled on keeping the stored name whenever `userId` is null, before
+  // `vacatedBy` existed to tell a bot from an account that is merely absent.
+  // A leaver's stale name is the same finding 156 as a stayer's, so the seat
+  // follows the account it still names.
+  test("a rename reaches the seat its owner left", async () => {
+    const { stayer, leaverCookie } = await replayWithLeaver("leaver_renamed");
+    const { listReplaysForUser } = await import("../../server/replays.ts");
+
+    await rename(leaverCookie, "leaver_renamed_after");
+
+    const [replay] = await listReplaysForUser(stayer.id);
+    assert.equal(replay.seats.find((s) => s.seatIndex === 1)!.name, "leaver_renamed_after");
   });
 });
