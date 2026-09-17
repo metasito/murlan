@@ -68,10 +68,9 @@ describe("what a replay seat names", { skip: hasDatabase() ? false : skipMessage
     );
   });
 
-  // #1087 settled on keeping the stored name whenever `userId` is null, before
-  // `vacatedBy` existed to tell a bot from an account that is merely absent.
-  // A leaver's stale name is the same finding 156 as a stayer's, so the seat
-  // follows the account it still names.
+  // #1087's settled answer keeps the stored name whenever `userId` is null; a
+  // leaver's stale name is the same finding 156 as a stayer's, so a seat with a
+  // `vacatedBy` follows the account it still names.
   test("a rename reaches the seat its owner left", async () => {
     const { stayer, leaverCookie } = await replayWithLeaver("leaver_renamed");
     const { listReplaysForUser } = await import("../../server/replays.ts");
