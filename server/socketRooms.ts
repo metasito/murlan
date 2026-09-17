@@ -283,7 +283,7 @@ export function registerRoomHandlers({ io, socket, userId }: RoomHandlerContext)
         }
 
         if (!joinedRoomId) {
-          const room = await roomStore.createRoom(userId, gameMode, maxPlayers, "public");
+          const room = await roomStore.createRoom(userId, gameMode, maxPlayers, "public", true);
           await roomStore.addRoomPlayer(room.id, userId, 0);
           socket.join(room.id);
           socketRoomMap.set(socket.id, room.id);

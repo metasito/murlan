@@ -54,6 +54,7 @@ const roomModule = require('@/app/(online)/room') as {
 };
 const RoomScreen = roomModule.default;
 const { BOTS_OFFERED_AFTER_MS } = roomModule;
+const COUNTDOWN_STEP_MS = 1_000;
 
 const METRICS = {
   frame: { x: 0, y: 0, width: 390, height: 844 },
@@ -114,6 +115,30 @@ describe('the room screen matchmaking toggle', () => {
     await fireEvent.press(opened.getByRole('switch', { name: MATCHMAKING }));
     expect(mockSetRoomVisibility).toHaveBeenCalledWith('private');
     await opened.unmount();
+  });
+
+  it('says when bots will be offered, so the wait reads as finite', async () => {
+    jest.useFakeTimers();
+    try {
+      const view = await renderRoom();
+      const hint = (seconds: number) =>
+        locale['room.botsComingIn'].replace('{{seconds}}', String(seconds));
+
+      await act(async () => {
+        jest.advanceTimersByTime(COUNTDOWN_STEP_MS);
+      });
+      expect(view.getByText(hint(29))).toBeTruthy();
+
+      await act(async () => {
+        jest.advanceTimersByTime(BOTS_OFFERED_AFTER_MS - COUNTDOWN_STEP_MS);
+      });
+      expect(view.queryByText(hint(0))).toBeNull();
+      expect(view.getByRole('switch', { name: BOTS })).toBeTruthy();
+
+      await view.unmount();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('does not offer bots until the host has actually been kept waiting', async () => {

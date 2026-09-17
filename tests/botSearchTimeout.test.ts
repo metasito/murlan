@@ -326,7 +326,7 @@ test("a search whose hand goes out from under it still logs how long it ran", as
 });
 
 test("HUMAN_TURN_SECONDS auto-passing mid-search abandons the turn, it does not throw", async (t) => {
-  // A disabled PASSA read while the app's own 20s auto-pass has already
+  // A disabled PASSA read while the app's own auto-pass has already
   // moved the turn on is not "the rules are broken", it is the same race
   // `currentSelection`'s comment names. Only a disabled PASSA on a table
   // that still claims the viewer's turn is a bug.

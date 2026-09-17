@@ -276,6 +276,21 @@ export default function OnlineGameScreen() {
     goToLobby();
   };
 
+  // One question for both ways out of a live match — the in-table Quit and the
+  // Leave the between-hands overlay offers. A match already decided is left
+  // without one: there is nothing to discard.
+  const requestLeave = () =>
+    matchState.over
+      ? leaveAndExit()
+      : setConfirming({
+          title: t("onlineGame.quitConfirmTitle"),
+          body: t("onlineGame.quitConfirmBody"),
+          cancelLabel: t("common.cancel"),
+          confirmLabel: t("onlineGame.quitConfirmConfirm"),
+          destructive: true,
+          onConfirm: leaveAndExit,
+        });
+
   return (
     <GameTable
       gameState={gameState}
@@ -296,16 +311,7 @@ export default function OnlineGameScreen() {
         setSelectedIds([]);
       }}
       onExchangeGive={giveExchangeCard}
-      onQuit={() =>
-        setConfirming({
-          title: t("onlineGame.quitConfirmTitle"),
-          body: t("onlineGame.quitConfirmBody"),
-          cancelLabel: t("common.cancel"),
-          confirmLabel: t("onlineGame.quitConfirmConfirm"),
-          destructive: true,
-          onConfirm: leaveAndExit,
-        })
-      }
+      onQuit={requestLeave}
       turnTimer={{
         seconds: turnSeconds,
         resetKey: String(turnDeadlineMs ?? ""),
@@ -455,7 +461,7 @@ export default function OnlineGameScreen() {
                 bottomPad={pads.bottomPad}
                 leftPad={pads.leftPad}
                 rightPad={pads.rightPad}
-                onLeave={leaveAndExit}
+                onLeave={requestLeave}
                 onVoteRematch={() => {
                   hapticMedium();
                   voteRematch();

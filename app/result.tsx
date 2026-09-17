@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { hapticLight, hapticMedium } from "@/lib/haptics";
@@ -9,6 +9,7 @@ import { celebratesViewer, celebration, isDrawnHand, handOutcomeFor } from "@/li
 import { ResultBoard, type ContinueAction, type ResultRow } from "@/components/ResultBoard";
 import { Spacing } from "@/lib/theme";
 import { useTranslation } from "@/lib/i18n";
+import { ConfirmDialog, type ConfirmRequest } from "@/components/ConfirmDialog";
 
 export default function ResultScreen() {
   const insets = useSafeAreaInsets();
@@ -16,6 +17,7 @@ export default function ResultScreen() {
   const { gameState } = useLocalTable();
   const { match, tableWantsRematch, startNextHand, startNewMatch } = useLocalMatch();
   const { resetGame } = useLocalSession();
+  const [confirming, setConfirming] = useState<ConfirmRequest | null>(null);
 
   useEffect(() => {
     if (!gameState) router.replace("/");
@@ -87,11 +89,25 @@ export default function ResultScreen() {
         : handOutcomeFor(gameState.players, finishOrder, handPoints, p.id, isTeamMode) === "won"
   );
 
-  const handleHome = () => {
+  const goHome = () => {
     hapticLight();
     resetGame();
     router.replace("/");
   };
+  // A match still being scored is discarded by going home, so it is asked
+  // about exactly as the in-table Quit asks; a finished one has nothing left
+  // to lose and is not worth a dialog.
+  const handleHome = () =>
+    match.over
+      ? goHome()
+      : setConfirming({
+          title: t("result.leaveConfirmTitle"),
+          body: t("result.leaveConfirmBody"),
+          cancelLabel: t("common.cancel"),
+          confirmLabel: t("result.leaveConfirmConfirm"),
+          destructive: true,
+          onConfirm: goHome,
+        });
   const goPlay = (start: () => void) => () => {
     hapticMedium();
     start();
@@ -120,6 +136,7 @@ export default function ResultScreen() {
   // browsers) env(safe-area-inset-*) is genuinely 0, and content flush
   // against the browser's raw edge is not a safe area, it's a missing margin.
   return (
+    <>
     <ResultBoard
       headerTitle={
         match.over
@@ -164,5 +181,7 @@ export default function ResultScreen() {
       leftPad={insets.left}
       rightPad={insets.right}
     />
+    <ConfirmDialog request={confirming} onClose={() => setConfirming(null)} />
+    </>
   );
 }

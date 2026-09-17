@@ -34,6 +34,8 @@ import {
   type FloatingCardSpec,
 } from "@/components/homeCardField";
 import { homeMenu, type HomeAction, type HomeTile } from "@/components/homeMenuModel";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { ACTIVE_ROOM_KEY } from "@/lib/storageKeys";
 import { hapticLight } from "@/lib/haptics";
 import Feather from "@expo/vector-icons/Feather";
 import Ionicons from "@expo/vector-icons/Ionicons";
@@ -665,6 +667,7 @@ function HomeInviteCard({
 const INVITE_ICON = 18;
 
 const TILE_ICONS: Record<HomeAction, React.ComponentProps<typeof Ionicons>["name"]> = {
+  returnToTable: "arrow-undo",
   resume: "play-circle",
   offline: "game-controller",
   friends: "people",
@@ -681,6 +684,24 @@ export default function HomeScreen() {
   const { t } = useTranslation();
   const isLandscape = useIsLandscape();
   const [settingsVisible, setSettingsVisible] = useState(false);
+  const [activeRoom, setActiveRoom] = useState(false);
+  // Re-read on focus rather than from a context: `OnlineGameContext` owns the
+  // key and unmounts with the `(online)` route, so the only moment home can
+  // trust is the one it is looked at.
+  const homeFocused = useIsFocused();
+  useEffect(() => {
+    let cancelled = false;
+    const read =
+      homeFocused && user ? AsyncStorage.getItem(ACTIVE_ROOM_KEY) : Promise.resolve(null);
+    read
+      .then((roomId) => {
+        if (!cancelled) setActiveRoom(!!roomId);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [homeFocused, user]);
 
   const reduceMotion = usePrefersReducedMotion();
   const titleOpacity = useSharedValue(0);
@@ -736,13 +757,14 @@ export default function HomeScreen() {
   const leftPad = isLandscape ? insets.left : 0;
   const rightPad = isLandscape ? insets.right : 0;
 
-  const menu = homeMenu({ savedGame: hasSavedGame, account: !!user });
+  const menu = homeMenu({ savedGame: hasSavedGame, account: !!user, activeRoom });
   // The most recent, because an invitation that has just arrived is the one
   // the player is looking for. `SocketContext` appends.
   const invite = gameInvites.at(-1) ?? null;
 
   // Resuming restores the context first; the table renders from what it finds.
   const go: Record<HomeAction, () => void> = {
+    returnToTable: () => router.push("/(online)"),
     resume: () => {
       if (resumeGame()) router.push("/game");
     },
@@ -753,6 +775,7 @@ export default function HomeScreen() {
   };
 
   const label: Record<HomeAction, string> = {
+    returnToTable: t("home.returnToTable"),
     resume: t("home.resumeGame"),
     offline: t("home.modeOffline"),
     friends: t("home.modePlayWithFriends"),
@@ -765,9 +788,19 @@ export default function HomeScreen() {
   const hero = (
     <HomeHero
       label={heroLabel}
-      sublabel={menu.heroNeedsAccount ? t("home.playOnlineSignedOut") : undefined}
+      sublabel={
+        menu.heroNeedsAccount
+          ? t("home.playOnlineSignedOut")
+          : menu.hero === "returnToTable"
+            ? t("home.returnToTableSublabel")
+            : undefined
+      }
       icon={TILE_ICONS[menu.hero]}
-      onPress={menu.heroNeedsAccount ? () => router.push("/auth") : go[menu.hero]}
+      onPress={
+        menu.heroNeedsAccount
+          ? () => router.push({ pathname: "/auth", params: { next: "/(online)/quickmatch" } })
+          : go[menu.hero]
+      }
       step={STEP_HERO}
     />
   );

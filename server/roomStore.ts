@@ -69,7 +69,8 @@ export const roomStore = {
     hostUserId: string,
     gameMode: "free_for_all" | "teams",
     maxPlayers: number,
-    visibility: RoomVisibility = "private"
+    visibility: RoomVisibility = "private",
+    autoStart = false
   ): Promise<Room> {
     for (let attempt = 0; attempt < 10; attempt++) {
       try {
@@ -80,6 +81,7 @@ export const roomStore = {
           gameMode,
           maxPlayers,
           visibility,
+          autoStart,
         }).returning();
         if (!room) throw new Error("createRoom: insert returned no row");
         return room;
