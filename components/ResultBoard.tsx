@@ -19,6 +19,7 @@ import { railWidth } from "@/components/tableFrame";
 import { cardScale, physicalTouchTarget } from "@/components/cardFaceModel";
 import { useRailSide } from "@/components/useRailSide";
 import Animated, {
+  cancelAnimation,
   useAnimatedStyle,
   useSharedValue,
   withDelay,
@@ -194,6 +195,8 @@ function WinnerCelebration({
       // The swell and the endless glow behind it are the parts with nothing to
       // say; the result itself still arrives.
       scale.value = 1;
+      cancelAnimation(glow);
+      cancelAnimation(glowScale);
       return;
     }
     scale.value = withSpring(1, Motion.spring.reveal);
@@ -204,6 +207,10 @@ function WinnerCelebration({
       });
     glow.value = withRepeat(withSequence(breath(1), breath(0.5)), -1, false);
     glowScale.value = withRepeat(withSequence(breath(1.15), breath(1.0)), -1, false);
+    return () => {
+      cancelAnimation(glow);
+      cancelAnimation(glowScale);
+    };
   }, [glow, glowScale, opacity, reduceMotion, scale]);
   const containerAnim = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }],
