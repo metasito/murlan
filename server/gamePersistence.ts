@@ -358,10 +358,14 @@ async function sweepFinishedTables(io: SocketServer): Promise<void> {
  * Long-running server hygiene: drop finished tables nobody is connected to and
  * forget public rooms that are no longer joinable.
  */
-export function startSweeper(io: SocketServer) {
+export function startSweeper(io: SocketServer, resumeOrphans: (io: SocketServer) => Promise<void>) {
   if (sweeper) return;
   sweeper = setInterval(() => {
     try {
+      void resumeOrphans(io).catch((err: unknown) =>
+        logger.error({ err }, "Resuming ownerless tables failed")
+      );
+
       void sweepFinishedTables(io).catch((err: unknown) =>
         logger.error({ err }, "Sweeping finished tables failed")
       );

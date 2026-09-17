@@ -49,7 +49,9 @@ export type TableAction =
   /** A seated player's socket went away on some instance. */
   | (TableActionBase & { kind: "seatLost" })
   /** The seat is given up for good: a leave, an expired grace, a deleted account. */
-  | (TableActionBase & { kind: "vacate" });
+  | (TableActionBase & { kind: "vacate" })
+  /** A sweep found the table ownerless while `userId`, one of its seats, is online. */
+  | (TableActionBase & { kind: "resume" });
 
 export type TableActionKind = TableAction["kind"];
 
@@ -89,7 +91,8 @@ export function takeoverMode(kind: TableActionKind): "create" | "restore" | "for
     kind === "rematchIntent" ||
     kind === "rematchVote" ||
     kind === "endMatchVote" ||
-    kind === "rejoin"
+    kind === "rejoin" ||
+    kind === "resume"
     ? "restore"
     : "forward";
 }
