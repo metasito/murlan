@@ -59,6 +59,7 @@ import {
   usageSplit,
 } from "./loop-logs.mjs";
 import { readAllowedTools } from "./loop-tools.mjs";
+import { checkLockDrift } from "./preflight.mjs";
 import { buildPassed, MAX_REVIEW_ROUNDS } from "./loop-gate.mjs";
 import { familyOf, MODEL_BY_PHASE } from "./loop-cost.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
@@ -276,7 +277,9 @@ const defaultStamp = {
   },
   write: (hash) => writeFileSync(LOCK_STAMP, hash),
   peers: peerWorktrees,
+  drifted: () => checkLockDrift(".").length > 0,
 };
+const DRIFT_MARK = "drift-reinstalled";
 
 /**
  * Leaves the shared checkout on an up-to-date `main`, or refuses and says why.
@@ -287,7 +290,7 @@ const defaultStamp = {
  * repaired here rather than reported. Only an uncommitted edit is drift, and it belongs to someone.
  *
  * @param {{current: () => string|null, stored: () => string|null, write: (hash: string) => void,
- *   peers: () => string[]}} [stamp]
+ *   peers: () => string[], drifted: () => boolean}} [stamp]
  * @param {number|null} [pinned] the ticket whose own worktree, if any, is not another session
  */
 export function syncCheckout(
@@ -343,15 +346,18 @@ export function syncCheckout(
   // junction into this install, so reinstalling under a live session empties the tree it is in.
   try {
     const current = stamp.current();
-    if (current !== null && current !== stamp.stored()) {
+    const [stored, mark] = (stamp.stored() ?? "").split(" ");
+    const changed = current !== stored;
+    if (current !== null && (changed || (mark !== DRIFT_MARK && stamp.drifted()))) {
+      const what = changed ? "package-lock.json differs from the last install" : "node_modules has drifted from package-lock.json";
       const live = stamp.peers().filter((name) => name !== `agent-${pinned}`);
       if (live.length) {
-        log(`package-lock.json differs from the last install, but ${live.join(", ")} is live — not reinstalling`);
+        log(`${what}, but ${live.join(", ")} is live — not reinstalling`);
         return true;
       }
-      log("package-lock.json differs from the last install — reinstalling before the next ticket");
+      log(`${what} — reinstalling before the next ticket`);
       install();
-      stamp.write(current);
+      stamp.write(changed ? current : `${current} ${DRIFT_MARK}`);
     }
   } catch (err) {
     log(`could not reinstall — ${String(err.message).split("\n")[0]}`);
