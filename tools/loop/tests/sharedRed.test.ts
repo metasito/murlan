@@ -8,6 +8,7 @@ import {
   checkShared,
   decideShared,
   fixLandedOnMain,
+  ownerOf,
   recentRedRuns,
   redCachePath,
   redRunListArgs,
@@ -142,12 +143,18 @@ function fakeGh(runs: RedRun[], logsById: Record<number, string>) {
       const number = (next += 1);
       const url = `https://github.com/metasito/murlan/issues/${number}`;
       const title = args[args.indexOf("--title") + 1];
-      issues.push({ number, title, url, state: "open" });
+      const body = readFileSync(args[args.indexOf("--body-file") + 1], "utf8");
+      issues.push({ number, title, url, state: "open", body });
       return `${url}\n`;
     }
     if (verb === "issue" && noun === "reopen") {
       const found = issues.find((i) => i.number === Number(args[2]));
       if (found) found.state = "open";
+      return "";
+    }
+    if (verb === "issue" && noun === "edit") {
+      const found = issues.find((i) => i.number === Number(args[2]));
+      if (found) found.body = readFileSync(args[args.indexOf("--body-file") + 1], "utf8");
       return "";
     }
     throw new Error(`unexpected gh call: ${args.join(" ")}`);
@@ -204,6 +211,18 @@ describe("checkShared", () => {
     assert.equal((green.decision as { evidence?: RedRun }).evidence?.branch, "agent/1077-resend");
     const red = closed("failure");
     assert.deepEqual([(red.decision as { landed?: boolean }).landed, red.reopened], [undefined, true]);
+  });
+
+  test("the filer is written into the issue as its owner, and a reopen hands it to the reopener", () => {
+    const hub = fakeGh([run({ runId: 1077, branch: "agent/1077-resend" })], { 1077: LOG_1077 });
+    const as = (number: number, branch: string) =>
+      checkShared({ cacheDir: CACHE, repo: "metasito/murlan", gh: hub.gh, mine: { branch, testIds: [TEST_ID] }, owner: { number, branch } });
+    as(1082, "agent/1082-recovery-copy");
+    const known = as(1082, "agent/1082-recovery-copy");
+    assert.equal(known.kind === "known" && ownerOf(known.issue), 1082);
+    hub.issues[0].state = "closed";
+    as(1090, "agent/1090-other");
+    assert.deepEqual([hub.issues[0].state, ownerOf(hub.issues[0])], ["open", 1090]);
   });
 
   test("an unreachable gh is none, never a throw", () => {

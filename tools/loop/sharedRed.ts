@@ -26,6 +26,12 @@ export interface SharedIssue {
   state?: string;
   /** ISO timestamp; only `fixLandedOnMain` reads it, and only once `state` is `"closed"`. */
   closedAt?: string;
+  body?: string;
+}
+
+export interface SharedOwner {
+  number: number;
+  branch: string;
 }
 
 export type SharedDecision =
@@ -56,18 +62,43 @@ export function sharedIssueArgs(repo: string): string[] {
   return [
     "issue", "list", "--repo", repo,
     "--label", SHARED_RED_LABEL, "--state", "all", "--limit", "100",
-    "--json", "number,title,url,state,closedAt",
+    "--json", "number,title,url,state,closedAt,body",
   ];
 }
 
-export function sharedBody(testId: string, evidence: RedRun): string {
+export function sharedBody(testId: string, evidence: RedRun | undefined, owner?: SharedOwner): string {
   return [
     `Failing test id: \`${testId}\``,
     "",
-    `Also red on \`${evidence.branch}\`: ${evidence.url ?? `run ${evidence.runId}`}`,
-    "",
+    ...(evidence ? [`Also red on \`${evidence.branch}\`: ${evidence.url ?? `run ${evidence.runId}`}`, ""] : []),
     "A branch whose diff fixes this closes it with `Closes #<n>` in its PR body.",
+    ...(owner ? ["", `owner: #${owner.number} (${owner.branch})`] : []),
   ].join("\n");
+}
+
+/** The ticket that fixes this issue, as its body records it; null when none is recorded. */
+export function ownerOf(issue: SharedIssue): number | null {
+  const m = /^owner: #(\d+)\b/m.exec(issue.body ?? "");
+  return m ? Number(m[1]) : null;
+}
+
+function bodyFile(text: string): string {
+  const file = join(mkdtempSync(join(tmpdir(), "shared-red-")), "issue.md");
+  writeFileSync(file, text, "utf8");
+  return file;
+}
+
+/** Reopens `issue` with `owner` as the ticket that now fixes it. */
+export function claimShared(
+  repo: string,
+  gh: GhExec,
+  { issue, testId, evidence }: { issue: SharedIssue; testId: string; evidence?: RedRun },
+  owner: SharedOwner,
+  until: number = Date.now() + DEFAULT_BUDGET_MS,
+): void {
+  const n = String(issue.number);
+  gh(["issue", "reopen", n, "--repo", repo], until);
+  gh(["issue", "edit", n, "--repo", repo, "--body-file", bodyFile(sharedBody(testId, evidence, owner))], until);
 }
 
 export function redCachePath(runId: number, cacheDir: string = DEFAULT_CACHE_DIR): string {
@@ -217,10 +248,9 @@ function fileSharedIssue(
   decision: Extract<SharedDecision, { kind: "file" }>,
   until: number,
   labels: string[],
+  owner: SharedOwner | undefined,
 ): SharedDecision {
-  const dir = mkdtempSync(join(tmpdir(), "shared-red-"));
-  const bodyFile = join(dir, "issue.md");
-  writeFileSync(bodyFile, sharedBody(decision.testId, decision.evidence), "utf8");
+  const body = sharedBody(decision.testId, decision.evidence, owner);
   const args = [
     "issue",
     "create",
@@ -229,12 +259,12 @@ function fileSharedIssue(
     "--title",
     titleFor(decision.testId),
     "--body-file",
-    bodyFile,
+    bodyFile(body),
     ...labels.flatMap((l) => ["--label", l]),
   ];
   const url = gh(args, until).trim().split("\n").at(-1);
   const number = Number(url?.split("/").pop());
-  return { ...decision, issue: { number, title: titleFor(decision.testId), url } };
+  return { ...decision, issue: { number, title: titleFor(decision.testId), url, body } };
 }
 
 /**
@@ -250,10 +280,12 @@ export function checkShared({
   labels = [SHARED_RED_LABEL],
   cacheDir = DEFAULT_CACHE_DIR,
   until = Date.now() + DEFAULT_BUDGET_MS,
+  owner,
 }: {
   repo: string;
   gh: GhExec;
   mine: { branch: string; testIds: string[] };
+  owner?: SharedOwner;
   sinceMs?: number;
   labels?: string[];
   cacheDir?: string;
@@ -263,12 +295,13 @@ export function checkShared({
     const others = recentRedRuns(repo, gh, sinceMs, { until, cacheDir });
     const issues = ghJson<SharedIssue[]>(gh, sharedIssueArgs(repo), until, []);
     const decision = decideShared(mine, others, issues);
-    if (decision.kind === "file") return fileSharedIssue(repo, gh, decision, until, labels);
+    if (decision.kind === "file") return fileSharedIssue(repo, gh, decision, until, labels, owner);
     if (decision.kind === "none") return decision;
     const evidence = others.find((r) => r.branch !== mine.branch && r.testIds.includes(decision.testId));
     if (decision.kind === "reopen") {
       if (fixLandedOnMain(repo, gh, decision.issue, until)) return { ...decision, evidence, landed: true };
-      gh(["issue", "reopen", String(decision.issue.number), "--repo", repo], until);
+      if (owner) claimShared(repo, gh, { ...decision, evidence }, owner, until);
+      else gh(["issue", "reopen", String(decision.issue.number), "--repo", repo], until);
     }
     return { ...decision, evidence };
   } catch (e) {

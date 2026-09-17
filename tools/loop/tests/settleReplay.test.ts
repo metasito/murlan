@@ -305,12 +305,30 @@ describe("a red head shared with another branch", () => {
     assert.match(String(bodyOf(asked, written)), /^shared: #900 \(also red on agent\/1077-x https:\/\/example\.test\/runs\/7\)$/m);
   });
 
-  test("an issue this ticket filed on an earlier round stays its own to fix", async () => {
+  test("an issue this ticket filed stays its own even when that round's CI-RED never posted", async () => {
+    const mine = { ...issue, body: `Failing test id: \`x\`\n\nowner: #${PENDING.ticket} (${PENDING.branch})` };
+    const { gh: base } = red();
+    const unpostable = (args: string[], file = "gh") => {
+      if (args[0] === "issue" && args[1] === "comment") throw new Error("gh: HTTP 502");
+      return base(args, file);
+    };
+    const filed = await poll(PENDING, () => {}, 0, DEADLINE, withShared(unpostable, [], { kind: "file", issue: mine, testId: "x" }));
     const written: string[][] = [];
-    const { gh, asked } = red({ issueComments: [{ body: "CI-RED old\nrun: r · step: s\nfailing: x\nshared: #900 owned here" }] });
-    const out = await poll(PENDING, () => {}, 0, DEADLINE, withShared(gh, written, { kind: "known", issue, testId: "x" }));
-    assert.equal((out as { blockedBy?: number }).blockedBy, undefined);
+    const { gh, asked } = red();
+    const next = await poll(PENDING, () => {}, 0, DEADLINE, withShared(gh, written, { kind: "known", issue: mine, testId: "x" }));
+    assert.deepEqual([filed, next].map((o) => (o as { blockedBy?: number }).blockedBy), [undefined, undefined]);
     assert.match(String(bodyOf(asked, written)), /^shared: #900 owned here$/m);
+  });
+
+  test("a landed fix still red on a branch that has it is reopened and taken over by this ticket", async () => {
+    const { gh, asked } = red();
+    const landed = { kind: "reopen", landed: true, issue: { ...issue, state: "closed" }, testId: "x", evidence };
+    const out = await poll(PENDING, () => {}, 0, DEADLINE, withShared(gh, [], landed));
+    assert.equal((out as { blockedBy?: number }).blockedBy, undefined);
+    assert.deepEqual(
+      asked.filter((a) => a[0] === "issue" && ["reopen", "edit"].includes(a[1])).map((a) => a.slice(0, 3)),
+      [["issue", "reopen", "900"], ["issue", "edit", "900"]],
+    );
   });
 
   test("a fix already on main updates the branch and settles again, with no CI-RED and no session", async () => {
@@ -335,20 +353,20 @@ describe("a red head shared with another branch", () => {
 
 describe("sharedPlan", () => {
   const issue = { number: 900, title: "t", state: "open" };
+  const at = { ticket: 42, behind: false };
   test("reads each decision into a CI-RED line and what the supervisor does", () => {
-    assert.deepEqual(sharedPlan({ kind: "none" }, { comments: [], behind: false }), { line: "none", action: null });
-    assert.deepEqual(sharedPlan({ kind: "file", testId: "x", issue }, { comments: [], behind: false }), {
-      line: "#900 owned here",
-      action: null,
-    });
+    assert.deepEqual(sharedPlan({ kind: "none" }, at), { line: "none", action: null });
+    assert.deepEqual(sharedPlan({ kind: "file", testId: "x", issue }, at), { line: "#900 owned here", action: null });
     const landed = { kind: "reopen", landed: true, issue, testId: "x" };
-    assert.equal(sharedPlan(landed, { comments: [], behind: true }).action, "update");
-    assert.deepEqual(sharedPlan(landed, { comments: [], behind: false }), {
-      line: "#900 owned here",
-      action: "reopen",
-      issue: 900,
-    });
-    assert.equal(sharedPlan({ kind: "known", issue, testId: "x" }, { comments: null, behind: false }).action, null);
+    assert.equal(sharedPlan(landed, { ...at, behind: true }).action, "update");
+    assert.deepEqual(sharedPlan(landed, at), { line: "#900 owned here", action: "claim", issue: 900 });
+  });
+
+  test("a known issue is blocked on only when its owner line names another ticket", () => {
+    const known = (body?: string) => sharedPlan({ kind: "known", testId: "x", issue: { ...issue, body } }, at);
+    assert.deepEqual(known("owner: #42 (agent/42-x)"), { line: "#900 owned here", action: null });
+    assert.deepEqual(known("owner: #420 (agent/420-y)"), { line: "#900", action: "block", issue: 900 });
+    assert.equal(known(undefined).action, "block");
   });
 });
 

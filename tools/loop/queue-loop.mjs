@@ -64,7 +64,7 @@ import { familyOf, MODEL_BY_PHASE } from "./loop-cost.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import { branchSurvives, landing, mergeArgs } from "./land.ts";
 import { readVerdict } from "./ciVerdict.ts";
-import { checkShared } from "./sharedRed.ts";
+import { checkShared, claimShared, ownerOf } from "./sharedRed.ts";
 
 // Spawning a sibling by its own directory, not the cwd: the supervisor runs from the repo root,
 // but nothing guarantees that, and the sibling is beside this file either way.
@@ -1638,15 +1638,15 @@ const ghVia = (run) => (args, until) =>
 
 /**
  * A red head's shared failure, as the `shared:` line of its CI-RED and what the supervisor does
- * about it. `owned here` marks the issue this ticket fixes; a `known` issue is this ticket's only
- * if an earlier CI-RED of its own said so, and unreadable comments decide nothing.
+ * about it. A `known` issue is this ticket's only if the issue's own owner line names it; the
+ * CI-RED's `owned here` is display.
  *
- * @param {{kind: string, testId?: string, issue?: {number: number}, evidence?: {branch: string, url?: string},
- *   landed?: boolean}} decision
- * @param {{comments: {body?: string}[]|null, behind: boolean}} at
- * @returns {{line: string, action: "update"|"reopen"|"block"|null, issue?: number}}
+ * @param {{kind: string, testId?: string, issue?: {number: number, title?: string, body?: string},
+ *   evidence?: {branch: string, url?: string}, landed?: boolean}} decision
+ * @param {{ticket: number, behind: boolean}} at
+ * @returns {{line: string, action: "update"|"claim"|"block"|null, issue?: number}}
  */
-export function sharedPlan(decision, { comments, behind }) {
+export function sharedPlan(decision, { ticket, behind }) {
   const n = decision.issue?.number;
   if (decision.kind === "none" || !Number.isInteger(n)) return { line: "none", action: null };
   const ev = decision.evidence;
@@ -1654,12 +1654,11 @@ export function sharedPlan(decision, { comments, behind }) {
   if (decision.landed) {
     return behind
       ? { line: `#${n}${where}`, action: "update", issue: n }
-      : { line: `#${n} owned here${where}`, action: "reopen", issue: n };
+      : { line: `#${n} owned here${where}`, action: "claim", issue: n };
   }
-  if (decision.kind !== "known") return { line: `#${n} owned here${where}`, action: null };
-  if (!comments) return { line: `#${n}${where}`, action: null };
-  const owned = new RegExp(`^shared: #${n} owned here\\b`, "m");
-  if (comments.some((c) => owned.test(c.body ?? ""))) return { line: `#${n} owned here${where}`, action: null };
+  if (decision.kind !== "known" || ownerOf({ title: "", ...decision.issue }) === ticket) {
+    return { line: `#${n} owned here${where}`, action: null };
+  }
   return { line: `#${n}${where}`, action: "block", issue: n };
 }
 
@@ -1694,8 +1693,10 @@ export async function poll(pending, log, pause, deadline, io = {}) {
     verdictOf = readVerdict,
     write = writeFileSync,
     mkdir = mkdirSync,
-    shared = (mine) => checkShared({ repo: REPO, gh: ghVia(run), mine, until: Date.now() + SHARED_BUDGET_MS }),
+    shared = (mine, owner) =>
+      checkShared({ repo: REPO, gh: ghVia(run), mine, owner, until: Date.now() + SHARED_BUDGET_MS }),
   } = io;
+  const owner = { number: pending.ticket, branch: pending.branch };
   const left = { ...SETTLE_ROUNDS };
   const until = Date.now() + deadline;
   // Not unref'd, for the same reason `holdFor` is not: this is the only handle open while it waits.
@@ -1722,18 +1723,16 @@ export async function poll(pending, log, pause, deadline, io = {}) {
         mkdir(DIR, { recursive: true });
         write(ciLogPath(pending.ticket), verdict.output, "utf8");
         const comments = readTicketComments(pending.ticket, run, log);
-        const plan = sharedPlan(shared({ branch: pending.branch, testIds: verdict.testIds ?? [] }), {
-          comments,
-          behind: next.behind,
-        });
+        const decision = shared({ branch: pending.branch, testIds: verdict.testIds ?? [] }, owner);
+        const plan = sharedPlan(decision, { ticket: pending.ticket, behind: next.behind });
         if (plan.action === "update") {
           next = { action: "update-branch", reason: `#${plan.issue}'s fix is on main` };
         } else {
-          if (plan.action === "reopen") {
+          if (plan.action === "claim") {
             try {
-              run("gh", ["issue", "reopen", String(plan.issue), "--repo", REPO], { timeout: CI_RED_TIMEOUT_MS });
+              claimShared(REPO, ghVia(run), decision, owner, Date.now() + CI_RED_TIMEOUT_MS);
             } catch (err) {
-              log(`shared red: could not reopen — ${String(err.message).split("\n")[0]}`);
+              log(`shared red: could not reopen #${plan.issue} — ${String(err.message).split("\n")[0]}`);
             }
           }
           postCiRedOnce(pending.ticket, verdict, plan.line, comments, run, write, log);
