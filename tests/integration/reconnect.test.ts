@@ -39,6 +39,8 @@ process.env.MURLAN_AFK_TIMEOUT_MS = "400";
 // one of its own turns) never races the seat's own disconnect-grace vacate —
 // `handleGameOver` cancels that timer once the hand actually ends.
 process.env.MURLAN_DISCONNECT_GRACE_MS = "20000";
+// The reconnect loops below buy a ticket every few hundred milliseconds.
+process.env.MURLAN_TICKET_RATE_LIMIT = "1000";
 
 interface ReconnectNotice {
   userId: string;

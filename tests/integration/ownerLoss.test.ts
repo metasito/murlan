@@ -13,7 +13,7 @@ import type { Client, RoomState, SanitizedState } from "../helpers/table.ts";
  */
 process.env.MURLAN_SWEEP_INTERVAL_MS = "500";
 
-const OWNER_PORT = 5571;
+const OWNER_PORT = 5581;
 const OWNER_BOT_DELAY_MS = 6_000;
 
 describe("a table outlives losing its owner", { skip: hasDatabase() ? false : skipMessage() }, () => {
