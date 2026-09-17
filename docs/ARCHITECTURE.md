@@ -231,7 +231,7 @@ collapsed:
 - **`components/GameTable.tsx`** — the one presentational table. It takes a `GameState`, a
   `viewerSeat`, and a small set of slots (`topBarExtra`, `banners`, `overlays`,
   `turnTimer`) through which the offline and online adapters inject exactly what differs
-  between them (a local AI turn loop and 20s response timer offline; server acknowledgement,
+  between them (a local AI turn loop and response timer offline; server acknowledgement,
   reactions, and connection-loss banners online). It contains no `isOnline &&` branching.
 - **`components/table/`** — the table's own components, grouped by what they draw:
   `seats.tsx`, `pile.tsx`, `hand.tsx` and `chrome.tsx`. `GameTable.tsx` is their only
