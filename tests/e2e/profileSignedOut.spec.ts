@@ -11,6 +11,7 @@
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { openApp, registerNewAccount, uniqueUsername } from "./helpers/navigation";
+import { SETTINGS_KEY, TUTORIAL_SEEN_KEY } from "../../lib/storageKeys";
 
 const FELT_SECTION = '[data-testid="profile-look"]';
 // Signed in and landscape, the entry is the avatar; everywhere else it is the
@@ -37,15 +38,15 @@ const FELTS = 4;
 
 /** The felt the app is currently painting with, from its own settings store. */
 async function storedFelt(page: Page): Promise<string | null> {
-  return page.evaluate(() => {
-    const raw = window.localStorage.getItem("@murlan_settings");
+  return page.evaluate((key) => {
+    const raw = window.localStorage.getItem(key);
     if (!raw) return null;
     try {
       return (JSON.parse(raw) as { tableFelt?: string }).tableFelt ?? null;
     } catch {
       return null;
     }
-  });
+  }, SETTINGS_KEY);
 }
 
 test.describe("Profile without an account", () => {
@@ -56,7 +57,7 @@ test.describe("Profile without an account", () => {
   }) => {
     test.setTimeout(180_000);
     await openApp(page, baseURL!);
-    await page.evaluate(() => window.localStorage.setItem("@murlan_tutorial_seen", "1"));
+    await page.evaluate((key) => window.localStorage.setItem(key, "1"), TUTORIAL_SEEN_KEY);
     await page.reload();
     await page.waitForLoadState("networkidle");
 
@@ -117,7 +118,7 @@ test.describe("Profile without an account", () => {
       test.setTimeout(120_000);
       await page.setViewportSize({ width, height });
       await openApp(page, baseURL!);
-      await page.evaluate(() => window.localStorage.setItem("@murlan_tutorial_seen", "1"));
+      await page.evaluate((key) => window.localStorage.setItem(key, "1"), TUTORIAL_SEEN_KEY);
       await openProfileFromHome(page);
 
       const options = page.locator(`${FELT_SECTION} [role="radio"]`);

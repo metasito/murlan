@@ -8,6 +8,7 @@ import { hapticError, hapticLight, hapticSelection, hapticSuccess } from "@/lib/
 import { Colors, Spacing, Radius, FontSize, Type, Motion, TOUCH_TARGET_MIN } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { markTutorialSeen } from "@/lib/tutorialSeen";
+import { TUTORIAL_PROGRESS_KEY as PROGRESS_KEY } from "@/lib/storageKeys";
 import { useAuth } from "@/context/AuthContext";
 import { MenuLayout } from "@/components/MenuLayout";
 import { MenuCard } from "@/components/MenuCard";
@@ -40,7 +41,6 @@ import { a11yHidden } from "@/lib/a11y";
 //
 // Independent of that: where to resume, cleared only when the player is
 // deliberately done (skip, or the final beat).
-const PROGRESS_KEY = "@murlan_tutorial_progress";
 
 // ─── Fixed, seeded cards ────────────────────────────────────────────────────
 // The tutorial never uses the random dealer: every card below is a literal,

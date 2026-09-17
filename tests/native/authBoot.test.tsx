@@ -21,7 +21,7 @@ jest.mock('@react-native-community/netinfo', () => ({
   default: { addEventListener: jest.fn(() => () => {}) },
 }));
 
-const STORAGE_KEY = 'murlan_user';
+import { AUTH_USER_KEY as STORAGE_KEY } from '@/lib/storageKeys';
 const CACHED = { id: 'u1', username: 'Ana' };
 
 const mockFetch = jest.fn<() => Promise<unknown>>();

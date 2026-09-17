@@ -11,7 +11,6 @@ import React, {
 import {
   GameState,
   GameMode,
-  PlayerType,
   MatchLength,
   dealFirstSeatFor,
   firstTargetFor,
@@ -41,8 +40,7 @@ import {
   type ExchangeAnnounceData,
 } from "@/lib/sharedGameFlow";
 import { handCountOf } from "@/components/seatLayout";
-import type { MatchVerdict } from "@/lib/matchState";
-import type { BotPersonalityId } from "@/lib/botPersonalities";
+import type { HandResult, MatchState, PlayerSetupConfig, RematchAnswers } from "@/lib/matchState";
 
 // Read once at module scope, matching app/game.tsx's own E2E_FAST — inlined
 // at bundle build time, so this only ever takes the fast path in a build the
@@ -59,32 +57,7 @@ const MEASURED_TAP_RETURN_MS = 8200;
 const E2E_EXCHANGE_HOLD_MARGIN_MS = 4000;
 const E2E_EXCHANGE_HOLD_MS = MEASURED_TAP_RETURN_MS + E2E_EXCHANGE_HOLD_MARGIN_MS;
 
-export interface PlayerSetupConfig {
-  name: string;
-  type: PlayerType;
-  personality?: BotPersonalityId;
-  team?: "A" | "B";
-}
-
-/** One played-out manche, keyed by engine player id (`player_0`). */
-export interface HandResult {
-  rankings: string[];
-  pointsAwarded: Record<string, number>;
-}
-
-/**
- * The match the manches belong to. Offline mirror of the server's
- * `OnlineGameState` match fields, folded forward by the same
- * `lib/gameEngine` function, so the two modes cannot drift apart.
- */
-export interface MatchState extends MatchVerdict {
-  /** Engine player id -> cumulative match points. */
-  scores: Record<string, number>;
-  hands: HandResult[];
-}
-
-/** Each seat's answer to the rematch question, by engine player id. */
-export type RematchAnswers = Record<string, boolean>;
+export type { PlayerSetupConfig, HandResult, MatchState, RematchAnswers };
 
 function freshMatch(length: MatchLength, playerCount: number): MatchState {
   return {

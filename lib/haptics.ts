@@ -1,6 +1,7 @@
 import * as Haptics from "expo-haptics";
 import { Platform } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { SETTINGS_KEY } from "./storageKeys.ts";
 
 // expo-haptics' web shim calls navigator.vibrate() per style, a no-op where
 // the Vibration API doesn't exist (iOS/desktop Safari) and real on Android
@@ -11,9 +12,8 @@ let _hapticsEnabled = true;
 
 // Same key/shape as SettingsContext — read once at module init so the stored
 // preference is honoured even before SettingsProvider has mounted and pushed it.
-const SETTINGS_STORAGE_KEY = "@murlan_settings";
 if (isHapticsPlatform) {
-  AsyncStorage.getItem(SETTINGS_STORAGE_KEY)
+  AsyncStorage.getItem(SETTINGS_KEY)
     .then((raw) => {
       if (!raw) return;
       try {

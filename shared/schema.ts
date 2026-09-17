@@ -1,7 +1,7 @@
 import { sql } from "drizzle-orm";
 import { pgTable, text, varchar, timestamp, integer, boolean, pgEnum, jsonb, index, uniqueIndex, primaryKey, bigserial, customType } from "drizzle-orm/pg-core";
 import type { GameState } from "../lib/gameEngine.ts";
-import type { PersistedEnvelope } from "../server/onlineGameLogic.ts";
+import type { PersistedEnvelope } from "./persistedEnvelope.ts";
 import type { ReplayMove, ReplaySeat } from "../lib/replay.ts";
 
 export const users = pgTable(

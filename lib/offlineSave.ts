@@ -9,11 +9,7 @@
 // they can be tested without AsyncStorage or a renderer. The context does the
 // I/O and nothing else.
 import type { GameMode, GameState } from "./gameEngine.ts";
-import type {
-  MatchState,
-  PlayerSetupConfig,
-  RematchAnswers,
-} from "../context/GameContext.tsx";
+import type { MatchState, PlayerSetupConfig, RematchAnswers } from "./matchState.ts";
 
 /**
  * Bumped whenever the stored shape changes. A blob written by an older build is
@@ -24,7 +20,7 @@ import type {
  */
 export const OFFLINE_SAVE_VERSION = 2;
 
-export const OFFLINE_SAVE_KEY = "@murlan_offline_game";
+export { OFFLINE_SAVE_KEY } from "./storageKeys.ts";
 
 export interface OfflineSave {
   version: number;

@@ -3,7 +3,8 @@
 // Relative imports and no `react-native`: the server bundles this unresolved, and
 // `node --test` loads it the same way — docs/agents/loops.md, "Node's TypeScript loader".
 import { aggregateTeamScores } from "./gameEngine.ts";
-import type { MatchLength } from "./gameEngine.ts";
+import type { MatchLength, PlayerType } from "./gameEngine.ts";
+import type { BotPersonalityId } from "./botPersonalities.ts";
 
 export interface MatchVerdict {
   length: MatchLength;
@@ -14,6 +15,32 @@ export interface MatchVerdict {
   winners: string[];
   isDraw: boolean;
 }
+
+export interface PlayerSetupConfig {
+  name: string;
+  type: PlayerType;
+  personality?: BotPersonalityId;
+  team?: "A" | "B";
+}
+
+/** One played-out manche, keyed by engine player id (`player_0`). */
+export interface HandResult {
+  rankings: string[];
+  pointsAwarded: Record<string, number>;
+}
+
+/**
+ * The offline match the manches belong to, folded forward by the same
+ * `lib/gameEngine` function as the server's, so the two modes cannot drift apart.
+ */
+export interface MatchState extends MatchVerdict {
+  /** Engine player id -> cumulative match points. */
+  scores: Record<string, number>;
+  hands: HandResult[];
+}
+
+/** Each seat's answer to the rematch question, by engine player id. */
+export type RematchAnswers = Record<string, boolean>;
 
 /**
  * What the results board calls the seat it celebrates.

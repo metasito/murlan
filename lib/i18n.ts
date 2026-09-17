@@ -29,6 +29,7 @@ import {
   type TranslationKey,
   type TranslationParams,
 } from "../shared/i18n.ts";
+import { LOCALE_KEY as STORAGE_KEY } from "./storageKeys.ts";
 
 export {
   DEFAULT_LOCALE,
@@ -46,7 +47,6 @@ export const LOCALE_LABELS: Record<Locale, string> = {
   sq: "Shqip",
 };
 
-const STORAGE_KEY = "murlan.locale";
 
 let currentLocale: Locale = DEFAULT_LOCALE;
 const listeners = new Set<() => void>();

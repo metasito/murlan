@@ -19,6 +19,7 @@ import { sendIntent } from "@/lib/sendIntent";
 import { MATCH_TARGETS } from "@/lib/gameEngine";
 import { handCountOf } from "@/components/seatLayout";
 import { clearReactions, pushReaction } from "@/lib/reactions";
+import { ACTIVE_ROOM_KEY, WAITING_ROOM_KEY } from "@/lib/storageKeys";
 import type { GameState, MatchLength } from "@/lib/gameEngine";
 import type { GameOverPayload, MatchVerdict } from "@/lib/matchState";
 import {
@@ -236,15 +237,11 @@ export {
   useExchangeSlice,
 };
 
-// Persisted so a cold start — or leaving the (online) route group, which unmounts
-// this provider — does not lock a player out of a game that is still live server-side.
-const ACTIVE_ROOM_KEY = "@murlan_active_room";
-
-// The waiting lobby's own handle, kept apart from ACTIVE_ROOM_KEY because the
-// two answer different events: a waiting room has no live game, so its id would
-// produce a `game:rejoin` the server can never satisfy. This one holds the room
+// ACTIVE_ROOM_KEY is persisted so a cold start — or leaving the (online) route
+// group, which unmounts this provider — does not lock a player out of a live game.
+// WAITING_ROOM_KEY is kept apart because a waiting room has no live game: its id
+// would produce a `game:rejoin` the server can never satisfy. It holds the room
 // *code*, which is what `room:rejoin` takes.
-const WAITING_ROOM_KEY = "@murlan_waiting_room";
 
 // A SERVER_ERROR rejoin failure is the server handler's blanket catch, not a
 // verdict on the table, so it is retried rather than treated as terminal. The

@@ -53,8 +53,7 @@ import TutorialScreen from '@/app/tutorial';
 import HomeScreen from '@/app/index';
 import { t } from '@/lib/i18n';
 
-const SEEN_KEY = '@murlan_tutorial_seen';
-const PROGRESS_KEY = '@murlan_tutorial_progress';
+import { TUTORIAL_SEEN_KEY as SEEN_KEY, TUTORIAL_PROGRESS_KEY as PROGRESS_KEY } from '@/lib/storageKeys';
 
 const METRICS = {
   frame: { x: 0, y: 0, width: 390, height: 844 },

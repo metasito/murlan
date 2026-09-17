@@ -1,8 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { apiRequest } from "@/lib/query-client";
-import type { AuthUser } from "@/context/AuthContext";
-
-const SEEN_KEY = "@murlan_tutorial_seen";
+import { TUTORIAL_SEEN_KEY as SEEN_KEY } from "@/lib/storageKeys";
 
 /**
  * Records that the tutorial has been offered, on this device and on the
@@ -22,7 +20,7 @@ export async function markTutorialSeen(userId: string | null): Promise<void> {
 }
 
 /** Either source counts: the account outlives the install, the device answers offline. */
-export async function tutorialSeen(user: AuthUser | null): Promise<boolean> {
+export async function tutorialSeen(user: { tutorialSeenAt?: string | null } | null): Promise<boolean> {
   const onThisDevice = await AsyncStorage.getItem(SEEN_KEY).catch(() => null);
   return onThisDevice !== null || Boolean(user?.tutorialSeenAt);
 }
