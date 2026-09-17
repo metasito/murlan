@@ -11,7 +11,7 @@ import {
 } from "react-native";
 import { useIsLandscape } from "@/lib/orientation";
 import { router } from "expo-router";
-import { hapticMedium, hapticSelection } from "@/lib/haptics";
+import { hapticMedium } from "@/lib/haptics";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import {
@@ -26,6 +26,7 @@ import { keyboardBehavior } from "@/lib/keyboard";
 import { MenuLayout } from "@/components/MenuLayout";
 import { MenuCard } from "@/components/MenuCard";
 import { MenuButton } from "@/components/MenuButton";
+import { ChoiceChips } from "@/components/ChoiceChips";
 import { useTranslation } from "@/lib/i18n";
 import { A11yStatus, a11yHidden, a11yState, useA11yHint } from "@/lib/a11y";
 import { AppModal } from "@/components/AppModal";
@@ -147,54 +148,37 @@ export default function OnlineLobbyScreen() {
       <MenuCard title={t("onlineLobby.createRoomTitle")} style={isLandscape ? styles.compactCard : undefined}>
         <View style={isLandscape ? styles.optSectionLandscape : styles.optSection}>
           <Text style={styles.optLabelSmall}>{t("onlineLobby.modeLabel")}</Text>
-          <View style={[styles.toggle, isLandscape && styles.gapXs]}>
-            {(["free_for_all", "teams"] as const).map((m) => (
-              <Pressable
-                key={m}
-                onPress={() => { setCreateMode(m); hapticSelection(); }}
-                style={[
-                  styles.toggleBtn,
-                  createMode === m && styles.toggleActive,
-                  isLandscape && styles.compactToggleBtn
-                ]}
-                accessibilityLabel={m === "free_for_all" ? t("onlineLobby.modeFreeForAll") : t("onlineLobby.modeTeams")}
-                {...a11yState({ role: "radio", selected: createMode === m })}
-              >
-                <Ionicons
-                  name={m === "teams" ? "people" : "person"}
-                  size={isLandscape ? 14 : 16}
-                  color={createMode === m ? Colors.gold : Colors.textSecondary}
-                  {...a11yHidden()}
-                />
-                <Text {...a11yHidden()} style={[styles.toggleText, createMode === m && styles.toggleTextActive, isLandscape && { fontSize: FontSize.xs }]}>
-                  {m === "free_for_all" ? t("onlineLobby.modeFreeForAll") : t("onlineLobby.modeTeams")}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
+          <ChoiceChips
+            choices={(["free_for_all", "teams"] as const).map((m) => ({
+              value: m,
+              label: m === "free_for_all" ? t("onlineLobby.modeFreeForAll") : t("onlineLobby.modeTeams"),
+              icon: (active: boolean) =>
+                m === "teams" ? (
+                  <Ionicons name="people" size={isLandscape ? MODE_ICON_COMPACT : MODE_ICON} color={active ? Colors.gold : Colors.textSecondary} {...a11yHidden()} />
+                ) : (
+                  <Ionicons name="person" size={isLandscape ? MODE_ICON_COMPACT : MODE_ICON} color={active ? Colors.gold : Colors.textSecondary} {...a11yHidden()} />
+                ),
+            }))}
+            value={createMode}
+            onChange={setCreateMode}
+            weight={isLandscape ? "caption" : "label"}
+            compact={isLandscape}
+          />
         </View>
 
         <View style={isLandscape ? styles.optSectionLandscape : styles.optSection}>
           <Text style={styles.optLabelSmall}>{t("onlineLobby.playersLabel")}</Text>
-          <View style={[styles.toggle, isLandscape && styles.gapXs]}>
-            {[2, 3, 4].map((n) => (
-              <Pressable
-                key={n}
-                onPress={() => { setCreatePlayers(n); hapticSelection(); }}
-                style={[
-                  styles.toggleBtn,
-                  createPlayers === n && styles.toggleActive,
-                  isLandscape && styles.compactToggleBtn
-                ]}
-                accessibilityLabel={t("lobby.playerCountOptionA11yLabel", { n })}
-                {...a11yState({ role: "radio", selected: createPlayers === n })}
-              >
-                <Text {...a11yHidden()} style={[styles.toggleText, createPlayers === n && styles.toggleTextActive, { fontSize: isLandscape ? COMPACT_COUNT_FONT : FontSize.lg }]}>
-                  {n}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
+          <ChoiceChips
+            choices={[2, 3, 4].map((n) => ({
+              value: n,
+              label: String(n),
+              a11yLabel: t("lobby.playerCountOptionA11yLabel", { n }),
+            }))}
+            value={createPlayers}
+            onChange={setCreatePlayers}
+            weight="digit"
+            compact={isLandscape}
+          />
         </View>
 
         {createMode === "teams" && createPlayers !== 4 && (
@@ -431,7 +415,8 @@ export default function OnlineLobbyScreen() {
   );
 }
 
-const COMPACT_COUNT_FONT = 14;
+const MODE_ICON = 16;
+const MODE_ICON_COMPACT = 14;
 
 const styles = StyleSheet.create({
   errorBanner: {
@@ -502,29 +487,6 @@ const styles = StyleSheet.create({
     letterSpacing: 2,
     marginBottom: Spacing.xxs,
   },
-  toggle: { flexDirection: "row", gap: Spacing.snug, flexWrap: "wrap" },
-  gapXs: { gap: Spacing.xs },
-  toggleBtn: {
-    flex: 1,
-    minWidth: 80,
-    minHeight: TOUCH_TARGET_MIN,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: Spacing.sm,
-    paddingVertical: Spacing.wide,
-    borderRadius: Radius.md,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    backgroundColor: Colors.bgSurface,
-  },
-  compactToggleBtn: { paddingVertical: Spacing.sm, minWidth: 60 },
-  toggleActive: {
-    borderColor: Colors.gold,
-    backgroundColor: Colors.goldMuted,
-  },
-  toggleText: { fontFamily: "Rajdhani_600SemiBold", fontSize: FontSize.sm, color: Colors.textSecondary },
-  toggleTextActive: { color: Colors.gold },
   warn: { fontFamily: "Inter_400Regular", fontSize: FontSize.xs, color: Colors.dangerDim, marginBottom: Spacing.xs },
   sectionFlex: { flex: 1 },
   divider: { flexDirection: "row", alignItems: "center", gap: Spacing.cosy },

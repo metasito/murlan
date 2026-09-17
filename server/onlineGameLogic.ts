@@ -53,19 +53,6 @@ export function seatTotal(
     : (cumulativeScores[key] ?? 0);
 }
 
-/**
- * The seat a viewer should see as "mine". Server-authoritative — this is
- * what sanitizeStateForPlayer stamps onto every game:state as
- * `viewerSeatIndex`, so the client never has to guess (and never falls back
- * to seat 0 when it doesn't know).
- */
-export function findViewerSeat(
-  playerMap: Record<number, string>,
-  viewerUserId: string
-): number | null {
-  return seatOfUser(playerMap, viewerUserId);
-}
-
 /** The shape of GameState.exchangePhase, restated because the two cards are
  * `unknown` here on purpose: this helper only decides whether to forward
  * them, never reads one. */

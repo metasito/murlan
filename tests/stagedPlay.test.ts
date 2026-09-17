@@ -115,3 +115,35 @@ describe("the opening play", () => {
     );
   });
 });
+
+describe("whether the hand can answer the pile at all", () => {
+  test("a hand holding a higher pair can beat a pair", () => {
+    const s = staged({ lastPlayedCombination: pairOfSevens, isNewRound: false });
+    assert.equal(s.canBeatPile, false);
+    const withJacks = staged({
+      hand: [...HAND, card("J", "spades"), card("J", "hearts")],
+      lastPlayedCombination: pairOfSevens,
+      isNewRound: false,
+    });
+    assert.equal(withJacks.canBeatPile, true);
+  });
+
+  test("a new round can always be led", () => {
+    assert.equal(staged({}).canBeatPile, true);
+  });
+
+  test("off turn, and once out, nothing is answerable", () => {
+    const over = { lastPlayedCombination: null, isNewRound: true };
+    assert.equal(staged({ ...over, isMyTurn: false }).canBeatPile, false);
+    assert.equal(staged({ ...over, isFinished: true }).canBeatPile, false);
+  });
+
+  test("the start card constrains the opening lead", () => {
+    const opening = {
+      startCard: card("4", "clubs"),
+      firstPlayMade: false,
+    };
+    assert.equal(staged(opening).canBeatPile, false);
+    assert.equal(staged({ ...opening, startCard: THREE_SPADES }).canBeatPile, true);
+  });
+});

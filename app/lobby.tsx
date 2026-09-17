@@ -3,7 +3,6 @@ import {
   View,
   Text,
   StyleSheet,
-  Pressable,
   ScrollView,
   TextInput,
 } from "react-native";
@@ -11,7 +10,7 @@ import { useIsLandscape } from "@/lib/orientation";
 import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
-import { hapticSelection, hapticSuccess } from "@/lib/haptics";
+import { hapticSuccess } from "@/lib/haptics";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import type { PlayerSetupConfig } from "@/context/GameContext";
@@ -20,11 +19,12 @@ import { useAuth } from "@/context/AuthContext";
 import { GameMode, MatchLength, firstTargetFor, teamForSeat } from "@/lib/gameEngine";
 import { BOT_PERSONALITIES, botSeatNames, getBotPersonality } from "@/lib/botPersonalities";
 import { DifficultyLadder } from "@/components/DifficultyLadder";
-import { Colors, Spacing, Radius, FontSize, TOUCH_TARGET_MIN, Type } from '@/lib/theme';
+import { Colors, Spacing, Radius, FontSize } from '@/lib/theme';
 import { MenuLayout } from "@/components/MenuLayout";
 import { MenuButton } from "@/components/MenuButton";
+import { ChoiceChips } from "@/components/ChoiceChips";
 import { useTranslation } from "@/lib/i18n";
-import { a11yHidden, a11yState, useA11yHint } from "@/lib/a11y";
+import { a11yHidden, useA11yHint } from "@/lib/a11y";
 
 type LobbyMode = "ai" | "local";
 
@@ -107,6 +107,7 @@ function PlayerRow({ index, config, onChange, isHuman, lobbyMode }: PlayerRowPro
 /** Full match first: it is the canonical Murlan game (docs/RULES.md §12). */
 const FORMAT_OPTIONS: readonly MatchLength[] = ["match", "single"];
 const START_BAR_CLEARANCE = 120;
+const MODE_ICON = 16;
 
 export default function LobbyScreen() {
   const insets = useSafeAreaInsets();
@@ -169,7 +170,6 @@ export default function LobbyScreen() {
     const newMode = count === 4 && gameMode === "teams" ? "teams" : "free_for_all";
     setGameMode(newMode);
     setPlayers(buildDefaultPlayers(count, newMode));
-    hapticSelection();
   };
 
   const handleModeChange = (gm: GameMode) => {
@@ -180,7 +180,6 @@ export default function LobbyScreen() {
         team: teamForSeat(i, playerCount, gm),
       }))
     );
-    hapticSelection();
   };
 
   const handlePlayerChange = (index: number, config: PlayerSetupConfig) => {
@@ -212,63 +211,54 @@ export default function LobbyScreen() {
     <>
       <View style={styles.section}>
         <Text style={styles.sectionLabel}>{t("lobby.playerCountLabel")}</Text>
-        <View style={styles.countRow}>
-          {[2, 3, 4].map((n) => (
-            <Pressable
-              key={n}
-              onPress={() => handleCountChange(n)}
-              style={[styles.countBtn, playerCount === n && styles.countBtnActive]}
-              accessibilityLabel={t("lobby.playerCountOptionA11yLabel", { n })}
-              {...a11yState({ role: "radio", selected: playerCount === n })}
-            >
-              <Text {...a11yHidden()} style={[styles.countBtnText, playerCount === n && styles.countBtnTextActive]}>{n}</Text>
-            </Pressable>
-          ))}
-        </View>
+        <ChoiceChips
+          choices={[2, 3, 4].map((n) => ({
+            value: n,
+            label: String(n),
+            a11yLabel: t("lobby.playerCountOptionA11yLabel", { n }),
+          }))}
+          value={playerCount}
+          onChange={handleCountChange}
+          weight="digit"
+        />
       </View>
 
       {playerCount === 4 && (
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>{t("lobby.modeLabel")}</Text>
-          <View style={styles.modeRow}>
-            {(["free_for_all", "teams"] as GameMode[]).map((gm) => (
-              <Pressable
-                key={gm}
-                onPress={() => handleModeChange(gm)}
-                style={[styles.modeBtn, gameMode === gm && styles.modeBtnActive]}
-                accessibilityLabel={gm === "teams" ? t("lobby.modeTeams") : t("lobby.modeFreeForAll")}
-                {...a11yState({ role: "radio", selected: gameMode === gm })}
-              >
-                <Ionicons name={gm === "teams" ? "people" : "person"} size={16} color={gameMode === gm ? Colors.gold : Colors.textSecondary} {...a11yHidden()} />
-                <Text {...a11yHidden()} style={[styles.modeBtnText, gameMode === gm && styles.modeBtnTextActive]}>
-                  {gm === "teams" ? t("lobby.modeTeams") : t("lobby.modeFreeForAll")}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
+          <ChoiceChips
+            choices={(["free_for_all", "teams"] as GameMode[]).map((gm) => ({
+              value: gm,
+              label: gm === "teams" ? t("lobby.modeTeams") : t("lobby.modeFreeForAll"),
+              icon: (active: boolean) =>
+                gm === "teams" ? (
+                  <Ionicons name="people" size={MODE_ICON} color={active ? Colors.gold : Colors.textSecondary} {...a11yHidden()} />
+                ) : (
+                  <Ionicons name="person" size={MODE_ICON} color={active ? Colors.gold : Colors.textSecondary} {...a11yHidden()} />
+                ),
+            }))}
+            value={gameMode}
+            onChange={handleModeChange}
+          />
         </View>
       )}
 
       <View style={styles.section}>
         <Text style={styles.sectionLabel}>{t("lobby.formatLabel")}</Text>
-        <View style={styles.formatRow}>
-          {FORMAT_OPTIONS.map((length) => {
-            const selected = matchLength === length;
+        <ChoiceChips
+          choices={FORMAT_OPTIONS.map((length) => {
             const { title, detail } = formatCopy(length);
-            return (
-              <Pressable
-                key={length}
-                onPress={() => { setMatchLength(length); hapticSelection(); }}
-                style={[styles.formatBtn, selected && styles.countBtnActive]}
-                accessibilityLabel={t("lobby.formatA11yLabel", { format: title, detail })}
-                {...a11yState({ role: "radio", selected })}
-              >
-                <Text {...a11yHidden()} style={[styles.formatTitle, selected && styles.countBtnTextActive]}>{title}</Text>
-                <Text {...a11yHidden()} style={[styles.formatDetail, selected && styles.formatDetailActive]}>{detail}</Text>
-              </Pressable>
-            );
+            return {
+              value: length,
+              label: title,
+              detail,
+              a11yLabel: t("lobby.formatA11yLabel", { format: title, detail }),
+            };
           })}
-        </View>
+          value={matchLength}
+          onChange={setMatchLength}
+          weight="title"
+        />
       </View>
     </>
   );
@@ -348,90 +338,6 @@ const styles = StyleSheet.create({
     fontSize: FontSize.xs,
     color: Colors.textMuted,
     letterSpacing: 2,
-  },
-  countRow: {
-    flexDirection: "row",
-    gap: Spacing.snug,
-  },
-  countBtn: {
-    flex: 1,
-    minHeight: TOUCH_TARGET_MIN,
-    paddingVertical: Spacing.wide,
-    borderRadius: Radius.md,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: Colors.bgSurface,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  countBtnActive: {
-    borderColor: Colors.gold,
-    backgroundColor: Colors.goldMuted,
-  },
-  countBtnText: {
-    fontFamily: "Rajdhani_700Bold",
-    fontSize: FontSize.xl,
-    color: Colors.textSecondary,
-  },
-  countBtnTextActive: {
-    color: Colors.gold,
-  },
-  formatRow: {
-    flexDirection: "row",
-    gap: Spacing.snug,
-  },
-  formatBtn: {
-    flex: 1,
-    minHeight: TOUCH_TARGET_MIN,
-    paddingVertical: Spacing.snug,
-    paddingHorizontal: Spacing.sm,
-    borderRadius: Radius.md,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: Spacing.xxs,
-    backgroundColor: Colors.bgSurface,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  formatTitle: {
-    fontFamily: "Rajdhani_700Bold",
-    fontSize: FontSize.md,
-    color: Colors.textSecondary,
-    letterSpacing: 0.5,
-  },
-  formatDetail: {
-    ...Type.caption,
-    textAlign: "center",
-  },
-  formatDetailActive: { color: Colors.goldLight },
-  modeRow: {
-    flexDirection: "row",
-    gap: Spacing.snug,
-  },
-  modeBtn: {
-    flex: 1,
-    minHeight: TOUCH_TARGET_MIN,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: Spacing.sm,
-    paddingVertical: Spacing.cosy,
-    borderRadius: Radius.md,
-    backgroundColor: Colors.bgSurface,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  modeBtnActive: {
-    borderColor: Colors.gold,
-    backgroundColor: Colors.goldMuted,
-  },
-  modeBtnText: {
-    fontFamily: "Rajdhani_600SemiBold",
-    fontSize: FontSize.sm,
-    color: Colors.textSecondary,
-  },
-  modeBtnTextActive: {
-    color: Colors.gold,
   },
   playerList: {
     gap: Spacing.sm,
