@@ -63,24 +63,25 @@ Server capacity is `npm run soak -- --tables 8 --minutes 1`: moves/sec and broad
 
 ## The baseline
 
-Desktop Chromium via Playwright, offline game, 4 players, `ef03d0c`, 2026-08-21
-— **before** any of #94's visual work.
+Desktop Chromium via Playwright, offline game, 4 players (online: 2 seats), `eb0d4825`
+(#1085), 2026-09-17. Before #94's visual work (`ef03d0c`) the deal had 1 janky frame and 179
+transformed nodes.
 
 | | frames | p50 | p95 | worst | janky | longTasks | transformed | domNodes |
 |---|---|---|---|---|---|---|---|---|
-| **deal** | 178 | 16.7 | 16.7 | **33.4** | 1 | 0 | 179 | 782 |
-| **idle** | 120 | 16.7 | 16.8 | 16.8 | 0 | 0 | 179 | 779 |
+| **deal** | 149 | 16.7 | **33.4** | 33.5 | **9** | 0 | 229 | 817 |
+| **idle** | 121 | 16.7 | 16.7 | 16.8 | 0 | 0 | 229 | 817 |
+| **drag** | 86 | 16.7 | 16.8 | 16.8 | 0 | 0 | 193 | 714 |
+| **online-idle** | 121 | 16.7 | 16.7 | 16.8 | 0 | 0 | 161 | 752 |
 
-Read it as: the table holds 60fps, and the deal costs **one dropped frame**. No
-long tasks at all, on this machine.
+| | fcp | lcp | tbt |
+|---|---|---|---|
+| **throttled-load** | 6600 | 6724 | 861 |
 
-`drag`, recorded later (2026-09-10, `ccf7ff1`, same machine):
+Read it as: a settled table and a drag hold 60fps with no long task; the deal now drops
+**nine frames**, up from one before #94. A throttled phone waits 6.7s for its largest paint.
 
-| | frames | p50 | p95 | worst | janky | longTasks | transformed | domNodes |
-|---|---|---|---|---|---|---|---|---|
-| **drag** | 87 | 16.7 | 16.7 | 16.8 | 0 | 0 | 193 | 711 |
-
-Read it as: **a drag has headroom to spare.** Every frame arrives on time, so a
+**A drag has headroom to spare.** Every frame arrives on time, so a
 change that removes work from the gesture cannot show up here — the saving is
 absorbed before it reaches the number. Moving the drop-slot decision onto the UI
 thread left all four figures identical, and that is the ceiling talking, not
@@ -88,7 +89,7 @@ evidence the work was free.
 
 Two things worth carrying forward:
 
-- **`transformed` is already 179 on a settled table**, against #95's ~100
+- **`transformed` is already 229 on a settled table**, against #95's ~100
   ceiling. The two are not the same measurement — a *static* transform counts
   here, and #95's number is about components *concurrently animating* — but it
   says the budget is not empty before the visual work starts, and it is the
