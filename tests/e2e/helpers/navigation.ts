@@ -3,7 +3,7 @@
 // scenarios) registration.
 
 import type { Page } from "@playwright/test";
-import { TUTORIAL_SEEN_KEY } from "../../../lib/storageKeys";
+import { TUTORIAL_SEEN_KEY } from "../../../lib/storageKeys.ts";
 
 /**
  * How long the home screen has to become interactive.
