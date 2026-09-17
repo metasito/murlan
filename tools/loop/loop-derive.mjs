@@ -77,6 +77,16 @@ export function ciRedRounds(comments) {
   return shas.size;
 }
 
+/**
+ * Whether a `CI-RED <sha>` comment for this exact head is already on the thread — the dedup the
+ * supervisor checks before posting another one for the same red head.
+ *
+ * @param {{body: string}[]} comments @param {string} sha
+ */
+export function ciRedPosted(comments, sha) {
+  return comments.some((c) => CI_RED_RE.exec(fenceStripped(c.body))?.[1] === sha);
+}
+
 /** @returns {string|null} */
 export function currentBranch(cwd) {
   try {

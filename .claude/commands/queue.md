@@ -164,9 +164,10 @@ those exact names — inside this loop they outrank any general instruction to r
 process skill, which would otherwise answer the same trigger differently each ticket.
 
 **A fix round** is phase C when `loop-status.mjs` says `fix round`: CI failed on the pushed head.
-Skip the planning. Read what failed — the `CI-RED` comment on the issue, else
-`.loop-logs/ci-<n>.log` (this machine's, and the supervisor that wrote it may be gone), else CI
-itself:
+Skip the planning. **Read the thread's `CI-RED` and any `FIX-NOTES` comments first** — what CI said
+and what an earlier round already ruled out, so this round does not reopen ground a prior session
+already covered. Falling back to `.loop-logs/ci-<n>.log` (this machine's, and the supervisor that
+wrote it may be gone), else CI itself, only when no `CI-RED` comment is there:
 
 ```sh
 gh run list --branch agent/<n>-<slug> --limit 1 --json databaseId --jq '.[0].databaseId' \
@@ -178,6 +179,16 @@ Fix what it names, then run the suite CI actually named as well as the usual che
 ```sh
 npm run agent:check -- --also test        # or loop:test, test:native, comments
 ```
+
+Before handing off, post what this round ruled out and its evidence — the next session's only
+record that the ground was already covered — first line the marker:
+
+```sh
+gh issue comment <n> --body-file <file>   # first line: FIX-NOTES <sha>
+```
+
+At most 15 lines: each hypothesis considered, ruled out or not, and the evidence for it. `<sha>` is
+`git rev-parse --short HEAD` in that worktree, taken after the fix is committed.
 
 Commit and hand off to D: the fix moves the head, and the new head needs its own review.
 

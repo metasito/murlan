@@ -18,7 +18,7 @@ import { createHash } from "node:crypto";
 import fs, { createWriteStream, mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { createInterface } from "node:readline";
-import { ciRedRounds, derive, REPO, reviewRounds, WORKTREE_DIR } from "./loop-derive.mjs";
+import { ciRedPosted, ciRedRounds, derive, REPO, reviewRounds, WORKTREE_DIR } from "./loop-derive.mjs";
 import { readLine } from "./loop-stream.mjs";
 import {
   act,
@@ -48,6 +48,7 @@ import {
 import {
   DIR,
   ciLogPath,
+  ciRedNotePath,
   leftoverPath,
   ledger as openLedger,
   parkNotePath,
@@ -61,7 +62,7 @@ import { readAllowedTools } from "./loop-tools.mjs";
 import { MAX_REVIEW_ROUNDS } from "./loop-gate.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import { branchSurvives, landing, mergeArgs } from "./land.ts";
-import { readVerdict } from "./ciVerdict.ts";
+import { failingTestIds, readVerdict } from "./ciVerdict.ts";
 
 // Spawning a sibling by its own directory, not the cwd: the supervisor runs from the repo root,
 // but nothing guarantees that, and the sibling is beside this file either way.
@@ -1542,6 +1543,78 @@ export async function settle(pending, screen, opts = {}) {
   }
 }
 
+/** The `failing:` line's ceiling, so one long test id cannot itself carry the line over budget. */
+const FAILING_LINE_MAX = 200;
+
+/** The fenced excerpt's ceiling, which is what keeps `ciRedBody` inside its own 15-line budget. */
+const EXCERPT_LINES = 8;
+
+function failingLine(testIds) {
+  if (testIds.length === 0) return "failing: (no test ids parsed)";
+  const shown = [];
+  let used = 0;
+  for (const id of testIds) {
+    const width = (shown.length ? "; " : "").length + id.length;
+    if (shown.length > 0 && used + width > FAILING_LINE_MAX) break;
+    shown.push(id);
+    used += width;
+  }
+  const rest = testIds.length - shown.length;
+  return `failing: ${shown.join("; ")}${rest > 0 ? ` +${rest} more` : ""}`;
+}
+
+/**
+ * The CI-RED comment's exact shape, so `ciRedRounds` can count it and a fix round can read it
+ * without re-fetching the run. `shared` names another branch already red on the same failure
+ * (task 8); until then every caller passes the default.
+ *
+ * @param {{sha: string, runUrl: string, failedStep?: string, testIds?: string[], excerpt?: string,
+ *   shared?: string}} args
+ */
+export function ciRedBody({ sha, runUrl, failedStep, testIds = [], excerpt = "", shared = "none" }) {
+  return [
+    `CI-RED ${sha}`,
+    `run: ${runUrl} · step: ${failedStep ?? "an unnamed step"}`,
+    failingLine(testIds),
+    `shared: ${shared}`,
+    "```",
+    ...excerpt.split("\n").slice(-EXCERPT_LINES),
+    "```",
+  ].join("\n");
+}
+
+/**
+ * Posted once per red head, checked against the tracker rather than a local marker: a marker
+ * surviving only on this machine is exactly what stranded #1077's second fix session with nothing
+ * to read. An unreadable tracker is a reason to skip, never to post blind.
+ */
+function postCiRedOnce(ticket, verdict, run, write, log) {
+  const sha = verdict.head;
+  if (!sha) return;
+  let comments;
+  try {
+    comments = JSON.parse(run("gh", ["issue", "view", String(ticket), "--json", "comments"])).comments;
+  } catch (err) {
+    log(`CI-RED: could not read the tracker — ${String(err.message).split("\n")[0]}`);
+    return;
+  }
+  if (ciRedPosted(comments, sha)) return;
+  const body = ciRedBody({
+    sha,
+    runUrl: `https://github.com/${REPO}/actions/runs/${verdict.runId}`,
+    failedStep: verdict.failedStep,
+    testIds: failingTestIds(verdict.output),
+    excerpt: verdict.output,
+  });
+  try {
+    const file = ciRedNotePath(ticket);
+    write(file, body, "utf8");
+    run("gh", ["issue", "comment", String(ticket), "--body-file", file]);
+  } catch (err) {
+    log(`CI-RED: could not post — ${String(err.message).split("\n")[0]}`);
+  }
+}
+
 export async function poll(pending, log, pause, deadline, io = {}) {
   const { run = sh, verdictOf = readVerdict, write = writeFileSync, mkdir = mkdirSync } = io;
   const left = { ...SETTLE_ROUNDS };
@@ -1569,6 +1642,7 @@ export async function poll(pending, log, pause, deadline, io = {}) {
       if (next.action === "hand-back" && verdict.output && !verdict.logUnread) {
         mkdir(DIR, { recursive: true });
         write(ciLogPath(pending.ticket), verdict.output, "utf8");
+        postCiRedOnce(pending.ticket, verdict, run, write, log);
       }
     } catch (err) {
       // `gh` refusing, a rate limit, or anything that is not JSON. The ticket is pushed and its

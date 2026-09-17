@@ -9,7 +9,7 @@
 // returns. Only the subprocess is fake.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { poll, SETTLE_ROUNDS } from "../queue-loop.mjs";
+import { ciRedBody, poll, SETTLE_ROUNDS } from "../queue-loop.mjs";
 import { readHeadCi, readVerdict } from "../ciVerdict.ts";
 
 const PENDING = { ticket: 1028, pr: 1053, branch: "agent/1028-the-turn-chip" };
@@ -37,6 +37,7 @@ function ghFake({
   log = "Native tests\tRun tests\t2026-09-14T00:00:00Z FAIL",
   remoteSha = SHA,
   prList = [{ number: PENDING.pr, headRefOid: SHA }],
+  issueComments = [],
 }: {
   script: unknown[][];
   pr?: Record<string, string>;
@@ -44,6 +45,7 @@ function ghFake({
   log?: string | null;
   remoteSha?: string | null;
   prList?: unknown[];
+  issueComments?: { body: string }[];
 }) {
   const asked: string[][] = [];
   let listed = 0;
@@ -61,6 +63,8 @@ function ghFake({
       return JSON.stringify({ headRefOid: SHA });
     }
     if (args[0] === "pr" && args[1] === "view") return JSON.stringify(pr);
+    if (args[0] === "issue" && args[1] === "view") return JSON.stringify({ comments: issueComments });
+    if (args[0] === "issue" && args[1] === "comment") return "";
     if (args[0] === "run" && args[1] === "list") {
       const at = Math.min(listed++, script.length - 1);
       return JSON.stringify(script[at]);
@@ -100,7 +104,7 @@ describe("settle, replayed against recorded gh payloads", () => {
     assert.equal(out.action, "hand-back");
     assert.equal((out as { head?: string }).head, SHA, "the retry row records the head CI judged");
     assert.match(String(out.reason), /Native tests/);
-    assert.equal(written.length, 1, "the fix round's only input is that log");
+    assert.equal(written.length, 2, "the log, plus the CI-RED note posted alongside it");
     assert.match(written[0][0], /ci-1028\.log$/);
     assert.ok(
       said.filter((s) => /still in_progress/.test(s)).length >= 2,
@@ -194,5 +198,67 @@ describe("readHeadCi, replayed against recorded gh payloads", () => {
     const { gh } = ghFake({ script: [runRow("completed", "success")], remoteSha: null });
     const out = readHeadCi("metasito/murlan", PENDING.branch, (args) => gh(args), Date.now() + 60_000);
     assert.equal(out.remoteSha, null);
+  });
+});
+
+describe("poll posts CI-RED once per red head", () => {
+  const redFake = (issueComments: { body: string }[] = []) =>
+    ghFake({
+      script: [runRow("completed", "failure")],
+      jobs: [{ name: "Native tests", conclusion: "failure", steps: 11 }],
+      log: "Native tests\tRun tests\t2026-09-14T00:00:00Z   1) [chromium] › tests/e2e/x.spec.ts:9:5 › some test",
+      issueComments,
+    });
+  const comment = (asked: string[][]) => asked.filter((a) => a[0] === "issue" && a[1] === "comment");
+
+  test("hand-back posts one CI-RED comment per red head", async () => {
+    const written: string[][] = [];
+    const { gh, asked } = redFake();
+    await poll(PENDING, () => {}, 0, DEADLINE, io(gh, written));
+    const posted = comment(asked);
+    assert.equal(posted.length, 1);
+    const file = posted[0][posted[0].indexOf("--body-file") + 1];
+    const body = written.find(([path]) => path === file)?.[1];
+    assert.match(String(body), new RegExp(`^CI-RED ${SHA}`));
+  });
+
+  test("the same head red twice posts once", async () => {
+    const { gh, asked } = redFake([{ body: `CI-RED ${SHA}\nrun: x · step: y\nfailing: z\nshared: none` }]);
+    await poll(PENDING, () => {}, 0, DEADLINE, io(gh));
+    assert.equal(comment(asked).length, 0);
+  });
+
+  test("an unreadable tracker skips posting rather than posting blind", async () => {
+    const { gh: base, asked } = redFake();
+    const gh = (args: string[], file = "gh") => {
+      if (args[0] === "issue" && args[1] === "view") throw new Error("gh: connection reset");
+      return base(args, file);
+    };
+    await poll(PENDING, () => {}, 0, DEADLINE, io(gh));
+    assert.equal(comment(asked).length, 0);
+  });
+});
+
+describe("ciRedBody", () => {
+  const runUrl = "https://github.com/metasito/murlan/actions/runs/1";
+
+  test("names the head, the run and step, and the excerpt is fenced", () => {
+    const body = ciRedBody({ sha: SHA, runUrl, failedStep: "Native tests", testIds: ["a"], excerpt: "boom" });
+    const lines = body.split("\n");
+    assert.equal(lines[0], `CI-RED ${SHA}`);
+    assert.match(lines[1], /^run: .+ · step: Native tests$/);
+    assert.deepEqual(lines.slice(-3), ["```", "boom", "```"]);
+    assert.match(body, /^shared: none$/m);
+  });
+
+  test("stays within 15 lines with 30 failing test ids, truncated with '+N more'", () => {
+    const testIds = Array.from({ length: 30 }, (_, i) => `tests/e2e/x.spec.ts › case ${i} does a thing`);
+    const excerpt = Array.from({ length: 20 }, (_, i) => `log line ${i}`).join("\n");
+    const body = ciRedBody({ sha: SHA, runUrl, failedStep: "Native tests", testIds, excerpt });
+    const lines = body.split("\n");
+    assert.ok(lines.length <= 15, `${lines.length} lines`);
+    assert.match(body, /\+\d+ more/);
+    const failing = lines.find((l) => l.startsWith("failing:"));
+    assert.ok(failing && failing.length <= 210, "the failing: line must stay short too");
   });
 });

@@ -7,8 +7,20 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { ticketOf, verdictFor, reviewFor, reviewRounds, ciRedRounds, derive, locateRun, BRANCH } from "../loop-derive.mjs";
+import {
+  ticketOf,
+  verdictFor,
+  reviewFor,
+  reviewRounds,
+  ciRedRounds,
+  ciRedPosted,
+  derive,
+  locateRun,
+  BRANCH,
+} from "../loop-derive.mjs";
 import { report } from "../loop-status.mjs";
+import { ciRedBody } from "../queue-loop.mjs";
+import { ticketTally } from "../loop-logs.mjs";
 
 /**
  * The state file these replace failed in one way over and over: it said something that was no
@@ -188,6 +200,46 @@ describe("ciRedRounds", () => {
 
   test("no claim at all still counts the CI-RED comments there are", () => {
     assert.equal(ciRedRounds([{ body: "CI-RED aaaaaaa" }]), 1);
+  });
+
+  const sha = "cccccccccccccccccccccccccccccccccccccccc";
+
+  test("a real ciRedBody output is counted once, and a decoy in its own excerpt cannot double it", () => {
+    const body = ciRedBody({
+      sha,
+      runUrl: "https://github.com/metasito/murlan/actions/runs/1",
+      failedStep: "Native tests",
+      testIds: ["tests/e2e/x.spec.ts › case"],
+      excerpt: "CI-RED bbbbbbb\nsome log line",
+    });
+    assert.equal(ciRedRounds([claim, { body }]), 1);
+  });
+
+  test("one red round counts once as a retry and once as a CI round, never twice in either", () => {
+    const tally = ticketTally(1, [{ n: 1, cost: 0, outcome: "retry", head: sha }]);
+    assert.equal(tally.retries, 1);
+    assert.equal(ciRedRounds([claim, { body: `CI-RED ${sha}` }]), 1);
+  });
+});
+
+describe("ciRedPosted", () => {
+  const sha = "cccccccccccccccccccccccccccccccccccccccc";
+
+  test("finds a CI-RED comment naming this exact head", () => {
+    assert.equal(ciRedPosted([{ body: `CI-RED ${sha}` }], sha), true);
+  });
+
+  test("a different head is not a match", () => {
+    assert.equal(ciRedPosted([{ body: "CI-RED dddddddddddddddddddddddddddddddddddddddd" }], sha), false);
+  });
+
+  test("no comments at all is not posted", () => {
+    assert.equal(ciRedPosted([], sha), false);
+  });
+
+  test("a CI-RED quoted inside a fence does not count as posted", () => {
+    const fence = "```";
+    assert.equal(ciRedPosted([{ body: `see:\n${fence}\nCI-RED ${sha}\n${fence}` }], sha), false);
   });
 });
 

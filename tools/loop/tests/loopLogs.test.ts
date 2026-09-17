@@ -70,6 +70,7 @@ describe("artefact names", () => {
   test("a stream log, a CI tail and a park note are", () => {
     assert.equal(prunable("999.jsonl"), true);
     assert.equal(prunable("ci-999.log"), true);
+    assert.equal(prunable("ci-red-999.md"), true);
     assert.equal(prunable("park-999.md"), true);
   });
 
