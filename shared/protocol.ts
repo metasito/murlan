@@ -6,7 +6,7 @@ import type { DefaultEventsMap } from "socket.io";
 import type { GameState, Player } from "../lib/gameEngine.ts";
 import type { GameOverPayload } from "../lib/matchState.ts";
 
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2;
 export const MIN_PROTOCOL_VERSION = 1;
 
 /** The handshake's refusal for a bundle older than MIN_PROTOCOL_VERSION. */
