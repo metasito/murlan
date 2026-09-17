@@ -124,13 +124,14 @@ export function readTicket(lines, ticket = "") {
 
 const median = (a) => [...a].sort((x, y) => x - y)[Math.floor(a.length / 2)] ?? 0;
 
-/** A ledger row (one session) whose `models` ran a family MODEL_BY_PHASE did not plan for. */
+/**
+ * A ledger row (one session) whose costliest model is not the family planned for its first phase.
+ * The session's `--model` is chosen from that phase and kept for any phase it runs on into.
+ */
 export function mismatchedModel(row) {
-  const ran = new Set(Object.keys(row.models ?? {}).map(familyOf).filter(Boolean));
-  return Object.keys(row.phases ?? {}).some((l) => {
-    const want = MODEL_BY_PHASE[l];
-    return want && ran.size && !ran.has(want);
-  });
+  const want = MODEL_BY_PHASE[Object.keys(row.phases ?? {})[0]];
+  const [top] = Object.entries(row.models ?? {}).sort((a, b) => b[1] - a[1]);
+  return Boolean(want && top && familyOf(top[0]) !== want);
 }
 
 /** A ticket's rows since its last `landed`/`parked` close — an open window still counts. */

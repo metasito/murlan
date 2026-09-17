@@ -152,6 +152,12 @@ describe("mismatchedModel", () => {
     assert.equal(mismatchedModel({ phases: { E: 60 }, models: { "claude-sonnet-5": 1 } }), false);
   });
 
+  test("judges the session's costliest model against the phase it started at", () => {
+    assert.equal(mismatchedModel({ phases: { C: 60, E: 9 }, models: { "claude-sonnet-5": 3, "claude-opus-5": 0.2 } }), true);
+    assert.equal(mismatchedModel({ phases: { D: 60, E: 9 }, models: { "claude-opus-5": 3 } }), false);
+    assert.equal(mismatchedModel({ phases: { E: 60 }, models: { "claude-sonnet-5": 1, "claude-opus-5": 0.1 } }), false);
+  });
+
   test("a row naming no phase or no model has nothing to compare", () => {
     assert.equal(mismatchedModel({ phases: {}, models: { opus: 1 } }), false);
     assert.equal(mismatchedModel({ phases: { A: 1 }, models: {} }), false);
