@@ -1014,6 +1014,14 @@ function assertPlayable(state: GameState, combination: Combination): void {
   if (combination.cards.length === 0) {
     throw new Error(`${player.name} played nothing`);
   }
+  if (state.exchangePhase?.active) {
+    throw new Error(`${player.name} cannot play while the exchange is open`);
+  }
+  const played = combination.cards.map((c) => c.id);
+  // Membership alone passes `[7s,7s,7s,7s]` as a bomb: every id is held, once.
+  if (new Set(played).size !== played.length) {
+    throw new Error(`${player.name} played ${played.join(", ")}, which repeats a card`);
+  }
   const held = new Set(player.hand.map((c) => c.id));
   const missing = combination.cards.filter((c) => !held.has(c.id)).map((c) => c.id);
   if (missing.length > 0) {
@@ -1104,6 +1112,7 @@ export function processPass(state: GameState): GameState {
   // A player leading a new round must play something — passing is not a legal
   // move for them. The engine is the server-authoritative path, so it refuses
   // here rather than relying on the UI. State is returned untouched.
+  if (state.exchangePhase?.active) return state;
   if (state.lastPlayedCombination === null) return state;
 
   const newState = structuredClone(state);
