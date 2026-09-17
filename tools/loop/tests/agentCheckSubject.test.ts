@@ -210,10 +210,18 @@ describe("the cached verdict and what a failure prints", () => {
     assert.deepEqual(runs.map((r) => r.text), ["a", "b", "x"]);
   });
 
-  test("the real runner reports a failing command's exit and output", async () => {
-    const step = { name: "nope", args: ["run", "definitely-not-a-script"] };
-    const run = await runStep(step, undefined, quiet);
-    assert.equal(run.failed, "nope");
-    assert.match(run.text, /=== nope === FAILED\n[\s\S]*definitely-not-a-script/);
+  // Run under `npm run -s`, as the suite often is: the silent level must not reach the step.
+  test("the real runner reports a failing command's exit and output, even under a silent npm", async () => {
+    const saved = process.env.npm_config_loglevel;
+    process.env.npm_config_loglevel = "silent";
+    try {
+      const step = { name: "nope", args: ["run", "definitely-not-a-script"] };
+      const run = await runStep(step, undefined, quiet);
+      assert.equal(run.failed, "nope");
+      assert.match(run.text, /=== nope === FAILED\n[\s\S]*definitely-not-a-script/);
+    } finally {
+      if (saved === undefined) delete process.env.npm_config_loglevel;
+      else process.env.npm_config_loglevel = saved;
+    }
   });
 });

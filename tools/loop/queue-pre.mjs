@@ -101,9 +101,9 @@ export function namedWorktrees(dirs = existsSync(WORKTREE_DIR) ? readdirSync(WOR
   if (bad.length === 0) return null;
   return {
     state: "failed",
-    detail: `${bad.length} that derive() cannot see`,
+    detail: `${bad.length} not made by the loop — remove to start`,
     note: bad
-      .map((n) => `${WORKTREE_DIR}/${n} is not an agent-<n> worktree\n  npm run worktrees:remove -- ${WORKTREE_DIR}/${n}`)
+      .map((n) => `${WORKTREE_DIR}/${n}\n  npm run worktrees:remove -- ${WORKTREE_DIR}/${n}`)
       .join("\n"),
     stop: 1,
   };

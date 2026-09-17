@@ -50,6 +50,7 @@ import {
   ciLogPath,
   ciRedNotePath,
   leftoverPath,
+  ledgerPath,
   ledger as openLedger,
   parkNotePath,
   parkReasonOf,
@@ -598,7 +599,7 @@ export async function holdFor(
   while (Date.now() < until) {
     if (exists(STOP_FILE)) return "stopped";
     if (say && Date.now() >= next) {
-      say(`  ⏸ still waiting — back at ${clockAt(until)}`);
+      say(`still waiting — back at ${clockAt(until)}`);
       next = Date.now() + beat;
     }
     // Not unref'd: by now this is the only handle keeping the process alive.
@@ -818,7 +819,7 @@ export function ticker(out = process.stdout, err = process.stderr, reveal = open
   let hidden = false;
   let raw = false;
   const view = { expanded: false, stopping: false };
-  let ctx = { url: null, log: null };
+  let ctx = { url: null, log: null, since: null };
 
   const hide = () => {
     if (!live || hidden) return;
@@ -845,7 +846,7 @@ export function ticker(out = process.stdout, err = process.stderr, reveal = open
     const body = view.expanded
       ? streamBlock(open.feed, { ms, frame, letter: open.letter }, t, room)
       : [
-          progress({ letter: open.letter, ms, round: open.round }, t),
+          progress({ letter: open.letter, round: open.round, ticketMs: ctx.since == null ? null : Date.now() - ctx.since }, t),
           "",
           activity({ said: open.said, recent: open.recent, ms, frame }, t, room - 4),
         ].join("\n");
@@ -1024,7 +1025,8 @@ export function ticker(out = process.stdout, err = process.stderr, reveal = open
     },
     /** What the `o` and `l` keys open. Set once per ticket, beside its header. */
     context(next = {}) {
-      ctx = { url: null, log: null, ...next };
+      const { spentMs, ...rest } = next;
+      ctx = { url: null, log: null, since: spentMs == null ? null : Date.now() - spentMs, ...rest };
       view.stopping = fs.existsSync(STOP_FILE);
     },
     start(letter, round = null) {
@@ -1301,14 +1303,15 @@ export function runTicket(
   // one. Null when the tracker could not be read — a number nobody could take is not a count of none.
   const round = () => {
     if (state.phase === "D" && about.reviewRounds != null) return { n: about.reviewRounds + 1, of: MAX_REVIEW_ROUNDS };
-    if (state.phase === "C" && fix) return { n: retryCount + 1, of: CI_ROUNDS, fix: true };
+    // `retryCount` red CI runs so far is that many fixes, out of the runs after the first.
+    if (state.phase === "C" && fix) return { n: Math.max(1, retryCount), of: CI_ROUNDS - 1, fix: true };
     return null;
   };
 
   if (screen.needsHeader(number)) screen.say(header({ number, ...about, queue }, screen.theme));
-  screen.context({ url: about.url, log: logPath });
+  const spentMs = ticketTally(number, readLedger(ledgerPath(undefined, dir))).ms;
+  screen.context({ url: about.url, log: logPath, spentMs });
   if (at) {
-    screen.say(phaseRow({ letter: at, detail: "resumed", ms: 0, state: "resumed", round: round() }, screen.theme));
     // Opened here, not left for the session's own marker: `state.phase` is already this letter, so
     // the marker is read as "no change" and the board stays dark for the whole of that phase.
     screen.start(at, round());
@@ -1398,7 +1401,7 @@ export function runTicket(
         state.tasks.delete(fact.id);
         state.tasks.set(fact.id, fact);
       }
-      const detail = tasksDetail([...state.tasks.values()], Date.now() - state.phaseAt);
+      const detail = tasksDetail([...state.tasks.values()]);
       if (detail) screen.said(detail);
     }
     // A session emits one result per turn, and a background task's wake-up is a turn. The real one
@@ -1959,7 +1962,7 @@ export async function runOnce(io, pinned = null, at = null) {
   // of those clears on its own, including the drift the loop's own merge of a lockfile creates.
   const pre = io.queuePre();
   if (pre === 2) return { outcome: "hold", why: "queue-pre is not ready for a ticket yet" };
-  if (pre !== 0) return { outcome: "stop", why: `queue-pre exited ${pre}` };
+  if (pre !== 0) return { outcome: "stop", why: "a pre-flight check refused — see the row above" };
 
   let route = io.pick(pinned, at);
   if (route.skill === "closed") {
@@ -2221,15 +2224,19 @@ function realIo(book, screen) {
     },
     spawn: (route) => {
       if (!route.resuming) {
-        screen.say(`  · picking — ${route.queue?.implement ?? 0} takeable`);
+        if (screen.needsHeader(route.number)) {
+          const { tickets, ms, cost } = book.totals;
+          const run = { nth: tickets + 1, runMs: tickets ? ms : null, spend: tickets ? cost : null };
+          const url = `https://github.com/${REPO}/issues/${route.number}`;
+          screen.say(header({ number: route.number, title: route.title, size: route.size, url, queue: route.queue, ...run }, screen.theme));
+        }
         // A lost race exits 1, which `sh` raises. It is not a failure of this run: the ticket is
         // someone else's, and the shape that says so is the stand-down every other path already
         // reads — so the session is never spawned and `runOnce` parks it from the declaration.
         try {
           const claimed = sh("node", [HERE + "/claim.mjs", String(route.number), route.title]);
-          screen.say(
-            stepRow({ label: "claim", detail: claimed.split("\t").slice(1, 3).join(" "), ms: null }, screen.theme),
-          );
+          const branch = claimed.split("\t")[2] ?? "";
+          screen.say(stepRow({ label: "claim", detail: `won · ${branch}`, ms: null }, screen.theme));
         } catch (err) {
           const why = String(err.stdout ?? "").split("\t").at(-1)?.trim() || "the claim did not stand";
           screen.say(stepRow({ label: "claim", detail: why, ms: null, state: "failed" }, screen.theme));
@@ -2259,7 +2266,7 @@ function realIo(book, screen) {
       if (screen.needsHeader(route.number)) {
         screen.say(header({ number: route.number, ...ticketFacts(route.number), queue: route.queue }, screen.theme));
       }
-      screen.say(phaseRow({ letter: "G", detail: "resumed", ms: 0, state: "resumed" }, screen.theme));
+      screen.context({ spentMs: ticketTally(route.number, readLedger()).ms });
     },
     block: (number, blocker, cwd) => blockOnShared(number, blocker, cwd && fs.existsSync(cwd) ? cwd : null),
     buildPassed: (cwd) => {
@@ -2320,21 +2327,30 @@ function realIo(book, screen) {
      */
     record: ({ number, outcome, why, run, pr = null, merged = false, files = 0, counts = true, head = null }) => {
       const facts = ticketFacts(number);
-      const cost = windowCost({ n: number, outcome, own: run.result?.cost ?? 0 }, readLedger());
-      screen.say(
-        closing({
-          outcome: outcome === "landed" ? "merged" : outcome,
-          number,
-          files,
-          turns: run.result?.turns ?? 0,
-          ms: run.ms,
-          cost,
-          why: why ?? undefined,
-          log: outcome === "landed" ? undefined : run.log,
-        },
-        screen.theme,
-      ),
-    );
+      const rows = readLedger();
+      const cost = windowCost({ n: number, outcome, own: run.result?.cost ?? 0 }, rows);
+      // The merged row is the ticket's whole bill; the land session alone has no turns and no spend.
+      const whole = outcome === "landed" ? ticketTally(number, rows) : null;
+      const bill = whole
+        ? { ms: whole.ms + run.ms, turns: whole.turns + (run.result?.turns ?? 0), cost: whole.spend + (run.result?.cost ?? 0) }
+        : { ms: run.ms, turns: run.result?.turns ?? 0, cost };
+      // Each of these is said by the row after it: the next phase opening, or the merge step's own
+      // result. The log is offered only where something needs reading.
+      if (!["handoff", "retry", "pushed"].includes(outcome)) {
+        screen.say(
+          closing(
+            {
+              outcome: outcome === "landed" ? "merged" : outcome,
+              number,
+              files,
+              ...bill,
+              why: why ?? undefined,
+              log: outcome === "landed" ? undefined : run.log,
+            },
+            screen.theme,
+          ),
+        );
+      }
       book.record(
         {
           number,
@@ -2366,8 +2382,8 @@ function realIo(book, screen) {
               title: facts.title,
               outcome,
               pr,
-              ms: run.ms,
-              cost,
+              ms: bill.ms,
+              cost: bill.cost,
               why: why ?? undefined,
             },
             PLAIN(),
@@ -2439,11 +2455,12 @@ export async function main({
   /** Every exit writes the total. The clean stop used to print it to the screen and nowhere else. */
   const finish = (code, why) => {
     const total = runTotal(book.totals);
+    const t = screen.theme ?? PLAIN();
     if (why) {
-      if (code === 0) screen.say(`   ${why} — stopping`);
-      else screen.notice("stopping", why);
+      if (code === 0) screen.say(stepRow({ label: "stopped", detail: why, state: "skipped" }, t));
+      else screen.notice("stopped", why);
     }
-    screen.say(total);
+    screen.say(`${t.paint("faint", "─".repeat(t.width))}\n   ${t.paint("text", `run total  ${total}`, true)}`);
     book.close(runId, total);
     bell();
     return code;
@@ -2495,8 +2512,8 @@ export async function main({
     if (pass.outcome === "hold") {
       holds += 1;
       if (holds > WAIT.TRIES) return finish(1, `${pass.why}, ${holds} times running`);
-      screen.say(`  ⏸ ${pass.why} (${holds}/${WAIT.TRIES}) — asking again shortly`);
-      if ((await holdFor(WAIT.FLOOR, undefined, undefined, (m) => screen.say(m))) === "stopped") {
+      screen.notice("waiting", `${pass.why} — asking again shortly (${holds} of ${WAIT.TRIES})`);
+      if ((await holdFor(WAIT.FLOOR, undefined, undefined, (m) => screen.notice("waiting", m))) === "stopped") {
         return finish(0, ".loop-stop during the wait");
       }
       continue;
@@ -2510,10 +2527,11 @@ export async function main({
       const step = afterRefusal({ waits, blocked: true, blockedUntil: pass.until });
       waits = step.waits;
       if (step.action === "give-up") return finish(1, step.why);
-      screen.say(
-        `  ⏸ #${pass.ticket} the usage window is spent (${waits}/${WAIT.TRIES}) — back at ${clockAt(Date.now() + step.hold)}`,
+      screen.notice(
+        "usage",
+        `#${pass.ticket} paused: the usage window is spent — back at ${clockAt(Date.now() + step.hold)} (wait ${waits} of ${WAIT.TRIES})`,
       );
-      if ((await holdFor(step.hold, undefined, undefined, (m) => screen.say(m))) === "stopped") {
+      if ((await holdFor(step.hold, undefined, undefined, (m) => screen.notice("waiting", m))) === "stopped") {
         return finish(0, ".loop-stop during the wait");
       }
       continue;
@@ -2556,14 +2574,11 @@ export async function main({
         if (giveUp(`${tally.handoffsThisRound} phase handoffs on one ticket`)) return halted();
         continue;
       }
-      if (pass.outcome === "retry") {
-        screen.say(`  🔁 #${pass.ticket} ${pass.why} — fix round ${tally.retries + 1}/${CI_ROUNDS}`);
-      }
       continue;
     }
     pinned = null;
     if (pass.outcome === "blocked") {
-      screen.say(`  ⏸ #${pass.ticket} ${pass.why}`);
+      screen.notice("blocked", `#${pass.ticket} ${pass.why}`);
       continue;
     }
     if (pass.outcome === "landed") {

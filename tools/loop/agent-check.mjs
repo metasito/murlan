@@ -55,10 +55,18 @@ const spawnAsync = (file, args, opts) =>
     });
   });
 
+/**
+ * The parent's environment minus npm's log level. `npm run -s` exports it as silent, and a step's
+ * npm inherits that and prints nothing — so a failed step would be reported with no reason.
+ */
+export const stepEnv = (env = process.env) =>
+  Object.fromEntries(Object.entries(env).filter(([k]) => k.toLowerCase() !== "npm_config_loglevel"));
+
 export async function runStep(step, spawn = spawnAsync, write = (s) => void process.stdout.write(s)) {
   write(`▸ ${step.name} …\n`);
   const run = await spawn("npm", step.args, {
     encoding: "utf8",
+    env: stepEnv(),
     shell: process.platform === "win32",
     timeout: STEP_TIMEOUT_MS,
     maxBuffer: 256 * 1024 * 1024,
