@@ -138,11 +138,15 @@ export async function announcePresence({ io, socket, userId }: PresenceContext) 
       for (const [roomId, game] of activeGames.entries()) {
         if (seatOfUser(game, userId) === null || game.gameState.gameOver) continue;
         joinSocketToRoom(socket, roomId);
-        await announceRejoin(io, userId, roomId, game);
-        logger.info(
-          { userId, roomId },
-          "Player reconnected within grace period"
-        );
+        try {
+          await announceRejoin(io, userId, roomId, game);
+          logger.info(
+            { userId, roomId },
+            "Player reconnected within grace period"
+          );
+        } catch (err) {
+          logger.error({ err, userId, roomId }, "grace rejoin failed");
+        }
         break;
       }
     }

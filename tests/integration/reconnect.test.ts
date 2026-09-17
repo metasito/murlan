@@ -319,6 +319,31 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
     }
   });
 
+  test("a rejoin that throws still sends the friend list", async () => {
+    const { activeGames } = await import("../../server/gameRoom.ts");
+    const alice = await connectAs(server, "rejoin_throw_alice");
+    const bob = await connectAs(server, "rejoin_throw_bob");
+    const room = await setUpRoom([alice, bob], 2);
+    const table = [alice, bob];
+    try {
+      await startGame(table);
+      const gone = waitFor(alice.socket, "game:player_disconnected", 5_000);
+      bob.socket.disconnect();
+      await gone;
+      const game = activeGames.get(room.roomId)!;
+      const votes = game.endMatchVotes;
+      game.endMatchVotes = { [Symbol.iterator]: () => { throw new Error("planted rejoin fault"); } } as unknown as Set<string>;
+      try {
+        bob.socket = await reconnectAs(server, bob);
+        await waitFor(bob.socket, "friend:online_list", 5_000);
+      } finally {
+        game.endMatchVotes = votes;
+      }
+    } finally {
+      await closeTable(table);
+    }
+  });
+
   for (const who of ["the player to move", "a bystander"] as const) {
     test(`a disconnect/reconnect loop by ${who} does not hold the turn open`, async () => {
       const tag = who === "a bystander" ? "by" : "mv";
