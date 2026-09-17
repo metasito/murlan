@@ -17,6 +17,7 @@ import { existsSync, readdirSync } from "node:fs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import { AGENT_DIR, FOUND_NOTHING, IF_FOUND, REPO, WORKTREE_DIR } from "./loop-derive.mjs";
 import { checkMain } from "./mainHealth.ts";
+import { clip } from "./agent-check.mjs";
 import { capabilities, note, stepRow, theme } from "./loop-render.mjs";
 
 /**
@@ -72,7 +73,7 @@ export function script(args, run = spawnSync) {
       return {
         state: "failed",
         detail: `refused (exit ${status}) — not starting a ticket`,
-        note: [stdout, stderr].filter(Boolean).join("\n"),
+        note: clip([stdout, stderr].filter(Boolean).join("\n")),
         stop: status ?? 1,
       };
     }

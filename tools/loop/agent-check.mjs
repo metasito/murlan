@@ -36,7 +36,7 @@ export const replays = (entry) => entry?.pass === true && typeof entry.head === 
 export const cleanPassFor = (cache, head) =>
   Object.values(cache).find((e) => replays(e) && e.head === head && e.clean === true);
 
-function clip(output) {
+export function clip(output) {
   const lines = output.split("\n");
   if (lines.length <= SHOWN_LINES) return `${output}\n`;
   const head = lines.slice(0, HEAD_LINES);
