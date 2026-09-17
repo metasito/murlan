@@ -50,13 +50,13 @@ describe("who may open a socket", { skip: hasDatabase() ? false : skipMessage() 
 
   test("a native client, which sends no Origin at all, still connects", async () => {
     const attempt = await connectFrom();
-    assert.equal(attempt.ok, true, attempt.err);
+    assert.equal(attempt.ok, true, attempt.err ?? "refused");
     attempt.socket?.close();
   });
 
   test("an allowed origin still connects", async () => {
     const attempt = await connectFrom(server.url);
-    assert.equal(attempt.ok, true, attempt.err);
+    assert.equal(attempt.ok, true, attempt.err ?? "refused");
     attempt.socket?.close();
   });
 });
