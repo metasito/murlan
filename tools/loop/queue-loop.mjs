@@ -1724,6 +1724,7 @@ export async function poll(pending, log, pause, deadline, io = {}) {
         write(ciLogPath(pending.ticket), verdict.output, "utf8");
         const comments = readTicketComments(pending.ticket, run, log);
         const decision = shared({ branch: pending.branch, testIds: verdict.testIds ?? [] }, owner);
+        if (decision.why) log(`shared red: ${decision.why}`);
         const plan = sharedPlan(decision, { ticket: pending.ticket, behind: next.behind });
         if (plan.action === "update") {
           next = { action: "update-branch", reason: `#${plan.issue}'s fix is on main` };

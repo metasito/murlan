@@ -182,7 +182,7 @@ export function recentRedRuns(
 }
 
 function issueForTestId(testId: string, issues: SharedIssue[]): SharedIssue | undefined {
-  return issues.find((i) => (i.title ?? "").includes(testId));
+  return issues.find((i) => (i.title ?? "").trim() === titleFor(testId));
 }
 
 /**
@@ -251,6 +251,13 @@ function fileSharedIssue(
   owner: SharedOwner | undefined,
 ): SharedDecision {
   const body = sharedBody(decision.testId, decision.evidence, owner);
+  if (labels.includes(SHARED_RED_LABEL)) {
+    // prettier-ignore
+    gh([
+      "label", "create", SHARED_RED_LABEL, "--repo", repo, "--color", "B60205",
+      "--description", "A CI failure red on more than one branch", "--force",
+    ], until);
+  }
   const args = [
     "issue",
     "create",

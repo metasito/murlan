@@ -320,6 +320,14 @@ describe("a red head shared with another branch", () => {
     assert.match(String(bodyOf(asked, written)), /^shared: #900 owned here$/m);
   });
 
+  test("a shared check that could not answer says why in the log", async () => {
+    const said: string[] = [];
+    const { gh } = red();
+    const why = "could not check shared red — gh: HTTP 422";
+    await poll(PENDING, (m: string) => said.push(m), 0, DEADLINE, withShared(gh, [], { kind: "none", why }));
+    assert.ok(said.some((m) => m.includes(why)), said.join("\n"));
+  });
+
   test("a landed fix still red on a branch that has it is reopened and taken over by this ticket", async () => {
     const { gh, asked } = red();
     const landed = { kind: "reopen", landed: true, issue: { ...issue, state: "closed" }, testId: "x", evidence };

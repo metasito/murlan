@@ -58,6 +58,11 @@ describe("decideShared", () => {
     assert.deepEqual(decision, { kind: "reopen", issue, testId: TEST_ID });
   });
 
+  test("an issue for a longer id that merely contains this one is not this id's issue", () => {
+    const longer: SharedIssue = { number: 6, title: titleFor(`${TEST_ID} again`), state: "open" };
+    assert.equal(decideShared(mine, [run()], [longer]).kind, "file");
+  });
+
   test("the branch's own older run does not count as shared", () => {
     const own = run({ branch: mine.branch, runId: 2 });
     const decision = decideShared(mine, [own], []);
@@ -117,10 +122,15 @@ describe("fixLandedOnMain", () => {
 function fakeGh(runs: RedRun[], logsById: Record<number, string>) {
   const issues: (SharedIssue & { title: string })[] = [];
   const calls: string[][] = [];
+  const labels = new Set<string>();
   let next = 900;
   const gh = (args: string[]) => {
     calls.push(args);
     const [verb, noun] = args;
+    if (verb === "label" && noun === "create") {
+      labels.add(args[2]);
+      return "";
+    }
     if (verb === "run" && noun === "list") {
       return JSON.stringify(
         runs.map((r) => ({
@@ -140,6 +150,8 @@ function fakeGh(runs: RedRun[], logsById: Record<number, string>) {
     }
     if (verb === "issue" && noun === "list") return JSON.stringify(issues);
     if (verb === "issue" && noun === "create") {
+      const unknown = args.flatMap((a, i) => (a === "--label" ? [args[i + 1]] : [])).find((l) => !labels.has(l));
+      if (unknown) throw new Error(`could not add label: '${unknown}' not found`);
       const number = (next += 1);
       const url = `https://github.com/metasito/murlan/issues/${number}`;
       const title = args[args.indexOf("--title") + 1];
@@ -244,6 +256,15 @@ describe("checkShared", () => {
     const labels = create.flatMap((a, i) => (a === "--label" ? [create[i + 1]] : []));
     assert.ok(labels.includes(SHARED_RED_LABEL));
     assert.ok(create.includes("--body-file"));
+  });
+
+  test("a repo with no shared-red label yet gets it, idempotently, before the issue is filed", () => {
+    const hub = fakeGh([run({ runId: 1077, branch: "agent/1077-resend" })], { 1077: LOG_1077 });
+    const decision = checkShared({ cacheDir: CACHE, repo: "metasito/murlan", gh: hub.gh, mine: { branch: "agent/1082-recovery-copy", testIds: [TEST_ID] } });
+    assert.equal(decision.kind === "file" && decision.issue?.number, 901);
+    const label = hub.calls.find((c) => c[0] === "label");
+    assert.deepEqual(label?.slice(0, 3), ["label", "create", SHARED_RED_LABEL]);
+    assert.ok(label?.includes("--force"));
   });
 });
 
