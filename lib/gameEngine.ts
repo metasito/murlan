@@ -1200,9 +1200,10 @@ export function initializeRematch(
   }[],
   gameMode: GameMode,
   prevRankings: string[],
-  firstSeat = 0
+  firstSeat = 0,
+  dealtHands?: Card[][]
 ): GameState {
-  const { hands } = dealCards(playerSetup.length, firstSeat);
+  const hands = dealtHands ?? dealCards(playerSetup.length, firstSeat).hands;
 
   const players: Player[] = playerSetup.map((setup, i) => ({
     id: setup.id ?? `player_${i}`,
