@@ -65,9 +65,10 @@ Record the result next to each line: ✅, or what happened.
       table, each in their own seat, with nobody left waiting?
 - [ ] In that quickmatched room, can the host start the match, and is it clear to the other
       three who the host is while they wait?
-- [ ] With the app backgrounded, have someone send an invite. Does a push notification
-      arrive naming the friend who invited them? (It carries no room name, and tapping it
-      only reopens the app — routing to the room is not built.)
+- [ ] Have one player fully close the app — a push is sent only to a friend with no live
+      socket, so backgrounding alone still delivers the in-app banner — then invite them.
+      Does a notification arrive naming the friend who invited them? (It does not show the
+      room name, and tapping it only reopens the app — routing to the room is not built.)
 - [ ] Start a room with bot-fill and one human. Does it play a full match?
 
 ## The awkward ones
