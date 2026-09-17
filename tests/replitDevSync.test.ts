@@ -92,7 +92,7 @@ describe("a sleeping workspace is not reported as a failing sync", () => {
     const send = workflow.slice(workflow.indexOf("jobs:"), workflow.indexOf("Send signed main push"));
     assert.match(
       send,
-      /actions\/checkout@v\d/,
+      /uses:\s*actions\/checkout@\S+/,
       "the job calls scripts/replitSyncVerdict.mjs but no longer checks out the repository"
     );
 
