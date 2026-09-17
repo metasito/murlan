@@ -1900,7 +1900,8 @@ export async function runOnce(io, pinned = null, at = null) {
   let route = io.pick(pinned, at);
   if (route.skill === "closed") {
     io.teardown(route.cwd, route.number);
-    route = io.pick(null, null);
+    const stillPinned = pinned !== null && pinned !== route.number;
+    route = io.pick(stillPinned ? pinned : null, stillPinned ? at : null);
     if (route.skill === "closed") return { outcome: "stop", why: `#${route.number} is closed and its worktree still stands` };
   }
   if (route.skill === "handoff") return { outcome: "stop", why: route.title };

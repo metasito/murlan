@@ -47,19 +47,25 @@ describe("decideShared", () => {
   });
 
   test("an open shared-red issue already naming the id is known", () => {
-    const issue: SharedIssue = { number: 5, title: titleFor(TEST_ID), state: "open" };
+    const issue: SharedIssue = { number: 5, title: titleFor(TEST_ID), state: "OPEN" };
     const decision = decideShared(mine, [run()], [issue]);
     assert.deepEqual(decision, { kind: "known", issue, testId: TEST_ID });
   });
 
-  test("a closed shared-red issue whose id fails again is reopen", () => {
-    const issue: SharedIssue = { number: 5, title: titleFor(TEST_ID), state: "closed" };
+  test("a closed shared-red issue whose id fails again is reopen, as gh's own uppercase state", () => {
+    const issue: SharedIssue = { number: 5, title: titleFor(TEST_ID), state: "CLOSED" };
     const decision = decideShared(mine, [run()], [issue]);
     assert.deepEqual(decision, { kind: "reopen", issue, testId: TEST_ID });
   });
 
+  test("a closed issue owned by another ticket is reopened, never blocked on", () => {
+    const issue: SharedIssue = { number: 5, title: titleFor(TEST_ID), state: "CLOSED", body: "owner: #7 (agent/7-x)" };
+    const decision = decideShared(mine, [run()], [issue]);
+    assert.equal(decision.kind, "reopen");
+  });
+
   test("an issue for a longer id that merely contains this one is not this id's issue", () => {
-    const longer: SharedIssue = { number: 6, title: titleFor(`${TEST_ID} again`), state: "open" };
+    const longer: SharedIssue = { number: 6, title: titleFor(`${TEST_ID} again`), state: "OPEN" };
     assert.equal(decideShared(mine, [run()], [longer]).kind, "file");
   });
 
@@ -74,7 +80,7 @@ describe("fixLandedOnMain", () => {
   const closedIssue = (over: Partial<SharedIssue> = {}): SharedIssue => ({
     number: 5,
     title: titleFor(TEST_ID),
-    state: "closed",
+    state: "CLOSED",
     closedAt: "2026-09-16T12:00:00Z",
     ...over,
   });
@@ -111,7 +117,7 @@ describe("fixLandedOnMain", () => {
 
   test("an issue still open is false, whatever main says", () => {
     const gh = mainRuns([{ databaseId: 1, status: "completed", conclusion: "success", createdAt: "2026-09-17T00:00:00Z" }]);
-    assert.equal(fixLandedOnMain("metasito/murlan", gh, closedIssue({ state: "open" })), false);
+    assert.equal(fixLandedOnMain("metasito/murlan", gh, closedIssue({ state: "OPEN" })), false);
   });
 });
 
@@ -156,12 +162,12 @@ function fakeGh(runs: RedRun[], logsById: Record<number, string>) {
       const url = `https://github.com/metasito/murlan/issues/${number}`;
       const title = args[args.indexOf("--title") + 1];
       const body = readFileSync(args[args.indexOf("--body-file") + 1], "utf8");
-      issues.push({ number, title, url, state: "open", body });
+      issues.push({ number, title, url, state: "OPEN", body });
       return `${url}\n`;
     }
     if (verb === "issue" && noun === "reopen") {
       const found = issues.find((i) => i.number === Number(args[2]));
-      if (found) found.state = "open";
+      if (found) found.state = "OPEN";
       return "";
     }
     if (verb === "issue" && noun === "edit") {
@@ -210,7 +216,7 @@ describe("checkShared", () => {
     const other = run({ runId: 1077, branch: "agent/1077-resend" });
     const closed = (mainConclusion: string) => {
       const hub = fakeGh([other], { 1077: LOG_1077 });
-      hub.issues.push({ number: 5, title: titleFor(TEST_ID), state: "closed", closedAt: "2026-09-16T12:00:00Z" });
+      hub.issues.push({ number: 5, title: titleFor(TEST_ID), state: "CLOSED", closedAt: "2026-09-16T12:00:00Z" });
       const gh = (args: string[]) =>
         args.includes("--branch")
           ? JSON.stringify([{ databaseId: 9, status: "completed", conclusion: mainConclusion, createdAt: "2026-09-16T13:00:00Z" }])
@@ -232,9 +238,9 @@ describe("checkShared", () => {
     as(1082, "agent/1082-recovery-copy");
     const known = as(1082, "agent/1082-recovery-copy");
     assert.equal(known.kind === "known" && ownerOf(known.issue), 1082);
-    hub.issues[0].state = "closed";
+    hub.issues[0].state = "CLOSED";
     as(1090, "agent/1090-other");
-    assert.deepEqual([hub.issues[0].state, ownerOf(hub.issues[0])], ["open", 1090]);
+    assert.deepEqual([hub.issues[0].state, ownerOf(hub.issues[0])], ["OPEN", 1090]);
   });
 
   test("an unreachable gh is none, never a throw", () => {

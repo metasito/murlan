@@ -280,7 +280,7 @@ describe("poll posts CI-RED once per red head", () => {
 });
 
 describe("a red head shared with another branch", () => {
-  const issue = { number: 900, title: "shared red: x", state: "open" };
+  const issue = { number: 900, title: "shared red: x", state: "OPEN" };
   const evidence = { runId: 7, branch: "agent/1077-x", url: "https://example.test/runs/7", testIds: ["x"] };
   const red = (over: { issueComments?: { body: string }[] } = {}) =>
     ghFake({
@@ -330,7 +330,7 @@ describe("a red head shared with another branch", () => {
 
   test("a landed fix still red on a branch that has it is reopened and taken over by this ticket", async () => {
     const { gh, asked } = red();
-    const landed = { kind: "reopen", landed: true, issue: { ...issue, state: "closed" }, testId: "x", evidence };
+    const landed = { kind: "reopen", landed: true, issue: { ...issue, state: "CLOSED" }, testId: "x", evidence };
     const out = await poll(PENDING, () => {}, 0, DEADLINE, withShared(gh, [], landed));
     assert.equal((out as { blockedBy?: number }).blockedBy, undefined);
     assert.deepEqual(
@@ -351,7 +351,7 @@ describe("a red head shared with another branch", () => {
       if (args[0] === "run" && args[1] === "list" && !behind) return JSON.stringify(runRow("completed", "success"));
       return base(args, file);
     };
-    const landed = { kind: "reopen", landed: true, issue: { ...issue, state: "closed" }, testId: "x" };
+    const landed = { kind: "reopen", landed: true, issue: { ...issue, state: "CLOSED" }, testId: "x" };
     const out = await poll(PENDING, () => {}, 0, DEADLINE, withShared(gh, written, landed));
     assert.equal(out.action, "merge");
     assert.ok(asked.some((a) => a[1] === "update-branch"));
@@ -360,7 +360,7 @@ describe("a red head shared with another branch", () => {
 });
 
 describe("sharedPlan", () => {
-  const issue = { number: 900, title: "t", state: "open" };
+  const issue = { number: 900, title: "t", state: "OPEN" };
   const at = { ticket: 42, behind: false };
   test("reads each decision into a CI-RED line and what the supervisor does", () => {
     assert.deepEqual(sharedPlan({ kind: "none" }, at), { line: "none", action: null });

@@ -585,6 +585,23 @@ describe("runOnce", () => {
     assert.deepEqual([torn[0], spawned, picks, r.ticket], [["w7", 7], [42], [[7, "C"], [null, null]], 42]);
   });
 
+  test("a closed ticket unrelated to the pinned one keeps the pin, and its phase, on re-pick", async () => {
+    const picks: unknown[] = [];
+    const routes = [{ skill: "closed", number: 7, title: "t", cwd: "w7", queue: null, resuming: false }, undefined];
+    await runOnce(
+      io({
+        pick: (p: unknown, at: unknown) => {
+          picks.push([p, at]);
+          return routes.shift() ?? io().pick();
+        },
+        teardown: () => {},
+      }),
+      99,
+      "D",
+    );
+    assert.deepEqual(picks, [[99, "D"], [99, "D"]]);
+  });
+
   test("an ff failure before a fix parks", async () => {
     const parked: { n: number; why: string }[] = [];
     let spawns = 0;

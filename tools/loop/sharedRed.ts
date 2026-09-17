@@ -48,6 +48,9 @@ const MAIN_LOOKBACK_LIMIT = 10;
 
 export const titleFor = (testId: string): string => `shared red: ${testId}`;
 
+/** `gh --json state` answers uppercase ("OPEN"/"CLOSED"); a fixture may still be lowercase. */
+const isClosed = (state?: string): boolean => (state ?? "").toLowerCase() === "closed";
+
 export function redRunListArgs(repo: string): string[] {
   // prettier-ignore
   return [
@@ -200,7 +203,7 @@ export function decideShared(
     if (!evidence) continue;
     const issue = issueForTestId(testId, issues);
     if (!issue) return { kind: "file", testId, evidence };
-    return issue.state === "closed" ? { kind: "reopen", issue, testId } : { kind: "known", issue, testId };
+    return isClosed(issue.state) ? { kind: "reopen", issue, testId } : { kind: "known", issue, testId };
   }
   return { kind: "none" };
 }
@@ -233,7 +236,7 @@ export function fixLandedOnMain(
   issue: SharedIssue,
   until: number = Date.now() + DEFAULT_BUDGET_MS,
 ): boolean {
-  if (issue.state !== "closed" || !issue.closedAt) return false;
+  if (!isClosed(issue.state) || !issue.closedAt) return false;
   const closedAt = Date.parse(issue.closedAt);
   const runs = ghJson<MainRunRow[]>(gh, mainRunsSinceArgs(repo), until, []);
   const since = runs
