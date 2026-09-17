@@ -129,6 +129,13 @@ describe("static asset compression and caching", { skip: hasDatabase() ? false :
     }
   });
 
+  test("the public health body names neither the build nor the environment", async () => {
+    const body = (await (await fetch(`${server.url}/health`)).json()) as Record<string, unknown>;
+    assert.deepEqual(Object.keys(body).sort(), ["adapterPool", "db", "status", "uptime"]);
+    const version = await fetch(`${server.url}/api/admin/version`);
+    assert.equal(version.status, 404, "the version route answered a signed-out caller");
+  });
+
   test("health reports contention on the socket adapter's pool", async () => {
     const body = (await (await fetch(`${server.url}/health`)).json()) as {
       adapterPool: Record<string, number> | null;

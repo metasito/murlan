@@ -17,7 +17,6 @@ import { registerGithubDevSyncHook } from "./devSyncHook.ts";
 import { checkMailConfigOnBoot } from "./mail.ts";
 import { ANSWERED_BY_SHELL, CONTENT_HASHED } from "./staticPaths.ts";
 import { testOnlyEnv } from "./testOnlyEnv.ts";
-import { execFileSync } from "node:child_process";
 import * as fs from "fs";
 import * as path from "path";
 
@@ -26,20 +25,6 @@ declare module "http" {
     rawBody: unknown;
   }
 }
-
-// Read once at process startup. The dev-sync hook always restarts this process
-// (via scripts/dev-workflow-supervisor.mjs) after fast-forwarding the checkout,
-// so a value captured at boot accurately reflects what is actually running — no
-// need to re-exec git on every request.
-const runningCommitSha = (() => {
-  try {
-    return execFileSync("git", ["rev-parse", "HEAD"], { cwd: process.cwd() })
-      .toString()
-      .trim();
-  } catch {
-    return "unknown";
-  }
-})();
 
 // `unsafe-inline` for both scripts and styles is forced by what Expo emits:
 // `dist/index.html` carries an inline bootstrap script and two inline <style>
@@ -293,19 +278,17 @@ export async function createApp(): Promise<CreatedApp> {
   app.get("/health", async (_req, res) => {
     try {
       await pool.query("SELECT 1");
+      // Unauthenticated, and scheduled probes are not the only readers: the
+      // deployed commit and the environment name are `GET /api/admin/version`.
       res.json({
         status: "ok",
         db: "connected",
         uptime: Math.floor(process.uptime()),
-        env: process.env.NODE_ENV,
-        commit: runningCommitSha,
         adapterPool: socketAdapterPoolStats(),
       });
     } catch (err) {
       logger.error({ err }, "Health check DB failure");
-      res
-        .status(503)
-        .json({ status: "error", db: "disconnected", commit: runningCommitSha });
+      res.status(503).json({ status: "error", db: "disconnected" });
     }
   });
 

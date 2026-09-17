@@ -3,13 +3,16 @@ import { SUPPORTED_LOCALES, type Locale } from "../shared/i18n.ts";
 import { USERNAME_MAX, USERNAME_MIN, USERNAME_PATTERN } from "../shared/username.ts";
 import { BUG_REPORT_LIMITS } from "./bugReports.ts";
 
+export const PASSWORD_MIN = 8;
+
 export const RegisterSchema = z.object({
   username: z
     .string()
     .min(USERNAME_MIN)
     .max(USERNAME_MAX)
     .regex(USERNAME_PATTERN, { message: "Letters, numbers and underscores only" }),
-  password: z.string().min(6).max(100),
+  // OWASP ASVS 5.0 V6.2.1. The ceiling keeps bcrypt's 72-byte input in range.
+  password: z.string().min(PASSWORD_MIN).max(100),
   // #34: required at signup. Bounded to RFC 5321's own limit, ahead of the
   // format check, so a pathological value is rejected on size before regex
   // backtracking ever sees it.

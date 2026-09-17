@@ -9,6 +9,7 @@ import { friendRequestRow, friendRow } from "./friendRows.ts";
 import type { FriendRequestAccepted, FriendRequestIncoming } from "../lib/wire.ts";
 import type { User } from "../shared/schema.ts";
 import { logger } from "./logger.ts";
+import { runningCommitSha } from "./buildInfo.ts";
 import { validate } from "./validate.ts";
 import {
   RegisterSchema,
@@ -995,6 +996,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       logger.error({ err }, "Failed to build the admin snapshot");
       res.status(500).type("text/plain").send("Snapshot failed");
     }
+  });
+
+  app.get("/api/admin/version", requireAdmin, (_req, res) => {
+    res.json({ env: process.env.NODE_ENV, commit: runningCommitSha });
   });
 
   app.get("/api/ratings/leaderboard", requireAuth, async (_req, res) => {
