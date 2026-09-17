@@ -6,6 +6,8 @@ import { pool } from "./db.ts";
 declare module "express-session" {
   interface SessionData {
     userId?: string;
+    /** This device's Expo token, so logout withdraws it without the client's help. */
+    pushToken?: string;
   }
 }
 

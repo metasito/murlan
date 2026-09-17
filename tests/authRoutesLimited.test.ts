@@ -23,7 +23,6 @@ const LIMITERS: Record<string, string[]> = {
   "POST /api/auth/reset-password": ["resetPasswordLimiter"],
   "POST /api/auth/socket-ticket": ["ticketLimiter"],
   "POST /api/push/token": ["pushLimiter"],
-  "DELETE /api/push/token": ["pushLimiter"],
   "PATCH /api/users/me": ["renameLimiter"],
   "POST /api/friends/add": ["friendLimiter"],
   "POST /api/client-errors": ["errorReportLimiter"],
