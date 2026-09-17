@@ -51,12 +51,22 @@
     ],
     "SessionStart": [
       {
-        "matcher": "compact|resume|startup|clear",
+        "matcher": "compact|resume|clear",
         "hooks": [
           {
             "type": "command",
             "command": "node",
             "args": ["${CLAUDE_PROJECT_DIR}/tools/loop/loop-status.mjs"]
+          }
+        ]
+      },
+      {
+        "matcher": "startup",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["${CLAUDE_PROJECT_DIR}/tools/loop/loop-status.mjs", "--startup"]
           }
         ]
       }

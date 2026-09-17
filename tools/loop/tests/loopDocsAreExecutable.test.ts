@@ -74,11 +74,13 @@ describe("the loop's instructions name only things that exist", () => {
     for (const { command, args } of hooks) {
       assert.doesNotMatch(command, /\$|&&|\|\||\s/, `hook command is shell form: ${command}`);
       assert.ok(args, `hook without args runs through a shell: ${command}`);
-      for (const arg of args) {
-        const script = arg.replace(/^\$\{CLAUDE_PROJECT_DIR\}\//, "");
-        assert.doesNotMatch(script, /\$/, `hook arg uses a placeholder Claude Code does not substitute: ${arg}`);
-        assert.ok(existsSync(script), `hook runs a script that does not exist: ${arg}`);
+      const [first, ...flags] = args;
+      const script = first.replace(/^\$\{CLAUDE_PROJECT_DIR\}\//, "");
+      for (const arg of [script, ...flags]) {
+        assert.doesNotMatch(arg, /\$/, `hook arg uses a placeholder Claude Code does not substitute: ${arg}`);
       }
+      assert.ok(existsSync(script), `hook runs a script that does not exist: ${first}`);
+      for (const flag of flags) assert.match(flag, /^--[a-z-]+$/, `hook arg is neither the script nor a flag: ${flag}`);
     }
   });
 });
@@ -99,8 +101,9 @@ describe("phase A's housekeeping belongs to the supervisor", () => {
     assert.match(read(QUEUE), /node tools\/loop\/loop-status\.mjs/);
   });
 
-  test("phase A reuses the SessionStart hook's report instead of running loop-status again", () => {
+  test("phase A reuses the SessionStart hook's report, except in a loop process, whose startup hook is silent", () => {
     const a = read(QUEUE).split("## A — Start")[1].split("## B")[0];
+    assert.match(a, /\$LOOP_TURNS[^.]*your first command is `loop-status\.mjs`/);
     assert.match(a, /SessionStart[\s\S]*Do not run it again[\s\S]*no hook report[\s\S]*stale/);
     assert.doesNotMatch(a, /Run this first, every time/);
   });

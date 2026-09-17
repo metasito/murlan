@@ -233,10 +233,10 @@ export function queueLoopArgs(number, size = null, phase = null) {
     // Print mode refuses stream-json without it: "Error: When using --print,
     // --output-format=stream-json requires --verbose".
     "--verbose",
-    // No `--exclude-dynamic-system-prompt-sections`: it was measured on 2.1.268 and bought nothing.
-    // Two fresh processes with a git-status change between them paid 15,579 creation tokens with it
-    // and 14,848 without — the dynamic sections are ~200 tokens, and what a second process fails to
-    // reuse is the rest of the prefix, which the flag does not reach.
+    // Without it a fresh process reuses ~8k of a ~33k prefix even from an identical twin (2.1.274).
+    // With it the twin reuses all of it — once the git status is gone too (the env below) and the
+    // startup hook says nothing (loop-status.mjs), since both land ahead of the static rest.
+    "--exclude-dynamic-system-prompt-sections",
     "--tools",
     readAllowedTools().join(","),
     "--max-turns",
@@ -1337,6 +1337,8 @@ export function runTicket(
       // `-p` leaves fork mode off, so subagents default to background and the session spends a turn
       // each time it asks one whether it is done. Foreground makes the Agent call an await.
       CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1",
+      // Also drops the commit trailer, which queue.md states instead.
+      CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS: "1",
       BASH_MAX_TIMEOUT_MS: String(CHECK_BASH_TIMEOUT_MS),
       BASH_DEFAULT_TIMEOUT_MS: String(CHECK_BASH_TIMEOUT_MS),
     },

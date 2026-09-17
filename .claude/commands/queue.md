@@ -38,10 +38,11 @@ Say which phase you are in, on a line of its own, in the same message as that ph
 The supervisor reads that line and nothing else about your progress. Never send it alone: in print
 mode a turn that ends in text and no tool call is the final answer. Do the same in every phase.
 
-**The `SessionStart` hook has already run `loop-status.mjs`.** Its report is above, or, in a loop
-process (`$LOOP_TURNS` is set), its silence is the answer. Do not run it again. Run it yourself
-only when there is no hook report (a by-hand session), or when your own commit, fetch or claim has
-made that report stale:
+**In a loop process (`$LOOP_TURNS` is set), your first command is `loop-status.mjs`**, sent before
+any `PHASE` line, since its report names the phase: the startup hook stays silent there, which keeps
+every process's prompt prefix cacheable. Elsewhere the `SessionStart` hook has already run it and
+its report is above. Do not run it again, except when there is no hook report, or when your own
+commit, fetch or claim has made that report stale:
 
 ```sh
 node tools/loop/loop-status.mjs
@@ -177,7 +178,8 @@ How to solve it is yours. What constrains the process:
   ```
 - **A ticket's prescribed form is a proposal.** If a test rules it out, build its intent and say
   why in the commit.
-- **Commit each slice as you finish it**, by pathspec.
+- **Commit each slice as you finish it**, by pathspec, the message ending in
+  `Co-Authored-By: <your model's name> <noreply@anthropic.com>`.
 - **Batch what does not depend on the last answer.**
 
 **You have a turn budget**, `$LOOP_TURNS`, and it ends the session wherever it stands, with no
