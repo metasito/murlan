@@ -106,7 +106,7 @@ the only place that creates or tears down a socket. Nothing else is allowed to c
 3. The server's connection middleware accepts **only** a valid session or a valid
    unconsumed ticket. There used to be a third branch — a bare, unproven
    `handshake.auth.userId` — that let any client connect as any user; it has been deleted.
-   Rejected connections get `next(new Error("Not authenticated"))`.
+   Rejected connections get `next(new Error("Not authenticated"))`, or `AUTH_UNAVAILABLE` when the check itself failed.
 
 **Single session per account:** a second connection for the same user evicts the first
 rather than the two coexisting. The older socket receives `SESSION_REPLACED` over the
