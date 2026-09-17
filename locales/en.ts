@@ -955,6 +955,8 @@ export const en = {
   "profile.changePasswordHint": "Minimum 6 characters",
   "profile.changePasswordSaving": "Saving…",
   "profile.changePasswordFailed": "The password could not be changed. Try again.",
+  "profile.passwordChangedTitle": "Password changed",
+  "profile.passwordChangedBody": "Every other device you were signed in on has been signed out.",
 
   "profile.addEmailTitle": "Add an email",
   "profile.addEmailBody": "Add and verify an email to enable password recovery. Everything else still works without one.",

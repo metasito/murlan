@@ -23,8 +23,19 @@ jest.mock('expo-router', () => ({
   useLocalSearchParams: () => ({}),
 }));
 
+const mockShowNotification = jest.fn();
+jest.mock('@/context/NotificationContext', () => ({
+  useNotification: () => ({ showNotification: mockShowNotification }),
+  useBannerBottom: () => 0,
+}));
+
 jest.mock('@/context/AuthContext', () => ({
-  useAuth: () => ({ user: { id: 'u1', username: 'Ana' }, logout: async () => {} }),
+  useAuth: () => ({
+    user: { id: 'u1', username: 'Ana' },
+    logout: async () => {},
+    changePassword: async () => {},
+    rename: async () => {},
+  }),
 }));
 
 jest.mock('@/lib/query-client', () => ({
@@ -45,7 +56,7 @@ jest.mock('@tanstack/react-query', () => ({
 }));
 
 import React from 'react';
-import { render, act } from '@testing-library/react-native';
+import { render, act, fireEvent } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { translate, DEFAULT_LOCALE } from '@/shared/i18n';
 import type { TranslationKey, TranslationParams } from '@/shared/i18n';
@@ -139,5 +150,32 @@ describe('the profile trend panels', () => {
       n: 1,
       total: 3,
     }))).toBeTruthy();
+  });
+});
+
+describe('the account controls', () => {
+  it('confirm a changed password, and that other sessions were signed out', async () => {
+    mockShowNotification.mockClear();
+    const view = await show([]);
+    await fireEvent.press(view.getByLabelText(t('profile.changePasswordAction')));
+    await fireEvent.changeText(view.getByTestId('input-current-password'), 'old-secret');
+    await fireEvent.changeText(view.getByTestId('input-new-password'), 'new-secret');
+    const saves = view.getAllByLabelText(t('common.save'));
+    await fireEvent.press(saves[saves.length - 1]);
+
+    expect(mockShowNotification).toHaveBeenCalledWith(
+      expect.objectContaining({ message: t('profile.passwordChangedBody') })
+    );
+    await view.unmount();
+  });
+
+  it('announce a rename error as a live region', async () => {
+    const view = await show([]);
+    await fireEvent.press(view.getByTestId('btn-rename'));
+    await fireEvent.changeText(view.getByTestId('input-rename'), 'a');
+    await fireEvent.press(view.getByLabelText(t('common.save')));
+
+    expect(view.getByTestId('rename-error').props.accessibilityLiveRegion).toBe('polite');
+    await view.unmount();
   });
 });

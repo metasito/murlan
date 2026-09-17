@@ -30,6 +30,11 @@ jest.mock('@/context/AuthContext', () => ({
   useAuth: () => ({ user: { id: 'u1', username: 'Ana' }, logout: async () => {} }),
 }));
 
+jest.mock('@/context/NotificationContext', () => ({
+  useNotification: () => ({ showNotification: jest.fn() }),
+  useBannerBottom: () => 0,
+}));
+
 jest.mock('@/lib/query-client', () => ({
   getApiUrl: () => 'http://localhost',
   apiRequest: jest.fn(),

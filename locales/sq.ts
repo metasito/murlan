@@ -955,6 +955,8 @@ export const sq: Record<keyof typeof en, string> = {
   "profile.changePasswordHint": "Minimumi 6 shkronja",
   "profile.changePasswordSaving": "Duke ruajtur…",
   "profile.changePasswordFailed": "Fjalëkalimi nuk u ndryshua dot. Provo sërish.",
+  "profile.passwordChangedTitle": "Fjalëkalimi u ndryshua",
+  "profile.passwordChangedBody": "U nxorët nga të gjitha pajisjet e tjera.",
 
   "profile.addEmailTitle": "Shto një email",
   "profile.addEmailBody": "Shto dhe verifiko një email për të mundësuar rikuperimin e fjalëkalimit. Gjithçka tjetër funksionon edhe pa të.",

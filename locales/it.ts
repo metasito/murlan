@@ -949,6 +949,8 @@ export const it: Record<keyof typeof en, string> = {
   "profile.changePasswordHint": "Minimo 6 caratteri",
   "profile.changePasswordSaving": "Salvataggio…",
   "profile.changePasswordFailed": "Non è stato possibile cambiare la password. Riprova.",
+  "profile.passwordChangedTitle": "Password cambiata",
+  "profile.passwordChangedBody": "Sei stato disconnesso da tutti gli altri dispositivi.",
 
   "profile.addEmailTitle": "Aggiungi un'email",
   "profile.addEmailBody": "Aggiungi e verifica un'email per abilitare il recupero della password. Tutto il resto funziona anche senza.",

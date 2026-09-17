@@ -11,6 +11,7 @@ import { router } from "expo-router";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/context/AuthContext";
+import { useNotification } from "@/context/NotificationContext";
 import { Colors, Spacing, Radius, FontSize, Type, Motion, Shadow, TOUCH_TARGET_MIN } from "@/lib/theme";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { MenuLayout } from "@/components/MenuLayout";
@@ -171,7 +172,7 @@ function UserCard({ user }: { user: { username: string } }) {
       </View>
 
       {error && (
-        <Text style={styles.renameError} testID="rename-error">
+        <Text style={styles.renameError} accessibilityLiveRegion="polite" testID="rename-error">
           {error}
         </Text>
       )}
@@ -208,6 +209,7 @@ function UserCard({ user }: { user: { username: string } }) {
 function ChangePasswordCard() {
   const { t } = useTranslation();
   const { changePassword } = useAuth();
+  const { showNotification } = useNotification();
   const [open, setOpen] = useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -231,6 +233,11 @@ function ChangePasswordCard() {
       setOpen(false);
       setCurrentPassword("");
       setNewPassword("");
+      showNotification({
+        type: "game_info",
+        title: t("profile.passwordChangedTitle"),
+        message: t("profile.passwordChangedBody"),
+      });
     } catch (e: unknown) {
       setError(serverErrorMessage(e, t("profile.changePasswordFailed")));
     }
@@ -583,6 +590,7 @@ export default function ProfileScreen() {
               {ratingQuery.isLoading && <LoadingBlock label={t("ladder.loadingA11yLabel")} />}
               {ratingQuery.isError && (
                 <ErrorBlock
+                  stale={rating !== undefined}
                   title={t("ladder.errorTitle")}
                   retry={{ label: t("common.retry"), a11yLabel: t("ladder.errorRetry"), onPress: () => ratingQuery.refetch() }}
                 />
