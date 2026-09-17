@@ -4,7 +4,6 @@ import assert from "node:assert/strict";
 import {
   act,
   activity,
-  bar,
   bell,
   capabilities,
   clockAt,
@@ -14,7 +13,6 @@ import {
   header,
   keybar,
   notice,
-  PHASE_MINUTES,
   phaseRow,
   progress,
   queueLine,
@@ -215,86 +213,41 @@ describe("thought", () => {
   });
 });
 
-describe("bar", () => {
-  test("never escapes its width, whatever it is handed", () => {
-    for (const frac of [-1, 0, 0.5, 1, 2, NaN, Infinity]) {
-      assert.equal(cols(strip(bar(frac, 20, t256))), 20, `at ${frac}`);
-      assert.equal(cols(bar(frac, 20, tPlain)), 20, `at ${frac}, unpainted`);
-    }
-  });
-
-  test("full is full and empty is empty", () => {
-    assert.equal(bar(1, 8, tPlain), "█".repeat(8));
-    assert.equal(bar(0, 8, tPlain), "░".repeat(8));
-  });
-
-  // A bar that jumps a whole cell at a time reads as stalled between jumps.
-  test("a fraction of a cell shows as a fraction of a cell", () => {
-    assert.match(bar(0.5 + 1 / 32, 8, tPlain), /████[▏▎▍▌▋▊▉]/);
-  });
-});
-
 describe("progress", () => {
   test("names the phase rather than its letter", () => {
-    assert.match(strip(progress({ letter: "D" }, t256)), /review/);
+    assert.match(strip(progress({ letter: "D" }, t256)), /▸ review/);
     assert.doesNotMatch(strip(progress({ letter: "D" }, t256)), /\bD\b/);
   });
 
-  test("an unnamed phase says so instead of showing a full bar", () => {
+  test("ticks what is behind the current phase and nothing ahead of it", () => {
+    const line = strip(progress({ letter: "D" }, tPlain));
+    assert.match(line, /✓claim {2}✓scope {2}✓build {2}▸ review {2}push {2}close {2}merge/);
+  });
+
+  test("a phase nobody named yet says so and ticks nothing", () => {
     const line = strip(progress({ letter: "?" }, tPlain));
-    assert.match(line, /no phase/);
-    assert.doesNotMatch(line, /█/);
+    assert.match(line, /starting/);
+    assert.doesNotMatch(line, /[✓▸]/);
   });
 
-  // A bar whose right edge moves as the label changes reads as jitter. `lastIndexOf`, because the
-  // closing bracket and the eighth-block partial fill are the same character.
-  test("the bar is the same width at every phase", () => {
-    const widths = [...PHASES.map(([l]) => l), "?"].map((l) =>
-      strip(progress({ letter: l }, tPlain)).lastIndexOf("▏"),
-    );
-    assert.equal(new Set(widths).size, 1, `edges at ${widths.join(", ")}`);
-  });
-});
-
-describe("the bar's pace", () => {
-  const pct = (letter: string, ms = 0) =>
-    Number(/(\d+)%/.exec(strip(progress({ letter, ms }, tPlain)))?.[1] ?? "-1");
-  const MIN = 60_000;
-
-  test("every phase the board can show has a duration to pace it", () => {
-    assert.deepEqual(PHASES.map(([l]) => l).filter((l) => !PHASE_MINUTES[l]), []);
+  // No percentage: there is no honest one to give, and a guessed one ran backwards on the owner.
+  test("shows no percentage, and the ticket's own clock when it has one", () => {
+    assert.doesNotMatch(strip(progress({ letter: "C" }, tPlain)), /%/);
+    assert.match(strip(progress({ letter: "C", ticketMs: 2_773_000 }, tPlain)), /ticket 46:13$/);
   });
 
-  test("review takes the widest slice, because it takes most of the wall clock", () => {
-    const order = Object.entries(PHASE_MINUTES).sort((a, b) => b[1] - a[1]);
-    assert.equal(order[0][0], "D");
-  });
-
-  test("it moves inside a phase, not only at its boundaries", () => {
-    assert.ok(pct("D", 10 * MIN) > pct("D", 0), "review sat still for ten minutes");
-  });
-
-  test("it never goes backwards, however far a phase runs over", () => {
-    const walk = PHASES.flatMap(([l]) => [0, 1, 30, 600].map((m) => pct(l, m * MIN)));
-    assert.deepEqual(walk, [...walk].sort((a, b) => a - b), walk.join(" "));
-  });
-
-  test("an overrunning phase approaches the next one's slice without entering it", () => {
-    assert.ok(pct("C", 600 * MIN) <= pct("D", 0));
-    assert.ok(pct("C", 600 * MIN) > pct("C", 8 * MIN));
-  });
-
-  test("no phase still running ever reads 100%", () => {
-    const last = PHASES.at(-1)![0];
-    assert.ok(pct(last, 600 * MIN) < 100, "the board said done while the supervisor was still waiting");
-    assert.equal(Number(/(\d+)%/.exec(strip(progress({ letter: last, frac: 1 }, tPlain)))?.[1]), 100);
+  test("a window too narrow for every phase still names the current one and its place", () => {
+    const t = theme(capabilities(term({ columns: 47 }), {}));
+    const line = strip(progress({ letter: "D", ticketMs: 1000, round: { n: 2, of: 4 } }, t));
+    assert.match(line, /▸ review 2 {2}4 of 7/);
+    assert.ok(cols(line) <= t.width);
   });
 });
 
 describe("phaseRow", () => {
   test("the supervisor's own phase is one the list knows, and reads as a word", () => {
     assert.ok(PHASES.some(([l]) => l === LAND), `${LAND} names no phase, so its row would say the letter`);
-    assert.match(strip(phaseRow({ letter: LAND, ms: 0 }, tPlain)), /land/);
+    assert.match(strip(phaseRow({ letter: LAND, ms: 0 }, tPlain)), /merge/);
   });
 
   test("a finished phase carries its name, its detail and its clock", () => {
@@ -319,12 +272,12 @@ describe("phaseRow", () => {
   test("a resumed G row reads settle, not land — the outcome is not decided yet", () => {
     const line = strip(phaseRow({ letter: LAND, ms: 0, state: "resumed" }, tPlain));
     assert.match(line, /↻ {2}settle/);
-    assert.doesNotMatch(line, /\bland\b/);
+    assert.doesNotMatch(line, /\bmerge\b/);
   });
 
-  test("a fix round names itself against the CI-round cap, not the phase's own name", () => {
-    const line = strip(phaseRow({ letter: "C", ms: 0, round: { n: 2, of: 3, fix: true } }, tPlain));
-    assert.match(line, /fix 2\/3/);
+  test("a fix round names itself against its cap, not the phase's own name", () => {
+    const line = strip(phaseRow({ letter: "C", ms: 0, round: { n: 1, of: 2, fix: true } }, tPlain));
+    assert.match(line, /fix 1 of 2/);
     assert.doesNotMatch(line, /build/);
   });
 
@@ -403,7 +356,7 @@ describe("header", () => {
   // Printing zeroes for a ticket that never went through the picker reads as an empty queue.
   test("a resumed ticket says resumed rather than showing a depth of zero", () => {
     assert.match(strip(header({ ...ticket, queue: null }, tPlain)), /resumed/);
-    assert.doesNotMatch(strip(header({ ...ticket, queue: null }, tPlain)), /0 queued/);
+    assert.doesNotMatch(strip(header({ ...ticket, queue: null }, tPlain)), /0 in queue/);
   });
 
   test("the number is the link, so the URL costs no row of its own", () => {
@@ -491,30 +444,28 @@ describe("stream", () => {
 
 describe("tasksDetail", () => {
   test("nothing running is nothing to say", () => {
-    assert.equal(tasksDetail([], 0), null);
+    assert.equal(tasksDetail([]), null);
   });
 
-  test("names the agent that moved most recently, and how long the phase has run", () => {
-    const out = tasksDetail([{ what: "Spec axis", tool: null }, { what: "Standards", tool: null }], 8 * 60_000);
-    assert.match(out!, /2 agents/);
-    assert.match(out!, /Standards/);
-    assert.match(out!, /8m/);
+  test("names the agent that moved most recently, and carries no clock of its own", () => {
+    const out = tasksDetail([{ what: "Spec axis", tool: null }, { what: "Standards", tool: null }]);
+    assert.equal(out, "2 agents · Standards");
   });
 
   test("one agent is not two", () => {
-    assert.match(tasksDetail([{ what: null, tool: "Agent" }], 0)!, /^1 agent · /);
+    assert.match(tasksDetail([{ what: null, tool: "Agent" }])!, /^1 agent · /);
   });
 });
 
 describe("queueLine", () => {
   test("a depth that moved shows both readings", () => {
     const out = queueLine({ implement: 9, triage: 1, wayfinder: 0 }, { implement: 7, triage: 1, wayfinder: 0 }, tPlain);
-    assert.match(out, /9→7 implement/);
-    assert.match(out, /1 triage/);
+    assert.match(out, /9→7 to implement/);
+    assert.match(out, /1 to triage/);
   });
 
   test("an empty queue says so", () => {
-    assert.match(queueLine({ implement: 1, triage: 0, wayfinder: 0 }, { implement: 0, triage: 0, wayfinder: 0 }, tPlain), /queue empty/);
+    assert.match(queueLine({ implement: 1, triage: 0, wayfinder: 0 }, { implement: 0, triage: 0, wayfinder: 0 }, tPlain), /queue\s+empty/);
   });
 });
 
@@ -524,7 +475,7 @@ describe("closing", () => {
   test("a landed ticket carries its cost and its shape", () => {
     const out = strip(closing(landed, tPlain));
     assert.match(out, /#998/);
-    assert.match(out, /9 files · 132 turns · 23:44 · \$3\.90/);
+    assert.match(out, /23:44 · \$3\.90 · 132 turns · 9 files/);
   });
 
   test("a parked one carries the reason instead, and its log", () => {
@@ -677,21 +628,30 @@ describe("every block fits the width it was given", () => {
 });
 
 describe("the review round on the board", () => {
-  test("the bar names which review round it is", () => {
-    assert.match(strip(progress({ letter: "D", ms: 0, round: { n: 2, of: 4 } }, tPlain)), /review 2\/4/);
-  });
-
-  test("a phase with no round reads exactly as it did", () => {
-    assert.match(strip(progress({ letter: "C", ms: 0 }, tPlain)), /build/);
-    assert.doesNotMatch(strip(progress({ letter: "C", ms: 0 }, tPlain)), /\//);
+  // "2/4" read as half done; the ceiling is only a ceiling.
+  test("the live row names which review round it is, without the ceiling", () => {
+    const line = strip(progress({ letter: "D", round: { n: 2, of: 4 } }, tPlain));
+    assert.match(line, /▸ review 2 /);
+    assert.doesNotMatch(line, /\//);
   });
 
   test("a finished review round keeps its number in the scrollback", () => {
-    assert.match(strip(phaseRow({ letter: "D", ms: 1000, round: { n: 3, of: 4 } }, tPlain)), /review 3\/4/);
+    assert.match(strip(phaseRow({ letter: "D", ms: 1000, round: { n: 3, of: 4 } }, tPlain)), /review 3 /);
   });
 
-  test("the live bar names a fix round the same way the finished row does", () => {
-    assert.match(strip(progress({ letter: "C", ms: 0, round: { n: 1, of: 3, fix: true } }, tPlain)), /fix 1\/3/);
+  test("the live row names a fix round the same way the finished row does", () => {
+    assert.match(strip(progress({ letter: "C", round: { n: 1, of: 2, fix: true } }, tPlain)), /▸ fix 1 of 2/);
+  });
+
+  test("a row with nothing to time shows no clock rather than 0:00", () => {
+    assert.doesNotMatch(strip(phaseRow({ letter: "C", ms: 0 }, tPlain)), /0:00/);
+  });
+
+  test("a long warning wraps under its row instead of being cut", () => {
+    const why = "package-lock.json differs from the last install, but agent-1085 is live — not reinstalling";
+    const out = strip(notice("checkout", why, tPlain));
+    assert.doesNotMatch(out, /…/);
+    assert.match(out.replace(/\s+/g, " "), /not reinstalling/);
   });
 
   test("a supervisor's own word is a row with its detail beneath, not a raw stderr line", () => {

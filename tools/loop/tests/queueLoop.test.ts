@@ -680,15 +680,16 @@ describe("runTicket", () => {
   test("a fix round is named on the board with its round", async () => {
     const { said, screen } = sink();
     await runTicket(fakeSpawn([RESULT]), opts({ at: "C", fix: true, retryCount: 1, screen }));
-    assert.match(said.join("\n"), /fix 2\/3/);
+    assert.match(said.join("\n"), /fix 1 of 2/);
   });
 
-  test("a resumed ticket says so, and does not read as a closed phase", async () => {
+  // The opening row said nothing its closing row does not, at 0:00.
+  test("a resumed phase leaves one row in the scrollback, the finished one", async () => {
     const { said, screen } = sink();
     await runTicket(fakeSpawn([RESULT]), opts({ number: 962, at: "D", screen }));
-    const rows = said.filter((l) => /↻ {2}review/.test(l));
-    assert.equal(rows.length, 1);
-    assert.match(rows[0], /↻.*resumed/);
+    const rows = said.filter((l) => /review/.test(l));
+    assert.equal(rows.length, 1, rows.join("\n"));
+    assert.doesNotMatch(rows[0], /resumed|↻/);
   });
 
   // The real turn carries `origin: null`; a background task's wake-up is a turn too and carries

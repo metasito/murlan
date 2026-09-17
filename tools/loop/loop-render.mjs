@@ -153,7 +153,7 @@ export const PHASES = [
   ["D", "review"],
   ["E", "push"],
   ["F", "close"],
-  ["G", "land"],
+  ["G", "merge"],
 ];
 
 export const LAND = "G";
@@ -164,7 +164,6 @@ export const SPIN = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "�
 /** The row the board shows before the session has named a phase. Never recorded as one. */
 export const UNNAMED = "?";
 
-const LABEL = 12;
 const TITLE_FLOOR = 14;
 const DETAIL = 44;
 const MINUTE_MS = 60_000;
@@ -178,6 +177,7 @@ export function elapsed(ms) {
 }
 
 const money = (n) => `$${Number(n ?? 0).toFixed(2)}`;
+const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
 /** The stream gives Unix seconds; a wait is only actionable as a time and a distance. */
 export function clockAt(resetsAt, now = Date.now()) {
@@ -255,14 +255,11 @@ export function thought(text) {
  *
  * @param {{what: string|null, tool: string|null}[]} tasks
  */
-export function tasksDetail(tasks, ms, width = DETAIL) {
+export function tasksDetail(tasks, width = DETAIL) {
   if (!tasks.length) return null;
   const last = tasks[tasks.length - 1];
-  const parts = [
-    `${tasks.length} agent${tasks.length === 1 ? "" : "s"}`,
-    last.what ?? last.tool ?? null,
-    `${Math.floor(ms / MINUTE_MS)}m`,
-  ].filter(Boolean);
+  // No clock: the spinner row this lands on carries one, and two clocks started apart never agree.
+  const parts = [plural(tasks.length, "agent"), last.what ?? last.tool ?? null].filter(Boolean);
   return clamp(parts.join(" · "), width);
 }
 
@@ -285,7 +282,7 @@ const LABEL_W = 10;
  */
 export function stepRow({ label, detail = "", ms = null, state = "done" }, t) {
   const [glyph, colour] = MARK[state] ?? MARK.done;
-  const right = ms == null ? null : { t: elapsed(ms), c: "faint" };
+  const right = ms == null || ms < 1000 ? null : { t: elapsed(ms), c: "faint" };
   return row(
     [
       { t: "   ", c: "faint" },
@@ -306,9 +303,12 @@ export function stepRow({ label, detail = "", ms = null, state = "done" }, t) {
  * on a board that had just drawn a tidy row. First line is the row; the rest is its note.
  */
 export function notice(label, text, t) {
-  const [head, ...rest] = String(text ?? "").split("\n");
+  const [first, ...rest] = String(text ?? "").split("\n");
+  // Wrapped, not cut: a warning's last words are usually what to do about it.
+  const [head = "", ...more] = wrap(first, Math.max(8, t.width - LABEL_W - 16));
+  const tail = [more.join(" "), ...rest].filter(Boolean);
   const rows = [stepRow({ label, detail: head, ms: null, state: "warned" }, t)];
-  if (rest.length) rows.push(note(rest.join("\n"), t));
+  if (tail.length) rows.push(note(tail.join("\n"), t));
   return rows.filter(Boolean).join("\n");
 }
 
@@ -316,13 +316,16 @@ export function notice(label, text, t) {
 // name a one-shot action neither row is doing.
 const RESUMED_LABEL = { A: "start", G: "settle" };
 
-/** "review 2/4" where there is a round to name, "fix 2/3" where the round is a CI retry. */
+/**
+ * "review 2" is the second review, and its ceiling is not shown: "2/4" read as half done. A fix
+ * round keeps its ceiling, because how many are left is what decides a park.
+ */
 const labelFor = (letter, round, resumed = false) => {
   const at = PHASES.findIndex(([l]) => l === letter);
   const base = at >= 0 ? PHASES[at][1] : letter;
   const name = resumed ? (RESUMED_LABEL[letter] ?? base) : base;
-  if (round?.fix) return `fix ${round.n}/${round.of}`;
-  return round ? `${name} ${round.n}/${round.of}` : name;
+  if (round?.fix) return `fix ${round.n} of ${round.of}`;
+  return round ? `${name} ${round.n}` : name;
 };
 
 /**
@@ -352,78 +355,34 @@ export function note(text, t, indent = 8) {
     .join("\n");
 }
 
-// Eighth-blocks, so the bar advances a fraction of a cell rather than jumping a whole one. The
-// remainder is drawn as one partial block, which is why `used` counts it.
-const EIGHTH = ["", "▏", "▎", "▍", "▌", "▋", "▊", "▉"];
-
-/** @param {number} frac 0…1 */
-export function bar(frac, width, t) {
-  const share = Number.isFinite(frac) ? Math.max(0, Math.min(1, frac)) : 0;
-  const total = share * width;
-  const full = Math.floor(total);
-  const part = EIGHTH[Math.floor((total - full) * 8)] ?? "";
-  const used = full + (part ? 1 : 0);
-  return (
-    t.paint("accent", "█".repeat(full) + part) +
-    t.paint("faint", "░".repeat(Math.max(0, width - used)))
-  );
-}
-
 /**
- * Median minutes a phase takes: A–F from `npm run loop:cost`, G from `gh run list --workflow
- * ci.yml`. Re-read them there rather than trusting these. D is one review round rather than the
- * whole phase: that output's phase D median divided by the median review rounds beside it.
+ * Where the ticket is: every phase in order, the finished ones ticked, the current one lit, and
+ * the ticket's own clock on the right. A percentage would be a guess from median phase lengths,
+ * and a guess reads as a fact on a board nobody is watching closely.
  *
- * @type {Record<string, number>}
- */
-export const PHASE_MINUTES = { A: 1.2, B: 3.3, C: 8, D: 8.2, E: 1.9, F: 0.8, G: 5.7 };
-
-/** Each phase's slice of the bar, by what it costs in wall clock rather than by an even seventh. */
-const SPAN = (() => {
-  const total = PHASES.reduce((n, [l]) => n + PHASE_MINUTES[l], 0);
-  let at = 0;
-  return Object.fromEntries(
-    PHASES.map(([l]) => {
-      const from = at / total;
-      at += PHASE_MINUTES[l];
-      return [l, [from, at / total]];
-    }),
-  );
-})();
-
-/**
- * Nine tenths of the phase's slice at its median, asymptotic after: half of all runs are longer
- * than the median, and a bar that entered the next phase's slice early would have to go backwards
- * when the marker arrived. `MOST` caps it because `creep` saturates to exactly 1 in floating point
- * long before the work does, and a full bar beside a turning spinner discredits the whole board.
- */
-const creep = (x) => 1 - 0.1 ** x;
-const MOST = 0.999;
-
-/**
- * Where the ticket is. The letter is deliberately absent: a person reads "review", not "D", and the
- * phase letters are an artefact of the protocol rather than something the board owes anyone.
+ * Done, current and pending differ by glyph as well as brightness, so a pipe with no colour still
+ * says which is which. Where the whole row does not fit, it shows the current phase and its place.
  *
- * The label slot is fixed and the bar takes what is left, so the bar's right edge does not move
- * between "review" and "no phase" — a bar that changes length as it fills reads as jitter.
- *
- * @param {{letter: string, ms?: number, frac?: number|null,
- *   round?: {n: number, of: number, fix?: boolean}|null}} at `ms` is time in *this* phase.
+ * @param {{letter: string, round?: {n: number, of: number, fix?: boolean}|null,
+ *   ticketMs?: number|null}} at `ticketMs` is the ticket's time across every process so far.
  */
-export function progress({ letter, ms = 0, frac = null, round = null }, t) {
+export function progress({ letter, round = null, ticketMs = null }, t) {
   const at = PHASES.findIndex(([l]) => l === letter);
-  const known = at >= 0;
-  const [from, to] = SPAN[letter] ?? [0, 0];
-  const live = () => Math.min(from + (to - from) * creep(ms / 6e4 / PHASE_MINUTES[letter]), MOST);
-  const share = frac ?? (known ? live() : 0);
-  const name = clamp(known ? labelFor(letter, round) : "no phase", LABEL).padEnd(LABEL);
-  // Floored, so only a caller naming a finished ticket's own `frac` can print 100.
-  const pct = known ? `${String(Math.floor(share * 100)).padStart(3)}%` : "   —";
-  const width = t.width - LABEL - 11;
-  return (
-    `   ${t.paint("faint", "▕")}${bar(share, width, t)}${t.paint("faint", "▏")}` +
-    `  ${t.paint(known ? "bright" : "warn", name, known)}${t.paint("muted", pct)}`
-  );
+  const right = ticketMs == null ? null : { t: `ticket ${elapsed(ticketMs)}`, c: "muted" };
+  const lead = { t: "   ", c: "faint" };
+  const segs = [lead];
+  if (at < 0) segs.push({ t: "starting  ", c: "warn" });
+  PHASES.forEach(([l], i) => {
+    if (i) segs.push({ t: "  ", c: "faint" });
+    if (i < at) segs.push({ t: `✓${labelFor(l, null)}`, c: "muted" });
+    else if (i === at) segs.push({ t: `▸ ${labelFor(l, round)}`, c: "bright", b: true });
+    else segs.push({ t: labelFor(l, null), c: "faint" });
+  });
+  const need = segs.reduce((n, s) => n + cols(s.t), 0) + (right ? cols(right.t) + 1 : 0);
+  if (need <= t.width) return row(segs, right, t);
+  const name = at < 0 ? "starting" : `▸ ${labelFor(letter, round)}  ${at + 1} of ${PHASES.length}`;
+  const room = Math.max(0, t.width - 3 - (right ? cols(right.t) + 1 : 0));
+  return row([lead, { t: clamp(name, room), c: at < 0 ? "warn" : "bright", b: at >= 0 }], right, t);
 }
 
 // The fade is the information. Four rows at four brightnesses say which is now and which is already
@@ -508,10 +467,10 @@ export function header({ number, title, size, url, queue, nth, runMs, spend }, t
 
   const facts = clamp(
     [
-      queue ? `${queue.implement} queued` : "resumed",
-      nth ? `${nth}${ordinal(nth)} tonight` : null,
-      runMs != null ? elapsed(runMs) : null,
-      spend != null ? money(spend) : null,
+      queue ? `${queue.implement} in queue` : "resumed",
+      nth ? `${nth}${ordinal(nth)} ticket this run` : null,
+      runMs != null ? `run ${elapsed(runMs)}` : null,
+      spend != null ? `${money(spend)} spent` : null,
     ]
       .filter(Boolean)
       .join(" · "),
@@ -614,14 +573,12 @@ export function stream(feed, { ms, frame = 0, letter }, t, take = 14) {
  * loop filing follow-ups faster than it lands them.
  */
 export function queueLine(before, after, t) {
-  if (!after.implement && !after.triage && !after.wayfinder) {
-    return t.paint("faint", "     queue empty");
-  }
+  const empty = !after.implement && !after.triage && !after.wayfinder;
   const moved = (k) => (before[k] === after[k] ? String(after[k]) : `${before[k]}→${after[k]}`);
-  return t.paint(
-    "faint",
-    `     queue ${moved("implement")} implement · ${moved("triage")} triage · ${moved("wayfinder")} wayfinder`,
-  );
+  const detail = empty
+    ? "empty"
+    : `${moved("implement")} to implement · ${moved("triage")} to triage · ${moved("wayfinder")} wayfinder`;
+  return stepRow({ label: "queue", detail, ms: null, state: "skipped" }, t);
 }
 
 /**
@@ -657,7 +614,7 @@ export function closing({ outcome, number, files, turns, ms, cost, why, log }, t
   const [glyph, colour] = OUTCOME[outcome] ?? ["·", "faint"];
   const landed = outcome === "landed" || outcome === "merged";
   const facts = landed
-    ? `${files} files · ${turns} turns · ${elapsed(ms)} · ${money(cost)}`
+    ? `${elapsed(ms)} · ${money(cost)} · ${plural(turns, "turn")} · ${plural(files, "file")}`
     : (why ?? "");
   const state = outcome.replace("_", " ");
   const id = `#${number}`;
@@ -736,5 +693,5 @@ export function wrap(text, room) {
 }
 
 export function runTotal({ tickets, landed, parked, ms, cost }) {
-  return `${tickets} tickets · ${landed} landed · ${parked} parked · ${elapsed(ms)} · ${money(cost)}`;
+  return `${plural(tickets, "ticket")} · ${landed} landed · ${parked} parked · ${elapsed(ms)} · ${money(cost)}`;
 }
