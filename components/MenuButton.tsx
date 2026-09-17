@@ -65,7 +65,9 @@ export function MenuButton({
   }));
 
   return (
-    <Animated.View style={[fullWidth && styles.fullWidth, animStyle]}>
+    <Animated.View
+      style={[styles.shell, shellShadows[variant], fullWidth && styles.fullWidth, isDisabled && styles.disabled, animStyle]}
+    >
       <Pressable
         onPress={onPress}
         onPressIn={() => setPress(true)}
@@ -81,7 +83,6 @@ export function MenuButton({
           sizeStyles[size],
           fullWidth && styles.fullWidth,
           pressed && !isDisabled && pressedStyles[variant],
-          isDisabled && styles.disabled,
           style,
         ]}
       >
@@ -128,20 +129,27 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: Spacing.sm,
     borderRadius: Radius.full,
-    marginVertical: Spacing.xs,
     overflow: 'hidden',
-    ...Shadow.dark,
   },
+  // iOS reads `overflow: hidden` as masksToBounds, and a masked layer casts no shadow.
+  shell: { borderRadius: Radius.full, marginVertical: Spacing.xs },
   fullWidth: { width: '100%' },
   label: {},
   topHighlight: TopEdgeLight,
 
-  primary: { backgroundColor: Colors.gold, ...Shadow.gold },
+  primary: { backgroundColor: Colors.gold },
   secondary: { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: Colors.gold },
   danger: { backgroundColor: Colors.danger },
   ghost: { backgroundColor: 'transparent' },
 
   disabled: { opacity: 0.4 },
+});
+
+const shellShadows = StyleSheet.create({
+  primary: Shadow.gold,
+  secondary: Shadow.dark,
+  danger: Shadow.dark,
+  ghost: Shadow.dark,
 });
 
 const sizeStyles = StyleSheet.create({
