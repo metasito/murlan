@@ -25,6 +25,28 @@
             "args": ["${CLAUDE_PROJECT_DIR}/tools/loop/guard-comments.mjs"]
           }
         ]
+      },
+      {
+        "matcher": "Agent|Task",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["${CLAUDE_PROJECT_DIR}/tools/loop/guard-agent-model.mjs"]
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["${CLAUDE_PROJECT_DIR}/tools/loop/guard-context.mjs"]
+          }
+        ]
       }
     ],
     "SessionStart": [

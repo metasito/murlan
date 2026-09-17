@@ -407,8 +407,8 @@ describe("the hooks settings.json registers", () => {
   // Exec form, as Claude Code runs it: the placeholder is substituted as a plain string and no shell sees the command.
   const project = (arg: string) => arg.replaceAll("${CLAUDE_PROJECT_DIR}", ROOT);
   const CWDS = [ROOT, join(ROOT, "tools", "loop")];
-  const runAsWritten = (cwd: string, hook: Hook, payload: unknown) =>
-    spawnSync(hook.command, (hook.args ?? []).map(project), { cwd, input: JSON.stringify(payload), encoding: "utf8" });
+  const runAsWritten = (cwd: string, hook: Hook, payload: unknown, env: NodeJS.ProcessEnv = process.env) =>
+    spawnSync(hook.command, (hook.args ?? []).map(project), { cwd, env, input: JSON.stringify(payload), encoding: "utf8" });
 
   test("every hook is exec form rooted at the project, so no shell and no cwd decides what runs", () => {
     assert.ok(allHooks().length >= 4, "no hook commands found; the shape of settings.json has changed");
@@ -430,6 +430,8 @@ describe("the hooks settings.json registers", () => {
     for (const source of ["startup", "resume", "compact", "clear"]) {
       assert.ok(matched("SessionStart", "loop-status.mjs").includes(source), source);
     }
+    for (const tool of ["Agent", "Task"]) assert.ok(matched("PreToolUse", "guard-agent-model.mjs").includes(tool), tool);
+    assert.deepEqual(matched("PostToolUse", "guard-context.mjs"), [""], "context grows on every tool call");
   });
 
   for (const cwd of CWDS) {
@@ -443,6 +445,14 @@ describe("the hooks settings.json registers", () => {
         tool_input: { file_path: join(ROOT, "src", "never-written.ts"), content: "// previously this returned null\nconst x = 1;\n" },
       });
       assert.match(comments.stdout, /"permissionDecision":\s*"deny"/, comments.stderr);
+
+      const agent = runAsWritten(
+        cwd,
+        hookOf("guard-agent-model.mjs"),
+        { tool_name: "Agent", tool_input: { prompt: "x" } },
+        { ...process.env, LOOP_TURNS: "120" },
+      );
+      assert.match(agent.stdout, /"permissionDecision":\s*"deny"/, agent.stderr);
     });
 
     test(`run as written from ${cwd === ROOT ? "the root" : "tools/loop"}, every hook exists and allows an empty payload`, () => {
