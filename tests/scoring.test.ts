@@ -575,6 +575,16 @@ describe("the rematch decision", () => {
       assert.equal(matchIsClosing({ ...base, cumulative: { a: 18 } }), true);
     });
 
+    test("in teams a pair races on its summed score and its two best awards", () => {
+      const teamOfKey = { a1: "A", b1: "B", a2: "A", b2: "B" };
+      const pair = (a1: number, a2: number) =>
+        matchIsClosing({ ...base, teamOfKey, cumulative: { a1, a2, b1: 0, b2: 0 } });
+      const [first, second] = Object.values(scoreHand(["x", "y", "z", "w"], 4));
+      assert.equal(pair(10, 9), true);
+      assert.equal(pair(10, 21 - first - second - 10), true);
+      assert.equal(pair(10, 20 - first - second - 10), false);
+    });
+
     test("the reach it allows for is the top per-manche award", () => {
       // `playerCount - 1` inside matchIsClosing is an unwritten restatement of
       // scoreHand's best prize. Change the point table and the prompt appears

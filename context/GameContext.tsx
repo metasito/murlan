@@ -236,6 +236,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
         gameState && {
           gameOver: gameState.gameOver,
           handCounts: gameState.players.map(handCountOf),
+          players: gameState.players,
         },
         match,
         match.scores

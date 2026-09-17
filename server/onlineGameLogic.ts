@@ -262,20 +262,21 @@ export function botSeatsFromPersonality(players: readonly { personality?: BotPer
 }
 
 /**
- * Scoring key -> team id, for the seated humans only. Vacated (`bot:<seat>`)
- * seats are left out on purpose: they are already excluded from
- * `cumulativeScores` (see `isBotSeatKey`), so including them here would add
- * a zero-scoring member that can never win but could be named as one.
+ * Scoring key -> team id, for the win-eligible seats only — the same set
+ * `resolveHandEnd`'s `winEligible` passes: seated humans, and seats dealt to a
+ * bot at match start. A seat a human vacated is left out, so its points never
+ * count towards the pair and it is never named a winner.
  */
 export function teamKeyMap(
   playerMap: Record<number, string>,
-  players: { team?: "A" | "B" }[]
+  players: { team?: "A" | "B" }[],
+  botSeatsAtStart: Set<number>
 ): Record<string, string> {
   const map: Record<string, string> = {};
   players.forEach((p, seat) => {
-    const userId = playerMap[seat];
-    if (userId === undefined || !p.team) return;
-    map[userId] = p.team;
+    if (!p.team) return;
+    if (playerMap[seat] !== undefined) map[playerMap[seat]] = p.team;
+    else if (botSeatsAtStart.has(seat)) map[botSeatKey(seat)] = p.team;
   });
   return map;
 }

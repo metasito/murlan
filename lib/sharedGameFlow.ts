@@ -76,12 +76,21 @@ function useExchangeCeremonyExpiry(
  * a seat's hand is the hand or a count the server sent in place of one.
  */
 export function rematchPromptOpen(
-  game: { gameOver: boolean; handCounts: number[] } | null,
+  game: {
+    gameOver: boolean;
+    handCounts: number[];
+    players: readonly { id: string; team?: string }[];
+  } | null,
   match: { length: MatchLength; target: number; over: boolean },
   cumulative: Record<string, number>
 ): boolean {
   if (!game || game.gameOver || match.over) return false;
+  const teamOfKey: Record<string, string> = {};
+  for (const p of game.players) {
+    if (p.team) teamOfKey[p.id] = p.team;
+  }
   return matchIsClosing({
+    teamOfKey,
     length: match.length,
     target: match.target,
     cumulative,

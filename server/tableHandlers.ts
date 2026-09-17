@@ -180,6 +180,7 @@ export async function rehydrateGame(
   }
   const restoredState = restored.gameState;
   const restoredPlayers = restoredState.players;
+  const botSeatsAtStart = botSeatsFromPersonality(restoredPlayers);
   activeGames.set(roomId, {
     roomId,
     joinCode: restored.joinCode,
@@ -199,12 +200,12 @@ export async function rehydrateGame(
       handOver: restoredState.gameOver,
       scores,
       target: matchTarget,
-      teamOfKey: teamKeyMap(playerMap, restoredPlayers),
+      teamOfKey: teamKeyMap(playerMap, restoredPlayers, botSeatsAtStart),
       playerCount: restoredPlayers.length,
     }),
     handFlags: restored.handFlags,
     abandonedSeats: new Map(restored.seats.abandonedSeats),
-    botSeatsAtStart: botSeatsFromPersonality(restoredPlayers),
+    botSeatsAtStart,
     releasedSeats: new Set(restored.seats.releasedSeats),
     vacatedSeats: new Map(restored.seats.vacatedSeats),
     weakSeats: new Set(restored.seats.weakSeats),

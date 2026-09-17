@@ -998,6 +998,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
         gameState && {
           gameOver: gameState.gameOver,
           handCounts: gameState.players.map(handCountOf),
+          players: gameState.players,
         },
         matchState,
         cumulativeScores

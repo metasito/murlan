@@ -60,7 +60,7 @@ test("the seats survive two players sharing a name", () => {
 const MATCH = { length: "match" as const, target: 21, over: false };
 
 test("no prompt without a game, once it is over, or once the match is", () => {
-  const closing = { gameOver: false, handCounts: [1, 9, 9] };
+  const closing = { gameOver: false, handCounts: [1, 9, 9], players: [] };
   assert.equal(rematchPromptOpen(null, MATCH, {}), false, "there is no table to ask");
   assert.equal(
     rematchPromptOpen({ ...closing, gameOver: true }, MATCH, { p: 30 }),
@@ -76,18 +76,31 @@ test("no prompt without a game, once it is over, or once the match is", () => {
 
 test("asks once the manche is nearly out and the target is reachable", () => {
   assert.equal(
-    rematchPromptOpen({ gameOver: false, handCounts: [1, 9, 9] }, MATCH, { p: 19 }),
+    rematchPromptOpen({ gameOver: false, handCounts: [1, 9, 9], players: [] }, MATCH, { p: 19 }),
     true
   );
   assert.equal(
-    rematchPromptOpen({ gameOver: false, handCounts: [8, 9, 9] }, MATCH, { p: 19 }),
+    rematchPromptOpen({ gameOver: false, handCounts: [8, 9, 9], players: [] }, MATCH, { p: 19 }),
     false,
     "nobody is close to going out yet"
   );
   assert.equal(
-    rematchPromptOpen({ gameOver: false, handCounts: [1, 9, 9] }, MATCH, { p: 2 }),
+    rematchPromptOpen({ gameOver: false, handCounts: [1, 9, 9], players: [] }, MATCH, { p: 2 }),
     false,
     "the target is out of reach from this manche, so it cannot be the last"
+  );
+});
+
+test("a teams table asks once the pair, not one partner, can reach the target", () => {
+  const players = [
+    { id: "p0", team: "A" as const },
+    { id: "p1", team: "B" as const },
+    { id: "p2", team: "A" as const },
+    { id: "p3", team: "B" as const },
+  ];
+  assert.equal(
+    rematchPromptOpen({ gameOver: false, handCounts: [1, 9, 9, 9], players }, MATCH, { p0: 8, p2: 8 }),
+    true
   );
 });
 
@@ -95,8 +108,8 @@ test("the seat count comes from the hands, so the two cannot disagree", () => {
   // A single manche is the last by definition, so this isolates the count:
   // `matchIsClosing` refuses an empty table before it looks at anything else.
   const single = { length: "single" as const, target: 21, over: false };
-  assert.equal(rematchPromptOpen({ gameOver: false, handCounts: [] }, single, {}), false);
-  assert.equal(rematchPromptOpen({ gameOver: false, handCounts: [1] }, single, {}), true);
+  assert.equal(rematchPromptOpen({ gameOver: false, handCounts: [], players: [] }, single, {}), false);
+  assert.equal(rematchPromptOpen({ gameOver: false, handCounts: [1], players: [] }, single, {}), true);
 });
 
 /**
