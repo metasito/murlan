@@ -580,7 +580,7 @@ describe("runOnce", () => {
     const facts = () => ({ title: "t", url: "", size: null, labels: ["in-progress"], reviewRounds: 1, ciRounds: 0 });
     const toReview = () => [{ n: 42, outcome: "handoff", cost: 0, park_reason: "phase D next", head: null }];
     const at = (phase: string, pinned: string | null = null) =>
-      nextRoute(42, pinned, {
+      nextRoute(42, pinned as never, {
         read: () => ({ onTicket: true, ticket: 42, branch: "agent/42-x", cwd: "w", phase, fix: false }),
         facts,
         ledger: toReview,
