@@ -28,6 +28,7 @@ import { useNotification } from "@/context/NotificationContext";
 import { SessionReplacedNotice } from "@/components/SessionReplacedNotice";
 import { t, translateServerPayload, type ServerPayload } from "@/lib/i18n";
 import { Reading } from "@/lib/theme";
+import { reconnectDelayMs } from "@/lib/reconnectDelay";
 import type { FriendRequestAccepted, FriendRequestIncoming } from "@/lib/wire";
 import type { Socket as UntypedSocket } from "socket.io-client";
 
@@ -47,9 +48,6 @@ function seatRow<T extends { id: string }>(qc: QueryClient, key: string, row: T 
     rows.some((r) => r.id === row.id) ? rows : [...rows, row]
   );
 }
-
-const RETRY_BASE_MS = 2000;
-const RETRY_MAX_MS = 30_000;
 
 /**
  * The server closed this socket because the same account connected somewhere
@@ -270,7 +268,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     // A handshake rejected by server middleware (expired or already-used
     // ticket) destroys the socket's subscriptions, so socket.io will not retry
     // it and `socket.active` is false. This loop owns that case alone, backing
-    // off exponentially (capped) while the auth callback mints a fresh ticket
+    // off exponentially (capped, jittered) while the auth callback mints a fresh ticket
     // per attempt. While `active` is true the library's own reconnection is
     // still running and owns the retry.
     const onConnectError = (err: Error) => {
@@ -280,7 +278,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       if (socket.active) return;
       if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
       const attempt = retryAttemptRef.current++;
-      const delay = Math.min(RETRY_BASE_MS * 2 ** attempt, RETRY_MAX_MS);
+      const delay = reconnectDelayMs(attempt);
       retryTimerRef.current = setTimeout(() => {
         retryTimerRef.current = null;
         if (!socket.connected) socket.connect();

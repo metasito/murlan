@@ -24,9 +24,12 @@ import {
   lobbyGraceKey,
   clearLobbyGrace,
   clearAllTimersForUser,
+  disconnectDeadlines,
+  disconnectTimers,
 } from "./gameTimers.ts";
+import { broadcastRematchIntents } from "./gameOver.ts";
 import { sendGameStateTo } from "./gamePersistence.ts";
-import { emitMatchState } from "./emit.ts";
+import { emitEndMatchVoteState, emitMatchState, emitVoteState } from "./emit.ts";
 import { armTurnIfIdle } from "./gameTurn.ts";
 import { payload } from "./payload.ts";
 import { TEAMS_PLAYER_COUNT } from "../lib/gameEngine.ts";
@@ -204,6 +207,22 @@ export async function announceRejoin(
     // Re-sent to this account only, so a client that never left is not told
     // its own hand twice.
     io.to(userRoom(userId)).emit("game:over", game.lastGameOverPayload);
+    emitVoteState(io, userRoom(userId), game);
+    broadcastRematchIntents(io, game, userRoom(userId));
+  }
+  emitEndMatchVoteState(io, userRoom(userId), game);
+  for (const other of Object.values(game.playerMap)) {
+    const deadline = disconnectDeadlines.get(other);
+    if (other === userId || deadline === undefined || !disconnectTimers.has(other)) continue;
+    const otherSeat = seatOfUser(game, other);
+    const otherName = seatName(game, otherSeat);
+    const seconds = Math.max(1, Math.ceil((deadline - Date.now()) / 1000));
+    io.to(userRoom(userId)).emit("game:player_disconnected", {
+      userId: other,
+      username: otherName,
+      seatIndex: otherSeat,
+      ...payload("PLAYER_DISCONNECTED_GRACE", { username: otherName, seconds }),
+    });
   }
   io.to(roomId).emit("game:player_reconnected", {
     userId,

@@ -28,6 +28,10 @@ const mockSocket = {
     listeners.get(event)!.add(fn);
   },
   off() {},
+  once() {},
+  timeout() {
+    return mockSocket;
+  },
   emit(event: string, payload?: unknown) {
     emitted.push({ event, payload });
   },
@@ -79,7 +83,7 @@ async function mountRejoining(roomId: string) {
   });
   // The persisted id is read back asynchronously; the rejoin follows it.
   await waitFor(() =>
-    expect(emitted).toContainEqual({ event: 'game:rejoin', payload: { roomId } })
+    expect(emitted).toContainEqual({ event: 'game:rejoin', payload: expect.objectContaining({ roomId }) })
   );
   return hook;
 }
@@ -182,7 +186,7 @@ describe('game:rejoin_failed', () => {
     await waitFor(() => expect(result.current.game.rejoinFailed).toBe(false));
     expect(emitted).toContainEqual({
       event: 'room:spectate',
-      payload: { code: 'ABCDEF' },
+      payload: expect.objectContaining({ code: 'ABCDEF' }),
     });
 
     await unmount();

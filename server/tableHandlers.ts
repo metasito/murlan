@@ -72,6 +72,7 @@ import {
   clearDisconnectGrace,
   clearLobbyGrace,
   disconnectTimers,
+  disconnectDeadlines,
   usersInLobbyGrace,
 } from "./gameTimers.ts";
 import {
@@ -822,6 +823,7 @@ function seatLostAction(
     void (async () => {
       try {
         disconnectTimers.delete(userId);
+        disconnectDeadlines.delete(userId);
         // Asked of the cluster, not of this process: the instance that owns a
         // table need not be the one holding the player's socket, and reading
         // the local map alone hands a connected player's seat to a bot.
@@ -846,6 +848,7 @@ function seatLostAction(
     })();
   }, disconnectGraceMs());
   disconnectTimers.set(userId, dcTimer);
+  disconnectDeadlines.set(userId, Date.now() + disconnectGraceMs());
   return OK;
 }
 

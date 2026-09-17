@@ -4,6 +4,8 @@ import type { OnlineGameState } from "./gameRoom.ts";
 // clearAfkTimer / clearRoomTimers / clearAllTimersForUser / disposeGame.
 export const afkTimers = new Map<string, ReturnType<typeof setTimeout>>();
 export const disconnectTimers = new Map<string, ReturnType<typeof setTimeout>>();
+/** When each `disconnectTimers` entry fires; set and deleted with it. */
+export const disconnectDeadlines = new Map<string, number>();
 /** Keyed `roomId:userId`, so one account can hold a seat in only one lobby. */
 export const lobbyGraceTimers = new Map<string, ReturnType<typeof setTimeout>>();
 export const botTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -138,6 +140,7 @@ export function clearDisconnectGrace(userId: string): boolean {
   if (!t) return false;
   clearTimeout(t);
   disconnectTimers.delete(userId);
+  disconnectDeadlines.delete(userId);
   return true;
 }
 
@@ -146,6 +149,7 @@ export function clearAllTimersForUser(userId: string, roomId?: string) {
   if (dcTimer) {
     clearTimeout(dcTimer);
     disconnectTimers.delete(userId);
+    disconnectDeadlines.delete(userId);
   }
   if (roomId) {
     clearAfkTimer(roomId, userId);
@@ -160,6 +164,7 @@ export function clearRoomDisconnectTimers(game: OnlineGameState) {
     if (t) {
       clearTimeout(t);
       disconnectTimers.delete(uid);
+      disconnectDeadlines.delete(uid);
     }
   }
 }

@@ -7,7 +7,7 @@
 // out and passing itself.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { sendIntent } from "../lib/sendIntent.ts";
+import { sendIntent, undelivered } from "../lib/sendIntent.ts";
 
 type Ack = (err: unknown, reply?: { ok: boolean; code?: string }) => void;
 
@@ -16,10 +16,14 @@ type Ack = (err: unknown, reply?: { ok: boolean; code?: string }) => void;
  * `null` is silence: the timeout fires and `emit` reports the error, which is
  * what the real client does.
  */
-function fakeSocket(script: ({ ok: boolean; code?: string } | null)[]) {
+function fakeSocket(script: ({ ok: boolean; code?: string } | null)[], rejoinAnswer = "game:state") {
   const sent: { event: string; args: unknown[] }[] = [];
   let attempt = 0;
   const socket = {
+    once(event: string, listener: () => void) {
+      if (event === rejoinAnswer) queueMicrotask(listener);
+    },
+    off() {},
     timeout() {
       return {
         emit(event: string, ...args: unknown[]) {
@@ -75,10 +79,34 @@ describe("sendIntent", () => {
     assert.deepEqual(await sendIntent(null, "game:pass"), { ok: false });
   });
 
-  /** `game:pass` carries no payload, and must not grow an undefined one. */
-  test("an intent with no payload sends none", async () => {
-    const { socket, sent } = fakeSocket([{ ok: true }]);
+  test("every attempt of one intent carries the same intentId, and a new intent a new one", async () => {
+    const { socket, sent } = fakeSocket([null, { ok: true }, { ok: true }]);
     await sendIntent(socket, "game:pass");
-    assert.deepEqual(sent[0]?.args, []);
+    await sendIntent(socket, "game:pass");
+    const ids = sent.map((s) => (s.args[0] as { intentId: string }).intentId);
+    assert.equal(typeof ids[0], "string");
+    assert.equal(ids[0], ids[1]);
+    assert.notEqual(ids[1], ids[2]);
+  });
+
+  test("a socket not yet back at its table is retried, not taken as a refusal", async () => {
+    const { socket, sent } = fakeSocket([{ ok: false, code: "NOT_AT_A_TABLE" }, { ok: true }]);
+    assert.deepEqual(await sendIntent(socket, "game:play", { cardIds: ["a"] }), { ok: true });
+    assert.equal(sent.length, 2);
+  });
+
+  test("a lobby intent is retried as soon as the lobby rejoin answers", { timeout: 1000 }, async () => {
+    const { socket, sent } = fakeSocket([{ ok: false, code: "NOT_AT_A_TABLE" }, { ok: true }], "room:state");
+    assert.deepEqual(await sendIntent(socket, "room:start", {}, { timeoutMs: 3000 }), { ok: true });
+    assert.equal(sent.length, 2);
+  });
+
+  test("a table that stays unreachable is reported as undelivered", async () => {
+    const unreachable = { ok: false, code: "TABLE_UNREACHABLE" };
+    const { socket } = fakeSocket([unreachable, unreachable, unreachable]);
+    const outcome = await sendIntent(socket, "game:pass");
+    assert.deepEqual(outcome, unreachable);
+    assert.equal(undelivered(outcome), true);
+    assert.equal(undelivered({ ok: false, code: "NOT_YOUR_TURN" }), false);
   });
 });

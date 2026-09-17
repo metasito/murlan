@@ -219,6 +219,34 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
    * their own turn forever — `game:rejoin` is an ordinary client emit and 20
    * per minute is well inside the rate limit.
    */
+  test("a rejoin is told another seat's remaining grace and the vote tallies", async () => {
+    const alice = await connectAs(server, "recon_sync_alice");
+    const bob = await connectAs(server, "recon_sync_bob");
+    const carol = await connectAs(server, "recon_sync_carol");
+    const room = await setUpRoom([alice, bob, carol], 3);
+    await startGame([alice, bob, carol]);
+
+    const carolGone = waitFor<{ seatIndex: number }>(alice.socket, "game:player_disconnected", 5_000);
+    carol.socket.disconnect();
+    const carolSeat = (await carolGone).seatIndex;
+    bob.socket.disconnect();
+    await new Promise((resolve) => setTimeout(resolve, 250));
+
+    const back = await reconnectAs(server, bob);
+    const table = [alice, { ...bob, socket: back }];
+    try {
+      const grace = waitFor<{ seatIndex: number; params: { seconds: number } }>(back, "game:player_disconnected", 5_000);
+      const tally = waitFor<{ votes: string[] }>(back, "game:end_match_vote_state", 5_000);
+      back.emit("game:rejoin", { roomId: room.roomId });
+      const notice = await grace;
+      assert.equal(notice.seatIndex, carolSeat);
+      assert.ok(notice.params.seconds > 0 && notice.params.seconds <= 20, `${notice.params.seconds}s left`);
+      assert.deepEqual((await tally).votes, []);
+    } finally {
+      await closeTable(table);
+    }
+  });
+
   test("re-emitting game:rejoin does not hold the caller's own turn open", async () => {
     const alice = await connectAs(server, "afk_self_alice");
     const bob = await connectAs(server, "afk_self_bob");

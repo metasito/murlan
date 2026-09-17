@@ -359,9 +359,9 @@ export function tableWantsRematch(game: OnlineGameState): boolean {
   return isMajority(yes, total);
 }
 
-export function broadcastRematchIntents(io: SocketServer, game: OnlineGameState) {
+export function broadcastRematchIntents(io: SocketServer, game: OnlineGameState, room = game.roomId) {
   const { yes, total } = countRematchAnswers(game);
-  io.to(game.roomId).emit("game:rematch_intents", {
+  io.to(room).emit("game:rematch_intents", {
     yes,
     total,
     answers: Object.fromEntries(game.rematchIntents),

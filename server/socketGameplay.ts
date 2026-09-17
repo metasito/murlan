@@ -53,6 +53,7 @@ const REJOIN_FAILURE: Record<string, ReturnType<typeof payload>> = {
   SEAT_RELEASED: payload("SEAT_RELEASED"),
   NO_LIVE_GAME: payload("GAME_NOT_FOUND"),
   GAME_NO_LONGER_VALID: payload("GAME_NO_LONGER_VALID"),
+  INVALID_PAYLOAD: payload("INVALID_PAYLOAD"),
   SERVER_ERROR: payload("SERVER_ERROR"),
 };
 
@@ -68,6 +69,11 @@ export function registerGameplayHandlers({
   userId,
 }: GameplayHandlerContext) {
 
+    const rejoinFailed = (code: string, roomId: unknown) => {
+      const failure = REJOIN_FAILURE[code] ?? REJOIN_FAILURE.SERVER_ERROR;
+      socket.emit("game:rejoin_failed", { ...failure, roomId: typeof roomId === "string" ? roomId : undefined });
+    };
+
     /** The table this socket is at, or the refusal to send back. */
     const atTable = (): string | null => socketRoomMap.get(socket.id) ?? null;
 
@@ -75,10 +81,10 @@ export function registerGameplayHandlers({
       socket,
       "game:play",
       GamePlaySchema,
-      async ({ cardIds }) => {
+      async ({ cardIds }, { intentId }) => {
         const roomId = atTable();
         if (!roomId) return { ok: false, code: "NOT_AT_A_TABLE" };
-        return applyOrForward(io, { kind: "play", roomId, userId, cardIds });
+        return applyOrForward(io, { kind: "play", roomId, userId, cardIds, intentId });
       },
       { limit: GAME_ACTION_RATE_LIMIT, windowMs: 60_000 }
     );
@@ -87,10 +93,10 @@ export function registerGameplayHandlers({
       socket,
       "game:pass",
       NoPayloadSchema,
-      async () => {
+      async (_payload, { intentId }) => {
         const roomId = atTable();
         if (!roomId) return { ok: false, code: "NOT_AT_A_TABLE" };
-        return applyOrForward(io, { kind: "pass", roomId, userId });
+        return applyOrForward(io, { kind: "pass", roomId, userId, intentId });
       },
       { limit: GAME_ACTION_RATE_LIMIT, windowMs: 60_000 }
     );
@@ -99,10 +105,10 @@ export function registerGameplayHandlers({
       socket,
       "game:rematch_intent",
       GameRematchIntentSchema,
-      async ({ wants }) => {
+      async ({ wants }, { intentId }) => {
         const roomId = atTable();
         if (!roomId) return { ok: false, code: "NOT_AT_A_TABLE" };
-        return applyOrForward(io, { kind: "rematchIntent", roomId, userId, wants });
+        return applyOrForward(io, { kind: "rematchIntent", roomId, userId, wants, intentId });
       },
       { limit: 20, windowMs: 60_000 }
     );
@@ -111,10 +117,10 @@ export function registerGameplayHandlers({
       socket,
       "game:rematch_vote",
       NoPayloadSchema,
-      async () => {
+      async (_payload, { intentId }) => {
         const roomId = atTable();
         if (!roomId) return { ok: false, code: "NOT_AT_A_TABLE" };
-        return applyOrForward(io, { kind: "rematchVote", roomId, userId });
+        return applyOrForward(io, { kind: "rematchVote", roomId, userId, intentId });
       },
       { limit: 20, windowMs: 60_000 }
     );
@@ -123,10 +129,10 @@ export function registerGameplayHandlers({
       socket,
       "game:end_match_vote",
       GameEndMatchVoteSchema,
-      async ({ wants }) => {
+      async ({ wants }, { intentId }) => {
         const roomId = atTable();
         if (!roomId) return { ok: false, code: "NOT_AT_A_TABLE" };
-        return applyOrForward(io, { kind: "endMatchVote", roomId, userId, wants });
+        return applyOrForward(io, { kind: "endMatchVote", roomId, userId, wants, intentId });
       },
       { limit: 20, windowMs: 60_000 }
     );
@@ -147,8 +153,7 @@ export function registerGameplayHandlers({
           outcome = { ok: false, code: "SERVER_ERROR" };
         }
         if (!outcome.ok) {
-          const failure = REJOIN_FAILURE[outcome.code ?? ""] ?? REJOIN_FAILURE.SERVER_ERROR;
-          socket.emit("game:rejoin_failed", { ...failure, roomId });
+          rejoinFailed(outcome.code ?? "", roomId);
           return outcome;
         }
         // Only once the table has accepted them: a socket joined to a room it
@@ -156,17 +161,21 @@ export function registerGameplayHandlers({
         joinSocketToRoom(socket, roomId);
         return outcome;
       },
-      { limit: 20, windowMs: 60_000 }
+      {
+        limit: 20,
+        windowMs: 60_000,
+        refuse: (code, raw) => rejoinFailed(code, (raw as { roomId?: unknown } | undefined)?.roomId),
+      }
     );
 
     onEvent(
       socket,
       "game:reaction",
       GameReactionSchema,
-      async ({ emoji }) => {
+      async ({ emoji }, { intentId }) => {
         const roomId = atTable();
         if (!roomId) return { ok: false, code: "NOT_AT_A_TABLE" };
-        return applyOrForward(io, { kind: "reaction", roomId, userId, emoji });
+        return applyOrForward(io, { kind: "reaction", roomId, userId, emoji, intentId });
       },
       { limit: 8, windowMs: 10_000 }
     );
@@ -175,10 +184,10 @@ export function registerGameplayHandlers({
       socket,
       "game:exchange_give_card",
       GameExchangeGiveCardSchema,
-      async ({ cardId }) => {
+      async ({ cardId }, { intentId }) => {
         const roomId = atTable();
         if (!roomId) return { ok: false, code: "NOT_AT_A_TABLE" };
-        return applyOrForward(io, { kind: "exchange", roomId, userId, cardId });
+        return applyOrForward(io, { kind: "exchange", roomId, userId, cardId, intentId });
       },
       { limit: 30, windowMs: 60_000 }
     );

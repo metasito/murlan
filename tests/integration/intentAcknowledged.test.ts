@@ -9,14 +9,15 @@
 // retry upon reconnection". The acknowledgement is the guarantee.
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
-import type { Socket } from "socket.io-client";
+import { io as ioClient, type Socket } from "socket.io-client";
 import {
   startTestServer,
   hasDatabase,
   skipMessage,
   type TestServer,
 } from "../helpers/testServer.ts";
-import { connectAs, waitFor } from "../helpers/client.ts";
+import { PROTOCOL_AUTH, connectAs, waitFor } from "../helpers/client.ts";
+import { AUTH_UNAVAILABLE } from "../../shared/protocol.ts";
 import type { SanitizedState } from "../helpers/table.ts";
 import type { EventOutcome } from "../../server/socketSafety.ts";
 
@@ -166,6 +167,69 @@ describe("an intent is acknowledged", { skip: hasDatabase() ? false : skipMessag
       false,
       "and the card it did play is gone exactly once"
     );
+  });
+
+  test("a pass retried under one intentId is answered as the pass that landed", async () => {
+    const { c: leader, s: state, waiting } = await dealtPair("passretry");
+    const lead = state.players[state.viewerSeatIndex]?.hand.find((c) => c.id === state.startCard?.id);
+    assert.ok(lead);
+    assert.deepEqual(await ackOf(leader.socket, "game:play", { cardIds: [lead.id] }), { ok: true });
+
+    const retry = { intentId: "pass-retry-1" };
+    assert.deepEqual(await ackOf(waiting.socket, "game:pass", retry), { ok: true });
+    assert.deepEqual(
+      await ackOf(waiting.socket, "game:pass", retry),
+      { ok: true },
+      "the retry is the same intent, not a second pass out of turn"
+    );
+    const fresh = (await ackOf(waiting.socket, "game:pass", { intentId: "pass-retry-2" })) as EventOutcome;
+    assert.equal(fresh.code, "NOT_YOUR_TURN", "a new intent is judged on its own");
+  });
+
+  test("two intents from one socket land in the order they were sent", async () => {
+    const c = await player("order");
+    const created = ackOf(c.socket, "room:create", { gameMode: "free_for_all", maxPlayers: 2 });
+    const left = ackOf(c.socket, "room:leave", undefined);
+    await Promise.all([created, left]);
+    const reply = (await ackOf(c.socket, "room:setVisibility", { visibility: "public" })) as EventOutcome;
+    assert.equal(reply.code, "NOT_AT_A_TABLE", "the leave ran after the create, not before it");
+  });
+
+  test("an event this server has no handler for is answered, not dropped", async () => {
+    const c = await player("unknown");
+    assert.deepEqual(await ackOf(c.socket, "game:from_the_future", {}), { ok: false, code: "CLIENT_OUTDATED" });
+  });
+
+  test("a rejoin refused at the boundary is answered on the rejoin's own channel", async () => {
+    const c = await player("badrejoin");
+    const failed = waitFor<{ code: string }>(c.socket, "game:rejoin_failed");
+    const reply = (await ackOf(c.socket, "game:rejoin", { roomId: 42 })) as EventOutcome;
+    assert.equal(reply.code, "INVALID_PAYLOAD");
+    assert.equal((await failed).code, "INVALID_PAYLOAD");
+  });
+
+  test("a handshake the database could not check is refused apart from a spent ticket", async () => {
+    const { socket, cookie } = await player("authdown");
+    socket.close();
+    const res = await fetch(`${server.url}/api/auth/socket-ticket`, { method: "POST", headers: { cookie } });
+    const { ticket } = (await res.json()) as { ticket: string };
+    const refusal = () =>
+      new Promise<string>((resolve) => {
+        const s = ioClient(server.url, { auth: { ...PROTOCOL_AUTH, ticket }, transports: ["websocket"], reconnection: false });
+        s.once("connect", () => resolve("connected"));
+        s.once("connect_error", (e) => resolve(e.message));
+      });
+    const { userStore } = await import("../../server/userStore.ts");
+    const getUser = userStore.getUser;
+    userStore.getUser = async () => {
+      throw new Error("database down");
+    };
+    try {
+      assert.equal(await refusal(), AUTH_UNAVAILABLE);
+    } finally {
+      userStore.getUser = getUser;
+    }
+    assert.equal(await refusal(), "Not authenticated", "the ticket was spent by the first attempt");
   });
 
   test("the server answers a pass", async () => {

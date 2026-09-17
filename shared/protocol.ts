@@ -6,11 +6,14 @@ import type { DefaultEventsMap } from "socket.io";
 import type { GameState, Player } from "../lib/gameEngine.ts";
 import type { GameOverPayload } from "../lib/matchState.ts";
 
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2;
 export const MIN_PROTOCOL_VERSION = 1;
 
 /** The handshake's refusal for a bundle older than MIN_PROTOCOL_VERSION. */
 export const CLIENT_OUTDATED = "CLIENT_OUTDATED";
+
+/** The handshake's refusal when the server could not check the credential, as against a bad one. */
+export const AUTH_UNAVAILABLE = "AUTH_UNAVAILABLE";
 
 /** A seat as one viewer receives it: every hand but theirs is blanked. */
 export type WirePlayer = Player & { handCount: number; vacated: boolean };

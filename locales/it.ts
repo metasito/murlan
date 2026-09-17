@@ -778,6 +778,7 @@ export const it: Record<keyof typeof en, string> = {
   "onlineLobby.watchA11yHint": "Entra come spettatore, senza sederti al tavolo",
 
   // ------------------------------------------------------------------- room.*
+  "room.requestNotDelivered": "La richiesta non è arrivata al server. Controlla la connessione e riprova.",
   "room.inviteFriendsTitle": "INVITA AMICI",
   "room.noFriendsOnline": "Nessun amico online",
   "room.invite": "Invita",

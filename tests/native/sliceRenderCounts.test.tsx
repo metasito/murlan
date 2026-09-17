@@ -40,6 +40,10 @@ const mockSocket = {
     listeners.get(event)!.add(fn);
   },
   off() {},
+  once() {},
+  timeout() {
+    return mockSocket;
+  },
   emit() {},
 };
 
