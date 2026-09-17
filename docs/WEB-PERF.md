@@ -136,6 +136,6 @@ Getting the number that actually matters needs a person with a handset:
 Until that row exists, every "is this fast enough on a phone?" answer is still a
 guess — a better-informed one than before, but a guess.
 
-The **Expo SDK 54 → 57 upgrade** would bring React 19.2's Chrome Performance
-Tracks, which is the closest thing to a first-party answer; it is filed
-separately (#119) and this does not wait on it.
+The app is on **Expo SDK 57**, which brings React 19.2's Chrome Performance
+Tracks — the closest thing to a first-party answer, and worth recording in that
+trace (`tests/webPerfDoc.test.ts` keeps this sentence on `package.json`'s SDK).
