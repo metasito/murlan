@@ -1,16 +1,23 @@
 import { describe, it, expect } from '@jest/globals';
 import { Platform } from 'react-native';
-import { makeLayeredShadow, Shadow } from '@/lib/theme';
+import { makeLayeredShadow, makeShadow, Shadow } from '@/lib/theme';
 
-// lib/theme.ts branches on Platform.OS: web gets a boxShadow string, native
-// gets the discrete shadow props. The web suite only ever exercises the first
-// branch, so the native one is unverified everywhere else.
-//
-// The card tokens are the exception, and deliberately: a card needs two
-// shadows at once, the native shadow props carry exactly one, and RN 0.76
-// brought `boxShadow` — which takes a list — to native under the New
-// Architecture this app enables.
+// The card tokens take two shadows; every other token takes one, through the
+// same `boxShadow` path.
 const LAYERED = ['card', 'cardLifted', 'cardBack'];
+
+function withAndroidVersion<T>(version: number, run: () => T): T {
+  const os = Platform.OS;
+  const prior = Platform.Version;
+  Object.defineProperty(Platform, 'OS', { value: 'android', configurable: true });
+  Object.defineProperty(Platform, 'Version', { value: version, configurable: true });
+  try {
+    return run();
+  } finally {
+    Object.defineProperty(Platform, 'OS', { value: os, configurable: true });
+    Object.defineProperty(Platform, 'Version', { value: prior, configurable: true });
+  }
+}
 
 /** The shadows in a boxShadow list, as `[offsetY, radius, opacity]` each. */
 function layersOf(key: string): { offsetY: number; radius: number; opacity: number }[] {
@@ -27,20 +34,21 @@ describe('Shadow is platform-aware', () => {
     expect(['ios', 'android']).toContain(Platform.OS);
   });
 
-  it.each(Object.keys(Shadow).filter((k) => !LAYERED.includes(k)))(
-    '%s uses native shadow props, not boxShadow',
-    (key) => {
-      const style = Shadow[key as keyof typeof Shadow];
-      expect(style).not.toHaveProperty('boxShadow');
-      expect(style).toMatchObject({
-        shadowColor: expect.any(String),
-        shadowOffset: { width: expect.any(Number), height: expect.any(Number) },
-        shadowOpacity: expect.any(Number),
-        shadowRadius: expect.any(Number),
-        elevation: expect.any(Number),
-      });
-    }
-  );
+  it.each(Object.keys(Shadow).filter((k) => !LAYERED.includes(k)))('%s is a boxShadow', (key) => {
+    const style = Shadow[key as keyof typeof Shadow];
+    expect(style).toEqual({ boxShadow: expect.any(String) });
+  });
+
+  it('emits boxShadow on Android 9, where elevation 0 or a bare view would draw nothing', () => {
+    const style = withAndroidVersion(28, () => makeShadow('#C9A84C', 2, 0, 0.5, 12, 0));
+    expect(style).toEqual({ boxShadow: '2px 0px 12px rgba(201,168,76,0.5)' });
+  });
+
+  it('keeps the shadow props below Android 9, with an elevation no caller can zero', () => {
+    const style = withAndroidVersion(26, () => makeShadow('#C9A84C', 0, 0, 0.5, 13, 0));
+    expect(style).not.toHaveProperty('boxShadow');
+    expect(style).toMatchObject({ shadowRadius: 13, shadowOpacity: 0.5, elevation: 7 });
+  });
 });
 
 // A card with one shadow reads as a sticker on the cloth. It needs the tight

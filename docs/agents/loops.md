@@ -26,7 +26,8 @@ a different implementation, not a polyfill:
 | `<RadialGradient rx ry>` | ignored — falls back to `r="50%"` | **this is what it reads** (`rx: rx \|\| r`) |
 | `<RadialGradient gradientTransform>` | honoured, unit space | user-space matrix — a unit-space `translate(0.5,…)` means nothing |
 | `overflow: "clip"` | clips without a scroll box | not a value RN knows |
-| `willChange`, `boxShadow` | real | inert |
+| `willChange` | real | inert |
+| `boxShadow` | real | real, bar Android below 9 |
 
 The portable way to shape a radial is neither: give the **rect** the radii (`2*rx` by
 `2*ry`) and let the gradient keep its default `r="50%"`, which is the inscribed ellipse on
@@ -713,8 +714,9 @@ ones that run the other way, breaking native while web stays green.
 
 - **`shadowColor` / `shadowOffset` / `shadowOpacity` / `shadowRadius` are inert.**
   react-native-web wants `boxShadow`. Use `makeShadow(color, x, y, opacity, radius, elevation)`
-  from `lib/theme.ts`, which emits the right one per platform. The frozen `Shadow.*` map is the
-  same helper pre-applied; reach for `makeShadow` directly when the radius scales with the card.
+  from `lib/theme.ts`, which emits `boxShadow` everywhere but Android below 9, where only
+  `elevation` draws. The frozen `Shadow.*` map is the same helper pre-applied; reach for
+  `makeShadow` directly when the radius scales with the card.
 - **`<RadialGradient rx ry>` is ignored.** SVG has no `rx`/`ry` on `radialGradient`;
   react-native-svg passes them through and the browser falls back to `r="50%"`. An elliptical
   radial needs `r` plus a `gradientTransform`.
