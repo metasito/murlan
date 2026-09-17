@@ -39,7 +39,7 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "",
+        "matcher": "Bash|Read|Grep|Glob|Agent|Task|WebFetch",
         "hooks": [
           {
             "type": "command",

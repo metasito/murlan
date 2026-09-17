@@ -5,11 +5,12 @@
  *
  * Exit 0 always. stdout carries the hook's additionalContext, or nothing.
  */
-import { createHash } from "node:crypto";
-import { closeSync, fstatSync, openSync, readFileSync, readSync } from "node:fs";
+if (!process.env.LOOP_TURNS) process.exit(0);
+const { createHash } = await import("node:crypto");
+const { closeSync, fstatSync, openSync, readFileSync, readSync } = await import("node:fs");
 
-export const CONTEXT_CEILING = 200_000;
-export const TAIL_BYTES = 4 * 1024 * 1024;
+const CONTEXT_CEILING = 200_000;
+const TAIL_BYTES = 4 * 1024 * 1024;
 const REPEATS = 3;
 
 function tail(file) {
@@ -68,7 +69,7 @@ function notices(payload) {
 
 try {
   const payload = JSON.parse(readFileSync(0, "utf8") || "{}");
-  if (process.env.LOOP_TURNS && !payload.agent_id && payload.transcript_path) {
+  if (!payload.agent_id && payload.transcript_path) {
     const said = notices(payload);
     if (said.length) {
       process.stdout.write(
