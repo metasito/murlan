@@ -31,7 +31,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { CardView } from "@/components/CardView";
 import type { ArcCard } from "@/components/tableArc";
 import type { OpponentSide } from "@/components/seatLayout";
-import { BACK_SCALE } from "@/components/cardFaceModel";
+import { BACK_SCALE, tableFontSize } from "@/components/cardFaceModel";
 import { Colors, makeShadow, Motion, Radius, Spacing } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
@@ -390,7 +390,8 @@ function SeatRing({
     .toUpperCase();
 
   const size = SEAT_DISC * scale;
-  const badge = SEAT_BADGE * scale;
+  const lastCard = finishPos === undefined && cardCount === 1;
+  const badge = SEAT_BADGE * (lastCard ? LAST_CARD_BADGE : 1) * scale;
   const showCount = finishPos !== undefined || !focusMode;
   return (
     <View testID="seat-ring" style={{ width: size, height: size }}>
@@ -425,7 +426,7 @@ function SeatRing({
             : makeShadow(Colors.shadow, 0, SEAT_SHADOW_Y * scale, 0.62, SEAT_SHADOW * scale, 0),
         ]}
       >
-        <TableText style={[seatStyles.discInitials, { fontSize: SEAT_INITIAL_FS * scale }]}>
+        <TableText style={[seatStyles.discInitials, { fontSize: tableFontSize(SEAT_INITIAL_FS, scale) }]}>
           {initials}
         </TableText>
       </LinearGradient>
@@ -443,6 +444,7 @@ function SeatRing({
           style={[
             seatStyles.countBubble,
             finishPos !== undefined && seatStyles.countBubbleFinished,
+            lastCard && seatStyles.countBubbleLast,
             {
               minWidth: badge,
               height: badge,
@@ -455,7 +457,13 @@ function SeatRing({
           {finishPos !== undefined ? (
             <Ionicons testID="seat-finish-trophy" name="trophy" size={badge * 0.5} color={Colors.gold} />
           ) : (
-            <TableText style={[seatStyles.countBubbleText, { fontSize: SEAT_BADGE_FS * scale }]}>
+            <TableText
+              style={[
+                seatStyles.countBubbleText,
+                lastCard && seatStyles.countBubbleTextLast,
+                { fontSize: tableFontSize(SEAT_BADGE_FS, scale) },
+              ]}
+            >
               {cardCount}
             </TableText>
           )}
@@ -700,7 +708,7 @@ function SeatWho({
               seatStyles.oppName,
               // The cap rides the scale the glyphs do; fixed, it ellipsises
               // every name above a phone's own scale.
-              { fontSize: SEAT_NAME_FS * scale, maxWidth: labelW },
+              { fontSize: tableFontSize(SEAT_NAME_FS, scale), maxWidth: labelW },
               isActive && seatStyles.oppNameActive,
             ]}
             numberOfLines={1}
@@ -821,6 +829,7 @@ const SEAT_DIM_OPACITY = 0.62;
 /** The count badge's own diameter, and the digit inside it, at scale 1. */
 const SEAT_BADGE = 18;
 const SEAT_BADGE_FS = 10;
+const LAST_CARD_BADGE = 1.25;
 const SEAT_NAME_FS = 11;
 /** The disc's seated shadow, and the glow that replaces it on the seat on move. */
 const SEAT_SHADOW = 9;
@@ -925,5 +934,11 @@ const seatStyles = StyleSheet.create({
     fontFamily: "Rajdhani_700Bold",
     color: Colors.gold,
     fontVariant: ["tabular-nums"],
+  },
+  countBubbleLast: {
+    borderColor: Colors.goldLit,
+  },
+  countBubbleTextLast: {
+    color: Colors.goldLit,
   },
 });

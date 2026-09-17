@@ -28,6 +28,7 @@ import type { Card, StartReason } from "@/lib/gameEngine";
 import { getCardDisplayRank, getSuitSymbol } from "@/lib/gameEngine";
 import { CHIP_H, SIDE_SECTION_W } from "@/components/seatLayout";
 import { type RailSide } from "@/components/tableFrame";
+import { tableFontSize } from "@/components/cardFaceModel";
 
 // ─── StartReasonBanner ────────────────────────────────────────────────────────
 
@@ -104,7 +105,7 @@ export function StartReasonBanner({
       >
         <View style={startReasonStyles.card}>
           <LinearGradient
-            colors={[Colors.goldMuted, "transparent"]}
+            colors={[Colors.goldMuted, Colors.goldClear]}
             start={{ x: 0, y: 0 }}
             end={{ x: 0, y: 1 }}
             style={StyleSheet.absoluteFill}
@@ -152,7 +153,7 @@ const startReasonStyles = StyleSheet.create({
   },
   eyebrow: {
     ...Type.caption,
-    color: Colors.goldDim,
+    color: Colors.gold,
     letterSpacing: 3,
     textTransform: "uppercase",
   },
@@ -242,7 +243,7 @@ export function ChipText({
       style={[
         chipStyles.chipLabel,
         {
-          fontSize: FontSize.xxs * scale,
+          fontSize: tableFontSize(FontSize.xxs, scale),
           // Tracking is `em` in the prototype, so it grows with the type it is
           // set in — a fixed px value is a different letterspacing per handset.
           letterSpacing: (strong ? CHIP_TRACKING_STRONG : CHIP_TRACKING) * scale,

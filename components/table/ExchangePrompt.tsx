@@ -131,5 +131,10 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     color: Colors.gold,
     textAlign: "center",
+    backgroundColor: Scrim.heavy,
+    borderRadius: Radius.sm,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.xxs,
+    overflow: "hidden",
   },
 });

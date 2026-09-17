@@ -1404,6 +1404,11 @@ const styles = StyleSheet.create({
   finishedRow: { flex: 1, flexDirection: "row", alignItems: "center", gap: Spacing.sm },
   finishedText: {
     fontFamily: "Rajdhani_600SemiBold", fontSize: FontSize.sm, color: Colors.gold,
+    backgroundColor: Scrim.heavy,
+    borderRadius: Radius.sm,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.xxs,
+    overflow: "hidden",
   },
   rejectHint: {
     position: "absolute",

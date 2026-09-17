@@ -128,7 +128,8 @@ const styles = StyleSheet.create({
   },
   rematchSubtitle: {
     ...Type.caption,
-    fontSize: FontSize.xxs,
+    color: Colors.textSecondary,
+    fontSize: FontSize.xs,
     textAlign: "center",
   },
   rematchButtons: { alignSelf: "stretch", gap: Spacing.xs },
@@ -159,6 +160,7 @@ const styles = StyleSheet.create({
   },
   rematchTally: {
     ...Type.caption,
-    fontSize: FontSize.xxs,
+    color: Colors.textSecondary,
+    fontSize: FontSize.xs,
   },
 });

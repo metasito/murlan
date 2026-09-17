@@ -25,7 +25,6 @@ export function withAlpha(hex: string, alpha: number): string {
   return `rgba(${r},${g},${b},${alpha})`;
 }
 
-// RN Web needs boxShadow; native needs the shadow props. Neither accepts the other.
 // Exported because the table's shadows scale with the card, so they cannot be
 // frozen into the `Shadow` map below.
 export function makeShadow(
@@ -36,21 +35,12 @@ export function makeShadow(
   radius: number,
   elevation: number
 ): Record<string, any> {
-  if (Platform.OS === "web") {
-    return { boxShadow: `${offsetX}px ${offsetY}px ${radius}px ${withAlpha(color, opacity)}` };
-  }
-  return {
-    shadowColor: color,
-    shadowOffset: { width: offsetX, height: offsetY },
-    shadowOpacity: opacity,
-    shadowRadius: radius,
-    elevation,
-  };
+  return makeLayeredShadow([{ color, offsetX, offsetY, opacity, radius }], elevation);
 }
 
-/** One shadow in a stack. Offsets are vertical only — the lamp is overhead. */
 export interface ShadowLayer {
   color: string;
+  offsetX?: number;
   offsetY: number;
   opacity: number;
   radius: number;
@@ -70,18 +60,24 @@ export interface ShadowLayer {
  */
 export function makeLayeredShadow(layers: ShadowLayer[], elevation: number): Record<string, any> {
   // Android draws an outset `boxShadow` only from 9. Below it the prop is
-  // ignored outright, so a card there would lose its shadow rather than gain a
-  // second one — those devices keep the single-shadow props, carrying the cast
-  // layer, which is the half that still reads on its own. Setting both is what
-  // this avoids: nothing documents whether they would compose or double.
+  // ignored outright, so those devices keep the single-shadow props, carrying
+  // the cast layer. There Android reads only `elevation`, so it is floored:
+  // a caller passing 0 would otherwise get no shadow at all.
   const api = Number(Platform.Version);
   if (Platform.OS === "android" && Number.isFinite(api) && api < 28) {
     const cast = layers[layers.length - 1];
-    return makeShadow(cast.color, 0, cast.offsetY, cast.opacity, cast.radius, elevation);
+    return {
+      shadowColor: cast.color,
+      shadowOffset: { width: cast.offsetX ?? 0, height: cast.offsetY },
+      shadowOpacity: cast.opacity,
+      shadowRadius: cast.radius,
+      elevation: Math.max(elevation, Math.ceil(cast.radius / 2)),
+    };
   }
   return {
     boxShadow: layers
-      .map(({ color, offsetY, opacity, radius }) => `0px ${offsetY}px ${radius}px ${withAlpha(color, opacity)}`)
+      .map(({ color, offsetX = 0, offsetY, opacity, radius }) =>
+        `${offsetX}px ${offsetY}px ${radius}px ${withAlpha(color, opacity)}`)
       .join(", "),
   };
 }
@@ -103,12 +99,7 @@ export const Shadow = {
     ],
     3
   ),
-  /**
-   * A card held above the cloth — selected, or in a hand on your turn. No
-   * component switches to this on selection yet: `CardView`'s `selected` prop
-   * lifts the card with a `translateY` animation but still spreads
-   * `Shadow.card`, so the shadow does not yet travel with it.
-   */
+  /** A card held above the cloth. */
   cardLifted: makeLayeredShadow(
     [
       { color: '#000000', offsetY: 1, opacity: 0.34, radius: 3 },

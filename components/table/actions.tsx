@@ -21,8 +21,9 @@ import { a11yHidden, a11yState } from "@/lib/a11y";
 import { useTranslation } from "@/lib/i18n";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { cardSpokenName } from "@/lib/cardNames";
-import { Colors, Garnet, Gradient, Highlight, Layer, makeShadow, Motion, Shadow, Spacing, TopEdgeLight } from "@/lib/theme";
+import { Colors, Garnet, Gradient, Highlight, Layer, makeShadow, Motion, Scrim, Shadow, Spacing, TopEdgeLight } from "@/lib/theme";
 import type { Card } from "@/lib/gameEngine";
+import { tableFontSize } from "@/components/cardFaceModel";
 
 const BTN_PRESS_SCALE = 0.94;
 const BTN_RADIUS = 14;
@@ -170,13 +171,13 @@ export function GiocaButton({
               style={[
                 styles.actionBtnLabel,
                 styles.playBtnLabel,
-                { fontSize: BTN_LABEL_FS * scale, letterSpacing: BTN_TRACKING * scale },
+                { fontSize: tableFontSize(BTN_LABEL_FS, scale), letterSpacing: BTN_TRACKING * scale },
               ]}
             >
               {label}
             </TableText>
             {selectedCount > 1 && (
-              <TableText {...a11yHidden()} style={[styles.playBtnSub, { fontSize: BTN_SUB_FS * scale }]}>
+              <TableText {...a11yHidden()} style={[styles.playBtnSub, { fontSize: tableFontSize(BTN_SUB_FS, scale) }]}>
                 {t("gameTable.selectedCountSuffix", { n: selectedCount })}
               </TableText>
             )}
@@ -194,7 +195,7 @@ export function GiocaButton({
               style={[
                 styles.actionBtnLabel,
                 styles.btnDimLabel,
-                { fontSize: BTN_LABEL_FS * scale, letterSpacing: BTN_TRACKING * scale },
+                { fontSize: tableFontSize(BTN_LABEL_FS, scale), letterSpacing: BTN_TRACKING * scale },
               ]}
             >
               {label}
@@ -283,7 +284,7 @@ export function PassaButton({
             style={[
               styles.actionBtnLabel,
               canPass ? styles.passBtnLabel : styles.btnDimLabel,
-              { fontSize: BTN_LABEL_FS * scale, letterSpacing: BTN_TRACKING * scale },
+              { fontSize: tableFontSize(BTN_LABEL_FS, scale), letterSpacing: BTN_TRACKING * scale },
             ]}
           >
             {t("gameTable.passLabel")}
@@ -300,10 +301,10 @@ const styles = StyleSheet.create({
   // gradient happens one level in, on the face.
   actionBtn: { ...Shadow.dark },
   // Off the viewer's turn a key is dark rather than a faded version of its lit
-  // self: the prototype's resting `.btn` (#199) is its own ink at a third over
-  // a third of black, with no gradient and no border behind it to fight.
-  btnDimFace: { backgroundColor: "rgba(0,0,0,0.3)" },
-  btnDimLabel: { color: "rgba(239,234,219,0.3)" },
+  // self: muted ink on a heavy scrim, the pair held to 3:1 by
+  // tests/contrast.test.ts, with no gradient and no border behind it to fight.
+  btnDimFace: { backgroundColor: Scrim.heavy },
+  btnDimLabel: { color: Colors.textMuted },
   actionBtnInner: { flex: 1 },
   actionBtnFace: {
     flex: 1,
@@ -325,10 +326,8 @@ const styles = StyleSheet.create({
   passBtnLabel: { color: Garnet.label },
 
   // The armed bloom, as a childless sibling behind the button: the glow is
-  // fixed and only this view's opacity is animated. The fill is what the
-  // shadow is cast from — a layer with transparent contents has nothing for
-  // iOS to blur and gives Android's elevation no outline — and the button's
-  // own gradient covers it exactly, so only the spill is ever seen.
+  // fixed and only this view's opacity is animated. The button's own gradient
+  // covers it exactly, so only the spill is ever seen.
   playBtnGlow: {
     position: "absolute",
     top: 0,
@@ -349,6 +348,6 @@ const styles = StyleSheet.create({
   playBtnLabel: { color: Colors.bg },
   playBtnSub: {
     fontFamily: "Rajdhani_500Medium",
-    color: Colors.bg, opacity: 0.7,
+    color: Colors.bg,
   },
 });

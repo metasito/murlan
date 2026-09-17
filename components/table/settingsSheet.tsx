@@ -9,7 +9,7 @@ import { BackHandler, Platform, Pressable, ScrollView, StyleSheet, View } from "
 import Animated, { SlideInLeft, SlideInRight } from "react-native-reanimated";
 import Feather from "@expo/vector-icons/Feather";
 import { RAIL_TESTID } from "./chrome";
-import { physicalTouchTarget } from "@/components/cardFaceModel";
+import { physicalTouchTarget, tableFontSize } from "@/components/cardFaceModel";
 import type { RailSide } from "@/components/tableFrame";
 import { TableText } from "./TableText";
 import { LinearGradient } from "expo-linear-gradient";
@@ -112,19 +112,19 @@ function SheetRow({
         <View style={sheetStyles.rowLeft} {...a11yHidden()}>
           <Feather
             name={icon}
-            size={ROW_ICON_FS * scale}
+            size={tableFontSize(ROW_ICON_FS, scale)}
             color={Colors.textSecondary}
             style={{ width: ROW_ICON_GUTTER * scale, textAlign: "center" }}
           />
           <View style={sheetStyles.rowLabels}>
             <TableText
               numberOfLines={1}
-              style={[sheetStyles.rowLabel, { fontSize: ROW_FS * scale, letterSpacing: ROW_TRACKING * scale }]}
+              style={[sheetStyles.rowLabel, { fontSize: tableFontSize(ROW_FS, scale), letterSpacing: ROW_TRACKING * scale }]}
             >
               {label}
             </TableText>
             {hint && (
-              <TableText numberOfLines={1} style={[sheetStyles.rowHint, { fontSize: ROW_HINT_FS * scale }]}>
+              <TableText numberOfLines={1} style={[sheetStyles.rowHint, { fontSize: tableFontSize(ROW_HINT_FS, scale) }]}>
                 {hint}
               </TableText>
             )}
@@ -268,7 +268,7 @@ export function GameSettingsSheet({
             makeShadow(Colors.shadow, 0, SHEET_SHADOW_Y * scale, 0.6, SHEET_SHADOW * scale, 12),
           ]}
         >
-          <TableText style={[sheetStyles.header, { fontSize: HEADER_FS * scale, letterSpacing: HEADER_TRACKING * scale }]}>
+          <TableText style={[sheetStyles.header, { fontSize: tableFontSize(HEADER_FS, scale), letterSpacing: HEADER_TRACKING * scale }]}>
             {t("gameSettingsSheet.title")}
           </TableText>
 
@@ -372,14 +372,14 @@ export function GameSettingsSheet({
             >
               <TableText
                 {...a11yHidden()}
-                style={[sheetStyles.exitLabel, { fontSize: EXIT_FS * scale, letterSpacing: EXIT_TRACKING * scale }]}
+                style={[sheetStyles.exitLabel, { fontSize: tableFontSize(EXIT_FS, scale), letterSpacing: EXIT_TRACKING * scale }]}
               >
                 {t("gameSettingsSheet.exit")}
               </TableText>
             </LinearGradient>
           </Pressable>
 
-          <TableText style={[sheetStyles.foot, { fontSize: FOOT_FS * scale, marginTop: FOOT_MARGIN * scale }]}>
+          <TableText style={[sheetStyles.foot, { fontSize: tableFontSize(FOOT_FS, scale), marginTop: FOOT_MARGIN * scale }]}>
             {t("gameSettingsSheet.footnote")}
           </TableText>
         </LinearGradient>

@@ -686,7 +686,7 @@ function CardViewBase({
         <View
           testID="card-box"
           pointerEvents="none"
-          style={[styles.card, { width: w, height: h }, stockStyle, selected && styles.cardSelected]}
+          style={[styles.card, { width: w, height: h }, stockStyle, selected && Shadow.cardLifted]}
         >
           {selectedHint.node}
           <LinearGradient
@@ -831,10 +831,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.cardEdge,
     overflow: "hidden",
-  },
-  cardSelected: {
-    borderColor: Colors.gold,
-    borderWidth: 2,
   },
   cardBack: {
     backgroundColor: Colors.felt,

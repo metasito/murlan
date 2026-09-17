@@ -973,7 +973,7 @@ const styles = StyleSheet.create({
   },
   subtitleLandscape: {
     fontFamily: "Inter_400Regular",
-    fontSize: FontSize.xxs,
+    fontSize: FontSize.xs,
     color: Colors.gold,
     letterSpacing: 3,
     textTransform: "uppercase",

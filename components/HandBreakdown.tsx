@@ -272,7 +272,7 @@ const styles = StyleSheet.create({
   row: { flexDirection: "row", alignItems: "center", gap: Spacing.xs },
   rowLabel: {
     fontFamily: "Inter_400Regular",
-    fontSize: FontSize.xxs,
+    fontSize: FontSize.xs,
     color: Colors.textMuted,
     flex: 1,
     minWidth: 0,
@@ -285,7 +285,7 @@ const styles = StyleSheet.create({
   },
   rowNote: {
     fontFamily: "Inter_400Regular",
-    fontSize: FontSize.xxs,
+    fontSize: FontSize.xs,
     color: Colors.textMuted,
     textAlign: "right",
   },
@@ -314,7 +314,7 @@ const styles = StyleSheet.create({
   },
   stateBody: {
     fontFamily: "Inter_400Regular",
-    fontSize: FontSize.xxs,
+    fontSize: FontSize.xs,
     color: Colors.textMuted,
   },
   retryBtn: {
