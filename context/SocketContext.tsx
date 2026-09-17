@@ -210,6 +210,8 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     setConnected(false);
     setOnlineIds(new Set());
     setSessionReplaced(null);
+    setPendingInvite(null);
+    setAcceptedInvite(null);
   }
 
   useEffect(() => {

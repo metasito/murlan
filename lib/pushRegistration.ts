@@ -10,7 +10,7 @@ import Constants from "expo-constants";
 import { apiRequest } from "./query-client";
 import { getLocale } from "./i18n";
 
-/** The device's Expo push token, once obtained, so logout can withdraw it. */
+/** The device's Expo push token, once registered for the signed-in account. */
 let currentToken: string | null = null;
 /** What the server was last told this device reads, so a language change re-registers. */
 let registeredLocale: string | null = null;
@@ -85,28 +85,10 @@ export async function registerForPush(): Promise<void> {
 }
 
 /**
- * Withdraws this device on logout.
- *
- * The cascade on `users` only covers an account being deleted. Without this,
- * the next person to sign in on a shared phone would receive the previous
- * player's invites.
- *
- * Returns whether there was a registration to withdraw, so a caller undoing
- * this cannot register a device that never was: `registerForPush` asks for
- * permission when the OS has not been asked yet, and that is a dialog.
+ * After logout. The server withdraws the device with the session; this only
+ * stops the next account's registration being skipped as already sent.
  */
-export async function unregisterForPush(): Promise<boolean> {
-  const token = currentToken;
-  if (!token) return false;
+export function forgetPushRegistration(): void {
   currentToken = null;
   registeredLocale = null;
-  try {
-    await apiRequest("DELETE", "/api/push/token", {
-      token,
-      platform: Platform.OS === "ios" ? "ios" : "android",
-    });
-  } catch {
-    // The row outlives the session at worst; the next login overwrites it.
-  }
-  return true;
 }
