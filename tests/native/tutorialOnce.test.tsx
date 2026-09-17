@@ -126,11 +126,20 @@ describe('opening the tutorial is what marks it seen', () => {
   it('still resumes at the beat the player left', async () => {
     // Backing out keeps the resume marker: the flag says "offered", the
     // progress says "where", and they are not the same question.
-    await AsyncStorage.setItem(PROGRESS_KEY, '2');
+    await AsyncStorage.setItem(PROGRESS_KEY, 'respond');
     const r = await render(withSafeArea(<TutorialScreen />));
 
     await waitFor(() => expect(screen.getByText(/^3 \/ \d+$/)).toBeTruthy());
-    expect(await AsyncStorage.getItem(PROGRESS_KEY)).toBe('2');
+    expect(await AsyncStorage.getItem(PROGRESS_KEY)).toBe('respond');
+    await r.unmount();
+  });
+
+  it.each(['a-beat-since-removed', '2'])('starts at the first beat when the stored beat %s is unknown', async (stored) => {
+    await AsyncStorage.setItem(PROGRESS_KEY, stored);
+    const r = await render(withSafeArea(<TutorialScreen />));
+
+    await waitFor(() => expect(screen.getByText(/^1 \/ \d+$/)).toBeTruthy());
+    await waitFor(async () => expect(await AsyncStorage.getItem(PROGRESS_KEY)).toBe('welcome'));
     await r.unmount();
   });
 });

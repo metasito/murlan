@@ -412,18 +412,16 @@ export default function TutorialScreen() {
 
   useEffect(() => {
     AsyncStorage.getItem(PROGRESS_KEY)
-      .then((raw) => {
-        const n = raw ? parseInt(raw, 10) : NaN;
-        if (!Number.isNaN(n) && n >= 0 && n < BEATS.length) setStepIndex(n);
-      })
+      .then((id) => setStepIndex(Math.max(0, BEATS.findIndex((b) => b.id === id))))
       .finally(() => setLoaded(true))
       .catch(() => {});
-  }, [BEATS.length]);
+  }, [BEATS]);
 
+  const stepId = BEATS[stepIndex]?.id;
   useEffect(() => {
-    if (!loaded) return;
-    AsyncStorage.setItem(PROGRESS_KEY, String(stepIndex)).catch(() => {});
-  }, [stepIndex, loaded]);
+    if (!loaded || !stepId) return;
+    AsyncStorage.setItem(PROGRESS_KEY, stepId).catch(() => {});
+  }, [stepId, loaded]);
 
   const [shownStep, setShownStep] = useState(stepIndex);
   if (stepIndex !== shownStep) {
