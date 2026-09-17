@@ -7,7 +7,7 @@
 // Nothing below knows or cares which mode it is running in.
 //
 // Where the two modes genuinely differ the difference is an explicit prop or a
-// slot (`topBarExtra`, `banners`, `overlays`, `turnTimer`) — never an
+// slot (`banners`, `overlays`, `railExtra`, `turnTimer`, …) — never an
 // `isOnline &&` branch threaded through the render.
 
 import React, { useCallback, useEffect, useState } from "react";

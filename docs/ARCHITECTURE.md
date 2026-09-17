@@ -19,7 +19,18 @@ components/GameTable.tsx  ◄── the one presentational game table
 context/  (GameContext offline, OnlineGameContext online)
         │
         ▼
-lib/gameEngine.ts (offline: called directly)   server/socket.ts (online: server-authoritative)
+lib/gameEngine.ts (offline: called directly)   server/socket.ts (online: handshake + listeners)
+                                                        │
+                                                        ▼
+                                                server/socketGameplay.ts (one listener per intent)
+                                                        │
+                                                        ▼
+                                                server/tableRouter.ts  ◄── applyOrForward: this
+                                                        │                  process, or the one
+                                                        │                  that owns the room
+                                                        ▼
+                                                server/tableHandlers.ts (applyTableAction)
+                                                  + gameTurn.ts / gameOver.ts / dealManche.ts
                                                         │
                                                         ▼
                                                 lib/gameEngine.ts (same engine, server side)
@@ -32,9 +43,17 @@ lib/gameEngine.ts (offline: called directly)   server/socket.ts (online: server-
   mode) and the server (online mode, authoritative). Deck of 54 (52 + 2 distinguishable
   Jokers) is dealt in full every game — see `docs/RULES.md` §3. There is no reduced-deck
   mode.
-- **`server/socket.ts`** is the only place that mutates online game state. The client never
-  computes an online outcome locally — it sends an intent (`game:play`, `game:pass`,
-  `game:exchange_give_card`) and renders whatever the server broadcasts back.
+- **The client never computes an online outcome locally.** It sends an intent (`game:play`,
+  `game:pass`, `game:exchange_give_card`) and renders whatever the server broadcasts back.
+  `server/socket.ts` is the handshake and the listener wiring only; it never touches game
+  state. Every intent lands in a `server/socketGameplay.ts` listener, which resolves the room
+  and calls `applyOrForward` (`server/tableRouter.ts`) and does nothing else. **The single
+  mutator is `applyTableAction` in `server/tableHandlers.ts`**, which dispatches to
+  `playAction` / `passAction` / `exchangeAction` / `rejoinAction` / `startMatchAction` /
+  `seatLostAction`; those in turn use `gameTurn.ts` (`armTurn`, the AFK timer and bot turns),
+  `gameOver.ts` (`handleGameOver`) and `dealManche.ts` (the shared fresh-manche reset used by
+  both the first deal and a rematch). See §3 for how `applyOrForward` reaches the process that
+  owns the room.
 - **`components/GameTable.tsx`** + the table's pure model (`seatLayout.ts`,
   `flightPhysics.ts`, `turnTimerUi.ts`, `tableFrame.ts`, `tableA11y.ts` — all JSX-free) +
   **`components/table/`** are the single presentational table. `GameTable.tsx` assembles it
@@ -45,13 +64,14 @@ lib/gameEngine.ts (offline: called directly)   server/socket.ts (online: server-
   change with a sound, a haptic or a wobble. `app/game.tsx` (offline) and
   `app/(online)/game.tsx` (online) are thin adapters — see §5.
 
-- **`lib/` is client code with six exceptions.** `gameEngine.ts`, `replay.ts`,
-  `botPersonalities.ts`, `achievements.ts`, `rating.ts` and `streak.ts` are imported by
-  `server/`. **A module in that set may import only other modules in it and third-party
-  packages with no React Native dependency** — everything else in `lib/` reaches
-  `react-native`, `expo-*` or AsyncStorage and breaks `npm run server:build`.
-  `tests/serverLoadable.test.ts` derives the set from the server's own imports and loads
-  each under plain Node, so the rule is enforced rather than remembered.
+- **`lib/` is client code, except for the modules `server/` and `shared/` import.** That set is
+  not a list anyone maintains: `tests/serverLoadable.test.ts` derives it by scanning the
+  server's own imports — `import type` included — and loads each under plain Node, so it is
+  whatever the imports say it is today. **A module in that set may import only other modules in
+  it and third-party packages with no React Native dependency** — everything else in `lib/`
+  reaches `react-native`, `expo-*` or AsyncStorage and breaks `npm run server:build`. Adding a
+  `lib/` import to a server file therefore enlists that module and everything it imports; the
+  test is where you find out.
 - **`locales/en.ts` is the source of truth for UI copy.** `it.ts` and `sq.ts` are declared
   `Record<keyof typeof en, string>`, so a key present in English and missing from either
   translation is a compile error, not a runtime gap — `DEFAULT_LOCALE` and every fallback
@@ -114,6 +134,26 @@ rather than the two coexisting. The older socket receives `SESSION_REPLACED` ove
 and evict the new connection right back. The evicted tab renders a terminal "opened
 elsewhere" state with a manual reconnect action; it does not go silently dead, and it does
 not reconnect on its own.
+
+**Table ownership and forwarding (`server/gameOwnership.ts`, `server/tableRouter.ts`):** a live
+game lives in one process's `activeGames` map, and more than one process may be running. A room
+is owned by whichever process holds a Postgres **advisory session lock** keyed by
+`ownershipKey(roomId)`. There is no lease and no heartbeat expiry, deliberately: a killed process
+drops its Postgres connection and Postgres releases its locks, so ownership cannot outlive the
+process holding it.
+
+`applyOrForward` is the one door in:
+1. If this process has the room in `activeGames`, it applies the action itself.
+2. Otherwise it asks every other instance over `io.serverSideEmit(TABLE_ACTION_EVENT, …)`. Each
+   instance's `registerTableRouting` listener replies `NOT_THIS_INSTANCE` unless it owns the
+   room, in which case it applies the action and acks with the real outcome.
+3. If nobody owns it, this process claims the lock, rehydrates the game from Postgres and
+   becomes the owner.
+
+The forwarding instance does **not** re-broadcast. Broadcasts happen inside the owner's own
+handler (`broadcastGameState`, `io.to(roomId).emit(…)`) and reach every socket at that table
+whichever instance holds each one, because the Socket.io Postgres adapter carries `io.to()`
+across instances the same way it carries the forwarded action.
 
 **Bot-filled matches:** `room:start` with `fillWithBots` needs only one seated human. The
 room screen already offers bot-fill and the match-length picker together, so a solo player
@@ -200,9 +240,9 @@ React Context, one provider per concern:
 
 | Context | Owns |
 |---|---|
-| `AuthContext` | Session user, login/logout/register, account deletion |
-| `GameContext` | Offline `GameState`, calls `lib/gameEngine.ts` directly |
-| `OnlineGameContext` | Online `GameState` as received from the server, socket intents |
+| `AuthContext` | Session user, and the account state machine: login/logout/register, rename, change password, add email, `refreshUser` |
+| `GameContext` | Offline `GameState`, the match score, rematch and exchange-announcement state; calls `lib/gameEngine.ts` directly |
+| `OnlineGameContext` | Online `GameState` as received from the server, plus the room, the turn clock, match/rematch/end-match vote state, disconnected seats and spectator mode, and the socket intents. Screens read it through the six slices in `context/onlineGameHooks.ts`, not directly — `tests/contextSlices.test.ts` pins that |
 | `SocketContext` | The socket singleton lifecycle, friend presence events, invites |
 | `SettingsContext` | Sound, haptics, motion, and the card back / table felt |
 | `NotificationContext` | Queue-based banner notifications; sits above `SocketContext` — both `SocketContext` and `OnlineGameContext` call `useNotification()` |
@@ -229,9 +269,9 @@ collapsed:
   safe-area/rail arithmetic; `tableA11y` the screen-reader description. `flightPhysics`
   takes `seatDirection` from `seatLayout`; the reverse must never happen.
 - **`components/GameTable.tsx`** — the one presentational table. It takes a `GameState`, a
-  `viewerSeat`, and a small set of slots (`topBarExtra`, `banners`, `overlays`,
-  `turnTimer`) through which the offline and online adapters inject exactly what differs
-  between them (a local AI turn loop and 20s response timer offline; server acknowledgement,
+  `viewerSeat`, and a small set of slots (`turnTimer`, `exchangeAnnouncement`,
+  `rematchPrompt`, `disconnectedSeats`, `railExtra`, `banners`, `overlays`) through which the
+  offline and online adapters inject exactly what differs between them (a local AI turn loop and 20s response timer offline; server acknowledgement,
   reactions, and connection-loss banners online). It contains no `isOnline &&` branching.
 - **`components/table/`** — the table's own components, grouped by what they draw:
   `seats.tsx`, `pile.tsx`, `hand.tsx` and `chrome.tsx`. `GameTable.tsx` is their only
