@@ -691,7 +691,7 @@ describe("runOnce", () => {
       }),
     );
     assert.deepEqual([r.outcome, blocked, parked], ["blocked", [[42, 900, ".worktrees/agent-42"]], []]);
-    assert.deepEqual(rows.map((x) => [x.outcome, x.head]), [["retry", "h1"]]);
+    assert.deepEqual(rows.map((x) => [x.outcome, x.head]), [["blocked", "h1"]]);
 
     const calls: string[][] = [];
     blockOnShared(42, 900, "w", (file: string, args: string[]) => {
@@ -1216,6 +1216,15 @@ describe("a ticket's tally comes from the ledger, not from memory", () => {
       }),
     );
     assert.deepEqual([code, pins], [0, [null, null, null, null]]);
+  });
+
+  test("blocked twice then unblocked: the next red is round 1, not round 3", async () => {
+    const parked: string[] = [];
+    const blockedRow = (head: string) => ({ n: 42, outcome: "blocked", cost: 1, park_reason: "blocked by #900", head });
+    const ledger: any[] = [blockedRow("h1"), blockedRow("h2")];
+    await go(io({ pick: once(ticket), ...red("h3"), park: (_n: number, c: { why: string }) => parked.push(c.why) }, ledger));
+    assert.deepEqual(parked, []);
+    assert.equal(ticketTally(42, ledger).retries, 1);
   });
 
   test("a throw during a resumed run parks with standing().cwd", async () => {

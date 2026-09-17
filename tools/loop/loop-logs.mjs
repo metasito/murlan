@@ -300,6 +300,9 @@ export function ticketTally(n, rows) {
       handoffsThisRound = 0;
       lastHandoff = null;
       lastRedHead = r.head ?? null;
+    } else if (r.outcome === "blocked") {
+      handoffsThisRound = 0;
+      lastHandoff = null;
     } else if (r.outcome === "handoff") {
       handoffsThisRound += 1;
       lastHandoff = HANDOFF_RE.exec(r.park_reason ?? "")?.[1] ?? lastHandoff;

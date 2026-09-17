@@ -345,6 +345,16 @@ describe("ledger", () => {
 describe("ticketTally", () => {
   const row = (over: object) => ({ n: 1, cost: 0, ...over });
 
+  test("a blocked round restarts the handoff streak but is not a CI round, and names no red head", () => {
+    const t = ticketTally(1, [
+      row({ outcome: "retry", head: "a" }),
+      row({ outcome: "handoff", park_reason: "phase D next" }),
+      row({ outcome: "blocked", head: "b" }),
+      row({ outcome: "blocked", head: "c" }),
+    ]);
+    assert.deepEqual([t.retries, t.handoffsThisRound, t.lastHandoff, t.lastRedHead], [1, 0, null, "a"]);
+  });
+
   test("handoffs since the last terminal row, restarting the streak on a retry", () => {
     const t = ticketTally(1, [
       row({ outcome: "handoff", park_reason: "phase D next" }),

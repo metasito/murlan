@@ -2041,7 +2041,7 @@ export async function runOnce(io, pinned = null, at = null) {
     }
     io.record({
       number: route.number,
-      outcome: "retry",
+      outcome: "blocked",
       why,
       run,
       pr: decided.pr,
