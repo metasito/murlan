@@ -390,7 +390,8 @@ function SeatRing({
     .toUpperCase();
 
   const size = SEAT_DISC * scale;
-  const badge = SEAT_BADGE * scale;
+  const lastCard = finishPos === undefined && cardCount === 1;
+  const badge = SEAT_BADGE * (lastCard ? LAST_CARD_BADGE : 1) * scale;
   const showCount = finishPos !== undefined || !focusMode;
   return (
     <View testID="seat-ring" style={{ width: size, height: size }}>
@@ -443,6 +444,7 @@ function SeatRing({
           style={[
             seatStyles.countBubble,
             finishPos !== undefined && seatStyles.countBubbleFinished,
+            lastCard && seatStyles.countBubbleLast,
             {
               minWidth: badge,
               height: badge,
@@ -455,7 +457,13 @@ function SeatRing({
           {finishPos !== undefined ? (
             <Ionicons testID="seat-finish-trophy" name="trophy" size={badge * 0.5} color={Colors.gold} />
           ) : (
-            <TableText style={[seatStyles.countBubbleText, { fontSize: tableFontSize(SEAT_BADGE_FS, scale) }]}>
+            <TableText
+              style={[
+                seatStyles.countBubbleText,
+                lastCard && seatStyles.countBubbleTextLast,
+                { fontSize: tableFontSize(SEAT_BADGE_FS, scale) },
+              ]}
+            >
               {cardCount}
             </TableText>
           )}
@@ -821,6 +829,7 @@ const SEAT_DIM_OPACITY = 0.62;
 /** The count badge's own diameter, and the digit inside it, at scale 1. */
 const SEAT_BADGE = 18;
 const SEAT_BADGE_FS = 10;
+const LAST_CARD_BADGE = 1.25;
 const SEAT_NAME_FS = 11;
 /** The disc's seated shadow, and the glow that replaces it on the seat on move. */
 const SEAT_SHADOW = 9;
@@ -925,5 +934,11 @@ const seatStyles = StyleSheet.create({
     fontFamily: "Rajdhani_700Bold",
     color: Colors.gold,
     fontVariant: ["tabular-nums"],
+  },
+  countBubbleLast: {
+    borderColor: Colors.goldLit,
+  },
+  countBubbleTextLast: {
+    color: Colors.goldLit,
   },
 });

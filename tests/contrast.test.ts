@@ -259,6 +259,7 @@ const ON_TABLE: Record<string, Backdrop> = {
   // The disc's own gradient is darker than both stand-in stops.
   "table/seats.tsx:seatStyles.discInitials": { stops: [3, 4] },
   "table/seats.tsx:seatStyles.countBubbleText": { plate: "seatStyles.countBubble" },
+  "table/seats.tsx:seatStyles.countBubbleTextLast": { plate: "seatStyles.countBubble" },
   "table/seats.tsx:seatStyles.oppName": { plate: SELF },
   "table/seats.tsx:seatStyles.oppNameActive": { plate: "seatStyles.oppName" },
   "table/settingsSheet.tsx:sheetStyles.rowLabel": { gradient: SHEET },
