@@ -239,6 +239,10 @@ describe("a CI fix round is a documented path, not an improvisation", () => {
     assert.ok(at.every((i, k) => i >= 0 && (k === 0 || i > at[k - 1])), `out of order: ${at.join(", ")}`);
   });
 
+  test("agent:check is run under the Bash tool's ceiling, not its two-minute default", () => {
+    assert.match(read(QUEUE), /`agent:check` run[^.]*`timeout: 600000`/);
+  });
+
   test("a stranded rebuild whose blocker closed merges main before it resumes", () => {
     assert.match(read(QUEUE), /merge --no-edit origin\/main[\s\S]*Then resume where `node tools\/loop\/loop-status\.mjs` says/);
   });
