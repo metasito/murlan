@@ -103,6 +103,34 @@ not the cost; the context it re-reads on every turn is. `queue.md` (29 KB) plus 
 $13.61 mean · $14.86 per landed · 45 min median · 27% of tickets red in CI · fix rounds 13% of
 spend · phase-C max context 360k · handoff cap reached 7/8 by a healthy ticket.
 
+## 5a. v4 measured against that baseline (#1134 Part 1)
+
+Six tickets ran on v4: #1085–#1088, #1090, #1091. Four landed, two parked.
+
+| Metric | Baseline | Target | v4 |
+|---|---|---|---|
+| $ per landed ticket | $14.86 | ≤ $12 | **$20.34** — $81.35 spent, 4 landed |
+| $ per ticket attempted | $13.61 | — | $13.56 mean, $15.64 median |
+| Median minutes | 45 | ≤ 40 | 43 |
+| Phase-C max context | 360k | ≤ 210k | **206k — met** (193k, 178k, 167k, 95k, 79k) |
+| Healthy tickets parked | 0 | 0 | **2** — #1088, #1090 |
+
+The context work paid and the cost work did not: landed tickets are near target, and the gap is
+entirely the $34.57 spent on two tickets that landed nothing. Both parks are diagnosed in #1150 and
+neither was a hard ticket.
+
+Two things this table cannot yet say. The **per-phase** split is unreadable until a run produces
+correctly-phased rows: `derive()` returned C for a claimed, unworked worktree, so every session
+declared `PHASE C` before `PHASE B` and `loop-cost` billed the build to B (v4 reads B 52% of spend,
+median 48.4 min; C 18%, median 4.7 min). And **fix-round share** is printed from the whole ledger
+regardless of the ticket filter, so the 6% figure is not a v4 measurement.
+
+One census does stand on its own: across every ticket log, baseline and v4 — 3,000+ tool calls —
+**not one assistant message carried two `tool_use` blocks.** Control probes with and without
+`--exclude-dynamic-system-prompt-sections` both batched nothing, so the cache flag is ruled out and
+the cause is still open. `TURNS_BY_SIZE` is therefore a budget denominated in batched turns being
+spent one command at a time; #1090 died at 121 of a size:S 120.
+
 ## 6. Spikes
 
 **CLI `--model` overrides a slash command's `model:` frontmatter.** `.claude/commands/model-probe.md`
