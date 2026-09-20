@@ -1640,43 +1640,34 @@ export async function settle(pending, screen, opts = {}) {
   }
 }
 
-/** The `failing:` line's ceiling, so one long test id cannot itself carry the line over budget. */
-const FAILING_LINE_MAX = 200;
-
-/** The fenced excerpt's ceiling, which is what keeps `ciRedBody` inside its own 15-line budget. */
+/** The fenced excerpt's ceiling, for the failures that parse as no test id at all. */
 const EXCERPT_LINES = 8;
 
-function failingLine(testIds) {
-  if (testIds.length === 0) return "failing: (no test ids parsed)";
-  const shown = [];
-  let used = 0;
-  for (const id of testIds) {
-    const width = (shown.length ? "; " : "").length + id.length;
-    if (shown.length > 0 && used + width > FAILING_LINE_MAX) break;
-    shown.push(id);
-    used += width;
-  }
-  const rest = testIds.length - shown.length;
-  return `failing: ${shown.join("; ")}${rest > 0 ? ` +${rest} more` : ""}`;
-}
+/** The distinct files behind a run's failing ids — the fix rounds the branch owes. */
+export const failingFiles = (testIds) => [...new Set(testIds.map((id) => id.split(" › ")[0]))];
 
 /**
- * The CI-RED comment's exact shape, so `ciRedRounds` can count it and a fix round can read it
- * without re-fetching the run. `shared` is `sharedPlan`'s line.
+ * The CI-RED comment's exact shape, so `ciRedRounds` can count it and a fix round can find the
+ * failure. Not a summary of the failure: the reference to it, because every budget that tried to
+ * fit one into a comment dropped the part that mattered. `shared` is `sharedPlan`'s line.
  *
  * @param {{sha: string, runUrl: string, failedStep?: string, testIds?: string[], excerpt?: string,
- *   shared?: string}} args
+ *   shared?: string, runId?: number}} args
  */
-export function ciRedBody({ sha, runUrl, failedStep, testIds = [], excerpt = "", shared = "none" }) {
-  return [
+export function ciRedBody({ sha, runUrl, failedStep, testIds = [], excerpt = "", shared = "none", runId }) {
+  const files = failingFiles(testIds);
+  const body = [
     `CI-RED ${sha}`,
     `run: ${runUrl} · step: ${failedStep ?? "an unnamed step"}`,
-    failingLine(testIds),
+    `failing: ${files.length} failing files, ${testIds.length} tests — read them, do not guess:`,
+    "```sh",
+    `gh run view ${runId} --log-failed | grep -E "✖|AssertionError|error TS|FAIL " -A5`,
+    "```",
+    ...files.map((f) => `- ${f}`),
     `shared: ${shared}`,
-    "```",
-    ...excerpt.split("\n").slice(-EXCERPT_LINES),
-    "```",
-  ].join("\n");
+  ];
+  if (files.length === 0) body.push("```", ...excerpt.split("\n").slice(-EXCERPT_LINES), "```");
+  return body.join("\n");
 }
 
 /** Bounds each `gh` call `postCiRedOnce` makes, so a wedged one cannot stall the supervisor. */
@@ -1740,6 +1731,7 @@ function postCiRedOnce(ticket, verdict, shared, comments, run, write, log) {
     testIds: verdict.testIds ?? [],
     excerpt: verdict.output,
     shared,
+    runId: verdict.runId,
   });
   try {
     const file = ciRedNotePath(ticket);

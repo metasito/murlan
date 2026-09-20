@@ -269,7 +269,7 @@ describe("ciRedRounds", () => {
       sha,
       runUrl: "https://github.com/metasito/murlan/actions/runs/1",
       failedStep: "Native tests",
-      testIds: ["tests/e2e/x.spec.ts › case"],
+      testIds: [],
       excerpt: "CI-RED bbbbbbb\nsome log line",
     });
     assert.equal(ciRedRounds([claim, { body }]), 1);

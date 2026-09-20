@@ -126,7 +126,11 @@ loop those two outrank any general process skill.
 
 **A fix round** is phase C when `loop-status.mjs` says `fix round`. Skip the planning. **Read the
 thread's `CI-RED` and any `FIX-NOTES` comments first**, so this round does not reopen ruled-out
-ground. Only with no `CI-RED` comment, fall back to `.loop-logs/ci-<n>.log`, else CI itself:
+ground, **then run the command the `CI-RED` comment carries and read the failure itself.** The
+comment states how many files are red; a round that has diagnosed fewer than that number has not
+finished, whatever it has fixed. A cheap subagent may do the reading and return the list.
+
+With no `CI-RED` comment, fall back to `.loop-logs/ci-<n>.log`, else CI itself:
 
 ```sh
 gh run list --branch agent/<n>-<slug> --limit 1 --json databaseId --jq '.[0].databaseId' \

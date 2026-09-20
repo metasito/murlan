@@ -288,7 +288,7 @@ describe("poll posts CI-RED once per red head", () => {
     await poll(PENDING, () => {}, 0, DEADLINE, io(gh, written));
     const file = comment(asked)[0]?.[comment(asked)[0].indexOf("--body-file") + 1];
     const body = String(written.find(([path]) => path === file)?.[1]);
-    assert.match(body, /tests\/e2e\/old\.spec\.ts › ancient failure/);
+    assert.match(body, /^- tests\/e2e\/old\.spec\.ts$/m);
   });
 
   test("every gh call it makes past the verdict passes a bounded timeout", async () => {
@@ -416,23 +416,46 @@ describe("sharedPlan", () => {
 describe("ciRedBody", () => {
   const runUrl = "https://github.com/metasito/murlan/actions/runs/1";
 
-  test("names the head, the run and step, and the excerpt is fenced", () => {
-    const body = ciRedBody({ sha: SHA, runUrl, failedStep: "Native tests", testIds: ["a"], excerpt: "boom" });
+  // #1088 parked because one long e2e id ate a 200-character budget and hid `fontSubset` and
+  // `iconSubset` behind `+10 more` — red, identically, in all three of its CI rounds.
+  const long = [
+    "tests/e2e/offlineMatch.spec.ts › offline vs AI — a match plays multiple hands and exercises the exchange",
+    "tests/fontSubset.test.ts › the subsets carry every character the app can render",
+    "tests/iconSubset.test.ts › the shipped subsets carry a glyph for every name the app renders",
+  ];
+
+  test("names the head, the run and the step", () => {
+    const body = ciRedBody({ sha: SHA, runUrl, failedStep: "Native tests", testIds: ["a.ts › b"], runId: 7 });
     const lines = body.split("\n");
     assert.equal(lines[0], `CI-RED ${SHA}`);
     assert.match(lines[1], /^run: .+ · step: Native tests$/);
-    assert.deepEqual(lines.slice(-3), ["```", "boom", "```"]);
     assert.match(body, /^shared: none$/m);
   });
 
-  test("stays within 15 lines with 30 failing test ids, truncated with '+N more'", () => {
+  test("no failing file is dropped, however long the others are", () => {
+    const body = ciRedBody({ sha: SHA, runUrl, failedStep: "Test", testIds: long, runId: 7 });
+    assert.match(body, /tests\/fontSubset\.test\.ts/);
+    assert.match(body, /tests\/iconSubset\.test\.ts/);
+    assert.doesNotMatch(body, /\+\d+ more/);
+  });
+
+  test("it states how many files are red, which is what makes 'I have them all' checkable", () => {
+    assert.match(ciRedBody({ sha: SHA, runUrl, testIds: long, runId: 7 }), /3 failing files/);
+  });
+
+  test("thirty ids across one file are one file, and the ids themselves are not pasted", () => {
     const testIds = Array.from({ length: 30 }, (_, i) => `tests/e2e/x.spec.ts › case ${i} does a thing`);
-    const excerpt = Array.from({ length: 20 }, (_, i) => `log line ${i}`).join("\n");
-    const body = ciRedBody({ sha: SHA, runUrl, failedStep: "Native tests", testIds, excerpt });
-    const lines = body.split("\n");
-    assert.ok(lines.length <= 15, `${lines.length} lines`);
-    assert.match(body, /\+\d+ more/);
-    const failing = lines.find((l) => l.startsWith("failing:"));
-    assert.ok(failing && failing.length <= 210, "the failing: line must stay short too");
+    const body = ciRedBody({ sha: SHA, runUrl, testIds, runId: 7 });
+    assert.match(body, /1 failing files, 30 tests/);
+    assert.doesNotMatch(body, /case 17/);
+  });
+
+  test("it carries the command that prints the failure, against this run", () => {
+    assert.match(ciRedBody({ sha: SHA, runUrl, testIds: long, runId: 7 }), /gh run view 7 --log-failed/);
+  });
+
+  test("with no id parsed the excerpt is the only signal, so it stays and is fenced", () => {
+    const body = ciRedBody({ sha: SHA, runUrl, testIds: [], excerpt: "error TS2322: nope", runId: 7 });
+    assert.deepEqual(body.split("\n").slice(-3), ["```", "error TS2322: nope", "```"]);
   });
 });
