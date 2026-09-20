@@ -6,7 +6,7 @@
 
 **Architecture:** All changes are inside `tools/loop/`, which is its own product with its own gate. Three deliverables land as three pull requests, in dependency order: phase correctness first (everything downstream reads the phase), then the CI-RED handover and the turn-cap handoff, then the instruments. Each PR is reviewed by `/code-review` before the push, and merged only on green CI.
 
-**Tech Stack:** Node 22, plain `.mjs` for the supervisor, `.ts` (type-stripped) for the CI reader and the tests. `node --test` via `npm run loop:test`. No new dependencies.
+**Tech Stack:** Node 22, plain `.mjs` for the supervisor, `.ts` for the CI reader and the tests. `node --test` via `npm run loop:test`; `docs/agents/loops.md` has the loader note. No new dependencies.
 
 **Spec:** GitHub issues [#1150](https://github.com/metasito/murlan/issues/1150) (items 1–7), [#1142](https://github.com/metasito/murlan/issues/1142) (board design, blocked on Task 1), [#1134](https://github.com/metasito/murlan/issues/1134) (v4 follow-up; Part 1 is measured in #1150's evidence).
 
@@ -81,7 +81,7 @@ Replace that test with the two cases the discriminator actually has:
 
 - [ ] **Step 2: Run it to make sure it fails**
 
-Run: `node --experimental-strip-types --test tools/loop/tests/loopDerive.test.ts`
+Run: `node --test tools/loop/tests/loopDerive.test.ts`
 Expected: FAIL — `Expected values to be strictly equal: 'C' !== 'B'`.
 
 - [ ] **Step 3: Derive B in `loop-derive.mjs`**
@@ -112,7 +112,7 @@ In `report()`, add to the `next` map, above `C`:
 
 - [ ] **Step 5: Run the tests to verify they pass**
 
-Run: `node --experimental-strip-types --test tools/loop/tests/loopDerive.test.ts tools/loop/tests/loopStatus.test.ts tools/loop/tests/loopGate.test.ts tools/loop/tests/queueLoop.test.ts`
+Run: `node --test tools/loop/tests/loopDerive.test.ts tools/loop/tests/loopStatus.test.ts tools/loop/tests/loopGate.test.ts tools/loop/tests/queueLoop.test.ts`
 Expected: PASS, 0 fail. Any other test that asserted `phase === "C"` for a clean, commitless worktree was pinning the defect — update it the same way, and say so in the commit.
 
 - [ ] **Step 6: Typecheck and lint**
@@ -157,7 +157,7 @@ describe("a session cut off mid-phase", () => {
 
 - [ ] **Step 2: Run it to verify it fails**
 
-Run: `node --experimental-strip-types --test tools/loop/tests/queueLoop.test.ts`
+Run: `node --test tools/loop/tests/queueLoop.test.ts`
 Expected: FAIL — `exhausted is not defined` (add it to the import list from `../queue-loop.mjs`).
 
 - [ ] **Step 3: Add `exhausted` and use it in `reasonFor`**
@@ -179,7 +179,7 @@ and in `reasonFor`, replace `run.result?.subtype === "error_max_turns"` with `ex
 
 - [ ] **Step 4: Run it to verify it passes**
 
-Run: `node --experimental-strip-types --test tools/loop/tests/queueLoop.test.ts`
+Run: `node --test tools/loop/tests/queueLoop.test.ts`
 Expected: PASS.
 
 - [ ] **Step 5: Write the failing test for the synthesised handoff**
@@ -205,7 +205,7 @@ Expected: PASS.
 
 - [ ] **Step 6: Run it to verify it fails**
 
-Run: `node --experimental-strip-types --test tools/loop/tests/queueLoop.test.ts`
+Run: `node --test tools/loop/tests/queueLoop.test.ts`
 Expected: FAIL — `resumePhase is not defined`.
 
 - [ ] **Step 7: Implement `resumePhase` and wire it in**
@@ -235,7 +235,7 @@ In `runOnce`, immediately after `let handoff = handoffOf(run);`:
 
 - [ ] **Step 8: Run the tests to verify they pass**
 
-Run: `node --experimental-strip-types --test tools/loop/tests/queueLoop.test.ts tools/loop/tests/queueLoopMain.test.ts tools/loop/tests/settleReplay.test.ts`
+Run: `node --test tools/loop/tests/queueLoop.test.ts tools/loop/tests/queueLoopMain.test.ts tools/loop/tests/settleReplay.test.ts`
 Expected: PASS, 0 fail.
 
 - [ ] **Step 9: Commit**
@@ -302,7 +302,7 @@ describe("a CI-RED comment hands over every failing file", () => {
 
 - [ ] **Step 2: Run it to verify it fails**
 
-Run: `node --experimental-strip-types --test tools/loop/tests/loopDerive.test.ts`
+Run: `node --test tools/loop/tests/loopDerive.test.ts`
 Expected: FAIL on `+N more` and on the missing `3 failing files` line.
 
 - [ ] **Step 3: Replace `failingLine` with `failingFiles` and rewrite `ciRedBody`**
@@ -340,7 +340,7 @@ Pass `runId: verdict.runId` at the `postCiRedOnce` call site.
 
 - [ ] **Step 4: Run it to verify it passes**
 
-Run: `node --experimental-strip-types --test tools/loop/tests/loopDerive.test.ts tools/loop/tests/queueLoop.test.ts tools/loop/tests/sharedRed.test.ts`
+Run: `node --test tools/loop/tests/loopDerive.test.ts tools/loop/tests/queueLoop.test.ts tools/loop/tests/sharedRed.test.ts`
 Expected: PASS, 0 fail.
 
 - [ ] **Step 5: Make the fix round read the log**
@@ -353,7 +353,7 @@ In `.claude/commands/queue.md`, phase C's fix-round paragraph, the `gh run view 
 
 - [ ] **Step 6: Check the docs gate**
 
-Run: `node --experimental-strip-types --test tools/loop/tests/loopDocsAreExecutable.test.ts && node --test tests/rulesAreSingleSourced.test.ts`
+Run: `node --test tools/loop/tests/loopDocsAreExecutable.test.ts && node --test tests/rulesAreSingleSourced.test.ts`
 Expected: PASS.
 
 - [ ] **Step 7: Commit**
@@ -423,7 +423,7 @@ test("fix-round spend respects the ticket window", () => {
 
 - [ ] **Step 2: Run them to verify they fail**
 
-Run: `node --experimental-strip-types --test tools/loop/tests/loopCost.test.ts`
+Run: `node --test tools/loop/tests/loopCost.test.ts`
 Expected: FAIL on both.
 
 - [ ] **Step 3: Judge the model the session was spawned on**
@@ -436,7 +436,7 @@ Compute the fix-round total from the same filtered row set the rest of the table
 
 - [ ] **Step 5: Run to verify they pass, then check the real numbers**
 
-Run: `node --experimental-strip-types --test tools/loop/tests/loopCost.test.ts && node tools/loop/loop-cost.mjs 1085+`
+Run: `node --test tools/loop/tests/loopCost.test.ts && node tools/loop/loop-cost.mjs 1085+`
 Expected: tests pass; the printed fix-round figure differs from the all-ticket run's.
 
 - [ ] **Step 6: Commit**
@@ -475,7 +475,7 @@ test("a notice is said once per session without re-reading the transcript to fin
 
 - [ ] **Step 2: Run it to verify it fails**
 
-Run: `node --experimental-strip-types --test tools/loop/tests/guardContext.test.ts`
+Run: `node --test tools/loop/tests/guardContext.test.ts`
 Expected: FAIL — `reads.length` is 2.
 
 - [ ] **Step 3: Remember what was said, per session**
@@ -484,7 +484,7 @@ Keep the said-notices set in a marker file keyed by `session_id` beside the log,
 
 - [ ] **Step 4: Run it to verify it passes**
 
-Run: `node --experimental-strip-types --test tools/loop/tests/guardContext.test.ts`
+Run: `node --test tools/loop/tests/guardContext.test.ts`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
