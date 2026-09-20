@@ -1080,21 +1080,34 @@ describe("a session cut off mid-phase", () => {
     assert.equal(exhausted({ result: { subtype: "success" }, stderr: "" } as never), false);
   });
 
+  const at = (phase: string, ticket = 42) => ({ cwd: ".worktrees/agent-42", phase, ticket });
+
   test("with a live worktree it hands the derived phase on, rather than parking", () => {
-    assert.equal(resumePhase(cut as never, { cwd: ".worktrees/agent-1090", phase: "C" } as never), "C");
+    for (const p of ["B", "C", "D"]) assert.equal(resumePhase(cut as never, at(p) as never, 42), p);
   });
 
-  test("no worktree, or no derivable phase, is still a park", () => {
-    assert.equal(resumePhase(cut as never, { cwd: null, phase: "C" } as never), null);
-    assert.equal(resumePhase(cut as never, { cwd: ".worktrees/agent-1", phase: "?" } as never), null);
-    assert.equal(resumePhase(cut as never, null), null);
+  // A head that is already pushed is settle's to merge. Handing E back spends a whole session
+  // re-running a gate and a push that are done, and never reaches the open pull request.
+  test("a pushed head is left to settle, never handed back", () => {
+    assert.equal(resumePhase(cut as never, at("E") as never, 42), null);
+    assert.equal(resumePhase(cut as never, at("G") as never, 42), null);
   });
 
-  test("a session that declared its own handoff, or finished, is untouched", () => {
-    const declared = { ...cut, declared: { handoff: "D" } } as never;
-    assert.equal(resumePhase(declared, { cwd: ".worktrees/agent-1", phase: "C" } as never), null);
-    const done = { result: { subtype: "success" }, declared: null, stderr: "" } as never;
-    assert.equal(resumePhase(done, { cwd: ".worktrees/agent-1", phase: "C" } as never), null);
+  test("no worktree, no derivable phase, or another ticket's worktree, is still a park", () => {
+    assert.equal(resumePhase(cut as never, { cwd: null, phase: "C", ticket: 42 } as never, 42), null);
+    assert.equal(resumePhase(cut as never, at("?") as never, 42), null);
+    assert.equal(resumePhase(cut as never, at("C", 955) as never, 42), null);
+    assert.equal(resumePhase(cut as never, null, 42), null);
+  });
+
+  // The dollar cap stops subagents and lets the session run on, so a finished session can carry
+  // that line in its stderr. Declaring anything at all is the test of having chosen an ending.
+  test("a session that declared anything chose its ending, and is untouched", () => {
+    const spent = { result: { subtype: "success" }, stderr: "Budget limit reached ($15.08 of $15)" };
+    for (const declared of [{ handoff: "D" }, { handoff: null, pr: 9 }, { stoodDown: true, why: "lost" }]) {
+      assert.equal(resumePhase({ ...spent, declared } as never, at("C") as never, 42), null);
+    }
+    assert.equal(resumePhase({ ...spent, declared: null } as never, at("C") as never, 42), "C");
   });
 });
 

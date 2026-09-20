@@ -406,15 +406,23 @@ export const overHandoffs = (n) => n >= MAX_HANDOFFS;
 /** @param {{declared: {handoff?: string|null, stoodDown?: boolean}|null}} run */
 export const handoffOf = (run) => (run.declared?.stoodDown ? null : (run.declared?.handoff ?? null));
 
-/** Cut off by the turn cap or the dollar cap, so it never reached its `LOOP-RESULT` to hand off. */
+/** Cut off by the turn cap or the dollar cap. */
 export const exhausted = (run) =>
   run.result?.subtype === "error_max_turns" || /Budget limit reached/.test(run.stderr ?? "");
 
-/** Where a cut-off session's successor resumes; null when nothing stands to resume from. */
-export function resumePhase(run, after) {
-  if (handoffOf(run) || !exhausted(run)) return null;
-  const phase = after?.phase ?? null;
-  return after?.cwd && phase && phase !== "?" ? phase : null;
+/** The phases a synthesised handoff may name. E and G are the pushed head's, which `settle` owns. */
+const RESUMABLE = new Set(["B", "C", "D"]);
+
+/**
+ * Where a cut-off session's successor resumes, or null. `declared` is the whole test of being cut
+ * off: a session that said anything — a handoff, a stand-down, a finished `LOOP-RESULT` — chose its
+ * ending, and the dollar cap stops subagents while letting such a session run on to declare one.
+ * `after.ticket` is checked because `reasonFor`'s hard guards are downstream of this.
+ */
+export function resumePhase(run, after, ticket) {
+  if (run.declared || !exhausted(run)) return null;
+  if (!after?.cwd || after.ticket !== ticket) return null;
+  return RESUMABLE.has(after.phase) ? after.phase : null;
 }
 
 /**
@@ -566,7 +574,7 @@ export function reasonFor(run, after, ticket) {
   // The only place "Budget limit reached ($15.08 of $15); stopping background agents." is ever
   // said — the result event for that session still reads subtype "success".
   if (/Budget limit reached/.test(run.stderr ?? "")) return soft("the session spent its budget mid-phase");
-  if (exhausted(run)) return soft("the session ran out of turns");
+  if (run.result?.subtype === "error_max_turns") return soft("the session ran out of turns");
   if (run.status === "stalled")
     return soft(`no output for ${Math.round(STALL_MS / 60_000)}m in phase ${run.phase ?? "?"}`);
   if (run.status !== 0) return soft(`the session exited ${run.status} in phase ${run.phase ?? "?"}`);
@@ -1656,10 +1664,14 @@ export const failingFiles = (testIds) => [...new Set(testIds.map((id) => id.spli
  */
 export function ciRedBody({ sha, runUrl, failedStep, testIds = [], excerpt = "", shared = "none", runId }) {
   const files = failingFiles(testIds);
+  // A count of zero would be a target a round meets by diagnosing nothing, so a step whose output
+  // parses as no test id says that instead of stating one.
   const body = [
     `CI-RED ${sha}`,
     `run: ${runUrl} · step: ${failedStep ?? "an unnamed step"}`,
-    `failing: ${files.length} failing files, ${testIds.length} tests — read them, do not guess:`,
+    files.length
+      ? `failing: ${files.length} failing files, ${testIds.length} tests — read them, do not guess:`
+      : "failing: no test id parsed — this step's own output is the count. Read the run:",
     "```sh",
     `gh run view ${runId} --log-failed | grep -E "✖|AssertionError|error TS|FAIL " -A5`,
     "```",
@@ -2039,7 +2051,7 @@ export async function runOnce(io, pinned = null, at = null) {
   }
   // Before the pull request is looked for: a session that handed off has not pushed and is not
   // finished, and every reading below is about a session that meant to be its ticket's last.
-  let handoff = handoffOf(run) ?? resumePhase(run, after);
+  let handoff = handoffOf(run) ?? resumePhase(run, after, route.number);
   let because = null;
   if (handoff === "D" && !io.buildPassed(after?.cwd ?? null)) {
     io.log(`#${route.number} handed off to review with no local pass on a clean HEAD — back to C`, "build");

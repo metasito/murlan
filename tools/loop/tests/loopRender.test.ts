@@ -371,6 +371,18 @@ describe("header", () => {
     for (const r of out) assert.ok(cols(r) <= WIDTH, `${cols(r)} cells`);
   });
 
+  // `resumed` widened the tag by ten cells, and nothing bounded the title's floor against it.
+  test("the tag sheds rather than carrying the box past its own width", () => {
+    for (let columns = 12; columns <= 60; columns++) {
+      const t = theme(capabilities(term({ columns }), {}));
+      for (const q of [ticket.queue, null]) {
+        const out = rows(strip(header({ ...ticket, queue: q }, t)));
+        assert.equal(out.length, 2, `${columns} columns gave ${out.length} rows`);
+        for (const r of out) assert.ok(cols(r) <= t.width, `${cols(r)} cells in ${t.width} at ${columns}`);
+      }
+    }
+  });
+
   // A settle pass skipped this call entirely (queue-loop's `settling` branch never runs
   // `runTicket`), so the board's G row appeared under no header. Neither render call is
   // conditional on the phase — the caller owes both, the same as any other resumed phase.

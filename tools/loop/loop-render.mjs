@@ -442,26 +442,36 @@ export function activity({ said, recent = [], ms, frame = 0 }, t, take = RECENT)
  */
 export function header({ number, title, size, url, queue }, t) {
   const id = `#${number}`;
-  const tag = [queue ? null : "resumed", size].filter(Boolean).join(" ─ ");
-  const inner = t.width - 2;
+  const inner = Math.max(0, t.width - 2);
 
   // Laid out as plain text and measured, then painted. Every fixed piece is counted here rather
   // than assumed, because a header one cell too wide wraps and the redraw below it erases the
-  // wrong row from then on.
+  // wrong row from then on. The tag sheds from the left — `resumed` before the size — rather than
+  // pushing the title past the edge, and nothing below is floored above zero for the same reason.
   const head = `╭─ ${id}  `;
-  const tail = tag ? ` ${tag} ─╮` : " ─╮";
-  const room = t.width - cols(head) - cols(tail) - 1;
-  const shown = clamp(title, Math.max(8, room - 1));
-  const fill = "─".repeat(Math.max(1, room - cols(shown)));
+  const pieces = [queue ? null : "resumed", size].filter(Boolean);
+  let tail = " ─╮";
+  let room = 0;
+  for (let i = 0; i <= pieces.length; i++) {
+    const tag = pieces.slice(i).join(" ─ ");
+    tail = tag ? ` ${tag} ─╮` : " ─╮";
+    room = t.width - cols(head) - cols(tail) - 1;
+    if (room >= TITLE_FLOOR) break;
+  }
+  const shown = clamp(title, Math.max(0, room - 1));
+  const fill = "─".repeat(Math.max(0, room - cols(shown)));
+  const plain = `${head}${shown} ${fill}${tail}`;
   const top =
-    t.paint("faint", "╭─ ") +
-    t.link(url, t.paint("bright", id, true)) +
-    t.paint("faint", "  ") +
-    t.paint("text", shown) +
-    t.paint("faint", ` ${fill}`) +
-    t.paint("faint", tail);
+    cols(plain) <= t.width
+      ? t.paint("faint", "╭─ ") +
+        t.link(url, t.paint("bright", id, true)) +
+        t.paint("faint", "  ") +
+        t.paint("text", shown) +
+        t.paint("faint", ` ${fill}`) +
+        t.paint("faint", tail)
+      : t.paint("faint", clamp(plain, t.width));
 
-  return [top, t.paint("faint", `╰${"─".repeat(inner)}╯`)].join("\n");
+  return [top, t.paint("faint", clamp(`╰${"─".repeat(inner)}╯`, t.width))].join("\n");
 }
 
 /**

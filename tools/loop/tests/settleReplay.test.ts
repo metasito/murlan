@@ -458,4 +458,11 @@ describe("ciRedBody", () => {
     const body = ciRedBody({ sha: SHA, runUrl, testIds: [], excerpt: "error TS2322: nope", runId: 7 });
     assert.deepEqual(body.split("\n").slice(-3), ["```", "error TS2322: nope", "```"]);
   });
+
+  // A stated count of zero is a target met by diagnosing nothing — the shape CLAUDE.md refuses.
+  test("and it states no count, because zero is not one", () => {
+    const body = ciRedBody({ sha: SHA, runUrl, testIds: [], excerpt: "error TS2322", runId: 7 });
+    assert.doesNotMatch(body, /0 failing files/);
+    assert.match(body, /^failing: no test id parsed/m);
+  });
 });
