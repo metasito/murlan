@@ -269,7 +269,15 @@ export const it: Record<keyof typeof en, string> = {
 
   // -------------------------------------------------------- reactionLayer.*
   "reactionLayer.triggerA11yLabel": "Invia una reazione",
-  "reactionLayer.emojiA11yLabel": "Reazione {{emoji}}",
+  "reactionLayer.emojiA11yLabel": "Reazione: {{emoji}}",
+  "reactionLayer.emoji.laugh": "risata",
+  "reactionLayer.emoji.fire": "fuoco",
+  "reactionLayer.emoji.frustrated": "frustrazione",
+  "reactionLayer.emoji.applause": "applausi",
+  "reactionLayer.emoji.shock": "sorpresa",
+  "reactionLayer.emoji.clown": "pagliaccio",
+  "reactionLayer.emoji.bomb": "bomba",
+  "reactionLayer.emoji.crown": "corona",
 
   // ----------------------------------------------------------------- exchange.*
   "exchange.prompt": "{{name}} ti ha dato questa — dagliene una",
@@ -589,8 +597,8 @@ export const it: Record<keyof typeof en, string> = {
   "rules.startTutorialSubtitle": "Impara giocando una manche guidata.",
   "rules.startTutorialA11yLabel": "Inizia il tutorial, una manche guidata",
   "rules.strengthSectionLabel": "FORZA CARTE (più forte → più debole)",
-  "rules.strengthJokerColored": "Jolly Rosso",
-  "rules.strengthJokerBlack": "Jolly Nero",
+  "rules.strengthJokerColored": "Jolly rosso",
+  "rules.strengthJokerBlack": "Jolly nero",
   "rules.strengthTwo": "Due",
   "rules.strengthAce": "Asso",
   "rules.strengthKing": "Re",

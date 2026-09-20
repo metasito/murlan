@@ -4,10 +4,11 @@ Where to read, only. What an agent must *do* is in `docs/agents/RULES.md`.
 
 Single-context repo. Decisions live in `docs/adr/`, indexed by `docs/adr/README.md`.
 
-There is no `CONTEXT.md` yet. `/domain-modeling` creates one lazily, when a term actually gets
-resolved — its absence is not a gap to fill upfront, so don't flag it or offer to write one.
+`CONTEXT.md` is the glossary: a term the repo argues about, what it means here, and where its
+design lives. `/domain-modeling` grows it lazily, one term at a time as each gets resolved — a
+term it does not yet carry is not a gap to fill upfront.
 
-Before working an area, read the ADRs that touch it. When your output names a domain concept —
+Before working an area, read `CONTEXT.md` for its terms and the ADRs that touch it. When your output names a domain concept —
 an issue title, a test name, a hypothesis — use the repo's own word for it. Inventing a synonym
 for something the code already names is how two vocabularies start.
 

@@ -39,11 +39,12 @@ table, `trust proxy`, deployment shape) are documented in `replit.md`, not here.
 
 ```sh
 npm run typecheck    # tsc --noEmit
+npm run typecheck:strict  # scripts/checkStrictIndexed.mjs
 npm test             # node --test, everything under tests/
 npm run loop:test    # node --test, the ticket loop under tools/loop/tests/
 npm run test:native  # jest, the tests/native/ renderer suites
 npm run lint         # npx expo lint
-npm run verify       # typecheck, test, test:native and lint — the game's sweep, lint last
+npm run verify       # typecheck, typecheck:strict, test, test:native and lint — the game's sweep, lint last
 npm run test:e2e     # Playwright — needs Docker and a built web bundle
 ```
 
@@ -79,6 +80,7 @@ ALLOW_DESTRUCTIVE=1 node scripts/reset-db.mjs --yes && npm run db:push
 | [GitHub Issues](https://github.com/metasito/murlan/issues) | Everything outstanding, and what was decided against (`rejected` label) |
 | [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) | Layers, data flow, socket lifecycle, persistence |
 | [`docs/TESTING.md`](./docs/TESTING.md) | What each test layer covers and how to run it |
+| [`docs/BETA-PLAYTEST.md`](./docs/BETA-PLAYTEST.md) | The manual pre-beta playtest script, and what it has to cover |
 | [`replit.md`](./replit.md) | Replit-specific run/deploy notes |
 
 ## Licence and contributions

@@ -5,10 +5,6 @@
 // implementation of this. They are now thin adapters: each maps its own state
 // source onto `GameTableProps` and passes its own extras through the slots.
 // Nothing below knows or cares which mode it is running in.
-//
-// Where the two modes genuinely differ the difference is an explicit prop or a
-// slot (`topBarExtra`, `banners`, `overlays`, `turnTimer`) — never an
-// `isOnline &&` branch threaded through the render.
 
 import React, { useCallback, useEffect, useState } from "react";
 import {

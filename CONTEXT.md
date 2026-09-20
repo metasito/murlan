@@ -1,8 +1,10 @@
 # Context
 
 Domain glossary and pointers to where a concept's design lives, sharpened over time by
-`mattpocock-skills:domain-modeling`. Decisions that constrain future changes belong in
-`docs/adr/`, not here.
+`mattpocock-skills:domain-modeling`. A decision that constrains the whole repo belongs in
+`docs/adr/`, not here. What does belong here, next to the term it guards, is a dated note that a
+specific change to *that term* was researched and rejected — narrow enough that it is part of the
+term's meaning, and useless anywhere the term is not.
 
 ## Terms
 
