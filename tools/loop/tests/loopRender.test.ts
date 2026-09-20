@@ -15,7 +15,7 @@ import {
   notice,
   phaseRow,
   progress,
-  queueLine,
+  recap,
   reportRow,
   runTotal,
   stream,
@@ -367,7 +367,7 @@ describe("header", () => {
 
   test("a title far too long for the row is cut, not wrapped", () => {
     const out = rows(strip(header({ ...ticket, title: "x".repeat(400) }, tPlain)));
-    assert.equal(out.length, 3);
+    assert.equal(out.length, 2);
     for (const r of out) assert.ok(cols(r) <= WIDTH, `${cols(r)} cells`);
   });
 
@@ -457,15 +457,18 @@ describe("tasksDetail", () => {
   });
 });
 
-describe("queueLine", () => {
-  test("a depth that moved shows both readings", () => {
-    const out = queueLine({ implement: 9, triage: 1, wayfinder: 0 }, { implement: 7, triage: 1, wayfinder: 0 }, tPlain);
+describe("recap", () => {
+  const totals = { tickets: 3, landed: 2, parked: 1, ms: 3_600_000, cost: 51.05 };
+
+  test("a depth that moved shows both readings, under how far the run has got", () => {
+    const out = recap(totals, { implement: 9, triage: 1, wayfinder: 0 }, { implement: 7, triage: 1, wayfinder: 0 }, tPlain);
+    assert.match(out, /run\s+3 tickets · 2 landed · 1 parked/);
     assert.match(out, /9→7 to implement/);
     assert.match(out, /1 to triage/);
   });
 
   test("an empty queue says so", () => {
-    assert.match(queueLine({ implement: 1, triage: 0, wayfinder: 0 }, { implement: 0, triage: 0, wayfinder: 0 }, tPlain), /queue\s+empty/);
+    assert.match(recap(totals, { implement: 1, triage: 0, wayfinder: 0 }, { implement: 0, triage: 0, wayfinder: 0 }, tPlain), /queue\s+empty/);
   });
 });
 
