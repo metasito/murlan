@@ -27,16 +27,25 @@ function tail(file) {
   }
 }
 
-function rows(text) {
-  const out = [];
-  for (const line of text.split("\n")) {
-    try {
-      if (line.trim()) out.push(JSON.parse(line));
-    } catch {
-      continue;
-    }
+const parsed = (line) => {
+  try {
+    return line.trim() ? JSON.parse(line) : null;
+  } catch {
+    return null;
   }
-  return out;
+};
+
+/**
+ * The newest row the predicate accepts, found from the end. This hook runs on every Bash, Read,
+ * Grep, Glob and Agent call a session makes — 483 of them on #1088 — so parsing the whole
+ * transcript to reach its last row was the cost of the notice, paid per call.
+ */
+function newest(lines, want) {
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const row = parsed(lines[i]);
+    if (row && want(row)) return row;
+  }
+  return null;
 }
 
 const contextOf = (u) =>
@@ -44,25 +53,29 @@ const contextOf = (u) =>
 
 function notices(payload) {
   const text = tail(payload.transcript_path);
-  const all = rows(text);
+  const lines = text.split("\n");
   const said = [];
 
-  const last = all.findLast((r) => r.type === "assistant" && r.message?.usage);
   const ceiling = "Context is past 200k. Commit what works and hand off to the phase of your last PHASE line.";
-  if (last && contextOf(last.message.usage) > CONTEXT_CEILING && !text.includes(ceiling)) said.push(ceiling);
+  if (!text.includes(ceiling)) {
+    const last = newest(lines, (r) => r.type === "assistant" && r.message?.usage);
+    if (last && contextOf(last.message.usage) > CONTEXT_CEILING) said.push(ceiling);
+  }
 
   const command = payload.tool_name === "Bash" ? payload.tool_input?.command : undefined;
   if (typeof command === "string") {
-    const ids = new Set();
-    for (const r of all) {
-      for (const c of Array.isArray(r.message?.content) ? r.message.content : []) {
-        if (c?.type === "tool_use" && c.name === "Bash" && c.input?.command === command) ids.add(c.id);
-      }
-    }
-    ids.add(payload.tool_use_id ?? "current");
     const tag = createHash("sha256").update(command).digest("hex").slice(0, 8);
     const repeat = `same command three times: batch edits before re-running it [${tag}]`;
-    if (ids.size >= REPEATS && !text.includes(repeat)) said.push(repeat);
+    if (!text.includes(repeat)) {
+      const ids = new Set([payload.tool_use_id ?? "current"]);
+      for (const line of lines) {
+        if (!line.includes('"tool_use"')) continue;
+        for (const c of parsed(line)?.message?.content ?? []) {
+          if (c?.type === "tool_use" && c.name === "Bash" && c.input?.command === command) ids.add(c.id);
+        }
+      }
+      if (ids.size >= REPEATS) said.push(repeat);
+    }
   }
   return said;
 }
