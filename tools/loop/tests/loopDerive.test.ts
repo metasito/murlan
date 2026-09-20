@@ -440,10 +440,19 @@ describe("derive({ ci: true }) resumes from what CI said about the pushed head",
   };
   const pushed = (extra: GhAnswers) => ({ issue: { comments: land() }, ref: head, prs: [{ number: 5 }], ...extra });
 
-  test("nothing committed → C, no fix", () => {
+  test("claimed and untouched → B, so the scope pass is what the board shows", () => {
     const s = at({ issue: { comments: land() } }, { base: BR });
-    assert.equal(s.phase, "C");
+    assert.equal(s.phase, "B");
     assert.equal(s.fix, false);
+  });
+
+  test("nothing committed but the tree is dirty → C: the build has begun", () => {
+    writeFileSync(join(dir, "wip.txt"), "1");
+    try {
+      assert.equal(at({ issue: { comments: land() } }, { base: BR }).phase, "C");
+    } finally {
+      rmSync(join(dir, "wip.txt"), { force: true });
+    }
   });
 
   test("no verdict → D, no fix", () => {
