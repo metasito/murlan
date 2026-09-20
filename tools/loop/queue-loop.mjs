@@ -406,6 +406,17 @@ export const overHandoffs = (n) => n >= MAX_HANDOFFS;
 /** @param {{declared: {handoff?: string|null, stoodDown?: boolean}|null}} run */
 export const handoffOf = (run) => (run.declared?.stoodDown ? null : (run.declared?.handoff ?? null));
 
+/** Cut off by the turn cap or the dollar cap, so it never reached its `LOOP-RESULT` to hand off. */
+export const exhausted = (run) =>
+  run.result?.subtype === "error_max_turns" || /Budget limit reached/.test(run.stderr ?? "");
+
+/** Where a cut-off session's successor resumes; null when nothing stands to resume from. */
+export function resumePhase(run, after) {
+  if (handoffOf(run) || !exhausted(run)) return null;
+  const phase = after?.phase ?? null;
+  return after?.cwd && phase && phase !== "?" ? phase : null;
+}
+
 /**
  * How long to wait out a spent usage window.
  *
@@ -555,7 +566,7 @@ export function reasonFor(run, after, ticket) {
   // The only place "Budget limit reached ($15.08 of $15); stopping background agents." is ever
   // said — the result event for that session still reads subtype "success".
   if (/Budget limit reached/.test(run.stderr ?? "")) return soft("the session spent its budget mid-phase");
-  if (run.result?.subtype === "error_max_turns") return soft("the session ran out of turns");
+  if (exhausted(run)) return soft("the session ran out of turns");
   if (run.status === "stalled")
     return soft(`no output for ${Math.round(STALL_MS / 60_000)}m in phase ${run.phase ?? "?"}`);
   if (run.status !== 0) return soft(`the session exited ${run.status} in phase ${run.phase ?? "?"}`);
@@ -2036,7 +2047,7 @@ export async function runOnce(io, pinned = null, at = null) {
   }
   // Before the pull request is looked for: a session that handed off has not pushed and is not
   // finished, and every reading below is about a session that meant to be its ticket's last.
-  let handoff = handoffOf(run);
+  let handoff = handoffOf(run) ?? resumePhase(run, after);
   let because = null;
   if (handoff === "D" && !io.buildPassed(after?.cwd ?? null)) {
     io.log(`#${route.number} handed off to review with no local pass on a clean HEAD — back to C`, "build");

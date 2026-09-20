@@ -45,6 +45,8 @@ import {
   CHECK_BASH_TIMEOUT_MS,
   STALL_MS,
   ticketFacts,
+  exhausted,
+  resumePhase,
 } from "../queue-loop.mjs";
 
 /** Enough IO for `runOnce` to reach a decision without git, the tracker or a `claude` binary. */
@@ -1064,6 +1066,35 @@ describe("reasonFor", () => {
 
   test("no live ticket at all is not a reason on its own", () => {
     assert.deepEqual(reasonFor(run(), null, 42), { why: null, hard: false });
+  });
+});
+
+// #1090 died at 121 turns with six commits and a standing worktree, and was parked for want of a
+// line it had no turn left to write.
+describe("a session cut off mid-phase", () => {
+  const cut = { result: { subtype: "error_max_turns" }, declared: null, stderr: "" };
+
+  test("exhausted() names the turn cap and the dollar cap, and nothing else", () => {
+    assert.equal(exhausted(cut as never), true);
+    assert.equal(exhausted({ stderr: "Budget limit reached ($15.08 of $15); stopping." } as never), true);
+    assert.equal(exhausted({ result: { subtype: "success" }, stderr: "" } as never), false);
+  });
+
+  test("with a live worktree it hands the derived phase on, rather than parking", () => {
+    assert.equal(resumePhase(cut as never, { cwd: ".worktrees/agent-1090", phase: "C" } as never), "C");
+  });
+
+  test("no worktree, or no derivable phase, is still a park", () => {
+    assert.equal(resumePhase(cut as never, { cwd: null, phase: "C" } as never), null);
+    assert.equal(resumePhase(cut as never, { cwd: ".worktrees/agent-1", phase: "?" } as never), null);
+    assert.equal(resumePhase(cut as never, null), null);
+  });
+
+  test("a session that declared its own handoff, or finished, is untouched", () => {
+    const declared = { ...cut, declared: { handoff: "D" } } as never;
+    assert.equal(resumePhase(declared, { cwd: ".worktrees/agent-1", phase: "C" } as never), null);
+    const done = { result: { subtype: "success" }, declared: null, stderr: "" } as never;
+    assert.equal(resumePhase(done, { cwd: ".worktrees/agent-1", phase: "C" } as never), null);
   });
 });
 
