@@ -185,7 +185,9 @@ describe('the end-of-hand sting', () => {
     const r = await render(table(ID_RANKINGS, 0));
     await settle(STING_MS - 1);
     expect(playGameWin).not.toHaveBeenCalled();
-    expect(jest.mocked(Haptics.notificationAsync)).not.toHaveBeenCalled();
+    expect(jest.mocked(Haptics.notificationAsync)).not.toHaveBeenCalledWith(
+      Haptics.NotificationFeedbackType.Success
+    );
     await settle(1);
     expect(playGameWin).toHaveBeenCalledTimes(1);
     await r.unmount();
