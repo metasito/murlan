@@ -1,6 +1,7 @@
 import type { Server as HttpServer } from "node:http";
 import type { Pool } from "pg";
 import type { SocketServer as SocketIOServer } from "./socketTypes.ts";
+import runtime from "../deploy/runtime.json" with { type: "json" };
 import { logger } from "./logger.ts";
 import { pool as appPool, QUERY_TIMEOUT_MS } from "./db.ts";
 import { drainPool } from "./drainPool.ts";
@@ -10,11 +11,11 @@ import { closeOwnership } from "./gameOwnership.ts";
 import { settleDisconnects } from "./socketPresence.ts";
 
 /**
- * Replit Cloud Run sends SIGTERM and SIGKILLs roughly ten seconds later. The
- * whole sequence below has to finish inside that window; a budget longer than
- * it buys nothing, because the platform kills the process first.
+ * How long the host waits between SIGTERM and SIGKILL. The whole sequence
+ * below has to finish inside that window; a budget longer than it buys
+ * nothing, because the platform kills the process first.
  */
-export const PLATFORM_GRACE_MS = 10_000;
+export const PLATFORM_GRACE_MS = runtime.sigtermGraceMs;
 
 /**
  * The drain has to outlast one query's own timeout. A client stuck on a query

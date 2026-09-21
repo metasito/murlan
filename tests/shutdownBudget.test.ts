@@ -5,8 +5,14 @@
 // that have to hold for a healthy shutdown to always exit 0.
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { pool, QUERY_TIMEOUT_MS } from "../server/db.ts";
-import { DRAIN_TIMEOUT_MS, FORCED_EXIT_MS, PLATFORM_GRACE_MS } from "../server/shutdown.ts";
+import { DRAIN_TIMEOUT_MS, FORCED_EXIT_MS } from "../server/shutdown.ts";
+
+const { sigtermGraceMs } = JSON.parse(
+  readFileSync(path.resolve(import.meta.dirname, "..", "deploy", "runtime.json"), "utf8")
+);
 
 test("the drain outlasts a single query's own timeout", () => {
   assert.ok(
@@ -24,10 +30,10 @@ test("the watchdog outlasts the drain", () => {
   );
 });
 
-test("the watchdog fires inside the platform's SIGTERM grace", () => {
+test("the watchdog fires inside the host's SIGTERM grace", () => {
   assert.ok(
-    FORCED_EXIT_MS < PLATFORM_GRACE_MS,
-    `Replit Cloud Run SIGKILLs at ~${PLATFORM_GRACE_MS}ms, so a ${FORCED_EXIT_MS}ms watchdog never runs`
+    FORCED_EXIT_MS < sigtermGraceMs,
+    `the host SIGKILLs at ~${sigtermGraceMs}ms (deploy/runtime.json), so a ${FORCED_EXIT_MS}ms watchdog never runs`
   );
 });
 

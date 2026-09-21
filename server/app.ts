@@ -12,7 +12,7 @@ import { errorHandler } from "./errorHandler.ts";
 import { installServerErrorRecorder } from "./serverErrors.ts";
 import { registerRoutes } from "./routes.ts";
 import { ensureSchema } from "./schemaDdl.ts";
-import { allowedOrigins, isAllowedOrigin, isBehindProxy } from "./cors.ts";
+import { allowedOrigins, isAllowedOrigin, trustProxySetting } from "./cors.ts";
 import { checkMailConfigOnBoot } from "./mail.ts";
 import { ANSWERED_BY_SHELL, CONTENT_HASHED } from "./staticPaths.ts";
 import { testOnlyEnv } from "./testOnlyEnv.ts";
@@ -155,11 +155,7 @@ const HOSTNAME = /^[A-Za-z0-9.-]+(:\d+)?$/;
 // lands inside a string literal in the landing page's inline script.
 function safeHost(raw: string | undefined): string {
   if (raw && HOSTNAME.test(raw)) return raw;
-  return (
-    process.env.REPLIT_DEV_DOMAIN ||
-    process.env.REPLIT_DOMAINS?.split(",")[0]?.trim() ||
-    "localhost"
-  );
+  return process.env.PUBLIC_HOST || "localhost";
 }
 
 function renderLandingPage(template: string, host: string, appName: string, nonce = ""): string {
@@ -289,12 +285,10 @@ export async function createApp(): Promise<CreatedApp> {
   installServerErrorRecorder();
   const app = express();
 
-  // Exactly one proxy hop (Replit's TLS terminator). Without this the secure
+  // The hop count is the host's (deploy/runtime.json). Without this the secure
   // session cookie is never sent in production and express-rate-limit buckets
   // every user under the proxy's IP — one attacker locks out every login.
-  if (isBehindProxy()) {
-    app.set("trust proxy", 1);
-  }
+  app.set("trust proxy", trustProxySetting());
 
   app.use(
     helmet({

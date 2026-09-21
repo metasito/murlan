@@ -23,7 +23,7 @@ bundle. No extra setup.
 | Script | Purpose |
 |---|---|
 | `npm run server:dev` | Express + Socket.io in dev (tsx, no build step) |
-| `npm run expo:dev` | Expo dev server, proxied through the Replit domain |
+| `EXPO_PUBLIC_DOMAIN=<host:port> npm run expo:dev` | Expo dev server over a tunnel; the domain is where the API answers |
 | `npm run server:build` / `server:prod` | esbuild bundle, then run it |
 | `npm run verify` | Typecheck, the strict-indexed-access check (`typecheck:strict`), unit/integration tests, the native suite and lint, in that order. Run this before pushing. |
 | `npm run db:push` | Reconcile the database *destructively* — drops, retypes, renames. Not needed to deploy: the server applies additive schema changes itself at boot |
@@ -32,12 +32,16 @@ bundle. No extra setup.
 
 ## Required Secrets
 
-All three must be set in Replit Secrets or the server refuses to boot
-(`server/index.ts` fails fast on missing values):
+The server refuses to boot without these (`server/bootEnv.ts`):
 
-- `DATABASE_URL` — Replit-managed PostgreSQL
+- `DATABASE_URL` — in production it must carry an `sslmode` (`?sslmode=require`;
+  `sslmode=disable` is an explicit opt-out)
 - `SESSION_SECRET` — also used to sign socket auth tickets
-- `PORT` — assigned by Replit; never hardcode it
+- `PUBLIC_HOST` — production only: the bare hostname the app is served from. Browsers on
+  `https://$PUBLIC_HOST` and on each origin in the optional comma-separated `ALLOWED_ORIGINS`
+  may call the API
+
+`PORT` is read when the host assigns one and defaults to 5000; never hardcode it.
 
 ## Optional Secrets
 

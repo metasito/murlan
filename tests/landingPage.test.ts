@@ -27,8 +27,21 @@ test("a hostile Host header never reaches the page", () => {
 });
 
 test("a real Host header is passed through", () => {
-  for (const good of ["murlan.replit.app", "localhost:5000", "127.0.0.1:19000"]) {
+  for (const good of ["murlan.example.app", "localhost:5000", "127.0.0.1:19000"]) {
     assert.equal(safeHost(good), good);
+  }
+});
+
+test("a hostile Host header falls back to PUBLIC_HOST, then localhost", () => {
+  const saved = process.env.PUBLIC_HOST;
+  try {
+    process.env.PUBLIC_HOST = "murlan.example.app";
+    assert.equal(safeHost("a b"), "murlan.example.app");
+    delete process.env.PUBLIC_HOST;
+    assert.equal(safeHost("a b"), "localhost");
+  } finally {
+    if (saved === undefined) delete process.env.PUBLIC_HOST;
+    else process.env.PUBLIC_HOST = saved;
   }
 });
 

@@ -22,11 +22,12 @@ npm install
 ```
 
 You need `DATABASE_URL` and `SESSION_SECRET` set (see `.env` / your shell environment) —
-the server fails fast on boot if either is missing.
+the server fails fast on boot if either is missing. In production it also needs `PUBLIC_HOST`,
+and a `DATABASE_URL` carrying an `sslmode`. `PORT` defaults to 5000.
 
 ```sh
 npm run server:dev   # Express + Socket.io (tsx, no build step)
-npm run expo:dev      # Expo dev server
+EXPO_PUBLIC_DOMAIN=<host:port> npm run expo:dev   # Expo dev server, over a tunnel
 ```
 
 ## Running it on Replit

@@ -5,7 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 /**
- * Production's major (`.replit`) is the one every other Postgres in the
+ * Production's major (`deploy/runtime.json`) is the one every other Postgres in the
  * project follows. A dump is only portable backwards, so a CI client newer
  * than its service container fails the restore proof, and a dev container
  * newer than production hides a syntax error until deploy.
@@ -19,10 +19,10 @@ function majors(source: string, pattern: RegExp): number[] {
 }
 
 describe("every Postgres in the project is production's major", () => {
-  const production = majors(readRepoFile(".replit"), /modules\s*=\s*\[[^\]]*"postgresql-(\d+)"/g);
+  const production = [JSON.parse(readRepoFile("deploy", "runtime.json")).postgres];
 
-  test(".replit names exactly one", () => {
-    assert.equal(production.length, 1, `.replit names ${production.length} postgresql modules`);
+  test("the manifest names one", () => {
+    assert.ok(Number.isInteger(production[0]), "deploy/runtime.json names no postgres major");
   });
 
   test("the dev container matches it", () => {

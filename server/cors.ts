@@ -1,15 +1,14 @@
+import runtime from "../deploy/runtime.json" with { type: "json" };
+
 /**
  * Single source of truth for the CORS allowlist, shared by the Express
  * middleware and the socket.io server.
  */
 export function allowedOrigins(): Set<string> {
   const origins = new Set<string>();
-  if (process.env.REPLIT_DEV_DOMAIN)
-    origins.add(`https://${process.env.REPLIT_DEV_DOMAIN}`);
-  if (process.env.REPLIT_DOMAINS) {
-    process.env.REPLIT_DOMAINS.split(",").forEach((d: string) =>
-      origins.add(`https://${d.trim()}`)
-    );
+  if (process.env.PUBLIC_HOST) origins.add(`https://${process.env.PUBLIC_HOST}`);
+  for (const origin of process.env.ALLOWED_ORIGINS?.split(",") ?? []) {
+    if (origin.trim()) origins.add(origin.trim());
   }
   return origins;
 }
@@ -29,15 +28,11 @@ export function isAllowedOrigin(origin: string | undefined | null): boolean {
 }
 
 /**
- * Replit terminates TLS in front of the app. Without `trust proxy` Express
- * never sees the connection as secure, so `cookie.secure = true` silently
- * drops every session cookie in production, and express-rate-limit keys every
+ * Production sits behind the host's TLS terminator. Without `trust proxy`
+ * Express never sees the connection as secure, so `cookie.secure = true`
+ * silently drops every session cookie, and express-rate-limit keys every
  * request on the proxy IP (one global bucket for all users).
  */
-export function isBehindProxy(): boolean {
-  return (
-    process.env.NODE_ENV === "production" ||
-    !!process.env.REPLIT_DOMAINS ||
-    !!process.env.REPLIT_DEV_DOMAIN
-  );
+export function trustProxySetting(): number | false {
+  return process.env.NODE_ENV === "production" ? runtime.proxyHops : false;
 }

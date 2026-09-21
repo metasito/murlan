@@ -79,9 +79,6 @@ function connect(): Promise<Client | null> {
   connecting = (async () => {
     const next = new Client({
       connectionString: process.env.DATABASE_URL,
-      ssl: process.env.DATABASE_URL?.includes("neon.tech")
-        ? { rejectUnauthorized: false }
-        : false,
       query_timeout: OWNERSHIP_QUERY_TIMEOUT_MS,
       statement_timeout: OWNERSHIP_QUERY_TIMEOUT_MS,
     });

@@ -711,16 +711,16 @@ jobs:
           node-version: "22"
           cache: npm
 
-      # 22 above is Replit's, not a preference. If production's runtime moves
-      # and this does not, the job stops exercising production — silently, and
-      # green.
+      # 22 above is production's (deploy/runtime.json), not a preference. If
+      # production's runtime moves and this does not, the job stops exercising
+      # production — silently, and green.
       - name: This job's Node is the one production runs
         shell: bash
         run: |
-          replit=$(grep -oE 'nodejs-[0-9]+' .replit | head -1 | cut -d- -f2)
+          manifest=$(node -p 'require("./deploy/runtime.json").node')
           actual=$(node -p 'process.versions.node.split(".")[0]')
-          if [ "$replit" != "$actual" ]; then
-            echo "::error::.replit deploys on Node $replit; this job runs Node $actual."
+          if [ "$manifest" != "$actual" ]; then
+            echo "::error::deploy/runtime.json deploys on Node $manifest; this job runs Node $actual."
             exit 1
           fi
           echo "Both on Node $actual."
@@ -751,6 +751,8 @@ jobs:
         env:
           PORT: "5050"
           NODE_ENV: production
+          PUBLIC_HOST: example.invalid
+          DATABASE_URL: ${{ env.DATABASE_URL }}?sslmode=disable
         run: |
           test -f dist/index.html
           test -f server_dist/index.mjs
