@@ -104,7 +104,9 @@ const EXPECTED_SECONDS: Record<string, number> = {
   "game_win.mp3": 0.914,
   "reject.mp3": 0.209,
   "round_start.mp3": 0.81,
+  "room_full.mp3": 0.287,
   "round_win.mp3": 0.392,
+  "seat_fill.mp3": 0.261,
   "urgent_tick.mp3": 0.131,
   "your_turn.mp3": 0.235,
 };

@@ -247,6 +247,8 @@ const ASSETS = {
   deal:        () => require("../assets/sounds/deal.mp3") as number,
   exchange:    () => require("../assets/sounds/exchange.mp3") as number,
   reject:      () => require("../assets/sounds/reject.mp3") as number,
+  seat_fill:   () => require("../assets/sounds/seat_fill.mp3") as number,
+  room_full:   () => require("../assets/sounds/room_full.mp3") as number,
 } as const;
 
 type SoundKey = keyof typeof ASSETS;
@@ -299,6 +301,8 @@ export async function playGameWin():    Promise<void> { await play("game_win",  
 export async function playGameLose():   Promise<void> { await play("game_lose",   0.85); }
 export async function playDeal(rng: () => number = Math.random): Promise<void> { await play("deal", 0.8, 1, rng); }
 export async function playExchange():   Promise<void> { await play("exchange",    0.85); }
+export async function playSeatFill(): Promise<void> { await play("seat_fill",   0.8);  }
+export async function playRoomFull(): Promise<void> { await play("room_full",   0.85); }
 export async function playReject(rng: () => number = Math.random): Promise<void> { await play("reject", 0.7, 1, rng); }
 
 // ─── Preload ──────────────────────────────────────────────────────────────────
