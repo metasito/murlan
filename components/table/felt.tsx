@@ -31,6 +31,7 @@ import Svg, { Defs, Line, Pattern, RadialGradient, Rect, Stop } from "react-nati
 import { Colors, Lantern } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import type { FeltStops } from "@/lib/cosmetics";
+import { FeltBreath } from "@/components/table/feltBreath";
 
 // Every radial here is an ellipse, and the box it is painted into is what
 // states its shape. Neither of the two ways of saying so on the gradient itself
@@ -146,6 +147,9 @@ const NAP_OFFSETS = { under: 0, sheen: 0.5, lit: 0.86 } as const;
 /** How long the lamp takes to swing to the seat that just came on move. */
 const LAMP_MS = 800;
 
+/** How far above its mark the lamp hangs as the table appears, as a share of the felt's height. */
+const LAMP_SETTLE = 0.06;
+
 /**
  * The pool is twice the felt on each side — a 2560x1440 surface on a laptop —
  * and the swing moves it. Without its own compositor layer the browser
@@ -176,8 +180,7 @@ export function FeltPool({
 }) {
   const reduceMotion = usePrefersReducedMotion();
   const x = useSharedValue(lightX * width);
-  const y = useSharedValue(lightY * height);
-
+  const y = useSharedValue((lightY - LAMP_SETTLE) * height);
   useEffect(() => {
     const duration = reduceMotion ? 0 : LAMP_MS;
     const easing = Easing.bezier(0.34, 1.36, 0.5, 1);
@@ -358,6 +361,8 @@ export function FeltPool({
           <Rect width={POOL_UNITS} height={POOL_UNITS} fill={`url(#${VIGNETTE_ID})`} />
         </Svg>
       </View>
+
+      <FeltBreath />
     </View>
   );
 }

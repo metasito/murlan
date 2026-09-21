@@ -65,6 +65,7 @@ async function mount(leftPad: number, rightPad: number) {
         celebratedName="Ana"
         celebrationSubtitle="WINS THE HAND"
         viewerCelebrated
+        matchOver={false}
         rows={rows}
         handCount={1}
         target={21}

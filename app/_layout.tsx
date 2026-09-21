@@ -68,7 +68,7 @@ export function RootLayoutNav() {
         <Stack.Screen name="auth" />
         <Stack.Screen name="profile" />
         <Stack.Screen name="(online)" />
-        <Stack.Screen name="game" options={{ animation: "slide_from_bottom" }} />
+        <Stack.Screen name="game" />
         <Stack.Screen name="result" options={{ animation: "fade" }} />
         {/* The iOS capture harness (app/capture.tsx). Registered only in a
             development build: the screen refuses to render in a production one

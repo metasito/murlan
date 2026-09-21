@@ -41,7 +41,7 @@ import {
   advancePile,
   collectPile,
   type PileLayers,
-  sweepOrigin,
+  seatPoint,
   roundClosedWithWinner,
   EMPTY_PILE,
   readExchange,
@@ -1828,8 +1828,8 @@ describe("readThrownPlay", () => {
     const players = table(3);
     const { playedBy: _p, combo: _c, ...geometry } = readInput(players, 3);
     const nothingLeaving = { type: "single", cards: [], strength: 0 } as unknown as Combination;
-    assert.deepEqual(sweepOrigin(geometry, 3), read(players, 3, nothingLeaving).origin);
-    assert.notDeepEqual(sweepOrigin(geometry, 3), sweepOrigin(geometry, 2));
+    assert.deepEqual(seatPoint(geometry, 3), read(players, 3, nothingLeaving).origin);
+    assert.notDeepEqual(seatPoint(geometry, 3), seatPoint(geometry, 2));
   });
 
   test("a bomb and a royal straight land heavier than anything else", () => {

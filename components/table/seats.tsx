@@ -230,6 +230,23 @@ function CardFan({
   );
 }
 
+/**
+ * How many of a deal's cards have landed at this seat, from `arrivals` — each
+ * card's landing in ms after the deal started. Unbounded with no deal running
+ * or once the last has landed, so a card the seat is handed later still counts.
+ */
+function useArrivedCount(arrivals: readonly number[] | undefined): number {
+  const [landed, setLanded] = useState<{ of?: readonly number[]; n: number }>({ n: 0 });
+  useEffect(() => {
+    if (!arrivals) return;
+    const ids = arrivals.map((ms, i) => setTimeout(() => setLanded({ of: arrivals, n: i + 1 }), ms));
+    return () => ids.forEach(clearTimeout);
+  }, [arrivals]);
+  if (!arrivals) return Infinity;
+  const n = landed.of === arrivals ? landed.n : 0;
+  return n >= arrivals.length ? Infinity : n;
+}
+
 // ─── SeatRing ─────────────────────────────────────────────────────────────────
 //
 // A seat is one dark disc with a gold rule around it: a chip on the cloth, not
@@ -648,6 +665,7 @@ export function TopOppSlot({
   scale = 1,
   countdown,
   focusMode = false,
+  dealArrivals,
 }: {
   player: Player;
   isActive: boolean;
@@ -666,10 +684,13 @@ export function TopOppSlot({
   countdown?: { seconds: number; resetKey: string };
   /** Cards only: the name, the badges and the card count fall away. */
   focusMode?: boolean;
+  /** While a deal runs, when each of this seat's cards lands — see useArrivedCount. */
+  dealArrivals?: readonly number[];
 }) {
   // The fan and the badge read one number, held at its pre-play value for as
   // long as the flight is up — see displayedHandCount.
-  const displayed = displayedHandCount(cardCount ?? player.hand.length, departing);
+  const arrived = useArrivedCount(dealArrivals);
+  const displayed = Math.min(displayedHandCount(cardCount ?? player.hand.length, departing), arrived);
   return (
     <View
       testID="top-seat"
@@ -812,6 +833,7 @@ export function SideOppSlot({
   scale = 1,
   countdown,
   focusMode = false,
+  dealArrivals,
 }: {
   player: Player;
   isActive: boolean;
@@ -831,8 +853,11 @@ export function SideOppSlot({
   countdown?: { seconds: number; resetKey: string };
   /** Cards only: the name, the badges and the card count fall away. */
   focusMode?: boolean;
+  /** While a deal runs, when each of this seat's cards lands — see useArrivedCount. */
+  dealArrivals?: readonly number[];
 }) {
-  const displayed = displayedHandCount(cardCount ?? player.hand.length, departing);
+  const arrived = useArrivedCount(dealArrivals);
+  const displayed = Math.min(displayedHandCount(cardCount ?? player.hand.length, departing), arrived);
   const isLeft = side === "left";
   return (
     <View
