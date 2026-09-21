@@ -234,9 +234,9 @@ describe("a CI fix round is a documented path, not an improvisation", () => {
 
   // Resolved through the function that writes it, not scanned for as text: a path spelled the
   // same in two files is a premise that decays, and a scan cannot tell a mention from a caller.
-  test("phase C commits before the check, and the build gate runs last, before handoff D", () => {
+  test("phase C checks completeness, commits before the check, ticks the DoD, and gates last", () => {
     const c = read(QUEUE).split("## C — Build")[1]?.split("## D — Review")[0] ?? "";
-    const at = ["commit the last slice", "npm run agent:check", "loop-gate.mjs --build", "handoff D"].map((s) =>
+    const at = ["completeness check", "commit the last slice", "npm run agent:check", "DOD-CHECK <sha>", "loop-gate.mjs --build", "handoff D"].map((s) =>
       c.lastIndexOf(s),
     );
     assert.ok(at.every((i, k) => i >= 0 && (k === 0 || i > at[k - 1])), `out of order: ${at.join(", ")}`);
@@ -251,7 +251,7 @@ describe("a CI fix round is a documented path, not an improvisation", () => {
 
   test("a HOLD fix is checked locally before it goes back to review, as the supervisor requires", () => {
     const d = read(QUEUE).split("## D — Review")[1]?.split("## E — Land")[0] ?? "";
-    assert.match(d, /After a `HOLD`[^`]*commit, run `npm run agent:check` and\s+`node tools\/loop\/loop-gate\.mjs --build`/);
+    assert.match(d, /After a `HOLD`, fix what it named, then leave through phase C's steps 1–5/);
   });
 
   test("no session marks the draft ready: that is the supervisor's, behind the LAND check", () => {

@@ -31,6 +31,7 @@
     "queue:pre": "node tools/loop/queue-pre.mjs",
     "db:reset": "node scripts/reset-db.mjs && drizzle-kit push",
     "start": "npx expo start",
+    "play": "node scripts/e2e-server.mjs --play",
     "lint": "npx expo lint . -- --max-warnings 0 --cache --cache-strategy content",
     "lint:fix": "npx expo lint . --fix",
     "pretest": "node scripts/preflightMemory.mjs",

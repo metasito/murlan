@@ -195,11 +195,30 @@ slice.
 from git with none of this conversation.
 
 Before leaving C, `git rev-list --count origin/main..HEAD` must be non-zero. Then, in this order:
-read `git diff origin/main...HEAD` against phase D's two briefs and fix what either would raise;
-commit the last slice; run `npm run agent:check`; run `node tools/loop/loop-gate.mjs --build`,
-which must exit 0; only then declare handoff D and exit. The supervisor sends a handoff with no
-local pass on a clean HEAD back to C; with one, it pushes the branch and opens a draft pull
-request, so CI runs while D reviews.
+
+1. **The completeness check.** A review round costs a fresh process; a box found missing here costs
+   one subagent. One `sonnet` subagent, given the output of `gh issue view <n> --comments` and
+   `git diff origin/main...HEAD`, and nothing else:
+
+   > For each Definition-of-done box on issue #N (a later comment overrides the body), answer done,
+   > partial or missing. Done names the `<path>:<line>` that does it and the test that fails when that
+   > line is deleted — a test that passes either way does not count. Then list what the issue asks
+   > for that no box covers, and every caller of a changed function the diff did not update. Do not
+   > spawn any subagent. Around 20 lines.
+
+   Build what it reports partial or missing, with the failing test first, and ask it again on the
+   new diff until it reports nothing. Where you think it is wrong, check the code, not your memory.
+2. Read `git diff origin/main...HEAD` against phase D's two briefs and fix what either would raise.
+3. Then commit the last slice, and run `npm run agent:check`.
+4. Post the Definition of done ticked against this head, first line `DOD-CHECK <sha>`
+   (`git rev-parse --short HEAD`), then every box:
+   `- [x] <box> — <path>:<line> · <test path>:<line>`. A box you cannot close stays `- [ ]` with why,
+   and then the ticket is not done: keep building, or park it (**Never stall**).
+5. `node tools/loop/loop-gate.mjs --build` must exit 0. It refuses a dirty tree, no local pass on
+   HEAD, no `DOD-CHECK` of HEAD, an open box, and a tick with no `<path>:<line>`.
+
+Only then declare handoff D and exit. The supervisor runs the same gate and sends a failing handoff
+back to C; a passing one it pushes and opens as a draft pull request, so CI runs while D reviews.
 
 ```
 LOOP-RESULT {"ticket":<n>,"branch":"agent/<n>-slug","phase":"C","handoff":"D"}
@@ -297,8 +316,8 @@ security hole) without spending a round; for the rest, post your own `VERDICT: L
 what you accept and why, and say it in phase F's Definition-of-done comment. Park only for a
 decision only the owner can make. Where you disagree with a finding, one line in the commit body.
 
-**A round is a process.** After a `HOLD`, fix what it named, commit, run `npm run agent:check` and
-`node tools/loop/loop-gate.mjs --build` as phase C does, and hand off:
+**A round is a process.** After a `HOLD`, fix what it named, then leave through phase C's steps 1–5
+— the completeness check included, since a HOLD names what was missed, not all of it — and hand off:
 
 ```
 LOOP-RESULT {"ticket":<n>,"branch":"agent/<n>-slug","phase":"D","handoff":"D"}

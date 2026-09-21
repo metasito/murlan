@@ -15,8 +15,12 @@
  * time, not read at runtime — production builds never set this, so their
  * pacing is untouched). The AFK/disconnect-grace timers are the server's
  * own existing env knobs (server/socket.ts), shortened the same way.
+ *
+ * `--play` (`npm run play`) boots the same stack with production pacing, into
+ * dist/ on port 5000, to play it locally — on a phone, at http://<pc-ip>:5000.
  */
 import { spawnSync } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -24,9 +28,10 @@ import { assertBundleHasRoutes } from "./bundleRoutes.mjs";
 import { assertMark } from "./e2eBuildMark.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const PORT = process.env.E2E_PORT ?? "5199";
+const PLAY = process.argv.includes("--play");
+const PORT = process.env.E2E_PORT ?? (PLAY ? "5000" : "5199");
 const DEV_STACK = path.join(ROOT, "scripts", "dev-stack.mjs");
-const DIST = "dist-e2e";
+const DIST = PLAY ? "dist" : "dist-e2e";
 
 function run(cmd, args, useShell) {
   const result = spawnSync(cmd, args, { cwd: ROOT, stdio: "inherit", shell: useShell });
@@ -52,25 +57,29 @@ function databaseUrl() {
   return url;
 }
 
-process.env.EXPO_PUBLIC_E2E_FAST = "1";
-process.env.MURLAN_AFK_TIMEOUT_MS ??= "5000";
-process.env.MURLAN_DISCONNECT_GRACE_MS ??= "5000";
+if (!PLAY) {
+  process.env.EXPO_PUBLIC_E2E_FAST = "1";
+  process.env.MURLAN_AFK_TIMEOUT_MS ??= "5000";
+  process.env.MURLAN_DISCONNECT_GRACE_MS ??= "5000";
+}
 
 run(process.execPath, [DEV_STACK, "up"]);
 
 if (process.env.E2E_SKIP_BUILD !== "1" || !existsSync(path.join(ROOT, DIST, "index.html"))) {
   run(
     process.platform === "win32" ? "npx.cmd" : "npx",
-    ["expo", "export", "--platform", "web", "--output-dir", DIST],
+    // Metro caches the inlined EXPO_PUBLIC_E2E_FAST, so an unflagged build after a flagged one needs --clear.
+    ["expo", "export", "--platform", "web", "--output-dir", DIST, ...(PLAY ? ["--clear"] : [])],
     process.platform === "win32"
   );
 }
 
 assertBundleHasRoutes(path.join(ROOT, DIST), path.join(ROOT, "app"));
-assertMark("--present", [path.join(ROOT, DIST)]);
+assertMark(PLAY ? "--absent" : "--present", [path.join(ROOT, DIST)]);
 
 process.env.DATABASE_URL = databaseUrl();
-process.env.SESSION_SECRET = "e2e-test-secret";
+// --play listens on the LAN, where a secret published in this repo would let anyone forge a session.
+process.env.SESSION_SECRET = PLAY ? randomBytes(32).toString("hex") : "e2e-test-secret";
 process.env.PORT = PORT;
 process.env.MURLAN_WEB_DIST = DIST;
 

@@ -23,12 +23,13 @@
  *        exit 0 - phase D may run another round; exit 1 - the cap is reached
  *
  *        node tools/loop/loop-gate.mjs --build            exit 0 iff a cached LOCAL PASS for a clean HEAD
+ *                                                         and a DOD-CHECK of HEAD with every box ticked
  *        node tools/loop/loop-gate.mjs --fix-delta <sha>  prints {"files","lines"} since <sha>
  */
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { derive, fixDelta, locateRun, reviewFor, verdictFor } from "./loop-derive.mjs";
+import { derive, dodCheckFor, fixDelta, locateRun, reviewFor, ticketComments, verdictFor } from "./loop-derive.mjs";
 import { cleanPassFor } from "./agent-check.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 
@@ -53,6 +54,39 @@ export function buildPassed(cwd) {
   } catch {
     return false;
   }
+}
+
+/** A line that exists in `cwd`'s committed tree, so a cited `path:line` is checked, not believed. */
+export function lineResolver(cwd) {
+  return (path, line) => {
+    try {
+      return line >= 1 && line <= readFileSync(join(cwd, path), "utf8").split("\n").length;
+    } catch {
+      return false;
+    }
+  };
+}
+
+/**
+ * @param {{body: string}[] | null} comments @param {string} head
+ * @param {(path: string, line: number) => boolean} resolves
+ */
+export function dodVerdict(comments, head, resolves) {
+  const at = head.slice(0, 7);
+  if (!comments) return { ok: false, why: "cannot reach the tracker to read the DOD-CHECK" };
+  const d = dodCheckFor(comments, head, resolves);
+  if (!d) return { ok: false, why: `no DOD-CHECK ${at} on the issue` };
+  if (d.open.length) return { ok: false, why: `DOD-CHECK ${at} leaves open: ${d.open.join(" | ")}` };
+  if (d.ticked === 0) return { ok: false, why: `DOD-CHECK ${at} ticks no box` };
+  return { ok: true, why: `DOD-CHECK ${at}: ${d.ticked} box(es) ticked` };
+}
+
+/** What a D handoff needs, for the supervisor and `--build` both, so the two cannot disagree. */
+export function buildReady(cwd, ticket, comments = ticketComments) {
+  if (!buildPassed(cwd)) {
+    return { ok: false, why: "no cached LOCAL PASS for HEAD on a clean tree; run `npm run agent:check`" };
+  }
+  return dodVerdict(comments(ticket, cwd), git(["rev-parse", "HEAD"], cwd), lineResolver(cwd));
 }
 
 /**
@@ -170,14 +204,9 @@ function buildGate() {
     console.error(`loop-gate: not on a ticket (${at.branch ?? "no branch"}) — nothing to judge`);
     return 2;
   }
-  if (buildPassed(at.cwd)) {
-    console.log(`loop-gate: #${at.ticket} — cached LOCAL PASS on a clean tree`);
-    return 0;
-  }
-  console.error(
-    `loop-gate: #${at.ticket} — no cached LOCAL PASS for HEAD on a clean tree; run \`npm run agent:check\`.`
-  );
-  return 1;
+  const v = buildReady(at.cwd, at.ticket);
+  (v.ok ? console.log : console.error)(`loop-gate: #${at.ticket} — ${v.why}`);
+  return v.ok ? 0 : 1;
 }
 
 function fixDeltaCli(landSha) {
