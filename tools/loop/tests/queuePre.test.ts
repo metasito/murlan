@@ -9,12 +9,12 @@ import {
   main,
   misnamedWorktrees,
   namedWorktrees,
-  worktreeDirs,
   redMain,
   script,
   summarise,
 } from "../queue-pre.mjs";
 import { FOUND_NOTHING, IF_FOUND } from "../loop-derive.mjs";
+import { listWorktreeDirNames } from "../prune-worktrees.mjs";
 
 describe("misnamedWorktrees", () => {
   test("names a worktree that does not follow the convention", () => {
@@ -141,10 +141,10 @@ describe("namedWorktrees", () => {
     try {
       mkdirSync(path.join(dir, "agent-1094"));
       writeFileSync(path.join(dir, "agent-1094.diff"), "diff --git a/x b/x\n");
-      assert.deepEqual(worktreeDirs(dir), ["agent-1094"]);
-      assert.equal(namedWorktrees(worktreeDirs(dir)), null);
+      assert.deepEqual(listWorktreeDirNames(dir), ["agent-1094"]);
+      assert.equal(namedWorktrees(listWorktreeDirNames(dir)), null);
       mkdirSync(path.join(dir, "cost-a5"));
-      assert.equal(namedWorktrees(worktreeDirs(dir))?.stop, 1);
+      assert.equal(namedWorktrees(listWorktreeDirNames(dir))?.stop, 1);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

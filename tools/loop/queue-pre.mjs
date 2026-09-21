@@ -13,7 +13,7 @@
  *        exit 0 - clear to start; exit non-zero - names the step that refused
  */
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, readdirSync } from "node:fs";
+import { listWorktreeDirNames } from "./prune-worktrees.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import { AGENT_DIR, FOUND_NOTHING, IF_FOUND, REPO, WORKTREE_DIR } from "./loop-derive.mjs";
 import { checkMain } from "./mainHealth.ts";
@@ -95,12 +95,8 @@ export function misnamedWorktrees(dirs) {
   return dirs.filter((d) => !AGENT_DIR.test(d.split(/[\\/]/).pop() ?? ""));
 }
 
-/** Directories only: a session's scratch file there is not a worktree, and refusing it halted a run. */
-export const worktreeDirs = (dir = WORKTREE_DIR) =>
-  existsSync(dir) ? readdirSync(dir, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name) : [];
-
 /** @returns {Result} */
-export function namedWorktrees(dirs = worktreeDirs()) {
+export function namedWorktrees(dirs = listWorktreeDirNames(WORKTREE_DIR)) {
   const bad = misnamedWorktrees(dirs);
   if (bad.length === 0) return null;
   return {
