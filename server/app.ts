@@ -13,7 +13,6 @@ import { installServerErrorRecorder } from "./serverErrors.ts";
 import { registerRoutes } from "./routes.ts";
 import { ensureSchema } from "./schemaDdl.ts";
 import { allowedOrigins, isAllowedOrigin, isBehindProxy } from "./cors.ts";
-import { registerGithubDevSyncHook } from "./devSyncHook.ts";
 import { checkMailConfigOnBoot } from "./mail.ts";
 import { ANSWERED_BY_SHELL, CONTENT_HASHED } from "./staticPaths.ts";
 import { testOnlyEnv } from "./testOnlyEnv.ts";
@@ -311,7 +310,6 @@ export async function createApp(): Promise<CreatedApp> {
 
   setupCors(app);
   setupBodyParsing(app);
-  registerGithubDevSyncHook(app);
 
   // Before every response-generating handler — the static asset mounts and
   // registerRoutes' API responses both need to pass through this to be
