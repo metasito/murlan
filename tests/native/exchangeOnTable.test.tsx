@@ -24,6 +24,7 @@ jest.mock('@/lib/sounds', () => ({
   playGameLose: jest.fn(async () => {}),
   playDeal: jest.fn(async () => {}),
   playExchange: jest.fn(async () => {}),
+  playReject: jest.fn(async () => {}),
   preloadSounds: jest.fn(async () => {}),
   holdSounds: jest.fn(() => () => {}),
   setSoundsMasterEnabled: jest.fn(() => {}),

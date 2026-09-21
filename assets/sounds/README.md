@@ -1,6 +1,6 @@
 # Sound effects
 
-The twelve effects `lib/sounds.ts` plays. Built, not hand-authored — run
+The thirteen effects `lib/sounds.ts` plays. Built, not hand-authored — run
 `node scripts/build-sounds.mjs` to rebuild them from source.
 
 ## Licence
@@ -17,7 +17,7 @@ The build downloads them from public mirrors
 ([iwenzhou/kenney](https://github.com/iwenzhou/kenney),
 [Calinou/kenney-interface-sounds](https://github.com/Calinou/kenney-interface-sounds))
 because kenney.nl refuses scripted requests. The sources are not vendored; only
-the twelve rendered files are.
+the thirteen rendered files are.
 
 ## What the build does
 
@@ -33,6 +33,15 @@ Two outputs are not simply a clip:
 - **`game_win`** and **`game_lose`** are arpeggios. The packs contain no jingle,
   so one struck glass note is resampled to three pitches — a rising major triad
   for the win, a falling pair for the loss.
+
+**`reject`**, a refused GIOCA, is plain *Interface Sounds* `error_004.wav` —
+the sibling of the `error_003.wav` under `game_lose`, so a refusal and a lost
+partita do not share a sound.
+
+`lib/sounds.ts` plays `card_select`, `card_play`, `card_pass`, `deal` and
+`reject` at a slightly different pitch and gain each time, so a hand of them is
+not one clip repeated; the stings always sound the same, which is what keeps
+each recognisable. A deselect is `card_select` played lower and quieter.
 
 Every output is then:
 
@@ -62,14 +71,14 @@ uses pitch-shifted layers. That is 0.003% of full scale on one sample out of
 
 ## Size
 
-~121 KB for twelve files, MP3 rather than the sources' OGG because iOS will
+~123 KB for thirteen files, MP3 rather than the sources' OGG because iOS will
 not play OGG — MP3 decodes natively on iOS, Android and every browser, so no
 per-platform format branch is needed. Recorded audio costs more than synthesis
 and it is worth it: the effects are most of the game's sense of touch.
 
 ## Music is not built here
 
-The twelve effects are 44.1 kHz mono MP3 and stay that way. Music does not, and
+The thirteen effects are 44.1 kHz mono MP3 and stay that way. Music does not, and
 cannot: **MP3 has no seamless loop.** Encoder delay plus frame padding leave a
 gap at the join, and browsers do not honour LAME's gapless headers, so a looping
 track clicks every time round.

@@ -6,7 +6,7 @@
 // source onto `GameTableProps` and passes its own extras through the slots.
 // Nothing below knows or cares which mode it is running in.
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   View,
   StyleSheet,
@@ -95,7 +95,9 @@ import { ExchangeAnnouncement } from "@/components/ExchangeAnnouncement";
 import { ExchangePrompt } from "@/components/table/ExchangePrompt";
 import {
   playCardSelect,
+  playCardDeselect,
   playCardPlay,
+  playReject,
   playRoundStart,
   playRoundWin,
   playDeal,
@@ -737,11 +739,17 @@ export function GameTable({
   // works, and it is what stops the turn clock starting from a blank hand.
   // Only the *submission* is gated on the turn: `staged.playable` already
   // requires it, so GIOCA lights on its own the moment the turn arrives.
+  const handSelection = exchangeIsMine ? (exchangePick ? [exchangePick] : []) : selectedIds;
+  const handSelectionRef = useRef(handSelection);
+  useEffect(() => {
+    handSelectionRef.current = handSelection;
+  });
   const handleCardPress = useCallback(
     (id: string) => {
       if (isFinished || spectating) return;
       hapticSelection();
-      playCardSelect();
+      if (handSelectionRef.current.includes(id)) playCardDeselect();
+      else playCardSelect();
       // An exchange gives exactly one card, so a second tap replaces the pick
       // rather than adding to it.
       if (exchangeIsMine) {
@@ -758,6 +766,7 @@ export function GameTable({
   const handlePlay = useCallback(() => {
     if (!staged.playable) {
       hapticRigid();
+      playReject();
       setRejectHint((prev) => ({ key: (prev?.key ?? 0) + 1, text: dimReasonText }));
       rejectPlay();
       return;
@@ -777,6 +786,7 @@ export function GameTable({
   const handleExchangeGive = () => {
     if (!exchangePick) {
       hapticRigid();
+      playReject();
       setRejectHint((prev) => ({
         key: (prev?.key ?? 0) + 1,
         text: t("exchange.confirmA11yWaiting", { name: exchangeLoserName }),
@@ -1279,9 +1289,7 @@ export function GameTable({
                   <StraightHand
                     faceDown={spectating}
                     cards={handOnTable}
-                    selectedIds={
-                      exchangeIsMine ? (exchangePick ? [exchangePick] : []) : selectedIds
-                    }
+                    selectedIds={handSelection}
                     onPress={handleCardPress}
                     disabled={isFinished || spectating}
                     giveableIds={giveableIds}
