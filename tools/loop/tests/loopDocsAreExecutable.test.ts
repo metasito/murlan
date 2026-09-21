@@ -264,10 +264,6 @@ describe("a CI fix round is a documented path, not an improvisation", () => {
     assert.ok(asked < STALL_MS);
   });
 
-  test("a stranded rebuild whose blocker closed merges main before it resumes", () => {
-    assert.match(read(QUEUE), /merge --no-edit origin\/main[\s\S]*Then resume where `node tools\/loop\/loop-status\.mjs` says/);
-  });
-
   test("the log path it names is the one the supervisor writes", () => {
     const named = /\.loop-logs\/ci-<n>\.log/.exec(read(QUEUE))?.[0];
     assert.ok(named, "queue.md never tells the fix session where its CI log is");
@@ -321,4 +317,10 @@ describe("the --tools list is queue.md's own declaration", () => {
     const passed = args[args.indexOf("--tools") + 1].split(",");
     assert.deepEqual(passed, allowedTools(read(QUEUE)));
   });
+});
+
+test("queue.md reads CI-RED's on main: line and knows no shared issue", () => {
+  const q = read(QUEUE);
+  assert.match(q, /`on main:`/);
+  assert.doesNotMatch(q, /shared:|shared issue|owned here/);
 });

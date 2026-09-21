@@ -1,6 +1,6 @@
 // tools/loop/mainHealth.ts
 import { execFileSync } from "node:child_process";
-import { decideVerdict, type JobRow, type RunRow } from "./ciVerdict.ts";
+import { decideVerdict, failingTestIds, stripLogPrefix, type JobRow, type RunRow } from "./ciVerdict.ts";
 
 /**
  * Whether `main` itself is green, and filing a ticket when it is not.
@@ -181,5 +181,18 @@ export function checkMain({
   } catch (e) {
     const [first] = String((e as Error).message).split("\n");
     return { state: "unknown", why: `could not read main — ${first}` };
+  }
+}
+
+/** Main's latest completed red run and its failing test ids; null when main has none to give, never a throw. */
+export function mainFailures(gh: Gh, repo: string): { runId: number; url?: string; ids: string[] } | null {
+  try {
+    const { run, jobs } = readMain(gh, repo);
+    if (!run || run.status !== "completed" || run.conclusion === "success") return null;
+    if (decideVerdict(run, jobs).infrastructure) return null;
+    const log = gh(["run", "view", String(run.databaseId), "--repo", repo, "--log-failed"]);
+    return { runId: run.databaseId, url: run.url, ids: failingTestIds(log.split("\n").map(stripLogPrefix).join("\n")) };
+  } catch {
+    return null;
   }
 }

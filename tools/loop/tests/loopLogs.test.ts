@@ -77,10 +77,6 @@ describe("artefact names", () => {
     assert.equal(prunable("park-999.md"), true);
   });
 
-  test("a shared-red id cache is too", () => {
-    assert.equal(prunable("red-999.ids"), true);
-  });
-
   test("something nobody named is left alone rather than deleted on an extension match", () => {
     assert.equal(prunable("notes.jsonl"), false);
     assert.equal(prunable("README.md"), false);
@@ -108,13 +104,12 @@ describe("prune", () => {
       "999.jsonl": now - 2 * week,
       "998.jsonl": now - 1_000,
       "ci-999.log": now - 2 * week,
-      "red-999.ids": now - 2 * week,
       "tickets.jsonl": now - 50 * week,
       "run-old.md": now - 50 * week,
     });
     const swept = prune(now, fs as never);
-    assert.deepEqual(swept.sort(), ["999.jsonl", "ci-999.log", "red-999.ids"]);
-    assert.deepEqual(gone.sort(), ["999.jsonl", "ci-999.log", "red-999.ids"]);
+    assert.deepEqual(swept.sort(), ["999.jsonl", "ci-999.log"]);
+    assert.deepEqual(gone.sort(), ["999.jsonl", "ci-999.log"]);
   });
 
   test("no directory is nothing to sweep, not a throw", () => {
