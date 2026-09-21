@@ -1,5 +1,6 @@
 import type { OnlineGameState } from "./gameRoom.ts";
 import { testOnlyEnv } from "./testOnlyEnv.ts";
+import { TURN_TIMEOUT_MS } from "../lib/gameEngine.ts";
 
 // Timers. Every entry added here has exactly one matching delete — see
 // clearAfkTimer / clearRoomTimers / clearAllTimersForUser / disposeGame.
@@ -28,7 +29,7 @@ function timeoutFromEnv(name: string, defaultMs: number): number {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : defaultMs;
 }
 
-export const afkTimeoutMs = () => timeoutFromEnv("MURLAN_AFK_TIMEOUT_MS", 30_000);
+export const afkTimeoutMs = () => timeoutFromEnv("MURLAN_AFK_TIMEOUT_MS", TURN_TIMEOUT_MS);
 export const disconnectGraceMs = () => timeoutFromEnv("MURLAN_DISCONNECT_GRACE_MS", 60_000);
 /**
  * Shorter than the in-game grace on purpose. A player who drops mid-hand is

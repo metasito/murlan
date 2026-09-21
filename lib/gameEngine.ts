@@ -1506,6 +1506,9 @@ export function initializeGame(
  */
 export const MATCH_TARGETS: readonly number[] = [21, 31, 41, 51];
 
+/** One turn clock online and offline, `docs/BRIEF.md` §3.1. */
+export const TURN_TIMEOUT_MS = 30_000;
+
 /**
  * The escalation ladder for a table of `playerCount` seats.
  *
