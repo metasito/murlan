@@ -74,13 +74,6 @@ git fetch origin --quiet
 git worktree add -B agent/<n>-<slug> .worktrees/agent-<n> origin/agent/<n>-<slug>
 ```
 
-If it was blocked on a shared issue that is now closed — its last `CI-RED`'s `shared:` line names
-another branch's `#<m>` — main has that fix and this branch does not. Merge it in first:
-
-```sh
-git -C .worktrees/agent-<n> merge --no-edit origin/main
-```
-
 Then resume where `node tools/loop/loop-status.mjs` says.
 
 If `queue:pre` fails, **halt**. `$ARGUMENTS` is the ticket the supervisor passed; a bare `/queue`
@@ -148,10 +141,10 @@ gh run list --branch agent/<n>-<slug> --limit 1 --json databaseId --jq '.[0].dat
   | xargs -I{} gh run view {} --log-failed
 ```
 
-The `CI-RED` comment's `shared:` line says whether the failure is red elsewhere too:
-`#<m> owned here` means this branch owns shared issue #<m> — fix its root cause in this diff and put
-`Closes #<m>` in the PR body beside `Closes #<n>` (the PR exists: phase E edits its body). Any
-other `#<m>` is another branch's to fix; do not re-investigate it.
+The `CI-RED` comment's `on main:` line names the failures main's own latest CI run has too.
+Those did not come from this diff, and the loop runs one ticket at a time, so nobody else is
+working on them. Fix their root cause here in a commit of its own, and name main's run in
+`FIX-NOTES`. `none` means every failure is this diff's.
 
 Fix what CI named, then run the suite it named as well as the usual check:
 
