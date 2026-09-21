@@ -772,21 +772,6 @@ export function removeLanded(cwd, number, { run = sh, write = writeLeftover, say
 }
 
 /**
- * Held behind another branch's shared-red issue: `next-ticket.mjs` skips a ticket with an open
- * blocker and serves it again, as stranded, once the blocker closes.
- */
-export function blockOnShared(number, blocker, cwd, run = sh) {
-  const opts = { timeout: CI_RED_TIMEOUT_MS };
-  const id = run("gh", ["api", `repos/${REPO}/issues/${blocker}`, "--jq", ".id"], opts).trim();
-  if (cwd) removeWorktree(cwd, run);
-  try {
-    run("gh", ["api", "-X", "POST", `repos/${REPO}/issues/${number}/dependencies/blocked_by`, "-F", `issue_id=${id}`], opts);
-  } catch (err) {
-    throw Object.assign(err, { removed: true });
-  }
-}
-
-/**
  * Pushes the head review is about to read, and opens a draft for it when no pull request is open,
  * so CI runs while the review does. Not a gate: phase D's land step pushes again if this failed.
  */
@@ -1779,7 +1764,7 @@ function readLanding(prNumber, verdict, run = sh) {
   const pr = JSON.parse(
     run("gh", ["pr", "view", String(prNumber), "--repo", REPO, "--json", "state,mergeStateStatus,mergeable,isDraft"]),
   );
-  return { ...ts("./land.ts").landing(pr, verdict), behind: pr.mergeStateStatus === "BEHIND" };
+  return ts("./land.ts").landing(pr, verdict);
 }
 
 /**
@@ -1840,12 +1825,12 @@ export const failingFiles = (testIds) => [...new Set(testIds.map((id) => id.spli
 /**
  * The CI-RED comment's exact shape, so `ciRedRounds` can count it and a fix round can find the
  * failure. Not a summary of the failure: the reference to it, because every budget that tried to
- * fit one into a comment dropped the part that mattered. `shared` is `sharedPlan`'s line.
+ * fit one into a comment dropped the part that mattered. `onMain` is `onMainLine`'s answer.
  *
  * @param {{sha: string, runUrl: string, failedStep?: string, testIds?: string[], excerpt?: string,
- *   shared?: string, runId?: number}} args
+ *   onMain?: string, runId?: number}} args
  */
-export function ciRedBody({ sha, runUrl, failedStep, testIds = [], excerpt = "", shared = "none", runId }) {
+export function ciRedBody({ sha, runUrl, failedStep, testIds = [], excerpt = "", onMain = "none", runId }) {
   const files = failingFiles(testIds);
   // A count of zero would be a target a round meets by diagnosing nothing, so a step whose output
   // parses as no test id says that instead of stating one.
@@ -1859,7 +1844,7 @@ export function ciRedBody({ sha, runUrl, failedStep, testIds = [], excerpt = "",
     `gh run view ${runId} --log-failed | grep -E "✖|AssertionError|error TS|FAIL " -A5`,
     "```",
     ...files.map((f) => `- ${f}`),
-    `shared: ${shared}`,
+    `on main: ${onMain}`,
   ];
   if (files.length === 0) body.push("```", ...excerpt.split("\n").slice(-EXCERPT_LINES), "```");
   return body.join("\n");
@@ -1880,43 +1865,22 @@ function readTicketComments(ticket, run, log) {
   }
 }
 
-/** Bounds the whole shared-red read, which may fetch one failed log per recent red run. */
-const SHARED_BUDGET_MS = 5 * 60_000;
-
-const ghVia = (run) => (args, until) =>
-  run("gh", args, { timeout: Math.max(1_000, Math.min(CI_RED_TIMEOUT_MS, until - Date.now())) });
-
 /**
- * A red head's shared failure, as the `shared:` line of its CI-RED and what the supervisor does
- * about it. A `known` issue is this ticket's only if the issue's own owner line names it; the
- * CI-RED's `owned here` is display.
- *
- * @param {{kind: string, testId?: string, issue?: {number: number, title?: string, body?: string},
- *   evidence?: {branch: string, url?: string}, landed?: boolean}} decision
- * @param {{ticket: number, behind: boolean}} at
- * @returns {{line: string, action: "update"|"claim"|"block"|null, issue?: number}}
+ * @param {string[]} failing the red head's test ids
+ * @param {{url?: string, ids: string[]}|null} main `mainFailures()`'s answer
  */
-export function sharedPlan(decision, { ticket, behind }) {
-  const n = decision.issue?.number;
-  if (decision.kind === "none" || !Number.isInteger(n)) return { line: "none", action: null };
-  const ev = decision.evidence;
-  const where = ev ? ` (also red on ${[ev.branch, ev.url].filter(Boolean).join(" ")})` : "";
-  if (decision.landed) {
-    return behind
-      ? { line: `#${n}${where}`, action: "update", issue: n }
-      : { line: `#${n} owned here${where}`, action: "claim", issue: n };
-  }
-  if (decision.kind !== "known" || ts("./sharedRed.ts").ownerOf({ title: "", ...decision.issue }) === ticket) {
-    return { line: `#${n} owned here${where}`, action: null };
-  }
-  return { line: `#${n}${where}`, action: "block", issue: n };
+export function onMainLine(failing, main) {
+  const onMain = new Set(main?.ids ?? []);
+  const ids = failing.filter((id) => onMain.has(id));
+  if (!main || ids.length === 0) return "none";
+  return `${ids.length} of ${failing.length} also fail on main (${main.url ?? "main's latest run"}): ${ids.join(", ")}`;
 }
 
 /**
  * Posted once per red head, checked against the tracker rather than a local marker: the fix
  * session may run on another machine, or after a restart, and reads only the tracker.
  */
-function postCiRedOnce(ticket, verdict, shared, comments, run, write, log) {
+function postCiRedOnce(ticket, verdict, onMain, comments, run, write, log) {
   const sha = verdict.head;
   if (!sha || !comments || ciRedPosted(comments, sha)) return;
   const body = ciRedBody({
@@ -1925,7 +1889,7 @@ function postCiRedOnce(ticket, verdict, shared, comments, run, write, log) {
     failedStep: verdict.failedStep,
     testIds: verdict.testIds ?? [],
     excerpt: verdict.output,
-    shared,
+    onMain,
     runId: verdict.runId,
   });
   try {
@@ -1943,8 +1907,8 @@ export async function poll(pending, log, pause, deadline, io = {}) {
     verdictOf = (...args) => ts("./ciVerdict.ts").readVerdict(...args),
     write = writeFileSync,
     mkdir = mkdirSync,
-    shared = (mine, owner) =>
-      ts("./sharedRed.ts").checkShared({ repo: REPO, gh: ghVia(run), mine, owner, until: Date.now() + SHARED_BUDGET_MS }),
+    mainFailures = () =>
+      ts("./mainHealth.ts").mainFailures((args) => run("gh", args, { timeout: CI_RED_TIMEOUT_MS }), REPO),
     cleared = (sha) => {
       const comments = readTicketComments(pending.ticket, run, log);
       if (!comments || !sha) return false;
@@ -1956,7 +1920,6 @@ export async function poll(pending, log, pause, deadline, io = {}) {
       return mergeCleared(comments, sha, (args) => run("git", args).trim());
     },
   } = io;
-  const owner = { number: pending.ticket, branch: pending.branch };
   const left = { ...SETTLE_ROUNDS };
   const until = Date.now() + deadline;
   // Not unref'd, for the same reason `holdFor` is not: this is the only handle open while it waits.
@@ -1984,22 +1947,8 @@ export async function poll(pending, log, pause, deadline, io = {}) {
         mkdir(DIR, { recursive: true });
         write(ciLogPath(pending.ticket), verdict.output, "utf8");
         const comments = readTicketComments(pending.ticket, run, log);
-        const decision = shared({ branch: pending.branch, testIds: verdict.testIds ?? [] }, owner);
-        if (decision.why) log(`shared red: ${decision.why}`);
-        const plan = sharedPlan(decision, { ticket: pending.ticket, behind: next.behind });
-        if (plan.action === "update") {
-          next = { action: "update-branch", reason: `#${plan.issue}'s fix is on main` };
-        } else {
-          if (plan.action === "claim") {
-            try {
-              ts("./sharedRed.ts").claimShared(REPO, ghVia(run), decision, owner, Date.now() + CI_RED_TIMEOUT_MS);
-            } catch (err) {
-              log(`shared red: could not reopen #${plan.issue} — ${String(err.message).split("\n")[0]}`);
-            }
-          }
-          postCiRedOnce(pending.ticket, verdict, plan.line, comments, run, write, log);
-          if (plan.action === "block") next = { ...next, blockedBy: plan.issue };
-        }
+        const onMain = onMainLine(verdict.testIds ?? [], mainFailures());
+        postCiRedOnce(pending.ticket, verdict, onMain, comments, run, write, log);
       }
     } catch (err) {
       // `gh` refusing, a rate limit, or anything that is not JSON. The ticket is pushed and its
@@ -2162,7 +2111,7 @@ export function parkAndRecord(io, number, { run = null, pr = null, files = 0, ..
  * @param {object} io
  * @param {number|null} [pinned] a ticket a previous pass handed back unfinished
  * @param {string|null} [at] the phase a handoff said the next process starts at
- * @returns {Promise<{outcome: "landed"|"parked"|"stop"|"hold"|"retry"|"refused"|"handoff"|"blocked",
+ * @returns {Promise<{outcome: "landed"|"parked"|"stop"|"hold"|"retry"|"refused"|"handoff",
  *   ticket?: number, why?: string, until?: number, cwd?: string|null, branch?: string|null,
  *   pr?: number, files?: number, phase?: string, run?: any, size?: string|null, tally?: any}>}
  */
@@ -2349,28 +2298,6 @@ export async function runOnce(io, pinned = null, at = null) {
   // good, which is a ticket nothing will ever return to.
   if (cost.handBack) return handBack(settled.reason, "E");
 
-  if (settled.blockedBy) {
-    const why = `blocked by #${settled.blockedBy}, a failure shared with another branch whose fix is not on main`;
-    try {
-      io.block(route.number, settled.blockedBy, after?.cwd ?? null);
-    } catch (err) {
-      const gone = err.removed ? "; the worktree is already gone, so the ticket is safe to rebuild" : "";
-      const failed = String(err.message).split("\n")[0];
-      return handBack(`${why}, and the block could not be recorded — ${failed}${gone}`, "E", run.log, !err.removed);
-    }
-    io.record({
-      number: route.number,
-      outcome: "blocked",
-      why,
-      run: billed,
-      pr: decided.pr,
-      files,
-      counts: false,
-      head: settled.head ?? pr?.sha ?? null,
-    });
-    return { outcome: "blocked", ticket: route.number, why };
-  }
-
   // A ticket that cannot go green is not the loop's to keep paying for, and the ceiling is checked
   // here rather than by the caller so that a ticket which runs out of rounds takes the same exit as
   // every other hand-back: one park, one row, one release of the claim. Counted from the round this
@@ -2482,7 +2409,6 @@ function realIo(book, screen) {
       }
       screen.context({ spentMs: ticketTally(route.number, readLedger()).ms });
     },
-    block: (number, blocker, cwd) => blockOnShared(number, blocker, cwd && fs.existsSync(cwd) ? cwd : null),
     buildPassed: (cwd, ticket) => {
       try {
         return Boolean(cwd) && buildReady(cwd, ticket).ok;
@@ -2816,10 +2742,6 @@ export async function main({
       continue;
     }
     pinned = null;
-    if (pass.outcome === "blocked") {
-      screen.notice("blocked", `#${pass.ticket} ${pass.why}`);
-      continue;
-    }
     if (pass.outcome === "landed") {
       failures = 0;
       // Only a landing clears the refusal counter. Cleared on any non-refused outcome, refusals

@@ -27,7 +27,6 @@ export const ARTEFACTS = {
   stream: { path: (t, dir = DIR) => path.join(dir, `${t}.jsonl`), name: /^\d+\.jsonl$/, ephemeral: true },
   ciTail: { path: (t, dir = DIR) => path.join(dir, `ci-${t}.log`), name: /^ci-\d+\.log$/, ephemeral: true },
   ciRedNote: { path: (t, dir = DIR) => path.join(dir, `ci-red-${t}.md`), name: /^ci-red-\d+\.md$/, ephemeral: true },
-  redCache: { path: (t, dir = DIR) => path.join(dir, `red-${t}.ids`), name: /^red-\d+\.ids$/, ephemeral: true },
   parkNote: { path: (t, dir = DIR) => path.join(dir, `park-${t}.md`), name: /^park-\d+\.md$/, ephemeral: true },
   leftover: { path: (t, dir = DIR) => path.join(dir, `leftover-${t}.patch`), name: /^leftover-\d+\.patch$/, ephemeral: false },
   report: { path: (runId, dir = DIR) => path.join(dir, `run-${runId}.md`), name: /^run-.+\.md$/, ephemeral: false },
@@ -39,7 +38,6 @@ export const ARTEFACTS = {
 export const streamLog = ARTEFACTS.stream.path;
 export const ciLogPath = ARTEFACTS.ciTail.path;
 export const ciRedNotePath = ARTEFACTS.ciRedNote.path;
-export const redCachePath = ARTEFACTS.redCache.path;
 export const parkNotePath = ARTEFACTS.parkNote.path;
 export const reportPath = ARTEFACTS.report.path;
 export const leftoverPath = ARTEFACTS.leftover.path;

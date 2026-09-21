@@ -67,7 +67,6 @@ const stubIo = () => ({
   log: () => {},
   buildPassed: () => true,
   announce: () => {},
-  block: () => {},
 });
 
 describe("parseRoute", () => {

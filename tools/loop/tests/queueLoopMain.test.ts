@@ -14,7 +14,6 @@ import {
   main,
   nextRoute,
   park,
-  blockOnShared,
   refreshWorktree,
   publishForReview,
   removeLanded,
@@ -77,7 +76,6 @@ const io = (over: Record<string, unknown> = {}, ledger: any[] = []) => ({
   buildPassed: () => true,
   publish: () => {},
   announce: () => {},
-  block: () => {},
   ...over,
 });
 
@@ -864,87 +862,6 @@ describe("runOnce", () => {
     assert.deepEqual(seen, [[true, 2]]);
   });
 
-  test("known with the fix not on main removes the worktree and records blocked_by", async () => {
-    const blocked: unknown[] = [];
-    const parked: number[] = [];
-    const rows: any[] = [];
-    const r = await runOnce(
-      io({
-        settle: async () => ({ action: "hand-back", reason: "CI failed at Lint", head: "h1", blockedBy: 900 }),
-        block: (n: number, blocker: number, cwd: string | null) => blocked.push([n, blocker, cwd]),
-        park: (n: number) => parked.push(n),
-        record: (x: unknown) => rows.push(rowOf(x)),
-      }),
-    );
-    assert.deepEqual([r.outcome, blocked, parked], ["blocked", [[42, 900, ".worktrees/agent-42"]], []]);
-    assert.deepEqual(rows.map((x) => [x.outcome, x.head]), [["pushed", null], ["blocked", "h1"]]);
-
-    const calls: string[][] = [];
-    blockOnShared(42, 900, "w", (file: string, args: string[]) => {
-      calls.push([file, ...args]);
-      return args.includes(".id") ? "123456\n" : "";
-    });
-    assert.deepEqual(calls, [
-      ["gh", "api", "repos/metasito/murlan/issues/900", "--jq", ".id"],
-      ["npm", "run", "worktrees:remove", "--", "w"],
-      ["gh", "api", "-X", "POST", "repos/metasito/murlan/issues/42/dependencies/blocked_by", "-F", "issue_id=123456"],
-    ]);
-  });
-
-  test("a worktree that will not go writes no edge, and the park keeps the worktree", async () => {
-    const calls: string[] = [];
-    const dirty = (file: string, args: string[]) => {
-      calls.push(args.join(" "));
-      if (file === "npm") throw new Error("worktree is dirty");
-      return "1\n";
-    };
-    assert.throws(() => blockOnShared(42, 900, "w", dirty), /dirty/);
-    assert.equal(calls.some((c) => c.includes("blocked_by")), false);
-
-    const parked: { why: string; cwd: string | null }[] = [];
-    await runOnce(
-      io({
-        settle: async () => ({ action: "hand-back", reason: "CI failed", blockedBy: 900 }),
-        block: (n: number, b: number, cwd: string) => blockOnShared(n, b, cwd, dirty),
-        park: (_n: number, c: { why: string; cwd: string | null }) => parked.push(c),
-      }),
-    );
-    assert.deepEqual(parked.map((p) => p.cwd), [".worktrees/agent-42"]);
-  });
-
-  test("an edge that fails after the worktree went parks without one, and says the ticket can be rebuilt", async () => {
-    const noEdge = (_file: string, args: string[]) => {
-      if (args.includes("POST")) throw new Error("HTTP 502");
-      return "1\n";
-    };
-    const parked: { why: string; cwd: string | null }[] = [];
-    const r = await runOnce(
-      io({
-        settle: async () => ({ action: "hand-back", reason: "CI failed", blockedBy: 900 }),
-        block: (n: number, b: number, cwd: string) => blockOnShared(n, b, cwd, noEdge),
-        park: (_n: number, c: { why: string; cwd: string | null }) => parked.push(c),
-      }),
-    );
-    assert.equal(r.outcome, "parked");
-    assert.equal(parked[0].cwd, null);
-    assert.match(parked[0].why, /HTTP 502.*safe to rebuild/);
-  });
-
-  test("a block that cannot be recorded parks instead", async () => {
-    const parked: string[] = [];
-    const r = await runOnce(
-      io({
-        settle: async () => ({ action: "hand-back", reason: "CI failed at Lint", blockedBy: 900 }),
-        block: () => {
-          throw new Error("HTTP 404");
-        },
-        park: (_n: number, c: { why: string }) => parked.push(c.why),
-      }),
-    );
-    assert.equal(r.outcome, "parked");
-    assert.match(parked[0], /#900.*HTTP 404/);
-  });
-
   test("a G pass with no open pull request says so", async () => {
     const parked: string[] = [];
     await runOnce(
@@ -1452,7 +1369,6 @@ describe("a session's cost is in the ledger before CI is waited on", () => {
     merged: { action: "merge", reason: "merged" },
     red: { action: "hand-back", reason: "CI failed" },
     owner: { action: "owner", reason: "no settle" },
-    blocked: { action: "hand-back", reason: "CI failed", blockedBy: 900 },
   })) {
     test(`${name}: the session is counted once, and the tally reads as before`, async () => {
       const ledger: any[] = [];
@@ -1589,18 +1505,6 @@ describe("a ticket's tally comes from the ledger, not from memory", () => {
       await go(io(over, ledger));
       assert.equal(ledger.filter((r) => r.outcome === "parked").length, 1, name);
     }
-  });
-
-  test("a blocked ticket is let go: the next pick is unpinned, and the night is not failing", async () => {
-    const pins: (number | null)[] = [];
-    let n = 0;
-    const code = await go(
-      io({
-        pick: (p: number | null) => (pins.push(p), n++ < 3 ? ticket : done),
-        settle: async () => ({ action: "hand-back", reason: "CI failed at Lint", blockedBy: 900 }),
-      }),
-    );
-    assert.deepEqual([code, pins], [0, [null, null, null, null]]);
   });
 
   test("blocked twice then unblocked: the next red is round 1, not round 3", async () => {
