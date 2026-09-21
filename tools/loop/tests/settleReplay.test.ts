@@ -319,11 +319,11 @@ describe("poll posts CI-RED once per red head", () => {
 describe("a red head's failures that main has too", () => {
   const ID = "tests/e2e/x.spec.ts › some test";
   const HAND_BACK = { action: "hand-back", reason: "CI failed at Native tests", head: SHA };
-  const red = () =>
+  const red = (line = "1) [chromium] › tests/e2e/x.spec.ts:9:5 › some test") =>
     ghFake({
       script: [runRow("completed", "failure")],
       jobs: [{ name: "Native tests", conclusion: "failure", steps: 11 }],
-      log: "Native tests\tRun tests\t2026-09-14T00:00:00Z   1) [chromium] › tests/e2e/x.spec.ts:9:5 › some test",
+      log: `Native tests\tRun tests\t2026-09-14T00:00:00Z   ${line}`,
     });
   const bodyOf = (asked: string[][], written: string[][]) => {
     const post = asked.find((a) => a[0] === "issue" && a[1] === "comment");
@@ -351,6 +351,17 @@ describe("a red head's failures that main has too", () => {
     const { gh, asked } = red();
     const out = await poll(PENDING, () => {}, 0, DEADLINE, { ...io(gh, written), mainFailures: () => null });
     assert.deepEqual(out, HAND_BACK);
+    assert.match(String(bodyOf(asked, written)), /^on main: none$/m);
+  });
+
+  test("a red with no failing test id never reads main", async () => {
+    const written: string[][] = [];
+    const { gh, asked } = red("error TS2322: Type 'string' is not assignable to type 'number'.");
+    let reads = 0;
+    const main = () => (reads++, { runId: 1, ids: [ID] });
+    const out = await poll(PENDING, () => {}, 0, DEADLINE, { ...io(gh, written), mainFailures: main });
+    assert.deepEqual(out, HAND_BACK);
+    assert.equal(reads, 0);
     assert.match(String(bodyOf(asked, written)), /^on main: none$/m);
   });
 });

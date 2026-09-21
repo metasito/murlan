@@ -1947,7 +1947,8 @@ export async function poll(pending, log, pause, deadline, io = {}) {
         mkdir(DIR, { recursive: true });
         write(ciLogPath(pending.ticket), verdict.output, "utf8");
         const comments = readTicketComments(pending.ticket, run, log);
-        const onMain = onMainLine(verdict.testIds ?? [], mainFailures());
+        const failing = verdict.testIds ?? [];
+        const onMain = onMainLine(failing, failing.length ? mainFailures() : null);
         postCiRedOnce(pending.ticket, verdict, onMain, comments, run, write, log);
       }
     } catch (err) {
