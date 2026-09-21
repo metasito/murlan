@@ -74,7 +74,7 @@ const table = (gameState: GameState) => (
   </SafeAreaProvider>
 );
 
-const scrimOpacity = () => (getAnimatedStyle(screen.getByTestId('felt-scrim')) as { opacity?: number }).opacity ?? 0;
+const scrimOpacity = () => (getAnimatedStyle(screen.getByTestId('felt-scrim', { includeHiddenElements: true })) as { opacity?: number }).opacity ?? 0;
 
 async function advance(ms: number) {
   await act(async () => {

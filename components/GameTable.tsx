@@ -1011,9 +1011,8 @@ export function GameTable({
           x={light.x * feltW}
           y={light.y * feltH}
         />
+        <FeltScrim dim={feltDim} />
       </View>
-
-      <FeltScrim dim={feltDim} />
 
       {/* The game, and everything a landing displaces. It clips at its own
           moving edge, so the strip the kick uncovers is the cloth behind it
