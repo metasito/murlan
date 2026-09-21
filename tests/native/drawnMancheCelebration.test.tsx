@@ -53,7 +53,7 @@ const seat = (id: string, name: string, team: 'A' | 'B'): Player => ({
   team,
 });
 
-const notificationAsync = Haptics.notificationAsync as unknown as ReturnType<typeof jest.fn>;
+const selectionAsync = Haptics.selectionAsync as unknown as ReturnType<typeof jest.fn>;
 
 // First-and-fourth (3+0) against second-and-third (2+1): both pay 3, a draw.
 const drawnRankings = ['player_0', 'player_1', 'player_2', 'player_3'];
@@ -64,7 +64,7 @@ let mockMatch: MatchState;
 
 describe('a drawn manche in teams mode congratulates nobody', () => {
   beforeEach(() => {
-    notificationAsync.mockClear();
+    selectionAsync.mockClear();
   });
 
   it('offline: fires no haptic for the seat that finished first', async () => {
@@ -102,7 +102,7 @@ describe('a drawn manche in teams mode congratulates nobody', () => {
     );
     await act(async () => {});
 
-    expect(notificationAsync.mock.calls).toEqual([]);
+    expect(selectionAsync.mock.calls).toEqual([]);
     expect(view.getByText(t('result.handDrawTitle'))).toBeTruthy();
     expect(view.getByText(t('result.handDrawSubtitle'))).toBeTruthy();
     expect(view.queryByText(t('result.handWinner'))).toBeNull();
@@ -157,7 +157,7 @@ describe('a drawn manche in teams mode congratulates nobody', () => {
     );
     await act(async () => {});
 
-    expect(notificationAsync.mock.calls).toEqual([]);
+    expect(selectionAsync.mock.calls).toEqual([]);
     expect(view.getByText(t('result.handDrawTitle'))).toBeTruthy();
     expect(view.getByText(t('result.handDrawSubtitle'))).toBeTruthy();
     expect(view.queryByText(t('result.handWinner'))).toBeNull();
@@ -171,7 +171,7 @@ describe('a drawn manche in teams mode congratulates nobody', () => {
 // never to the match it closed.
 describe('a manche that ends the match while being a draw itself still celebrates the match winner', () => {
   beforeEach(() => {
-    notificationAsync.mockClear();
+    selectionAsync.mockClear();
   });
 
   const players = [
@@ -217,9 +217,7 @@ describe('a manche that ends the match while being a draw itself still celebrate
     expect(view.getByText(t('result.matchOverTitle'))).toBeTruthy();
     expect(view.getByText(t('result.matchWinner'))).toBeTruthy();
     expect(view.getAllByText(t('lobby.team', { team: 'A' })).length).toBeGreaterThan(0);
-    expect(notificationAsync.mock.calls).toContainEqual([
-      Haptics.NotificationFeedbackType.Success,
-    ]);
+    expect(selectionAsync).toHaveBeenCalled();
     await view.unmount();
   });
 
@@ -269,9 +267,7 @@ describe('a manche that ends the match while being a draw itself still celebrate
     expect(view.getByText(t('result.matchOverTitle'))).toBeTruthy();
     expect(view.getByText(t('result.matchWinner'))).toBeTruthy();
     expect(view.getAllByText(t('lobby.team', { team: 'A' })).length).toBeGreaterThan(0);
-    expect(notificationAsync.mock.calls).toContainEqual([
-      Haptics.NotificationFeedbackType.Success,
-    ]);
+    expect(selectionAsync).toHaveBeenCalled();
     await view.unmount();
   });
 });

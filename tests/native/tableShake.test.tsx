@@ -22,6 +22,9 @@ jest.mock("@/lib/sounds", () => ({
 }));
 jest.mock("@/lib/haptics", () => ({
   hapticHeavy: jest.fn(),
+  hapticLight: jest.fn(),
+  hapticMedium: jest.fn(),
+  hapticRigid: jest.fn(),
   hapticSuccess: jest.fn(),
   hapticWarn: jest.fn(),
 }));
