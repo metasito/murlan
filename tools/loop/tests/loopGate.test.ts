@@ -467,11 +467,14 @@ describe("--build gates review on a cached local pass", () => {
     const check = (boxes: string, sha = head(wt)) => [{ body: `DOD-CHECK ${sha.slice(0, 7)}\n\n${boxes}` }];
     const cases: [ReturnType<typeof check>, number, RegExp][] = [
       [[], 1, /no DOD-CHECK/],
-      [check("- [x] chip enters — lib/a.ts:12 · tests/a.test.ts:4", "0".repeat(40)), 1, /no DOD-CHECK/],
-      [check("- [x] chip enters — lib/a.ts:12\n- [ ] sheen"), 1, /leaves open: - \[ \] sheen/],
+      [check("- [x] chip enters — package.json:2", "0".repeat(40)), 1, /no DOD-CHECK/],
+      [check("- [x] chip enters — package.json:2\n- [ ] sheen"), 1, /leaves open: - \[ \] sheen/],
       [check("- [x] chip enters, done"), 1, /leaves open/],
+      [check("- [x] timeout bumped from 1.5:30 to 2.0:60"), 1, /leaves open/],
+      [check("- [x] chip enters — lib/nowhere.ts:12"), 1, /leaves open/],
+      [check("- [x] chip enters — package.json:99999"), 1, /leaves open/],
       [check("no boxes at all"), 1, /ticks no box/],
-      [check("- [x] chip enters — lib/a.ts:12 · tests/a.test.ts:4\n- [X] sheen — lib/b.tsx:3"), 0, /2 box\(es\) ticked/],
+      [check("- [x] chip enters — package.json:2 · docs/probe.md:1\n- [X] sheen — package.json:3"), 0, /2 box\(es\) ticked/],
     ];
     for (const [comments, want, says] of cases) {
       const { code, out } = gate(wt, comments, BASE, wt, ["--build"]);

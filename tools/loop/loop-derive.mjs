@@ -244,22 +244,24 @@ export function reviewFor(comments, head) {
 
 const DOD_CHECK_RE = /^DOD-CHECK\s+([0-9a-f]{7,40})\b/m;
 const BOX_RE = /^\s*[-*]\s+\[([ xX])\](.*)$/gm;
-const EVIDENCE_RE = /[\w./-]+\.\w+:\d+/;
+const EVIDENCE_RE = /([\w./-]+\.\w+):(\d+)/g;
 
 /**
- * The builder's own tick of the Definition of done for this head. A ticked box with no `path:line`
- * counts as open: a bare tick is the omission this exists to catch.
+ * The builder's own tick of the Definition of done for this head. A ticked box counts as open
+ * unless one `path:line` in it resolves in the worktree: a bare tick, or `1.5:30`, is the omission
+ * this exists to catch.
  *
  * @param {{body: string}[]} comments @param {string} head
+ * @param {(path: string, line: number) => boolean} resolves
  * @returns {{line: string, ticked: number, open: string[]} | null}
  */
-export function dodCheckFor(comments, head) {
+export function dodCheckFor(comments, head, resolves) {
   for (let i = comments.length - 1; i >= 0; i--) {
     const body = fenceStripped(comments[i].body);
     const m = DOD_CHECK_RE.exec(body);
     if (!m || !covers(head, m[1])) continue;
     const boxes = [...body.matchAll(BOX_RE)];
-    const done = (b) => b[1] !== " " && EVIDENCE_RE.test(b[2]);
+    const done = (b) => b[1] !== " " && [...b[2].matchAll(EVIDENCE_RE)].some(([, p, l]) => resolves(p, Number(l)));
     return {
       line: m[0].trim(),
       ticked: boxes.filter(done).length,

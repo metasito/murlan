@@ -20,6 +20,7 @@
  * dist/ on port 5000, to play it locally — on a phone, at http://<pc-ip>:5000.
  */
 import { spawnSync } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -77,7 +78,8 @@ assertBundleHasRoutes(path.join(ROOT, DIST), path.join(ROOT, "app"));
 assertMark(PLAY ? "--absent" : "--present", [path.join(ROOT, DIST)]);
 
 process.env.DATABASE_URL = databaseUrl();
-process.env.SESSION_SECRET = "e2e-test-secret";
+// --play listens on the LAN, where a secret published in this repo would let anyone forge a session.
+process.env.SESSION_SECRET = PLAY ? randomBytes(32).toString("hex") : "e2e-test-secret";
 process.env.PORT = PORT;
 process.env.MURLAN_WEB_DIST = DIST;
 
