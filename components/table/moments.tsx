@@ -297,6 +297,7 @@ function Wave({
 // ─── Spark ──────────────────────────────────────────────────────────────────
 
 const SPARK_SIZE = 3;
+const SPARK_RADII = [1, 1.6, 2.3] as const;
 const SPARK_MS = 1150;
 const SPARK_EASING = Easing.bezier(0.15, 0.75, 0.3, 1);
 const SPARK_Z = Layer.moment + 1;
@@ -346,7 +347,7 @@ function Spark({ index, trigger, scale }: { index: number; trigger: number; scal
     };
   });
 
-  const size = SPARK_SIZE * scale;
+  const size = SPARK_SIZE * SPARK_RADII[index % SPARK_RADII.length] * scale;
   // Static — a shadow outside `useAnimatedStyle` never touches the
   // per-frame animated path tests/animatedStyle.test.ts checks.
   const glow = makeShadow(SPARK_GLOW, 0, 0, 1, 7 * scale, 4);

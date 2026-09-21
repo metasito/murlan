@@ -25,7 +25,8 @@ import { describe, it, expect, jest, afterEach } from '@jest/globals';
 import React from 'react';
 import { act, render } from '@testing-library/react-native';
 import * as flightPhysics from '@/components/flightPhysics';
-import { setMotionPreference, setScreenShakeEnabled } from '@/lib/accessibility';
+import { setMotionPreference } from '@/lib/accessibility';
+import { setScreenShakeEnabled } from '@/lib/screenShake';
 import type { ImpactTier } from '@/components/flightPhysics';
 
 /** Every shared value any component under test creates, in creation order. */

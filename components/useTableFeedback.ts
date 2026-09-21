@@ -13,7 +13,8 @@ import {
 } from "react-native-reanimated";
 import type { Combination, CombinationType } from "@/lib/gameEngine";
 import type { FlyDirection } from "@/components/seatLayout";
-import { usePrefersReducedMotion, useScreenShakeEnabled } from "@/lib/accessibility";
+import { usePrefersReducedMotion } from "@/lib/accessibility";
+import { useScreenShakeEnabled } from "@/lib/screenShake";
 import {
   roundClosedWithWinner,
   traumaFor,

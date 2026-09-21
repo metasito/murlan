@@ -4,7 +4,8 @@ import { setSoundsMasterVolume } from "@/lib/sounds";
 import { setMusicMasterEnabled, setMusicMasterVolume } from "@/lib/music";
 import { setHapticsMasterEnabled } from "@/lib/haptics";
 import { SETTINGS_KEY as STORAGE_KEY } from "@/lib/storageKeys";
-import { setMotionPreference, setScreenShakeEnabled, type MotionPreference } from "@/lib/accessibility";
+import { setMotionPreference, type MotionPreference } from "@/lib/accessibility";
+import { setScreenShakeEnabled } from "@/lib/screenShake";
 import { migrateAudio, withEnabled, withVolume, type AudioLevel } from "@/lib/audioLevel";
 import {
   DEFAULT_CARD_BACK,

@@ -30,29 +30,6 @@ function subscribe(fn: () => void): () => void {
   return () => listeners.delete(fn);
 }
 
-let screenShakeEnabled = true;
-const screenShakeListeners = new Set<() => void>();
-
-export function setScreenShakeEnabled(next: boolean): void {
-  if (next === screenShakeEnabled) return;
-  screenShakeEnabled = next;
-  screenShakeListeners.forEach((fn) => fn());
-}
-
-function getScreenShakeEnabled(): boolean {
-  return screenShakeEnabled;
-}
-
-function subscribeScreenShake(fn: () => void): () => void {
-  screenShakeListeners.add(fn);
-  return () => screenShakeListeners.delete(fn);
-}
-
-/** The player's screen-shake setting. Reduced motion is read separately and still wins. */
-export function useScreenShakeEnabled(): boolean {
-  return useSyncExternalStore(subscribeScreenShake, getScreenShakeEnabled, getScreenShakeEnabled);
-}
-
 /**
  * `EXPO_PUBLIC_E2E_REDUCE_MOTION` is set only by `maestro.yml`'s own build step, never by an
  * EAS build or `expo:web:build` — no player build sets it, so this never overrides anyone's

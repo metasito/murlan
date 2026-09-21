@@ -10,7 +10,7 @@ jest.mock("expo-audio", () => ({
 }));
 
 import { SettingsProvider, useSettings } from "@/context/SettingsContext";
-import { setScreenShakeEnabled, useScreenShakeEnabled } from "@/lib/accessibility";
+import { setScreenShakeEnabled, useScreenShakeEnabled } from "@/lib/screenShake";
 
 function Probe() {
   const { screenShake, setScreenShake } = useSettings();

@@ -10,7 +10,9 @@
 import { describe, it, expect, jest } from "@jest/globals";
 import React from "react";
 import { act, render, screen } from "@testing-library/react-native";
+import { StyleSheet } from "react-native";
 import { getAnimatedStyle } from "react-native-reanimated";
+import { SPARK_COUNT } from "@/components/flightPhysics";
 import { BombBurst, LampLift } from "@/components/table/moments";
 
 function transformOf(testID: string): Record<string, unknown>[] {
@@ -88,6 +90,15 @@ describe("the bomb burst and the lamp lift actually move once fired (#765)", () 
     expect(scale).toBeGreaterThan(0.7);
 
     jest.useRealTimers();
+    await r.unmount();
+  });
+
+  it("the sparks come in three radii, cycling small, medium, large", async () => {
+    const r = await render(<BombBurst trigger={1} scale={2} flareKind="brief" />);
+    const widths = Array.from({ length: SPARK_COUNT }, (_, i) =>
+      (StyleSheet.flatten(screen.getByTestId(`spark-${i}`).props.style) as { width: number }).width
+    );
+    widths.forEach((w, i) => expect(w).toBeCloseTo(3 * 2 * [1, 1.6, 2.3][i % 3]));
     await r.unmount();
   });
 });
