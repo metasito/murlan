@@ -245,7 +245,7 @@ const RING_STROKE = 2;
  * no equivalent for — deliberate, not an unswept leftover of the port.
  */
 const RING_PING_SCALE = 1.45;
-/** One dim-and-back cycle of the ring once the clock is urgent: 1Hz. */
+/** The urgent ring's 1Hz dim-and-back: a repeating beat, not a one-shot transition, so not a Motion step. */
 const RING_PULSE_MS = 1000;
 const RING_PULSE_LOW = 0.6;
 
@@ -328,8 +328,8 @@ function CountdownRing({
   // sweep is a transform: opacity composites, an animated stroke re-rasterises.
   const half = (d: string, gold: typeof rightGold, red: typeof rightRed, testID: string) => (
     <>
-      <Animated.View style={[StyleSheet.absoluteFill, gold]}>{arc(d, Colors.goldLit)}</Animated.View>
-      <Animated.View testID={testID} style={[StyleSheet.absoluteFill, red]}>
+      <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, gold]}>{arc(d, Colors.goldLit)}</Animated.View>
+      <Animated.View testID={testID} pointerEvents="none" style={[StyleSheet.absoluteFill, red]}>
         {arc(d, Colors.danger)}
       </Animated.View>
     </>
