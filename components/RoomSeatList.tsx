@@ -1,9 +1,12 @@
 import React, { useEffect, useRef, useState } from "react";
 import { View, Text, StyleSheet } from "react-native";
+import Animated from "react-native-reanimated";
 import { Avatar } from "@/components/Avatar";
 import { teamForSeat } from "@/lib/gameEngine";
 import { Colors, Spacing, Radius, FontSize } from "@/lib/theme";
 import { useTranslation } from "@/lib/i18n";
+import { playRoomFull, playSeatFill } from "@/lib/sounds";
+import { useEntrance } from "@/lib/useEntrance";
 
 const TEAM_STRIPE = 3;
 const TEAM_COLORS = { A: Colors.gold, B: Colors.info };
@@ -91,6 +94,17 @@ export function RoomSeatList({
     return () => clearTimeout(timer);
   }, [seatHolds, lapsedMs]);
 
+  const seatedRef = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    const seated = new Set(players.map((p) => `${p.seatIndex}:${p.userId}`));
+    const before = seatedRef.current;
+    seatedRef.current = seated;
+    if (!before) return;
+    const filled = [...seated].filter((seat) => !before.has(seat)).length;
+    for (let i = 0; i < filled; i++) playSeatFill().catch(() => {});
+    if (filled > 0 && seated.size >= maxSeats) playRoomFull().catch(() => {});
+  }, [players, maxSeats]);
+
   const rowHeight = isLandscape ? SEAT_ROW_H_COMPACT : SEAT_ROW_H;
   const rowPaddingVertical = isLandscape ? SEAT_ROW_PAD_V_COMPACT : SEAT_ROW_PAD_V;
   const gap = isLandscape ? Spacing.sm : Spacing.cosy;
@@ -108,8 +122,9 @@ export function RoomSeatList({
               (hold) => hold.seatIndex === seatIndex && hold.expiresInMs > lapsedMs
             )?.username;
         return (
-          <View
-            key={seatIndex}
+          <SeatRow
+            key={`${seatIndex}:${player?.userId ?? ""}`}
+            seatIndex={seatIndex}
             style={[
               styles.seatRow,
               { height: rowHeight, paddingVertical: rowPaddingVertical },
@@ -142,10 +157,28 @@ export function RoomSeatList({
                 {heldFor ? t("room.seatHeldFor", { username: heldFor }) : t("room.waitingSeat")}
               </Text>
             )}
-          </View>
+          </SeatRow>
         );
       })}
     </View>
+  );
+}
+
+/** Keyed by its occupant, so a seat that changes hands enters again. */
+function SeatRow({
+  seatIndex,
+  style,
+  children,
+}: {
+  seatIndex: number;
+  style: React.ComponentProps<typeof View>["style"];
+  children: React.ReactNode;
+}) {
+  const entrance = useEntrance(seatIndex);
+  return (
+    <Animated.View testID={`room-seat-${seatIndex}`} style={[StyleSheet.flatten(style), entrance]}>
+      {children}
+    </Animated.View>
   );
 }
 

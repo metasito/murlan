@@ -13,6 +13,7 @@ import { useIsLandscape } from "@/lib/orientation";
 import { router } from "expo-router";
 import Animated, { FadeIn } from "react-native-reanimated";
 import { hapticMedium, hapticSelection, hapticSuccess } from "@/lib/haptics";
+import { holdSounds, preloadSounds } from "@/lib/sounds";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { Avatar } from "@/components/Avatar";
 import { ChoiceChips } from "@/components/ChoiceChips";
@@ -325,6 +326,11 @@ export default function RoomScreen() {
   const [copied, setCopied] = useState(false);
   const copiedTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => () => clearTimeout(copiedTimer.current), []);
+  useEffect(() => {
+    const releaseSounds = holdSounds();
+    preloadSounds().catch(() => {});
+    return releaseSounds;
+  }, []);
 
   const isLandscape = useIsLandscape();
 
