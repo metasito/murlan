@@ -459,13 +459,25 @@ describe("--build gates review on a cached local pass", () => {
     assert.equal(buildPassed(wt), false);
   });
 
-  test("a passing cache entry for HEAD, on a clean tree, is accepted", () => {
+  test("a passing cache entry for HEAD, on a clean tree, with a full DOD-CHECK, is accepted", () => {
     const wt = worktree("agent/9900042-build-pass");
     commit(wt, "docs/probe.md");
     writeCache(wt, { pass: true, head: head(wt), clean: true });
     assert.equal(buildPassed(wt), true);
-    const { code, out } = gate(wt, [], BASE, wt, ["--build"]);
-    assert.equal(code, 0, out);
+    const check = (boxes: string, sha = head(wt)) => [{ body: `DOD-CHECK ${sha.slice(0, 7)}\n\n${boxes}` }];
+    const cases: [ReturnType<typeof check>, number, RegExp][] = [
+      [[], 1, /no DOD-CHECK/],
+      [check("- [x] chip enters — lib/a.ts:12 · tests/a.test.ts:4", "0".repeat(40)), 1, /no DOD-CHECK/],
+      [check("- [x] chip enters — lib/a.ts:12\n- [ ] sheen"), 1, /leaves open: - \[ \] sheen/],
+      [check("- [x] chip enters, done"), 1, /leaves open/],
+      [check("no boxes at all"), 1, /ticks no box/],
+      [check("- [x] chip enters — lib/a.ts:12 · tests/a.test.ts:4\n- [X] sheen — lib/b.tsx:3"), 0, /2 box\(es\) ticked/],
+    ];
+    for (const [comments, want, says] of cases) {
+      const { code, out } = gate(wt, comments, BASE, wt, ["--build"]);
+      assert.equal(code, want, out);
+      assert.match(out, says);
+    }
   });
 
   test("a dirty tree refuses even with a passing cache entry for HEAD", () => {

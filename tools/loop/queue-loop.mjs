@@ -71,7 +71,7 @@ import {
 import { readAllowedTools } from "./loop-tools.mjs";
 import { checkLockDrift } from "./preflight.mjs";
 import { listWorktreeDirNames } from "./prune-worktrees.mjs";
-import { buildPassed, MAX_REVIEW_ROUNDS, mergeCleared } from "./loop-gate.mjs";
+import { buildReady, MAX_REVIEW_ROUNDS, mergeCleared } from "./loop-gate.mjs";
 import { familyOf, MODEL_BY_PHASE } from "./loop-cost.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import { createRequire } from "node:module";
@@ -2254,10 +2254,10 @@ export async function runOnce(io, pinned = null, at = null) {
   // finished, and every reading below is about a session that meant to be its ticket's last.
   let handoff = handoffOf(run) ?? resumePhase(run, after, route.number);
   let because = null;
-  if (handoff === "D" && !io.buildPassed(after?.cwd ?? null)) {
-    io.log(`#${route.number} handed off to review with no local pass on a clean HEAD — back to C`, "build");
+  if (handoff === "D" && !io.buildPassed(after?.cwd ?? null, route.number)) {
+    io.log(`#${route.number} handed off to review with no local pass or no full DOD-CHECK on HEAD — back to C`, "build");
     handoff = "C";
-    because = "the D handoff had no local pass on a clean HEAD: commit, agent:check, then loop-gate --build";
+    because = "the D handoff had no local pass or no full DOD-CHECK on HEAD: commit, agent:check, post DOD-CHECK, then loop-gate --build";
   } else if (handoff === "D" && after?.branch) {
     // CI runs while the review does; `poll` merges only a head a LAND covers.
     io.publish(route.number, after.branch, after.cwd);
@@ -2483,9 +2483,9 @@ function realIo(book, screen) {
       screen.context({ spentMs: ticketTally(route.number, readLedger()).ms });
     },
     block: (number, blocker, cwd) => blockOnShared(number, blocker, cwd && fs.existsSync(cwd) ? cwd : null),
-    buildPassed: (cwd) => {
+    buildPassed: (cwd, ticket) => {
       try {
-        return Boolean(cwd) && buildPassed(cwd);
+        return Boolean(cwd) && buildReady(cwd, ticket).ok;
       } catch {
         return false;
       }

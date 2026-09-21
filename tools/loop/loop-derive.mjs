@@ -242,6 +242,33 @@ export function reviewFor(comments, head) {
   return null;
 }
 
+const DOD_CHECK_RE = /^DOD-CHECK\s+([0-9a-f]{7,40})\b/m;
+const BOX_RE = /^\s*[-*]\s+\[([ xX])\](.*)$/gm;
+const EVIDENCE_RE = /[\w./-]+\.\w+:\d+/;
+
+/**
+ * The builder's own tick of the Definition of done for this head. A ticked box with no `path:line`
+ * counts as open: a bare tick is the omission this exists to catch.
+ *
+ * @param {{body: string}[]} comments @param {string} head
+ * @returns {{line: string, ticked: number, open: string[]} | null}
+ */
+export function dodCheckFor(comments, head) {
+  for (let i = comments.length - 1; i >= 0; i--) {
+    const body = fenceStripped(comments[i].body);
+    const m = DOD_CHECK_RE.exec(body);
+    if (!m || !covers(head, m[1])) continue;
+    const boxes = [...body.matchAll(BOX_RE)];
+    const done = (b) => b[1] !== " " && EVIDENCE_RE.test(b[2]);
+    return {
+      line: m[0].trim(),
+      ticked: boxes.filter(done).length,
+      open: boxes.filter((b) => !done(b)).map((b) => b[0].trim()),
+    };
+  }
+  return null;
+}
+
 /**
  * One review round per comment carrying a real verdict — not scoped to a head, since a round
  * spent on an earlier commit was still spent. `derive()` returns this alongside `verdictFor`'s
@@ -313,6 +340,15 @@ function gh(args, cwd, timeout) {
 
 function readComments(ticket, cwd, exec) {
   return exec(["issue", "view", String(ticket), "--json", "comments"], cwd, CI_BUDGET_MS);
+}
+
+/** @returns {{body: string}[] | null} null when the tracker cannot be read */
+export function ticketComments(ticket, cwd) {
+  try {
+    return JSON.parse(readComments(ticket, cwd, gh)).comments;
+  } catch {
+    return null;
+  }
 }
 
 const SETTLE = "G";

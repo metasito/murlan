@@ -482,7 +482,7 @@ describe("runOnce", () => {
       return seen[0];
     };
     const cases: [string, string, boolean, string, RegExp | null][] = [
-      ["C", "D", false, "C", /no local pass on a clean HEAD/],
+      ["C", "D", false, "C", /no local pass or no full DOD-CHECK on HEAD/],
       ["E", "C", true, "C", /phase E's agent:check was red/],
       ["C", "D", true, "D", null],
     ];
