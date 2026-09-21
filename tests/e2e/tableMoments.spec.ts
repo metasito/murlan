@@ -1,10 +1,10 @@
-// tests/e2e/tableMoments.spec.ts — three of #1102's table moments, sampled
-// live: the felt opens dim and settles, an opponent's hand ramps in as it
-// lands, and a flown card's raised shadow drops once it is down.
+// tests/e2e/tableMoments.spec.ts — #1102's four table moments, sampled live:
+// the felt opens dim and settles, an opponent's hand ramps in as it lands, a
+// flown card's raised shadow drops once it is down, and a won partita dusts gold.
 import { test, expect, type Page } from "@playwright/test";
 import { openApp } from "./helpers/navigation";
 import { offlineGameSave, resumeSaved } from "./helpers/offlineSeed";
-import { buildCombination, type Card } from "../../lib/gameEngine";
+import { buildCombination, targetsFor, type Card } from "../../lib/gameEngine";
 import { GIOCA_VALID_LABEL } from "./helpers/labels";
 import { TABLE, HAND_ZONE } from "./helpers/selectors";
 import { tap } from "./helpers/press";
@@ -209,6 +209,38 @@ test.describe("flight shadow", () => {
     ).toBeTruthy();
 
     await test.info().attach("flight-shadow-landed.png", {
+      body: await page.screenshot(),
+      contentType: "image/png",
+    });
+  });
+});
+
+/** The viewer one card and one point short of the partita, so throwing `BEATER` wins it. */
+function partitaPointSave(): object {
+  const save: any = flightSave();
+  const target = targetsFor(2)[0];
+  save.gameState.players[0].hand = [BEATER];
+  save.match = { ...save.match, length: "match", target, scores: { player_0: target - 1, player_1: 0 } };
+  return save;
+}
+
+test.describe("partita gold dust", () => {
+  test("winning the partita dusts gold behind the trophy", async ({ page, baseURL }) => {
+    test.setTimeout(60_000);
+    await page.setViewportSize(VIEWPORT);
+    await resumeSaved(page, baseURL!, partitaPointSave());
+    await settled(page, 1_500, TABLE);
+
+    await tap(page, page.locator(HAND_ZONE).getByRole("button", { name: BEATER_LABEL, exact: true }));
+    const gioca = page.getByTestId("btn-gioca");
+    await expect(gioca).toHaveAttribute("aria-label", GIOCA_VALID_LABEL, { timeout: 10_000 });
+    await tap(page, gioca);
+
+    await expect(page).toHaveURL(/\/result/, { timeout: 20_000 });
+    await expect(page.getByTestId("gold-flake").first()).toBeAttached({ timeout: 10_000 });
+    expect(await page.getByTestId("gold-flake").count(), "the gold dust fell short of its flakes").toBe(24);
+
+    await test.info().attach("partita-gold-dust.png", {
       body: await page.screenshot(),
       contentType: "image/png",
     });
