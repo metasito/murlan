@@ -153,6 +153,13 @@ describe('lib/sounds on a device', () => {
 
   it('preloads every effect', async () => {
     await sounds.preloadSounds();
-    expect(mockCreateAudioPlayer).toHaveBeenCalledTimes(16);
+    const preloaded = mockCreateAudioPlayer.mock.calls.length;
+    const effects = Object.entries(sounds).filter(([name]) => /^play[A-Z]/.test(name));
+    expect(effects.length).toBeGreaterThan(0);
+    for (const [, playEffect] of effects) {
+      await (playEffect as () => Promise<void>)();
+      await (playEffect as () => Promise<void>)();
+    }
+    expect(mockCreateAudioPlayer).toHaveBeenCalledTimes(preloaded);
   });
 });
