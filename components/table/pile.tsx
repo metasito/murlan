@@ -12,6 +12,7 @@ import Animated, {
   cancelAnimation,
   FadeIn,
   FadeOut,
+  type SharedValue,
 } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
 import Ionicons from "@expo/vector-icons/Ionicons";
@@ -113,6 +114,7 @@ export function FlyingCards({
   // Overshoot past the pile and rock back, so the card lands with weight
   // instead of stopping dead on its mark.
   const settle = useSharedValue(0);
+  const lifted = useSharedValue(1);
 
   useEffect(() => {
     // Runs on every entry to this effect, including a toggle mid-flight —
@@ -157,6 +159,11 @@ export function FlyingCards({
       )
     );
 
+    lifted.value = withDelay(
+      impactDelayMs(reduceMotion),
+      withTiming(0, { duration: landingHoldMs(reduceMotion) })
+    );
+
     // The floor under that callback. While a flight is up the pile draws
     // nothing — the cards in the air are the cards on the felt — so a flight
     // that never reports itself finished leaves the middle of the table empty
@@ -173,10 +180,11 @@ export function FlyingCards({
       cancelAnimation(opacity);
       cancelAnimation(arcY);
       cancelAnimation(settle);
+      cancelAnimation(lifted);
     };
     // Every entry is stable for the life of one flight — the caller remounts
     // this component via `key` for each new one — so this runs once per flight.
-  }, [reduceMotion, notifyDone, dx, dy, startRot, tx, ty, rot, opacity, arcY, settle]);
+  }, [reduceMotion, notifyDone, dx, dy, startRot, tx, ty, rot, opacity, arcY, settle, lifted]);
 
   const aStyle = useAnimatedStyle(() => {
     const squash = landSquashScale(settle.value);
@@ -214,11 +222,25 @@ export function FlyingCards({
               ],
             }}
           >
-            <CardView card={cards[i]} scale={cardScale} light="flat" />
+            <LiftedShadow lifted={lifted} width={CARD_W(cardScale)} height={cardH} />
+            <View style={pileStyles.caughtCard}>
+              <CardView card={cards[i]} scale={cardScale} light="flat" />
+            </View>
           </View>
         ))}
       </Animated.View>
     </View>
+  );
+}
+
+/** Its own animated style per card: one style bound to several views drives only one of them. */
+function LiftedShadow({ lifted, width, height }: { lifted: SharedValue<number>; width: number; height: number }) {
+  const style = useAnimatedStyle(() => ({ opacity: lifted.value }));
+  return (
+    <Animated.View
+      testID="flying-shadow-lifted"
+      style={[pileStyles.liftedShadow, { width, height, borderRadius: cardRadius(width) }, style]}
+    />
   );
 }
 
@@ -911,6 +933,17 @@ const pileStyles = StyleSheet.create({
     ...Shadow.goldSoft,
   },
   caughtCard: { zIndex: Layer.table },
+  // Only the raised half of the landing: the card's own stock already carries
+  // Shadow.card, so a second resting sibling would double it until the pile
+  // takes the card over.
+  liftedShadow: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    zIndex: Layer.felt,
+    backgroundColor: Colors.cardPaper,
+    ...Shadow.cardLifted,
+  },
   // A dark plate, not a gold wash: gold on gold over the felt clears AA at no
   // stop of any felt. The border is where the chip's identity lives.
   winnerTag: {
