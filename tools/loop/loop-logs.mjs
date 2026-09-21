@@ -15,6 +15,7 @@
  */
 import fsNode from "node:fs";
 import path from "node:path";
+import { PLAIN, reportRow } from "./loop-render.mjs";
 
 export const DIR = ".loop-logs";
 
@@ -223,23 +224,26 @@ export function ledger(io = {}) {
   const totals = { tickets: 0, landed: 0, parked: 0, cost: 0, ms: 0 };
   /** @type {object[]} */
   const rows = [];
+  /** The report row of every ticket this run closed — what the exit summary prints. */
+  const tickets = [];
 
   return {
     totals,
     rows,
+    tickets,
     /**
      * @param {object} session what `sessionRow` needs
-     * @param {{runId: string, line: string, counts?: boolean}} into the morning report's row, and
-     *   whether this session closes a ticket — a retry round is a session, not a ticket.
+     * @param {{runId: string, report: object, counts?: boolean}} into what `reportRow` renders,
+     *   and whether this session closes a ticket — a retry round is a session, not a ticket.
      */
-    record(session, { runId, line, counts = true }) {
+    record(session, { runId, report, counts = true }) {
       const entry = sessionRow({ ...session, runId });
       mkdir();
       append(ledgerPath(), `${JSON.stringify(entry)}\n`);
 
       const file = reportPath(runId);
       if (!exists(file)) write(file, `# queue-loop ${runId.replace(/-(\d\d)-(\d\d)$/, " $1:$2")}\n\n`);
-      append(file, `${line}\n`);
+      append(file, `${reportRow(report, PLAIN())}\n`);
 
       totals.cost += entry.cost;
       totals.ms += entry.ms;
@@ -247,6 +251,7 @@ export function ledger(io = {}) {
         totals.tickets += 1;
         if (entry.outcome === "landed") totals.landed += 1;
         else totals.parked += 1;
+        tickets.push(report);
       }
       rows.push(entry);
       return entry;

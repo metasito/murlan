@@ -25,9 +25,12 @@ import {
   activity,
   bell,
   capabilities,
+  ciLine,
   clockAt,
   closing,
+  elapsed,
   header,
+  help,
   keybar,
   LAND,
   notice,
@@ -38,6 +41,7 @@ import {
   reportRow,
   runTotal,
   stepRow,
+  stepTitle,
   stream as streamBlock,
   tasksDetail,
   theme,
@@ -78,6 +82,17 @@ const HERE = import.meta.dirname;
 const ROOT = path.resolve(HERE, "..", "..");
 
 const STOP_FILE = ".loop-stop";
+const PARK_FILE = ".loop-park";
+
+/** Whether the owner asked, from the board, to park this ticket once its session has exited. */
+export const parkAsked = (number, read = (f) => fs.readFileSync(f, "utf8")) => {
+  if (number == null) return false;
+  try {
+    return Number(read(PARK_FILE).trim()) === number;
+  } catch {
+    return false;
+  }
+};
 
 /** @returns {{ skill: string, number: number, title: string, size: string|null }} */
 export function parseRoute(stdout) {
@@ -606,6 +621,7 @@ export const HEARTBEAT_MS = 15 * 60_000;
  * @param {number} [slice]
  * @param {((line: string) => void)|null} [say]
  * @param {number} [beat]
+ * @param {Promise<void>|null} [woken] resolves when the owner asks for the wait to end now
  */
 export async function holdFor(
   ms,
@@ -613,19 +629,25 @@ export async function holdFor(
   slice = 30_000,
   say = null,
   beat = HEARTBEAT_MS,
+  woken = null,
 ) {
   const until = Date.now() + ms;
   let next = Date.now() + beat;
+  let wake = false;
+  woken?.then(() => (wake = true));
   while (Date.now() < until) {
     if (exists(STOP_FILE)) return "stopped";
+    if (wake) return "woken";
     if (say && Date.now() >= next) {
       say(`still waiting — back at ${clockAt(until)}`);
       next = Date.now() + beat;
     }
     // Not unref'd: by now this is the only handle keeping the process alive.
-    await new Promise((r) => setTimeout(r, Math.min(slice, until - Date.now())));
+    let timer;
+    await Promise.race([new Promise((r) => (timer = setTimeout(r, Math.min(slice, until - Date.now())))), woken].filter(Boolean));
+    clearTimeout(timer);
   }
-  return "waited";
+  return wake ? "woken" : "waited";
 }
 
 /**
@@ -759,9 +781,22 @@ export function publishForReview(number, branch, cwd, title, run = sh) {
   const open = JSON.parse(
     run("gh", ["pr", "list", "--repo", REPO, "--head", branch, "--state", "open", "--json", "number"], opts),
   );
-  if (open.length > 0) return;
+  if (open.length > 0) return prUrl(open[0].number);
   const body = `Closes #${number}\n\nOpened as a draft when review started. Phase D writes this description on LAND.`;
-  run("gh", ["pr", "create", "--repo", REPO, "--draft", "--base", "main", "--head", branch, "--title", title, "--body", body], opts);
+  return String(
+    run("gh", ["pr", "create", "--repo", REPO, "--draft", "--base", "main", "--head", branch, "--title", title, "--body", body], opts),
+  ).trim();
+}
+
+const prUrl = (n) => `https://github.com/${REPO}/pull/${n}`;
+
+/** The ticket's branch, read from its worktree: a resumed ticket has no claim to take it from. */
+function branchOf(number, run = sh) {
+  try {
+    return run("git", ["-C", path.join(ROOT, WORKTREE_DIR, `agent-${number}`), "branch", "--show-current"]).trim() || null;
+  } catch {
+    return null;
+  }
 }
 
 /** A red round's `update-branch` moved the remote head, and the fix is built on top of it. */
@@ -781,6 +816,7 @@ const ESC = String.fromCharCode(27);
 // cursor a row it was never asked to move.
 const UP = (n) => (n > 0 ? `${ESC}[${n}A` : "");
 const CTRL_C = String.fromCharCode(3);
+const BEL = String.fromCharCode(7);
 
 /** Rows the block never claims: the header above it, and slack so it cannot scroll itself. */
 const CHROME = 8;
@@ -813,7 +849,7 @@ const FEED = 200;
  * At anything that is not a terminal every escape is suppressed and nothing is redrawn: the output
  * is the append-only stream `loop-render.mjs` produces, which is what `.loop-logs/run-*.md` wants.
  */
-export function ticker(out = process.stdout, err = process.stderr, reveal = openExternally) {
+export function ticker(out = process.stdout, err = process.stderr, reveal = openExternally, copy = toClipboard) {
   // A window too narrow to lay a row out in is a window the block cannot be drawn in: every row
   // would wrap, and a wrapped row is the cursor arithmetic wrong for the rest of the run. The
   // append-only stream is what such a terminal gets, the same as a pipe — and it can become one
@@ -838,8 +874,14 @@ export function ticker(out = process.stdout, err = process.stderr, reveal = open
   let drawn = [];
   let hidden = false;
   let raw = false;
-  const view = { expanded: false, stopping: false };
-  let ctx = { url: null, log: null, since: null };
+  const view = { expanded: false, stopping: false, parking: false, help: false };
+  let ctx = { number: null, url: null, log: null, branch: null, session: null, pr: null, since: null };
+  let titled = "";
+  const setTitle = (text) => {
+    if (!out.isTTY || text === titled) return;
+    out.write(`${ESC}]0;${text}${BEL}`);
+    titled = text;
+  };
 
   const hide = () => {
     if (!live || hidden) return;
@@ -863,15 +905,32 @@ export function ticker(out = process.stdout, err = process.stderr, reveal = open
     // clamps at the top of the viewport and the block walks down the screen at eight frames a
     // second for the rest of the night.
     const room = Math.max(3, (out.rows ?? 30) - CHROME);
-    const body = view.expanded
-      ? streamBlock(open.feed, { ms, frame, letter: open.letter }, t, room)
-      : [
-          progress({ letter: open.letter, round: open.round, ticketMs: ctx.since == null ? null : Date.now() - ctx.since }, t),
-          "",
-          activity({ said: open.said, recent: open.recent, ms, frame }, t, room - 4),
-        ].join("\n");
-    return [body, "", keybar(view, t)].join("\n").split("\n").slice(0, room);
+    const left = open.wait ? Math.max(0, open.wait.until - Date.now()) : 0;
+    const body = view.help
+      ? help(t).join("\n")
+      : open.wait
+        ? stepRow({ label: "waiting", detail: `${open.wait.label} · ${elapsed(left)} left`, state: "skipped" }, t)
+        : view.expanded
+          ? streamBlock(open.feed, { ms, frame, letter: open.letter }, t, room)
+          : [
+              progress({ letter: open.letter, round: open.round, ticketMs: ctx.since == null ? null : Date.now() - ctx.since }, t),
+              "",
+              activity({ said: open.said, recent: open.recent, ms, frame }, t, room - 4),
+            ].join("\n");
+    const offers = { ticket: ctx.number, waiting: open.wait, pr: ctx.pr, url: ctx.url, log: ctx.log, session: ctx.session };
+    return [body, "", keybar({ ...view, offers }, t)].join("\n").split("\n").slice(0, room);
   };
+
+  const title = () =>
+    ctx.number == null
+      ? ""
+      : stepTitle({
+          number: ctx.number,
+          letter: open?.letter,
+          round: open?.round,
+          waitMs: open?.wait ? Math.max(0, open.wait.until - Date.now()) : null,
+          ticketMs: ctx.since == null ? null : Date.now() - ctx.since,
+        });
 
   const draw = () => {
     if (!out.isTTY || !open) return;
@@ -880,6 +939,7 @@ export function ticker(out = process.stdout, err = process.stderr, reveal = open
     // their count is no longer what the cursor maths assumes — repainting from scratch is the only
     // honest recovery, and it leaves the wrapped rows behind as a one-time smear.
     if (resized()) drawn = [];
+    setTitle(title());
     if (!live) return;
     const rows = block();
     if (rows.length === drawn.length && rows.every((r, i) => r === drawn[i])) return;
@@ -963,12 +1023,47 @@ export function ticker(out = process.stdout, err = process.stderr, reveal = open
 
   /** @returns {boolean} whether the board has anything new to show */
   const press = (k) => {
+    // Whatever follows the question answers it, and only `y` is a yes: a stray key parks nothing.
+    if (view.parking === "confirm") {
+      if (k === "y") askPark(true);
+      else view.parking = false;
+      return true;
+    }
     if (k === "e") view.expanded = !view.expanded;
     else if (k === "s") askStop(!view.stopping);
+    else if (k === "k" && ctx.number != null) {
+      if (view.parking === "asked") askPark(false);
+      else view.parking = "confirm";
+    } else if (k === "w" && open?.wait) open.wait.wake();
+    else if (k === "p" && ctx.pr) reveal(ctx.pr);
     else if (k === "o" && ctx.url) reveal(ctx.url);
     else if (k === "l" && ctx.log) reveal(ctx.log);
+    else if (k === "t" && ctx.session) handOver(`claude --resume ${ctx.session} --fork-session`);
+    else if (k === "c" && ctx.log) handOver([ctx.branch, ctx.log].filter(Boolean).join("\n"));
+    else if (k === "?") view.help = !view.help;
     else return false;
     return true;
+  };
+
+  /** Copied, and printed too: a clipboard nothing confirmed is a key that seemed to do nothing. */
+  const handOver = (text) => {
+    copy(text);
+    over(stepRow({ label: "copied", detail: text.replace(/\n/g, " · "), state: "done" }, t));
+  };
+
+  /**
+   * The stop key's shape, for the one other key that changes what the loop does: the file is the
+   * request, so it survives this process, and the bar follows the file rather than the press. It
+   * names the ticket, so a request left behind cannot park the next one.
+   */
+  const askPark = (wanted) => {
+    try {
+      if (wanted) writeFileSync(PARK_FILE, `${ctx.number}\n`);
+      else fs.rmSync(PARK_FILE, { force: true });
+    } catch (e) {
+      api.notice("park", `could not ${wanted ? "write" : "remove"} ${PARK_FILE} — ${e}`);
+    }
+    view.parking = parkAsked(ctx.number) ? "asked" : false;
   };
 
   /**
@@ -1043,11 +1138,30 @@ export function ticker(out = process.stdout, err = process.stderr, reveal = open
       headed = number;
       return true;
     },
-    /** What the `o` and `l` keys open. Set once per ticket, beside its header. */
+    /** What the keys act on. Set once per ticket, beside its header. */
     context(next = {}) {
       const { spentMs, ...rest } = next;
-      ctx = { url: null, log: null, since: spentMs == null ? null : Date.now() - spentMs, ...rest };
+      // A ticket's pull request outlives the session that opened it: the next phase is the same ticket.
+      const pr = rest.number != null && rest.number === ctx.number ? ctx.pr : null;
+      ctx = { number: null, url: null, log: null, branch: null, session: null, pr, since: spentMs == null ? null : Date.now() - spentMs, ...rest };
       view.stopping = fs.existsSync(STOP_FILE);
+      view.parking = parkAsked(ctx.number) ? "asked" : false;
+    },
+    /** What a ticket learns after its header: the session it is on, the pull request it opened. */
+    set(fields) {
+      ctx = { ...ctx, ...fields };
+    },
+    /**
+     * A hold, as one live row counting down rather than a line every quarter hour. `w` ends it
+     * early. At a pipe there is no live row, so the returned `say` is the heartbeat instead.
+     */
+    wait(label, until) {
+      let wake;
+      const woken = new Promise((r) => (wake = r));
+      api.start(UNNAMED);
+      open.wait = { label, until, wake };
+      draw();
+      return { woken, say: live ? null : (m) => api.notice("waiting", m) };
     },
     start(letter, round = null) {
       // A placeholder, not a phase: the first marker replaces it rather than closing it as one.
@@ -1080,10 +1194,10 @@ export function ticker(out = process.stdout, err = process.stderr, reveal = open
     },
     close(state = "done", detail = "") {
       if (!open) return;
-      const done = phaseRow(
-        { letter: open.letter, round: open.round, ms: Date.now() - open.startedAt, state, detail },
-        t,
-      );
+      const ms = Date.now() - open.startedAt;
+      const done = open.wait
+        ? stepRow({ label: "waited", detail: open.wait.label, ms, state: "skipped" }, t)
+        : phaseRow({ letter: open.letter, round: open.round, ms, state, detail }, t);
       clear();
       open = null;
       show();
@@ -1094,6 +1208,7 @@ export function ticker(out = process.stdout, err = process.stderr, reveal = open
       open = null;
       over("");
       show();
+      setTitle("");
       if (!raw) return;
       try {
         process.stdin.setRawMode(false);
@@ -1127,6 +1242,20 @@ function openExternally(target) {
     spawn(cmd, args, { stdio: "ignore", detached: true }).unref();
   } catch {
     /* a key that opens nothing is not a reason to stop the run */
+  }
+}
+
+/** The platform's own clipboard command, fed on stdin. Never fatal, like `openExternally`. */
+function toClipboard(text) {
+  const [cmd, args] =
+    process.platform === "win32" ? ["clip", []] : process.platform === "darwin" ? ["pbcopy", []] : ["xclip", ["-selection", "clipboard"]];
+  try {
+    const child = spawn(cmd, args, { stdio: ["pipe", "ignore", "ignore"] });
+    child.on("error", () => {});
+    child.stdin.on("error", () => {});
+    child.stdin.end(text);
+  } catch {
+    /* a key that copies nothing is not a reason to stop the run */
   }
 }
 
@@ -1330,7 +1459,7 @@ export function runTicket(
 
   if (screen.needsHeader(number)) screen.say(header({ number, ...about, queue }, screen.theme));
   const spentMs = ticketTally(number, readLedger(ledgerPath(undefined, dir))).ms;
-  screen.context({ url: about.url, log: logPath, spentMs });
+  screen.context({ number, url: about.url, log: logPath, branch: branchOf(number), spentMs });
   if (at) {
     // Opened here, not left for the session's own marker: `state.phase` is already this letter, so
     // the marker is read as "no change" and the board stays dark for the whole of that phase.
@@ -1384,6 +1513,7 @@ export function runTicket(
     if (!fact) return;
     if (fact.kind === "init") {
       state.version = fact.version;
+      screen.set({ session: fact.sessionId });
       const family = fact.model ? familyOf(fact.model) : null;
       if (fact.model && !family) screen.warn(`the session started on ${fact.model}, a model of no known family\n`);
       if (family && family !== planned && !state.wrongModel) {
@@ -1636,6 +1766,7 @@ function mergeAndConfirm(prNumber, branch, sha, run = sh) {
 export async function settle(pending, screen, opts = {}) {
   const { pause = SETTLE_PAUSE_MS, deadline = SETTLE.DEADLINE_MS, watch = poll } = opts;
   screen.start(LAND);
+  screen.set({ pr: prUrl(pending.pr) });
   screen.said(`waiting for ci.yml on ${pending.branch}`);
   try {
     const out = await watch(pending, (m) => screen.said(m), pause, deadline);
@@ -1792,6 +1923,7 @@ export async function poll(pending, log, pause, deadline, io = {}) {
     let verdict = {};
     try {
       verdict = verdictOf(REPO, pending.branch, pending.pr);
+      if (verdict.progress) log(ciLine(pending.pr, verdict.progress));
       if (verdict.infrastructure) asking = verdict.appearing ? "appear" : "retry";
       next = readLanding(pending.pr, verdict, run);
       // Written before it is handed back, because the session that fixes it is a fresh process
@@ -1930,6 +2062,18 @@ export function afterSession(run, derived) {
     // verdict, so it can only ever answer C, D, E or ?.
     phase: said?.phase ?? run.phase ?? derived?.phase ?? "?",
   };
+}
+
+/** The ticket's worktree as git has it now: a retry or refused pass carries none of it. */
+function worktreeOf(io, number) {
+  try {
+    const at = io.standing();
+    if (at?.ticket === number) return { cwd: at.cwd, branch: at.branch, dirty: at.dirty, phase: at.phase ?? null };
+  } catch {
+    const kept = path.join(ROOT, WORKTREE_DIR, `agent-${number}`);
+    if (fs.existsSync(kept)) return { cwd: kept, branch: null, dirty: false, phase: null };
+  }
+  return { cwd: null, branch: null, dirty: false, phase: null };
 }
 
 /**
@@ -2299,7 +2443,7 @@ function realIo(book, screen) {
     refreshWorktree: (cwd, branch) => refreshWorktree(cwd, branch),
     publish: (number, branch, cwd) => {
       try {
-        publishForReview(number, branch, cwd, ticketFacts(number).title);
+        screen.set({ pr: publishForReview(number, branch, cwd, ticketFacts(number).title) });
       } catch (err) {
         screen.notice("publish", `#${number} is not pushed for review — ${String(err.message).split("\n")[0]}`);
       }
@@ -2390,18 +2534,7 @@ function realIo(book, screen) {
         {
           runId: RUN_ID,
           counts,
-          line: reportRow(
-            {
-              number,
-              title: facts.title,
-              outcome,
-              pr,
-              ms: bill.ms,
-              cost: bill.cost,
-              why: why ?? undefined,
-            },
-            PLAIN(),
-          ),
+          report: { number, title: facts.title, outcome, pr, ms: bill.ms, cost: bill.cost, why: why ?? undefined },
         },
       );
     },
@@ -2474,10 +2607,19 @@ export async function main({
       if (code === 0) screen.say(stepRow({ label: "stopped", detail: why, state: "skipped" }, t));
       else screen.notice("stopped", why);
     }
-    screen.say(`${t.paint("faint", "─".repeat(t.width))}\n   ${t.paint("text", `run total  ${total}`, true)}`);
+    const rule = t.paint("faint", "─".repeat(t.width));
+    const tickets = book.tickets.map((r) => reportRow(r, t));
+    screen.say([rule, ...(tickets.length ? [...tickets, rule] : []), `   ${t.paint("text", `run total  ${total}`, true)}`].join("\n"));
     book.close(runId, total);
     bell();
     return code;
+  };
+
+  const hold = async (ms, label) => {
+    const { woken, say } = screen.wait(label, Date.now() + ms);
+    const how = await holdFor(ms, undefined, undefined, say, undefined, woken);
+    screen.close();
+    return how;
   };
 
   for (;;) {
@@ -2494,21 +2636,12 @@ export async function main({
       // trusted while wrong. The claim is the part that strands the ticket, and it comes off here.
       if (claimed !== null) {
         try {
-          let own = null;
-          try {
-            const at = io.standing();
-            own = at?.ticket === claimed ? at : null;
-          } catch {
-            const kept = path.join(ROOT, WORKTREE_DIR, `agent-${claimed}`);
-            own = fs.existsSync(kept) ? { cwd: kept, branch: null, dirty: false } : null;
-          }
+          const own = worktreeOf(io, claimed);
           parkAndRecord(io, claimed, {
-            phase: "?",
+            ...own,
+            phase: own.phase ?? "?",
             why: `the loop threw: ${String(err?.message ?? err)}`,
             log: streamLog(claimed),
-            cwd: own?.cwd ?? null,
-            branch: own?.branch ?? null,
-            dirty: own?.dirty ?? false,
           });
         } catch (unparked) {
           screen.notice("claim", `#${claimed} is still claimed — ${String(unparked?.message ?? unparked)}`);
@@ -2521,15 +2654,30 @@ export async function main({
 
     if (pass.outcome === "stop") return finish(0, pass.why);
 
+    // Read only here, once the session has exited: a park is never a kill.
+    if (pass.ticket != null && parkAsked(pass.ticket)) {
+      fs.rmSync(PARK_FILE, { force: true });
+      if (["handoff", "retry", "refused"].includes(pass.outcome)) {
+        const own = worktreeOf(io, pass.ticket);
+        parkAndRecord(io, pass.ticket, {
+          ...own,
+          phase: pass.phase ?? own.phase ?? "?",
+          why: "parked by owner",
+          log: pass.run?.log ?? streamLog(pass.ticket),
+        });
+        pinned = null;
+        continue;
+      }
+      screen.notice("park", `#${pass.ticket} ${pass.outcome} before the park could act`);
+    }
+
     // Not a ticket and not a failure: something the machine has to settle before a ticket can
     // start. Held and asked again, bounded by the same ceiling a usage refusal has.
     if (pass.outcome === "hold") {
       holds += 1;
       if (holds > WAIT.TRIES) return finish(1, `${pass.why}, ${holds} times running`);
       screen.notice("waiting", `${pass.why} — asking again shortly (${holds} of ${WAIT.TRIES})`);
-      if ((await holdFor(WAIT.FLOOR, undefined, undefined, (m) => screen.notice("waiting", m))) === "stopped") {
-        return finish(0, ".loop-stop during the wait");
-      }
+      if ((await hold(WAIT.FLOOR, "a pre-flight hold")) === "stopped") return finish(0, ".loop-stop during the wait");
       continue;
     }
     holds = 0;
@@ -2545,21 +2693,13 @@ export async function main({
         "usage",
         `#${pass.ticket} paused: the usage window is spent — back at ${clockAt(Date.now() + step.hold)} (wait ${waits} of ${WAIT.TRIES})`,
       );
-      if ((await holdFor(step.hold, undefined, undefined, (m) => screen.notice("waiting", m))) === "stopped") {
-        return finish(0, ".loop-stop during the wait");
-      }
+      const resets = `usage resets ${clockAt(Date.now() + step.hold)}`;
+      if ((await hold(step.hold, resets)) === "stopped") return finish(0, ".loop-stop during the wait");
       continue;
     }
 
     const giveUp = (why) => {
-      parkAndRecord(io, pass.ticket, {
-        phase: pass.phase ?? "E",
-        why,
-        log: pass.run.log,
-        cwd: pass.cwd ?? null,
-        branch: pass.branch ?? null,
-        dirty: false,
-      });
+      parkAndRecord(io, pass.ticket, { ...worktreeOf(io, pass.ticket), phase: pass.phase ?? "E", why, log: pass.run.log });
       pinned = null;
       failures += 1;
       return shouldHalt(failures);

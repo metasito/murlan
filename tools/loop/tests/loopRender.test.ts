@@ -1,16 +1,21 @@
 // tools/loop/tests/loopRender.test.ts
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   act,
   activity,
   bell,
   capabilities,
+  ciLine,
   clockAt,
   closing,
   cols,
   elapsed,
   header,
+  help,
   keybar,
   notice,
   phaseRow,
@@ -18,6 +23,8 @@ import {
   recap,
   reportRow,
   runTotal,
+  stepRow,
+  stepTitle,
   stream,
   tasksDetail,
   theme,
@@ -397,17 +404,43 @@ describe("keybar", () => {
   // A key bar that lies is worse than no key bar. Every letter it offers is pressed here, against
   // the real handler, and has to do something.
   test("offers nothing the ticker does not bind", () => {
-    for (const [k, word] of KEYS) {
-      const wrote: string[] = [];
-      const out = { isTTY: true, columns: WIDTH + 1, rows: 40, getColorDepth: () => 1, write: (s: string) => wrote.push(s) };
-      const tick = ticker(out as never, out as never, () => wrote.push("opened"));
-      tick.start("C");
-      tick.context({ url: "https://x", log: "x.jsonl" });
-      const before = wrote.length;
-      tick.key(k);
-      tick.stop();
-      assert.ok(wrote.length > before, `"${word}" is offered on ${k}, which does nothing`);
+    const cwd = process.cwd();
+    const dir = mkdtempSync(join(tmpdir(), "keybar-"));
+    process.chdir(dir);
+    try {
+      for (const [k, word] of KEYS) {
+        const wrote: string[] = [];
+        const out = { isTTY: true, columns: WIDTH + 1, rows: 40, getColorDepth: () => 1, write: (s: string) => wrote.push(s) };
+        const tick = ticker(out as never, out as never, () => wrote.push("opened"), () => wrote.push("copied"));
+        tick.context({ number: 7, url: "https://x", log: "x.jsonl", branch: "agent/7-x", pr: "https://x/pr/1", session: "s" });
+        tick.wait("a hold", Date.now() + 60_000);
+        const before = wrote.length;
+        tick.key(k);
+        tick.stop();
+        assert.ok(wrote.length > before, `"${word}" is offered on ${k}, which does nothing`);
+      }
+    } finally {
+      process.chdir(cwd);
+      rmSync(dir, { recursive: true, force: true });
     }
+  });
+
+  test("a key with nothing to act on is not offered", () => {
+    const bare = strip(keybar({}, tPlain));
+    for (const word of ["park", "check now", "pr", "issue", "session", "copy"]) {
+      assert.ok(!new RegExp(`\\b${word}\\b`).test(bare), `"${word}" offered with nothing to act on`);
+    }
+    assert.match(strip(keybar({ offers: { pr: "u", waiting: {} } }, tPlain)), /check now.*pr/);
+  });
+
+  test("a park waiting for its y says so instead of the keys", () => {
+    assert.match(strip(keybar({ parking: "confirm" }, tPlain)), /park this ticket\?.*y confirms/);
+  });
+
+  test("? lists every key and every step's meaning", () => {
+    const out = strip(help(tPlain).join("\n"));
+    for (const [k] of KEYS) assert.ok(out.includes(`   ${k}  `), `${k} missing from help`);
+    for (const [, name] of PHASES) assert.match(out, new RegExp(name));
   });
 
   test("a toggled key says what pressing it again would do", () => {
@@ -616,6 +649,10 @@ describe("every block fits the width it was given", () => {
         activity(live, t),
         stream(feed, { ms: 1, frame: 0, letter: "D" }, t),
         keybar({ expanded: true, stopping: true }, t),
+        keybar({ parking: "confirm" }, t),
+        help(t).join("\n"),
+        stepRow({ label: "waiting", detail: "usage resets 14:00 · 1:12:04 left", state: "skipped" }, t),
+        activity({ ...live, said: ciLine(1162, { done: 11, total: 14, running: "Browser tests (shard 3 of 4)", failed: null }) }, t),
         closing({ outcome: "landed", number: 998, files: 9, turns: 132, ms: 1_424_000, cost: 3.9 }, t),
         reportRow({ number: 1002, title: "Convert the renderHook-able probes", outcome: "landed", pr: 1023, ms: 3_104_000, cost: 16.76 }, t),
       ];
@@ -674,5 +711,18 @@ describe("the review round on the board", () => {
     assert.match(out.split("\n")[0], /^\s+!\s+checkout\s+the protocol files/);
     assert.match(out, /M CLAUDE\.md/);
     assert.equal(strip(notice("stop", "one line", tPlain)).split("\n").length, 1);
+  });
+});
+
+describe("where a run stands, outside the board", () => {
+  test("the title names the ticket, its step and its time", () => {
+    assert.equal(stepTitle({ number: 7, letter: "C", ticketMs: 65_000 }), `#7 ▸ build · ${elapsed(65_000)}`);
+    assert.match(stepTitle({ number: 7, letter: "C", waitMs: 60_000 }), /^#7 ▸ waiting · .* left$/);
+  });
+
+  test("a CI line names the first red job over whatever is still running", () => {
+    assert.equal(ciLine(9, { done: 3, total: 5, running: "e2e", failed: null }), "PR #9 · CI 3 of 5 jobs · e2e running");
+    assert.equal(ciLine(9, { done: 3, total: 5, running: "e2e", failed: "lint" }), "PR #9 · CI 3 of 5 jobs · lint failed");
+    assert.equal(ciLine(9, { done: 0, total: 0, running: null, failed: null }), "PR #9 · CI 0 of 0 jobs · queued");
   });
 });
