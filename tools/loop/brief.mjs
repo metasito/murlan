@@ -13,6 +13,17 @@ export const KINDS = ["scope", "completeness", "standards", "spec", "refute", "f
 
 const HEADER_RE = /^BRIEF (\w+) #(\d+) (\S+) (\S+)$/;
 
+const BASELINE = join(import.meta.dirname, "..", "..", "docs", "agents", "smell-baseline.md");
+
+/** Never throws: a brief that cannot be built is one the guard cannot compare against, and passes. */
+function baseline() {
+  try {
+    return readFileSync(BASELINE, "utf8").trim();
+  } catch {
+    return "(docs/agents/smell-baseline.md is missing: review against RULES.md alone.)";
+  }
+}
+
 const TAIL =
   "Do not spawn any subagent. Report findings only — what checked out is not reported. Every " +
   "finding names a file:line and either the rule number it breaks, a quoted line of the issue, or " +
@@ -46,7 +57,7 @@ const BODIES = {
     "worktree) and the smell baseline below. Report only what affects correctness or breaks a " +
     "documented rule, by number, quoted. Skip what tooling enforces. A baseline smell alone is a " +
     "judgement call, never a hard violation. Around 15 lines.\n\n" +
-    readFileSync(join(import.meta.dirname, "..", "..", "docs", "agents", "smell-baseline.md"), "utf8").trim(),
+    baseline(),
   spec: ({ n, worktree, base }) =>
     `Review the change ${diff(worktree, base)} against issue #${n} (${issue(n)}, body and ` +
     "comments; a later comment overrides the body). Report requirements missing or partial, " +

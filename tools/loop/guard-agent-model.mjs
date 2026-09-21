@@ -8,17 +8,18 @@
 import { readFileSync } from "node:fs";
 import { brief, parseHeader } from "./brief.mjs";
 
-const NAMED = /\b(scope|scoping|recon|completeness|standards|spec|refut\w*|fix review)\b/i;
+const NAMED = /\b(completeness check|standards review|spec review|refut\w* (?:review )?findings|fix review|scope issue)\b/i;
+const unix = (text) => text.replace(/\r\n/g, "\n");
 
 function denial(payload) {
   const input = payload.tool_input ?? {};
   if (!input.model) {
     return "This dispatch names no model. Add `model` (see rule 29 of docs/agents/RULES.md) and dispatch it again.";
   }
-  const prompt = String(input.prompt ?? "");
+  const prompt = unix(String(input.prompt ?? ""));
   const header = parseHeader(prompt);
   if (header) {
-    return prompt.startsWith(brief(header.kind, header))
+    return prompt.startsWith(brief(header.kind, header).trimEnd())
       ? null
       : "This brief was edited. Pass the output of `node tools/loop/brief.mjs <kind> <n> <worktree> <base>` " +
           "verbatim as the start of the prompt; add anything else (the reports to refute, the contract clause) after it.";

@@ -66,6 +66,17 @@ describe("a loop dispatch of a brief passes it verbatim", () => {
     }
   });
 
+  test("the brief arriving with CRLF line endings, or with its final newline stripped, is allowed", () => {
+    assert.equal(run(agent("Completeness check #42", exact.replace(/\n/g, "\r\n"))), "");
+    assert.equal(run(agent("Completeness check #42", exact.trimEnd())), "");
+  });
+
+  test("a builder's own dispatch that merely says spec, scope or standards is allowed", () => {
+    for (const d of ["Write e2e spec for table moments", "Scope out follow-up tickets", "Standards-compliant CSS cleanup"]) {
+      assert.equal(run(agent(d, "Write tests/e2e/tableMoments.spec.ts")), "", d);
+    }
+  });
+
   test("an unrelated dispatch is allowed", () => {
     assert.equal(run(agent("Read the CI log", "Summarise the failures in .loop-logs/ci-42.log")), "");
   });

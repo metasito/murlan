@@ -12,7 +12,8 @@ import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 
 export const READ_CAP = 150;
 const BINARY = /\.(png|jpe?g|gif|webp|pdf|ipynb)$/i;
-const CAT = new Set(["cat", "type", "get-content", "gc"]);
+const WHOLE = new Set(["cat", "type", "get-content", "gc", "nl", "bat", "less", "more"]);
+const BYTES_PER_LINE = 40;
 
 const realCount = (p) => {
   if (BINARY.test(p) || !existsSync(p)) return null;
@@ -20,14 +21,14 @@ const realCount = (p) => {
   return text.split("\n").length - (text.endsWith("\n") ? 1 : 0);
 };
 
-function flagValue(args, names) {
+function flagValue(args, names, lineShorthand = true) {
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
     const eq = names.find((n) => a.toLowerCase().startsWith(`${n}=`));
     if (eq) return Number(a.slice(eq.length + 1));
     if (names.includes(a.toLowerCase()) && /^\d+$/.test(args[i + 1] ?? "")) return Number(args[i + 1]);
-    if (/^-n\d+$/.test(a)) return Number(a.slice(2));
-    if (/^-\d+$/.test(a)) return Number(a.slice(1));
+    if (lineShorthand && /^-n\d+$/.test(a)) return Number(a.slice(2));
+    if (lineShorthand && /^-\d+$/.test(a)) return Number(a.slice(1));
   }
   return null;
 }
@@ -36,7 +37,7 @@ function fileArgs(args) {
   return args.filter((a) => !a.startsWith("-") && !/^\d+$/.test(a) && !/^[<>]/.test(a));
 }
 
-function fromCommand(c, raw, cwd, count) {
+function fromCommand(c, cwd, count) {
   const name = c.cmd.toLowerCase();
   const at = (f) => count(resolve(cwd, f)) ?? 0;
   if (name === "sed" && c.args.includes("-n")) {
@@ -47,11 +48,11 @@ function fromCommand(c, raw, cwd, count) {
   }
   if (name === "head" || name === "tail") {
     const files = fileArgs(c.args);
-    return files.length ? (flagValue(c.args, ["-n", "--lines"]) ?? 10) * files.length : 0;
+    const bytes = flagValue(c.args, ["-c", "--bytes"], false);
+    const lines = bytes === null ? (flagValue(c.args, ["-n", "--lines"]) ?? 10) : Math.ceil(bytes / BYTES_PER_LINE);
+    return files.length ? lines * files.length : 0;
   }
-  // ponytail: "no pipe anywhere in the call" stands in for "this cat is a pipeline's last stage";
-  // the parser drops the separators. A `cat big | grep` beside an unrelated `a | b` still counts.
-  if (CAT.has(name) && !/\|/.test(raw)) {
+  if (WHOLE.has(name)) {
     const limit = flagValue(c.args, ["-totalcount", "-head", "-tail", "-first", "-last"]);
     const files = fileArgs(c.args.filter((a, i) => !/^-(totalcount|head|tail|first|last)$/i.test(c.args[i - 1] ?? "")));
     return files.reduce((sum, f) => sum + (limit ?? at(f)), 0);
@@ -63,13 +64,17 @@ export function linesRequested(payload, count = realCount) {
   const input = payload?.tool_input ?? {};
   const cwd = payload?.cwd ?? process.cwd();
   if (payload?.tool_name === "Read") {
-    const lines = count(resolve(cwd, String(input.file_path ?? ""))) ?? 0;
-    if (lines <= READ_CAP) return 0;
-    return input.limit && input.limit <= READ_CAP ? 0 : (input.limit ?? lines);
+    const total = count(resolve(cwd, String(input.file_path ?? ""))) ?? 0;
+    const left = Math.max(0, total - Math.max(0, (input.offset ?? 1) - 1));
+    return Math.min(left, input.limit ?? left);
   }
   if (payload?.tool_name !== "Bash" && payload?.tool_name !== "PowerShell") return 0;
   const raw = withoutQuotedBodies(String(input.command ?? ""));
-  return commands(raw).reduce((sum, c) => sum + fromCommand(c, raw, cwd, count), 0);
+  // ponytail: the parser drops separators, so "no pipe anywhere in the call" stands in for "this
+  // reader is a pipeline's last stage": `sed -n 1,400p f | head` is not counted, and neither is
+  // `sed -n 1,400p f | cat`. awk is never counted: its range is a program, not a flag.
+  if (/\|/.test(raw)) return 0;
+  return commands(raw).reduce((sum, c) => sum + fromCommand(c, cwd, count), 0);
 }
 
 export function verdict(payload, count = realCount) {
