@@ -8,6 +8,7 @@ import { ChipDot, ChipText, TableChip } from "./chrome";
 import { A11yStatus, a11yGroup, a11yHidden } from "@/lib/a11y";
 import { useTranslation } from "@/lib/i18n";
 import { playUrgentTick } from "@/lib/sounds";
+import { hapticSelection } from "@/lib/haptics";
 import { urgentThresholdSeconds, URGENT_TICK_SECONDS } from "@/components/turnTimerUi";
 
 // ─── Turn chip ────────────────────────────────────────────────────────────────
@@ -64,7 +65,10 @@ export function TurnChip({
     const id = setInterval(() => {
       remaining -= 1;
       setTimeLeft(remaining);
-      if (remaining <= URGENT_TICK_SECONDS && remaining >= 0) playUrgentTick();
+      if (remaining <= URGENT_TICK_SECONDS && remaining >= 0) {
+        playUrgentTick();
+        hapticSelection();
+      }
       if (remaining <= 0) {
         clearInterval(id);
         onExpireRef.current?.();

@@ -45,6 +45,7 @@ jest.mock('@/lib/accessibility', () => ({
 
 import { GameTable } from '@/components/GameTable';
 import type { TurnTimerConfig } from '@/components/GameTable';
+import { urgentThresholdSeconds } from '@/components/turnTimerUi';
 import type { Card, Combination, GameState, Player } from '@/lib/gameEngine';
 
 const METRICS = {
@@ -155,6 +156,45 @@ describe("a seat's turn clock", () => {
     // Settling the mount runs its pending timers, which moves the clock a little further.
     expect(turn('seat-turn-clock-left')).toBeGreaterThan(80);
     expect(turn('seat-turn-clock-left')).toBeLessThan(120);
+  });
+
+  const opacity = (testID: string) =>
+    (getAnimatedStyle(screen.getByTestId(testID)) as { opacity: number }).opacity;
+  const red = () => [opacity('seat-turn-clock-urgent-right'), opacity('seat-turn-clock-urgent-left')];
+  const urgentAt = (OFFLINE_TIMER.seconds - urgentThresholdSeconds(OFFLINE_TIMER.seconds)) * 1000;
+
+  it('turns red and pulses from the urgent threshold, not before', async () => {
+    mockReduceMotion.on = false;
+    await renderSettled(table(state({ lastPlayedCombination: single(KING), lastPlayedBy: 0 }), OFFLINE_TIMER));
+    await act(async () => {
+      jest.advanceTimersByTime(urgentAt - 1000);
+    });
+    expect(red()).toEqual([0, 0]);
+    expect(opacity('seat-turn-clock')).toBe(1);
+    const seen: number[] = [];
+    for (let i = 0; i < 20; i++) {
+      await act(async () => {
+        jest.advanceTimersByTime(100);
+      });
+      seen.push(opacity('seat-turn-clock'));
+    }
+    expect(red()).toEqual([1, 1]);
+    expect(Math.min(...seen)).toBeLessThan(0.7);
+  });
+
+  it('turns red without pulsing under reduced motion', async () => {
+    await renderSettled(table(state({ lastPlayedCombination: single(KING), lastPlayedBy: 0 }), OFFLINE_TIMER));
+    await act(async () => {
+      jest.advanceTimersByTime(urgentAt - 1000);
+    });
+    expect(red()).toEqual([0, 0]);
+    for (let i = 0; i < 20; i++) {
+      await act(async () => {
+        jest.advanceTimersByTime(100);
+      });
+      expect(opacity('seat-turn-clock')).toBe(1);
+    }
+    expect(red()).toEqual([1, 1]);
   });
 
   it('sweeps for another seat online after the viewer has gone out', async () => {
