@@ -195,7 +195,7 @@ describe('the shake reads reduced motion at the point trauma is set (#794)', () 
     await r.unmount();
   });
 
-  it.each([['bomb', true], ['mancheWon', false]] as const)('%s: the shake rotates the table only for a bomb', async (tier, turns) => {
+  it.each<[ImpactTier, boolean]>([['bomb', true], ['mancheWon', false]])('%s: the shake rotates the table only for a bomb', async (tier, turns) => {
     setMotionPreference('off');
     jest.useFakeTimers();
     const shakeRef: React.MutableRefObject<((tier: ImpactTier) => void) | null> = { current: null };
@@ -203,7 +203,7 @@ describe('the shake reads reduced motion at the point trauma is set (#794)', () 
     await act(async () => shakeRef.current!(tier));
     await act(async () => { jest.advanceTimersByTime(Motion.duration.shake / 12); });
 
-    const { transform } = getAnimatedStyle(screen.getByTestId('shake-probe')) as { transform: Record<string, string>[] };
+    const { transform } = getAnimatedStyle(screen.getByTestId('shake-probe')) as unknown as { transform: Record<string, string>[] };
     const deg = parseFloat(transform.find((t) => 'rotate' in t)!.rotate);
     expect(Math.abs(deg) > 0).toBe(turns);
     jest.useRealTimers();
