@@ -95,8 +95,12 @@ export function misnamedWorktrees(dirs) {
   return dirs.filter((d) => !AGENT_DIR.test(d.split(/[\\/]/).pop() ?? ""));
 }
 
+/** Directories only: a session's scratch file there is not a worktree, and refusing it halted a run. */
+export const worktreeDirs = (dir = WORKTREE_DIR) =>
+  existsSync(dir) ? readdirSync(dir, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name) : [];
+
 /** @returns {Result} */
-export function namedWorktrees(dirs = existsSync(WORKTREE_DIR) ? readdirSync(WORKTREE_DIR) : []) {
+export function namedWorktrees(dirs = worktreeDirs()) {
   const bad = misnamedWorktrees(dirs);
   if (bad.length === 0) return null;
   return {

@@ -1,11 +1,15 @@
 // tools/loop/tests/queuePre.test.ts
 import { test, describe } from "node:test";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import assert from "node:assert/strict";
 import {
   CHECKS,
   main,
   misnamedWorktrees,
   namedWorktrees,
+  worktreeDirs,
   redMain,
   script,
   summarise,
@@ -130,6 +134,20 @@ describe("namedWorktrees", () => {
     assert.equal(row?.state, "failed");
     assert.equal(row?.stop, 1);
     assert.match(row?.note ?? "", /worktrees:remove -- .*fix-971/);
+  });
+
+  test("reads directories only, so a scratch file beside a worktree does not stop the run", () => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), "worktrees-"));
+    try {
+      mkdirSync(path.join(dir, "agent-1094"));
+      writeFileSync(path.join(dir, "agent-1094.diff"), "diff --git a/x b/x\n");
+      assert.deepEqual(worktreeDirs(dir), ["agent-1094"]);
+      assert.equal(namedWorktrees(worktreeDirs(dir)), null);
+      mkdirSync(path.join(dir, "cost-a5"));
+      assert.equal(namedWorktrees(worktreeDirs(dir))?.stop, 1);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 

@@ -259,7 +259,10 @@ const PROTOCOL = ["CLAUDE.md", ".claude", "tools/loop", "scripts/lib"];
 /** Worktree directories someone else may be working in right now. */
 function peerWorktrees(dir = ".worktrees") {
   try {
-    return fs.readdirSync(dir).filter((name) => name.startsWith("agent-"));
+    return fs
+      .readdirSync(dir, { withFileTypes: true })
+      .filter((d) => d.isDirectory() && d.name.startsWith("agent-"))
+      .map((d) => d.name);
   } catch {
     return [];
   }
