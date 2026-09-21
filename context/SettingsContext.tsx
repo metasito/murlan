@@ -4,7 +4,7 @@ import { setSoundsMasterVolume } from "@/lib/sounds";
 import { setMusicMasterEnabled, setMusicMasterVolume } from "@/lib/music";
 import { setHapticsMasterEnabled } from "@/lib/haptics";
 import { SETTINGS_KEY as STORAGE_KEY } from "@/lib/storageKeys";
-import { setMotionPreference, type MotionPreference } from "@/lib/accessibility";
+import { setMotionPreference, setScreenShakeEnabled, type MotionPreference } from "@/lib/accessibility";
 import { migrateAudio, withEnabled, withVolume, type AudioLevel } from "@/lib/audioLevel";
 import {
   DEFAULT_CARD_BACK,
@@ -26,6 +26,7 @@ interface Settings {
   /** What unmuting the music returns to. */
   musicVolumeRestore: number;
   hapticsEnabled: boolean;
+  screenShake: boolean;
   motion: MotionPreference;
   cardBack: CardBackId;
   tableFelt: TableFeltId;
@@ -44,6 +45,7 @@ interface SettingsContextValue extends Settings {
   setMusicEnabled: (v: boolean) => void;
   setMusicVolume: (v: number) => void;
   setHapticsEnabled: (v: boolean) => void;
+  setScreenShake: (v: boolean) => void;
   setMotion: (v: MotionPreference) => void;
   setCardBack: (v: CardBackId) => void;
   setTableFelt: (v: TableFeltId) => void;
@@ -58,6 +60,7 @@ const defaults: Settings = {
   musicVolume: DEFAULT_MUSIC_VOLUME,
   musicVolumeRestore: DEFAULT_MUSIC_VOLUME,
   hapticsEnabled: true,
+  screenShake: true,
   motion: "system",
   cardBack: DEFAULT_CARD_BACK,
   tableFelt: DEFAULT_TABLE_FELT,
@@ -95,6 +98,7 @@ function parseStored(raw: string): Partial<Settings> {
   const v = parsed as Record<string, unknown>;
   const out: Partial<Settings> = migrateAudio(v, DEFAULT_SOUND_VOLUME, DEFAULT_MUSIC_VOLUME);
   if (typeof v.hapticsEnabled === "boolean") out.hapticsEnabled = v.hapticsEnabled;
+  if (typeof v.screenShake === "boolean") out.screenShake = v.screenShake;
   if (v.motion === "system" || v.motion === "on" || v.motion === "off") {
     out.motion = v.motion;
   }
@@ -151,6 +155,10 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   }, [settings.motion]);
 
   useEffect(() => {
+    setScreenShakeEnabled(settings.screenShake);
+  }, [settings.screenShake]);
+
+  useEffect(() => {
     setCosmetics(settings.cardBack, settings.tableFelt);
   }, [settings.cardBack, settings.tableFelt]);
 
@@ -164,6 +172,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     setSettings((s) => withMusic(s, withVolume(musicLevel(s), v))), []);
   const setHapticsEnabled = useCallback((v: boolean) =>
     setSettings((s) => ({ ...s, hapticsEnabled: v })), []);
+  const setScreenShake = useCallback((v: boolean) =>
+    setSettings((s) => ({ ...s, screenShake: v })), []);
   const setMotion = useCallback((v: MotionPreference) =>
     setSettings((s) => ({ ...s, motion: v })), []);
   const setCardBack = useCallback((v: CardBackId) =>
@@ -181,6 +191,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       setMusicEnabled,
       setMusicVolume,
       setHapticsEnabled,
+      setScreenShake,
       setMotion,
       setCardBack,
       setTableFelt,
@@ -192,6 +203,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       setMusicEnabled,
       setMusicVolume,
       setHapticsEnabled,
+      setScreenShake,
       setMotion,
       setCardBack,
       setTableFelt,

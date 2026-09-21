@@ -66,10 +66,12 @@ export function SettingsModal({ visible, onClose }: Props) {
     soundVolume,
     musicVolume,
     hapticsEnabled,
+    screenShake,
     motion,
     setSoundVolume,
     setMusicVolume,
     setHapticsEnabled,
+    setScreenShake,
     setMotion,
   } = useSettings();
   const { logout } = useAuth();
@@ -278,6 +280,22 @@ export function SettingsModal({ visible, onClose }: Props) {
                 />
               </View>
             )}
+
+            <View style={styles.row}>
+              <View style={styles.rowLeft}>
+                <RowIcon name="activity" />
+                <View>
+                  <Text style={styles.label}>{t("settings.screenShake")}</Text>
+                  <Text style={styles.sublabel}>{t("settings.screenShakeSubtitle")}</Text>
+                </View>
+              </View>
+              <Toggle
+                value={screenShake}
+                onValueChange={setScreenShake}
+                a11yLabel={t("settings.screenShakeA11yLabel")}
+                a11yHint={t("settings.screenShakeA11yHint")}
+              />
+            </View>
 
             <View style={styles.stackRow}>
               <View style={styles.rowLeft}>

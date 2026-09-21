@@ -201,9 +201,9 @@ export function landingTier(input: {
   return TRAUMA_BY_TIER[playTier] >= TRAUMA_BY_TIER[closureTier] ? playTier : closureTier;
 }
 
-/** The tier's peak trauma, or 0 outright when the player asked for less motion. */
-export function traumaFor(tier: ImpactTier, reduceMotion: boolean): number {
-  return reduceMotion ? 0 : TRAUMA_BY_TIER[tier];
+/** The tier's peak trauma, or 0 outright when the player asked for less motion or no shake. */
+export function traumaFor(tier: ImpactTier, reduceMotion: boolean, shakeOff: boolean): number {
+  return reduceMotion || shakeOff ? 0 : TRAUMA_BY_TIER[tier];
 }
 
 /**
@@ -267,11 +267,21 @@ const SHAKE_AMPLITUDE_Y = Spacing.snug;
  */
 const BOMB_SHAKE_AMPLITUDE_X = Spacing.xxl;
 const BOMB_SHAKE_AMPLITUDE_Y = Spacing.lg;
+const BOMB_SHAKE_ROTATE_DEG = 1.2;
+
+export interface ShakeAmplitude {
+  x: number;
+  y: number;
+  /** Degrees at trauma 1. */
+  rotate: number;
+}
 
 /** Which peak a tier's shake reads — every tier but the bomb shares the default above. */
-export function shakeAmplitudeFor(tier: ImpactTier): { x: number; y: number } {
-  if (tier === "bomb") return { x: BOMB_SHAKE_AMPLITUDE_X, y: BOMB_SHAKE_AMPLITUDE_Y };
-  return { x: SHAKE_AMPLITUDE_X, y: SHAKE_AMPLITUDE_Y };
+export function shakeAmplitudeFor(tier: ImpactTier): ShakeAmplitude {
+  if (tier === "bomb") {
+    return { x: BOMB_SHAKE_AMPLITUDE_X, y: BOMB_SHAKE_AMPLITUDE_Y, rotate: BOMB_SHAKE_ROTATE_DEG };
+  }
+  return { x: SHAKE_AMPLITUDE_X, y: SHAKE_AMPLITUDE_Y, rotate: 0 };
 }
 
 /**
@@ -291,15 +301,16 @@ export function shakeOffset(
   elapsedMs: number,
   decayMs: number,
   scale: number,
-  amplitude: { x: number; y: number } = { x: SHAKE_AMPLITUDE_X, y: SHAKE_AMPLITUDE_Y }
-): { x: number; y: number } {
+  amplitude: ShakeAmplitude = { x: SHAKE_AMPLITUDE_X, y: SHAKE_AMPLITUDE_Y, rotate: 0 }
+): { x: number; y: number; rotate: number } {
   "worklet";
   const magnitude = shakeMagnitude(trauma, elapsedMs, decayMs);
-  const wiggle =
-    decayMs <= 0 ? 0 : Math.cos((elapsedMs / decayMs) * Math.PI * 2 * SHAKE_CYCLES);
+  const phase = decayMs <= 0 ? 0 : (elapsedMs / decayMs) * Math.PI * 2 * SHAKE_CYCLES;
+  const wiggle = decayMs <= 0 ? 0 : Math.cos(phase);
   return {
     x: magnitude * wiggle * amplitude.x * scale,
     y: magnitude * wiggle * amplitude.y * scale,
+    rotate: magnitude * Math.sin(phase) * amplitude.rotate,
   };
 }
 
