@@ -79,7 +79,7 @@ describe("room:create", () => {
 describe("room:join", () => {
   test("an unknown code is ROOM_NOT_FOUND, looked up upper-cased", async () => {
     const { port, calls } = fakePort({ room: null });
-    await joinRoomIntent(port, { code: "abcdef" });
+    assert.equal(await joinRoomIntent(port, { code: "abcdef" }), undefined);
     assert.deepEqual(calls, ["getRoomByCode ABCDEF", "refuse ROOM_NOT_FOUND"]);
   });
 
@@ -91,7 +91,7 @@ describe("room:join", () => {
 
   test("a refused seat claim sends its mapped code and joins nothing", async () => {
     const { port, calls, seats } = fakePort({ claim: { ok: false, reason: "full" } });
-    await joinRoomIntent(port, { code: "ABCDEF" });
+    assert.equal(await joinRoomIntent(port, { code: "ABCDEF" }), undefined);
     assert.deepEqual(calls.slice(1), ["refuse ROOM_FULL"]);
     assert.equal(seats.size, 0);
   });

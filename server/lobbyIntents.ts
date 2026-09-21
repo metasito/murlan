@@ -69,11 +69,20 @@ export async function createRoomIntent(
 
 export async function joinRoomIntent(port: LobbyPort, { code }: z.infer<typeof RoomJoinSchema>): Promise<void> {
   const room = await port.store.getRoomByCode(code.toUpperCase());
-  if (!room) return port.refuse(payload("ROOM_NOT_FOUND"));
-  if (room.status !== "waiting") return port.refuse(payload("GAME_ALREADY_STARTED"));
+  if (!room) {
+    port.refuse(payload("ROOM_NOT_FOUND"));
+    return;
+  }
+  if (room.status !== "waiting") {
+    port.refuse(payload("GAME_ALREADY_STARTED"));
+    return;
+  }
 
   const claim = await port.store.claimRoomSeat(room.id, port.userId);
-  if (!claim.ok) return port.refuse(SEAT_CLAIM_REFUSAL[claim.reason]);
+  if (!claim.ok) {
+    port.refuse(SEAT_CLAIM_REFUSAL[claim.reason]);
+    return;
+  }
 
   port.join(room.id);
   port.seats.set(port.socketId, room.id);
