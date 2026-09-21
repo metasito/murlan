@@ -117,6 +117,22 @@ describe("a card landing's haptic", () => {
     await unmount();
   });
 
+  it("drops a bomb's pending layers when the next card lands first", async () => {
+    const { result, unmount } = await mount();
+    jest.useFakeTimers();
+    await act(async () => {
+      result.current.playImpact(true, "bottom", "bomb");
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(100);
+      result.current.playImpact(false, "top", "single");
+      jest.advanceTimersByTime(1000);
+    });
+    expect(hapticRigid).not.toHaveBeenCalled();
+    expect(hapticLight).not.toHaveBeenCalled();
+    await unmount();
+  });
+
   it("drops a bomb's pending layers when the table unmounts", async () => {
     const { result, unmount } = await mount();
     jest.useFakeTimers();

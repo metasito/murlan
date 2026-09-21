@@ -530,6 +530,8 @@ export function useTableFeedback({
 
   const playImpact = useCallback(
     (heavy: boolean, dir: FlyDirection, comboType: CombinationType) => {
+      joltTimersRef.current.forEach(clearTimeout);
+      joltTimersRef.current = [];
       if (!heavy) {
         playCardPlay();
         if (dir === "bottom") (comboType === "straight" ? hapticMedium : hapticLight)();
@@ -537,7 +539,6 @@ export function useTableFeedback({
       }
       playBomb();
       hapticHeavy();
-      joltTimersRef.current.forEach(clearTimeout);
       const rigidAt = KICK_JOLTS[0].ms;
       joltTimersRef.current = [
         setTimeout(hapticRigid, rigidAt),
