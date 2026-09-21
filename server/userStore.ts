@@ -135,21 +135,13 @@ export const userStore = {
   },
 
   /**
-   * #863: an existing account (predating the email requirement) adding one.
-   * Same `EmailTakenError` shape `createUser` raises on its own unique index —
-   * the caller's route re-checks `email IS NULL` first, but that check and
-   * this write are not one transaction, so the constraint is still the
-   * authority.
+   * An unverified claim, so `users_email_verified_lower_uq` has nothing to refuse: a clash
+   * with an address verified elsewhere surfaces when this claim is verified, not here.
    */
   async setEmail(userId: string, email: string): Promise<User> {
-    try {
-      const [user] = await db.update(users).set({ email }).where(eq(users.id, userId)).returning();
-      if (!user) throw new Error("setEmail: no such user");
-      return user;
-    } catch (err) {
-      if (uniqueViolation(err)?.includes("email")) throw new EmailTakenError();
-      throw err;
-    }
+    const [user] = await db.update(users).set({ email }).where(eq(users.id, userId)).returning();
+    if (!user) throw new Error("setEmail: no such user");
+    return user;
   },
 
   /**

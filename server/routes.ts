@@ -3,7 +3,7 @@ import { createServer, type Server } from "node:http";
 import bcrypt from "bcryptjs";
 import { routeLimiter } from "./rateLimit.ts";
 import { friendStore, type AddFriendRefusal } from "./friendStore.ts";
-import { userStore, UsernameTakenError, EmailTakenError } from "./userStore.ts";
+import { userStore, UsernameTakenError } from "./userStore.ts";
 import { deleteUser } from "./deleteAccount.ts";
 import { friendRequestRow, friendRow } from "./friendRows.ts";
 import type { FriendRequestAccepted, FriendRequestIncoming } from "../lib/wire.ts";
@@ -607,16 +607,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return;
     }
 
-    let user;
-    try {
-      user = await userStore.setEmail(userId, email);
-    } catch (err) {
-      if (err instanceof EmailTakenError) {
-        res.status(409).json({ ...payload("EMAIL_TAKEN") });
-        return;
-      }
-      throw err;
-    }
+    const user = await userStore.setEmail(userId, email);
 
     const code = await replaceEmailVerifyCode({ userId, email, ttlMs: EMAIL_VERIFY_CODE_TTL_MS });
     sendVerificationEmail(email, user.username, code, userId);

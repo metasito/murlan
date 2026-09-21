@@ -89,9 +89,13 @@ describe("renaming an account", { skip: hasDatabase() ? false : skipMessage() },
   // address's — a household NAT would otherwise share one.
   test("an account cannot cycle through names without limit", async () => {
     const { cookie } = await register(server, "ren_cycler");
-    const seen = new Set<number>();
-    for (let i = 0; i < RENAME_LIMIT + 1; i++) seen.add((await rename(cookie, `ren_cy_${i}`)).status);
-    assert.ok(seen.has(429), `never hit the cap in ${RENAME_LIMIT + 1} renames: saw ${[...seen]}`);
+    const seen = new Map<number, string>();
+    for (let i = 0; i < RENAME_LIMIT + 1; i++) {
+      const res = await rename(cookie, `ren_cy_${i}`);
+      seen.set(res.status, await res.text());
+    }
+    assert.ok(seen.has(429), `never hit the cap in ${RENAME_LIMIT + 1} renames: saw ${[...seen.keys()]}`);
+    assert.equal((JSON.parse(seen.get(429)!) as { code: string }).code, "RENAME_RATE_LIMITED");
   });
 
   test("an invite sent after a rename carries the new name", async () => {

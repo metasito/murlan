@@ -25,7 +25,6 @@ export const it: Record<keyof typeof en, string> = {
   "server.RATE_LIMITED": "Troppe richieste, rallenta.",
   "server.NOT_AUTHENTICATED": "Autenticazione richiesta",
   "server.USERNAME_TAKEN": "Username già in uso",
-  "server.EMAIL_TAKEN": "Email già registrata",
   "server.EMAIL_ALREADY_SET": "Questo account ha già un'email",
   "server.CHECK_YOUR_EMAIL": "Controlla la tua email per verificare l'indirizzo",
   "server.EMAIL_VERIFIED_ELSEWHERE": "Questa email è già verificata su un altro account. Se quell'account è tuo, accedi lì o reimposta la password. Se non lo è, puoi aggiungere un'altra email dal tuo profilo.",
