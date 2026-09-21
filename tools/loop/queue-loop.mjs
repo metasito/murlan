@@ -238,6 +238,10 @@ export function queueLoopArgs(number, size = null, phase = null) {
     // With it the twin reuses all of it — once the git status is gone too (the env below) and the
     // startup hook says nothing (loop-status.mjs), since both land ahead of the static rest.
     "--exclude-dynamic-system-prompt-sections",
+    // Plugins no protocol file names: 83 skills become 66, and the prefix every turn re-reads
+    // loses 2.3k. The prompt itself cannot move later — the ticket number is what stops a second pick.
+    "--settings",
+    path.join(HERE, "loop-settings.json"),
     "--tools",
     readAllowedTools().join(","),
     "--max-turns",

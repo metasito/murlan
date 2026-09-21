@@ -116,6 +116,21 @@ describe("queueLoopArgs", () => {
     assert.equal(args[args.indexOf("-p") + 1], "/queue 956");
   });
 
+  test("the plugins a spawn turns off are ones nothing the loop reads asks for", () => {
+    const args = queueLoopArgs(1);
+    const settings = JSON.parse(readFileSync(args[args.indexOf("--settings") + 1], "utf8"));
+    const off = Object.entries(settings.enabledPlugins).filter(([, on]) => on === false).map(([k]) => k.split("@")[0]);
+    assert.ok(off.length > 0);
+    const root = path.join(import.meta.dirname, "../../..");
+    const queue = readFileSync(path.join(root, ".claude/commands/queue.md"), "utf8");
+    const routed = [...queue.matchAll(/runs `\/([a-z-]+)`/g)].map((m) => `.claude/commands/${m[1]}.md`);
+    assert.ok(routed.length >= 2, "queue.md's routes were not found");
+    for (const file of [".claude/commands/queue.md", ...routed, "docs/agents/RULES.md", "CLAUDE.md"]) {
+      const text = readFileSync(path.join(root, file), "utf8");
+      for (const name of off) assert.ok(!text.includes(`${name}:`), `${file} names a skill of ${name}, which the spawn turns off`);
+    }
+  });
+
   test("streams JSON, which print mode refuses without --verbose", () => {
     const args = queueLoopArgs(1);
     assert.equal(args[args.indexOf("--output-format") + 1], "stream-json");

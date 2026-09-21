@@ -58,6 +58,7 @@ google-service-account.json
 
 # typescript
 *.tsbuildinfo
+.eslintcache
 .vercel
 
 .env
