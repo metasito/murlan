@@ -24,7 +24,9 @@ async function advance(ms: number) {
 }
 
 describe('sitting down at the table', () => {
-  beforeEach(() => jest.useFakeTimers());
+  beforeEach(() => {
+    jest.useFakeTimers();
+  });
   afterEach(() => {
     setMotionPreference('system');
     jest.useRealTimers();
