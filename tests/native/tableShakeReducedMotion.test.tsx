@@ -85,6 +85,7 @@ const SENTINEL = 0.918273645;
 // here only to satisfy `TableFeedbackState`, empty and neutral.
 const idleState = () => ({
   isMyTurn: false,
+  currentTurnIndex: 0,
   isFinished: false,
   exchangeActive: false,
   canPass: false,

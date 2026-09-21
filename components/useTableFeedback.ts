@@ -19,6 +19,7 @@ import {
   shakeOffset,
   shakeAmplitudeFor,
   flareKindFor,
+  handOffDelayMs,
   lampLiftFor,
   type ImpactTier,
   type FlareKind,
@@ -69,6 +70,7 @@ const KICK_JOLTS = [
 
 interface TableFeedbackState {
   isMyTurn: boolean;
+  currentTurnIndex: number;
   isFinished: boolean;
   exchangeActive: boolean;
   canPass: boolean;
@@ -90,6 +92,8 @@ interface TableFeedbackState {
 }
 
 interface TableFeedback {
+  /** `currentTurnIndex`, held back until the card that handed the turn over has landed — the lamp and the seat rings follow this. */
+  shownTurnIndex: number;
   giocaFlashStyle: AnimatedStyle<ViewStyle>;
   passaFlashStyle: AnimatedStyle<ViewStyle>;
   giocaGlowStyle: AnimatedStyle<ViewStyle>;
@@ -294,6 +298,7 @@ function useImpactFeedback(reduceMotion: boolean, scale: number) {
 
 export function useTableFeedback({
   isMyTurn,
+  currentTurnIndex,
   isFinished,
   exchangeActive,
   canPass,
@@ -347,10 +352,44 @@ export function useTableFeedback({
   // PlayedPile's `bounceTrigger` is the same pattern.
   const [flushTrigger, setFlushTrigger] = useState(0);
 
+  const handOffTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const stingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Keyed by card ids, not the object: every broadcast rebuilds it, and a
+  // round-closing pass nulls it while the card that preceded it is still flying.
+  const playedKey = lastPlayedCombination?.cards.map((c) => c.id).join(",") ?? null;
+  const landsAtRef = useRef(0);
+  useEffect(() => {
+    if (playedKey !== null) landsAtRef.current = Date.now() + handOffDelayMs(reduceMotion);
+  }, [playedKey, reduceMotion]);
+  useEffect(
+    () => () => {
+      if (handOffTimerRef.current) clearTimeout(handOffTimerRef.current);
+      if (stingTimerRef.current) clearTimeout(stingTimerRef.current);
+    },
+    []
+  );
+
+  const [turn, setTurn] = useState({ seat: currentTurnIndex, shown: currentTurnIndex });
+  if (turn.seat !== currentTurnIndex) setTurn({ seat: currentTurnIndex, shown: turn.shown });
+  useEffect(() => {
+    if (turn.shown === turn.seat) return;
+    const reveal = () => setTurn((t) => ({ ...t, shown: t.seat }));
+    const wait = landsAtRef.current - Date.now();
+    if (wait <= 0) return reveal();
+    const id = setTimeout(reveal, wait);
+    return () => clearTimeout(id);
+  }, [turn]);
+
   useEffect(() => {
     if (isMyTurn && !isFinished && !prevMyTurnRef.current) {
-      playYourTurn();
-      hapticLight();
+      const cue = () => {
+        playYourTurn();
+        hapticLight();
+      };
+      if (handOffTimerRef.current) clearTimeout(handOffTimerRef.current);
+      const wait = landsAtRef.current - Date.now();
+      if (wait <= 0) cue();
+      else handOffTimerRef.current = setTimeout(cue, wait);
     }
     prevMyTurnRef.current = isMyTurn;
   }, [isMyTurn, isFinished]);
@@ -381,8 +420,10 @@ export function useTableFeedback({
     // table — gets its own win/lose sting instead of staying silent.
     if (!gameOver) {
       prevGameOverRef.current = false;
+      if (stingTimerRef.current) clearTimeout(stingTimerRef.current);
       return;
     }
+    if (handOffTimerRef.current) clearTimeout(handOffTimerRef.current);
     if (prevGameOverRef.current) return;
     // The manche/partita shake itself is NOT fired here — this effect answers
     // `gameOver` the instant the state arrives, well ahead of the winning
@@ -404,16 +445,20 @@ export function useTableFeedback({
     // same effect again instead.
     if (outcome === "pending") return;
     prevGameOverRef.current = true;
-    if (outcome === "won") {
-      hapticSuccess();
-      playGameWin();
-      duckMusicFor(2200);
-    } else if (outcome === "lost") {
-      hapticWarn();
-      playGameLose();
-      duckMusicFor(2200);
-    }
-  }, [gameOver, rankings, players, isTeamMode, handScores, viewerId]);
+    // The verdict waits for the card that decided it to land and hold, then
+    // one beat more, so it is heard after the landing rather than over it.
+    stingTimerRef.current = setTimeout(() => {
+      if (outcome === "won") {
+        hapticSuccess();
+        playGameWin();
+        duckMusicFor(2200);
+      } else if (outcome === "lost") {
+        hapticWarn();
+        playGameLose();
+        duckMusicFor(2200);
+      }
+    }, handOffDelayMs(reduceMotion) + motionMs("shift", reduceMotion));
+  }, [gameOver, rankings, players, isTeamMode, handScores, viewerId, reduceMotion]);
 
   // A duck outlives the play that started it by a second or two, so leaving
   // the table mid-bomb would otherwise leave the music down until something
@@ -498,6 +543,7 @@ export function useTableFeedback({
   }, [reduceMotion]);
 
   return {
+    shownTurnIndex: turn.shown,
     giocaFlashStyle,
     passaFlashStyle,
     giocaGlowStyle,

@@ -33,6 +33,7 @@ function flattenStyle(style: unknown): Record<string, unknown> {
 
 const idleState = () => ({
   isMyTurn: false,
+  currentTurnIndex: 0,
   isFinished: false,
   exchangeActive: false,
   canPass: false,

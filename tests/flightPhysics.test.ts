@@ -43,6 +43,9 @@ import {
   EMPTY_PILE,
   readExchange,
   INACTIVE_EXCHANGE,
+  ANTICIPATE_PX,
+  anticipationOffset,
+  handOffDelayMs,
   impactDelayMs,
   landingHoldMs,
   landSquashScale,
@@ -503,7 +506,7 @@ describe("readExchange", () => {
 
 
 describe("impact feedback is timed to the card landing, not to the throw", () => {
-  test("a played card takes 213ms to reach the pile", () => {
+  test("a played card takes 253ms to reach the pile — the anticipation leg, then the flight", () => {
     // Sound, haptics and the bomb shake are scheduled against this. When they
     // fired at throw time instead, the bang arrived a third of a second before
     // the card that caused it.
@@ -513,7 +516,8 @@ describe("impact feedback is timed to the card landing, not to the throw", () =>
     // Motion, 300 in the Scale mockup, 380 here) for what #126 settled once.
     assert.equal(FLIGHT_MS, 260);
     assert.equal(LANDING_FRACTION, 0.82);
-    assert.equal(impactDelayMs(false), 213);
+    assert.equal(Motion.anticipate, 40);
+    assert.equal(impactDelayMs(false), 253);
   });
 
   test("under reduced motion there is no flight to wait for", () => {
@@ -530,6 +534,26 @@ describe("impact feedback is timed to the card landing, not to the throw", () =>
 });
 
 //
+describe("the anticipation leg and the hand-off", () => {
+  test("the load pulls the card straight back, away from the pile", () => {
+    assert.deepEqual(anticipationOffset(0, 100), { x: 0, y: ANTICIPATE_PX });
+    assert.deepEqual(anticipationOffset(-100, 0), { x: -ANTICIPATE_PX, y: 0 });
+    assert.deepEqual(anticipationOffset(0, 0), { x: 0, y: 0 });
+  });
+
+  test("the flight spends the anticipation step on every axis before it travels", () => {
+    const src = readFileSync(path.join(repoRoot, "components", "table", "pile.tsx"), "utf8");
+    assert.match(src, /anticipationOffset\(dx, dy\)/);
+    assert.equal(src.match(/withTiming\([^()]*, anticipate\)/g)?.length, 3);
+    assert.match(src, /arcY\.value = withDelay\(\s*Motion\.anticipate,/);
+  });
+
+  test("the turn is handed over once the card has landed and held", () => {
+    assert.equal(handOffDelayMs(false), impactDelayMs(false) + landingHoldMs(false));
+    assert.equal(handOffDelayMs(true), 0);
+  });
+});
+
 describe("the table holds still at the landing frame", () => {
   test("a landed card gets a beat before its aftermath runs", () => {
     assert.equal(landingHoldMs(false), Hold.land);

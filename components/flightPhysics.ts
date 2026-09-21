@@ -77,7 +77,22 @@ export const LANDING_FRACTION = 0.82;
 export function impactDelayMs(reduceMotion: boolean): number {
   // Under reduced motion FlyingCards skips the flight, so there is nothing to
   // wait for and the feedback fires immediately.
-  return reduceMotion ? 0 : Math.round(FLIGHT_MS * LANDING_FRACTION);
+  return reduceMotion ? 0 : Math.round(Motion.anticipate + FLIGHT_MS * LANDING_FRACTION);
+}
+
+/** How far a card loads against its direction of travel before the throw — #126's Balanced keyframe. */
+export const ANTICIPATE_PX = 3;
+
+/** Where the anticipation leg pulls a card that starts `(dx, dy)` from the pile: straight back, away from it. */
+export function anticipationOffset(dx: number, dy: number): { x: number; y: number } {
+  const len = Math.hypot(dx, dy);
+  if (len === 0) return { x: 0, y: 0 };
+  return { x: (dx / len) * ANTICIPATE_PX, y: (dy / len) * ANTICIPATE_PX };
+}
+
+/** Delay from a play being registered to the turn it hands over being shown — the landing, then its hold. */
+export function handOffDelayMs(reduceMotion: boolean): number {
+  return impactDelayMs(reduceMotion) + landingHoldMs(reduceMotion);
 }
 
 /**
