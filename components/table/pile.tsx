@@ -584,6 +584,7 @@ export function PlayedPile({
 }
 
 const CHIP_RISE = Spacing.xs;
+const FELT_SCRIM_PEAK = 0.25;
 
 function ComboChip({ isPower, children }: { isPower: boolean; children: ReactNode }) {
   const reduceMotion = usePrefersReducedMotion();
@@ -741,14 +742,21 @@ export function usePileFlight({
     matchOverRef.current = matchOver;
   }, [matchOver]);
 
+  const feltDim = useSharedValue(0);
+  const clearFeltDim = useCallback(() => {
+    cancelAnimation(feltDim);
+    feltDim.set(0);
+  }, [feltDim]);
+
   useEffect(
     () => () => {
+      cancelAnimation(feltDim);
       if (impactTimerRef.current) clearTimeout(impactTimerRef.current);
       if (roundHoldRef.current) clearTimeout(roundHoldRef.current.timer);
       if (sweepTimerRef.current) clearTimeout(sweepTimerRef.current);
       if (landTimerRef.current) clearTimeout(landTimerRef.current);
     },
-    []
+    [feltDim]
   );
 
   // The dedupe on `prevComboKeyRef` comes before anything with an effect, so a
@@ -800,6 +808,7 @@ export function usePileFlight({
         return;
       }
       if (impactTimerRef.current) clearTimeout(impactTimerRef.current);
+      clearFeltDim();
       prevComboKeyRef.current = "";
       if (roundClosedWithWinner({ lastPlayedCombination: combo, roundWinner })) {
         const origin = seatPoint(geometry, roundWinner!);
@@ -838,6 +847,18 @@ export function usePileFlight({
     // The card is thrown here and arrives ~213ms later, so everything that
     // reads as *impact* waits for it. Announced for every seat, not only the
     // viewer's: the sound belongs to a card landing, not to a tap.
+    const throwTier = landingTier({
+      comboType: combo.type,
+      handOver: gameOver,
+      matchOver: matchOverRef.current,
+    });
+    clearFeltDim();
+    if (throwTier === "bomb" && !reduceMotion) {
+      feltDim.set(
+        withTiming(FELT_SCRIM_PEAK, { duration: impactDelayMs(reduceMotion), easing: Easing.in(Easing.quad) })
+      );
+    }
+
     impactTimerRef.current = setTimeout(() => {
       const tier = landingTier({
         comboType: combo.type,
@@ -846,6 +867,7 @@ export function usePileFlight({
       });
       playImpact(thrown.heavy, thrown.dir, combo.type);
       shake(tier);
+      clearFeltDim();
       burst(tier);
       setFlinchTier(tier);
       setFlinchTrigger((t) => t + 1);
@@ -876,6 +898,8 @@ export function usePileFlight({
     burst,
     celebrateFlush,
     playRoundStart,
+    clearFeltDim,
+    feltDim,
     players,
     opponents,
     scale,
@@ -933,6 +957,7 @@ export function usePileFlight({
     bounceTrigger,
     roundWinnerTag,
     onFlightDone,
+    feltDim,
   };
 }
 

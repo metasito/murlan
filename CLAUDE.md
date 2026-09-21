@@ -56,8 +56,8 @@ Verify against source before changing any.
 - **Impact feedback is timed to the card landing**, not the throw — `impactDelayMs()` is the one
   place that delay is derived, so animation and feedback cannot drift apart.
 - **Which view covers which is stated, never left to sibling order.** Felt `zIndex: 0`, game
-  table `zIndex: 1`. Web and Android paint in tree order; iOS does not, and #209 cost three
-  sessions to that.
+  table `zIndex: 2`, the bomb's felt scrim between them. Web and Android paint in tree order; iOS
+  does not, and #209 cost three sessions to that.
 - **A native-only visual defect is diagnosed from device pixels, not from reasoning.** Sample
   first (`docs/agents/loops.md`); a fix argued from the code alone gets one thing right and two
   wrong, on the owner's phone, each round.

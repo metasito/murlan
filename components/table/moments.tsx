@@ -26,11 +26,12 @@ import Animated, {
   withDelay,
   cancelAnimation,
   Easing,
+  type SharedValue,
 } from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { sparkOffset, SPARK_COUNT, type FlareKind } from "@/components/flightPhysics";
-import { Layer, makeShadow, withAlpha, Motion } from "@/lib/theme";
+import { Layer, makeShadow, withAlpha, Motion, Scrim } from "@/lib/theme";
 
 // The prototype's own literal colours for this one effect — a lamp exploding
 // at the pile is a brighter, whiter flash than the felt's own ambient
@@ -493,6 +494,20 @@ export function LampLift({
     >
       <GradientLayers size={size} layers={LIFT_LAYERS} />
     </Animated.View>
+  );
+}
+
+// ─── Felt scrim ─────────────────────────────────────────────────────────────
+
+/** `dim` is driven by `usePileFlight` (components/table/pile.tsx), which owns the throw's timing. */
+export function FeltScrim({ dim }: { dim: SharedValue<number> }) {
+  const aStyle = useAnimatedStyle(() => ({ opacity: dim.value }));
+  return (
+    <Animated.View
+      testID="felt-scrim"
+      pointerEvents="none"
+      style={[StyleSheet.absoluteFill, { backgroundColor: Scrim.heavy, zIndex: Layer.feltScrim }, aStyle]}
+    />
   );
 }
 

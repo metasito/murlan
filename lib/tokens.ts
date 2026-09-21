@@ -297,7 +297,9 @@ export const Opacity = {
  */
 export const Layer = {
   felt: 0,
-  table: 1,
+  /** Dims the felt before a bomb lands, under every card. */
+  feltScrim: 1,
+  table: 2,
   moment: 10,
   rail: 20,
   hint: 30,

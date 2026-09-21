@@ -15,7 +15,7 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { Colors, Scrim, Highlight, Lantern, Type } from "../lib/tokens.ts";
+import { Colors, Scrim, Highlight, Lantern, Layer, Type } from "../lib/tokens.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -351,4 +351,8 @@ describe("stacking order is stated as a role", () => {
     assert.deepEqual(stackingValues("x = { zIndex: 0 };"), [["0", "0"]]);
     assert.deepEqual(stackingValues("x = { zIndex: Layer.felt };"), [["Layer", "Layer"]]);
   });
+});
+
+test("the bomb's felt scrim sits over the felt and under every card", () => {
+  assert.ok(Layer.felt < Layer.feltScrim && Layer.feltScrim < Layer.table);
 });

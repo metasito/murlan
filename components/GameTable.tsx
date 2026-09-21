@@ -93,7 +93,7 @@ import { useSameCards } from "@/components/useSameCards";
 import { useRailSide } from "@/components/useRailSide";
 import { FlyingCards, PlayedPile, SweepCards, getComboLabel, usePileFlight } from "@/components/table/pile";
 import { warmCourtArt } from "@/components/CardView";
-import { BombBurst, LampLift, Sweep } from "@/components/table/moments";
+import { BombBurst, FeltScrim, LampLift, Sweep } from "@/components/table/moments";
 import { TopOppSlot, SideOppSlot } from "@/components/table/seats";
 import { DealFlights, type DealtCard } from "@/components/table/deal";
 import { ExchangeAnnouncement } from "@/components/ExchangeAnnouncement";
@@ -740,6 +740,7 @@ export function GameTable({
     bounceTrigger,
     roundWinnerTag,
     onFlightDone,
+    feltDim,
   } = usePileFlight({
     lastPlayedCombination: gameState.lastPlayedCombination,
     lastPlayedBy: gameState.lastPlayedBy,
@@ -1011,6 +1012,8 @@ export function GameTable({
           y={light.y * feltH}
         />
       </View>
+
+      <FeltScrim dim={feltDim} />
 
       {/* The game, and everything a landing displaces. It clips at its own
           moving edge, so the strip the kick uncovers is the cloth behind it
