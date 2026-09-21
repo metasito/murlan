@@ -18,10 +18,10 @@ function fakePort(opts: {
 }) {
   const calls: string[] = [];
   const room = opts.room === null ? undefined : { ...ROOM, ...opts.room };
+  const seats = new Map<string, string>();
   const port = {
     userId: "u1",
     socketId: "s1",
-    seats: new Map<string, string>(),
     watching: new Map<string, string>(opts.watching ?? []),
     store: {
       createRoom: async (_u: string, mode: string, max: number) => {
@@ -45,6 +45,10 @@ function fakePort(opts: {
     sendState: (s: { roomId: string }) => calls.push(`sendState ${s.roomId}`),
     broadcastState: (id: string) => calls.push(`broadcastState ${id}`),
     join: (id: string) => calls.push(`join ${id}`),
+    seat: async (id: string) => {
+      calls.push(`seat ${id}`);
+      seats.set("s1", id);
+    },
     leave: (id: string) => calls.push(`leave ${id}`),
     roomState: async (r: { id: string }) => ({ roomId: r.id }),
     table: async (d: { kind: string; roomId: string }) => {
@@ -56,7 +60,7 @@ function fakePort(opts: {
     },
     track: (name: string) => calls.push(`track ${name}`),
   };
-  return { port: port as unknown as LobbyPort, calls, seats: port.seats, watching: port.watching };
+  return { port: port as unknown as LobbyPort, calls, seats, watching: port.watching };
 }
 
 describe("room:create", () => {
@@ -72,7 +76,7 @@ describe("room:create", () => {
     assert.deepEqual(calls, [
       "createRoom free_for_all 4",
       "addRoomPlayer room-1 u1 0",
-      "join room-1",
+      "seat room-1",
       "sendState room-1",
     ]);
     assert.equal(seats.get("s1"), "room-1");
@@ -104,7 +108,7 @@ describe("room:join", () => {
     await joinRoomIntent(port, { code: "ABCDEF" });
     assert.deepEqual(calls.slice(1), [
       "claimRoomSeat room-1 u1",
-      "join room-1",
+      "seat room-1",
       "track room.joined",
       "broadcastState room-1",
       "announceFilled 2",

@@ -17,7 +17,7 @@ import { onEvent } from "./socketSafety.ts";
 import type { EventOutcome } from "./socketSafety.ts";
 import { socketRoomMap } from "./gameRoom.ts";
 import { applyOrForward } from "./tableRouter.ts";
-import { joinSocketToRoom } from "./socketTable.ts";
+import { seatSocket } from "./seating.ts";
 import { payload } from "./payload.ts";
 import {
   NoPayloadSchema,
@@ -159,7 +159,7 @@ export function registerGameplayHandlers({
         }
         // Only once the table has accepted them: a socket joined to a room it
         // holds no seat at would receive every broadcast for that table.
-        joinSocketToRoom(socket, roomId);
+        await seatSocket(io, socket, userId, roomId);
         return outcome;
       },
       {

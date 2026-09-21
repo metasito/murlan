@@ -50,6 +50,7 @@ import { activeGames as activeGamesTable } from "../shared/schema.ts";
 import type { EventOutcome } from "./socketSafety.ts";
 import { activeGames, isShuttingDown, scoreKeyForSeat, seatName, seatOfUser, userRoom, voterCount } from "./gameRoom.ts";
 import { isUserOnline, onlineUserIds } from "./socketRegistry.ts";
+import { stopSpectatingEverywhere } from "./seating.ts";
 import type { OnlineGameState } from "./gameRoom.ts";
 import {
   broadcastGameState,
@@ -787,6 +788,11 @@ async function startMatchAction(
     logger.warn({ err, roomId }, "Failed to retire the invites of a room that started")
   );
   activeGames.set(roomId, newGame);
+  // Awaited: until a dealt-in player has left `spectators` on every instance,
+  // the table they watched keeps sending its state to their user room.
+  await Promise.all(Object.values(playerMap).map((uid) => stopSpectatingEverywhere(io, uid))).catch(
+    (err: unknown) => logger.warn({ err, roomId }, "Failed to stop a dealt-in player spectating")
+  );
 
   // The room hears that it started, before anyone is sent their cards.
   // `game:state` is addressed to one player and carries both facts at once —

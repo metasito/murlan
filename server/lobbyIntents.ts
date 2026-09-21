@@ -22,9 +22,9 @@ export interface LobbyPort {
     typeof roomStore,
     "createRoom" | "addRoomPlayer" | "getRoomPlayers" | "getRoomByCode" | "claimRoomSeat"
   >;
-  /** `socketRoomMap` and `spectatorRoomMap`. */
-  seats: Map<string, string>;
   watching: Map<string, string>;
+  /** `server/seating.ts` `seatSocket`, the only way a socket takes a seat. */
+  seat(roomId: string): Promise<void>;
   refuse(refusal: { message: string; code: string }): void;
   sendState(state: WireRoomState): void;
   broadcastState(roomId: string, state: WireRoomState): void;
@@ -59,8 +59,7 @@ export async function createRoomIntent(
   const room = await port.store.createRoom(port.userId, gameMode, maxPlayers, "private");
   await port.store.addRoomPlayer(room.id, port.userId, 0);
 
-  port.join(room.id);
-  port.seats.set(port.socketId, room.id);
+  await port.seat(room.id);
 
   const players = await port.store.getRoomPlayers(room.id);
   port.sendState(await port.roomState(room, players));
@@ -84,8 +83,7 @@ export async function joinRoomIntent(port: LobbyPort, { code }: z.infer<typeof R
     return;
   }
 
-  port.join(room.id);
-  port.seats.set(port.socketId, room.id);
+  await port.seat(room.id);
 
   const updatedPlayers = await port.store.getRoomPlayers(room.id);
   port.track("room.joined", port.userId, {
