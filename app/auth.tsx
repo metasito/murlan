@@ -228,7 +228,6 @@ export default function AuthScreen() {
                   style={styles.eyeBtn}
                   accessibilityRole="button"
                   accessibilityLabel={showPwd ? t("auth.hidePasswordA11yLabel") : t("auth.showPasswordA11yLabel")}
-                  hitSlop={Spacing.snug}
                 >
                   <Ionicons
                     name={showPwd ? "eye-off-outline" : "eye-outline"}
@@ -309,7 +308,8 @@ const styles = StyleSheet.create({
   },
   tabTextActive: { color: Colors.gold },
   form: { paddingTop: Spacing.md, gap: Spacing.md },
-  eyeBtn: { padding: Spacing.xxs, width: 32, height: 32, alignItems: "center", justifyContent: "center" },
+  // Reaches into the row's own padding, so the full target leaves the password row as tall as the email row.
+  eyeBtn: { width: TOUCH_TARGET_MIN, height: TOUCH_TARGET_MIN, marginVertical: -Spacing.wide, alignItems: "center", justifyContent: "center" },
   hint: {
     ...Type.caption,
     textAlign: "center",
