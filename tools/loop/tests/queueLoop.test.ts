@@ -45,6 +45,8 @@ import {
   CHECK_BASH_TIMEOUT_MS,
   STALL_MS,
   ticketFacts,
+  exhausted,
+  resumePhase,
 } from "../queue-loop.mjs";
 
 /** Enough IO for `runOnce` to reach a decision without git, the tracker or a `claude` binary. */
@@ -1064,6 +1066,48 @@ describe("reasonFor", () => {
 
   test("no live ticket at all is not a reason on its own", () => {
     assert.deepEqual(reasonFor(run(), null, 42), { why: null, hard: false });
+  });
+});
+
+// #1090 died at 121 turns with six commits and a standing worktree, and was parked for want of a
+// line it had no turn left to write.
+describe("a session cut off mid-phase", () => {
+  const cut = { result: { subtype: "error_max_turns" }, declared: null, stderr: "" };
+
+  test("exhausted() names the turn cap and the dollar cap, and nothing else", () => {
+    assert.equal(exhausted(cut as never), true);
+    assert.equal(exhausted({ stderr: "Budget limit reached ($15.08 of $15); stopping." } as never), true);
+    assert.equal(exhausted({ result: { subtype: "success" }, stderr: "" } as never), false);
+  });
+
+  const at = (phase: string, ticket = 42) => ({ cwd: ".worktrees/agent-42", phase, ticket });
+
+  test("with a live worktree it hands the derived phase on, rather than parking", () => {
+    for (const p of ["B", "C", "D"]) assert.equal(resumePhase(cut as never, at(p) as never, 42), p);
+  });
+
+  // A head that is already pushed is settle's to merge. Handing E back spends a whole session
+  // re-running a gate and a push that are done, and never reaches the open pull request.
+  test("a pushed head is left to settle, never handed back", () => {
+    assert.equal(resumePhase(cut as never, at("E") as never, 42), null);
+    assert.equal(resumePhase(cut as never, at("G") as never, 42), null);
+  });
+
+  test("no worktree, no derivable phase, or another ticket's worktree, is still a park", () => {
+    assert.equal(resumePhase(cut as never, { cwd: null, phase: "C", ticket: 42 } as never, 42), null);
+    assert.equal(resumePhase(cut as never, at("?") as never, 42), null);
+    assert.equal(resumePhase(cut as never, at("C", 955) as never, 42), null);
+    assert.equal(resumePhase(cut as never, null, 42), null);
+  });
+
+  // The dollar cap stops subagents and lets the session run on, so a finished session can carry
+  // that line in its stderr. Declaring anything at all is the test of having chosen an ending.
+  test("a session that declared anything chose its ending, and is untouched", () => {
+    const spent = { result: { subtype: "success" }, stderr: "Budget limit reached ($15.08 of $15)" };
+    for (const declared of [{ handoff: "D" }, { handoff: null, pr: 9 }, { stoodDown: true, why: "lost" }]) {
+      assert.equal(resumePhase({ ...spent, declared } as never, at("C") as never, 42), null);
+    }
+    assert.equal(resumePhase({ ...spent, declared: null } as never, at("C") as never, 42), "C");
   });
 });
 

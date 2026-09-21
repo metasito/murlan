@@ -42,6 +42,7 @@ export function report(s, reason = process.env.LOOP_REASON) {
   }
   const next =
     {
+      B: "B — Scope. One sonnet subagent maps the change, then build.",
       C: s.fix
         ? `C (fix round ${s.ciRounds || 1}) — CI failed at ${s.ci?.step ?? "an unnamed step"}; ` +
           "read the CI-RED comment, fix, hand off to D."

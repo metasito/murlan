@@ -449,10 +449,17 @@ export function derive({
   const land = commits > 0 && verdict?.decision === "LAND";
   const ciRead = ci && land ? readCi(cwd, branch, head, exec) : null;
   const fix = Boolean(ciRead?.pushed && ciRead.pr !== null && ciRead.state === "red");
-  let phase = commits === 0 ? "C" : !verdict ? "D" : land ? "E" : "C";
+  // A claimed worktree that is clean and has no commits has not been worked yet, so it owes its
+  // scope pass. Deriving C there made every session declare `PHASE C` and then, on reading
+  // queue.md, `PHASE B` — which transposed every step row the board printed and billed the build
+  // to B in `loop-cost`. Dirty is the discriminator: an edit in the tree means C has begun.
+  const scoping = commits === 0 && !dirty;
+  let phase = scoping ? "B" : commits === 0 ? "C" : !verdict ? "D" : land ? "E" : "C";
   let why =
     commits === 0
-      ? "nothing committed yet"
+      ? scoping
+        ? "claimed, with nothing committed and nothing in the tree yet"
+        : "nothing committed yet"
       : !trackerReadable
         ? "cannot reach the tracker to read the review"
         : !verdict

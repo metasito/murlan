@@ -428,9 +428,6 @@ export function activity({ said, recent = [], ms, frame = 0 }, t, take = RECENT)
   return rows.join("\n");
 }
 
-const ordinal = (n) =>
-  n % 100 >= 11 && n % 100 <= 13 ? "th" : (["th", "st", "nd", "rd"][n % 10] ?? "th");
-
 /**
  * The ticket, boxed. Two lines of chrome buys a hard edge, which is what makes a night of scrollback
  * skimmable by ticket instead of by hunting for the next header.
@@ -438,52 +435,43 @@ const ordinal = (n) =>
  * The number is the link, so the URL does not need a line of its own — it was the same forty
  * characters every ticket and the only varying part was already in the header. A resumed ticket
  * never went through the picker, so it has no queue depths; printing zeroes would read as an
- * empty queue.
+ * empty queue. How far the run has got is `recap`'s, outside the box.
  *
  * @param {{number: number, title: string, size?: string|null, url?: string,
- *   queue: {implement: number, triage: number, wayfinder: number}|null,
- *   nth?: number, runMs?: number, spend?: number}} ticket
+ *   queue: {implement: number, triage: number, wayfinder: number}|null}} ticket
  */
-export function header({ number, title, size, url, queue, nth, runMs, spend }, t) {
+export function header({ number, title, size, url, queue }, t) {
   const id = `#${number}`;
-  const tag = size ?? "";
-  const inner = t.width - 2;
+  const inner = Math.max(0, t.width - 2);
 
   // Laid out as plain text and measured, then painted. Every fixed piece is counted here rather
   // than assumed, because a header one cell too wide wraps and the redraw below it erases the
-  // wrong row from then on.
+  // wrong row from then on. The tag sheds from the left — `resumed` before the size — rather than
+  // pushing the title past the edge, and nothing below is floored above zero for the same reason.
   const head = `╭─ ${id}  `;
-  const tail = tag ? ` ${tag} ─╮` : " ─╮";
-  const room = t.width - cols(head) - cols(tail) - 1;
-  const shown = clamp(title, Math.max(8, room - 1));
-  const fill = "─".repeat(Math.max(1, room - cols(shown)));
+  const pieces = [queue ? null : "resumed", size].filter(Boolean);
+  let tail = " ─╮";
+  let room = 0;
+  for (let i = 0; i <= pieces.length; i++) {
+    const tag = pieces.slice(i).join(" ─ ");
+    tail = tag ? ` ${tag} ─╮` : " ─╮";
+    room = t.width - cols(head) - cols(tail) - 1;
+    if (room >= TITLE_FLOOR) break;
+  }
+  const shown = clamp(title, Math.max(0, room - 1));
+  const fill = "─".repeat(Math.max(0, room - cols(shown)));
+  const plain = `${head}${shown} ${fill}${tail}`;
   const top =
-    t.paint("faint", "╭─ ") +
-    t.link(url, t.paint("bright", id, true)) +
-    t.paint("faint", "  ") +
-    t.paint("text", shown) +
-    t.paint("faint", ` ${fill}`) +
-    t.paint("faint", tail);
+    cols(plain) <= t.width
+      ? t.paint("faint", "╭─ ") +
+        t.link(url, t.paint("bright", id, true)) +
+        t.paint("faint", "  ") +
+        t.paint("text", shown) +
+        t.paint("faint", ` ${fill}`) +
+        t.paint("faint", tail)
+      : t.paint("faint", clamp(plain, t.width));
 
-  const facts = clamp(
-    [
-      queue ? `${queue.implement} in queue` : "resumed",
-      nth ? `${nth}${ordinal(nth)} ticket this run` : null,
-      runMs != null ? `run ${elapsed(runMs)}` : null,
-      spend != null ? `${money(spend)} spent` : null,
-    ]
-      .filter(Boolean)
-      .join(" · "),
-    Math.max(0, inner - 3),
-  );
-  return [
-    top,
-    t.paint("faint", "│  ") +
-      t.paint("faint", facts) +
-      " ".repeat(Math.max(0, inner - cols(facts) - 2)) +
-      t.paint("faint", "│"),
-    t.paint("faint", `╰${"─".repeat(inner)}╯`),
-  ].join("\n");
+  return [top, t.paint("faint", clamp(`╰${"─".repeat(inner)}╯`, t.width))].join("\n");
 }
 
 /**
@@ -568,17 +556,20 @@ export function stream(feed, { ms, frame = 0, letter }, t, take = 14) {
 }
 
 /**
- * The queue after a ticket, against the queue before it. The header carries the depth; the
- * direction is what matters across an unattended night — a frontier that grows every ticket is the
- * loop filing follow-ups faster than it lands them.
+ * Where the run stands, after a ticket and outside its box. The direction is what matters across
+ * an unattended night — a frontier that grows every ticket is the loop filing follow-ups faster
+ * than it lands them.
  */
-export function queueLine(before, after, t) {
+export function recap(totals, before, after, t) {
   const empty = !after.implement && !after.triage && !after.wayfinder;
   const moved = (k) => (before[k] === after[k] ? String(after[k]) : `${before[k]}→${after[k]}`);
   const detail = empty
     ? "empty"
     : `${moved("implement")} to implement · ${moved("triage")} to triage · ${moved("wayfinder")} wayfinder`;
-  return stepRow({ label: "queue", detail, ms: null, state: "skipped" }, t);
+  return [
+    stepRow({ label: "run", detail: runTotal(totals), ms: null, state: "skipped" }, t),
+    stepRow({ label: "queue", detail, ms: null, state: "skipped" }, t),
+  ].join("\n");
 }
 
 /**

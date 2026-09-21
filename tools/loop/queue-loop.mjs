@@ -33,7 +33,7 @@ import {
   notice,
   phaseRow,
   progress,
-  queueLine,
+  recap,
   PLAIN,
   reportRow,
   runTotal,
@@ -405,6 +405,25 @@ export const overHandoffs = (n) => n >= MAX_HANDOFFS;
 
 /** @param {{declared: {handoff?: string|null, stoodDown?: boolean}|null}} run */
 export const handoffOf = (run) => (run.declared?.stoodDown ? null : (run.declared?.handoff ?? null));
+
+/** Cut off by the turn cap or the dollar cap. */
+export const exhausted = (run) =>
+  run.result?.subtype === "error_max_turns" || /Budget limit reached/.test(run.stderr ?? "");
+
+/** The phases a synthesised handoff may name. E and G are the pushed head's, which `settle` owns. */
+const RESUMABLE = new Set(["B", "C", "D"]);
+
+/**
+ * Where a cut-off session's successor resumes, or null. `declared` is the whole test of being cut
+ * off: a session that said anything — a handoff, a stand-down, a finished `LOOP-RESULT` — chose its
+ * ending, and the dollar cap stops subagents while letting such a session run on to declare one.
+ * `after.ticket` is checked because `reasonFor`'s hard guards are downstream of this.
+ */
+export function resumePhase(run, after, ticket) {
+  if (run.declared || !exhausted(run)) return null;
+  if (!after?.cwd || after.ticket !== ticket) return null;
+  return RESUMABLE.has(after.phase) ? after.phase : null;
+}
 
 /**
  * How long to wait out a spent usage window.
@@ -1629,43 +1648,38 @@ export async function settle(pending, screen, opts = {}) {
   }
 }
 
-/** The `failing:` line's ceiling, so one long test id cannot itself carry the line over budget. */
-const FAILING_LINE_MAX = 200;
-
-/** The fenced excerpt's ceiling, which is what keeps `ciRedBody` inside its own 15-line budget. */
+/** The fenced excerpt's ceiling, for the failures that parse as no test id at all. */
 const EXCERPT_LINES = 8;
 
-function failingLine(testIds) {
-  if (testIds.length === 0) return "failing: (no test ids parsed)";
-  const shown = [];
-  let used = 0;
-  for (const id of testIds) {
-    const width = (shown.length ? "; " : "").length + id.length;
-    if (shown.length > 0 && used + width > FAILING_LINE_MAX) break;
-    shown.push(id);
-    used += width;
-  }
-  const rest = testIds.length - shown.length;
-  return `failing: ${shown.join("; ")}${rest > 0 ? ` +${rest} more` : ""}`;
-}
+/** The distinct files behind a run's failing ids — the fix rounds the branch owes. */
+export const failingFiles = (testIds) => [...new Set(testIds.map((id) => id.split(" › ")[0]))];
 
 /**
- * The CI-RED comment's exact shape, so `ciRedRounds` can count it and a fix round can read it
- * without re-fetching the run. `shared` is `sharedPlan`'s line.
+ * The CI-RED comment's exact shape, so `ciRedRounds` can count it and a fix round can find the
+ * failure. Not a summary of the failure: the reference to it, because every budget that tried to
+ * fit one into a comment dropped the part that mattered. `shared` is `sharedPlan`'s line.
  *
  * @param {{sha: string, runUrl: string, failedStep?: string, testIds?: string[], excerpt?: string,
- *   shared?: string}} args
+ *   shared?: string, runId?: number}} args
  */
-export function ciRedBody({ sha, runUrl, failedStep, testIds = [], excerpt = "", shared = "none" }) {
-  return [
+export function ciRedBody({ sha, runUrl, failedStep, testIds = [], excerpt = "", shared = "none", runId }) {
+  const files = failingFiles(testIds);
+  // A count of zero would be a target a round meets by diagnosing nothing, so a step whose output
+  // parses as no test id says that instead of stating one.
+  const body = [
     `CI-RED ${sha}`,
     `run: ${runUrl} · step: ${failedStep ?? "an unnamed step"}`,
-    failingLine(testIds),
+    files.length
+      ? `failing: ${files.length} failing files, ${testIds.length} tests — read them, do not guess:`
+      : "failing: no test id parsed — this step's own output is the count. Read the run:",
+    "```sh",
+    `gh run view ${runId} --log-failed | grep -E "✖|AssertionError|error TS|FAIL " -A5`,
+    "```",
+    ...files.map((f) => `- ${f}`),
     `shared: ${shared}`,
-    "```",
-    ...excerpt.split("\n").slice(-EXCERPT_LINES),
-    "```",
-  ].join("\n");
+  ];
+  if (files.length === 0) body.push("```", ...excerpt.split("\n").slice(-EXCERPT_LINES), "```");
+  return body.join("\n");
 }
 
 /** Bounds each `gh` call `postCiRedOnce` makes, so a wedged one cannot stall the supervisor. */
@@ -1729,6 +1743,7 @@ function postCiRedOnce(ticket, verdict, shared, comments, run, write, log) {
     testIds: verdict.testIds ?? [],
     excerpt: verdict.output,
     shared,
+    runId: verdict.runId,
   });
   try {
     const file = ciRedNotePath(ticket);
@@ -2036,7 +2051,7 @@ export async function runOnce(io, pinned = null, at = null) {
   }
   // Before the pull request is looked for: a session that handed off has not pushed and is not
   // finished, and every reading below is about a session that meant to be its ticket's last.
-  let handoff = handoffOf(run);
+  let handoff = handoffOf(run) ?? resumePhase(run, after, route.number);
   let because = null;
   if (handoff === "D" && !io.buildPassed(after?.cwd ?? null)) {
     io.log(`#${route.number} handed off to review with no local pass on a clean HEAD — back to C`, "build");
@@ -2218,17 +2233,15 @@ function realIo(book, screen) {
       const route = nextRoute(pinned, at);
       picked = route;
       if (route.resuming) return route;
-      if (before) screen.say(queueLine(before, route.queue, screen.theme));
+      if (before) screen.say(recap(book.totals, before, route.queue, screen.theme));
       before = route.queue;
       return route;
     },
     spawn: (route) => {
       if (!route.resuming) {
         if (screen.needsHeader(route.number)) {
-          const { tickets, ms, cost } = book.totals;
-          const run = { nth: tickets + 1, runMs: tickets ? ms : null, spend: tickets ? cost : null };
           const url = `https://github.com/${REPO}/issues/${route.number}`;
-          screen.say(header({ number: route.number, title: route.title, size: route.size, url, queue: route.queue, ...run }, screen.theme));
+          screen.say(header({ number: route.number, title: route.title, size: route.size, url, queue: route.queue }, screen.theme));
         }
         // A lost race exits 1, which `sh` raises. It is not a failure of this run: the ticket is
         // someone else's, and the shape that says so is the stand-down every other path already
