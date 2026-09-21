@@ -76,19 +76,20 @@ export function decideVerdict(run: RunRow | undefined, jobs: JobRow[] = []): Ver
   if (run.conclusion === "success") {
     return { pass: true, runId: run.databaseId, reason: "ci.yml passed" };
   }
-  // ci.yml's concurrency group cancels an in-progress pull-request run on every new push, so this
-  // is the common path, not an edge. Asked through the jobs instead, the ones that never started
-  // carry conclusion null with zero steps and read as a stepless runner failure.
-  if (run.conclusion === "cancelled") {
-    return { pass: false, runId: run.databaseId, infrastructure: true, reason: "the run was cancelled" };
-  }
-
   // A job that actually failed outranks one that ran nothing, and the order matters: a run that
   // fails fast cancels its siblings, and a cancelled job that never reached its first step is
   // stepless. Asked the other way round, this reported `infrastructure` and named the cancelled
   // job — hiding a real red `Secret scan` for two rounds, which is exactly the fix round the
-  // infrastructure verdict exists to prevent being wasted.
+  // infrastructure verdict exists to prevent being wasted. A cancelled run is the same case:
+  // rereading it never changes its jobs, so a red among them must reach the fix round.
   const realFailure = jobs.find((j) => j.conclusion === "failure" && j.steps > 0);
+
+  // ci.yml's concurrency group cancels an in-progress pull-request run on every new push, so this
+  // is the common path, not an edge. Asked through the jobs instead, the ones that never started
+  // carry conclusion null with zero steps and read as a stepless runner failure.
+  if (run.conclusion === "cancelled" && !realFailure) {
+    return { pass: false, runId: run.databaseId, infrastructure: true, reason: "the run was cancelled" };
+  }
 
   // A skipped job reports zero steps too, and it means the opposite: its gate answered, rather
   // than the runner never starting. `android-build`/`ios-build` skip on every run but the weekly
