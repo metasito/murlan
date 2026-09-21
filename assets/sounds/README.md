@@ -26,13 +26,16 @@ each with a gain, a start offset and a playback rate. Mixing runs in Chromium's
 `OfflineAudioContext` — there is no ffmpeg here, and it gives decoding, gain,
 pitch and overlap for free.
 
-Two outputs are not simply a clip:
+Three outputs are not simply a clip:
 
 - **`bomb`** layers a chip clatter, a card shove and a drop, so the biggest play
   in the game lands as an impact rather than a click.
 - **`game_win`** and **`game_lose`** are arpeggios. The packs contain no jingle,
   so one struck glass note is resampled to three pitches — a rising major triad
   for the win, a falling pair for the loss.
+- **`room_full`** is the same glass note at a third and a fifth, two quick notes
+  for the last seat of the lobby filling; each seat before it is `seat_fill`, a
+  single *Casino Audio* chip laid down.
 
 **`reject`**, a refused GIOCA, is plain *Interface Sounds* `error_004.wav` —
 the sibling of the `error_003.wav` under `game_lose`, so a refusal and a lost
