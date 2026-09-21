@@ -66,6 +66,7 @@ const STAT_ICON = 14;
 const MEDAL_ICON = 16;
 const RANK_STAGGER_MS = 70;
 const FLAKE_COUNT = 24;
+// A one-off like flightPhysics SPARK_PHASE_MS: the gap between flake waves, no step on the scale.
 const FLAKE_PHASE_MS = 40;
 const FLAKE_SIZE = 4;
 const FLAKE_FALL = 36;
