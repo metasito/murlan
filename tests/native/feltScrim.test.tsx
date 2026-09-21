@@ -27,6 +27,7 @@ jest.mock('@/lib/sounds', () => ({
 import { GameTable } from '@/components/GameTable';
 import { impactDelayMs } from '@/components/flightPhysics';
 import { setMotionPreference } from '@/lib/accessibility';
+import { setScreenShakeEnabled } from '@/lib/screenShake';
 import type { Card, Combination, GameState, Player } from '@/lib/gameEngine';
 
 const METRICS = {
@@ -89,6 +90,7 @@ describe('the felt dims before a bomb lands', () => {
   afterEach(async () => {
     jest.useRealTimers();
     await act(async () => setMotionPreference('system'));
+    await act(async () => setScreenShakeEnabled(true));
   });
 
   it('rises toward 0.25 across the flight and is gone at the impact', async () => {
@@ -107,6 +109,16 @@ describe('the felt dims before a bomb lands', () => {
     const r = await render(table(stateAfter(SINGLE)));
     await advance(impactDelayMs(false) * 0.8);
     expect(scrimOpacity()).toBe(0);
+    await r.unmount();
+  });
+
+  it('with screen shake off, the bomb still flies and still throws its sparks', async () => {
+    setScreenShakeEnabled(false);
+    const r = await render(table(stateAfter(BOMB)));
+    expect(screen.getByTestId('flying-cards')).toBeTruthy();
+    await advance(impactDelayMs(false) + 1);
+    await advance(90);
+    expect((getAnimatedStyle(screen.getByTestId('spark-0')) as { opacity?: number }).opacity).toBeGreaterThan(0);
     await r.unmount();
   });
 

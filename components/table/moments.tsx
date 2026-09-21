@@ -572,6 +572,7 @@ export function Sweep({
 
   return (
     <Animated.View
+      testID="sweep"
       pointerEvents="none"
       style={[
         {

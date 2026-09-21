@@ -23,7 +23,7 @@
 // instant it returns, not merely by the time something later reads it.
 import { describe, it, expect, jest, afterEach } from '@jest/globals';
 import React from 'react';
-import { act, render } from '@testing-library/react-native';
+import { act, render, screen } from '@testing-library/react-native';
 import * as flightPhysics from '@/components/flightPhysics';
 import { setMotionPreference } from '@/lib/accessibility';
 import { setScreenShakeEnabled } from '@/lib/screenShake';
@@ -58,7 +58,8 @@ jest.mock('react-native-reanimated', () => {
 // Imported after the mock above (jest hoists `jest.mock` calls to the top of
 // the file, ahead of every import) so both this file's `Animated.View` and
 // `useTableFeedback.ts`'s own `useSharedValue` calls go through the wrapper.
-import Animated from 'react-native-reanimated';
+import Animated, { getAnimatedStyle } from 'react-native-reanimated';
+import { Motion } from '@/lib/theme';
 import { useTableFeedback } from '@/components/useTableFeedback';
 
 jest.mock('@/lib/sounds', () => ({
@@ -191,6 +192,21 @@ describe('the shake reads reduced motion at the point trauma is set (#794)', () 
     expect(traumaSpy).toHaveBeenCalledWith('bomb', false, !enabled);
     expect(mockSequences.count > 0).toBe(enabled);
 
+    await r.unmount();
+  });
+
+  it.each([['bomb', true], ['mancheWon', false]] as const)('%s: the shake rotates the table only for a bomb', async (tier, turns) => {
+    setMotionPreference('off');
+    jest.useFakeTimers();
+    const shakeRef: React.MutableRefObject<((tier: ImpactTier) => void) | null> = { current: null };
+    const r = await render(<ShakeProbe shakeRef={shakeRef} />);
+    await act(async () => shakeRef.current!(tier));
+    await act(async () => { jest.advanceTimersByTime(Motion.duration.shake / 12); });
+
+    const { transform } = getAnimatedStyle(screen.getByTestId('shake-probe')) as { transform: Record<string, string>[] };
+    const deg = parseFloat(transform.find((t) => 'rotate' in t)!.rotate);
+    expect(Math.abs(deg) > 0).toBe(turns);
+    jest.useRealTimers();
     await r.unmount();
   });
 });

@@ -1,6 +1,6 @@
 import { describe, it, expect, jest, afterEach } from "@jest/globals";
 import React from "react";
-import { act, render, screen } from "@testing-library/react-native";
+import { act, fireEvent, render, screen, within } from "@testing-library/react-native";
 import { getAnimatedStyle } from "react-native-reanimated";
 import { PlayedPile } from "@/components/table/pile";
 import { setMotionPreference } from "@/lib/accessibility";
@@ -46,9 +46,16 @@ describe("the combo chip enters, and a power play's chip catches a sheen", () =>
     await r.unmount();
   });
 
-  it("a bomb's chip carries the sheen", async () => {
+  it("a bomb's chip carries a sheen that passes once, over Motion.duration.reveal", async () => {
+    jest.useFakeTimers();
     const r = await render(pile(BOMB));
-    expect(screen.getByTestId("combo-chip-sheen")).toBeTruthy();
+    await fireEvent(screen.getByTestId("combo-chip"), "layout", { nativeEvent: { layout: { width: 80, height: 20 } } });
+    const band = () => getAnimatedStyle(within(screen.getByTestId("combo-chip-sheen")).getByTestId("sweep")) as { opacity?: number };
+
+    await act(async () => { jest.advanceTimersByTime(Motion.duration.reveal / 2); });
+    expect(band().opacity).toBe(1);
+    await act(async () => { jest.advanceTimersByTime(Motion.duration.reveal / 2 + 16); });
+    expect(band().opacity).toBe(0);
     await r.unmount();
   });
 
