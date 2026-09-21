@@ -28,9 +28,10 @@ import Animated, {
   cancelAnimation,
 } from "react-native-reanimated";
 import Svg, { Defs, Line, Pattern, RadialGradient, Rect, Stop } from "react-native-svg";
-import { Colors, Lantern, Layer, motionMs } from "@/lib/theme";
+import { Colors, Lantern } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import type { FeltStops } from "@/lib/cosmetics";
+import { FeltBreath } from "@/components/table/feltBreath";
 
 // Every radial here is an ellipse, and the box it is painted into is what
 // states its shape. Neither of the two ways of saying so on the gradient itself
@@ -149,9 +150,6 @@ const LAMP_MS = 800;
 /** How far above its mark the lamp hangs as the table appears, as a share of the felt's height. */
 const LAMP_SETTLE = 0.06;
 
-/** How much of the felt is still dark as the table appears, before the lamp comes up. */
-const BREATH_DIM = 0.55;
-
 /**
  * The pool is twice the felt on each side — a 2560x1440 surface on a laptop —
  * and the swing moves it. Without its own compositor layer the browser
@@ -183,15 +181,6 @@ export function FeltPool({
   const reduceMotion = usePrefersReducedMotion();
   const x = useSharedValue(lightX * width);
   const y = useSharedValue((lightY - LAMP_SETTLE) * height);
-  const breath = useSharedValue(BREATH_DIM);
-
-  useEffect(() => {
-    breath.value = withTiming(0, {
-      duration: motionMs("reveal", reduceMotion),
-      easing: Easing.inOut(Easing.sin),
-    });
-  }, [reduceMotion, breath]);
-
   useEffect(() => {
     const duration = reduceMotion ? 0 : LAMP_MS;
     const easing = Easing.bezier(0.34, 1.36, 0.5, 1);
@@ -203,9 +192,8 @@ export function FeltPool({
     () => () => {
       cancelAnimation(x);
       cancelAnimation(y);
-      cancelAnimation(breath);
     },
-    [x, y, breath]
+    [x, y]
   );
 
   const atLamp = () =>
@@ -219,7 +207,6 @@ export function FeltPool({
   // running a second `withTiming` is what makes the two unable to part company
   // mid-swing.
   const napStyle = useAnimatedStyle(atLamp);
-  const breathStyle = useAnimatedStyle(() => ({ opacity: breath.value }));
 
   // Each radial's own ellipse, `rx` by `ry` of the felt, centred on the point
   // it hangs from. The box is the SVG's own size, so the viewport is what
@@ -375,7 +362,7 @@ export function FeltPool({
         </Svg>
       </View>
 
-      <Animated.View testID="felt-breath" style={[StyleSheet.absoluteFill, feltStyles.breath, breathStyle]} />
+      <FeltBreath />
     </View>
   );
 }
@@ -385,5 +372,4 @@ const feltStyles = StyleSheet.create({
   // one. Without the clip it is the document that grows on web, and the first
   // control to take focus scrolls the whole table off the screen.
   clip: { overflow: "hidden" },
-  breath: { backgroundColor: Colors.bg, zIndex: Layer.table },
 });
