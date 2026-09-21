@@ -106,13 +106,23 @@ it.
 
 `PHASE B`
 
-One subagent (`sonnet`), so the codebase never enters this context:
+One subagent (`sonnet`), so the codebase never enters this context. Its prompt starts with the
+output of this, verbatim:
 
-> Investigate issue #N in the worktree `.worktrees/agent-N`. Report: every place the change has to
-> touch as `path:start-end — what that range does`, never a bare file name; existing patterns worth
-> reusing, the same way; the risks; and whether the ticket makes sense at all. If it is ambiguous,
-> its premise is wrong, or the codebase already does it, say so plainly. Around 30 lines. Do not
-> spawn any subagent, and do not run `npm run agent:check`.
+```sh
+node tools/loop/brief.mjs scope <n> .worktrees/agent-<n>
+```
+
+**A `size:L` ticket with three or more independent feature groups is split before it is built.**
+The scope report lists the groups. Keep the first group here; file each other group as its own
+ticket, carrying its boxes and any owner ruling word for word:
+
+```sh
+gh issue create --title "<group> (split from #<n>)" --body-file <file> --label ready-for-agent --label size:<S|M>
+```
+
+Then post a new Definition of done on #<n> naming only the first group's boxes and each child
+ticket, and build only that group.
 
 No file is out of scope; if the recon names the schema, the socket protocol, `.replit` or a
 workflow, say in the PR body what it costs to get wrong.
@@ -197,14 +207,11 @@ from git with none of this conversation.
 Before leaving C, `git rev-list --count origin/main..HEAD` must be non-zero. Then, in this order:
 
 1. **The completeness check.** A review round costs a fresh process; a box found missing here costs
-   one subagent. One `sonnet` subagent, given the output of `gh issue view <n> --comments` and
-   `git diff origin/main...HEAD`, and nothing else:
+   one subagent. One `sonnet` subagent whose prompt starts with the output of this, verbatim:
 
-   > For each Definition-of-done box on issue #N (a later comment overrides the body), answer done,
-   > partial or missing. Done names the `<path>:<line>` that does it and the test that fails when that
-   > line is deleted — a test that passes either way does not count. Then list what the issue asks
-   > for that no box covers, and every caller of a changed function the diff did not update. Do not
-   > spawn any subagent. Around 20 lines.
+   ```sh
+   node tools/loop/brief.mjs completeness <n> .worktrees/agent-<n>
+   ```
 
    Build what it reports partial or missing, with the failing test first, and ask it again on the
    new diff until it reports nothing. Where you think it is wrong, check the code, not your memory.
@@ -240,34 +247,38 @@ sha the previous round reviewed — that delta, plus the findings it left open.
 node tools/loop/loop-gate.mjs --fix-delta <landSha>
 ```
 
-If its `lines` is at most 80: one `sonnet` reviewer, given that delta and the `CI-RED` comment, with
-both briefs below, and no refuter. Its comment's first line is `REVIEW <sha> fix`, still with both
-headings. Otherwise, the full review below.
+If its `lines` is at most 80: one `sonnet` reviewer whose prompt starts with the output of this,
+verbatim, with no refuter:
+
+```sh
+node tools/loop/brief.mjs fix <n> .worktrees/agent-<n> <landSha>
+```
+
+Its comment's first line is `REVIEW <sha> fix`, still with both headings. Otherwise, the full
+review below.
+
+`<base>` is `origin/main` in round 1, else the sha the previous round reviewed.
 
 The full review: two fresh `sonnet` subagents (rule 29's independent reviewers), dispatched in one
-message so they run at once, each given the diff and nothing else — never your reasoning:
+message so they run at once, each whose prompt starts with the output of one of these, verbatim:
 
-- **Standards** — sources: `docs/agents/RULES.md` plus the skill's Fowler smell baseline (paste it
-  in full). Report only what affects correctness or breaks a documented rule, by number, quoted.
-  Skip what tooling enforces. Around 15 lines.
-- **Spec** — source: issue #N's body and comments. Report requirements missing or partial,
-  behaviour not asked for, and anything implemented but wrong, quoting the issue. Around 15 lines.
+```sh
+node tools/loop/brief.mjs standards <n> .worktrees/agent-<n> <base>
+node tools/loop/brief.mjs spec <n> .worktrees/agent-<n> <base>
+```
 
-**When the diff changes a contract** — what a function promises beyond its types — name it in the
-Spec brief: `The diff changes this promise: <old> → <new>. Find every caller that still assumes the
-old one, and every test that would pass either way.`
+**When the diff changes a contract** — what a function promises beyond its types — append this to
+the Spec brief: `The diff changes this promise: <old> → <new>. Find every caller that still assumes
+the old one, and every test that would pass either way.`
 
-Both: `Do not spawn any subagent. Report findings only — what checked out is not reported. Every
-finding names a file:line and either the rule number it breaks, a quoted line of the issue, or the
-input that makes it go wrong. A finding carrying none of those three is a note, and notes are not
-reported.`
+Then one more `sonnet` subagent, given both reports and whose prompt starts with the output of this,
+verbatim:
 
-Then one more `sonnet` subagent, given both reports and the same diff, and nothing else:
+```sh
+node tools/loop/brief.mjs refute <n> .worktrees/agent-<n> <base>
+```
 
-> For each finding below, try to kill it. A finding survives only if you can state the input or the
-> sequence that makes the code wrong, or quote the rule or the issue line it breaks. Answer with the
-> surviving findings and one sentence each on what killed the rest. Do not spawn any subagent, and
-> do not review the diff for anything the reports did not raise.
+A dispatch that edits a brief, or names a review without one, is denied by `guard-agent-model.mjs`.
 
 Post both reports as one comment, unmerged, first line naming the head they read:
 
