@@ -594,6 +594,7 @@ const styles = StyleSheet.create({
   },
   joinBtn: {
     minHeight: TOUCH_TARGET_MIN,
+    minWidth: TOUCH_TARGET_MIN,
     borderRadius: Radius.sm,
     backgroundColor: Colors.gold,
     paddingHorizontal: Spacing.wide,

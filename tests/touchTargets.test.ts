@@ -44,28 +44,26 @@ const SIZED_AT_RUNTIME: [string, number, string][] = [
 
 /**
  * Controls declaring the height floor whose width is the row they fill or their own label plus
- * padding, neither of which a source scan can measure. `tests/e2e/tapTargets.spec.ts` sweeps only
- * home, the lobbies, the room and a table mid-play; the rest are unmeasured until #1114.
+ * padding, neither of which a source scan can measure. The fourth field is the label of the
+ * `sweepSizes` call in `tests/e2e/tapTargets.spec.ts` that measures it on a rendered screen.
  */
-const WIDTH_FROM_LAYOUT: [string, number, string][] = [
-  ["components/DifficultyLadder.tsx", 1, "a ladder segment, `flex: 1` in the ladder row"],
-  ["components/GameOverOverlay.tsx", 1, "the breakdown toggle, a labelled row"],
-  ["components/HandBreakdown.tsx", 2, "retry and replay, a label plus horizontal padding"],
-  ["components/HistoryRow.tsx", 1, "a history row, the list's full width"],
-  ["components/NotificationBanner.tsx", 1, "the banner body, the banner's full width"],
-  ["components/ReplayControls.tsx", 1, "a move row, the move list's full width"],
-  ["components/ResultBoard.tsx", 2, "home is `HOME_BTN_W` wide, rematch is `flex: 1`"],
-  ["components/SettingsModal.tsx", 4, "rows filling the modal's width"],
-  ["components/table/rematchPrompt.tsx", 2, "yes and no, labelled choices sharing the prompt's row"],
-  ["components/table/settingsSheet.tsx", 1, "a sheet row, the sheet's full width"],
-  ["app/(online)/friends.tsx", 1, "join, a label plus `Spacing.wide` each side"],
-  ["app/(online)/index.tsx", 3, "the modal's cancel and confirm buttons, `flex: 1` in its row"],
-  ["app/(online)/room.tsx", 2, "copy and share, an icon plus a label"],
-  ["app/auth.tsx", 1, "a tab, `flex: 1` in the tab bar"],
-  ["app/capture.tsx", 1, "a capture row, the list's full width"],
-  ["app/index.tsx", 6, "the hero, the mode tiles, the rules link, the avatar and the invite buttons, each a labelled block"],
-  ["app/profile.tsx", 1, "a door row, the card's full width"],
-  ["app/rules.tsx", 2, "an FAQ question and the tutorial link, each a labelled row"],
+const WIDTH_FROM_LAYOUT: [string, number, string, string][] = [
+  ["components/DifficultyLadder.tsx", 1, "a ladder segment, `flex: 1` in the ladder row", "offline lobby"],
+  ["components/GameOverOverlay.tsx", 1, "the breakdown toggle, a labelled row", "match over"],
+  ["components/HandBreakdown.tsx", 1, "replay, a label plus horizontal padding", "hand breakdown"],
+  ["components/HistoryRow.tsx", 1, "a history row, the list's full width", "profile, after a hand"],
+  ["components/NotificationBanner.tsx", 1, "the banner body, the banner's full width", "notification banner"],
+  ["components/ReplayControls.tsx", 1, "a move row, the move list's full width", "replay"],
+  ["components/ResultBoard.tsx", 2, "home is `HOME_BTN_W` wide, rematch is `flex: 1`", "result board"],
+  ["components/SettingsModal.tsx", 4, "rows filling the modal's width", "settings"],
+  ["components/table/rematchPrompt.tsx", 2, "yes and no, labelled choices sharing the prompt's row", "rematch prompt"],
+  ["components/table/settingsSheet.tsx", 1, "a sheet row, the sheet's full width", "table settings sheet"],
+  ["app/(online)/index.tsx", 3, "the modal's cancel and confirm buttons, `flex: 1` in its row", "join-room modal"],
+  ["app/(online)/room.tsx", 2, "copy and share, an icon plus a label", "room, waiting for players"],
+  ["app/auth.tsx", 1, "a tab, `flex: 1` in the tab bar", "sign-in"],
+  ["app/index.tsx", 6, "the hero, the mode tiles, the rules link, the avatar and the invite buttons, each a labelled block", "home"],
+  ["app/profile.tsx", 1, "a door row, the card's full width", "profile"],
+  ["app/rules.tsx", 2, "an FAQ question and the tutorial link, each a labelled row", "rules"],
 ];
 
 /**
@@ -201,6 +199,16 @@ test("every control's touch size has been ruled on", () => {
       "more: a control nobody has ruled on is a control nobody has measured, and a claim with " +
       "nothing left to cover is one the next control will inherit"
   );
+});
+
+// A label only counts where the spec passes it as `sweepSizes`'s own argument, outside a comment.
+test("every control whose width comes from layout is measured by a named sweep", () => {
+  const spec = blankComments(read("tests/e2e/tapTargets.spec.ts"));
+  const swept = new Set([...spec.matchAll(/\bsweepSizes\(\s*page\s*,\s*"([^"]+)"/g)].map((m) => m[1]));
+  const unswept = WIDTH_FROM_LAYOUT.filter(([, , , screen]) => !swept.has(screen)).map(
+    ([file, , , screen]) => `${file}: no sweepSizes(page, "${screen}", …) in tapTargets.spec.ts`
+  );
+  assert.deepEqual(unswept, []);
 });
 
 // Without this the suite above passes on a scan that finds nothing, which is what a broken

@@ -21,10 +21,16 @@
 // it is written down: a sweep that scopes them all is making this one worse.
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
-import { openApp, registerNewAccount, startOfflineGame } from "./helpers/navigation";
-import { createRoom, goToOnlineLobby } from "./helpers/online";
+import { openApp, registerNewAccount, startOfflineGame, uniqueUsername } from "./helpers/navigation";
+import { createRoom, fillWithBotsAndStart, goToOnlineLobby } from "./helpers/online";
+import { driveGameToCompletion } from "./helpers/bot";
+import { offlineGameSave, resumeSaved } from "./helpers/offlineSeed";
 import { settled } from "./helpers/settle";
-import { TOUCH_TARGET_MIN } from "../../lib/tokens";
+import { CLOSING_HAND_CARDS } from "../../lib/gameEngine";
+import { Reading, TOUCH_TARGET_MIN } from "../../lib/tokens";
+import { it as copy } from "../../locales/it";
+
+const BANNER = '[data-testid="notification-banner"]';
 
 interface Blocked {
   label: string;
@@ -156,10 +162,10 @@ async function expectNoBuriedControls(page: Page, where: string, minControls: nu
  * react-native-web reads `hitSlop` on nothing but the legacy Touchable, so on
  * this platform a control's own box is the whole target.
  */
-async function sweepSizes(page: Page, allow: string[]): Promise<string[]> {
+async function sweepSizes(page: Page, where: string, allow: string[] = []): Promise<void> {
   // The floor crosses into the page as an argument: this callback runs in the
   // browser, where nothing this file imports exists.
-  return page.evaluate(({ allowed, MIN }) => {
+  const undersized = await page.evaluate(({ allowed, MIN }) => {
     const out: string[] = [];
     const nameOf = (el: Element): string =>
       (el.getAttribute("aria-label") || el.textContent || "").trim().slice(0, 50);
@@ -185,6 +191,7 @@ async function sweepSizes(page: Page, allow: string[]): Promise<string[]> {
     }
     return out;
   }, { allowed: allow, MIN: TOUCH_TARGET_MIN });
+  expect(undersized, where).toEqual([]);
 }
 
 /**
@@ -211,7 +218,14 @@ for (const size of SIZES) {
     await openApp(page, baseURL!);
     await settled(page, 2500);
     await expectNoBuriedControls(page, "home", 6);
-    expect(await sweepSizes(page, UNDERSIZED_BY_DESIGN), "home").toEqual([]);
+    await sweepSizes(page, "home", UNDERSIZED_BY_DESIGN);
+
+    await page.getByRole("button", { name: "Impostazioni" }).first().click();
+    await expect(page.getByRole("button", { name: "Chiudi impostazioni" })).toBeVisible();
+    await settled(page, 1500);
+    await sweepSizes(page, "settings");
+    await page.getByRole("button", { name: "Chiudi impostazioni" }).click();
+    await settled(page, 1500);
 
     await page.getByRole("button", { name: "Offline" }).click();
     await settled(page, 1500);
@@ -221,7 +235,11 @@ for (const size of SIZES) {
     await settled(page, 1200);
     await expectNoBuriedControls(page, "offline lobby, 4 players", 10);
 
-    expect(await sweepSizes(page, UNDERSIZED_BY_DESIGN), "offline lobby").toEqual([]);
+    await sweepSizes(page, "offline lobby", UNDERSIZED_BY_DESIGN);
+
+    await page.goto(`${baseURL!}/rules`);
+    await settled(page, 2500);
+    await sweepSizes(page, "rules");
   });
 
   // The table forces landscape (components/GameTable.tsx), so in portrait the
@@ -240,7 +258,7 @@ for (const size of SIZES) {
     await settled(page, 5000);
 
     await expectNoBuriedControls(page, "game table, 4 players", 10);
-    expect(await sweepSizes(page, UNDERSIZED_BY_DESIGN), "game table").toEqual([]);
+    await sweepSizes(page, "game table", UNDERSIZED_BY_DESIGN);
   });
 }
 
@@ -254,6 +272,12 @@ for (const size of SIZES) {
     await page.setViewportSize({ width: size.width, height: size.height });
 
     await openApp(page, baseURL!);
+    await page.getByRole("button", { name: "Accedi", exact: true }).click();
+    await page.waitForURL(/\/auth/);
+    await settled(page, 1500);
+    await sweepSizes(page, "sign-in");
+
+    await openApp(page, baseURL!);
     await registerNewAccount(
       page,
       `tap${Date.now().toString(36).slice(-6)}${Math.floor(Math.random() * 900 + 100)}`
@@ -261,7 +285,14 @@ for (const size of SIZES) {
     await goToOnlineLobby(page);
     await settled(page, 2500);
     await expectNoBuriedControls(page, "online lobby", 6);
-    expect(await sweepSizes(page, []), "online lobby").toEqual([]);
+    await sweepSizes(page, "online lobby");
+
+    await page.getByRole("button", { name: "Inserisci codice stanza" }).click();
+    await expect(page.getByRole("button", { name: "Annulla" })).toBeVisible();
+    await settled(page, 1500);
+    await sweepSizes(page, "join-room modal");
+    await page.getByRole("button", { name: "Annulla" }).click();
+    await settled(page, 1500);
 
     // The waiting room carries the most controls of any menu screen — format,
     // bot fill, five personality pills, the code actions and the start button —
@@ -269,7 +300,7 @@ for (const size of SIZES) {
     await createRoom(page, { playerCount: 4, gameMode: "free_for_all" });
     await settled(page, 2500);
     await expectNoBuriedControls(page, "room, waiting for players", 4);
-    expect(await sweepSizes(page, []), "room, waiting for players").toEqual([]);
+    await sweepSizes(page, "room, waiting for players");
   });
 
   test(`no control is buried on the profile and ladder — ${size.name}`, async ({ page, baseURL }) => {
@@ -284,13 +315,116 @@ for (const size of SIZES) {
     await page.getByRole("button", { name: "Il mio profilo" }).click();
     await settled(page, 3000);
     await expectNoBuriedControls(page, "profile", 2);
+    await sweepSizes(page, "profile");
 
     await page.getByRole("button", { name: /classifica/i }).first().click();
     await settled(page, 2500);
     // One: the header's back control, which is the screen's only way out.
     await expectNoBuriedControls(page, "leaderboard", 1);
+    await sweepSizes(page, "leaderboard");
+  });
+
+  test(`no control is undersized on friends or under a banner — ${size.name}`, async ({
+    page,
+    browser,
+    baseURL,
+  }) => {
+    test.setTimeout(3 * 60_000);
+    const other = await browser.newContext({ locale: "it-IT" });
+    try {
+      const target = uniqueUsername("tapft");
+      const otherPage = await other.newPage();
+      await openApp(otherPage, baseURL!);
+      await registerNewAccount(otherPage, target);
+
+      await page.setViewportSize({ width: size.width, height: size.height });
+      await openApp(page, baseURL!);
+      await registerNewAccount(page, uniqueUsername("tapfs"));
+      await page.getByRole("button", { name: /^Amici/ }).first().click();
+      await page.waitForURL(/\/friends/);
+      await settled(page, 2500);
+      await sweepSizes(page, "friends");
+
+      await page.getByRole("textbox", { name: copy["friends.searchA11yLabel"] }).fill(target);
+      await page.getByRole("button", { name: copy["friends.searchA11yLabel"] }).click();
+      await page
+        .getByRole("button", { name: copy["friends.sendRequestA11yLabel"].replace("{{username}}", target) })
+        .click();
+      await expect(page.locator(BANNER)).toContainText(copy["friends.requestSentTitle"], { timeout: 15_000 });
+      await settled(page, Reading.notice / 4, BANNER);
+      await sweepSizes(page, "notification banner");
+    } finally {
+      await other.close();
+    }
   });
 }
+
+for (const size of SIZES.filter((s) => s.width > s.height)) {
+  test(`no control is undersized on a closing match — ${size.name}`, async ({ page, baseURL }) => {
+    test.setTimeout(2 * 60_000);
+    await page.setViewportSize({ width: size.width, height: size.height });
+
+    const save = offlineGameSave(4, CLOSING_HAND_CARDS);
+    await resumeSaved(page, baseURL!, { ...save, match: { ...save.match, length: "single" } });
+    await expect(page.getByTestId("btn-rematch-yes")).toHaveCount(1);
+    await settled(page, 2500);
+    await sweepSizes(page, "rematch prompt", UNDERSIZED_BY_DESIGN);
+
+    await page.getByRole("button", { name: "Impostazioni" }).click();
+    await expect(page.locator('[data-testid="settings-sheet"]')).toBeVisible();
+    await settled(page, 1500);
+    await sweepSizes(page, "table settings sheet", UNDERSIZED_BY_DESIGN);
+  });
+
+  test(`no control is undersized on the result board — ${size.name}`, async ({ page, baseURL }) => {
+    test.setTimeout(4 * 60_000);
+    await page.setViewportSize({ width: size.width, height: size.height });
+
+    await resumeSaved(page, baseURL!, offlineGameSave(4, CLOSING_HAND_CARDS));
+    await driveGameToCompletion(page, { isFinished: async (p) => /\/result/.test(p.url()) });
+    await expect(page.getByTestId("btn-prossima-manche")).toBeVisible({ timeout: 15_000 });
+    await settled(page, 2500);
+    await sweepSizes(page, "result board");
+  });
+}
+
+// One size: an online match played out is minutes of bot play, and the overlay,
+// the breakdown and the replay only exist after one.
+test("no control is undersized after an online hand — phone landscape", async ({ page, baseURL }) => {
+  test.setTimeout(8 * 60_000);
+  await page.setViewportSize({ width: 844, height: 390 });
+
+  await openApp(page, baseURL!);
+  await registerNewAccount(page, uniqueUsername("tapover"));
+  await goToOnlineLobby(page);
+  await createRoom(page, { playerCount: 2, gameMode: "free_for_all" });
+  await page.getByRole("radio", { name: /Manche secca/ }).first().click();
+  await fillWithBotsAndStart(page);
+  await driveGameToCompletion(page, {
+    isFinished: (p) => p.getByRole("button", { name: "Esci dalla partita" }).isVisible(),
+  });
+  await settled(page, 2500);
+  await sweepSizes(page, "match over", UNDERSIZED_BY_DESIGN);
+
+  await page.getByRole("button", { name: copy["handBreakdown.toggleA11yLabel"] }).click();
+  await expect(page.getByRole("button", { name: copy["handBreakdown.openReplayA11yLabel"] })).toBeVisible({
+    timeout: 15_000,
+  });
+  await settled(page, 1500);
+  await sweepSizes(page, "hand breakdown", UNDERSIZED_BY_DESIGN);
+
+  await page.goto(`${baseURL!}/profile`);
+  const replayRow = page.getByRole("button", { name: /^Guarda:/ }).first();
+  await expect(replayRow).toBeVisible({ timeout: 15_000 });
+  await settled(page, 2500);
+  await sweepSizes(page, "profile, after a hand");
+
+  await replayRow.click();
+  await page.waitForURL(/replay/, { timeout: 15_000 });
+  await expect(page.getByRole("button", { name: "Riproduci" })).toBeVisible();
+  await settled(page, 2500);
+  await sweepSizes(page, "replay", UNDERSIZED_BY_DESIGN);
+});
 
 // UI-01: a plain View with no ScrollView/maxHeight overflowed the backdrop on
 // any viewport shorter than ~725pt — every phone in landscape, an iPhone SE

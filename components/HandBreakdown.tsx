@@ -319,6 +319,7 @@ const styles = StyleSheet.create({
   },
   retryBtn: {
     minHeight: TOUCH_TARGET_MIN,
+    minWidth: TOUCH_TARGET_MIN,
     flexDirection: "row",
     alignItems: "center",
     gap: Spacing.xs,

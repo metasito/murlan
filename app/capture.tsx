@@ -142,6 +142,7 @@ const styles = StyleSheet.create({
   list: { gap: Spacing.sm, paddingBottom: Spacing.lg },
   row: {
     minHeight: TOUCH_TARGET_MIN,
+    minWidth: TOUCH_TARGET_MIN,
     padding: Spacing.md,
     borderRadius: Radius.md,
     backgroundColor: Colors.bgSurface,
