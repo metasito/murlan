@@ -2,7 +2,7 @@
 // else is thinking.
 //
 // With three opponents the viewer spends three-odd seconds a round holding a
-// hand they were not allowed to touch, and then starts a 20s clock from a blank
+// hand they were not allowed to touch, and then starts the turn clock from a blank
 // selection. Selection is now open at all times; only the submission is gated
 // on the turn, which `playBtnValid` already does.
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';

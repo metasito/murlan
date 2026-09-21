@@ -147,30 +147,40 @@ describe("report", () => {
 });
 
 describe("mismatchedModel", () => {
+  const on = (phases: object, mainModels: object) => ({ phases, usage: { mainModels } });
+
   test("flags a row whose model family is not the phase's own", () => {
-    assert.equal(mismatchedModel({ phases: { E: 60 }, models: { "claude-opus-5": 1 } }), true);
-    assert.equal(mismatchedModel({ phases: { E: 60 }, models: { "claude-sonnet-5": 1 } }), false);
+    assert.equal(mismatchedModel(on({ E: 60 }, { "claude-opus-5": 1 })), true);
+    assert.equal(mismatchedModel(on({ E: 60 }, { "claude-sonnet-5": 1 })), false);
   });
 
-  test("judges the session's costliest model against the phase it started at", () => {
-    assert.equal(mismatchedModel({ phases: { C: 60, E: 9 }, models: { "claude-sonnet-5": 3, "claude-opus-5": 0.2 } }), true);
-    assert.equal(mismatchedModel({ phases: { D: 60, E: 9 }, models: { "claude-opus-5": 3 } }), false);
-    assert.equal(mismatchedModel({ phases: { E: 60 }, models: { "claude-sonnet-5": 1, "claude-opus-5": 0.1 } }), false);
+  // It flagged 62 of 51 tickets, including every one of v4's: a phase-C opus session whose sonnet
+  // subagents outspent it read as having run on sonnet. Subagents are not the session's model.
+  test("subagents do not decide what the session ran on", () => {
+    const row = { phases: { C: 60 }, models: { "claude-sonnet-5": 9, "claude-opus-5": 2 },
+      usage: { mainModels: { "claude-opus-5": 40 }, models: { "claude-sonnet-5": 300, "claude-opus-5": 40 } } };
+    assert.equal(mismatchedModel(row), false);
   });
 
-  test("a row naming no phase or no model has nothing to compare", () => {
-    assert.equal(mismatchedModel({ phases: {}, models: { opus: 1 } }), false);
-    assert.equal(mismatchedModel({ phases: { A: 1 }, models: {} }), false);
+  test("judges the main session's own model against the phase it started at", () => {
+    assert.equal(mismatchedModel(on({ C: 60, E: 9 }, { "claude-sonnet-5": 3 })), true);
+    assert.equal(mismatchedModel(on({ D: 60, E: 9 }, { "claude-opus-5": 3 })), false);
+  });
+
+  test("a row naming no phase, or predating the reading, has nothing to compare", () => {
+    assert.equal(mismatchedModel(on({}, { opus: 1 })), false);
+    assert.equal(mismatchedModel(on({ A: 1 }, {})), false);
+    assert.equal(mismatchedModel({ phases: { E: 60 }, models: { "claude-opus-5": 1 } }), false);
   });
 
   test("a model with no known family is not a mismatch", () => {
-    assert.equal(mismatchedModel({ phases: { E: 60 }, models: { "<synthetic>": 1 } }), false);
+    assert.equal(mismatchedModel(on({ E: 60 }, { "<synthetic>": 1 })), false);
   });
 });
 
 describe("ledgerSummary", () => {
   const row = (n: number, outcome: string, cost: number, phases: object, models: object) =>
-    ({ n, outcome, cost, phases, models });
+    ({ n, outcome, cost, phases, models, usage: { mainModels: models } });
 
   test("fix-round spend is what a ticket's rows cost after its first retry row", () => {
     const rows = [
@@ -206,8 +216,16 @@ describe("ledgerSummary", () => {
 
   test("names every row whose model family does not match its phase", () => {
     assert.deepEqual(
-      ledgerSummary([row(9, "landed", 1, { E: 60 }, { opus: 1 })]).mismatches.map((r: { n: number }) => r.n),
+      ledgerSummary([row(9, "landed", 1, { E: 60 }, { "claude-opus-5": 1 })]).mismatches.map((r: { n: number }) => r.n),
       [9],
     );
+  });
+
+  // A flag that judges nothing and reports nothing looks exactly like a flag that found nothing.
+  test("and counts the rows it could not judge, so silence is not mistaken for a pass", () => {
+    const blind = { n: 3, outcome: "landed", cost: 1, phases: { E: 60 }, models: { "claude-opus-5": 1 } };
+    const out = ledgerSummary([blind, row(9, "landed", 1, { E: 60 }, { "claude-opus-5": 1 })]);
+    assert.equal(out.unjudged, 1);
+    assert.deepEqual(out.mismatches.map((r: { n: number }) => r.n), [9]);
   });
 });

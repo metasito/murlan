@@ -44,7 +44,10 @@ test("offline vs AI — a match plays multiple hands and exercises the card exch
     await page.waitForURL(/\/game/);
   }
 
+  // Leaving with the match unfinished discards it, so home asks first
+  // (app/result.tsx).
   await page.locator('[data-testid="btn-home"]').click();
+  await page.getByTestId("confirm-accept").click();
   await page.waitForURL((url) => url.pathname === "/" || url.pathname === "");
 
   expect(consoleErrors.entries, "no console errors/warnings across the whole match").toEqual([]);

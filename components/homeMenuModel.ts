@@ -5,7 +5,13 @@
  * hero is never also a tile" is a rule about a set, and a screen that derives
  * it in JSX can only be checked by looking at it.
  */
-export type HomeAction = "resume" | "offline" | "friends" | "online" | "passAndPlay";
+export type HomeAction =
+  | "returnToTable"
+  | "resume"
+  | "offline"
+  | "friends"
+  | "online"
+  | "passAndPlay";
 
 /** The four ways to play, in the order they are offered. */
 const WAYS_TO_PLAY: HomeAction[] = ["offline", "friends", "online", "passAndPlay"];
@@ -26,18 +32,32 @@ export interface HomeMenu {
 /** The two ways to play that are nothing without an account. */
 const NEEDS_ACCOUNT: HomeAction[] = ["friends", "online"];
 
-export function homeMenu(has: { savedGame: boolean; account: boolean }): HomeMenu {
+export function homeMenu(has: {
+  savedGame: boolean;
+  account: boolean;
+  activeRoom?: boolean;
+}): HomeMenu {
   // A save is the offline game, so it is resumable with no account at all.
   // Without one the hero is `online` itself, which is why the tile list below
   // is a filter and not a subtraction of some separate hero action: promoting
   // a way to play must take it out of the grid, or it is offered twice.
-  const hero: HomeAction = has.savedGame ? "resume" : "online";
+  // A table still holding a seat outranks both: it is the only one of the
+  // three where waiting does anything to the other players.
+  const hero: HomeAction = has.activeRoom
+    ? "returnToTable"
+    : has.savedGame
+      ? "resume"
+      : "online";
   return {
     hero,
     heroNeedsAccount: hero === "online" && !has.account,
-    tiles: WAYS_TO_PLAY.filter((a) => a !== hero).map((action) => ({
-      action,
-      disabled: !has.account && NEEDS_ACCOUNT.includes(action),
-    })),
+    // `resume` is offered nowhere else, so promoting anything over it has to
+    // put it back in the grid rather than drop it.
+    tiles: [...(has.savedGame ? (["resume"] as HomeAction[]) : []), ...WAYS_TO_PLAY]
+      .filter((a) => a !== hero)
+      .map((action) => ({
+        action,
+        disabled: !has.account && NEEDS_ACCOUNT.includes(action),
+      })),
   };
 }
