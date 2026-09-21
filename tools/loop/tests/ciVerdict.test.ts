@@ -192,6 +192,19 @@ describe("a red job that cancelled its siblings", () => {
     assert.notEqual(v.infrastructure, true);
   });
 
+  // Run 35628365126 (#1101): Native tests red, iOS cancelled mid-compile, so the run read cancelled.
+  test("a cancelled run with a red job hands the red back", () => {
+    const cancelled = { databaseId: 35628365126, status: "completed", conclusion: "cancelled" } as never;
+    const v = decideVerdict(cancelled, [
+      { name: "Native tests", conclusion: "failure", steps: 8 },
+      { name: "iOS compiles", conclusion: "cancelled", steps: 12 },
+    ] as never[]);
+    assert.notEqual(v.infrastructure, true);
+    assert.equal(v.failedStep, "Native tests");
+    const onlyCancelled = decideVerdict(cancelled, [{ name: "iOS compiles", conclusion: "cancelled", steps: 12 }] as never[]);
+    assert.equal(onlyCancelled.infrastructure, true);
+  });
+
   test("a genuinely stepless job with no failure anywhere is still infrastructure", () => {
     const v = decideVerdict(run, [{ name: "Build and boot", conclusion: "failure", steps: 0 }] as never[]);
     assert.equal(v.infrastructure, true);
