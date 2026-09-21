@@ -7,7 +7,9 @@ import {
   checkMain,
   decideMainHealth,
   filedIssueArgs,
+  jobArgs,
   MAIN_RED_LABEL,
+  mainFailures,
   mainRunArgs,
   titleFor,
   WINDOW,
@@ -205,5 +207,44 @@ describe("bodyFor", () => {
     const body = bodyFor({ state: "file", runId: 5, title: titleFor(5), why: "x" }, undefined);
     assert.equal(body.includes("undefined"), false);
     assert.match(body, /id 5/);
+  });
+});
+
+describe("mainFailures", () => {
+  const REPO = "metasito/murlan";
+  const keyed = (run: MainRun, jobs: JobRow[]) => (args: string[]) => {
+    const key = args.join(" ");
+    if (key === mainRunArgs(REPO).join(" ")) return JSON.stringify([run]);
+    if (key === jobArgs(REPO, run.databaseId).join(" ")) {
+      return JSON.stringify({ jobs: jobs.map((j) => ({ ...j, steps: Array(j.steps).fill(0) })) });
+    }
+    if (key === ["run", "view", String(run.databaseId), "--repo", REPO, "--log-failed"].join(" ")) {
+      return "Typecheck and tests\tRun jest\t2026-09-21T10:00:00.0000000Z FAIL android tests/native/a.test.tsx\n";
+    }
+    throw new Error(`unexpected gh call: ${key}`);
+  };
+
+  test("a green main has no failures to give", () => {
+    assert.equal(mainFailures(keyed(GREEN, JOBS), REPO), null);
+  });
+
+  test("a red main gives its run and the failing test paths from its failed log", () => {
+    assert.deepEqual(mainFailures(keyed(RED, JOBS), REPO), {
+      runId: RED.databaseId,
+      url: RED.url,
+      ids: ["tests/native/a.test.tsx"],
+    });
+  });
+
+  test("a red main whose jobs never ran a step is infrastructure, not failures", () => {
+    const stepless = JOBS.map((j) => ({ ...j, conclusion: "failure", steps: 0 }));
+    assert.equal(mainFailures(keyed(RED, stepless), REPO), null);
+  });
+
+  test("an unreachable gh is null, never a throw", () => {
+    const gh = () => {
+      throw new Error("gh: could not connect");
+    };
+    assert.equal(mainFailures(gh, REPO), null);
   });
 });
