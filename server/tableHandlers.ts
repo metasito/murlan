@@ -788,7 +788,9 @@ async function startMatchAction(
     logger.warn({ err, roomId }, "Failed to retire the invites of a room that started")
   );
   activeGames.set(roomId, newGame);
-  void Promise.all(Object.values(playerMap).map((uid) => stopSpectatingEverywhere(io, uid))).catch(
+  // Awaited: until a dealt-in player has left `spectators` on every instance,
+  // the table they watched keeps sending its state to their user room.
+  await Promise.all(Object.values(playerMap).map((uid) => stopSpectatingEverywhere(io, uid))).catch(
     (err: unknown) => logger.warn({ err, roomId }, "Failed to stop a dealt-in player spectating")
   );
 

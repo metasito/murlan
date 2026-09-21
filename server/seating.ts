@@ -46,10 +46,12 @@ function stopLocalSpectating(io: SocketServer, userId: string): Promise<unknown>
  * per instance.
  */
 export async function stopSpectatingEverywhere(io: SocketServer, userId: string): Promise<void> {
-  io.serverSideEmit(STOP_SPECTATING_EVENT, userId);
-  await stopLocalSpectating(io, userId);
+  const peers = new Promise<void>((resolve) => io.serverSideEmit(STOP_SPECTATING_EVENT, userId, () => resolve()));
+  await Promise.all([peers, stopLocalSpectating(io, userId)]);
 }
 
 export function registerStopSpectating(io: SocketServer) {
-  io.on(STOP_SPECTATING_EVENT, (userId: string) => void stopLocalSpectating(io, userId));
+  io.on(STOP_SPECTATING_EVENT, (userId: string, reply?: () => void) => {
+    void stopLocalSpectating(io, userId).finally(() => reply?.());
+  });
 }
