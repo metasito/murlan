@@ -24,6 +24,7 @@ jest.mock('@/lib/sounds', () => ({
   playGameLose: jest.fn(async () => {}),
   playDeal: jest.fn(async () => {}),
   playExchange: jest.fn(async () => {}),
+  playCardDeselect: jest.fn(async () => {}),
   preloadSounds: jest.fn(async () => {}),
   holdSounds: jest.fn(() => () => {}),
   setSoundsMasterEnabled: jest.fn(() => {}),
@@ -40,7 +41,7 @@ jest.mock('expo-haptics', () => ({
 }));
 
 import * as Haptics from 'expo-haptics';
-import { playCardSelect } from '@/lib/sounds';
+import { playCardDeselect, playCardSelect } from '@/lib/sounds';
 import { GameTable } from '@/components/GameTable';
 import { GameProvider, useGame } from '@/context/GameContext';
 import { NotificationProvider } from '@/context/NotificationContext';
@@ -134,7 +135,21 @@ describe('selecting a card out of turn', () => {
 
     expect(onSelectCard).toHaveBeenCalledWith(SEVEN_H.id);
     expect(playCardSelect).toHaveBeenCalledTimes(1);
+    expect(playCardDeselect).not.toHaveBeenCalled();
     expect(jest.mocked(Haptics.selectionAsync)).toHaveBeenCalledTimes(1);
+
+    await r.unmount();
+  });
+
+  it('sounds a deselect apart from a select', async () => {
+    const onSelectCard = jest.fn<(id: string) => void>();
+    const r = await render(table({ currentTurnIndex: 1, selectedIds: [SEVEN_H.id], onSelectCard }));
+
+    await pressCard(SEVEN_H);
+
+    expect(onSelectCard).toHaveBeenCalledWith(SEVEN_H.id);
+    expect(playCardDeselect).toHaveBeenCalledTimes(1);
+    expect(playCardSelect).not.toHaveBeenCalled();
 
     await r.unmount();
   });

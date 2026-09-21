@@ -123,7 +123,7 @@ async function decodeWebAssets(ctx: AudioContext): Promise<void> {
   } catch {}
 }
 
-async function playWeb(key: string, assetModule: number, volume: number): Promise<void> {
+async function playWeb(key: string, assetModule: number, volume: number, rate: number): Promise<void> {
   const ctx = peekWebCtx();
   // No gesture yet, so there is nothing a browser would let us sound anyway.
   if (!ctx) return;
@@ -138,6 +138,7 @@ async function playWeb(key: string, assetModule: number, volume: number): Promis
     const source = ctx.createBufferSource();
     const gain = ctx.createGain();
     source.buffer = buffer;
+    source.playbackRate.value = rate;
     gain.gain.value = volume;
     source.connect(gain);
     gain.connect(ctx.destination);
@@ -197,12 +198,24 @@ function loadSound(key: string, assetModule: number): AudioPlayer | null {
   }
 }
 
-async function playNative(key: string, assetModule: number, volume = 1.0): Promise<void> {
+// Rewinding a player that is still sounding cuts it off, so the effects fired
+// in quick succession alternate between players.
+const VOICES: Partial<Record<string, number>> = { select: 2, play: 2 };
+const nextVoice: Record<string, number> = {};
+
+function voiceKey(key: string, voice: number): string {
+  return voice === 0 ? key : `${key}#${voice}`;
+}
+
+async function playNative(key: string, assetModule: number, volume: number, rate: number): Promise<void> {
   try {
     await ensureAudioMode();
-    const player = loadSound(key, assetModule);
+    const voice = (nextVoice[key] ?? 0) % (VOICES[key] ?? 1);
+    nextVoice[key] = voice + 1;
+    const player = loadSound(voiceKey(key, voice), assetModule);
     if (!player) return;
     player.volume = volume;
+    player.setPlaybackRate(rate);
     // A player parked at the end of its buffer plays silence, so rewind first.
     player.seekTo(0);
     player.play();
@@ -225,6 +238,7 @@ const ASSETS = {
   game_lose:   () => require("../assets/sounds/game_lose.mp3") as number,
   deal:        () => require("../assets/sounds/deal.mp3") as number,
   exchange:    () => require("../assets/sounds/exchange.mp3") as number,
+  reject:      () => require("../assets/sounds/reject.mp3") as number,
 } as const;
 
 type SoundKey = keyof typeof ASSETS;
@@ -245,22 +259,28 @@ export function setSoundsMasterVolume(v: number) {
 
 // ─── Unified play ─────────────────────────────────────────────────────────────
 
-async function play(key: SoundKey, volume: number): Promise<void> {
+const jitter = (rng: () => number, spread: number) => 1 + (rng() * 2 - 1) * spread;
+
+async function play(key: SoundKey, volume: number, rate = 1, vary?: () => number): Promise<void> {
   if (!_soundsEnabled || _masterVolume === 0) return;
-  const level = volume * _masterVolume;
+  const level = Math.min(1, volume * _masterVolume * (vary ? jitter(vary, 0.08) : 1));
+  const pitch = rate * (vary ? jitter(vary, 0.04) : 1);
   const asset = ASSETS[key]();
   if (Platform.OS === "web") {
-    await playWeb(key, asset, level);
+    await playWeb(key, asset, level, pitch);
   } else {
-    await playNative(key, asset, level);
+    await playNative(key, asset, level, pitch);
   }
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
-export async function playCardSelect(): Promise<void> { await play("select",      0.75); }
-export async function playCardPlay():   Promise<void> { await play("play",        1.0);  }
-export async function playCardPass():   Promise<void> { await play("pass",        0.75); }
+// Only the effects that repeat every hand vary; a sting stays recognisable by
+// sounding the same each time.
+export async function playCardSelect(rng: () => number = Math.random): Promise<void> { await play("select", 0.75, 1, rng); }
+export async function playCardDeselect(): Promise<void> { await play("select", 0.55, 0.9); }
+export async function playCardPlay(rng: () => number = Math.random): Promise<void> { await play("play", 1.0, 1, rng); }
+export async function playCardPass(rng: () => number = Math.random): Promise<void> { await play("pass", 0.75, 1, rng); }
 export async function playYourTurn():   Promise<void> { await play("your_turn",   0.9);  }
 export async function playRoundStart(): Promise<void> { await play("round_start", 0.85); }
 export async function playRoundWin():   Promise<void> { await play("round_win",   1.0);  }
@@ -268,8 +288,9 @@ export async function playUrgentTick(): Promise<void> { await play("urgent",    
 export async function playBomb():       Promise<void> { await play("bomb",        1.0);  }
 export async function playGameWin():    Promise<void> { await play("game_win",    1.0);  }
 export async function playGameLose():   Promise<void> { await play("game_lose",   0.85); }
-export async function playDeal():       Promise<void> { await play("deal",        0.8);  }
+export async function playDeal(rng: () => number = Math.random): Promise<void> { await play("deal", 0.8, 1, rng); }
 export async function playExchange():   Promise<void> { await play("exchange",    0.85); }
+export async function playReject(rng: () => number = Math.random): Promise<void> { await play("reject", 0.7, 1, rng); }
 
 // ─── Preload ──────────────────────────────────────────────────────────────────
 
@@ -295,7 +316,9 @@ export async function preloadSounds(): Promise<void> {
   }
   try {
     await ensureAudioMode();
-    (Object.keys(ASSETS) as SoundKey[]).forEach((k) => loadSound(k, ASSETS[k]()));
+    (Object.keys(ASSETS) as SoundKey[]).forEach((k) => {
+      for (let v = 0; v < (VOICES[k] ?? 1); v++) loadSound(voiceKey(k, v), ASSETS[k]());
+    });
     soundsLoaded = true;
   } catch (err) {
     console.warn("[sounds] Preload failed (non-fatal):", err);
