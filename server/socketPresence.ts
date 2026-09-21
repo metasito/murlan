@@ -21,7 +21,6 @@ import {
   isShuttingDown,
   seatOfUser,
   socketRoomMap,
-  spectatorRoomMap,
   userRoom,
   userSocketMap,
 } from "./gameRoom.ts";
@@ -29,9 +28,9 @@ import { clearDisconnectGrace } from "./gameTimers.ts";
 import {
   announceRejoin,
   armLobbyGrace,
-  joinSocketToRoom,
   roomStatePayload,
 } from "./socketTable.ts";
+import { seatSocket, stopSpectating } from "./seating.ts";
 import { applyOrForward } from "./tableRouter.ts";
 import { NoPayloadSchema, FriendInviteSchema } from "./socketSchemas.ts";
 import { isUserOnline, onlineUserIds } from "./socketRegistry.ts";
@@ -138,7 +137,7 @@ export async function announcePresence({ io, socket, userId }: PresenceContext) 
     if (clearDisconnectGrace(userId)) {
       for (const [roomId, game] of activeGames.entries()) {
         if (seatOfUser(game, userId) === null || game.gameState.gameOver) continue;
-        joinSocketToRoom(socket, roomId);
+        await seatSocket(io, socket, userId, roomId);
         try {
           await announceRejoin(io, userId, roomId, game);
           logger.info(
@@ -195,15 +194,7 @@ export function registerDisconnect({ io, socket, userId }: PresenceContext) {
         try {
           // A spectator holds no seat, so none of the grace/AFK machinery below
           // applies to them; they are simply dropped.
-          const spectatingRoom = spectatorRoomMap.get(socket.id);
-          if (spectatingRoom) {
-            spectatorRoomMap.delete(socket.id);
-            await applyOrForward(io, {
-              kind: "unspectate",
-              roomId: spectatingRoom,
-              userId,
-            });
-          }
+          await stopSpectating(io, socket, userId);
           // Only blank the mapping if it still points at THIS socket: a second
           // tab or a fast reconnect would otherwise black out the live one.
           if (userSocketMap.get(userId) === socket.id) {
@@ -355,8 +346,7 @@ export function evictReplacedSession(
   const roomId = socketRoomMap.get(replacedSocketId);
   if (roomId) {
     socketRoomMap.delete(replacedSocketId);
-    socketRoomMap.set(replacement.id, roomId);
-    void replacement.join(roomId);
+    void seatSocket(io, replacement, userId, roomId);
   }
 
   replaced.emit("socket:error", payload("SESSION_REPLACED"));

@@ -33,6 +33,7 @@ import { userRoom, userSocketMap } from "./gameRoom.ts";
 import { startSweeper } from "./gamePersistence.ts";
 import { installTableHandlers, resumeOrphanedTables } from "./tableHandlers.ts";
 import { reopenOwnership } from "./gameOwnership.ts";
+import { registerStopSpectating } from "./seating.ts";
 
 // The account-facing surface lives in socketRegistry.ts, apart from this file
 // so the presence family can reach it without an import cycle. Re-exported
@@ -111,6 +112,7 @@ export function setupSocket(httpServer: HttpServer) {
   reopenOwnership();
   installTableHandlers(io);
   registerSessionEviction(io);
+  registerStopSpectating(io);
 
   // Inject session into socket requests. `next` is cast because express and
   // socket.io disagree about it, not about the session: express overloads it

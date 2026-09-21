@@ -19,6 +19,7 @@ import {
   announceRoomChanged,
 } from "./socketTable.ts";
 import { applyOrForward } from "./tableRouter.ts";
+import { seatSocket, stopSpectating } from "./seating.ts";
 import {
   type LobbyPort,
   SEAT_CLAIM_REFUSAL,
@@ -49,8 +50,8 @@ export function registerRoomHandlers({ io, socket, userId }: RoomHandlerContext)
       userId,
       socketId: socket.id,
       store: roomStore,
-      seats: socketRoomMap,
       watching: spectatorRoomMap,
+      seat: (roomId) => seatSocket(io, socket, userId, roomId),
       refuse: (refusal) => socket.emit("room:error", refusal),
       sendState: (state) => socket.emit("room:state", state),
       broadcastState: (roomId, state) => io.to(roomId).emit("room:state", state),
@@ -81,11 +82,7 @@ export function registerRoomHandlers({ io, socket, userId }: RoomHandlerContext)
       "room:unspectate",
       NoPayloadSchema,
       async () => {
-        const roomId = spectatorRoomMap.get(socket.id);
-        if (!roomId) return;
-        spectatorRoomMap.delete(socket.id);
-        socket.leave(roomId);
-        await applyOrForward(io, { kind: "unspectate", roomId, userId });
+        await stopSpectating(io, socket, userId);
       },
       // Matches room:spectate: leaving cannot be cheaper to spam than joining.
       { limit: 10, windowMs: 60_000 }
@@ -128,8 +125,7 @@ export function registerRoomHandlers({ io, socket, userId }: RoomHandlerContext)
           return;
         }
 
-        socket.join(room.id);
-        socketRoomMap.set(socket.id, room.id);
+        await seatSocket(io, socket, userId, room.id);
         clearLobbyGrace(room.id, userId);
 
         const players = await roomStore.getRoomPlayers(room.id);
@@ -214,8 +210,7 @@ export function registerRoomHandlers({ io, socket, userId }: RoomHandlerContext)
           if (!claim.ok) continue;
 
           const roomId = candidate.room.id;
-          socket.join(roomId);
-          socketRoomMap.set(socket.id, roomId);
+          await seatSocket(io, socket, userId, roomId);
 
           const updatedPlayers = await roomStore.getRoomPlayers(roomId);
           io.to(roomId).emit("room:state", await roomStatePayload(claim.room, updatedPlayers));
@@ -227,8 +222,7 @@ export function registerRoomHandlers({ io, socket, userId }: RoomHandlerContext)
         if (!joinedRoomId) {
           const room = await roomStore.createRoom(userId, gameMode, maxPlayers, "public", true);
           await roomStore.addRoomPlayer(room.id, userId, 0);
-          socket.join(room.id);
-          socketRoomMap.set(socket.id, room.id);
+          await seatSocket(io, socket, userId, room.id);
 
           const players = await roomStore.getRoomPlayers(room.id);
           socket.emit("room:state", await roomStatePayload(room, players));

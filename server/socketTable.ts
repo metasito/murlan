@@ -4,7 +4,7 @@
 // These are shared by the room handlers, the gameplay handlers and the
 // disconnect path alike, so they live apart from all three: leaving them in
 // socket.ts while socket.ts imports the room family would be a cycle.
-import type { SocketServer, GameSocket as Socket } from "./socketTypes.ts";
+import type { SocketServer } from "./socketTypes.ts";
 import { friendStore } from "./friendStore.ts";
 import { roomStore } from "./roomStore.ts";
 import { logger } from "./logger.ts";
@@ -168,12 +168,6 @@ export async function emitRoomStateTo(
     players.length > 0 ? players : seatedHumansOf(game)
   );
   io.to(userRoom(userId)).emit("room:state", payload);
-}
-
-/** The half of a rejoin that belongs to the socket rather than to the table. */
-export function joinSocketToRoom(socket: Socket, roomId: string) {
-  socket.join(roomId);
-  socketRoomMap.set(socket.id, roomId);
 }
 
 /**

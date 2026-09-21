@@ -240,4 +240,63 @@ describe("spectator mode", { skip: hasDatabase() ? false : skipMessage() }, () =
     await new Promise((r) => setTimeout(r, 400));
     assert.equal(received, false, "an unspectated socket must stop receiving state");
   });
+
+  async function receivesStateWhile(socket: Socket, act: () => void): Promise<boolean> {
+    let received = false;
+    socket.once("game:state", () => {
+      received = true;
+    });
+    act();
+    await new Promise((r) => setTimeout(r, 400));
+    return received;
+  }
+
+  test("taking a seat elsewhere stops the watched table's updates", async () => {
+    const watched = await seatedGame("spec_seat_b");
+    const watcher = await connectAs(server, "spec_seat_eve");
+    sockets.push(watcher.socket);
+
+    const joined = waitFor<SanitizedState>(watcher.socket, "game:state");
+    watcher.socket.emit("room:spectate", { code: watched.room.code });
+    await joined;
+
+    const created = waitFor<RoomState>(watcher.socket, "room:state");
+    watcher.socket.emit("room:create", { gameMode: "free_for_all", maxPlayers: 2 });
+    await created;
+    tables.push([watcher.socket]);
+
+    const received = await receivesStateWhile(watcher.socket, () =>
+      playOpening([watched.alice, watched.bob], [watched.aliceState, watched.bobState])
+    );
+    assert.equal(received, false, "a seated socket must not still be watching another table");
+  });
+
+  test("starting the table a watcher is seated at stops the watched table's updates", async () => {
+    const watched = await seatedGame("spec_start_b");
+    const host = await connectAs(server, "spec_start_eve");
+    const guest = await connectAs(server, "spec_start_guest");
+    sockets.push(host.socket, guest.socket);
+
+    const created = waitFor<RoomState>(host.socket, "room:state");
+    host.socket.emit("room:create", { gameMode: "free_for_all", maxPlayers: 2 });
+    const own = await created;
+    const filled = waitFor<RoomState>(guest.socket, "room:state");
+    guest.socket.emit("room:join", { code: own.code });
+    await filled;
+    tables.push([host.socket, guest.socket]);
+
+    const watching = waitFor<SanitizedState>(host.socket, "game:state");
+    host.socket.emit("room:spectate", { code: watched.room.code });
+    await watching;
+
+    const dealt = waitFor<SanitizedState>(guest.socket, "game:state");
+    host.socket.emit("room:start");
+    await dealt;
+    await new Promise((r) => setTimeout(r, 150));
+
+    const received = await receivesStateWhile(host.socket, () =>
+      playOpening([watched.alice, watched.bob], [watched.aliceState, watched.bobState])
+    );
+    assert.equal(received, false, "a dealt-in socket must not still be watching another table");
+  });
 });
