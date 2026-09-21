@@ -173,7 +173,7 @@ export function stripLogPrefix(line: string): string {
 }
 
 const PLAYWRIGHT_FAILURE = /^\s*(?:\d+\)\s*)?\[[\w.-]+\]\s*›\s*(\S+):\d+:\d+\s*›\s*(.+?)\s*$/gm;
-const JEST_FAILURE = /^FAIL\s+(\S+)/gm;
+const JEST_FAILURE = /^FAIL\s+(?:[^\s/\\]+\s+)?(\S*[/\\]\S*)/gm;
 // `npm test`'s spec reporter, not TAP: each recap entry is this file:line:col line immediately
 // followed by the `✖ <name> (<n>ms)` line naming it (.loop-logs/ci-1079.log:318-319).
 const NODE_TEST_FAILURE = /^test at (\S+):\d+:\d+\r?\n✖ (.+?) \([\d.]+ms\)\s*$/gm;

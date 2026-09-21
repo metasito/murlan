@@ -11,6 +11,11 @@ import {
   runListArgs,
   stripLogPrefix,
 } from "../ciVerdict.ts";
+import { createRequire } from "node:module";
+
+const jestProjects: string[] = createRequire(import.meta.url)("../../../jest.config.js").projects.map(
+  (p: { displayName: string }) => p.displayName,
+);
 
 const done = (conclusion: string | null) => ({ databaseId: 7, conclusion, status: "completed" });
 
@@ -294,6 +299,23 @@ describe("failing test ids from a CI log", () => {
 
   test("a jest failure names its file", () => {
     assert.deepEqual(failingTestIds("FAIL tests/native/x.test.tsx"), ["tests/native/x.test.tsx"]);
+  });
+
+  test("a jest failure behind a project name names its file, never the project", () => {
+    const log = [
+      "FAIL android tests/native/musicPlatform.test.tsx",
+      "FAIL ios tests/native/musicPlatform.test.tsx",
+      "FAIL tests/native/musicPlatform.test.tsx",
+    ].join("\n");
+    assert.deepEqual(failingTestIds(log), ["tests/native/musicPlatform.test.tsx"]);
+  });
+
+  test("no jest project name in jest.config.js is ever a test id", () => {
+    assert.ok(jestProjects.length > 0, "jest.config.js declares no projects: this test no longer checks anything");
+    for (const name of jestProjects) {
+      const ids = failingTestIds(`FAIL ${name} tests/native/x.test.tsx\nFAIL ${name} tests/native/y.test.tsx (5.2 s)`);
+      assert.deepEqual(ids, ["tests/native/x.test.tsx", "tests/native/y.test.tsx"], name);
+    }
   });
 
   test("a log with no failures names none, a TAP-shaped line included", () => {
