@@ -509,7 +509,17 @@ const SWEEP_TRAVEL_FACTOR = 0.6;
 const SWEEP_Z = Layer.sheet + 1;
 
 /** A diagonal pass of light across the whole table — the flush's own sweep. */
-export function Sweep({ trigger, width, height }: { trigger: number; width: number; height: number }) {
+export function Sweep({
+  trigger,
+  width,
+  height,
+  durationMs = SWEEP_MS,
+}: {
+  trigger: number;
+  width: number;
+  height: number;
+  durationMs?: number;
+}) {
   const reduceMotion = usePrefersReducedMotion();
   const opacity = useSharedValue(0);
   // -1 to 1 across the band's own travel, which is applied at render: a
@@ -525,12 +535,12 @@ export function Sweep({ trigger, width, height }: { trigger: number; width: numb
     x.value = -1;
     const e = SWEEP_EASING;
     opacity.value = withSequence(
-      withTiming(1, { duration: SWEEP_MS * 0.12, easing: e }),
-      withTiming(1, { duration: SWEEP_MS * 0.76, easing: e }),
-      withTiming(0, { duration: SWEEP_MS * 0.12, easing: e })
+      withTiming(1, { duration: durationMs * 0.12, easing: e }),
+      withTiming(1, { duration: durationMs * 0.76, easing: e }),
+      withTiming(0, { duration: durationMs * 0.12, easing: e })
     );
-    x.value = withTiming(1, { duration: SWEEP_MS, easing: e });
-  }, [trigger, reduceMotion, opacity, x]);
+    x.value = withTiming(1, { duration: durationMs, easing: e });
+  }, [trigger, reduceMotion, durationMs, opacity, x]);
 
   useEffect(
     () => () => {

@@ -25,6 +25,7 @@ import { CARD_W, CARD_H, FIELD_SCALE, cardRadius } from "@/components/cardFaceMo
 import { type FlyDirection } from "@/components/seatLayout";
 import { COMBO_MAX_TILT, advancePile, anticipationOffset, cardTilt, collectPile, comboKey, EMPTY_PILE, FLIGHT_MS, flinchFor, impactDelayMs, landingHoldMs, landingTier, landSquashScale, NO_PILE, readThrownPlay, roundClosedWithWinner, settleForMotion, seatPoint, type ImpactTier, type PileLayers, type PileState, type ThrownPlayInput } from "@/components/flightPhysics";
 import { FIELD_ARC, solveArc } from "@/components/tableArc";
+import { Sweep } from "@/components/table/moments";
 
 const FLY_ROTS: Record<FlyDirection, number> = {
   bottom: -12, top: 12, left: -18, right: 18,
@@ -569,13 +570,49 @@ export function PlayedPile({
 
       {comboLabel && (
         <View style={pileStyles.comboLabel}>
-          <View style={[pileStyles.comboChip, isPower && pileStyles.comboChipPower]}>
+          <ComboChip isPower={!!isPower}>
             <TableText style={[pileStyles.comboChipText, isPower && pileStyles.comboChipTextPower]}>
               {isPower ? "✦ " : ""}
               {COMBO_LABEL_KEYS[comboLabel.type] ? t(COMBO_LABEL_KEYS[comboLabel.type]) : comboLabel.type}
               {comboLabel.cards.length > 2 ? t("gameShared.comboMultiplier", { count: comboLabel.cards.length }) : ""}
             </TableText>
-          </View>
+          </ComboChip>
+        </View>
+      )}
+    </Animated.View>
+  );
+}
+
+const CHIP_RISE = Spacing.xs;
+
+function ComboChip({ isPower, children }: { isPower: boolean; children: ReactNode }) {
+  const reduceMotion = usePrefersReducedMotion();
+  const enter = useSharedValue(reduceMotion ? 1 : 0);
+  const [size, setSize] = useState<{ w: number; h: number } | null>(null);
+
+  useEffect(() => {
+    enter.value = reduceMotion
+      ? 1
+      : withTiming(1, { duration: Motion.duration.shift, easing: Easing.out(Easing.quad) });
+  }, [reduceMotion, enter]);
+
+  useEffect(() => () => cancelAnimation(enter), [enter]);
+
+  const enterStyle = useAnimatedStyle(() => ({
+    opacity: enter.value,
+    transform: [{ translateY: (1 - enter.value) * CHIP_RISE }],
+  }));
+
+  return (
+    <Animated.View
+      testID="combo-chip"
+      style={[pileStyles.comboChip, isPower && pileStyles.comboChipPower, enterStyle]}
+      onLayout={(e) => setSize({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}
+    >
+      {children}
+      {isPower && !reduceMotion && (
+        <View testID="combo-chip-sheen" style={StyleSheet.absoluteFill} pointerEvents="none">
+          {size && <Sweep trigger={1} width={size.w} height={size.h} durationMs={Motion.duration.reveal} />}
         </View>
       )}
     </Animated.View>
@@ -985,6 +1022,7 @@ const pileStyles = StyleSheet.create({
   },
   comboChipPower: {
     borderColor: Colors.bombBorder,
+    overflow: "hidden",
   },
   comboChipText: {
     fontFamily: "Rajdhani_700Bold",
