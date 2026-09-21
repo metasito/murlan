@@ -2,6 +2,7 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { brief } from "../brief.mjs";
 
 const SCRIPT = fileURLToPath(new URL("../guard-agent-model.mjs", import.meta.url));
 
@@ -36,6 +37,42 @@ describe("a loop dispatch names its model", () => {
 
   test("another tool is allowed", () => {
     assert.equal(run(dispatch("Bash", { command: "ls" })), "");
+  });
+});
+
+const WT = "C:/Users/roton/murlan/.worktrees/agent-42";
+const agent = (description: string, prompt: string, extra: object = {}) =>
+  ({ tool_name: "Agent", tool_input: { description, prompt, model: "sonnet" }, ...extra });
+
+describe("a loop dispatch of a brief passes it verbatim", () => {
+  const exact = brief("completeness", { n: 42, worktree: WT });
+
+  test("the exact brief is allowed", () => {
+    assert.equal(run(agent("Completeness check #42", exact)), "");
+  });
+
+  test("the exact brief with material appended is allowed", () => {
+    assert.equal(run(agent("Refute findings", brief("refute", { n: 42, worktree: WT }) + "\n## Standards\n- x")), "");
+  });
+
+  test("an edited brief is denied", () => {
+    const edited = exact.replace("env var, ", "");
+    assert.match(run(agent("Completeness check #42", edited)), /brief was edited/);
+  });
+
+  test("a named review dispatch with no brief header is denied", () => {
+    for (const d of ["Completeness check 1103", "Standards review #1102", "Spec review round 2", "Refute review findings", "Scope issue 1103"]) {
+      assert.match(run(agent(d, "You are the reviewer. Read the diff.")), /must start with its brief/, d);
+    }
+  });
+
+  test("an unrelated dispatch is allowed", () => {
+    assert.equal(run(agent("Read the CI log", "Summarise the failures in .loop-logs/ci-42.log")), "");
+  });
+
+  test("a subagent's own dispatch and a session outside the loop are not judged", () => {
+    assert.equal(run(agent("Spec review", "free text", { agent_id: "a1" })), "");
+    assert.equal(run(agent("Spec review", "free text"), false), "");
   });
 });
 
