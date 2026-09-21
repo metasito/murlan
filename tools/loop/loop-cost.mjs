@@ -25,27 +25,29 @@ const ORDER = ["pre", "A", "B", "C", "D", "E", "F", "G"];
 export const MODEL_BY_PHASE = { A: "opus", B: "opus", C: "opus", D: "opus", E: "sonnet", F: "sonnet" };
 
 /**
- * $/MTok by family: base input, cache write, cache read, output.
+ * $/MTok by family: base input, 5-minute cache write, cache read, output, 1-hour cache write.
  *
  * Keyed on the family word rather than on a full id, because the logs carry four spellings of two
  * models — `claude-opus-5`, `opus`, `claude-opus-5[1m]`, `sonnet` — and an exact-match table priced
  * 64 sonnet turns at opus's rate. `report` scales absolutes onto Anthropic's reported total, so a
  * misprice lands entirely in the share column, which is the one number this file exists to give.
+ *
+ * A stream line's `output_tokens` is the count at the message's start, so output — about a fifth of
+ * a session — is invisible per message and reaches the table only through that scaling.
  */
 export const PRICE = {
-  opus: [5, 6.25, 0.5, 25],
-  sonnet: [2, 2.5, 0.2, 10],
-  haiku: [1, 1.25, 0.1, 5],
+  opus: [5, 6.25, 0.5, 25, 10],
+  sonnet: [2, 2.5, 0.2, 10, 4],
+  haiku: [1, 1.25, 0.1, 5, 2],
 };
 
 export const familyOf = (model) => Object.keys(PRICE).find((f) => String(model).includes(f)) ?? null;
 
-const priceOf = (model, u) => {
-  const [i, w, r, o] = PRICE[familyOf(model) ?? "opus"];
-  return (
-    ((u.input_tokens ?? 0) * i + (u.cache_creation_input_tokens ?? 0) * w +
-      (u.cache_read_input_tokens ?? 0) * r + (u.output_tokens ?? 0) * o) / 1e6
-  );
+export const priceOf = (model, u) => {
+  const [i, w5, r, o, w1h] = PRICE[familyOf(model) ?? "opus"];
+  const hour = u.cache_creation?.ephemeral_1h_input_tokens ?? 0;
+  const writes = (u.cache_creation_input_tokens ?? 0) - hour;
+  return ((u.input_tokens ?? 0) * i + writes * w5 + hour * w1h + (u.cache_read_input_tokens ?? 0) * r + (u.output_tokens ?? 0) * o) / 1e6;
 };
 
 const bucket = () => ({ turns: 0, tokens: 0, usd: 0, minutes: 0, toolTurns: 0, batched: 0 });

@@ -1,7 +1,7 @@
 // tools/loop/tests/loopCost.test.ts
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { ledgerSummary, mismatchedModel, readTicket, report, sinceWindow, wanted } from "../loop-cost.mjs";
+import { ledgerSummary, mismatchedModel, priceOf, readTicket, report, sinceWindow, wanted } from "../loop-cost.mjs";
 
 const at = (min: number) => new Date(Date.UTC(2026, 8, 14, 10, min)).toISOString();
 const say = (text: string, min: number, model = "claude-opus-5", parent: string | null = null) =>
@@ -109,6 +109,15 @@ describe("wanted", () => {
   test("several arguments are the union of what each names", () => {
     assert.deepEqual(wanted(files, ["70", "1050"]), ["70.jsonl", "1050.jsonl"]);
     assert.deepEqual(wanted(files, ["70", "1050+"]), ["70.jsonl", "1050.jsonl"]);
+  });
+});
+
+describe("priceOf", () => {
+  // #1097's opus session, as its result's `modelUsage` reports it: $2.6356.
+  test("prices a one-hour cache write at twice base, which is every write the loop makes", () => {
+    const u = { input_tokens: 72, output_tokens: 19229, cache_read_input_tokens: 2489832, cache_creation_input_tokens: 90963, cache_creation: { ephemeral_1h_input_tokens: 90963 } };
+    assert.equal(priceOf("claude-opus-5", u).toFixed(4), "2.6356");
+    assert.ok(priceOf("opus", { cache_creation_input_tokens: 1e6 }) < priceOf("opus", { cache_creation_input_tokens: 1e6, cache_creation: { ephemeral_1h_input_tokens: 1e6 } }));
   });
 });
 
