@@ -551,6 +551,17 @@ jobs:
       # version on this image, and it spends an 11.4 MB apt index fetch to say
       # so. Playwright re-checks the libraries at browser launch anyway, so a
       # runner image that drops one turns the first test red, not silently green.
+      #
+      # Keyed on the installed version, not package.json's range: the browser
+      # build is pinned per Playwright release. The install still runs on a hit
+      # and finds nothing to do, so a partial restore cannot go unnoticed.
+      - name: Playwright version
+        id: pw
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ steps.pw.outputs.version }}
       - name: Install Playwright's browser
         run: npx playwright install chromium
 
