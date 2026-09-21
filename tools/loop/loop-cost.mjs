@@ -17,7 +17,8 @@ const REVIEW = /\b(spec|standards) review\b/i;
 const ORDER = ["pre", "A", "B", "C", "D", "E", "F", "G"];
 
 /**
- * The model each phase is meant to run on. Defined here, not in `queue-loop.mjs`: that file
+ * The model a process is spawned on, keyed by the phase it starts at — not every phase it runs:
+ * after a LAND, E and F continue inside D's process on D's model. Defined here, not in `queue-loop.mjs`: that file
  * statically imports `.ts` sources, which crashes a light CLI importing it on Windows. `queue-loop`
  * imports this instead.
  */
