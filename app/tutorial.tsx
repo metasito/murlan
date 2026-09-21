@@ -31,6 +31,9 @@ import {
 import { useTranslation, type TFn, type TranslationKey } from "@/lib/i18n";
 import { IconButton } from "@/components/IconButton";
 import { a11yHidden } from "@/lib/a11y";
+import { TurnChip } from "@/components/table/turnChip";
+import { readStagedPlay } from "@/components/table/stagedPlay";
+import { playRefusalLabel } from "@/components/table/spokenLabels";
 
 
 // ─── Storage keys ──────────────────────────────────────────────────────────
@@ -74,6 +77,8 @@ interface InfoBeat {
   title: string;
   body: string[];
   cta: string;
+  /** Runs the table's own turn clock under the text, from this many seconds. */
+  clockSeconds?: number;
 }
 
 interface CompleteBeat {
@@ -98,6 +103,10 @@ interface PlayBeat {
   highlightIds: string[];
   opponentLabel?: string;
   successNarrative: string;
+  /** Says, as cards are picked up, whether the selection would go — the table's staging. */
+  staged?: boolean;
+  /** Nothing in hand beats the table: the answer is Pass. */
+  passes?: boolean;
 }
 
 interface ExchangeBeat {
@@ -132,6 +141,10 @@ const royalLastPlayed = buildCombination([
   mk("5", "diamonds"),
   mk("5", "clubs"),
 ])!;
+
+const passLastPlayed = buildCombination([mk("2", "spades")])!;
+const stageLastPlayed = buildCombination([mk("7", "spades"), mk("7", "hearts")])!;
+const CLOCK_DEMO_SECONDS = 10;
 
 const exchangeWinnerCard = mk("5", "diamonds");
 const exchangeDeadCard = mk("K", "clubs");
@@ -221,6 +234,29 @@ function buildBeats(t: TFn): Beat[] {
     },
     {
       kind: "play",
+      id: "pass",
+      title: t("tutorial.beat.pass.title"),
+      instruction: t("tutorial.beat.pass.instruction"),
+      tip: t("tutorial.beat.pass.tip"),
+      handCards: [mk("4", "diamonds"), mk("8", "clubs"), mk("J", "hearts"), mk("A", "clubs")],
+      lastPlayed: passLastPlayed,
+      isNewRound: false,
+      expectedType: "single",
+      highlightIds: [],
+      opponentLabel: t("tutorial.beat.pass.opponentLabel"),
+      successNarrative: t("tutorial.beat.pass.successNarrative"),
+      passes: true,
+    },
+    {
+      kind: "info",
+      id: "clock",
+      title: t("tutorial.beat.clock.title"),
+      body: [t("tutorial.beat.clock.body1"), t("tutorial.beat.clock.body2")],
+      cta: t("tutorial.beat.clock.cta"),
+      clockSeconds: CLOCK_DEMO_SECONDS,
+    },
+    {
+      kind: "play",
       id: "pair",
       title: t("tutorial.beat.pair.title"),
       instruction: t("tutorial.beat.pair.instruction"),
@@ -230,6 +266,21 @@ function buildBeats(t: TFn): Beat[] {
       expectedType: "pair",
       highlightIds: [],
       successNarrative: t("tutorial.beat.pair.successNarrative"),
+    },
+    {
+      kind: "play",
+      id: "stage",
+      title: t("tutorial.beat.stage.title"),
+      instruction: t("tutorial.beat.stage.instruction"),
+      tip: t("tutorial.beat.stage.tip"),
+      handCards: [mk("6", "hearts"), mk("6", "clubs"), mk("9", "diamonds"), mk("9", "spades"), mk("4", "clubs")],
+      lastPlayed: stageLastPlayed,
+      isNewRound: false,
+      expectedType: "pair",
+      highlightIds: [],
+      opponentLabel: t("tutorial.beat.stage.opponentLabel"),
+      successNarrative: t("tutorial.beat.stage.successNarrative"),
+      staged: true,
     },
     {
       kind: "play",
@@ -401,6 +452,7 @@ export default function TutorialScreen() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [feedback, setFeedback] = useState<{ ok: boolean; text: string } | null>(null);
   const [beatDone, setBeatDone] = useState(false);
+  const [clockRun, setClockRun] = useState(0);
 
   // Not until the session has been asked: a player who opens this screen and
   // leaves again before AuthProvider answers would otherwise be recorded on
@@ -497,6 +549,12 @@ export default function TutorialScreen() {
     }
   }
 
+  function submitPass(b: PlayBeat) {
+    setFeedback({ ok: true, text: b.successNarrative });
+    hapticSuccess();
+    setBeatDone(true);
+  }
+
   function submitExchange(b: ExchangeBeat) {
     const winnerHand = b.state.players[b.state.exchangePhase!.winnerIdx].hand;
     const selected = winnerHand.find((c) => selectedIds.has(c.id));
@@ -546,11 +604,46 @@ export default function TutorialScreen() {
               {p}
             </Text>
           ))}
+          {beat.kind === "info" && beat.clockSeconds !== undefined && (
+            <View style={styles.clockRow}>
+              <TurnChip
+                seconds={beat.clockSeconds}
+                active
+                resetKey={String(clockRun)}
+                onExpire={() => setClockRun((n) => n + 1)}
+                scale={1}
+                lit
+                chipText={t("gameShared.yourTurn")}
+                spokenSeat={t("gameTable.a11yYourTurn")}
+              />
+            </View>
+          )}
         </MenuCard>
       );
     }
 
     if (beat.kind === "play") {
+      const staged = readStagedPlay({
+        hand: beat.handCards,
+        selectedIds: [...selectedIds],
+        lastPlayedCombination: beat.lastPlayed,
+        startCard: undefined,
+        firstPlayMade: true,
+        isNewRound: beat.isNewRound,
+        isMyTurn: true,
+        isFinished: false,
+      });
+      const stagedLine =
+        beat.staged && !beatDone && selectedIds.size > 0
+          ? staged.playable
+            ? t("tutorial.stagedReady")
+            : t("tutorial.stagedBlocked", {
+                reason: playRefusalLabel(
+                  { refusal: staged.refusal, isMyTurn: true, isFinished: false, startCard: undefined },
+                  t
+                ),
+              })
+          : null;
       return (
         <>
           <MenuCard title={beat.title}>
@@ -578,6 +671,7 @@ export default function TutorialScreen() {
               {beat.handCards.map((c) => (
                 <CardView
                   key={c.id}
+                  testID={`tutorial-card-${c.id}`}
                   card={c}
                   selected={selectedIds.has(c.id)}
                   disabled={beatDone}
@@ -586,6 +680,11 @@ export default function TutorialScreen() {
                 />
               ))}
             </View>
+            {stagedLine !== null && (
+              <Text testID="tutorial-staged" style={[styles.stagedText, staged.playable && styles.stagedReady]}>
+                {stagedLine}
+              </Text>
+            )}
           </MenuCard>
 
           {feedback && (
@@ -601,11 +700,19 @@ export default function TutorialScreen() {
             </View>
           )}
 
+          {!beatDone && beat.passes && (
+            <MenuButton
+              label={t("tutorial.pass")}
+              variant="secondary"
+              onPress={() => submitPass(beat)}
+              icon={<Ionicons name="hand-left-outline" size={18} color={Colors.gold} />}
+            />
+          )}
           {!beatDone ? (
             <MenuButton
               label={t("tutorial.playCombination")}
               onPress={() => submitPlay(beat)}
-              disabled={selectedIds.size === 0}
+              disabled={selectedIds.size === 0 || (!!beat.staged && !staged.playable)}
               icon={<Ionicons name="play" size={18} color={Colors.bg} />}
             />
           ) : (
@@ -766,6 +873,9 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     gap: Spacing.sm,
   },
+  clockRow: { alignItems: "flex-start", marginTop: Spacing.sm },
+  stagedText: { ...Type.caption, color: Colors.dangerDim, marginTop: Spacing.sm },
+  stagedReady: { color: Colors.accent },
 
   highlightRing: {
     borderWidth: 2,
