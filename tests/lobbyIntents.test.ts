@@ -36,7 +36,10 @@ function fakePort(opts: {
         calls.push(`getRoomByCode ${code}`);
         return room;
       },
-      claimRoomSeat: async () => opts.claim ?? { ok: true, seatIndex: 1, room },
+      claimRoomSeat: async (id: string, u: string) => {
+        calls.push(`claimRoomSeat ${id} ${u}`);
+        return opts.claim ?? { ok: true, seatIndex: 1, room };
+      },
     },
     refuse: (r: { code: string }) => calls.push(`refuse ${r.code}`),
     sendState: (s: { roomId: string }) => calls.push(`sendState ${s.roomId}`),
@@ -92,7 +95,7 @@ describe("room:join", () => {
   test("a refused seat claim sends its mapped code and joins nothing", async () => {
     const { port, calls, seats } = fakePort({ claim: { ok: false, reason: "full" } });
     assert.equal(await joinRoomIntent(port, { code: "ABCDEF" }), undefined);
-    assert.deepEqual(calls.slice(1), ["refuse ROOM_FULL"]);
+    assert.deepEqual(calls.slice(1), ["claimRoomSeat room-1 u1", "refuse ROOM_FULL"]);
     assert.equal(seats.size, 0);
   });
 
@@ -100,6 +103,7 @@ describe("room:join", () => {
     const { port, calls, seats } = fakePort({});
     await joinRoomIntent(port, { code: "ABCDEF" });
     assert.deepEqual(calls.slice(1), [
+      "claimRoomSeat room-1 u1",
       "join room-1",
       "track room.joined",
       "broadcastState room-1",
