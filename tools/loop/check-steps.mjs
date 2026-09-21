@@ -10,7 +10,7 @@ export const STEPS = [
   { name: "comments", args: ["run", "check:comments"], where: "ci", job: "lint" },
   // Local too: its source scans are the cheapest red a review round was spent on (#1098), 44s here
   // with no Postgres. `after` runs it once the parallel steps are done, since it wants their memory.
-  { name: "test", args: ["test"], where: "local", after: true },
+  { name: "test", args: ["test"], where: "local", after: true, job: "verify" },
   { name: "loop:test", args: ["run", "loop:test"], where: "ci", job: "harness" },
   { name: "test:native", args: ["run", "test:native"], where: "ci", job: "native" },
   { name: "test:e2e", args: ["run", "test:e2e"], where: "ci", job: "browser" },

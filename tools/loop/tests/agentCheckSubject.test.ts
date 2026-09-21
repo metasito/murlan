@@ -155,6 +155,20 @@ describe("the cached verdict and what a failure prints", () => {
     assert.equal(cleanPassFor(cache, "h2"), undefined);
   });
 
+  test("a pass that deferred a suite opens the build gate but is never replayed as a whole one", () => {
+    const entry = cacheEntry({ failed: [], head: "h1", clean: true, deferred: ["test"] });
+    assert.equal(replays(entry), false);
+    assert.equal(cleanPassFor({ k: entry }, "h1"), entry);
+  });
+
+  test("a whole suite with no memory for it is deferred, not failed, and an --also one still runs", async () => {
+    const ran: string[] = [];
+    const run = async (step: { name: string }) => (ran.push(step.name), { failed: null, text: step.name });
+    const runs = await runAll([{ name: "a" }, { name: "t", after: true }], [{ name: "x" }], run as never, async () => false);
+    assert.deepEqual(ran, ["a", "x"]);
+    assert.deepEqual(runs.map((r: any) => [r.failed, r.deferred?.name ?? null]), [[null, null], [null, "t"], [null, null]]);
+  });
+
   const numbered = (n: number) => Array.from({ length: n }, (_, i) => `line ${i + 1}`).join("\n");
   const quiet = () => undefined;
 

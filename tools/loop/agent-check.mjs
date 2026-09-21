@@ -12,6 +12,7 @@ import path from "node:path";
 import { primaryWorktree, checkLockDrift, readSubject } from "./preflight.mjs";
 import { STEPS, LOCAL, DELEGATED, byName, cmd, BANNER } from "./check-steps.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
+import preflightMemory from "../../scripts/preflightMemory.mjs";
 
 /**
  * A wedged suite used to hang this check for ever, and an unattended run has nobody to notice.
@@ -22,19 +23,24 @@ const STEP_TIMEOUT_MS = 20 * 60_000;
 const SHOWN_LINES = 40;
 const HEAD_LINES = 10;
 
-export const cacheEntry = ({ failed, head, clean }) => ({
+/** @param {{failed: string[], head: string, clean: boolean, deferred?: string[]}} run */
+export const cacheEntry = ({ failed, head, clean, deferred = [] }) => ({
   pass: failed.length === 0,
   at: new Date().toISOString(),
   failed,
   head,
   clean,
+  deferred,
 });
 
-export const replays = (entry) => entry?.pass === true && typeof entry.head === "string";
+const passed = (entry) => entry?.pass === true && typeof entry.head === "string";
+
+/** A pass that deferred a suite for memory is run again next time rather than replayed as whole. */
+export const replays = (entry) => passed(entry) && !entry.deferred?.length;
 
 /** What `loop-gate --build` asks: a LOCAL PASS judged on this head, from a tree with nothing uncommitted. */
 export const cleanPassFor = (cache, head) =>
-  Object.values(cache).find((e) => replays(e) && e.head === head && e.clean === true);
+  Object.values(cache).find((e) => passed(e) && e.head === head && e.clean === true);
 
 export function clip(output) {
   const lines = output.split("\n");
@@ -85,14 +91,21 @@ export async function runStep(step, spawn = spawnAsync, write = (s) => void proc
 }
 
 /** The light steps at once; whole suites after them, one at a time, since they compete for memory. */
-export async function runAll(local, also, run = runStep) {
+export async function runAll(local, also, run = runStep, roomFor = async () => true) {
   const runs = await Promise.all(local.filter((s) => !s.after).map((step) => run(step)));
-  for (const step of [...local.filter((s) => s.after), ...also]) runs.push(await run(step));
+  for (const step of local.filter((s) => s.after)) {
+    // Without the memory it goes back to CI, where it always ran, and the verdict says so; failing
+    // here would hold the build gate on the machine, not the code.
+    if (await roomFor(step)) runs.push(await run(step));
+    else runs.push({ failed: null, deferred: step, text: `${BANNER}${step.name} === deferred: not enough memory\n` });
+  }
+  for (const step of also) runs.push(await run(step));
   return runs;
 }
 
 let subject;
 let extra = [];
+let deferred = [];
 
 // What this left out is part of its verdict, named as a command so nobody has to invent one, and
 // which tree it read is the first of those: a verdict that does not say cannot be told from a
@@ -107,10 +120,10 @@ const verdict = (outcome) =>
   ].join("\n");
 
 function ran() {
-  return [...LOCAL, ...extra];
+  return [...LOCAL, ...extra].filter((s) => !deferred.includes(s));
 }
 function skipped() {
-  return DELEGATED.filter((s) => !extra.includes(s));
+  return [...DELEGATED.filter((s) => !extra.includes(s)), ...deferred];
 }
 
 function git(...args) {
@@ -223,14 +236,16 @@ async function main() {
 
   const head = git("rev-parse", "HEAD").trim();
   const clean = git("status", "--porcelain").trim() === "";
-  const runs = await runAll(LOCAL, extra);
+  const roomFor = () => preflightMemory().then(() => true, () => false);
+  const runs = await runAll(LOCAL, extra, runStep, roomFor);
   for (const run of runs) process.stdout.write(run.text);
   const failed = runs.flatMap((run) => (run.failed ? [run.failed] : []));
+  deferred = runs.flatMap((run) => (run.deferred ? [run.deferred] : []));
 
   // Only a pass is cached. A failure has to re-run: the fix for it lands in the same tree the
   // failure was recorded against only when nothing else moved, and replaying a red verdict would
   // tell an agent its fix did not work.
-  cache[key] = cacheEntry({ failed, head, clean });
+  cache[key] = cacheEntry({ failed, head, clean, deferred: deferred.map((s) => s.name) });
   fs.writeFileSync(cachePath(), JSON.stringify(cache, null, 2));
 
   if (failed.length) {

@@ -20,22 +20,14 @@ const DECLARED = /^[ \t]*LOOP-RESULT (\{.*\})[ \t]*$/m;
 /** What a `git commit` looks like in a `Bash` call, whatever else is on the line. */
 export const COMMITTING = /\bgit\b[^\n|;&]*\bcommit\b/;
 
-const SCOUT = new Set(["Agent", "Task"]);
 const EDITS = new Set(["Edit", "Write", "NotebookEdit"]);
 
 /**
- * Where phase B ends when the session never says `PHASE C` (#1098 built under B). B is one scout,
- * so its first own call after the scout is the build; with no scout, its first edit or commit is.
- *
- * @param {boolean} scouted @param {{name: string, command?: string, parent?: string|null}[]} calls
+ * Where B ends with no `PHASE C` (#1098): the first edit or commit — late, never before the build.
+ * @param {{name: string, command?: string, parent?: string|null}[]} calls
  */
-export function scopeEnds(scouted, calls) {
-  const own = calls.filter((c) => !c.parent);
-  const builds = own.some((c) =>
-    scouted ? !SCOUT.has(c.name) : EDITS.has(c.name) || (c.name === "Bash" && COMMITTING.test(c.command ?? "")),
-  );
-  return { scouted: scouted || own.some((c) => SCOUT.has(c.name)), builds };
-}
+export const scopeEnds = (calls) =>
+  calls.some((c) => !c.parent && (EDITS.has(c.name) || (c.name === "Bash" && COMMITTING.test(c.command ?? ""))));
 
 /** A handoff names the phase the next process starts at, so an unknown letter is no handoff. */
 export const HANDOFF = /^[A-F]$/;
@@ -166,8 +158,7 @@ export function readLine(line) {
     if (!phase && !declared && !calls.length) return null;
     // The prose around the marker, which the board shows as the session's own account of what it is
     // doing. Two markers were parsed out of it and the rest was dropped.
-    // `id` is the message's: Claude Code writes one line per content block, each carrying the whole
-    // message's usage, so anything counting turns or tokens counts ids, never lines.
+    // One line per content block, each with the whole message's usage: count turns by `id`, not line.
     return { kind: "assistant", id: e.message?.id ?? null, letter: phase?.[1] ?? null, declared, calls, text };
   }
   if (e.type === "result") {

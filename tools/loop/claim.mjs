@@ -62,22 +62,27 @@ const taken = (err, cwd) => {
   return said.includes("already used by worktree") || (said.includes(cwd) && said.includes("already exists"));
 };
 
-const hasRef = (ref, run) => {
+const succeeds = (args, run) => {
   try {
-    run("git", ["rev-parse", "--verify", "--quiet", ref]);
+    run("git", args);
     return true;
   } catch {
     return false;
   }
 };
 
-/** Where the worktree starts — asked after the fetch, so the answer is current. */
-const baseOf = (branch, run) =>
-  hasRef(`refs/remotes/origin/${branch}`, run)
-    ? `origin/${branch}`
-    : hasRef(`refs/heads/${branch}`, run)
-      ? branch
-      : "origin/main";
+/**
+ * Where the worktree starts — asked after the fetch, so the answer is current. Whichever of the
+ * local and pushed branch holds the other's commits; one ahead of origin is never reset to it.
+ */
+export function baseOf(branch, run) {
+  const remote = succeeds(["rev-parse", "--verify", "--quiet", `refs/remotes/origin/${branch}`], run);
+  const local = succeeds(["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`], run);
+  if (!remote) return local ? branch : "origin/main";
+  if (!local || succeeds(["merge-base", "--is-ancestor", branch, `origin/${branch}`], run)) return `origin/${branch}`;
+  if (succeeds(["merge-base", "--is-ancestor", `origin/${branch}`, branch], run)) return branch;
+  throw new Error(`${branch} has diverged from origin/${branch}: resetting either side would lose commits`);
+}
 
 export function claim(number, title, run = (file, args) => execFileSync(file, args, { encoding: "utf8" })) {
   const branch = `agent/${number}-${slugOf(title)}`;

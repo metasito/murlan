@@ -149,9 +149,13 @@ describe("readTicket, across processes and stream lines", () => {
     assert.equal(t.phases.F.minutes, 0, "the half hour between processes is nobody's");
   });
 
-  test("a build under PHASE B moves to C at the first own call after the scout", () => {
-    const t = readTicket([msg("m1", [text("PHASE B"), call("Agent")], 0), msg("m2", [call("Bash", "sed -n 1,9p a.ts")], 1)]);
-    assert.deepEqual([t.phases.B.turns, t.phases.C.turns], [1, 1]);
+  test("a build under PHASE B moves to C at its first edit, never at a read after the scout", () => {
+    const t = readTicket([
+      msg("m1", [text("PHASE B"), call("Agent")], 0),
+      msg("m2", [call("Bash", "git status")], 1),
+      msg("m3", [call("Write")], 2),
+    ]);
+    assert.deepEqual([t.phases.B.turns, t.phases.C.turns], [2, 1]);
   });
 
   test("with no scout, B holds through reads and ends at the first edit", () => {

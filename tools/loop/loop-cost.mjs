@@ -71,7 +71,6 @@ export function readTicket(allLines, ticket = "", since = null) {
   let first = null;
   let last = null;
   let reviewers = 0;
-  let scouted = false;
   const unpriced = new Set();
   const priced = new Set();
   const toolMsgs = new Map();
@@ -109,7 +108,6 @@ export function readTicket(allLines, ticket = "", since = null) {
     if (j.type === "system" && j.subtype === "init") {
       phase = "pre";
       at = null;
-      scouted = false;
       continue;
     }
     if (j.type !== "assistant" || !j.message?.usage) continue;
@@ -120,11 +118,9 @@ export function readTicket(allLines, ticket = "", since = null) {
       const blocks = j.message.content ?? [];
       const marked = blocks.map((b) => (b.type === "text" ? PHASE.exec(b.text ?? "") : null)).find(Boolean);
       if (marked) advance(marked[1], t);
-      if (phase === "B") {
+      else if (phase === "B") {
         const calls = blocks.filter((b) => b.type === "tool_use").map((b) => ({ name: b.name, command: b.input?.command }));
-        const scope = scopeEnds(scouted, calls);
-        scouted = scope.scouted;
-        if (scope.builds && !marked) advance("C", t);
+        if (scopeEnds(calls)) advance("C", t);
       }
     }
 

@@ -1470,7 +1470,6 @@ export function runTicket(
     stalled: false,
     wrongModel: null,
     strayPlugin: null,
-    scouted: false,
     stderr: "",
     /** Turns spent in phase C, and whether any of them committed. */
     buildTurns: 0,
@@ -1573,9 +1572,7 @@ export function runTicket(
       }
     }
     if (fact.kind === "assistant") {
-      const scope = (fact.letter ?? state.phase) === "B" ? scopeEnds(state.scouted, fact.calls) : null;
-      if (scope) state.scouted = scope.scouted;
-      const letter = fact.letter ?? (scope?.builds ? "C" : null);
+      const letter = fact.letter ?? (state.phase === "B" && scopeEnds(fact.calls) ? "C" : null);
       if (letter && letter !== state.phase) {
         closePhase();
         state.phase = letter;

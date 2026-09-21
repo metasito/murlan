@@ -581,11 +581,14 @@ describe("runTicket", () => {
     }
   });
 
-  test("a build that never says PHASE C is still recorded as C, from its first call after the scout", async () => {
+  test("a build that never says PHASE C is recorded as C from its first edit, not from a read", async () => {
     const said = (content: object[]) => JSON.stringify({ type: "assistant", message: { content } });
     const scout = said([{ type: "text", text: "PHASE B" }, { type: "tool_use", name: "Agent", input: {} }]);
-    const build = said([{ type: "tool_use", name: "Bash", input: { command: "sed -n 1,9p a.ts" } }]);
-    const run = await runTicket(fakeSpawn([scout, build, RESULT]), opts());
+    const read = said([{ type: "tool_use", name: "Bash", input: { command: "gh issue view 1" } }]);
+    const readOnly = await runTicket(fakeSpawn([scout, read, RESULT]), opts());
+    assert.deepEqual(Object.keys(readOnly.phases), ["B"]);
+    const edit = said([{ type: "tool_use", name: "Edit", input: {} }]);
+    const run = await runTicket(fakeSpawn([scout, read, edit, RESULT]), opts());
     assert.deepEqual(Object.keys(run.phases).sort(), ["B", "C"]);
   });
 
