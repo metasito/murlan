@@ -97,6 +97,7 @@ const EXPECTED_SECONDS: Record<string, number> = {
   "card_pass.mp3": 1.097,
   "card_play.mp3": 0.392,
   "card_select.mp3": 0.731,
+  "count_complete.mp3": 0.287,
   "deal.mp3": 3.161,
   "exchange.mp3": 0.888,
   "game_lose.mp3": 0.496,

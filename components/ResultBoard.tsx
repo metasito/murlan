@@ -5,13 +5,15 @@
 // Every glyph is a literal here rather than a prop the callers pass: the icon
 // subset resolver follows a prop back to its call sites, and a name it cannot
 // resolve ships as a blank box with no error (tests/iconSubset.test.ts).
-import React, { useEffect, useRef } from "react";
+import React, { useCallback, useEffect, useRef } from "react";
 import {
   View,
   Text,
   StyleSheet,
   Pressable,
   ScrollView,
+  TextInput,
+  type TextInputProps,
 } from "react-native";
 import { useIsLandscape, useOrientedWindow } from "@/lib/orientation";
 import { ControlRail, RailKnob } from "@/components/table/chrome";
@@ -20,6 +22,7 @@ import { cardScale, physicalTouchTarget } from "@/components/cardFaceModel";
 import { useRailSide } from "@/components/useRailSide";
 import Animated, {
   cancelAnimation,
+  useAnimatedProps,
   useAnimatedStyle,
   useSharedValue,
   withDelay,
@@ -29,10 +32,12 @@ import Animated, {
   withRepeat,
   Easing,
 } from "react-native-reanimated";
+import { scheduleOnRN } from "react-native-worklets";
 import { LinearGradient } from "expo-linear-gradient";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { hapticSelection } from "@/lib/haptics";
+import { playCountComplete } from "@/lib/sounds";
 import {
   Colors,
   FontSize,
@@ -64,6 +69,8 @@ const TROPHY_D_COMPACT = 56;
 const TROPHY_ICON = 36;
 const TROPHY_ICON_COMPACT = 28;
 const RANK_LEAD_IN_MS = 150;
+
+const AnimatedTextInput = Animated.createAnimatedComponent(TextInput);
 
 export interface ResultRow {
   /** Engine player id — the identity the rankings and the winners are in. */
@@ -100,18 +107,49 @@ function RankCard({
   const delay = rank * RANK_STAGGER_MS + RANK_LEAD_IN_MS;
   const opacity = useSharedValue(0);
   const tx = useSharedValue(30);
+  const isWinner = rank === 0;
+  const count = useSharedValue(row.total - row.points);
+  const chip = useSharedValue(0);
+  const chipY = useSharedValue(Spacing.xs);
+  const counted = useRef(false);
+  const countDone = useCallback(() => {
+    if (counted.current || !isWinner) return;
+    counted.current = true;
+    playCountComplete();
+  }, [isWinner]);
   useEffect(() => {
     opacity.value = withDelay(
       delay,
       withTiming(1, { duration: motionMs("travel", reduceMotion) })
     );
     tx.value = reduceMotion ? 0 : withDelay(delay, withSpring(0, Motion.spring.entrance));
-  }, [delay, opacity, reduceMotion, tx]);
+    const counting = delay + motionMs("travel", reduceMotion);
+    chip.value = withDelay(counting, withTiming(1, { duration: motionMs("shift", reduceMotion) }));
+    chipY.value = reduceMotion ? 0 : withDelay(counting, withTiming(0, { duration: motionMs("shift", reduceMotion) }));
+    if (reduceMotion) {
+      count.value = row.total;
+      countDone();
+      return;
+    }
+    count.value = withDelay(
+      counting,
+      withTiming(row.total, { duration: motionMs("reveal", reduceMotion) }, (finished) => {
+        if (finished) scheduleOnRN(countDone);
+      })
+    );
+  }, [chip, chipY, count, countDone, delay, opacity, reduceMotion, row.total, tx]);
   const anim = useAnimatedStyle(() => ({
     opacity: opacity.value,
     transform: [{ translateX: tx.value }],
   }));
-  const isWinner = rank === 0;
+  const countProps = useAnimatedProps(() => {
+    const text = String(Math.round(count.value));
+    return { text, defaultValue: text } as TextInputProps;
+  });
+  const chipAnim = useAnimatedStyle(() => ({
+    opacity: chip.value,
+    transform: [{ translateY: chipY.value }],
+  }));
   const color = placementColor(rank + 1);
   const icon = POSITION_ICONS[rank] ?? "person";
   const labelKey = positionLabelKey(rank + 1);
@@ -149,13 +187,25 @@ function RankCard({
         )}
       </View>
       <View style={styles.scoreBlock}>
-        <Text
-          testID="rank-total"
-          style={[styles.totalScore, isWinner && styles.totalScoreWinner]}
-        >
-          {row.total}
-        </Text>
-        <Text style={styles.scoreSub}>{t("result.pointsDelta", { n: row.points })}</Text>
+        <View>
+          <Text
+            testID="rank-total"
+            style={[styles.totalScore, styles.totalScoreSpoken]}
+          >
+            {row.total}
+          </Text>
+          <AnimatedTextInput
+            {...a11yHidden()}
+            editable={false}
+            focusable={false}
+            animatedProps={countProps}
+            defaultValue={String(row.total - row.points)}
+            style={[styles.totalScore, styles.totalScoreTicking, isWinner && styles.totalScoreWinner]}
+          />
+        </View>
+        <Animated.Text style={[styles.scoreSub, chipAnim]}>
+          {t("result.pointsDelta", { n: row.points })}
+        </Animated.Text>
       </View>
     </Animated.View>
   );
@@ -788,6 +838,8 @@ const styles = StyleSheet.create({
     lineHeight: TOTAL_LINE_H,
   },
   totalScoreWinner: { color: Colors.gold },
+  totalScoreSpoken: { opacity: 0 },
+  totalScoreTicking: { ...StyleSheet.absoluteFill, padding: 0, textAlign: "right", pointerEvents: "none" },
   scoreSub: {
     fontFamily: "Inter_400Regular",
     fontSize: FontSize.xs,

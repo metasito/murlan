@@ -232,6 +232,7 @@ const ASSETS = {
   your_turn:   () => require("../assets/sounds/your_turn.mp3") as number,
   round_start: () => require("../assets/sounds/round_start.mp3") as number,
   round_win:   () => require("../assets/sounds/round_win.mp3") as number,
+  count_complete: () => require("../assets/sounds/count_complete.mp3") as number,
   urgent:      () => require("../assets/sounds/urgent_tick.mp3") as number,
   bomb:        () => require("../assets/sounds/bomb.mp3") as number,
   game_win:    () => require("../assets/sounds/game_win.mp3") as number,
@@ -284,6 +285,7 @@ export async function playCardPass(rng: () => number = Math.random): Promise<voi
 export async function playYourTurn():   Promise<void> { await play("your_turn",   0.9);  }
 export async function playRoundStart(): Promise<void> { await play("round_start", 0.85); }
 export async function playRoundWin():   Promise<void> { await play("round_win",   1.0);  }
+export async function playCountComplete(): Promise<void> { await play("count_complete", 0.8); }
 export async function playUrgentTick(): Promise<void> { await play("urgent",      0.8);  }
 export async function playBomb():       Promise<void> { await play("bomb",        1.0);  }
 export async function playGameWin():    Promise<void> { await play("game_win",    1.0);  }
