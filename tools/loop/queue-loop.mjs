@@ -23,6 +23,7 @@ import { readLine } from "./loop-stream.mjs";
 import {
   act,
   activity,
+  ahead,
   bell,
   capabilities,
   ciLine,
@@ -39,6 +40,7 @@ import {
   recap,
   PLAIN,
   reportRow,
+  runRecap,
   runTotal,
   stepRow,
   stepTitle,
@@ -62,6 +64,7 @@ import {
   readLedger,
   streamLog,
   ticketTally,
+  typicalMs,
   usageSplit,
   windowCost,
 } from "./loop-logs.mjs";
@@ -874,7 +877,8 @@ export function ticker(out = process.stdout, err = process.stderr, reveal = open
   let drawn = [];
   let hidden = false;
   let raw = false;
-  const view = { expanded: false, stopping: false, parking: false, help: false };
+  const view = { expanded: false, stopping: false, parking: false, recap: false, help: false };
+  let board = { typical: {}, recap: null };
   let ctx = { number: null, url: null, log: null, branch: null, session: null, pr: null, since: null };
   let titled = "";
   const setTitle = (text) => {
@@ -906,18 +910,26 @@ export function ticker(out = process.stdout, err = process.stderr, reveal = open
     // second for the rest of the night.
     const room = Math.max(3, (out.rows ?? 30) - CHROME);
     const left = open.wait ? Math.max(0, open.wait.until - Date.now()) : 0;
+    const next = ahead(open.letter, board.typical, t);
     const body = view.help
       ? help(t).join("\n")
-      : open.wait
-        ? stepRow({ label: "waiting", detail: `${open.wait.label} · ${elapsed(left)} left`, state: "skipped" }, t)
-        : view.expanded
-          ? streamBlock(open.feed, { ms, frame, letter: open.letter }, t, room)
-          : [
-              progress({ letter: open.letter, round: open.round, ticketMs: ctx.since == null ? null : Date.now() - ctx.since }, t),
-              "",
-              activity({ said: open.said, recent: open.recent, ms, frame }, t, room - 4),
-            ].join("\n");
-    const offers = { ticket: ctx.number, waiting: open.wait, pr: ctx.pr, url: ctx.url, log: ctx.log, session: ctx.session };
+      : view.recap && board.recap
+        ? board.recap(t).join("\n")
+        : open.wait
+          ? [
+              stepRow({ label: "waiting", detail: `${open.wait.label} · ${elapsed(left)} left`, state: "skipped" }, t),
+              ...(open.wait.then ? [stepRow({ label: "then", detail: open.wait.then, state: "skipped" }, t)] : []),
+              ...(board.recap ? ["", ...board.recap(t)] : []),
+            ].join("\n")
+          : view.expanded
+            ? streamBlock(open.feed, { ms, frame, letter: open.letter }, t, room)
+            : [
+                progress({ letter: open.letter, round: open.round, ticketMs: ctx.since == null ? null : Date.now() - ctx.since }, t),
+                ...next,
+                "",
+                activity({ said: open.said, recent: open.recent, ms, frame }, t, room - 4 - next.length),
+              ].join("\n");
+    const offers = { ticket: ctx.number, waiting: open.wait, pr: ctx.pr, url: ctx.url, log: ctx.log, session: ctx.session, recap: board.recap };
     return [body, "", keybar({ ...view, offers }, t)].join("\n").split("\n").slice(0, room);
   };
 
@@ -1040,6 +1052,7 @@ export function ticker(out = process.stdout, err = process.stderr, reveal = open
     else if (k === "l" && ctx.log) reveal(ctx.log);
     else if (k === "t" && ctx.session) handOver(`claude --resume ${ctx.session} --fork-session`);
     else if (k === "c" && ctx.log) handOver([ctx.branch, ctx.log].filter(Boolean).join("\n"));
+    else if (k === "r" && board.recap) view.recap = !view.recap;
     else if (k === "?") view.help = !view.help;
     else return false;
     return true;
@@ -1147,6 +1160,10 @@ export function ticker(out = process.stdout, err = process.stderr, reveal = open
       view.stopping = fs.existsSync(STOP_FILE);
       view.parking = parkAsked(ctx.number) ? "asked" : false;
     },
+    /** What outlives every ticket: the per-step medians, and the run's recap as a render. */
+    board(fields) {
+      board = { ...board, ...fields };
+    },
     /** What a ticket learns after its header: the session it is on, the pull request it opened. */
     set(fields) {
       ctx = { ...ctx, ...fields };
@@ -1155,11 +1172,11 @@ export function ticker(out = process.stdout, err = process.stderr, reveal = open
      * A hold, as one live row counting down rather than a line every quarter hour. `w` ends it
      * early. At a pipe there is no live row, so the returned `say` is the heartbeat instead.
      */
-    wait(label, until) {
+    wait(label, until, then = null) {
       let wake;
       const woken = new Promise((r) => (wake = r));
       api.start(UNNAMED);
-      open.wait = { label, until, wake };
+      open.wait = { label, until, wake, then };
       draw();
       return { woken, say: live ? null : (m) => api.notice("waiting", m) };
     },
@@ -2450,6 +2467,7 @@ function realIo(book, screen) {
     },
     pushedPr,
     settle: (pending) => settle(pending, screen),
+    queue: () => before,
     park,
     /**
      * **The claim comes off here, and nowhere else on the success paths.** Releasing it beside each
@@ -2580,6 +2598,12 @@ export async function main({
   install(screen);
   io ??= realIo(book, screen);
 
+  const startedAt = Date.now();
+  const spent = { ci: 0, wait: 0 };
+  const recapOf = (t) =>
+    runRecap({ startedAt, now: Date.now(), totals: book.totals, tickets: book.tickets, ciMs: spent.ci, waitMs: spent.wait }, t);
+  screen.board?.({ recap: recapOf });
+
   /**
    * The ticket phase A has claimed, so a throw anywhere in the iteration can still release it.
    *
@@ -2597,6 +2621,14 @@ export async function main({
       claimed = typeof route?.number === "number" ? route.number : null;
       return route;
     },
+    settle: async (pending) => {
+      const from = Date.now();
+      try {
+        return await io.settle(pending);
+      } finally {
+        spent.ci += Date.now() - from;
+      }
+    },
   };
 
   /** Every exit writes the total. The clean stop used to print it to the screen and nowhere else. */
@@ -2609,22 +2641,29 @@ export async function main({
     }
     const rule = t.paint("faint", "─".repeat(t.width));
     const tickets = book.tickets.map((r) => reportRow(r, t));
-    screen.say([rule, ...(tickets.length ? [...tickets, rule] : []), `   ${t.paint("text", `run total  ${total}`, true)}`].join("\n"));
-    book.close(runId, total);
+    screen.say([rule, ...recapOf(t), rule, ...(tickets.length ? [...tickets, rule] : []), `   ${t.paint("text", `run total  ${total}`, true)}`].join("\n"));
+    book.close(runId, total, recapOf(PLAIN()).join("\n"));
     bell();
     return code;
   };
 
-  const hold = async (ms, label) => {
-    const { woken, say } = screen.wait(label, Date.now() + ms);
+  const hold = async (ms, label, then) => {
+    const from = Date.now();
+    const { woken, say } = screen.wait(label, from + ms, then);
     const how = await holdFor(ms, undefined, undefined, say, undefined, woken);
     screen.close();
+    spent.wait += Date.now() - from;
     return how;
+  };
+  const queued = () => {
+    const q = io.queue?.();
+    return q ? ` · queue ${q.implement} to implement, ${q.triage} to triage` : "";
   };
 
   for (;;) {
     // Per iteration, not once per process: a run lasting past midnight would never prune.
     pruneLogs();
+    screen.board?.({ typical: typicalMs(readLedger()) });
 
     let pass;
     claimed = null;
@@ -2677,7 +2716,8 @@ export async function main({
       holds += 1;
       if (holds > WAIT.TRIES) return finish(1, `${pass.why}, ${holds} times running`);
       screen.notice("waiting", `${pass.why} — asking again shortly (${holds} of ${WAIT.TRIES})`);
-      if ((await hold(WAIT.FLOOR, "a pre-flight hold")) === "stopped") return finish(0, ".loop-stop during the wait");
+      const then = `the pre-flight asks again, then the next pick${queued()}`;
+      if ((await hold(WAIT.FLOOR, "a pre-flight hold", then)) === "stopped") return finish(0, ".loop-stop during the wait");
       continue;
     }
     holds = 0;
@@ -2694,7 +2734,9 @@ export async function main({
         `#${pass.ticket} paused: the usage window is spent — back at ${clockAt(Date.now() + step.hold)} (wait ${waits} of ${WAIT.TRIES})`,
       );
       const resets = `usage resets ${clockAt(Date.now() + step.hold)}`;
-      if ((await hold(step.hold, resets)) === "stopped") return finish(0, ".loop-stop during the wait");
+      if ((await hold(step.hold, resets, `#${pass.ticket} resumes from its worktree${queued()}`)) === "stopped") {
+        return finish(0, ".loop-stop during the wait");
+      }
       continue;
     }
 

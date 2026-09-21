@@ -13,6 +13,7 @@ import {
   readLedger,
   sessionRow,
   ticketTally,
+  typicalMs,
   usageSplit,
   windowCost,
 } from "../loop-logs.mjs";
@@ -344,6 +345,38 @@ describe("ledger", () => {
     const book = ledger(io);
     const entry = book.record(session(), { runId: "2026-09-13-04-12", report: report("x") });
     assert.equal(entry.run_id, "2026-09-13-04-12");
+  });
+});
+
+describe("typicalMs", () => {
+  test("a median per step, the merge step from the settle rows", () => {
+    const typical = typicalMs([
+      { outcome: "handoff", phases: { B: 100, C: 500 }, ms: 1 },
+      { outcome: "handoff", phases: { C: 300 }, ms: 1 },
+      { outcome: "handoff", phases: { C: 900 }, ms: 1 },
+      { outcome: "landed", phases: {}, ms: 480_000 },
+      { outcome: "landed", phases: { F: 20 }, ms: 9 },
+    ]);
+    assert.deepEqual(typical, { B: 100_000, C: 500_000, G: 480_000, F: 20_000 });
+  });
+});
+
+describe("the run report's recap", () => {
+  test("sits under the title, above the rows", () => {
+    const files = new Map<string, string>();
+    const book = ledger({
+      append: (f: string, t: string) => files.set(f, (files.get(f) ?? "") + t),
+      mkdir: () => {},
+      exists: (f: string) => files.has(f),
+      write: (f: string, t: string) => files.set(f, t),
+      read: (f: string) => files.get(f) ?? "",
+    });
+    book.record(session(), { runId: "r", report: { number: 1, title: "x", outcome: "landed", pr: 2, ms: 1, cost: 1 } });
+    book.close("r", "1 ticket", "run   21:40 → 08:44");
+    const text = [...files.entries()].find(([f]) => f.includes("run-r"))![1].split("\n");
+    assert.match(text[0], /^# queue-loop/);
+    assert.equal(text[2], "run   21:40 → 08:44");
+    assert.match(text.at(-2)!, /1 ticket/);
   });
 });
 

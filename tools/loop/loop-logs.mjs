@@ -219,6 +219,7 @@ export function ledger(io = {}) {
     mkdir = () => fsNode.mkdirSync(DIR, { recursive: true }),
     exists = (file) => fsNode.existsSync(file),
     write = (file, text) => fsNode.writeFileSync(file, text, "utf8"),
+    read = (file) => fsNode.readFileSync(file, "utf8"),
   } = io;
 
   const totals = { tickets: 0, landed: 0, parked: 0, cost: 0, ms: 0 };
@@ -256,10 +257,14 @@ export function ledger(io = {}) {
       rows.push(entry);
       return entry;
     },
-    /** The closing total, appended under the night's rows. */
-    close(runId, line) {
+    /** The closing total under the night's rows, and the recap above them, under the title. */
+    close(runId, line, recap = "") {
       mkdir();
-      append(reportPath(runId), `\n${line}\n`);
+      const file = reportPath(runId);
+      append(file, `\n${line}\n`);
+      if (!recap) return;
+      const [title, ...rest] = read(file).split("\n");
+      write(file, [title, "", recap, ...rest].join("\n"));
     },
   };
 }
@@ -279,7 +284,25 @@ export function readLedger(file = ledgerPath()) {
   return rows;
 }
 
-const HANDOFF_RE = /phase\s+([A-Za-z])\s+next(?: — (.+))?/;
+const median = (a) => [...a].sort((x, y) => x - y)[Math.floor(a.length / 2)];
+
+/**
+ * How long each step usually takes, in ms. A session row times A–F in seconds; the merge step is
+ * the supervisor's settle, a `landed` row with no phases whose clock is the CI wait.
+ *
+ * @param {object[]} rows
+ */
+export function typicalMs(rows) {
+  const by = {};
+  for (const r of rows) {
+    const phases = Object.entries(r.phases ?? {});
+    for (const [k, s] of phases) (by[k] ??= []).push(s * 1000);
+    if (r.outcome === "landed" && !phases.length && r.ms) (by.G ??= []).push(r.ms);
+  }
+  return Object.fromEntries(Object.entries(by).map(([k, a]) => [k, median(a)]));
+}
+
+const HANDOFF_RE =/phase\s+([A-Za-z])\s+next(?: — (.+))?/;
 
 /** @param {string} outcome @param {string|null|undefined} why */
 export const parkReasonOf = (outcome, why) =>
