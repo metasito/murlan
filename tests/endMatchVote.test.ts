@@ -7,8 +7,10 @@
 import { test, describe, before } from "node:test";
 import assert from "node:assert/strict";
 import type { Server as SocketServer } from "socket.io";
-import { installTableHandlers, applyOrForward } from "../server/tableHandlers.ts";
+import { installTableHandlers, applyOrForward, rehydrateGame } from "../server/tableHandlers.ts";
 import { activeGames } from "../server/gameRoom.ts";
+import { persistence } from "../server/gamePersistence.ts";
+import { db } from "../server/db.ts";
 import { clearRoomTimers } from "../server/gameTimers.ts";
 import { GameEndMatchVoteSchema } from "../server/socketSchemas.ts";
 import type { OnlineGameState } from "../server/gameRoom.ts";
@@ -315,6 +317,43 @@ describe("a match ended by the vote is never rematched (docs/BRIEF.md 3.1)", () 
         userId: "alice",
       });
       assert.deepEqual(vote, { ok: false, code: "REMATCH_DECLINED" }, "still refused");
+    } finally {
+      clearRoomTimers(ROOM);
+      activeGames.delete(ROOM);
+    }
+  });
+
+  test("a restart does not reopen the rematch", async (t) => {
+    const { io } = stubIo();
+    let row: unknown;
+    t.mock.method(persistence, "writeActiveGame", async (_roomId: string, envelope: unknown) => {
+      row = envelope;
+    });
+    t.mock.method(db.query.activeGames, "findFirst", async () => ({ roomId: ROOM, gameState: row }));
+    const game = baseGame({
+      gameState: partlyRanked(),
+      playerMap: { 0: "alice", 2: "carl", 3: "dee" },
+      vacatedSeats: vacated,
+    });
+
+    try {
+      await endByVote(game, io);
+      await new Promise((r) => setTimeout(r, 20));
+      activeGames.delete(ROOM);
+
+      assert.equal(await rehydrateGame(ROOM, "alice"), "restored");
+      const restored = activeGames.get(ROOM)!;
+      restored.rematchIntents = new Map([
+        ["alice", true],
+        ["carl", true],
+        ["dee", true],
+      ]);
+      const outcome = await applyOrForward(io, {
+        kind: "rematchVote",
+        roomId: ROOM,
+        userId: "alice",
+      });
+      assert.deepEqual(outcome, { ok: false, code: "REMATCH_DECLINED" });
     } finally {
       clearRoomTimers(ROOM);
       activeGames.delete(ROOM);
