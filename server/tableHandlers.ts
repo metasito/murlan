@@ -169,7 +169,7 @@ export async function rehydrateGame(
     return "unrestorable";
   }
 
-  const { playerMap, scores, gameMode, matchLength, matchTarget, maxPlayers, handsPlayed } =
+  const { playerMap, scores, gameMode, matchLength, matchTarget, maxPlayers, handsPlayed, endedByVote } =
     restored.match;
   if (
     forUserId !== null &&
@@ -194,7 +194,8 @@ export async function rehydrateGame(
     matchTarget,
     matchLength,
     handsPlayed,
-    matchOver: restoredMatchOver({
+    endedByVote,
+    matchOver: endedByVote || restoredMatchOver({
       matchLength,
       gameMode,
       handOver: restoredState.gameOver,
