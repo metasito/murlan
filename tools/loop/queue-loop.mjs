@@ -913,7 +913,7 @@ export function ticker(out = process.stdout, err = process.stderr, reveal = open
     const next = ahead(open.letter, board.typical, t);
     const body = view.help
       ? help(t).join("\n")
-      : view.recap && board.recap
+      : view.recap && board.recap && !open.wait
         ? board.recap(t).join("\n")
         : open.wait
           ? [
@@ -929,8 +929,11 @@ export function ticker(out = process.stdout, err = process.stderr, reveal = open
                 "",
                 activity({ said: open.said, recent: open.recent, ms, frame }, t, room - 4 - next.length),
               ].join("\n");
-    const offers = { ticket: ctx.number, waiting: open.wait, pr: ctx.pr, url: ctx.url, log: ctx.log, session: ctx.session, recap: board.recap };
-    return [body, "", keybar({ ...view, offers }, t)].join("\n").split("\n").slice(0, room);
+    // A wait already shows the recap, and `r` there would hide the countdown.
+    const recap = open.wait ? null : board.recap;
+    const offers = { ticket: ctx.number, waiting: open.wait, pr: ctx.pr, url: ctx.url, log: ctx.log, session: ctx.session, recap };
+    // The key bar is cut last: it is the only way to end a wait or close a view.
+    return [...body.split("\n").slice(0, Math.max(1, room - 2)), "", keybar({ ...view, recap: view.recap && Boolean(recap), offers }, t)];
   };
 
   const title = () =>
@@ -1052,7 +1055,7 @@ export function ticker(out = process.stdout, err = process.stderr, reveal = open
     else if (k === "l" && ctx.log) reveal(ctx.log);
     else if (k === "t" && ctx.session) handOver(`claude --resume ${ctx.session} --fork-session`);
     else if (k === "c" && ctx.log) handOver([ctx.branch, ctx.log].filter(Boolean).join("\n"));
-    else if (k === "r" && board.recap) view.recap = !view.recap;
+    else if (k === "r" && board.recap && !open?.wait) view.recap = !view.recap;
     else if (k === "?") view.help = !view.help;
     else return false;
     return true;
@@ -2601,8 +2604,20 @@ export async function main({
 
   const startedAt = Date.now();
   const spent = { ci: 0, wait: 0 };
-  const recapOf = (t) =>
-    runRecap({ startedAt, now: Date.now(), totals: book.totals, tickets: book.tickets, ciMs: spent.ci, waitMs: spent.wait }, t);
+  const since = { ci: null, wait: null };
+  const timed = async (kind, work) => {
+    since[kind] = Date.now();
+    try {
+      return await work();
+    } finally {
+      spent[kind] += Date.now() - since[kind];
+      since[kind] = null;
+    }
+  };
+  const sofar = (kind) => spent[kind] + (since[kind] == null ? 0 : Date.now() - since[kind]);
+  // `utc` for the file: its title is RUN_ID, which is UTC.
+  const recapOf = (t, utc = false) =>
+    runRecap({ startedAt, now: Date.now(), totals: book.totals, tickets: book.tickets, ciMs: sofar("ci"), waitMs: sofar("wait"), utc }, t);
   screen.board?.({ recap: recapOf });
 
   /**
@@ -2622,14 +2637,7 @@ export async function main({
       claimed = typeof route?.number === "number" ? route.number : null;
       return route;
     },
-    settle: async (pending) => {
-      const from = Date.now();
-      try {
-        return await io.settle(pending);
-      } finally {
-        spent.ci += Date.now() - from;
-      }
-    },
+    settle: (pending) => timed("ci", () => io.settle(pending)),
   };
 
   /** Every exit writes the total. The clean stop used to print it to the screen and nowhere else. */
@@ -2643,19 +2651,18 @@ export async function main({
     const rule = t.paint("faint", "─".repeat(t.width));
     const tickets = book.tickets.map((r) => reportRow(r, t));
     screen.say([rule, ...recapOf(t), rule, ...(tickets.length ? [...tickets, rule] : []), `   ${t.paint("text", `run total  ${total}`, true)}`].join("\n"));
-    book.close(runId, total, recapOf(PLAIN()).join("\n"));
+    book.close(runId, total, recapOf(PLAIN(), true).join("\n"));
     bell();
     return code;
   };
 
-  const hold = async (ms, label, then) => {
-    const from = Date.now();
-    const { woken, say } = screen.wait(label, from + ms, then);
-    const how = await holdFor(ms, undefined, undefined, say, undefined, woken);
-    screen.close();
-    spent.wait += Date.now() - from;
-    return how;
-  };
+  const hold = (ms, label, then) =>
+    timed("wait", async () => {
+      const { woken, say } = screen.wait(label, Date.now() + ms, then);
+      const how = await holdFor(ms, undefined, undefined, say, undefined, woken);
+      screen.close();
+      return how;
+    });
   const queued = () => {
     const q = io.queue?.();
     return q ? ` · queue ${q.implement} to implement, ${q.triage} to triage` : "";

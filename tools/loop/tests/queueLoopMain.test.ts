@@ -23,6 +23,7 @@ import {
   USD_BY_SIZE,
 } from "../queue-loop.mjs";
 import { parkReasonOf, ticketTally } from "../loop-logs.mjs";
+import { PLAIN } from "../loop-render.mjs";
 
 const ROOT = path.resolve(import.meta.dirname, "..", "..", "..");
 
@@ -1226,6 +1227,32 @@ describe("a throw mid-iteration", () => {
     });
     assert.equal(code, 1);
     assert.match(said.join("\n"), /#4301 is still claimed/, "a ticket nobody can release must be named");
+  });
+});
+
+describe("the run recap", () => {
+  test("counts a wait still running as waiting, not working", async (t) => {
+    t.mock.timers.enable({ apis: ["Date"] });
+    let recap = (_t: unknown): string[] => [];
+    let shown = "";
+    let passes = 0;
+    const board = {
+      say: () => {},
+      warn: () => {},
+      notice: () => {},
+      stop: () => {},
+      close: () => {},
+      board: (f: { recap?: typeof recap }) => void (f.recap && (recap = f.recap)),
+      wait: () => {
+        t.mock.timers.tick(3_600_000);
+        shown = recap(PLAIN()).join("\n");
+        return { woken: Promise.resolve(), say: null };
+      },
+    };
+    const book = { totals: { tickets: 0, landed: 0, parked: 0, cost: 0, ms: 0 }, tickets: [], record: () => {}, close: () => {} };
+    const spy = { ...(io() as any), stopFile: () => passes++ > 0, queuePre: () => 2 };
+    await main({ io: spy, book, screen: board as never, install: () => {}, runId: "t" });
+    assert.match(shown, /working 0:00 · CI 0:00 · waiting 1:00:00/);
   });
 });
 

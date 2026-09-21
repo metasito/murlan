@@ -410,22 +410,26 @@ export function ahead(letter, typical, t) {
   ];
 }
 
-const hhmm = (ms) => new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+const hhmm = (ms, utc) => {
+  const d = new Date(ms);
+  const [h, m] = utc ? [d.getUTCHours(), d.getUTCMinutes()] : [d.getHours(), d.getMinutes()];
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+};
 
 /**
  * The run for someone who did not watch it: what needs them first, then where the time went.
  * One text for the `r` key, a long wait, the exit, and the top of `run-*.md`.
  *
  * @param {{startedAt: number, now: number, totals: object, tickets: {number: number, outcome: string, why?: string}[],
- *   ciMs: number, waitMs: number}} run
+ *   ciMs: number, waitMs: number, utc?: boolean}} run
  */
-export function runRecap({ startedAt, now, totals, tickets, ciMs, waitMs }, t) {
+export function runRecap({ startedAt, now, totals, tickets, ciMs, waitMs, utc = false }, t) {
   const wall = now - startedAt;
   const head = (text) => row([{ t: ` ${clamp(text, t.width - 1)}`, c: "text", b: true }], null, t);
   const stuck = tickets.filter((r) => r.outcome !== "landed");
   const working = Math.max(0, wall - ciMs - waitMs);
   return [
-    head(`run   ${hhmm(startedAt)} → ${hhmm(now)} · ${elapsed(wall)}`),
+    head(`run   ${hhmm(startedAt, utc)} → ${hhmm(now, utc)} · ${elapsed(wall)}`),
     row([{ t: ` ${clamp(`${plural(totals.tickets, "ticket")} · ${totals.landed} landed · ${totals.parked} parked · ${money(totals.cost)}`, t.width - 1)}`, c: "muted" }], null, t),
     ...(stuck.length ? ["", head("needs you"), ...stuck.map((r) => stepRow({ label: `#${r.number}`, detail: r.why ?? r.outcome, state: "failed" }, t))] : []),
     "",

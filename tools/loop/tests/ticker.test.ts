@@ -550,6 +550,21 @@ describe("ticker", () => {
       tick.stop();
     });
 
+    test("a wait taller than the window keeps its key bar, and does not offer r over its countdown", (t) => {
+      t.mock.timers.enable({ apis: ["setInterval", "Date"] });
+      const out = fake(true, 80, 24);
+      const tick = ticker(out as never);
+      tick.context({ number: 7 });
+      tick.board({ recap: () => Array.from({ length: 30 }, (_, i) => `recap row ${i}`) });
+      tick.wait("usage resets 14:00", Date.now() + 60_000, "#7 resumes");
+      tick.key("r");
+      const frame = visible(out.wrote.at(-1) ?? "");
+      assert.match(frame, /check now/);
+      assert.match(frame, /waiting/);
+      assert.ok(!/\br run\b/.test(frame), "r offered over a countdown it would hide");
+      tick.stop();
+    });
+
     test("r swaps the board for the run's recap and back, and the step row has what comes next", (t) => {
       t.mock.timers.enable({ apis: ["setInterval", "Date"] });
       const out = fake();

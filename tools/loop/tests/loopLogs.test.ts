@@ -355,6 +355,7 @@ describe("typicalMs", () => {
       { outcome: "handoff", phases: { C: 300 }, ms: 1 },
       { outcome: "handoff", phases: { C: 900 }, ms: 1 },
       { outcome: "landed", phases: {}, ms: 480_000 },
+      { outcome: "landed", phases: {}, ms: 3_104_948, turns: 132, cost: 16.76 },
       { outcome: "landed", phases: { F: 20 }, ms: 9 },
     ]);
     assert.deepEqual(typical, { B: 100_000, C: 500_000, G: 480_000, F: 20_000 });

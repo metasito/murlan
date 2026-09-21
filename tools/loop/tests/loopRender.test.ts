@@ -446,6 +446,11 @@ describe("runRecap", () => {
     assert.match(out, /working 8:04:00 · CI 2:00:00 · waiting 1:00:00/);
   });
 
+  test("the file's copy keeps UTC, the clock its title is written in", () => {
+    const utc = { ...run, startedAt: Date.UTC(2026, 8, 20, 21, 40), now: Date.UTC(2026, 8, 21, 8, 44), utc: true };
+    assert.match(strip(runRecap(utc, tPlain)[0]), /run\s+21:40 → 08:44/);
+  });
+
   test("a run with nothing parked has no needs-you heading", () => {
     assert.ok(!runRecap({ ...run, tickets: [] }, tPlain).join("\n").includes("needs you"));
   });

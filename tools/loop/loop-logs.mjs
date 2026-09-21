@@ -289,7 +289,7 @@ const median = (a) => [...a].sort((x, y) => x - y)[Math.floor(a.length / 2)];
 
 /**
  * How long each step usually takes, in ms. A session row times A–F in seconds; the merge step is
- * the supervisor's settle, a `landed` row with no phases whose clock is the CI wait.
+ * the supervisor's settle, a `landed` row with no phases, turns or spend, whose clock is the CI wait.
  *
  * @param {object[]} rows
  */
@@ -298,12 +298,12 @@ export function typicalMs(rows) {
   for (const r of rows) {
     const phases = Object.entries(r.phases ?? {});
     for (const [k, s] of phases) (by[k] ??= []).push(s * 1000);
-    if (r.outcome === "landed" && !phases.length && r.ms) (by.G ??= []).push(r.ms);
+    if (r.outcome === "landed" && !phases.length && !r.turns && !r.cost && r.ms) (by.G ??= []).push(r.ms);
   }
   return Object.fromEntries(Object.entries(by).map(([k, a]) => [k, median(a)]));
 }
 
-const HANDOFF_RE =/phase\s+([A-Za-z])\s+next(?: — (.+))?/;
+const HANDOFF_RE = /phase\s+([A-Za-z])\s+next(?: — (.+))?/;
 
 /** @param {string} outcome @param {string|null|undefined} why */
 export const parkReasonOf = (outcome, why) =>
