@@ -39,7 +39,8 @@ import {
   exchangeFlight,
   comboKey,
   advancePile,
-  pileLayers,
+  collectPile,
+  type PileLayers,
   sweepOrigin,
   roundClosedWithWinner,
   EMPTY_PILE,
@@ -173,24 +174,30 @@ describe("advancePile", () => {
   });
 });
 
-describe("pileLayers", () => {
-  const drawn = (l: ReturnType<typeof pileLayers>) =>
+describe("collectPile", () => {
+  const drawn = (l: PileLayers) =>
     [l.onPile.prev, l.onPile.current, l.swept?.prev, l.swept?.current].flatMap(
       (c) => c?.cards.map((card: any) => card.id) ?? []
     );
   const pile = advancePile(advancePile(EMPTY_PILE, combo(["a"]), 0), combo(["b", "c"]), 1);
+  const held: PileLayers = { onPile: pile, swept: null };
 
-  test("every card on the felt is drawn exactly once, sweeping or not", () => {
-    for (const sweeping of [false, true]) {
-      assert.deepEqual(drawn(pileLayers(pile, sweeping)).sort(), ["a", "b", "c"]);
-    }
+  test("every card on the felt is drawn exactly once, before and during the sweep", () => {
+    assert.deepEqual(drawn(held).sort(), ["a", "b", "c"]);
+    assert.deepEqual(drawn(collectPile(held)).sort(), ["a", "b", "c"]);
   });
 
   test("while the sweep runs it is the only drawer; the felt draws nothing", () => {
-    const l = pileLayers(pile, true);
+    const l = collectPile(held);
     assert.deepEqual(l.onPile, EMPTY_PILE);
     assert.equal(l.swept, pile);
-    assert.equal(pileLayers(pile, false).swept, null);
+  });
+
+  test("a lead during the sweep lands on the felt without touching the swept cards", () => {
+    const swept = collectPile(held);
+    const next = { ...swept, onPile: advancePile(swept.onPile, combo(["d"]), 1) };
+    assert.deepEqual(drawn(next).sort(), ["a", "b", "c", "d"]);
+    assert.equal(next.swept, pile);
   });
 });
 

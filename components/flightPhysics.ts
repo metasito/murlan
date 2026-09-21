@@ -663,12 +663,16 @@ export function advancePile(state: PileState, combo: Combination, playedBy: numb
   return { prev: state.current, current: combo, playedBy };
 }
 
+export interface PileLayers {
+  onPile: PileState;
+  swept: PileState | null;
+}
+
+export const NO_PILE: PileLayers = { onPile: EMPTY_PILE, swept: null };
+
 /** While the collect sweep runs it is the only drawer of the round's cards. */
-export function pileLayers(
-  pile: PileState,
-  sweeping: boolean
-): { onPile: PileState; swept: PileState | null } {
-  return sweeping ? { onPile: EMPTY_PILE, swept: pile } : { onPile: pile, swept: null };
+export function collectPile(layers: PileLayers): PileLayers {
+  return { onPile: EMPTY_PILE, swept: layers.onPile };
 }
 
 /**
