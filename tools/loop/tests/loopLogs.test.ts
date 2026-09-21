@@ -378,6 +378,19 @@ describe("the run report's recap", () => {
     assert.equal(text[2], "run   21:40 → 08:44");
     assert.match(text.at(-2)!, /1 ticket/);
   });
+
+  test("a run that recorded nothing keeps the file the total alone wrote", () => {
+    const files = new Map<string, string>();
+    const book = ledger({
+      append: (f: string, t: string) => files.set(f, (files.get(f) ?? "") + t),
+      mkdir: () => {},
+      exists: (f: string) => files.has(f),
+      write: (f: string, t: string) => files.set(f, t),
+      read: (f: string) => files.get(f) ?? "",
+    });
+    book.close("r", "0 tickets", "run   21:40 → 21:41");
+    assert.deepEqual([...files.values()], ["\n0 tickets\n"]);
+  });
 });
 
 describe("ticketTally", () => {

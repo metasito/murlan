@@ -261,8 +261,9 @@ export function ledger(io = {}) {
     close(runId, line, recap = "") {
       mkdir();
       const file = reportPath(runId);
+      const titled = exists(file);
       append(file, `\n${line}\n`);
-      if (!recap) return;
+      if (!recap || !titled) return;
       const [title, ...rest] = read(file).split("\n");
       write(file, [title, "", recap, ...rest].join("\n"));
     },
