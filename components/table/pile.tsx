@@ -23,7 +23,7 @@ import { useTranslation, type TranslationKey } from "@/lib/i18n";
 import type { Card, Combination, CombinationType } from "@/lib/gameEngine";
 import { CARD_W, CARD_H, FIELD_SCALE, cardRadius } from "@/components/cardFaceModel";
 import { type FlyDirection } from "@/components/seatLayout";
-import { COMBO_MAX_TILT, advancePile, anticipationOffset, cardTilt, collectPile, comboKey, EMPTY_PILE, FLIGHT_MS, flinchFor, impactDelayMs, landingHoldMs, landingTier, landSquashScale, NO_PILE, readThrownPlay, roundClosedWithWinner, settleForMotion, sweepOrigin, type ImpactTier, type PileLayers, type PileState, type ThrownPlayInput } from "@/components/flightPhysics";
+import { COMBO_MAX_TILT, advancePile, anticipationOffset, cardTilt, collectPile, comboKey, EMPTY_PILE, FLIGHT_MS, flinchFor, impactDelayMs, landingHoldMs, landingTier, landSquashScale, NO_PILE, readThrownPlay, roundClosedWithWinner, settleForMotion, seatPoint, type ImpactTier, type PileLayers, type PileState, type ThrownPlayInput } from "@/components/flightPhysics";
 import { FIELD_ARC, solveArc } from "@/components/tableArc";
 
 const FLY_ROTS: Record<FlyDirection, number> = {
@@ -256,7 +256,7 @@ export function SweepCards({
   scale = 1,
 }: {
   pile: PileState;
-  /** The winner's seat — components/flightPhysics.ts `sweepOrigin`. */
+  /** The winner's seat — components/flightPhysics.ts `seatPoint`. */
   origin: { dx: number; dy: number };
   roomW: number;
   scale?: number;
@@ -765,7 +765,7 @@ export function usePileFlight({
       if (impactTimerRef.current) clearTimeout(impactTimerRef.current);
       prevComboKeyRef.current = "";
       if (roundClosedWithWinner({ lastPlayedCombination: combo, roundWinner })) {
-        const origin = sweepOrigin(geometry, roundWinner!);
+        const origin = seatPoint(geometry, roundWinner!);
         const collect = () => {
           roundHoldRef.current = null;
           setLayers(collectPile);

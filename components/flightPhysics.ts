@@ -377,6 +377,25 @@ export function sparkOffset(i: number, scale: number): SparkOffset {
   };
 }
 
+// ─── Deal ──────────────────────────────────────────────────────────────────────
+
+/** How long a dealt card takes from the pile to its seat. */
+export const DEAL_FLIGHT_MS = Motion.duration.travel;
+
+/**
+ * When the `round`-th card leaves the pile for `seat`, from the deal's start:
+ * round-robin in seat order, as `dealCards` deals, with each seat's own cards
+ * `Motion.stagger.deal` apart — the spacing the viewer's hand deals at.
+ */
+export function dealLeaveMs(round: number, seat: number, seats: number): number {
+  return round * Motion.stagger.deal + (seat * Motion.stagger.deal) / seats;
+}
+
+/** When each of a seat's `count` cards lands at it, `offsetMs` after the deal starts. */
+export function dealArrivalsMs(count: number, seat: number, seats: number, offsetMs: number): number[] {
+  return Array.from({ length: count }, (_, round) => offsetMs + dealLeaveMs(round, seat, seats) + DEAL_FLIGHT_MS);
+}
+
 // ─── Flight origin ─────────────────────────────────────────────────────────────
 //
 // Where a throw starts. docs/adr/0002-a-play-leaves-the-seat-it-was-thrown-from.md §1.
@@ -899,12 +918,12 @@ export function readThrownPlay(input: ThrownPlayInput): ThrownPlay {
   };
 }
 
-/** Where a closed round's cards are swept: the winner's seat, nothing leaving its hand. */
-export function sweepOrigin(
+/** A seat's own point from the pile, nothing leaving its hand: where a closed round is swept, and where a dealt card lands. */
+export function seatPoint(
   input: Omit<ThrownPlayInput, "combo" | "playedBy">,
-  winner: number
+  seat: number
 ): { dx: number; dy: number } {
-  return seatOrigin(input, winner, 0).origin;
+  return seatOrigin(input, seat, 0).origin;
 }
 
 function seatOrigin(

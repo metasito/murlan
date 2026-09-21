@@ -45,10 +45,13 @@ import {
 import { handCountOf, vacatedOf } from "@/shared/protocol";
 import {
   comboKey,
+  dealArrivalsMs,
+  dealLeaveMs,
   readHandArrival,
   passedSeats,
   readExchange,
   readExchangeTrips,
+  seatPoint,
 } from "@/components/flightPhysics";
 import { canPassNow as canPassNowOf, turnTimerActive } from "@/components/turnTimerUi";
 import { computeTableFrame } from "@/components/tableFrame";
@@ -91,6 +94,7 @@ import { FlyingCards, PlayedPile, SweepCards, getComboLabel, usePileFlight } fro
 import { warmCourtArt } from "@/components/CardView";
 import { BombBurst, LampLift, Sweep } from "@/components/table/moments";
 import { TopOppSlot, SideOppSlot } from "@/components/table/seats";
+import { DealFlights, type DealtCard } from "@/components/table/deal";
 import { ExchangeAnnouncement } from "@/components/ExchangeAnnouncement";
 import { ExchangePrompt } from "@/components/table/ExchangePrompt";
 import {
@@ -106,7 +110,7 @@ import {
 } from "@/lib/sounds";
 import { hapticLight, hapticMedium, hapticRigid, hapticSelection } from "@/lib/haptics";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
-import { Colors, FontSize, Motion, Radius, Reading, Scrim, Spacing, Layer } from "@/lib/theme";
+import { Colors, FontSize, Motion, motionMs, Radius, Reading, Scrim, Spacing, Layer } from "@/lib/theme";
 import { useTableFelt } from "@/lib/cosmetics";
 import { A11yStatus, A11yVeil, a11yGroup, a11yHidden, a11yVeiled } from "@/lib/a11y";
 
@@ -206,6 +210,13 @@ export interface ExchangeAnnouncementSlot {
   onDismiss: () => void;
   /** Offline-only E2E override for how long the overlay holds (#915). */
   holdMsOverride?: number;
+}
+
+/** A deal in progress: `counts` is each seat's hand as dealt, by seat index. */
+interface Deal {
+  key: number;
+  offsetMs: number;
+  counts: number[];
 }
 
 export interface GameTableProps {
@@ -524,6 +535,62 @@ export function GameTable({
   );
 
   const frame = computeTableFrame({ width: W, height: H, insets, scale, railSide });
+
+  // ── The deal ──────────────────────────────────────────────────────────────
+  //
+  // A fresh deal is a manche nobody has opened yet. The first one waits out the
+  // table's own entry beat; a later one, dealt onto a table already standing,
+  // starts at once.
+  const freshDeal = !gameState.firstPlayMade && !gameState.gameOver;
+  const [entryMs] = useState(() => motionMs("reveal", reduceMotion));
+  const [deal, setDeal] = useState<Deal | null>(() =>
+    freshDeal ? { key: 1, offsetMs: entryMs, counts: players.map(handCountOf) } : null
+  );
+  const [dealtFresh, setDealtFresh] = useState(freshDeal);
+  if (freshDeal !== dealtFresh) {
+    setDealtFresh(freshDeal);
+    if (freshDeal) setDeal({ key: (deal?.key ?? 0) + 1, offsetMs: 0, counts: players.map(handCountOf) });
+  }
+  const dealArrivals = React.useMemo(
+    () =>
+      deal && !reduceMotion
+        ? deal.counts.map((count, seat) => dealArrivalsMs(count, seat, deal.counts.length, deal.offsetMs))
+        : null,
+    [deal, reduceMotion]
+  );
+  useEffect(() => {
+    if (!deal) return;
+    const lastLanding = Math.max(0, ...(dealArrivals ?? []).map((a) => a[a.length - 1] ?? 0));
+    const id = setTimeout(() => setDeal(null), lastLanding);
+    return () => clearTimeout(id);
+  }, [deal, dealArrivals]);
+  const seatGeometry = {
+    viewerSeat,
+    players,
+    opponents,
+    scale,
+    windowWidth: W,
+    windowHeight: H,
+    tableLeft: frame.tableLeft,
+    tableRight: frame.tableRight,
+    tableTop: frame.tableTop,
+    surplus: frame.surplus,
+    bottomPad: frame.bottomPad,
+    handCardH,
+  };
+  const dealtCards: DealtCard[] =
+    deal && dealArrivals
+      ? [opponents.top, opponents.left, opponents.right].flatMap((o) => {
+          if (!o) return [];
+          const to = seatPoint(seatGeometry, o.seat);
+          return Array.from({ length: deal.counts[o.seat] }, (_, round) => ({
+            key: `${deal.key}-${o.seat}-${round}`,
+            leaveMs: deal.offsetMs + dealLeaveMs(round, o.seat, players.length),
+            to,
+          }));
+        })
+      : [];
+  const seatArrivals = (seat: number) => dealArrivals?.[seat];
   // The felt box the lamp lives in. The pool is drawn oversized and slid under
   // this box's own clipping, so it needs the box rather than the screen.
   const feltW = W;
@@ -669,18 +736,7 @@ export function GameTable({
     roundWinner: gameState.roundWinner,
     gameOver: gameState.gameOver,
     matchOver,
-    viewerSeat,
-    players,
-    opponents,
-    scale,
-    windowWidth: W,
-    windowHeight: H,
-    tableLeft: frame.tableLeft,
-    tableRight: frame.tableRight,
-    tableTop: frame.tableTop,
-    surplus: frame.surplus,
-    bottomPad: frame.bottomPad,
-    handCardH,
+    ...seatGeometry,
     playImpact,
     shake,
     burst,
@@ -699,7 +755,8 @@ export function GameTable({
     // Guarded: the cleanup may remove every native player, so resolving after
     // unmount would play through a released one.
     const releaseSounds = holdSounds();
-    preloadSounds()
+    const entryBeat = new Promise((resolve) => setTimeout(resolve, entryMs));
+    Promise.all([preloadSounds(), entryBeat])
       .then(() => {
         if (mounted) playDeal();
       })
@@ -710,7 +767,7 @@ export function GameTable({
       ScreenOrientation.unlockAsync().catch(() => {});
       releaseSounds();
     };
-  }, []);
+  }, [entryMs]);
 
   useEffect(() => {
     if (rejectHint === null) return;
@@ -1117,6 +1174,7 @@ export function GameTable({
                   isActive={opponents.top.seat === shownTurnIndex}
                   cardCount={handCountOf(opponents.top.player)}
                   departing={departingSide === "top" ? departingCount : 0}
+                  dealArrivals={seatArrivals(opponents.top.seat)}
                   passed={passed.includes(opponents.top.seat)}
                   vacated={vacatedOf(opponents.top.player)}
                   reconnecting={disconnectedSeats[opponents.top.seat]}
@@ -1142,6 +1200,7 @@ export function GameTable({
                     side="left"
                     cardCount={handCountOf(opponents.left.player)}
                     departing={departingSide === "left" ? departingCount : 0}
+                    dealArrivals={seatArrivals(opponents.left.seat)}
                     passed={passed.includes(opponents.left.seat)}
                     vacated={vacatedOf(opponents.left.player)}
                     reconnecting={disconnectedSeats[opponents.left.seat]}
@@ -1212,6 +1271,8 @@ export function GameTable({
                   />
                 )}
 
+                {dealtCards.length > 0 && <DealFlights cards={dealtCards} scale={scale} />}
+
                 {flyInfo && (
                   <FlyingCards
                     key={flyInfo.key}
@@ -1242,6 +1303,7 @@ export function GameTable({
                     side="right"
                     cardCount={handCountOf(opponents.right.player)}
                     departing={departingSide === "right" ? departingCount : 0}
+                    dealArrivals={seatArrivals(opponents.right.seat)}
                     passed={passed.includes(opponents.right.seat)}
                     vacated={vacatedOf(opponents.right.player)}
                     reconnecting={disconnectedSeats[opponents.right.seat]}
@@ -1319,6 +1381,7 @@ export function GameTable({
                     // Only while the opening is still owed. Named rather than
                     // counted to: Maestro's `index` sorts by position, and the
                     // arc puts the outermost card below its neighbours (#757).
+                    dealOffsetMs={deal ? deal.offsetMs + dealLeaveMs(0, viewerSeat, players.length) : 0}
                     startCardId={
                       gameState.firstPlayMade ? undefined : gameState.startCard?.id
                     }
