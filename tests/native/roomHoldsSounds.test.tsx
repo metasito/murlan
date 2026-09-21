@@ -11,6 +11,7 @@ jest.mock('@/lib/sounds', () => ({
   ...(jest.requireActual('@/lib/sounds') as object),
   holdSounds: mockHoldSounds,
   preloadSounds: mockPreloadSounds,
+  ensureAudioMode: jest.fn(async () => {}),
 }));
 
 jest.mock('expo-router', () => ({
