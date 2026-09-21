@@ -63,6 +63,7 @@ import {
 } from "./loop-logs.mjs";
 import { readAllowedTools } from "./loop-tools.mjs";
 import { checkLockDrift } from "./preflight.mjs";
+import { listWorktreeDirNames } from "./prune-worktrees.mjs";
 import { buildPassed, MAX_REVIEW_ROUNDS, mergeCleared } from "./loop-gate.mjs";
 import { familyOf, MODEL_BY_PHASE } from "./loop-cost.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
@@ -257,12 +258,8 @@ export function queueLoopArgs(number, size = null, phase = null) {
 const PROTOCOL = ["CLAUDE.md", ".claude", "tools/loop", "scripts/lib"];
 
 /** Worktree directories someone else may be working in right now. */
-function peerWorktrees(dir = ".worktrees") {
-  try {
-    return fs.readdirSync(dir).filter((name) => name.startsWith("agent-"));
-  } catch {
-    return [];
-  }
+function peerWorktrees(dir = WORKTREE_DIR) {
+  return listWorktreeDirNames(dir).filter((name) => name.startsWith("agent-"));
 }
 
 const LOCK_STAMP = "node_modules/.loop-lock-hash";

@@ -13,7 +13,7 @@
  *        exit 0 - clear to start; exit non-zero - names the step that refused
  */
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, readdirSync } from "node:fs";
+import { listWorktreeDirNames } from "./prune-worktrees.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import { AGENT_DIR, FOUND_NOTHING, IF_FOUND, REPO, WORKTREE_DIR } from "./loop-derive.mjs";
 import { checkMain } from "./mainHealth.ts";
@@ -96,7 +96,7 @@ export function misnamedWorktrees(dirs) {
 }
 
 /** @returns {Result} */
-export function namedWorktrees(dirs = existsSync(WORKTREE_DIR) ? readdirSync(WORKTREE_DIR) : []) {
+export function namedWorktrees(dirs = listWorktreeDirNames(WORKTREE_DIR)) {
   const bad = misnamedWorktrees(dirs);
   if (bad.length === 0) return null;
   return {
