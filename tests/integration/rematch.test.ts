@@ -278,7 +278,7 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
     const room = await setUpRoom([pia, remy], 2);
     gameOverOf(
       await driveHandToExchangeOrOver([pia, remy], () => {
-        pia.socket.emit("room:start", { matchLength: "single" });
+        pia.socket.emit("room:start");
       })
     );
     const answered = waitFor(pia.socket, "game:rematch_intents", 5_000);
@@ -294,13 +294,12 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
     await closeTable(room.roomId, pia);
   });
 
-  test("a rematch that cannot proceed says why and leaves the vote retryable", async () => {
+  test("a rematch the table never answered says why, and a late answer cannot reopen it", async () => {
     const [liam] = await makeClients(server, ["rematch_error_liam"]);
     const room = await setUpRoom([liam], 2);
 
-    // `matchLength: "single"` ends the match with the very first manche, so the
-    // table has to have *answered* the rematch question before it may deal
-    // again — the one bail-out reachable without corrupting server state.
+    // `matchLength: "single"` ends the match with the very first manche, and
+    // nobody answered the rematch question while it was being played.
     gameOverOf(
       await driveHandToExchangeOrOver([liam], () => {
         liam.socket.emit("room:start", { fillWithBots: true, matchLength: "single" });
@@ -315,12 +314,10 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
       "a bail-out must tell the player why instead of returning silently"
     );
 
-    // Not a dead end: answering the question and voting again deals the next
-    // manche, which a vote cleared on the way out of the bail-out could not do.
-    const started = waitFor(liam.socket, "game:started", 8_000);
+    const late = waitFor<{ code: string }>(liam.socket, "game:error", 5_000);
     liam.socket.emit("game:rematch_intent", { wants: true });
     liam.socket.emit("game:rematch_vote");
-    await started;
+    assert.equal((await late).code, "REMATCH_DECLINED", "the verdict holds once the match is over");
     await closeTable(room.roomId, liam);
   });
   test("an AFK exchange is announced as an exchange, not as a pass", async () => {
@@ -431,23 +428,18 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
       [clients[2].user.id]: -1_000_000,
       [clients[3].user.id]: -1_000_000,
     });
+    // Answered during the closing manche: once it is over the verdict is final.
+    for (const c of clients) {
+      const registered = waitFor<{ total: number }>(a.socket, "game:rematch_intents");
+      c.socket.emit("game:rematch_intent", { wants: true });
+      await registered;
+    }
     gameOverOf(await driveHandToExchangeOrOver(clients, () => {}, { stopOnExchange: false }));
     assert.equal(
       matchSnapshot(room.roomId)?.matchOver,
       true,
       "the lowered target must be crossed by the manche just played"
     );
-
-    // The match is over now, so the vote also needs every seat's rematch
-    // intent — the same gate "a rematch that cannot proceed..." above
-    // exercises. Sequenced rather than fired together: the vote below reads
-    // whichever intents have already landed, and intents sent all at once
-    // race their own vote across separate sockets.
-    for (const c of clients) {
-      const registered = waitFor<{ total: number }>(a.socket, "game:rematch_intents");
-      c.socket.emit("game:rematch_intent", { wants: true });
-      await registered;
-    }
 
     dealt = waitForDeal(a.socket);
     for (const c of clients) c.socket.emit("game:rematch_vote");
