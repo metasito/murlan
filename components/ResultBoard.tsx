@@ -66,7 +66,6 @@ const STAT_ICON = 14;
 const MEDAL_ICON = 16;
 const RANK_STAGGER_MS = 70;
 const FLAKE_COUNT = 24;
-const FLAKE_MS = Motion.duration.reveal * 2;
 const FLAKE_PHASE_MS = 40;
 const FLAKE_SIZE = 4;
 const FLAKE_FALL = 36;
@@ -228,21 +227,22 @@ function GoldFlake({ index, reach }: { index: number; reach: number }) {
   const progress = useSharedValue(0);
   const opacity = useSharedValue(0);
   const { dx, dy, delay } = flakeOffset(index, reach);
+  const flakeMs = motionMs("reveal", usePrefersReducedMotion()) * 2;
   useEffect(() => {
     const easing = Easing.out(Easing.cubic);
-    progress.value = withDelay(delay, withTiming(1, { duration: FLAKE_MS, easing }));
+    progress.value = withDelay(delay, withTiming(1, { duration: flakeMs, easing }));
     opacity.value = withDelay(
       delay,
       withSequence(
-        withTiming(1, { duration: FLAKE_MS * 0.15 }),
-        withTiming(0, { duration: FLAKE_MS * 0.85, easing: Easing.in(Easing.quad) })
+        withTiming(1, { duration: flakeMs * 0.15 }),
+        withTiming(0, { duration: flakeMs * 0.85, easing: Easing.in(Easing.quad) })
       )
     );
     return () => {
       cancelAnimation(progress);
       cancelAnimation(opacity);
     };
-  }, [delay, opacity, progress]);
+  }, [delay, flakeMs, opacity, progress]);
   const style = useAnimatedStyle(() => {
     const p = progress.value;
     return {

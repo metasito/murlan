@@ -10,8 +10,8 @@ import Animated, {
 } from "react-native-reanimated";
 import { CardView } from "@/components/CardView";
 import { BACK_SCALE } from "@/components/cardFaceModel";
-import { DEAL_FLIGHT_MS } from "@/components/flightPhysics";
-import { Layer } from "@/lib/theme";
+import { Layer, motionMs } from "@/lib/theme";
+import { usePrefersReducedMotion } from "@/lib/accessibility";
 
 export interface DealtCard {
   key: string;
@@ -26,10 +26,11 @@ const DEAL_SPIN_DEG = 180;
 
 function DealtBack({ card, scale }: { card: DealtCard; scale: number }) {
   const progress = useSharedValue(0);
+  const flightMs = motionMs("travel", usePrefersReducedMotion());
   useEffect(() => {
-    progress.value = withDelay(card.leaveMs, withTiming(1, { duration: DEAL_FLIGHT_MS, easing: DEAL_EASING }));
+    progress.value = withDelay(card.leaveMs, withTiming(1, { duration: flightMs, easing: DEAL_EASING }));
     return () => cancelAnimation(progress);
-  }, [card.leaveMs, progress]);
+  }, [card.leaveMs, flightMs, progress]);
   const { dx, dy } = card.to;
   const style = useAnimatedStyle(() => {
     const p = progress.value;
