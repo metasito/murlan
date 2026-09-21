@@ -1141,7 +1141,9 @@ export function ticker(out = process.stdout, err = process.stderr, reveal = open
     /** What the keys act on. Set once per ticket, beside its header. */
     context(next = {}) {
       const { spentMs, ...rest } = next;
-      ctx = { number: null, url: null, log: null, branch: null, session: null, pr: null, since: spentMs == null ? null : Date.now() - spentMs, ...rest };
+      // A ticket's pull request outlives the session that opened it: the next phase is the same ticket.
+      const pr = rest.number != null && rest.number === ctx.number ? ctx.pr : null;
+      ctx = { number: null, url: null, log: null, branch: null, session: null, pr, since: spentMs == null ? null : Date.now() - spentMs, ...rest };
       view.stopping = fs.existsSync(STOP_FILE);
       view.parking = parkAsked(ctx.number) ? "asked" : false;
     },
@@ -1250,6 +1252,7 @@ function toClipboard(text) {
   try {
     const child = spawn(cmd, args, { stdio: ["pipe", "ignore", "ignore"] });
     child.on("error", () => {});
+    child.stdin.on("error", () => {});
     child.stdin.end(text);
   } catch {
     /* a key that copies nothing is not a reason to stop the run */
@@ -2665,6 +2668,7 @@ export async function main({
         pinned = null;
         continue;
       }
+      screen.notice("park", `#${pass.ticket} ${pass.outcome} before the park could act`);
     }
 
     // Not a ticket and not a failure: something the machine has to settle before a ticket can

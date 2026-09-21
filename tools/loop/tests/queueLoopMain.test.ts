@@ -1327,6 +1327,24 @@ describe("a park asked from the board", () => {
     }
   });
 
+  test("a ticket that lands before the park can act says the request was dropped", async () => {
+    const cwd = process.cwd();
+    const dir = mkdtempSync(path.join(tmpdir(), "park-"));
+    const said: string[] = [];
+    const board = { ...screen(), notice: (kind: string, m: string) => said.push(`${kind}: ${m}`) };
+    let picks = 0;
+    try {
+      process.chdir(dir);
+      writeFileSync(".loop-park", "42\n");
+      await main({ io: io({ pick: () => (picks++ ? null : (io() as any).pick()) }), book: book(), screen: board, install: () => {}, runId: "t" });
+      assert.ok(said.some((m) => /^park: #42 landed before the park could act/.test(m)), JSON.stringify(said));
+      assert.equal(existsSync(".loop-park"), false);
+    } finally {
+      process.chdir(cwd);
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test("a request naming another ticket parks nothing", () => {
     assert.equal(parkAsked(41, () => "41\n"), true);
     assert.equal(parkAsked(42, () => "41\n"), false);

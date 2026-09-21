@@ -538,6 +538,20 @@ describe("ticker", () => {
       assert.ok(all(out).includes(`${ESC}]0;${BEL}`), "the title was not cleared");
     });
 
+    test("a ticket's pull request stays on p across its next session, and not onto the next ticket", (t) => {
+      t.mock.timers.enable({ apis: ["setInterval", "Date"] });
+      const opened: string[] = [];
+      const tick = ticker(fake() as never, fake() as never, (u: string) => opened.push(u));
+      tick.start("C");
+      tick.context({ number: 7 });
+      tick.set({ pr: "https://x/pull/9" });
+      tick.context({ number: 7 });
+      tick.key("p");
+      tick.context({ number: 8 });
+      tick.key("p");
+      assert.deepEqual(opened, ["https://x/pull/9"]);
+    });
+
     test("t and c copy what they hand over, and say so", (t) => {
       t.mock.timers.enable({ apis: ["setInterval", "Date"] });
       const out = fake();
