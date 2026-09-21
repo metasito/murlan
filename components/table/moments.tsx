@@ -26,11 +26,12 @@ import Animated, {
   withDelay,
   cancelAnimation,
   Easing,
+  type SharedValue,
 } from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { sparkOffset, SPARK_COUNT, type FlareKind } from "@/components/flightPhysics";
-import { Layer, makeShadow, withAlpha, Motion } from "@/lib/theme";
+import { Layer, makeShadow, withAlpha, Motion, Scrim } from "@/lib/theme";
 
 // The prototype's own literal colours for this one effect — a lamp exploding
 // at the pile is a brighter, whiter flash than the felt's own ambient
@@ -297,6 +298,7 @@ function Wave({
 // ─── Spark ──────────────────────────────────────────────────────────────────
 
 const SPARK_SIZE = 3;
+const SPARK_RADII = [1, 1.6, 2.3] as const;
 const SPARK_MS = 1150;
 const SPARK_EASING = Easing.bezier(0.15, 0.75, 0.3, 1);
 const SPARK_Z = Layer.moment + 1;
@@ -346,7 +348,7 @@ function Spark({ index, trigger, scale }: { index: number; trigger: number; scal
     };
   });
 
-  const size = SPARK_SIZE * scale;
+  const size = SPARK_SIZE * SPARK_RADII[index % SPARK_RADII.length] * scale;
   // Static — a shadow outside `useAnimatedStyle` never touches the
   // per-frame animated path tests/animatedStyle.test.ts checks.
   const glow = makeShadow(SPARK_GLOW, 0, 0, 1, 7 * scale, 4);
@@ -495,6 +497,20 @@ export function LampLift({
   );
 }
 
+// ─── Felt scrim ─────────────────────────────────────────────────────────────
+
+/** `dim` is driven by `usePileFlight` (components/table/pile.tsx), which owns the throw's timing. */
+export function FeltScrim({ dim }: { dim: SharedValue<number> }) {
+  const aStyle = useAnimatedStyle(() => ({ opacity: dim.value }));
+  return (
+    <Animated.View
+      testID="felt-scrim"
+      pointerEvents="none"
+      style={[StyleSheet.absoluteFill, { backgroundColor: Scrim.solid, zIndex: Layer.feltScrim }, aStyle]}
+    />
+  );
+}
+
 // ─── Sweep ──────────────────────────────────────────────────────────────────
 
 const SWEEP_MS = 1500;
@@ -508,7 +524,17 @@ const SWEEP_TRAVEL_FACTOR = 0.6;
 const SWEEP_Z = Layer.sheet + 1;
 
 /** A diagonal pass of light across the whole table — the flush's own sweep. */
-export function Sweep({ trigger, width, height }: { trigger: number; width: number; height: number }) {
+export function Sweep({
+  trigger,
+  width,
+  height,
+  durationMs = SWEEP_MS,
+}: {
+  trigger: number;
+  width: number;
+  height: number;
+  durationMs?: number;
+}) {
   const reduceMotion = usePrefersReducedMotion();
   const opacity = useSharedValue(0);
   // -1 to 1 across the band's own travel, which is applied at render: a
@@ -524,12 +550,12 @@ export function Sweep({ trigger, width, height }: { trigger: number; width: numb
     x.value = -1;
     const e = SWEEP_EASING;
     opacity.value = withSequence(
-      withTiming(1, { duration: SWEEP_MS * 0.12, easing: e }),
-      withTiming(1, { duration: SWEEP_MS * 0.76, easing: e }),
-      withTiming(0, { duration: SWEEP_MS * 0.12, easing: e })
+      withTiming(1, { duration: durationMs * 0.12, easing: e }),
+      withTiming(1, { duration: durationMs * 0.76, easing: e }),
+      withTiming(0, { duration: durationMs * 0.12, easing: e })
     );
-    x.value = withTiming(1, { duration: SWEEP_MS, easing: e });
-  }, [trigger, reduceMotion, opacity, x]);
+    x.value = withTiming(1, { duration: durationMs, easing: e });
+  }, [trigger, reduceMotion, durationMs, opacity, x]);
 
   useEffect(
     () => () => {
@@ -546,6 +572,7 @@ export function Sweep({ trigger, width, height }: { trigger: number; width: numb
 
   return (
     <Animated.View
+      testID="sweep"
       pointerEvents="none"
       style={[
         {

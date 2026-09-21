@@ -4,7 +4,7 @@
 import { describe, it, expect, jest, beforeEach } from '@jest/globals';
 import React from 'react';
 import { act, fireEvent, render, screen, within } from '@testing-library/react-native';
-import { Platform, StyleSheet } from 'react-native';
+import { Platform, StyleSheet, Text } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 jest.mock('@/lib/query-client', () => ({
@@ -35,6 +35,7 @@ import {
   useNotification,
 } from '@/context/NotificationContext';
 import { SettingsProvider } from '@/context/SettingsContext';
+import { useScreenShakeEnabled } from '@/lib/screenShake';
 import { en as locale } from '@/locales/en';
 import { Colors } from '@/lib/theme';
 
@@ -49,7 +50,7 @@ let notify: ReturnType<typeof useNotification>;
 
 function Probe() {
   notify = useNotification();
-  return null;
+  return <Text>{`shake:${useScreenShakeEnabled()}`}</Text>;
 }
 
 async function mount() {
@@ -66,6 +67,15 @@ async function mount() {
 }
 
 describe('settings modal', () => {
+  it('its screen-shake switch turns the table shake off', async () => {
+    const view = await mount();
+    expect(screen.getByText('shake:true')).toBeTruthy();
+    await fireEvent.press(screen.getByLabelText(locale['settings.screenShakeA11yLabel']));
+    expect(screen.getByText('shake:false')).toBeTruthy();
+    await fireEvent.press(screen.getByLabelText(locale['settings.screenShakeA11yLabel']));
+    await view.unmount();
+  });
+
   it('puts the delete-account control inside a scroll view', async () => {
     const view = await mount();
     const body = screen.getByTestId('settings-scroll');

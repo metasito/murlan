@@ -739,17 +739,17 @@ describe("the table's own trauma escalation (#763)", () => {
   });
 
   test("the tier→trauma mapping is the one table #101 settled", () => {
-    assert.equal(traumaFor("ordinary", false), 0);
-    assert.equal(traumaFor("straightFlush", false), 0);
-    assert.equal(traumaFor("bomb", false), Trauma.bomb);
-    assert.equal(traumaFor("mancheWon", false), Trauma.mancheWon);
-    assert.equal(traumaFor("partitaWon", false), Trauma.partitaWon);
+    assert.equal(traumaFor("ordinary", false, false), 0);
+    assert.equal(traumaFor("straightFlush", false, false), 0);
+    assert.equal(traumaFor("bomb", false, false), Trauma.bomb);
+    assert.equal(traumaFor("mancheWon", false, false), Trauma.mancheWon);
+    assert.equal(traumaFor("partitaWon", false, false), Trauma.partitaWon);
   });
 
   test("the bomb outranks the manche and the partita both — a later 'tidy-up' that sorts by event size must fail this", () => {
-    const bomb = traumaFor("bomb", false);
-    const manche = traumaFor("mancheWon", false);
-    const partita = traumaFor("partitaWon", false);
+    const bomb = traumaFor("bomb", false, false);
+    const manche = traumaFor("mancheWon", false, false);
+    const partita = traumaFor("partitaWon", false, false);
     assert.ok(
       bomb > manche,
       "a bomb is a surprise and a manche ending is expected — the bomb shakes harder on purpose"
@@ -768,15 +768,23 @@ describe("the table's own trauma escalation (#763)", () => {
   test("reduced motion produces no shake, at every tier, without a bespoke branch", () => {
     const tiers: ImpactTier[] = ["ordinary", "straightFlush", "bomb", "mancheWon", "partitaWon"];
     for (const tier of tiers) {
-      assert.equal(traumaFor(tier, true), 0, `${tier} must carry no trauma under reduced motion`);
+      assert.equal(traumaFor(tier, true, false), 0, `${tier} must carry no trauma under reduced motion`);
     }
   });
 
   test("reduced motion answers exactly 0, not merely a small number", () => {
     assert.ok(
-      Object.is(traumaFor("partitaWon", true), 0),
+      Object.is(traumaFor("partitaWon", true, false), 0),
       "a fix that shrinks trauma instead of zeroing it would still shake, just less"
     );
+  });
+
+  test("screen shake switched off answers exactly 0 at every tier, and on leaves the tier's trauma", () => {
+    const tiers: ImpactTier[] = ["ordinary", "straightFlush", "bomb", "mancheWon", "partitaWon"];
+    for (const tier of tiers) {
+      assert.ok(Object.is(traumaFor(tier, false, true), 0), `${tier} must not shake with screen shake off`);
+      assert.equal(traumaFor(tier, false, false), Trauma[tier as keyof typeof Trauma] ?? 0);
+    }
   });
 
   test("trauma at rest (elapsed 0) is the tier's own trauma squared — Trauma, lib/tokens.ts", () => {
@@ -1079,6 +1087,25 @@ describe("the bomb's peak, re-tuned against #789's corrected curve (#796)", () =
     return shakeOffset(Trauma.bomb, elapsedMs, DECAY_MS, scale, shakeAmplitudeFor("bomb"));
   }
 
+  test("only the bomb rotates, peaking at 1.2° and out of phase with the translation", () => {
+    const samples = Array.from({ length: 200 }, (_, i) => (i / 200) * DECAY_MS);
+    const bombTurns = samples.map((ms) => bombShake(BASE_EDGE, ms).rotate);
+    const peak = Math.max(...bombTurns.map(Math.abs));
+    assert.ok(peak > 0 && peak <= 1.2, `the bomb's rotation peak was ${peak}°`);
+    assert.equal(bombShake(BASE_EDGE, 0).rotate, 0, "the rotation is phase-shifted off the jolt at impact");
+    const quarterCycle = DECAY_MS / 12;
+    assert.ok(
+      Math.abs(Math.abs(bombShake(BASE_EDGE, quarterCycle).rotate) - shakeMagnitude(Trauma.bomb, quarterCycle, DECAY_MS) * 1.2) < 1e-9,
+      "a quarter cycle in, the rotation is the whole decayed magnitude times the 1.2° peak"
+    );
+    for (const tier of ALL_TIERS) {
+      if (tier === "bomb") continue;
+      for (const ms of samples) {
+        assert.equal(Math.abs(shakeOffset(1, ms, DECAY_MS, 1, shakeAmplitudeFor(tier)).rotate), 0, `${tier} must not rotate`);
+      }
+    }
+  });
+
   // What a bomb's shake alone displaced before #789 corrected the decay curve
   // — a fixed pixel amount, unscaled by the table (#790's own bug) — at the
   // amplitude constants shipped then. #796's own measurement on #795's PR.
@@ -1111,8 +1138,8 @@ describe("the bomb's peak, re-tuned against #789's corrected curve (#796)", () =
   test("a manche or partita closed by an ordinary combination — no kick to lean on — keeps exactly the shake it had before this ticket", () => {
     for (const tier of ["mancheWon", "partitaWon"] as const) {
       const scale = PHONE_EDGE / BASE_EDGE;
-      const untouched = shakeOffset(traumaFor(tier, false), 0, DECAY_MS, scale);
-      const withThisTicketsHelper = shakeOffset(traumaFor(tier, false), 0, DECAY_MS, scale, shakeAmplitudeFor(tier));
+      const untouched = shakeOffset(traumaFor(tier, false, false), 0, DECAY_MS, scale);
+      const withThisTicketsHelper = shakeOffset(traumaFor(tier, false, false), 0, DECAY_MS, scale, shakeAmplitudeFor(tier));
       assert.deepEqual(
         withThisTicketsHelper,
         untouched,
@@ -1141,7 +1168,7 @@ describe("the bomb's peak, re-tuned against #789's corrected curve (#796)", () =
     // not. A non-zero decay window here means only `traumaFor`'s own answer,
     // run through the bomb's larger peak, is under test.
     const scale = PHONE_EDGE / BASE_EDGE;
-    const trauma = traumaFor("bomb", true);
+    const trauma = traumaFor("bomb", true, false);
     const { x, y } = shakeOffset(trauma, 0, DECAY_MS, scale, shakeAmplitudeFor("bomb"));
     assert.equal(x, 0, "the boosted amplitude must not turn a leaked trauma into visible displacement");
     assert.equal(y, 0, "the boosted amplitude must not turn a leaked trauma into visible displacement");

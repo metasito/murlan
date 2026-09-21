@@ -120,6 +120,8 @@ export const Scrim = {
   soft:   'rgba(0,0,0,0.22)',
   medium: 'rgba(0,0,0,0.35)',
   heavy:  'rgba(0,0,0,0.6)',
+  // For a wash animated by opacity: the view's opacity is then the darkness.
+  solid:  'rgba(0,0,0,1)',
 } as const;
 
 // White lifts on dark surfaces: inner edges, glass highlights.
@@ -297,7 +299,9 @@ export const Opacity = {
  */
 export const Layer = {
   felt: 0,
-  table: 1,
+  /** Dims the felt before a bomb lands, under every card. */
+  feltScrim: 1,
+  table: 2,
   moment: 10,
   rail: 20,
   hint: 30,

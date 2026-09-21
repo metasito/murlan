@@ -14,6 +14,7 @@ import {
 import type { Combination, CombinationType } from "@/lib/gameEngine";
 import type { FlyDirection } from "@/components/seatLayout";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
+import { useScreenShakeEnabled } from "@/lib/screenShake";
 import {
   roundClosedWithWinner,
   traumaFor,
@@ -141,7 +142,7 @@ interface TableFeedback {
  * with the writers as plain closures. `components/table/hand.tsx` arrives at
  * the same place from the other side, with its gesture.
  */
-function useImpactFeedback(reduceMotion: boolean, scale: number) {
+function useImpactFeedback(reduceMotion: boolean, screenShake: boolean, scale: number) {
   const kickX = useSharedValue(0);
   const kickY = useSharedValue(0);
   const kickScale = useSharedValue(1);
@@ -160,18 +161,21 @@ function useImpactFeedback(reduceMotion: boolean, scale: number) {
   const shakeDecayMs = useSharedValue(0);
   const shakeAmpX = useSharedValue(0);
   const shakeAmpY = useSharedValue(0);
+  const shakeAmpRotate = useSharedValue(0);
 
   // Both inputs are read through refs so the two writers below depend on
   // nothing, which is what lets the callbacks that expose them hold `[]`.
   const scaleRef = useRef(scale);
   const reduceMotionRef = useRef(reduceMotion);
+  const screenShakeRef = useRef(screenShake);
   useEffect(() => {
     scaleRef.current = scale;
     reduceMotionRef.current = reduceMotion;
-  }, [scale, reduceMotion]);
+    screenShakeRef.current = screenShake;
+  }, [scale, reduceMotion, screenShake]);
 
   const kick = () => {
-    if (reduceMotionRef.current) return;
+    if (reduceMotionRef.current || !screenShakeRef.current) return;
     const s = scaleRef.current;
     const e = KICK_EASING;
     const jolt = (axis: "x" | "y") =>
@@ -215,13 +219,14 @@ function useImpactFeedback(reduceMotion: boolean, scale: number) {
   // `motionMs("shake", reduceMotion)` collapses the decay window the same way
   // every other step on the table does.
   const shake = (tier: ImpactTier) => {
-    const trauma = traumaFor(tier, reduceMotionRef.current);
+    const trauma = traumaFor(tier, reduceMotionRef.current, !screenShakeRef.current);
     const decayMs = motionMs("shake", reduceMotionRef.current);
     const amplitude = shakeAmplitudeFor(tier);
     shakeTrauma.value = trauma;
     shakeDecayMs.value = decayMs;
     shakeAmpX.value = amplitude.x;
     shakeAmpY.value = amplitude.y;
+    shakeAmpRotate.value = amplitude.rotate;
     if (trauma === 0) {
       shakeElapsed.value = 0;
       return;
@@ -243,11 +248,12 @@ function useImpactFeedback(reduceMotion: boolean, scale: number) {
   }));
 
   const shakeStyle = useAnimatedStyle(() => {
-    const { x, y } = shakeOffset(shakeTrauma.value, shakeElapsed.value, shakeDecayMs.value, scale, {
+    const { x, y, rotate } = shakeOffset(shakeTrauma.value, shakeElapsed.value, shakeDecayMs.value, scale, {
       x: shakeAmpX.value,
       y: shakeAmpY.value,
+      rotate: shakeAmpRotate.value,
     });
-    return { transform: [{ translateX: x }, { translateY: y }] };
+    return { transform: [{ translateX: x }, { translateY: y }, { rotate: `${rotate}deg` }] };
   });
 
   // Reanimated keeps driving shared values after unmount unless cancelled.
@@ -317,6 +323,7 @@ export function useTableFeedback({
   scale,
 }: TableFeedbackState): TableFeedback {
   const reduceMotion = usePrefersReducedMotion();
+  const screenShake = useScreenShakeEnabled();
   const prevMyTurnRef = useRef(false);
   const prevExchangeActiveRef = useRef(false);
   const prevGameOverRef = useRef(false);
@@ -348,7 +355,7 @@ export function useTableFeedback({
     shakeStyle,
     shake,
     burst,
-  } = useImpactFeedback(reduceMotion, scale);
+  } = useImpactFeedback(reduceMotion, screenShake, scale);
   // BombBurst and Sweep own their animations; these just say "again" —
   // PlayedPile's `bounceTrigger` is the same pattern.
   const [flushTrigger, setFlushTrigger] = useState(0);
