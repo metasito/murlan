@@ -211,7 +211,7 @@ export function sessionRow({
  * and a session that spent money without finishing a ticket (a usage refusal) is a row like any
  * other rather than an adjustment nothing can audit.
  *
- * @param {{append?: Function, mkdir?: Function, exists?: Function, write?: Function}} [io]
+ * @param {{append?: Function, mkdir?: Function, exists?: Function, write?: Function, read?: Function}} [io]
  */
 export function ledger(io = {}) {
   const {

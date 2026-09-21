@@ -1171,6 +1171,7 @@ export function ticker(out = process.stdout, err = process.stderr, reveal = open
     /**
      * A hold, as one live row counting down rather than a line every quarter hour. `w` ends it
      * early. At a pipe there is no live row, so the returned `say` is the heartbeat instead.
+     * @param {string|null} [then]
      */
     wait(label, until, then = null) {
       let wake;
