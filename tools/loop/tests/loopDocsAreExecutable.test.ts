@@ -275,6 +275,24 @@ describe("a CI fix round is a documented path, not an improvisation", () => {
   });
 });
 
+describe("every subagent brief comes from brief.mjs", () => {
+  const queue = () => read(QUEUE);
+  test("queue.md quotes no brief text of its own", () => {
+    assert.doesNotMatch(queue(), /^> (Investigate issue|For each Definition-of-done box|For each finding below)/m);
+  });
+  test("phases B, C and D each name brief.mjs with their kinds", () => {
+    for (const kind of ["scope", "completeness", "standards", "spec", "refute", "fix"]) {
+      assert.match(queue(), new RegExp(`brief\\.mjs ${kind}\\b`), kind);
+    }
+  });
+  test("phase B splits a size:L ticket with three or more independent feature groups", () => {
+    const b = queue().split("## B — Scope")[1]?.split("## C — Build")[0] ?? "";
+    assert.match(b, /size:L/);
+    assert.match(b, /three or more independent feature groups/);
+    assert.match(b, /gh issue create/);
+  });
+});
+
 describe("the supervisor tears the worktree down", () => {
   test("with the script that detaches the junction first", () => {
     assert.match(read("tools/loop/queue-loop.mjs"), /"worktrees:remove", "--"/);

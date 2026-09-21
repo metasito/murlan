@@ -169,7 +169,7 @@ function normalize(words, depth) {
   return [{ cmd, env, dir, args }];
 }
 
-function commands(text, depth = 0) {
+export function commands(text, depth = 0) {
   return segments(text, depth).flatMap((words) => normalize(words, depth));
 }
 
@@ -181,7 +181,7 @@ function commands(text, depth = 0) {
  * begins at a line start like any other, so a rule would fire on prose *about* a command.
  * Blanked rather than deleted so nothing on either side is joined into a new match.
  */
-function withoutQuotedBodies(command) {
+export function withoutQuotedBodies(command) {
   const blank = (s) => s.replace(/[^\n]/g, " ");
   const lineBefore = (all, offset) => all.slice(all.lastIndexOf("\n", offset - 1) + 1, offset);
   const feedsShell = (before, after) => {

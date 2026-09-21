@@ -12,6 +12,16 @@
         ]
       },
       {
+        "matcher": "Bash|PowerShell|Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["${CLAUDE_PROJECT_DIR}/tools/loop/guard-read.mjs"]
+          }
+        ]
+      },
+      {
         "matcher": "Write|Edit",
         "hooks": [
           {
