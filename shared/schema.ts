@@ -63,6 +63,10 @@ export const rooms = pgTable(
     gameMode: gameModeEnum("game_mode").default("free_for_all").notNull(),
     maxPlayers: integer("max_players").default(4).notNull(),
     visibility: roomVisibilityEnum("visibility").default("private").notNull(),
+    // Why the room exists, not what it currently allows: quick-match promises
+    // strangers a deal, a room its host opened to strangers does not.
+    // `visibility` cannot answer it — `room:setVisibility` rewrites that.
+    autoStart: boolean("auto_start").default(false).notNull(),
     createdAt: timestamp("created_at").defaultNow(),
   },
   (t) => [

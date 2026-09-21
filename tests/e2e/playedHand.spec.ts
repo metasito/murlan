@@ -31,7 +31,7 @@ const SETTLE_MS = 1_500;
  * How long the table is given to answer the pass.
  *
  * Short on purpose, and the shortness is the assertion. This seat is on move, so
- * `HUMAN_TURN_SECONDS` (20s, app/game.tsx) is running and expiring it passes for
+ * `HUMAN_TURN_SECONDS` (app/game.tsx) is running and expiring it passes for
  * the seat — a dead button would then report as a working one to anything
  * waiting longer. The bot answers in well under a second with
  * `EXPO_PUBLIC_E2E_FAST` set, so this is several times what a healthy answer

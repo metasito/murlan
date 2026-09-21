@@ -25,6 +25,7 @@ import { Colors, FontSize, Motion, Radius, Spacing } from '@/lib/theme';
 import { MenuLayout, CONTENT_H_PAD } from "@/components/MenuLayout";
 import { MenuCard } from "@/components/MenuCard";
 import { MenuButton } from "@/components/MenuButton";
+import { a11yHidden, a11yState } from "@/lib/a11y";
 import { useTranslation } from "@/lib/i18n";
 import type { GameMode } from "@/lib/gameEngine";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
@@ -207,8 +208,14 @@ export default function QuickmatchScreen() {
                 pressed && styles.modeCardPressed,
               ]}
               onPress={() => handleSelectMode(mode)}
+              accessibilityLabel={t("quickmatch.modeCardA11yLabel", {
+                mode: mode.label,
+                players: mode.playerLabel,
+                description: mode.desc,
+              })}
+              {...a11yState({ role: "button" })}
             >
-              <View style={styles.modeIconRow}>
+              <View style={styles.modeIconRow} {...a11yHidden()}>
                 <View style={[styles.modeIconBg, isLandscape && styles.modeIconBgSmall]}>
                   <Ionicons name={mode.icon} size={isLandscape ? 20 : 26} color={Colors.gold} />
                 </View>
@@ -216,8 +223,8 @@ export default function QuickmatchScreen() {
                   <Text style={styles.playerBadgeText}>{mode.playerLabel}</Text>
                 </View>
               </View>
-              <Text style={[styles.modeLabel, isLandscape && styles.modeLabelSmall]}>{mode.label}</Text>
-              <Text style={styles.modeDesc}>{mode.desc}</Text>
+              <Text style={[styles.modeLabel, isLandscape && styles.modeLabelSmall]} {...a11yHidden()}>{mode.label}</Text>
+              <Text style={styles.modeDesc} {...a11yHidden()}>{mode.desc}</Text>
             </Pressable>
           ))}
         </View>

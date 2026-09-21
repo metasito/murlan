@@ -58,6 +58,9 @@ const COPIED_FOR_MS = Motion.duration.dwell;
  */
 export const BOTS_OFFERED_AFTER_MS = 30_000;
 
+/** One second, as the countdown's step and as its ms-to-seconds divisor. */
+const COUNTDOWN_TICK_MS = 1_000;
+
 function BotFillControls({
   fillWithBots,
   onToggleFillWithBots,
@@ -352,6 +355,7 @@ export default function RoomScreen() {
 
   const [fillWithBots, setFillWithBots] = useState(false);
   const [botsOffered, setBotsOffered] = useState(false);
+  const [secondsToBots, setSecondsToBots] = useState(BOTS_OFFERED_AFTER_MS / COUNTDOWN_TICK_MS);
   const [botPersonality, setBotPersonality] = useState<BotPersonalityId>(DEFAULT_BOT_PERSONALITY);
   const [matchLength, setMatchLength] = useState<MatchLength>("match");
   const [confirming, setConfirming] = useState<ConfirmRequest | null>(null);
@@ -361,9 +365,20 @@ export default function RoomScreen() {
 
   const isLandscape = useIsLandscape();
 
+  // Counted from a wall-clock start, not from the number of ticks: a
+  // backgrounded tab throttles the interval, and a countdown that trusts its
+  // own ticks then says "12s" long after the offer is due.
   useEffect(() => {
-    const timer = setTimeout(() => setBotsOffered(true), BOTS_OFFERED_AFTER_MS);
-    return () => clearTimeout(timer);
+    const startedAt = Date.now();
+    const timer = setInterval(() => {
+      const left = Math.ceil((BOTS_OFFERED_AFTER_MS - (Date.now() - startedAt)) / COUNTDOWN_TICK_MS);
+      setSecondsToBots(Math.max(0, left));
+      if (left <= 0) {
+        clearInterval(timer);
+        setBotsOffered(true);
+      }
+    }, COUNTDOWN_TICK_MS);
+    return () => clearInterval(timer);
   }, []);
 
   const hasGameState = !!gameState;
@@ -407,8 +422,9 @@ export default function RoomScreen() {
   // Offered, never assumed: the card is not on screen until the host has
   // actually been kept waiting, so a bot can only ever be something they
   // reached for.
-  const showBotFillControls = isHost && room.status === "waiting" && hasEmptySeats && botsOffered;
-  const showMatchmakingToggle = isHost && room.status === "waiting" && hasEmptySeats;
+  const hostIsWaiting = isHost && room.status === "waiting" && hasEmptySeats;
+  const showBotFillControls = hostIsWaiting && botsOffered;
+  const showMatchmakingToggle = hostIsWaiting;
 
   // The button's face is the only feedback there is: nothing else on the
   // screen changes when the code reaches the clipboard, and the haptic below
@@ -493,7 +509,13 @@ export default function RoomScreen() {
       botPersonality={botPersonality}
       onChangeBotPersonality={setBotPersonality}
     />
-  ) : null;
+  ) : (
+    hostIsWaiting && (
+      <Text style={styles.botsComingHint}>
+        {t("room.botsComingIn", { seconds: secondsToBots })}
+      </Text>
+    )
+  );
 
   const StartButton = isHost ? (
     <MenuButton
@@ -748,6 +770,12 @@ const inviteStyles = StyleSheet.create({
 });
 
 const styles = StyleSheet.create({
+  botsComingHint: {
+    color: Colors.textMuted,
+    fontSize: FontSize.sm,
+    textAlign: "center",
+    paddingHorizontal: Spacing.cosy,
+  },
   landscapeBody: {
     flex: 1,
     flexDirection: "row",
