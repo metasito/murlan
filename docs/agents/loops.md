@@ -445,7 +445,7 @@ process that is still serving as a corpse.
 | Anything **visual** (colour, gradient, shadow, size) | the parity harness below | pixels vs the prototype | ~40s |
 | Tokens, contrast, roles | `node --test tests/contrast.test.ts tests/tokenRoles.test.ts tests/cosmetics.test.ts` | AA floors | ~1s |
 | The server, the socket protocol, auth or storage | `tests/integration/` — see below, it needs a database | the routes and handlers end to end | ~10s a file |
-| Anything the app must **boot and stay drivable through on iOS** | `.github/workflows/ios.yml`, weekly or by hand | a crash, a screen that never renders, a control the flows tap going missing — on a real simulator | 10–15 min over three runs on 2026-08-31, none of which finished the flow; run 33899179508 ran all four flows to completion (one, offline-game, failed on its own assertion, unrelated to #55) inside ~13 min of flow time, comfortably inside the job's 100 min ceiling |
+| Anything the app must **boot and stay drivable through on iOS** | `.github/workflows/ios.yml`, weekly or by hand — red on `exchange-phase` at the 2026-09-21 dispatch (#1158); #1094 owns the trigger | a crash, a screen that never renders, a control the flows tap going missing — on a real simulator | 10–15 min over three runs on 2026-08-31, none of which finished the flow; run 33899179508 ran all four flows to completion (one, offline-game, failed on its own assertion, unrelated to #55) inside ~13 min of flow time, comfortably inside the job's 100 min ceiling |
 | **The ticket loop** (`tools/loop/`) | `npm run loop:test` | the supervisor, the gate, the picker, the workspace tools | ~40s, 684 |
 
 Full sweeps, for the end of an item only: `npx tsc --noEmit` (~5s) → `npm test` (~12s, 1066) →
