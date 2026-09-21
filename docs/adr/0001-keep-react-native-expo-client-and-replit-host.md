@@ -1,6 +1,6 @@
 # 0001. Keep the React Native/Expo client and the Replit host
 
-**Status:** Accepted
+**Status:** Accepted — its "Stay on Replit for now" clause superseded by ADR-0006
 **Date:** 2026-08-20 (migrated from `docs/BACKLOG.md` §3, original analysis undated)
 
 ## Context

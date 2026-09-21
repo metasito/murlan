@@ -348,7 +348,7 @@ Then check:
   },
   {
     key: 'infra', kind: 'research', model: 'opus', skills: ['eas-app-stores'],
-    start: '.replit, replit.md, docs/adr/0001-*, docs/adr/0003-*, docs/DEPLOY-RUNBOOK.md, docs/replit-dev-sync.md, .github/workflows/replit-dev-sync.yml, server/devSyncHook.ts, server/index.ts, server/socketAdapter.ts, package.json scripts, eas.json, app.json, docs/research/2026-08-26-dev-build-vs-expo-go.md, docs/research/2026-08-29-multiplayer-infrastructure.md',
+    start: '.replit, replit.md, docs/adr/0001-*, docs/adr/0003-*, docs/DEPLOY-RUNBOOK.md, docs/adr/0006-*, server/index.ts, server/socketAdapter.ts, package.json scripts, eas.json, app.json, docs/research/2026-08-26-dev-build-vs-expo-go.md, docs/research/2026-08-29-multiplayer-infrastructure.md',
     refs: 'Use WebSearch and WebFetch. Official pricing pages only; record the URL and the date read for every price.',
     ask: `The Replit subscription has ended. Research where the app should live next.
 Requirements: free at the start, reasonable cost as it grows, mature and boring. The host must run:
