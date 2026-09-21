@@ -12,9 +12,12 @@ import Animated, {
   useSharedValue,
   withTiming,
   withSequence,
+  withSpring,
+  Easing,
   SlideInLeft,
 } from "react-native-reanimated";
-import { Colors, FontSize, Layer, Motion, Radius, Scrim, Spacing, TOUCH_TARGET_MIN } from "@/lib/theme";
+import { Colors, FontSize, Layer, Motion, motionMs, Radius, Scrim, Spacing, TOUCH_TARGET_MIN } from "@/lib/theme";
+import { seatDirection, type FlyDirection } from "@/components/seatLayout";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTableReactions, type TableReaction } from "@/lib/reactions";
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
@@ -41,21 +44,29 @@ const RISE_MS = 1800;
 const RISE_PX = -80;
 const PANEL_RADIUS = Radius.md + 4;
 
-function FloatingReaction({ reaction }: { reaction: TableReaction }) {
-  const y = useSharedValue(0);
-  const opacity = useSharedValue(1);
+/** Just inside the sender's own edge of the felt, as this viewer sees the table. */
+export const REACTION_ANCHOR: Record<FlyDirection, { left: DimensionValue; top: DimensionValue }> = {
+  bottom: { left: "50%", top: "60%" },
+  top:    { left: "50%", top: "20%" },
+  left:   { left: "15%", top: "45%" },
+  right:  { left: "80%", top: "45%" },
+};
+
+function FloatingReaction({ reaction, direction }: { reaction: TableReaction; direction: FlyDirection }) {
   const reduceMotion = usePrefersReducedMotion();
+  const y = useSharedValue(reduceMotion ? 0 : Spacing.md);
+  const opacity = useSharedValue(0);
 
   useEffect(() => {
-    if (reduceMotion) {
-      // Still fades out — otherwise it would never leave the screen.
-      opacity.value = withTiming(0, { duration: RISE_MS });
-      return;
-    }
-    y.value = withTiming(RISE_PX, { duration: RISE_MS });
+    const appear = motionMs("shift", reduceMotion);
     opacity.value = withSequence(
-      withTiming(1, { duration: Motion.duration.shift }),
-      withTiming(0, { duration: RISE_MS - Motion.duration.shift })
+      withTiming(1, { duration: appear }),
+      withTiming(0, { duration: RISE_MS - appear })
+    );
+    if (reduceMotion) return;
+    y.value = withSequence(
+      withSpring(0, Motion.spring.land),
+      withTiming(RISE_PX, { duration: RISE_MS - appear, easing: Easing.out(Easing.quad) })
     );
   }, [opacity, reduceMotion, y]);
 
@@ -64,12 +75,11 @@ function FloatingReaction({ reaction }: { reaction: TableReaction }) {
     opacity: opacity.value,
   }));
 
-  // Spread the seats across the felt so two reactions rarely overlap.
-  const posMap: DimensionValue[] = ["50%", "80%", "20%", "60%"];
-  const left = posMap[reaction.fromSeat % posMap.length];
-
   return (
-    <Animated.View style={[styles.floatingEmoji, { left }, aStyle]}>
+    <Animated.View
+      testID={`reaction-from-${reaction.fromSeat}`}
+      style={[styles.floatingEmoji, REACTION_ANCHOR[direction], aStyle]}
+    >
       <Text style={styles.floatingEmojiText}>{reaction.emoji}</Text>
       <Text style={styles.floatingEmojiName}>{reaction.username}</Text>
     </Animated.View>
@@ -77,12 +87,12 @@ function FloatingReaction({ reaction }: { reaction: TableReaction }) {
 }
 
 /** Reads the reaction store itself, so a reaction re-renders this and nothing else. */
-export function FloatingReactions() {
+export function FloatingReactions({ viewerSeat, playerCount }: { viewerSeat: number; playerCount: number }) {
   const reactions = useTableReactions();
   return (
     <>
       {reactions.map((r) => (
-        <FloatingReaction key={r.id} reaction={r} />
+        <FloatingReaction key={r.id} reaction={r} direction={seatDirection(r.fromSeat, viewerSeat, playerCount)} />
       ))}
     </>
   );
@@ -180,7 +190,6 @@ const styles = StyleSheet.create({
 
   floatingEmoji: {
     position: "absolute",
-    bottom: "35%",
     alignItems: "center",
     zIndex: EMOJI_Z,
   },

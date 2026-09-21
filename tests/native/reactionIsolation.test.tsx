@@ -1,8 +1,9 @@
 import { describe, it, expect, afterEach } from '@jest/globals';
 import React from 'react';
+import { StyleSheet } from 'react-native';
 import { act, render, screen } from '@testing-library/react-native';
 
-import { FloatingReactions } from '@/components/ReactionLayer';
+import { FloatingReactions, REACTION_ANCHOR } from '@/components/ReactionLayer';
 import { clearReactions, pushReaction } from '@/lib/reactions';
 
 // A reaction lands in its own store, not in the online game context: an emoji
@@ -24,7 +25,7 @@ describe('a reaction re-renders the emoji layer and nothing above it', () => {
     // nothing else about reactions.
     function Table() {
       tableRenders += 1;
-      return <FloatingReactions />;
+      return <FloatingReactions viewerSeat={0} playerCount={4} />;
     }
 
     await render(<Table />);
@@ -39,7 +40,7 @@ describe('a reaction re-renders the emoji layer and nothing above it', () => {
   });
 
   it('names the sender, and follows the store when the reaction leaves it', async () => {
-    await render(<FloatingReactions />);
+    await render(<FloatingReactions viewerSeat={0} playerCount={4} />);
 
     await act(async () => {
       pushReaction({ emoji: '👏', username: 'Besi', fromSeat: 2 });
@@ -49,5 +50,19 @@ describe('a reaction re-renders the emoji layer and nothing above it', () => {
 
     await act(async () => clearReactions());
     expect(screen.queryByText('👏')).toBeNull();
+  });
+
+  it("rises from the sender's side of the table as this viewer sees it", async () => {
+    const view = await render(<FloatingReactions viewerSeat={2} playerCount={4} />);
+
+    await act(async () => {
+      pushReaction({ emoji: '🔥', username: 'Ana', fromSeat: 2 });
+      pushReaction({ emoji: '👏', username: 'Besi', fromSeat: 0 });
+    });
+
+    const anchorOf = (seat: number) => StyleSheet.flatten(screen.getByTestId(`reaction-from-${seat}`).props.style);
+    expect(anchorOf(2)).toMatchObject(REACTION_ANCHOR.bottom);
+    expect(anchorOf(0)).toMatchObject(REACTION_ANCHOR.top);
+    await view.unmount();
   });
 });

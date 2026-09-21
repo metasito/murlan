@@ -291,6 +291,8 @@ export default function OnlineGameScreen() {
           onConfirm: leaveAndExit,
         });
 
+  const viewerSeat = isSpectator ? 0 : mySeatIndex;
+
   return (
     <GameTable
       gameState={gameState}
@@ -300,7 +302,7 @@ export default function OnlineGameScreen() {
       // it is being watched. Every hand arrives blank from the server either
       // way; `spectating` is what makes the bottom one draw as backs rather
       // than as an empty hand.
-      viewerSeat={isSpectator ? 0 : mySeatIndex}
+      viewerSeat={viewerSeat}
       spectating={isSpectator}
       disconnectedSeats={disconnectedSeats}
       selectedIds={selectedIds}
@@ -433,7 +435,7 @@ export default function OnlineGameScreen() {
             pointerEvents="box-none"
             {...veiled}
           >
-              <FloatingReactions />
+              <FloatingReactions viewerSeat={viewerSeat} playerCount={gameState.players.length} />
 
             {showReactions && (
               <ReactionPanel
