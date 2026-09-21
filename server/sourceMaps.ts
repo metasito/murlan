@@ -48,7 +48,7 @@ function mapPathFor(url: string): string | null {
   return full === MAPS_ROOT || full.startsWith(MAPS_ROOT + path.sep) ? full : null;
 }
 
-// ponytail: re-read per lookup, cached only by path — this app has two map
+// Text cached by path, parsed per lookup — this app has two map
 // files and one reader (the owner, occasionally). Cache parsed consumers
 // instead if /admin read volume ever makes that worth the lifecycle cost.
 const rawMapCache = new Map<string, string | null>();
