@@ -39,6 +39,8 @@ import {
   exchangeFlight,
   comboKey,
   advancePile,
+  pileLayers,
+  sweepOrigin,
   roundClosedWithWinner,
   EMPTY_PILE,
   readExchange,
@@ -168,6 +170,27 @@ describe("advancePile", () => {
     // The new play's seat replaces the old one — `prev`'s owner is never
     // asked for, since only `current` is ever named.
     assert.equal(s2.playedBy, 0);
+  });
+});
+
+describe("pileLayers", () => {
+  const drawn = (l: ReturnType<typeof pileLayers>) =>
+    [l.onPile.prev, l.onPile.current, l.swept?.prev, l.swept?.current].flatMap(
+      (c) => c?.cards.map((card: any) => card.id) ?? []
+    );
+  const pile = advancePile(advancePile(EMPTY_PILE, combo(["a"]), 0), combo(["b", "c"]), 1);
+
+  test("every card on the felt is drawn exactly once, sweeping or not", () => {
+    for (const sweeping of [false, true]) {
+      assert.deepEqual(drawn(pileLayers(pile, sweeping)).sort(), ["a", "b", "c"]);
+    }
+  });
+
+  test("while the sweep runs it is the only drawer; the felt draws nothing", () => {
+    const l = pileLayers(pile, true);
+    assert.deepEqual(l.onPile, EMPTY_PILE);
+    assert.equal(l.swept, pile);
+    assert.equal(pileLayers(pile, false).swept, null);
   });
 });
 
@@ -1769,7 +1792,9 @@ describe("readThrownPlay", () => {
   };
 
   const read = (players: Player[], playedBy: number, combo = PAIR) =>
-    readThrownPlay({
+    readThrownPlay(readInput(players, playedBy, combo));
+  const readInput = (players: Player[], playedBy: number, combo = PAIR) =>
+    ({
       combo,
       playedBy,
       viewerSeat: 0,
@@ -1790,6 +1815,14 @@ describe("readThrownPlay", () => {
     const thrown = read(table(2), 2);
     assert.deepEqual(thrown.cards, PAIR.cards);
     assert.equal(thrown.dir, "top");
+  });
+
+  test("the sweep heads for the round winner's seat, its fan at rest", () => {
+    const players = table(3);
+    const { playedBy: _p, combo: _c, ...geometry } = readInput(players, 3);
+    const nothingLeaving = { type: "single", cards: [], strength: 0 } as unknown as Combination;
+    assert.deepEqual(sweepOrigin(geometry, 3), read(players, 3, nothingLeaving).origin);
+    assert.notDeepEqual(sweepOrigin(geometry, 3), sweepOrigin(geometry, 2));
   });
 
   test("a bomb and a royal straight land heavier than anything else", () => {

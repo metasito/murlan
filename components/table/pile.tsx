@@ -16,13 +16,13 @@ import Animated, {
 import { scheduleOnRN } from "react-native-worklets";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { CardView } from "@/components/CardView";
-import { Colors, FontSize, Hold, Motion, Radius, Scrim, Shadow, Spacing, Layer } from "@/lib/theme";
+import { Colors, FontSize, Hold, Motion, motionMs, Radius, Scrim, Shadow, Spacing, Layer } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
 import type { Card, Combination, CombinationType } from "@/lib/gameEngine";
 import { CARD_W, CARD_H, FIELD_SCALE, cardRadius } from "@/components/cardFaceModel";
 import { type FlyDirection } from "@/components/seatLayout";
-import { COMBO_MAX_TILT, advancePile, anticipationOffset, cardTilt, comboKey, EMPTY_PILE, FLIGHT_MS, flinchFor, impactDelayMs, landingHoldMs, landingTier, landSquashScale, readThrownPlay, roundClosedWithWinner, settleForMotion, type ImpactTier, type PileState, type ThrownPlayInput } from "@/components/flightPhysics";
+import { COMBO_MAX_TILT, advancePile, anticipationOffset, cardTilt, comboKey, EMPTY_PILE, FLIGHT_MS, flinchFor, impactDelayMs, landingHoldMs, landingTier, landSquashScale, pileLayers, readThrownPlay, roundClosedWithWinner, settleForMotion, sweepOrigin, type ImpactTier, type PileState, type ThrownPlayInput } from "@/components/flightPhysics";
 import { FIELD_ARC, solveArc } from "@/components/tableArc";
 
 const FLY_ROTS: Record<FlyDirection, number> = {
@@ -217,6 +217,71 @@ export function FlyingCards({
             <CardView card={cards[i]} scale={cardScale} light="flat" />
           </View>
         ))}
+      </Animated.View>
+    </View>
+  );
+}
+
+// ─── SweepCards ───────────────────────────────────────────────────────────────
+
+const SWEEP_SCALE = 0.6;
+
+/** A closed round's cards collected toward the seat that won them. */
+export function SweepCards({
+  pile,
+  origin,
+  roomW,
+  scale = 1,
+}: {
+  pile: PileState;
+  /** The winner's seat — components/flightPhysics.ts `sweepOrigin`. */
+  origin: { dx: number; dy: number };
+  roomW: number;
+  scale?: number;
+}) {
+  const reduceMotion = usePrefersReducedMotion();
+  const travel = useSharedValue(0);
+  const fade = useSharedValue(0);
+
+  useEffect(() => {
+    const travelMs = motionMs("travel", reduceMotion);
+    const shiftMs = motionMs("shift", reduceMotion);
+    travel.value = reduceMotion
+      ? 0
+      : withTiming(1, { duration: travelMs, easing: Easing.in(Easing.cubic) });
+    fade.value = withDelay(travelMs - shiftMs, withTiming(1, { duration: shiftMs }));
+    return () => {
+      cancelAnimation(travel);
+      cancelAnimation(fade);
+    };
+  }, [reduceMotion, travel, fade]);
+
+  const aStyle = useAnimatedStyle(() => ({
+    opacity: 1 - fade.value,
+    transform: [
+      { translateX: travel.value * origin.dx },
+      { translateY: travel.value * origin.dy },
+      { scale: 1 - travel.value * fade.value * (1 - SWEEP_SCALE) },
+    ],
+  }));
+
+  const cardScale = scale * FIELD_SCALE;
+  return (
+    <View style={[pileStyles.flyingContainer, { pointerEvents: "none" as const }]}>
+      <Animated.View testID="sweep-cards" style={[pileStyles.pileStack, aStyle]}>
+        {pile.prev && (
+          <View
+            style={[
+              pileStyles.pilePrevLayer,
+              { transform: [{ rotate: `${PILE_PREV_ROTATE_DEG}deg` }, { translateY: PILE_PREV_Y }] },
+            ]}
+          >
+            <PileComboCards cards={pile.prev.cards} scale={cardScale} roomW={roomW} />
+          </View>
+        )}
+        {pile.current && (
+          <PileComboCards cards={pile.current.cards} scale={cardScale} roomW={roomW} />
+        )}
       </Animated.View>
     </View>
   );
@@ -579,6 +644,7 @@ export function usePileFlight({
     null
   );
   const [pileState, setPileState] = useState<PileState>(EMPTY_PILE);
+  const [sweepTo, setSweepTo] = useState<{ dx: number; dy: number } | null>(null);
   const [bounceTrigger, setBounceTrigger] = useState(0);
   // The beaten pile's own reaction (#764): fired from the same impactDelayMs()
   // landing the shake and the impact sound wait for, never a second guess at it.
@@ -641,6 +707,7 @@ export function usePileFlight({
     const openNewRound = () => {
       playRoundStart();
       setPileState(EMPTY_PILE);
+      setSweepTo(null);
       setFlyInfo(null);
       clearLanding();
     };
@@ -659,9 +726,26 @@ export function usePileFlight({
       if (impactTimerRef.current) clearTimeout(impactTimerRef.current);
       prevComboKeyRef.current = "";
       if (roundClosedWithWinner({ lastPlayedCombination: combo, roundWinner })) {
+        const geometry = {
+          viewerSeat,
+          players,
+          opponents,
+          scale,
+          windowWidth,
+          windowHeight,
+          tableLeft,
+          tableRight,
+          tableTop,
+          surplus,
+          bottomPad,
+          handCardH,
+        };
         roundHoldTimerRef.current = setTimeout(() => {
-          roundHoldTimerRef.current = null;
-          openNewRound();
+          setSweepTo(sweepOrigin(geometry, roundWinner!));
+          roundHoldTimerRef.current = setTimeout(() => {
+            roundHoldTimerRef.current = null;
+            openNewRound();
+          }, motionMs("travel", reduceMotion));
         }, ROUND_WINNER_MS);
         return;
       }
@@ -786,8 +870,10 @@ export function usePileFlight({
     setBounceTrigger((t) => t + 1);
   }, []);
 
+  const { onPile, swept } = pileLayers(pileState, sweepTo !== null);
   return {
-    pileState,
+    pileState: onPile,
+    sweep: swept && sweepTo && { pile: swept, origin: sweepTo },
     flyInfo,
     flightLanded,
     flinchTrigger,

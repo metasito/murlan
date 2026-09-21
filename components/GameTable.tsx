@@ -87,7 +87,7 @@ import { useTableFeedback } from "@/components/useTableFeedback";
 import { useHandOrder } from "@/components/useHandOrder";
 import { useSameCards } from "@/components/useSameCards";
 import { useRailSide } from "@/components/useRailSide";
-import { FlyingCards, PlayedPile, getComboLabel, usePileFlight } from "@/components/table/pile";
+import { FlyingCards, PlayedPile, SweepCards, getComboLabel, usePileFlight } from "@/components/table/pile";
 import { warmCourtArt } from "@/components/CardView";
 import { BombBurst, LampLift, Sweep } from "@/components/table/moments";
 import { TopOppSlot, SideOppSlot } from "@/components/table/seats";
@@ -655,6 +655,7 @@ export function GameTable({
 
   const {
     pileState,
+    sweep,
     flyInfo,
     flightLanded,
     flinchTrigger,
@@ -1218,6 +1219,15 @@ export function GameTable({
                     direction={flyInfo.dir}
                     origin={flyInfo.origin}
                     onDone={onFlightDone}
+                    roomW={frame.fieldRoomW}
+                    scale={scale}
+                  />
+                )}
+
+                {sweep && (
+                  <SweepCards
+                    pile={sweep.pile}
+                    origin={sweep.origin}
                     roomW={frame.fieldRoomW}
                     scale={scale}
                   />
