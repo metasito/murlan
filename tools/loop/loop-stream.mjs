@@ -92,6 +92,7 @@ export function readLine(line) {
       sessionId: e.session_id ?? null,
       version: e.claude_code_version ?? null,
       model: e.model ?? null,
+      plugins: (e.plugins ?? []).map((p) => p.source ?? p.name),
     };
   }
   if (e.type === "system" && TASK_EVENT[e.subtype]) {

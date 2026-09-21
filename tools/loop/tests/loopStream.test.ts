@@ -16,8 +16,15 @@ describe("readLine", () => {
       session_id: "abc-123",
       claude_code_version: "2.1.251",
       model: "claude-sonnet-5",
+      plugins: [{ name: "ponytail", source: "ponytail@ponytail" }],
     });
-    assert.deepEqual(readLine(line), { kind: "init", sessionId: "abc-123", version: "2.1.251", model: "claude-sonnet-5" });
+    assert.deepEqual(readLine(line), {
+      kind: "init",
+      sessionId: "abc-123",
+      version: "2.1.251",
+      model: "claude-sonnet-5",
+      plugins: ["ponytail@ponytail"],
+    });
   });
 
   // Captured from a real run's `.loop-logs/962.jsonl`, not invented: the shape is the claim.

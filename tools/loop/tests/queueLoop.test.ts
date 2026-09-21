@@ -131,6 +131,21 @@ describe("queueLoopArgs", () => {
     }
   });
 
+  test("every plugin queue.md sends a session to is one the spawn turns on", () => {
+    const args = queueLoopArgs(1);
+    const { enabledPlugins } = JSON.parse(readFileSync(args[args.indexOf("--settings") + 1], "utf8"));
+    const root = path.join(import.meta.dirname, "../../..");
+    const queue = readFileSync(path.join(root, ".claude/commands/queue.md"), "utf8");
+    const { scripts } = JSON.parse(readFileSync(path.join(root, "package.json"), "utf8"));
+    const refs = [...queue.matchAll(/`(([a-z-]+):[a-z-]+)`/g)].filter((m) => !(m[1] in scripts));
+    const named = new Set(refs.map((m) => m[2]));
+    assert.ok(named.has("mattpocock-skills"), "queue.md's skill references were not found");
+    for (const plugin of named) {
+      const on = Object.entries(enabledPlugins).filter(([k, v]) => k.startsWith(`${plugin}@`) && v === true);
+      assert.equal(on.length, 1, `queue.md names ${plugin}, which loop-settings.json does not turn on`);
+    }
+  });
+
   test("streams JSON, which print mode refuses without --verbose", () => {
     const args = queueLoopArgs(1);
     assert.equal(args[args.indexOf("--output-format") + 1], "stream-json");
@@ -694,6 +709,18 @@ describe("runTicket", () => {
     assert.deepEqual([right.seen.killed, ok.wrongModel], [[], null]);
   });
 
+  test("a plugin loop-settings.json does not turn on kills the session and names it", async () => {
+    const withPlugins = (...sources: string[]) =>
+      JSON.stringify({ type: "system", subtype: "init", session_id: "s", model: "claude-opus-5", plugins: sources.map((source) => ({ source })) });
+    const stray = spawned([withPlugins("mattpocock-skills@claude-plugins-official", "ponytail@ponytail"), RESULT]);
+    const run = await runTicket(stray.spawnFn as never, opts({ at: "C" }));
+    assert.deepEqual(stray.seen.killed, ["SIGTERM"]);
+    assert.match(String(run.strayPlugin), /ponytail@ponytail/);
+    const clean = spawned([withPlugins("mattpocock-skills@claude-plugins-official", "agents-md@builtin"), RESULT]);
+    const ok = await runTicket(clean.spawnFn as never, opts({ at: "C" }));
+    assert.deepEqual([clean.seen.killed, ok.strayPlugin], [[], null]);
+  });
+
   test("a fix round is named on the board with its round", async () => {
     const { said, screen } = sink();
     await runTicket(fakeSpawn([RESULT]), opts({ at: "C", fix: true, retryCount: 1, screen }));
@@ -1233,7 +1260,7 @@ describe("holdFor", () => {
   // silent terminal reads exactly like a dead one.
   test("a long hold says it is still there, and says when it is back", async () => {
     const said: string[] = [];
-    await holdFor(60, () => false, 5, (m: string) => said.push(m), 10);
+    await holdFor(300, () => false, 5, (m: string) => said.push(m), 20);
     assert.ok(said.length >= 3, `expected several heartbeats, saw ${said.length}`);
     assert.match(said[0], /still waiting — back at \d/);
   });

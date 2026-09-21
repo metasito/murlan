@@ -236,6 +236,12 @@ export const turnsFor = (size) => TURNS_BY_SIZE[size ?? ""] ?? TURNS_DEFAULT;
 /** @param {string|null} [phase] */
 const plannedModel = (phase) => MODEL_BY_PHASE[phase ?? "A"] ?? MODEL_BY_PHASE.A;
 
+const LOOP_SETTINGS = path.join(HERE, "loop-settings.json");
+
+/** `loop-settings.json` can only switch off what it names; a plugin it does not turn on is stray. */
+export const strayPlugins = (loaded, allowed = JSON.parse(fs.readFileSync(LOOP_SETTINGS, "utf8")).enabledPlugins) =>
+  loaded.filter((source) => !source.endsWith("@builtin") && allowed[source] !== true);
+
 /**
  * @param {number} number
  * @param {string|null} [size] a `size:*` label, or null
@@ -260,7 +266,7 @@ export function queueLoopArgs(number, size = null, phase = null) {
     // Plugins no protocol file names: 83 skills become 66, and the prefix every turn re-reads
     // loses 2.3k. The prompt itself cannot move later — the ticket number is what stops a second pick.
     "--settings",
-    path.join(HERE, "loop-settings.json"),
+    LOOP_SETTINGS,
     "--tools",
     readAllowedTools().join(","),
     "--max-turns",
@@ -718,6 +724,9 @@ export function park(
     `- log: \`${log}\``,
     "",
     "The branch keeps its commits. Nothing was discarded.",
+    "",
+    "**To send it back:** deal with the reason above, then swap `ready-for-human` for `ready-for-agent`." +
+      " The next run resumes from the branch as it stands.",
   ].join("\n");
   const file = parkNotePath(number);
   step("comment", () => {
@@ -1449,6 +1458,7 @@ export function runTicket(
     blockedUntil: 0,
     stalled: false,
     wrongModel: null,
+    strayPlugin: null,
     stderr: "",
     /** Turns spent in phase C, and whether any of them committed. */
     buildTurns: 0,
@@ -1537,8 +1547,15 @@ export function runTicket(
       screen.set({ session: fact.sessionId });
       const family = fact.model ? familyOf(fact.model) : null;
       if (fact.model && !family) screen.warn(`the session started on ${fact.model}, a model of no known family\n`);
-      if (family && family !== planned && !state.wrongModel) {
+      const stray = strayPlugins(fact.plugins ?? []);
+      if (stray.length && !state.strayPlugin) {
+        state.strayPlugin =
+          `the session loaded ${stray.join(", ")}, which tools/loop/loop-settings.json does not turn on —` +
+          " set each to false there, or true if the loop needs it";
+      } else if (family && family !== planned && !state.wrongModel) {
         state.wrongModel = `the session started on ${fact.model}, but phase ${at ?? "A"} runs on ${planned}`;
+      }
+      if (state.strayPlugin || state.wrongModel) {
         child.kill("SIGTERM");
         setTimeout(() => child.kill("SIGKILL"), 10_000).unref();
       }
@@ -1641,6 +1658,7 @@ export function runTicket(
           stderr: state.stderr,
           version: state.version,
           wrongModel: state.wrongModel,
+          strayPlugin: state.strayPlugin,
           ms: Date.now() - startedAt,
           log: logPath,
           // Read now rather than accumulated as the lines arrived: the sink has just closed, so the
@@ -2204,6 +2222,11 @@ export async function runOnce(io, pinned = null, at = null) {
   if (dirtied) io.log(`#${route.number}'s session left the shared checkout dirty:\n${dirtied}`, "session");
 
   const after = afterSession(run, io.standing());
+  // Not the ticket's fault, so not a park: every next ticket would load the same plugin.
+  if (run.strayPlugin) {
+    io.record({ number: route.number, outcome: "halted", why: run.strayPlugin, run, counts: false });
+    return { outcome: "stop", why: run.strayPlugin };
+  }
   if (run.wrongModel) {
     return parkAndRecord(io, route.number, {
       phase: after?.phase ?? route.phase ?? "A",
