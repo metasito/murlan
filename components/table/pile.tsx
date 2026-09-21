@@ -22,7 +22,7 @@ import { useTranslation, type TranslationKey } from "@/lib/i18n";
 import type { Card, Combination } from "@/lib/gameEngine";
 import { CARD_W, CARD_H, FIELD_SCALE, cardRadius } from "@/components/cardFaceModel";
 import { type FlyDirection } from "@/components/seatLayout";
-import { COMBO_MAX_TILT, advancePile, cardTilt, comboKey, EMPTY_PILE, FLIGHT_MS, flinchFor, impactDelayMs, landingHoldMs, landingTier, landSquashScale, readThrownPlay, roundClosedWithWinner, settleForMotion, type ImpactTier, type PileState, type ThrownPlayInput } from "@/components/flightPhysics";
+import { COMBO_MAX_TILT, advancePile, anticipationOffset, cardTilt, comboKey, EMPTY_PILE, FLIGHT_MS, flinchFor, impactDelayMs, landingHoldMs, landingTier, landSquashScale, readThrownPlay, roundClosedWithWinner, settleForMotion, type ImpactTier, type PileState, type ThrownPlayInput } from "@/components/flightPhysics";
 import { FIELD_ARC, solveArc } from "@/components/tableArc";
 
 const FLY_ROTS: Record<FlyDirection, number> = {
@@ -127,15 +127,23 @@ export function FlyingCards({
     const easing = Easing.bezier(0.22, 0.61, 0.36, 1.0);
 
     opacity.value = withTiming(1, { duration: Motion.duration.flash * 0.7 });
-    tx.value = withTiming(0, { duration: FLIGHT_MS, easing });
-    ty.value = withTiming(0, { duration: FLIGHT_MS, easing });
+    const load = anticipationOffset(dx, dy);
+    const anticipate = { duration: Motion.anticipate, easing: Easing.out(Easing.quad) };
+    tx.value = withSequence(withTiming(dx + load.x, anticipate), withTiming(0, { duration: FLIGHT_MS, easing }));
+    ty.value = withSequence(withTiming(dy + load.y, anticipate), withTiming(0, { duration: FLIGHT_MS, easing }));
     // The flight's own resting rotation is the pile's — 0, PileComboCards'
     // own group rotation — so the handoff from FlyingCards to PlayedPile
     // cannot read as a jump (#828).
-    rot.value = withTiming(0, { duration: FLIGHT_MS, easing: Easing.out(Easing.cubic) });
-    arcY.value = withSequence(
-      withTiming(-ARC_PEAK, { duration: FLIGHT_MS * 0.5, easing: Easing.out(Easing.quad) }),
-      withTiming(0, { duration: FLIGHT_MS * 0.5, easing: Easing.in(Easing.quad) })
+    rot.value = withSequence(
+      withTiming(startRot, anticipate),
+      withTiming(0, { duration: FLIGHT_MS, easing: Easing.out(Easing.cubic) })
+    );
+    arcY.value = withDelay(
+      Motion.anticipate,
+      withSequence(
+        withTiming(-ARC_PEAK, { duration: FLIGHT_MS * 0.5, easing: Easing.out(Easing.quad) }),
+        withTiming(0, { duration: FLIGHT_MS * 0.5, easing: Easing.in(Easing.quad) })
+      )
     );
     // The card is down at `impactDelayMs()`, then the table sits still for the
     // hold before the settle — and the pile bounce riding its callback — runs.
@@ -168,7 +176,7 @@ export function FlyingCards({
     };
     // Every entry is stable for the life of one flight — the caller remounts
     // this component via `key` for each new one — so this runs once per flight.
-  }, [reduceMotion, notifyDone, tx, ty, rot, opacity, arcY, settle]);
+  }, [reduceMotion, notifyDone, dx, dy, startRot, tx, ty, rot, opacity, arcY, settle]);
 
   const aStyle = useAnimatedStyle(() => {
     const squash = landSquashScale(settle.value);

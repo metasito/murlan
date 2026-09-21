@@ -526,12 +526,6 @@ export function GameTable({
   // this box's own clipping, so it needs the box rather than the screen.
   const feltW = W;
   const feltH = H;
-  // The owner's own remedy for an announcement nobody noticed: swing the lamp
-  // off the seat and onto the middle, where the words are. The table's existing
-  // attention mechanism, pointed somewhere else — not a second device.
-  const light = holdingForStart
-    ? LAMP_CENTRE
-    : lightPosition(seatDirection(gameState.currentTurnIndex, viewerSeat, players.length));
 
   // ── Screen-reader table description ─────────────────────────────────────────
   //
@@ -609,6 +603,7 @@ export function GameTable({
   );
 
   const {
+    shownTurnIndex,
     giocaFlashStyle,
     passaFlashStyle,
     giocaGlowStyle,
@@ -626,6 +621,7 @@ export function GameTable({
     burst,
   } = useTableFeedback({
     isMyTurn,
+    currentTurnIndex: gameState.currentTurnIndex,
     isFinished,
     exchangeActive: exchange.active,
     canPass,
@@ -642,6 +638,13 @@ export function GameTable({
     viewerId: viewer?.id,
     scale,
   });
+
+  // The owner's own remedy for an announcement nobody noticed: swing the lamp
+  // off the seat and onto the middle, where the words are. The table's existing
+  // attention mechanism, pointed somewhere else — not a second device.
+  const light = holdingForStart
+    ? LAMP_CENTRE
+    : lightPosition(seatDirection(shownTurnIndex, viewerSeat, players.length));
 
   const handLiftStyle = useHandLift(
     (isMyTurn && !isFinished && !exchange.active) || exchangeIsMine,
@@ -1100,7 +1103,7 @@ export function GameTable({
               {opponents.top ? (
                 <TopOppSlot
                   player={opponents.top.player}
-                  isActive={opponents.top.seat === gameState.currentTurnIndex}
+                  isActive={opponents.top.seat === shownTurnIndex}
                   cardCount={handCountOf(opponents.top.player)}
                   departing={departingSide === "top" ? departingCount : 0}
                   passed={passed.includes(opponents.top.seat)}
@@ -1124,7 +1127,7 @@ export function GameTable({
                 {opponents.left && (
                   <SideOppSlot
                     player={opponents.left.player}
-                    isActive={opponents.left.seat === gameState.currentTurnIndex}
+                    isActive={opponents.left.seat === shownTurnIndex}
                     side="left"
                     cardCount={handCountOf(opponents.left.player)}
                     departing={departingSide === "left" ? departingCount : 0}
@@ -1215,7 +1218,7 @@ export function GameTable({
                 {opponents.right && (
                   <SideOppSlot
                     player={opponents.right.player}
-                    isActive={opponents.right.seat === gameState.currentTurnIndex}
+                    isActive={opponents.right.seat === shownTurnIndex}
                     side="right"
                     cardCount={handCountOf(opponents.right.player)}
                     departing={departingSide === "right" ? departingCount : 0}
