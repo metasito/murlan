@@ -153,7 +153,33 @@ test("a payload is a refusal only as an error status's body, a *:error emit or a
   assert.deepEqual(unread, []);
 });
 
-test("every refusal code the server returns is named by a test", () => {
+/** The string literals a test asserts on; one in a fixture or a log line is data, not a provoked refusal. */
+function assertedLiterals(files: [string, string][]): Set<string> {
+  const named = new Set<string>();
+  for (const [file, source] of files) {
+    const collect = (n: ts.Node, asserted: boolean) => {
+      if (asserted && ts.isStringLiteralLike(n)) named.add(n.text);
+      const asserts = ts.isCallExpression(n) && /^(assert\b|expect\()/.test(n.expression.getText());
+      ts.forEachChild(n, (c) => collect(c, asserted || asserts));
+    };
+    collect(ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true), false);
+  }
+  return named;
+}
+
+test("a code counts as tested only where an assertion names it", () => {
+  const named = assertedLiterals([
+    [
+      "a.test.ts",
+      `const line = loggedLine({ code: "FIXTURE" });
+       assert.equal(body.code, "ASSERTED");
+       expect(screen.getByText(label)).toHaveTextContent("EXPECTED");`,
+    ],
+  ]);
+  assert.deepEqual([...named].sort(), ["ASSERTED", "EXPECTED"]);
+});
+
+test("every refusal code the server returns is asserted by a test", () => {
   const { codes, unread } = refusalCodes();
   assert.deepEqual(unread, [], "a refusal code the scan cannot resolve to a literal is one it exempts");
   for (const known of [
@@ -172,15 +198,9 @@ test("every refusal code the server returns is named by a test", () => {
   }
   assert.ok(!codes.has("not_waiting"), "the scan read a ternary's condition as a code");
 
-  const named = new Set<string>();
-  for (const [file, source] of sourcesUnder(REPO_ROOT, ["tests"], /\.(ts|tsx|mjs)$/)) {
-    if (path.basename(file) === SELF) continue;
-    const collect = (n: ts.Node) => {
-      if (ts.isStringLiteralLike(n)) named.add(n.text);
-      ts.forEachChild(n, collect);
-    };
-    collect(ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true));
-  }
+  const named = assertedLiterals(
+    sourcesUnder(REPO_ROOT, ["tests"], /\.(ts|tsx|mjs)$/).filter(([file]) => path.basename(file) !== SELF)
+  );
   const untested = [...codes]
     .filter(([code]) => !named.has(code))
     .map(([code, where]) => `${code} (${where})`);

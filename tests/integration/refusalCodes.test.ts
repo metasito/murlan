@@ -11,11 +11,11 @@ describe("every refusal answers with its own code", { skip: hasDatabase() ? fals
   before(async () => { server = await startTestServer(); });
   after(async () => { if (server) await server.stop(); });
 
-  async function refused(path: string, init: RequestInit, status: number, code: string) {
+  async function refused(path: string, init: RequestInit, status: number): Promise<string> {
     const res = await fetch(`${server.url}${path}`, init);
     const text = await res.text();
     assert.equal(res.status, status, `${path}: ${text}`);
-    assert.equal((JSON.parse(text) as { code: string }).code, code, path);
+    return (JSON.parse(text) as { code: string }).code;
   }
 
   const addFriend = (cookie: string, username: string): RequestInit => ({
@@ -25,30 +25,30 @@ describe("every refusal answers with its own code", { skip: hasDatabase() ? fals
   });
 
   test("a signed-out caller is not authenticated", async () => {
-    await refused("/api/friends", {}, 401, "NOT_AUTHENTICATED");
-    await refused("/api/auth/me", {}, 401, "NOT_AUTHENTICATED");
+    assert.equal(await refused("/api/friends", {}, 401), "NOT_AUTHENTICATED");
+    assert.equal(await refused("/api/auth/me", {}, 401), "NOT_AUTHENTICATED");
   });
 
   test("a malformed id, room code or username is refused before any lookup", async () => {
     const { cookie } = await register(server, "rc_malformed");
-    await refused(`/api/replays/${"x".repeat(65)}`, { headers: { cookie } }, 400, "INVALID_PARAMETER");
-    await refused("/api/friends/invites/abc", { method: "DELETE", headers: { cookie } }, 400, "INVALID_ROOM_CODE");
-    await refused(`/api/users/search?username=${"x".repeat(31)}`, { headers: { cookie } }, 400, "INVALID_USERNAME");
+    assert.equal(await refused(`/api/replays/${"x".repeat(65)}`, { headers: { cookie } }, 400), "INVALID_PARAMETER");
+    assert.equal(await refused("/api/friends/invites/abc", { method: "DELETE", headers: { cookie } }, 400), "INVALID_ROOM_CODE");
+    assert.equal(await refused(`/api/users/search?username=${"x".repeat(31)}`, { headers: { cookie } }, 400), "INVALID_USERNAME");
   });
 
   test("a search or a friend request naming nobody, or yourself, finds no one", async () => {
     const { user, cookie } = await register(server, "rc_seeker");
-    await refused("/api/users/search?username=rc_nobody", { headers: { cookie } }, 404, "USER_NOT_FOUND");
-    await refused(`/api/users/search?username=${user.username}`, { headers: { cookie } }, 404, "USER_NOT_FOUND");
-    await refused("/api/friends/add", addFriend(cookie, "rc_nobody"), 404, "USER_NOT_FOUND");
-    await refused("/api/friends/add", addFriend(cookie, user.username), 400, "CANNOT_ADD_SELF");
+    assert.equal(await refused("/api/users/search?username=rc_nobody", { headers: { cookie } }, 404), "USER_NOT_FOUND");
+    assert.equal(await refused(`/api/users/search?username=${user.username}`, { headers: { cookie } }, 404), "USER_NOT_FOUND");
+    assert.equal(await refused("/api/friends/add", addFriend(cookie, "rc_nobody"), 404), "USER_NOT_FOUND");
+    assert.equal(await refused("/api/friends/add", addFriend(cookie, user.username), 400), "CANNOT_ADD_SELF");
   });
 
   test("a friend request to an existing friend is refused", async () => {
     const a = await register(server, "rc_pal_a");
     const b = await register(server, "rc_pal_b");
     await befriend(server, a, b);
-    await refused("/api/friends/add", addFriend(a.cookie, b.user.username), 409, "ALREADY_FRIENDS");
+    assert.equal(await refused("/api/friends/add", addFriend(a.cookie, b.user.username), 409), "ALREADY_FRIENDS");
   });
 
   test("a game invite to someone who is not a friend is refused", async () => {
@@ -74,7 +74,7 @@ describe("every refusal answers with its own code", { skip: hasDatabase() ? fals
       `CREATE TRIGGER rc_refuse_delete BEFORE DELETE ON users FOR EACH ROW WHEN (OLD.id = '${user.id}') EXECUTE FUNCTION rc_refuse_delete()`
     );
     try {
-      await refused("/api/users/me", { method: "DELETE", headers: { cookie } }, 500, "ACCOUNT_DELETE_FAILED");
+      assert.equal(await refused("/api/users/me", { method: "DELETE", headers: { cookie } }, 500), "ACCOUNT_DELETE_FAILED");
     } finally {
       await pool.query("DROP TRIGGER rc_refuse_delete ON users");
       await pool.query("DROP FUNCTION rc_refuse_delete()");
