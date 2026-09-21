@@ -48,7 +48,7 @@ import { trackEvent } from "./events.ts";
 import { DEFAULT_LOCALE, translate } from "../shared/i18n.ts";
 import { activeGames as activeGamesTable } from "../shared/schema.ts";
 import type { EventOutcome } from "./socketSafety.ts";
-import { activeGames, isShuttingDown, scoreKeyForSeat, seatName, seatOfUser, userRoom } from "./gameRoom.ts";
+import { activeGames, isShuttingDown, scoreKeyForSeat, seatName, seatOfUser, userRoom, voterCount } from "./gameRoom.ts";
 import { isUserOnline, onlineUserIds } from "./socketRegistry.ts";
 import type { OnlineGameState } from "./gameRoom.ts";
 import {
@@ -368,10 +368,6 @@ function exchangeAction(
   return OK;
 }
 
-function broadcastRematchVotes(io: SocketServer, game: OnlineGameState, roomId: string) {
-  emitVoteState(io, roomId, game);
-}
-
 /**
  * Unanimous among the seats a human currently holds — a bot, or a seat whose
  * player left, has nobody who can answer and abstains. The one shape every
@@ -379,7 +375,7 @@ function broadcastRematchVotes(io: SocketServer, game: OnlineGameState, roomId: 
  * rather than its own arithmetic.
  */
 function votesUnanimous(votes: Set<string>, game: OnlineGameState): boolean {
-  return votes.size >= Object.keys(game.playerMap).length;
+  return votes.size >= voterCount(game);
 }
 
 function rematchAnswered(game: OnlineGameState): boolean {
@@ -409,7 +405,7 @@ async function dealVotedManche(
   const refuse = (code: string, message: string): EventOutcome => {
     if (notifyUserId) gameError(io, notifyUserId, { message, code });
     else logger.warn({ roomId, code }, "The next manche could not be dealt");
-    broadcastRematchVotes(io, game, roomId);
+    emitVoteState(io, roomId, game);
     return { ok: false, code };
   };
 
@@ -477,7 +473,7 @@ async function rematchVoteAction(
   }
 
   game.rematchVotes.add(userId);
-  broadcastRematchVotes(io, game, roomId);
+  emitVoteState(io, roomId, game);
   if (!rematchAnswered(game)) return OK;
   return dealVotedManche(io, game, roomId, userId);
 }

@@ -1252,6 +1252,7 @@ export function GameTable({
               {!spectating && (
                 <PassaButton
                   canPass={canPass}
+                  onlyMove={canPass && !staged.canBeatPile}
                   flashStyle={passaFlashStyle}
                   onPress={handlePass}
                   a11yLabel={t("gameTable.passA11yLabel")}

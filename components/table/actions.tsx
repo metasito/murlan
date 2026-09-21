@@ -209,6 +209,7 @@ export function GiocaButton({
 
 export function PassaButton({
   canPass,
+  onlyMove,
   flashStyle,
   onPress,
   a11yLabel,
@@ -216,6 +217,8 @@ export function PassaButton({
   scale,
 }: {
   canPass: boolean;
+  /** The rules leave the viewer nothing to play, so PASSA carries the turn on its own. */
+  onlyMove: boolean;
   flashStyle: AnimatedStyle<ViewStyle>;
   onPress: () => void;
   a11yLabel: string;
@@ -258,7 +261,11 @@ export function PassaButton({
         onPressIn={() => setPress(true)}
         onPressOut={() => setPress(false)}
         disabled={!canPass}
-        style={[styles.actionBtnInner, { borderRadius: BTN_RADIUS * scale, overflow: "hidden" }]}
+        style={[
+          styles.actionBtnInner,
+          { borderRadius: BTN_RADIUS * scale, overflow: "hidden" },
+          canPass && onlyMove && styles.passBtnOnlyMove,
+        ]}
         accessibilityLabel={a11yLabel}
         {...a11yState({ role: "button", disabled: !canPass })}
       >
@@ -303,6 +310,7 @@ const styles = StyleSheet.create({
   // Off the viewer's turn a key is dark rather than a faded version of its lit
   // self: muted ink on a heavy scrim, the pair held to 3:1 by
   // tests/contrast.test.ts, with no gradient and no border behind it to fight.
+  passBtnOnlyMove: { borderWidth: 2, borderColor: Colors.goldStrong },
   btnDimFace: { backgroundColor: Scrim.heavy },
   btnDimLabel: { color: Colors.textMuted },
   actionBtnInner: { flex: 1 },

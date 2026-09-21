@@ -1,5 +1,5 @@
 import type { SocketServer } from "./socketTypes.ts";
-import type { OnlineGameState } from "./gameRoom.ts";
+import { voterCount, type OnlineGameState } from "./gameRoom.ts";
 import { scoresByEngineId } from "./gameOver.ts";
 
 /** The framing of the manche now running: what it is worth and where it stands. */
@@ -21,7 +21,7 @@ export function emitMatchState(io: SocketServer, room: string, game: OnlineGameS
 export function emitVoteState(io: SocketServer, room: string, game: OnlineGameState) {
   io.to(room).emit("game:vote_state", {
     votes: Array.from(game.rematchVotes),
-    total: Object.keys(game.playerMap).length,
+    total: voterCount(game),
   });
 }
 
@@ -33,6 +33,6 @@ export function emitVoteState(io: SocketServer, room: string, game: OnlineGameSt
 export function emitEndMatchVoteState(io: SocketServer, room: string, game: OnlineGameState) {
   io.to(room).emit("game:end_match_vote_state", {
     votes: Array.from(game.endMatchVotes),
-    total: Object.keys(game.playerMap).length,
+    total: voterCount(game),
   });
 }

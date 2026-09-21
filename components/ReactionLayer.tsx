@@ -6,7 +6,7 @@
 // `overlays`) keep each one where it belongs.
 
 import React, { useEffect } from "react";
-import { Text, StyleSheet, Pressable } from "react-native";
+import { Text, StyleSheet, Pressable, type DimensionValue } from "react-native";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -65,11 +65,11 @@ function FloatingReaction({ reaction }: { reaction: TableReaction }) {
   }));
 
   // Spread the seats across the felt so two reactions rarely overlap.
-  const posMap = ["50%", "80%", "20%", "60%"];
+  const posMap: DimensionValue[] = ["50%", "80%", "20%", "60%"];
   const left = posMap[reaction.fromSeat % posMap.length];
 
   return (
-    <Animated.View style={[styles.floatingEmoji, { left: left as any }, aStyle]}>
+    <Animated.View style={[styles.floatingEmoji, { left }, aStyle]}>
       <Text style={styles.floatingEmojiText}>{reaction.emoji}</Text>
       <Text style={styles.floatingEmojiName}>{reaction.username}</Text>
     </Animated.View>
