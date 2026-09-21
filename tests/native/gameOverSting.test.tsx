@@ -68,10 +68,10 @@ const finished = (rankings: string[]): GameState => ({
 
 const noop = () => {};
 
-const table = (rankings: string[], viewerSeat: number) => (
+const table = (rankings: string[], viewerSeat: number, gameOver = true) => (
   <SafeAreaProvider initialMetrics={METRICS}>
     <GameTable
-      gameState={finished(rankings)}
+      gameState={{ ...finished(rankings), gameOver }}
       viewerSeat={viewerSeat}
       selectedIds={[]}
       onSelectCard={noop}
@@ -196,6 +196,14 @@ describe('the end-of-hand sting', () => {
     await r.unmount();
     jest.advanceTimersByTime(STING_MS);
     expect(playGameWin).not.toHaveBeenCalled();
+  });
+
+  it('drops a pending sting when a rematch starts before it lands', async () => {
+    const r = await render(table(ID_RANKINGS, 0));
+    await act(async () => r.rerender(table(ID_RANKINGS, 0, false)));
+    await settle();
+    expect(playGameWin).not.toHaveBeenCalled();
+    await r.unmount();
   });
 
   it('plays the win sting for the seat that placed first', async () => {
