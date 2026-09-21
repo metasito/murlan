@@ -1,7 +1,3 @@
-// Its own file, not chrome.tsx: the countdown ticks audibly, and `lib/sounds`
-// reaches `expo-audio` at import time. chrome.tsx is the table's shared
-// furniture, so folding this in hands a native audio module to every screen
-// that draws a chip or a rail.
 import { useEffect, useRef, useState } from "react";
 import { View } from "react-native";
 import { ChipDot, ChipText, TableChip } from "./chrome";

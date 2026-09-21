@@ -1,4 +1,4 @@
-import { createAudioPlayer, setAudioModeAsync, type AudioPlayer } from "expo-audio";
+import type { AudioPlayer } from "expo-audio";
 import { Platform } from "react-native";
 
 // Effects are CC0 recordings, built by scripts/build-sounds.mjs and shipped as
@@ -166,7 +166,7 @@ export async function ensureAudioMode(): Promise<void> {
     return;
   }
   try {
-    await setAudioModeAsync({
+    await expoAudio().setAudioModeAsync({
       playsInSilentMode: true,
       shouldPlayInBackground: false,
       interruptionModeAndroid: "duckOthers",
@@ -186,11 +186,18 @@ export function forgetAudioMode(): void {
   _audioModeSet = false;
 }
 
+// Required on first use, not imported: expo-audio reaches its native module at
+// import time, and every component that plays a sound would carry it.
+function expoAudio(): typeof import("expo-audio") {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- see above
+  return require("expo-audio");
+}
+
 function loadSound(key: string, assetModule: number): AudioPlayer | null {
   const cached = soundCache[key];
   if (cached) return cached;
   try {
-    const player = createAudioPlayer(assetModule);
+    const player = expoAudio().createAudioPlayer(assetModule);
     soundCache[key] = player;
     return player;
   } catch {
