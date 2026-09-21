@@ -59,18 +59,26 @@ describe("a test-only MURLAN_* override in production", () => {
 const PRODUCTION_CONFIG = new Set([
   "MURLAN_PG_POOL_MAX",
   "MURLAN_SOCKET_ADAPTER_POOL_MAX",
-  "MURLAN_DEV_SYNC_TRIGGER_FILE",
 ]);
 
-test("every other MURLAN_* the server reads goes through testOnlyEnv", () => {
+function serverEnvReads(): { file: string; name: string }[] {
   const dir = path.join(repoRoot, "server");
-  const bare = readdirSync(dir, { recursive: true, encoding: "utf8" })
+  return readdirSync(dir, { recursive: true, encoding: "utf8" })
     .filter((f) => f.endsWith(".ts"))
-    .flatMap((f) =>
-      [...readFileSync(path.join(dir, f), "utf8").matchAll(/process\.env(?:\.|\[")(MURLAN_\w+)/g)]
-        .map((m) => m[1])
-        .filter((name) => !PRODUCTION_CONFIG.has(name))
-        .map((name) => `${f}: ${name}`)
+    .flatMap((file) =>
+      [...readFileSync(path.join(dir, file), "utf8").matchAll(/process\.env(?:\.|\[")(MURLAN_\w+)/g)]
+        .map((m) => ({ file, name: m[1] }))
     );
+}
+
+test("every other MURLAN_* the server reads goes through testOnlyEnv", () => {
+  const bare = serverEnvReads()
+    .filter(({ name }) => !PRODUCTION_CONFIG.has(name))
+    .map(({ file, name }) => `${file}: ${name}`);
   assert.deepEqual(bare, []);
+});
+
+test("every production-config exemption is still read by the server", () => {
+  const read = new Set(serverEnvReads().map(({ name }) => name));
+  assert.deepEqual([...PRODUCTION_CONFIG].filter((name) => !read.has(name)), []);
 });
