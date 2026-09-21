@@ -2061,6 +2061,18 @@ export function afterSession(run, derived) {
   };
 }
 
+/** The ticket's worktree as git has it now: a retry or refused pass carries none of it. */
+function worktreeOf(io, number) {
+  try {
+    const at = io.standing();
+    if (at?.ticket === number) return { cwd: at.cwd, branch: at.branch, dirty: at.dirty, phase: at.phase ?? null };
+  } catch {
+    const kept = path.join(ROOT, WORKTREE_DIR, `agent-${number}`);
+    if (fs.existsSync(kept)) return { cwd: kept, branch: null, dirty: false, phase: null };
+  }
+  return { cwd: null, branch: null, dirty: false, phase: null };
+}
+
 /**
  * The one way a ticket is handed to the owner, and its one `parked` row: the row closes the
  * ledger window `ticketTally` counts from, so a park that writes none leaves the next claim
@@ -2621,21 +2633,12 @@ export async function main({
       // trusted while wrong. The claim is the part that strands the ticket, and it comes off here.
       if (claimed !== null) {
         try {
-          let own = null;
-          try {
-            const at = io.standing();
-            own = at?.ticket === claimed ? at : null;
-          } catch {
-            const kept = path.join(ROOT, WORKTREE_DIR, `agent-${claimed}`);
-            own = fs.existsSync(kept) ? { cwd: kept, branch: null, dirty: false } : null;
-          }
+          const own = worktreeOf(io, claimed);
           parkAndRecord(io, claimed, {
-            phase: "?",
+            ...own,
+            phase: own.phase ?? "?",
             why: `the loop threw: ${String(err?.message ?? err)}`,
             log: streamLog(claimed),
-            cwd: own?.cwd ?? null,
-            branch: own?.branch ?? null,
-            dirty: own?.dirty ?? false,
           });
         } catch (unparked) {
           screen.notice("claim", `#${claimed} is still claimed — ${String(unparked?.message ?? unparked)}`);
@@ -2652,13 +2655,12 @@ export async function main({
     if (pass.ticket != null && parkAsked(pass.ticket)) {
       fs.rmSync(PARK_FILE, { force: true });
       if (["handoff", "retry", "refused"].includes(pass.outcome)) {
+        const own = worktreeOf(io, pass.ticket);
         parkAndRecord(io, pass.ticket, {
-          phase: pass.phase ?? "?",
+          ...own,
+          phase: pass.phase ?? own.phase ?? "?",
           why: "parked by owner",
           log: pass.run?.log ?? streamLog(pass.ticket),
-          cwd: pass.cwd ?? null,
-          branch: pass.branch ?? null,
-          dirty: false,
         });
         pinned = null;
         continue;
@@ -2693,14 +2695,7 @@ export async function main({
     }
 
     const giveUp = (why) => {
-      parkAndRecord(io, pass.ticket, {
-        phase: pass.phase ?? "E",
-        why,
-        log: pass.run.log,
-        cwd: pass.cwd ?? null,
-        branch: pass.branch ?? null,
-        dirty: false,
-      });
+      parkAndRecord(io, pass.ticket, { ...worktreeOf(io, pass.ticket), phase: pass.phase ?? "E", why, log: pass.run.log });
       pinned = null;
       failures += 1;
       return shouldHalt(failures);

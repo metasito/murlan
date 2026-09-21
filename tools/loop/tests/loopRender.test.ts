@@ -23,6 +23,7 @@ import {
   recap,
   reportRow,
   runTotal,
+  stepRow,
   stepTitle,
   stream,
   tasksDetail,
@@ -648,6 +649,10 @@ describe("every block fits the width it was given", () => {
         activity(live, t),
         stream(feed, { ms: 1, frame: 0, letter: "D" }, t),
         keybar({ expanded: true, stopping: true }, t),
+        keybar({ parking: "confirm" }, t),
+        help(t).join("\n"),
+        stepRow({ label: "waiting", detail: "usage resets 14:00 · 1:12:04 left", state: "skipped" }, t),
+        activity({ ...live, said: ciLine(1162, { done: 11, total: 14, running: "Browser tests (shard 3 of 4)", failed: null }) }, t),
         closing({ outcome: "landed", number: 998, files: 9, turns: 132, ms: 1_424_000, cost: 3.9 }, t),
         reportRow({ number: 1002, title: "Convert the renderHook-able probes", outcome: "landed", pr: 1023, ms: 3_104_000, cost: 16.76 }, t),
       ];

@@ -103,6 +103,7 @@ describe("settle, replayed against recorded gh payloads", () => {
     });
     const out = await poll(PENDING, (m: string) => said.push(m), 0, DEADLINE, io(gh, written));
     assert.equal(out.action, "hand-back");
+    assert.ok(said.some((m) => /^PR #\d+ · CI 0 of 1 jobs/.test(m)), `no CI progress line in ${JSON.stringify(said)}`);
     assert.equal((out as { head?: string }).head, SHA, "the retry row records the head CI judged");
     assert.match(String(out.reason), /Native tests/);
     assert.equal(written.length, 2, "the log, plus the CI-RED note posted alongside it");

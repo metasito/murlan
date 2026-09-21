@@ -1269,7 +1269,7 @@ describe("a park asked from the board", () => {
   test("parks the ticket once its session exits, and forgets the request", async () => {
     const cwd = process.cwd();
     const dir = mkdtempSync(path.join(tmpdir(), "park-"));
-    const parked: string[] = [];
+    const parked: { why: string; cwd: string | null; dirty: boolean }[] = [];
     const picks: (number | null)[] = [];
     let n = 0;
     const spy = {
@@ -1288,15 +1288,15 @@ describe("a park asked from the board", () => {
         phase: "C",
         declared: n++ === 0 ? { ticket: 41, phase: "C", handoff: "D", stoodDown: false } : null,
       }),
-      park: (_n: number, ctx: { why: string }) => parked.push(ctx.why),
+      park: (_n: number, { why, cwd, dirty }: { why: string; cwd: string | null; dirty: boolean }) => parked.push({ why, cwd, dirty }),
       pushedPr: () => null,
-      standing: () => null,
+      standing: () => (n >= 1 ? { ticket: 41, branch: "agent/41-x", cwd: ".worktrees/agent-41", dirty: true, phase: "D" } : null),
     };
     try {
       process.chdir(dir);
       writeFileSync(".loop-park", "41\n");
       await main({ io: spy, book: book(), screen: screen(), install: () => {}, runId: "t" });
-      assert.equal(parked[0], "parked by owner");
+      assert.deepEqual(parked[0], { why: "parked by owner", cwd: ".worktrees/agent-41", dirty: true }, "the worktree's edits are kept");
       assert.equal(picks[1], null, "a parked ticket is not pinned for the next pass");
       assert.equal(existsSync(".loop-park"), false);
     } finally {

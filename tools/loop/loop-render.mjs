@@ -510,7 +510,7 @@ export function help(t) {
  */
 export function keybar({ expanded = false, stopping = false, parking = false, help: open = false, offers = {} } = {}, t) {
   if (parking === "confirm") {
-    return row([{ t: "   k", c: "accent", b: true }, { t: " park this ticket?  y confirms · any other key cancels", c: "warn" }], null, t);
+    return row([{ t: "   k", c: "accent", b: true }, { t: clamp(" park this ticket?  y confirms · any other key cancels", t.width - 4), c: "warn" }], null, t);
   }
   // A pending stop rides on the key that set it rather than on a badge of its own: one place to
   // look for what `s` did, and no second element competing for the right-hand edge.
