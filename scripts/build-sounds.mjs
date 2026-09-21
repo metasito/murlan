@@ -1,4 +1,4 @@
-// Rebuilds assets/sounds/ — the fourteen effects lib/sounds.ts plays.
+// Rebuilds assets/sounds/ — the sixteen effects lib/sounds.ts plays.
 //
 //   node scripts/build-sounds.mjs
 //
@@ -20,7 +20,7 @@
 // loop seamlessly — encoder delay plus frame padding, and browsers do not
 // honour LAME's gapless headers — so a music loop encoded here would click at
 // every join. Music therefore arrives as pre-encoded WebM Opus rather than
-// being built by this script (#121), and this script stays about the fourteen
+// being built by this script (#121), and this script stays about the sixteen
 // effects.
 //
 // The alternative was measured, not assumed. Chromium's MediaRecorder can emit
@@ -83,6 +83,13 @@ const RECIPES = {
     { file: "chipsCollide1.ogg", gain: 1.0 },
     { file: "cardShove4.ogg", gain: 0.6, at: 0.01 },
     { file: "drop_004.wav", gain: 0.5, at: 0.0 },
+  ],
+
+  // ── Lobby ──────────────────────────────────────────────────────────────────
+  seat_fill: [{ file: "chipLay1.ogg", gain: 0.8 }],
+  room_full: [
+    { file: "glass_002.wav", gain: 0.6, rate: 1.26, at: 0.0 },
+    { file: "glass_002.wav", gain: 0.65, rate: 1.5, at: 0.1 },
   ],
 
   // ── Stings ─────────────────────────────────────────────────────────────────

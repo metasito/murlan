@@ -1,6 +1,6 @@
 # Sound effects
 
-The fourteen effects `lib/sounds.ts` plays. Built, not hand-authored — run
+The sixteen effects `lib/sounds.ts` plays. Built, not hand-authored — run
 `node scripts/build-sounds.mjs` to rebuild them from source.
 
 ## Licence
@@ -17,7 +17,7 @@ The build downloads them from public mirrors
 ([iwenzhou/kenney](https://github.com/iwenzhou/kenney),
 [Calinou/kenney-interface-sounds](https://github.com/Calinou/kenney-interface-sounds))
 because kenney.nl refuses scripted requests. The sources are not vendored; only
-the fourteen rendered files are.
+the sixteen rendered files are.
 
 ## What the build does
 
@@ -26,13 +26,16 @@ each with a gain, a start offset and a playback rate. Mixing runs in Chromium's
 `OfflineAudioContext` — there is no ffmpeg here, and it gives decoding, gain,
 pitch and overlap for free.
 
-Two outputs are not simply a clip:
+Three outputs are not simply a clip:
 
 - **`bomb`** layers a chip clatter, a card shove and a drop, so the biggest play
   in the game lands as an impact rather than a click.
 - **`game_win`** and **`game_lose`** are arpeggios. The packs contain no jingle,
   so one struck glass note is resampled to three pitches — a rising major triad
   for the win, a falling pair for the loss.
+- **`room_full`** is the same glass note at a third and a fifth, two quick notes
+  for the last seat of the lobby filling; each seat before it is `seat_fill`, a
+  single *Casino Audio* chip laid down.
 
 **`reject`**, a refused GIOCA, is plain *Interface Sounds* `error_004.wav` —
 the sibling of the `error_003.wav` under `game_lose`, so a refusal and a lost
@@ -71,14 +74,14 @@ uses pitch-shifted layers. That is 0.003% of full scale on one sample out of
 
 ## Size
 
-~126 KB for fourteen files, MP3 rather than the sources' OGG because iOS will
+~133 KB for sixteen files, MP3 rather than the sources' OGG because iOS will
 not play OGG — MP3 decodes natively on iOS, Android and every browser, so no
 per-platform format branch is needed. Recorded audio costs more than synthesis
 and it is worth it: the effects are most of the game's sense of touch.
 
 ## Music is not built here
 
-The fourteen effects are 44.1 kHz mono MP3 and stay that way. Music does not, and
+The sixteen effects are 44.1 kHz mono MP3 and stay that way. Music does not, and
 cannot: **MP3 has no seamless loop.** Encoder delay plus frame padding leave a
 gap at the join, and browsers do not honour LAME's gapless headers, so a looping
 track clicks every time round.
