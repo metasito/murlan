@@ -19,7 +19,10 @@ import Animated, {
   useSharedValue,
   withTiming,
   withRepeat,
+  withDelay,
+  withSequence,
   interpolate,
+  ReduceMotion,
   Easing,
   cancelAnimation,
   type SharedValue,
@@ -31,7 +34,8 @@ import { CardView } from "@/components/CardView";
 import type { ArcCard } from "@/components/tableArc";
 import type { OpponentSide } from "@/components/seatLayout";
 import { BACK_SCALE, tableFontSize } from "@/components/cardFaceModel";
-import { Colors, makeShadow, Motion, Radius, Spacing } from "@/lib/theme";
+import { Colors, makeShadow, Motion, motionMs, Radius, Spacing } from "@/lib/theme";
+import { urgentThresholdSeconds } from "@/components/turnTimerUi";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
 import type { Player } from "@/lib/gameEngine";
@@ -241,6 +245,9 @@ const RING_STROKE = 2;
  * no equivalent for — deliberate, not an unswept leftover of the port.
  */
 const RING_PING_SCALE = 1.45;
+/** The urgent ring's 1Hz dim-and-back: a repeating beat, not a one-shot transition, so not a Motion step. */
+const RING_PULSE_MS = 1000;
+const RING_PULSE_LOW = 0.6;
 
 /**
  * The turn clock, drawn as an arc around the seat on move. It is a display of
@@ -263,14 +270,38 @@ function CountdownRing({
   const box = size + RING_GAP * 2 * scale;
   const r = (box - stroke) / 2;
   const swept = useSharedValue(0);
+  const urgent = useSharedValue(0);
+  const pulse = useSharedValue(1);
   const reduceMotion = usePrefersReducedMotion();
 
   useEffect(() => {
     swept.value = 0;
-    if (reduceMotion) return;
-    swept.value = withTiming(1, { duration: seconds * 1000, easing: Easing.linear });
-    return () => cancelAnimation(swept);
-  }, [resetKey, seconds, reduceMotion, swept]);
+    urgent.value = 0;
+    pulse.value = 1;
+    const urgentFor = urgentThresholdSeconds(seconds);
+    const calmMs = Math.max(seconds - urgentFor, 0) * 1000;
+    // The delay is the clock itself, not motion: under the system's reduced
+    // motion Reanimated would skip it and turn the ring red at once.
+    urgent.value = withDelay(
+      calmMs,
+      withTiming(1, { duration: motionMs("shift", reduceMotion) }),
+      ReduceMotion.Never
+    );
+    if (!reduceMotion) {
+      swept.value = withTiming(1, { duration: seconds * 1000, easing: Easing.linear });
+      const dim = { duration: RING_PULSE_MS / 2, easing: Easing.inOut(Easing.sin) };
+      pulse.value = withDelay(
+        calmMs,
+        withRepeat(withSequence(withTiming(RING_PULSE_LOW, dim), withTiming(1, dim)), urgentFor),
+        ReduceMotion.Never
+      );
+    }
+    return () => {
+      cancelAnimation(swept);
+      cancelAnimation(urgent);
+      cancelAnimation(pulse);
+    };
+  }, [resetKey, seconds, reduceMotion, swept, urgent, pulse]);
 
   // Each half of the ring turns out of its own clip, clockwise from twelve
   // o'clock: a transform the compositor runs, where an animated stroke prop
@@ -281,25 +312,45 @@ function CountdownRing({
   const leftTurn = useAnimatedStyle(() => ({
     transform: [{ rotate: `${Math.max(swept.value - 0.5, 0) * 360}deg` }],
   }));
+  // One style per view: an animated style drives only one of the views it is given.
+  const rightRed = useAnimatedStyle(() => ({ opacity: urgent.value }));
+  const leftRed = useAnimatedStyle(() => ({ opacity: urgent.value }));
+  const rightGold = useAnimatedStyle(() => ({ opacity: 1 - urgent.value }));
+  const leftGold = useAnimatedStyle(() => ({ opacity: 1 - urgent.value }));
+  const pulseStyle = useAnimatedStyle(() => ({ opacity: pulse.value }));
   const c = box / 2;
-  const half = (d: string) => (
+  const arc = (d: string, colour: string) => (
     <Svg width={box} height={box}>
-      <Path d={d} stroke={Colors.goldLit} strokeWidth={stroke} strokeLinecap="round" fill="none" />
+      <Path d={d} stroke={colour} strokeWidth={stroke} strokeLinecap="round" fill="none" />
     </Svg>
+  );
+  // Two arcs cross-faded rather than one recoloured, for the same reason the
+  // sweep is a transform: opacity composites, an animated stroke re-rasterises.
+  const half = (d: string, gold: typeof rightGold, red: typeof rightRed, testID: string) => (
+    <>
+      <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, gold]}>{arc(d, Colors.goldLit)}</Animated.View>
+      <Animated.View testID={testID} pointerEvents="none" style={[StyleSheet.absoluteFill, red]}>
+        {arc(d, Colors.danger)}
+      </Animated.View>
+    </>
   );
 
   return (
-    <View
+    <Animated.View
       testID="seat-turn-clock"
       pointerEvents="none"
-      style={[seatStyles.ring, { top: -RING_GAP * scale, left: -RING_GAP * scale, width: box, height: box }]}
+      style={[
+        seatStyles.ring,
+        { top: -RING_GAP * scale, left: -RING_GAP * scale, width: box, height: box },
+        pulseStyle,
+      ]}
     >
       <View style={[seatStyles.ringClip, { left: c, width: c, height: box }]}>
         <Animated.View
           testID="seat-turn-clock-right"
           style={[seatStyles.ring, { left: -c, width: box, height: box }, rightTurn]}
         >
-          {half(`M ${c} ${c - r} A ${r} ${r} 0 0 1 ${c} ${c + r}`)}
+          {half(`M ${c} ${c - r} A ${r} ${r} 0 0 1 ${c} ${c + r}`, rightGold, rightRed, "seat-turn-clock-urgent-right")}
         </Animated.View>
       </View>
       <View style={[seatStyles.ringClip, { left: 0, width: c, height: box }]}>
@@ -307,10 +358,10 @@ function CountdownRing({
           testID="seat-turn-clock-left"
           style={[seatStyles.ring, { left: 0, width: box, height: box }, leftTurn]}
         >
-          {half(`M ${c} ${c + r} A ${r} ${r} 0 0 1 ${c} ${c - r}`)}
+          {half(`M ${c} ${c + r} A ${r} ${r} 0 0 1 ${c} ${c - r}`, leftGold, leftRed, "seat-turn-clock-urgent-left")}
         </Animated.View>
       </View>
-    </View>
+    </Animated.View>
   );
 }
 
