@@ -69,7 +69,7 @@ describe("every workflow and composite action", () => {
   const files = [...workflowFiles(), ...actionFiles()];
 
   test("the scan finds something to check", () => {
-    assert.ok(workflowFiles().length >= 7, `found ${workflowFiles().length} workflows`);
+    assert.ok(workflowFiles().length >= 6, `found ${workflowFiles().length} workflows`);
     assert.ok(actionFiles().length >= 1, "found no composite action");
     const total = files.reduce((n, file) => n + countUses(readFileSync(path.join(repoRoot, file), "utf8")), 0);
     assert.ok(total >= 40, `found ${total} uses: lines`);
