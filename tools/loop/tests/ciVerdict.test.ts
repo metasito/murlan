@@ -47,8 +47,8 @@ describe("reading ci.yml's verdict", () => {
   });
 
   // A skipped job also reports zero steps, and a gate that skips one job while the rest of the
-  // run executes is the case that tells these apart. `android-build`/`ios-build` skip whenever
-  // no native input changed, so without this every genuinely red run would be read as
+  // run executes is the case that tells these apart. `android-build`/`ios-build` skip on
+  // every run but the weekly schedule, so without this every genuinely red run would be read as
   // infrastructure, and `driveToGreen` would abort instead of sending a fix agent.
   test("a job skipped by its gate is not infrastructure, and the real failure still names itself", () => {
     const v = decideVerdict(done("failure"), [
