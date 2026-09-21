@@ -5,11 +5,11 @@
  * `total_cost_usd` on a `result` record is cumulative for its `session_id`: a ticket's spend is the
  * max per session, summed across sessions. Summing the records double-counts, by a lot.
  *
- * Usage: node tools/loop/loop-cost.mjs [ticket]
+ * Usage: node tools/loop/loop-cost.mjs [<n> | <n>+ ...] [--since <time>]
  */
 import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import { PHASE } from "./loop-stream.mjs";
+import { PHASE, scopeEnds } from "./loop-stream.mjs";
 import { DIR, ARTEFACTS, readLedger } from "./loop-logs.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 
@@ -25,32 +25,46 @@ const ORDER = ["pre", "A", "B", "C", "D", "E", "F", "G"];
 export const MODEL_BY_PHASE = { A: "opus", B: "opus", C: "opus", D: "opus", E: "sonnet", F: "sonnet" };
 
 /**
- * $/MTok by family: base input, cache write, cache read, output.
+ * $/MTok by family: base input, 5-minute cache write, cache read, output, 1-hour cache write.
  *
  * Keyed on the family word rather than on a full id, because the logs carry four spellings of two
  * models — `claude-opus-5`, `opus`, `claude-opus-5[1m]`, `sonnet` — and an exact-match table priced
  * 64 sonnet turns at opus's rate. `report` scales absolutes onto Anthropic's reported total, so a
  * misprice lands entirely in the share column, which is the one number this file exists to give.
+ *
+ * A stream line's `output_tokens` is the count at the message's start, so output — about a fifth of
+ * a session — is invisible per message and reaches the table only through that scaling.
  */
 export const PRICE = {
-  opus: [5, 6.25, 0.5, 25],
-  sonnet: [2, 2.5, 0.2, 10],
-  haiku: [1, 1.25, 0.1, 5],
+  opus: [5, 6.25, 0.5, 25, 10],
+  sonnet: [2, 2.5, 0.2, 10, 4],
+  haiku: [1, 1.25, 0.1, 5, 2],
 };
 
 export const familyOf = (model) => Object.keys(PRICE).find((f) => String(model).includes(f)) ?? null;
 
-const priceOf = (model, u) => {
-  const [i, w, r, o] = PRICE[familyOf(model) ?? "opus"];
-  return (
-    ((u.input_tokens ?? 0) * i + (u.cache_creation_input_tokens ?? 0) * w +
-      (u.cache_read_input_tokens ?? 0) * r + (u.output_tokens ?? 0) * o) / 1e6
-  );
+export const priceOf = (model, u) => {
+  const [i, w5, r, o, w1h] = PRICE[familyOf(model) ?? "opus"];
+  const hour = u.cache_creation?.ephemeral_1h_input_tokens ?? 0;
+  const writes = (u.cache_creation_input_tokens ?? 0) - hour;
+  return ((u.input_tokens ?? 0) * i + writes * w5 + hour * w1h + (u.cache_read_input_tokens ?? 0) * r + (u.output_tokens ?? 0) * o) / 1e6;
 };
 
-const bucket = () => ({ turns: 0, tokens: 0, usd: 0, minutes: 0 });
+const bucket = () => ({ turns: 0, tokens: 0, usd: 0, minutes: 0, toolTurns: 0, batched: 0 });
 
-export function readTicket(lines, ticket = "") {
+/** Sessions whose first stamped line is before `since`, which a `--since` window leaves out whole. */
+function sinceOnly(lines, since) {
+  const parsed = lines.map((l) => { try { return JSON.parse(l); } catch { return null; } });
+  const firstAt = new Map();
+  for (const j of parsed) {
+    if (j?.session_id && j.timestamp && !firstAt.has(j.session_id)) firstAt.set(j.session_id, new Date(j.timestamp).toISOString());
+  }
+  return lines.filter((_, i) => !(firstAt.get(parsed[i]?.session_id) < since));
+}
+
+/** @param {string[]} allLines @param {string} [ticket] @param {string|null} [since] an ISO time */
+export function readTicket(allLines, ticket = "", since = null) {
+  const lines = since ? sinceOnly(allLines, since) : allLines;
   /** @type {Record<string, ReturnType<typeof bucket>>} */
   const phases = {};
   const sessions = new Map();
@@ -60,6 +74,8 @@ export function readTicket(lines, ticket = "") {
   let last = null;
   let reviewers = 0;
   const unpriced = new Set();
+  const priced = new Set();
+  const toolMsgs = new Map();
 
   /**
    * Charges the open phase for the time since the last stamped record, then moves to `to`. A record
@@ -90,17 +106,36 @@ export function readTicket(lines, ticket = "") {
       sessions.set(j.session_id, Math.max(sessions.get(j.session_id) ?? 0, j.total_cost_usd ?? 0));
       continue;
     }
+    // A new process starts before its marker, and the gap since the last one is no phase's time.
+    if (j.type === "system" && j.subtype === "init") {
+      phase = "pre";
+      at = null;
+      continue;
+    }
     if (j.type !== "assistant" || !j.message?.usage) continue;
 
     // Main-session only: a subagent emits no marker, and its text quoting a phase would otherwise
     // reassign every turn after it.
     if (!j.parent_tool_use_id) {
-      for (const b of j.message.content ?? []) {
-        if (b.type !== "text") continue;
-        const m = PHASE.exec(b.text ?? "");
-        if (m) advance(m[1], t);
+      const blocks = j.message.content ?? [];
+      const marked = blocks.map((b) => (b.type === "text" ? PHASE.exec(b.text ?? "") : null)).find(Boolean);
+      if (marked) advance(marked[1], t);
+      else if (phase === "B") {
+        const calls = blocks.filter((b) => b.type === "tool_use").map((b) => ({ name: b.name, command: b.input?.command }));
+        if (scopeEnds(calls)) advance("C", t);
       }
     }
+
+    // One line per content block, each repeating the message's usage: priced once, by id.
+    const id = j.message.id;
+    const uses = (j.message.content ?? []).filter((b) => b.type === "tool_use").length;
+    if (!j.parent_tool_use_id && uses) {
+      const msg = toolMsgs.get(id ?? toolMsgs.size) ?? { phase, calls: 0 };
+      msg.calls += uses;
+      toolMsgs.set(id ?? toolMsgs.size, msg);
+    }
+    if (id && priced.has(id)) continue;
+    if (id) priced.add(id);
 
     const u = j.message.usage;
     const model = j.message.model ?? "";
@@ -110,6 +145,11 @@ export function readTicket(lines, ticket = "") {
     row.tokens += (u.input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0);
     row.usd += priceOf(model, u);
     advance(phase, t);
+  }
+  for (const msg of toolMsgs.values()) {
+    const row = (phases[msg.phase] ??= bucket());
+    row.toolTurns++;
+    if (msg.calls > 1) row.batched++;
   }
 
   return {
@@ -200,8 +240,10 @@ export function report(tickets, ledgerRows = []) {
   const all = {};
   for (const t of done) {
     for (const [k, p] of Object.entries(t.phases)) {
-      const row = (all[k] ??= { turns: 0, tokens: 0, usd: 0, mins: [] });
+      const row = (all[k] ??= { turns: 0, tokens: 0, usd: 0, mins: [], toolTurns: 0, batched: 0 });
       row.turns += p.turns;
+      row.toolTurns += p.toolTurns ?? 0;
+      row.batched += p.batched ?? 0;
       row.tokens += p.tokens;
       row.usd += p.usd * scale;
       row.mins.push(p.minutes);
@@ -212,7 +254,8 @@ export function report(tickets, ledgerRows = []) {
     const r = all[k];
     return `${k.padEnd(5)} ${String(r.turns).padStart(6)} ${(r.tokens / 1e6).toFixed(1).padStart(7)}M` +
       ` $${(r.usd / done.length).toFixed(2).padStart(6)} ${((r.usd / reported) * 100).toFixed(0).padStart(4)}%` +
-      ` ${median(r.mins).toFixed(1).padStart(8)}`;
+      ` ${median(r.mins).toFixed(1).padStart(8)}` +
+      ` ${(r.toolTurns ? `${Math.round((r.batched / r.toolTurns) * 100)}%` : "-").padStart(6)}`;
   });
 
   // Named, never swallowed: an id with no family is priced at opus's rate, and a reader comparing
@@ -223,7 +266,7 @@ export function report(tickets, ledgerRows = []) {
   return [
     `loop-cost: ${done.length} tickets, $${reported.toFixed(2)} reported${note}`,
     ...(guessed.length ? [`priced at opus's rate, family unrecognised: ${guessed.join(", ")}`] : []),
-    "phase  turns  tokens  $/tkt  share  med min",
+    "phase  turns  tokens  $/tkt  share  med min  batch",
     ...rows,
     `\nper ticket: $${(reported / done.length).toFixed(2)} mean, $${median(done.map((t) => t.usd)).toFixed(2)} median,` +
       ` ${median(done.map((t) => t.minutes)).toFixed(0)} min median,` +
@@ -242,29 +285,39 @@ export function report(tickets, ledgerRows = []) {
 }
 
 /**
- * `<n>` is one ticket; `<n>+` is that ticket and every later one.
+ * Each `<n>` is one ticket and each `<n>+` that ticket and every later one; none is all of them.
  *
- * The second is what a before-and-after is asked with. Every ticket in the directory averaged
- * together dilutes the runs a change actually touched by the twenty that came before it, and a
- * median that cannot move is a gate that cannot fail.
+ * A number is not a date: the loop takes the oldest ticket first, so `1095+` mixes in runs from
+ * before whatever change is being measured. `--since` is what a before-and-after is asked with.
  */
-export function wanted(files, arg = "") {
-  const from = /^\d+\+$/.test(arg) ? Number.parseInt(arg, 10) : null;
-  const one = /^\d+$/.test(arg) ? `${arg}.jsonl` : null;
+/** @param {string[]} files @param {string | string[]} [args] */
+export function wanted(files, args = []) {
+  const picks = [args].flat().filter(Boolean);
   return files.filter((f) => {
     if (!ARTEFACTS.stream.name.test(f)) return false;
-    if (one) return f === one;
-    if (from !== null) return Number.parseInt(f, 10) >= from;
-    return true;
+    const n = Number.parseInt(f, 10);
+    return !picks.length || picks.some((p) => (p.endsWith("+") ? n >= Number.parseInt(p, 10) : `${p}.jsonl` === f));
   });
 }
 
+/** `--since <time>`: the tickets with a ledger row started then or later, and those rows. */
+export function sinceWindow(rows, since) {
+  const inside = rows.filter((r) => String(r.started ?? "") >= since);
+  return { tickets: [...new Set(inside.map((r) => String(r.n)))], rows: inside };
+}
+
 if (isInvokedDirectly(process.argv[1], import.meta.url)) {
-  const files = wanted(existsSync(DIR) ? readdirSync(DIR) : [], process.argv[2]);
+  const argv = process.argv.slice(2);
+  const at = argv.indexOf("--since");
+  const since = at >= 0 ? new Date(argv[at + 1]).toISOString() : null;
+  const ledger = readLedger();
+  const window = since ? sinceWindow(ledger, since) : null;
+  const picks = window ? window.tickets : argv;
+  const files = window && !picks.length ? [] : wanted(existsSync(DIR) ? readdirSync(DIR) : [], picks);
   // Unfiltered, fix-round share was the whole directory's however narrow the window asked for.
   const asked = new Set(files.map((f) => Number.parseInt(f, 10)));
   console.log(report(
-    files.map((f) => readTicket(readFileSync(join(DIR, f), "utf8").split("\n"), f.replace(".jsonl", ""))),
-    readLedger().filter((r) => asked.has(r.n)),
+    files.map((f) => readTicket(readFileSync(join(DIR, f), "utf8").split("\n"), f.replace(".jsonl", ""), since)),
+    (window ? window.rows : ledger).filter((r) => asked.has(r.n)),
   ));
 }

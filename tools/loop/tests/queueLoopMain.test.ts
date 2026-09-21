@@ -516,6 +516,22 @@ describe("runOnce", () => {
     assert.deepEqual(parked, ["the session started on claude-opus-5, but phase E runs on sonnet"]);
   });
 
+  test("a stray plugin stops the run instead of parking the ticket it happened to meet", async () => {
+    const parked: string[] = [];
+    const ledger: any[] = [];
+    const r = await runOnce(
+      io(
+        {
+          spawn: async () => ({ status: 1, blocked: false, result: null, ms: 1, log: "l", phase: null, declared: null, strayPlugin: "the session loaded ponytail@ponytail" }),
+          park: (_n: number, c: { why: string }) => parked.push(c.why),
+        },
+        ledger,
+      ),
+    );
+    assert.deepEqual([r.outcome, parked], ["stop", []]);
+    assert.match(String(r.why), /ponytail/);
+  });
+
   test("the prune in queue-pre runs before the pick", async () => {
     const order: string[] = [];
     await runOnce(
@@ -1102,6 +1118,18 @@ describe("main", () => {
     });
     assert.equal(code, 0);
     assert.equal(picked, 0);
+  });
+
+  test("the run file says why the run stopped, not only its total", async () => {
+    const closed: string[] = [];
+    await main({
+      io: { ...(io() as any), stopFile: () => true },
+      book: { ...book(), close: (_id: string, line: string) => closed.push(line) },
+      screen: screen(),
+      install: () => {},
+      runId: "t",
+    });
+    assert.match(closed.join("\n"), /stopped: \.loop-stop/);
   });
 
   test("a landing clears the breaker, so a bad ticket between good ones is not fatal", async () => {

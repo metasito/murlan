@@ -19,7 +19,7 @@ import fs, { createWriteStream, mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { createInterface } from "node:readline";
 import { ciRedPosted, ciRedRounds, derive, REPO, reviewRounds, WORKTREE_DIR } from "./loop-derive.mjs";
-import { readLine } from "./loop-stream.mjs";
+import { COMMITTING, readLine, scopeEnds } from "./loop-stream.mjs";
 import {
   act,
   activity,
@@ -199,6 +199,9 @@ export function nextRoute(pinned = null, at = null, { read = derive, facts = tic
  * moves with the model and the context — measured 8x to 42x over a small cap — and with subagents
  * in flight it stops the *subagents* and lets the session carry on. The dollar figure stays as a
  * backstop against one pathological turn, well above what a healthy ticket reaches.
+ *
+ * Derived from `tickets.jsonl` (`turns` per row, rows since 2026-09-21T10:18Z): the busiest process
+ * used 37 on S and 79 on M, so each cap stays above twice the most a healthy process has needed.
  */
 export const TURNS_BY_SIZE = {
   "size:XS": 60,
@@ -236,6 +239,12 @@ export const turnsFor = (size) => TURNS_BY_SIZE[size ?? ""] ?? TURNS_DEFAULT;
 /** @param {string|null} [phase] */
 const plannedModel = (phase) => MODEL_BY_PHASE[phase ?? "A"] ?? MODEL_BY_PHASE.A;
 
+const LOOP_SETTINGS = path.join(HERE, "loop-settings.json");
+
+/** `loop-settings.json` can only switch off what it names; a plugin it does not turn on is stray. */
+export const strayPlugins = (loaded, allowed = JSON.parse(fs.readFileSync(LOOP_SETTINGS, "utf8")).enabledPlugins) =>
+  loaded.filter((source) => !source.endsWith("@builtin") && allowed[source] !== true);
+
 /**
  * @param {number} number
  * @param {string|null} [size] a `size:*` label, or null
@@ -260,7 +269,7 @@ export function queueLoopArgs(number, size = null, phase = null) {
     // Plugins no protocol file names: 83 skills become 66, and the prefix every turn re-reads
     // loses 2.3k. The prompt itself cannot move later — the ticket number is what stops a second pick.
     "--settings",
-    path.join(HERE, "loop-settings.json"),
+    LOOP_SETTINGS,
     "--tools",
     readAllowedTools().join(","),
     "--max-turns",
@@ -718,6 +727,9 @@ export function park(
     `- log: \`${log}\``,
     "",
     "The branch keeps its commits. Nothing was discarded.",
+    "",
+    "**To send it back:** deal with the reason above, then swap `ready-for-human` for `ready-for-agent`." +
+      " The next run resumes from the branch as it stands.",
   ].join("\n");
   const file = parkNotePath(number);
   step("comment", () => {
@@ -1338,8 +1350,6 @@ function readUsageSplit(logPath) {
   }
 }
 
-/** What a `git commit` looks like in a `Bash` call, whatever else is on the line. */
-const COMMITTING = /\bgit\b[^\n|;&]*\bcommit\b/;
 
 /**
  * How far into its turn budget a session may get in phase C with nothing committed.
@@ -1360,8 +1370,9 @@ export const UNCOMMITTED_SHARE = 0.35;
  * It cannot commit on the session's behalf — rule 11 forbids `git add -A` precisely because the
  * staging decisions are the session's — so it reports, and the reason reaches the ledger.
  *
- * @param {{phase: string|null, buildTurns: number, committed: boolean, warnedUncommitted: boolean}} state
- * @param {{calls: {name: string, command: string}[]}} fact
+ * @param {{phase: string|null, buildTurns: number, committed: boolean, warnedUncommitted: boolean,
+ *   buildMsg?: string|null}} state
+ * @param {{id?: string|null, calls: {name: string, command: string}[]}} fact
  * @param {number} budget the session's `--max-turns`
  * @param {(line: string) => void} warn
  */
@@ -1371,6 +1382,8 @@ export function watchBuild(state, fact, budget, warn) {
     state.committed = true;
     return;
   }
+  if (fact.id != null && fact.id === state.buildMsg) return;
+  state.buildMsg = fact.id;
   state.buildTurns += 1;
   if (state.warnedUncommitted || state.buildTurns < Math.round(budget * UNCOMMITTED_SHARE)) return;
   state.warnedUncommitted = true;
@@ -1387,13 +1400,20 @@ export function watchBuild(state, fact, budget, warn) {
  * last one from a command that did not. It is a number in the ledger, so "did the batching
  * instruction work" is a question the record can answer.
  *
- * @param {{soloBash: number, turns: number}} state
- * @param {{calls: {name: string}[]}} fact
+ * @param {{soloBash: number, turns: number, callMsg?: {id: string|null, calls: number, solo: boolean}}} state
+ * @param {{id?: string|null, calls: {name: string}[]}} fact
  */
 export function watchCalls(state, fact) {
   if (!fact.calls.length) return;
-  state.turns += 1;
-  if (fact.calls.length === 1 && fact.calls[0].name === "Bash") state.soloBash += 1;
+  if (fact.id == null || fact.id !== state.callMsg?.id) {
+    state.turns += 1;
+    state.callMsg = { id: fact.id, calls: 0, solo: false };
+  }
+  const msg = state.callMsg;
+  msg.calls += fact.calls.length;
+  const solo = msg.calls === 1 && fact.calls[0].name === "Bash";
+  state.soloBash += Number(solo) - Number(msg.solo);
+  msg.solo = solo;
 }
 
 /**
@@ -1449,6 +1469,7 @@ export function runTicket(
     blockedUntil: 0,
     stalled: false,
     wrongModel: null,
+    strayPlugin: null,
     stderr: "",
     /** Turns spent in phase C, and whether any of them committed. */
     buildTurns: 0,
@@ -1537,17 +1558,25 @@ export function runTicket(
       screen.set({ session: fact.sessionId });
       const family = fact.model ? familyOf(fact.model) : null;
       if (fact.model && !family) screen.warn(`the session started on ${fact.model}, a model of no known family\n`);
-      if (family && family !== planned && !state.wrongModel) {
+      const stray = strayPlugins(fact.plugins ?? []);
+      if (stray.length && !state.strayPlugin) {
+        state.strayPlugin =
+          `the session loaded ${stray.join(", ")}, which tools/loop/loop-settings.json does not turn on —` +
+          " set each to false there, or true if the loop needs it";
+      } else if (family && family !== planned && !state.wrongModel) {
         state.wrongModel = `the session started on ${fact.model}, but phase ${at ?? "A"} runs on ${planned}`;
+      }
+      if (state.strayPlugin || state.wrongModel) {
         child.kill("SIGTERM");
         setTimeout(() => child.kill("SIGKILL"), 10_000).unref();
       }
     }
     if (fact.kind === "assistant") {
-      if (fact.letter && fact.letter !== state.phase) {
+      const letter = fact.letter ?? (state.phase === "B" && scopeEnds(fact.calls) ? "C" : null);
+      if (letter && letter !== state.phase) {
         closePhase();
-        state.phase = fact.letter;
-        screen.start(fact.letter, round());
+        state.phase = letter;
+        screen.start(letter, round());
       }
       if (fact.declared) state.declared = fact.declared;
       // The only sign of life during phase D, which is the longest one and the one that read as a
@@ -1641,6 +1670,7 @@ export function runTicket(
           stderr: state.stderr,
           version: state.version,
           wrongModel: state.wrongModel,
+          strayPlugin: state.strayPlugin,
           ms: Date.now() - startedAt,
           log: logPath,
           // Read now rather than accumulated as the lines arrived: the sink has just closed, so the
@@ -2204,6 +2234,11 @@ export async function runOnce(io, pinned = null, at = null) {
   if (dirtied) io.log(`#${route.number}'s session left the shared checkout dirty:\n${dirtied}`, "session");
 
   const after = afterSession(run, io.standing());
+  // Not the ticket's fault, so not a park: every next ticket would load the same plugin.
+  if (run.strayPlugin) {
+    io.record({ number: route.number, outcome: "halted", why: run.strayPlugin, run, counts: false });
+    return { outcome: "stop", why: run.strayPlugin };
+  }
   if (run.wrongModel) {
     return parkAndRecord(io, route.number, {
       phase: after?.phase ?? route.phase ?? "A",
@@ -2651,7 +2686,7 @@ export async function main({
     const rule = t.paint("faint", "─".repeat(t.width));
     const tickets = book.tickets.map((r) => reportRow(r, t));
     screen.say([rule, ...recapOf(t), rule, ...(tickets.length ? [...tickets, rule] : []), `   ${t.paint("text", `run total  ${total}`, true)}`].join("\n"));
-    book.close(runId, total, recapOf(PLAIN(), true).join("\n"));
+    book.close(runId, why ? `${total} · stopped: ${why}` : total, recapOf(PLAIN(), true).join("\n"));
     bell();
     return code;
   };

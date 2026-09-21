@@ -16,8 +16,15 @@ describe("readLine", () => {
       session_id: "abc-123",
       claude_code_version: "2.1.251",
       model: "claude-sonnet-5",
+      plugins: [{ name: "ponytail", source: "ponytail@ponytail" }],
     });
-    assert.deepEqual(readLine(line), { kind: "init", sessionId: "abc-123", version: "2.1.251", model: "claude-sonnet-5" });
+    assert.deepEqual(readLine(line), {
+      kind: "init",
+      sessionId: "abc-123",
+      version: "2.1.251",
+      model: "claude-sonnet-5",
+      plugins: ["ponytail@ponytail"],
+    });
   });
 
   // Captured from a real run's `.loop-logs/962.jsonl`, not invented: the shape is the claim.
@@ -49,6 +56,7 @@ describe("readLine", () => {
       type: "assistant",
       parent_tool_use_id: null,
       message: {
+        id: "msg_1",
         content: [
           { type: "thinking", thinking: "..." },
           { type: "tool_use", id: "t1", name: "Bash", input: { command: "git commit -m x" } },
@@ -58,6 +66,7 @@ describe("readLine", () => {
     });
     assert.deepEqual(readLine(line), {
       kind: "assistant",
+      id: "msg_1",
       letter: null,
       declared: null,
       text: "",

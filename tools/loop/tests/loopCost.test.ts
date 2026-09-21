@@ -1,7 +1,7 @@
 // tools/loop/tests/loopCost.test.ts
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { ledgerSummary, mismatchedModel, readTicket, report, wanted } from "../loop-cost.mjs";
+import { ledgerSummary, mismatchedModel, priceOf, readTicket, report, sinceWindow, wanted } from "../loop-cost.mjs";
 
 const at = (min: number) => new Date(Date.UTC(2026, 8, 14, 10, min)).toISOString();
 const say = (text: string, min: number, model = "claude-opus-5", parent: string | null = null) =>
@@ -104,6 +104,79 @@ describe("wanted", () => {
 
   test("the ledger is never a ticket, whatever the argument", () => {
     assert.deepEqual(wanted(["tickets.jsonl"], "1+"), []);
+  });
+
+  test("several arguments are the union of what each names", () => {
+    assert.deepEqual(wanted(files, ["70", "1050"]), ["70.jsonl", "1050.jsonl"]);
+    assert.deepEqual(wanted(files, ["70", "1050+"]), ["70.jsonl", "1050.jsonl"]);
+  });
+});
+
+describe("priceOf", () => {
+  // #1097's opus session, as its result's `modelUsage` reports it: $2.6356.
+  test("prices a one-hour cache write at twice base, which is every write the loop makes", () => {
+    const u = { input_tokens: 72, output_tokens: 19229, cache_read_input_tokens: 2489832, cache_creation_input_tokens: 90963, cache_creation: { ephemeral_1h_input_tokens: 90963 } };
+    assert.equal(priceOf("claude-opus-5", u).toFixed(4), "2.6356");
+    assert.ok(priceOf("opus", { cache_creation_input_tokens: 1e6 }) < priceOf("opus", { cache_creation_input_tokens: 1e6, cache_creation: { ephemeral_1h_input_tokens: 1e6 } }));
+  });
+});
+
+describe("sinceWindow", () => {
+  test("takes rows by when they started, never by ticket number", () => {
+    const rows = [
+      { n: 1090, started: "2026-09-17T20:57:00.000Z" },
+      { n: 70, started: "2026-09-21T10:44:00.000Z" },
+      { n: 1090, started: "2026-09-21T14:02:00.000Z" },
+    ];
+    const out = sinceWindow(rows, "2026-09-21T10:18:00.000Z");
+    assert.deepEqual(out.tickets, ["70", "1090"]);
+    assert.equal(out.rows.length, 2);
+  });
+});
+
+describe("readTicket, across processes and stream lines", () => {
+  const line = (o: object) => JSON.stringify(o);
+  const init = (session: string) => line({ type: "system", subtype: "init", session_id: session });
+  const msg = (id: string, content: object[], min: number, session = "s1") =>
+    line({
+      type: "assistant", timestamp: at(min), session_id: session, parent_tool_use_id: null,
+      message: { id, model: "claude-opus-5", content, usage: { cache_read_input_tokens: 1e6 } },
+    });
+  const text = (t: string) => ({ type: "text", text: t });
+  const call = (name: string, command = "") => ({ type: "tool_use", name, input: { command } });
+
+  test("a message written as one line per block is one turn, priced once", () => {
+    const t = readTicket([msg("m1", [text("PHASE D")], 0), msg("m1", [call("Bash", "ls")], 0), msg("m1", [call("Bash", "pwd")], 0)]);
+    assert.equal(t.phases.D.turns, 1);
+    assert.equal(t.phases.D.tokens, 1e6);
+    assert.deepEqual([t.phases.D.toolTurns, t.phases.D.batched], [1, 1]);
+  });
+
+  test("a new process starts before its marker, not in the last one's phase", () => {
+    const t = readTicket([msg("m1", [text("PHASE F")], 0), init("s2"), msg("m2", [call("Bash", "loop-status")], 30, "s2"), msg("m3", [text("PHASE D")], 31, "s2")]);
+    assert.equal(t.phases.pre.turns, 1);
+    assert.equal(t.phases.F.minutes, 0, "the half hour between processes is nobody's");
+  });
+
+  test("a build under PHASE B moves to C at its first edit, never at a read after the scout", () => {
+    const t = readTicket([
+      msg("m1", [text("PHASE B"), call("Agent")], 0),
+      msg("m2", [call("Bash", "git status")], 1),
+      msg("m3", [call("Write")], 2),
+    ]);
+    assert.deepEqual([t.phases.B.turns, t.phases.C.turns], [2, 1]);
+  });
+
+  test("with no scout, B holds through reads and ends at the first edit", () => {
+    const t = readTicket([msg("m1", [text("PHASE B"), call("Bash", "grep -n x a.ts")], 0), msg("m2", [call("Edit")], 1)]);
+    assert.deepEqual([t.phases.B.turns, t.phases.C.turns], [1, 1]);
+  });
+
+  test("since leaves out a whole earlier process of the same ticket", () => {
+    const early = msg("m1", [text("PHASE C")], 0, "old");
+    const late = line({ ...JSON.parse(msg("m2", [text("PHASE D")], 0, "new")), timestamp: "2026-09-21T11:00:00.000Z" });
+    const t = readTicket([early, line({ type: "result", session_id: "old", total_cost_usd: 9 }), late], "", "2026-09-21T10:18:00.000Z");
+    assert.deepEqual([t.phases.C, t.phases.D.turns, t.usd], [undefined, 1, 0]);
   });
 });
 

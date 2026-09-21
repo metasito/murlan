@@ -131,6 +131,21 @@ describe("queueLoopArgs", () => {
     }
   });
 
+  test("every plugin queue.md sends a session to is one the spawn turns on", () => {
+    const args = queueLoopArgs(1);
+    const { enabledPlugins } = JSON.parse(readFileSync(args[args.indexOf("--settings") + 1], "utf8"));
+    const root = path.join(import.meta.dirname, "../../..");
+    const queue = readFileSync(path.join(root, ".claude/commands/queue.md"), "utf8");
+    const { scripts } = JSON.parse(readFileSync(path.join(root, "package.json"), "utf8"));
+    const refs = [...queue.matchAll(/`(([a-z-]+):[a-z-]+)`/g)].filter((m) => !(m[1] in scripts));
+    const named = new Set(refs.map((m) => m[2]));
+    assert.ok(named.has("mattpocock-skills"), "queue.md's skill references were not found");
+    for (const plugin of named) {
+      const on = Object.entries(enabledPlugins).filter(([k, v]) => k.startsWith(`${plugin}@`) && v === true);
+      assert.equal(on.length, 1, `queue.md names ${plugin}, which loop-settings.json does not turn on`);
+    }
+  });
+
   test("streams JSON, which print mode refuses without --verbose", () => {
     const args = queueLoopArgs(1);
     assert.equal(args[args.indexOf("--output-format") + 1], "stream-json");
@@ -566,6 +581,17 @@ describe("runTicket", () => {
     }
   });
 
+  test("a build that never says PHASE C is recorded as C from its first edit, not from a read", async () => {
+    const said = (content: object[]) => JSON.stringify({ type: "assistant", message: { content } });
+    const scout = said([{ type: "text", text: "PHASE B" }, { type: "tool_use", name: "Agent", input: {} }]);
+    const read = said([{ type: "tool_use", name: "Bash", input: { command: "gh issue view 1" } }]);
+    const readOnly = await runTicket(fakeSpawn([scout, read, RESULT]), opts());
+    assert.deepEqual(Object.keys(readOnly.phases), ["B"]);
+    const edit = said([{ type: "tool_use", name: "Edit", input: {} }]);
+    const run = await runTicket(fakeSpawn([scout, read, edit, RESULT]), opts());
+    assert.deepEqual(Object.keys(run.phases).sort(), ["B", "C"]);
+  });
+
   // The marker is repeated on every message of a long phase, not only on the first.
   test("a phase said twice running is one phase, not two openings", async () => {
     const { said, screen } = sink();
@@ -692,6 +718,18 @@ describe("runTicket", () => {
     const right = spawned([init("claude-sonnet-5"), RESULT]);
     const ok = await runTicket(right.spawnFn as never, opts({ at: "E" }));
     assert.deepEqual([right.seen.killed, ok.wrongModel], [[], null]);
+  });
+
+  test("a plugin loop-settings.json does not turn on kills the session and names it", async () => {
+    const withPlugins = (...sources: string[]) =>
+      JSON.stringify({ type: "system", subtype: "init", session_id: "s", model: "claude-opus-5", plugins: sources.map((source) => ({ source })) });
+    const stray = spawned([withPlugins("mattpocock-skills@claude-plugins-official", "ponytail@ponytail"), RESULT]);
+    const run = await runTicket(stray.spawnFn as never, opts({ at: "C" }));
+    assert.deepEqual(stray.seen.killed, ["SIGTERM"]);
+    assert.match(String(run.strayPlugin), /ponytail@ponytail/);
+    const clean = spawned([withPlugins("mattpocock-skills@claude-plugins-official", "agents-md@builtin"), RESULT]);
+    const ok = await runTicket(clean.spawnFn as never, opts({ at: "C" }));
+    assert.deepEqual([clean.seen.killed, ok.strayPlugin], [[], null]);
   });
 
   test("a fix round is named on the board with its round", async () => {
@@ -1139,6 +1177,13 @@ describe("watchBuild", () => {
   const said: string[] = [];
   const warn = (m: string) => said.push(m);
 
+  test("a message split across stream lines is one build turn", () => {
+    const s = state();
+    watchBuild(s, { ...edits, id: "m1" }, 200, warn);
+    watchBuild(s, { ...edits, id: "m1" }, 200, warn);
+    assert.equal(s.buildTurns, 1);
+  });
+
   test("a commit in phase C is what it is watching for, and ends the watch", () => {
     const s = state();
     watchBuild(s, commits, 200, warn);
@@ -1233,7 +1278,7 @@ describe("holdFor", () => {
   // silent terminal reads exactly like a dead one.
   test("a long hold says it is still there, and says when it is back", async () => {
     const said: string[] = [];
-    await holdFor(60, () => false, 5, (m: string) => said.push(m), 10);
+    await holdFor(300, () => false, 5, (m: string) => said.push(m), 20);
     assert.ok(said.length >= 3, `expected several heartbeats, saw ${said.length}`);
     assert.match(said[0], /still waiting — back at \d/);
   });
@@ -1497,6 +1542,14 @@ describe("watchCalls", () => {
     const state = { soloBash: 0, turns: 0 };
     watchCalls(state, { calls: [] } as never);
     assert.equal(state.turns, 0);
+  });
+
+  test("one message's calls on separate stream lines are one batched turn, not two solo ones", () => {
+    const state = { soloBash: 0, turns: 0 };
+    watchCalls(state, { id: "m1", calls: [{ name: "Bash", command: "ls" }] } as never);
+    watchCalls(state, { id: "m1", calls: [{ name: "Bash", command: "pwd" }] } as never);
+    watchCalls(state, { id: "m2", calls: [{ name: "Bash", command: "git status" }] } as never);
+    assert.deepEqual([state.turns, state.soloBash], [2, 1]);
   });
 });
 
