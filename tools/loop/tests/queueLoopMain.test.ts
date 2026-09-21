@@ -1120,6 +1120,18 @@ describe("main", () => {
     assert.equal(picked, 0);
   });
 
+  test("the run file says why the run stopped, not only its total", async () => {
+    const closed: string[] = [];
+    await main({
+      io: { ...(io() as any), stopFile: () => true },
+      book: { ...book(), close: (_id: string, line: string) => closed.push(line) },
+      screen: screen(),
+      install: () => {},
+      runId: "t",
+    });
+    assert.match(closed.join("\n"), /stopped: \.loop-stop/);
+  });
+
   test("a landing clears the breaker, so a bad ticket between good ones is not fatal", async () => {
     let n = 0;
     const outcomes = [1, 0, 1, 0, 1, 0, 1];

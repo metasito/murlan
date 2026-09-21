@@ -199,6 +199,9 @@ export function nextRoute(pinned = null, at = null, { read = derive, facts = tic
  * moves with the model and the context — measured 8x to 42x over a small cap — and with subagents
  * in flight it stops the *subagents* and lets the session carry on. The dollar figure stays as a
  * backstop against one pathological turn, well above what a healthy ticket reaches.
+ *
+ * Derived from `tickets.jsonl` (`turns` per row, rows since 2026-09-21T10:18Z): the busiest process
+ * used 37 on S and 79 on M, so each cap stays above twice the most a healthy process has needed.
  */
 export const TURNS_BY_SIZE = {
   "size:XS": 60,
@@ -2685,7 +2688,7 @@ export async function main({
     const rule = t.paint("faint", "─".repeat(t.width));
     const tickets = book.tickets.map((r) => reportRow(r, t));
     screen.say([rule, ...recapOf(t), rule, ...(tickets.length ? [...tickets, rule] : []), `   ${t.paint("text", `run total  ${total}`, true)}`].join("\n"));
-    book.close(runId, total, recapOf(PLAIN(), true).join("\n"));
+    book.close(runId, why ? `${total} · stopped: ${why}` : total, recapOf(PLAIN(), true).join("\n"));
     bell();
     return code;
   };
