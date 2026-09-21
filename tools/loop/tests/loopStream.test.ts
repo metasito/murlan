@@ -56,6 +56,7 @@ describe("readLine", () => {
       type: "assistant",
       parent_tool_use_id: null,
       message: {
+        id: "msg_1",
         content: [
           { type: "thinking", thinking: "..." },
           { type: "tool_use", id: "t1", name: "Bash", input: { command: "git commit -m x" } },
@@ -65,6 +66,7 @@ describe("readLine", () => {
     });
     assert.deepEqual(readLine(line), {
       kind: "assistant",
+      id: "msg_1",
       letter: null,
       declared: null,
       text: "",

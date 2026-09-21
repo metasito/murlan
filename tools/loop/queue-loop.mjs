@@ -19,7 +19,7 @@ import fs, { createWriteStream, mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { createInterface } from "node:readline";
 import { ciRedPosted, ciRedRounds, derive, REPO, reviewRounds, WORKTREE_DIR } from "./loop-derive.mjs";
-import { readLine } from "./loop-stream.mjs";
+import { COMMITTING, readLine, scopeEnds } from "./loop-stream.mjs";
 import {
   act,
   activity,
@@ -1347,8 +1347,6 @@ function readUsageSplit(logPath) {
   }
 }
 
-/** What a `git commit` looks like in a `Bash` call, whatever else is on the line. */
-const COMMITTING = /\bgit\b[^\n|;&]*\bcommit\b/;
 
 /**
  * How far into its turn budget a session may get in phase C with nothing committed.
@@ -1380,6 +1378,8 @@ export function watchBuild(state, fact, budget, warn) {
     state.committed = true;
     return;
   }
+  if (fact.id != null && fact.id === state.buildMsg) return;
+  state.buildMsg = fact.id;
   state.buildTurns += 1;
   if (state.warnedUncommitted || state.buildTurns < Math.round(budget * UNCOMMITTED_SHARE)) return;
   state.warnedUncommitted = true;
@@ -1401,8 +1401,15 @@ export function watchBuild(state, fact, budget, warn) {
  */
 export function watchCalls(state, fact) {
   if (!fact.calls.length) return;
-  state.turns += 1;
-  if (fact.calls.length === 1 && fact.calls[0].name === "Bash") state.soloBash += 1;
+  if (fact.id == null || fact.id !== state.callMsg?.id) {
+    state.turns += 1;
+    state.callMsg = { id: fact.id, calls: 0, solo: false };
+  }
+  const msg = state.callMsg;
+  msg.calls += fact.calls.length;
+  const solo = msg.calls === 1 && fact.calls[0].name === "Bash";
+  state.soloBash += Number(solo) - Number(msg.solo);
+  msg.solo = solo;
 }
 
 /**
@@ -1459,6 +1466,7 @@ export function runTicket(
     stalled: false,
     wrongModel: null,
     strayPlugin: null,
+    scouted: false,
     stderr: "",
     /** Turns spent in phase C, and whether any of them committed. */
     buildTurns: 0,
@@ -1561,10 +1569,13 @@ export function runTicket(
       }
     }
     if (fact.kind === "assistant") {
-      if (fact.letter && fact.letter !== state.phase) {
+      const scope = (fact.letter ?? state.phase) === "B" ? scopeEnds(state.scouted, fact.calls) : null;
+      if (scope) state.scouted = scope.scouted;
+      const letter = fact.letter ?? (scope?.builds ? "C" : null);
+      if (letter && letter !== state.phase) {
         closePhase();
-        state.phase = fact.letter;
-        screen.start(fact.letter, round());
+        state.phase = letter;
+        screen.start(letter, round());
       }
       if (fact.declared) state.declared = fact.declared;
       // The only sign of life during phase D, which is the longest one and the one that read as a

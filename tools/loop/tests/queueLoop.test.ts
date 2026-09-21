@@ -581,6 +581,14 @@ describe("runTicket", () => {
     }
   });
 
+  test("a build that never says PHASE C is still recorded as C, from its first call after the scout", async () => {
+    const said = (content: object[]) => JSON.stringify({ type: "assistant", message: { content } });
+    const scout = said([{ type: "text", text: "PHASE B" }, { type: "tool_use", name: "Agent", input: {} }]);
+    const build = said([{ type: "tool_use", name: "Bash", input: { command: "sed -n 1,9p a.ts" } }]);
+    const run = await runTicket(fakeSpawn([scout, build, RESULT]), opts());
+    assert.deepEqual(Object.keys(run.phases).sort(), ["B", "C"]);
+  });
+
   // The marker is repeated on every message of a long phase, not only on the first.
   test("a phase said twice running is one phase, not two openings", async () => {
     const { said, screen } = sink();
@@ -1166,6 +1174,13 @@ describe("watchBuild", () => {
   const said: string[] = [];
   const warn = (m: string) => said.push(m);
 
+  test("a message split across stream lines is one build turn", () => {
+    const s = state();
+    watchBuild(s, { ...edits, id: "m1" }, 200, warn);
+    watchBuild(s, { ...edits, id: "m1" }, 200, warn);
+    assert.equal(s.buildTurns, 1);
+  });
+
   test("a commit in phase C is what it is watching for, and ends the watch", () => {
     const s = state();
     watchBuild(s, commits, 200, warn);
@@ -1524,6 +1539,14 @@ describe("watchCalls", () => {
     const state = { soloBash: 0, turns: 0 };
     watchCalls(state, { calls: [] } as never);
     assert.equal(state.turns, 0);
+  });
+
+  test("one message's calls on separate stream lines are one batched turn, not two solo ones", () => {
+    const state = { soloBash: 0, turns: 0 };
+    watchCalls(state, { id: "m1", calls: [{ name: "Bash", command: "ls" }] } as never);
+    watchCalls(state, { id: "m1", calls: [{ name: "Bash", command: "pwd" }] } as never);
+    watchCalls(state, { id: "m2", calls: [{ name: "Bash", command: "git status" }] } as never);
+    assert.deepEqual([state.turns, state.soloBash], [2, 1]);
   });
 });
 
