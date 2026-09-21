@@ -286,3 +286,22 @@ describe('tapping an unavailable GIOCA', () => {
     await r.unmount();
   });
 });
+
+describe('tapping an available GIOCA', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('answers with a selection tick, leaving the weight to the landing', async () => {
+    const r = await render(table(state({}), [SEVEN_H.id]));
+
+    await act(async () => {
+      fireEvent.press(screen.getByTestId('btn-gioca'));
+    });
+
+    expect(jest.mocked(Haptics.selectionAsync)).toHaveBeenCalledTimes(1);
+    expect(jest.mocked(Haptics.impactAsync)).not.toHaveBeenCalledWith('medium');
+
+    await r.unmount();
+  });
+});

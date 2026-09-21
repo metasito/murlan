@@ -32,7 +32,7 @@ import Animated, {
 import { LinearGradient } from "expo-linear-gradient";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
-import { hapticSuccess } from "@/lib/haptics";
+import { hapticSelection } from "@/lib/haptics";
 import {
   Colors,
   FontSize,
@@ -185,7 +185,7 @@ function WinnerCelebration({
   useEffect(() => {
     if (viewerCelebrated && !celebrated.current) {
       celebrated.current = true;
-      hapticSuccess();
+      hapticSelection();
     }
   }, [viewerCelebrated]);
 

@@ -773,7 +773,7 @@ export function GameTable({
     }
     // Haptic only: the throw is acknowledged in the hand, and card_play sounds
     // when the card actually reaches the pile.
-    hapticMedium();
+    hapticSelection();
     // The validated set, not the raw selection: the server rejects — silently —
     // any request naming a card the hand does not hold.
     onPlay(staged.cards.map((c) => c.id));

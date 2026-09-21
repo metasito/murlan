@@ -76,12 +76,12 @@ const mockMatch: MatchState = {
   isDraw: false,
 };
 
-const notificationAsync = Haptics.notificationAsync as unknown as ReturnType<typeof jest.fn>;
+const selectionAsync = Haptics.selectionAsync as unknown as ReturnType<typeof jest.fn>;
 
 describe('the result screen celebrates once', () => {
   beforeEach(() => {
     setMotionPreference('system');
-    notificationAsync.mockClear();
+    selectionAsync.mockClear();
     jest.spyOn(AccessibilityInfo, 'addEventListener').mockReturnValue({
       remove: () => {},
     } as ReturnType<typeof AccessibilityInfo.addEventListener>);
@@ -99,7 +99,7 @@ describe('the result screen celebrates once', () => {
     const view = await render(<SafeAreaProvider initialMetrics={METRICS}><ResultScreen /></SafeAreaProvider>);
     await act(async () => {});
 
-    expect(notificationAsync).toHaveBeenCalledTimes(1);
+    expect(selectionAsync).toHaveBeenCalledTimes(1);
     await view.unmount();
   });
 
@@ -108,7 +108,7 @@ describe('the result screen celebrates once', () => {
     const view = await render(<SafeAreaProvider initialMetrics={METRICS}><ResultScreen /></SafeAreaProvider>);
     await act(async () => {});
 
-    expect(notificationAsync).toHaveBeenCalledTimes(1);
+    expect(selectionAsync).toHaveBeenCalledTimes(1);
     await view.unmount();
   });
 
@@ -118,11 +118,11 @@ describe('the result screen celebrates once', () => {
     jest.spyOn(AccessibilityInfo, 'isReduceMotionEnabled').mockResolvedValue(false);
     const view = await render(<SafeAreaProvider initialMetrics={METRICS}><ResultScreen /></SafeAreaProvider>);
     await act(async () => {});
-    expect(notificationAsync).toHaveBeenCalledTimes(1);
+    expect(selectionAsync).toHaveBeenCalledTimes(1);
 
     await act(async () => setMotionPreference('on'));
 
-    expect(notificationAsync).toHaveBeenCalledTimes(1);
+    expect(selectionAsync).toHaveBeenCalledTimes(1);
     await view.unmount();
   });
 });
