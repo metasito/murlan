@@ -153,6 +153,6 @@ describe('lib/sounds on a device', () => {
 
   it('preloads every effect', async () => {
     await sounds.preloadSounds();
-    expect(mockCreateAudioPlayer).toHaveBeenCalledTimes(15);
+    expect(mockCreateAudioPlayer).toHaveBeenCalledTimes(16);
   });
 });

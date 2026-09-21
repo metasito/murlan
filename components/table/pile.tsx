@@ -16,13 +16,13 @@ import Animated, {
 import { scheduleOnRN } from "react-native-worklets";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { CardView } from "@/components/CardView";
-import { Colors, FontSize, Hold, Motion, Radius, Scrim, Shadow, Spacing, Layer } from "@/lib/theme";
+import { Colors, FontSize, Hold, Motion, motionMs, Radius, Scrim, Shadow, Spacing, Layer } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
 import type { Card, Combination, CombinationType } from "@/lib/gameEngine";
 import { CARD_W, CARD_H, FIELD_SCALE, cardRadius } from "@/components/cardFaceModel";
 import { type FlyDirection } from "@/components/seatLayout";
-import { COMBO_MAX_TILT, advancePile, anticipationOffset, cardTilt, comboKey, EMPTY_PILE, FLIGHT_MS, flinchFor, impactDelayMs, landingHoldMs, landingTier, landSquashScale, readThrownPlay, roundClosedWithWinner, settleForMotion, type ImpactTier, type PileState, type ThrownPlayInput } from "@/components/flightPhysics";
+import { COMBO_MAX_TILT, advancePile, anticipationOffset, cardTilt, collectPile, comboKey, EMPTY_PILE, FLIGHT_MS, flinchFor, impactDelayMs, landingHoldMs, landingTier, landSquashScale, NO_PILE, readThrownPlay, roundClosedWithWinner, settleForMotion, sweepOrigin, type ImpactTier, type PileLayers, type PileState, type ThrownPlayInput } from "@/components/flightPhysics";
 import { FIELD_ARC, solveArc } from "@/components/tableArc";
 
 const FLY_ROTS: Record<FlyDirection, number> = {
@@ -217,6 +217,71 @@ export function FlyingCards({
             <CardView card={cards[i]} scale={cardScale} light="flat" />
           </View>
         ))}
+      </Animated.View>
+    </View>
+  );
+}
+
+// ─── SweepCards ───────────────────────────────────────────────────────────────
+
+const SWEEP_SCALE = 0.6;
+
+/** A closed round's cards collected toward the seat that won them. */
+export function SweepCards({
+  pile,
+  origin,
+  roomW,
+  scale = 1,
+}: {
+  pile: PileState;
+  /** The winner's seat — components/flightPhysics.ts `sweepOrigin`. */
+  origin: { dx: number; dy: number };
+  roomW: number;
+  scale?: number;
+}) {
+  const reduceMotion = usePrefersReducedMotion();
+  const travel = useSharedValue(0);
+  const fade = useSharedValue(0);
+
+  useEffect(() => {
+    const travelMs = motionMs("travel", reduceMotion);
+    const shiftMs = motionMs("shift", reduceMotion);
+    travel.value = reduceMotion
+      ? 0
+      : withTiming(1, { duration: travelMs, easing: Easing.in(Easing.cubic) });
+    fade.value = withDelay(travelMs - shiftMs, withTiming(1, { duration: shiftMs }));
+    return () => {
+      cancelAnimation(travel);
+      cancelAnimation(fade);
+    };
+  }, [reduceMotion, travel, fade]);
+
+  const aStyle = useAnimatedStyle(() => ({
+    opacity: 1 - fade.value,
+    transform: [
+      { translateX: travel.value * origin.dx },
+      { translateY: travel.value * origin.dy },
+      { scale: 1 - travel.value * fade.value * (1 - SWEEP_SCALE) },
+    ],
+  }));
+
+  const cardScale = scale * FIELD_SCALE;
+  return (
+    <View style={[pileStyles.flyingContainer, { pointerEvents: "none" as const }]}>
+      <Animated.View testID="sweep-cards" style={[pileStyles.pileStack, aStyle]}>
+        {pile.prev && (
+          <View
+            style={[
+              pileStyles.pilePrevLayer,
+              { transform: [{ rotate: `${PILE_PREV_ROTATE_DEG}deg` }, { translateY: PILE_PREV_Y }] },
+            ]}
+          >
+            <PileComboCards cards={pile.prev.cards} scale={cardScale} roomW={roomW} />
+          </View>
+        )}
+        {pile.current && (
+          <PileComboCards cards={pile.current.cards} scale={cardScale} roomW={roomW} />
+        )}
       </Animated.View>
     </View>
   );
@@ -578,7 +643,8 @@ export function usePileFlight({
   const [roundWinnerTag, setRoundWinnerTag] = useState<{ seat: number; closure: number } | null>(
     null
   );
-  const [pileState, setPileState] = useState<PileState>(EMPTY_PILE);
+  const [layers, setLayers] = useState<PileLayers>(NO_PILE);
+  const [sweepTo, setSweepTo] = useState<{ dx: number; dy: number } | null>(null);
   const [bounceTrigger, setBounceTrigger] = useState(0);
   // The beaten pile's own reaction (#764): fired from the same impactDelayMs()
   // landing the shake and the impact sound wait for, never a second guess at it.
@@ -605,7 +671,10 @@ export function usePileFlight({
   // Non-null while the winning combination is being held on the felt under the
   // round-winner tag. Its presence is what tells the pile effect the felt is
   // spoken for.
-  const roundHoldTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const roundHoldRef = useRef<{ timer: ReturnType<typeof setTimeout>; collect: () => void } | null>(
+    null
+  );
+  const sweepTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevComboKeyRef = useRef<string>("");
   const roundClosedRef = useRef(false);
   const matchOverRef = useRef(matchOver);
@@ -616,7 +685,8 @@ export function usePileFlight({
   useEffect(
     () => () => {
       if (impactTimerRef.current) clearTimeout(impactTimerRef.current);
-      if (roundHoldTimerRef.current) clearTimeout(roundHoldTimerRef.current);
+      if (roundHoldRef.current) clearTimeout(roundHoldRef.current.timer);
+      if (sweepTimerRef.current) clearTimeout(sweepTimerRef.current);
       if (landTimerRef.current) clearTimeout(landTimerRef.current);
     },
     []
@@ -640,50 +710,12 @@ export function usePileFlight({
     // happens now or after the winning cards have been held.
     const openNewRound = () => {
       playRoundStart();
-      setPileState(EMPTY_PILE);
+      setLayers((l) => ({ ...l, onPile: EMPTY_PILE }));
       setFlyInfo(null);
       clearLanding();
     };
 
-    const combo = lastPlayedCombination;
-    if (combo === null) {
-      // The winning cards are being held for the tag; nothing may take the
-      // felt out from under them until the hold expires or a new lead arrives.
-      if (roundHoldTimerRef.current) return;
-      if (prevComboKeyRef.current === "") {
-        setPileState(EMPTY_PILE);
-        setFlyInfo(null);
-        clearLanding();
-        return;
-      }
-      if (impactTimerRef.current) clearTimeout(impactTimerRef.current);
-      prevComboKeyRef.current = "";
-      if (roundClosedWithWinner({ lastPlayedCombination: combo, roundWinner })) {
-        roundHoldTimerRef.current = setTimeout(() => {
-          roundHoldTimerRef.current = null;
-          openNewRound();
-        }, ROUND_WINNER_MS);
-        return;
-      }
-      openNewRound();
-      return;
-    }
-    const key = comboKey(combo, lastPlayedBy);
-    if (key === prevComboKeyRef.current) return;
-    if (impactTimerRef.current) clearTimeout(impactTimerRef.current);
-    // A lead inside the hold window ends it early: the new card has to fly
-    // onto a cleared pile, not onto the combination it did not beat.
-    if (roundHoldTimerRef.current) {
-      clearTimeout(roundHoldTimerRef.current);
-      roundHoldTimerRef.current = null;
-      openNewRound();
-    }
-    prevComboKeyRef.current = key;
-    setPileState((s) => advancePile(s, combo, lastPlayedBy));
-
-    const thrown = readThrownPlay({
-      combo,
-      playedBy: lastPlayedBy,
+    const geometry = {
       viewerSeat,
       players,
       opponents,
@@ -696,7 +728,53 @@ export function usePileFlight({
       surplus,
       bottomPad,
       handCardH,
-    });
+    };
+    const combo = lastPlayedCombination;
+    if (combo === null) {
+      // The winning cards are being held for the tag; nothing may take the
+      // felt out from under them until the hold expires or a new lead arrives.
+      if (roundHoldRef.current) return;
+      if (prevComboKeyRef.current === "") {
+        setLayers((l) => ({ ...l, onPile: EMPTY_PILE }));
+        setFlyInfo(null);
+        clearLanding();
+        return;
+      }
+      if (impactTimerRef.current) clearTimeout(impactTimerRef.current);
+      prevComboKeyRef.current = "";
+      if (roundClosedWithWinner({ lastPlayedCombination: combo, roundWinner })) {
+        const origin = sweepOrigin(geometry, roundWinner!);
+        const collect = () => {
+          roundHoldRef.current = null;
+          setLayers(collectPile);
+          setSweepTo(origin);
+          openNewRound();
+          if (sweepTimerRef.current) clearTimeout(sweepTimerRef.current);
+          sweepTimerRef.current = setTimeout(() => {
+            sweepTimerRef.current = null;
+            setLayers((l) => ({ ...l, swept: null }));
+            setSweepTo(null);
+          }, motionMs("travel", reduceMotion));
+        };
+        roundHoldRef.current = { timer: setTimeout(collect, ROUND_WINNER_MS), collect };
+        return;
+      }
+      openNewRound();
+      return;
+    }
+    const key = comboKey(combo, lastPlayedBy);
+    if (key === prevComboKeyRef.current) return;
+    if (impactTimerRef.current) clearTimeout(impactTimerRef.current);
+    // A lead inside the hold window ends it early: the new card has to fly
+    // onto a cleared pile while the won cards sweep away underneath it.
+    if (roundHoldRef.current) {
+      clearTimeout(roundHoldRef.current.timer);
+      roundHoldRef.current.collect();
+    }
+    prevComboKeyRef.current = key;
+    setLayers((l) => ({ ...l, onPile: advancePile(l.onPile, combo, lastPlayedBy) }));
+
+    const thrown = readThrownPlay({ ...geometry, combo, playedBy: lastPlayedBy });
 
     // The card is thrown here and arrives ~213ms later, so everything that
     // reads as *impact* waits for it. Announced for every seat, not only the
@@ -787,7 +865,8 @@ export function usePileFlight({
   }, []);
 
   return {
-    pileState,
+    pileState: layers.onPile,
+    sweep: layers.swept && sweepTo && { pile: layers.swept, origin: sweepTo },
     flyInfo,
     flightLanded,
     flinchTrigger,

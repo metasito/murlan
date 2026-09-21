@@ -1,4 +1,4 @@
-// Rebuilds assets/sounds/ — the thirteen effects lib/sounds.ts plays.
+// Rebuilds assets/sounds/ — the fourteen effects lib/sounds.ts plays.
 //
 //   node scripts/build-sounds.mjs
 //
@@ -20,7 +20,7 @@
 // loop seamlessly — encoder delay plus frame padding, and browsers do not
 // honour LAME's gapless headers — so a music loop encoded here would click at
 // every join. Music therefore arrives as pre-encoded WebM Opus rather than
-// being built by this script (#121), and this script stays about the thirteen
+// being built by this script (#121), and this script stays about the fourteen
 // effects.
 //
 // The alternative was measured, not assumed. Chromium's MediaRecorder can emit
@@ -87,6 +87,12 @@ const RECIPES = {
 
   // ── Stings ─────────────────────────────────────────────────────────────────
   round_win: [{ file: "confirmation_001.wav", gain: 0.8 }],
+
+  // A payout, not a card: chips stacked under a struck note a fifth up.
+  count_complete: [
+    { file: "chipsStack1.ogg", gain: 0.8 },
+    { file: "glass_002.wav", gain: 0.4, rate: 1.5, at: 0.04 },
+  ],
 
   // Rising major triad — the pack has no jingle, so one is built from a single
   // struck note resampled to three pitches.

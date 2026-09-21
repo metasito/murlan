@@ -1,4 +1,4 @@
-import { createAudioPlayer, setAudioModeAsync, type AudioPlayer } from "expo-audio";
+import type { AudioPlayer } from "expo-audio";
 import { Platform } from "react-native";
 
 // Effects are CC0 recordings, built by scripts/build-sounds.mjs and shipped as
@@ -166,7 +166,7 @@ export async function ensureAudioMode(): Promise<void> {
     return;
   }
   try {
-    await setAudioModeAsync({
+    await expoAudio().setAudioModeAsync({
       playsInSilentMode: true,
       shouldPlayInBackground: false,
       interruptionModeAndroid: "duckOthers",
@@ -186,11 +186,18 @@ export function forgetAudioMode(): void {
   _audioModeSet = false;
 }
 
+// Required on first use, not imported: expo-audio reaches its native module at
+// import time, and every component that plays a sound would carry it.
+function expoAudio(): typeof import("expo-audio") {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- see above
+  return require("expo-audio");
+}
+
 function loadSound(key: string, assetModule: number): AudioPlayer | null {
   const cached = soundCache[key];
   if (cached) return cached;
   try {
-    const player = createAudioPlayer(assetModule);
+    const player = expoAudio().createAudioPlayer(assetModule);
     soundCache[key] = player;
     return player;
   } catch {
@@ -232,6 +239,7 @@ const ASSETS = {
   your_turn:   () => require("../assets/sounds/your_turn.mp3") as number,
   round_start: () => require("../assets/sounds/round_start.mp3") as number,
   round_win:   () => require("../assets/sounds/round_win.mp3") as number,
+  count_complete: () => require("../assets/sounds/count_complete.mp3") as number,
   urgent:      () => require("../assets/sounds/urgent_tick.mp3") as number,
   bomb:        () => require("../assets/sounds/bomb.mp3") as number,
   game_win:    () => require("../assets/sounds/game_win.mp3") as number,
@@ -284,6 +292,7 @@ export async function playCardPass(rng: () => number = Math.random): Promise<voi
 export async function playYourTurn():   Promise<void> { await play("your_turn",   0.9);  }
 export async function playRoundStart(): Promise<void> { await play("round_start", 0.85); }
 export async function playRoundWin():   Promise<void> { await play("round_win",   1.0);  }
+export async function playCountComplete(): Promise<void> { await play("count_complete", 0.8); }
 export async function playUrgentTick(): Promise<void> { await play("urgent",      0.8);  }
 export async function playBomb():       Promise<void> { await play("bomb",        1.0);  }
 export async function playGameWin():    Promise<void> { await play("game_win",    1.0);  }
