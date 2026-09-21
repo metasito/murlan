@@ -538,6 +538,48 @@ describe("ticker", () => {
       assert.ok(all(out).includes(`${ESC}]0;${BEL}`), "the title was not cleared");
     });
 
+    test("a wait says what runs when it ends, and shows the run so far", (t) => {
+      t.mock.timers.enable({ apis: ["setInterval", "Date"] });
+      const out = fake();
+      const tick = ticker(out as never);
+      tick.board({ recap: () => ["run so far"] });
+      tick.wait("usage resets 14:00", Date.now() + 60_000, "#7 resumes from its worktree");
+      const shown = visible(all(out));
+      assert.match(shown, /then\s+#7 resumes from its worktree/);
+      assert.match(shown, /run so far/);
+      tick.stop();
+    });
+
+    test("a wait taller than the window keeps its key bar, and does not offer r over its countdown", (t) => {
+      t.mock.timers.enable({ apis: ["setInterval", "Date"] });
+      const out = fake(true, 80, 24);
+      const tick = ticker(out as never);
+      tick.context({ number: 7 });
+      tick.board({ recap: () => Array.from({ length: 30 }, (_, i) => `recap row ${i}`) });
+      tick.wait("usage resets 14:00", Date.now() + 60_000, "#7 resumes");
+      tick.key("r");
+      const frame = visible(out.wrote.at(-1) ?? "");
+      assert.match(frame, /check now/);
+      assert.match(frame, /waiting/);
+      assert.ok(!/\br run\b/.test(frame), "r offered over a countdown it would hide");
+      tick.stop();
+    });
+
+    test("r swaps the board for the run's recap and back, and the step row has what comes next", (t) => {
+      t.mock.timers.enable({ apis: ["setInterval", "Date"] });
+      const out = fake();
+      const tick = ticker(out as never);
+      tick.board({ recap: () => ["run so far"], typical: { D: 360_000 } });
+      tick.start("C");
+      assert.match(visible(all(out)), /next\s+review/);
+      assert.ok(!visible(all(out)).includes("run so far"));
+      tick.key("r");
+      assert.match(visible(out.wrote.at(-1) ?? ""), /run so far/);
+      tick.key("r");
+      assert.match(visible(out.wrote.at(-1) ?? ""), /next\s+review/);
+      tick.stop();
+    });
+
     test("a ticket's pull request stays on p across its next session, and not onto the next ticket", (t) => {
       t.mock.timers.enable({ apis: ["setInterval", "Date"] });
       const opened: string[] = [];

@@ -7,6 +7,7 @@ import { join } from "node:path";
 import {
   act,
   activity,
+  ahead,
   bell,
   capabilities,
   ciLine,
@@ -22,6 +23,7 @@ import {
   progress,
   recap,
   reportRow,
+  runRecap,
   runTotal,
   stepRow,
   stepTitle,
@@ -400,6 +402,60 @@ describe("header", () => {
   });
 });
 
+describe("ahead", () => {
+  const typical = { A: 60_000, B: 120_000, C: 600_000, D: 360_000, E: 60_000, F: 60_000, G: 480_000 };
+
+  test("names the next step and what is left to land, from the medians", () => {
+    const [next, land] = ahead("C", typical, tPlain).map(strip);
+    assert.match(next, /next\s+review · ~6m · two independent reviewers/);
+    assert.match(land, /to land\s+~16m after build · then push, close, merge/);
+  });
+
+  test("says nothing it does not know, and nothing at or past the merge step", () => {
+    const land = strip(ahead("C", { D: 360_000 }, tPlain)[1]);
+    assert.ok(!land.includes("~"), `guessed a total with medians missing: ${land}`);
+    assert.deepEqual(ahead("G", typical, tPlain), []);
+    assert.deepEqual(ahead("?", typical, tPlain), []);
+  });
+
+  test("every row fits the width", () => {
+    const narrow = theme(capabilities(term({ columns: MIN_WIDTH + 1 })));
+    for (const r of ahead("A", typical, narrow)) assert.ok(cols(strip(r)) <= narrow.width, r);
+  });
+});
+
+describe("runRecap", () => {
+  const run = {
+    startedAt: new Date(2026, 8, 20, 21, 40).getTime(),
+    now: new Date(2026, 8, 21, 8, 44).getTime(),
+    totals: { tickets: 3, landed: 2, parked: 1, cost: 40.5, ms: 0 },
+    tickets: [
+      { number: 1095, outcome: "landed" },
+      { number: 1096, outcome: "parked", why: "review HOLD twice" },
+    ],
+    ciMs: 2 * 3_600_000,
+    waitMs: 3_600_000,
+  };
+
+  test("what needs the owner comes first, then where the time went", () => {
+    const out = runRecap(run, tPlain).map(strip).join("\n");
+    assert.match(out, /run\s+21:40 → 08:44 · 11:04:00/);
+    assert.match(out, /3 tickets · 2 landed · 1 parked · \$40\.50/);
+    assert.match(out, /needs you\n.*#1096\s+review HOLD twice/);
+    assert.ok(!out.includes("#1095"), "a landed ticket is not something that needs you");
+    assert.match(out, /working 8:04:00 · CI 2:00:00 · waiting 1:00:00/);
+  });
+
+  test("the file's copy keeps UTC, the clock its title is written in", () => {
+    const utc = { ...run, startedAt: Date.UTC(2026, 8, 20, 21, 40), now: Date.UTC(2026, 8, 21, 8, 44), utc: true };
+    assert.match(strip(runRecap(utc, tPlain)[0]), /run\s+21:40 → 08:44/);
+  });
+
+  test("a run with nothing parked has no needs-you heading", () => {
+    assert.ok(!runRecap({ ...run, tickets: [] }, tPlain).join("\n").includes("needs you"));
+  });
+});
+
 describe("keybar", () => {
   // A key bar that lies is worse than no key bar. Every letter it offers is pressed here, against
   // the real handler, and has to do something.
@@ -413,6 +469,7 @@ describe("keybar", () => {
         const out = { isTTY: true, columns: WIDTH + 1, rows: 40, getColorDepth: () => 1, write: (s: string) => wrote.push(s) };
         const tick = ticker(out as never, out as never, () => wrote.push("opened"), () => wrote.push("copied"));
         tick.context({ number: 7, url: "https://x", log: "x.jsonl", branch: "agent/7-x", pr: "https://x/pr/1", session: "s" });
+        tick.board({ recap: () => ["the run"] });
         tick.wait("a hold", Date.now() + 60_000);
         const before = wrote.length;
         tick.key(k);

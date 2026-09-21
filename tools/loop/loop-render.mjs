@@ -385,6 +385,59 @@ export function progress({ letter, round = null, ticketMs = null }, t) {
   return row([lead, { t: clamp(name, room), c: at < 0 ? "warn" : "bright", b: at >= 0 }], right, t);
 }
 
+const about = (ms) => {
+  const m = Math.max(1, Math.round(ms / MINUTE_MS));
+  return m < 60 ? `~${m}m` : `~${Math.floor(m / 60)}h${String(m % 60).padStart(2, "0")}`;
+};
+
+/**
+ * Where the ticket is going, from the ledger's per-step medians: the step after this one, and what
+ * is left until it lands. Nothing past the merge step, whose own CI line already says it.
+ *
+ * @param {Record<string, number>} typical median ms per phase letter
+ */
+export function ahead(letter, typical, t) {
+  const at = PHASES.findIndex(([l]) => l === letter);
+  if (at < 0 || at >= PHASES.length - 1) return [];
+  const rest = PHASES.slice(at + 1);
+  const [next, ...then] = rest;
+  const total = rest.every(([l]) => typical[l]) ? about(rest.reduce((n, [l]) => n + typical[l], 0)) : null;
+  const line = (label, text) =>
+    row([{ t: "   ", c: "faint" }, { t: label.padEnd(LABEL_W), c: "muted" }, { t: clamp(text, Math.max(0, t.width - LABEL_W - 4)), c: "faint" }], null, t);
+  return [
+    line("next", [next[1], typical[next[0]] ? about(typical[next[0]]) : null, next[2]].filter(Boolean).join(" · ")),
+    line("to land", [total && `${total} after ${PHASES[at][1]}`, then.length && `then ${then.map(([, n]) => n).join(", ")}`].filter(Boolean).join(" · ")),
+  ];
+}
+
+const hhmm = (ms, utc) => {
+  const d = new Date(ms);
+  const [h, m] = utc ? [d.getUTCHours(), d.getUTCMinutes()] : [d.getHours(), d.getMinutes()];
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+};
+
+/**
+ * The run for someone who did not watch it: what needs them first, then where the time went.
+ * One text for the `r` key, a long wait, the exit, and the top of `run-*.md`.
+ *
+ * @param {{startedAt: number, now: number, totals: object, tickets: {number: number, outcome: string, why?: string}[],
+ *   ciMs: number, waitMs: number, utc?: boolean}} run
+ */
+export function runRecap({ startedAt, now, totals, tickets, ciMs, waitMs, utc = false }, t) {
+  const wall = now - startedAt;
+  const head = (text) => row([{ t: ` ${clamp(text, t.width - 1)}`, c: "text", b: true }], null, t);
+  const stuck = tickets.filter((r) => r.outcome !== "landed");
+  const working = Math.max(0, wall - ciMs - waitMs);
+  return [
+    head(`run   ${hhmm(startedAt, utc)} → ${hhmm(now, utc)} · ${elapsed(wall)}`),
+    row([{ t: ` ${clamp(`${plural(totals.tickets, "ticket")} · ${totals.landed} landed · ${totals.parked} parked · ${money(totals.cost)}`, t.width - 1)}`, c: "muted" }], null, t),
+    ...(stuck.length ? ["", head("needs you"), ...stuck.map((r) => stepRow({ label: `#${r.number}`, detail: r.why ?? r.outcome, state: "failed" }, t))] : []),
+    "",
+    head("where the time went"),
+    stepRow({ label: "", detail: `working ${elapsed(working)} · CI ${elapsed(ciMs)} · waiting ${elapsed(waitMs)}`, state: "skipped" }, t),
+  ];
+}
+
 // The fade is the information. Four rows at four brightnesses say which is now and which is already
 // history without spending a timestamp on each one.
 const FADE = ["text", "muted", "faint", "faint"];
@@ -491,6 +544,7 @@ export const KEYS = [
   ["l", "log", null, "log"],
   ["t", "session", null, "session"],
   ["c", "copy", null, "log"],
+  ["r", "run", "close run", "recap"],
   ["?", "keys", "close keys"],
 ];
 
@@ -508,13 +562,13 @@ export function help(t) {
  *   offers?: Record<string, unknown>}} view `offers` holds what a conditional key needs; a key whose
  *   fourth column names something absent from it is not offered.
  */
-export function keybar({ expanded = false, stopping = false, parking = false, help: open = false, offers = {} } = {}, t) {
+export function keybar({ expanded = false, stopping = false, parking = false, recap: recapped = false, help: open = false, offers = {} } = {}, t) {
   if (parking === "confirm") {
     return row([{ t: "   k", c: "accent", b: true }, { t: clamp(" park this ticket?  y confirms · any other key cancels", t.width - 4), c: "warn" }], null, t);
   }
   // A pending stop rides on the key that set it rather than on a badge of its own: one place to
   // look for what `s` did, and no second element competing for the right-hand edge.
-  const state = { e: expanded, s: stopping, k: parking === "asked", "?": open };
+  const state = { e: expanded, s: stopping, k: parking === "asked", r: recapped, "?": open };
   // Dropped from the right rather than truncated: half a key name is worse than one fewer key, and
   // the leftmost are the ones worth keeping.
   const segs = [{ t: "   ", c: "faint" }];
