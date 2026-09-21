@@ -287,6 +287,7 @@ describe("ladder and replay writes", { skip: hasDatabase() ? false : skipMessage
           headers: { cookie: stranger.cookie },
         });
         assert.equal(theirs.status, 404, "a replay of a table you did not sit at does not exist to you");
+        assert.equal(((await theirs.json()) as { code: string }).code, "REPLAY_NOT_FOUND");
       } finally {
         alice.socket.close();
         bob.socket.close();

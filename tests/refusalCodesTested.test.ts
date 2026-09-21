@@ -30,7 +30,13 @@ function declarationOf(name: ts.Identifier): ts.VariableDeclaration | ts.Paramet
 function literalsOf(expr: ts.Expression, sf: ts.SourceFile, unread: string[]): string[] {
   const where = () => `${sf.fileName}:${sf.getLineAndCharacterOfPosition(expr.getStart()).line + 1}`;
   if (ts.isStringLiteralLike(expr)) return [expr.text];
-  if (ts.isParenthesizedExpression(expr)) return literalsOf(expr.expression, sf, unread);
+  if (ts.isParenthesizedExpression(expr) || ts.isAsExpression(expr) || ts.isSatisfiesExpression(expr)) {
+    return literalsOf(expr.expression, sf, unread);
+  }
+  if (ts.isObjectLiteralExpression(expr) && expr.properties.every(ts.isPropertyAssignment)) {
+    return expr.properties.flatMap((p) => literalsOf((p as ts.PropertyAssignment).initializer, sf, unread));
+  }
+  if (ts.isElementAccessExpression(expr)) return literalsOf(expr.expression, sf, unread);
   if (ts.isConditionalExpression(expr)) {
     return [...literalsOf(expr.whenTrue, sf, unread), ...literalsOf(expr.whenFalse, sf, unread)];
   }
@@ -55,7 +61,31 @@ function literalsOf(expr: ts.Expression, sf: ts.SourceFile, unread: string[]): s
   return [];
 }
 
-/** Every code an object literal saying `ok: false` can carry, and every such `code` the scan could not resolve. */
+/** Whether a `payload(…)` call is the body of an HTTP error, a `*:error` emit, or a rate limiter's refusal. */
+function isRefusalPayload(call: ts.CallExpression): boolean {
+  let node: ts.Node = call;
+  while (!ts.isCallExpression(node.parent)) {
+    if (ts.isFunctionLike(node.parent) || ts.isSourceFile(node.parent)) return false;
+    node = node.parent;
+  }
+  const outer = node.parent as ts.CallExpression;
+  const callee = outer.expression;
+  if (ts.isIdentifier(callee)) {
+    return callee.text === "routeLimiter" && ts.isPropertyAssignment(call.parent) && call.parent.name.getText() === "message";
+  }
+  if (!ts.isPropertyAccessExpression(callee)) return false;
+  if (callee.name.text === "emit") {
+    const event = outer.arguments[0];
+    return event !== node && event !== undefined && ts.isStringLiteralLike(event) && event.text.endsWith(":error");
+  }
+  const status = callee.expression;
+  if (callee.name.text !== "json" || !ts.isCallExpression(status)) return false;
+  if (!ts.isPropertyAccessExpression(status.expression) || status.expression.name.text !== "status") return false;
+  const n = status.arguments[0];
+  return !n || !ts.isNumericLiteral(n) || Number(n.text) >= 400;
+}
+
+/** Every code an object literal saying `ok: false` can carry, or a refusal's `payload(…)`, and every such code the scan could not resolve. */
 function refusalCodes(
   files: [string, string][] = readdirSync(path.join(REPO_ROOT, "server"))
     .filter((f) => f.endsWith(".ts"))
@@ -74,6 +104,11 @@ function refusalCodes(
         if (ok && ts.isPropertyAssignment(ok) && ok.initializer.kind === ts.SyntaxKind.FalseKeyword && code) {
           const expr = ts.isPropertyAssignment(code) ? code.initializer : (code as ts.ShorthandPropertyAssignment).name;
           for (const literal of literalsOf(expr, sf, unread)) codes.set(literal, sf.fileName);
+        }
+      }
+      if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "payload") {
+        if (node.arguments[0] && isRefusalPayload(node)) {
+          for (const literal of literalsOf(node.arguments[0], sf, unread)) codes.set(literal, sf.fileName);
         }
       }
       ts.forEachChild(node, visit);
@@ -96,10 +131,43 @@ test("a reassigned code is unread, and a same-named helper elsewhere is not foll
   assert.equal(unread.length, 1);
 });
 
+test("a payload is a refusal only as an error status's body, a *:error emit or a limiter's message", () => {
+  const { codes, unread } = refusalCodes([
+    [
+      "routes.ts",
+      `const REFUSAL = { a: "LOOKED_UP", b: "LOOKED_UP_TOO" } as const;
+       res.status(404).json({ ...payload("NOT_THERE") });
+       res.status(status).json({ ...payload("COMPUTED_STATUS") });
+       res.status(409).json({ ...payload(REFUSAL[reason]) });
+       res.status(202).json({ ...payload("ACCEPTED") });
+       res.json({ ...payload("NOTICE") });
+       socket.emit("room:error", payload("EMITTED"));
+       socket.emit("room:notice", payload("NOT_AN_ERROR"));
+       const limiter = routeLimiter({ message: payload("LIMITED") });`,
+    ],
+  ]);
+  assert.deepEqual(
+    [...codes.keys()].sort(),
+    ["COMPUTED_STATUS", "EMITTED", "LIMITED", "LOOKED_UP", "LOOKED_UP_TOO", "NOT_THERE"]
+  );
+  assert.deepEqual(unread, []);
+});
+
 test("every refusal code the server returns is named by a test", () => {
   const { codes, unread } = refusalCodes();
   assert.deepEqual(unread, [], "a refusal code the scan cannot resolve to a literal is one it exempts");
-  for (const known of ["NOT_THE_HOST", "ROOM_NOT_WAITING", "NOT_THIS_INSTANCE", "SEAT_RELEASED", "MIN_PLAYERS_REQUIRED"]) {
+  for (const known of [
+    "NOT_THE_HOST",
+    "ROOM_NOT_WAITING",
+    "NOT_THIS_INSTANCE",
+    "SEAT_RELEASED",
+    "MIN_PLAYERS_REQUIRED",
+    "INVALID_PARAMETER",
+    "INTERNAL_SERVER_ERROR",
+    "ALREADY_FRIENDS",
+    "SESSION_REVOKED",
+    "AUTH_RATE_LIMITED",
+  ]) {
     assert.ok(codes.has(known), `the scan no longer finds ${known}, so it is not reading what it claims to`);
   }
   assert.ok(!codes.has("not_waiting"), "the scan read a ternary's condition as a code");

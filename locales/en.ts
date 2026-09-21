@@ -32,7 +32,6 @@ export const en = {
   "server.RATE_LIMITED": "Too many requests, slow down.",
   "server.NOT_AUTHENTICATED": "Not authenticated",
   "server.USERNAME_TAKEN": "Username already in use",
-  "server.EMAIL_TAKEN": "Email already registered",
   "server.EMAIL_ALREADY_SET": "This account already has an email",
   "server.CHECK_YOUR_EMAIL": "Check your email to verify your address",
   "server.EMAIL_VERIFIED_ELSEWHERE": "This email is already verified on a different account. If that account is yours, sign in there or reset its password. If it isn't, you can add a different email from your profile.",

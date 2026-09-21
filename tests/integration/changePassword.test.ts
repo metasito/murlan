@@ -5,7 +5,7 @@
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
 import { startTestServer, hasDatabase, skipMessage, type TestServer } from "../helpers/testServer.ts";
-import { dropped, reconnectWith, register } from "../helpers/client.ts";
+import { dropped, reconnectWith, register, waitFor } from "../helpers/client.ts";
 
 describe("in-app change password", { skip: hasDatabase() ? false : skipMessage() }, () => {
   let server: TestServer;
@@ -74,8 +74,10 @@ describe("in-app change password", { skip: hasDatabase() ? false : skipMessage()
   test("a change cuts another session's socket", async () => {
     const { deviceA, deviceB } = await twoSessions("change_pw_sock_other");
     const socket = await reconnectWith(server, deviceA);
+    const told = waitFor<{ code: string }>(socket, "socket:error");
     const cut = dropped(socket);
     assert.equal((await changePassword(deviceB, "password123", "new-password-456")).status, 200);
+    assert.equal((await told).code, "SESSION_REVOKED");
     assert.equal(await cut, true, "the other device's socket must be cut");
   });
 
@@ -148,5 +150,6 @@ describe("in-app change password", { skip: hasDatabase() ? false : skipMessage()
       body: JSON.stringify({ currentPassword: "password123", newPassword: "new-password-456" }),
     });
     assert.equal(res.status, 401);
+    assert.equal(((await res.json()) as { code: string }).code, "NOT_AUTHENTICATED");
   });
 });
