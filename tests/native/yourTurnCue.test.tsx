@@ -112,4 +112,33 @@ describe("the turn-arrival cue", () => {
     jest.advanceTimersByTime(handOffDelayMs(false));
     expect(playYourTurn).not.toHaveBeenCalled();
   });
+
+  it("waits out a card still in flight when a pass closes the round straight after it", async () => {
+    type P = { isMyTurn: boolean; turn: number; played: unknown };
+    const { rerender } = await renderHook(
+      (props: P) => useTableFeedback(state(props.isMyTurn, props.turn, props.played)),
+      { initialProps: { isMyTurn: false, turn: 0, played: null } as P }
+    );
+    await rerender({ isMyTurn: false, turn: 1, played: PLAYED });
+    await act(async () => jest.advanceTimersByTime(100));
+    await rerender({ isMyTurn: true, turn: 0, played: null });
+    await act(async () => jest.advanceTimersByTime(handOffDelayMs(false) - 101));
+    expect(playYourTurn).not.toHaveBeenCalled();
+
+    await act(async () => jest.advanceTimersByTime(1));
+    expect(playYourTurn).toHaveBeenCalledTimes(1);
+  });
+
+  it("drops a pending hand-off cue when the manche ends before it lands", async () => {
+    type P = { isMyTurn: boolean; played: unknown; gameOver: boolean };
+    const { rerender } = await renderHook(
+      (props: P) =>
+        useTableFeedback({ ...state(props.isMyTurn, 0, props.played), gameOver: props.gameOver }),
+      { initialProps: { isMyTurn: false, played: null, gameOver: false } as P }
+    );
+    await rerender({ isMyTurn: true, played: PLAYED, gameOver: false });
+    await rerender({ isMyTurn: true, played: PLAYED, gameOver: true });
+    await act(async () => jest.advanceTimersByTime(handOffDelayMs(false)));
+    expect(playYourTurn).not.toHaveBeenCalled();
+  });
 });

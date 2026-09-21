@@ -357,6 +357,13 @@ export function useTableFeedback({
   const handOffDelay = lastPlayedCombination !== null ? handOffDelayMs(reduceMotion) : 0;
   const handOffTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const stingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Keyed by card ids, not the object: every broadcast rebuilds it, and a
+  // round-closing pass nulls it while the card that preceded it is still flying.
+  const playedKey = lastPlayedCombination?.cards.map((c) => c.id).join(",") ?? null;
+  const landsAtRef = useRef(0);
+  useEffect(() => {
+    if (playedKey !== null) landsAtRef.current = Date.now() + handOffDelayMs(reduceMotion);
+  }, [playedKey, reduceMotion]);
   useEffect(
     () => () => {
       if (handOffTimerRef.current) clearTimeout(handOffTimerRef.current);
@@ -382,11 +389,12 @@ export function useTableFeedback({
         hapticLight();
       };
       if (handOffTimerRef.current) clearTimeout(handOffTimerRef.current);
-      if (handOffDelay === 0) cue();
-      else handOffTimerRef.current = setTimeout(cue, handOffDelay);
+      const wait = landsAtRef.current - Date.now();
+      if (wait <= 0) cue();
+      else handOffTimerRef.current = setTimeout(cue, wait);
     }
     prevMyTurnRef.current = isMyTurn;
-  }, [isMyTurn, isFinished, handOffDelay]);
+  }, [isMyTurn, isFinished]);
 
   useEffect(() => {
     if (exchangeActive && !prevExchangeActiveRef.current) playExchange();
@@ -417,6 +425,7 @@ export function useTableFeedback({
       if (stingTimerRef.current) clearTimeout(stingTimerRef.current);
       return;
     }
+    if (handOffTimerRef.current) clearTimeout(handOffTimerRef.current);
     if (prevGameOverRef.current) return;
     // The manche/partita shake itself is NOT fired here — this effect answers
     // `gameOver` the instant the state arrives, well ahead of the winning
