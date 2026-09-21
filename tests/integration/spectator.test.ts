@@ -3,7 +3,7 @@
 // A spectator is a viewer with no seat, and the existing sanitiser blanks the
 // hand of every seat that is not the viewer's. That is the whole security
 // design, so the tests below assert the *outcome* — no spectator ever receives
-// a card — rather than the seat lookup that produces it. If findViewerSeat ever
+// a card — rather than the seat lookup that produces it. If the seat lookup ever
 // gains a "no seat means seat 0" fallback, the seat-lookup assertion would
 // still pass and every spectator would see a hand.
 import { test, before, after, describe } from "node:test";

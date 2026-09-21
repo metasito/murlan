@@ -102,7 +102,7 @@ jest.mock('@/context/NotificationContext', () => ({
   useNotification: () => ({ showNotification: jest.fn() }),
 }));
 
-import GameScreen from '@/app/game';
+import GameScreen, { HUMAN_TURN_SECONDS } from '@/app/game';
 import { cardSpokenName } from '@/lib/cardNames';
 import { t, tn } from '@/lib/i18n';
 
@@ -139,7 +139,7 @@ describe('pass and play', () => {
       expect.objectContaining({ disabled: false })
     );
     expect(
-      screen.getByLabelText(`${t('gameTable.a11yYourTurn')} ${tn('gameTable.a11ySecondsLeft', 20)}`)
+      screen.getByLabelText(`${t('gameTable.a11yYourTurn')} ${tn('gameTable.a11ySecondsLeft', HUMAN_TURN_SECONDS)}`)
     ).toBeTruthy();
 
     await view.unmount();

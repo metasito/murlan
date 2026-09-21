@@ -215,6 +215,12 @@ export function seatOfUser(game: OnlineGameState, userId: string): number | null
   return seatOfUserInMap(game.playerMap, userId);
 }
 
+/** The one denominator every vote gate and every `*_vote_state` payload divides by:
+ * a bot, and a seat whose player left, can answer nothing and hold no vote. */
+export function voterCount(game: OnlineGameState): number {
+  return Object.keys(game.playerMap).length;
+}
+
 /** The name a table shows for a seat: read from the database at the deal, never from a socket. */
 export function seatName(game: OnlineGameState, seat: number | null): string {
   return seat === null ? "" : (game.gameState.players[seat]?.name ?? "");

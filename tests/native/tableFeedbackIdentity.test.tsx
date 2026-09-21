@@ -29,6 +29,9 @@ jest.mock("@/lib/sounds", () => ({
 }));
 jest.mock("@/lib/haptics", () => ({
   hapticHeavy: jest.fn(),
+  hapticLight: jest.fn(),
+  hapticMedium: jest.fn(),
+  hapticRigid: jest.fn(),
   hapticSuccess: jest.fn(),
   hapticWarn: jest.fn(),
 }));
@@ -36,6 +39,7 @@ jest.mock("@/lib/music", () => ({ cancelMusicDuck: jest.fn(), duckMusicFor: jest
 
 const state = (scale: number) => ({
   isMyTurn: false,
+  currentTurnIndex: 0,
   isFinished: false,
   exchangeActive: false,
   canPass: false,

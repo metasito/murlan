@@ -1,4 +1,4 @@
-// Rebuilds assets/sounds/ — the twelve effects lib/sounds.ts plays.
+// Rebuilds assets/sounds/ — the fourteen effects lib/sounds.ts plays.
 //
 //   node scripts/build-sounds.mjs
 //
@@ -20,7 +20,7 @@
 // loop seamlessly — encoder delay plus frame padding, and browsers do not
 // honour LAME's gapless headers — so a music loop encoded here would click at
 // every join. Music therefore arrives as pre-encoded WebM Opus rather than
-// being built by this script (#121), and this script stays about the twelve
+// being built by this script (#121), and this script stays about the fourteen
 // effects.
 //
 // The alternative was measured, not assumed. Chromium's MediaRecorder can emit
@@ -43,7 +43,7 @@ import { fileURLToPath } from "node:url";
 
 // 96 kbps CBR mono is the standard "near-transparent" tier for short,
 // percussive effects like these (no sustained tones or music to expose a
-// low bitrate's artifacts), and cuts the twelve WAVs' 843 KB to under 130 KB.
+// low bitrate's artifacts), and keeps the whole set under 130 KB.
 const MP3_BITRATE_KBPS = 96;
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -75,6 +75,7 @@ const RECIPES = {
   // ── Table events ───────────────────────────────────────────────────────────
   your_turn: [{ file: "bong_001.wav", gain: 0.55 }],
   urgent_tick: [{ file: "tick_002.wav", gain: 0.8 }],
+  reject: [{ file: "error_004.wav", gain: 0.8 }],
 
   // A bomb is the biggest play in the game: a hard chip clatter with a card
   // shove under it, so it lands as an impact rather than a click.
@@ -86,6 +87,12 @@ const RECIPES = {
 
   // ── Stings ─────────────────────────────────────────────────────────────────
   round_win: [{ file: "confirmation_001.wav", gain: 0.8 }],
+
+  // A payout, not a card: chips stacked under a struck note a fifth up.
+  count_complete: [
+    { file: "chipsStack1.ogg", gain: 0.8 },
+    { file: "glass_002.wav", gain: 0.4, rate: 1.5, at: 0.04 },
+  ],
 
   // Rising major triad — the pack has no jingle, so one is built from a single
   // struck note resampled to three pitches.

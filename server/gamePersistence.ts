@@ -26,7 +26,7 @@ import {
   secondsUntil,
 } from "./gameTimers.ts";
 import {
-  findViewerSeat,
+  seatOfUser,
   visibleExchangePhase,
   markExchangeSettled,
   packPersistedState,
@@ -74,7 +74,7 @@ export function sanitizeStateForPlayer(
   // The server knows which seat the viewer occupies authoritatively; ship it
   // with every state so the client never has to derive it (e.g. from a lobby
   // `room` object that is null across a cold-start rejoin).
-  const viewerSeatIndex = findViewerSeat(playerMap, viewerUserId);
+  const viewerSeatIndex = seatOfUser(playerMap, viewerUserId);
   return {
     ...state,
     viewerSeatIndex,
@@ -232,7 +232,7 @@ export function broadcastGameState(io: SocketServer, game: OnlineGameState) {
   // is inside its own ceremony window rather than one tick outside it.
   markExchangeSettled(game.gameState.exchangePhase);
   Object.values(game.playerMap).forEach((uid) => sendGameStateTo(io, uid, game));
-  // Spectators go through the same sanitiser. findViewerSeat returns null for
+  // Spectators go through the same sanitiser. seatOfUser returns null for
   // a userId that holds no seat, and every hand is blanked on that basis, so a
   // spectator cannot be sent a card without the seated path breaking first.
   game.spectators.forEach((uid) => sendGameStateTo(io, uid, game));

@@ -11,6 +11,7 @@
 import {
   buildCombination,
   canPlay,
+  getAllValidPlays,
   type Card,
   type Combination,
   type GameState,
@@ -24,6 +25,8 @@ export interface StagedPlay {
   playable: boolean;
   /** Why not, when it is not. Two words for the button, a key for the sentence. */
   refusal: PlayButtonLabel;
+  /** Some selection of this hand is legal right now — so PASSA is a choice, not the only move. */
+  canBeatPile: boolean;
 }
 
 export function readStagedPlay(input: {
@@ -48,9 +51,18 @@ export function readStagedPlay(input: {
     (!requiresStartCard || selectionHasStartCard);
 
   const pile = input.lastPlayedCombination;
+  const myMove = input.isMyTurn && !input.isFinished;
   return {
     cards,
-    playable: isValid && input.isMyTurn && !input.isFinished,
+    playable: isValid && myMove,
+    canBeatPile:
+      myMove &&
+      getAllValidPlays(
+        input.hand,
+        input.isNewRound ? null : pile,
+        input.isNewRound,
+        requiresStartCard ? input.startCard : undefined
+      ).length > 0,
     refusal: playButtonLabel({
       isMyTurn: input.isMyTurn,
       isFinished: input.isFinished,

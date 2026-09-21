@@ -22,7 +22,7 @@ import {
 import { GIOCA_VALID_LABEL } from "./e2e/helpers/labels.ts";
 import { TABLE, HAND_CARDS } from "./e2e/helpers/selectors.ts";
 import { blankComments } from "./helpers/sourceScan.ts";
-import { dealCards } from "../lib/gameEngine.ts";
+import { dealCards, TURN_TIMEOUT_MS } from "../lib/gameEngine.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -35,10 +35,11 @@ function sourceConstant(relPath: string, name: string): number {
 }
 
 test("tableFit's offline clock has not drifted from HUMAN_TURN_SECONDS", () => {
-  const humanTurnMs = sourceConstant("app/game.tsx", "HUMAN_TURN_SECONDS") * 1_000;
+  const game = blankComments(readFileSync(path.join(repoRoot, "app/game.tsx"), "utf8"));
+  assert.match(game, /\bHUMAN_TURN_SECONDS\s*=\s*TURN_TIMEOUT_MS\s*\/\s*1_?000\s*;/);
   assert.equal(
     sourceConstant("tests/e2e/tableFit.spec.ts", "OFFLINE_CLOCK_MS"),
-    humanTurnMs,
+    TURN_TIMEOUT_MS,
     "tests/e2e/tableFit.spec.ts's OFFLINE_CLOCK_MS has drifted from HUMAN_TURN_SECONDS"
   );
 });
@@ -326,7 +327,7 @@ test("a search whose hand goes out from under it still logs how long it ran", as
 });
 
 test("HUMAN_TURN_SECONDS auto-passing mid-search abandons the turn, it does not throw", async (t) => {
-  // A disabled PASSA read while the app's own 20s auto-pass has already
+  // A disabled PASSA read while the app's own auto-pass has already
   // moved the turn on is not "the rules are broken", it is the same race
   // `currentSelection`'s comment names. Only a disabled PASSA on a table
   // that still claims the viewer's turn is a bug.

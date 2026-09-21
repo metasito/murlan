@@ -13,7 +13,8 @@ blocker documented below rather than glossed over.
 | Web e2e | `npm run test:e2e` | Playwright, chromium — gameplay, reconnect, a tap-target sweep of every screen at three sizes, and a check that no part of the table renders off the side of one | Docker + a built web bundle |
 | Android UI (Maestro) | `maestro test .maestro/*.yaml` | 4 flows | Android SDK + emulator + Maestro, see §5 |
 
-`npm run verify` runs typecheck, unit/integration, the native suite and lint. It does not
+`npm run verify` runs typecheck, `typecheck:strict`, unit/integration, the native suite and lint,
+in that order. It does not
 run `loop:test`: the loop is a separate product, and `verify` is the game's sweep — ci.yml runs
 the two on separate triggers.
 The web e2e suite is deliberately excluded — it builds the Expo web bundle and
@@ -345,10 +346,10 @@ default passes, and the same flow against a wrong port fails.
 
 `.github/workflows/maestro.yml` compiles a **release APK** and drives that, and
 runs `smoke.yaml`, `offline-game.yaml`, `exchange-phase.yaml` and
-`rematch-prompt.yaml`. It is **on demand only** —
-`on: workflow_dispatch:`, no `push` trigger. It was taken off `main` for #186's
-boot flake, and #354 owns bringing a trigger back, wanting `pull_request`
-rather than `push`.
+`rematch-prompt.yaml`. It runs **weekly and on demand** —
+`schedule:` plus `workflow_dispatch:`, no `push` trigger. It was taken off `main`
+for #186's boot flake; #1094 owns the trigger, and `pull_request` (never `push`)
+returns after two consecutive green runs on `main`.
 
 `ios.yml` is the same shape on a simulator: `xcodebuild`, install, drive.
 

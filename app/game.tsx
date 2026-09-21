@@ -2,7 +2,7 @@
 //
 // Everything visual lives in components/GameTable.tsx. What is left here is
 // exactly what is true offline and nowhere else: the AI turn loop, the AI's
-// side of the exchange phase, a local 20s response timer that auto-passes,
+// side of the exchange phase, a local response timer that auto-passes,
 // and navigation to the results screen.
 
 import React, { useEffect, useRef, useState } from "react";

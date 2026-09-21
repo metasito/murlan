@@ -126,7 +126,12 @@ loop those two outrank any general process skill.
 
 **A fix round** is phase C when `loop-status.mjs` says `fix round`. Skip the planning. **Read the
 thread's `CI-RED` and any `FIX-NOTES` comments first**, so this round does not reopen ruled-out
-ground. Only with no `CI-RED` comment, fall back to `.loop-logs/ci-<n>.log`, else CI itself:
+ground, **then run the command the `CI-RED` comment carries and read the failure itself.** Where it
+states how many files are red, a round that has diagnosed fewer than that number has not finished,
+whatever it has fixed; where it says no test id parsed, the step's own output is the count and
+there is no shortcut past reading it. A cheap subagent may do the reading and return the list.
+
+With no `CI-RED` comment, fall back to `.loop-logs/ci-<n>.log`, else CI itself:
 
 ```sh
 gh run list --branch agent/<n>-<slug> --limit 1 --json databaseId --jq '.[0].databaseId' \
@@ -141,7 +146,7 @@ other `#<m>` is another branch's to fix; do not re-investigate it.
 Fix what CI named, then run the suite it named as well as the usual check:
 
 ```sh
-npm run agent:check -- --also test        # or loop:test, test:native, comments
+npm run agent:check -- --also test:native   # or loop:test, comments; `test` always runs
 ```
 
 Give every `agent:check` run the Bash tool's `timeout: 1500000`; its two-minute default is shorter

@@ -316,7 +316,7 @@ interface Eviction {
   connectedAt: number;
 }
 
-// ponytail: each instance stamps with its own clock, so two connections closer together than the skew between instances can still be misordered; a shared sequence fixes that if it is ever seen.
+// Each instance stamps with its own clock, so two connections closer together than the skew between instances can still be misordered; a shared sequence fixes that if it is ever seen.
 export function evictOlderSessions(io: SocketServer, { userId, keepSocketId, connectedAt }: Eviction) {
   for (const id of [...(io.sockets.adapter.rooms.get(userRoom(userId)) ?? [])]) {
     const socket = io.sockets.sockets.get(id);

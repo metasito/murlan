@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, ViewStyle } from 'react-native';
+import { View, Text, StyleSheet, ViewStyle, DimensionValue } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Spacing, Radius, FontSize, Gradient, Highlight, Shadow } from '@/lib/theme';
 import { takesSlack } from './MenuLayout';
@@ -10,7 +10,7 @@ interface MenuCardProps {
   children: React.ReactNode;
   title?: string;
   style?: ViewStyle;
-  width?: number | string;
+  width?: DimensionValue;
   padding?: Padding;
   /** Reaches the floor of whatever height the screen was given. */
   grow?: boolean;
@@ -18,7 +18,7 @@ interface MenuCardProps {
 
 export function MenuCard({ children, title, style, width = '100%', padding = 'md', grow = false }: MenuCardProps) {
   return (
-    <View style={[styles.wrapper, grow && takesSlack, { width } as any, style]}>
+    <View style={[styles.wrapper, grow && takesSlack, { width }, style]}>
       {title && (
         <Text style={styles.title} accessibilityRole="header">
           {title}

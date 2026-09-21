@@ -19,6 +19,7 @@ import NotificationBanner from "@/components/NotificationBanner";
 import { OfflineBanner } from "@/components/OfflineBanner";
 import { Slider } from "@/components/Slider";
 import { Toggle } from "@/components/Toggle";
+import { ChoiceChips } from "@/components/ChoiceChips";
 import { ConfirmDialog, type ConfirmRequest } from "@/components/ConfirmDialog";
 import { apiRequest } from "@/lib/query-client";
 import { hapticSelection } from "@/lib/haptics";
@@ -59,66 +60,6 @@ const MOTION_LABELS: Record<MotionPreference, TranslationKey> = {
   off: "settings.motionFull",
 };
 
-interface Segment<T> {
-  value: T;
-  label: string;
-}
-
-/**
- * A row of mutually exclusive choices. Laid out full width under its own
- * label rather than beside it: the options are words, and words in three
- * languages do not fit in a chip sized for "IT".
- */
-function Segmented<T extends string | number>({
-  segments,
-  selected,
-  onSelect,
-  a11yLabel,
-  disabled = false,
-}: {
-  segments: Segment<T>[];
-  selected: T;
-  onSelect: (v: T) => void;
-  a11yLabel: string;
-  disabled?: boolean;
-}) {
-  return (
-    <View
-      style={[styles.segmentRow, disabled && styles.segmentRowDisabled]}
-      accessibilityRole="radiogroup"
-      accessibilityLabel={a11yLabel}
-    >
-      {segments.map((seg) => {
-        const active = seg.value === selected;
-        return (
-          <Pressable
-            key={String(seg.value)}
-            onPress={() => {
-              hapticSelection();
-              onSelect(seg.value);
-            }}
-            disabled={disabled}
-            accessibilityLabel={seg.label}
-            {...a11yState({ role: "radio", selected: active, disabled })}
-            style={({ pressed }) => [
-              styles.segment,
-              active && styles.segmentActive,
-              pressed && { opacity: 0.8 },
-            ]}
-          >
-            <Text
-              {...a11yHidden()}
-              numberOfLines={1}
-              style={[styles.segmentText, active && styles.segmentTextActive]}
-            >
-              {seg.label}
-            </Text>
-          </Pressable>
-        );
-      })}
-    </View>
-  );
-}
 
 export function SettingsModal({ visible, onClose }: Props) {
   const {
@@ -346,10 +287,11 @@ export function SettingsModal({ visible, onClose }: Props) {
                   <Text style={styles.sublabel}>{t("settings.motionSubtitle")}</Text>
                 </View>
               </View>
-              <Segmented
-                segments={MOTION_CHOICES.map((v) => ({ value: v, label: t(MOTION_LABELS[v]) }))}
-                selected={motion}
-                onSelect={setMotion}
+              <ChoiceChips
+                choices={MOTION_CHOICES.map((v) => ({ value: v, label: t(MOTION_LABELS[v]) }))}
+                value={motion}
+                onChange={setMotion}
+                weight="caption"
                 a11yLabel={t("settings.motionA11yLabel")}
               />
             </View>
@@ -362,28 +304,17 @@ export function SettingsModal({ visible, onClose }: Props) {
                   <Text style={styles.sublabel}>{t("settings.languageSubtitle")}</Text>
                 </View>
               </View>
-              <View style={styles.localeGroup}>
-                {locales.map((code) => {
-                  const active = code === locale;
-                  return (
-                    <Pressable
-                      key={code}
-                      onPress={() => handleSelectLocale(code)}
-                      accessibilityLabel={localeLabels[code]}
-                      {...a11yState({ role: "button", selected: active })}
-                      style={({ pressed }) => [
-                        styles.localeBtn,
-                        active && styles.localeBtnActive,
-                        pressed && { opacity: 0.8 },
-                      ]}
-                    >
-                      <Text {...a11yHidden()} style={[styles.localeBtnText, active && styles.localeBtnTextActive]}>
-                        {code.toUpperCase()}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
+              <ChoiceChips
+                choices={locales.map((code) => ({
+                  value: code,
+                  label: code.toUpperCase(),
+                  a11yLabel: localeLabels[code],
+                }))}
+                value={locale}
+                onChange={handleSelectLocale}
+                weight="caption"
+                fill={false}
+              />
             </View>
 
             <View style={styles.divider} />
@@ -547,35 +478,6 @@ const styles = StyleSheet.create({
   sublabel: { ...Type.caption },
   stackRow: { gap: Spacing.slim, paddingVertical: Spacing.slim },
   rowLabels: { flexShrink: 1 },
-  segmentRow: { flexDirection: "row", gap: Spacing.xs },
-  segmentRowDisabled: { opacity: 0.4 },
-  segment: {
-    flex: 1,
-    minHeight: TOUCH_TARGET_MIN,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: Spacing.xs,
-    borderRadius: Radius.sm,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  segmentActive: { borderColor: Colors.gold, backgroundColor: Colors.goldMuted },
-  segmentText: { ...Type.caption, color: Colors.textMuted },
-  segmentTextActive: { color: Colors.gold, fontFamily: Type.bodyStrong.fontFamily },
-  localeGroup: { flexDirection: "row", gap: Spacing.xs },
-  localeBtn: {
-    minWidth: TOUCH_TARGET_MIN,
-    minHeight: TOUCH_TARGET_MIN,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: Spacing.xs,
-    borderRadius: Radius.sm,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  localeBtnActive: { borderColor: Colors.gold, backgroundColor: Colors.goldMuted },
-  localeBtnText: { ...Type.caption, color: Colors.textMuted },
-  localeBtnTextActive: { color: Colors.gold, fontFamily: Type.bodyStrong.fontFamily },
   divider: {
     height: 1,
     backgroundColor: Colors.border,

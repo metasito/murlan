@@ -21,6 +21,7 @@ jest.mock('@/lib/sounds', () => ({
   playGameLose: jest.fn(async () => {}),
   playDeal: jest.fn(async () => {}),
   playExchange: jest.fn(async () => {}),
+  playReject: jest.fn(async () => {}),
   preloadSounds: jest.fn(async () => {}),
   holdSounds: jest.fn(() => () => {}),
   setSoundsMasterEnabled: jest.fn(() => {}),
@@ -37,6 +38,7 @@ jest.mock('expo-haptics', () => ({
 }));
 
 import * as Haptics from 'expo-haptics';
+import { playReject } from '@/lib/sounds';
 import { GameTable } from '@/components/GameTable';
 import { t } from '@/lib/i18n';
 import { cardSpokenName } from '@/lib/cardNames';
@@ -224,7 +226,7 @@ describe('tapping an unavailable GIOCA', () => {
       [SEVEN_H.id, SEVEN_C.id]
     );
 
-  it('answers with the rigid haptic and the reason in words', async () => {
+  it('answers with the rigid haptic, the refusal sound and the reason in words', async () => {
     const r = await render(refusedTable());
 
     expect(screen.queryByText(t('gameTable.playA11ySpokenWrongType'))).toBeNull();
@@ -234,6 +236,7 @@ describe('tapping an unavailable GIOCA', () => {
     });
 
     expect(jest.mocked(Haptics.impactAsync)).toHaveBeenCalledWith('rigid');
+    expect(playReject).toHaveBeenCalledTimes(1);
     expect(jest.mocked(Haptics.notificationAsync)).not.toHaveBeenCalledWith('error');
     expect(screen.getByText(t('gameTable.playA11ySpokenWrongType'))).toBeTruthy();
 
@@ -279,6 +282,25 @@ describe('tapping an unavailable GIOCA', () => {
     });
 
     expect(onPlay).not.toHaveBeenCalled();
+
+    await r.unmount();
+  });
+});
+
+describe('tapping an available GIOCA', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('answers with a selection tick, leaving the weight to the landing', async () => {
+    const r = await render(table(state({}), [SEVEN_H.id]));
+
+    await act(async () => {
+      fireEvent.press(screen.getByTestId('btn-gioca'));
+    });
+
+    expect(jest.mocked(Haptics.selectionAsync)).toHaveBeenCalledTimes(1);
+    expect(jest.mocked(Haptics.impactAsync)).not.toHaveBeenCalledWith('medium');
 
     await r.unmount();
   });

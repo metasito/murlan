@@ -67,6 +67,9 @@ jest.mock('@/lib/sounds', () => ({
 }));
 jest.mock('@/lib/haptics', () => ({
   hapticHeavy: jest.fn(),
+  hapticLight: jest.fn(),
+  hapticMedium: jest.fn(),
+  hapticRigid: jest.fn(),
   hapticSuccess: jest.fn(),
   hapticWarn: jest.fn(),
 }));
@@ -85,6 +88,7 @@ const SENTINEL = 0.918273645;
 // here only to satisfy `TableFeedbackState`, empty and neutral.
 const idleState = () => ({
   isMyTurn: false,
+  currentTurnIndex: 0,
   isFinished: false,
   exchangeActive: false,
   canPass: false,

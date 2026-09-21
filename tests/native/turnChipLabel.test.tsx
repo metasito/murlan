@@ -13,7 +13,12 @@ jest.mock('@/lib/sounds', () => ({
   ensureAudioMode: jest.fn(async () => {}),
 }));
 
+jest.mock('@/lib/haptics', () => ({ hapticSelection: jest.fn() }));
+
 import { TurnChip } from '@/components/table/turnChip';
+import { hapticSelection } from '@/lib/haptics';
+import { playUrgentTick } from '@/lib/sounds';
+import { URGENT_TICK_SECONDS } from '@/components/turnTimerUi';
 import { tn } from '@/lib/i18n';
 
 const CLOCK_SECONDS = 30;
@@ -73,6 +78,21 @@ describe('the turn chip', () => {
       await act(async () => {
         jest.advanceTimersByTime(1000);
       });
+    }
+    await r.unmount();
+  });
+
+  it('buzzes with every urgent tick and at no other second', async () => {
+    jest.mocked(hapticSelection).mockClear();
+    jest.mocked(playUrgentTick).mockClear();
+    const r = await render(chip());
+    for (let i = CLOCK_SECONDS - 1; i >= 0; i--) {
+      await act(async () => {
+        jest.advanceTimersByTime(1000);
+      });
+      const ticks = Math.max(URGENT_TICK_SECONDS - i + 1, 0);
+      expect(jest.mocked(hapticSelection)).toHaveBeenCalledTimes(ticks);
+      expect(jest.mocked(playUrgentTick)).toHaveBeenCalledTimes(ticks);
     }
     await r.unmount();
   });

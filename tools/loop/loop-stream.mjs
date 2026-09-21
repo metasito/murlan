@@ -17,6 +17,18 @@ export const PHASE = /^[ \t]*`?PHASE ([A-F])`?[ \t]*$/m;
  */
 const DECLARED = /^[ \t]*LOOP-RESULT (\{.*\})[ \t]*$/m;
 
+/** What a `git commit` looks like in a `Bash` call, whatever else is on the line. */
+export const COMMITTING = /\bgit\b[^\n|;&]*\bcommit\b/;
+
+const EDITS = new Set(["Edit", "Write", "NotebookEdit"]);
+
+/**
+ * Where B ends with no `PHASE C` (#1098): the first edit or commit — late, never before the build.
+ * @param {{name: string, command?: string, parent?: string|null}[]} calls
+ */
+export const scopeEnds = (calls) =>
+  calls.some((c) => !c.parent && (EDITS.has(c.name) || (c.name === "Bash" && COMMITTING.test(c.command ?? ""))));
+
 /** A handoff names the phase the next process starts at, so an unknown letter is no handoff. */
 export const HANDOFF = /^[A-F]$/;
 
@@ -92,6 +104,7 @@ export function readLine(line) {
       sessionId: e.session_id ?? null,
       version: e.claude_code_version ?? null,
       model: e.model ?? null,
+      plugins: (e.plugins ?? []).map((p) => p.source ?? p.name),
     };
   }
   if (e.type === "system" && TASK_EVENT[e.subtype]) {
@@ -145,7 +158,8 @@ export function readLine(line) {
     if (!phase && !declared && !calls.length) return null;
     // The prose around the marker, which the board shows as the session's own account of what it is
     // doing. Two markers were parsed out of it and the rest was dropped.
-    return { kind: "assistant", letter: phase?.[1] ?? null, declared, calls, text };
+    // One line per content block, each with the whole message's usage: count turns by `id`, not line.
+    return { kind: "assistant", id: e.message?.id ?? null, letter: phase?.[1] ?? null, declared, calls, text };
   }
   if (e.type === "result") {
     return {

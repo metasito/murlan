@@ -12,9 +12,6 @@
 // "missing" — a different, misleading failure. Every cue that reduced motion
 // (or anything else) can silently blank out reaches for this instead of
 // `queryByText(...).toBeTruthy()`.
-//
-// Flat in tests/native/, not a subdirectory: tests/nativeScope.test.ts reads
-// every entry directly under tests/native as a file.
 import { expect } from "@jest/globals";
 import { StyleSheet } from "react-native";
 // The instance type behind every RNTL query in this codebase's installed

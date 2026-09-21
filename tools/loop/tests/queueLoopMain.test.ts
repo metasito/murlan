@@ -5,7 +5,10 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import {
+  parkAsked,
   runOnce,
   afterSession,
   main,
@@ -20,6 +23,7 @@ import {
   USD_BY_SIZE,
 } from "../queue-loop.mjs";
 import { parkReasonOf, ticketTally } from "../loop-logs.mjs";
+import { PLAIN } from "../loop-render.mjs";
 
 const ROOT = path.resolve(import.meta.dirname, "..", "..", "..");
 
@@ -510,6 +514,22 @@ describe("runOnce", () => {
     );
     assert.equal(r.outcome, "parked");
     assert.deepEqual(parked, ["the session started on claude-opus-5, but phase E runs on sonnet"]);
+  });
+
+  test("a stray plugin stops the run instead of parking the ticket it happened to meet", async () => {
+    const parked: string[] = [];
+    const ledger: any[] = [];
+    const r = await runOnce(
+      io(
+        {
+          spawn: async () => ({ status: 1, blocked: false, result: null, ms: 1, log: "l", phase: null, declared: null, strayPlugin: "the session loaded ponytail@ponytail" }),
+          park: (_n: number, c: { why: string }) => parked.push(c.why),
+        },
+        ledger,
+      ),
+    );
+    assert.deepEqual([r.outcome, parked], ["stop", []]);
+    assert.match(String(r.why), /ponytail/);
   });
 
   test("the prune in queue-pre runs before the pick", async () => {
@@ -1063,6 +1083,7 @@ describe("main", () => {
     return {
       rows,
       totals: { tickets: 0, landed: 0, parked: 0, cost: 0, ms: 0 },
+      tickets: [],
       record: (s: any) => rows.push(s),
       close: () => {},
     };
@@ -1097,6 +1118,18 @@ describe("main", () => {
     });
     assert.equal(code, 0);
     assert.equal(picked, 0);
+  });
+
+  test("the run file says why the run stopped, not only its total", async () => {
+    const closed: string[] = [];
+    await main({
+      io: { ...(io() as any), stopFile: () => true },
+      book: { ...book(), close: (_id: string, line: string) => closed.push(line) },
+      screen: screen(),
+      install: () => {},
+      runId: "t",
+    });
+    assert.match(closed.join("\n"), /stopped: \.loop-stop/);
   });
 
   test("a landing clears the breaker, so a bad ticket between good ones is not fatal", async () => {
@@ -1141,6 +1174,7 @@ describe("main", () => {
 describe("a throw mid-iteration", () => {
   const book = () => ({
     totals: { tickets: 0, landed: 0, parked: 0, cost: 0, ms: 0 },
+    tickets: [],
     record: () => {},
     close: () => {},
   });
@@ -1224,8 +1258,34 @@ describe("a throw mid-iteration", () => {
   });
 });
 
+describe("the run recap", () => {
+  test("counts a wait still running as waiting, not working", async (t) => {
+    t.mock.timers.enable({ apis: ["Date"] });
+    let recap = (_t: unknown): string[] => [];
+    let shown = "";
+    let passes = 0;
+    const board = {
+      say: () => {},
+      warn: () => {},
+      notice: () => {},
+      stop: () => {},
+      close: () => {},
+      board: (f: { recap?: typeof recap }) => void (f.recap && (recap = f.recap)),
+      wait: () => {
+        t.mock.timers.tick(3_600_000);
+        shown = recap(PLAIN()).join("\n");
+        return { woken: Promise.resolve(), say: null };
+      },
+    };
+    const book = { totals: { tickets: 0, landed: 0, parked: 0, cost: 0, ms: 0 }, tickets: [], record: () => {}, close: () => {} };
+    const spy = { ...(io() as any), stopFile: () => passes++ > 0, queuePre: () => 2 };
+    await main({ io: spy, book, screen: board as never, install: () => {}, runId: "t" });
+    assert.match(shown, /working 0:00 · CI 0:00 · waiting 1:00:00/);
+  });
+});
+
 describe("a handoff", () => {
-  const book = () => ({ totals: { tickets: 0, landed: 0, parked: 0, cost: 0, ms: 0 }, record: () => {}, close: () => {} });
+  const book = () => ({ totals: { tickets: 0, landed: 0, parked: 0, cost: 0, ms: 0 }, tickets: [], record: () => {}, close: () => {} });
   const screen = () => ({ say: () => {}, warn: () => {}, notice: () => {}, stop: () => {} });
 
   // The phase reaching the picker is the whole of task 1: without it the next process asks derive(),
@@ -1257,8 +1317,98 @@ describe("a handoff", () => {
   });
 });
 
+describe("a park asked from the board", () => {
+  const book = () => ({ totals: { tickets: 0, landed: 0, parked: 0, cost: 0, ms: 0 }, tickets: [], record: () => {}, close: () => {} });
+  const screen = () => ({ say: () => {}, warn: () => {}, notice: () => {}, stop: () => {} });
+
+  test("parks the ticket once its session exits, and forgets the request", async () => {
+    const cwd = process.cwd();
+    const dir = mkdtempSync(path.join(tmpdir(), "park-"));
+    const parked: { why: string; cwd: string | null; dirty: boolean }[] = [];
+    const picks: (number | null)[] = [];
+    let n = 0;
+    const spy = {
+      ...(io() as any),
+      pick: (pinned: number | null) => {
+        picks.push(pinned);
+        if (picks.length > 2) return null;
+        return { skill: "implement", number: 41, title: "t", size: "size:S", queue: null };
+      },
+      spawn: async () => ({
+        status: 0,
+        blocked: false,
+        result: { cost: 1, turns: 2 },
+        ms: 1,
+        log: "l",
+        phase: "C",
+        declared: n++ === 0 ? { ticket: 41, phase: "C", handoff: "D", stoodDown: false } : null,
+      }),
+      park: (_n: number, { why, cwd, dirty }: { why: string; cwd: string | null; dirty: boolean }) => parked.push({ why, cwd, dirty }),
+      pushedPr: () => null,
+      standing: () => (n >= 1 ? { ticket: 41, branch: "agent/41-x", cwd: ".worktrees/agent-41", dirty: true, phase: "D" } : null),
+    };
+    try {
+      process.chdir(dir);
+      writeFileSync(".loop-park", "41\n");
+      await main({ io: spy, book: book(), screen: screen(), install: () => {}, runId: "t" });
+      assert.deepEqual(parked[0], { why: "parked by owner", cwd: ".worktrees/agent-41", dirty: true }, "the worktree's edits are kept");
+      assert.equal(picks[1], null, "a parked ticket is not pinned for the next pass");
+      assert.equal(existsSync(".loop-park"), false);
+    } finally {
+      process.chdir(cwd);
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a red CI round parks in the phase git reports, with its worktree", async () => {
+    const cwd = process.cwd();
+    const dir = mkdtempSync(path.join(tmpdir(), "park-"));
+    const parked: { why: string; phase: string; cwd: string | null }[] = [];
+    const spy = {
+      ...(io() as any),
+      spawn: async () => ({ status: 0, blocked: false, result: { cost: 1 }, ms: 1, log: "l", phase: "F", declared: null }),
+      pushedPr: () => ({ number: 984, state: "OPEN", head: "agent/42-x", sha: "aaa111", changedFiles: 2 }),
+      settle: async () => ({ action: "hand-back", reason: "CI failed at Native tests" }),
+      park: (_n: number, { why, phase, cwd }: { why: string; phase: string; cwd: string | null }) => parked.push({ why, phase, cwd }),
+    };
+    try {
+      process.chdir(dir);
+      writeFileSync(".loop-park", "42\n");
+      await main({ io: spy, book: book(), screen: screen(), install: () => {}, runId: "t" });
+      assert.deepEqual(parked[0], { why: "parked by owner", phase: "E", cwd: ".worktrees/agent-42" });
+    } finally {
+      process.chdir(cwd);
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a ticket that lands before the park can act says the request was dropped", async () => {
+    const cwd = process.cwd();
+    const dir = mkdtempSync(path.join(tmpdir(), "park-"));
+    const said: string[] = [];
+    const board = { ...screen(), notice: (kind: string, m: string) => said.push(`${kind}: ${m}`) };
+    let picks = 0;
+    try {
+      process.chdir(dir);
+      writeFileSync(".loop-park", "42\n");
+      await main({ io: io({ pick: () => (picks++ ? null : (io() as any).pick()) }), book: book(), screen: board, install: () => {}, runId: "t" });
+      assert.ok(said.some((m) => /^park: #42 landed before the park could act/.test(m)), JSON.stringify(said));
+      assert.equal(existsSync(".loop-park"), false);
+    } finally {
+      process.chdir(cwd);
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a request naming another ticket parks nothing", () => {
+    assert.equal(parkAsked(41, () => "41\n"), true);
+    assert.equal(parkAsked(42, () => "41\n"), false);
+    assert.equal(parkAsked(null, () => "41\n"), false);
+  });
+});
+
 describe("a fix round that changed nothing", () => {
-  const book = () => ({ totals: { tickets: 0, landed: 0, parked: 0, cost: 0, ms: 0 }, record: () => {}, close: () => {} });
+  const book = () => ({ totals: { tickets: 0, landed: 0, parked: 0, cost: 0, ms: 0 }, tickets: [], record: () => {}, close: () => {} });
   const screen = () => ({ say: () => {}, warn: () => {}, notice: () => {}, stop: () => {} });
 
   // #1028's rounds 2 and 3 were byte-identical no-ops — five turns of phase A and a close, twice —
@@ -1334,7 +1484,7 @@ describe("what a ticket's clock covers", () => {
 });
 
 describe("a ticket's tally comes from the ledger, not from memory", () => {
-  const book = () => ({ totals: { tickets: 0, landed: 0, parked: 0, cost: 0, ms: 0 }, record: () => {}, close: () => {} });
+  const book = () => ({ totals: { tickets: 0, landed: 0, parked: 0, cost: 0, ms: 0 }, tickets: [], record: () => {}, close: () => {} });
   const screen = () => ({ say: () => {}, warn: () => {}, notice: () => {}, stop: () => {} });
   const go = (spy: unknown) => main({ io: spy as never, book: book(), screen: screen(), install: () => {}, runId: "t" });
   const ticket = { skill: "implement", number: 42, title: "t", size: "size:S", queue: null };

@@ -145,15 +145,15 @@ export function row(segs, right, t, width = t.width) {
   return left + " ".repeat(gap) + (right ? t.paint(right.c ?? "faint", right.t) : "");
 }
 
-/** A–F are the session's own; `G` is the supervisor's, after it has exited. @type {[string, string][]} */
+/** A–F are the session's own; `G` is the supervisor's, after it has exited. @type {[string, string, string][]} */
 export const PHASES = [
-  ["A", "claim"],
-  ["B", "scope"],
-  ["C", "build"],
-  ["D", "review"],
-  ["E", "push"],
-  ["F", "close"],
-  ["G", "merge"],
+  ["A", "claim", "takes the ticket, makes its worktree, posts the Definition of done"],
+  ["B", "scope", "one subagent maps every place the change has to touch"],
+  ["C", "build", "writes the change, a commit per slice, then the local checks"],
+  ["D", "review", "two independent reviewers read the diff; LAND or HOLD"],
+  ["E", "push", "pushes the reviewed head and readies the pull request"],
+  ["F", "close", "ticks the Definition of done against the code"],
+  ["G", "merge", "waits for ci.yml on that head, then merges"],
 ];
 
 export const LAND = "G";
@@ -385,6 +385,59 @@ export function progress({ letter, round = null, ticketMs = null }, t) {
   return row([lead, { t: clamp(name, room), c: at < 0 ? "warn" : "bright", b: at >= 0 }], right, t);
 }
 
+const about = (ms) => {
+  const m = Math.max(1, Math.round(ms / MINUTE_MS));
+  return m < 60 ? `~${m}m` : `~${Math.floor(m / 60)}h${String(m % 60).padStart(2, "0")}`;
+};
+
+/**
+ * Where the ticket is going, from the ledger's per-step medians: the step after this one, and what
+ * is left until it lands. Nothing past the merge step, whose own CI line already says it.
+ *
+ * @param {Record<string, number>} typical median ms per phase letter
+ */
+export function ahead(letter, typical, t) {
+  const at = PHASES.findIndex(([l]) => l === letter);
+  if (at < 0 || at >= PHASES.length - 1) return [];
+  const rest = PHASES.slice(at + 1);
+  const [next, ...then] = rest;
+  const total = rest.every(([l]) => typical[l]) ? about(rest.reduce((n, [l]) => n + typical[l], 0)) : null;
+  const line = (label, text) =>
+    row([{ t: "   ", c: "faint" }, { t: label.padEnd(LABEL_W), c: "muted" }, { t: clamp(text, Math.max(0, t.width - LABEL_W - 4)), c: "faint" }], null, t);
+  return [
+    line("next", [next[1], typical[next[0]] ? about(typical[next[0]]) : null, next[2]].filter(Boolean).join(" · ")),
+    line("to land", [total && `${total} after ${PHASES[at][1]}`, then.length && `then ${then.map(([, n]) => n).join(", ")}`].filter(Boolean).join(" · ")),
+  ];
+}
+
+const hhmm = (ms, utc) => {
+  const d = new Date(ms);
+  const [h, m] = utc ? [d.getUTCHours(), d.getUTCMinutes()] : [d.getHours(), d.getMinutes()];
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+};
+
+/**
+ * The run for someone who did not watch it: what needs them first, then where the time went.
+ * One text for the `r` key, a long wait, the exit, and the top of `run-*.md`.
+ *
+ * @param {{startedAt: number, now: number, totals: object, tickets: {number: number, outcome: string, why?: string}[],
+ *   ciMs: number, waitMs: number, utc?: boolean}} run
+ */
+export function runRecap({ startedAt, now, totals, tickets, ciMs, waitMs, utc = false }, t) {
+  const wall = now - startedAt;
+  const head = (text) => row([{ t: ` ${clamp(text, t.width - 1)}`, c: "text", b: true }], null, t);
+  const stuck = tickets.filter((r) => r.outcome !== "landed");
+  const working = Math.max(0, wall - ciMs - waitMs);
+  return [
+    head(`run   ${hhmm(startedAt, utc)} → ${hhmm(now, utc)} · ${elapsed(wall)}`),
+    row([{ t: ` ${clamp(`${plural(totals.tickets, "ticket")} · ${totals.landed} landed · ${totals.parked} parked · ${money(totals.cost)}`, t.width - 1)}`, c: "muted" }], null, t),
+    ...(stuck.length ? ["", head("needs you"), ...stuck.map((r) => stepRow({ label: `#${r.number}`, detail: r.why ?? r.outcome, state: "failed" }, t))] : []),
+    "",
+    head("where the time went"),
+    stepRow({ label: "", detail: `working ${elapsed(working)} · CI ${elapsed(ciMs)} · waiting ${elapsed(waitMs)}`, state: "skipped" }, t),
+  ];
+}
+
 // The fade is the information. Four rows at four brightnesses say which is now and which is already
 // history without spending a timestamp on each one.
 const FADE = ["text", "muted", "faint", "faint"];
@@ -428,9 +481,6 @@ export function activity({ said, recent = [], ms, frame = 0 }, t, take = RECENT)
   return rows.join("\n");
 }
 
-const ordinal = (n) =>
-  n % 100 >= 11 && n % 100 <= 13 ? "th" : (["th", "st", "nd", "rd"][n % 10] ?? "th");
-
 /**
  * The ticket, boxed. Two lines of chrome buys a hard edge, which is what makes a night of scrollback
  * skimmable by ticket instead of by hunting for the next header.
@@ -438,52 +488,43 @@ const ordinal = (n) =>
  * The number is the link, so the URL does not need a line of its own — it was the same forty
  * characters every ticket and the only varying part was already in the header. A resumed ticket
  * never went through the picker, so it has no queue depths; printing zeroes would read as an
- * empty queue.
+ * empty queue. How far the run has got is `recap`'s, outside the box.
  *
  * @param {{number: number, title: string, size?: string|null, url?: string,
- *   queue: {implement: number, triage: number, wayfinder: number}|null,
- *   nth?: number, runMs?: number, spend?: number}} ticket
+ *   queue: {implement: number, triage: number, wayfinder: number}|null}} ticket
  */
-export function header({ number, title, size, url, queue, nth, runMs, spend }, t) {
+export function header({ number, title, size, url, queue }, t) {
   const id = `#${number}`;
-  const tag = size ?? "";
-  const inner = t.width - 2;
+  const inner = Math.max(0, t.width - 2);
 
   // Laid out as plain text and measured, then painted. Every fixed piece is counted here rather
   // than assumed, because a header one cell too wide wraps and the redraw below it erases the
-  // wrong row from then on.
+  // wrong row from then on. The tag sheds from the left — `resumed` before the size — rather than
+  // pushing the title past the edge, and nothing below is floored above zero for the same reason.
   const head = `╭─ ${id}  `;
-  const tail = tag ? ` ${tag} ─╮` : " ─╮";
-  const room = t.width - cols(head) - cols(tail) - 1;
-  const shown = clamp(title, Math.max(8, room - 1));
-  const fill = "─".repeat(Math.max(1, room - cols(shown)));
+  const pieces = [queue ? null : "resumed", size].filter(Boolean);
+  let tail = " ─╮";
+  let room = 0;
+  for (let i = 0; i <= pieces.length; i++) {
+    const tag = pieces.slice(i).join(" ─ ");
+    tail = tag ? ` ${tag} ─╮` : " ─╮";
+    room = t.width - cols(head) - cols(tail) - 1;
+    if (room >= TITLE_FLOOR) break;
+  }
+  const shown = clamp(title, Math.max(0, room - 1));
+  const fill = "─".repeat(Math.max(0, room - cols(shown)));
+  const plain = `${head}${shown} ${fill}${tail}`;
   const top =
-    t.paint("faint", "╭─ ") +
-    t.link(url, t.paint("bright", id, true)) +
-    t.paint("faint", "  ") +
-    t.paint("text", shown) +
-    t.paint("faint", ` ${fill}`) +
-    t.paint("faint", tail);
+    cols(plain) <= t.width
+      ? t.paint("faint", "╭─ ") +
+        t.link(url, t.paint("bright", id, true)) +
+        t.paint("faint", "  ") +
+        t.paint("text", shown) +
+        t.paint("faint", ` ${fill}`) +
+        t.paint("faint", tail)
+      : t.paint("faint", clamp(plain, t.width));
 
-  const facts = clamp(
-    [
-      queue ? `${queue.implement} in queue` : "resumed",
-      nth ? `${nth}${ordinal(nth)} ticket this run` : null,
-      runMs != null ? `run ${elapsed(runMs)}` : null,
-      spend != null ? `${money(spend)} spent` : null,
-    ]
-      .filter(Boolean)
-      .join(" · "),
-    Math.max(0, inner - 3),
-  );
-  return [
-    top,
-    t.paint("faint", "│  ") +
-      t.paint("faint", facts) +
-      " ".repeat(Math.max(0, inner - cols(facts) - 2)) +
-      t.paint("faint", "│"),
-    t.paint("faint", `╰${"─".repeat(inner)}╯`),
-  ].join("\n");
+  return [top, t.paint("faint", clamp(`╰${"─".repeat(inner)}╯`, t.width))].join("\n");
 }
 
 /**
@@ -496,19 +537,44 @@ export function header({ number, title, size, url, queue, nth, runMs, spend }, t
 export const KEYS = [
   ["e", "expand", "collapse"],
   ["s", "stop after this", "● stopping after this"],
-  ["o", "issue", null],
-  ["l", "log", null],
+  ["k", "park", "● parking after this", "ticket"],
+  ["w", "check now", null, "waiting"],
+  ["p", "pr", null, "pr"],
+  ["o", "issue", null, "url"],
+  ["l", "log", null, "log"],
+  ["t", "session", null, "session"],
+  ["c", "copy", null, "log"],
+  ["r", "run", "close run", "recap"],
+  ["?", "keys", "close keys"],
 ];
 
-export function keybar({ expanded = false, stopping = false } = {}, t) {
+/** What `?` shows: every key, then every step, from the same two tables the board draws from. */
+export function help(t) {
+  const keys = KEYS.map(([k, off]) => row([{ t: `   ${k}  `, c: "accent", b: true }, { t: off, c: "muted" }], null, t));
+  const steps = PHASES.map(([, name, meaning]) =>
+    row([{ t: `   ${name.padEnd(8)}`, c: "muted" }, { t: clamp(meaning, Math.max(0, t.width - 11)), c: "faint" }], null, t),
+  );
+  return [...keys, "", ...steps];
+}
+
+/**
+ * @param {{expanded?: boolean, stopping?: boolean, parking?: false|"confirm"|"asked", help?: boolean,
+ *   offers?: Record<string, unknown>}} view `offers` holds what a conditional key needs; a key whose
+ *   fourth column names something absent from it is not offered.
+ */
+export function keybar({ expanded = false, stopping = false, parking = false, recap: recapped = false, help: open = false, offers = {} } = {}, t) {
+  if (parking === "confirm") {
+    return row([{ t: "   k", c: "accent", b: true }, { t: clamp(" park this ticket?  y confirms · any other key cancels", t.width - 4), c: "warn" }], null, t);
+  }
   // A pending stop rides on the key that set it rather than on a badge of its own: one place to
   // look for what `s` did, and no second element competing for the right-hand edge.
-  const state = { e: expanded, s: stopping };
+  const state = { e: expanded, s: stopping, k: parking === "asked", r: recapped, "?": open };
   // Dropped from the right rather than truncated: half a key name is worse than one fewer key, and
   // the leftmost are the ones worth keeping.
   const segs = [{ t: "   ", c: "faint" }];
   let used = 3;
-  for (const [k, off, on] of KEYS) {
+  for (const [k, off, on, needs] of KEYS) {
+    if (needs && !offers[needs]) continue;
     const word = state[k] && on ? on : off;
     const cost = (used > 3 ? 3 : 0) + 2 + cols(word);
     if (used + cost > t.width) break;
@@ -568,17 +634,20 @@ export function stream(feed, { ms, frame = 0, letter }, t, take = 14) {
 }
 
 /**
- * The queue after a ticket, against the queue before it. The header carries the depth; the
- * direction is what matters across an unattended night — a frontier that grows every ticket is the
- * loop filing follow-ups faster than it lands them.
+ * Where the run stands, after a ticket and outside its box. The direction is what matters across
+ * an unattended night — a frontier that grows every ticket is the loop filing follow-ups faster
+ * than it lands them.
  */
-export function queueLine(before, after, t) {
+export function recap(totals, before, after, t) {
   const empty = !after.implement && !after.triage && !after.wayfinder;
   const moved = (k) => (before[k] === after[k] ? String(after[k]) : `${before[k]}→${after[k]}`);
   const detail = empty
     ? "empty"
     : `${moved("implement")} to implement · ${moved("triage")} to triage · ${moved("wayfinder")} wayfinder`;
-  return stepRow({ label: "queue", detail, ms: null, state: "skipped" }, t);
+  return [
+    stepRow({ label: "run", detail: runTotal(totals), ms: null, state: "skipped" }, t),
+    stepRow({ label: "queue", detail, ms: null, state: "skipped" }, t),
+  ].join("\n");
 }
 
 /**
@@ -675,6 +744,22 @@ export function reportRow({ number, title, outcome, pr, ms, cost, why }, t) {
   );
   if (!wraps) return line;
   return [line, ...wrap(reason, t.width - 6).map((l) => t.paint("faint", `      ${l}`))].join("\n");
+}
+
+/**
+ * The terminal's title, so where a run stands is visible from another window.
+ * @param {{number: number, letter?: string, round?: number|null, waitMs?: number|null, ticketMs?: number|null}} at
+ */
+export function stepTitle({ number, letter, round = null, waitMs = null, ticketMs = null }) {
+  const step =
+    waitMs != null ? `waiting · ${elapsed(waitMs)} left` : letter && letter !== UNNAMED ? labelFor(letter, round) : "starting";
+  return [`#${number} ▸ ${step}`, ticketMs == null ? null : elapsed(ticketMs)].filter(Boolean).join(" · ");
+}
+
+/** The merge step's live line: the first red job is named the moment it goes red. */
+export function ciLine(pr, { done, total, running, failed }) {
+  const now = failed ? `${failed} failed` : running ? `${running} running` : "queued";
+  return `PR #${pr} · CI ${done} of ${total} jobs · ${now}`;
 }
 
 /** Greedy word wrap. A word longer than the room is cut; nothing is allowed past `room`. */

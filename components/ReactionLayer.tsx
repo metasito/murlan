@@ -6,7 +6,7 @@
 // `overlays`) keep each one where it belongs.
 
 import React, { useEffect } from "react";
-import { Text, StyleSheet, Pressable } from "react-native";
+import { Text, StyleSheet, Pressable, type DimensionValue } from "react-native";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -17,10 +17,21 @@ import Animated, {
 import { Colors, FontSize, Layer, Motion, Radius, Scrim, Spacing, TOUCH_TARGET_MIN } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTableReactions, type TableReaction } from "@/lib/reactions";
-import { useTranslation } from "@/lib/i18n";
+import { useTranslation, type TranslationKey } from "@/lib/i18n";
 import { a11yHidden } from "@/lib/a11y";
 
-export const EMOJIS = ["😂", "🔥", "😤", "👏", "😱", "🤡", "💣", "👑"];
+// The spoken word travels with the glyph: a label built from the glyph alone leaves
+// the announcement to the OS's emoji pronunciation.
+export const EMOJIS = [
+  { glyph: "😂", labelKey: "reactionLayer.emoji.laugh" },
+  { glyph: "🔥", labelKey: "reactionLayer.emoji.fire" },
+  { glyph: "😤", labelKey: "reactionLayer.emoji.frustrated" },
+  { glyph: "👏", labelKey: "reactionLayer.emoji.applause" },
+  { glyph: "😱", labelKey: "reactionLayer.emoji.shock" },
+  { glyph: "🤡", labelKey: "reactionLayer.emoji.clown" },
+  { glyph: "💣", labelKey: "reactionLayer.emoji.bomb" },
+  { glyph: "👑", labelKey: "reactionLayer.emoji.crown" },
+] as const satisfies readonly { glyph: string; labelKey: TranslationKey }[];
 
 /** Above the picker it flies out of; the gap itself carries no meaning. */
 const EMOJI_Z = Layer.held + 1;
@@ -54,11 +65,11 @@ function FloatingReaction({ reaction }: { reaction: TableReaction }) {
   }));
 
   // Spread the seats across the felt so two reactions rarely overlap.
-  const posMap = ["50%", "80%", "20%", "60%"];
+  const posMap: DimensionValue[] = ["50%", "80%", "20%", "60%"];
   const left = posMap[reaction.fromSeat % posMap.length];
 
   return (
-    <Animated.View style={[styles.floatingEmoji, { left: left as any }, aStyle]}>
+    <Animated.View style={[styles.floatingEmoji, { left }, aStyle]}>
       <Text style={styles.floatingEmojiText}>{reaction.emoji}</Text>
       <Text style={styles.floatingEmojiName}>{reaction.username}</Text>
     </Animated.View>
@@ -111,18 +122,18 @@ export function ReactionPanel({
       entering={reduceMotion ? undefined : SlideInLeft.duration(Motion.duration.shift)}
       style={[styles.panel, { left, bottom }]}
     >
-      {EMOJIS.map((e) => (
+      {EMOJIS.map(({ glyph, labelKey }) => (
         <Pressable
-          key={e}
+          key={glyph}
           onPress={() => {
-            onSelect(e);
+            onSelect(glyph);
             onClose();
           }}
           style={({ pressed }) => [styles.emojiBtn, pressed && styles.emojiBtnPressed]}
           accessibilityRole="button"
-          accessibilityLabel={t("reactionLayer.emojiA11yLabel", { emoji: e })}
+          accessibilityLabel={t("reactionLayer.emojiA11yLabel", { emoji: t(labelKey) })}
         >
-          <Text style={styles.emojiBtnText} {...a11yHidden()}>{e}</Text>
+          <Text style={styles.emojiBtnText} {...a11yHidden()}>{glyph}</Text>
         </Pressable>
       ))}
     </Animated.View>

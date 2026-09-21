@@ -1,7 +1,7 @@
 // tools/loop/tests/ticker.test.ts
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ticker } from "../queue-loop.mjs";
@@ -494,6 +494,121 @@ describe("ticker", () => {
       tick.key("o");
       tick.key("l");
       assert.deepEqual(opened, ["https://x/1004", ".loop-logs/1004.jsonl"]);
+    });
+
+    test("k asks first, and only y parks", (t) => {
+      t.mock.timers.enable({ apis: ["setInterval", "Date"] });
+      const out = fake();
+      const dir = mkdtempSync(join(tmpdir(), "loop-park-"));
+      const cwd = process.cwd();
+      process.chdir(dir);
+      try {
+        const tick = ticker(out as never);
+        tick.context({ number: 1142 });
+        tick.start("C");
+        tick.key("k");
+        assert.match(visible(out.wrote.at(-1) ?? ""), /park this ticket\?/);
+        tick.key("e");
+        assert.ok(!existsSync(".loop-park"), "a stray key parked the ticket");
+        tick.key("k");
+        tick.key("y");
+        assert.equal(readFileSync(".loop-park", "utf8").trim(), "1142");
+        assert.match(visible(out.wrote.at(-1) ?? ""), /parking after this/);
+        tick.key("k");
+        assert.ok(!existsSync(".loop-park"), "k did not take the park back");
+      } finally {
+        process.chdir(cwd);
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    test("w ends a wait early, and the wait counts down in the title", async (t) => {
+      t.mock.timers.enable({ apis: ["setInterval", "Date"] });
+      const out = fake();
+      const tick = ticker(out as never);
+      tick.context({ number: 7 });
+      const { woken } = tick.wait("usage resets 14:00", Date.now() + 60 * 60_000);
+      assert.match(all(out), new RegExp(`${ESC}\\]0;#7 ▸ waiting · [^${BEL}]*left`));
+      let done = false;
+      woken.then(() => (done = true));
+      tick.key("w");
+      await Promise.resolve();
+      assert.ok(done, "w did not wake the wait");
+      tick.stop();
+      assert.ok(all(out).includes(`${ESC}]0;${BEL}`), "the title was not cleared");
+    });
+
+    test("a wait says what runs when it ends, and shows the run so far", (t) => {
+      t.mock.timers.enable({ apis: ["setInterval", "Date"] });
+      const out = fake();
+      const tick = ticker(out as never);
+      tick.board({ recap: () => ["run so far"] });
+      tick.wait("usage resets 14:00", Date.now() + 60_000, "#7 resumes from its worktree");
+      const shown = visible(all(out));
+      assert.match(shown, /then\s+#7 resumes from its worktree/);
+      assert.match(shown, /run so far/);
+      tick.stop();
+    });
+
+    test("a wait taller than the window keeps its key bar, and does not offer r over its countdown", (t) => {
+      t.mock.timers.enable({ apis: ["setInterval", "Date"] });
+      const out = fake(true, 80, 24);
+      const tick = ticker(out as never);
+      tick.context({ number: 7 });
+      tick.board({ recap: () => Array.from({ length: 30 }, (_, i) => `recap row ${i}`) });
+      tick.wait("usage resets 14:00", Date.now() + 60_000, "#7 resumes");
+      tick.key("r");
+      const frame = visible(out.wrote.at(-1) ?? "");
+      assert.match(frame, /check now/);
+      assert.match(frame, /waiting/);
+      assert.ok(!/\br run\b/.test(frame), "r offered over a countdown it would hide");
+      tick.stop();
+    });
+
+    test("r swaps the board for the run's recap and back, and the step row has what comes next", (t) => {
+      t.mock.timers.enable({ apis: ["setInterval", "Date"] });
+      const out = fake();
+      const tick = ticker(out as never);
+      tick.board({ recap: () => ["run so far"], typical: { D: 360_000 } });
+      tick.start("C");
+      assert.match(visible(all(out)), /next\s+review/);
+      assert.ok(!visible(all(out)).includes("run so far"));
+      tick.key("r");
+      assert.match(visible(out.wrote.at(-1) ?? ""), /run so far/);
+      tick.key("r");
+      assert.match(visible(out.wrote.at(-1) ?? ""), /next\s+review/);
+      tick.stop();
+    });
+
+    test("a ticket's pull request stays on p across its next session, and not onto the next ticket", (t) => {
+      t.mock.timers.enable({ apis: ["setInterval", "Date"] });
+      const opened: string[] = [];
+      const tick = ticker(fake() as never, fake() as never, (u: string) => opened.push(u));
+      tick.start("C");
+      tick.context({ number: 7 });
+      tick.set({ pr: "https://x/pull/9" });
+      tick.context({ number: 7 });
+      tick.key("p");
+      tick.context({ number: 8 });
+      tick.key("p");
+      assert.deepEqual(opened, ["https://x/pull/9"]);
+    });
+
+    test("t and c copy what they hand over, and say so", (t) => {
+      t.mock.timers.enable({ apis: ["setInterval", "Date"] });
+      const out = fake();
+      const copied: string[] = [];
+      const tick = ticker(out as never, fake() as never, () => {}, (s: string) => copied.push(s));
+      tick.start("C");
+      tick.key("t");
+      tick.key("c");
+      assert.deepEqual(copied, [], "a key copied something before the ticket was named");
+      tick.context({ number: 7, log: "l.jsonl", branch: "agent/7-x" });
+      tick.set({ session: "abc" });
+      tick.key("t");
+      tick.key("c");
+      assert.deepEqual(copied, ["claude --resume abc --fork-session", "agent/7-x\nl.jsonl"]);
+      assert.match(visible(all(out)), /copied/);
     });
 
     // Raw flowing mode delivers whatever arrived in one read, not one keystroke: an autorepeat,

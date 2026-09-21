@@ -97,10 +97,12 @@ const EXPECTED_SECONDS: Record<string, number> = {
   "card_pass.mp3": 1.097,
   "card_play.mp3": 0.392,
   "card_select.mp3": 0.731,
+  "count_complete.mp3": 0.287,
   "deal.mp3": 3.161,
   "exchange.mp3": 0.888,
   "game_lose.mp3": 0.496,
   "game_win.mp3": 0.914,
+  "reject.mp3": 0.209,
   "round_start.mp3": 0.81,
   "round_win.mp3": 0.392,
   "urgent_tick.mp3": 0.131,
@@ -123,7 +125,7 @@ const SILENCE_FLOOR_DB = -55;
 const WINDOW_SECONDS = 0.01;
 // Decoded silence runs a frame or so past where build-sounds.mjs trimmed,
 // because of MP3's fixed frames and the encoder's priming delay: measured
-// 0.060-0.088s across the twelve files.
+// 0.060-0.088s across the effect files.
 const MAX_TRAILING_SILENCE = 0.11;
 
 describe("sound assets", () => {

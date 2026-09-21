@@ -1,4 +1,4 @@
-// tests/native/losingSeatHaptic.test.tsx — the manche's success haptic goes
+// tests/native/losingSeatHaptic.test.tsx — the manche's celebration haptic goes
 // only to the seat ResultBoard is celebrating, offline and online alike.
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 
@@ -49,19 +49,16 @@ const seat = (
   team?: 'A' | 'B'
 ): Player => ({ id, name, hand: [], type, team });
 
-const notificationAsync = Haptics.notificationAsync as unknown as ReturnType<typeof jest.fn>;
-const firedSuccess = () =>
-  notificationAsync.mock.calls.some(
-    (call) => call[0] === Haptics.NotificationFeedbackType.Success
-  );
+const selectionAsync = Haptics.selectionAsync as unknown as ReturnType<typeof jest.fn>;
+const firedCelebration = () => selectionAsync.mock.calls.length > 0;
 
 // Read back by the mocked GameContext above, at render time.
 let mockState: GameState;
 let mockMatch: MatchState;
 
-describe('the success haptic goes only to the celebrated seat', () => {
+describe('the celebration haptic goes only to the celebrated seat', () => {
   beforeEach(() => {
-    notificationAsync.mockClear();
+    selectionAsync.mockClear();
   });
 
   it('offline: stays silent on the human seat that lost the hand', async () => {
@@ -96,7 +93,7 @@ describe('the success haptic goes only to the celebrated seat', () => {
     );
     await act(async () => {});
 
-    expect(notificationAsync.mock.calls).toEqual([]);
+    expect(selectionAsync.mock.calls).toEqual([]);
     await view.unmount();
   });
 
@@ -132,7 +129,7 @@ describe('the success haptic goes only to the celebrated seat', () => {
     );
     await act(async () => {});
 
-    expect(firedSuccess()).toBe(true);
+    expect(firedCelebration()).toBe(true);
     await view.unmount();
   });
 
@@ -179,7 +176,7 @@ describe('the success haptic goes only to the celebrated seat', () => {
     );
     await act(async () => {});
 
-    expect(notificationAsync.mock.calls).toEqual([]);
+    expect(selectionAsync.mock.calls).toEqual([]);
     await view.unmount();
   });
 
@@ -213,7 +210,7 @@ describe('the success haptic goes only to the celebrated seat', () => {
     );
     await act(async () => {});
 
-    expect(firedSuccess()).toBe(true);
+    expect(firedCelebration()).toBe(true);
     await view.unmount();
   });
 
@@ -267,7 +264,7 @@ describe('the success haptic goes only to the celebrated seat', () => {
     );
     await act(async () => {});
 
-    expect(firedSuccess()).toBe(true);
+    expect(firedCelebration()).toBe(true);
     await view.unmount();
   });
 
@@ -311,7 +308,7 @@ describe('the success haptic goes only to the celebrated seat', () => {
     );
     await act(async () => {});
 
-    expect(firedSuccess()).toBe(true);
+    expect(firedCelebration()).toBe(true);
     await view.unmount();
   });
 
@@ -361,7 +358,7 @@ describe('the success haptic goes only to the celebrated seat', () => {
     );
     await act(async () => {});
 
-    expect(notificationAsync.mock.calls).toEqual([]);
+    expect(selectionAsync.mock.calls).toEqual([]);
     await view.unmount();
   });
 });

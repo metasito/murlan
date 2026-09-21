@@ -13,6 +13,7 @@ import {
   readLedger,
   sessionRow,
   ticketTally,
+  typicalMs,
   usageSplit,
   windowCost,
 } from "../loop-logs.mjs";
@@ -260,6 +261,7 @@ describe("usageSplit", () => {
 });
 
 describe("ledger", () => {
+  const report = (title: string) => ({ number: 953, title, outcome: "landed", ms: 60_000, cost: 1.82 });
   const spy = () => {
     const appended: [string, string][] = [];
     const written: [string, string][] = [];
@@ -285,7 +287,7 @@ describe("ledger", () => {
   test("one session is one row, and its money lands in the totals", () => {
     const { io, appended } = spy();
     const book = ledger(io);
-    book.record(session(), { runId: "2026-09-13-04-12", line: "· #953 landed" });
+    book.record(session(), { runId: "2026-09-13-04-12", report: report("x") });
     assert.equal(appended.filter(([f]) => f === "tickets.jsonl").length, 1);
     assert.equal(book.totals.cost, 1.82);
     assert.equal(book.totals.landed, 1);
@@ -297,11 +299,12 @@ describe("ledger", () => {
   test("two sessions on one ticket are two rows, and their costs add", () => {
     const { io } = spy();
     const book = ledger(io);
-    book.record(session({ outcome: "retry" }), { runId: "r", line: "a", counts: false });
-    book.record(session(), { runId: "r", line: "b" });
+    book.record(session({ outcome: "retry" }), { runId: "r", report: report("a"), counts: false });
+    book.record(session(), { runId: "r", report: report("b") });
     assert.equal(book.rows.length, 2);
     assert.equal(book.totals.cost, 3.64);
     assert.equal(book.totals.tickets, 1, "a fix round is a session, not a ticket");
+    assert.deepEqual(book.tickets.map((r) => r.title), ["b"], "the exit summary is one row per ticket");
   });
 
   // A usage refusal spent real money and reached the totals through a second writer, which is why
@@ -309,7 +312,7 @@ describe("ledger", () => {
   test("a session that closed no ticket still records what it spent", () => {
     const { io } = spy();
     const book = ledger(io);
-    book.record(session({ outcome: "refused" }), { runId: "r", line: "x", counts: false });
+    book.record(session({ outcome: "refused" }), { runId: "r", report: report("x"), counts: false });
     assert.equal(book.totals.cost, 1.82);
     assert.equal(book.totals.tickets, 0);
     assert.equal(book.totals.parked, 0);
@@ -318,20 +321,21 @@ describe("ledger", () => {
   test("the report gets its heading once and a row per session after that", () => {
     const { io, appended, written } = spy();
     const book = ledger(io);
-    book.record(session(), { runId: "2026-09-13-04-12", line: "first" });
-    book.record(session(), { runId: "2026-09-13-04-12", line: "second" });
+    book.record(session(), { runId: "2026-09-13-04-12", report: report("first") });
+    book.record(session(), { runId: "2026-09-13-04-12", report: report("second") });
     assert.equal(written.length, 1);
     assert.match(written[0][1], /# queue-loop 2026-09-13 04:12/);
-    assert.deepEqual(
-      appended.filter(([f]) => f.startsWith("run-")).map(([, t]) => t.trim()),
-      ["first", "second"],
-    );
+    const rows = appended.filter(([f]) => f.startsWith("run-")).map(([, t]) => t);
+    assert.equal(rows.length, 2);
+    assert.match(rows[0], /#953 first/);
+    assert.match(rows[1], /#953 second/);
+    assert.ok(rows.every((r) => !r.includes("\u001B")), "the report file is plain text");
   });
 
   test("a park counts against the run rather than for it", () => {
     const { io } = spy();
     const book = ledger(io);
-    book.record(session({ outcome: "parked", merged: false }), { runId: "r", line: "x" });
+    book.record(session({ outcome: "parked", merged: false }), { runId: "r", report: report("x") });
     assert.equal(book.totals.parked, 1);
     assert.equal(book.totals.landed, 0);
   });
@@ -339,8 +343,54 @@ describe("ledger", () => {
   test("the row carries the run that wrote it, without the caller repeating it in session", () => {
     const { io } = spy();
     const book = ledger(io);
-    const entry = book.record(session(), { runId: "2026-09-13-04-12", line: "x" });
+    const entry = book.record(session(), { runId: "2026-09-13-04-12", report: report("x") });
     assert.equal(entry.run_id, "2026-09-13-04-12");
+  });
+});
+
+describe("typicalMs", () => {
+  test("a median per step, the merge step from the settle rows", () => {
+    const typical = typicalMs([
+      { outcome: "handoff", phases: { B: 100, C: 500 }, ms: 1 },
+      { outcome: "handoff", phases: { C: 300 }, ms: 1 },
+      { outcome: "handoff", phases: { C: 900 }, ms: 1 },
+      { outcome: "landed", phases: {}, ms: 480_000 },
+      { outcome: "landed", phases: {}, ms: 3_104_948, turns: 132, cost: 16.76 },
+      { outcome: "landed", phases: { F: 20 }, ms: 9 },
+    ]);
+    assert.deepEqual(typical, { B: 100_000, C: 500_000, G: 480_000, F: 20_000 });
+  });
+});
+
+describe("the run report's recap", () => {
+  test("sits under the title, above the rows", () => {
+    const files = new Map<string, string>();
+    const book = ledger({
+      append: (f: string, t: string) => files.set(f, (files.get(f) ?? "") + t),
+      mkdir: () => {},
+      exists: (f: string) => files.has(f),
+      write: (f: string, t: string) => files.set(f, t),
+      read: (f: string) => files.get(f) ?? "",
+    });
+    book.record(session(), { runId: "r", report: { number: 1, title: "x", outcome: "landed", pr: 2, ms: 1, cost: 1 } });
+    book.close("r", "1 ticket", "run   21:40 → 08:44");
+    const text = [...files.entries()].find(([f]) => f.includes("run-r"))![1].split("\n");
+    assert.match(text[0], /^# queue-loop/);
+    assert.equal(text[2], "run   21:40 → 08:44");
+    assert.match(text.at(-2)!, /1 ticket/);
+  });
+
+  test("a run that recorded nothing keeps the file the total alone wrote", () => {
+    const files = new Map<string, string>();
+    const book = ledger({
+      append: (f: string, t: string) => files.set(f, (files.get(f) ?? "") + t),
+      mkdir: () => {},
+      exists: (f: string) => files.has(f),
+      write: (f: string, t: string) => files.set(f, t),
+      read: (f: string) => files.get(f) ?? "",
+    });
+    book.close("r", "0 tickets", "run   21:40 → 21:41");
+    assert.deepEqual([...files.values()], ["\n0 tickets\n"]);
   });
 });
 

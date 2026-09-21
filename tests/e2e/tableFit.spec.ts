@@ -280,7 +280,7 @@ const AUTO_PASS_TITLE = "Passaggio automatico";
 /** locales/it.ts `gameTable.a11yPlayerPlayed`. */
 const OPPONENT_PLAYED = " ha giocato ";
 /** app/game.tsx HUMAN_TURN_SECONDS, which EXPO_PUBLIC_E2E_FAST does not shorten. */
-const OFFLINE_CLOCK_MS = 20_000;
+const OFFLINE_CLOCK_MS = 30_000;
 
 interface Box {
   x: number;

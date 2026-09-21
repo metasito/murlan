@@ -8,7 +8,7 @@
 //     Albanian text directly: "Shkalla duhet të ketë të paktën 5 letra")
 //   - "letër" / "letra" — card / cards
 //   - "Fanti" — Jack, "Çupa" — Queen, "Mbreti" — King, "Asi" — Ace
-//   - "Xholi i Zi" / "Xholi i Kuq" — Black Joker / Red Joker
+//   - "Xholi i zi" / "Xholi i kuq" — Black Joker / Red Joker
 //   - "spathi" / "maç" / "kupë" / "karo" — Clubs / Spades / Hearts / Diamonds
 //   - "Letër teke" / "dyshe" / "treshe" / "katërshe" — single / pair / triple
 //     / four-of-a-kind
@@ -243,6 +243,8 @@ export const sq: Record<keyof typeof en, string> = {
   "home.resumeGame": "Vazhdo lojën",
   "home.playOnline": "Luaj online",
   "home.playOnlineSignedOut": "Hyr për të luajtur",
+  "home.returnToTable": "Kthehu te tavolina jote",
+  "home.returnToTableSublabel": "Një vend është ende yti",
   "home.modeOffline": "Offline",
   "home.modePlayWithFriends": "Luaj me miq",
   "home.modeOnline": "Online",
@@ -282,7 +284,15 @@ export const sq: Record<keyof typeof en, string> = {
 
   // -------------------------------------------------------- reactionLayer.*
   "reactionLayer.triggerA11yLabel": "Dërgo një reagim",
-  "reactionLayer.emojiA11yLabel": "Reagim {{emoji}}",
+  "reactionLayer.emojiA11yLabel": "Reagim: {{emoji}}",
+  "reactionLayer.emoji.laugh": "e qeshur",
+  "reactionLayer.emoji.fire": "zjarr",
+  "reactionLayer.emoji.frustrated": "inat",
+  "reactionLayer.emoji.applause": "duartrokitje",
+  "reactionLayer.emoji.shock": "habi",
+  "reactionLayer.emoji.clown": "klloun",
+  "reactionLayer.emoji.bomb": "bombë",
+  "reactionLayer.emoji.crown": "kurorë",
 
   // ----------------------------------------------------------------- exchange.*
   "exchange.prompt": "{{name}} të dha këtë — jepi një",
@@ -311,9 +321,9 @@ export const sq: Record<keyof typeof en, string> = {
   "cards.nameFormat": "{{rank}} {{suit}}",
 
   // -------------------------------------------------------- exchangeAnnouncement.*
-  "exchangeAnnouncement.a11yNoSwap": "Shkëmbim: pa shkëmbim, {{loserName}} tregoi të dy Xholat",
+  "exchangeAnnouncement.a11yNoSwap": "Shkëmbim: pa shkëmbim, {{loserName}} tregoi të dy xholat",
   "exchangeAnnouncement.giveLine": "Nga {{from}} te {{to}}: {{card}}",
-  "exchangeAnnouncement.noSwapText": "Pa shkëmbim — Xhola të dyfishtë 🃏",
+  "exchangeAnnouncement.noSwapText": "Pa shkëmbim — xhola të dyfishtë 🃏",
 
   // ------------------------------------------------------- gameOverOverlay.*
   "result.position1": "1°",
@@ -594,8 +604,8 @@ export const sq: Record<keyof typeof en, string> = {
   "rules.startTutorialSubtitle": "Mëso duke luajtur një dorë të udhëzuar.",
   "rules.startTutorialA11yLabel": "Fillo tutorialin, një dorë të udhëzuar",
   "rules.strengthSectionLabel": "FORCA E LETRAVE (më e forta → më e dobëta)",
-  "rules.strengthJokerColored": "Xholi i Kuq",
-  "rules.strengthJokerBlack": "Xholi i Zi",
+  "rules.strengthJokerColored": "Xholi i kuq",
+  "rules.strengthJokerBlack": "Xholi i zi",
   "rules.strengthTwo": "Dyshi",
   "rules.strengthAce": "Asi",
   "rules.strengthKing": "Mbreti",
@@ -621,9 +631,9 @@ export const sq: Record<keyof typeof en, string> = {
   "rules.faq.q1": "Cili është qëllimi i lojës?",
   "rules.faq.a1": "Të jesh lojtari (ose çifti) i parë që mbetet pa letra. Loja vazhdon derisa të gjithë lojtarët përveç të fundit të kenë mbaruar letrat.",
   "rules.faq.q2": "Kush fillon i pari?",
-  "rules.faq.a2": "Dora e parë në një tavolinë të re:\nKush e ka 3♠ hap lojën, dhe loja e parë DUHET ta përfshijë atë letër. Me 3 dhe 4 lojtarë shpërndahet gjithmonë i gjithë mazhi, kështu që 3♠ është gjithmonë në dorën e dikujt. Me 2 lojtarë ajo mund të bjerë mes {{undealt}} letrave të pashpërndara — në atë rast fillon kush ka letrën më të ulët të shpërndarë, dhe loja e parë duhet ta përfshijë atë letër.\n\nDuart pasuese (pas shkëmbimit të letrave):\n• Kush ka humbur dorën e mëparshme hap dorën tjetër.\n• Nëse fituesi fitoi pa u bërë shkëmbim (përjashtimi i dy Xholave), është vetë fituesi që hap dorën tjetër.\n\nRadha vazhdon gjithmonë në kahun orar.",
+  "rules.faq.a2": "Dora e parë në një tavolinë të re:\nKush e ka 3♠ hap lojën, dhe loja e parë DUHET ta përfshijë atë letër. Me 3 dhe 4 lojtarë shpërndahet gjithmonë i gjithë mazhi, kështu që 3♠ është gjithmonë në dorën e dikujt. Me 2 lojtarë ajo mund të bjerë mes {{undealt}} letrave të pashpërndara — në atë rast fillon kush ka letrën më të ulët të shpërndarë, dhe loja e parë duhet ta përfshijë atë letër.\n\nDuart pasuese (pas shkëmbimit të letrave):\n• Kush ka humbur dorën e mëparshme hap dorën tjetër.\n• Nëse fituesi fitoi pa u bërë shkëmbim (përjashtimi i dy xholave), është vetë fituesi që hap dorën tjetër.\n\nRadha vazhdon gjithmonë në kahun orar.",
   "rules.faq.q3": "Cila është forca e letrave?",
-  "rules.faq.a3": "Nga më e forta te më e dobëta:\n★ Xholi i Kuq > ☆ Xholi i Zi > 2 > A > K > Q > J > 10 > 9 > 8 > 7 > 6 > 5 > 4 > 3\n\n2-shi është letra e zakonshme më e fortë e mazhit!",
+  "rules.faq.a3": "Nga më e forta te më e dobëta:\n★ Xholi i kuq > ☆ Xholi i zi > 2 > A > K > Q > J > 10 > 9 > 8 > 7 > 6 > 5 > 4 > 3\n\n2-shi është letra e zakonshme më e fortë e mazhit!",
   "rules.faq.q4": "Cilat kombinime mund të luaj?",
   "rules.faq.a4": "• E vetme: një letër çfarëdo\n• Çift: dy letra të së njëjtës vlerë\n• Tresh: tre letra të së njëjtës vlerë\n• Shkallë: minimumi 5 letra të njëpasnjëshme (deri në 13)\n• Bombë: katër letra të së njëjtës vlerë (mund E vetmen, Çiftin, Treshin dhe Shkallën e çfarëdo force — por jo Shkallën Mbretërore)\n• Shkallë Mbretërore: shkallë (5+) me të gjitha letrat e të njëjtës ngjyrë — mund edhe Bombën më të fortë, është kombinimi më i fuqishëm i lojës",
   "rules.faq.q5": "Si funksionojnë shkallët?",
@@ -637,21 +647,21 @@ export const sq: Record<keyof typeof en, string> = {
   "rules.faq.q9": "Cilat modalitete loje ekzistojnë?",
   "rules.faq.a9": "Murlani mbështet 4 formate:\n\n• 1 kundër 1 — dy lojtarë, fiton kush mbaron letrat i pari\n• Trio — tre lojtarë, të gjithë kundër të gjithëve\n• 4 të Lirë — katër lojtarë, të gjithë kundër të gjithëve\n• 2 kundër 2 — katër lojtarë të ndarë në dy çifte, ulur përballë njëri-tjetrit: Lojtari 1&3 kundër Lojtarit 2&4. Manchja luhet deri në fund: nuk mbyllet kur anëtari i parë i një çifti mbetet pa letra, por kur TË DY shokët kanë mbaruar (ose kur i gjithë çifti kundërshtar ka mbaruar). Pikët e vendosjes së dy shokëve mblidhen: fiton çifti me totalin më të lartë.\n\nNë modalitetin Online gjen të gjitha 4 formatet. Në offline zgjedh vetë sa lojtarë dhe cilin modalitet.",
   "rules.faq.q10": "Si funksionon shkëmbimi i letrave?",
-  "rules.faq.a10": "Pas çdo dore (kur të gjithë kanë mbaruar letrat), ndodh një shkëmbim:\n\n1. Humbësi (i klasifikuari i fundit) i jep automatikisht letrën e tij më të fortë fituesit (i klasifikuari i parë).\n2. Fituesi zgjedh një letër nga 3 deri në 10 për t'ia kthyer humbësit.\n3. Pastaj humbësi fillon raundin tjetër.\n\nPërjashtimi i dy Xholave: nëse humbësi ka në dorë të dy Xholat (i kuq dhe i zi), shkëmbimi NUK ndodh. Fituesi fillon vetë raundin tjetër.",
-  "rules.faq.q11": "Çfarë janë Xholat?",
-  "rules.faq.a11": "Xholat janë letrat më të forta të mazhit në kombinimet normale:\n• Xholi i Kuq ★: më i forti absolutisht\n• Xholi i Zi ☆: i dyti për forcë\n\nKujdes: Xholat mund të luhen VETËM si letër e vetme — kurrë në çift, tresh ose shkallë. Një Xhol i luajtur si letër e vetme mund të mundet nga një Bombë!",
+  "rules.faq.a10": "Pas çdo dore (kur të gjithë kanë mbaruar letrat), ndodh një shkëmbim:\n\n1. Humbësi (i klasifikuari i fundit) i jep automatikisht letrën e tij më të fortë fituesit (i klasifikuari i parë).\n2. Fituesi zgjedh një letër nga 3 deri në 10 për t'ia kthyer humbësit.\n3. Pastaj humbësi fillon raundin tjetër.\n\nPërjashtimi i dy xholave: nëse humbësi ka në dorë të dy xholat (i ziu dhe i kuqi), shkëmbimi NUK ndodh. Fituesi fillon vetë raundin tjetër.",
+  "rules.faq.q11": "Çfarë janë xholat?",
+  "rules.faq.a11": "Xholat janë letrat më të forta të mazhit në kombinimet normale:\n• Xholi i kuq ★: më i forti absolutisht\n• Xholi i zi ☆: i dyti për forcë\n\nKujdes: xholat mund të luhen VETËM si letër e vetme — kurrë në çift, tresh ose shkallë. Një xhol i luajtur si letër e vetme mund të mundet nga një Bombë!",
   "rules.faq.q12": "Çfarë është një Bombë?",
-  "rules.faq.a12": "Bomba është kur luan 4 letra të së njëjtës vlerë (p.sh. 7-7-7-7). Është një lëvizje shumë e rrallë dhe shumë e fuqishme:\n\n• Mund çdo letër të vetme, çift, tresh, shkallë e madje edhe Xholat\n• Një Bombë më e lartë (p.sh. 8-8-8-8) mund një Bombë më të ulët (7-7-7-7)\n• E vetmja gjë që mund Bombën është Shkalla Mbretërore",
+  "rules.faq.a12": "Bomba është kur luan 4 letra të së njëjtës vlerë (p.sh. 7-7-7-7). Është një lëvizje shumë e rrallë dhe shumë e fuqishme:\n\n• Mund çdo letër të vetme, çift, tresh, shkallë e madje edhe xholat\n• Një Bombë më e lartë (p.sh. 8-8-8-8) mund një Bombë më të ulët (7-7-7-7)\n• E vetmja gjë që mund Bombën është Shkalla Mbretërore",
   "rules.faq.q13": "Çfarë është një Shkallë Mbretërore?",
   "rules.faq.a13": "Shkalla Mbretërore është një shkallë ku të gjitha letrat kanë të njëjtën ngjyrë (p.sh. 3♠-4♠-5♠-6♠-7♠).\n\n• Mund çdo kombinim tjetër, përfshirë Bombën më të fortë (2-2-2-2)\n• Një Shkallë Mbretërore më e lartë mund një më të ulët\n• Është kombinimi më i fuqishëm i lojës!",
   "rules.faq.q14": "A mund të kaloj kur të dua?",
   "rules.faq.a14": "Mund të kalosh vetëm nëse ka një kombinim aktiv në tavolinë. Nëse je i pari që luan në raund (ose ke fituar raundin e mëparshëm), DUHET të luash një kombinim: nuk mund të kalosh.\n\nKujdes: kalimi NUK të përjashton nga pjesa tjetër e raundit. Nëse më pas dikush tjetër luan një letër më të fortë dhe radha të kthehet ty, mund të provosh ta mundësh — mbetesh jashtë vetëm kur mbaron letrat.",
   "rules.faq.q15": "Sa letra shpërndahen?",
-  "rules.faq.a15": "• 2 lojtarë: 14 letra secili — 26 mbeten të mbuluara dhe të papërdorura, kështu që letrat nuk mund të nxirren me eliminim\n• 3 lojtarë: 18 letra secili (i gjithë mazhi)\n• 4 lojtarë: 14 letra dy lojtarëve, 13 dy të tjerëve (54 nuk ndahet saktësisht me 4, mazhi i plotë)\n\nMe 3 dhe 4 lojtarë, 3♠ dhe të dy Xholat janë gjithmonë në lojë. Me 2 lojtarë ato mund të bien mes 26 letrave të pashpërndara — nëse kjo ndodh me 3♠, fillon kush ka letrën më të ulët në lojë.",
+  "rules.faq.a15": "• 2 lojtarë: 14 letra secili — 26 mbeten të mbuluara dhe të papërdorura, kështu që letrat nuk mund të nxirren me eliminim\n• 3 lojtarë: 18 letra secili (i gjithë mazhi)\n• 4 lojtarë: 14 letra dy lojtarëve, 13 dy të tjerëve (54 nuk ndahet saktësisht me 4, mazhi i plotë)\n\nMe 3 dhe 4 lojtarë, 3♠ dhe të dy xholat janë gjithmonë në lojë. Me 2 lojtarë ato mund të bien mes 26 letrave të pashpërndara — nëse kjo ndodh me 3♠, fillon kush ka letrën më të ulët në lojë.",
   "rules.faq.q16": "Si funksionon Rivanshi online?",
   "rules.faq.a16": "Në modalitetin Online, rivanshi është demokratik:\n\n• Të gjithë lojtarët shohin butonin \"Rivansh\" në ekranin e fundit të ndeshjes\n• Një lojë e re fillon VETËM kur TË GJITHË lojtarët kanë klikuar Rivansh\n• Numëruesi tregon në kohë reale sa kanë votuar tashmë (p.sh. 2/4 duan të luajnë)\n• Nëse jo të gjithë votojnë, mund të dalësh gjithmonë duke shtypur butonin Dil\n\nPikët grumbullohen nga një rivansh në tjetrin, dhe ndeshjen e fiton lojtari (ose çifti) i parë që arrin objektivin — objektivat i gjen te \"Si llogariten pikët?\".",
   "rules.faq.q17": "Si funksionon AI?",
-  "rules.faq.a17": "Çdo kundërshtar i kompjuterit luan në një nga tre nivelet e vështirësisë:\n• Luan (Lehtë): impulsiv dhe i paparashikueshëm\n• Besnik (Normal): e kundërshton çdo raund\n• Gent (Vështirë): i pamëshirshëm, nuk lë asgjë të kalojë\nVështirësia vendos sa fort një bot e kundërshton një raund, dhe kur e lëshon. Gent e ruan një 2, një Xhol ose një Bombë për kur nuk mbetet asgjë e zakonshme për të luajtur; Luan dhe Besnik e shpenzojnë kur stili i tyre thotë të ngulmojnë. Vështirësia nuk ndryshon kurrë cilat kombinime janë të vlefshme.",
+  "rules.faq.a17": "Çdo kundërshtar i kompjuterit luan në një nga tre nivelet e vështirësisë:\n• Luan (Lehtë): impulsiv dhe i paparashikueshëm\n• Besnik (Normal): e kundërshton çdo raund\n• Gent (Vështirë): i pamëshirshëm, nuk lë asgjë të kalojë\nVështirësia vendos sa fort një bot e kundërshton një raund, dhe kur e lëshon. Gent e ruan një 2, një xhol ose një Bombë për kur nuk mbetet asgjë e zakonshme për të luajtur; Luan dhe Besnik e shpenzojnë kur stili i tyre thotë të ngulmojnë. Vështirësia nuk ndryshon kurrë cilat kombinime janë të vlefshme.",
   "rules.faq.q18": "A mbyllet loja menjëherë kur mbaroj letrat e mia?",
   "rules.faq.a18": "Jo! Nëse ka lojtarë të tjerë, loja vazhdon mes tyre. Ti thjesht pret që të mbarojnë. Mund të shohësh pozicionet përfundimtare në ekranin e rezultateve (1°, 2°, 3°, 4°).",
 
@@ -671,6 +681,9 @@ export const sq: Record<keyof typeof en, string> = {
   "result.statTarget": "Objektivi",
   "result.statMode": "Modaliteti",
   "result.home": "Kreu",
+  "result.leaveConfirmTitle": "Të braktiset ndeshja?",
+  "result.leaveConfirmBody": "Ndeshja vazhdon ende. Kthimi te kreu e anulon atë, bashkë me pikët e deritanishme.",
+  "result.leaveConfirmConfirm": "Dil",
   "result.nextHand": "Dora tjetër",
   "result.newMatch": "Ndeshje e re",
   "result.tableStops": "Tavolina ndalon këtu",
@@ -756,8 +769,8 @@ export const sq: Record<keyof typeof en, string> = {
   "tutorial.beat.royal.successNarrative": "SHKALLË MBRETËRORE maç! Asgjë nuk mund ta mundë. Radhë e fituar në stil të madh.",
 
   "tutorial.beat.exchange.title": "Shkëmbimi i letrave",
-  "tutorial.beat.exchange.instruction": "Pas çdo dore, fituesi dhe humbësi shkëmbejnë një letër. Ke fituar dorën e fundit: humbësi tashmë ta ka dhënë automatikisht letrën e tij më të fortë, Xholin e Kuq. Tani zgjidh një letër për t'ia kthyer, me vlerë nga 3 deri në 10.",
-  "tutorial.beat.exchange.tip": "Përjashtimi i dy Xholave: nëse humbësi ka në dorë TË DY Xholat, shkëmbimi nuk ndodh fare — thjesht tregon të dyja letrat, dhe fituesi hap menjëherë radhën tjetër.",
+  "tutorial.beat.exchange.instruction": "Pas çdo dore, fituesi dhe humbësi shkëmbejnë një letër. Ke fituar dorën e fundit: humbësi tashmë ta ka dhënë automatikisht letrën e tij më të fortë, Xholin e kuq. Tani zgjidh një letër për t'ia kthyer, me vlerë nga 3 deri në 10.",
+  "tutorial.beat.exchange.tip": "Përjashtimi i dy xholave: nëse humbësi ka në dorë TË DY xholat, shkëmbimi nuk ndodh fare — thjesht tregon të dyja letrat, dhe fituesi hap menjëherë radhën tjetër.",
   "tutorial.beat.exchange.successNarrative": "Shkëmbimi përfundoi! Kush humbi dorën e mëparshme hap radhën tjetër.",
 
   "tutorial.beat.done.title": "Je gati!",
@@ -822,6 +835,7 @@ export const sq: Record<keyof typeof en, string> = {
   "room.leaveConfirmConfirm": "Largohu",
   "room.shareMessage": "Bashkohu në dhomën time të Murlanit! Kodi: {{code}}",
   "room.fillWithBotsLabel": "Plotëso me bot",
+  "room.botsComingIn": "Botët mund t’i zënë vendet pas {{seconds}}s",
   "room.fillWithBotsSubtitle": "Vendet e lira do të zihen nga lojtarë virtualë",
   "room.fillWithBotsA11yLabel": "Plotëso vendet e lira me bot",
   "room.fillWithBotsA11yHint": "Aktivizoje që kompjuteri të kontrollojë vendet e lira kur fillon loja",
@@ -888,6 +902,7 @@ export const sq: Record<keyof typeof en, string> = {
   "quickmatch.title": "Online",
   "quickmatch.subtitle": "Zgjidh formatin e lojës",
   "quickmatch.subtitleShort": "Zgjidh formatin",
+  "quickmatch.modeCardA11yLabel": "{{mode}}, {{players}}. {{description}}",
   "quickmatch.searching": "Duke kërkuar lojtarë",
   "quickmatch.searchingSubtitle": "Do të të bashkojmë me një lojë sapo të jetë e mundur",
 
@@ -913,14 +928,14 @@ export const sq: Record<keyof typeof en, string> = {
   "achievements.firstWin.desc": "Fito dorën tënde të parë.",
   "achievements.runnerUp.name": "Vendi i Dytë",
   "achievements.runnerUp.desc": "Përfundo një dorë në vendin e dytë.",
-  "achievements.bombardier.name": "Bombardier",
+  "achievements.bombardier.name": "Bombardues",
   "achievements.bombardier.desc": "Fito një dorë pasi ke luajtur një Bombë.",
-  "achievements.purist.name": "Purist",
-  "achievements.purist.desc": "Fito një dorë pa luajtur asnjë Xholi.",
+  "achievements.purist.name": "Puristi",
+  "achievements.purist.desc": "Fito një dorë pa luajtur asnjë xhol.",
   "achievements.wildCard.name": "Karta Xhoker",
-  "achievements.wildCard.desc": "Fito një dorë pasi ke luajtur si Bombë ashtu edhe Xholi.",
+  "achievements.wildCard.desc": "Fito një dorë pasi ke luajtur si një bombë ashtu edhe një xhol.",
   "achievements.minimalist.name": "Fitore e Thjeshtë",
-  "achievements.minimalist.desc": "Fito një dorë pa luajtur Bomba apo Xhola.",
+  "achievements.minimalist.desc": "Fito një dorë pa luajtur bomba apo xhola.",
   "achievements.duelist.name": "Duelisti",
   "achievements.duelist.desc": "Fito një dorë në një lojë me dy lojtarë.",
   "achievements.fullTable.name": "Tavolina e Plotë",
@@ -928,7 +943,7 @@ export const sq: Record<keyof typeof en, string> = {
   "achievements.matchChampion.name": "Kampioni i Ndeshjes",
   "achievements.matchChampion.desc": "Fito një ndeshje të plotë duke arritur pikëzimin final.",
   "achievements.ironWill.name": "Vullnet i Hekurt",
-  "achievements.ironWill.desc": "Fito një ndeshje të plotë pa luajtur Xholi në dorën përfundimtare.",
+  "achievements.ironWill.desc": "Fito një ndeshje të plotë pa luajtur xhol në dorën përfundimtare.",
 
   // ------------------------------------------------------------- profile.*
   "profile.lookTitle": "Pamja",

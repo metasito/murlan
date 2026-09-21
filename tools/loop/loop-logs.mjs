@@ -15,6 +15,7 @@
  */
 import fsNode from "node:fs";
 import path from "node:path";
+import { PLAIN, reportRow } from "./loop-render.mjs";
 
 export const DIR = ".loop-logs";
 
@@ -84,7 +85,7 @@ export function prune(now = Date.now(), fs = fsNode, olderThan = WEEK_MS) {
  */
 export function usageSplit(text) {
   const empty = () => ({ input: 0, output: 0, cacheRead: 0, cacheCreate: 0 });
-  const split = { main: empty(), subagents: empty(), models: {} };
+  const split = { main: empty(), subagents: empty(), models: {}, mainModels: {} };
   const seen = new Set();
 
   for (const line of text.split("\n")) {
@@ -109,7 +110,10 @@ export function usageSplit(text) {
     into.cacheCreate += u.cache_creation_input_tokens ?? 0;
 
     const model = e.message?.model;
-    if (model) split.models[model] = (split.models[model] ?? 0) + 1;
+    if (model) {
+      split.models[model] = (split.models[model] ?? 0) + 1;
+      if (!e.parent_tool_use_id) split.mainModels[model] = (split.mainModels[model] ?? 0) + 1;
+    }
   }
   return split;
 }
@@ -207,7 +211,7 @@ export function sessionRow({
  * and a session that spent money without finishing a ticket (a usage refusal) is a row like any
  * other rather than an adjustment nothing can audit.
  *
- * @param {{append?: Function, mkdir?: Function, exists?: Function, write?: Function}} [io]
+ * @param {{append?: Function, mkdir?: Function, exists?: Function, write?: Function, read?: Function}} [io]
  */
 export function ledger(io = {}) {
   const {
@@ -215,28 +219,32 @@ export function ledger(io = {}) {
     mkdir = () => fsNode.mkdirSync(DIR, { recursive: true }),
     exists = (file) => fsNode.existsSync(file),
     write = (file, text) => fsNode.writeFileSync(file, text, "utf8"),
+    read = (file) => fsNode.readFileSync(file, "utf8"),
   } = io;
 
   const totals = { tickets: 0, landed: 0, parked: 0, cost: 0, ms: 0 };
   /** @type {object[]} */
   const rows = [];
+  /** The report row of every ticket this run closed — what the exit summary prints. */
+  const tickets = [];
 
   return {
     totals,
     rows,
+    tickets,
     /**
      * @param {object} session what `sessionRow` needs
-     * @param {{runId: string, line: string, counts?: boolean}} into the morning report's row, and
-     *   whether this session closes a ticket — a retry round is a session, not a ticket.
+     * @param {{runId: string, report: object, counts?: boolean}} into what `reportRow` renders,
+     *   and whether this session closes a ticket — a retry round is a session, not a ticket.
      */
-    record(session, { runId, line, counts = true }) {
+    record(session, { runId, report, counts = true }) {
       const entry = sessionRow({ ...session, runId });
       mkdir();
       append(ledgerPath(), `${JSON.stringify(entry)}\n`);
 
       const file = reportPath(runId);
       if (!exists(file)) write(file, `# queue-loop ${runId.replace(/-(\d\d)-(\d\d)$/, " $1:$2")}\n\n`);
-      append(file, `${line}\n`);
+      append(file, `${reportRow(report, PLAIN())}\n`);
 
       totals.cost += entry.cost;
       totals.ms += entry.ms;
@@ -244,14 +252,20 @@ export function ledger(io = {}) {
         totals.tickets += 1;
         if (entry.outcome === "landed") totals.landed += 1;
         else totals.parked += 1;
+        tickets.push(report);
       }
       rows.push(entry);
       return entry;
     },
-    /** The closing total, appended under the night's rows. */
-    close(runId, line) {
+    /** The closing total under the night's rows, and the recap above them, under the title. */
+    close(runId, line, recap = "") {
       mkdir();
-      append(reportPath(runId), `\n${line}\n`);
+      const file = reportPath(runId);
+      const titled = exists(file);
+      append(file, `\n${line}\n`);
+      if (!recap || !titled) return;
+      const [title, ...rest] = read(file).split("\n");
+      write(file, [title, "", recap, ...rest].join("\n"));
     },
   };
 }
@@ -269,6 +283,24 @@ export function readLedger(file = ledgerPath()) {
     }
   }
   return rows;
+}
+
+const median = (a) => [...a].sort((x, y) => x - y)[Math.floor(a.length / 2)];
+
+/**
+ * How long each step usually takes, in ms. A session row times A–F in seconds; the merge step is
+ * the supervisor's settle, a `landed` row with no phases, turns or spend, whose clock is the CI wait.
+ *
+ * @param {object[]} rows
+ */
+export function typicalMs(rows) {
+  const by = {};
+  for (const r of rows) {
+    const phases = Object.entries(r.phases ?? {});
+    for (const [k, s] of phases) (by[k] ??= []).push(s * 1000);
+    if (r.outcome === "landed" && !phases.length && !r.turns && !r.cost && r.ms) (by.G ??= []).push(r.ms);
+  }
+  return Object.fromEntries(Object.entries(by).map(([k, a]) => [k, median(a)]));
 }
 
 const HANDOFF_RE = /phase\s+([A-Za-z])\s+next(?: — (.+))?/;

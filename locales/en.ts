@@ -234,6 +234,8 @@ export const en = {
   "home.resumeGame": "Resume game",
   "home.playOnline": "Play online",
   "home.playOnlineSignedOut": "Sign in to play",
+  "home.returnToTable": "Return to your table",
+  "home.returnToTableSublabel": "A seat is still yours",
   "home.modeOffline": "Offline",
   "home.modePlayWithFriends": "Play with friends",
   "home.modeOnline": "Online",
@@ -273,7 +275,16 @@ export const en = {
 
   // -------------------------------------------------------- reactionLayer.*
   "reactionLayer.triggerA11yLabel": "Send a reaction",
-  "reactionLayer.emojiA11yLabel": "Reaction {{emoji}}",
+  "reactionLayer.emojiA11yLabel": "Reaction: {{emoji}}",
+  // A word per glyph, because a screen reader's emoji pronunciation is the OS's, not ours.
+  "reactionLayer.emoji.laugh": "laughing",
+  "reactionLayer.emoji.fire": "fire",
+  "reactionLayer.emoji.frustrated": "frustrated",
+  "reactionLayer.emoji.applause": "applause",
+  "reactionLayer.emoji.shock": "shocked",
+  "reactionLayer.emoji.clown": "clown",
+  "reactionLayer.emoji.bomb": "bomb",
+  "reactionLayer.emoji.crown": "crown",
 
   // ----------------------------------------------------------------- exchange.*
   // Under the card the loser gave, on the felt. The card is the prompt, so the
@@ -671,6 +682,9 @@ export const en = {
   "result.statTarget": "Target",
   "result.statMode": "Mode",
   "result.home": "Home",
+  "result.leaveConfirmTitle": "Leave the match?",
+  "result.leaveConfirmBody": "The match is still being played. Going home discards it and the scores so far.",
+  "result.leaveConfirmConfirm": "Leave",
   "result.nextHand": "Next hand",
   "result.newMatch": "New match",
   "result.tableStops": "The table stops here",
@@ -822,6 +836,7 @@ export const en = {
   "room.leaveConfirmConfirm": "Leave",
   "room.shareMessage": "Join my Murlan room! Code: {{code}}",
   "room.fillWithBotsLabel": "Fill with bots",
+  "room.botsComingIn": "Bots can fill the seats in {{seconds}}s",
   "room.fillWithBotsSubtitle": "Empty seats will be taken by virtual players",
   "room.fillWithBotsA11yLabel": "Fill empty seats with bots",
   "room.fillWithBotsA11yHint": "Turn on to have the computer control empty seats when the game starts",
@@ -888,6 +903,7 @@ export const en = {
   "quickmatch.title": "Online",
   "quickmatch.subtitle": "Choose the game format",
   "quickmatch.subtitleShort": "Choose the format",
+  "quickmatch.modeCardA11yLabel": "{{mode}}, {{players}}. {{description}}",
   "quickmatch.searching": "Finding players",
   "quickmatch.searchingSubtitle": "We'll match you into a game as soon as possible",
 

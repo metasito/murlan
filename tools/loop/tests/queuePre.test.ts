@@ -1,5 +1,8 @@
 // tools/loop/tests/queuePre.test.ts
 import { test, describe } from "node:test";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import assert from "node:assert/strict";
 import {
   CHECKS,
@@ -11,6 +14,7 @@ import {
   summarise,
 } from "../queue-pre.mjs";
 import { FOUND_NOTHING, IF_FOUND } from "../loop-derive.mjs";
+import { listWorktreeDirNames } from "../prune-worktrees.mjs";
 
 describe("misnamedWorktrees", () => {
   test("names a worktree that does not follow the convention", () => {
@@ -130,6 +134,20 @@ describe("namedWorktrees", () => {
     assert.equal(row?.state, "failed");
     assert.equal(row?.stop, 1);
     assert.match(row?.note ?? "", /worktrees:remove -- .*fix-971/);
+  });
+
+  test("reads directories only, so a scratch file beside a worktree does not stop the run", () => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), "worktrees-"));
+    try {
+      mkdirSync(path.join(dir, "agent-1094"));
+      writeFileSync(path.join(dir, "agent-1094.diff"), "diff --git a/x b/x\n");
+      assert.deepEqual(listWorktreeDirNames(dir), ["agent-1094"]);
+      assert.equal(namedWorktrees(listWorktreeDirNames(dir)), null);
+      mkdirSync(path.join(dir, "cost-a5"));
+      assert.equal(namedWorktrees(listWorktreeDirNames(dir))?.stop, 1);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 

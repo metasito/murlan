@@ -45,6 +45,8 @@ import {
   CHECK_BASH_TIMEOUT_MS,
   STALL_MS,
   ticketFacts,
+  exhausted,
+  resumePhase,
 } from "../queue-loop.mjs";
 
 /** Enough IO for `runOnce` to reach a decision without git, the tracker or a `claude` binary. */
@@ -112,6 +114,36 @@ describe("queueLoopArgs", () => {
   test("the spawn carries the ticket number", () => {
     const args = queueLoopArgs(956);
     assert.equal(args[args.indexOf("-p") + 1], "/queue 956");
+  });
+
+  test("the plugins a spawn turns off are ones nothing the loop reads asks for", () => {
+    const args = queueLoopArgs(1);
+    const settings = JSON.parse(readFileSync(args[args.indexOf("--settings") + 1], "utf8"));
+    const off = Object.entries(settings.enabledPlugins).filter(([, on]) => on === false).map(([k]) => k.split("@")[0]);
+    assert.ok(off.length > 0);
+    const root = path.join(import.meta.dirname, "../../..");
+    const queue = readFileSync(path.join(root, ".claude/commands/queue.md"), "utf8");
+    const routed = [...queue.matchAll(/runs `\/([a-z-]+)`/g)].map((m) => `.claude/commands/${m[1]}.md`);
+    assert.ok(routed.length >= 2, "queue.md's routes were not found");
+    for (const file of [".claude/commands/queue.md", ...routed, "docs/agents/RULES.md", "CLAUDE.md"]) {
+      const text = readFileSync(path.join(root, file), "utf8");
+      for (const name of off) assert.ok(!text.includes(`${name}:`), `${file} names a skill of ${name}, which the spawn turns off`);
+    }
+  });
+
+  test("every plugin queue.md sends a session to is one the spawn turns on", () => {
+    const args = queueLoopArgs(1);
+    const { enabledPlugins } = JSON.parse(readFileSync(args[args.indexOf("--settings") + 1], "utf8"));
+    const root = path.join(import.meta.dirname, "../../..");
+    const queue = readFileSync(path.join(root, ".claude/commands/queue.md"), "utf8");
+    const { scripts } = JSON.parse(readFileSync(path.join(root, "package.json"), "utf8"));
+    const refs = [...queue.matchAll(/`(([a-z-]+):[a-z-]+)`/g)].filter((m) => !(m[1] in scripts));
+    const named = new Set(refs.map((m) => m[2]));
+    assert.ok(named.has("mattpocock-skills"), "queue.md's skill references were not found");
+    for (const plugin of named) {
+      const on = Object.entries(enabledPlugins).filter(([k, v]) => k.startsWith(`${plugin}@`) && v === true);
+      assert.equal(on.length, 1, `queue.md names ${plugin}, which loop-settings.json does not turn on`);
+    }
   });
 
   test("streams JSON, which print mode refuses without --verbose", () => {
@@ -549,6 +581,17 @@ describe("runTicket", () => {
     }
   });
 
+  test("a build that never says PHASE C is recorded as C from its first edit, not from a read", async () => {
+    const said = (content: object[]) => JSON.stringify({ type: "assistant", message: { content } });
+    const scout = said([{ type: "text", text: "PHASE B" }, { type: "tool_use", name: "Agent", input: {} }]);
+    const read = said([{ type: "tool_use", name: "Bash", input: { command: "gh issue view 1" } }]);
+    const readOnly = await runTicket(fakeSpawn([scout, read, RESULT]), opts());
+    assert.deepEqual(Object.keys(readOnly.phases), ["B"]);
+    const edit = said([{ type: "tool_use", name: "Edit", input: {} }]);
+    const run = await runTicket(fakeSpawn([scout, read, edit, RESULT]), opts());
+    assert.deepEqual(Object.keys(run.phases).sort(), ["B", "C"]);
+  });
+
   // The marker is repeated on every message of a long phase, not only on the first.
   test("a phase said twice running is one phase, not two openings", async () => {
     const { said, screen } = sink();
@@ -675,6 +718,18 @@ describe("runTicket", () => {
     const right = spawned([init("claude-sonnet-5"), RESULT]);
     const ok = await runTicket(right.spawnFn as never, opts({ at: "E" }));
     assert.deepEqual([right.seen.killed, ok.wrongModel], [[], null]);
+  });
+
+  test("a plugin loop-settings.json does not turn on kills the session and names it", async () => {
+    const withPlugins = (...sources: string[]) =>
+      JSON.stringify({ type: "system", subtype: "init", session_id: "s", model: "claude-opus-5", plugins: sources.map((source) => ({ source })) });
+    const stray = spawned([withPlugins("mattpocock-skills@claude-plugins-official", "ponytail@ponytail"), RESULT]);
+    const run = await runTicket(stray.spawnFn as never, opts({ at: "C" }));
+    assert.deepEqual(stray.seen.killed, ["SIGTERM"]);
+    assert.match(String(run.strayPlugin), /ponytail@ponytail/);
+    const clean = spawned([withPlugins("mattpocock-skills@claude-plugins-official", "agents-md@builtin"), RESULT]);
+    const ok = await runTicket(clean.spawnFn as never, opts({ at: "C" }));
+    assert.deepEqual([clean.seen.killed, ok.strayPlugin], [[], null]);
   });
 
   test("a fix round is named on the board with its round", async () => {
@@ -1067,6 +1122,48 @@ describe("reasonFor", () => {
   });
 });
 
+// #1090 died at 121 turns with six commits and a standing worktree, and was parked for want of a
+// line it had no turn left to write.
+describe("a session cut off mid-phase", () => {
+  const cut = { result: { subtype: "error_max_turns" }, declared: null, stderr: "" };
+
+  test("exhausted() names the turn cap and the dollar cap, and nothing else", () => {
+    assert.equal(exhausted(cut as never), true);
+    assert.equal(exhausted({ stderr: "Budget limit reached ($15.08 of $15); stopping." } as never), true);
+    assert.equal(exhausted({ result: { subtype: "success" }, stderr: "" } as never), false);
+  });
+
+  const at = (phase: string, ticket = 42) => ({ cwd: ".worktrees/agent-42", phase, ticket });
+
+  test("with a live worktree it hands the derived phase on, rather than parking", () => {
+    for (const p of ["B", "C", "D"]) assert.equal(resumePhase(cut as never, at(p) as never, 42), p);
+  });
+
+  // A head that is already pushed is settle's to merge. Handing E back spends a whole session
+  // re-running a gate and a push that are done, and never reaches the open pull request.
+  test("a pushed head is left to settle, never handed back", () => {
+    assert.equal(resumePhase(cut as never, at("E") as never, 42), null);
+    assert.equal(resumePhase(cut as never, at("G") as never, 42), null);
+  });
+
+  test("no worktree, no derivable phase, or another ticket's worktree, is still a park", () => {
+    assert.equal(resumePhase(cut as never, { cwd: null, phase: "C", ticket: 42 } as never, 42), null);
+    assert.equal(resumePhase(cut as never, at("?") as never, 42), null);
+    assert.equal(resumePhase(cut as never, at("C", 955) as never, 42), null);
+    assert.equal(resumePhase(cut as never, null, 42), null);
+  });
+
+  // The dollar cap stops subagents and lets the session run on, so a finished session can carry
+  // that line in its stderr. Declaring anything at all is the test of having chosen an ending.
+  test("a session that declared anything chose its ending, and is untouched", () => {
+    const spent = { result: { subtype: "success" }, stderr: "Budget limit reached ($15.08 of $15)" };
+    for (const declared of [{ handoff: "D" }, { handoff: null, pr: 9 }, { stoodDown: true, why: "lost" }]) {
+      assert.equal(resumePhase({ ...spent, declared } as never, at("C") as never, 42), null);
+    }
+    assert.equal(resumePhase({ ...spent, declared: null } as never, at("C") as never, 42), "C");
+  });
+});
+
 describe("watchBuild", () => {
   const state = (over: object = {}) => ({
     phase: "C",
@@ -1079,6 +1176,13 @@ describe("watchBuild", () => {
   const commits = { calls: [{ name: "Bash", command: "git add -- a.ts && git commit -m 'x'" }] };
   const said: string[] = [];
   const warn = (m: string) => said.push(m);
+
+  test("a message split across stream lines is one build turn", () => {
+    const s = state();
+    watchBuild(s, { ...edits, id: "m1" }, 200, warn);
+    watchBuild(s, { ...edits, id: "m1" }, 200, warn);
+    assert.equal(s.buildTurns, 1);
+  });
 
   test("a commit in phase C is what it is watching for, and ends the watch", () => {
     const s = state();
@@ -1174,7 +1278,7 @@ describe("holdFor", () => {
   // silent terminal reads exactly like a dead one.
   test("a long hold says it is still there, and says when it is back", async () => {
     const said: string[] = [];
-    await holdFor(60, () => false, 5, (m: string) => said.push(m), 10);
+    await holdFor(300, () => false, 5, (m: string) => said.push(m), 20);
     assert.ok(said.length >= 3, `expected several heartbeats, saw ${said.length}`);
     assert.match(said[0], /still waiting — back at \d/);
   });
@@ -1322,6 +1426,7 @@ describe("the land phase", () => {
     return {
       rows,
       start: (letter: string) => rows.push(`start ${letter}`),
+      set: () => {},
       said: (text: string) => rows.push(`said ${text}`),
       close: (state: string, detail: string) => rows.push(`close ${state} ${detail}`),
     };
@@ -1437,6 +1542,14 @@ describe("watchCalls", () => {
     const state = { soloBash: 0, turns: 0 };
     watchCalls(state, { calls: [] } as never);
     assert.equal(state.turns, 0);
+  });
+
+  test("one message's calls on separate stream lines are one batched turn, not two solo ones", () => {
+    const state = { soloBash: 0, turns: 0 };
+    watchCalls(state, { id: "m1", calls: [{ name: "Bash", command: "ls" }] } as never);
+    watchCalls(state, { id: "m1", calls: [{ name: "Bash", command: "pwd" }] } as never);
+    watchCalls(state, { id: "m2", calls: [{ name: "Bash", command: "git status" }] } as never);
+    assert.deepEqual([state.turns, state.soloBash], [2, 1]);
   });
 });
 

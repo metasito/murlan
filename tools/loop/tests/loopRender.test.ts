@@ -1,23 +1,32 @@
 // tools/loop/tests/loopRender.test.ts
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   act,
   activity,
+  ahead,
   bell,
   capabilities,
+  ciLine,
   clockAt,
   closing,
   cols,
   elapsed,
   header,
+  help,
   keybar,
   notice,
   phaseRow,
   progress,
-  queueLine,
+  recap,
   reportRow,
+  runRecap,
   runTotal,
+  stepRow,
+  stepTitle,
   stream,
   tasksDetail,
   theme,
@@ -367,8 +376,20 @@ describe("header", () => {
 
   test("a title far too long for the row is cut, not wrapped", () => {
     const out = rows(strip(header({ ...ticket, title: "x".repeat(400) }, tPlain)));
-    assert.equal(out.length, 3);
+    assert.equal(out.length, 2);
     for (const r of out) assert.ok(cols(r) <= WIDTH, `${cols(r)} cells`);
+  });
+
+  // `resumed` widened the tag by ten cells, and nothing bounded the title's floor against it.
+  test("the tag sheds rather than carrying the box past its own width", () => {
+    for (let columns = 12; columns <= 60; columns++) {
+      const t = theme(capabilities(term({ columns }), {}));
+      for (const q of [ticket.queue, null]) {
+        const out = rows(strip(header({ ...ticket, queue: q }, t)));
+        assert.equal(out.length, 2, `${columns} columns gave ${out.length} rows`);
+        for (const r of out) assert.ok(cols(r) <= t.width, `${cols(r)} cells in ${t.width} at ${columns}`);
+      }
+    }
   });
 
   // A settle pass skipped this call entirely (queue-loop's `settling` branch never runs
@@ -381,21 +402,102 @@ describe("header", () => {
   });
 });
 
+describe("ahead", () => {
+  const typical = { A: 60_000, B: 120_000, C: 600_000, D: 360_000, E: 60_000, F: 60_000, G: 480_000 };
+
+  test("names the next step and what is left to land, from the medians", () => {
+    const [next, land] = ahead("C", typical, tPlain).map(strip);
+    assert.match(next, /next\s+review · ~6m · two independent reviewers/);
+    assert.match(land, /to land\s+~16m after build · then push, close, merge/);
+  });
+
+  test("says nothing it does not know, and nothing at or past the merge step", () => {
+    const land = strip(ahead("C", { D: 360_000 }, tPlain)[1]);
+    assert.ok(!land.includes("~"), `guessed a total with medians missing: ${land}`);
+    assert.deepEqual(ahead("G", typical, tPlain), []);
+    assert.deepEqual(ahead("?", typical, tPlain), []);
+  });
+
+  test("every row fits the width", () => {
+    const narrow = theme(capabilities(term({ columns: MIN_WIDTH + 1 })));
+    for (const r of ahead("A", typical, narrow)) assert.ok(cols(strip(r)) <= narrow.width, r);
+  });
+});
+
+describe("runRecap", () => {
+  const run = {
+    startedAt: new Date(2026, 8, 20, 21, 40).getTime(),
+    now: new Date(2026, 8, 21, 8, 44).getTime(),
+    totals: { tickets: 3, landed: 2, parked: 1, cost: 40.5, ms: 0 },
+    tickets: [
+      { number: 1095, outcome: "landed" },
+      { number: 1096, outcome: "parked", why: "review HOLD twice" },
+    ],
+    ciMs: 2 * 3_600_000,
+    waitMs: 3_600_000,
+  };
+
+  test("what needs the owner comes first, then where the time went", () => {
+    const out = runRecap(run, tPlain).map(strip).join("\n");
+    assert.match(out, /run\s+21:40 → 08:44 · 11:04:00/);
+    assert.match(out, /3 tickets · 2 landed · 1 parked · \$40\.50/);
+    assert.match(out, /needs you\n.*#1096\s+review HOLD twice/);
+    assert.ok(!out.includes("#1095"), "a landed ticket is not something that needs you");
+    assert.match(out, /working 8:04:00 · CI 2:00:00 · waiting 1:00:00/);
+  });
+
+  test("the file's copy keeps UTC, the clock its title is written in", () => {
+    const utc = { ...run, startedAt: Date.UTC(2026, 8, 20, 21, 40), now: Date.UTC(2026, 8, 21, 8, 44), utc: true };
+    assert.match(strip(runRecap(utc, tPlain)[0]), /run\s+21:40 → 08:44/);
+  });
+
+  test("a run with nothing parked has no needs-you heading", () => {
+    assert.ok(!runRecap({ ...run, tickets: [] }, tPlain).join("\n").includes("needs you"));
+  });
+});
+
 describe("keybar", () => {
   // A key bar that lies is worse than no key bar. Every letter it offers is pressed here, against
   // the real handler, and has to do something.
   test("offers nothing the ticker does not bind", () => {
-    for (const [k, word] of KEYS) {
-      const wrote: string[] = [];
-      const out = { isTTY: true, columns: WIDTH + 1, rows: 40, getColorDepth: () => 1, write: (s: string) => wrote.push(s) };
-      const tick = ticker(out as never, out as never, () => wrote.push("opened"));
-      tick.start("C");
-      tick.context({ url: "https://x", log: "x.jsonl" });
-      const before = wrote.length;
-      tick.key(k);
-      tick.stop();
-      assert.ok(wrote.length > before, `"${word}" is offered on ${k}, which does nothing`);
+    const cwd = process.cwd();
+    const dir = mkdtempSync(join(tmpdir(), "keybar-"));
+    process.chdir(dir);
+    try {
+      for (const [k, word] of KEYS) {
+        const wrote: string[] = [];
+        const out = { isTTY: true, columns: WIDTH + 1, rows: 40, getColorDepth: () => 1, write: (s: string) => wrote.push(s) };
+        const tick = ticker(out as never, out as never, () => wrote.push("opened"), () => wrote.push("copied"));
+        tick.context({ number: 7, url: "https://x", log: "x.jsonl", branch: "agent/7-x", pr: "https://x/pr/1", session: "s" });
+        tick.board({ recap: () => ["the run"] });
+        tick.wait("a hold", Date.now() + 60_000);
+        const before = wrote.length;
+        tick.key(k);
+        tick.stop();
+        assert.ok(wrote.length > before, `"${word}" is offered on ${k}, which does nothing`);
+      }
+    } finally {
+      process.chdir(cwd);
+      rmSync(dir, { recursive: true, force: true });
     }
+  });
+
+  test("a key with nothing to act on is not offered", () => {
+    const bare = strip(keybar({}, tPlain));
+    for (const word of ["park", "check now", "pr", "issue", "session", "copy"]) {
+      assert.ok(!new RegExp(`\\b${word}\\b`).test(bare), `"${word}" offered with nothing to act on`);
+    }
+    assert.match(strip(keybar({ offers: { pr: "u", waiting: {} } }, tPlain)), /check now.*pr/);
+  });
+
+  test("a park waiting for its y says so instead of the keys", () => {
+    assert.match(strip(keybar({ parking: "confirm" }, tPlain)), /park this ticket\?.*y confirms/);
+  });
+
+  test("? lists every key and every step's meaning", () => {
+    const out = strip(help(tPlain).join("\n"));
+    for (const [k] of KEYS) assert.ok(out.includes(`   ${k}  `), `${k} missing from help`);
+    for (const [, name] of PHASES) assert.match(out, new RegExp(name));
   });
 
   test("a toggled key says what pressing it again would do", () => {
@@ -457,15 +559,18 @@ describe("tasksDetail", () => {
   });
 });
 
-describe("queueLine", () => {
-  test("a depth that moved shows both readings", () => {
-    const out = queueLine({ implement: 9, triage: 1, wayfinder: 0 }, { implement: 7, triage: 1, wayfinder: 0 }, tPlain);
+describe("recap", () => {
+  const totals = { tickets: 3, landed: 2, parked: 1, ms: 3_600_000, cost: 51.05 };
+
+  test("a depth that moved shows both readings, under how far the run has got", () => {
+    const out = recap(totals, { implement: 9, triage: 1, wayfinder: 0 }, { implement: 7, triage: 1, wayfinder: 0 }, tPlain);
+    assert.match(out, /run\s+3 tickets · 2 landed · 1 parked/);
     assert.match(out, /9→7 to implement/);
     assert.match(out, /1 to triage/);
   });
 
   test("an empty queue says so", () => {
-    assert.match(queueLine({ implement: 1, triage: 0, wayfinder: 0 }, { implement: 0, triage: 0, wayfinder: 0 }, tPlain), /queue\s+empty/);
+    assert.match(recap(totals, { implement: 1, triage: 0, wayfinder: 0 }, { implement: 0, triage: 0, wayfinder: 0 }, tPlain), /queue\s+empty/);
   });
 });
 
@@ -601,6 +706,10 @@ describe("every block fits the width it was given", () => {
         activity(live, t),
         stream(feed, { ms: 1, frame: 0, letter: "D" }, t),
         keybar({ expanded: true, stopping: true }, t),
+        keybar({ parking: "confirm" }, t),
+        help(t).join("\n"),
+        stepRow({ label: "waiting", detail: "usage resets 14:00 · 1:12:04 left", state: "skipped" }, t),
+        activity({ ...live, said: ciLine(1162, { done: 11, total: 14, running: "Browser tests (shard 3 of 4)", failed: null }) }, t),
         closing({ outcome: "landed", number: 998, files: 9, turns: 132, ms: 1_424_000, cost: 3.9 }, t),
         reportRow({ number: 1002, title: "Convert the renderHook-able probes", outcome: "landed", pr: 1023, ms: 3_104_000, cost: 16.76 }, t),
       ];
@@ -659,5 +768,18 @@ describe("the review round on the board", () => {
     assert.match(out.split("\n")[0], /^\s+!\s+checkout\s+the protocol files/);
     assert.match(out, /M CLAUDE\.md/);
     assert.equal(strip(notice("stop", "one line", tPlain)).split("\n").length, 1);
+  });
+});
+
+describe("where a run stands, outside the board", () => {
+  test("the title names the ticket, its step and its time", () => {
+    assert.equal(stepTitle({ number: 7, letter: "C", ticketMs: 65_000 }), `#7 ▸ build · ${elapsed(65_000)}`);
+    assert.match(stepTitle({ number: 7, letter: "C", waitMs: 60_000 }), /^#7 ▸ waiting · .* left$/);
+  });
+
+  test("a CI line names the first red job over whatever is still running", () => {
+    assert.equal(ciLine(9, { done: 3, total: 5, running: "e2e", failed: null }), "PR #9 · CI 3 of 5 jobs · e2e running");
+    assert.equal(ciLine(9, { done: 3, total: 5, running: "e2e", failed: "lint" }), "PR #9 · CI 3 of 5 jobs · lint failed");
+    assert.equal(ciLine(9, { done: 0, total: 0, running: null, failed: null }), "PR #9 · CI 0 of 0 jobs · queued");
   });
 });

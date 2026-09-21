@@ -32,8 +32,9 @@ jest.mock('@/lib/sounds', () => ({
 
 // Reduced motion collapses the card's flight to a single timer, so the pile
 // reaches its settled state on a tick rather than on a spring callback.
+let mockReduceMotion = true;
 jest.mock('@/lib/accessibility', () => ({
-  usePrefersReducedMotion: () => true,
+  usePrefersReducedMotion: () => mockReduceMotion,
   setMotionPreference: () => {},
   getMotionPreference: () => 'off',
 }));
@@ -42,6 +43,7 @@ import { playRoundStart, playRoundWin } from '@/lib/sounds';
 import { GameTable } from '@/components/GameTable';
 import { cardSpokenName } from '@/lib/cardNames';
 import { t } from '@/lib/i18n';
+import { Motion } from '@/lib/theme';
 import type { Card, Combination, GameState, Player } from '@/lib/gameEngine';
 
 const METRICS = {
@@ -51,6 +53,8 @@ const METRICS = {
 
 /** How long the winning cards are held. Mirrors ROUND_WINNER_MS. */
 const HOLD_MS = 1800;
+/** `botMoveDelayMs()`'s default — a bot round winner leads inside the hold. */
+const BOT_DELAY_MS = 1200;
 
 const KING: Card = { id: 'K_hearts', rank: 'K', suit: 'hearts', isJoker: false };
 const ACE: Card = { id: 'A_spades', rank: 'A', suit: 'spades', isJoker: false };
@@ -179,5 +183,50 @@ describe('the pass that closes a round', () => {
     expect(onFelt(KING)).toBeNull();
 
     await r.unmount();
+  });
+
+  describe('with motion on', () => {
+    beforeEach(() => {
+      mockReduceMotion = false;
+    });
+    afterEach(() => {
+      mockReduceMotion = true;
+    });
+
+    const swept = (card: Card) =>
+      within(screen.getByTestId('sweep-cards')).queryByLabelText(cardSpokenName(card, t));
+
+    it('sweeps the winning cards off the felt once the hold ends', async () => {
+      const r = await render(table(LED));
+      await act(async () => r.rerender(table(CLOSED)));
+      await act(async () => {
+        jest.advanceTimersByTime(HOLD_MS + 1);
+      });
+      expect(swept(KING)).toBeTruthy();
+      expect(onFelt(KING)).toBeNull();
+
+      await act(async () => {
+        jest.advanceTimersByTime(Motion.duration.travel);
+      });
+      expect(screen.queryByTestId('sweep-cards')).toBeNull();
+
+      await r.unmount();
+    });
+
+    it('still sweeps them when a bot leads inside the hold', async () => {
+      const r = await render(table(LED));
+      await act(async () => r.rerender(table(CLOSED)));
+      await act(async () => {
+        jest.advanceTimersByTime(BOT_DELAY_MS);
+        r.rerender(
+          table(state({ lastPlayedCombination: single(ACE), lastPlayedBy: 1, roundWinner: 1 }))
+        );
+      });
+      expect(swept(KING)).toBeTruthy();
+      expect(swept(ACE)).toBeNull();
+      expect(onFelt(KING)).toBeNull();
+
+      await r.unmount();
+    });
   });
 });

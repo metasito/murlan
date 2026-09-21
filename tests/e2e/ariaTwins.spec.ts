@@ -26,10 +26,10 @@ test.describe("the aria twins reach the DOM", () => {
     const reportBug = page.getByRole("button", { name: "Segnala un problema" });
     await expect(reportBug).toHaveAttribute("aria-expanded", BOOLEAN);
 
-    await expect(page.getByRole("radio").first()).toHaveAttribute("aria-checked", BOOLEAN);
-    await expect(page.getByRole("button", { name: "Italiano" })).toHaveAttribute(
-      "aria-pressed",
-      BOOLEAN
+    // `aria-pressed` is read off the hand in playedHand.spec.ts; every choice here is a radio.
+    await expect(page.getByRole("radio", { name: "Italiano" })).toHaveAttribute(
+      "aria-checked",
+      "true"
     );
 
     const slider = page.getByRole("slider").first();

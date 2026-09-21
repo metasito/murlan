@@ -15,6 +15,7 @@ import Animated, { FadeIn } from "react-native-reanimated";
 import { hapticMedium, hapticSelection, hapticSuccess } from "@/lib/haptics";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { Avatar } from "@/components/Avatar";
+import { ChoiceChips } from "@/components/ChoiceChips";
 import * as Clipboard from "expo-clipboard";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useQuery } from "@tanstack/react-query";
@@ -26,7 +27,7 @@ import {
 import { useNotification } from "@/context/NotificationContext";
 import { useAuth } from "@/context/AuthContext";
 import { useSocket } from "@/context/SocketContext";
-import { Colors, Spacing, Radius, FontSize, Motion, TOUCH_TARGET_MIN, Type } from '@/lib/theme';
+import { Colors, Spacing, Radius, FontSize, Motion, TOUCH_TARGET_MIN } from '@/lib/theme';
 import { firstTargetFor, TEAMS_PLAYER_COUNT } from "@/lib/gameEngine";
 import type { MatchLength } from "@/lib/gameEngine";
 import { DEFAULT_BOT_PERSONALITY, botBlurbKey } from "@/lib/botPersonalities";
@@ -57,6 +58,9 @@ const COPIED_FOR_MS = Motion.duration.dwell;
  * offer arriving late is what keeps a bot from ever looking like the default.
  */
 export const BOTS_OFFERED_AFTER_MS = 30_000;
+
+/** One second, as the countdown's step and as its ms-to-seconds divisor. */
+const COUNTDOWN_TICK_MS = 1_000;
 
 function BotFillControls({
   fillWithBots,
@@ -152,31 +156,20 @@ function MatchLengthControls({
   return (
     <View style={formatStyles.section}>
       <Text style={formatStyles.label}>{t("room.formatLabel")}</Text>
-      <View style={formatStyles.row}>
-        {(["match", "single"] as MatchLength[]).map((length) => {
-          const selected = value === length;
+      <ChoiceChips
+        choices={(["match", "single"] as MatchLength[]).map((length) => {
           const { title, detail } = copy(length);
-          return (
-            <Pressable
-              key={length}
-              onPress={() => {
-                onChange(length);
-                hapticSelection();
-              }}
-              style={[formatStyles.option, selected && formatStyles.optionActive]}
-              accessibilityLabel={t("lobby.formatA11yLabel", { format: title, detail })}
-              {...a11yState({ role: "radio", selected })}
-            >
-              <Text {...a11yHidden()} style={[formatStyles.optionTitle, selected && formatStyles.optionTitleActive]}>
-                {title}
-              </Text>
-              <Text {...a11yHidden()} style={[formatStyles.optionDetail, selected && formatStyles.optionDetailActive]}>
-                {detail}
-              </Text>
-            </Pressable>
-          );
+          return {
+            value: length,
+            label: title,
+            detail,
+            a11yLabel: t("lobby.formatA11yLabel", { format: title, detail }),
+          };
         })}
-      </View>
+        value={value}
+        onChange={onChange}
+        weight="title"
+      />
     </View>
   );
 }
@@ -189,33 +182,6 @@ const formatStyles = StyleSheet.create({
     color: Colors.textMuted,
     letterSpacing: 2,
   },
-  row: { flexDirection: "row", gap: Spacing.sm },
-  option: {
-    flex: 1,
-    minHeight: TOUCH_TARGET_MIN,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: Spacing.xxs,
-    paddingVertical: Spacing.sm,
-    paddingHorizontal: Spacing.sm,
-    borderRadius: Radius.md,
-    backgroundColor: Colors.bgSurface,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  optionActive: { borderColor: Colors.gold, backgroundColor: Colors.goldMuted },
-  optionTitle: {
-    fontFamily: "Rajdhani_700Bold",
-    fontSize: FontSize.md,
-    color: Colors.textSecondary,
-    letterSpacing: 0.5,
-  },
-  optionTitleActive: { color: Colors.gold },
-  optionDetail: {
-    ...Type.caption,
-    textAlign: "center",
-  },
-  optionDetailActive: { color: Colors.goldLight },
 });
 
 
@@ -352,6 +318,7 @@ export default function RoomScreen() {
 
   const [fillWithBots, setFillWithBots] = useState(false);
   const [botsOffered, setBotsOffered] = useState(false);
+  const [secondsToBots, setSecondsToBots] = useState(BOTS_OFFERED_AFTER_MS / COUNTDOWN_TICK_MS);
   const [botPersonality, setBotPersonality] = useState<BotPersonalityId>(DEFAULT_BOT_PERSONALITY);
   const [matchLength, setMatchLength] = useState<MatchLength>("match");
   const [confirming, setConfirming] = useState<ConfirmRequest | null>(null);
@@ -361,9 +328,20 @@ export default function RoomScreen() {
 
   const isLandscape = useIsLandscape();
 
+  // Counted from a wall-clock start, not from the number of ticks: a
+  // backgrounded tab throttles the interval, and a countdown that trusts its
+  // own ticks then says "12s" long after the offer is due.
   useEffect(() => {
-    const timer = setTimeout(() => setBotsOffered(true), BOTS_OFFERED_AFTER_MS);
-    return () => clearTimeout(timer);
+    const startedAt = Date.now();
+    const timer = setInterval(() => {
+      const left = Math.ceil((BOTS_OFFERED_AFTER_MS - (Date.now() - startedAt)) / COUNTDOWN_TICK_MS);
+      setSecondsToBots(Math.max(0, left));
+      if (left <= 0) {
+        clearInterval(timer);
+        setBotsOffered(true);
+      }
+    }, COUNTDOWN_TICK_MS);
+    return () => clearInterval(timer);
   }, []);
 
   const hasGameState = !!gameState;
@@ -407,8 +385,9 @@ export default function RoomScreen() {
   // Offered, never assumed: the card is not on screen until the host has
   // actually been kept waiting, so a bot can only ever be something they
   // reached for.
-  const showBotFillControls = isHost && room.status === "waiting" && hasEmptySeats && botsOffered;
-  const showMatchmakingToggle = isHost && room.status === "waiting" && hasEmptySeats;
+  const hostIsWaiting = isHost && room.status === "waiting" && hasEmptySeats;
+  const showBotFillControls = hostIsWaiting && botsOffered;
+  const showMatchmakingToggle = hostIsWaiting;
 
   // The button's face is the only feedback there is: nothing else on the
   // screen changes when the code reaches the clipboard, and the haptic below
@@ -493,7 +472,13 @@ export default function RoomScreen() {
       botPersonality={botPersonality}
       onChangeBotPersonality={setBotPersonality}
     />
-  ) : null;
+  ) : (
+    hostIsWaiting && (
+      <Text style={styles.botsComingHint}>
+        {t("room.botsComingIn", { seconds: secondsToBots })}
+      </Text>
+    )
+  );
 
   const StartButton = isHost ? (
     <MenuButton
@@ -506,6 +491,7 @@ export default function RoomScreen() {
       }
       onPress={handleStart}
       disabled={!canStart}
+      size={isLandscape ? "sm" : "md"}
       icon={<Ionicons name="play-circle" size={22} color={canStart ? Colors.bgCard : Colors.textMuted} />}
     />
   ) : (
@@ -748,6 +734,12 @@ const inviteStyles = StyleSheet.create({
 });
 
 const styles = StyleSheet.create({
+  botsComingHint: {
+    color: Colors.textMuted,
+    fontSize: FontSize.sm,
+    textAlign: "center",
+    paddingHorizontal: Spacing.cosy,
+  },
   landscapeBody: {
     flex: 1,
     flexDirection: "row",

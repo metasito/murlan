@@ -4,7 +4,6 @@ import {
   readPersistedPlayerMap,
   seatOfUser,
   scoreKeyForSeat,
-  findViewerSeat,
   buildSeatRoster,
   teamKeyMap,
   restoredMatchOver,
@@ -38,7 +37,7 @@ describe("readPersistedPlayerMap (seat resolution on rejoin)", () => {
   });
 });
 
-describe("seatOfUser / findViewerSeat", () => {
+describe("seatOfUser", () => {
   const playerMap = { 0: "alice", 1: "bob", 3: "dan" };
 
   test("finds the seat for a seated user", () => {
@@ -51,11 +50,6 @@ describe("seatOfUser / findViewerSeat", () => {
     // unseated/unknown viewer believe they are seat 0.
     assert.equal(seatOfUser(playerMap, "stranger"), null);
     assert.notEqual(seatOfUser(playerMap, "stranger"), 0);
-  });
-
-  test("findViewerSeat matches seatOfUser (it's the server-authoritative source for viewerSeatIndex)", () => {
-    assert.equal(findViewerSeat(playerMap, "alice"), 0);
-    assert.equal(findViewerSeat(playerMap, "ghost"), null);
   });
 
   test("seat 0 is only ever returned for the user actually seated there", () => {

@@ -77,7 +77,22 @@ export const LANDING_FRACTION = 0.82;
 export function impactDelayMs(reduceMotion: boolean): number {
   // Under reduced motion FlyingCards skips the flight, so there is nothing to
   // wait for and the feedback fires immediately.
-  return reduceMotion ? 0 : Math.round(FLIGHT_MS * LANDING_FRACTION);
+  return reduceMotion ? 0 : Math.round(Motion.anticipate + FLIGHT_MS * LANDING_FRACTION);
+}
+
+/** How far a card loads against its direction of travel before the throw — #126's Balanced keyframe. */
+export const ANTICIPATE_PX = 3;
+
+/** Where the anticipation leg pulls a card that starts `(dx, dy)` from the pile: straight back, away from it. */
+export function anticipationOffset(dx: number, dy: number): { x: number; y: number } {
+  const len = Math.hypot(dx, dy);
+  if (len === 0) return { x: 0, y: 0 };
+  return { x: (dx / len) * ANTICIPATE_PX, y: (dy / len) * ANTICIPATE_PX };
+}
+
+/** Delay from a play being registered to the turn it hands over being shown — the landing, then its hold. */
+export function handOffDelayMs(reduceMotion: boolean): number {
+  return impactDelayMs(reduceMotion) + landingHoldMs(reduceMotion);
 }
 
 /**
@@ -648,6 +663,18 @@ export function advancePile(state: PileState, combo: Combination, playedBy: numb
   return { prev: state.current, current: combo, playedBy };
 }
 
+export interface PileLayers {
+  onPile: PileState;
+  swept: PileState | null;
+}
+
+export const NO_PILE: PileLayers = { onPile: EMPTY_PILE, swept: null };
+
+/** While the collect sweep runs it is the only drawer of the round's cards. */
+export function collectPile(layers: PileLayers): PileLayers {
+  return { onPile: EMPTY_PILE, swept: layers.onPile };
+}
+
 /**
  * The pass that just closed a round, seen from one state. `processPass`
  * (lib/gameEngine.ts) clears `lastPlayedCombination` and credits `roundWinner`
@@ -860,24 +887,45 @@ export interface ThrownPlayInput {
  * the cards leave would move the pile out from under them mid-flight.
  */
 export function readThrownPlay(input: ThrownPlayInput): ThrownPlay {
-  const { combo, playedBy, players, opponents } = input;
-  const dir = seatDirection(playedBy, input.viewerSeat, players.length);
-
-  const topPlayer = opponents.top?.player;
-  const topDisplayedCount = topPlayer
-    ? displayedHandCount(handCountOf(topPlayer), dir === "top" ? combo.cards.length : 0)
-    : 0;
-  const sidePlayer = dir === "left" || dir === "right" ? opponents[dir]?.player : undefined;
-  const sideDisplayedCount = sidePlayer
-    ? displayedHandCount(handCountOf(sidePlayer), combo.cards.length)
-    : 0;
-
+  const { combo, playedBy, players } = input;
+  const { dir, origin } = seatOrigin(input, playedBy, combo.cards.length);
   const thrower = players[playedBy];
   return {
     dir,
     cards: combo.cards,
     heavy: combo.type === "bomb" || combo.type === "royal_straight",
     emptiedHand: !!thrower && handCountOf(thrower) === 0,
+    origin,
+  };
+}
+
+/** Where a closed round's cards are swept: the winner's seat, nothing leaving its hand. */
+export function sweepOrigin(
+  input: Omit<ThrownPlayInput, "combo" | "playedBy">,
+  winner: number
+): { dx: number; dy: number } {
+  return seatOrigin(input, winner, 0).origin;
+}
+
+function seatOrigin(
+  input: Omit<ThrownPlayInput, "combo" | "playedBy">,
+  seat: number,
+  leaving: number
+): { dir: FlyDirection; origin: { dx: number; dy: number } } {
+  const { players, opponents } = input;
+  const dir = seatDirection(seat, input.viewerSeat, players.length);
+
+  const topPlayer = opponents.top?.player;
+  const topDisplayedCount = topPlayer
+    ? displayedHandCount(handCountOf(topPlayer), dir === "top" ? leaving : 0)
+    : 0;
+  const sidePlayer = dir === "left" || dir === "right" ? opponents[dir]?.player : undefined;
+  const sideDisplayedCount = sidePlayer
+    ? displayedHandCount(handCountOf(sidePlayer), leaving)
+    : 0;
+
+  return {
+    dir,
     origin: flightOrigin({
       dir,
       scale: input.scale,

@@ -22,6 +22,9 @@ jest.mock("@/lib/sounds", () => ({
 }));
 jest.mock("@/lib/haptics", () => ({
   hapticHeavy: jest.fn(),
+  hapticLight: jest.fn(),
+  hapticMedium: jest.fn(),
+  hapticRigid: jest.fn(),
   hapticSuccess: jest.fn(),
   hapticWarn: jest.fn(),
 }));
@@ -33,6 +36,7 @@ function flattenStyle(style: unknown): Record<string, unknown> {
 
 const idleState = () => ({
   isMyTurn: false,
+  currentTurnIndex: 0,
   isFinished: false,
   exchangeActive: false,
   canPass: false,

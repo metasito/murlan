@@ -59,6 +59,21 @@ export const stateAckTimeoutMs = () => timeoutFromEnv("MURLAN_STATE_ACK_TIMEOUT_
 // disconnect hands over to the AI.
 export const botMoveDelayMs = () => timeoutFromEnv("MURLAN_BOT_MOVE_DELAY_MS", 1_200);
 export const sweepIntervalMs = () => timeoutFromEnv("MURLAN_SWEEP_INTERVAL_MS", 5 * 60_000);
+/**
+ * How long a matchmade table waits, once full, before dealing itself.
+ *
+ * Long enough that the last arrival sees the table they joined rather than a
+ * hand already in flight, short enough that nobody reads it as a stall.
+ */
+export const autoStartDelayMs = () => timeoutFromEnv("MURLAN_AUTOSTART_DELAY_MS", 4_000);
+/** One entry per room, deleted when it fires or the room stops being full. */
+export const autoStartTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+export function clearAutoStart(roomId: string) {
+  const t = autoStartTimers.get(roomId);
+  if (t) clearTimeout(t);
+  autoStartTimers.delete(roomId);
+}
 
 /** Whole seconds left on a deadline, floored at 0. Zero when nothing is armed. */
 export function secondsUntil(deadlineMs: number | undefined): number {
@@ -96,6 +111,7 @@ function clearBotTimer(roomId: string) {
 export function clearRoomTimers(roomId: string) {
   clearRoomAfkTimers(roomId);
   clearBotTimer(roomId);
+  clearAutoStart(roomId);
 }
 
 export function lobbyGraceKey(roomId: string, userId: string): string {

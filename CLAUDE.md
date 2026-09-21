@@ -142,7 +142,9 @@ afterwards has already spent one.
   seven cents at a working context — so four `git`/`grep`/`node` one-liners that do not depend on
   each other are one `Bash` call joined by `&&`, or four tool calls in one message, never four turns.
   Split only where a command needs the last one's output.
-- **The database holds real accounts.** `pg_dump` before a schema change, and read `db:push`'s
+- **The database holds no real accounts yet, and the habit is built before it does.** Nothing has
+  shipped, so a reshape loses nothing today — reject a design for losing data only once there is
+  data. `pg_dump` before a schema change, and read `db:push`'s
   rename-or-drop prompt rather than accepting it (`docs/DEPLOY-RUNBOOK.md`). Order a change by
   design, not deploy cost: derive from existing rows → ride an existing jsonb column → new table
   → new column.

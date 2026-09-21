@@ -1,0 +1,9 @@
+{
+  "enabledPlugins": {
+    "mattpocock-skills@claude-plugins-official": true,
+    "superpowers@claude-plugins-official": false,
+    "frontend-design@claude-plugins-official": false,
+    "cowork-plugin-management@synced": false,
+    "ponytail@ponytail": false
+  }
+}

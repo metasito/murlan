@@ -155,6 +155,20 @@ describe("the cached verdict and what a failure prints", () => {
     assert.equal(cleanPassFor(cache, "h2"), undefined);
   });
 
+  test("a pass that deferred a suite opens the build gate but is never replayed as a whole one", () => {
+    const entry = cacheEntry({ failed: [], head: "h1", clean: true, deferred: ["test"] });
+    assert.equal(replays(entry), false);
+    assert.equal(cleanPassFor({ k: entry }, "h1"), entry);
+  });
+
+  test("a whole suite with no memory for it is deferred, not failed, and an --also one still runs", async () => {
+    const ran: string[] = [];
+    const run = async (step: { name: string }) => (ran.push(step.name), { failed: null, text: step.name });
+    const runs = await runAll([{ name: "a" }, { name: "t", after: true }], [{ name: "x" }], run as never, async () => false);
+    assert.deepEqual(ran, ["a", "x"]);
+    assert.deepEqual(runs.map((r: any) => [r.failed, r.deferred?.name ?? null]), [[null, null], [null, "t"], [null, null]]);
+  });
+
   const numbered = (n: number) => Array.from({ length: n }, (_, i) => `line ${i + 1}`).join("\n");
   const quiet = () => undefined;
 
@@ -208,6 +222,18 @@ describe("the cached verdict and what a failure prints", () => {
     const runs = await runAll([{ name: "a" }, { name: "b" }], [{ name: "x" }], run as never);
     assert.deepEqual(events, ["start a", "start b", "end a", "end b", "start x", "end x"]);
     assert.deepEqual(runs.map((r) => r.text), ["a", "b", "x"]);
+  });
+
+  test("a local whole suite waits for the light steps, then goes before an --also one", async () => {
+    const events: string[] = [];
+    const run = async (step: { name: string }) => {
+      events.push(`start ${step.name}`);
+      await new Promise((r) => setImmediate(r));
+      events.push(`end ${step.name}`);
+      return { failed: null, text: step.name };
+    };
+    await runAll([{ name: "a" }, { name: "t", after: true }, { name: "b" }], [{ name: "x" }], run as never);
+    assert.deepEqual(events, ["start a", "start b", "end a", "end b", "start t", "end t", "start x", "end x"]);
   });
 
   // Run under `npm run -s`, as the suite often is: the silent level must not reach the step.

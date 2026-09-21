@@ -39,10 +39,16 @@ import {
   exchangeFlight,
   comboKey,
   advancePile,
+  collectPile,
+  type PileLayers,
+  sweepOrigin,
   roundClosedWithWinner,
   EMPTY_PILE,
   readExchange,
   INACTIVE_EXCHANGE,
+  ANTICIPATE_PX,
+  anticipationOffset,
+  handOffDelayMs,
   impactDelayMs,
   landingHoldMs,
   landSquashScale,
@@ -165,6 +171,33 @@ describe("advancePile", () => {
     // The new play's seat replaces the old one — `prev`'s owner is never
     // asked for, since only `current` is ever named.
     assert.equal(s2.playedBy, 0);
+  });
+});
+
+describe("collectPile", () => {
+  const drawn = (l: PileLayers) =>
+    [l.onPile.prev, l.onPile.current, l.swept?.prev, l.swept?.current].flatMap(
+      (c) => c?.cards.map((card: any) => card.id) ?? []
+    );
+  const pile = advancePile(advancePile(EMPTY_PILE, combo(["a"]), 0), combo(["b", "c"]), 1);
+  const held: PileLayers = { onPile: pile, swept: null };
+
+  test("every card on the felt is drawn exactly once, before and during the sweep", () => {
+    assert.deepEqual(drawn(held).sort(), ["a", "b", "c"]);
+    assert.deepEqual(drawn(collectPile(held)).sort(), ["a", "b", "c"]);
+  });
+
+  test("while the sweep runs it is the only drawer; the felt draws nothing", () => {
+    const l = collectPile(held);
+    assert.deepEqual(l.onPile, EMPTY_PILE);
+    assert.equal(l.swept, pile);
+  });
+
+  test("a lead during the sweep lands on the felt without touching the swept cards", () => {
+    const swept = collectPile(held);
+    const next = { ...swept, onPile: advancePile(swept.onPile, combo(["d"]), 1) };
+    assert.deepEqual(drawn(next).sort(), ["a", "b", "c", "d"]);
+    assert.equal(next.swept, pile);
   });
 });
 
@@ -503,7 +536,7 @@ describe("readExchange", () => {
 
 
 describe("impact feedback is timed to the card landing, not to the throw", () => {
-  test("a played card takes 213ms to reach the pile", () => {
+  test("a played card takes 253ms to reach the pile — the anticipation leg, then the flight", () => {
     // Sound, haptics and the bomb shake are scheduled against this. When they
     // fired at throw time instead, the bang arrived a third of a second before
     // the card that caused it.
@@ -513,7 +546,8 @@ describe("impact feedback is timed to the card landing, not to the throw", () =>
     // Motion, 300 in the Scale mockup, 380 here) for what #126 settled once.
     assert.equal(FLIGHT_MS, 260);
     assert.equal(LANDING_FRACTION, 0.82);
-    assert.equal(impactDelayMs(false), 213);
+    assert.equal(Motion.anticipate, 40);
+    assert.equal(impactDelayMs(false), 253);
   });
 
   test("under reduced motion there is no flight to wait for", () => {
@@ -530,6 +564,26 @@ describe("impact feedback is timed to the card landing, not to the throw", () =>
 });
 
 //
+describe("the anticipation leg and the hand-off", () => {
+  test("the load pulls the card straight back, away from the pile", () => {
+    assert.deepEqual(anticipationOffset(0, 100), { x: 0, y: ANTICIPATE_PX });
+    assert.deepEqual(anticipationOffset(-100, 0), { x: -ANTICIPATE_PX, y: 0 });
+    assert.deepEqual(anticipationOffset(0, 0), { x: 0, y: 0 });
+  });
+
+  test("the flight spends the anticipation step on every axis before it travels", () => {
+    const src = readFileSync(path.join(repoRoot, "components", "table", "pile.tsx"), "utf8");
+    assert.match(src, /anticipationOffset\(dx, dy\)/);
+    assert.equal(src.match(/withTiming\([^()]*, anticipate\)/g)?.length, 3);
+    assert.match(src, /arcY\.value = withDelay\(\s*Motion\.anticipate,/);
+  });
+
+  test("the turn is handed over once the card has landed and held", () => {
+    assert.equal(handOffDelayMs(false), impactDelayMs(false) + landingHoldMs(false));
+    assert.equal(handOffDelayMs(true), 0);
+  });
+});
+
 describe("the table holds still at the landing frame", () => {
   test("a landed card gets a beat before its aftermath runs", () => {
     assert.equal(landingHoldMs(false), Hold.land);
@@ -1745,7 +1799,9 @@ describe("readThrownPlay", () => {
   };
 
   const read = (players: Player[], playedBy: number, combo = PAIR) =>
-    readThrownPlay({
+    readThrownPlay(readInput(players, playedBy, combo));
+  const readInput = (players: Player[], playedBy: number, combo = PAIR) =>
+    ({
       combo,
       playedBy,
       viewerSeat: 0,
@@ -1766,6 +1822,14 @@ describe("readThrownPlay", () => {
     const thrown = read(table(2), 2);
     assert.deepEqual(thrown.cards, PAIR.cards);
     assert.equal(thrown.dir, "top");
+  });
+
+  test("the sweep heads for the round winner's seat, its fan at rest", () => {
+    const players = table(3);
+    const { playedBy: _p, combo: _c, ...geometry } = readInput(players, 3);
+    const nothingLeaving = { type: "single", cards: [], strength: 0 } as unknown as Combination;
+    assert.deepEqual(sweepOrigin(geometry, 3), read(players, 3, nothingLeaving).origin);
+    assert.notDeepEqual(sweepOrigin(geometry, 3), sweepOrigin(geometry, 2));
   });
 
   test("a bomb and a royal straight land heavier than anything else", () => {

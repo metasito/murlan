@@ -186,14 +186,14 @@ describe("turnTimerActive", () => {
 
 
 describe("urgentThresholdSeconds", () => {
-  test("the shorter offline clock turns red well before the last five seconds", () => {
-    // 20s offline: five seconds' warning on a clock that short arrives too
-    // late to choose a card with.
+  test("a short clock turns red well before the last five seconds", () => {
+    // 20s: five seconds' warning on a clock that short arrives too late to
+    // choose a card with.
     assert.equal(urgentThresholdSeconds(20), 8);
     assert.ok(urgentThresholdSeconds(20) > URGENT_TICK_SECONDS);
   });
 
-  test("the longer online clock warns proportionally, not identically", () => {
+  test("a longer clock warns proportionally, not identically", () => {
     assert.equal(urgentThresholdSeconds(30), 12);
   });
 

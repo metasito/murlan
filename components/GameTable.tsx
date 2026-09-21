@@ -5,12 +5,8 @@
 // implementation of this. They are now thin adapters: each maps its own state
 // source onto `GameTableProps` and passes its own extras through the slots.
 // Nothing below knows or cares which mode it is running in.
-//
-// Where the two modes genuinely differ the difference is an explicit prop or a
-// slot (`topBarExtra`, `banners`, `overlays`, `turnTimer`) — never an
-// `isOnline &&` branch threaded through the render.
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   View,
   StyleSheet,
@@ -91,7 +87,7 @@ import { useTableFeedback } from "@/components/useTableFeedback";
 import { useHandOrder } from "@/components/useHandOrder";
 import { useSameCards } from "@/components/useSameCards";
 import { useRailSide } from "@/components/useRailSide";
-import { FlyingCards, PlayedPile, getComboLabel, usePileFlight } from "@/components/table/pile";
+import { FlyingCards, PlayedPile, SweepCards, getComboLabel, usePileFlight } from "@/components/table/pile";
 import { warmCourtArt } from "@/components/CardView";
 import { BombBurst, LampLift, Sweep } from "@/components/table/moments";
 import { TopOppSlot, SideOppSlot } from "@/components/table/seats";
@@ -99,7 +95,9 @@ import { ExchangeAnnouncement } from "@/components/ExchangeAnnouncement";
 import { ExchangePrompt } from "@/components/table/ExchangePrompt";
 import {
   playCardSelect,
+  playCardDeselect,
   playCardPlay,
+  playReject,
   playRoundStart,
   playRoundWin,
   playDeal,
@@ -530,12 +528,6 @@ export function GameTable({
   // this box's own clipping, so it needs the box rather than the screen.
   const feltW = W;
   const feltH = H;
-  // The owner's own remedy for an announcement nobody noticed: swing the lamp
-  // off the seat and onto the middle, where the words are. The table's existing
-  // attention mechanism, pointed somewhere else — not a second device.
-  const light = holdingForStart
-    ? LAMP_CENTRE
-    : lightPosition(seatDirection(gameState.currentTurnIndex, viewerSeat, players.length));
 
   // ── Screen-reader table description ─────────────────────────────────────────
   //
@@ -613,6 +605,7 @@ export function GameTable({
   );
 
   const {
+    shownTurnIndex,
     giocaFlashStyle,
     passaFlashStyle,
     giocaGlowStyle,
@@ -630,6 +623,7 @@ export function GameTable({
     burst,
   } = useTableFeedback({
     isMyTurn,
+    currentTurnIndex: gameState.currentTurnIndex,
     isFinished,
     exchangeActive: exchange.active,
     canPass,
@@ -647,6 +641,13 @@ export function GameTable({
     scale,
   });
 
+  // The owner's own remedy for an announcement nobody noticed: swing the lamp
+  // off the seat and onto the middle, where the words are. The table's existing
+  // attention mechanism, pointed somewhere else — not a second device.
+  const light = holdingForStart
+    ? LAMP_CENTRE
+    : lightPosition(seatDirection(shownTurnIndex, viewerSeat, players.length));
+
   const handLiftStyle = useHandLift(
     (isMyTurn && !isFinished && !exchange.active) || exchangeIsMine,
     scale
@@ -654,6 +655,7 @@ export function GameTable({
 
   const {
     pileState,
+    sweep,
     flyInfo,
     flightLanded,
     flinchTrigger,
@@ -738,11 +740,17 @@ export function GameTable({
   // works, and it is what stops the turn clock starting from a blank hand.
   // Only the *submission* is gated on the turn: `staged.playable` already
   // requires it, so GIOCA lights on its own the moment the turn arrives.
+  const handSelection = exchangeIsMine ? (exchangePick ? [exchangePick] : []) : selectedIds;
+  const handSelectionRef = useRef(handSelection);
+  useEffect(() => {
+    handSelectionRef.current = handSelection;
+  });
   const handleCardPress = useCallback(
     (id: string) => {
       if (isFinished || spectating) return;
       hapticSelection();
-      playCardSelect();
+      if (handSelectionRef.current.includes(id)) playCardDeselect();
+      else playCardSelect();
       // An exchange gives exactly one card, so a second tap replaces the pick
       // rather than adding to it.
       if (exchangeIsMine) {
@@ -759,13 +767,14 @@ export function GameTable({
   const handlePlay = useCallback(() => {
     if (!staged.playable) {
       hapticRigid();
+      playReject();
       setRejectHint((prev) => ({ key: (prev?.key ?? 0) + 1, text: dimReasonText }));
       rejectPlay();
       return;
     }
     // Haptic only: the throw is acknowledged in the hand, and card_play sounds
     // when the card actually reaches the pile.
-    hapticMedium();
+    hapticSelection();
     // The validated set, not the raw selection: the server rejects — silently —
     // any request naming a card the hand does not hold.
     onPlay(staged.cards.map((c) => c.id));
@@ -778,6 +787,7 @@ export function GameTable({
   const handleExchangeGive = () => {
     if (!exchangePick) {
       hapticRigid();
+      playReject();
       setRejectHint((prev) => ({
         key: (prev?.key ?? 0) + 1,
         text: t("exchange.confirmA11yWaiting", { name: exchangeLoserName }),
@@ -1104,7 +1114,7 @@ export function GameTable({
               {opponents.top ? (
                 <TopOppSlot
                   player={opponents.top.player}
-                  isActive={opponents.top.seat === gameState.currentTurnIndex}
+                  isActive={opponents.top.seat === shownTurnIndex}
                   cardCount={handCountOf(opponents.top.player)}
                   departing={departingSide === "top" ? departingCount : 0}
                   passed={passed.includes(opponents.top.seat)}
@@ -1128,7 +1138,7 @@ export function GameTable({
                 {opponents.left && (
                   <SideOppSlot
                     player={opponents.left.player}
-                    isActive={opponents.left.seat === gameState.currentTurnIndex}
+                    isActive={opponents.left.seat === shownTurnIndex}
                     side="left"
                     cardCount={handCountOf(opponents.left.player)}
                     departing={departingSide === "left" ? departingCount : 0}
@@ -1213,13 +1223,22 @@ export function GameTable({
                     scale={scale}
                   />
                 )}
+
+                {sweep && (
+                  <SweepCards
+                    pile={sweep.pile}
+                    origin={sweep.origin}
+                    roomW={frame.fieldRoomW}
+                    scale={scale}
+                  />
+                )}
               </View>
 
               <View style={[sharedTableStyles.sideSection, sharedTableStyles.sideSectionRight]}>
                 {opponents.right && (
                   <SideOppSlot
                     player={opponents.right.player}
-                    isActive={opponents.right.seat === gameState.currentTurnIndex}
+                    isActive={opponents.right.seat === shownTurnIndex}
                     side="right"
                     cardCount={handCountOf(opponents.right.player)}
                     departing={departingSide === "right" ? departingCount : 0}
@@ -1256,6 +1275,7 @@ export function GameTable({
               {!spectating && (
                 <PassaButton
                   canPass={canPass}
+                  onlyMove={canPass && !staged.canBeatPile}
                   flashStyle={passaFlashStyle}
                   onPress={handlePass}
                   a11yLabel={t("gameTable.passA11yLabel")}
@@ -1279,9 +1299,7 @@ export function GameTable({
                   <StraightHand
                     faceDown={spectating}
                     cards={handOnTable}
-                    selectedIds={
-                      exchangeIsMine ? (exchangePick ? [exchangePick] : []) : selectedIds
-                    }
+                    selectedIds={handSelection}
                     onPress={handleCardPress}
                     disabled={isFinished || spectating}
                     giveableIds={giveableIds}

@@ -6,7 +6,6 @@
 // with no listener attached, and the client emits on its own `connect`.
 import type { SocketServer, GameSocket as Socket } from "./socketTypes.ts";
 import { roomStore } from "./roomStore.ts";
-import { logger } from "./logger.ts";
 import { trackEvent } from "./events.ts";
 import { onEvent } from "./socketSafety.ts";
 import { socketRoomMap, spectatorRoomMap } from "./gameRoom.ts";
@@ -20,6 +19,13 @@ import {
   announceRoomChanged,
 } from "./socketTable.ts";
 import { applyOrForward } from "./tableRouter.ts";
+import {
+  type LobbyPort,
+  SEAT_CLAIM_REFUSAL,
+  createRoomIntent,
+  joinRoomIntent,
+  spectateRoomIntent,
+} from "./lobbyIntents.ts";
 import {
   NoPayloadSchema,
   RoomCreateSchema,
@@ -39,66 +45,32 @@ export interface RoomHandlerContext {
 
 export function registerRoomHandlers({ io, socket, userId }: RoomHandlerContext) {
 
-    onEvent(
-      socket,
-      "room:create",
-      RoomCreateSchema,
-      async ({ gameMode, maxPlayers }) => {
-        if (teamsSizeRefusal((p) => socket.emit("room:error", p), gameMode, maxPlayers)) return;
-        const room = await roomStore.createRoom(userId, gameMode, maxPlayers, "private");
-        await roomStore.addRoomPlayer(room.id, userId, 0);
+    const lobby: LobbyPort = {
+      userId,
+      socketId: socket.id,
+      store: roomStore,
+      seats: socketRoomMap,
+      watching: spectatorRoomMap,
+      refuse: (refusal) => socket.emit("room:error", refusal),
+      sendState: (state) => socket.emit("room:state", state),
+      broadcastState: (roomId, state) => io.to(roomId).emit("room:state", state),
+      join: (roomId) => socket.join(roomId),
+      leave: (roomId) => socket.leave(roomId),
+      roomState: roomStatePayload,
+      table: (draft) => applyOrForward(io, draft),
+      announceFilled: (room, seated) => announceIfFilled(io, room, seated),
+      track: trackEvent,
+    };
 
-        socket.join(room.id);
-        socketRoomMap.set(socket.id, room.id);
+    onEvent(socket, "room:create", RoomCreateSchema, (p) => createRoomIntent(lobby, p), {
+      limit: 5,
+      windowMs: 60_000,
+    });
 
-        const players = await roomStore.getRoomPlayers(room.id);
-        socket.emit("room:state", await roomStatePayload(room, players));
-        logger.info({ roomId: room.id, userId }, "Room created");
-      },
-      { limit: 5, windowMs: 60_000 }
-    );
-
-    // ── Spectating ────────────────────────────────────────────────────────
-    //
-    // A spectator is a viewer with no seat, so sanitizeStateForPlayer already
-    // blanks every hand for them and every game handler resolves the actor by
-    // seat and returns. There is no spectator-specific path to get wrong.
-    onEvent(
-      socket,
-      "room:spectate",
-      RoomSpectateSchema,
-      async ({ code }) => {
-        const room = await roomStore.getRoomByCode(code.toUpperCase());
-        if (!room) {
-          socket.emit("room:error", payload("ROOM_NOT_FOUND"));
-          return { ok: false, code: "ROOM_NOT_FOUND" };
-        }
-
-        const admitted = await applyOrForward(io, {
-          kind: "spectate",
-          roomId: room.id,
-          userId,
-        });
-        if (!admitted.ok) {
-          socket.emit(
-            "room:error",
-            admitted.code === "ALREADY_IN_ROOM"
-              ? payload("ALREADY_IN_ROOM")
-              : payload("GAME_NOT_FOUND")
-          );
-          return admitted;
-        }
-
-        const previous = spectatorRoomMap.get(socket.id);
-        if (previous && previous !== room.id) {
-          await applyOrForward(io, { kind: "unspectate", roomId: previous, userId });
-          socket.leave(previous);
-        }
-        spectatorRoomMap.set(socket.id, room.id);
-        socket.join(room.id);
-      },
-      { limit: 10, windowMs: 60_000 }
-    );
+    onEvent(socket, "room:spectate", RoomSpectateSchema, (p) => spectateRoomIntent(lobby, p), {
+      limit: 10,
+      windowMs: 60_000,
+    });
 
     // Through onEvent like every other inbound event, not a bare socket.on.
     // It carries no payload, so validation is moot, but the rate limit and the
@@ -119,40 +91,10 @@ export function registerRoomHandlers({ io, socket, userId }: RoomHandlerContext)
       { limit: 10, windowMs: 60_000 }
     );
 
-    onEvent(
-      socket,
-      "room:join",
-      RoomJoinSchema,
-      async ({ code }) => {
-        const room = await roomStore.getRoomByCode(code.toUpperCase());
-        if (!room) {
-          socket.emit("room:error", payload("ROOM_NOT_FOUND"));
-          return;
-        }
-        if (room.status !== "waiting") {
-          socket.emit("room:error", payload("GAME_ALREADY_STARTED"));
-          return;
-        }
-
-        const claim = await roomStore.claimRoomSeat(room.id, userId);
-        if (!claim.ok) {
-          socket.emit("room:error", SEAT_CLAIM_REFUSAL[claim.reason]);
-          return;
-        }
-
-        socket.join(room.id);
-        socketRoomMap.set(socket.id, room.id);
-
-        const updatedPlayers = await roomStore.getRoomPlayers(room.id);
-        trackEvent("room.joined", userId, {
-          playerCount: updatedPlayers.length,
-          gameMode: claim.room.gameMode,
-        });
-        io.to(room.id).emit("room:state", await roomStatePayload(claim.room, updatedPlayers));
-        await announceIfFilled(io, claim.room, updatedPlayers.length);
-      },
-      { limit: 10, windowMs: 60_000 }
-    );
+    onEvent(socket, "room:join", RoomJoinSchema, (p) => joinRoomIntent(lobby, p), {
+      limit: 10,
+      windowMs: 60_000,
+    });
 
     /**
      * Coming back to a waiting lobby on a new socket. The seat row is the whole
@@ -283,7 +225,7 @@ export function registerRoomHandlers({ io, socket, userId }: RoomHandlerContext)
         }
 
         if (!joinedRoomId) {
-          const room = await roomStore.createRoom(userId, gameMode, maxPlayers, "public");
+          const room = await roomStore.createRoom(userId, gameMode, maxPlayers, "public", true);
           await roomStore.addRoomPlayer(room.id, userId, 0);
           socket.join(room.id);
           socketRoomMap.set(socket.id, room.id);
@@ -317,18 +259,3 @@ export function registerRoomHandlers({ io, socket, userId }: RoomHandlerContext)
       { limit: 10, windowMs: 60_000 }
     );
 }
-
-/**
- * Why a seat claim was refused, in the shape the wire carries it: a stable
- * `code` the client localises, and English fallback text for a client that
- * cannot.
- */
-const SEAT_CLAIM_REFUSAL = {
-  no_room: payload("ROOM_NOT_FOUND"),
-  not_waiting: payload("GAME_ALREADY_STARTED"),
-  full: payload("ROOM_FULL"),
-  held: payload("SEAT_HELD"),
-  already_joined: payload("ALREADY_IN_ROOM"),
-  not_public: payload("ROOM_NOT_FOUND"),
-  empty: payload("ROOM_NOT_FOUND"),
-};
