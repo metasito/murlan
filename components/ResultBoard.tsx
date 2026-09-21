@@ -41,6 +41,7 @@ import { playCountComplete } from "@/lib/sounds";
 import {
   Colors,
   FontSize,
+  Layer,
   Motion,
   motionMs,
   Opacity,
@@ -64,6 +65,11 @@ const ACTION_ICON = 18;
 const STAT_ICON = 14;
 const MEDAL_ICON = 16;
 const RANK_STAGGER_MS = 70;
+const FLAKE_COUNT = 24;
+const FLAKE_MS = Motion.duration.reveal * 2;
+const FLAKE_PHASE_MS = 40;
+const FLAKE_SIZE = 4;
+const FLAKE_FALL = 36;
 const TROPHY_D = 72;
 const TROPHY_D_COMPACT = 56;
 const TROPHY_ICON = 36;
@@ -211,16 +217,73 @@ function RankCard({
   );
 }
 
+/** Where the i-th flake bursts to: a ring whose reach steps every third flake, so it does not read as a circle. */
+function flakeOffset(i: number, reach: number) {
+  const angle = (i / FLAKE_COUNT) * Math.PI * 2;
+  const dist = reach * (0.55 + (i % 3) * 0.225);
+  return { dx: Math.cos(angle) * dist, dy: Math.sin(angle) * dist * 0.7, delay: (i % 4) * FLAKE_PHASE_MS };
+}
+
+function GoldFlake({ index, reach }: { index: number; reach: number }) {
+  const progress = useSharedValue(0);
+  const opacity = useSharedValue(0);
+  const { dx, dy, delay } = flakeOffset(index, reach);
+  useEffect(() => {
+    const easing = Easing.out(Easing.cubic);
+    progress.value = withDelay(delay, withTiming(1, { duration: FLAKE_MS, easing }));
+    opacity.value = withDelay(
+      delay,
+      withSequence(
+        withTiming(1, { duration: FLAKE_MS * 0.15 }),
+        withTiming(0, { duration: FLAKE_MS * 0.85, easing: Easing.in(Easing.quad) })
+      )
+    );
+    return () => {
+      cancelAnimation(progress);
+      cancelAnimation(opacity);
+    };
+  }, [delay, opacity, progress]);
+  const style = useAnimatedStyle(() => {
+    const p = progress.value;
+    return {
+      opacity: opacity.value,
+      transform: [{ translateX: dx * p }, { translateY: dy * p + FLAKE_FALL * p * p }, { rotate: `${p * 180}deg` }],
+    };
+  });
+  return (
+    <Animated.View
+      testID="gold-flake"
+      style={[styles.goldFlake, { backgroundColor: index % 2 ? Colors.goldLit : Colors.goldLight }, style]}
+    />
+  );
+}
+
+function GoldDust({ compact }: { compact: boolean }) {
+  const d = compact ? CELEB_GLOW_D_COMPACT : CELEB_GLOW_D;
+  return (
+    <View
+      pointerEvents="none"
+      style={[styles.goldDust, { width: d, height: d, top: compact ? CELEB_GLOW_TOP_COMPACT : CELEB_GLOW_TOP }]}
+    >
+      {Array.from({ length: FLAKE_COUNT }, (_, i) => (
+        <GoldFlake key={i} index={i} reach={d} />
+      ))}
+    </View>
+  );
+}
+
 function WinnerCelebration({
   name,
   subtitle,
   compact,
   viewerCelebrated,
+  matchOver,
 }: {
   name: string;
   subtitle: string;
   compact: boolean;
   viewerCelebrated: boolean;
+  matchOver: boolean;
 }) {
   const reduceMotion = usePrefersReducedMotion();
   const scale = useSharedValue(0);
@@ -280,6 +343,7 @@ function WinnerCelebration({
       <Animated.View
         style={[styles.celebGlow, compact && styles.celebGlowCompact, glowAnim]}
       />
+      {matchOver && viewerCelebrated && !reduceMotion && <GoldDust compact={compact} />}
       <View
         style={[
           styles.trophyCircle,
@@ -308,6 +372,7 @@ export function ResultBoard({
   celebratedName,
   celebrationSubtitle,
   viewerCelebrated,
+  matchOver,
   rows,
   handCount,
   target,
@@ -328,6 +393,7 @@ export function ResultBoard({
   celebrationSubtitle: string;
   /** Whether the viewing seat is among those `celebratedName` names. */
   viewerCelebrated: boolean;
+  matchOver: boolean;
   /** Already in finishing order. */
   rows: ResultRow[];
   handCount: number;
@@ -551,6 +617,7 @@ export function ResultBoard({
                 subtitle={celebrationSubtitle}
                 compact
                 viewerCelebrated={viewerCelebrated}
+                matchOver={matchOver}
               />
               {stats}
             </View>
@@ -598,6 +665,7 @@ export function ResultBoard({
           subtitle={celebrationSubtitle}
           compact={false}
           viewerCelebrated={viewerCelebrated}
+          matchOver={matchOver}
         />
         {stats}
         <View style={styles.rankSection}>
@@ -701,7 +769,9 @@ const styles = StyleSheet.create({
     borderRadius: Radius.full,
     top: CELEB_GLOW_TOP_COMPACT,
   },
-  trophyCircle: { overflow: "hidden", borderWidth: TROPHY_RING, borderColor: Colors.gold },
+  trophyCircle: { overflow: "hidden", borderWidth: TROPHY_RING, borderColor: Colors.gold, zIndex: Layer.table },
+  goldDust: { position: "absolute", alignItems: "center", justifyContent: "center", zIndex: Layer.felt },
+  goldFlake: { position: "absolute", width: FLAKE_SIZE, height: FLAKE_SIZE, borderRadius: Radius.full },
   trophyGrad: { flex: 1, alignItems: "center", justifyContent: "center" },
   winnerName: {
     fontFamily: "Rajdhani_700Bold",

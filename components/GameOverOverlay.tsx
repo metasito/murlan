@@ -226,6 +226,7 @@ export function GameOverOverlay({
         }
         celebratedName={celebratedName}
         viewerCelebrated={viewerCelebrated}
+        matchOver={match.over}
         celebrationSubtitle={
           match.over
             ? match.isDraw

@@ -154,6 +154,7 @@ export default function ResultScreen() {
       }
       celebratedName={celebratedName}
       viewerCelebrated={viewerCelebrated}
+      matchOver={match.over}
       celebrationSubtitle={
         match.over
           ? match.isDraw
