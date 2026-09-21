@@ -31,8 +31,8 @@ export const sessionMiddleware = session({
   cookie: {
     maxAge: SESSION_MAX_AGE_MS,
     httpOnly: true,
-    // Requires `app.set("trust proxy", 1)` (see server/index.ts): behind
-    // Replit's TLS terminator Express otherwise never considers the connection
+    // Requires `app.set("trust proxy", …)` (see server/app.ts): behind the
+    // host's TLS terminator Express otherwise never considers the connection
     // secure and silently refuses to send this cookie at all.
     secure: isProduction,
     // Deliberately "lax", not "none": the production web build is served from

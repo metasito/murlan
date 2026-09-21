@@ -3,7 +3,9 @@
 // drive their live session. The dev loop needs it; production must not have it.
 import { test, describe, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { isAllowedOrigin } from "../server/cors.ts";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { isAllowedOrigin, trustProxySetting } from "../server/cors.ts";
 
 // @types/node declares NODE_ENV readonly, so it needs the index signature.
 function setNodeEnv(value: string | undefined): void {
@@ -14,22 +16,24 @@ function setNodeEnv(value: string | undefined): void {
 
 const saved = {
   NODE_ENV: process.env.NODE_ENV,
-  REPLIT_DOMAINS: process.env.REPLIT_DOMAINS,
-  REPLIT_DEV_DOMAIN: process.env.REPLIT_DEV_DOMAIN,
+  PUBLIC_HOST: process.env.PUBLIC_HOST,
+  ALLOWED_ORIGINS: process.env.ALLOWED_ORIGINS,
 };
+
+function restore(): void {
+  for (const [key, value] of Object.entries(saved)) {
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
+}
 
 describe("isAllowedOrigin", () => {
   beforeEach(() => {
-    process.env.REPLIT_DOMAINS = "murlan.example.app";
-    delete process.env.REPLIT_DEV_DOMAIN;
+    process.env.PUBLIC_HOST = "murlan.example.app";
+    delete process.env.ALLOWED_ORIGINS;
   });
 
-  afterEach(() => {
-    for (const [key, value] of Object.entries(saved)) {
-      if (value === undefined) delete process.env[key];
-      else process.env[key] = value;
-    }
-  });
+  afterEach(restore);
 
   test("localhost is allowed in development", () => {
     setNodeEnv("development");
@@ -48,6 +52,14 @@ describe("isAllowedOrigin", () => {
     assert.equal(isAllowedOrigin("https://murlan.example.app"), true);
   });
 
+  test("ALLOWED_ORIGINS adds full origins beside PUBLIC_HOST", () => {
+    setNodeEnv("production");
+    process.env.ALLOWED_ORIGINS = "https://a.example.com, http://b.example.com:8080";
+    assert.equal(isAllowedOrigin("https://a.example.com"), true);
+    assert.equal(isAllowedOrigin("http://b.example.com:8080"), true);
+    assert.equal(isAllowedOrigin("https://murlan.example.app"), true);
+  });
+
   test("an unrelated origin is refused either way", () => {
     for (const env of ["development", "production"]) {
       setNodeEnv(env);
@@ -59,5 +71,22 @@ describe("isAllowedOrigin", () => {
     setNodeEnv("production");
     assert.equal(isAllowedOrigin(undefined), true);
     assert.equal(isAllowedOrigin(null), true);
+  });
+});
+
+describe("trustProxySetting", () => {
+  afterEach(restore);
+
+  test("trusts the manifest's proxy hops in production", () => {
+    const { proxyHops } = JSON.parse(
+      readFileSync(path.resolve(import.meta.dirname, "..", "deploy", "runtime.json"), "utf8")
+    );
+    setNodeEnv("production");
+    assert.equal(trustProxySetting(), proxyHops);
+  });
+
+  test("trusts no proxy in development", () => {
+    setNodeEnv("development");
+    assert.equal(trustProxySetting(), false);
   });
 });

@@ -1,0 +1,7 @@
+{
+  "node": 22,
+  "postgres": 16,
+  "sigtermGraceMs": 10000,
+  "proxyHops": 1,
+  "pgConnectionsPerInstance": 15
+}

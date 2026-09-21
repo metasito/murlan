@@ -11,10 +11,10 @@ import { logger } from "./logger.ts";
  * behind the application's own query load: under pool exhaustion a publish
  * waits on `connectionTimeoutMillis` and is then swallowed by the adapter's
  * error handler, which is a silently undelivered game state. It would also
- * spend one of the ten connections Replit is tuned for on a client that never
- * runs a query.
+ * spend one of the application's ten connections on a client that never runs
+ * a query.
  */
-const DEFAULT_POOL_MAX = 4;
+export const DEFAULT_POOL_MAX = 4;
 
 function poolMax(): number {
   const parsed = Number(process.env.MURLAN_SOCKET_ADAPTER_POOL_MAX);
@@ -150,9 +150,6 @@ export async function socketAdapterReady(timeoutMs = 5_000): Promise<void> {
 export function createSocketAdapter() {
   const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
-    ssl: process.env.DATABASE_URL?.includes("neon.tech")
-      ? { rejectUnauthorized: false }
-      : false,
     max: poolMax(),
     connectionTimeoutMillis: 5_000,
     // Never reap an idle client. The `LISTEN` client is checked out rather than
