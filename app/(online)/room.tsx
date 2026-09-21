@@ -469,6 +469,7 @@ export default function RoomScreen() {
       }
       onPress={handleStart}
       disabled={!canStart}
+      size={isLandscape ? "sm" : "md"}
       icon={<Ionicons name="play-circle" size={22} color={canStart ? Colors.bgCard : Colors.textMuted} />}
     />
   ) : (
