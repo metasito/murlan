@@ -210,6 +210,18 @@ describe("the cached verdict and what a failure prints", () => {
     assert.deepEqual(runs.map((r) => r.text), ["a", "b", "x"]);
   });
 
+  test("a local whole suite waits for the light steps, then goes before an --also one", async () => {
+    const events: string[] = [];
+    const run = async (step: { name: string }) => {
+      events.push(`start ${step.name}`);
+      await new Promise((r) => setImmediate(r));
+      events.push(`end ${step.name}`);
+      return { failed: null, text: step.name };
+    };
+    await runAll([{ name: "a" }, { name: "t", after: true }, { name: "b" }], [{ name: "x" }], run as never);
+    assert.deepEqual(events, ["start a", "start b", "end a", "end b", "start t", "end t", "start x", "end x"]);
+  });
+
   // Run under `npm run -s`, as the suite often is: the silent level must not reach the step.
   test("the real runner reports a failing command's exit and output, even under a silent npm", async () => {
     const saved = process.env.npm_config_loglevel;

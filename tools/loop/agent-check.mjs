@@ -84,10 +84,10 @@ export async function runStep(step, spawn = spawnAsync, write = (s) => void proc
   };
 }
 
-/** The local steps at once; an `--also` suite after them, since it competes for the same memory. */
+/** The light steps at once; whole suites after them, one at a time, since they compete for memory. */
 export async function runAll(local, also, run = runStep) {
-  const runs = await Promise.all(local.map((step) => run(step)));
-  for (const step of also) runs.push(await run(step));
+  const runs = await Promise.all(local.filter((s) => !s.after).map((step) => run(step)));
+  for (const step of [...local.filter((s) => s.after), ...also]) runs.push(await run(step));
   return runs;
 }
 
@@ -203,10 +203,10 @@ async function main() {
   extra = also >= 0 ? [byName(process.argv[also + 1])] : [];
   // Refused, not dropped: a mistyped suite that fell out of the list would print the same LOCAL PASS,
   // and the fix round would believe it had run the one CI named.
-  if (extra.some((s) => !s)) {
+  if (extra.some((s) => !s || s.where === "local")) {
     console.error(
-      `agent:check  --also ${process.argv[also + 1] ?? ""} is not a step. One of: ` +
-        STEPS.map((s) => s.name).join(", "),
+      `agent:check  --also ${process.argv[also + 1] ?? ""} is not a delegated step. One of: ` +
+        DELEGATED.map((s) => s.name).join(", "),
     );
     process.exit(1);
   }

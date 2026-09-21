@@ -146,7 +146,7 @@ other `#<m>` is another branch's to fix; do not re-investigate it.
 Fix what CI named, then run the suite it named as well as the usual check:
 
 ```sh
-npm run agent:check -- --also test        # or loop:test, test:native, comments
+npm run agent:check -- --also test:native   # or loop:test, comments; `test` always runs
 ```
 
 Give every `agent:check` run the Bash tool's `timeout: 1500000`; its two-minute default is shorter
