@@ -192,7 +192,7 @@ function WinnerCelebration({
   useEffect(() => {
     opacity.value = withTiming(1, { duration: motionMs("reveal", reduceMotion) });
     if (reduceMotion) {
-      // The swell and the endless glow behind it are the parts with nothing to
+      // The swell and the breathing glow behind it are the parts with nothing to
       // say; the result itself still arrives.
       scale.value = 1;
       cancelAnimation(glow);
@@ -205,8 +205,8 @@ function WinnerCelebration({
         duration: Motion.duration.dwell,
         easing: Easing.inOut(Easing.sin),
       });
-    glow.value = withRepeat(withSequence(breath(1), breath(0.5)), -1, false);
-    glowScale.value = withRepeat(withSequence(breath(1.15), breath(1.0)), -1, false);
+    glow.value = withRepeat(withSequence(breath(1), breath(0.5)), 2, false);
+    glowScale.value = withRepeat(withSequence(breath(1.15), breath(1.0)), 2, false);
     return () => {
       cancelAnimation(glow);
       cancelAnimation(glowScale);
