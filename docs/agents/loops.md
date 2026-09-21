@@ -40,7 +40,7 @@ a free `macos-latest` GitHub runner (#205) — the same flows `maestro.yml` runs
 with the emulator-only failure classes (#185, #186) gone because a Simulator is a process on
 the host rather than a virtualised device. **It runs weekly and on demand** — `schedule:` plus
 `workflow_dispatch:`, no `pull_request` trigger. It has been red on every run since early
-September; #1094 owns it, and `pull_request` returns only after two consecutive green runs on
+September — iOS on #1158, Android on #1156; #1094 owns the trigger, and `pull_request` returns only after two consecutive green runs on
 `main`. `gh run list --workflow=ios.yml` is its current status, not this paragraph.
 
 That job proves the flows still run and the app still renders *something* on device — it does
