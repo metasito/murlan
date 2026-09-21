@@ -311,6 +311,7 @@ export async function endMatchByAgreement(
   game: OnlineGameState,
   writers: GameOverWriters
 ): Promise<void> {
+  game.endedByVote = true;
   await closeMatchWithoutScoring(io, roomId, game, writers, false);
 }
 

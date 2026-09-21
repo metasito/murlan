@@ -28,6 +28,7 @@ const match: PersistedMatch = {
   matchTarget: 21,
   maxPlayers: 4,
   handsPlayed: 2,
+  endedByVote: true,
 };
 
 const seats: PersistedSeats = {

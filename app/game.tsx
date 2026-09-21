@@ -15,7 +15,7 @@ import {
 } from "@/context/gameHooks";
 import { useNotification } from "@/context/NotificationContext";
 import { ConfirmDialog, type ConfirmRequest } from "@/components/ConfirmDialog";
-import { pickGivebackCard } from "@/lib/gameEngine";
+import { pickGivebackCard, TURN_TIMEOUT_MS } from "@/lib/gameEngine";
 import { suspendAI } from "@/lib/e2eAiSuspend";
 import { GameTable } from "@/components/GameTable";
 import { comboKey } from "@/components/flightPhysics";
@@ -32,8 +32,8 @@ const E2E_FAST = process.env.EXPO_PUBLIC_E2E_FAST === "1";
 const AI_DELAY = E2E_FAST ? 0 : 1100;
 /** How long an AI takes to pick its giveback card in the exchange phase. */
 const AI_EXCHANGE_DELAY = E2E_FAST ? 0 : 600;
-/** Local response deadline, equal to the server's AFK timer on purpose (docs/BRIEF.md §3.1). */
-export const HUMAN_TURN_SECONDS = 30;
+/** Local response deadline. Offline there is no server, so the client enforces it. */
+export const HUMAN_TURN_SECONDS = TURN_TIMEOUT_MS / 1000;
 /** Beat before the results screen takes over, so the last play is seen. */
 const RESULT_DELAY = E2E_FAST ? 0 : 800;
 /** Whether a capture state has asked the loop to hold (`lib/e2eAiSuspend.ts`). */

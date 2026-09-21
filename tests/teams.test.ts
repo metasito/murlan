@@ -255,9 +255,9 @@ describe("teams: folding a manche into the match", () => {
   });
 
   describe("with a partner who walked out", () => {
-    // The server's keys: seat 3 is vacated, so team B is one human and a
-    // `bot:3` sentinel that must stay out of the pair's total and out of its
-    // winners.
+    // The server's own shape: every key accumulates, `winEligible` is what
+    // tells a vacated seat apart, and `u3`'s frozen row is the points seat 3
+    // won before leaving.
     const seatOf: Record<string, number> = { p0: 0, p1: 1, p2: 2, p3: 3 };
     const playerMap: Record<number, string> = { 0: "u0", 1: "u1", 2: "u2" };
     const online = {
@@ -270,28 +270,30 @@ describe("teams: folding a manche into the match", () => {
         const seat = seatOf[engineId];
         return seat === undefined ? null : (playerMap[seat] ?? `bot:${seat}`);
       },
-      accumulates: (key: string) => !key.startsWith("bot:"),
+      winEligible: (key: string) => !key.startsWith("bot:"),
+      frozenKeysOf: (engineId: string) => (engineId === "p3" ? ["u3"] : []),
     };
 
-    test("the vacated seat contributes nothing to its pair's total", () => {
+    test("the pair keeps the departed partner's points, frozen", () => {
       const result = foldHandIntoMatch({
         ...online,
         rankings: ["p3", "p1", "p0", "p2"],
-        cumulative: { u0: 9, u2: 8, u1: 12, "bot:3": 30 },
+        cumulative: { u0: 9, u2: 8, u1: 12, u3: 6, "bot:3": 1 },
       });
-      // Team B is u1 alone on 12 + 2 = 14; the sentinel's 30 is not theirs.
-      assert.equal(result.over, false);
-      assert.deepEqual(result.winners, []);
+      // Team B: u1 on 12 + 2, u3's frozen 6, and the takeover's own 1 + 3 = 24.
+      assert.equal(result.over, true);
+      assert.deepEqual(result.winners, ["u1"], "only the partner still there is named");
     });
 
-    test("the pair wins on its human's points alone, and only they are named", () => {
+    test("short of the target, the pair plays on", () => {
       const result = foldHandIntoMatch({
         ...online,
         rankings: ["p1", "p0", "p2", "p3"],
-        cumulative: { u0: 9, u2: 8, u1: 19 },
+        cumulative: { u0: 9, u2: 8, u1: 12, u3: 4 },
       });
-      assert.equal(result.over, true);
-      assert.deepEqual(result.winners, ["u1"]);
+      // Team B: u1 on 12 + 3, plus u3's frozen 4 = 19.
+      assert.equal(result.over, false);
+      assert.deepEqual(result.winners, []);
     });
   });
 });

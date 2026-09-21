@@ -104,17 +104,25 @@ describe("a game invite outlives the socket that would have carried it", {
    */
   test("inviting the same friend to the same room twice leaves one invite", async () => {
     const { host, friend, room } = await hostAndAbsentFriend("twice");
+    const createdAt = async () =>
+      ((await inviteRowsFor(room.roomId)) as { createdAt: Date }[]).map((r) =>
+        r.createdAt.getTime()
+      );
 
+    let first: number[] = [];
     for (let i = 0; i < 3; i++) {
       host.socket.emit("friend:invite", {
         friendUserId: friend.user.id,
         roomCode: room.code,
       });
-      await new Promise((r) => setTimeout(r, 120));
+      await new Promise((r) => setTimeout(r, 120 * DEADLINE_SCALE));
+      if (i === 0) first = await createdAt();
     }
     await new Promise((r) => setTimeout(r, 300 * DEADLINE_SCALE));
 
     assert.equal((await invitesFor(friend.cookie)).length, 1);
+    assert.equal(first.length, 1, "nothing to test: the first invite was never written");
+    assert.deepEqual(await createdAt(), first, "a re-invite renewed the hold (#840)");
   });
 
   /**

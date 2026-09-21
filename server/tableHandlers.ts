@@ -169,7 +169,7 @@ export async function rehydrateGame(
     return "unrestorable";
   }
 
-  const { playerMap, scores, gameMode, matchLength, matchTarget, maxPlayers, handsPlayed } =
+  const { playerMap, scores, gameMode, matchLength, matchTarget, maxPlayers, handsPlayed, endedByVote } =
     restored.match;
   if (
     forUserId !== null &&
@@ -194,13 +194,14 @@ export async function rehydrateGame(
     matchTarget,
     matchLength,
     handsPlayed,
-    matchOver: restoredMatchOver({
+    endedByVote,
+    matchOver: endedByVote || restoredMatchOver({
       matchLength,
       gameMode,
       handOver: restoredState.gameOver,
       scores,
       target: matchTarget,
-      teamOfKey: teamKeyMap(playerMap, restoredPlayers, botSeatsAtStart),
+      teamOfKey: teamKeyMap(playerMap, restoredPlayers, new Map(restored.seats.vacatedSeats)),
       playerCount: restoredPlayers.length,
     }),
     handFlags: restored.handFlags,
@@ -382,9 +383,10 @@ function rematchAnswered(game: OnlineGameState): boolean {
   return votesUnanimous(game.rematchVotes, game);
 }
 
-/** The table was asked during the closing manche and said no. */
+/** The table was asked during the closing manche and said no — or the match
+ *  was ended by the vote, which is never rematched (docs/BRIEF.md §3.1). */
 function rematchRefused(game: OnlineGameState): boolean {
-  return game.matchOver && !tableWantsRematch(game);
+  return !!game.endedByVote || (game.matchOver && !tableWantsRematch(game));
 }
 
 /**
@@ -439,8 +441,11 @@ async function dealVotedManche(
   // `game.matchOver` still holds the just-ended manche's own verdict here —
   // `dealManche` below is what flips it back via `rollMatchForward`.
   const nextFirstSeat = dealFirstSeatFor(game.matchOver, game.dealFirstSeat, playerSetup.length);
+  // Only a manche every seat finished names a real winner and loser; a match
+  // ended by the vote leaves 2 of 4 ranked, and the 2nd finisher would be read
+  // as the loser (docs/BRIEF.md §3.1).
   const newGameState =
-    prevRankings.length >= 2
+    prevRankings.length === playerSetup.length
       ? initializeRematch(playerSetup, room.gameMode, prevRankings, nextFirstSeat)
       : initializeGame(playerSetup, room.gameMode, nextFirstSeat);
   game.dealFirstSeat = nextFirstSeat;
@@ -600,6 +605,36 @@ async function rejoinAction(
   return OK;
 }
 
+/**
+ * The previous match's winner and loser, as engine ids of the roster about to
+ * be dealt. A session lasts until the table breaks up (docs/BRIEF.md §3.1), so
+ * a new match at a standing table opens with the exchange rather than the 3♠.
+ * Empty when there is nothing to carry: no previous match, a manche nobody
+ * played out, a match ended by the vote, or either seat no longer at the table
+ * — every one of which deals the 3♠ opening instead.
+ */
+function carriedRankings(
+  previous: OnlineGameState | undefined,
+  roster: { userId: string }[]
+): string[] {
+  if (!previous || previous.endedByVote) return [];
+  const { players, rankings } = previous.gameState;
+  if (rankings.length !== players.length) return [];
+
+  const seatOfEngineId = new Map(players.map((p, seat) => [p.id, seat]));
+  const newSeatOf = (engineId: string | undefined): number => {
+    const seat = engineId === undefined ? undefined : seatOfEngineId.get(engineId);
+    if (seat === undefined) return -1;
+    const userId = previous.playerMap[seat] ?? previous.vacatedSeats.get(seat)?.userId;
+    return userId === undefined ? -1 : roster.findIndex((r) => r.userId === userId);
+  };
+
+  const winner = newSeatOf(rankings[0]);
+  const loser = newSeatOf(rankings[rankings.length - 1]);
+  if (winner < 0 || loser < 0 || winner === loser) return [];
+  return [`player_${winner}`, `player_${loser}`];
+}
+
 async function startMatchAction(
   io: SocketServer,
   action: Extract<TableAction, { kind: "startMatch" }>
@@ -708,7 +743,11 @@ async function startMatchAction(
     team: teamForSeat(idx, roster.length, room.gameMode),
   }));
 
-  const gameState = initializeGame(playerSetup, room.gameMode);
+  const carried = carriedRankings(previous, roster);
+  const gameState =
+    carried.length > 0
+      ? initializeRematch(playerSetup, room.gameMode, carried)
+      : initializeGame(playerSetup, room.gameMode);
   const { playerMap, botSeatsAtStart } = seatAssignmentsFromRoster(roster);
 
   const firstTarget = firstTargetFor(roster.length);
@@ -877,6 +916,11 @@ async function applyTableAction(
     }
     case "rematchIntent": {
       if (seatOfUser(game, action.userId) === null) return { ok: false, code: "NOT_SEATED" };
+      // `rematchRefused` recomputes the verdict from these intents, so one
+      // arriving after the match is over reverses a table's own stop.
+      if (game.gameState.gameOver && game.matchOver) {
+        return { ok: false, code: "REMATCH_DECLINED" };
+      }
       game.rematchIntents.set(action.userId, action.wants);
       broadcastRematchIntents(io, game);
       return OK;

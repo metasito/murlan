@@ -36,6 +36,12 @@ export interface OnlineGameState {
   handsPlayed: number;
   matchOver: boolean;
   /**
+   * The match was ended by the unanimous vote, not played out. There is no
+   * rematch from one (docs/BRIEF.md §3.1) — the table goes back to the lobby,
+   * and its rankings are partial anyway.
+   */
+  endedByVote?: boolean;
+  /**
    * seat -> combination flags for the *current hand* only, reset whenever one
    * deals. The engine does not track this, and GameResult has no other honest
    * source for playedBomb/playedJoker. Persisted in the game_state envelope so

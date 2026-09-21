@@ -273,3 +273,38 @@ describe("hand-to-hand exchange setup", () => {
     assert.equal(getBestCardFromHand([]), undefined);
   });
 });
+
+describe("the two-joker exception, on a fixed deal", () => {
+  const setup = [0, 1, 2, 3].map((i) => ({
+    name: `p${i}`,
+    type: "human" as const,
+    id: `player_${i}`,
+  }));
+  const hands: Card[][] = [
+    [c("3", "spades"), c("4", "hearts")],
+    [c("5", "clubs"), c("6", "diamonds")],
+    [c("7", "hearts"), c("8", "clubs")],
+    [j("colored"), j("bw")],
+  ];
+
+  test("no card moves, the winner leads, and the phase is closed", () => {
+    const state = initializeRematch(
+      setup,
+      "free_for_all",
+      ["player_0", "player_1", "player_2", "player_3"],
+      0,
+      hands
+    );
+    const phase = state.exchangePhase!;
+    assert.equal(phase.bothJokersException, true);
+    assert.equal(phase.active, false);
+    assert.equal(state.currentTurnIndex, phase.winnerIdx);
+    assert.equal(getStartingPlayerAfterExchange(state), phase.winnerIdx);
+    assert.equal(state.startReason?.type, "won_no_swap");
+    assert.deepEqual(
+      state.players.map((p) => ids(p.hand)),
+      hands.map(ids),
+      "no hand changed"
+    );
+  });
+});

@@ -7,6 +7,7 @@
 //
 // Loads under `node --test`, and under the server — docs/agents/loops.md,
 // "Node's TypeScript loader".
+import { passesToCloseRound } from "./gameEngine.ts";
 import type { Combination, GameMode, GameState, Player } from "./gameEngine.ts";
 
 export interface ReplaySeat {
@@ -107,14 +108,26 @@ export function replayStateAt(replay: ReplayDto, index: number): GameState {
   const at = Math.max(-1, Math.min(index, last));
   const counts = at < 0 ? openingCounts(replay) : replay.moves[at].handCounts;
 
-  // The pile is the newest play at or before `at` — a pass leaves it standing.
+  // The newest play at or before `at`, cleared once the round closed under it
+  // — otherwise the next lead is drawn on top of a dead play.
   let pile: GameState["lastPlayedCombination"] = null;
   let pileSeat = -1;
+  let passes = 0;
   for (let i = 0; i <= at; i++) {
     const move = replay.moves[i];
     if (move.combo) {
       pile = move.combo;
       pileSeat = move.seat;
+      passes = 0;
+      continue;
+    }
+    passes += 1;
+    const active = move.handCounts.filter((n) => n > 0).length;
+    const lastPlayerStillActive = pileSeat >= 0 && (move.handCounts[pileSeat] ?? 0) > 0;
+    if (pile && passes >= passesToCloseRound(active, lastPlayerStillActive)) {
+      pile = null;
+      pileSeat = -1;
+      passes = 0;
     }
   }
 

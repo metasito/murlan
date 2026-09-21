@@ -1014,6 +1014,14 @@ function assertPlayable(state: GameState, combination: Combination): void {
   if (combination.cards.length === 0) {
     throw new Error(`${player.name} played nothing`);
   }
+  if (state.exchangePhase?.active) {
+    throw new Error(`${player.name} cannot play while the exchange is open`);
+  }
+  const played = combination.cards.map((c) => c.id);
+  // Membership alone passes `[7s,7s,7s,7s]` as a bomb: every id is held, once.
+  if (new Set(played).size !== played.length) {
+    throw new Error(`${player.name} played ${played.join(", ")}, which repeats a card`);
+  }
   const held = new Set(player.hand.map((c) => c.id));
   const missing = combination.cards.filter((c) => !held.has(c.id)).map((c) => c.id);
   if (missing.length > 0) {
@@ -1100,25 +1108,32 @@ export function processPlay(state: GameState, combination: Combination): GameSta
   return newState;
 }
 
+/**
+ * Consecutive passes that close a round: every OTHER player still holding
+ * cards. A last player who has gone out is no longer among them, so every
+ * remaining active player must be given a chance to answer — hence no −1
+ * there. `lib/replay.ts` reads the same threshold to fold a stored log back
+ * into a pile, which is why it is exported rather than inline.
+ */
+export function passesToCloseRound(activeCount: number, lastPlayerStillActive: boolean): number {
+  return Math.max(1, lastPlayerStillActive ? activeCount - 1 : activeCount);
+}
+
 export function processPass(state: GameState): GameState {
   // A player leading a new round must play something — passing is not a legal
   // move for them. The engine is the server-authoritative path, so it refuses
   // here rather than relying on the UI. State is returned untouched.
+  if (state.exchangePhase?.active) return state;
   if (state.lastPlayedCombination === null) return state;
 
   const newState = structuredClone(state);
   newState.passCount += 1;
 
-  // The round closes once every OTHER player still holding cards has passed
-  // consecutively. If the player who made the last play has already gone out
-  // they are no longer among the active players, so every remaining active
-  // player must be given a chance to answer — hence the +1 in that case.
   const activeCount = newState.players.filter((p) => p.hand.length > 0).length;
   const lastPlayer = newState.players[newState.lastPlayedBy];
-  const lastPlayerStillActive = !!lastPlayer && lastPlayer.hand.length > 0;
-  const passesNeeded = Math.max(
-    1,
-    lastPlayerStillActive ? activeCount - 1 : activeCount
+  const passesNeeded = passesToCloseRound(
+    activeCount,
+    !!lastPlayer && lastPlayer.hand.length > 0
   );
 
   if (newState.passCount >= passesNeeded) {
@@ -1191,9 +1206,10 @@ export function initializeRematch(
   }[],
   gameMode: GameMode,
   prevRankings: string[],
-  firstSeat = 0
+  firstSeat = 0,
+  dealtHands?: Card[][]
 ): GameState {
-  const { hands } = dealCards(playerSetup.length, firstSeat);
+  const hands = dealtHands ?? dealCards(playerSetup.length, firstSeat).hands;
 
   const players: Player[] = playerSetup.map((setup, i) => ({
     id: setup.id ?? `player_${i}`,
@@ -1490,6 +1506,9 @@ export function initializeGame(
  */
 export const MATCH_TARGETS: readonly number[] = [21, 31, 41, 51];
 
+/** One turn clock online and offline, `docs/BRIEF.md` §3.1. */
+export const TURN_TIMEOUT_MS = 30_000;
+
 /**
  * The escalation ladder for a table of `playerCount` seats.
  *
@@ -1608,7 +1627,11 @@ export function resolveTeamMatch(
   cumulative: Record<string, number>,
   teamOfKey: Record<string, string>,
   target: number,
-  playerCount = 4
+  playerCount = 4,
+  /** Keys that may be named among the winners; a departed partner's points
+   *  still count for the pair (docs/BRIEF.md §3.1) but the seat is never
+   *  crowned. */
+  nameable: (key: string) => boolean = () => true
 ): MatchResolution | null {
   const totals = aggregateTeamScores(cumulative, teamOfKey);
   // The ladder is the seated table's, not the two teams' — a pair races to the
@@ -1620,7 +1643,7 @@ export function resolveTeamMatch(
   return {
     ...resolution,
     winners: Object.entries(teamOfKey)
-      .filter(([, team]) => winningTeams.has(team))
+      .filter(([key, team]) => winningTeams.has(team) && nameable(key))
       .map(([key]) => key),
   };
 }
@@ -1635,10 +1658,11 @@ export function resolveMatchFor(args: {
   teamOfKey: Record<string, string>;
   target: number;
   playerCount: number;
+  nameable?: (key: string) => boolean;
 }): MatchResolution | null {
   const { gameMode, cumulative, teamOfKey, target, playerCount } = args;
   return gameMode === "teams" && Object.keys(teamOfKey).length > 0
-    ? resolveTeamMatch(cumulative, teamOfKey, target, playerCount)
+    ? resolveTeamMatch(cumulative, teamOfKey, target, playerCount, args.nameable)
     : resolveMatch(cumulative, target, playerCount);
 }
 
@@ -1672,6 +1696,12 @@ export interface FoldHandInput {
   winEligible?: (key: string) => boolean;
   /** Engine player id -> team id, for every seat that has one. */
   teamOf?: Record<string, string>;
+  /**
+   * Keys holding points a seat won before its player left. They still count
+   * for that player's pair (docs/BRIEF.md §3.1) and can never be named a
+   * winner — the person behind them is gone. Defaults to none.
+   */
+  frozenKeysOf?: (engineId: string) => string[];
 }
 
 export interface FoldHandResult {
@@ -1714,22 +1744,30 @@ export function foldHandIntoMatch(input: FoldHandInput): FoldHandResult {
   }
   const cumulative = addHandScores(input.cumulative, scorable);
 
+  // Every key with a team, a departed partner's frozen row included: the pair
+  // keeps the points they won (docs/BRIEF.md §3.1). Who may be *named* is
+  // `nameable` below, and never a key nobody is sitting behind.
+  const frozenKeysOf = input.frozenKeysOf ?? (() => []);
+  const frozen = new Set<string>();
   const teamOfKey: Record<string, string> = {};
   for (const [engineId, team] of Object.entries(teamOf)) {
     const key = keyOf(engineId);
-    if (key === null || !winEligible(key)) continue;
-    teamOfKey[key] = team;
+    if (key !== null) teamOfKey[key] = team;
+    for (const frozenKey of frozenKeysOf(engineId)) {
+      teamOfKey[frozenKey] = team;
+      frozen.add(frozenKey);
+    }
   }
+  const nameable = (key: string) => winEligible(key) && !frozen.has(key);
 
   if (length === "single") {
     const championId = rankings[0];
     const championTeam = championId === undefined ? undefined : teamOf[championId];
     if (gameMode === "teams" && championTeam !== undefined) {
-      // A manche is taken by a pair (docs/RULES.md §11), and `teamOfKey`
-      // already holds only the win-eligible keys, so a vacated seat's
+      // A manche is taken by a pair (docs/RULES.md §11), so a vacated seat's
       // partner is named and the seat itself never is.
       const winners = Object.entries(teamOfKey)
-        .filter(([, team]) => team === championTeam)
+        .filter(([key, team]) => team === championTeam && nameable(key))
         .map(([key]) => key);
       return { handByKey, cumulative, target, over: true, winners, isDraw: false };
     }
@@ -1758,12 +1796,16 @@ export function foldHandIntoMatch(input: FoldHandInput): FoldHandResult {
     if (winEligible(key)) winEligibleCumulative[key] = points;
   }
 
+  // A pair races on both partners' points, one of whom may have walked out;
+  // a single seat races on its own, and a vacated one must not cross alone.
+  const teams = gameMode === "teams" && Object.keys(teamOfKey).length > 0;
   const resolution = resolveMatchFor({
     gameMode,
-    cumulative: winEligibleCumulative,
+    cumulative: teams ? cumulative : winEligibleCumulative,
     teamOfKey,
     target,
     playerCount,
+    nameable,
   });
   if (!resolution) {
     return { handByKey, cumulative, target, over: false, winners: [], isDraw: false };

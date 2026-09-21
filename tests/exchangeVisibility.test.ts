@@ -214,6 +214,7 @@ describe("visibleExchangePhase", () => {
         const stored = packPersistedState({ exchangePhase: settled }, {}, 0, "ABC123", {
           playerMap: { 0: "u" },
           scores: { u: 0 },
+          endedByVote: false,
           gameMode: "free_for_all",
           matchLength: "match",
           handsPlayed: 0,

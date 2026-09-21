@@ -15,6 +15,7 @@ import {
   c,
   makePlayer,
   makeState,
+  processPass,
   processPlay,
   type Card,
 } from "./helpers.ts";
@@ -121,5 +122,43 @@ describe("the engine's floor under a play", () => {
     const next = processPlay(opening, combo([c("3", "spades")]));
     assert.equal(next.firstPlayMade, true);
     assert.equal(next.lastPlayedCombination?.cards[0].id, "3_spades");
+  });
+});
+
+describe("a play that cannot happen", () => {
+  const openExchange = {
+    active: true,
+    winnerIdx: 0,
+    loserIdx: 1,
+    cardFromLoser: c("K", "hearts"),
+    bothJokersException: false,
+  };
+
+  test("refuses a combination that names the same card twice", () => {
+    const held = c("5", "spades");
+    const bomb = {
+      type: "bomb" as const,
+      cards: [held, held, held, held],
+      strength: 5,
+    };
+    assert.throws(() => processPlay(table(), bomb), /repeats a card/);
+  });
+
+  test("refuses any play while the exchange is open", () => {
+    const state = table({ exchangePhase: openExchange });
+    assert.throws(
+      () => processPlay(state, combo([c("5", "spades")])),
+      /cannot play while the exchange is open/
+    );
+  });
+
+  test("a pass while the exchange is open changes nothing", () => {
+    const state = table({
+      exchangePhase: openExchange,
+      lastPlayedCombination: combo([c("4", "hearts")]),
+      lastPlayedBy: 1,
+      passCount: 0,
+    });
+    assert.equal(processPass(state), state);
   });
 });

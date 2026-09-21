@@ -202,16 +202,14 @@ export const friendStore = {
     roomId: string,
     inviterId: string,
     inviteeId: string
-  ): Promise<{ created: boolean }> {
-    const [row] = await db
+  ): Promise<void> {
+    await db
       .insert(gameInvites)
       .values({ roomId, inviterId, inviteeId })
       .onConflictDoUpdate({
         target: [gameInvites.roomId, gameInvites.inviteeId],
         set: { inviterId },
-      })
-      .returning({ createdAt: gameInvites.createdAt, id: gameInvites.id });
-    return { created: !!row };
+      });
   },
 
   /**

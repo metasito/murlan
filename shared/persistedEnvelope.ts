@@ -123,6 +123,7 @@ export const persistedMatchSchema = z.object({
   // restores as a match with no manches behind it, which costs the results
   // board one number and never the hand.
   handsPlayed: z.number().int().min(0).catch(0).default(0),
+  endedByVote: z.boolean().catch(false).default(false),
 }, { required_error: "no match state", invalid_type_error: "no match state" });
 
 export type PersistedMatch = z.infer<typeof persistedMatchSchema>;
