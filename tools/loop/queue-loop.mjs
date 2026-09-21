@@ -1370,8 +1370,9 @@ export const UNCOMMITTED_SHARE = 0.35;
  * It cannot commit on the session's behalf — rule 11 forbids `git add -A` precisely because the
  * staging decisions are the session's — so it reports, and the reason reaches the ledger.
  *
- * @param {{phase: string|null, buildTurns: number, committed: boolean, warnedUncommitted: boolean}} state
- * @param {{calls: {name: string, command: string}[]}} fact
+ * @param {{phase: string|null, buildTurns: number, committed: boolean, warnedUncommitted: boolean,
+ *   buildMsg?: string|null}} state
+ * @param {{id?: string|null, calls: {name: string, command: string}[]}} fact
  * @param {number} budget the session's `--max-turns`
  * @param {(line: string) => void} warn
  */
@@ -1399,8 +1400,8 @@ export function watchBuild(state, fact, budget, warn) {
  * last one from a command that did not. It is a number in the ledger, so "did the batching
  * instruction work" is a question the record can answer.
  *
- * @param {{soloBash: number, turns: number}} state
- * @param {{calls: {name: string}[]}} fact
+ * @param {{soloBash: number, turns: number, callMsg?: {id: string|null, calls: number, solo: boolean}}} state
+ * @param {{id?: string|null, calls: {name: string}[]}} fact
  */
 export function watchCalls(state, fact) {
   if (!fact.calls.length) return;

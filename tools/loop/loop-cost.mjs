@@ -60,6 +60,7 @@ function sinceOnly(lines, since) {
   return lines.filter((_, i) => !(firstAt.get(parsed[i]?.session_id) < since));
 }
 
+/** @param {string[]} allLines @param {string} [ticket] @param {string|null} [since] an ISO time */
 export function readTicket(allLines, ticket = "", since = null) {
   const lines = since ? sinceOnly(allLines, since) : allLines;
   /** @type {Record<string, ReturnType<typeof bucket>>} */
@@ -291,6 +292,7 @@ export function report(tickets, ledgerRows = []) {
  * A number is not a date: the loop takes the oldest ticket first, so `1095+` mixes in runs from
  * before whatever change is being measured. `--since` is what a before-and-after is asked with.
  */
+/** @param {string[]} files @param {string | string[]} [args] */
 export function wanted(files, args = []) {
   const picks = [args].flat().filter(Boolean);
   return files.filter((f) => {
