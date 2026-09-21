@@ -352,9 +352,6 @@ export function useTableFeedback({
   // PlayedPile's `bounceTrigger` is the same pattern.
   const [flushTrigger, setFlushTrigger] = useState(0);
 
-  // A pass or a round closing moves nothing on the felt, so only a played card
-  // has a landing for the hand-off to wait for.
-  const handOffDelay = lastPlayedCombination !== null ? handOffDelayMs(reduceMotion) : 0;
   const handOffTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const stingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Keyed by card ids, not the object: every broadcast rebuilds it, and a
@@ -373,14 +370,15 @@ export function useTableFeedback({
   );
 
   const [turn, setTurn] = useState({ seat: currentTurnIndex, shown: currentTurnIndex });
-  if (turn.seat !== currentTurnIndex) {
-    setTurn({ seat: currentTurnIndex, shown: handOffDelay === 0 ? currentTurnIndex : turn.shown });
-  }
+  if (turn.seat !== currentTurnIndex) setTurn({ seat: currentTurnIndex, shown: turn.shown });
   useEffect(() => {
     if (turn.shown === turn.seat) return;
-    const id = setTimeout(() => setTurn((t) => ({ ...t, shown: t.seat })), handOffDelay);
+    const reveal = () => setTurn((t) => ({ ...t, shown: t.seat }));
+    const wait = landsAtRef.current - Date.now();
+    if (wait <= 0) return reveal();
+    const id = setTimeout(reveal, wait);
     return () => clearTimeout(id);
-  }, [turn, handOffDelay]);
+  }, [turn]);
 
   useEffect(() => {
     if (isMyTurn && !isFinished && !prevMyTurnRef.current) {

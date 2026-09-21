@@ -129,6 +129,22 @@ describe("the turn-arrival cue", () => {
     expect(playYourTurn).toHaveBeenCalledTimes(1);
   });
 
+  it("moves the lamp when the card lands, however many passes follow it in flight", async () => {
+    type P = { turn: number; played: unknown };
+    const { result, rerender } = await renderHook(
+      (props: P) => useTableFeedback(state(false, props.turn, props.played)),
+      { initialProps: { turn: 0, played: null } as P }
+    );
+    await rerender({ turn: 1, played: PLAYED });
+    await act(async () => jest.advanceTimersByTime(100));
+    await rerender({ turn: 2, played: PLAYED });
+    await act(async () => jest.advanceTimersByTime(handOffDelayMs(false) - 101));
+    expect(result.current.shownTurnIndex).toBe(0);
+
+    await act(async () => jest.advanceTimersByTime(1));
+    expect(result.current.shownTurnIndex).toBe(2);
+  });
+
   it("drops a pending hand-off cue when the manche ends before it lands", async () => {
     type P = { isMyTurn: boolean; played: unknown; gameOver: boolean };
     const { rerender } = await renderHook(
