@@ -1381,6 +1381,7 @@ describe("the land phase", () => {
     return {
       rows,
       start: (letter: string) => rows.push(`start ${letter}`),
+      set: () => {},
       said: (text: string) => rows.push(`said ${text}`),
       close: (state: string, detail: string) => rows.push(`close ${state} ${detail}`),
     };

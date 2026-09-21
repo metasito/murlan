@@ -260,6 +260,7 @@ describe("usageSplit", () => {
 });
 
 describe("ledger", () => {
+  const report = (title: string) => ({ number: 953, title, outcome: "landed", ms: 60_000, cost: 1.82 });
   const spy = () => {
     const appended: [string, string][] = [];
     const written: [string, string][] = [];
@@ -285,7 +286,7 @@ describe("ledger", () => {
   test("one session is one row, and its money lands in the totals", () => {
     const { io, appended } = spy();
     const book = ledger(io);
-    book.record(session(), { runId: "2026-09-13-04-12", line: "· #953 landed" });
+    book.record(session(), { runId: "2026-09-13-04-12", report: report("x") });
     assert.equal(appended.filter(([f]) => f === "tickets.jsonl").length, 1);
     assert.equal(book.totals.cost, 1.82);
     assert.equal(book.totals.landed, 1);
@@ -297,11 +298,12 @@ describe("ledger", () => {
   test("two sessions on one ticket are two rows, and their costs add", () => {
     const { io } = spy();
     const book = ledger(io);
-    book.record(session({ outcome: "retry" }), { runId: "r", line: "a", counts: false });
-    book.record(session(), { runId: "r", line: "b" });
+    book.record(session({ outcome: "retry" }), { runId: "r", report: report("a"), counts: false });
+    book.record(session(), { runId: "r", report: report("b") });
     assert.equal(book.rows.length, 2);
     assert.equal(book.totals.cost, 3.64);
     assert.equal(book.totals.tickets, 1, "a fix round is a session, not a ticket");
+    assert.deepEqual(book.tickets.map((r) => r.title), ["b"], "the exit summary is one row per ticket");
   });
 
   // A usage refusal spent real money and reached the totals through a second writer, which is why
@@ -309,7 +311,7 @@ describe("ledger", () => {
   test("a session that closed no ticket still records what it spent", () => {
     const { io } = spy();
     const book = ledger(io);
-    book.record(session({ outcome: "refused" }), { runId: "r", line: "x", counts: false });
+    book.record(session({ outcome: "refused" }), { runId: "r", report: report("x"), counts: false });
     assert.equal(book.totals.cost, 1.82);
     assert.equal(book.totals.tickets, 0);
     assert.equal(book.totals.parked, 0);
@@ -318,20 +320,21 @@ describe("ledger", () => {
   test("the report gets its heading once and a row per session after that", () => {
     const { io, appended, written } = spy();
     const book = ledger(io);
-    book.record(session(), { runId: "2026-09-13-04-12", line: "first" });
-    book.record(session(), { runId: "2026-09-13-04-12", line: "second" });
+    book.record(session(), { runId: "2026-09-13-04-12", report: report("first") });
+    book.record(session(), { runId: "2026-09-13-04-12", report: report("second") });
     assert.equal(written.length, 1);
     assert.match(written[0][1], /# queue-loop 2026-09-13 04:12/);
-    assert.deepEqual(
-      appended.filter(([f]) => f.startsWith("run-")).map(([, t]) => t.trim()),
-      ["first", "second"],
-    );
+    const rows = appended.filter(([f]) => f.startsWith("run-")).map(([, t]) => t);
+    assert.equal(rows.length, 2);
+    assert.match(rows[0], /#953 first/);
+    assert.match(rows[1], /#953 second/);
+    assert.ok(rows.every((r) => !r.includes("\u001B")), "the report file is plain text");
   });
 
   test("a park counts against the run rather than for it", () => {
     const { io } = spy();
     const book = ledger(io);
-    book.record(session({ outcome: "parked", merged: false }), { runId: "r", line: "x" });
+    book.record(session({ outcome: "parked", merged: false }), { runId: "r", report: report("x") });
     assert.equal(book.totals.parked, 1);
     assert.equal(book.totals.landed, 0);
   });
@@ -339,7 +342,7 @@ describe("ledger", () => {
   test("the row carries the run that wrote it, without the caller repeating it in session", () => {
     const { io } = spy();
     const book = ledger(io);
-    const entry = book.record(session(), { runId: "2026-09-13-04-12", line: "x" });
+    const entry = book.record(session(), { runId: "2026-09-13-04-12", report: report("x") });
     assert.equal(entry.run_id, "2026-09-13-04-12");
   });
 });

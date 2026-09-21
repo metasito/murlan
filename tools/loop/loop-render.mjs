@@ -145,15 +145,15 @@ export function row(segs, right, t, width = t.width) {
   return left + " ".repeat(gap) + (right ? t.paint(right.c ?? "faint", right.t) : "");
 }
 
-/** A–F are the session's own; `G` is the supervisor's, after it has exited. @type {[string, string][]} */
+/** A–F are the session's own; `G` is the supervisor's, after it has exited. @type {[string, string, string][]} */
 export const PHASES = [
-  ["A", "claim"],
-  ["B", "scope"],
-  ["C", "build"],
-  ["D", "review"],
-  ["E", "push"],
-  ["F", "close"],
-  ["G", "merge"],
+  ["A", "claim", "takes the ticket, makes its worktree, posts the Definition of done"],
+  ["B", "scope", "one subagent maps every place the change has to touch"],
+  ["C", "build", "writes the change, a commit per slice, then the local checks"],
+  ["D", "review", "two independent reviewers read the diff; LAND or HOLD"],
+  ["E", "push", "pushes the reviewed head and readies the pull request"],
+  ["F", "close", "ticks the Definition of done against the code"],
+  ["G", "merge", "waits for ci.yml on that head, then merges"],
 ];
 
 export const LAND = "G";
@@ -484,19 +484,43 @@ export function header({ number, title, size, url, queue }, t) {
 export const KEYS = [
   ["e", "expand", "collapse"],
   ["s", "stop after this", "● stopping after this"],
-  ["o", "issue", null],
-  ["l", "log", null],
+  ["k", "park", "● parking after this", "ticket"],
+  ["w", "check now", null, "waiting"],
+  ["p", "pr", null, "pr"],
+  ["o", "issue", null, "url"],
+  ["l", "log", null, "log"],
+  ["t", "session", null, "session"],
+  ["c", "copy", null, "log"],
+  ["?", "keys", "close keys"],
 ];
 
-export function keybar({ expanded = false, stopping = false } = {}, t) {
+/** What `?` shows: every key, then every step, from the same two tables the board draws from. */
+export function help(t) {
+  const keys = KEYS.map(([k, off]) => row([{ t: `   ${k}  `, c: "accent", b: true }, { t: off, c: "muted" }], null, t));
+  const steps = PHASES.map(([, name, meaning]) =>
+    row([{ t: `   ${name.padEnd(8)}`, c: "muted" }, { t: clamp(meaning, Math.max(0, t.width - 11)), c: "faint" }], null, t),
+  );
+  return [...keys, "", ...steps];
+}
+
+/**
+ * @param {{expanded?: boolean, stopping?: boolean, parking?: false|"confirm"|"asked", help?: boolean,
+ *   offers?: Record<string, unknown>}} view `offers` holds what a conditional key needs; a key whose
+ *   fourth column names something absent from it is not offered.
+ */
+export function keybar({ expanded = false, stopping = false, parking = false, help: open = false, offers = {} } = {}, t) {
+  if (parking === "confirm") {
+    return row([{ t: "   k", c: "accent", b: true }, { t: " park this ticket?  y confirms · any other key cancels", c: "warn" }], null, t);
+  }
   // A pending stop rides on the key that set it rather than on a badge of its own: one place to
   // look for what `s` did, and no second element competing for the right-hand edge.
-  const state = { e: expanded, s: stopping };
+  const state = { e: expanded, s: stopping, k: parking === "asked", "?": open };
   // Dropped from the right rather than truncated: half a key name is worse than one fewer key, and
   // the leftmost are the ones worth keeping.
   const segs = [{ t: "   ", c: "faint" }];
   let used = 3;
-  for (const [k, off, on] of KEYS) {
+  for (const [k, off, on, needs] of KEYS) {
+    if (needs && !offers[needs]) continue;
     const word = state[k] && on ? on : off;
     const cost = (used > 3 ? 3 : 0) + 2 + cols(word);
     if (used + cost > t.width) break;
@@ -666,6 +690,22 @@ export function reportRow({ number, title, outcome, pr, ms, cost, why }, t) {
   );
   if (!wraps) return line;
   return [line, ...wrap(reason, t.width - 6).map((l) => t.paint("faint", `      ${l}`))].join("\n");
+}
+
+/**
+ * The terminal's title, so where a run stands is visible from another window.
+ * @param {{number: number, letter?: string, round?: number|null, waitMs?: number|null, ticketMs?: number|null}} at
+ */
+export function stepTitle({ number, letter, round = null, waitMs = null, ticketMs = null }) {
+  const step =
+    waitMs != null ? `waiting · ${elapsed(waitMs)} left` : letter && letter !== UNNAMED ? labelFor(letter, round) : "starting";
+  return [`#${number} ▸ ${step}`, ticketMs == null ? null : elapsed(ticketMs)].filter(Boolean).join(" · ");
+}
+
+/** The merge step's live line: the first red job is named the moment it goes red. */
+export function ciLine(pr, { done, total, running, failed }) {
+  const now = failed ? `${failed} failed` : running ? `${running} running` : "queued";
+  return `PR #${pr} · CI ${done} of ${total} jobs · ${now}`;
 }
 
 /** Greedy word wrap. A word longer than the room is cut; nothing is allowed past `room`. */

@@ -2,6 +2,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import {
+  ciProgress,
   decideVerdict,
   failingTestIds,
   ghExecOptions,
@@ -304,5 +305,17 @@ describe("readHeadCi", () => {
     assert.equal(out.pr, null);
     const list = asked.find((a) => a[0] === "pr" && a[1] === "list");
     assert.equal(list?.[list.indexOf("--json") + 1], "number");
+  });
+});
+
+describe("a run still going", () => {
+  test("counts finished jobs and names the first red one", () => {
+    const p = ciProgress([
+      { name: "lint", conclusion: "failure", status: "completed", steps: 3 },
+      { name: "unit", conclusion: "success", status: "completed", steps: 3 },
+      { name: "e2e", conclusion: null, status: "in_progress", steps: 2 },
+      { name: "build", conclusion: null, status: "queued", steps: 0 },
+    ]);
+    assert.deepEqual(p, { done: 2, total: 4, running: "e2e", failed: "lint" });
   });
 });

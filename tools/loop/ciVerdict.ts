@@ -13,6 +13,25 @@ export interface JobRow {
   name: string;
   conclusion: string | null;
   steps: number;
+  status?: string;
+}
+
+/** How far a run still going has got, for the board. It says nothing about the verdict. */
+export interface CiProgress {
+  done: number;
+  total: number;
+  running: string | null;
+  failed: string | null;
+}
+
+export function ciProgress(jobs: JobRow[]): CiProgress {
+  const done = jobs.filter((j) => j.status === "completed");
+  return {
+    done: done.length,
+    total: jobs.length,
+    running: jobs.find((j) => j.status === "in_progress")?.name ?? null,
+    failed: done.find((j) => j.conclusion === "failure")?.name ?? null,
+  };
 }
 
 export interface Verdict {
@@ -30,6 +49,7 @@ export interface Verdict {
   head?: string | null;
   /** Every failing test id the full log named — never just the tail `output` carries. */
   testIds?: string[];
+  progress?: CiProgress;
   reason: string;
 }
 
@@ -212,7 +232,7 @@ function jobsAndLog(
   until: number,
   withLog = true
 ): { verdict: Verdict; testIds: string[] } {
-  if (!run || run.status !== "completed" || run.conclusion === "success") {
+  if (!run || run.conclusion === "success") {
     return { verdict: decideVerdict(run, []), testIds: [] };
   }
   const jobs = ghJson<JobRow[]>(
@@ -226,11 +246,14 @@ function jobsAndLog(
       "--json",
       "jobs",
       "--jq",
-      "[.jobs[] | {name, conclusion, steps: (.steps | length)}]",
+      "[.jobs[] | {name, conclusion, status, steps: (.steps | length)}]",
     ],
     [],
     until
   );
+  if (run.status !== "completed") {
+    return { verdict: { ...decideVerdict(run, []), progress: ciProgress(jobs) }, testIds: [] };
+  }
   const verdict = decideVerdict(run, jobs);
   let testIds: string[] = [];
   if (withLog && !verdict.pass && !verdict.infrastructure) {

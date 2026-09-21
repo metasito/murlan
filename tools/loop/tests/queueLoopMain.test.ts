@@ -5,7 +5,10 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import {
+  parkAsked,
   runOnce,
   afterSession,
   main,
@@ -1063,6 +1066,7 @@ describe("main", () => {
     return {
       rows,
       totals: { tickets: 0, landed: 0, parked: 0, cost: 0, ms: 0 },
+      tickets: [],
       record: (s: any) => rows.push(s),
       close: () => {},
     };
@@ -1141,6 +1145,7 @@ describe("main", () => {
 describe("a throw mid-iteration", () => {
   const book = () => ({
     totals: { tickets: 0, landed: 0, parked: 0, cost: 0, ms: 0 },
+    tickets: [],
     record: () => {},
     close: () => {},
   });
@@ -1225,7 +1230,7 @@ describe("a throw mid-iteration", () => {
 });
 
 describe("a handoff", () => {
-  const book = () => ({ totals: { tickets: 0, landed: 0, parked: 0, cost: 0, ms: 0 }, record: () => {}, close: () => {} });
+  const book = () => ({ totals: { tickets: 0, landed: 0, parked: 0, cost: 0, ms: 0 }, tickets: [], record: () => {}, close: () => {} });
   const screen = () => ({ say: () => {}, warn: () => {}, notice: () => {}, stop: () => {} });
 
   // The phase reaching the picker is the whole of task 1: without it the next process asks derive(),
@@ -1257,8 +1262,58 @@ describe("a handoff", () => {
   });
 });
 
+describe("a park asked from the board", () => {
+  const book = () => ({ totals: { tickets: 0, landed: 0, parked: 0, cost: 0, ms: 0 }, tickets: [], record: () => {}, close: () => {} });
+  const screen = () => ({ say: () => {}, warn: () => {}, notice: () => {}, stop: () => {} });
+
+  test("parks the ticket once its session exits, and forgets the request", async () => {
+    const cwd = process.cwd();
+    const dir = mkdtempSync(path.join(tmpdir(), "park-"));
+    const parked: string[] = [];
+    const picks: (number | null)[] = [];
+    let n = 0;
+    const spy = {
+      ...(io() as any),
+      pick: (pinned: number | null) => {
+        picks.push(pinned);
+        if (picks.length > 2) return null;
+        return { skill: "implement", number: 41, title: "t", size: "size:S", queue: null };
+      },
+      spawn: async () => ({
+        status: 0,
+        blocked: false,
+        result: { cost: 1, turns: 2 },
+        ms: 1,
+        log: "l",
+        phase: "C",
+        declared: n++ === 0 ? { ticket: 41, phase: "C", handoff: "D", stoodDown: false } : null,
+      }),
+      park: (_n: number, ctx: { why: string }) => parked.push(ctx.why),
+      pushedPr: () => null,
+      standing: () => null,
+    };
+    try {
+      process.chdir(dir);
+      writeFileSync(".loop-park", "41\n");
+      await main({ io: spy, book: book(), screen: screen(), install: () => {}, runId: "t" });
+      assert.equal(parked[0], "parked by owner");
+      assert.equal(picks[1], null, "a parked ticket is not pinned for the next pass");
+      assert.equal(existsSync(".loop-park"), false);
+    } finally {
+      process.chdir(cwd);
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a request naming another ticket parks nothing", () => {
+    assert.equal(parkAsked(41, () => "41\n"), true);
+    assert.equal(parkAsked(42, () => "41\n"), false);
+    assert.equal(parkAsked(null, () => "41\n"), false);
+  });
+});
+
 describe("a fix round that changed nothing", () => {
-  const book = () => ({ totals: { tickets: 0, landed: 0, parked: 0, cost: 0, ms: 0 }, record: () => {}, close: () => {} });
+  const book = () => ({ totals: { tickets: 0, landed: 0, parked: 0, cost: 0, ms: 0 }, tickets: [], record: () => {}, close: () => {} });
   const screen = () => ({ say: () => {}, warn: () => {}, notice: () => {}, stop: () => {} });
 
   // #1028's rounds 2 and 3 were byte-identical no-ops — five turns of phase A and a close, twice —
@@ -1334,7 +1389,7 @@ describe("what a ticket's clock covers", () => {
 });
 
 describe("a ticket's tally comes from the ledger, not from memory", () => {
-  const book = () => ({ totals: { tickets: 0, landed: 0, parked: 0, cost: 0, ms: 0 }, record: () => {}, close: () => {} });
+  const book = () => ({ totals: { tickets: 0, landed: 0, parked: 0, cost: 0, ms: 0 }, tickets: [], record: () => {}, close: () => {} });
   const screen = () => ({ say: () => {}, warn: () => {}, notice: () => {}, stop: () => {} });
   const go = (spy: unknown) => main({ io: spy as never, book: book(), screen: screen(), install: () => {}, runId: "t" });
   const ticket = { skill: "implement", number: 42, title: "t", size: "size:S", queue: null };
