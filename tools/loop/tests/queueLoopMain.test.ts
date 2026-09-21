@@ -1305,6 +1305,28 @@ describe("a park asked from the board", () => {
     }
   });
 
+  test("a red CI round parks in the phase git reports, with its worktree", async () => {
+    const cwd = process.cwd();
+    const dir = mkdtempSync(path.join(tmpdir(), "park-"));
+    const parked: { why: string; phase: string; cwd: string | null }[] = [];
+    const spy = {
+      ...(io() as any),
+      spawn: async () => ({ status: 0, blocked: false, result: { cost: 1 }, ms: 1, log: "l", phase: "F", declared: null }),
+      pushedPr: () => ({ number: 984, state: "OPEN", head: "agent/42-x", sha: "aaa111", changedFiles: 2 }),
+      settle: async () => ({ action: "hand-back", reason: "CI failed at Native tests" }),
+      park: (_n: number, { why, phase, cwd }: { why: string; phase: string; cwd: string | null }) => parked.push({ why, phase, cwd }),
+    };
+    try {
+      process.chdir(dir);
+      writeFileSync(".loop-park", "42\n");
+      await main({ io: spy, book: book(), screen: screen(), install: () => {}, runId: "t" });
+      assert.deepEqual(parked[0], { why: "parked by owner", phase: "E", cwd: ".worktrees/agent-42" });
+    } finally {
+      process.chdir(cwd);
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test("a request naming another ticket parks nothing", () => {
     assert.equal(parkAsked(41, () => "41\n"), true);
     assert.equal(parkAsked(42, () => "41\n"), false);
