@@ -33,7 +33,7 @@ jest.mock('@/lib/accessibility', () => ({
 }));
 
 import { GameTable } from '@/components/GameTable';
-import { dealArrivalsMs } from '@/components/flightPhysics';
+import { DEAL_FLIGHT_MS, dealArrivalsMs, dealLeaveMs } from '@/components/flightPhysics';
 import { motionMs } from '@/lib/theme';
 import { playDeal } from '@/lib/sounds';
 import type { Card, GameState, Player } from '@/lib/gameEngine';
@@ -77,8 +77,10 @@ const table = () => (
   </SafeAreaProvider>
 );
 
-// viewerSeat 0 of 4: seat 3 sits on the left.
+// viewerSeat 0 of 4: seat 2 sits on top, the farthest from the pile; seat 3 on the left, nearer.
+const TOP_SEAT = 2;
 const LEFT_SEAT = 3;
+const topSeat = () => within(screen.getByTestId('top-seat'));
 const leftSeat = () => within(screen.getByTestId('side-seat-left'));
 
 async function advance(ms: number) {
@@ -100,9 +102,9 @@ describe("an opponent's hand arrives with the deal", () => {
   it('counts up at the seat as each card lands, and the deal waits for the table to settle', async () => {
     const r = await render(table());
     const entry = motionMs('reveal', false);
-    const arrivals = dealArrivalsMs(13, LEFT_SEAT, 4, entry);
+    const arrivals = dealArrivalsMs(13, TOP_SEAT, 4, entry, DEAL_FLIGHT_MS);
 
-    expect(leftSeat().queryByText('13')).toBeNull();
+    expect(topSeat().queryByText('13')).toBeNull();
     expect(screen.getAllByTestId('dealt-back').length).toBe(39);
     expect(playDeal).not.toHaveBeenCalled();
 
@@ -110,11 +112,21 @@ describe("an opponent's hand arrives with the deal", () => {
     expect(playDeal).toHaveBeenCalledTimes(1);
 
     await advance(arrivals[4] - entry);
-    expect(leftSeat().getByText('5')).toBeTruthy();
+    expect(topSeat().getByText('5')).toBeTruthy();
 
     await advance(arrivals[12] - arrivals[4]);
-    expect(leftSeat().getByText('13')).toBeTruthy();
+    expect(topSeat().getByText('13')).toBeTruthy();
     expect(screen.queryAllByTestId('dealt-back').length).toBe(0);
+
+    await r.unmount();
+  });
+
+  it('deals to a nearer seat in less than a whole flight', async () => {
+    const r = await render(table());
+    const fifthLeaves = motionMs('reveal', false) + dealLeaveMs(4, LEFT_SEAT, 4);
+
+    await advance(fifthLeaves + DEAL_FLIGHT_MS - 1);
+    expect(Number(leftSeat().getByText(/^[0-9]+$/).props.children)).toBeGreaterThanOrEqual(5);
 
     await r.unmount();
   });

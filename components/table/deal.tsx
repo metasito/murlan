@@ -17,6 +17,7 @@ export interface DealtCard {
   key: string;
   /** When it leaves the pile, in ms after the deal started. */
   leaveMs: number;
+  flightMs: number;
   /** Its seat, from the pile — `flightOrigin` for that seat. */
   to: { dx: number; dy: number };
 }
@@ -26,7 +27,7 @@ const DEAL_SPIN_DEG = 180;
 
 function DealtBack({ card, scale }: { card: DealtCard; scale: number }) {
   const progress = useSharedValue(0);
-  const flightMs = motionMs("travel", usePrefersReducedMotion());
+  const flightMs = usePrefersReducedMotion() ? motionMs("travel", true) : card.flightMs;
   useEffect(() => {
     progress.value = withDelay(card.leaveMs, withTiming(1, { duration: flightMs, easing: DEAL_EASING }));
     return () => cancelAnimation(progress);

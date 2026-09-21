@@ -46,6 +46,7 @@ import { handCountOf, vacatedOf } from "@/shared/protocol";
 import {
   comboKey,
   dealArrivalsMs,
+  dealFlightsMs,
   dealLeaveMs,
   readHandArrival,
   passedSeats,
@@ -212,11 +213,12 @@ export interface ExchangeAnnouncementSlot {
   holdMsOverride?: number;
 }
 
-/** A deal in progress: `counts` is each seat's hand as dealt, by seat index. */
+/** A deal in progress: `counts` is each seat's hand as dealt, `flightsMs` each seat's flight time, by seat index. */
 interface Deal {
   key: number;
   offsetMs: number;
   counts: number[];
+  flightsMs: number[];
 }
 
 export interface GameTableProps {
@@ -536,34 +538,6 @@ export function GameTable({
 
   const frame = computeTableFrame({ width: W, height: H, insets, scale, railSide });
 
-  // ── The deal ──────────────────────────────────────────────────────────────
-  //
-  // A fresh deal is a manche nobody has opened yet. The first one waits out the
-  // table's own entry beat; a later one, dealt onto a table already standing,
-  // starts at once.
-  const freshDeal = !gameState.firstPlayMade && !gameState.gameOver;
-  const [entryMs] = useState(() => motionMs("reveal", reduceMotion));
-  const [deal, setDeal] = useState<Deal | null>(() =>
-    freshDeal ? { key: 1, offsetMs: entryMs, counts: players.map(handCountOf) } : null
-  );
-  const [dealtFresh, setDealtFresh] = useState(freshDeal);
-  if (freshDeal !== dealtFresh) {
-    setDealtFresh(freshDeal);
-    if (freshDeal) setDeal({ key: (deal?.key ?? 0) + 1, offsetMs: 0, counts: players.map(handCountOf) });
-  }
-  const dealArrivals = React.useMemo(
-    () =>
-      deal && !reduceMotion
-        ? deal.counts.map((count, seat) => dealArrivalsMs(count, seat, deal.counts.length, deal.offsetMs))
-        : null,
-    [deal, reduceMotion]
-  );
-  useEffect(() => {
-    if (!deal) return;
-    const lastLanding = Math.max(0, ...(dealArrivals ?? []).map((a) => a[a.length - 1] ?? 0));
-    const id = setTimeout(() => setDeal(null), lastLanding);
-    return () => clearTimeout(id);
-  }, [deal, dealArrivals]);
   const seatGeometry = {
     viewerSeat,
     players,
@@ -578,6 +552,41 @@ export function GameTable({
     bottomPad: frame.bottomPad,
     handCardH,
   };
+
+  // ── The deal ──────────────────────────────────────────────────────────────
+  //
+  // A fresh deal is a manche nobody has opened yet. The first one waits out the
+  // table's own entry beat; a later one, dealt onto a table already standing,
+  // starts at once.
+  const newDeal = (key: number, offsetMs: number): Deal => ({
+    key,
+    offsetMs,
+    counts: players.map(handCountOf),
+    flightsMs: dealFlightsMs(players.map((_, seat) => seatPoint(seatGeometry, seat))),
+  });
+  const freshDeal = !gameState.firstPlayMade && !gameState.gameOver;
+  const [entryMs] = useState(() => motionMs("reveal", reduceMotion));
+  const [deal, setDeal] = useState<Deal | null>(() =>
+    freshDeal ? newDeal(1, entryMs) : null
+  );
+  const [dealtFresh, setDealtFresh] = useState(freshDeal);
+  if (freshDeal !== dealtFresh) {
+    setDealtFresh(freshDeal);
+    if (freshDeal) setDeal(newDeal((deal?.key ?? 0) + 1, 0));
+  }
+  const dealArrivals = React.useMemo(
+    () =>
+      deal && !reduceMotion
+        ? deal.counts.map((count, seat) => dealArrivalsMs(count, seat, deal.counts.length, deal.offsetMs, deal.flightsMs[seat]))
+        : null,
+    [deal, reduceMotion]
+  );
+  useEffect(() => {
+    if (!deal) return;
+    const lastLanding = Math.max(0, ...(dealArrivals ?? []).map((a) => a[a.length - 1] ?? 0));
+    const id = setTimeout(() => setDeal(null), lastLanding);
+    return () => clearTimeout(id);
+  }, [deal, dealArrivals]);
   const dealtCards: DealtCard[] =
     deal && dealArrivals
       ? [opponents.top, opponents.left, opponents.right].flatMap((o) => {
@@ -586,6 +595,7 @@ export function GameTable({
           return Array.from({ length: deal.counts[o.seat] }, (_, round) => ({
             key: `${deal.key}-${o.seat}-${round}`,
             leaveMs: deal.offsetMs + dealLeaveMs(round, o.seat, players.length),
+            flightMs: deal.flightsMs[o.seat],
             to,
           }));
         })
