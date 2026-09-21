@@ -125,15 +125,19 @@ export function readTicket(lines, ticket = "") {
 const median = (a) => [...a].sort((x, y) => x - y)[Math.floor(a.length / 2)] ?? 0;
 
 /**
- * A ledger row (one session) whose costliest model is not the family planned for its first phase.
- * The session's `--model` is chosen from that phase and kept for any phase it runs on into.
+ * A ledger row (one session) whose own model is not the family planned for its first phase, read
+ * from the main session's turns alone — `models` counts subagents too, and judging by the costliest
+ * of those flagged 62 rows: every opus build whose sonnet recon outspent it.
  */
 export function mismatchedModel(row) {
   const want = MODEL_BY_PHASE[Object.keys(row.phases ?? {})[0]];
-  const [top] = Object.entries(row.models ?? {}).sort((a, b) => b[1] - a[1]);
+  const [top] = Object.entries(row.usage?.mainModels ?? {}).sort((a, b) => b[1] - a[1]);
   const family = top && familyOf(top[0]);
   return Boolean(want && family && family !== want);
 }
+
+/** A row from before `mainModels` was recorded, which this flag cannot speak about either way. */
+const unjudgeable = (row) => !row.usage?.mainModels || Object.keys(row.usage.mainModels).length === 0;
 
 /** A ticket's rows since its last `landed`/`parked` close — an open window still counts. */
 function windows(rows) {
@@ -169,6 +173,7 @@ export function ledgerSummary(rows) {
     fixShare: total ? (fixCost / total) * 100 : 0,
     processesMedian: median(groups.map((w) => w.filter((r) => r.outcome !== "pushed").length)),
     mismatches: rows.filter(mismatchedModel),
+    unjudged: rows.filter(unjudgeable).length,
   };
 }
 
@@ -229,6 +234,7 @@ export function report(tickets, ledgerRows = []) {
           ...(ledger.mismatches.length
             ? [`model mismatch: ${ledger.mismatches.map((r) => `#${r.n}`).join(", ")}`]
             : []),
+          ...(ledger.unjudged ? [`model unjudged: ${ledger.unjudged} rows predate the reading`] : []),
         ]
       : []),
   ].join("\n");
@@ -254,8 +260,10 @@ export function wanted(files, arg = "") {
 
 if (isInvokedDirectly(process.argv[1], import.meta.url)) {
   const files = wanted(existsSync(DIR) ? readdirSync(DIR) : [], process.argv[2]);
+  // Unfiltered, fix-round share was the whole directory's however narrow the window asked for.
+  const asked = new Set(files.map((f) => Number.parseInt(f, 10)));
   console.log(report(
     files.map((f) => readTicket(readFileSync(join(DIR, f), "utf8").split("\n"), f.replace(".jsonl", ""))),
-    readLedger(),
+    readLedger().filter((r) => asked.has(r.n)),
   ));
 }

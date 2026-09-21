@@ -84,7 +84,7 @@ export function prune(now = Date.now(), fs = fsNode, olderThan = WEEK_MS) {
  */
 export function usageSplit(text) {
   const empty = () => ({ input: 0, output: 0, cacheRead: 0, cacheCreate: 0 });
-  const split = { main: empty(), subagents: empty(), models: {} };
+  const split = { main: empty(), subagents: empty(), models: {}, mainModels: {} };
   const seen = new Set();
 
   for (const line of text.split("\n")) {
@@ -109,7 +109,10 @@ export function usageSplit(text) {
     into.cacheCreate += u.cache_creation_input_tokens ?? 0;
 
     const model = e.message?.model;
-    if (model) split.models[model] = (split.models[model] ?? 0) + 1;
+    if (model) {
+      split.models[model] = (split.models[model] ?? 0) + 1;
+      if (!e.parent_tool_use_id) split.mainModels[model] = (split.mainModels[model] ?? 0) + 1;
+    }
   }
   return split;
 }
