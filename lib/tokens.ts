@@ -120,6 +120,8 @@ export const Scrim = {
   soft:   'rgba(0,0,0,0.22)',
   medium: 'rgba(0,0,0,0.35)',
   heavy:  'rgba(0,0,0,0.6)',
+  // For a wash animated by opacity: the view's opacity is then the darkness.
+  solid:  'rgba(0,0,0,1)',
 } as const;
 
 // White lifts on dark surfaces: inner edges, glass highlights.

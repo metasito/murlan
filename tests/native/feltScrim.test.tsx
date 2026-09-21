@@ -1,6 +1,7 @@
 import { describe, it, expect, jest, beforeEach, afterEach } from '@jest/globals';
 import React from 'react';
 import { act, render, screen } from '@testing-library/react-native';
+import { StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { getAnimatedStyle } from 'react-native-reanimated';
 
@@ -75,6 +76,11 @@ const table = (gameState: GameState) => (
 );
 
 const scrimOpacity = () => (getAnimatedStyle(screen.getByTestId('felt-scrim', { includeHiddenElements: true })) as { opacity?: number }).opacity ?? 0;
+const scrimDarkness = () => {
+  const { backgroundColor } = StyleSheet.flatten(screen.getByTestId('felt-scrim', { includeHiddenElements: true }).props.style);
+  const alpha = Number(/rgba\((?:[^,]+,){3}\s*([\d.]+)\)/.exec(String(backgroundColor))?.[1] ?? 1);
+  return alpha * scrimOpacity();
+};
 
 async function advance(ms: number) {
   await act(async () => {
@@ -100,7 +106,11 @@ describe('the felt dims before a bomb lands', () => {
     expect(mid).toBeGreaterThan(0);
     expect(mid).toBeLessThan(0.25);
 
-    await advance(impactDelayMs(false) * 0.2 + 1);
+    await advance(impactDelayMs(false) * 0.2 - 2);
+    expect(scrimDarkness()).toBeGreaterThan(0.24);
+    expect(scrimDarkness()).toBeLessThanOrEqual(0.25);
+
+    await advance(3);
     expect(scrimOpacity()).toBe(0);
     await r.unmount();
   });

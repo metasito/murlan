@@ -506,7 +506,7 @@ export function FeltScrim({ dim }: { dim: SharedValue<number> }) {
     <Animated.View
       testID="felt-scrim"
       pointerEvents="none"
-      style={[StyleSheet.absoluteFill, { backgroundColor: Scrim.heavy, zIndex: Layer.feltScrim }, aStyle]}
+      style={[StyleSheet.absoluteFill, { backgroundColor: Scrim.solid, zIndex: Layer.feltScrim }, aStyle]}
     />
   );
 }
