@@ -100,9 +100,8 @@ export function ExchangeAnnouncement({
 
   return (
     <View testID="exchange-announce" pointerEvents="none" style={[StyleSheet.absoluteFill, styles.stage]}>
+      <A11yStatus label={a11yLabel} role="alert" live="assertive" />
       <View style={styles.layer}>
-        <A11yStatus label={a11yLabel} role="alert" live="assertive" />
-
         {bothJokersException ? (
           <TableText {...a11yHidden()} style={styles.noSwap}>
             {t("exchangeAnnouncement.noSwapText")}
@@ -153,7 +152,8 @@ export function ExchangeAnnouncement({
 }
 
 const styles = StyleSheet.create({
-  // iOS leaves a 0×0 view out of the accessibility tree, so the testID lives here.
+  // iOS drops a 0×0 view and its whole subtree from the accessibility tree, so
+  // the testID and the live region live here rather than inside `layer`.
   stage: { alignItems: "center", justifyContent: "center" },
   // Sized to nothing and centred on the pile: every child positions itself in
   // the deltas `flightOrigin` speaks, which are measured from that point.

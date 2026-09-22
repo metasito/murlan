@@ -50,6 +50,10 @@ describe('ExchangeAnnouncement frame', () => {
     const style = StyleSheet.flatten(view.getByTestId('exchange-announce').props.style) as ViewStyle;
     expect(spans(style, 'width', 'left', 'right')).toBe(true);
     expect(spans(style, 'height', 'top', 'bottom')).toBe(true);
+    for (let node = view.getByRole('alert').parent; node; node = node.parent) {
+      const own = StyleSheet.flatten(node.props.style ?? {}) as ViewStyle;
+      expect(own.width === 0 || own.height === 0).toBe(false);
+    }
     await view.unmount();
   });
 });
