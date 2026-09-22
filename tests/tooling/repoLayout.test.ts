@@ -18,7 +18,7 @@ function looseTests(files: string[]): string[] {
 const under = (p: string) => `tests/${p}`;
 const NAMED_TEST = /(?<![\w/.-])tests\/[\w./-]+\.(?:test|spec)\.tsx?/g;
 
-const SHORTHAND = /(?<![\w/.-])tests\/[A-Za-z][\w-]*(?![\w/.-])/g;
+const SHORTHAND = /(?<![\w/.-])tests\/[A-Za-z][\w-]*(?![\w/-]|\.\w)/g;
 
 function shorthandNotAFolder(files: [string, string][], folders: string[]): string[] {
   return files.flatMap(([file, src]) =>
@@ -80,8 +80,11 @@ describe("the repository layout (#1131)", () => {
     assert.ok(sources.some(([, src]) => src.match(SHORTHAND) !== null), "the scan finds no shorthand to check");
     assert.deepEqual(shorthandNotAFolder(sources, folders), []);
     assert.deepEqual(
-      shorthandNotAFolder([["a.ts", `see ${under("hooksLint")}, ${under("native")}/x and ${under("engine")}.`]], [under("engine")]),
-      [`a.ts -> ${under("hooksLint")}`],
+      shorthandNotAFolder(
+        [["a.ts", `see ${under("hooksLint")}, ${under("native")}/x, ${under("engine")}. Or ${under("spacingLint")}.`]],
+        [under("engine")],
+      ),
+      [`a.ts -> ${under("hooksLint")}`, `a.ts -> ${under("spacingLint")}`],
     );
   });
 });
