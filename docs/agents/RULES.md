@@ -22,8 +22,8 @@ Every rule an agent must follow, in one place. No rationale here — the *why* l
    red for the wrong reason goes green for the wrong reason too. Assert the intermediate state as
    well as the outcome, because a helper that silently does nothing — an event nothing listens
    for, a pattern matching no file, a list nobody added the case to — passes. Undo a planted
-   defect with the Edit tool, the same replacement backwards — or commit first, then run
-   `git checkout HEAD -- <path>` as a call of its own.
+   defect with the Edit tool, the same replacement backwards: `git checkout HEAD -- <path>` is
+   refused while that path differs from HEAD, which a planted defect always does.
 
 ## The worktree
 

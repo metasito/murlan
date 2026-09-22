@@ -12,6 +12,7 @@ import {
   parkReasonOf,
   STDERR_CAP,
   prunable,
+  RETAIN_MS,
   prune,
   readLedger,
   sessionRow,
@@ -120,6 +121,19 @@ describe("prune", () => {
 
   test("no directory is nothing to sweep, not a throw", () => {
     assert.deepEqual(prune(0, undefined, path.join(dir, "absent")), []);
+  });
+
+  test("an entry that vanishes or is locked mid-walk is skipped, and the rest still sweep", () => {
+    const fs = {
+      existsSync: () => true,
+      readdirSync: () => ["gone", "old.log"],
+      lstatSync: (p: string) => {
+        if (p.endsWith("gone")) throw new Error("ENOENT");
+        return { isDirectory: () => false, mtimeMs: 0 };
+      },
+      rmSync: () => {},
+    };
+    assert.deepEqual(prune(RETAIN_MS + 1, fs as never, "d"), ["old.log"]);
   });
 });
 

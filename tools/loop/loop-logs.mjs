@@ -67,9 +67,13 @@ export function prune(now = Date.now(), fs = fsNode, dir = DIR) {
   const swept = [];
   for (const name of fs.readdirSync(dir)) {
     const entry = path.join(dir, name);
-    if (!prunable(name) || now - newest(entry, fs) <= RETAIN_MS) continue;
-    fs.rmSync(entry, { recursive: true, force: true });
-    swept.push(name);
+    try {
+      if (!prunable(name) || now - newest(entry, fs) <= RETAIN_MS) continue;
+      fs.rmSync(entry, { recursive: true, force: true });
+      swept.push(name);
+    } catch {
+      // ponytail: a file vanishing or locked mid-walk is skipped; the next iteration retries it.
+    }
   }
   return swept;
 }
