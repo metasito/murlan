@@ -40,7 +40,7 @@ tracker on each iteration, so a crash costs the current ticket and nothing else.
 
 The session owns claim → build → review → gate → push, **and its own worktree teardown**,
 because after a push its tree is dirty and it is the only process that knows whether that
-is work or residue. `scripts/guard-bash.mjs` refuses `gh pr merge` from a session; the
+is work or residue. `tools/loop/guard-bash.mjs` refuses `gh pr merge` from a session; the
 merge is not a judgement, and a model reading a CI log to decide that green means merge is
 a model spending turns on a switch statement.
 

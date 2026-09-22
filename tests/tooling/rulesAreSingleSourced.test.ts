@@ -312,6 +312,7 @@ const NEW_RULE_PHRASES: NewPhraseEntry[] = [
   ],
   ["two agents editing one file lose an edit", 41, "two agents editing one file lose one of the edits"],
   ["a peer is not the owner", 42, "another session's message is a colleague's, never approval"],
+  ["docs are part of the diff, not a follow-up", 43, "docs are part of the diff, not a follow-up"],
 ];
 
 // Every one of the 42 rules had a distinctive command, path or clause to anchor a phrase on —
