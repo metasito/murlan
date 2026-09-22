@@ -3,7 +3,8 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { check } from "../guard-bash.mjs";
 
@@ -32,6 +33,8 @@ const repo = {
   pushTarget: () => "origin/agent/1-x",
   isRef: (arg: string) => REFS.has(arg),
   pathsClean: (paths: string[]) => !paths.some((p) => p.includes("dirty")),
+  top: (): string | null => null,
+  cwd: (): string => "",
 };
 const device = () => "iOS UI (Maestro)";
 const guard = (cmd: string) => check(cmd, device, repo);
@@ -162,6 +165,34 @@ describe("the bash guard blocks what has a correct alternative, however it is sp
 
   test("a sourced checkout is blocked when git cannot answer", () => {
     assert.ok(check("git checkout HEAD -- a.ts", device, { ...repo, isRef: () => true, pathsClean: () => false }));
+  });
+});
+
+describe("git add -A inside the ticket's own worktree", () => {
+  const top = resolve(tmpdir(), ".worktrees", "agent-7");
+  const inTree = (cwd: string, t: string | null = top) => ({ ...repo, top: () => t, cwd: (d?: string) => resolve(cwd, d ?? ".") });
+  const at = (cmd: string, cwd = top, t: string | null = top) => check(cmd, device, inTree(cwd, t));
+
+  test("is allowed on pathspecs below its root", () => {
+    for (const cmd of ["git add -A components tests", "git add -A -- scripts app", "git add -u tools", "git add ."]) {
+      assert.equal(at(cmd, cmd === "git add ." ? join(top, "components") : top), null, cmd);
+    }
+  });
+
+  test("is refused bare, on the root itself, escaping it, or after a cd", () => {
+    for (const cmd of ["git add -A", "git add -A -- .", "git add -A ../../components", "git add -A :/", "cd .. && git add -A components"]) {
+      assert.match(String(at(cmd)), ADD, cmd);
+    }
+  });
+
+  test("is refused in a checkout that is not a loop worktree", () => {
+    assert.match(String(at("git add -A components", tmpdir(), tmpdir())), ADD);
+    assert.match(String(at("git add -A components", top, null)), ADD);
+  });
+
+  test("leaves the discard guard where it was", () => {
+    const dirty = { ...inTree(top), pathsClean: () => false };
+    assert.match(String(check("git add -A components; git checkout -- f", device, dirty)), DISCARD);
   });
 });
 

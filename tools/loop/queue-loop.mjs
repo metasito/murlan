@@ -781,6 +781,18 @@ const writeLeftover = (file, body) => {
  * before removing, and the leftovers are on disk first; a patch that cannot be written keeps the tree.
  */
 export function removeLanded(cwd, number, { run = sh, write = writeLeftover, say = console.error } = {}) {
+  const branch = run("git", ["-C", cwd, "branch", "--show-current"]).trim();
+  const removed = removeLandedTree(cwd, number, { run, write, say });
+  if (removed === null || !branch) return removed;
+  try {
+    run("git", ["branch", "-d", branch], { cwd: ROOT });
+  } catch (err) {
+    say(`${branch} was kept — ${String(err.message).split("\n")[0]}`);
+  }
+  return removed;
+}
+
+function removeLandedTree(cwd, number, { run, write, say }) {
   if (!run("git", ["-C", cwd, "status", "--porcelain"]).trim()) return removeWorktree(cwd, run);
   const file = leftoverPath(number);
   try {

@@ -911,7 +911,7 @@ describe("runOnce", () => {
     assert.deepEqual([rows.map((x) => x.head), (r as { sha?: string }).sha], [["before", "judged"], "judged"]);
   });
 
-  const landedRun = (dirty: string, failWrite = false) => {
+  const landedRun = (dirty: string, failWrite = false, unmerged = false) => {
     const calls: [string, string[], { cwd?: string; encoding?: string } | undefined][] = [];
     const written: string[] = [];
     const said: string[] = [];
@@ -919,6 +919,8 @@ describe("runOnce", () => {
       run: (file: string, args: string[], opts?: { cwd?: string; encoding?: string }) => {
         calls.push([file, args, opts]);
         if (args.includes("--porcelain")) return dirty;
+        if (args.includes("--show-current")) return "agent/42-x\n";
+        if (unmerged && args[1] === "-d") throw new Error("error: the branch 'agent/42-x' is not fully merged");
         return args.includes("--binary") ? Buffer.from("PATCH") : "";
       },
       write: (file: string, body: Buffer) => {
@@ -928,8 +930,25 @@ describe("runOnce", () => {
       say: (m: string) => said.push(m),
     } as never);
     const removals = calls.filter(([, args]) => args.includes("worktrees:remove"));
-    return { calls, written, said, removals };
+    const deletes = calls.filter(([, args]) => args[0] === "branch" && args[1] === "-d");
+    return { calls, written, said, removals, deletes };
   };
+
+  test("landing deletes the branch after the worktree, from the shared checkout", () => {
+    const { calls, deletes } = landedRun("");
+    assert.deepEqual(deletes.map(([, a, o]) => [a, path.resolve(o?.cwd ?? "")]), [[["branch", "-d", "agent/42-x"], ROOT]]);
+    assert.ok(calls.findIndex(([, a]) => a.includes("worktrees:remove")) < calls.indexOf(deletes[0]));
+  });
+
+  test("a branch -d refuses is said, and the land still returns", () => {
+    const { said, removals } = landedRun("", false, true);
+    assert.equal(removals.length, 1);
+    assert.match(said.join("\n"), /agent\/42-x was kept — error: the branch 'agent\/42-x' is not fully merged/);
+  });
+
+  test("a worktree kept for its unwritten leftovers keeps its branch too", () => {
+    assert.deepEqual(landedRun("?? stray.png\n", true).deletes, []);
+  });
 
   test("a landed worktree with leftovers is saved as a binary patch, then force-removed", () => {
     const { calls, written, said, removals } = landedRun("?? stray.png\n");

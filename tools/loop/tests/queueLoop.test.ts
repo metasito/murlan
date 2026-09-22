@@ -878,6 +878,13 @@ describe("park", () => {
     assert.ok(removeAt > commitAt, "the worktree is removed only after its work is committed");
   });
 
+  test("keeps the branch: the next run resumes from it", () => {
+    const { calls, run } = recorder();
+    park(953, opts({ dirty: true, run }));
+    assert.ok(ran(calls, "worktrees:remove"));
+    assert.equal(ran(calls, "branch -d"), false);
+  });
+
   // `dirty` comes from a derive() up to twenty seconds old, so a session that committed in that
   // window leaves `git add -A` nothing to stage — and `git commit` then exits 1.
   test("a tree that went clean since the derive is not given an empty commit", () => {

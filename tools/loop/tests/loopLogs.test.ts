@@ -2,7 +2,7 @@
 import { test, describe, before, after } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import {
   ARTEFACTS,
@@ -80,43 +80,46 @@ describe("artefact names", () => {
     assert.equal(prunable("park-999.md"), true);
   });
 
-  test("something nobody named is left alone rather than deleted on an extension match", () => {
-    assert.equal(prunable("notes.jsonl"), false);
-    assert.equal(prunable("README.md"), false);
+  test("so is something nobody named", () => {
+    assert.equal(prunable("dod-999.md"), true);
+    assert.equal(prunable("ios-1158"), true);
   });
 });
 
 describe("prune", () => {
-  const week = 7 * 24 * 60 * 60_000;
-  const fakeFs = (files: Record<string, number>) => {
-    const gone: string[] = [];
-    return {
-      gone,
-      fs: {
-        existsSync: () => true,
-        readdirSync: () => Object.keys(files),
-        statSync: (f: string) => ({ mtimeMs: files[path.basename(f)] }),
-        rmSync: (f: string) => gone.push(path.basename(f)),
-      },
-    };
-  };
+  const day = 24 * 60 * 60_000;
+  let dir: string;
+  before(() => {
+    dir = mkdtempSync(path.join(tmpdir(), "loop-logs-prune-"));
+  });
+  after(() => rmSync(dir, { recursive: true, force: true }));
 
-  test("sweeps only what is both prunable and old", () => {
-    const now = 1_000 * week;
-    const { fs, gone } = fakeFs({
-      "999.jsonl": now - 2 * week,
-      "998.jsonl": now - 1_000,
-      "ci-999.log": now - 2 * week,
-      "tickets.jsonl": now - 50 * week,
-      "run-old.md": now - 50 * week,
-    });
-    const swept = prune(now, fs as never);
-    assert.deepEqual(swept.sort(), ["999.jsonl", "ci-999.log"]);
-    assert.deepEqual(gone.sort(), ["999.jsonl", "ci-999.log"]);
+  test("sweeps past fourteen days, keeps the record at any age, and ages a directory by its newest file", () => {
+    const now = Date.now();
+    const age = (rel: string, days: number) => {
+      const t = new Date(now - days * day);
+      utimesSync(path.join(dir, rel), t, t);
+    };
+    const at = (rel: string, days: number) => {
+      mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true });
+      writeFileSync(path.join(dir, rel), "x");
+      age(rel, days);
+    };
+    at("999.jsonl", 15);
+    at("998.jsonl", 13);
+    at("dod-999.md", 15);
+    at("tickets.jsonl", 400);
+    at("run-2026-01-01-00-00.md", 400);
+    at("old-device/a/b.log", 20);
+    at("live-device/a/old.log", 20);
+    at("live-device/new.log", 1);
+    for (const d of ["old-device/a", "old-device", "live-device/a", "live-device"]) age(d, 20);
+    assert.deepEqual(prune(now, undefined, dir).sort(), ["999.jsonl", "dod-999.md", "old-device"]);
+    assert.deepEqual(readdirSync(dir).sort(), ["998.jsonl", "live-device", "run-2026-01-01-00-00.md", "tickets.jsonl"]);
   });
 
   test("no directory is nothing to sweep, not a throw", () => {
-    assert.deepEqual(prune(0, { existsSync: () => false } as never), []);
+    assert.deepEqual(prune(0, undefined, path.join(dir, "absent")), []);
   });
 });
 
