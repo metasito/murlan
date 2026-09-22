@@ -109,6 +109,7 @@ describe("the Android flow marker", () => {
     const clear = lines.findIndex((l) => l.startsWith("rm -f") && l.includes("emulator-booted"));
     assert.notEqual(clear, -1, "a stale marker from the first attempt is read as the retry's");
     assert.match(lines[clear], /app-launched/, "one marker is cleared and the other is not");
+    assert.match(lines[clear], /emulator-lost/, "a device lost on the first attempt is blamed on the retry");
     assert.ok(
       clear < lines.findIndex((l) => l.includes("touch")),
       "the markers are cleared after one of them is written",
@@ -242,6 +243,16 @@ describe("maestro.yml reads that marker", () => {
       /\|\|/,
       "the verdict claims twice on any one of its conditions rather than all of them",
     );
+  });
+
+  test("a device lost while the flows ran is not called a result about the diff", () => {
+    const flows = actionScriptLines(repoRoot).find((l) => /^maestro\b.*\btest\b/.test(l)) ?? "";
+    assert.match(flows, /\|\|[^\n]*adb[^\n]*\|\|\s*touch "\$RUNNER_TEMP\/emulator-lost"/);
+    const verdict = src.slice(src.indexOf("The run's real verdict"));
+    const lost = verdict.indexOf("emulator-lost");
+    assert.ok(lost !== -1 && lost < verdict.indexOf("result about the diff"), "the lost device is read after the blame");
+    const said = verdict.slice(lost).match(/::error::[^\n]*/)?.[0] ?? "";
+    assert.doesNotMatch(said, /diff/);
   });
 
   test("the verdict reads its markers narrowest-first", () => {
