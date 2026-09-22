@@ -59,6 +59,22 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # The dist-tag named for the installed SDK is the fingerprint version that reads that SDK's config.
+      - name: Fingerprint the native build
+        id: native
+        run: |
+          sdk=$(node -p "require('expo/package.json').version.split('.')[0]")
+          hash=$(npx --yes "@expo/fingerprint@sdk-$sdk" fingerprint:generate --platform ios \
+            | node -p "JSON.parse(require('fs').readFileSync(0, 'utf8')).hash")
+          xcode=$(xcodebuild -version | shasum | cut -c1-12)
+          echo "key=ios-app-${{ runner.arch }}-$xcode-${{ hashFiles('.github/workflows/ios.yml') }}-$hash" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        id: cached
+        with:
+          path: ${{ runner.temp }}/ios-app
+          key: ${{ steps.native.outputs.key }}
+
       # Expo Go cannot host this suite. Its dev-menu window sits above the
       # app's own and takes the touch: run 33397453801's simulator log has the
       # tap on "Salta il tutorial" dispatched `to window: <EXDevMenuWindow>`,
@@ -72,6 +88,7 @@ jobs:
       # Metro to start, no packager URL to reach, no deep link and no
       # dev menu to be on top in the first place.
       - name: Build the app
+        if: steps.cached.outputs.cache-hit != 'true'
         env:
           # Read at module scope by every screen that names it (`app/game.tsx`,
           # `app/(online)/game.tsx`, `context/GameContext.tsx`), so it zeroes
@@ -125,6 +142,26 @@ jobs:
             [ -d "$candidate" ] && { app="$candidate"; break; }
           done
           [ -n "$app" ] || { echo "::error::xcodebuild produced no .app."; exit 1; }
+          echo "XCODE_BUNDLE=$app/main.jsbundle" >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/ios-app"
+          cp -R "$app" "$RUNNER_TEMP/ios-app/"
+
+      - uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        if: steps.cached.outputs.cache-hit != 'true'
+        with:
+          path: ${{ runner.temp }}/ios-app
+          key: ${{ steps.native.outputs.key }}
+
+      - name: Bundle the JS into the app
+        env:
+          EXPO_PUBLIC_E2E_FAST: "1"
+        run: |
+          app=""
+          for candidate in "$RUNNER_TEMP"/ios-app/*.app; do
+            [ -d "$candidate" ] && { app="$candidate"; break; }
+          done
+          [ -n "$app" ] || { echo "::error::No .app was built or restored."; exit 1; }
+          tools/ci/rebundle-ios-app.sh "$app"
           echo "APP_BUNDLE=$app" >> "$GITHUB_ENV"
           # The id the flows are driven with comes from the built app itself,
           # not from app.json: a prebuild that renamed the bundle would
@@ -133,6 +170,11 @@ jobs:
           id=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Info.plist")
           echo "APP_ID=$id" >> "$GITHUB_ENV"
           echo "Built $app ($id)"
+
+      # What makes a restored app trustworthy: rebundling reproduces Xcode's own bundle byte for byte.
+      - name: The rebundled JS is the bundle Xcode built
+        if: steps.cached.outputs.cache-hit != 'true'
+        run: cmp "$XCODE_BUNDLE" "$APP_BUNDLE/main.jsbundle"
 
       - name: The bundle carries the test-only flag
         run: node scripts/e2eBuildMark.mjs --present "$APP_BUNDLE"
