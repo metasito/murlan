@@ -43,7 +43,9 @@ import {
   USD_DEFAULT,
   watchCalls,
   CHECK_BASH_TIMEOUT_MS,
+  BASH_DEFAULT_TIMEOUT_MS,
   STALL_MS,
+  apiFailure,
   ticketFacts,
   exhausted,
   resumePhase,
@@ -515,16 +517,22 @@ describe("runTicket", () => {
     );
   });
 
-  test("the session's Bash calls may run as long as agent:check, and stop short of the stall watchdog", async () => {
+  test("a Bash call defaults well short of agent:check's ceiling, which stops short of the stall watchdog", async () => {
     let env: Record<string, string> | undefined;
     const capturing = (_cmd: string, _args: string[], o: any) => {
       env = o.env;
       return fakeSpawn([RESULT])();
     };
     await runTicket(capturing as never, opts());
-    assert.equal(env?.BASH_MAX_TIMEOUT_MS, String(CHECK_BASH_TIMEOUT_MS));
-    assert.equal(env?.BASH_DEFAULT_TIMEOUT_MS, String(CHECK_BASH_TIMEOUT_MS));
-    assert.ok(CHECK_BASH_TIMEOUT_MS > 600_000 && CHECK_BASH_TIMEOUT_MS < STALL_MS);
+    const [def, max] = [Number(env?.BASH_DEFAULT_TIMEOUT_MS), Number(env?.BASH_MAX_TIMEOUT_MS)];
+    assert.deepEqual([def, max], [BASH_DEFAULT_TIMEOUT_MS, CHECK_BASH_TIMEOUT_MS]);
+    assert.ok(def < max && max < STALL_MS, `${def} < ${max} < ${STALL_MS}`);
+  });
+
+  test("the night #1156 met an overloaded API reaches the caller as a 529, not as a bare exit", async () => {
+    const lines = readFileSync(path.join(import.meta.dirname, "fixtures", "api-529.jsonl"), "utf8").trim().split("\n");
+    const run = await runTicket(fakeSpawn(lines, 1), opts());
+    assert.equal(apiFailure(run), 529);
   });
 
   test("nothing that varies between processes sits ahead of the cached prompt prefix", async () => {

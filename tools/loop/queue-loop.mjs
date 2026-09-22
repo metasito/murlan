@@ -411,6 +411,9 @@ export const STALL_MS = 30 * 60_000;
 /** The session's Bash ceiling, which `agent:check -- --also test:native` needs and a stall must outlast. */
 export const CHECK_BASH_TIMEOUT_MS = STALL_MS - 5 * 60_000;
 
+/** Every other call's: a command waiting on a stdin nothing will write is killed at this, not at the ceiling. */
+export const BASH_DEFAULT_TIMEOUT_MS = 5 * 60_000;
+
 /**
  * The supervisor's half has no watchdog over it — `runTicket`'s watches the child and is cleared
  * when the child closes — so `settle` as a whole is bounded here instead, and a branch that keeps
@@ -451,6 +454,17 @@ export function resumePhase(run, after, ticket) {
   if (run.declared || !exhausted(run)) return null;
   if (!after?.cwd || after.ticket !== ticket) return null;
   return RESUMABLE.has(after.phase) ? after.phase : null;
+}
+
+/**
+ * The API status a session died on, when it is one that passes on its own — an overload, an outage,
+ * a 429 — or null. Not a verdict on the ticket, so it is held and respawned, never parked.
+ * A session that declared its ending chose it, whatever its last turn met. A spent usage window
+ * ends on a 429 too, and is `blocked`'s to wait out until its reset, not a minute at a time.
+ */
+export function apiFailure(run) {
+  const s = run.result?.isError && !run.declared && !run.blocked ? run.result.apiStatus : null;
+  return s >= 500 || s === 429 ? s : null;
 }
 
 /**
@@ -1522,7 +1536,7 @@ export function runTicket(
       // Also drops the commit trailer, which queue.md states instead.
       CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS: "1",
       BASH_MAX_TIMEOUT_MS: String(CHECK_BASH_TIMEOUT_MS),
-      BASH_DEFAULT_TIMEOUT_MS: String(CHECK_BASH_TIMEOUT_MS),
+      BASH_DEFAULT_TIMEOUT_MS: String(BASH_DEFAULT_TIMEOUT_MS),
     },
   });
 
@@ -2112,7 +2126,7 @@ export function parkAndRecord(io, number, { run = null, pr = null, files = 0, ..
  * @param {object} io
  * @param {number|null} [pinned] a ticket a previous pass handed back unfinished
  * @param {string|null} [at] the phase a handoff said the next process starts at
- * @returns {Promise<{outcome: "landed"|"parked"|"stop"|"hold"|"retry"|"refused"|"handoff",
+ * @returns {Promise<{outcome: "landed"|"parked"|"stop"|"hold"|"retry"|"refused"|"overloaded"|"handoff",
  *   ticket?: number, why?: string, until?: number, cwd?: string|null, branch?: string|null,
  *   pr?: number, files?: number, phase?: string, run?: any, size?: string|null, tally?: any}>}
  */
@@ -2228,6 +2242,14 @@ export async function runOnce(io, pinned = null, at = null) {
       cwd: after?.cwd ?? null,
       branch: after?.branch ?? null,
     };
+  }
+  // Before the pull request too: in phase E one is already open, and settling it would land a head
+  // whose check never ran.
+  const status = apiFailure(run);
+  if (status) {
+    const why = `the API answered ${status}`;
+    io.record({ number: route.number, outcome: "overloaded", why, run, counts: false });
+    return { outcome: "overloaded", ticket: route.number, why, run };
   }
   const pr = io.pushedPr(after?.branch ?? null, route.number, run.declared?.pr ?? null, settling ? 0 : Date.now() - run.ms);
   // `blocked` is advisory, checked here rather than before the pull request is looked for: a
@@ -2558,6 +2580,7 @@ export async function main({
   let failures = 0;
   let waits = 0;
   let holds = 0;
+  let overloads = 0;
   /** The ticket a red CI round or a handoff handed back. Its counts are the ledger's. */
   let pinned = null;
 
@@ -2666,7 +2689,7 @@ export async function main({
     // Read only here, once the session has exited: a park is never a kill.
     if (pass.ticket != null && parkAsked(pass.ticket)) {
       fs.rmSync(PARK_FILE, { force: true });
-      if (["handoff", "retry", "refused"].includes(pass.outcome)) {
+      if (["handoff", "retry", "refused", "overloaded"].includes(pass.outcome)) {
         const own = worktreeOf(io, pass.ticket);
         parkAndRecord(io, pass.ticket, {
           ...own,
@@ -2709,6 +2732,20 @@ export async function main({
       }
       continue;
     }
+
+    // Counted in a row, not per landing like a refusal: any session the API served ends the outage.
+    if (pass.outcome === "overloaded") {
+      overloads += 1;
+      if (overloads >= WAIT.TRIES) return finish(1, `${pass.why}, ${overloads} sessions in a row`);
+      pinned = pass.ticket;
+      const back = clockAt(Date.now() + WAIT.FLOOR);
+      screen.notice("api", `#${pass.ticket} paused: ${pass.why} — trying again at ${back} (${overloads} of ${WAIT.TRIES})`);
+      if ((await hold(WAIT.FLOOR, "the API is failing", `#${pass.ticket} resumes from its worktree${queued()}`)) === "stopped") {
+        return finish(0, ".loop-stop during the wait");
+      }
+      continue;
+    }
+    overloads = 0;
 
     const giveUp = (why) => {
       parkAndRecord(io, pass.ticket, { ...worktreeOf(io, pass.ticket), phase: pass.phase ?? "E", why, log: pass.run.log });

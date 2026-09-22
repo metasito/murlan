@@ -79,11 +79,26 @@ export function report(s, reason = process.env.LOOP_REASON) {
  */
 export const silentAt = (argv, env) => argv.includes("--startup") && Boolean(env.LOOP_TURNS);
 
+/** An owner's session shares the checkout with a run it does not own: it is told, never ordered. */
+export function inform(s, at = new Date()) {
+  const lead = `loop-status, derived ${at.toISOString()}, for information:`;
+  if (s.onTicket) {
+    const where = s.phase === "?" ? `stuck (${s.why})` : `at phase ${s.phase}`;
+    return `${lead} loop run #${s.ticket} is ${where} on \`${s.branch}\`, in ${s.cwd}.`;
+  }
+  if (s.phase === "?") return `${lead} the loop's run could not be determined (${s.why}).`;
+  return s.ambiguous ? `${lead} more than one agent/* worktree is live (${s.why}).` : "";
+}
+
+export const statusFor = (s, env, at = new Date()) => (env.LOOP_TURNS ? report(s, env.LOOP_REASON) : inform(s, at));
+
 if (isInvokedDirectly(process.argv[1], import.meta.url) && !silentAt(process.argv, process.env)) {
+  const at = new Date();
   try {
-    const out = report(derive({ ci: true }));
+    const out = statusFor(derive({ ci: true }), process.env, at);
     if (out) console.log(out);
   } catch (err) {
-    console.log(unknown(String(err?.message ?? err).split("\n")[0]));
+    const why = String(err?.message ?? err).split("\n")[0];
+    console.log(process.env.LOOP_TURNS ? unknown(why) : inform({ onTicket: false, phase: "?", why }, at));
   }
 }

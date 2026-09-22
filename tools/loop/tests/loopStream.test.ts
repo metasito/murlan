@@ -115,6 +115,7 @@ describe("readLine", () => {
       isError: false,
       subtype: "success",
       terminalReason: null,
+      apiStatus: null,
       cost: 1.82,
       turns: 41,
       durationMs: 1_420_000,
