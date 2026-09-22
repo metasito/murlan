@@ -72,8 +72,8 @@ const METRICS = {
 const rankedTotals = (view: Awaited<ReturnType<typeof render>>) =>
   view.getAllByTestId('rank-total').map((total) => total.props.children);
 
-describe('the result screen a new match leaves behind', () => {
-  it('keeps the standings it was showing while it goes', async () => {
+describe('ResultBoard RankCards on the result screen a new match leaves behind', () => {
+  it('are neither re-sorted nor re-rendered while the screen goes', async () => {
     const view = await render(
       <SafeAreaProvider initialMetrics={METRICS}>
         <ResultScreen />
