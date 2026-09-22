@@ -27,7 +27,14 @@ const git = (...args) =>
     maxBuffer: 64 * 1024 * 1024,
   });
 
-const key = (line, isComment) => `${isComment ? "c" : "k"}${line}`;
+const PATH = /(?:[\w.@-]+\/)+[\w.@-]+|[\w-]+\.(?:md|mjs|cjs|js|jsx|ts|tsx|json|ya?ml|sh)\b/g;
+
+// A comment differing only in which file it names is a moved pointer, not prose the change wrote.
+const key = (line, isComment) => {
+  if (!isComment) return `k${line}`;
+  const unpathed = line.replace(PATH, "");
+  return unpathed === line ? `c${line}` : `p${unpathed}`;
+};
 
 /**
  * By multiset, not by alignment: each line of `before` is a token one line of `after` may spend,
