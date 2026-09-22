@@ -1,7 +1,7 @@
 // tests/native/friendRequestReconcile.test.tsx — reconnecting re-reads what
 // arrived while you were gone.
 //
-// `emitToUser` (server/socket.ts) looks the recipient up in `userSocketMap`
+// `emitToUser` (server/socket/socket.ts) looks the recipient up in `userSocketMap`
 // and returns silently when they are not connected: no queue, no retry. That
 // emit is the only thing that invalidates the friend-request queries, so a
 // request sent to someone who is offline reaches their database row and

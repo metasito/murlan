@@ -39,7 +39,7 @@ describe("the test-trap hint fires where a trap is documented", () => {
 describe("the test-trap hint stays silent elsewhere", () => {
   for (const file of [
     "components/MenuLayout.tsx",
-    "server/socketSafety.ts",
+    "server/socket/socketSafety.ts",
     "tools/loop/tests/guardBash.test.ts",
     "locales/it.ts",
     "docs/agents/loops.md",

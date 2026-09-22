@@ -364,8 +364,8 @@ describe("ladder and replay writes", { skip: hasDatabase() ? false : skipMessage
       // The listing must not pull the `moves` jsonb — ~9 KB per row, twenty
       // rows — to report its length. The response shape cannot show that, so
       // the SQL itself is what is read, off the app's own pool.
-      const { pool } = await import("../../server/db.ts");
-      const { listReplaysForUser } = await import("../../server/replays.ts");
+      const { pool } = await import("../../server/store/db.ts");
+      const { listReplaysForUser } = await import("../../server/game/replays.ts");
       const seen: string[] = [];
       const realQuery = pool.query.bind(pool);
       (pool as { query: unknown }).query = (...args: unknown[]) => {
@@ -416,7 +416,7 @@ describe("ladder and replay writes", { skip: hasDatabase() ? false : skipMessage
   test("two rated hands for one pair wait on the row lock, and both deltas land", async () => {
     const { user: ann } = await register(server, "ladder_race_ann");
     const { user: ben } = await register(server, "ladder_race_ben");
-    const { recordRatedResult } = await import("../../server/ratings.ts");
+    const { recordRatedResult } = await import("../../server/game/ratings.ts");
     const now = new Date();
     const hand = (winner: string, loser: string) =>
       recordRatedResult([{ userId: winner, placement: 1 }, { userId: loser, placement: 2 }], "free_for_all", now);

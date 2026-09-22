@@ -66,7 +66,7 @@ describe("every refusal answers with its own code", { skip: hasDatabase() ? fals
   test("a deletion the database refuses reports the failure", async () => {
     const { user, cookie } = await register(server, "rc_undeletable");
     assert.match(user.id, /^[\w-]+$/);
-    const { pool } = await import("../../server/db.ts");
+    const { pool } = await import("../../server/store/db.ts");
     await pool.query(
       "CREATE FUNCTION rc_refuse_delete() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'refused'; END $$"
     );

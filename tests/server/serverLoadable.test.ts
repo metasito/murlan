@@ -9,7 +9,8 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."
 // Integration tests boot the real server. That is only possible if every server
 // module loads under Node's own loader — docs/agents/loops.md.
 // index.ts is excluded: importing it binds a port and installs signal handlers.
-const MODULES = readdirSync(path.join(repoRoot, "server"))
+const MODULES = readdirSync(path.join(repoRoot, "server"), { recursive: true, encoding: "utf8" })
+  .map((f) => f.split(path.sep).join("/"))
   .filter((f) => f.endsWith(".ts") && f !== "index.ts")
   .map((f) => f.slice(0, -3));
 
@@ -30,7 +31,8 @@ for (const name of MODULES) {
 const SERVER_SAFE_LIB = [
   ...new Set(
     ["server", "shared"].flatMap((dir) =>
-      readdirSync(path.join(repoRoot, dir))
+      readdirSync(path.join(repoRoot, dir), { recursive: true, encoding: "utf8" })
+        .map((f) => f.split(path.sep).join("/"))
         .filter((f) => f.endsWith(".ts"))
         .flatMap((f) => [
           ...readFileSync(path.join(repoRoot, dir, f), "utf-8").matchAll(
@@ -57,7 +59,7 @@ for (const name of SERVER_SAFE_LIB) {
 // No database needed: this inspects how the Pool was constructed, not whether
 // it can connect.
 test("the Postgres pool is constructed with an error handler and timeouts", async () => {
-  const { pool } = await import("../../server/db.ts");
+  const { pool } = await import("../../server/store/db.ts");
 
   assert.equal(
     pool.listenerCount("error"),

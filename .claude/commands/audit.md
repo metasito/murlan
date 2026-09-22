@@ -119,7 +119,7 @@ const LENSES = [
   },
   {
     key: 'network', model: 'opus', skills: ['react-native-best-practices'],
-    start: 'lib/socket.ts, lib/sendIntent.ts, context/SocketContext.tsx, context/OnlineGameContext.tsx, server/socket*.ts, server/game{Room,Turn,Timers,Ownership}.ts, server/emit.ts, server/events.ts, server/tableRouter.ts, server/roomStore.ts, server/shutdown.ts, server/drainPool.ts, docs/DISCONNECT-POLICY.md, docs/adr/0003-*',
+    start: 'lib/socket.ts, lib/sendIntent.ts, context/SocketContext.tsx, context/OnlineGameContext.tsx, server/socket/*.ts, server/game/game{Room,Turn,Timers,Ownership}.ts, server/socket/emit.ts, server/socket/events.ts, server/game/tableRouter.ts, server/store/roomStore.ts, server/http/shutdown.ts, server/store/drainPool.ts, docs/DISCONNECT-POLICY.md, docs/adr/0003-*',
     refs: 'socket.io/docs/v4: delivery-guarantees (at-most-once by default), connection-state-recovery (maxDisconnectionDuration), using-multiple-nodes, adapter; Nielsen heuristic 1 (visibility of system status) for reconnect states.',
     ask: `Build a table of every client<->server event: name, direction, acked?, idempotent?, and what happens if it is lost, duplicated or reordered.
 - Listeners are registered before any await.
@@ -132,7 +132,7 @@ const LENSES = [
   },
   {
     key: 'game-logic', model: 'opus', skills: [],
-    start: 'lib/gameEngine.ts, docs/GAME-RULES.md, docs/BRIEF.md §3.1, lib/autoMove.ts, server/botSeat.ts, server/dealManche.ts, lib/exchangeCeremony.ts, lib/placement.ts, lib/standings.ts, lib/rating.ts, server/ratings.ts, lib/replay.ts, lib/matchState.ts, lib/offlineSave.ts, lib/sharedGameFlow.ts, server/gameOver.ts',
+    start: 'lib/gameEngine.ts, docs/GAME-RULES.md, docs/BRIEF.md §3.1, lib/autoMove.ts, server/game/botSeat.ts, server/game/dealManche.ts, lib/exchangeCeremony.ts, lib/placement.ts, lib/standings.ts, lib/rating.ts, server/game/ratings.ts, lib/replay.ts, lib/matchState.ts, lib/offlineSave.ts, lib/sharedGameFlow.ts, server/game/gameOver.ts',
     refs: 'docs/GAME-RULES.md is the specification; docs/BRIEF.md §3.1 records every rule change.',
     ask: `Build a matrix: rule in docs/GAME-RULES.md -> engine code -> pinning test. Report every row with a gap on any side.
 Edge cases to cover:
@@ -149,7 +149,7 @@ Invariants to confirm:
   },
   {
     key: 'data', model: 'sonnet', skills: [],
-    start: 'shared/schema.ts, server/schemaDdl.ts, server/db.ts, drizzle.config.ts, server/*Store.ts, server/friendRows.ts, server/retention.ts, server/replays.ts, server/stats.ts, server/deleteAccount.ts, scripts/backup-db.mjs, docs/PRIVACY.md, docs/DEPLOY-RUNBOOK.md',
+    start: 'shared/schema.ts, server/store/schemaDdl.ts, server/store/db.ts, drizzle.config.ts, server/store/*Store.ts, server/store/friendRows.ts, server/game/retention.ts, server/game/replays.ts, server/game/stats.ts, server/http/deleteAccount.ts, scripts/backup-db.mjs, docs/PRIVACY.md, docs/DEPLOY-RUNBOOK.md',
     refs: 'node-postgres pooling (max, idleTimeoutMillis, connectionTimeoutMillis, one shared pool); GDPR data minimisation, export and erasure (Usercentrics mobile-games checklist).',
     ask: `- Every query has an index for its WHERE and ORDER BY.
 - Multi-row writes run in a transaction. Races on unique constraints.
@@ -163,7 +163,7 @@ Invariants to confirm:
   },
   {
     key: 'stability', model: 'opus', skills: ['react-native-best-practices'],
-    start: 'components/ErrorBoundary.tsx, components/ErrorFallback.tsx, lib/errorReporting.ts, server/logger.ts, server/index.ts, server/app.ts, server/shutdown.ts, context/, .github/workflows/soak.yml, tests/soak/',
+    start: 'components/ErrorBoundary.tsx, components/ErrorFallback.tsx, lib/errorReporting.ts, server/http/logger.ts, server/index.ts, server/app.ts, server/http/shutdown.ts, context/, .github/workflows/soak.yml, tests/soak/',
     refs: 'OWASP Top 10:2025 A10 (mishandling of exceptional conditions); structured logs carrying a correlation id across HTTP and socket, with tokens and cookies redacted.',
     ask: `- Unhandled rejections and exceptions, on client and server.
 - The error boundary covers every route.
@@ -189,7 +189,7 @@ Quote measured numbers from the docs, and name what is still unmeasured.`,
   },
   {
     key: 'perf-server', model: 'sonnet', skills: [],
-    start: 'server/socketGameplay.ts, server/socketTable.ts, server/tableActions.ts, server/tableHandlers.ts, server/gamePersistence.ts, server/emit.ts, lib/wire.ts, server/app.ts, server/staticPaths.ts, tests/soak/',
+    start: 'server/socket/socketGameplay.ts, server/socket/socketTable.ts, server/game/tableActions.ts, server/game/tableHandlers.ts, server/game/gamePersistence.ts, server/socket/emit.ts, lib/wire.ts, server/app.ts, server/http/staticPaths.ts, tests/soak/',
     refs: 'socket.io/docs/v4 adapter and performance-tuning pages.',
     ask: `- DB writes per move.
 - Broadcast fan-out and state payload size.
@@ -263,7 +263,7 @@ Check:
   },
   {
     key: 'i18n', model: 'sonnet', skills: [],
-    start: 'locales/, lib/i18n.ts, lib/relativeTime.ts, lib/cardNames.ts, server/mail.ts, server/templates/, lib/apiError.ts, docs/research/2026-08-20-albanian-card-terminology-research.md, tests/ui-rules/i18n.test.ts',
+    start: 'locales/, lib/i18n.ts, lib/relativeTime.ts, lib/cardNames.ts, server/http/mail.ts, server/http/templates/, lib/apiError.ts, docs/research/2026-08-20-albanian-card-terminology-research.md, tests/ui-rules/i18n.test.ts',
     refs: 'Key parity is already a compile error; the gaps are plurals, interpolation, overflow and server-originated text.',
     ask: `- Strings that bypass t(), including accessibility labels, emails, errors and push notifications.
 - it or sq values identical to en.
@@ -278,7 +278,7 @@ Check:
     start: 'CONTEXT.md, docs/ARCHITECTURE.md, docs/adr/, shared/, server/, lib/, context/, components/, tools/loop/, scripts/',
     refs: 'Ousterhout deep modules (interface size vs depth); ISO/IEC 25010 maintainability (modularity, reusability, analysability).',
     ask: `Classify modules as deep or shallow. Then check:
-- the seams among server/socket*, table* and game* files;
+- the seams among the server/socket/ and server/game/ files;
 - what each client context is responsible for;
 - shared/ as the single client-server contract;
 - logic duplicated between offline and online, or between client and server;
@@ -348,7 +348,7 @@ Then check:
   },
   {
     key: 'infra', kind: 'research', model: 'opus', skills: ['eas-app-stores'],
-    start: '.replit, docs/adr/0001-*, docs/adr/0003-*, docs/DEPLOY-RUNBOOK.md, docs/adr/0006-*, server/index.ts, server/socketAdapter.ts, package.json scripts, eas.json, app.json, docs/research/2026-08-26-dev-build-vs-expo-go.md, docs/research/2026-08-29-multiplayer-infrastructure.md',
+    start: '.replit, docs/adr/0001-*, docs/adr/0003-*, docs/DEPLOY-RUNBOOK.md, docs/adr/0006-*, server/index.ts, server/socket/socketAdapter.ts, package.json scripts, eas.json, app.json, docs/research/2026-08-26-dev-build-vs-expo-go.md, docs/research/2026-08-29-multiplayer-infrastructure.md',
     refs: 'Use WebSearch and WebFetch. Official pricing pages only; record the URL and the date read for every price.',
     ask: `The Replit subscription has ended. Research where the app should live next.
 Requirements: free at the start, reasonable cost as it grows, mature and boring. The host must run:

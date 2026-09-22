@@ -7,8 +7,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { pool, QUERY_TIMEOUT_MS } from "../../server/db.ts";
-import { DRAIN_TIMEOUT_MS, FORCED_EXIT_MS } from "../../server/shutdown.ts";
+import { pool, QUERY_TIMEOUT_MS } from "../../server/store/db.ts";
+import { DRAIN_TIMEOUT_MS, FORCED_EXIT_MS } from "../../server/http/shutdown.ts";
 
 const { sigtermGraceMs } = JSON.parse(
   readFileSync(path.resolve(import.meta.dirname, "..", "..", "deploy", "runtime.json"), "utf8")

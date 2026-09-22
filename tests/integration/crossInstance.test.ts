@@ -256,8 +256,8 @@ describe("broadcasts cross server instances", {
   test("a password reset on one instance cuts the socket on the other", async () => {
     const acct = await accountOnSecond("rs");
     process.env.DATABASE_URL = scoped;
-    const { userStore } = await import("../../server/userStore.ts");
-    const { mintAuthToken } = await import("../../server/authTokens.ts");
+    const { userStore } = await import("../../server/store/userStore.ts");
+    const { mintAuthToken } = await import("../../server/http/authTokens.ts");
     await userStore.markEmailVerified(acct.id, `${acct.name}@example.test`);
     const token = await mintAuthToken(acct.id, "password_reset", 60_000);
 

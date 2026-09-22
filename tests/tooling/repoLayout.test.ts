@@ -16,6 +16,7 @@ function looseTests(files: string[]): string[] {
 }
 
 const under = (p: string) => `tests/${p}`;
+const inServer = (p: string) => `server/${p}`;
 const NAMED_TEST = /(?<![\w/.-])tests\/[\w./-]+\.(?:test|spec)\.tsx?/g;
 
 const SHORTHAND = /(?<![\w/.-])tests\/[A-Za-z][\w-]*(?![\w/-]|\.\w)/g;
@@ -29,6 +30,19 @@ function shorthandNotAFolder(files: [string, string][], folders: string[]): stri
 function danglingTestPaths(files: [string, string][], exists: (p: string) => boolean): string[] {
   return files.flatMap(([file, src]) =>
     [...src.matchAll(NAMED_TEST)].filter(([p]) => !exists(p)).map(([p]) => `${file} -> ${p}`),
+  );
+}
+
+const SERVER_ROOT_FILES = ["server/index.ts", "server/app.ts"];
+const NAMED_SERVER_FILE = /(?<![\w/.-])server\/[\w./-]+\.(?:ts|html)\b/g;
+
+function looseServerFiles(files: string[]): string[] {
+  return files.filter((f) => /^server\/[^/]+$/.test(f) && !SERVER_ROOT_FILES.includes(f));
+}
+
+function danglingServerPaths(files: [string, string][], exists: (p: string) => boolean): string[] {
+  return files.flatMap(([file, src]) =>
+    [...src.matchAll(NAMED_SERVER_FILE)].filter(([p]) => !exists(p)).map(([p]) => `${file} -> ${p}`),
   );
 }
 
@@ -85,6 +99,33 @@ describe("the repository layout (#1131)", () => {
         [under("engine")],
       ),
       [`a.ts -> ${under("hooksLint")}`, `a.ts -> ${under("spacingLint")}`],
+    );
+  });
+
+  const server = trackedFiles(repoRoot, "server");
+
+  test("only index.ts and app.ts sit at the top of server/; everything else is in a folder", () => {
+    for (const f of SERVER_ROOT_FILES) assert.ok(server.includes(f), `${f} is missing`);
+    assert.ok(server.length > 60, `only ${server.length} files tracked under server/`);
+    assert.deepEqual(looseServerFiles(server), []);
+    assert.deepEqual(
+      looseServerFiles(["server/index.ts", "server/app.ts", inServer("stray.ts"), "server/game/gameRoom.ts", "server/notes.md"]),
+      [inServer("stray.ts"), "server/notes.md"],
+    );
+  });
+
+  test("every server/ file path named in code exists", () => {
+    const sources = trackedFiles(repoRoot, ".")
+      .filter((f) => /\.(tsx?|mjs|cjs|js|json|ya?ml)$/.test(f))
+      .map((f): [string, string] => [f, readFileSync(path.join(repoRoot, f), "utf8")]);
+    assert.ok(
+      sources.some(([, src]) => [...src.matchAll(NAMED_SERVER_FILE)].some(([p]) => p.startsWith("server/game/"))),
+      "the scan finds no server path to check",
+    );
+    assert.deepEqual(danglingServerPaths(sources, (p) => existsSync(path.join(repoRoot, p))), []);
+    assert.deepEqual(
+      danglingServerPaths([["a.ts", `see ${inServer("gameRoom.ts")}, ../${inServer("x.ts")} and tests/${inServer("y.ts")}`]], () => false),
+      [`a.ts -> ${inServer("gameRoom.ts")}`],
     );
   });
 });

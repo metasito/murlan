@@ -18,10 +18,10 @@ import {
 import { register } from "../helpers/client.ts";
 
 /**
- * The caps, written out rather than imported from `server/bugReports.ts`, for
+ * The caps, written out rather than imported from `server/http/bugReports.ts`, for
  * two reasons.
  *
- * Importing them would drag in `server/db.ts`, whose Pool is built at module
+ * Importing them would drag in `server/store/db.ts`, whose Pool is built at module
  * scope from `DATABASE_URL` — read before `startTestServer` scopes it. The app
  * would then create its tables in the default schema instead of the throwaway
  * one, and this suite would write real rows into whatever database the
@@ -45,7 +45,7 @@ describe("bug reports", { skip: hasDatabase() ? false : skipMessage() }, () => {
   let capCookie: string;
   let capCookie2: string;
   let dbPool: pg.Pool;
-  let sweepRetention: typeof import("../../server/retention.ts").sweepRetention;
+  let sweepRetention: typeof import("../../server/game/retention.ts").sweepRetention;
   let retentionDays: number;
   // Unique per run: the suite must be runnable twice against the same
   // database without the second run failing on USERNAME_TAKEN.
@@ -58,9 +58,9 @@ describe("bug reports", { skip: hasDatabase() ? false : skipMessage() }, () => {
     ({ cookie: capCookie2 } = await register(server, `bug_caps2_${suffix}`));
     dbPool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
     // After startTestServer, never at file scope — see the CAP comment above
-    // for why a module reaching server/db.ts cannot be imported any earlier.
-    ({ sweepRetention } = await import("../../server/retention.ts"));
-    ({ BUG_REPORT_RETENTION_DAYS: retentionDays } = await import("../../server/bugReports.ts"));
+    // for why a module reaching server/store/db.ts cannot be imported any earlier.
+    ({ sweepRetention } = await import("../../server/game/retention.ts"));
+    ({ BUG_REPORT_RETENTION_DAYS: retentionDays } = await import("../../server/http/bugReports.ts"));
   });
   after(async () => {
     await dbPool.end();

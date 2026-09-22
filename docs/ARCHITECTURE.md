@@ -19,24 +19,24 @@ components/GameTable.tsx  ◄── the one presentational game table
 context/  (GameContext offline, OnlineGameContext online)
         │
         ▼
-lib/gameEngine.ts (offline: called directly)   server/socket.ts (online: handshake + listeners)
+lib/gameEngine.ts (offline: called directly)   server/socket/socket.ts (online: handshake + listeners)
                                                         │
                                                         ▼
-                                                server/socketGameplay.ts (one listener per intent)
+                                                server/socket/socketGameplay.ts (one listener per intent)
                                                         │
                                                         ▼
-                                                server/tableRouter.ts  ◄── applyOrForward: this
+                                                server/game/tableRouter.ts  ◄── applyOrForward: this
                                                         │                  process, or the one
                                                         │                  that owns the room
                                                         ▼
-                                                server/tableHandlers.ts (applyTableAction)
+                                                server/game/tableHandlers.ts (applyTableAction)
                                                   + gameTurn.ts / gameOver.ts / dealManche.ts
                                                         │
                                                         ▼
                                                 lib/gameEngine.ts (same engine, server side)
                                                         │
                                                         ▼
-                                                shared/schema.ts + server/db.ts (Postgres)
+                                                shared/schema.ts + server/store/db.ts (Postgres)
 ```
 
 - **`lib/gameEngine.ts`** is the single rules engine, imported by both the client (offline
@@ -45,10 +45,10 @@ lib/gameEngine.ts (offline: called directly)   server/socket.ts (online: handsha
   mode.
 - **The client never computes an online outcome locally.** It sends an intent (`game:play`,
   `game:pass`, `game:exchange_give_card`) and renders whatever the server broadcasts back.
-  `server/socket.ts` is the handshake and the listener wiring only; it never touches game
-  state. Every intent lands in a `server/socketGameplay.ts` listener, which resolves the room
-  and calls `applyOrForward` (`server/tableRouter.ts`) and does nothing else. **The single
-  mutator is `applyTableAction` in `server/tableHandlers.ts`**, which dispatches to
+  `server/socket/socket.ts` is the handshake and the listener wiring only; it never touches game
+  state. Every intent lands in a `server/socket/socketGameplay.ts` listener, which resolves the room
+  and calls `applyOrForward` (`server/game/tableRouter.ts`) and does nothing else. **The single
+  mutator is `applyTableAction` in `server/game/tableHandlers.ts`**, which dispatches to
   `playAction` / `passAction` / `exchangeAction` / `rejoinAction` / `startMatchAction` /
   `seatLostAction`; those in turn use `gameTurn.ts` (`armTurn`, the AFK timer and bot turns),
   `gameOver.ts` (`handleGameOver`) and `dealManche.ts` (the shared fresh-manche reset used by
@@ -115,8 +115,8 @@ excluded cards, which would put cards nobody has seen into a broadcast field.
 **Connection:** `lib/socket.ts` owns a singleton `Map<userId, Socket>` — `SocketContext` is
 the only place that creates or tears down a socket. Nothing else is allowed to call `io()`.
 
-**Auth handshake — ticket model (`server/ticket.ts`, `server/routes.ts`,
-`server/socket.ts`):**
+**Auth handshake — ticket model (`server/socket/ticket.ts`, `server/http/routes.ts`,
+`server/socket/socket.ts`):**
 1. The client calls `POST /api/auth/socket-ticket` (behind `requireAuth`, so it needs a
    live session cookie) and receives a short-lived, single-use HMAC-signed ticket —
    `node:crypto` only, no new dependency.
@@ -135,7 +135,7 @@ and evict the new connection right back. The evicted tab renders a terminal "ope
 elsewhere" state with a manual reconnect action; it does not go silently dead, and it does
 not reconnect on its own.
 
-**Table ownership and forwarding (`server/gameOwnership.ts`, `server/tableRouter.ts`):** a live
+**Table ownership and forwarding (`server/game/gameOwnership.ts`, `server/game/tableRouter.ts`):** a live
 game lives in one process's `activeGames` map, and more than one process may be running. A room
 is owned by whichever process holds a Postgres **advisory session lock** keyed by
 `ownershipKey(roomId)`. There is no lease and no heartbeat expiry, deliberately: a killed process
@@ -191,7 +191,7 @@ later turns.
 - **`active_games`** (`shared/schema.ts`): one row per room, and only three columns —
   `roomId` primary key, `updatedAt` (a column because `pruneAbandonedGames` filters on it
   in SQL), and `gameState`, the versioned envelope `PersistedEnvelope`
-  (`server/onlineGameLogic.ts`) specifies. Everything else rides inside that envelope: the
+  (`server/game/onlineGameLogic.ts`) specifies. Everything else rides inside that envelope: the
   hand itself, `handFlags`, `dealFirstSeat`, the room's six-character `joinCode` (duplicated
   from `rooms.code` so a cold-start rejoin can still draw the room screen once that row is
   gone — a code cannot be invented, and an unjoinable one on screen is worse than none), and
@@ -209,7 +209,7 @@ later turns.
   periodic sweeper therefore also prunes rows untouched for 24h. `updated_at` advances
   on every move, so a game being played is never a candidate.
 - **`session`** (via `connect-pg-simple`): `createTableIfMissing: false`, so
-  `server/schemaDdl.ts` creates it at boot with the same DDL the library ships. Never
+  `server/store/schemaDdl.ts` creates it at boot with the same DDL the library ships. Never
   dropped or recreated by app code — see `docs/DEPLOY-RUNBOOK.md`.
 - **`match_replays`**: one row per finished manche — `seats`, `moves` and `rankings` as
   jsonb, plus `playerIds` for the containment filter both reads go through, so a player
@@ -309,7 +309,7 @@ they *decide*, so a rule cannot hold in one mode and not the other:
   order, placement colours and labels, and the ceremony's own clock.
 - **`components/ResultBoard.tsx`** — the end-of-manche screen for both modes; `app/result.tsx`
   and the online `GameOverOverlay` are thin callers.
-- **`server/emit.ts`** — every `game:match_state` and `game:vote_state` broadcast, so the
+- **`server/socket/emit.ts`** — every `game:match_state` and `game:vote_state` broadcast, so the
   vote total is derived once rather than at each call site.
 
 A module here that the server bundles (`autoMove`, `matchState`, `standings`,

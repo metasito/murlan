@@ -236,7 +236,7 @@ describe(
       assert.equal(unfriend.status, 200, await unfriend.text());
       assert.deepEqual((await freed).seatHolds, [], "the room hears the hold is gone");
 
-      const { friendStore } = await import("../../server/friendStore.ts");
+      const { friendStore } = await import("../../server/store/friendStore.ts");
       assert.deepEqual(await friendStore.getGameInvites(friend.user.id), []);
 
       const latecomer = await player("unf_late");

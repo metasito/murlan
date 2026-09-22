@@ -15,7 +15,7 @@ import { Colors, Spacing } from "@/lib/theme";
 
 /**
  * Reachable signed-in or signed-out: the redeem route is public — the code
- * plus the email it was sent to is the credential (server/authTokens.ts) —
+ * plus the email it was sent to is the credential (server/http/authTokens.ts) —
  * and a player who read the mail on another device may land here with no
  * session on this one at all. The email field is prefilled from the signed-in
  * user or the `email` route param (set by app/auth.tsx after signup) but
@@ -68,7 +68,7 @@ export default function VerifyEmailScreen() {
     setLoading(false);
   }
 
-  // Resends to the signed-in account's own address (server/routes.ts), never
+  // Resends to the signed-in account's own address (server/http/routes.ts), never
   // to whatever is currently typed in the email field above, so the notice
   // names the actual destination rather than implying the field controls it.
   async function resend() {

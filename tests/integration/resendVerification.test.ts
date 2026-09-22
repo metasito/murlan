@@ -27,7 +27,7 @@ describe("resend-verification", { skip: hasDatabase() ? false : skipMessage() },
   // one).
   async function legacyAccount(username: string) {
     const { user, cookie } = await register(server, username);
-    const { db } = await import("../../server/db.ts");
+    const { db } = await import("../../server/store/db.ts");
     const { users } = await import("../../shared/schema.ts");
     const { eq } = await import("drizzle-orm");
     await db.update(users).set({ email: null, emailVerifiedAt: null }).where(eq(users.id, user.id));
@@ -44,7 +44,7 @@ describe("resend-verification", { skip: hasDatabase() ? false : skipMessage() },
 
   test("an already-verified account is refused", async () => {
     const { user, cookie } = await register(server, "resend_already_verified");
-    const { userStore } = await import("../../server/userStore.ts");
+    const { userStore } = await import("../../server/store/userStore.ts");
     await userStore.markEmailVerified(user.id, user.email!);
 
     const res = await resend(cookie);
@@ -61,7 +61,7 @@ describe("resend-verification", { skip: hasDatabase() ? false : skipMessage() },
   test("a resend invalidates whatever email_verify code was pending, and mints exactly one fresh one", async () => {
     const { user, cookie } = await register(server, "resend_invalidates");
     await waitForPendingCode(user.id);
-    const { replaceEmailVerifyCode, redeemAuthCode } = await import("../../server/authTokens.ts");
+    const { replaceEmailVerifyCode, redeemAuthCode } = await import("../../server/http/authTokens.ts");
 
     // Stands in for the code register() already minted in the background —
     // the same technique tests/integration/addEmail.test.ts's own
@@ -80,7 +80,7 @@ describe("resend-verification", { skip: hasDatabase() ? false : skipMessage() },
     const stalePending = await redeemAuthCode({ email: user.email!, purpose: "email_verify", code: pending });
     assert.equal(stalePending, null, "resend must invalidate whatever was pending before it");
 
-    const { db } = await import("../../server/db.ts");
+    const { db } = await import("../../server/store/db.ts");
     const { authTokens } = await import("../../shared/schema.ts");
     const { eq, and } = await import("drizzle-orm");
     const rows = await db

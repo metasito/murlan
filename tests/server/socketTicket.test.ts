@@ -1,6 +1,6 @@
 import { test, beforeEach, afterEach, mock } from "node:test";
 import assert from "node:assert/strict";
-import { mintSocketTicket, verifySocketTicket } from "../../server/ticket.ts";
+import { mintSocketTicket, verifySocketTicket } from "../../server/socket/ticket.ts";
 
 const SECRET = "socket-ticket-test-secret";
 let savedSecret: string | undefined;

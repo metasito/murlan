@@ -6,7 +6,7 @@ import { register, connect as connectRaw, waitForPendingCode } from "../helpers/
 import { CLIENT_OUTDATED, MIN_PROTOCOL_VERSION } from "../../shared/protocol.ts";
 
 // One server for the whole file, shared by both describe blocks below.
-// server/db.ts's pool is a module-level singleton created on first import;
+// server/store/db.ts's pool is a module-level singleton created on first import;
 // stop() ends it, and a second full startTestServer()/stop() cycle in this
 // same process would reuse that already-ended pool and fail to boot. Guarded
 // by hasDatabase() so a checkout with no DB configured still runs `npm test`
@@ -80,7 +80,7 @@ describe("socket authentication", { skip: hasDatabase() ? false : skipMessage() 
 });
 
 describe("session regeneration on login and registration", { skip: hasDatabase() ? false : skipMessage() }, () => {
-  // express-session's default cookie name — server/session.ts sets no `name`.
+  // express-session's default cookie name — server/http/session.ts sets no `name`.
   function sidFromSetCookie(setCookie: string): string {
     const match = /connect\.sid=([^;]+)/.exec(setCookie);
     assert.ok(match, `no connect.sid in set-cookie: ${setCookie}`);
@@ -228,7 +228,7 @@ describe("username case", { skip: hasDatabase() ? false : skipMessage() }, () =>
   // can both pass the pre-check. Only the index refuses the second, and it is
   // reached by inserting directly — the route's own check would mask it.
   test("the database refuses a differently-cased duplicate the pre-check let through", async () => {
-    const { userStore, UsernameTakenError } = await import("../../server/userStore.ts");
+    const { userStore, UsernameTakenError } = await import("../../server/store/userStore.ts");
     await userStore.createUser({ username: "CaseCarol", password: "x" });
     await assert.rejects(
       () => userStore.createUser({ username: "casecarol", password: "x" }),
@@ -357,12 +357,12 @@ describe("email at signup", { skip: hasDatabase() ? false : skipMessage() }, () 
 
   test("registration stores the email and mints an email_verify token", async () => {
     const { user } = await register(server, "email_stores");
-    const { userStore } = await import("../../server/userStore.ts");
+    const { userStore } = await import("../../server/store/userStore.ts");
     const stored = await userStore.getUser(user.id);
     assert.equal(stored?.email, "email_stores@example.test");
     assert.equal(stored?.emailVerifiedAt, null);
 
-    const { db } = await import("../../server/db.ts");
+    const { db } = await import("../../server/store/db.ts");
     const { authTokens } = await import("../../shared/schema.ts");
     const { eq, and } = await import("drizzle-orm");
     const readRows = () =>
@@ -402,7 +402,7 @@ describe("email at signup", { skip: hasDatabase() ? false : skipMessage() }, () 
     assert.equal(res.status, 202, text);
     assert.equal(JSON.parse(text).code, "CHECK_YOUR_EMAIL");
 
-    const { userStore } = await import("../../server/userStore.ts");
+    const { userStore } = await import("../../server/store/userStore.ts");
     const other = await userStore.getUserByUsername("email_dup_other");
     assert.ok(other, "the taken-address branch must still create an account");
     assert.notEqual(other.id, owner.id);
@@ -413,7 +413,7 @@ describe("email at signup", { skip: hasDatabase() ? false : skipMessage() }, () 
   test("verify-email redeems a code once, and a second redemption fails", async () => {
     const { user } = await register(server, "verify_once");
     await waitForPendingCode(user.id);
-    const { replaceEmailVerifyCode, redeemAuthCode } = await import("../../server/authTokens.ts");
+    const { replaceEmailVerifyCode, redeemAuthCode } = await import("../../server/http/authTokens.ts");
     const code = await replaceEmailVerifyCode({ userId: user.id, email: user.email!, ttlMs: 60_000 });
 
     const first = await fetch(`${server.url}/api/auth/verify-email`, {
@@ -423,7 +423,7 @@ describe("email at signup", { skip: hasDatabase() ? false : skipMessage() }, () 
     });
     assert.equal(first.status, 200, await first.text());
 
-    const { userStore } = await import("../../server/userStore.ts");
+    const { userStore } = await import("../../server/store/userStore.ts");
     const stored = await userStore.getUser(user.id);
     assert.ok(stored?.emailVerifiedAt, "emailVerifiedAt must be set after redemption");
 
@@ -444,7 +444,7 @@ describe("email at signup", { skip: hasDatabase() ? false : skipMessage() }, () 
   test("an expired code fails to redeem", async () => {
     const { user } = await register(server, "verify_expired");
     await waitForPendingCode(user.id);
-    const { replaceEmailVerifyCode, redeemAuthCode } = await import("../../server/authTokens.ts");
+    const { replaceEmailVerifyCode, redeemAuthCode } = await import("../../server/http/authTokens.ts");
     const code = await replaceEmailVerifyCode({
       userId: user.id,
       email: user.email!,
@@ -470,7 +470,7 @@ describe("email at signup", { skip: hasDatabase() ? false : skipMessage() }, () 
   test("a POST to verify-email does not sweep an unrelated expired row", async () => {
     const { user } = await register(server, "verify_no_sweep");
     await waitForPendingCode(user.id);
-    const { replaceEmailVerifyCode } = await import("../../server/authTokens.ts");
+    const { replaceEmailVerifyCode } = await import("../../server/http/authTokens.ts");
     await replaceEmailVerifyCode({ userId: user.id, email: user.email!, ttlMs: -60_000 });
 
     const admin = new pg.Pool({ connectionString: process.env.DATABASE_URL! });
@@ -491,7 +491,7 @@ describe("email at signup", { skip: hasDatabase() ? false : skipMessage() }, () 
       assert.equal(
         rows.rowCount,
         1,
-        "an expired row must still be there — the sweep is on a schedule (server/retention.ts), not this route"
+        "an expired row must still be there — the sweep is on a schedule (server/game/retention.ts), not this route"
       );
     } finally {
       await admin.end();

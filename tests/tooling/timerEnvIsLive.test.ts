@@ -2,7 +2,7 @@
 // are already loaded. Every integration suite depends on this: each assigns to
 // `process.env` in its own module body, which ESM runs after every hoisted
 // import. The mechanism is documented on `timeoutFromEnv` in
-// `server/gameTimers.ts`.
+// `server/game/gameTimers.ts`.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
@@ -12,10 +12,10 @@ import path from "node:path";
 // The hoisted import an integration test has, standing in for all of them. It
 // reaches `gameTimers` through `onlineGameLogic`, which is the edge that made
 // this fail; importing `gameTimers` directly would test a weaker claim.
-import "../../server/gameRoom.ts";
+import "../../server/game/gameRoom.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-const TIMERS_SOURCE = path.join(repoRoot, "server/gameTimers.ts");
+const TIMERS_SOURCE = path.join(repoRoot, "server/game/gameTimers.ts");
 
 /**
  * Every env-backed timeout the module exports, read from its own source rather
@@ -31,7 +31,7 @@ function declaredTimeouts(): { fn: string; env: string }[] {
 
 describe("a timeout set after the server is loaded", () => {
   test("is the value the server actually uses", async () => {
-    const timers = await import("../../server/gameTimers.ts");
+    const timers = await import("../../server/game/gameTimers.ts");
     const before = timers.disconnectGraceMs();
     process.env.MURLAN_DISCONNECT_GRACE_MS = "500";
     try {
@@ -48,7 +48,7 @@ describe("a timeout set after the server is loaded", () => {
   });
 
   test("every one of them, not just the one that broke", async () => {
-    const timers = (await import("../../server/gameTimers.ts")) as unknown as Record<
+    const timers = (await import("../../server/game/gameTimers.ts")) as unknown as Record<
       string,
       () => number
     >;
@@ -75,7 +75,7 @@ describe("a timeout set after the server is loaded", () => {
    * mechanism is still there and still live.
    */
   test("no env-derived timeout is captured at module scope", () => {
-    const declared = readFileSync(path.join(repoRoot, "server/gameTimers.ts"), "utf8");
+    const declared = readFileSync(path.join(repoRoot, "server/game/gameTimers.ts"), "utf8");
     assert.deepEqual(
       declared.match(/^export const \w+\s*=\s*timeoutFromEnv\(/gm) ?? [],
       [],
@@ -95,8 +95,9 @@ describe("a timeout set after the server is loaded", () => {
         .join("|")})\\(\\)`
     );
     const captured: string[] = [];
-    for (const file of readdirSync(path.join(repoRoot, "server"))) {
-      if (!file.endsWith(".ts") || file === "gameTimers.ts") continue;
+    for (const entry of readdirSync(path.join(repoRoot, "server"), { recursive: true, encoding: "utf8" })) {
+      const file = entry.split(path.sep).join("/");
+      if (!file.endsWith(".ts") || file === "game/gameTimers.ts") continue;
       const source = readFileSync(path.join(repoRoot, "server", file), "utf8");
       for (const [i, line] of source.split("\n").entries()) {
         if (/^(export )?const \w+(: *[\w<>[\]| ]+)? *=/.test(line) && readers.test(line)) {

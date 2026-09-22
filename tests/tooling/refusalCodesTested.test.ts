@@ -1,6 +1,5 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import ts from "typescript";
 import { sourcesUnder } from "../helpers/sourceScan.ts";
@@ -87,9 +86,7 @@ function isRefusalPayload(call: ts.CallExpression): boolean {
 
 /** Every code an object literal saying `ok: false` can carry, or a refusal's `payload(…)`, and every such code the scan could not resolve. */
 function refusalCodes(
-  files: [string, string][] = readdirSync(path.join(REPO_ROOT, "server"))
-    .filter((f) => f.endsWith(".ts"))
-    .map((f) => [`server/${f}`, readFileSync(path.join(REPO_ROOT, "server", f), "utf8")])
+  files: [string, string][] = sourcesUnder(REPO_ROOT, ["server"], /\.ts$/)
 ): { codes: Map<string, string>; unread: string[] } {
   const codes = new Map<string, string>();
   const unread: string[] = [];

@@ -33,7 +33,7 @@ describe("the abandonment record", { skip: hasDatabase() ? false : skipMessage()
 
   /** Writes one recorded hand for `userId`, `abandoned` as given. */
   async function recordHand(userId: string, abandoned: boolean, finishedAt: Date) {
-    const { recordGameResult } = await import("../../server/stats.ts");
+    const { recordGameResult } = await import("../../server/game/stats.ts");
     const result: GameResult = {
       userId,
       placement: abandoned ? 4 : 1,

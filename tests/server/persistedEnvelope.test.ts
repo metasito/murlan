@@ -11,7 +11,7 @@ import {
   type HandFlags,
   type PersistedMatch,
   type PersistedSeats,
-} from "../../server/onlineGameLogic.ts";
+} from "../../server/game/onlineGameLogic.ts";
 
 const gameState = {
   currentTurnIndex: 2,
@@ -140,8 +140,8 @@ describe("rows the restore path refuses", () => {
   });
 
   test("a row a newer revision wrote is refused and kept; an older one is deleted", async (t) => {
-    const { db } = await import("../../server/db.ts");
-    const { rehydrateGame } = await import("../../server/tableHandlers.ts");
+    const { db } = await import("../../server/store/db.ts");
+    const { rehydrateGame } = await import("../../server/game/tableHandlers.ts");
     let deletes = 0;
     let stored: unknown;
     t.mock.method(db.query.activeGames, "findFirst", async () => ({ roomId: "r", gameState: stored }));

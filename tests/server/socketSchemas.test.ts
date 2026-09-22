@@ -1,6 +1,6 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { RoomStartSchema } from "../../server/socketSchemas.ts";
+import { RoomStartSchema } from "../../server/socket/socketSchemas.ts";
 import { getBotPersonality } from "../../lib/botPersonalities.ts";
 
 // A client on an older bundle can send a personality id this build no longer

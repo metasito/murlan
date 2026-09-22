@@ -1,5 +1,5 @@
 // tests/e2e/helpers/mailSink.ts — reads the raw token out of the file
-// server/mail.ts's MURLAN_MAIL_SINK branch writes to (playwright.config.ts
+// server/http/mail.ts's MURLAN_MAIL_SINK branch writes to (playwright.config.ts
 // hands the path to the server and re-exports it on process.env). This is
 // the only way a browser-driven spec can get a token at all: the server
 // stores only its hash, and the real send goes to Resend.

@@ -30,7 +30,7 @@ describe("add-email is rate limited per address", { skip: hasDatabase() ? false 
   // than by registering (which always carries one).
   async function legacyAccount(username: string) {
     const { user, cookie } = await register(server, username);
-    const { db } = await import("../../server/db.ts");
+    const { db } = await import("../../server/store/db.ts");
     const { users } = await import("../../shared/schema.ts");
     const { eq } = await import("drizzle-orm");
     await db.update(users).set({ email: null, emailVerifiedAt: null }).where(eq(users.id, user.id));

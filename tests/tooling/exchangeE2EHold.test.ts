@@ -106,7 +106,7 @@ describe("the offline exchange overlay's E2E hold", () => {
       false,
       "the online table now passes a second argument to useExchangeAnnouncement — " +
         "its clock must stay exchangeAnnounceMs() exactly, or the client's overlay " +
-        "and the server's hold (server/tableHandlers.ts, server/onlineGameLogic.ts) drift apart"
+        "and the server's hold (server/game/tableHandlers.ts, server/game/onlineGameLogic.ts) drift apart"
     );
   });
 });

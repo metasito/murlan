@@ -4,7 +4,7 @@
 // The advisory lock keeps two *instances* off one room and cannot arbitrate two
 // callers inside one: it is re-entrant within a session, so the second is told
 // it holds the room without Postgres ever being asked
-// (`server/gameOwnership.ts`'s `held`). `inFlight` is what serialises them, and
+// (`server/game/gameOwnership.ts`'s `held`). `inFlight` is what serialises them, and
 // this is the shape that proves it does.
 //
 // In process rather than over sockets, deliberately. The claim is about the
@@ -16,11 +16,11 @@ import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
 import pg from "pg";
 import type { Server as SocketServer } from "socket.io";
-import { applyOrForward, setTableHandlers } from "../../server/tableRouter.ts";
-import { activeGames } from "../../server/gameRoom.ts";
-import { closeOwnership, ownershipKey, releaseRoom } from "../../server/gameOwnership.ts";
-import type { OnlineGameState } from "../../server/gameRoom.ts";
-import type { TableAction, TableActionDraft } from "../../server/tableActions.ts";
+import { applyOrForward, setTableHandlers } from "../../server/game/tableRouter.ts";
+import { activeGames } from "../../server/game/gameRoom.ts";
+import { closeOwnership, ownershipKey, releaseRoom } from "../../server/game/gameOwnership.ts";
+import type { OnlineGameState } from "../../server/game/gameRoom.ts";
+import type { TableAction, TableActionDraft } from "../../server/game/tableActions.ts";
 import { hasDatabase, skipMessage } from "../helpers/testServer.ts";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));

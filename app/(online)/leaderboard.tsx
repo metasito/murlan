@@ -1,5 +1,5 @@
 // The current season's ladder. Read-only: the rating itself is the content.
-// A season can carry up to 50 rows (server/ratings.ts), so — like every other
+// A season can carry up to 50 rows (server/game/ratings.ts), so — like every other
 // screen with a back action — the exit sits in a fixed top bar rather than
 // only past however much of the board is on screen.
 import React from "react";

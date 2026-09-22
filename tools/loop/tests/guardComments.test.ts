@@ -2,6 +2,10 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
+import { execFileSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { decide, io } from "../guard-comments.mjs";
 
 type Tree = { committed: () => string; disk: () => string | null };
@@ -124,6 +128,30 @@ describe("the file the edit will leave behind", () => {
   test("an absolute path resolves to what git has, not to nothing", () => {
     const held = io.committed(fileURLToPath(new URL("../comment-budget.mjs", import.meta.url)));
     assert.match(held, /export function addedCounts/);
+  });
+
+  test("a file the branch moved resolves to what it was before the move", () => {
+    const dir = mkdtempSync(join(tmpdir(), "guard-comments-"));
+    const run = (...args: string[]) =>
+      execFileSync("git", args, {
+        cwd: dir,
+        env: { ...process.env, GIT_CONFIG_GLOBAL: join(dir, "nonexistent"), GIT_CONFIG_SYSTEM: join(dir, "nonexistent") },
+      });
+    try {
+      run("init", "-q", "-b", "main");
+      run("config", "user.email", "t@example.com");
+      run("config", "user.name", "t");
+      writeFileSync(join(dir, "a.mjs"), "// held\nconst a = 1;\n");
+      run("add", "--", "a.mjs");
+      run("commit", "-qm", "base");
+      run("update-ref", "refs/remotes/origin/main", "HEAD");
+      mkdirSync(join(dir, "sub"));
+      run("mv", "a.mjs", "sub/b.mjs");
+      run("commit", "-qm", "move");
+      assert.equal(io.committed(join(dir, "sub", "b.mjs")), "// held\nconst a = 1;\n");
+    } finally {
+      rmSync(dir, { recursive: true, force: true, maxRetries: 5 });
+    }
   });
 
   test("a path git has never heard of is empty rather than an error", () => {

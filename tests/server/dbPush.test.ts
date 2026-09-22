@@ -1,6 +1,6 @@
 // tests/server/dbPush.test.ts — the session table must survive `npm run db:push`.
 //
-// `session` is owned by connect-pg-simple (server/schemaDdl.ts creates it at
+// `session` is owned by connect-pg-simple (server/store/schemaDdl.ts creates it at
 // boot, with the DDL the library ships), so it is
 // deliberately not in shared/schema.ts. That leaves drizzle-kit looking at a
 // table it does not know about: on any push that also *adds* a table, it asks
@@ -40,7 +40,7 @@ test("the schema does not describe the session table", () => {
 
 test("the session store is still told not to create the table itself", () => {
   assert.match(
-    read("server/session.ts"),
+    read("server/http/session.ts"),
     /createTableIfMissing\s*:\s*false/,
     "createTableIfMissing must stay false — see docs/DEPLOY-RUNBOOK.md"
   );

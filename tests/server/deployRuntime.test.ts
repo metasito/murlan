@@ -2,9 +2,9 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { resolvePoolMax } from "../../server/db.ts";
-import { DEFAULT_POOL_MAX as SOCKET_ADAPTER_POOL_MAX } from "../../server/socketAdapter.ts";
-import { PLATFORM_GRACE_MS } from "../../server/shutdown.ts";
+import { resolvePoolMax } from "../../server/store/db.ts";
+import { DEFAULT_POOL_MAX as SOCKET_ADAPTER_POOL_MAX } from "../../server/socket/socketAdapter.ts";
+import { PLATFORM_GRACE_MS } from "../../server/http/shutdown.ts";
 
 const repoRoot = path.resolve(import.meta.dirname, "..", "..");
 const read = (...parts: string[]) => readFileSync(path.join(repoRoot, ...parts), "utf8");
@@ -36,7 +36,7 @@ test("the shutdown budget is sized to the manifest's SIGTERM grace", () => {
 });
 
 test("one instance's connections fit the manifest's ceiling", () => {
-  const ownership = read("server", "gameOwnership.ts");
+  const ownership = read("server", "game", "gameOwnership.ts");
   assert.equal(ownership.match(/new Client\(/g)?.length, 1, "game ownership holds one Client");
   assert.doesNotMatch(ownership, /new Pool\(/);
 

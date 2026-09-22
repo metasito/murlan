@@ -46,8 +46,8 @@ describe("graceful shutdown", { skip: hasDatabase() ? false : skipMessage() }, (
   });
 
   test("disconnects sockets, lets their writes land, ends the pool and exits 0", { timeout: 60_000 }, async () => {
-    const { shutdown } = await import("../../server/shutdown.ts");
-    const { pool } = await import("../../server/db.ts");
+    const { shutdown } = await import("../../server/http/shutdown.ts");
+    const { pool } = await import("../../server/store/db.ts");
 
     const { socket, user } = await connectAs(server, `shutdown_${Date.now()}`);
 

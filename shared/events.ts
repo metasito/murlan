@@ -11,7 +11,7 @@
 // `match_history` row.
 
 export const EVENT_NAMES = [
-  /** The tutorial was offered and opened — see the note in server/events.ts. */
+  /** The tutorial was offered and opened — see the note in server/socket/events.ts. */
   "tutorial.started",
   /** The player reached the online area, which is what opens their socket. */
   "lobby.entered",
@@ -21,9 +21,9 @@ export const EVENT_NAMES = [
   "game.firstMoveMade",
   /** They left mid-manche — distinct from losing one. */
   "game.abandoned",
-  /** Any socket closed, server side — see server/socketPresence.ts. */
+  /** Any socket closed, server side — see server/socket/socketPresence.ts. */
   "socket.closed",
-  /** sendMail returned false — see server/mail.ts. Nobody reads a `warn` log. */
+  /** sendMail returned false — see server/http/mail.ts. Nobody reads a `warn` log. */
   "mail.sendFailed",
 ] as const;
 

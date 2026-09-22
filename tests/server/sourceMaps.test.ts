@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { SourceMapGenerator } from "source-map";
-import { symbolicate } from "../../server/sourceMaps.ts";
+import { symbolicate } from "../../server/http/sourceMaps.ts";
 
 const MAPS_ROOT = path.resolve(process.cwd(), "sourcemaps");
 const FIXTURE_DIR = path.join(MAPS_ROOT, "_expo", "static", "js", "web");

@@ -20,7 +20,7 @@ import {
 /**
  * Shortened well below the 60s disconnect grace and 30s AFK production
  * defaults so a manche played out against bots finishes in about a second; the
- * bot's own pace comes from the harness. `server/socket.ts` reads these once at
+ * bot's own pace comes from the harness. `server/socket/socket.ts` reads these once at
  * module scope, so they must be
  * set before that module is first imported — this file always runs as its own
  * process under `node --test`, so the override never leaks into another test

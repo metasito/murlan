@@ -6,7 +6,7 @@
  * `@expo-google-fonts/*` ships TTF only, and the six weights the app uses are
  * 2,123,508 bytes of it. Every one carries the full Latin-Extended coverage
  * Google publishes; the app renders three locales and usernames the server
- * limits to [a-zA-Z0-9_] (RegisterSchema, server/schemas.ts), so most of that
+ * limits to [a-zA-Z0-9_] (RegisterSchema, server/http/schemas.ts), so most of that
  * is glyphs nothing can ever ask for.
  *
  * Subsetting runs here rather than in the build so a Replit deploy needs no

@@ -5,8 +5,8 @@ import {
   joinRoomIntent,
   spectateRoomIntent,
   type LobbyPort,
-} from "../../server/lobbyIntents.ts";
-import type { SeatClaim } from "../../server/roomStore.ts";
+} from "../../server/socket/lobbyIntents.ts";
+import type { SeatClaim } from "../../server/store/roomStore.ts";
 
 const ROOM = { id: "room-1", code: "ABCDEF", status: "waiting", gameMode: "free_for_all", maxPlayers: 4 };
 

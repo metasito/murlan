@@ -14,11 +14,11 @@ import path from "node:path";
 import ts from "typescript";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-const ROUTES_FILE = path.join(REPO_ROOT, "server", "routes.ts");
+const ROUTES_FILE = path.join(REPO_ROOT, "server", "http", "routes.ts");
 const source = readFileSync(ROUTES_FILE, "utf8");
 const sourceFile = ts.createSourceFile(ROUTES_FILE, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
 
-/** The handler function passed to `app.<verb>(routeLiteral, ...)` in server/routes.ts. */
+/** The handler function passed to `app.<verb>(routeLiteral, ...)` in server/http/routes.ts. */
 function routeHandler(routeLiteral: string, file: ts.SourceFile): ts.Node {
   let handler: ts.Node | undefined;
   const visit = (node: ts.Node) => {

@@ -142,7 +142,7 @@ export async function connectAs(
   });
   // "connect" is the whole readiness signal. The connection handler registers
   // every room:*/game:* listener synchronously before its first await
-  // (server/socket.ts, the block above the reconnect notice), so a packet
+  // (server/socket/socket.ts, the block above the reconnect notice), so a packet
   // emitted the instant the transport is up already has a listener waiting.
   // tests/integration/gameplay.test.ts pins that directly.
   await new Promise<void>((resolve, reject) => {
@@ -223,7 +223,7 @@ export function waitFor<T = unknown>(socket: Socket, event: string, ms = 5000): 
  * or register's can delete it afterwards.
  */
 export async function waitForPendingCode(userId: string): Promise<void> {
-  const { db } = await import("../../server/db.ts");
+  const { db } = await import("../../server/store/db.ts");
   const { authTokens } = await import("../../shared/schema.ts");
   const { eq, and } = await import("drizzle-orm");
   for (let attempt = 0; attempt < 100; attempt++) {

@@ -13,7 +13,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { AWAY_WINDOW_MS, awayWindowOutsideGrace, heldSeatGraceMs } from "../soak/soak.ts";
-import { disconnectGraceMs, lobbyGraceMs } from "../../server/gameTimers.ts";
+import { disconnectGraceMs, lobbyGraceMs } from "../../server/game/gameTimers.ts";
 
 const longest = AWAY_WINDOW_MS.floor + AWAY_WINDOW_MS.spread;
 

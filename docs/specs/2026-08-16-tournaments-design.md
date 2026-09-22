@@ -39,9 +39,9 @@ that sleeps.
 Nothing here needs inventing when the time comes:
 
 - Rooms, seating and the full match lifecycle already exist and are driven by
-  the server (`server/socket.ts`).
+  the server (`server/socket/socket.ts`).
 - A finished match already reports placement — `handleGameOver` computes the
-  finishing order the ladder rates (`server/ratings.ts`), which is exactly the
+  finishing order the ladder rates (`server/game/ratings.ts`), which is exactly the
   input a bracket advances on.
 - `active_games` already persists a live table across a restart, so a
   tournament's *matches* survive what its *scheduler* currently would not.

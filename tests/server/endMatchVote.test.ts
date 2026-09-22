@@ -7,13 +7,13 @@
 import { test, describe, before } from "node:test";
 import assert from "node:assert/strict";
 import type { Server as SocketServer } from "socket.io";
-import { installTableHandlers, applyOrForward, rehydrateGame } from "../../server/tableHandlers.ts";
-import { activeGames } from "../../server/gameRoom.ts";
-import { persistence } from "../../server/gamePersistence.ts";
-import { db } from "../../server/db.ts";
-import { clearRoomTimers } from "../../server/gameTimers.ts";
-import { GameEndMatchVoteSchema } from "../../server/socketSchemas.ts";
-import type { OnlineGameState } from "../../server/gameRoom.ts";
+import { installTableHandlers, applyOrForward, rehydrateGame } from "../../server/game/tableHandlers.ts";
+import { activeGames } from "../../server/game/gameRoom.ts";
+import { persistence } from "../../server/game/gamePersistence.ts";
+import { db } from "../../server/store/db.ts";
+import { clearRoomTimers } from "../../server/game/gameTimers.ts";
+import { GameEndMatchVoteSchema } from "../../server/socket/socketSchemas.ts";
+import type { OnlineGameState } from "../../server/game/gameRoom.ts";
 import type { GameOverPayload } from "../../lib/matchState.ts";
 import type { GameState, Player } from "../../lib/gameEngine.ts";
 

@@ -15,8 +15,8 @@
 import { test, describe, beforeEach, afterEach, mock } from "node:test";
 import assert from "node:assert/strict";
 import { z } from "zod";
-import { onEvent, __resetRateLimits } from "../../server/socketSafety.ts";
-import { logger } from "../../server/logger.ts";
+import { onEvent, __resetRateLimits } from "../../server/socket/socketSafety.ts";
+import { logger } from "../../server/http/logger.ts";
 
 interface Recorded {
   level: string;

@@ -1,4 +1,4 @@
-// #953: server/rateLimit.ts is the only place a rate limiter may be built.
+// #953: server/http/rateLimit.ts is the only place a rate limiter may be built.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
@@ -7,13 +7,14 @@ import path from "node:path";
 import ts from "typescript";
 import express from "express";
 import type { AddressInfo } from "node:net";
-import { routeLimiter } from "../../server/rateLimit.ts";
+import { routeLimiter } from "../../server/http/rateLimit.ts";
+import { trackedFiles } from "../helpers/trackedFiles.ts";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const SERVER_DIR = path.join(REPO_ROOT, "server");
-const ROUTES_FILE = path.join(SERVER_DIR, "routes.ts");
+const ROUTES_FILE = path.join(SERVER_DIR, "http", "routes.ts");
 
-/** Every `const <name>Limiter = <callee>(...)` in server/routes.ts. */
+/** Every `const <name>Limiter = <callee>(...)` in server/http/routes.ts. */
 function limiterDeclarations(): { name: string; callee: string }[] {
   const source = readFileSync(ROUTES_FILE, "utf8");
   const sourceFile = ts.createSourceFile(ROUTES_FILE, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
@@ -36,7 +37,7 @@ function limiterDeclarations(): { name: string; callee: string }[] {
   return found;
 }
 
-test("every limiter in server/routes.ts is built by the factory", () => {
+test("every limiter in server/http/routes.ts is built by the factory", () => {
   const declared = limiterDeclarations();
 
   // RULES §6: a scan that finds nothing passes. A floor, not an equality — a
@@ -47,11 +48,12 @@ test("every limiter in server/routes.ts is built by the factory", () => {
   assert.deepEqual(byHand, [], `these bypass routeLimiter: ${byHand.map((d) => `${d.name} = ${d.callee}()`).join(", ")}`);
 });
 
-test("server/rateLimit.ts is the only file under server/ that calls rateLimit()", () => {
+test("server/http/rateLimit.ts is the only file under server/ that calls rateLimit()", () => {
   const CALLS_RATE_LIMIT = /\brateLimit\s*\(/;
   const scanned = new Map(
     readdirSync(SERVER_DIR, { recursive: true, encoding: "utf8" })
-      .filter((f) => f.endsWith(".ts") && f !== "rateLimit.ts")
+      .map((f) => f.split(path.sep).join("/"))
+      .filter((f) => f.endsWith(".ts") && f !== "http/rateLimit.ts")
       .map((f) => [f, readFileSync(path.join(SERVER_DIR, f), "utf8")]),
   );
 
@@ -59,14 +61,16 @@ test("server/rateLimit.ts is the only file under server/ that calls rateLimit()"
   // just as quietly. This second listing deliberately does not share the
   // filter above — a predicate narrowed there would otherwise narrow the
   // floor with it, and the guard would move in lockstep with the guarded.
-  const mustRead = readdirSync(SERVER_DIR).filter((f) => /\.ts$/.test(f) && f !== "rateLimit.ts");
+  const mustRead = trackedFiles(REPO_ROOT, "server")
+    .map((f) => f.slice("server/".length))
+    .filter((f) => /\.ts$/.test(f) && f !== "http/rateLimit.ts");
   const missed = mustRead.filter((f) => !scanned.has(f));
   assert.deepEqual(missed, [], `the walk never read: ${missed.join(", ")}`);
-  assert.ok(scanned.has("routes.ts"), "routes.ts, where every limiter lives, was not read");
+  assert.ok(scanned.has("http/routes.ts"), "routes.ts, where every limiter lives, was not read");
 
   // Positive control: a scan of 57 files proves nothing unless the pattern
   // can be seen to match the one file that legitimately calls rateLimit().
-  assert.match(readFileSync(path.join(SERVER_DIR, "rateLimit.ts"), "utf8"), CALLS_RATE_LIMIT);
+  assert.match(readFileSync(path.join(SERVER_DIR, "http", "rateLimit.ts"), "utf8"), CALLS_RATE_LIMIT);
 
   const callers = [...scanned].filter(([, text]) => CALLS_RATE_LIMIT.test(text)).map(([file]) => file);
   assert.deepEqual(callers, [], `these build a limiter by hand: ${callers.join(", ")}`);

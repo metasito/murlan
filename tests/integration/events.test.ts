@@ -22,19 +22,19 @@ describe("funnel events", { skip: hasDatabase() ? false : skipMessage() }, () =>
   let dbPool: pg.Pool;
   let cookie: string;
   let ownerCookie: string;
-  let trackEvent: typeof import("../../server/events.ts").trackEvent;
+  let trackEvent: typeof import("../../server/socket/events.ts").trackEvent;
   let retentionDays: number;
-  let sweepRetention: typeof import("../../server/retention.ts").sweepRetention;
+  let sweepRetention: typeof import("../../server/game/retention.ts").sweepRetention;
 
   before(async () => {
     server = await startTestServer();
-    // After startTestServer, never at file scope: server/db.ts binds to
+    // After startTestServer, never at file scope: server/store/db.ts binds to
     // DATABASE_URL when first loaded, and the harness is what points that at
     // this run's own schema.
     ({ trackEvent, EVENT_RETENTION_DAYS: retentionDays } = await import(
-      "../../server/events.ts"
+      "../../server/socket/events.ts"
     ));
-    ({ sweepRetention } = await import("../../server/retention.ts"));
+    ({ sweepRetention } = await import("../../server/game/retention.ts"));
     dbPool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 
     ({ cookie } = await register(server, "funnel_player"));

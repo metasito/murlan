@@ -5,11 +5,11 @@ import { readFileSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { afkTimeoutMs } from "../../server/gameTimers.ts";
-import { sendMail } from "../../server/mail.ts";
-import { maxFrom } from "../../server/rateLimit.ts";
-import { testOnlyEnv } from "../../server/testOnlyEnv.ts";
-import { logger } from "../../server/logger.ts";
+import { afkTimeoutMs } from "../../server/game/gameTimers.ts";
+import { sendMail } from "../../server/http/mail.ts";
+import { maxFrom } from "../../server/http/rateLimit.ts";
+import { testOnlyEnv } from "../../server/http/testOnlyEnv.ts";
+import { logger } from "../../server/http/logger.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const saved = { ...process.env };

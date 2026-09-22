@@ -12,7 +12,7 @@ import { connectAs, register, waitFor } from "../helpers/client.ts";
 import { befriend } from "../helpers/friends.ts";
 
 // Lowered so the cap is reachable in a test without renaming a hundred times.
-// Read at module scope by server/routes.ts, so it must be set before the app is
+// Read at module scope by server/http/routes.ts, so it must be set before the app is
 // imported — the same contract tests/helpers/testServer.ts documents.
 const RENAME_LIMIT = 3;
 process.env.MURLAN_RENAME_RATE_LIMIT = String(RENAME_LIMIT);

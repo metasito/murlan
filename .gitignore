@@ -21,7 +21,7 @@ expo-env.d.ts
 server_dist/
 
 # Web source maps — moved out of dist/ by scripts/moveSourceMaps.mjs, read
-# only by server/sourceMaps.ts, never served
+# only by server/http/sourceMaps.ts, never served
 sourcemaps/
 
 # Coverage

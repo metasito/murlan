@@ -7,7 +7,7 @@
 // held return key there.
 //
 // Held return on `app/recover.tsx` spends the whole email-keyed
-// `passwordResetRequestLimiter` budget (`server/routes.ts`) in a second, locking
+// `passwordResetRequestLimiter` budget (`server/http/routes.ts`) in a second, locking
 // the person out of the reset they were asking for.
 //
 // Every expression below is matched as a whole shape, never mined for the

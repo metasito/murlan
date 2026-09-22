@@ -13,7 +13,7 @@ import type { MatchState, PlayerSetupConfig, RematchAnswers } from "./matchState
 
 /**
  * Bumped whenever the stored shape changes. A blob written by an older build is
- * discarded rather than migrated — the same call `server/onlineGameLogic.ts`
+ * discarded rather than migrated — the same call `server/game/onlineGameLogic.ts`
  * makes for `active_games`, and for the same reason: restoring a hand into a
  * shape the engine no longer expects corrupts a game silently, while losing one
  * abandoned match costs nothing.

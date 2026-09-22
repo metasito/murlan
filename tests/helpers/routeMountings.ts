@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import ts from "typescript";
 
-const ROUTES_FILE = path.resolve(import.meta.dirname, "..", "..", "server", "routes.ts");
+const ROUTES_FILE = path.resolve(import.meta.dirname, "..", "..", "server", "http", "routes.ts");
 const HTTP_VERBS = new Set(["get", "post", "put", "delete", "patch"]);
 
 export interface RouteMounting {
@@ -12,7 +12,7 @@ export interface RouteMounting {
   middleware: string[];
 }
 
-/** Every `app.<verb>(…)` call in server/routes.ts, in source order. */
+/** Every `app.<verb>(…)` call in server/http/routes.ts, in source order. */
 export function routeMountings(): RouteMounting[] {
   const source = readFileSync(ROUTES_FILE, "utf8");
   const file = ts.createSourceFile(ROUTES_FILE, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);

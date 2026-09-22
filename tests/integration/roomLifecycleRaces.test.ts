@@ -180,7 +180,7 @@ describe("room lifecycle races", { skip: hasDatabase() ? false : skipMessage() }
     host!.socket.emit("room:quickmatch", { maxPlayers, gameMode: "free_for_all" });
     const room = await opened;
 
-    const { roomStore } = await import("../../server/roomStore.ts");
+    const { roomStore } = await import("../../server/store/roomStore.ts");
     const real = roomStore.findWaitingPublicRooms;
     let meddled = 0;
     roomStore.findWaitingPublicRooms = async function (userId?: string) {
@@ -215,7 +215,7 @@ describe("room lifecycle races", { skip: hasDatabase() ? false : skipMessage() }
   test("177: a join broadcasts the host the room has now, not the one it read", async () => {
     const [host, a, b] = await players(3);
     const room = await lobby([host!, a!], 3);
-    const { roomStore } = await import("../../server/roomStore.ts");
+    const { roomStore } = await import("../../server/store/roomStore.ts");
     const real = roomStore.getRoomByCode;
     let meddled = 0;
     roomStore.getRoomByCode = async function (code: string) {
@@ -281,7 +281,7 @@ describe("room lifecycle races", { skip: hasDatabase() ? false : skipMessage() }
       claimants.push((await register(server, `race_cl_${n++}_${Date.now().toString(36)}`)).user.id);
     }
 
-    const { roomStore } = await import("../../server/roomStore.ts");
+    const { roomStore } = await import("../../server/store/roomStore.ts");
     const lock = await lockRoom(room.roomId);
     let settled: Promise<PromiseSettledResult<Awaited<ReturnType<typeof roomStore.claimRoomSeat>>>[]>;
     try {
@@ -307,8 +307,8 @@ describe("room lifecycle races", { skip: hasDatabase() ? false : skipMessage() }
     host!.socket.emit("room:start");
     await Promise.all(dealt);
 
-    const { activeGames } = await import("../../server/gameRoom.ts");
-    const { persistence, persistGameState } = await import("../../server/gamePersistence.ts");
+    const { activeGames } = await import("../../server/game/gameRoom.ts");
+    const { persistence, persistGameState } = await import("../../server/game/gamePersistence.ts");
     const game = activeGames.get(room.roomId)!;
     const real = persistence.writeActiveGame;
     let open!: () => void;

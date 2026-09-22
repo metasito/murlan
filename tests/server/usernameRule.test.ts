@@ -18,7 +18,7 @@ import {
   USERNAME_PATTERN,
   usernameProblem,
 } from "../../shared/username.ts";
-import { RegisterSchema } from "../../server/schemas.ts";
+import { RegisterSchema } from "../../server/http/schemas.ts";
 
 /** Names that must be accepted, and names that must not, with why. */
 const CASES: [string, ReturnType<typeof usernameProblem>][] = [
@@ -61,8 +61,8 @@ describe("one username rule, read by both sides", () => {
     const source = readSchemaSource();
     assert.match(
       source,
-      /from "\.\.\/shared\/username\.ts"/,
-      "server/schemas.ts no longer reads the shared rule"
+      /from "\.\.\/\.\.\/shared\/username\.ts"/,
+      "server/http/schemas.ts no longer reads the shared rule"
     );
     // Every bound on a username field, anywhere in the file — a copy in
     // `LoginSchema` drifts from `RegisterSchema` just as quietly as one inside
@@ -76,7 +76,7 @@ describe("one username rule, read by both sides", () => {
         assert.equal(
           bound,
           "1",
-          `server/schemas.ts bounds a username with a literal ${bound} beside the shared rule`
+          `server/http/schemas.ts bounds a username with a literal ${bound} beside the shared rule`
         );
       }
     }
@@ -98,5 +98,5 @@ describe("one username rule, read by both sides", () => {
 });
 
 function readSchemaSource(): string {
-  return readFileSync(new URL("../../server/schemas.ts", import.meta.url), "utf8");
+  return readFileSync(new URL("../../server/http/schemas.ts", import.meta.url), "utf8");
 }

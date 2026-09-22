@@ -6,7 +6,7 @@ import {
   replayPlayerIdsOf,
   replaySeatsOf,
   startReplayLog,
-} from "../../server/replayShape.ts";
+} from "../../server/game/replayShape.ts";
 import { MAX_REPLAY_MOVES } from "../../lib/replay.ts";
 import { buildCombination, c } from "../engine/helpers.ts";
 

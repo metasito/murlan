@@ -5,7 +5,7 @@ import { test, describe, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { isAllowedOrigin, trustProxySetting } from "../../server/cors.ts";
+import { isAllowedOrigin, trustProxySetting } from "../../server/http/cors.ts";
 
 // @types/node declares NODE_ENV readonly, so it needs the index signature.
 function setNodeEnv(value: string | undefined): void {

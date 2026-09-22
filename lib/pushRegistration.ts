@@ -1,7 +1,7 @@
 // Registering this device for notifications, and forgetting it again.
 //
 // The only notification the app sends is a friend's game invite that arrived
-// while the player was not connected (server/push.ts). Permission is therefore
+// while the player was not connected (server/socket/push.ts). Permission is therefore
 // asked on the Friends screen rather than at launch: iOS asks once and
 // remembers the answer forever, and a launch-time prompt for a game the player
 // has not yet decided to play with anyone is the one most reliably denied.

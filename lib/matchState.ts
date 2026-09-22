@@ -191,7 +191,7 @@ export interface GameOverPayload {
   /**
    * By user id, and empty for a hand that earns no rating. The server reads
    * this before it writes the ladder, because the inputs stop existing once
-   * that write lands (server/ratings.ts).
+   * that write lands (server/game/ratings.ts).
    */
   ratingDeltas: Record<string, number>;
   /**

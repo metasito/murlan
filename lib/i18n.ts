@@ -10,7 +10,7 @@
 //   so every screen calling it re-renders immediately when the player
 //   changes language in SettingsModal — no app restart required.
 // - `translateServerPayload` renders the `{ code, message, params }` shape
-//   emitted by server/socket.ts and server/routes.ts (see docs there): the
+//   emitted by server/socket/socket.ts and server/http/routes.ts (see docs there): the
 //   server never ships its own translation table, only a stable code plus an
 //   English fallback for safety.
 import AsyncStorage from "@react-native-async-storage/async-storage";

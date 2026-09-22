@@ -41,28 +41,28 @@ describe("docs/PRIVACY.md states the retention the code enforces", () => {
     ["replays", () => `${constantFrom("lib/replay.ts", "REPLAY_RETENTION_DAYS")} days`],
     [
       "crash reports",
-      () => `${constantFrom("server/clientErrors.ts", "CLIENT_ERROR_RETENTION_DAYS")} days`,
+      () => `${constantFrom("server/http/clientErrors.ts", "CLIENT_ERROR_RETENTION_DAYS")} days`,
     ],
     [
       "server error records",
-      () => `${constantFrom("server/serverErrors.ts", "SERVER_ERROR_RETENTION_DAYS")} days`,
+      () => `${constantFrom("server/http/serverErrors.ts", "SERVER_ERROR_RETENTION_DAYS")} days`,
     ],
     [
       "bug reports",
-      () => `${constantFrom("server/bugReports.ts", "BUG_REPORT_RETENTION_DAYS")} days`,
+      () => `${constantFrom("server/http/bugReports.ts", "BUG_REPORT_RETENTION_DAYS")} days`,
     ],
-    ["usage events", () => `${constantFrom("server/events.ts", "EVENT_RETENTION_DAYS")} days`],
+    ["usage events", () => `${constantFrom("server/socket/events.ts", "EVENT_RETENTION_DAYS")} days`],
     [
       "stale rooms",
-      () => `${hours(constantFrom("server/gamePersistence.ts", "STALE_ROOM_MAX_AGE_MS"))} hours`,
+      () => `${hours(constantFrom("server/game/gamePersistence.ts", "STALE_ROOM_MAX_AGE_MS"))} hours`,
     ],
     [
       "abandoned games",
-      () => `${hours(constantFrom("server/gamePersistence.ts", "ABANDONED_GAME_MAX_AGE_MS"))} hours`,
+      () => `${hours(constantFrom("server/game/gamePersistence.ts", "ABANDONED_GAME_MAX_AGE_MS"))} hours`,
     ],
     [
       "the session cookie",
-      () => `${days(constantFrom("server/session.ts", "SESSION_MAX_AGE_MS"))} days`,
+      () => `${days(constantFrom("server/http/session.ts", "SESSION_MAX_AGE_MS"))} days`,
     ],
   ];
 
@@ -77,7 +77,7 @@ describe("docs/PRIVACY.md states the retention the code enforces", () => {
   }
 
   test("the device cap is spelled out", () => {
-    const cap = constantFrom("server/push.ts", "MAX_DEVICES_PER_USER");
+    const cap = constantFrom("server/socket/push.ts", "MAX_DEVICES_PER_USER");
     const spelled = ["zero", "one", "two", "three", "four", "five", "six"][cap];
     assert.ok(spelled, `MAX_DEVICES_PER_USER is ${cap}, which this check cannot spell`);
     assert.ok(

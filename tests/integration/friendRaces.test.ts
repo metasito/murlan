@@ -32,13 +32,13 @@ function add(server: TestServer, from: Account, to: Account): Promise<Response> 
  * The rows themselves, not what an endpoint answers: every endpoint filters by
  * status and direction, so a duplicate is exactly what they hide.
  *
- * Imported inside the call rather than at module scope — `server/db.ts` builds
+ * Imported inside the call rather than at module scope — `server/store/db.ts` builds
  * its pool as it loads, and `startTestServer` sets `DATABASE_URL` first.
  */
 async function friendRows(): Promise<
   { id: string; userId: string; friendUserId: string; status: string }[]
 > {
-  const { db } = await import("../../server/db.ts");
+  const { db } = await import("../../server/store/db.ts");
   const { friends } = await import("../../shared/schema.ts");
   return db.select().from(friends);
 }
@@ -150,7 +150,7 @@ describe("simultaneous friend requests", {
   test("a request left over beside the friendship it asked for is cleared, not refused forever", async () => {
     const alice = await register(server, "stale_alice");
     const bob = await register(server, "stale_bob");
-    const { pool } = await import("../../server/db.ts");
+    const { pool } = await import("../../server/store/db.ts");
 
     // What an add and an accept crossing leaves behind: neither partial index
     // forbids a pending row beside an accepted one in the same direction, and
@@ -196,8 +196,8 @@ describe("simultaneous friend requests", {
     const bob = await register(server, "dedupe_bob");
     const carol = await register(server, "dedupe_carol");
     const dave = await register(server, "dedupe_dave");
-    const { pool } = await import("../../server/db.ts");
-    const { ensureSchema } = await import("../../server/schemaDdl.ts");
+    const { pool } = await import("../../server/store/db.ts");
+    const { ensureSchema } = await import("../../server/store/schemaDdl.ts");
 
     // The state a database upgraded into these indexes is already in: nothing
     // forbade any of it until now. Every shape each index forbids is seeded —

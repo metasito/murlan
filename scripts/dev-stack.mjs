@@ -6,7 +6,7 @@
  *   node scripts/dev-stack.mjs down   stop and remove the container
  *   node scripts/dev-stack.mjs env    print the env vars for the server
  *
- * It creates no tables. `server/schemaDdl.ts` is the single owner of that, and
+ * It creates no tables. `server/store/schemaDdl.ts` is the single owner of that, and
  * it runs on every server start against whatever database it is pointed at.
  *
  * The container is disposable and named distinctly so it can never be confused

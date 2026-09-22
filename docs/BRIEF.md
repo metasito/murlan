@@ -167,7 +167,7 @@ other grace here (`afkTimeoutMs` 30s, `lobbyGraceMs` 20s, `disconnectGraceMs` 60
 whose occupant was connected and then dropped, which is a different actor and a different risk
 from a seat held for someone who has never arrived; the only other figure is
 `STALE_ROOM_MAX_AGE_MS` at 24 hours. So it is a new constant beside them —
-`seatHoldMs()` in `server/gameTimers.ts`, tunable by `MURLAN_SEAT_HOLD_MS` without a deploy. A
+`seatHoldMs()` in `server/game/gameTimers.ts`, tunable by `MURLAN_SEAT_HOLD_MS` without a deploy. A
 minute is hostile to the friend still on the bus, ten is hostile to the room; the room itself
 survives 24 hours either way, so the exact value inside "minutes" is a tuning knob rather than a
 safety property.

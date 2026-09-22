@@ -1,5 +1,5 @@
 // A socket outlives the session that opened it, so every route that ends a
-// session must also end that session's sockets (server/socketRegistry.ts).
+// session must also end that session's sockets (server/socket/socketRegistry.ts).
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
@@ -8,7 +8,8 @@ const read = (path: string) => readFileSync(new URL(`../../${path}`, import.meta
 
 function sessionDeleters(): Set<string> {
   const names = new Set<string>();
-  for (const file of readdirSync(new URL("../../server/", import.meta.url))) {
+  for (const entry of readdirSync(new URL("../../server/", import.meta.url), { recursive: true, encoding: "utf8" })) {
+    const file = entry.replaceAll("\\", "/");
     if (!file.endsWith(".ts")) continue;
     const source = read(`server/${file}`);
     for (const hit of source.matchAll(/sql`\s*DELETE FROM session\b/g)) {
@@ -50,14 +51,14 @@ test("the scan finds the functions that delete sessions", () => {
 });
 
 test("evictUser revokes the account's sockets", () => {
-  const registry = read("server/socketRegistry.ts");
+  const registry = read("server/socket/socketRegistry.ts");
   const body = registry.slice(registry.indexOf("export async function evictUser("));
   const end = body.indexOf("\n}\n");
   assert.match(body.slice(0, end), /\brevokeAccountSockets\(/);
 });
 
 test("every route that ends a session also revokes its sockets", () => {
-  const routes = read("server/routes.ts");
+  const routes = read("server/http/routes.ts");
   const { sessionRoutes, unrevoked } = unrevokedRoutes(routes, sessionDeleters());
   assert.ok(sessionRoutes.length >= 6, `only found ${sessionRoutes.join(", ")}`);
   assert.deepEqual(unrevoked, []);

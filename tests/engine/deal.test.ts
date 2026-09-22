@@ -204,7 +204,7 @@ describe("docs/GAME-RULES.md's undealt-card figure agrees with dealCards's own a
 });
 
 // #803: a blind critique found a third, live call site the first pass of
-// this ticket missed. `server/tableHandlers.ts`'s `startMatchAction`
+// this ticket missed. `server/game/tableHandlers.ts`'s `startMatchAction`
 // (`room:start` after a match ends) correctly reset `dealFirstSeat` to 0,
 // but `dealVotedManche` (`game:rematch_vote` — the "Rematch" button on the
 // results screen) always rotated it via `nextDealFirstSeat`, never checking
@@ -256,7 +256,7 @@ describe("dealFirstSeatFor: one function decides a new match from a continuing o
   });
 
   test("all four sites that decide a deal's first seat route through dealFirstSeatFor", () => {
-    const serverSrc = readFileSync(path.join(repoRoot, "server", "tableHandlers.ts"), "utf8");
+    const serverSrc = readFileSync(path.join(repoRoot, "server", "game", "tableHandlers.ts"), "utf8");
     const offlineSrc = readFileSync(path.join(repoRoot, "context", "GameContext.tsx"), "utf8");
     // The two sites that must tell a continuing match from a finished one —
     // the ones #803's blind critique found disagreeing.

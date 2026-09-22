@@ -10,9 +10,9 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
-import { ownershipKey } from "../../server/gameOwnership.ts";
-import { takeoverMode } from "../../server/tableActions.ts";
-import type { TableActionKind } from "../../server/tableActions.ts";
+import { ownershipKey } from "../../server/game/gameOwnership.ts";
+import { takeoverMode } from "../../server/game/tableActions.ts";
+import type { TableActionKind } from "../../server/game/tableActions.ts";
 
 const SERVER_DIR = path.resolve(import.meta.dirname, "..", "..", "server");
 
@@ -27,18 +27,19 @@ function stripComments(source: string): string {
 
 describe("a game enters memory in one place, under a claim", () => {
   test("nothing but tableHandlers writes activeGames", () => {
-    const writers = readdirSync(SERVER_DIR)
+    const writers = readdirSync(SERVER_DIR, { recursive: true, encoding: "utf8" })
       .filter((f) => f.endsWith(".ts"))
+      .map((f) => f.split(path.sep).join("/"))
       .filter((f) => /\bactiveGames\.set\s*\(/.test(stripComments(serverSource(f))));
     assert.deepEqual(
       writers,
-      ["tableHandlers.ts"],
+      ["game/tableHandlers.ts"],
       "a game put in memory outside the claimed paths is a second owner waiting to happen"
     );
   });
 
   test("the two writers are the deal and the takeover, and nothing else", () => {
-    const source = stripComments(serverSource("tableHandlers.ts"));
+    const source = stripComments(serverSource("game/tableHandlers.ts"));
     assert.equal(
       [...source.matchAll(/\bactiveGames\.set\s*\(/g)].length,
       2,
@@ -51,7 +52,7 @@ describe("a game enters memory in one place, under a claim", () => {
     // `activeGames` says what the game *is*, which lives in one process — and
     // reading it here is how a player on the other instance was told
     // NO_LIVE_GAME about a table they could see.
-    for (const file of ["socketGameplay.ts", "socketRooms.ts"]) {
+    for (const file of ["socket/socketGameplay.ts", "socket/socketRooms.ts"]) {
       assert.ok(
         !/\bactiveGames\b/.test(stripComments(serverSource(file))),
         `${file} reads activeGames directly instead of routing to the owner`
@@ -60,7 +61,7 @@ describe("a game enters memory in one place, under a claim", () => {
   });
 
   test("the claim is released wherever a game leaves memory", () => {
-    const source = stripComments(serverSource("gamePersistence.ts"));
+    const source = stripComments(serverSource("game/gamePersistence.ts"));
     assert.ok(
       /activeGames\.delete[\s\S]{0,200}releaseRoom/.test(source),
       "a game dropped from memory without releasing its room leaves it unclaimable"
@@ -75,7 +76,7 @@ describe("a forwarded action is applied once, however often it is sent", () => {
   // for the de-duplication in the same change as the retry, not after it.
   async function responder() {
     const { TABLE_ACTION_EVENT, registerTableRouting, setTableHandlers } = await import(
-      "../../server/tableRouter.ts"
+      "../../server/game/tableRouter.ts"
     );
     const counter = { applied: 0 };
     setTableHandlers(
@@ -97,7 +98,7 @@ describe("a forwarded action is applied once, however often it is sent", () => {
   }
 
   async function respondTwice(ids: [string, string]): Promise<number> {
-    const { activeGames } = await import("../../server/gameRoom.ts");
+    const { activeGames } = await import("../../server/game/gameRoom.ts");
     const { receive, counter } = await responder();
 
     const roomId = `dedupe-${ids.join("-")}`;
@@ -137,8 +138,8 @@ describe("an action kind the owner does not know", () => {
   const future = (roomId: string) => ({ kind: "future", roomId, userId: "u", username: "u" }) as never;
 
   test("is refused with a code by an owner that holds the room", async () => {
-    const { installTableHandlers, applyOrForward } = await import("../../server/tableHandlers.ts");
-    const { activeGames } = await import("../../server/gameRoom.ts");
+    const { installTableHandlers, applyOrForward } = await import("../../server/game/tableHandlers.ts");
+    const { activeGames } = await import("../../server/game/gameRoom.ts");
     installTableHandlers({ on: () => {} } as never);
     activeGames.set("future-owned", {} as never);
     try {
@@ -152,7 +153,7 @@ describe("an action kind the owner does not know", () => {
   });
 
   test("is a refusal, not a missing owner, when an older owner answers with nothing", async () => {
-    const { applyOrForward } = await import("../../server/tableRouter.ts");
+    const { applyOrForward } = await import("../../server/game/tableRouter.ts");
     const io = {
       serverSideEmit: (_e: string, _a: unknown, ack: (err: unknown, replies: unknown[]) => void) =>
         ack(null, [{ ok: false, code: "NOT_THIS_INSTANCE" }, undefined]),
@@ -183,7 +184,7 @@ describe("ownershipKey", () => {
 describe("takeoverMode", () => {
   /** Every `kind:` in the union, read from the source so a new one cannot hide. */
   function everyKind(): TableActionKind[] {
-    const source = readFileSync(path.join(SERVER_DIR, "tableActions.ts"), "utf8");
+    const source = readFileSync(path.join(SERVER_DIR, "game", "tableActions.ts"), "utf8");
     const union = source.slice(source.indexOf("export type TableAction ="));
     return [...union.matchAll(/kind: "([a-zA-Z]+)"/g)].map((m) => m[1] as TableActionKind);
   }
