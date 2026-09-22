@@ -21,6 +21,7 @@ import {
   wouldTakeSelf,
   isSessionHost,
   parseWindowsProcessJson,
+  resolvePowerShellExe,
 } from "../reap.mjs";
 import preflightMemory, { memoryVerdict, memoryFloor } from "../../ci/preflightMemory.mjs";
 
@@ -822,6 +823,54 @@ describe("parseWindowsProcessJson", () => {
 
   test("no output is no processes, not a parse error", () => {
     assert.deepEqual(parseWindowsProcessJson("  \n"), []);
+  });
+});
+
+describe("resolvePowerShellExe", () => {
+  test("prefers pwsh when it runs", () => {
+    assert.equal(
+      resolvePowerShellExe(() => {}),
+      "pwsh",
+    );
+  });
+
+  test("falls back to legacy powershell only on ENOENT", () => {
+    const enoent = Object.assign(new Error("not found"), { code: "ENOENT" });
+    assert.equal(
+      resolvePowerShellExe(() => {
+        throw enoent;
+      }),
+      "powershell",
+    );
+  });
+
+  test("a non-ENOENT failure keeps pwsh rather than hiding it behind a fallback", () => {
+    assert.equal(
+      resolvePowerShellExe(() => {
+        throw new Error("pwsh ran but the probed command failed");
+      }),
+      "pwsh",
+    );
+  });
+
+  test("measured: pwsh is on PATH on this machine, so the default probe picks it", () => {
+    assert.equal(resolvePowerShellExe(), "pwsh");
+  });
+
+  test("with pwsh off PATH, resolution falls back and the legacy binary actually runs", () => {
+    // Only System32's own PowerShell 5.1 on PATH — the pwsh install lives under WindowsApps,
+    // so this reproduces "pwsh not installed" without touching the real PATH.
+    const restrictedEnv = { ...process.env, PATH: String.raw`C:\Windows\System32\WindowsPowerShell\v1.0` };
+    const probe = (exe: string) => execFileSync(exe, ["-NoProfile", "-Command", "exit"], { env: restrictedEnv, stdio: "ignore" });
+    const resolved = resolvePowerShellExe(probe);
+    assert.equal(resolved, "powershell");
+
+    const out = execFileSync(
+      resolved,
+      ["-NoProfile", "-Command", "Get-CimInstance Win32_Process | Select-Object -First 1 ProcessId,Name | ConvertTo-Json -Compress"],
+      { env: restrictedEnv, encoding: "utf8" },
+    );
+    assert.ok(JSON.parse(out).ProcessId >= 0, "the fallback binary ran Get-CimInstance for real, not just resolved a name");
   });
 });
 

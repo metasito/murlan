@@ -159,6 +159,23 @@ function sh(cmd, args) {
 }
 
 /**
+ * `pwsh` (docs/agents/checks.md's shell contract) if it runs, else the legacy `powershell` every
+ * Windows box still ships. ENOENT is the only trigger — probing a real failure and swallowing it
+ * here would silently downgrade to the legacy binary for a caller who has pwsh but hit an
+ * unrelated fault, hiding that fault behind a shell change nobody asked for.
+ */
+export function resolvePowerShellExe(probe = (exe) => execFileSync(exe, ["-NoProfile", "-Command", "exit"], { stdio: "ignore" })) {
+  try {
+    probe("pwsh");
+    return "pwsh";
+  } catch (err) {
+    return err?.code === "ENOENT" ? "powershell" : "pwsh";
+  }
+}
+
+let cachedPowerShellExe;
+
+/**
  * `-Compress` emits no whitespace of its own, so a raw byte below 0x20 arriving here is never
  * JSON structure — it is a character of somebody's command line that the serializer let through
  * unescaped, and `JSON.parse` rejects the whole table over it. Dropping it costs one character of
@@ -183,7 +200,8 @@ export function parseWindowsProcessJson(json) {
 /** Every process on the box, so a candidate's parent can be looked up rather than assumed dead. */
 function processTable() {
   if (process.platform === "win32") {
-    const json = sh("powershell", [
+    cachedPowerShellExe ??= resolvePowerShellExe();
+    const json = sh(cachedPowerShellExe, [
       "-NoProfile",
       "-Command",
       "Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,Name,CommandLine," +
