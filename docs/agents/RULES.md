@@ -66,7 +66,7 @@ lives in `CLAUDE.md` and `docs/agents/`. A prompt disagreeing with a rule is sta
 23. **Read an issue's parents and blockers before claiming it, not just its labels.** A ticket
     carries no `blocked` label when the blocker is stated on the *other* issue. Follow the chain
     up and take the item that unblocks the rest.
-24. **Propose a design through `/design`**, so the owner gets something to tweak rather than prose.
+24. **Propose a design the owner can tweak**: Claude Design (`/design`), else `superdesign`.
 25. **Read an issue with one command, at pick-up and again before finishing:**
     `gh issue view <n> --json title,body,comments --jq '.title, .body, (.comments[]|"--- "+.author.login+": "+.body)'`.
     `--comments` prints the thread *instead of* the body, and `--json body` drops the thread.

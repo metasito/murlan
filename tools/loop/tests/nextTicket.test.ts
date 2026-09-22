@@ -34,6 +34,16 @@ describe("classify's bucketing", () => {
     assert.equal(route.ticket.number, 3);
   });
 
+  test("a blocked wayfinder child is not routed", () => {
+    const buckets = classify([issue(6, ["wayfinder:research"]), issue(7, ["wayfinder:task"])]);
+    const blocked = new Set([6]);
+    const take = (list: { number: number }[], n: number) => list.filter((i) => !blocked.has(i.number)).slice(0, n);
+
+    assert.equal(pickRoute(buckets, take).ticket.number, 7);
+    blocked.add(7);
+    assert.equal(pickRoute(buckets, take).skill, "handoff");
+  });
+
   test("an owner-gated label still routes to owner", () => {
     const buckets = classify([issue(5, ["ready-for-human"])]);
 

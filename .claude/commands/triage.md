@@ -1,7 +1,7 @@
 ---
 description: Convert one unspecified issue into a ticket an agent can execute — size, labels, and a body that stands on its own.
 argument-hint: "[loop]"
-allowed-tools: Read, Grep, Glob, Skill, Bash(node tools/loop/next-ticket.mjs), Bash(gh issue:*), Bash(gh pr:*), Bash(gh api:*)
+allowed-tools: Read, Grep, Glob, Write, Skill, Bash(node tools/loop/next-ticket.mjs), Bash(gh issue:*), Bash(gh pr:*), Bash(gh api:*)
 ---
 Every rule you follow while doing this is in `docs/agents/RULES.md` — read it first.
 

@@ -81,8 +81,8 @@ derives it from git (the `agent/<n>-<slug>` branch binds the work to its ticket)
 
 4. **Claim.** The loop's `tools/loop/claim.mjs` has already claimed it and made the worktree. A
    by-hand run claims with `npm run queue:claim -- <n> "<title>"` (exit 1: lost the race, or could
-   not claim). If the picker shows an **open pull request** on this ticket, it is already claimed
-   and its Definition of done is posted: do not claim it again. Rebuild the worktree, then resume
+   not claim). If the picker shows an **open pull request** on this ticket, it is already claimed:
+   do not claim it again. Rebuild the worktree, then resume
    where `node tools/loop/loop-status.mjs` says:
 
    ```sh
@@ -96,11 +96,11 @@ derives it from git (the `agent/<n>-<slug>` branch binds the work to its ticket)
    premise, a blocker named in a comment — say so on the issue, remove `in-progress`, declare
    `stoodDown` and **exit**. Never pick another.
 
-6. **Post the ticket's Definition of done as a comment on the issue, before any code.** It is
-   what phase F is judged against. A ticket with no checkable Definition of done is not a ticket:
+6. **The Definition of done is the body's `## Definition of done`**, as later comments amend it;
+   phase F is judged against it. A ticket with no checkable Definition of done is not a ticket:
    park it (**Never stall**).
 
-Done when the worktree stands and the Definition of done is on the issue.
+Done when the worktree stands and the Definition of done is checkable.
 
 ## B — Scope
 
@@ -124,8 +124,8 @@ Done when the worktree stands and the Definition of done is on the issue.
    Then post a new Definition of done on #<n> naming only the first group's boxes and each child
    ticket, and build only that group.
 
-3. No file is out of scope. If the report names the schema, the socket protocol, `.replit` or a
-   workflow, the PR body says what it costs to get wrong.
+3. No file is out of scope. If the report names the schema, the socket protocol, `deploy/runtime.json`
+   or a workflow, the PR body says what it costs to get wrong.
 
 Done when the scope report is in hand and any split is filed.
 
