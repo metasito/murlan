@@ -209,7 +209,6 @@ function isConsecutiveSequence(faceValues: number[], totalLen: number): boolean 
 function isStraight(cards: Card[]): boolean {
   if (cards.length < STRAIGHT_MIN_LEN) return false;
   if (cards.length > STRAIGHT_MAX_LEN) return false;
-  // Jokers cannot be used in straights — only as single cards
   if (cards.some((c) => c.isJoker)) return false;
 
   for (const aceAsHigh of [false, true]) {
@@ -222,7 +221,6 @@ function isStraight(cards: Card[]): boolean {
 }
 
 function getStraightStrength(cards: Card[]): number {
-  // No jokers allowed in straights
   if (cards.some((c) => c.isJoker)) return 0;
 
   for (const aceAsHigh of [true, false]) {
@@ -247,7 +245,6 @@ function isBomb(cards: Card[]): boolean {
 
 function isRoyalStraight(cards: Card[]): boolean {
   if (cards.length < STRAIGHT_MIN_LEN) return false;
-  // Jokers not allowed in straights or royal straights
   if (cards.some((c) => c.isJoker)) return false;
   const suit = cards[0].suit;
   if (!suit) return false;
@@ -531,17 +528,14 @@ export function getAllValidPlays(
     byRank.set(c.rank, g);
   }
 
-  // Singles
   for (const c of hand) tryAdd([c]);
 
-  // Pairs (natural only — no jokers in pairs)
   for (const group of byRank.values()) {
     for (let i = 0; i < group.length; i++)
       for (let j = i + 1; j < group.length; j++)
         tryAdd([group[i], group[j]]);
   }
 
-  // Triples (natural only — no jokers in triples)
   for (const group of byRank.values()) {
     for (let i = 0; i < group.length; i++)
       for (let j = i + 1; j < group.length; j++)
@@ -549,7 +543,6 @@ export function getAllValidPlays(
           tryAdd([group[i], group[j], group[k]]);
   }
 
-  // Bombs (4 natural same rank — no jokers)
   for (const group of byRank.values()) {
     if (group.length >= 4) tryAdd(group.slice(0, 4));
   }
@@ -899,9 +892,7 @@ export function aiChoosePlay(
   );
 
   if (diff === "medium") {
-    // Prefer lowest normal play; save bombs
     const pool = normal.length > 0 ? normal : bombs;
-    // Slightly prefer multi-card plays when hand is large
     if (isNewRound && myCards > 8 && normal.length > 0) {
       const multi = normal.filter((p) => p.cards.length >= 2);
       if (multi.length > 0)
@@ -927,12 +918,10 @@ export function aiChoosePlay(
   }
 
   if (isNewRound) {
-    // We control the round: dump as many weak cards as efficiently as possible
     const near3 = leadPlays.filter((p) => p.cards.length >= myCards - 2);
     if (near3.length > 0)
       return withPersonality(near3.sort((a, b) => b.cards.length - a.cards.length)[0]);
 
-    // Prefer combos that score high on dump value (many cards, low strength)
     const candidates = conservative.length > 0 ? conservative : normal.length > 0 ? normal : bombs;
     if (candidates.length > 0)
       return withPersonality(candidates.sort((a, b) => scorePlayForDump(b) - scorePlayForDump(a))[0]);
@@ -940,27 +929,22 @@ export function aiChoosePlay(
     return withPersonality([...leadPlays].sort((a, b) => scorePlayForDump(b) - scorePlayForDump(a))[0]);
   }
 
-  // Responding to opponent's combo
   if (myCards <= 4 && normal.length > 0) {
     return withPersonality(normal.sort((a, b) => a.strength - b.strength)[0]);
   }
 
-  // Prefer beating with lowest conservative card (preserve 2s/jokers)
   if (conservative.length > 0) {
     return withPersonality(conservative.sort((a, b) => a.strength - b.strength)[0]);
   }
 
-  // Use high cards only if hand is small or opponent is close to winning
   if ((myCards <= 6 || minOpponent <= 3) && withHighCards.length > 0) {
     return withPersonality(withHighCards.sort((a, b) => a.strength - b.strength)[0]);
   }
 
-  // Use bomb when opponent is close to winning and we have no normal play
   if (minOpponent <= 3 && bombs.length > 0) {
     return withPersonality(bombs.sort((a, b) => a.strength - b.strength)[0]);
   }
 
-  // Pass — let the low-strength combo win this round, unless aggression contests it
   return withPersonality(null);
 }
 
