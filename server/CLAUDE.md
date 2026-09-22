@@ -6,7 +6,7 @@ each line.
 
 ## Production — breaking any of these takes it down
 
-The host is being chosen (#1105; ADR-0006 retired Replit). `deploy/runtime.json` is the contract
+The host is being chosen (#1107; ADR-0006 retired Replit). `deploy/runtime.json` is the contract
 any host must meet — Node and Postgres majors, SIGTERM grace, proxy hops, connections per
 instance — and the server and tests read it.
 

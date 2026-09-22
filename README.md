@@ -28,7 +28,7 @@ only in production, `PORT`'s default).
 Starting the built server (`npm run server:build && npm run server:prod`) serves both the
 REST API and the Expo web bundle — no extra setup beyond the env in `docs/DEPLOY-RUNBOOK.md`
 § Secrets. The host itself is undecided (`docs/adr/0006-the-host-is-no-longer-replit.md`,
-#1105); `deploy/runtime.json` is the contract any host must meet, and deploy details (the
+#1107); `deploy/runtime.json` is the contract any host must meet, and deploy details (the
 `session` table, `trust proxy`, deployment shape) are documented in `docs/DEPLOY-RUNBOOK.md`,
 not here.
 

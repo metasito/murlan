@@ -32,7 +32,7 @@ Three pillars, in priority order:
 ## 2. Status
 
 Hosting is mid-migration off Replit (`docs/adr/0006-the-host-is-no-longer-replit.md`); the
-replacement is undecided (#1105) and `deploy/runtime.json` is the contract any host must meet.
+replacement is undecided (#1107) and `deploy/runtime.json` is the contract any host must meet.
 
 **Shipped** — do not read any of these as outstanding: interactive tutorial (`app/tutorial.tsx`);
 IT/EN/SQ localization (`locales/`); rejoin-in-progress UX; ranked ladder (`lib/game/rating.ts`);
@@ -225,7 +225,7 @@ The work is complete when all of the following hold:
 6. Offline single-player is reachable without an account.
 7. `eas build` produces a submittable iOS and Android binary.
 8. Superseded by `docs/adr/0006-the-host-is-no-longer-replit.md` — the app launches with no
-   local setup from whatever the chosen host's own deploy step is (#1105).
+   local setup from whatever the chosen host's own deploy step is (#1107).
 9. Every rule enforced by the engine matches the documented rule set and the in-app rules screen.
 10. Every `.md` file in the repo reflects the shipped state, owns its topic, and contradicts
     no other document. Verified by re-reading them against the code, not by assertion.
