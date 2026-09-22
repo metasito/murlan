@@ -5,12 +5,12 @@
  * `total_cost_usd` on a `result` record is cumulative for its `session_id`: a ticket's spend is the
  * max per session, summed across sessions. Summing the records double-counts, by a lot.
  *
- * Usage: node tools/loop/loop-cost.mjs [<n> | <n>+ ...] [--since <time>]
+ * Usage: node tools/loop/loop-cost.mjs [<n> | <n>+ ...] [--since <time>] [--by-sha]
  */
-import { readFileSync, readdirSync, existsSync } from "node:fs";
+import { readFileSync, readdirSync, existsSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { PHASE, scopeEnds } from "./loop-stream.mjs";
-import { DIR, ARTEFACTS, readLedger } from "./loop-logs.mjs";
+import { DIR, ARTEFACTS, killedStarts, readLedger } from "./loop-logs.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 
 const REVIEW = /\b(spec|standards) review\b/i;
@@ -300,6 +300,37 @@ export function wanted(files, args = []) {
   });
 }
 
+/** Sessions whose supervisor died with them, from the `started` rows no session row answers. */
+export function killedLine(killed) {
+  if (!killed.length) return null;
+  const each = killed.map((k) => `#${k.n} ${k.phase ?? "?"} ${Math.round(k.ms / 6e4)}m`).join(", ");
+  return `killed: ${killed.length} sessions left no row — ${each}${killed.at(-1).trailing ? " (the last may still be running)" : ""}`;
+}
+
+/** `--by-sha`: each loop commit's sessions, spend and outcomes, so a redesign is judged on its own runs. */
+export function shaTable(rows, killed = []) {
+  const groups = new Map();
+  const of = (sha) => {
+    const key = sha ? sha.slice(0, 7) : "unknown";
+    if (!groups.has(key)) groups.set(key, { sessions: 0, cost: 0, landed: 0, parked: 0, killed: 0 });
+    return groups.get(key);
+  };
+  for (const r of rows) {
+    const g = of(r.loop_sha);
+    g.sessions += 1;
+    g.cost += r.cost ?? 0;
+    if (r.outcome === "landed") g.landed += 1;
+    if (r.outcome === "parked") g.parked += 1;
+  }
+  for (const k of killed) of(k.loop_sha).killed += 1;
+  return [
+    "loop     sessions       $  landed  parked  killed",
+    ...[...groups].map(([sha, g]) =>
+      `${sha.padEnd(8)} ${String(g.sessions).padStart(8)} ${g.cost.toFixed(2).padStart(7)} ${String(g.landed).padStart(7)} ${String(g.parked).padStart(7)} ${String(g.killed).padStart(7)}`,
+    ),
+  ].join("\n");
+}
+
 /** `--since <time>`: the tickets with a ledger row started then or later, and those rows. */
 export function sinceWindow(rows, since) {
   const inside = rows.filter((r) => String(r.started ?? "") >= since);
@@ -307,17 +338,25 @@ export function sinceWindow(rows, since) {
 }
 
 if (isInvokedDirectly(process.argv[1], import.meta.url)) {
-  const argv = process.argv.slice(2);
+  const grouped = process.argv.includes("--by-sha");
+  const argv = process.argv.slice(2).filter((a) => a !== "--by-sha");
   const at = argv.indexOf("--since");
   const since = at >= 0 ? new Date(argv[at + 1]).toISOString() : null;
-  const ledger = readLedger();
+  const withStarts = readLedger(undefined, { starts: true });
+  const ledger = withStarts.filter((r) => r.outcome !== "started");
   const window = since ? sinceWindow(ledger, since) : null;
   const picks = window ? window.tickets : argv;
   const files = window && !picks.length ? [] : wanted(existsSync(DIR) ? readdirSync(DIR) : [], picks);
   // Unfiltered, fix-round share was the whole directory's however narrow the window asked for.
   const asked = new Set(files.map((f) => Number.parseInt(f, 10)));
+  const rows = (window ? window.rows : ledger).filter((r) => asked.has(r.n));
+  const lastSeen = (row) => (existsSync(join(DIR, `${row.n}.jsonl`)) ? statSync(join(DIR, `${row.n}.jsonl`)).mtimeMs : null);
+  const killed = killedStarts(withStarts, lastSeen).filter((k) => asked.has(k.n) && (!since || k.started >= since));
   console.log(report(
     files.map((f) => readTicket(readFileSync(join(DIR, f), "utf8").split("\n"), f.replace(".jsonl", ""), since)),
-    (window ? window.rows : ledger).filter((r) => asked.has(r.n)),
+    rows,
   ));
+  const died = killedLine(killed);
+  if (died) console.log(died);
+  if (grouped) console.log(`\n${shaTable(rows, killed)}`);
 }

@@ -2,12 +2,15 @@
 import { test, describe, before, after } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import {
   ARTEFACTS,
+  errorOf,
+  killedStarts,
   ledger,
   parkReasonOf,
+  STDERR_CAP,
   prunable,
   prune,
   readLedger,
@@ -130,7 +133,16 @@ describe("sessionRow", () => {
   test("stamps the schema, so two readings of a field are never averaged together", () => {
     // The literal, not the module's own constant: a test that reads the value it is pinning moves
     // with it and pins nothing. Bump it here deliberately when a field changes what it holds.
-    assert.equal(r.schema, 5);
+    assert.equal(r.schema, 6);
+  });
+
+  test("carries the loop's sha, a structured handoff and the error, and no solo_bash_turns", () => {
+    const handoff = { phase: "D", why: null, said: "built" };
+    const error = { status: 529, reason: "api_error", stderr: null };
+    const v6 = sessionRow(session({ loopSha: "abc", handoff, error }));
+    assert.deepEqual([v6.loop_sha, v6.handoff, v6.error], ["abc", handoff, error]);
+    assert.equal("solo_bash_turns" in v6, false);
+    assert.deepEqual([r.loop_sha, r.handoff, r.error], [null, null, null]);
   });
 
   test("carries the head and the run that wrote it", () => {
@@ -392,14 +404,57 @@ describe("the run report's recap", () => {
 describe("ticketTally", () => {
   const row = (over: object) => ({ n: 1, cost: 0, ...over });
 
-  test("a blocked round restarts the handoff streak but is not a CI round, and names no red head", () => {
-    const t = ticketTally(1, [
-      row({ outcome: "retry", head: "a" }),
-      row({ outcome: "handoff", park_reason: "phase D next" }),
-      row({ outcome: "blocked", head: "b" }),
-      row({ outcome: "blocked", head: "c" }),
-    ]);
-    assert.deepEqual([t.retries, t.handoffsThisRound, t.lastHandoff, t.lastRedHead], [1, 0, null, "a"]);
+  test("reads a structured handoff first, and the prose only on a row that has none", () => {
+    const t = ticketTally(1, [row({ outcome: "handoff", park_reason: "phase D next", handoff: { phase: "C", why: "red", said: null } })]);
+    assert.deepEqual([t.lastHandoff, t.handoffWhy], ["C", "red"]);
+  });
+
+  test("a start row is a spawn, not a session", () => {
+    const t = ticketTally(1, [row({ outcome: "handoff", park_reason: "phase D next" }), row({ outcome: "started", phase: "D" })]);
+    assert.deepEqual([t.sessions, t.handoffsThisRound, t.lastHandoff], [1, 1, "D"]);
+  });
+
+  describe("on the recorded 2026-09-21/22 ledger", () => {
+    const rows = readFileSync(path.join(import.meta.dirname, "fixtures", "ledger-2026-09-21.jsonl"), "utf8")
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l));
+    const each = (of: object[]) => rows.map((r, i) => ticketTally(r.n, of.slice(0, i + 1)));
+
+    test("every prefix tallies as it did before schema 6", () => {
+      const s = { sessions: 0, handoffs: 0, retries: 0, spend: 0, last: "" };
+      for (const t of each(rows)) {
+        s.sessions += t.sessions;
+        s.handoffs += t.handoffsThisRound;
+        s.retries += t.retries;
+        s.spend += t.spend;
+        s.last += t.lastHandoff ?? "-";
+      }
+      assert.deepEqual(
+        { ...s, spend: Number(s.spend.toFixed(2)) },
+        {
+          sessions: 188,
+          handoffs: 119,
+          retries: 23,
+          spend: 704.32,
+          last: "DDD-DDDDD-DDDD-DD-DDD-DDD--DDD-DD-DDDD-DD-DD-CDDD-DDD-DD-DD-DD-DD-DD-DDD-D-DD-DDD-DD--DD-DDDD-DD-DD-DDD-DD-DD-DD-",
+        },
+      );
+    });
+
+    test("the same rows written as schema 6 tally the same as their prose", () => {
+      const v6 = rows.map((r) => {
+        const m = /^phase ([A-F]) next(?: — (.+))?$/.exec(r.park_reason ?? "");
+        return r.outcome === "handoff" && m ? { ...r, park_reason: null, handoff: { phase: m[1], why: m[2] ?? null, said: null } } : r;
+      });
+      assert.deepEqual(each(v6), each(rows));
+    });
+
+    test("rows of every schema before 6 still tally", () => {
+      assert.deepEqual([...new Set(rows.map((r) => r.schema))], [5]);
+      const older = [{ n: 1, outcome: "handoff", park_reason: "phase C next" }, { schema: 2, n: 1, outcome: "retry" }, { schema: 4, n: 1, outcome: "handoff", park_reason: "phase D next — x", solo_bash_turns: 3 }];
+      assert.deepEqual([ticketTally(1, older).lastHandoff, ticketTally(1, older).handoffWhy], ["D", "x"]);
+    });
   });
 
   test("handoffs since the last terminal row, restarting the streak on a retry", () => {
@@ -562,5 +617,69 @@ describe("readLedger", () => {
     const file = path.join(dir, "empty.jsonl");
     writeFileSync(file, "", "utf8");
     assert.deepEqual(readLedger(file), []);
+  });
+});
+
+describe("a session's error", () => {
+  test("a clean exit has none", () => {
+    assert.equal(errorOf({ result: { isError: false }, stderr: "  " }), null);
+  });
+
+  test("carries the API status and terminal reason, and keeps only the stderr tail past the cap", () => {
+    const e = errorOf({ result: { isError: true, apiStatus: 529, terminalReason: "api_error" }, stderr: `${"x".repeat(STDERR_CAP)}END` })!;
+    assert.deepEqual([e.status, e.reason, e.stderr!.length], [529, "api_error", STDERR_CAP]);
+    assert.ok(e.stderr!.endsWith("END"));
+  });
+
+  test("goes into a park's reason, and into no other row's", () => {
+    const e = { status: null, reason: "error_during_execution", stderr: "spawn EPERM" };
+    assert.equal(parkReasonOf("parked", "exited 1", e), "exited 1 — error_during_execution · spawn EPERM");
+    assert.equal(parkReasonOf("diagnosed", "resume C — x", e), "resume C — x");
+  });
+});
+
+describe("start rows", () => {
+  const book = () => {
+    const lines: string[] = [];
+    const titles: string[] = [];
+    const b = ledger({ append: (f: string, t: string) => f.endsWith("tickets.jsonl") && lines.push(t), mkdir: () => {}, exists: () => false, write: (_f: string, t: string) => titles.push(t), loopSha: "abcdef1234" });
+    return { b, titles, rows: () => lines.map((l) => JSON.parse(l)) };
+  };
+
+  test("a spawn with no row after it reads as killed at the next boot, with its elapsed time", () => {
+    const { b, rows } = book();
+    b.start(1094, "D", "r1");
+    const [killed] = killedStarts(rows(), (s: any) => Date.parse(s.started) + 60_000);
+    assert.deepEqual([killed.n, killed.phase, killed.ms, killed.trailing, killed.loop_sha], [1094, "D", 60_000, true, "abcdef1234"]);
+  });
+
+  test("a normal exit is exactly one end row, and nothing killed", () => {
+    const { b, titles, rows } = book();
+    b.start(1094, "D", "r1");
+    b.record(session({ number: 1094 }), { runId: "r1", report: { number: 1094, title: "t", outcome: "landed", ms: 1, cost: 0 } });
+    assert.deepEqual(rows().map((r) => r.outcome), ["started", "landed"]);
+    assert.equal(rows()[1].loop_sha, "abcdef1234");
+    assert.match(titles[0], /· loop abcdef1/);
+    assert.deepEqual(killedStarts(rows()), []);
+  });
+
+  test("a restarted run's row for the ticket does not answer the start it never ran", () => {
+    const at = (m: number) => new Date(Date.UTC(2026, 8, 21, 8, m)).toISOString();
+    const rows = [
+      { outcome: "started", n: 7, run_id: "r1", started: at(0) },
+      { outcome: "retry", n: 7, run_id: "r2", started: at(30) },
+      { outcome: "started", n: 7, run_id: "r2", started: at(31) },
+      { outcome: "handoff", n: 7, run_id: "r2", started: at(31) },
+    ];
+    assert.deepEqual(killedStarts(rows).map((k) => [k.n, k.ms, k.trailing]), [[7, 31 * 60_000, false]]);
+  });
+
+  test("readLedger leaves them out unless asked", () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "starts-"));
+    const file = path.join(dir, "tickets.jsonl");
+    writeFileSync(file, '{"n":1,"outcome":"started"}\n{"n":1,"outcome":"landed"}\n', "utf8");
+    assert.deepEqual(readLedger(file).map((r) => r.outcome), ["landed"]);
+    assert.equal(readLedger(file, { starts: true }).length, 2);
+    rmSync(dir, { recursive: true, force: true });
   });
 });
