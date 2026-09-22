@@ -23,7 +23,8 @@ test("decided game rules are stated in GAME-RULES.md, not in BRIEF.md", () => {
 // Excludes the working-artefact directories (Task 6's, historical or pending deletion) and
 // docs/adr (immutable history).
 const EXCLUDED = /^docs\/(adr|plans|research|specs|design)\//;
-const staleCitation = /BRIEF\.md`?\s*§?\s*3\.1\b/;
+// `§`, `#` (a markdown anchor link) or nothing at all, with or without a space.
+const staleCitation = /BRIEF\.md`?\s*[§#]?\s*3\.1\b/;
 
 function citingOldLocation(): string[] {
   const files = execSync("git ls-files", { cwd: root, encoding: "utf8" })

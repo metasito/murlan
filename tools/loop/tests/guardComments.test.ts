@@ -109,6 +109,15 @@ describe("the file the edit will leave behind", () => {
     assert.deepEqual(edit(prose(3).join("\n"), "src/x.ts", tree(head, now)), { deny: false });
   });
 
+  // The seventh line here is not new growth: it puts back, reworded, the one committed line the
+  // other six didn't touch. Net counting must let it through where raw counting denied it.
+  test("rewording the seventh line, restoring a comment the branch had deleted, is allowed", () => {
+    const head = Array.from({ length: 7 }, (_, i) => `// old ${i}`).concat(code(4)).join("\n");
+    const now = Array.from({ length: 6 }, (_, i) => `// new ${i + 1}`).concat(code(4)).join("\n");
+    const out = edit("// new 0", "src/x.ts", tree(head, now));
+    assert.deepEqual(out, { deny: false });
+  });
+
   test("a docblock that is most of what the change adds is denied", () => {
     const head = code(40).join("\n");
     const block = ["/**", ...Array.from({ length: 8 }, () => " * an invariant the types cannot carry."), " */"];

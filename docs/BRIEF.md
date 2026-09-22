@@ -65,7 +65,7 @@ haptic choreography, every cue timed to the card's landing (`impactDelayMs()`, f
 
 ### 3.1 Rule decisions
 
-Moved to `docs/GAME-RULES.md` § Decisions.
+Before citing or changing a decided game rule, read `docs/GAME-RULES.md` § Decisions — every row moved there.
 
 ---
 
