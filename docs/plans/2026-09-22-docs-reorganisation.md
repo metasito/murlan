@@ -693,3 +693,122 @@ git commit -m "refactor(comments): delete what the code already says in lib and 
 - [ ] **Step 6: Report the numbers**
 
 Comment lines and percentage per directory before and after, and the count of comments deleted by reason (restatement / history / fixed-defect / narration).
+
+### Task 16: a doc reference that goes stale reds the branch (owner instruction, 2026-09-22)
+
+The owner's requirement: when the loop takes any ticket, the process itself must keep doc references true, cut what the change made old, and use each reference properly. A sentence in `RULES.md` asking for that decays (`docs/agents/RULES.md` cannot fail); a check derives it on every run. Every doc in this repo names paths, npm scripts and tests as its authority — so the mechanical half of "the docs follow the code" is: **every path a doc names exists, and every doc file is reachable**. A rename or deletion in an unrelated ticket then fails `npm test` with the doc line that must change, which is how the loop learns to update docs it never opened.
+
+**Files:** Create `tests/tooling/docReferences.test.ts`. Modify `docs/agents/RULES.md` (one rule line). No other file.
+
+**Interfaces:**
+- Consumes: the doc set after Tasks 3, 5, 6 and 11-14 — run this task last among doc tasks, so no reference it pins is about to move.
+- Produces: nothing other tasks read. `npm test` already globs `tests/**/*.test.ts`, so CI picks it up with no wiring.
+
+- [ ] **Step 1: Write the failing test**
+
+Create `tests/tooling/docReferences.test.ts`, in the style of `tests/tooling/rulesAreSingleSourced.test.ts` (node:test, node:assert/strict, `execSync('git ls-files ...')` for the file set — never a hand-written list, which is the defect this task removes):
+
+```ts
+import { execSync } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
+import assert from "node:assert/strict";
+import test from "node:test";
+import { dirname, join, normalize } from "node:path";
+
+const docs = execSync('git ls-files "*.md"', { encoding: "utf8" })
+  .trim().split("\n").filter((f) => !f.startsWith("node_modules/"));
+const scripts = new Set(Object.keys(JSON.parse(readFileSync("package.json", "utf8")).scripts));
+
+/** `](relative/path.md)` and `](relative/path.md#anchor)`, skipping URLs and bare anchors. */
+const LINK = /\]\((?!https?:|mailto:|#)([^)\s#]+)(#[^)\s]*)?\)/g;
+/** A repo path inside backticks: `docs/agents/RULES.md`, `lib/game/gameEngine.ts`, `tests/ui-rules/`. */
+const CODE_PATH = /`((?:\.?\/)?(?:app|components|context|docs|lib|scripts|server|shared|tests|tools|assets|locales|\.github)\/[\w./@-]+)`/g;
+/** `npm run <script>` in prose or a fenced block. */
+const NPM_RUN = /npm run ([\w:-]+)/g;
+
+test("every relative link in a doc resolves", () => {
+  const broken: string[] = [];
+  for (const doc of docs) {
+    const body = readFileSync(doc, "utf8");
+    for (const [, target] of body.matchAll(LINK)) {
+      const resolved = normalize(join(dirname(doc), target));
+      if (!existsSync(resolved)) broken.push(`${doc} -> ${target}`);
+    }
+  }
+  assert.deepEqual(broken, []);
+});
+
+test("every repo path a doc names in backticks exists", () => {
+  const broken: string[] = [];
+  for (const doc of docs) {
+    const body = readFileSync(doc, "utf8");
+    for (const [, target] of body.matchAll(CODE_PATH)) {
+      if (!existsSync(normalize(target.replace(/\/$/, "")))) broken.push(`${doc} -> ${target}`);
+    }
+  }
+  assert.deepEqual(broken, []);
+});
+
+test("every npm script a doc names is defined", () => {
+  const broken: string[] = [];
+  for (const doc of docs) {
+    for (const [, name] of readFileSync(doc, "utf8").matchAll(NPM_RUN)) {
+      if (!scripts.has(name)) broken.push(`${doc} -> npm run ${name}`);
+    }
+  }
+  assert.deepEqual(broken, []);
+});
+
+test("the check reads the doc set from git, not from a list", () => {
+  assert.ok(docs.length > 10, `expected the tracked doc set, got ${docs.length}`);
+});
+```
+
+- [ ] **Step 2: Run it and read every failure as work**
+
+Run: `node --test tests/tooling/docReferences.test.ts`
+
+Expected: FAIL, listing every stale path this branch has not yet fixed. Each one is a real defect — fix the doc, never the regex, and never add an exception list. Two exceptions are legitimate and go in the regex itself, with the reason in one comment: a path that is deliberately illustrative (`path/to/file.ts` in an example) is written without a leading repo directory and so is already outside `CODE_PATH`; a path inside a fenced block quoting *another* repo does not exist here — quote it without backticks or rewrite the example.
+
+- [ ] **Step 3: Fix the docs until it passes**
+
+Run: `node --test tests/tooling/docReferences.test.ts`
+
+Expected: PASS, four tests.
+
+- [ ] **Step 4: State the rule once, where rules live**
+
+Add one numbered rule to `docs/agents/RULES.md`, in that file's existing voice, saying that a change that moves, renames or deletes a file updates the docs naming it, and that `tests/tooling/docReferences.test.ts` is what fails when it does not. One line; no restatement anywhere else (`tests/tooling/rulesAreSingleSourced.test.ts` enforces that).
+
+- [ ] **Step 5: Prove it catches a real rename**
+
+```powershell
+git mv docs/agents/issue-tracker.md docs/agents/tracker-tmp.md
+node --test tests/tooling/docReferences.test.ts
+git mv docs/agents/tracker-tmp.md docs/agents/issue-tracker.md
+```
+
+Expected: the middle command FAILS and names each doc still pointing at the old path; after the second `git mv`, `node --test tests/tooling/docReferences.test.ts` passes again. A check that stays green through the rename is not wired to the doc set — fix it before committing.
+
+- [ ] **Step 6: Commit**
+
+```powershell
+git add -- tests/tooling/docReferences.test.ts docs/agents/RULES.md
+git commit -m "test(docs): a doc naming a path that no longer exists fails the branch"
+```
+
+## Amendment, 2026-09-22 — sources and principles (owner instruction: "according to best practices of Claude anthropic and findings from online benchmarks")
+
+The authority for every judgement in this plan is `.superpowers/sdd/2026-09-22-docs-reorganisation/research-best-practices.md`: claim, source, date and exact quote, each rule flagged MEASURED (Anthropic's own docs, or a replicated study) or PRACTITIONER. Nine rules came back MEASURED, one PRACTITIONER and explicitly not bound. The plan does not restate that file; the binding changes it forces are below, and the after-grading scores against its rule list rather than against anyone's taste.
+
+**Binding, added to Global Constraints:**
+
+- **Root `CLAUDE.md` is at or under 200 lines** — Anthropic's own stated threshold, not a number we invented. `tests/tooling/claudeMdScope.test.ts` (Task 1) gains a line assertion beside its word budget.
+- **`@path` imports never count as a saving.** Anthropic's docs state an imported file "still load[s] and enter[s] the context window at launch". Only a nested subdirectory `CLAUDE.md` or a path-scoped `.claude/rules/*.md` defers loading — which is exactly the split Task 1 already made. The same test asserts the root file contains no `@` import line, so no later edit buys a smaller word count with a file that loads anyway.
+- **Emphasis is rationed.** Undifferentiated `IMPORTANT`/ALL-CAPS/bold-as-alarm dilutes the markers that matter; the test caps their count in the root file and the count may only fall.
+- **The single most load-bearing sentence of an always-loaded document sits in its first or last paragraph, never mid-file.** Two independent studies (Liu et al. 2023; Chroma's context-rot replication across 18 frontier models, 2025) agree retrieval is most reliable at the boundaries and that the effect *sharpens* with length. This binds Tasks 2, 8, 11-14: each doc's opening paragraph carries its own thesis, and no rule that a reader must obey is buried in the middle of a long file.
+- **Pointer over inline is Anthropic's stated preference, not our style.** Their context-engineering guidance names CLAUDE.md's up-front loading as the failure mode it argues against and recommends just-in-time retrieval. Where a task weighs inlining against a pointer, the pointer wins unless the material is needed in every session.
+
+**Task 15 is re-founded, and narrowed.** The research found *no* evidence in either direction on comment density and model comprehension: one large study finds comment *language* dominates with no consistent density effect, the other is a single unreplicated study about comment *accuracy*. So the comment pass is justified by this repo's own `CLAUDE.md` § Comments rule and by diff hygiene — nothing else. It deletes what the four reasons condemn, one comment at a time, and it sets **no density target**: the 19.1% baseline is a measurement to report against, never a number to hit. A comment that survives the four reasons stays, whatever the percentage does.
+
+**The after-grading rubric** is the nine MEASURED rules plus this repo's own normative list (`docs/agents/RULES.md`) and `CLAUDE.md` § Comments. A grade is stated per file with the rule it failed; "reads well" is not a grade.
