@@ -8,16 +8,18 @@ This file holds only what reading the code cannot tell you. Stack, layout and ga
 
 ## Where the rest lives
 
-- `docs/agents/RULES.md` — every rule an agent follows, numbered. The only normative list; cite a
-  rule by number, never restate it (`tests/tooling/rulesAreSingleSourced.test.ts`).
-- `docs/agents/issue-tracker.md` — the queue (GitHub Issues, `metasito/murlan`), labels, claiming,
-  the `gh` invocations.
-- `docs/agents/loops.md` — which check catches what and what it costs, local ports, the React
-  Native Web traps that pass every test and render nothing.
-- `docs/adr/README.md` — decisions, indexed. A game-rule change is recorded in `docs/BRIEF.md` §3.1.
-- `components/CLAUDE.md` — loaded when you read anything under `components/`: table and
+- **When a rule number is cited and you cannot see the rule** — `docs/agents/RULES.md`: every
+  rule an agent follows, numbered, the only normative list; cite by number, never restate it
+  (`tests/tooling/rulesAreSingleSourced.test.ts`).
+- **Before claiming, labelling or writing a ticket** — `docs/agents/issue-tracker.md`: the queue
+  (GitHub Issues, `metasito/murlan`), labels, claiming, the `gh` invocations.
+- **Before any rendering, animation or test change** — `docs/agents/checks.md`: which check
+  catches it and what it costs, local ports, the traps that pass every check and still ship
+  broken.
+- **When a decision needs recording** — `docs/adr/README.md`: the index.
+- **Before touching anything under `components/`** — `components/CLAUDE.md`: table and
   UI-component invariants, the design system.
-- `server/CLAUDE.md` — loaded when you read anything under `server/`: the production contract,
+- **Before touching anything under `server/`** — `server/CLAUDE.md`: the production contract,
   boot env, schema, and the server invariants.
 
 ## Invariants — each is a bug that shipped
@@ -29,8 +31,8 @@ Verify against source before changing any.
 - **One module chooses a bot's move: `lib/game/autoMove.ts`**, called by the server
   (`server/game/gameTurn.ts`) and the offline table (`context/GameContext.tsx`) both. It once
   landed with only the server calling it, every check green.
-- **Game rules live in `lib/game/gameEngine.ts`**, specified by `docs/GAME-RULES.md`. Change them
-  only via a decision recorded in `docs/BRIEF.md` §3.1.
+- **Before changing a game rule** — it lives in `lib/game/gameEngine.ts`, specified by
+  `docs/GAME-RULES.md`; change it only via a decision recorded in `docs/BRIEF.md` §3.1.
 - **No self-defeating safeguards.** A check that exempts what it checks, a ratchet that loosens
   itself, a suspend knob with no floor, a `--yes` baked into a destructive script — each reports
   green by not looking. A safeguard that can be satisfied without the guarded thing being true is

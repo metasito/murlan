@@ -1,7 +1,8 @@
 # Components
 
-Loaded when you read anything under `components/`. Rules live in `docs/agents/RULES.md`;
-invariants here are pinned by the test named on each line.
+Loaded when you read anything under `components/`. When a rule number is cited and you cannot
+see the rule, it lives in `docs/agents/RULES.md`; invariants here are pinned by the test named on
+each line.
 
 ## UI invariants — each is a bug that shipped
 
@@ -25,7 +26,7 @@ Verify against source before changing any.
   `Layer.felt` (0) < `Layer.feltScrim` (the bomb's) < `Layer.table`;
   `tests/ui-rules/tokenRoles.test.ts` resolves every `zIndex` through its constant.
 - **Diagnose a native-only visual defect from device pixels, not reasoning.** Sample first
-  (`docs/agents/loops.md`); a fix argued from code alone gets one thing right and two wrong, on
+  (`docs/agents/checks.md`); a fix argued from code alone gets one thing right and two wrong, on
   the owner's phone, each round.
 
 **UI components**

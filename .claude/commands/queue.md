@@ -5,8 +5,10 @@ allowed-tools: Read, Write, Edit, Grep, Glob, Bash, Task, Skill, SlashCommand, T
 model: opus
 ---
 
-The only loop protocol in this repo. `docs/agents/RULES.md` is the ruleset, cited here by number;
-this file is the procedure. Where they disagree, RULES.md wins and this file is stale — fix it.
+Read `docs/agents/RULES.md` now — this file cites it by number.
+
+The only loop protocol in this repo. `docs/agents/RULES.md` is the ruleset; this file is the
+procedure. Where they disagree, RULES.md wins and this file is stale — fix it.
 
 One ticket at a time, one ticket per process: `tools/loop/queue-loop.mjs` spawns `/queue <n>` and
 starts the next process when this one exits. No run state is stored: `node tools/loop/loop-status.mjs`

@@ -1,7 +1,8 @@
 # Server
 
-Loaded when you read anything under `server/`. Rules live in `docs/agents/RULES.md`;
-invariants here are pinned by the test named on each line.
+Loaded when you read anything under `server/`. When a rule number is cited and you cannot see
+the rule, it lives in `docs/agents/RULES.md`; invariants here are pinned by the test named on
+each line.
 
 ## Production — breaking any of these takes it down
 
