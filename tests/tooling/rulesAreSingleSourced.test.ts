@@ -206,15 +206,23 @@ describe("every agent rule is written down exactly once", () => {
 // session (ARCHITECTURE.md, unlike CLAUDE.md) is the one that goes quietly wrong.
 const FOUR_WAY_FILES = ["CLAUDE.md", "components/CLAUDE.md", "server/CLAUDE.md", "docs/ARCHITECTURE.md"];
 
-// A line wrap turns one source space into a newline, and a reflow can turn one space
-// into two — neither changes what the text says. Matching against a raw file let a
-// duplicate slip past this check once already (round 1: `Record<keyof typeof en,
-// string>` wrapped across a line and every pattern stayed green). Normalizing first —
-// collapse whitespace to one space, drop `**` — means a phrase below is checked
-// against the words, never against which line they happened to wrap on, so every
-// pattern can be the literal phrase with ordinary single spaces.
+// A copied sentence can pick up formatting that changes nothing it says: rewrapped
+// onto a new line, re-marked-up with different backticks or bold, split by a
+// blockquote or list marker, or re-punctuated with a hyphen standing in for a space.
+// None of that carries meaning for this comparison, so it is stripped before
+// whitespace collapses (order matters — a removed "> " or "- " leaves extra spaces the
+// collapse must still clean up). This catches a copy, never a paraphrase; both sides of
+// a match go through it, so it must run on the phrase too, not just the file text.
 function normalizeForDupCheck(text: string): string {
-  return text.replace(/\*\*/g, " ").replace(/\s+/g, " ").toLowerCase();
+  return text
+    .replace(/`/g, " ")
+    .replace(/\*\*/g, " ")
+    .replace(/^[ \t]*>+[ \t]*/gm, " ")
+    .replace(/^[ \t]*(?:[-*]|\d+\.)[ \t]+/gm, " ")
+    .replace(/[-_]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
 }
 
 const ARCHITECTURE_DUP_PHRASES: [string, string][] = [
@@ -233,7 +241,8 @@ const ARCHITECTURE_DUP_PHRASES: [string, string][] = [
 describe("docs/ARCHITECTURE.md does not restate a CLAUDE.md invariant", () => {
   for (const [name, phrase] of ARCHITECTURE_DUP_PHRASES) {
     test(`"${name}" is stated in exactly one of ${FOUR_WAY_FILES.join(", ")}`, () => {
-      const hits = FOUR_WAY_FILES.filter((f) => normalizeForDupCheck(read(f)).includes(phrase));
+      const needle = normalizeForDupCheck(phrase);
+      const hits = FOUR_WAY_FILES.filter((f) => normalizeForDupCheck(read(f)).includes(needle));
       assert.equal(
         hits.length,
         1,
