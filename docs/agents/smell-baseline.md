@@ -1,8 +1,9 @@
 # Smell baseline
 
-Vendored from mattpocock-skills 1.2.3, `skills/engineering/code-review/SKILL.md` (MIT License,
-Copyright (c) 2026 Matt Pocock). `tools/loop/brief.mjs` pastes it into the Standards brief
-alongside `docs/agents/RULES.md`, which the repo's own rules still take precedence over.
+Vendored verbatim from mattpocock-skills 1.2.3, `skills/engineering/code-review/SKILL.md` (MIT
+License, Copyright (c) 2026 Matt Pocock); edit the upstream text only by re-vendoring it.
+`tools/loop/brief.mjs` pastes this whole file into the Standards brief. The repo's standards are
+`docs/agents/RULES.md` and `CLAUDE.md`.
 
 On top of whatever the repo documents, the Standards axis always carries the **smell baseline** below: a fixed set of Fowler code smells (_Refactoring_, ch.3) that applies even when a repo documents nothing. Two rules bind it:
 

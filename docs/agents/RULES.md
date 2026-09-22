@@ -1,7 +1,7 @@
 # Rules
 
-Every rule an agent must follow, in one place. No rationale here — the *why* lives in
-`CLAUDE.md` and `docs/agents/`. If a rule and a prompt disagree, the prompt is stale: fix it.
+Every rule an agent must follow, numbered; others cite the numbers, so never renumber. The *why*
+lives in `CLAUDE.md` and `docs/agents/`. A prompt disagreeing with a rule is stale: fix it.
 
 ## Checking your work
 
@@ -9,7 +9,7 @@ Every rule an agent must follow, in one place. No rationale here — the *why* l
    runs there and what `ci.yml` carries; the check prints both and replays on an unchanged tree.
 2. **Never run a whole suite by hand** — not `npm run verify`, `npm test`, `npm run loop:test`,
    `npm run test:native`, `npm run test:e2e`. `ci.yml` runs them on your push, in parallel, with
-   the Postgres the integration suites need and this machine has not.
+   the Postgres the integration suites need.
 3. **One spec is still yours**, when only a browser can see what you changed:
    `npx playwright test --config tests/e2e/playwright.config.ts one.spec.ts`.
 4. **While iterating, run one file:** `node --test tests/x.test.ts`, or
@@ -54,8 +54,8 @@ Every rule an agent must follow, in one place. No rationale here — the *why* l
     use a token in the role it was named for.
 19. **Every user-facing string goes through `t()`, keyed in `en`, `it` and `sq`.**
 20. **Default to no comment, and never explain the bug you just fixed** — that is the commit
-    message. Code is the truth; prose about it decays. Comment only where the code cannot say it,
-    and verify each claim against the file it names as you write it, never in review.
+    message. `CLAUDE.md` § Comments says what earns one and the budget `npm run check:comments`
+    enforces. Verify each claim against the file it names as you write it, never in review.
 
 ## Taking work
 
