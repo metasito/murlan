@@ -134,6 +134,9 @@ jobs:
           echo "APP_ID=$id" >> "$GITHUB_ENV"
           echo "Built $app ($id)"
 
+      - name: The bundle carries the test-only flag
+        run: node scripts/e2eBuildMark.mjs --present "$APP_BUNDLE"
+
       # `macos-latest` ships a fixed set of pre-created simulators rather
       # than a fresh AVD per run, so the device to drive has to be found
       # rather than declared. Which one, and why, is in
