@@ -1,26 +1,20 @@
-# Murlan — Production & App Store Readiness Brief
+# Murlan — Product Brief
 
-> This document is a rewrite of an informal request ("make it perfect and App Store ready")
-> into an actionable engineering and product brief. It is the source of truth for scope.
+> States what Murlan is, what has been decided, and what is still open. Rules live in
+> `docs/GAME-RULES.md`, architecture in `docs/ARCHITECTURE.md`, agent invariants in
+> `docs/agents/RULES.md` and the three `CLAUDE.md` files — this file does not restate any of them.
 
 ---
 
 ## 1. Product vision
 
-**Murlan** is a traditional Albanian shedding-type card game. The app is the definitive
-digital version of it: fast, beautiful, fair, and playable both solo against credible AI
-and online against friends and strangers.
-
-It has a working game engine, real-time multiplayer, friends, a coherent visual identity, a
-547-file test suite (`tests/`) and a six-workflow CI pipeline (`.github/workflows/`). The
-original *"no tests, trust boundaries broken"* assessment (§2) is closed — ticket auth is
-shipped and pinned (`tests/server/socketTicket.test.ts`) — but the app is still **not** yet
-store-shipped: hosting is mid-migration off Replit (`docs/adr/0006-the-host-is-no-longer-replit.md`,
-tracked on #1105) and §5 lists what is still owner-blocked.
+**Murlan** is a traditional Albanian shedding-type card game. The app is the definitive digital
+version of it: fast, beautiful, fair, and playable both solo against credible AI and online
+against friends and strangers.
 
 The goal is not "more features". The goal is: **a player can install this from the App Store,
-understand it in 60 seconds, play a full game without a single desync, disconnect, or
-exploit — and want to come back tomorrow.**
+understand it in 60 seconds, play a full game without a single desync, disconnect, or exploit —
+and want to come back tomorrow.**
 
 Three pillars, in priority order:
 
@@ -35,14 +29,28 @@ Three pillars, in priority order:
 
 ---
 
-## 2. Current state
+## 2. Status
 
-> **Resolved.** This section was a list of 21 defects headed *"verified assessment"*,
-> present tense, every one of which is now closed. It is deleted rather than rewritten:
-> git holds it, and a defect list that outlives its defects sends the next reader to
-> fix something that was fixed. A dated remediation effort replaced it, closing all 21
-> across 15 batches; GitHub Issues carries what is still open. Kept as the record of
-> why this heading is empty.
+Hosting is mid-migration off Replit (`docs/adr/0006-the-host-is-no-longer-replit.md`); the
+replacement is undecided (#1105) and `deploy/runtime.json` is the contract any host must meet.
+
+**Shipped** — do not read any of these as outstanding: interactive tutorial (`app/tutorial.tsx`);
+IT/EN/SQ localization (`locales/`); rejoin-in-progress UX; ranked ladder (`lib/game/rating.ts`);
+a friends-filtered leaderboard (`app/(online)/leaderboard.tsx`); match history and hand replay
+(`lib/game/replay.ts`, `app/(online)/replay.tsx`); achievements and daily streaks
+(`lib/achievements.ts`, `lib/streak.ts`); bot personalities (`lib/game/botPersonalities.ts`);
+spectator mode (`isSpectator`, `app/(online)/game.tsx`); free card-back/table-felt cosmetics
+(`lib/cosmetics.ts` — a local preference, no entitlement table); colourblind-safe suit
+differentiation (not a built feature — the existing four-colour deck already clears
+deuteranopia/protanopia/tritanopia separation, pinned by `tests/ui-rules/suitColours.test.ts`);
+and **"your turn" push notifications**, respecified: the 30s auto-pass / 60s bot-takeover clocks
+mean such a push could never arrive in time to matter, so it shipped instead as a notification for
+a friend's invite that arrived while the player was away (`server/socket/push.ts`); sound and
+haptic choreography, every cue timed to the card's landing (`impactDelayMs()`, fired from
+`components/table/pile.tsx`; bomb jolts, music ducking and the win/lose sting in
+`components/useTableFeedback.ts`).
+
+---
 
 ## 3. Decisions taken
 
@@ -148,11 +156,11 @@ ticket describes is a teams case. The predicate is derived, not a mode string: a
 seats have no team has no side to hold you a seat on. Widening it to free-for-all is a one-line
 change if the owner wants it.
 
-## 4. Workstreams
+---
 
-> This section is the original plan, kept as the record of how the work was cut.
-> It is **not** current status — GitHub Issues carries that, and most of W1–W5 has
-> since shipped.
+## 4. Scope
+
+Eight workstreams shape what is tracked in GitHub Issues:
 
 **W1 — Trust & authority.** Kill the impersonation vector. Ticket-based socket auth.
 Authorize every socket event against seat ownership and phase. Fix the IDOR routes.
@@ -168,7 +176,7 @@ either bot takeover or forfeit — never a hang.
 
 **W4 — Client architecture.** Collapse the offline/online game screen duplication into a
 single presentational component driven by a common state interface. Delete the legacy
-colour constants, migrate off `expo-av`, and remove the unused dependencies.
+colour constants and remove unused dependencies.
 
 **W5 — Test & CI.** Engine unit tests, rules property tests, server integration tests over
 a real socket, and a CI pipeline that runs typecheck, lint, and tests on every push.
@@ -178,34 +186,16 @@ store copy and screenshots, account deletion verified working, offline play veri
 ungated.
 
 **W7 — Product & design.** Onboarding, localization, accessibility, and the retention
-features selected in §5.
+features in §5.
 
 **W8 — Documentation coherence.** Every `.md` file in the repo states the truth, states it
-once, and does not contradict any other. See §8.
+once, and does not contradict any other.
 
 ---
 
-## 5. Feature status
+## 5. Open
 
-> GitHub Issues is the work queue; this section is what was proposed, whether it shipped, and
-> what is still owner-blocked.
-
-**Shipped** — do not read any of these as outstanding: interactive tutorial (`app/tutorial.tsx`);
-IT/EN/SQ localization (`locales/`); rejoin-in-progress UX; ranked ladder (`lib/game/rating.ts`);
-match history and hand replay (`lib/game/replay.ts`, `app/(online)/replay.tsx`); achievements and
-daily streaks (`lib/achievements.ts`, `lib/streak.ts`); bot personalities
-(`lib/game/botPersonalities.ts`); spectator mode (`isSpectator`, `app/(online)/game.tsx`); free
-card-back/table-felt cosmetics (`lib/cosmetics.ts` — a local preference, no entitlement table);
-colourblind-safe suit differentiation (not a built feature — the existing four-colour deck already
-clears deuteranopia/protanopia/tritanopia separation, pinned by `tests/ui-rules/suitColours.test.ts`);
-and **"your turn" push notifications**, respecified: the 30s auto-pass / 60s bot-takeover clocks
-mean such a push could never arrive in time to matter, so it shipped instead as a notification for
-a friend's invite that arrived while the player was away (`server/socket/push.ts`); sound and
-haptic choreography, every cue timed to the card's landing (`impactDelayMs()`, fired from
-`components/table/pile.tsx`; bomb jolts, music ducking and the win/lose sting in
-`components/useTableFeedback.ts`).
-
-**Open, owner-blocked** — tracked in GitHub Issues, not re-litigated here:
+**Owner-blocked**, tracked in GitHub Issues, not re-litigated here:
 
 | Item | Issue | Status |
 |---|---|---|
@@ -213,11 +203,9 @@ haptic choreography, every cue timed to the card's landing (`impactDelayMs()`, f
 | Cosmetics shop — IAP-gated animation packs, backs, tables | #694 | `deferred` |
 | Tournaments — bracketed multi-table events | #58 | `deferred`, size:XL (design exists: `docs/specs/2026-08-16-tournaments-design.md`) |
 | VoiceOver/TalkBack flow unverified | #30 | open |
-| Friends-view leaderboard | #1216 | `in-progress`, size:M |
 
-### Explicitly out of scope unless you say otherwise
-
-Real-money play, ads, social feeds, chat with free text (moderation burden), cross-promotion.
+**Explicitly out of scope unless you say otherwise:** real-money play, ads, social feeds,
+chat with free text (moderation burden), cross-promotion.
 
 ---
 
@@ -239,8 +227,8 @@ The work is complete when all of the following hold:
 8. Superseded by `docs/adr/0006-the-host-is-no-longer-replit.md` — the app launches with no
    local setup from whatever the chosen host's own deploy step is (#1105).
 9. Every rule enforced by the engine matches the documented rule set and the in-app rules screen.
-10. Every `.md` file in the repo reflects the shipped state, owns its topic per §8, and
-    contradicts no other document. Verified by re-reading them against the code, not by assertion.
+10. Every `.md` file in the repo reflects the shipped state, owns its topic, and contradicts
+    no other document. Verified by re-reading them against the code, not by assertion.
 
 ---
 
@@ -249,39 +237,3 @@ The work is complete when all of the following hold:
 Parallel specialist agents, each owning one workstream, coordinated against this brief.
 Every change is verified by running it — no claim of completion without evidence.
 Findings that alter this brief are escalated rather than absorbed silently.
-
-
----
-
-## 8. Documentation architecture
-
-The repo currently carries four overlapping documents that repeat and contradict each other.
-Each document gets exactly one responsibility, and cross-references instead of restating.
-
-### Ownership map
-
-| Document | Owns — and nothing else | Must not contain |
-|---|---|---|
-| `CLAUDE.md` | Agent operating instructions: invariants, how to work here, pointers to the docs below | Product description, architecture prose, rule text |
-| `docs/ARCHITECTURE.md` *(new)* | How the system is built: layers, data flow, socket lifecycle, persistence, auth | Rules, scope, decisions |
-| `docs/GAME-RULES.md` ✅ | The canonical rule specification and its sources — **the only place rules live** | Implementation detail, scope |
-| `docs/BRIEF.md` (this file) | Scope, decisions and their rationale, workstreams, definition of done | Rule text, architecture prose |
-| GitHub Issues (`metasito/murlan`) | Everything outstanding and owner-blocked; rejected items stay open, labelled `rejected` | Anything not actionable |
-| `docs/DEPLOY-RUNBOOK.md` ⚠️ | Deploy and rollback steps, the host's env vars, what not to touch | Everything that duplicates `CLAUDE.md` |
-| `docs/specs/*` ✅ | Historical specs, each stamped with its outcome | Anything presented as pending when it has shipped |
-
-✅ = done. ⚠️ = stale as of `docs/adr/0006-the-host-is-no-longer-replit.md` (2026-09-21): the
-runbook still describes the dead Replit deploy and its workflow; it is not rewritten until the
-next host is chosen (#1105).
-
-### Contradictions between documents
-
-**Resolved** — every drift the ownership map above was written to prevent (a deleted Replit-notes
-file disagreeing with the code on rules, sounds, dependencies, colours and "frozen" scope;
-`CLAUDE.md` duplicating it; a design spec reading as pending after it shipped) has been corrected
-in the document it named. Git history holds the detail; nothing here is still live.
-
-### Standing rule
-
-A change to behaviour is not complete until every document that describes that behaviour has
-been updated in the same change. Docs are part of the diff, not a follow-up.
