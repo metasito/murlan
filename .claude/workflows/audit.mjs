@@ -295,7 +295,7 @@ const COMMON = `You are one specialist in a READ-ONLY audit of Murlan (${REPO}) 
 - Change nothing: no edits, commits, branch or worktree changes, and spawn no subagents.
 - Read files whole with Read; search with Grep. If the checkout has moved, read with \`git -C ${REPO} show ${sha}:<path>\`.
 - Allowed commands: npx tsc --noEmit, npx eslint <paths>, npm audit --omit=dev, npx expo install --check, one node --test <file>, git log/blame, gh issue view.
-  Nothing wider: rules 2 and 37 hold here too.
+  Nothing wider: rule 2 holds here too, and another session may be sharing this machine.
 - Load every skill named for your lens with the Skill tool first, and apply its checklist.
 - Every finding cites path:line with the quoted line and is marked measured (you ran it or traced the full path) or inferred.
   Native rendering claims reasoned from source or Chromium are inferred.
