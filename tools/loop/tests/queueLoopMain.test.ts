@@ -1563,6 +1563,12 @@ describe("a session the API failed", () => {
     });
   }
 
+  test("a 429 from a spent usage window (#1074's) is a refusal, waited out to its reset", async () => {
+    const spent = async () => ({ ...(await died({ isError: true, apiStatus: 429 })()), blocked: true, blockedUntil: 1789000000000 });
+    const r = await runOnce(io({ spawn: spent, pushedPr: () => null }));
+    assert.deepEqual([r.outcome, r.until], ["refused", 1789000000000]);
+  });
+
   test("in phase E, with a pull request open, E is spawned again rather than the head settled", async () => {
     const picked: [number | null, string | null][] = [];
     const phases: string[] = [];

@@ -459,10 +459,11 @@ export function resumePhase(run, after, ticket) {
 /**
  * The API status a session died on, when it is one that passes on its own — an overload, an outage,
  * a 429 — or null. Not a verdict on the ticket, so it is held and respawned, never parked.
- * A session that declared its ending chose it, whatever its last turn met.
+ * A session that declared its ending chose it, whatever its last turn met. A spent usage window
+ * ends on a 429 too, and is `blocked`'s to wait out until its reset, not a minute at a time.
  */
 export function apiFailure(run) {
-  const s = run.result?.isError && !run.declared ? run.result.apiStatus : null;
+  const s = run.result?.isError && !run.declared && !run.blocked ? run.result.apiStatus : null;
   return s >= 500 || s === 429 ? s : null;
 }
 
