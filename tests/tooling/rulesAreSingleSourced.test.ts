@@ -198,3 +198,41 @@ describe("every agent rule is written down exactly once", () => {
     assert.equal(stale, "", `these still cite a deleted document:\n${stale}`);
   });
 });
+
+// docs/ARCHITECTURE.md and the three CLAUDE.md files both state the repo's invariants.
+// ARCHITECTURE.md's job is what talks to what; an invariant lives with the code it
+// binds. A phrase below is a CLAUDE.md invariant — finding it a second time in
+// ARCHITECTURE.md means the two copies can drift, and the file nobody reloads every
+// session (ARCHITECTURE.md, unlike CLAUDE.md) is the one that goes quietly wrong.
+const FOUR_WAY_FILES = ["CLAUDE.md", "components/CLAUDE.md", "server/CLAUDE.md", "docs/ARCHITECTURE.md"];
+
+const ARCHITECTURE_DUP_PHRASES: [string, RegExp][] = [
+  ["the hook-before-null-guard order", /every hook (?:runs|is called)[^.]{0,60}`?if \(!gameState\)/i],
+  ["autoMove.ts is the sole bot-move chooser", /(?:chooses|chooser of) a bot's move/i],
+  [
+    "a winner travels as an engine player id",
+    /every\s+client\s+can\s+map\s+at\s+every\s+moment\s*`?game:over`?\s+can\s+arrive/i,
+  ],
+  ["ticket auth closes the bare handshake.auth.userId vector", /handshake\.auth\.userId/],
+  ["locales/en.ts, it.ts and sq.ts are Record<keyof typeof en, string>", /Record<keyof typeof en, string>/],
+  [
+    "server authority: validates every move, broadcasts sanitized state",
+    /validates[\s\S]{0,150}?broadcasts[\s\S]{0,30}?sanitized/i,
+  ],
+  ["the session table's createTableIfMissing: false", /createTableIfMissing:\s*false/],
+];
+
+describe("docs/ARCHITECTURE.md does not restate a CLAUDE.md invariant", () => {
+  for (const [name, pattern] of ARCHITECTURE_DUP_PHRASES) {
+    test(`"${name}" is stated in exactly one of ${FOUR_WAY_FILES.join(", ")}`, () => {
+      const hits = FOUR_WAY_FILES.filter((f) => pattern.test(read(f)));
+      assert.equal(
+        hits.length,
+        1,
+        `"${name}" is stated in ${hits.length === 0 ? "none of the four files" : hits.join(" and ")}; ` +
+          `it must live in exactly one — the CLAUDE.md file that owns the rule, never also in ` +
+          `docs/ARCHITECTURE.md, which describes what talks to what.`
+      );
+    });
+  }
+});
