@@ -112,6 +112,7 @@ export default function ResultScreen() {
           onConfirm: goHome,
         });
   const goPlay = (start: () => void) => () => {
+    if (leftWith) return;
     hapticMedium();
     setLeftWith(live);
     start();

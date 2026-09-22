@@ -7,6 +7,7 @@ import { render, fireEvent } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 const mockReplace = jest.fn();
+const mockStartNewMatch = jest.fn();
 
 jest.mock('expo-router', () => ({
   router: { replace: mockReplace, push: jest.fn(), back: jest.fn() },
@@ -55,7 +56,10 @@ jest.mock('@/context/gameHooks', () => {
         match,
         tableWantsRematch: true,
         startNextHand: jest.fn(),
-        startNewMatch: () => setMatch(mockFresh),
+        startNewMatch: () => {
+          mockStartNewMatch();
+          setMatch(mockFresh);
+        },
       };
     },
     useLocalSession: () => ({ resetGame: jest.fn() }),
@@ -86,6 +90,21 @@ describe('ResultBoard RankCards on the result screen a new match leaves behind',
     expect(mockReplace).toHaveBeenCalledWith('/game');
     expect(rankedTotals(view)).toEqual([21, 5]);
     expect(view.getByTestId('btn-nuova-partita')).toBeTruthy();
+    await view.unmount();
+  });
+
+  it('start the new match once however often the leaving button is tapped', async () => {
+    mockStartNewMatch.mockClear();
+    const view = await render(
+      <SafeAreaProvider initialMetrics={METRICS}>
+        <ResultScreen />
+      </SafeAreaProvider>
+    );
+
+    await fireEvent.press(view.getByTestId('btn-nuova-partita'));
+    await fireEvent.press(view.getByTestId('btn-nuova-partita'));
+
+    expect(mockStartNewMatch).toHaveBeenCalledTimes(1);
     await view.unmount();
   });
 });
