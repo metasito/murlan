@@ -1142,7 +1142,7 @@ describe("every player-facing server response carries a code", () => {
 
 describe("Albanian card terminology", () => {
   /**
-   * Attested in docs/research/2026-08-20-albanian-card-terminology-research.md. `Trefla` and `Pika`
+   * Attested against primary Albanian-language sources for #29. `Trefla` and `Pika`
    * were a calque of *trefoil* and a borrowing of German *Pik*, attested as card
    * suits nowhere; docs/GAME-RULES.md's cited Albanian text opens the game with
    * "ai lojtar që ka 3 maç". `Kupë`, not `Kupa`, is the bare singular the

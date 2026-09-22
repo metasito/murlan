@@ -201,7 +201,7 @@ once, and does not contradict any other.
 |---|---|---|
 | Whether the app monetizes at all | #33 | needs an owner decision |
 | Cosmetics shop — IAP-gated animation packs, backs, tables | #694 | `deferred` |
-| Tournaments — bracketed multi-table events | #58 | `deferred`, size:XL (design exists: `docs/specs/2026-08-16-tournaments-design.md`) |
+| Tournaments — bracketed multi-table events | #58 | `deferred`, size:XL (needs new per-tournament room-coordination, not just storage) |
 | VoiceOver/TalkBack flow unverified | #30 | open |
 
 **Explicitly out of scope unless you say otherwise:** real-money play, ads, social feeds,

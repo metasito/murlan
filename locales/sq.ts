@@ -2,8 +2,8 @@
 // is the source of truth — a missing or misspelled key here is a compile error
 // (see lib/i18n.ts).
 //
-// The card and combination terminology is sourced and owner-settled, per
-// docs/research/2026-08-20-albanian-card-terminology-research.md and #29. Used verbatim below:
+// The card and combination terminology is sourced and owner-settled, attested
+// against primary Albanian-language sources for #29. Used verbatim below:
 //   - "shkallë" / "Shkalla" — straight (§5, §6 of docs/GAME-RULES.md quotes the
 //     Albanian text directly: "Shkalla duhet të ketë të paktën 5 letra")
 //   - "letër" / "letra" — card / cards

@@ -12,7 +12,8 @@
 // expiring, never handed back through the enumeration-safe request
 // endpoint's response, and its redemption evicts every session and sibling
 // token for the account — the same live-credential class Boxes 2 and 6 of
-// docs/specs/2026-09-03-account-recovery-design.md both name.
+// docs/adr/0007-account-recovery-email-verification-and-password-reset.md
+// both name.
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";

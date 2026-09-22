@@ -5,12 +5,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { dirname, join, normalize } from "node:path";
 
-// docs/plans, docs/research, docs/specs and docs/design are working-artefact directories a later
-// task may delete wholesale; they legitimately name files, scripts and rules from the state of the
-// repo when they were written, not the state now. .claude/skills is vendored upstream (the plan's
-// Global Constraints forbid touching it), so a code snippet inside it is not a claim this repo's
-// own docs make. Excluded here, not silently: this comment is the exclusion's record.
-const EXCLUDED_DIRS = ["docs/plans/", "docs/research/", "docs/specs/", "docs/design/", ".claude/skills/"];
+// .claude/skills is vendored upstream (the plan's Global Constraints forbid touching it), so a
+// code snippet inside it is not a claim this repo's own docs make. Excluded here, not silently:
+// this comment is the exclusion's record.
+const EXCLUDED_DIRS = [".claude/skills/"];
 
 const docs = execSync('git ls-files "*.md"', { encoding: "utf8" })
   .trim().split("\n").filter((f) => !f.startsWith("node_modules/"))

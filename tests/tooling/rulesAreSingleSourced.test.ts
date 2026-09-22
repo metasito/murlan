@@ -176,9 +176,9 @@ describe("every agent rule is written down exactly once", () => {
   });
 
   // loops.md and TESTING.md said overlapping things about which check catches what; checks.md
-  // replaces both. docs/adr and docs/plans are excluded because they are the historical record of
-  // decisions already made, including the one that renamed these files — a plan or an ADR quoting
-  // the old name is describing the past, not pointing a reader at a file that no longer exists.
+  // replaces both. docs/adr is excluded because it is the historical record of decisions already
+  // made, including the one that renamed these files — an ADR quoting the old name is describing
+  // the past, not pointing a reader at a file that no longer exists.
   // CLAUDE.md, components/CLAUDE.md and server/CLAUDE.md are excluded because a later, separate
   // task owns their rewrite; the pointers they still carry are handed to that task rather than
   // edited here.
@@ -190,7 +190,7 @@ describe("every agent rule is written down exactly once", () => {
     // Excludes its own path: this test's source has to name the two gone files to check for
     // them, which is not a reader being pointed at a document that no longer exists.
     const stale = execSync(
-      'git grep -l -E "loops\\.md|TESTING\\.md" -- ":!docs/adr" ":!docs/plans" ' +
+      'git grep -l -E "loops\\.md|TESTING\\.md" -- ":!docs/adr" ' +
         '":!tests/tooling/rulesAreSingleSourced.test.ts" ":!CLAUDE.md" ' +
         '":!components/CLAUDE.md" ":!server/CLAUDE.md" || true',
       { cwd: repoRoot, encoding: "utf8" },
