@@ -644,6 +644,7 @@ Every port this repo's local tooling binds — including the local-substitute pa
 | `5561`, `5562`, `5571`, `5581` | Server processes an integration test spawns beside its in-process one | a `PORT`/`PORTS` constant in one `tests/integration/` file each, pinned by `tests/tooling/integrationPorts.test.ts` |
 | `5199`+ | Playwright's e2e webServer (`E2E_PORT`) — the base, and the first free port above it when a neighbour holds it | chosen by `tools/ci/e2ePort.mjs`, used by `tests/e2e/playwright.config.ts` and `scripts/e2e-server.mjs`; a leftover is freed by `tools/loop/reap.mjs` |
 | `55432`+ | The dev-stack's disposable Postgres (`MURLAN_DEV_PG_PORT`) — the base, and the first port above it the Docker daemon will accept when something already holds it. Ask `dev-stack env` rather than assuming 55432 | `murlan-dev-pg` container — `scripts/dev-stack.mjs`, `scripts/devStackPort.mjs`, `scripts/e2e-server.mjs` |
+
 ## Playwright, locally
 
 ```sh
