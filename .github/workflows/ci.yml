@@ -115,7 +115,7 @@ jobs:
           # files, `.claude/settings.json`'s hook paths, package.json's script names, and this
           # workflow, whose job names `check-steps.mjs` pins each delegated step to. Both lists are
           # derived by `tests/tooling/ciScope.test.ts`, which reds on a path they miss.
-          if grep -qE '^(tools/loop/|scripts/lib/(checkoutRoot|entry)\.mjs$|scripts/preflightMemory\.mjs$|tests/helpers/importShellGuard\.ts$|docs/agents/|\.claude/|CLAUDE\.md$|package\.json$|\.github/workflows/ci\.yml$)' <<< "$changed"; then
+          if grep -qE '^(tools/loop/|scripts/lib/(checkoutRoot|entry)\.mjs$|tools/ci/preflightMemory\.mjs$|tests/helpers/importShellGuard\.ts$|docs/agents/|\.claude/|CLAUDE\.md$|package\.json$|\.github/workflows/ci\.yml$)' <<< "$changed"; then
             echo "harness=true" >> "$GITHUB_OUTPUT"
           else
             echo "harness=false" >> "$GITHUB_OUTPUT"
@@ -126,7 +126,7 @@ jobs:
           elif [ -n "$changed" ] && ! grep -qvE '^(docs/|\.claude/)|\.md$' <<< "$changed"; then
             echo "Documentation only — skipping the app checks."
             echo "app=false" >> "$GITHUB_OUTPUT"
-          # Deliberately the loop's *tests* and not the loop: `scripts/e2ePort.mjs` imports
+          # Deliberately the loop's *tests* and not the loop: `tools/ci/e2ePort.mjs` imports
           # `tools/loop/reap.mjs` and `scripts/contextSurface.mjs` imports `tools/loop/loop-derive.mjs`,
           # so a change to the loop's source can stop the browser suite booting. A directory can
           # answer "can this reach the game?" only where the answer is no by construction, and a
@@ -524,11 +524,11 @@ jobs:
       #
       # Named spec files rather than `--shard`: Playwright's own splits by test
       # count, and this suite's tests run from under a second to ninety-four
-      # (scripts/e2e-shard.mjs). 20 minutes was a ceiling for the unsharded
+      # (tools/ci/e2e-shard.mjs). 20 minutes was a ceiling for the unsharded
       # suite and is left alone: it is a hang detector, not a budget.
       - name: Browser tests
         timeout-minutes: 20
-        run: npm run test:e2e -- $(node scripts/e2e-shard.mjs ${{ matrix.shard }} ${{ strategy.job-total }})
+        run: npm run test:e2e -- $(node tools/ci/e2e-shard.mjs ${{ matrix.shard }} ${{ strategy.job-total }})
 
       # Uploaded on success too, not just on failure: a green shard with no
       # blob is a shard that skipped the suite, and `if-no-files-found: error`
@@ -615,7 +615,7 @@ jobs:
           retention-days: 7
 
       # The same merge, read out as JSON instead of thrown away as HTML — the
-      # per-spec durations `scripts/e2e-timings.mjs` needs are otherwise
+      # per-spec durations `tools/ci/e2e-timings.mjs` needs are otherwise
       # computed by this job and discarded with the runner (#841). Runs
       # unconditionally, on PR branches too, so a merge failure here is caught
       # on the branch that broke it rather than surfacing only on `main`.
@@ -623,10 +623,10 @@ jobs:
         run: npx playwright merge-reports --reporter json ./all-blob-reports > merged-report.json
 
       - name: Name the tests that passed only on a retry
-        run: node scripts/e2e-flaky.mjs merged-report.json
+        run: node tools/ci/e2e-flaky.mjs merged-report.json
 
       - name: Regenerate tests/e2e/timings.json
-        run: node scripts/e2e-timings.mjs merged-report.json
+        run: node tools/ci/e2e-timings.mjs merged-report.json
 
       # On the weekly schedule only, never per-merge. `main` has no branch
       # protection blocking a direct push, and a push authored with the default
@@ -667,7 +667,7 @@ jobs:
             if git push; then exit 0; fi
             git fetch --force origin main:refs/remotes/origin/main
             git reset --hard refs/remotes/origin/main
-            node scripts/e2e-timings.mjs merged-report.json
+            node tools/ci/e2e-timings.mjs merged-report.json
           done
           echo "::error::main moved under each of three attempts to commit the regenerated timings."
           exit 1

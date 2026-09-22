@@ -1,7 +1,7 @@
 // tests/tooling/preflightMemoryIsWired.test.ts — every suite runner refuses on a starved machine.
 //
 // The check is only worth what it is wired into. The node suite ran unguarded for as long as
-// `scripts/preflightMemory.mjs` existed, and paid for it: twenty whole test files failing at once,
+// `tools/ci/preflightMemory.mjs` existed, and paid for it: twenty whole test files failing at once,
 // two of them with 0xC0000142 — Windows for "no memory to start a process" — read as a regression
 // (#625).
 //
@@ -68,7 +68,7 @@ describe("the memory preflight", () => {
   // wearing the name of a check. Under `CI` the verdict is fixed, so this is the one spawn that
   // says the same thing on every machine.
   test("runs, and decides, when it is the one invoked", () => {
-    const ran = spawnSync(process.execPath, [path.join(root, "scripts/preflightMemory.mjs")], {
+    const ran = spawnSync(process.execPath, [path.join(root, "tools/ci/preflightMemory.mjs")], {
       encoding: "utf8",
       env: { ...process.env, CI: "1" },
     });

@@ -3,7 +3,7 @@
 
 import { appendFileSync, readFileSync } from "node:fs";
 
-import { isInvokedDirectly } from "./lib/entry.mjs";
+import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 
 /**
  * @param {any} report a merged Playwright JSON report
@@ -27,7 +27,7 @@ export function flakyFromReport(report) {
 
 if (isInvokedDirectly(process.argv[1], import.meta.url)) {
   const [report] = process.argv.slice(2);
-  if (!report) throw new Error("usage: node scripts/e2e-flaky.mjs <merged-report.json>");
+  if (!report) throw new Error("usage: node tools/ci/e2e-flaky.mjs <merged-report.json>");
 
   const flaky = flakyFromReport(JSON.parse(readFileSync(report, "utf8")));
   for (const name of flaky) process.stdout.write(`::warning::Flaky, passed on retry: ${name}\n`);

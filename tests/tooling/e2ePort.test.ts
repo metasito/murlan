@@ -7,7 +7,7 @@
 // reads as a connection error or a 0ms failure rather than as what it is.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { chooseE2ePort, PORT_SPAN } from "../../scripts/e2ePort.mjs";
+import { chooseE2ePort, PORT_SPAN } from "../../tools/ci/e2ePort.mjs";
 
 /** A machine where `held` maps a port to the pids listening on it. */
 const machine = (

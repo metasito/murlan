@@ -11,8 +11,8 @@
 import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { isInvokedDirectly } from "./lib/entry.mjs";
-import { clearPort, portListeners, staleAmong } from "../tools/loop/reap.mjs";
+import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
+import { clearPort, portListeners, staleAmong } from "../loop/reap.mjs";
 
 export const BASE_PORT = 5199;
 /** Enough for every run a machine can host at once; a wall this wide is a leak, not a queue. */

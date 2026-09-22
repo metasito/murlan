@@ -31,7 +31,7 @@ const project = (platform) => ({
 
 module.exports = {
   projects: [project('ios'), project('android')],
-  globalSetup: `${rootDir}/scripts/preflightMemory.mjs`,
+  globalSetup: `${rootDir}/tools/ci/preflightMemory.mjs`,
   // A worker holds a whole React Native module graph, and jest's default is one
   // per core — enough of them to exhaust a developer machine's memory.
   maxWorkers: '50%',

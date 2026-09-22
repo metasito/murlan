@@ -129,7 +129,7 @@ Each of these produced a confident, wrong "fixed" in one session:
   `maestro.yml` now annotates a run whose logcat holds a tombstone for the app's own package
   (#629), but only Android does, and only for a native crash.
 - **Where an Android run's minutes went is a join, not a read.**
-  `node scripts/analyze-maestro-run.mjs <maestro.log> <logcat.txt>` puts each command's own
+  `node tools/ci/analyze-maestro-run.mjs <maestro.log> <logcat.txt>` puts each command's own
   window beside the hierarchy fetches and the app's janky frames inside it, which is what
   separates a command starved by animation from one paying a flat per-fetch cost (#823). The
   header of the script has the `gh run download` invocation. It reads the `maestro-debug`
@@ -343,7 +343,7 @@ said was:
 does not care how many workers you gave it. Before believing a red, check free memory and rerun
 with `-w 3`.
 
-All three suites now refuse up front rather than failing this way — `scripts/preflightMemory.mjs`
+All three suites now refuse up front rather than failing this way — `tools/ci/preflightMemory.mjs`
 is the `globalSetup` of jest and Playwright alike, and `npm test`'s `pretest`, and it names
 exhaustion. It is off under `CI`, where a runner is sized for one job and starts near its floor by
 design.
@@ -362,14 +362,14 @@ To be refused now rather than waited for, set `MURLAN_PREFLIGHT_WAIT_MS=0`. The 
 than a flag, because jest and Playwright call this as their `globalSetup` with their own config
 object and nothing on the command line reaches either. `0` still takes one settle — that reading
 exists to survive another suite's teardown burst, not to wait for it. `node
-scripts/preflightMemory.mjs --no-wait` is the same thing for the script run directly.
+tools/ci/preflightMemory.mjs --no-wait` is the same thing for the script run directly.
 
 Two sessions can cross the floor in the same poll and both start, because polling does not
 serialise. With two that is survivable — the loser meets the preflight again on its own next check.
 A third concurrent session is what would break it, and a lock is the answer then, not now.
 
 `npm run reap` clears what a killed run leaves behind. `--dry-run` lists without killing anything.
-A run does not need it first: `scripts/e2ePort.mjs` picks a port that is already free, and clears
+A run does not need it first: `tools/ci/e2ePort.mjs` picks a port that is already free, and clears
 a holder only when that holder's launcher has exited.
 
 | What | Taken |
@@ -398,7 +398,7 @@ stays — parentage is the signal, and a holder the process table cannot describ
 Starting a run used to, and that is what made two sessions collide: Playwright refuses a busy port
 *before* it runs the `webServer` command, so freeing it was the only way to boot — and the run
 that started second freed the first one's server out from under it. A run now picks a port that
-is free instead (`scripts/e2ePort.mjs`), which is a smaller thing to get right than a lease.
+is free instead (`tools/ci/e2ePort.mjs`), which is a smaller thing to get right than a lease.
 
 The reason this matters more than one lost run: a webServer pulled out from under Playwright
 surfaces as a connection error or a 0ms failure, which reads exactly like a defect. A sweep that
@@ -648,7 +648,7 @@ Every port this repo's local tooling binds — including the local-substitute pa
 | `5000` | The Express server (`PORT`) | `server/index.ts`, `.replit` (`[[ports]]` localPort/externalPort, `[env] PORT`, `waitForPort`), `package.json` (`expo:dev`, `expo:dev:clean`) |
 | `8081` | Metro (`npx expo start` / `npm start`) | `scripts/build.js`, `.replit` |
 | `5561`, `5562`, `5571`, `5581` | Server processes an integration test spawns beside its in-process one | a `PORT`/`PORTS` constant in one `tests/integration/` file each, pinned by `tests/tooling/integrationPorts.test.ts` |
-| `5199`+ | Playwright's e2e webServer (`E2E_PORT`) — the base, and the first free port above it when a neighbour holds it | chosen by `scripts/e2ePort.mjs`, used by `tests/e2e/playwright.config.ts` and `scripts/e2e-server.mjs`; a leftover is freed by `tools/loop/reap.mjs` |
+| `5199`+ | Playwright's e2e webServer (`E2E_PORT`) — the base, and the first free port above it when a neighbour holds it | chosen by `tools/ci/e2ePort.mjs`, used by `tests/e2e/playwright.config.ts` and `scripts/e2e-server.mjs`; a leftover is freed by `tools/loop/reap.mjs` |
 | `55432`+ | The dev-stack's disposable Postgres (`MURLAN_DEV_PG_PORT`) — the base, and the first port above it the Docker daemon will accept when something already holds it. Ask `dev-stack env` rather than assuming 55432 | `murlan-dev-pg` container — `scripts/dev-stack.mjs`, `scripts/devStackPort.mjs`, `scripts/e2e-server.mjs` |
 | `55433` | The verify-only Postgres substituted for CI's database | `murlan-verify-pg` container — freed by `tools/loop/reap.mjs` |
 

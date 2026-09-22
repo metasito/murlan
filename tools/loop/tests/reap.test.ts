@@ -22,7 +22,7 @@ import {
   isSessionHost,
   parseWindowsProcessJson,
 } from "../reap.mjs";
-import preflightMemory, { memoryVerdict, memoryFloor } from "../../../scripts/preflightMemory.mjs";
+import preflightMemory, { memoryVerdict, memoryFloor } from "../../ci/preflightMemory.mjs";
 
 const HOUR = 60 * 60 * 1000;
 const NOW = 1_700_000_000_000;

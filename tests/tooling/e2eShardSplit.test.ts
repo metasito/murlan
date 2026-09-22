@@ -10,7 +10,7 @@ import {
   readTimings,
   specFilesIn,
   UNMEASURED_SECONDS,
-} from "../../scripts/e2e-shard.mjs";
+} from "../../tools/ci/e2e-shard.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const E2E_DIR = path.join(repoRoot, "tests", "e2e");
@@ -128,7 +128,7 @@ describe("the split is stable and even", () => {
       guessed.length <= files.length * UNMEASURED_SHARE,
       `${guessed.length} of ${files.length} specs are priced at the ${UNMEASURED_SECONDS}s ` +
         `guess, over the ${UNMEASURED_SHARE * 100}% the split can absorb and still be even in ` +
-        `wall clock: ${guessed.join(", ")}. scripts/e2e-timings.mjs regenerates the file from a ` +
+        `wall clock: ${guessed.join(", ")}. tools/ci/e2e-timings.mjs regenerates the file from a ` +
         `CI run's own reports, and says at the top where to get one.`
     );
   });

@@ -57,9 +57,11 @@ describe("the offline exchange overlay's E2E hold", () => {
     const workflows = readdirSync(path.join(repoRoot, ".github/workflows")).map(
       (name) => `.github/workflows/${name}`
     );
-    const scripts = readdirSync(path.join(repoRoot, "scripts"), { withFileTypes: true })
-      .filter((e) => e.isFile())
-      .map((e) => `scripts/${e.name}`);
+    const scripts = ["scripts", "tools/ci"].flatMap((dir) =>
+      readdirSync(path.join(repoRoot, dir), { withFileTypes: true })
+        .filter((e) => e.isFile())
+        .map((e) => `${dir}/${e.name}`)
+    );
     const roots = trackedRootFiles(repoRoot);
     const setters = [...workflows, ...scripts, ...roots].filter((rel) => FLAG.test(read(rel)));
 

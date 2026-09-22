@@ -1,4 +1,4 @@
-// scripts/analyze-maestro-run.mjs correlates two independent logs on their own
+// tools/ci/analyze-maestro-run.mjs correlates two independent logs on their own
 // timestamps to prove #823's mechanism (a hierarchy fetch on an animating screen is
 // starved by device jank) rather than assert it — these fixtures are small excerpts
 // of the same shape as the two real runs the ticket measured.
@@ -11,7 +11,7 @@ import {
   parseHierarchyFetches,
   parseJankFrames,
   summarize,
-} from "../../scripts/analyze-maestro-run.mjs";
+} from "../../tools/ci/analyze-maestro-run.mjs";
 
 const MAESTRO_LOG = [
   "16:53:21.726 [ INFO] maestro.cli.runner.CliConsoleListener.onCommandStart: Assert that id: game-table is visible RUNNING",

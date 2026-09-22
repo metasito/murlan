@@ -100,13 +100,13 @@ function lastKept(src: string, out: string): number {
 const NEITHER_FLOOR_READS = [
   "lib/device/fonts.web.ts",
   "scripts/build-fonts.mjs",
-  "scripts/pick-simulator.mjs",
   "tests/integration/friendRowTravelsWithTheEvent.test.ts",
   "tests/native/friendsPresenceRow.test.tsx",
   "tests/native/replayControls.test.tsx",
   "tests/server/retentionOffWritePath.test.ts",
   "tests/tooling/pickSimulator.test.ts",
   "tests/ui-rules/resultActionLabels.test.ts",
+  "tools/ci/pick-simulator.mjs",
 ];
 
 /**
