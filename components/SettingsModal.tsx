@@ -119,7 +119,7 @@ export function SettingsModal({ visible, onClose }: Props) {
     } catch {
       // Cleared in both branches rather than in a `finally`: the React
       // Compiler cannot lower a try statement with one, and bails the whole
-      // component out of memoization if it meets it (tests/reactCompiler).
+      // component out of memoization if it meets it (tests/ui-rules/reactCompiler).
       setSendingBug(false);
       showNotification({
         type: "game_error",
@@ -138,7 +138,7 @@ export function SettingsModal({ visible, onClose }: Props) {
     } catch {
       // Cleared in both branches rather than in a `finally`: the React
       // Compiler cannot lower a try statement with one, and bails the whole
-      // component out of memoization if it meets it (tests/reactCompiler).
+      // component out of memoization if it meets it (tests/ui-rules/reactCompiler).
       setLoggingOut(false);
       showNotification({
         type: "game_error",

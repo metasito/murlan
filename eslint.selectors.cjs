@@ -1,6 +1,6 @@
 // The esquery selectors eslint.config.js enforces, declared once.
 //
-// They live here rather than inline in the config so that tests/spacingLint
+// They live here rather than inline in the config so that tests/ui-rules/spacingLint
 // can assert against the string the linter actually runs. A test that restates
 // a selector is a copy, and a copy drifts — which is the same silent hole this
 // rule exists to close, in a new place.

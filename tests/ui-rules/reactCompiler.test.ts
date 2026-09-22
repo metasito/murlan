@@ -336,13 +336,13 @@ test("a suppression of a rule #891 adopted costs the compiler nothing", () => {
 /**
  * Where `source` switches a react-hooks rule off, one line each.
  *
- * Every rule under the `react-hooks/` prefix, not the three `tests/hooksLint`
+ * Every rule under the `react-hooks/` prefix, not the three `tests/ui-rules/hooksLint`
  * names, and every form ESLint honours, including the ones the compiler's own
  * suppression parser does not read. What is refused is a comment taking a rule
  * out of `eslint.config.js`'s hands one site at a time — an ESLint question,
  * which is why this is wider than `CHARGED_FOR`.
  *
- * `tests/hooksLint` asks a narrower question, whether the rules #891 adopted
+ * `tests/ui-rules/hooksLint` asks a narrower question, whether the rules #891 adopted
  * stay on, and keeps its narrower list.
  */
 function suppressions(source: string, file: string): string[] {

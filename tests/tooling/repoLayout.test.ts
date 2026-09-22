@@ -18,6 +18,14 @@ function looseTests(files: string[]): string[] {
 const under = (p: string) => `tests/${p}`;
 const NAMED_TEST = /(?<![\w/.-])tests\/[\w./-]+\.(?:test|spec)\.tsx?/g;
 
+const SHORTHAND = /(?<![\w/.-])tests\/[A-Za-z][\w-]*(?![\w/.-])/g;
+
+function shorthandNotAFolder(files: [string, string][], folders: string[]): string[] {
+  return files.flatMap(([file, src]) =>
+    [...src.matchAll(SHORTHAND)].filter(([p]) => !folders.includes(p)).map(([p]) => `${file} -> ${p}`),
+  );
+}
+
 function danglingTestPaths(files: [string, string][], exists: (p: string) => boolean): string[] {
   return files.flatMap(([file, src]) =>
     [...src.matchAll(NAMED_TEST)].filter(([p]) => !exists(p)).map(([p]) => `${file} -> ${p}`),
@@ -60,6 +68,20 @@ describe("the repository layout (#1131)", () => {
     assert.deepEqual(
       danglingTestPaths([["a.ts", `see ${under("engine/gone.test.ts")} and tools/loop/${under("x.test.ts")}`]], () => false),
       [`a.ts -> ${under("engine/gone.test.ts")}`],
+    );
+  });
+
+  test("a bare tests/<name> pointer names a folder, never a test that moved into one", () => {
+    const folders = [...new Set(tests.map((f) => f.split("/").slice(0, 2).join("/")))].filter((p) => !p.includes("."));
+    const sources = trackedFiles(repoRoot, ".", ":!docs/plans", ":!docs/research", ":!docs/specs", ":!docs/design")
+      .filter((f) => /\.(tsx?|mjs|cjs|js|md|ya?ml|json)$/.test(f))
+      .map((f): [string, string] => [f, readFileSync(path.join(repoRoot, f), "utf8")]);
+    assert.ok(folders.includes(under("engine")) && folders.includes(under("native")), `folders: ${folders}`);
+    assert.ok(sources.some(([, src]) => src.match(SHORTHAND) !== null), "the scan finds no shorthand to check");
+    assert.deepEqual(shorthandNotAFolder(sources, folders), []);
+    assert.deepEqual(
+      shorthandNotAFolder([["a.ts", `see ${under("hooksLint")}, ${under("native")}/x and ${under("engine")}.`]], [under("engine")]),
+      [`a.ts -> ${under("hooksLint")}`],
     );
   });
 });
