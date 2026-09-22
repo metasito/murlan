@@ -48,10 +48,13 @@ describe("maestro.yml reuses the native build", () => {
     assert.match(restore, /key: \$\{\{ steps\.native\.outputs\.key \}\}/);
   });
 
-  test("the native build runs only on a miss, and never bundles a second time", () => {
+  test("the native build runs only on a miss, with the bundle's env whether Gradle re-bundles or not", () => {
     const build = code(step("Build the app"));
     assert.match(build, /if: steps\.cached\.outputs\.cache-hit != 'true'/);
-    assert.match(build, /assembleRelease[\s\S]*-x createBundleReleaseJsAndAssets/);
+    assert.doesNotMatch(build, /-x createBundleReleaseJsAndAssets/, "packageReleaseResources reads its output");
+    const job = src.slice(src.indexOf("\n  android:"), src.indexOf("\n    steps:"));
+    assert.match(job, /\n    env:[\s\S]*EXPO_PUBLIC_E2E_FAST: "1"/);
+    assert.doesNotMatch(src.slice(src.indexOf("\n    steps:")), /EXPO_PUBLIC_E2E_FAST:/);
     const save = src.slice(src.indexOf("actions/cache/save"), src.indexOf("actions/cache/save") + 300);
     assert.match(save, /if: steps\.cached\.outputs\.cache-hit != 'true'/);
   });

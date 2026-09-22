@@ -45,6 +45,26 @@ jobs:
     # what moved this from 60: measured at 929s on run 33654901506, against
     # `ci.yml`'s `android-build` at 957s for the debug variant.
     timeout-minutes: 100
+    # Job-wide: assembleRelease depends on the bundle task and reruns it if its inputs moved.
+    env:
+      # #837: the table's own looping decorative animation (the active-turn breathe, the
+      # Gioca glow) never let this emulator reach view-hierarchy idle, so one Maestro
+      # fetch on the table cost 72-92s against a ~5s baseline elsewhere (#823's
+      # measurement) — on the slower of two measured runs it never returned inside the
+      # 90s `extendedWaitUntil`. `lib/accessibility.ts` is the one place this is read;
+      # nothing outside this job's own build ever sets it.
+      EXPO_PUBLIC_E2E_REDUCE_MOTION: "1"
+      # Read at module scope by every screen that names it (`app/game.tsx`,
+      # `app/(online)/game.tsx`, `context/GameContext.tsx`), so it zeroes
+      # every AI/result delay any of them has (`AI_DELAY`,
+      # `AI_EXCHANGE_DELAY`, `RESULT_DELAY`, `GAME_OVER_DELAY`) across all
+      # four flows this job drives, not only exchange-phase.yaml's. What
+      # that ticket needed from it is the offline exchange overlay holding
+      # open past the ~8.2s a real device's single tap-and-wait command
+      # takes to return (#915), instead of its real ~5.2s — but every flow
+      # here now runs at this pace. Never read outside a build this
+      # harness itself produced (`scripts/assertNotE2EFast.js`).
+      EXPO_PUBLIC_E2E_FAST: "1"
 
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -101,28 +121,9 @@ jobs:
       # debug keystore and leaves `enableMinifyInReleaseBuilds` false, so this
       # needs no secrets and carries no ProGuard risk.
       #
-      # Gradle's own task makes the bundle, once, so a cached APK receives exactly what a full
-      # build would have packed.
+      # Gradle's own task makes the bundle before the APK is keyed, so a cached APK receives exactly
+      # what a full build would have packed.
       - name: Bundle the JS
-        env:
-          # #837: the table's own looping decorative animation (the active-turn breathe, the
-          # Gioca glow) never let this emulator reach view-hierarchy idle, so one Maestro
-          # fetch on the table cost 72-92s against a ~5s baseline elsewhere (#823's
-          # measurement) — on the slower of two measured runs it never returned inside the
-          # 90s `extendedWaitUntil`. `lib/accessibility.ts` is the one place this is read;
-          # nothing outside this job's own build ever sets it.
-          EXPO_PUBLIC_E2E_REDUCE_MOTION: "1"
-          # Read at module scope by every screen that names it (`app/game.tsx`,
-          # `app/(online)/game.tsx`, `context/GameContext.tsx`), so it zeroes
-          # every AI/result delay any of them has (`AI_DELAY`,
-          # `AI_EXCHANGE_DELAY`, `RESULT_DELAY`, `GAME_OVER_DELAY`) across all
-          # four flows this job drives, not only exchange-phase.yaml's. What
-          # that ticket needed from it is the offline exchange overlay holding
-          # open past the ~8.2s a real device's single tap-and-wait command
-          # takes to return (#915), instead of its real ~5.2s — but every flow
-          # here now runs at this pace. Never read outside a build this
-          # harness itself produced (`scripts/assertNotE2EFast.js`).
-          EXPO_PUBLIC_E2E_FAST: "1"
         run: ./android/gradlew -p android createBundleReleaseJsAndAssets -PreactNativeArchitectures=x86_64
 
       # The APK compresses its assets; the bundle is read before it is packed.
@@ -168,8 +169,7 @@ jobs:
           # lint gate for the code that is ours.
           ./android/gradlew -p android assembleRelease \
             -PreactNativeArchitectures=x86_64 \
-            -x lintVitalRelease \
-            -x createBundleReleaseJsAndAssets
+            -x lintVitalRelease
           apk=""
           for candidate in android/app/build/outputs/apk/release/*.apk; do
             [ -f "$candidate" ] && { apk="$candidate"; break; }
