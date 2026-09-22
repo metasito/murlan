@@ -335,21 +335,20 @@ Also check:
   },
   {
     key: 'supply-chain', model: 'sonnet', skills: ['eas-app-stores'],
-    start: 'package.json, package-lock.json, skills-lock.json, .replit, app.json, eas.json, .github/workflows/, scripts/build.js',
+    start: 'package.json, package-lock.json, skills-lock.json, app.json, eas.json, .github/workflows/, scripts/build.js',
     refs: 'OWASP Top 10:2025 A03 (software supply chain); npm ci + audit in CI; Actions pinned by SHA with least-privilege permissions.',
     ask: `Run \`npm audit --omit=dev\` and \`npx expo install --check\`, and report the output.
 Then check:
 - outdated or abandoned dependencies, and duplicate versions;
 - whether patch-package's postinstall step (package.json) still has anything to apply — no patches/ directory exists today;
 - APIs the code uses against server:build --target=node22;
-- whether \`.replit\`'s Run-button workflow is still live (ADR-0006: Replit is no longer the host, so it may call scripts that no longer resolve);
 - app.json permissions and store readiness;
 - Actions pinning and permissions;
 - licences.`,
   },
   {
     key: 'infra', kind: 'research', model: 'opus', skills: ['eas-app-stores'],
-    start: '.replit, docs/adr/0001-*, docs/adr/0003-*, docs/DEPLOY-RUNBOOK.md, docs/adr/0006-*, server/index.ts, server/socket/socketAdapter.ts, package.json scripts, eas.json, app.json, docs/research/2026-08-26-dev-build-vs-expo-go.md, docs/research/2026-08-29-multiplayer-infrastructure.md',
+    start: 'docs/adr/0001-*, docs/adr/0003-*, docs/DEPLOY-RUNBOOK.md, docs/adr/0006-*, server/index.ts, server/socket/socketAdapter.ts, package.json scripts, eas.json, app.json, docs/research/2026-08-26-dev-build-vs-expo-go.md, docs/research/2026-08-29-multiplayer-infrastructure.md',
     refs: 'Use WebSearch and WebFetch. Official pricing pages only; record the URL and the date read for every price.',
     ask: `The Replit subscription has ended. Research where the app should live next.
 Requirements: free at the start, reasonable cost as it grows, mature and boring. The host must run:

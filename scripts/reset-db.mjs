@@ -43,7 +43,7 @@ if (!process.argv.includes("--yes")) {
 }
 
 if (!process.env.DATABASE_URL) {
-  console.error("DATABASE_URL is not set. Run this on Replit, or in a shell that has it.");
+  console.error("DATABASE_URL is not set. Run this in a shell that has it.");
   process.exit(1);
 }
 

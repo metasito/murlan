@@ -276,7 +276,7 @@ export interface CreatedApp {
  * Builds the full Express + Socket.io app — middleware, CORS, sessions,
  * routes, sockets, error handler — but does not bind a port or install
  * process shutdown handlers. `server/index.ts` owns both of those (the
- * Replit run path), so this factory can also be called directly by the
+ * production run path), so this factory can also be called directly by the
  * integration test harness (`tests/helpers/testServer.ts`) to boot the real
  * server against a throwaway database schema without ever listening on the
  * real PORT.

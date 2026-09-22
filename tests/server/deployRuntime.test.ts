@@ -24,13 +24,6 @@ test("CI's build job runs the manifest's Node", () => {
   assert.equal(Number(version[1]), manifest.node);
 });
 
-test(".replit, while it exists, deploys the manifest's majors", () => {
-  const modules = read(".replit").match(/^modules\s*=\s*\[([^\]]*)\]/m);
-  assert.ok(modules, ".replit has no modules line");
-  assert.match(modules[1], new RegExp(`"nodejs-${manifest.node}"`));
-  assert.match(modules[1], new RegExp(`"postgresql-${manifest.postgres}"`));
-});
-
 test("the shutdown budget is sized to the manifest's SIGTERM grace", () => {
   assert.equal(PLATFORM_GRACE_MS, manifest.sigtermGraceMs);
 });

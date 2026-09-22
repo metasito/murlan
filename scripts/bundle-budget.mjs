@@ -6,8 +6,8 @@
 // 400 KB would have landed silently and been found by a player on mobile data.
 //
 // Gzip rather than raw bytes: raw is not what anyone downloads, and the two
-// diverge by more than a factor of three. Plain Node, no dependencies, so the
-// Replit Run button still needs nothing installed.
+// diverge by more than a factor of three. Plain Node, no dependencies, so
+// whatever runs the build still needs nothing installed.
 //
 // Run with: node scripts/bundle-budget.mjs
 import fs from "node:fs";

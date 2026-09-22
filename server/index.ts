@@ -10,7 +10,7 @@ import { checkBootEnv } from "./http/bootEnv.ts";
 checkBootEnv();
 
 // This file's sole job is binding the real PORT and installing process
-// shutdown handlers for the Replit run path. Everything else — middleware,
+// shutdown handlers for the production run path. Everything else — middleware,
 // routes, sockets — lives in the `createApp()` factory in `./app.ts` so
 // the integration test harness can boot the identical app on an ephemeral
 // port against a throwaway database schema, without going through this

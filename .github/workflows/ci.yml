@@ -714,7 +714,7 @@ jobs:
       # other two jobs check dev tooling and 24 is right for them.
       # `esbuild --target=node22` lowers syntax and knows nothing about APIs, so
       # a Node-24-only builtin compiles at exit 0, passes a Node 24 job, and
-      # throws on Replit. Running the deploy runtime is what catches that.
+      # throws in production. Running the deploy runtime is what catches that.
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "22"
@@ -753,7 +753,7 @@ jobs:
       - name: Neither production bundle carries a test-only flag
         run: node scripts/e2eBuildMark.mjs --absent dist static-build
 
-      # The bundle esbuild produces is otherwise first executed by a Replit
+      # The bundle esbuild produces is otherwise first executed by a production
       # deploy. /health answers only once the pool has reached Postgres.
       - name: The built server boots and reaches the database
         shell: bash

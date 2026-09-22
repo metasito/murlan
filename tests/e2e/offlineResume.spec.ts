@@ -54,7 +54,7 @@ test("a match interrupted mid-hand is offered back, with the same cards", async 
 });
 
 // The counterpart, and the only place the confirmation itself is exercised on
-// the platform Replit serves: `Alert.alert` is an empty function under
+// the web platform: `Alert.alert` is an empty function under
 // react-native-web, so this dialog and its destructive branch existed on
 // native only and the quit button did nothing at all on web.
 test("quitting asks first, and taking the offer back clears it", async ({ page, baseURL }) => {

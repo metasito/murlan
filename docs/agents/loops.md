@@ -27,8 +27,8 @@ by hand and which you leave to CI.
 
 | Port | For | Owner |
 | --- | --- | --- |
-| `5000` | The Express server (`PORT`) | `server/index.ts`, `.replit` |
-| `8081` | Metro (`npx expo start` / `npm start`) | `scripts/build.js`, `.replit` |
+| `5000` | The Express server (`PORT`) | `server/index.ts` |
+| `8081` | Metro (`npx expo start` / `npm start`) | `scripts/build.js` (Metro's own default) |
 | `5561`, `5562`, `5571`, `5581` | One `tests/integration/` file's own spawned server each | pinned by `tests/tooling/integrationPorts.test.ts` |
 | `5199`+ | Playwright's e2e webServer (`E2E_PORT`) — first free port at/above the base | `tools/ci/e2ePort.mjs`; a leftover is freed by `tools/loop/reap.mjs` |
 | `55432`+ | The dev-stack's disposable Postgres (`MURLAN_DEV_PG_PORT`) — ask `dev-stack env`, don't assume 55432 | `scripts/dev-stack.mjs`, `scripts/devStackPort.mjs` |
@@ -404,8 +404,8 @@ route table is named once. CI's build job checks `lib/e2eBuildMark.ts`'s string 
 output itself (`scripts/e2eBuildMark.mjs`) rather than trusting env at build time.
 
 **A new worktree's first export is a cold build (~3 min)**, and so is the first export after any
-`EXPO_PUBLIC_*` value changes — CI and Replit each pay it once, on a stable path; sharing the
-cache was fast and wrong, not a saving.
+`EXPO_PUBLIC_*` value changes — CI and production each pay it once, on a stable path; sharing
+the cache was fast and wrong, not a saving.
 
 ## Playwright, locally
 

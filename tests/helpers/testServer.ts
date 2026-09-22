@@ -91,7 +91,7 @@ process.env.MURLAN_BOT_MOVE_DELAY_MS ??= "20";
  * Long enough that the server is never the side that closes an idle
  * connection. Node's default expires one a second after `fetch`'s agent stops
  * reusing it, and a loaded runner fires the two timers out of that order.
- * Production keeps the default, which is what Replit's proxy expects.
+ * Production keeps the default, which is what a TLS-terminating proxy expects.
  */
 export const KEEP_ALIVE_MS = 120_000;
 /** Node requires `headersTimeout` to outlast `keepAliveTimeout`. */

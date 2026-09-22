@@ -11,7 +11,7 @@
  * WebP or AVIF would recover far more and are closed: Expo's prebuild pipeline
  * (`@expo/image-utils` -> `jimp-compact`) cannot decode either — issue #31.
  *
- * The output is committed, as assets/sounds/ is, so a Replit deploy needs no
+ * The output is committed, as assets/sounds/ is, so the deploy needs no
  * extra tooling; oxipng is fetched by npx at a pinned version rather than
  * declared, because nothing at run time or build time needs it. oxipng only
  * rewrites a file it made smaller, so re-running is a no-op.

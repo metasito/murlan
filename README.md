@@ -30,11 +30,13 @@ npm run server:dev   # Express + Socket.io (tsx, no build step)
 EXPO_PUBLIC_DOMAIN=<host:port> npm run expo:dev   # Expo dev server, over a tunnel
 ```
 
-## Running it on Replit
+## Deploying it
 
-The Run button starts the Express server, which serves both the REST API and the Expo
-web bundle — no extra setup. Replit-specific details (required Secrets, the `session`
-table, `trust proxy`, deployment shape) are documented in `docs/DEPLOY-RUNBOOK.md`, not here.
+Starting the built server (`npm run server:build && npm run server:prod`) serves both the
+REST API and the Expo web bundle — no extra setup beyond the env in `docs/DEPLOY-RUNBOOK.md`
+§ Secrets. The host itself is undecided (`docs/adr/0006-the-host-is-no-longer-replit.md`,
+#1107); deploy details (the `session` table, `trust proxy`, deployment shape) are documented
+in `docs/DEPLOY-RUNBOOK.md`, not here.
 
 ## Tests
 

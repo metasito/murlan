@@ -34,8 +34,8 @@ export const SEASON_CARRY = 0.5;
  * The season a moment belongs to, as `YYYY-MM` in UTC.
  *
  * Derived rather than scheduled: the season a result belongs to *is* its month,
- * so the reset cannot be missed, run twice, or run late. The server sleeps on
- * Replit, and a scheduled reset on a host that sleeps is one that eventually
+ * so the reset cannot be missed, run twice, or run late. A free-tier host can
+ * sleep, and a scheduled reset on a host that sleeps is one that eventually
  * does not happen.
  */
 export function seasonKey(at: Date): string {

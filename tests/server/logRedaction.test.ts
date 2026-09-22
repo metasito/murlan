@@ -459,7 +459,7 @@ function pinoDestination(l: object): { sync?: boolean } | undefined {
 
 const PROXY_HEADERS = {
   // RFC 7239 and its de-facto predecessor: what actually carries the client's
-  // address through Replit's TLS terminator. `req.socket.remoteAddress` is the
+  // address through the host's TLS-terminating proxy. `req.socket.remoteAddress` is the
   // terminator, not the player.
   "x-forwarded-for": "203.0.113.7, 10.0.0.1",
   forwarded: "for=203.0.113.7",

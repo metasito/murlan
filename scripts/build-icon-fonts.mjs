@@ -6,7 +6,7 @@
  *
  * @expo/vector-icons ships both faces whole — 389,724 B and 55,596 B — for the
  * few dozen glyphs this app draws. Committed rather than built on deploy, the
- * same way public/fonts/ and assets/sounds/ are, so Replit needs no extra
+ * same way public/fonts/ and assets/sounds/ are, so the host needs no extra
  * tooling. tests/tooling/iconSubset.test.ts fails if a new icon is used that the shipped
  * subsets were not built with.
  *
