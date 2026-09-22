@@ -1535,7 +1535,7 @@ describe("a ticket's tally comes from the ledger, not from memory", () => {
 
 describe("a session the API failed", () => {
   const fixture = readFileSync(path.join(import.meta.dirname, "fixtures", "api-529.jsonl"), "utf8").trim().split("\n");
-  const overloaded = fixture.map(readLine).find((f: any) => f?.kind === "result");
+  const overloaded: object = fixture.map(readLine).find((f: any) => f?.kind === "result")!;
   const died = (result: object | null) => async () =>
     ({ status: 1, blocked: false, result, ms: 1, log: "l", phase: "E", declared: null });
   const ticket = { skill: "implement", number: 42, title: "t", size: "size:S", phase: "E", queue: null };
