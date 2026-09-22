@@ -36,7 +36,7 @@ const SERVER_SAFE_LIB = [
         .filter((f) => f.endsWith(".ts"))
         .flatMap((f) => [
           ...readFileSync(path.join(repoRoot, dir, f), "utf-8").matchAll(
-            /from\s+"[^"]*\/lib\/([a-zA-Z]+)\.ts"/g
+            /from\s+"[^"]*\/lib\/((?:[a-zA-Z]+\/)?[a-zA-Z]+)\.ts"/g
           ),
         ])
         .map((m) => m[1])
@@ -45,8 +45,8 @@ const SERVER_SAFE_LIB = [
 ].sort();
 
 assert.ok(
-  SERVER_SAFE_LIB.length > 0,
-  "no lib/ module is imported by server/ or shared/ — the scan found nothing"
+  SERVER_SAFE_LIB.includes("game/gameEngine"),
+  "the scan misses the server's import of lib/game/gameEngine.ts"
 );
 
 for (const name of SERVER_SAFE_LIB) {
