@@ -6,7 +6,7 @@
  * asked for; killing a process is neither, and prune runs in places where doing it would be a
  * surprise.
  *
- * Usage: node tools/loop/reap.mjs [--dry-run] [--stale] [--docker] [--port]
+ * Usage: node tools/loop/reap.mjs [--dry-run] [--stale]
  */
 import { execFileSync } from "node:child_process";
 import os from "node:os";
@@ -77,14 +77,7 @@ export function ownedByTooling(commandLine, roots, platform = process.platform) 
  * floor by half a century and turns the guard into the thing it exists to prevent.
  */
 export function orphans(processes, { livePids, minAgeMs, now, keep }) {
-  return processes.filter(
-    (p) =>
-      Number.isFinite(p.startedAt) &&
-      p.startedAt > 0 &&
-      !keep.has(p.pid) &&
-      !livePids.has(p.ppid) &&
-      now - p.startedAt >= minAgeMs
-  );
+  return staleByAge(processes, { maxAgeMs: minAgeMs, now, keep }).filter((p) => !livePids.has(p.ppid));
 }
 
 /**
@@ -333,14 +326,6 @@ function listeningPids() {
   );
 }
 
-/** Present only when docker is up; a stopped engine is not a container worth reporting. */
-function removeContainer(name, dryRun) {
-  const running = sh("docker", ["ps", "-a", "--filter", `name=^${name}$`, "--format", "{{.Names}}"]).trim();
-  if (running !== name) return false;
-  if (!dryRun) sh("docker", ["rm", "-f", name]);
-  return true;
-}
-
 /**
  * Which of `pids` hold the port as a leftover rather than as a running suite.
  *
@@ -376,22 +361,6 @@ export function clearPort(port, { dryRun = false } = {}) {
 if (isInvokedDirectly(process.argv[1], import.meta.url)) {
   const dryRun = process.argv.includes("--dry-run");
   const verb = dryRun ? "would clear" : "cleared";
-
-  // Cleaning up after a run that is already over — `/queue` phase F is the
-  // caller. Starting a run does not come through here: `tools/ci/e2ePort.mjs` picks a port that
-  // is already free, which is what stopped two concurrent runs taking each other's server.
-  //
-  // A suite is also not the place to decide that some other node process has outlived its
-  // session, so this exits before the classes below.
-  if (process.argv.includes("--port")) {
-    const held = clearPort(E2E_PORT, { dryRun });
-    console.log(
-      held.length
-        ? `reap: ${verb} the e2e port ${E2E_PORT}, held by pid ${held.join(", ")}`
-        : `reap: e2e port ${E2E_PORT} is free`
-    );
-    process.exit(0);
-  }
 
   // Two snapshots a moment apart: cumulative CPU says only what a process has ever burned, and
   // the class below turns on what it is burning now.
@@ -474,23 +443,7 @@ if (isInvokedDirectly(process.argv[1], import.meta.url)) {
   }
   if (!burning.length) console.log("reap: no orphan is burning CPU");
 
-  // A container is not owned by the session that started it, so only the single-run ones go by
-  // default. The dev stack backs whatever else is running — another session's e2e most of the
-  // time — and taking it is a decision, not a tidy-up.
-  let containers = 0;
-  for (const name of ["murlan-verify-pg", "murlan-verify-boot"]) {
-    if (removeContainer(name, dryRun)) {
-      console.log(`reap: ${dryRun ? "would remove" : "removed"} container ${name}`);
-      containers++;
-    }
-  }
-  if (process.argv.includes("--docker") && removeContainer("murlan-dev-pg", dryRun)) {
-    console.log(`reap: ${dryRun ? "would remove" : "removed"} container murlan-dev-pg`);
-    containers++;
-  }
-
   // A port left to a live run is somebody else working, not a leftover, so it is not counted.
-  const found =
-    staleHolders.length + parentless.length + stale.length + burning.length + containers;
+  const found = staleHolders.length + parentless.length + stale.length + burning.length;
   if (process.argv.includes(IF_FOUND) && found === 0) process.exit(FOUND_NOTHING);
 }

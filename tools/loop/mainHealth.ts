@@ -30,6 +30,7 @@ export type MainHealth =
  * would push the one issue the duplicate check needs to see out of any window drawn over them.
  */
 export const MAIN_RED_LABEL = "main-red";
+const MAIN_RED_LABELS = ["ready-for-agent", "loop", "size:S", MAIN_RED_LABEL];
 
 /**
  * The run id is the key, and it travels in the title so a duplicate is found by listing rather
@@ -63,11 +64,9 @@ export function decideMainHealth(
 ): MainHealth {
   const verdict = decideVerdict(run, jobs);
   if (verdict.pass) return { state: "green", why: verdict.reason };
-  if (verdict.infrastructure || verdict.runId === undefined) {
+  if (!run || verdict.infrastructure || verdict.waiting || verdict.runId === undefined) {
     return { state: "unknown", why: verdict.reason };
   }
-  // Still running is not a red `main`; it is a `main` nobody can answer for yet.
-  if (run?.status !== "completed") return { state: "unknown", why: verdict.reason };
 
   const runId = verdict.runId;
   const title = titleFor(runId);
@@ -163,20 +162,12 @@ export function readMain(gh: Gh, repo: string): { run?: MainRun; jobs: JobRow[] 
  * It never throws: this runs before every ticket, and refusing to start one because GitHub was
  * briefly unreachable turns a check into an outage.
  */
-export function checkMain({
-  repo,
-  gh = ghCli,
-  labels = ["ready-for-agent", "loop", "size:S", MAIN_RED_LABEL],
-}: {
-  repo: string;
-  gh?: Gh;
-  labels?: string[];
-}): MainHealth {
+export function checkMain({ repo, gh = ghCli }: { repo: string; gh?: Gh }): MainHealth {
   try {
     const { run, jobs } = readMain(gh, repo);
     const health = decideMainHealth(run, jobs, parse<FiledIssue[]>(gh(filedIssueArgs(repo)), []));
     if (health.state !== "file") return health;
-    const url = gh(issueArgs(repo, health, run?.headSha, labels)).trim().split("\n").at(-1);
+    const url = gh(issueArgs(repo, health, run?.headSha, MAIN_RED_LABELS)).trim().split("\n").at(-1);
     return { state: "filed", runId: health.runId, title: health.title, why: health.why, url };
   } catch (e) {
     const [first] = String((e as Error).message).split("\n");

@@ -25,15 +25,6 @@
 export const PORT_SPAN = 20;
 
 /**
- * Ports this repo has already spoken for, which the search must not wander
- * into. 55433 is `murlan-verify-pg`, the CI-substitute Postgres
- * (`docs/agents/loops.md`); taking it would leave the ticket pipeline unable
- * to start its own database, and its cleanup removes by container name, so it
- * would not even be able to clear what was in the way.
- */
-export const RESERVED_PORTS = [55433];
-
-/**
  * Whether a failed `docker run` failed for want of the port.
  *
  * Four wordings. The first two are the daemon's, which changed between
@@ -50,15 +41,6 @@ export function isAddressInUse(stderr) {
   return /address already in use|port is already allocated|only one usage of each socket address|forbidden by its access permissions/i.test(
     stderr ?? ""
   );
-}
-
-/** The ports the search may try, in order, skipping what the repo reserves. */
-export function candidatePorts(start, span = PORT_SPAN, reserved = RESERVED_PORTS) {
-  const out = [];
-  for (let port = start; out.length < span && port < start + span * 2; port++) {
-    if (!reserved.includes(port)) out.push(port);
-  }
-  return out;
 }
 
 /**
@@ -83,9 +65,8 @@ export function startOnFreePort({
   discard = () => {},
   explicit = false,
   span = PORT_SPAN,
-  reserved = RESERVED_PORTS,
 }) {
-  const ports = explicit ? [start] : candidatePorts(start, span, reserved);
+  const ports = explicit ? [start] : Array.from({ length: span }, (_, i) => start + i);
   for (const port of ports) {
     if (!canBind(port)) continue;
     const r = run(port);

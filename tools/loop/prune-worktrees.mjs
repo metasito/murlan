@@ -9,7 +9,7 @@
  *
  *   merged - its branch is merged into origin/main, or its pull request is
  *            closed or merged.
- *   gone   - its branch exists on neither the remote nor locally (a
+ *   gone   - its branch has no local ref, being unborn (a
  *            detached-HEAD worktree, with no branch to check, counts as
  *            gone too), or its directory has already vanished from disk -
  *            there is nothing left there to lose, so this skips the merge
@@ -74,7 +74,6 @@ export function parseWorktreeList(porcelain) {
  *   branch: string | null,
  *   hasUncommittedChanges: boolean,
  *   locked: boolean,
- *   branchOnRemote: boolean,
  *   branchOnLocal: boolean,
  *   mergedIntoMain: boolean,
  *   prState: "OPEN" | "MERGED" | "CLOSED" | null,
@@ -84,7 +83,7 @@ export function parseWorktreeList(porcelain) {
  * @returns {{ status: "merged" | "gone" | "stale" | "live", reason: string }}
  */
 export function classifyWorktree(state) {
-  const { branch, hasUncommittedChanges, locked, branchOnRemote, branchOnLocal, mergedIntoMain, prState, directoryMissing, issueInProgress } = state;
+  const { branch, hasUncommittedChanges, locked, branchOnLocal, mergedIntoMain, prState, directoryMissing, issueInProgress } = state;
 
   // The floor, checked before anything else can override it.
   if (locked) {
@@ -112,8 +111,8 @@ export function classifyWorktree(state) {
   if (prState === "MERGED" || prState === "CLOSED") {
     return { status: "merged", reason: `pull request ${prState.toLowerCase()}` };
   }
-  if (!branchOnRemote && !branchOnLocal) {
-    return { status: "gone", reason: "branch exists on neither the remote nor locally" };
+  if (!branchOnLocal) {
+    return { status: "gone", reason: "branch has no local ref (unborn)" };
   }
   return { status: "live", reason: "unmerged, with no closed or open pull request found" };
 }
@@ -174,11 +173,6 @@ export function hasUncommittedChanges(worktreePath) {
   return out.trim().length > 0;
 }
 
-function branchOnRemote(branch) {
-  const out = execFileSync("git", ["ls-remote", "--heads", "origin", branch], { encoding: "utf8" });
-  return out.trim().length > 0;
-}
-
 function branchOnLocal(branch) {
   try {
     execFileSync("git", ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`], {
@@ -227,7 +221,6 @@ export function issueInProgress(branch, labelsOf = ghLabels) {
 
 const realProbe = {
   dirty: hasUncommittedChanges,
-  branchOnRemote,
   branchOnLocal,
   mergedIntoMain,
   prState,
@@ -241,7 +234,6 @@ export function classifyEntry(entry, probe = realProbe) {
       branch: entry.branch,
       hasUncommittedChanges: false,
       locked: true,
-      branchOnRemote: false,
       branchOnLocal: false,
       mergedIntoMain: false,
       prState: null,
@@ -252,7 +244,6 @@ export function classifyEntry(entry, probe = realProbe) {
       branch: entry.branch,
       hasUncommittedChanges: false,
       locked: false,
-      branchOnRemote: false,
       branchOnLocal: false,
       mergedIntoMain: false,
       prState: null,
@@ -265,7 +256,6 @@ export function classifyEntry(entry, probe = realProbe) {
       branch: entry.branch,
       hasUncommittedChanges: dirty,
       locked: false,
-      branchOnRemote: false,
       branchOnLocal: false,
       mergedIntoMain: false,
       prState: null,
@@ -276,7 +266,6 @@ export function classifyEntry(entry, probe = realProbe) {
     branch: entry.branch,
     hasUncommittedChanges: false,
     locked: false,
-    branchOnRemote: probe.branchOnRemote(entry.branch),
     branchOnLocal: probe.branchOnLocal(entry.branch),
     mergedIntoMain: probe.mergedIntoMain(entry.branch),
     prState: pr,
@@ -339,8 +328,8 @@ export function findOrphanedWorktreeDirs(dirNames, registeredPaths) {
  * away: held open by another process it still counts, and it reports only on stdout, so nothing
  * downstream would otherwise see it.
  */
-export function newsCount({ dryRun, total, kept, removed, orphansFound }) {
-  return dryRun ? total - kept : removed + orphansFound;
+export function newsCount({ removed, orphansFound }) {
+  return removed + orphansFound;
 }
 
 /** Whether `child` is `parent` itself or sits underneath it. */
@@ -557,6 +546,6 @@ if (invokedDirectly && process.argv.includes("--remove")) {
       ? `Dry run: ${total - kept} of ${total} would be removed, ${kept} kept.`
       : `Removed ${totalRemoved} of ${total}; kept ${kept}.`,
   );
-  const news = newsCount({ dryRun, total, kept, removed, orphansFound: orphanNames.length });
+  const news = newsCount({ removed, orphansFound: orphanNames.length });
   if (process.argv.includes(IF_FOUND) && news === 0) process.exit(FOUND_NOTHING);
 }

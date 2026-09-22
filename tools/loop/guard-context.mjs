@@ -1,17 +1,14 @@
 /**
- * PostToolUse notice for the loop's main session: past the context ceiling, hand off; on a third
- * identical Bash command, batch the edits. Each notice is said once, remembered by finding its own
- * text in the transcript tail, so a notice that scrolled out of the tail may be said again.
+ * PostToolUse notice for the loop's main session: past the context ceiling, hand off. Said once,
+ * found by its own text in the transcript tail, so one that scrolled out of it may be said again.
  *
  * Exit 0 always. stdout carries the hook's additionalContext, or nothing.
  */
 if (!process.env.LOOP_TURNS) process.exit(0);
-const { createHash } = await import("node:crypto");
 const { closeSync, fstatSync, openSync, readFileSync, readSync } = await import("node:fs");
 
 const CONTEXT_CEILING = 200_000;
 const TAIL_BYTES = 4 * 1024 * 1024;
-const REPEATS = 3;
 
 function tail(file) {
   const fd = openSync(file, "r");
@@ -60,22 +57,6 @@ function notices(payload) {
   if (!text.includes(ceiling)) {
     const last = newest(lines, (r) => r.type === "assistant" && r.message?.usage);
     if (last && contextOf(last.message.usage) > CONTEXT_CEILING) said.push(ceiling);
-  }
-
-  const command = payload.tool_name === "Bash" ? payload.tool_input?.command : undefined;
-  if (typeof command === "string") {
-    const tag = createHash("sha256").update(command).digest("hex").slice(0, 8);
-    const repeat = `same command three times: batch edits before re-running it [${tag}]`;
-    if (!text.includes(repeat)) {
-      const ids = new Set([payload.tool_use_id ?? "current"]);
-      for (const line of lines) {
-        if (!line.includes('"tool_use"')) continue;
-        for (const c of parsed(line)?.message?.content ?? []) {
-          if (c?.type === "tool_use" && c.name === "Bash" && c.input?.command === command) ids.add(c.id);
-        }
-      }
-      if (ids.size >= REPEATS) said.push(repeat);
-    }
   }
   return said;
 }

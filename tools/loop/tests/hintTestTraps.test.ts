@@ -24,7 +24,6 @@ describe("the test-trap hint fires where a trap is documented", () => {
     ["C:\\repo\\tests\\native\\a.test.tsx", /unmount/],
     ["tests/native/x.test.ts", /unmount/],
     ["tests/e2e/bannerDisplaces.spec.ts", /flexbox/],
-    ["locales/en.ts", /sq\.ts/],
   ] as const) {
     test(`hints on ${file}`, () => {
       const out = run(forPath(file));
@@ -41,6 +40,7 @@ describe("the test-trap hint stays silent elsewhere", () => {
     "components/MenuLayout.tsx",
     "server/socket/socketSafety.ts",
     "tools/loop/tests/guardBash.test.ts",
+    "locales/en.ts",
     "locales/it.ts",
     "docs/agents/loops.md",
   ]) {

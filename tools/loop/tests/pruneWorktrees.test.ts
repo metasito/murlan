@@ -27,7 +27,6 @@ function baseState(overrides = {}) {
     branch: "agent/1-x",
     hasUncommittedChanges: false,
     locked: false,
-    branchOnRemote: true,
     branchOnLocal: true,
     mergedIntoMain: false,
     prState: null,
@@ -45,9 +44,9 @@ describe("classifyWorktree's floor", () => {
     assert.match(result.reason, /uncommitted/);
   });
 
-  test("uncommitted changes win live even on a branch gone from both remote and local", () => {
+  test("uncommitted changes win live even on an unborn branch", () => {
     const result = classifyWorktree(
-      baseState({ hasUncommittedChanges: true, branchOnRemote: false, branchOnLocal: false }),
+      baseState({ hasUncommittedChanges: true, branchOnLocal: false }),
     );
     assert.equal(result.status, "live");
   });
@@ -84,7 +83,7 @@ describe("classifyWorktree's other classifications", () => {
 
   test("an open pull request is live even on a branch that would otherwise look gone", () => {
     const result = classifyWorktree(
-      baseState({ prState: "OPEN", branchOnRemote: false, branchOnLocal: false }),
+      baseState({ prState: "OPEN", branchOnLocal: false }),
     );
     assert.equal(result.status, "live");
     assert.match(result.reason, /open pull request/);
@@ -97,8 +96,8 @@ describe("classifyWorktree's other classifications", () => {
     assert.deepEqual(["merged", "gone", "stale", "live", "skip"].map(removable), [true, true, true, false, false]);
   });
 
-  test("a branch on neither remote nor local, with no PR, is gone", () => {
-    const result = classifyWorktree(baseState({ branchOnRemote: false, branchOnLocal: false }));
+  test("an unborn branch (no local ref), with no PR, is gone", () => {
+    const result = classifyWorktree(baseState({ branchOnLocal: false }));
     assert.equal(result.status, "gone");
   });
 
@@ -135,7 +134,6 @@ describe("classifyEntry's wiring", () => {
   const entry = { path: os.tmpdir(), branch: "agent/42-x", locked: false };
   const probe = (pr: string, inProgress: () => boolean, asked: string[] = []) => ({
     dirty: () => false,
-    branchOnRemote: () => true,
     branchOnLocal: () => true,
     mergedIntoMain: () => false,
     prState: () => pr,
@@ -266,7 +264,6 @@ describe("hasUncommittedChanges against a real worktree", () => {
       branch: "agent/probe",
       hasUncommittedChanges: hasUncommittedChanges(linked),
       locked: false,
-      branchOnRemote: false,
       branchOnLocal: true,
       mergedIntoMain: true,
       prState: "MERGED",
@@ -404,16 +401,14 @@ describe("the --if-found answer", () => {
   test("an orphan held open by another process is still news", () => {
     // It reports on stdout and increments `kept`, so counting removals alone hid the one case the
     // row exists for.
-    assert.equal(newsCount({ dryRun: false, total: 1, kept: 1, removed: 0, orphansFound: 1 }), 1);
+    assert.equal(newsCount({ removed: 0, orphansFound: 1 }), 1);
   });
 
   test("a live worktree the run deliberately kept is not", () => {
-    assert.equal(newsCount({ dryRun: false, total: 1, kept: 1, removed: 0, orphansFound: 0 }), 0);
-    assert.equal(newsCount({ dryRun: true, total: 1, kept: 1, removed: 0, orphansFound: 0 }), 0);
+    assert.equal(newsCount({ removed: 0, orphansFound: 0 }), 0);
   });
 
-  test("a removal, and a dry run's candidate for one, are both news", () => {
-    assert.equal(newsCount({ dryRun: false, total: 2, kept: 1, removed: 1, orphansFound: 0 }), 1);
-    assert.equal(newsCount({ dryRun: true, total: 2, kept: 1, removed: 0, orphansFound: 0 }), 1);
+  test("a removal is news", () => {
+    assert.equal(newsCount({ removed: 1, orphansFound: 0 }), 1);
   });
 });
