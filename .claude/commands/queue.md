@@ -5,172 +5,180 @@ allowed-tools: Read, Write, Edit, Grep, Glob, Bash, Task, Skill, SlashCommand, T
 model: opus
 ---
 
-The only loop protocol in this repo. `docs/agents/RULES.md` is the ruleset; this file is the
-procedure. Where they disagree, RULES.md wins and this file is stale — fix it.
+The only loop protocol in this repo. `docs/agents/RULES.md` is the ruleset, cited here by number;
+this file is the procedure. Where they disagree, RULES.md wins and this file is stale — fix it.
 
-One ticket at a time, one ticket per process: `tools/loop/queue-loop.mjs` starts the next process
-when this one exits. Nothing about the run is written down: git knows the branch and the commits,
-the tracker knows the ticket and the review, and `node tools/loop/loop-status.mjs` computes where
-the run stands from those two. The branch name `agent/<n>-<slug>` binds the work to its ticket.
+One ticket at a time, one ticket per process: `tools/loop/queue-loop.mjs` spawns `/queue <n>` and
+starts the next process when this one exits. No run state is stored: `node tools/loop/loop-status.mjs`
+derives it from git (the `agent/<n>-<slug>` branch binds the work to its ticket) and the tracker.
 
-## Never stall
+## In every phase
 
-- **Answerable from the repo** — look it up, or test it.
-- **A default exists** in `docs/agents/RULES.md`, `CLAUDE.md`, an ADR or a ticket comment — follow
-  it. (`docs/GAME-RULES.md` is the card game's spec, not the agent ruleset.)
-- **Only the owner can decide** — comment the option space on the issue (what each option costs),
-  then park it:
+- **Report the phase** on a line of its own, in the same message as that phase's first command —
+  the `PHASE <letter>` line at the top of each section below. The supervisor reads that line and
+  nothing else about your progress. Never send it alone: in print mode a turn that ends in text
+  and no tool call is the final answer.
+- **Never stall.** Answerable from the repo: look it up, or test it. A default exists in
+  `docs/agents/RULES.md`, `CLAUDE.md`, an ADR or a ticket comment: follow it
+  (`docs/GAME-RULES.md` is the card game's spec, not the agent ruleset). Only the owner can decide:
+  comment the option space on the issue (what each option costs), park it, declare, and **exit**:
+
   ```sh
   gh issue edit <n> --remove-label ready-for-agent --remove-label in-progress --add-label ready-for-human
   ```
-  and declare it and **exit** — `LOOP-RESULT {"ticket":<n>,"stoodDown":true,"why":"<one sentence>"}`.
 
-Never ask the user a question while a run is live.
+  ```
+  LOOP-RESULT {"ticket":<n>,"stoodDown":true,"why":"<one sentence>"}
+  ```
 
----
+  Never ask the user a question while a run is live.
+- **The turn budget** is `$LOOP_TURNS`. It ends the session wherever it stands, with no chance to
+  commit. Past two thirds of it with nothing committed, commit what works and narrow the slice.
+- **On the context notice**, commit and declare `handoff` = your phase. A fresh process resumes
+  from git with none of this conversation.
+- **Only an `agent:check` run passes the Bash tool its maximum `timeout`**: the default is shorter
+  than the check, and a killed run leaves no verdict.
 
 ## A — Start
 
-Say which phase you are in, on a line of its own, in the same message as that phase's first command:
+1. **Is a run live?**
+   **In a loop process (`$LOOP_TURNS` is set), your first command is `loop-status.mjs`**, sent
+   before any `PHASE` line: the startup hook stays silent there, which keeps every process's
+   prompt prefix cacheable. Elsewhere the `SessionStart` hook has already
+   run it and its report is above. Do not run it again, except when there is no hook report, or
+   when your own commit, fetch or claim has made that report stale:
 
-`PHASE A`
+   ```sh
+   node tools/loop/loop-status.mjs
+   ```
 
-The supervisor reads that line and nothing else about your progress. Never send it alone: in print
-mode a turn that ends in text and no tool call is the final answer. Do the same in every phase.
+   - **It names a phase**: a ticket is mid-run. Resume at that phase, as its report says; do not
+     re-plan or re-scope, and **do not run the picker**.
+   - **It names G**: the head is pushed and CI is the supervisor's. Declare and exit, touching
+     nothing:
 
-**In a loop process (`$LOOP_TURNS` is set), your first command is `loop-status.mjs`**, sent before
-any `PHASE` line, since its report names the phase: the startup hook stays silent there, which keeps
-every process's prompt prefix cacheable. Elsewhere the `SessionStart` hook has already run it and
-its report is above. Do not run it again, except when there is no hook report, or when your own
-commit, fetch or claim has made that report stale:
+     ```
+     LOOP-RESULT {"ticket":<n>,"phase":"G"}
+     ```
 
-```sh
-node tools/loop/loop-status.mjs
-```
+   - **Silent**: no live worktree. Go on to step 2.
 
-Silent means no live worktree — continue below. Anything else means a ticket is mid-run: resume at
-the phase it names, do not re-plan or re-scope, and **do not run the picker**. Uncommitted changes
-in that worktree are your in-progress slice; finish it.
+2. **Pick.** Say which phase you are in:
 
-If it names **G**, the head is pushed and CI is the supervisor's. Declare it and exit, touching
-nothing:
+   `PHASE A`
 
-```
-LOOP-RESULT {"ticket":<n>,"phase":"G"}
-```
+   ```sh
+   npm run queue:pre                            # by-hand runs only: the loop has already run it
+   node tools/loop/next-ticket.mjs $ARGUMENTS   # prints ROUTE, body, comments, blockers, takeability
+   ```
 
-Only once that report is silent:
+   `queue:pre` red: **Halt**. `$ARGUMENTS` is the ticket the supervisor passed; a bare `/queue`
+   picks from the live queue. The picker's output is the whole ticket, and **a later comment
+   overrides the body**.
 
-```sh
-npm run queue:pre                         # by-hand runs only: the loop has already run it
-node tools/loop/next-ticket.mjs $ARGUMENTS   # prints ROUTE, body, comments, blockers, takeability
-```
+3. **Route.** Route `triage` runs `/triage`; `wayfinder` runs `/wayfinder`; `handoff` goes to
+   **Halt**. Only `implement` continues here.
 
-If that output shows an open pull request on this ticket, it is already claimed and its Definition
-of done is posted. Do not claim it again; rebuild the worktree:
+4. **Claim.** The loop's `tools/loop/claim.mjs` has already claimed it and made the worktree. A
+   by-hand run claims with `npm run queue:claim -- <n> "<title>"` (exit 1: lost the race, or could
+   not claim). If the picker shows an **open pull request** on this ticket, it is already claimed
+   and its Definition of done is posted: do not claim it again. Rebuild the worktree, then resume
+   where `node tools/loop/loop-status.mjs` says:
 
-```sh
-git fetch origin --quiet
-git worktree add -B agent/<n>-<slug> .worktrees/agent-<n> origin/agent/<n>-<slug>
-```
+   ```sh
+   git fetch origin --quiet
+   git worktree add -B agent/<n>-<slug> .worktrees/agent-<n> origin/agent/<n>-<slug>
+   ```
 
-Then resume where `node tools/loop/loop-status.mjs` says.
+   Work only in `.worktrees/agent-<n>`.
 
-If `queue:pre` fails, **halt**. `$ARGUMENTS` is the ticket the supervisor passed; a bare `/queue`
-picks from the live queue.
+5. **You work the ticket you were given.** If it turns out wrong — a lost claim race, a false
+   premise, a blocker named in a comment — say so on the issue, remove `in-progress`, declare
+   `stoodDown` and **exit**. Never pick another.
 
-**You work the ticket you were given.** If it turns out wrong — a lost claim race, a false premise,
-a blocker named in a comment — say so on the issue, remove your label, declare `stoodDown` and
-**exit**. Never pick another.
+6. **Post the ticket's Definition of done as a comment on the issue, before any code.** It is
+   what phase F is judged against. A ticket with no checkable Definition of done is not a ticket:
+   park it (**Never stall**).
 
-Route `triage` runs `/triage`; `wayfinder` runs `/wayfinder`; `handoff` goes to **Halt**. Only
-`implement` continues here.
-
-The picker's output is the whole ticket. **A later comment overrides the body.**
-
-`tools/loop/claim.mjs` has already claimed it and made the worktree; work only there. A by-hand
-`/queue` claims with `npm run queue:claim -- <n> "<title>"`.
-
-**Post the ticket's Definition of done as a comment on the issue, now, before any code.** It is
-what phase F is judged against. A ticket with no checkable Definition of done is not a ticket — park
-it.
+Done when the worktree stands and the Definition of done is on the issue.
 
 ## B — Scope
 
 `PHASE B`
 
-One subagent (`sonnet`), so the codebase never enters this context. Its prompt starts with the
-output of this, verbatim:
+1. One `sonnet` subagent maps the change, so the codebase never enters this context. Its prompt
+   starts with the output of this, verbatim:
 
-```sh
-node tools/loop/brief.mjs scope <n> .worktrees/agent-<n>
-```
+   ```sh
+   node tools/loop/brief.mjs scope <n> .worktrees/agent-<n>
+   ```
 
-**A `size:L` ticket with three or more independent feature groups is split before it is built.**
-The scope report lists the groups. Keep the first group here; file each other group as its own
-ticket, carrying its boxes and any owner ruling word for word:
+2. **A `size:L` ticket with three or more independent feature groups is split before it is
+   built.** The scope report lists the groups. Keep the first group here; file each other group
+   as its own ticket, carrying its boxes and any owner ruling word for word:
 
-```sh
-gh issue create --title "<group> (split from #<n>)" --body-file <file> --label ready-for-agent --label size:<S|M>
-```
+   ```sh
+   gh issue create --title "<group> (split from #<n>)" --body-file <file> --label ready-for-agent --label size:<S|M>
+   ```
 
-Then post a new Definition of done on #<n> naming only the first group's boxes and each child
-ticket, and build only that group.
+   Then post a new Definition of done on #<n> naming only the first group's boxes and each child
+   ticket, and build only that group.
 
-No file is out of scope; if the recon names the schema, the socket protocol, `.replit` or a
-workflow, say in the PR body what it costs to get wrong.
+3. No file is out of scope. If the report names the schema, the socket protocol, `.replit` or a
+   workflow, the PR body says what it costs to get wrong.
+
+Done when the scope report is in hand and any split is filed.
 
 ## C — Build
 
 `PHASE C`
 
-`mattpocock-skills:tdd`. A bug goes through `mattpocock-skills:diagnosing-bugs` first. Inside this
-loop those two outrank any general process skill.
+Build with `mattpocock-skills:tdd`; a bug goes through `mattpocock-skills:diagnosing-bugs` first.
+Inside this loop those two outrank any general process skill. How to solve it is yours.
 
-**A fix round** is phase C when `loop-status.mjs` says `fix round`. Skip the planning. **Read the
-thread's `CI-RED` and any `FIX-NOTES` comments first**, so this round does not reopen ruled-out
-ground, **then run the command the `CI-RED` comment carries and read the failure itself.** Where it
-states how many files are red, a round that has diagnosed fewer than that number has not finished,
-whatever it has fixed; where it says no test id parsed, the step's own output is the count and
-there is no shortcut past reading it. A cheap subagent may do the reading and return the list.
+### A fix round
 
-With no `CI-RED` comment, fall back to `.loop-logs/ci-<n>.log`, else CI itself:
+Phase C is a fix round when `loop-status.mjs` says `fix round`. Skip the planning.
 
-```sh
-gh run list --branch agent/<n>-<slug> --limit 1 --json databaseId --jq '.[0].databaseId' \
-  | xargs -I{} gh run view {} --log-failed
-```
+1. **Read the thread's `CI-RED` and any `FIX-NOTES` comments first**, so this round does not
+   reopen ruled-out ground.
+2. **Run the command the `CI-RED` comment carries and read the failure itself.** Where it states
+   how many files are red, a round that has diagnosed fewer than that number has not finished,
+   whatever it has fixed; where it says no test id parsed, the step's own output is the count and
+   there is no shortcut past reading it. A cheap subagent may do the reading and return the list.
+   With no `CI-RED` comment, fall back to `.loop-logs/ci-<n>.log`, else CI itself:
 
-The `CI-RED` comment's `on main:` line names the failures main's own latest CI run has too.
-Those did not come from this diff, and the loop runs one ticket at a time, so nobody else is
-working on them. Fix their root cause here in a commit of its own, and name main's run in
-`FIX-NOTES`. `none` means every failure is this diff's.
+   ```sh
+   gh run list --branch agent/<n>-<slug> --limit 1 --json databaseId --jq '.[0].databaseId' \
+     | xargs -I{} gh run view {} --log-failed
+   ```
 
-Fix what CI named, then run the suite it named as well as the usual check:
+3. The `CI-RED` comment's `on main:` line names the failures main's own latest CI run has too.
+   They did not come from this diff, and the loop runs one ticket at a time, so nobody else is
+   working on them: fix their root cause here in a commit of its own, and name main's run in
+   `FIX-NOTES`. `none` means every failure is this diff's.
+4. Fix what CI named, then run the suite it named as well as the usual check:
 
-```sh
-npm run agent:check -- --also test:native   # or loop:test, comments; `test` always runs
-```
+   ```sh
+   npm run agent:check -- --also test:native   # or loop:test, comments; `test` always runs
+   ```
 
-Only an `agent:check` run passes the Bash tool its maximum `timeout`: the default is shorter than
-the check, and a killed run leaves no verdict.
+5. Post what this round ruled out, at most 15 lines, each hypothesis and its evidence.
+   `<sha>` is `git rev-parse --short HEAD`, taken after the fix is committed:
 
-Before handing off, post what this round ruled out, at most 15 lines, each hypothesis and its
-evidence:
+   ```sh
+   gh issue comment <n> --body-file <file>   # first line: FIX-NOTES <sha>
+   ```
 
-```sh
-gh issue comment <n> --body-file <file>   # first line: FIX-NOTES <sha>
-```
+Then leave through **Leaving C**, like any build.
 
-`<sha>` is `git rev-parse --short HEAD`, taken after the fix is committed.
-
-How to solve it is yours. What constrains the process:
+### How to work
 
 - **Read ranges, not files.** Every line you read is re-read on every later turn. Read the ranges
   phase B named. A question spanning files ("where is X used", "how does Y flow"), a long log or a
   file you will not edit goes to one `sonnet` subagent that answers in a few lines. A failing
   check: its summary first, then only the failure you are fixing.
-- **Watch the check fail first, for the reason you claim.**
+- **Watch the check fail first, for the reason you claim** (rule 6).
 - **Fix the root cause across every caller.**
 - **A diff that describes code is traced here, not in phase D** (rule 20).
 - **Scope grows to what you find in its area**: fix it in this diff, add a Definition-of-done box,
@@ -186,21 +194,16 @@ How to solve it is yours. What constrains the process:
   ```
 - **A ticket's prescribed form is a proposal.** If a test rules it out, build its intent and say
   why in the commit.
-- **Commit each slice as you finish it**, by pathspec, the message ending in
+- **Commit each slice as you finish it**, by pathspec (rule 11), the message ending in
   `Co-Authored-By: <your model's name> <noreply@anthropic.com>`.
 - **Batch what does not depend on the last answer.**
 
-**You have a turn budget**, `$LOOP_TURNS`, and it ends the session wherever it stands, with no
-chance to commit. Past two thirds of it with nothing committed, commit what works and narrow the
-slice.
+### Leaving C
 
-**On the context notice, commit and declare `handoff` = your phase.** A fresh process resumes
-from git with none of this conversation.
+`git rev-list --count origin/main..HEAD` must be non-zero. Then, in this order:
 
-Before leaving C, `git rev-list --count origin/main..HEAD` must be non-zero. Then, in this order:
-
-1. **The completeness check.** A review round costs a fresh process; a box found missing here costs
-   one subagent. One `sonnet` subagent whose prompt starts with the output of this, verbatim:
+1. **The completeness check**: one `sonnet` subagent whose prompt starts with the output of this,
+   verbatim:
 
    ```sh
    node tools/loop/brief.mjs completeness <n> .worktrees/agent-<n>
@@ -209,13 +212,13 @@ Before leaving C, `git rev-list --count origin/main..HEAD` must be non-zero. The
    Build what it reports partial or missing, with the failing test first, and ask it again on the
    new diff until it reports nothing. Where you think it is wrong, check the code, not your memory.
 2. Read `git diff origin/main...HEAD` against phase D's two briefs and fix what either would raise.
+   This does not replace phase D's independent review.
 3. Then commit the last slice, and run `npm run agent:check`.
 4. Post the Definition of done ticked against this head, first line `DOD-CHECK <sha>`
    (`git rev-parse --short HEAD`), then every box:
    `- [x] <box> — <path>:<line> · <test path>:<line>`. A box you cannot close stays `- [ ]` with why,
    and then the ticket is not done: keep building, or park it (**Never stall**).
-5. `node tools/loop/loop-gate.mjs --build` must exit 0. It refuses a dirty tree, no local pass on
-   HEAD, no `DOD-CHECK` of HEAD, an open box, and a tick with no `<path>:<line>`.
+5. `node tools/loop/loop-gate.mjs --build` must exit 0. It prints what is missing.
 
 Only then declare handoff D and exit. The supervisor runs the same gate and sends a failing handoff
 back to C; a passing one it pushes and opens as a draft pull request, so CI runs while D reviews.
@@ -224,101 +227,92 @@ back to C; a passing one it pushes and opens as a draft pull request, so CI runs
 LOOP-RESULT {"ticket":<n>,"branch":"agent/<n>-slug","phase":"C","handoff":"D"}
 ```
 
-The independent review is phase D's, in a fresh process; the diff read above does not replace it.
-
 ## D — Review
 
 `PHASE D`
 
-`mattpocock-skills:code-review`. Round 1's fixed point is `origin/main`; every later round's is the
-sha the previous round reviewed — that delta, plus the findings it left open.
+The review is `mattpocock-skills:code-review`'s two axes, dispatched as below. `<base>` is
+`origin/main` in round 1; every later round's is the sha the previous round reviewed — that delta,
+plus the findings it left open.
 
-**A fix round's review is sized to the fix.** A `CI-RED` comment newer than the last
-`VERDICT: LAND <landSha>` makes this a fix round. Run:
+1. **Size the round.** A `CI-RED` comment newer than the last `VERDICT: LAND <landSha>` makes this
+   a fix round. Run:
 
-```sh
-node tools/loop/loop-gate.mjs --fix-delta <landSha>
-```
+   ```sh
+   node tools/loop/loop-gate.mjs --fix-delta <landSha>
+   ```
 
-If its `lines` is at most 80: one `sonnet` reviewer whose prompt starts with the output of this,
-verbatim, with no refuter:
+   If its `lines` is at most 80: one `sonnet` reviewer whose prompt starts with the output of this,
+   verbatim, with no refuter. Its comment's first line is `REVIEW <sha> fix`, still with both
+   headings. Skip to step 3.
 
-```sh
-node tools/loop/brief.mjs fix <n> .worktrees/agent-<n> <landSha>
-```
+   ```sh
+   node tools/loop/brief.mjs fix <n> .worktrees/agent-<n> <landSha>
+   ```
 
-Its comment's first line is `REVIEW <sha> fix`, still with both headings. Otherwise, the full
-review below.
+   Otherwise, the full review in step 2.
 
-`<base>` is `origin/main` in round 1, else the sha the previous round reviewed.
+2. **The full review**: two fresh `sonnet` subagents (rule 29's independent reviewers),
+   dispatched in one message so they run at once, each whose prompt starts with the output of one
+   of these, verbatim:
 
-The full review: two fresh `sonnet` subagents (rule 29's independent reviewers), dispatched in one
-message so they run at once, each whose prompt starts with the output of one of these, verbatim:
+   ```sh
+   node tools/loop/brief.mjs standards <n> .worktrees/agent-<n> <base>
+   node tools/loop/brief.mjs spec <n> .worktrees/agent-<n> <base>
+   ```
 
-```sh
-node tools/loop/brief.mjs standards <n> .worktrees/agent-<n> <base>
-node tools/loop/brief.mjs spec <n> .worktrees/agent-<n> <base>
-```
+   **When the diff changes a contract** — what a function promises beyond its types — append this
+   to the Spec brief: `The diff changes this promise: <old> → <new>. Find every caller that still
+   assumes the old one, and every test that would pass either way.`
 
-**When the diff changes a contract** — what a function promises beyond its types — append this to
-the Spec brief: `The diff changes this promise: <old> → <new>. Find every caller that still assumes
-the old one, and every test that would pass either way.`
+   Then one more `sonnet` subagent, given both reports, whose prompt starts with the output of
+   this, verbatim:
 
-Then one more `sonnet` subagent, given both reports and whose prompt starts with the output of this,
-verbatim:
+   ```sh
+   node tools/loop/brief.mjs refute <n> .worktrees/agent-<n> <base>
+   ```
 
-```sh
-node tools/loop/brief.mjs refute <n> .worktrees/agent-<n> <base>
-```
+   `guard-agent-model.mjs` denies a dispatch that edits a brief, or names a review without one.
 
-A dispatch that edits a brief, or names a review without one, is denied by `guard-agent-model.mjs`.
+3. **Post the reports** as one comment, unmerged, first line naming the head they read. Each round
+   posts its own comment for its own head; `loop-gate.mjs` refuses a `VERDICT: LAND` with no
+   `REVIEW` comment behind it.
 
-Post both reports as one comment, unmerged, first line naming the head they read:
+   ```
+   REVIEW <sha>
 
-```
-REVIEW <sha>
+   ## Standards
+   ...
+   ## Spec
+   ...
+   ```
 
-## Standards
-...
-## Spec
-...
-```
+4. **CI has been running on this head since the handoff.** If it has already failed, its failure
+   is a finding too:
 
-`loop-gate.mjs` refuses a `VERDICT: LAND` for a head with no `REVIEW` comment behind it. Each round
-posts its own comment for its own head.
+   ```sh
+   gh run list --branch agent/<n>-<slug> --commit <full sha> --limit 1 --json databaseId,conclusion
+   gh run view <databaseId> --log-failed | tail -40       # only when conclusion is failure
+   ```
 
-CI has been running on this head since the handoff. If it has already failed, its failure is a
-finding too:
+5. **Post the verdict** as its own comment, after reading the reports yourself. `<sha>` is
+   `git rev-parse --short HEAD`:
 
-```sh
-gh run list --branch agent/<n>-<slug> --commit <full sha> --limit 1 --json databaseId,conclusion
-gh run view <databaseId> --log-failed | tail -40       # only when conclusion is failure
-```
+   ```sh
+   gh issue comment <n> --body-file <file>   # first line: VERDICT: LAND <sha>
+   ```
 
-Then read them yourself and post the verdict as its own comment, where `<sha>` is
-`git rev-parse --short HEAD`:
+   or `VERDICT: HOLD <sha> — <one sentence>`. HOLD on any hard Standards violation or any missing
+   or wrong Spec finding; a baseline smell alone is a note. A commit after a verdict makes it stop
+   counting. Where you disagree with a finding, one line in the commit body.
 
-```sh
-gh issue comment <n> --body-file <file>   # first line: VERDICT: LAND <sha>
-```
-
-or `VERDICT: HOLD <sha> — <one sentence>`. HOLD on any hard Standards violation or any missing or
-wrong Spec finding; a baseline smell alone is a note. A commit after a verdict makes it stop
-counting.
-
-Before each round after the first:
-
-```sh
-node tools/loop/loop-gate.mjs --review-round
-```
-
-It exits non-zero at the cap. **Stop before the cap when a round earns nothing**: a round raising no
-finding the previous one did not already raise ends the review, and you post `VERDICT: LAND`.
-
+**Rounds.** Before each round after the first, run `node tools/loop/loop-gate.mjs --review-round`;
+it exits non-zero at the cap. **Stop before the cap when a round earns nothing**: a round raising
+no finding the previous one did not already raise ends the review, and you post `VERDICT: LAND`.
 At the cap, do not park for that alone. Fix any actual blocker (breaks behaviour, loses data, a
 security hole) without spending a round; for the rest, post your own `VERDICT: LAND <sha>` naming
 what you accept and why, and say it in phase F's Definition-of-done comment. Park only for a
-decision only the owner can make. Where you disagree with a finding, one line in the commit body.
+decision only the owner can make.
 
 **A round is a process.** After a `HOLD`, fix what it named, then leave through phase C's steps 1–5
 — the completeness check included, since a HOLD names what was missed, not all of it — and hand off:
@@ -335,43 +329,45 @@ After a `LAND`, go straight on to phase E and F in this process.
 
 Phase D's LAND continues here; a process starts at E only when resuming one.
 
-```sh
-node tools/loop/loop-gate.mjs
-```
+1. From the shared checkout (it finds the worktree itself):
 
-Run it from the shared checkout; it finds the worktree itself. It refuses the push when the branch
-has no commits or an empty diff against `origin/main`, or when no `VERDICT: LAND <sha>` names the
-commit you are pushing. A `HOLD` on a commit is final for that commit. **A non-zero exit means redo
-that phase, never push past it**; exit 2 means it could not judge.
+   ```sh
+   node tools/loop/loop-gate.mjs
+   ```
 
-```sh
-npm run agent:check       # in the worktree — it judges the tree it is invoked from
-```
+   It refuses a branch with nothing built, or a commit no `VERDICT: LAND <sha>` names; a `HOLD` on
+   a commit is final for that commit. **A non-zero exit means redo that phase, never push past
+   it**; exit 2 means it could not judge.
 
-Read its verdict line: it names the tree and the base. Its headline is `LOCAL PASS` (`CACHED` when
-the tree is the one phase C checked) and it prints how many suites it did not run; say both in the
-PR body.
+2. In the worktree — it judges the tree it is invoked from:
 
-**If it is red, do not fix it here.** Hand off to C, which fixes it and goes round again through D:
+   ```sh
+   npm run agent:check
+   ```
 
-```
-LOOP-RESULT {"ticket":<n>,"branch":"agent/<n>-slug","phase":"E","handoff":"C"}
-```
+   Its verdict names the tree and the base, its headline is `LOCAL PASS` (`CACHED LOCAL PASS` when
+   the tree is the one phase C checked), and it lists the suites it did `NOT run`; say both in the
+   PR body. **If it is red, do not fix it here.** Hand off to C, which fixes it and goes round
+   again through D. Never push a red check, and never re-run it hoping for a different answer.
 
-Never push a red check, and never re-run it hoping for a different answer.
+   ```
+   LOOP-RESULT {"ticket":<n>,"branch":"agent/<n>-slug","phase":"E","handoff":"C"}
+   ```
 
-```sh
-git push -u origin agent/<n>-<slug>                  # a no-op when the handoff already pushed it
-gh pr edit <pr> --body-file <file>
-```
+3. Push and write the PR body:
 
-The supervisor opened the pull request as a draft when review started; only if none is open,
-`gh pr create --base main --head agent/<n>-<slug> --title "<title>" --body-file <file>`. Never
-mark it ready: the supervisor does, once CI is green on a head a `VERDICT: LAND` covers.
+   ```sh
+   git push -u origin agent/<n>-<slug>                  # a no-op when the handoff already pushed it
+   gh pr edit <pr> --body-file <file>
+   ```
 
-The body says what changed, how you know, and which Definition-of-done boxes are closed. `Closes #<n>`
-goes in the **body**, never in a commit message. Write the file with the Write tool or a bash
-heredoc, never PowerShell's `Set-Content`.
+   The supervisor opened the pull request as a draft when review started; only if none is open,
+   `gh pr create --base main --head agent/<n>-<slug> --title "<title>" --body-file <file>`. Never
+   mark it ready: the supervisor does, once CI is green on a head a `VERDICT: LAND` covers.
+
+   The body says what changed, how you know, which Definition-of-done boxes are closed, and
+   `Closes #<n>` (rule 13). Write the file with the Write tool or a bash heredoc, never
+   PowerShell's `Set-Content`.
 
 CI and the merge are `tools/loop/queue-loop.mjs`'s. A red CI run comes back as a fix round at phase
 C, with the log in a `CI-RED` comment and in `.loop-logs/ci-<n>.log`.
@@ -380,19 +376,13 @@ C, with the log in a `CI-RED` comment and in `.loop-logs/ci-<n>.log`.
 
 `PHASE F`
 
-1. Re-read the issue, body and thread in one read (rule 25):
-
-   ```sh
-   gh issue view <n> --json title,body,comments --jq '.title, .body, (.comments[]|"--- "+.author.login+": "+.body)'
-   ```
-
+1. Re-read the issue, body and thread in one read (rule 25's command).
 2. Tick the Definition of done against the code actually written, as a comment. A box you did not
-   close is named there, with why.
-3. In that comment, one line on the effective diff in plain language.
-   **Leave your worktree standing**; the supervisor removes it once the ticket lands or parks.
+   close is named there, with why. In that comment, one line on the effective diff in plain
+   language.
+3. **Leave your worktree standing**; the supervisor removes it once the ticket lands or parks.
    `git -C .worktrees/agent-<n> status --short` should print nothing — commit and push anything it
    names, or say on the issue what it is.
-
 4. **Say what you did, on one line, as the last thing you emit.**
 
    ```
@@ -401,9 +391,8 @@ C, with the log in a `CI-RED` comment and in `.loop-logs/ci-<n>.log`.
 
    Valid JSON after the marker, in the same message as any command. Omit `pr` only if you pushed
    none. `stoodDown` is true when you gave the ticket up, and then `"why"` says which in one
-   sentence. Phase F never sets `handoff`. **This is not optional**: a session that exits without it
-   is recorded as an error. Emit it even when the news is bad.
-
+   sentence. Phase F never sets `handoff`. A session that exits without it is recorded as an
+   error, so emit it even when the news is bad.
 5. **Exit.** Do not loop back to phase A in this session.
 
 ## Compaction
@@ -413,9 +402,10 @@ through it: **failing test output**.
 
 ## Halt
 
-Queue empty · route `handoff` · preflight red · an owner decision parking cannot carry. Release the
-claim, declare `stoodDown`, and say on the issue: the phase reached, what is committed where, the
-exact failure, and the one decision needed. `.loop-stop` is read between tickets only.
+Queue empty · route `handoff` · `queue:pre` red · an owner decision parking cannot carry. Release
+the claim, declare `stoodDown`, and say on the issue: the phase reached, what is committed where,
+the exact failure, and the one decision needed. `.loop-stop` is the supervisor's, read between
+tickets.
 
 ## Output
 
