@@ -59,7 +59,7 @@ export interface TableA11yInput {
 
 /**
  * Assembles the table into one sentence-per-fact description, in the fixed
- * priority order above. The exchange phase (§10 of docs/RULES.md) replaces
+ * priority order above. The exchange phase (§10 of docs/GAME-RULES.md) replaces
  * the turn sentence for whichever of the two players it actually concerns —
  * a bystander mid-exchange just sees the ordinary turn state, since nothing
  * is asked of them.

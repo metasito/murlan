@@ -1,7 +1,7 @@
 // Push notifications: the token store, and the one request that delivers one.
 //
 // Wired to friend invites, deliberately, and not to turns — the reasoning is in
-// docs/superpowers/specs/2026-08-17-push-notifications-design.md and comes down
+// docs/specs/2026-08-17-push-notifications-design.md and comes down
 // to the two clocks in server/socket.ts: a player is auto-passed after 30s and
 // loses the seat to a bot after 60s, which no notification can beat.
 import { and, eq, inArray, sql } from "drizzle-orm";

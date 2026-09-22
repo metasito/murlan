@@ -1,4 +1,4 @@
-// tests/teams.test.ts — teams mode is scored as a *pair* (docs/RULES.md §11,
+// tests/teams.test.ts — teams mode is scored as a *pair* (docs/GAME-RULES.md §11,
 // BRIEF §3.1): the two partners' placement points are summed and the pair
 // races to 21. Two invariants are pinned here:
 //

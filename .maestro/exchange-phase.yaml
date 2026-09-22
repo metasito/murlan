@@ -2,7 +2,7 @@
 # Exchange-phase flow: plays the first hand of a real offline "Partita"
 # (match format, not "Manche secca") far enough to reach the result screen,
 # advances to the second manche, and drives the exchange the engine runs on
-# that deal — see #55 and docs/RULES.md §10.
+# that deal — see #55 and docs/GAME-RULES.md §10.
 #
 # Maestro has no import mechanism, so the launch/tutorial/lobby boilerplate
 # below is duplicated from offline-game.yaml on purpose, the way smoke.yaml

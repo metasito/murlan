@@ -585,7 +585,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ ok: true });
   });
 
-  // #863: the existing-beta-cohort nudge (docs/superpowers/specs/2026-09-03-
+  // #863: the existing-beta-cohort nudge (docs/specs/2026-09-03-
   // account-recovery-design.md, Box 1). Reuses the signup flow's own
   // machinery — mint an email_verify token, send it through sendVerificationEmail
   // — rather than a second one; redemption still goes through the
@@ -682,7 +682,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ ok: true });
   });
 
-  // Enumeration-safe by design (docs/superpowers/specs/2026-09-03-account-
+  // Enumeration-safe by design (docs/specs/2026-09-03-account-
   // recovery-design.md, Box 5): identical 200 { ok: true } whether or not
   // the address matches a verified account, and the branch then costs one
   // indexed `users` lookup either way, which is the only work that happens

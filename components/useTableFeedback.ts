@@ -444,7 +444,7 @@ export function useTableFeedback({
     // Routed through the one function the results board's own haptic reads
     // for the same question (`lib/matchState.ts`), fed the same `handScores`
     // the caller already holds rather than a second `scoreHand` of its own,
-    // so a teams-mode 3-3 manche (RULES.md §11) stays neutral here exactly as
+    // so a teams-mode 3-3 manche (GAME-RULES.md §11) stays neutral here exactly as
     // it does there, instead of this effect deciding the same question again.
     const outcome = handOutcomeFor(players, rankings, handScores, viewerId, isTeamMode);
     // Online, `gameOver` reaches this effect (`game:state`) a render ahead of

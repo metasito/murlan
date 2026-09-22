@@ -177,7 +177,7 @@ const NORMAL_RANKS: Rank[] = [
  * A table where the bot leads, with `hand`, and `played` already gone.
  *
  * One card of every rank is played by default, which is what makes a bomb
- * impossible: `docs/RULES.md` §7.2 lets a bomb beat any single, so a lead is
+ * impossible: `docs/GAME-RULES.md` §7.2 lets a bomb beat any single, so a lead is
  * only safe once no rank is missing all four. A fixture that left the deck
  * otherwise untouched would be asserting on a board where the bot is right
  * not to lead.
@@ -210,7 +210,7 @@ describe("the hard bot plays what it knows", () => {
 
   test("holds it back while a bomb could still be out there", () => {
     // The same board, except every 7 is unaccounted for. A bomb beats any
-    // single at any time (docs/RULES.md §7.2), so the joker is not safe and
+    // single at any time (docs/GAME-RULES.md §7.2), so the joker is not safe and
     // leading it hands over the round and the card.
     const hand = [j("colored"), c("4", "hearts"), c("5", "spades"), c("7", "clubs"),
                   c("9", "hearts"), c("J", "spades"), c("Q", "clubs")];

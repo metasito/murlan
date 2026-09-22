@@ -1,6 +1,6 @@
 /**
  * Read-only: dumps the whole database to a file, for the pre-deploy backup
- * `docs/DEPLOY-RUNBOOK.md` and `replit.md` § Rolling back a deploy both ask for.
+ * `docs/DEPLOY-RUNBOOK.md` § Rolling back a deploy asks for.
  *
  * The `session` table IS included, deliberately. It is absent from
  * `shared/schema.ts` and excluded from drizzle-kit by `tablesFilter`, so a
@@ -58,4 +58,4 @@ if (!size) {
 }
 
 console.log(`\nWrote ${outfile} (${(size / 1024).toFixed(0)} KB), session table included.`);
-console.log("Restore: replit.md § Rolling back a deploy.");
+console.log("Restore: docs/DEPLOY-RUNBOOK.md § Rolling back a deploy.");

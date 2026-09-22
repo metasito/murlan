@@ -181,7 +181,7 @@ export interface SimulatedManche {
   /**
    * How many of the six top cards (the four 2s and two Jokers) each seat held
    * the moment this manche's hand was set — after `initializeRematch`'s
-   * automatic loser-to-winner card (docs/RULES.md §10) for every manche past
+   * automatic loser-to-winner card (docs/GAME-RULES.md §10) for every manche past
    * the first, before any card is played. The giveback leg never touches this:
    * it is restricted to ranks 3-10 (`EXCHANGE_VALID_RANKS`), so it cannot move
    * a 2 or a Joker either way.

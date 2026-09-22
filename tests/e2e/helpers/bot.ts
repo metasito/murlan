@@ -396,7 +396,7 @@ async function playOrPass(
   return "passed";
 }
 
-// The valid giveback ranks (docs/RULES.md §10: rank 3 through 10). Matching
+// The valid giveback ranks (docs/GAME-RULES.md §10: rank 3 through 10). Matching
 // on this — rather than excluding known UI chrome by label — means the
 // selector can't accidentally land on an unrelated button such as the
 // top-bar quit control, whatever its label happens to be.
@@ -432,7 +432,7 @@ async function giveCandidateLabels(page: Page): Promise<string[]> {
 }
 
 /**
- * Gives back a card during the between-hands exchange (docs/RULES.md §10).
+ * Gives back a card during the between-hands exchange (docs/GAME-RULES.md §10).
  *
  * Select-then-confirm: clicking a card only picks it, and the give happens on
  * the table's own GIOCA, which the exchange borrows (#533). Both clicks are

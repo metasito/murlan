@@ -3,7 +3,7 @@
 Research into two problems surfaced by GitHub Actions run `34054022312` (PR #927, 2026-09-06):
 whether the native "still compiles" jobs can be made faster or gated more precisely, and
 whether the wall-clock budget inside the E2E bot's card-search loop is the wrong kind of bound
-under CI load. Same standard as `docs/ci-cost-research.md`: primary sources only, every claim
+under CI load. Same standard as `docs/research/2026-08-20-ci-cost-research.md`: primary sources only, every claim
 cited, gaps stated as "not documented" rather than filled with a guess. No file other than this
 one was changed.
 
@@ -124,7 +124,7 @@ task graph — that would need to be measured on a real run, not assumed.**
 **Verdict:** CocoaPods' own docs support caching `Pods` keyed on `Podfile.lock` with no caveat
 found; low-risk to add. DerivedData caching has no official Apple guidance either way — treat
 adding it as an experiment to measure, not a documented win, and note the correctness risk this
-repo's own precedent doc already flags for an analogous case (§2.4 of `docs/ci-cost-research.md`
+repo's own precedent doc already flags for an analogous case (§2.4 of `docs/research/2026-08-20-ci-cost-research.md`
 on Metro caching): a stale cache can silently compile old sources.
 
 ### 1.3 Is EAS Build a faster/cheaper substitute for these CI compile checks?
@@ -343,7 +343,7 @@ Source: <https://docs.github.com/en/actions/reference/runners/github-hosted-runn
 dedicated 4-vCPU/16GB VMs, not six processes time-slicing one VM — there is **no CPU contention
 between shards**. What *can* still contend is (a) processes *within* one shard's own VM (the
 Express/Socket.io server, the disposable Postgres, and the single `workers: 1` Playwright process
-all share that one shard's 4 vCPUs — confirmed by `docs/ci-cost-research.md §0`'s own measured
+all share that one shard's 4 vCPUs — confirmed by `docs/research/2026-08-20-ci-cost-research.md §0`'s own measured
 job breakdown for the unsharded predecessor of this job), and (b) queueing for a runner to become
 available at all if GitHub's concurrent-job limit for the account is reached — a resource none of
 the docs fetched here quantify per-account, and out of scope for this research (it's an
@@ -373,7 +373,7 @@ already names as a reason to prefer a counted bound over a timed one.
    same shape as #2, documented by CocoaPods' own guide, unmeasured effect on the 16m51s.
 4. **Do not attempt Xcode DerivedData caching without first measuring #3's effect** (§1.2) —
    Apple gives no official guidance either way, so this would be an unverified experiment with
-   the same class of risk this repo's own precedent doc (`ci-cost-research.md §2.4`) already
+   the same class of risk this repo's own precedent doc (`2026-08-20-ci-cost-research.md §2.4`) already
    flags for Metro caching: a stale cache compiling old sources silently.
 5. **Do not treat `eas-build.yml` as a substitute for either compile job** (§1.3) — it's a
    manual, credit-consuming, fire-and-forget path to a store-distributable binary, not a CI
@@ -396,7 +396,7 @@ already names as a reason to prefer a counted bound over a timed one.
 2. **Do not expect `testInfo.workerIndex`/`TEST_PARALLEL_INDEX` or any other Playwright-
    documented signal to reveal CI load** (§2.2) — confirmed genuinely undocumented for
    cross-job/cross-shard load, and even within-job it's scoped to Playwright's own `workers`
-   config (this suite runs `workers: 1` per `docs/ci-cost-research.md`), not to the
+   config (this suite runs `workers: 1` per `docs/research/2026-08-20-ci-cost-research.md`), not to the
    `matrix.shard` jobs at all.
 3. **`expect.poll`/`waitForFunction`-style guidance doesn't transplant directly** (§2.1) — useful
    context for why fixed-duration waits are a known Playwright anti-pattern in general, but

@@ -1,7 +1,7 @@
 // #839 — measures whether a heads-up (2-seat) Murlan match is actually as
 // one-sided as it reads, and which of three named mechanisms produces it:
 // the exchange compounding every manche between the same two seats
-// (docs/RULES.md §10), half the deck going undealt at two players
+// (docs/GAME-RULES.md §10), half the deck going undealt at two players
 // (lib/gameEngine.ts's dealCards), or the default bot personality being the
 // passive one (lib/botPersonalities.ts).
 //

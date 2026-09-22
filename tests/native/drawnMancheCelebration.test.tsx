@@ -1,5 +1,5 @@
 // tests/native/drawnMancheCelebration.test.tsx — a 3-3 manche in teams mode
-// (RULES.md §11) has no seat or team to celebrate: first-and-fourth (3+0)
+// (GAME-RULES.md §11) has no seat or team to celebrate: first-and-fourth (3+0)
 // pays the same total as second-and-third (2+1). Nobody is congratulated and
 // no winning haptic fires, offline and online alike.
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';

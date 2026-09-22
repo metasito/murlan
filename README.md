@@ -34,7 +34,7 @@ EXPO_PUBLIC_DOMAIN=<host:port> npm run expo:dev   # Expo dev server, over a tunn
 
 The Run button starts the Express server, which serves both the REST API and the Expo
 web bundle — no extra setup. Replit-specific details (required Secrets, the `session`
-table, `trust proxy`, deployment shape) are documented in `replit.md`, not here.
+table, `trust proxy`, deployment shape) are documented in `docs/DEPLOY-RUNBOOK.md`, not here.
 
 ## Tests
 
@@ -61,7 +61,7 @@ npm run db:reset  # DESTRUCTIVE — refuses unless you opt in explicitly (see be
 ```
 
 `db:reset` empties every table's contents except `session` (which is only
-emptied, never dropped — see `replit.md` for why), then re-applies the schema.
+emptied, never dropped — see `docs/DEPLOY-RUNBOOK.md` for why), then re-applies the schema.
 
 It cannot run from the npm script alone, by design: the script does not set the
 opt-in variable, and the underlying script refuses outright when
@@ -76,13 +76,13 @@ ALLOW_DESTRUCTIVE=1 node scripts/reset-db.mjs --yes && npm run db:push
 | Doc | Owns |
 |---|---|
 | [`CLAUDE.md`](./CLAUDE.md) | Agent operating instructions, conventions, file map |
-| [`docs/RULES.md`](./docs/RULES.md) | The canonical Murlan rule specification |
+| [`docs/GAME-RULES.md`](./docs/GAME-RULES.md) | The canonical Murlan rule specification |
 | [`docs/BRIEF.md`](./docs/BRIEF.md) | Scope, decisions and their rationale |
 | [GitHub Issues](https://github.com/metasito/murlan/issues) | Everything outstanding, and what was decided against (`rejected` label) |
 | [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) | Layers, data flow, socket lifecycle, persistence |
 | [`docs/TESTING.md`](./docs/TESTING.md) | What each test layer covers and how to run it |
 | [`docs/BETA-PLAYTEST.md`](./docs/BETA-PLAYTEST.md) | The manual pre-beta playtest script, and what it has to cover |
-| [`replit.md`](./replit.md) | Replit-specific run/deploy notes |
+| [`docs/DEPLOY-RUNBOOK.md`](./docs/DEPLOY-RUNBOOK.md) | Deploying, rolling back, the host's Secrets and what breaks it |
 
 ## Licence and contributions
 

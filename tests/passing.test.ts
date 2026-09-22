@@ -1,4 +1,4 @@
-// One test per clause of docs/RULES.md §9 (passing, end of a trick/round, next
+// One test per clause of docs/GAME-RULES.md §9 (passing, end of a trick/round, next
 // lead), plus §7.3/§7.4 (what beats a bomb, and the royal-straight exception
 // to it). §9 is six unnumbered bullets in document order; this file numbers
 // them 9.1-9.6 by that order and quotes each verbatim (markdown emphasis

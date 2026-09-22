@@ -90,7 +90,7 @@ describe("spectator mode", { skip: hasDatabase() ? false : skipMessage() }, () =
 
   /**
    * Plays the opening single from whichever seat holds it. The 3 of spades must
-   * be the first card played (docs/RULES.md), so this is the one move that is
+   * be the first card played (docs/GAME-RULES.md), so this is the one move that is
    * legal without inspecting a hand.
    */
   function playOpening(

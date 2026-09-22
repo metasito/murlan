@@ -93,7 +93,7 @@ The ticket is right, and understates the blast radius. Confirmed:
    and achievements" is **wrong**; correcting it matters, because it moves the fix's risk from
    "rewrites stored ladder data" to "corrects live match state".
 
-**`docs/design/DISCONNECT-POLICY.md` §2 note 2 and §5 Q5 state as fact something that is only
+**`docs/DISCONNECT-POLICY.md` §2 note 2 and §5 Q5 state as fact something that is only
 intent:** *"cumulativeScores already survives the vacate under the userId key, so restoring
 `playerMap[seat]` restores the row, the name and the total together."* It restores the name and
 the pre-departure total; it orphans the takeover's points. Correct that sentence in the same PR
@@ -223,7 +223,7 @@ ledger does not remove a key space, it adds one.
 #### Blast radius
 
 `server/tableHandlers.ts`, `server/onlineGameLogic.ts`, `server/gameOver.ts`,
-`docs/design/DISCONNECT-POLICY.md`. Tests: `tests/seatReclaim.test.ts`,
+`docs/DISCONNECT-POLICY.md`. Tests: `tests/seatReclaim.test.ts`,
 `tests/endMatchVote.test.ts`, `tests/handEnd.test.ts`, `tests/gameOver.test.ts`.
 **No storage change, no schema-version bump, no socket protocol change.** In-memory and
 persisted-envelope *values* change; the envelope's shape does not.
@@ -756,7 +756,7 @@ at all.
 
 2: a comment asserting a cost equality the code does not have, and a test written to the code
 instead of to the spec —
-`docs/superpowers/specs/2026-09-03-account-recovery-design.md` Box 5 is explicit that *"the
+`docs/specs/2026-09-03-account-recovery-design.md` Box 5 is explicit that *"the
 branch then costs one indexed `users` lookup either way, which is the only work that happens
 before the reply."*
 
@@ -907,7 +907,7 @@ recorded regardless of what is enforced on it.
   as a matchmaking cooldown, never as a larger rating loss and never on a first offence"* and
   record the new decision — no cooldown; abandoning costs the abandoner their own score and
   nothing further — with the owner's reason.
-- `docs/design/DISCONNECT-POLICY.md`: its header still reads *"Status: a recommendation, not a
+- `docs/DISCONNECT-POLICY.md`: its header still reads *"Status: a recommendation, not a
   decision … Nothing here has been implemented, and the proposal changes no behaviour until the
   tickets in §9 are filed and worked."* That is now false twice over — most of §6 is
   implemented, and §6.12 is decided against. Rewrite the header to say which clauses were
@@ -950,7 +950,7 @@ column.
 `server/routes.ts`, `server/schemas.ts`, `server/mail.ts`, `server/storage.ts`,
 `server/socketRooms.ts`, `shared/events.ts`, `locales/{en,it,sq}.ts`, `app/auth.tsx` (the
 register screen's success state changes from "you are signed in" to "check your email"), plus
-the file deletions in (d). Docs: `docs/BRIEF.md`, `docs/design/DISCONNECT-POLICY.md`. Tests:
+the file deletions in (d). Docs: `docs/BRIEF.md`, `docs/DISCONNECT-POLICY.md`. Tests:
 `tests/integration/passwordReset.test.ts`, `tests/integration/auth.test.ts`,
 `tests/integration/addEmail.test.ts`, `tests/integration/events.test.ts`,
 `tests/i18n.test.ts`, and the two cooldown test files.
@@ -1010,7 +1010,7 @@ Build in this order. The constraints are file collisions, not logic.
 - **#896's `payload()` commit and #898** both edit `server/socketRooms.ts`; #898 first.
 - **#892's limiters and #897 (a)** both edit `server/routes.ts`'s auth block; #892 first.
 - **#895 and #892** both edit `server/authTokens.ts`; #892 rebases, does not race.
-- **#898's doc edits and #894's doc edit** both touch `docs/design/DISCONNECT-POLICY.md`. #898
+- **#898's doc edits and #894's doc edit** both touch `docs/DISCONNECT-POLICY.md`. #898
   rewrites the header and strikes four sections; #894 corrects §2 note 2. Same file, different
   regions — sequence them (#898 first) rather than merging them.
 - **The Q1 variant, if taken, must be its own commit and its own PR.** It is the only change

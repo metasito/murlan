@@ -419,7 +419,7 @@ describe("no empty translations", () => {
 // #806: the two-player deal moved from 21 each to 14 each (docs/BRIEF.md,
 // 2026-08-31), and the in-app FAQ — "rules.faq.a15", read by a real player,
 // in all three locales — still said "21 cards each — 12 stay face down" long
-// after docs/RULES.md itself was corrected. Deriving the expected numbers
+// after docs/GAME-RULES.md itself was corrected. Deriving the expected numbers
 // from `dealCards`'s own arithmetic, rather than hand-copying them again, is
 // what stops a future deal-size change from updating the doc and missing the
 // copy every player actually reads.
@@ -1142,9 +1142,9 @@ describe("every player-facing server response carries a code", () => {
 
 describe("Albanian card terminology", () => {
   /**
-   * Attested in docs/albanian-card-terminology-research.md. `Trefla` and `Pika`
+   * Attested in docs/research/2026-08-20-albanian-card-terminology-research.md. `Trefla` and `Pika`
    * were a calque of *trefoil* and a borrowing of German *Pik*, attested as card
-   * suits nowhere; docs/RULES.md's cited Albanian text opens the game with
+   * suits nowhere; docs/GAME-RULES.md's cited Albanian text opens the game with
    * "ai lojtar që ka 3 maç". `Kupë`, not `Kupa`, is the bare singular the
    * `{{rank}} {{suit}}` slot wants — `Kupa` is the noun's plural, per #29.
    */

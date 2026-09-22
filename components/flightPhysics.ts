@@ -176,13 +176,13 @@ export function comboImpactTier(comboType: Combination["type"]): ImpactTier {
  *
  * A manche closes when `GameState.gameOver` turns true — `processPlay`
  * (lib/gameEngine.ts) sets it the moment a hand empties, its own comment
- * calling that "the hand is decided", which `docs/RULES.md` names the
+ * calling that "the hand is decided", which `docs/GAME-RULES.md` names the
  * manche. A partita closing is a *further* fact about that same landing,
  * carried by the match verdict (`lib/matchState.ts` `MatchVerdict.over`,
  * `context/GameContext.tsx` `applyHandToMatch`, the online
  * `game:over`/`matchOver` payload): the hand that empties a seat's hand is
  * also the hand that happens to close the match, never a second, later
- * event. `GameState.roundWinner` is not read here — `docs/RULES.md` §9
+ * event. `GameState.roundWinner` is not read here — `docs/GAME-RULES.md` §9
  * calls that a *trick*, and it closes many times a hand.
  *
  * One landing fires one tier: a play that is itself a bomb and also closes

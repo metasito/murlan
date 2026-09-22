@@ -8,7 +8,7 @@
 
 **Tech Stack:** Node 22 ESM (`.mjs`), TypeScript for `lib/loop/*.ts`, `node --test` against `tests/**/*.test.ts`, `gh` CLI 2.93, git 2.53 on Windows, GitHub Actions.
 
-**Spec:** [`docs/research/2026-09-12-queue-loop-rearchitecture.md`](../../research/2026-09-12-queue-loop-rearchitecture.md) — 43 numbered defects (A1–J2), the six measured facts that drive the design, and the recovery checklist. **Read it before starting.** Defect IDs below refer to its §3.
+**Spec:** [`docs/research/2026-09-12-queue-loop-rearchitecture.md`](../research/2026-09-12-queue-loop-rearchitecture.md) — 43 numbered defects (A1–J2), the six measured facts that drive the design, and the recovery checklist. **Read it before starting.** Defect IDs below refer to its §3.
 
 ## What was executed
 

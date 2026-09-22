@@ -17,7 +17,7 @@ house style:
 - **T3 — blogs, aggregator sites, forum/wiki content, or a single first-hand account.** Not
   primary, not peer-reviewed, but sometimes the only material that exists.
 - **Repo-derived** — a claim checked directly against this codebase's own source (`lib/gameEngine.ts`,
-  `docs/RULES.md`), which is itself the primary source for a Murlan-specific fact no external
+  `docs/GAME-RULES.md`), which is itself the primary source for a Murlan-specific fact no external
   literature could settle.
 - **Not published / not found** — stated plainly.
 
@@ -29,7 +29,7 @@ house style:
 Option A (suit-level reasoning gated on the known card) nor Option B (bounded lookahead against the
 known card) is well supported once checked against this repo's own code and against the published
 literature on comparable games. Both were scoped in the issue thread on an assumption about the
-known card that turns out to be wrong when checked against `docs/RULES.md` and `lib/gameEngine.ts`
+known card that turns out to be wrong when checked against `docs/GAME-RULES.md` and `lib/gameEngine.ts`
 directly (§1 below) — and that correction, not a difference of taste between A and B, is most of
 why both options have a low ceiling.
 
@@ -75,7 +75,7 @@ which the winner now holds** — never the winner's giveback, which the same com
 "deliberately not surfaced" because a bot's own giveback is always its weakest eligible card, so "a
 floor built on that fact would never fire."
 
-`docs/RULES.md` §10.1 (repo-derived, quoting catsatcards as its own Tier-1 source) states what that
+`docs/GAME-RULES.md` §10.1 (repo-derived, quoting catsatcards as its own Tier-1 source) states what that
 card actually is: *"The player who finished last in the previous hand gives the player who finished
 first their single highest-ranked card (this is compulsory and automatic — it will be the Red
 Joker, else the Black Joker, else a 2, and so on)."* `getBestCardFromHand`
@@ -201,7 +201,7 @@ consecutive same-suit cards concentrated in one hand, in a 28-of-54-card two-sea
 almost no discriminating power beyond what a suit-blind general fix would already have, because the
 known card is only ever one data point in the suit-count that would actually decide the question.
 This is a *repo-derived* finding (built from `canPlay`, `RANK_ORDER`, `getBestCardFromHand`, and
-`docs/RULES.md` §10.1, all read directly, §1), not sourced externally — but it is the direct,
+`docs/GAME-RULES.md` §10.1, all read directly, §1), not sourced externally — but it is the direct,
 concrete reason Option A, scoped the way #943 currently scopes it, is very unlikely to clear even
 the 0.12% bar the earlier removed attempt set. Gating a real suit-tracking capability behind "is the
 known exchange card involved" throws away nearly all of its potential surface for structural
@@ -340,7 +340,7 @@ structural reasons in §3, not because it ran on the wrong turn.
 **Recommendation for #943 as scoped: close it, or narrow it to documenting the §1.1 correction —
 do not build Option A or Option B against the known exchange card specifically.** The reasoning in
 §3–4 is checkable by anyone reading the same code and issue thread; it does not require running a
-new simulation to be confident of, because it follows from facts already fixed by `docs/RULES.md`
+new simulation to be confident of, because it follows from facts already fixed by `docs/GAME-RULES.md`
 and `lib/gameEngine.ts` (which card is known, what beats it, and what already handles what beats
 it) rather than from an empirical measurement that could come out either way.
 
@@ -420,7 +420,7 @@ heuristic engine, since a future search-based tier would make that effort moot.
 - `lib/gameEngine.ts` — read in full for the counting/AI surface named in the ticket, plus
   `canPlay`, `isRoyalStraight`, `getBestCardFromHand`, `pickGivebackCard`, `getValidGivebackCards`,
   `EXCHANGE_VALID_RANKS` (repo-derived, fetched 2026-09-10).
-- `docs/RULES.md` §10 (Exchange phase), quoting catsatcards as its own Tier-1 source (repo-derived).
+- `docs/GAME-RULES.md` §10 (Exchange phase), quoting catsatcards as its own Tier-1 source (repo-derived).
 - `scripts/measureHeadsUpBalance.ts`, measurement 5 (repo-derived).
 - `gh issue view 907 --repo metasito/murlan --json title,body,comments` (T1, fetched 2026-09-10).
 - `gh issue view 943 --repo metasito/murlan --json title,body,comments` (T1, fetched 2026-09-10).

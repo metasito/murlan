@@ -30,5 +30,5 @@ to that choice, not a decision.
   `REPLIT_*` fallbacks in CORS and `safeHost`, `.replit` itself and the Replit section of
   `CLAUDE.md` — stays until #1104 and #1105 replace it. `.replit`'s Run-button workflow calls
   npm scripts this change removes; it has no Repl left to run on.
-- `docs/replit-dev-sync.md` and `replit.md` describe a deleted workflow and a dead host until
-  the docs refresh rewrites them.
+- `docs/research/2026-08-27-replit-dev-sync.md` and `docs/DEPLOY-RUNBOOK.md` describe a deleted
+  workflow and a dead host until the docs refresh rewrites them.

@@ -121,7 +121,7 @@ export function arrangedLabel(
  * decided here rather than in the model.
  *
  * Only the start-card reason reads the card. At 2 players the opening card can
- * be the fallback "lowest dealt card" rather than the 3♠ (docs/RULES.md §4).
+ * be the fallback "lowest dealt card" rather than the 3♠ (docs/GAME-RULES.md §4).
  */
 export function playRefusalLabel(
   play: {

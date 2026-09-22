@@ -70,7 +70,7 @@ restart it.
 - Murlan is **not live**. There are no real accounts and no player data to preserve.
 - The owner tests on **iOS through Expo Go**. Chromium evidence about native rendering is only an
   inference.
-- The quality bar is `docs/design/FEEL-BAR.md`. The prototype is the floor; top mobile card games
+- The quality bar is `docs/FEEL-BAR.md`. The prototype is the floor; top mobile card games
   and casino games are the ceiling.
 - The priority order is stability first, then design.
 - **The Replit subscription has ended.** The owner wants a more mature host: free at the start,
@@ -119,7 +119,7 @@ const LENSES = [
   },
   {
     key: 'network', model: 'opus', skills: ['react-native-best-practices'],
-    start: 'lib/socket.ts, lib/sendIntent.ts, context/SocketContext.tsx, context/OnlineGameContext.tsx, server/socket*.ts, server/game{Room,Turn,Timers,Ownership}.ts, server/emit.ts, server/events.ts, server/tableRouter.ts, server/roomStore.ts, server/shutdown.ts, server/drainPool.ts, docs/design/DISCONNECT-POLICY.md, docs/adr/0003-*',
+    start: 'lib/socket.ts, lib/sendIntent.ts, context/SocketContext.tsx, context/OnlineGameContext.tsx, server/socket*.ts, server/game{Room,Turn,Timers,Ownership}.ts, server/emit.ts, server/events.ts, server/tableRouter.ts, server/roomStore.ts, server/shutdown.ts, server/drainPool.ts, docs/DISCONNECT-POLICY.md, docs/adr/0003-*',
     refs: 'socket.io/docs/v4: delivery-guarantees (at-most-once by default), connection-state-recovery (maxDisconnectionDuration), using-multiple-nodes, adapter; Nielsen heuristic 1 (visibility of system status) for reconnect states.',
     ask: `Build a table of every client<->server event: name, direction, acked?, idempotent?, and what happens if it is lost, duplicated or reordered.
 - Listeners are registered before any await.
@@ -132,9 +132,9 @@ const LENSES = [
   },
   {
     key: 'game-logic', model: 'opus', skills: [],
-    start: 'lib/gameEngine.ts, docs/RULES.md, docs/BRIEF.md §3.1, lib/autoMove.ts, server/botSeat.ts, server/dealManche.ts, lib/exchangeCeremony.ts, lib/placement.ts, lib/standings.ts, lib/rating.ts, server/ratings.ts, lib/replay.ts, lib/matchState.ts, lib/offlineSave.ts, lib/sharedGameFlow.ts, server/gameOver.ts',
-    refs: 'docs/RULES.md is the specification; docs/BRIEF.md §3.1 records every rule change.',
-    ask: `Build a matrix: rule in docs/RULES.md -> engine code -> pinning test. Report every row with a gap on any side.
+    start: 'lib/gameEngine.ts, docs/GAME-RULES.md, docs/BRIEF.md §3.1, lib/autoMove.ts, server/botSeat.ts, server/dealManche.ts, lib/exchangeCeremony.ts, lib/placement.ts, lib/standings.ts, lib/rating.ts, server/ratings.ts, lib/replay.ts, lib/matchState.ts, lib/offlineSave.ts, lib/sharedGameFlow.ts, server/gameOver.ts',
+    refs: 'docs/GAME-RULES.md is the specification; docs/BRIEF.md §3.1 records every rule change.',
+    ask: `Build a matrix: rule in docs/GAME-RULES.md -> engine code -> pinning test. Report every row with a gap on any side.
 Edge cases to cover:
 - the last card; passes wrapping round the table; bombs; ties;
 - the end of a partita; a vacated seat; a bot taking over mid-turn;
@@ -201,8 +201,8 @@ Estimate how many concurrent tables one Replit instance can carry, and state wha
   },
   {
     key: 'ui-visual', model: 'opus', skills: ['expo-design-system', 'game-ui-design', 'frontend-design:frontend-design'],
-    start: 'lib/theme.ts, lib/tokens.ts, components/, components/table/, app/, docs/design/FEEL-BAR.md, docs/design/**/captures, tests/tokenRoles.test.ts, docs/agents/loops.md (renderer table)',
-    refs: 'docs/design/FEEL-BAR.md; top mobile card and casino games as the ceiling.',
+    start: 'lib/theme.ts, lib/tokens.ts, components/, components/table/, app/, docs/FEEL-BAR.md, docs/design/**/captures, tests/tokenRoles.test.ts, docs/agents/loops.md (renderer table)',
+    refs: 'docs/FEEL-BAR.md; top mobile card and casino games as the ceiling.',
     ask: `Judge against FEEL-BAR, not against "fine".
 - Tokens used in their named role. Layer zIndex.
 - Shared components reused rather than copied or shadowed by name.
@@ -234,7 +234,7 @@ List what BETA-PLAYTEST and docs/research found that is still unaddressed.`,
   },
   {
     key: 'polish', kind: 'opportunities', model: 'opus', skills: ['game-feel', 'game-ui-design', 'react-native-best-practices'],
-    start: 'docs/design/FEEL-BAR.md, docs/design/126-motion-language/, docs/design/829-animation-audit.md, components/useTableFeedback.ts, components/flightPhysics.ts, components/table/, components/ReactionLayer.tsx, components/GameOverOverlay.tsx, lib/sounds.ts, lib/music.ts, lib/haptics.ts, lib/theme.ts (Motion), assets/sounds/, assets/music/, app/index.tsx',
+    start: 'docs/FEEL-BAR.md, docs/design/126-motion-language/, docs/design/829-animation-audit.md, components/useTableFeedback.ts, components/flightPhysics.ts, components/table/, components/ReactionLayer.tsx, components/GameOverOverlay.tsx, lib/sounds.ts, lib/music.ts, lib/haptics.ts, lib/theme.ts (Motion), assets/sounds/, assets/music/, app/index.tsx',
     refs: 'game-feel skill (hit-stop, easing, squash and stretch, layered feedback); FEEL-BAR references per moment.',
     ask: `You propose improvements; you do not hunt defects.
 Cover every FEEL-BAR moment (Deal, Card landing, Bomb, Pass, Turn hand-off, Win, Loss, Reconnect, Idle table), plus menus, lobby, results and transitions.
@@ -263,7 +263,7 @@ Check:
   },
   {
     key: 'i18n', model: 'sonnet', skills: [],
-    start: 'locales/, lib/i18n.ts, lib/relativeTime.ts, lib/cardNames.ts, server/mail.ts, server/templates/, lib/apiError.ts, docs/albanian-card-terminology-research.md, tests/i18n.test.ts',
+    start: 'locales/, lib/i18n.ts, lib/relativeTime.ts, lib/cardNames.ts, server/mail.ts, server/templates/, lib/apiError.ts, docs/research/2026-08-20-albanian-card-terminology-research.md, tests/i18n.test.ts',
     refs: 'Key parity is already a compile error; the gaps are plurals, interpolation, overflow and server-originated text.',
     ask: `- Strings that bypass t(), including accessibility labels, emails, errors and push notifications.
 - it or sq values identical to en.
@@ -321,7 +321,7 @@ Run at most one node --test file.`,
   },
   {
     key: 'docs', model: 'sonnet', skills: ['mattpocock-skills:writing-for-agents'],
-    start: 'CLAUDE.md, README.md, replit.md, CONTEXT.md, docs/*.md, docs/agents/, docs/adr/, .claude/commands/',
+    start: 'CLAUDE.md, README.md, CONTEXT.md, docs/*.md, docs/agents/, docs/adr/, .claude/commands/',
     refs: 'The CLAUDE.md premise "the database holds real accounts" is known stale (not live).',
     ask: `Check each factual claim against the code. List the stale, contradicted and unverifiable ones.
 Also check:
@@ -348,7 +348,7 @@ Then check:
   },
   {
     key: 'infra', kind: 'research', model: 'opus', skills: ['eas-app-stores'],
-    start: '.replit, replit.md, docs/adr/0001-*, docs/adr/0003-*, docs/DEPLOY-RUNBOOK.md, docs/adr/0006-*, server/index.ts, server/socketAdapter.ts, package.json scripts, eas.json, app.json, docs/research/2026-08-26-dev-build-vs-expo-go.md, docs/research/2026-08-29-multiplayer-infrastructure.md',
+    start: '.replit, docs/adr/0001-*, docs/adr/0003-*, docs/DEPLOY-RUNBOOK.md, docs/adr/0006-*, server/index.ts, server/socketAdapter.ts, package.json scripts, eas.json, app.json, docs/research/2026-08-26-dev-build-vs-expo-go.md, docs/research/2026-08-29-multiplayer-infrastructure.md',
     refs: 'Use WebSearch and WebFetch. Official pricing pages only; record the URL and the date read for every price.',
     ask: `The Replit subscription has ended. Research where the app should live next.
 Requirements: free at the start, reasonable cost as it grows, mature and boring. The host must run:

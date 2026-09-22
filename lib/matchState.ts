@@ -89,7 +89,7 @@ export function celebratesViewer(
 }
 
 /**
- * Whether a just-played manche paid every team the same total (RULES.md §11):
+ * Whether a just-played manche paid every team the same total (GAME-RULES.md §11):
  * first-and-fourth pays 3+0, second-and-third pays 2+1, both 3. A draw this
  * way has no candidate to celebrate, so the caller must drop the manche's own
  * placement (`rankings[0]`, the standings' own first row) from `celebration`'s
@@ -122,7 +122,7 @@ export type HandOutcome = "won" | "lost" | "neutral" | "pending";
  * so both readers score the manche from the one value its caller already
  * holds (the server's `game:over` payload online, the played hand's own
  * `pointsAwarded` offline) instead of two calls to `scoreHand` that happen to
- * agree today. A 3-3 teams draw (RULES.md §11) is `"neutral"` here the same
+ * agree today. A 3-3 teams draw (GAME-RULES.md §11) is `"neutral"` here the same
  * way it is an empty `celebration` there — one path recomputing its own
  * placement checks, rather than reading the shared one, is how a win cue
  * reached a losing seat's body in the first place (#777).

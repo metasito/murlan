@@ -456,7 +456,7 @@ describe("passedSeats walks the direction the engine deals turns", () => {
 
   test("teams: the losing pair is not marked when the hand ends", () => {
     // Seat 3 goes out with its partner already home, which decides the hand
-    // (RULES.md §11) while both opponents still hold cards.
+    // (GAME-RULES.md §11) while both opponents still hold cards.
     const players = hands();
     players[0].team = "A";
     players[1].team = "B";
@@ -712,7 +712,7 @@ describe("the table's own trauma escalation (#763)", () => {
 
   // The manche rung is `GameState.gameOver` (processPlay: "the hand is
   // decided"), never `roundWinner` — that is a trick, closing many times a
-  // hand (docs/RULES.md §9). The partita rung is a further fact about the
+  // hand (docs/GAME-RULES.md §9). The partita rung is a further fact about the
   // same landing (`MatchVerdict.over`), not a second, later event.
   describe("landingTier", () => {
     test("a play that closes nothing lands at its own tier", () => {

@@ -1,7 +1,7 @@
 ##
 # Rematch flow: plays a real offline "Manche secca" (single-hand) match to
 # its end and confirms the rematch offer actually starts a new match — see
-# #55 and docs/RULES.md. `MatchLength = "single"` means "one manche and
+# #55 and docs/GAME-RULES.md. `MatchLength = "single"` means "one manche and
 # done" (lib/gameEngine.ts), so a single hand is a genuine match ending, not
 # a shortcut around one: it is the cheapest length that reaches the state
 # this flow is about, and it is exactly the format offline-game.yaml already

@@ -18,7 +18,7 @@
 - Watch each new or changed test fail before making it pass.
 - Comment budget (CLAUDE.md → Comments): default is no comment. Never history ("was", "used to", "removed"). `npm run check:comments` must end `within budget`.
 - Edit TypeScript and JS source with the Edit/Write tools, never through a shell heredoc or `node -e` with string escapes: a template literal eats `\d`, `\n` and `\|` silently.
-- A deletion is complete only when `git -C C:/Users/roton/murlan-1181 grep -n -E "sharedRed|sharedPlan|blockOnShared|blockedBy|SHARED_BUDGET|redCache|redCachePath|shared-red|shared red|claimShared|checkShared"` prints nothing outside `docs/superpowers/plans/` and `docs/research/`.
+- A deletion is complete only when `git -C C:/Users/roton/murlan-1181 grep -n -E "sharedRed|sharedPlan|blockOnShared|blockedBy|SHARED_BUDGET|redCache|redCachePath|shared-red|shared red|claimShared|checkShared"` prints nothing outside `docs/plans/` and `docs/research/`.
 - Do not spawn subagents.
 
 ## File map

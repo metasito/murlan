@@ -172,7 +172,7 @@ describe("processExchangeChoice", () => {
 // #784 — `autoMoveForSeat` re-asks whichever seat `exchangePhase.winnerIdx`
 // still names for as long as `exchangePhase.active` stays true. A correct
 // `processExchangeChoice` clears it on the winner's first giveback
-// (docs/RULES.md §10 allows exactly one), so this drives the same seat
+// (docs/GAME-RULES.md §10 allows exactly one), so this drives the same seat
 // through `autoMoveForSeat` — never `processExchangeChoice` directly — until
 // the phase closes, counting every card it hands over along the way. Left
 // unclosed, the loop keeps drawing from a two-card hand: a second giveback,

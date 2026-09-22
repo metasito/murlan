@@ -7,7 +7,7 @@ depending on the case"*. No file other than this one was changed.
 
 **Repo facts used below** (read from `locales/*.ts`, `lib/cardNames.ts`, `shared/i18n.ts`,
 `components/ExchangeAnnouncement.tsx`, `components/CardView.tsx`, `app/rules.tsx`,
-`app/lobby.tsx`, `docs/RULES.md`):
+`app/lobby.tsx`, `docs/GAME-RULES.md`):
 
 - `shared/i18n.ts:26` interpolates by **name**, not position:
   `template.replace(/\{\{(\w+)\}\}/g, …)`. **Placeholder order is free per locale.** This is
@@ -36,7 +36,7 @@ depending on the case"*. No file other than this one was changed.
 1. **One name for the black card, in all three languages: it is black.** Kill every `B/W`
    and `B/N`. `en` "Black Joker", `it` "Joker nero", `sq` **"Xholi i zi"** — the last is not
    a guess, it is the exact wording of the Tier-1 Albanian rules text already cited in
-   `docs/RULES.md`.
+   `docs/GAME-RULES.md`.
 2. **The Albanian for the other joker is "Xholi i kuq" (red), not "Xholi me ngjyrë".** In
    Albanian card vocabulary **`ngjyrë` means *suit***, not "colour" — the dictionary defines
    a suit as *"njërën nga të katër **ngjyrat** e lojës së letrave"* and the rules text says
@@ -70,7 +70,7 @@ capitalisation convention, both judgment calls. §e adds 9 further findings: 3 C
 
 | # | Source | What it is | Used for |
 |---|---|---|---|
-| **S1** | `visixplay.com/murlan/rules.php?lang=al` | The Albanian Murlan rules text, already Tier 1 in `docs/RULES.md`. Fetched raw (not via a summariser) 2026-08-20. | Joker names, rank names, combination names, ♠ = `maç` |
+| **S1** | `visixplay.com/murlan/rules.php?lang=al` | The Albanian Murlan rules text, already Tier 1 in `docs/GAME-RULES.md`. Fetched raw (not via a summariser) 2026-08-20. | Joker names, rank names, combination names, ♠ = `maç` |
 | **S2** | `fjale.al` — entries `letër`, `xhol`, `spathi`, `maç`, `kupë`, `karo`, `zonjë` | An online reproduction of the *Fjalor i Gjuhës Shqipe* tradition; its entry formatting (`~, ~U m. ~NJ, ~NJTË`) is FGJSSH house style. **The site does not name its edition** — treat the wording as the dictionary's, the edition as unverified. | `xhol` as a headword, all four suit definitions, the `rank + suit` phrase pattern |
 | **S3** | `fjalori.online/pasqyrat` — *Fjalor i Madh i Gjuhës Shqipe*, Akademia e Shkencave e Shqipërisë | The Academy's own grammatical paradigm tables. | Masculine noun declension (`mal / mali / malin / malit`) |
 | **S4** | `sq.wikipedia.org/wiki/Mbiemri` | Albanian-language statement of linked-adjective agreement. | The case paradigm, in Albanian: *"Mjeku i ri / I,e mjekut të ri / Mjekun e ri"* |
@@ -101,7 +101,7 @@ S1, fetched as raw HTML, contains all three of these:
 
 Three things follow, and all three are usable directly:
 
-- **`Xholi i zi` and `Xholi i kuq` are the sourced names.** `docs/RULES.md` §2 already quotes
+- **`Xholi i zi` and `Xholi i kuq` are the sourced names.** `docs/GAME-RULES.md` §2 already quotes
   this line; the header of `sq.ts` already claims these as SOURCED. The file simply does not
   use them consistently.
 - **`Xhol` is a real Albanian headword**, not a transliteration someone invented. S2:
@@ -129,7 +129,7 @@ S2, verbatim, with the current `sq.ts` value beside it:
 | ♠ | *"Njëra nga të dy ngjyrat e zeza …, që shënohet me një figurë në trajtën e **gjethes me bisht**"* (a leaf with a stem) | **maç** | `Pika` | ❌ |
 
 Corroborated twice over: S1 opens the game with *"ai lojtar që ka **3 maç**"* — and
-`docs/RULES.md` §4 records that the same page's English says *"3 of spades"*. S7 lists
+`docs/GAME-RULES.md` §4 records that the same page's English says *"3 of spades"*. S7 lists
 `kupa, karo, spathi, maç` as the four. `Trefla` and `Pika` appear in neither, and I could
 not attest either as a card suit anywhere. (`Pika` looks like German *Pik*; `Trefla` like a
 calque of *trefoil*. **Unverified** whether Kosovo colloquial usage differs from the Tirana
@@ -301,7 +301,7 @@ outright. That is a component change and outside this brief; recorded here, not 
 | 11 | `exchangeAnnouncement.a11yNoSwap` | `Exchange: no exchange, {{loserName}} showed both Jokers` *(unchanged)* | `Scambio: nessuno scambio, {{loserName}} ha mostrato entrambi i **Joker**` | **`Shkëmbim: pa shkëmbim, {{loserName}} tregoi të dy xholat`** | **CONFIRMED** (sq) — S1's exact `të dy xholat`; only the capital drops. it: `Jolly`→`Joker`, see note |
 | 12 | `exchangeAnnouncement.noSwapText` | **`No exchange — both Jokers 🃏`** | **`Nessuno scambio — entrambi i Joker 🃏`** | **`Pa shkëmbim — të dy xholat 🃏`** | **NEEDS OWNER REVIEW** (en/it: "double Joker" → "both Jokers" is a wording change). sq phrase itself is **CONFIRMED** from S1 |
 | 13 | `result.bothJokersTitle` | `THE LOSER HAS BOTH JOKERS!` *(unchanged)* | `IL PERDENTE HA ENTRAMBI I **JOKER**!` | `HUMBËSI KA TË DY XHOLAT!` *(unchanged)* | **CONFIRMED** — sq already correct (definite plural, nom = acc) |
-| 14 | `result.bothJokersBody` | **`{{name}} opens the new hand.\nNo exchange.`** | **`{{name}} apre la nuova mano.\nNessuno scambio.`** | **`{{name}} hap dorën e re.\nPa shkëmbim.`** | **NEEDS OWNER REVIEW** — fixes a real gender bug in **both** sq (`i lirë`) and it (`libero`), but changes the English sense from "starts free". The rule it describes is `docs/RULES.md` §10 |
+| 14 | `result.bothJokersBody` | **`{{name}} opens the new hand.\nNo exchange.`** | **`{{name}} apre la nuova mano.\nNessuno scambio.`** | **`{{name}} hap dorën e re.\nPa shkëmbim.`** | **NEEDS OWNER REVIEW** — fixes a real gender bug in **both** sq (`i lirë`) and it (`libero`), but changes the English sense from "starts free". The rule it describes is `docs/GAME-RULES.md` §10 |
 | 15 | `rules.faq.q11` | `What are the Jokers?` *(unchanged)* | `Cosa sono i Joker?` *(unchanged)* | **`Çfarë janë xholat?`** | **CONFIRMED** — lowercase only |
 | 16 | `tutorial.beat.exchange.tip` | *(unchanged)* | `…entrambi i **Joker**…` | `…TË DY xholat…` (was `TË DY Xholat`) | **CONFIRMED** — casing only |
 | 17 | `achievements.purist.desc` | `Win a hand without playing any Joker.` *(unchanged)* | `Vinci una mano senza giocare nessun **Joker**.` | **`Fito një dorë pa luajtur asnjë xhol.`** | **CONFIRMED** — `asnjë` requires the bare indefinite (S3 paradigm). `asnjë Xholi` is currently **ungrammatical** |
