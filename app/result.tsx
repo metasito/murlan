@@ -14,8 +14,11 @@ import { ConfirmDialog, type ConfirmRequest } from "@/components/ConfirmDialog";
 export default function ResultScreen() {
   const insets = useSafeAreaInsets();
   const { t } = useTranslation();
-  const { gameState } = useLocalTable();
-  const { match, tableWantsRematch, startNextHand, startNewMatch } = useLocalMatch();
+  const live = { gameState: useLocalTable().gameState, ...useLocalMatch() };
+  // Android keeps a leaving screen's views mid-transition, where a re-sorted row is a
+  // re-insert into a parent it has not left yet: it renders what it was left showing.
+  const [leftWith, setLeftWith] = useState<typeof live | null>(null);
+  const { gameState, match, tableWantsRematch, startNextHand, startNewMatch } = leftWith ?? live;
   const { resetGame } = useLocalSession();
   const [confirming, setConfirming] = useState<ConfirmRequest | null>(null);
 
@@ -110,6 +113,7 @@ export default function ResultScreen() {
         });
   const goPlay = (start: () => void) => () => {
     hapticMedium();
+    setLeftWith(live);
     start();
     router.replace("/game");
   };
