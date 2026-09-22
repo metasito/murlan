@@ -170,17 +170,18 @@ export function nextRoute(pinned = null, at = null, { read = derive, facts = tic
   const live = liveRoute(status, known?.labels ?? null);
   if (live) {
     const tally = ticketTally(live.number, ledger());
-    const handed = at ?? (status.fix ? "C" : null) ?? tally.lastHandoff;
-    // A diagnosis reads the pushed head and hands off after it, so its handoff is not a stale one.
-    const diagnosed = handed !== "G" && Boolean(tally.handoffWhy?.startsWith(DIAGNOSED));
+    // A diagnosis reads the pushed head and hands off after it, so until a session has run on its
+    // brief, its handoff outranks everything the head says.
+    const diagnosed = tally.brief !== null && Boolean(tally.handoffWhy?.startsWith(DIAGNOSED));
+    const handed = diagnosed ? tally.lastHandoff : (at ?? (status.fix ? "C" : null) ?? tally.lastHandoff);
     const settles = live.phase === "G" && status.ci?.pushed === true && !diagnosed;
     const derived = live.phase === "G" ? "E" : live.phase;
     // A LAND on this head ends the review the handoff was for; D lands its own, so no row says E.
-    const phase = settles ? "G" : handed === "D" && derived === "E" ? "E" : (handed ?? derived);
+    const phase = settles ? "G" : handed === "D" && derived === "E" && !diagnosed ? "E" : (handed ?? derived);
     return {
       ...live,
       phase,
-      fix: Boolean(status.fix) && phase !== "G",
+      fix: Boolean(status.fix) && phase !== "G" && !diagnosed,
       head: status.ci?.sha ?? status.head ?? null,
       cwd: status.cwd ?? null,
       branch: status.branch ?? null,
@@ -1919,6 +1920,9 @@ function postCiRedOnce(ticket, verdict, onMain, comments, run, write, log) {
   }
 }
 
+/** A compiler or linter error with a place in a file: a red a fix round can aim at without a test id. */
+const LOCATED = /error TS\d+|:\d+:\d+:? +error\b|^\s+\d+:\d+ +error /m;
+
 export async function poll(pending, log, pause, deadline, io = {}) {
   const {
     run = sh,
@@ -2042,7 +2046,12 @@ export async function poll(pending, log, pause, deadline, io = {}) {
     }
     if (next.action === "owner") return owner(next.reason);
     return next.action === "hand-back"
-      ? { ...next, head: verdict.head ?? null, runId: verdict.runId ?? null, unnamed: !verdict.testIds?.length }
+      ? {
+          ...next,
+          head: verdict.head ?? null,
+          runId: verdict.runId ?? null,
+          unnamed: !verdict.testIds?.length && !LOCATED.test(verdict.output ?? ""),
+        }
       : next;
   }
 }
@@ -2201,7 +2210,7 @@ export async function runOnce(io, pinned = null, at = null) {
     : await io.spawn({
         ...route,
         retryCount: Math.max(tally.retries, tally.ciRounds ?? 0),
-        reason: route.phase === tally.lastHandoff ? tally.handoffWhy : null,
+        reason: tally.brief ?? (route.phase === tally.lastHandoff ? tally.handoffWhy : null),
       });
 
   const dirtied = io.sharedCheckoutDirty?.();

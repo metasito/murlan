@@ -1734,17 +1734,38 @@ describe("an unrecognised stop is diagnosed, once per head", () => {
     assert.deepEqual([r.outcome, diagnoses], ["retry", 0]);
   });
 
-  test("nextRoute: a diagnosis handoff outranks the pushed head's G, and a rerun's G is not a fix round", () => {
+  test("nextRoute: a diagnosis handoff outranks the pushed head until a session has run on it", () => {
     const facts = () => ({ title: "t", url: "", size: null, labels: ["in-progress"], reviewRounds: 1, ciRounds: 0 });
-    const route = (why: string, fix = false) =>
-      nextRoute(42, why.slice(6, 7) as never, {
-        read: () => ({ onTicket: true, ticket: 42, branch: "agent/42-x", cwd: "w", phase: fix ? "C" : "G", fix, ci: { pushed: true } }),
+    const row = (outcome: string, park_reason: string | null = null) => ({ n: 42, outcome, cost: 0, park_reason, head: "a" });
+    const route = (rows: object[], derived = "G", fix = false): any =>
+      nextRoute(42, ticketTally(42, rows as never).lastHandoff as never, {
+        read: () => ({ onTicket: true, ticket: 42, branch: "agent/42-x", cwd: "w", phase: derived, fix, ci: { pushed: true } }),
         facts,
-        ledger: () => [{ n: 42, outcome: "handoff", cost: 0, park_reason: why, head: null }],
+        ledger: () => rows,
       } as never);
-    assert.equal(route("phase C next — diagnosis: conflicts with main").phase, "C");
-    assert.equal(route("phase C next — a declared one").phase, "G");
-    const rerun: any = route("phase G next — diagnosis: rerun of 1: x", true);
-    assert.deepEqual([rerun.phase, rerun.fix], ["G", false]);
+    const toC = [row("diagnosed", "resume C — conflicts with main"), row("handoff", "phase C next — diagnosis: conflicts with main")];
+    assert.equal(route(toC).phase, "C");
+    assert.equal(route([...toC, row("pushed")]).phase, "G", "the resumed session pushed, so its head settles");
+    assert.equal(route([row("handoff", "phase C next — a declared one")]).phase, "G");
+    const toD = [row("diagnosed", "resume D — no LAND"), row("handoff", "phase D next — diagnosis: no LAND")];
+    assert.deepEqual([route(toD, "C", true).phase, route(toD, "C", true).fix], ["D", false], "a red head does not turn it into a fix round");
+    assert.equal(route(toD, "E").phase, "D");
+    const rerun = [row("diagnosed", "rerun — 403"), row("handoff", "phase G next — diagnosis: rerun of 1: 403")];
+    assert.deepEqual([route(rerun, "C", true).phase, route(rerun, "C", true).fix], ["G", false]);
+  });
+
+  test("a resume C on an unnamed red is a counted fix round, and the next session gets the cause", async () => {
+    const ledger: any[] = [];
+    const cause = "the report step found no report: a shard died before writing one";
+    const r = await runOnce(
+      io({ settle: redAt1100, diagnose: answer({ action: "resume", phase: "C", cause }) }, ledger),
+    );
+    assert.equal(r.outcome, "retry");
+    assert.deepEqual(ledger.map((x) => x.outcome), ["pushed", "diagnosed", "retry"]);
+    const reasons: (string | null)[] = [];
+    await runOnce(
+      io({ spawn: async (route: any) => (reasons.push(route.reason), silent()), pushedPr: () => null }, ledger),
+    );
+    assert.deepEqual(reasons, [cause]);
   });
 });

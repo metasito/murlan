@@ -358,7 +358,7 @@ describe("a red head's failures that main has too", () => {
     let reads = 0;
     const main = () => (reads++, { runId: 1, ids: [ID] });
     const out = await poll(PENDING, () => {}, 0, DEADLINE, { ...io(gh, written), mainFailures: main });
-    assert.deepEqual(out, { ...HAND_BACK, unnamed: true });
+    assert.deepEqual(out, HAND_BACK, "a type error is a red a fix round can aim at");
     assert.equal(reads, 0);
     assert.match(String(bodyOf(asked, written)), /^on main: none$/m);
   });

@@ -16,6 +16,7 @@
 import fsNode from "node:fs";
 import path from "node:path";
 import { PLAIN, reportRow } from "./loop-render.mjs";
+import { DIAGNOSED } from "./diagnose.mjs";
 
 export const DIR = ".loop-logs";
 
@@ -342,7 +343,10 @@ export function ticketTally(n, rows) {
   let retries = 0;
   let lastRedHead = null;
   const diagnosed = [];
+  /** A diagnosis's cause, until a session has run on it. */
+  let brief = null;
   for (const r of since) {
+    if (r.outcome === "pushed" || (r.outcome === "handoff" && !(r.park_reason ?? "").includes(` — ${DIAGNOSED}`))) brief = null;
     spend += r.cost ?? 0;
     ms += r.ms ?? 0;
     turns += r.turns ?? 0;
@@ -362,8 +366,9 @@ export function ticketTally(n, rows) {
       if (m) [lastHandoff, handoffWhy] = [m[1], m[2] ?? null];
     } else if (r.outcome === "diagnosed") {
       diagnosed.push(r.head ?? null);
+      brief = /^resume [BCD] — (.+)$/s.exec(r.park_reason ?? "")?.[1] ?? null;
     }
   }
   const sessions = since.filter((r) => r.outcome !== "pushed").length;
-  return { sessions, spend, ms, turns, handoffsThisRound, lastHandoff, handoffWhy, lastRedHead, retries, diagnosed };
+  return { sessions, spend, ms, turns, handoffsThisRound, lastHandoff, handoffWhy, lastRedHead, retries, diagnosed, brief };
 }
