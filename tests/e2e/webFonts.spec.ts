@@ -5,7 +5,7 @@
 // explicit character set (scripts/build-fonts.mjs). Getting that set wrong
 // ships tofu — a missing glyph draws in the fallback face with no error
 // anywhere — and Albanian ë/ç and Italian à/è are exactly the characters a
-// Latin-basic subset would drop. tests/fontSubset.test.ts pins the set against
+// Latin-basic subset would drop. tests/tooling/fontSubset.test.ts pins the set against
 // the source; only a browser can say the files honour it.
 import { test, expect } from "./fixtures";
 import { openApp } from "./helpers/navigation";

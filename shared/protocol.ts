@@ -1,5 +1,5 @@
 // The wire contract between the server and every client bundle in the field.
-// Bump PROTOCOL_VERSION with any change to this file; tests/protocolVersion.test.ts
+// Bump PROTOCOL_VERSION with any change to this file; tests/server/protocolVersion.test.ts
 // holds that. Raise MIN_PROTOCOL_VERSION to turn away the bundles a change breaks.
 import { z } from "zod";
 import type { DefaultEventsMap } from "socket.io";

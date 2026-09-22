@@ -61,7 +61,7 @@ Every output is then:
 3. **Encoded to MP3** at 96 kbps mono with `lamejs` (pure JS — no native
    binary, so this needs nothing beyond `npm install`).
 
-`tests/soundAssets.test.ts` re-derives all of this from the shipped files
+`tests/tooling/soundAssets.test.ts` re-derives all of this from the shipped files
 (decoding each through `mpg123-decoder`): that each is real mono 44.1 kHz
 audio, non-silent, levelled, and free of a trailing silent tail.
 

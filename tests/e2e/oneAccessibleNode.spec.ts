@@ -3,7 +3,7 @@
 // same claim with a role in front of it, and the role is what the browser
 // settles.
 //
-// `tests/a11yOneNode.test.ts` reads the props. This reads what the browser
+// `tests/ui-rules/a11yOneNode.test.ts` reads the props. This reads what the browser
 // built from them, which is the only place the property is actually true or
 // false. Neither string query gets there: `page.getByText()` counts a DOM node
 // whether or not it is `aria-hidden`, and `toMatchAriaSnapshot` prints a

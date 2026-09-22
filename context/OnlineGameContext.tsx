@@ -154,7 +154,7 @@ interface OnlineGameContextValue {
  *
  * `Pick` rather than six hand-written interfaces: the field names stay declared
  * once, and a field added to the surface has to be placed in a slice to be
- * reachable (`tests/contextSlices.test.ts`).
+ * reachable (`tests/ui-rules/contextSlices.test.ts`).
  */
 type ConnectionSlice = Pick<
   OnlineGameContextValue,

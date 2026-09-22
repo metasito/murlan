@@ -37,7 +37,7 @@ function subscribe(fn: () => void): () => void {
  * `Gioca` glow) kept a CI emulator painting forever, so Maestro's view-hierarchy fetch on that
  * screen starved for 60-75s against a ~5s baseline everywhere else (#823's measurement).
  * Folding the flag in here, rather than at each animation's own call site, means every looping
- * animation already gated on this hook stops with it — `tests/reducedMotion.test.ts` is what
+ * animation already gated on this hook stops with it — `tests/ui-rules/reducedMotion.test.ts` is what
  * already proves there is no other kind. Read per call, not hoisted to a module constant: a
  * production build never sees this branch at all, since babel-preset-expo inlines the env read
  * to a literal `false` where the variable was never set.

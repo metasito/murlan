@@ -19,7 +19,7 @@ export interface ConfirmRequest {
  * react-native-web's `Alert` is `static alert() {}` — an empty function — so
  * every confirmation built on it showed nothing at all on the bundle Replit
  * serves, and its destructive branch simply never ran. React Native's Modal
- * is also what buys the focus trap and Escape (tests/blockingOverlays.test.ts).
+ * is also what buys the focus trap and Escape (tests/ui-rules/blockingOverlays.test.ts).
  */
 export function ConfirmDialog({
   request,

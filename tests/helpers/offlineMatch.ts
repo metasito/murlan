@@ -1,5 +1,5 @@
 // Plays an offline match to completion with no browser and no UI, so
-// tests/matchTerminates.test.ts can assert the thing #770 found missing: that
+// tests/engine/matchTerminates.test.ts can assert the thing #770 found missing: that
 // a match started offline always reaches `match.over`, not just that each
 // manche it deals resolves.
 //
@@ -26,7 +26,7 @@ import {
 } from "../../lib/gameEngine.ts";
 import { autoMoveForSeat } from "../../lib/autoMove.ts";
 import { comboKey } from "../../components/flightPhysics.ts";
-import { mulberry32 } from "../helpers.ts";
+import { mulberry32 } from "../engine/helpers.ts";
 import type { BotPersonalityId } from "../../lib/botPersonalities.ts";
 
 interface HandResult {
@@ -91,7 +91,7 @@ function applyHandToMatch(match: MatchState, finished: GameState): MatchState {
  * whenever it exists (Node 18+ always has it), which is unseedable. Swapping
  * in a `getRandomValues` backed by `mulberry32(seed)` for the duration of one
  * simulated match is what makes "seed 4242 stalls" a claim anyone can
- * reproduce, offline included — matching the convention `tests/helpers.ts`'s
+ * reproduce, offline included — matching the convention `tests/engine/helpers.ts`'s
  * own `mulberry32` comment already states for the property suite.
  */
 export function withSeededDeals<T>(seed: number, run: () => T): T {
@@ -324,7 +324,7 @@ function handFingerprint(state: GameState): string {
 }
 
 /** `SimulateMatchOptions.contest`'s move: the weakest legal beating
- * combination, or null to pass. Exported so `tests/offlineMatchContestPlay.test.ts`
+ * combination, or null to pass. Exported so `tests/engine/offlineMatchContestPlay.test.ts`
  * can pin the ordering directly — a soak asserting only that a match ends
  * cannot tell "weakest" from "strongest legal beating combination" apart. */
 export function weakestBeatingPlay(state: GameState, seat: number): Combination | null {

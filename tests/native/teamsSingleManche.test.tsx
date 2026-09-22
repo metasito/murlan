@@ -1,6 +1,6 @@
 // tests/native/teamsSingleManche.test.tsx — a one-manche teams game is won by
 // a pair. `applyHandToMatch` lives in a .tsx context module, so it is only
-// reachable from the jest-expo suite; tests/teams.test.ts covers the
+// reachable from the jest-expo suite; tests/engine/teams.test.ts covers the
 // full-match arithmetic in the node suite.
 import { describe, it, expect } from '@jest/globals';
 import { applyHandToMatch } from '@/context/GameContext';

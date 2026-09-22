@@ -325,7 +325,7 @@ The strongest argument is consistency rather than novelty: after #815, a seat th
 from the first deal scores normally and can be an opponent worth beating. **A seat that
 becomes a bot mid-match should behave exactly like one that was a bot from the start.** The
 special case is what generated the hole, and the special case is not needed — the existing
-pin (`tests/scoring.test.ts:320`, "a vacated seat cannot cross the target or be named the
+pin (`tests/engine/scoring.test.ts:320`, "a vacated seat cannot cross the target or be named the
 winner") is what stops a bot from winning a match, and it stays.
 
 The single narrow exception worth keeping from the void option is LoL's: **a match abandoned
@@ -466,7 +466,7 @@ Sizes are the ticket scale used in the tracker.
 | A | Seat shows the reconnect state for the whole grace | 10 s banner → persistent seat state + countdown | **S**, client only; server already sends `seconds`, `game:turn_deadline` is the precedent | Low |
 | B | Vacated seat is labelled as vacated | name unchanged → `vacated` flag on the sanitized player and `ScoreLine`, `t()` in three locales | **S** | Low; touches the sanitizer and two render sites |
 | C | Takeover plays the current hand at minimum strength | `useAi: true` at takeover → `false` until the hand ends | **S**, one boolean at `server/gameTurn.ts:137-176` | Low; needs a test that the seat still always resolves |
-| D | Vacated seat scores as a bot seat | `accumulates` excludes it → excludes nothing | **S** in code (delete the exception added by #815's `botSeatsAtStart` for the vacate case), **M** in tests: `tests/scoring.test.ts:292-360` is written around the opposite rule and its intent has to be re-pinned, not just re-baselined | Medium — this is the row of §3.1's rationale that everyone has been reading as a decision |
+| D | Vacated seat scores as a bot seat | `accumulates` excludes it → excludes nothing | **S** in code (delete the exception added by #815's `botSeatsAtStart` for the vacate case), **M** in tests: `tests/engine/scoring.test.ts:292-360` is written around the opposite rule and its intent has to be re-pinned, not just re-baselined | Medium — this is the row of §3.1's rationale that everyone has been reading as a decision |
 | E | Frozen pre-departure points are shown | seat row reads `bot:<seat>` total → row sums the person's frozen total and the seat's bot total | **S**, inside `resolveHandEnd`'s `detailed` builder | Low |
 | F | Seat reclaimable for the life of the match | `releasedSeats` permanent → consulted only for a finished/disposed table | **M**; the rejoin path, the announcement both ways, and the AFK-rearm guard | Medium — this is the reconnection mechanics #820 explicitly deferred, so it is the one that most needs its own design pass |
 | G | Unanimous end-the-match vote after a vacancy | none → new vote, reusing the rematch gate's unanimity and abstention rules | **M**, server + one screen + locale keys | Medium |
@@ -501,7 +501,7 @@ worked.
 3. **A taken-over seat finishes the hand at minimum legal strength** — the engine AI starts at
    the next deal, not at the moment of takeover. (C)
 4. **A seat that becomes a bot scores like a seat that was born one** — remove the vacate
-   exception from `accumulates`, and re-pin `tests/scoring.test.ts` on the new rule. (D)
+   exception from `accumulates`, and re-pin `tests/engine/scoring.test.ts` on the new rule. (D)
 5. **Show the points a departed player had already won** — the seat's row sums their frozen
    total and the bot's points since takeover. (E)
 6. **Let a player reclaim their seat for the life of the match** — `SEAT_RELEASED` answers only

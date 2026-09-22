@@ -1,4 +1,4 @@
-// The app's only <Modal>, which tests/orientation.test.ts pins.
+// The app's only <Modal>, which tests/ui-rules/orientation.test.ts pins.
 //
 // React Native's Modal defaults to `supportedOrientations={["portrait"]}` on
 // iOS, so one opened in landscape rotates the whole app and leaves the screen

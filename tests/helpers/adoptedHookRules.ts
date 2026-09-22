@@ -1,7 +1,7 @@
 // tests/helpers/adoptedHookRules.ts — the three eslint-plugin-react-hooks rules
 // #891 adopted, held against the rules the plugin ships. Shared by the two gates
-// that are both about those three: `tests/hooksLint.test.ts` refuses a suppression
-// of one, `tests/reactCompiler.test.ts` measures what one costs.
+// that are both about those three: `tests/ui-rules/hooksLint.test.ts` refuses a suppression
+// of one, `tests/ui-rules/reactCompiler.test.ts` measures what one costs.
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);

@@ -8,7 +8,7 @@
  * public/index.html and fetched only when text is first painted in that face.
  *
  * Rebuild the subsets with `node scripts/build-fonts.mjs`;
- * tests/fontSubset.test.ts fails if a string grows a character they lack, or if
+ * tests/tooling/fontSubset.test.ts fails if a string grows a character they lack, or if
  * a weight loses its declaration.
  */
 export const APP_FONTS = {};

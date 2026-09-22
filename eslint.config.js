@@ -2,7 +2,7 @@ const { defineConfig } = require('eslint/config');
 const expoConfig = require('eslint-config-expo/flat');
 const globals = require('globals');
 
-// The selectors live in eslint.selectors.cjs so tests/spacingLint can assert
+// The selectors live in eslint.selectors.cjs so tests/ui-rules/spacingLint can assert
 // against the string this actually runs, rather than a copy of it.
 const {
   SCALED_LITERAL,
@@ -73,7 +73,7 @@ module.exports = defineConfig([
         {
           // FontSize, Radius and Spacing are the numeric scales the app is
           // swept onto. Neither the string-token rules above nor
-          // tests/tokenRoles can see a bare number, which is how one screen
+          // tests/ui-rules/tokenRoles can see a bare number, which is how one screen
           // came to ship five corner radii for one role.
           selector: SCALED_LITERAL,
           message: SCALED_LITERAL_MESSAGE,
@@ -146,7 +146,7 @@ module.exports = defineConfig([
     // only reads that value wants `renderHook` instead; in these three the
     // rendered consumer *is* the subject — an animated `paddingTop`, the
     // settings sheet's rows, the banner `<SettingsModal>` draws — and the Probe
-    // is only how the hook gets driven. `tests/hooksLint` asks the rule which
+    // is only how the hook gets driven. `tests/ui-rules/hooksLint` asks the rule which
     // files still report, so this list cannot outlive what it is for.
     files: [
       "tests/native/bannerMakesRoom.test.tsx",

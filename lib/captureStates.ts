@@ -42,7 +42,7 @@ export interface CaptureState {
   /**
    * Which side of the table that seat renders on, from the viewer's chair.
    * Stated rather than derived so the label cannot drift from the seating —
-   * `tests/captureStates.test.ts` pins each against `seatDirection`.
+   * `tests/tooling/captureStates.test.ts` pins each against `seatDirection`.
    */
   side: "bottom" | "top" | "left" | "right";
   /** A combination already on the felt, so the pile draws under the lamp. */

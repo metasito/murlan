@@ -1,6 +1,6 @@
 // The esquery selectors eslint.config.js enforces, declared once.
 //
-// They live here rather than inline in the config so that tests/spacingLint
+// They live here rather than inline in the config so that tests/ui-rules/spacingLint
 // can assert against the string the linter actually runs. A test that restates
 // a selector is a copy, and a copy drifts — which is the same silent hole this
 // rule exists to close, in a new place.
@@ -39,7 +39,7 @@ const SCALED_LITERAL =
 const SIZE_PROPS = 'minHeight|minWidth|height|width';
 const TOUCH_TARGET_LITERAL = `Property[key.name=/^(${SIZE_PROPS})$/] > Literal[raw="44"]`;
 const TOUCH_TARGET_LITERAL_MESSAGE =
-  'This is TOUCH_TARGET_MIN written as a bare number, and tests/touchTargets.test.ts reads the token. Import it from @/lib/theme, or — if this box is not a touch target — give it a named module constant that says so.';
+  'This is TOUCH_TARGET_MIN written as a bare number, and tests/ui-rules/touchTargets.test.ts reads the token. Import it from @/lib/theme, or — if this box is not a touch target — give it a named module constant that says so.';
 
 // Timing, on the same footing as the other scales. `duration` and `delay` are
 // deliberately their own selector rather than another entry in SCALED_PROPS:

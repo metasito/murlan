@@ -6,7 +6,7 @@ const reported = new Set<string>();
  * A `MURLAN_*` override that exists so a test can shorten a timer, lift a limit
  * or redirect an outbound call. Undefined in production whatever the
  * environment holds, so a stray Secret cannot reach a live process.
- * `tests/testOnlyEnv.test.ts` fails on a server read that bypasses this.
+ * `tests/server/testOnlyEnv.test.ts` fails on a server read that bypasses this.
  */
 export function testOnlyEnv(name: string): string | undefined {
   const raw = process.env[name];

@@ -141,14 +141,14 @@ runs:
           # above it touches anything this branch built: `maestro.yml` reads the
           # marker's absence as "the runner, not this branch", so a line here
           # that consumed `$APP_APK` would report a bad build as the runner's
-          # fault (`tests/androidFlowMarker.test.ts` pins that). Its absence says
+          # fault (`tests/tooling/androidFlowMarker.test.ts` pins that). Its absence says
           # one of the boot, the reboot, the locale or the framework did not
           # finish - not which, and not that the device never arrived.
           touch "$RUNNER_TEMP/emulator-booted"
           # Half the resolution and half the density: the same screen in dp, a
           # quarter of the pixels for the app to rasterize. The flows select on
           # dp and cannot tell the difference, and
-          # `tests/emulatorDisplayOverride.test.ts` derives that from the
+          # `tests/tooling/emulatorDisplayOverride.test.ts` derives that from the
           # profile above so the two cannot drift apart. #942 holds what this
           # buys and the limits of it.
           #

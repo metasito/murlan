@@ -309,7 +309,7 @@ const styles = StyleSheet.create({
   actionBtn: { ...Shadow.dark },
   // Off the viewer's turn a key is dark rather than a faded version of its lit
   // self: muted ink on a heavy scrim, the pair held to 3:1 by
-  // tests/contrast.test.ts, with no gradient and no border behind it to fight.
+  // tests/ui-rules/contrast.test.ts, with no gradient and no border behind it to fight.
   passBtnOnlyMove: { borderWidth: 2, borderColor: Colors.goldStrong },
   btnDimFace: { backgroundColor: Scrim.heavy },
   btnDimLabel: { color: Colors.textMuted },
@@ -350,7 +350,7 @@ const styles = StyleSheet.create({
   // Over the glow, which fills this button and paints.
   playBtnFront: { zIndex: Layer.table },
   // Colors.bg, not bgCard: the pressed gradient's darkest stop (goldDim)
-  // fails body-text contrast against bgCard (tests/contrast.test.ts) —
+  // fails body-text contrast against bgCard (tests/ui-rules/contrast.test.ts) —
   // MenuButton's own primary label already uses bg for the identical
   // gold-on-gold pairing.
   playBtnLabel: { color: Colors.bg },

@@ -1,7 +1,7 @@
 // The source of truth for Murlan's UI copy. `TranslationKey` is derived from
 // this object, so it.ts and sq.ts are each required at the type level to carry
 // exactly these keys — a key added here is a compile error until every locale
-// translates it (see lib/i18n.ts and tests/i18n.test.ts).
+// translates it (see lib/i18n.ts and tests/ui-rules/i18n.test.ts).
 //
 // Keys are namespaced `<area>.<name>` by the screen or component they came
 // from. `server.*` holds the strings rendered for the machine-readable codes

@@ -61,7 +61,7 @@ export function Slider({
   // read directly the rest of the time, through `displayProgress` below.
   // Never synced from `value` via an effect: a shared value written by both
   // a gesture and a `useEffect` is one the React Compiler refuses to compile
-  // (tests/reactCompiler.test.ts).
+  // (tests/ui-rules/reactCompiler.test.ts).
   const isDragging = useSharedValue(false);
   const dragStart = useSharedValue(value);
   const dragStartX = useSharedValue(0);

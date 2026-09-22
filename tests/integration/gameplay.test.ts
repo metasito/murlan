@@ -40,7 +40,7 @@ import {
  * test-only export from server/socket.ts, which is a bypass shipped next to
  * the guard it bypasses; replaying fewer hands trades this for the spurious
  * failure the loop's bound exists to make negligible. Nothing here asserts
- * the limiter — tests/socketRateLimit.test.ts does, per account, in its own
+ * the limiter — tests/server/socketRateLimit.test.ts does, per account, in its own
  * process.
  */
 process.env.MURLAN_AFK_TIMEOUT_MS = "300";
@@ -311,7 +311,7 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
     const state = await opening;
 
     // One human seat, two bot seats — the same buildSeatRoster contract
-    // tested in isolation by tests/botFill.test.ts, now exercised through
+    // tested in isolation by tests/bots/botFill.test.ts, now exercised through
     // the real room:start handler.
     assert.equal(state.players.length, 3);
     assert.equal(state.players.filter((p) => p.type === "ai").length, 2);
@@ -864,7 +864,7 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
 
   /**
    * The verdict itself is pinned over synthetic tables in
-   * tests/socketHandFlags.test.ts ("a seat that never answered counts as a no
+   * tests/server/socketHandFlags.test.ts ("a seat that never answered counts as a no
    * but still counts toward total"). What only the live path can show is that
    * the broadcast tally agrees with it — the figures the results screen reads.
    */

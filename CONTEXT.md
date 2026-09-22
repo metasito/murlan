@@ -26,7 +26,7 @@ term's meaning, and useless anywhere the term is not.
 
 - **The online table's surface** — the 37 fields a screen reads from `OnlineGameContext`, exposed
   as the six slices in `context/onlineGameHooks.ts` (connection, room, table, turn clock, match,
-  exchange). The slices are the seam, and `tests/contextSlices.test.ts` pins both that they
+  exchange). The slices are the seam, and `tests/ui-rules/contextSlices.test.ts` pins both that they
   partition the surface exclusively and that nothing outside four files reaches past them.
 
   A review proposing to extract a pure `reduce(state, event)` module from the provider should stop:

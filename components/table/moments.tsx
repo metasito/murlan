@@ -350,7 +350,7 @@ function Spark({ index, trigger, scale }: { index: number; trigger: number; scal
 
   const size = SPARK_SIZE * SPARK_RADII[index % SPARK_RADII.length] * scale;
   // Static — a shadow outside `useAnimatedStyle` never touches the
-  // per-frame animated path tests/animatedStyle.test.ts checks.
+  // per-frame animated path tests/ui-rules/animatedStyle.test.ts checks.
   const glow = makeShadow(SPARK_GLOW, 0, 0, 1, 7 * scale, 4);
 
   return (

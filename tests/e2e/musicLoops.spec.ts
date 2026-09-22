@@ -25,7 +25,7 @@ import path from "node:path";
 
 const musicDir = path.resolve(__dirname, "..", "..", "assets", "music");
 
-/** The four tracks; tests/musicAssets.test.ts pins these against what
+/** The four tracks; tests/tooling/musicAssets.test.ts pins these against what
  * lib/musicTracks.ts and lib/musicTracks.ios.ts actually require. */
 const TRACKS = ["menu", "hand", "cue"] as const;
 

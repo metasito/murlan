@@ -373,8 +373,8 @@ describe("ciRedBody", () => {
   // `iconSubset` behind `+10 more` — red, identically, in all three of its CI rounds.
   const long = [
     "tests/e2e/offlineMatch.spec.ts › offline vs AI — a match plays multiple hands and exercises the exchange",
-    "tests/fontSubset.test.ts › the subsets carry every character the app can render",
-    "tests/iconSubset.test.ts › the shipped subsets carry a glyph for every name the app renders",
+    "tests/tooling/fontSubset.test.ts › the subsets carry every character the app can render",
+    "tests/tooling/iconSubset.test.ts › the shipped subsets carry a glyph for every name the app renders",
   ];
 
   test("names the head, the run and the step", () => {
@@ -387,8 +387,8 @@ describe("ciRedBody", () => {
 
   test("no failing file is dropped, however long the others are", () => {
     const body = ciRedBody({ sha: SHA, runUrl, failedStep: "Test", testIds: long, runId: 7 });
-    assert.match(body, /tests\/fontSubset\.test\.ts/);
-    assert.match(body, /tests\/iconSubset\.test\.ts/);
+    assert.match(body, /tests\/tooling\/fontSubset\.test\.ts/);
+    assert.match(body, /tests\/tooling\/iconSubset\.test\.ts/);
     assert.doesNotMatch(body, /\+\d+ more/);
   });
 

@@ -1,7 +1,7 @@
 // tests/integration/pushTokens.test.ts — the device registry, and the invite
 // that would otherwise be dropped.
 //
-// tests/pushShape.test.ts covers what is sent to Expo. What it cannot reach is
+// tests/server/pushShape.test.ts covers what is sent to Expo. What it cannot reach is
 // the part that only exists against a real database: that re-registering a
 // device overwrites rather than accumulates, that deleting an account takes
 // its devices with it, and that an invite to a friend who is not connected

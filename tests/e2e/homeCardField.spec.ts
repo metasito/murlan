@@ -1,5 +1,5 @@
 // tests/e2e/homeCardField.spec.ts — the home screen's drifting cards, as they
-// actually draw. tests/homeCardField.test.ts pins the composition's numbers;
+// actually draw. tests/ui-rules/homeCardField.test.ts pins the composition's numbers;
 // what only a rendered page settles is whether the component uses them — how
 // many boxes exist at each orientation, what shape they came out, and whether
 // the field is really out of the accessibility tree.

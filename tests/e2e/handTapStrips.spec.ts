@@ -3,7 +3,7 @@
 // Only a card's own strip receives its presses, and the strips are laid out
 // end to end: `hitWidth` gives every card but the last the row's step, so
 // card `i`'s strip runs from where it starts to where card `i + 1` starts.
-// `cardAtX` (`tests/handLayout.test.ts`) does the same arithmetic on the other
+// `cardAtX` (`tests/ui-rules/handLayout.test.ts`) does the same arithmetic on the other
 // side of the DOM. What only the browser can say is whether the element the
 // finger actually lands on carries the width that arithmetic computed.
 //

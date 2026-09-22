@@ -1,6 +1,6 @@
 // The handsets the layout suite runs on, in one place.
 //
-// Free of any `@playwright/test` import on purpose: `tests/handTurnScale.test.ts`
+// Free of any `@playwright/test` import on purpose: `tests/ui-rules/handTurnScale.test.ts`
 // checks the same geometry under `node --test`, and two copies of this list are
 // two things to remember when the next handset arrives.
 

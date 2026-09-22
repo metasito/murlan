@@ -113,7 +113,7 @@ jobs:
               --label soak --label bug --label needs-triage --body-file soak-failure.md
           fi
 
-  # tests/matchTerminates.test.ts (#770) — headless, no Postgres, no sockets.
+  # tests/engine/matchTerminates.test.ts (#770) — headless, no Postgres, no sockets.
   # CI runs it on a fixed seed band (1..200) every push, which is deliberately
   # never widened there: a check that scans new ground on every run is a check
   # that can go red for a commit that touched nothing relevant. This job moves
@@ -157,7 +157,7 @@ jobs:
           echo "MURLAN_MATCH_SOAK_SEEDS_4P=$MURLAN_MATCH_SOAK_SEEDS_4P" >> "$GITHUB_ENV"
 
       - name: Play
-        run: node --test tests/matchTerminates.test.ts
+        run: node --test tests/engine/matchTerminates.test.ts
 
       - name: Report the failure to the tracker
         if: failure()
@@ -171,7 +171,7 @@ jobs:
             echo
             echo "Re-run locally with the same band:"
             echo '```'
-            echo "MURLAN_MATCH_SOAK_START=$MURLAN_MATCH_SOAK_START MURLAN_MATCH_SOAK_SEEDS=$MURLAN_MATCH_SOAK_SEEDS MURLAN_MATCH_SOAK_SEEDS_3P=$MURLAN_MATCH_SOAK_SEEDS_3P MURLAN_MATCH_SOAK_SEEDS_4P=$MURLAN_MATCH_SOAK_SEEDS_4P node --test tests/matchTerminates.test.ts"
+            echo "MURLAN_MATCH_SOAK_START=$MURLAN_MATCH_SOAK_START MURLAN_MATCH_SOAK_SEEDS=$MURLAN_MATCH_SOAK_SEEDS MURLAN_MATCH_SOAK_SEEDS_3P=$MURLAN_MATCH_SOAK_SEEDS_3P MURLAN_MATCH_SOAK_SEEDS_4P=$MURLAN_MATCH_SOAK_SEEDS_4P node --test tests/engine/matchTerminates.test.ts"
             echo '```'
           } > offline-soak-failure.md
           open=$(gh issue list --label soak --state open --limit 1 --json number --jq '.[0].number // empty')

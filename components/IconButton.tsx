@@ -16,7 +16,7 @@ const GLYPH = 22;
  * `name` is a prop, and the icon subset resolver follows a prop back to its
  * call sites — so every caller must pass a literal or a ternary between two
  * literals. A name assembled any other way ships a glyph the subset does not
- * carry, which renders as a blank box with no error (tests/iconSubset.test.ts).
+ * carry, which renders as a blank box with no error (tests/tooling/iconSubset.test.ts).
  */
 export function IconButton({
   name,

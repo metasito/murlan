@@ -1,13 +1,13 @@
 /**
  * The characters the web subsets have to carry, and the fonts that carry them.
  *
- * Shared by scripts/build-fonts.mjs and tests/fontSubset.test.ts so the set the
+ * Shared by scripts/build-fonts.mjs and tests/tooling/fontSubset.test.ts so the set the
  * files were built from and the set the test demands are the same expression.
  */
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 
-/** The six weights app/_layout.tsx loads, pinned by tests/assetBarrels.test.ts. */
+/** The six weights app/_layout.tsx loads, pinned by tests/tooling/assetBarrels.test.ts. */
 export const WEB_FONTS = [
   { pkg: "@expo-google-fonts/rajdhani", weight: "500Medium", family: "Rajdhani_500Medium" },
   { pkg: "@expo-google-fonts/rajdhani", weight: "600SemiBold", family: "Rajdhani_600SemiBold" },

@@ -76,7 +76,7 @@ export interface VisibleExchangePhaseInput {
  * resend re-derives from live state — answering it after the window would hand
  * over half a trade, which `OnlineGameContext`'s `cardReceived || cardGiven`
  * guard raises as a one-legged ceremony rather than refusing. That ordering is
- * asserted in `tests/exchangeVisibility.test.ts` rather than added to the window
+ * asserted in `tests/server/exchangeVisibility.test.ts` rather than added to the window
  * here, so the two clocks stay independent of each other.
  */
 function ceremonyRunning(phase: VisibleExchangePhaseInput, now: number): boolean {
@@ -90,7 +90,7 @@ function ceremonyRunning(phase: VisibleExchangePhaseInput, now: number): boolean
  * `broadcastGameState` is the caller rather than each of the three places a
  * phase closes: a settle nobody broadcasts is not one any seat can be shown,
  * and one funnel cannot be half-updated the way three call sites can. That
- * wiring is pinned by `tests/exchangeVisibility.test.ts`.
+ * wiring is pinned by `tests/server/exchangeVisibility.test.ts`.
  */
 export function markExchangeSettled(
   phase: Pick<VisibleExchangePhaseInput, "active" | "settledAt"> | undefined,

@@ -283,17 +283,17 @@ describe("failing test ids from a CI log", () => {
     const log = [
       "✖ failing tests:",
       "",
-      "test at tests/i18n.test.ts:635:3",
+      "test at tests/ui-rules/i18n.test.ts:635:3",
       "✖ every error code the server can emit has a server.* key (11.81613ms)",
       "  AssertionError [ERR_ASSERTION]: these codes have no server.* translation: NO_LIVE_GAME",
       "",
-      "test at tests/reactCompiler.test.ts:176:1",
+      "test at tests/ui-rules/reactCompiler.test.ts:176:1",
       "✖ every screen and component compiles with no bailouts (12178.66072ms)",
       "  AssertionError [ERR_ASSERTION]: the React Compiler silently skipped these.",
     ].join("\n");
     assert.deepEqual(failingTestIds(log), [
-      "tests/i18n.test.ts › every error code the server can emit has a server.* key",
-      "tests/reactCompiler.test.ts › every screen and component compiles with no bailouts",
+      "tests/ui-rules/i18n.test.ts › every error code the server can emit has a server.* key",
+      "tests/ui-rules/reactCompiler.test.ts › every screen and component compiles with no bailouts",
     ]);
   });
 

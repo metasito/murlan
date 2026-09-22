@@ -13,7 +13,7 @@ describe('a11yGroup', () => {
 
   // These projects run as ios and android, where the DOM role would be
   // meaningless. The web half is asserted by the source scan in
-  // tests/a11yLabels.test.ts and by the browser sweep, which are the only two
+  // tests/ui-rules/a11yLabels.test.ts and by the browser sweep, which are the only two
   // places it is true or false.
   it('carries no DOM role on native', () => {
     expect(a11yGroup('Rank 1, Ana, 1200')).not.toHaveProperty('role');

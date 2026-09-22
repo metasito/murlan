@@ -80,7 +80,7 @@ export function cardAt(cardXs: readonly number[], cardW: number, x: number): num
  * A worklet as well as a function: the drag asks this on every frame, and the
  * answer changes about as many times as there are cards. Asking it on the UI
  * thread is what lets the crossing to JS happen per answer rather than per
- * frame. `tests/handOrder.test.ts` runs the same body on the JS side.
+ * frame. `tests/ui-rules/handOrder.test.ts` runs the same body on the JS side.
  */
 export function dropIndex(cardXs: readonly number[], cardW: number, x: number): number {
   'worklet';

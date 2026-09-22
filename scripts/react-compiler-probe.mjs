@@ -4,7 +4,7 @@ import path from "node:path";
 import { reactCompiler, reactCompilerOptions } from "./reactCompilerOptions.mjs";
 const require = createRequire(path.join(process.cwd(), "package.json"));
 const { transformSync } = require("@babel/core");
-// The same options tests/reactCompiler.test.ts compiles with, because this is
+// The same options tests/ui-rules/reactCompiler.test.ts compiles with, because this is
 // what its failure message sends you to for the reason behind a bailout.
 const OPTS = reactCompilerOptions();
 

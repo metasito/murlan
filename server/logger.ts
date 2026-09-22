@@ -11,7 +11,7 @@ import { ANSWERED_BY_SHELL, unmatchedKind } from "./staticPaths.ts";
 // A room code is the sole credential for `room:join` and `room:spectate`, so
 // the `payload` a refused socket event carries (`server/socketSafety.ts`) is
 // the same kind of hazard: anyone reading the log, or the vendor shipping it,
-// could join a private table. `tests/logRedaction.test.ts` fails if a socket
+// could join a private table. `tests/server/logRedaction.test.ts` fails if a socket
 // schema grows another code-shaped field without a path here.
 export const REDACT_PATHS = [
   "req.headers.cookie",

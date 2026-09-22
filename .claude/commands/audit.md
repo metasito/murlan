@@ -201,7 +201,7 @@ Estimate how many concurrent tables one Replit instance can carry, and state wha
   },
   {
     key: 'ui-visual', model: 'opus', skills: ['expo-design-system', 'game-ui-design', 'frontend-design:frontend-design'],
-    start: 'lib/theme.ts, lib/tokens.ts, components/, components/table/, app/, docs/FEEL-BAR.md, docs/design/**/captures, tests/tokenRoles.test.ts, docs/agents/loops.md (renderer table)',
+    start: 'lib/theme.ts, lib/tokens.ts, components/, components/table/, app/, docs/FEEL-BAR.md, docs/design/**/captures, tests/ui-rules/tokenRoles.test.ts, docs/agents/loops.md (renderer table)',
     refs: 'docs/FEEL-BAR.md; top mobile card and casino games as the ceiling.',
     ask: `Judge against FEEL-BAR, not against "fine".
 - Tokens used in their named role. Layer zIndex.
@@ -246,7 +246,7 @@ Return 20-40 concrete, buildable proposals, ranked by impact per size.`,
   },
   {
     key: 'a11y', model: 'sonnet', skills: ['accessibility'],
-    start: 'lib/a11y.tsx, lib/accessibility.ts, components/tableA11y.ts, components/AppModal.tsx, components/IconButton.tsx, tests/a11y*.test.ts, tests/touchTargets.test.ts, tests/e2e/a11yOverlays.spec.ts, tests/e2e/ariaTwins.spec.ts',
+    start: 'lib/a11y.tsx, lib/accessibility.ts, components/tableA11y.ts, components/AppModal.tsx, components/IconButton.tsx, tests/ui-rules/a11y*.test.ts, tests/ui-rules/touchTargets.test.ts, tests/e2e/a11yOverlays.spec.ts, tests/e2e/ariaTwins.spec.ts',
     refs: 'WCAG 2.2 AA (new: focus not obscured, dragging alternative, target size minimum, consistent help); reactnative.dev/docs/accessibility; gameaccessibilityguidelines.com (colour-safe suits, text size, timing).',
     ask: `The key question: can a screen-reader user play a whole manche?
 Check:
@@ -263,7 +263,7 @@ Check:
   },
   {
     key: 'i18n', model: 'sonnet', skills: [],
-    start: 'locales/, lib/i18n.ts, lib/relativeTime.ts, lib/cardNames.ts, server/mail.ts, server/templates/, lib/apiError.ts, docs/research/2026-08-20-albanian-card-terminology-research.md, tests/i18n.test.ts',
+    start: 'locales/, lib/i18n.ts, lib/relativeTime.ts, lib/cardNames.ts, server/mail.ts, server/templates/, lib/apiError.ts, docs/research/2026-08-20-albanian-card-terminology-research.md, tests/ui-rules/i18n.test.ts',
     refs: 'Key parity is already a compile error; the gaps are plurals, interpolation, overflow and server-originated text.',
     ask: `- Strings that bypass t(), including accessibility labels, emails, errors and push notifications.
 - it or sq values identical to en.

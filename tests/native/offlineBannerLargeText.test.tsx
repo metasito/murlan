@@ -1,6 +1,6 @@
 // tests/native/offlineBannerLargeText.test.tsx — #813: white text on
 // Colors.danger is 4.23:1, short of the 4.5:1 body-text floor but clear of
-// the 3.0:1 large-text one (tests/contrast.test.ts). The owner's decision was
+// the 3.0:1 large-text one (tests/ui-rules/contrast.test.ts). The owner's decision was
 // to move the text to the large-text bar rather than change the colour —
 // `Colors.danger` is documented in lib/tokens.ts as a fill usable for "text
 // at the large-text bar". This reads the banner's own resolved style, not
@@ -26,7 +26,7 @@ import { OfflineBanner } from '@/components/OfflineBanner';
 import { Colors } from '@/lib/theme';
 
 // WCAG 2 large text is >=18pt regular or >=14pt bold — 24px and ~18.66px in
-// this codebase's units (tests/tokenRoles.test.ts documents the same pair as
+// this codebase's units (tests/ui-rules/tokenRoles.test.ts documents the same pair as
 // 24 and 19). The banner's text is Inter_400Regular, not bold, so the
 // regular-weight floor is the one that applies.
 const REGULAR_LARGE_TEXT_PX = 24;

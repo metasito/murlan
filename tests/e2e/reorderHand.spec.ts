@@ -2,7 +2,7 @@
 //
 // The only tier that can see this. `react-test-renderer` never runs flexbox, so
 // nothing in the native suite can say where a card ended up; the arithmetic
-// under the gesture is covered by `tests/handOrder.test.ts`, and what is left —
+// under the gesture is covered by `tests/ui-rules/handOrder.test.ts`, and what is left —
 // that a hold picks a card up, that a drag puts it where the finger let go, and
 // that a plain tap still only selects — is a property of a laid-out row under a
 // real pointer.
