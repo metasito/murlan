@@ -164,6 +164,17 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
+      # #1156: the emulator has died with no crash dump, no OOM line and nothing
+      # on its own stderr. The kernel sees every signal and every exit, sender included.
+      - name: Trace every signal and exit on the host
+        continue-on-error: true
+        run: |
+          t=/sys/kernel/tracing; sudo test -d "$t/events" || t=/sys/kernel/debug/tracing
+          echo "TRACEFS=$t" >> "$GITHUB_ENV"
+          echo 16384 | sudo tee "$t/buffer_size_kb"
+          echo 'sig != 17' | sudo tee "$t/events/signal/signal_generate/filter"
+          for e in signal/signal_generate sched/sched_process_exit syscalls/sys_enter_exit_group; do echo 1 | sudo tee "$t/events/$e/enable"; done
+
       - name: Install Maestro
         run: |
           # This is the tool that decides what "the app rendered" means, and
@@ -341,11 +352,21 @@ jobs:
         run: |
           out="$RUNNER_TEMP/emulator-logs"
           mkdir -p "$out"
-          find "$HOME/.android" "${TMPDIR:-/tmp}" -maxdepth 4 -type f -size -20M \
-            \( -iname '*.dmp' -o -iname '*crash*' -o -iname '*.log' -o -iname 'hardware-qemu.ini' \) \
+          # The crash database is a directory, and a dump in it is named for no crash.
+          find "$HOME/.android" "${TMPDIR:-/tmp}" -maxdepth 6 -type f -size -20M \
+            \( -iname '*.dmp' -o -ipath '*crash*' -o -iname '*.log' -o -iname 'hardware-qemu.ini' \) \
             2>/dev/null > "$out/found.txt" || true
           while read -r f; do cp "$f" "$out/$(printf %s "${f#/}" | tr / _)" 2>/dev/null || true; done < "$out/found.txt"
+          find "$HOME/.android" "${TMPDIR:-/tmp}" -maxdepth 3 -type d -iname 'emu-crash*' -exec ls -laR {} + > "$out/crash-db-listing.txt" 2>&1 || true
           [ -s "$out/found.txt" ] || printf '%s\n' "searched $HOME/.android and ${TMPDIR:-/tmp}: the emulator left no dump, log or qemu config behind" > "$out/found.txt"
+
+      - name: Say how the emulator exited
+        if: always()
+        run: |
+          [ -n "$TRACEFS" ] && sudo cat "$TRACEFS/trace" > "$RUNNER_TEMP/kernel-trace.txt" 2>&1 || echo "no kernel trace was started" > "$RUNNER_TEMP/kernel-trace.txt"
+          sudo journalctl -b -o short-precise --no-pager > "$RUNNER_TEMP/journal.txt" 2>&1 || true
+          exits=$(grep -E "qemu|crashpad" "$RUNNER_TEMP/kernel-trace.txt" | grep -E "signal_generate|sys_exit_group|sys_enter_exit_group" | tail -5 || true)
+          [ -z "$exits" ] || echo "::warning::How the emulator ended, per the kernel: $(printf %s "$exits" | tr '\n' '|')"
 
       # Recordings, logs and screenshots from a failed flow are the only way to
       # tell a real regression from an emulator that fell over.
@@ -369,4 +390,6 @@ jobs:
             ${{ runner.temp }}/emulator-stdouterr.txt
             ${{ runner.temp }}/emulator-logs/
             ${{ runner.temp }}/dmesg-oom.txt
+            ${{ runner.temp }}/kernel-trace.txt
+            ${{ runner.temp }}/journal.txt
           if-no-files-found: ignore

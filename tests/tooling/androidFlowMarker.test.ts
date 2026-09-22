@@ -362,6 +362,24 @@ describe("maestro.yml reads that marker", () => {
     assert.ok(upload.includes("emulator-logs/"), "the sweep's output is collected and then not uploaded");
   });
 
+  test("the sweep reaches inside the emulator's crash database", () => {
+    const step = src.slice(src.indexOf("Collect whatever the emulator wrote"), src.indexOf("Upload Maestro debug output"));
+    assert.match(step, /-ipath '\*crash\*'/, "a dump inside emu-crash-*.db is not named for a crash, so a name match misses it");
+    const depth = Number(/-maxdepth (\d+) -type f/.exec(step)?.[1]);
+    assert.ok(depth >= 5, `depth ${depth} stops short of <tmp>/android-runner/emu-crash-*.db/attachments/<id>/<file>`);
+  });
+
+  test("the kernel's record of how the emulator ended is taken and uploaded", () => {
+    const trace = src.slice(src.indexOf("Trace every signal and exit"), src.indexOf("Install Maestro"));
+    for (const event of ["signal/signal_generate", "sched/sched_process_exit", "syscalls/sys_enter_exit_group"]) {
+      assert.ok(trace.includes(event), `${event} is not traced`);
+    }
+    const upload = src.slice(src.indexOf("name: maestro-debug"), src.indexOf("if-no-files-found"));
+    for (const file of ["kernel-trace.txt", "journal.txt"]) {
+      assert.ok(upload.includes(file), `${file} is collected and then not uploaded`);
+    }
+  });
+
   test("the tombstone search reads the stream that survives the device", () => {
     const step = src.slice(src.indexOf("id: crash"), src.indexOf("Upload Maestro debug output"));
     assert.match(
