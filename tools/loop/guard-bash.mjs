@@ -9,7 +9,7 @@
  *   git push … main                  lands code with no CI
  *   find / …                         a filesystem sweep; resolve packages with require.resolve instead
  *   gh pr merge                      merges an UNSTABLE (incl. queued) pull request on the spot
- *   a device workflow dispatch or rerun, until its last artefact has been read
+ *   a device workflow dispatch or rerun, except #1199's own dispatch; the weekly schedule runs them
  *
  * Every rule reads the same parsed commands (`commands()`), never the raw text: a rule that matches
  * one spelling is passed by `git -C d add -A`, `X=1 git …`, `do git …` or `bash -c '…'`.
@@ -201,7 +201,14 @@ export function withoutQuotedBodies(command) {
 /** Both device workflows are named for Maestro, and the iOS one's file is `ios.yml`. */
 const DEVICE_WORKFLOW = /maestro|\bios\b/i;
 
-const MARKED = (c) => c.env.MAESTRO_EVIDENCE_READ === "1";
+export const DEVICE_TICKET = 1199;
+
+/** `gh workflow run … --ref agent/1199-…` (or `--ref=`, `-r`): the one ticket that may dispatch. */
+function ownsDevices(c) {
+  const at = c.args.findIndex((a) => a === "-r" || a === "--ref");
+  const ref = at >= 0 ? (c.args[at + 1] ?? "") : (c.args.find((a) => a.startsWith("--ref=")) ?? "").slice(6);
+  return c.cmd === "gh" && c.args[0] === "workflow" && ref.startsWith(`agent/${DEVICE_TICKET}-`);
+}
 const HTTP_CLIENT = /^(gh|curl|wget|invoke-restmethod|invoke-webrequest|irm|iwr)$/;
 
 /** The only `gh run rerun` flags that consume the token after them. */
@@ -444,35 +451,26 @@ const RULES = [
       "  git push -u origin agent/<n>-<slug>",
   },
   {
-    // A device run costs ~25 minutes and its artefact already holds the answer to the next
-    // one. Reading the artefact is the rule; this is the only thing that has ever made it happen.
     // A numeric workflow id cannot be read, so it is treated as the device one.
     test: (c, { workflowOf }) => {
-      if (MARKED(c)) return false;
       const dispatched = dispatchOf(c);
-      if (dispatched !== null) return DEVICE_WORKFLOW.test(dispatched) || /^\d*$/.test(dispatched);
+      if (dispatched !== null) return (DEVICE_WORKFLOW.test(dispatched) || /^\d*$/.test(dispatched)) && !ownsDevices(c);
       const t = rerunOf(c);
       return Boolean(t && (t.run || t.job) && DEVICE_WORKFLOW.test(workflowOf(t) ?? ""));
     },
     message:
-      "Dispatching a device run is blocked until you have read the last failure's own pixels.\n" +
-      "A run is ~25 minutes; the artefact is already on disk and usually holds the answer.\n" +
-      "  gh run download <failed-run-id> -n maestro-debug-ios -D <scratchpad>/<run-id>\n" +
-      "Then, before forming any hypothesis:\n" +
-      "  - Read the screenshot under */screenshots/ with the Read tool. Look at it.\n" +
-      "  - Dump the labelled nodes from */screen-hierarchy/*.json and check your selectors\n" +
-      "    against the real text, including index: and regex matches.\n" +
-      "Having actually done that, re-run the same command with the marker as its own prefix:\n" +
-      "  MAESTRO_EVIDENCE_READ=1 <your command>\n" +
-      "Not a device workflow? Name it by its file (ci.yml), not a numeric id.\n" +
-      "The marker is a claim that you looked. Do not set it to get past this message.",
+      "The iOS and Android device workflows run on their weekly schedule only; no ticket dispatches " +
+      `or reruns them. #${DEVICE_TICKET} owns fixing them, and only its branch may dispatch:\n` +
+      `  gh workflow run ios.yml --ref agent/${DEVICE_TICKET}-<slug>\n` +
+      `A Definition-of-done box that needs a device run moves to #${DEVICE_TICKET}; say so in the close-out.\n` +
+      "Not a device workflow? Name it by its file (ci.yml), not a numeric id.",
   },
   {
     // The rule above allows a rerun once GitHub says the run is not a device one. A target it
     // cannot read is not an answer, and defaulting to allow there would make `$RUN` the way
     // past the rule rather than a way to write it.
     test: (c) => {
-      const t = !MARKED(c) && rerunOf(c);
+      const t = rerunOf(c);
       return Boolean(t && !t.run && !t.job);
     },
     message:
@@ -481,8 +479,7 @@ const RULES = [
       "Name the run by its literal id so the workflow can be read:\n" +
       "  gh run list -w ci.yml --limit 1 --json databaseId -q '.[0].databaseId'\n" +
       "  gh run rerun <that id> --failed\n" +
-      "Rerunning one job? `--job <job-id>` is read too. If you meant a device run, the rule " +
-      "above applies: read the last failure's artefact, then add MAESTRO_EVIDENCE_READ=1.",
+      "Rerunning one job? `--job <job-id>` is read too. Device runs are never rerun.",
   },
   {
     test: (c) => c.cmd === "find" && /^(\/|\/(mnt\/)?[a-z]\/?|[A-Za-z]:[\\/]?)$/.test(c.args[0] ?? ""),
