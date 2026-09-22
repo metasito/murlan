@@ -164,8 +164,8 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      # #1156: the emulator has died with no crash dump, no OOM line and nothing
-      # on its own stderr. The kernel sees every signal and every exit, sender included.
+      # The emulator's own stderr and crash database stay silent when it dies.
+      # The kernel sees every signal and every exit, sender included.
       - name: Trace every signal and exit on the host
         continue-on-error: true
         run: |
@@ -363,8 +363,12 @@ jobs:
       - name: Say how the emulator exited
         if: always()
         run: |
-          [ -n "$TRACEFS" ] && sudo cat "$TRACEFS/trace" > "$RUNNER_TEMP/kernel-trace.txt" 2>&1 || echo "no kernel trace was started" > "$RUNNER_TEMP/kernel-trace.txt"
+          if [ -z "$TRACEFS" ]; then echo "no kernel trace was started" > "$RUNNER_TEMP/kernel-trace.txt"
+          else sudo cat "$TRACEFS/trace" > "$RUNNER_TEMP/kernel-trace.txt" 2>&1 || echo "reading $TRACEFS/trace failed" >> "$RUNNER_TEMP/kernel-trace.txt"; fi
           sudo journalctl -b -o short-precise --no-pager > "$RUNNER_TEMP/journal.txt" 2>&1 || true
+          sudo coredumpctl info --no-pager > "$RUNNER_TEMP/coredump.txt" 2>&1 || true
+          dumped=$(grep -m1 "dumped core" "$RUNNER_TEMP/journal.txt" || true)
+          [ -z "$dumped" ] || echo "::warning::A host process crashed: ${dumped#*]: }"
           exits=$(grep -E "qemu|crashpad" "$RUNNER_TEMP/kernel-trace.txt" | grep -E "signal_generate|sys_exit_group|sys_enter_exit_group" | tail -5 || true)
           [ -z "$exits" ] || echo "::warning::How the emulator ended, per the kernel: $(printf %s "$exits" | tr '\n' '|')"
 
@@ -392,4 +396,5 @@ jobs:
             ${{ runner.temp }}/dmesg-oom.txt
             ${{ runner.temp }}/kernel-trace.txt
             ${{ runner.temp }}/journal.txt
+            ${{ runner.temp }}/coredump.txt
           if-no-files-found: ignore

@@ -375,9 +375,20 @@ describe("maestro.yml reads that marker", () => {
       assert.ok(trace.includes(event), `${event} is not traced`);
     }
     const upload = src.slice(src.indexOf("name: maestro-debug"), src.indexOf("if-no-files-found"));
-    for (const file of ["kernel-trace.txt", "journal.txt"]) {
+    for (const file of ["kernel-trace.txt", "journal.txt", "coredump.txt"]) {
       assert.ok(upload.includes(file), `${file} is collected and then not uploaded`);
     }
+  });
+
+  test("a trace that cannot be read is not reported as one never started", () => {
+    const step = src.slice(src.indexOf("Say how the emulator exited"), src.indexOf("Upload Maestro debug output"));
+    assert.doesNotMatch(step, /&& sudo cat [^\n]*\|\| echo "no kernel trace was started"/);
+    assert.match(step, /coredumpctl info [^\n]*coredump\.txt/, "the core dump's own account of the crash is not taken");
+  });
+
+  test("the host renders with ANGLE, not the legacy SwiftShader GL that segfaulted on its RenderThread", () => {
+    const options = /emulator-options: (.*)/.exec(read(ACTION))?.[1] ?? "";
+    assert.match(options, /-gpu swangle_indirect\b/);
   });
 
   test("the tombstone search reads the stream that survives the device", () => {
