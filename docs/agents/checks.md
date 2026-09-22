@@ -64,7 +64,7 @@ none sits at the top of `tests/` (`tests/tooling/repoLayout.test.ts`).
   drops it, so runs don't collide and the container can stay up between runs of one sitting
   (`node scripts/dev-stack.mjs down` when you're done).
 - **Web e2e** plays real games, offline and online, against the real server, in Italian, and
-  rebuilds the bundle first; `E2E_SKIP_BUILD=1` reuses the last one for spec-only iteration. Two
+  rebuilds the bundle first; `E2E_SKIP_BUILD=1` reuses the last one (rule 5). Two
   runs at once are safe, each takes its own port (#491). Reach a table without playing to one:
   `openSeededGame(page, baseURL, 4)` (`tests/e2e/helpers/offlineSeed.ts`).
 - **The loop harness** shares nothing with the game's suite but the repository — see *The loop is
