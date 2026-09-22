@@ -351,10 +351,9 @@ default passes, and the same flow against a wrong port fails.
 
 `.github/workflows/maestro.yml` compiles a **release APK** and drives that, and
 runs `smoke.yaml`, `offline-game.yaml`, `exchange-phase.yaml` and
-`rematch-prompt.yaml`. It runs **weekly and on demand** —
-`schedule:` plus `workflow_dispatch:`, no `push` trigger. It was taken off `main`
-for #186's boot flake; #1094 owns the trigger, and `pull_request` (never `push`)
-returns after two consecutive green runs on `main`.
+`rematch-prompt.yaml`. It runs **on demand only** — `workflow_dispatch:`, from a
+ticket's own branch when its work needs a device run; no schedule, `push` or
+`pull_request` (owner, 2026-09-22).
 
 `ios.yml` is the same shape on a simulator: `xcodebuild`, install, drive.
 

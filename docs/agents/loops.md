@@ -15,7 +15,7 @@ and the *gotcha*, not a restatement of either.
 | Anything **visual** (colour, gradient, shadow, size) | the parity harness below | pixels vs the prototype | ~40s |
 | Tokens, contrast, roles | `node --test tests/ui-rules/contrast.test.ts tests/ui-rules/tokenRoles.test.ts tests/ui-rules/cosmetics.test.ts` | AA floors | ~1s |
 | The server, the socket protocol, auth or storage | `tests/integration/` (needs a database — see below) | routes and handlers end to end | ~10s/file |
-| Must **boot and stay drivable on iOS** | `.github/workflows/ios.yml`, weekly or `workflow_dispatch`; #1094 owns the trigger | a crash, a screen that never renders, a control the flows tap going missing — on a real simulator | ~23 min warm, ~28–46 min cold (runs 35731140313, 35726375597) |
+| Must **boot and stay drivable on iOS** | `.github/workflows/ios.yml`, dispatched by a ticket on its own branch | a crash, a screen that never renders, a control the flows tap going missing — on a real simulator | ~23 min warm, ~28–46 min cold (runs 35731140313, 35726375597) |
 | Must **boot and stay drivable on Android** | `.github/workflows/maestro.yml`, same trigger policy | same, on a virtual device — the only one that logs a native crash | not yet measured on a passing run; every dispatch in the two weeks to 2026-09-22 failed inside 18–30 min |
 | The ticket loop (`tools/loop/`) | `npm run loop:test` | the supervisor, the gate, the picker, the workspace tools | ~40s |
 
@@ -77,8 +77,9 @@ loop that reaches iOS by looking rather than driving it.
 `.github/workflows/ios.yml` builds a release `.app` and drives `smoke` → `offline-game` →
 `exchange-phase` → `rematch-prompt` on a real Simulator on `macos-latest` (no KVM, no emulator
 boot to flake). `maestro.yml` runs the same four flows on Android, the only one that produces a
-logcat and a crash tombstone. Both run on their weekly schedule or `workflow_dispatch` only —
-no ticket dispatches or reruns them, no Definition of Done asks for one; #1094 owns the trigger,
+logcat and a crash tombstone. Both run only when a ticket whose work needs a device run
+dispatches them on its own branch (`gh workflow run ios.yml --ref agent/<n>-<slug>`); nothing
+triggers them automatically, and a red run is diagnosed from its artifacts, never rerun.
 `gh run list --workflow=ios.yml` is current status. Red on `exchange-phase` at the 2026-09-21
 dispatch is tracked as #1158.
 
@@ -453,8 +454,7 @@ verified as *intended*, not stale:
 - `maestro.yml`'s device loop has no green-run baseline to measure a "warm" cost from; the table
   above reports the only real data (every recent dispatch failing within 18–30 min) rather than
   inventing a steady-state figure.
-- The iOS/Android device jobs are weekly-and-manual only, never gating a PR, by deliberate design
-  (a flaky device job on every push was worse than no job) — not an oversight to "fix" by wiring
-  them into `ci.yml`.
+- The iOS/Android device jobs are dispatch-only, never gating a PR, by the owner's decision — not
+  an oversight to "fix" by giving them a schedule or wiring them into `ci.yml`.
 - `MURLAN_PREFLIGHT_WAIT_MS` defaults to waiting rather than failing fast, on purpose, to survive
   a peer's teardown burst; `--no-wait`/`=0` is the opt-out, not the default.

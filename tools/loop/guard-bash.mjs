@@ -10,7 +10,7 @@
  *   git push … main                  lands code with no CI
  *   find / …                         a filesystem sweep; resolve packages with require.resolve instead
  *   gh pr merge                      merges an UNSTABLE (incl. queued) pull request on the spot
- *   a device workflow dispatch or rerun, except #1199's own dispatch; the weekly schedule runs them
+ *   a device workflow rerun, or a dispatch anywhere but a ticket's own agent/<n>- branch
  *
  * Every rule reads the same parsed commands (`commands()`), never the raw text: a rule that matches
  * one spelling is passed by `git -C d add -A`, `X=1 git …`, `do git …` or `bash -c '…'`.
@@ -202,13 +202,11 @@ export function withoutQuotedBodies(command) {
 /** Both device workflows are named for Maestro, and the iOS one's file is `ios.yml`. */
 const DEVICE_WORKFLOW = /maestro|\bios\b/i;
 
-export const DEVICE_TICKET = 1199;
-
-/** `gh workflow run … --ref agent/1199-…` (or `--ref=`, `-r`): the one ticket that may dispatch. */
-function ownsDevices(c) {
+/** `gh workflow run … --ref agent/<n>-…` (or `--ref=`, `-r`): a ticket dispatching on its own branch. */
+function dispatchesOnTicketBranch(c) {
   const at = c.args.findIndex((a) => a === "-r" || a === "--ref");
   const ref = at >= 0 ? (c.args[at + 1] ?? "") : (c.args.find((a) => a.startsWith("--ref=")) ?? "").slice(6);
-  return c.cmd === "gh" && c.args[0] === "workflow" && ref.startsWith(`agent/${DEVICE_TICKET}-`);
+  return c.cmd === "gh" && c.args[0] === "workflow" && /^agent\/\d+-/.test(ref);
 }
 const HTTP_CLIENT = /^(gh|curl|wget|invoke-restmethod|invoke-webrequest|irm|iwr)$/;
 
@@ -475,15 +473,16 @@ const RULES = [
     // A numeric workflow id cannot be read, so it is treated as the device one.
     test: (c, { workflowOf }) => {
       const dispatched = dispatchOf(c);
-      if (dispatched !== null) return (DEVICE_WORKFLOW.test(dispatched) || /^\d*$/.test(dispatched)) && !ownsDevices(c);
+      if (dispatched !== null) return (DEVICE_WORKFLOW.test(dispatched) || /^\d*$/.test(dispatched)) && !dispatchesOnTicketBranch(c);
       const t = rerunOf(c);
       return Boolean(t && (t.run || t.job) && DEVICE_WORKFLOW.test(workflowOf(t) ?? ""));
     },
     message:
-      "The iOS and Android device workflows run on their weekly schedule only; no ticket dispatches " +
-      `or reruns them. #${DEVICE_TICKET} owns fixing them, and only its branch may dispatch:\n` +
-      `  gh workflow run ios.yml --ref agent/${DEVICE_TICKET}-<slug>\n` +
-      `A Definition-of-done box that needs a device run moves to #${DEVICE_TICKET}; say so in the close-out.\n` +
+      "The iOS and Android device workflows run only when a ticket dispatches them on its own branch, " +
+      "and only when its work needs a device run:\n" +
+      "  gh workflow run ios.yml --ref agent/<n>-<slug>\n" +
+      "A red device run is diagnosed from its maestro-debug artifacts and dispatched again after a " +
+      "change, never rerun.\n" +
       "Not a device workflow? Name it by its file (ci.yml), not a numeric id.",
   },
   {

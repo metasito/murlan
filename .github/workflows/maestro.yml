@@ -1,24 +1,13 @@
 name: Android UI (Maestro)
 
-# Weekly and on demand, never on `push`.
-#
-# Not because the job does not work - it does, and smoke.yaml passes on a
-# runner - but because the emulator underneath it does not boot reliably
-# (#186). Three runs ended on "Timeout waiting for emulator to boot", one of
-# them on stock settings, on a commit that had passed minutes earlier. On a
-# `push` trigger each of those is a red main for a reason nobody can act on,
-# which is the exact thing this trigger has always existed to prevent.
-#
-# #1094 owns the trigger. `pull_request`, never `push`, comes back only after two consecutive
-# green runs on `main`; the schedule is what makes those runs happen.
+# On demand only: a ticket whose work needs a device run dispatches it on its own branch
+# (`tools/loop/guard-bash.mjs`). Never on a schedule, `push` or `pull_request` (owner, 2026-09-22).
 #
 # This job compiles the app and drives that. Everything the old Expo Go path needed from a
 # developer's machine — the client APK for the pinned SDK, a dev server, the guest's route to
 # it, an unsigned manifest for an EAS-linked project (#35) — is gone with it: a release APK
 # carries its own JavaScript, so there is nothing to serve and nothing to reach.
 on:
-  schedule:
-    - cron: "53 5 * * 1"
   workflow_dispatch:
     inputs:
       emulator-boot-timeout:
