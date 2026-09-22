@@ -1,7 +1,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 
-import { coverageGap, timingsFromReport } from "../../scripts/e2e-timings.mjs";
+import { coverageGap, timingsFromReport } from "../../tools/ci/e2e-timings.mjs";
 
 /** The shape `playwright merge-reports --reporter json` produces: one suite per file. */
 function report(files: Record<string, { title: string; status?: string; ms: number[] }[]>) {

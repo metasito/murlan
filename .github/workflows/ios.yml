@@ -140,10 +140,10 @@ jobs:
       # `macos-latest` ships a fixed set of pre-created simulators rather
       # than a fresh AVD per run, so the device to drive has to be found
       # rather than declared. Which one, and why, is in
-      # `scripts/pick-simulator.mjs`, where it can be run and tested.
+      # `tools/ci/pick-simulator.mjs`, where it can be run and tested.
       - name: Find and boot an iPhone simulator
         run: |
-          udid=$(xcrun simctl list devices available -j | node scripts/pick-simulator.mjs)
+          udid=$(xcrun simctl list devices available -j | node tools/ci/pick-simulator.mjs)
           echo "SIMULATOR_UDID=$udid" >> "$GITHUB_ENV"
           # Every other device down, so exactly one simulator is booted while
           # the flows run. Maestro resolves an iOS target through the simulator

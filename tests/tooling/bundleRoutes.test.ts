@@ -104,7 +104,7 @@ describe("the cache paths that shipped do not come back", () => {
   /** Everywhere a cache clear could plausibly be written. */
   function scanned(): { name: string; source: string }[] {
     const root = path.resolve(import.meta.dirname, "..", "..");
-    const trees = ["scripts", "lib", path.join(".github", "workflows")];
+    const trees = ["scripts", path.join("tools", "ci"), "lib", path.join(".github", "workflows")];
     const files = trees.flatMap((tree) => {
       const dir = path.join(root, tree);
       if (!existsSync(dir)) return [];

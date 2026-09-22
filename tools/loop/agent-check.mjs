@@ -12,7 +12,7 @@ import path from "node:path";
 import { primaryWorktree, checkLockDrift, readSubject } from "./preflight.mjs";
 import { STEPS, LOCAL, DELEGATED, byName, cmd, BANNER } from "./check-steps.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
-import preflightMemory from "../../scripts/preflightMemory.mjs";
+import preflightMemory from "../ci/preflightMemory.mjs";
 
 /**
  * A wedged suite used to hang this check for ever, and an unattended run has nobody to notice.

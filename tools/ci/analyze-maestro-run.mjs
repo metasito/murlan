@@ -6,16 +6,16 @@
 // that split is only visible by joining the two logs on their own timestamps.
 //
 // Usage:
-//   node scripts/analyze-maestro-run.mjs <maestro.log> <logcat.txt> [package-id]
+//   node tools/ci/analyze-maestro-run.mjs <maestro.log> <logcat.txt> [package-id]
 //
 // Both files come straight out of a `maestro-debug` run artifact:
 //   gh run download <runId> --dir out
-//   node scripts/analyze-maestro-run.mjs \
+//   node tools/ci/analyze-maestro-run.mjs \
 //     out/maestro-debug/.maestro/tests/*/offline-game/logs/maestro.log \
 //     out/maestro-debug/work/_temp/logcat.txt
 
 import { readFileSync } from "node:fs";
-import { isInvokedDirectly } from "./lib/entry.mjs";
+import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 
 const DEFAULT_PACKAGE = "com.murlan.cardgame";
 
@@ -200,7 +200,7 @@ export function toMarkdownTable(rows) {
 if (isInvokedDirectly(process.argv[1], import.meta.url)) {
   const [maestroLogPath, logcatPath, packageId = DEFAULT_PACKAGE] = process.argv.slice(2);
   if (!maestroLogPath || !logcatPath) {
-    throw new Error("usage: node scripts/analyze-maestro-run.mjs <maestro.log> <logcat.txt> [package-id]");
+    throw new Error("usage: node tools/ci/analyze-maestro-run.mjs <maestro.log> <logcat.txt> [package-id]");
   }
 
   const maestroLog = readFileSync(maestroLogPath, "utf8");

@@ -8,10 +8,10 @@ import { writeFileSync } from "node:fs";
 // place that can hand a single port to the server, the health check and every spec at once.
 //
 // Run rather than imported: Playwright loads this config as CommonJS, which cannot `require`
-// scripts/e2ePort.mjs. An explicit E2E_PORT still wins, so a proof can pin its own.
+// tools/ci/e2ePort.mjs. An explicit E2E_PORT still wins, so a proof can pin its own.
 const PORT =
   process.env.E2E_PORT ??
-  execFileSync(process.execPath, [resolve(__dirname, "../../scripts/e2ePort.mjs")], {
+  execFileSync(process.execPath, [resolve(__dirname, "../../tools/ci/e2ePort.mjs")], {
     encoding: "utf8",
   }).trim();
 // Playwright loads this config once per process — the runner and every worker — and each load
@@ -40,7 +40,7 @@ process.env.MURLAN_MAIL_SINK = MAIL_SINK;
 // database. Run explicitly via `npm run test:e2e`.
 export default defineConfig({
   testDir: __dirname,
-  globalSetup: resolve(__dirname, "../../scripts/preflightMemory.mjs"),
+  globalSetup: resolve(__dirname, "../../tools/ci/preflightMemory.mjs"),
   // Recorded by `npm run perf:web` through playwright.perf.config.ts, never
   // here: frame timing on a shared runner is noisy, and a perf check that
   // goes red at random gets disabled and then lies (#118).

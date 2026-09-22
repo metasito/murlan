@@ -11,10 +11,10 @@
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { isInvokedDirectly } from "./lib/entry.mjs";
+import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const E2E_DIR = path.join(here, "..", "tests", "e2e");
+const E2E_DIR = path.join(here, "..", "..", "tests", "e2e");
 const TIMINGS = path.join(E2E_DIR, "timings.json");
 
 /**

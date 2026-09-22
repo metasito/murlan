@@ -13,16 +13,16 @@
 //                                      # and does not descend; ci.yml gets the same
 //                                      # shape from download-artifact's merge-multiple
 //   npx playwright merge-reports --reporter json blobs > merged.json
-//   node scripts/e2e-timings.mjs merged.json
+//   node tools/ci/e2e-timings.mjs merged.json
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { isInvokedDirectly } from "./lib/entry.mjs";
+import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import { specFilesIn } from "./e2e-shard.mjs";
 
-const repoRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
+const repoRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const TIMINGS = path.join(repoRoot, "tests", "e2e", "timings.json");
 
 /**
@@ -93,7 +93,7 @@ export function coverageGap(timings, files) {
 
 if (isInvokedDirectly(process.argv[1], import.meta.url)) {
   const [report] = process.argv.slice(2);
-  if (!report) throw new Error("usage: node scripts/e2e-timings.mjs <merged-report.json>");
+  if (!report) throw new Error("usage: node tools/ci/e2e-timings.mjs <merged-report.json>");
 
   const { seconds, unpriced } = timingsFromReport(JSON.parse(readFileSync(report, "utf8")));
   const files = specFilesIn();

@@ -12,10 +12,10 @@ import { readFileSync, readdirSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { pickSimulator } from "../../scripts/pick-simulator.mjs";
+import { pickSimulator } from "../../tools/ci/pick-simulator.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-const script = path.join(repoRoot, "scripts", "pick-simulator.mjs");
+const script = path.join(repoRoot, "tools", "ci", "pick-simulator.mjs");
 /** The picker's answer, asserted present so each test can read it directly. */
 const pick = (input: unknown) => {
   const picked = pickSimulator(input);
@@ -101,7 +101,7 @@ describe("the workflow runs the script rather than a copy of it", () => {
 
   test("ios.yml pipes simctl into the script", () => {
     const ios = readFileSync(path.join(workflowDir, "ios.yml"), "utf8");
-    assert.match(ios, /simctl list devices available -j \| node scripts\/pick-simulator\.mjs/);
+    assert.match(ios, /simctl list devices available -j \| node tools\/ci\/pick-simulator\.mjs/);
   });
 
   test("no workflow embeds a program inside a shell quote", () => {

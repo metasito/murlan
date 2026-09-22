@@ -13,7 +13,7 @@
  * one is an npm lifecycle script rather than a fourth call site.
  */
 import os from "node:os";
-import { isInvokedDirectly } from "./lib/entry.mjs";
+import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 
 const GB = 1024 ** 3;
 const WANTED = 1.5 * GB;

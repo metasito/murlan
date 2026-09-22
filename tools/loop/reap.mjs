@@ -378,7 +378,7 @@ if (isInvokedDirectly(process.argv[1], import.meta.url)) {
   const verb = dryRun ? "would clear" : "cleared";
 
   // Cleaning up after a run that is already over — `/queue` phase F is the
-  // caller. Starting a run does not come through here: `scripts/e2ePort.mjs` picks a port that
+  // caller. Starting a run does not come through here: `tools/ci/e2ePort.mjs` picks a port that
   // is already free, which is what stopped two concurrent runs taking each other's server.
   //
   // A suite is also not the place to decide that some other node process has outlived its

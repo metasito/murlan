@@ -1,6 +1,6 @@
 // Chooses the iPhone simulator `ios.yml` drives, from `xcrun simctl list
 // devices available -j` on stdin, and writes its UDID to stdout.
-import { isInvokedDirectly } from "./lib/entry.mjs";
+import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 
 /**
  * `macos-latest` ships a fixed set of pre-created simulators rather than a

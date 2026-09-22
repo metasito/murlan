@@ -3,7 +3,7 @@
 //
 // Its own file rather than a case in offline.spec.ts because it is the
 // suite's longest single test by a wide margin, and a spec file is the unit
-// CI hands to a shard (scripts/e2e-shard.mjs).
+// CI hands to a shard (tools/ci/e2e-shard.mjs).
 
 import { test, expect } from "./fixtures";
 import { openApp, startOfflineGame } from "./helpers/navigation";

@@ -10,7 +10,7 @@ const HOST_COUPLING = /REPLIT_\w*|neon\.tech|replit\.com/g;
 test("the server, the build and the app config name no host", () => {
   const pkg = JSON.parse(readFileSync(path.join(repoRoot, "package.json"), "utf8"));
   const sources: [string, string][] = [
-    ...sourcesUnder(repoRoot, ["server", "scripts"], /\.(ts|js|mjs|cjs)$/),
+    ...sourcesUnder(repoRoot, ["server", "scripts", "tools/ci"], /\.(ts|js|mjs|cjs)$/),
     ["package.json scripts", JSON.stringify(pkg.scripts)],
     ["app.json", readFileSync(path.join(repoRoot, "app.json"), "utf8")],
   ];
