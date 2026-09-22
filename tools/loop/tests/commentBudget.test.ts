@@ -96,7 +96,7 @@ describe("addedCounts against a before", () => {
   });
 
   test("repointing a path in code is added code", () => {
-    assert.deepEqual(addedCounts('import a from "./a.ts";', 'import a from "./b/a.ts";'), { comment: 0, code: 1 });
+    assert.deepEqual(addedCounts('const p = "docs/OLD.md";', 'const p = "docs/NEW.md";'), { comment: 0, code: 1 });
   });
 
   test("prefixing a line with // is prose the change wrote", () => {
