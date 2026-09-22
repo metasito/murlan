@@ -226,8 +226,8 @@ const TICKET_BUDGET_USD = "40";
  *
  * `TICKET_BUDGET_USD` bounds a single session and is unchanged; with phase handoffs a ticket is up
  * to `MAX_HANDOFFS` of them, so the per-ticket figure has to be kept here, where the supervisor is
- * the only thing that survives them all. Set above the fleet median for the size
- * (`docs/research/2026-09-14-loop-efficiency.md` §5), so it catches a runaway and never a healthy run.
+ * the only thing that survives them all. Set above the fleet median for the size, so it catches
+ * a runaway and never a healthy run.
  */
 export const USD_BY_SIZE = {
   "size:XS": 20,

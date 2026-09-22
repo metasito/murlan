@@ -84,7 +84,6 @@ export function computeScreenPads(opts: { insets: EdgeInsets }): ScreenPads {
  * 44-50 for a notch, 59-68 for a Dynamic Island — so the inset the app already
  * reads answers the question, and a model-string table (which returns `false`
  * for every phone released after it was written) is not needed.
- * See docs/research/2026-08-26-notch-and-dynamic-island.md.
  */
 export type CutoutClass = "none" | "notch" | "island";
 
@@ -118,8 +117,7 @@ export type RailSide = "left" | "right";
 /**
  * `Orientation.LANDSCAPE_LEFT`, as the side the cutout ends up on. Which member
  * means which physical side is unverified — the enum's docs do not say and iOS
- * numbers landscape the opposite way round to its names
- * (docs/research/2026-08-26-notch-and-dynamic-island.md §7.1, measured in #413).
+ * numbers landscape the opposite way round to its names (measured in #413).
  */
 export const LANDSCAPE_LEFT = 3;
 

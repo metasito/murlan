@@ -54,12 +54,11 @@ const DEAL_RISE_PX = -170;
 const DEAL_DURATION_MS = 500;
 const DEAL_EASING = Easing.bezier(0.2, 0.85, 0.3, 1);
 // The exchange's two states. Colour cannot be the only channel that carries
-// them (docs/research/2026-08-28-card-exchange-interaction.md §3.1), and it is
-// not: the ungiveable card recedes under a veil, which is luminance and
-// survives a monochrome screen, while the giveable one glows, which is light
-// against none.
+// them, and it is not: the ungiveable card recedes under a veil, which is
+// luminance and survives a monochrome screen, while the giveable one glows,
+// which is light against none.
 //
-// Neither of them *moves*. `docs/design/532-exchange/mockups.html`'s option A
+// Neither of them *moves*. An earlier mockup's option A
 // lifted the giveable card, and a lift reads well on a mockup of six evenly
 // spaced ones. In the fan it splits the row into a high half and a low half
 // with a step between them, and a hand that is not level reads as broken rather
@@ -94,8 +93,7 @@ const UNGIVEABLE_FILTER = { filter: "grayscale(1)" } as const;
 // is the one gesture left that neither can be mistaken for — and 500ms is
 // react-native-gesture-handler's own default, the number the thumb has learned
 // elsewhere. Shortening it starts catching the slow taps of someone deciding
-// which card to play, which is the exact moment a hand is being read
-// (docs/research/2026-08-30-reordering-a-hand.md).
+// which card to play, which is the exact moment a hand is being read.
 const HOLD_MS = 500;
 /**
  * How far the finger travels before the hold becomes a drag. The gate the tap

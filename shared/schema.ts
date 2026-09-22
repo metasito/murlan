@@ -20,7 +20,7 @@ export const users = pgTable(
     // Nullable so every pre-existing row satisfies it on the day it lands —
     // #34 requires an email at signup going forward, but this column carries
     // no login-time check against the accounts that predate that decision
-    // (docs/specs/2026-09-03-account-recovery-design.md, Box 1).
+    // (docs/adr/0007-account-recovery-email-verification-and-password-reset.md, Box 1).
     email: text("email"),
     emailVerifiedAt: timestamp("email_verified_at"),
   },
@@ -370,7 +370,7 @@ export const socketTicketNonces = pgTable("socket_ticket_nonces", {
 /**
  * A proof-of-mailbox-control credential — one shape for both email
  * verification and password reset, per
- * docs/specs/2026-09-03-account-recovery-design.md, Box 2.
+ * docs/adr/0007-account-recovery-email-verification-and-password-reset.md, Box 2.
  * `password_reset` mints a `randomBytes(32)` link token; `email_verify`
  * (#925) mints a 6-digit code — see server/http/authTokens.ts for how each is
  * hashed and redeemed. Neither raw value is ever persisted, only its

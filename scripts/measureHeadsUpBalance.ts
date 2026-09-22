@@ -541,8 +541,7 @@ function main(): void {
   console.log("\n## 6. Royal-straight blind spot in \"certain\" leads (#943)\n");
   console.log("At every medium/hard new-round lead today's engine calls a sure thing,");
   console.log("checks the real opponent hand for a live royal straight that answers it.");
-  console.log("Gate (docs/research/2026-09-10-card-ai-suit-tracking-and-lookahead.md §5,");
-  console.log("stated before this ran): a fix is worth building only if the Wilson lower");
+  console.log("Gate (stated before this ran): a fix is worth building only if the Wilson lower");
   console.log("bound clears 1% (#907's own 0.12%/6-of-4950 dead-end precedent x ~8).\n");
   const royalGap = measureRoyalStraightBlindSpot(opts.matchN2p, opts.seed);
   console.log(`  "certain" leads checked (besnik + gent, 2-seat): ${royalGap.certainLeadsChecked}`);
