@@ -610,3 +610,46 @@ No commit (these are outside the repo). Report word counts before and after, and
 **Placeholders:** none — every check is written out, every deletion is named by path or produced by the listed command, and the one judgement call (which artefacts hold a decision) is an explicit owner checkpoint in Task 6 Step 1.
 
 **Type consistency:** `claudeMdScope.test.ts`'s `BUDGET` map is created in Task 1 and extended in Task 8; `docsIndexed.test.ts` reads `docs/README.md`, created in the same task; `checks.md`'s anchor headings are listed in Task 3's Interfaces and cited by Task 2's pointers.
+
+---
+
+## Amendment, 2026-09-22 — the reference layer
+
+An independent grading of the tree before this work (6 A, 8 B, 3 C, 1 D; mean 19.9/24) found the instruction layer strong and the reference layer behind it stale and duplicated. The owner's bar is A for every file, so these four tasks join the plan. Same global constraints; same TDD shape where a check is possible.
+
+### Task 11: ARCHITECTURE.md stops maintaining the invariants
+
+**Files:** Modify `docs/ARCHITECTURE.md`; extend `tests/tooling/rulesAreSingleSourced.test.ts`.
+
+- [ ] **Step 1:** List the invariants stated in both `docs/ARCHITECTURE.md` and one of the three `CLAUDE.md` files: `git grep -n -F -f <(grep -o '\*\*[^*]*\*\*' CLAUDE.md components/CLAUDE.md server/CLAUDE.md | sed 's/.*\*\*\(.*\)\*\*/\1/') docs/ARCHITECTURE.md`, then read both sides of every hit.
+- [ ] **Step 2:** Add to `rulesAreSingleSourced.test.ts` a case asserting that each duplicated invariant phrase appears in exactly one of `{CLAUDE.md, components/CLAUDE.md, server/CLAUDE.md, docs/ARCHITECTURE.md}`. Run it; it must fail, naming the duplicates.
+- [ ] **Step 3:** In `ARCHITECTURE.md`, replace each duplicated statement with the shape of the system plus a pointer to the file that owns the rule. ARCHITECTURE.md describes *what talks to what*; the invariant lives with the code it binds.
+- [ ] **Step 4:** Verify every remaining claim against the code (module names, socket events, storage). Correct or delete what fails.
+- [ ] **Step 5:** Run the test (PASS), seed a duplicate to see it red, remove it, commit.
+
+### Task 12: audit.md earns its length
+
+**Files:** Modify `.claude/commands/audit.md` (5,181 w).
+
+- [ ] **Step 1:** For each lens, verify its `start`/`refs` paths exist and its question is still open: `node -e` over the lens list, then `git ls-files`. Delete a lens whose problem is fixed or whose files are gone; say so in the report.
+- [ ] **Step 2:** Give the procedure ordered steps, each ending on a checkable criterion, and move the lens catalogue behind the steps as reference.
+- [ ] **Step 3:** Cut anything restating RULES.md, `queue.md` or `issue-tracker.md`; cite by rule number instead.
+- [ ] **Step 4:** Run `node --test tests/tooling/rulesAreSingleSourced.test.ts` (it reads `.claude/commands/*`), commit.
+
+### Task 13: BRIEF.md is a product brief, not an archive
+
+**Files:** Modify `docs/BRIEF.md` (after Task 4 removes §3.1).
+
+- [ ] **Step 1:** Verify every remaining claim: feature status against `app/`, `components/`, `server/`; every issue number against `gh issue view <n> --json state,title`; every file path against `git ls-files`. List each false claim in the report with its correction.
+- [ ] **Step 2:** Restructure: what the product is, who it is for, what is decided, what is open (each open item citing its issue). One statement per fact; no history of what a section used to say.
+- [ ] **Step 3:** Cut every passage another document owns (rules, checks, deploy steps) and point instead.
+- [ ] **Step 4:** Commit.
+
+### Task 14: README.md, CONTEXT.md and GAME-RULES.md
+
+**Files:** Modify `README.md`, `CONTEXT.md`, `docs/GAME-RULES.md`.
+
+- [ ] **Step 1:** `README.md` is for a human arriving at the repo: what this is, how to run it, where the docs index is (`docs/README.md`, Task 6). Remove what it restates from `package.json` or `CLAUDE.md`.
+- [ ] **Step 2:** `CONTEXT.md` (which absorbed `domain.md` in Task 5) gets its trigger pointer from the root `CLAUDE.md` pointer list, so it is no longer reachable only through an orphan.
+- [ ] **Step 3:** `docs/GAME-RULES.md`: every rule states where the engine implements it (`lib/game/gameEngine.ts` symbol) or which test pins it, so a reader can check it. Add nothing to the rules themselves.
+- [ ] **Step 4:** Run `node --test tests/tooling/rulesAreSingleSourced.test.ts tests/tooling/docsIndexed.test.ts` (the latter once Task 6 exists), commit.
