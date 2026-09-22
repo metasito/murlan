@@ -73,8 +73,7 @@ for a developer driving flows by hand through Expo Go, the owner's free path to 
 plus a device cloud costs money the owner has declined to spend). **Expo Go cannot host either
 flow suite**: its dev-menu window sits above the app's own and eats the touch — `tapOn` reports
 `COMPLETED` regardless, and only a `back` **key** works, since keys skip window hit-testing
-(#627). A device-job green recorded before both jobs started building the app itself (2026-08-31)
-is not a real claim. Both jobs pin the same Maestro version and check it reads back off the
+(#627). Both jobs pin the same Maestro version and check it reads back off the
 installed binary, so a version drift is a named failure (`tests/tooling/realAppNotExpoGo.test.ts`
 holds both to it). Reproducing locally needs the same pin: `export MAESTRO_VERSION=2.10.0` before
 `curl -Ls https://get.maestro.mobile.dev | bash` — read from the installer's own environment, so
@@ -104,6 +103,39 @@ them** — measuring beats eyeballing, every time (#209).
   tombstone for the app's own package (#629), Android only. `node tools/ci/analyze-maestro-run.mjs
   <maestro.log> <logcat.txt>` separates a command starved by animation from one paying a flat
   per-fetch cost (#823), from the `maestro-debug`/`maestro-debug-ios` artefact.
+
+## What no automated layer here covers
+
+Real device/web divergences, verifiable only on hardware:
+
+- **Reanimated v4 worklets** — the native-renderer suite's shim runs no UI thread and no frame
+  loop; jank and a UI-thread crash are device-only.
+- **Audio** — `expo-audio` calls are asserted; whether sound is audible, mixed correctly, or
+  survives the silent switch is device-only.
+- **Screen orientation** — `expo-screen-orientation` is a no-op on web; the landscape lock has
+  never run under any automated layer.
+- **Haptics** — gated and asserted (`tests/native/haptics.test.tsx` and siblings), but whether
+  the phone actually buzzes is device-only.
+- **Safe-area insets** — the native renderer injects fixed metrics; a real notch, dynamic island
+  or gesture bar is device-only.
+- **Text rendering** — font-weight synthesis and line breaking differ from the browser.
+- **The New Architecture and the React Compiler** — Fabric and TurboModules are not what Jest
+  renders into.
+
+## Manual device checklist
+
+Run by hand on a real phone before a release — nothing above can see these:
+
+1. Landscape lock holds on game screens; menus rotate freely.
+2. Card lift and the exchange animation land smooth (the exactly-once invariant is unit-tested,
+   `tests/ui-rules/flightPhysics.test.ts` — smoothness itself is not).
+3. Sound plays with the ringer off, and the settings toggle silences it.
+4. Haptics fire on select, play and win, and stop when switched off.
+5. The notification banner slides in and out clear of the notch and gesture bar.
+6. Fonts render at the right weight; nothing clips.
+7. Backgrounding mid-game and returning reconnects inside the 60s grace window (the server-side
+   timer is integration-tested, `tests/integration/reconnect.test.ts`; the on-device resume path
+   is not).
 
 ## React Native Web traps
 
@@ -274,7 +306,7 @@ the spec count, not the colour).
 
 - **`git worktree remove --force` deletes straight through a `node_modules` junction into the
   shared install and exits 0, silently.** `tools/loop/guard-bash.mjs` blocks the raw `--force` and
-  points at `worktrees:remove` (rule 39), which detaches the junction first;
+  points at `worktrees:remove` (rule 39);
   `tools/loop/tests/worktreeRemoveCommand.test.ts` plants the defect. `npm run worktrees:prune`
   (`-- --dry-run` to only classify) cleans up one left by a killed/crashed session the same way.
   Never hand-create the junction either — it is actively harmful: `node --test` fails every file
@@ -317,7 +349,7 @@ via `git diff`, so an uncommitted edit counts but an untracked file doesn't show
 
 ## Owner decisions
 
-Kept even though the shape looks unusual — verified as *intended*, not stale:
+Verified intended, not stale:
 
 - The iOS/Android device jobs are dispatch-only, never gating a PR — not an oversight to "fix" by
   scheduling them or wiring them into `ci.yml`.
