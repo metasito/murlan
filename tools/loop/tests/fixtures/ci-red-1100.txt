@@ -1,0 +1,32 @@
+Browser test report	Collect every shard's report	﻿2026-09-21T22:25:26.8698657Z Node 20 is being deprecated. This workflow is running with Node 24 by default. If you need to temporarily use Node 20, you can set the ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true environment variable. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+##[group]Run actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+with:
+  path: all-blob-reports
+  pattern: blob-report-*
+  merge-multiple: true
+  repository: metasito/murlan
+  run-id: 35661862241
+env:
+  NODE_VERSION: 24
+  GITLEAKS_IMAGE: zricethezav/gitleaks:v8.30.1
+##[endgroup]
+(node:2191) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+##[error]Unable to download artifact(s): Failed to ListArtifacts: Received non-retryable error: Failed request: (403) Forbidden: Error from intermediary with HTTP status code 403 "Forbidden"
+Browser test report	Keep the Playwright report	﻿2026-09-21T22:25:27.1985119Z Node 20 is being deprecated. This workflow is running with Node 24 by default. If you need to temporarily use Node 20, you can set the ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true environment variable. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+##[group]Run actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+with:
+  name: playwright-report
+  path: playwright-report/
+  if-no-files-found: error
+  retention-days: 7
+  compression-level: 6
+  overwrite: false
+  include-hidden-files: false
+env:
+  NODE_VERSION: 24
+  GITLEAKS_IMAGE: zricethezav/gitleaks:v8.30.1
+##[endgroup]
+(node:2204) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+##[error]No files were found with the provided path: playwright-report/. No artifacts will be uploaded.

@@ -316,7 +316,7 @@ describe("poll posts CI-RED once per red head", () => {
 
 describe("a red head's failures that main has too", () => {
   const ID = "tests/e2e/x.spec.ts › some test";
-  const HAND_BACK = { action: "hand-back", reason: "CI failed at Native tests", head: SHA };
+  const HAND_BACK = { action: "hand-back", reason: "CI failed at Native tests", head: SHA, runId: 34872415311, unnamed: false };
   const red = (line = "1) [chromium] › tests/e2e/x.spec.ts:9:5 › some test") =>
     ghFake({
       script: [runRow("completed", "failure")],
@@ -358,7 +358,7 @@ describe("a red head's failures that main has too", () => {
     let reads = 0;
     const main = () => (reads++, { runId: 1, ids: [ID] });
     const out = await poll(PENDING, () => {}, 0, DEADLINE, { ...io(gh, written), mainFailures: main });
-    assert.deepEqual(out, HAND_BACK);
+    assert.deepEqual(out, HAND_BACK, "a type error is a red a fix round can aim at");
     assert.equal(reads, 0);
     assert.match(String(bodyOf(asked, written)), /^on main: none$/m);
   });

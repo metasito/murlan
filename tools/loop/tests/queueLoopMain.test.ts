@@ -23,6 +23,7 @@ import {
   WAIT,
 } from "../queue-loop.mjs";
 import { readLine } from "../loop-stream.mjs";
+import { failingTestIds } from "../ciVerdict.ts";
 import { parkReasonOf, ticketTally } from "../loop-logs.mjs";
 import { PLAIN } from "../loop-render.mjs";
 
@@ -78,6 +79,8 @@ const io = (over: Record<string, unknown> = {}, ledger: any[] = []) => ({
   buildPassed: () => true,
   publish: () => {},
   announce: () => {},
+  diagnose: async () => ({ ok: false, error: "no diagnosis here", run: { result: null, ms: 0, log: "l", phases: {} } }),
+  rerun: () => {},
   ...over,
 });
 
@@ -1612,5 +1615,157 @@ describe("a session the API failed", () => {
     await night({ stopFile: () => spawns >= 3, pick: () => ticket, spawn: async () => (spawns++, died(overloaded)()) }, ledger);
     assert.deepEqual(ledger.map((r) => r.outcome), ["overloaded", "overloaded", "overloaded"]);
     assert.equal(ticketTally(42, ledger).handoffsThisRound, 0);
+  });
+});
+
+describe("an unrecognised stop is diagnosed, once per head", () => {
+  const RUN = 35661862241;
+  const ciLog = readFileSync(path.join(import.meta.dirname, "fixtures", "ci-red-1100.txt"), "utf8");
+  const answer = (d: object) => async () => ({ ok: true, ...d, run: { result: { cost: 0.2, turns: 6 }, ms: 1, log: "l", phases: {} } });
+  const silent = async () => ({ status: 0, blocked: false, result: { cost: 1 }, ms: 1, log: "l", phase: "C", declared: null });
+  const redAt1100 = async () => ({
+    action: "hand-back",
+    reason: "CI failed at Browser test report",
+    head: "2f2a885",
+    runId: RUN,
+    unnamed: failingTestIds(ciLog).length === 0,
+  });
+
+  test("#1100's report-upload red is rerun, not handed to a fix round", async () => {
+    const ledger: any[] = [];
+    const reran: number[] = [];
+    const asked: any[] = [];
+    const r = await runOnce(
+      io(
+        {
+          settle: redAt1100,
+          diagnose: async (stop: any) => (asked.push(stop), answer({ action: "rerun", cause: "the artifact store answered 403" })()),
+          rerun: (id: number) => reran.push(id),
+        },
+        ledger,
+      ),
+    );
+    assert.deepEqual([r.outcome, r.phase], ["handoff", "G"]);
+    assert.deepEqual(reran, [RUN]);
+    assert.equal(asked[0].runId, RUN);
+    assert.deepEqual(ledger.map((x) => x.outcome), ["pushed", "diagnosed", "handoff"]);
+    assert.match(ledger[2].park_reason, /^phase G next — diagnosis: rerun of 35661862241: the artifact store/);
+  });
+
+  test("a session that exits without a LOOP-RESULT is diagnosed, and resumed where it says", async () => {
+    const ledger: any[] = [];
+    const whys: string[] = [];
+    const r = await runOnce(
+      io(
+        {
+          spawn: silent,
+          pushedPr: () => null,
+          diagnose: async (stop: any) => (whys.push(stop.why), answer({ action: "resume", phase: "C", cause: "tsc is red" })()),
+        },
+        ledger,
+      ),
+    );
+    assert.deepEqual(whys, ["the session exited without a LOOP-RESULT"]);
+    assert.deepEqual([r.outcome, r.phase], ["handoff", "C"]);
+    assert.equal(ticketTally(42, ledger).handoffsThisRound, 1, "a resume counts toward MAX_HANDOFFS");
+    assert.equal(ticketTally(42, ledger).handoffWhy, "diagnosis: tsc is red");
+  });
+
+  test("a park the diagnosis asks for carries its cause, not the exit", async () => {
+    const whys: string[] = [];
+    await runOnce(
+      io({
+        spawn: silent,
+        pushedPr: () => null,
+        diagnose: answer({ action: "park", cause: "the ticket's premise is gone: #900 removed the file" }),
+        park: (_n: number, c: { why: string }) => whys.push(c.why),
+      }),
+    );
+    assert.deepEqual(whys, ["the ticket's premise is gone: #900 removed the file"]);
+  });
+
+  test("a second stop on the same head parks without a second diagnosis", async () => {
+    const ledger: any[] = [{ n: 42, outcome: "diagnosed", cost: 0.2, park_reason: "resume C — x", head: "a" }];
+    let diagnoses = 0;
+    const whys: string[] = [];
+    const r = await runOnce(
+      io(
+        {
+          spawn: silent,
+          pushedPr: () => null,
+          diagnose: async () => (diagnoses++, answer({ action: "resume", phase: "C", cause: "x" })()),
+          park: (_n: number, c: { why: string }) => whys.push(c.why),
+        },
+        ledger,
+      ),
+    );
+    assert.equal(r.outcome, "parked");
+    assert.equal(diagnoses, 0);
+    assert.deepEqual(whys, ["the session exited without a LOOP-RESULT"]);
+  });
+
+  test("a failed diagnosis parks with the original reason", async () => {
+    const ledger: any[] = [];
+    const whys: string[] = [];
+    await runOnce(
+      io({ settle: async () => ({ action: "owner", reason: "the branch conflicts with main" }), park: (_n: number, c: { why: string }) => whys.push(c.why) }, ledger),
+    );
+    assert.deepEqual(whys, ["the branch conflicts with main"]);
+    assert.match(ledger.find((x) => x.outcome === "diagnosed").park_reason, /^the diagnosis failed: /);
+  });
+
+  test("an API 5xx never reaches diagnosis", async () => {
+    const overloaded = readFileSync(path.join(import.meta.dirname, "fixtures", "api-529.jsonl"), "utf8").trim().split("\n").map(readLine).find((f: any) => f?.kind === "result");
+    let diagnoses = 0;
+    const r = await runOnce(
+      io({
+        spawn: async () => ({ status: 1, blocked: false, result: overloaded, ms: 1, log: "l", phase: "E", declared: null }),
+        pushedPr: () => null,
+        diagnose: async () => (diagnoses++, answer({ action: "park", cause: "x" })()),
+      }),
+    );
+    assert.equal(r.outcome, "overloaded");
+    assert.equal(diagnoses, 0);
+  });
+
+  test("a CI red naming its failing tests is a fix round, with no diagnosis", async () => {
+    let diagnoses = 0;
+    const r = await runOnce(io({ settle: async () => ({ ...(await redAt1100()), unnamed: false }), diagnose: async () => (diagnoses++, answer({ action: "park", cause: "x" })()) }));
+    assert.deepEqual([r.outcome, diagnoses], ["retry", 0]);
+  });
+
+  test("nextRoute: a diagnosis handoff outranks the pushed head until a session has run on it", () => {
+    const facts = () => ({ title: "t", url: "", size: null, labels: ["in-progress"], reviewRounds: 1, ciRounds: 0 });
+    const row = (outcome: string, park_reason: string | null = null) => ({ n: 42, outcome, cost: 0, park_reason, head: "a" });
+    const route = (rows: object[], derived = "G", fix = false): any =>
+      nextRoute(42, ticketTally(42, rows as never).lastHandoff as never, {
+        read: () => ({ onTicket: true, ticket: 42, branch: "agent/42-x", cwd: "w", phase: derived, fix, ci: { pushed: true } }),
+        facts,
+        ledger: () => rows,
+      } as never);
+    const toC = [row("diagnosed", "resume C — conflicts with main"), row("handoff", "phase C next — diagnosis: conflicts with main")];
+    assert.equal(route(toC).phase, "C");
+    assert.equal(route([...toC, row("pushed")]).phase, "G", "the resumed session pushed, so its head settles");
+    assert.equal(route([row("handoff", "phase C next — a declared one")]).phase, "G");
+    const toD = [row("diagnosed", "resume D — no LAND"), row("handoff", "phase D next — diagnosis: no LAND")];
+    assert.deepEqual([route(toD, "C", true).phase, route(toD, "C", true).fix], ["D", false], "a red head does not turn it into a fix round");
+    assert.equal(route(toD, "E").phase, "D");
+    const rerun = [row("diagnosed", "rerun — 403"), row("handoff", "phase G next — diagnosis: rerun of 1: 403")];
+    assert.deepEqual([route(rerun, "C", true).phase, route(rerun, "C", true).fix], ["G", false]);
+  });
+
+  test("a resume C on an unnamed red is a counted fix round, and the next session gets the cause", async () => {
+    const ledger: any[] = [];
+    const cause = "the report step found no report: a shard died before writing one";
+    const r = await runOnce(
+      io({ settle: redAt1100, diagnose: answer({ action: "resume", phase: "C", cause }) }, ledger),
+    );
+    assert.equal(r.outcome, "retry");
+    assert.deepEqual(ledger.map((x) => x.outcome), ["pushed", "diagnosed", "retry"]);
+    const reasons: (string | null)[] = [];
+    await runOnce(
+      io({ spawn: async (route: any) => (reasons.push(route.reason), silent()), pushedPr: () => null }, ledger),
+    );
+    assert.deepEqual(reasons, [cause]);
   });
 });
