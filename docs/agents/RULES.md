@@ -21,7 +21,9 @@ Every rule an agent must follow, in one place. No rationale here — the *why* l
    must fail *for the reason you claim*. Read the message, not the exit code: a check that goes
    red for the wrong reason goes green for the wrong reason too. Assert the intermediate state as
    well as the outcome, because a helper that silently does nothing — an event nothing listens
-   for, a pattern matching no file, a list nobody added the case to — passes.
+   for, a pattern matching no file, a list nobody added the case to — passes. Undo a planted
+   defect with the Edit tool, the same replacement backwards: `git checkout HEAD -- <path>` is
+   refused while that path differs from HEAD, which a planted defect always does.
 
 ## The worktree
 
@@ -35,20 +37,18 @@ Every rule an agent must follow, in one place. No rationale here — the *why* l
 
 ## Git
 
-11. **Stage by pathspec: `git add -- <files>`.** Never `git add -A` or `git add .` — sessions share
-    an index and a bare add absorbs someone else's work.
+11. **Stage by pathspec: `git add -- <files>`.** Never a bare `git add -A` or `git add .` — sessions
+    share an index. `git add -A <dir…>` below your own `.worktrees/agent-N` root is allowed.
 12. **Never push to `main`.** Branch, open a pull request, let CI speak.
 13. **`Closes #NN` goes in the pull request body, never in a commit message.**
 14. **Merge with `--merge --delete-branch`, never `--squash`, and confirm the remote branch
-    is actually gone** (`git ls-remote origin <branch>` returns nothing). A worktree still
-    holding the local branch makes `--delete-branch` fail, and the remote one survives with it.
-    Inside the loop the supervisor merges and performs that confirmation itself; this is the rule
-    for a merge you make by hand.
+    is actually gone** (`git ls-remote origin <branch>` returns nothing): a worktree holding the
+    local branch makes `--delete-branch` fail. Inside the loop the supervisor does both itself.
 15. **Bring a stale branch up to date before merging** (`gh pr update-branch`), not after.
 
 ## Reading and writing code
 
-16. **Read a file once, whole, with the Read tool.** Not in twenty grep windows.
+16. **Read at most 150 lines per call** — the range you will edit, found first with the Grep tool.
 17. **Search with the Grep tool.** A shelled-out `grep -r` walks `node_modules`.
 18. **No bare literals for colour, radius, font size, spacing or timing** — use `lib/theme.ts`, and
     use a token in the role it was named for.

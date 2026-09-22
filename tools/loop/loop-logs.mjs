@@ -21,8 +21,8 @@ import { DIAGNOSED } from "./diagnose.mjs";
 export const DIR = ".loop-logs";
 
 /**
- * `ephemeral` is "a week from now this is only taking up disk". The ledger and the run reports are
- * the record itself, so they are never swept.
+ * `ephemeral` is "two weeks from now this is only taking up disk". The ledger and the run reports
+ * are the record itself, so they are never swept.
  */
 export const ARTEFACTS = {
   stream: { path: (t, dir = DIR) => path.join(dir, `${t}.jsonl`), name: /^\d+\.jsonl$/, ephemeral: true },
@@ -44,23 +44,36 @@ export const reportPath = ARTEFACTS.report.path;
 export const leftoverPath = ARTEFACTS.leftover.path;
 export const ledgerPath = ARTEFACTS.ledger.path;
 
-/** A file in `.loop-logs/` the pruner may delete once it is old enough. */
+/**
+ * An entry in `.loop-logs/` the pruner may delete once it is old enough: anything but the record,
+ * because sessions write there under names no artefact declares.
+ */
 export function prunable(name) {
-  return Object.values(ARTEFACTS).some((a) => a.ephemeral && a.name.test(name));
+  return !Object.values(ARTEFACTS).some((a) => !a.ephemeral && a.name.test(name));
 }
 
-const WEEK_MS = 7 * 24 * 60 * 60_000;
+export const RETAIN_MS = 14 * 24 * 60 * 60_000;
+
+/** A directory is as old as the newest thing in it. `lstat`, so a link is aged, never followed. */
+const newest = (p, fs) => {
+  const s = fs.lstatSync(p);
+  if (!s.isDirectory()) return s.mtimeMs;
+  return fs.readdirSync(p).reduce((m, n) => Math.max(m, newest(path.join(p, n), fs)), s.mtimeMs);
+};
 
 /** @param {number} [now] @param {typeof fsNode} [fs] */
-export function prune(now = Date.now(), fs = fsNode, olderThan = WEEK_MS) {
-  if (!fs.existsSync(DIR)) return [];
+export function prune(now = Date.now(), fs = fsNode, dir = DIR) {
+  if (!fs.existsSync(dir)) return [];
   const swept = [];
-  for (const name of fs.readdirSync(DIR)) {
-    if (!prunable(name)) continue;
-    const file = path.join(DIR, name);
-    if (now - fs.statSync(file).mtimeMs <= olderThan) continue;
-    fs.rmSync(file, { force: true });
-    swept.push(name);
+  for (const name of fs.readdirSync(dir)) {
+    const entry = path.join(dir, name);
+    try {
+      if (!prunable(name) || now - newest(entry, fs) <= RETAIN_MS) continue;
+      fs.rmSync(entry, { recursive: true, force: true });
+      swept.push(name);
+    } catch {
+      // ponytail: a file vanishing or locked mid-walk is skipped; the next iteration retries it.
+    }
   }
   return swept;
 }

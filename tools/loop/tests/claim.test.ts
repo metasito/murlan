@@ -13,6 +13,10 @@ test("the worktree is taken last, because taking it is what wins the ticket", ()
   assert.deepEqual(names, ["label", "comment", "fetch", "worktree"]);
 });
 
+test("the fetch prunes, so a merged branch's tracking ref does not outlive it", () => {
+  assert.ok(claimSteps(42, "Some ticket").find((s) => s.name === "fetch")?.args.includes("--prune"));
+});
+
 test("the claim comment goes through a file, never an inline body", () => {
   const comment = claimSteps(42, "Some ticket").find((s) => s.name === "comment");
   assert.ok(comment?.args.includes("--body-file"));

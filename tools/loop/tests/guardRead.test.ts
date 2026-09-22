@@ -20,6 +20,11 @@ const count = (p: string) => (fs.existsSync(p) ? fs.readFileSync(p, "utf8").spli
 const bash = (command: string) => ({ tool_name: "Bash", tool_input: { command }, cwd: dir });
 const read = (file: string, extra: object = {}) => ({ tool_name: "Read", tool_input: { file_path: path.join(dir, file), ...extra }, cwd: dir });
 
+test("RULES.md states the cap the guard enforces", () => {
+  const rules = fs.readFileSync(fileURLToPath(new URL("../../../docs/agents/RULES.md", import.meta.url)), "utf8");
+  assert.match(rules, new RegExp(`^16\\. \\*\\*Read at most ${READ_CAP} lines per call\\*\\*`, "m"));
+});
+
 describe("linesRequested", () => {
   const cases: [object, number][] = [
     [bash("sed -n 330,700p big.ts"), 371],

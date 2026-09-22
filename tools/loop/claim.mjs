@@ -38,7 +38,7 @@ export function claimSteps(number, title, noteFile = "", base = "origin/main") {
   return [
     { name: "label", file: "gh", args: ["issue", "edit", String(number), "--add-label", "in-progress"] },
     { name: "comment", file: "gh", args: ["issue", "comment", String(number), "--body-file", noteFile] },
-    { name: "fetch", file: "git", args: ["fetch", "origin", "--quiet"] },
+    { name: "fetch", file: "git", args: ["fetch", "origin", "--prune", "--quiet"] },
     {
       name: "worktree",
       file: "git",

@@ -4,6 +4,7 @@
  *
  * Blocked:
  *   git add -A / . / --all / -u      sessions share an index; a bare add absorbs another session's work
+ *                                    (allowed on pathspecs inside the current .worktrees/agent-N)
  *   git checkout <path> / restore / reset --hard / clean -f / stash drop   discard uncommitted work
  *   git worktree remove --force, rm -r .worktrees/…   delete through a node_modules junction
  *   git push … main                  lands code with no CI
@@ -21,7 +22,7 @@
  */
 import { readFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
-import { resolve } from "node:path";
+import { isAbsolute, relative, resolve } from "node:path";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 
 /** A failure's first line — enough to name it on stderr without dumping a stack there. */
@@ -303,7 +304,26 @@ export function gitAt(base) {
     isRef: (arg, dir) => quietly(["rev-parse", "--verify", "-q", `${arg}^{commit}`], dir),
     // A git error reads as "not clean", so it blocks.
     pathsClean: (paths, dir) => quietly(["diff", "--quiet", "HEAD", "--", ...paths], dir),
+    top: (dir) => answer(["rev-parse", "--show-toplevel"], dir),
+    cwd: (dir) => resolve(base, dir ?? "."),
   };
+}
+
+/** A ticket's worktree has an index of its own, so `-A` there can absorb no other session's work. */
+function addsInsideOwnWorktree(c, repo) {
+  const top = repo.top(c.dir);
+  if (!top || !/[\\/]\.worktrees[\\/]agent-\d+$/.test(top)) return false;
+  const dash = c.args.indexOf("--");
+  const end = dash < 0 ? c.args.length : dash;
+  const paths = [...c.args.slice(1, end).filter((a) => !a.startsWith("-")), ...c.args.slice(end + 1)];
+  return (
+    paths.length > 0 &&
+    paths.every((p) => {
+      if (p.startsWith(":")) return false;
+      const rel = relative(resolve(top), resolve(repo.cwd(c.dir), p));
+      return rel !== "" && !rel.startsWith("..") && !isAbsolute(rel);
+    })
+  );
 }
 
 const has = (args, re) => args.some((a) => re.test(a));
@@ -401,17 +421,18 @@ function deletesWorktree(c) {
 
 const RULES = [
   {
-    // `-A` stages everything even after a `--`, so it is blocked regardless; a bare `.` after
-    // `--` is a real pathspec and is left alone.
-    test: (c) =>
+    // A bare `.` after `--` is a real pathspec and is left alone.
+    test: (c, { repo, moved }) =>
       c.cmd === "git" &&
       c.args[0] === "add" &&
-      (has(c.args, /^(-A|--all|-u|--update)$/) ||
-        (!c.args.includes("--") && c.args.includes("."))),
+      (has(c.args, /^(-A|--all|-u|--update)$/) || (!c.args.includes("--") && c.args.includes("."))) &&
+      (moved || !addsInsideOwnWorktree(c, repo)),
     message:
       "git add -A/./--all/-u is blocked: this checkout is shared, and a bare add stages another " +
       "session's in-flight edits into your commit. Stage by pathspec instead:\n" +
       "  git add -- path/to/file another/file\n" +
+      "Inside your own .worktrees/agent-N, `git add -A <dir…>` is allowed when every path is " +
+      "below its root.\n" +
       "Check what you are about to stage with `git status --short` first.",
   },
   {
@@ -518,6 +539,8 @@ const RULES = [
 export function check(command, workflowOfRun = askGitHub, repo = gitAt(process.cwd())) {
   const runnable = withoutQuotedBodies(command);
   const parsed = commands(runnable);
+  // The payload's cwd is where the line starts, not where a `cd` in it leaves git.
+  const moved = parsed.some((c) => /^(cd|chdir|pushd|popd|set-location|sl|push-location)$/.test(c.cmd));
   let warned = false;
   const workflowOf = (t) => {
     try {
@@ -533,7 +556,7 @@ export function check(command, workflowOfRun = askGitHub, repo = gitAt(process.c
     }
   };
   for (const rule of RULES) {
-    if (rule.text?.(runnable) || parsed.some((c) => rule.test(c, { workflowOf, repo }))) return rule.message;
+    if (rule.text?.(runnable) || parsed.some((c) => rule.test(c, { workflowOf, repo, moved }))) return rule.message;
   }
   return null;
 }

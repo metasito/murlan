@@ -29,7 +29,7 @@ const RULE_PHRASES: [string, RegExp][] = [
   ["merge, never squash", /--squash/],
   ["one pre-push check", /agent:check.{0,30}before you push/i],
   ["never run the whole sweep locally", /npm run verify/i],
-  ["read a file once, whole", /read a file once, whole/i],
+  ["a capped read", /read at most \d+ lines per call/i],
   ["prove it red first", /fail before your fix/i],
   ["leave no residue", /leave no residue/i],
   ["remove a worktree with the named command", /never\s+`?git\s+worktree\s+remove/i],
