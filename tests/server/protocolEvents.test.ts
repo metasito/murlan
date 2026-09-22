@@ -86,6 +86,16 @@ test("every event-shaped literal on either end is in a typed map", () => {
   assert.deepEqual(absent(named, new Set([...toClient.names, ...toServer.names])), []);
 });
 
+const SOCKET_CAST = /\b(?:socket|io|_io)\b[^\n;]*\bas (?:any|unknown|never)\b|\bas (?:any|unknown|never)\b[^\n;]*\.(?:emit|on|once|off)\(/;
+
+test("no socket call is cast past the typed maps", () => {
+  assert.ok(SOCKET_CAST.test(`(socket as any).emit("x", 1);`) && SOCKET_CAST.test(`io.to(r).emit(e as never);`));
+  const cast = [...server, ...client].flatMap(([file, source]) =>
+    source.split("\n").flatMap((line, i) => (SOCKET_CAST.test(line) ? [`${file}:${i + 1}`] : []))
+  );
+  assert.deepEqual(cast, []);
+});
+
 const PROBE_HEADER = [
   `import type { Socket } from "../../lib/socket.ts";`,
   `import type { GameSocket, SocketServer } from "../../server/socket/socketTypes.ts";`,
