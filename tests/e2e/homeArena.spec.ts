@@ -1,7 +1,7 @@
 // tests/e2e/homeArena.spec.ts — the home screen's composition, which is the
 // half of #394 no unit test can decide.
 //
-// `tests/homeMenuModel.test.ts` settles *which* ways to play are offered and
+// `tests/ui-rules/homeMenuModel.test.ts` settles *which* ways to play are offered and
 // which are promoted; that is a set, and a set is decidable from source. Where
 // they land is not: `@testing-library/react-native` runs on
 // `react-test-renderer`, which never runs flexbox, so "one hero", "the quiet

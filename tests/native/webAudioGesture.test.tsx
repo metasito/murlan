@@ -1,4 +1,4 @@
-// tests/native/webAudioGesture.test.ts — Chrome and Safari park an AudioContext
+// tests/native/webAudioGesture.test.tsx — Chrome and Safari park an AudioContext
 // built outside a user gesture in `suspended`, and Safari honours `resume()`
 // only when it is called synchronously inside the gesture. So the context must
 // not exist until a gesture builds it.

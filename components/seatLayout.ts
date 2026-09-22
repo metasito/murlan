@@ -9,9 +9,9 @@ import { Spacing } from "../lib/tokens.ts";
 // ─── Layout constants ─────────────────────────────────────────────────────────
 //
 // Both game screens are laid out around these, and changing one without the
-// other silently breaks a screen — `tests/layoutConstantsPinned.test.ts` is what
+// other silently breaks a screen — `tests/ui-rules/layoutConstantsPinned.test.ts` is what
 // pins their values, except `SEAT_DISC` and `FAN_DRAWN_CARDS`, which
-// `tests/flightPhysics.test.ts` pins against the throw origin they also decide.
+// `tests/ui-rules/flightPhysics.test.ts` pins against the throw origin they also decide.
 // The card dimensions belong to cardFaceModel.ts, which draws the
 // card; the rest are defined here rather than in the components/table/ files
 // that read them, so one module owns the number and the frame maths in
@@ -345,7 +345,7 @@ export function topFanHeight(scale: number, displayedCount: number): number {
  * seat is a real player they are not, so every question of identity answers no
  * for them. Questions of *geometry* — which side a seat draws on — still use
  * `viewerSeat` raw, because a watcher's table is laid out from a seat all the
- * same. `tests/seatLayout.test.ts` pins that identity never asks directly.
+ * same. `tests/ui-rules/seatLayout.test.ts` pins that identity never asks directly.
  */
 export function viewerOwnsSeat(
   seat: number | null,

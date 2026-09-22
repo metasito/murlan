@@ -1,6 +1,6 @@
 /**
  * UI copy this suite compares for equality, rather than uses to name a control. The sentence
- * carries a boolean, so it is a protocol and belongs in one place — `tests/e2eSentinels.test.ts`
+ * carries a boolean, so it is a protocol and belongs in one place — `tests/tooling/e2eSentinels.test.ts`
  * holds what is here against `locales/it.ts`.
  *
  * GIOCA's own state would be the better signal and is not available: it stays pressable when the

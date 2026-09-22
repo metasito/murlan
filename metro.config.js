@@ -6,7 +6,7 @@ const config = getDefaultConfig(__dirname);
 // @expo/vector-icons ships Ionicons and Feather whole — together 82% of the font
 // bytes the web downloaded — for the few dozen glyphs this app draws.
 // scripts/build-icon-fonts.mjs writes the subsets; this is what makes the bundle
-// use them. tests/iconSubset.test.ts fails if a new icon is used that the subsets
+// use them. tests/tooling/iconSubset.test.ts fails if a new icon is used that the subsets
 // were not built with.
 const ICON_SUBSETS = {
   Ionicons: path.resolve(__dirname, "assets/fonts/Ionicons.subset.ttf"),

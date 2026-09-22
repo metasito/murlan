@@ -113,7 +113,7 @@ export interface RatedSeat {
  * **Conservation:** one K across the table makes the deltas sum to exactly
  * zero, and the rounding below is what keeps that exact. Mixed K — a
  * provisional account among veterans — cannot sum to zero, which is what a
- * provisional period is. Both pinned by tests/rating.test.ts.
+ * provisional period is. Both pinned by tests/engine/rating.test.ts.
  */
 export function ratingDeltas(seats: RatedSeat[]): Map<string, number> {
   const out = new Map<string, number>();

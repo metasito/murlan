@@ -1,5 +1,5 @@
 // tests/native/suitShapes.test.tsx — a suit is told apart by its own glyph
-// (components/CardView.tsx `SuitDef`), not only by ink. tests/suitColours.test.ts
+// (components/CardView.tsx `SuitDef`), not only by ink. tests/ui-rules/suitColours.test.ts
 // pins the ink; its own comment says "the pip glyph differs per suit" and
 // nothing asserted that sentence until now. Collapsing every suit to the same
 // SVG shape — separated only by fill colour — passed the whole suite with 0

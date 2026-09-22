@@ -103,7 +103,7 @@ jobs:
           changed=$(git diff --name-only "$base" HEAD)
           echo "Changed files:"; echo "$changed"
           # Prose the suite asserts *on* is not prose to this filter.
-          # `tests/rulesAreSingleSourced.test.ts` reads RULES.md, CLAUDE.md, the
+          # `tests/tooling/rulesAreSingleSourced.test.ts` reads RULES.md, CLAUDE.md, the
           # command files and docs/agents/ — so a change to exactly those paths
           # is the one change that must run it, and the allowlist below would
           # skip it. The failure would surface later, on whichever unrelated
@@ -114,7 +114,7 @@ jobs:
           # The rest of the list is what its suite asserts on beyond its own code: the protocol
           # files, `.claude/settings.json`'s hook paths, package.json's script names, and this
           # workflow, whose job names `check-steps.mjs` pins each delegated step to. Both lists are
-          # derived by `tests/ciScope.test.ts`, which reds on a path they miss.
+          # derived by `tests/tooling/ciScope.test.ts`, which reds on a path they miss.
           if grep -qE '^(tools/loop/|scripts/lib/(checkoutRoot|entry)\.mjs$|scripts/preflightMemory\.mjs$|tests/helpers/importShellGuard\.ts$|docs/agents/|\.claude/|CLAUDE\.md$|package\.json$|\.github/workflows/ci\.yml$)' <<< "$changed"; then
             echo "harness=true" >> "$GITHUB_OUTPUT"
           else
@@ -264,7 +264,7 @@ jobs:
           cache: npm
       - run: npm ci
 
-      # tests/backupDb.test.ts restores a real dump — needs the same client
+      # tests/server/backupDb.test.ts restores a real dump — needs the same client
       # tools scripts/backup-db.mjs itself depends on, matched to the service
       # container's major version so the dump a pg_dump writes is one its own
       # psql can read back.
@@ -636,7 +636,7 @@ jobs:
       # full of failures, and a test that fails at its timeout prices its spec
       # at the timeout while one that fails on its first assertion prices it at
       # seconds. Either number is indistinguishable from a real duration once
-      # committed, and lands as the lopsided split `tests/e2eShardSplit.test.ts`
+      # committed, and lands as the lopsided split `tests/tooling/e2eShardSplit.test.ts`
       # reds the next pull request over — which is the defect this job exists
       # to end.
       #
@@ -644,7 +644,7 @@ jobs:
       # pull request, which cost each one a branch update and a full extra run
       # — and moved the tree out from under `scope`'s skip, so the next main
       # push ran the whole suite and regenerated again. Nine such commits on
-      # 2026-09-11. `tests/e2eShardSplit.test.ts` tolerates 10% unmeasured
+      # 2026-09-11. `tests/tooling/e2eShardSplit.test.ts` tolerates 10% unmeasured
       # specs, about five new specs at the current count, so a week is well
       # inside the floor; if it ever trips it says so by name and a
       # `workflow_dispatch` regenerates.

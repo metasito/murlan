@@ -27,7 +27,7 @@ const BANNER_OFFSCREEN_Y = -(BANNER_H * 3);
  * the 4.5:1 body floor but clear of the 3:1 large-text one once the text
  * itself is large enough; `FontSize.xxl` (28) clears the same floor but
  * spends margin this banner cannot afford on its longer locales. Pinned by
- * tests/native/offlineBannerLargeText.test.tsx and tests/contrast.test.ts.
+ * tests/native/offlineBannerLargeText.test.tsx and tests/ui-rules/contrast.test.ts.
  */
 const BANNER_TEXT_SIZE = 24;
 

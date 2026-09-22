@@ -11,7 +11,7 @@ are deliberately absent: `package.json`, `ls` and `docs/GAME-RULES.md` never go 
 ## Where the rest lives
 
 - `docs/agents/RULES.md` — every rule an agent follows, numbered, one screen. The only normative
-  list; nothing here or in a prompt restates it (`tests/rulesAreSingleSourced.test.ts`).
+  list; nothing here or in a prompt restates it (`tests/tooling/rulesAreSingleSourced.test.ts`).
 - `docs/agents/issue-tracker.md` — the queue, labels, claiming, the `gh` invocations. Issues live
   in GitHub Issues (`metasito/murlan`).
 - `docs/agents/loops.md` — which check catches what, what each costs, the local ports, and the
@@ -29,7 +29,7 @@ are deliberately absent: `package.json`, `ls` and `docs/GAME-RULES.md` never go 
 - **`server/schemaDdl.ts` is the only thing that creates tables**, at boot, from
   `shared/schema.ts`. Every statement is additive and idempotent, bar one shape: a unique index
   named in `DEDUPE_ON_BOOT` is preceded by a delete of the rows it would reject, without which
-  the `CREATE UNIQUE INDEX` fails and the server does not start. `tests/schemaDdl.test.ts` grants
+  the `CREATE UNIQUE INDEX` fails and the server does not start. `tests/server/schemaDdl.test.ts` grants
   that exemption only to a delete carrying its index's own key, and only for a listed index.
   A second creator is how `session` came to exist on one database and nowhere else.
 - **`session` table** — `createTableIfMissing: false`, deliberately absent from
@@ -49,7 +49,7 @@ Verify against source before changing any.
 - **One socket per userId** via `lib/socket.ts`; `SocketContext` owns the lifecycle.
 - **Hooks before the null guard** in both game screens — every hook runs before `if (!gameState)`.
 - **A card appears exactly once** in flight/`pileState` — never twice, never zero times
-  (`tests/flightPhysics.test.ts`, `advancePile`).
+  (`tests/ui-rules/flightPhysics.test.ts`, `advancePile`).
 - **`CARD_W`/`CARD_H` are declared once**, in `components/cardFaceModel.ts`; `handLayout.ts` takes
   a width as a parameter rather than importing it. Pinned by a source scan, because pinning the
   value cannot find a copy holding the same number.
@@ -65,7 +65,7 @@ Verify against source before changing any.
   insets. The safe area is the layout's job — the rail absorbs the cutout, the hand zone carries
   the home indicator.
 - **Design tokens are used in the role they were named for.** A fill or border token used as a
-  text colour renders as almost nothing, silently (`tests/tokenRoles.test.ts`).
+  text colour renders as almost nothing, silently (`tests/ui-rules/tokenRoles.test.ts`).
 - **An icon name reaches `<Ionicons>` as a literal**, or a ternary between two literals.
   `scripts/iconSubsetChars.mjs` cannot see through a JSX spread, so `<IconButton {...props} />`
   ships a blank box with no error. Every wrapper passes props by name.
@@ -83,7 +83,7 @@ Verify against source before changing any.
   grouped at all: on iOS the control is sealed inside the leaf.
 - **Every `<Modal>` declares `supportedOrientations` including landscape**, or iOS rotates the app
   to portrait behind it and every tap lands on nothing. **`components/AppModal.tsx` is the app's
-  only `<Modal>`** (`tests/orientation.test.ts` pins both).
+  only `<Modal>`** (`tests/ui-rules/orientation.test.ts` pins both).
 - **`NotificationBanner`** never returns null, and animates by callback chain — parallel
   `withTiming` calls overwrite the slide-in.
 - **`OfflineBanner`** flags offline only on `state.isConnected === false`; `null` is unknown.
@@ -106,7 +106,7 @@ Verify against source before changing any.
 - Gold is a five-step alpha scale (`goldGhost` … `goldStrong`). Pick by role; don't add a sixth.
 - **A `zIndex` is a `Layer` role, or is derived from one.** Only iOS reorders siblings, so a bare
   number is a claim nobody can check — three unrelated layers each chose 50 that way.
-  `tests/tokenRoles.test.ts` resolves each through its module constant. `0` is `Layer.felt`.
+  `tests/ui-rules/tokenRoles.test.ts` resolves each through its module constant. `0` is `Layer.felt`.
 - **Reach for the shared piece before writing one**: `ScreenHeader`, `StateBlock`, `IconButton`,
   `Avatar`, `ResultBoard`, `AppModal`, `useIsLandscape()`. A second copy of any is what #671
   removed. **A local component must not share a name with a shared one.**
@@ -154,7 +154,7 @@ afterwards has already spent one.
 - `Cannot read property 'cards' of null` — null-check game state before `.cards`.
 - `REPLACE navigation action not handled` — the `index` route must exist before navigating.
 - React Compiler can miscompile `useEffect` references. It comes from `babel-preset-expo`'s own
-  dependency — never add a second copy (`tests/reactCompiler.test.ts`).
+  dependency — never add a second copy (`tests/ui-rules/reactCompiler.test.ts`).
 - **`onLayout` reports a change of size, never one of position.** On web it is backed by a
   `ResizeObserver`, so a box that keeps its height while its `top` moves never fires again and
   anything derived from that `y` is silently stale. Take only the size from the event.
@@ -165,7 +165,7 @@ afterwards has already spent one.
 ## LOOP PROTOCOL
 
 `.claude/commands/queue.md` is the only loop protocol in this repo, and the only place its
-procedure is written down. Nothing here restates it (`tests/rulesAreSingleSourced.test.ts`).
+procedure is written down. Nothing here restates it (`tests/tooling/rulesAreSingleSourced.test.ts`).
 
 The loop keeps no state file. Which ticket, what is committed, whether a review covers it — all of
 it is derived from git and the tracker, so it cannot go stale, and a `SessionStart` hook reports it

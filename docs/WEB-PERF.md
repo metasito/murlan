@@ -147,4 +147,4 @@ guess — a better-informed one than before, but a guess.
 
 The app is on **Expo SDK 57**, which brings React 19.2's Chrome Performance
 Tracks — the closest thing to a first-party answer, and worth recording in that
-trace (`tests/webPerfDoc.test.ts` keeps this sentence on `package.json`'s SDK).
+trace (`tests/tooling/webPerfDoc.test.ts` keeps this sentence on `package.json`'s SDK).

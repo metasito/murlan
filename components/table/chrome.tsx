@@ -311,7 +311,7 @@ const chipStyles = StyleSheet.create({
     fontVariant: ["tabular-nums"],
   },
   chipLabelLit: { color: Colors.goldLit },
-  // FontSize.xxs, so tests/tokenRoles.test.ts bars Colors.danger here.
+  // FontSize.xxs, so tests/ui-rules/tokenRoles.test.ts bars Colors.danger here.
   chipLabelUrgent: { color: Colors.dangerDim },
   chipDot: { backgroundColor: Colors.textMuted },
   chipDotLit: { backgroundColor: Colors.goldLit },

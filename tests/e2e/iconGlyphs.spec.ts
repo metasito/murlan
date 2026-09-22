@@ -1,7 +1,7 @@
 // Every icon glyph actually drawn on screen is a glyph the loaded font
 // actually has — checked in the browser, against the real rendered DOM, not
 // against the app's source. Static analysis (scripts/iconSubsetChars.mjs,
-// tests/iconSubset.test.ts) can only say which names the source asks for; it
+// tests/tooling/iconSubset.test.ts) can only say which names the source asks for; it
 // cannot say whether assets/fonts/*.subset.ttf still carries one, and it
 // cannot see a name that never appears in the DOM until some interaction
 // happens. This is what closes both gaps.

@@ -44,7 +44,7 @@ The crossfade is not cosmetic. `Retro Lounge BASE` — the loop the game plays
 most — stepped **14.2×** the waveform's own 95th-percentile sample-to-sample
 step at the wrap, which is an audible click once per pass. Folding the tail back
 over the head makes the join continuous by construction. After encoding, no
-track steps more than **0.5×**, and `tests/musicLoops.test.ts` fails if one does
+track steps more than **0.5×**, and `tests/e2e/musicLoops.spec.ts` fails if one does
 — verified against the un-crossfaded file, which it rejects at 11.6×.
 
 **WebM, not Ogg**: Safari decodes WebM Opus from 17.0 and Ogg Opus only from
@@ -66,7 +66,7 @@ one platform.
 Each `*.m4a` alongside the matching `*.webm` is the same audio, **losslessly
 re-encoded to ALAC**: `ffmpeg -i menu.webm -c:a alac -sample_fmt s16p -f mp4
 menu.m4a`. `lib/music.ts` picks the container by platform — WebM for web and
-Android, M4A for iOS — and `tests/musicAssets.test.ts` pins that every track
+Android, M4A for iOS — and `tests/tooling/musicAssets.test.ts` pins that every track
 exists in both.
 
 **Why ALAC and not the two candidates that looked cheaper first**, in the

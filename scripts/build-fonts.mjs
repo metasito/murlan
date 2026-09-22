@@ -11,7 +11,7 @@
  *
  * Subsetting runs here rather than in the build so a Replit deploy needs no
  * extra tooling: the output is committed, exactly as assets/sounds/ is, and
- * tests/fontSubset.test.ts fails if the locales grow a character the shipped
+ * tests/tooling/fontSubset.test.ts fails if the locales grow a character the shipped
  * subsets do not carry.
  *
  * harfbuzzjs via subset-font — WASM, no native build step.

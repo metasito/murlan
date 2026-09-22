@@ -6,7 +6,7 @@
 // The split is by measured duration instead, longest file first into whichever
 // shard is currently lightest. `tests/e2e/timings.json` holds the measurements;
 // a file missing from it still gets placed, so a new spec can never silently
-// run nowhere. tests/e2eShardSplit.test.ts pins both properties.
+// run nowhere. tests/tooling/e2eShardSplit.test.ts pins both properties.
 
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";

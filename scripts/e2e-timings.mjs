@@ -3,7 +3,7 @@
 // blob report and the `Browser test report` job puts the six back together.
 //
 // Left to a hand scrape of six job logs it does not get done — the file measured 25
-// of 47 specs for months, and `tests/e2eShardSplit.test.ts` called the resulting
+// of 47 specs for months, and `tests/tooling/e2eShardSplit.test.ts` called the resulting
 // split even because the other 22 shared a constant (#753).
 //
 // Getting a report to feed it, from a CI run whose browser shards ran:

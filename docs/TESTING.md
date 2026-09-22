@@ -13,6 +13,11 @@ blocker documented below rather than glossed over.
 | Web e2e | `npm run test:e2e` | Playwright, chromium — gameplay, reconnect, a tap-target sweep of every screen at three sizes, and a check that no part of the table renders off the side of one | Docker + a built web bundle |
 | Android UI (Maestro) | `maestro test .maestro/*.yaml` | 4 flows | Android SDK + emulator + Maestro, see §5 |
 
+A unit test lives in the folder of what it exercises: `tests/engine/` (rules, deal, scoring,
+match state), `tests/bots/`, `tests/server/`, `tests/ui-rules/` (components and the source scans
+over them) or `tests/tooling/` (CI, e2e harness, scripts). None sits at the top of `tests/`
+(`tests/tooling/repoLayout.test.ts`).
+
 `npm run verify` runs typecheck, `typecheck:strict`, unit/integration, the native suite and lint,
 in that order. It does not
 run `loop:test`: the loop is a separate product, and `verify` is the game's sweep — ci.yml runs
@@ -291,7 +296,7 @@ The variable is read from the installer's own environment, so it has to be
 exported above the pipe. Both device jobs pin the same number for the reason
 this section exists at all: a failure here and a failure in CI have to mean
 the same thing, and Maestro is what decides whether the app rendered. Change
-it in all three places together — `tests/realAppNotExpoGo.test.ts` fails if
+it in all three places together — `tests/tooling/realAppNotExpoGo.test.ts` fails if
 they disagree (#701).
 
 **The app on the emulator.** Expo Go, not a dev build — the whole reason

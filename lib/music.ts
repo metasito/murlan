@@ -13,7 +13,7 @@ import { TRACKS } from "@/lib/musicTracks";
  * lost the loop's gaplessness somewhere in the container (see
  * assets/music/README.md), where ALAC cannot by construction. Metro's
  * platform-specific module resolution keeps the container the current
- * platform doesn't use out of its bundle entirely; tests/musicAssets.test.ts
+ * platform doesn't use out of its bundle entirely; tests/tooling/musicAssets.test.ts
  * pins both files against the tracks on disk.
  */
 export type MusicTrack = keyof typeof TRACKS;

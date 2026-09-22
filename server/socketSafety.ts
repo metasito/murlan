@@ -25,7 +25,7 @@ interface RateWindow {
  *
  * Only ever a *parsed* payload reaches `extra`: the raw packet is
  * attacker-shaped and unbounded. Room codes are the one credential a payload
- * carries, and `server/logger.ts` redacts them — `tests/logRedaction.test.ts`
+ * carries, and `server/logger.ts` redacts them — `tests/server/logRedaction.test.ts`
  * pins that a new one cannot be added without being redacted too.
  */
 function logRefusal(

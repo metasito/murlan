@@ -36,7 +36,7 @@ type TextScope = {
  * background is left out for the same reason in reverse — the background is
  * frequently inherited, gradient-drawn or otherwise not a prop this tree
  * exposes, so a native test cannot answer it generically; that class of
- * defect is `tests/contrast.test.ts`'s job.
+ * defect is `tests/ui-rules/contrast.test.ts`'s job.
  */
 function hasZeroScale(node: TestInstance | null): boolean {
   for (let n = node; n; n = n.parent) {

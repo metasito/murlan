@@ -1,5 +1,5 @@
 // The one place a rate limiter is built — pinned by
-// tests/rateLimiterFactory.test.ts, which fails on any other caller of
+// tests/server/rateLimiterFactory.test.ts, which fails on any other caller of
 // rateLimit() under server/.
 import { rateLimit, type RateLimitExceededEventHandler } from "express-rate-limit";
 import type { Request, RequestHandler } from "express";

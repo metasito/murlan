@@ -10,7 +10,7 @@ import { Rajdhani_700Bold } from "@expo-google-fonts/rajdhani/700Bold";
  *
  * One subpath per weight: each `@expo-google-fonts` root module requires every
  * weight and italic it ships, and Metro cannot drop an asset a reachable module
- * requires. Pinned by tests/assetBarrels.test.ts.
+ * requires. Pinned by tests/tooling/assetBarrels.test.ts.
  *
  * Web resolves lib/fonts.web.ts instead, which imports none of these — the
  * TTFs are 2.1 MB and the browser gets WOFF2 subsets through @font-face.

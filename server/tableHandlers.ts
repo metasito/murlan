@@ -120,7 +120,7 @@ import { setRoomLostHandler } from "./gameOwnership.ts";
 const OK: EventOutcome = { ok: true };
 
 // Addressed to the account rather than to a socket, and each naming its event
-// literally so the outbound scan in `tests/socketEvents.test.ts` can still see
+// literally so the outbound scan in `tests/server/socketEvents.test.ts` can still see
 // what this file sends.
 function gameError(io: SocketServer, userId: string, payload: unknown): void {
   io.to(userRoom(userId)).emit("game:error", payload);
@@ -144,7 +144,7 @@ function roomError(io: SocketServer, userId: string, payload: unknown): void {
  * check against and does its own host check.
  *
  * The one place besides `startMatch` that writes `activeGames`, and both run
- * under a claim — `tests/tableOwnership.test.ts` pins that there is no third.
+ * under a claim — `tests/server/tableOwnership.test.ts` pins that there is no third.
  */
 export async function rehydrateGame(
   roomId: string,

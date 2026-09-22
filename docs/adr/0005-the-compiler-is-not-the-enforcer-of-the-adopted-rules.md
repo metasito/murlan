@@ -25,7 +25,7 @@ would make the claim true rather than correcting it.
 Leave `eslintSuppressionRules` unset, which means leaving `babel.config.js`'s preset options
 alone. The gate against a local suppression stands on ESLint
 semantics — which rules are on is `eslint.config.js`'s to decide, and a comment must not take one
-site out of that — and `tests/reactCompiler.test.ts` derives the compiler's real list by putting
+site out of that — and `tests/ui-rules/reactCompiler.test.ts` derives the compiler's real list by putting
 every `eslint-plugin-react-hooks` rule to the compiler rather than naming any.
 
 ## Consequences
@@ -34,8 +34,8 @@ every `eslint-plugin-react-hooks` rule to the compiler rather than naming any.
   Widening the list would turn a rule that is already refused by two source scans into a
   production performance cliff for the one case that ever slips past them — a worse outcome than
   the lint error those scans already give, and one nobody would see.
-- The prose in `tests/hooksLint.test.ts`, `tests/reactCompiler.test.ts` and `eslint.config.js`
+- The prose in `tests/ui-rules/hooksLint.test.ts`, `tests/ui-rules/reactCompiler.test.ts` and `eslint.config.js`
   gives the ESLint reason for refusing a suppression, not the compiler one.
-- `CHARGED_FOR` in `tests/reactCompiler.test.ts` is measured, so a plugin release that adds the
+- `CHARGED_FOR` in `tests/ui-rules/reactCompiler.test.ts` is measured, so a plugin release that adds the
   three to its default list reds the suite and brings this decision back up rather than passing
   quietly.

@@ -1,6 +1,6 @@
 // tests/integration/teamsOnline.test.ts — the online 2v2 path.
 //
-// tests/teams.test.ts already covers the scoring arithmetic in isolation. What
+// tests/engine/teams.test.ts already covers the scoring arithmetic in isolation. What
 // it cannot reach is the wiring: that `room:start` actually seats partners
 // opposite each other, that a four-human teams table plays to a finish without
 // deadlocking, and that the ranked ladder stays out of it — a teams placement

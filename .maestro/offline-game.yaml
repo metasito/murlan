@@ -23,7 +23,7 @@
 # Performance note: every tapOn that *lands on* the game table pins
 # `waitToSettleTimeoutMs: 500` — which includes the last tap of the menu, since
 # the wait happens after the tap, against the screen it opened.
-# `tests/gameTableTapSettle.test.ts` holds the line. Without it, a first full run took
+# `tests/tooling/gameTableTapSettle.test.ts` holds the line. Without it, a first full run took
 # ~17 minutes and the app fell out of the JS session partway through —
 # Maestro's default "wait for the UI to stop changing" behaviour never
 # resolves against this screen's continuous Reanimated glow/pulse

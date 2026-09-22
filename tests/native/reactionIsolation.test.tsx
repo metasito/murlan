@@ -11,7 +11,7 @@ import { clearReactions, pushReaction } from '@/lib/reactions';
 // card in the hand — twice per reaction. FloatingReactions reads the store
 // itself, so the write commits there and stops.
 //
-// The 2.5 s expiry is the store's, and tests/reactions.test.ts pins it there.
+// The 2.5 s expiry is the store's, and tests/ui-rules/reactions.test.ts pins it there.
 describe('a reaction re-renders the emoji layer and nothing above it', () => {
   afterEach(async () => {
     // Also cancels the pending removal, which would otherwise fire into the

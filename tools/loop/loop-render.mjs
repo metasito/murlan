@@ -532,7 +532,7 @@ export function header({ number, title, size, url, queue }, t) {
  * key list rather than as one more row of content competing with the board.
  *
  * Nothing is offered here that the ticker does not bind — a key bar that lies is worse than no key
- * bar, and `tests/loopRender.test.ts` pins this list against the ticker's own handler.
+ * bar, and `tools/loop/tests/loopRender.test.ts` pins this list against the ticker's own handler.
  */
 export const KEYS = [
   ["e", "expand", "collapse"],

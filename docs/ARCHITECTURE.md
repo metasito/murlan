@@ -65,7 +65,7 @@ lib/gameEngine.ts (offline: called directly)   server/socket.ts (online: handsha
   `app/(online)/game.tsx` (online) are thin adapters — see §6.
 
 - **`lib/` is client code, except for the modules `server/` and `shared/` import.** That set is
-  not a list anyone maintains: `tests/serverLoadable.test.ts` derives it by scanning the
+  not a list anyone maintains: `tests/server/serverLoadable.test.ts` derives it by scanning the
   server's own imports — `import type` included — and loads each under plain Node, so it is
   whatever the imports say it is today. **A module in that set may import only other modules in
   it and third-party packages with no React Native dependency** — everything else in `lib/`
@@ -242,7 +242,7 @@ React Context, one provider per concern:
 |---|---|
 | `AuthContext` | Session user, and the account state machine: login/logout/register, rename, change password, add email, `refreshUser` |
 | `GameContext` | Offline `GameState`, the match score, rematch and exchange-announcement state; calls `lib/gameEngine.ts` directly |
-| `OnlineGameContext` | Online `GameState` as received from the server, plus the room, the turn clock, match/rematch/end-match vote state, disconnected seats and spectator mode, and the socket intents. Screens read it through the six slices in `context/onlineGameHooks.ts`, not directly — `tests/contextSlices.test.ts` pins that |
+| `OnlineGameContext` | Online `GameState` as received from the server, plus the room, the turn clock, match/rematch/end-match vote state, disconnected seats and spectator mode, and the socket intents. Screens read it through the six slices in `context/onlineGameHooks.ts`, not directly — `tests/ui-rules/contextSlices.test.ts` pins that |
 | `SocketContext` | The socket singleton lifecycle, friend presence events, invites |
 | `SettingsContext` | Sound, haptics, motion, and the card back / table felt |
 | `NotificationContext` | Queue-based banner notifications; sits above `SocketContext` — both `SocketContext` and `OnlineGameContext` call `useNotification()` |

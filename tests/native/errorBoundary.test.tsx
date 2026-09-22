@@ -62,7 +62,7 @@ afterAll(() => {
 // The rendering cases below build the stack themselves, which proves the
 // fallback works in that shape but not that the app is in it. The ordering is a
 // property of how app/_layout.tsx is written, so it is checked by reading it —
-// the same approach as tests/socketEvents.test.ts.
+// the same approach as tests/server/socketEvents.test.ts.
 describe('app/_layout.tsx keeps the boundary inside SafeAreaProvider', () => {
   const layout = readFileSync(join(__dirname, '..', '..', 'app', '_layout.tsx'), 'utf8');
   const occurrences = (tag: string) => layout.split(tag).length - 1;

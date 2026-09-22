@@ -8,7 +8,7 @@
 // labelled `rejected` so it is not re-proposed.
 //
 // No React/React Native/expo-* imports here on purpose: this module must be
-// importable by plain `node --test` (tests/achievements.test.ts) with no
+// importable by plain `node --test` (tests/engine/achievements.test.ts) with no
 // database and no app runtime. Only the `TranslationKey` *type* is pulled
 // from lib/i18n.ts — `import type` erases at compile time, so it does not
 // drag in that module's AsyncStorage/expo-localization dependencies.

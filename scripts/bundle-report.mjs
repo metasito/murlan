@@ -174,7 +174,7 @@ function renderMarkdown({ assets, deps }) {
       "`@expo-google-fonts/*` package (one `.ttf` per weight and italic) ships " +
       "the whole package. Both are therefore imported by subpath — " +
       "`@expo/vector-icons/Ionicons`, `@expo-google-fonts/inter/400Regular` — " +
-      "which `tests/assetBarrels.test.ts` pins."
+      "which `tests/tooling/assetBarrels.test.ts` pins."
   );
   lines.push(
     "- `assets/images/icon.png` and `assets/images/splash-icon.png` dominate the " +

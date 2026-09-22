@@ -85,7 +85,7 @@ describe('the landscape Settings pill', () => {
 
   // The word is the same string the pill is already named by, so it must stay
   // hidden from assistive technology: two nodes reading "Settings" is the
-  // defect `tests/a11yOneNode.test.ts` exists to refuse.
+  // defect `tests/ui-rules/a11yOneNode.test.ts` exists to refuse.
   it('leaves the pill a single node named Settings', async () => {
     mockAuthUser = { id: 'u1', username: 'Ana', tutorialSeenAt: null };
     const r = await mount();

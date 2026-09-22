@@ -271,7 +271,7 @@ const styles = StyleSheet.create({
     ...Type.caption,
     // Not caption's own `textMuted`: this sits on a translucent gold chip over
     // the hero gradient, and that composite drops it to 4.45:1, under AA.
-    // `tests/contrast.test.ts` pairs tokens with flat surfaces and cannot see it.
+    // `tests/ui-rules/contrast.test.ts` pairs tokens with flat surfaces and cannot see it.
     color: Colors.textSecondary,
   },
 

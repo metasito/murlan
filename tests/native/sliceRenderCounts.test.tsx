@@ -6,7 +6,7 @@
 //
 // Rendered, not source-read: this is the one property of the split a source
 // scan cannot see — six hooks over one context, or six contexts behind one
-// memo, pass every shape check in `tests/contextSlices.test.ts` and wake
+// memo, pass every shape check in `tests/ui-rules/contextSlices.test.ts` and wake
 // everything. The wide `useOnlineGame()` probe is the control: it reads all
 // six, so it wakes on any of them, and a run where nothing wakes proves
 // nothing.

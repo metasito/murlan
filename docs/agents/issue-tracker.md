@@ -146,7 +146,7 @@ What makes the difference in practice:
 - **Point at code, not at concepts.** `components/GameTable.tsx:827` costs the agent one
   `sed`; "the sound preloading" costs it a search and a guess.
 - **Name the invariant *and* its enforcement.** "`CARD_W` is declared once, and
-  `tests/layoutConstantsPinned.test.ts` source-scans for a second declaration" tells an agent
+  `tests/ui-rules/layoutConstantsPinned.test.ts` source-scans for a second declaration" tells an agent
   both what not to do and what will catch it.
 - **Name the checks in two slots: the loop, and the gate.** `docs/agents/RULES.md` rules 3 to 5
   leave the slow suites to the agent, and an agent judging in the dark reads `loops.md`, hunts
@@ -156,7 +156,7 @@ What makes the difference in practice:
   ```markdown
   ## Checks
 
-  While iterating: `node --test tests/flightPhysics.test.ts`
+  While iterating: `node --test tests/ui-rules/flightPhysics.test.ts`
   Once before pushing: `npm run agent:check`
   Not `npm run test:native`: react-test-renderer never runs flexbox, so it cannot see this.
   ```

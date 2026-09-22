@@ -40,7 +40,7 @@ export const Colors = {
   goldStrong: 'rgba(201,168,76,0.5)',  // active/selected, focus rings
 
   // Text colors
-  // WCAG ratios are enforced by tests/contrast.test.ts against bg, bgCard and felt.
+  // WCAG ratios are enforced by tests/ui-rules/contrast.test.ts against bg, bgCard and felt.
   white:        '#FFFFFF',
   text:         '#F0EAD6',
   textPrimary:  '#FFFFFF',
@@ -88,7 +88,7 @@ export const Colors = {
   // because it also carries `backdrop-filter: blur(6px)`, which React Native
   // has no equivalent for on any platform — without the blur behind it the
   // sheerer fill drops the chip's own label under 4.5:1 on the felt's lit
-  // stop (tests/contrast.test.ts). The extra opacity buys back what the blur
+  // stop (tests/ui-rules/contrast.test.ts). The extra opacity buys back what the blur
   // was doing.
   chipFill:     'rgba(3,14,9,0.72)',
   // A seat is a chip on the cloth, and its own dark disc rather than a patch of
@@ -167,7 +167,7 @@ export const Lantern = {
   // the other. Both must stay black — a shadow scales the light that reached
   // it, so the crosshatch tracks the lamp with nothing moving, and a thread
   // that adds light instead reads loudest on the darkest felt
-  // (tests/feltWeave.test.ts).
+  // (tests/ui-rules/feltWeave.test.ts).
   weaveShade:      'rgba(0,0,0,0.085)',
   weaveShadeCross: 'rgba(0,0,0,0.035)',
   // The pile standing off that weave, where the light rakes across the fibres.
@@ -227,8 +227,8 @@ export const Gradient = {
 // the last is the cloth barely lit.
 //
 // Every alternate is at or below the green's luminance at every stop, so the
-// contrast ratios tests/contrast.test.ts pins against `Colors.felt` are a
-// floor for all four — pinned by tests/cosmetics.test.ts.
+// contrast ratios tests/ui-rules/contrast.test.ts pins against `Colors.felt` are a
+// floor for all four — pinned by tests/ui-rules/cosmetics.test.ts.
 export const FeltGradients = {
   verde:    ['#2E9F62', '#23854F', '#186B41', '#0F4E31', '#093320'],
   blu:      ['#2288C4', '#1C6FA2', '#155780', '#0F3F5E', '#092A3E'],

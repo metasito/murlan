@@ -16,7 +16,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useCallback, useSyncExternalStore } from "react";
 // Relative (not `@/`) on purpose, so `node --test` can load this for
-// tests/i18n.test.ts — docs/agents/loops.md, "Node's TypeScript loader".
+// tests/ui-rules/i18n.test.ts — docs/agents/loops.md, "Node's TypeScript loader".
 // Metro/Expo resolves either form fine at app runtime.
 import {
   DEFAULT_LOCALE,
@@ -59,7 +59,7 @@ function notify() {
 export function detectDeviceLocale(): Locale {
   try {
     // Deferred require, not a static import: keeps this module importable
-    // under plain Node (tests/i18n.test.ts, via `node --test`) without
+    // under plain Node (tests/ui-rules/i18n.test.ts, via `node --test`) without
     // pulling in expo-localization's native binding, which only resolves
     // inside the Expo/RN runtime — and doubles as the try/catch's coverage
     // for "expo-localization unavailable" on top of the lookup itself.
@@ -128,7 +128,7 @@ export function t(key: TranslationKey, params?: TranslationParams): string {
 /**
  * Simple pluralisation: picks `${base}_one` when `count` is 1, otherwise
  * `${base}_other`. Both suffixed keys must exist in every locale catalogue
- * (enforced by tests/i18n.test.ts) and `count` is always available to the
+ * (enforced by tests/ui-rules/i18n.test.ts) and `count` is always available to the
  * template as `{{count}}`.
  */
 function pluralKey(base: string, count: number): TranslationKey {

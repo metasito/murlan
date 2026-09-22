@@ -585,7 +585,7 @@ export function StraightHand({
   // and a drop that read the slot back out of state would use the one from
   // before the move. Shared values rather than refs — a ref touched outside an
   // effect is a React Compiler bailout for the whole file
-  // (`tests/reactCompiler.test.ts`).
+  // (`tests/ui-rules/reactCompiler.test.ts`).
   const held = useSharedValue<string | null>(null);
   const gap = useSharedValue<number | null>(null);
   const fingerX = useSharedValue(0);
@@ -832,7 +832,7 @@ export function StraightHand({
 
   // Built on every render rather than memoised, like `Slider`'s: a hook whose
   // argument writes a shared value is a React Compiler bailout for the whole
-  // file (`tests/reactCompiler.test.ts`), and `GestureDetector` takes a fresh
+  // file (`tests/ui-rules/reactCompiler.test.ts`), and `GestureDetector` takes a fresh
   // gesture cheaply.
   const drag = Gesture.Pan()
     // One finger owns the drag. A second one anywhere would otherwise rewrite
@@ -1092,7 +1092,7 @@ const handStyles = StyleSheet.create({
   // `Layer.table`), so nothing it draws ever reaches the card's own face —
   // only the rim a fan's overlap leaves exposed. `GIVEABLE_HALO_PAD` inset
   // negative, restated as a literal rather than the constant: the stacking
-  // scan (tests/stackingIsStated.test.ts) reads insets off the source text.
+  // scan (tests/ui-rules/stackingIsStated.test.ts) reads insets off the source text.
   //
   // Never a border: a fan overlaps by design, and only the top edge of a
   // bordered card survives it — a run of them joins into one hard line with a

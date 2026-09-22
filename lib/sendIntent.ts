@@ -13,7 +13,7 @@ export const INTENT_ATTEMPTS = 3;
 
 /**
  * Every event the client sends. Anything not listed here has no path to the
- * server: `tests/intentsGoThroughSend.test.ts` refuses a bare emit.
+ * server: `tests/ui-rules/intentsGoThroughSend.test.ts` refuses a bare emit.
  */
 export type IntentEvent =
   | "room:create"

@@ -15,7 +15,7 @@ export const TAP_MS = 120;
  * The app's own hold threshold, and a press comfortably past it.
  *
  * `hand.tsx` keeps `HOLD_MS` module-local, so this is a copy rather than an
- * import — `tests/e2eRealPresses.test.ts` fails if the two ever disagree.
+ * import — `tests/tooling/e2eRealPresses.test.ts` fails if the two ever disagree.
  */
 export const HOLD_MS = 500;
 export const PAST_HOLD_MS = HOLD_MS + 300;

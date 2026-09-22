@@ -4,7 +4,7 @@
 //
 // Every glyph is a literal here rather than a prop the callers pass: the icon
 // subset resolver follows a prop back to its call sites, and a name it cannot
-// resolve ships as a blank box with no error (tests/iconSubset.test.ts).
+// resolve ships as a blank box with no error (tests/tooling/iconSubset.test.ts).
 import React, { useCallback, useEffect, useRef } from "react";
 import {
   View,

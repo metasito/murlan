@@ -31,7 +31,7 @@ a different implementation, not a polyfill:
 
 The portable way to shape a radial is neither: give the **rect** the radii (`2*rx` by
 `2*ry`) and let the gradient keep its default `r="50%"`, which is the inscribed ellipse on
-both. `tests/vignette.test.ts` pins that no radial shapes itself.
+both. `tests/ui-rules/vignette.test.ts` pins that no radial shapes itself.
 
 ## The iOS loop: a CI simulator, or ask for a capture
 
@@ -188,8 +188,8 @@ the output of a scan with nothing to report and the output of a scan that cannot
 are the same empty list.
 
 The convention is already here — about fifty test files carry a `// The floor…` comment.
-`tests/vignette.test.ts`, `tests/native/feltEllipse.test.tsx` and `tests/bundleRoutes.test.ts`
-each plant the defect verbatim; `tests/a11yProps.test.ts` and `tests/e2eSentinels.test.ts` do
+`tests/ui-rules/vignette.test.ts`, `tests/native/feltEllipse.test.tsx` and `tests/tooling/bundleRoutes.test.ts`
+each plant the defect verbatim; `tests/ui-rules/a11yProps.test.ts` and `tests/tooling/e2eSentinels.test.ts` do
 it under names of their own, which is why grepping the phrase undercounts it.
 
 **Which direction it fails in decides whether you find out.** Three scans lied here in one
@@ -207,13 +207,13 @@ it was alarming, so it was caught in a minute by the person who wrote it.
 **The first two both tracked state across a file and could desynchronise.** Matching the shape
 you are after directly — `/(["'`])([\w.]+)\1/g`, the token, not the language around it —
 cannot lose its place. It buys that with a quieter failure of its own: a key named in a
-comment or in an unrelated string reads as live. `tests/e2eSentinels.test.ts` blanks comments
+comment or in an unrelated string reads as live. `tests/tooling/e2eSentinels.test.ts` blanks comments
 first for exactly that reason. Know which of the two you are paying for.
 
 **Why this is a rule and not a check.** Two checks were considered. One keyed on the comment
 would flag 34 of the 36 files that scan the tree and assert an empty result, and be satisfied
 by adding the comment. The allow-list-with-a-reason this repo uses for its other semantic
-properties (`tests/touchTargets.test.ts`, `tests/i18n.test.ts`'s `CONSTRUCTED`) does fit, and
+properties (`tests/ui-rules/touchTargets.test.ts`, `tests/ui-rules/i18n.test.ts`'s `CONSTRUCTED`) does fit, and
 is worth building if this recurs — it was not built here because two of the three failures
 above were never committed checks at all. One was an ad-hoc grep in an issue body and one was
 a draft measure on a branch, so no repo-level gate could have seen either. The enforcement
@@ -263,7 +263,7 @@ Yielding is the whole distinction, and it is why `await waitFor(…)` is safe: i
 entering its own scope. Adjacency has nothing to do with it — any run of synchronous statements
 between the two still pairs. **And `unmount` and `rerender` are `act` calls under another name**
 (`dist/render.js`), so `await view.unmount()` closes the trap just as `await act(…)` does.
-`tests/nativeActPairing.test.ts` refuses the pairing; every call site it reaches is sound.
+`tests/tooling/nativeActPairing.test.ts` refuses the pairing; every call site it reaches is sound.
 
 **Do not reach into `.props` to drive a control instead.** `getByTestId` returns the *host*
 node. On a `Pressable` that host is the `View` carrying the responder props, and
@@ -323,7 +323,7 @@ platform-aware helpers, and why the suites that do need the renderer are named `
 under jest, where Metro resolves the package instead.
 
 This is the only place the constraint is written down. Every file it governs carries a one-line
-pointer here instead of its own restatement, and `tests/loaderConstraintIsSingleSourced.test.ts`
+pointer here instead of its own restatement, and `tests/tooling/loaderConstraintIsSingleSourced.test.ts`
 holds the count at one — a copy corrected in one file leaves the rest quietly stale, and the stale
 one is whichever the next reader happens to open.
 
@@ -443,7 +443,7 @@ process that is still serving as a corpse.
 | A component's props or tree | `npx jest tests/native/<file>` | render, memo, hook order | ~8s |
 | Anything with a **layout** (flex, absolute, transform) | Playwright | which side of the screen it is on | ~35s |
 | Anything **visual** (colour, gradient, shadow, size) | the parity harness below | pixels vs the prototype | ~40s |
-| Tokens, contrast, roles | `node --test tests/contrast.test.ts tests/tokenRoles.test.ts tests/cosmetics.test.ts` | AA floors | ~1s |
+| Tokens, contrast, roles | `node --test tests/ui-rules/contrast.test.ts tests/ui-rules/tokenRoles.test.ts tests/ui-rules/cosmetics.test.ts` | AA floors | ~1s |
 | The server, the socket protocol, auth or storage | `tests/integration/` — see below, it needs a database | the routes and handlers end to end | ~10s a file |
 | Anything the app must **boot and stay drivable through on iOS** | `.github/workflows/ios.yml`, weekly or by hand — red on `exchange-phase` at the 2026-09-21 dispatch (#1158); #1094 owns the trigger | a crash, a screen that never renders, a control the flows tap going missing — on a real simulator | 10–15 min over three runs on 2026-08-31, none of which finished the flow; run 33899179508 ran all four flows to completion (one, offline-game, failed on its own assertion, unrelated to #55) inside ~13 min of flow time, comfortably inside the job's 100 min ceiling |
 | **The ticket loop** (`tools/loop/`) | `npm run loop:test` | the supervisor, the gate, the picker, the workspace tools | ~40s, 684 |
@@ -463,7 +463,7 @@ likely to be mid-edit on when a peer's run triggers them.
 `ci.yml`'s `scope` job decides which side runs. A diff confined to `tools/loop/` sets `app=false`
 and `harness=true`; anything else sets `app=true`; the protocol files (`docs/agents/`,
 `.claude/commands/`, `CLAUDE.md`) set **both**, because both suites read them —
-`tests/rulesAreSingleSourced.test.ts` on the game's side, `tools/loop/tests/loopDocsAreExecutable.test.ts`
+`tests/tooling/rulesAreSingleSourced.test.ts` on the game's side, `tools/loop/tests/loopDocsAreExecutable.test.ts`
 on the loop's. The harness job runs `npm run typecheck` and `npx eslint tools/loop` as well as the
 suite, since on a loop-only change the game's jobs that would otherwise do that are skipped.
 
@@ -474,9 +474,9 @@ by reporting a missing file rather than a wrong answer. `tools/loop/package.json
 scripts for that reason; what it is there for is `"type": "module"`, which stops Node reparsing
 `land.ts` and `ciVerdict.ts` on every supervisor start.
 
-**Move by subject, not by filename.** `tests/contextSlices.test.ts` imports `scripts/contextSurface.mjs`
+**Move by subject, not by filename.** `tests/ui-rules/contextSlices.test.ts` imports `scripts/contextSurface.mjs`
 and reads like harness tooling; what it asserts is that the game's React contexts stay a partition,
-so it stays in the game's suite and so does the script it drives. `tests/rootScanRace.test.ts`
+so it stays in the game's suite and so does the script it drives. `tests/tooling/rootScanRace.test.ts`
 scans every test file in the repository, the game's included, so it stays there too — and
 `scripts/lib/entry.mjs` is shared by twelve game scripts as well as the loop, which is why it did
 not move either.
@@ -647,7 +647,7 @@ Every port this repo's local tooling binds — including the local-substitute pa
 | --- | --- | --- |
 | `5000` | The Express server (`PORT`) | `server/index.ts`, `.replit` (`[[ports]]` localPort/externalPort, `[env] PORT`, `waitForPort`), `package.json` (`expo:dev`, `expo:dev:clean`) |
 | `8081` | Metro (`npx expo start` / `npm start`) | `scripts/build.js`, `.replit` |
-| `5561`, `5562`, `5571`, `5581` | Server processes an integration test spawns beside its in-process one | a `PORT`/`PORTS` constant in one `tests/integration/` file each, pinned by `tests/integrationPorts.test.ts` |
+| `5561`, `5562`, `5571`, `5581` | Server processes an integration test spawns beside its in-process one | a `PORT`/`PORTS` constant in one `tests/integration/` file each, pinned by `tests/tooling/integrationPorts.test.ts` |
 | `5199`+ | Playwright's e2e webServer (`E2E_PORT`) — the base, and the first free port above it when a neighbour holds it | chosen by `scripts/e2ePort.mjs`, used by `tests/e2e/playwright.config.ts` and `scripts/e2e-server.mjs`; a leftover is freed by `tools/loop/reap.mjs` |
 | `55432`+ | The dev-stack's disposable Postgres (`MURLAN_DEV_PG_PORT`) — the base, and the first port above it the Docker daemon will accept when something already holds it. Ask `dev-stack env` rather than assuming 55432 | `murlan-dev-pg` container — `scripts/dev-stack.mjs`, `scripts/devStackPort.mjs`, `scripts/e2e-server.mjs` |
 | `55433` | The verify-only Postgres substituted for CI's database | `murlan-verify-pg` container — freed by `tools/loop/reap.mjs` |

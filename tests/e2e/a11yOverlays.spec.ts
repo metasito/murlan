@@ -149,7 +149,7 @@ test("the exchange leaves reachable exactly the cards the rules allow", async ({
 // The table is built from fixed boxes (components/cardFaceModel.ts CARD_W /
 // CARD_H) while a text setting scales `fontSize` and leaves `lineHeight`,
 // `width` and `height` alone, so every Text inside it declares
-// maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX}. tests/fontScaling.test.ts pins
+// maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX}. tests/ui-rules/fontScaling.test.ts pins
 // that the cap is declared; whether the cap is *enough* is a question about
 // glyph metrics inside a card that clips (CardView styles.card is
 // `overflow: hidden`), which only a real text engine can answer.

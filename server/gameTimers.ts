@@ -20,7 +20,7 @@ export const botTimers = new Map<string, ReturnType<typeof setTimeout>>();
  * body only reaches the modules that were *not* already in the static graph.
  * Which ones those are is an accident of who imports whom, and it changes
  * silently when anyone adds an import anywhere in `server/`.
- * Pinned by `tests/timerEnvIsLive.test.ts`.
+ * Pinned by `tests/tooling/timerEnvIsLive.test.ts`.
  */
 function timeoutFromEnv(name: string, defaultMs: number): number {
   const raw = testOnlyEnv(name);

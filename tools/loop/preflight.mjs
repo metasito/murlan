@@ -107,7 +107,7 @@ export function lockDrift(packageJson, packageLock, installedVersions) {
  * for any dependency whose own `exports` map omits it (helmet, drizzle-orm, ...), and has no
  * entry point at all to resolve for a types-only package (`@types/express`, ...) — both are
  * real dependencies of this repo, so that route drops real installs as "missing" rather than
- * reading them. See tests/handBuiltNodeModulesPaths.test.ts's IGNORE_LIST for this file.
+ * reading them. See tests/tooling/handBuiltNodeModulesPaths.test.ts's IGNORE_LIST for this file.
  */
 function installedVersion(root, name) {
   try {

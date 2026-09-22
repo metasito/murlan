@@ -15,7 +15,7 @@ export class ApiError extends Error {
 
   // Fields assigned rather than declared as constructor parameters: Node's
   // type stripping refuses a parameter property, and this file is read by the
-  // node test runner (tests/renameCopy.test.ts).
+  // node test runner (tests/ui-rules/renameCopy.test.ts).
   constructor(status: number, payload: ServerPayload | null, body: string) {
     super(`${status}: ${body}`);
     this.name = "ApiError";

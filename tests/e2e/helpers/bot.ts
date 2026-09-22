@@ -14,7 +14,7 @@
 // nothing beats the table.
 
 import type { Locator, Page } from "@playwright/test";
-// Extensioned because `tests/botProgress.test.ts` loads this file through Node's ESM
+// Extensioned because `tests/tooling/botProgress.test.ts` loads this file through Node's ESM
 // resolver, which will not guess one. Playwright accepts it either way.
 import { GIOCA_VALID_LABEL, YOUR_TURN_PREFIX } from "./labels.ts";
 import { dismissStartAnnouncement } from "./navigation.ts";
@@ -127,7 +127,7 @@ export class SearchTimeoutError extends StuckError {}
 const CARD_CLICK_TIMEOUT_MS = 4_000;
 
 /**
- * `tests/botSearchTimeout.test.ts` derives the real worst case from
+ * `tests/bots/botSearchTimeout.test.ts` derives the real worst case from
  * `dealCards`' own output and fails if this stops being comfortably above
  * it. `DriveOptions.maxCombosTried` overrides it.
  */

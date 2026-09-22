@@ -1,7 +1,7 @@
 // tests/native/renameFailureCopy.test.tsx — every way a rename can be refused
 // reaches the player as a different sentence.
 //
-// `tests/renameCopy.test.ts` proves the catalogue holds different strings.
+// `tests/ui-rules/renameCopy.test.ts` proves the catalogue holds different strings.
 // This proves the code path picks the right one, which is a separate claim: a
 // `serverErrorMessage` that fell through to its fallback would leave that test
 // green and tell the player "try again" for all four refusals. Copy that

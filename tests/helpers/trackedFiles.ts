@@ -21,7 +21,7 @@ export function trackedFiles(repoRoot: string, ...pathspec: string[]): string[] 
  *
  * Not `readdirSync(repoRoot)`: git's index cannot hold a file nobody added, so
  * a listing taken from it cannot name the scratch tsconfigs
- * `tests/checkStrictIndexed.test.ts` writes and deletes in the repo root —
+ * `tests/tooling/checkStrictIndexed.test.ts` writes and deletes in the repo root —
  * where a directory listing races them under `node --test`'s parallel files.
  */
 export function trackedRootFiles(repoRoot: string): string[] {

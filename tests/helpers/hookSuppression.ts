@@ -1,7 +1,7 @@
 // tests/helpers/hookSuppression.ts — reading TS source for ESLint directive
 // comments, and for the parse health that finding them depends on. Shared by the
-// gates that refuse a react-hooks suppression: `tests/hooksLint.test.ts` and
-// `tests/reactCompiler.test.ts`.
+// gates that refuse a react-hooks suppression: `tests/ui-rules/hooksLint.test.ts` and
+// `tests/ui-rules/reactCompiler.test.ts`.
 //
 // Which rules count is *not* here: the two gates cover deliberately different
 // breadths, and that is each caller's to state.

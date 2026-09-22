@@ -103,7 +103,7 @@ export function getLattice(w: number, h: number, spacing: number): string {
 /**
  * A touch target's floor is physical size — never `TOUCH_TARGET_MIN * s`.
  * The control rail's knobs are sized by it (`knobSize`, components/
- * GameTable.tsx), pinned by tests/touchTargets.test.ts.
+ * GameTable.tsx), pinned by tests/ui-rules/touchTargets.test.ts.
  */
 export function physicalTouchTarget(s: number): number {
   return Math.max(TOUCH_TARGET_MIN, TOUCH_TARGET_MIN * s);

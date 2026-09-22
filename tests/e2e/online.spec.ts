@@ -171,7 +171,7 @@ test("online — a room can be created on a phone in portrait", async ({ page, b
 // else — every control behind it stays focusable and announced. Only a real
 // browser can say whether the <Modal> that replaced it carries the three
 // things a Modal is here for, so the source scan in
-// tests/blockingOverlays.test.ts is not enough on its own (#474).
+// tests/ui-rules/blockingOverlays.test.ts is not enough on its own (#474).
 test("online — the join sheet is a modal dialog with a name, and Escape closes it", async ({
   page,
   baseURL,

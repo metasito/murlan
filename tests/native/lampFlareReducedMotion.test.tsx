@@ -1,6 +1,6 @@
 // tests/native/lampFlareReducedMotion.test.tsx — "Reduced motion lands at
 // exactly zero" (#765), pinned end to end rather than trusted from the
-// generic ungated-animation-block scan (tests/reducedMotion.test.ts) alone:
+// generic ungated-animation-block scan (tests/ui-rules/reducedMotion.test.ts) alone:
 // that scan can only see that `Flare`/`Spark`/`LampLift` each carry a
 // reduceMotion guard in their own source, not that a bomb landing under the
 // setting a player actually chose never bumps the trigger those guards read.

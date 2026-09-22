@@ -8,7 +8,7 @@
  * silently missing real names (a ternary/table literal the first version
  * never looked for; `"pause"`, reached only through a plain function
  * parameter, in the second). So there is one resolver, `resolveValues`, and
- * both what ships (`iconNames`/`iconCharacters`) and what tests/iconSubset.test.ts
+ * both what ships (`iconNames`/`iconCharacters`) and what tests/tooling/iconSubset.test.ts
  * asserts (`analyzeIcons(...).unresolved`) read the same pass over the same
  * AST — they cannot disagree with each other the way two independently
  * written regexes did.
@@ -42,7 +42,7 @@ const require = createRequire(import.meta.url);
  * assets (`"glyphmaps"` or `"Fonts"`) — resolved through Node rather than
  * joined onto a repo root, so a git worktree (no `node_modules` of its own)
  * finds the same package a plain checkout does. Shared by
- * scripts/build-icon-fonts.mjs and tests/iconSubset.test.ts so the vendor
+ * scripts/build-icon-fonts.mjs and tests/tooling/iconSubset.test.ts so the vendor
  * path is written once, not three times.
  */
 export function vectorIconsVendorDir(kind) {

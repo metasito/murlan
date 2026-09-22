@@ -1,7 +1,7 @@
 // tests/soak/invariants.ts — what the soak believes, stated so it can be tested.
 //
 // A soak is only worth its runtime if its oracle can fail. These are pure
-// functions over the views the clients hold, so `tests/soakInvariants.test.ts`
+// functions over the views the clients hold, so `tests/tooling/soakInvariants.test.ts`
 // can hand them a table that is wrong on purpose and watch each one fire.
 //
 // The oracle is *agreement*, not a fixture: no expected value is written down

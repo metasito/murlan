@@ -45,7 +45,7 @@ import {
   type OfflinePlayerSetup,
   type SimulateMatchResult,
 } from "../tests/helpers/offlineMatch.ts";
-import { mulberry32 } from "../tests/helpers.ts";
+import { mulberry32 } from "../tests/engine/helpers.ts";
 
 interface Options {
   seed: number;
@@ -261,7 +261,7 @@ function measurePersonalityVsDefault(n: number, seed: number): PersonalityRow[] 
 // those "avoidable" decision points are asked twice — once passing the
 // exchange fact (today's behaviour) and once withholding it (pre-#907's —
 // that parameter's own purpose is exactly this toggle, per
-// `tests/botExchangeAwareness.test.ts`) — since a lead with no safe
+// `tests/bots/botExchangeAwareness.test.ts`) — since a lead with no safe
 // alternative is not a case either policy could have done better on.
 
 interface BlunderCounts {

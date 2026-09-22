@@ -1,6 +1,6 @@
 // Leaves a string in a bundle built with any test-only flag and nothing in one built without:
 // the flags are inlined at build time and the minifier drops the dead branch.
-// `scripts/e2eBuildMark.mjs` reads the built output for it; `tests/e2eBuildMark.test.ts` fails
+// `scripts/e2eBuildMark.mjs` reads the built output for it; `tests/tooling/e2eBuildMark.test.ts` fails
 // if the app reads a flag this condition does not name.
 if (
   process.env.EXPO_PUBLIC_E2E_FAST === '1' ||

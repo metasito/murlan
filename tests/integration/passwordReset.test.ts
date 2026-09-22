@@ -237,7 +237,7 @@ describe("password reset", { skip: hasDatabase() ? false : skipMessage() }, () =
   });
 
   // A smoke test, not the guarantee — timing is noise-bound on CI, so the
-  // deterministic one is tests/authReplyBeforeMail.test.ts's AST check that
+  // deterministic one is tests/server/authReplyBeforeMail.test.ts's AST check that
   // the reply's own source position precedes the mint and the send (#897).
   // What this still catches is the same regression class in a way an AST
   // scan cannot: the mail send itself leaking into the response path, which
