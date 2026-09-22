@@ -44,3 +44,16 @@ term's meaning, and useless anywhere the term is not.
   `lib/device/haptics.ts` preloads its key at module init, and a single entry point would fire all five
   setters whenever any one value changed. The pair that must move together — music enabled and
   music volume — is already inside one effect, with the reason written above it.
+
+## Working with this vocabulary
+
+- **Name a domain concept with the repo's own word** — in an issue title, a test name, a
+  hypothesis. A synonym for something the code already names starts a second vocabulary.
+- **This file grows one term at a time**, as each is resolved; a term it does not carry yet is
+  not a gap to fill upfront.
+- **Say so when a change contradicts an ADR**, rather than quietly overriding it:
+
+  > _Contradicts ADR-0002 (a play leaves the seat it was thrown from), but worth reopening
+  > because…_
+
+- `docs/adr/README.md` indexes the ADRs a term's design cites.

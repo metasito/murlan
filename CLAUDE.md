@@ -21,6 +21,8 @@ This file holds only what reading the code cannot tell you. Stack, layout and ga
   UI-component invariants, the design system.
 - **Before touching anything under `server/`** — `server/CLAUDE.md`: the production contract,
   boot env, schema, and the server invariants.
+- **Before naming or arguing about a domain term** — `CONTEXT.md`: the glossary, what each term
+  means here and where its design lives.
 
 ## Invariants — each is a bug that shipped
 
@@ -32,7 +34,8 @@ Verify against source before changing any.
   (`server/game/gameTurn.ts`) and the offline table (`context/GameContext.tsx`) both. It once
   landed with only the server calling it, every check green.
 - **Before changing a game rule** — it lives in `lib/game/gameEngine.ts`, specified by
-  `docs/GAME-RULES.md`; change it only via a decision recorded in `docs/BRIEF.md` §3.1.
+  `docs/GAME-RULES.md`; change it only via a decision recorded in `docs/GAME-RULES.md` §
+  Decisions.
 - **No self-defeating safeguards.** A check that exempts what it checks, a ratchet that loosens
   itself, a suspend knob with no floor, a `--yes` baked into a destructive script — each reports
   green by not looking. A safeguard that can be satisfied without the guarded thing being true is
