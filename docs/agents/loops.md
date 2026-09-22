@@ -38,10 +38,10 @@ both. `tests/ui-rules/vignette.test.ts` pins that no radial shapes itself.
 `.github/workflows/ios.yml` builds this app and drives both flows on a real iOS Simulator, on
 a free `macos-latest` GitHub runner (#205) — the same flows `maestro.yml` runs on Android,
 with the emulator-only failure classes (#185, #186) gone because a Simulator is a process on
-the host rather than a virtualised device. **It runs weekly and on demand** — `schedule:` plus
-`workflow_dispatch:`, no `pull_request` trigger. It has been red on every run since early
-September — iOS on #1158, Android on #1156; #1094 owns the trigger, and `pull_request` returns only after two consecutive green runs on
-`main`. `gh run list --workflow=ios.yml` is its current status, not this paragraph.
+the host rather than a virtualised device. **Both run on their weekly schedule only**: no ticket
+dispatches or reruns them, and no Definition of done asks for one. #1199 owns making them green
+and fast, and its branch is the only one `tools/loop/guard-bash.mjs` lets dispatch them.
+`gh run list --workflow=ios.yml` is their current status, not this paragraph.
 
 That job proves the flows still run and the app still renders *something* on device — it does
 not replace looking at the device. A rendering defect like #209 needs a screenshot regardless:

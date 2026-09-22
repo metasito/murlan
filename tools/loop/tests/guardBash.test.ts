@@ -39,7 +39,7 @@ const guard = (cmd: string) => check(cmd, device, repo);
 const ADD = /pathspec/;
 const DISCARD = /Edit tool/;
 const FORCE_DELETE = /worktrees:remove/;
-const DEVICE = /MAESTRO_EVIDENCE_READ=1 <your command>/;
+const DEVICE = /weekly schedule only/;
 const UNREADABLE = /literal id/;
 const MERGE = /not yours to merge/;
 
@@ -109,6 +109,12 @@ const BLOCKED: [string, RegExp][] = [
   ["gh api -X POST repos/o/r/Actions/Workflows/Maestro.yml/Dispatches", DEVICE],
   ["echo MAESTRO_EVIDENCE_READ=1; gh workflow run ios.yml", DEVICE],
   ["gh workflow run ios.yml # MAESTRO_EVIDENCE_READ=1", DEVICE],
+  ["MAESTRO_EVIDENCE_READ=1 gh workflow run ios.yml --ref agent/353-x", DEVICE],
+  ["MAESTRO_EVIDENCE_READ=1 gh api -X POST repos/o/r/actions/workflows/ios.yml/dispatches", DEVICE],
+  ["gh workflow run ios.yml --ref main", DEVICE],
+  ["gh workflow run ios.yml --ref agent/11990-x", DEVICE],
+  ["gh workflow run ios.yml --ref agent/1199", DEVICE],
+  ["gh api -X POST repos/o/r/actions/workflows/ios.yml/dispatches -f ref=agent/1199-x", DEVICE],
   ["gh run rerun 33428375221 --failed", DEVICE],
   ["gh -R o/r run rerun 33428375221", DEVICE],
   ["gh api -X POST repos/o/r/actions/runs/33428375221/rerun", DEVICE],
@@ -208,9 +214,9 @@ describe("the bash guard allows correct usage", () => {
     "gh issue comment 5 --body 'do not use git add -A here; or rm -rf .worktrees'",
     "echo 'find / is slow' > note.txt",
     "git add -- a.ts 2>&1 | tail -3",
-    "MAESTRO_EVIDENCE_READ=1 gh workflow run ios.yml --ref agent/353-x",
-    "MAESTRO_EVIDENCE_READ=1 gh run rerun 33428375221 --failed",
-    "MAESTRO_EVIDENCE_READ=1 gh api -X POST repos/o/r/actions/workflows/ios.yml/dispatches",
+    "gh workflow run ios.yml --ref agent/1199-device-ci",
+    "gh workflow run maestro.yml --ref=agent/1199-device-ci -f force-upload-debug=true",
+    "gh -R o/r workflow run ios.yml -r agent/1199-device-ci",
     "gh run download 33428373840 -n maestro-debug-ios -D /tmp/art",
     "gh run view 33428373840 --json jobs",
     "gh workflow run ci.yml --ref main",
@@ -235,7 +241,7 @@ describe("a rerun is gated on the workflow it would re-dispatch, not on being a 
   test("blocks a rerun of a device run", () => {
     const message = check("gh run rerun 33428375221 --failed", asWorkflow("iOS UI (Maestro)"));
     assert.ok(message, "expected a rerun of a Maestro run to be blocked");
-    assert.match(String(message), /MAESTRO_EVIDENCE_READ=1/);
+    assert.match(String(message), DEVICE);
   });
 
   test("blocks a rerun of the Android device run", () => {
@@ -246,11 +252,8 @@ describe("a rerun is gated on the workflow it would re-dispatch, not on being a 
     assert.equal(check("gh run rerun 33495876524 --failed", asWorkflow("CI")), null);
   });
 
-  test("allows a rerun the marker acknowledges", () => {
-    assert.equal(
-      check("MAESTRO_EVIDENCE_READ=1 gh run rerun 33428375221", asWorkflow("iOS UI (Maestro)")),
-      null
-    );
+  test("blocks a device rerun even with the old marker", () => {
+    assert.ok(check("MAESTRO_EVIDENCE_READ=1 gh run rerun 33428375221", asWorkflow("iOS UI (Maestro)")));
   });
 
   test("allows a rerun whose workflow cannot be resolved", () => {
@@ -263,7 +266,7 @@ describe("a rerun is gated on the workflow it would re-dispatch, not on being a 
   // it can still change.
   for (const [what, cmd] of [
     ["a command that reruns nothing", "gh run view 33428373840 --json jobs"],
-    ["a rerun the marker already allows", "MAESTRO_EVIDENCE_READ=1 gh run rerun 33428375221"],
+    ["a device dispatch from its owning ticket", "gh workflow run ios.yml --ref agent/1199-x"],
   ]) {
     test(`does not ask about ${what}`, () => {
       let asked = 0;
@@ -337,8 +340,8 @@ describe("a rerun is read as its own command, with its own arguments", () => {
     });
   }
 
-  test("the marker still clears a rerun it cannot identify", () => {
-    assert.equal(check('MAESTRO_EVIDENCE_READ=1 gh run rerun "$RUN" --failed', ci), null);
+  test("the old marker does not clear a rerun it cannot identify", () => {
+    assert.match(String(check('MAESTRO_EVIDENCE_READ=1 gh run rerun "$RUN" --failed', ci)), /literal id/);
   });
 });
 
