@@ -248,6 +248,12 @@ jobs:
       #
       # `MAESTRO_APP_ID` is what tells the flows they are driving the app
       # itself: given one, they skip the Expo Go launch dance entirely.
+      - name: Probe memory and CPU before the flows
+        run: |
+          memory_pressure | tail -1
+          top -l 2 -o cpu -n 10 -stats pid,command,cpu,mem | tail -11
+          top -l 1 -o mem -n 8 -stats pid,command,cpu,mem | tail -9
+
       - name: Run the flows
         env:
           # Maestro installs its own XCUITest runner onto the simulator before
