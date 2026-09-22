@@ -326,7 +326,7 @@ export const HEADS_UP_HAND = 14;
  * elimination, so 14 cards go to each (28 of 54) and the remaining 26 are
  * left face down and unused for the manche. It is the four-player hand size,
  * which is what makes a duel play like the game rather than like a
- * bomb-heavy variant of it (docs/GAME-RULES.md §3, decided in `docs/BRIEF.md` §3.1
+ * bomb-heavy variant of it (docs/GAME-RULES.md §3, decided in `docs/GAME-RULES.md` § Decisions
  * after docs/research/2026-08-21-card-dealing-variable-player-count.md).
  */
 export function dealCards(
@@ -1416,7 +1416,7 @@ export function nextDealFirstSeat(firstSeat: number, playerCount: number): numbe
 }
 
 /**
- * The seat the *next deal* starts from — `docs/BRIEF.md` §3.1's "Rotating
+ * The seat the *next deal* starts from — `docs/GAME-RULES.md` § Decisions's "Rotating
  * the deal" decision: a finished match resets to seat 0, an unfinished one
  * rotates one seat further. `matchOver` is the state *before* this deal —
  * the just-ended manche's own verdict, true when it was also the match's
@@ -1506,7 +1506,6 @@ export function initializeGame(
  */
 export const MATCH_TARGETS: readonly number[] = [21, 31, 41, 51];
 
-/** One turn clock online and offline, `docs/BRIEF.md` §3.1. */
 export const TURN_TIMEOUT_MS = 30_000;
 
 /**

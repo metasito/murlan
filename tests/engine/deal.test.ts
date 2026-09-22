@@ -180,7 +180,7 @@ describe("the deal at 2 players — 14 each, 26 undealt", () => {
   });
 });
 
-// #806: the deal moved from 21 to 14 each at two seats (docs/BRIEF.md,
+// #806: the deal moved from 21 to 14 each at two seats (docs/GAME-RULES.md § Decisions,
 // 2026-08-31) and left a stale "12" behind in docs/GAME-RULES.md §4, next to a
 // correct "26" three lines up in §3 — a number in a spec that disagrees with
 // itself is the kind of thing that gets read once and believed. This reads
@@ -214,7 +214,7 @@ describe("docs/GAME-RULES.md's undealt-card figure agrees with dealCards's own a
 // a different deal.
 //
 // `dealFirstSeatFor` (`lib/game/gameEngine.ts`) is now the one place
-// `docs/BRIEF.md` §3.1's "Rotating the deal" decision — reset a *new* match
+// `docs/GAME-RULES.md` § Decisions's "Rotating the deal" decision — reset a *new* match
 // to seat 0, rotate *within* one — is decided; every site that used to
 // re-derive it now calls that instead. The wiring test below pins that
 // `nextDealFirstSeat` itself is called from nowhere but `dealFirstSeatFor`'s

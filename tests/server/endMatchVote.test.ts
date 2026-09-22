@@ -241,7 +241,7 @@ describe("the end-match vote, offered only after a vacancy, decided by unanimity
   });
 });
 
-describe("a match ended by the vote is never rematched (docs/BRIEF.md 3.1)", () => {
+describe("a match ended by the vote is never rematched (docs/GAME-RULES.md § Decisions)", () => {
   function partlyRanked(): GameState {
     const state = midHandOneVacated();
     // Two of the four seats finished before the table agreed to stop.

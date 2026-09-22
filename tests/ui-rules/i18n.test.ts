@@ -416,7 +416,7 @@ describe("no empty translations", () => {
   }
 });
 
-// #806: the two-player deal moved from 21 each to 14 each (docs/BRIEF.md,
+// #806: the two-player deal moved from 21 each to 14 each (docs/GAME-RULES.md § Decisions,
 // 2026-08-31), and the in-app FAQ — "rules.faq.a15", read by a real player,
 // in all three locales — still said "21 cards each — 12 stay face down" long
 // after docs/GAME-RULES.md itself was corrected. Deriving the expected numbers

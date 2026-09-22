@@ -184,7 +184,7 @@ describe("restoredMatchOver (rehydrating a match after a restart)", () => {
   });
 
   test("a vacated partner's frozen points still count towards the pair", () => {
-    // docs/BRIEF.md 3.1: the pair keeps what the departed partner won, so a2's
+    // docs/GAME-RULES.md § Decisions: the pair keeps what the departed partner won, so a2's
     // 11 points ride on the seat's own key and carry team A over 21.
     const withVacancy = teamKeyMap(
       { 0: "a1", 1: "b1", 3: "b2" },
