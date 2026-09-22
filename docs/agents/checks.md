@@ -5,6 +5,13 @@ that pass every check and still ship broken. Read this before a rendering change
 green loop has already lied to you. Rules live in `docs/agents/RULES.md`; this file is the *why*
 and the *gotcha*, not a restatement of either.
 
+## Shell
+
+The shell is **pwsh 7** (`$PSVersionTable.PSVersion` → 7.6.6, `[Console]::OutputEncoding.WebName`
+→ utf-8, both verified on the machine this runs on): UTF-8 by default, `&&`/`||` work, `$env:NAME`
+sets a variable. A multi-line GitHub body still goes through `--body-file`, because the problem is
+quoting, not encoding. Git Bash is available for POSIX scripts.
+
 ## Pick the loop by what you changed
 
 | You changed | Run | Catches | Needs | Cost |

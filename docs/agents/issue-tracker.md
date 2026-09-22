@@ -33,8 +33,7 @@ the vocabulary, the recipes, and how to write a ticket.
 
 ## Recipes
 
-Every multi-line body goes through `--body-file`: an inline `--body` carrying backticks is
-corrupted by PowerShell.
+Every multi-line body goes through `--body-file` (the shell contract, `docs/agents/checks.md`).
 
 ```sh
 # Read one issue: rule 25's command. Add `labels` to --json when they matter.

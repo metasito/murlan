@@ -368,8 +368,8 @@ Phase D's LAND continues here; a process starts at E only when resuming one.
    mark it ready: the supervisor does, once CI is green on a head a `VERDICT: LAND` covers.
 
    The body says what changed, how you know, which Definition-of-done boxes are closed, and
-   `Closes #<n>` (rule 13). Write the file with the Write tool or a bash heredoc, never
-   PowerShell's `Set-Content`.
+   `Closes #<n>` (rule 13). Write the file with the Write tool or a bash heredoc — the shell
+   contract (`docs/agents/checks.md`) covers why not an inline `--body`.
 
 CI and the merge are `tools/loop/queue-loop.mjs`'s. A red CI run comes back as a fix round at phase
 C, with the log in a `CI-RED` comment and in `.loop-logs/ci-<n>.log`.
