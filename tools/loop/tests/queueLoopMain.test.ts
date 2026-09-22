@@ -5,7 +5,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import {
   parkAsked,
@@ -20,7 +20,9 @@ import {
   removeWorktree,
   MAX_HANDOFFS,
   USD_BY_SIZE,
+  WAIT,
 } from "../queue-loop.mjs";
+import { readLine } from "../loop-stream.mjs";
 import { parkReasonOf, ticketTally } from "../loop-logs.mjs";
 import { PLAIN } from "../loop-render.mjs";
 
@@ -1528,5 +1530,81 @@ describe("a ticket's tally comes from the ledger, not from memory", () => {
       }),
     );
     assert.deepEqual(cwds, [".worktrees/agent-42"]);
+  });
+});
+
+describe("a session the API failed", () => {
+  const fixture = readFileSync(path.join(import.meta.dirname, "fixtures", "api-529.jsonl"), "utf8").trim().split("\n");
+  const overloaded = fixture.map(readLine).find((f: any) => f?.kind === "result");
+  const died = (result: object | null) => async () =>
+    ({ status: 1, blocked: false, result, ms: 1, log: "l", phase: "E", declared: null });
+  const ticket = { skill: "implement", number: 42, title: "t", size: "size:S", phase: "E", queue: null };
+  const book = () => ({ totals: { tickets: 0, landed: 0, parked: 0, cost: 0, ms: 0 }, tickets: [], record: () => {}, close: () => {} });
+  const board = (notices: string[]) => ({
+    say: () => {},
+    warn: () => {},
+    stop: () => {},
+    close: () => {},
+    notice: (_k: string, m: string) => notices.push(m),
+    wait: () => ({ woken: Promise.resolve(), say: null }),
+  });
+  const night = (over: Record<string, unknown>, ledger: any[] = [], notices: string[] = []) =>
+    main({ io: io({ pushedPr: () => null, ...over }, ledger) as any, book: book(), screen: board(notices) as never, install: () => {}, runId: "t" });
+
+  for (const [name, result, outcome] of [
+    ["the 529 #1156 parked on", overloaded, "overloaded"],
+    ["a 429", { isError: true, apiStatus: 429 }, "overloaded"],
+    ["an error naming no status", { isError: true, apiStatus: null }, "parked"],
+    ["a non-zero exit with no result line", null, "parked"],
+  ] as const) {
+    test(`${name} is ${outcome}`, async () => {
+      const r = await runOnce(io({ spawn: died(result), pushedPr: () => null }));
+      assert.equal(r.outcome, outcome);
+    });
+  }
+
+  test("in phase E, with a pull request open, E is spawned again rather than the head settled", async () => {
+    const picked: [number | null, string | null][] = [];
+    const phases: string[] = [];
+    let settled = 0;
+    await night({
+      stopFile: () => phases.length >= 2,
+      pick: (p: number | null, at: string | null) => (picked.push([p, at]), ticket),
+      spawn: async (route: { phase: string }) => (phases.push(route.phase), died(overloaded)()),
+      pushedPr: () => ({ number: 984, state: "OPEN", head: "agent/42-x" }),
+      settle: async () => (settled++, { action: "merge" }),
+    });
+    assert.equal(settled, 0);
+    assert.deepEqual(phases, ["E", "E"]);
+    assert.deepEqual(picked, [[null, null], [42, null]]);
+  });
+
+  test(`${WAIT.TRIES} in a row end the run and say why; a served session in between resets the count`, async () => {
+    const notices: string[] = [];
+    let spawns = 0;
+    const code = await night({ spawn: async () => (spawns++, died(overloaded)()), pick: () => ticket }, [], notices);
+    assert.equal(code, 1);
+    assert.equal(spawns, WAIT.TRIES);
+    assert.match(notices[0], new RegExp(`^#42 paused: the API answered 529 — trying again at .+ \\(1 of ${WAIT.TRIES}\\)$`));
+    assert.equal(notices.at(-1), `the API answered 529, ${WAIT.TRIES} sessions in a row`);
+    assert.doesNotMatch(notices.join("\n"), /usage/);
+
+    spawns = 0;
+    const served = WAIT.TRIES - 1;
+    const handoff = { status: 0, blocked: false, result: {}, ms: 1, log: "l", phase: "C", declared: { ticket: 42, handoff: "C" } };
+    const reset = await night({
+      stopFile: () => spawns >= 2 * served + 1,
+      pick: () => ticket,
+      spawn: async () => (spawns++ === served ? handoff : died(overloaded)()),
+    });
+    assert.equal(reset, 0);
+  });
+
+  test("a hold is not a handoff: the ticket's handoff count stays where it was", async () => {
+    const ledger: any[] = [];
+    let spawns = 0;
+    await night({ stopFile: () => spawns >= 3, pick: () => ticket, spawn: async () => (spawns++, died(overloaded)()) }, ledger);
+    assert.deepEqual(ledger.map((r) => r.outcome), ["overloaded", "overloaded", "overloaded"]);
+    assert.equal(ticketTally(42, ledger).handoffsThisRound, 0);
   });
 });

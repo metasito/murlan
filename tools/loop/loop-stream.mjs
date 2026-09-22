@@ -170,6 +170,7 @@ export function readLine(line) {
       isError: Boolean(e.is_error),
       subtype: e.subtype ?? null,
       terminalReason: e.terminal_reason ?? null,
+      apiStatus: e.api_error_status ?? null,
       cost: e.total_cost_usd ?? 0,
       turns: e.num_turns ?? 0,
       durationMs: e.duration_ms ?? 0,

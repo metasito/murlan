@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { readFileSync, existsSync } from "node:fs";
 import { allowedTools } from "../loop-tools.mjs";
 import { readLine } from "../loop-stream.mjs";
-import { queueLoopArgs, CHECK_BASH_TIMEOUT_MS, STALL_MS } from "../queue-loop.mjs";
+import { queueLoopArgs, CHECK_BASH_TIMEOUT_MS, BASH_DEFAULT_TIMEOUT_MS } from "../queue-loop.mjs";
 import { ciLogPath } from "../loop-logs.mjs";
 
 /**
@@ -258,10 +258,14 @@ describe("a CI fix round is a documented path, not an improvisation", () => {
     assert.doesNotMatch(read(QUEUE), /gh pr ready/);
   });
 
-  test("agent:check is run under the ceiling the supervisor raises, which stays below the stall watchdog", () => {
-    const asked = Number(/`agent:check` run[^.]*`timeout: (\d+)`/.exec(read(QUEUE))?.[1]);
-    assert.equal(asked, CHECK_BASH_TIMEOUT_MS);
-    assert.ok(asked < STALL_MS);
+  test("only agent:check asks for the Bash maximum, and the doc states neither figure", () => {
+    const doc = read(QUEUE);
+    assert.match(doc, /Only an `agent:check` run passes the Bash tool its maximum `timeout`/);
+    for (const ms of [CHECK_BASH_TIMEOUT_MS, BASH_DEFAULT_TIMEOUT_MS]) {
+      assert.ok(!doc.includes(String(ms)), `queue.md teaches the literal ${ms}`);
+      assert.doesNotMatch(doc, new RegExp(`\\b${ms / 60_000}[- ]minutes?\\b`));
+    }
+    assert.doesNotMatch(doc, /\b(one|two|three|five|ten)[- ]minute default/);
   });
 
   test("the log path it names is the one the supervisor writes", () => {

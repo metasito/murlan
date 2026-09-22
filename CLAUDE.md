@@ -169,9 +169,10 @@ procedure is written down. Nothing here restates it (`tests/tooling/rulesAreSing
 
 The loop keeps no state file. Which ticket, what is committed, whether a review covers it — all of
 it is derived from git and the tracker, so it cannot go stale, and a `SessionStart` hook reports it
-on its own. If this session opened with a live run described to you, read
-`.claude/commands/queue.md` and resume at the phase it names. Do not restart the ticket, and do not
-ask whether to continue.
+on its own. **In a loop process (`$LOOP_TURNS` is set)**, if this session opened with a live run
+described to you, read `.claude/commands/queue.md` and resume at the phase it names. Do not restart
+the ticket, and do not ask whether to continue. Any other session gets one informational line about
+the run, which is the loop's, and carries on with what it was asked.
 
 No file is off limits to the loop, and no file count is. What decides whether a change lands is the
 review that read it, not which paths it touched. The invariants above still hold, and the schema and

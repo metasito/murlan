@@ -3,7 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { report, silentAt } from "../loop-status.mjs";
+import { report, silentAt, statusFor } from "../loop-status.mjs";
 
 const live = {
   onTicket: true,
@@ -39,4 +39,33 @@ test("only a loop process's startup hook is silent", () => {
 
 test("no reason, no line", () => {
   assert.doesNotMatch(report(live, undefined), /handed {5}/);
+});
+
+const IMPERATIVE = /\b(do not|don't|resume|resolve|must|re-plan|restart)\b/i;
+const at = new Date("2026-09-22T01:02:03Z");
+
+test("an interactive clear, compact or resume is told in one line, when it was derived, and ordered nothing", () => {
+  const cases = [live, { ...live, phase: "?", why: "two heads" }, { onTicket: false, ambiguous: true, phase: "C", why: "two worktrees" }];
+  for (const s of cases) {
+    const out = statusFor(s, {}, at);
+    assert.equal(out.split("\n").length, 1, out);
+    assert.match(out, /derived 2026-09-22T01:02:03\.000Z/);
+    assert.doesNotMatch(out, IMPERATIVE);
+  }
+  assert.match(statusFor(live, {}, at), /#42 is at phase C on `agent\/42-x`, in \.worktrees\/agent-42/);
+  assert.equal(statusFor({ onTicket: false, phase: "C" }, {}, at), "");
+});
+
+test("a loop child is still given the imperative", () => {
+  assert.match(statusFor(live, { LOOP_TURNS: "60" }, at), /Resume where it says\. Do not re-plan/);
+});
+
+test("run by the hook outside a loop, whatever it derives, it prints at most one line and no order", () => {
+  const script = fileURLToPath(new URL("../loop-status.mjs", import.meta.url));
+  const env = { ...process.env, LOOP_GH_SCRIPT: "does-not-exist.mjs" };
+  delete env.LOOP_TURNS;
+  const run = spawnSync(process.execPath, [script], { encoding: "utf8", env });
+  assert.equal(run.status, 0);
+  assert.ok(run.stdout.trim().split("\n").length <= 1, run.stdout);
+  assert.doesNotMatch(run.stdout, IMPERATIVE);
 });
