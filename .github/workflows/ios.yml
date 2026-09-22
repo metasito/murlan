@@ -142,7 +142,7 @@ jobs:
             [ -d "$candidate" ] && { app="$candidate"; break; }
           done
           [ -n "$app" ] || { echo "::error::xcodebuild produced no .app."; exit 1; }
-          echo "XCODE_BUNDLE=$app/main.jsbundle" >> "$GITHUB_ENV"
+          cp "$app/main.jsbundle" "$RUNNER_TEMP/xcode.jsbundle"
           mkdir -p "$RUNNER_TEMP/ios-app"
           cp -R "$app" "$RUNNER_TEMP/ios-app/"
 
@@ -156,11 +156,17 @@ jobs:
         env:
           EXPO_PUBLIC_E2E_FAST: "1"
         run: |
-          app=""
+          cached=""
           for candidate in "$RUNNER_TEMP"/ios-app/*.app; do
-            [ -d "$candidate" ] && { app="$candidate"; break; }
+            [ -d "$candidate" ] && { cached="$candidate"; break; }
           done
-          [ -n "$app" ] || { echo "::error::No .app was built or restored."; exit 1; }
+          [ -n "$cached" ] || { echo "::error::No .app was built or restored."; exit 1; }
+          # Where Xcode built it: hermesc writes its input's path into the bytecode.
+          products="$RUNNER_TEMP/DerivedData/Build/Products/Release-iphonesimulator"
+          app="$products/$(basename "$cached")"
+          mkdir -p "$products"
+          rm -rf "$app"
+          cp -R "$cached" "$app"
           tools/ci/rebundle-ios-app.sh "$app"
           echo "APP_BUNDLE=$app" >> "$GITHUB_ENV"
           # The id the flows are driven with comes from the built app itself,
@@ -174,7 +180,7 @@ jobs:
       # What makes a restored app trustworthy: rebundling reproduces Xcode's own bundle byte for byte.
       - name: The rebundled JS is the bundle Xcode built
         if: steps.cached.outputs.cache-hit != 'true'
-        run: cmp "$XCODE_BUNDLE" "$APP_BUNDLE/main.jsbundle"
+        run: cmp "$RUNNER_TEMP/xcode.jsbundle" "$APP_BUNDLE/main.jsbundle"
 
       - name: The bundle carries the test-only flag
         run: node scripts/e2eBuildMark.mjs --present "$APP_BUNDLE"
