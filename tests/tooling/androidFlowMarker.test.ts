@@ -386,6 +386,22 @@ describe("maestro.yml reads that marker", () => {
     assert.match(step, /coredumpctl info [^\n]*coredump\.txt/, "the core dump's own account of the crash is not taken");
   });
 
+  test("the warning names the fatal signal whichever thread took it, not qemu's vCPU kicks", () => {
+    const step = src.slice(src.indexOf("Say how the emulator exited"), src.indexOf("Upload Maestro debug output"));
+    const pipeline = /exits=\$\(grep -E "([^"]+)" [^|]*\| (head|tail) -(\d+)/.exec(step);
+    assert.ok(pipeline, "the exit summary is no longer one grep into head or tail");
+    const kept = (lines: string[]) => lines.filter((l) => new RegExp(pipeline[1]).test(l));
+    const trace = [
+      ...Array.from({ length: 8 }, (_, i) => `qemu-system-x86-5329 [001] d..1. 90.${i}: signal_generate: sig=10 errno=0 code=-6 comm=qemu-system-x86 pid=${5400 + i} grp=0 res=0`),
+      "RenderThread-6991 [003] d..1. 91.0: signal_generate: sig=11 errno=0 code=1 comm=RenderThread pid=6991 grp=1 res=0",
+      ...Array.from({ length: 8 }, (_, i) => `RenderThread-6991 [003] d..1. 91.1: signal_generate: sig=9 errno=0 code=128 comm=qemu-system-x86 pid=${5400 + i} grp=1 res=0`),
+    ];
+    const shown = kept(trace);
+    const window = pipeline[2] === "head" ? shown.slice(0, Number(pipeline[3])) : shown.slice(-Number(pipeline[3]));
+    assert.ok(window.some((l) => l.includes("sig=11")), "the SIGSEGV that ended the emulator is not in the warning");
+    assert.ok(!shown.some((l) => l.includes("sig=10")), "qemu's SIGUSR1 vCPU kicks crowd the warning");
+  });
+
   test("the host renders with ANGLE, not the legacy SwiftShader GL that segfaulted on its RenderThread", () => {
     const options = /emulator-options: (.*)/.exec(read(ACTION))?.[1] ?? "";
     assert.match(options, /-gpu swangle_indirect\b/);

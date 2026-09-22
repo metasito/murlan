@@ -369,7 +369,7 @@ jobs:
           sudo coredumpctl info --no-pager > "$RUNNER_TEMP/coredump.txt" 2>&1 || true
           dumped=$(grep -m1 "dumped core" "$RUNNER_TEMP/journal.txt" || true)
           [ -z "$dumped" ] || echo "::warning::A host process crashed: ${dumped#*]: }"
-          exits=$(grep -E "qemu|crashpad" "$RUNNER_TEMP/kernel-trace.txt" | grep -E "signal_generate|sys_exit_group|sys_enter_exit_group" | tail -5 || true)
+          exits=$(grep -E "signal_generate: sig=(4|6|7|8|11) |(qemu|crashpad)[^:]*: sys_exit_group" "$RUNNER_TEMP/kernel-trace.txt" | head -5 || true)
           [ -z "$exits" ] || echo "::warning::How the emulator ended, per the kernel: $(printf %s "$exits" | tr '\n' '|')"
 
       # Recordings, logs and screenshots from a failed flow are the only way to
