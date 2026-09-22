@@ -14,7 +14,7 @@ import { pathToFileURL } from "node:url";
 import type { Socket } from "socket.io-client";
 import { startTestServer, hasDatabase, type TestServer } from "../helpers/testServer.ts";
 import { connectAs, reconnectWith, DEADLINE_SCALE } from "../helpers/client.ts";
-import { disconnectGraceMs, lobbyGraceMs } from "../../server/gameTimers.ts";
+import { disconnectGraceMs, lobbyGraceMs } from "../../server/game/gameTimers.ts";
 import {
   createDeck,
   getAllValidPlays,
@@ -177,7 +177,7 @@ export function awayWindowOutsideGrace(
  * Listening to all of them is what lets an unanswered rejoin name its cause
  * instead of guessing.
  *
- * One per namespace `errorEventFor` routes to (`server/socketSafety.ts`), not
+ * One per namespace `errorEventFor` routes to (`server/socket/socketSafety.ts`), not
  * only the game's: the run opens its table over `room:create` and `room:join`,
  * which are limited too, and a refusal on a namespace nothing listens to is
  * the same silence counted as a clean run.
@@ -776,9 +776,9 @@ export async function runThroughput(
 
 /** Waits out the seat graces for the module maps to empty, then reports what did not. */
 async function drainedMaps(): Promise<Violation[]> {
-  const { activeGames, socketRoomMap, spectatorRoomMap, userSocketMap } = await import("../../server/gameRoom.ts");
-  const { afkTimers, disconnectTimers, lobbyGraceTimers, botTimers } = await import("../../server/gameTimers.ts");
-  const { inFlight } = await import("../../server/tableRouter.ts");
+  const { activeGames, socketRoomMap, spectatorRoomMap, userSocketMap } = await import("../../server/game/gameRoom.ts");
+  const { afkTimers, disconnectTimers, lobbyGraceTimers, botTimers } = await import("../../server/game/gameTimers.ts");
+  const { inFlight } = await import("../../server/game/tableRouter.ts");
   const maps = {
     activeGames, socketRoomMap, spectatorRoomMap, userSocketMap,
     afkTimers, disconnectTimers, lobbyGraceTimers, botTimers, inFlight,

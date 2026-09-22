@@ -6,7 +6,7 @@
 // surfaces much later as a connection failure with nothing pointing back here.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { resolvePoolMax } from "../../server/db.ts";
+import { resolvePoolMax } from "../../server/store/db.ts";
 
 describe("resolvePoolMax", () => {
   test("unset, or empty, is the deployed default", () => {

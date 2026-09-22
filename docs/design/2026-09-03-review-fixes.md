@@ -61,23 +61,23 @@ argued back into shape.
 
 The ticket is right, and understates the blast radius. Confirmed:
 
-- `server/tableHandlers.ts:515-521` (`reclaimSeat`) sets `playerMap[seat] = userId` and
+- `server/game/tableHandlers.ts:515-521` (`reclaimSeat`) sets `playerMap[seat] = userId` and
   `vacatedSeats.delete(seat)`. Nothing touches `cumulativeScores`.
-- `server/gameRoom.ts:198-200` → `server/onlineGameLogic.ts:41` — `scoreKeyForSeat` returns the
+- `server/game/gameRoom.ts:198-200` → `server/game/onlineGameLogic.ts:41` — `scoreKeyForSeat` returns the
   `userId` once `playerMap` names the seat again, so the `bot:<seat>` bucket becomes
   unreachable from that seat.
-- `server/onlineGameLogic.ts:555-574` — `resolveHandEnd`'s `detailed` builder does the merge,
+- `server/game/onlineGameLogic.ts:555-574` — `resolveHandEnd`'s `detailed` builder does the merge,
   but only `if (vacated)`. After a reclaim `vacated` is `undefined`, so the row reads the
   userId bucket alone.
-- `server/gameRoom.ts:100-108`'s comment claiming `endMatchVotes` is cleared "on a vacate or a
-  reclaim" is **false**. Only `server/gameTurn.ts:322` (`vacateSeat`) and
-  `server/dealManche.ts:35` clear it. Confirmed by tracing every writer.
+- `server/game/gameRoom.ts:100-108`'s comment claiming `endMatchVotes` is cleared "on a vacate or a
+  reclaim" is **false**. Only `server/game/gameTurn.ts:322` (`vacateSeat`) and
+  `server/game/dealManche.ts:35` clear it. Confirmed by tracing every writer.
 
 **Three additional read sites, found by grepping every reader of `cumulativeScores`:**
 
-1. **`server/gameOver.ts:340-345` (`scoresByEngineId`) does not do the vacated merge at all.**
+1. **`server/game/gameOver.ts:340-345` (`scoresByEngineId`) does not do the vacated merge at all.**
    Not "loses it after a reclaim" — it never had it. It feeds `game:match_state`
-   (`server/emit.ts:11`), emitted at `server/dealManche.ts:48` and `server/socketTable.ts:198`
+   (`server/socket/emit.ts:11`), emitted at `server/game/dealManche.ts:48` and `server/socket/socketTable.ts:198`
    (rejoin). So between hands, and on every rejoin, a **still-vacated** seat's live standings
    row already drops the departed player's frozen points — the exact defect `docs/BRIEF.md`
    §3.1's "kept, shown and frozen" clause exists to prevent. A pre-existing bug the ticket does
@@ -87,7 +87,7 @@ The ticket is right, and understates the blast radius. Confirmed:
    a reclaim the returning player needs the target *plus* the orphaned points to cross the
    line. Not a display defect — the match ends at the wrong time.
 3. **Ratings, achievements and history are unaffected.** `gameResults`
-   (`server/onlineGameLogic.ts:607-627`) is keyed by
+   (`server/game/onlineGameLogic.ts:607-627`) is keyed by
    `abandonedSeats.get(seat) ?? scoreKeyForSeat(...)` and carries `placement`, not points.
    Nothing in the ladder reads `cumulativeScores`. The claim that the drop "flows into ratings
    and achievements" is **wrong**; correcting it matters, because it moves the fix's risk from
@@ -108,7 +108,7 @@ A seat's match points are keyed by **identity**, which changes twice during a ma
 
 #### Recommended fix
 
-**(a) `reclaimSeat` merges the bucket, then deletes it.** In `server/tableHandlers.ts:515`:
+**(a) `reclaimSeat` merges the bucket, then deletes it.** In `server/game/tableHandlers.ts:515`:
 
 ```
 const botKey = scoreKeyForSeat(game, seat);            // still `bot:<seat>` at this point
@@ -127,8 +127,8 @@ Order matters: `botKey` must be computed **before** `playerMap[seat]` is written
 resolves to the userId and the merge is a no-op every test still passes.
 
 This is the root fix rather than a patch for one decisive reason: **`cumulativeScores` is
-inside the persisted envelope** (`server/gamePersistence.ts:133` → `packPersistedState`),
-whereas `vacatedSeats` is memory-only by design (`server/gameRoom.ts:85-90`). Fixing the *data*
+inside the persisted envelope** (`server/game/gamePersistence.ts:133` → `packPersistedState`),
+whereas `vacatedSeats` is memory-only by design (`server/game/gameRoom.ts:85-90`). Fixing the *data*
 at the moment the two key spaces converge is durable across a restart. Fixing the *readers* is
 not — after a restart `vacatedSeats` is empty and any reader-side merge silently stops merging.
 It also reaches the match-resolution path, which no reader-side change can.
@@ -138,7 +138,7 @@ seat that never scored creates a key `Object.keys(cumulativeScores)` sums over, 
 `tests/handEnd.test.ts` asserts on exact map shapes.
 
 **(b) One resolver for the vacated merge, used by both readers.** Extract the
-`server/onlineGameLogic.ts:562-564` expression into an exported
+`server/game/onlineGameLogic.ts:562-564` expression into an exported
 
 ```
 export function seatTotal(
@@ -150,13 +150,13 @@ export function seatTotal(
 ```
 
 and call it from both `resolveHandEnd`'s `detailed` builder and `scoresByEngineId`
-(`server/gameOver.ts:343`). That fixes finding (1) and removes the duplicated rule that made
+(`server/game/gameOver.ts:343`). That fixes finding (1) and removes the duplicated rule that made
 this class possible. `scoresByEngineId` takes only `game`, which carries all three arguments,
 so its signature does not change.
 
 **(c) `reclaimSeat` clears `endMatchVotes`.** The acceptance criterion says "clear it, or fix
 the comment — not both, and not neither". Clear it: `vacateSeat`'s own comment
-(`server/gameTurn.ts:320-322`) gives the reason — *"a roster change makes that question new
+(`server/game/gameTurn.ts:320-322`) gives the reason — *"a roster change makes that question new
 again"* — and a reclaim is a roster change in the direction that makes the vote **harder** to
 carry (`votesUnanimous` compares against `Object.keys(playerMap).length`, which just grew). A
 stale tally reading "2 of 2 agreed" beside a table of three is exactly the misleading state
@@ -167,12 +167,12 @@ that comment promised was impossible.
 - **Re-key `cumulativeScores` by seat.** The theoretically correct ledger, and what
   `CLAUDE.md`'s "a winner is stated as an engine player id" invariant points at. Rejected on
   three counts. (i) The map is inside the persisted envelope, so changing its key space needs a
-  `GAME_SCHEMA_VERSION` bump, which by `server/onlineGameLogic.ts:296`'s own contract
+  `GAME_SCHEMA_VERSION` bump, which by `server/game/onlineGameLogic.ts:296`'s own contract
   **discards every live game** — a wipe of every table in progress, in production, to fix a bug
   that occurs on a reclaim. (ii) `foldHandIntoMatch` is shared with the offline table, which
   keys by engine player id — seat-keying adds a third key space rather than removing the
   second. (iii) `matchWinners` must stay comparable with `gameResults.userId`
-  (`server/onlineGameLogic.ts:623`, `matchWon: matchWinners.includes(key)`), so seat-keying
+  (`server/game/onlineGameLogic.ts:623`, `matchWon: matchWinners.includes(key)`), so seat-keying
   trades one merge site for a mapping site at precisely the point identity matters. After (a),
   `bot:<seat>` is not a parallel identity for a live seat — it is a closed bucket that exists
   only while the seat is vacant and is consumed on return. That is coherent.
@@ -222,7 +222,7 @@ ledger does not remove a key space, it adds one.
 
 #### Blast radius
 
-`server/tableHandlers.ts`, `server/onlineGameLogic.ts`, `server/gameOver.ts`,
+`server/game/tableHandlers.ts`, `server/game/onlineGameLogic.ts`, `server/game/gameOver.ts`,
 `docs/DISCONNECT-POLICY.md`. Tests: `tests/seatReclaim.test.ts`,
 `tests/endMatchVote.test.ts`, `tests/handEnd.test.ts`, `tests/gameOver.test.ts`.
 **No storage change, no schema-version bump, no socket protocol change.** In-memory and
@@ -256,15 +256,15 @@ Plus one test for finding (1) needing no reclaim: vacate, fold a hand, assert
 
 Correct on every point.
 
-- `server/routes.ts:544` — `app.post("/api/auth/verify-email", validate(VerifyEmailSchema), …)`,
+- `server/http/routes.ts:544` — `app.post("/api/auth/verify-email", validate(VerifyEmailSchema), …)`,
   no limiter. Every other public auth route carries one: register/login `authLimiter`
   (`:341`, `:403`), request-password-reset `authLimiter` + `passwordResetRequestLimiter`
   (`:565-569`), reset-password `resetPasswordLimiter` (`:586-588`).
-- `server/authTokens.ts:59` — `DELETE FROM auth_tokens WHERE expires_at < now()` runs
+- `server/http/authTokens.ts:59` — `DELETE FROM auth_tokens WHERE expires_at < now()` runs
   unconditionally after the UPDATE, success or failure. `shared/schema.ts:351-356` indexes
   `auth_tokens` on `token_hash` (unique) and `(user_id, purpose)` only, so that predicate is a
   sequential scan plus a write transaction, on every anonymous POST.
-- `server/routes.ts:479` — `app.post("/api/auth/change-password", requireAuth, validate(...))`,
+- `server/http/routes.ts:479` — `app.post("/api/auth/change-password", requireAuth, validate(...))`,
   no limiter, then `bcrypt.compare` at cost 10 (`:489`) on every request. Login carries
   `authLimiter` **and** `loginUsernameLimiter` for exactly this cost, and `:123-147` explains
   at length why.
@@ -315,7 +315,7 @@ there is no oracle to close and a plain `RATE_LIMITED` is the honest answer.
 
 Add `process.env.MURLAN_CHANGE_PASSWORD_RATE_LIMIT ??= "5"` to `tests/helpers/testServer.ts`
 beside the existing three (`:36`, `:45`). That file sets env at module top level, before
-`server/routes.ts` is imported, so the module-scope `changePasswordMaxFromEnv()` call is safe —
+`server/http/routes.ts` is imported, so the module-scope `changePasswordMaxFromEnv()` call is safe —
 do **not** reach for a function-valued `limit` to work around ESM import hoisting; the harness
 already solves it.
 
@@ -334,7 +334,7 @@ fix and this is the same defect. `redeemAuthToken` becomes the UPDATE and nothin
 doc comment loses the "sweeps expired rows on every call" paragraph.
 
 **(e) A check that an unlimited public auth route cannot land again.** A TypeScript-AST source
-scan over `server/routes.ts`, in the idiom `tests/tokenRoles.test.ts` and
+scan over `server/http/routes.ts`, in the idiom `tests/tokenRoles.test.ts` and
 `tests/orientation.test.ts` already use: find every `app.<verb>("/api/auth/…", …)` call and
 assert its argument list names at least one identifier matching `/Limiter$/`.
 
@@ -357,7 +357,7 @@ a route that vanishes from the scan's reach fails as loudly as one that arrives 
 
 #### Blast radius
 
-`server/routes.ts`, `server/authTokens.ts`, `tests/helpers/testServer.ts`. New
+`server/http/routes.ts`, `server/http/authTokens.ts`, `tests/helpers/testServer.ts`. New
 `tests/authRoutesLimited.test.ts`. Integration additions to
 `tests/integration/changePassword.test.ts`, `tests/integration/auth.test.ts`, and a new
 verify-email case. **Touches storage only in that it stops writing** — no schema change, no
@@ -387,11 +387,11 @@ boot.
 
 Correct, and the class is wider than the ticket says.
 
-- `server/socket.ts:174-176` — `registerDisconnect(ctx)` above `await announcePresence(ctx)`.
-  Correct and must stay; `server/socketPresence.ts:7-9` explains why.
-- `server/socketPresence.ts:166` — `trackEvent("socket.closed", userId, { reason })` on every
+- `server/socket/socket.ts:174-176` — `registerDisconnect(ctx)` above `await announcePresence(ctx)`.
+  Correct and must stay; `server/socket/socketPresence.ts:7-9` explains why.
+- `server/socket/socketPresence.ts:166` — `trackEvent("socket.closed", userId, { reason })` on every
   server-side disconnect.
-- `server/events.ts:35-42` — one transaction: INSERT plus
+- `server/socket/events.ts:35-42` — one transaction: INSERT plus
   `DELETE FROM events WHERE occurred_at < now() - 90 days`. `shared/schema.ts:255` indexes
   `events` on `(name, occurred_at)`. A predicate with no `name` cannot use it. **Seq scan,
   confirmed.**
@@ -401,17 +401,17 @@ Correct, and the class is wider than the ticket says.
 
 **Three further facts the ticket does not carry:**
 
-- The write-path prune is an *idiom*, present in **four** modules: `server/events.ts:37`,
-  `server/clientErrors.ts` (`recordClientError`), `server/replays.ts:42`, and
-  `server/authTokens.ts:59` (#892). Each comment cites the others as precedent
-  (*"the shape server/replays.ts and server/clientErrors.ts already use"*). Fixing one leaves
+- The write-path prune is an *idiom*, present in **four** modules: `server/socket/events.ts:37`,
+  `server/http/clientErrors.ts` (`recordClientError`), `server/game/replays.ts:42`, and
+  `server/http/authTokens.ts:59` (#892). Each comment cites the others as precedent
+  (*"the shape server/game/replays.ts and server/http/clientErrors.ts already use"*). Fixing one leaves
   the justification for the other three standing.
 - Only two of the four actually seq-scan. `client_errors` has `client_errors_occurred_idx` on
   `occurred_at` (`shared/schema.ts:212`) and `match_replays` has `match_replays_finished_idx`
   on `finished_at` (`:278`). `events` and `auth_tokens` do not. So there are two problems — an
   unindexed predicate, and a prune on the write path — needing separate fixes.
 - The client side is already partly bounded: `errorReportLimiter`
-  (`server/routes.ts:239-251`) caps `/api/client-errors` at 5/minute **per account**. A
+  (`server/http/routes.ts:239-251`) caps `/api/client-errors` at 5/minute **per account**. A
   flapping phone gets 429s rather than writing unboundedly. The row cost is real but the
   denial-of-service framing is overstated for the client half.
 
@@ -423,19 +423,19 @@ first of these was written, so each write took the job. The comments say so:
 *"so the table cannot grow without bound if a scheduled prune is never written."* The scheduled
 prune is now worth writing.
 
-There **is** an existing scheduler: `startSweeper` (`server/gamePersistence.ts:331-362`), a
-5-minute interval started from `server/socket.ts:178`, already running `sweepFinishedTables`,
+There **is** an existing scheduler: `startSweeper` (`server/game/gamePersistence.ts:331-362`), a
+5-minute interval started from `server/socket/socket.ts:178`, already running `sweepFinishedTables`,
 `pruneAbandonedGames` and `pruneStaleRooms`. This is not the first periodic job.
 
 #### Recommended fix
 
 **(a) An index that serves the predicate.** Add `index("events_occurred_idx").on(t.occurredAt)`
 to `events` in `shared/schema.ts`, and `index("auth_tokens_expires_idx").on(t.expiresAt)` to
-`auth_tokens`. Both **additive and idempotent**, so `server/schemaDdl.ts` creates them at boot
+`auth_tokens`. Both **additive and idempotent**, so `server/store/schemaDdl.ts` creates them at boot
 — no `drizzle-kit push`, no rename-or-drop prompt, no production migration.
-`events_name_occurred_idx` stays: `funnel()` (`server/events.ts:72-84`) needs it.
+`events_name_occurred_idx` stays: `funnel()` (`server/socket/events.ts:72-84`) needs it.
 
-**(b) One module owns retention.** New `server/retention.ts`:
+**(b) One module owns retention.** New `server/game/retention.ts`:
 
 ```
 export const RETENTION = [
@@ -452,9 +452,9 @@ Called from `startSweeper`'s existing interval alongside the three prunes alread
 five minutes is fine and needs no throttling: with (a)'s indexes each DELETE is an index range
 scan matching zero rows almost always.
 
-**(c) The four inline prunes are deleted.** `server/events.ts`'s `insertEvent` stops being a
-transaction and becomes a bare insert. `server/clientErrors.ts`'s `recordClientError` likewise.
-`server/replays.ts`'s prune goes too — not because it is expensive, but because leaving one
+**(c) The four inline prunes are deleted.** `server/socket/events.ts`'s `insertEvent` stops being a
+transaction and becomes a bare insert. `server/http/clientErrors.ts`'s `recordClientError` likewise.
+`server/game/replays.ts`'s prune goes too — not because it is expensive, but because leaving one
 behind is what re-legitimises the idiom for the next table. One rule, one place.
 
 **(d) The client reports only what the server cannot see.** `lib/errorReporting.ts`'s
@@ -498,14 +498,14 @@ registers before the first `await` and still calls `trackEvent`. Only the cost i
 
 #### Blast radius
 
-`shared/schema.ts` (two additive indexes), new `server/retention.ts`, `server/events.ts`,
-`server/clientErrors.ts`, `server/replays.ts`, `server/authTokens.ts`,
-`server/gamePersistence.ts` (`startSweeper`), `lib/errorReporting.ts`. Tests:
+`shared/schema.ts` (two additive indexes), new `server/game/retention.ts`, `server/socket/events.ts`,
+`server/http/clientErrors.ts`, `server/game/replays.ts`, `server/http/authTokens.ts`,
+`server/game/gamePersistence.ts` (`startSweeper`), `lib/errorReporting.ts`. Tests:
 `tests/schemaDdl.test.ts`, `tests/integration/events.test.ts`,
 `tests/integration/clientErrors.test.ts`, `tests/integration/socketCloseReason.test.ts`,
 `tests/integration/ladderAndReplay.test.ts`.
 
-**Storage: two new indexes, both additive, both created at boot by `server/schemaDdl.ts`. No
+**Storage: two new indexes, both additive, both created at boot by `server/store/schemaDdl.ts`. No
 `drizzle-kit push`, no rename-or-drop prompt, no `pg_dump` required.** No socket protocol
 change.
 
@@ -517,7 +517,7 @@ change.
    assert it is **gone** (the sweep works). Neither half passes vacuously.
 2. **Source scan**, one test: no module under `server/` may contain a `.delete(` inside the same
    function body as an `.insert(`. Name the four modules in the assertion message. Prove red by
-   restoring one line of `server/events.ts`.
+   restoring one line of `server/socket/events.ts`.
 3. **`tests/schemaDdl.test.ts`** — extend to assert `events_occurred_idx` and
    `auth_tokens_expires_idx` are emitted, and that every statement is still
    `IF NOT EXISTS`-shaped.
@@ -535,29 +535,29 @@ All three confirmed; the third is changed by the cooldown removal.
 1. `app/(online)/game.tsx:336-358` — a `Pressable` in the banner slot whose `onPress` is
    `hapticMedium(); voteToEndMatch()` with no confirmation.
    `context/OnlineGameContext.tsx:842-844` emits `game:end_match_vote` with no payload.
-   `server/socketGameplay.ts:122-132` routes it; `server/tableHandlers.ts:471` only ever `add`s.
-   There is no unvote event anywhere in `server/tableActions.ts`'s union. Confirmed. And the
-   harm is real: `server/gameOver.ts:299-306` (`endMatchByAgreement`) leaves the hand in
+   `server/socket/socketGameplay.ts:122-132` routes it; `server/game/tableHandlers.ts:471` only ever `add`s.
+   There is no unvote event anywhere in `server/game/tableActions.ts`'s union. Confirmed. And the
+   harm is real: `server/game/gameOver.ts:299-306` (`endMatchByAgreement`) leaves the hand in
    progress **unscored** and `handsPlayed` unadvanced.
 2. `app/(online)/game.tsx:341` — `accessibilityLabel={t("game.endMatchVoteHint")}`, whose value
    (`locales/en.ts:307`) is *"Every remaining player must agree — nobody is penalised."* The
    visible text at `:347-357` is inside `{...a11yHidden()}`. One accessible node, wrong string.
-3. `server/socketRooms.ts:232-236` — a template-literal English `message` beside
+3. `server/socket/socketRooms.ts:232-236` — a template-literal English `message` beside
    `code: "MATCHMAKING_COOLDOWN"`, wording *"is on cooldown"* against `locales/en.ts:90`'s *"is
    paused"*. **This site is deleted rather than translated** — see #897 (d).
 
 **The class is real without it.** Grepping `server/` for payload `message` fields that are
 literals beside a `code` leaves two after the cooldown goes:
 
-- `server/socketTable.ts:211` — `PLAYER_RECONNECTED`, `` `${username} is back.` `` against
+- `server/socket/socketTable.ts:211` — `PLAYER_RECONNECTED`, `` `${username} is back.` `` against
   `locales/en.ts:88`.
-- `server/tableHandlers.ts:763` — `PLAYER_DISCONNECTED_GRACE`, against `locales/en.ts:87`.
+- `server/game/tableHandlers.ts:763` — `PLAYER_DISCONNECTED_GRACE`, against `locales/en.ts:87`.
 
 Both happen to match their locale value **today**. That is the argument for the check rather
 than against it: three sites drifted apart from their catalogue entries at three different
 times and only one was noticed, because only one had diverged yet. The other two are the same
 defect in its silent phase. And the same shape exists at roughly forty sites in
-`server/routes.ts` — `res.json({message, code})` with English literals. **These are not a
+`server/http/routes.ts` — `res.json({message, code})` with English literals. **These are not a
 different class:** `lib/i18n.ts:170` (`translateServerPayload`) is reached from both
 `context/OnlineGameContext.tsx:341` (socket) and `lib/apiError.ts:46` (HTTP). One function, one
 rule.
@@ -601,14 +601,14 @@ confirmation — it is the undo.
 **(b) Withdrawal. ⚠ THIS IS A SOCKET PROTOCOL CHANGE.** Design it as a toggle carrying an
 explicit intent, not as a second event:
 
-- `server/socketSchemas.ts`: `game:end_match_vote` moves from `NoPayloadSchema` to a schema
+- `server/socket/socketSchemas.ts`: `game:end_match_vote` moves from `NoPayloadSchema` to a schema
   carrying `wants: boolean` **with a default of `true` when the field is absent**. Native builds
   lag the server; an old client emits no payload and must keep voting yes, and simply not be
   able to withdraw. Write that compatibility rule into the schema's comment — it is the reason
   for the default and it is invisible from the type.
-- `server/tableActions.ts:36`: `{ kind: "endMatchVote"; wants: boolean }`. `takeoverMode`
+- `server/game/tableActions.ts:36`: `{ kind: "endMatchVote"; wants: boolean }`. `takeoverMode`
   (`:91`) already routes this kind as `"restore"`; unchanged.
-- `server/tableHandlers.ts:462-483`:
+- `server/game/tableHandlers.ts:462-483`:
   `wants ? game.endMatchVotes.add(userId) : game.endMatchVotes.delete(userId)`, then
   `emitEndMatchVoteState`, and evaluate unanimity **only when `wants`** — a withdrawal can never
   end a match, and `votesUnanimous` on a shrinking set must not be asked.
@@ -616,11 +616,11 @@ explicit intent, not as a second event:
   payload; the context interface type (`:130`) changes with it.
 - The banner becomes two-state, keyed on
   `endMatchVoteState?.votes.includes(user?.id ?? "")` — the server already ships the voter list
-  (`server/emit.ts:34-37`), so no further protocol work is needed to render it.
+  (`server/socket/emit.ts:34-37`), so no further protocol work is needed to render it.
 
 Why a toggle and not a `game:end_match_unvote`: `rematchIntent` already established
-`{ wants: boolean }` in this codebase for exactly this question (`server/tableActions.ts:33`),
-and one event means one rate-limit budget (`server/socketGameplay.ts:131`, 20/min), one router
+`{ wants: boolean }` in this codebase for exactly this question (`server/game/tableActions.ts:33`),
+and one event means one rate-limit budget (`server/socket/socketGameplay.ts:131`, 20/min), one router
 case, one takeover-mode entry and one test.
 
 **(c) The accessible name says what the control does; the tally is announced separately.**
@@ -645,7 +645,7 @@ exposes exactly one node. One new key in three locales (`game.endMatchWithdrawBu
 derivation the only spelling that compiles:
 
 ```
-// server/payload.ts
+// server/socket/payload.ts
 type ServerCode = TranslationKey extends `server.${infer C}` ? C : never;
 
 export function payload<C extends ServerCode>(code: C, params: TranslationParams = {}) {
@@ -655,7 +655,7 @@ export function payload<C extends ServerCode>(code: C, params: TranslationParams
 
 The type constraint is the real fix: **a code with no `server.*` locale key becomes a compile
 error**, which no scan can achieve. Convert the two remaining socket sites, then the ~40 in
-`server/routes.ts` and the five `rateLimit({ message: … })` option objects.
+`server/http/routes.ts` and the five `rateLimit({ message: … })` option objects.
 
 Add to `tests/i18n.test.ts`, which already has the machinery: `payloadSentences()` (`:104-121`)
 walks every payload text field and `literalsIn()` (`:57-78`) deliberately stops at a nested call
@@ -663,7 +663,7 @@ walks every payload text field and `literalsIn()` (`:57-78`) deliberately stops 
 **no object literal under `server/` may carry both a string-literal `code` and a literal
 `message`/`error`.** Prove it red by restoring one of the two remaining sites.
 
-**Scope honesty, and Q2 below.** Converting `server/routes.ts` changes the English *fallback
+**Scope honesty, and Q2 below.** Converting `server/http/routes.ts` changes the English *fallback
 wording* at about a dozen sites where the literal and the locale value differ
 (`USERNAME_TAKEN`: "Username already taken" → "Username already in use"; `ACCOUNT_DELETED`:
 "Account deleted" → "Account deleted successfully"). `locales/en.ts` is the source of truth per
@@ -691,9 +691,9 @@ user-visible diff and should be reviewed, not swept in.
 #### Blast radius
 
 Client: `app/(online)/game.tsx`, `context/OnlineGameContext.tsx`, `context/onlineGameHooks.ts`,
-`locales/{en,it,sq}.ts`. Server: `server/socketSchemas.ts`, `server/socketGameplay.ts`,
-`server/tableActions.ts`, `server/tableHandlers.ts`, `server/socketTable.ts`,
-`server/routes.ts`, new `server/payload.ts`.
+`locales/{en,it,sq}.ts`. Server: `server/socket/socketSchemas.ts`, `server/socket/socketGameplay.ts`,
+`server/game/tableActions.ts`, `server/game/tableHandlers.ts`, `server/socket/socketTable.ts`,
+`server/http/routes.ts`, new `server/socket/payload.ts`.
 **⚠ Socket protocol change** (`game:end_match_vote` gains a payload; backward-compatible by
 default). No storage change.
 
@@ -722,10 +722,10 @@ default). No storage change.
 
 Three of four confirmed as written. The fourth is wrong as stated **and is now moot**.
 
-1. **Confirmed.** `server/routes.ts:349-353` — `getUserByEmail` then
+1. **Confirmed.** `server/http/routes.ts:349-353` — `getUserByEmail` then
    `409 {code:"EMAIL_TAKEN"}` before anything is created. Bounded only by `authLimiter`
    (100 / 15 min / IP, `:85-91`).
-2. **Confirmed.** `server/routes.ts:574-575` — `await mintAuthToken(...)` then
+2. **Confirmed.** `server/http/routes.ts:574-575` — `await mintAuthToken(...)` then
    `res.json({ok:true})`. The comment at `:556-564` claims *"only the token mint … happens
    before the reply, so the two branches cost the same up to that point"* — an INSERT is work
    the other branch does not do. And `tests/integration/passwordReset.test.ts:174-206` is fitted
@@ -735,11 +735,11 @@ Three of four confirmed as written. The fourth is wrong as stated **and is now m
    unconditional. `storage.createUser` (`server/storage.ts:160-177`) and `storage.setEmail`
    (`:195-202`) both take it before any verification. An unverified squat is permanent: the real
    owner gets 409 forever and the squatter can never reset (reset requires `emailVerifiedAt`,
-   `server/routes.ts:573`).
+   `server/http/routes.ts:573`).
 4. **The failure scenario is wrong, and the defect is now deleted rather than fixed.**
-   `server/socketRooms.ts:47` — `room:create` creates a **private** room
+   `server/socket/socketRooms.ts:47` — `room:create` creates a **private** room
    (`storage.createRoom(..., "private")`). `findWaitingPublicRooms` (`server/storage.ts:453`) is
-   called from exactly one place, `room:quickmatch` (`server/socketRooms.ts:240`); there is **no
+   called from exactly one place, `room:quickmatch` (`server/socket/socketRooms.ts:240`); there is **no
    public-room list in the client** to "join any waiting public room from". So neither named
    bypass exists. The residue was narrow — `room:join` takes a code, and a quickmatch-created
    public room has one, so a cooled-down player handed that code by a confederate could join a
@@ -813,7 +813,7 @@ because the session cookie is set either way… **and it is not set on the taken
 the hole, and it is the subject of Q1 below. Read that before building this.
 
 Three new locale keys in all three locales (`server.CHECK_YOUR_EMAIL` plus whatever
-`app/auth.tsx` needs to say), and one new mail body in `server/routes.ts` beside
+`app/auth.tsx` needs to say), and one new mail body in `server/http/routes.ts` beside
 `sendVerificationEmail` (`:266-272`) — *"someone tried to register an account with this address.
 If it was you, sign in or reset your password: <link>. If it was not, no account was created and
 you need do nothing."*
@@ -823,7 +823,7 @@ you need do nothing."*
 indexed SELECT. That is a ~100 ms gap, which is an oracle in its own right and a far coarser one
 than #897.2's. Under the literal decision it must be closed with a decoy — `bcrypt.hash` against
 a throwaway value on the taken branch, exactly the `LOGIN_LIMIT_DECOY_HASH` precedent
-(`server/routes.ts:123-126`) — and even then the session write remains unmatched. **The variant
+(`server/http/routes.ts:123-126`) — and even then the session write remains unmatched. **The variant
 in Q1 removes the gap instead of masking it**, which is why it is worth the owner's minute.
 
 **Squatting (defect 3) is only closed by the Q1 variant.** Under the literal decision the
@@ -835,7 +835,7 @@ the acceptance criterion look satisfied.
 ##### (a2) A misconfigured mailer must be loud
 
 This is the part most likely to go wrong, and it is the same silent-failure shape #893 and #875
-both describe: `server/mail.ts:17-20` logs a `warn` and returns `false`, nobody reads the
+both describe: `server/http/mail.ts:17-20` logs a `warn` and returns `false`, nobody reads the
 boolean, and *"nobody will report this; they will just never get the mail."* Registration is
 about to make mail load-bearing for a branch that produces **no other observable output at all**
 — the taken branch's entire effect is one email.
@@ -844,14 +844,14 @@ Four changes, cheapest first. All four, not a subset: each covers a different ob
 
 1. **`sendMail`'s failures become rows, not just log lines.** Add `"mail.sendFailed"` to
    `shared/events.ts`'s closed set and `trackEvent` it from both failure paths in
-   `server/mail.ts` (unconfigured, and provider-rejected — distinguish them in `context`). This
+   `server/http/mail.ts` (unconfigured, and provider-rejected — distinguish them in `context`). This
    is the change that matters: it converts a silence into something `funnel()` counts and the
    dashboard can show.
 2. **A boot-time check, at `error` level, naming the missing secrets.** Once, in the deploy log,
    where it is visible — not per-request, buried. **Do not refuse to boot:** `CLAUDE.md` is
    explicit that the app must launch from the Run button with no setup, and taking production
    down because recovery mail is unconfigured trades an inert feature for an outage.
-3. **A mail-health row on `/admin`.** `server/routes.ts:868` already serves an admin page with
+3. **A mail-health row on `/admin`.** `server/http/routes.ts:868` already serves an admin page with
    `funnel()` and `recentClientErrorGroups()`; add configured yes/no plus sends attempted /
    succeeded / failed since boot. That is the owner's own surface and the place "recovery is
    inert" should be readable without grepping a log.
@@ -887,14 +887,14 @@ Delete, do not refactor. Complete inventory, verified by grep:
 |---|---|
 | The pure module | `lib/abandonCooldown.ts` — delete the file |
 | The DB edge | `server/matchmakingCooldown.ts` — delete the file |
-| The only call site | `server/socketRooms.ts:21` (import) and `:229-238` (the gate) |
+| The only call site | `server/socket/socketRooms.ts:21` (import) and `:229-238` (the gate) |
 | The locale strings | `server.MATCHMAKING_COOLDOWN` in `locales/en.ts:90`, `it.ts:83`, `sq.ts:99` — all three, or `tests/i18n.test.ts`'s parity check fails |
 | The unit test | `tests/abandonCooldown.test.ts` — delete the file |
 | The integration test | `tests/integration/matchmakingCooldown.test.ts` — **do not delete outright.** Its first half asserts that an abandoned hand writes `match_history.abandoned = true`; that record stays (below), so keep that half and rename the file to what it now pins. Deleting it wholesale removes the only integration coverage of the abandonment record. |
 
 **The record stays; only the penalty goes.** `match_history.abandoned`
-(`shared/schema.ts:187`) is written by `server/stats.ts:122` and read back by
-`getMatchHistory` (`server/stats.ts:213-219`), which does a whole-row `findMany` served to the
+(`shared/schema.ts:187`) is written by `server/game/stats.ts:122` and read back by
+`getMatchHistory` (`server/game/stats.ts:213-219`), which does a whole-row `findMany` served to the
 client by `GET /api/stats/history`. So after `server/matchmakingCooldown.ts` goes the column
 still has a reader and is not a write-only column. **Do not drop it** — dropping a column is a
 `drizzle-kit push` against real accounts, and `docs/BRIEF.md` §3.1 wants the abandonment
@@ -916,7 +916,7 @@ recorded regardless of what is enforced on it.
   (#894).
 
 **What is deliberately not deleted:** the `game.abandoned` funnel event
-(`shared/events.ts:23`, written at `server/tableHandlers.ts:749`), which measures the behaviour
+(`shared/events.ts:23`, written at `server/game/tableHandlers.ts:749`), which measures the behaviour
 rather than penalising it; `abandonedSeats` and the last-place placement, which are §3.1's
 unchanged abandonment rule; and `lib/achievements.ts:138`'s refusal to award achievements for an
 abandoned seat, which reads the in-memory `GameResult.abandoned` and is independent of the
@@ -934,7 +934,7 @@ column.
 - **Making email optional at signup** (username+password only; email added later through the
   existing `/api/auth/add-email` + `shouldShowAddEmailCard` nudge). Removes the unauthenticated
   oracle completely with zero schema change, and tempting. Rejected because it reverses #34
-  (`server/schemas.ts:13`, *"#34: required at signup"*) and recreates the unrecoverable-account
+  (`server/http/schemas.ts:13`, *"#34: required at signup"*) and recreates the unrecoverable-account
   cohort #863 exists to clean up.
 - **A generic 409 for both username and email collisions.** Leaks the same bit — the *presence*
   of a 409 on a fresh username reveals the address — while making the honest user's message
@@ -947,8 +947,8 @@ column.
 
 #### Blast radius
 
-`server/routes.ts`, `server/schemas.ts`, `server/mail.ts`, `server/storage.ts`,
-`server/socketRooms.ts`, `shared/events.ts`, `locales/{en,it,sq}.ts`, `app/auth.tsx` (the
+`server/http/routes.ts`, `server/http/schemas.ts`, `server/http/mail.ts`, `server/storage.ts`,
+`server/socket/socketRooms.ts`, `shared/events.ts`, `locales/{en,it,sq}.ts`, `app/auth.tsx` (the
 register screen's success state changes from "you are signed in" to "check your email"), plus
 the file deletions in (d). Docs: `docs/BRIEF.md`, `docs/DISCONNECT-POLICY.md`. Tests:
 `tests/integration/passwordReset.test.ts`, `tests/integration/auth.test.ts`,
@@ -974,7 +974,7 @@ No socket protocol change. (d) deletes a refusal path.
    neutral 202 **and** writes a `mail.sendFailed` event row. This is the check that keeps the
    loudness from rotting.
 5. **AST scan**, deterministic, replacing reliance on timing: inside the
-   `request-password-reset` handler in `server/routes.ts`, the `res.json` call's source position
+   `request-password-reset` handler in `server/http/routes.ts`, the `res.json` call's source position
    precedes every `mintAuthToken` call's. Same assertion for the register handler's `res.json`
    against every `sendMail`-reaching call. Prove red by swapping the lines back.
 6. **Keep** `tests/integration/passwordReset.test.ts`'s timing test, rewritten to the spec:
@@ -996,20 +996,20 @@ Build in this order. The constraints are file collisions, not logic.
 
 | # | Work | Why here |
 |---|---|---|
-| 1 | **#895** — retention module, indexes, client close reasons | Creates `server/retention.ts`, which #892 depends on. Lowest risk, purely additive storage. |
-| 2 | **#898** — delete the cooldown, correct `BRIEF` §3.1 and `DISCONNECT-POLICY.md` | Pure deletion, no dependencies, and it removes `server/socketRooms.ts:229-238` before #896 would otherwise convert it. Do it early so nothing else is built on top of code that is going. |
+| 1 | **#895** — retention module, indexes, client close reasons | Creates `server/game/retention.ts`, which #892 depends on. Lowest risk, purely additive storage. |
+| 2 | **#898** — delete the cooldown, correct `BRIEF` §3.1 and `DISCONNECT-POLICY.md` | Pure deletion, no dependencies, and it removes `server/socket/socketRooms.ts:229-238` before #896 would otherwise convert it. Do it early so nothing else is built on top of code that is going. |
 | 3 | **#892** — the three limiters, the route scan, `redeemAuthToken` loses its DELETE | Rebased on 1. `registerEmailLimiter` lands here even though #897 motivates it. |
 | 4 | **#894** — reclaim merge, `seatTotal`, `endMatchVotes`, doc correction | Independent of 1–3. Parallel-safe **if** the existing `agent/review-fixes` claim is resolved first. |
-| 5 | **#896** — confirm + a11y (commit 1), the `wants` protocol (commit 2), `payload()` + scan (commit 3) | Commit 3 edits `server/tableHandlers.ts`, so it must follow 4; and it edits `server/socketRooms.ts`, so it must follow 2. |
+| 5 | **#896** — confirm + a11y (commit 1), the `wants` protocol (commit 2), `payload()` + scan (commit 3) | Commit 3 edits `server/game/tableHandlers.ts`, so it must follow 4; and it edits `server/socket/socketRooms.ts`, so it must follow 2. |
 | 6 | **#897 (b)** — the reset-token timing fix and its AST check | One line plus a test; independent. |
-| 7 | **#897 (a)+(a2) / #893** — neutral registration, the mail-loudness work, the register screen | Edits `server/routes.ts`'s auth block, so it must follow 3. Gated on Q1 for its final shape. |
+| 7 | **#897 (a)+(a2) / #893** — neutral registration, the mail-loudness work, the register screen | Edits `server/http/routes.ts`'s auth block, so it must follow 3. Gated on Q1 for its final shape. |
 
 **Must not share a commit — or a branch:**
 
-- **#894 and #896's `payload()` commit** both edit `server/tableHandlers.ts`.
-- **#896's `payload()` commit and #898** both edit `server/socketRooms.ts`; #898 first.
-- **#892's limiters and #897 (a)** both edit `server/routes.ts`'s auth block; #892 first.
-- **#895 and #892** both edit `server/authTokens.ts`; #892 rebases, does not race.
+- **#894 and #896's `payload()` commit** both edit `server/game/tableHandlers.ts`.
+- **#896's `payload()` commit and #898** both edit `server/socket/socketRooms.ts`; #898 first.
+- **#892's limiters and #897 (a)** both edit `server/http/routes.ts`'s auth block; #892 first.
+- **#895 and #892** both edit `server/http/authTokens.ts`; #892 rebases, does not race.
 - **#898's doc edits and #894's doc edit** both touch `docs/DISCONNECT-POLICY.md`. #898
   rewrites the header and strikes four sections; #894 corrects §2 note 2. Same file, different
   regions — sequence them (#898 first) rather than merging them.
@@ -1053,17 +1053,17 @@ someone who has just proved they control that mailbox**, and that account's emai
 which is also exactly the right answer to *"what does a person see who genuinely typed their own
 address twice?"* They are told the truth, once, at the only moment it is safe to tell them, with
 a link back in. And the squat closes with it.
-**Cost of (ii):** `server/schemaDdl.ts` never drops anything (*"nothing is ever dropped, retyped
+**Cost of (ii):** `server/store/schemaDdl.ts` never drops anything (*"nothing is ever dropped, retyped
 or renamed … this module will not do it"*), so the old index must go via `drizzle-kit push`
 against the production `users` table, `pg_dump` first, rename-or-drop prompt read not accepted
 (`docs/DEPLOY-RUNBOOK.md`). Also confirm before building that `schemaDdl`'s index renderer emits
 a partial index's `WHERE` clause at all; if not, that is a prerequisite change to
-`server/schemaDdl.ts`.
+`server/store/schemaDdl.ts`.
 
 **Recommend (ii).** It is one index and one deploy window, and it is the difference between
 hiding the fact and removing it — plus it is the only thing that reclaims a squatted address.
 
-**Q2 — Take the ~40-site `payload()` conversion in `server/routes.ts` now, or as a follow-up?**
+**Q2 — Take the ~40-site `payload()` conversion in `server/http/routes.ts` now, or as a follow-up?**
 The helper and the scan (#896 (d)) are worthless if they cover only the two remaining socket
 sites; the next hardcoded message will land in `routes.ts`. But converting it changes the
 English fallback wording at about a dozen sites where the literal and `locales/en.ts` differ.
@@ -1086,9 +1086,9 @@ only `resolveHandEnd` and missed `scoresByEngineId` and the match-resolution pat
   discards every live game; the bug it would fix is fully fixed by merging at reclaim.
 - **`vacatedSeats`, `releasedSeats`, `abandonedSeats`, `weakSeats` stay memory-only.**
   Persisting any of them needs the same schema-version bump for a courtesy rather than a
-  correctness property (`server/gameRoom.ts:50`, `:75`, `:86-89`). The #894 fix is chosen
+  correctness property (`server/game/gameRoom.ts:50`, `:75`, `:86-89`). The #894 fix is chosen
   precisely so it does not depend on them surviving a restart.
-- **`match_history.abandoned` stays** — written by `server/stats.ts:122`, still read back by
+- **`match_history.abandoned` stays** — written by `server/game/stats.ts:122`, still read back by
   `getMatchHistory` and served by `GET /api/stats/history`. The penalty goes; the record does
   not. Dropping the column would be a `drizzle-kit push` against real accounts for nothing.
 - **The `game.abandoned` funnel event, the last-place placement, and the no-achievement rule for
@@ -1096,11 +1096,11 @@ only `resolveHandEnd` and missed `scoresByEngineId` and the match-resolution pat
 - **`USERNAME_TAKEN` on register.** Usernames are shown at every table — public by construction,
   and reporting a collision plainly is what makes the register screen usable.
 - **`/api/auth/add-email`'s lack of a limiter.** Self-limiting via `EMAIL_ALREADY_SET`
-  (`server/routes.ts:518-521`), as #892 says.
+  (`server/http/routes.ts:518-521`), as #892 says.
 - **`authLimiter`'s 100 / 15 min numbers**, and every other existing limiter's numbers. The
   defect is absence, not calibration.
 - **The mailer's non-throwing contract.** `sendMail` still returns `false` rather than throwing
-  (`server/mail.ts:11-12`) and the server still boots without credentials — a provider outage
+  (`server/http/mail.ts:11-12`) and the server still boots without credentials — a provider outage
   must not become a caller's problem, and refusing to boot would trade an inert feature for a
   production outage. Only the *visibility* of a failure changes.
 - **`socket.closed` as an event**, and **`client_errors` as a table with a server-side write

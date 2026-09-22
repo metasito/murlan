@@ -42,7 +42,7 @@ import {
  * down that says nothing about why.
  */
 async function quiet(server: TestServer, ceilingMs = 10_000): Promise<PoolRest> {
-  const { pool } = await import("../../server/db.ts");
+  const { pool } = await import("../../server/store/db.ts");
   const deadline = Date.now() + ceilingMs * DEADLINE_SCALE;
   const until = async (settled: () => boolean) => {
     while (Date.now() < deadline && !settled()) {
@@ -167,7 +167,7 @@ describe(
      * need the very same rows.
      */
     test("a connection reads the caller's friends once", async () => {
-      const { friendStore } = await import("../../server/friendStore.ts");
+      const { friendStore } = await import("../../server/store/friendStore.ts");
       // The two tests above accept 72 connections between them, and each one
       // leaves two fire-and-forget friends reads behind — the connect handler's
       // and the debounced offline notice its close schedules. The suite's pool

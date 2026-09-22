@@ -11,7 +11,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { Pool } from "pg";
-import { channelPrefix, listenPattern, meterPool } from "../../server/socketAdapter.ts";
+import { channelPrefix, listenPattern, meterPool } from "../../server/socket/socketAdapter.ts";
 
 test("production, with no search_path, keeps the adapter's own default", () => {
   assert.equal(channelPrefix("postgres://u:p@host:5432/murlan"), "socket.io");

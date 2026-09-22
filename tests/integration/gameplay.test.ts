@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { io as ioClient, type Socket } from "socket.io-client";
 import { PROTOCOL_AUTH, reconnectAs, register, waitFor } from "../helpers/client.ts";
 import { eq } from "drizzle-orm";
-import { logger } from "../../server/logger.ts";
+import { logger } from "../../server/http/logger.ts";
 import { createDeck, getAllValidPlays } from "../../lib/gameEngine.ts";
 import {
   startTestServer,
@@ -11,7 +11,7 @@ import {
   skipMessage,
   type TestServer,
 } from "../helpers/testServer.ts";
-import { lobbyGraceMs } from "../../server/gameTimers.ts";
+import { lobbyGraceMs } from "../../server/game/gameTimers.ts";
 import {
   assertHandSecrecy,
   driveHandToExchangeOrOver,
@@ -37,7 +37,7 @@ import {
  * side, and a client emits at most one game action a turn — so 882 is the
  * most this file can reach inside one 60s window, against a measured 12–15 a
  * hand. The alternatives lose: resetting the bucket between hands means a
- * test-only export from server/socket.ts, which is a bypass shipped next to
+ * test-only export from server/socket/socket.ts, which is a bypass shipped next to
  * the guard it bypasses; replaying fewer hands trades this for the spurious
  * failure the loop's bound exists to make negligible. Nothing here asserts
  * the limiter — tests/server/socketRateLimit.test.ts does, per account, in its own
@@ -96,7 +96,7 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
 
     // The handler's first await is this read. Held until the reply arrives, an
     // await moved above the registrations fails every run, not only on a slow database.
-    const { friendStore } = await import("../../server/friendStore.ts");
+    const { friendStore } = await import("../../server/store/friendStore.ts");
     const realGetFriends = friendStore.getFriends;
     let release = () => {};
     const gate = new Promise<void>((resolve) => (release = resolve));
@@ -847,8 +847,8 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
     assert.equal(after.players[otherBefore.viewerSeatIndex].handCount, otherHand.length);
 
     // A restart that lost the game leaves exactly this: a room row mid-game, and nothing to deal into.
-    const { disposeGame } = await import("../../server/gamePersistence.ts");
-    const { db } = await import("../../server/db.ts");
+    const { disposeGame } = await import("../../server/game/gamePersistence.ts");
+    const { db } = await import("../../server/store/db.ts");
     const { activeGames: activeGamesTable } = await import("../../shared/schema.ts");
     disposeGame(room.roomId);
     for (let tries = 0; ; tries++) {

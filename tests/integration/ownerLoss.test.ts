@@ -80,13 +80,13 @@ describe("a table outlives losing its owner", { skip: hasDatabase() ? false : sk
   });
 
   test("a non-owner shutting down tells the owner its player left", { timeout: 60_000 }, async () => {
-    const { shutdown } = await import("../../server/shutdown.ts");
+    const { shutdown } = await import("../../server/http/shutdown.ts");
     const { host, guest, room } = await openTable("sd", 2);
     const dealt = waitFor(guest.socket, "game:state", 15_000);
     host.socket.emit("room:start");
     await dealt;
 
-    const { userStore } = await import("../../server/userStore.ts");
+    const { userStore } = await import("../../server/store/userStore.ts");
     const updateLastSeen = userStore.updateLastSeen;
     // The forward must still go out when the disconnect handler is slower than the teardown.
     userStore.updateLastSeen = async (id) => {

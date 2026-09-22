@@ -7,7 +7,7 @@
 // would be doing work nobody benefits from. Neither shows up as an error, so
 // the two are pinned to one constant here.
 //
-// server/stats.ts imports pg at module scope, so it cannot be loaded without a
+// server/game/stats.ts imports pg at module scope, so it cannot be loaded without a
 // database. Read as source instead: this is a structural claim about the file,
 // not a behavioural one about a query.
 import { test, describe } from "node:test";
@@ -17,7 +17,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-const source = readFileSync(path.join(repoRoot, "server", "stats.ts"), "utf8");
+const source = readFileSync(path.join(repoRoot, "server", "game", "stats.ts"), "utf8");
 
 describe("match history stays bounded", () => {
   test("the bound is declared exactly once", () => {

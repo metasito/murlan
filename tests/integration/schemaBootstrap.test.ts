@@ -10,7 +10,7 @@
 // startTestServer() now creates an empty Postgres schema and nothing else, so
 // everything below runs against tables `ensureSchema()` made at boot.
 //
-// One server for the whole file: `server/db.ts`'s pool is a module singleton
+// One server for the whole file: `server/store/db.ts`'s pool is a module singleton
 // that stop() closes, so a second startTestServer() in the same process cannot
 // work. The subtests run in order and the destructive one is last.
 import { test } from "node:test";
@@ -133,8 +133,8 @@ test("a fresh database is usable on the first boot", async (t) => {
     await t.test("re-running the bootstrap changes nothing", async () => {
       // What every Replit restart does: the same statements against tables,
       // indexes and enum types that already exist.
-      const { ensureSchema } = await import("../../server/schemaDdl.ts");
-      const { pool } = await import("../../server/db.ts");
+      const { ensureSchema } = await import("../../server/store/schemaDdl.ts");
+      const { pool } = await import("../../server/store/db.ts");
       await ensureSchema(pool);
       await ensureSchema(pool);
 

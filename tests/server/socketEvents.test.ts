@@ -1,13 +1,13 @@
 // tests/server/socketEvents.test.ts — the socket protocol has two ends and neither may
 // drift from the other.
 //
-// Inbound: `onEvent` (server/socketSafety.ts) is what validates a payload,
+// Inbound: `onEvent` (server/socket/socketSafety.ts) is what validates a payload,
 // rate-limits the account behind the socket, and contains a throwing handler so
 // it reports as an error on that one socket instead of escaping into the
 // process guards. An event registered with a bare `socket.on` gets none of
 // that, and is exactly the one nobody remembers to check — `room:unspectate`
 // sat outside the wrapper from the day spectating shipped, while
-// server/socketSchemas.ts claimed to hold schemas "for every inbound socket
+// server/socket/socketSchemas.ts claimed to hold schemas "for every inbound socket
 // event".
 //
 // Outbound: an event the server emits and no client listens for is dead weight
@@ -52,7 +52,7 @@ const LIFECYCLE = new Set(["disconnect", "disconnecting", "error"]);
  * own string-typed parameter — the wrapper's implementation, not a bypass of
  * it. Nothing else may register this way.
  */
-const WRAPPER_FILE = "server/socketSafety.ts";
+const WRAPPER_FILE = "server/socket/socketSafety.ts";
 
 /** Blanks out line and block comments, preserving line numbers and string contents. */
 function stripComments(source: string): string {
@@ -98,7 +98,7 @@ const COMPUTED_EVENT_NAMES = new Set(["event", "errorEventFor(event)"]);
 /**
  * Both shapes an outbound event takes: `<anything>.emit(name, …)` — covering
  * `socket.emit`, `io.emit` and `io.to(x).emit` — and `emitToUser(userId, name,
- * …)`, the dispatcher server/routes.ts reaches sockets through.
+ * …)`, the dispatcher server/http/routes.ts reaches sockets through.
  */
 const EMIT_PATTERNS = [
   /\.emit\(\s*(["'`])((?:(?!\1).)*)\1/gs,
@@ -186,8 +186,8 @@ test("the literal-event scanner catches single quotes, backticks and files beyon
 
 test("the non-literal scanner catches a constant event name", () => {
   assert.deepEqual(
-    nonLiteralSocketOnCalls("server/example.ts", "socket.on(EVENT, () => {});"),
-    ["server/example.ts:1"]
+    nonLiteralSocketOnCalls("example.ts", "socket.on(EVENT, () => {});"),
+    ["example.ts:1"]
   );
   assert.deepEqual(
     nonLiteralSocketOnCalls(WRAPPER_FILE, "socket.on(event, () => {});"),
@@ -211,10 +211,10 @@ const WRAPPED_EVENT_COUNT = 19; // #840 added room:setVisibility.
  * every registration must still be somewhere a reader is told to look.
  */
 const SOCKET_FAMILY = [
-  "server/socket.ts",
-  "server/socketRooms.ts",
-  "server/socketGameplay.ts",
-  "server/socketPresence.ts",
+  "server/socket/socket.ts",
+  "server/socket/socketRooms.ts",
+  "server/socket/socketGameplay.ts",
+  "server/socket/socketPresence.ts",
 ];
 
 test("the events that exist are registered through the wrapper", () => {
@@ -311,7 +311,7 @@ test("no .emit call names its event with anything but a string literal", () => {
 test("the outbound scanner reads every emit shape the server uses", () => {
   const shapes = literalEmittedEvents([
     [
-      "server/example.ts",
+      "example.ts",
       [
         'socket.emit("game:a", {});',
         'io.emit("game:b", {});',
@@ -327,15 +327,15 @@ test("the outbound scanner reads every emit shape the server uses", () => {
     [...shapes.keys()].sort(),
     ["game:a", "game:b", "game:c", "game:d", "game:e", "game:f"]
   );
-  assert.deepEqual(shapes.get("game:d"), ["server/example.ts:4"]);
+  assert.deepEqual(shapes.get("game:d"), ["example.ts:4"]);
 });
 
 test("the outbound scanner catches an emitted event nothing listens for", () => {
   const emitted = literalEmittedEvents([
-    ["server/example.ts", 'io.to(roomId).emit("game:ghost", {});\nsocket.emit("game:state", {});'],
+    ["example.ts", 'io.to(roomId).emit("game:ghost", {});\nsocket.emit("game:state", {});'],
   ]);
   assert.deepEqual(unlistenedEmits(emitted, new Set(["game:state"])), [
-    "game:ghost (server/example.ts:1)",
+    "game:ghost (example.ts:1)",
   ]);
   assert.deepEqual(
     unlistenedEmits(emitted, new Set(["game:state", "game:ghost"])),
@@ -345,11 +345,11 @@ test("the outbound scanner catches an emitted event nothing listens for", () => 
 
 test("the computed-name scanner catches a constant event name", () => {
   assert.deepEqual(
-    computedEmitCalls("server/example.ts", "io.to(roomId).emit(EVENT, payload);"),
-    ["server/example.ts:1 — EVENT"]
+    computedEmitCalls("example.ts", "io.to(roomId).emit(EVENT, payload);"),
+    ["example.ts:1 — EVENT"]
   );
   assert.deepEqual(
-    computedEmitCalls("server/example.ts", "_io.to(socketId).emit(event, data);"),
+    computedEmitCalls("example.ts", "_io.to(socketId).emit(event, data);"),
     []
   );
 });

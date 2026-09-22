@@ -1,4 +1,4 @@
-// tests/server/retentionOffWritePath.test.ts — #895: retention is server/retention.ts's
+// tests/server/retentionOffWritePath.test.ts — #895: retention is server/game/retention.ts's
 // scheduled job, not a DELETE riding the same write that just grew the table.
 //
 // events.ts, clientErrors.ts, replays.ts, authTokens.ts and bugReports.ts each
@@ -15,9 +15,9 @@
 // WHERE … < now()" and does not require `.delete(` to be present.
 //
 // Scoped to the age-based signature deliberately, not to "insert and delete
-// anywhere in one file": server/push.ts and server/stats.ts also combine the
+// anywhere in one file": server/socket/push.ts and server/game/stats.ts also combine the
 // two, to cap rows kept per user (`notInArray` against a `keep` set), and
-// server/deleteAccount.ts deletes `session` rows by userId on account deletion —
+// server/http/deleteAccount.ts deletes `session` rows by userId on account deletion —
 // neither is age-based, so neither trips this.
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -51,10 +51,10 @@ test("no server module prunes an aged row inside the write that just grew the ta
   assert.deepEqual(
     offenders,
     [],
-    "an age-based prune belongs to server/retention.ts's scheduled sweep, " +
+    "an age-based prune belongs to server/game/retention.ts's scheduled sweep, " +
       "not the write path — this shape once justified itself in " +
-      "server/events.ts, server/clientErrors.ts, server/replays.ts and " +
-      "server/bugReports.ts by citing each other as precedent. Offending " +
+      "server/socket/events.ts, server/http/clientErrors.ts, server/game/replays.ts and " +
+      "server/http/bugReports.ts by citing each other as precedent. Offending " +
       "module(s): " +
       offenders.join(", ")
   );

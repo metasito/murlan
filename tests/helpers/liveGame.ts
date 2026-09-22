@@ -1,12 +1,12 @@
-// Reads of the server's live in-memory table (server/gameRoom.ts) that an
+// Reads of the server's live in-memory table (server/game/gameRoom.ts) that an
 // integration test cannot make through the wire. Test-only, so it lives here
 // rather than as an escape hatch inside the server.
 import type { Server as SocketServer } from "socket.io";
-import { activeGames } from "../../server/gameRoom.ts";
-import { clearRoomTimers } from "../../server/gameTimers.ts";
-import { broadcastGameState, persistGameState } from "../../server/gamePersistence.ts";
-import { armTurn } from "../../server/gameTurn.ts";
-import { startReplayLog } from "../../server/replayShape.ts";
+import { activeGames } from "../../server/game/gameRoom.ts";
+import { clearRoomTimers } from "../../server/game/gameTimers.ts";
+import { broadcastGameState, persistGameState } from "../../server/game/gamePersistence.ts";
+import { armTurn } from "../../server/game/gameTurn.ts";
+import { startReplayLog } from "../../server/game/replayShape.ts";
 import { createDeck, initializeGame } from "../../lib/gameEngine.ts";
 
 /**

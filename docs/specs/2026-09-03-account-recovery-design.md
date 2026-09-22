@@ -3,7 +3,7 @@
 Design for #38. Settles the six open boxes with a recommendation, its reversal cost, and its
 place on the cheapest-change ladder (`CLAUDE.md` → *Working agreement*: derive from existing
 rows → ride an existing jsonb column → new table → new column). No code lands on this ticket —
-no edit to `shared/schema.ts` or `server/schemaDdl.ts`, no `db:push`, no migration.
+no edit to `shared/schema.ts` or `server/store/schemaDdl.ts`, no `db:push`, no migration.
 
 ## Already decided, recorded here rather than reopened
 
@@ -19,10 +19,10 @@ accounts always carry an email, and that email is not trusted for recovery until
 | Where | What it establishes |
 | --- | --- |
 | `shared/schema.ts` `users` table | No jsonb column exists on `users` to ride. `friendCode`-style unique index (`users_username_lower_uq`) is the precedent for a case-insensitive unique email index. |
-| `server/schemaDdl.ts` | Additive and idempotent only — it cannot add a `NOT NULL` column against rows that have none, which independently forces "nullable column" below; it is not a friendliness choice. |
+| `server/store/schemaDdl.ts` | Additive and idempotent only — it cannot add a `NOT NULL` column against rows that have none, which independently forces "nullable column" below; it is not a friendliness choice. |
 | `server/storage.ts:121` | `DELETE FROM session WHERE sess->>'userId' = ${userId}` — already the exact idiom for "clear this user's live sessions," used today by account deletion. The reset design reuses it verbatim rather than inventing a second way to query the `session` table. |
-| `server/ticket.ts` | The existing single-use credential (`mintSocketTicket`/`consumeSocketTicket`): HMAC-signed, stateless, 60s TTL, in-memory nonce set. Structurally wrong for a reset token — see Box 2. |
-| `server/routes.ts:60-143` | `authLimiter` (per-IP) and `loginUsernameLimiter` (per-username, decoy-bcrypt, generic 401) — the shape #41 landed for exactly this "unauthenticated endpoint, shared network" problem. Reset-request reuses it rather than inventing a third shape. |
+| `server/socket/ticket.ts` | The existing single-use credential (`mintSocketTicket`/`consumeSocketTicket`): HMAC-signed, stateless, 60s TTL, in-memory nonce set. Structurally wrong for a reset token — see Box 2. |
+| `server/http/routes.ts:60-143` | `authLimiter` (per-IP) and `loginUsernameLimiter` (per-username, decoy-bcrypt, generic 401) — the shape #41 landed for exactly this "unauthenticated endpoint, shared network" problem. Reset-request reuses it rather than inventing a third shape. |
 | `scripts/reset-password.mjs` | The stopgap. Box "the migration path" and the ground-truth table both ask whether it survives — it does, see below. |
 | package.json dependencies | No mail-sending library present today (no `nodemailer`, no vendor SDK) — "the sender" is a real decision, not a rubber stamp. |
 
@@ -83,7 +83,7 @@ auth_tokens
 Both indexes are load-bearing, not tuning. `token_hash` is the *only* key every redemption looks
 a row up by, and unique is what keeps `RETURNING user_id` a single row rather than a set;
 `(user_id, purpose)` is what the invalidation sweep below and any owner-side audit read. Neither
-appears by accident — `server/schemaDdl.ts` creates exactly the named indexes `shared/schema.ts`
+appears by accident — `server/store/schemaDdl.ts` creates exactly the named indexes `shared/schema.ts`
 declares, so an index omitted from the sketch is an index that never exists.
 
 **Retention.** Nothing keeps this table bounded on its own: a row lands per signup and per reset
@@ -111,7 +111,7 @@ sessions alone leaves the attacker's unredeemed token good for the rest of its 3
 reset evicts them from every device and hands them the account back a minute later. Sessions and
 outstanding tokens are the same class of live credential and are cleared together or not at all.
 
-**Why not the ticket.ts shape.** `server/ticket.ts`'s signed, stateless, in-memory-nonce ticket is
+**Why not the ticket.ts shape.** `server/socket/ticket.ts`'s signed, stateless, in-memory-nonce ticket is
 right for its own job (60-second socket handshake credential, minted and consumed within the same
 process's lifetime) and wrong for this one for three independent reasons: a reset link is clicked
 minutes to hours later, so it must survive a server restart (an in-memory nonce set cannot); its
@@ -135,7 +135,7 @@ nothing else to unwind first.
 
 ## Box 3 — The sender
 
-**Recommendation.** A single `server/mail.ts` module that calls a transactional-email provider's
+**Recommendation.** A single `server/http/mail.ts` module that calls a transactional-email provider's
 HTTP API directly with the platform's built-in `fetch` (Node 22, already the runtime) — no SDK
 dependency. This keeps the Replit constraint ("no build step needing local tooling") trivially
 true and adds zero new packages. Credentials (an API key, and the verified "from" address) live
@@ -148,7 +148,7 @@ naming, not a purchase: the owner may prefer Postmark or SendGrid instead, and b
 isolated to the one module above, swapping providers later is a rewrite of that module's body,
 not a schema or call-site change.
 
-**Reversal cost.** Cheap. `server/mail.ts` exports one function (`sendMail(to, subject, ...)`);
+**Reversal cost.** Cheap. `server/http/mail.ts` exports one function (`sendMail(to, subject, ...)`);
 every caller (verification, reset) goes through it, so a vendor swap or removal touches one file.
 
 ## Box 4 — Rate limiting
@@ -247,7 +247,7 @@ are the record; this list is the index into them, so read the issue before imple
 - **[#861](https://github.com/metasito/murlan/issues/861) — Email at signup: column, verification
   token, verify-email endpoint.** `size:M`, no blocker. Builds
   `users.email`/`email_verified_at` and their unique index, the `auth_tokens` table with both
-  indexes, `server/mail.ts`, and the signup-time verification flow. Everything else below depends
+  indexes, `server/http/mail.ts`, and the signup-time verification flow. Everything else below depends
   on this landing first.
 - **[#862](https://github.com/metasito/murlan/issues/862) — Password reset: request + submit
   endpoints.** `size:M`, blocked by #861. Builds the two reset routes, the rate limiting from

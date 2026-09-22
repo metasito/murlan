@@ -1,7 +1,7 @@
 // #850 clause 3: a takeover finishes the current hand at minimum legal
 // strength — a raw boolean, not the engine AI — and the engine only plays the
 // seat properly from the next deal. Two things are pinned here: `vacateSeat`
-// marking the seat weak only for a mid-hand departure (server/gameTurn.ts's
+// marking the seat weak only for a mid-hand departure (server/game/gameTurn.ts's
 // own `!game.gameState.gameOver` guard), and `autoMoveForSeat`'s `useAi=false`
 // path — what `runBotTurn` calls once it reads `weakSeats` — always resolving
 // the seat's turn, since a seat that cannot act stalls the whole table.
@@ -11,14 +11,14 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import type { Server as SocketServer } from "socket.io";
-import { vacateSeat, autoMoveForSeat } from "../../server/gameTurn.ts";
-import { gameOverWriters } from "../../server/gamePersistence.ts";
-import { activeGames } from "../../server/gameRoom.ts";
-import { clearRoomTimers } from "../../server/gameTimers.ts";
-import type { OnlineGameState } from "../../server/gameRoom.ts";
+import { vacateSeat, autoMoveForSeat } from "../../server/game/gameTurn.ts";
+import { gameOverWriters } from "../../server/game/gamePersistence.ts";
+import { activeGames } from "../../server/game/gameRoom.ts";
+import { clearRoomTimers } from "../../server/game/gameTimers.ts";
+import type { OnlineGameState } from "../../server/game/gameRoom.ts";
 import { emptyRankTally, sortHand } from "../../lib/gameEngine.ts";
 import type { GameState, Player } from "../../lib/gameEngine.ts";
-import type { GameOverWriters } from "../../server/gameOver.ts";
+import type { GameOverWriters } from "../../server/game/gameOver.ts";
 
 const ROOM = "weak-seat-room";
 

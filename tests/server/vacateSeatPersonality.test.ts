@@ -1,4 +1,4 @@
-// `botSeatsFromPersonality` (server/onlineGameLogic.ts) tells a born-bot seat
+// `botSeatsFromPersonality` (server/game/onlineGameLogic.ts) tells a born-bot seat
 // apart from one a human vacated by reading `personality`, which is set once
 // at roster-build time and must never be set by a departure. Nothing else
 // checks that `vacateSeat` keeps its side of that contract — a personality
@@ -7,10 +7,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { Server as SocketServer } from "socket.io";
-import { vacateSeat } from "../../server/gameTurn.ts";
-import { gameOverWriters } from "../../server/gamePersistence.ts";
-import { activeGames } from "../../server/gameRoom.ts";
-import type { OnlineGameState } from "../../server/gameRoom.ts";
+import { vacateSeat } from "../../server/game/gameTurn.ts";
+import { gameOverWriters } from "../../server/game/gamePersistence.ts";
+import { activeGames } from "../../server/game/gameRoom.ts";
+import type { OnlineGameState } from "../../server/game/gameRoom.ts";
 import type { GameState, Player } from "../../lib/gameEngine.ts";
 
 const ROOM = "vacate-personality-room";

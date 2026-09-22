@@ -9,7 +9,7 @@ import {
   buildSeatRoster,
   isContestedTable,
   seatAssignmentsFromRoster,
-} from "../../server/onlineGameLogic.ts";
+} from "../../server/game/onlineGameLogic.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -136,7 +136,7 @@ test("botSeatsFromPersonality reads a born bot, not a seat a human vacated", () 
 // that tells the two apart.
 test("one function builds a match's playerMap and botSeatsAtStart", () => {
   const TARGET = "seatAssignmentsFromRoster";
-  const HOME = "server/onlineGameLogic.ts";
+  const HOME = "server/game/onlineGameLogic.ts";
   const callers = ["app", "components", "context", "lib", "server"]
     .flatMap((dir) => walk(path.join(repoRoot, dir)))
     .filter((rel) =>
@@ -145,7 +145,7 @@ test("one function builds a match's playerMap and botSeatsAtStart", () => {
 
   assert.deepEqual(
     callers.sort(),
-    [HOME, "server/tableHandlers.ts"].sort(),
+    [HOME, "server/game/tableHandlers.ts"].sort(),
     `${TARGET} is how a match's roster becomes playerMap and botSeatsAtStart, ` +
       `so a caller that stops calling it, or a second inline copy, shows up ` +
       `here: ${callers.join(", ")}`

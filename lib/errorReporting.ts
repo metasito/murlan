@@ -64,7 +64,7 @@ function updatePending(change: (reports: CrashReport[]) => CrashReport[]): Promi
 }
 
 /**
- * The endpoint requires a session (`server/routes.ts`), so a crash while signed
+ * The endpoint requires a session (`server/http/routes.ts`), so a crash while signed
  * out or offline is refused; it waits on the device for the next sign-in.
  */
 function send(report: CrashReport): Promise<void> {

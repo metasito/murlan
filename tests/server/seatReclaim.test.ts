@@ -7,13 +7,13 @@
 import { test, describe, before } from "node:test";
 import assert from "node:assert/strict";
 import type { Server as SocketServer } from "socket.io";
-import { installTableHandlers, applyOrForward } from "../../server/tableHandlers.ts";
-import { armTurn } from "../../server/gameTurn.ts";
-import { activeGames } from "../../server/gameRoom.ts";
-import { clearRoomTimers } from "../../server/gameTimers.ts";
-import { resolveHandEnd } from "../../server/onlineGameLogic.ts";
-import { scoresByEngineId } from "../../server/gameOver.ts";
-import type { OnlineGameState } from "../../server/gameRoom.ts";
+import { installTableHandlers, applyOrForward } from "../../server/game/tableHandlers.ts";
+import { armTurn } from "../../server/game/gameTurn.ts";
+import { activeGames } from "../../server/game/gameRoom.ts";
+import { clearRoomTimers } from "../../server/game/gameTimers.ts";
+import { resolveHandEnd } from "../../server/game/onlineGameLogic.ts";
+import { scoresByEngineId } from "../../server/game/gameOver.ts";
+import type { OnlineGameState } from "../../server/game/gameRoom.ts";
 import type { GameState, Player } from "../../lib/gameEngine.ts";
 
 const ROOM = "seat-reclaim-room";
@@ -188,7 +188,7 @@ describe("a vacated seat is reclaimable by the account that left it (#850 clause
 
       await new Promise((r) => setTimeout(r, 40));
 
-      // The guard (server/gameTurn.ts's runBotTurn) sees the seat reclaimed
+      // The guard (server/game/gameTurn.ts's runBotTurn) sees the seat reclaimed
       // and re-arms rather than playing on drita's behalf — her hand is
       // untouched and the seat now carries a human AFK clock instead. Read
       // off `game.gameState`, not the local `state`: a real play would have

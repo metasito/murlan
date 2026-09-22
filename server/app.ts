@@ -3,19 +3,19 @@ import type { Request, Response, NextFunction } from "express";
 import compression from "compression";
 import helmet from "helmet";
 import type { Server as HttpServer } from "node:http";
-import type { SocketServer as SocketIOServer } from "./socketTypes.ts";
-import { createRequestLogger, logger } from "./logger.ts";
-import { sessionMiddleware } from "./session.ts";
-import { pool } from "./db.ts";
-import { socketAdapterPoolStats } from "./socketAdapter.ts";
-import { errorHandler } from "./errorHandler.ts";
-import { installServerErrorRecorder } from "./serverErrors.ts";
-import { registerRoutes } from "./routes.ts";
-import { ensureSchema } from "./schemaDdl.ts";
-import { allowedOrigins, isAllowedOrigin, trustProxySetting } from "./cors.ts";
-import { checkMailConfigOnBoot } from "./mail.ts";
-import { ANSWERED_BY_SHELL, CONTENT_HASHED } from "./staticPaths.ts";
-import { testOnlyEnv } from "./testOnlyEnv.ts";
+import type { SocketServer as SocketIOServer } from "./socket/socketTypes.ts";
+import { createRequestLogger, logger } from "./http/logger.ts";
+import { sessionMiddleware } from "./http/session.ts";
+import { pool } from "./store/db.ts";
+import { socketAdapterPoolStats } from "./socket/socketAdapter.ts";
+import { errorHandler } from "./http/errorHandler.ts";
+import { installServerErrorRecorder } from "./http/serverErrors.ts";
+import { registerRoutes } from "./http/routes.ts";
+import { ensureSchema } from "./store/schemaDdl.ts";
+import { allowedOrigins, isAllowedOrigin, trustProxySetting } from "./http/cors.ts";
+import { checkMailConfigOnBoot } from "./http/mail.ts";
+import { ANSWERED_BY_SHELL, CONTENT_HASHED } from "./http/staticPaths.ts";
+import { testOnlyEnv } from "./http/testOnlyEnv.ts";
 import { createHash, randomBytes } from "node:crypto";
 import * as fs from "fs";
 import * as path from "path";
@@ -219,7 +219,7 @@ function configureExpoAndLanding(app: express.Application) {
   // scripts/moveSourceMaps.mjs already moves every .map out of dist/ after
   // export, so this never matches a real file — it exists so that guarantee
   // does not depend only on that script having run. A .map carries
-  // sourcesContent, the original unminified source; server/sourceMaps.ts is
+  // sourcesContent, the original unminified source; server/http/sourceMaps.ts is
   // the only reader, from sourcemaps/, never over HTTP.
   app.use((req: Request, res: Response, next: NextFunction) => {
     if (req.path.endsWith(".map")) return res.status(404).end();
@@ -256,7 +256,7 @@ function configureExpoAndLanding(app: express.Application) {
     logger.info("Serving Expo web build from dist/");
   } else {
     // No web build — show Expo Go QR landing page
-    const templatePath = path.resolve(process.cwd(), "server", "templates", "landing-page.html");
+    const templatePath = path.resolve(process.cwd(), "server", "http", "templates", "landing-page.html");
     const landingPageTemplate = fs.readFileSync(templatePath, "utf-8");
     const appName = getAppName();
     app.get("/", (req: Request, res: Response) => {
@@ -339,7 +339,7 @@ export async function createApp(): Promise<CreatedApp> {
 
   const server = await registerRoutes(app);
 
-  const { setupSocket } = await import("./socket.ts");
+  const { setupSocket } = await import("./socket/socket.ts");
   const io = setupSocket(server);
 
   app.use(errorHandler);

@@ -9,8 +9,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { heldSeats, seatForClaim } from "../../server/seatAllocation.ts";
-import type { SeatInvite, SeatedPlayer } from "../../server/seatAllocation.ts";
+import { heldSeats, seatForClaim } from "../../server/game/seatAllocation.ts";
+import type { SeatInvite, SeatedPlayer } from "../../server/game/seatAllocation.ts";
 import { teamForSeat, TEAMS_PLAYER_COUNT } from "../../lib/gameEngine.ts";
 
 const HOLD_MS = 120_000;
@@ -249,7 +249,7 @@ describe("the seat a newcomer is given", () => {
 
 describe("the age the hold is measured on", () => {
   const source = readFileSync(
-    path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "server", "friendStore.ts"),
+    path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "server", "store", "friendStore.ts"),
     "utf8"
   );
 

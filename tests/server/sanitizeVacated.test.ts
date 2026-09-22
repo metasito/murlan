@@ -4,7 +4,7 @@
 // name into a locale it does not carry.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { sanitizeStateForPlayer } from "../../server/gamePersistence.ts";
+import { sanitizeStateForPlayer } from "../../server/game/gamePersistence.ts";
 import type { GameState, Player } from "../../lib/gameEngine.ts";
 
 function player(id: string, name: string): Player {

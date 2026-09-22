@@ -14,7 +14,7 @@
  * their production values (EXPO_PUBLIC_ vars are inlined at bundle build
  * time, not read at runtime — production builds never set this, so their
  * pacing is untouched). The AFK/disconnect-grace timers are the server's
- * own existing env knobs (server/socket.ts), shortened the same way.
+ * own existing env knobs (server/socket/socket.ts), shortened the same way.
  *
  * `--play` (`npm run play`) boots the same stack with production pacing, into
  * dist/ on port 5000, to play it locally — on a phone, at http://<pc-ip>:5000.

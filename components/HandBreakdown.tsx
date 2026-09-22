@@ -74,7 +74,7 @@ export function HandBreakdown({
   /**
    * Another manche can still be dealt at this table. Nothing passes for the
    * viewer while the overlay is up — `handleGameOver` clears the room's timers
-   * — but the manche that follows arms a turn (server/gameTimers.ts
+   * — but the manche that follows arms a turn (server/game/gameTimers.ts
    * AFK_TIMEOUT_MS) whether or not they are still looking at the table.
    */
   mancheCanFollow: boolean;

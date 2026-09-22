@@ -52,7 +52,7 @@ export interface ReplaySummary {
  *
  * Age, not "each player's newest N": a row belongs to up to four players, so a
  * per-player cap could not delete one without checking the other three. Lives
- * here rather than server/replays.ts because the profile screen shows the
+ * here rather than server/game/replays.ts because the profile screen shows the
  * player the same number the server prunes on.
  */
 export const REPLAY_RETENTION_DAYS = 14;
@@ -192,7 +192,7 @@ export function nextMoment(moments: ReplayMoment[], index: number): ReplayMoment
 /**
  * How many bombs one player threw in this manche. Attributed by the same
  * `combo.type === "bomb"` test the server's own flag uses
- * (server/gameTurn.ts `recordPlayFlags`), so the count agrees with the
+ * (server/game/gameTurn.ts `recordPlayFlags`), so the count agrees with the
  * lifetime figure on `user_stats`.
  *
  * A bot seat carries no user id and can never match, so a bot's bombs are not

@@ -25,7 +25,7 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."
 const script = path.join(repoRoot, "scripts", "reset-password.mjs");
 
 // One server for the whole file, shared by both describe blocks below —
-// server/db.ts's pool is a module-level singleton created on first import;
+// server/store/db.ts's pool is a module-level singleton created on first import;
 // stop() ends it, and a second full startTestServer()/stop() cycle in this
 // same process would reuse that already-ended pool and fail to boot (see
 // tests/integration/auth.test.ts, which does the same for the same reason).
@@ -127,7 +127,7 @@ describe("password reset", { skip: hasDatabase() ? false : skipMessage() }, () =
   /** Registers, then verifies the way the email-verify flow itself would. */
   async function verifiedUser(username: string) {
     const { user, cookie } = await register(server, username);
-    const { userStore } = await import("../../server/userStore.ts");
+    const { userStore } = await import("../../server/store/userStore.ts");
     await userStore.markEmailVerified(user.id, user.email!);
     return { user, cookie, email: `${username.toLowerCase()}@example.test` };
   }
@@ -139,7 +139,7 @@ describe("password reset", { skip: hasDatabase() ? false : skipMessage() }, () =
     assert.equal(res.status, 200, text);
     assert.deepEqual(JSON.parse(text), { ok: true });
 
-    const { db } = await import("../../server/db.ts");
+    const { db } = await import("../../server/store/db.ts");
     const { authTokens } = await import("../../shared/schema.ts");
     const { eq, and } = await import("drizzle-orm");
     const rows = await db
@@ -161,7 +161,7 @@ describe("password reset", { skip: hasDatabase() ? false : skipMessage() }, () =
     const res = await requestReset(email);
     assert.equal(res.status, 200, await res.text());
 
-    const { db } = await import("../../server/db.ts");
+    const { db } = await import("../../server/store/db.ts");
     const { authTokens } = await import("../../shared/schema.ts");
     const { eq, and } = await import("drizzle-orm");
     const readRows = () =>
@@ -207,13 +207,13 @@ describe("password reset", { skip: hasDatabase() ? false : skipMessage() }, () =
     const ownerMe = await fetch(`${server.url}/api/auth/me`, { headers: { cookie: ownerCookie! } });
     const owner = await ownerMe.json();
 
-    const { userStore } = await import("../../server/userStore.ts");
+    const { userStore } = await import("../../server/store/userStore.ts");
     await userStore.markEmailVerified(owner.id, email);
 
     const res = await requestReset(email);
     assert.equal(res.status, 200, await res.text());
 
-    const { db } = await import("../../server/db.ts");
+    const { db } = await import("../../server/store/db.ts");
     const { authTokens } = await import("../../shared/schema.ts");
     const { eq, and } = await import("drizzle-orm");
     const readRows = (userId: string) =>
@@ -279,7 +279,7 @@ describe("password reset", { skip: hasDatabase() ? false : skipMessage() }, () =
 
   test("a used token cannot be redeemed twice", async () => {
     const { user } = await verifiedUser("reset_used_twice");
-    const { mintAuthToken, redeemAuthToken } = await import("../../server/authTokens.ts");
+    const { mintAuthToken, redeemAuthToken } = await import("../../server/http/authTokens.ts");
     const token = await mintAuthToken(user.id, "password_reset", 60_000);
 
     const first = await submitReset(token, "brand-new-pw-1");
@@ -304,7 +304,7 @@ describe("password reset", { skip: hasDatabase() ? false : skipMessage() }, () =
 
   test("an expired token fails to redeem and changes nothing", async () => {
     const { user } = await verifiedUser("reset_expired");
-    const { mintAuthToken, redeemAuthToken } = await import("../../server/authTokens.ts");
+    const { mintAuthToken, redeemAuthToken } = await import("../../server/http/authTokens.ts");
     // A full minute in the past, not -1ms: under a loaded machine the redeem
     // query's `now()` runs in Postgres, not Node, and a margin of a
     // millisecond is inside plausible clock skew between the two processes.
@@ -337,7 +337,7 @@ describe("password reset", { skip: hasDatabase() ? false : skipMessage() }, () =
 
     const bystander = await verifiedUser("reset_bystander");
 
-    const { mintAuthToken } = await import("../../server/authTokens.ts");
+    const { mintAuthToken } = await import("../../server/http/authTokens.ts");
     const token = await mintAuthToken(user.id, "password_reset", 60_000);
     const res = await submitReset(token, "post-reset-pw-1");
     assert.equal(res.status, 200, await res.text());
@@ -352,7 +352,7 @@ describe("password reset", { skip: hasDatabase() ? false : skipMessage() }, () =
     const socket = await reconnectWith(server, cookie);
     const cut = dropped(socket);
 
-    const { mintAuthToken } = await import("../../server/authTokens.ts");
+    const { mintAuthToken } = await import("../../server/http/authTokens.ts");
     const token = await mintAuthToken(user.id, "password_reset", 60_000);
     assert.equal((await submitReset(token, "post-reset-pw-2")).status, 200);
     assert.equal(await cut, true, "a socket opened before the reset must not outlive it");
@@ -360,7 +360,7 @@ describe("password reset", { skip: hasDatabase() ? false : skipMessage() }, () =
 
   test("a completed reset makes a second outstanding token for that user unredeemable", async () => {
     const { user } = await verifiedUser("reset_sibling_invalidated");
-    const { mintAuthToken, redeemAuthToken } = await import("../../server/authTokens.ts");
+    const { mintAuthToken, redeemAuthToken } = await import("../../server/http/authTokens.ts");
     const first = await mintAuthToken(user.id, "password_reset", 60_000);
     const second = await mintAuthToken(user.id, "password_reset", 60_000);
 

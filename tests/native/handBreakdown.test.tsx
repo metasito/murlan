@@ -178,7 +178,7 @@ describe('when an endpoint is down', () => {
 
 // The overlay is up between manches too: the next one starts on a rematch
 // vote, and until it is settled the seat is still the server's to auto-pass
-// every 30s (server/gameTimers.ts AFK_TIMEOUT_MS).
+// every 30s (server/game/gameTimers.ts AFK_TIMEOUT_MS).
 describe('the replay button while another manche can still follow', () => {
   // The replay comes off the hand's own history row. A hand with no row has no
   // replay to offer, which is what FULL's `replayId: null` stands for below.

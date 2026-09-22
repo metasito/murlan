@@ -97,7 +97,7 @@ kill %1
 ```
 
 Expected: `{"status":"ok","db":"connected", ...}` from `/health` (`server/app.ts`), and the
-boot log shows no thrown error. If `assertRenamesApplied()` (`server/schemaDdl.ts`) were
+boot log shows no thrown error. If `assertRenamesApplied()` (`server/store/schemaDdl.ts`) were
 going to throw, it throws here — that is the whole reason this step runs before Deploy rather
 than after.
 
@@ -158,7 +158,7 @@ trade the dump exists to make available, not one to reach for by default.
 
 ## Secrets
 
-The server refuses to boot without these (`server/bootEnv.ts`):
+The server refuses to boot without these (`server/http/bootEnv.ts`):
 
 - `DATABASE_URL` — in production it must carry an `sslmode` (`?sslmode=require`;
   `sslmode=disable` is an explicit opt-out)
@@ -169,16 +169,16 @@ The server refuses to boot without these (`server/bootEnv.ts`):
 
 `PORT` is read when the host assigns one and defaults to 5000; never hardcode it.
 
-Missing either of these does not stop the server from booting — `server/mail.ts` logs a
+Missing either of these does not stop the server from booting — `server/http/mail.ts` logs a
 warning and skips the send, so signup and email verification still complete without them:
 
-- `RESEND_API_KEY` — Resend API key for `server/mail.ts`
+- `RESEND_API_KEY` — Resend API key for `server/http/mail.ts`
 - `MAIL_FROM_ADDRESS` — the verified "from" address Resend sends as
 
 ## What breaks the host
 
 - **The `session` table.** `connect-pg-simple` runs with `createTableIfMissing: false`, so
-  `server/schemaDdl.ts` creates it at boot instead — nothing else can, because
+  `server/store/schemaDdl.ts` creates it at boot instead — nothing else can, because
   `drizzle.config.ts` excludes it from `db:push`. Without that exclusion, a push that adds
   any new table asks whether the new one is a *rename* of `session`, and answering yes
   renames it and logs out every account. Clearing its rows is fine (`scripts/reset-db.mjs`
@@ -191,7 +191,7 @@ warning and skips the send, so signup and email verification still complete with
 
 Express serves the API and, when `dist/` exists, the exported Expo web build as an SPA.
 With no web build present it serves the Expo Go QR landing page instead
-(`server/templates/landing-page.html`). Both paths are in `configureExpoAndLanding()`.
+(`server/http/templates/landing-page.html`). Both paths are in `configureExpoAndLanding()`.
 
 `ALLOW_RESET=1 node scripts/reset-password.mjs <username>` sets a new random password on one
 account and prints it once.
@@ -200,7 +200,7 @@ account and prints it once.
 
 `shared/schema.ts` now declares `users_email_verified_lower_uq`, a **partial** unique index on
 `lower(email) WHERE email_verified_at IS NOT NULL`, in place of the old unconditional
-`users_email_lower_uq`. `ensureSchema()` (`server/schemaDdl.ts`) is additive only, so it
+`users_email_lower_uq`. `ensureSchema()` (`server/store/schemaDdl.ts`) is additive only, so it
 creates the new index on its own at the next boot — no manual step for that half. What it
 never does is drop the old one, and the two disagree: while both exist, the old index still
 refuses two accounts sharing an unverified email, which is exactly the claim (not possession)
@@ -211,7 +211,7 @@ degrades safely against an un-migrated database. The code review behind this not
 that the previous safe-looking degradation — a neutral 202 with no account and no session
 cookie — was itself a defect: it was a second, non-neutral registration outcome the client
 could not tell apart from success, and it answered a stranger's probe just as precisely as the
-oracle #897 exists to close. `server/routes.ts`'s register route no longer catches
+oracle #897 exists to close. `server/http/routes.ts`'s register route no longer catches
 `EmailTakenError` at all. Against an un-migrated database — one where the old unconditional
 index still stands — every registration that collides with an existing unverified email now
 throws uncaught and the route replies **500**, loudly, until this step runs. That is the

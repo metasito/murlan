@@ -113,7 +113,7 @@ describe("room visibility", { skip: hasDatabase() ? false : skipMessage() }, () 
     host.socket.emit("room:create", { gameMode: "free_for_all", maxPlayers: 2 });
     const privateRoom = await made;
 
-    const { roomStore } = await import("../../server/roomStore.ts");
+    const { roomStore } = await import("../../server/store/roomStore.ts");
     const open = await roomStore.findWaitingPublicRooms();
     const ids = open.map((c) => c.room.id);
 
@@ -144,7 +144,7 @@ describe("room visibility", { skip: hasDatabase() ? false : skipMessage() }, () 
     host.socket.emit("room:start");
     await waitFor(host.socket, "game:started");
 
-    const { roomStore } = await import("../../server/roomStore.ts");
+    const { roomStore } = await import("../../server/store/roomStore.ts");
     const open = await roomStore.findWaitingPublicRooms();
     assert.ok(
       !open.some((c) => c.room.id === room.roomId),
@@ -159,7 +159,7 @@ describe("room visibility", { skip: hasDatabase() ? false : skipMessage() }, () 
     const opener = await player("orphan_opener");
     const opened = await quickmatch(opener);
 
-    const { roomStore } = await import("../../server/roomStore.ts");
+    const { roomStore } = await import("../../server/store/roomStore.ts");
     await roomStore.removeRoomPlayer(opened.roomId, opener.user.id);
 
     const arrival = await player("orphan_arrival");
@@ -185,7 +185,7 @@ describe("room visibility", { skip: hasDatabase() ? false : skipMessage() }, () 
    * not about which of several waiting rooms another case left behind first.
    */
   async function onlyPublicRoom(roomId: string) {
-    const { roomStore } = await import("../../server/roomStore.ts");
+    const { roomStore } = await import("../../server/store/roomStore.ts");
     for (const rival of await roomStore.findWaitingPublicRooms()) {
       if (rival.room.id !== roomId) {
         await roomStore.updateRoomVisibility(rival.room.id, "private");
@@ -270,7 +270,7 @@ describe("room visibility", { skip: hasDatabase() ? false : skipMessage() }, () 
     mate.socket.emit("room:setVisibility", { visibility: "public" });
     assert.equal((await refused).code, "NOT_HOST");
 
-    const { roomStore } = await import("../../server/roomStore.ts");
+    const { roomStore } = await import("../../server/store/roomStore.ts");
     const row = await roomStore.getRoomById(room.roomId);
     assert.equal(row?.visibility, "private", "only the host decides who may see the room");
   });

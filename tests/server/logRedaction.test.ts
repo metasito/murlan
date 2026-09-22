@@ -24,12 +24,12 @@ import express from "express";
 import { once } from "node:events";
 import type { AddressInfo } from "node:net";
 import { Writable } from "node:stream";
-import { createLogger, createRequestLogger, REDACT_PATHS, setErrorRecorder } from "../../server/logger.ts";
-import { errorHandler } from "../../server/errorHandler.ts";
-import { ANSWERED_BY_SHELL, unmatchedKind } from "../../server/staticPaths.ts";
+import { createLogger, createRequestLogger, REDACT_PATHS, setErrorRecorder } from "../../server/http/logger.ts";
+import { errorHandler } from "../../server/http/errorHandler.ts";
+import { ANSWERED_BY_SHELL, unmatchedKind } from "../../server/http/staticPaths.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-const schemas = readFileSync(path.join(repoRoot, "server", "socketSchemas.ts"), "utf8");
+const schemas = readFileSync(path.join(repoRoot, "server", "socket", "socketSchemas.ts"), "utf8");
 
 /** Every object key declared in the socket schemas, comments stripped. */
 function schemaFields(): string[] {
@@ -72,7 +72,7 @@ describe("what a refused socket event leaves in the log", () => {
       assert.ok(
         REDACT_PATHS.includes(`payload.${field}`),
         `${field} is a socket payload field that reads like a room code and is logged in the ` +
-          `clear — add "payload.${field}" to REDACT_PATHS in server/logger.ts`
+          `clear — add "payload.${field}" to REDACT_PATHS in server/http/logger.ts`
       );
     }
   });
@@ -574,7 +574,7 @@ describe("what a completed request leaves in the log", () => {
       /pinoHttp\s*\(/.test(app),
       false,
       "server/app.ts builds its own pino-http options — the serializers that keep the client IP out " +
-        "of the log live in server/logger.ts, and a second options object silently bypasses them"
+        "of the log live in server/http/logger.ts, and a second options object silently bypasses them"
     );
     // The floor under `loggedRequest`'s wildcard rule, and under the `catchAll`
     // harness above, which is a hand copy of this mount.

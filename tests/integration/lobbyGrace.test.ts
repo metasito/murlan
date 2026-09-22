@@ -93,7 +93,7 @@ describe("lobby disconnect grace", { skip: hasDatabase() ? false : skipMessage()
    * test fails for a reason that has nothing to do with what it asserts.
    */
   async function graceArmed(roomId: string, userId: string) {
-    const { lobbyGraceTimers, lobbyGraceKey } = await import("../../server/gameTimers.ts");
+    const { lobbyGraceTimers, lobbyGraceKey } = await import("../../server/game/gameTimers.ts");
     for (let i = 0; i < 200; i++) {
       if (lobbyGraceTimers.has(lobbyGraceKey(roomId, userId))) return;
       await new Promise((r) => setTimeout(r, 25));
@@ -127,7 +127,7 @@ describe("lobby disconnect grace", { skip: hasDatabase() ? false : skipMessage()
     const heard = await churn;
     assert.equal(heard, null, "a blip must not tell the room that someone left");
 
-    const { roomStore } = await import("../../server/roomStore.ts");
+    const { roomStore } = await import("../../server/store/roomStore.ts");
     const seats = await roomStore.getRoomPlayers(room.roomId);
     assert.equal(seats.length, 2, "the seat row must survive the disconnect");
     assert.ok(
@@ -156,7 +156,7 @@ describe("lobby disconnect grace", { skip: hasDatabase() ? false : skipMessage()
     host.socket.close();
     await new Promise((r) => setTimeout(r, 300));
 
-    const { roomStore } = await import("../../server/roomStore.ts");
+    const { roomStore } = await import("../../server/store/roomStore.ts");
     const room2 = await roomStore.getRoomById(room.roomId);
     assert.equal(
       room2?.hostUserId,
@@ -178,7 +178,7 @@ describe("lobby disconnect grace", { skip: hasDatabase() ? false : skipMessage()
 
     await new Promise((r) => setTimeout(r, 3000));
 
-    const { roomStore } = await import("../../server/roomStore.ts");
+    const { roomStore } = await import("../../server/store/roomStore.ts");
     const seats = await roomStore.getRoomPlayers(room.roomId);
     assert.ok(
       !seats.some((s) => s.userId === guest.user.id),

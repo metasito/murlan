@@ -9,7 +9,7 @@ const { safeHost, renderLandingPage, cspDirectives, landingPageCsp } = __testabl
 const CSP_DIRECTIVES = cspDirectives();
 
 const template = fs.readFileSync(
-  path.resolve(import.meta.dirname, "..", "..", "server", "templates", "landing-page.html"),
+  path.resolve(import.meta.dirname, "..", "..", "server", "http", "templates", "landing-page.html"),
   "utf-8"
 );
 

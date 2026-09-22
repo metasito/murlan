@@ -187,7 +187,7 @@ describe("the gate's exit code, which is what phase E reads", () => {
 describe("no path is refused for being what it is", () => {
   for (const [i, p] of [
     "shared/schema.ts",
-    "server/socket.ts",
+    "server/socket/socket.ts",
     ".replit",
     ".github/workflows/probe.yml",
   ].entries()) {

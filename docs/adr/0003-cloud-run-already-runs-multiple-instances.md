@@ -20,9 +20,9 @@ was already the deployed shape before anyone decided it.
 ## Decision
 
 Treat multi-instance as the current reality, not a future one. The fix already shipped:
-`server/gameOwnership.ts` (Postgres advisory lock, one owner per room) plus
-`@socket.io/postgres-adapter` (`server/socketAdapter.ts`) carrying broadcasts and forwarded
-actions (`server/tableRouter.ts`) across instances (commit `13b09ac`). This is load-bearing
+`server/game/gameOwnership.ts` (Postgres advisory lock, one owner per room) plus
+`@socket.io/postgres-adapter` (`server/socket/socketAdapter.ts`) carrying broadcasts and forwarded
+actions (`server/game/tableRouter.ts`) across instances (commit `13b09ac`). This is load-bearing
 production infrastructure, not speculative scaffolding — do not remove or simplify it on the
 assumption the app is single-instance.
 

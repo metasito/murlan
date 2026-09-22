@@ -51,7 +51,7 @@ npm run test:e2e     # Playwright — needs Docker and a built web bundle
 
 ## Database
 
-The server applies `shared/schema.ts` itself on every start (`server/schemaDdl.ts`):
+The server applies `shared/schema.ts` itself on every start (`server/store/schemaDdl.ts`):
 missing tables, columns, indexes and enum types are created, nothing is dropped or
 retyped. Running the app against an empty database is all the setup there is.
 

@@ -10,10 +10,10 @@ import assert from "node:assert/strict";
 import { setTimeout as setTimeoutPromise } from "node:timers/promises";
 import type { Server as SocketServer } from "socket.io";
 
-import { armTurn, armTurnIfIdle } from "../../server/gameTurn.ts";
-import { afkTimers, afkTimeoutMs, clearRoomTimers } from "../../server/gameTimers.ts";
-import { activeGames } from "../../server/gameRoom.ts";
-import type { OnlineGameState } from "../../server/gameRoom.ts";
+import { armTurn, armTurnIfIdle } from "../../server/game/gameTurn.ts";
+import { afkTimers, afkTimeoutMs, clearRoomTimers } from "../../server/game/gameTimers.ts";
+import { activeGames } from "../../server/game/gameRoom.ts";
+import type { OnlineGameState } from "../../server/game/gameRoom.ts";
 import { emptyRankTally } from "../../lib/gameEngine.ts";
 import type { GameState, Player } from "../../lib/gameEngine.ts";
 import { Reading } from "../../lib/tokens.ts";

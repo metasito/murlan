@@ -7,7 +7,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { Pool } from "pg";
-import { schemaStatements, assertRenamesApplied } from "../../server/schemaDdl.ts";
+import { schemaStatements, assertRenamesApplied } from "../../server/store/schemaDdl.ts";
 
 const statements = schemaStatements();
 
@@ -159,7 +159,7 @@ test("columns are added before the indexes that may target them", () => {
 
 test("the replay ownership predicate has an index it can use", () => {
   // Both readers of match_replays filter on `player_ids @> '["<uid>"]'`
-  // (server/replays.ts, server/deleteAccount.ts). Containment is not a btree
+  // (server/game/replays.ts, server/http/deleteAccount.ts). Containment is not a btree
   // predicate, so the access method has to survive into the DDL — an index
   // created under the same name as a btree would be dead weight the planner
   // never touches.
@@ -202,7 +202,7 @@ test("getUserByEmail's unconditional lookup has an index it can use (#894 review
 
 test("events and auth_tokens have an index the retention sweep can use", () => {
   // Both predicates (events.occurredAt, auth_tokens.expiresAt) had no index
-  // before #895 — server/retention.ts's scheduled DELETE would otherwise be
+  // before #895 — server/game/retention.ts's scheduled DELETE would otherwise be
   // the same full-table seq scan the write-path prune was.
   assert.ok(
     statements.some((s) => /"events_occurred_idx"/.test(s) && /ON "events" \("occurred_at"\)/.test(s)),

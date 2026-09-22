@@ -127,7 +127,7 @@ function payloadSentences(sourceFile: ts.SourceFile): string[] {
 }
 
 /**
- * `payload()` (server/payload.ts) moved most of a payload's own fallback
+ * `payload()` (server/socket/payload.ts) moved most of a payload's own fallback
  * text out of server/ source — where payloadSentences() above can see it —
  * and into `locales/en.ts`'s `server.*` values, resolved at runtime through
  * a call this scan deliberately stops at. Both scans below that walk
@@ -269,13 +269,13 @@ describe("no server string assumes the player's gender", () => {
     // (isZodChain): "no join code" above exists as a required_error /
     // invalid_type_error property too, so it stayed true even with the whole
     // isZodChain branch deleted — it was never really testing this half.
-    // "Invalid room code" (server/socketSchemas.ts) has no options object on
+    // "Invalid room code" (server/socket/socketSchemas.ts) has no options object on
     // that field at all, so it is reachable only through the trailing-argument
     // path.
     assert.ok(
       sentences.includes("Invalid room code"),
       "the scan no longer reaches a validator's own trailing message " +
-        "(server/socketSchemas.ts) — if that sentence was reworded, name the new one here"
+        "(server/socket/socketSchemas.ts) — if that sentence was reworded, name the new one here"
     );
     // Restored after #896's payload() helper moved most hand-written
     // { message, code } literals across server/ into locales/en.ts's
@@ -346,7 +346,7 @@ describe("the server writes its fallbacks in the source language", () => {
 // A hand-written `message`/`error` beside a hand-written `code` is exactly
 // what drifted out of sync with locales/en.ts before (#896) — payload()
 // derives the fallback from the code so the two cannot disagree. The four
-// sites this once carved server/routes.ts's register route out for were
+// sites this once carved server/http/routes.ts's register route out for were
 // rewritten wholesale for neutral registration (#897); the carve-out went
 // with them — a scan with one is a scan that stops being true (design doc,
 // Q2).
@@ -662,7 +662,7 @@ describe("translate() produces the expected output per locale", () => {
     // It moved down for the same reason as the floors above: a code reached
     // only through payload("CODE") (#896) carries no literal `code: "..."`
     // property for this regex to see, and is checked at compile time instead
-    // (server/payload.ts's ServerCode constraint) rather than by this scan.
+    // (server/socket/payload.ts's ServerCode constraint) rather than by this scan.
     assert.ok(
       emitted.size > 34,
       `expected to find the server's codes, got ${emitted.size} (38 when this floor was set)`
@@ -687,7 +687,7 @@ describe("translate() produces the expected output per locale", () => {
     // Read across the socket family rather than one file: which module the
     // rejoin handler sits in is a layout decision, and the contract being
     // checked here is not.
-    const source = ["socket.ts", "socketRooms.ts", "socketGameplay.ts"]
+    const source = ["socket/socket.ts", "socket/socketRooms.ts", "socket/socketGameplay.ts"]
       .map((f) => readFileSync(path.join(SERVER_DIR, f), "utf8"))
       .join("\n");
     const sites = source
@@ -926,7 +926,7 @@ describe("every player-facing server response carries a code", () => {
 
   /**
    * An object literal's own top-level property names. `...payload("CODE")`
-   * (server/payload.ts) always spreads in `code`, `message` and `params`, so
+   * (server/socket/payload.ts) always spreads in `code`, `message` and `params`, so
    * it counts as naming those without the scan having to evaluate the call.
    */
   function propertyNames(obj: ts.ObjectLiteralExpression): Set<string> {
@@ -1125,7 +1125,7 @@ describe("every player-facing server response carries a code", () => {
       }
     }
     // A floor against the scanner silently matching nothing, not a count of
-    // the server's responses — it moved down when server/emit.ts collapsed the
+    // the server's responses — it moved down when server/socket/emit.ts collapsed the
     // twice- and thrice-built socket emits into one declaration each, which
     // removed real payload literals rather than hiding any.
     assert.ok(

@@ -17,8 +17,8 @@ import assert from "node:assert/strict";
  * it starts running tests, and the assertion below is that the count is zero.
  */
 
-// Before any server module is imported: server/db.ts builds its Pool from
-// DATABASE_URL at module scope, and server/session.ts reads SESSION_SECRET.
+// Before any server module is imported: server/store/db.ts builds its Pool from
+// DATABASE_URL at module scope, and server/http/session.ts reads SESSION_SECRET.
 process.env.DATABASE_URL = "postgres://postgres:postgres@127.0.0.1:1/murlan_unreachable";
 process.env.SESSION_SECRET = "boot-failure-test";
 

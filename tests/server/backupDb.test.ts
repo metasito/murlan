@@ -242,7 +242,7 @@ test("a dump restores into an empty database with matching account and rating ro
         `INSERT INTO "${server.schema}".user_ratings (user_id, season, rating)
          SELECT id, 'test-season', 1200 FROM "${server.schema}".users`
       );
-      // connect-pg-simple's own table (server/session.ts) — the reason
+      // connect-pg-simple's own table (server/http/session.ts) — the reason
       // backup-db.mjs dumps the whole database instead of a schema-driven table
       // list. A restore proof that never looks at it would stay green against a
       // dump that silently excludes it. The two registrations above already

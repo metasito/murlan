@@ -14,7 +14,7 @@
 // drag in that module's AsyncStorage/expo-localization dependencies.
 //
 // `evaluateAchievements` returns every id the result qualifies for, including
-// ones already unlocked. server/stats.ts persists with `onConflictDoNothing`,
+// ones already unlocked. server/game/stats.ts persists with `onConflictDoNothing`,
 // so idempotent writes — not first-ever tracking — are what make "first_win"
 // mean first.
 import type { TranslationKey } from "./i18n.ts";

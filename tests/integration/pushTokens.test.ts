@@ -24,7 +24,7 @@ import { whileUserLocked } from "../helpers/userLock.ts";
 /**
  * Stands in for Expo's push service.
  *
- * Set before the app is imported: server/push.ts reads the override at module
+ * Set before the app is imported: server/socket/push.ts reads the override at module
  * load. Without it this suite would post invented tokens to Expo's production
  * endpoint on every run.
  */
@@ -58,11 +58,11 @@ describe("push token registry", { skip: hasDatabase() ? false : skipMessage() },
     await startExpoStub();
     server = await startTestServer();
     dbPool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
-    // Imported here, not at the top: server/push.ts pulls in server/db.ts,
+    // Imported here, not at the top: server/socket/push.ts pulls in server/store/db.ts,
     // which builds its pool the moment it loads. Loading it before
     // startTestServer has pointed connections at its throwaway schema binds
     // the app to the default one, and every test then shares state.
-    ({ MAX_DEVICES_PER_USER: maxDevices } = await import("../../server/push.ts"));
+    ({ MAX_DEVICES_PER_USER: maxDevices } = await import("../../server/socket/push.ts"));
   });
 
   after(async () => {
@@ -401,7 +401,7 @@ describe("push token registry", { skip: hasDatabase() ? false : skipMessage() },
         const token = `ExponentPushToken[old${String(i).padStart(18, "0")}]`;
         assert.equal((await post(ana.cookie, { token, platform: "ios" })).status, 200);
       }
-      const { savePushToken } = await import("../../server/push.ts");
+      const { savePushToken } = await import("../../server/socket/push.ts");
       const fresh = ["ExponentPushToken[race000000000000000001]", "ExponentPushToken[race000000000000000002]"];
       await whileUserLocked(dbPool, [ana.user.id], () => fresh.map((t) => savePushToken(ana.user.id, t, "ios", "en")));
 

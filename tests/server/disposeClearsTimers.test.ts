@@ -1,5 +1,5 @@
 // `disposeGame`'s own docstring is "Drops every in-memory trace of a room", and
-// the timer maps in server/gameTimers.ts are that trace. A timer left behind
+// the timer maps in server/game/gameTimers.ts are that trace. A timer left behind
 // fires against a room that no longer exists — it deletes a `room_players` row
 // for a table nobody is at, and the seat it frees belongs to whatever room has
 // since taken the id.
@@ -15,10 +15,10 @@ import {
   disconnectTimers,
   lobbyGraceTimers,
   lobbyGraceKey,
-} from "../../server/gameTimers.ts";
-import { activeGames } from "../../server/gameRoom.ts";
-import { disposeGame } from "../../server/gamePersistence.ts";
-import type { OnlineGameState } from "../../server/gameRoom.ts";
+} from "../../server/game/gameTimers.ts";
+import { activeGames } from "../../server/game/gameRoom.ts";
+import { disposeGame } from "../../server/game/gamePersistence.ts";
+import type { OnlineGameState } from "../../server/game/gameRoom.ts";
 
 const ROOM = "dispose-timers-room";
 const SEATED = "dispose-timers-user";

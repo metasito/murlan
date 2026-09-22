@@ -1,4 +1,4 @@
-// tests/server/socketErrorLogging.test.ts — a bookkeeping write in server/socket.ts is
+// tests/server/socketErrorLogging.test.ts — a bookkeeping write in server/socket/socket.ts is
 // fire-and-forget on purpose: it must never block or fail a hand. That shape is
 // one character away from invisible, though. `.catch(() => {})` on
 // `removeRoomPlayer` leaves the room_players row alive while the in-memory seat
@@ -30,7 +30,7 @@ const SOCKET_SOURCES = [
   "socketPresence.ts",
   "socketRegistry.ts",
   "socketTable.ts",
-].map((f) => path.join(repoRoot, "server", f));
+].map((f) => path.join(repoRoot, "server", "socket", f));
 const readSocketFamily = () => SOCKET_SOURCES.map((p) => readFileSync(p, "utf8")).join("\n");
 
 function stripComments(s: string): string {

@@ -132,7 +132,7 @@ describe("stats persistence (Task 8)", { skip: hasDatabase() ? false : skipMessa
       });
       assert.ok(payload, "game:over must fire");
 
-      const { getMatchHistoryView } = await import("../../server/matchHistoryView.ts");
+      const { getMatchHistoryView } = await import("../../server/http/matchHistoryView.ts");
       const rows = await waitForRow(async () => {
         const view = await getMatchHistoryView(cara.user.id);
         return view.length > 0 && view[0].replayId !== null ? view : null;
@@ -190,7 +190,7 @@ describe("stats persistence (Task 8)", { skip: hasDatabase() ? false : skipMessa
       [user.id, JSON.stringify(["bot:1", "bot:2"])]
     );
 
-    const { getMatchHistoryView } = await import("../../server/matchHistoryView.ts");
+    const { getMatchHistoryView } = await import("../../server/http/matchHistoryView.ts");
     const [hand] = await getMatchHistoryView(user.id);
 
     assert.equal(hand.replayId, null, "no replay pairs it, so nothing offers to play it");
@@ -397,10 +397,10 @@ describe("stats persistence (Task 8)", { skip: hasDatabase() ? false : skipMessa
 
     // Dynamically imported after startTestServer() has pointed
     // DATABASE_URL at the scoped test schema — a static top-level import
-    // would resolve server/db.ts's module-scope Pool against whatever
+    // would resolve server/store/db.ts's module-scope Pool against whatever
     // DATABASE_URL was set before this file's before() hook ran (see
     // tests/helpers/testServer.ts's own comment on this).
-    const { recordGameResult, getUserAchievements } = await import("../../server/stats.ts");
+    const { recordGameResult, getUserAchievements } = await import("../../server/game/stats.ts");
 
     const result: GameResult = {
       userId: user.id,
@@ -469,7 +469,7 @@ describe("stats persistence (Task 8)", { skip: hasDatabase() ? false : skipMessa
        SELECT $1, now() - make_interval(hours => g), 'free_for_all', 2, 2, 0 FROM generate_series(1, $2::int) g`,
       [user.id, 50]
     );
-    const { recordGameResult, MAX_HISTORY_ROWS_PER_USER } = await import("../../server/stats.ts");
+    const { recordGameResult, MAX_HISTORY_ROWS_PER_USER } = await import("../../server/game/stats.ts");
     const result: GameResult = {
       userId: user.id,
       placement: 1,

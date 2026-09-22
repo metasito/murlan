@@ -8,7 +8,7 @@ import { startTestServer, hasDatabase, skipMessage, type TestServer } from "../h
  * Its own file so this can be lowered just for this process — the shared
  * budget everywhere else (tests/helpers/testServer.ts) is sized for a whole
  * suite's worth of registrations and would need hundreds of requests to trip
- * here. Set after the imports above (none of which reaches server/routes.ts
+ * here. Set after the imports above (none of which reaches server/http/routes.ts
  * — see testServer.ts's own note on why) but before startTestServer() below
  * dynamically imports it.
  */

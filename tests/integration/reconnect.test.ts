@@ -9,7 +9,7 @@ import {
   type TestServer,
 } from "../helpers/testServer.ts";
 import { MATCH_TARGETS, targetsFor } from "../../lib/gameEngine.ts";
-import { lobbyGraceMs } from "../../server/gameTimers.ts";
+import { lobbyGraceMs } from "../../server/game/gameTimers.ts";
 import { Reading } from "../../lib/tokens.ts";
 import { connectAs, reconnectAs, waitFor } from "../helpers/client.ts";
 import {
@@ -209,7 +209,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
 
   /** Waits for the `active_games` row the rehydration branch reads. */
   async function waitForPersistedGame(roomId: string): Promise<void> {
-    const { db } = await import("../../server/db.ts");
+    const { db } = await import("../../server/store/db.ts");
     const { activeGames } = await import("../../shared/schema.ts");
     const { eq } = await import("drizzle-orm");
     for (let attempt = 0; attempt < 100; attempt++) {
@@ -322,7 +322,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
   });
 
   test("a rejoin that throws still sends the friend list", async () => {
-    const { activeGames } = await import("../../server/gameRoom.ts");
+    const { activeGames } = await import("../../server/game/gameRoom.ts");
     const alice = await connectAs(server, "rejoin_throw_alice");
     const bob = await connectAs(server, "rejoin_throw_bob");
     const room = await setUpRoom([alice, bob], 2);
@@ -399,7 +399,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
       // vacating a seat, and a vacated seat plays at BOT_MOVE_DELAY_MS. What
       // gets rehydrated below is then a hand that is already over, and the
       // table is disposed before the assertions can look at it.
-      const { clearRoomTimers } = await import("../../server/gameTimers.ts");
+      const { clearRoomTimers } = await import("../../server/game/gameTimers.ts");
       clearRoomTimers(room.roomId);
       // The write that outlives a restart is fire-and-forget, so the row is
       // not there yet when the opening deal reaches the clients.
@@ -441,7 +441,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
    * a live seat to a bot.
    */
   test("a failed roster read does not fail a rejoin that holds a seat", async () => {
-    const { roomStore } = await import("../../server/roomStore.ts");
+    const { roomStore } = await import("../../server/store/roomStore.ts");
     const hank = await connectAs(server, "roster_hank");
     const ivy = await connectAs(server, "roster_ivy");
     const room = await setUpRoom([hank, ivy], 2);
@@ -481,7 +481,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
   });
 
   test("a cold-start rejoin is given its room even when the roster read fails", async () => {
-    const { roomStore } = await import("../../server/roomStore.ts");
+    const { roomStore } = await import("../../server/store/roomStore.ts");
     const jo = await connectAs(server, "cold_start_jo");
     const kai = await connectAs(server, "cold_start_kai");
     const room = await setUpRoom([jo, kai], 2);
@@ -783,7 +783,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
    * scheduler luck.
    */
   test("a rejoin inside handleGameOver's own write is not handed the previous hand's game:over", async () => {
-    const { gameOverWriters } = await import("../../server/gamePersistence.ts");
+    const { gameOverWriters } = await import("../../server/game/gamePersistence.ts");
     const realPreview = gameOverWriters.previewRatedDeltas;
     const alice = await connectAs(server, "race_alice");
     const bob = await connectAs(server, "race_bob");

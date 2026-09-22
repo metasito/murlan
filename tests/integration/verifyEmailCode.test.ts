@@ -1,7 +1,7 @@
 // tests/integration/verifyEmailCode.test.ts — #925: a 6-digit code is a
 // 1,000,000-value space, brute-forceable within its TTL unless guesses
 // against one outstanding code are capped. MAX_CODE_ATTEMPTS is that cap,
-// enforced inside redeemAuthCode (server/authTokens.ts) — wrong guesses,
+// enforced inside redeemAuthCode (server/http/authTokens.ts) — wrong guesses,
 // an unknown email, and a code guessed wrong too many times must all answer
 // with the same generic INVALID_TOKEN failure the token flow already used.
 import { test, before, after, describe } from "node:test";
@@ -25,7 +25,7 @@ describe("verify-email code guessing is capped per credential", { skip: hasDatab
   test("a wrong code fails with the generic failure", async () => {
     const { user } = await register(server, "code_wrong");
     await waitForPendingCode(user.id);
-    const { replaceEmailVerifyCode } = await import("../../server/authTokens.ts");
+    const { replaceEmailVerifyCode } = await import("../../server/http/authTokens.ts");
     await replaceEmailVerifyCode({ userId: user.id, email: user.email!, ttlMs: 60_000 });
 
     const res = await verify(user.email!, "000000");
@@ -44,7 +44,7 @@ describe("verify-email code guessing is capped per credential", { skip: hasDatab
   test("MAX_CODE_ATTEMPTS wrong guesses force a resend — the right code stops working before its TTL runs out", async () => {
     const { user } = await register(server, "code_capped");
     const { replaceEmailVerifyCode, MAX_CODE_ATTEMPTS } = await import(
-      "../../server/authTokens.ts"
+      "../../server/http/authTokens.ts"
     );
     await waitForPendingCode(user.id);
     const code = await replaceEmailVerifyCode({ userId: user.id, email: user.email!, ttlMs: 60_000 });
@@ -56,7 +56,7 @@ describe("verify-email code guessing is capped per credential", { skip: hasDatab
       assert.equal(res.status, 400, `attempt ${i}: ${await res.text()}`);
     }
 
-    const { db } = await import("../../server/db.ts");
+    const { db } = await import("../../server/store/db.ts");
     const { authTokens } = await import("../../shared/schema.ts");
     const { eq } = await import("drizzle-orm");
     const rows = await db.select().from(authTokens).where(eq(authTokens.userId, user.id));
@@ -74,7 +74,7 @@ describe("verify-email code guessing is capped per credential", { skip: hasDatab
 
   test("a resend does not hand back a fresh five guesses", async () => {
     const { user } = await register(server, "code_resend_cap");
-    const { replaceEmailVerifyCode, MAX_CODE_ATTEMPTS } = await import("../../server/authTokens.ts");
+    const { replaceEmailVerifyCode, MAX_CODE_ATTEMPTS } = await import("../../server/http/authTokens.ts");
     await waitForPendingCode(user.id);
     const first = await replaceEmailVerifyCode({ userId: user.id, email: user.email!, ttlMs: 60_000 });
 
@@ -92,8 +92,8 @@ describe("verify-email code guessing is capped per credential", { skip: hasDatab
 
   test("a code that outlived its TTL carries nothing onto its replacement", async () => {
     const { user } = await register(server, "code_resend_expired");
-    const { replaceEmailVerifyCode, MAX_CODE_ATTEMPTS } = await import("../../server/authTokens.ts");
-    const { db } = await import("../../server/db.ts");
+    const { replaceEmailVerifyCode, MAX_CODE_ATTEMPTS } = await import("../../server/http/authTokens.ts");
+    const { db } = await import("../../server/store/db.ts");
     const { authTokens } = await import("../../shared/schema.ts");
     const { eq } = await import("drizzle-orm");
     await waitForPendingCode(user.id);
@@ -112,7 +112,7 @@ describe("verify-email code guessing is capped per credential", { skip: hasDatab
     const { user: alice } = await register(server, "code_salt_alice");
     const { user: bob } = await register(server, "code_salt_bob");
     const { replaceEmailVerifyCode, redeemAuthCode } = await import(
-      "../../server/authTokens.ts"
+      "../../server/http/authTokens.ts"
     );
     await waitForPendingCode(alice.id);
     const aliceCode = await replaceEmailVerifyCode({
@@ -134,7 +134,7 @@ describe("verify-email code guessing is capped per credential", { skip: hasDatab
   test("fewer than MAX_CODE_ATTEMPTS wrong guesses still allow the right code through", async () => {
     const { user } = await register(server, "code_recovers");
     const { replaceEmailVerifyCode, MAX_CODE_ATTEMPTS } = await import(
-      "../../server/authTokens.ts"
+      "../../server/http/authTokens.ts"
     );
     await waitForPendingCode(user.id);
     const code = await replaceEmailVerifyCode({ userId: user.id, email: user.email!, ttlMs: 60_000 });
@@ -158,7 +158,7 @@ describe("verify-email code guessing is capped per credential", { skip: hasDatab
     const { user: carol } = await register(server, "code_shared_carol");
     const sharedEmail = "code_shared@example.test";
 
-    const { db } = await import("../../server/db.ts");
+    const { db } = await import("../../server/store/db.ts");
     const { users, authTokens } = await import("../../shared/schema.ts");
     const { eq } = await import("drizzle-orm");
     await waitForPendingCode(alice.id);
@@ -167,7 +167,7 @@ describe("verify-email code guessing is capped per credential", { skip: hasDatab
     await db.update(users).set({ email: sharedEmail, emailVerifiedAt: null }).where(eq(users.id, alice.id));
     await db.update(users).set({ email: sharedEmail, emailVerifiedAt: null }).where(eq(users.id, bob.id));
 
-    const { replaceEmailVerifyCode } = await import("../../server/authTokens.ts");
+    const { replaceEmailVerifyCode } = await import("../../server/http/authTokens.ts");
     const aliceCode = await replaceEmailVerifyCode({
       userId: alice.id,
       email: sharedEmail,

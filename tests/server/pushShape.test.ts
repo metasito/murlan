@@ -6,7 +6,7 @@ import {
   buildPushRequest,
   deadTokens,
   renderBody,
-} from "../../server/pushShape.ts";
+} from "../../server/socket/pushShape.ts";
 import { translate } from "../../shared/i18n.ts";
 
 const TOKENS = ["ExponentPushToken[a]", "ExponentPushToken[b]"];

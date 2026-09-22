@@ -13,7 +13,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { Seat, formatRefusals, REFUSAL_EVENTS } from "../soak/soak.ts";
-import { errorEventFor } from "../../server/socketSafety.ts";
+import { errorEventFor } from "../../server/socket/socketSafety.ts";
 import type { Card } from "../../lib/gameEngine.ts";
 
 /** The half of socket.io-client `Seat` listens on. */

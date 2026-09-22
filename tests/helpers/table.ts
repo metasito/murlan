@@ -111,7 +111,7 @@ export type DriveResult =
  * leading a new round plays the largest same-rank group anchored on their
  * lowest card (or the mandatory start card, for the very first play of the
  * game), everyone else always passes. This mirrors the server's own
- * AFK/bot forced-minimum path (see autoMoveForSeat in server/socket.ts),
+ * AFK/bot forced-minimum path (see autoMoveForSeat in server/socket/socket.ts),
  * but is triggered immediately by the test instead of waiting on a timer,
  * and sheds several cards per play to keep the per-socket event count
  * comfortably under the rate limiter across repeated hands.

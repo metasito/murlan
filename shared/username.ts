@@ -1,4 +1,4 @@
-// Read by `server/schemas.ts` and by the screens, so anything imported here is
+// Read by `server/http/schemas.ts` and by the screens, so anything imported here is
 // imported into the app bundle: keep it free of zod and drizzle.
 
 export const USERNAME_MIN = 3;

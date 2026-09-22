@@ -1,4 +1,4 @@
-// tests/server/gameOver.test.ts — what server/gameOver.ts does *around* the hand
+// tests/server/gameOver.test.ts — what server/game/gameOver.ts does *around* the hand
 // resolution: the broadcast, the two awaited writes and the three
 // fire-and-forget ones.
 //
@@ -8,10 +8,10 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import type { Server as SocketServer } from "socket.io";
-import { handleGameOver } from "../../server/gameOver.ts";
-import { logger } from "../../server/logger.ts";
-import type { GameOverWriters } from "../../server/gameOver.ts";
-import type { OnlineGameState } from "../../server/gameRoom.ts";
+import { handleGameOver } from "../../server/game/gameOver.ts";
+import { logger } from "../../server/http/logger.ts";
+import type { GameOverWriters } from "../../server/game/gameOver.ts";
+import type { OnlineGameState } from "../../server/game/gameRoom.ts";
 import type { GameState, Player } from "../../lib/gameEngine.ts";
 import type { ReplayMove } from "../../lib/replay.ts";
 

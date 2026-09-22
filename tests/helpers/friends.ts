@@ -37,11 +37,11 @@ export async function befriend(server: TestServer, a: Account, b: Account): Prom
  * moment the room fills or closes whether or not anything deleted anything —
  * reading it alone passes on a delete that should not have happened.
  *
- * Imported inside the call rather than at module scope: `server/db.ts` builds
+ * Imported inside the call rather than at module scope: `server/store/db.ts` builds
  * its pool as it loads, and `startTestServer` sets `DATABASE_URL` first.
  */
 export async function inviteRowsFor(roomId: string): Promise<unknown[]> {
-  const { db } = await import("../../server/db.ts");
+  const { db } = await import("../../server/store/db.ts");
   const { gameInvites } = await import("../../shared/schema.ts");
   const { eq } = await import("drizzle-orm");
   return db.select().from(gameInvites).where(eq(gameInvites.roomId, roomId));

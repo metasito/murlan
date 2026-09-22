@@ -245,7 +245,7 @@ const REJOIN_RETRY_DELAY_MS = 2000;
 const MAX_REJOIN_RETRIES = 3;
 
 // The `room:rejoin` rejections that mean the seat is gone for good (see the
-// handler in server/socket.ts). `room:error` carries no room id, so the code is
+// handler in server/socket/socket.ts). `room:error` carries no room id, so the code is
 // the only thing that separates the answer to an outstanding rejoin from an
 // error about an action inside a room the player is still sitting in — and only
 // the first may take the lobby down with it.

@@ -1,5 +1,5 @@
 // Socket.IO's `cors` option only shapes headers on an HTTP polling handshake,
-// and this server is websocket-only (server/socket.ts) — so the allowlist has
+// and this server is websocket-only (server/socket/socket.ts) — so the allowlist has
 // to be enforced by `allowRequest`, at the upgrade itself.
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";

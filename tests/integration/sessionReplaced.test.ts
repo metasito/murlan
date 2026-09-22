@@ -8,8 +8,8 @@ import {
   skipMessage,
   type TestServer,
 } from "../helpers/testServer.ts";
-import { activeGames, socketRoomMap, userSocketMap } from "../../server/gameRoom.ts";
-import { disconnectGraceMs } from "../../server/gameTimers.ts";
+import { activeGames, socketRoomMap, userSocketMap } from "../../server/game/gameRoom.ts";
+import { disconnectGraceMs } from "../../server/game/gameTimers.ts";
 import {
   setUpRoom,
   startGame,

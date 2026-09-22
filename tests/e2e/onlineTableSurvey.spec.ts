@@ -62,7 +62,7 @@ const UPDATING = process.env.AUDIT_UPDATE === "1";
 /**
  * `MODE\tviewport\tcards=N`. Every seat here is a real account now (#800),
  * so a fresh 4-player deal's leader is whichever of the four `dealFirstSeat`
- * (server/tableHandlers.ts) happens to give the 3♠ — two of the four seats
+ * (server/game/tableHandlers.ts) happens to give the 3♠ — two of the four seats
  * get 14 cards, two get 13 (`dealCards`, lib/gameEngine.ts), so the hand this
  * measures is genuinely, legitimately, either. Leaving `cards` out of the key
  * would hold a 13-card table to a 14-card table's own recorded row — the

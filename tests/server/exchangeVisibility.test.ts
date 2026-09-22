@@ -10,9 +10,9 @@ import {
   packPersistedState,
   unpackPersistedState,
   visibleExchangePhase,
-} from "../../server/onlineGameLogic.ts";
+} from "../../server/game/onlineGameLogic.ts";
 import { exchangeAnnounceMs } from "../../lib/exchangeCeremony.ts";
-import { stateAckTimeoutMs } from "../../server/gameTimers.ts";
+import { stateAckTimeoutMs } from "../../server/game/gameTimers.ts";
 import { readFileSync } from "node:fs";
 
 const CARD = { id: "2_spades", suit: "spades", rank: "2", isJoker: false };
@@ -300,12 +300,12 @@ describe("markExchangeSettled", () => {
    * phase forever and no seat but the two trading would ever be shown the card
    * (docs/agents/RULES.md rule 6).
    *
-   * Read off the source because `server/gamePersistence.ts` builds a pg pool at
+   * Read off the source because `server/game/gamePersistence.ts` builds a pg pool at
    * import — the reason these helpers live in `onlineGameLogic.ts` at all.
    */
   test("the broadcast is what stamps it, before it serves any seat", () => {
     const source = readFileSync(
-      new URL("../../server/gamePersistence.ts", import.meta.url),
+      new URL("../../server/game/gamePersistence.ts", import.meta.url),
       "utf8"
     );
     const body = source.slice(source.indexOf("export function broadcastGameState"));

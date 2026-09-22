@@ -3,7 +3,7 @@
 //
 // Split from lib/i18n.ts so the server can reach it. lib/i18n.ts imports
 // AsyncStorage and React to hold the *active* locale, neither of which exists
-// under Node — and server/push.ts has to translate, because a notification is
+// under Node — and server/socket/push.ts has to translate, because a notification is
 // rendered by the OS with no client in the loop to do it.
 import { en } from "../locales/en.ts";
 import { it } from "../locales/it.ts";

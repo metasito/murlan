@@ -19,7 +19,7 @@ import {
 import { PROTOCOL_AUTH, connectAs, waitFor } from "../helpers/client.ts";
 import { AUTH_UNAVAILABLE } from "../../shared/protocol.ts";
 import type { SanitizedState } from "../helpers/table.ts";
-import type { EventOutcome } from "../../server/socketSafety.ts";
+import type { EventOutcome } from "../../server/socket/socketSafety.ts";
 
 interface RoomState {
   code: string;
@@ -219,7 +219,7 @@ describe("an intent is acknowledged", { skip: hasDatabase() ? false : skipMessag
         s.once("connect", () => resolve("connected"));
         s.once("connect_error", (e) => resolve(e.message));
       });
-    const { userStore } = await import("../../server/userStore.ts");
+    const { userStore } = await import("../../server/store/userStore.ts");
     const getUser = userStore.getUser;
     userStore.getUser = async () => {
       throw new Error("database down");

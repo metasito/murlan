@@ -2,12 +2,12 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { checkBootEnv } from "../../server/bootEnv.ts";
+import { checkBootEnv } from "../../server/http/bootEnv.ts";
 
 const repoRoot = path.resolve(import.meta.dirname, "..", "..");
 
 test("no connection sets its own TLS; the URL's sslmode decides", () => {
-  for (const file of ["db.ts", "socketAdapter.ts", "gameOwnership.ts"]) {
+  for (const file of ["store/db.ts", "socket/socketAdapter.ts", "game/gameOwnership.ts"]) {
     const src = readFileSync(path.join(repoRoot, "server", file), "utf8");
     assert.doesNotMatch(src, /\bssl\s*:/, `server/${file} sets ssl`);
   }

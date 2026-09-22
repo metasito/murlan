@@ -5,7 +5,7 @@
 //
 // Keys are namespaced `<area>.<name>` by the screen or component they came
 // from. `server.*` holds the strings rendered for the machine-readable codes
-// server/socket.ts and server/routes.ts emit (see lib/i18n.ts's
+// server/socket/socket.ts and server/http/routes.ts emit (see lib/i18n.ts's
 // `translateServerPayload`) — those are not extracted from JSX.
 //
 // Interpolation uses `{{name}}` placeholders. Simple pluralisation uses a

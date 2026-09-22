@@ -1,8 +1,8 @@
-import { logger } from "./logger.ts";
+import { logger } from "./http/logger.ts";
 import { createApp } from "./app.ts";
-import { shutdown } from "./shutdown.ts";
-import { installProcessGuards } from "./socketSafety.ts";
-import { checkBootEnv } from "./bootEnv.ts";
+import { shutdown } from "./http/shutdown.ts";
+import { installProcessGuards } from "./socket/socketSafety.ts";
+import { checkBootEnv } from "./http/bootEnv.ts";
 
 // Below the imports because that is where it runs: ESM evaluates every import
 // above before any statement here, so hoisting this to the top of the file

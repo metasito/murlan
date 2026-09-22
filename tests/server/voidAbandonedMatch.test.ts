@@ -6,11 +6,11 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import type { Server as SocketServer } from "socket.io";
-import { vacateSeat } from "../../server/gameTurn.ts";
-import { gameOverWriters } from "../../server/gamePersistence.ts";
-import { activeGames } from "../../server/gameRoom.ts";
-import { clearRoomTimers } from "../../server/gameTimers.ts";
-import type { OnlineGameState } from "../../server/gameRoom.ts";
+import { vacateSeat } from "../../server/game/gameTurn.ts";
+import { gameOverWriters } from "../../server/game/gamePersistence.ts";
+import { activeGames } from "../../server/game/gameRoom.ts";
+import { clearRoomTimers } from "../../server/game/gameTimers.ts";
+import type { OnlineGameState } from "../../server/game/gameRoom.ts";
 import type { GameOverPayload } from "../../lib/matchState.ts";
 import type { GameState, Player } from "../../lib/gameEngine.ts";
 

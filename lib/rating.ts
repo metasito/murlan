@@ -76,7 +76,7 @@ export function expectedScore(a: number, b: number): number {
 }
 
 /** Bot seats carry this synthetic id instead of a real users.id — the same
- *  convention scoring and history already use (server/onlineGameLogic.ts). */
+ *  convention scoring and history already use (server/game/onlineGameLogic.ts). */
 const BOT_ID_PREFIX = "bot:";
 
 /**

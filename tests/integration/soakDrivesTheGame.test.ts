@@ -17,7 +17,7 @@ import assert from "node:assert/strict";
 import { hasDatabase, skipMessage } from "../helpers/testServer.ts";
 import { runSoak, REFUSAL_EVENTS } from "../soak/soak.ts";
 import { gate, GATE_PLAY_MS, MIN_ROUNDS } from "../soak/gateBudget.ts";
-import { errorEventFor } from "../../server/socketSafety.ts";
+import { errorEventFor } from "../../server/socket/socketSafety.ts";
 
 const GATE = gate();
 

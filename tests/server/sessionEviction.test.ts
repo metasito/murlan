@@ -4,8 +4,8 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { Server } from "socket.io";
 import { io as ioClient, type Socket } from "socket.io-client";
-import { evictOlderSessions } from "../../server/socketPresence.ts";
-import { userRoom } from "../../server/gameRoom.ts";
+import { evictOlderSessions } from "../../server/socket/socketPresence.ts";
+import { userRoom } from "../../server/game/gameRoom.ts";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 

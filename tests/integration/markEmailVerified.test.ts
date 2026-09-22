@@ -15,7 +15,7 @@ describe("markEmailVerified's three outcomes", { skip: hasDatabase() ? false : s
 
   test("verifies the ordinary case", async () => {
     const { user } = await register(server, "markverify_ok");
-    const { userStore } = await import("../../server/userStore.ts");
+    const { userStore } = await import("../../server/store/userStore.ts");
 
     const result = await userStore.markEmailVerified(user.id, user.email!);
     assert.equal(result, "verified");
@@ -27,14 +27,14 @@ describe("markEmailVerified's three outcomes", { skip: hasDatabase() ? false : s
   test("loses the race to whichever account verifies the shared address first", async () => {
     const { user: first } = await register(server, "markverify_race_a");
     const { user: second } = await register(server, "markverify_race_b");
-    const { db } = await import("../../server/db.ts");
+    const { db } = await import("../../server/store/db.ts");
     const { users } = await import("../../shared/schema.ts");
     const { eq } = await import("drizzle-orm");
     // Two unverified accounts sharing one address — #897's partial index
     // allows this; only a verified claim is unique.
     await db.update(users).set({ email: "markverify_race@example.test" }).where(eq(users.id, first.id));
     await db.update(users).set({ email: "markverify_race@example.test" }).where(eq(users.id, second.id));
-    const { userStore } = await import("../../server/userStore.ts");
+    const { userStore } = await import("../../server/store/userStore.ts");
 
     assert.equal(await userStore.markEmailVerified(first.id, "markverify_race@example.test"), "verified");
     assert.equal(await userStore.markEmailVerified(second.id, "markverify_race@example.test"), "lost_race");
@@ -50,11 +50,11 @@ describe("markEmailVerified's three outcomes", { skip: hasDatabase() ? false : s
     // then redeem the other — this is exactly that second redemption,
     // called directly the way the route calls it.
     const { user } = await register(server, "markverify_cleared");
-    const { db } = await import("../../server/db.ts");
+    const { db } = await import("../../server/store/db.ts");
     const { users } = await import("../../shared/schema.ts");
     const { eq } = await import("drizzle-orm");
     await db.update(users).set({ email: null }).where(eq(users.id, user.id));
-    const { userStore } = await import("../../server/userStore.ts");
+    const { userStore } = await import("../../server/store/userStore.ts");
 
     const result = await userStore.markEmailVerified(user.id, user.email!);
     assert.equal(result, "not_found", "an UPDATE matching zero rows must not report success");
@@ -65,8 +65,8 @@ describe("markEmailVerified's three outcomes", { skip: hasDatabase() ? false : s
 
   test("reports not_found for an account that no longer exists", async () => {
     const { user } = await register(server, "markverify_deleted");
-    const { deleteUser } = await import("../../server/deleteAccount.ts");
-    const { userStore } = await import("../../server/userStore.ts");
+    const { deleteUser } = await import("../../server/http/deleteAccount.ts");
+    const { userStore } = await import("../../server/store/userStore.ts");
     await deleteUser(user.id);
 
     const result = await userStore.markEmailVerified(user.id, user.email!);

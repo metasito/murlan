@@ -60,7 +60,7 @@ export interface OpenedOnlineTable {
  *
  * Every seat holds its full dealt hand only until the leader's own turn
  * — the server arms that seat's bot the moment the deal lands
- * (`armTurn`, `server/gameTurn.ts`), on its own clock, independent of how
+ * (`armTurn`, `server/game/gameTurn.ts`), on its own clock, independent of how
  * long this harness took to get here. Waiting for "your turn" to arrive,
  * however long that took, used to measure whatever hand of tricks had
  * already played out by then — a table that isn't the one

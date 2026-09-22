@@ -1,10 +1,10 @@
 import pg from "pg";
 import type { Server as HttpServer } from "node:http";
 import type { Server as SocketIOServer } from "socket.io";
-// Pure by design: importing anything that reaches server/db.ts from module
+// Pure by design: importing anything that reaches server/store/db.ts from module
 // scope here would build the app's Pool before startTestServer() has pointed
 // DATABASE_URL at the throwaway schema.
-import { drainPool } from "../../server/drainPool.ts";
+import { drainPool } from "../../server/store/drainPool.ts";
 
 /**
  * `node --test` runs as many test files at once as there are cores, and every
@@ -14,7 +14,7 @@ import { drainPool } from "../../server/drainPool.ts";
  * ordinary machine and surfaces as `Connection terminated unexpectedly` from
  * whichever suite happened to be starting.
  *
- * Set before anything reaches `server/db.ts`, which reads it when it builds the
+ * Set before anything reaches `server/store/db.ts`, which reads it when it builds the
  * Pool at module scope.
  */
 process.env.MURLAN_PG_POOL_MAX ??= "4";
@@ -31,7 +31,7 @@ process.env.MURLAN_SOCKET_ADAPTER_POOL_MAX ??= "2";
  * only about thirty-five tables — a suite reaches it and every later
  * registration comes back 429 with nothing tying it to the cap. Set here for
  * the same reason as the pool size: before anything imports
- * server/routes.ts, which reads it once.
+ * server/http/routes.ts, which reads it once.
  */
 process.env.MURLAN_AUTH_RATE_LIMIT ??= "200";
 
@@ -59,7 +59,7 @@ process.env.MURLAN_CHANGE_PASSWORD_RATE_LIMIT ??= "5";
 
 /**
  * register's per-email limiter (#892) already defaults to 5 in production —
- * set here anyway, before server/routes.ts is imported, so a test never
+ * set here anyway, before server/http/routes.ts is imported, so a test never
  * depends on that default staying where it is.
  */
 process.env.MURLAN_REGISTER_EMAIL_RATE_LIMIT ??= "5";
@@ -162,7 +162,7 @@ export async function startTestServer(
   try {
     // Point every connection at the throwaway schema via search_path, and at
     // an ephemeral port, before importing the server (module scope reads
-    // these — see server/db.ts, which builds its Pool at import time).
+    // these — see server/store/db.ts, which builds its Pool at import time).
     const scopedUrl = `${baseUrl}${baseUrl.includes("?") ? "&" : "?"}options=-c%20search_path%3D${schema}`;
     process.env.DATABASE_URL = scopedUrl;
     process.env.PORT = "0";
@@ -176,7 +176,7 @@ export async function startTestServer(
     // on the real PORT and installs SIGTERM/SIGINT handlers as a side
     // effect of being imported — importing it would start (and never stop)
     // a second, unwanted server. app.ts only builds the app and its
-    // http.Server (with Socket.io already attached via server/socket.ts's
+    // http.Server (with Socket.io already attached via server/socket/socket.ts's
     // setupSocket); nothing binds a port until this harness explicitly
     // listens below.
     const { createApp } = await import("../../server/app.ts");
@@ -184,7 +184,7 @@ export async function startTestServer(
     // store, storage) resolved — Node's ESM cache is keyed by specifier, so
     // this is the one live `pg.Pool` the running app holds open, not a new
     // one.
-    const { pool: appPool } = await import("../../server/db.ts");
+    const { pool: appPool } = await import("../../server/store/db.ts");
     const { server, io } = await createApp();
     server.keepAliveTimeout = KEEP_ALIVE_MS;
     // Node refuses to read headers for longer than it will hold the socket.
@@ -194,7 +194,7 @@ export async function startTestServer(
     // Before any test can call stop(): the adapter strands its Postgres client
     // if it is closed mid-checkout, and a suite that boots and stops without
     // connecting a socket is entirely inside that window.
-    const { socketAdapterReady } = await import("../../server/socketAdapter.ts");
+    const { socketAdapterReady } = await import("../../server/socket/socketAdapter.ts");
     await socketAdapterReady();
 
     return {
@@ -236,11 +236,11 @@ export async function startTestServer(
           // released by the close started above. Left open it keeps the test
           // process alive exactly as the app's pool would.
           await ioClosed;
-          const { socketAdapterPool } = await import("../../server/socketAdapter.ts");
+          const { socketAdapterPool } = await import("../../server/socket/socketAdapter.ts");
           await socketAdapterPool()?.end();
           // The room-ownership client is a third connection, held open for the
           // life of the process exactly as the two pools are.
-          const { closeOwnership } = await import("../../server/gameOwnership.ts");
+          const { closeOwnership } = await import("../../server/game/gameOwnership.ts");
           await closeOwnership();
         } finally {
           // Always run, even if closing the server/pool above threw: a

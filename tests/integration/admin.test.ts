@@ -22,15 +22,15 @@ describe("the admin dashboard", { skip: hasDatabase() ? false : skipMessage() },
   let ownerCookie: string;
   let playerCookie: string;
   let retentionDays: number;
-  let sweepRetention: typeof import("../../server/retention.ts").sweepRetention;
+  let sweepRetention: typeof import("../../server/game/retention.ts").sweepRetention;
 
   before(async () => {
     server = await startTestServer();
-    // Imported here, not at file scope: server/db.ts reads DATABASE_URL when
+    // Imported here, not at file scope: server/store/db.ts reads DATABASE_URL when
     // it is first loaded, and startTestServer() is what points that at this
     // run's own schema. A top-level import would connect to public instead.
-    ({ CLIENT_ERROR_RETENTION_DAYS: retentionDays } = await import("../../server/clientErrors.ts"));
-    ({ sweepRetention } = await import("../../server/retention.ts"));
+    ({ CLIENT_ERROR_RETENTION_DAYS: retentionDays } = await import("../../server/http/clientErrors.ts"));
+    ({ sweepRetention } = await import("../../server/game/retention.ts"));
     dbPool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 
     ({ cookie: ownerCookie } = await register(server, "the_owner"));
@@ -207,7 +207,7 @@ describe("the admin dashboard", { skip: hasDatabase() ? false : skipMessage() },
   });
 
   // #167: a crash's top frame renders next to it, resolved against a build
-  // map when server/sourceMaps.ts has one — and this test process has none,
+  // map when server/http/sourceMaps.ts has one — and this test process has none,
   // so this is exactly the fallback path: raw and unresolved, not blank and
   // not a 500.
   test("a crash's frame shows on the page, unresolved when no build map covers it", async () => {
@@ -273,8 +273,8 @@ describe("the admin dashboard", { skip: hasDatabase() ? false : skipMessage() },
   });
 
   test("a server error becomes a row, is shown on the page and ages out", async () => {
-    const { logger } = await import("../../server/logger.ts");
-    const { SERVER_ERROR_RETENTION_DAYS } = await import("../../server/serverErrors.ts");
+    const { logger } = await import("../../server/http/logger.ts");
+    const { SERVER_ERROR_RETENTION_DAYS } = await import("../../server/http/serverErrors.ts");
     const rows = (message: string) =>
       dbPool.query(`SELECT context FROM "${server.schema}".server_errors WHERE message = $1`, [message]);
 

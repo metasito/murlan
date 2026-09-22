@@ -1,11 +1,11 @@
 // tests/integration/verifyEmailMailRoundTrip.test.ts — #925's Definition of
 // done asks for a signup that "lands verified end to end (mocking or
 // stubbing sendMail locally)". Every other verify-email test mints its own
-// code directly against server/authTokens.ts, bypassing register()'s own
+// code directly against server/http/authTokens.ts, bypassing register()'s own
 // fire-and-forget mint entirely — a salt mismatch between what register()
 // mails and what verify-email checks would pass all of them. This drives
 // the real mail path instead, through the same MURLAN_MAIL_SINK file
-// tests/e2e's Playwright specs read (server/mail.ts).
+// tests/e2e's Playwright specs read (server/http/mail.ts).
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync } from "node:fs";
@@ -14,7 +14,7 @@ import path from "node:path";
 import { startTestServer, hasDatabase, skipMessage, type TestServer } from "../helpers/testServer.ts";
 import { readMailToken } from "../e2e/helpers/mailSink.ts";
 
-// Read at call time by server/mail.ts, not at module load, but set here
+// Read at call time by server/http/mail.ts, not at module load, but set here
 // before startTestServer() below dynamically imports it — same convention
 // tests/integration/verifyEmailLimiter.test.ts uses for its own override.
 process.env.MURLAN_MAIL_SINK = path.join(mkdtempSync(path.join(tmpdir(), "murlan-mail-")), "sink.jsonl");

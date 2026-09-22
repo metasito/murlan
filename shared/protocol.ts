@@ -38,7 +38,7 @@ export interface WireRoomState {
   seatHolds?: { seatIndex: number; username: string; expiresInMs: number }[];
 }
 
-/** Every other event stays untyped; inbound ones are server/socketSchemas.ts's to check. */
+/** Every other event stays untyped; inbound ones are server/socket/socketSchemas.ts's to check. */
 export interface ServerToClientEvents extends DefaultEventsMap {
   "game:state": (state: WireGameState, ack: () => void) => void;
   "game:over": (payload: GameOverPayload) => void;

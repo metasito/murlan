@@ -71,7 +71,7 @@ it is a way to make the server send mail, so it is limited the way `addEmailLimi
 ### The mail sink, so the flow can be tested end to end
 
 An e2e test cannot get a raw token: only its hash is stored, and the mail goes to Resend.
-`server/mail.ts` grows one branch — when `MURLAN_MAIL_SINK` names a file **and**
+`server/http/mail.ts` grows one branch — when `MURLAN_MAIL_SINK` names a file **and**
 `NODE_ENV !== "production"`, `sendMail` appends `{to, subject, text}` as a JSON line to that
 file and returns true without contacting the provider. It is not a route, so it adds no HTTP
 surface; it needs filesystem access to the server's own host to read.

@@ -372,15 +372,15 @@ export const socketTicketNonces = pgTable("socket_ticket_nonces", {
  * verification and password reset, per
  * docs/specs/2026-09-03-account-recovery-design.md, Box 2.
  * `password_reset` mints a `randomBytes(32)` link token; `email_verify`
- * (#925) mints a 6-digit code — see server/authTokens.ts for how each is
+ * (#925) mints a 6-digit code — see server/http/authTokens.ts for how each is
  * hashed and redeemed. Neither raw value is ever persisted, only its
  * SHA-256 hash. `attempts` exists only for the code shape (`MAX_CODE_ATTEMPTS`).
  *
  * Read by two plain HTTP routes only (verify-email, reset-password) — never
- * by the socket handshake in server/ticket.ts, which this shape is
+ * by the socket handshake in server/socket/ticket.ts, which this shape is
  * deliberately not reused from.
  *
- * Expired rows are swept on a schedule (server/retention.ts), not on the
+ * Expired rows are swept on a schedule (server/game/retention.ts), not on the
  * write or redemption path — see that module for why.
  */
 export const authTokens = pgTable(
@@ -413,7 +413,7 @@ const bytea = customType<{ data: Buffer; driverData: Buffer }>({
  * 8000 bytes, so anything larger — a sanitized game state is routinely larger —
  * is written here and the notification carries only the row id.
  *
- * Declared here, and created by `server/schemaDdl.ts` like every other table,
+ * Declared here, and created by `server/store/schemaDdl.ts` like every other table,
  * rather than letting the adapter issue its own `CREATE TABLE`: a second
  * creator is how a table comes to exist on one database and not another.
  * Nothing in this app reads or writes it — the adapter owns the rows, on its

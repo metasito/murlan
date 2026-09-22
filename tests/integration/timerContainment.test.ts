@@ -48,7 +48,7 @@ describe(
       await startGame([alice, bob]);
 
       const { hasActiveGame } = await import("../helpers/liveGame.ts");
-      const { __testables } = await import("../../server/socket.ts");
+      const { __testables } = await import("../../server/socket/socket.ts");
       assert.equal(
         hasActiveGame(room.roomId),
         true,
@@ -92,9 +92,9 @@ describe(
      */
     test("every turn timer body runs under the containment", () => {
       const serverDir = new URL("../../server/", import.meta.url);
-      const source = readdirSync(serverDir)
+      const source = readdirSync(serverDir, { recursive: true, encoding: "utf8" })
         .filter((f) => f.endsWith(".ts"))
-        .map((f) => readFileSync(new URL(f, serverDir), "utf8"))
+        .map((f) => readFileSync(new URL(f.replaceAll("\\", "/"), serverDir), "utf8"))
         .join("\n");
 
       const timerBodies = [

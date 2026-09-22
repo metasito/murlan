@@ -13,7 +13,7 @@ import { spawn } from "node:child_process";
 // A file:// href, not a path: `import()` in an --eval module rejects a bare
 // Windows path as an unsupported URL scheme, and the child would then exit 1
 // for that reason instead of the guard's.
-const socketSafety = new URL("../../server/socketSafety.ts", import.meta.url).href;
+const socketSafety = new URL("../../server/socket/socketSafety.ts", import.meta.url).href;
 
 /** Runs `source` in a child under Node's own TypeScript stripping. */
 function runChild(source: string): Promise<{ code: number | null; stderr: string }> {

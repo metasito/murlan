@@ -3,7 +3,7 @@
 // source — in every .map it writes next to its .js in dist/. server/app.ts
 // serves dist/ wholesale, so a map left there is the source shipped to
 // anyone who asks. This moves every .map out to sourcemaps/, read only by
-// server/sourceMaps.ts, never mounted as static.
+// server/http/sourceMaps.ts, never mounted as static.
 //
 // Run with: node scripts/moveSourceMaps.mjs (after `expo export --source-maps`)
 import fs from "node:fs";
