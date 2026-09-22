@@ -14,7 +14,7 @@
 // inherits whichever answer this file pins.
 import { test, describe, beforeEach, afterEach, mock } from "node:test";
 import assert from "node:assert/strict";
-import { GameRejoinSchema as Payload } from "../../server/socket/socketSchemas.ts";
+import { GameRejoinSchema as Payload } from "../../shared/socketSchemas.ts";
 import { onEvent, __resetRateLimits } from "../../server/socket/socketSafety.ts";
 import { logger } from "../../server/http/logger.ts";
 

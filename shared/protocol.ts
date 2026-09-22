@@ -5,7 +5,7 @@ import { z } from "zod";
 import type { GameState, MatchLength, Player } from "../lib/game/gameEngine.ts";
 import type { GameOverPayload } from "../lib/game/matchState.ts";
 import type { FriendRequestAccepted, FriendRequestIncoming } from "../lib/wire.ts";
-import type * as Inbound from "../server/socket/socketSchemas.ts";
+import type * as Inbound from "./socketSchemas.ts";
 import type { TranslationParams } from "./i18n.ts";
 
 export const PROTOCOL_VERSION = 3;

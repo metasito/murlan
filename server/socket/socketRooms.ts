@@ -36,7 +36,7 @@ import {
   RoomQuickmatchSchema,
   RoomSetVisibilitySchema,
   RoomStartSchema,
-} from "./socketSchemas.ts";
+} from "../../shared/socketSchemas.ts";
 
 export interface RoomHandlerContext {
   io: SocketServer;

@@ -91,7 +91,7 @@ import type { GameSocket, SocketServer } from "../../server/socket/socketTypes.t
 import { send, sendIntent } from "../../lib/sendIntent.ts";
 import { emitToUser } from "../../server/socket/socketRegistry.ts";
 import { onEvent } from "../../server/socket/socketSafety.ts";
-import { GamePlaySchema, GameRejoinSchema } from "../../server/socket/socketSchemas.ts";
+import { GamePlaySchema, GameRejoinSchema } from "../../shared/socketSchemas.ts";
 declare const client: Socket, io: SocketServer, socket: GameSocket;
 `;
 
