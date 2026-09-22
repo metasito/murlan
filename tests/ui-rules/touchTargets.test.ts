@@ -55,6 +55,7 @@ const WIDTH_FROM_LAYOUT: [string, number, string, string][] = [
   ["components/NotificationBanner.tsx", 1, "the banner body, the banner's full width", "notification banner"],
   ["components/ReplayControls.tsx", 1, "a move row, the move list's full width", "replay"],
   ["components/ResultBoard.tsx", 2, "home is `HOME_BTN_W` wide, rematch is `flex: 1`", "result board"],
+  ["components/SegmentedControl.tsx", 1, "a segment, `flex: 1` in the track", "leaderboard"],
   ["components/SettingsModal.tsx", 4, "rows filling the modal's width", "settings"],
   ["components/table/rematchPrompt.tsx", 2, "yes and no, labelled choices sharing the prompt's row", "rematch prompt"],
   ["components/table/settingsSheet.tsx", 1, "a sheet row, the sheet's full width", "table settings sheet"],
