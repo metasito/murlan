@@ -44,7 +44,7 @@ describe("the friends ladder ranks the viewer among accepted friends only", { sk
     ]);
 
   const friendsLadder = async (who: Account): Promise<Row[]> => {
-    const res = await call(who, "GET", "/api/ratings/leaderboard?scope=friends");
+    const res = await call(who, "GET", "/api/ratings/leaderboard/friends");
     assert.equal(res.status, 200, await res.clone().text());
     return (await res.json()) as Row[];
   };
@@ -90,7 +90,7 @@ describe("the friends ladder ranks the viewer among accepted friends only", { sk
     assert.deepEqual(await friendsLadder(viewer), rows, "a tie resolved differently on a second read");
   });
 
-  test("the global ladder is unchanged by the parameter's absence", async () => {
+  test("the global ladder still lists only non-provisional records", async () => {
     const res = await call(viewer, "GET", "/api/ratings/leaderboard");
     const rows = (await res.json()) as Row[];
     assert.ok(rows.some((r) => r.userId === stranger.user.id), "the global ladder lost a listed player");

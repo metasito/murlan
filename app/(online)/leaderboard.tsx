@@ -18,23 +18,18 @@ import { PROVISIONAL_GAMES, formatSeason } from "@/lib/game/rating";
 import { useTranslation } from "@/lib/i18n";
 import { a11yGroup, a11yHidden } from "@/lib/a11y";
 import type { LeaderboardEntryDto, RatingDto } from "@/lib/wire";
+import { ladderKey, type LadderScope } from "@/lib/ladderQuery";
 
 
 
 /** Gold, silver and bronze for the top three; everyone else takes the plain ink. */
 const RANK_COLORS = [Colors.podiumGold, Colors.podiumSilver, Colors.podiumBronze];
 
-type Scope = "global" | "friends";
-const BOARD_PATH: Record<Scope, string> = {
-  global: "/api/ratings/leaderboard",
-  friends: "/api/ratings/leaderboard?scope=friends",
-};
-
 export default function LeaderboardScreen() {
   const { t } = useTranslation();
   const { user } = useAuth();
-  const [scope, setScope] = useState<Scope>("global");
-  const boardQuery = useQuery<LeaderboardEntryDto[]>({ queryKey: [BOARD_PATH[scope]] });
+  const [scope, setScope] = useState<LadderScope>("global");
+  const boardQuery = useQuery<LeaderboardEntryDto[]>({ queryKey: ladderKey(scope) });
   const meQuery = useQuery<RatingDto>({ queryKey: ["/api/ratings/me"] });
 
   const board = boardQuery.data ?? [];

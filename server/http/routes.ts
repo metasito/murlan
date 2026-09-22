@@ -994,11 +994,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ env: process.env.NODE_ENV, commit: runningCommitSha });
   });
 
-  app.get("/api/ratings/leaderboard", requireAuth, async (req, res) => {
-    if (req.query.scope !== "friends") {
-      res.json(await getLeaderboard(new Date()));
-      return;
-    }
+  app.get("/api/ratings/leaderboard", requireAuth, async (_req, res) => {
+    res.json(await getLeaderboard(new Date()));
+  });
+
+  app.get("/api/ratings/leaderboard/friends", requireAuth, async (req, res) => {
     const viewerId = req.session.userId!;
     const friends = await friendStore.getFriends(viewerId);
     res.json(await getCircleLeaderboard([viewerId, ...friends.map((f) => f.friendUserId)], new Date()));
