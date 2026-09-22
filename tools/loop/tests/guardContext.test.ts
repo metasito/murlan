@@ -21,10 +21,6 @@ const assistant = (tokens: number) => ({
     content: [{ type: "text", text: "ok" }],
   },
 });
-const bash = (id: string, command: string) => ({
-  type: "assistant",
-  message: { usage: { input_tokens: 10 }, content: [{ type: "tool_use", id, name: "Bash", input: { command } }] },
-});
 const noticed = (text: string) => ({ type: "attachment", attachment: { type: "hook_additional_context", content: [text] } });
 
 let n = 0;
@@ -77,40 +73,6 @@ describe("the context ceiling", () => {
 
   test("outside the loop is silent", () => {
     assert.equal(run(call(transcript([assistant(201_000)])), {}), "");
-  });
-});
-
-describe("a repeated command", () => {
-  const cmd = "npx tsc --noEmit";
-  const third = (rows: object[]) =>
-    call(transcript(rows), { tool_name: "Bash", tool_input: { command: cmd }, tool_use_id: "b3" });
-
-  test("the third identical command gets the notice", () => {
-    const out = run(third([bash("b1", cmd), bash("b2", cmd), bash("b3", cmd)]));
-    assert.match(out, /same command three times: batch edits before re-running it/);
-  });
-
-  test("the second does not", () => {
-    assert.equal(run(third([bash("b1", cmd), bash("b3", cmd)])), "");
-  });
-
-  test("the notice for a command is not repeated", () => {
-    const rows = [bash("b1", cmd), bash("b2", cmd), bash("b3", cmd)];
-    const first = JSON.parse(run(third(rows))).hookSpecificOutput.additionalContext;
-    const fourth = call(transcript([...rows, noticed(first), bash("b4", cmd)]), {
-      tool_name: "Bash",
-      tool_input: { command: cmd },
-      tool_use_id: "b4",
-    });
-    assert.equal(run(fourth), "");
-  });
-
-  test("a different command's notice does not silence this one", () => {
-    const other = [bash("x1", "ls"), bash("x2", "ls"), bash("x3", "ls")];
-    const said = JSON.parse(run(call(transcript(other), { tool_name: "Bash", tool_input: { command: "ls" }, tool_use_id: "x3" })))
-      .hookSpecificOutput.additionalContext;
-    const out = run(third([...other, noticed(said), bash("b1", cmd), bash("b2", cmd), bash("b3", cmd)]));
-    assert.match(out, /same command three times/);
   });
 });
 

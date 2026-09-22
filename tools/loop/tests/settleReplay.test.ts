@@ -206,11 +206,10 @@ describe("settle, replayed against recorded gh payloads", () => {
 });
 
 describe("readHeadCi, replayed against recorded gh payloads", () => {
-  test("answers the remote head, its open PR, the verdict and every failing test id", () => {
+  test("answers the remote head, its open PR and the verdict", () => {
     const { gh } = ghFake({
       script: [runRow("completed", "failure")],
       jobs: [{ name: "Native tests", conclusion: "failure", steps: 11 }],
-      log: "Native tests\tRun tests\t2026-09-14T00:00:00Z   1) [chromium] › tests/e2e/x.spec.ts:9:5 › some test",
     });
     const out = readHeadCi(
       "metasito/murlan",
@@ -221,7 +220,6 @@ describe("readHeadCi, replayed against recorded gh payloads", () => {
     assert.equal(out.remoteSha, SHA);
     assert.equal(out.pr, PENDING.pr);
     assert.equal(out.verdict.pass, false);
-    assert.deepEqual(out.testIds, ["tests/e2e/x.spec.ts › some test"]);
   });
 
   test("a branch with no open pull request reads pr as null", () => {

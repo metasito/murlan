@@ -29,12 +29,6 @@ const HINTS = [
       "Seed every state the spec asserts on, not just the viewer's, and assert on real device " +
       "viewports rather than arbitrary sizes.",
   },
-  {
-    when: (p) => /locales[\\/]en\.ts$/.test(p),
-    text:
-      "CLAUDE.md — every key in `en.ts` must exist in `it.ts` and `sq.ts`; both are typed " +
-      "`Record<keyof typeof en, string>`, so a gap is a compile error, not a runtime gap.",
-  },
 ];
 
 let path = "";

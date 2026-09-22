@@ -12,8 +12,6 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   PORT_SPAN,
-  RESERVED_PORTS,
-  candidatePorts,
   hostPortOf,
   isAddressInUse,
   isPostgresReply,
@@ -53,7 +51,6 @@ test("a taken port is stepped past rather than fatal", () => {
   const port = startOnFreePort({
     start: 55432,
     verify: () => true,
-    reserved: [],
     run: (p: number) => {
       tried.push(p);
       return p < 55434 ? { status: 1, stderr: IN_USE_STDERR } : OK;
@@ -156,7 +153,6 @@ test("a port the daemon accepts but Postgres cannot be reached on is walked past
   const discarded: number[] = [];
   const port = startOnFreePort({
     start: 55432,
-    reserved: [],
     run: (p: number) => {
       tried.push(p);
       return OK;
@@ -174,7 +170,6 @@ test("a port this process cannot bind is never offered to docker at all", () => 
   const tried: number[] = [];
   const port = startOnFreePort({
     start: 55432,
-    reserved: [],
     canBind: (p: number) => p !== 55432,
     verify: () => true,
     run: (p: number) => {
@@ -201,16 +196,6 @@ test("Windows' own bind refusals count as the port being taken", () => {
     ),
     true
   );
-});
-
-test("the search does not wander into a port this repo has already spoken for", () => {
-  // 55433 is murlan-verify-pg, the CI-substitute Postgres. Taking it would
-  // leave the ticket pipeline unable to start its own database, and its
-  // cleanup removes by container name, so it could not clear what was there.
-  assert.ok(RESERVED_PORTS.includes(55433));
-  assert.deepEqual(candidatePorts(55432, 3), [55432, 55434, 55435]);
-  assert.equal(candidatePorts(55432).length, PORT_SPAN);
-  assert.equal(candidatePorts(55432).includes(55433), false);
 });
 
 test("the SSLRequest probe is the packet Postgres answers, and only its reply counts", () => {

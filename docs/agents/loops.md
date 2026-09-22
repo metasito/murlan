@@ -375,12 +375,9 @@ a holder only when that holder's launcher has exited.
 | What | Taken |
 | --- | --- |
 | A **stale** holder of `E2E_PORT` — one whose launcher has exited | by default |
-| **Any** holder of `E2E_PORT`, live run or not | only with `--port` |
 | Anything of ours over 2h old whose parent is gone | by default |
 | **Any** process over 2h old whose parent is gone and which is burning ≥20% of a core | by default |
 | Anything of ours over 24h old | only with `--stale` |
-| `murlan-verify-pg` / `murlan-verify-boot` containers | by default |
-| The shared `murlan-dev-pg` container | only with `--docker` |
 
 **"Ours" is decided by command line, never by process name.** A process is this repo's if its
 command line names the checkout — which covers every worktree, jest worker and bundler — or names
@@ -389,11 +386,9 @@ Name matching would be indefensible: `chrome.exe` is as likely to be the develop
 and this machine also runs an unrelated agent's `python.exe` and Windows' own `msedgewebview2.exe`.
 A command line that could not be read claims nothing.
 
-**A sweep never takes a port somebody is using; `--port` always does.** A bare `npm run reap` has
+**A sweep never takes a port somebody is using.** A bare `npm run reap` has
 nothing waiting on the port, so a holder still attached to a live launcher is somebody's run and
 stays — parentage is the signal, and a holder the process table cannot describe is left alone.
-`--port` is the blunt form, kept for cleaning up after a run that is already over
-(`tools/loop/reap.mjs`); no run takes that path on its way in any more.
 
 Starting a run used to, and that is what made two sessions collide: Playwright refuses a busy port
 *before* it runs the `webServer` command, so freeing it was the only way to boot — and the run
@@ -518,8 +513,7 @@ exit — and Docker here serves the agent sessions and nobody else, so a contain
 waiting on is a container nobody will notice. `murlan-dev-pg` and Docker Desktop together held
 ~2.3k CPU-seconds across an afternoon of tickets that had each long since finished.
 
-`node scripts/dev-stack.mjs down` takes the container, and `npm run reap -- --docker` takes it
-too if you have lost track of which sitting started it. Neither quits the engine: Docker Desktop
+`node scripts/dev-stack.mjs down` takes the container. It does not quit the engine: Docker Desktop
 is a separate ~1 GB, and on a machine two sessions are already sharing, that is the difference
 between a suite running and the jest preflight refusing. A stack left warm for the next ticket
 buys nothing: the next `up` costs seconds.
@@ -650,7 +644,6 @@ Every port this repo's local tooling binds — including the local-substitute pa
 | `5561`, `5562`, `5571`, `5581` | Server processes an integration test spawns beside its in-process one | a `PORT`/`PORTS` constant in one `tests/integration/` file each, pinned by `tests/tooling/integrationPorts.test.ts` |
 | `5199`+ | Playwright's e2e webServer (`E2E_PORT`) — the base, and the first free port above it when a neighbour holds it | chosen by `tools/ci/e2ePort.mjs`, used by `tests/e2e/playwright.config.ts` and `scripts/e2e-server.mjs`; a leftover is freed by `tools/loop/reap.mjs` |
 | `55432`+ | The dev-stack's disposable Postgres (`MURLAN_DEV_PG_PORT`) — the base, and the first port above it the Docker daemon will accept when something already holds it. Ask `dev-stack env` rather than assuming 55432 | `murlan-dev-pg` container — `scripts/dev-stack.mjs`, `scripts/devStackPort.mjs`, `scripts/e2e-server.mjs` |
-| `55433` | The verify-only Postgres substituted for CI's database | `murlan-verify-pg` container — freed by `tools/loop/reap.mjs` |
 
 ## Playwright, locally
 

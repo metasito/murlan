@@ -115,11 +115,10 @@ export function decideVerdict(run: RunRow | undefined, jobs: JobRow[] = []): Ver
     };
   }
 
-  const failed = realFailure ?? jobs.find((j) => j.conclusion === "failure");
   return {
     pass: false,
     runId: run.databaseId,
-    failedStep: failed?.name,
+    failedStep: realFailure?.name,
     reason: `ci.yml concluded ${run.conclusion}`,
   };
 }
@@ -279,7 +278,6 @@ export interface HeadCi {
   remoteSha: string | null;
   pr: number | null;
   verdict: Verdict;
-  testIds: string[];
 }
 
 /**
@@ -290,8 +288,7 @@ export function readHeadCi(
   repo: string,
   branch: string,
   gh: GhExec,
-  until = Date.now() + READ_DEADLINE_MS,
-  { withLog = true } = {}
+  until = Date.now() + READ_DEADLINE_MS
 ): HeadCi {
   let remoteSha: string | null;
   try {
@@ -306,8 +303,8 @@ export function readHeadCi(
     until
   );
   const run = runForHead(ghJson<RunRow[]>(gh, runListArgs(repo, branch), [], until), remoteSha ?? undefined);
-  const { verdict, testIds } = jobsAndLog(repo, run, gh, until, withLog);
-  return { remoteSha, pr: prRows[0]?.number ?? null, verdict, testIds };
+  const { verdict } = jobsAndLog(repo, run, gh, until, false);
+  return { remoteSha, pr: prRows[0]?.number ?? null, verdict };
 }
 
 export function readVerdict(

@@ -394,7 +394,7 @@ function readCi(cwd, branch, head, exec) {
   const failed = [];
   // Loaded on use: a static .ts import plus process.exit aborts node on Windows (nodejs/node#56645).
   const { readHeadCi } = createRequire(import.meta.url)("./ciVerdict.ts");
-  const read = readHeadCi(REPO, branch, ciGh(cwd, until, failed, exec), until, { withLog: false });
+  const read = readHeadCi(REPO, branch, ciGh(cwd, until, failed, exec), until);
   if (read.remoteSha === null && !failed.includes("api")) {
     return { pushed: false, pr: read.pr, sha: read.remoteSha, state: "none", step: null };
   }
