@@ -1,6 +1,6 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, mkdtempSync, rmSync } from "node:fs";
+import { readFileSync, mkdtempSync, rmSync, copyFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { execFileSync, spawnSync } from "node:child_process";
@@ -22,6 +22,7 @@ import {
   isSessionHost,
   parseWindowsProcessJson,
   resolvePowerShellExe,
+  readProcessTable,
 } from "../reap.mjs";
 import preflightMemory, { memoryVerdict, memoryFloor } from "../../ci/preflightMemory.mjs";
 
@@ -827,10 +828,17 @@ describe("parseWindowsProcessJson", () => {
 });
 
 describe("resolvePowerShellExe", () => {
-  test("prefers pwsh when it runs", () => {
+  test("prefers pwsh when it answers with its own version", () => {
     assert.equal(
-      resolvePowerShellExe(() => {}),
+      resolvePowerShellExe(() => "7\r\n"),
       "pwsh",
+    );
+  });
+
+  test("a same-named binary that merely exits 0 is rejected, not read as pwsh", () => {
+    assert.equal(
+      resolvePowerShellExe(() => "not a version number"),
+      "powershell",
     );
   });
 
@@ -857,6 +865,23 @@ describe("resolvePowerShellExe", () => {
     assert.equal(resolvePowerShellExe(), "pwsh");
   });
 
+  test("a decoy pwsh.exe (a copy of cmd.exe) on PATH is rejected — reproduced live", () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "decoy-pwsh-"));
+    try {
+      copyFileSync(path.join(process.env.SystemRoot ?? "C:/Windows", "System32", "cmd.exe"), path.join(dir, "pwsh.exe"));
+      const env = { ...process.env, PATH: dir };
+      const probe = (exe: string) =>
+        execFileSync(exe, ["-NoProfile", "-Command", "$PSVersionTable.PSVersion.Major"], {
+          encoding: "utf8",
+          stdio: ["ignore", "pipe", "ignore"],
+          env,
+        });
+      assert.equal(resolvePowerShellExe(probe), "powershell");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test("with pwsh off PATH, resolution falls back and the legacy binary actually runs", () => {
     // Only System32's own PowerShell 5.1 on PATH — the pwsh install lives under WindowsApps,
     // so this reproduces "pwsh not installed" without touching the real PATH.
@@ -871,6 +896,28 @@ describe("resolvePowerShellExe", () => {
       { env: restrictedEnv, encoding: "utf8" },
     );
     assert.ok(JSON.parse(out).ProcessId >= 0, "the fallback binary ran Get-CimInstance for real, not just resolved a name");
+  });
+});
+
+describe("readProcessTable", () => {
+  test("a resolver mistake degrades to an empty table, logged, instead of crashing the sweep", () => {
+    const logged: string[] = [];
+    const original = console.error;
+    console.error = (msg: string) => logged.push(msg);
+    try {
+      assert.deepEqual(readProcessTable("Impossibile trovare il testo del messaggio...", "pwsh"), []);
+    } finally {
+      console.error = original;
+    }
+    assert.match(logged.join("\n"), /pwsh/, "the skip names which binary produced it, not just that one happened");
+  });
+
+  test("still reads a well-formed table", () => {
+    const rows = readProcessTable(
+      '[{"ProcessId":1,"ParentProcessId":0,"Name":"x","CommandLine":"x","Started":1,"Cpu":1}]',
+      "pwsh",
+    );
+    assert.equal(rows.length, 1);
   });
 });
 

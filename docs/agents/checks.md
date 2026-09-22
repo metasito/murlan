@@ -7,10 +7,12 @@ and the *gotcha*, not a restatement of either.
 
 ## Shell
 
-The shell is **pwsh 7** (`$PSVersionTable.PSVersion` → 7.6.6, `[Console]::OutputEncoding.WebName`
-→ utf-8, both verified on the machine this runs on): UTF-8 by default, `&&`/`||` work, `$env:NAME`
-sets a variable. A multi-line GitHub body still goes through `--body-file`, because the problem is
-quoting, not encoding. Git Bash is available for POSIX scripts.
+The shell is **pwsh**: `$PSVersionTable.PSVersion.Major` is **7** or higher, and
+`$OutputEncoding.WebName` is **utf-8**. `&&`/`||` work, `$env:NAME` sets a variable, and a
+multi-line GitHub body still goes through `--body-file`, because the problem is quoting, not
+encoding. Git Bash is available for POSIX scripts. `tests/tooling/shellClaims.test.ts` measures
+both floors against the shell actually running, so a self-update or a falsified floor goes red
+instead of sitting unguarded in prose.
 
 ## Pick the loop by what you changed
 
