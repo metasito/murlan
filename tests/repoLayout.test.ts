@@ -21,8 +21,8 @@ describe("the repository layout (#1131)", () => {
 
   test("a RULES.md anywhere else under docs/ is caught", () => {
     assert.deepEqual(
-      misplacedRules(["docs/agents/RULES.md", "docs/RULES.md", "docs/design/RULES.md"]),
-      ["docs/RULES.md", "docs/design/RULES.md"],
+      misplacedRules(["docs/agents/RULES.md", "docs/specs/RULES.md", "docs/design/RULES.md"]),
+      ["docs/specs/RULES.md", "docs/design/RULES.md"],
     );
   });
 });

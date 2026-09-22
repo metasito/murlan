@@ -147,6 +147,11 @@ Take that dump before every deploy that runs `db:push`:
 npm run db:backup
 ```
 
+There are no migration files — the project uses `drizzle-kit push` against a schema that is
+the source of truth. If a push conflicts with existing rows (for example a new unique index
+over data that already contains duplicates), the intended recovery is `npm run db:reset`,
+not a hand-written migration.
+
 Restoring the dump undoes every write since it was taken, not just the schema change — any
 game played, account created, or match finished in that window is gone with it. That is the
 trade the dump exists to make available, not one to reach for by default.

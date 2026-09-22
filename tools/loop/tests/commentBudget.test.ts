@@ -82,17 +82,17 @@ describe("addedCounts against a before", () => {
 
   test("repointing a comment at a moved file is not added prose", () => {
     assert.deepEqual(
-      addedCounts("// see docs/RULES.md §11\n// and replit.md", "// see docs/GAME-RULES.md §11\n// and docs/DEPLOY-RUNBOOK.md"),
+      addedCounts("// see docs/OLD.md §11\n// and notes.md", "// see docs/NEW.md §11\n// and docs/RUNBOOK.md"),
       { comment: 0, code: 0 },
     );
   });
 
   test("rewording the prose around a path is added prose", () => {
-    assert.deepEqual(addedCounts("// see docs/RULES.md", "// read docs/RULES.md first"), { comment: 1, code: 0 });
+    assert.deepEqual(addedCounts("// see docs/OLD.md", "// read docs/OLD.md first"), { comment: 1, code: 0 });
   });
 
   test("a path comment does not spend a bare comment marker", () => {
-    assert.deepEqual(addedCounts("//", "// docs/RULES.md"), { comment: 1, code: 0 });
+    assert.deepEqual(addedCounts("//", "// docs/OLD.md"), { comment: 1, code: 0 });
   });
 
   test("repointing a path in code is added code", () => {
