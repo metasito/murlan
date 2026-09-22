@@ -790,6 +790,17 @@ git mv docs/agents/tracker-tmp.md docs/agents/issue-tracker.md
 
 Expected: the middle command FAILS and names each doc still pointing at the old path; after the second `git mv`, `node --test tests/tooling/docReferences.test.ts` passes again. A check that stays green through the rename is not wired to the doc set — fix it before committing.
 
+
+**Task 16 scope addition (ruled 2026-09-22, after two miscitation findings).** The reference check
+also asserts that **every `rule N` citation names a rule that exists** in `docs/agents/RULES.md`,
+derived by parsing that file's numbered list — never a hard-coded count. A citation is load-bearing
+once a doc is forbidden to restate the rule, and a number that resolves to the wrong rule sends the
+reader to an authority saying something else; this branch has now found two. The check cannot judge
+whether a citation names the *right* rule — that stays a reader's job — but a renumbering of
+RULES.md silently breaking every citation in the repo is exactly what it must catch. Its RULES.md
+rule line also carries the standing rule cut from `docs/BRIEF.md` §8: a change to behaviour is not
+complete until every document describing it is updated in the same change.
+
 - [ ] **Step 6: Commit**
 
 ```powershell
