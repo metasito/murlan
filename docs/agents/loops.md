@@ -169,7 +169,7 @@ can be confused by the host. They run weekly and on `workflow_dispatch` — #109
 | Builds | `xcodebuild`, active arch only | `./gradlew assembleRelease` |
 | Runs | smoke + offline-game + exchange-phase + rematch-prompt | smoke + offline-game + exchange-phase + rematch-prompt |
 | Locale | `launchApp` arguments, no boot | `persist.sys.locale` + a real reboot |
-| Roughly | 28 min cold (build 14), flows start ~4 min in when the `.app` is cached under Expo's native fingerprint (#1199) | unmeasured; budgeted for 100 |
+| Roughly | 28-46 min cold (build 14-27); 23 min when the `.app` is cached under Expo's native fingerprint, flows starting ~7 min in (#1199: runs 35726375597, 35731140313) | unmeasured; budgeted for 100 |
 
 Neither can see what the other can. iOS is a simulator on the host, so it has no emulator boot
 to flake (#186) and no KVM; Android is a virtual device, so it is the only one that produces a
