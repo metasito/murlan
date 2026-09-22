@@ -38,6 +38,7 @@ import {
   type ExchangeAnnounceData,
 } from "@/lib/game/sharedGameFlow";
 import type { BotPersonalityId } from "@/lib/game/botPersonalities";
+import { LADDER_KEY } from "@/lib/ladderQuery";
 
 export type RoomState = WireRoomState;
 
@@ -694,7 +695,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       qc.invalidateQueries({ queryKey: ["/api/stats/history"] });
       qc.invalidateQueries({ queryKey: ["/api/stats/achievements"] });
       qc.invalidateQueries({ queryKey: ["/api/ratings/me"] });
-      qc.invalidateQueries({ queryKey: ["/api/ratings/leaderboard"] });
+      qc.invalidateQueries({ queryKey: LADDER_KEY });
     };
 
     const onVoteState = (vs: RematchVoteState) => setRematchVoteState(vs);

@@ -18,6 +18,7 @@ import { MenuLayout } from "@/components/MenuLayout";
 import { Avatar } from "@/components/Avatar";
 import { MenuCard } from "@/components/MenuCard";
 import { AppModal } from "@/components/AppModal";
+import { LADDER_KEY } from "@/lib/ladderQuery";
 import {
   recentForm,
   placementDistribution,
@@ -116,7 +117,7 @@ function UserCard({ user }: { user: { username: string } }) {
       // The ladder is the only cached list that carries the viewer's own name —
       // friends and requests carry other people's, and home reads the account
       // straight from AuthContext.
-      queryClient.invalidateQueries({ queryKey: ["/api/ratings/leaderboard"] });
+      queryClient.invalidateQueries({ queryKey: LADDER_KEY });
       setEditing(false);
     } catch (e: unknown) {
       setError(serverErrorMessage(e, t("profile.renameFailed")));

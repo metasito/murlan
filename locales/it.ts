@@ -555,6 +555,11 @@ export const it: Record<keyof typeof en, string> = {
   "ladder.emptyBody": "Servono {{n}} mani classificate per comparire qui.",
   "ladder.rowA11yLabel": "{{rank}}º: {{name}}, {{rating}} punti",
   "ladder.rankedOnlyNote": "Solo partite online tutti contro tutti, senza bot.",
+  "ladder.scopeGlobal": "Globale",
+  "ladder.scopeFriends": "Amici",
+  "ladder.friendsEmptyTitle": "Ancora nessun amico",
+  "ladder.friendsEmptyBody": "Aggiungi amici per vedere come ti classifichi rispetto a loro.",
+  "ladder.friendsEmptyAction": "Trova amici",
 
   // -------------------------------------------------------------------- bot.*
   // The names are proper nouns and stay as they are; only the play style is translated.

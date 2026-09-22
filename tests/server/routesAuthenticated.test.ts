@@ -37,6 +37,7 @@ const SIGNED_IN = [
   "GET /api/stats/history",
   "GET /api/ratings/me",
   "GET /api/ratings/leaderboard",
+  "GET /api/ratings/leaderboard/friends",
   "GET /api/replays",
   "GET /api/replays/:id",
   "POST /api/client-errors",

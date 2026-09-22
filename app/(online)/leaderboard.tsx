@@ -2,19 +2,23 @@
 // A season can carry up to 50 rows (server/game/ratings.ts), so — like every other
 // screen with a back action — the exit sits in a fixed top bar rather than
 // only past however much of the board is on screen.
-import React from "react";
+import React, { useState } from "react";
 import { View, Text, StyleSheet } from "react-native";
 import { useQuery } from "@tanstack/react-query";
+import { router } from "expo-router";
 import { useAuth } from "@/context/AuthContext";
 import { MenuLayout, takesSlack } from "@/components/MenuLayout";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { MenuCard } from "@/components/MenuCard";
+import { MenuButton } from "@/components/MenuButton";
+import { SegmentedControl } from "@/components/SegmentedControl";
 import { LoadingBlock, ErrorBlock, EmptyBlock } from "@/components/StateBlock";
 import { Colors, FontSize, Radius, Spacing, Type } from "@/lib/theme";
 import { PROVISIONAL_GAMES, formatSeason } from "@/lib/game/rating";
 import { useTranslation } from "@/lib/i18n";
 import { a11yGroup, a11yHidden } from "@/lib/a11y";
 import type { LeaderboardEntryDto, RatingDto } from "@/lib/wire";
+import { ladderKey, type LadderScope } from "@/lib/ladderQuery";
 
 
 
@@ -24,9 +28,8 @@ const RANK_COLORS = [Colors.podiumGold, Colors.podiumSilver, Colors.podiumBronze
 export default function LeaderboardScreen() {
   const { t } = useTranslation();
   const { user } = useAuth();
-  const boardQuery = useQuery<LeaderboardEntryDto[]>({
-    queryKey: ["/api/ratings/leaderboard"],
-  });
+  const [scope, setScope] = useState<LadderScope>("global");
+  const boardQuery = useQuery<LeaderboardEntryDto[]>({ queryKey: ladderKey(scope) });
   const meQuery = useQuery<RatingDto>({ queryKey: ["/api/ratings/me"] });
 
   const board = boardQuery.data ?? [];
@@ -64,6 +67,16 @@ export default function LeaderboardScreen() {
           </View>
         )}
 
+        <SegmentedControl
+          testID="ladder-scope"
+          segments={[
+            { key: "global", label: t("ladder.scopeGlobal") },
+            { key: "friends", label: t("ladder.scopeFriends") },
+          ]}
+          selected={scope}
+          onSelect={setScope}
+        />
+
         <View style={styles.board}>
         {boardQuery.isLoading && <LoadingBlock label={t("ladder.loadingA11yLabel")} />}
 
@@ -75,7 +88,7 @@ export default function LeaderboardScreen() {
           />
         )}
 
-        {boardQuery.isSuccess && board.length === 0 && (
+        {boardQuery.isSuccess && scope === "global" && board.length === 0 && (
           <EmptyBlock
             icon="trophy-outline"
             title={t("ladder.emptyTitle")}
@@ -84,7 +97,7 @@ export default function LeaderboardScreen() {
         )}
 
         {board.length > 0 && (
-          <View style={styles.list}>
+          <View style={styles.list} testID={`ladder-rows-${scope}`}>
             {board.map((entry) => (
               <View
                 key={entry.userId}
@@ -111,6 +124,21 @@ export default function LeaderboardScreen() {
               </View>
             ))}
           </View>
+        )}
+
+        {boardQuery.isSuccess && scope === "friends" && board.length <= 1 && (
+          <>
+            <EmptyBlock
+              icon="people-outline"
+              title={t("ladder.friendsEmptyTitle")}
+              body={t("ladder.friendsEmptyBody")}
+            />
+            <MenuButton
+              label={t("ladder.friendsEmptyAction")}
+              variant="secondary"
+              onPress={() => router.push("/(online)/friends")}
+            />
+          </>
         )}
         </View>
 
