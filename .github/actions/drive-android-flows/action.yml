@@ -75,7 +75,7 @@ runs:
           # about the second — a device that failed to boot on the retry
           # answered for by the first attempt's "the device came up", which is
           # the wrong cause under the right verdict.
-          rm -f "$RUNNER_TEMP/emulator-booted" "$RUNNER_TEMP/app-launched"
+          rm -f "$RUNNER_TEMP/emulator-booted" "$RUNNER_TEMP/app-launched" "$RUNNER_TEMP/emulator-lost"
           # The flows select on Italian copy, the same way
           # tests/e2e/playwright.config.ts pins locale: "it-IT" and for the
           # same reason: a runner's emulator comes up en-US, so the app
@@ -180,4 +180,7 @@ runs:
           # started and one that failed to in three dispatches of eight.
           # `MAESTRO_APP_ID` is what tells the flows they are driving the app
           # itself: given one, they skip the Expo Go launch dance entirely.
-          maestro --device emulator-5554 test -e MAESTRO_APP_ID="$APP_ID" .maestro/smoke.yaml .maestro/offline-game.yaml .maestro/exchange-phase.yaml .maestro/rematch-prompt.yaml
+          #
+          # A failed run asks whether the device still answers: flows that failed on an emulator
+          # which had stopped answering say nothing about the app, and the verdict must know that.
+          maestro --device emulator-5554 test -e MAESTRO_APP_ID="$APP_ID" .maestro/smoke.yaml .maestro/offline-game.yaml .maestro/exchange-phase.yaml .maestro/rematch-prompt.yaml || { timeout 30 adb -s emulator-5554 shell true || touch "$RUNNER_TEMP/emulator-lost"; exit 1; }
