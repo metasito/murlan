@@ -56,8 +56,54 @@ jobs:
           node-version: 24
           cache: npm
 
+      # `macos-latest` ships a fixed set of pre-created simulators rather
+      # than a fresh AVD per run, so the device to drive has to be found
+      # rather than declared. Which one, and why, is in
+      # `tools/ci/pick-simulator.mjs`, where it can be run and tested.
+      #
+      # Booted first and waited on only before the install: a first boot on a fresh runner
+      # spends 1.5-8 minutes in data migration, and the Maestro driver launched into a device
+      # still settling from it is what timed out.
+      - name: Find and boot an iPhone simulator
+        run: |
+          udid=$(xcrun simctl list devices available -j | node tools/ci/pick-simulator.mjs)
+          echo "SIMULATOR_UDID=$udid" >> "$GITHUB_ENV"
+          # Every other device down, so exactly one simulator is booted while
+          # the flows run. Maestro resolves an iOS target through the simulator
+          # runtime rather than by UDID alone, and run 33418358705's log has
+          # `xcodebuild: WARNING: Using the first of multiple matching
+          # destinations` listing this one UDID twice, once as arm64 and once
+          # as x86_64, followed by ~300 refused connections to the driver's
+          # port. Maestro's own docs name ambiguous simulator targeting as a
+          # cause of exactly that. `--device` below says which device; this
+          # says there is nothing else running to be ambiguous with.
+          xcrun simctl shutdown all 2>/dev/null || true
+          # `shutdown` returns while a device can still be "Shutting Down", and `boot` in that
+          # state fails outright rather than queueing.
+          for _ in $(seq 1 30); do
+            xcrun simctl list devices | grep -q "(Booted)\|(Shutting Down)" || break
+            sleep 2
+          done
+          xcrun simctl boot "$udid"
+
       - name: Install dependencies
         run: npm ci
+
+      # The dist-tag named for the installed SDK is the fingerprint version that reads that SDK's config.
+      - name: Fingerprint the native build
+        id: native
+        run: |
+          sdk=$(node -p "require('expo/package.json').version.split('.')[0]")
+          hash=$(npx --yes "@expo/fingerprint@sdk-$sdk" fingerprint:generate --platform ios \
+            | node -p "JSON.parse(require('fs').readFileSync(0, 'utf8')).hash")
+          xcode=$(xcodebuild -version | shasum | cut -c1-12)
+          echo "key=ios-app-${{ runner.arch }}-$xcode-${{ hashFiles('.github/workflows/ios.yml') }}-$hash" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        id: cached
+        with:
+          path: ${{ runner.temp }}/ios-app
+          key: ${{ steps.native.outputs.key }}
 
       # Expo Go cannot host this suite. Its dev-menu window sits above the
       # app's own and takes the touch: run 33397453801's simulator log has the
@@ -72,6 +118,7 @@ jobs:
       # Metro to start, no packager URL to reach, no deep link and no
       # dev menu to be on top in the first place.
       - name: Build the app
+        if: steps.cached.outputs.cache-hit != 'true'
         env:
           # Read at module scope by every screen that names it (`app/game.tsx`,
           # `app/(online)/game.tsx`, `context/GameContext.tsx`), so it zeroes
@@ -125,6 +172,32 @@ jobs:
             [ -d "$candidate" ] && { app="$candidate"; break; }
           done
           [ -n "$app" ] || { echo "::error::xcodebuild produced no .app."; exit 1; }
+          cp "$app/main.jsbundle" "$RUNNER_TEMP/xcode.jsbundle"
+          mkdir -p "$RUNNER_TEMP/ios-app"
+          cp -R "$app" "$RUNNER_TEMP/ios-app/"
+
+      - uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        if: steps.cached.outputs.cache-hit != 'true'
+        with:
+          path: ${{ runner.temp }}/ios-app
+          key: ${{ steps.native.outputs.key }}
+
+      - name: Bundle the JS into the app
+        env:
+          EXPO_PUBLIC_E2E_FAST: "1"
+        run: |
+          cached=""
+          for candidate in "$RUNNER_TEMP"/ios-app/*.app; do
+            [ -d "$candidate" ] && { cached="$candidate"; break; }
+          done
+          [ -n "$cached" ] || { echo "::error::No .app was built or restored."; exit 1; }
+          # Where Xcode built it: hermesc writes its input's path into the bytecode.
+          products="$RUNNER_TEMP/DerivedData/Build/Products/Release-iphonesimulator"
+          app="$products/$(basename "$cached")"
+          mkdir -p "$products"
+          rm -rf "$app"
+          cp -R "$cached" "$app"
+          tools/ci/rebundle-ios-app.sh "$app"
           echo "APP_BUNDLE=$app" >> "$GITHUB_ENV"
           # The id the flows are driven with comes from the built app itself,
           # not from app.json: a prebuild that renamed the bundle would
@@ -134,46 +207,16 @@ jobs:
           echo "APP_ID=$id" >> "$GITHUB_ENV"
           echo "Built $app ($id)"
 
+      # What makes a restored app trustworthy: rebundling reproduces Xcode's own bundle byte for byte.
+      - name: The rebundled JS is the bundle Xcode built
+        if: steps.cached.outputs.cache-hit != 'true'
+        run: cmp "$RUNNER_TEMP/xcode.jsbundle" "$APP_BUNDLE/main.jsbundle"
+
       - name: The bundle carries the test-only flag
         run: node scripts/e2eBuildMark.mjs --present "$APP_BUNDLE"
 
-      # `macos-latest` ships a fixed set of pre-created simulators rather
-      # than a fresh AVD per run, so the device to drive has to be found
-      # rather than declared. Which one, and why, is in
-      # `tools/ci/pick-simulator.mjs`, where it can be run and tested.
-      - name: Find and boot an iPhone simulator
-        run: |
-          udid=$(xcrun simctl list devices available -j | node tools/ci/pick-simulator.mjs)
-          echo "SIMULATOR_UDID=$udid" >> "$GITHUB_ENV"
-          # Every other device down, so exactly one simulator is booted while
-          # the flows run. Maestro resolves an iOS target through the simulator
-          # runtime rather than by UDID alone, and run 33418358705's log has
-          # `xcodebuild: WARNING: Using the first of multiple matching
-          # destinations` listing this one UDID twice, once as arm64 and once
-          # as x86_64, followed by ~300 refused connections to the driver's
-          # port. Maestro's own docs name ambiguous simulator targeting as a
-          # cause of exactly that. `--device` below says which device; this
-          # says there is nothing else running to be ambiguous with.
-          xcrun simctl shutdown all 2>/dev/null || true
-          # `shutdown` returns while a device can still be "Shutting Down", and `erase` in that
-          # state fails outright rather than queueing — so the wait belongs with the shutdown,
-          # not with the boot.
-          for _ in $(seq 1 30); do
-            xcrun simctl list devices | grep -q "(Booted)\|(Shutting Down)" || break
-            sleep 2
-          done
-          # Erased before anything is put on it. These simulators are the
-          # image's own and are reused between jobs, so whatever the last run
-          # left behind is still there — including a half-installed Maestro
-          # XCTest runner, which is how a job spends its whole
-          # MAESTRO_DRIVER_STARTUP_TIMEOUT and then reports "iOS driver not
-          # ready in time". Raising that timeout to 5 minutes did not help,
-          # because the runner was never coming up rather than coming up late.
-          xcrun simctl erase "$udid"
-          # `bootstatus -b` boots the device if it is not already booted and
-          # then waits. A bare `simctl boot` on a device the image left booted
-          # exits non-zero instead, taking the step with it.
-          xcrun simctl bootstatus "$udid" -b
+      - name: Wait for the simulator to finish booting
+        run: xcrun simctl bootstatus "$SIMULATOR_UDID"
 
       - name: Install the app on the simulator
         run: xcrun simctl install "$SIMULATOR_UDID" "$APP_BUNDLE"
@@ -207,38 +250,13 @@ jobs:
           # about a third of the time — measured: three of eight dispatches on
           # 2026-08-31, one of them burning the full five minutes below, which
           # is what says it was never coming up rather than coming up late.
-          # Erasing the device first (above) helps and does not settle it.
           MAESTRO_DRIVER_STARTUP_TIMEOUT: "300000"
+        # Named rather than left to Maestro to resolve: run 33428373840 was the
+        # first with `--device` and the first with no "iOS driver not ready in time".
         run: |
-          # Retried once, and only when the driver never started — the same
-          # shape `maestro.yml` uses for an emulator that never boots (#186,
-          # #647). A flow that ran and failed is a result about the branch and
-          # is never retried: re-running it would turn a real red into a
-          # coin flip, which is the failure mode that judgement exists to
-          # avoid.
-          # Named rather than left to Maestro to resolve. The driver failed to
-          # start in three of eight dispatches while nothing said which device
-          # to drive; run 33428373840 is the first with this flag and the first
-          # whose log has no "iOS driver not ready in time" at all. That is one
-          # run, so the retry below stays as the tripwire that measures whether
-          # it holds.
-          run_flows() {
-            maestro --device "$SIMULATOR_UDID" test -e MAESTRO_APP_ID="$APP_ID" \
-              .maestro/smoke.yaml .maestro/offline-game.yaml .maestro/exchange-phase.yaml \
-              .maestro/rematch-prompt.yaml 2>&1 | tee "$RUNNER_TEMP/maestro-$1.log"
-            return "${PIPESTATUS[0]}"
-          }
-          if run_flows first; then exit 0; fi
-          grep -q "iOS driver not ready in time" "$RUNNER_TEMP/maestro-first.log" || {
-            echo "::error::The flows ran and failed. That is a result about this branch, not the runner."
-            exit 1
-          }
-          echo "::warning::Maestro's driver never started; erasing the device and trying once more."
-          xcrun simctl shutdown "$SIMULATOR_UDID" 2>/dev/null || true
-          xcrun simctl erase "$SIMULATOR_UDID"
-          xcrun simctl bootstatus "$SIMULATOR_UDID" -b
-          xcrun simctl install "$SIMULATOR_UDID" "$APP_BUNDLE"
-          run_flows second
+          maestro --device "$SIMULATOR_UDID" test -e MAESTRO_APP_ID="$APP_ID" \
+            .maestro/smoke.yaml .maestro/offline-game.yaml .maestro/exchange-phase.yaml \
+            .maestro/rematch-prompt.yaml
 
       # `inputs.force-upload-debug`, never `github.event.inputs.`: the latter reads a
       # boolean as the string "false", which is truthy, and uploads on every run.
