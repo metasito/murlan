@@ -206,26 +206,34 @@ describe("every agent rule is written down exactly once", () => {
 // session (ARCHITECTURE.md, unlike CLAUDE.md) is the one that goes quietly wrong.
 const FOUR_WAY_FILES = ["CLAUDE.md", "components/CLAUDE.md", "server/CLAUDE.md", "docs/ARCHITECTURE.md"];
 
-const ARCHITECTURE_DUP_PHRASES: [string, RegExp][] = [
-  ["the hook-before-null-guard order", /every hook (?:runs|is called)[^.]{0,60}`?if \(!gameState\)/i],
-  ["autoMove.ts is the sole bot-move chooser", /(?:chooses|chooser of) a bot's move/i],
-  [
-    "a winner travels as an engine player id",
-    /every\s+client\s+can\s+map\s+at\s+every\s+moment\s*`?game:over`?\s+can\s+arrive/i,
-  ],
-  ["ticket auth closes the bare handshake.auth.userId vector", /handshake\.auth\.userId/],
-  ["locales/en.ts, it.ts and sq.ts are Record<keyof typeof en, string>", /Record<keyof typeof en, string>/],
+// A line wrap turns one source space into a newline, and a reflow can turn one space
+// into two — neither changes what the text says. Matching against a raw file let a
+// duplicate slip past this check once already (round 1: `Record<keyof typeof en,
+// string>` wrapped across a line and every pattern stayed green). Normalizing first —
+// collapse whitespace to one space, drop `**` — means a phrase below is checked
+// against the words, never against which line they happened to wrap on, so every
+// pattern can be the literal phrase with ordinary single spaces.
+function normalizeForDupCheck(text: string): string {
+  return text.replace(/\*\*/g, " ").replace(/\s+/g, " ").toLowerCase();
+}
+
+const ARCHITECTURE_DUP_PHRASES: [string, string][] = [
+  ["the hook-before-null-guard order", "every hook runs before `if (!gamestate)`"],
+  ["autoMove.ts is the sole bot-move chooser", "chooses a bot's move"],
+  ["a winner travels as an engine player id", "every client can map at every moment `game:over` can arrive"],
+  ["ticket auth closes the bare handshake.auth.userId vector", "handshake.auth.userid"],
+  ["locales/en.ts, it.ts and sq.ts are Record<keyof typeof en, string>", "record<keyof typeof en, string>"],
   [
     "server authority: validates every move, broadcasts sanitized state",
-    /validates[\s\S]{0,150}?broadcasts[\s\S]{0,30}?sanitized/i,
+    "validates every move and broadcasts sanitized state",
   ],
-  ["the session table's createTableIfMissing: false", /createTableIfMissing:\s*false/],
+  ["the session table's createTableIfMissing: false", "createtableifmissing: false"],
 ];
 
 describe("docs/ARCHITECTURE.md does not restate a CLAUDE.md invariant", () => {
-  for (const [name, pattern] of ARCHITECTURE_DUP_PHRASES) {
+  for (const [name, phrase] of ARCHITECTURE_DUP_PHRASES) {
     test(`"${name}" is stated in exactly one of ${FOUR_WAY_FILES.join(", ")}`, () => {
-      const hits = FOUR_WAY_FILES.filter((f) => pattern.test(read(f)));
+      const hits = FOUR_WAY_FILES.filter((f) => normalizeForDupCheck(read(f)).includes(phrase));
       assert.equal(
         hits.length,
         1,
