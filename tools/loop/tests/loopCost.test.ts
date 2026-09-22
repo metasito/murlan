@@ -1,7 +1,7 @@
 // tools/loop/tests/loopCost.test.ts
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { killedLine, ledgerSummary, mismatchedModel, priceOf, readTicket, report, shaTable, sinceWindow, wanted } from "../loop-cost.mjs";
+import { killedLine, lastStamp, ledgerSummary, mismatchedModel, priceOf, readTicket, report, shaTable, sinceWindow, wanted } from "../loop-cost.mjs";
 
 const at = (min: number) => new Date(Date.UTC(2026, 8, 14, 10, min)).toISOString();
 const say = (text: string, min: number, model = "claude-opus-5", parent: string | null = null) =>
@@ -326,5 +326,14 @@ describe("by loop sha", () => {
   test("a killed session is named with its phase and time, and the last may still be running", () => {
     assert.equal(killedLine([]), null);
     assert.equal(killedLine(killed), "killed: 1 sessions left no row — #3 D 2m (the last may still be running)");
+  });
+});
+
+describe("lastStamp", () => {
+  test("is the latest stream timestamp inside the window, skipping lines with none", () => {
+    const at = (m: number) => `{"type":"assistant","timestamp":"2026-09-21T08:${String(m).padStart(2, "0")}:00.000Z"}`;
+    const text = [at(1), "{}", at(9), at(40)].join("\n");
+    assert.equal(lastStamp(text, Date.parse("2026-09-21T08:00Z"), Date.parse("2026-09-21T08:30Z")), Date.parse("2026-09-21T08:09Z"));
+    assert.equal(lastStamp("", 0, 1), null);
   });
 });

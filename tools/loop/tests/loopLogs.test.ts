@@ -649,7 +649,8 @@ describe("start rows", () => {
   test("a spawn with no row after it reads as killed at the next boot, with its elapsed time", () => {
     const { b, rows } = book();
     b.start(1094, "D", "r1");
-    const [killed] = killedStarts(rows(), (s: any) => Date.parse(s.started) + 60_000);
+    const earlier = rows().map((r) => ({ ...r, started: "2026-09-21T08:05:45.000Z" }));
+    const [killed] = killedStarts(earlier, (s: any) => Date.parse(s.started) + 60_000);
     assert.deepEqual([killed.n, killed.phase, killed.ms, killed.trailing, killed.loop_sha], [1094, "D", 60_000, true, "abcdef1234"]);
   });
 
@@ -672,6 +673,8 @@ describe("start rows", () => {
       { outcome: "handoff", n: 7, run_id: "r2", started: at(31) },
     ];
     assert.deepEqual(killedStarts(rows).map((k) => [k.n, k.ms, k.trailing]), [[7, 31 * 60_000, false]]);
+    const spoke = (s: any, until: number) => Math.min(Date.parse(s.started) + 5 * 60_000, until);
+    assert.equal(killedStarts(rows, spoke)[0].ms, 5 * 60_000, "the restart bounds the session, it does not time it");
   });
 
   test("readLedger leaves them out unless asked", () => {

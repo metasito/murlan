@@ -232,23 +232,27 @@ export const startRow = ({ number, phase = null, runId = null, loopSha = null, a
 
 /**
  * Every `started` row with no row of its ticket and run after it before the next start — a
- * restarted run writes rows for the ticket too. `ms` runs to that next start, or to
- * `lastSeen(row)` for the last one, which may still be running.
+ * restarted run writes rows for the ticket too. `ms` runs to `lastSeen(row, until)`, the session's
+ * last sign of life before `until`; the next start comes only when someone restarts the loop, so
+ * it bounds the session and does not time it.
  *
- * @param {object[]} rows the ledger with its start rows @param {(row: object) => number|null} [lastSeen]
+ * @param {object[]} rows the ledger with its start rows
+ * @param {(row: object, until: number) => number|null} [lastSeen]
  */
 export function killedStarts(rows, lastSeen = () => null) {
   const killed = [];
   let open = null;
-  const close = (end, trailing) =>
+  const close = (until, trailing) => {
+    const end = Math.min(lastSeen(open, until) ?? until, until);
     killed.push({ n: open.n, phase: open.phase ?? null, started: open.started, loop_sha: open.loop_sha ?? null, ms: Math.max(0, end - Date.parse(open.started)), trailing });
+  };
   for (const r of rows) {
     if (r.outcome === "started") {
       if (open) close(Date.parse(r.started), false);
       open = r;
     } else if (open && r.n === open.n && r.run_id === open.run_id) open = null;
   }
-  if (open) close(lastSeen(open) ?? Date.now(), true);
+  if (open) close(Date.now(), true);
   return killed;
 }
 

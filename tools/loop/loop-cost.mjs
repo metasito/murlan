@@ -7,7 +7,7 @@
  *
  * Usage: node tools/loop/loop-cost.mjs [<n> | <n>+ ...] [--since <time>] [--by-sha]
  */
-import { readFileSync, readdirSync, existsSync, statSync } from "node:fs";
+import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { PHASE, scopeEnds } from "./loop-stream.mjs";
 import { DIR, ARTEFACTS, killedStarts, readLedger } from "./loop-logs.mjs";
@@ -300,6 +300,16 @@ export function wanted(files, args = []) {
   });
 }
 
+/** The latest stream-line timestamp in [from, until), or null: when a killed session last spoke. */
+export function lastStamp(text, from, until) {
+  let last = null;
+  for (const line of text.split("\n")) {
+    const t = Date.parse(/"timestamp":"([^"]+)"/.exec(line)?.[1] ?? "");
+    if (t >= from && t < until && (last === null || t > last)) last = t;
+  }
+  return last;
+}
+
 /** Sessions whose supervisor died with them, from the `started` rows no session row answers. */
 export function killedLine(killed) {
   if (!killed.length) return null;
@@ -350,8 +360,9 @@ if (isInvokedDirectly(process.argv[1], import.meta.url)) {
   // Unfiltered, fix-round share was the whole directory's however narrow the window asked for.
   const asked = new Set(files.map((f) => Number.parseInt(f, 10)));
   const rows = (window ? window.rows : ledger).filter((r) => asked.has(r.n));
-  const lastSeen = (row) => (existsSync(join(DIR, `${row.n}.jsonl`)) ? statSync(join(DIR, `${row.n}.jsonl`)).mtimeMs : null);
-  const killed = killedStarts(withStarts, lastSeen).filter((k) => asked.has(k.n) && (!since || k.started >= since));
+  const lastSeen = (row, until) => lastStamp(existsSync(join(DIR, `${row.n}.jsonl`)) ? readFileSync(join(DIR, `${row.n}.jsonl`), "utf8") : "", Date.parse(row.started), until);
+  // A ticket whose one session in the window was killed has no row there, so `asked` never has it.
+  const killed = killedStarts(withStarts, lastSeen).filter((k) => (since ? k.started >= since : asked.has(k.n)));
   console.log(report(
     files.map((f) => readTicket(readFileSync(join(DIR, f), "utf8").split("\n"), f.replace(".jsonl", ""), since)),
     rows,
