@@ -6,18 +6,18 @@ import {
   ScrollView,
   TextInput,
 } from "react-native";
-import { useIsLandscape } from "@/lib/orientation";
+import { useIsLandscape } from "@/lib/device/orientation";
 import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
-import { hapticSuccess } from "@/lib/haptics";
+import { hapticSuccess } from "@/lib/device/haptics";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import type { PlayerSetupConfig } from "@/context/GameContext";
 import { useLocalSession } from "@/context/gameHooks";
 import { useAuth } from "@/context/AuthContext";
-import { GameMode, MatchLength, firstTargetFor, teamForSeat } from "@/lib/gameEngine";
-import { BOT_PERSONALITIES, botSeatNames, getBotPersonality } from "@/lib/botPersonalities";
+import { GameMode, MatchLength, firstTargetFor, teamForSeat } from "@/lib/game/gameEngine";
+import { BOT_PERSONALITIES, botSeatNames, getBotPersonality } from "@/lib/game/botPersonalities";
 import { DifficultyLadder } from "@/components/DifficultyLadder";
 import { Colors, Spacing, Radius, FontSize } from '@/lib/theme';
 import { MenuLayout } from "@/components/MenuLayout";

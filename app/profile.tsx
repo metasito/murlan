@@ -32,14 +32,14 @@ import { useTranslation } from "@/lib/i18n";
 import { relativeTime } from "@/lib/relativeTime";
 import type { TranslationKey } from "@/lib/i18n";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
-import { PROVISIONAL_GAMES, formatSeason } from "@/lib/rating";
+import { PROVISIONAL_GAMES, formatSeason } from "@/lib/game/rating";
 import { a11yGroup, a11yHidden } from "@/lib/a11y";
 import { shouldShowAddEmailCard, shouldShowVerifyEmailCard } from "@/lib/emailNudge";
 import { HistoryRow } from "@/components/HistoryRow";
 import { serverErrorMessage } from "@/lib/apiError";
 import { apiRequest } from "@/lib/query-client";
 import { USERNAME_MAX, USERNAME_MIN, usernameProblem } from "@/shared/username";
-import { placementColor, positionLabelKey } from "@/lib/placement";
+import { placementColor, positionLabelKey } from "@/lib/game/placement";
 import type { UserStatsDto, RatingDto, AchievementStatusDto, MatchHistoryDto } from "@/lib/wire";
 
 type IconName = React.ComponentProps<typeof Ionicons>["name"];

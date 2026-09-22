@@ -19,8 +19,8 @@ import {
 import { connectAs, waitFor, register } from "../helpers/client.ts";
 import { whileUserLocked } from "../helpers/userLock.ts";
 import { driveHumansToGameOver, waitForRow, type RoomState } from "../helpers/gameDriver.ts";
-import { START_RATING, seasonKey } from "../../lib/rating.ts";
-import type { ReplayMove, ReplaySeat } from "../../lib/replay.ts";
+import { START_RATING, seasonKey } from "../../lib/game/rating.ts";
+import type { ReplayMove, ReplaySeat } from "../../lib/game/replay.ts";
 
 // Same convention as the other integration suites: an exchange phase left to
 // the AFK path must not stall the run.
@@ -160,7 +160,7 @@ describe("ladder and replay writes", { skip: hasDatabase() ? false : skipMessage
         });
 
         // Both accounts are brand new, so they share a K — which is the condition
-        // under which lib/rating.ts guarantees exact conservation.
+        // under which lib/game/rating.ts guarantees exact conservation.
         const total = ratings.reduce(
           (sum: number, r: { rating: number }) => sum + (Number(r.rating) - START_RATING),
           0

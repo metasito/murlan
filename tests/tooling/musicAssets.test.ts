@@ -1,4 +1,4 @@
-// tests/tooling/musicAssets.test.ts — assets/music and lib/musicTracks{,.ios}.ts
+// tests/tooling/musicAssets.test.ts — assets/music and lib/device/musicTracks{,.ios}.ts
 // still agree.
 //
 // Metro bundles what a `require` names, so a file added here without one is
@@ -14,7 +14,7 @@ import path from "node:path";
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 function tracksFor(file: string, ext: "webm" | "m4a"): string[] {
-  const source = readFileSync(path.join(repoRoot, "lib", file), "utf8");
+  const source = readFileSync(path.join(repoRoot, "lib", "device", file), "utf8");
   const pattern = new RegExp(`assets/music/([a-z]+)\\.${ext}`, "g");
   return [...source.matchAll(pattern)].map((m) => m[1]).sort();
 }
@@ -26,27 +26,27 @@ function onDiskFor(ext: "webm" | "m4a"): string[] {
     .sort();
 }
 
-test("assets/music holds exactly the tracks lib/musicTracks.ts and lib/musicTracks.ios.ts require", () => {
+test("assets/music holds exactly the tracks lib/device/musicTracks.ts and lib/device/musicTracks.ios.ts require", () => {
   const requiredWebm = tracksFor("musicTracks.ts", "webm");
   const requiredM4a = tracksFor("musicTracks.ios.ts", "m4a");
 
-  assert.ok(requiredWebm.length > 0, "lib/musicTracks.ts requires no WebM music at all");
+  assert.ok(requiredWebm.length > 0, "lib/device/musicTracks.ts requires no WebM music at all");
   assert.deepEqual(
     onDiskFor("webm"),
     requiredWebm,
-    "a .webm music file was added or removed without lib/musicTracks.ts following it"
+    "a .webm music file was added or removed without lib/device/musicTracks.ts following it"
   );
 
   // Why iOS needs its own encode at all: assets/music/README.md, "The iOS encode".
   assert.deepEqual(
     requiredM4a,
     requiredWebm,
-    "lib/musicTracks.ios.ts requires a different track list than lib/musicTracks.ts"
+    "lib/device/musicTracks.ios.ts requires a different track list than lib/device/musicTracks.ts"
   );
   assert.deepEqual(
     onDiskFor("m4a"),
     requiredM4a,
-    "a .m4a music file was added or removed without lib/musicTracks.ios.ts following it"
+    "a .m4a music file was added or removed without lib/device/musicTracks.ios.ts following it"
   );
 });
 
@@ -68,7 +68,7 @@ export function trackKeys(source: string): string[] {
 // plays it. `app/_layout.tsx` is the only caller that names one, so a key it
 // never returns is weight in every bundle for a screen that cannot reach it.
 test("every track in the map is one app/_layout.tsx can actually choose", () => {
-  const declared = trackKeys(readFileSync(path.join(repoRoot, "lib", "musicTracks.ts"), "utf8"));
+  const declared = trackKeys(readFileSync(path.join(repoRoot, "lib", "device", "musicTracks.ts"), "utf8"));
   const chosen = chosenTracks(readFileSync(path.join(repoRoot, "app", "_layout.tsx"), "utf8"));
 
   assert.ok(chosen.length > 0, "trackForRoute returns no track literal — this scan reads nothing");

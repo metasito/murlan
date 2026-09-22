@@ -62,7 +62,7 @@ import Animated, { getAnimatedStyle } from 'react-native-reanimated';
 import { Motion } from '@/lib/theme';
 import { useTableFeedback } from '@/components/useTableFeedback';
 
-jest.mock('@/lib/sounds', () => ({
+jest.mock('@/lib/device/sounds', () => ({
   ensureAudioMode: jest.fn(),
   playBomb: jest.fn(),
   playCardPass: jest.fn(),
@@ -72,7 +72,7 @@ jest.mock('@/lib/sounds', () => ({
   playGameWin: jest.fn(),
   playYourTurn: jest.fn(),
 }));
-jest.mock('@/lib/haptics', () => ({
+jest.mock('@/lib/device/haptics', () => ({
   hapticHeavy: jest.fn(),
   hapticLight: jest.fn(),
   hapticMedium: jest.fn(),
@@ -80,7 +80,7 @@ jest.mock('@/lib/haptics', () => ({
   hapticSuccess: jest.fn(),
   hapticWarn: jest.fn(),
 }));
-jest.mock('@/lib/music', () => ({ cancelMusicDuck: jest.fn(), duckMusicFor: jest.fn() }));
+jest.mock('@/lib/device/music', () => ({ cancelMusicDuck: jest.fn(), duckMusicFor: jest.fn() }));
 
 // A value no real trauma, amplitude, decay-ms or flash/glow shared value in
 // this tree would ever hold on its own — every other one either starts and

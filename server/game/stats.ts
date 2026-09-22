@@ -6,7 +6,7 @@ import { userStats, matchHistory, userAchievements } from "../../shared/schema.t
 import type { UserStats, MatchHistory } from "../../shared/schema.ts";
 import { evaluateAchievements, ACHIEVEMENTS } from "../../lib/achievements.ts";
 import type { GameResult } from "../../lib/achievements.ts";
-import type { GameMode } from "../../lib/gameEngine.ts";
+import type { GameMode } from "../../lib/game/gameEngine.ts";
 import { dailyStreak, utcDay } from "../../lib/streak.ts";
 import { isBotSeatKey } from "./botSeat.ts";
 
@@ -24,7 +24,7 @@ import { isBotSeatKey } from "./botSeat.ts";
 export const MAX_HISTORY_ROWS_PER_USER = 50;
 
 /**
- * Per-hand score for a placement, mirroring lib/gameEngine.ts's `scoreHand`
+ * Per-hand score for a placement, mirroring lib/game/gameEngine.ts's `scoreHand`
  * exactly (N-1 for 1st, down to 0), so match_history.points always agrees
  * with what the scoreboard actually awarded. GameResult (lib/achievements.ts)
  * does not carry the raw score, only placement/playerCount, so this

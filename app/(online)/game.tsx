@@ -32,7 +32,7 @@ import {
 import { GameOverOverlay } from "@/components/GameOverOverlay";
 import { MenuButton } from "@/components/MenuButton";
 import { Colors, FontSize, Radius, Reading, Spacing, Type, Layer } from "@/lib/theme";
-import { hapticLight, hapticMedium } from "@/lib/haptics";
+import { hapticLight, hapticMedium } from "@/lib/device/haptics";
 import { useTranslation } from "@/lib/i18n";
 import { A11yStatus, a11yHidden, useA11yHint } from "@/lib/a11y";
 

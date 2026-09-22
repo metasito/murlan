@@ -14,8 +14,8 @@ import { armTurn, armTurnIfIdle } from "../../server/game/gameTurn.ts";
 import { afkTimers, afkTimeoutMs, clearRoomTimers } from "../../server/game/gameTimers.ts";
 import { activeGames } from "../../server/game/gameRoom.ts";
 import type { OnlineGameState } from "../../server/game/gameRoom.ts";
-import { emptyRankTally } from "../../lib/gameEngine.ts";
-import type { GameState, Player } from "../../lib/gameEngine.ts";
+import { emptyRankTally } from "../../lib/game/gameEngine.ts";
+import type { GameState, Player } from "../../lib/game/gameEngine.ts";
 import { Reading } from "../../lib/tokens.ts";
 
 const ROOM = "opening-grace-room";

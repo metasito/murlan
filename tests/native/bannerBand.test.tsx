@@ -31,7 +31,7 @@ import { GameTable } from '@/components/GameTable';
 import { CHIP_H } from '@/components/seatLayout';
 import { computeTableFrame } from '@/components/tableFrame';
 import { cardScale } from '@/components/cardFaceModel';
-import type { Card, GameState, Player } from '@/lib/gameEngine';
+import type { Card, GameState, Player } from '@/lib/game/gameEngine';
 
 const INSETS = { top: 0, left: 47, right: 34, bottom: 0 };
 const METRICS = { frame: { x: 0, y: 0, width: WINDOW.width, height: WINDOW.height }, insets: INSETS };

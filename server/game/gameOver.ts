@@ -4,11 +4,11 @@ import { clearRoomTimers, clearRoomDisconnectTimers } from "./gameTimers.ts";
 import type { OnlineGameState } from "./gameRoom.ts";
 import { resolveHandEnd, seatTotal } from "./onlineGameLogic.ts";
 import { replaySeatsOf } from "./replayShape.ts";
-import { isMajority, tallyRematchAnswers, firstTargetFor } from "../../lib/gameEngine.ts";
-import type { GameOverPayload } from "../../lib/matchState.ts";
-import type { GameMode } from "../../lib/gameEngine.ts";
+import { isMajority, tallyRematchAnswers, firstTargetFor } from "../../lib/game/gameEngine.ts";
+import type { GameOverPayload } from "../../lib/game/matchState.ts";
+import type { GameMode } from "../../lib/game/gameEngine.ts";
 import type { GameResult } from "../../lib/achievements.ts";
-import type { ReplayMove, ReplaySeat } from "../../lib/replay.ts";
+import type { ReplayMove, ReplaySeat } from "../../lib/game/replay.ts";
 
 /**
  * The database writes a finished hand performs, taken as an argument rather

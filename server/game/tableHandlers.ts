@@ -16,7 +16,7 @@
 // circular import) → `playAction`/`passAction` here (`gameTurn.ts`
 // `recordPlayFlags` runs first, play only) → `gamePersistence.ts`
 // `broadcastGameState`/`persistGameState` → `gameTurn.ts` `armTurn`. The play
-// that ends the hand — `lib/gameEngine.ts` decides which one — takes a sixth
+// that ends the hand — `lib/game/gameEngine.ts` decides which one — takes a sixth
 // file instead of `armTurn`: `gameOver.ts` `handleGameOver`; a pass never
 // reaches it.
 //
@@ -103,8 +103,8 @@ import {
   processPlay,
   firstTargetFor,
   teamForSeat,
-} from "../../lib/gameEngine.ts";
-import type { GameState } from "../../lib/gameEngine.ts";
+} from "../../lib/game/gameEngine.ts";
+import type { GameState } from "../../lib/game/gameEngine.ts";
 import { appendReplayMove, startReplayLog } from "./replayShape.ts";
 import { dealManche } from "./dealManche.ts";
 import type { TableAction } from "./tableActions.ts";

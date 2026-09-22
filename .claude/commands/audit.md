@@ -132,7 +132,7 @@ const LENSES = [
   },
   {
     key: 'game-logic', model: 'opus', skills: [],
-    start: 'lib/gameEngine.ts, docs/GAME-RULES.md, docs/BRIEF.md §3.1, lib/autoMove.ts, server/game/botSeat.ts, server/game/dealManche.ts, lib/exchangeCeremony.ts, lib/placement.ts, lib/standings.ts, lib/rating.ts, server/game/ratings.ts, lib/replay.ts, lib/matchState.ts, lib/offlineSave.ts, lib/sharedGameFlow.ts, server/game/gameOver.ts',
+    start: 'lib/game/gameEngine.ts, docs/GAME-RULES.md, docs/BRIEF.md §3.1, lib/game/autoMove.ts, server/game/botSeat.ts, server/game/dealManche.ts, lib/exchangeCeremony.ts, lib/game/placement.ts, lib/game/standings.ts, lib/game/rating.ts, server/game/ratings.ts, lib/game/replay.ts, lib/game/matchState.ts, lib/offlineSave.ts, lib/game/sharedGameFlow.ts, server/game/gameOver.ts',
     refs: 'docs/GAME-RULES.md is the specification; docs/BRIEF.md §3.1 records every rule change.',
     ask: `Build a matrix: rule in docs/GAME-RULES.md -> engine code -> pinning test. Report every row with a gap on any side.
 Edge cases to cover:
@@ -176,7 +176,7 @@ Invariants to confirm:
   },
   {
     key: 'perf-client', model: 'opus', skills: ['react-native-best-practices', 'performance', 'core-web-vitals'],
-    start: 'components/GameTable.tsx, components/table/, components/CardView.tsx, context/, lib/sounds.ts, lib/music.ts, lib/fonts*.ts, metro.config.js, babel.config.js, docs/WEB-PERF.md, docs/BUNDLE.md, scripts/bundle-budget.mjs',
+    start: 'components/GameTable.tsx, components/table/, components/CardView.tsx, context/, lib/device/sounds.ts, lib/device/music.ts, lib/device/fonts*.ts, metro.config.js, babel.config.js, docs/WEB-PERF.md, docs/BUNDLE.md, scripts/bundle-budget.mjs',
     refs: 'Reanimated performance and worklets guides (no large captures, no functions in shared values); react.dev React Compiler; web.dev Core Web Vitals (LCP < 2.5 s, INP < 200 ms, CLS < 0.1).',
     ask: `- Re-render storms: context value identity, prop churn during card flights.
 - React Compiler bailouts.
@@ -234,7 +234,7 @@ List what BETA-PLAYTEST and docs/research found that is still unaddressed.`,
   },
   {
     key: 'polish', kind: 'opportunities', model: 'opus', skills: ['game-feel', 'game-ui-design', 'react-native-best-practices'],
-    start: 'docs/FEEL-BAR.md, docs/design/126-motion-language/, docs/design/829-animation-audit.md, components/useTableFeedback.ts, components/flightPhysics.ts, components/table/, components/ReactionLayer.tsx, components/GameOverOverlay.tsx, lib/sounds.ts, lib/music.ts, lib/haptics.ts, lib/theme.ts (Motion), assets/sounds/, assets/music/, app/index.tsx',
+    start: 'docs/FEEL-BAR.md, docs/design/126-motion-language/, docs/design/829-animation-audit.md, components/useTableFeedback.ts, components/flightPhysics.ts, components/table/, components/ReactionLayer.tsx, components/GameOverOverlay.tsx, lib/device/sounds.ts, lib/device/music.ts, lib/device/haptics.ts, lib/theme.ts (Motion), assets/sounds/, assets/music/, app/index.tsx',
     refs: 'game-feel skill (hit-stop, easing, squash and stretch, layered feedback); FEEL-BAR references per moment.',
     ask: `You propose improvements; you do not hunt defects.
 Cover every FEEL-BAR moment (Deal, Card landing, Bomb, Pass, Turn hand-off, Win, Loss, Reconnect, Idle table), plus menus, lobby, results and transitions.

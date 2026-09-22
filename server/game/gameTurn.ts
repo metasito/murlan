@@ -27,9 +27,9 @@ import { appendReplayMove } from "./replayShape.ts";
 import {
   autoMoveForSeat as sharedAutoMove,
   recordPlayFlags as recordFlags,
-} from "../../lib/autoMove.ts";
-import { openingIsPending } from "../../lib/gameEngine.ts";
-import type { GameState, Combination } from "../../lib/gameEngine.ts";
+} from "../../lib/game/autoMove.ts";
+import { openingIsPending } from "../../lib/game/gameEngine.ts";
+import type { GameState, Combination } from "../../lib/game/gameEngine.ts";
 import { Reading } from "../../lib/tokens.ts";
 
 /** The seat that must act right now: the exchange winner, or the turn holder. */
@@ -41,7 +41,7 @@ function actingSeat(state: GameState): number {
 
 export type AutoMovable = Pick<OnlineGameState, "gameState" | "handFlags" | "moveLog">;
 
-/** See lib/autoMove.ts. Kept here so the human `game:play` path has one import. */
+/** See lib/game/autoMove.ts. Kept here so the human `game:play` path has one import. */
 export function recordPlayFlags(game: AutoMovable, seat: number, combo: Combination) {
   recordFlags(game.handFlags, seat, combo);
 }

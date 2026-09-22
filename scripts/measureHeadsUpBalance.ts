@@ -2,8 +2,8 @@
 // one-sided as it reads, and which of three named mechanisms produces it:
 // the exchange compounding every manche between the same two seats
 // (docs/GAME-RULES.md §10), half the deck going undealt at two players
-// (lib/gameEngine.ts's dealCards), or the default bot personality being the
-// passive one (lib/botPersonalities.ts).
+// (lib/game/gameEngine.ts's dealCards), or the default bot personality being the
+// passive one (lib/game/botPersonalities.ts).
 //
 // Calls the real engine and the real bot AI through
 // tests/helpers/offlineMatch.ts's `simulateOfflineMatch` — no copy of
@@ -32,13 +32,13 @@ import {
   type Card,
   type Combination,
   type Suit,
-} from "../lib/gameEngine.ts";
-import { autoMoveForSeat } from "../lib/autoMove.ts";
+} from "../lib/game/gameEngine.ts";
+import { autoMoveForSeat } from "../lib/game/autoMove.ts";
 import {
   BOT_PERSONALITIES,
   DEFAULT_BOT_PERSONALITY,
   type BotPersonalityId,
-} from "../lib/botPersonalities.ts";
+} from "../lib/game/botPersonalities.ts";
 import {
   simulateOfflineMatch,
   withSeededDeals,
@@ -329,7 +329,7 @@ function measureExchangeBlunderAvoidance(n: number, seed: number): BlunderCounts
 
 // ─── Measurement 6 helpers: royal-straight blind spot (#943) ──────────────
 //
-// takesTheRound (lib/gameEngine.ts, module-private inside aiChoosePlay) names
+// takesTheRound (lib/game/gameEngine.ts, module-private inside aiChoosePlay) names
 // one residual risk a rank tally cannot see: a royal straight, which needs
 // suits the tally deliberately does not hold. isCertainLead mirrors that
 // predicate exactly — same three conditions, same order — because the
@@ -337,7 +337,7 @@ function measureExchangeBlunderAvoidance(n: number, seed: number): BlunderCounts
 // question about every legal play, not just the one aiChoosePlay ends up
 // picking.
 
-/** Mirrors `takesTheRound` inside `lib/gameEngine.ts`'s `aiChoosePlay`. */
+/** Mirrors `takesTheRound` inside `lib/game/gameEngine.ts`'s `aiChoosePlay`. */
 export function isCertainLead(
   play: Combination,
   playedRanks: number[] | undefined,
@@ -405,7 +405,7 @@ interface RoyalStraightBlindSpot {
  * legal royal straight that would answer it. 2-seat matches only, both
  * personalities that reach this code path (`besnik`=medium, `gent`=hard;
  * `easy` never reaches the `isNewRound` certain-filter branch at all,
- * lib/gameEngine.ts:878-880).
+ * lib/game/gameEngine.ts:878-880).
  */
 function measureRoyalStraightBlindSpot(n: number, seed: number): RoyalStraightBlindSpot {
   let certainLeadsChecked = 0;

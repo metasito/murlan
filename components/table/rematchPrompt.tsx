@@ -10,7 +10,7 @@ import { TableText } from "./TableText";
 import { a11yHidden } from "@/lib/a11y";
 import { useTranslation } from "@/lib/i18n";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
-import { hapticLight, hapticSelection } from "@/lib/haptics";
+import { hapticLight, hapticSelection } from "@/lib/device/haptics";
 import {
   Colors,
   FontSize,

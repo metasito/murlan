@@ -14,7 +14,7 @@ import React from 'react';
 import { StyleSheet, type ViewStyle } from 'react-native';
 import { act, render } from '@testing-library/react-native';
 import { ExchangeAnnouncement } from '@/components/ExchangeAnnouncement';
-import type { Card } from '@/lib/gameEngine';
+import type { Card } from '@/lib/game/gameEngine';
 import type { ExchangeFlight } from '@/components/flightPhysics';
 
 const TRIP: ExchangeFlight = {

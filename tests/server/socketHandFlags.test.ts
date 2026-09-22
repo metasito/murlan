@@ -11,7 +11,7 @@
 //    of seated and vacated/bot seats.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import type { GameState, Card } from "../../lib/gameEngine.ts";
+import type { GameState, Card } from "../../lib/game/gameEngine.ts";
 import { autoMoveForSeat } from "../../server/game/gameTurn.ts";
 import type { AutoMovable } from "../../server/game/gameTurn.ts";
 import { countRematchAnswers, tableWantsRematch } from "../../server/game/gameOver.ts";

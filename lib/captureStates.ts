@@ -22,7 +22,7 @@ import {
   type Combination,
   type GameState,
   type Player,
-} from "./gameEngine.ts";
+} from "./game/gameEngine.ts";
 
 /** Bot names and seating as `app/lobby.tsx` fills empty seats. */
 const BOTS = ["Luan", "Drita", "Besnik"] as const;

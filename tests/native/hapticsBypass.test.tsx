@@ -5,12 +5,12 @@ import { join, relative } from 'path';
 const ROOT = join(__dirname, '..', '..');
 const SCANNED = ['app', 'components', 'context', 'lib'];
 
-// lib/haptics.ts is the only module allowed to reach expo-haptics: it is what
+// lib/device/haptics.ts is the only module allowed to reach expo-haptics: it is what
 // applies the Platform check and the user's haptics setting. A screen that
 // imports expo-haptics directly buzzes the phone even with haptics switched
 // off, and no web test can observe that — expo-haptics degrades to the Web
 // Vibration API, which is inert on desktop.
-const ALLOWED = 'lib/haptics.ts';
+const ALLOWED = 'lib/device/haptics.ts';
 
 function sourceFiles(dir: string): string[] {
   const out: string[] = [];
@@ -22,7 +22,7 @@ function sourceFiles(dir: string): string[] {
   return out;
 }
 
-describe('expo-haptics is reached only through lib/haptics', () => {
+describe('expo-haptics is reached only through lib/device/haptics', () => {
   const files = SCANNED.flatMap((d) => sourceFiles(join(ROOT, d)))
     .map((f) => relative(ROOT, f).split('\\').join('/'))
     .filter((f) => f !== ALLOWED);

@@ -13,7 +13,7 @@ jest.mock('@/lib/accessibility', () => ({
 }));
 
 import { TopOppSlot } from '@/components/table/seats';
-import type { Player } from '@/lib/gameEngine';
+import type { Player } from '@/lib/game/gameEngine';
 
 const player = (finishPosition?: number): Player => ({
   id: 'player_1',

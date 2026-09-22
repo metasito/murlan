@@ -38,7 +38,7 @@ import { Colors, makeShadow, Motion, motionMs, Radius, Spacing } from "@/lib/the
 import { urgentThresholdSeconds } from "@/components/turnTimerUi";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
-import type { Player } from "@/lib/gameEngine";
+import type { Player } from "@/lib/game/gameEngine";
 
 // ─── CardFan ──────────────────────────────────────────────────────────────────
 //

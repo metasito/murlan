@@ -9,7 +9,7 @@
 // `match.over`. It is the missing guard rotonmeta's comment on #770 asked
 // for, run standalone rather than folded into `driveGameToCompletion`: that
 // helper drives a page, this drives the engine directly, and a stall here
-// points at lib/gameEngine.ts or context/GameContext.tsx rather than at
+// points at lib/game/gameEngine.ts or context/GameContext.tsx rather than at
 // Playwright.
 //
 // The 2-player band is the default and cheap (200 seeds, ~1s); CI never

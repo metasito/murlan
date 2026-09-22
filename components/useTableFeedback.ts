@@ -11,7 +11,7 @@ import {
   type AnimatedStyle,
   type SharedValue,
 } from "react-native-reanimated";
-import type { Combination, CombinationType } from "@/lib/gameEngine";
+import type { Combination, CombinationType } from "@/lib/game/gameEngine";
 import type { FlyDirection } from "@/components/seatLayout";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useScreenShakeEnabled } from "@/lib/screenShake";
@@ -34,10 +34,10 @@ import {
   playGameLose,
   playGameWin,
   playYourTurn,
-} from "@/lib/sounds";
-import { hapticHeavy, hapticLight, hapticMedium, hapticRigid, hapticSuccess, hapticWarn } from "@/lib/haptics";
-import { handOutcomeFor } from "@/lib/matchState";
-import { cancelMusicDuck, duckMusicFor } from "@/lib/music";
+} from "@/lib/device/sounds";
+import { hapticHeavy, hapticLight, hapticMedium, hapticRigid, hapticSuccess, hapticWarn } from "@/lib/device/haptics";
+import { handOutcomeFor } from "@/lib/game/matchState";
+import { cancelMusicDuck, duckMusicFor } from "@/lib/device/music";
 import { Motion, motionMs } from "@/lib/theme";
 
 // The refusal shake on GIOCA: deliberately a third of the bomb's amplitude —
@@ -442,7 +442,7 @@ export function useTableFeedback({
     // waits for, so the shake lands with the card rather than ahead of it.
     // `rankings` holds engine player ids (`player_0`), never display names.
     // Routed through the one function the results board's own haptic reads
-    // for the same question (`lib/matchState.ts`), fed the same `handScores`
+    // for the same question (`lib/game/matchState.ts`), fed the same `handScores`
     // the caller already holds rather than a second `scoreHand` of its own,
     // so a teams-mode 3-3 manche (GAME-RULES.md §11) stays neutral here exactly as
     // it does there, instead of this effect deciding the same question again.

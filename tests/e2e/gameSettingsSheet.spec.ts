@@ -7,7 +7,7 @@
 // answers (docs/agents/loops.md).
 import { test, expect, type Page } from "@playwright/test";
 import { offlineGameSave, openSeededGame, resumeSaved } from "./helpers/offlineSeed";
-import { CLOSING_HAND_CARDS } from "../../lib/gameEngine";
+import { CLOSING_HAND_CARDS } from "../../lib/game/gameEngine";
 import { TOUCH_TARGET_MIN } from "../../lib/tokens";
 
 const VIEWPORT = { width: 844, height: 390 };

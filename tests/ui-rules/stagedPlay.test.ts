@@ -1,7 +1,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { readStagedPlay } from "../../components/table/stagedPlay.ts";
-import type { Card, Combination, Rank } from "../../lib/gameEngine.ts";
+import type { Card, Combination, Rank } from "../../lib/game/gameEngine.ts";
 
 const card = (rank: Rank, suit: Card["suit"]): Card => ({
   id: `${rank}_${suit}`,

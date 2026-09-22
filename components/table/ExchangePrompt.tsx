@@ -3,7 +3,7 @@ import { View, StyleSheet } from "react-native";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import { TableText } from "./TableText";
 import { CardView } from "@/components/CardView";
-import type { Card } from "@/lib/gameEngine";
+import type { Card } from "@/lib/game/gameEngine";
 import { cardSpokenName } from "@/lib/cardNames";
 import { useTranslation } from "@/lib/i18n";
 import { usePrefersReducedMotion } from "@/lib/accessibility";

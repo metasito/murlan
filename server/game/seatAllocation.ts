@@ -3,8 +3,8 @@
 //
 // Clockless on purpose: the caller passes `now` and the hold's length, so the
 // expiry is arithmetic a test can drive rather than a timer it has to outlast.
-import { teamForSeat } from "../../lib/gameEngine.ts";
-import type { GameMode } from "../../lib/gameEngine.ts";
+import { teamForSeat } from "../../lib/game/gameEngine.ts";
+import type { GameMode } from "../../lib/game/gameEngine.ts";
 
 export interface SeatedPlayer {
   userId: string;

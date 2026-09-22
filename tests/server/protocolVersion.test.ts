@@ -9,11 +9,14 @@ import { MIN_PROTOCOL_VERSION, PROTOCOL_VERSION } from "../../shared/protocol.ts
 const root = path.resolve(import.meta.dirname, "..", "..");
 const read = (file: string) => readFileSync(path.join(root, file), "utf8").replace(/\r\n/g, "\n");
 
-/** Hashes the tokens, so a comment — which never reaches the wire — needs no bump. */
+/** Hashes the tokens bar module paths, so a comment or a moved import — neither reaches the wire — needs no bump. */
 function protocolHash(source: string): string {
   const scanner = ts.createScanner(ts.ScriptTarget.Latest, true, ts.LanguageVariant.Standard, source);
   const tokens: string[] = [];
-  while (scanner.scan() !== ts.SyntaxKind.EndOfFileToken) tokens.push(scanner.getTokenText());
+  while (scanner.scan() !== ts.SyntaxKind.EndOfFileToken) {
+    const modulePath = scanner.getToken() === ts.SyntaxKind.StringLiteral && ["from", "import"].includes(tokens.at(-1) ?? "");
+    tokens.push(modulePath ? "<module>" : scanner.getTokenText());
+  }
   return createHash("sha256").update(tokens.join(" ")).digest("hex");
 }
 
@@ -24,6 +27,16 @@ test("shared/protocol.ts does not change without a PROTOCOL_VERSION bump", () =>
     protocolHash(source.replace("handCount", "cardCount")),
     protocolHash(source),
     "a renamed field must move the hash"
+  );
+  assert.equal(
+    protocolHash(source.replaceAll("../lib/game/", "../lib/")),
+    protocolHash(source),
+    "a moved import must not move the hash"
+  );
+  assert.notEqual(
+    protocolHash(source.replace('"handCount"', '"cardCount"')),
+    protocolHash(source),
+    "a renamed string literal must move the hash"
   );
   assert.equal(
     recorded[String(PROTOCOL_VERSION)],

@@ -12,7 +12,7 @@ import React from 'react';
 import { screen, render } from '@testing-library/react-native';
 import { CardView } from '@/components/CardView';
 import { CARD_W } from '@/components/cardFaceModel';
-import type { Card } from '@/lib/gameEngine';
+import type { Card } from '@/lib/game/gameEngine';
 
 const CARD: Card = { id: 'c1', rank: '7', suit: 'hearts' } as Card;
 

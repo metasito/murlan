@@ -14,13 +14,13 @@ import { SettingsProvider } from "@/context/SettingsContext";
 import { NotificationProvider, useNotification } from "@/context/NotificationContext";
 import NotificationBanner from "@/components/NotificationBanner";
 import { OfflineBanner } from "@/components/OfflineBanner";
-import { OrientationProvider } from "@/lib/orientation";
+import { OrientationProvider } from "@/lib/device/orientation";
 import { initLocale } from "@/lib/i18n";
 import { useFonts } from "expo-font";
-import { APP_FONTS } from "@/lib/fonts";
-import { bindWebAudioUnlock } from "@/lib/sounds";
+import { APP_FONTS } from "@/lib/device/fonts";
+import { bindWebAudioUnlock } from "@/lib/device/sounds";
 import { installGlobalErrorHandlers, setCurrentScreen } from "@/lib/errorReporting";
-import { playMusic, type MusicTrack } from "@/lib/music";
+import { playMusic, type MusicTrack } from "@/lib/device/music";
 import { UpdateRequired } from "@/components/UpdateRequired";
 import "@/lib/e2eBuildMark";
 
@@ -50,8 +50,8 @@ export function RootLayoutNav() {
 
   // Keyed on the route's track rather than the route itself: several screens
   // share one track (trackForRoute), and playMusic is a no-op when the track
-  // requested is already playing (lib/music.ts). Resuming after the app was
-  // backgrounded is lib/music.ts's own concern (its AppState listener), not
+  // requested is already playing (lib/device/music.ts). Resuming after the app was
+  // backgrounded is lib/device/music.ts's own concern (its AppState listener), not
   // this route effect's.
   const track = trackForRoute(pathname);
   useEffect(() => {

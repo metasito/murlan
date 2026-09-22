@@ -46,7 +46,7 @@ export interface OpenedOnlineTable {
  * Seats `setup.playerCount` real accounts — one per seat, no bots — at a
  * fresh room and returns whichever one's deal gave it the lead.
  *
- * `findStartingPlayer` (`lib/gameEngine.ts`) hands the lead to whoever holds
+ * `findStartingPlayer` (`lib/game/gameEngine.ts`) hands the lead to whoever holds
  * 3♠ — a real shuffle — or, failing that (only reachable at 2 players, where
  * `dealCards` does not deal the whole deck), to whoever holds the lowest
  * card of the hands actually dealt. Either way it always names one of the
@@ -140,7 +140,7 @@ export async function openOnlineTable(
     if (leaderIdx === -1) {
       throw new Error(
         `none of the ${seatCount} seats were dealt the lead. findStartingPlayer ` +
-          `(lib/gameEngine.ts) always names one of the players holding cards — so with every ` +
+          `(lib/game/gameEngine.ts) always names one of the players holding cards — so with every ` +
           `seat here a real, dealt-into account, this is the turn indicator disagreeing with ` +
           `the engine, not an unlucky shuffle`
       );

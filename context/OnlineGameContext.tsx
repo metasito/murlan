@@ -16,7 +16,7 @@ import { useNotification } from "@/context/NotificationContext";
 import { t, translateServerPayload, type ServerPayload } from "@/lib/i18n";
 import { Reading } from "@/lib/theme";
 import { send, undelivered, type IntentEvent } from "@/lib/sendIntent";
-import { MATCH_TARGETS } from "@/lib/gameEngine";
+import { MATCH_TARGETS } from "@/lib/game/gameEngine";
 import {
   gameOverSchema,
   gameStateSchema,
@@ -29,15 +29,15 @@ import { requireUpdate } from "@/lib/updateRequired";
 import { reportError } from "@/lib/errorReporting";
 import { clearReactions, pushReaction } from "@/lib/reactions";
 import { ACTIVE_ROOM_KEY, WAITING_ROOM_KEY } from "@/lib/storageKeys";
-import type { GameState, MatchLength } from "@/lib/gameEngine";
-import type { GameOverPayload, MatchVerdict } from "@/lib/matchState";
+import type { GameState, MatchLength } from "@/lib/game/gameEngine";
+import type { GameOverPayload, MatchVerdict } from "@/lib/game/matchState";
 import {
   buildExchangeAnnounce,
   rematchPromptOpen as isRematchPromptOpen,
   useExchangeAnnouncement,
   type ExchangeAnnounceData,
-} from "@/lib/sharedGameFlow";
-import type { BotPersonalityId } from "@/lib/botPersonalities";
+} from "@/lib/game/sharedGameFlow";
+import type { BotPersonalityId } from "@/lib/game/botPersonalities";
 
 export type RoomState = WireRoomState;
 
@@ -990,7 +990,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     deliver("game:rematch_intent", { wants });
   }, [deliver]);
 
-  // Same predicate as the offline table (lib/gameEngine), fed by the sanitized
+  // Same predicate as the offline table (lib/game/gameEngine), fed by the sanitized
   // state: opponents' hands are blanked but `handCount` is not.
   const rematchPromptOpen = useMemo(
     () =>

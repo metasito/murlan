@@ -7,7 +7,7 @@ import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals
 import React from 'react';
 import { act, render, screen } from '@testing-library/react-native';
 
-jest.mock('@/lib/sounds', () => ({
+jest.mock('@/lib/device/sounds', () => ({
   playUrgentTick: jest.fn(async () => {}),
   ensureAudioMode: jest.fn(async () => {}),
 }));

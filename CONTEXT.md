@@ -37,10 +37,10 @@ term's meaning, and useless anywhere the term is not.
   entirely stable, with twenty `on` and twenty matching `off`: there is no listener churn and no
   leak to fix. What was real is #961, one context per slice.
 
-- **Feedback master state** — the enabled/volume globals in `lib/music.ts`, `lib/sounds.ts` and
-  `lib/haptics.ts`, driven by five setters from `context/SettingsContext.tsx`. A review proposing
+- **Feedback master state** — the enabled/volume globals in `lib/device/music.ts`, `lib/device/sounds.ts` and
+  `lib/device/haptics.ts`, driven by five setters from `context/SettingsContext.tsx`. A review proposing
   to collapse those setters behind one `applyFeedbackSettings(settings)` entry point should not:
   each effect has its own dependency for a reason, one is gated on `readFinished` because
-  `lib/haptics.ts` preloads its key at module init, and a single entry point would fire all five
+  `lib/device/haptics.ts` preloads its key at module init, and a single entry point would fire all five
   setters whenever any one value changed. The pair that must move together — music enabled and
   music volume — is already inside one effect, with the reason written above it.

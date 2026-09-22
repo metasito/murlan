@@ -14,7 +14,7 @@
 // announcement cannot outlive the turn it names.
 import { test, expect, type Page } from "@playwright/test";
 import { resumeSaved } from "./helpers/offlineSeed";
-import { RANK_SLOTS } from "../../lib/gameEngine";
+import { RANK_SLOTS } from "../../lib/game/gameEngine";
 
 const VIEWPORT = { width: 844, height: 390 };
 /** How far off centre the lamp may sit and still be called centred. */

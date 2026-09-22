@@ -9,7 +9,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { isLiveRegion } from '../helpers/liveRegions';
 
-jest.mock('@/lib/sounds', () => ({
+jest.mock('@/lib/device/sounds', () => ({
   playCardSelect: jest.fn(async () => {}),
   playCardPlay: jest.fn(async () => {}),
   playCardPass: jest.fn(async () => {}),
@@ -36,7 +36,7 @@ jest.mock('@/lib/accessibility', () => ({
 }));
 
 import { GameTable } from '@/components/GameTable';
-import { buildCombination, type Card, type GameState, type Player } from '@/lib/gameEngine';
+import { buildCombination, type Card, type GameState, type Player } from '@/lib/game/gameEngine';
 import { en as locale } from '@/locales/en';
 import { Colors } from '@/lib/theme';
 

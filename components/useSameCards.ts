@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { Card } from "@/lib/gameEngine";
+import type { Card } from "@/lib/game/gameEngine";
 
 /**
  * `cards`, or the array last returned for the same ids in the same order.

@@ -8,7 +8,7 @@
 // "undefined di undefined".
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import type { Card, Rank, Suit } from "../../lib/gameEngine.ts";
+import type { Card, Rank, Suit } from "../../lib/game/gameEngine.ts";
 import { cardSpokenName, rankSpokenName, suitSpokenName } from "../../lib/cardNames.ts";
 import { it } from "../../locales/it.ts";
 

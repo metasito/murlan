@@ -10,7 +10,7 @@ import {
   seedRating,
   START_RATING,
   type RatedSeat,
-} from "../../lib/rating.ts";
+} from "../../lib/game/rating.ts";
 
 /** How many players the public ladder shows. */
 export const LEADERBOARD_SIZE = 50;

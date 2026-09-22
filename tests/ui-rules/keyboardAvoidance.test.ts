@@ -122,7 +122,7 @@ describe("one keyboard strategy", () => {
       rogue.map((b) => `${b.file}: behavior={${b.expression}}`),
       [],
       "these pick their own strategy. Two that disagree is how the sign-in screen came to run " +
-        "opposite ones at once; call keyboardBehavior() from lib/keyboard.ts instead"
+        "opposite ones at once; call keyboardBehavior() from lib/device/keyboard.ts instead"
     );
   });
 

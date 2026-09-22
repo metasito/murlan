@@ -2,11 +2,11 @@
 // without pulling storage/db/session — and the pg pool they build at import —
 // onto a path that needs none of it.
 import { botSeatIndex, botSeatKey, isBotSeatKey } from "./botSeat.ts";
-import type { ScoreLine } from "../../lib/matchState.ts";
-import { botSeatNames, getBotPersonality } from "../../lib/botPersonalities.ts";
-import type { BotPersonalityId } from "../../lib/botPersonalities.ts";
-import { foldHandIntoMatch, resolveMatchFor } from "../../lib/gameEngine.ts";
-import type { GameState, GameMode, MatchLength } from "../../lib/gameEngine.ts";
+import type { ScoreLine } from "../../lib/game/matchState.ts";
+import { botSeatNames, getBotPersonality } from "../../lib/game/botPersonalities.ts";
+import type { BotPersonalityId } from "../../lib/game/botPersonalities.ts";
+import { foldHandIntoMatch, resolveMatchFor } from "../../lib/game/gameEngine.ts";
+import type { GameState, GameMode, MatchLength } from "../../lib/game/gameEngine.ts";
 import type { GameResult } from "../../lib/achievements.ts";
 import { exchangeAnnounceMs } from "../../lib/exchangeCeremony.ts";
 
@@ -438,7 +438,7 @@ export function resolveHandEnd(input: ResolveHandEndInput): ResolveHandEndResult
   // in ranking order, then the abandoned ones behind them, ranking order kept
   // within each group so several walkouts fill the last slots stably. That is
   // what makes a forfeit genuinely last (docs/BRIEF.md §3.1) while every
-  // placement stays distinct — lib/rating.ts renumbers the human seats 1..n
+  // placement stays distinct — lib/game/rating.ts renumbers the human seats 1..n
   // by sorting on placement, so two seats sharing one would rate a quitter
   // ahead of a player who stayed to the end.
   const rankedSeats = state.rankings

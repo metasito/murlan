@@ -22,7 +22,7 @@ import {
 import { GIOCA_VALID_LABEL } from "../e2e/helpers/labels.ts";
 import { TABLE, HAND_CARDS } from "../e2e/helpers/selectors.ts";
 import { blankComments } from "../helpers/sourceScan.ts";
-import { dealCards, TURN_TIMEOUT_MS } from "../../lib/gameEngine.ts";
+import { dealCards, TURN_TIMEOUT_MS } from "../../lib/game/gameEngine.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 

@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import type { Socket } from "socket.io-client";
-import type { Card } from "../../lib/gameEngine.ts";
+import type { Card } from "../../lib/game/gameEngine.ts";
 import { connectAs, waitFor, DEADLINE_SCALE, type RegisteredUser } from "./client.ts";
 import type { TestServer } from "./testServer.ts";
-import type { GameOverPayload } from "../../lib/matchState.ts";
+import type { GameOverPayload } from "../../lib/game/matchState.ts";
 export type { GameOverPayload };
 
 /**

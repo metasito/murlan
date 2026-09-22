@@ -1,7 +1,7 @@
 import { describe, it, expect, jest } from '@jest/globals';
 import React from 'react';
 import { render } from '@testing-library/react-native';
-import type { Card, Rank } from '@/lib/gameEngine';
+import type { Card, Rank } from '@/lib/game/gameEngine';
 
 const mockHops = { n: 0 };
 jest.mock('react-native-worklets', () => {

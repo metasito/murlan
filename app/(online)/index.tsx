@@ -9,9 +9,9 @@ import {
   KeyboardAvoidingView,
   ActivityIndicator,
 } from "react-native";
-import { useIsLandscape } from "@/lib/orientation";
+import { useIsLandscape } from "@/lib/device/orientation";
 import { router } from "expo-router";
-import { hapticMedium } from "@/lib/haptics";
+import { hapticMedium } from "@/lib/device/haptics";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import {
@@ -22,7 +22,7 @@ import {
 import { useAuth } from "@/context/AuthContext";
 import { useSocket } from "@/context/SocketContext";
 import { Colors, Spacing, FontSize, Radius, TOUCH_TARGET_MIN, Type } from '@/lib/theme';
-import { keyboardBehavior } from "@/lib/keyboard";
+import { keyboardBehavior } from "@/lib/device/keyboard";
 import { MenuLayout } from "@/components/MenuLayout";
 import { MenuCard } from "@/components/MenuCard";
 import { MenuButton } from "@/components/MenuButton";

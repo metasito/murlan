@@ -50,7 +50,7 @@ export interface Player {
   name: string;
   hand: Card[];
   type: PlayerType;
-  /** AI seats only. Absent means the default personality (lib/botPersonalities.ts). */
+  /** AI seats only. Absent means the default personality (lib/game/botPersonalities.ts). */
   personality?: BotPersonalityId;
   team?: "A" | "B";
   finishPosition?: number;
@@ -1112,7 +1112,7 @@ export function processPlay(state: GameState, combination: Combination): GameSta
  * Consecutive passes that close a round: every OTHER player still holding
  * cards. A last player who has gone out is no longer among them, so every
  * remaining active player must be given a chance to answer — hence no −1
- * there. `lib/replay.ts` reads the same threshold to fold a stored log back
+ * there. `lib/game/replay.ts` reads the same threshold to fold a stored log back
  * into a pile, which is why it is exported rather than inline.
  */
 export function passesToCloseRound(activeCount: number, lastPlayerStillActive: boolean): number {

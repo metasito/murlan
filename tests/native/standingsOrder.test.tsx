@@ -4,7 +4,7 @@
 // Both end-of-manche screens list the same table: the online overlay and
 // app/result.tsx. Each row prints a running match total, so a row printing a
 // bigger total below a smaller one means the list was ordered by something
-// other than the thing it is showing. lib/standings.ts is the one place that
+// other than the thing it is showing. lib/game/standings.ts is the one place that
 // order is decided; these are the two screens that have to render it.
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 
@@ -39,7 +39,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import ResultScreen from '@/app/result';
 import { GameOverOverlay } from '@/components/GameOverOverlay';
-import type { GameState, Player } from '@/lib/gameEngine';
+import type { GameState, Player } from '@/lib/game/gameEngine';
 import type { MatchState } from '@/context/GameContext';
 
 const METRICS = {

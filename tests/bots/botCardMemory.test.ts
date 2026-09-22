@@ -24,9 +24,9 @@ import {
   outstandingAbove,
   processPlay,
   RANK_SLOTS,
-} from "../../lib/gameEngine.ts";
+} from "../../lib/game/gameEngine.ts";
 import { c, j, makePlayer, makeState } from "../engine/helpers.ts";
-import type { Card, GameState, Rank } from "../../lib/gameEngine.ts";
+import type { Card, GameState, Rank } from "../../lib/game/gameEngine.ts";
 
 const seats = (n: number) =>
   Array.from({ length: n }, (_, i) => ({

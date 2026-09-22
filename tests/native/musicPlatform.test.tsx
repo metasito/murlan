@@ -1,7 +1,7 @@
 // tests/native/musicPlatform.test.tsx — music on native, Android and iOS.
 //
 // Why iOS needs its own container: assets/music/README.md, "The iOS encode".
-// lib/music.ts resolves lib/musicTracks.ios.ts on iOS and lib/musicTracks.ts
+// lib/device/music.ts resolves lib/device/musicTracks.ios.ts on iOS and lib/device/musicTracks.ts
 // everywhere else (#178).
 //
 // This suite runs once per platform, which is the only way to see Metro
@@ -24,15 +24,15 @@ jest.mock('expo-audio', () => ({
   })),
 }));
 
-jest.mock('@/lib/sounds', () => ({
+jest.mock('@/lib/device/sounds', () => ({
   sharedWebCtx: () => null,
   onWebAudioUnlocked: () => () => {},
   ensureAudioMode: jest.fn(async () => {}),
 }));
 
-import { playMusic, setMusicMasterEnabled, stopMusic, unloadMusic } from '@/lib/music';
-import { ensureAudioMode } from '@/lib/sounds';
-import { CONTAINER } from '@/lib/musicTracks';
+import { playMusic, setMusicMasterEnabled, stopMusic, unloadMusic } from '@/lib/device/music';
+import { ensureAudioMode } from '@/lib/device/sounds';
+import { CONTAINER } from '@/lib/device/musicTracks';
 
 const createAudioPlayer = (require('expo-audio') as { createAudioPlayer: jest.Mock })
   .createAudioPlayer;
@@ -54,12 +54,12 @@ describe(`music on ${Platform.OS}`, () => {
   });
 
   // The test above pins that Metro resolves the right file per platform, but
-  // that alone doesn't prove lib/music.ts hands what Metro resolved to the
+  // that alone doesn't prove lib/device/music.ts hands what Metro resolved to the
   // player rather than a hardcoded table of its own — a mock can't see that
-  // difference, only lib/music.ts's own source can.
+  // difference, only lib/device/music.ts's own source can.
   it('creates the player from the platform-resolved TRACKS import, not a copy', () => {
-    const source = readFileSync(join(__dirname, '..', '..', 'lib', 'music.ts'), 'utf8');
-    expect(source).toMatch(/import\s*\{\s*TRACKS\s*\}\s*from\s*["']@\/lib\/musicTracks["']/);
+    const source = readFileSync(join(__dirname, '..', '..', 'lib', 'device', 'music.ts'), 'utf8');
+    expect(source).toMatch(/import\s*\{\s*TRACKS\s*\}\s*from\s*["']@\/lib\/device\/musicTracks["']/);
     expect(source).toMatch(/createAudioPlayer\(\s*TRACKS\[track\]\(\)/);
   });
 
@@ -114,15 +114,15 @@ describe(`music on ${Platform.OS}`, () => {
   });
 
   // Any screen that mounts GameTable reaches playMusic, which reaches
-  // ensureAudioMode — so a lib/sounds mock that omits it throws at render, in a
+  // ensureAudioMode — so a lib/device/sounds mock that omits it throws at render, in a
   // suite about something else entirely, naming a line no one there wrote. The
   // stub is one line; finding out why you need it is the expensive part.
-  it('every lib/sounds mock in this directory stubs ensureAudioMode', () => {
+  it('every lib/device/sounds mock in this directory stubs ensureAudioMode', () => {
     const offenders = readdirSync(__dirname)
       .filter((f) => f.endsWith('.tsx') || f.endsWith('.ts'))
       .filter((f) => {
         const source = readFileSync(join(__dirname, f), 'utf8');
-        return source.includes("jest.mock('@/lib/sounds'") && !source.includes('ensureAudioMode');
+        return source.includes("jest.mock('@/lib/device/sounds'") && !source.includes('ensureAudioMode');
       });
     expect(offenders).toEqual([]);
   });

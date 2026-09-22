@@ -1,7 +1,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { resolveHandEnd } from "../../server/game/onlineGameLogic.ts";
-import type { GameState, Player } from "../../lib/gameEngine.ts";
+import type { GameState, Player } from "../../lib/game/gameEngine.ts";
 
 function player(id: string, name: string, handSize: number, extra: Partial<Player> = {}): Player {
   return {

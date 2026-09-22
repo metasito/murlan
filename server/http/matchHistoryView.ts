@@ -9,7 +9,7 @@ import { and, inArray, sql } from "drizzle-orm";
 import { db } from "../store/db.ts";
 import { matchReplays } from "../../shared/schema.ts";
 import type { MatchHistory } from "../../shared/schema.ts";
-import type { ReplaySeat } from "../../lib/replay.ts";
+import type { ReplaySeat } from "../../lib/game/replay.ts";
 import { botSeatIndex, isBotSeatKey } from "../game/botSeat.ts";
 import { getMatchHistory } from "../game/stats.ts";
 import { namesOf } from "../game/userNames.ts";

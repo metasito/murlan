@@ -11,7 +11,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { heldSeats, seatForClaim } from "../../server/game/seatAllocation.ts";
 import type { SeatInvite, SeatedPlayer } from "../../server/game/seatAllocation.ts";
-import { teamForSeat, TEAMS_PLAYER_COUNT } from "../../lib/gameEngine.ts";
+import { teamForSeat, TEAMS_PLAYER_COUNT } from "../../lib/game/gameEngine.ts";
 
 const HOLD_MS = 120_000;
 const NOW = 1_700_000_000_000;

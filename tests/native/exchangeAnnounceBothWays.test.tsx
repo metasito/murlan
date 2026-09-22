@@ -17,7 +17,7 @@ jest.mock('expo-haptics', () => ({
 import React from 'react';
 import { act, render, within } from '@testing-library/react-native';
 import { ExchangeAnnouncement } from '@/components/ExchangeAnnouncement';
-import type { Card } from '@/lib/gameEngine';
+import type { Card } from '@/lib/game/gameEngine';
 import type { ExchangeFlight } from '@/components/flightPhysics';
 
 /** Geometry is exchangeFlight's business and tests/ui-rules/flightPhysics.test.ts's; this

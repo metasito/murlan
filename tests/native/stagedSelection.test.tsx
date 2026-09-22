@@ -11,7 +11,7 @@ import { Text, Pressable } from 'react-native';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
-jest.mock('@/lib/sounds', () => ({
+jest.mock('@/lib/device/sounds', () => ({
   playCardSelect: jest.fn(async () => {}),
   playCardPlay: jest.fn(async () => {}),
   playCardPass: jest.fn(async () => {}),
@@ -41,13 +41,13 @@ jest.mock('expo-haptics', () => ({
 }));
 
 import * as Haptics from 'expo-haptics';
-import { playCardDeselect, playCardSelect } from '@/lib/sounds';
+import { playCardDeselect, playCardSelect } from '@/lib/device/sounds';
 import { GameTable } from '@/components/GameTable';
 import { GameProvider, useGame } from '@/context/GameContext';
 import { NotificationProvider } from '@/context/NotificationContext';
 import { cardSpokenName } from '@/lib/cardNames';
 import { t, type TranslationKey } from '@/lib/i18n';
-import type { Card, GameState, Player, Rank, Suit } from '@/lib/gameEngine';
+import type { Card, GameState, Player, Rank, Suit } from '@/lib/game/gameEngine';
 
 const METRICS = {
   frame: { x: 0, y: 0, width: 844, height: 390 },

@@ -2,8 +2,8 @@
 //
 // JSX-free, runtime imports relative — docs/agents/loops.md, "Node's TypeScript loader".
 
-import type { Card, Combination, GameState, Player } from "@/lib/gameEngine";
-import type { ExchangeAnnounceData } from "@/lib/sharedGameFlow";
+import type { Card, Combination, GameState, Player } from "@/lib/game/gameEngine";
+import type { ExchangeAnnounceData } from "@/lib/game/sharedGameFlow";
 import { Hold, Motion, Spacing, Trauma } from "../lib/tokens.ts";
 import {
   HAND_ZONE_H,
@@ -175,10 +175,10 @@ export function comboImpactTier(comboType: Combination["type"]): ImpactTier {
  * The tier one landing falls at, once whatever it closed is folded in.
  *
  * A manche closes when `GameState.gameOver` turns true — `processPlay`
- * (lib/gameEngine.ts) sets it the moment a hand empties, its own comment
+ * (lib/game/gameEngine.ts) sets it the moment a hand empties, its own comment
  * calling that "the hand is decided", which `docs/GAME-RULES.md` names the
  * manche. A partita closing is a *further* fact about that same landing,
- * carried by the match verdict (`lib/matchState.ts` `MatchVerdict.over`,
+ * carried by the match verdict (`lib/game/matchState.ts` `MatchVerdict.over`,
  * `context/GameContext.tsx` `applyHandToMatch`, the online
  * `game:over`/`matchOver` payload): the hand that empties a seat's hand is
  * also the hand that happens to close the match, never a second, later
@@ -724,7 +724,7 @@ export function collectPile(layers: PileLayers): PileLayers {
 
 /**
  * The pass that just closed a round, seen from one state. `processPass`
- * (lib/gameEngine.ts) clears `lastPlayedCombination` and credits `roundWinner`
+ * (lib/game/gameEngine.ts) clears `lastPlayedCombination` and credits `roundWinner`
  * in the same transition, so the table gets both on a single commit — and the
  * winning cards must stay on the felt under the tag that announces them
  * instead of being wiped by the empty-table branch.

@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { standings } from "../../lib/standings.ts";
+import { standings } from "../../lib/game/standings.ts";
 
 const row = (name: string, total: number, points: number, finishedAt: number) => ({
   name,

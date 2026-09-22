@@ -22,7 +22,7 @@ import { useTranslation } from "@/lib/i18n";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { cardSpokenName } from "@/lib/cardNames";
 import { Colors, Garnet, Gradient, Highlight, Layer, makeShadow, Motion, Scrim, Shadow, Spacing, TopEdgeLight } from "@/lib/theme";
-import type { Card } from "@/lib/gameEngine";
+import type { Card } from "@/lib/game/gameEngine";
 import { tableFontSize } from "@/components/cardFaceModel";
 
 const BTN_PRESS_SCALE = 0.94;

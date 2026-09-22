@@ -14,7 +14,7 @@ jest.mock('expo-audio', () => ({
   setAudioModeAsync: jest.fn(async () => {}),
 }));
 
-import { holdSounds, preloadSounds, unloadSounds } from '@/lib/sounds';
+import { holdSounds, preloadSounds, unloadSounds } from '@/lib/device/sounds';
 
 const createAudioPlayer = (require('expo-audio') as { createAudioPlayer: jest.Mock })
   .createAudioPlayer;

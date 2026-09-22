@@ -19,13 +19,13 @@ import {
   hapticSuccess,
   hapticError,
   hapticWarn,
-} from '@/lib/haptics';
+} from '@/lib/device/haptics';
 
 const mocked = jest.mocked(Haptics);
 
 // Platform.OS is ios or android here (jest.config.js runs both projects);
 // tests/native/hapticsWeb.test.tsx covers web.
-describe('lib/haptics honours the master toggle', () => {
+describe('lib/device/haptics honours the master toggle', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     setHapticsMasterEnabled(true);

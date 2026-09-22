@@ -26,7 +26,7 @@ import { createRoom, fillWithBotsAndStart, goToOnlineLobby } from "./helpers/onl
 import { driveGameToCompletion } from "./helpers/bot";
 import { offlineGameSave, resumeSaved } from "./helpers/offlineSeed";
 import { settled } from "./helpers/settle";
-import { CLOSING_HAND_CARDS } from "../../lib/gameEngine";
+import { CLOSING_HAND_CARDS } from "../../lib/game/gameEngine";
 import { Reading, TOUCH_TARGET_MIN } from "../../lib/tokens";
 import { it as copy } from "../../locales/it";
 

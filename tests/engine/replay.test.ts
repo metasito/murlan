@@ -7,11 +7,11 @@ import {
   replayMoments,
   nextMoment,
   bombsPlayedBy,
-} from "../../lib/replay.ts";
-import { buildCombination } from "../../lib/gameEngine.ts";
+} from "../../lib/game/replay.ts";
+import { buildCombination } from "../../lib/game/gameEngine.ts";
 import { c } from "./helpers.ts";
 import { handCountOf } from "../../shared/protocol.ts";
-import type { ReplayDto } from "../../lib/replay.ts";
+import type { ReplayDto } from "../../lib/game/replay.ts";
 
 const single = (rank: Parameters<typeof c>[0], suit: Parameters<typeof c>[1]) =>
   buildCombination([c(rank, suit)])!;

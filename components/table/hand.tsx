@@ -17,7 +17,7 @@ import { CardView } from "@/components/CardView";
 import { Colors, FontSize, Layer, Motion, motionMs, Radius, Scrim, Shadow, Spacing } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
-import type { Card } from "@/lib/gameEngine";
+import type { Card } from "@/lib/game/gameEngine";
 import { computeHandLayout, hitWidth, slotForCard } from "@/components/handLayout";
 import { cardAt, dropIndex } from "@/components/handOrder";
 import { HAND_ARC, solveArc } from "@/components/tableArc";

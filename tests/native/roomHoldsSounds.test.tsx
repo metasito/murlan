@@ -7,8 +7,8 @@ const mockRelease = jest.fn();
 const mockHoldSounds = jest.fn(() => mockRelease);
 const mockPreloadSounds = jest.fn(async () => {});
 
-jest.mock('@/lib/sounds', () => ({
-  ...(jest.requireActual('@/lib/sounds') as object),
+jest.mock('@/lib/device/sounds', () => ({
+  ...(jest.requireActual('@/lib/device/sounds') as object),
   holdSounds: mockHoldSounds,
   preloadSounds: mockPreloadSounds,
   ensureAudioMode: jest.fn(async () => {}),

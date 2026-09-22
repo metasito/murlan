@@ -17,7 +17,7 @@
 import { expect, test } from "./fixtures";
 import type { Page } from "@playwright/test";
 import { resumeSaved } from "./helpers/offlineSeed";
-import { buildCombination, type Card, type Rank, type Suit } from "../../lib/gameEngine";
+import { buildCombination, type Card, type Rank, type Suit } from "../../lib/game/gameEngine";
 import { GIOCA_VALID_LABEL, YOUR_TURN_PREFIX } from "./helpers/labels.ts";
 import { HAND_CARDS, HAND_ZONE, TABLE, TABLE_STATE } from "./helpers/selectors.ts";
 import { PHONES } from "./helpers/phones.ts";

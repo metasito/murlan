@@ -11,7 +11,7 @@ import Animated, {
 import { Asset } from "expo-asset";
 import { LinearGradient } from "expo-linear-gradient";
 import Svg, { Path, Circle, G, Rect, Defs, Use } from "react-native-svg";
-import { Card, Suit, getCardDisplayRank } from "@/lib/gameEngine";
+import { Card, Suit, getCardDisplayRank } from "@/lib/game/gameEngine";
 import {
   CardFaceGradient,
   Colors,
@@ -359,7 +359,7 @@ function JokerStar({
 // regeneration are recorded in assets/images/cards/README.md.
 //
 // Each key is a function so Metro can statically resolve the require() calls,
-// the same shape lib/sounds.ts uses.
+// the same shape lib/device/sounds.ts uses.
 const COURT_ART: Record<string, () => number> = {
   J_clubs:      () => require("../assets/images/cards/jack_of_clubs.png") as number,
   J_diamonds:   () => require("../assets/images/cards/jack_of_diamonds.png") as number,
@@ -794,7 +794,7 @@ function TopLight({ light }: { light?: CardViewProps["light"] }) {
 }
 
 /**
- * A card id is `rank_suit` (lib/gameEngine.ts createDeck), so equal ids mean an
+ * A card id is `rank_suit` (lib/game/gameEngine.ts createDeck), so equal ids mean an
  * identical face. That is what lets this compare by id: every `game:state`
  * arrives as fresh JSON, so the card objects are new on every server message
  * even when nothing about the hand changed.

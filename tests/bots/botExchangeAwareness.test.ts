@@ -9,8 +9,8 @@ import {
   getRankStrength,
   knownOpponentExchangeCard,
   RANK_SLOTS,
-} from "../../lib/gameEngine.ts";
-import { autoMoveForSeat } from "../../lib/autoMove.ts";
+} from "../../lib/game/gameEngine.ts";
+import { autoMoveForSeat } from "../../lib/game/autoMove.ts";
 import { c, makePlayer, makeState } from "../engine/helpers.ts";
 import type { ExchangePhase } from "../engine/helpers.ts";
 

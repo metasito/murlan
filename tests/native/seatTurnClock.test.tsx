@@ -16,7 +16,7 @@ import { act, render, screen } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { getAnimatedStyle } from 'react-native-reanimated';
 
-jest.mock('@/lib/sounds', () => ({
+jest.mock('@/lib/device/sounds', () => ({
   playCardSelect: jest.fn(async () => {}),
   playCardPlay: jest.fn(async () => {}),
   playCardPass: jest.fn(async () => {}),
@@ -46,7 +46,7 @@ jest.mock('@/lib/accessibility', () => ({
 import { GameTable } from '@/components/GameTable';
 import type { TurnTimerConfig } from '@/components/GameTable';
 import { urgentThresholdSeconds } from '@/components/turnTimerUi';
-import type { Card, Combination, GameState, Player } from '@/lib/gameEngine';
+import type { Card, Combination, GameState, Player } from '@/lib/game/gameEngine';
 
 const METRICS = {
   frame: { x: 0, y: 0, width: 844, height: 390 },

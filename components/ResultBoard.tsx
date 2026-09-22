@@ -15,7 +15,7 @@ import {
   TextInput,
   type TextInputProps,
 } from "react-native";
-import { useIsLandscape, useOrientedWindow } from "@/lib/orientation";
+import { useIsLandscape, useOrientedWindow } from "@/lib/device/orientation";
 import { ControlRail, RailKnob } from "@/components/table/chrome";
 import { railWidth } from "@/components/tableFrame";
 import { cardScale, physicalTouchTarget } from "@/components/cardFaceModel";
@@ -36,8 +36,8 @@ import { scheduleOnRN } from "react-native-worklets";
 import { LinearGradient } from "expo-linear-gradient";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
-import { hapticSelection } from "@/lib/haptics";
-import { playCountComplete } from "@/lib/sounds";
+import { hapticSelection } from "@/lib/device/haptics";
+import { playCountComplete } from "@/lib/device/sounds";
 import {
   Colors,
   FontSize,
@@ -52,7 +52,7 @@ import {
 } from "@/lib/theme";
 import { useTranslation } from "@/lib/i18n";
 import { a11yHidden, a11yState } from "@/lib/a11y";
-import { placementColor, positionLabelKey } from "@/lib/placement";
+import { placementColor, positionLabelKey } from "@/lib/game/placement";
 
 const POSITION_ICONS = ["trophy", "medal", "ribbon", "remove-circle"] as const;
 

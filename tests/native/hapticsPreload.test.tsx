@@ -10,7 +10,7 @@ jest.mock('expo-haptics', () => ({
 }));
 jest.mock('@react-native-async-storage/async-storage', () => ({
   __esModule: true,
-  // Inlined rather than referencing an outer const: lib/haptics.ts's
+  // Inlined rather than referencing an outer const: lib/device/haptics.ts's
   // module-init preload calls this the moment the import below is required,
   // which — like tests/native/hapticsWeb.test.tsx — happens ahead of any
   // later statement in this file.
@@ -18,11 +18,11 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
 }));
 
 import * as Haptics from 'expo-haptics';
-import { hapticSelection, hapticsEnabled } from '@/lib/haptics';
+import { hapticSelection, hapticsEnabled } from '@/lib/device/haptics';
 
 const mocked = jest.mocked(Haptics);
 
-describe('lib/haptics preloads the stored preference on web', () => {
+describe('lib/device/haptics preloads the stored preference on web', () => {
   it('honours a stored hapticsEnabled:false before any provider mounts', async () => {
     // Flush the microtasks the module-init .then() resolves on.
     await new Promise((resolve) => setImmediate(resolve));

@@ -5,7 +5,7 @@
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
 import pg from "pg";
-import type { GameMode } from "../../lib/gameEngine.ts";
+import type { GameMode } from "../../lib/game/gameEngine.ts";
 import type { GameResult } from "../../lib/achievements.ts";
 import {
   startTestServer,

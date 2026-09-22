@@ -47,7 +47,7 @@ test("every storage key literal lives in lib/storageKeys.ts", () => {
   const all = read(sources());
   assert.ok(all.some(([f]) => f.startsWith("tests/e2e/")), "the sweep reaches the browser specs");
   const owned = readFileSync(path.join(repoRoot, OWNER), "utf8");
-  assert.ok(storageKeyLiterals([["lib/haptics.ts", owned]]).length >= 9, "the pattern matches every key the owner declares");
+  assert.ok(storageKeyLiterals([["lib/device/haptics.ts", owned]]).length >= 9, "the pattern matches every key the owner declares");
   assert.deepEqual(storageKeyLiterals(all), []);
 });
 

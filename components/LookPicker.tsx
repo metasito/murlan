@@ -2,12 +2,12 @@ import React from "react";
 import { View, Text, Pressable, StyleSheet, ScrollView } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { CardView } from "@/components/CardView";
-import type { Card } from "@/lib/gameEngine";
+import type { Card } from "@/lib/game/gameEngine";
 import { MenuCard } from "@/components/MenuCard";
 import { useSettings } from "@/context/SettingsContext";
 import { useTranslation } from "@/lib/i18n";
 import { a11yHidden, a11yState } from "@/lib/a11y";
-import { hapticSelection } from "@/lib/haptics";
+import { hapticSelection } from "@/lib/device/haptics";
 import {
   CARD_BACK_IDS,
   TABLE_FELT_IDS,

@@ -6,7 +6,7 @@
 // stored, sent or migrated for the order to survive a re-sort or a reconnect.
 import { useCallback, useMemo, useState } from "react";
 import { applyHandOrder, moveCard } from "@/components/handOrder";
-import type { Card } from "@/lib/gameEngine";
+import type { Card } from "@/lib/game/gameEngine";
 
 /**
  * How many cards a hand may gain and still be the same hand. Exactly one: the

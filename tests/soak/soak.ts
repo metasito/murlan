@@ -21,7 +21,7 @@ import {
   getValidGivebackCards,
   type Card,
   type Combination,
-} from "../../lib/gameEngine.ts";
+} from "../../lib/game/gameEngine.ts";
 import { checkAll, checkTeardown, type SeatView, type Violation } from "./invariants.ts";
 import { SETTLE_CAP_MS } from "./gateBudget.ts";
 
@@ -215,7 +215,7 @@ interface Options {
  *
  * The seed cannot carry this. It is drawn from by the choice of play and by the
  * chaos driver, but the deal is dealt by the server from `crypto`
- * (`lib/gameEngine.ts`'s `shuffleDeck`), so two runs of one seed are two
+ * (`lib/game/gameEngine.ts`'s `shuffleDeck`), so two runs of one seed are two
  * different games and the card ids in one mean nothing in the other. A log is
  * the only thing that survives the run it came from, which is why a failure
  * prints this rather than only the seed.

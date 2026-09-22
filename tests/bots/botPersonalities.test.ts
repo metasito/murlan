@@ -13,7 +13,7 @@ import {
   botSeatNames,
   getBotPersonality,
   isBotPersonalityId,
-} from "../../lib/botPersonalities.ts";
+} from "../../lib/game/botPersonalities.ts";
 import {
   aiChoosePlay,
   applyPersonality,
@@ -23,10 +23,10 @@ import {
   initializeGame,
   processPass,
   processPlay,
-} from "../../lib/gameEngine.ts";
+} from "../../lib/game/gameEngine.ts";
 import { c, j, makePlayer } from "../engine/helpers.ts";
-import type { GameState } from "../../lib/gameEngine.ts";
-import type { BotPersonalityId } from "../../lib/botPersonalities.ts";
+import type { GameState } from "../../lib/game/gameEngine.ts";
+import type { BotPersonalityId } from "../../lib/game/botPersonalities.ts";
 
 /** Deterministic stand-in for Math.random: a repeating fixed sequence. */
 function fixedRng(values: number[]): () => number {
@@ -268,7 +268,7 @@ test("the hard tier answers plainly rather than spend a joker, at every roll", (
 // differently depending on which difficulty tier ran.
 test("aiChoosePlay never sorts the array getAllValidPlays returned in place", () => {
   const src = readFileSync(
-    path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../lib/gameEngine.ts"),
+    path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../lib/game/gameEngine.ts"),
     "utf8"
   );
   const start = src.indexOf("export function aiChoosePlay");

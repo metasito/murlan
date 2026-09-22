@@ -38,7 +38,7 @@ const days = (ms: number) => ms / 86_400_000;
 
 describe("docs/PRIVACY.md states the retention the code enforces", () => {
   const cases: [string, () => string][] = [
-    ["replays", () => `${constantFrom("lib/replay.ts", "REPLAY_RETENTION_DAYS")} days`],
+    ["replays", () => `${constantFrom("lib/game/replay.ts", "REPLAY_RETENTION_DAYS")} days`],
     [
       "crash reports",
       () => `${constantFrom("server/http/clientErrors.ts", "CLIENT_ERROR_RETENTION_DAYS")} days`,

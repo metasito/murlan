@@ -23,11 +23,11 @@ import {
   type GameState,
   type MatchLength,
   type PlayerType,
-} from "../../lib/gameEngine.ts";
-import { autoMoveForSeat } from "../../lib/autoMove.ts";
+} from "../../lib/game/gameEngine.ts";
+import { autoMoveForSeat } from "../../lib/game/autoMove.ts";
 import { comboKey } from "../../components/flightPhysics.ts";
 import { mulberry32 } from "../engine/helpers.ts";
-import type { BotPersonalityId } from "../../lib/botPersonalities.ts";
+import type { BotPersonalityId } from "../../lib/game/botPersonalities.ts";
 
 interface HandResult {
   rankings: string[];
@@ -87,7 +87,7 @@ function applyHandToMatch(match: MatchState, finished: GameState): MatchState {
 }
 
 /**
- * `lib/gameEngine.ts`'s `shuffleDeck` draws from `globalThis.crypto`
+ * `lib/game/gameEngine.ts`'s `shuffleDeck` draws from `globalThis.crypto`
  * whenever it exists (Node 18+ always has it), which is unseedable. Swapping
  * in a `getRandomValues` backed by `mulberry32(seed)` for the duration of one
  * simulated match is what makes "seed 4242 stalls" a claim anyone can
@@ -124,7 +124,7 @@ export interface OfflinePlayerSetup {
   name: string;
   type: PlayerType;
   team?: "A" | "B";
-  /** Absent means `DEFAULT_BOT_PERSONALITY` (`lib/botPersonalities.ts`). */
+  /** Absent means `DEFAULT_BOT_PERSONALITY` (`lib/game/botPersonalities.ts`). */
   personality?: BotPersonalityId;
 }
 
@@ -141,7 +141,7 @@ export interface SimulateMatchOptions {
    * Per-seat AI choice, indexed like `players`. Defaults to every seat using
    * the real AI (`aiChoosePlay`). `false` plays the forced-minimum move
    * instead — the floor `autoMoveForSeat` gives an AFK human, which always
-   * passes once it is not leading a round (`lib/autoMove.ts`). That is not
+   * passes once it is not leading a round (`lib/game/autoMove.ts`). That is not
    * what an engaged human or `tests/e2e/helpers/bot.ts`'s own bot look like:
    * both actively try to beat the table before passing. `contest` below is
    * that shape instead.
@@ -162,7 +162,7 @@ export interface SimulateMatchOptions {
    */
   collectAiTurnKeyCollisions?: AiTurnKeyCollision[];
   /**
-   * Forwarded to every AI seat's `aiChoosePlay` call (`lib/autoMove.ts`'s
+   * Forwarded to every AI seat's `aiChoosePlay` call (`lib/game/autoMove.ts`'s
    * `AutoMoveContext.rng`). Absent means that function's own default —
    * `Math.random`, unseeded. A caller measuring outcomes across many seeds
    * (rather than only checking that a match terminates) wants this seeded
@@ -263,7 +263,7 @@ export class RotationOrderError extends Error {
   }
 }
 
-/** `getNextActivePlayer`'s contract (lib/gameEngine.ts), reimplemented from
+/** `getNextActivePlayer`'s contract (lib/game/gameEngine.ts), reimplemented from
  * scratch: decrement from `fromSeat`, skipping any seat holding no cards. */
 function expectedNextActive(fromSeat: number, hands: { length: number }[]): number {
   const total = hands.length;

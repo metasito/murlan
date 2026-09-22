@@ -23,7 +23,7 @@ import { expect, test } from "./fixtures";
 import type { Page } from "@playwright/test";
 import { resumeSaved } from "./helpers/offlineSeed";
 import { E2E_SUSPEND_AI_KEY } from "../../lib/e2eAiSuspend";
-import { buildCombination, type Card, type Rank, type Suit } from "../../lib/gameEngine";
+import { buildCombination, type Card, type Rank, type Suit } from "../../lib/game/gameEngine";
 import { GIOCA_VALID_LABEL } from "./helpers/labels.ts";
 import { HAND_ZONE, TABLE } from "./helpers/selectors.ts";
 import { tap } from "./helpers/press";
@@ -85,7 +85,7 @@ const SPOKEN_SUIT: Record<NonNullable<Suit>, string> = {
 const spoken = (c: Card) => `${c.rank} di ${SPOKEN_SUIT[c.suit!]}`;
 
 /**
- * Four of a rank, which `isBomb` (lib/gameEngine.ts) is exactly four of, and
+ * Four of a rank, which `isBomb` (lib/game/gameEngine.ts) is exactly four of, and
  * three spare cards so the play cannot empty the hand — an emptied one closes
  * the manche, and `landingTier` would then rank the landing `mancheWon`, whose
  * trauma is lower than the bomb's and whose kick does not fire at all.

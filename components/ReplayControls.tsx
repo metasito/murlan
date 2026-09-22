@@ -18,9 +18,9 @@ import {
   type LayoutChangeEvent,
 } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
-import { getCardDisplayRank } from "@/lib/gameEngine";
-import type { CombinationType } from "@/lib/gameEngine";
-import type { ReplayDto, ReplayMoment } from "@/lib/replay";
+import { getCardDisplayRank } from "@/lib/game/gameEngine";
+import type { CombinationType } from "@/lib/game/gameEngine";
+import type { ReplayDto, ReplayMoment } from "@/lib/game/replay";
 import { Colors, FontSize, Radius, Spacing, TOUCH_TARGET_MIN, Type } from "@/lib/theme";
 import { a11yHidden } from "@/lib/a11y";
 import { IconButton } from "@/components/IconButton";

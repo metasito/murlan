@@ -10,7 +10,7 @@ import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import React from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import type { Card, GameState, Player, Rank, Suit } from '@/lib/gameEngine';
+import type { Card, GameState, Player, Rank, Suit } from '@/lib/game/gameEngine';
 
 jest.mock('expo-router', () => ({
   router: { replace: jest.fn(), push: jest.fn(), back: jest.fn() },

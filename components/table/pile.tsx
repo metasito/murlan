@@ -20,7 +20,7 @@ import { CardView } from "@/components/CardView";
 import { Colors, FontSize, Hold, Motion, motionMs, Radius, Scrim, Shadow, Spacing, Layer } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
-import type { Card, Combination, CombinationType } from "@/lib/gameEngine";
+import type { Card, Combination, CombinationType } from "@/lib/game/gameEngine";
 import { CARD_W, CARD_H, FIELD_SCALE, cardRadius } from "@/components/cardFaceModel";
 import { type FlyDirection } from "@/components/seatLayout";
 import { COMBO_MAX_TILT, advancePile, anticipationOffset, cardTilt, collectPile, comboKey, EMPTY_PILE, FLIGHT_MS, flinchFor, impactDelayMs, landingHoldMs, landingTier, landSquashScale, NO_PILE, readThrownPlay, roundClosedWithWinner, settleForMotion, seatPoint, type ImpactTier, type PileLayers, type PileState, type ThrownPlayInput } from "@/components/flightPhysics";

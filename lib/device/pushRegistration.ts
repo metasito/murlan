@@ -7,8 +7,8 @@
 // has not yet decided to play with anyone is the one most reliably denied.
 import { Platform } from "react-native";
 import Constants from "expo-constants";
-import { apiRequest } from "./query-client";
-import { getLocale } from "./i18n";
+import { apiRequest } from "../query-client";
+import { getLocale } from "../i18n";
 
 /** The device's Expo push token, once registered for the signed-in account. */
 let currentToken: string | null = null;

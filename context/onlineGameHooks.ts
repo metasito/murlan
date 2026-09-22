@@ -9,7 +9,7 @@
  *
  * Each is a projection, never a home for logic — the provider still owns every
  * piece of state and every effect. What lives once and is shared with the
- * local game lives in `lib/sharedGameFlow.ts`.
+ * local game lives in `lib/game/sharedGameFlow.ts`.
  *
  * Each reads its own context, and that is where the render saving is: a field
  * change wakes only the screens reading the slice it belongs to. The `useMemo`

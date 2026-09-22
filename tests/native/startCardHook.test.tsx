@@ -14,7 +14,7 @@ import { describe, it, expect } from '@jest/globals';
 import React from 'react';
 import { screen, render } from '@testing-library/react-native';
 import { StraightHand } from '@/components/table/hand';
-import type { Card } from '@/lib/gameEngine';
+import type { Card } from '@/lib/game/gameEngine';
 
 const HAND: Card[] = [
   { id: 'c-3c', rank: '3', suit: 'clubs' },

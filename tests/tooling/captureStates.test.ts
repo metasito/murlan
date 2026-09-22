@@ -16,7 +16,7 @@ import {
   nextTurn,
 } from "../../lib/captureStates.ts";
 import { seatDirection } from "../../components/seatLayout.ts";
-import { createDeck } from "../../lib/gameEngine.ts";
+import { createDeck } from "../../lib/game/gameEngine.ts";
 
 describe("capture states", () => {
   test("every lamp position is covered", () => {

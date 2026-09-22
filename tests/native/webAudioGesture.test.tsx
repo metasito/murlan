@@ -48,9 +48,9 @@ class FakeAudioContext {
 }
 
 function loadSounds() {
-  let mod!: typeof import('@/lib/sounds');
+  let mod!: typeof import('@/lib/device/sounds');
   jest.isolateModules(() => {
-    mod = require('@/lib/sounds') as typeof import('@/lib/sounds');
+    mod = require('@/lib/device/sounds') as typeof import('@/lib/device/sounds');
   });
   return mod;
 }

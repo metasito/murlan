@@ -9,7 +9,7 @@ import {
   restoredMatchOver,
 } from "../../server/game/onlineGameLogic.ts";
 import { isBotSeatKey } from "../../server/game/botSeat.ts";
-import { teamForSeat, TEAMS_PLAYER_COUNT } from "../../lib/gameEngine.ts";
+import { teamForSeat, TEAMS_PLAYER_COUNT } from "../../lib/game/gameEngine.ts";
 
 describe("readPersistedPlayerMap (seat resolution on rejoin)", () => {
   test("reads the seat -> userId map", () => {

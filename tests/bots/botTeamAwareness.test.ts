@@ -9,9 +9,9 @@ import {
   opponentsOf,
   processPass,
   processPlay,
-} from "../../lib/gameEngine.ts";
+} from "../../lib/game/gameEngine.ts";
 import { c, j, makePlayer, makeState, mulberry32 } from "../engine/helpers.ts";
-import type { Card, GameState } from "../../lib/gameEngine.ts";
+import type { Card, GameState } from "../../lib/game/gameEngine.ts";
 
 const TOP_PLAY = buildCombination([c("2", "spades")])!;
 

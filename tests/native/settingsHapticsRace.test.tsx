@@ -1,7 +1,7 @@
 // tests/native/settingsHapticsRace.test.tsx — a preloaded haptics-off stays
 // off through SettingsProvider's own mount.
 //
-// lib/haptics.ts reads the stored preference at module init, ahead of any
+// lib/device/haptics.ts reads the stored preference at module init, ahead of any
 // provider, so a correctly-preloaded `false` must survive SettingsProvider
 // mounting with its own unread `hapticsEnabled: true` default. The window is
 // invisible at the end state (both reads land on the same stored value
@@ -18,7 +18,7 @@ jest.mock('expo-audio', () => ({
 
 jest.mock('@react-native-async-storage/async-storage', () => ({
   __esModule: true,
-  // The default resolves lib/haptics.ts's own module-init preload, which
+  // The default resolves lib/device/haptics.ts's own module-init preload, which
   // fires the moment this file's imports below are required — ahead of
   // anything a test body could set up.
   default: {
@@ -28,11 +28,11 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
 }));
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { hapticsEnabled } from '@/lib/haptics';
+import { hapticsEnabled } from '@/lib/device/haptics';
 import { SettingsProvider } from '@/context/SettingsContext';
 
 test("SettingsProvider mounting does not reopen a preloaded haptics-off window", async () => {
-  // Flush the microtasks lib/haptics's module-init .then() resolves on.
+  // Flush the microtasks lib/device/haptics's module-init .then() resolves on.
   await new Promise((resolve) => setImmediate(resolve));
   expect(hapticsEnabled()).toBe(false);
 
@@ -58,8 +58,8 @@ test("SettingsProvider mounting does not reopen a preloaded haptics-off window",
   expect(hapticsEnabled()).toBe(false);
 });
 
-test("SettingsProvider's own read still reaches lib/haptics once it resolves", async () => {
-  // Flush the microtasks lib/haptics's module-init .then() resolves on.
+test("SettingsProvider's own read still reaches lib/device/haptics once it resolves", async () => {
+  // Flush the microtasks lib/device/haptics's module-init .then() resolves on.
   await new Promise((resolve) => setImmediate(resolve));
   expect(hapticsEnabled()).toBe(false);
 

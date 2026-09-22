@@ -31,7 +31,7 @@ export interface HandResult {
 
 /**
  * The offline match the manches belong to, folded forward by the same
- * `lib/gameEngine` function as the server's, so the two modes cannot drift apart.
+ * `lib/game/gameEngine` function as the server's, so the two modes cannot drift apart.
  */
 export interface MatchState extends MatchVerdict {
   /** Engine player id -> cumulative match points. */

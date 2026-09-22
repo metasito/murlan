@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { celebration, isDrawnHand, handOutcomeFor } from "../../lib/matchState.ts";
+import { celebration, isDrawnHand, handOutcomeFor } from "../../lib/game/matchState.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -174,7 +174,7 @@ describe("handOutcomeFor", () => {
   });
 });
 
-// `lib/autoMove.ts` was written to be the one bot rule and landed with only
+// `lib/game/autoMove.ts` was written to be the one bot rule and landed with only
 // the server calling it, so the offline copy stayed live behind a green
 // extraction: every check passed, because each mode's tests exercised its own
 // implementation. Counting the callers of the engine's move chooser is the
@@ -182,10 +182,10 @@ describe("handOutcomeFor", () => {
 // call it, whatever else it does.
 test("one module chooses a bot's move", () => {
   const CHOOSER = "aiChoosePlay";
-  const HOME = "lib/autoMove.ts";
+  const HOME = "lib/game/autoMove.ts";
   const callers = ["app", "components", "context", "lib", "server"]
     .flatMap((dir) => walk(path.join(repoRoot, dir)))
-    .filter((rel) => rel !== "lib/gameEngine.ts")
+    .filter((rel) => rel !== "lib/game/gameEngine.ts")
     .filter((rel) =>
       new RegExp(String.raw`\b${CHOOSER}\s*\(`).test(readFileSync(path.join(repoRoot, rel), "utf8"))
     );

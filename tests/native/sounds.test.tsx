@@ -18,16 +18,16 @@ jest.mock('expo-audio', () => ({
   setAudioModeAsync: mockSetAudioModeAsync,
 }));
 
-// On web lib/sounds.ts goes through the Web Audio API and never touches
+// On web lib/device/sounds.ts goes through the Web Audio API and never touches
 // expo-audio at all, so this whole path is invisible to the Playwright suite.
-describe('lib/sounds on a device', () => {
-  let sounds: typeof import('@/lib/sounds');
+describe('lib/device/sounds on a device', () => {
+  let sounds: typeof import('@/lib/device/sounds');
 
   beforeEach(() => {
     jest.resetModules();
     jest.clearAllMocks();
     mockPlayer.volume = 0;
-    sounds = require('@/lib/sounds');
+    sounds = require('@/lib/device/sounds');
   });
 
   it('plays through expo-audio', async () => {

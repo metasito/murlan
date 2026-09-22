@@ -11,14 +11,14 @@
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import React from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
-import type { GameState } from '@/lib/gameEngine';
+import type { GameState } from '@/lib/game/gameEngine';
 import type { TurnTimerConfig } from '@/components/GameTable';
 
 jest.mock('expo-router', () => ({
   router: { replace: jest.fn(), push: jest.fn(), back: jest.fn() },
 }));
 
-jest.mock('@/lib/sounds', () => ({
+jest.mock('@/lib/device/sounds', () => ({
   playCardPass: jest.fn(async () => {}),
   ensureAudioMode: jest.fn(async () => {}),
 }));
@@ -96,7 +96,7 @@ jest.mock('@/components/GameTable', () => {
 });
 
 import * as Haptics from 'expo-haptics';
-import { playCardPass } from '@/lib/sounds';
+import { playCardPass } from '@/lib/device/sounds';
 import { t } from '@/lib/i18n';
 import GameScreen from '@/app/game';
 

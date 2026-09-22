@@ -4,7 +4,7 @@
 // full-match arithmetic in the node suite.
 import { describe, it, expect } from '@jest/globals';
 import { applyHandToMatch } from '@/context/GameContext';
-import type { GameState } from '@/lib/gameEngine';
+import type { GameState } from '@/lib/game/gameEngine';
 
 const seat = (i: number, team: 'A' | 'B') => ({
   id: `player_${i}`,

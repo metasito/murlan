@@ -9,7 +9,7 @@
  * either side.
  *
  * Each is a projection, never a home for logic. What is genuinely one concept
- * lives in `lib/sharedGameFlow.ts` and both modes call it.
+ * lives in `lib/game/sharedGameFlow.ts` and both modes call it.
  */
 import { useMemo } from "react";
 import { useGame } from "./GameContext";

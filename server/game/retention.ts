@@ -13,7 +13,7 @@ import { events, clientErrors, matchReplays, authTokens, bugReports, serverError
 import { EVENT_RETENTION_DAYS } from "../socket/events.ts";
 import { CLIENT_ERROR_RETENTION_DAYS } from "../http/clientErrors.ts";
 import { SERVER_ERROR_RETENTION_DAYS } from "../http/serverErrors.ts";
-import { REPLAY_RETENTION_DAYS } from "../../lib/replay.ts";
+import { REPLAY_RETENTION_DAYS } from "../../lib/game/replay.ts";
 import { BUG_REPORT_RETENTION_DAYS } from "../http/bugReports.ts";
 import { logger } from "../http/logger.ts";
 

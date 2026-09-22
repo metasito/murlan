@@ -23,7 +23,7 @@ import * as Haptics from 'expo-haptics';
 
 import { GameOverOverlay } from '@/components/GameOverOverlay';
 import { t } from '@/lib/i18n';
-import type { GameState, Player } from '@/lib/gameEngine';
+import type { GameState, Player } from '@/lib/game/gameEngine';
 
 const METRICS = {
   frame: { x: 0, y: 0, width: 844, height: 390 },

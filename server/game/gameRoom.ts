@@ -1,9 +1,9 @@
 // The process's live in-memory tables. Owned here rather than by
 // server/socket/socket.ts so that reading one does not mean importing the socket
 // server, and everything it drags in behind it.
-import type { GameState, GameMode, MatchLength } from "../../lib/gameEngine.ts";
-import type { ReplayMove } from "../../lib/replay.ts";
-import type { GameOverPayload } from "../../lib/matchState.ts";
+import type { GameState, GameMode, MatchLength } from "../../lib/game/gameEngine.ts";
+import type { ReplayMove } from "../../lib/game/replay.ts";
+import type { GameOverPayload } from "../../lib/game/matchState.ts";
 import {
   scoreKeyForSeat as scoreKeyForMapSeat,
   seatOfUser as seatOfUserInMap,

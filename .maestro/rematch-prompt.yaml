@@ -2,7 +2,7 @@
 # Rematch flow: plays a real offline "Manche secca" (single-hand) match to
 # its end and confirms the rematch offer actually starts a new match — see
 # #55 and docs/GAME-RULES.md. `MatchLength = "single"` means "one manche and
-# done" (lib/gameEngine.ts), so a single hand is a genuine match ending, not
+# done" (lib/game/gameEngine.ts), so a single hand is a genuine match ending, not
 # a shortcut around one: it is the cheapest length that reaches the state
 # this flow is about, and it is exactly the format offline-game.yaml already
 # uses, so this adds almost nothing to that flow's own cost — #823 is open
@@ -93,7 +93,7 @@ env:
 
 # --- Pass whenever legal, until the hand empties and the result screen replaces the table ---
 #
-# `rematchPromptOpen` (lib/sharedGameFlow.ts) opens the side-panel vote once
+# `rematchPromptOpen` (lib/game/sharedGameFlow.ts) opens the side-panel vote once
 # hand counts drop low enough for the closing manche to matter — for a
 # single-hand match that is this hand, partway through, not from the start.
 # `tableWantsRematch` (context/GameContext.tsx) is a majority of the answers

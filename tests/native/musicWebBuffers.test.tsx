@@ -17,7 +17,7 @@ const mockCtx = {
   },
 };
 
-jest.mock('@/lib/sounds', () => ({
+jest.mock('@/lib/device/sounds', () => ({
   sharedWebCtx: () => mockCtx,
   onWebAudioUnlocked: () => () => {},
   ensureAudioMode: async () => {},
@@ -27,7 +27,7 @@ jest.mock('@/lib/sounds', () => ({
 jest.replaceProperty(Platform, 'OS', 'web');
 global.fetch = (async (url: string) => ({ arrayBuffer: async () => ({ url }) })) as never;
 
-import { playMusic, unloadMusic } from '@/lib/music';
+import { playMusic, unloadMusic } from '@/lib/device/music';
 
 beforeEach(() => {
   unloadMusic();

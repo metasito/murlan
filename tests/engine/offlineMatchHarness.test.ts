@@ -32,7 +32,7 @@ test("aiRng makes a whole match — deal and AI knobs both — reproducible from
 });
 
 test("a seat's personality reaches aiChoosePlay through the offline harness", () => {
-  // luan is the "easy" tier (lib/botPersonalities.ts) and gent is "hard" —
+  // luan is the "easy" tier (lib/game/botPersonalities.ts) and gent is "hard" —
   // if OfflinePlayerSetup.personality stopped reaching initializeGame /
   // initializeRematch, both seats would fall back to DEFAULT_BOT_PERSONALITY
   // and this would flatten toward 50%.

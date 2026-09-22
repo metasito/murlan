@@ -1,8 +1,8 @@
 import React, { createContext, useCallback, useContext, useEffect, useState, useMemo } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { setSoundsMasterVolume } from "@/lib/sounds";
-import { setMusicMasterEnabled, setMusicMasterVolume } from "@/lib/music";
-import { setHapticsMasterEnabled } from "@/lib/haptics";
+import { setSoundsMasterVolume } from "@/lib/device/sounds";
+import { setMusicMasterEnabled, setMusicMasterVolume } from "@/lib/device/music";
+import { setHapticsMasterEnabled } from "@/lib/device/haptics";
 import { SETTINGS_KEY as STORAGE_KEY } from "@/lib/storageKeys";
 import { setMotionPreference, type MotionPreference } from "@/lib/accessibility";
 import { setScreenShakeEnabled } from "@/lib/screenShake";
@@ -143,7 +143,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     setMusicMasterVolume(settings.musicVolume);
   }, [settings.musicVolume]);
 
-  // lib/haptics.ts preloads this same key at module init, before this provider
+  // lib/device/haptics.ts preloads this same key at module init, before this provider
   // mounts — pushing the unread default here would stomp a correctly-preloaded
   // `false` until the read above resolves.
   useEffect(() => {

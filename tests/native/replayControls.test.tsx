@@ -18,8 +18,8 @@ jest.mock('expo-haptics', () => ({
 import React from 'react';
 import { render, fireEvent, act } from '@testing-library/react-native';
 import { ReplayTransport, ReplayMoveList } from '@/components/ReplayControls';
-import { replayMoments } from '@/lib/replay';
-import type { ReplayDto } from '@/lib/replay';
+import { replayMoments } from '@/lib/game/replay';
+import type { ReplayDto } from '@/lib/game/replay';
 import { translate, DEFAULT_LOCALE } from '@/shared/i18n';
 import type { TranslationKey, TranslationParams } from '@/shared/i18n';
 

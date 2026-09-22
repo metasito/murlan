@@ -14,7 +14,7 @@ import { FlyingCards } from '@/components/table/pile';
 import { impactDelayMs, landingHoldMs } from '@/components/flightPhysics';
 import { setMotionPreference } from '@/lib/accessibility';
 import { Shadow } from '@/lib/theme';
-import type { Card } from '@/lib/gameEngine';
+import type { Card } from '@/lib/game/gameEngine';
 
 const CARDS: Card[] = [
   { id: 'A_clubs', rank: 'A', suit: 'clubs', isJoker: false } as Card,

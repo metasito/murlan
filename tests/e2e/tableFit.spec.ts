@@ -10,7 +10,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import { openApp, startOfflineGame } from "./helpers/navigation";
 import { openSeededGame, offlineGameSave, resumeSaved, DEAL_SIZE } from "./helpers/offlineSeed";
-import { buildCombination } from "../../lib/gameEngine";
+import { buildCombination } from "../../lib/game/gameEngine";
 import { GIOCA_VALID_LABEL, YOUR_TURN_PREFIX } from "./helpers/labels";
 import { HAND_ZONE, TABLE_STATE } from "./helpers/selectors.ts";
 import { tap } from "./helpers/press";

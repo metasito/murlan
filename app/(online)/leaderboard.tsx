@@ -11,7 +11,7 @@ import { ScreenHeader } from "@/components/ScreenHeader";
 import { MenuCard } from "@/components/MenuCard";
 import { LoadingBlock, ErrorBlock, EmptyBlock } from "@/components/StateBlock";
 import { Colors, FontSize, Radius, Spacing, Type } from "@/lib/theme";
-import { PROVISIONAL_GAMES, formatSeason } from "@/lib/rating";
+import { PROVISIONAL_GAMES, formatSeason } from "@/lib/game/rating";
 import { useTranslation } from "@/lib/i18n";
 import { a11yGroup, a11yHidden } from "@/lib/a11y";
 import type { LeaderboardEntryDto, RatingDto } from "@/lib/wire";

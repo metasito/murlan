@@ -1,7 +1,7 @@
 // tests/soak/replay.ts — hands a soak log back to a real server, move for move.
 //
 // The soak is a search and its seed is a label: the deal comes from `crypto`
-// (`lib/gameEngine.ts`'s `shuffleDeck`), so re-running a seed plays a different
+// (`lib/game/gameEngine.ts`'s `shuffleDeck`), so re-running a seed plays a different
 // game with different cards, and the card ids a failure printed mean nothing in
 // it. What survives the run is the log. This replays one, so a night's find can
 // become a `tests/integration/` case that fails on demand for ever after
@@ -16,7 +16,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { startTestServer, type TestServer } from "../helpers/testServer.ts";
 import { reconnectWith, DEADLINE_SCALE } from "../helpers/client.ts";
 import { redealExactly, forgetActiveGame } from "../helpers/liveGame.ts";
-import { createDeck } from "../../lib/gameEngine.ts";
+import { createDeck } from "../../lib/game/gameEngine.ts";
 import { checkAll, type SeatView, type Violation } from "./invariants.ts";
 import { Seat, openTable, settle, type SoakLogEntry } from "./soak.ts";
 

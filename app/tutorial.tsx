@@ -4,7 +4,7 @@ import { router } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Animated, { FadeIn } from "react-native-reanimated";
 import Ionicons from "@expo/vector-icons/Ionicons";
-import { hapticError, hapticLight, hapticSelection, hapticSuccess } from "@/lib/haptics";
+import { hapticError, hapticLight, hapticSelection, hapticSuccess } from "@/lib/device/haptics";
 import { Colors, Spacing, Radius, FontSize, Type, Motion, TOUCH_TARGET_MIN } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { markTutorialSeen } from "@/lib/tutorialSeen";
@@ -27,7 +27,7 @@ import {
   getSuitSymbol,
   getValidGivebackCards,
   processExchangeChoice,
-} from "@/lib/gameEngine";
+} from "@/lib/game/gameEngine";
 import { useTranslation, type TFn, type TranslationKey } from "@/lib/i18n";
 import { IconButton } from "@/components/IconButton";
 import { a11yHidden } from "@/lib/a11y";
@@ -372,7 +372,7 @@ function buildBeats(t: TFn): Beat[] {
 }
 
 // ─── Engine-backed validation ───────────────────────────────────────────────
-// Every legality check below goes through lib/gameEngine.ts — the tutorial can
+// Every legality check below goes through lib/game/gameEngine.ts — the tutorial can
 // never accept (or reject) a move the real game engine wouldn't.
 
 function evaluatePlay(selected: Card[], beat: PlayBeat, t: TFn): { ok: boolean; message: string } {

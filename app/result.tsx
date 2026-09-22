@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from "react";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { hapticLight, hapticMedium } from "@/lib/haptics";
-import { holdSounds } from "@/lib/sounds";
+import { hapticLight, hapticMedium } from "@/lib/device/haptics";
+import { holdSounds } from "@/lib/device/sounds";
 import { useLocalMatch, useLocalSession, useLocalTable } from "@/context/gameHooks";
-import { standings } from "@/lib/standings";
-import { celebratesViewer, celebration, isDrawnHand, handOutcomeFor } from "@/lib/matchState";
+import { standings } from "@/lib/game/standings";
+import { celebratesViewer, celebration, isDrawnHand, handOutcomeFor } from "@/lib/game/matchState";
 import { ResultBoard, type ContinueAction, type ResultRow } from "@/components/ResultBoard";
 import { Spacing } from "@/lib/theme";
 import { useTranslation } from "@/lib/i18n";

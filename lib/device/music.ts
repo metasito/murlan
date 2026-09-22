@@ -1,14 +1,14 @@
 import { AppState, Platform } from "react-native";
 import type { AudioPlayer } from "expo-audio";
-import { ensureAudioMode, forgetAudioMode, onWebAudioUnlocked, sharedWebCtx } from "@/lib/sounds";
-import { TRACKS } from "@/lib/musicTracks";
+import { ensureAudioMode, forgetAudioMode, onWebAudioUnlocked, sharedWebCtx } from "@/lib/device/sounds";
+import { TRACKS } from "@/lib/device/musicTracks";
 
 /**
  * Four loops, all one composition — Abstraction's *Retro Lounge*, CC0 (#113).
  * WebM Opus at 48 kHz for web and Android: MP3 cannot loop seamlessly, and
  * Safari has decoded WebM Opus since 17.0 against Ogg Opus's 18.4 (#121).
- * AVFoundation cannot demux WebM at all, so iOS resolves lib/musicTracks.ios.ts
- * instead of lib/musicTracks.ts — the same audio losslessly re-encoded to ALAC
+ * AVFoundation cannot demux WebM at all, so iOS resolves lib/device/musicTracks.ios.ts
+ * instead of lib/device/musicTracks.ts — the same audio losslessly re-encoded to ALAC
  * in an M4A container (#178); every other iOS-playable option that was tried
  * lost the loop's gaplessness somewhere in the container (see
  * assets/music/README.md), where ALAC cannot by construction. Metro's
@@ -175,7 +175,7 @@ function nativePlayer(track: MusicTrack): AudioPlayer | null {
   try {
     // Required here, not imported: web never needs it, and a module-level
     // import pulls the native module into every test graph that imports this
-    // file — including the ones that mock lib/sounds precisely to avoid it.
+    // file — including the ones that mock lib/device/sounds precisely to avoid it.
     // eslint-disable-next-line @typescript-eslint/no-require-imports -- see above
     const { createAudioPlayer } = require("expo-audio") as typeof import("expo-audio");
     const player = createAudioPlayer(
@@ -268,7 +268,7 @@ function playNativeMusic(track: MusicTrack, opts: { rewind?: boolean } = {}): vo
   nativePlaying = track;
   if (!alreadyPlaying || opts.rewind) {
     try {
-      // lib/sounds.ts's playNative rewinds for the same reason: a player
+      // lib/device/sounds.ts's playNative rewinds for the same reason: a player
       // parked mid-loop or at the end of its buffer after an interruption
       // plays silence otherwise.
       const tSeek = __DEV__ ? Date.now() : 0;
@@ -422,7 +422,7 @@ if (Platform.OS === "web") {
   });
 } else {
   // iOS silences the loop while the app is backgrounded
-  // (`shouldPlayInBackground: false`, lib/sounds.ts) — nothing else asks the
+  // (`shouldPlayInBackground: false`, lib/device/sounds.ts) — nothing else asks the
   // player to sound again on return, and nothing else re-arms the session
   // `ensureAudioMode` cached before the OS deactivated it.
   AppState.addEventListener("change", (state) => {

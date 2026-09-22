@@ -5,7 +5,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { sanitizeStateForPlayer } from "../../server/game/gamePersistence.ts";
-import type { GameState, Player } from "../../lib/gameEngine.ts";
+import type { GameState, Player } from "../../lib/game/gameEngine.ts";
 
 function player(id: string, name: string): Player {
   return { id, name, hand: [], type: id === "p1" ? "ai" : "human" };

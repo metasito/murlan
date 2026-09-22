@@ -14,7 +14,7 @@ import { describe, it, expect, jest } from '@jest/globals';
 import React from 'react';
 import { screen, render, fireEvent } from '@testing-library/react-native';
 import { CardView } from '@/components/CardView';
-import type { Card } from '@/lib/gameEngine';
+import type { Card } from '@/lib/game/gameEngine';
 
 const CARD: Card = { id: '7_hearts', rank: '7', suit: 'hearts' } as Card;
 const ACTIONS = [

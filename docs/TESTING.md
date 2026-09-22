@@ -97,7 +97,7 @@ unexercised by anything.
 |---|---|
 | `theme.test.tsx` | `Shadow.*` yields native shadow props — except the card pair, which needs two shadows at once and so rides `boxShadow`; and that a card's contact and cast shadows move apart on a lift |
 | `haptics.test.tsx` | the settings toggle actually silences `expo-haptics` |
-| `hapticsBypass.test.tsx` | no module reaches `expo-haptics` except `lib/haptics.ts` |
+| `hapticsBypass.test.tsx` | no module reaches `expo-haptics` except `lib/device/haptics.ts` |
 | `sounds.test.tsx` | the `expo-audio` path: rewind-before-play, volume, caching, one-time audio mode |
 | `render.test.tsx` | every card and the notification banner mount under the RN renderer with Reanimated worklets live |
 | `a11yCollapse.test.tsx` | a labelled control exposes one accessible node, not two |
