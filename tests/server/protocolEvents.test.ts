@@ -86,14 +86,16 @@ test("every event-shaped literal on either end is in a typed map", () => {
   assert.deepEqual(absent(named, new Set([...toClient.names, ...toServer.names])), []);
 });
 
-const PROBE_HEADER = `import type { Socket } from "../../lib/socket.ts";
-import type { GameSocket, SocketServer } from "../../server/socket/socketTypes.ts";
-import { send, sendIntent } from "../../lib/sendIntent.ts";
-import { emitToUser } from "../../server/socket/socketRegistry.ts";
-import { onEvent } from "../../server/socket/socketSafety.ts";
-import { GamePlaySchema, GameRejoinSchema } from "../../shared/socketSchemas.ts";
-declare const client: Socket, io: SocketServer, socket: GameSocket;
-`;
+const PROBE_HEADER = [
+  `import type { Socket } from "../../lib/socket.ts";`,
+  `import type { GameSocket, SocketServer } from "../../server/socket/socketTypes.ts";`,
+  `import { send, sendIntent } from "../../lib/sendIntent.ts";`,
+  `import { emitToUser } from "../../server/socket/socketRegistry.ts";`,
+  `import { onEvent } from "../../server/socket/socketSafety.ts";`,
+  `import { GamePlaySchema, GameRejoinSchema } from "../../shared/socketSchemas.ts";`,
+  `declare const client: Socket, io: SocketServer, socket: GameSocket;`,
+  "",
+].join("\n");
 
 const ACCEPTED = [
   `client.emit("friend:get_online_list");`,
