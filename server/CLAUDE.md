@@ -24,11 +24,11 @@ instance — and the server and tests read it.
   `session` came to exist on one database and nowhere else.
 - **`session` table**: `createTableIfMissing: false`, absent from `shared/schema.ts`, excluded from
   drizzle-kit by `tablesFilter`. Clear its rows; never drop it while the server runs.
-- **Schema changes: `pg_dump` first, and read `db:push`'s rename-or-drop prompt** rather than
-  accepting it (`docs/DEPLOY-RUNBOOK.md`). The database holds no real accounts yet, so a reshape
-  loses nothing today — reject a design for losing data only once there is data; the habit is
-  built before then. Order a change by design, not deploy cost: derive from existing rows → ride an
-  existing jsonb column → new table → new column.
+- **Before a schema change** — `pg_dump` first, and read `db:push`'s rename-or-drop prompt
+  (`docs/DEPLOY-RUNBOOK.md`) rather than accepting it. The database holds no real accounts yet, so
+  a reshape loses nothing today — reject a design for losing data only once there is data; the
+  habit is built ahead of it. Order a change by design, not deploy cost: derive from existing rows
+  → ride an existing jsonb column → new table → new column.
 
 ## Server invariants — each is a bug that shipped
 

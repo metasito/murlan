@@ -25,9 +25,9 @@ Verify against source before changing any.
   sibling order or a bare number: web and Android paint in tree order, iOS does not (#209).
   `Layer.felt` (0) < `Layer.feltScrim` (the bomb's) < `Layer.table`;
   `tests/ui-rules/tokenRoles.test.ts` resolves every `zIndex` through its constant.
-- **Diagnose a native-only visual defect from device pixels, not reasoning.** Sample first
-  (`docs/agents/checks.md`); a fix argued from code alone gets one thing right and two wrong, on
-  the owner's phone, each round.
+- **Before proposing a fix for a native-only visual defect** — sample device pixels, not
+  reasoning, first (`docs/agents/checks.md`); an argument from code alone gets one thing right and
+  two wrong, on the owner's phone, each round.
 
 **UI components**
 
