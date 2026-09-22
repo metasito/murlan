@@ -7,12 +7,13 @@ import ts from "typescript";
 const root = path.resolve(import.meta.dirname, "..", "..");
 const protocolFile = path.join(root, "shared", "protocol.ts");
 
+const options = ts.getParsedCommandLineOfConfigFile(path.join(root, "tsconfig.json"), {}, {
+  ...ts.sys,
+  onUnRecoverableConfigFileDiagnostic: (d) => assert.fail(ts.flattenDiagnosticMessageText(d.messageText, "\n")),
+})!.options;
+
 function eventMaps() {
-  const config = ts.getParsedCommandLineOfConfigFile(path.join(root, "tsconfig.json"), {}, {
-    ...ts.sys,
-    onUnRecoverableConfigFileDiagnostic: (d) => assert.fail(ts.flattenDiagnosticMessageText(d.messageText, "\n")),
-  });
-  const program = ts.createProgram([protocolFile], config!.options);
+  const program = ts.createProgram([protocolFile], options);
   const checker = program.getTypeChecker();
   const exports = checker.getExportsOfModule(checker.getSymbolAtLocation(program.getSourceFile(protocolFile)!)!);
   const map = (name: string) => {
@@ -83,6 +84,52 @@ test("every literal event name sent or listened for is in the typed maps", () =>
 test("every event-shaped literal on either end is in a typed map", () => {
   const named = literalEvents([...server, ...client], [/"((?:room|game|friend|socket):\w+)"/g]);
   assert.deepEqual(absent(named, new Set([...toClient.names, ...toServer.names])), []);
+});
+
+const PROBE_HEADER = `import type { Socket } from "../../lib/socket.ts";
+import type { GameSocket, SocketServer } from "../../server/socket/socketTypes.ts";
+import { send, sendIntent } from "../../lib/sendIntent.ts";
+import { emitToUser } from "../../server/socket/socketRegistry.ts";
+import { onEvent } from "../../server/socket/socketSafety.ts";
+import { GamePlaySchema, GameRejoinSchema } from "../../server/socket/socketSchemas.ts";
+declare const client: Socket, io: SocketServer, socket: GameSocket;
+`;
+
+const ACCEPTED = [
+  `client.emit("friend:get_online_list");`,
+  `void send(client, "game:play", { cardIds: ["a"] });`,
+  `emitToUser("u", "friend:status", { userId: "u", online: true });`,
+  `onEvent(socket, "game:play", GamePlaySchema, () => undefined);`,
+];
+
+const REFUSED = [
+  `client.emit("room:unlisted");`,
+  `client.on("game:unlisted", () => {});`,
+  `void send(client, "room:unlisted");`,
+  `void sendIntent(client, "game:play", { cardId: "a" });`,
+  `io.to("r").emit("game:unlisted");`,
+  `socket.emit("game:vote_state", { votes: 1, total: 2 });`,
+  `emitToUser("u", "friend:unlisted", {});`,
+  `emitToUser("u", "friend:status", { userId: "u" });`,
+  `onEvent(socket, "game:unlisted", GamePlaySchema, () => undefined);`,
+  `onEvent(socket, "game:play", GameRejoinSchema, () => undefined);`,
+];
+
+test("every typed send and listen refuses a name or payload the maps do not hold", () => {
+  const probe = path.join(root, "tests", "server", "protocolProbe.ts");
+  const header = PROBE_HEADER.split("\n").length - 1;
+  const text = PROBE_HEADER + [...ACCEPTED, ...REFUSED].join("\n");
+  const host = ts.createCompilerHost(options);
+  const read = host.getSourceFile;
+  host.getSourceFile = (file, ...rest) =>
+    path.resolve(file) === probe ? ts.createSourceFile(file, text, ts.ScriptTarget.Latest) : read(file, ...rest);
+  const program = ts.createProgram([probe], options, host);
+  const file = program.getSourceFile(probe)!;
+  const failing = new Set(
+    program.getSemanticDiagnostics(file).map((d) => file.getLineAndCharacterOfPosition(d.start!).line - header)
+  );
+  const lines = [...ACCEPTED, ...REFUSED];
+  assert.deepEqual(lines.filter((_, i) => failing.has(i)), REFUSED);
 });
 
 test("every event in the maps is sent by one end and heard by the other", () => {
