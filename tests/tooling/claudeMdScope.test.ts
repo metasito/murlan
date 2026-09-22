@@ -13,6 +13,7 @@ const BUDGET: Record<string, number> = {
   "CLAUDE.md": 1000,
   "components/CLAUDE.md": 700,
   "server/CLAUDE.md": 700,
+  ".claude/commands/queue.md": 2600,
 };
 
 // A term belongs to the file whose directory its reader is already in: the root file is
