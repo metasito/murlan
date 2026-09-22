@@ -35,14 +35,16 @@ runs:
         # `-gpu guest` is a no-op from API 28 on: no guest-side GL renderer
         # ships in the system image, so the emulator falls back to
         # swiftshader_indirect regardless
-        # (developer.android.com/studio/run/emulator-acceleration).
+        # (developer.android.com/studio/run/emulator-acceleration). That legacy
+        # SwiftShader GL takes the whole VM down with a SIGSEGV on a host
+        # RenderThread mid-game; swangle_indirect is ANGLE on SwiftShader Vulkan.
         #
         # `-stdouterr-file` is the VM's own account of its death. The launcher
         # `dup2`s both descriptors onto that file before it execs the real
         # emulator binary, which is the only way past the orphaned pipe
         # `reactivecircus/android-emulator-runner` leaves its stdout and stderr
         # on. Linux-only in the emulator source, which this runner is.
-        emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -camera-back none -stdouterr-file ${{ runner.temp }}/emulator-stdouterr.txt
+        emulator-options: -no-window -no-audio -no-boot-anim -show-kernel -gpu swangle_indirect -camera-back none -stdouterr-file ${{ runner.temp }}/emulator-stdouterr.txt
         # Left on. #35 names this as the first knob to try for a struggling
         # emulator and it was tried, but it is the wrong one: Reanimated reads
         # the system scales as a reduced-motion signal and disables animations

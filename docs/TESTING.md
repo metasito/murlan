@@ -238,7 +238,7 @@ avdmanager create avd -n murlan_test -k "system-images;android-34;google_apis;x8
 background run needs):
 
 ```
-emulator -avd murlan_test -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect
+emulator -avd murlan_test -no-window -no-audio -no-boot-anim -gpu swangle_indirect
 ```
 
 Prove it booted:
