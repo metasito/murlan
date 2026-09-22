@@ -26,8 +26,7 @@ What it must deliver:
    `gh issue list --repo metasito/murlan --state open --limit 300 --json number,title --jq '[.[]|{n:.number,t:.title}]'`
    → `openIssues`.
 3. Check for peers with `git worktree list` and look at free RAM. Audit agents are read-only, so a
-   live peer does not block the run. It is still the reason no agent runs `agent:check`, a whole
-   suite, or Playwright.
+   live peer does not block the run — rules 2 and 37 still bind what any agent runs while one is.
 4. `webUrl`: the URL of a web build that is **already** being served, or `null`. Do not start a
    build for the audit.
 
@@ -51,9 +50,9 @@ restart it.
 2. **Ask which batches to file.** Show the proposed ticket batches: one per defect *class*,
    each with a title, a size and a one-line summary. Ask once, with `AskUserQuestion`.
 3. **File the approved batches.**
-   - Follow `docs/agents/issue-tracker.md` → *Writing an issue body an agent can execute*.
-   - Label each issue `needs-triage` and `size:*`.
-   - Write each body to a UTF-8 file and pass it with `--body-file`.
+   - Before writing a body, follow `docs/agents/issue-tracker.md` → *Writing an issue body an
+     agent can execute*.
+   - When labelling and filing, follow that file's *Labels* and *Recipes* sections.
    - Each body cites the audit SHA, every `path:line`, the failure scenario, and the check that
      would catch the next instance.
    - If a finding matches an open issue, comment on that issue instead of opening a new one.
@@ -348,12 +347,12 @@ Then check:
   },
   {
     key: 'infra', kind: 'research', model: 'opus', skills: ['eas-app-stores'],
-    start: 'docs/adr/0001-*, docs/adr/0003-*, docs/DEPLOY-RUNBOOK.md, docs/adr/0006-*, server/index.ts, server/socket/socketAdapter.ts, package.json scripts, eas.json, app.json, docs/research/2026-08-26-dev-build-vs-expo-go.md, docs/research/2026-08-29-multiplayer-infrastructure.md',
+    start: 'deploy/runtime.json, docs/adr/0001-*, docs/adr/0003-*, docs/DEPLOY-RUNBOOK.md, docs/adr/0006-*, server/index.ts, server/socket/socketAdapter.ts, package.json scripts, eas.json, app.json, docs/research/2026-08-26-dev-build-vs-expo-go.md, docs/research/2026-08-29-multiplayer-infrastructure.md',
     refs: 'Use WebSearch and WebFetch. Official pricing pages only; record the URL and the date read for every price.',
-    ask: `The Replit subscription has ended. Research where the app should live next.
-Requirements: free at the start, reasonable cost as it grows, mature and boring. The host must run:
-- a long-lived Node 22 server with Socket.IO WebSockets, on more than one instance (ADR-0003);
-- Postgres (the socket.io postgres adapter and connect-pg-simple sessions);
+    ask: `The Replit subscription has ended (ADR-0006); the next host is undecided (#1105). Research where the app should live next.
+Requirements: free at the start, reasonable cost as it grows, mature and boring. \`deploy/runtime.json\` is the contract any host must meet — read it first, then confirm the host also runs:
+- Socket.IO WebSockets on more than one instance (ADR-0003);
+- the socket.io postgres adapter and connect-pg-simple sessions;
 - static web hosting;
 - secrets, logs and deploys from GitHub.
 Compare at least: Fly.io, Render, Railway, Koyeb, Google Cloud Run, Northflank, Oracle Cloud Always Free, and a Hetzner-class VPS with Coolify or Dokku.
@@ -378,7 +377,7 @@ const COMMON = `You are one specialist in a READ-ONLY audit of Murlan (${REPO}) 
 - Change nothing: no edits, commits, branch or worktree changes, and spawn no subagents.
 - Read files whole with Read; search with Grep. If the checkout has moved, read with \`git -C ${REPO} show ${sha}:<path>\`.
 - Allowed commands: npx tsc --noEmit, npx eslint <paths>, npm audit --omit=dev, npx expo install --check, one node --test <file>, git log/blame, gh issue view.
-  Never run a whole suite, agent:check or Playwright: other agents share this machine.
+  Nothing wider: rules 2 and 37 hold here too.
 - Load every skill named for your lens with the Skill tool first, and apply its checklist.
 - Every finding cites path:line with the quoted line and is marked measured (you ran it or traced the full path) or inferred.
   Native rendering claims reasoned from source or Chromium are inferred.
@@ -517,7 +516,7 @@ const GAPS = {
 
 const SKEPTICS = {
   code: 'Read every cited line and its callers. Refute if the code does not do what is claimed, or no real entry point reaches the failure.',
-  intent: 'Refute if the behaviour is deliberate (ADR, BRIEF §3.1, docs/design, CLAUDE.md, a pinning test) or a guard elsewhere already prevents it.',
+  intent: 'Refute if the behaviour is deliberate (ADR, docs/GAME-RULES.md § Decisions, docs/design, CLAUDE.md, a pinning test) or a guard elsewhere already prevents it.',
   impact: 'Judge the severity: who hits this, how often, and what do they lose? Give the severity you would defend.',
 }
 const skepticsFor = severity =>
