@@ -562,6 +562,11 @@ export const sq: Record<keyof typeof en, string> = {
   "ladder.emptyBody": "Duhen {{n}} duar të klasifikuara për të dalë këtu.",
   "ladder.rowA11yLabel": "{{rank}}: {{name}}, {{rating}} pikë",
   "ladder.rankedOnlyNote": "Vetëm online të gjithë kundër të gjithëve, pa botë.",
+  "ladder.scopeGlobal": "Global",
+  "ladder.scopeFriends": "Miqtë",
+  "ladder.friendsEmptyTitle": "Ende pa miq",
+  "ladder.friendsEmptyBody": "Shto miq për të parë si renditesh kundrejt tyre.",
+  "ladder.friendsEmptyAction": "Gjej miq",
 
   // -------------------------------------------------------------------- bot.*
   // The names are proper nouns and stay as they are; only the play style is translated.

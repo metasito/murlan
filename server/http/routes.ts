@@ -49,7 +49,7 @@ import { sendMail } from "./mail.ts";
 import { getUserStats, getUserAchievements } from "../game/stats.ts";
 import { getMatchHistoryView } from "./matchHistoryView.ts";
 import { getReplayForUser, listReplaysForUser } from "../game/replays.ts";
-import { getLeaderboard, getRating, PROVISIONAL_GAMES } from "../game/ratings.ts";
+import { getCircleLeaderboard, getLeaderboard, getRating, PROVISIONAL_GAMES } from "../game/ratings.ts";
 import { recordClientError } from "./clientErrors.ts";
 import { recordBugReport } from "./bugReports.ts";
 import { adminSnapshot } from "./admin.ts";
@@ -994,8 +994,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ env: process.env.NODE_ENV, commit: runningCommitSha });
   });
 
-  app.get("/api/ratings/leaderboard", requireAuth, async (_req, res) => {
-    res.json(await getLeaderboard(new Date()));
+  app.get("/api/ratings/leaderboard", requireAuth, async (req, res) => {
+    if (req.query.scope !== "friends") {
+      res.json(await getLeaderboard(new Date()));
+      return;
+    }
+    const viewerId = req.session.userId!;
+    const friends = await friendStore.getFriends(viewerId);
+    res.json(await getCircleLeaderboard([viewerId, ...friends.map((f) => f.friendUserId)], new Date()));
   });
 
   // ── Replays ───────────────────────────────────────────────────────────────

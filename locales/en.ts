@@ -563,6 +563,11 @@ export const en = {
   "ladder.emptyBody": "It takes {{n}} ranked hands to appear here.",
   "ladder.rowA11yLabel": "{{rank}}: {{name}}, {{rating}} points",
   "ladder.rankedOnlyNote": "Online free-for-all only, no bots.",
+  "ladder.scopeGlobal": "Global",
+  "ladder.scopeFriends": "Friends",
+  "ladder.friendsEmptyTitle": "No friends yet",
+  "ladder.friendsEmptyBody": "Add friends to see how you rank against them.",
+  "ladder.friendsEmptyAction": "Find friends",
 
   // -------------------------------------------------------------------- bot.*
   // The names are proper nouns and stay as they are; only the play style is translated.

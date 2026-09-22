@@ -201,4 +201,23 @@ export async function getLeaderboard(now: Date): Promise<LeaderboardEntry[]> {
   return rows.map((r, i) => ({ ...r, rank: i + 1 }));
 }
 
+/**
+ * This season's standing for a fixed set of players, the viewer among them.
+ * Unlike the public ladder it lists provisional and unplayed records, each on
+ * the rating `getRating` would report for them.
+ */
+export async function getCircleLeaderboard(userIds: string[], now: Date): Promise<LeaderboardEntry[]> {
+  const season = seasonKey(now);
+  const members = await db
+    .select({ userId: users.id, username: users.username })
+    .from(users)
+    .where(inArray(users.id, [...new Set(userIds)]));
+  const rows = await Promise.all(
+    members.map(async (m) => ({ ...m, ...(await currentRow(db, m.userId, season)) }))
+  );
+  // Code-unit order, not localeCompare: a tie must break the same way on every server.
+  rows.sort((a, b) => b.rating - a.rating || (a.username < b.username ? -1 : 1));
+  return rows.map((r, i) => ({ ...r, rank: i + 1 }));
+}
+
 export { PROVISIONAL_GAMES, START_RATING };
