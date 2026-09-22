@@ -3,7 +3,7 @@
 # and plays it through to the result screen using the server-validated
 # game engine — not a mock. Exercises real turn-taking, the AI, and the
 # result screen, none of which the web/native/unit suites can see
-# (see docs/TESTING.md).
+# (see docs/agents/checks.md).
 #
 # Strategy: configure a 2-player, single-hand ("Manche secca") match so
 # it ends after exactly one hand. Whenever it's legal to pass, this
@@ -14,11 +14,10 @@
 # is not "not playing" — it drives real turn cycling through the
 # server-authoritative engine and the AI until someone empties their
 # hand, which is what actually reaches the result screen. This is a
-# deliberate simplification, not full strategic play — see
-# docs/TESTING.md for why.
+# deliberate simplification, not full strategic play.
 #
 # Needs a dev server only when driven through Expo Go by hand — see
-# smoke.yaml and docs/TESTING.md for the packager URL caveat.
+# smoke.yaml for the packager URL caveat.
 #
 # Performance note: every tapOn that *lands on* the game table pins
 # `waitToSettleTimeoutMs: 500` — which includes the last tap of the menu, since
@@ -29,7 +28,7 @@
 # resolves against this screen's continuous Reanimated glow/pulse
 # animations (the active-turn highlight, the selected-card glow), so
 # every single tap was blocking for its full internal timeout. Capping
-# the settle-wait fixed it. See docs/TESTING.md.
+# the settle-wait fixed it. See docs/agents/checks.md, "Device runs".
 # Driven against a real build — which is both CI jobs, `ios.yml` and
 # `maestro.yml` — no dev server is needed: the app carries its own bundle.
 # Driven through Expo Go, which is only a developer on this machine now, it
@@ -69,8 +68,8 @@ env:
     # string the locale lookup ignores.
     #
     # Only reaches the app being launched here, so under Expo Go it lands on
-    # Expo Go and the relaunch below drops it: that path still needs the device
-    # locale set (docs/TESTING.md).
+    # Expo Go and the relaunch below drops it: that path still needs the
+    # device's own locale set by hand first.
     arguments:
       AppleLanguages: "(it-IT)"
       AppleLocale: "it_IT"

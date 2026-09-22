@@ -18,7 +18,7 @@ confirmed is in §7 rather than softened inline.
 | Game tables lock to `OrientationLock.LANDSCAPE` — **either** landscape direction | `components/GameTable.tsx:1028` |
 | The rail absorbs `insets.left` only; `railWidth(insetLeft, scale)` | `components/gameTableModel.ts:710` |
 | Replit's deploy build is `expo:static:build && expo:web:build && server:build`; run is `server:prod` | `.replit` |
-| The iOS device loop is Expo Go, driven by Maestro on a `macos-latest` runner | `.github/workflows/ios.yml`, `docs/agents/loops.md` |
+| The iOS device loop is Expo Go, driven by Maestro on a `macos-latest` runner | `.github/workflows/ios.yml`, `docs/agents/checks.md` |
 
 ---
 
@@ -152,7 +152,7 @@ reasoned about — see §7.
 
 `env(safe-area-inset-*)` returns the same numbers in Mobile Safari on the same hardware, and
 the safe-area-context web polyfill already reads them (the project's own probe-div override in
-`docs/agents/loops.md` proves it). So the heuristic is genuinely one code path for iOS, Android
+`docs/agents/checks.md` proves it). So the heuristic is genuinely one code path for iOS, Android
 and web. On Android the numbers mean something different — see §4.1.
 
 ---
@@ -576,7 +576,7 @@ case here, it is the primary case whenever the app is foregrounded.
 
 1. **Add a cutout-class helper derived from the insets** (§1.3), living beside
    `computeScreenPads` in `components/gameTableModel.ts` since that is already the one place
-   insets are interpreted. Pure function, unit-testable at ~1s per `docs/agents/loops.md`,
+   insets are interpreted. Pure function, unit-testable at ~1s per `docs/agents/checks.md`,
    no platform divergence to trip over. It gives the table a fact it currently does not have.
 2. **Make the rail follow the island, not the left edge** (§1.5). `expo-screen-orientation` is
    already installed and in Expo Go; `getOrientationAsync()` plus
@@ -584,7 +584,7 @@ case here, it is the primary case whenever the app is foregrounded.
    physical side the cut is on. Today the rail's stated design intent — *"the column the cutout
    occupies is the rail"* — holds in one of two orientations. **Before writing the fix, get a
    device capture of `/capture` in both landscape directions** and read which side the island
-   is actually on; per `docs/agents/loops.md`, a native geometry claim argued from code gets one
+   is actually on; per `docs/agents/checks.md`, a native geometry claim argued from code gets one
    thing right and two things wrong. This is a layout change, so it needs Playwright *and* a
    device capture, not `jest`.
 3. **Fix the iOS 26 landscape-bottom assumption** (§1.3). iPhone 17 and Air report landscape

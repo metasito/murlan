@@ -665,7 +665,7 @@ describe("settleForMotion", () => {
   // in a pure function pile.tsx also calls: unpinnable by rendering, though
   // — a probe component mutating a shared value after mount, under this
   // repo's jest-expo reanimated mock, left useAnimatedStyle's output at the
-  // value the component mounted with, the same frozen-at-mount trap loops.md
+  // value the component mounted with, the same frozen-at-mount trap checks.md
   // documents for reading a value back out. So live reactivity on this exact
   // path still needs an e2e toggle mid-flight or a device check; neither is
   // what these prove.

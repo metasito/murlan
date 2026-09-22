@@ -42,8 +42,8 @@ env:
     # string the locale lookup ignores.
     #
     # Only reaches the app being launched here, so under Expo Go it lands on
-    # Expo Go and the relaunch below drops it: that path still needs the device
-    # locale set (docs/TESTING.md).
+    # Expo Go and the relaunch below drops it: that path still needs the
+    # device's own locale set by hand first.
     arguments:
       AppleLanguages: "(it-IT)"
       AppleLocale: "it_IT"

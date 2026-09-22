@@ -1,7 +1,7 @@
 // tools/loop/tests/hintTestTraps.test.ts — the PreToolUse hint fires on the files whose traps are
 // documented, stays silent everywhere else, and never blocks.
 //
-// The hint exists because loops.md is read at the start of a session and needed hours later,
+// The hint exists because checks.md is read at the start of a session and needed hours later,
 // when a test is actually being written. A hint that fires on the wrong file is noise, and a
 // hint that fails loudly would block an edit, so both are pinned here.
 import { test, describe } from "node:test";
@@ -42,7 +42,7 @@ describe("the test-trap hint stays silent elsewhere", () => {
     "tools/loop/tests/guardBash.test.ts",
     "locales/en.ts",
     "locales/it.ts",
-    "docs/agents/loops.md",
+    "docs/agents/checks.md",
   ]) {
     test(`silent on ${file}`, () => {
       assert.equal(run(forPath(file)), "");

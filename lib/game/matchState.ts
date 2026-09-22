@@ -1,7 +1,7 @@
 // What a match has decided, in the one shape both modes report it in.
 //
 // Relative imports and no `react-native`: the server bundles this unresolved, and
-// `node --test` loads it the same way — docs/agents/loops.md, "Node's TypeScript loader".
+// `node --test` loads it the same way — docs/agents/checks.md, "Node's TypeScript loader".
 import { aggregateTeamScores } from "./gameEngine.ts";
 import type { MatchLength, PlayerType } from "./gameEngine.ts";
 import type { BotPersonalityId } from "./botPersonalities.ts";

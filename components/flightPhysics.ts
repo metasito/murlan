@@ -1,6 +1,6 @@
 // Card-flight and pile physics, and the impact feedback a landing earns.
 //
-// JSX-free, runtime imports relative — docs/agents/loops.md, "Node's TypeScript loader".
+// JSX-free, runtime imports relative — docs/agents/checks.md, "Node's TypeScript loader".
 
 import type { Card, Combination, GameState, Player } from "@/lib/game/gameEngine";
 import type { ExchangeAnnounceData } from "@/lib/game/sharedGameFlow";

@@ -202,7 +202,7 @@ Estimate how many concurrent tables one server instance can carry on the current
   },
   {
     key: 'ui-visual', model: 'opus', skills: ['expo-design-system', 'game-ui-design', 'frontend-design:frontend-design'],
-    start: 'lib/theme.ts, lib/tokens.ts, components/, components/table/, app/, docs/FEEL-BAR.md, docs/design/**/captures, tests/ui-rules/tokenRoles.test.ts, docs/agents/loops.md (renderer table)',
+    start: 'lib/theme.ts, lib/tokens.ts, components/, components/table/, app/, docs/FEEL-BAR.md, docs/design/**/captures, tests/ui-rules/tokenRoles.test.ts, docs/agents/checks.md (renderer table)',
     refs: 'docs/FEEL-BAR.md; top mobile card and casino games as the ceiling.',
     ask: `Judge against FEEL-BAR, not against "fine".
 - Tokens used in their named role. Layer zIndex.
@@ -306,8 +306,8 @@ Also check:
   },
   {
     key: 'tests-ci', model: 'opus', skills: [],
-    start: 'tests/, tools/loop/tests/, jest.config.js, tests/e2e/playwright.config.ts, .github/workflows/, docs/TESTING.md, docs/agents/loops.md, tools/loop/check-steps.mjs',
-    refs: 'docs/agents/loops.md ("What a green loop does not mean", "A scan needs a planted floor", "The native harness is async").',
+    start: 'tests/, tools/loop/tests/, jest.config.js, tests/e2e/playwright.config.ts, .github/workflows/, docs/agents/checks.md, tools/loop/check-steps.mjs',
+    refs: 'docs/agents/checks.md ("What a green loop does not mean", "A scan needs a planted floor", "The native harness is async").',
     ask: `Check:
 - critical mechanisms with no test: socket auth, reconnect, engine rules, deletion;
 - tests that assert the outcome rather than the mechanism;
@@ -365,7 +365,7 @@ For each option record:
 List every place the code or CI assumes Replit, with path:line.
 Then assess leaving Expo Go for EAS development builds:
 - the EAS free-tier limits;
-- what it unlocks for this game: native modules, custom fonts and sounds without the Expo Go limits, Skia, better haptics, push, reliable Maestro taps (docs/agents/loops.md);
+- what it unlocks for this game: native modules, custom fonts and sounds without the Expo Go limits, Skia, better haptics, push, reliable Maestro taps (docs/agents/checks.md);
 - what it costs in workflow;
 - how the owner would test on their iPhone.
 Finish with one recommended stack and a phased migration.`,

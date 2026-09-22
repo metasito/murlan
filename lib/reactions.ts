@@ -8,7 +8,7 @@
 // FloatingReactions subscribes here on its own, so the writes reach it and
 // nothing else.
 //
-// Loads under `node --test` — docs/agents/loops.md, "Node's TypeScript loader".
+// Loads under `node --test` — docs/agents/checks.md, "Node's TypeScript loader".
 import { useSyncExternalStore } from "react";
 
 export interface TableReaction {

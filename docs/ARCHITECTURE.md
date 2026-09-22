@@ -259,7 +259,7 @@ collapsed:
 - **`components/seatLayout.ts`**, **`flightPhysics.ts`**, **`turnTimerUi.ts`**,
   **`tableFrame.ts`**, **`tableA11y.ts`** — the table's pure model, one file per concern
   (#956). Each is JSX-free with relative runtime imports, so `node --test` can load it
-  (`docs/agents/loops.md`, "Node's TypeScript loader"). A module under `components/table/`
+  (`docs/agents/checks.md`, "Node's TypeScript loader"). A module under `components/table/`
   that keeps to the same shape is node-loadable whatever its neighbours are, which is how a
   number reached only from a `.tsx` — or from a `.ts` that imports through `@/` at runtime —
   is tested.

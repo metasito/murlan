@@ -1,7 +1,7 @@
 // Shared fixtures for the engine test suite.
 //
 // The `.ts` extension on the imports across this suite is required —
-// docs/agents/loops.md.
+// docs/agents/checks.md.
 import type {
   Card,
   GameMode,

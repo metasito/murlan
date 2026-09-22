@@ -1518,7 +1518,7 @@ export function runTicket(
     // update is a decision for a person between runs.
     //
     // `LOOP_TURNS` is the bound that actually stops a session, and it was invisible to the session
-    // subject to it: the word "turn" appeared in none of queue.md, RULES.md, loops.md or CLAUDE.md,
+    // subject to it: the word "turn" appeared in none of queue.md, RULES.md, checks.md or CLAUDE.md,
     // so phase C's commit rule arrived with no stated reason to hurry.
     env: {
       ...process.env,

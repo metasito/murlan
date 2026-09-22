@@ -1,6 +1,6 @@
 // tests/e2e/feltNap.spec.ts — the cloth is more textured where the light is,
 // not less. Measured, because "looks darker" cost this repo hours
-// (`docs/agents/loops.md`).
+// (`docs/agents/checks.md`).
 //
 // This is the half of #341 no unit test can reach. A native test can assert
 // that a gradient exists with the right stops; only a browser composites the

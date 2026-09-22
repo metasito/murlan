@@ -30,7 +30,7 @@ Read from source on 2026-08-26, not assumed.
 | **`eas.json` already has a `development` profile** — `developmentClient: true`, `distribution: internal` | `eas.json:8-11` |
 | **A manual EAS build workflow already exists** — `workflow_dispatch`, profiles `development`/`preview`/`production` | `.github/workflows/eas-build.yml` |
 | No `ios/` or `android/` directory; both are in `.gitignore` (lines 30-31) — pure CNG | `ls`, `.gitignore` |
-| Owner's machine: Windows 11 Home, **no Mac**, Android SDK + emulator + Maestro present, **Gradle absent** | `docs/TESTING.md:145-160` |
+| Owner's machine: Windows 11 Home, **no Mac**, Android SDK + emulator + Maestro present, **Gradle absent** | `docs/agents/checks.md` |
 | Replit deploy build: `expo:static:build && expo:web:build && server:build`; run: `server:prod` | `.replit` `[deployment]` |
 | **The shipped product today is the web bundle.** `eas submit` credentials are placeholders (#27); push credentials do not exist (#32) | `eas.json:23-34`, gh issues |
 | Push notifications are a **shipped feature**: token registration, server delivery, a `pushTokens` table | `lib/pushRegistration.ts`, `server/push.ts` |
@@ -187,7 +187,7 @@ platforms"* — but it means every iOS rebuild is a network round trip through a
 local compile.
 
 For **Android**, a local dev build is possible on Windows and the owner already has the JDK,
-Android SDK and an emulator (`docs/TESTING.md:145-160`) — but not Gradle, which that table
+Android SDK and an emulator (`docs/agents/checks.md`) — but not Gradle, which that table
 records as "absent — not needed; Expo Go is the whole point". That is a one-time install, not a
 blocker.
 
@@ -209,7 +209,7 @@ Today the job (`.github/workflows/ios.yml`) does: checkout → `npm ci` → star
 `--offline` → warm the bundle → find and boot a simulator → set locale (shutdown + reboot) →
 **fetch the Expo Go client matching this project's SDK from `api.expo.dev`** → `simctl install`
 → install Maestro → run `smoke.yaml` with `MAESTRO_EXPO_GO_APP_ID=host.exp.Exponent`. Ceiling
-75 minutes; `docs/agents/loops.md` records its real cost as "unmeasured". It is **disabled on
+75 minutes; `docs/agents/checks.md` records its real cost as "unmeasured". It is **disabled on
 pull requests and has been red since it landed** (`ios.yml:15-16`).
 
 With a dev build, the job forks two ways and neither is obviously better:
@@ -239,7 +239,7 @@ and then states the case itself:
 > explicitly.
 
 **Every item on that list is an Expo Go artefact, and a dev build deletes all of them
-permanently.** `docs/TESTING.md:322-360` adds three more from the Android side: Expo Go is not
+permanently.** `docs/agents/checks.md` adds three more from the Android side: Expo Go is not
 on a stock system image and must be downloaded per run; the client carries one SDK at a time so
 the newest published client is wrong as soon as it moves ahead of the project; and
 `--offline` is required because `app.json` carries an EAS `projectId` and an unauthenticated
@@ -258,11 +258,11 @@ simplification of `.maestro/` and of both workflows.
 - **A dev build does not fix Android.** `maestro.yml` is blocked on **#186** — the emulator
   intermittently never boots. That is a virtualisation failure on the runner, not an Expo Go
   failure.
-- **It does not help the loop that actually catches bugs.** `docs/agents/loops.md` is explicit
+- **It does not help the loop that actually catches bugs.** `docs/agents/checks.md` is explicit
   that no unit test can see a layout bug and that only Playwright (Chromium, ~35s) catches that
   class. Nothing in §"Pick the loop by what you changed" changes under a dev build; the four
   fast loops (~1s, ~8s, ~35s, ~40s) are all web or Node.
-- **It does not replace looking at the device.** `loops.md`: the iOS job "proves the flows still
+- **It does not replace looking at the device.** `checks.md`: the iOS job "proves the flows still
   run and the app still renders *something* on device — it does not replace looking at the
   device." A rendering defect like #209 still needs a capture either way.
 
@@ -400,7 +400,7 @@ The honest downside column.
    build connects to the same Metro server, but by a different asset-resolution path (§4.3). This
    is the concrete migration risk and it is untested (§8).
 5. **Onboarding friction.** Every new device, every collaborator, every fresh CI runner needs the
-   binary installed rather than an App Store download. `docs/TESTING.md:262-270` records that
+   binary installed rather than an App Store download. `docs/agents/checks.md` records that
    `npx expo start --android` installs Expo Go automatically on a bare emulator; that
    convenience is lost.
 6. **`ios.yml` becomes a build job.** §3.1. Either an Xcode compile inside a 75-minute cap, or an
@@ -457,7 +457,7 @@ comfortably. It does not currently clear the benefit bar.**
 | **Faster developer loop** | **No — slower** | Expo Go: scan once, rebuild never. Dev build: 16 rebuild-forcing commits in six months (measured, §2.2), each a cloud build behind a queue documented at "90+ minutes" at peak on the free tier. |
 | **Rebuilds are rare enough not to hurt** | **Partly true** | Zero rebuild triggers between 2026-03-02 and 2026-08-15. But the Aug 15-19 burst would have cost ten in five days. |
 | **Builds locally on the owner's machine** | **No, for iOS** | Expo's table: Windows builds Android only; iOS Simulator ✗, iPhone device ✗. `eas build --local` does not support Windows. EAS cloud is mandatory. |
-| **More reliable device CI** | **Yes, genuinely** | #354 lists six Expo Go-specific failure causes; `TESTING.md:322-360` adds three more. All disappear. `.maestro/` flows simplify. |
+| **More reliable device CI** | **Yes, genuinely** | #354 lists six Expo Go-specific failure causes; `docs/agents/checks.md` adds three more. All disappear. `.maestro/` flows simplify. |
 | **Faster / cheaper device CI** | **No — worse** | `ios.yml` gains either an Xcode compile inside a 75-min cap or an artefact download behind a 90-min free-tier queue. |
 | **Fixes the red `ios.yml`** | **Unproven** | It is red for reasons #353/#354 have not diagnosed. Changing the client is a hypothesis, not a fix. |
 | **Fixes Android CI (#186)** | **No** | The emulator never booting is a virtualisation failure, unrelated to Expo Go. |
@@ -537,7 +537,7 @@ development build, and the same page concludes:
 ### 7.4 What is *not* a trigger
 
 `ios.yml` being red is not one. It has never been diagnosed (#353, #354), and changing the client
-to fix an undiagnosed failure is the exact move `docs/agents/loops.md` was written to prevent.
+to fix an undiagnosed failure is the exact move `docs/agents/checks.md` was written to prevent.
 Diagnose it on Expo Go first; if the cause turns out to be an Expo Go artefact from #354's list,
 that is evidence — and it is cheap to get.
 
@@ -562,7 +562,7 @@ that is evidence — and it is cheap to get.
 5. **Whether `sign.expo.dev` works end to end from Windows.** The page describes install over USB
    or QR with an Apple ID; it does not state a host OS requirement. If it does not work from
    Windows, §7.2's route 1 does not exist for this owner and the trigger fires harder.
-6. **The exact wall clock of `ios.yml` today.** `docs/agents/loops.md` records it as "unmeasured;
+6. **The exact wall clock of `ios.yml` today.** `docs/agents/checks.md` records it as "unmeasured;
    the job's own ceiling is 75 min". Without it, "slower" in §3 is directional, not quantified.
 7. **Any measured startup or memory difference between Expo Go and a development build.** The
    structural argument (Expo Go links every SDK module) is sound; no benchmark was found.

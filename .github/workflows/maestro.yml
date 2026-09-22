@@ -240,8 +240,8 @@ jobs:
           # off the binary that arrived.
           "$HOME/.maestro/bin/maestro" --version 2>&1 | tee /dev/stderr | grep -q "$MAESTRO_VERSION"
 
-      # api-level and target match the AVD documented in docs/TESTING.md §5, so
-      # a failure here and a failure locally mean the same thing.
+      # api-level and target match a local AVD (system-images;android-34;google_apis;x86_64,
+      # pixel_6 profile), so a failure here and a failure locally mean the same thing.
       # A run that never reached the flows says nothing about the diff; a
       # failing flow is a real answer about it. Retrying both would double a
       # genuine red to arrive at the same red, so the retry fires only where the

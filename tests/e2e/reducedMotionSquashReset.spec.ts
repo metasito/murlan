@@ -6,7 +6,7 @@
 // card is mid-flight, re-running `FlyingCards`' effect, and the animated style
 // landing deformation-free on the very next frame. `tests/native/` cannot see
 // this: its reanimated mock evaluates a `useAnimatedStyle` worklet once at
-// mount and never re-runs it off a later `.value` write (`docs/agents/loops.md`),
+// mount and never re-runs it off a later `.value` write (`docs/agents/checks.md`),
 // so a post-mount toggle is invisible to it either way. Only a real browser
 // re-running Reanimated's own driver proves it (#786).
 import { test, expect, type Page } from "@playwright/test";

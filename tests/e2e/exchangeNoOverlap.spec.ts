@@ -6,7 +6,7 @@
 // claim about this animation no unit test can make: `exchangeFlight`'s
 // arithmetic is checked in `tests/ui-rules/flightPhysics.test.ts`, but arithmetic says
 // nothing about where two transformed views actually land — react-test-renderer
-// never runs layout (docs/agents/loops.md). Only the browser knows.
+// never runs layout (docs/agents/checks.md). Only the browser knows.
 //
 // Sampled through the flight rather than at its end, because the closest the
 // pair ever comes is the beat in the middle, and a frame taken after that beat

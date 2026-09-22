@@ -82,7 +82,7 @@ ALLOW_DESTRUCTIVE=1 node scripts/reset-db.mjs --yes && npm run db:push
 | [`docs/BRIEF.md`](./docs/BRIEF.md) | Scope, decisions and their rationale |
 | [GitHub Issues](https://github.com/metasito/murlan/issues) | Everything outstanding, and what was decided against (`rejected` label) |
 | [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) | Layers, data flow, socket lifecycle, persistence |
-| [`docs/TESTING.md`](./docs/TESTING.md) | What each test layer covers and how to run it |
+| [`docs/agents/checks.md`](./docs/agents/checks.md) | Which check catches what, what it costs, and the traps that pass every check |
 | [`docs/BETA-PLAYTEST.md`](./docs/BETA-PLAYTEST.md) | The manual pre-beta playtest script, and what it has to cover |
 | [`docs/DEPLOY-RUNBOOK.md`](./docs/DEPLOY-RUNBOOK.md) | Deploying, rolling back, the host's Secrets and what breaks it |
 

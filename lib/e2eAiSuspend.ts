@@ -1,5 +1,5 @@
 // The offline AI turn loop moves off a seeded seat about a second after
-// `/game` loads (`docs/agents/loops.md`) — long enough to navigate to a
+// `/game` loads (`docs/agents/checks.md`) — long enough to navigate to a
 // capture state, not long enough to measure it. `tests/e2e/helpers/offlineSeed.ts`
 // writes this key before the bundle evaluates.
 import { E2E_SUSPEND_AI_KEY } from "./storageKeys.ts";

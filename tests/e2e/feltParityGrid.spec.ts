@@ -415,7 +415,7 @@ test.describe("the cloth answers to the lamp everywhere, not just at one patch",
     // rest of the table still matches" means in levels. Measured 1% at the side
     // lamps, 5% at the bottom and 12% at the top; the band is set above that
     // and well under the size of the mistake it is for — a halved gradient
-    // radius reads as 104 against 132 (`docs/agents/loops.md`), a fifth.
+    // radius reads as 104 against 132 (`docs/agents/checks.md`), a fifth.
     //
     // Lit only. The unlit corner is the cloth, where the two are meant to part.
     // Sampled at the same point on both, or the comparison is between two

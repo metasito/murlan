@@ -1,6 +1,6 @@
 // tests/native/captureScreen.test.tsx — the capture harness mounts.
 //
-// `app/capture.tsx` is the only instrument that reaches iOS (docs/agents/loops.md).
+// `app/capture.tsx` is the only instrument that reaches iOS (docs/agents/checks.md).
 // It is not on any player's route, so nothing else exercises it: a harness that
 // throws on mount is discovered by the person who was asked for a screenshot,
 // which is exactly the round trip it exists to remove.

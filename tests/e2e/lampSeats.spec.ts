@@ -9,7 +9,7 @@
 // The states come from `lib/captureStates.ts` rather than from a list here, so
 // this run and the iOS capture `app/capture.tsx` takes are of the same states
 // rather than of two similar ones. Chromium is the only renderer this spec
-// reaches; `docs/agents/loops.md` has what that does and does not prove.
+// reaches; `docs/agents/checks.md` has what that does and does not prove.
 import { test, expect } from "@playwright/test";
 import { openCaptureState } from "./helpers/offlineSeed";
 import { CAPTURE_STATES, CAPTURE_VIEWER_SEAT, captureGameState } from "../../lib/captureStates";

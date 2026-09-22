@@ -2,9 +2,13 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, existsSync, readdirSync } from "node:fs";
+import { execSync } from "node:child_process";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { MODEL_BY_PHASE } from "../../tools/loop/loop-cost.mjs";
 
 const RULES = "docs/agents/RULES.md";
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 // Files that instruct an agent. Each may point at a rule; none may restate one.
 const INSTRUCTION_FILES = [
@@ -169,5 +173,28 @@ describe("every agent rule is written down exactly once", () => {
     // and matching it would pass a file that never names the agent ruleset.
     const silent = INSTRUCTION_FILES.filter((f) => !read(f).includes(RULES));
     assert.deepEqual(silent, [], `${silent.join(", ")} never mentions ${RULES}`);
+  });
+
+  // loops.md and TESTING.md said overlapping things about which check catches what; checks.md
+  // replaces both. docs/adr and docs/plans are excluded because they are the historical record of
+  // decisions already made, including the one that renamed these files — a plan or an ADR quoting
+  // the old name is describing the past, not pointing a reader at a file that no longer exists.
+  // CLAUDE.md, components/CLAUDE.md and server/CLAUDE.md are excluded because a later, separate
+  // task owns their rewrite; the pointers they still carry are handed to that task rather than
+  // edited here.
+  test("the checks document is one file", () => {
+    assert.ok(existsSync(path.join(repoRoot, "docs/agents/checks.md")));
+    for (const gone of ["docs/agents/loops.md", "docs/TESTING.md"]) {
+      assert.ok(!existsSync(path.join(repoRoot, gone)), `${gone} still exists`);
+    }
+    // Excludes its own path: this test's source has to name the two gone files to check for
+    // them, which is not a reader being pointed at a document that no longer exists.
+    const stale = execSync(
+      'git grep -l -E "loops\\.md|TESTING\\.md" -- ":!docs/adr" ":!docs/plans" ' +
+        '":!tests/tooling/rulesAreSingleSourced.test.ts" ":!CLAUDE.md" ' +
+        '":!components/CLAUDE.md" ":!server/CLAUDE.md" || true',
+      { cwd: repoRoot, encoding: "utf8" },
+    ).trim();
+    assert.equal(stale, "", `these still cite a deleted document:\n${stale}`);
   });
 });

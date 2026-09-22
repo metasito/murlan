@@ -42,7 +42,7 @@ Grounding, so the ladder in §5 is not re-proposing things that exist.
   deal, `transformed` already **179** on a settled table, `domNodes` ~780. No mid-range
   Android row exists yet; the doc is explicit that until it does, every phone-perf answer is
   a guess.
-- `docs/agents/loops.md`: the `react-native-svg` web/native divergence table. This is the
+- `docs/agents/checks.md`: the `react-native-svg` web/native divergence table. This is the
   single most important constraint in the whole note and §3 builds on it.
 
 ---
@@ -83,7 +83,7 @@ Everything convincing on a felt table comes from one hanging key light plus fill
 
 This repo's `Lantern` block is already exactly this decomposition, including the two-thread
 45° weave, at α 0.085 / 0.035 — both shadow, so the crosshatch is a fraction of whatever
-light reached it rather than a fixed lift. The prototype numbers recorded in `docs/agents/loops.md` —
+light reached it rather than a fixed lift. The prototype numbers recorded here —
 falloff ellipse `76% 100%` at the lamp, vignette `128% 104%` at the felt's centre — are the
 "ellipse not circle" point made concrete.
 
@@ -239,7 +239,7 @@ if one exists I did not find it. Realism here will be procedural, not asset-sour
 
 ### 3.1 The constraint that governs everything: two SVG implementations
 
-`docs/agents/loops.md` already records this and it is correct: `react-native-svg` on native
+`docs/agents/checks.md` already records this and it is correct: `react-native-svg` on native
 is a different implementation from `react-native-svg-web`, not a polyfill. Upstream confirms
 the native side is its own extraction path — `RadialGradient.tsx` reads `rx: rx || r`
 ([source](https://github.com/software-mansion/react-native-svg/blob/main/src/elements/RadialGradient.tsx)) —
@@ -471,7 +471,7 @@ a comma-separated `boxShadow` list: one tight, dark, offsetless shadow (≈0,0 /
 plus one soft offset one (the existing `Shadow.card`). Cost: one helper edit, zero assets,
 zero nodes. This is the biggest single realism gain available and it is an afternoon.
 *Risk:* comma lists need New Arch on native — already on. Verify on iOS via Expo Go, not just
-Chromium (`docs/agents/loops.md`).
+Chromium (`docs/agents/checks.md`).
 
 **Rung 2 — Correct the corner radius and add the edge line.** (§2.1) 5% of card width, and a
 1px inset light border. Pure geometry, no assets, no perf cost. Cards stop reading as
@@ -536,7 +536,7 @@ maintenance problem forever).
 
 ## Verification checklist for whoever implements this
 
-- Every rung above changes *rendering*, and per `docs/agents/loops.md` the owner reports from
+- Every rung above changes *rendering*, and per `docs/agents/checks.md` the owner reports from
   **iOS via Expo Go** while every local loop is Chromium. A green Playwright run is not
   evidence for rungs 1, 4, 5 or 8, all of which sit exactly on a web/native divergence.
 - Re-record `npm run perf:web` after rungs 3, 5, 6 and 10 and diff against `WEB-PERF.md`.
