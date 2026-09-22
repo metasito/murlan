@@ -39,8 +39,6 @@ const RESULT_DELAY = E2E_FAST ? 0 : 800;
 /** Whether a capture state has asked the loop to hold (`lib/e2eAiSuspend.ts`). */
 const AI_SUSPENDED = suspendAI(E2E_FAST);
 
-/** Ranks the exchange phase accepts as a giveback (docs/GAME-RULES.md §Exchange). */
-
 export default function GameScreen() {
   const { t } = useTranslation();
   const { showNotification } = useNotification();
