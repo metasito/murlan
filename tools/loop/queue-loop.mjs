@@ -69,6 +69,7 @@ import {
   windowCost,
 } from "./loop-logs.mjs";
 import { readAllowedTools } from "./loop-tools.mjs";
+import { DIAGNOSED, diagnose } from "./diagnose.mjs";
 import { checkLockDrift } from "./preflight.mjs";
 import { listWorktreeDirNames } from "./prune-worktrees.mjs";
 import { buildReady, MAX_REVIEW_ROUNDS, mergeCleared } from "./loop-gate.mjs";
@@ -168,15 +169,18 @@ export function nextRoute(pinned = null, at = null, { read = derive, facts = tic
   }
   const live = liveRoute(status, known?.labels ?? null);
   if (live) {
-    const settles = live.phase === "G" && status.ci?.pushed === true;
+    const tally = ticketTally(live.number, ledger());
+    const handed = at ?? (status.fix ? "C" : null) ?? tally.lastHandoff;
+    // A diagnosis reads the pushed head and hands off after it, so its handoff is not a stale one.
+    const diagnosed = handed !== "G" && Boolean(tally.handoffWhy?.startsWith(DIAGNOSED));
+    const settles = live.phase === "G" && status.ci?.pushed === true && !diagnosed;
     const derived = live.phase === "G" ? "E" : live.phase;
-    const handed = at ?? (status.fix ? "C" : null) ?? ticketTally(live.number, ledger()).lastHandoff;
     // A LAND on this head ends the review the handoff was for; D lands its own, so no row says E.
     const phase = settles ? "G" : handed === "D" && derived === "E" ? "E" : (handed ?? derived);
     return {
       ...live,
       phase,
-      fix: Boolean(status.fix),
+      fix: Boolean(status.fix) && phase !== "G",
       head: status.ci?.sha ?? status.head ?? null,
       cwd: status.cwd ?? null,
       branch: status.branch ?? null,
@@ -1938,17 +1942,19 @@ export async function poll(pending, log, pause, deadline, io = {}) {
   const until = Date.now() + deadline;
   // Not unref'd, for the same reason `holdFor` is not: this is the only handle open while it waits.
   const wait = () => new Promise((r) => setTimeout(r, pause));
+  let verdict = {};
+  const owner = (reason) => ({ action: "owner", reason, runId: verdict.runId ?? null, head: verdict.head ?? null });
 
   for (;;) {
     if (Date.now() > until) {
-      return { action: "owner", reason: `CI did not settle in ${Math.round(deadline / 60_000)}m` };
+      return owner(`CI did not settle in ${Math.round(deadline / 60_000)}m`);
     }
     let next;
     // Which budget a `recheck` spends. A verdict asked again because the runner had nothing to say
     // is a sick branch; a mergeability job still computing is neither sick nor healthy, and it
     // answers on its own in seconds. One counter for both parks whichever goes second.
     let asking = "recheck";
-    let verdict = {};
+    verdict = {};
     try {
       verdict = verdictOf(REPO, pending.branch, pending.pr);
       if (verdict.progress) log(ciLine(pending.pr, verdict.progress));
@@ -1968,7 +1974,7 @@ export async function poll(pending, log, pause, deadline, io = {}) {
     } catch (err) {
       // `gh` refusing, a rate limit, or anything that is not JSON. The ticket is pushed and its
       // branch is intact, so this goes to the owner rather than ending the night.
-      return { action: "owner", reason: `could not read CI — ${String(err.message).split("\n")[0]}` };
+      return owner(`could not read CI — ${String(err.message).split("\n")[0]}`);
     }
 
     if (next.action === "update-branch" && left.update > 0) {
@@ -1977,7 +1983,7 @@ export async function poll(pending, log, pause, deadline, io = {}) {
       try {
         run("gh", ["pr", "update-branch", String(pending.pr)], { timeout: CI_RED_TIMEOUT_MS });
       } catch (err) {
-        return { action: "owner", reason: `could not update the branch — ${String(err.message).split("\n")[0]}` };
+        return owner(`could not update the branch — ${String(err.message).split("\n")[0]}`);
       }
       await wait();
       continue;
@@ -1999,7 +2005,7 @@ export async function poll(pending, log, pause, deadline, io = {}) {
         await wait();
         continue;
       }
-      return { action: "owner", reason: `CI is red and its log could not be read — ${next.reason}` };
+      return owner(`CI is red and its log could not be read — ${next.reason}`);
     }
     if (next.action === "recheck" && left[asking] > 0) {
       left[asking] -= 1;
@@ -2009,19 +2015,19 @@ export async function poll(pending, log, pause, deadline, io = {}) {
     }
     if (next.action === "update-branch" || next.action === "recheck") {
       const spent = next.action === "update-branch" ? SETTLE_ROUNDS.update : SETTLE_ROUNDS[asking];
-      return { action: "owner", reason: `${next.action} did not settle in ${spent} rounds — last: ${next.reason}` };
+      return owner(`${next.action} did not settle in ${spent} rounds — last: ${next.reason}`);
     }
     if ((next.action === "merge" || next.action === "ready") && !cleared(verdict.head)) {
       const at = String(verdict.head ?? "an unread head").slice(0, 7);
-      return { action: "owner", reason: `no VERDICT: LAND and review cover ${at} — it was pushed for review, not cleared` };
+      return owner(`no VERDICT: LAND and review cover ${at} — it was pushed for review, not cleared`);
     }
     if (next.action === "ready") {
-      if (left.ready === 0) return { action: "owner", reason: "the draft is still a draft after gh pr ready" };
+      if (left.ready === 0) return owner("the draft is still a draft after gh pr ready");
       left.ready -= 1;
       try {
         run("gh", ["pr", "ready", String(pending.pr), "--repo", REPO], { timeout: CI_RED_TIMEOUT_MS });
       } catch (err) {
-        return { action: "owner", reason: `could not mark the draft ready — ${String(err.message).split("\n")[0]}` };
+        return owner(`could not mark the draft ready — ${String(err.message).split("\n")[0]}`);
       }
       await wait();
       continue;
@@ -2031,10 +2037,13 @@ export async function poll(pending, log, pause, deadline, io = {}) {
         const survivor = mergeAndConfirm(pending.pr, pending.branch, verdict.head, run);
         if (survivor) log(`  ⚠️ #${pending.ticket} ${survivor} is still on origin after --delete-branch`);
       } catch (err) {
-        return { action: "owner", reason: `the merge failed — ${String(err.message).split("\n")[0]}` };
+        return owner(`the merge failed — ${String(err.message).split("\n")[0]}`);
       }
     }
-    return next.action === "hand-back" ? { ...next, head: verdict.head ?? null } : next;
+    if (next.action === "owner") return owner(next.reason);
+    return next.action === "hand-back"
+      ? { ...next, head: verdict.head ?? null, runId: verdict.runId ?? null, unnamed: !verdict.testIds?.length }
+      : next;
   }
 }
 
@@ -2071,6 +2080,7 @@ export function afterSession(run, derived) {
     ticket: said?.ticket ?? derived?.ticket ?? null,
     branch: said?.branch ?? derived?.branch ?? null,
     cwd: derived?.cwd ?? null,
+    head: derived?.head ?? null,
     dirty: derived?.dirty ?? false,
     changed: derived?.changed ?? [],
     // The session's own marker, not derive()'s: derive computes a phase from commit count and
@@ -2291,7 +2301,39 @@ export async function runOnce(io, pinned = null, at = null) {
       files,
     });
 
-  if (decided.action === "park") return handBack(decided.why, after?.phase ?? "?");
+  const handTo = (phase, why) => {
+    io.record({ number: route.number, outcome: "handoff", why: `phase ${phase} next — ${DIAGNOSED}${why}`, run: billed, counts: false });
+    return { outcome: "handoff", ticket: route.number, phase, run, size, cwd: after?.cwd ?? null, branch: after?.branch ?? null };
+  };
+
+  /**
+   * A stop no rule names, diagnosed once per head. `pass` is the pass to return; `resume` is the
+   * phase the diagnosis sends the ticket to, which each caller hands on its own way.
+   *
+   * @returns {Promise<{pass: object}|{resume: string, cause: string}>}
+   */
+  const diagnosed = async (why, phase, { runId = null, head = after?.head ?? null, ciLog = null } = {}) => {
+    if (tally.diagnosed.includes(head)) return { pass: handBack(why, phase) };
+    const cwd = after?.cwd ?? null;
+    const d = await io.diagnose({ ticket: route.number, phase, why, cwd, log: run.log, stderr: run.stderr ?? "", runId, ciLog });
+    const said = d.ok ? `${d.action}${d.phase ? ` ${d.phase}` : ""} — ${d.cause}` : `the diagnosis failed: ${d.error}`;
+    io.record({ number: route.number, outcome: "diagnosed", why: said, run: d.run, counts: false, head });
+    if (!d.ok) return { pass: handBack(why, phase) };
+    if (d.action === "park") return { pass: handBack(d.cause, phase) };
+    if (d.action === "resume") return { resume: d.phase, cause: d.cause };
+    try {
+      io.rerun(runId);
+    } catch (err) {
+      return { pass: handBack(`${d.cause} — the rerun failed: ${String(err.message).split("\n")[0]}`, phase) };
+    }
+    return { pass: handTo("G", `rerun of ${runId}: ${d.cause}`) };
+  };
+
+  if (decided.action === "park") {
+    if (reason.hard || exhausted(run)) return handBack(decided.why, after?.phase ?? "?");
+    const told = await diagnosed(decided.why, after?.phase ?? "?");
+    return "pass" in told ? told.pass : handTo(told.resume, told.cause);
+  }
 
   if (decided.action === "landed") {
     io.teardown(after?.cwd ?? null, route.number);
@@ -2319,7 +2361,19 @@ export async function runOnce(io, pinned = null, at = null) {
   // claim, the reason on the issue and the worktree, in that one place. Recording the row and
   // tearing the worktree down without it leaves `in-progress` on an issue the picker skips for
   // good, which is a ticket nothing will ever return to.
-  if (cost.handBack) return handBack(settled.reason, "E");
+  const red = { runId: settled.runId ?? null, head: settled.head ?? pr?.sha ?? null };
+  if (cost.handBack) {
+    const told = await diagnosed(settled.reason, "E", red);
+    return "pass" in told ? told.pass : handTo(told.resume, told.cause);
+  }
+  // A red run that names no test is a failure shape, not a failing test, and a fix round has
+  // nothing to aim at.
+  if (cost.recorded === "retry" && settled.unnamed) {
+    const ciLog = fs.existsSync(ciLogPath(route.number)) ? ciLogPath(route.number) : null;
+    const told = await diagnosed(settled.reason, "E", { ...red, ciLog });
+    if ("pass" in told) return told.pass;
+    if (told.resume !== "C") return handTo(told.resume, told.cause);
+  }
 
   // A ticket that cannot go green is not the loop's to keep paying for, and the ceiling is checked
   // here rather than by the caller so that a ticket which runs out of rounds takes the same exit as
@@ -2455,6 +2509,14 @@ function realIo(book, screen) {
     },
     pushedPr,
     settle: (pending) => settle(pending, screen),
+    diagnose: async (stop) => {
+      screen.start(UNNAMED);
+      screen.said(`diagnosing #${stop.ticket}'s stop in phase ${stop.phase}: ${stop.why}`);
+      const d = await diagnose(stop);
+      screen.close(d.ok ? "done" : "failed", d.ok ? `diagnosis: ${d.action}${d.phase ? ` ${d.phase}` : ""}` : d.error);
+      return d;
+    },
+    rerun: (runId) => sh("gh", ["run", "rerun", String(runId), "--failed", "--repo", REPO], { timeout: CI_RED_TIMEOUT_MS }),
     queue: () => before,
     park,
     /**

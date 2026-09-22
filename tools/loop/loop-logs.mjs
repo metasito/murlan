@@ -341,6 +341,7 @@ export function ticketTally(n, rows) {
   let handoffWhy = null;
   let retries = 0;
   let lastRedHead = null;
+  const diagnosed = [];
   for (const r of since) {
     spend += r.cost ?? 0;
     ms += r.ms ?? 0;
@@ -359,8 +360,10 @@ export function ticketTally(n, rows) {
       handoffsThisRound += 1;
       const m = HANDOFF_RE.exec(r.park_reason ?? "");
       if (m) [lastHandoff, handoffWhy] = [m[1], m[2] ?? null];
+    } else if (r.outcome === "diagnosed") {
+      diagnosed.push(r.head ?? null);
     }
   }
   const sessions = since.filter((r) => r.outcome !== "pushed").length;
-  return { sessions, spend, ms, turns, handoffsThisRound, lastHandoff, handoffWhy, lastRedHead, retries };
+  return { sessions, spend, ms, turns, handoffsThisRound, lastHandoff, handoffWhy, lastRedHead, retries, diagnosed };
 }

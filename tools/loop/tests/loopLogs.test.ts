@@ -482,7 +482,14 @@ describe("ticketTally", () => {
       handoffWhy: null,
       lastRedHead: null,
       retries: 0,
+      diagnosed: [],
     });
+  });
+
+  test("a head is diagnosed until the window closes, whatever rounds pass on it", () => {
+    const rows = [row({ outcome: "diagnosed", head: "a" }), row({ outcome: "retry", head: "a" }), row({ outcome: "diagnosed", head: "b" })];
+    assert.deepEqual(ticketTally(1, rows).diagnosed, ["a", "b"]);
+    assert.deepEqual(ticketTally(1, [...rows, row({ outcome: "parked" })]).diagnosed, []);
   });
 
   test("a pushed row and its settle row are one session", () => {
