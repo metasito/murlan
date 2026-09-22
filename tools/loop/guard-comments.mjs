@@ -27,7 +27,7 @@ export const io = {
    * so a branch could add its prose a commit at a time and never be over against any of them.
    *
    * "" for a path git does not have, which is what an added file's base is. `-C` its own directory
-   * and `:./` against that, because the hook is handed an absolute path and `<rev>:C:/…` resolves
+   * and its repo-relative path from there, or the path a rename moved it from, because the hook is handed an absolute path and `<rev>:C:/…` resolves
    * for no file — which would count every line of every file as added and deny the next edit to
    * anything.
    */
@@ -46,7 +46,10 @@ export const io = {
       // No `origin/main` here — a fresh clone, or a repo that names its trunk something else.
     }
     try {
-      return git("show", `${from}:./${basename(file)}`);
+      const here = git("rev-parse", "--show-prefix").trim() + basename(file);
+      const moved = git("-c", "core.quotePath=false", "diff", "--name-status", "--no-relative", "--diff-filter=R", "-M", from)
+        .split("\n").map((line) => line.split("\t")).find(([, , to]) => to === here);
+      return git("show", `${from}:${moved ? moved[1] : here}`);
     } catch {
       return "";
     }

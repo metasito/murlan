@@ -98,16 +98,16 @@ export function budget(base) {
   // agree from any cwd: git's own default is relative to the caller's directory only sometimes.
   const from = git("merge-base", base, "HEAD").trim();
   const root = git("rev-parse", "--show-toplevel").trim();
-  const files = git("-c", "core.quotePath=false", "diff", "--name-only", "--no-relative",
+  const files = git("-c", "core.quotePath=false", "diff", "--name-status", "--no-relative",
     "--diff-filter=AMR", "-M", from, "--", ...JUDGED_EXTENSIONS.map((ext) => `*.${ext}`))
-    .split("\n").filter(Boolean);
+    .split("\n").filter(Boolean).map((line) => line.split("\t").slice(1));
   const named = [];
   const total = { comment: 0, code: 0 };
-  for (const file of files) {
+  for (const [source, file = source] of files) {
     // No skip on a read failure: `AMR` never emits a deletion and `-M` emits a rename's
     // destination, so every path here exists. A swallowed read is a check that passes by not
     // looking at the one file it could not open.
-    const added = addedCounts(show(from, file), readFileSync(join(root, file), "utf8"));
+    const added = addedCounts(show(from, source), readFileSync(join(root, file), "utf8"));
     if (over(added, file)) named.push([file, added]);
     total.comment += added.comment;
     total.code += added.code;

@@ -293,6 +293,27 @@ describe("budget", () => {
     assert.deepEqual(onBranch(files), [["(branch total)", { comment: 60, code: 10 }]]);
   });
 
+  test("a moved file is judged against the path it moved from", () => {
+    const dir = mkdtempSync(join(tmpdir(), "comment-budget-"));
+    const cwd = process.cwd();
+    try {
+      run(dir, "init", "-q", "-b", "main");
+      run(dir, "config", "user.email", "t@example.com");
+      run(dir, "config", "user.name", "t");
+      writeFileSync(join(dir, "a.mjs"), shaped("a", 20, 2));
+      run(dir, "add", "--", "a.mjs");
+      run(dir, "commit", "-qm", "base");
+      run(dir, "checkout", "-qb", "branch");
+      run(dir, "mv", "a.mjs", "b.mjs");
+      run(dir, "commit", "-qm", "move");
+      process.chdir(dir);
+      assert.deepEqual(budget("main"), []);
+    } finally {
+      process.chdir(cwd);
+      rmSync(dir, { recursive: true, force: true, maxRetries: 5 });
+    }
+  });
+
   test("a .cjs file is counted, as the write hook judges it", () => {
     assert.deepEqual(onBranch({ "a.cjs": shaped("a", 7, 1) }), [
       ["a.cjs", { comment: 7, code: 1 }],
