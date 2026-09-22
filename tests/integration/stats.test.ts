@@ -353,14 +353,17 @@ describe("stats persistence (Task 8)", { skip: hasDatabase() ? false : skipMessa
 
       await driveHumansToGameOver([stayer.socket, leaver.socket], () => {});
 
-      const nextDeal = waitForDeal(stayer.socket);
+      const nextDeal = waitForDeal(leaver.socket);
       stayer.socket.emit("game:rematch_vote");
       leaver.socket.emit("game:rematch_vote");
-      await nextDeal;
+      const deal = await nextDeal;
+      const leaverEngineId = deal.players[deal.viewerSeatIndex].id;
 
       // One human left at the table: the hand is conceded to them there and
       // then, and the walkout is scored inside it.
+      const conceded = waitFor<{ rankings: string[] }>(stayer.socket, "game:over");
       leaver.socket.emit("room:leave");
+      const { rankings } = await conceded;
 
       // Two manches, two rows each by now — the first hand, played out fairly,
       // already wrote one row per user before the walkout below could. Only
@@ -386,7 +389,13 @@ describe("stats persistence (Task 8)", { skip: hasDatabase() ? false : skipMessa
 
       const rowOf = (id: string) => rows.find((r) => r.user_id === id)!;
       assert.equal(Number(rowOf(stayer.user.id).placement), 1, "the player left at the table takes the hand");
-      assert.equal(Number(rowOf(leaver.user.id).placement), 4, "the walkout is last of four seats");
+      // The concede ranks the rest by cards left, so where the walkout lands among the bots depends on how many turns they took first.
+      assert.equal(
+        Number(rowOf(leaver.user.id).placement),
+        rankings.indexOf(leaverEngineId) + 1,
+        "the walkout is recorded at the place the concede gave it"
+      );
+      assert.notEqual(Number(rowOf(leaver.user.id).placement), 1);
       assert.equal(Number(rowOf(stayer.user.id).player_count), 4);
     } finally {
       stayer.socket.close();
