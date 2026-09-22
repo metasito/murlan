@@ -15,7 +15,7 @@ jest.mock('@/lib/accessibility', () => ({
 }));
 
 import { TopOppSlot } from '@/components/table/seats';
-import type { Player } from '@/lib/gameEngine';
+import type { Player } from '@/lib/game/gameEngine';
 
 const player: Player = { id: 'player_1', name: 'Besi', hand: [], type: 'human' };
 

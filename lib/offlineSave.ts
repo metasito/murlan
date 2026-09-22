@@ -8,8 +8,8 @@
 // Pure: encoding, decoding and the decision to trust a stored blob live here so
 // they can be tested without AsyncStorage or a renderer. The context does the
 // I/O and nothing else.
-import type { GameMode, GameState } from "./gameEngine.ts";
-import type { MatchState, PlayerSetupConfig, RematchAnswers } from "./matchState.ts";
+import type { GameMode, GameState } from "./game/gameEngine.ts";
+import type { MatchState, PlayerSetupConfig, RematchAnswers } from "./game/matchState.ts";
 
 /**
  * Bumped whenever the stored shape changes. A blob written by an older build is

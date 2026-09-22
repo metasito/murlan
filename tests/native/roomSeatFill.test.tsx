@@ -8,7 +8,7 @@ import { getAnimatedStyle } from "react-native-reanimated";
 
 const mockPlaySeatFill = jest.fn(async () => {});
 const mockPlayRoomFull = jest.fn(async () => {});
-jest.mock("@/lib/sounds", () => ({
+jest.mock("@/lib/device/sounds", () => ({
   playSeatFill: () => mockPlaySeatFill(),
   playRoomFull: () => mockPlayRoomFull(),
 }));

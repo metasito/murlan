@@ -3,9 +3,9 @@
 // picking it never grows a second visual shape for the same three ids.
 import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { hapticSelection } from "@/lib/haptics";
-import { BOT_PERSONALITIES, BotPersonalityId, difficultyLabelKey, getBotPersonality } from "@/lib/botPersonalities";
-import type { AIDifficulty } from "@/lib/gameEngine";
+import { hapticSelection } from "@/lib/device/haptics";
+import { BOT_PERSONALITIES, BotPersonalityId, difficultyLabelKey, getBotPersonality } from "@/lib/game/botPersonalities";
+import type { AIDifficulty } from "@/lib/game/gameEngine";
 import { Colors, Spacing, Radius, FontSize, TOUCH_TARGET_MIN } from "@/lib/theme";
 import { useTranslation } from "@/lib/i18n";
 import { a11yHidden, a11yState } from "@/lib/a11y";

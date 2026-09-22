@@ -11,7 +11,7 @@ import {
   type Card,
   type Combination,
   type GameState,
-} from "@/lib/gameEngine";
+} from "@/lib/game/gameEngine";
 import { rankSpokenName, cardSpokenName, suitSpokenName } from "@/lib/cardNames";
 import type { TFn, TnFn, TranslationKey } from "@/lib/i18n";
 import { straightTopRankChar } from "@/components/table/straightTopRank";

@@ -2,7 +2,7 @@
 // them.
 //
 // Its own file rather than `turnTimerUi.ts`, which takes nothing from
-// `lib/gameEngine` but a type — see `playButtonLabel`'s docstring, which states
+// `lib/game/gameEngine` but a type — see `playButtonLabel`'s docstring, which states
 // that only the caller can run `canPlay`. This file is that caller, and it runs
 // the engine for real.
 
@@ -15,7 +15,7 @@ import {
   type Card,
   type Combination,
   type GameState,
-} from "../../lib/gameEngine.ts";
+} from "../../lib/game/gameEngine.ts";
 import { playButtonLabel, type PlayButtonLabel } from "../turnTimerUi.ts";
 
 export interface StagedPlay {

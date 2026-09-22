@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { View, Text, StyleSheet, Pressable } from "react-native";
 import { IconButton } from "@/components/IconButton";
-import { useOrientedWindow } from "@/lib/orientation";
+import { useOrientedWindow } from "@/lib/device/orientation";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,

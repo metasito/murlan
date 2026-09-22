@@ -15,11 +15,11 @@ import {
 } from "@/context/gameHooks";
 import { useNotification } from "@/context/NotificationContext";
 import { ConfirmDialog, type ConfirmRequest } from "@/components/ConfirmDialog";
-import { pickGivebackCard, TURN_TIMEOUT_MS } from "@/lib/gameEngine";
+import { pickGivebackCard, TURN_TIMEOUT_MS } from "@/lib/game/gameEngine";
 import { suspendAI } from "@/lib/e2eAiSuspend";
 import { GameTable } from "@/components/GameTable";
 import { comboKey } from "@/components/flightPhysics";
-import { hapticWarn } from "@/lib/haptics";
+import { hapticWarn } from "@/lib/device/haptics";
 import { useTranslation } from "@/lib/i18n";
 
 // Read once at module scope, never per-call. EXPO_PUBLIC_ vars are inlined

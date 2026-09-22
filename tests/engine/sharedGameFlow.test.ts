@@ -8,8 +8,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { buildExchangeAnnounce, rematchPromptOpen } from "../../lib/sharedGameFlow.ts";
-import type { Card } from "../../lib/gameEngine.ts";
+import { buildExchangeAnnounce, rematchPromptOpen } from "../../lib/game/sharedGameFlow.ts";
+import type { Card } from "../../lib/game/gameEngine.ts";
 
 const ACE: Card = { id: "a", rank: "A", suit: "spades", isJoker: false };
 const THREE: Card = { id: "b", rank: "3", suit: "hearts", isJoker: false };
@@ -123,7 +123,7 @@ test("neither provider keeps its own ceremony or prompt", () => {
     const source = readFileSync(new URL(file, root), "utf8");
     assert.ok(
       source.includes("useExchangeAnnouncement("),
-      `${file} does not drive the ceremony from lib/sharedGameFlow.ts`
+      `${file} does not drive the ceremony from lib/game/sharedGameFlow.ts`
     );
     assert.equal(
       /useState[^\n]*\bexchangeAnnounc|setExchangeAnnouncing/i.test(source),

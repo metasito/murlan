@@ -4,7 +4,7 @@
 decided on 2026-09-03. Clauses 1–11 of §6 (below) were adopted in full and are implemented —
 tickets A–H of §9's original list landed as #850's disconnect policy. **Clause 12 — the
 repeat-abandonment matchmaking cooldown — was rejected**, and its code (#858's
-`lib/abandonCooldown.ts`, `server/matchmakingCooldown.ts`) was removed on #898. Abandoning
+`abandonCooldown.ts` in `lib/`, `matchmakingCooldown.ts` in `server/`) was removed on #898. Abandoning
 costs the abandoner their own score, via clause 6, and nothing further; see `docs/BRIEF.md`
 §3.1 for the decision as recorded there. §5 Q7's cooldown recommendation, §7 row I and §9
 item 9 below are struck for the same reason — kept, marked, rather than deleted, because the
@@ -73,7 +73,7 @@ The behaviour is an escalation ladder assembled from four independently-made cho
 
 | Stage | Trigger | What happens | Where |
 |---|---|---|---|
-| Turn timer | 30 s on the acting seat (`MURLAN_AFK_TIMEOUT_MS`) | The seat is made to play the **minimum legal move** — a pass, or the lowest single when a round cannot be passed. Never the AI: *"an AFK human should not be played well on their behalf."* | `server/game/gameTimers.ts:28`, `server/game/gameTurn.ts:181-205`, `lib/autoMove.ts:62-68` |
+| Turn timer | 30 s on the acting seat (`MURLAN_AFK_TIMEOUT_MS`) | The seat is made to play the **minimum legal move** — a pass, or the lowest single when a round cannot be passed. Never the AI: *"an AFK human should not be played well on their behalf."* | `server/game/gameTimers.ts:28`, `server/game/gameTurn.ts:181-205`, `lib/game/autoMove.ts:62-68` |
 | Disconnect grace | socket lost mid-hand, 60 s (`MURLAN_DISCONNECT_GRACE_MS`) | `game:player_disconnected` broadcasts one sentence naming the seconds; the hand **continues**, the seat is still the player's, and the 30 s turn timer keeps auto-passing it. So roughly two forced minimum moves fit inside the grace. | `server/game/tableHandlers.ts:645-716` |
 | Between hands | socket lost while `gameOver` | The shorter 20 s lobby grace, because the seat is counted in the rematch gate. | `server/game/gameTimers.ts:36`, `server/game/tableHandlers.ts:653-660` |
 | Vacate | grace expired **and** the cluster says the user is offline, or an explicit `room:leave` (no grace at all) | `playerMap[seat]` deleted, `players[seat].type = "ai"`, `releasedSeats.add(userId)`, the seat recorded in `abandonedSeats` if it still held cards. The **name on the seat never changes**. Announced as `game:seat_bot_takeover`. | `server/game/gameTurn.ts:278-376` |
@@ -289,7 +289,7 @@ labelled as vacated.**
 **On the display constraint.** `CLAUDE.md` is right that a winner must be an engine player id
 and that `bot:<seat>` is a key no client can name — but that constraint bites the *key space*,
 not the seat. Every scoreboard row already carries `seatIndex`, `engineId`, `userId` and
-`username` (`lib/matchState.ts:131-139`), and the seat's own `name` survives `vacateSeat`
+`username` (`lib/game/matchState.ts:131-139`), and the seat's own `name` survives `vacateSeat`
 untouched. So the buildable form of the label is:
 
 - **do not** send a rendered string like `"Drita (left)"` — the server renders in

@@ -15,7 +15,7 @@ import { act, render, screen } from "@testing-library/react-native";
 import { getAnimatedStyle } from "react-native-reanimated";
 import { PlayedPile } from "@/components/table/pile";
 import { Motion } from "@/lib/theme";
-import type { Card, Combination } from "@/lib/gameEngine";
+import type { Card, Combination } from "@/lib/game/gameEngine";
 
 const CARD: Card = { id: "3_clubs", suit: "clubs", rank: "3", isJoker: false };
 const PREV: Combination = { type: "single", cards: [CARD], strength: 3 };

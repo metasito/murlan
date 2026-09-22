@@ -4,7 +4,7 @@ import { io as ioClient, type Socket } from "socket.io-client";
 import { PROTOCOL_AUTH, reconnectAs, register, waitFor } from "../helpers/client.ts";
 import { eq } from "drizzle-orm";
 import { logger } from "../../server/http/logger.ts";
-import { createDeck, getAllValidPlays } from "../../lib/gameEngine.ts";
+import { createDeck, getAllValidPlays } from "../../lib/game/gameEngine.ts";
 import {
   startTestServer,
   hasDatabase,

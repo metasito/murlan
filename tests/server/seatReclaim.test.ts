@@ -14,7 +14,7 @@ import { clearRoomTimers } from "../../server/game/gameTimers.ts";
 import { resolveHandEnd } from "../../server/game/onlineGameLogic.ts";
 import { scoresByEngineId } from "../../server/game/gameOver.ts";
 import type { OnlineGameState } from "../../server/game/gameRoom.ts";
-import type { GameState, Player } from "../../lib/gameEngine.ts";
+import type { GameState, Player } from "../../lib/game/gameEngine.ts";
 
 const ROOM = "seat-reclaim-room";
 

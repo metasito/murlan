@@ -98,7 +98,7 @@ function lastKept(src: string, out: string): number {
 // Membership: the planted template re-closes on a later backtick, and the span it
 // erased holds no column-0 declaration — so neither floor below reads it. #1046.
 const NEITHER_FLOOR_READS = [
-  "lib/fonts.web.ts",
+  "lib/device/fonts.web.ts",
   "scripts/build-fonts.mjs",
   "scripts/pick-simulator.mjs",
   "tests/integration/friendRowTravelsWithTheEvent.test.ts",

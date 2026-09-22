@@ -13,7 +13,7 @@ import React from 'react';
 import { act, render, screen, within } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
-jest.mock('@/lib/sounds', () => ({
+jest.mock('@/lib/device/sounds', () => ({
   ensureAudioMode: jest.fn(async () => {}),
   playCardSelect: jest.fn(async () => {}),
   playCardPlay: jest.fn(async () => {}),
@@ -43,7 +43,7 @@ jest.mock('@/lib/accessibility', () => ({
 
 import { GameTable } from '@/components/GameTable';
 import { impactDelayMs } from '@/components/flightPhysics';
-import type { Card, Combination, GameState, Player } from '@/lib/gameEngine';
+import type { Card, Combination, GameState, Player } from '@/lib/game/gameEngine';
 
 const METRICS = {
   frame: { x: 0, y: 0, width: 844, height: 390 },

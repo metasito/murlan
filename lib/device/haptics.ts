@@ -1,7 +1,7 @@
 import * as Haptics from "expo-haptics";
 import { Platform } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { SETTINGS_KEY } from "./storageKeys.ts";
+import { SETTINGS_KEY } from "../storageKeys.ts";
 
 // expo-haptics' web shim calls navigator.vibrate() per style, a no-op where
 // the Vibration API doesn't exist (iOS/desktop Safari) and real on Android

@@ -3,8 +3,8 @@
 // holds that. Raise MIN_PROTOCOL_VERSION to turn away the bundles a change breaks.
 import { z } from "zod";
 import type { DefaultEventsMap } from "socket.io";
-import type { GameState, Player } from "../lib/gameEngine.ts";
-import type { GameOverPayload } from "../lib/matchState.ts";
+import type { GameState, Player } from "../lib/game/gameEngine.ts";
+import type { GameOverPayload } from "../lib/game/matchState.ts";
 
 export const PROTOCOL_VERSION = 2;
 export const MIN_PROTOCOL_VERSION = 1;

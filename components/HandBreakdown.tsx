@@ -14,11 +14,11 @@ import { Colors, FontSize, Radius, Spacing, TOUCH_TARGET_MIN } from "@/lib/theme
 import { useTranslation } from "@/lib/i18n";
 import { a11yGroup, a11yHidden } from "@/lib/a11y";
 import { recentForm } from "@/lib/profileStats";
-import { bombsPlayedBy, replayQueryKey } from "@/lib/replay";
-import type { ReplayDto } from "@/lib/replay";
+import { bombsPlayedBy, replayQueryKey } from "@/lib/game/replay";
+import type { ReplayDto } from "@/lib/game/replay";
 
-import { PROVISIONAL_GAMES } from "@/lib/rating";
-import { placementColor, positionLabelKey } from "@/lib/placement";
+import { PROVISIONAL_GAMES } from "@/lib/game/rating";
+import { placementColor, positionLabelKey } from "@/lib/game/placement";
 import type { UserStatsDto, RatingDto, MatchHistoryDto } from "@/lib/wire";
 
 

@@ -24,8 +24,8 @@ import {
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
 import { a11yHidden, a11yState, A11yStatus } from "@/lib/a11y";
-import type { Card, StartReason } from "@/lib/gameEngine";
-import { getCardDisplayRank, getSuitSymbol } from "@/lib/gameEngine";
+import type { Card, StartReason } from "@/lib/game/gameEngine";
+import { getCardDisplayRank, getSuitSymbol } from "@/lib/game/gameEngine";
 import { CHIP_H, SIDE_SECTION_W } from "@/components/seatLayout";
 import { type RailSide } from "@/components/tableFrame";
 import { tableFontSize } from "@/components/cardFaceModel";

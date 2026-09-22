@@ -1,7 +1,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { RoomStartSchema } from "../../server/socket/socketSchemas.ts";
-import { getBotPersonality } from "../../lib/botPersonalities.ts";
+import { getBotPersonality } from "../../lib/game/botPersonalities.ts";
 
 // A client on an older bundle can send a personality id this build no longer
 // knows about — a personality removed after that bundle shipped (#904 removed

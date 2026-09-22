@@ -14,7 +14,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { GameProvider, useGame } from "@/context/GameContext";
 import { NotificationProvider } from "@/context/NotificationContext";
 import { encodeOfflineSave, OFFLINE_SAVE_KEY } from "@/lib/offlineSave";
-import type { GameState } from "@/lib/gameEngine";
+import type { GameState } from "@/lib/game/gameEngine";
 
 /**
  * A hand parked mid-exchange: the human (seat 0) won the round and owes seat
@@ -159,7 +159,7 @@ test("choosing an exchange card moves the card and announces it through the real
 // so a table that starts over while it is still counting down — a fresh
 // match dealt here, a room rejoin online — must not carry the old trade's
 // announcement onto a felt with no record of it left. Turning `phasePresent`
-// off (`useExchangeAnnouncement`, lib/sharedGameFlow.ts) into a no-op — read
+// off (`useExchangeAnnouncement`, lib/game/sharedGameFlow.ts) into a no-op — read
 // but never acted on — is the one-line change that reds this: `announcing`
 // would then still read "true" after `setupGame`, deposed only by the timer
 // this test never advances.

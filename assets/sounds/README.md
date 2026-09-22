@@ -1,6 +1,6 @@
 # Sound effects
 
-The sixteen effects `lib/sounds.ts` plays. Built, not hand-authored — run
+The sixteen effects `lib/device/sounds.ts` plays. Built, not hand-authored — run
 `node scripts/build-sounds.mjs` to rebuild them from source.
 
 ## Licence
@@ -41,7 +41,7 @@ Three outputs are not simply a clip:
 the sibling of the `error_003.wav` under `game_lose`, so a refusal and a lost
 partita do not share a sound.
 
-`lib/sounds.ts` plays `card_select`, `card_play`, `card_pass`, `deal` and
+`lib/device/sounds.ts` plays `card_select`, `card_play`, `card_pass`, `deal` and
 `reject` at a slightly different pitch and gain each time, so a hand of them is
 not one clip repeated; the stings always sound the same, which is what keeps
 each recognisable. A deselect is `card_select` played lower and quieter.

@@ -10,7 +10,7 @@ import React from 'react';
 import { act, render } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
-jest.mock('@/lib/sounds', () => ({
+jest.mock('@/lib/device/sounds', () => ({
   playCardSelect: jest.fn(async () => {}),
   playCardPlay: jest.fn(async () => {}),
   playCardPass: jest.fn(async () => {}),
@@ -39,11 +39,11 @@ jest.mock('expo-haptics', () => ({
 }));
 
 import * as Haptics from 'expo-haptics';
-import { playGameWin, playGameLose } from '@/lib/sounds';
+import { playGameWin, playGameLose } from '@/lib/device/sounds';
 import { GameTable } from '@/components/GameTable';
 import { handOffDelayMs } from '@/components/flightPhysics';
 import { motionMs } from '@/lib/theme';
-import type { GameState, Player } from '@/lib/gameEngine';
+import type { GameState, Player } from '@/lib/game/gameEngine';
 
 const METRICS = {
   frame: { x: 0, y: 0, width: 844, height: 390 },

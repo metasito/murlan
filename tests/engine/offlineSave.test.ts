@@ -9,7 +9,7 @@ import {
   encodeOfflineSave,
   isResumable,
 } from "../../lib/offlineSave.ts";
-import { buildCombination, processPlay } from "../../lib/gameEngine.ts";
+import { buildCombination, processPlay } from "../../lib/game/gameEngine.ts";
 
 const decodeOfflineSave = (raw: string | null) => {
   const result = decode(raw);

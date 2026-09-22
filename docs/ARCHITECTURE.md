@@ -19,7 +19,7 @@ components/GameTable.tsx  ◄── the one presentational game table
 context/  (GameContext offline, OnlineGameContext online)
         │
         ▼
-lib/gameEngine.ts (offline: called directly)   server/socket/socket.ts (online: handshake + listeners)
+lib/game/gameEngine.ts (offline: called directly)   server/socket/socket.ts (online: handshake + listeners)
                                                         │
                                                         ▼
                                                 server/socket/socketGameplay.ts (one listener per intent)
@@ -33,13 +33,13 @@ lib/gameEngine.ts (offline: called directly)   server/socket/socket.ts (online: 
                                                   + gameTurn.ts / gameOver.ts / dealManche.ts
                                                         │
                                                         ▼
-                                                lib/gameEngine.ts (same engine, server side)
+                                                lib/game/gameEngine.ts (same engine, server side)
                                                         │
                                                         ▼
                                                 shared/schema.ts + server/store/db.ts (Postgres)
 ```
 
-- **`lib/gameEngine.ts`** is the single rules engine, imported by both the client (offline
+- **`lib/game/gameEngine.ts`** is the single rules engine, imported by both the client (offline
   mode) and the server (online mode, authoritative). Deck of 54 (52 + 2 distinguishable
   Jokers) is dealt in full every game — see `docs/GAME-RULES.md` §3. There is no reduced-deck
   mode.
@@ -79,7 +79,7 @@ lib/gameEngine.ts (offline: called directly)   server/socket/socket.ts (online: 
 
 ## 2. Data flow
 
-**Offline:** `GameContext` holds a `GameState` produced by `lib/gameEngine.ts` in memory.
+**Offline:** `GameContext` holds a `GameState` produced by `lib/game/gameEngine.ts` in memory.
 User actions call context methods that call the engine directly and set new state. The
 whole match — engine state, scoreboard, rematch answers, and the seat setup the next
 manche is dealt from — is written to AsyncStorage on every change (`lib/offlineSave.ts`),
@@ -89,7 +89,7 @@ discarded rather than migrated, the same call `active_games` makes.
 **Online:** `OnlineGameContext` holds a `GameState` it only ever receives from the server
 via socket events (`game:state`, `game:over`, …). User actions call context methods
 that `emit` an intent to the server. The server is the only writer of `GameState` — it
-validates the intent against `lib/gameEngine.ts`, mutates state, persists it
+validates the intent against `lib/game/gameEngine.ts`, mutates state, persists it
 (`active_games` table), and broadcasts a sanitized copy to every seat (each player's own
 socket gets their own hand; opponents' hands are stripped server-side before emit).
 
@@ -241,7 +241,7 @@ React Context, one provider per concern:
 | Context | Owns |
 |---|---|
 | `AuthContext` | Session user, and the account state machine: login/logout/register, rename, change password, add email, `refreshUser` |
-| `GameContext` | Offline `GameState`, the match score, rematch and exchange-announcement state; calls `lib/gameEngine.ts` directly |
+| `GameContext` | Offline `GameState`, the match score, rematch and exchange-announcement state; calls `lib/game/gameEngine.ts` directly |
 | `OnlineGameContext` | Online `GameState` as received from the server, plus the room, the turn clock, match/rematch/end-match vote state, disconnected seats and spectator mode, and the socket intents. Screens read it through the six slices in `context/onlineGameHooks.ts`, not directly — `tests/ui-rules/contextSlices.test.ts` pins that |
 | `SocketContext` | The socket singleton lifecycle, friend presence events, invites |
 | `SettingsContext` | Sound, haptics, motion, and the card back / table felt |
@@ -295,17 +295,17 @@ decorative — it is the fix for a bug that was live until this refactor landed 
 The presentational table unified what the two modes *draw*. The modules below unify what
 they *decide*, so a rule cannot hold in one mode and not the other:
 
-- **`lib/autoMove.ts`** — the one chooser of a bot's move, called by `server/` and by
+- **`lib/game/autoMove.ts`** — the one chooser of a bot's move, called by `server/` and by
   `context/GameContext.tsx`. It also owns `resolveStuckExchange`, the valve for an exchange
   no seat can satisfy.
-- **`lib/matchState.ts`** — the `game:over` wire shape (`GameOverPayload`, `ScoreLine`,
+- **`lib/game/matchState.ts`** — the `game:over` wire shape (`GameOverPayload`, `ScoreLine`,
   `MatchVerdict`) and `celebration()`, which picks the name the results board shouts. A
   winner travels as an **engine player id** (`player_N`), never a username or a seat index:
   it is the only identity every client can map at every moment `game:over` can arrive, and
   the only one that survives a vacated seat. `matchWinnerIds` may be empty on a match that
   *is* over — a client rejoining a finished table never receives the event — so
   `celebration()` takes an ordered candidate list and passes over any id naming no seat.
-- **`lib/standings.ts`**, **`lib/placement.ts`**, **`lib/exchangeCeremony.ts`** — scoring
+- **`lib/game/standings.ts`**, **`lib/game/placement.ts`**, **`lib/exchangeCeremony.ts`** — scoring
   order, placement colours and labels, and the ceremony's own clock.
 - **`components/ResultBoard.tsx`** — the end-of-manche screen for both modes; `app/result.tsx`
   and the online `GameOverOverlay` are thin callers.
@@ -314,7 +314,7 @@ they *decide*, so a rule cannot hold in one mode and not the other:
 
 A module here that the server bundles (`autoMove`, `matchState`, `standings`,
 `exchangeCeremony`) imports with a relative path and an explicit `.ts`, and touches nothing
-from `react-native`. `lib/wire.ts` and `lib/placement.ts` are client-only.
+from `react-native`. `lib/wire.ts` and `lib/game/placement.ts` are client-only.
 
 ## 7. Fixed bug: "Rendered fewer hooks than expected" in `OnlineGameScreen`
 

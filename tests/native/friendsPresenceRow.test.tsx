@@ -22,7 +22,7 @@ jest.mock('expo-router', () => {
   };
 });
 
-jest.mock('@/lib/pushRegistration', () => ({
+jest.mock('@/lib/device/pushRegistration', () => ({
   registerForPush: async () => {},
   forgetPushRegistration: () => {},
 }));

@@ -15,7 +15,7 @@ jest.mock('@/lib/accessibility', () => ({
 }));
 
 import { CardView } from '@/components/CardView';
-import type { Card, Suit } from '@/lib/gameEngine';
+import type { Card, Suit } from '@/lib/game/gameEngine';
 // The instance type behind every RNTL query in this codebase's installed
 // version — `test-renderer`'s own, not `react-test-renderer`'s.
 import type { TestInstance } from 'test-renderer';

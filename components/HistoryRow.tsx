@@ -8,7 +8,7 @@ import { Colors, FontSize, Radius, Spacing, TOUCH_TARGET_MIN, Type } from "@/lib
 import { useTranslation } from "@/lib/i18n";
 import { relativeTime } from "@/lib/relativeTime";
 import { a11yGroup, a11yHidden } from "@/lib/a11y";
-import { positionLabelKey } from "@/lib/placement";
+import { positionLabelKey } from "@/lib/game/placement";
 import type { MatchHistoryDto } from "@/lib/wire";
 
 

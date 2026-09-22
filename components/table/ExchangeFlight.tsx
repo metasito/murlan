@@ -11,7 +11,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { CardView } from "@/components/CardView";
 import { TableText } from "./TableText";
-import type { Card } from "@/lib/gameEngine";
+import type { Card } from "@/lib/game/gameEngine";
 import { a11yHidden } from "@/lib/a11y";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { Colors, Motion, motionMs, Radius, Scrim, Spacing } from "@/lib/theme";

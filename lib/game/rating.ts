@@ -1,6 +1,6 @@
 // The ranked ladder's arithmetic. No db, so it rides into the profile and leaderboard
 // screens' bundle; loads under `node --test` — docs/agents/loops.md, "Node's TypeScript loader".
-import type { TranslationKey } from "./i18n.ts";
+import type { TranslationKey } from "../i18n.ts";
 //
 // Every constant here carries its own reasoning; the two that are conventions
 // rather than measurements (SEASON_CARRY, the K tiers) say so.

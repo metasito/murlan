@@ -6,7 +6,7 @@ import {
   Pressable,
   ScrollView,
 } from "react-native";
-import { useIsLandscape } from "@/lib/orientation";
+import { useIsLandscape } from "@/lib/device/orientation";
 import { router, useIsFocused } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, {
@@ -35,7 +35,7 @@ import {
 import { homeMenu, type HomeAction, type HomeTile } from "@/components/homeMenuModel";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { ACTIVE_ROOM_KEY } from "@/lib/storageKeys";
-import { hapticLight } from "@/lib/haptics";
+import { hapticLight } from "@/lib/device/haptics";
 import Feather from "@expo/vector-icons/Feather";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useQuery } from "@tanstack/react-query";

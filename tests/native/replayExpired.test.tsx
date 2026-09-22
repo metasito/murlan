@@ -12,7 +12,7 @@ jest.mock('expo-haptics', () => ({
   NotificationFeedbackType: { Success: 'success', Error: 'error', Warning: 'warning' },
 }));
 
-// Pulled in by <GameTable> through lib/sounds; the native module has no JS
+// Pulled in by <GameTable> through lib/device/sounds; the native module has no JS
 // implementation to load here, and nothing in this test makes a sound.
 jest.mock('expo-audio', () => ({
   createAudioPlayer: jest.fn(),

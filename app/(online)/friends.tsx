@@ -8,7 +8,7 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { router, useFocusEffect } from "expo-router";
-import { hapticMedium, hapticSuccess } from "@/lib/haptics";
+import { hapticMedium, hapticSuccess } from "@/lib/device/haptics";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -24,7 +24,7 @@ import { ErrorBlock, EmptyBlock } from "@/components/StateBlock";
 import { ConfirmDialog, type ConfirmRequest } from "@/components/ConfirmDialog";
 import { useTranslation } from "@/lib/i18n";
 import { relativeTime } from "@/lib/relativeTime";
-import { registerForPush } from "@/lib/pushRegistration";
+import { registerForPush } from "@/lib/device/pushRegistration";
 import { a11yHidden, a11yState, useA11yHint } from "@/lib/a11y";
 import type { FriendInfo, FriendRequestInfo } from "@/lib/wire";
 

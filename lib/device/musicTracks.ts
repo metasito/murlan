@@ -1,6 +1,6 @@
 /**
  * WebM Opus tracks — web and Android. iOS resolves musicTracks.ios.ts instead,
- * so this file's requires are never in its module graph; see lib/music.ts's
+ * so this file's requires are never in its module graph; see lib/device/music.ts's
  * docblock for why iOS needs its own container.
  *
  * Requires are behind functions so Metro can see them statically while the
@@ -18,7 +18,7 @@
 export const CONTAINER = "webm" as const;
 
 export const TRACKS = {
-  menu: () => require("../assets/music/menu.webm") as number,
-  hand: () => require("../assets/music/hand.webm") as number,
-  cue: () => require("../assets/music/cue.webm") as number,
+  menu: () => require("../../assets/music/menu.webm") as number,
+  hand: () => require("../../assets/music/hand.webm") as number,
+  cue: () => require("../../assets/music/cue.webm") as number,
 } as const;

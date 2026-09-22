@@ -22,7 +22,7 @@ import { openSeededGame } from "./helpers/offlineSeed";
 import { openOnlineTable } from "./helpers/onlineTable";
 import { HAND_CARDS, HAND_ZONE, TABLE, TABLE_STATE } from "./helpers/selectors";
 import { YOUR_TURN_PREFIX } from "./helpers/labels";
-import { createDeck, HEADS_UP_HAND } from "../../lib/gameEngine";
+import { createDeck, HEADS_UP_HAND } from "../../lib/game/gameEngine";
 
 /** The audit's own four, named as `content.txt` and `table.txt` name them. */
 const VIEWPORTS = [
@@ -45,7 +45,7 @@ const SEATS = 4;
  *
  * #792: computed inside `readTable`, from the seat count the table actually
  * renders — never from `SEATS` above, which is only what this suite asked
- * for. `freshHandFloor` (`lib/gameEngine.ts`) is the source of truth; its
+ * for. `freshHandFloor` (`lib/game/gameEngine.ts`) is the source of truth; its
  * math is mirrored here rather than called, because a `page.evaluate`
  * callback runs in the browser and cannot reach a Node import. Two seats get
  * the fixed `HEADS_UP_HAND` deal in full — `dealCards` never round-robins the
@@ -63,7 +63,7 @@ const UPDATING = process.env.AUDIT_UPDATE === "1";
  * `MODE\tviewport\tcards=N`. Every seat here is a real account now (#800),
  * so a fresh 4-player deal's leader is whichever of the four `dealFirstSeat`
  * (server/game/tableHandlers.ts) happens to give the 3♠ — two of the four seats
- * get 14 cards, two get 13 (`dealCards`, lib/gameEngine.ts), so the hand this
+ * get 14 cards, two get 13 (`dealCards`, lib/game/gameEngine.ts), so the hand this
  * measures is genuinely, legitimately, either. Leaving `cards` out of the key
  * would hold a 13-card table to a 14-card table's own recorded row — the
  * exact byte-for-byte fields a fresh shuffle changed on purpose — and reds a
@@ -218,7 +218,7 @@ function readTable(page: Page): Promise<Measurement> {
 
       // #792: the seats this table actually renders — the viewer plus every
       // opponent slot present in the DOM — not the seat count this suite
-      // asked `openOnlineTable` for. Mirrors `freshHandFloor` (lib/gameEngine.ts).
+      // asked `openOnlineTable` for. Mirrors `freshHandFloor` (lib/game/gameEngine.ts).
       const seatsOnScreen = 1 + seatSlots.length;
       const freshFloor =
         seatsOnScreen === 2 ? headsUpHand : Math.floor(deckLength / seatsOnScreen);

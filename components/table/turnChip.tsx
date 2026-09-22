@@ -3,8 +3,8 @@ import { View } from "react-native";
 import { ChipDot, ChipText, TableChip } from "./chrome";
 import { A11yStatus, a11yGroup, a11yHidden } from "@/lib/a11y";
 import { useTranslation } from "@/lib/i18n";
-import { playUrgentTick } from "@/lib/sounds";
-import { hapticSelection } from "@/lib/haptics";
+import { playUrgentTick } from "@/lib/device/sounds";
+import { hapticSelection } from "@/lib/device/haptics";
 import { urgentThresholdSeconds, URGENT_TICK_SECONDS } from "@/components/turnTimerUi";
 
 // ─── Turn chip ────────────────────────────────────────────────────────────────

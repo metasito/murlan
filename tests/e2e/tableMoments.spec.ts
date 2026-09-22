@@ -4,7 +4,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import { openApp } from "./helpers/navigation";
 import { offlineGameSave, resumeSaved } from "./helpers/offlineSeed";
-import { buildCombination, targetsFor, type Card } from "../../lib/gameEngine";
+import { buildCombination, targetsFor, type Card } from "../../lib/game/gameEngine";
 import { GIOCA_VALID_LABEL } from "./helpers/labels";
 import { TABLE, HAND_ZONE } from "./helpers/selectors";
 import { tap } from "./helpers/press";

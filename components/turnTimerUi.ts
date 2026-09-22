@@ -2,7 +2,7 @@
 //
 // JSX-free, runtime imports relative — docs/agents/loops.md, "Node's TypeScript loader".
 
-import type { Combination } from "@/lib/gameEngine";
+import type { Combination } from "@/lib/game/gameEngine";
 
 // ─── Play / pass affordances ──────────────────────────────────────────────────
 
@@ -40,7 +40,7 @@ export interface ComboShape {
 
 /**
  * Why the GIOCA button is dim, in the same reason order `canPlay`
- * (lib/gameEngine.ts) refuses in — so a pair offered against a single is told
+ * (lib/game/gameEngine.ts) refuses in — so a pair offered against a single is told
  * it is the wrong shape, and the opening play is told it needs the 3♠, rather
  * than both being called too low.
  *

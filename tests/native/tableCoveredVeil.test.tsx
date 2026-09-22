@@ -34,7 +34,7 @@ jest.mock('@/lib/accessibility', () => ({
 }));
 
 import { GameTable } from '@/components/GameTable';
-import type { Card, GameState, Player } from '@/lib/gameEngine';
+import type { Card, GameState, Player } from '@/lib/game/gameEngine';
 import { A11yStatus } from '@/lib/a11y';
 import { tn } from '@/lib/i18n';
 

@@ -10,7 +10,7 @@ import { StyleSheet } from "react-native";
 import { render } from "@testing-library/react-native";
 
 import { CardView } from "@/components/CardView";
-import type { Card } from "@/lib/gameEngine";
+import type { Card } from "@/lib/game/gameEngine";
 import { Colors, Shadow } from "@/lib/theme";
 
 const CARD = { id: "3_spades", rank: "3", suit: "spades" } as Card;

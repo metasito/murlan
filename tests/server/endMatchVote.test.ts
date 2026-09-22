@@ -14,8 +14,8 @@ import { db } from "../../server/store/db.ts";
 import { clearRoomTimers } from "../../server/game/gameTimers.ts";
 import { GameEndMatchVoteSchema } from "../../server/socket/socketSchemas.ts";
 import type { OnlineGameState } from "../../server/game/gameRoom.ts";
-import type { GameOverPayload } from "../../lib/matchState.ts";
-import type { GameState, Player } from "../../lib/gameEngine.ts";
+import type { GameOverPayload } from "../../lib/game/matchState.ts";
+import type { GameState, Player } from "../../lib/game/gameEngine.ts";
 
 const ROOM = "end-match-vote-room";
 

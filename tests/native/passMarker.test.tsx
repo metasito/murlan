@@ -9,7 +9,7 @@ import React from 'react';
 import { act, fireEvent, render, screen, within } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
-jest.mock('@/lib/sounds', () => ({
+jest.mock('@/lib/device/sounds', () => ({
   playCardSelect: jest.fn(async () => {}),
   playCardPlay: jest.fn(async () => {}),
   playCardPass: jest.fn(async () => {}),
@@ -36,10 +36,10 @@ jest.mock('@/lib/accessibility', () => ({
   getMotionPreference: () => 'off',
 }));
 
-import { playCardPass } from '@/lib/sounds';
+import { playCardPass } from '@/lib/device/sounds';
 import { GameTable } from '@/components/GameTable';
 import { TopOppSlot, SideOppSlot } from '@/components/table/seats';
-import type { Card, Combination, GameState, Player } from '@/lib/gameEngine';
+import type { Card, Combination, GameState, Player } from '@/lib/game/gameEngine';
 import { en as locale } from '@/locales/en';
 
 const PASSED = locale['gameShared.passedLabel'];

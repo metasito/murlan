@@ -7,7 +7,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { applyHandOrder, cardAt, dropIndex, moveCard } from "../../components/handOrder.ts";
-import type { Card } from "../../lib/gameEngine.ts";
+import type { Card } from "../../lib/game/gameEngine.ts";
 
 /** Cards by rank alone — the suit plays no part in any of this. */
 function hand(...ranks: string[]): Card[] {

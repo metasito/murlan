@@ -16,7 +16,7 @@ import {
 } from "../helpers/testServer.ts";
 import { connectAs, waitFor } from "../helpers/client.ts";
 import { befriend, inviteRowsFor } from "../helpers/friends.ts";
-import { teamForSeat, TEAMS_PLAYER_COUNT } from "../../lib/gameEngine.ts";
+import { teamForSeat, TEAMS_PLAYER_COUNT } from "../../lib/game/gameEngine.ts";
 
 interface RoomState {
   code: string;

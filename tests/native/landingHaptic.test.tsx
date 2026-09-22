@@ -3,9 +3,9 @@
 import { describe, it, expect, beforeEach, afterEach, jest } from "@jest/globals";
 import { act, renderHook } from "@testing-library/react-native";
 import { useTableFeedback } from "@/components/useTableFeedback";
-import { hapticHeavy, hapticLight, hapticMedium, hapticRigid } from "@/lib/haptics";
+import { hapticHeavy, hapticLight, hapticMedium, hapticRigid } from "@/lib/device/haptics";
 
-jest.mock("@/lib/sounds", () => ({
+jest.mock("@/lib/device/sounds", () => ({
   playBomb: jest.fn(),
   playCardPass: jest.fn(),
   playCardPlay: jest.fn(),
@@ -14,7 +14,7 @@ jest.mock("@/lib/sounds", () => ({
   playGameWin: jest.fn(),
   playYourTurn: jest.fn(),
 }));
-jest.mock("@/lib/haptics", () => ({
+jest.mock("@/lib/device/haptics", () => ({
   hapticHeavy: jest.fn(),
   hapticLight: jest.fn(),
   hapticMedium: jest.fn(),
@@ -22,7 +22,7 @@ jest.mock("@/lib/haptics", () => ({
   hapticSuccess: jest.fn(),
   hapticWarn: jest.fn(),
 }));
-jest.mock("@/lib/music", () => ({ cancelMusicDuck: jest.fn(), duckMusicFor: jest.fn() }));
+jest.mock("@/lib/device/music", () => ({ cancelMusicDuck: jest.fn(), duckMusicFor: jest.fn() }));
 
 const state = {
   isMyTurn: false,

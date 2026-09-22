@@ -4,7 +4,7 @@
 // Everything is expressed as a fraction of the card's own width or height, so
 // one set of numbers serves both card sizes.
 
-import type { Rank } from "@/lib/gameEngine";
+import type { Rank } from "@/lib/game/gameEngine";
 import { TOUCH_TARGET_MIN } from "../lib/tokens.ts";
 
 // ─── Scale ──────────────────────────────────────────────────────────────────

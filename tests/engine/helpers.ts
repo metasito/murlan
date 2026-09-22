@@ -9,9 +9,9 @@ import type {
   Player,
   Rank,
   Suit,
-} from "../../lib/gameEngine.ts";
+} from "../../lib/game/gameEngine.ts";
 
-export * from "../../lib/gameEngine.ts";
+export * from "../../lib/game/gameEngine.ts";
 
 /** A normal card. Id is rank_suit, matching createDeck(). */
 export const c = (rank: Rank, suit: Suit): Card => ({

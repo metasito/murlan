@@ -20,7 +20,7 @@ function peekWebCtx(): AudioContext | null {
 }
 
 /**
- * The one AudioContext, for lib/music.ts. A second one would be a second output
+ * The one AudioContext, for lib/device/music.ts. A second one would be a second output
  * device as far as iOS is concerned, and only the one built inside the gesture
  * is allowed to make sound.
  */
@@ -155,7 +155,7 @@ let _audioModeSet = false;
  * no per-player session, so whichever plays first decides it for both. Card
  * games are routinely played with the ringer off, and a bomb going silent while
  * the music keeps playing would read as broken — so both stay in `playback`
- * rather than one of them respecting the mute switch. lib/music.ts calls this
+ * rather than one of them respecting the mute switch. lib/device/music.ts calls this
  * same function rather than setting its own mode, which is what keeps the two
  * from settling on different answers.
  */
@@ -233,22 +233,22 @@ async function playNative(key: string, assetModule: number, volume: number, rate
 
 // Each key maps to a function so Metro can statically analyse the require() calls.
 const ASSETS = {
-  select:      () => require("../assets/sounds/card_select.mp3") as number,
-  play:        () => require("../assets/sounds/card_play.mp3") as number,
-  pass:        () => require("../assets/sounds/card_pass.mp3") as number,
-  your_turn:   () => require("../assets/sounds/your_turn.mp3") as number,
-  round_start: () => require("../assets/sounds/round_start.mp3") as number,
-  round_win:   () => require("../assets/sounds/round_win.mp3") as number,
-  count_complete: () => require("../assets/sounds/count_complete.mp3") as number,
-  urgent:      () => require("../assets/sounds/urgent_tick.mp3") as number,
-  bomb:        () => require("../assets/sounds/bomb.mp3") as number,
-  game_win:    () => require("../assets/sounds/game_win.mp3") as number,
-  game_lose:   () => require("../assets/sounds/game_lose.mp3") as number,
-  deal:        () => require("../assets/sounds/deal.mp3") as number,
-  exchange:    () => require("../assets/sounds/exchange.mp3") as number,
-  reject:      () => require("../assets/sounds/reject.mp3") as number,
-  seat_fill:   () => require("../assets/sounds/seat_fill.mp3") as number,
-  room_full:   () => require("../assets/sounds/room_full.mp3") as number,
+  select:      () => require("../../assets/sounds/card_select.mp3") as number,
+  play:        () => require("../../assets/sounds/card_play.mp3") as number,
+  pass:        () => require("../../assets/sounds/card_pass.mp3") as number,
+  your_turn:   () => require("../../assets/sounds/your_turn.mp3") as number,
+  round_start: () => require("../../assets/sounds/round_start.mp3") as number,
+  round_win:   () => require("../../assets/sounds/round_win.mp3") as number,
+  count_complete: () => require("../../assets/sounds/count_complete.mp3") as number,
+  urgent:      () => require("../../assets/sounds/urgent_tick.mp3") as number,
+  bomb:        () => require("../../assets/sounds/bomb.mp3") as number,
+  game_win:    () => require("../../assets/sounds/game_win.mp3") as number,
+  game_lose:   () => require("../../assets/sounds/game_lose.mp3") as number,
+  deal:        () => require("../../assets/sounds/deal.mp3") as number,
+  exchange:    () => require("../../assets/sounds/exchange.mp3") as number,
+  reject:      () => require("../../assets/sounds/reject.mp3") as number,
+  seat_fill:   () => require("../../assets/sounds/seat_fill.mp3") as number,
+  room_full:   () => require("../../assets/sounds/room_full.mp3") as number,
 } as const;
 
 type SoundKey = keyof typeof ASSETS;

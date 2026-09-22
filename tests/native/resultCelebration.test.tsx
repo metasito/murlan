@@ -42,7 +42,7 @@ import * as Haptics from 'expo-haptics';
 
 import ResultScreen from '@/app/result';
 import { setMotionPreference } from '@/lib/accessibility';
-import type { GameState, Player } from '@/lib/gameEngine';
+import type { GameState, Player } from '@/lib/game/gameEngine';
 import type { MatchState } from '@/context/GameContext';
 
 const METRICS = {

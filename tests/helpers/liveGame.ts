@@ -7,7 +7,7 @@ import { clearRoomTimers } from "../../server/game/gameTimers.ts";
 import { broadcastGameState, persistGameState } from "../../server/game/gamePersistence.ts";
 import { armTurn } from "../../server/game/gameTurn.ts";
 import { startReplayLog } from "../../server/game/replayShape.ts";
-import { createDeck, initializeGame } from "../../lib/gameEngine.ts";
+import { createDeck, initializeGame } from "../../lib/game/gameEngine.ts";
 
 /**
  * Whether a room still holds a live in-memory game. The only observable
@@ -31,7 +31,7 @@ export function forgetActiveGame(roomId: string): boolean {
 /**
  * Deals a room's live table a hand somebody has already played.
  *
- * The server shuffles from `crypto` (`lib/gameEngine.ts`'s `shuffleDeck`), so
+ * The server shuffles from `crypto` (`lib/game/gameEngine.ts`'s `shuffleDeck`), so
  * no seed reaches the deal and a hand can only be recovered by handing its
  * cards back in. That is what makes a soak log replayable at all, and it is why
  * this is a write where the rest of this file only reads.

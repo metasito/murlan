@@ -6,7 +6,7 @@ import { broadcastGameState, persistGameState } from "./gamePersistence.ts";
 import { armTurn } from "./gameTurn.ts";
 import { startReplayLog } from "./replayShape.ts";
 import type { OnlineGameState } from "./gameRoom.ts";
-import type { GameState } from "../../lib/gameEngine.ts";
+import type { GameState } from "../../lib/game/gameEngine.ts";
 
 /**
  * What a fresh manche resets, and how it reaches the table. Both the first deal

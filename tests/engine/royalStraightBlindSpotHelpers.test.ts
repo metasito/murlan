@@ -1,7 +1,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { c, j } from "./helpers.ts";
-import { cardStrength, type Card } from "../../lib/gameEngine.ts";
+import { cardStrength, type Card } from "../../lib/game/gameEngine.ts";
 import {
   handHasLegalRoyalStraight,
   isCertainLead,

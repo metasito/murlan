@@ -16,8 +16,8 @@ import { gameOverWriters } from "../../server/game/gamePersistence.ts";
 import { activeGames } from "../../server/game/gameRoom.ts";
 import { clearRoomTimers } from "../../server/game/gameTimers.ts";
 import type { OnlineGameState } from "../../server/game/gameRoom.ts";
-import { emptyRankTally, sortHand } from "../../lib/gameEngine.ts";
-import type { GameState, Player } from "../../lib/gameEngine.ts";
+import { emptyRankTally, sortHand } from "../../lib/game/gameEngine.ts";
+import type { GameState, Player } from "../../lib/game/gameEngine.ts";
 import type { GameOverWriters } from "../../server/game/gameOver.ts";
 
 const ROOM = "weak-seat-room";

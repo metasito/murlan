@@ -28,8 +28,8 @@ import {
   sortHand,
   type Card,
   type GameState,
-} from "@/lib/gameEngine";
-import { useTradedCardsLanded, type ExchangeAnnounceData } from "@/lib/sharedGameFlow";
+} from "@/lib/game/gameEngine";
+import { useTradedCardsLanded, type ExchangeAnnounceData } from "@/lib/game/sharedGameFlow";
 import {
   CHIP_H,
   HAND_ZONE_H,
@@ -108,8 +108,8 @@ import {
   playDeal,
   holdSounds,
   preloadSounds,
-} from "@/lib/sounds";
-import { hapticLight, hapticMedium, hapticRigid, hapticSelection } from "@/lib/haptics";
+} from "@/lib/device/sounds";
+import { hapticLight, hapticMedium, hapticRigid, hapticSelection } from "@/lib/device/haptics";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { Colors, FontSize, Motion, motionMs, Radius, Reading, Scrim, Spacing, Layer } from "@/lib/theme";
 import { useTableFelt } from "@/lib/cosmetics";
@@ -942,7 +942,7 @@ export function GameTable({
     turnTimerActive({
       // SeatRing draws this only on the seat that is on move, so the subject of
       // the question is always a seat whose turn it is — and never one that has
-      // gone out, because `getNextActivePlayer` (lib/gameEngine.ts) steps over
+      // gone out, because `getNextActivePlayer` (lib/game/gameEngine.ts) steps over
       // an empty hand rather than landing on it.
       isMyTurn: true,
       isFinished: false,

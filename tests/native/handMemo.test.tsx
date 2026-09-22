@@ -4,7 +4,7 @@ import { render } from '@testing-library/react-native';
 
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
-import type { Card, GameState, Rank } from '@/lib/gameEngine';
+import type { Card, GameState, Rank } from '@/lib/game/gameEngine';
 
 // CardView asks lib/cosmetics which back to draw exactly once per render, and
 // it asks before any branch, so counting that call counts renders of every card
@@ -29,7 +29,7 @@ jest.mock('expo-router', () => ({
   router: { replace: jest.fn(), push: jest.fn(), back: jest.fn() },
 }));
 
-// Reached through lib/sounds; the native module has no JS implementation here.
+// Reached through lib/device/sounds; the native module has no JS implementation here.
 jest.mock('expo-audio', () => ({
   createAudioPlayer: jest.fn(),
   setAudioModeAsync: jest.fn(),

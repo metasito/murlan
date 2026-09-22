@@ -26,9 +26,9 @@ import {
   isReadableReplay,
   replayQueryKey,
   type ReplayDto,
-} from "@/lib/replay";
+} from "@/lib/game/replay";
 import { Motion } from "@/lib/theme";
-import { hapticSelection } from "@/lib/haptics";
+import { hapticSelection } from "@/lib/device/haptics";
 import { useTranslation } from "@/lib/i18n";
 
 /** A replay has no actions; the table's handlers are wired to nothing. */

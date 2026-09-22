@@ -4,7 +4,7 @@
 //
 // Loads under `node --test` — docs/agents/loops.md, "Node's TypeScript loader".
 import type { AIDifficulty } from "./gameEngine.ts";
-import type { TranslationKey } from "./i18n.ts";
+import type { TranslationKey } from "../i18n.ts";
 
 export type BotPersonalityId = "luan" | "besnik" | "gent";
 
@@ -22,7 +22,7 @@ export interface BotPersonality {
 
 /**
  * Exactly three, one per AIDifficulty tier (#904) — a difficulty ladder needs
- * a worse policy at each step, which lib/gameEngine.ts's tiers already are
+ * a worse policy at each step, which lib/game/gameEngine.ts's tiers already are
  * (only "hard" counts cards, protects 2s/jokers, and branches in the
  * endgame), not the same policy with aggression/unpredictability turned down.
  */

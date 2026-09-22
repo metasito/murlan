@@ -4,7 +4,7 @@
 // changes on every in-app navigation this app has, and the mocked player's
 // `play()` fires again on both entries — this path was never broken. What
 // was silent is covered separately, at the module that owns it
-// (tests/native/musicResume.test.tsx, lib/music.ts's own AppState handling).
+// (tests/native/musicResume.test.tsx, lib/device/music.ts's own AppState handling).
 import { describe, it, expect, beforeEach, afterAll, jest } from '@jest/globals';
 import React from 'react';
 import { render, act } from '@testing-library/react-native';
@@ -54,7 +54,7 @@ jest.mock('expo-audio', () => ({
 
 import { NotificationProvider } from '@/context/NotificationContext';
 import { RootLayoutNav } from '@/app/_layout';
-import { unloadMusic } from '@/lib/music';
+import { unloadMusic } from '@/lib/device/music';
 
 const createAudioPlayer = (require('expo-audio') as { createAudioPlayer: jest.Mock })
   .createAudioPlayer;

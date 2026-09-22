@@ -11,7 +11,7 @@
 // shape; this is it, generalised over the seat count.
 import type { Page } from "@playwright/test";
 import { openApp } from "./navigation";
-import { createDeck, dealCards } from "../../../lib/gameEngine";
+import { createDeck, dealCards } from "../../../lib/game/gameEngine";
 import { captureGameState, type CaptureState } from "../../../lib/captureStates";
 import { E2E_SUSPEND_AI_KEY, OFFLINE_SAVE_KEY } from "../../../lib/storageKeys";
 

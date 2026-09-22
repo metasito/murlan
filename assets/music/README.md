@@ -1,6 +1,6 @@
 # Music
 
-The four loops `lib/music.ts` plays. Unlike the effects in `assets/sounds/`,
+The four loops `lib/device/music.ts` plays. Unlike the effects in `assets/sounds/`,
 these are **not built by a script** — they arrive pre-encoded, which is the
 decision #121 settled and `scripts/build-sounds.mjs`'s header records.
 
@@ -65,7 +65,7 @@ one platform.
 
 Each `*.m4a` alongside the matching `*.webm` is the same audio, **losslessly
 re-encoded to ALAC**: `ffmpeg -i menu.webm -c:a alac -sample_fmt s16p -f mp4
-menu.m4a`. `lib/music.ts` picks the container by platform — WebM for web and
+menu.m4a`. `lib/device/music.ts` picks the container by platform — WebM for web and
 Android, M4A for iOS — and `tests/tooling/musicAssets.test.ts` pins that every track
 exists in both.
 
@@ -138,4 +138,4 @@ the error and the result is silent music with nothing telling anyone why,
 which is the exact failure mode that branch was written to prevent.
 
 Why music and the sound effects share one `AVAudioSession` category rather
-than each setting their own: `lib/sounds.ts`'s `ensureAudioMode()` docblock.
+than each setting their own: `lib/device/sounds.ts`'s `ensureAudioMode()` docblock.

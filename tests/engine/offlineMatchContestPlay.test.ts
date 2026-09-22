@@ -5,7 +5,7 @@
 // reply with more than one legal beating card, the weaker one is chosen.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildCombination, type Card, type GameState } from "../../lib/gameEngine.ts";
+import { buildCombination, type Card, type GameState } from "../../lib/game/gameEngine.ts";
 import { weakestBeatingPlay } from "../helpers/offlineMatch.ts";
 
 function card(id: string, rank: Card["rank"]): Card {

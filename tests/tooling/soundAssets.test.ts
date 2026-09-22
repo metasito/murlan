@@ -1,6 +1,6 @@
 // tests/tooling/soundAssets.test.ts — the sound files themselves.
 //
-// lib/sounds.ts require()s twelve names. If one is missing, silent, empty, or
+// lib/device/sounds.ts require()s twelve names. If one is missing, silent, empty, or
 // not actually the format its extension claims, nothing throws: the effect just
 // never plays, on one platform or on all of them. That is the failure this
 // guards, and it is why every file is decoded and measured rather than merely
@@ -15,10 +15,10 @@ import { MPEGDecoder } from "mpg123-decoder";
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const soundsDir = path.join(repoRoot, "assets", "sounds");
 
-/** Every asset path lib/sounds.ts actually require()s. */
+/** Every asset path lib/device/sounds.ts actually require()s. */
 function requiredFiles(): string[] {
-  const src = readFileSync(path.join(repoRoot, "lib", "sounds.ts"), "utf8");
-  return [...src.matchAll(/require\("\.\.\/assets\/sounds\/([^"]+)"\)/g)].map((m) => m[1]);
+  const src = readFileSync(path.join(repoRoot, "lib", "device", "sounds.ts"), "utf8");
+  return [...src.matchAll(/require\("\.\.\/\.\.\/assets\/sounds\/([^"]+)"\)/g)].map((m) => m[1]);
 }
 
 interface Decoded {
@@ -131,11 +131,11 @@ const WINDOW_SECONDS = 0.01;
 const MAX_TRAILING_SILENCE = 0.11;
 
 describe("sound assets", () => {
-  test("lib/sounds.ts requires exactly the files that exist on disk", () => {
+  test("lib/device/sounds.ts requires exactly the files that exist on disk", () => {
     const required = requiredFiles().sort();
     const onDisk = readdirSync(soundsDir).filter((f) => f.endsWith(".mp3")).sort();
     assert.ok(required.length > 0, "no require() calls found — the scan is broken");
-    assert.deepEqual(onDisk, required, "assets/sounds and lib/sounds.ts disagree");
+    assert.deepEqual(onDisk, required, "assets/sounds and lib/device/sounds.ts disagree");
     assert.deepEqual(
       Object.keys(EXPECTED_SECONDS).sort(),
       required,

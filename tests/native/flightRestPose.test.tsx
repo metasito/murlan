@@ -12,7 +12,7 @@ import { act, render, screen } from "@testing-library/react-native";
 import { getAnimatedStyle } from "react-native-reanimated";
 import { FlyingCards } from "@/components/table/pile";
 import { FLIGHT_MS } from "@/components/flightPhysics";
-import type { Card } from "@/lib/gameEngine";
+import type { Card } from "@/lib/game/gameEngine";
 
 jest.mock("react-native-worklets", () => {
   const actual = jest.requireActual("react-native-worklets") as any;

@@ -5,7 +5,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { CardView } from '@/components/CardView';
 import NotificationBanner from '@/components/NotificationBanner';
-import type { Card, Rank, Suit } from '@/lib/gameEngine';
+import type { Card, Rank, Suit } from '@/lib/game/gameEngine';
 import { en as locale } from '@/locales/en';
 
 // react-native-web shims Reanimated onto CSS transitions, so on web a worklet

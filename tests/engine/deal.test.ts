@@ -213,7 +213,7 @@ describe("docs/GAME-RULES.md's undealt-card figure agrees with dealCards's own a
 // Two different UI paths to "start a new match after the old one ended" gave
 // a different deal.
 //
-// `dealFirstSeatFor` (`lib/gameEngine.ts`) is now the one place
+// `dealFirstSeatFor` (`lib/game/gameEngine.ts`) is now the one place
 // `docs/BRIEF.md` §3.1's "Rotating the deal" decision — reset a *new* match
 // to seat 0, rotate *within* one — is decided; every site that used to
 // re-derive it now calls that instead. The wiring test below pins that
@@ -241,7 +241,7 @@ describe("dealFirstSeatFor: one function decides a new match from a continuing o
   const repoDirs = ["app", "components", "context", "lib", "server"];
   const nextDealFirstSeatCallers = repoDirs
     .flatMap((dir) => walk(path.join(repoRoot, dir)))
-    .filter((rel) => rel !== "lib/gameEngine.ts")
+    .filter((rel) => rel !== "lib/game/gameEngine.ts")
     .filter((rel) =>
       /\bnextDealFirstSeat\s*\(/.test(readFileSync(path.join(repoRoot, rel), "utf8"))
     );
@@ -250,7 +250,7 @@ describe("dealFirstSeatFor: one function decides a new match from a continuing o
     assert.deepEqual(
       nextDealFirstSeatCallers,
       [],
-      "a bare nextDealFirstSeat call outside lib/gameEngine.ts can rotate a deal that should " +
+      "a bare nextDealFirstSeat call outside lib/game/gameEngine.ts can rotate a deal that should " +
         `have reset instead — route it through dealFirstSeatFor: ${nextDealFirstSeatCallers.join(", ")}`
     );
   });

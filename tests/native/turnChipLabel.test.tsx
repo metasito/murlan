@@ -8,16 +8,16 @@ import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals
 import React from 'react';
 import { act, render, screen } from '@testing-library/react-native';
 
-jest.mock('@/lib/sounds', () => ({
+jest.mock('@/lib/device/sounds', () => ({
   playUrgentTick: jest.fn(async () => {}),
   ensureAudioMode: jest.fn(async () => {}),
 }));
 
-jest.mock('@/lib/haptics', () => ({ hapticSelection: jest.fn() }));
+jest.mock('@/lib/device/haptics', () => ({ hapticSelection: jest.fn() }));
 
 import { TurnChip } from '@/components/table/turnChip';
-import { hapticSelection } from '@/lib/haptics';
-import { playUrgentTick } from '@/lib/sounds';
+import { hapticSelection } from '@/lib/device/haptics';
+import { playUrgentTick } from '@/lib/device/sounds';
 import { URGENT_TICK_SECONDS } from '@/components/turnTimerUi';
 import { tn } from '@/lib/i18n';
 

@@ -1,7 +1,7 @@
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
 import pg from "pg";
-import type { GameMode } from "../../lib/gameEngine.ts";
+import type { GameMode } from "../../lib/game/gameEngine.ts";
 import type { GameResult } from "../../lib/achievements.ts";
 import {
   startTestServer,
@@ -269,7 +269,7 @@ describe("stats persistence (Task 8)", { skip: hasDatabase() ? false : skipMessa
    * The AI that inherits a vacated seat routinely finishes ahead of a player
    * who stayed, and placing the walkout last while everyone else is numbered
    * by their own ranking index hands the same placement to two seats. Nothing
-   * refuses that: match_history stores it verbatim, and lib/rating.ts breaks
+   * refuses that: match_history stores it verbatim, and lib/game/rating.ts breaks
    * the tie by sorting, which rates the quitter ahead of the player they tied
    * with.
    */

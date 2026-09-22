@@ -3,7 +3,7 @@ import { act, renderHook } from "@testing-library/react-native";
 import { handOffDelayMs } from "@/components/flightPhysics";
 import { useTableFeedback } from "@/components/useTableFeedback";
 
-jest.mock("@/lib/sounds", () => ({
+jest.mock("@/lib/device/sounds", () => ({
   playBomb: jest.fn(),
   playCardPass: jest.fn(),
   playCardPlay: jest.fn(),
@@ -12,7 +12,7 @@ jest.mock("@/lib/sounds", () => ({
   playGameWin: jest.fn(),
   playYourTurn: jest.fn(),
 }));
-jest.mock("@/lib/haptics", () => ({
+jest.mock("@/lib/device/haptics", () => ({
   hapticHeavy: jest.fn(),
   hapticLight: jest.fn(),
   hapticMedium: jest.fn(),
@@ -20,10 +20,10 @@ jest.mock("@/lib/haptics", () => ({
   hapticSuccess: jest.fn(),
   hapticWarn: jest.fn(),
 }));
-jest.mock("@/lib/music", () => ({ cancelMusicDuck: jest.fn(), duckMusicFor: jest.fn() }));
+jest.mock("@/lib/device/music", () => ({ cancelMusicDuck: jest.fn(), duckMusicFor: jest.fn() }));
 
-import { playYourTurn } from "@/lib/sounds";
-import { hapticLight } from "@/lib/haptics";
+import { playYourTurn } from "@/lib/device/sounds";
+import { hapticLight } from "@/lib/device/haptics";
 
 const PLAYED = { type: "single", cards: [], value: 3 } as any;
 

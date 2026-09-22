@@ -1,8 +1,8 @@
 // tests/native/musicResume.test.tsx — #449: the actual silence, not the route
 // effect musicRouteReentry.test.tsx already rules out. iOS deactivates the
 // AVAudioSession and can park the player mid-loop while the app is
-// backgrounded (`shouldPlayInBackground: false`, lib/sounds.ts) — coming back
-// has to rewind the player and re-arm the session lib/sounds.ts cached before
+// backgrounded (`shouldPlayInBackground: false`, lib/device/sounds.ts) — coming back
+// has to rewind the player and re-arm the session lib/device/sounds.ts cached before
 // the OS took it away, or the resume calls play() into silence.
 import { describe, it, expect, beforeEach, afterAll, jest } from '@jest/globals';
 
@@ -23,9 +23,9 @@ jest.mock('expo-audio', () => ({
   setAudioModeAsync: jest.fn(async () => {}),
 }));
 
-// Not mocked: lib/sounds.ts's own ensureAudioMode/forgetAudioMode latch is
+// Not mocked: lib/device/sounds.ts's own ensureAudioMode/forgetAudioMode latch is
 // exactly what this suite is proving takes effect on resume.
-import { playMusic, unloadMusic } from '@/lib/music';
+import { playMusic, unloadMusic } from '@/lib/device/music';
 
 const createAudioPlayer = (require('expo-audio') as { createAudioPlayer: jest.Mock })
   .createAudioPlayer;
@@ -36,7 +36,7 @@ const appStateAddEventListener = (require('react-native') as {
 }).AppState.addEventListener;
 
 /**
- * Reads the handler lib/music.ts registered when it was imported, at the top
+ * Reads the handler lib/device/music.ts registered when it was imported, at the top
  * of this file — a module-scope variable assigned inside the mock factory
  * would be clobbered, because the import that triggers the factory runs
  * before any of this file's own top-level statements do, ES-module import

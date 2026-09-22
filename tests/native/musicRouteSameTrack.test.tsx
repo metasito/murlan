@@ -4,7 +4,7 @@
 // playing. The route effect is keyed on the derived track, not on pathname,
 // so this must not re-request it — playMusic is mocked here specifically so
 // the assertion is about whether the effect fires, independent of whatever
-// lib/music.ts itself does with a repeat request (tests/native/musicPlatform
+// lib/device/music.ts itself does with a repeat request (tests/native/musicPlatform
 // .test.tsx covers that half separately).
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import React from 'react';
@@ -53,13 +53,13 @@ jest.mock('expo-audio', () => ({
   setAudioModeAsync: jest.fn(async () => {}),
 }));
 
-jest.mock('@/lib/music', () => ({
+jest.mock('@/lib/device/music', () => ({
   playMusic: jest.fn(async () => {}),
 }));
 
 import { NotificationProvider } from '@/context/NotificationContext';
 import { RootLayoutNav } from '@/app/_layout';
-import { playMusic } from '@/lib/music';
+import { playMusic } from '@/lib/device/music';
 
 const playMusicMock = playMusic as jest.Mock;
 

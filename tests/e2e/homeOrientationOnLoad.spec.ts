@@ -3,7 +3,7 @@
 // on screen, and its narrowest column still fits the longest of the three
 // locales' words. The race itself — iOS misreading its own window on a cold
 // launch — is not reproducible here: Chromium's window is correct from its
-// very first script tick, which is exactly why `lib/orientation.tsx` has a
+// very first script tick, which is exactly why `lib/device/orientation.tsx` has a
 // native test for that half and this file has the layout instead.
 import { test, expect, type Page } from "@playwright/test";
 import { openApp, registerNewAccount, uniqueUsername } from "./helpers/navigation";

@@ -27,7 +27,7 @@ jest.mock('@/context/AuthContext', () => ({
   useAuth: () => ({ login: mockLogin, register: jest.fn(), user: null }),
 }));
 
-jest.mock('@/lib/haptics', () => ({
+jest.mock('@/lib/device/haptics', () => ({
   setHapticsMasterEnabled: jest.fn(),
   hapticsEnabled: () => false,
   hapticSelection: jest.fn(),

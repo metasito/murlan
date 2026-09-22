@@ -22,7 +22,7 @@ jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({
   default: () => WRONG_COLD_START,
 }));
 
-import { OrientationProvider, useIsLandscape } from '@/lib/orientation';
+import { OrientationProvider, useIsLandscape } from '@/lib/device/orientation';
 
 function Probe() {
   return <Text testID="orientation-value">{String(useIsLandscape())}</Text>;

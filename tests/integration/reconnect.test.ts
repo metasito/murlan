@@ -8,7 +8,7 @@ import {
   skipMessage,
   type TestServer,
 } from "../helpers/testServer.ts";
-import { MATCH_TARGETS, targetsFor } from "../../lib/gameEngine.ts";
+import { MATCH_TARGETS, targetsFor } from "../../lib/game/gameEngine.ts";
 import { lobbyGraceMs } from "../../server/game/gameTimers.ts";
 import { Reading } from "../../lib/tokens.ts";
 import { connectAs, reconnectAs, waitFor } from "../helpers/client.ts";

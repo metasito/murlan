@@ -7,7 +7,7 @@ import {
   replaySeatsOf,
   startReplayLog,
 } from "../../server/game/replayShape.ts";
-import { MAX_REPLAY_MOVES } from "../../lib/replay.ts";
+import { MAX_REPLAY_MOVES } from "../../lib/game/replay.ts";
 import { buildCombination, c } from "../engine/helpers.ts";
 
 /** Only `players[].hand.length` is read, so a stub of that shape is enough. */

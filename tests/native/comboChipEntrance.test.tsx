@@ -5,7 +5,7 @@ import { getAnimatedStyle } from "react-native-reanimated";
 import { PlayedPile } from "@/components/table/pile";
 import { setMotionPreference } from "@/lib/accessibility";
 import { Motion, Spacing } from "@/lib/theme";
-import type { Card, Combination } from "@/lib/gameEngine";
+import type { Card, Combination } from "@/lib/game/gameEngine";
 
 const CARD: Card = { id: "3_clubs", suit: "clubs", rank: "3", isJoker: false };
 const SINGLE: Combination = { type: "single", cards: [CARD], strength: 3 };

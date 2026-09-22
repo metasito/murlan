@@ -13,7 +13,7 @@ import {
   seasonKey,
   seedRating,
   type RatedSeat,
-} from "../../lib/rating.ts";
+} from "../../lib/game/rating.ts";
 
 const seat = (userId: string, placement: number, rating = START_RATING, games = 30): RatedSeat => ({
   userId,

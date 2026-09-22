@@ -40,7 +40,7 @@ test("the online-table harness is reachable only from the browser suite", () => 
   const source = blankComments(readFileSync(HARNESS, "utf8"));
   const imports = [...source.matchAll(/from\s+"([^"]+)"/g)].map((m) => m[1]);
 
-  // Resolved rather than matched on the leading dot: `../../../lib/gameEngine`
+  // Resolved rather than matched on the leading dot: `../../../lib/game/gameEngine`
   // starts with one and lands in the product, which is exactly what this
   // refuses. A sibling helper (`tests/e2e/helpers/offlineSeed.ts`) does reach
   // that way, deliberately — this one may not, because what it reaches into

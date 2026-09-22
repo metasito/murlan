@@ -35,7 +35,7 @@ import { sendGameStateTo } from "../game/gamePersistence.ts";
 import { emitEndMatchVoteState, emitMatchState, emitVoteState } from "./emit.ts";
 import { armTurnIfIdle } from "../game/gameTurn.ts";
 import { payload } from "./payload.ts";
-import { TEAMS_PLAYER_COUNT } from "../../lib/gameEngine.ts";
+import { TEAMS_PLAYER_COUNT } from "../../lib/game/gameEngine.ts";
 import type { EventOutcome } from "./socketSafety.ts";
 import type { WireRoomState } from "../../shared/protocol.ts";
 

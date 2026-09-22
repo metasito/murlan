@@ -9,7 +9,7 @@
 // `socketRoomMap`, none of which mean anything on another instance, and a shim
 // that pretends they do fails silently. Naming the actions makes what crosses
 // an instance boundary something a reader can enumerate.
-import type { MatchLength } from "../../lib/gameEngine.ts";
+import type { MatchLength } from "../../lib/game/gameEngine.ts";
 
 /** Every action names the room it is about; that is how the owner is found. */
 export interface TableActionBase {

@@ -8,7 +8,7 @@ import { describe, it, expect } from "@jest/globals";
 import React from "react";
 import { render, screen } from "@testing-library/react-native";
 import { PlayedPile } from "@/components/table/pile";
-import type { Card, Combination } from "@/lib/gameEngine";
+import type { Card, Combination } from "@/lib/game/gameEngine";
 
 const CARD: Card = { id: "3_clubs", suit: "clubs", rank: "3", isJoker: false };
 const COMBO: Combination = { type: "single", cards: [CARD], strength: 3 };

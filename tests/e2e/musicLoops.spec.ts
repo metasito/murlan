@@ -26,7 +26,7 @@ import path from "node:path";
 const musicDir = path.resolve(__dirname, "..", "..", "assets", "music");
 
 /** The four tracks; tests/tooling/musicAssets.test.ts pins these against what
- * lib/musicTracks.ts and lib/musicTracks.ios.ts actually require. */
+ * lib/device/musicTracks.ts and lib/device/musicTracks.ios.ts actually require. */
 const TRACKS = ["menu", "hand", "cue"] as const;
 
 // ─── WebM: decode and measure the waveform ─────────────────────────────────────

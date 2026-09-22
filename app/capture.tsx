@@ -31,7 +31,7 @@ import {
   nextTurn,
 } from "@/lib/captureStates";
 import { Colors, FontSize, Radius, Spacing, TOUCH_TARGET_MIN, Type } from "@/lib/theme";
-import type { GameState } from "@/lib/gameEngine";
+import type { GameState } from "@/lib/game/gameEngine";
 import { a11yHidden } from "@/lib/a11y";
 
 /**

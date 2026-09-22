@@ -14,7 +14,7 @@ import {
   processExchangeChoice,
   type Card,
 } from "./helpers.ts";
-import { autoMoveForSeat } from "../../lib/autoMove.ts";
+import { autoMoveForSeat } from "../../lib/game/autoMove.ts";
 
 const ids = (cards: Card[]) => cards.map((card) => card.id).sort();
 

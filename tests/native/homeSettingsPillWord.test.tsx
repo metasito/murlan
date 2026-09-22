@@ -33,8 +33,8 @@ jest.mock('@/lib/query-client', () => ({
   getApiUrl: () => 'http://localhost',
   apiRequest: jest.fn(async () => ({ json: async () => ({}) })),
 }));
-jest.mock('@/lib/orientation', () => ({
-  ...jest.requireActual<object>('@/lib/orientation'),
+jest.mock('@/lib/device/orientation', () => ({
+  ...jest.requireActual<object>('@/lib/device/orientation'),
   useIsLandscape: () => mockLandscape,
 }));
 jest.mock('@/lib/accessibility', () => ({

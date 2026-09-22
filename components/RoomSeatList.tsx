@@ -2,10 +2,10 @@ import React, { useEffect, useRef, useState } from "react";
 import { View, Text, StyleSheet } from "react-native";
 import Animated from "react-native-reanimated";
 import { Avatar } from "@/components/Avatar";
-import { teamForSeat } from "@/lib/gameEngine";
+import { teamForSeat } from "@/lib/game/gameEngine";
 import { Colors, Spacing, Radius, FontSize } from "@/lib/theme";
 import { useTranslation } from "@/lib/i18n";
-import { playRoomFull, playSeatFill } from "@/lib/sounds";
+import { playRoomFull, playSeatFill } from "@/lib/device/sounds";
 import { useEntrance } from "@/lib/useEntrance";
 
 const TEAM_STRIPE = 3;

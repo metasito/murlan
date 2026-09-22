@@ -5,7 +5,7 @@ import { render } from '@testing-library/react-native';
 
 import { CardView } from '@/components/CardView';
 import { MenuButton } from '@/components/MenuButton';
-import type { Card } from '@/lib/gameEngine';
+import type { Card } from '@/lib/game/gameEngine';
 
 // A labelled control must expose exactly one accessible node. Pressable already
 // defaults `accessible` to true, but that alone does not remove its children

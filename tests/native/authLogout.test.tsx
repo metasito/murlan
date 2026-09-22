@@ -19,7 +19,7 @@ jest.mock('@/lib/query-client', () => ({
 
 // Called through rather than handed over: the factory runs while AuthContext
 // is being imported, before the consts above have initialised.
-jest.mock('@/lib/pushRegistration', () => ({
+jest.mock('@/lib/device/pushRegistration', () => ({
   registerForPush: async () => {},
   forgetPushRegistration: () => mockForgetPushRegistration(),
 }));

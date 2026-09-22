@@ -7,7 +7,7 @@ import {
   BackHandler,
   ActivityIndicator,
 } from "react-native";
-import { useOrientedWindow } from "@/lib/orientation";
+import { useOrientedWindow } from "@/lib/device/orientation";
 import Animated, {
   cancelAnimation,
   Easing,
@@ -27,7 +27,7 @@ import { MenuCard } from "@/components/MenuCard";
 import { MenuButton } from "@/components/MenuButton";
 import { a11yHidden, a11yState } from "@/lib/a11y";
 import { useTranslation } from "@/lib/i18n";
-import type { GameMode } from "@/lib/gameEngine";
+import type { GameMode } from "@/lib/game/gameEngine";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 
 interface ModeOption {

@@ -6,8 +6,8 @@
 // `handleGameOver` block, so they all need the same "get a table to finish"
 // machinery and none of them should own a private copy of it.
 import type { Socket } from "socket.io-client";
-import { getValidGivebackCards } from "../../lib/gameEngine.ts";
-import type { Card } from "../../lib/gameEngine.ts";
+import { getValidGivebackCards } from "../../lib/game/gameEngine.ts";
+import type { Card } from "../../lib/game/gameEngine.ts";
 import { DEADLINE_SCALE } from "./client.ts";
 
 export interface ExchangePhaseView {

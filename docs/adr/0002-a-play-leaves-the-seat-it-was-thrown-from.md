@@ -74,7 +74,7 @@ branch is added.
 
 ## Scope
 
-`lib/gameEngine.ts` is **out of scope**, despite appearing in the gate's file list. Nothing
+`lib/game/gameEngine.ts` is **out of scope**, despite appearing in the gate's file list. Nothing
 here changes a rule, a hand or a play: the engine keeps being the authority on how many cards
 a player holds, and this decision only changes when the table draws that number. A change to
 the engine would need `docs/BRIEF.md` §3.1, and this does not.

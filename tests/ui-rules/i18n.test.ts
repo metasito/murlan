@@ -17,8 +17,8 @@ import { en } from "../../locales/en.ts";
 import { sq } from "../../locales/sq.ts";
 import { translate, interpolate, DEFAULT_LOCALE } from "../../lib/i18n.ts";
 import { CARD_BACK_IDS, TABLE_FELT_IDS } from "../../lib/cosmetics.ts";
-import { BOT_PERSONALITIES } from "../../lib/botPersonalities.ts";
-import { dealCards } from "../../lib/gameEngine.ts";
+import { BOT_PERSONALITIES } from "../../lib/game/botPersonalities.ts";
+import { dealCards } from "../../lib/game/gameEngine.ts";
 
 const LOCALES = { it, en, sq } as const;
 type LocaleName = keyof typeof LOCALES;
@@ -794,7 +794,7 @@ describe("no key outlives its last reader", () => {
     },
     {
       covers: (key) => /^month\.(?:[1-9]|1[0-2])$/.test(key),
-      where: "lib/rating.ts",
+      where: "lib/game/rating.ts",
       needle: "`month.${month}`",
     },
     // The three id-derived sets take the ids themselves rather than the
@@ -813,7 +813,7 @@ describe("no key outlives its last reader", () => {
     },
     {
       covers: (key) => BOT_PERSONALITIES.some((p) => key === `bot.${p.id}Blurb`),
-      where: "lib/botPersonalities.ts",
+      where: "lib/game/botPersonalities.ts",
       needle: "`bot.${id}Blurb`",
     },
   ];

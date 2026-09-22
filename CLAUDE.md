@@ -71,7 +71,7 @@ Verify against source before changing any.
   ships a blank box with no error. Every wrapper passes props by name.
 - **A winner is stated as an engine player id (`player_N`)** — the only identity every client can
   map at every moment `game:over` can arrive, and the only one surviving a vacated seat.
-- **One module chooses a bot's move**: `lib/autoMove.ts`, for the server and the offline table
+- **One module chooses a bot's move**: `lib/game/autoMove.ts`, for the server and the offline table
   both. It once landed with only the server calling it and every check stayed green.
 - **A labelled control exposes one accessible node** — hide its own words and glyphs with
   `a11yHidden()`. A web defect only: `Pressable`'s `accessible` default makes the view a UIKit
@@ -92,7 +92,7 @@ Verify against source before changing any.
   loosens itself, a suspend knob with no floor under it, a `--yes` baked into a destructive
   script — each is a guard that reports green by not looking. If a safeguard can be satisfied
   without the thing it guards being true, it is worse than none.
-- **Game rules** live in `lib/gameEngine.ts`, specified by `docs/GAME-RULES.md`. Change them only via a
+- **Game rules** live in `lib/game/gameEngine.ts`, specified by `docs/GAME-RULES.md`. Change them only via a
   decision recorded in `docs/BRIEF.md` §3.1.
 
 ## Design system

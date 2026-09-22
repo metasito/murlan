@@ -34,7 +34,7 @@ jest.mock('@/lib/accessibility', () => ({
 
 import { GameTable, type TurnTimerConfig } from '@/components/GameTable';
 import { t, tn } from '@/lib/i18n';
-import { RANK_SLOTS, type Card, type GameState, type Player } from '@/lib/gameEngine';
+import { RANK_SLOTS, type Card, type GameState, type Player } from '@/lib/game/gameEngine';
 
 const INSETS = { top: 0, left: 47, right: 0, bottom: 21 };
 const METRICS = { frame: { x: 0, y: 0, width: WINDOW.width, height: WINDOW.height }, insets: INSETS };

@@ -24,8 +24,8 @@ import {
   buildCombination,
   tallyRematchAnswers,
   canPlay,
-} from "@/lib/gameEngine";
-import { autoMoveForSeat, resolveStuckExchange } from "@/lib/autoMove";
+} from "@/lib/game/gameEngine";
+import { autoMoveForSeat, resolveStuckExchange } from "@/lib/game/autoMove";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   OFFLINE_SAVE_KEY,
@@ -41,9 +41,9 @@ import {
   rematchPromptOpen as isRematchPromptOpen,
   useExchangeAnnouncement,
   type ExchangeAnnounceData,
-} from "@/lib/sharedGameFlow";
+} from "@/lib/game/sharedGameFlow";
 import { handCountOf } from "@/shared/protocol";
-import type { HandResult, MatchState, PlayerSetupConfig, RematchAnswers } from "@/lib/matchState";
+import type { HandResult, MatchState, PlayerSetupConfig, RematchAnswers } from "@/lib/game/matchState";
 
 // Read once at module scope, matching app/game.tsx's own E2E_FAST — inlined
 // at bundle build time, so this only ever takes the fast path in a build the
@@ -198,7 +198,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
   /**
    * Deals the next manche, seeded by the last one's order. `matchIsOver`
-   * tells `dealFirstSeatFor` (`lib/gameEngine.ts`) whether this deal starts a
+   * tells `dealFirstSeatFor` (`lib/game/gameEngine.ts`) whether this deal starts a
    * new match (reset to seat 0) or continues the current one (rotate).
    */
   const dealFrom = useCallback(

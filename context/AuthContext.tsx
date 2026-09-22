@@ -3,7 +3,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { flushPendingCrashReports } from "@/lib/errorReporting";
 import NetInfo from "@react-native-community/netinfo";
 import { apiRequest, getApiUrl } from "@/lib/query-client";
-import { forgetPushRegistration } from "@/lib/pushRegistration";
+import { forgetPushRegistration } from "@/lib/device/pushRegistration";
 import { ACCOUNT_KEYS, AUTH_USER_KEY as STORAGE_KEY } from "@/lib/storageKeys";
 
 export interface AuthUser {

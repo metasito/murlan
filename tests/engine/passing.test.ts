@@ -3,7 +3,7 @@
 // to it). §9 is six unnumbered bullets in document order; this file numbers
 // them 9.1-9.6 by that order and quotes each verbatim (markdown emphasis
 // stripped). Every test here was shown red once against a planted-and-reverted
-// defect in lib/gameEngine.ts — flip the branch, run, restore — per
+// defect in lib/game/gameEngine.ts — flip the branch, run, restore — per
 // docs/agents/RULES.md rule 6; no planted defect is part of this commit.
 //
 // §9.1, §9.3, §9.4, §9.5 and both §9.6 tests overlap tests/engine/flow.test.ts's

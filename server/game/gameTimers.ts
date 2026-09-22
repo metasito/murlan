@@ -1,6 +1,6 @@
 import type { OnlineGameState } from "./gameRoom.ts";
 import { testOnlyEnv } from "../http/testOnlyEnv.ts";
-import { TURN_TIMEOUT_MS } from "../../lib/gameEngine.ts";
+import { TURN_TIMEOUT_MS } from "../../lib/game/gameEngine.ts";
 
 // Timers. Every entry added here has exactly one matching delete — see
 // clearAfkTimer / clearRoomTimers / clearAllTimersForUser / disposeGame.

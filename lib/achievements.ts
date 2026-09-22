@@ -33,7 +33,7 @@ export interface GameResult {
   matchWon: boolean;
   /**
    * How many opponents actually went out (emptied their hand) in this hand —
-   * NOT `playerCount - 1`. Per docs/GAME-RULES.md §9 and lib/gameEngine.ts:687-690
+   * NOT `playerCount - 1`. Per docs/GAME-RULES.md §9 and lib/game/gameEngine.ts:687-690
    * ("The hand ends when only one player still holds cards; that player is
    * last"), the last-place player is auto-assigned their finish position
    * once they're the sole player left holding cards — they never empty

@@ -7,7 +7,7 @@ import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals
 import React from 'react';
 import { render, fireEvent, act } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import type { Card, GameState, Player } from '@/lib/gameEngine';
+import type { Card, GameState, Player } from '@/lib/game/gameEngine';
 
 import { en as locale } from '@/locales/en';
 
@@ -18,7 +18,7 @@ jest.mock('expo-router', () => ({
   router: { replace: jest.fn(), push: jest.fn(), back: jest.fn() },
 }));
 
-jest.mock('@/lib/haptics', () => ({
+jest.mock('@/lib/device/haptics', () => ({
   setHapticsMasterEnabled: jest.fn(),
   hapticsEnabled: () => false,
   hapticSelection: jest.fn(),

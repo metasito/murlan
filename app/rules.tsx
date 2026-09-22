@@ -19,7 +19,7 @@ import { ScreenHeader } from "@/components/ScreenHeader";
 import { MenuLayout } from "@/components/MenuLayout";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
-import { dealCards } from "@/lib/gameEngine";
+import { dealCards } from "@/lib/game/gameEngine";
 import { a11yHidden, a11yState } from "@/lib/a11y";
 
 interface FAQ {

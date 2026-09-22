@@ -11,7 +11,7 @@ import { vacateSeat } from "../../server/game/gameTurn.ts";
 import { gameOverWriters } from "../../server/game/gamePersistence.ts";
 import { activeGames } from "../../server/game/gameRoom.ts";
 import type { OnlineGameState } from "../../server/game/gameRoom.ts";
-import type { GameState, Player } from "../../lib/gameEngine.ts";
+import type { GameState, Player } from "../../lib/game/gameEngine.ts";
 
 const ROOM = "vacate-personality-room";
 

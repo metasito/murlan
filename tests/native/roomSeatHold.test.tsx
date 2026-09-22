@@ -9,7 +9,7 @@ import React from "react";
 import { render, screen, act } from "@testing-library/react-native";
 import { RoomSeatList } from "@/components/RoomSeatList";
 import { t } from "@/lib/i18n";
-import { TEAMS_PLAYER_COUNT } from "@/lib/gameEngine";
+import { TEAMS_PLAYER_COUNT } from "@/lib/game/gameEngine";
 
 const HOLD_MS = 120_000;
 

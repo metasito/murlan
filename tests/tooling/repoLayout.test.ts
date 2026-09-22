@@ -46,6 +46,28 @@ function danglingServerPaths(files: [string, string][], exists: (p: string) => b
   );
 }
 
+const LIB_FOLDERS: Record<string, string[]> = {
+  game: ["gameEngine", "autoMove", "botPersonalities", "rating", "standings", "placement", "replay", "matchState", "sharedGameFlow"],
+  device: ["haptics", "music", "musicTracks", "musicTracks.ios", "sounds", "pushRegistration", "orientation", "keyboard", "fonts", "fonts.web"],
+};
+const inLib = (p: string) => `lib/${p}`;
+const NAMED_LIB_FILE = /(?<![\w/.@-])lib\/[\w./-]+\.tsx?\b/g;
+const FICTIONAL_LIB_FILES = [inLib("x.ts"), inLib("nowhere.ts")];
+
+function misfiledLibModules(files: string[]): string[] {
+  return Object.entries(LIB_FOLDERS).flatMap(([folder, stems]) =>
+    stems.flatMap((stem) =>
+      files.filter((f) => new RegExp(`^lib/(?!${folder}/)(?:[^/]+/)?${stem.replace(".", "\\.")}\\.tsx?$`).test(f)),
+    ),
+  );
+}
+
+function danglingLibPaths(files: [string, string][], exists: (p: string) => boolean): string[] {
+  return files.flatMap(([file, src]) =>
+    [...src.matchAll(NAMED_LIB_FILE)].filter(([p]) => !exists(p) && !FICTIONAL_LIB_FILES.includes(p)).map(([p]) => `${file} -> ${p}`),
+  );
+}
+
 describe("the repository layout (#1131)", () => {
   const docs = trackedFiles(repoRoot, "docs");
 
@@ -126,6 +148,36 @@ describe("the repository layout (#1131)", () => {
     assert.deepEqual(
       danglingServerPaths([["a.ts", `see ${inServer("gameRoom.ts")}, ../${inServer("x.ts")} and tests/${inServer("y.ts")}`]], () => false),
       [`a.ts -> ${inServer("gameRoom.ts")}`],
+    );
+  });
+
+  const lib = trackedFiles(repoRoot, "lib");
+
+  test("game logic sits in lib/game/ and device code in lib/device/", () => {
+    for (const [folder, stems] of Object.entries(LIB_FOLDERS)) {
+      for (const stem of stems) {
+        assert.ok(lib.some((f) => f.startsWith(`lib/${folder}/${stem}.ts`)), `lib/${folder}/${stem} is missing`);
+      }
+    }
+    assert.deepEqual(misfiledLibModules(lib), []);
+    assert.deepEqual(
+      misfiledLibModules([inLib("gameEngine.ts"), inLib("game/gameEngine.ts"), inLib("device/replay.ts"), inLib("fonts.web.ts"), inLib("theme.ts")]),
+      [inLib("gameEngine.ts"), inLib("device/replay.ts"), inLib("fonts.web.ts")],
+    );
+  });
+
+  test("every lib/ file path named in code or current docs exists", () => {
+    const sources = trackedFiles(repoRoot, ".", ":!docs/plans", ":!docs/research", ":!docs/specs", ":!docs/design")
+      .filter((f) => /\.(tsx?|mjs|cjs|js|json|ya?ml|md)$/.test(f))
+      .map((f): [string, string] => [f, readFileSync(path.join(repoRoot, f), "utf8")]);
+    assert.ok(
+      sources.some(([, src]) => [...src.matchAll(NAMED_LIB_FILE)].some(([p]) => p.startsWith("lib/game/"))),
+      "the scan finds no lib path to check",
+    );
+    assert.deepEqual(danglingLibPaths(sources, (p) => existsSync(path.join(repoRoot, p))), []);
+    assert.deepEqual(
+      danglingLibPaths([["a.ts", `see ${inLib("gameEngine.ts")}, ${inLib("x.ts")}, ../${inLib("w.ts")}, @/${inLib("y.ts")} and node_modules/${inLib("z.ts")}`]], () => false),
+      [`a.ts -> ${inLib("gameEngine.ts")}`],
     );
   });
 });

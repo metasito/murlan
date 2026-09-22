@@ -16,8 +16,8 @@ import {
   Motion,
   Spacing,
 } from "../../lib/tokens.ts";
-import type { Card, Combination } from "../../lib/gameEngine.ts";
-import type { ExchangeAnnounceData } from "../../lib/sharedGameFlow.ts";
+import type { Card, Combination } from "../../lib/game/gameEngine.ts";
+import type { ExchangeAnnounceData } from "../../lib/game/sharedGameFlow.ts";
 import {
   HAND_ZONE_H,
   arrangeOpponents,
@@ -1787,7 +1787,7 @@ describe("arrivingCard", () => {
 // answer through a prop.
 describe("the exchange landing has one clock", () => {
   const CALL = /(?<!function\s)\buseTradedCardsLanded\s*\(/g;
-  const HOME = "lib/sharedGameFlow.ts";
+  const HOME = "lib/game/sharedGameFlow.ts";
 
   test("GameTable is the only caller of useTradedCardsLanded", () => {
     assert.deepEqual(scan(CALL), ["components/GameTable.tsx: useTradedCardsLanded("]);

@@ -30,7 +30,7 @@ import { HAND_ZONE_GAP } from "../../components/seatLayout.ts";
 import { computeTableFrame } from "../../components/tableFrame.ts";
 import { computeHandLayout, MIN_READABLE_STEP } from "../../components/handLayout.ts";
 import { PHONES, type Phone } from "../e2e/helpers/phones.ts";
-import { dealCards } from "../../lib/gameEngine.ts";
+import { dealCards } from "../../lib/game/gameEngine.ts";
 
 /** The biggest hand each seat count deals, from the engine rather than restated. */
 const DEALS = ([2, 3, 4] as const).map((seats) => ({

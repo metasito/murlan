@@ -24,7 +24,7 @@ jest.mock('@/lib/query-client', () => ({
   apiRequest: (...args: unknown[]) => mockApiRequest(...args),
 }));
 
-jest.mock('@/lib/pushRegistration', () => ({
+jest.mock('@/lib/device/pushRegistration', () => ({
   registerForPush: async () => {},
   forgetPushRegistration: () => {},
 }));

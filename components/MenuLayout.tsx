@@ -8,7 +8,7 @@ import Animated, {
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '@/lib/theme';
-import { keyboardBehavior } from '@/lib/keyboard';
+import { keyboardBehavior } from '@/lib/device/keyboard';
 import { a11yHidden } from '@/lib/a11y';
 import { usePrefersReducedMotion } from '@/lib/accessibility';
 import { useBannerBottom } from '@/context/NotificationContext';

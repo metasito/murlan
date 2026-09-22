@@ -10,13 +10,13 @@
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import React from 'react';
 import { act, render } from '@testing-library/react-native';
-import type { GameState } from '@/lib/gameEngine';
+import type { GameState } from '@/lib/game/gameEngine';
 
 jest.mock('expo-router', () => ({
   router: { replace: jest.fn(), push: jest.fn(), back: jest.fn() },
 }));
 
-jest.mock('@/lib/sounds', () => ({
+jest.mock('@/lib/device/sounds', () => ({
   playCardPass: jest.fn(async () => {}),
   ensureAudioMode: jest.fn(async () => {}),
 }));

@@ -12,8 +12,8 @@ import { handleGameOver } from "../../server/game/gameOver.ts";
 import { logger } from "../../server/http/logger.ts";
 import type { GameOverWriters } from "../../server/game/gameOver.ts";
 import type { OnlineGameState } from "../../server/game/gameRoom.ts";
-import type { GameState, Player } from "../../lib/gameEngine.ts";
-import type { ReplayMove } from "../../lib/replay.ts";
+import type { GameState, Player } from "../../lib/game/gameEngine.ts";
+import type { ReplayMove } from "../../lib/game/replay.ts";
 
 const ROOM = "room_1";
 

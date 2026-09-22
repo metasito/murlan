@@ -9,11 +9,11 @@ import {
   FlatList,
   Platform,
 } from "react-native";
-import { useIsLandscape } from "@/lib/orientation";
+import { useIsLandscape } from "@/lib/device/orientation";
 import { router } from "expo-router";
 import Animated, { FadeIn } from "react-native-reanimated";
-import { hapticMedium, hapticSelection, hapticSuccess } from "@/lib/haptics";
-import { holdSounds, preloadSounds } from "@/lib/sounds";
+import { hapticMedium, hapticSelection, hapticSuccess } from "@/lib/device/haptics";
+import { holdSounds, preloadSounds } from "@/lib/device/sounds";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { Avatar } from "@/components/Avatar";
 import { ChoiceChips } from "@/components/ChoiceChips";
@@ -29,10 +29,10 @@ import { useNotification } from "@/context/NotificationContext";
 import { useAuth } from "@/context/AuthContext";
 import { useSocket } from "@/context/SocketContext";
 import { Colors, Spacing, Radius, FontSize, Motion, TOUCH_TARGET_MIN } from '@/lib/theme';
-import { firstTargetFor, TEAMS_PLAYER_COUNT } from "@/lib/gameEngine";
-import type { MatchLength } from "@/lib/gameEngine";
-import { DEFAULT_BOT_PERSONALITY, botBlurbKey } from "@/lib/botPersonalities";
-import type { BotPersonalityId } from "@/lib/botPersonalities";
+import { firstTargetFor, TEAMS_PLAYER_COUNT } from "@/lib/game/gameEngine";
+import type { MatchLength } from "@/lib/game/gameEngine";
+import { DEFAULT_BOT_PERSONALITY, botBlurbKey } from "@/lib/game/botPersonalities";
+import type { BotPersonalityId } from "@/lib/game/botPersonalities";
 import { DifficultyLadder } from "@/components/DifficultyLadder";
 import { MenuLayout } from "@/components/MenuLayout";
 import { MenuButton } from "@/components/MenuButton";
