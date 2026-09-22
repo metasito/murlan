@@ -37,7 +37,7 @@ import { armTurnIfIdle } from "../game/gameTurn.ts";
 import { payload } from "./payload.ts";
 import { TEAMS_PLAYER_COUNT } from "../../lib/game/gameEngine.ts";
 import type { EventOutcome } from "./socketSafety.ts";
-import type { WireRoomState } from "../../shared/protocol.ts";
+import type { ServerToClientEvents, WireRoomState } from "../../shared/protocol.ts";
 
 /**
  * Async because the seat holds are part of the room, not an extra message:
@@ -279,14 +279,14 @@ export function armLobbyGrace(
  * account's own room is the only channel that does. The room's code rides along
  * because a client may be holding a second invite it must not act on.
  */
-function tellInvitees(
+function tellInvitees<E extends "friend:invite_retired" | "friend:room_joinable">(
   io: SocketServer,
   inviteeIds: string[],
-  event: string,
-  payload: Record<string, unknown>
+  event: E,
+  ...payload: Parameters<ServerToClientEvents[E]>
 ): void {
   for (const inviteeId of inviteeIds) {
-    io.to(userRoom(inviteeId)).emit(event, payload);
+    io.to(userRoom(inviteeId)).emit(event, ...payload);
   }
 }
 

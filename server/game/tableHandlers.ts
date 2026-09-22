@@ -37,6 +37,7 @@
 // `vacateSeat`'s forfeit branch reach it too. Inside, it resolves the hand
 // through `onlineGameLogic.ts` `resolveHandEnd`, emits `game:over`, then
 // writes it through the `GameOverWriters` `gamePersistence.ts` implements.
+import type { ServerPayload } from "../../shared/protocol.ts";
 import type { SocketServer } from "../socket/socketTypes.ts";
 import { eq } from "drizzle-orm";
 import { db } from "../store/db.ts";
@@ -122,10 +123,10 @@ const OK: EventOutcome = { ok: true };
 // Addressed to the account rather than to a socket, and each naming its event
 // literally so the outbound scan in `tests/server/socketEvents.test.ts` can still see
 // what this file sends.
-function gameError(io: SocketServer, userId: string, payload: unknown): void {
+function gameError(io: SocketServer, userId: string, payload: ServerPayload): void {
   io.to(userRoom(userId)).emit("game:error", payload);
 }
-function roomError(io: SocketServer, userId: string, payload: unknown): void {
+function roomError(io: SocketServer, userId: string, payload: ServerPayload): void {
   io.to(userRoom(userId)).emit("room:error", payload);
 }
 
