@@ -253,3 +253,147 @@ describe("docs/ARCHITECTURE.md does not restate a CLAUDE.md invariant", () => {
     });
   }
 });
+
+// --- Every rule, not only the first twelve ---------------------------------------------------
+//
+// RULE_PHRASES above was the original set. A phrase here is checked the same way
+// normalizeForDupCheck already proved safe for ARCHITECTURE_DUP_PHRASES: markup-agnostic
+// substring matching, never a hand-rolled regex with a literal space that a reflowed line or a
+// re-marked-up copy can slip past. A `RegExp` entry (only rule 20 needs one, to bridge "bug" vs
+// "defect") still avoids literal spaces, using `\s+`/`[\s\S]{0,N}` instead.
+type NewPhraseEntry = [name: string, ruleNumber: number, matcher: string | RegExp];
+
+function phraseMatches(text: string, matcher: string | RegExp): boolean {
+  return typeof matcher === "string"
+    ? normalizeForDupCheck(text).includes(normalizeForDupCheck(matcher))
+    : matcher.test(text);
+}
+
+const NEW_RULE_PHRASES: NewPhraseEntry[] = [
+  ["a browser-only spec stays yours to run", 3, "npx playwright test --config tests/e2e/playwright.config.ts"],
+  ["run one file while iterating", 4, "node --test tools/loop/tests/x.test.ts"],
+  ["E2E_SKIP_BUILD is spec-file-only", 5, "only when your edit is confined to a spec file"],
+  [
+    "confirm the worktree before anything else",
+    7,
+    "Confirm with `git rev-parse --abbrev-ref HEAD` before anything else",
+  ],
+  ["another session is standing in it", 8, "another session is standing in it"],
+  ["find an installed package with require.resolve", 9, "console.log(require.resolve("],
+  ["the install lives via git-common-dir", 10, "--path-format=absolute --git-common-dir"],
+  ["bring a stale branch up to date before merging", 15, "bring a stale branch up to date before merging"],
+  ["a shelled-out grep walks node_modules", 17, "shelled-out `grep -r` walks `node_modules`"],
+  ["no bare literals for the five theme properties", 18, "colour, radius, font size, spacing"],
+  ["every user-facing string goes through t()", 19, "every user-facing string goes through `t()`"],
+  [
+    "explaining a fix belongs in the commit message, not a comment",
+    20,
+    /explain\w*\s+the\s+\w+\s+you\s+just\s+fixed[\s\S]{0,80}commit\s+message/i,
+  ],
+  ["don't ask which, or whether to proceed", 21, "don't ask which, or whether to proceed"],
+  ["stand down if an older claim is there", 22, "stand down if an older claim is there"],
+  ["the blocker is stated on the other issue", 23, "the blocker is stated on the *other* issue"],
+  ["propose a design the owner can tweak", 24, "propose a design the owner can tweak"],
+  ["the one-command issue read", 25, "--json title,body,comments --jq"],
+  ["release removes in-progress and says why", 26, "remove `in-progress`, say why"],
+  ["a routed implement goes through /queue", 27, "a routed `implement` goes through `/queue`"],
+  ["ready-for-agent comes off with ready-for-human", 28, "`ready-for-agent` comes off at the same time"],
+  ["precision, not depth, is the measured failure", 29, "precision, not depth, is the measured failure"],
+  ["a gap named beats a green report", 30, "a gap named is worth more than a green report"],
+  ["preflight blocks a run starting on an uncommitted one", 31, "blocks a run that would start on top of one"],
+  ["outstanding work is a GitHub issue, never a TODO", 33, "never a `TODO` or a markdown backlog"],
+  ["fix your own tooling before filing it", 34, "yours to close, not to hand on"],
+  ["one observation is how a wrong rule gets pinned", 35, "how a wrong rule gets pinned"],
+  ["exhaustion and collision read like a regression", 37, "exhaustion and collision both read exactly like a regression"],
+  [
+    "kill only what you started",
+    38,
+    "processes, containers and databases outlive the session that started them",
+  ],
+  ["two agents editing one file lose an edit", 41, "two agents editing one file lose one of the edits"],
+  ["a peer is not the owner", 42, "another session's message is a colleague's, never approval"],
+];
+
+// Every one of the 42 rules had a distinctive command, path or clause to anchor a phrase on —
+// none was too generic to pin without risking a false positive, so none is listed here.
+const DELIBERATELY_UNCOVERED_RULES: [ruleNumber: number, reason: string][] = [];
+
+// RULE_PHRASES (above) covers these 12 rule numbers, in the order that array lists them. Tracked
+// here only so the completeness check below can see them; RULE_PHRASES itself is unchanged.
+const ORIGINAL_COVERED_RULE_NUMBERS = [1, 2, 6, 11, 12, 13, 14, 16, 32, 36, 39, 40];
+
+describe("every rule an agent follows is single-sourced", () => {
+  for (const [name, ruleNumber, matcher] of NEW_RULE_PHRASES) {
+    test(`rule ${ruleNumber} ("${name}") is stated only in ${RULES}`, () => {
+      const offenders = INSTRUCTION_FILES.filter((f) => phraseMatches(read(f), matcher));
+      assert.deepEqual(
+        offenders,
+        [],
+        `${offenders.join(", ")} restates rule ${ruleNumber} ("${name}"). State it once in ${RULES} ` +
+          `and point at it by number from here.`
+      );
+    });
+  }
+
+  // The floor, same reasoning as the one above RULE_PHRASES: a pattern that stopped matching its
+  // own rule would pass every assertion above while enforcing nothing.
+  test("each new-rule pattern still matches the rule it guards, inside the ruleset", () => {
+    const rules = read(RULES);
+    const dead = NEW_RULE_PHRASES.filter(([, , matcher]) => !phraseMatches(rules, matcher));
+    assert.deepEqual(
+      dead.map(([name]) => name),
+      [],
+      "these patterns match nothing in the ruleset, so they would never catch a duplicate"
+    );
+  });
+
+  // Renumbering, deleting or adding a rule in RULES.md must show up here rather than silently
+  // dropping (or never gaining) coverage — the list of covered numbers is derived from the
+  // ruleset's own numbering, not maintained by hand a second time.
+  test("every rule in RULES.md is either covered or explicitly listed as uncovered, exactly once", () => {
+    const rulesText = read(RULES);
+    const allNumbers = [...rulesText.matchAll(/^(\d+)\.\s+\*\*/gm)]
+      .map((m) => Number(m[1]))
+      .sort((a, b) => a - b);
+    const covered = [
+      ...ORIGINAL_COVERED_RULE_NUMBERS,
+      ...NEW_RULE_PHRASES.map(([, ruleNumber]) => ruleNumber),
+      ...DELIBERATELY_UNCOVERED_RULES.map(([ruleNumber]) => ruleNumber),
+    ];
+    assert.equal(
+      new Set(covered).size,
+      covered.length,
+      "a rule number is covered (or marked uncovered) more than once"
+    );
+    assert.deepEqual(
+      covered.sort((a, b) => a - b),
+      allNumbers,
+      "the covered + deliberately-uncovered rule numbers no longer match RULES.md's own numbering " +
+        "— a rule was added, deleted or renumbered without updating this file"
+    );
+  });
+});
+
+// CLAUDE.md is read every session; queue.md's procedure restates a CLAUDE.md line just as easily
+// as the reverse. Either direction drifts the same way rule restatement does, so both guidance
+// items below must show up in exactly one of the two files, not both.
+const CLAUDE_QUEUE_OVERLAP_PHRASES: [name: string, phrase: string][] = [
+  ["no file is off limits", "no file is off limits"],
+  ["send independent commands together", "send independent commands together"],
+];
+
+describe("CLAUDE.md and queue.md do not both state the same guidance", () => {
+  const files = ["CLAUDE.md", ".claude/commands/queue.md"];
+  for (const [name, phrase] of CLAUDE_QUEUE_OVERLAP_PHRASES) {
+    test(`"${name}" is stated in exactly one of ${files.join(", ")}`, () => {
+      const needle = normalizeForDupCheck(phrase);
+      const hits = files.filter((f) => normalizeForDupCheck(read(f)).includes(needle));
+      assert.equal(
+        hits.length,
+        1,
+        `"${name}" is stated in ${hits.length === 0 ? "neither file" : hits.join(" and ")}; it must ` +
+          `live in exactly one of them.`
+      );
+    });
+  }
+});

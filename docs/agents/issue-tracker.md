@@ -75,7 +75,7 @@ the same GitHub account.
   commands when it is.
 - **Claim** (rule 22). For `/queue`: `npm run queue:claim -- <n> "<title>"` — `.claude/commands/queue.md`'s
   phase A step 4 covers what it does. For `/triage` and `/wayfinder`: the label and comment the picker
-  prints, then re-read the issue (rule 25) and stand down if an older claim is there. The comment
+  prints, then re-read the issue (rule 25); stand down for an older claim, per rule 22. The comment
   reads exactly ``Claimed by `<branch>`.`` — the loop parses that shape.
 - **Release** (rules 26 and 28). Closing the issue ends the claim. Otherwise remove `in-progress`
   — always when relabelling `ready-for-human`. A leftover `in-progress` hides the ticket from the

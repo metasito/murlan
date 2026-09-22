@@ -53,9 +53,9 @@ Verify against source before changing any.
 
 ## Design system
 
-- **Colour, radius, font size, spacing and timing come from `lib/theme.ts`** (rule 18).
-  `eslint.config.js` refuses a bare number for all but colour, which is convention. A
-  component-local one-off may be a named module constant; `0` is still `0`.
+- **Values are styled from `lib/theme.ts`, per rule 18.** `eslint.config.js` refuses a bare
+  number for all but colour, which is convention. A component-local one-off may be a named
+  module constant; `0` is still `0`.
 - **Timing is a `Motion` step only when it is motion.** How long a banner stays readable is
   `Reading`. The reduced-motion form comes from `Motion.reduced` via `motionMs()`, never from the
   call site.
@@ -65,7 +65,7 @@ Verify against source before changing any.
   name with a shared one.
 - **Menu screens use `MenuLayout` / `MenuCard` / `MenuButton`**, with `app/profile.tsx` as the
   reference. The game tables and `app/index.tsx` are exempt.
-- **Every user-facing string goes through `t()`** (rule 19). English (`locales/en.ts`) is the
+- **Strings are keyed in `en`, `it` and `sq`, per rule 19.** English (`locales/en.ts`) is the
   source of truth; `it.ts` and `sq.ts` are `Record<keyof typeof en, string>`, so a missing key is a
   compile error.
 - `Shadow.*` is platform-aware. Game screens are landscape-locked; menus do both via

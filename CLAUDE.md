@@ -51,8 +51,8 @@ invisible constraint (an ordering that prevents a race, a platform quirk); a *wh
 approach is wrong and someone will "fix" it back; a contract the types can't carry; a pointer to the
 authority. Name which of the four before you write it; if you cannot, it does not go in.
 
-Never: restating the line below; any history of what it was or when it was fixed; **explaining
-the defect you just fixed** — that belongs in the commit message.
+Never: restating the line below, or any history of what it was or when it was fixed — rule 20
+already covers explaining a fix here instead of in the commit message.
 
 A change adding more comment lines than code is explaining itself instead of being clear.
 
