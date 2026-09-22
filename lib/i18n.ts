@@ -29,6 +29,7 @@ import {
   type TranslationKey,
   type TranslationParams,
 } from "../shared/i18n.ts";
+import type { ServerPayload } from "../shared/protocol.ts";
 import { LOCALE_KEY as STORAGE_KEY } from "./storageKeys.ts";
 
 export {
@@ -143,13 +144,7 @@ export function tn(base: string, count: number, params?: TranslationParams): str
 export type TFn = typeof t;
 export type TnFn = typeof tn;
 
-export interface ServerPayload {
-  code?: string;
-  message?: string;
-  /** A few endpoints (e.g. the rate limiters) use `error` instead of `message`. */
-  error?: string;
-  params?: TranslationParams;
-}
+export type { ServerPayload };
 
 /**
  * Renders a server-emitted `{ code, message, params }` payload in the

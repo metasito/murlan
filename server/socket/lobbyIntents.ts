@@ -10,7 +10,7 @@ import type { trackEvent } from "./events.ts";
 import type { EventOutcome } from "./socketSafety.ts";
 import type { WireRoomState } from "../../shared/protocol.ts";
 import type { z } from "zod";
-import type { RoomCreateSchema, RoomJoinSchema } from "./socketSchemas.ts";
+import type { RoomCreateSchema, RoomJoinSchema } from "../../shared/socketSchemas.ts";
 import { teamsSizeRefusal } from "./socketTable.ts";
 import { logger } from "../http/logger.ts";
 import { payload } from "./payload.ts";

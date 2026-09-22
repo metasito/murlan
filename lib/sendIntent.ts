@@ -1,3 +1,4 @@
+import type { IntentEvent, IntentPayload, IntentReply } from "../shared/protocol.ts";
 import type { Socket } from "./socket.ts";
 
 /**
@@ -11,28 +12,8 @@ import type { Socket } from "./socket.ts";
 export const INTENT_ACK_TIMEOUT_MS = 4000;
 export const INTENT_ATTEMPTS = 3;
 
-/**
- * Every event the client sends. Anything not listed here has no path to the
- * server: `tests/ui-rules/intentsGoThroughSend.test.ts` refuses a bare emit.
- */
-export type IntentEvent =
-  | "room:create"
-  | "room:join"
-  | "room:rejoin"
-  | "room:spectate"
-  | "room:unspectate"
-  | "room:leave"
-  | "room:quickmatch"
-  | "room:setVisibility"
-  | "room:start"
-  | "game:play"
-  | "game:pass"
-  | "game:exchange_give_card"
-  | "game:rejoin"
-  | "game:reaction"
-  | "game:rematch_vote"
-  | "game:end_match_vote"
-  | "game:rematch_intent";
+/** A `room:` or `game:` intent emitted any other way: `tests/ui-rules/intentsGoThroughSend.test.ts` refuses it. */
+export type { IntentEvent };
 
 /**
  * Refusals that mean "not yet" rather than "no": the socket is between a
@@ -64,11 +45,8 @@ function rejoined(socket: Socket, ms: number): Promise<void> {
   });
 }
 
-export interface IntentOutcome {
-  ok: boolean;
-  /** Set when the server answered and refused. Absent when it never answered. */
-  code?: string;
-}
+/** `code` is set when the server answered and refused, absent when it never answered. */
+export type IntentOutcome = IntentReply;
 
 /**
  * Sends an intent and waits to be told it arrived, retrying while the server
@@ -86,10 +64,17 @@ export interface IntentOutcome {
  * A refusal ends it, unless it is one of `RETRYABLE_CODES`. Repeating
  * something the server has already rejected only delays telling the player.
  */
+export function sendIntent<E extends IntentEvent>(
+  socket: Socket | null,
+  event: E,
+  payload?: IntentPayload<E>,
+  options?: { attempts?: number; timeoutMs?: number }
+): Promise<IntentOutcome>;
+// Not generic: TypeScript cannot carry one `E` through socket.io's event-map types. The signature above pairs them.
 export async function sendIntent(
   socket: Socket | null,
   event: IntentEvent,
-  payload?: object,
+  payload?: IntentPayload<IntentEvent>,
   { attempts = INTENT_ATTEMPTS, timeoutMs = INTENT_ACK_TIMEOUT_MS } = {}
 ): Promise<IntentOutcome> {
   if (!socket) return { ok: false };
@@ -116,10 +101,10 @@ export async function sendIntent(
  * The only way the client talks to the server. `retry: false` is for an
  * intent the server does not dedupe, where a second copy is a second room.
  */
-export function send(
+export function send<E extends IntentEvent>(
   socket: Socket | null,
-  event: IntentEvent,
-  payload?: object,
+  event: E,
+  payload?: IntentPayload<E>,
   { retry = true }: { retry?: boolean } = {}
 ): Promise<IntentOutcome> {
   return sendIntent(socket, event, payload, { attempts: retry ? INTENT_ATTEMPTS : 1 });

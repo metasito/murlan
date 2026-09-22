@@ -29,7 +29,7 @@ import { errorHandler } from "../../server/http/errorHandler.ts";
 import { ANSWERED_BY_SHELL, unmatchedKind } from "../../server/http/staticPaths.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-const schemas = readFileSync(path.join(repoRoot, "server", "socket", "socketSchemas.ts"), "utf8");
+const schemas = readFileSync(path.join(repoRoot, "shared", "socketSchemas.ts"), "utf8");
 
 /** Every object key declared in the socket schemas, comments stripped. */
 function schemaFields(): string[] {

@@ -14,7 +14,7 @@
 // inherits whichever answer this file pins.
 import { test, describe, beforeEach, afterEach, mock } from "node:test";
 import assert from "node:assert/strict";
-import { z } from "zod";
+import { GameRejoinSchema as Payload } from "../../shared/socketSchemas.ts";
 import { onEvent, __resetRateLimits } from "../../server/socket/socketSafety.ts";
 import { logger } from "../../server/http/logger.ts";
 
@@ -49,7 +49,6 @@ function fakeSocket(userId = "u1") {
   };
 }
 
-const Payload = z.object({ roomId: z.string().min(1) });
 
 describe("onEvent leaves every refusal in the log", () => {
   let lines: Recorded[];
@@ -72,20 +71,20 @@ describe("onEvent leaves every refusal in the log", () => {
 
   test("a rate-limited packet is named in the log", async () => {
     const socket = fakeSocket();
-    onEvent(socket as any, "game:play", Payload, async () => undefined, {
+    onEvent(socket as any, "game:rejoin", Payload, async () => undefined, {
       limit: 1,
       windowMs: 60_000,
     });
 
-    assert.deepEqual(await socket.send("game:play", { roomId: "r1" }), { ok: true });
-    assert.deepEqual(await socket.send("game:play", { roomId: "r1" }), {
+    assert.deepEqual(await socket.send("game:rejoin", { roomId: "r1" }), { ok: true });
+    assert.deepEqual(await socket.send("game:rejoin", { roomId: "r1" }), {
       ok: false,
       code: "RATE_LIMITED",
     });
 
     const refusal = lines.find((l) => l.fields.code === "RATE_LIMITED");
     assert.ok(refusal, "a rate-limited packet reached the log as nothing at all");
-    assert.equal(refusal.fields.event, "game:play");
+    assert.equal(refusal.fields.event, "game:rejoin");
     assert.equal(refusal.fields.userId, "u1");
   });
 
@@ -93,12 +92,12 @@ describe("onEvent leaves every refusal in the log", () => {
     // The limiter exists to make excess cheap. A line per rejected packet
     // would hand whoever is flooding a disk-filling primitive for free.
     const socket = fakeSocket();
-    onEvent(socket as any, "game:play", Payload, async () => undefined, {
+    onEvent(socket as any, "game:rejoin", Payload, async () => undefined, {
       limit: 1,
       windowMs: 60_000,
     });
 
-    for (let i = 0; i < 200; i++) await socket.send("game:play", { roomId: "r1" });
+    for (let i = 0; i < 200; i++) await socket.send("game:rejoin", { roomId: "r1" });
 
     assert.equal(
       lines.filter((l) => l.fields.code === "RATE_LIMITED").length,
@@ -112,58 +111,58 @@ describe("onEvent leaves every refusal in the log", () => {
     const socket = fakeSocket();
     // Wide enough that both packets of a pair land in the same window even on
     // a loaded machine: a window this test outran would count three.
-    onEvent(socket as any, "game:play", Payload, async () => undefined, {
+    onEvent(socket as any, "game:rejoin", Payload, async () => undefined, {
       limit: 1,
       windowMs: 200,
     });
 
-    await socket.send("game:play", { roomId: "r1" });
-    await socket.send("game:play", { roomId: "r1" });
+    await socket.send("game:rejoin", { roomId: "r1" });
+    await socket.send("game:rejoin", { roomId: "r1" });
     await new Promise((r) => setTimeout(r, 250));
-    await socket.send("game:play", { roomId: "r1" });
-    await socket.send("game:play", { roomId: "r1" });
+    await socket.send("game:rejoin", { roomId: "r1" });
+    await socket.send("game:rejoin", { roomId: "r1" });
 
     assert.equal(lines.filter((l) => l.fields.code === "RATE_LIMITED").length, 2);
   });
 
   test("a refusal the handler itself returns is named in the log", async () => {
     const socket = fakeSocket();
-    onEvent(socket as any, "game:play", Payload, async () => ({
+    onEvent(socket as any, "game:rejoin", Payload, async () => ({
       ok: false,
       code: "NOT_AT_A_TABLE",
     }));
 
-    assert.deepEqual(await socket.send("game:play", { roomId: "r1" }), {
+    assert.deepEqual(await socket.send("game:rejoin", { roomId: "r1" }), {
       ok: false,
       code: "NOT_AT_A_TABLE",
     });
 
     const refusal = lines.find((l) => l.fields.code === "NOT_AT_A_TABLE");
     assert.ok(refusal, "a handler's own refusal reached the log as nothing at all");
-    assert.equal(refusal.fields.event, "game:play");
+    assert.equal(refusal.fields.event, "game:rejoin");
   });
 
   test("a malformed packet is named in the log", async () => {
     const socket = fakeSocket();
-    onEvent(socket as any, "game:play", Payload, async () => undefined);
+    onEvent(socket as any, "game:rejoin", Payload, async () => undefined);
 
-    assert.deepEqual(await socket.send("game:play", { roomId: "" }), {
+    assert.deepEqual(await socket.send("game:rejoin", { roomId: "" }), {
       ok: false,
       code: "INVALID_PAYLOAD",
     });
 
     const refusal = lines.find((l) => l.fields.code === "INVALID_PAYLOAD");
     assert.ok(refusal, "a malformed packet reached the log as nothing at all");
-    assert.equal(refusal.fields.event, "game:play");
+    assert.equal(refusal.fields.event, "game:rejoin");
   });
 
   test("a throwing handler is named in the log", async () => {
     const socket = fakeSocket();
-    onEvent(socket as any, "game:play", Payload, async () => {
+    onEvent(socket as any, "game:rejoin", Payload, async () => {
       throw new Error("boom");
     });
 
-    assert.deepEqual(await socket.send("game:play", { roomId: "r1" }), {
+    assert.deepEqual(await socket.send("game:rejoin", { roomId: "r1" }), {
       ok: false,
       code: "SERVER_ERROR",
     });
@@ -194,12 +193,12 @@ describe("onEvent leaves every refusal in the log", () => {
 
   test("an accepted packet says nothing — a log of every move is a log nobody reads", async () => {
     const socket = fakeSocket();
-    onEvent(socket as any, "game:play", Payload, async () => undefined, {
+    onEvent(socket as any, "game:rejoin", Payload, async () => undefined, {
       limit: 10,
       windowMs: 60_000,
     });
 
-    assert.deepEqual(await socket.send("game:play", { roomId: "r1" }), { ok: true });
+    assert.deepEqual(await socket.send("game:rejoin", { roomId: "r1" }), { ok: true });
     assert.deepEqual(lines, []);
   });
 });

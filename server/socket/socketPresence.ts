@@ -32,7 +32,7 @@ import {
 } from "./socketTable.ts";
 import { seatSocket, stopSpectating } from "./seating.ts";
 import { applyOrForward } from "../game/tableRouter.ts";
-import { NoPayloadSchema, FriendInviteSchema } from "./socketSchemas.ts";
+import { NoPayloadSchema, FriendInviteSchema } from "../../shared/socketSchemas.ts";
 import { isUserOnline, onlineUserIds } from "./socketRegistry.ts";
 import { payload } from "./payload.ts";
 

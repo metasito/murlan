@@ -36,6 +36,7 @@ function serverSources(): { file: string; source: string }[] {
       .filter((f) => f.endsWith(".ts"))
       .map((f) => path.join(SERVER_DIR, f)),
     path.join(REPO_ROOT, "shared", "persistedEnvelope.ts"),
+    path.join(REPO_ROOT, "shared", "socketSchemas.ts"),
   ].map((full) => ({ file: path.relative(REPO_ROOT, full), source: readFileSync(full, "utf8") }));
 }
 
@@ -269,13 +270,13 @@ describe("no server string assumes the player's gender", () => {
     // (isZodChain): "no join code" above exists as a required_error /
     // invalid_type_error property too, so it stayed true even with the whole
     // isZodChain branch deleted — it was never really testing this half.
-    // "Invalid room code" (server/socket/socketSchemas.ts) has no options object on
+    // "Invalid room code" (shared/socketSchemas.ts) has no options object on
     // that field at all, so it is reachable only through the trailing-argument
     // path.
     assert.ok(
       sentences.includes("Invalid room code"),
       "the scan no longer reaches a validator's own trailing message " +
-        "(server/socket/socketSchemas.ts) — if that sentence was reworded, name the new one here"
+        "(shared/socketSchemas.ts) — if that sentence was reworded, name the new one here"
     );
     // Restored after #896's payload() helper moved most hand-written
     // { message, code } literals across server/ into locales/en.ts's
