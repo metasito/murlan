@@ -2,54 +2,41 @@
 
 A digital version of Murlan, a traditional Albanian shedding-type card game. The UI is
 English, Italian and Albanian; English (`locales/en.ts`) is the source of truth and the
-other two are translations of it. The game itself is Albanian in origin.
+other two are translations of it. The game itself is Albanian in origin. The stack is
+`package.json`'s dependency list.
 
-## Stack
-
-- **Frontend:** Expo Router (React Native, also runs as a web build)
-- **Backend:** Express.js + Socket.io
-- **Database:** PostgreSQL via Drizzle ORM
-- **Auth:** bcryptjs + express-session, 30-day httpOnly cookies stored in Postgres
-- **Real-time:** socket.io / socket.io-client
-
-See `docs/ARCHITECTURE.md` for how the system is built, and `CLAUDE.md` for the
-conventions an agent working here has to keep.
+- **Before working in this repo** — `CLAUDE.md`: the conventions an agent keeps here.
+- **Before asking how the system is built** — `docs/ARCHITECTURE.md`: layers, data flow,
+  socket lifecycle, persistence.
+- **Before changing or arguing about a game rule** — `docs/GAME-RULES.md`: the specification
+  the engine implements.
 
 ## Running it locally
 
 ```sh
 npm install
-```
-
-You need `DATABASE_URL` and `SESSION_SECRET` set (see `.env` / your shell environment) —
-the server fails fast on boot if either is missing. In production it also needs `PUBLIC_HOST`,
-and a `DATABASE_URL` carrying an `sslmode`. `PORT` defaults to 5000.
-
-```sh
 npm run server:dev   # Express + Socket.io (tsx, no build step)
 EXPO_PUBLIC_DOMAIN=<host:port> npm run expo:dev   # Expo dev server, over a tunnel
 ```
+
+Needs `DATABASE_URL` and `SESSION_SECRET` in the environment — the server fails fast on boot
+without them. `server/CLAUDE.md`'s Production section has the full env contract (what's needed
+only in production, `PORT`'s default).
 
 ## Deploying it
 
 Starting the built server (`npm run server:build && npm run server:prod`) serves both the
 REST API and the Expo web bundle — no extra setup beyond the env in `docs/DEPLOY-RUNBOOK.md`
 § Secrets. The host itself is undecided (`docs/adr/0006-the-host-is-no-longer-replit.md`,
-#1107); deploy details (the `session` table, `trust proxy`, deployment shape) are documented
-in `docs/DEPLOY-RUNBOOK.md`, not here.
+#1105); `deploy/runtime.json` is the contract any host must meet, and deploy details (the
+`session` table, `trust proxy`, deployment shape) are documented in `docs/DEPLOY-RUNBOOK.md`,
+not here.
 
 ## Tests
 
-```sh
-npm run typecheck    # tsc --noEmit
-npm run typecheck:strict  # scripts/checkStrictIndexed.mjs
-npm test             # node --test, everything under tests/
-npm run loop:test    # node --test, the ticket loop under tools/loop/tests/
-npm run test:native  # jest, the tests/native/ renderer suites
-npm run lint         # npx expo lint
-npm run verify       # typecheck, typecheck:strict, test, test:native and lint — the game's sweep, lint last
-npm run test:e2e     # Playwright — needs Docker and a built web bundle
-```
+Before running or picking a check — `docs/agents/checks.md`: which one catches what, what it
+costs, and the traps that pass every check and still ship broken. The commands themselves are
+`package.json`'s scripts; `npm run verify` is the local sweep.
 
 ## Database
 

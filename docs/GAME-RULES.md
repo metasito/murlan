@@ -10,6 +10,8 @@ Where Tier 1 and Tier 2 disagree, this spec follows Tier 1 and records the disag
 
 ## 1. Deck composition
 
+*Engine: `createDeck` (`lib/game/gameEngine.ts`).*
+
 - **One standard 52-card French-suited deck plus exactly 2 Jokers = 54 cards.**
 - The two Jokers **must be distinguishable** and have **different strength**. Naming varies by source but the ordering is unanimous:
   - **Coloured / Red Joker** — the single strongest card in the game.
@@ -19,6 +21,8 @@ Where Tier 1 and Tier 2 disagree, this spec follows Tier 1 and records the disag
 - murlanarena: *"Murlan uses a 54-card deck: the standard 52 cards plus a Black Joker and a Red Joker."*
 
 ## 2. Card strength order
+
+*Engine: `RANK_ORDER`, `getRankStrength`, `cardStrength` (`lib/game/gameEngine.ts`).*
 
 **Confirmed by every source, lowest → highest:**
 
@@ -33,6 +37,9 @@ Where Tier 1 and Tier 2 disagree, this spec follows Tier 1 and records the disag
 
 ## 3. Deal
 
+*Engine: `dealCards`, `HEADS_UP_HAND`, `nextDealFirstSeat`, `dealFirstSeatFor`
+(`lib/game/gameEngine.ts`).*
+
 - **4 players (the canonical and only traditionally-documented format):** the **entire 54-card deck is dealt out**, one card at a time, face down. 54 / 4 does not divide evenly, so **two players receive 14 cards and two receive 13**. catsatcards: *"He deals the cards one-at-a time and face-down to each player, continuing until the entire deck has been dealt out."* visixplay: *"Si mischiano e si distribuiscono tutte ai vari giocatori"* ("they are shuffled and **all** dealt to the players"). MWM's Murlan listing likewise says *"each player being dealt 13 or 14 cards."*
 - **No cards are excluded from play in the 4-player game.** Every source that addresses dealing says the whole deck goes out.
 - Dealer shuffles, the player to the dealer's **right** cuts, and the dealer deals **clockwise starting with the player to his left**.
@@ -41,6 +48,9 @@ Where Tier 1 and Tier 2 disagree, this spec follows Tier 1 and records the disag
 - **2 players:** *no source specifies a deal either*, but dealing the whole deck lets each player deduce the other's exact hand by elimination — the family's own diagnosis of this exact problem (Tien Len, on pagat.com: *"if all the cards were dealt the players would be able to work out each other's hands, which would spoil the game"*). **Ambiguity** — resolved by the implementation choice recorded in § Decisions below: **14 cards are dealt to each player (28 of 54), and the remaining 26 are left face down and unused for the manche.** That is the four-player hand size, which is what both Tien Len and Big Two do at two players. Unlike every other seat count, the 3♠ is therefore not guaranteed to be dealt — see §4.
 
 ## 4. Who opens the first hand
+
+*Engine: `findStartingPlayer`, `getStartingPlayerAfterExchange`, `openingIsPending`
+(`lib/game/gameEngine.ts`).*
 
 - **The holder of the 3♠ (three of spades) leads the very first hand of a session**, and **the opening play must contain the 3♠**. It may be the 3♠ alone or any legal combination that includes it (pair of 3s including 3♠, a straight starting 3♠-4-5-6-7, etc.).
 - visixplay (EN): *"The game starts (first hand) by who has the 3 of spades (forced to throw the 3 of spades also combined)."*
@@ -51,6 +61,8 @@ Where Tier 1 and Tier 2 disagree, this spec follows Tier 1 and records the disag
 - **A session is the table, not the match.** It lasts until the table breaks up, so every match dealt at a standing table — a rematch or a freshly started one — opens with the exchange of §10 on the last complete rankings, and the 3♠ opens only a table with no previous manche to exchange from. A match ended by the unanimous end-of-match vote leaves its rankings incomplete and is never exchanged from. Recorded in § Decisions below.
 
 ## 5. Valid combinations
+
+*Engine: `getCombinationType`, `buildCombination` (`lib/game/gameEngine.ts`).*
 
 | Combination | Definition | Beaten by |
 |---|---|---|
@@ -68,6 +80,9 @@ Where Tier 1 and Tier 2 disagree, this spec follows Tier 1 and records the disag
 
 ## 6. Straights in detail
 
+*Engine: `isStraight`, `getStraightFaceValue`, `getStraightStrength`, `STRAIGHT_MIN_LEN`,
+`STRAIGHT_MAX_LEN` (`lib/game/gameEngine.ts`).*
+
 - **The 2 is LOW inside a straight, and only low.** catsatcards: *"Twos are considered low, before the three."* visixplay: *"l'Asso e il 2 si possono utilizzare con il valore basso"* ("the Ace and the 2 can be used at low value" — in scales). murlanarena: aces and 2s can extend sequences *"but only on the lower end"* for 2s.
   - `2-3-4-5-6` is a **legal** straight.
   - `A-2-3-4-5` is a **legal** straight (Ace low, below the 2).
@@ -80,6 +95,8 @@ Where Tier 1 and Tier 2 disagree, this spec follows Tier 1 and records the disag
 
 ## 7. What beats what
 
+*Engine: `canPlay`, `getCombinationStrength` (`lib/game/gameEngine.ts`).*
+
 1. A play may only be answered by **the same combination type with the same number of cards and strictly higher strength** — or by a **pass**.
 2. **A bomb (4 of a kind) beats any single, pair, triple or straight, of any size, at any time.** visixplay: *"4 carte uguali (qualsiasi livello) battono qualsiasi mano in tavola e possono essere battute solo da altre quadruple di valore superiore."* This includes beating a Joker played as a single.
 3. **A bomb is beaten only by a higher bomb — with one exception, a royal straight, which beats a bomb of any strength and can never be beaten by one** (Tier 1 bomb-vs-bomb rule: catsatcards, visixplay IT/EN/AL, Murlan Pro; the royal-straight exception is a resolved house rule — see §7.4).
@@ -88,9 +105,13 @@ Where Tier 1 and Tier 2 disagree, this spec follows Tier 1 and records the disag
 
 ## 8. Turn direction
 
+*Engine: `getNextActivePlayer` (`lib/game/gameEngine.ts`).*
+
 - **Clockwise.** catsatcards describes both the deal and the play as proceeding clockwise: *"the object … is played by four players in clockwise turns"* / dealing *"in a clockwise rotation around the table, starting with the player at his left."* No source describes counter-clockwise play.
 
 ## 9. Passing, end of a trick/round, next lead
+
+*Engine: `processPass`, `passesToCloseRound`, `getNextActivePlayer` (`lib/game/gameEngine.ts`).*
 
 - A player who cannot or does not wish to beat the current play **passes**.
 - **Passing does not lock a player out of the round.** The round ends only when **all other active players pass consecutively** — i.e. **three consecutive passes** in a 4-player game (`activePlayers − 1`). catsatcards: *"If there are three consecutive passes after a legal play, the player who played the last play to the table removes all cards currently on the table, setting them aside and out of play. He then starts the next series of plays."*
@@ -100,6 +121,9 @@ Where Tier 1 and Tier 2 disagree, this spec follows Tier 1 and records the disag
 - **Going out:** when a player plays their last card they leave the hand and are recorded in the finishing order. Play continues among the rest. The **hand ends when only one player still holds cards**; that player is last.
 
 ## 10. Exchange phase between hands
+
+*Engine: `processExchangeChoice`, `getValidGivebackCards`, `pickGivebackCard`,
+`loserHasBothJokers`, `getStartingPlayerAfterExchange` (`lib/game/gameEngine.ts`).*
 
 Performed **after every hand**, on the **newly dealt hands** of the next deal (not on the cards just played):
 
@@ -115,6 +139,9 @@ The 3♠ opening requirement (§4) is **not** re-applied — it belongs to the f
 
 ## 11. Teams (2 v 2)
 
+*Engine: `teamForSeat`, `TEAMS_PLAYER_COUNT`, `resolveTeamMatch`, `aggregateTeamScores`
+(`lib/game/gameEngine.ts`).*
+
 - Not part of the Tier-1 traditional description; it is a documented mode in modern implementations (murlan.app, murlanarena, Murlan Pro).
 - **Seating:** partners sit **opposite** each other, so turn order alternates opponent–partner–opponent.
 - **Scoring/win:** murlanarena states the team format is scored as a combined total — *"in team mode when a team earns combined 21 points first."* i.e. the two partners' individual placement points (3/2/1/0) are summed per hand and the pair racing to 21 wins.
@@ -122,6 +149,9 @@ The 3♠ opening requirement (§4) is **not** re-applied — it belongs to the f
 - **A manche can end with both teams paid the same total.** First-and-fourth (3+0) and second-and-third (2+1) both sum to 3, which the combined-points reading above pays out identically. **No source addresses this case.** **Ambiguity** — resolved by the implementation choice recorded in § Decisions below: **it is a real draw.** Nobody is congratulated for that manche — no team, no winning haptic — and neither the seat that finished first nor the running *partita* score breaks the tie.
 
 ## 12. Scoring
+
+*Engine: `scoreHand`, `targetsFor`, `nextMatchTarget`, `resolveMatch`, `MATCH_TARGETS`
+(`lib/game/gameEngine.ts`).*
 
 - **Per hand (4 players):** 1st = **3** points, 2nd = **2**, 3rd = **1**, last = **0**. Unanimous across catsatcards, visixplay IT/EN/AL, Murlan Pro, murlanarena, murlan.app.
 - **Match target: first to 21 points wins.**
