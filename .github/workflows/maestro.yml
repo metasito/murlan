@@ -150,6 +150,10 @@ jobs:
           echo "APP_ID=$id" >> "$GITHUB_ENV"
           echo "Built $apk ($id)"
 
+      # The APK compresses its assets; the bundle is read before it is packed.
+      - name: The bundle carries the test-only flag
+        run: node scripts/e2eBuildMark.mjs --present android/app/build/generated/assets
+
       # KVM is present on the standard Linux runner but not exposed to the
       # user by default; without it the emulator falls back to software
       # emulation and is far too slow to finish a hand.

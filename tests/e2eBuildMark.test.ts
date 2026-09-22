@@ -27,6 +27,13 @@ test("the root layout loads the mark", () => {
   assert.match(layout, /^import "@\/lib\/e2eBuildMark";$/m);
 });
 
+test("every workflow that builds with a test-only flag checks the build carries it", () => {
+  const dir = path.join(root, ".github", "workflows");
+  const flagged = readdirSync(dir).filter((f) => /EXPO_PUBLIC_E2E_\w+: "1"/.test(readFileSync(path.join(dir, f), "utf8")));
+  assert.ok(flagged.includes("ios.yml"), "the scan no longer sees ios.yml's flag");
+  for (const f of flagged) assert.match(readFileSync(path.join(dir, f), "utf8"), /e2eBuildMark\.mjs --present /, f);
+});
+
 test("a build directory is judged by whether any file carries the mark", () => {
   const dir = mkdtempSync(path.join(tmpdir(), "murlan-mark-"));
   mkdirSync(path.join(dir, "js"));

@@ -99,58 +99,62 @@ export function ExchangeAnnouncement({
         .join(". ");
 
   return (
-    <View testID="exchange-announce" pointerEvents="none" style={styles.layer}>
-      <A11yStatus label={a11yLabel} role="alert" live="assertive" />
+    <View testID="exchange-announce" pointerEvents="none" style={[StyleSheet.absoluteFill, styles.stage]}>
+      <View style={styles.layer}>
+        <A11yStatus label={a11yLabel} role="alert" live="assertive" />
 
-      {bothJokersException ? (
-        <TableText {...a11yHidden()} style={styles.noSwap}>
-          {t("exchangeAnnouncement.noSwapText")}
-        </TableText>
-      ) : (
-        <>
-          {/* A flier parks at its destination rather than fading, so it is
-              retired at the landing — the instant the receiving hand takes the
-              card in. The tags below take over for the rest of the notice. */}
-          {cardReceived && !landed && (
-            <ExchangeFlyingCard
-              card={cardReceived}
-              trip={toWinner}
-              scale={scale}
-              testID="exchange-flier-to-winner"
-            />
-          )}
-          {cardGiven && !landed && (
-            <ExchangeFlyingCard
-              card={cardGiven}
-              trip={toLoser}
-              scale={scale}
-              testID="exchange-flier-to-loser"
-            />
-          )}
+        {bothJokersException ? (
+          <TableText {...a11yHidden()} style={styles.noSwap}>
+            {t("exchangeAnnouncement.noSwapText")}
+          </TableText>
+        ) : (
+          <>
+            {/* A flier parks at its destination rather than fading, so it is
+                retired at the landing — the instant the receiving hand takes the
+                card in. The tags below take over for the rest of the notice. */}
+            {cardReceived && !landed && (
+              <ExchangeFlyingCard
+                card={cardReceived}
+                trip={toWinner}
+                scale={scale}
+                testID="exchange-flier-to-winner"
+              />
+            )}
+            {cardGiven && !landed && (
+              <ExchangeFlyingCard
+                card={cardGiven}
+                trip={toLoser}
+                scale={scale}
+                testID="exchange-flier-to-loser"
+              />
+            )}
 
-          {cardReceived && (
-            <ExchangeSeatTag
-              label={t("exchange.seatGot", { card: cardSpokenName(cardReceived, t) })}
-              trip={toWinner}
-              visible={landed}
-              testID="exchange-tag-to-winner"
-            />
-          )}
-          {cardGiven && (
-            <ExchangeSeatTag
-              label={t("exchange.seatGot", { card: cardSpokenName(cardGiven, t) })}
-              trip={toLoser}
-              visible={landed}
-              testID="exchange-tag-to-loser"
-            />
-          )}
-        </>
-      )}
+            {cardReceived && (
+              <ExchangeSeatTag
+                label={t("exchange.seatGot", { card: cardSpokenName(cardReceived, t) })}
+                trip={toWinner}
+                visible={landed}
+                testID="exchange-tag-to-winner"
+              />
+            )}
+            {cardGiven && (
+              <ExchangeSeatTag
+                label={t("exchange.seatGot", { card: cardSpokenName(cardGiven, t) })}
+                trip={toLoser}
+                visible={landed}
+                testID="exchange-tag-to-loser"
+              />
+            )}
+          </>
+        )}
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  // iOS leaves a 0×0 view out of the accessibility tree, so the testID lives here.
+  stage: { alignItems: "center", justifyContent: "center" },
   // Sized to nothing and centred on the pile: every child positions itself in
   // the deltas `flightOrigin` speaks, which are measured from that point.
   layer: { position: "absolute", width: 0, height: 0, alignItems: "center", justifyContent: "center" },
