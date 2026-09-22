@@ -25,7 +25,7 @@ instead of sitting unguarded in prose.
 | Anything **visual** (colour, gradient, shadow, size) | pixel-sample two PNGs on the same grid | pixels vs the prototype | Docker + a built web bundle | ~40s |
 | Tokens, contrast, roles | `node --test tests/ui-rules/{contrast,tokenRoles,cosmetics}.test.ts` | AA floors | nothing | ~1s |
 | Must **boot and stay drivable on iOS** | `.github/workflows/ios.yml`, dispatched (below) | a crash, a screen that never renders, a control the flows tap going missing — on a real simulator | a device dispatch | ~23 min warm, ~28–46 min cold |
-| Must **boot and stay drivable on Android** | `.github/workflows/maestro.yml`, same trigger policy | same, on a virtual device — the only one that logs a native crash | a device dispatch | not yet green in the release-APK shape; tracked at #1206 (open) |
+| Must **boot and stay drivable on Android** | `.github/workflows/maestro.yml`, same trigger policy | same, on a virtual device — the only one that logs a native crash | a device dispatch | not yet green in the release-APK shape; #1206 landed the build-time and emulator fixes |
 | The ticket loop (`tools/loop/`) | `npm run loop:test` | the supervisor, the gate, the picker, the workspace tools | nothing | ~40s |
 
 `node --test` over `tests/**/*.test.ts` is one command for both rows above it — `tests/integration/`

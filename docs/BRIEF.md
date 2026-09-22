@@ -57,7 +57,7 @@ haptic choreography, every cue timed to the card's landing (`impactDelayMs()`, f
 | Decision | Choice |
 |---|---|
 | Scope | Harden and re-architect the broken parts. Not a rewrite — the animation and layout work is real and worth preserving. |
-| Deployment | Superseded 2026-09-21 — see `docs/adr/0006-the-host-is-no-longer-replit.md`. Replit is no longer the host; the replacement is undecided (`wayfinder:map` #1105). EAS Cloud for iOS/Android binaries is unaffected, since it points at whichever API host is live. |
+| Deployment | Superseded 2026-09-21 — see `docs/adr/0006-the-host-is-no-longer-replit.md`. Replit is no longer the host; the replacement is undecided (#1107, under `wayfinder:map` #1105). EAS Cloud for iOS/Android binaries is unaffected, since it points at whichever API host is live. |
 | Socket auth | Short-lived single-use signed ticket, minted by an authenticated REST endpoint, consumed in the handshake. No new dependencies. |
 | Game rules | Research Murlan rules from real sources, consolidate into one documented specification, reconcile code and UI against it. Escalate genuine ambiguities rather than guessing. |
 | Seating a friend in 2 v 2 | **A seat can be reserved, and the allocator knows about teams.** Invite a friend and their seat is held for them, on your own side; quick match fills what is left, seating each arrival on the side that needs a player. One rule at three reservation counts — one seat held for "bring one friend", three for "four friends", none for "four strangers". See below. |
