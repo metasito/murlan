@@ -54,7 +54,7 @@ export default function ResultScreen() {
     points: row.points,
   }));
 
-  // A drawn manche (RULES.md §11) has no seat or team to celebrate for it —
+  // A drawn manche (GAME-RULES.md §11) has no seat or team to celebrate for it —
   // dropped here rather than left in for `celebration` to reject, since only
   // the manche's own placement is ever tied this way; the match winner (the
   // first candidate) is decided on cumulative points and stands regardless.

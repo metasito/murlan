@@ -2,7 +2,7 @@
 
 Research-only document. **No code was changed and nothing was implemented.** Every source was
 fetched from its primary host on **2026-08-21**; each claim carries the URL and site name it
-came from. Ground truth for "what Murlan does today" is `docs/RULES.md` §3 and
+came from. Ground truth for "what Murlan does today" is `docs/GAME-RULES.md` §3 and
 `docs/BRIEF.md` §3.1, both read before the research began.
 
 Arithmetic in §8 is **derived by this document**, not quoted from any source, and is labelled
@@ -70,7 +70,7 @@ as such. Anything a source would not confirm is in
 
 ## 1. What Murlan does today, and why the current answer was chosen
 
-From `docs/RULES.md` §3 and `docs/BRIEF.md` §3.1:
+From `docs/GAME-RULES.md` §3 and `docs/BRIEF.md` §3.1:
 
 | Seats | Deal today | Deck used |
 |---|---|---|
@@ -78,7 +78,7 @@ From `docs/RULES.md` §3 and `docs/BRIEF.md` §3.1:
 | 3 | 18 each | all 54 |
 | 2 | 27 each | all 54 |
 
-`docs/RULES.md` §3 records that the four-player full deal is **unanimously sourced**:
+`docs/GAME-RULES.md` §3 records that the four-player full deal is **unanimously sourced**:
 catsatcards *"continuing until the entire deck has been dealt out"*; visixplay *"Si mischiano
 e si distribuiscono tutte ai vari giocatori"*. It also records that **no source specifies a 2-
 or 3-player deal at all** — the traditional game is four-handed, and the Tier-2 apps that
@@ -391,7 +391,7 @@ the latter.
 
 ## 7. The knock-on nobody can skip: who opens the first hand
 
-Murlan `docs/RULES.md` §4: *"The holder of the 3♠ leads the very first hand of a session, and
+Murlan `docs/GAME-RULES.md` §4: *"The holder of the 3♠ leads the very first hand of a session, and
 the opening play must contain the 3♠"*, and it notes explicitly — *"Because the full deck is
 dealt, the 3♠ is always in somebody's hand — no 'lowest spade' fallback exists in the
 traditional rules."*
@@ -410,7 +410,7 @@ way.
 - **Pusoy Dos** on playingcards.io states the condition plainly: *"In 2-3 player games, it's
   possible that this card was not dealt"* — referring to the ♣3
   ([playingcards.io/game/pusoy-dos](https://playingcards.io/game/pusoy-dos)).
-- Murlan's own Tier-2 prior art already contains the fallback: `docs/RULES.md` §4 records MWM's
+- Murlan's own Tier-2 prior art already contains the fallback: `docs/GAME-RULES.md` §4 records MWM's
   app adding *"If that does not exist then a random player starts"*, and notes this *"only
   arises in implementations that do not deal the whole deck."*
 
@@ -555,7 +555,7 @@ Big Two and Tien Len both deal the whole pack at three. Murlan could legitimatel
 - **Against:** **It does not solve the stated problem.** Publicly-known removals leave a
   two-player full deal just as deducible as it is now (§5). To help, the removal must be random
   and unseen — which *is* Option 2 with different vocabulary. It would also have to choose
-  which of Murlan's cards to delete, and the deck's identity is load-bearing: `docs/RULES.md`
+  which of Murlan's cards to delete, and the deck's identity is load-bearing: `docs/GAME-RULES.md`
   §1 records that the two distinguishable Jokers are *"part of the game's identity, not an app
   invention"*, and the ♠3 has a rule attached to it.
 
@@ -582,7 +582,7 @@ Big Two and Tien Len both deal the whole pack at three. Murlan could legitimatel
   Poker!*, §9), and the source material genuinely is unsettled — Pagat lists 13, 17 *and* 21 as
   played two-player deals (§3a). Lets the beta testers answer the question empirically.
 - **Against:** Multiplies the state space every rule and test has to cover, on the deal — the
-  single most load-bearing thing in the game. `docs/RULES.md` already carries four **Ambiguity**
+  single most load-bearing thing in the game. `docs/GAME-RULES.md` already carries four **Ambiguity**
   markers resolved by a single recorded decision each; this would be the first one resolved by
   *not* deciding. It also splits the player pool at matchmaking.
 
@@ -612,8 +612,8 @@ dial that sets the exchange rate, and no source says where to set it.
   some history"* (thread 2530232) — could not be read. Their content is **not** represented
   above. Community discussion of two-player Big Two is therefore a gap in this pass.
 - **No Albanian or Balkan source describes a 2- or 3-player Murlan deal.** This confirms
-  `docs/RULES.md` §3's existing finding rather than adding to it. visixplay, catsatcards and
-  pagat's Albania entry were already surveyed by `docs/RULES.md`; of the Tier-2 apps,
+  `docs/GAME-RULES.md` §3's existing finding rather than adding to it. visixplay, catsatcards and
+  pagat's Albania entry were already surveyed by `docs/GAME-RULES.md`; of the Tier-2 apps,
   murlanarena documents four players only and murlan.app publishes no hand size at all (§9).
   MWM's App Store listing is reported second-hand via search excerpt as saying the game *"can
   be played with 2 or 4 players"* with *"13 or 14 cards"*, but the listing text could not be

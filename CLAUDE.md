@@ -6,7 +6,7 @@ Socket.io server on Replit. A *manche* is one hand; a *partita* is the match the
 `Record<keyof typeof en, string>`, so a missing key is a compile error.
 
 **This file is only what you cannot get by reading the code.** Stack, file layout and game rules
-are deliberately absent: `package.json`, `ls` and `docs/RULES.md` never go stale.
+are deliberately absent: `package.json`, `ls` and `docs/GAME-RULES.md` never go stale.
 
 ## Where the rest lives
 
@@ -92,7 +92,7 @@ Verify against source before changing any.
   loosens itself, a suspend knob with no floor under it, a `--yes` baked into a destructive
   script — each is a guard that reports green by not looking. If a safeguard can be satisfied
   without the thing it guards being true, it is worse than none.
-- **Game rules** live in `lib/gameEngine.ts`, specified by `docs/RULES.md`. Change them only via a
+- **Game rules** live in `lib/gameEngine.ts`, specified by `docs/GAME-RULES.md`. Change them only via a
   decision recorded in `docs/BRIEF.md` §3.1.
 
 ## Design system

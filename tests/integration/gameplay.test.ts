@@ -158,7 +158,7 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
     assert.equal(opening.stoppedOn, "gameOver");
 
     // Reaching an exchange is probabilistic: when the loser holds both jokers
-    // (docs/RULES.md §10) no card is owed back and the hand runs straight to
+    // (docs/GAME-RULES.md §10) no card is owed back and the hand runs straight to
     // game:over. Heads-up that is (14/54)·(13/53) = 6.4% per hand, so the cap
     // below only bites in the tail: the odds of twenty straight hands all
     // skipping the exchange are 6.4%^20, which is not a number this suite will

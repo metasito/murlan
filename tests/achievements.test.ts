@@ -41,7 +41,7 @@ test("every achievement is reachable by at least one constructible GameResult", 
   // Guards against dead-code predicates like the original `full_table`,
   // which required `opponentsFinished === 3` in a 4-player game even though
   // lib/gameEngine.ts:687-690 (the last-place player is auto-assigned their
-  // finish position without ever emptying their hand — see docs/RULES.md
+  // finish position without ever emptying their hand — see docs/GAME-RULES.md
   // §9) caps `opponentsFinished` at `playerCount - 2` for the winner. That
   // predicate could never fire for any real game. This test brute-forces
   // every combination of field values that the real engine can actually

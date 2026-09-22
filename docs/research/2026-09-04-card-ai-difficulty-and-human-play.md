@@ -57,7 +57,7 @@ research-supported, axis for *flavor* — but they cannot be asked to carry the 
     tier would have saved; an unpredictability roll swaps the choice for a same-shape, same-size
     alternative already in the legal list. Neither knob can add card-counting or held-card logic
     a tier doesn't have, and neither can produce an illegal play.
-- `docs/RULES.md` §10 (Exchange): the hand's **loser** must give the **winner** their single
+- `docs/GAME-RULES.md` §10 (Exchange): the hand's **loser** must give the **winner** their single
   highest card (Red Joker, else Black Joker, else 2s, automatic — the loser has no choice), and
   the winner gives back any one card ranked 3–10 **of their choosing**; the two-joker exception
   lets the loser skip the exchange and lead the new hand instead. Nothing in `gameEngine.ts`
@@ -70,7 +70,7 @@ research-supported, axis for *flavor* — but they cannot be asked to carry the 
 
 ### 2.1 The two rules sites this project treats as Tier-1 for the rules have essentially no strategy content (T1, checked directly)
 
-`docs/RULES.md` cites `pagat.com` and `catsatcards.com` as its primary rules authorities. Both
+`docs/GAME-RULES.md` cites `pagat.com` and `catsatcards.com` as its primary rules authorities. Both
 were fetched here specifically for strategy content, and both come back nearly empty:
 
 - **pagat.com/climbing/bigtwo.html**: the only strategic passage in the whole page is a
@@ -90,7 +90,7 @@ were fetched here specifically for strategy content, and both come back nearly e
 
 This matters for how much weight the rest of §2 can carry: **the two sources this codebase
 already trusts most for this game family are silent on strategy.** Everything below is a step
-down in tier from what `docs/RULES.md` itself relies on.
+down in tier from what `docs/GAME-RULES.md` itself relies on.
 
 ### 2.2 A named framework exists, but the best copy of it could not be fully read (T2/T3)
 
@@ -124,7 +124,7 @@ its own sake, it's what tells a player a card they're holding has just changed c
 
 ### 2.3 The exchange mechanic: sourced generally, not tactically
 
-Murlan's post-hand exchange (RULES.md §10) — loser's best card to the winner, winner returns a
+Murlan's post-hand exchange (GAME-RULES.md §10) — loser's best card to the winner, winner returns a
 3–10 of their choice — is structurally the same mechanic as **President/Daifugo**'s "scum gives
 the president their best card(s)." Wikipedia's own President article states only the mechanic
 itself, not tactics: *"After cards are dealt, the scum must hand over the best card in their

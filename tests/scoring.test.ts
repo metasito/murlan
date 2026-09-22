@@ -365,7 +365,7 @@ describe("foldHandIntoMatch", () => {
     });
 
     test("a single manche in teams names the vacated winner's partner, not the other pair", () => {
-      // docs/RULES.md §11: the pair takes the manche, not the seat that
+      // docs/GAME-RULES.md §11: the pair takes the manche, not the seat that
       // emptied its hand — so the pair that took it still wins.
       const result = foldHandIntoMatch({
         ...online,

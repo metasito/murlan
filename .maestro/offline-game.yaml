@@ -9,7 +9,7 @@
 # it ends after exactly one hand. Whenever it's legal to pass, this
 # flow passes — that is always a legal move except when this seat must
 # open the very first round of the hand, which in Murlan requires
-# playing the 3 of Spades specifically (see docs/RULES.md). If this
+# playing the 3 of Spades specifically (see docs/GAME-RULES.md). If this
 # seat is dealt 3♠ it plays it; otherwise it only ever passes. Passing
 # is not "not playing" — it drives real turn cycling through the
 # server-authoritative engine and the AI until someone empties their

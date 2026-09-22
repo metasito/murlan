@@ -9,7 +9,7 @@ describe("straightTopRankChar", () => {
     assert.equal(straightTopRankChar(10), "10");
   });
 
-  test("an ace-low straight (docs/RULES.md §6, e.g. A-2-3-4-5) tops out at 5, not 2 or A", () => {
+  test("an ace-low straight (docs/GAME-RULES.md §6, e.g. A-2-3-4-5) tops out at 5, not 2 or A", () => {
     // getStraightStrength returns 5 for A-2-3-4-5 — this only has to render it.
     assert.equal(straightTopRankChar(5), "5");
   });

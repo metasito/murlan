@@ -80,7 +80,7 @@ Verdict sequences, read from the issues:
 **Every round before the final one was a HOLD. Not one wasted round in the fleet.** And both red
 pull requests are exactly the two that issued a `LAND` without a single HOLD ever being recorded.
 
-This refutes the premise of `docs/superpowers/plans/2026-09-14-agent-loop-overhaul.md` Task 5
+This refutes the premise of `docs/plans/2026-09-14-agent-loop-overhaul.md` Task 5
 ("rounds 3 and 4 have been changing docblocks"). Cutting rounds would remove the only mechanism
 that correlates with landing green.
 

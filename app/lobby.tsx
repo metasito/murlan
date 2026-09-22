@@ -104,7 +104,7 @@ function PlayerRow({ index, config, onChange, isHuman, lobbyMode }: PlayerRowPro
   );
 }
 
-/** Full match first: it is the canonical Murlan game (docs/RULES.md §12). */
+/** Full match first: it is the canonical Murlan game (docs/GAME-RULES.md §12). */
 const FORMAT_OPTIONS: readonly MatchLength[] = ["match", "single"];
 const START_BAR_CLEARANCE = 120;
 const MODE_ICON = 16;

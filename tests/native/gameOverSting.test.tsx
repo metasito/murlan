@@ -94,7 +94,7 @@ const teamSeat = (id: string, name: string, team: 'A' | 'B'): Player => ({
 });
 
 // First-and-fourth (3+0) against second-and-third (2+1): both pay 3, a draw
-// (RULES.md §11). player_0 (team A) and player_3 (team A) hold 1st and 4th;
+// (GAME-RULES.md §11). player_0 (team A) and player_3 (team A) hold 1st and 4th;
 // player_1 and player_2 (team B) hold 2nd and 3rd. Scores are given
 // explicitly (not left to GameTable's empty default) so this exercises a
 // hand `isDrawnHand` actually knows is a draw, not one it has no scores for.

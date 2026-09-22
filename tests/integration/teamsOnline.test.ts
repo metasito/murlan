@@ -69,7 +69,7 @@ describe("online teams mode", { skip: hasDatabase() ? false : skipMessage() }, (
         120_000
       );
 
-      // docs/RULES.md §11: partners sit across from each other, so the teams
+      // docs/GAME-RULES.md §11: partners sit across from each other, so the teams
       // alternate around the table. Seating them adjacently would make the
       // pair's turn order consecutive and change the game entirely.
       const state = await firstState;

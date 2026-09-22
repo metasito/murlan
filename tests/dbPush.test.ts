@@ -42,6 +42,6 @@ test("the session store is still told not to create the table itself", () => {
   assert.match(
     read("server/session.ts"),
     /createTableIfMissing\s*:\s*false/,
-    "createTableIfMissing must stay false — see replit.md"
+    "createTableIfMissing must stay false — see docs/DEPLOY-RUNBOOK.md"
   );
 });

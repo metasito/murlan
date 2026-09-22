@@ -17,7 +17,7 @@ the run stands from those two. The branch name `agent/<n>-<slug>` binds the work
 
 - **Answerable from the repo** — look it up, or test it.
 - **A default exists** in `docs/agents/RULES.md`, `CLAUDE.md`, an ADR or a ticket comment — follow
-  it. (`docs/RULES.md` is the card game's spec, not the agent ruleset.)
+  it. (`docs/GAME-RULES.md` is the card game's spec, not the agent ruleset.)
 - **Only the owner can decide** — comment the option space on the issue (what each option costs),
   then park it:
   ```sh

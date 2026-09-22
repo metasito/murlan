@@ -3,7 +3,7 @@
 Read from `.loop-logs` on 2026-09-17: 22 ticket streams started after `d5854ea7` (one process per
 phase, 2026-09-14 16:48), 25 ledger tickets in `tickets.jsonl` since then, and the tracker threads
 of those tickets. `npm run loop:cost` reproduces the phase table when it is given the same files.
-The plan this argues for is `docs/superpowers/plans/2026-09-17-loop-v4.md`.
+The plan this argues for is `docs/plans/2026-09-17-loop-v4.md`.
 
 ## 1. What the rework bought
 

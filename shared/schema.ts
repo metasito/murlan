@@ -20,7 +20,7 @@ export const users = pgTable(
     // Nullable so every pre-existing row satisfies it on the day it lands —
     // #34 requires an email at signup going forward, but this column carries
     // no login-time check against the accounts that predate that decision
-    // (docs/superpowers/specs/2026-09-03-account-recovery-design.md, Box 1).
+    // (docs/specs/2026-09-03-account-recovery-design.md, Box 1).
     email: text("email"),
     emailVerifiedAt: timestamp("email_verified_at"),
   },
@@ -207,7 +207,7 @@ export const matchHistory = pgTable("match_history", {
    * placement — docs/BRIEF.md §3.1 "Abandoning a hand". Defaulted rather than
    * nullable: every row written before this column existed was not one, and
    * `false` says that outright instead of leaving it to a reader's `?? false`.
-   * The matchmaking cooldown (docs/design/DISCONNECT-POLICY.md §6.12) counts
+   * The matchmaking cooldown (docs/DISCONNECT-POLICY.md §6.12) counts
    * these directly rather than needing a table of its own.
    */
   abandoned: boolean("abandoned").notNull().default(false),
@@ -370,7 +370,7 @@ export const socketTicketNonces = pgTable("socket_ticket_nonces", {
 /**
  * A proof-of-mailbox-control credential — one shape for both email
  * verification and password reset, per
- * docs/superpowers/specs/2026-09-03-account-recovery-design.md, Box 2.
+ * docs/specs/2026-09-03-account-recovery-design.md, Box 2.
  * `password_reset` mints a `randomBytes(32)` link token; `email_verify`
  * (#925) mints a 6-digit code — see server/authTokens.ts for how each is
  * hashed and redeemed. Neither raw value is ever persisted, only its

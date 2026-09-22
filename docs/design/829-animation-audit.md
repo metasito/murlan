@@ -30,7 +30,7 @@ places had drifted from that decision to three different numbers:
 
 `impactDelayMs()` = `round(FLIGHT_MS × 0.82)` moved from **312ms to 213ms** as a consequence —
 not a new aesthetic call, but the number the owner's own #126 decision always implied once
-`FLIGHT_MS` stopped contradicting it. `docs/design/FEEL-BAR.md` (the grounding line, the deal
+`FLIGHT_MS` stopped contradicting it. `docs/FEEL-BAR.md` (the grounding line, the deal
 frame check, the card-landing frame check) and `tests/e2e/bombShakeBounds.spec.ts`'s comment
 are updated to match. `tests/flightPhysics.test.ts`'s impact-timing test is repinned to
 213ms/260ms with the reason recorded inline.

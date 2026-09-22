@@ -1,6 +1,6 @@
 // tests/integration/addEmail.test.ts — #863, the existing-account email
 // migration nudge: an account that predates the email requirement
-// (`email IS NULL`) adds and verifies one, per docs/superpowers/specs/
+// (`email IS NULL`) adds and verifies one, per docs/specs/
 // 2026-09-03-account-recovery-design.md, Box 1.
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";

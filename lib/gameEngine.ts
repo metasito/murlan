@@ -167,7 +167,7 @@ function outstandingTally(played: number[] | undefined, myHand: Card[]): number[
  * Whether four of some rank are still unaccounted for, so an opponent could be
  * holding a bomb.
  *
- * `docs/RULES.md` §7.2: a bomb beats any single, pair, triple or straight of any
+ * `docs/GAME-RULES.md` §7.2: a bomb beats any single, pair, triple or straight of any
  * size, at any time — including a joker played as a single. So rank alone never
  * makes a card safe, and this is the half a tally can still answer exactly.
  */
@@ -319,15 +319,15 @@ export const HEADS_UP_HAND = 14;
  * Jokers are always in play. The two extra cards at 4 players land on
  * `firstSeat` and the seat after it, so rotating it between manches is what
  * stops the same seats holding the bigger hand for the whole match
- * (docs/RULES.md §3, the dealer's rotation).
+ * (docs/GAME-RULES.md §3, the dealer's rotation).
  *
  * 2 players is the one seat count that does NOT deal the whole deck: dealing
  * everything leaves each player able to deduce the other's exact hand by
  * elimination, so 14 cards go to each (28 of 54) and the remaining 26 are
  * left face down and unused for the manche. It is the four-player hand size,
  * which is what makes a duel play like the game rather than like a
- * bomb-heavy variant of it (docs/RULES.md §3, decided in `docs/BRIEF.md` §3.1
- * after docs/research/card-dealing-variable-player-count.md).
+ * bomb-heavy variant of it (docs/GAME-RULES.md §3, decided in `docs/BRIEF.md` §3.1
+ * after docs/research/2026-08-21-card-dealing-variable-player-count.md).
  */
 export function dealCards(
   playerCount: number,
@@ -776,7 +776,7 @@ export function opponentsOf(
  * eligible card (`pickGivebackCard`), so the winner can never hold anything
  * weaker than it; a floor built on that fact would never fire. Nobody
  * outside the exchange is party to this, and the both-jokers exception
- * moves no card at all (docs/RULES.md §10), so the loser learns nothing
+ * moves no card at all (docs/GAME-RULES.md §10), so the loser learns nothing
  * then either.
  */
 export function knownOpponentExchangeCard(
@@ -842,7 +842,7 @@ export function aiChoosePlay(
   /**
    * Whether leading this card takes the round on everything a tally can see:
    * no higher card is outstanding, and no rank is missing all four, so no
-   * opponent can be holding a bomb (`docs/RULES.md` §7.2 — a bomb beats any
+   * opponent can be holding a bomb (`docs/GAME-RULES.md` §7.2 — a bomb beats any
    * single, joker included).
    *
    * Singles only. A multi-card shape is also beaten by a higher shape of its
@@ -998,7 +998,7 @@ function assignRemainingPlacements(state: GameState): void {
  * against. What it can check is that the seat on move holds what it is
  * playing, that the shape it claims is the shape its own cards actually form,
  * that the play beats the table, and — on the very first play of the match —
- * that it is the 3♠ (docs/RULES.md §4). Leading a fresh round otherwise
+ * that it is the 3♠ (docs/GAME-RULES.md §4). Leading a fresh round otherwise
  * passes — there is nothing to beat, and `canPlay` says so.
  *
  * `combination.type`/`.strength` are re-derived from `.cards` rather than
@@ -1088,7 +1088,7 @@ export function processPlay(state: GameState, combination: Combination): GameSta
         ).length === 0
       ) {
         // The hand is decided, but the losing pair is still owed its placement
-        // points (RULES.md §11/§12: both partners' finishing positions count).
+        // points (GAME-RULES.md §11/§12: both partners' finishing positions count).
         // Every seat must reach `rankings` — the stats writer skips anyone
         // absent from it.
         assignRemainingPlacements(newState);
@@ -1314,7 +1314,7 @@ export function processExchangeChoice(state: GameState, cardId: string): GameSta
  * Cards the round winner may hand back to the loser.
  *
  * Any card ranked 3 through 10, other than the one just handed over — giving
- * that straight back is not an exchange (docs/RULES.md §10). A hand can hold
+ * that straight back is not an exchange (docs/GAME-RULES.md §10). A hand can hold
  * no card in 3-10 at all, and an empty result deadlocks the exchange behind an
  * undismissable overlay, so there the single lowest card is the giveback.
  */
@@ -1391,7 +1391,7 @@ export function openingIsPending(state: {
   return state.playedRanks?.every((played) => played === 0) ?? false;
 }
 
-/** Teams is 2-v-2 and only 2-v-2 (docs/RULES.md §11). */
+/** Teams is 2-v-2 and only 2-v-2 (docs/GAME-RULES.md §11). */
 export const TEAMS_PLAYER_COUNT = 4;
 
 /**
@@ -1516,7 +1516,7 @@ export const TURN_TIMEOUT_MS = 30_000;
  * 3 at three and 1 at two — a flat ladder therefore made a 1-v-1 partita a
  * 27-manche affair nobody finished. Scaling by (N−1)/3 keeps every count in
  * the 8-12 manche band a match should land in, and leaves the four-player
- * values docs/RULES.md §12 documents untouched.
+ * values docs/GAME-RULES.md §12 documents untouched.
  */
 export function targetsFor(playerCount: number): number[] {
   return MATCH_TARGETS.map((t) => Math.round((t * (playerCount - 1)) / 3));
@@ -1618,7 +1618,7 @@ export function aggregateTeamScores(
 }
 
 /**
- * Teams-mode match resolution. RULES.md §11: the partners' placement points are
+ * Teams-mode match resolution. GAME-RULES.md §11: the partners' placement points are
  * **summed** and the pair races to the target — never decided per seat.
  * Escalation and the draw rule apply to team totals, and winners expand back to
  * every member key so both partners are reported.
@@ -1720,7 +1720,7 @@ export interface FoldHandResult {
  * either escalates the target, ends the match, or leaves it running.
  *
  * A single-manche game ends here by definition, with no target involved — its
- * winner is whoever took the manche, or in teams the pair (docs/RULES.md §11).
+ * winner is whoever took the manche, or in teams the pair (docs/GAME-RULES.md §11).
  *
  * Keyed by an opaque string so offline and the server share one progression:
  * offline scores by engine player id, the server by userId.
@@ -1764,7 +1764,7 @@ export function foldHandIntoMatch(input: FoldHandInput): FoldHandResult {
     const championId = rankings[0];
     const championTeam = championId === undefined ? undefined : teamOf[championId];
     if (gameMode === "teams" && championTeam !== undefined) {
-      // A manche is taken by a pair (docs/RULES.md §11), so a vacated seat's
+      // A manche is taken by a pair (docs/GAME-RULES.md §11), so a vacated seat's
       // partner is named and the seat itself never is.
       const winners = Object.entries(teamOfKey)
         .filter(([key, team]) => team === championTeam && nameable(key))
@@ -1835,7 +1835,7 @@ export function foldHandIntoMatch(input: FoldHandInput): FoldHandResult {
 /**
  * How long a game runs.
  *
- * - `match` — the canonical Murlan match (docs/RULES.md §12): first to
+ * - `match` — the canonical Murlan match (docs/GAME-RULES.md §12): first to
  *   `targetsFor(playerCount)[0]`, escalating on a tie at the target.
  * - `single` — one manche and done.
  */
@@ -1856,7 +1856,7 @@ export const CLOSING_HAND_CARDS = 5;
  * whether they want another one — true once the current manche is nearly
  * played out *and* it can be the last one, either because the game is a
  * single manche or because the leader can reach the target from it.
- * With a non-empty `teamOfKey` the leader is a pair (docs/RULES.md §11),
+ * With a non-empty `teamOfKey` the leader is a pair (docs/GAME-RULES.md §11),
  * which can take the manche's two best awards.
  */
 export function matchIsClosing(args: {

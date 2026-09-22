@@ -415,7 +415,7 @@ export class Seat {
       const hand = s.players[seat]?.hand ?? [];
       // The engine's own list, which is what the server validates against and
       // what the UI offers: a giveback is a 3 through 10, and a hand holding
-      // none of those falls back to its lowest card (docs/RULES.md §10).
+      // none of those falls back to its lowest card (docs/GAME-RULES.md §10).
       const giveable = getValidGivebackCards(hand, phase.cardFromLoser?.id);
       const card = giveable[Math.floor(rng() * giveable.length)];
       if (!card) return null;

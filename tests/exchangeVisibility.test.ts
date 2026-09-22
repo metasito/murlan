@@ -1,5 +1,5 @@
 // tests/exchangeVisibility.test.ts — `visibleExchangePhase` sends
-// `cardFromLoser` to the whole table while the phase is active (RULES.md §10.1
+// `cardFromLoser` to the whole table while the phase is active (GAME-RULES.md §10.1
 // determines it, so it is no one's secret) and `cardToLoser` — which the winner
 // chose — to the two of them while it is open, and to the table for as long as
 // the ceremony that reads it is on screen.

@@ -5,5 +5,5 @@
 blank_issues_enabled: false
 contact_links:
   - name: Question about how the game is played
-    url: https://github.com/metasito/murlan/blob/main/docs/RULES.md
+    url: https://github.com/metasito/murlan/blob/main/docs/GAME-RULES.md
     about: Not a bug — the rules are documented here already.

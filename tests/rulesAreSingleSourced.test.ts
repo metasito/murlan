@@ -165,7 +165,7 @@ describe("every agent rule is written down exactly once", () => {
   });
 
   test("instruction files point at the ruleset rather than repeating it", () => {
-    // `RULES`, not the bare basename: `docs/RULES.md` is the game's rules spec,
+    // `RULES`, not the bare basename: `docs/GAME-RULES.md` is the game's rules spec,
     // and matching it would pass a file that never names the agent ruleset.
     const silent = INSTRUCTION_FILES.filter((f) => !read(f).includes(RULES));
     assert.deepEqual(silent, [], `${silent.join(", ")} never mentions ${RULES}`);

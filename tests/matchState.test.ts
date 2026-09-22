@@ -54,7 +54,7 @@ describe("celebration", () => {
   });
 });
 
-// RULES.md §11: first-and-fourth (3+0) pays the same total as second-and-
+// GAME-RULES.md §11: first-and-fourth (3+0) pays the same total as second-and-
 // third (2+1), so a manche can end with both teams tied.
 describe("isDrawnHand", () => {
   const TEAMS_TABLE = [

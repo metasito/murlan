@@ -6,8 +6,8 @@ its primary host on **2026-08-20** unless a different date is given; the two aca
 Anything I could not confirm against a primary source is collected under
 [Explicitly unverified](#explicitly-unverified) and flagged inline as **[UNVERIFIED]**.
 
-Read alongside `docs/research/rendering-stack-2026.md` (the budget every recommendation here
-must fit) and `docs/research/game-audio-2026.md` (the sound half of every moment described).
+Read alongside `docs/research/2026-08-20-rendering-stack-2026.md` (the budget every recommendation here
+must fit) and `docs/research/2026-08-20-game-audio-2026.md` (the sound half of every moment described).
 
 ---
 
@@ -63,8 +63,8 @@ must fit) and `docs/research/game-audio-2026.md` (the sound half of every moment
 
 | Decision | Where | Consequence for this report |
 |---|---|---|
-| No Skia in the web bundle; `react-native-svg` + Reanimated 4; `transform`/`opacity` only, <~100 animating nodes, <~1 MB gzip | #95, `docs/research/rendering-stack-2026.md` | Every recommendation below is costed against this and nothing here needs a shader or a particle engine |
-| Effects from the Sonniss GDC bundle; music CC0 Tallbeard/Abstraction; Opus not MP3; **91 % of mobile players play with sound off** | #96, `docs/research/game-audio-2026.md` | No moment may carry state in audio alone. Every recommendation here is legible silent |
+| No Skia in the web bundle; `react-native-svg` + Reanimated 4; `transform`/`opacity` only, <~100 animating nodes, <~1 MB gzip | #95, `docs/research/2026-08-20-rendering-stack-2026.md` | Every recommendation below is costed against this and nothing here needs a shader or a particle engine |
+| Effects from the Sonniss GDC bundle; music CC0 Tallbeard/Abstraction; Opus not MP3; **91 % of mobile players play with sound off** | #96, `docs/research/2026-08-20-game-audio-2026.md` | No moment may carry state in audio alone. Every recommendation here is legible silent |
 | Ads (#60), real-money play (#65), a generic achievements framework (#63) — rejected | #60/#65/#63 | Not reopened. Not mine to reopen |
 | No new progression systems: no XP, unlocks or seasons | #94 scope fence | Rules out a whole column of the toolkit before it is judged on merit — noted where it applies |
 | Free / CC0 only | #94 | Nothing recommended costs anything |
@@ -99,7 +99,7 @@ the game feels like playing with a ball made of stone. Then with no changes to t
 all, the squash-shader makes it feel much more like a ball of paint."*
 
 **Why this is the single most important paragraph in this report for Murlan.** `lib/gameEngine.ts`
-is specified by `docs/RULES.md`, the server validates every move, and CLAUDE.md forbids changing
+is specified by `docs/GAME-RULES.md`, the server validates every move, and CLAUDE.md forbids changing
 the rules except through `docs/BRIEF.md` §3.1. The owner's complaints — *"not premium"*, *"bomb
 effects should be more refined"*, *"cues should convey messages better"* — are **all** polish-layer
 complaints, and the polish layer is by Swink's own definition the one that can be changed without
@@ -461,7 +461,7 @@ diagnosed on each.
 
 | Need | Standing | Evidence |
 |---|---|---|
-| **Autonomy** | **Strong.** Four formats, four felts, four card backs, local cosmetics, offline and online, no gates, no energy, no appointments | `lib/cosmetics.ts`, `docs/RULES.md` |
+| **Autonomy** | **Strong.** Four formats, four felts, four card backs, local cosmetics, offline and online, no gates, no energy, no appointments | `lib/cosmetics.ts`, `docs/GAME-RULES.md` |
 | **Relatedness** | **Adequate and deliberately capped.** Friends, invites, 2v2 partnerships. Free-text chat was rejected (#59) — a real cost to relatedness, accepted for a moderation reason | #59, #88 |
 | **Competence** | **This is the gap.** The game shows *who won*. It does not show *that you played well* | #129, #132, #133 |
 

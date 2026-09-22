@@ -19,7 +19,7 @@ import type { GameState } from "@/lib/gameEngine";
 /**
  * A hand parked mid-exchange: the human (seat 0) won the round and owes seat
  * 1 a giveback. `4_clubs` is the only card in the winner's hand that the
- * exchange rules (docs/RULES.md §10) allow to be handed back.
+ * exchange rules (docs/GAME-RULES.md §10) allow to be handed back.
  */
 function exchangeState(): GameState {
   return {

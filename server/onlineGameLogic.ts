@@ -105,7 +105,7 @@ export function markExchangeSettled(
  * The part of an exchange phase a given seat is allowed to see.
  *
  * `cardFromLoser` goes to the whole table while the phase is open. It is not a
- * secret to withhold: `docs/RULES.md` §10.1 makes it compulsory and automatic —
+ * secret to withhold: `docs/GAME-RULES.md` §10.1 makes it compulsory and automatic —
  * the loser's single highest card — so any seat derives it from the rules alone,
  * and #602 needs it on the felt for every seat. It stops being sent once the
  * phase closes, when there is nothing left to read it for.
@@ -271,7 +271,7 @@ export function teamKeyMap(
 
 /**
  * Whether the match a stored row belongs to had already been decided when it
- * was written. Teams races to the target as a *pair* (docs/RULES.md §11), so
+ * was written. Teams races to the target as a *pair* (docs/GAME-RULES.md §11), so
  * it must be read back through the same resolver the live path uses — no
  * individual key in a pair on 11 + 11 reaches a target of 21, and restoring
  * that game as still running plays on inside a match that was already won.

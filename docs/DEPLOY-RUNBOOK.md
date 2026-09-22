@@ -1,7 +1,7 @@
 # Deploy runbook
 
 > **Scope of this file:** two deploy targets that share only the word. Everything up to
-> § If something goes wrong is the Replit web deploy; § Backups is the schedule that runs
+> § What breaks the host is the Replit web deploy; § Backups is the schedule that runs
 > independently of any deploy; § Store build numbers is the app stores. The sequence below
 > is the exact ordering for a Replit deploy that changes the database
 > schema destructively (a `db:push`, not just `ensureSchema`'s additive boot-time DDL). Ran
@@ -9,8 +9,9 @@
 > Steps 2–6 are no-ops — verify rather than skip them, since the current column shape is
 > what tells you that.
 >
-> Rolling back is `replit.md` § Rolling back a deploy, not here — the two are one topic split
-> across "how to go forward" and "how to go back" so neither buries the other.
+> Rolling back is § Rolling back a deploy, after the sequence — the two are one topic split
+> across "how to go forward" and "how to go back" so neither buries the other. What the host
+> needs to run at all is § Secrets and § What breaks the host.
 >
 > § #897 below is a second, unrelated destructive change — dropping the old unconditional
 > email index — with its own short sequence, not a step inside the one above.
@@ -119,9 +120,81 @@ landing page.
 
 ## If something goes wrong
 
-`replit.md` § Rolling back a deploy — the code half and the database half are separate, and
-the database half is not optional once Step 5 has run: reverting the server does not undo the
-column renames.
+§ Rolling back a deploy — the code half and the database half are separate, and the database
+half is not optional once Step 5 has run: reverting the server does not undo the column renames.
+
+## Rolling back a deploy
+
+There are two independent rollbacks and they are not interchangeable.
+
+**The code** — Replit keeps previous deployments; redeploying an earlier one is the fast path.
+To undo a batch of commits in git instead: `git revert -m 1 <merge-sha>` for a whole merge, or
+`git revert <commit-sha>` for one commit, then redeploy.
+
+**The database** — a rename applied by `npm run db:push` (§ The sequence) is *not* undone by
+reverting the code. A reverted server expects the old column and will not find it, because the
+code that wrote it has been rolled back but the schema it left behind has not. Restore the
+pre-deploy dump instead:
+
+```bash
+psql "$DATABASE_URL" -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
+psql "$DATABASE_URL" -f backups/murlan-<timestamp>.sql
+```
+
+Take that dump before every deploy that runs `db:push`:
+
+```bash
+npm run db:backup
+```
+
+There are no migration files — the project uses `drizzle-kit push` against a schema that is
+the source of truth. If a push conflicts with existing rows (for example a new unique index
+over data that already contains duplicates), the intended recovery is `npm run db:reset`,
+not a hand-written migration.
+
+Restoring the dump undoes every write since it was taken, not just the schema change — any
+game played, account created, or match finished in that window is gone with it. That is the
+trade the dump exists to make available, not one to reach for by default.
+
+## Secrets
+
+The server refuses to boot without these (`server/bootEnv.ts`):
+
+- `DATABASE_URL` — in production it must carry an `sslmode` (`?sslmode=require`;
+  `sslmode=disable` is an explicit opt-out)
+- `SESSION_SECRET` — also used to sign socket auth tickets
+- `PUBLIC_HOST` — production only: the bare hostname the app is served from. Browsers on
+  `https://$PUBLIC_HOST` and on each origin in the optional comma-separated `ALLOWED_ORIGINS`
+  may call the API
+
+`PORT` is read when the host assigns one and defaults to 5000; never hardcode it.
+
+Missing either of these does not stop the server from booting — `server/mail.ts` logs a
+warning and skips the send, so signup and email verification still complete without them:
+
+- `RESEND_API_KEY` — Resend API key for `server/mail.ts`
+- `MAIL_FROM_ADDRESS` — the verified "from" address Resend sends as
+
+## What breaks the host
+
+- **The `session` table.** `connect-pg-simple` runs with `createTableIfMissing: false`, so
+  `server/schemaDdl.ts` creates it at boot instead — nothing else can, because
+  `drizzle.config.ts` excludes it from `db:push`. Without that exclusion, a push that adds
+  any new table asks whether the new one is a *rename* of `session`, and answering yes
+  renames it and logs out every account. Clearing its rows is fine (`scripts/reset-db.mjs`
+  does exactly that); dropping it under a running server breaks every login until restart.
+- **`app.set("trust proxy", 1)`** in `server/app.ts`. Replit terminates TLS at a proxy,
+  so without this Express never considers the connection secure, `Set-Cookie` is silently
+  dropped in production, and `express-rate-limit` collapses every client into one bucket.
+- **Build steps needing native compilation.** Not available on the host. Native binaries are
+  built in EAS Cloud (`eas.json`) — the backend stays on the host, the apps build there.
+
+Express serves the API and, when `dist/` exists, the exported Expo web build as an SPA.
+With no web build present it serves the Expo Go QR landing page instead
+(`server/templates/landing-page.html`). Both paths are in `configureExpoAndLanding()`.
+
+`ALLOW_RESET=1 node scripts/reset-password.mjs <username>` sets a new random password on one
+account and prints it once.
 
 ## #897 — dropping the old email uniqueness index (required, not optional)
 
@@ -204,8 +277,7 @@ Scheduled*) with:
 read from the timestamp already in each dump's filename. It never deletes the most recent
 dump regardless of age — a lapsed schedule must not leave zero backups behind.
 
-Restoring a dump — including what the `session` table means for it — is `replit.md` §
-Rolling back a deploy, not duplicated here.
+Restoring a dump is § Rolling back a deploy, not duplicated here.
 
 ## Store build numbers
 

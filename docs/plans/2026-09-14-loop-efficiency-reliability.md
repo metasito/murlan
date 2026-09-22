@@ -1375,7 +1375,7 @@ Post the answer as a comment on the pull request, the way #1049's gate did.
 
 ---
 
-**Plan complete and saved to `docs/superpowers/plans/2026-09-14-loop-efficiency-reliability.md`. Two execution options:**
+**Plan complete and saved to `docs/plans/2026-09-14-loop-efficiency-reliability.md`. Two execution options:**
 
 **1. Subagent-Driven (recommended)** — a fresh subagent per task, reviewed between tasks, fast iteration.
 

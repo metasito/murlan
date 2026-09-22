@@ -2,8 +2,8 @@
 
 > **Scope of this file:** how the system is built — layers, data flow, socket lifecycle,
 > auth, persistence, state management, and the presentational-table refactor. It does not
-> cover game rules (`docs/RULES.md`), scope/decisions (`docs/BRIEF.md`), outstanding work
-> (GitHub Issues, `metasito/murlan`), or Replit run/deploy mechanics (`replit.md`).
+> cover game rules (`docs/GAME-RULES.md`), scope/decisions (`docs/BRIEF.md`), outstanding work
+> (GitHub Issues, `metasito/murlan`), or Replit run/deploy mechanics (`docs/DEPLOY-RUNBOOK.md`).
 
 ---
 
@@ -41,7 +41,7 @@ lib/gameEngine.ts (offline: called directly)   server/socket.ts (online: handsha
 
 - **`lib/gameEngine.ts`** is the single rules engine, imported by both the client (offline
   mode) and the server (online mode, authoritative). Deck of 54 (52 + 2 distinguishable
-  Jokers) is dealt in full every game — see `docs/RULES.md` §3. There is no reduced-deck
+  Jokers) is dealt in full every game — see `docs/GAME-RULES.md` §3. There is no reduced-deck
   mode.
 - **The client never computes an online outcome locally.** It sends an intent (`game:play`,
   `game:pass`, `game:exchange_give_card`) and renders whatever the server broadcasts back.
@@ -210,7 +210,7 @@ later turns.
   on every move, so a game being played is never a candidate.
 - **`session`** (via `connect-pg-simple`): `createTableIfMissing: false`, so
   `server/schemaDdl.ts` creates it at boot with the same DDL the library ships. Never
-  dropped or recreated by app code — see `replit.md`.
+  dropped or recreated by app code — see `docs/DEPLOY-RUNBOOK.md`.
 - **`match_replays`**: one row per finished manche — `seats`, `moves` and `rankings` as
   jsonb, plus `playerIds` for the containment filter both reads go through, so a player
   can only ever fetch a hand they sat at. **No hand is stored**: a move carries what was

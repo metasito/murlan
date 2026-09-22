@@ -9,7 +9,7 @@ machine-readable; the transcript was read via
 cross-checked against [youtubesummary.com](https://youtubesummary.com/summary/2TlIg3VokY8),
 which agree on all six principles, their order, and their examples.
 
-**Read `docs/research/what-makes-a-game-memorable.md` first.** That document (August 2026,
+**Read `docs/research/2026-08-20-what-makes-a-game-memorable.md` first.** That document (August 2026,
 for #137) already judged the full retention toolkit against the owner's own fence — *"not
 invasive, cool for the user"* — with primary sources fetched: Clark et al. (Neuron 2009),
 Zagal et al. (2013), Ryan/Rigby/Przybylski (2006), Swink (2008), Nijman (2013), Ghibellini
@@ -43,7 +43,7 @@ The net contribution is principle 1, and the timing half of principle 4.
 ## 1. Where the video and the existing research disagree, and who is right
 
 The video's principle 5 is its sharpest tool. Its examples are a countdown on files about to
-be deleted, and an *"I'll risk it"* dismiss button. `what-makes-a-game-memorable.md` §7 fails
+be deleted, and an *"I'll risk it"* dismiss button. `2026-08-20-what-makes-a-game-memorable.md` §7 fails
 this class twice, and not on taste:
 
 > **Near-miss framing.** Clark et al. measured it directly: near-misses are rated *less
@@ -109,7 +109,7 @@ The video's mechanism is the Nunes & Drèze car-wash study: loyalty cards issued
 stamps already filled completed at nearly double the rate of cards needing fewer total stamps.
 The advice is *"Find something they've already done and count it."*
 
-`what-makes-a-game-memorable.md` §7 already passes the honest form of this:
+`2026-08-20-what-makes-a-game-memorable.md` §7 already passes the honest form of this:
 
 > **Streaks** — the strong form (a streak that can be **broken**) fails; the weak form (a
 > **cumulative count that only goes up** — hands played, matches finished) passes. *"A count
@@ -150,7 +150,7 @@ question, not a storage one. Worth confirming against #343's design rather than 
 ## 5. What the existing research says is actually undone
 
 This is the part the video cannot see, and it matters more than anything above.
-`what-makes-a-game-memorable.md` §8 ranks eleven feel changes by identity-and-satisfaction per
+`2026-08-20-what-makes-a-game-memorable.md` §8 ranks eleven feel changes by identity-and-satisfaction per
 unit cost. A source scan on 2026-08-26 finds **the top of that list unbuilt**:
 
 | Rank | Change | Cost | Built? |

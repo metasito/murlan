@@ -259,7 +259,7 @@ describe('the other seats can read the exchange from the table', () => {
     await r.unmount();
   });
 
-  // #602: the card the loser gave is a public move — RULES.md §10.1 makes it
+  // #602: the card the loser gave is a public move — GAME-RULES.md §10.1 makes it
   // compulsory, so no seat is being told a secret — and watching a trade you
   // cannot see is the defect the ticket names. The winner's own case is
   // covered above; these are the two seats that used to get nothing.

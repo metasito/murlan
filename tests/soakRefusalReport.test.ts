@@ -112,7 +112,7 @@ describe("a soak run names what refused it", () => {
 
 // The refusals #603 set out to name turned out to be the harness's own. It
 // offered the round winner any card but the one just received, while the rules
-// offer a 3 through 10 (docs/RULES.md §10), so a winner holding an ace handed
+// offer a 3 through 10 (docs/GAME-RULES.md §10), so a winner holding an ace handed
 // it over and the server answered INVALID_CARD. A soak that plays illegally
 // spends its run proving the server rejects it, and every refusal it
 // manufactures is one more thing between a reader and a real one.

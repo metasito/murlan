@@ -3,8 +3,8 @@
 // (see lib/i18n.ts).
 //
 // The card and combination terminology is sourced and owner-settled, per
-// docs/albanian-card-terminology-research.md and #29. Used verbatim below:
-//   - "shkallë" / "Shkalla" — straight (§5, §6 of docs/RULES.md quotes the
+// docs/research/2026-08-20-albanian-card-terminology-research.md and #29. Used verbatim below:
+//   - "shkallë" / "Shkalla" — straight (§5, §6 of docs/GAME-RULES.md quotes the
 //     Albanian text directly: "Shkalla duhet të ketë të paktën 5 letra")
 //   - "letër" / "letra" — card / cards
 //   - "Fanti" — Jack, "Çupa" — Queen, "Mbreti" — King, "Asi" — Ace

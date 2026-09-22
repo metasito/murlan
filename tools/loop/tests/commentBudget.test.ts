@@ -80,6 +80,25 @@ describe("addedCounts against a before", () => {
     assert.deepEqual(addedCounts(body.join("\n"), [body[2], body[0], body[1]].join("\n")), { comment: 0, code: 0 });
   });
 
+  test("repointing a comment at a moved file is not added prose", () => {
+    assert.deepEqual(
+      addedCounts("// see docs/OLD.md §11\n// and notes.md", "// see docs/NEW.md §11\n// and docs/RUNBOOK.md"),
+      { comment: 0, code: 0 },
+    );
+  });
+
+  test("rewording the prose around a path is added prose", () => {
+    assert.deepEqual(addedCounts("// see docs/OLD.md", "// read docs/OLD.md first"), { comment: 1, code: 0 });
+  });
+
+  test("a path comment does not spend a bare comment marker", () => {
+    assert.deepEqual(addedCounts("//", "// docs/OLD.md"), { comment: 1, code: 0 });
+  });
+
+  test("repointing a path in code is added code", () => {
+    assert.deepEqual(addedCounts('const p = "docs/OLD.md";', 'const p = "docs/NEW.md";'), { comment: 0, code: 1 });
+  });
+
   test("prefixing a line with // is prose the change wrote", () => {
     assert.deepEqual(addedCounts("const a = 1;", "// const a = 1;"), { comment: 1, code: 0 });
   });

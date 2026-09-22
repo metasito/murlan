@@ -181,14 +181,14 @@ describe("the deal at 2 players — 14 each, 26 undealt", () => {
 });
 
 // #806: the deal moved from 21 to 14 each at two seats (docs/BRIEF.md,
-// 2026-08-31) and left a stale "12" behind in docs/RULES.md §4, next to a
+// 2026-08-31) and left a stale "12" behind in docs/GAME-RULES.md §4, next to a
 // correct "26" three lines up in §3 — a number in a spec that disagrees with
 // itself is the kind of thing that gets read once and believed. This reads
 // both clauses back out of the file and checks them against `dealCards`'s
 // own arithmetic, rather than against each other, so a future deal-size
 // change that updates one clause and misses the other still reds here.
-describe("docs/RULES.md's undealt-card figure agrees with dealCards's own arithmetic (#806)", () => {
-  const rules = readFileSync(path.join(repoRoot, "docs", "RULES.md"), "utf8");
+describe("docs/GAME-RULES.md's undealt-card figure agrees with dealCards's own arithmetic (#806)", () => {
+  const rules = readFileSync(path.join(repoRoot, "docs", "GAME-RULES.md"), "utf8");
 
   test("§3's own count of undealt cards matches what dealCards(2) actually excludes", () => {
     const clause = rules.match(/remaining (\d+) are left face down and unused/);

@@ -9,8 +9,8 @@
 **Tech Stack:** Plain Node ESM (`.mjs`, no build step), `node:test` + `node:assert/strict` for tests written in TypeScript under `tests/`, `gh` CLI, `git`. Node 24 locally, Node 22 in production (irrelevant here — these scripts never ship to Replit).
 
 **Spec:**
-- `docs/superpowers/specs/2026-09-10-queue-loop-observability-design.md`
-- `docs/superpowers/specs/2026-09-10-queue-loop-cost-and-speed-design.md`
+- `docs/specs/2026-09-10-queue-loop-observability-design.md`
+- `docs/specs/2026-09-10-queue-loop-cost-and-speed-design.md`
 
 ## Global Constraints
 
