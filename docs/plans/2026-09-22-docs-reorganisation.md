@@ -653,3 +653,43 @@ An independent grading of the tree before this work (6 A, 8 B, 3 C, 1 D; mean 19
 - [ ] **Step 2:** `CONTEXT.md` (which absorbed `domain.md` in Task 5) gets its trigger pointer from the root `CLAUDE.md` pointer list, so it is no longer reachable only through an orphan.
 - [ ] **Step 3:** `docs/GAME-RULES.md`: every rule states where the engine implements it (`lib/game/gameEngine.ts` symbol) or which test pins it, so a reader can check it. Add nothing to the rules themselves.
 - [ ] **Step 4:** Run `node --test tests/tooling/rulesAreSingleSourced.test.ts tests/tooling/docsIndexed.test.ts` (the latter once Task 6 exists), commit.
+
+### Task 15: the comment pass (owner instruction, 2026-09-22)
+
+Measured before writing this: 29,611 comment lines against 125,590 code lines, 19.1% overall — `shared/` 34%, `lib/` 32%, `server/` 30%, `components/` 21%, `tools/` 17%, `tests/` 18%. `CLAUDE.md` § Comments says the default is no comment and names the four things that earn one: an invisible constraint, a *why* where the obvious approach is wrong, a contract the types cannot carry, a pointer to the authority.
+
+**Files:** every `*.ts`, `*.tsx`, `*.mjs` outside `node_modules`; `tools/loop/comment-budget.mjs` and `tools/loop/commentShape.ts` are the existing guards and must stay green. Three commits, one per batch: (a) `lib/` + `shared/`, (b) `server/`, (c) `components/` + `context/` + `app/` + `scripts/` + `tools/`. `tests/` is a fourth, last, and only for comments that narrate rather than explain a fixture.
+
+- [ ] **Step 1: Rank the targets**
+
+```powershell
+node -e "const {execSync}=require('child_process');const fs=require('fs');const files=execSync('git ls-files \"*.ts\" \"*.tsx\" \"*.mjs\"',{encoding:'utf8'}).trim().split('\n');const out=[];for(const f of files){const src=fs.readFileSync(f,'utf8').split('\n');let inb=false,c=0,code=0;for(const ln of src){const t=ln.trim();if(!t)continue;if(inb){c++;if(t.includes('*/'))inb=false;continue}if(t.startsWith('/*')){c++;if(!t.includes('*/'))inb=true;continue}if(t.startsWith('//')){c++;continue}code++}if(c>=30)out.push([c,code,f])}out.sort((a,b)=>b[0]-a[0]);for(const [c,code,f] of out.slice(0,40))console.log(c+' comment '+code+' code '+f)"
+```
+
+- [ ] **Step 2: Judge every comment in the ranked files against the four reasons**
+
+Delete: a comment restating the line below it; any history of what the code was, when it changed, or which ticket changed it; an explanation of a defect that was fixed; narration of what the reader can see. Keep, and leave untouched: an ordering that prevents a race, a platform quirk, a *why* the obvious approach is wrong, a contract the types cannot carry, a pointer to the authority (a rule number, an ADR, `docs/GAME-RULES.md`). When a comment is true but too long, shorten it to the constraint it names.
+
+- [ ] **Step 3: Keep the guards green after each batch**
+
+Run: `node --test tools/loop/tests/commentBudget.test.ts tools/loop/tests/commentShape.test.ts` and `node tools/loop/comment-budget.mjs`. A deletion-only batch cannot exceed the budget; if a guard reds, the batch touched a pinned phrase — restore it.
+
+- [ ] **Step 4: Prove nothing but comments changed**
+
+```powershell
+git diff --stat
+node -e "const {execSync}=require('child_process');const d=execSync('git diff -U0',{encoding:'utf8'});const bad=d.split('\n').filter(l=>/^[-+][^-+]/.test(l)).map(l=>l.slice(1).trim()).filter(t=>t&&!t.startsWith('//')&&!t.startsWith('/*')&&!t.startsWith('*')&&!t.endsWith('*/'));console.log(bad.length?'CODE CHANGED:\n'+bad.join('\n'):'comments only')"
+```
+
+Expected: `comments only`. A batch that reports code lines is reverted and redone.
+
+- [ ] **Step 5: Commit each batch**
+
+```powershell
+git add -- lib shared
+git commit -m "refactor(comments): delete what the code already says in lib and shared"
+```
+
+- [ ] **Step 6: Report the numbers**
+
+Comment lines and percentage per directory before and after, and the count of comments deleted by reason (restatement / history / fixed-defect / narration).
