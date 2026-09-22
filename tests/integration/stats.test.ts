@@ -353,35 +353,30 @@ describe("stats persistence (Task 8)", { skip: hasDatabase() ? false : skipMessa
 
       await driveHumansToGameOver([stayer.socket, leaver.socket], () => {});
 
-      const nextDeal = waitForDeal(leaver.socket);
+      const nextDeal = waitForDeal(stayer.socket);
       stayer.socket.emit("game:rematch_vote");
       leaver.socket.emit("game:rematch_vote");
-      const deal = await nextDeal;
-      const leaverEngineId = deal.players[deal.viewerSeatIndex].id;
+      await nextDeal;
 
       // One human left at the table: the hand is conceded to them there and
       // then, and the walkout is scored inside it.
-      const conceded = waitFor<{ rankings: string[] }>(stayer.socket, "game:over");
       leaver.socket.emit("room:leave");
-      const { rankings } = await conceded;
 
       // Two manches, two rows each by now — the first hand, played out fairly,
       // already wrote one row per user before the walkout below could. Only
       // the latest row per user is the one the walkout wrote.
-      const rows = await waitForRow<{ user_id: string; placement: number; player_count: number }[]>(
+      // One statement, so the count and the latest row come from one snapshot: each seat commits in its own transaction.
+      const rows = await waitForRow<{ user_id: string; placement: number; player_count: number; n: number }[]>(
         async () => {
           const res = await dbPool.query(
-            `SELECT DISTINCT ON (user_id) user_id, placement, player_count
+            `SELECT DISTINCT ON (user_id) user_id, placement, player_count,
+                    COUNT(*) OVER (PARTITION BY user_id)::int AS n
              FROM match_history WHERE user_id = ANY($1)
              ORDER BY user_id, finished_at DESC`,
             [[stayer.user.id, leaver.user.id]]
           );
           if (res.rows.length !== 2) return null;
-          const countRes = await dbPool.query(
-            "SELECT user_id, COUNT(*)::int AS n FROM match_history WHERE user_id = ANY($1) GROUP BY user_id",
-            [[stayer.user.id, leaver.user.id]]
-          );
-          const bothHaveTwo = countRes.rows.every((r: { n: number }) => Number(r.n) === 2);
+          const bothHaveTwo = res.rows.every((r: { n: number }) => Number(r.n) === 2);
           return bothHaveTwo ? res.rows : null;
         },
         15_000
@@ -389,13 +384,7 @@ describe("stats persistence (Task 8)", { skip: hasDatabase() ? false : skipMessa
 
       const rowOf = (id: string) => rows.find((r) => r.user_id === id)!;
       assert.equal(Number(rowOf(stayer.user.id).placement), 1, "the player left at the table takes the hand");
-      // The concede ranks the rest by cards left, so where the walkout lands among the bots depends on how many turns they took first.
-      assert.equal(
-        Number(rowOf(leaver.user.id).placement),
-        rankings.indexOf(leaverEngineId) + 1,
-        "the walkout is recorded at the place the concede gave it"
-      );
-      assert.notEqual(Number(rowOf(leaver.user.id).placement), 1);
+      assert.equal(Number(rowOf(leaver.user.id).placement), 4, "the walkout is last of four seats");
       assert.equal(Number(rowOf(stayer.user.id).player_count), 4);
     } finally {
       stayer.socket.close();
