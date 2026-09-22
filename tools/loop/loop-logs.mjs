@@ -128,9 +128,23 @@ export function usageSplit(text) {
  * `tests/` can check the file against those logs because both count the same thing.
  *
  * 4 adds `solo_bash_turns`, which is null on every row written before it. 5 adds `head` and
- * `run_id`, both null on rows written before it.
+ * `run_id`, both null on rows written before it. 6 drops `solo_bash_turns`, adds `loop_sha`,
+ * `handoff` and `error`, and brings the `started` row, which is a spawn and not a session.
  */
-export const SCHEMA = 5;
+export const SCHEMA = 6;
+
+export const STDERR_CAP = 2000;
+
+/** What a session died of, or null when it did not say. */
+export function errorOf(run) {
+  const stderr = String(run?.stderr ?? "").trim().slice(-STDERR_CAP) || null;
+  if (!run?.result?.isError && !stderr) return null;
+  return { status: run.result?.apiStatus ?? null, reason: run.result?.terminalReason ?? run.result?.subtype ?? null, stderr };
+}
+
+/** @param {{status: number|null, reason: string|null, stderr: string|null}} error */
+export const errorLine = (error) =>
+  [error.status && `API ${error.status}`, error.reason, error.stderr?.trim().split("\n").at(-1)].filter(Boolean).join(" · ");
 
 /**
  * One session, as one line of the ledger.
@@ -147,8 +161,9 @@ export const SCHEMA = 5;
  * @param {{number: number, size: string|null, outcome: string, parkReason?: string|null,
  *   pr: number|null, phases: Record<string, number>, result: object|null, merged: boolean,
  *   reviewRounds: number|null, startedAt: string, ms: number, version: string|null,
- *   usage?: object|null, committed?: boolean|null, soloBash?: number|null,
- *   head?: string|null, runId?: string|null}} session
+ *   usage?: object|null, committed?: boolean|null, head?: string|null, runId?: string|null,
+ *   loopSha?: string|null, handoff?: {phase: string, why: string|null, said: string|null}|null,
+ *   error?: object|null}} session
  */
 export function sessionRow({
   number,
@@ -165,9 +180,11 @@ export function sessionRow({
   version,
   usage = null,
   committed = null,
-  soloBash = null,
   head = null,
   runId = null,
+  loopSha = null,
+  handoff = null,
+  error = null,
 }) {
   const models = Object.fromEntries(
     Object.entries(result?.models ?? {}).map(([name, u]) => [name, u.costUSD ?? 0]),
@@ -191,14 +208,52 @@ export function sessionRow({
     // Whether phase C ever ran `git commit`. The one ticket in nineteen that produced nothing made
     // 74 edits and no commits, and the record it left said only "parked".
     committed,
-    /** Turns that spent a whole context read on one shell command. See queue-loop's `watchCalls`. */
-    solo_bash_turns: soloBash ?? null,
     review_rounds: reviewRounds ?? null,
     claude_version: version ?? null,
     started: startedAt,
     head,
     run_id: runId,
+    loop_sha: loopSha,
+    handoff,
+    error,
   };
+}
+
+/** A spawn, written before the session can die with its supervisor and leave no row of its own. */
+export const startRow = ({ number, phase = null, runId = null, loopSha = null, at = new Date() }) => ({
+  schema: SCHEMA,
+  n: number,
+  outcome: "started",
+  phase,
+  started: at.toISOString(),
+  run_id: runId,
+  loop_sha: loopSha,
+});
+
+/**
+ * Every `started` row with no row of its ticket and run after it before the next start — a
+ * restarted run writes rows for the ticket too. `ms` runs to `lastSeen(row, until)`, the session's
+ * last sign of life before `until`; the next start comes only when someone restarts the loop, so
+ * it bounds the session and does not time it.
+ *
+ * @param {object[]} rows the ledger with its start rows
+ * @param {(row: object, until: number) => number|null} [lastSeen]
+ */
+export function killedStarts(rows, lastSeen = () => null) {
+  const killed = [];
+  let open = null;
+  const close = (until, trailing) => {
+    const end = Math.min(lastSeen(open, until) ?? until, until);
+    killed.push({ n: open.n, phase: open.phase ?? null, started: open.started, loop_sha: open.loop_sha ?? null, ms: Math.max(0, end - Date.parse(open.started)), trailing });
+  };
+  for (const r of rows) {
+    if (r.outcome === "started") {
+      if (open) close(Date.parse(r.started), false);
+      open = r;
+    } else if (open && r.n === open.n && r.run_id === open.run_id) open = null;
+  }
+  if (open) close(Date.now(), true);
+  return killed;
 }
 
 /**
@@ -210,7 +265,8 @@ export function sessionRow({
  * and a session that spent money without finishing a ticket (a usage refusal) is a row like any
  * other rather than an adjustment nothing can audit.
  *
- * @param {{append?: Function, mkdir?: Function, exists?: Function, write?: Function, read?: Function}} [io]
+ * @param {{append?: Function, mkdir?: Function, exists?: Function, write?: Function, read?: Function,
+ *   loopSha?: string|null}} [io]
  */
 export function ledger(io = {}) {
   const {
@@ -219,6 +275,7 @@ export function ledger(io = {}) {
     exists = (file) => fsNode.existsSync(file),
     write = (file, text) => fsNode.writeFileSync(file, text, "utf8"),
     read = (file) => fsNode.readFileSync(file, "utf8"),
+    loopSha = null,
   } = io;
 
   const totals = { tickets: 0, landed: 0, parked: 0, cost: 0, ms: 0 };
@@ -236,13 +293,20 @@ export function ledger(io = {}) {
      * @param {{runId: string, report: object, counts?: boolean}} into what `reportRow` renders,
      *   and whether this session closes a ticket — a retry round is a session, not a ticket.
      */
+    loopSha,
+    /** @param {number} number @param {string|null} phase @param {string} runId */
+    start(number, phase, runId) {
+      mkdir();
+      append(ledgerPath(), `${JSON.stringify(startRow({ number, phase, runId, loopSha }))}\n`);
+    },
     record(session, { runId, report, counts = true }) {
-      const entry = sessionRow({ ...session, runId });
+      const entry = sessionRow({ ...session, runId, loopSha });
       mkdir();
       append(ledgerPath(), `${JSON.stringify(entry)}\n`);
 
       const file = reportPath(runId);
-      if (!exists(file)) write(file, `# queue-loop ${runId.replace(/-(\d\d)-(\d\d)$/, " $1:$2")}\n\n`);
+      const sha = loopSha ? ` · loop ${loopSha.slice(0, 7)}` : "";
+      if (!exists(file)) write(file, `# queue-loop ${runId.replace(/-(\d\d)-(\d\d)$/, " $1:$2")}${sha}\n\n`);
       append(file, `${reportRow(report, PLAIN())}\n`);
 
       totals.cost += entry.cost;
@@ -269,14 +333,15 @@ export function ledger(io = {}) {
   };
 }
 
-/** @param {string} [file] */
-export function readLedger(file = ledgerPath()) {
+/** Session rows only, unless `starts` asks for the spawns between them too. @param {string} [file] */
+export function readLedger(file = ledgerPath(), { starts = false } = {}) {
   if (!fsNode.existsSync(file)) return [];
   const rows = [];
   for (const line of fsNode.readFileSync(file, "utf8").split("\n")) {
     if (!line.trim()) continue;
     try {
-      rows.push(JSON.parse(line));
+      const row = JSON.parse(line);
+      if (starts || row.outcome !== "started") rows.push(row);
     } catch {
       continue;
     }
@@ -302,11 +367,23 @@ export function typicalMs(rows) {
   return Object.fromEntries(Object.entries(by).map(([k, a]) => [k, median(a)]));
 }
 
+/** Only for rows before schema 6, which carried a handoff as prose. */
 const HANDOFF_RE = /phase\s+([A-Za-z])\s+next(?: — (.+))?/;
 
-/** @param {string} outcome @param {string|null|undefined} why */
-export const parkReasonOf = (outcome, why) =>
-  outcome === "landed" || outcome === "retry" || outcome === "pushed" ? null : (why ?? null);
+/** @param {{handoff?: {phase: string, why: string|null}|null, park_reason?: string|null}} row */
+export function handoffIn(row) {
+  if (row.handoff) return { phase: row.handoff.phase, why: row.handoff.why ?? null };
+  const m = HANDOFF_RE.exec(row.park_reason ?? "");
+  return m ? { phase: m[1], why: m[2] ?? null } : null;
+}
+
+/** @param {string} outcome @param {string|null|undefined} why @param {object|null} [error] */
+export const parkReasonOf = (outcome, why, error = null) =>
+  outcome === "landed" || outcome === "retry" || outcome === "pushed"
+    ? null
+    : outcome === "parked" && error && why
+      ? `${why} — ${errorLine(error)}`
+      : (why ?? null);
 
 /**
  * What a row's report line shows: its own cost, plus that of the `pushed` row its window opened
@@ -327,7 +404,7 @@ export function windowCost({ n, outcome, own }, rows) {
  * @param {number} n @param {object[]} rows
  */
 export function ticketTally(n, rows) {
-  const forTicket = rows.filter((r) => r.n === n);
+  const forTicket = rows.filter((r) => r.n === n && r.outcome !== "started");
   let start = 0;
   forTicket.forEach((r, i) => {
     if (r.outcome === "landed" || r.outcome === "parked") start = i + 1;
@@ -346,7 +423,8 @@ export function ticketTally(n, rows) {
   /** A diagnosis's cause, until a session has run on it. */
   let brief = null;
   for (const r of since) {
-    if (r.outcome === "pushed" || (r.outcome === "handoff" && !(r.park_reason ?? "").includes(` — ${DIAGNOSED}`))) brief = null;
+    const handed = r.outcome === "handoff" ? handoffIn(r) : null;
+    if (r.outcome === "pushed" || (r.outcome === "handoff" && !handed?.why?.startsWith(DIAGNOSED))) brief = null;
     spend += r.cost ?? 0;
     ms += r.ms ?? 0;
     turns += r.turns ?? 0;
@@ -356,14 +434,9 @@ export function ticketTally(n, rows) {
       lastHandoff = null;
       handoffWhy = null;
       lastRedHead = r.head ?? null;
-    } else if (r.outcome === "blocked") {
-      handoffsThisRound = 0;
-      lastHandoff = null;
-      handoffWhy = null;
     } else if (r.outcome === "handoff") {
       handoffsThisRound += 1;
-      const m = HANDOFF_RE.exec(r.park_reason ?? "");
-      if (m) [lastHandoff, handoffWhy] = [m[1], m[2] ?? null];
+      if (handed) [lastHandoff, handoffWhy] = [handed.phase, handed.why];
     } else if (r.outcome === "diagnosed") {
       diagnosed.push(r.head ?? null);
       brief = /^resume [BCD] — (.+)$/s.exec(r.park_reason ?? "")?.[1] ?? null;

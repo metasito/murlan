@@ -41,7 +41,7 @@ import {
   overSpend,
   USD_BY_SIZE,
   USD_DEFAULT,
-  watchCalls,
+  loopSha,
   CHECK_BASH_TIMEOUT_MS,
   BASH_DEFAULT_TIMEOUT_MS,
   STALL_MS,
@@ -923,6 +923,15 @@ describe("park", () => {
     assert.ok(!ran(calls, "worktree remove"), "a recursive delete follows the node_modules junction");
   });
 
+  test("the body carries the error the session died of, and its stderr tail", () => {
+    let body = "";
+    const { run } = recorder();
+    const error = { status: 529, reason: "api_error", stderr: "boom\nOverloaded" };
+    park(953, opts({ run, error, write: (_p: string, text: string) => { body = text; } }));
+    assert.match(body, /- error: API 529 · api_error · Overloaded/);
+    assert.match(body, /```\nboom\nOverloaded\n```/);
+  });
+
   test("the body it writes names the phase, the branch and the log", () => {
     let body = "";
     const { run } = recorder();
@@ -1533,30 +1542,15 @@ describe("a phase handoff", () => {
   });
 });
 
-describe("watchCalls", () => {
-  test("a turn making one Bash call and nothing else is counted", () => {
-    const state = { soloBash: 0, turns: 0 };
-    watchCalls(state, { calls: [{ name: "Bash", command: "git status" }] } as never);
-    watchCalls(state, {
-      calls: [{ name: "Bash", command: "ls" }, { name: "Bash", command: "pwd" }],
-    } as never);
-    watchCalls(state, { calls: [{ name: "Read", command: "" }] } as never);
-    assert.equal(state.soloBash, 1);
-    assert.equal(state.turns, 3);
-  });
-
-  test("a turn with no calls at all is not a turn that could have batched", () => {
-    const state = { soloBash: 0, turns: 0 };
-    watchCalls(state, { calls: [] } as never);
-    assert.equal(state.turns, 0);
-  });
-
-  test("one message's calls on separate stream lines are one batched turn, not two solo ones", () => {
-    const state = { soloBash: 0, turns: 0 };
-    watchCalls(state, { id: "m1", calls: [{ name: "Bash", command: "ls" }] } as never);
-    watchCalls(state, { id: "m1", calls: [{ name: "Bash", command: "pwd" }] } as never);
-    watchCalls(state, { id: "m2", calls: [{ name: "Bash", command: "git status" }] } as never);
-    assert.deepEqual([state.turns, state.soloBash], [2, 1]);
+describe("loopSha", () => {
+  test("is the supervisor's HEAD, and null rather than a crash when git cannot say", () => {
+    assert.equal(loopSha(() => "abc123\n"), "abc123");
+    assert.equal(
+      loopSha(() => {
+        throw new Error("not a git repository");
+      }),
+      null,
+    );
   });
 });
 

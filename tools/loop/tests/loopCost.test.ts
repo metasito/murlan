@@ -1,7 +1,7 @@
 // tools/loop/tests/loopCost.test.ts
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { ledgerSummary, mismatchedModel, priceOf, readTicket, report, sinceWindow, wanted } from "../loop-cost.mjs";
+import { killedLine, lastStamp, ledgerSummary, mismatchedModel, priceOf, readTicket, report, shaTable, sinceWindow, wanted } from "../loop-cost.mjs";
 
 const at = (min: number) => new Date(Date.UTC(2026, 8, 14, 10, min)).toISOString();
 const say = (text: string, min: number, model = "claude-opus-5", parent: string | null = null) =>
@@ -300,5 +300,40 @@ describe("ledgerSummary", () => {
     const out = ledgerSummary([blind, row(9, "landed", 1, { E: 60 }, { "claude-opus-5": 1 })]);
     assert.equal(out.unjudged, 1);
     assert.deepEqual(out.mismatches.map((r: { n: number }) => r.n), [9]);
+  });
+});
+
+describe("by loop sha", () => {
+  const rows = [
+    { n: 1, outcome: "handoff", cost: 2, phases: { C: 60 }, loop_sha: "aaaaaaa111" },
+    { n: 1, outcome: "landed", cost: 1, phases: {}, loop_sha: "aaaaaaa111" },
+    { n: 2, outcome: "parked", cost: 4, phases: { C: 60 } },
+  ];
+  const killed = [{ n: 3, phase: "D", started: "t", ms: 90_000, trailing: true, loop_sha: "aaaaaaa111" }];
+
+  test("groups sessions, spend and outcomes per loop commit, rows before schema 6 as unknown", () => {
+    const table = shaTable(rows, killed);
+    assert.match(table, /^aaaaaaa\s+2\s+3\.00\s+1\s+0\s+1$/m);
+    assert.match(table, /^unknown\s+1\s+4\.00\s+0\s+1\s+0$/m);
+  });
+
+  test("the totals are the same rows' whether or not they are grouped", () => {
+    const summed = [...shaTable(rows).matchAll(/^\S+\s+\d+\s+([\d.]+)/gm)].reduce((a, m) => a + Number(m[1]), 0);
+    assert.equal(summed, rows.reduce((a, r) => a + r.cost, 0));
+    assert.equal(report([], rows), report([], rows.map(({ loop_sha: _, ...r }) => r)));
+  });
+
+  test("a killed session is named with its phase and time, and the last may still be running", () => {
+    assert.equal(killedLine([]), null);
+    assert.equal(killedLine(killed), "killed: 1 sessions left no row — #3 D 2m (the last may still be running)");
+  });
+});
+
+describe("lastStamp", () => {
+  test("is the latest stream timestamp inside the window, skipping lines with none", () => {
+    const at = (m: number) => `{"type":"assistant","timestamp":"2026-09-21T08:${String(m).padStart(2, "0")}:00.000Z"}`;
+    const text = [at(1), "{}", at(9), at(40)].join("\n");
+    assert.equal(lastStamp(text, Date.parse("2026-09-21T08:00Z"), Date.parse("2026-09-21T08:30Z")), Date.parse("2026-09-21T08:09Z"));
+    assert.equal(lastStamp("", 0, 1), null);
   });
 });

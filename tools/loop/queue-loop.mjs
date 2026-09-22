@@ -55,6 +55,9 @@ import {
   DIR,
   ciLogPath,
   ciRedNotePath,
+  errorLine,
+  errorOf,
+  killedStarts,
   leftoverPath,
   ledgerPath,
   ledger as openLedger,
@@ -691,12 +694,12 @@ export async function holdFor(
  *
  * @param {number} number
  * @param {{phase: string, why: string, log: string, cwd: string|null, branch: string|null,
- *   dirty: boolean, run?: Function, write?: Function}} ctx
+ *   dirty: boolean, error?: object|null, run?: Function, write?: Function}} ctx
  * @returns {{ok: boolean, failed: string[]}}
  */
 export function park(
   number,
-  { phase, why, log, cwd, branch, dirty, run = sh, write = writeFileSync },
+  { phase, why, log, cwd, branch, dirty, error = null, run = sh, write = writeFileSync },
 ) {
   const failed = [];
   const step = (name, fn) => {
@@ -744,6 +747,8 @@ export function park(
     `- reason: ${why}`,
     `- branch: \`${branch ?? "none"}\`${dirty ? " (uncommitted work was committed before teardown)" : ""}`,
     `- log: \`${log}\``,
+    ...(error ? [`- error: ${errorLine(error)}`] : []),
+    ...(error?.stderr ? ["", "```", error.stderr, "```"] : []),
     "",
     "The branch keeps its commits. Nothing was discarded.",
     "",
@@ -1398,29 +1403,6 @@ export function watchBuild(state, fact, budget, warn) {
 }
 
 /**
- * Turns that spent a full context read on one shell command.
- *
- * Not a warning and not a gate: nothing at the call site can tell a command that had to wait for the
- * last one from a command that did not. It is a number in the ledger, so "did the batching
- * instruction work" is a question the record can answer.
- *
- * @param {{soloBash: number, turns: number, callMsg?: {id: string|null, calls: number, solo: boolean}}} state
- * @param {{id?: string|null, calls: {name: string}[]}} fact
- */
-export function watchCalls(state, fact) {
-  if (!fact.calls.length) return;
-  if (fact.id == null || fact.id !== state.callMsg?.id) {
-    state.turns += 1;
-    state.callMsg = { id: fact.id, calls: 0, solo: false };
-  }
-  const msg = state.callMsg;
-  msg.calls += fact.calls.length;
-  const solo = msg.calls === 1 && fact.calls[0].name === "Bash";
-  state.soloBash += Number(solo) - Number(msg.solo);
-  msg.solo = solo;
-}
-
-/**
  * Spawns one session and reports what it did.
  *
  * The phase comes from the session's own `PHASE <letter>` line. Inferring it from outside by
@@ -1479,8 +1461,6 @@ export function runTicket(
     buildTurns: 0,
     committed: false,
     warnedUncommitted: false,
-    soloBash: 0,
-    turns: 0,
     /** Subagents running right now, in the order they were last heard from. */
     tasks: new Map(),
   };
@@ -1591,7 +1571,6 @@ export function runTicket(
       screen.said(thought(fact.text));
       for (const call of fact.calls) screen.call(call.name, act(call));
       watchBuild(state, fact, budget, (m) => screen.notice("uncommitted", m));
-      watchCalls(state, fact);
     }
     // A foreground subagent emits nothing else into the parent stream, so without these the phase
     // line freezes on its last fact for the whole of phase D — 78% of a run's clock — and a working
@@ -1669,8 +1648,6 @@ export function runTicket(
           phase: state.phase,
           phases: state.phases,
           committed: state.committed,
-          soloBash: state.soloBash,
-          callTurns: state.turns,
           stderr: state.stderr,
           version: state.version,
           wrongModel: state.wrongModel,
@@ -1696,6 +1673,15 @@ const git = (...args) => execFileSync("git", args, { encoding: "utf8" });
  * midnight opened its second file with the first one's total under the wrong heading.
  */
 const RUN_ID = new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-");
+
+/** The commit this supervisor runs, or null: two loop versions are otherwise one in the record. */
+export function loopSha(run = git) {
+  try {
+    return run("rev-parse", "HEAD").trim() || null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * The pull request this ticket pushed, if it pushed one.
@@ -2123,7 +2109,7 @@ function worktreeOf(io, number) {
  */
 export function parkAndRecord(io, number, { run = null, pr = null, files = 0, ...ctx }) {
   io.bell();
-  io.park(number, ctx);
+  io.park(number, { ...ctx, error: run ? errorOf(run) : null });
   io.record({
     number,
     outcome: "parked",
@@ -2249,7 +2235,8 @@ export async function runOnce(io, pinned = null, at = null) {
   }
   if (handoff) {
     const why = `phase ${handoff} next${because ? ` — ${because}` : ""}`;
-    io.record({ number: route.number, outcome: "handoff", why, run, counts: false });
+    const handed = { phase: handoff, why: because, said: run.declared?.why ?? null };
+    io.record({ number: route.number, outcome: "handoff", why, run, counts: false, handoff: handed });
     // The worktree comes with it: a handoff leaves one standing on purpose, so a park that does not
     // carry it leaves `derive()` a live run to resume — the ticket it just handed to the owner.
     return {
@@ -2311,7 +2298,8 @@ export async function runOnce(io, pinned = null, at = null) {
     });
 
   const handTo = (phase, why) => {
-    io.record({ number: route.number, outcome: "handoff", why: `phase ${phase} next — ${DIAGNOSED}${why}`, run: billed, counts: false });
+    const handed = { phase, why: `${DIAGNOSED}${why}`, said: null };
+    io.record({ number: route.number, outcome: "handoff", why: `phase ${phase} next — ${handed.why}`, run: billed, counts: false, handoff: handed });
     return { outcome: "handoff", ticket: route.number, phase, run, size, cwd: after?.cwd ?? null, branch: after?.branch ?? null };
   };
 
@@ -2478,11 +2466,13 @@ function realIo(book, screen) {
           });
         }
       }
+      const at = route.resuming ? (route.phase ?? "C") : null;
+      book.start(route.number, at ?? "A", RUN_ID);
       return runTicket(spawn, {
         number: route.number,
         queue: route.queue,
         size: route.size,
-        at: route.resuming ? (route.phase ?? "C") : null,
+        at,
         fix: Boolean(route.fix),
         retryCount: route.retryCount ?? 0,
         reason: route.reason ?? null,
@@ -2560,7 +2550,13 @@ function realIo(book, screen) {
      * CI fix round and a usage refusal are sessions that spent money without one — and it changes
      * only which counter moves, never whether the money is recorded.
      */
-    record: ({ number, outcome, why, run, pr = null, merged = false, files = 0, counts = true, head = null }) => {
+    killed: () => {
+      const lastSeen = (row) => (fs.existsSync(streamLog(row.n)) ? fs.statSync(streamLog(row.n)).mtimeMs : null);
+      const last = killedStarts(readLedger(undefined, { starts: true }), lastSeen).at(-1);
+      return last?.trailing ? last : null;
+    },
+    record: ({ number, outcome, why, run, pr = null, merged = false, files = 0, counts = true, head = null, handoff = null }) => {
+      const error = errorOf(run);
       const facts = ticketFacts(number);
       const rows = readLedger();
       const cost = windowCost({ n: number, outcome, own: run.result?.cost ?? 0 }, rows);
@@ -2593,7 +2589,7 @@ function realIo(book, screen) {
           outcome,
           // The sentence, not the outcome: a park written by a turn cap, one written by a review
           // deadlock and one written by a genuine blocker were the same four characters in the file.
-          parkReason: parkReasonOf(outcome, why),
+          parkReason: parkReasonOf(outcome, why, error),
           pr,
           phases: run.phases ?? {},
           result: run.result,
@@ -2605,8 +2601,9 @@ function realIo(book, screen) {
           version: run.version,
           usage: run.usage ?? null,
           committed: run.committed ?? null,
-          soloBash: run.soloBash ?? null,
           head,
+          handoff,
+          error,
         },
         {
           runId: RUN_ID,
@@ -2643,7 +2640,7 @@ function trapSignals(screen) {
  */
 export async function main({
   screen = ticker(),
-  book = openLedger(),
+  book = openLedger({ loopSha: loopSha() }),
   io = null,
   install = trapSignals,
   runId = RUN_ID,
@@ -2657,6 +2654,13 @@ export async function main({
 
   install(screen);
   io ??= realIo(book, screen);
+  const killed = io.killed?.();
+  if (killed) {
+    screen.notice(
+      "killed",
+      `#${killed.n}'s phase ${killed.phase ?? "?"} session from ${clockAt(Date.parse(killed.started))} was killed after ${Math.round(killed.ms / 60_000)} min and left no row`,
+    );
+  }
 
   const startedAt = Date.now();
   const spent = { ci: 0, wait: 0 };

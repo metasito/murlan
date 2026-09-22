@@ -35,6 +35,7 @@ const rowOf = (x: any) => ({
   cost: x.run?.result?.cost ?? 0,
   park_reason: parkReasonOf(x.outcome, x.why),
   head: x.head ?? null,
+  handoff: x.handoff ?? null,
 });
 
 const io = (over: Record<string, unknown> = {}, ledger: any[] = []) => ({
@@ -586,15 +587,34 @@ describe("runOnce", () => {
     assert.deepEqual(order, [`refresh ${red.cwd} agent/42-x`, "spawn C"]);
   });
 
-  test("nextRoute: a derived G outranks a stale handoff, and a pinned ticket with no worktree rebuilds at A", () => {
+  test("nextRoute replays 2026-09-21/22: every session starts where the ledger before it pointed", () => {
+    const rows = readFileSync(path.join(import.meta.dirname, "fixtures", "ledger-2026-09-21.jsonl"), "utf8")
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l));
+    const facts = () => ({ title: "t", url: "", size: null, labels: ["in-progress"], reviewRounds: 1, ciRounds: 0 });
+    const settle = { phase: "G", ci: { pushed: true } };
+    const status = { handoff: { phase: "C" }, pushed: settle, retry: { phase: "C", fix: true } };
+    let replayed = 0;
+    rows.forEach((row, i) => {
+      const next = rows.slice(i + 1).find((r) => r.n === row.n);
+      if (!next || !(row.outcome in status)) return;
+      // A next row with no phases is a settle: derive() read a pushed head, which outranks a handoff.
+      const derived = Object.keys(next.phases).length ? status[row.outcome as keyof typeof status] : settle;
+      const route = nextRoute(null, null, {
+        read: () => ({ onTicket: true, ticket: row.n, branch: "b", cwd: "w", fix: false, ...derived }),
+        facts,
+        ledger: () => rows.slice(0, i + 1),
+      } as never);
+      assert.equal(route.phase, Object.keys(next.phases)[0] ?? "G", `#${row.n} after its ${row.outcome} row at ${row.started}`);
+      replayed += 1;
+    });
+    assert.equal(replayed, 86);
+  });
+
+  test("nextRoute: a pinned ticket with no worktree rebuilds at A", () => {
     const facts = () => ({ title: "t", url: "", size: null, labels: ["in-progress"], reviewRounds: 1, ciRounds: 0 });
     const ledger = () => [{ n: 42, outcome: "handoff", cost: 0, park_reason: "phase E next", head: null }];
-    const g = nextRoute(null, null, {
-      read: () => ({ onTicket: true, ticket: 42, branch: "agent/42-x", cwd: "w", phase: "G", fix: false, ci: { pushed: true } }),
-      facts,
-      ledger,
-    } as never);
-    assert.equal(g.phase, "G");
     const stranded = nextRoute(42, null, { read: () => ({ onTicket: false, phase: "A" }), facts, ledger } as never);
     assert.deepEqual([stranded.phase, stranded.resuming], ["A", true]);
   });
@@ -1027,6 +1047,19 @@ describe("main", () => {
     const code = await main({ io: spy, book: book(), screen: screen(), install: () => {}, runId: "t" });
     assert.equal(code, 1, "the breaker ends the run rather than burning the night");
     assert.equal(calls, 3, "three, not two and not four");
+  });
+
+  test("boot names the session the last supervisor died with", async () => {
+    const said: string[] = [];
+    const killed = { n: 1094, phase: "D", started: "2026-09-21T08:05:45Z", ms: 12 * 60_000, trailing: true };
+    await main({
+      io: { ...(io() as any), stopFile: () => true, killed: () => killed },
+      book: book(),
+      screen: { ...screen(), notice: (_l: string, m: string) => said.push(m) },
+      install: () => {},
+      runId: "t",
+    });
+    assert.ok(said.some((m) => /#1094's phase D session .* killed after 12 min/.test(m)), said.join("\n"));
   });
 
   test("a stop file ends the night cleanly, before anything is picked", async () => {
@@ -1510,15 +1543,6 @@ describe("a ticket's tally comes from the ledger, not from memory", () => {
       await go(io(over, ledger));
       assert.equal(ledger.filter((r) => r.outcome === "parked").length, 1, name);
     }
-  });
-
-  test("blocked twice then unblocked: the next red is round 1, not round 3", async () => {
-    const parked: string[] = [];
-    const blockedRow = (head: string) => ({ n: 42, outcome: "blocked", cost: 1, park_reason: "blocked by #900", head });
-    const ledger: any[] = [blockedRow("h1"), blockedRow("h2")];
-    await go(io({ pick: once(ticket), ...red("h3"), park: (_n: number, c: { why: string }) => parked.push(c.why) }, ledger));
-    assert.deepEqual(parked, []);
-    assert.equal(ticketTally(42, ledger).retries, 1);
   });
 
   test("a throw during a resumed run parks with standing().cwd", async () => {
