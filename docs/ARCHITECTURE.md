@@ -3,7 +3,7 @@
 > **Scope of this file:** how the system is built — layers, data flow, socket lifecycle,
 > auth, persistence, state management, and the presentational-table refactor. It does not
 > cover game rules (`docs/GAME-RULES.md`), scope/decisions (`docs/BRIEF.md`), outstanding work
-> (GitHub Issues, `metasito/murlan`), or Replit run/deploy mechanics (`docs/DEPLOY-RUNBOOK.md`).
+> (GitHub Issues, `metasito/murlan`), or deploy mechanics (`docs/DEPLOY-RUNBOOK.md`).
 
 ---
 

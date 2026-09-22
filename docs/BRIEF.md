@@ -11,10 +11,12 @@
 digital version of it: fast, beautiful, fair, and playable both solo against credible AI
 and online against friends and strangers.
 
-Today it is a competent Replit prototype with a working game engine, real-time multiplayer,
-friends, and a coherent visual identity. It is **not** production software: its trust
-boundaries are broken, its failure modes are unhandled, it has no tests, and it carries
-store-rejection risks.
+It has a working game engine, real-time multiplayer, friends, a coherent visual identity, a
+547-file test suite (`tests/`) and a six-workflow CI pipeline (`.github/workflows/`). The
+original *"no tests, trust boundaries broken"* assessment (§2) is closed — ticket auth is
+shipped and pinned (`tests/server/socketTicket.test.ts`) — but the app is still **not** yet
+store-shipped: hosting is mid-migration off Replit (`docs/adr/0006-the-host-is-no-longer-replit.md`,
+tracked on #1105) and §5 lists what is still owner-blocked.
 
 The goal is not "more features". The goal is: **a player can install this from the App Store,
 understand it in 60 seconds, play a full game without a single desync, disconnect, or
@@ -47,7 +49,7 @@ Three pillars, in priority order:
 | Decision | Choice |
 |---|---|
 | Scope | Harden and re-architect the broken parts. Not a rewrite — the animation and layout work is real and worth preserving. |
-| Deployment | Replit stays the backend, unchanged. Add EAS Cloud for iOS/Android binaries pointing at the Replit API. |
+| Deployment | Superseded 2026-09-21 — see `docs/adr/0006-the-host-is-no-longer-replit.md`. Replit is no longer the host; the replacement is undecided (`wayfinder:map` #1105). EAS Cloud for iOS/Android binaries is unaffected, since it points at whichever API host is live. |
 | Socket auth | Short-lived single-use signed ticket, minted by an authenticated REST endpoint, consumed in the handshake. No new dependencies. |
 | Game rules | Research Murlan rules from real sources, consolidate into one documented specification, reconcile code and UI against it. Escalate genuine ambiguities rather than guessing. |
 | Seating a friend in 2 v 2 | **A seat can be reserved, and the allocator knows about teams.** Invite a friend and their seat is held for them, on your own side; quick match fills what is left, seating each arrival on the side that needs a player. One rule at three reservation counts — one seat held for "bring one friend", three for "four friends", none for "four strangers". See below. |
@@ -84,13 +86,10 @@ existing Murlan apps.
 | **What a "session" is** (§4) | **A session lasts until the table breaks up.** Every new match dealt at a standing table opens with the exchange from the last complete rankings — `room:start` included, not the rematch vote alone. The 3♠ opens only a table that has no previous manche to exchange from. | §4's "first hand of a session" was never defined, and the code split on the call site instead: the rematch vote exchanged, `room:start` dealt the 3♠. A player who agrees to a new match at the same table has not left the session; making the format depend on which button ended the last match is the kind of rule nobody can state. Decided by the owner 2026-09-17 on #1090. |
 | **A match ended by the unanimous vote** | **No rematch.** Once the penalty-free end-of-match vote carries, the table returns to the lobby; `game:rematch_vote` is refused for that match. A new match is `room:start`, which deals afresh. | The vote exists to release people from a match a seat was vacated from, and its rankings are partial by construction — 2 of 4 seats ranked. Dealing a rematch from them runs the exchange between the wrong two seats, because the 2nd finisher is read as the loser. Refusing the rematch is the rule the vote already implies. Decided by the owner 2026-09-17 on #1090. |
 | **A pair whose partner walked out** | **The pair keeps the departed partner's points, frozen.** They count towards the pair's total and towards crossing the target; the vacated seat itself is still never named among the winners. | The same clause as the disconnect policy's "points won before leaving are kept, shown and frozen", applied to the pair rather than the seat. `teamOfKey` dropped the vacated key, so the remaining partner played on alone against a full pair's total while the scoreboard still showed the points that no longer counted. Decided by the owner 2026-09-17 on #1090. |
-| **The offline turn clock** | **30 s, the same as online** (`afkTimeoutMs`). The first hand after the tutorial is timed like any other. | Offline ran a 20 s clock against the server's 30, so the same game was a harder game depending on where you were sitting, and nothing recorded why. One number is the rule; a tutorial exemption would make the first real hand feel slower than the game it is teaching. Decided by the owner 2026-09-17 on #1090. |
+| **The offline turn clock** | **30 s, the same as the server's AFK timer** (`afkTimeoutMs`). The first hand after the tutorial is timed like any other. | Offline ran 20 s against the server's 30, so the table where a new player learns the game trained them to a deadline a third shorter than the online one that costs them a turn. One number is the rule; a tutorial exemption would make the first real hand feel slower than the game it is teaching. Decided on #1088; the tutorial clause by the owner 2026-09-17 on #1090. |
 | **A rematch intent after the verdict** | **Refused once the match is over.** `rematchIntent` is rejected when `gameOver && matchOver`; the stop verdict a finished match reached cannot be reversed from the results screen. | `rematchRefused` is recomputed from the intents on every call, so an intent arriving after `game:over` turned a table that had already declined into one that had not, and dealt a manche out from under it. Technical, decided by the agent session under the owner's ruling 2026-09-17 on #1090. |
 | **The seat a free-for-all invite holds** | **None — kept as recorded in §3.3.** A hold is taken in 2-v-2 rooms only. | Re-examined on #1090 and left as it stands: a free-for-all lobby has no sides, so the hold costs the room a seat and buys nothing. Confirmed by the owner 2026-09-17. |
-
 | **Who starts a matchmade table** | **A table quick-match created deals itself a few seconds after its last seat is taken.** A table opened with "create room" still waits for its host, and `room:start`'s `NOT_THE_HOST` / `MATCH_IN_PROGRESS` refusals are unchanged for it. The two are told apart by `rooms.auto_start`, written once at creation — never by `visibility`, which the host may rewrite at any time. | Quick-match seats strangers together and then makes whoever searched first the host, so three people who never agreed to anything wait on one who was never told they had a job. Nobody at a matchmade table chose to host it, so nobody there should have to. Decided on #1088. |
-| **The offline turn clock** | **30 seconds, the same as the server's AFK timer.** | The offline table enforced 20 s, so the one place a new player learns the game trained them to a deadline a third shorter than the online one that actually costs them a turn. Decided on #1088. |
-
 The nine implementation tickets are filed from `docs/DISCONNECT-POLICY.md` §9, in the
 order that document gives; the design doc keeps the reasoning and the sources, this table keeps
 the decision.
@@ -221,55 +220,35 @@ once, and does not contradict any other. See §8.
 
 ---
 
----
+## 5. Feature status
 
-## 5. Proposed features
+> GitHub Issues is the work queue; this section is what was proposed, whether it shipped, and
+> what is still owner-blocked.
 
-> This section is a record of what was proposed and why. It is **not** the work
-> queue — GitHub Issues is, and it carries current status for every item
-> below. Several have since shipped: the interactive tutorial, localization,
-> achievements, daily streaks, match history, rejoin-in-progress UX, match
-> replay, spectator mode, bot personalities, the ranked ladder, cosmetics, push
-> notifications (respecified — see the entry below), and colourblind-safe suit
-> differentiation (measured: the existing palette already passes). Do not read
-> an entry here as outstanding.
+**Shipped** — do not read any of these as outstanding: interactive tutorial (`app/tutorial.tsx`);
+IT/EN/SQ localization (`locales/`); rejoin-in-progress UX; ranked ladder (`lib/game/rating.ts`);
+match history and hand replay (`lib/game/replay.ts`, `app/(online)/replay.tsx`); achievements and
+daily streaks (`lib/achievements.ts`, `lib/streak.ts`); bot personalities
+(`lib/game/botPersonalities.ts`); spectator mode (`isSpectator`, `app/(online)/game.tsx`); free
+card-back/table-felt cosmetics (`lib/cosmetics.ts` — a local preference, no entitlement table);
+colourblind-safe suit differentiation (not a built feature — the existing four-colour deck already
+clears deuteranopia/protanopia/tritanopia separation, pinned by `tests/ui-rules/suitColours.test.ts`);
+and **"your turn" push notifications**, respecified: the 30s auto-pass / 60s bot-takeover clocks
+mean such a push could never arrive in time to matter, so it shipped instead as a notification for
+a friend's invite that arrived while the player was away (`server/socket/push.ts`); sound and
+haptic choreography, every cue timed to the card's landing (`impactDelayMs()`, fired from
+`components/table/pile.tsx`; bomb jolts, music ducking and the win/lose sting in
+`components/useTableFeedback.ts`).
 
-Ordered by estimated impact per unit of work.
+**Open, owner-blocked** — tracked in GitHub Issues, not re-litigated here:
 
-### Tier 1 — I would build these regardless
-
-- **Interactive tutorial.** Murlan is niche. A guided first game that teaches combinations,
-  bombs, and the exchange phase is simultaneously the biggest retention lever and the thing
-  that makes the app reviewable by someone who has never heard of it.
-- **Localization: Italian, Albanian, English.** The player base is Italian, the game is
-  Albanian, and the App Store is global. Currently every string is hardcoded Italian.
-- **"Your turn" push notifications.** Proposed on the assumption that online play could
-  become asynchronous. It cannot: a player who does not act within 30s is auto-passed and
-  one still absent at 60s loses the seat to a bot, so a notification cannot arrive in time
-  to matter. Shipped instead as a notification for a **friend's invite that arrived while
-  the player was away**, which nothing expires against.
-- **Rejoin-in-progress UX.** Right now a disconnect is a cliff. It should be a speed bump.
-
-### Tier 2 — strong candidates
-
-- **Ranked ladder with a visible rating.** Gives skilled players a reason to return.
-  Requires the fairness work in W1/W2 to be honest.
-- **Match history and hand replay.** Post-game review of what everyone held. Cheap to build
-  on top of the persistence layer that already exists; disproportionately loved by card players.
-- **Achievements and daily streaks.** Standard, effective, low risk.
-- **Bot personalities.** Named opponents with distinct play styles rather than
-  easy/medium/hard. Makes offline play feel like a game rather than a practice mode.
-- **Spectator mode.** Watch a friend's table. Nearly free given the existing broadcast
-  architecture.
-
-### Tier 3 — worth discussing
-
-- **Cosmetics: card backs and table felts.** The natural monetization surface if you ever
-  want one, and non-invasive. Does not require IAP to be useful.
-- **Tournaments.** Bracketed multi-table events. Significant work; high ceiling.
-- **Colourblind-safe suit differentiation.** Accessibility, and genuinely improves legibility
-  for everyone at small card sizes.
-- **Haptic and sound redesign.** The assets exist; the choreography does not.
+| Item | Issue | Status |
+|---|---|---|
+| Whether the app monetizes at all | #33 | needs an owner decision |
+| Cosmetics shop — IAP-gated animation packs, backs, tables | #694 | `deferred` |
+| Tournaments — bracketed multi-table events | #58 | `deferred`, size:XL (design exists: `docs/specs/2026-08-16-tournaments-design.md`) |
+| VoiceOver/TalkBack flow unverified | #30 | open |
+| Friends-view leaderboard | #1216 | `in-progress`, size:M |
 
 ### Explicitly out of scope unless you say otherwise
 
@@ -292,7 +271,8 @@ The work is complete when all of the following hold:
 5. Account deletion succeeds and removes every row referencing the user.
 6. Offline single-player is reachable without an account.
 7. `eas build` produces a submittable iOS and Android binary.
-8. The Replit Run button still starts the app with no additional setup.
+8. Superseded by `docs/adr/0006-the-host-is-no-longer-replit.md` — the app launches with no
+   local setup from whatever the chosen host's own deploy step is (#1105).
 9. Every rule enforced by the engine matches the documented rule set and the in-app rules screen.
 10. Every `.md` file in the repo reflects the shipped state, owns its topic per §8, and
     contradicts no other document. Verified by re-reading them against the code, not by assertion.
@@ -322,30 +302,19 @@ Each document gets exactly one responsibility, and cross-references instead of r
 | `docs/GAME-RULES.md` ✅ | The canonical rule specification and its sources — **the only place rules live** | Implementation detail, scope |
 | `docs/BRIEF.md` (this file) | Scope, decisions and their rationale, workstreams, definition of done | Rule text, architecture prose |
 | GitHub Issues (`metasito/murlan`) | Everything outstanding and owner-blocked; rejected items stay open, labelled `rejected` | Anything not actionable |
-| `docs/DEPLOY-RUNBOOK.md` ✅ | Deploy and rollback steps, the host's env vars, what not to touch | Everything that duplicates `CLAUDE.md` |
+| `docs/DEPLOY-RUNBOOK.md` ⚠️ | Deploy and rollback steps, the host's env vars, what not to touch | Everything that duplicates `CLAUDE.md` |
 | `docs/specs/*` ✅ | Historical specs, each stamped with its outcome | Anything presented as pending when it has shipped |
 
-✅ = done. `docs/ARCHITECTURE.md` exists and `CLAUDE.md` states plainly that suit does not
-break ties, so both remaining items on this map are closed.
+✅ = done. ⚠️ = stale as of `docs/adr/0006-the-host-is-no-longer-replit.md` (2026-09-21): the
+runbook still describes the dead Replit deploy and its workflow; it is not rewritten until the
+next host is chosen (#1105).
 
 ### Contradictions between documents
 
-> **Resolved.** Every row below has been corrected in the document it names —
-> checked against the current files, not assumed. Kept as the record of what
-> the ownership map above was written to prevent.
-
-| Where | Said | Reality |
-|---|---|---|
-| the Replit notes (deleted), line `11` | "Implements all official Murlan rules" | The deal is wrong, the match target is absent, and the straight enumerator misses legal plays |
-| the Replit notes (deleted), line `15` | "12 bundled **WAV** sound effects" | They are `.mp3` files |
-| the Replit notes (deleted), line `88` | Lists `expo-crypto` as a dependency | Not in `package.json` |
-| the Replit notes (deleted), line `62` | "Server Authority … ensuring fair play" | The socket handshake accepts an unverified `userId`; there is no fair play until W1 lands |
-| the Replit notes (deleted) | "Existing screens still reference the legacy colour constants — do not retroactively replace" | That instruction preserved a bug: the legacy file's suit colours were the old red/black pair, so any screen importing it silently lost the colourblind-safe palette. The file was deleted; `lib/theme.ts` is the only palette. |
-| the Replit notes (deleted) vs the legacy colour constants vs the `app.json` splash | `#031008` / `#061410` / `#061410` | Three different background colours, so the launch seam was visible. One value now, from `lib/theme.ts`. |
-| the Replit notes (deleted), line `21-26` "MUST NOT CHANGE" | Game rules and exchange phase are frozen | Superseded by the decisions in §3.1, which change the deal and add a match target |
-| `CLAUDE.md` ↔ the Replit notes (deleted) | Both describe the tech stack, design system, disconnect handling, notification banner and friends list | Same content twice, already drifting apart |
-| `docs/specs/2026-06-04-…-visual-upgrade-design.md` | Reads as a pending design spec | Verified **already implemented** — the ornate SVG card back, gold selected-glow ring, `-14px` spring lift, face-card gold border and MP3 web audio via `decodeAudioData` are all in the code. To be stamped as shipped. |
-| `docs/BRIEF.md` §3.1 ↔ `docs/GAME-RULES.md` | Both carry rule content | `BRIEF` keeps the *decisions*; `GAME-RULES.md` keeps the *rules*. |
+**Resolved** — every drift the ownership map above was written to prevent (a deleted Replit-notes
+file disagreeing with the code on rules, sounds, dependencies, colours and "frozen" scope;
+`CLAUDE.md` duplicating it; a design spec reading as pending after it shipped) has been corrected
+in the document it named. Git history holds the detail; nothing here is still live.
 
 ### Standing rule
 

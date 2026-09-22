@@ -1,7 +1,7 @@
 // tests/server/dbResetGuard.test.ts — the destructive reset must be impossible to
 // trigger by accident: typing `npm run db:reset` instead of `db:push` must
 // not silently pass the script's own --yes guard and wipe whatever
-// DATABASE_URL points at (production, on Replit). These tests pin the guard
+// DATABASE_URL points at (production). These tests pin the guard
 // AND the fact that the convenience wrapper does not defeat it.
 //
 // Every case here exits before the script ever opens a pg connection, so no

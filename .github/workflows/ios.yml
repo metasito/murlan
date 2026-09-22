@@ -1,7 +1,7 @@
 name: iOS UI (Maestro)
 
-# Weekly and on demand — not on `push` or `pull_request`; see the paragraph below.
-# `maestro.yml`'s own header explains why a flaky device job on every push is worse than no job.
+# On demand only: a ticket whose work needs a device run dispatches it on its own branch
+# (`tools/loop/guard-bash.mjs`). Never on a schedule, `push` or `pull_request` (owner, 2026-09-22).
 #
 # `macos-latest` is free on this repo's standard runners (the repo went
 # public in #277), ships Xcode and iOS simulators preinstalled, and an iOS
@@ -9,16 +9,7 @@ name: iOS UI (Maestro)
 # KVM step, no emulator boot poll, none of #186's "Timeout waiting for
 # emulator to boot". That is the whole reason this job exists alongside
 # `maestro.yml` instead of just fixing the Android one.
-# Disabled on pull requests until its smoke flow passes on `main`: it was red when that call
-# was made, and a check that is always red teaches every reader that red is fine — it also
-# gates nothing, because ci.yml is the gate and `land.ts` merges past it.
-#
-# The schedule exists so a run happens without anyone remembering to fire one. #1094 owns
-# this job's trigger and its status in docs/agents/loops.md; `pull_request` comes back only
-# after two consecutive green runs on `main`.
 on:
-  schedule:
-    - cron: "37 5 * * 1"
   workflow_dispatch:
     inputs:
       force-upload-debug:

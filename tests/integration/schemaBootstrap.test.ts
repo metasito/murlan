@@ -131,7 +131,7 @@ test("a fresh database is usable on the first boot", async (t) => {
     });
 
     await t.test("re-running the bootstrap changes nothing", async () => {
-      // What every Replit restart does: the same statements against tables,
+      // What every restart does: the same statements against tables,
       // indexes and enum types that already exist.
       const { ensureSchema } = await import("../../server/store/schemaDdl.ts");
       const { pool } = await import("../../server/store/db.ts");

@@ -45,7 +45,7 @@ export interface ShutdownDeps {
 let shuttingDown = false;
 
 /**
- * Graceful shutdown for the Replit run path: disconnect every websocket, stop
+ * Graceful shutdown for the production run path: disconnect every websocket, stop
  * the http server, close the pool, exit 0.
  *
  * socket.io 4's `io.close()` does three things — it disconnects every socket,

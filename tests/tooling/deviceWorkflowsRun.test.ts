@@ -1,5 +1,6 @@
-// A device job only a human dispatches goes stale unnoticed, and an EAS job that
-// exits on "accepted" reports a build it never saw finish (#1094).
+// Device jobs run when a ticket's work needs one, dispatched on its branch — never on a
+// schedule, push or pull request (owner, 2026-09-22). An EAS job that exits on "accepted"
+// reports a build it never saw finish (#1094).
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -16,10 +17,9 @@ const workflow = (name: string) =>
 const triggers = (source: string) => source.match(/^on:\n((?:[ \t]+.*\n|\n)*)/m)?.[1] ?? "";
 
 for (const name of ["ios.yml", "maestro.yml"]) {
-  test(`${name} runs on a schedule as well as by hand`, () => {
+  test(`${name} runs only when dispatched`, () => {
     const on = triggers(workflow(name));
-    assert.match(on, /^ {2}schedule:\n {4}- cron: "[^"]+"/m);
-    assert.match(on, /^ {2}workflow_dispatch:/m);
+    assert.deepEqual(on.match(/^ {2}[\w-]+:/gm), ["  workflow_dispatch:"]);
   });
 }
 

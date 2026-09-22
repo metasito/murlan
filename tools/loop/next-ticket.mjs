@@ -23,8 +23,8 @@ export function sizeOf(issue) {
  *
  * Precedence, encoded: an AFK session implements specified work first, then converts unspecified
  * input (triage), then resolves decisions (wayfinder), and otherwise hands off. An owner label
- * wins over `ready-for-agent`, and a ticket carrying both is the normal case — releasing one to
- * the owner adds `ready-for-human` beside the label already there.
+ * wins over `ready-for-agent`: releasing a ticket takes `ready-for-agent` off (RULES.md rule 28),
+ * but one left carrying both must still not be taken.
  *
  * @typedef {{ number: number, title: string, labels: { name: string }[] }} Issue
  * @param {Issue} issue
@@ -158,13 +158,16 @@ function takeable(frontier, limit) {
   return out;
 }
 
-export function pickRoute(buckets) {
+export function pickRoute(buckets, take = takeable) {
   if (buckets.frontier.length > 0) {
-    const head = takeable(buckets.frontier, 1);
+    const head = take(buckets.frontier, 1);
     if (head.length > 0) return { skill: "implement", ticket: head[0] };
   }
   if (buckets.triage.length > 0) return { skill: "triage", ticket: buckets.triage[0] };
-  if (buckets.wayfinder.length > 0) return { skill: "wayfinder", ticket: buckets.wayfinder[0] };
+  if (buckets.wayfinder.length > 0) {
+    const head = take(buckets.wayfinder, 1);
+    if (head.length > 0) return { skill: "wayfinder", ticket: head[0] };
+  }
   return { skill: "handoff", ticket: null };
 }
 

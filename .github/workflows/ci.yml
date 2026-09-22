@@ -46,6 +46,7 @@ jobs:
   scope:
     name: Does this change need the suite?
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       contents: read
       # Which pull request a main commit came from, and whether its head passed.
@@ -145,6 +146,7 @@ jobs:
   secrets:
     name: Secret scan
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -229,6 +231,7 @@ jobs:
     needs: scope
     if: needs.scope.outputs.app == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     # Without a database the integration suites skip themselves (by design, so
     # `npm test` works for a contributor with no Postgres). That is exactly the
@@ -325,6 +328,7 @@ jobs:
     needs: scope
     if: needs.scope.outputs.app == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
@@ -344,6 +348,7 @@ jobs:
     needs: scope
     if: needs.scope.outputs.harness == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -374,6 +379,7 @@ jobs:
     needs: scope
     if: needs.scope.outputs.app == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -477,6 +483,7 @@ jobs:
     needs: scope
     if: needs.scope.outputs.app == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     # Each shard builds its own bundle and its own disposable Postgres
     # (scripts/e2e-server.mjs) rather than reusing another job's, which is what
     # lets them all start at the same moment as everything else instead of
@@ -571,6 +578,7 @@ jobs:
     # Not `success()`: a red shard is exactly when the report is worth reading.
     if: ${{ !cancelled() && needs.browser.result != 'skipped' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     # For the `git push` below. A token is scoped per job, not per step, so this
     # job's pull request runs carry a write token they never reach a use for —
     # the only step that commits is gated on `push`.
@@ -677,6 +685,7 @@ jobs:
     needs: scope
     if: needs.scope.outputs.app == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     # The boot check reaches a real database, the same way a deploy does.
     services:
@@ -705,7 +714,7 @@ jobs:
       # other two jobs check dev tooling and 24 is right for them.
       # `esbuild --target=node22` lowers syntax and knows nothing about APIs, so
       # a Node-24-only builtin compiles at exit 0, passes a Node 24 job, and
-      # throws on Replit. Running the deploy runtime is what catches that.
+      # throws in production. Running the deploy runtime is what catches that.
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "22"
@@ -744,7 +753,7 @@ jobs:
       - name: Neither production bundle carries a test-only flag
         run: node scripts/e2eBuildMark.mjs --absent dist static-build
 
-      # The bundle esbuild produces is otherwise first executed by a Replit
+      # The bundle esbuild produces is otherwise first executed by a production
       # deploy. /health answers only once the pool has reached Postgres.
       - name: The built server boots and reaches the database
         shell: bash

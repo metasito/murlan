@@ -57,7 +57,8 @@ restart it.
    - Each body cites the audit SHA, every `path:line`, the failure scenario, and the check that
      would catch the next instance.
    - If a finding matches an open issue, comment on that issue instead of opening a new one.
-   - A move off Replit supersedes ADR-0001, so propose it as a `wayfinder:map`, not as one ticket.
+   - A move off Replit (ADR-0006) is already tracked as `wayfinder:map` #1105 — comment findings
+     onto it rather than filing a new map or a loose ticket.
 
 **Done when:** your final message contains:
 - the artifact link;
@@ -153,7 +154,7 @@ Invariants to confirm:
     refs: 'node-postgres pooling (max, idleTimeoutMillis, connectionTimeoutMillis, one shared pool); GDPR data minimisation, export and erasure (Usercentrics mobile-games checklist).',
     ask: `- Every query has an index for its WHERE and ORDER BY.
 - Multi-row writes run in a transaction. Races on unique constraints.
-- Pool sizing fits Replit's limits.
+- Pool sizing fits the current host's connection limit (ADR-0006: no longer Replit).
 - Unbounded tables have retention.
 - DDL is additive and idempotent (DEDUPE_ON_BOOT).
 - The session table is handled correctly.
@@ -197,7 +198,7 @@ Quote measured numbers from the docs, and name what is still unmeasured.`,
 - Event-loop blocking: sync crypto, large JSON.
 - Compression and cache headers on the static web.
 - Timers per room. Adapter overhead.
-Estimate how many concurrent tables one Replit instance can carry, and state what that estimate rests on.`,
+Estimate how many concurrent tables one server instance can carry on the current host (see the \`infra\` lens for what that is), and state what that estimate rests on.`,
   },
   {
     key: 'ui-visual', model: 'opus', skills: ['expo-design-system', 'game-ui-design', 'frontend-design:frontend-design'],
@@ -334,21 +335,20 @@ Also check:
   },
   {
     key: 'supply-chain', model: 'sonnet', skills: ['eas-app-stores'],
-    start: 'package.json, package-lock.json, patches/, skills-lock.json, .replit, app.json, eas.json, .github/workflows/, scripts/build.js',
+    start: 'package.json, package-lock.json, skills-lock.json, app.json, eas.json, .github/workflows/, scripts/build.js',
     refs: 'OWASP Top 10:2025 A03 (software supply chain); npm ci + audit in CI; Actions pinned by SHA with least-privilege permissions.',
     ask: `Run \`npm audit --omit=dev\` and \`npx expo install --check\`, and report the output.
 Then check:
 - outdated or abandoned dependencies, and duplicate versions;
-- whether each patch in patches/ is still needed;
+- whether patch-package's postinstall step (package.json) still has anything to apply — no patches/ directory exists today;
 - APIs the code uses against server:build --target=node22;
-- whether the Replit Run button works with no setup;
 - app.json permissions and store readiness;
 - Actions pinning and permissions;
 - licences.`,
   },
   {
     key: 'infra', kind: 'research', model: 'opus', skills: ['eas-app-stores'],
-    start: '.replit, docs/adr/0001-*, docs/adr/0003-*, docs/DEPLOY-RUNBOOK.md, docs/adr/0006-*, server/index.ts, server/socket/socketAdapter.ts, package.json scripts, eas.json, app.json, docs/research/2026-08-26-dev-build-vs-expo-go.md, docs/research/2026-08-29-multiplayer-infrastructure.md',
+    start: 'docs/adr/0001-*, docs/adr/0003-*, docs/DEPLOY-RUNBOOK.md, docs/adr/0006-*, server/index.ts, server/socket/socketAdapter.ts, package.json scripts, eas.json, app.json, docs/research/2026-08-26-dev-build-vs-expo-go.md, docs/research/2026-08-29-multiplayer-infrastructure.md',
     refs: 'Use WebSearch and WebFetch. Official pricing pages only; record the URL and the date read for every price.',
     ask: `The Replit subscription has ended. Research where the app should live next.
 Requirements: free at the start, reasonable cost as it grows, mature and boring. The host must run:

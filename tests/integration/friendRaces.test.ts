@@ -203,7 +203,7 @@ describe("simultaneous friend requests", {
     // forbade any of it until now. Every shape each index forbids is seeded —
     // a duplicate accepted row per direction, a repeated request and a crossed
     // pair — because a dedupe that never meets a row it must delete is a
-    // CREATE UNIQUE INDEX that fails on Replit and nowhere else.
+    // CREATE UNIQUE INDEX that fails in production and nowhere else.
     await pool.query(`DROP INDEX "friends_accepted_uq", "friends_pending_pair_uq"`);
     const values = [
       [alice.user.id, bob.user.id, "accepted"],

@@ -1,51 +1,28 @@
 ---
 description: Work one wayfinder child against its map — resolve the question, record the decision, redraw the fog.
 argument-hint: "[loop]"
-allowed-tools: Read, Grep, Glob, Write, Edit, Skill, WebSearch, WebFetch, Bash(node tools/loop/next-ticket.mjs), Bash(gh issue:*), Bash(gh api:*)
+allowed-tools: Read, Grep, Glob, Write, Edit, Skill, WebSearch, WebFetch, Bash(node:*), Bash(gh issue:*), Bash(gh api:*)
 ---
 Every rule you follow while doing this is in `docs/agents/RULES.md` — read it first.
 
+Work the routed wayfinder child. `$ARGUMENTS` empty: **one child, then stop**. `loop`: **child
+after child** until the user says stop or the route stops being `wayfinder`; say which.
 
-Work the routed wayfinder child. Mode comes from `$ARGUMENTS`: empty means **one child then
-stop**; `loop` means **child after child until the user says stop**.
+1. **Pick.** Run `node tools/loop/next-ticket.mjs` and take the child it prints only if the route
+   is `wayfinder`; otherwise stop and say so. The picker reaches this route when nothing in the
+   implement frontier is *takeable* and nothing needs triage.
+2. **Claim before the first write** — `docs/agents/issue-tracker.md` → *Picking and claiming*.
+3. **Run `mattpocock-skills:wayfinder`** and follow it. It owns the map, the child types, the
+   Decisions-so-far / Fog structure and the refer-by-name rule. Tracker specifics are in
+   `issue-tracker.md` → *Wayfinding operations*.
+4. **A `wayfinder:prototype` child's code is evidence, not a deliverable.** Build it in a scratch
+   directory outside the repo, run it with `node`, and delete it once the answer is on the issue. No branch, no pull
+   request; an answer worth shipping becomes a new ticket for the queue.
+5. **Resolve** with a decision. If it is genuinely the owner's call, put the **option space** on
+   the child — what each option costs and what it forecloses — label it `ready-for-human`, release
+   the claim, and take the next. A bare question is not a finished ticket. Closing the child
+   releases it.
+6. **Report**, per child, two lines: the number and the question it asked, then the answer and
+   what moved on the map because of it.
 
-## Pick
-
-`node tools/loop/next-ticket.mjs`. Take the child it prints only if the route is `wayfinder` — the
-picker reaches this route when nothing in the frontier is *takeable* and nothing needs triage.
-
-**Read the child's blockers and assignee yourself before starting.** The wayfinder bucket is not
-gated the way the frontier is: `pickRoute()` returns `buckets.wayfinder[0]` with no `takeable()`
-check, so the route can hand over a child that should not be worked. If it is blocked or already
-assigned, say so, leave it, and take the next.
-
-## Work it
-
-Run **`mattpocock-skills:wayfinder`** and follow it. It owns the map, the child types, the
-Decisions-so-far / Fog structure and the refer-by-name rule. Where it asks for tracker specifics,
-they are in `docs/agents/issue-tracker.md` → *Wayfinding operations*.
-
-What this repo adds:
-
-- **Claim before the first write, release before you stop** — `docs/agents/issue-tracker.md` →
-  *Claiming an item*. Closing the child releases it.
-- **A `wayfinder:prototype` child's code is evidence, not a deliverable.** Build it in a scratch
-  directory outside the repo and delete it once the answer is on the issue. No branch, no pull
-  request. If the answer turns out to be worth shipping, that is a new ticket for the queue.
-
-## What this must not do
-
-- Land code on `main`, or open a pull request.
-- Leave a decision open-ended. If it is genuinely the owner's call, put the **option space** on
-  the child — what each option costs and what it forecloses — label it `ready-for-human`, and
-  take the next. A bare question is not a finished ticket.
-
-## Report
-
-Per child, two lines: the number and the question it asked, then the answer and what moved on
-the map because of it.
-
-## Loop mode only
-
-Take the next child immediately. Stop when the user says so, or when the route stops being
-`wayfinder`; say which.
+Nothing lands on `main` from here, and no pull request is opened.

@@ -20,8 +20,7 @@ import { dumpName } from "./backupNaming.mjs";
 
 if (!process.env.DATABASE_URL) {
   console.error(
-    "DATABASE_URL is not set. Run this on Replit, or in a shell that has it.\n" +
-      "Nothing was written."
+    "DATABASE_URL is not set. Run this in a shell that has it.\n" + "Nothing was written."
   );
   process.exit(1);
 }
@@ -39,8 +38,8 @@ const { error, status } = spawnSync(
 
 if (error?.code === "ENOENT") {
   console.error(
-    "pg_dump is not on PATH. Replit's postgresql-16 module provides it (.replit `modules`);\n" +
-      "a local shell may not. Nothing was written."
+    "pg_dump is not on PATH. Install a Postgres 16 client (deploy/runtime.json `postgres`)\n" +
+      "matching the server's major version. Nothing was written."
   );
   process.exit(1);
 }

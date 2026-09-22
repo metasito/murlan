@@ -23,8 +23,8 @@ export function mailHealth(): MailHealth {
  * `fetch` — no SDK dependency, per
  * docs/specs/2026-09-03-account-recovery-design.md, Box 3.
  * Every caller goes through this one function, so a vendor swap or removal
- * touches this file alone. Credentials live in Replit Secrets, read at call
- * time (not module scope) so a test process can set them per-run.
+ * touches this file alone. Credentials live in the host's secret store, read
+ * at call time (not module scope) so a test process can set them per-run.
  *
  * Never throws: a provider outage must not become a caller's problem to
  * handle specially. Returns whether the send is believed to have gone out.

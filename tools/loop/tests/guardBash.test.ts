@@ -42,7 +42,7 @@ const guard = (cmd: string) => check(cmd, device, repo);
 const ADD = /pathspec/;
 const DISCARD = /Edit tool/;
 const FORCE_DELETE = /worktrees:remove/;
-const DEVICE = /weekly schedule only/;
+const DEVICE = /dispatches them on its own branch/;
 const UNREADABLE = /literal id/;
 const MERGE = /not yours to merge/;
 
@@ -103,7 +103,6 @@ const BLOCKED: [string, RegExp][] = [
   ["git push origin main", /pull request/],
   ["git push -f origin +agent/1-x:refs/heads/main", /pull request/],
   ["git push origin --delete main", /pull request/],
-  ["gh workflow run ios.yml --ref agent/353-ios-offline-game", DEVICE],
   ["gh workflow run maestro.yml", DEVICE],
   ['gh workflow run "iOS UI (Maestro)"', DEVICE],
   ["gh workflow run IOS.YML", DEVICE],
@@ -112,11 +111,10 @@ const BLOCKED: [string, RegExp][] = [
   ["gh api -X POST repos/o/r/Actions/Workflows/Maestro.yml/Dispatches", DEVICE],
   ["echo MAESTRO_EVIDENCE_READ=1; gh workflow run ios.yml", DEVICE],
   ["gh workflow run ios.yml # MAESTRO_EVIDENCE_READ=1", DEVICE],
-  ["MAESTRO_EVIDENCE_READ=1 gh workflow run ios.yml --ref agent/353-x", DEVICE],
   ["MAESTRO_EVIDENCE_READ=1 gh api -X POST repos/o/r/actions/workflows/ios.yml/dispatches", DEVICE],
   ["gh workflow run ios.yml --ref main", DEVICE],
-  ["gh workflow run ios.yml --ref agent/11990-x", DEVICE],
   ["gh workflow run ios.yml --ref agent/1199", DEVICE],
+  ["gh workflow run ios.yml --ref side/1195-x", DEVICE],
   ["gh api -X POST repos/o/r/actions/workflows/ios.yml/dispatches -f ref=agent/1199-x", DEVICE],
   ["gh run rerun 33428375221 --failed", DEVICE],
   ["gh -R o/r run rerun 33428375221", DEVICE],
@@ -246,8 +244,10 @@ describe("the bash guard allows correct usage", () => {
     "echo 'find / is slow' > note.txt",
     "git add -- a.ts 2>&1 | tail -3",
     "gh workflow run ios.yml --ref agent/1199-device-ci",
-    "gh workflow run maestro.yml --ref=agent/1199-device-ci -f force-upload-debug=true",
-    "gh -R o/r workflow run ios.yml -r agent/1199-device-ci",
+    "gh workflow run maestro.yml --ref=agent/1206-device-ci -f force-upload-debug=true",
+    "gh -R o/r workflow run ios.yml -r agent/1211-ios-rotate",
+    "gh workflow run ios.yml --ref agent/353-ios-offline-game",
+    "MAESTRO_EVIDENCE_READ=1 gh workflow run ios.yml --ref agent/353-x",
     "gh run download 33428373840 -n maestro-debug-ios -D /tmp/art",
     "gh run view 33428373840 --json jobs",
     "gh workflow run ci.yml --ref main",
@@ -297,7 +297,7 @@ describe("a rerun is gated on the workflow it would re-dispatch, not on being a 
   // it can still change.
   for (const [what, cmd] of [
     ["a command that reruns nothing", "gh run view 33428373840 --json jobs"],
-    ["a device dispatch from its owning ticket", "gh workflow run ios.yml --ref agent/1199-x"],
+    ["a device dispatch from a ticket's branch", "gh workflow run ios.yml --ref agent/1211-x"],
   ]) {
     test(`does not ask about ${what}`, () => {
       let asked = 0;

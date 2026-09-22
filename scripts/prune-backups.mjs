@@ -8,7 +8,7 @@
  * backup must not leave zero dumps behind.
  *
  * Age is read from the filename's own timestamp, not the file's mtime — a
- * dump copied onto a Replit Volume after the fact would otherwise look
+ * dump copied onto persistent storage after the fact would otherwise look
  * freshly made.
  *
  * Usage:  node scripts/prune-backups.mjs [dir]

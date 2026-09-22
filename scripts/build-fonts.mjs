@@ -9,7 +9,7 @@
  * limits to [a-zA-Z0-9_] (RegisterSchema, server/http/schemas.ts), so most of that
  * is glyphs nothing can ever ask for.
  *
- * Subsetting runs here rather than in the build so a Replit deploy needs no
+ * Subsetting runs here rather than in the build so the host needs no
  * extra tooling: the output is committed, exactly as assets/sounds/ is, and
  * tests/tooling/fontSubset.test.ts fails if the locales grow a character the shipped
  * subsets do not carry.

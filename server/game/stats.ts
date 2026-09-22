@@ -194,7 +194,7 @@ export async function getUserStats(userId: string): Promise<UserStatsView> {
   ]);
 
   // Derived from history rather than stored in its own columns. New columns on
-  // user_stats could not be written until someone ran db:push on Replit, and
+  // user_stats could not be written until someone ran db:push in production, and
   // until they did *every* stats write would fail — a far worse outcome than
   // this figure being approximate. It is bounded by the retained history, so a
   // player with more than MAX_HISTORY_ROWS_PER_USER matches inside their streak

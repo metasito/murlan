@@ -1,132 +1,115 @@
 # Issue tracker: GitHub
 
-Issues and specs for this repo live as GitHub issues. Use the `gh` CLI for all operations.
+Issues live in GitHub Issues (`metasito/murlan`); `gh` infers the repo inside a clone. The rules
+for taking, claiming, reading and releasing work are `docs/agents/RULES.md` 21–28. This file is
+the vocabulary, the recipes, and how to write a ticket.
 
-## Conventions
+## Labels
 
-- **Create an issue**: `gh issue create --title "..." --body "..."`. Use a heredoc for multi-line bodies.
-- **Read an issue**, one command:
+`tools/loop/next-ticket.mjs` routes on labels alone (`routeOf`, `classify`).
 
-  ```sh
-  gh issue view <number> --json title,body,comments \
-    --jq '.title, .body, (.comments[]|"--- "+.author.login+": "+.body)'
-  ```
+| Label | Means | Picker |
+|---|---|---|
+| `ready-for-agent` | Specified; every decision is made | route `implement` |
+| `needs-triage`, or no label at all | Not yet a ticket | route `triage` |
+| `wayfinder:research` / `prototype` / `grilling` / `task` | A child of a wayfinder map | route `wayfinder` |
+| `wayfinder:map` | The map issue itself | never routed |
+| `ready-for-human` / `needs-info` / `rejected` | The owner's; wins over `ready-for-agent`. `rejected` stays open (`docs/BRIEF.md`) | owner |
+| `deferred` | Decided against for now; the owner can lift it | owner |
+| `in-progress` | Claimed | skipped, unless *stranded* (below) |
+| `blocked` | Ready and approved, but waiting on something external — a dead CI, an unreleased dependency | skipped |
+| `size:XS` … `size:XL` | A promise about the diff; the supervisor sets the session's turn budget from it | — |
+| `loop` | The loop's own machinery: `tools/loop`, the supervisor, its guards | — |
+| `main-red` | Filed by the supervisor when main's CI is red (`tools/loop/mainHealth.ts`) | — |
+| `soak` | Filed by the nightly soak (`.github/workflows/soak.yml`) | — |
+| `gauntlet` | A piece in a gauntlet round, critiqued blind against a named bar | — |
 
-  Neither half alone is a read. `--comments` prints the comment thread *and nothing else*, so
-  on an issue with no comments it outputs nothing and exits 0 — which reads as "no body"
-  rather than "no comments", and has already been misread that way. `--json body` drops the
-  thread, where an owner's ruling that overrides the body usually lives. Add `labels` to the
-  `--json` list when the labels matter.
-  Either command alone is a partial read. `--json body,comments` gets the same two in one call
-  when you want to filter them with `jq`.
-- **List issues**: `gh issue list --state open --json number,title,body,labels,comments --jq '[.[] | {number, title, body, labels: [.labels[].name], comments: [.comments[].body]}]'` with appropriate `--label` and `--state` filters.
-- **Comment on an issue**: `gh issue comment <number> --body "..."`
-- **Apply / remove labels**: `gh issue edit <number> --add-label "..."` / `--remove-label "..."`
-- **Labels**: `needs-triage` / `needs-info` / `ready-for-agent` / `ready-for-human` / `rejected`,
-  `size:XS`…`size:XL`, `in-progress` (see *Claiming an item*), and `blocked`.
-- **`blocked`** is for an item that is ready and approved but cannot be verified or landed
-  until something external returns — a dead CI, an unreleased dependency. It sits *alongside*
-  `ready-for-agent`, never instead of it: that label often carries a decision the owner has
-  already made, and removing it to stop the picker routing there throws the decision away.
-  `tools/loop/next-ticket.mjs` skips a `blocked` item the same way it skips `in-progress`. Take
-  the label off when the dependency returns, and say so on the issue.
-- **Close**: `gh issue close <number> --comment "..."`
+- **`blocked` sits alongside `ready-for-agent`, never instead of it.** That label carries a
+  decision the owner already made, and removing it to stop the picker is how the decision is lost.
+  Take `blocked` off when the dependency returns, and say so on the issue.
+- **Blocking between issues lives only in GitHub's native dependencies** — the picker gates on
+  `issue_dependencies_summary.blocked_by`, and nothing else encodes it. A blocker stated in prose
+  on the *other* issue is invisible to it (rule 23).
 
-Infer the repo from `git remote -v`; `gh` does this automatically when run inside a clone.
+## Recipes
 
-## Claiming an item
+Every multi-line body goes through `--body-file`: an inline `--body` carrying backticks is
+corrupted by PowerShell.
 
-The standard way to work a ticket the picker routes to implement is **`/queue`**
-(`.claude/commands/queue.md`): it claims, builds in a worktree, has a reader who did not write
-the diff review it, reads `ci.yml`'s verdict, fixes a red run, lands and tears down, one ticket
-at a time. The picker's other two routes have entry points of their own — `/triage` and
-`/wayfinder`. Everything below is what `/queue` does, and stays the instruction for anything
-worked by hand.
+```sh
+# Read one issue: rule 25's command. Add `labels` to --json when they matter.
+gh issue list --state open --label <label> --json number,title,labels \
+  --jq '[.[] | {number, title, labels: [.labels[].name]}]'
+gh issue create --title "<title>" --body-file <file> --label <label> --label size:<size>
+gh issue comment <n> --body-file <file>
+gh issue edit <n> --add-label <label> --remove-label <label>
+gh issue close <n> --comment "<why>"
 
-Sessions run in parallel against one repo, and every one of them authenticates as the same
-GitHub account — so `--add-assignee @me` cannot tell two sessions apart. The branch name
-can, and that is what the claim carries.
+# <db-id> is the database id — gh api repos/{owner}/{repo}/issues/<n> --jq .id — never #<n> or node_id
+gh api -X POST repos/{owner}/{repo}/issues/<n>/dependencies/blocked_by -F issue_id=<blocker-db-id>
+gh api repos/{owner}/{repo}/issues/<n> --jq .issue_dependencies_summary.blocked_by   # open blockers
+gh api -X POST repos/{owner}/{repo}/issues/<map>/sub_issues -F sub_issue_id=<child-db-id>
+```
 
-- **Pick** — `node tools/loop/next-ticket.mjs` (`--all` lists the frontier in pick
-  order; a bare issue number inspects that ticket without picking it).
-  The script encodes the precedence itself — implement the unblocked `ready-for-agent`
-  frontier (native blockers applied, smallest `size:*` first) → triage → wayfinder →
-  handoff — and prints the routed ticket's body, comments, blocker identities and its
-  claim commands, so one call hands a session everything it needs. The claim is the
-  `in-progress` label; a claim comment naming a branch that still lives on origin also
-  removes a ticket from the frontier (the lost-label backstop). It is the single
-  picker; do not re-derive a queue per session, and do not encode blocking anywhere
-  but GitHub's dependency graph.
-- **Execute the route through its command** — `/queue`, `/triage` or `/wayfinder`. `/triage`
-  and `/wayfinder` run `mattpocock-skills:triage` and `mattpocock-skills:wayfinder`, which
-  own their procedures; the command files carry only what is specific to this repo.
-  `mattpocock-skills:implement` is **not** among them: it is invokable, but its "run the
-  full test suite once at the end" contradicts this repo's rule that `ci.yml` owns the
-  sweep, so `queue.md` calls `mattpocock-skills:tdd` and `code-review` directly rather than
-  through it. `/queue` spells its own procedure out instead, and nothing in that pack picks
-  a ticket — its only
-  frontier query is scoped to a `wayfinder` map's children and drops candidates on
-  assignee, which cannot separate two sessions here.
-- **Claim**, as the session's first write, before the branch and before reading the code:
-  ```sh
-  gh issue edit <n> --add-label in-progress
-  gh issue comment <n> --body "Claimed by \`<branch-name>\`."
-  ```
-- **Confirm you won the race**: `gh issue view <n> --comments`, the one place the thread alone
-  is what you want. Labelling is not atomic, and two sessions can list the same free queue a
-  second apart. If a claim comment predates
-  yours, `gh issue edit <n> --remove-label in-progress`, comment that you are standing down,
-  and take the next item.
-- **Release**: `gh issue close` ends the claim with the issue. Otherwise
-  `gh issue edit <n> --remove-label in-progress` — always when relabelling `ready-for-human`,
-  and whenever you stop without landing the work. An `in-progress` label left behind is an
-  item nobody will pick up.
-- **Stale claim**: the branch named in the claim comment is in neither
-  `git ls-remote --heads origin` nor `git worktree list`. Say so on the issue, then claim it.
-- **Abandoned branch**: on origin, in no worktree, with **no open pull request**. A run that
-  ended without landing leaves one, and it is residue rather than a claim — say so, delete it
-  (`git push origin --delete <branch>`), then take the ticket. Left alone it satisfies the
-  staleness test above and the ticket can never be picked up again; #294 refused every run for
-  exactly this reason.
+When a skill says **"publish to the issue tracker"**, create an issue. When it says **"fetch the
+relevant ticket"**, run rule 25's read — title, body and thread together.
+
+## Picking and claiming
+
+The standard way to work an `implement` route is **`/queue`** (`.claude/commands/queue.md`): it
+claims, builds in a worktree, has the diff reviewed by readers who did not write it, and hands CI
+and the merge to the supervisor. `triage` and `wayfinder` go through `/triage` and `/wayfinder`
+(rule 27), which run `mattpocock-skills:triage` and `mattpocock-skills:wayfinder`; those skills own
+their procedures, and the command files carry only this repo's specifics.
+`mattpocock-skills:implement` is not used: its closing full-suite run contradicts rule 2, so
+`/queue` calls `mattpocock-skills:tdd` and `code-review` directly. Nothing in that pack picks a
+ticket here: its frontier query drops candidates on assignee, and every session authenticates as
+the same GitHub account.
+
+- **Pick** — `node tools/loop/next-ticket.mjs`, the single picker (rule 21). `--all` lists the
+  unblocked implement frontier in pick order; a bare issue number inspects that ticket without
+  picking it. Precedence: implement → triage → wayfinder → handoff. Implement takes *stranded*
+  tickets first (`in-progress`, an open pull request, no worktree on this machine: a run whose
+  supervisor died between CI rounds), then the oldest open `ready-for-agent` issue with no open
+  native blocker and no open pull request on an `agent/<n>-` branch. It prints the route, the body,
+  the comments, open blockers, any open pull request, whether it is takeable, and the claim
+  commands when it is.
+- **Claim** (rule 22). For `/queue`: `npm run queue:claim -- <n> "<title>"` adds `in-progress`,
+  posts the claim comment and creates `.worktrees/agent-<n>`. The worktree directory is the mutex;
+  exit 1 means you lost the race. For `/triage` and `/wayfinder`: the label and comment the picker
+  prints, then re-read the issue (rule 25) and stand down if an older claim is there. The comment
+  reads exactly ``Claimed by `<branch>`.`` — the loop parses that shape.
+- **Release** (rules 26 and 28). Closing the issue ends the claim. Otherwise remove `in-progress`
+  — always when relabelling `ready-for-human`. A leftover `in-progress` hides the ticket from the
+  picker for good.
+- **Stale claim**: `in-progress`, and the branch in the claim comment has no worktree
+  (`git worktree list`) and no open pull request. Say so on the issue, remove `in-progress`, then
+  claim it.
+- **Abandoned branch**: an `agent/<n>-<slug>` branch on origin, in no worktree, with no open pull
+  request — residue of a run that ended without landing. `claim.mjs` builds the next worktree on
+  top of a branch of the same name, so either resume it or delete it
+  (`git push origin --delete <branch>`), and say which on the issue.
 
 ## Pull requests as a triage surface
 
-**PRs as a request surface: no.** _(Set to `yes` if this repo treats external PRs as feature requests; `/triage` reads this flag.)_
+**PRs as a request surface: no.** _(Set to `yes` if this repo treats external PRs as feature
+requests; `/triage` reads this flag.)_
 
-When set to `yes`, PRs run through the same labels and states as issues, using the `gh pr` equivalents:
-
-- **Read a PR**: the same shape — `gh pr view <number> --json title,body,comments --jq '.title, .body, (.comments[]|"--- "+.author.login+": "+.body)'`, and `gh pr diff <number>` for the diff.
-  `gh pr view --comments` drops the body exactly as the issue form does.
-- **List external PRs for triage**: `gh pr list --state open --json number,title,body,labels,author,authorAssociation,comments` then keep only `authorAssociation` of `CONTRIBUTOR`, `FIRST_TIME_CONTRIBUTOR`, or `NONE` (drop `OWNER`/`MEMBER`/`COLLABORATOR`).
-- **Comment / label / close**: `gh pr comment`, `gh pr edit --add-label`/`--remove-label`, `gh pr close`.
-
-GitHub shares one number space across issues and PRs, so a bare `#42` may be either: resolve with `gh pr view 42` and fall back to `gh issue view 42`.
-
-## When a skill says "publish to the issue tracker"
-
-Create a GitHub issue.
-
-## When a skill says "fetch the relevant ticket"
-
-Run the one-command read from **Conventions** above — title, body and thread together.
-
+When `yes`, PRs run through the same labels and states, with the `gh pr` equivalents: read with
+the rule 25 shape on `gh pr view` plus `gh pr diff <n>`; list with
+`gh pr list --state open --json number,title,body,labels,author,authorAssociation,comments`,
+keeping only `authorAssociation` of `CONTRIBUTOR`, `FIRST_TIME_CONTRIBUTOR` or `NONE`. Issues and
+PRs share one number space: resolve a bare `#42` with `gh pr view 42`, falling back to
+`gh issue view 42`.
 
 ## Writing an issue body an agent can execute
 
 An agent working the queue cannot ask a follow-up question, so the issue is the whole
-specification and the test of a good one is that a competent stranger could land the change
-without guessing.
+specification. The test: a competent stranger could land the change without guessing.
 
-**The comments are part of it.** An owner's ruling, a decision a triage pass settled, a trap
-found later — all of those arrive as comments, and the body is often the state of the question
-before any of them. Read both halves, and treat a later ruling as overriding the body.
-
-The design gate reads them apart, and the difference matters when you write one. A recorded
-decision counts from either. Everything else — an open box under "What to settle", whether the
-ticket weighs a dependency — is read from the **body only**, because the gate comments on the
-issues it escalates, and reading its own notice back turned #278 into a loop that escalated on
-its own words. So write the body to stand alone: a decision that changes the work is worth
-folding back into it, and a decision left only in a comment will not move any gate but that one.
+**Write the body to stand alone.** Rulings, triage decisions and traps found later arrive as
+comments, and a later comment overrides the body — so a decision that changes the work is worth
+folding back into the body, where the next reader meets it first.
 
 Eight sections, in this order. Drop any that would be empty — an empty heading is noise.
 
@@ -141,17 +124,15 @@ Eight sections, in this order. Drop any that would be empty — an empty heading
 ## Not this ticket     ← only work owned by another open issue or needing another decision, with issue numbers.
 ```
 
-What makes the difference in practice:
+### What the sections need
 
-- **Point at code, not at concepts.** `components/GameTable.tsx:827` costs the agent one
-  `sed`; "the sound preloading" costs it a search and a guess.
+- **Point at code, not at concepts.** `components/GameTable.tsx:827` costs the agent one read;
+  "the sound preloading" costs it a search and a guess.
 - **Name the invariant *and* its enforcement.** "`CARD_W` is declared once, and
-  `tests/ui-rules/layoutConstantsPinned.test.ts` source-scans for a second declaration" tells an agent
-  both what not to do and what will catch it.
+  `tests/ui-rules/layoutConstantsPinned.test.ts` source-scans for a second declaration" says both
+  what not to do and what will catch it.
 - **Name the checks in two slots: the loop, and the gate.** `docs/agents/RULES.md` rules 3 to 5
-  leave the slow suites to the agent, and an agent judging in the dark reads `loops.md`, hunts
-  for a spec, probes for Docker, and then runs the two-minute native suite against a two-line
-  diff. You have read the change coming; it has not. So write:
+  leave the slow suites to the agent's judgement, and you have read the change coming; it has not.
 
   ```markdown
   ## Checks
@@ -161,68 +142,68 @@ What makes the difference in practice:
   Not `npm run test:native`: react-test-renderer never runs flexbox, so it cannot see this.
   ```
 
-  **Never put a rebuilding command in the loop slot.** A Playwright spec is nine minutes and a
-  full Metro rebuild for any change outside `tests/e2e/` — named as the loop, it becomes the
-  loop: #349 ran one seven times, which was two thirds of that ticket's wall clock. A browser
-  check belongs in the gate slot, bounded to red-once and green-once, with CI carrying the rest.
-- **Checkboxes over prose.** They render as progress on the issue, and an agent can report
-  against them. A wall of paragraphs makes partial completion invisible.
-- **An open box under `## What to settle` means the ticket is not `ready-for-agent`.** That
-  label promises the decisions are made; an unchecked box says they are not, and an agent that
-  meets both builds on whichever reading it picked. Settle them and write the answers down, or
-  label it `ready-for-human` and leave them open. The design gate escalates a ticket carrying
-  both, so the contradiction costs a claim rather than a diff.
-- **An empty table is an instruction.** Giving the columns of a decision to be made
-  (`Event | Visual | Sound | Haptic | Fallback`) specifies the shape of the answer far more
-  cheaply than describing it.
-- **`> [!IMPORTANT]` and `> [!WARNING]` are load-bearing**, not decoration — they survive
-  skimming, and constraints are what get skimmed past.
+  **The loop slot holds only a fast, non-rebuilding command.** A Playwright spec is minutes plus a
+  Metro rebuild for any change outside `tests/e2e/`; named as the loop, it becomes the loop. A
+  browser check goes in the gate slot, bounded to red once and green once, with CI carrying the
+  rest.
+- **An open box under `## What to settle` means the ticket is not `ready-for-agent`.** That label
+  promises the decisions are made. Settle them and write the answers down, or label it
+  `ready-for-human` and leave them open.
+- **A box a loop session is refused cannot be `ready-for-agent`.** The permission classifier
+  refuses a loop session's edits to `.claude/settings.json` as self-modification. Such a box is
+  the owner's: label the ticket `ready-for-human`, or move the box into a ticket of its own that is.
 - **Scope the ticket to an area, not to a list.** The queue fixes what it meets in the files and
   the defect class the ticket names, and adds a box for each (`queue.md` phase C). So
   `## Not this ticket` names only work another issue owns or a decision not yet made — never a
-  same-area defect, which the session would otherwise file back as a follow-up.
+  same-area defect.
 - **Check every prescribed form against what already pins the current one.** Grep the tests and
-  `git log -S` for the command, pattern or path you tell the agent to use. #1071 prescribed
-  `node "$CLAUDE_PROJECT_DIR"/…`, which `loopDocsAreExecutable.test.ts` forbids since de84b7e1,
-  and the session could only park. Where you are unsure, state the intent and let the agent pick.
-- **A box a loop session is refused cannot be `ready-for-agent`.** Its permission classifier
-  refuses edits to `.claude/settings.json` as self-modification. Such a box is the owner's: label
-  the ticket `ready-for-human`, or move that box into a ticket of its own that is.
-- **Cite the source.** A research file path or the issue that surfaced it, so the next reader
-  can check the claim instead of re-deriving it.
-- **Point at `CLAUDE.md`, don't copy it.** It is already in the agent's context every turn, so restating an invariant in the body pays tokens to say nothing and creates a second copy that goes stale. Write only the part that is *not* discoverable: how this particular change collides with that invariant.
-- **Make the done-condition checkable and exhaustive.** "Every modified locale accounted for" forces the work; "update the locales" does not. A vague bound invites stopping early, with attention already on the next ticket.
-- **Prompt the positive.** "Bound every query" lands; "don't write unbounded queries" drags the unbounded query into context and makes it more available. Keep prohibitions for hard guardrails, and pair them with the target.
-
-Verify the body's own claims before filing. An issue that asserts a defect at a line that
-does not contain it sends an agent down a hole with no way out.
+  `git log -S` for the command, pattern or path you tell the agent to use; a form a test forbids
+  leaves the session nothing to do but park. Where unsure, state the intent and let the agent pick.
+- **Checkboxes over prose**; they render as progress, and an agent can report against them.
+- **An empty table is an instruction.** Its columns (`Event | Visual | Sound | Haptic | Fallback`)
+  specify the shape of the answer more cheaply than describing it.
+- **`> [!IMPORTANT]` and `> [!WARNING]` are load-bearing** — they survive skimming, and
+  constraints are what get skimmed past.
+- **Make the done-condition checkable and exhaustive.** "Every modified locale accounted for"
+  forces the work; "update the locales" does not.
+- **Point at `CLAUDE.md`, don't copy it.** It is in every session's context already. Write only
+  how this change collides with an invariant there.
+- **Prompt the positive.** "Bound every query" lands; "don't write unbounded queries" puts the
+  unbounded query in context. Keep prohibitions for hard guardrails, paired with the target.
+- **Cite the source** — a research file or the issue that surfaced it — so the claim can be
+  checked rather than re-derived.
+- **Verify the body's own claims before filing.** A defect asserted at a line that does not
+  contain it sends an agent down a hole with no way out.
 
 ### Write it for cheap consumption
 
-The body is read by an agent that pays for every token and cannot ask a follow-up. Two
-failure modes cost the same: too little, and it explores; too much, and it skims past the
-part that mattered. Both are avoidable.
+The reader pays for every token and cannot ask. Too little and it explores; too much and it skims
+past the part that mattered.
 
 - **Give the values, not a description of them.** `radius 14*s, no border, label Rajdhani 700
-  12*s .16em uppercase` is one line an agent implements from. "Rounded, bevelled, with a
-  letterspaced label" is three lines it has to go and resolve. Numbers, tokens and selectors
-  are the cheapest thing you can write.
-- **Front-load the pointers.** Ground truth first, prose second. An agent that has
-  `file.ts:line` in the first ten lines never runs the search.
-- **Link the primary source; never paraphrase it.** A prototype URL, an ADR, a spec. A
-  paraphrase is a second copy that goes stale, and the agent still has to open the original.
-  Say which part of it to read.
-- **40–80 lines.** Longer is a spec, not a ticket — split it and let the blocking edges carry
-  the order.
-- **One `size:*` label is a promise about the diff**, not about the reading. A ticket whose
-  body needs a research detour is not `size:S`, however small the edit turns out to be.
+  12*s .16em uppercase` is one line to implement from; "rounded, bevelled, with a letterspaced
+  label" is three to resolve.
+- **Front-load the pointers.** An agent with `file.ts:line` in the first ten lines never runs the
+  search.
+- **Link the primary source; never paraphrase it** — a prototype URL, an ADR, a spec — and say
+  which part to read. A paraphrase is a second copy that goes stale.
+- **40–80 lines.** Longer is a spec, not a ticket: split it and let the blocking edges carry the
+  order.
+- **One `size:*` label is a promise about the diff**, not about the reading. A ticket whose body
+  needs a research detour is not `size:S`, however small the edit turns out to be.
+
 ## Wayfinding operations
 
-Used by `/wayfinder`. The **map** is a single issue with **child** issues as tickets.
+Used by `/wayfinder`. The **map** is one issue labelled `wayfinder:map`, holding the Notes /
+Decisions-so-far / Fog body; its **children** are the tickets.
 
-- **Map**: a single issue labelled `wayfinder:map`, holding the Notes / Decisions-so-far / Fog body. `gh issue create --label wayfinder:map`.
-- **Child ticket**: an issue linked to the map as a GitHub sub-issue (`gh api` on the sub-issues endpoint). Where sub-issues aren't enabled, add the child to a task list in the map body and put `Part of #<map>` at the top of the child body. Labels: `wayfinder:<type>` (`research`/`prototype`/`grilling`/`task`). Once claimed, the ticket is assigned to the driving dev.
-- **Blocking**: GitHub's **native issue dependencies**, the canonical, UI-visible representation. Add an edge with `gh api --method POST repos/<owner>/<repo>/issues/<child>/dependencies/blocked_by -F issue_id=<blocker-db-id>`, where `<blocker-db-id>` is the blocker's numeric **database id** (`gh api repos/<owner>/<repo>/issues/<n> --jq .id`, _not_ the `#number` or `node_id`). GitHub reports `issue_dependencies_summary.blocked_by` (open blockers only, the live gate). Where dependencies aren't available, fall back to a `Blocked by: #<n>, #<n>` line at the top of the child body. A ticket is unblocked when every blocker is closed.
-- **Frontier query**: list the map's open children (`gh issue list --state open`, scoped to the map's sub-issues / task list), drop any with an open blocker (`issue_dependencies_summary.blocked_by > 0`, or an open issue in the `Blocked by` line) or an assignee; first in map order wins.
-- **Claim**: as in *Claiming an item* above — `--add-label in-progress` plus a claim comment naming the branch. Assignee cannot disambiguate two sessions, because every session authenticates as the same account.
-- **Resolve**: `gh issue comment <n> --body "<answer>"`, then `gh issue close <n>`, then append a context pointer (gist + link) to the map's Decisions-so-far.
+- **Child**: a GitHub sub-issue of the map (recipe above), labelled `wayfinder:<type>`
+  (`research` / `prototype` / `grilling` / `task`).
+- **Blocking**: native issue dependencies (recipe above). A child is unblocked when every blocker
+  is closed.
+- **Frontier**: the map's open children with no open blocker, no `in-progress` and no assignee;
+  first in map order wins. The picker's wayfinder route does not apply that filter itself — `/wayfinder` does.
+- **Claim**: as in *Picking and claiming* — the `in-progress` label and a claim comment, never an
+  assignee.
+- **Resolve**: comment the answer, close the child, then append a context pointer (gist + link)
+  to the map's Decisions-so-far.
