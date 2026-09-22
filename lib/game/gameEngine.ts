@@ -1629,7 +1629,7 @@ export function resolveTeamMatch(
   target: number,
   playerCount = 4,
   /** Keys that may be named among the winners; a departed partner's points
-   *  still count for the pair (docs/BRIEF.md §3.1) but the seat is never
+   *  still count for the pair (docs/GAME-RULES.md § Decisions) but the seat is never
    *  crowned. */
   nameable: (key: string) => boolean = () => true
 ): MatchResolution | null {
@@ -1689,7 +1689,7 @@ export interface FoldHandInput {
    * Whether a key may cross the target or be named a winner — of a manche in
    * `single` length, or of the match in `match` length. Defaults to
    * `accumulates`. The server splits the two: a vacated seat's points join
-   * the running total (docs/BRIEF.md §3.1, the disconnect policy) so the
+   * the running total (docs/GAME-RULES.md § Decisions, the disconnect policy) so the
    * standings sum to the hands played, but the seat itself must still never
    * be crowned — the departed human left nobody behind to claim it.
    */
@@ -1698,7 +1698,7 @@ export interface FoldHandInput {
   teamOf?: Record<string, string>;
   /**
    * Keys holding points a seat won before its player left. They still count
-   * for that player's pair (docs/BRIEF.md §3.1) and can never be named a
+   * for that player's pair (docs/GAME-RULES.md § Decisions) and can never be named a
    * winner — the person behind them is gone. Defaults to none.
    */
   frozenKeysOf?: (engineId: string) => string[];
@@ -1745,7 +1745,7 @@ export function foldHandIntoMatch(input: FoldHandInput): FoldHandResult {
   const cumulative = addHandScores(input.cumulative, scorable);
 
   // Every key with a team, a departed partner's frozen row included: the pair
-  // keeps the points they won (docs/BRIEF.md §3.1). Who may be *named* is
+  // keeps the points they won (docs/GAME-RULES.md § Decisions). Who may be *named* is
   // `nameable` below, and never a key nobody is sitting behind.
   const frozenKeysOf = input.frozenKeysOf ?? (() => []);
   const frozen = new Set<string>();

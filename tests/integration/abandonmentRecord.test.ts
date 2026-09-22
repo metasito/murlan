@@ -1,6 +1,6 @@
 // tests/integration/abandonmentRecord.test.ts — #898: the matchmaking
 // cooldown is gone, but the abandonment record it used to read is not. The
-// penalty was removed; docs/BRIEF.md §3.1 still wants the fact kept, shown
+// penalty was removed; docs/GAME-RULES.md § Decisions still wants the fact kept, shown
 // and served.
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";

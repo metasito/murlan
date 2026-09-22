@@ -178,7 +178,7 @@ describe("ladder and replay writes", { skip: hasDatabase() ? false : skipMessage
      * heads-up the survivor lost their win with it — because a two-player
      * table was disposed without ever reaching the scoring path.
      *
-     * #850 clause 11 (docs/BRIEF.md §3.1) carved a narrow exception into that
+     * #850 clause 11 (docs/GAME-RULES.md § Decisions) carved a narrow exception into that
      * fix: a match abandoned before its very first point is scored — this
      * one, still mid-deal-one with nothing on the board — is voided and
      * rated for nobody, not scored as a forfeit. Was pinned the other way

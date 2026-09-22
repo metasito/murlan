@@ -267,7 +267,7 @@ export interface GameTableProps {
   rematchPrompt?: RematchPromptSlot;
   /**
    * Seats mid disconnect grace, by seat — the countdown for the whole 60 s
-   * window (docs/BRIEF.md §3.1), driven from the server's own `seconds` the
+   * window (docs/GAME-RULES.md § Decisions), driven from the server's own `seconds` the
    * same way `turnTimer` is. Empty offline, which disconnects nobody.
    */
   disconnectedSeats?: Record<number, { seconds: number; resetKey: string }>;

@@ -71,7 +71,7 @@ describe("persisted game_state envelope", () => {
   test("the vacate bookkeeping survives a round trip", () => {
     // Without these four a restart voids every vacated seat: no reclaim, no
     // end-match vote, no forfeit recorded, and the takeover plays at full
-    // strength (#958, docs/BRIEF.md §3.1).
+    // strength (#958, docs/GAME-RULES.md § Decisions).
     assert.deepEqual(restore(JSON.parse(JSON.stringify(pack()))).seats, seats);
   });
 

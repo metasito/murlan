@@ -136,7 +136,7 @@ function roomError(io: SocketServer, userId: string, payload: unknown): void {
  * `forUserId` is the player whose action triggered the takeover, and they must
  * hold a seat in the persisted roster, or a seat the row records them as having
  * vacated — a reclaim is the one case where the person entitled to the table is
- * absent from `playerMap` (docs/BRIEF.md §3.1), and they may well be the first
+ * absent from `playerMap` (docs/GAME-RULES.md § Decisions), and they may well be the first
  * to come back to it. Without that gate any authenticated account could name any
  * room id and pull that table into whichever instance it is connected to — where
  * `pruneStaleRooms` then skips it for holding a live game, and the sweeper only
@@ -385,7 +385,7 @@ function rematchAnswered(game: OnlineGameState): boolean {
 }
 
 /** The table was asked during the closing manche and said no — or the match
- *  was ended by the vote, which is never rematched (docs/BRIEF.md §3.1). */
+ *  was ended by the vote, which is never rematched (docs/GAME-RULES.md § Decisions). */
 function rematchRefused(game: OnlineGameState): boolean {
   return !!game.endedByVote || (game.matchOver && !tableWantsRematch(game));
 }
@@ -444,7 +444,7 @@ async function dealVotedManche(
   const nextFirstSeat = dealFirstSeatFor(game.matchOver, game.dealFirstSeat, playerSetup.length);
   // Only a manche every seat finished names a real winner and loser; a match
   // ended by the vote leaves 2 of 4 ranked, and the 2nd finisher would be read
-  // as the loser (docs/BRIEF.md §3.1).
+  // as the loser (docs/GAME-RULES.md § Decisions).
   const newGameState =
     prevRankings.length === playerSetup.length
       ? initializeRematch(playerSetup, room.gameMode, prevRankings, nextFirstSeat)
@@ -486,7 +486,7 @@ async function rematchVoteAction(
 
 /**
  * The unanimous, penalty-free vote to end a match a seat has been vacated
- * from (docs/BRIEF.md §3.1). Offered only once a seat has actually gone —
+ * from (docs/GAME-RULES.md § Decisions). Offered only once a seat has actually gone —
  * otherwise there is nothing for it to answer — and it carries only when
  * every seat a human still holds has voted; a bot or a vacated seat abstains,
  * the same shape `rematchAnswered` counts.
@@ -533,7 +533,7 @@ async function dealIfSeatLeftGateClosed(
 /**
  * The seat `userId` used to hold, if this table still has it open — the seat
  * is reclaimable by the same account for the life of the match
- * (docs/BRIEF.md §3.1). `vacatedSeats` is the whole of the decision, so a match
+ * (docs/GAME-RULES.md § Decisions). `vacatedSeats` is the whole of the decision, so a match
  * `endMatchByAgreement` closed still hands the seat back while the table sits at
  * its results screen. `SEAT_RELEASED` beside this is reachable only on a
  * restored row that kept `releasedSeats` and lost the seat entry: the two are
@@ -608,7 +608,7 @@ async function rejoinAction(
 
 /**
  * The previous match's winner and loser, as engine ids of the roster about to
- * be dealt. A session lasts until the table breaks up (docs/BRIEF.md §3.1), so
+ * be dealt. A session lasts until the table breaks up (docs/GAME-RULES.md § Decisions), so
  * a new match at a standing table opens with the exchange rather than the 3♠.
  * Empty when there is nothing to carry: no previous match, a manche nobody
  * played out, a match ended by the vote, or either seat no longer at the table

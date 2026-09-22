@@ -4,7 +4,7 @@
 // The server has always let bot and vacated seats abstain from both the count
 // and the total. Offline, the AI seats answered for themselves and counted
 // toward the majority, so "most players agreed" meant two different things
-// depending on where the player was sitting (docs/BRIEF.md §3.1).
+// depending on where the player was sitting (docs/GAME-RULES.md § Decisions).
 import { test, expect } from "@jest/globals";
 import React from "react";
 import { Text, Pressable } from "react-native";

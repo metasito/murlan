@@ -1,5 +1,5 @@
 // tests/integration/quickmatchAutoStart.test.ts — who starts a matchmade table
-// (docs/BRIEF.md §3.1). Strangers quick-match matched together never agreed
+// (docs/GAME-RULES.md § Decisions). Strangers quick-match matched together never agreed
 // that one of them would host, so the table deals itself once it is full; a
 // room someone opened with "create room" still waits for that someone.
 //

@@ -236,7 +236,7 @@ export default function OnlineGameScreen() {
     );
   }
 
-  // "A seat has been vacated" (docs/BRIEF.md §3.1) — the vote is offered while
+  // "A seat has been vacated" (docs/GAME-RULES.md § Decisions) — the vote is offered while
   // any seat is currently vacated, matching the server's own gate
   // (NO_VACANCY_TO_END) so the button never outlives what the server allows.
   const anyVacatedSeat = gameState.players.some(vacatedOf);

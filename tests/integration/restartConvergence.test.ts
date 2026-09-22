@@ -361,7 +361,7 @@ describe(
  * The table above has nobody leave it, so it says nothing about the four
  * collections `vacateSeat` writes — the reclaim, the end-match vote, the
  * forfeit and the weak takeover all hang off those, and the row is the only
- * thing a replacement instance can read them from (#958, docs/BRIEF.md §3.1).
+ * thing a replacement instance can read them from (#958, docs/GAME-RULES.md § Decisions).
  */
 describe(
   "a seat vacated before the server was replaced",

@@ -251,7 +251,7 @@ export function botSeatsFromPersonality(players: readonly { personality?: BotPer
 /**
  * Scoring key -> team id, for every key whose points belong to a pair: the
  * seat's own key, plus the frozen row of a player who left it. A pair keeps a
- * departed partner's points (docs/BRIEF.md §3.1); who may be *named* a winner
+ * departed partner's points (docs/GAME-RULES.md § Decisions); who may be *named* a winner
  * is `resolveHandEnd`'s `winEligible`, not this map.
  */
 export function teamKeyMap(
@@ -382,7 +382,7 @@ export function resolveHandEnd(input: ResolveHandEndInput): ResolveHandEndResult
       return seat === undefined ? null : scoreKeyForSeat(playerMap, seat);
     },
     // A seat that becomes a bot scores exactly as a seat that was born one
-    // (docs/BRIEF.md §3.1, the disconnect policy) — every key accumulates.
+    // (docs/GAME-RULES.md § Decisions, the disconnect policy) — every key accumulates.
     // Win eligibility is the one thing that still tells them apart: a `bot:
     // <seat>` key can cross the target or be named a winner only when that
     // seat was dealt to a bot when this match started (a straight duel, or a
@@ -437,7 +437,7 @@ export function resolveHandEnd(input: ResolveHandEndInput): ResolveHandEndResult
   // seat's own index in `state.rankings`: the seats that played the hand out
   // in ranking order, then the abandoned ones behind them, ranking order kept
   // within each group so several walkouts fill the last slots stably. That is
-  // what makes a forfeit genuinely last (docs/BRIEF.md §3.1) while every
+  // what makes a forfeit genuinely last (docs/GAME-RULES.md § Decisions) while every
   // placement stays distinct — lib/game/rating.ts renumbers the human seats 1..n
   // by sorting on placement, so two seats sharing one would rate a quitter
   // ahead of a player who stayed to the end.

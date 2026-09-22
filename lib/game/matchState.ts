@@ -202,7 +202,7 @@ export interface GameOverPayload {
   recorded: boolean;
   /**
    * The match ended before its first point, on an abandonment
-   * (docs/BRIEF.md §3.1) — nothing earned, nothing taken, rated for nobody.
+   * (docs/GAME-RULES.md § Decisions) — nothing earned, nothing taken, rated for nobody.
    * `rankings` and `scores` are empty and `recorded` is false alongside it;
    * false for every other hand, voided or not.
    */

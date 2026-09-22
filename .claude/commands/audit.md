@@ -133,8 +133,8 @@ const LENSES = [
   },
   {
     key: 'game-logic', model: 'opus', skills: [],
-    start: 'lib/game/gameEngine.ts, docs/GAME-RULES.md, docs/BRIEF.md §3.1, lib/game/autoMove.ts, server/game/botSeat.ts, server/game/dealManche.ts, lib/exchangeCeremony.ts, lib/game/placement.ts, lib/game/standings.ts, lib/game/rating.ts, server/game/ratings.ts, lib/game/replay.ts, lib/game/matchState.ts, lib/offlineSave.ts, lib/game/sharedGameFlow.ts, server/game/gameOver.ts',
-    refs: 'docs/GAME-RULES.md is the specification; docs/BRIEF.md §3.1 records every rule change.',
+    start: 'lib/game/gameEngine.ts, docs/GAME-RULES.md, docs/GAME-RULES.md § Decisions, lib/game/autoMove.ts, server/game/botSeat.ts, server/game/dealManche.ts, lib/exchangeCeremony.ts, lib/game/placement.ts, lib/game/standings.ts, lib/game/rating.ts, server/game/ratings.ts, lib/game/replay.ts, lib/game/matchState.ts, lib/offlineSave.ts, lib/game/sharedGameFlow.ts, server/game/gameOver.ts',
+    refs: 'docs/GAME-RULES.md is the specification; docs/GAME-RULES.md § Decisions records every rule change.',
     ask: `Build a matrix: rule in docs/GAME-RULES.md -> engine code -> pinning test. Report every row with a gap on any side.
 Edge cases to cover:
 - the last card; passes wrapping round the table; bombs; ties;
@@ -382,7 +382,7 @@ const COMMON = `You are one specialist in a READ-ONLY audit of Murlan (${REPO}) 
 - Load every skill named for your lens with the Skill tool first, and apply its checklist.
 - Every finding cites path:line with the quoted line and is marked measured (you ran it or traced the full path) or inferred.
   Native rendering claims reasoned from source or Chromium are inferred.
-- Before calling a choice a defect, check docs/adr, docs/BRIEF.md §3.1, docs/design and the test that pins it.
+- Before calling a choice a defect, check docs/adr, docs/GAME-RULES.md § Decisions, docs/design and the test that pins it.
   If you still disagree with a recorded decision, report it as info and name the decision.
 - Name the defect class, the smallest root-cause fix, and the check that would catch the next instance while failing on a planted one.
 - Skip what tsc and eslint already enforce.

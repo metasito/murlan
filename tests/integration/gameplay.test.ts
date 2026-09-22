@@ -606,7 +606,7 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
   });
 
   /**
-   * #850 clause 7 (docs/BRIEF.md §3.1) made the seat a takeover left behind
+   * #850 clause 7 (docs/GAME-RULES.md § Decisions) made the seat a takeover left behind
    * reclaimable by the same account for the life of the match — `SEAT_RELEASED`
    * now answers only for a finished or disposed table, not a live one. Was
    * pinned the other way (nina refused with `SEAT_RELEASED`) before that

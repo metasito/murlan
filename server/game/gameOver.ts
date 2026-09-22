@@ -284,7 +284,7 @@ async function closeMatchWithoutScoring(
 }
 
 /**
- * A match abandoned before its first point (docs/BRIEF.md §3.1): nothing
+ * A match abandoned before its first point (docs/GAME-RULES.md § Decisions): nothing
  * earned, nothing taken, rated for nobody — not even the seat that walked
  * out. The caller disposes the table; there is nobody left to show a
  * results screen to.
@@ -300,7 +300,7 @@ export async function voidAbandonedMatch(
 
 /**
  * The table's own unanimous vote to end a match a seat has been vacated
- * from (docs/BRIEF.md §3.1) — penalty-free for everyone still present. Every
+ * from (docs/GAME-RULES.md § Decisions) — penalty-free for everyone still present. Every
  * hand already finished stays exactly as recorded; only the one in progress,
  * if any, goes unscored. The table is left in place, at the results screen,
  * rather than disposed: the players who agreed to stop are still here.

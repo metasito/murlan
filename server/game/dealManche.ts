@@ -27,7 +27,7 @@ export async function dealManche(
   game.handFlags = {};
   game.moveLog = startReplayLog();
   game.abandonedSeats.clear();
-  // Minimum-legal play (docs/BRIEF.md §3.1) is scoped to the hand a seat was
+  // Minimum-legal play (docs/GAME-RULES.md § Decisions) is scoped to the hand a seat was
   // taken over mid-play; a fresh deal always starts full AI. The end-match
   // vote is answered against the table as it stands now, not a stalled tally
   // from the hand that just ended.

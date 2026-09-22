@@ -22,7 +22,7 @@ const CW = CARD_W(1);
 const MAX_STEP_AT_CW = CW * MAX_STEP_RATIO;
 
 const WIDTHS = [320, 375, 428, 500, 600, 700, 768, 900, 1024];
-// Deal sizes per docs/BRIEF.md §3.1: 4p up to 14, 3p up to 18, 2p up to 21.
+// Deal sizes per docs/GAME-RULES.md § Decisions: 4p up to 14, 3p up to 18, 2p up to 21.
 const HAND_SIZES = Array.from({ length: 21 }, (_, i) => i + 1);
 
 describe("computeHandLayout", () => {

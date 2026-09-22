@@ -93,7 +93,7 @@ export function sanitizeStateForPlayer(
         ...p,
         hand: isViewer ? p.hand : ([] as Card[]),
         handCount: p.hand.length,
-        // The flag travels, never the text (docs/BRIEF.md §3.1): `name` is
+        // The flag travels, never the text (docs/GAME-RULES.md § Decisions): `name` is
         // still the person's real name, and each client renders the
         // departed label itself, through `t()`, in its own locale.
         vacated: vacatedSeats?.has(idx) ?? false,

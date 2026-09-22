@@ -158,7 +158,7 @@ function runBotTurn(io: SocketServer, roomId: string) {
   }
 
   // The takeover plays the hand it happened on at minimum legal strength
-  // (docs/BRIEF.md §3.1) — the same "an AFK human should not be played well"
+  // (docs/GAME-RULES.md § Decisions) — the same "an AFK human should not be played well"
   // rule the turn timer already applies, kept until `dealManche` clears
   // `weakSeats` at the next deal, by which point the seat is honestly a bot's.
   const useAi = !game.weakSeats.has(seat);
@@ -316,7 +316,7 @@ export async function vacateSeat(
   if (seatPlayer) seatPlayer.type = "ai";
 
   // The seat is reclaimable by this account for the life of the match
-  // (docs/BRIEF.md §3.1) — every vacate is recorded here, whether it happened
+  // (docs/GAME-RULES.md § Decisions) — every vacate is recorded here, whether it happened
   // mid-hand or between them, so the rejoin path can find it, the sanitizer
   // can label the seat, and `resolveHandEnd` can find the person's frozen
   // total once `playerMap` has forgotten them.
@@ -332,7 +332,7 @@ export async function vacateSeat(
     game.abandonedSeats.set(seat, userId);
     // The takeover plays this hand at minimum strength only — `dealManche`
     // clears this at the next deal, by which point the seat is honestly a
-    // bot's (docs/BRIEF.md §3.1).
+    // bot's (docs/GAME-RULES.md § Decisions).
     game.weakSeats.add(seat);
   }
 
@@ -368,7 +368,7 @@ export async function vacateSeat(
     // The same write the mid-hand tail makes. Nothing above this branch forfeits
     // a hand there is none of, but `releasedSeats` and `vacatedSeats` were both
     // written, and a seat vacated between hands is as reclaimable as one vacated
-    // during one (docs/BRIEF.md §3.1).
+    // during one (docs/GAME-RULES.md § Decisions).
     writers.persistGameState(roomId, game);
     return;
   }
@@ -386,7 +386,7 @@ export async function vacateSeat(
     if (game.handsPlayed === 0) {
       // Nothing has been earned yet — no completed hand behind this match —
       // so nothing is taken away: voided and rated for nobody, the walkout
-      // included (docs/BRIEF.md §3.1). A conceded hand's forced placements
+      // included (docs/GAME-RULES.md § Decisions). A conceded hand's forced placements
       // are not a genuine finish, so scoring them as the match's own first
       // hand would defeat the point of the rule.
       await voidAbandonedMatch(io, roomId, game, writers);

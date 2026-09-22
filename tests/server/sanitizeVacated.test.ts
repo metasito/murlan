@@ -1,5 +1,5 @@
 // #850 clause 2: a vacated seat reads as vacated — a boolean on the sanitized
-// player, never server-written text (docs/BRIEF.md §3.1). Every client
+// player, never server-written text (docs/GAME-RULES.md § Decisions). Every client
 // renders it through its own t(); the server must never be able to leak a
 // name into a locale it does not carry.
 import { test, describe } from "node:test";
