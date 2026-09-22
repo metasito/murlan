@@ -61,7 +61,7 @@ describe("one username rule, read by both sides", () => {
     const source = readSchemaSource();
     assert.match(
       source,
-      /from "\.\.\/shared\/username\.ts"/,
+      /from "\.\.\/\.\.\/shared\/username\.ts"/,
       "server/http/schemas.ts no longer reads the shared rule"
     );
     // Every bound on a username field, anywhere in the file — a copy in

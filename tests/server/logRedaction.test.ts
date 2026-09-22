@@ -214,7 +214,7 @@ describe("what a hand-written line may name", () => {
     // The floor: every assertion below passes on an empty list.
     const calls = loggerCalls();
     assert.ok(calls.length > 20, `the scan found ${calls.length} logger calls under server/`);
-    for (const file of ["mail.ts", "routes.ts", "socketSafety.ts", "lobbyIntents.ts"])
+    for (const file of ["http/mail.ts", "http/routes.ts", "socket/socketSafety.ts", "socket/lobbyIntents.ts"].map(path.normalize))
       assert.ok(calls.some((c) => c.file === file), `the scan is not reading server/${file}`);
     assert.ok(
       calls.some((c) => c.fields.includes("userId")),
