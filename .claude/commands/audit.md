@@ -26,8 +26,8 @@ What it must deliver:
    `gh issue list --repo metasito/murlan --state open --limit 300 --json number,title --jq '[.[]|{n:.number,t:.title}]'`
    → `openIssues`.
 3. Check for peers with `git worktree list` and look at free RAM. Audit agents are read-only, so a
-   live peer does not block the run — rule 2 still bars anything wider than the allowed commands,
-   and that matters more with another session sharing the machine.
+   live peer does not block the run — rule 2 still applies, and that matters more with another
+   session sharing the machine.
 4. `webUrl`: the URL of a web build that is **already** being served, or `null`. Do not start a
    build for the audit.
 

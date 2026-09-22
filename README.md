@@ -60,18 +60,10 @@ opt-in variable, and the underlying script refuses outright when
 ALLOW_DESTRUCTIVE=1 node scripts/reset-db.mjs --yes && npm run db:push
 ```
 
-## Documentation map
+## Finding a document
 
-| Doc | Owns |
-|---|---|
-| [`CLAUDE.md`](./CLAUDE.md) | Agent operating instructions, conventions, file map |
-| [`docs/GAME-RULES.md`](./docs/GAME-RULES.md) | The canonical Murlan rule specification |
-| [`docs/BRIEF.md`](./docs/BRIEF.md) | Scope, decisions and their rationale |
-| [GitHub Issues](https://github.com/metasito/murlan/issues) | Everything outstanding, and what was decided against (`rejected` label) |
-| [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) | Layers, data flow, socket lifecycle, persistence |
-| [`docs/agents/checks.md`](./docs/agents/checks.md) | Which check catches what, what it costs, and the traps that pass every check |
-| [`docs/BETA-PLAYTEST.md`](./docs/BETA-PLAYTEST.md) | The manual pre-beta playtest script, and what it has to cover |
-| [`docs/DEPLOY-RUNBOOK.md`](./docs/DEPLOY-RUNBOOK.md) | Deploying, rolling back, the host's Secrets and what breaks it |
+Looking for anything beyond what's inline above — game rules, architecture, deploy, or which
+doc owns a given topic — start at [`docs/README.md`](./docs/README.md), the index.
 
 ## Licence and contributions
 

@@ -74,20 +74,20 @@ The behaviour is an escalation ladder assembled from four independently-made cho
 
 | Stage | Trigger | What happens | Where |
 |---|---|---|---|
-| Turn timer | 30 s on the acting seat (`MURLAN_AFK_TIMEOUT_MS`) | The seat is made to play the **minimum legal move** — a pass, or the lowest single when a round cannot be passed. Never the AI: *"an AFK human should not be played well on their behalf."* | `server/game/gameTimers.ts:28`, `server/game/gameTurn.ts:181-205`, `lib/game/autoMove.ts:62-68` |
-| Disconnect grace | socket lost mid-hand, 60 s (`MURLAN_DISCONNECT_GRACE_MS`) | `game:player_disconnected` broadcasts one sentence naming the seconds; the hand **continues**, the seat is still the player's, and the 30 s turn timer keeps auto-passing it. So roughly two forced minimum moves fit inside the grace. | `server/game/tableHandlers.ts:645-716` |
-| Between hands | socket lost while `gameOver` | The shorter 20 s lobby grace, because the seat is counted in the rematch gate. | `server/game/gameTimers.ts:36`, `server/game/tableHandlers.ts:653-660` |
-| Vacate | grace expired **and** the cluster says the user is offline, or an explicit `room:leave` (no grace at all) | `playerMap[seat]` deleted, `players[seat].type = "ai"`, `releasedSeats.add(userId)`, the seat recorded in `abandonedSeats` if it still held cards. The **name on the seat never changes**. Announced as `game:seat_bot_takeover`. | `server/game/gameTurn.ts:278-376` |
-| After takeover | every turn | The real engine AI plays the seat, paced at 1.2 s a move. | `server/game/gameTurn.ts:137-176` |
-| Rejoin | any later attempt | Refused with `SEAT_RELEASED`, permanently, for the life of that table. | `server/socket/socketGameplay.ts:51`, `server/game/tableHandlers.ts:458` |
+| Turn timer | 30 s on the acting seat (`MURLAN_AFK_TIMEOUT_MS`) | The seat is made to play the **minimum legal move** — a pass, or the lowest single when a round cannot be passed. Never the AI: *"an AFK human should not be played well on their behalf."* | `afkTimeoutMs` (`server/game/gameTimers.ts`), `handleAutoPass` (`server/game/gameTurn.ts`), `autoMoveForSeat` (`lib/game/autoMove.ts`) |
+| Disconnect grace | socket lost mid-hand, 60 s (`MURLAN_DISCONNECT_GRACE_MS`) | `game:player_disconnected` broadcasts one sentence naming the seconds; the hand **continues**, the seat is still the player's, and the 30 s turn timer keeps auto-passing it. So roughly two forced minimum moves fit inside the grace. | `seatLostAction` (`server/game/tableHandlers.ts`) |
+| Between hands | socket lost while `gameOver` | The shorter 20 s lobby grace, because the seat is counted in the rematch gate. | `lobbyGraceMs` (`server/game/gameTimers.ts`), `armLobbyGrace`/`handleSeatRelease` (`server/socket/socketTable.ts`) |
+| Vacate | grace expired **and** the cluster says the user is offline, or an explicit `room:leave` (no grace at all) | `playerMap[seat]` deleted, `players[seat].type = "ai"`, `releasedSeats.add(userId)`, the seat recorded in `abandonedSeats` if it still held cards. The **name on the seat never changes**. Announced as `game:seat_bot_takeover`. | `vacateSeat` (`server/game/gameTurn.ts`) |
+| After takeover | every turn | The real engine AI plays the seat, paced at 1.2 s a move. | `runBotTurn` (`server/game/gameTurn.ts`) |
+| Rejoin | any later attempt | Refused with `SEAT_RELEASED`, permanently, for the life of that table. | `REJOIN_FAILURE` (`server/socket/socketGameplay.ts`), `rejoinAction` (`server/game/tableHandlers.ts`) |
 
-And at the hand's end (`resolveHandEnd`, `server/game/onlineGameLogic.ts:453+`):
+And at the hand's end (`resolveHandEnd`, `server/game/onlineGameLogic.ts`):
 
 - The seat's score key becomes `bot:<seat>` the moment `playerMap[seat]` is deleted.
 - Since #815, `accumulates` excludes a `bot:<seat>` key **only when that seat was not a bot
   when the roster was built** — a straight-duel bot scores, a seat a human left does not.
 - The abandoned seat is ordered **behind every seat that played the hand out**, so a walkout
-  is genuinely last, and that placement is what `recordRatedResult` rates (`server/game/onlineGameLogic.ts:527-555`).
+  is genuinely last, and that placement is what `recordRatedResult` rates (`server/game/ratings.ts`).
 - `gameResults` for that one hand is keyed by the **departed userId**, not by `bot:<seat>` —
   which is how the last-place finish reaches their rating and history at all.
 
@@ -105,7 +105,7 @@ almost certainly not what anyone chose:
    restoring `playerMap[seat]` restores the row, the name and the total together (#894). The
    only thing preventing a return is `releasedSeats`.
 3. **The client is told about a disconnect for ten seconds and never again.** One banner via
-   `setReconnectNotice`, cleared on a timer (`context/OnlineGameContext.tsx:582-592`). No
+   `setReconnectNotice`, cleared on a timer (`context/OnlineGameContext.tsx`). No
    seat carries any mark, so a player who looks up fifteen seconds later sees a table that
    appears entirely normal, with a name playing badly in it.
 
@@ -290,7 +290,7 @@ labelled as vacated.**
 **On the display constraint.** `CLAUDE.md` is right that a winner must be an engine player id
 and that `bot:<seat>` is a key no client can name — but that constraint bites the *key space*,
 not the seat. Every scoreboard row already carries `seatIndex`, `engineId`, `userId` and
-`username` (`lib/game/matchState.ts:131-139`), and the seat's own `name` survives `vacateSeat`
+`username` (`ScoreLine`, `lib/game/matchState.ts`), and the seat's own `name` survives `vacateSeat`
 untouched. So the buildable form of the label is:
 
 - **do not** send a rendered string like `"Drita (left)"` — the server renders in
@@ -326,7 +326,7 @@ The strongest argument is consistency rather than novelty: after #815, a seat th
 from the first deal scores normally and can be an opponent worth beating. **A seat that
 becomes a bot mid-match should behave exactly like one that was a bot from the start.** The
 special case is what generated the hole, and the special case is not needed — the existing
-pin (`tests/engine/scoring.test.ts:320`, "a vacated seat cannot cross the target or be named the
+pin (`tests/engine/scoring.test.ts`, test "a vacated seat cannot cross the target or be named the
 winner") is what stops a bot from winning a match, and it stays.
 
 The single narrow exception worth keeping from the void option is LoL's: **a match abandoned
@@ -467,8 +467,8 @@ Sizes are the ticket scale used in the tracker.
 |---|---|---|---|---|
 | A | Seat shows the reconnect state for the whole grace | 10 s banner → persistent seat state + countdown | **S**, client only; server already sends `seconds`, `game:turn_deadline` is the precedent | Low |
 | B | Vacated seat is labelled as vacated | name unchanged → `vacated` flag on the sanitized player and `ScoreLine`, `t()` in three locales | **S** | Low; touches the sanitizer and two render sites |
-| C | Takeover plays the current hand at minimum strength | `useAi: true` at takeover → `false` until the hand ends | **S**, one boolean at `server/game/gameTurn.ts:137-176` | Low; needs a test that the seat still always resolves |
-| D | Vacated seat scores as a bot seat | `accumulates` excludes it → excludes nothing | **S** in code (delete the exception added by #815's `botSeatsAtStart` for the vacate case), **M** in tests: `tests/engine/scoring.test.ts:292-360` is written around the opposite rule and its intent has to be re-pinned, not just re-baselined | Medium — this is the row of the Decisions table's rationale that everyone has been reading as a decision |
+| C | Takeover plays the current hand at minimum strength | `useAi: true` at takeover → `false` until the hand ends | **S**, one boolean in `runBotTurn` (`server/game/gameTurn.ts`) | Low; needs a test that the seat still always resolves |
+| D | Vacated seat scores as a bot seat | `accumulates` excludes it → excludes nothing | **S** in code (delete the exception added by #815's `botSeatsAtStart` for the vacate case), **M** in tests: the describe block "keys the table does not accumulate (vacated seats)" (`tests/engine/scoring.test.ts`) is written around the opposite rule and its intent has to be re-pinned, not just re-baselined | Medium — this is the row of the Decisions table's rationale that everyone has been reading as a decision |
 | E | Frozen pre-departure points are shown | seat row reads `bot:<seat>` total → row sums the person's frozen total and the seat's bot total | **S**, inside `resolveHandEnd`'s `detailed` builder | Low |
 | F | Seat reclaimable for the life of the match | `releasedSeats` permanent → consulted only for a finished/disposed table | **M**; the rejoin path, the announcement both ways, and the AFK-rearm guard | Medium — this is the reconnection mechanics #820 explicitly deferred, so it is the one that most needs its own design pass |
 | G | Unanimous end-the-match vote after a vacancy | none → new vote, reusing the rematch gate's unanimity and abstention rules | **M**, server + one screen + locale keys | Medium |
