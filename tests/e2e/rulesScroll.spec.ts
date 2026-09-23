@@ -6,7 +6,7 @@
 // a native test cannot say how wide anything ended up — and width is the whole
 // question here: React Native defaults `flexShrink` to 0, so a row wider than
 // its parent overflows rather than shrinking, and the audit measured /rules
-// reaching x=612 in a 390px window (docs/design/57-polish-audit/content.txt).
+// reaching x=612 in a 390px window (tests/e2e/57-polish-audit/content.txt).
 import { test, expect } from "./fixtures";
 import { openApp } from "./helpers/navigation";
 

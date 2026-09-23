@@ -64,7 +64,7 @@ export interface OpenedOnlineTable {
  * long this harness took to get here. Waiting for "your turn" to arrive,
  * however long that took, used to measure whatever hand of tricks had
  * already played out by then — a table that isn't the one
- * `docs/design/57-polish-audit/` records a freshly-dealt one against (#785).
+ * `tests/e2e/57-polish-audit/` records a freshly-dealt one against (#785).
  * So this checks who led the instant the deal is on screen, before any
  * clock can have fired anywhere at the table — there being no bots left to
  * arm one for.
@@ -110,7 +110,7 @@ export async function openOnlineTable(
 
     // Sequential, not `Promise.all`: this suite's own webServer is one Node
     // process shared by every seat's bundle load, and this machine runs
-    // another agent's session beside it (RULES.md 37) — `seatCount - 1`
+    // another agent's session beside it (RULES.md § Sharing the machine) —`seatCount - 1`
     // contexts loading it at once is more peak memory than one at a time
     // needs to spend.
     for (let i = 1; i < seats.length; i++) {

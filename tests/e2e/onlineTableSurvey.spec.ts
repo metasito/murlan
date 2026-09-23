@@ -10,7 +10,7 @@
 // which is the claim the audit could not make and the one that keeps the online
 // screen from drifting away unwatched.
 //
-// The captures and `online-table.txt` land in `docs/design/57-polish-audit/`
+// The captures and `online-table.txt` land in `tests/e2e/57-polish-audit/`
 // beside the rest of the survey, so a finding can be re-measured rather than
 // re-argued — and the run is held to that record, so a table that lays out
 // differently has to say so rather than leaving the audit quietly wrong.
@@ -38,7 +38,7 @@ const SEATS = 4;
 /**
  * #785: the fewest cards a freshly-dealt seat can hold. A seat reading below
  * this floor has necessarily played at least one card since the deal, which
- * makes it a different table than the one `docs/design/57-polish-audit/`
+ * makes it a different table than the one `tests/e2e/57-polish-audit/`
  * records: the record's own bots never move (`openSeededGame`'s pile is
  * always empty), so comparing to it only means something when the online
  * table hasn't moved either.
@@ -54,7 +54,7 @@ const SEATS = 4;
  */
 const DECK_LENGTH = createDeck().length;
 
-const AUDIT_DIR = path.resolve(__dirname, "../../docs/design/57-polish-audit");
+const AUDIT_DIR = path.resolve(__dirname, "57-polish-audit");
 const RECORD = path.join(AUDIT_DIR, "online-table.txt");
 /** Set to rewrite the record instead of being held to it. */
 const UPDATING = process.env.AUDIT_UPDATE === "1";
@@ -488,7 +488,7 @@ test.describe("the online table, at the audit's viewports", () => {
             if (was === undefined) continue;
             expect(
               row,
-              `the table no longer lays out the way docs/design/57-polish-audit/ records it ` +
+              `the table no longer lays out the way tests/e2e/57-polish-audit/ records it ` +
                 `at ${vp.name}. If that is the intended change, say so on the ticket that made ` +
                 `it and regenerate the record with AUDIT_UPDATE=1 (a whole run, not a shard), ` +
                 `correcting the numbers README.md quotes.`
