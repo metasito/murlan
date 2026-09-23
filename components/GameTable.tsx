@@ -6,7 +6,7 @@
 // source onto `GameTableProps` and passes its own extras through the slots.
 // Nothing below knows or cares which mode it is running in.
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useContext, useEffect, useRef, useState } from "react";
 import {
   View,
   StyleSheet,
@@ -20,6 +20,8 @@ import { TableText } from "@/components/table/TableText";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, { FadeIn } from "react-native-reanimated";
 import * as ScreenOrientation from "expo-screen-orientation";
+import type { NativeStackNavigationProp } from "expo-router";
+import { NavigationContext, type ParamListBase } from "expo-router/react-navigation";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import {
   getValidGivebackCards,
@@ -166,6 +168,10 @@ const HELD_CLOCK_Z = { zIndex: Layer.clock } as const;
  * `tests/e2e/helpers/selectors.ts` holds the other end.
  */
 const harnessState = (state: Record<string, string>) => ({ dataSet: state }) as ViewProps;
+
+const lockLandscape = () => {
+  ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE).catch(() => {});
+};
 
 export interface TurnTimerConfig {
   /** Length of the countdown, in seconds. */
@@ -318,6 +324,7 @@ export function GameTable({
 }: GameTableProps) {
   const { t, tn } = useTranslation();
   const insets = useSafeAreaInsets();
+  const navigation = useContext(NavigationContext) as NativeStackNavigationProp<ParamListBase> | undefined;
   const { width: W, height: H } = useWindowDimensions();
   // The window's own short edge, so a phone and a browser at the same size draw the same
   // table. The safe area is the layout's job — the rail absorbs the cutout and the hand zone
@@ -762,7 +769,7 @@ export function GameTable({
     let mounted = true;
     // Fast game -> result -> game navigation makes these cancel each other, and an
     // unhandled rejection here is fatal on device.
-    ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE).catch(() => {});
+    lockLandscape();
     // Guarded: the cleanup may remove every native player, so resolving after
     // unmount would play through a released one.
     const releaseSounds = holdSounds();
@@ -779,6 +786,16 @@ export function GameTable({
       releaseSounds();
     };
   }, [entryMs]);
+
+  // UIKit pins the scene to its current orientation for an animated screen
+  // transition, overriding a lock that lands inside it (#1211).
+  useEffect(
+    () =>
+      navigation?.addListener("transitionEnd", (e) => {
+        if (!e.data.closing) lockLandscape();
+      }),
+    [navigation]
+  );
 
   useEffect(() => {
     if (rejectHint === null) return;
