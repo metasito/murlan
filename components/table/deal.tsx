@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { View, StyleSheet } from "react-native";
 import Animated, {
   cancelAnimation,
@@ -12,6 +12,88 @@ import { CardView } from "@/components/CardView";
 import { BACK_SCALE } from "@/components/cardFaceModel";
 import { Layer, motionMs } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
+import { handCountOf } from "@/shared/protocol";
+import {
+  dealArrivalsMs,
+  dealFlightsMs,
+  dealLeaveMs,
+  seatPoint,
+  type SeatGeometry,
+} from "@/components/flightPhysics";
+
+/** A deal in progress: `counts` is each seat's hand as dealt, `flightsMs` each seat's flight time, by seat index. */
+interface Deal {
+  key: number;
+  offsetMs: number;
+  counts: number[];
+  flightsMs: number[];
+}
+
+/**
+ * A fresh deal is a manche nobody has opened yet. The first one waits out the
+ * table's own entry beat (`entryMs`); a later one, dealt onto a table already
+ * standing, starts at once.
+ */
+export function useDeal({
+  geometry,
+  fresh,
+  entryMs,
+  reduceMotion,
+}: {
+  geometry: SeatGeometry;
+  fresh: boolean;
+  entryMs: number;
+  reduceMotion: boolean;
+}): {
+  cards: DealtCard[];
+  arrivalsFor: (seat: number) => number[] | undefined;
+  handOffsetMs: number;
+} {
+  const { players, opponents, viewerSeat } = geometry;
+  const newDeal = (key: number, offsetMs: number): Deal => ({
+    key,
+    offsetMs,
+    counts: players.map(handCountOf),
+    flightsMs: dealFlightsMs(players.map((_, seat) => seatPoint(geometry, seat))),
+  });
+  const [deal, setDeal] = useState<Deal | null>(() => (fresh ? newDeal(1, entryMs) : null));
+  const [dealtFresh, setDealtFresh] = useState(fresh);
+  if (fresh !== dealtFresh) {
+    setDealtFresh(fresh);
+    if (fresh) setDeal(newDeal((deal?.key ?? 0) + 1, 0));
+  }
+  const arrivals = useMemo(
+    () =>
+      deal && !reduceMotion
+        ? deal.counts.map((count, seat) => dealArrivalsMs(count, seat, deal.counts.length, deal.offsetMs, deal.flightsMs[seat]))
+        : null,
+    [deal, reduceMotion]
+  );
+  useEffect(() => {
+    if (!deal) return;
+    const lastLanding = Math.max(0, ...(arrivals ?? []).map((a) => a[a.length - 1] ?? 0));
+    const id = setTimeout(() => setDeal(null), lastLanding);
+    return () => clearTimeout(id);
+  }, [deal, arrivals]);
+  const cards: DealtCard[] =
+    deal && arrivals
+      ? [opponents.top, opponents.left, opponents.right].flatMap((o) => {
+          if (!o) return [];
+          const to = seatPoint(geometry, o.seat);
+          return Array.from({ length: deal.counts[o.seat] }, (_, round) => ({
+            key: `${deal.key}-${o.seat}-${round}`,
+            leaveMs: deal.offsetMs + dealLeaveMs(round, o.seat, players.length),
+            flightMs: deal.flightsMs[o.seat],
+            to,
+          }));
+        })
+      : [];
+  return {
+    cards,
+    arrivalsFor: (seat) => arrivals?.[seat],
+    handOffsetMs: deal ? deal.offsetMs + dealLeaveMs(0, viewerSeat, players.length) : 0,
+  };
+}
 
 export interface DealtCard {
   key: string;

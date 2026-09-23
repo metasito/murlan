@@ -18,16 +18,18 @@ import { pathToFileURL } from "node:url";
 import {
   aiChoosePlay,
   bombPossible,
-  cardStrength,
-  dealCards,
-  getAllValidPlays,
-  getStraightFaceValue,
-  initializeRematch,
   isExchangeCardStillOut,
   knownOpponentExchangeCard,
   losesLeadToExchangeCard,
   opponentsOf,
   outstandingAbove,
+} from "../lib/game/ai.ts";
+import {
+  cardStrength,
+  dealCards,
+  getAllValidPlays,
+  getStraightFaceValue,
+  initializeRematch,
   STRAIGHT_MIN_LEN,
   type Card,
   type Combination,
@@ -329,7 +331,7 @@ function measureExchangeBlunderAvoidance(n: number, seed: number): BlunderCounts
 
 // ─── Measurement 6 helpers: royal-straight blind spot (#943) ──────────────
 //
-// takesTheRound (lib/game/gameEngine.ts, module-private inside aiChoosePlay) names
+// takesTheRound (lib/game/ai.ts, module-private inside aiChoosePlay) names
 // one residual risk a rank tally cannot see: a royal straight, which needs
 // suits the tally deliberately does not hold. isCertainLead mirrors that
 // predicate exactly — same three conditions, same order — because the
@@ -337,7 +339,7 @@ function measureExchangeBlunderAvoidance(n: number, seed: number): BlunderCounts
 // question about every legal play, not just the one aiChoosePlay ends up
 // picking.
 
-/** Mirrors `takesTheRound` inside `lib/game/gameEngine.ts`'s `aiChoosePlay`. */
+/** Mirrors `takesTheRound` inside `lib/game/ai.ts`'s `aiChoosePlay`. */
 export function isCertainLead(
   play: Combination,
   playedRanks: number[] | undefined,

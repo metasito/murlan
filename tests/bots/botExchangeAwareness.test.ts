@@ -3,13 +3,8 @@
 // lead straight into the hand it knows can beat it (#907).
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import {
-  aiChoosePlay,
-  buildCombination,
-  getRankStrength,
-  knownOpponentExchangeCard,
-  RANK_SLOTS,
-} from "../../lib/game/gameEngine.ts";
+import { aiChoosePlay, knownOpponentExchangeCard } from "../../lib/game/ai.ts";
+import { buildCombination, getRankStrength, RANK_SLOTS } from "../../lib/game/gameEngine.ts";
 import { autoMoveForSeat } from "../../lib/game/autoMove.ts";
 import { c, makePlayer, makeState } from "../engine/helpers.ts";
 import type { ExchangePhase } from "../engine/helpers.ts";

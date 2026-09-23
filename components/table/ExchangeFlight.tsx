@@ -16,9 +16,23 @@ import { a11yHidden } from "@/lib/a11y";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { Colors, Motion, motionMs, Radius, Scrim, Spacing } from "@/lib/theme";
 import { EXCHANGE_FLIGHT_MS, EXCHANGE_LEG_MS, MEET_HOLD_MS } from "@/lib/exchangeCeremony";
-import { TAG_MAX_W, type ExchangeFlight as Trip } from "@/components/flightPhysics";
+import {
+  readExchangeTrips,
+  TAG_MAX_W,
+  type ExchangeFlight as Trip,
+  type SeatGeometry,
+} from "@/components/flightPhysics";
+import type { ExchangeAnnounceData } from "@/lib/game/sharedGameFlow";
 
 const TAG_FS = 11;
+
+/** Both trips of the exchange being announced, or null while none is. */
+export function useExchangeTrips(
+  announce: ExchangeAnnounceData | null | undefined,
+  geometry: SeatGeometry
+): { toWinner: Trip; toLoser: Trip } | null {
+  return announce ? readExchangeTrips({ announce, ...geometry }) : null;
+}
 
 const OUT_EASING = Easing.bezier(0.3, 0.7, 0.4, 1);
 const IN_EASING = Easing.bezier(0.4, 0, 0.5, 1);

@@ -11,12 +11,10 @@ import {
   processExchangeChoice,
   buildCombination,
   sortHand,
-  aiChoosePlay,
-  knownOpponentExchangeCard,
-  opponentsOf,
   pickGivebackCard,
   getStartingPlayerAfterExchange,
 } from "./gameEngine.ts";
+import { aiChoosePlay, knownOpponentExchangeCard, opponentsOf } from "./ai.ts";
 import type { GameState, Combination } from "./gameEngine.ts";
 
 /**

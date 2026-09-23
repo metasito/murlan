@@ -183,12 +183,9 @@ describe("handOutcomeFor", () => {
 test("one module chooses a bot's move", () => {
   const CHOOSER = "aiChoosePlay";
   const HOME = "lib/game/autoMove.ts";
-  const callers = ["app", "components", "context", "lib", "server"]
-    .flatMap((dir) => walk(path.join(repoRoot, dir)))
-    .filter((rel) => rel !== "lib/game/gameEngine.ts")
-    .filter((rel) =>
-      new RegExp(String.raw`\b${CHOOSER}\s*\(`).test(readFileSync(path.join(repoRoot, rel), "utf8"))
-    );
+  const callers = appSources().filter((rel) =>
+    new RegExp(String.raw`(?<!function )\b${CHOOSER}\s*\(`).test(readFileSync(path.join(repoRoot, rel), "utf8"))
+  );
 
   assert.deepEqual(
     callers,
@@ -197,6 +194,32 @@ test("one module chooses a bot's move", () => {
       `bot. Route it through ${HOME} instead: ${callers.join(", ")}`
   );
 });
+
+test("only lib/game/autoMove.ts reaches the bot heuristics in lib/game/ai.ts", () => {
+  const importers = appSources().filter((rel) =>
+    /from\s+["'](?:\.\/|@\/lib\/game\/|[./]+\/lib\/game\/)ai(?:\.ts)?["']/.test(
+      readFileSync(path.join(repoRoot, rel), "utf8")
+    )
+  );
+
+  assert.deepEqual(importers, ["lib/game/autoMove.ts"]);
+});
+
+test("gameEngine.ts exports no bot heuristic", async () => {
+  const engine = await import("../../lib/game/gameEngine.ts");
+  const ai = await import("../../lib/game/ai.ts");
+  const engineSource = readFileSync(path.join(repoRoot, "lib/game/gameEngine.ts"), "utf8");
+
+  assert.ok(Object.keys(ai).length > 0);
+  assert.deepEqual(Object.keys(ai).filter((name) => name in engine), []);
+  assert.doesNotMatch(engineSource, /^import\s+\{[^}]*\bgetBotPersonality\b/m);
+});
+
+function appSources(): string[] {
+  return ["app", "components", "context", "lib", "server"].flatMap((dir) =>
+    walk(path.join(repoRoot, dir))
+  );
+}
 
 function walk(dir: string): string[] {
   const out: string[] = [];

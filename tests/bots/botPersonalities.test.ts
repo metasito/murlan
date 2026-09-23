@@ -14,9 +14,8 @@ import {
   getBotPersonality,
   isBotPersonalityId,
 } from "../../lib/game/botPersonalities.ts";
+import { aiChoosePlay, applyPersonality } from "../../lib/game/ai.ts";
 import {
-  aiChoosePlay,
-  applyPersonality,
   buildCombination,
   createDeck,
   getAllValidPlays,
@@ -268,11 +267,11 @@ test("the hard tier answers plainly rather than spend a joker, at every roll", (
 // differently depending on which difficulty tier ran.
 test("aiChoosePlay never sorts the array getAllValidPlays returned in place", () => {
   const src = readFileSync(
-    path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../lib/game/gameEngine.ts"),
+    path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../lib/game/ai.ts"),
     "utf8"
   );
   const start = src.indexOf("export function aiChoosePlay");
-  const end = src.indexOf("// ─── Game state processing", start);
+  const end = src.indexOf("\n}\n", start);
   assert.ok(start > 0 && end > start, "could not locate aiChoosePlay's body to scan");
   assert.doesNotMatch(src.slice(start, end), /\bplays\.sort\(/);
 });

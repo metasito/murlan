@@ -32,6 +32,48 @@ import {
   HAND_SCALE,
   HAND_SCALE_ON_TURN,
 } from "@/components/cardFaceModel";
+import { readHandArrival, type ExchangeView } from "@/components/flightPhysics";
+import { useSameCards } from "@/components/useSameCards";
+import type { ExchangeAnnounceData } from "@/lib/game/sharedGameFlow";
+
+/**
+ * The viewer's hand as the table draws it while a traded card is on its way in.
+ *
+ * Held back at display rather than by deferring the state: online the state is
+ * the server's, and freezing a whole snapshot for the length of a phase would
+ * swallow every other thing that arrives in that window. Arranged first and
+ * filtered second, so the card lands in the place the player arranged for it
+ * instead of re-entering an order computed without it.
+ */
+export function useHandArrival({
+  hand,
+  exchange,
+  announcement,
+  landed,
+  viewerSeat,
+  reduceMotion,
+}: {
+  hand: Card[];
+  exchange: ExchangeView;
+  announcement: { visible: boolean; data: ExchangeAnnounceData | null } | undefined;
+  /** `useTradedCardsLanded`'s answer, the one clock the flier reads too. */
+  landed: boolean;
+  viewerSeat: number | null;
+  reduceMotion: boolean;
+}): { handOnTable: Card[]; withheldId?: string; arrivingIndex?: number; descendingId?: string } {
+  const { withheldId, arrivingIndex, descendingId } = readHandArrival({
+    hand,
+    exchange,
+    announce: announcement?.visible === true ? (announcement.data ?? null) : null,
+    viewerSeat,
+    landed,
+    reduceMotion,
+  });
+  const handOnTable = useSameCards(
+    withheldId === undefined ? hand : hand.filter((c) => c.id !== withheldId)
+  );
+  return { handOnTable, withheldId, arrivingIndex, descendingId };
+}
 
 // ─── CardItem ─────────────────────────────────────────────────────────────────
 //

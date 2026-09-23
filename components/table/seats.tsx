@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { View, StyleSheet } from "react-native";
 import { TableText } from "./TableText";
 import { ChipText, TableChip } from "./chrome";
@@ -13,7 +13,8 @@ import {
   seatFanArc,
   seatLabelH,
 } from "@/components/seatLayout";
-import { impactDelayMs } from "@/components/flightPhysics";
+import { impactDelayMs, passedSeats } from "@/components/flightPhysics";
+import { handCountOf } from "@/shared/protocol";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -38,7 +39,30 @@ import { Colors, makeShadow, Motion, motionMs, Radius, Spacing } from "@/lib/the
 import { urgentThresholdSeconds } from "@/components/turnTimerUi";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
-import type { Player } from "@/lib/game/gameEngine";
+import type { Combination, Player } from "@/lib/game/gameEngine";
+
+/**
+ * Which seats have already answered the round on the table. Derived rather
+ * than stored, so a new lead empties it on the same commit that lands the
+ * card and no effect has to clear it.
+ */
+export function usePassedSeats(
+  currentTurnIndex: number,
+  lastPlayedBy: number,
+  lastPlayedCombination: Combination | null,
+  players: readonly Player[]
+): number[] {
+  return useMemo(
+    () =>
+      passedSeats({
+        currentTurnIndex,
+        lastPlayedBy,
+        lastPlayedCombination,
+        outOfCards: players.map((p) => handCountOf(p) === 0),
+      }),
+    [currentTurnIndex, lastPlayedBy, lastPlayedCombination, players]
+  );
+}
 
 // ─── CardFan ──────────────────────────────────────────────────────────────────
 //
