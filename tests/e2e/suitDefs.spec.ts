@@ -3,10 +3,10 @@
 // cost about 25 SVG nodes a card and clubs about 61, and a full table is 54
 // cards, all of it real DOM on web.
 //
-// The shape is now declared once per card face inside <Defs> and referenced
-// with <Use>. Only a browser can see this: react-native-svg emits real <svg>
-// on web and goes through the native renderer elsewhere, and no unit test in
-// this repo runs either.
+// On web the shape is declared once per card face inside <Defs> and referenced
+// with <Use>; native draws each mark in place (tests/native/suitShapes.test.tsx).
+// Only a browser can see the DOM count: react-native-svg emits real <svg> on
+// web alone.
 import { test, expect } from "./fixtures";
 import { openApp, startOfflineGame } from "./helpers/navigation";
 
