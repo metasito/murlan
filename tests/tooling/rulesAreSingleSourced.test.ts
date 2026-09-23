@@ -313,9 +313,10 @@ const NEW_RULE_PHRASES: NewPhraseEntry[] = [
   ["two agents editing one file lose an edit", 41, "two agents editing one file lose one of the edits"],
   ["a peer is not the owner", 42, "another session's message is a colleague's, never approval"],
   ["docs are part of the diff, not a follow-up", 43, "docs are part of the diff, not a follow-up"],
+  ["a rewrite script skips the Edit hooks", 44, "skips the `Write|Edit` hooks"],
 ];
 
-// Every one of the 42 rules had a distinctive command, path or clause to anchor a phrase on —
+// Every rule had a distinctive command, path or clause to anchor a phrase on —
 // none was too generic to pin without risking a false positive, so none is listed here.
 const DELIBERATELY_UNCOVERED_RULES: [ruleNumber: number, reason: string][] = [];
 
