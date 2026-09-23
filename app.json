@@ -47,8 +47,7 @@
       ],
       "expo-audio",
       "expo-localization",
-      "expo-notifications",
-      "./plugins/orientation-probe"
+      "expo-notifications"
     ],
     "experiments": {
       "typedRoutes": true,
