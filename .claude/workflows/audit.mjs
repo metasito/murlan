@@ -20,7 +20,7 @@ const MAX_GAP_ROUNDS = 3
 const LENSES = [
   {
     key: 'security', model: 'opus', skills: ['security-review', 'best-practices'],
-    start: 'server/ (authTokens, ticket, session, socketSafety, socketSchemas, validate, schemas, cors, admin, adminPage, bugReports, clientErrors, codes, routes, mail, deleteAccount), lib/wire.ts, app/(online), app/+native-intent.tsx, app.json, .github/workflows',
+    start: 'server/ (authTokens, ticket, session, socketSafety, validate, schemas, cors, admin, adminPage, bugReports, clientErrors, codes, routes, mail, deleteAccount), shared/socketSchemas.ts, lib/wire.ts, app/(online), app/+native-intent.tsx, app.json, .github/workflows',
     refs: 'OWASP ASVS 5.0 (V6 auth, V7 session, V8 authz, V13 config, V16 logging); OWASP Top 10:2025 (A01 access control, A02 misconfiguration, A10 exceptional conditions); OWASP MASVS for token storage on device; expressjs.com security best practices; socket.io docs on auth and middleware.',
     ask: `Threat-model first: a hostile client holds a valid session and a seat at the table.
 - Handshake: only a ticket or a live session is accepted.

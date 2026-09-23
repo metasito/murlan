@@ -27,7 +27,7 @@ import {
   GameExchangeGiveCardSchema,
   GameRematchIntentSchema,
   GameEndMatchVoteSchema,
-} from "./socketSchemas.ts";
+} from "../../shared/socketSchemas.ts";
 import { testOnlyEnv } from "../http/testOnlyEnv.ts";
 
 /**

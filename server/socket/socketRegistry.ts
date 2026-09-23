@@ -3,6 +3,7 @@
 //
 // Apart from socket.ts because both the presence family and socket.ts itself
 // need these: keeping them next to `setupSocket` made an import cycle.
+import type { ServerToClientEvents } from "../../shared/protocol.ts";
 import type { SocketServer } from "./socketTypes.ts";
 import { logger } from "../http/logger.ts";
 import { friendStore } from "../store/friendStore.ts";
@@ -19,9 +20,13 @@ export function setSocketServer(io: SocketServer) {
   _io = io;
 }
 
-export function emitToUser(userId: string, event: string, data: unknown) {
+export function emitToUser<E extends keyof ServerToClientEvents>(
+  userId: string,
+  event: E,
+  ...data: Parameters<ServerToClientEvents[E]>
+) {
   if (!_io) return;
-  _io.to(userRoom(userId)).emit(event, data);
+  _io.to(userRoom(userId)).emit(event, ...data);
 }
 
 /**

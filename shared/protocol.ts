@@ -2,11 +2,13 @@
 // Bump PROTOCOL_VERSION with any change to this file; tests/server/protocolVersion.test.ts
 // holds that. Raise MIN_PROTOCOL_VERSION to turn away the bundles a change breaks.
 import { z } from "zod";
-import type { DefaultEventsMap } from "socket.io";
-import type { GameState, Player } from "../lib/game/gameEngine.ts";
+import type { GameState, MatchLength, Player } from "../lib/game/gameEngine.ts";
 import type { GameOverPayload } from "../lib/game/matchState.ts";
+import type { FriendRequestAccepted, FriendRequestIncoming } from "../lib/wire.ts";
+import type * as Inbound from "./socketSchemas.ts";
+import type { TranslationParams } from "./i18n.ts";
 
-export const PROTOCOL_VERSION = 2;
+export const PROTOCOL_VERSION = 3;
 export const MIN_PROTOCOL_VERSION = 1;
 
 /** The handshake's refusal for a bundle older than MIN_PROTOCOL_VERSION. */
@@ -38,14 +40,107 @@ export interface WireRoomState {
   seatHolds?: { seatIndex: number; username: string; expiresInMs: number }[];
 }
 
-/** Every other event stays untyped; inbound ones are server/socket/socketSchemas.ts's to check. */
-export interface ServerToClientEvents extends DefaultEventsMap {
+export interface ServerPayload {
+  code?: string;
+  message?: string;
+  /** A few endpoints (e.g. the rate limiters) use `error` instead of `message`. */
+  error?: string;
+  params?: TranslationParams;
+}
+
+interface SeatEvent {
+  userId: string;
+  username: string;
+  seatIndex: number;
+}
+
+/** A seat the server could not place is sent as `null`. */
+type MaybeSeated = Omit<SeatEvent, "seatIndex"> & { seatIndex: number | null };
+
+interface VoteState {
+  votes: string[];
+  total: number;
+}
+
+export interface ServerToClientEvents {
   "game:state": (state: WireGameState, ack: () => void) => void;
   "game:over": (payload: GameOverPayload) => void;
   "room:state": (room: WireRoomState) => void;
+  "game:started": () => void;
+  "game:match_state": (match: { target: number; length: MatchLength; handsPlayed: number; scores: Record<string, number> }) => void;
+  "game:vote_state": (votes: VoteState) => void;
+  "game:end_match_vote_state": (votes: VoteState) => void;
+  "game:turn_deadline": (deadline: { turnDeadlineMs?: number; turnSecondsRemaining: number }) => void;
+  "game:notification": (notice: ServerPayload & { type: string }) => void;
+  "game:player_left": (seat: SeatEvent) => void;
+  "game:seat_bot_takeover": (seat: SeatEvent & ServerPayload) => void;
+  "game:player_disconnected": (seat: MaybeSeated & ServerPayload) => void;
+  "game:player_reconnected": (seat: MaybeSeated & ServerPayload) => void;
+  "game:rejoin_failed": (refusal: ServerPayload & { roomId?: string }) => void;
+  "game:reaction": (reaction: { emoji: string; fromSeat: number; username: string }) => void;
+  "game:rematch_intents": (intents: { yes: number; total: number; answers: Record<string, boolean> }) => void;
+  "game:error": (error: ServerPayload) => void;
+  "room:error": (error: ServerPayload) => void;
+  "socket:error": (error: ServerPayload) => void;
+  "friend:error": (error: ServerPayload) => void;
+  "friend:online_list": (list: { onlineIds: string[] }) => void;
+  "friend:invite": (invite: { from: string; roomCode: string }) => void;
+  "friend:invite_retired": (invite: { roomCode: string }) => void;
+  "friend:room_joinable": (invite: { roomCode: string; joinable: boolean }) => void;
+  "friend:status": (status: { userId: string; online: boolean; lastSeen?: string }) => void;
+  "friend:request_incoming": (request: FriendRequestIncoming) => void;
+  "friend:request_accepted": (request: FriendRequestAccepted) => void;
 }
 
-export type ClientToServerEvents = DefaultEventsMap;
+/** How the server answers an intent: `ok: false` is a refusal, as against no answer at all. */
+export interface IntentReply {
+  ok: boolean;
+  code?: string;
+}
+
+/** Each intent and the schema the server parses it with, which is also its payload's type. */
+export interface IntentSchemas {
+  "room:create": typeof Inbound.RoomCreateSchema;
+  "room:join": typeof Inbound.RoomJoinSchema;
+  "room:spectate": typeof Inbound.RoomSpectateSchema;
+  "room:rejoin": typeof Inbound.RoomRejoinSchema;
+  "room:unspectate": typeof Inbound.NoPayloadSchema;
+  "room:leave": typeof Inbound.NoPayloadSchema;
+  "room:setVisibility": typeof Inbound.RoomSetVisibilitySchema;
+  "room:quickmatch": typeof Inbound.RoomQuickmatchSchema;
+  "room:start": typeof Inbound.RoomStartSchema;
+  "game:play": typeof Inbound.GamePlaySchema;
+  "game:pass": typeof Inbound.NoPayloadSchema;
+  "game:rematch_intent": typeof Inbound.GameRematchIntentSchema;
+  "game:rematch_vote": typeof Inbound.NoPayloadSchema;
+  "game:end_match_vote": typeof Inbound.GameEndMatchVoteSchema;
+  "game:rejoin": typeof Inbound.GameRejoinSchema;
+  "game:reaction": typeof Inbound.GameReactionSchema;
+  "game:exchange_give_card": typeof Inbound.GameExchangeGiveCardSchema;
+}
+
+export type IntentEvent = keyof IntentSchemas;
+
+/** `z.input`, not `z.infer`: the client sends what the schema accepts, before its transforms. */
+export type IntentPayload<E extends IntentEvent> = Exclude<z.input<IntentSchemas[E]>, undefined | null>;
+
+type IntentEvents = {
+  [E in IntentEvent]: (message: IntentPayload<E> & { intentId?: string }, ack: (reply: IntentReply) => void) => void;
+};
+
+export interface ClientToServerEvents extends IntentEvents {
+  "friend:invite": (
+    invite: z.input<typeof Inbound.FriendInviteSchema>,
+    ack: (reply: IntentReply) => void
+  ) => void;
+  "friend:get_online_list": () => void;
+}
+
+/** The schema behind every inbound event, by the name `onEvent` registers it under. */
+export type InboundSchemas = IntentSchemas & {
+  "friend:invite": typeof Inbound.FriendInviteSchema;
+  "friend:get_online_list": typeof Inbound.NoPayloadSchema;
+};
 
 // Tolerant on purpose: each checks what rendering dereferences and passes the
 // rest through, so a field a newer server adds never refuses a state.

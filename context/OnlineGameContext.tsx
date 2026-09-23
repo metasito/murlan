@@ -21,6 +21,7 @@ import {
   gameOverSchema,
   gameStateSchema,
   handCountOf,
+  type IntentPayload,
   roomStateSchema,
   type WireGameState,
   type WireRoomState,
@@ -730,7 +731,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     };
 
     const onPlayerDisconnected = (
-      payload: ServerPayload & { userId: string; seatIndex?: number }
+      payload: ServerPayload & { userId: string; seatIndex?: number | null }
     ) => {
       // The server sends { code, params, message }; rendering it here rather
       // than rebuilding the sentence keeps this in the player's language and
@@ -756,7 +757,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     };
 
     const onPlayerReconnected = (
-      payload: ServerPayload & { userId: string; seatIndex?: number }
+      payload: ServerPayload & { userId: string; seatIndex?: number | null }
     ) => {
       const msg = translateServerPayload(payload);
       setReconnectNotice(msg);
@@ -878,7 +879,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
    * move that vanished used to look exactly like a player who did not move.
    */
   const deliver = useCallback(
-    (event: IntentEvent, payload?: object, options?: { retry?: boolean }) => {
+    <E extends IntentEvent>(event: E, payload?: IntentPayload<E>, options?: { retry?: boolean }) => {
       void send(socket, event, payload, options).then((outcome) => {
         if (!undelivered(outcome)) return;
         showNotification({

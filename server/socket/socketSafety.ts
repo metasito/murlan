@@ -1,3 +1,4 @@
+import type { InboundSchemas, IntentReply } from "../../shared/protocol.ts";
 import type { GameSocket as Socket } from "./socketTypes.ts";
 import { z } from "zod";
 import { logger } from "../http/logger.ts";
@@ -101,11 +102,9 @@ export function __resetRateLimits(): void {
   lastSweepAt = 0;
 }
 
-export function errorEventFor(event: string): string {
+export function errorEventFor(event: string): "room:error" | "game:error" | "friend:error" | "socket:error" {
   const ns = event.split(":")[0];
-  return ns === "room" || ns === "game" || ns === "friend"
-    ? `${ns}:error`
-    : "socket:error";
+  return ns === "room" || ns === "game" || ns === "friend" ? `${ns}:error` : "socket:error";
 }
 
 /**
@@ -143,10 +142,7 @@ export function allowSocketAction(
  * comes back must be able to tell "the server never heard me" from "the server
  * heard me and said no", or it retries a thing that will never work.
  */
-export interface EventOutcome {
-  ok: boolean;
-  code?: string;
-}
+export type EventOutcome = IntentReply;
 
 /**
  * A handler that returns nothing did the thing. One that turned the intent
@@ -176,14 +172,15 @@ function intentIdOf(raw: unknown): { ok: true; intentId?: string } | { ok: false
   return parsed.success ? { ok: true, intentId: parsed.data } : { ok: false };
 }
 
-export function onEvent<S extends z.ZodTypeAny>(
+export function onEvent<E extends keyof InboundSchemas>(
   socket: Socket,
-  event: string,
-  schema: S,
-  handler: (payload: z.infer<S>, context: EventContext) => EventResult | Promise<EventResult>,
+  event: E,
+  schema: InboundSchemas[E],
+  handler: (payload: z.infer<InboundSchemas[E]>, context: EventContext) => EventResult | Promise<EventResult>,
   options: EventOptions = {}
 ): void {
-  socket.on(event, (...args: unknown[]) => {
+  // Unknown until the schema below parses it: the map types what a client should send, not what it did.
+  socket.on(event, ((...args: unknown[]) => {
     // Socket.IO appends the client's acknowledgement callback as the last
     // argument when there is one, so the payload is not always args[0] alone.
     const ack = typeof args[args.length - 1] === "function"
@@ -243,7 +240,7 @@ export function onEvent<S extends z.ZodTypeAny>(
     socket.data.intentQueue = run.catch((err: unknown) => {
       logger.error({ err, event, userId: socket.data?.userId }, "Socket refusal could not be sent");
     });
-  });
+  }) as Parameters<typeof socket.on<E>>[1]);
 }
 
 /**
@@ -253,7 +250,7 @@ export function onEvent<S extends z.ZodTypeAny>(
  */
 export function answerUnknownEvents(socket: Socket): void {
   socket.onAny((event: string, ...args: unknown[]) => {
-    if (socket.listeners(event).length > 0) return;
+    if (socket.eventNames().includes(event)) return;
     const ack = args[args.length - 1];
     if (typeof ack === "function") ack({ ok: false, code: "CLIENT_OUTDATED" });
   });

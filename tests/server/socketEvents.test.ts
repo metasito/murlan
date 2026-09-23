@@ -7,7 +7,7 @@
 // process guards. An event registered with a bare `socket.on` gets none of
 // that, and is exactly the one nobody remembers to check — `room:unspectate`
 // sat outside the wrapper from the day spectating shipped, while
-// server/socket/socketSchemas.ts claimed to hold schemas "for every inbound socket
+// shared/socketSchemas.ts claimed to hold schemas "for every inbound socket
 // event".
 //
 // Outbound: an event the server emits and no client listens for is dead weight
