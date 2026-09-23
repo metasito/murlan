@@ -110,9 +110,9 @@ export async function openOnlineTable(
 
     // Sequential, not `Promise.all`: this suite's own webServer is one Node
     // process shared by every seat's bundle load, and this machine runs
-    // another agent's session beside it (RULES.md § Sharing the machine) —`seatCount - 1`
-    // contexts loading it at once is more peak memory than one at a time
-    // needs to spend.
+    // another agent's session beside it (RULES.md § Sharing the machine) —
+    // `seatCount - 1` contexts loading it at once is more peak memory than
+    // one at a time needs to spend.
     for (let i = 1; i < seats.length; i++) {
       const { page } = seats[i];
       await openApp(page, baseURL);
