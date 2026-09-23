@@ -863,29 +863,43 @@ describe("resolvePowerShellExe", () => {
 
 });
 
-describe("resolvePowerShellExe, live", { skip: process.platform === "win32" ? false : "reap resolves PowerShell on win32 only" }, () => {
+describe("resolvePowerShellExe, live", () => {
+  const onWindows = process.platform === "win32";
   const identityProbeOn = (PATH: string) => (exe: string) =>
     execFileSync(exe, ["-NoProfile", "-Command", "$PSVersionTable.PSVersion.Major"], {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],
       env: { ...process.env, PATH },
     });
+  const inTempDir = (body: (dir: string) => void) => {
+    const dir = mkdtempSync(path.join(tmpdir(), "resolve-pwsh-"));
+    try {
+      body(dir);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  };
 
   test("measured: pwsh is on PATH on this machine, so the default probe picks it", () => {
     assert.equal(resolvePowerShellExe(), "pwsh");
   });
 
-  test("a decoy pwsh.exe (a copy of cmd.exe) on PATH is rejected — reproduced live", () => {
-    const dir = mkdtempSync(path.join(tmpdir(), "decoy-pwsh-"));
-    try {
-      copyFileSync(path.join(process.env.SystemRoot ?? "C:/Windows", "System32", "cmd.exe"), path.join(dir, "pwsh.exe"));
+  test("a decoy pwsh that exits 0 printing no version is rejected — reproduced live", () => {
+    inTempDir((dir) => {
+      const decoy = onWindows ? path.join(process.env.SystemRoot ?? "C:/Windows", "System32", "cmd.exe") : "/bin/echo";
+      copyFileSync(decoy, path.join(dir, onWindows ? "pwsh.exe" : "pwsh"));
       assert.equal(resolvePowerShellExe(identityProbeOn(dir)), "powershell");
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
+    });
   });
 
-  test("with pwsh off PATH, resolution falls back and the legacy binary actually runs", () => {
+  test("with no pwsh on PATH, resolution falls back on the real ENOENT", () => {
+    inTempDir((dir) => {
+      assert.throws(() => identityProbeOn(dir)("pwsh"), { code: "ENOENT" });
+      assert.equal(resolvePowerShellExe(identityProbeOn(dir)), "powershell");
+    });
+  });
+
+  test("the legacy binary it falls back to reads the process table", { skip: onWindows ? false : "Windows PowerShell and Win32_Process exist on win32 only" }, () => {
     // Only System32's own PowerShell 5.1 on PATH — the pwsh install lives under WindowsApps,
     // so this reproduces "pwsh not installed" without touching the real PATH.
     const legacyOnly = String.raw`C:\Windows\System32\WindowsPowerShell\v1.0`;
