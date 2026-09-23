@@ -1140,6 +1140,7 @@ export function initializeGame(
  */
 export const MATCH_TARGETS: readonly number[] = [21, 31, 41, 51];
 
+/** One turn clock online and offline, `docs/GAME-RULES.md` § Decisions. */
 export const TURN_TIMEOUT_MS = 30_000;
 
 /**
