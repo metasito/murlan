@@ -18,16 +18,18 @@ import { pathToFileURL } from "node:url";
 import {
   aiChoosePlay,
   bombPossible,
-  cardStrength,
-  dealCards,
-  getAllValidPlays,
-  getStraightFaceValue,
-  initializeRematch,
   isExchangeCardStillOut,
   knownOpponentExchangeCard,
   losesLeadToExchangeCard,
   opponentsOf,
   outstandingAbove,
+} from "../lib/game/ai.ts";
+import {
+  cardStrength,
+  dealCards,
+  getAllValidPlays,
+  getStraightFaceValue,
+  initializeRematch,
   STRAIGHT_MIN_LEN,
   type Card,
   type Combination,

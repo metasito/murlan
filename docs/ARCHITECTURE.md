@@ -42,7 +42,8 @@ lib/game/gameEngine.ts (offline: called directly)   server/socket/socket.ts (onl
 - **`lib/game/gameEngine.ts`** is the single rules engine, imported by both the client (offline
   mode) and the server (online mode, authoritative). Deck of 54 (52 + 2 distinguishable
   Jokers) is dealt in full every game — see `docs/GAME-RULES.md` §3. There is no reduced-deck
-  mode.
+  mode. The bot heuristics live apart from the rules, in `lib/game/ai.ts`, reached only through
+  `lib/game/autoMove.ts`.
 - **The client sends an intent** (`game:play`, `game:pass`, `game:exchange_give_card`) and renders
   whatever the server broadcasts back — server/CLAUDE.md's server-authority rule covers why.
   `server/socket/socket.ts` is the handshake and the listener wiring only; it never touches game

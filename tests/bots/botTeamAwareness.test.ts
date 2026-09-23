@@ -2,11 +2,10 @@
 // personality suite's seeded pins stay untouched — #216 requires them to.
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { aiChoosePlay, opponentsOf } from "../../lib/game/ai.ts";
 import {
-  aiChoosePlay,
   buildCombination,
   initializeGame,
-  opponentsOf,
   processPass,
   processPlay,
 } from "../../lib/game/gameEngine.ts";

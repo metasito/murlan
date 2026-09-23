@@ -14,14 +14,12 @@
 // is deliberate; see the ticket.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
+import { aiChoosePlay, bombPossible, outstandingAbove } from "../../lib/game/ai.ts";
 import {
-  aiChoosePlay,
-  bombPossible,
   buildCombination,
   createDeck,
   getRankStrength,
   initializeGame,
-  outstandingAbove,
   processPlay,
   RANK_SLOTS,
 } from "../../lib/game/gameEngine.ts";
