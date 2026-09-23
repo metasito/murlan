@@ -5,7 +5,7 @@
 // stayed in it, so every player's `hand` is empty and the table draws from
 // `handCount` exactly as it does for a spectator.
 //
-// Loads under `node --test`, and under the server — docs/agents/loops.md,
+// Loads under `node --test`, and under the server — docs/agents/checks.md,
 // "Node's TypeScript loader".
 import { passesToCloseRound } from "./gameEngine.ts";
 import type { Combination, GameMode, GameState, Player } from "./gameEngine.ts";

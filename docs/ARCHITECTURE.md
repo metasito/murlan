@@ -43,8 +43,8 @@ lib/game/gameEngine.ts (offline: called directly)   server/socket/socket.ts (onl
   mode) and the server (online mode, authoritative). Deck of 54 (52 + 2 distinguishable
   Jokers) is dealt in full every game — see `docs/GAME-RULES.md` §3. There is no reduced-deck
   mode.
-- **The client never computes an online outcome locally.** It sends an intent (`game:play`,
-  `game:pass`, `game:exchange_give_card`) and renders whatever the server broadcasts back.
+- **The client sends an intent** (`game:play`, `game:pass`, `game:exchange_give_card`) and renders
+  whatever the server broadcasts back — server/CLAUDE.md's server-authority rule covers why.
   `server/socket/socket.ts` is the handshake and the listener wiring only; it never touches game
   state. Every intent lands in a `server/socket/socketGameplay.ts` listener, which resolves the room
   and calls `applyOrForward` (`server/game/tableRouter.ts`) and does nothing else. **The single
@@ -72,10 +72,9 @@ lib/game/gameEngine.ts (offline: called directly)   server/socket/socket.ts (onl
   reaches `react-native`, `expo-*` or AsyncStorage and breaks `npm run server:build`. Adding a
   `lib/` import to a server file therefore enlists that module and everything it imports; the
   test is where you find out.
-- **`locales/en.ts` is the source of truth for UI copy.** `it.ts` and `sq.ts` are declared
-  `Record<keyof typeof en, string>`, so a key present in English and missing from either
-  translation is a compile error, not a runtime gap — `DEFAULT_LOCALE` and every fallback
-  in `lib/i18n.ts` resolve to English.
+- **`locales/en.ts`, `it.ts` and `sq.ts`** back every `t()` call (components/CLAUDE.md's
+  translation-coverage rule); `DEFAULT_LOCALE` and every fallback in `lib/i18n.ts` resolve to
+  English.
 
 ## 2. Data flow
 
@@ -88,10 +87,10 @@ discarded rather than migrated, the same call `active_games` makes.
 
 **Online:** `OnlineGameContext` holds a `GameState` it only ever receives from the server
 via socket events (`game:state`, `game:over`, …). User actions call context methods
-that `emit` an intent to the server. The server is the only writer of `GameState` — it
-validates the intent against `lib/game/gameEngine.ts`, mutates state, persists it
-(`active_games` table), and broadcasts a sanitized copy to every seat (each player's own
-socket gets their own hand; opponents' hands are stripped server-side before emit).
+that `emit` an intent to the server. The server is the only writer of `GameState`
+(server/CLAUDE.md's authority rule) — it runs the intent through `lib/game/gameEngine.ts`,
+mutates state, persists it (`active_games` table), and emits a copy to every seat with each
+player's own hand and opponents' hands stripped before emit.
 
 **`playedRanks` on the broadcast state.** A 15-slot tally, indexed by `getRankStrength`, of
 how many cards of each rank have been played this manche. `processPlay` writes it and every
@@ -123,10 +122,9 @@ the only place that creates or tears down a socket. Nothing else is allowed to c
 2. `lib/socket.ts` fetches a fresh ticket immediately before every `io()` connect
    (including every reconnect, since tickets are single-use) and passes it as
    `auth: { ticket }`.
-3. The server's connection middleware accepts **only** a valid session or a valid
-   unconsumed ticket. There used to be a third branch — a bare, unproven
-   `handshake.auth.userId` — that let any client connect as any user; it has been deleted.
-   Rejected connections get `next(new Error("Not authenticated"))`, or `AUTH_UNAVAILABLE` when the check itself failed.
+3. The server's connection middleware accepts only a valid session or a valid unconsumed
+   ticket — the two paths server/CLAUDE.md's ticket-auth rule allows. Rejected connections get
+   `next(new Error("Not authenticated"))`, or `AUTH_UNAVAILABLE` when the check itself failed.
 
 **Single session per account:** a second connection for the same user evicts the first
 rather than the two coexisting. The older socket receives `SESSION_REPLACED` over the
@@ -163,7 +161,7 @@ single manche.
 **Disconnect → grace period → bot takeover (not forfeit):**
 - On `disconnect`, if the user has no other live socket, the server emits
   `game:player_disconnected` to the room, arms a fresh turn cycle so the table doesn't
-  stall on the disconnected seat, and starts a `DISCONNECT_GRACE_MS` (60s) timer.
+  stall on the disconnected seat, and starts a `disconnectGraceMs()` (60s default) timer.
 - If the same `userId` reconnects and emits `game:rejoin` before the timer fires, the timer
   is cleared and the seat is unaffected.
 - If the grace period expires, `vacateSeat()` runs: the seat's player row is removed, the
@@ -181,8 +179,8 @@ single manche.
 - `game:rejoin` failures (room gone after a restart, stale room code, etc.) reply
   `game:rejoin_failed`; the client leaves the room and returns to the lobby.
 
-**AFK (distinct from disconnect):** a connected-but-idle player gets a 30s
-(`AFK_TIMEOUT_MS`) auto-pass/auto-play timer, re-armed on every turn transition through a
+**AFK (distinct from disconnect):** a connected-but-idle player gets a 30s-default
+(`afkTimeoutMs()`) auto-pass/auto-play timer, re-armed on every turn transition through a
 single `armTurn` epilogue so it can't be armed once and then silently stop covering
 later turns.
 
@@ -191,7 +189,7 @@ later turns.
 - **`active_games`** (`shared/schema.ts`): one row per room, and only three columns —
   `roomId` primary key, `updatedAt` (a column because `pruneAbandonedGames` filters on it
   in SQL), and `gameState`, the versioned envelope `PersistedEnvelope`
-  (`server/game/onlineGameLogic.ts`) specifies. Everything else rides inside that envelope: the
+  (`shared/persistedEnvelope.ts`) specifies. Everything else rides inside that envelope: the
   hand itself, `handFlags`, `dealFirstSeat`, the room's six-character `joinCode` (duplicated
   from `rooms.code` so a cold-start rejoin can still draw the room screen once that row is
   gone — a code cannot be invented, and an unjoinable one on screen is worse than none), and
@@ -208,9 +206,9 @@ later turns.
   restart, which empties that map, orphans the row of any game that was live. The
   periodic sweeper therefore also prunes rows untouched for 24h. `updated_at` advances
   on every move, so a game being played is never a candidate.
-- **`session`** (via `connect-pg-simple`): `createTableIfMissing: false`, so
-  `server/store/schemaDdl.ts` creates it at boot with the same DDL the library ships. Never
-  dropped or recreated by app code — see `docs/DEPLOY-RUNBOOK.md`.
+- **`session`** (via `connect-pg-simple`): `server/store/schemaDdl.ts` creates it at boot with
+  the same DDL the library ships (server/CLAUDE.md's session-table rule covers its config and
+  lifecycle). Never dropped or recreated by app code — see `docs/DEPLOY-RUNBOOK.md`.
 - **`match_replays`**: one row per finished manche — `seats`, `moves` and `rankings` as
   jsonb, plus `playerIds` for the containment filter both reads go through, so a player
   can only ever fetch a hand they sat at. **No hand is stored**: a move carries what was
@@ -259,7 +257,7 @@ collapsed:
 - **`components/seatLayout.ts`**, **`flightPhysics.ts`**, **`turnTimerUi.ts`**,
   **`tableFrame.ts`**, **`tableA11y.ts`** — the table's pure model, one file per concern
   (#956). Each is JSX-free with relative runtime imports, so `node --test` can load it
-  (`docs/agents/loops.md`, "Node's TypeScript loader"). A module under `components/table/`
+  (`docs/agents/checks.md`, "Node's TypeScript loader"). A module under `components/table/`
   that keeps to the same shape is node-loadable whatever its neighbours are, which is how a
   number reached only from a `.tsx` — or from a `.ts` that imports through `@/` at runtime —
   is tested.
@@ -286,23 +284,22 @@ collapsed:
 - **`app/game.tsx`** and **`app/(online)/game.tsx`** are now thin adapters: each maps its
   own state source onto `GameTableProps`.
 
-Both adapters call out, in a comment at the top of their component, the same guard: **every
-hook runs unconditionally before the `if (!gameState) return null` guard.** This is not
-decorative — it is the fix for a bug that was live until this refactor landed (see §7).
+Both adapters call out, in a comment at the top of their component, the hook-order guard
+CLAUDE.md's invariants list states — the fix for a bug that was live until this refactor
+landed (see §7).
 
 ### 6a. What offline and online share below the table
 
 The presentational table unified what the two modes *draw*. The modules below unify what
 they *decide*, so a rule cannot hold in one mode and not the other:
 
-- **`lib/game/autoMove.ts`** — the one chooser of a bot's move, called by `server/` and by
-  `context/GameContext.tsx`. It also owns `resolveStuckExchange`, the valve for an exchange
-  no seat can satisfy.
+- **`lib/game/autoMove.ts`** — called by `server/` and by `context/GameContext.tsx`
+  (CLAUDE.md's bot-move invariant: one chooser, both callers). It also owns
+  `resolveStuckExchange`, the valve for an exchange no seat can satisfy.
 - **`lib/game/matchState.ts`** — the `game:over` wire shape (`GameOverPayload`, `ScoreLine`,
   `MatchVerdict`) and `celebration()`, which picks the name the results board shouts. A
-  winner travels as an **engine player id** (`player_N`), never a username or a seat index:
-  it is the only identity every client can map at every moment `game:over` can arrive, and
-  the only one that survives a vacated seat. `matchWinnerIds` may be empty on a match that
+  winner travels as an **engine player id** (`player_N`), never a username or a seat index
+  (server/CLAUDE.md's rule). `matchWinnerIds` may be empty on a match that
   *is* over — a client rejoining a finished table never receives the event — so
   `celebration()` takes an ordered candidate list and passes over any id naming no seat.
 - **`lib/game/standings.ts`**, **`lib/game/placement.ts`**, **`lib/exchangeCeremony.ts`** — scoring
@@ -318,14 +315,11 @@ from `react-native`. `lib/wire.ts` and `lib/game/placement.ts` are client-only.
 
 ## 7. Fixed bug: "Rendered fewer hooks than expected" in `OnlineGameScreen`
 
-Before the refactor, `app/(online)/game.tsx` had `if (!gameState) return null;` followed by
+Before the refactor, `app/(online)/game.tsx` had a null-state early return followed by
 roughly a dozen more hooks (`useMemo`, `useEffect`, `useAnimatedStyle`, …). Any transition
 from a non-null `gameState` to `null` while the component stayed mounted — e.g. a failed
 `game:rejoin` after a server restart — dropped the hook count between renders and crashed
 with `Rendered fewer hooks than expected`.
 
-**Current guard:** in both `app/game.tsx` and `app/(online)/game.tsx`, every hook is called
-unconditionally, and the null check (`if (!gameState) return null`) is the last line before
-the `return` of JSX — nothing conditional sits between a hook and the top of the function.
-Any future change to either file that reintroduces a hook after the null guard reintroduces
-this crash; that is the one invariant to protect here.
+Both `app/game.tsx` and `app/(online)/game.tsx` now hold the guard CLAUDE.md's invariants
+list states; a change to either file that violates it reintroduces this exact crash.

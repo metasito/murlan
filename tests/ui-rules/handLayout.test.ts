@@ -1,6 +1,6 @@
 // Layout math for StraightHand's card row (components/table/hand.tsx),
 // extracted to components/handLayout.ts specifically so it is importable
-// here — docs/agents/loops.md.
+// here — docs/agents/checks.md.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { CARD_W } from "../../components/cardFaceModel.ts";
@@ -22,7 +22,7 @@ const CW = CARD_W(1);
 const MAX_STEP_AT_CW = CW * MAX_STEP_RATIO;
 
 const WIDTHS = [320, 375, 428, 500, 600, 700, 768, 900, 1024];
-// Deal sizes per docs/BRIEF.md §3.1: 4p up to 14, 3p up to 18, 2p up to 21.
+// Deal sizes per docs/GAME-RULES.md § Decisions: 4p up to 14, 3p up to 18, 2p 14 each.
 const HAND_SIZES = Array.from({ length: 21 }, (_, i) => i + 1);
 
 describe("computeHandLayout", () => {

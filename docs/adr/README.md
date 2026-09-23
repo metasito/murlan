@@ -12,7 +12,8 @@ An ADR is history and is never rewritten. A decision that no longer holds gets
 | [0003](0003-cloud-run-already-runs-multiple-instances.md) | Cloud Run already runs the app on multiple instances | Accepted | Multi-instance is the deployed reality today, not a deferred future — the ownership/routing protocol is load-bearing, not speculative. |
 | [0004](0004-the-queue-loop-serialises-and-owns-the-merge.md) | The queue loop serialises its tickets and the supervisor owns the merge | Accepted | One ticket at a time and nothing held in memory: ~22% of wall clock buys away the whole class of defect where the supervisor and the session disagree about which ticket is live. |
 | [0005](0005-the-compiler-is-not-the-enforcer-of-the-adopted-rules.md) | The React Compiler is not the enforcer of the three rules #891 adopted | Accepted | `eslintSuppressionRules` stays unset: the compiler's penalty is an unmemoized component in production, which is a worse answer than the lint error two source scans already give. |
-| [0006](0006-the-host-is-no-longer-replit.md) | The host is no longer Replit, and the next one is still to be chosen | Accepted | Supersedes ADR-0001's "Stay on Replit for now": the subscription ended, the dev-sync machinery is deleted, and the new host is #1105's to choose. |
+| [0006](0006-the-host-is-no-longer-replit.md) | The host is no longer Replit, and the next one is still to be chosen | Accepted | Supersedes ADR-0001's "Stay on Replit for now": the subscription ended, the dev-sync machinery is deleted, and the new host is #1107's to choose. |
+| [0007](0007-account-recovery-email-verification-and-password-reset.md) | Account recovery: email verification and password reset | Accepted | Six boxes (migration, token storage, sender, rate limiting, enumeration-safety, session clearing) shipped across #861–#864; `server/http/routes.ts` and related source cite them by number. |
 
 ## Writing one
 
@@ -23,3 +24,8 @@ agents read, and a record nothing points at is a record nobody opens.
 
 Write one only for a decision that constrains future changes. A completed task, a run log
 or a session summary is not a decision and does not belong in this directory.
+
+A plan, a research note or a design spec is a working artefact: it is deleted once the work it
+describes has landed, and anything in it worth keeping past that point is a record here, not a
+file kept alive by habit. `docs/README.md` is where a reader finds this index; nothing links
+into a deleted plan/research/specs/design file, because nothing does anymore.

@@ -1,7 +1,7 @@
 // #893 — the account-recovery screens, driven end to end: register, verify
 // the address, sign out, and recover a forgotten password — the one thing a
-// source scan cannot tell apart from a rendered, wired control (design doc,
-// docs/design/2026-09-03-account-recovery-screens.md).
+// source scan cannot tell apart from a rendered, wired control
+// (docs/adr/0007-account-recovery-email-verification-and-password-reset.md).
 import { test, expect } from "./fixtures";
 import { openApp, uniqueUsername } from "./helpers/navigation";
 import { readMailToken } from "./helpers/mailSink";

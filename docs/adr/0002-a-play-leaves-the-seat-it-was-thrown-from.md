@@ -65,7 +65,7 @@ produces both geometries, so this is a transition between two of its results.
 
 ### 4. Timing comes from `impactDelayMs()`, which is not re-derived
 
-`components/gameTableModel.ts` already owns `FLIGHT_MS`, `LANDING_FRACTION` and
+`components/flightPhysics.ts` already owns `FLIGHT_MS`, `LANDING_FRACTION` and
 `impactDelayMs()`, precisely so the animation and the impact feedback cannot drift apart.
 The lift, the fade and the arc re-solve all read that same derivation. Under
 `prefers-reduced-motion` `impactDelayMs()` is already `0` and `FlyingCards` already skips the

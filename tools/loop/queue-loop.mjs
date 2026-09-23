@@ -226,8 +226,8 @@ const TICKET_BUDGET_USD = "40";
  *
  * `TICKET_BUDGET_USD` bounds a single session and is unchanged; with phase handoffs a ticket is up
  * to `MAX_HANDOFFS` of them, so the per-ticket figure has to be kept here, where the supervisor is
- * the only thing that survives them all. Set above the fleet median for the size
- * (`docs/research/2026-09-14-loop-efficiency.md` §5), so it catches a runaway and never a healthy run.
+ * the only thing that survives them all. Set above the fleet median for the size, so it catches
+ * a runaway and never a healthy run.
  */
 export const USD_BY_SIZE = {
   "size:XS": 20,
@@ -1518,7 +1518,7 @@ export function runTicket(
     // update is a decision for a person between runs.
     //
     // `LOOP_TURNS` is the bound that actually stops a session, and it was invisible to the session
-    // subject to it: the word "turn" appeared in none of queue.md, RULES.md, loops.md or CLAUDE.md,
+    // subject to it: the word "turn" appeared in none of queue.md, RULES.md, checks.md or CLAUDE.md,
     // so phase C's commit rule arrived with no stated reason to hurry.
     env: {
       ...process.env,

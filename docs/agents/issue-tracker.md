@@ -33,8 +33,7 @@ the vocabulary, the recipes, and how to write a ticket.
 
 ## Recipes
 
-Every multi-line body goes through `--body-file`: an inline `--body` carrying backticks is
-corrupted by PowerShell.
+Every multi-line body goes through `--body-file` (the shell contract, `docs/agents/checks.md`).
 
 ```sh
 # Read one issue: rule 25's command. Add `labels` to --json when they matter.
@@ -74,10 +73,9 @@ the same GitHub account.
   native blocker and no open pull request on an `agent/<n>-` branch. It prints the route, the body,
   the comments, open blockers, any open pull request, whether it is takeable, and the claim
   commands when it is.
-- **Claim** (rule 22). For `/queue`: `npm run queue:claim -- <n> "<title>"` adds `in-progress`,
-  posts the claim comment and creates `.worktrees/agent-<n>`. The worktree directory is the mutex;
-  exit 1 means you lost the race. For `/triage` and `/wayfinder`: the label and comment the picker
-  prints, then re-read the issue (rule 25) and stand down if an older claim is there. The comment
+- **Claim** (rule 22). For `/queue`: `npm run queue:claim -- <n> "<title>"` — `.claude/commands/queue.md`'s
+  phase A step 4 covers what it does. For `/triage` and `/wayfinder`: the label and comment the picker
+  prints, then re-read the issue (rule 25); stand down for an older claim, per rule 22. The comment
   reads exactly ``Claimed by `<branch>`.`` — the loop parses that shape.
 - **Release** (rules 26 and 28). Closing the issue ends the claim. Otherwise remove `in-progress`
   — always when relabelling `ready-for-human`. A leftover `in-progress` hides the ticket from the

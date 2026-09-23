@@ -8,9 +8,9 @@
 The night of 2026-09-11 ran eleven tickets and reported five parks, one landing nothing
 had touched, and two sessions that merged each other's pull requests to get past a branch
 cut from a `main` that did not yet have the other's work.
-`docs/research/2026-09-12-queue-loop-rearchitecture.md` numbers 43 defects behind that.
-Almost all of them are one of two shapes: the supervisor and the session disagreeing about
-which ticket is live, or the supervisor holding state in memory that nothing could recover.
+A post-incident count numbered 43 defects behind that. Almost all of them are one of two
+shapes: the supervisor and the session disagreeing about which ticket is live, or the
+supervisor holding state in memory that nothing could recover.
 
 The forces are measured, not assumed:
 
@@ -40,7 +40,7 @@ tracker on each iteration, so a crash costs the current ticket and nothing else.
 
 The session owns claim → build → review → gate → push, **and its own worktree teardown**,
 because after a push its tree is dirty and it is the only process that knows whether that
-is work or residue. `scripts/guard-bash.mjs` refuses `gh pr merge` from a session; the
+is work or residue. `tools/loop/guard-bash.mjs` refuses `gh pr merge` from a session; the
 merge is not a judgement, and a model reading a CI log to decide that green means merge is
 a model spending turns on a switch statement.
 

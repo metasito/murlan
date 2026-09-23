@@ -2,7 +2,7 @@
  * PreToolUse hint for Write/Edit. Never blocks — it prints the traps that apply to the file
  * about to be written, at the moment it is written.
  *
- * `docs/agents/loops.md` already documented every trap that cost this project a run in the
+ * `docs/agents/checks.md` already documented every trap that cost this project a run in the
  * last month. It is read at the start of a session and forgotten by the time a test is being
  * written, which is the only moment it matters. A hint costs nothing and arrives in time.
  *
@@ -14,7 +14,7 @@ const HINTS = [
   {
     when: (p) => /tests[\\/]native[\\/].*\.test\.tsx?$/.test(p),
     text:
-      "loops.md — the native harness is async. `render` and every `fireEvent` return promises; " +
+      "checks.md — the native harness is async. `render` and every `fireEvent` return promises; " +
       "a bare `fireEvent` leaves its act scope open and corrupts EVERY LATER render in the file, " +
       "so an unconditionally present control reads as `Unable to find an element with testID`. " +
       "Await the fireEvent, and end each case with `await view.unmount()`. " +
@@ -25,7 +25,7 @@ const HINTS = [
   {
     when: (p) => /tests[\\/]e2e[\\/].*\.spec\.ts$/.test(p),
     text:
-      "loops.md — only the browser suite sees layout: react-test-renderer never runs flexbox. " +
+      "checks.md — only the browser suite sees layout: react-test-renderer never runs flexbox. " +
       "Seed every state the spec asserts on, not just the viewer's, and assert on real device " +
       "viewports rather than arbitrary sizes.",
   },

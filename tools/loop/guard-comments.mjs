@@ -12,7 +12,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { basename, dirname } from "node:path";
 import { floorFor, JUDGED_EXTENSIONS, violations } from "./commentShape.ts";
-import { addedCounts } from "./comment-budget.mjs";
+import { netCounts } from "./comment-budget.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 
 const JUDGED = new RegExp(`\\.(${JUDGED_EXTENSIONS.join("|")})$`);
@@ -93,11 +93,10 @@ export function decide(payload, { committed = io.committed, disk = io.disk } = {
     ? applied(before, input)
     : null;
   if (after !== null) {
-    const added = addedCounts(committed(path), after);
-    // `comment-budget.mjs`'s floor, deliberately without its prose-only one. Rewording three lines
-    // of an existing comment adds three comment lines and no code, and denying that would stop an
-    // unattended ticket over an improvement. The tighter floor stays CI's, where a miss costs a
-    // report rather than a turn.
+    const added = netCounts(committed(path), after);
+    // `comment-budget.mjs`'s floor, deliberately without its prose-only one: net already lets a
+    // same-size reword through free, so what is left over here is real growth on an unattended
+    // ticket, and CI is where a miss costs a report rather than a turn.
     if (added.comment > floorFor(path) && added.comment > added.code) {
       found.push({
         rule: "ratio",

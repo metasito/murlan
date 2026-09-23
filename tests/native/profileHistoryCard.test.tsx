@@ -3,7 +3,7 @@
 //
 // Its own file rather than a describe inside profileForm.test.tsx: this
 // harness renders the whole profile screen, and a render left un-unmounted
-// corrupts every later one in the same file (docs/agents/loops.md). Two
+// corrupts every later one in the same file (docs/agents/checks.md). Two
 // suites over one screen is one suite too many to keep honest.
 import { describe, it, expect, jest, beforeEach } from '@jest/globals';
 

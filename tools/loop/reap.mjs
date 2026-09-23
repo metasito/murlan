@@ -159,6 +159,29 @@ function sh(cmd, args) {
 }
 
 /**
+ * pwsh (docs/agents/checks.md's shell contract) if it answers as PowerShell, else the legacy
+ * `powershell` every Windows box still ships. The probe checks identity, not silence — a same-named
+ * decoy that exits 0 for anything must not read as pwsh, so only a bare integer for
+ * `$PSVersionTable.PSVersion.Major` counts. ENOENT and a non-numeric answer both fall back; any
+ * other thrown error keeps pwsh, so a real pwsh fault is never hidden behind one nobody asked for.
+ */
+export function resolvePowerShellExe(
+  probe = (exe) =>
+    execFileSync(exe, ["-NoProfile", "-Command", "$PSVersionTable.PSVersion.Major"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }),
+) {
+  try {
+    return /^\d+$/.test(String(probe("pwsh")).trim()) ? "pwsh" : "powershell";
+  } catch (err) {
+    return err?.code === "ENOENT" ? "powershell" : "pwsh";
+  }
+}
+
+let cachedPowerShellExe;
+
+/**
  * `-Compress` emits no whitespace of its own, so a raw byte below 0x20 arriving here is never
  * JSON structure — it is a character of somebody's command line that the serializer let through
  * unescaped, and `JSON.parse` rejects the whole table over it. Dropping it costs one character of
@@ -180,10 +203,24 @@ export function parseWindowsProcessJson(json) {
   }));
 }
 
+/**
+ * `parseWindowsProcessJson`, but a resolver mistake (an identity check is best-effort, not a
+ * guarantee) degrades this one sweep instead of crashing every unattended run after it.
+ */
+export function readProcessTable(json, exeName) {
+  try {
+    return parseWindowsProcessJson(json);
+  } catch (err) {
+    console.error(`reap: ${exeName} did not answer as PowerShell, skipping this sweep's process table: ${err.message}`);
+    return [];
+  }
+}
+
 /** Every process on the box, so a candidate's parent can be looked up rather than assumed dead. */
 function processTable() {
   if (process.platform === "win32") {
-    const json = sh("powershell", [
+    cachedPowerShellExe ??= resolvePowerShellExe();
+    const json = sh(cachedPowerShellExe, [
       "-NoProfile",
       "-Command",
       "Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,Name,CommandLine," +
@@ -192,7 +229,7 @@ function processTable() {
         "@{n='Cpu';e={[int64](($_.KernelModeTime + $_.UserModeTime) / 10000)}} " +
         "| ConvertTo-Json -Compress",
     ]);
-    return parseWindowsProcessJson(json);
+    return readProcessTable(json, cachedPowerShellExe);
   }
   const now = Date.now();
   return sh("ps", ["-eo", "pid=,ppid=,etimes=,time=,args="])

@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 /** Where the constraint is explained. Every file it governs points here instead. */
-const AUTHORITY = "docs/agents/loops.md";
+const AUTHORITY = "docs/agents/checks.md";
 
 /** The section within it. Each pattern below is required to match inside this, not the file. */
 const SECTION = "Node's TypeScript loader reaches plain `.ts` only";
@@ -19,7 +19,7 @@ const SECTION = "Node's TypeScript loader reaches plain `.ts` only";
  * absorbs a wrap — three of these run past the margin and carry the quote on the next
  * comment line, and a single-line pattern reads them as no pointer at all.
  */
-const POINTER = /docs\/agents\/loops\.md[,)]?[\s/#*]*"([^"\n]+)"/g;
+const POINTER = /docs\/agents\/checks\.md[,)]?[\s/#*]*"([^"\n]+)"/g;
 
 const SELF = "tests/tooling/loaderConstraintIsSingleSourced.test.ts";
 
@@ -41,7 +41,6 @@ const PINNED = [
   "components/tableArc.ts",
   "components/tableFrame.ts",
   "components/turnTimerUi.ts",
-  "docs/TESTING.md",
   "jest.config.js",
   "lib/game/autoMove.ts",
   "lib/game/botPersonalities.ts",

@@ -1,6 +1,6 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, mkdtempSync, rmSync } from "node:fs";
+import { readFileSync, mkdtempSync, rmSync, copyFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { execFileSync, spawnSync } from "node:child_process";
@@ -21,6 +21,8 @@ import {
   wouldTakeSelf,
   isSessionHost,
   parseWindowsProcessJson,
+  resolvePowerShellExe,
+  readProcessTable,
 } from "../reap.mjs";
 import preflightMemory, { memoryVerdict, memoryFloor } from "../../ci/preflightMemory.mjs";
 
@@ -822,6 +824,117 @@ describe("parseWindowsProcessJson", () => {
 
   test("no output is no processes, not a parse error", () => {
     assert.deepEqual(parseWindowsProcessJson("  \n"), []);
+  });
+});
+
+describe("resolvePowerShellExe", () => {
+  test("prefers pwsh when it answers with its own version", () => {
+    assert.equal(
+      resolvePowerShellExe(() => "7\r\n"),
+      "pwsh",
+    );
+  });
+
+  test("a same-named binary that merely exits 0 is rejected, not read as pwsh", () => {
+    assert.equal(
+      resolvePowerShellExe(() => "not a version number"),
+      "powershell",
+    );
+  });
+
+  test("falls back to legacy powershell only on ENOENT", () => {
+    const enoent = Object.assign(new Error("not found"), { code: "ENOENT" });
+    assert.equal(
+      resolvePowerShellExe(() => {
+        throw enoent;
+      }),
+      "powershell",
+    );
+  });
+
+  test("a non-ENOENT failure keeps pwsh rather than hiding it behind a fallback", () => {
+    assert.equal(
+      resolvePowerShellExe(() => {
+        throw new Error("pwsh ran but the probed command failed");
+      }),
+      "pwsh",
+    );
+  });
+
+});
+
+describe("resolvePowerShellExe, live", () => {
+  const onWindows = process.platform === "win32";
+  const identityProbeOn = (PATH: string) => (exe: string) =>
+    execFileSync(exe, ["-NoProfile", "-Command", "$PSVersionTable.PSVersion.Major"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+      env: { ...process.env, PATH },
+    });
+  const inTempDir = (body: (dir: string) => void) => {
+    const dir = mkdtempSync(path.join(tmpdir(), "resolve-pwsh-"));
+    try {
+      body(dir);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  };
+
+  test("measured: pwsh is on PATH on this machine, so the default probe picks it", () => {
+    assert.equal(resolvePowerShellExe(), "pwsh");
+  });
+
+  test("a decoy pwsh that exits 0 printing no version is rejected — reproduced live", () => {
+    inTempDir((dir) => {
+      const decoy = onWindows ? path.join(process.env.SystemRoot ?? "C:/Windows", "System32", "cmd.exe") : "/bin/echo";
+      copyFileSync(decoy, path.join(dir, onWindows ? "pwsh.exe" : "pwsh"));
+      assert.equal(resolvePowerShellExe(identityProbeOn(dir)), "powershell");
+    });
+  });
+
+  test("with no pwsh on PATH, resolution falls back on the real ENOENT", () => {
+    inTempDir((dir) => {
+      assert.throws(() => identityProbeOn(dir)("pwsh"), { code: "ENOENT" });
+      assert.equal(resolvePowerShellExe(identityProbeOn(dir)), "powershell");
+    });
+  });
+
+  test("the legacy binary it falls back to reads the process table", { skip: onWindows ? false : "Windows PowerShell and Win32_Process exist on win32 only" }, () => {
+    // Only System32's own PowerShell 5.1 on PATH — the pwsh install lives under WindowsApps,
+    // so this reproduces "pwsh not installed" without touching the real PATH.
+    const legacyOnly = String.raw`C:\Windows\System32\WindowsPowerShell\v1.0`;
+    assert.throws(() => identityProbeOn(legacyOnly)("pwsh"), { code: "ENOENT" });
+    const resolved = resolvePowerShellExe(identityProbeOn(legacyOnly));
+    assert.equal(resolved, "powershell");
+
+    const out = execFileSync(
+      resolved,
+      ["-NoProfile", "-Command", "Get-CimInstance Win32_Process | Select-Object -First 1 ProcessId,Name | ConvertTo-Json -Compress"],
+      { env: { ...process.env, PATH: legacyOnly }, encoding: "utf8" },
+    );
+    assert.ok(JSON.parse(out).ProcessId >= 0, "the fallback binary ran Get-CimInstance for real, not just resolved a name");
+  });
+});
+
+describe("readProcessTable", () => {
+  test("a resolver mistake degrades to an empty table, logged, instead of crashing the sweep", () => {
+    const logged: string[] = [];
+    const original = console.error;
+    console.error = (msg: string) => logged.push(msg);
+    try {
+      assert.deepEqual(readProcessTable("Impossibile trovare il testo del messaggio...", "pwsh"), []);
+    } finally {
+      console.error = original;
+    }
+    assert.match(logged.join("\n"), /pwsh/, "the skip names which binary produced it, not just that one happened");
+  });
+
+  test("still reads a well-formed table", () => {
+    const rows = readProcessTable(
+      '[{"ProcessId":1,"ParentProcessId":0,"Name":"x","CommandLine":"x","Started":1,"Cpu":1}]',
+      "pwsh",
+    );
+    assert.equal(rows.length, 1);
   });
 });
 

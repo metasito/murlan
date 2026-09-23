@@ -37,7 +37,7 @@ export interface OnlineGameState {
   matchOver: boolean;
   /**
    * The match was ended by the unanimous vote, not played out. There is no
-   * rematch from one (docs/BRIEF.md §3.1) — the table goes back to the lobby,
+   * rematch from one (docs/GAME-RULES.md § Decisions) — the table goes back to the lobby,
    * and its rankings are partial anyway.
    */
   endedByVote?: boolean;
@@ -100,7 +100,7 @@ export interface OnlineGameState {
   /**
    * Seats currently held to the minimum legal move because their human left
    * mid-hand — the takeover plays weakly only for the hand it happened on
-   * (docs/BRIEF.md §3.1). Cleared at every `dealManche`, so a seat vacated
+   * (docs/GAME-RULES.md § Decisions). Cleared at every `dealManche`, so a seat vacated
    * between hands is never weak: there is no hand in progress to protect, and
    * it plays properly from its first turn as a bot.
    *
@@ -111,7 +111,7 @@ export interface OnlineGameState {
   weakSeats: Set<number>;
   /**
    * Votes to end the match outright once a seat has been vacated
-   * (docs/BRIEF.md §3.1) — the same unanimity-among-seated-humans shape as
+   * (docs/GAME-RULES.md § Decisions) — the same unanimity-among-seated-humans shape as
    * `rematchVotes`, kept apart because it answers a different question and
    * runs mid-hand as well as between hands. Cleared whenever the roster
    * changes (a vacate or a reclaim) or a new hand deals, so a stale unanimous

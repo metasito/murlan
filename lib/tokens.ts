@@ -8,7 +8,6 @@ import type { TextStyle, ViewStyle } from "react-native";
 const SILVER = '#C0C0C0';
 
 export const Colors = {
-  // Background layers
   bg:           '#031008',
   // `bg` at zero alpha, for the clear end of a fade over it. Spelt out rather
   // than 'transparent': a gradient blends its stops non-premultiplied, so a
@@ -19,12 +18,10 @@ export const Colors = {
   bgSurface:    '#0E2920',
   bgElevated:   '#142E24',
 
-  // Table/felt
   felt:         '#0B3B25',
   feltDark:     '#082B1A',
   feltLight:    '#0F4A30',
 
-  // Gold/yellow
   gold:         '#C9A84C',
   goldLight:    '#E2C06A',
   // The lit end of the gold: what the lamp leaves on a gold surface that is
@@ -39,7 +36,6 @@ export const Colors = {
   goldBorder: 'rgba(201,168,76,0.3)',  // card and row edges
   goldStrong: 'rgba(201,168,76,0.5)',  // active/selected, focus rings
 
-  // Text colors
   // WCAG ratios are enforced by tests/ui-rules/contrast.test.ts against bg, bgCard and felt.
   white:        '#FFFFFF',
   text:         '#F0EAD6',
@@ -47,7 +43,6 @@ export const Colors = {
   textSecondary:'rgba(240,234,214,0.75)',
   textMuted:    'rgba(240,234,214,0.58)',
 
-  // Accents & status
   accent:       '#22C55E',
   accentMuted:  'rgba(34,197,94,0.15)',
   success:      '#4CAF50',
@@ -58,7 +53,6 @@ export const Colors = {
   dangerScrim:  'rgba(229,57,53,0.92)', // error toast over the felt
   redMuted:     'rgba(239,68,68,0.15)', // the error box's wash, bordered by dangerDim
 
-  // Card specific
   cardBg:       '#FAFAF8',
   cardBorder:   'rgba(255,255,255,0.08)',
   cardBack:     '#1A1A2E',
@@ -78,7 +72,6 @@ export const Colors = {
   diamond:      '#C8102E',
   club:         '#1A1A1A',
 
-  // Borders & overlays
   // What a shadow is cast in. `Shadow.*` (lib/theme.ts) is the same colour
   // pre-applied; this is for the shadows whose radius scales with the card.
   shadow:       '#000000',

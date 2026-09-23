@@ -1,6 +1,6 @@
 // Seat and hand layout geometry for the shared game table.
 //
-// JSX-free, runtime imports relative — docs/agents/loops.md, "Node's TypeScript loader".
+// JSX-free, runtime imports relative — docs/agents/checks.md, "Node's TypeScript loader".
 
 import { CARD_BACK_H, CARD_BACK_W, BACK_SCALE } from "./cardFaceModel.ts";
 import { arcBounds, solveArc, SEAT_ARC } from "./tableArc.ts";

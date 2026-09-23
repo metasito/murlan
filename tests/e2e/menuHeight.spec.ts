@@ -31,8 +31,7 @@ interface Screen {
    * stretched to 800px is padding pretending to be design.
    *
    * Each sits well under what its screen actually reaches, and far above what
-   * the defect did — the numbers are in docs/design/585-menu-height/README.md.
-   * A bar set just under the passing value would go red on a font-metric
+   * the defect did (#585). A bar set just under the passing value would go red on a font-metric
    * change rather than on the defect coming back, and a check that goes red at
    * random gets disabled and then lies (#118).
    */
@@ -190,8 +189,8 @@ for (const screen of SCREENS) {
       await registerNewAccount(page, uniqueUsername("h"));
       await screen.open(page);
 
-      // `MENU_HEIGHT_CAPTURE=<dir>` photographs what the numbers describe.
-      // docs/design/585-menu-height/README.md is what it produced.
+      // `MENU_HEIGHT_CAPTURE=<dir>` photographs what the numbers describe,
+      // as the #585 fix's own capture run did.
       const capture = process.env.MENU_HEIGHT_CAPTURE;
       const slug = screen.name.replace(/[^a-z]+/gi, "-").replace(/^-|-$/g, "");
       const shoot = async (at: string) => {

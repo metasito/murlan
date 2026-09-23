@@ -26,7 +26,7 @@ concurrency:
 
 env:
   # Node 22+ is required: tests run via `node --test` against .ts files directly
-  # (docs/agents/loops.md, "Node's TypeScript loader"), stable since Node 22.6,
+  # (docs/agents/checks.md, "Node's TypeScript loader"), stable since Node 22.6,
   # so no ts-node/tsx/vitest is needed. Node 24 is the current LTS-track
   # release and what the project is developed against, so pin to it to keep
   # local and CI runs identical. The `build` job is deliberately not on this —
@@ -109,7 +109,7 @@ jobs:
           # is the one change that must run it, and the allowlist below would
           # skip it. The failure would surface later, on whichever unrelated
           # code change ran the suite next.
-          # The loop is a second product in this repository (docs/agents/loops.md). A change confined
+          # The loop is a second product in this repository (docs/agents/checks.md). A change confined
           # to `tools/loop/` runs its suite *instead of* the game's, which is the whole point of the
           # split; the two are not exclusive, and a queue.md edit is read by both and runs both.
           # The rest of the list is what its suite asserts on beyond its own code: the protocol
@@ -121,7 +121,7 @@ jobs:
           else
             echo "harness=false" >> "$GITHUB_OUTPUT"
           fi
-          if grep -qE '^(docs/agents/|docs/(PRIVACY|GAME-RULES|TESTING|WEB-PERF)\.md$|docs/design/57-polish-audit/|\.claude/commands/|CLAUDE\.md$)' <<< "$changed"; then
+          if grep -qE '^(docs/agents/|docs/(PRIVACY|GAME-RULES|WEB-PERF|ARCHITECTURE|BRIEF)\.md$|docs/design/57-polish-audit/|\.claude/commands/|CLAUDE\.md$)' <<< "$changed"; then
             echo "Documentation the suite asserts on — running everything."
             echo "app=true" >> "$GITHUB_OUTPUT"
           elif [ -n "$changed" ] && ! grep -qvE '^(docs/|\.claude/)|\.md$' <<< "$changed"; then

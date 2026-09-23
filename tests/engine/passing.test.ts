@@ -195,7 +195,7 @@ describe("§7.3 — \"A bomb is beaten only by a higher bomb — with one except
 });
 
 describe("§7.4 — royal straight / flush: ranked above bombs, beaten only by a higher royal straight of the same length", () => {
-  // docs/BRIEF.md §3.1 ("Royal straight") records the decision behind this:
+  // docs/GAME-RULES.md § Decisions ("Royal straight") records the decision behind this:
   // keep the royal straight beating bombs, no engine change. §7.3 now states
   // the exception itself; this block owns the detailed royal-straight
   // assertions (length parity, both directions) that §7.3's own test does not
@@ -218,7 +218,7 @@ describe("§7.4 — royal straight / flush: ranked above bombs, beaten only by a
   });
 
   test("a royal straight of a different length never beats another, even with the strictly higher top card the same-length rule alone would reward", () => {
-    // docs/BRIEF.md §3.1 ("Royal straight comparison"): beating a royal
+    // docs/GAME-RULES.md § Decisions ("Royal straight comparison"): beating a royal
     // straight requires the same card count, consistent with normal
     // straights (§6's "same length required, compare the top card"). Both
     // combos below top out on an Ace — the strongest possible top card — so

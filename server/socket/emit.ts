@@ -28,7 +28,7 @@ export function emitVoteState(io: SocketServer, room: string, game: OnlineGameSt
 /**
  * Who has voted to end the match outright, out of how many can answer — the
  * same unanimity-among-seated-humans shape as `emitVoteState`, kept apart
- * because it answers a different question (docs/BRIEF.md §3.1).
+ * because it answers a different question (docs/GAME-RULES.md § Decisions).
  */
 export function emitEndMatchVoteState(io: SocketServer, room: string, game: OnlineGameState) {
   io.to(room).emit("game:end_match_vote_state", {

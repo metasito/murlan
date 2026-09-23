@@ -169,7 +169,7 @@ describe("resolveHandEnd — gameResults shaping", () => {
       abandonedSeats: new Map(),
     });
 
-    // Was pinned at `undefined`/absent: docs/BRIEF.md §3.1 has a vacated
+    // Was pinned at `undefined`/absent: docs/GAME-RULES.md § Decisions has a vacated
     // seat's points join the running total like a born-bot seat's do, so the
     // standings sum to the hands played. It still cannot cross the target or
     // be named the winner — that is `winEligible`, not `cumulativeScores`.
@@ -254,7 +254,7 @@ describe("resolveHandEnd — gameResults shaping", () => {
 
     // The point lands on the hand's own scoreboard...
     assert.equal(hand2.handByKey["bot:1"], 1);
-    // ...and, as of #850, on the running total too: docs/BRIEF.md §3.1 settled
+    // ...and, as of #850, on the running total too: docs/GAME-RULES.md § Decisions settled
     // what #815 deferred — a vacated seat accumulates like a born-bot seat
     // from the hand it left onward. drita's own point from hand 1 (she was
     // still seated then) is not retroactively added; only bot:1's hand-2

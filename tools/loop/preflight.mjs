@@ -88,7 +88,7 @@ function git(args, cwd) {
 /**
  * A dependency absent from the lockfile's `packages` map — a transitive-only entry, or a shape
  * this doesn't recognize — is not this function's call to make, so it is skipped rather than
- * guessed at. See `docs/agents/loops.md` for why this check exists.
+ * guessed at. See `docs/agents/checks.md` for why this check exists.
  */
 export function lockDrift(packageJson, packageLock, installedVersions) {
   const deps = { ...packageJson.dependencies, ...packageJson.devDependencies };

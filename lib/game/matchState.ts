@@ -1,7 +1,7 @@
 // What a match has decided, in the one shape both modes report it in.
 //
 // Relative imports and no `react-native`: the server bundles this unresolved, and
-// `node --test` loads it the same way — docs/agents/loops.md, "Node's TypeScript loader".
+// `node --test` loads it the same way — docs/agents/checks.md, "Node's TypeScript loader".
 import { aggregateTeamScores } from "./gameEngine.ts";
 import type { MatchLength, PlayerType } from "./gameEngine.ts";
 import type { BotPersonalityId } from "./botPersonalities.ts";
@@ -202,7 +202,7 @@ export interface GameOverPayload {
   recorded: boolean;
   /**
    * The match ended before its first point, on an abandonment
-   * (docs/BRIEF.md §3.1) — nothing earned, nothing taken, rated for nobody.
+   * (docs/GAME-RULES.md § Decisions) — nothing earned, nothing taken, rated for nobody.
    * `rankings` and `scores` are empty and `recorded` is false alongside it;
    * false for every other hand, voided or not.
    */

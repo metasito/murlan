@@ -33,7 +33,7 @@ function danglingTestPaths(files: [string, string][], exists: (p: string) => boo
   );
 }
 
-const SERVER_ROOT_FILES = ["server/index.ts", "server/app.ts"];
+const SERVER_ROOT_FILES = ["server/index.ts", "server/app.ts", "server/CLAUDE.md"];
 const NAMED_SERVER_FILE = /(?<![\w/.-])server\/[\w./-]+\.(?:ts|html)\b/g;
 
 function looseServerFiles(files: string[]): string[] {
@@ -126,7 +126,7 @@ describe("the repository layout (#1131)", () => {
 
   const server = trackedFiles(repoRoot, "server");
 
-  test("only index.ts and app.ts sit at the top of server/; everything else is in a folder", () => {
+  test("only index.ts, app.ts and the directory's CLAUDE.md sit at the top of server/; everything else is in a folder", () => {
     for (const f of SERVER_ROOT_FILES) assert.ok(server.includes(f), `${f} is missing`);
     assert.ok(server.length > 60, `only ${server.length} files tracked under server/`);
     assert.deepEqual(looseServerFiles(server), []);

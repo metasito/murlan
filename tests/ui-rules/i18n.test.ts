@@ -417,7 +417,7 @@ describe("no empty translations", () => {
   }
 });
 
-// #806: the two-player deal moved from 21 each to 14 each (docs/BRIEF.md,
+// #806: the two-player deal moved from 21 each to 14 each (docs/GAME-RULES.md § Decisions,
 // 2026-08-31), and the in-app FAQ — "rules.faq.a15", read by a real player,
 // in all three locales — still said "21 cards each — 12 stay face down" long
 // after docs/GAME-RULES.md itself was corrected. Deriving the expected numbers
@@ -1143,7 +1143,7 @@ describe("every player-facing server response carries a code", () => {
 
 describe("Albanian card terminology", () => {
   /**
-   * Attested in docs/research/2026-08-20-albanian-card-terminology-research.md. `Trefla` and `Pika`
+   * Attested against primary Albanian-language sources for #29. `Trefla` and `Pika`
    * were a calque of *trefoil* and a borrowing of German *Pik*, attested as card
    * suits nowhere; docs/GAME-RULES.md's cited Albanian text opens the game with
    * "ai lojtar që ka 3 maç". `Kupë`, not `Kupa`, is the bare singular the

@@ -10,9 +10,8 @@ term's meaning, and useless anywhere the term is not.
 
 - **Account recovery** — the register / verify-email / add-email / resend-verification /
   request-password-reset / reset-password state machine. Its authoritative shape (states,
-  transitions, the enumeration-safety and race-condition invariants) is
-  `docs/specs/2026-09-03-account-recovery-design.md`, cited by box number from
-  every handler in `server/http/routes.ts`. A future review proposing to consolidate this flow into
+  transitions, the enumeration-safety and race-condition invariants) is `docs/adr/0007-account-recovery-email-verification-and-password-reset.md`,
+  whose six boxes are cited by number from every handler in `server/http/routes.ts`. A future review proposing to consolidate this flow into
   an "owning module" should read that spec first — the state machine is already consolidated,
   just not as code, and each route's await-vs-fire-and-forget timing relative to `res.json()`
   is a deliberate per-route timing-oracle defense, not duplication.
@@ -44,3 +43,16 @@ term's meaning, and useless anywhere the term is not.
   `lib/device/haptics.ts` preloads its key at module init, and a single entry point would fire all five
   setters whenever any one value changed. The pair that must move together — music enabled and
   music volume — is already inside one effect, with the reason written above it.
+
+## Working with this vocabulary
+
+- **Name a domain concept with the repo's own word** — in an issue title, a test name, a
+  hypothesis. A synonym for something the code already names starts a second vocabulary.
+- **This file grows one term at a time**, as each is resolved; a term it does not carry yet is
+  not a gap to fill upfront.
+- **Say so when a change contradicts an ADR**, rather than quietly overriding it:
+
+  > _Contradicts ADR-0002 (a play leaves the seat it was thrown from), but worth reopening
+  > because…_
+
+- `docs/adr/README.md` indexes the ADRs a term's design cites.

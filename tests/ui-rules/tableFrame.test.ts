@@ -213,8 +213,7 @@ describe("computeTableFrame", () => {
 
 describe("cutoutClass", () => {
   // The three classes do not overlap in what iOS reports, so one inset answers
-  // the question and no device table is needed (docs/research/
-  // 2026-08-26-notch-and-dynamic-island.md).
+  // the question and no device table is needed (measured in #413).
   test("names each of the three device classes from its reported inset", () => {
     for (const [inset, expected] of [
       [0, "none"], [20, "none"], [44, "notch"], [50, "notch"], [59, "island"], [68, "island"],

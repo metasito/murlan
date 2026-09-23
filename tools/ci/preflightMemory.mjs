@@ -4,7 +4,7 @@
  * Starvation and a regression are indistinguishable by their symptoms — an exhausted box gives
  * failing suites and specs failing at 0ms with ERR_CONNECTION_REFUSED, and a reader goes looking
  * for a defect that is not there. So the run names exhaustion itself rather than letting it
- * arrive disguised. `docs/agents/loops.md` carries the recognition table.
+ * arrive disguised. `docs/agents/checks.md` carries the recognition table.
  *
  * The `globalSetup` of both jest and Playwright, and — run as a script — the `pretest` of the node
  * suite, which is every entry point that can exhaust the box. Jest reads this from the root config

@@ -78,14 +78,14 @@ Measured, not assumed from the offline one. At all four viewports the two tables
 byte-identical numbers — same felt box, same card, same empty band — which is what the check
 in `tests/e2e/onlineTableSurvey.spec.ts` holds them to. That check compares the online table
 against the offline one, and nothing else: the two can drift together, and the band did,
-because a fix landed for it. What pins the band itself is `tests/tableProportions.test.ts`.
+because a fix landed for it. What pins the band itself is `tests/ui-rules/tableProportions.test.ts`.
 
 `online-table.txt` is merged, by `MODE\tviewport\tcards`, on every whole run of that spec, so
 it reports the app as it is now — but only a local run reaches this repository, since CI
 writes it onto a runner nothing commits from. The run is held to it either way. `cards` is
 part of the key (#800): every seat is a real dealt-in account, so a fresh 4-player table's
 leader is whichever of the four seats the shuffle actually gives the 3♠, and two of the four
-hold 14 cards where the other two hold 13 (`dealCards`, `lib/gameEngine.ts`) — both are real,
+hold 14 cards where the other two hold 13 (`dealCards`, `lib/game/gameEngine.ts`) — both are real,
 both get their own row. The `emptyBand` column below is the audit's own figure, kept because
 it is what finding 3 was raised on.
 
@@ -134,5 +134,5 @@ hypotheses next time.
   a harness's, not the product's: without the tutorial answer seeded, the title screen pushes
   `/tutorial` out from under whatever clicked. Measured — a run without the seed stalled
   there for its whole two-minute budget; the same run with it reached the room in 1.4s.
-  `tests/onlineTableHarness.test.ts` now refuses a suite file that opens the app's root
+  `tests/tooling/onlineTableHarness.test.ts` now refuses a suite file that opens the app's root
   without it.

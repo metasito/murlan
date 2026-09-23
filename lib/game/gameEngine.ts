@@ -209,7 +209,6 @@ function isConsecutiveSequence(faceValues: number[], totalLen: number): boolean 
 function isStraight(cards: Card[]): boolean {
   if (cards.length < STRAIGHT_MIN_LEN) return false;
   if (cards.length > STRAIGHT_MAX_LEN) return false;
-  // Jokers cannot be used in straights — only as single cards
   if (cards.some((c) => c.isJoker)) return false;
 
   for (const aceAsHigh of [false, true]) {
@@ -222,7 +221,6 @@ function isStraight(cards: Card[]): boolean {
 }
 
 function getStraightStrength(cards: Card[]): number {
-  // No jokers allowed in straights
   if (cards.some((c) => c.isJoker)) return 0;
 
   for (const aceAsHigh of [true, false]) {
@@ -247,7 +245,6 @@ function isBomb(cards: Card[]): boolean {
 
 function isRoyalStraight(cards: Card[]): boolean {
   if (cards.length < STRAIGHT_MIN_LEN) return false;
-  // Jokers not allowed in straights or royal straights
   if (cards.some((c) => c.isJoker)) return false;
   const suit = cards[0].suit;
   if (!suit) return false;
@@ -326,8 +323,7 @@ export const HEADS_UP_HAND = 14;
  * elimination, so 14 cards go to each (28 of 54) and the remaining 26 are
  * left face down and unused for the manche. It is the four-player hand size,
  * which is what makes a duel play like the game rather than like a
- * bomb-heavy variant of it (docs/GAME-RULES.md §3, decided in `docs/BRIEF.md` §3.1
- * after docs/research/2026-08-21-card-dealing-variable-player-count.md).
+ * bomb-heavy variant of it (docs/GAME-RULES.md §3, decided in `docs/GAME-RULES.md` § Decisions).
  */
 export function dealCards(
   playerCount: number,
@@ -531,17 +527,14 @@ export function getAllValidPlays(
     byRank.set(c.rank, g);
   }
 
-  // Singles
   for (const c of hand) tryAdd([c]);
 
-  // Pairs (natural only — no jokers in pairs)
   for (const group of byRank.values()) {
     for (let i = 0; i < group.length; i++)
       for (let j = i + 1; j < group.length; j++)
         tryAdd([group[i], group[j]]);
   }
 
-  // Triples (natural only — no jokers in triples)
   for (const group of byRank.values()) {
     for (let i = 0; i < group.length; i++)
       for (let j = i + 1; j < group.length; j++)
@@ -549,7 +542,6 @@ export function getAllValidPlays(
           tryAdd([group[i], group[j], group[k]]);
   }
 
-  // Bombs (4 natural same rank — no jokers)
   for (const group of byRank.values()) {
     if (group.length >= 4) tryAdd(group.slice(0, 4));
   }
@@ -899,9 +891,7 @@ export function aiChoosePlay(
   );
 
   if (diff === "medium") {
-    // Prefer lowest normal play; save bombs
     const pool = normal.length > 0 ? normal : bombs;
-    // Slightly prefer multi-card plays when hand is large
     if (isNewRound && myCards > 8 && normal.length > 0) {
       const multi = normal.filter((p) => p.cards.length >= 2);
       if (multi.length > 0)
@@ -927,12 +917,10 @@ export function aiChoosePlay(
   }
 
   if (isNewRound) {
-    // We control the round: dump as many weak cards as efficiently as possible
     const near3 = leadPlays.filter((p) => p.cards.length >= myCards - 2);
     if (near3.length > 0)
       return withPersonality(near3.sort((a, b) => b.cards.length - a.cards.length)[0]);
 
-    // Prefer combos that score high on dump value (many cards, low strength)
     const candidates = conservative.length > 0 ? conservative : normal.length > 0 ? normal : bombs;
     if (candidates.length > 0)
       return withPersonality(candidates.sort((a, b) => scorePlayForDump(b) - scorePlayForDump(a))[0]);
@@ -940,27 +928,22 @@ export function aiChoosePlay(
     return withPersonality([...leadPlays].sort((a, b) => scorePlayForDump(b) - scorePlayForDump(a))[0]);
   }
 
-  // Responding to opponent's combo
   if (myCards <= 4 && normal.length > 0) {
     return withPersonality(normal.sort((a, b) => a.strength - b.strength)[0]);
   }
 
-  // Prefer beating with lowest conservative card (preserve 2s/jokers)
   if (conservative.length > 0) {
     return withPersonality(conservative.sort((a, b) => a.strength - b.strength)[0]);
   }
 
-  // Use high cards only if hand is small or opponent is close to winning
   if ((myCards <= 6 || minOpponent <= 3) && withHighCards.length > 0) {
     return withPersonality(withHighCards.sort((a, b) => a.strength - b.strength)[0]);
   }
 
-  // Use bomb when opponent is close to winning and we have no normal play
   if (minOpponent <= 3 && bombs.length > 0) {
     return withPersonality(bombs.sort((a, b) => a.strength - b.strength)[0]);
   }
 
-  // Pass — let the low-strength combo win this round, unless aggression contests it
   return withPersonality(null);
 }
 
@@ -1416,7 +1399,7 @@ export function nextDealFirstSeat(firstSeat: number, playerCount: number): numbe
 }
 
 /**
- * The seat the *next deal* starts from — `docs/BRIEF.md` §3.1's "Rotating
+ * The seat the *next deal* starts from — `docs/GAME-RULES.md` § Decisions's "Rotating
  * the deal" decision: a finished match resets to seat 0, an unfinished one
  * rotates one seat further. `matchOver` is the state *before* this deal —
  * the just-ended manche's own verdict, true when it was also the match's
@@ -1506,7 +1489,6 @@ export function initializeGame(
  */
 export const MATCH_TARGETS: readonly number[] = [21, 31, 41, 51];
 
-/** One turn clock online and offline, `docs/BRIEF.md` §3.1. */
 export const TURN_TIMEOUT_MS = 30_000;
 
 /**
@@ -1629,7 +1611,7 @@ export function resolveTeamMatch(
   target: number,
   playerCount = 4,
   /** Keys that may be named among the winners; a departed partner's points
-   *  still count for the pair (docs/BRIEF.md §3.1) but the seat is never
+   *  still count for the pair (docs/GAME-RULES.md § Decisions) but the seat is never
    *  crowned. */
   nameable: (key: string) => boolean = () => true
 ): MatchResolution | null {
@@ -1689,7 +1671,7 @@ export interface FoldHandInput {
    * Whether a key may cross the target or be named a winner — of a manche in
    * `single` length, or of the match in `match` length. Defaults to
    * `accumulates`. The server splits the two: a vacated seat's points join
-   * the running total (docs/BRIEF.md §3.1, the disconnect policy) so the
+   * the running total (docs/GAME-RULES.md § Decisions, the disconnect policy) so the
    * standings sum to the hands played, but the seat itself must still never
    * be crowned — the departed human left nobody behind to claim it.
    */
@@ -1698,7 +1680,7 @@ export interface FoldHandInput {
   teamOf?: Record<string, string>;
   /**
    * Keys holding points a seat won before its player left. They still count
-   * for that player's pair (docs/BRIEF.md §3.1) and can never be named a
+   * for that player's pair (docs/GAME-RULES.md § Decisions) and can never be named a
    * winner — the person behind them is gone. Defaults to none.
    */
   frozenKeysOf?: (engineId: string) => string[];
@@ -1745,7 +1727,7 @@ export function foldHandIntoMatch(input: FoldHandInput): FoldHandResult {
   const cumulative = addHandScores(input.cumulative, scorable);
 
   // Every key with a team, a departed partner's frozen row included: the pair
-  // keeps the points they won (docs/BRIEF.md §3.1). Who may be *named* is
+  // keeps the points they won (docs/GAME-RULES.md § Decisions). Who may be *named* is
   // `nameable` below, and never a key nobody is sitting behind.
   const frozenKeysOf = input.frozenKeysOf ?? (() => []);
   const frozen = new Set<string>();

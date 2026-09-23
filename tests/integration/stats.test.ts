@@ -329,7 +329,7 @@ describe("stats persistence (Task 8)", { skip: hasDatabase() ? false : skipMessa
    * third bot makes it bot-majority and drops every write — losing the hand
    * for the player who stayed, in the one case the gate exists to protect.
    *
-   * #850 clause 11 (docs/BRIEF.md §3.1) voids a match abandoned before its
+   * #850 clause 11 (docs/GAME-RULES.md § Decisions) voids a match abandoned before its
    * first point, which would swallow a first-manche walkout whole and never
    * reach the gate this test exists to protect. Playing the first manche out
    * for real, then abandoning the second, is what keeps this test honest

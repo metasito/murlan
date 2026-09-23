@@ -7,7 +7,7 @@
 // see lib/theme.ts "Text colors" section.
 //
 // Imports lib/tokens — the same palette — not lib/theme, whose Shadow helper pulls
-// react-native in; that and the extension — docs/agents/loops.md, "Node's TypeScript loader".
+// react-native in; that and the extension — docs/agents/checks.md, "Node's TypeScript loader".
 import { Colors, Garnet, Gradient, Scrim, FeltGradients, Type } from "../../lib/tokens.ts";
 import { test } from "node:test";
 import assert from "node:assert/strict";

@@ -585,8 +585,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ ok: true });
   });
 
-  // #863: the existing-beta-cohort nudge (docs/specs/2026-09-03-
-  // account-recovery-design.md, Box 1). Reuses the signup flow's own
+  // #863: the existing-beta-cohort nudge
+  // (docs/adr/0007-account-recovery-email-verification-and-password-reset.md,
+  // Box 1). Reuses the signup flow's own
   // machinery — mint an email_verify token, send it through sendVerificationEmail
   // — rather than a second one; redemption still goes through the
   // verify-email route below. `email IS NULL` is re-checked here (not just by
@@ -682,8 +683,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ ok: true });
   });
 
-  // Enumeration-safe by design (docs/specs/2026-09-03-account-
-  // recovery-design.md, Box 5): identical 200 { ok: true } whether or not
+  // Enumeration-safe by design
+  // (docs/adr/0007-account-recovery-email-verification-and-password-reset.md,
+  // Box 5): identical 200 { ok: true } whether or not
   // the address matches a verified account, and the branch then costs one
   // indexed `users` lookup either way, which is the only work that happens
   // before the reply — the mint and the send both run after it, so neither

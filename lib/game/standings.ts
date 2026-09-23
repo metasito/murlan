@@ -1,6 +1,6 @@
 // The order an end-of-manche scoreboard is listed in.
 //
-// Free of runtime `@/` imports, so `node --test` can load it — docs/agents/loops.md,
+// Free of runtime `@/` imports, so `node --test` can load it — docs/agents/checks.md,
 // "Node's TypeScript loader".
 
 /**

@@ -21,7 +21,7 @@ export function mailHealth(): MailHealth {
 /**
  * One outbound email, sent via Resend's HTTP API through Node's built-in
  * `fetch` — no SDK dependency, per
- * docs/specs/2026-09-03-account-recovery-design.md, Box 3.
+ * docs/adr/0007-account-recovery-email-verification-and-password-reset.md, Box 3.
  * Every caller goes through this one function, so a vendor swap or removal
  * touches this file alone. Credentials live in the host's secret store, read
  * at call time (not module scope) so a test process can set them per-run.

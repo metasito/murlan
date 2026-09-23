@@ -419,7 +419,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
   // A computer has no preference worth recording, so an AI seat abstains from
   // the count and the total alike — the same policy the server applies to bot
-  // and vacated seats (docs/BRIEF.md §3.1).
+  // and vacated seats (docs/GAME-RULES.md § Decisions).
   const rematchTally = useMemo(() => {
     const players = gameState?.players ?? [];
     return tallyRematchAnswers(players.length, (seat) => {

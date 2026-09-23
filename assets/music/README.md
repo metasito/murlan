@@ -22,9 +22,9 @@ applies here.
 ## What they are
 
 All four are **one composition**, *Week 1 — Retro Lounge*. That is the point
-rather than a coincidence: `docs/research/2026-08-20-what-makes-a-game-memorable.md` §2.2
-finds that four variations of one idea are more memorable than four unrelated
-pieces, so a change of screen is a change of arrangement, not a change of music.
+rather than a coincidence: research done for #137 found that four variations of
+one idea are more memorable than four unrelated pieces, so a change of screen
+is a change of arrangement, not a change of music.
 
 | File | Source | Plays on |
 |---|---|---|

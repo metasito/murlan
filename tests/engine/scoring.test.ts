@@ -145,7 +145,7 @@ describe("resolveMatch", () => {
   });
 
   test("a match at any seat count finishes in a sitting", () => {
-    // docs/BRIEF.md §3.1: the ladder exists so a match lands in roughly 8-12
+    // docs/GAME-RULES.md § Decisions: the ladder exists so a match lands in roughly 8-12
     // manches at every count. A flat 21 made a 1-v-1 take ~27.
     for (const playerCount of [2, 3, 4]) {
       const players = ["a", "b", "c", "d"].slice(0, playerCount);
@@ -303,7 +303,7 @@ describe("foldHandIntoMatch", () => {
         const seat = seatOf[engineId];
         return seat === undefined ? null : (playerMap[seat] ?? `bot:${seat}`);
       },
-      // No `accumulates` override: docs/BRIEF.md §3.1 has a vacated seat's
+      // No `accumulates` override: docs/GAME-RULES.md § Decisions has a vacated seat's
       // points join the running total like a born-bot seat's do. What still
       // excludes it is `winEligible`, which only ever gates the win decision.
       winEligible: (key: string) => !key.startsWith("bot:"),

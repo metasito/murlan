@@ -62,7 +62,7 @@ export function assertBundleHasRoutes(distDir, appDir) {
       `files under ${appDir}:\n` +
       missing.map((m) => `  ${m}`).join("\n") +
       `\n\nexpo-router's context resolved somewhere other than this checkout's app/. ` +
-      `A stale Metro transform cache is the usual cause — see docs/agents/loops.md, ` +
-      `*Metro's cache is machine-wide*. \`npx expo export --platform web --clear\` confirms it.`
+      `A stale Metro transform cache is the usual cause — see docs/agents/checks.md, ` +
+      `"Remaining traps". \`npx expo export --platform web --clear\` confirms it.`
   );
 }

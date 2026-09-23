@@ -4,7 +4,7 @@
 // visible to a unit test: it is flexbox layout (the swap), a real fade
 // transition (focus mode) and a scrollable box measured against its own
 // content (the row list) — exactly the class of thing only a rendered page
-// answers (docs/agents/loops.md).
+// answers (docs/agents/checks.md).
 import { test, expect, type Page } from "@playwright/test";
 import { offlineGameSave, openSeededGame, resumeSaved } from "./helpers/offlineSeed";
 import { CLOSING_HAND_CARDS } from "../../lib/game/gameEngine";

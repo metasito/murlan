@@ -69,6 +69,17 @@ export function addedCounts(before, after) {
 }
 
 /**
+ * `addedCounts` run each way: forward is what the change adds, reversed is what it took away.
+ * A reword removes as many comment lines as it adds, so it nets to zero; only real growth costs.
+ * Code stays the forward count, so a comment cannot hide behind an unrelated code deletion.
+ */
+export function netCounts(before, after) {
+  const added = addedCounts(before, after);
+  const removed = addedCounts(after, before);
+  return { comment: Math.max(0, added.comment - removed.comment), code: added.code };
+}
+
+/**
  * A change with no code at all cannot be judged by ratio — `comment > code` is true at one line —
  * so the floor is the whole check there, and it is a lower one.
  */
@@ -107,7 +118,7 @@ export function budget(base) {
     // No skip on a read failure: `AMR` never emits a deletion and `-M` emits a rename's
     // destination, so every path here exists. A swallowed read is a check that passes by not
     // looking at the one file it could not open.
-    const added = addedCounts(show(from, source), readFileSync(join(root, file), "utf8"));
+    const added = netCounts(show(from, source), readFileSync(join(root, file), "utf8"));
     if (over(added, file)) named.push([file, added]);
     total.comment += added.comment;
     total.code += added.code;

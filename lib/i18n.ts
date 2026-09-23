@@ -16,7 +16,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useCallback, useSyncExternalStore } from "react";
 // Relative (not `@/`) on purpose, so `node --test` can load this for
-// tests/ui-rules/i18n.test.ts — docs/agents/loops.md, "Node's TypeScript loader".
+// tests/ui-rules/i18n.test.ts — docs/agents/checks.md, "Node's TypeScript loader".
 // Metro/Expo resolves either form fine at app runtime.
 import {
   DEFAULT_LOCALE,

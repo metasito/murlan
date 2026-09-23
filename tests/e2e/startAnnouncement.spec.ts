@@ -6,7 +6,7 @@
 // actually covers a control is a hit-test — `document.elementFromPoint` at the
 // button's own centre — and `react-test-renderer` runs no layout, so it has no
 // point to test. Where the lamp is pointing is the felt anchor's laid-out
-// position, which is a reanimated value: loops.md records that such a value is
+// position, which is a reanimated value: checks.md records that such a value is
 // frozen at the mounting render in `props.style` and cannot be read back from a
 // native test at all.
 //

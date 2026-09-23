@@ -1,6 +1,6 @@
 // The whole table in words, for a screen reader.
 //
-// JSX-free, runtime imports relative — docs/agents/loops.md, "Node's TypeScript loader".
+// JSX-free, runtime imports relative — docs/agents/checks.md, "Node's TypeScript loader".
 
 // ─── Screen-reader description ─────────────────────────────────────────────────
 //
