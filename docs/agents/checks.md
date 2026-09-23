@@ -178,6 +178,7 @@ one that doesn't needs a device capture (above).
 | `overflow: "clip"` | clips, no scroll box | not a value RN knows |
 | `willChange` | real | inert |
 | `boxShadow` | real | real, bar Android below 9 |
+| `<Use href>` | one DOM node per reference | Android re-measures the template per reference per draw, one event each: draw in place (#1222) |
 
 ## What a green loop does not mean
 

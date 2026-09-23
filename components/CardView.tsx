@@ -89,12 +89,12 @@ const SUIT_PATHS: Record<Exclude<Suit, "clubs">, string> = {
 };
 
 /**
- * The suit shape itself, declared once per card face and referenced by every
+ * The suit shape itself; on web, declared once per card face and referenced by every
  * pip and index mark on it. A card carries one suit in one colour, so the fill
  * is baked into the definition — nothing has to inherit through <Use>, which is
  * where this kind of hoist usually changes rendering silently.
  */
-function SuitDef({ id, suit, color }: { id: string; suit: Suit; color: string }) {
+function SuitShape({ id, suit, color }: { id?: string; suit: Suit; color: string }) {
   if (suit === "clubs") {
     return (
       <G id={id}>
@@ -108,14 +108,22 @@ function SuitDef({ id, suit, color }: { id: string; suit: Suit; color: string })
   return <Path id={id} d={SUIT_PATHS[suit]} fill={color} />;
 }
 
+// Android re-measures a <Use> template at every reference on every draw, and each
+// re-measure dispatches an event that makes Reanimated flush its pending updates (#1222).
+const HOIST_SUIT = Platform.OS === "web";
+
 function SuitMark({
   href,
+  suit,
+  color,
   x,
   y,
   size,
   flipped = false,
 }: {
   href: string;
+  suit: Suit;
+  color: string;
   x: number;
   y: number;
   size: number;
@@ -123,7 +131,12 @@ function SuitMark({
 }) {
   const k = size / 10;
   const transform = `translate(${x},${y}) scale(${k})${flipped ? " rotate(180)" : ""}`;
-  return <Use href={href} transform={transform} />;
+  if (HOIST_SUIT) return <Use href={href} transform={transform} />;
+  return (
+    <G transform={transform}>
+      <SuitShape suit={suit} color={color} />
+    </G>
+  );
 }
 
 // ─── Joker figures ────────────────────────────────────────────────────────────
@@ -282,17 +295,21 @@ function CardFaceArt({
     );
   } else if (suit) {
     if (compact) {
-      centre = <SuitMark href={pipHref} x={w * 0.58} y={h * 0.62} size={h * 0.24} />;
+      centre = <SuitMark href={pipHref} suit={suit} color={color} x={w * 0.58} y={h * 0.62} size={h * 0.24} />;
     } else if (COURT_RANKS.has(card.rank)) {
       // Drawn as a bitmap sibling of this Svg (see CourtArt), not here.
       centre = null;
     } else if (card.rank === "A") {
-      centre = <SuitMark href={pipHref} x={w * 0.5} y={h * 0.5} size={h * ACE_PIP_SIZE} />;
+      centre = (
+        <SuitMark href={pipHref} suit={suit} color={color} x={w * 0.5} y={h * 0.5} size={h * ACE_PIP_SIZE} />
+      );
     } else {
       centre = placedPips(card.rank, w, h).map((pip, i) => (
         <SuitMark
           key={i}
           href={pipHref}
+          suit={suit}
+          color={color}
           x={pip.x}
           y={pip.y}
           size={pip.size}
@@ -304,16 +321,24 @@ function CardFaceArt({
 
   return (
     <Svg width={w} height={h} style={StyleSheet.absoluteFill} pointerEvents="none">
-      {suit && (
+      {HOIST_SUIT && suit && (
         <Defs>
-          <SuitDef id={pipId} suit={suit} color={color} />
+          <SuitShape id={pipId} suit={suit} color={color} />
         </Defs>
       )}
       {centre}
       {suit && (
         <>
-          <SuitMark href={pipHref} x={indexX} y={indexY} size={indexSuitSize} />
-          <SuitMark href={pipHref} x={w - indexX} y={h - indexY} size={indexSuitSize} flipped />
+          <SuitMark href={pipHref} suit={suit} color={color} x={indexX} y={indexY} size={indexSuitSize} />
+          <SuitMark
+            href={pipHref}
+            suit={suit}
+            color={color}
+            x={w - indexX}
+            y={h - indexY}
+            size={indexSuitSize}
+            flipped
+          />
         </>
       )}
       {card.isJoker && (

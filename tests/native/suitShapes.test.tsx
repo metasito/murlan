@@ -1,5 +1,5 @@
 // tests/native/suitShapes.test.tsx — a suit is told apart by its own glyph
-// (components/CardView.tsx `SuitDef`), not only by ink. tests/ui-rules/suitColours.test.ts
+// (components/CardView.tsx `SuitShape`), not only by ink. tests/ui-rules/suitColours.test.ts
 // pins the ink; its own comment says "the pip glyph differs per suit" and
 // nothing asserted that sentence until now. Collapsing every suit to the same
 // SVG shape — separated only by fill colour — passed the whole suite with 0
@@ -20,7 +20,7 @@ import type { Card, Suit } from '@/lib/game/gameEngine';
 // version — `test-renderer`'s own, not `react-test-renderer`'s.
 import type { TestInstance } from 'test-renderer';
 
-// The Ace draws exactly one pip in the centre, so the <Defs><SuitDef/></Defs>
+// The Ace draws exactly one pip in the centre, so each `SuitShape` copy
 // this reads is the whole of the suit's own shape — no other card draws more
 // of it, only more copies. `queryAll` on the raw node, rather than a typed
 // query, because `container` has no by-component-type query — an SVG Path is
@@ -62,7 +62,23 @@ describe('a suit is distinguishable by shape, not only by fill colour', () => {
 
   it('clubs is built from three circles and a path — a different construction, not just a different fill', async () => {
     const clubs = await suitDefShape('clubs');
-    expect(clubs.circles).toBe(3);
+    expect(clubs.circles).toBe(3 * clubs.paths.length);
     expect(clubs.paths.length).toBeGreaterThanOrEqual(1);
+  });
+});
+
+// Android redraws a <Use> template at each reference, dispatching a layout event per mark per frame (#1222).
+describe('on native every suit mark is drawn in place, never through <Use>', () => {
+  const isUse = (n: TestInstance) => typeof n.props.href === 'string';
+
+  it.each(['hearts', 'diamonds', 'spades', 'clubs'] as const)('ten of %s', async (suit) => {
+    const r = await render(
+      <CardView card={{ id: `10_${suit}`, rank: '10', suit, isJoker: false }} scale={1} light="flat" />
+    );
+    const uses = r.container.queryAll(isUse).length;
+    const marks = r.container.queryAll(isPath).length;
+    await r.unmount();
+    expect(uses).toBe(0);
+    expect(marks).toBe(12);
   });
 });
