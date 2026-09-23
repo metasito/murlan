@@ -861,6 +861,16 @@ describe("resolvePowerShellExe", () => {
     );
   });
 
+});
+
+describe("resolvePowerShellExe, live", { skip: process.platform === "win32" ? false : "reap resolves PowerShell on win32 only" }, () => {
+  const identityProbeOn = (PATH: string) => (exe: string) =>
+    execFileSync(exe, ["-NoProfile", "-Command", "$PSVersionTable.PSVersion.Major"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+      env: { ...process.env, PATH },
+    });
+
   test("measured: pwsh is on PATH on this machine, so the default probe picks it", () => {
     assert.equal(resolvePowerShellExe(), "pwsh");
   });
@@ -869,14 +879,7 @@ describe("resolvePowerShellExe", () => {
     const dir = mkdtempSync(path.join(tmpdir(), "decoy-pwsh-"));
     try {
       copyFileSync(path.join(process.env.SystemRoot ?? "C:/Windows", "System32", "cmd.exe"), path.join(dir, "pwsh.exe"));
-      const env = { ...process.env, PATH: dir };
-      const probe = (exe: string) =>
-        execFileSync(exe, ["-NoProfile", "-Command", "$PSVersionTable.PSVersion.Major"], {
-          encoding: "utf8",
-          stdio: ["ignore", "pipe", "ignore"],
-          env,
-        });
-      assert.equal(resolvePowerShellExe(probe), "powershell");
+      assert.equal(resolvePowerShellExe(identityProbeOn(dir)), "powershell");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -885,15 +888,15 @@ describe("resolvePowerShellExe", () => {
   test("with pwsh off PATH, resolution falls back and the legacy binary actually runs", () => {
     // Only System32's own PowerShell 5.1 on PATH — the pwsh install lives under WindowsApps,
     // so this reproduces "pwsh not installed" without touching the real PATH.
-    const restrictedEnv = { ...process.env, PATH: String.raw`C:\Windows\System32\WindowsPowerShell\v1.0` };
-    const probe = (exe: string) => execFileSync(exe, ["-NoProfile", "-Command", "exit"], { env: restrictedEnv, stdio: "ignore" });
-    const resolved = resolvePowerShellExe(probe);
+    const legacyOnly = String.raw`C:\Windows\System32\WindowsPowerShell\v1.0`;
+    assert.throws(() => identityProbeOn(legacyOnly)("pwsh"), { code: "ENOENT" });
+    const resolved = resolvePowerShellExe(identityProbeOn(legacyOnly));
     assert.equal(resolved, "powershell");
 
     const out = execFileSync(
       resolved,
       ["-NoProfile", "-Command", "Get-CimInstance Win32_Process | Select-Object -First 1 ProcessId,Name | ConvertTo-Json -Compress"],
-      { env: restrictedEnv, encoding: "utf8" },
+      { env: { ...process.env, PATH: legacyOnly }, encoding: "utf8" },
     );
     assert.ok(JSON.parse(out).ProcessId >= 0, "the fallback binary ran Get-CimInstance for real, not just resolved a name");
   });
