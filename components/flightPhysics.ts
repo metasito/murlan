@@ -269,7 +269,7 @@ const BOMB_SHAKE_AMPLITUDE_X = Spacing.xxl;
 const BOMB_SHAKE_AMPLITUDE_Y = Spacing.lg;
 const BOMB_SHAKE_ROTATE_DEG = 1.2;
 
-export interface ShakeAmplitude {
+interface ShakeAmplitude {
   x: number;
   y: number;
   /** Degrees at trauma 1. */
@@ -352,7 +352,7 @@ export function lampLiftFor(tier: ImpactTier): boolean {
 /** Spark dots ringing the bomb's impact point. */
 export const SPARK_COUNT = 16;
 
-export interface SparkOffset {
+interface SparkOffset {
   /** Where the spark ends up, relative to the impact point. */
   dx: number;
   dy: number;
@@ -427,7 +427,7 @@ export function dealArrivalsMs(
 // ─── Flight origin ─────────────────────────────────────────────────────────────
 //
 // Where a throw starts. docs/adr/0002-a-play-leaves-the-seat-it-was-thrown-from.md §1.
-export interface FlightOriginInput {
+interface FlightOriginInput {
   dir: FlyDirection;
   scale: number;
   windowWidth: number;
@@ -521,7 +521,7 @@ export function flightOrigin(input: FlightOriginInput): { dx: number; dy: number
   return { dx: ringCenterX - pileCenterX, dy: (slotH - midH) / 2 };
 }
 
-export interface ExchangeFlightInput
+interface ExchangeFlightInput
   extends Omit<FlightOriginInput, "dir" | "sideDisplayedCount"> {
   /** The seat the card leaves. */
   from: FlyDirection;
@@ -818,7 +818,7 @@ export function readExchange(
   };
 }
 
-export interface HandArrival {
+interface HandArrival {
   /** Kept out of the fan, because something else is already drawing it. */
   withheldId?: string;
   /** The slot the row parts at — set only while the card is actually flying. */
@@ -890,7 +890,7 @@ export function cardTilt(id: string, maxTilt: number): number {
 
 // ─── Thrown plays ─────────────────────────────────────────────────────────────
 
-export interface ThrownPlay {
+interface ThrownPlay {
   dir: FlyDirection;
   cards: Card[];
   /** Where the throw starts, relative to where it lands. */
@@ -925,6 +925,8 @@ export interface ThrownPlayInput {
   handCardH: number;
 }
 
+export type SeatGeometry = Omit<ThrownPlayInput, "combo" | "playedBy">;
+
 /**
  * Everything a throw decides, from the state it was thrown out of.
  *
@@ -947,15 +949,12 @@ export function readThrownPlay(input: ThrownPlayInput): ThrownPlay {
 }
 
 /** A seat's own point from the pile, nothing leaving its hand: where a closed round is swept, and where a dealt card lands. */
-export function seatPoint(
-  input: Omit<ThrownPlayInput, "combo" | "playedBy">,
-  seat: number
-): { dx: number; dy: number } {
+export function seatPoint(input: SeatGeometry, seat: number): { dx: number; dy: number } {
   return seatOrigin(input, seat, 0).origin;
 }
 
 function seatOrigin(
-  input: Omit<ThrownPlayInput, "combo" | "playedBy">,
+  input: SeatGeometry,
   seat: number,
   leaving: number
 ): { dir: FlyDirection; origin: { dx: number; dy: number } } {
@@ -989,8 +988,7 @@ function seatOrigin(
   };
 }
 
-export interface ExchangeTripsInput
-  extends Omit<ThrownPlayInput, "combo" | "playedBy"> {
+interface ExchangeTripsInput extends SeatGeometry {
   announce: ExchangeAnnounceData;
 }
 

@@ -45,17 +45,8 @@ import {
   type OpponentSide,
 } from "@/components/seatLayout";
 import { handCountOf, vacatedOf } from "@/shared/protocol";
-import {
-  comboKey,
-  dealArrivalsMs,
-  dealFlightsMs,
-  dealLeaveMs,
-  readHandArrival,
-  passedSeats,
-  readExchange,
-  readExchangeTrips,
-  seatPoint,
-} from "@/components/flightPhysics";
+import { comboKey, readExchange } from "@/components/flightPhysics";
+import { useExchangeTrips } from "@/components/table/ExchangeFlight";
 import { canPassNow as canPassNowOf, turnTimerActive } from "@/components/turnTimerUi";
 import { computeTableFrame } from "@/components/tableFrame";
 import { describeTableForA11y, type TableA11yExchange, type TableA11yLastPlay, type TableA11yOpponent } from "@/components/tableA11y";
@@ -86,7 +77,7 @@ import { TurnChip } from "@/components/table/turnChip";
 import { GiocaButton, PassaButton } from "@/components/table/actions";
 import { RematchPromptPanel, type RematchAnswers } from "@/components/table/rematchPrompt";
 import { FeltPool } from "@/components/table/felt";
-import { StraightHand } from "@/components/table/hand";
+import { StraightHand, useHandArrival } from "@/components/table/hand";
 import { RotateOverlay } from "@/components/table/rotateOverlay";
 import { GameSettingsSheet } from "@/components/table/settingsSheet";
 import { useTableFeedback } from "@/components/useTableFeedback";
@@ -96,8 +87,8 @@ import { useRailSide } from "@/components/useRailSide";
 import { FlyingCards, PlayedPile, SweepCards, getComboLabel, usePileFlight } from "@/components/table/pile";
 import { warmCourtArt } from "@/components/CardView";
 import { BombBurst, FeltScrim, LampLift, Sweep } from "@/components/table/moments";
-import { TopOppSlot, SideOppSlot } from "@/components/table/seats";
-import { DealFlights, type DealtCard } from "@/components/table/deal";
+import { TopOppSlot, SideOppSlot, usePassedSeats } from "@/components/table/seats";
+import { DealFlights, useDeal } from "@/components/table/deal";
 import { ExchangeAnnouncement } from "@/components/ExchangeAnnouncement";
 import { ExchangePrompt } from "@/components/table/ExchangePrompt";
 import {
@@ -217,14 +208,6 @@ export interface ExchangeAnnouncementSlot {
   onDismiss: () => void;
   /** Offline-only E2E override for how long the overlay holds (#915). */
   holdMsOverride?: number;
-}
-
-/** A deal in progress: `counts` is each seat's hand as dealt, `flightsMs` each seat's flight time, by seat index. */
-interface Deal {
-  key: number;
-  offsetMs: number;
-  counts: number[];
-  flightsMs: number[];
 }
 
 export interface GameTableProps {
@@ -426,29 +409,21 @@ export function GameTable({
   // have arranged on top of it (#531). Spectated hands are excluded by the
   // seat's own cards being synthetic above — there is nothing there to arrange.
   const { arranged: shownHand, moveTo } = useHandOrder(viewerSeat, sortedHand);
-  // Held back at display rather than by deferring the state: online the state
-  // is the server's, and freezing a whole snapshot for the length of a phase
-  // would swallow every other thing that arrives in that window.
-  //
-  // Arranged first and filtered second, so the card lands in the place the
-  // player arranged for it instead of re-entering an order computed without it.
-  const announcing = exchangeAnnouncement?.visible === true;
-  const announceData = exchangeAnnouncement?.data ?? null;
   // Only until the card lands, not for the whole notice — the tags beside each
   // seat stay up another `Reading.notice` to be read, and a hand short of a card
   // for four seconds after it arrived is a different defect.
-  const tradedCardsLanded = useTradedCardsLanded(announcing, announceData?.bothJokersException);
-  const { withheldId, arrivingIndex, descendingId } = readHandArrival({
+  const tradedCardsLanded = useTradedCardsLanded(
+    exchangeAnnouncement?.visible === true,
+    exchangeAnnouncement?.data?.bothJokersException
+  );
+  const { handOnTable, withheldId, arrivingIndex, descendingId } = useHandArrival({
     hand: shownHand,
     exchange,
-    announce: announcing ? announceData : null,
-    viewerSeat: spectating ? null : viewerSeat,
+    announcement: exchangeAnnouncement,
     landed: tradedCardsLanded,
+    viewerSeat: spectating ? null : viewerSeat,
     reduceMotion,
   });
-  const handOnTable = useSameCards(
-    withheldId === undefined ? shownHand : shownHand.filter((c) => c.id !== withheldId)
-  );
   // Where the last move put a card. A drag shows its own answer; the discrete
   // actions behind it (WCAG 2.5.7) move a card with nothing on screen changing
   // for whoever asked, so the live region below says where it went.
@@ -483,23 +458,11 @@ export function GameTable({
       isFinished,
     ]
   );
-  // Which seats have already answered the round on the table. Derived rather
-  // than stored, so a new lead empties it on the same commit that lands the
-  // card and no effect has to clear it.
-  const passed = React.useMemo(
-    () =>
-      passedSeats({
-        currentTurnIndex: gameState.currentTurnIndex,
-        lastPlayedBy: gameState.lastPlayedBy,
-        lastPlayedCombination: gameState.lastPlayedCombination,
-        outOfCards: players.map((p) => handCountOf(p) === 0),
-      }),
-    [
-      gameState.currentTurnIndex,
-      gameState.lastPlayedBy,
-      gameState.lastPlayedCombination,
-      players,
-    ]
+  const passed = usePassedSeats(
+    gameState.currentTurnIndex,
+    gameState.lastPlayedBy,
+    gameState.lastPlayedCombination,
+    players
   );
 
   const canPass = canPassNowOf({ isMyTurn, isFinished, isNewRound });
@@ -560,54 +523,13 @@ export function GameTable({
     handCardH,
   };
 
-  // ── The deal ──────────────────────────────────────────────────────────────
-  //
-  // A fresh deal is a manche nobody has opened yet. The first one waits out the
-  // table's own entry beat; a later one, dealt onto a table already standing,
-  // starts at once.
-  const newDeal = (key: number, offsetMs: number): Deal => ({
-    key,
-    offsetMs,
-    counts: players.map(handCountOf),
-    flightsMs: dealFlightsMs(players.map((_, seat) => seatPoint(seatGeometry, seat))),
-  });
-  const freshDeal = !gameState.firstPlayMade && !gameState.gameOver;
   const [entryMs] = useState(() => motionMs("reveal", reduceMotion));
-  const [deal, setDeal] = useState<Deal | null>(() =>
-    freshDeal ? newDeal(1, entryMs) : null
-  );
-  const [dealtFresh, setDealtFresh] = useState(freshDeal);
-  if (freshDeal !== dealtFresh) {
-    setDealtFresh(freshDeal);
-    if (freshDeal) setDeal(newDeal((deal?.key ?? 0) + 1, 0));
-  }
-  const dealArrivals = React.useMemo(
-    () =>
-      deal && !reduceMotion
-        ? deal.counts.map((count, seat) => dealArrivalsMs(count, seat, deal.counts.length, deal.offsetMs, deal.flightsMs[seat]))
-        : null,
-    [deal, reduceMotion]
-  );
-  useEffect(() => {
-    if (!deal) return;
-    const lastLanding = Math.max(0, ...(dealArrivals ?? []).map((a) => a[a.length - 1] ?? 0));
-    const id = setTimeout(() => setDeal(null), lastLanding);
-    return () => clearTimeout(id);
-  }, [deal, dealArrivals]);
-  const dealtCards: DealtCard[] =
-    deal && dealArrivals
-      ? [opponents.top, opponents.left, opponents.right].flatMap((o) => {
-          if (!o) return [];
-          const to = seatPoint(seatGeometry, o.seat);
-          return Array.from({ length: deal.counts[o.seat] }, (_, round) => ({
-            key: `${deal.key}-${o.seat}-${round}`,
-            leaveMs: deal.offsetMs + dealLeaveMs(round, o.seat, players.length),
-            flightMs: deal.flightsMs[o.seat],
-            to,
-          }));
-        })
-      : [];
-  const seatArrivals = (seat: number) => dealArrivals?.[seat];
+  const deal = useDeal({
+    geometry: seatGeometry,
+    fresh: !gameState.firstPlayMade && !gameState.gameOver,
+    entryMs,
+    reduceMotion,
+  });
   // The felt box the lamp lives in. The pool is drawn oversized and slid under
   // this box's own clipping, so it needs the box rather than the screen.
   const feltW = W;
@@ -981,24 +903,7 @@ export function GameTable({
     pileState.playedBy === null ? undefined : players[pileState.playedBy];
   const pileFlushed = !!pileThrower && handCountOf(pileThrower) === 0;
 
-  const announce = exchangeAnnouncement?.data;
-  const exchangeTrips = announce
-    ? readExchangeTrips({
-        announce,
-        viewerSeat,
-        players,
-        opponents,
-        scale,
-        windowWidth: W,
-        windowHeight: H,
-        tableLeft: frame.tableLeft,
-        tableRight: frame.tableRight,
-        tableTop: frame.tableTop,
-        surplus: frame.surplus,
-        bottomPad: frame.bottomPad,
-        handCardH,
-      })
-    : null;
+  const exchangeTrips = useExchangeTrips(exchangeAnnouncement?.data, seatGeometry);
 
   return (
     <View style={[styles.root, WEB_CLIP]}>
@@ -1203,7 +1108,7 @@ export function GameTable({
                   isActive={opponents.top.seat === shownTurnIndex}
                   cardCount={handCountOf(opponents.top.player)}
                   departing={departingSide === "top" ? departingCount : 0}
-                  dealArrivals={seatArrivals(opponents.top.seat)}
+                  dealArrivals={deal.arrivalsFor(opponents.top.seat)}
                   passed={passed.includes(opponents.top.seat)}
                   vacated={vacatedOf(opponents.top.player)}
                   reconnecting={disconnectedSeats[opponents.top.seat]}
@@ -1229,7 +1134,7 @@ export function GameTable({
                     side="left"
                     cardCount={handCountOf(opponents.left.player)}
                     departing={departingSide === "left" ? departingCount : 0}
-                    dealArrivals={seatArrivals(opponents.left.seat)}
+                    dealArrivals={deal.arrivalsFor(opponents.left.seat)}
                     passed={passed.includes(opponents.left.seat)}
                     vacated={vacatedOf(opponents.left.player)}
                     reconnecting={disconnectedSeats[opponents.left.seat]}
@@ -1300,7 +1205,7 @@ export function GameTable({
                   />
                 )}
 
-                {dealtCards.length > 0 && <DealFlights cards={dealtCards} scale={scale} />}
+                {deal.cards.length > 0 && <DealFlights cards={deal.cards} scale={scale} />}
 
                 {flyInfo && (
                   <FlyingCards
@@ -1332,7 +1237,7 @@ export function GameTable({
                     side="right"
                     cardCount={handCountOf(opponents.right.player)}
                     departing={departingSide === "right" ? departingCount : 0}
-                    dealArrivals={seatArrivals(opponents.right.seat)}
+                    dealArrivals={deal.arrivalsFor(opponents.right.seat)}
                     passed={passed.includes(opponents.right.seat)}
                     vacated={vacatedOf(opponents.right.player)}
                     reconnecting={disconnectedSeats[opponents.right.seat]}
@@ -1410,7 +1315,7 @@ export function GameTable({
                     // Only while the opening is still owed. Named rather than
                     // counted to: Maestro's `index` sorts by position, and the
                     // arc puts the outermost card below its neighbours (#757).
-                    dealOffsetMs={deal ? deal.offsetMs + dealLeaveMs(0, viewerSeat, players.length) : 0}
+                    dealOffsetMs={deal.handOffsetMs}
                     startCardId={
                       gameState.firstPlayMade ? undefined : gameState.startCard?.id
                     }
