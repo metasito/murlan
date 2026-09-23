@@ -115,3 +115,4 @@ Another agent is working in this repository, on this machine, right now.
     for a permission you were refused, for a config change, or for a decision the owner has not
     made.
 43. **A change that moves, renames or deletes a file updates every doc that names it, and a change to behaviour is not complete until every document describing it is updated in the same change.** Docs are part of the diff, not a follow-up — `tests/tooling/docReferences.test.ts` fails on the path a rename left behind.
+44. **Change a file with Edit or Write; Bash runs commands.** A `sed`, heredoc or rewrite script skips the `Write|Edit` hooks, `guard-comments.mjs` among them, applies its own escaping on top of the file's, and one that fails partway drops every edit before it.

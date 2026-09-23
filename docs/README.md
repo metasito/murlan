@@ -33,7 +33,7 @@ row is the condition that should send you to that file, not just its subject.
 | [`BUNDLE.md`](BUNDLE.md) | You're adding a dependency or asset and want to know what it costs the bundle. |
 | [`BETA-PLAYTEST.md`](BETA-PLAYTEST.md) | You're running the beta playtest script with real devices and real people. |
 | [`PRIVACY.md`](PRIVACY.md) | You're changing what data the app collects or how it's disclosed to a player. |
-| [`design/57-polish-audit/README.md`](design/57-polish-audit/README.md) | You're changing a menu screen's or the table's layout — the measurements and captures `tests/e2e/onlineTableSurvey.spec.ts` and `tests/ui-rules/tableProportions.test.ts` hold it to. |
+| [`tests/e2e/57-polish-audit/README.md`](../tests/e2e/57-polish-audit/README.md) | You're changing a menu screen's or the table's layout — the measurements and captures `tests/e2e/onlineTableSurvey.spec.ts` and `tests/ui-rules/tableProportions.test.ts` hold it to. |
 
 ## Decisions
 

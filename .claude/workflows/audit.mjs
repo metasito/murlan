@@ -119,7 +119,7 @@ Estimate how many concurrent tables one server instance can carry on the current
   },
   {
     key: 'ui-visual', model: 'opus', skills: ['expo-design-system', 'game-ui-design', 'frontend-design:frontend-design'],
-    start: 'lib/theme.ts, lib/tokens.ts, components/, components/table/, app/, docs/FEEL-BAR.md, docs/design/**/captures, tests/ui-rules/tokenRoles.test.ts, docs/agents/checks.md (renderer table)',
+    start: 'lib/theme.ts, lib/tokens.ts, components/, components/table/, app/, docs/FEEL-BAR.md, tests/e2e/57-polish-audit/captures/, tests/ui-rules/tokenRoles.test.ts, docs/agents/checks.md (renderer table)',
     refs: 'docs/FEEL-BAR.md; top mobile card and casino games as the ceiling.',
     ask: `Judge against FEEL-BAR, not against "fine".
 - Tokens used in their named role. Layer zIndex.
@@ -133,7 +133,7 @@ Any claim about native pixels is inferred.`,
   },
   {
     key: 'ux-flows', model: 'opus', skills: ['game-ui-design'],
-    start: 'app/ (index, auth, lobby, (online), game, result, tutorial, rules, profile, recover, verify-email), components/StateBlock.tsx, components/NotificationBanner.tsx, context/NotificationContext.tsx, docs/research/, docs/BETA-PLAYTEST.md',
+    start: 'app/ (index, auth, lobby, (online), game, result, tutorial, rules, profile, recover, verify-email), components/StateBlock.tsx, components/NotificationBanner.tsx, context/NotificationContext.tsx, docs/BETA-PLAYTEST.md',
     refs: 'Nielsen Norman 10 usability heuristics (weight: visibility of status, error prevention and recovery).',
     ask: `Walk each journey as a new player and as a returning one:
 - install -> first game;
@@ -148,11 +148,11 @@ Also check:
 - confirmations and undo;
 - retention loops;
 - how bot difficulty is chosen.
-List what BETA-PLAYTEST and docs/research found that is still unaddressed.`,
+List what BETA-PLAYTEST found that is still unaddressed.`,
   },
   {
     key: 'polish', kind: 'opportunities', model: 'opus', skills: ['game-feel', 'game-ui-design', 'react-native-best-practices'],
-    start: 'docs/FEEL-BAR.md, docs/design/126-motion-language/, docs/design/829-animation-audit.md, components/useTableFeedback.ts, components/flightPhysics.ts, components/table/, components/ReactionLayer.tsx, components/GameOverOverlay.tsx, lib/device/sounds.ts, lib/device/music.ts, lib/device/haptics.ts, lib/theme.ts (Motion), assets/sounds/, assets/music/, app/index.tsx',
+    start: 'docs/FEEL-BAR.md, components/useTableFeedback.ts, components/flightPhysics.ts, components/table/, components/ReactionLayer.tsx, components/GameOverOverlay.tsx, lib/device/sounds.ts, lib/device/music.ts, lib/device/haptics.ts, lib/theme.ts (Motion), assets/sounds/, assets/music/, app/index.tsx',
     refs: 'game-feel skill (hit-stop, easing, squash and stretch, layered feedback); FEEL-BAR references per moment.',
     ask: `You propose improvements; you do not hunt defects.
 Cover every FEEL-BAR moment (Deal, Card landing, Bomb, Pass, Turn hand-off, Win, Loss, Reconnect, Idle table), plus menus, lobby, results and transitions.
@@ -181,7 +181,7 @@ Check:
   },
   {
     key: 'i18n', model: 'sonnet', skills: [],
-    start: 'locales/, lib/i18n.ts, lib/relativeTime.ts, lib/cardNames.ts, server/http/mail.ts, server/http/templates/, lib/apiError.ts, docs/research/2026-08-20-albanian-card-terminology-research.md, tests/ui-rules/i18n.test.ts',
+    start: 'locales/, lib/i18n.ts, lib/relativeTime.ts, lib/cardNames.ts, server/http/mail.ts, server/http/templates/, lib/apiError.ts, tests/ui-rules/i18n.test.ts',
     refs: 'Key parity is already a compile error; the gaps are plurals, interpolation, overflow and server-originated text.',
     ask: `- Strings that bypass t(), including accessibility labels, emails, errors and push notifications.
 - it or sq values identical to en.
@@ -265,7 +265,7 @@ Then check:
   },
   {
     key: 'infra', kind: 'research', model: 'opus', skills: ['eas-app-stores'],
-    start: 'deploy/runtime.json, docs/adr/0001-*, docs/adr/0003-*, docs/DEPLOY-RUNBOOK.md, docs/adr/0006-*, server/index.ts, server/socket/socketAdapter.ts, package.json scripts, eas.json, app.json, docs/research/2026-08-26-dev-build-vs-expo-go.md, docs/research/2026-08-29-multiplayer-infrastructure.md',
+    start: 'deploy/runtime.json, docs/adr/0001-*, docs/adr/0003-*, docs/DEPLOY-RUNBOOK.md, docs/adr/0006-*, server/index.ts, server/socket/socketAdapter.ts, package.json scripts, eas.json, app.json',
     refs: 'Use WebSearch and WebFetch. Official pricing pages only; record the URL and the date read for every price.',
     ask: `The Replit subscription has ended (ADR-0006); the next host is undecided (#1105). Research where the app should live next.
 Requirements: free at the start, reasonable cost as it grows, mature and boring. \`deploy/runtime.json\` is the contract any host must meet — read it first, then confirm the host also runs:
@@ -299,7 +299,7 @@ const COMMON = `You are one specialist in a READ-ONLY audit of Murlan (${REPO}) 
 - Load every skill named for your lens with the Skill tool first, and apply its checklist.
 - Every finding cites path:line with the quoted line and is marked measured (you ran it or traced the full path) or inferred.
   Native rendering claims reasoned from source or Chromium are inferred.
-- Before calling a choice a defect, check docs/adr, docs/GAME-RULES.md § Decisions, docs/design and the test that pins it.
+- Before calling a choice a defect, check docs/adr, docs/GAME-RULES.md § Decisions and the test that pins it.
   If you still disagree with a recorded decision, report it as info and name the decision.
 - Name the defect class, the smallest root-cause fix, and the check that would catch the next instance while failing on a planted one.
 - Skip what tsc and eslint already enforce.
@@ -307,7 +307,7 @@ const COMMON = `You are one specialist in a READ-ONLY audit of Murlan (${REPO}) 
 - Set "tracked" when an open issue already covers the finding: ${JSON.stringify(openIssues)}
 ${webUrl
   ? `- A live web build is at ${webUrl}; inspect it with the claude-in-chrome tools, and never trigger a dialog.`
-  : '- No live build is available: use source, docs/design/**/captures and test-results/.'}`
+  : '- No live build is available: use source, tests/e2e/57-polish-audit/captures/ and test-results/.'}`
 
 const LOCATION = {
   type: 'object',
@@ -434,7 +434,7 @@ const GAPS = {
 
 const SKEPTICS = {
   code: 'Read every cited line and its callers. Refute if the code does not do what is claimed, or no real entry point reaches the failure.',
-  intent: 'Refute if the behaviour is deliberate (ADR, docs/GAME-RULES.md § Decisions, docs/design, CLAUDE.md, a pinning test) or a guard elsewhere already prevents it.',
+  intent: 'Refute if the behaviour is deliberate (ADR, docs/GAME-RULES.md § Decisions, CLAUDE.md, a pinning test) or a guard elsewhere already prevents it.',
   impact: 'Judge the severity: who hits this, how often, and what do they lose? Give the severity you would defend.',
 }
 const skepticsFor = severity =>
