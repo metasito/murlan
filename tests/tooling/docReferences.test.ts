@@ -80,7 +80,8 @@ test("the check reads the doc set from git, not from a list", () => {
 });
 
 /**
- * A repo-relative `docs/` mention in a *comment*, backticked or bare. `classify()` (the same
+ * A repo-relative `docs/` mention in a *comment*, backticked or bare, or on any line of a
+ * `PROMPT_SOURCES` file, whose prompts are prose held in string literals. `classify()` (the same
  * source `comment-budget.mjs` reads, so "is this a comment" cannot mean two things) is what
  * separates this from a runtime path: a fixture directory built with `path.resolve` sits on a
  * `code` line even though it's a string literal, so it is never scanned here — that path already
@@ -90,8 +91,9 @@ test("the check reads the doc set from git, not from a list", () => {
  * into this repo.
  */
 const SOURCE_DOC_PATH = /(?<![\w./-])docs\/[\w.@-]+(?:\/[\w.@-]+)*\/?/g;
+const PROMPT_SOURCES = [".claude/workflows/"];
 
-test("every docs/ path a comment in tracked source names exists", () => {
+test("every docs/ path a comment in tracked source, or a workflow prompt, names exists", () => {
   const broken: string[] = [];
   const sourceFiles = execSync('git ls-files "*.ts" "*.tsx" "*.mjs"', { encoding: "utf8" })
     .trim().split("\n").filter(Boolean)
@@ -100,7 +102,7 @@ test("every docs/ path a comment in tracked source names exists", () => {
   for (const file of sourceFiles) {
     const lines = classify(readFileSync(file, "utf8"));
     for (const line of lines) {
-      if (line.kind !== "comment") continue;
+      if (line.kind !== "comment" && !PROMPT_SOURCES.some((dir) => file.startsWith(dir))) continue;
       for (const [raw] of line.text.matchAll(SOURCE_DOC_PATH)) {
         // Trailing sentence punctuation ("...checks.md.") is not part of the path; a bare
         // fragment ("docs/" alone, or a path a line-wrap cut mid-word, with no `.` in its last
