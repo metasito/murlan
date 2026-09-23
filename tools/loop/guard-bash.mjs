@@ -104,7 +104,10 @@ function segments(text, depth) {
     } else if (ch === "`" && text[i + 1] === "\n") {
       endWord();
       i += 1;
+    } else if (ch === "&" && (/[<>]/.test(text[i - 1] ?? "") || text[i + 1] === ">")) {
+      word = (word ?? "") + ch;
     } else if (/[;&|\n(){}`]/.test(ch)) {
+      if (ch === "|" && text[i - 1] !== "|" && text[i + 1] !== "|") words.piped = true;
       endSegment();
     } else if (/\s/.test(ch)) {
       endWord();
@@ -117,9 +120,10 @@ function segments(text, depth) {
 }
 
 /**
- * One segment as `{ cmd, env, dir, args }`: leading assignments, wrappers and redirections gone,
- * a shell's `-c` body parsed in its place, and git's or gh's global options taken off so `args[0]`
- * is the verb. `env` holds the leading assignments; `dir` is git's last `-C`.
+ * One segment as `{ cmd, env, dir, args, piped }`: leading assignments, wrappers and redirections
+ * gone, a shell's `-c` body parsed in its place, and git's or gh's global options taken off so
+ * `args[0]` is the verb. `env` holds the leading assignments; `dir` is git's last `-C`; `piped`
+ * means its output feeds a `|`.
  */
 function normalize(words, depth) {
   const env = {};
@@ -151,7 +155,7 @@ function normalize(words, depth) {
           : /^(pwsh|powershell|cmd)$/.test(cmd)
             ? rest.slice(flag + 1).join(" ")
             : rest[flag + 1];
-    if (body) return commands(body, depth + 1);
+    if (body) return commands(body, depth + 1).map((c) => ({ ...c, piped: c.piped || words.piped === true }));
   }
 
   const args = [];
@@ -167,7 +171,7 @@ function normalize(words, depth) {
     if (cmd === "git" && args[0] === "-C") dir = args[1] ?? dir;
     args.splice(0, takes ? 2 : 1);
   }
-  return [{ cmd, env, dir, args }];
+  return [{ cmd, env, dir, args, piped: words.piped === true }];
 }
 
 export function commands(text, depth = 0) {
@@ -417,6 +421,30 @@ function deletesWorktree(c) {
   return false;
 }
 
+let playwrightScripts = null;
+function runsPlaywrightScript(name) {
+  if (playwrightScripts === null) {
+    try {
+      const { scripts = {} } = JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8"));
+      playwrightScripts = new Set(Object.keys(scripts).filter((k) => /\bplaywright\s+test\b/.test(scripts[k])));
+    } catch {
+      playwrightScripts = new Set();
+    }
+  }
+  return playwrightScripts.has(name);
+}
+
+function runsPlaywright(c) {
+  if (c.cmd === "playwright") return c.args[0] === "test";
+  const operands = c.args.filter((a) => !a.startsWith("-"));
+  if (c.cmd === "npx") return /^(@playwright\/test|playwright)$/.test(operands[0] ?? "") && operands[1] === "test";
+  if (c.cmd === "npm") {
+    const run = operands.findIndex((a) => a === "run" || a === "run-script");
+    return run >= 0 && runsPlaywrightScript(operands[run + 1]);
+  }
+  return false;
+}
+
 const RULES = [
   {
     // A bare `.` after `--` is a real pathspec and is left alone.
@@ -527,6 +555,16 @@ const RULES = [
       "Push, open the pull request, and exit — that is the whole of phase E.\n" +
       "Blocked on a predecessor's change? Say so on the issue and park; do not merge it yourself.\n" +
       "Merging by hand is the owner's: ask them to run it, or run the loop.",
+  },
+  {
+    test: (c) => c.piped && runsPlaywright(c),
+    message:
+      "Piping a Playwright run is blocked: a pipeline exits with its last command's code — tail's, " +
+      "grep's, Select-String's — not the suite's, so a failing run reads as passed.\n" +
+      "For short output, use the line reporter, unpiped:\n" +
+      "  npx playwright test --config tests/e2e/playwright.config.ts one.spec.ts --reporter=line\n" +
+      "Or send the output to a file outside the repo, then read its `N passed / N failed` line:\n" +
+      "  npx playwright test ... > <file> 2>&1; echo \"exit $?\"",
   },
 ];
 

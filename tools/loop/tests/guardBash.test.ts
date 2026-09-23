@@ -45,6 +45,7 @@ const FORCE_DELETE = /worktrees:remove/;
 const DEVICE = /dispatches them on its own branch/;
 const UNREADABLE = /literal id/;
 const MERGE = /not yours to merge/;
+const PIPED = /Piping a Playwright run/;
 
 const BLOCKED: [string, RegExp][] = [
   ["git add -A", ADD],
@@ -130,6 +131,13 @@ const BLOCKED: [string, RegExp][] = [
   ["git push && gh pr merge 994 --merge", MERGE],
   ["gh api graphql -f query='mutation{mergePullRequest(input:{pullRequestId:\"x\"}){clientMutationId}}'", MERGE],
   ["gh api --method PUT repos/metasito/murlan/pulls/994/merge -f merge_method=merge", MERGE],
+  ["npx playwright test --config tests/e2e/playwright.config.ts a.spec.ts 2>&1 | tail -20", PIPED],
+  ["npx playwright test | grep passed", PIPED],
+  ["npx --yes playwright test a.spec.ts |& tee e2e.log", PIPED],
+  ["node_modules/.bin/playwright.cmd test | tail", PIPED],
+  ["npm run test:e2e -- a.spec.ts | Select-String passed", PIPED],
+  ["npm --prefix d run -s perf:web | tail", PIPED],
+  ["echo $(npx playwright test | tail -1)", PIPED],
 ];
 
 const PREFIXES: [string, (cmd: string) => string | null][] = [
@@ -243,6 +251,12 @@ describe("the bash guard allows correct usage", () => {
     "gh issue comment 5 --body 'do not use git add -A here; or rm -rf .worktrees'",
     "echo 'find / is slow' > note.txt",
     "git add -- a.ts 2>&1 | tail -3",
+    "npx playwright test --config tests/e2e/playwright.config.ts a.spec.ts --reporter=line",
+    "npx playwright test a.spec.ts > e2e.log 2>&1; tail -5 e2e.log",
+    "npm run test:e2e || echo red",
+    "npx playwright show-report | cat",
+    "npm run test:native | tail",
+    "git commit -m 'npx playwright test | grep x'",
     "gh workflow run ios.yml --ref agent/1199-device-ci",
     "gh workflow run maestro.yml --ref=agent/1206-device-ci -f force-upload-debug=true",
     "gh -R o/r workflow run ios.yml -r agent/1211-ios-rotate",
