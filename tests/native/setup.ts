@@ -22,12 +22,21 @@ require('react-native-gesture-handler/jestSetup');
 jest.mock('react-native-gesture-handler/lib/module/handlers/gestures/installUIRuntimeBindings', () =>
   require('react-native-gesture-handler/lib/module/handlers/gestures/installUIRuntimeBindings.web')
 );
-// A test mounts a component alone; in the app every GestureDetector sits under
-// app/_layout.tsx's or SettingsModal's GestureHandlerRootView.
+// Stands in for app/_layout.tsx's GestureHandlerRootView around every test.
 jest.mock('react-native-gesture-handler/lib/module/GestureHandlerRootViewContext', () => ({
   __esModule: true,
   default: require('react').createContext(true),
 }));
+// A Modal is its own native window, outside that root: what it holds needs its own.
+jest.mock('@/components/AppModal', () => {
+  const React = require('react') as typeof import('react');
+  const { AppModal } = jest.requireActual<typeof import('@/components/AppModal')>('@/components/AppModal');
+  const RootContext = require('react-native-gesture-handler/lib/module/GestureHandlerRootViewContext').default;
+  return {
+    AppModal: (props: React.ComponentProps<typeof AppModal>) =>
+      React.createElement(AppModal, props, React.createElement(RootContext, { value: false }, props.children)),
+  };
+});
 
 // expo/fetch extends a native Response that does not exist here, so `import`ing
 // it throws at module load — before any test runs — for every file that reaches
