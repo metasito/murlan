@@ -27,7 +27,6 @@ import { a11yHidden, a11yState, A11yStatus } from "@/lib/a11y";
 import type { Card, StartReason } from "@/lib/game/gameEngine";
 import { getCardDisplayRank, getSuitSymbol } from "@/lib/game/gameEngine";
 import { CHIP_H, SIDE_SECTION_W } from "@/components/seatLayout";
-import { type RailSide } from "@/components/tableFrame";
 import { tableFontSize } from "@/components/cardFaceModel";
 
 // ─── StartReasonBanner ────────────────────────────────────────────────────────
@@ -320,9 +319,9 @@ const chipStyles = StyleSheet.create({
 // ─── Control rail ─────────────────────────────────────────────────────────────
 
 /**
- * The column the device cutout occupies, turned into the table's control
- * column: `top` at the head, `bottom` at the foot, and the cutout in the gap
- * between them. Its width comes from `railWidth` (components/tableFrame.ts),
+ * The table's control column, always against the left edge: `top` at the
+ * head, `bottom` at the foot, and a cutout on that edge in the gap between
+ * them. Its width comes from `railWidth` (components/tableFrame.ts),
  * which floors it well above a 44pt knob so a phone with no cutout lays out
  * exactly like one with a Dynamic Island.
  */
@@ -331,7 +330,6 @@ export const RAIL_TESTID = "control-rail";
 
 export function ControlRail({
   width,
-  side,
   topPad,
   bottomPad,
   top,
@@ -339,8 +337,6 @@ export function ControlRail({
   veiled,
 }: {
   width: number;
-  /** The edge the cutout is on, from the frame (components/tableFrame.ts). */
-  side: RailSide;
   topPad: number;
   bottomPad: number;
   top?: ReactNode;
@@ -357,7 +353,7 @@ export function ControlRail({
       testID={RAIL_TESTID}
       style={[
         railStyles.rail,
-        { width, paddingTop: topPad, paddingBottom: bottomPad, [side]: 0 },
+        { width, paddingTop: topPad, paddingBottom: bottomPad },
       ]}
       {...veiled}
     >
@@ -409,11 +405,10 @@ export function RailKnob({
 const RAIL_Z = Layer.rail;
 
 const railStyles = StyleSheet.create({
-  // No horizontal edge here: `side` sets the one it is against, and a `left: 0`
-  // left standing would pin the rail to both edges at once.
   rail: {
     position: "absolute",
     top: 0,
+    left: 0,
     bottom: 0,
     alignItems: "center",
     justifyContent: "space-between",

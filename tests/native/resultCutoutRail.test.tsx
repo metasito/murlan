@@ -19,17 +19,11 @@ jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({
   default: () => WINDOW,
 }));
 
-// Driven, not stubbed away: the phone is locked to landscape but not to one
-// landscape *direction*, and the cutout is on the right in the other one. The
-// rotation is held still while a case measures widths and offsets, and turned
-// over for the case that is about the side itself.
-const LANDSCAPE_LEFT = 3;
-const LANDSCAPE_RIGHT = 4;
-const mockRotation = { current: LANDSCAPE_LEFT };
-
+// Reports the landscape rotation that puts the cutout on the right, so a rail
+// that followed the rotation would move off the left edge here.
 jest.mock('expo-screen-orientation', () => ({
-  Orientation: { LANDSCAPE_LEFT: 3 },
-  getOrientationAsync: async () => mockRotation.current,
+  Orientation: { LANDSCAPE_RIGHT: 4 },
+  getOrientationAsync: async () => 4,
   addOrientationChangeListener: () => ({ remove: () => {} }),
 }));
 
@@ -122,25 +116,19 @@ describe('the result screen under a cutout', () => {
     await view.unmount();
   });
 
-  // #816's own definition of done. The screen is locked to landscape, not to
-  // one landscape direction, and the same phone turned the other way puts the
-  // cutout on the right — a board that assumed a side would lose the rankings
-  // there instead of the winner.
-  it('follows the cutout to the other edge when the phone is turned over', async () => {
-    mockRotation.current = LANDSCAPE_RIGHT;
+  it('keeps the rail on the left when the phone is turned over, and clears the cutout on the right', async () => {
     const view = await mount(0, ISLAND);
 
     const rail = flat(screen.getByTestId('control-rail'));
-    expect(rail.width).toBe(railColumn());
-    expect(rail.right).toBe(0);
-    expect(rail.left).toBeUndefined();
+    expect(rail.left).toBe(0);
+    expect(rail.right).toBeUndefined();
+    expect(rail.width).toBe(railWidth(0, cardScale(Math.min(WINDOW.width, WINDOW.height))));
 
     const body = flat(screen.getByTestId('result-body'));
-    expect(body.marginRight).toBe(railColumn());
-    expect(body.marginLeft).toBe(0);
+    expect(body.marginLeft).toBe(rail.width);
+    expect(body.marginRight).toBe(ISLAND);
 
     await view.unmount();
-    mockRotation.current = LANDSCAPE_LEFT;
   });
 
   it('puts the screen’s exit in that column, so the cutout sits under a control', async () => {

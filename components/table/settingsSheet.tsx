@@ -6,11 +6,10 @@
 
 import { useEffect, type ComponentProps } from "react";
 import { BackHandler, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
-import Animated, { SlideInLeft, SlideInRight } from "react-native-reanimated";
+import Animated, { SlideInLeft } from "react-native-reanimated";
 import Feather from "@expo/vector-icons/Feather";
 import { RAIL_TESTID } from "./chrome";
 import { physicalTouchTarget, tableFontSize } from "@/components/cardFaceModel";
-import type { RailSide } from "@/components/tableFrame";
 import { TableText } from "./TableText";
 import { LinearGradient } from "expo-linear-gradient";
 import { Colors, FontSize, Garnet, Gradient, Layer, makeShadow, Motion, Scrim, Spacing, TOUCH_TARGET_MIN } from "@/lib/theme";
@@ -172,8 +171,6 @@ const EXIT_GRADIENT_LOCATIONS = [0, 0.22, 0.6, 1] as const;
 export interface GameSettingsSheetProps {
   /** The rail's own width — the sheet and its veil both start at its outer edge. */
   rail: number;
-  /** …and the edge the rail is against, which is the edge the sheet opens from. */
-  railSide: RailSide;
   topPad: number;
   bottomPad: number;
   scale: number;
@@ -191,7 +188,6 @@ const SHEET_Z = Layer.sheet;
 
 export function GameSettingsSheet({
   rail,
-  railSide,
   topPad,
   bottomPad,
   scale,
@@ -222,8 +218,6 @@ export function GameSettingsSheet({
   // and GIOCA all stay in the tab order behind it.
   useFocusTrap([SHEET_TESTID, RAIL_TESTID]);
 
-  const away = railSide === "left" ? "right" : "left";
-
   return (
     <>
       {/* Starts at the rail's own outer edge, never under it — the menu knob
@@ -234,7 +228,7 @@ export function GameSettingsSheet({
         {...a11yHidden()}
         style={[
           sheetStyles.veil,
-          { [railSide]: rail, [away]: 0, zIndex: SHEET_Z },
+          { left: rail, right: 0, zIndex: SHEET_Z },
         ]}
       />
       <Animated.View
@@ -243,12 +237,12 @@ export function GameSettingsSheet({
         entering={
           reduceMotion
             ? undefined
-            : (railSide === "left" ? SlideInLeft : SlideInRight).duration(Motion.duration.shift)
+            : SlideInLeft.duration(Motion.duration.shift)
         }
         style={[
           sheetStyles.sheetPos,
           {
-            [railSide]: rail,
+            left: rail,
             top: topPad,
             bottom: bottomPad,
             width: SHEET_W * scale,

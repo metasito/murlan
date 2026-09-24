@@ -68,9 +68,9 @@ async function tableBoxes(page: Page): Promise<Box[]> {
  * whose inline style names `safe-area-inset-left`, and its own 0.05s padding
  * transition is what fires the library's `onInsetsChange`.
  */
-async function setSafeArea(page: Page, left: number, bottom: number): Promise<void> {
+async function setSafeArea(page: Page, left: number, bottom: number, right = 21): Promise<void> {
   await page.evaluate(
-    ({ left, bottom }) => {
+    ({ left, bottom, right }) => {
       const id = "e2e-safe-area";
       document.getElementById(id)?.remove();
       const style = document.createElement("style");
@@ -78,11 +78,11 @@ async function setSafeArea(page: Page, left: number, bottom: number): Promise<vo
       style.textContent =
         `div[style*="safe-area-inset-left"] {` +
         ` padding-left: ${left}px !important;` +
-        ` padding-right: 21px !important;` +
+        ` padding-right: ${right}px !important;` +
         ` padding-bottom: ${bottom}px !important; }`;
       document.head.appendChild(style);
     },
-    { left, bottom }
+    { left, bottom, right }
   );
   // The probe transitions its padding over 0.05s and reports on transitionend.
   await page.waitForTimeout(600);
@@ -186,6 +186,38 @@ test.describe("the control rail", () => {
         inside,
         `these intersect the ${cutout}px cutout (rail is ${rail}px, cutout spans ` +
           `y ${band.top}…${band.bottom}): ` +
+          inside.map((b) => `${b.label} at ${b.left},${b.y}`).join("; ")
+      ).toEqual([]);
+    }
+  });
+
+  test("stays on the left with the cutout on the right, and keeps everything out of it", async ({
+    page,
+    baseURL,
+  }) => {
+    test.setTimeout(120_000);
+    await page.setViewportSize(VIEWPORT);
+    await openSeededGame(page, baseURL!, 4);
+    await page.waitForTimeout(1_500);
+
+    for (const cutout of [44, 59]) {
+      await setSafeArea(page, 0, 21, cutout);
+      const boxes = await settledBoxes(page);
+      const rail = await page.locator('[data-testid="control-rail"]').boundingBox();
+      expect(rail?.x, `the rail left the left edge with a ${cutout}px cutout on the right`).toBe(0);
+
+      const edge = VIEWPORT.width - cutout;
+      const band = cutoutBand(VIEWPORT.height);
+      expect(
+        boxes.some((b) => b.left + b.width > VIEWPORT.width * 0.75),
+        "no control sits near the right edge, so this check sees nothing"
+      ).toBe(true);
+      const inside = boxes.filter(
+        (b) => b.left + b.width > edge && b.y < band.bottom && b.y + b.height > band.top
+      );
+      expect(
+        inside,
+        `these intersect the ${cutout}px cutout on the right: ` +
           inside.map((b) => `${b.label} at ${b.left},${b.y}`).join("; ")
       ).toEqual([]);
     }
