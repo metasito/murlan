@@ -313,7 +313,7 @@ function Spark({ index, trigger, scale }: { index: number; trigger: number; scal
   // and scale together so both share the one tween.
   const progress = useSharedValue(0);
   const { dx, dy, delay } = sparkOffset(index, scale);
-  useTraceSource("live", () => (opacity.value > 0 ? 1 : 0));
+  useTraceSource("live", () => Number(opacity.value > 0));
 
   useEffect(() => {
     if (!trigger || reduceMotion) return;
