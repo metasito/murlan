@@ -90,18 +90,9 @@ import { TopOppSlot, SideOppSlot, usePassedSeats } from "@/components/table/seat
 import { DealFlights, useDeal } from "@/components/table/deal";
 import { ExchangeAnnouncement } from "@/components/ExchangeAnnouncement";
 import { ExchangePrompt } from "@/components/table/ExchangePrompt";
-import {
-  playCardSelect,
-  playCardDeselect,
-  playCardPlay,
-  playReject,
-  playRoundStart,
-  playRoundWin,
-  playDeal,
-  holdSounds,
-  preloadSounds,
-} from "@/lib/device/sounds";
-import { hapticLight, hapticMedium, hapticRigid, hapticSelection } from "@/lib/device/haptics";
+import { playRoundStart, playRoundWin, holdSounds, preloadSounds } from "@/lib/device/sounds";
+import { hapticLight, hapticSelection } from "@/lib/device/haptics";
+import { playCue } from "@/lib/device/playCue";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { Colors, FontSize, Motion, motionMs, Radius, Reading, Scrim, Spacing, Layer } from "@/lib/theme";
 import { useTableFelt } from "@/lib/cosmetics";
@@ -696,7 +687,7 @@ export function GameTable({
     const entryBeat = new Promise((resolve) => setTimeout(resolve, entryMs));
     Promise.all([preloadSounds(), entryBeat])
       .then(() => {
-        if (mounted) playDeal();
+        if (mounted) playCue({ kind: "deal" });
       })
       .catch(() => {});
     warmCourtArt();
@@ -753,9 +744,7 @@ export function GameTable({
   const handleCardPress = useCallback(
     (id: string) => {
       if (isFinished || spectating) return;
-      hapticSelection();
-      if (handSelectionRef.current.includes(id)) playCardDeselect();
-      else playCardSelect();
+      playCue({ kind: handSelectionRef.current.includes(id) ? "deselect" : "select" });
       // An exchange gives exactly one card, so a second tap replaces the pick
       // rather than adding to it.
       if (exchangeIsMine) {
@@ -771,8 +760,7 @@ export function GameTable({
   // reporting itself as disabled to assistive tech.
   const handlePlay = useCallback(() => {
     if (!staged.playable) {
-      hapticRigid();
-      playReject();
+      playCue({ kind: "reject" });
       setRejectHint((prev) => ({ key: (prev?.key ?? 0) + 1, text: dimReasonText }));
       rejectPlay();
       return;
@@ -791,8 +779,7 @@ export function GameTable({
   // memo over a translated string (scripts/react-compiler-probe.mjs).
   const handleExchangeGive = () => {
     if (!exchangePick) {
-      hapticRigid();
-      playReject();
+      playCue({ kind: "reject" });
       setRejectHint((prev) => ({
         key: (prev?.key ?? 0) + 1,
         text: t("exchange.confirmA11yWaiting", { name: exchangeLoserName }),
@@ -800,8 +787,7 @@ export function GameTable({
       rejectPlay();
       return;
     }
-    hapticMedium();
-    playCardPlay();
+    playCue({ kind: "give" });
     onExchangeGive(exchangePick);
   };
   // Asked again rather than closing over `canPass`: with `canPass` as the

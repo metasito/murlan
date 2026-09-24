@@ -6,7 +6,7 @@ import {
   playButtonLabel,
   turnTimerActive,
   urgentThresholdSeconds,
-  URGENT_TICK_SECONDS,
+  CLOCK_RUNNING_OUT_SECONDS,
   type ComboShape,
 } from "../../components/turnTimerUi.ts";
 
@@ -190,7 +190,7 @@ describe("urgentThresholdSeconds", () => {
     // 20s: five seconds' warning on a clock that short arrives too late to
     // choose a card with.
     assert.equal(urgentThresholdSeconds(20), 8);
-    assert.ok(urgentThresholdSeconds(20) > URGENT_TICK_SECONDS);
+    assert.ok(urgentThresholdSeconds(20) > CLOCK_RUNNING_OUT_SECONDS);
   });
 
   test("a longer clock warns proportionally, not identically", () => {
@@ -198,8 +198,8 @@ describe("urgentThresholdSeconds", () => {
   });
 
   test("a very short clock never warns later than the audible tick", () => {
-    assert.equal(urgentThresholdSeconds(6), URGENT_TICK_SECONDS);
-    assert.equal(urgentThresholdSeconds(0), URGENT_TICK_SECONDS);
+    assert.equal(urgentThresholdSeconds(6), CLOCK_RUNNING_OUT_SECONDS);
+    assert.equal(urgentThresholdSeconds(0), CLOCK_RUNNING_OUT_SECONDS);
   });
 
   test("the threshold is a whole number of seconds — the countdown is integer", () => {

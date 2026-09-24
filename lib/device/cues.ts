@@ -50,8 +50,8 @@ export interface Cue {
 
 export const isCombo = (cards: number): boolean => cards > 1;
 
-// The bomb's second and third pulses land on the table kick's first two jolt stops
-// (`KICK_JOLTS` in components/useTableFeedback.ts).
+// The second and third pulses land on the kick's first two jolt stops
+// (`KICK_JOLTS`, pinned by tests/native/landingHaptic.test.tsx).
 const BOMB_PULSES: Cue["haptics"] = [
   { helper: "hapticRigid", atMs: 0 },
   { helper: "hapticHeavy", atMs: 256 },

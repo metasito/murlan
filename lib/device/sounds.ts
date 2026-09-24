@@ -143,9 +143,15 @@ async function playWeb(key: string, assetModule: number, volume: number, rate: n
     gain.gain.value = volume;
     source.connect(gain);
     gain.connect(ctx.destination);
+    liveWebSources[key] = source;
+    source.onended = () => {
+      if (liveWebSources[key] === source) delete liveWebSources[key];
+    };
     source.start();
   } catch {}
 }
+
+const liveWebSources: Record<string, AudioBufferSourceNode> = {};
 
 
 let soundCache: Record<string, AudioPlayer> = {};
@@ -208,7 +214,7 @@ function loadSound(key: string, assetModule: number): AudioPlayer | null {
 
 // Rewinding a player that is still sounding cuts it off, so the effects fired
 // in quick succession alternate between players.
-const VOICES: Partial<Record<string, number>> = { select: 2, play: 2 };
+const VOICES: Partial<Record<string, number>> = { select: 2, play: 2, combo: 2 };
 const nextVoice: Record<string, number> = {};
 
 function voiceKey(key: string, voice: number): string {
@@ -234,19 +240,22 @@ async function playNative(key: string, assetModule: number, volume: number, rate
 
 // Each key maps to a function so Metro can statically analyse the require() calls.
 const ASSETS = {
-  select:      () => require("../../assets/sounds/card_select.mp3") as number,
-  play:        () => require("../../assets/sounds/card_play.mp3") as number,
-  pass:        () => require("../../assets/sounds/card_pass.mp3") as number,
-  your_turn:   () => require("../../assets/sounds/your_turn.mp3") as number,
-  round_start: () => require("../../assets/sounds/round_start.mp3") as number,
-  round_win:   () => require("../../assets/sounds/round_win.mp3") as number,
-  count_complete: () => require("../../assets/sounds/count_complete.mp3") as number,
-  urgent:      () => require("../../assets/sounds/urgent_tick.mp3") as number,
+  select:      () => require("../../assets/sounds/select.mp3") as number,
+  play:        () => require("../../assets/sounds/play.mp3") as number,
+  combo:       () => require("../../assets/sounds/combo.mp3") as number,
+  pass:        () => require("../../assets/sounds/pass.mp3") as number,
   bomb:        () => require("../../assets/sounds/bomb.mp3") as number,
-  game_win:    () => require("../../assets/sounds/game_win.mp3") as number,
-  game_lose:   () => require("../../assets/sounds/game_lose.mp3") as number,
   deal:        () => require("../../assets/sounds/deal.mp3") as number,
   exchange:    () => require("../../assets/sounds/exchange.mp3") as number,
+  turn:        () => require("../../assets/sounds/turn.mp3") as number,
+  clockRunningOut: () => require("../../assets/sounds/clock_running_out.mp3") as number,
+  mancheWon:   () => require("../../assets/sounds/manche_won.mp3") as number,
+  mancheLost:  () => require("../../assets/sounds/manche_lost.mp3") as number,
+  partitaWon:  () => require("../../assets/sounds/partita_won.mp3") as number,
+  partitaLost: () => require("../../assets/sounds/partita_lost.mp3") as number,
+  reconnected: () => require("../../assets/sounds/reconnected.mp3") as number,
+  round_start: () => require("../../assets/sounds/round_start.mp3") as number,
+  round_win:   () => require("../../assets/sounds/round_win.mp3") as number,
   reject:      () => require("../../assets/sounds/reject.mp3") as number,
   seat_fill:   () => require("../../assets/sounds/seat_fill.mp3") as number,
   room_full:   () => require("../../assets/sounds/room_full.mp3") as number,
@@ -256,9 +265,9 @@ type SoundKey = keyof typeof ASSETS;
 
 // ─── Master enable/volume ─────────────────────────────────────────────────────
 //
-// The per-effect volumes below are a mix, balancing the effects against each
-// other. The master multiplies that mix rather than replacing it, so turning the
-// game down keeps a card select quieter than a bomb.
+// The table's picks carry their own level in the file and play at unity; the
+// older effects still balance by volume. The master multiplies that mix rather
+// than replacing it, so turning the game down keeps a card select quieter than a bomb.
 
 let _soundsEnabled = true;
 export function setSoundsMasterEnabled(v: boolean) { _soundsEnabled = v; }
@@ -285,24 +294,43 @@ async function play(key: SoundKey, volume: number, rate = 1, vary?: () => number
   }
 }
 
+function stop(key: SoundKey): void {
+  if (Platform.OS === "web") {
+    try {
+      liveWebSources[key]?.stop();
+    } catch {}
+    delete liveWebSources[key];
+    return;
+  }
+  for (let v = 0; v < (VOICES[key] ?? 1); v++) {
+    try {
+      soundCache[voiceKey(key, v)]?.pause();
+    } catch {}
+  }
+}
+
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 // Only the effects that repeat every hand vary; a sting stays recognisable by
 // sounding the same each time.
-export async function playCardSelect(rng: () => number = Math.random): Promise<void> { await play("select", 0.75, 1, rng); }
-export async function playCardDeselect(): Promise<void> { await play("select", 0.55, 0.9); }
-export async function playCardPlay(rng: () => number = Math.random): Promise<void> { await play("play", 1.0, 1, rng); }
-export async function playCardPass(rng: () => number = Math.random): Promise<void> { await play("pass", 0.75, 1, rng); }
-export async function playYourTurn():   Promise<void> { await play("your_turn",   0.9);  }
+export async function playCardSelect(rng: () => number = Math.random): Promise<void> { await play("select", 1, 1, rng); }
+export async function playCardDeselect(): Promise<void> { await play("select", 0.75, 0.9); }
+export async function playCardPlay(rng: () => number = Math.random): Promise<void> { await play("play", 1, 1, rng); }
+export async function playCombo(rng: () => number = Math.random): Promise<void> { await play("combo", 1, 1, rng); }
+export async function playCardPass(rng: () => number = Math.random): Promise<void> { await play("pass", 1, 1, rng); }
+export async function playDeal(rng: () => number = Math.random): Promise<void> { await play("deal", 1, 1, rng); }
+export async function playBomb():        Promise<void> { await play("bomb",        1); }
+export async function playExchange():    Promise<void> { await play("exchange",    1); }
+export async function playTurn():        Promise<void> { await play("turn",        1); }
+export async function playClockRunningOut(): Promise<void> { await play("clockRunningOut", 1); }
+export function stopClockRunningOut(): void { stop("clockRunningOut"); }
+export async function playMancheWon():   Promise<void> { await play("mancheWon",   1); }
+export async function playMancheLost():  Promise<void> { await play("mancheLost",  1); }
+export async function playPartitaWon():  Promise<void> { await play("partitaWon",  1); }
+export async function playPartitaLost(): Promise<void> { await play("partitaLost", 1); }
+export async function playReconnected(): Promise<void> { await play("reconnected", 1); }
 export async function playRoundStart(): Promise<void> { await play("round_start", 0.85); }
 export async function playRoundWin():   Promise<void> { await play("round_win",   1.0);  }
-export async function playCountComplete(): Promise<void> { await play("count_complete", 0.8); }
-export async function playUrgentTick(): Promise<void> { await play("urgent",      0.8);  }
-export async function playBomb():       Promise<void> { await play("bomb",        1.0);  }
-export async function playGameWin():    Promise<void> { await play("game_win",    1.0);  }
-export async function playGameLose():   Promise<void> { await play("game_lose",   0.85); }
-export async function playDeal(rng: () => number = Math.random): Promise<void> { await play("deal", 0.8, 1, rng); }
-export async function playExchange():   Promise<void> { await play("exchange",    0.85); }
 export async function playSeatFill(): Promise<void> { await play("seat_fill",   0.8);  }
 export async function playRoomFull(): Promise<void> { await play("room_full",   0.85); }
 export async function playReject(rng: () => number = Math.random): Promise<void> { await play("reject", 0.7, 1, rng); }

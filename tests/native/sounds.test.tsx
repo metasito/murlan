@@ -116,7 +116,7 @@ describe('lib/device/sounds on a device', () => {
     const rng = jest.fn(still);
     sounds.setSoundsMasterEnabled(false);
     await sounds.playCardPlay(rng);
-    await sounds.playGameWin();
+    await sounds.playMancheWon();
     expect(rng).not.toHaveBeenCalled();
     expect(mockCreateAudioPlayer).not.toHaveBeenCalled();
     expect(mockPlayer.play).not.toHaveBeenCalled();

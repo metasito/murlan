@@ -9,7 +9,8 @@ import React from 'react';
 import { act, render, screen } from '@testing-library/react-native';
 
 jest.mock('@/lib/device/sounds', () => ({
-  playUrgentTick: jest.fn(async () => {}),
+  playClockRunningOut: jest.fn(async () => {}),
+  stopClockRunningOut: jest.fn(async () => {}),
   ensureAudioMode: jest.fn(async () => {}),
 }));
 
@@ -17,8 +18,8 @@ jest.mock('@/lib/device/haptics', () => ({ hapticSelection: jest.fn() }));
 
 import { TurnChip } from '@/components/table/turnChip';
 import { hapticSelection } from '@/lib/device/haptics';
-import { playUrgentTick } from '@/lib/device/sounds';
-import { URGENT_TICK_SECONDS } from '@/components/turnTimerUi';
+import { playClockRunningOut, stopClockRunningOut } from '@/lib/device/sounds';
+import { CLOCK_RUNNING_OUT_SECONDS } from '@/components/turnTimerUi';
 import { tn } from '@/lib/i18n';
 
 const CLOCK_SECONDS = 30;
@@ -82,19 +83,45 @@ describe('the turn chip', () => {
     await r.unmount();
   });
 
-  it('buzzes with every urgent tick and at no other second', async () => {
+  it('sounds once, at CLOCK_RUNNING_OUT_SECONDS left, and never buzzes', async () => {
     jest.mocked(hapticSelection).mockClear();
-    jest.mocked(playUrgentTick).mockClear();
+    jest.mocked(playClockRunningOut).mockClear();
     const r = await render(chip());
-    for (let i = CLOCK_SECONDS - 1; i >= 0; i--) {
+    const ticksToRunningOut = CLOCK_SECONDS - CLOCK_RUNNING_OUT_SECONDS;
+    for (let i = 0; i < ticksToRunningOut - 1; i++) {
       await act(async () => {
         jest.advanceTimersByTime(1000);
       });
-      const ticks = Math.max(URGENT_TICK_SECONDS - i + 1, 0);
-      expect(jest.mocked(hapticSelection)).toHaveBeenCalledTimes(ticks);
-      expect(jest.mocked(playUrgentTick)).toHaveBeenCalledTimes(ticks);
     }
+    expect(jest.mocked(playClockRunningOut)).not.toHaveBeenCalled();
+    await act(async () => {
+      jest.advanceTimersByTime(1000);
+    });
+    expect(jest.mocked(playClockRunningOut)).toHaveBeenCalledTimes(1);
+    for (let i = 0; i < CLOCK_RUNNING_OUT_SECONDS - 1; i++) {
+      await act(async () => {
+        jest.advanceTimersByTime(1000);
+      });
+    }
+    expect(jest.mocked(playClockRunningOut)).toHaveBeenCalledTimes(1);
+    expect(jest.mocked(hapticSelection)).not.toHaveBeenCalled();
     await r.unmount();
+  });
+
+  it('stops the clock-running-out sound when the chip unmounts mid-sound', async () => {
+    jest.mocked(playClockRunningOut).mockClear();
+    jest.mocked(stopClockRunningOut).mockClear();
+    const r = await render(chip());
+    const ticksToRunningOut = CLOCK_SECONDS - CLOCK_RUNNING_OUT_SECONDS;
+    for (let i = 0; i < ticksToRunningOut; i++) {
+      await act(async () => {
+        jest.advanceTimersByTime(1000);
+      });
+    }
+    expect(jest.mocked(playClockRunningOut)).toHaveBeenCalledTimes(1);
+    expect(jest.mocked(stopClockRunningOut)).not.toHaveBeenCalled();
+    await r.unmount();
+    expect(jest.mocked(stopClockRunningOut)).toHaveBeenCalledTimes(1);
   });
 
   it('names the seat alone when no clock is running', async () => {
