@@ -2,17 +2,20 @@
 // viewer's own play lands with a tap, a bomb rumbles in layers with the kick.
 import { describe, it, expect, beforeEach, afterEach, jest } from "@jest/globals";
 import { act, renderHook } from "@testing-library/react-native";
-import { useTableFeedback } from "@/components/useTableFeedback";
+import { KICK_JOLTS, useTableFeedback } from "@/components/useTableFeedback";
+import { cueFor } from "@/lib/device/cues";
 import { hapticHeavy, hapticLight, hapticMedium, hapticRigid } from "@/lib/device/haptics";
+import { playBomb, playCardPlay, playCombo } from "@/lib/device/sounds";
 
 jest.mock("@/lib/device/sounds", () => ({
   playBomb: jest.fn(),
   playCardPass: jest.fn(),
   playCardPlay: jest.fn(),
+  playCombo: jest.fn(),
   playExchange: jest.fn(),
-  playGameLose: jest.fn(),
-  playGameWin: jest.fn(),
-  playYourTurn: jest.fn(),
+  playMancheLost: jest.fn(),
+  playMancheWon: jest.fn(),
+  playTurn: jest.fn(),
 }));
 jest.mock("@/lib/device/haptics", () => ({
   hapticHeavy: jest.fn(),
@@ -54,56 +57,68 @@ describe("a card landing's haptic", () => {
     jest.useRealTimers();
   });
 
-  it("taps lightly for the viewer's own ordinary landing", async () => {
+  it("taps lightly for the viewer's own single card", async () => {
     const { result, unmount } = await mount();
     await act(async () => {
-      result.current.playImpact(false, "bottom", "pair");
+      result.current.playImpact(false, "bottom", 1);
     });
+    expect(playCardPlay).toHaveBeenCalledTimes(1);
     expect(hapticLight).toHaveBeenCalledTimes(1);
     expect(hapticMedium).not.toHaveBeenCalled();
     await unmount();
   });
 
-  it("taps harder for the viewer's own straight", async () => {
+  it("taps harder for any of the viewer's own combos, with the combo sound", async () => {
     const { result, unmount } = await mount();
     await act(async () => {
-      result.current.playImpact(false, "bottom", "straight");
+      result.current.playImpact(false, "bottom", 2);
     });
+    expect(playCombo).toHaveBeenCalledTimes(1);
+    expect(playCardPlay).not.toHaveBeenCalled();
     expect(hapticMedium).toHaveBeenCalledTimes(1);
     expect(hapticLight).not.toHaveBeenCalled();
     await unmount();
   });
 
-  it("stays silent for another seat's ordinary landing", async () => {
+  it("stays silent in the hand for another seat's ordinary landing", async () => {
     const { result, unmount } = await mount();
     await act(async () => {
-      result.current.playImpact(false, "top", "straight");
+      result.current.playImpact(false, "top", 5);
     });
     await act(async () => {
-      result.current.playImpact(false, "left", "single");
+      result.current.playImpact(false, "left", 1);
     });
+    expect(playCombo).toHaveBeenCalledTimes(1);
+    expect(playCardPlay).toHaveBeenCalledTimes(1);
     expect(hapticLight).not.toHaveBeenCalled();
     expect(hapticMedium).not.toHaveBeenCalled();
     await unmount();
   });
 
-  it("rumbles a bomb in three layers, timed to the kick's first two jolts", async () => {
+  it("times a bomb's later layers to the kick's first two jolts", () => {
+    const [, heavy, light] = cueFor({ kind: "landing", cards: 4, bomb: true, mine: false }).haptics;
+    expect(heavy.atMs).toBe(KICK_JOLTS[0].ms);
+    expect(light.atMs).toBe(KICK_JOLTS[0].ms + KICK_JOLTS[1].ms);
+  });
+
+  it("rumbles a bomb in three layers: rigid on impact, then heavy, then light", async () => {
     const { result, unmount } = await mount();
     jest.useFakeTimers();
     await act(async () => {
-      result.current.playImpact(true, "right", "bomb");
+      result.current.playImpact(true, "right", 4);
     });
-    expect(hapticHeavy).toHaveBeenCalledTimes(1);
-    expect(hapticRigid).not.toHaveBeenCalled();
+    expect(playBomb).toHaveBeenCalledTimes(1);
+    expect(hapticRigid).toHaveBeenCalledTimes(1);
+    expect(hapticHeavy).not.toHaveBeenCalled();
 
     await act(async () => {
       jest.advanceTimersByTime(255);
     });
-    expect(hapticRigid).not.toHaveBeenCalled();
+    expect(hapticHeavy).not.toHaveBeenCalled();
     await act(async () => {
       jest.advanceTimersByTime(1);
     });
-    expect(hapticRigid).toHaveBeenCalledTimes(1);
+    expect(hapticHeavy).toHaveBeenCalledTimes(1);
     expect(hapticLight).not.toHaveBeenCalled();
 
     await act(async () => {
@@ -121,14 +136,14 @@ describe("a card landing's haptic", () => {
     const { result, unmount } = await mount();
     jest.useFakeTimers();
     await act(async () => {
-      result.current.playImpact(true, "bottom", "bomb");
+      result.current.playImpact(true, "bottom", 4);
     });
     await act(async () => {
       jest.advanceTimersByTime(100);
-      result.current.playImpact(false, "top", "single");
+      result.current.playImpact(false, "top", 1);
       jest.advanceTimersByTime(1000);
     });
-    expect(hapticRigid).not.toHaveBeenCalled();
+    expect(hapticHeavy).not.toHaveBeenCalled();
     expect(hapticLight).not.toHaveBeenCalled();
     await unmount();
   });
@@ -137,13 +152,13 @@ describe("a card landing's haptic", () => {
     const { result, unmount } = await mount();
     jest.useFakeTimers();
     await act(async () => {
-      result.current.playImpact(true, "bottom", "bomb");
+      result.current.playImpact(true, "bottom", 4);
     });
     await unmount();
     await act(async () => {
       jest.advanceTimersByTime(1000);
     });
-    expect(hapticRigid).not.toHaveBeenCalled();
+    expect(hapticHeavy).not.toHaveBeenCalled();
     expect(hapticLight).not.toHaveBeenCalled();
   });
 });

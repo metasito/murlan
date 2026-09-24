@@ -11,7 +11,7 @@ import {
   type AnimatedStyle,
   type SharedValue,
 } from "react-native-reanimated";
-import type { Combination, CombinationType } from "@/lib/game/gameEngine";
+import type { Combination } from "@/lib/game/gameEngine";
 import type { FlyDirection } from "@/components/seatLayout";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useScreenShakeEnabled } from "@/lib/screenShake";
@@ -26,16 +26,7 @@ import {
   type ImpactTier,
   type FlareKind,
 } from "@/components/flightPhysics";
-import {
-  playBomb,
-  playCardPass,
-  playCardPlay,
-  playExchange,
-  playGameLose,
-  playGameWin,
-  playYourTurn,
-} from "@/lib/device/sounds";
-import { hapticHeavy, hapticLight, hapticMedium, hapticRigid, hapticSuccess, hapticWarn } from "@/lib/device/haptics";
+import { playCue } from "@/lib/device/playCue";
 import { handOutcomeFor } from "@/lib/game/matchState";
 import { cancelMusicDuck, duckMusicFor } from "@/lib/device/music";
 import { Motion, motionMs } from "@/lib/theme";
@@ -61,7 +52,7 @@ const KICK_SCALE_SETTLE = 1.006;
  * The first covers two of them: the table holds square through the punch-in,
  * so the jolt only starts once the scale has settled.
  */
-const KICK_JOLTS = [
+export const KICK_JOLTS = [
   { x: -9, y: 5, ms: KICK_PUNCH_MS + KICK_SETTLE_MS },
   { x: 9, y: -5, ms: 160 },
   { x: -6, y: -3, ms: 160 },
@@ -104,7 +95,7 @@ interface TableFeedback {
   /** Driven by `rejectPlay`; GiocaButton folds it into its own press style. */
   giocaRejectX: SharedValue<number>;
   /** The thrown card has landed. Timing it against the flight is the caller's. */
-  playImpact: (heavy: boolean, dir: FlyDirection, comboType: CombinationType) => void;
+  playImpact: (heavy: boolean, dir: FlyDirection, cards: number) => void;
   rejectPlay: () => void;
   /**
    * Increments whenever a landing's tier flares (#765: bomb, partita) —
@@ -371,7 +362,7 @@ export function useTableFeedback({
 
   const handOffTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const stingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const joltTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const cancelPulsesRef = useRef<() => void>(() => {});
   // Keyed by card ids, not the object: every broadcast rebuilds it, and a
   // round-closing pass nulls it while the card that preceded it is still flying.
   const playedKey = lastPlayedCombination?.cards.map((c) => c.id).join(",") ?? null;
@@ -383,7 +374,7 @@ export function useTableFeedback({
     () => () => {
       if (handOffTimerRef.current) clearTimeout(handOffTimerRef.current);
       if (stingTimerRef.current) clearTimeout(stingTimerRef.current);
-      joltTimersRef.current.forEach(clearTimeout);
+      cancelPulsesRef.current();
     },
     []
   );
@@ -401,10 +392,7 @@ export function useTableFeedback({
 
   useEffect(() => {
     if (isMyTurn && !isFinished && !prevMyTurnRef.current) {
-      const cue = () => {
-        playYourTurn();
-        hapticLight();
-      };
+      const cue = () => playCue({ kind: "turn" });
       if (handOffTimerRef.current) clearTimeout(handOffTimerRef.current);
       const wait = landsAtRef.current - Date.now();
       if (wait <= 0) cue();
@@ -414,7 +402,7 @@ export function useTableFeedback({
   }, [isMyTurn, isFinished]);
 
   useEffect(() => {
-    if (exchangeActive && !prevExchangeActiveRef.current) playExchange();
+    if (exchangeActive && !prevExchangeActiveRef.current) playCue({ kind: "exchange" });
     prevExchangeActiveRef.current = exchangeActive;
   }, [exchangeActive]);
 
@@ -431,7 +419,7 @@ export function useTableFeedback({
     const closed = roundClosedWithWinner({ lastPlayedCombination, roundWinner });
     const wasClosed = prevRoundClosedRef.current;
     prevRoundClosedRef.current = closed;
-    if (passCount > prevCount || (closed && !wasClosed)) playCardPass();
+    if (passCount > prevCount || (closed && !wasClosed)) playCue({ kind: "pass" });
   }, [passCount, lastPlayedCombination, roundWinner]);
 
   useEffect(() => {
@@ -467,15 +455,9 @@ export function useTableFeedback({
     // The verdict waits for the card that decided it to land and hold, then
     // one beat more, so it is heard after the landing rather than over it.
     stingTimerRef.current = setTimeout(() => {
-      if (outcome === "won") {
-        hapticSuccess();
-        playGameWin();
-        duckMusicFor(2200);
-      } else if (outcome === "lost") {
-        hapticWarn();
-        playGameLose();
-        duckMusicFor(2200);
-      }
+      if (outcome !== "won" && outcome !== "lost") return;
+      playCue({ kind: "mancheOver", won: outcome === "won" });
+      duckMusicFor(2200);
     }, handOffDelayMs(reduceMotion) + motionMs("shift", reduceMotion));
   }, [gameOver, rankings, players, isTeamMode, handScores, viewerId, reduceMotion]);
 
@@ -545,21 +527,10 @@ export function useTableFeedback({
   const giocaGlowStyle = useAnimatedStyle(() => ({ opacity: giocaGlowVal.value }));
 
   const playImpact = useCallback(
-    (heavy: boolean, dir: FlyDirection, comboType: CombinationType) => {
-      joltTimersRef.current.forEach(clearTimeout);
-      joltTimersRef.current = [];
-      if (!heavy) {
-        playCardPlay();
-        if (dir === "bottom") (comboType === "straight" ? hapticMedium : hapticLight)();
-        return;
-      }
-      playBomb();
-      hapticHeavy();
-      const rigidAt = KICK_JOLTS[0].ms;
-      joltTimersRef.current = [
-        setTimeout(hapticRigid, rigidAt),
-        setTimeout(hapticLight, rigidAt + KICK_JOLTS[1].ms),
-      ];
+    (heavy: boolean, dir: FlyDirection, cards: number) => {
+      cancelPulsesRef.current();
+      cancelPulsesRef.current = playCue({ kind: "landing", cards, bomb: heavy, mine: dir === "bottom" });
+      if (!heavy) return;
       // The biggest play in the game should not have to share the mix.
       duckMusicFor(1100);
       impact();

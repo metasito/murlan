@@ -3,9 +3,9 @@ import { View } from "react-native";
 import { ChipDot, ChipText, TableChip } from "./chrome";
 import { A11yStatus, a11yGroup, a11yHidden } from "@/lib/a11y";
 import { useTranslation } from "@/lib/i18n";
-import { playUrgentTick } from "@/lib/device/sounds";
-import { hapticSelection } from "@/lib/device/haptics";
-import { urgentThresholdSeconds, URGENT_TICK_SECONDS } from "@/components/turnTimerUi";
+import { playCue } from "@/lib/device/playCue";
+import { stopClockRunningOut } from "@/lib/device/sounds";
+import { urgentThresholdSeconds, CLOCK_RUNNING_OUT_SECONDS } from "@/components/turnTimerUi";
 
 // ─── Turn chip ────────────────────────────────────────────────────────────────
 //
@@ -58,19 +58,28 @@ export function TurnChip({
   useEffect(() => {
     if (!active) return;
     let remaining = seconds;
+    let sounding = false;
+    const stop = () => {
+      if (sounding) stopClockRunningOut();
+      sounding = false;
+    };
     const id = setInterval(() => {
       remaining -= 1;
       setTimeLeft(remaining);
-      if (remaining <= URGENT_TICK_SECONDS && remaining >= 0) {
-        playUrgentTick();
-        hapticSelection();
+      if (!sounding && remaining > 0 && remaining <= CLOCK_RUNNING_OUT_SECONDS) {
+        sounding = true;
+        playCue({ kind: "clockRunningOut" });
       }
       if (remaining <= 0) {
         clearInterval(id);
+        stop();
         onExpireRef.current?.();
       }
     }, 1000);
-    return () => clearInterval(id);
+    return () => {
+      clearInterval(id);
+      stop();
+    };
   }, [active, resetKey, seconds]);
 
   const threshold = urgentThresholdSeconds(seconds);

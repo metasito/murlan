@@ -15,10 +15,11 @@ jest.mock("@/lib/device/sounds", () => ({
   playBomb: jest.fn(),
   playCardPass: jest.fn(),
   playCardPlay: jest.fn(),
+  playCombo: jest.fn(),
   playExchange: jest.fn(),
-  playGameLose: jest.fn(),
-  playGameWin: jest.fn(),
-  playYourTurn: jest.fn(),
+  playMancheLost: jest.fn(),
+  playMancheWon: jest.fn(),
+  playTurn: jest.fn(),
 }));
 jest.mock("@/lib/device/haptics", () => ({
   hapticHeavy: jest.fn(),

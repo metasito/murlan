@@ -20,7 +20,7 @@ import { CardView } from "@/components/CardView";
 import { Colors, FontSize, Hold, Motion, motionMs, Radius, Scrim, Shadow, Spacing, Layer } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
-import type { Card, Combination, CombinationType } from "@/lib/game/gameEngine";
+import type { Card, Combination } from "@/lib/game/gameEngine";
 import { CARD_W, CARD_H, FIELD_SCALE, cardRadius } from "@/components/cardFaceModel";
 import { type FlyDirection } from "@/components/seatLayout";
 import { COMBO_MAX_TILT, advancePile, anticipationOffset, cardTilt, collectPile, comboKey, EMPTY_PILE, FLIGHT_MS, flinchFor, impactDelayMs, landingHoldMs, landingTier, landSquashScale, NO_PILE, readThrownPlay, roundClosedWithWinner, settleForMotion, seatPoint, type ImpactTier, type PileLayers, type PileState, type ThrownPlayInput } from "@/components/flightPhysics";
@@ -656,7 +656,7 @@ export interface PileFlightInput extends Omit<ThrownPlayInput, "combo" | "played
    * owns `useTableFeedback`, and `tests/native` loads this module on its own,
    * where the audio native module has no JS implementation to import.
    */
-  playImpact: (heavy: boolean, dir: FlyDirection, comboType: CombinationType) => void;
+  playImpact: (heavy: boolean, dir: FlyDirection, cards: number) => void;
   shake: (tier: ImpactTier) => void;
   burst: (tier: ImpactTier) => void;
   celebrateFlush: () => void;
@@ -865,7 +865,7 @@ export function usePileFlight({
         handOver: gameOver,
         matchOver: matchOverRef.current,
       });
-      playImpact(thrown.heavy, thrown.dir, combo.type);
+      playImpact(thrown.heavy, thrown.dir, combo.cards.length);
       shake(tier);
       clearFeltDim();
       burst(tier);

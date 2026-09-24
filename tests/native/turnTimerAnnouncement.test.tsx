@@ -8,7 +8,8 @@ import React from 'react';
 import { act, render, screen } from '@testing-library/react-native';
 
 jest.mock('@/lib/device/sounds', () => ({
-  playUrgentTick: jest.fn(async () => {}),
+  playClockRunningOut: jest.fn(async () => {}),
+  stopClockRunningOut: jest.fn(async () => {}),
   ensureAudioMode: jest.fn(async () => {}),
 }));
 

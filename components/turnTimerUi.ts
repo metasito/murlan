@@ -87,20 +87,20 @@ export function playButtonLabel(opts: {
   return "tooLow";
 }
 
-/** Seconds left at which the countdown starts ticking audibly. */
-export const URGENT_TICK_SECONDS = 5;
+/** Seconds left at which the clock-running-out sound starts. */
+export const CLOCK_RUNNING_OUT_SECONDS = 4;
 /** …and the share of the clock it spends visibly urgent. */
 const URGENT_FRACTION = 0.4;
 
 /**
  * When the countdown turns red, given how long it runs for. Proportional
  * rather than fixed because a five-second warning on a short clock arrives
- * too late to act on. The audible tick keeps its own fixed, later
+ * too late to act on. The clock-running-out sound keeps its own fixed, later
  * threshold — a warning you can see for twelve seconds is fine, one you can
  * hear for twelve seconds is nagging.
  */
 export function urgentThresholdSeconds(clockSeconds: number): number {
-  return Math.max(URGENT_TICK_SECONDS, Math.ceil(clockSeconds * URGENT_FRACTION));
+  return Math.max(CLOCK_RUNNING_OUT_SECONDS, Math.ceil(clockSeconds * URGENT_FRACTION));
 }
 
 /**

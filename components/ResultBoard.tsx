@@ -5,7 +5,7 @@
 // Every glyph is a literal here rather than a prop the callers pass: the icon
 // subset resolver follows a prop back to its call sites, and a name it cannot
 // resolve ships as a blank box with no error (tests/tooling/iconSubset.test.ts).
-import React, { useCallback, useEffect, useRef } from "react";
+import React, { useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -31,12 +31,10 @@ import Animated, {
   withRepeat,
   Easing,
 } from "react-native-reanimated";
-import { scheduleOnRN } from "react-native-worklets";
 import { LinearGradient } from "expo-linear-gradient";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { hapticSelection } from "@/lib/device/haptics";
-import { playCountComplete } from "@/lib/device/sounds";
 import {
   Colors,
   FontSize,
@@ -116,12 +114,6 @@ function RankCard({
   const count = useSharedValue(row.total - row.points);
   const chip = useSharedValue(0);
   const chipY = useSharedValue(Spacing.xs);
-  const counted = useRef(false);
-  const countDone = useCallback(() => {
-    if (counted.current || !isWinner) return;
-    counted.current = true;
-    playCountComplete();
-  }, [isWinner]);
   useEffect(() => {
     opacity.value = withDelay(
       delay,
@@ -131,18 +123,10 @@ function RankCard({
     const counting = delay + motionMs("travel", reduceMotion);
     chip.value = withDelay(counting, withTiming(1, { duration: motionMs("shift", reduceMotion) }));
     chipY.value = reduceMotion ? 0 : withDelay(counting, withTiming(0, { duration: motionMs("shift", reduceMotion) }));
-    if (reduceMotion) {
-      count.value = row.total;
-      countDone();
-      return;
-    }
-    count.value = withDelay(
-      counting,
-      withTiming(row.total, { duration: motionMs("reveal", reduceMotion) }, (finished) => {
-        if (finished) scheduleOnRN(countDone);
-      })
-    );
-  }, [chip, chipY, count, countDone, delay, opacity, reduceMotion, row.total, tx]);
+    count.value = reduceMotion
+      ? row.total
+      : withDelay(counting, withTiming(row.total, { duration: motionMs("reveal", reduceMotion) }));
+  }, [chip, chipY, count, delay, opacity, reduceMotion, row.total, tx]);
   const anim = useAnimatedStyle(() => ({
     opacity: opacity.value,
     transform: [{ translateX: tx.value }],

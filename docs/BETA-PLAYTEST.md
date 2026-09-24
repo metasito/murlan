@@ -79,12 +79,12 @@ Record the result next to each line: ✅, or what happened.
 - [ ] Turn the phone's text size up to maximum and look at the table. Is anything clipped?
 - [ ] Turn on the OS "reduce motion" setting and play a card.
 - [ ] Still with "reduce motion" on, win a hand. Does the celebration buzz once, not twice?
-- [ ] Turn the volume up. Do you hear all twelve effects: selecting a card
-      (`card_select`), playing one (`card_play`), passing (`card_pass`), a bomb
-      (`bomb`), the deal (`deal`), your turn arriving (`your_turn`), the countdown
-      running out (`urgent_tick`), a hand starting (`round_start`) and won
-      (`round_win`), the exchange (`exchange`), and the match won (`game_win`) or
-      lost (`game_lose`)?
+- [ ] Turn the volume up. Do you hear every table effect: selecting a card
+      (`select`), playing one (`play`) and several (`combo`), passing (`pass`), a
+      bomb (`bomb`), the deal (`deal`), your turn arriving (`turn`), the clock
+      running out (`clock_running_out`), a trick starting (`round_start`) and won
+      (`round_win`), the exchange (`exchange`), and the manche won (`manche_won`)
+      or lost (`manche_lost`)?
 
 ## What broke
 
