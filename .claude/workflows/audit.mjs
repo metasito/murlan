@@ -181,7 +181,7 @@ Check:
   },
   {
     key: 'i18n', model: 'sonnet', skills: [],
-    start: 'locales/, lib/i18n.ts, lib/relativeTime.ts, lib/cardNames.ts, server/http/mail.ts, server/http/templates/, lib/apiError.ts, tests/ui-rules/i18n.test.ts',
+    start: 'locales/, lib/i18n.ts, lib/relativeTime.ts, lib/cardNames.ts, server/http/mail.ts, lib/apiError.ts, tests/ui-rules/i18n.test.ts',
     refs: 'Key parity is already a compile error; the gaps are plurals, interpolation, overflow and server-originated text.',
     ask: `- Strings that bypass t(), including accessibility labels, emails, errors and push notifications.
 - it or sq values identical to en.
@@ -252,7 +252,7 @@ Also check:
   },
   {
     key: 'supply-chain', model: 'sonnet', skills: ['eas-app-stores'],
-    start: 'package.json, package-lock.json, skills-lock.json, app.json, eas.json, .github/workflows/, scripts/build.js',
+    start: 'package.json, package-lock.json, skills-lock.json, app.json, eas.json, .github/workflows/',
     refs: 'OWASP Top 10:2025 A03 (software supply chain); npm ci + audit in CI; Actions pinned by SHA with least-privilege permissions.',
     ask: `Run \`npm audit --omit=dev\` and \`npx expo install --check\`, and report the output.
 Then check:
