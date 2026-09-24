@@ -621,6 +621,19 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+      - name: Build the mockup side-by-side page
+        if: ${{ !cancelled() }}
+        run: node scripts/mockupParityPage.mjs playwright-report mockup-parity
+
+      - name: Keep the mockup side-by-side page
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: mockup-parity
+          path: mockup-parity/
+          if-no-files-found: error
+          retention-days: 30
+
       # The same merge, read out as JSON instead of thrown away as HTML — the
       # per-spec durations `tools/ci/e2e-timings.mjs` needs are otherwise
       # computed by this job and discarded with the runner (#841). Runs

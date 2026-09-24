@@ -2,6 +2,7 @@ import * as Haptics from "expo-haptics";
 import { Platform } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { SETTINGS_KEY } from "../storageKeys.ts";
+import { traceOnset } from "../e2eTrace.ts";
 
 // expo-haptics' web shim calls navigator.vibrate() per style, a no-op where
 // the Vibration API doesn't exist (iOS/desktop Safari) and real on Android
@@ -34,20 +35,24 @@ export function hapticsEnabled(): boolean {
   return _hapticsEnabled;
 }
 
-const guard = () => _hapticsEnabled && isHapticsPlatform;
+const fire = (name: string, run: () => Promise<void>) => {
+  if (!_hapticsEnabled || !isHapticsPlatform) return false;
+  traceOnset("haptic", name);
+  return run();
+};
 
-export const hapticSelection = () => guard() && Haptics.selectionAsync();
+export const hapticSelection = () => fire("hapticSelection", () => Haptics.selectionAsync());
 export const hapticLight = () =>
-  guard() && Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  fire("hapticLight", () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light));
 export const hapticMedium = () =>
-  guard() && Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+  fire("hapticMedium", () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium));
 export const hapticHeavy = () =>
-  guard() && Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+  fire("hapticHeavy", () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy));
 export const hapticRigid = () =>
-  guard() && Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Rigid);
+  fire("hapticRigid", () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Rigid));
 export const hapticSuccess = () =>
-  guard() && Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  fire("hapticSuccess", () => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success));
 export const hapticError = () =>
-  guard() && Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+  fire("hapticError", () => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error));
 export const hapticWarn = () =>
-  guard() && Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+  fire("hapticWarn", () => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning));

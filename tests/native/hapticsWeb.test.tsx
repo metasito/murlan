@@ -16,7 +16,7 @@ const mocked = jest.mocked(Haptics);
 
 // expo-haptics' web shim calls navigator.vibrate() per style — real on Android
 // web, an inert no-op where the Vibration API doesn't exist (iOS/desktop
-// Safari). lib/device/haptics.ts's guard() must let that call through on web rather
+// Safari). lib/device/haptics.ts must let that call through on web rather
 // than short-circuiting before it, so Android web haptics are not blocked at
 // this layer.
 describe('lib/device/haptics on web', () => {

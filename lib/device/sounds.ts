@@ -1,5 +1,6 @@
 import type { AudioPlayer } from "expo-audio";
 import { Platform } from "react-native";
+import { traceOnset } from "../e2eTrace.ts";
 
 // Effects are CC0 recordings, built by scripts/build-sounds.mjs and shipped as
 // 44.1 kHz mono MP3. MP3 rather than the sources' OGG because iOS will not
@@ -273,6 +274,7 @@ const jitter = (rng: () => number, spread: number) => 1 + (rng() * 2 - 1) * spre
 
 async function play(key: SoundKey, volume: number, rate = 1, vary?: () => number): Promise<void> {
   if (!_soundsEnabled || _masterVolume === 0) return;
+  traceOnset("sound", key);
   const level = Math.min(1, volume * _masterVolume * (vary ? jitter(vary, 0.08) : 1));
   const pitch = rate * (vary ? jitter(vary, 0.04) : 1);
   const asset = ASSETS[key]();

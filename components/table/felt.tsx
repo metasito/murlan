@@ -32,6 +32,7 @@ import { Colors, Lantern } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import type { FeltStops } from "@/lib/cosmetics";
 import { FeltBreath } from "@/components/table/feltBreath";
+import { useTraceSource } from "@/lib/e2eTrace";
 
 // Every radial here is an ellipse, and the box it is painted into is what
 // states its shape. Neither of the two ways of saying so on the gradient itself
@@ -202,6 +203,7 @@ export function FeltPool({
       : { left: x.value, top: y.value };
 
   const poolStyle = useAnimatedStyle(atLamp);
+  useTraceSource("lamp", () => ({ x: x.value, y: y.value, level: null, flare: null }));
   // Its own hook, and the same two values: an animated style binds to one
   // view, so the nap cannot share the pool's. Reading the values rather than
   // running a second `withTiming` is what makes the two unable to part company
