@@ -363,8 +363,8 @@ describe("no Expo Go deployment exists", () => {
   });
 
   test("the static build script and the QR page are gone", () => {
-    for (const rel of ["scripts/build.js", "server/http/templates/landing-page.html"]) {
-      assert.equal(existsSync(path.join(repoRoot, rel)), false, `${rel} is back`);
+    for (const rel of [["scripts", "build.js"], ["server", "http", "templates", "landing-page.html"]]) {
+      assert.equal(existsSync(path.join(repoRoot, ...rel)), false, `${rel.join("/")} is back`);
     }
   });
 });
