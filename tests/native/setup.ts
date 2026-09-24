@@ -38,6 +38,21 @@ jest.mock('@/components/AppModal', () => {
   };
 });
 
+// Skia is a native renderer with nothing to draw into here, and its own mock needs CanvasKit
+// loaded by a test environment of its own. The felt carries no game information (#1244), so
+// every drawing call stands in as a no-op and every element renders only its children.
+jest.mock('@shopify/react-native-skia', () => {
+  const React = require('react') as typeof import('react');
+  const call: object = new Proxy(function () {}, {
+    get: (_, key) => (key === 'then' ? undefined : call),
+    apply: () => call,
+  });
+  const element = ({ children }: { children?: React.ReactNode }) => React.createElement(React.Fragment, null, children);
+  return new Proxy({ Skia: call, FillType: {}, PaintStyle: {} } as Record<string | symbol, unknown>, {
+    get: (known, key) => (key === '__esModule' ? true : key in known ? known[key] : element),
+  });
+});
+
 // expo/fetch extends a native Response that does not exist here, so `import`ing
 // it throws at module load — before any test runs — for every file that reaches
 // lib/query-client. The platform's own fetch has the interface the app uses.

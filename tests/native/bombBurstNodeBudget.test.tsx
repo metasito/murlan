@@ -12,8 +12,10 @@
 import { describe, it, expect } from "@jest/globals";
 import React from "react";
 import { render } from "@testing-library/react-native";
+import { makeMutable } from "react-native-reanimated";
 import { BombBurst, LampLift } from "@/components/table/moments";
 import { SPARK_COUNT } from "@/components/flightPhysics";
+import { restingLamp } from "@/components/table/lampRig";
 
 /** The prototype's own figure (#765's issue body). */
 const NODE_BUDGET = 24;
@@ -119,7 +121,7 @@ describe("the bomb burst's own node budget (#765)", () => {
   });
 
   it("the lamp lift's own layers actually paint something, not a transparent fill", async () => {
-    const r = await render(<LampLift trigger={1} scale={1} x={100} y={100} />);
+    const r = await render(<LampLift trigger={1} scale={1} rig={{ lamp: makeMutable(restingLamp("bottom")), sx: 1, sy: 1 }} />);
 
     const lift = findByTestID(r.toJSON(), "lamp-lift");
     const layers = directChildren(lift);

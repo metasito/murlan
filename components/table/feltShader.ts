@@ -73,8 +73,8 @@ vec4 cloth(vec2 p){
 /** Skia's: `xy` arrives in the table's design points, the felt canvas scales it there. */
 export const CLOTH_SKSL = `${UNIFORMS}\n${CLOTH_BODY}\nhalf4 main(vec2 xy){return half4(cloth(xy));}`;
 
-/** WebGL's, for the fallback's bake: the mockup's own `gl_FragCoord` mapping. */
-export const CLOTH_GLSL = `precision highp float;\nuniform vec2 uRes;\n${UNIFORMS}\n${CLOTH_BODY}\nvoid main(){gl_FragColor=cloth(vec2(gl_FragCoord.x,uRes.y-gl_FragCoord.y)/uK);}`;
+/** WebGL's, for the fallback's bake: the mockup's own `gl_FragCoord` mapping, `uPx` device pixels a point on each axis. */
+export const CLOTH_GLSL = `precision highp float;\nuniform vec2 uRes,uPx;\n${UNIFORMS}\n${CLOTH_BODY}\nvoid main(){gl_FragColor=cloth(vec2(gl_FragCoord.x,uRes.y-gl_FragCoord.y)/uPx);}`;
 
 export type ClothUniforms = Record<string, number | number[]>;
 

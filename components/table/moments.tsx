@@ -33,6 +33,7 @@ import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTraceSource } from "@/lib/e2eTrace";
 import { sparkOffset, SPARK_COUNT, type FlareKind } from "@/components/flightPhysics";
 import { Layer, makeShadow, withAlpha, Motion, Scrim } from "@/lib/theme";
+import type { LampRig } from "@/components/table/useLampRig";
 
 // The prototype's own literal colours for this one effect — a lamp exploding
 // at the pile is a brighter, whiter flash than the felt's own ambient
@@ -40,8 +41,8 @@ import { Layer, makeShadow, withAlpha, Motion, Scrim } from "@/lib/theme";
 // and CLAUDE.md's invariant against a token used outside the role it was
 // named for rules those out here.
 //
-// Neither `Flare` nor `LampLift` animate an `<Svg>`. `felt.tsx`'s own
-// comments record, from #209, that react-native-svg's native path paints at
+// Neither `Flare` nor `LampLift` animate an `<Svg>`. #209 recorded that
+// react-native-svg's native path paints at
 // its own laid-out bounds and does not move with a `transform` on an
 // ancestor view — a bug this codebase has already paid for twice, and one no
 // device access this session can re-verify a variant of. Both animate a
@@ -423,10 +424,8 @@ export function BombBurst({
 // The manche rung's own reaction (#765): a lift rather than a flare, since a
 // manche closing is the expected ending and hands over to the round-winner
 // banner rather than surprising the table the way a bomb or a partita does.
-// A brightening-and-swelling pulse over the lamp's own position, never the
-// lamp rig itself — `felt.tsx`'s own comments record the native-only cost of
-// wrapping its `<Svg>` in a *repositioning* transform, and this needs none of
-// that: it never moves, it only glows in place.
+// A brightening-and-swelling pulse over the lamp's own position, read from
+// the rig rather than kept here.
 
 const LIFT_SIZE = 130;
 const LIFT_MS = 900;
@@ -435,21 +434,15 @@ const LIFT_Z = Layer.felt;
 const LIFT_SCALE_FROM = 0.7;
 const LIFT_SCALE_TO = 1.35;
 
-/**
- * `x`/`y` are the lamp's own centre in the felt box's own pixels —
- * `lightPosition` (seatLayout.ts) resolved against the felt's width and
- * height, the same point `FeltPool` is already drawn at.
- */
+/** It glows where the rig's light stands, swayed; it keeps no lamp position of its own. */
 export function LampLift({
   trigger,
   scale,
-  x,
-  y,
+  rig,
 }: {
   trigger: number;
   scale: number;
-  x: number;
-  y: number;
+  rig: Pick<LampRig, "lamp" | "sx" | "sy">;
 }) {
   const reduceMotion = usePrefersReducedMotion();
   const opacity = useSharedValue(0);
@@ -475,12 +468,17 @@ export function LampLift({
     [opacity, scaleV]
   );
 
+  const size = LIFT_SIZE * scale;
+  const { lamp, sx, sy } = rig;
   const aStyle = useAnimatedStyle(() => ({
     opacity: opacity.value,
-    transform: [{ scale: scaleV.value }],
+    transform: [
+      { translateX: lamp.value.lx * sx - size / 2 },
+      { translateY: lamp.value.ly * sy - size / 2 },
+      { scale: scaleV.value },
+    ],
   }));
 
-  const size = LIFT_SIZE * scale;
   // Static — see `Flare`'s own `glow` above.
   const glow = makeShadow(LIFT_GLOW, 0, 0, 1, size * 0.5, 8);
   return (
@@ -489,7 +487,7 @@ export function LampLift({
       testID="lamp-lift"
       style={[
         momentStyles.centered,
-        { left: x - size / 2, top: y - size / 2, width: size, height: size, zIndex: LIFT_Z },
+        { left: 0, top: 0, width: size, height: size, zIndex: LIFT_Z },
         glow,
         aStyle,
       ]}
@@ -613,8 +611,7 @@ const momentStyles = StyleSheet.create({
     justifyContent: "center",
   },
   // A zero-size point at the impact centre — Flare/Wave/Spark each centre on
-  // it with their own negative half-size offset, the same anchor felt.tsx's
-  // lamp hangs its own radials off.
+  // it with their own negative half-size offset.
   anchor: { position: "absolute", width: 0, height: 0 },
   centered: { position: "absolute" },
 });

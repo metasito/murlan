@@ -1,0 +1,124 @@
+import { useCallback, useEffect, useMemo } from "react";
+import { runOnUI, useFrameCallback, useSharedValue, type FrameInfo, type SharedValue } from "react-native-reanimated";
+import { usePrefersReducedMotion } from "@/lib/accessibility";
+import { useTraceSource } from "@/lib/e2eTrace";
+import { designScale, lampControls, restingLamp, stepLamp, type Lamp, type LampTarget } from "./lampRig";
+
+/** The mockup's `deal` chapter: the lamp comes up from 75% as the cards fly. */
+const BREATH_FROM = 0.75;
+const BREATH_RATE = 2.2;
+
+export interface LampRig {
+  lamp: SharedValue<Lamp>;
+  /** Design points to the felt box's own. */
+  sx: number;
+  sy: number;
+  flare(): void;
+  kick(): void;
+  setLevel(to: number, rate: number): void;
+  freeze(amount: number): void;
+}
+
+export function useLampRig({
+  target,
+  fresh,
+  width,
+  height,
+}: {
+  target: LampTarget;
+  /** A deal is starting: the lamp breathes up with it. */
+  fresh: boolean;
+  width: number;
+  height: number;
+}): LampRig {
+  const reduceMotion = usePrefersReducedMotion();
+  const reduced = useSharedValue(reduceMotion);
+  const lamp = useSharedValue<Lamp>(restingLamp(target, fresh ? BREATH_FROM : 1));
+
+  useEffect(() => {
+    reduced.value = reduceMotion;
+  }, [reduceMotion, reduced]);
+
+  useFrameCallback(
+    useCallback(
+      (frame: FrameInfo) => {
+        "worklet";
+        const dt = (frame.timeSincePreviousFrame ?? 0) / 1000;
+        lamp.modify((s) => {
+          "worklet";
+          stepLamp(s, dt, reduced.value);
+          return s;
+        }, true);
+      },
+      [lamp, reduced]
+    )
+  );
+
+  useEffect(() => {
+    runOnUI((to: LampTarget) => {
+      "worklet";
+      lamp.modify((s) => {
+        "worklet";
+        lampControls.setTarget(s, to, reduced.value);
+        return s;
+      }, true);
+    })(target);
+  }, [target, lamp, reduced]);
+
+  useEffect(() => {
+    if (!fresh) return;
+    runOnUI(() => {
+      "worklet";
+      lamp.modify((s) => {
+        "worklet";
+        s.lvl = BREATH_FROM;
+        lampControls.setLevel(s, 1, BREATH_RATE);
+        return s;
+      }, true);
+    })();
+  }, [fresh, lamp]);
+
+  const { sx, sy } = designScale(width, height);
+  useTraceSource(
+    "lamp",
+    useCallback(() => {
+      const s = lamp.value;
+      return { x: s.lx * sx, y: s.ly * sy, level: s.level, flare: s.f };
+    }, [lamp, sx, sy])
+  );
+
+  return useMemo(() => {
+    const control = (apply: (s: Lamp, r: boolean) => void) => () =>
+      runOnUI(() => {
+        "worklet";
+        lamp.modify((s) => {
+          "worklet";
+          apply(s, reduced.value);
+          return s;
+        }, true);
+      })();
+    return {
+      lamp,
+      sx,
+      sy,
+      flare: control((s, r) => {
+        "worklet";
+        lampControls.flare(s, r);
+      }),
+      kick: control((s, r) => {
+        "worklet";
+        lampControls.kick(s, r);
+      }),
+      setLevel: (to, rate) =>
+        control((s) => {
+          "worklet";
+          lampControls.setLevel(s, to, rate);
+        })(),
+      freeze: (amount) =>
+        control((s) => {
+          "worklet";
+          lampControls.freeze(s, amount);
+        })(),
+    };
+  }, [lamp, reduced, sx, sy]);
+}

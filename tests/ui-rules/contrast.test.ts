@@ -77,7 +77,7 @@ const SURFACES = {
 } as const;
 
 // --- The felt is a gradient, and Colors.felt is only its middle stop --------
-// components/table/felt.tsx lays the five stops along the lamp's own falloff.
+// components/table/feltShader.ts lays the five stops along the lamp's own falloff.
 // The cloth directly under the lamp is several times the relative luminance of
 // the stop this file used to measure, so a token could pass here at 4.60 and
 // render at 3.43 where it is actually drawn.

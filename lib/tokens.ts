@@ -151,25 +151,6 @@ export const CardFaceGradient = [
 // what lands on them. Every entry is translucent for that reason — a lit
 // surface is the surface plus the light, never a colour of its own.
 export const Lantern = {
-  // The pool itself: a warm core, then nothing.
-  core:     'rgba(255,242,208,0.26)',
-  coreMid:  'rgba(255,226,172,0.09)',
-  bloom:    'rgba(255,236,190,0.12)',
-  clear:    'rgba(255,242,208,0)',
-  // The weave, crossing at 45: shadow between the threads, deeper one way than
-  // the other. Both must stay black — a shadow scales the light that reached
-  // it, so the crosshatch tracks the lamp with nothing moving, and a thread
-  // that adds light instead reads loudest on the darkest felt
-  // (tests/ui-rules/feltWeave.test.ts).
-  weaveShade:      'rgba(0,0,0,0.085)',
-  weaveShadeCross: 'rgba(0,0,0,0.035)',
-  // The pile standing off that weave, where the light rakes across the fibres.
-  // Shares `clear`'s hue: SVG blends stops non-premultiplied, so two hues
-  // either side of a transparent stop read as grey at half strength.
-  napSheen: 'rgba(255,242,208,0.055)',
-  // Real darkness past the falloff, and the vignette over all of it.
-  vignette:      'rgba(0,0,0,0.5)',
-  vignetteClear: 'rgba(0,0,0,0)',
   // A card standing in a hand has its head nearer a hanging lamp than its
   // foot. The `-on` pair is the same card in the seat that is on move.
   headLit:     'rgba(255,240,205,0.26)',
@@ -215,9 +196,9 @@ export const Gradient = {
 
 // Table felts, from the cloth directly under the lamp out to the cloth at the
 // edge of its reach. Order is the falloff order, and it is a falloff rather
-// than a wash: `FeltPool` (components/table/felt.tsx) lays these along a radial
-// that ends in the room's own darkness, so the first stop is the cloth lit and
-// the last is the cloth barely lit.
+// than a wash: the cloth shader (components/table/feltShader.ts) lays these
+// along the lamp's falloff, so the first stop is the cloth lit and the last is
+// the cloth barely lit.
 //
 // Every alternate is at or below the green's luminance at every stop, so the
 // contrast ratios tests/ui-rules/contrast.test.ts pins against `Colors.felt` are a

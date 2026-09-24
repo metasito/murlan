@@ -1,5 +1,5 @@
 // tests/e2e/tableMoments.spec.ts — #1102's four table moments, sampled live:
-// the felt opens dim and settles, an opponent's hand ramps in as it lands, a
+// the lamp comes up with the deal, an opponent's hand ramps in as it lands, a
 // flown card's raised shadow drops once it is down, and a won partita dusts gold.
 import { test, expect, type Page } from "@playwright/test";
 import { openApp } from "./helpers/navigation";
@@ -16,7 +16,7 @@ const LEFT_SEAT_HAND = 13;
 
 interface EntryFrame {
   t: number;
-  breath: number | null;
+  level: number | null;
   leftCount: string | null;
 }
 
@@ -24,15 +24,16 @@ async function watchEntry(page: Page, windowMs: number): Promise<void> {
   await page.evaluate((windowMs) => {
     const state = { frames: [] as EntryFrame[], done: false };
     (window as unknown as { __entry: typeof state }).__entry = state;
+    const trace = (window as unknown as { murlanTrace: { start(): void; frames: { lamp: { level: number | null } | null }[] } }).murlanTrace;
+    trace.start();
     const started = performance.now();
     const step = () => {
-      const breath = document.querySelector('[data-testid="felt-breath"]');
       const count = document.querySelector(
         '[data-testid="side-seat-left"] [data-testid="seat-card-count"]'
       );
       state.frames.push({
         t: performance.now() - started,
-        breath: breath ? Number(getComputedStyle(breath).opacity) : null,
+        level: trace.frames.at(-1)?.lamp?.level ?? null,
         leftCount: count ? count.textContent : null,
       });
       if (performance.now() - started < windowMs) requestAnimationFrame(step);
@@ -70,17 +71,17 @@ async function openFreshTable(page: Page, baseURL: string): Promise<EntryFrame[]
 }
 
 test.describe("table entry", () => {
-  test("the felt opens dim and settles to rest as the table appears", async ({ page, baseURL }) => {
+  test("the lamp comes up from 75% as the table is dealt", async ({ page, baseURL }) => {
     test.setTimeout(60_000);
     await page.setViewportSize(VIEWPORT);
     const frames = await openFreshTable(page, baseURL!);
 
-    const opening = frames.find((f) => f.breath !== null)!;
-    expect(opening, "the felt never rendered").toBeTruthy();
-    expect(opening.breath, "the felt opens already at rest").toBeGreaterThan(0.1);
+    const opening = frames.find((f) => f.level !== null)!;
+    expect(opening, "the lamp never rendered").toBeTruthy();
+    expect(opening.level, "the lamp opens already at full").toBeLessThan(0.8);
 
     const rest = frames[frames.length - 1];
-    expect(rest.breath, "the felt never settles to rest").toBeLessThan(0.05);
+    expect(rest.level, "the lamp never comes up to full").toBeGreaterThan(0.97);
 
     await test.info().attach("table-entry-settled.png", {
       body: await page.screenshot(),

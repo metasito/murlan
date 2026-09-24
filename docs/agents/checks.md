@@ -160,8 +160,7 @@ platform this app ships as.
 - **`<RadialGradient rx ry>` is ignored on web** — SVG has no `rx`/`ry` on `radialGradient`, so the
   browser falls back to `r="50%"`; native's `extractGradient` is what actually reads them
   (`rx: rx || r`). Shape the ellipse on the **rect** (`2*rx` by `2*ry`) and leave the gradient's
-  `r` at its default — the inscribed ellipse on both renderers. `tests/ui-rules/vignette.test.ts`
-  pins that no radial shapes itself instead.
+  `r` at its default — the inscribed ellipse on both renderers.
 - **Text is rasterised before transform** — a scaled container blurs its own label. Scale
   `fontSize`, never the box.
 - `overflow: "clip"`, `willChange` and `boxShadow` are real on web and not (or partly) on native —
@@ -214,7 +213,7 @@ one that doesn't needs a device capture (above).
 
 Rule 6: a scan must fail on a planted defect. A scan that never found anything and a scan that
 can't see anything produce the identical empty list — the convention here is a `// The floor…`
-comment (about seventy files carry it, e.g. `tests/ui-rules/vignette.test.ts`,
+comment (about seventy files carry it, e.g. `tests/ui-rules/feltWeave.test.ts`,
 `tests/tooling/bundleRoutes.test.ts`; grepping the literal phrase undercounts it —
 `tests/ui-rules/a11yProps.test.ts` does it under a name of its own).
 

@@ -9,6 +9,12 @@ export const RAIL = {
   line: { w: 1, c: "#b8923f" },
 } as const;
 
+/** The dark the table stands in, outside the rail. */
+export const ROOM = "#040605";
+
+/** How dark the lamp's level takes the table at level 0: the mockup's `#shade`. */
+export const SHADE_MAX = 0.85;
+
 /** The band the rail fills, from the table's outer edge to the felt. */
 export const RAIL_BAND = RAIL.wood.w + RAIL.line.w;
 

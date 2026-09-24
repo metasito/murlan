@@ -9,6 +9,8 @@ export interface TraceFrame {
   dropped: number;
   lamp: { x: number; y: number; level: number | null; flare: number | null } | null;
   shake: { x: number; y: number; rotate: number } | null;
+  /** Which felt is on screen: the web fallback until Skia has drawn its first frame. */
+  felt?: "skia" | "fallback" | null;
 }
 
 interface Sources {
@@ -16,6 +18,7 @@ interface Sources {
   dropped: () => number;
   lamp: () => NonNullable<TraceFrame["lamp"]>;
   shake: () => NonNullable<TraceFrame["shake"]>;
+  felt: () => "skia" | "fallback";
 }
 
 export interface TraceRecorder {
@@ -29,6 +32,7 @@ const sources: { [K in keyof Sources]: Set<Sources[K]> } = {
   dropped: new Set(),
   lamp: new Set(),
   shake: new Set(),
+  felt: new Set(),
 };
 let recording = false;
 let pending: string[] = [];
@@ -56,6 +60,7 @@ if (process.env.EXPO_PUBLIC_E2E_FAST === "1") {
       dropped: sum(sources.dropped),
       lamp: last(sources.lamp),
       shake: last(sources.shake),
+      felt: last(sources.felt),
     });
     requestAnimationFrame(tick);
   };
