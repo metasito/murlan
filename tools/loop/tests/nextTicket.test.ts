@@ -1,12 +1,30 @@
 // #293
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { classify, pickRoute, claimedElsewhere, sizeOf, stranded } from "../next-ticket.mjs";
+import { classify, pickRoute, claimedElsewhere, routeOf, sizeOf, stranded } from "../next-ticket.mjs";
 import { importUnderShellGuard } from "../../../tests/helpers/importShellGuard.ts";
 
-function issue(number: number, labelNames: string[]) {
-  return { number, title: `issue ${number}`, labels: labelNames.map((name) => ({ name })) };
+function issue(number: number, labelNames: string[], author_association = "OWNER") {
+  return { number, title: `issue ${number}`, labels: labelNames.map((name) => ({ name })), author_association };
 }
+
+describe("an issue opened from outside the repo", () => {
+  test("never reaches an agent, whatever it is labelled", () => {
+    for (const association of ["NONE", "CONTRIBUTOR", "FIRST_TIME_CONTRIBUTOR", "MEMBER", undefined]) {
+      for (const labels of [[], ["needs-triage"], ["ready-for-agent"], ["wayfinder:task"]]) {
+        const stranger = { ...issue(1, labels), author_association: association };
+        const b = classify([stranger]);
+        assert.equal(routeOf(stranger), null, `${association} ${labels}`);
+        assert.deepEqual(b.owner.map((i) => i.number), [1], `${association} ${labels}`);
+      }
+    }
+  });
+
+  test("a collaborator's issue is routed as before", () => {
+    assert.equal(routeOf(issue(1, [], "COLLABORATOR")), "triage");
+    assert.equal(routeOf(issue(1, ["ready-for-agent"], "COLLABORATOR")), "implement");
+  });
+});
 
 describe("classify's bucketing", () => {
   test("an unlabelled issue routes to triage, not to the owner", () => {
@@ -124,8 +142,8 @@ describe("a ticket stranded between CI rounds", () => {
   });
 
   test("a stranded ticket reaches the frontier ahead of fresh work", () => {
-    const fresh = { number: 1100, title: "u", labels: [{ name: "ready-for-agent" }] };
-    const io = { openPr: (n: number) => n === 1043, liveWorktrees: () => new Set<number>() };
+    const fresh = issue(1100, ["ready-for-agent"]);
+    const io ={ openPr: (n: number) => n === 1043, liveWorktrees: () => new Set<number>() };
     assert.deepEqual(
       classify([fresh, inProgress], io).frontier.map((i) => i.number),
       [1043, 1100],
