@@ -765,7 +765,7 @@ export function GameTable({
       rejectPlay();
       return;
     }
-    // Haptic only: the throw is acknowledged in the hand, and card_play sounds
+    // Haptic only: the throw is acknowledged in the hand, and the landing sounds
     // when the card actually reaches the pile.
     hapticSelection();
     // The validated set, not the raw selection: the server rejects — silently —
