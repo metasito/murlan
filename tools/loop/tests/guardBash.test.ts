@@ -42,7 +42,7 @@ const guard = (cmd: string) => check(cmd, device, repo);
 const ADD = /pathspec/;
 const DISCARD = /Edit tool/;
 const FORCE_DELETE = /worktrees:remove/;
-const DEVICE = /dispatches them on its own branch/;
+const DEVICE = /device workflows only on its own branch/;
 const UNREADABLE = /literal id/;
 const MERGE = /not yours to merge/;
 const PIPED = /Piping a Playwright run/;

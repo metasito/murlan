@@ -24,7 +24,7 @@ instead of sitting unguarded in prose.
 | Anything with **layout** (flex, absolute, transform) | Playwright | which side of the screen it is on | Docker + a built web bundle | ~35s |
 | Anything **visual** (colour, gradient, shadow, size) | pixel-sample two PNGs on the same grid | pixels vs the prototype | Docker + a built web bundle | ~40s |
 | Tokens, contrast, roles | `node --test tests/ui-rules/{contrast,tokenRoles,cosmetics}.test.ts` | AA floors | nothing | ~1s |
-| Must **boot and stay drivable on iOS** | `.github/workflows/ios.yml`, dispatched (below) | a crash, a screen that never renders, a control the flows tap going missing — on a real simulator | a device dispatch | ~23 min warm, ~28–46 min cold |
+| Must **boot and stay drivable on iOS** | `.github/workflows/ios.yml`, dispatched, and twice a week on `main` (below) | a crash, a screen that never renders, a control the flows tap going missing — on a real simulator | a device dispatch | ~23 min warm, ~28–46 min cold |
 | Must **boot and stay drivable on Android** | `.github/workflows/maestro.yml`, same trigger policy | same, on a virtual device — the only one that logs a native crash | a device dispatch | not yet green in the release-APK shape; #1206 landed the build-time and emulator fixes |
 | The ticket loop (`tools/loop/`) | `npm run loop:test` | the supervisor, the gate, the picker, the workspace tools | nothing | ~40s |
 
@@ -75,11 +75,12 @@ none sits at the top of `tests/` (`tests/tooling/repoLayout.test.ts`).
 `.github/workflows/ios.yml` builds a release `.app`; `maestro.yml` compiles a release APK. Both
 drive `smoke` → `offline-game` → `exchange-phase` → `rematch-prompt` on a real simulator or
 emulator. A ticket dispatches them from its own branch when its work needs a device run
-(`gh workflow run ios.yml --ref agent/<n>-<slug>`), and every merge to `main` runs both, so a
-branch's first run restores main's native build instead of compiling it cold (iOS 25 min, Android
-8) — the cache is branch-scoped and a branch can read only its own and main's. By the owner's
-decision; a red run is diagnosed from its artifacts, never rerun. `gh run list --workflow=ios.yml` (or `maestro.yml`) is
-current status. **These two release builds are the only device path**: a release build carries its
+(`gh workflow run ios.yml --ref agent/<n>-<slug>`), and both run on `main` twice a week: a branch
+can read only its own cache and main's, so a branch's first run restores main's native build
+instead of compiling it cold, and a cache unread for 7 days is evicted. By the owner's decision; a
+red run is diagnosed from its artifacts, never rerun. `gh run list --workflow=ios.yml --branch
+agent/<n>-<slug>` (or `maestro.yml`) is a ticket's current status — without `--branch` the list
+mixes in main's scheduled runs. **These two release builds are the only device path**: a release build carries its
 own bundle, so no packager, dev server or `adb reverse` is involved, and the flows take the app id
 from `MAESTRO_APP_ID` with no default. No host client can stand in for them: a host's dev-menu
 window sits above the app's own and eats the touch — `tapOn` reports `COMPLETED` regardless
@@ -356,7 +357,8 @@ via `git diff`, so an uncommitted edit counts but an untracked file doesn't show
 
 Verified intended, not stale:
 
-- The iOS/Android device jobs run on dispatch and on a merge to `main`, never gating a PR — not an
-  oversight to "fix" by scheduling them or wiring them into `ci.yml`.
+- The iOS/Android device jobs run on dispatch and on a twice-weekly schedule on `main` that keeps
+  its native-build cache from eviction, never gating a PR — not an oversight to "fix" by running
+  them on `push` or wiring them into `ci.yml`.
 - `MURLAN_PREFLIGHT_WAIT_MS` defaults to waiting rather than failing fast, on purpose; `--no-wait`/
   `=0` is the opt-out, not the default.
