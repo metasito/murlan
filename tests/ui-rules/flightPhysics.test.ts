@@ -1503,7 +1503,6 @@ describe("exchangeFlight", () => {
       ...PHONE,
       insets: { top: 0, bottom: 21, left: 59, right: 0 },
       scale: phoneScale,
-      railSide: "left",
     });
     const GEOMETRIES = [
       { name: "the reference window", g: frame, sides: sideDisplayedCounts },

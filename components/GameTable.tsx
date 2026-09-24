@@ -83,7 +83,6 @@ import { GameSettingsSheet } from "@/components/table/settingsSheet";
 import { useTableFeedback } from "@/components/useTableFeedback";
 import { useHandOrder } from "@/components/useHandOrder";
 import { useSameCards } from "@/components/useSameCards";
-import { useRailSide } from "@/components/useRailSide";
 import { FlyingCards, PlayedPile, SweepCards, getComboLabel, usePileFlight } from "@/components/table/pile";
 import { warmCourtArt } from "@/components/CardView";
 import { BombBurst, FeltScrim, LampLift, Sweep } from "@/components/table/moments";
@@ -327,7 +326,6 @@ export function GameTable({
   // session's own choice, not a stored preference — sound, music and
   // vibration are the persisted ones, which the sheet reads for itself.
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const railSide = useRailSide(Math.max(insets.left, insets.right));
   // Who opens the manche, held over the table for as long as that opening has
   // yet to be played. The opening ending is what turns the sentence into a
   // statement about the past, so it is a condition of showing it at all rather
@@ -506,7 +504,7 @@ export function GameTable({
     [players, viewerSeat]
   );
 
-  const frame = computeTableFrame({ width: W, height: H, insets, scale, railSide });
+  const frame = computeTableFrame({ width: W, height: H, insets, scale });
 
   const seatGeometry = {
     viewerSeat,
@@ -1019,7 +1017,6 @@ export function GameTable({
         <ControlRail
           veiled={behindCoverOnly}
           width={frame.rail}
-          side={frame.railSide}
           topPad={frame.tableTop}
           bottomPad={frame.tableBottom}
           top={
@@ -1042,7 +1039,6 @@ export function GameTable({
         {settingsOpen && (
           <GameSettingsSheet
             rail={frame.rail}
-            railSide={frame.railSide}
             topPad={frame.tableTop}
             bottomPad={frame.tableBottom}
             scale={scale}

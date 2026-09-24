@@ -19,7 +19,6 @@ import { useIsLandscape, useOrientedWindow } from "@/lib/device/orientation";
 import { ControlRail, RailKnob } from "@/components/table/chrome";
 import { railWidth } from "@/components/tableFrame";
 import { cardScale, physicalTouchTarget } from "@/components/cardFaceModel";
-import { useRailSide } from "@/components/useRailSide";
 import Animated, {
   cancelAnimation,
   useAnimatedProps,
@@ -417,13 +416,10 @@ export function ResultBoard({
   const isLandscape = useIsLandscape();
   const { width, height } = useOrientedWindow();
   const scale = cardScale(Math.min(width, height));
-  const railSide = useRailSide(Math.max(leftPad, rightPad));
   // The same column, the same width, on the same edge as the table's own rail
   // (#191): a screen that reads the inset as padding shifts its content and
   // still loses whatever the cutout is wide enough to cover.
-  const rail = railWidth(railSide === "left" ? leftPad : rightPad, scale);
-  const bodyLeft = railSide === "left" ? rail : leftPad;
-  const bodyRight = railSide === "right" ? rail : rightPad;
+  const rail = railWidth(leftPad, scale);
   const knobSize = physicalTouchTarget(scale);
 
   const header = (
@@ -591,7 +587,6 @@ export function ResultBoard({
 
         <ControlRail
           width={rail}
-          side={railSide}
           topPad={topPad}
           bottomPad={bottomPad}
           top={homeKnob}
@@ -604,8 +599,8 @@ export function ResultBoard({
             {
               paddingTop: topPad,
               paddingBottom: bottomPad,
-              marginLeft: bodyLeft,
-              marginRight: bodyRight,
+              marginLeft: rail,
+              marginRight: rightPad,
             },
           ]}
         >
