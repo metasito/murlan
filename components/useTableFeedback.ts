@@ -39,6 +39,7 @@ import { hapticHeavy, hapticLight, hapticMedium, hapticRigid, hapticSuccess, hap
 import { handOutcomeFor } from "@/lib/game/matchState";
 import { cancelMusicDuck, duckMusicFor } from "@/lib/device/music";
 import { Motion, motionMs } from "@/lib/theme";
+import { traceOnset, useTraceSource } from "@/lib/e2eTrace";
 
 // The refusal shake on GIOCA: deliberately a third of the bomb's amplitude —
 // it is a "no", not an event. One leg duration for all four legs.
@@ -219,6 +220,7 @@ function useImpactFeedback(reduceMotion: boolean, screenShake: boolean, scale: n
   // `motionMs("shake", reduceMotion)` collapses the decay window the same way
   // every other step on the table does.
   const shake = (tier: ImpactTier) => {
+    traceOnset("moment", tier);
     const trauma = traumaFor(tier, reduceMotionRef.current, !screenShakeRef.current);
     const decayMs = motionMs("shake", reduceMotionRef.current);
     const amplitude = shakeAmplitudeFor(tier);
@@ -255,6 +257,13 @@ function useImpactFeedback(reduceMotion: boolean, screenShake: boolean, scale: n
     });
     return { transform: [{ translateX: x }, { translateY: y }, { rotate: `${rotate}deg` }] };
   });
+  useTraceSource("shake", () =>
+    shakeOffset(shakeTrauma.value, shakeElapsed.value, shakeDecayMs.value, scale, {
+      x: shakeAmpX.value,
+      y: shakeAmpY.value,
+      rotate: shakeAmpRotate.value,
+    })
+  );
 
   // Reanimated keeps driving shared values after unmount unless cancelled.
   useEffect(
