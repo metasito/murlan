@@ -1,7 +1,8 @@
 name: iOS UI (Maestro)
 
-# On demand only: a ticket whose work needs a device run dispatches it on its own branch
-# (`tools/loop/guard-bash.mjs`). Never on a schedule, `push` or `pull_request` (owner, 2026-09-22).
+# A ticket whose work needs a device run dispatches it on its own branch (`tools/loop/guard-bash.mjs`);
+# twice a week main runs it, so branches restore main's native-build cache, which GitHub evicts
+# after 7 days unread. Never on `push` or `pull_request` (owner, 2026-09-24).
 #
 # `macos-latest` is free on this repo's standard runners (the repo went
 # public in #277), ships Xcode and iOS simulators preinstalled, and an iOS
@@ -17,6 +18,8 @@ on:
         required: false
         default: false
         type: boolean
+  schedule:
+    - cron: "17 4 * * 1,4"
 
 concurrency:
   group: ios-${{ github.ref }}

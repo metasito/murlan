@@ -506,7 +506,7 @@ const RULES = [
       return Boolean(t && (t.run || t.job) && DEVICE_WORKFLOW.test(workflowOf(t) ?? ""));
     },
     message:
-      "The iOS and Android device workflows run only when a ticket dispatches them on its own branch, " +
+      "A ticket dispatches the iOS and Android device workflows only on its own branch, " +
       "and only when its work needs a device run:\n" +
       "  gh workflow run ios.yml --ref agent/<n>-<slug>\n" +
       "A red device run is diagnosed from its maestro-debug artifacts and dispatched again after a " +
