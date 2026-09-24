@@ -9,14 +9,14 @@ import express from "express";
 import { __testables } from "../../server/app.ts";
 
 const PLATFORMS = ["ios", "android"];
-const PLANTED = '{"planted":"an Expo Go manifest"}';
+const PLANTED = '{"planted":"a static-build manifest"}';
 const root = mkdtempSync(path.join(tmpdir(), "murlan-no-web-build-"));
 const home = process.cwd();
 let server: Server;
 let base = "";
 
-// A manifest and bundle directory where the old Expo Go deployment put them, so
-// a route that still serves them has something to serve.
+// Manifests where the retired static deployment put them, so a route that
+// still serves them has something to serve.
 before(async () => {
   for (const platform of PLATFORMS) {
     mkdirSync(path.join(root, "static-build", platform), { recursive: true });
@@ -50,7 +50,7 @@ for (const platform of PLATFORMS) {
     for (const route of ["/", "/manifest"]) {
       const res = await fetch(`${base}${route}`, { headers: { "expo-platform": platform } });
       const body = await res.text();
-      assert.notEqual(body, PLANTED, `${route} served the Expo Go manifest`);
+      assert.notEqual(body, PLANTED, `${route} served the planted manifest`);
       assert.ok(res.status >= 400, `${route} answered ${res.status}`);
     }
   });

@@ -3,10 +3,8 @@ name: Android UI (Maestro)
 # On demand only: a ticket whose work needs a device run dispatches it on its own branch
 # (`tools/loop/guard-bash.mjs`). Never on a schedule, `push` or `pull_request` (owner, 2026-09-22).
 #
-# This job compiles the app and drives that. Everything the old Expo Go path needed from a
-# developer's machine — the client APK for the pinned SDK, a dev server, the guest's route to
-# it, an unsigned manifest for an EAS-linked project (#35) — is gone with it: a release APK
-# carries its own JavaScript, so there is nothing to serve and nothing to reach.
+# This job compiles the app and drives that: a release APK carries its own JavaScript, so
+# there is nothing to serve and nothing to reach.
 on:
   workflow_dispatch:
     inputs:
@@ -108,12 +106,8 @@ jobs:
           java-version: "17"
           cache: gradle
 
-      # Expo Go cannot host this suite. Its dev-menu window sits above the
-      # app's own and takes the touch, so a tap is spent dismissing an
-      # invisible window and the app never sees it — across every run this
-      # repo recorded, the only taps that ever landed were on Expo Go's own
-      # dialogs (#627). Driving a build of this app is what removes the class,
-      # rather than out-manoeuvring the host.
+      # Why a build of this app and no host client: the header of
+      # tests/tooling/realAppNotExpoGo.test.ts (#627).
       #
       # Release, not debug: it bundles the JS into the APK, so there is no dev
       # server to start, no manifest to fetch, no port to reverse and no deep

@@ -39,7 +39,7 @@ none sits at the top of `tests/` (`tests/tooling/repoLayout.test.ts`).
 | Port | For | Owner |
 | --- | --- | --- |
 | `5000` | The Express server (`PORT`) | `server/index.ts` |
-| `8081` | Metro (`npx expo start` / `npm start`) | `scripts/build.js` (Metro's own default) |
+| `8081` | Metro (`npx expo start` / `npm start`) | Metro's own default |
 | `5561`, `5562`, `5571`, `5581` | One `tests/integration/` file's own spawned server each | pinned by `tests/tooling/integrationPorts.test.ts` |
 | `5199`+ | Playwright's e2e webServer (`E2E_PORT`) — first free port at/above the base | `tools/ci/e2ePort.mjs`; a leftover is freed by `tools/loop/reap.mjs` |
 | `55432`+ | The dev-stack's disposable Postgres (`MURLAN_DEV_PG_PORT`) — ask `dev-stack env`, don't assume 55432 | `scripts/dev-stack.mjs`, `scripts/devStackPort.mjs` |
@@ -77,11 +77,10 @@ drive `smoke` → `offline-game` → `exchange-phase` → `rematch-prompt` on a 
 emulator, and both are **dispatch-only**, from a ticket's own branch when its work needs a device
 run (`gh workflow run ios.yml --ref agent/<n>-<slug>`), by the owner's decision — a red run is
 diagnosed from its artifacts, never rerun. `gh run list --workflow=ios.yml` (or `maestro.yml`) is
-current status. A release build needs no packager, dev server or `adb reverse` — that only matters
-for a developer driving flows by hand through Expo Go, the owner's free path to a real iPhone (EAS
-plus a device cloud costs money the owner has declined to spend). **Expo Go cannot host either
-flow suite**: its dev-menu window sits above the app's own and eats the touch — `tapOn` reports
-`COMPLETED` regardless, and only a `back` **key** works, since keys skip window hit-testing
+current status. **These two release builds are the only device path**: a release build carries its
+own bundle, so no packager, dev server or `adb reverse` is involved, and the flows take the app id
+from `MAESTRO_APP_ID` with no default. No host client can stand in for them: a host's dev-menu
+window sits above the app's own and eats the touch — `tapOn` reports `COMPLETED` regardless
 (#627). Both jobs pin the same Maestro version and check it reads back off the
 installed binary, so a version drift is a named failure (`tests/tooling/realAppNotExpoGo.test.ts`
 holds both to it). Reproducing locally needs the same pin: `export MAESTRO_VERSION=2.10.0` before
@@ -166,7 +165,7 @@ platform this app ships as.
 
 Confirm any of these from the rendered DOM (`page.evaluate(() => el.outerHTML)`), not by
 reasoning about the source. **Ask which renderer produced the report, first** — the owner tests
-on **iOS through Expo Go**, and a defect that reproduces in Chromium was never about the platform;
+on **iOS, on a build of the app itself**, and a defect that reproduces in Chromium was never about the platform;
 one that doesn't needs a device capture (above).
 
 **`react-native-svg` on native is a different implementation, not a polyfill:**

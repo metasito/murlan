@@ -280,11 +280,10 @@ For each option record:
 - the monthly cost at 100, 1k and 10k DAU, stating your assumptions;
 - the multi-instance story; lock-in; maturity; the migration steps from this repo.
 List every place the code or CI assumes Replit, with path:line.
-Then assess leaving Expo Go for EAS development builds:
+Then assess the EAS build path the owner tests on (a build of the app, never a host client):
 - the EAS free-tier limits;
-- what it unlocks for this game: native modules, custom fonts and sounds without the Expo Go limits, Skia, better haptics, push, reliable Maestro taps (docs/agents/checks.md);
 - what it costs in workflow;
-- how the owner would test on their iPhone.
+- how a build reaches the owner's iPhone.
 Finish with one recommended stack and a phased migration.`,
   },
 ]
@@ -592,7 +591,7 @@ Sections:
 7. Strengths to preserve.
 8. Refuted appendix: one line of reason each, so nobody raises them again.
 9. Coverage gaps: failed lenses (${failedLenses.join(', ') || 'none'}), unverified findings, and anything that needs an iOS or Android capture.
-10. Infrastructure: a comparison table, the Replit coupling, the Expo Go verdict, the recommended stack, the migration phases, and the fact-check corrections.
+10. Infrastructure: a comparison table, the Replit coupling, the EAS build assessment, the recommended stack, the migration phases, and the fact-check corrections.
 11. Proposed ticket batches: one per defect class, each with a title, size, covered findings and any tracked issue.
     Add a wayfinder map for the infrastructure migration.
 Lens scores: ${JSON.stringify(reports.map(r => ({ lens: r.lens, score: r.score, why: r.score_rationale, strengths: r.strengths })))}

@@ -178,8 +178,7 @@ runs:
           # `--device` names the emulator rather than leaving Maestro to resolve
           # it, which on the iOS side was the difference between a driver that
           # started and one that failed to in three dispatches of eight.
-          # `MAESTRO_APP_ID` is what tells the flows they are driving the app
-          # itself: given one, they skip the Expo Go launch dance entirely.
+          # `MAESTRO_APP_ID` names the app the flows drive; they have no default.
           #
           # A failed run asks whether the device still answers: flows that failed on an emulator
           # which had stopped answering say nothing about the app, and the verdict must know that.

@@ -12,7 +12,7 @@ picked up — triage sizes a report from what's here, without going back and
 forth with you first.
 -->
 
-**Platform** (OS + browser/app, e.g. "iOS 18, Expo Go" or "Chrome on Windows"):
+**Platform** (OS + browser/app, e.g. "iOS 18, app build 1.4.0" or "Chrome on Windows"):
 
 **Seat count** (how many players were in the game):
 
