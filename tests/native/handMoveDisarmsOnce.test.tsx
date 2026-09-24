@@ -15,8 +15,8 @@ jest.mock('react-native-worklets', () => {
   };
 });
 
-type Handler = (e: unknown, state: unknown) => void;
-const mockGesture: { current: { handlers: Record<string, Handler> } | null } = { current: null };
+type Handler = (e: unknown) => void;
+const mockGesture: { current: { config: Record<string, Handler> } | null } = { current: null };
 jest.mock('react-native-gesture-handler', () => {
   const actual = jest.requireActual('react-native-gesture-handler') as Record<string, unknown>;
   return {
@@ -37,8 +37,7 @@ const { StraightHand } = require('@/components/table/hand') as typeof import('@/
 
 const RANKS: Rank[] = ['3', '4', '5'];
 const cards: Card[] = RANKS.map((rank) => ({ id: `${rank}_spades`, suit: 'spades', rank, isJoker: false }));
-const touch = (x: number) => ({ allTouches: [{ x, y: 10 }] });
-const state = { activate: () => {}, fail: () => {}, end: () => {}, begin: () => {} };
+const touch = (x: number) => ({ handlerTag: 1, allTouches: [{ x, y: 10 }] });
 
 describe('a finger scrolling the hand stops the hold clock once', () => {
   it('hops to JS for the first horizontal move only', async () => {
@@ -53,11 +52,11 @@ describe('a finger scrolling the hand stops the hold clock once', () => {
         roomW={456}
       />
     );
-    const h = mockGesture.current!.handlers;
-    h.onTouchesDown(touch(100), state);
+    const h = mockGesture.current!.config;
+    h.onTouchesDown(touch(100));
     const afterDown = mockHops.n;
     expect(afterDown).toBeGreaterThan(0);
-    for (const x of [110, 120, 130, 140]) h.onTouchesMove(touch(x), state);
+    for (const x of [110, 120, 130, 140]) h.onTouchesMove(touch(x));
     expect(mockHops.n - afterDown).toBe(1);
     await view.unmount();
   });

@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { View, StyleSheet } from "react-native";
-import { Gesture, GestureDetector } from "react-native-gesture-handler";
+import { GestureDetector, GestureStateManager, usePanGesture } from "react-native-gesture-handler";
 import { scheduleOnRN } from "react-native-worklets";
 import { TableText } from "./TableText";
 import Animated, {
@@ -747,15 +747,6 @@ export function StraightHand({
     };
   });
 
-  if (n === 0) {
-    return (
-      <View style={[handStyles.handCenter, { width: availW, height: visibleH }]}>
-        <Ionicons name="checkmark-circle" size={24} color={Colors.gold} />
-        <TableText style={handStyles.emptyHandText}>{t("gameShared.emptyHand")}</TableText>
-      </View>
-    );
-  }
-
   // The cards still in the fan. A held one is laid out by the finger instead,
   // and the rest are arced as a hand of n−1 inside the row's own unchanged box
   // — which is the whole of "the fan closes behind the card that left".
@@ -870,23 +861,19 @@ export function StraightHand({
     setTimeout(commit, ms);
   };
 
-  // Built on every render rather than memoised, like `Slider`'s: a hook whose
-  // argument writes a shared value is a React Compiler bailout for the whole
-  // file (`tests/ui-rules/reactCompiler.test.ts`), and `GestureDetector` takes a fresh
-  // gesture cheaply.
-  const drag = Gesture.Pan()
+  const drag = usePanGesture({
     // One finger owns the drag. A second one anywhere would otherwise rewrite
     // where the held card is going, and the first is left holding a card the
     // pointer that picked it up can no longer put down.
-    .maxPointers(1)
-    .enabled(canReorder)
+    maxPointers: 1,
+    enabled: canReorder,
     // Activated by hand rather than by `activateAfterLongPress`, which is a hard
     // gate this needs to be a soft one: it fails the whole gesture the moment
     // the finger travels 15px before the hold lands, so a thumb that rolls gets
     // nothing at all — and worse, it leaves the browser no way to scroll a row
     // wider than the window. Until the hold fires, a moving finger scrolls.
-    .manualActivation(true)
-    .onTouchesDown((e) => {
+    manualActivation: true,
+    onTouchesDown: (e) => {
       const touch = e.allTouches[0];
       if (touch === undefined) return;
       fingerX.value = touch.x;
@@ -896,8 +883,8 @@ export function StraightHand({
       panFrom.value = pan.value;
       armed.value = true;
       scheduleOnRN(armHold);
-    })
-    .onTouchesMove((e, state) => {
+    },
+    onTouchesMove: (e) => {
       const touch = e.allTouches[0];
       if (touch === undefined) return;
       fingerX.value = touch.x;
@@ -910,7 +897,7 @@ export function StraightHand({
         // mouse does — so a press that never travels stays a press, however
         // long it lasts, and the card is never taken out from under it.
         if (Math.abs(dx) < DRAG_SLOP && Math.abs(dy) < DRAG_SLOP) return;
-        state.activate();
+        GestureStateManager.activate(e.handlerTag);
         if (!picking.value) {
           picking.value = true;
           // From where the finger landed, not where it is now: that is the card
@@ -928,8 +915,8 @@ export function StraightHand({
         }
         if (overhang > 0) pan.value = panFrom.value - dx;
       }
-    })
-    .onUpdate((e) => {
+    },
+    onUpdate: (e) => {
       fingerX.value = e.x;
       fingerY.value = e.y;
       // Advances a gap `grab` has already opened; never opens one. `grab` runs
@@ -943,24 +930,34 @@ export function StraightHand({
       if (at === gap.value) return;
       gap.value = at;
       scheduleOnRN(trackGap, at);
-    })
-    .onEnd(() => {
+    },
+    onDeactivate: () => {
       // Claimed here rather than in `drop`: `onFinalize` runs on this thread the
       // moment this returns, while `drop` is still queued on the other one, so a
       // flag `drop` set would be read as false and the flight cancelled before
       // it began.
       landing.value = true;
       scheduleOnRN(drop);
-    })
+    },
     // A gesture the system takes away — an incoming call, a swipe from the
-    // edge — never reaches onEnd, and the card it lifted would float there for
-    // the rest of the hand.
-    .onFinalize(() => {
+    // edge — never reaches onDeactivate, and the card it lifted would float
+    // there for the rest of the hand.
+    onFinalize: () => {
       armed.value = false;
       scheduleOnRN(disarmHold);
       if (landing.value) return;
       scheduleOnRN(releaseHeld);
-    });
+    },
+  });
+
+  if (n === 0) {
+    return (
+      <View style={[handStyles.handCenter, { width: availW, height: visibleH }]}>
+        <Ionicons name="checkmark-circle" size={24} color={Colors.gold} />
+        <TableText style={handStyles.emptyHandText}>{t("gameShared.emptyHand")}</TableText>
+      </View>
+    );
+  }
 
   const row = (
     <GestureDetector gesture={drag}>

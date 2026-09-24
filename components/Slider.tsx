@@ -4,7 +4,7 @@
 // app's web build it would put at risk (#342).
 import { useCallback } from "react";
 import { Platform, StyleSheet, View, type LayoutChangeEvent } from "react-native";
-import { Gesture, GestureDetector } from "react-native-gesture-handler";
+import { GestureDetector, usePanGesture } from "react-native-gesture-handler";
 import { scheduleOnRN } from "react-native-worklets";
 import Animated, { useAnimatedStyle, useDerivedValue, useSharedValue, withTiming } from "react-native-reanimated";
 import { physicalTouchTarget } from "@/components/cardFaceModel";
@@ -80,19 +80,19 @@ export function Slider({
     [disabled, onValueChange, value]
   );
 
-  const pan = Gesture.Pan()
-    .enabled(!disabled)
+  const pan = usePanGesture({
+    enabled: !disabled,
     // Horizontal only: the settings sheet scrolls vertically under this row, and
     // a pan that claims every direction is a row you cannot scroll the sheet by.
-    .activeOffsetX([-ACTIVATE_DX, ACTIVATE_DX])
-    .onStart((e) => {
+    activeOffsetX: [-ACTIVATE_DX, ACTIVATE_DX],
+    onActivate: (e) => {
       isDragging.value = true;
       dragStart.value = value;
       // Activation has already cost ACTIVATE_DX of travel; counting it jumps.
       dragStartX.value = e.translationX;
       emitted.value = value;
-    })
-    .onUpdate((e) => {
+    },
+    onUpdate: (e) => {
       if (travel.value <= 0) return;
       const next = clamp(dragStart.value + (e.translationX - dragStartX.value) / travel.value);
       dragProgress.value = next;
@@ -103,10 +103,11 @@ export function Slider({
         emitted.value = stepped;
         scheduleOnRN(onValueChange, stepped);
       }
-    })
-    .onEnd(() => {
+    },
+    onDeactivate: () => {
       isDragging.value = false;
-    });
+    },
+  });
 
   const displayProgress = useDerivedValue(() => {
     if (isDragging.value) return dragProgress.value;

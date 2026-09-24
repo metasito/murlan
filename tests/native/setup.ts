@@ -18,6 +18,16 @@ jest.mock('@react-native-async-storage/async-storage', () =>
 // module on its first render, so mounting the app's real provider stack needs
 // the vendor's own mocks.
 require('react-native-gesture-handler/jestSetup');
+// Under Jest worklets is its web build, which has no UI runtime to hand over.
+jest.mock('react-native-gesture-handler/lib/module/handlers/gestures/installUIRuntimeBindings', () =>
+  require('react-native-gesture-handler/lib/module/handlers/gestures/installUIRuntimeBindings.web')
+);
+// A test mounts a component alone; in the app every GestureDetector sits under
+// app/_layout.tsx's or SettingsModal's GestureHandlerRootView.
+jest.mock('react-native-gesture-handler/lib/module/GestureHandlerRootViewContext', () => ({
+  __esModule: true,
+  default: require('react').createContext(true),
+}));
 
 // expo/fetch extends a native Response that does not exist here, so `import`ing
 // it throws at module load — before any test runs — for every file that reaches
