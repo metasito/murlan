@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import http from "node:http";
 import type { AddressInfo } from "node:net";
-import type { Server } from "node:http";
 import express from "express";
 import { __testables } from "../../server/app.ts";
 
@@ -12,8 +12,8 @@ const PLATFORMS = ["ios", "android"];
 const PLANTED = '{"planted":"a static-build manifest"}';
 const root = mkdtempSync(path.join(tmpdir(), "murlan-no-web-build-"));
 const home = process.cwd();
-let server: Server;
-let base = "";
+let server: http.Server;
+let port = 0;
 
 // Manifests where the retired static deployment put them, so a route that
 // still serves them has something to serve.
@@ -23,41 +23,51 @@ before(async () => {
     writeFileSync(path.join(root, "static-build", platform, "manifest.json"), PLANTED);
   }
   process.chdir(root);
-  process.env.MURLAN_WEB_DIST = path.join(root, "dist");
   const app = express();
   __testables.configureWebBuild(app);
   server = app.listen(0);
   await new Promise((resolve) => server.once("listening", resolve));
-  base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  port = (server.address() as AddressInfo).port;
 });
 
 after(async () => {
   await new Promise((resolve) => server.close(resolve));
   process.chdir(home);
-  delete process.env.MURLAN_WEB_DIST;
   rmSync(root, { recursive: true, force: true });
 });
 
+/** `agent: false`, as in `tests/server/logRedaction.test.ts`: a pooled socket aborts `--test-force-exit`. */
+function get(target: string, headers: Record<string, string> = {}) {
+  return new Promise<{ status: number; type: string; body: string }>((resolve, reject) => {
+    const req = http.get({ host: "127.0.0.1", port, path: target, headers, agent: false }, (res) => {
+      let body = "";
+      res.setEncoding("utf8");
+      res.on("data", (chunk: string) => (body += chunk));
+      res.on("end", () => resolve({ status: res.statusCode ?? 0, type: res.headers["content-type"] ?? "", body }));
+    });
+    req.on("error", reject);
+  });
+}
+
 test("with no web build, / says the web build is missing", async () => {
-  const res = await fetch(`${base}/`);
+  const res = await get("/");
   assert.equal(res.status, 503);
-  assert.match(res.headers.get("content-type") ?? "", /^text\/plain/);
-  assert.match(await res.text(), /web build/i);
+  assert.match(res.type, /^text\/plain/);
+  assert.match(res.body, /web build/i);
 });
 
 for (const platform of PLATFORMS) {
   test(`an expo-platform: ${platform} request gets no manifest`, async () => {
     for (const route of ["/", "/manifest"]) {
-      const res = await fetch(`${base}${route}`, { headers: { "expo-platform": platform } });
-      const body = await res.text();
-      assert.notEqual(body, PLANTED, `${route} served the planted manifest`);
+      const res = await get(route, { "expo-platform": platform });
+      assert.notEqual(res.body, PLANTED, `${route} served the planted manifest`);
       assert.ok(res.status >= 400, `${route} answered ${res.status}`);
     }
   });
 
   test(`static-build/${platform} is not served`, async () => {
-    const res = await fetch(`${base}/${platform}/manifest.json`);
-    assert.notEqual(await res.text(), PLANTED);
+    const res = await get(`/${platform}/manifest.json`);
+    assert.notEqual(res.body, PLANTED);
     assert.equal(res.status, 404);
   });
 }
