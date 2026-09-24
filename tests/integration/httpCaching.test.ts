@@ -117,8 +117,8 @@ describe("static asset compression and caching", { skip: hasDatabase() ? false :
     );
   });
 
-  // helmet is mounted before either branch of configureExpoAndLanding, so the
-  // header does not depend on which of the SPA and the landing page serves "/".
+  // helmet is mounted before either branch of configureWebBuild, so the
+  // header does not depend on whether the SPA or the missing-build 503 answers "/".
   // Asserted on a static route and a handler route to show it is app-wide.
   test("every response carries the CSP", async () => {
     for (const route of ["/", "/health"]) {

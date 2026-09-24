@@ -14,7 +14,7 @@ export function allowedOrigins(): Set<string> {
 }
 
 export function isAllowedOrigin(origin: string | undefined | null): boolean {
-  // No Origin header: native clients (React Native, Expo Go) and same-origin
+  // No Origin header: the native app and same-origin
   // server-to-server calls. Nothing to check against, and blocking it would
   // break the mobile app.
   if (!origin) return true;

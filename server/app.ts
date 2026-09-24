@@ -16,7 +16,7 @@ import { allowedOrigins, isAllowedOrigin, trustProxySetting } from "./http/cors.
 import { checkMailConfigOnBoot } from "./http/mail.ts";
 import { ANSWERED_BY_SHELL, CONTENT_HASHED } from "./http/staticPaths.ts";
 import { testOnlyEnv } from "./http/testOnlyEnv.ts";
-import { createHash, randomBytes } from "node:crypto";
+import { createHash } from "node:crypto";
 import * as fs from "fs";
 import * as path from "path";
 
@@ -78,21 +78,6 @@ const cspDirectives = () => ({
   "form-action": ["'self'"],
 });
 
-/**
- * The landing page's own header. Its inline script interpolates the request's
- * host, so its bytes differ per request and no hash can name it; the QR library
- * it loads is wanted nowhere else in the app.
- */
-function landingPageCsp(nonce: string): string {
-  const directives = {
-    ...cspDirectives(),
-    "script-src": ["'self'", `'nonce-${nonce}'`, "https://unpkg.com"],
-  };
-  return Object.entries(directives)
-    .map(([name, values]) => [name, ...values].join(" "))
-    .join("; ");
-}
-
 function setupCors(app: express.Application) {
   app.use((req, res, next) => {
     const origin = req.header("origin");
@@ -118,74 +103,6 @@ function setupBodyParsing(app: express.Application) {
   app.use(express.urlencoded({ extended: false }));
 }
 
-function getAppName(): string {
-  try {
-    const appJsonPath = path.resolve(process.cwd(), "app.json");
-    const appJsonContent = fs.readFileSync(appJsonPath, "utf-8");
-    const appJson = JSON.parse(appJsonContent);
-    return appJson.expo?.name || "App Landing Page";
-  } catch {
-    return "App Landing Page";
-  }
-}
-
-function serveExpoManifest(platform: string, res: Response) {
-  const manifestPath = path.resolve(
-    process.cwd(),
-    "static-build",
-    platform,
-    "manifest.json"
-  );
-  if (!fs.existsSync(manifestPath)) {
-    // Expo Go, not a player, reads this: plain text, no code, nothing to translate.
-    return res
-      .status(404)
-      .type("text/plain")
-      .send(`Manifest not found for platform: ${platform}`);
-  }
-  res.setHeader("expo-protocol-version", "1");
-  res.setHeader("expo-sfv-version", "0");
-  res.setHeader("content-type", "application/json");
-  res.send(fs.readFileSync(manifestPath, "utf-8"));
-}
-
-const HOSTNAME = /^[A-Za-z0-9.-]+(:\d+)?$/;
-
-// The Host and X-Forwarded-Host headers are client-controlled and the value
-// lands inside a string literal in the landing page's inline script.
-function safeHost(raw: string | undefined): string {
-  if (raw && HOSTNAME.test(raw)) return raw;
-  return process.env.PUBLIC_HOST || "localhost";
-}
-
-function renderLandingPage(template: string, host: string, appName: string, nonce = ""): string {
-  // Function replacements: a string one expands `$&`, `` $` `` and `$'`.
-  return template
-    .replace(/EXPS_URL_PLACEHOLDER/g, () => host)
-    .replace(/APP_NAME_PLACEHOLDER/g, () => appName)
-    .replace(/NONCE_PLACEHOLDER/g, () => nonce);
-}
-
-function serveLandingPage({
-  req,
-  res,
-  landingPageTemplate,
-  appName,
-}: {
-  req: Request;
-  res: Response;
-  landingPageTemplate: string;
-  appName: string;
-}) {
-  const host = safeHost(req.header("x-forwarded-host") || req.get("host"));
-  const nonce = randomBytes(16).toString("base64");
-  res.setHeader("Content-Type", "text/html; charset=utf-8");
-  res.setHeader("Content-Security-Policy", landingPageCsp(nonce));
-  res.status(200).send(renderLandingPage(landingPageTemplate, host, appName, nonce));
-}
-
-export const __testables = { safeHost, renderLandingPage, cspDirectives, landingPageCsp };
-
 /**
  * Cache-Control for one file under `dist/`. Content-hashed files get a year;
  * everything else — `index.html`, `favicon.ico`, `metadata.json` — keeps its
@@ -201,20 +118,10 @@ function setDistCacheControl(res: Response, filePath: string) {
   );
 }
 
-function configureExpoAndLanding(app: express.Application) {
+function configureWebBuild(app: express.Application) {
   const distPath = distRoot();
   const webIndexPath = path.join(distPath, "index.html");
   const hasWebBuild = fs.existsSync(webIndexPath);
-
-  // Expo Go sends manifest requests to both / and /manifest with expo-platform header
-  const expoManifestHandler = (req: Request, res: Response, next: NextFunction) => {
-    const platform = req.header("expo-platform");
-    if (platform === "ios" || platform === "android")
-      return serveExpoManifest(platform, res);
-    next();
-  };
-  app.use("/manifest", expoManifestHandler);
-  app.get("/", expoManifestHandler);
 
   // scripts/moveSourceMaps.mjs already moves every .map out of dist/ after
   // export, so this never matches a real file — it exists so that guarantee
@@ -229,7 +136,6 @@ function configureExpoAndLanding(app: express.Application) {
   // Unhashed source assets — a deploy can change what a given path serves,
   // so this cannot be cached as long as the content-hashed build output below.
   app.use("/assets", express.static(path.resolve(process.cwd(), "assets"), { maxAge: "1h" }));
-  app.use(express.static(path.resolve(process.cwd(), "static-build")));
 
   if (hasWebBuild) {
     // dist/ is a mix, so the header is decided per file rather than per mount:
@@ -255,16 +161,14 @@ function configureExpoAndLanding(app: express.Application) {
     });
     logger.info("Serving Expo web build from dist/");
   } else {
-    // No web build — show Expo Go QR landing page
-    const templatePath = path.resolve(process.cwd(), "server", "http", "templates", "landing-page.html");
-    const landingPageTemplate = fs.readFileSync(templatePath, "utf-8");
-    const appName = getAppName();
-    app.get("/", (req: Request, res: Response) => {
-      serveLandingPage({ req, res, landingPageTemplate, appName });
+    app.get("/", (_req: Request, res: Response) => {
+      res.status(503).type("text/plain").send("The web build is missing: run `npm run expo:web:build`.");
     });
-    logger.info("No web build found — serving Expo Go landing page");
+    logger.warn({ distPath }, "No web build found — / answers 503");
   }
 }
+
+export const __testables = { cspDirectives, configureWebBuild };
 
 export interface CreatedApp {
   app: express.Express;
@@ -335,7 +239,7 @@ export async function createApp(): Promise<CreatedApp> {
     }
   });
 
-  configureExpoAndLanding(app);
+  configureWebBuild(app);
 
   const server = await registerRoutes(app);
 

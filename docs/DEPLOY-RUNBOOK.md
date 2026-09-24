@@ -135,8 +135,8 @@ instance. `tests/server/deployRuntime.test.ts` pins the code against this file.
   (`eas.json`) regardless of where the backend runs — the two are independent.
 
 Express serves the API and, when `dist/` exists, the exported Expo web build as an SPA.
-With no web build present it serves the Expo Go QR landing page instead
-(`server/http/templates/landing-page.html`). Both paths are in `configureExpoAndLanding()`.
+With no web build present `/` answers a plain-text 503 saying the web build is missing. Both
+paths are in `configureWebBuild()`.
 
 `ALLOW_RESET=1 node scripts/reset-password.mjs <username>` sets a new random password on one
 account and prints it once.

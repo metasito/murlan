@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Reads built output for lib/e2eBuildMark.ts's string.
-//   node scripts/e2eBuildMark.mjs --absent dist static-build   a production build
-//   node scripts/e2eBuildMark.mjs --present dist-e2e           the e2e build, so the mark is known to work
+//   node scripts/e2eBuildMark.mjs --absent dist        the production build
+//   node scripts/e2eBuildMark.mjs --present dist-e2e   the e2e build, so the mark is known to work
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

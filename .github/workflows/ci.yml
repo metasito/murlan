@@ -398,8 +398,7 @@ jobs:
       - run: npm run check:comments
 
   # Nothing else in this workflow compiles the app for a device. `build` makes
-  # the web bundle, the server bundle and the static Expo Go export, none of
-  # which touch Gradle or Xcode, so a plugin or dependency that breaks the
+  # the web bundle and the server bundle, neither of which touches Gradle or Xcode, so a plugin or dependency that breaks the
   # native project lands green and is found on someone's phone (#209 was
   # iOS-only). These two jobs answer "does the native project still build",
   # which is not the same as "does it render" — the device loops (#442) own
@@ -744,14 +743,9 @@ jobs:
       - name: The web bundle is within its size budget
         run: npm run bundle:budget
 
-      - name: Build the static Expo Go deployment
-        env:
-          EXPO_PUBLIC_DOMAIN: example.invalid
-        run: npm run expo:static:build
-
       # lib/e2eBuildMark.ts survives only in a bundle built with a test-only flag.
-      - name: Neither production bundle carries a test-only flag
-        run: node scripts/e2eBuildMark.mjs --absent dist static-build
+      - name: The production web bundle carries no test-only flag
+        run: node scripts/e2eBuildMark.mjs --absent dist
 
       # The bundle esbuild produces is otherwise first executed by a production
       # deploy. /health answers only once the pool has reached Postgres.
