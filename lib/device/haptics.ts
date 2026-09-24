@@ -4,9 +4,10 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { SETTINGS_KEY } from "../storageKeys.ts";
 import { traceOnset } from "../e2eTrace.ts";
 
-// expo-haptics' web shim calls navigator.vibrate() per style, a no-op where
-// the Vibration API doesn't exist (iOS/desktop Safari) and real on Android
-// web — so every platform but nothing-at-all goes through this gate.
+// expo-haptics' web shim calls navigator.vibrate() where the Vibration API exists
+// (Android web), and elsewhere clicks a hidden `<input switch>`, whose toggle iOS
+// Safari answers with a tick. Whether iOS still honours a scripted click is
+// unsettled (#1249), so web goes through this gate like the native platforms.
 const isHapticsPlatform =
   Platform.OS === "ios" || Platform.OS === "android" || Platform.OS === "web";
 let _hapticsEnabled = true;

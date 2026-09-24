@@ -1,4 +1,5 @@
-// Rebuilds assets/sounds/ — the sixteen effects lib/device/sounds.ts plays.
+// Rebuilds the effects in assets/sounds/ that RECIPES names. The table's picked
+// sounds are vendored instead, and this script never writes them.
 //
 //   node scripts/build-sounds.mjs
 //
@@ -20,8 +21,7 @@
 // loop seamlessly — encoder delay plus frame padding, and browsers do not
 // honour LAME's gapless headers — so a music loop encoded here would click at
 // every join. Music therefore arrives as pre-encoded WebM Opus rather than
-// being built by this script (#121), and this script stays about the sixteen
-// effects.
+// being built by this script (#121), and this script stays about effects.
 //
 // The alternative was measured, not assumed. Chromium's MediaRecorder can emit
 // WebM Opus in this same Playwright page with no new dependency, but it is a
@@ -61,29 +61,10 @@ const src = (name) =>
 // 1.26 and 1.5 are a major third and a fifth, so the win sting is a chord
 // arpeggiated rather than three copies of the same note).
 const RECIPES = {
-  // ── Cards ──────────────────────────────────────────────────────────────────
-  card_select: [{ file: "cardSlide3.ogg", gain: 0.75 }],
-  card_play: [{ file: "cardPlace2.ogg", gain: 1.0 }],
-  card_pass: [{ file: "cardShove2.ogg", gain: 0.7 }],
-  deal: [{ file: "cardShuffle.ogg", gain: 1.0 }],
-  exchange: [
-    { file: "cardSlide6.ogg", gain: 0.9 },
-    { file: "cardSlide2.ogg", gain: 0.75, at: 0.18 },
-  ],
+  // ── Table ──────────────────────────────────────────────────────────────────
   round_start: [{ file: "cardFan1.ogg", gain: 0.9 }],
-
-  // ── Table events ───────────────────────────────────────────────────────────
-  your_turn: [{ file: "bong_001.wav", gain: 0.55 }],
-  urgent_tick: [{ file: "tick_002.wav", gain: 0.8 }],
   reject: [{ file: "error_004.wav", gain: 0.8 }],
-
-  // A bomb is the biggest play in the game: a hard chip clatter with a card
-  // shove under it, so it lands as an impact rather than a click.
-  bomb: [
-    { file: "chipsCollide1.ogg", gain: 1.0 },
-    { file: "cardShove4.ogg", gain: 0.6, at: 0.01 },
-    { file: "drop_004.wav", gain: 0.5, at: 0.0 },
-  ],
+  round_win: [{ file: "confirmation_001.wav", gain: 0.8 }],
 
   // ── Lobby ──────────────────────────────────────────────────────────────────
   seat_fill: [{ file: "chipLay1.ogg", gain: 0.8 }],
@@ -91,32 +72,12 @@ const RECIPES = {
     { file: "glass_002.wav", gain: 0.6, rate: 1.26, at: 0.0 },
     { file: "glass_002.wav", gain: 0.65, rate: 1.5, at: 0.1 },
   ],
-
-  // ── Stings ─────────────────────────────────────────────────────────────────
-  round_win: [{ file: "confirmation_001.wav", gain: 0.8 }],
-
-  // A payout, not a card: chips stacked under a struck note a fifth up.
-  count_complete: [
-    { file: "chipsStack1.ogg", gain: 0.8 },
-    { file: "glass_002.wav", gain: 0.4, rate: 1.5, at: 0.04 },
-  ],
-
-  // Rising major triad — the pack has no jingle, so one is built from a single
-  // struck note resampled to three pitches.
-  game_win: [
-    { file: "glass_002.wav", gain: 0.75, rate: 1.0, at: 0.0 },
-    { file: "glass_002.wav", gain: 0.75, rate: 1.26, at: 0.11 },
-    { file: "glass_002.wav", gain: 0.8, rate: 1.5, at: 0.22 },
-    { file: "confirmation_002.wav", gain: 0.5, at: 0.3 },
-  ],
-
-  // Falling minor third: the same idea, downward.
-  game_lose: [
-    { file: "glass_002.wav", gain: 0.5, rate: 0.84, at: 0.0 },
-    { file: "glass_002.wav", gain: 0.5, rate: 0.67, at: 0.13 },
-    { file: "error_003.wav", gain: 0.45, at: 0.05 },
-  ],
 };
+
+// The sample peak each output is normalised to; 0.89 unless named. round_start
+// at 0.89 true-peaks above -1 dBTP once encoded, and round_win at 0.89 is louder
+// than the manche win it must sit under (tests/tooling/soundAssets.test.ts).
+const PEAK = { round_start: 0.79, round_win: 0.3 };
 
 // Trim silence, never sound. The cut point is the last moment the signal is
 // still above an absolute floor — 55 dB below the file's own peak, which is
@@ -147,7 +108,7 @@ const page = await browser.newPage();
 await page.goto("about:blank");
 
 const results = await page.evaluate(
-  async ({ encoded, RECIPES, SILENCE_FLOOR_DB, WINDOW_SECONDS, FADE }) => {
+  async ({ encoded, RECIPES, PEAK, SILENCE_FLOOR_DB, WINDOW_SECONDS, FADE }) => {
     const SR = 44100;
     const bytes = (b64) =>
       Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)).buffer;
@@ -202,7 +163,7 @@ const results = await page.evaluate(
       // than its neighbours — the packs are mastered at different levels.
       let peak = 0;
       for (let i = 0; i < pcm.length; i++) peak = Math.max(peak, Math.abs(pcm[i]));
-      const norm = peak > 0 ? 0.89 / peak : 1;
+      const norm = peak > 0 ? (PEAK[name] ?? 0.89) / peak : 1;
 
       // Raw 16-bit PCM, no container — the MP3 encoding happens back in Node.
       const n = pcm.length;
@@ -219,7 +180,7 @@ const results = await page.evaluate(
     }
     return out;
   },
-  { encoded, RECIPES, SILENCE_FLOOR_DB, WINDOW_SECONDS, FADE }
+  { encoded, RECIPES, PEAK, SILENCE_FLOOR_DB, WINDOW_SECONDS, FADE }
 );
 
 await browser.close();
