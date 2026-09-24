@@ -76,7 +76,7 @@ import { DIAGNOSED, diagnose } from "./diagnose.mjs";
 import { checkLockDrift } from "./preflight.mjs";
 import { listWorktreeDirNames } from "./prune-worktrees.mjs";
 import { buildReady, MAX_REVIEW_ROUNDS, mergeCleared } from "./loop-gate.mjs";
-import { familyOf, MODEL_BY_PHASE } from "./loop-cost.mjs";
+import { EFFORT_BY_PHASE, familyOf, MODEL_BY_PHASE } from "./loop-cost.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import { createRequire } from "node:module";
 
@@ -286,6 +286,8 @@ export function queueLoopArgs(number, size = null, phase = null) {
     TICKET_BUDGET_USD,
     "--model",
     plannedModel(phase),
+    "--effort",
+    EFFORT_BY_PHASE[phase ?? "A"] ?? EFFORT_BY_PHASE.A,
   ];
 }
 

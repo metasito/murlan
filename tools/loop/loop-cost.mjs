@@ -23,6 +23,7 @@ const ORDER = ["pre", "A", "B", "C", "D", "E", "F", "G"];
  * imports this instead.
  */
 export const MODEL_BY_PHASE = { A: "opus", B: "opus", C: "opus", D: "opus", E: "sonnet", F: "sonnet" };
+export const EFFORT_BY_PHASE = { A: "high", B: "high", C: "high", D: "high", E: "medium", F: "medium" };
 
 /**
  * $/MTok by family: base input, 5-minute cache write, cache read, output, 1-hour cache write.
