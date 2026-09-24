@@ -2,7 +2,7 @@
  * Boots the exact stack the E2E suite drives: the disposable Postgres dev
  * stack, a fresh Expo web build, and the real Express server serving both —
  * the same static-bundle + API split production runs (server/app.ts
- * `configureExpoAndLanding`), from `dist-e2e/` so a flagged build never sits
+ * `configureWebBuild`), from `dist-e2e/` so a flagged build never sits
  * where a production server looks. Playwright's `webServer` config invokes this
  * directly; `npm run test:e2e` does not need its own orchestration.
  *

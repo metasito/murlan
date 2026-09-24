@@ -14,8 +14,7 @@ What it must deliver:
 - **Polish opportunities** from the `polish` lens: animation, sound, haptics and effects. These are
   proposals rather than defects, so they are judged on value and on whether they can be built.
 - **An infrastructure recommendation** from the `infra` lens: where to host now that Replit is
-  gone, and whether leaving Expo Go for development builds is worth it. Every price in it is
-  re-checked against its source.
+  gone, and what the EAS build path costs. Every price in it is re-checked against its source.
 
 ## Step 1 — Preflight (inline)
 
@@ -69,12 +68,11 @@ progress in `/workflows`. If a run dies, resume it with `resumeFromRunId`; do no
 ## Owner context the code cannot tell you
 
 - Murlan is **not live**. There are no real accounts and no player data to preserve.
-- The owner tests on **iOS through Expo Go**. Chromium evidence about native rendering is only an
+- The owner tests on **iOS, on a build of the app itself**. Chromium evidence about native rendering is only an
   inference.
 - The quality bar is `docs/FEEL-BAR.md`. The prototype is the floor; top mobile card games
   and casino games are the ceiling.
 - The priority order is stability first, then design.
 - **The Replit subscription has ended.** The owner wants a more mature host: free at the start,
-  with reasonable costs as it grows. The owner is open to leaving Expo Go for development builds
-  if that unlocks real improvements to the game.
+  with reasonable costs as it grows.
 

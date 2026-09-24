@@ -25,7 +25,6 @@ module.exports = defineConfig([
     ignores: [
       "dist/**",
       "dist-e2e/**",
-      "static-build/**",
       "server_dist/**",
       ".expo/**",
       "node_modules/**",

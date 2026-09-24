@@ -96,14 +96,8 @@ jobs:
           path: ${{ runner.temp }}/ios-app
           key: ${{ steps.native.outputs.key }}
 
-      # Expo Go cannot host this suite. Its dev-menu window sits above the
-      # app's own and takes the touch: run 33397453801's simulator log has the
-      # tap on "Salta il tutorial" dispatched `to window: <EXDevMenuWindow>`,
-      # which then resigns key — the tap is spent dismissing an invisible
-      # window and the app never sees it. Across every Android and iOS run
-      # this repo has ever recorded, the only taps that landed were on Expo
-      # Go's own native dialogs; a `back` **key** works, because keys go to
-      # the app rather than through window hit-testing (#627).
+      # Why a build of this app and no host client: the header of
+      # tests/tooling/realAppNotExpoGo.test.ts (#627).
       #
       # Release, not Debug: it bundles the JS into the app, so there is no
       # Metro to start, no packager URL to reach, no deep link and no
@@ -232,8 +226,7 @@ jobs:
       # order has to work — but a directory glob would also pick up a flow added
       # later and run it here without anyone deciding to.
       #
-      # `MAESTRO_APP_ID` is what tells the flows they are driving the app
-      # itself: given one, they skip the Expo Go launch dance entirely.
+      # `MAESTRO_APP_ID` names the app the flows drive; they have no default.
       - name: Run the flows
         env:
           # Maestro installs its own XCUITest runner onto the simulator before

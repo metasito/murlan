@@ -32,7 +32,7 @@ async function notifications() {
 
 /**
  * The EAS project this build belongs to. `getExpoPushTokenAsync` needs it, and
- * a bare Expo Go run has no such id — in which case there is no token to get
+ * a build linked to no EAS project has no such id — in which case there is no token to get
  * and nothing to register.
  */
 function projectId(): string | undefined {

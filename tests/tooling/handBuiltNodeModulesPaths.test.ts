@@ -20,7 +20,6 @@ const SKIP_DIRS = new Set([
   "node_modules",
   "dist",
   "server_dist",
-  "static-build",
   "test-results",
   "playwright-report",
 ]);

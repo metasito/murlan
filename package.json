@@ -10,8 +10,6 @@
     "expo:dev": "npx expo start --tunnel",
     "expo:dev:clean": "npx expo start --tunnel --clear",
     "server:dev": "NODE_ENV=development tsx server/index.ts",
-    "expo:start:static:build": "npx expo start --no-dev --minify --localhost",
-    "expo:static:build": "node scripts/build.js",
     "expo:web:build": "node scripts/assertNotE2EFast.js && npx expo export --platform web --source-maps && node scripts/moveSourceMaps.mjs",
     "bundle:budget": "node scripts/bundle-budget.mjs",
     "server:build": "esbuild server/index.ts --platform=node --target=node22 --packages=external --bundle --format=esm --outdir=server_dist --out-extension:.js=.mjs",

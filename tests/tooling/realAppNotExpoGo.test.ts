@@ -10,16 +10,15 @@
 // ever landed were on Expo Go's own native dialogs. So "the flow passed" under
 // Expo Go was never a claim about the app.
 //
-// What this pins is the shape that fixes it, not the symptom: the iOS job
-// installs a build of *this app*, and the packager dance every flow still
-// carries for Expo Go is nested under a condition rather than run
-// unconditionally. Reintroducing either is how the suite goes back to
-// measuring Expo Go.
+// What this pins is that no Expo Go path exists at all: both device jobs
+// install a build of *this app*, no flow carries the packager hand-off, and
+// nothing serves or builds the Expo Go deployment.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { trackedFiles } from "../helpers/trackedFiles.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const read = (rel: string) => readFileSync(path.join(repoRoot, rel), "utf8");
@@ -57,18 +56,6 @@ function topLevelCommands(rel: string): string[] {
 /** Everything after the `---` that ends the config header. */
 function flowBody(rel: string, src: (rel: string) => string = read): string {
   return src(rel).split(/^---$/m).slice(1).join("---");
-}
-
-/**
- * The one top-level block containing `openLink`, which is the packager
- * hand-off. Split the same way `topLevelCommands` counts: a `- ` at column 0
- * opens a block, and everything indented under it belongs to that block.
- */
-function packagerBlock(rel: string): string {
-  const blocks = flowBody(rel).split(/^(?=- )/m);
-  const found = blocks.filter((b) => /openLink:/.test(b));
-  assert.equal(found.length, 1, `${rel} should reach the packager from exactly one block`);
-  return found[0];
 }
 
 /** The one top-level block containing a device-wide `setOrientation: LANDSCAPE_*`. */
@@ -335,38 +322,49 @@ describe("the landscape screen is read on a landscape device", () => {
   });
 });
 
-describe("every flow can be driven without a packager", () => {
+describe("no flow carries an Expo Go launch path", () => {
+  const EXPO_GO_TRACES = [/\bopenLink:/, /\bstopApp\b/, /MURLAN_PACKAGER_URL/, /host\.exp/, /exps?:\/\//];
+
   for (const rel of FLOWS) {
-    test(`${rel} reaches the packager only under a condition`, () => {
-      const top = topLevelCommands(rel);
-      // `openLink` is the packager hand-off and `stopApp` is what makes Expo Go
-      // take the link as a cold start. Neither means anything to a real build,
-      // and at the top level both would run against one.
-      assert.ok(!top.includes("openLink"), `${rel} opens the packager link unconditionally`);
-      assert.ok(!top.includes("stopApp"), `${rel} stops the app unconditionally`);
+    test(`${rel} has no packager hand-off, even commented out`, () => {
+      for (const trace of EXPO_GO_TRACES) assert.doesNotMatch(read(rel), trace, `${rel} still carries ${trace}`);
     });
 
-    test(`${rel} gates the packager on which app is being driven`, () => {
-      // Nesting alone proves nothing: a wrapper whose `when:` was dropped is
-      // still not top-level, and would run the whole Expo Go hand-off against
-      // a real build while this file went on passing.
-      const block = packagerBlock(rel);
-      const gate = block.slice(0, block.indexOf("openLink:"));
-      assert.match(gate, /when:/, `${rel}'s packager block has no condition above it`);
-      assert.match(
-        gate,
-        /MAESTRO_APP_ID/,
-        `${rel}'s packager block is not gated on which app is being driven`
-      );
+    test(`${rel} drives exactly the app it is given`, () => {
+      assert.equal(read(rel).match(/^appId:.*$/m)?.[0], 'appId: "${MAESTRO_APP_ID}"');
     });
 
-    test(`${rel} still launches something`, () => {
+    test(`${rel} still launches the app`, () => {
       assert.ok(topLevelCommands(rel).includes("launchApp"), `${rel} never launches the app`);
     });
-
-    test(`${rel} takes the app id from MAESTRO_APP_ID`, () => {
-      const appId = read(rel).match(/^appId:.*$/m)?.[0];
-      assert.match(String(appId), /MAESTRO_APP_ID/);
-    });
   }
+
+  test("the traces match the hand-off they stand for", () => {
+    const handOff = '- stopApp\n- openLink: "${MURLAN_PACKAGER_URL}"\nappId: host.exp.exponent\nexp://127.0.0.1:8081';
+    for (const trace of EXPO_GO_TRACES) assert.match(handOff, trace);
+  });
+});
+
+describe("no Expo Go deployment exists", () => {
+  const EXPO_GO_SERVING = [/expo-platform/i, /static-build/, /expo:static:build/, /landing-page\.html/];
+  const scanned = trackedFiles(repoRoot, "server", "scripts", ".github", "package.json");
+
+  test("nothing the server, the scripts or CI run names it", () => {
+    assert.ok(scanned.includes("server/app.ts") && scanned.includes(".github/workflows/ci.yml"));
+    const hits = scanned.flatMap((rel) =>
+      EXPO_GO_SERVING.filter((pattern) => pattern.test(read(rel))).map((pattern) => `${rel}: ${pattern}`),
+    );
+    assert.deepEqual(hits, []);
+  });
+
+  test("the patterns match what they stand for", () => {
+    const deployment = 'req.header("expo-platform") static-build/ios npm run expo:static:build templates/landing-page.html';
+    for (const pattern of EXPO_GO_SERVING) assert.match(deployment, pattern);
+  });
+
+  test("the static build script and the QR page are gone", () => {
+    for (const rel of [["scripts", "build.js"], ["server", "http", "templates", "landing-page.html"]]) {
+      assert.equal(existsSync(path.join(repoRoot, ...rel)), false, `${rel.join("/")} is back`);
+    }
+  });
 });

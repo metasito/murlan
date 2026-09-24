@@ -2,7 +2,7 @@
 //
 // Every loop this repo can run renders Chromium or renders nothing
 // (`react-test-renderer` computes no layout and no paint). The owner tests on
-// iOS through Expo Go, so a native-only rendering defect is invisible to the
+// iOS on a build of the app, so a native-only rendering defect is invisible to the
 // whole suite and the only instrument that reaches it is a person holding the
 // device. That person needs to be asked for something specific, and to be able
 // to reach it without playing to it — which is what this list and `app/capture.tsx`

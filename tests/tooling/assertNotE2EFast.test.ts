@@ -27,7 +27,7 @@ test("refuses any EXPO_PUBLIC_E2E_* flag in the environment", () => {
   assert.match(r.stderr, /EXPO_PUBLIC_E2E_SOMETHING_NEW/);
 });
 
-for (const file of [".env", ".env.production", ".env.development", ".env.local"]) {
+for (const file of [".env", ".env.production", ".env.local", ".env.production.local"]) {
   test(`refuses a flag that only ${file} sets`, () => {
     const r = guard({ [file]: "EXPO_PUBLIC_E2E_REDUCE_MOTION=1\n" });
     assert.equal(r.status, 1);
@@ -35,12 +35,8 @@ for (const file of [".env", ".env.production", ".env.development", ".env.local"]
   });
 }
 
-test("both production builds run the guard first", () => {
+test("the production build runs the guard first", () => {
   const root = path.dirname(path.dirname(SCRIPT));
   const scripts = JSON.parse(readFileSync(path.join(root, "package.json"), "utf8")).scripts;
   assert.match(scripts["expo:web:build"], /^node scripts\/assertNotE2EFast\.js && /);
-  assert.match(
-    readFileSync(path.join(root, "scripts", "build.js"), "utf8"),
-    /async function main\(\) \{\s*console\.log\([^)]*\);\s*assertNoE2EFlags\(\);/
-  );
 });
