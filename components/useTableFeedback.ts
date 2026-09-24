@@ -569,6 +569,7 @@ export function useTableFeedback({
 
   const celebrateFlush = useCallback(() => {
     if (reduceMotion) return;
+    traceOnset("moment", "flush");
     setFlushTrigger((t) => t + 1);
   }, [reduceMotion]);
 
