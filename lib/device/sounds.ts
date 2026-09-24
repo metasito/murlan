@@ -273,8 +273,8 @@ export function setSoundsMasterVolume(v: number) {
 const jitter = (rng: () => number, spread: number) => 1 + (rng() * 2 - 1) * spread;
 
 async function play(key: SoundKey, volume: number, rate = 1, vary?: () => number): Promise<void> {
-  traceOnset("sound", key);
   if (!_soundsEnabled || _masterVolume === 0) return;
+  traceOnset("sound", key);
   const level = Math.min(1, volume * _masterVolume * (vary ? jitter(vary, 0.08) : 1));
   const pitch = rate * (vary ? jitter(vary, 0.04) : 1);
   const asset = ASSETS[key]();

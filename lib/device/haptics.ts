@@ -36,8 +36,9 @@ export function hapticsEnabled(): boolean {
 }
 
 const fire = (name: string, run: () => Promise<void>) => {
+  if (!_hapticsEnabled || !isHapticsPlatform) return false;
   traceOnset("haptic", name);
-  return _hapticsEnabled && isHapticsPlatform && run();
+  return run();
 };
 
 export const hapticSelection = () => fire("hapticSelection", () => Haptics.selectionAsync());
