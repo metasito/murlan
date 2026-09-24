@@ -190,6 +190,14 @@ function renderMarkdown({ assets, deps }) {
       "mismatch, not a size problem (it is already the smallest icon file). " +
       "Left as-is; flagged for design follow-up outside this report's scope."
   );
+  lines.push(
+    "- The web first load is the scripts `dist/index.html` names; everything else " +
+      "Metro splits out is fetched on demand. `@shopify/react-native-skia` and " +
+      "CanvasKit's loader live only in the felt's lazy chunks " +
+      "(`components/table/feltSkia.web.tsx`), and the wasm comes from jsDelivr. " +
+      "`npm run bundle:budget` holds the first load and the deferred JS to budgets of " +
+      "their own and fails if CanvasKit reaches the first load."
+  );
   lines.push("");
   return lines.join("\n");
 }

@@ -61,11 +61,12 @@ Total: **9.24 MB** across 48 files.
 
 ## Production dependencies (installed size in `node_modules/`)
 
-Total: **102.16 MB** across 48 declared dependencies.
+Total: **113.42 MB** across 49 declared dependencies.
 
 | Package | Installed size |
 |---|---|
 | react-native | 21.86 MB |
+| @shopify/react-native-skia | 11.26 MB |
 | drizzle-orm | 9.94 MB |
 | @expo-google-fonts/inter | 7.67 MB |
 | react-dom | 6.98 MB |
@@ -119,3 +120,4 @@ Total: **102.16 MB** across 48 declared dependencies.
 - `node_modules/` installed size is not the same as what Metro ships to the device, but Metro does not tree-shake assets. A module that is reached at all contributes every asset it requires, so the root module of `@expo/vector-icons` (one `.ttf` per icon family) or of an `@expo-google-fonts/*` package (one `.ttf` per weight and italic) ships the whole package. Both are therefore imported by subpath — `@expo/vector-icons/Ionicons`, `@expo-google-fonts/inter/400Regular` — which `tests/tooling/assetBarrels.test.ts` pins.
 - `assets/images/icon.png` and `assets/images/splash-icon.png` dominate the assets total. Both are required, referenced by `app.json`'s `icon` and the `expo-splash-screen` plugin config. What can and cannot be recovered from them is measured in issue #31 — this report states sizes, not conclusions about them.
 - `assets/images/android-icon-monochrome.png` is 432x432 while the other adaptive-icon layers (`android-icon-foreground.png`, `android-icon-background.png`) are 512x512. This is a visual-consistency mismatch, not a size problem (it is already the smallest icon file). Left as-is; flagged for design follow-up outside this report's scope.
+- The web first load is the scripts `dist/index.html` names; everything else Metro splits out is fetched on demand. `@shopify/react-native-skia` and CanvasKit's loader live only in the felt's lazy chunks (`components/table/feltSkia.web.tsx`), and the wasm comes from jsDelivr. `npm run bundle:budget` holds the first load and the deferred JS to budgets of their own and fails if CanvasKit reaches the first load.
