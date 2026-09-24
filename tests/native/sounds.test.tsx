@@ -45,8 +45,8 @@ describe('lib/device/sounds on a device', () => {
   });
 
   it('applies the per-effect volume', async () => {
-    await sounds.playCardSelect(still);
-    expect(mockPlayer.volume).toBe(0.75);
+    await sounds.playReject(still);
+    expect(mockPlayer.volume).toBe(0.7);
   });
 
   it('sets the audio mode once, not per effect', async () => {
@@ -79,12 +79,12 @@ describe('lib/device/sounds on a device', () => {
   });
 
   it('varies pitch and gain of a repeated effect within its bounds', async () => {
-    await sounds.playCardPass(() => 0);
+    await sounds.playReject(() => 0);
     expect(mockPlayer.setPlaybackRate).toHaveBeenLastCalledWith(0.96);
-    expect(mockPlayer.volume).toBeCloseTo(0.75 * 0.92, 5);
-    await sounds.playCardPass(() => 1);
+    expect(mockPlayer.volume).toBeCloseTo(0.7 * 0.92, 5);
+    await sounds.playReject(() => 1);
     expect(mockPlayer.setPlaybackRate).toHaveBeenLastCalledWith(1.04);
-    expect(mockPlayer.volume).toBeCloseTo(0.75 * 1.08, 5);
+    expect(mockPlayer.volume).toBeCloseTo(0.7 * 1.08, 5);
     expect(mockPlayer.setPlaybackRate.mock.invocationCallOrder[1]).toBeLessThan(
       mockPlayer.play.mock.invocationCallOrder[1]
     );
@@ -104,7 +104,7 @@ describe('lib/device/sounds on a device', () => {
   it('sounds a deselect lower and quieter than a select', async () => {
     await sounds.playCardDeselect();
     expect(mockPlayer.setPlaybackRate).toHaveBeenLastCalledWith(0.9);
-    expect(mockPlayer.volume).toBe(0.55);
+    expect(mockPlayer.volume).toBe(0.75);
   });
 
   it('plays the refusal sound', async () => {
@@ -126,7 +126,7 @@ describe('lib/device/sounds on a device', () => {
     // The per-effect levels are a mix that balances the effects against each
     // other. Turning the game down has to preserve that, not flatten it.
     sounds.setSoundsMasterVolume(0.5);
-    await sounds.playCardSelect(still);
+    await sounds.playCardDeselect();
     expect(mockPlayer.volume).toBeCloseTo(0.375, 5);
   });
 
