@@ -220,7 +220,6 @@ function useImpactFeedback(reduceMotion: boolean, screenShake: boolean, scale: n
   // `motionMs("shake", reduceMotion)` collapses the decay window the same way
   // every other step on the table does.
   const shake = (tier: ImpactTier) => {
-    traceOnset("moment", tier);
     const trauma = traumaFor(tier, reduceMotionRef.current, !screenShakeRef.current);
     const decayMs = motionMs("shake", reduceMotionRef.current);
     const amplitude = shakeAmplitudeFor(tier);
@@ -233,6 +232,7 @@ function useImpactFeedback(reduceMotion: boolean, screenShake: boolean, scale: n
       shakeElapsed.value = 0;
       return;
     }
+    traceOnset("moment", tier);
     cancelAnimation(shakeElapsed);
     shakeElapsed.value = 0;
     shakeElapsed.value = withTiming(decayMs, {
