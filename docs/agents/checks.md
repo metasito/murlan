@@ -74,9 +74,11 @@ none sits at the top of `tests/` (`tests/tooling/repoLayout.test.ts`).
 
 `.github/workflows/ios.yml` builds a release `.app`; `maestro.yml` compiles a release APK. Both
 drive `smoke` → `offline-game` → `exchange-phase` → `rematch-prompt` on a real simulator or
-emulator, and both are **dispatch-only**, from a ticket's own branch when its work needs a device
-run (`gh workflow run ios.yml --ref agent/<n>-<slug>`), by the owner's decision — a red run is
-diagnosed from its artifacts, never rerun. `gh run list --workflow=ios.yml` (or `maestro.yml`) is
+emulator. A ticket dispatches them from its own branch when its work needs a device run
+(`gh workflow run ios.yml --ref agent/<n>-<slug>`), and every merge to `main` runs both, so a
+branch's first run restores main's native build instead of compiling it cold (iOS 25 min, Android
+8) — the cache is branch-scoped and a branch can read only its own and main's. By the owner's
+decision; a red run is diagnosed from its artifacts, never rerun. `gh run list --workflow=ios.yml` (or `maestro.yml`) is
 current status. **These two release builds are the only device path**: a release build carries its
 own bundle, so no packager, dev server or `adb reverse` is involved, and the flows take the app id
 from `MAESTRO_APP_ID` with no default. No host client can stand in for them: a host's dev-menu
@@ -354,7 +356,7 @@ via `git diff`, so an uncommitted edit counts but an untracked file doesn't show
 
 Verified intended, not stale:
 
-- The iOS/Android device jobs are dispatch-only, never gating a PR — not an oversight to "fix" by
-  scheduling them or wiring them into `ci.yml`.
+- The iOS/Android device jobs run on dispatch and on a merge to `main`, never gating a PR — not an
+  oversight to "fix" by scheduling them or wiring them into `ci.yml`.
 - `MURLAN_PREFLIGHT_WAIT_MS` defaults to waiting rather than failing fast, on purpose; `--no-wait`/
   `=0` is the opt-out, not the default.

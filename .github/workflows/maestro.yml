@@ -1,7 +1,8 @@
 name: Android UI (Maestro)
 
-# On demand only: a ticket whose work needs a device run dispatches it on its own branch
-# (`tools/loop/guard-bash.mjs`). Never on a schedule, `push` or `pull_request` (owner, 2026-09-22).
+# A ticket whose work needs a device run dispatches it on its own branch (`tools/loop/guard-bash.mjs`);
+# a merge to main runs it so branches inherit main's native-build cache. Never on a schedule or
+# `pull_request` (owner, 2026-09-24).
 #
 # This job compiles the app and drives that: a release APK carries its own JavaScript, so
 # there is nothing to serve and nothing to reach.
@@ -20,12 +21,13 @@ on:
         required: false
         default: false
         type: boolean
+  push:
+    branches: [main]
 
 concurrency:
   group: maestro-${{ github.ref }}
   # Kept off main: superseding a main run would destroy the only evidence that
-  # merged code was ever driven on a device. Matters again the moment the push
-  # trigger comes back.
+  # merged code was ever driven on a device, and the cache it was about to save.
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 permissions:

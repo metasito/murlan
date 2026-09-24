@@ -1,5 +1,5 @@
-// Device jobs run when a ticket's work needs one, dispatched on its branch — never on a
-// schedule, push or pull request (owner, 2026-09-22). An EAS job that exits on "accepted"
+// Device jobs run when a ticket's work needs one, dispatched on its branch, and on a merge to
+// main — never on a schedule or pull request (owner, 2026-09-24). An EAS job that exits on "accepted"
 // reports a build it never saw finish (#1094).
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -17,9 +17,10 @@ const workflow = (name: string) =>
 const triggers = (source: string) => source.match(/^on:\n((?:[ \t]+.*\n|\n)*)/m)?.[1] ?? "";
 
 for (const name of ["ios.yml", "maestro.yml"]) {
-  test(`${name} runs only when dispatched`, () => {
+  test(`${name} runs when dispatched, and on a push to main only`, () => {
     const on = triggers(workflow(name));
-    assert.deepEqual(on.match(/^ {2}[\w-]+:/gm), ["  workflow_dispatch:"]);
+    assert.deepEqual(on.match(/^ {2}[\w-]+:/gm), ["  workflow_dispatch:", "  push:"]);
+    assert.match(on, /^ {2}push:\n {4}branches: \[main\]\n(?! {4})/m);
   });
 }
 
