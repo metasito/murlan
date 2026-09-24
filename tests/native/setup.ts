@@ -8,6 +8,22 @@ import { assertWholeNumbers } from './fabricIntProps';
 // render rather than reporting a real failure.
 require('react-native-reanimated').setUpTests?.();
 
+// Each UI job here is its own setTimeout, so a test that swaps back to real timers drops a
+// frame callback's queued registration and then runs its unregistration against nothing.
+type FrameRegistry = { frameCallbackRegistry: Map<number, unknown>; manageStateFrameCallback(id: number, on: boolean): void };
+let frameRegistry: FrameRegistry | undefined;
+Object.defineProperty(globalThis, '_frameCallbackRegistry', {
+  configurable: true,
+  get: () => frameRegistry,
+  set(registry: FrameRegistry) {
+    const manage = registry.manageStateFrameCallback;
+    registry.manageStateFrameCallback = function (this: FrameRegistry, id, on) {
+      if (this.frameCallbackRegistry.has(id)) manage.call(this, id, on);
+    };
+    frameRegistry = registry;
+  },
+});
+
 // AsyncStorage is a native module with no JS fallback; its own in-memory mock
 // is the vendor-supported substitute.
 jest.mock('@react-native-async-storage/async-storage', () =>
