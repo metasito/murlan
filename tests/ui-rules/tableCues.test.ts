@@ -1,7 +1,16 @@
 // The sound and the haptic each table moment gets, pinned row by row against #1249's table.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync, readdirSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { cueFor, isCombo, type Cue } from "../../lib/device/cues.ts";
+
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
+const sourceFiles = (dir: string): string[] =>
+  readdirSync(path.join(root, dir), { withFileTypes: true, recursive: true })
+    .filter((e) => e.isFile() && /\.tsx?$/.test(e.name))
+    .map((e) => path.join(e.parentPath, e.name));
 
 const at = (helper: Cue["haptics"][number]["helper"], atMs: number) => ({ helper, atMs });
 
@@ -94,5 +103,18 @@ describe("table cues", () => {
     assert.deepEqual(cueFor({ kind: "deselect" }), { sound: "deselect", haptics: [at("hapticSelection", 0)] });
     assert.deepEqual(cueFor({ kind: "reject" }), { sound: "reject", haptics: [at("hapticRigid", 0)] });
     assert.deepEqual(cueFor({ kind: "give" }), { sound: "play", haptics: [at("hapticMedium", 0)] });
+  });
+
+  test("no screen plays a cue's sound except through playCue", () => {
+    const cueSounds = [
+      ...readFileSync(path.join(root, "lib/device/playCue.ts"), "utf8").matchAll(/sounds\.(play\w+)\(\)/g),
+    ].map((m) => m[1]);
+    assert.ok(cueSounds.length >= 16, `found ${cueSounds.length} cue sounds in playCue.ts — the scan is broken`);
+    const direct = new RegExp(`\\b(${cueSounds.join("|")})\\b`);
+    const offenders = ["app", "components", "context"]
+      .flatMap(sourceFiles)
+      .filter((file) => direct.test(readFileSync(file, "utf8")))
+      .map((file) => path.relative(root, file));
+    assert.deepEqual(offenders, []);
   });
 });
