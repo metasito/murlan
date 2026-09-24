@@ -4,6 +4,11 @@ import { BRANCH, ticketOf, worktrees } from "./loop-derive.mjs";
 
 const SIZE_ORDER = ["size:XS", "size:S", "size:M", "size:L", "size:XL"];
 const OWNER_LABELS = new Set(["ready-for-human", "needs-info", "rejected"]);
+const TRUSTED_AUTHORS = new Set(["OWNER", "COLLABORATOR"]);
+
+function trusted(issueOrComment) {
+  return TRUSTED_AUTHORS.has(issueOrComment.author_association);
+}
 
 function ghJson(args) {
   return JSON.parse(execFileSync("gh", args, { encoding: "utf8" }));
@@ -19,18 +24,22 @@ export function sizeOf(issue) {
 }
 
 /**
- * Which skill works this issue, from its labels alone; `null` means the owner's.
+ * Which skill works this issue, from its author and labels; `null` means the owner's.
+ *
+ * An issue opened from outside the repo is the owner's whatever it carries: the bug template
+ * labels it `needs-triage`, and triage would turn a stranger's text into work an agent merges.
  *
  * Precedence, encoded: an AFK session implements specified work first, then converts unspecified
  * input (triage), then resolves decisions (wayfinder), and otherwise hands off. An owner label
  * wins over `ready-for-agent`: releasing a ticket takes `ready-for-agent` off (RULES.md rule 28),
  * but one left carrying both must still not be taken.
  *
- * @typedef {{ number: number, title: string, labels: { name: string }[] }} Issue
+ * @typedef {{ number: number, title: string, labels: { name: string }[], author_association?: string }} Issue
  * @param {Issue} issue
  */
 export function routeOf(issue) {
   const ls = labelNames(issue);
+  if (!trusted(issue)) return null;
   if (ls.some((l) => OWNER_LABELS.has(l))) return null;
   if (ls.includes("ready-for-agent")) return "implement";
   if (ls.includes("needs-triage") || ls.length === 0) return "triage";
@@ -193,11 +202,14 @@ function printDetail(ticket, comments) {
   if (ls.includes("in-progress")) reasons.push("labelled in-progress");
   if (ls.includes("blocked")) reasons.push("labelled blocked");
   if (ls.some((l) => OWNER_LABELS.has(l))) reasons.push(`owner-gated (${ls.filter((l) => OWNER_LABELS.has(l)).join(", ")})`);
+  if (!trusted(issue)) reasons.push(`opened from outside the repo (${issue.author_association})`);
   console.log(reasons.length === 0 ? `Takeable: yes` : `Takeable: no - ${reasons.join("; ")}`);
   console.log("----- BODY -----");
   console.log(issue.body ?? "(empty)");
-  console.log(`----- COMMENTS (${comments.length}) -----`);
-  for (const c of comments) {
+  const shown = comments.filter(trusted);
+  console.log(`----- COMMENTS (${shown.length}) -----`);
+  if (shown.length < comments.length) console.log(`(${comments.length - shown.length} from outside the repo not shown)`);
+  for (const c of shown) {
     console.log(`\n[${c.user.login} | ${c.created_at}]`);
     console.log(c.body);
   }
@@ -211,7 +223,8 @@ function printDetail(ticket, comments) {
     console.log(`  gh issue comment ${n} --body-file <file>   # holding: Claimed by \`<branch>\`.`);
     console.log(
       `  gh issue view ${n} --json title,body,comments ` +
-        `--jq '.title, .body, (.comments[]|"--- "+.author.login+": "+.body)'`
+        `--jq '.title, .body, (.comments[]|select(.authorAssociation=="OWNER" or .authorAssociation=="COLLABORATOR")` +
+        `|"--- "+.author.login+": "+.body)'`
     );
   }
 }
@@ -240,12 +253,10 @@ if (invokedDirectly) {
     process.exit(0);
   }
 
+  // REST, not `gh issue list`: only REST carries `author_association`.
   const openIssues = ghJson([
-    "issue", "list",
-    "--state", "open",
-    "--limit", "200",
-    "--json", "number,title,labels",
-  ]);
+    "api", "--paginate", "--slurp", "repos/{owner}/{repo}/issues?state=open&per_page=100",
+  ]).flat().filter((i) => !i.pull_request);
 
   const buckets = classify(openIssues);
 

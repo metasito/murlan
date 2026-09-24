@@ -6,7 +6,9 @@ the vocabulary, the recipes, and how to write a ticket.
 
 ## Labels
 
-`tools/loop/next-ticket.mjs` routes on labels alone (`routeOf`, `classify`).
+`tools/loop/next-ticket.mjs` routes on labels (`routeOf`, `classify`), and only issues opened by
+an `OWNER` or `COLLABORATOR`: anyone else's goes to the owner whatever it carries, and their
+comments are not shown to an agent.
 
 | Label | Means | Picker |
 |---|---|---|
