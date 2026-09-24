@@ -180,6 +180,20 @@ describe("queueLoopArgs", () => {
     ]);
   });
 
+  test("each phase is spawned at the effort EFFORT_BY_PHASE plans for it", () => {
+    const effort = (phase: string | null) => {
+      const args = queueLoopArgs(1, "size:S", phase);
+      return args[args.indexOf("--effort") + 1];
+    };
+    assert.deepEqual([effort("E"), effort("F"), effort("C"), effort("D"), effort(null)], [
+      "medium",
+      "medium",
+      "high",
+      "high",
+      "high",
+    ]);
+  });
+
   test("a larger ticket gets more turns", () => {
     assert.ok(turns("size:L") > turns("size:S"), `got ${turns("size:L")} and ${turns("size:S")}`);
   });
