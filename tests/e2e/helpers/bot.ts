@@ -382,12 +382,11 @@ async function playOrPass(
     return null; // PASSA itself has gone — the game moved on, not a stuck table.
   }
   if (!passEnabled) {
-    // The same race `currentSelection`'s own comment names: `HUMAN_TURN_SECONDS`
-    // can auto-pass the turn out from under a slow search, and a disabled PASSA
-    // read mid-race looks identical to the app being wrong unless the table is
-    // asked whether it still agrees this is the viewer's turn.
-    const stillMyTurn = (await tableDescription(page))?.startsWith(YOUR_TURN_PREFIX) ?? false;
-    if (!stillMyTurn) return null;
+    // The search answered `desc`, and a table that has moved on since is not the one it
+    // answered: an auto-pass, or a fresh trick the viewer now leads, where PASSA is
+    // rightly disabled and the singles filtered out against the old play were legal.
+    // Still the viewer's turn is not enough; only the same table proves the app wrong.
+    if ((await tableDescription(page)) !== desc) return null;
     throw new StuckError(
       `No combination in hand [${labels.join(", ")}] satisfies GIOCA, and PASSA is disabled — the rules guarantee one of those always holds.`
     );

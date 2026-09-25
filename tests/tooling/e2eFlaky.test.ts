@@ -1,11 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { flakyFromReport } from "../../tools/ci/e2e-flaky.mjs";
+import { flakyFromReport, KNOWN_FLAKY, verdict } from "../../tools/ci/e2e-flaky.mjs";
 
 const spec = (title: string, status: string) => ({ title, tests: [{ status }] });
 const report = {
@@ -23,22 +23,42 @@ test("names every test that passed only on a retry, and nothing else", () => {
   assert.deepEqual(flakyFromReport(report), ["a.spec.ts › racy", "online/b.spec.ts › also racy"]);
 });
 
-test("the CLI warns once per flaky test and writes them to the step summary", () => {
+test("the CLI fails the run on every flaky test, by name, and writes them to the step summary", () => {
   const dir = mkdtempSync(path.join(tmpdir(), "e2e-flaky-"));
   try {
     const summary = path.join(dir, "summary.md");
     writeFileSync(path.join(dir, "report.json"), JSON.stringify(report));
-    const out = execFileSync(process.execPath, ["tools/ci/e2e-flaky.mjs", path.join(dir, "report.json")], {
+    const run = spawnSync(process.execPath, ["tools/ci/e2e-flaky.mjs", path.join(dir, "report.json")], {
       encoding: "utf8",
       env: { ...process.env, GITHUB_STEP_SUMMARY: summary },
     });
-    assert.deepEqual(out.trim().split("\n"), [
-      "::warning::Flaky, passed on retry: a.spec.ts › racy",
-      "::warning::Flaky, passed on retry: online/b.spec.ts › also racy",
-    ]);
+    assert.equal(run.status, 1, run.stderr);
+    assert.deepEqual(
+      run.stdout.trim().split("\n").map((l) => l.split(" — ")[0]),
+      ["::error::Flaky, passed on retry: a.spec.ts › racy", "::error::Flaky, passed on retry: online/b.spec.ts › also racy"]
+    );
     assert.match(readFileSync(summary, "utf8"), /2 flaky[\s\S]*- a\.spec\.ts › racy\n- online\/b\.spec\.ts › also racy/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a known race is excused only while its issue is open", async () => {
+  const known: [string, number][] = [["a.spec.ts › racy", 7]];
+  const open = async (n: number) => n === 7;
+  const closed = async () => false;
+  assert.deepEqual(await verdict(["a.spec.ts › racy", "b.spec.ts › new"], known, open), {
+    excused: [["a.spec.ts › racy", 7]],
+    failed: ["b.spec.ts › new"],
+  });
+  assert.deepEqual(await verdict(["a.spec.ts › racy"], known, closed), { excused: [], failed: ["a.spec.ts › racy"] });
+});
+
+test("every known race names a spec that exists and an issue", () => {
+  for (const [name, issue] of KNOWN_FLAKY) {
+    const file = name.split(" › ")[0]!;
+    assert.ok(existsSync(path.join(import.meta.dirname, "..", "e2e", file)), `${name}: no such spec`);
+    assert.ok(Number.isInteger(issue) && issue > 0, `${name}: ${issue} is not an issue number`);
   }
 });
 

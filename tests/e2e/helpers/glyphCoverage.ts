@@ -17,7 +17,7 @@
 // families) that is never within a device pixel of that fallback's width, so
 // the comparison does not depend on which specific codepoints happen to be
 // present the day this was written.
-import type { Page } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
 
 const MISSING_PROBE_CODEPOINT = 0xfffe;
 const ICON_FAMILIES = new Set(["ionicons", "feather"]);
@@ -131,7 +131,14 @@ export async function assertAllGlyphsRender(
   await page.evaluate(async () => {
     await (document as unknown as { fonts: FontFaceSet }).fonts.ready;
   });
-  const { failures, examined } = await sweepGlyphs(page);
+  // A screen mid-transition draws fewer icons than it settles on; the sweep that counts is the
+  // first one showing the screen, and a screen that never gets there still fails below.
+  let sweep!: GlyphSweep;
+  await expect
+    .poll(async () => (sweep = await sweepGlyphs(page)).examined)
+    .toBeGreaterThanOrEqual(minGlyphs)
+    .catch(() => {});
+  const { failures, examined } = sweep;
   if (failures.length > 0) {
     const detail = failures.map((f) => `${f.family} U+${f.codepoint}`).join(", ");
     throw new Error(

@@ -67,6 +67,7 @@ export default defineConfig({
   reporter: process.env.CI
     ? [["list"], ["blob", { outputDir: "blob-report" }]]
     : [["list"], ["html", { open: "never", outputFolder: "playwright-report" }]],
+  forbidOnly: !!process.env.CI,
   use: {
     baseURL: BASE_URL,
     // Italian is the UI's source-of-truth language (locales/it.ts) and the

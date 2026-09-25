@@ -5,6 +5,8 @@
 // wrong on purpose and must say so, and a table that is right and must not.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { blankComments } from "../helpers/sourceScan.ts";
 import {
   checkAgreement,
   checkAll,
@@ -12,8 +14,17 @@ import {
   checkCards,
   checkTotalNeverGrows,
   checkTurnIsSeated,
+  progressViolations,
   type SeatView,
 } from "../soak/invariants.ts";
+
+test("a soak that finished no manche fails rather than reporting no disagreement", () => {
+  assert.deepEqual(progressViolations({ moves: 560, manches: 5 }), []);
+  assert.deepEqual(progressViolations({ moves: 40, manches: 0 }).map((v) => v.kind), ["no-progress"]);
+  assert.deepEqual(progressViolations({ moves: 0, manches: 0 }).map((v) => v.kind), ["no-progress"]);
+  const main = blankComments(readFileSync(new URL("../soak/soak.ts", import.meta.url), "utf8"));
+  assert.match(main, /const result = await runSoak\(opts\);\s*result\.violations\.push\(\.\.\.progressViolations\(result\)\);/);
+});
 
 const DECK = 54;
 

@@ -48,7 +48,7 @@ export async function pressFor(page: Page, target: Locator, ms: number): Promise
   const { x, y } = await centre(target);
   await page.mouse.move(x, y);
   await page.mouse.down();
-  await page.waitForTimeout(ms);
+  await page.waitForTimeout(ms); // fixed wait on purpose: the press's length is what the app reads
   await page.mouse.up();
 }
 
@@ -69,7 +69,7 @@ export const holdPast = (page: Page, target: Locator): Promise<void> =>
 export async function pressPointFor(page: Page, x: number, y: number, ms: number): Promise<void> {
   await page.mouse.move(x, y);
   await page.mouse.down();
-  await page.waitForTimeout(ms);
+  await page.waitForTimeout(ms); // fixed wait on purpose: the press's length is what the app reads
   await page.mouse.up();
 }
 

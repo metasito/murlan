@@ -26,6 +26,12 @@ export interface Violation {
 
 const NO_VIOLATIONS: Violation[] = [];
 
+/** A run that never finished a manche compared nothing at the moments that matter most. */
+export function progressViolations({ moves, manches }: { moves: number; manches: number }): Violation[] {
+  if (moves > 0 && manches > 0) return NO_VIOLATIONS;
+  return [{ kind: "no-progress", detail: `${moves} rounds of moves and ${manches} manches: the soak agreed about nothing` }];
+}
+
 /**
  * Every client is looking at the same table.
  *
