@@ -59,10 +59,16 @@ function docsTestsRead(): string[] {
   );
 }
 
-/** Every tracked file outside `tools/loop/` a relative import from inside it reaches. */
+/** Every tracked file outside `tools/loop/` that `loop:test` loads, or a relative import from inside it reaches. */
 function reachedFromLoop(): string[] {
   const seen = new Set<string>();
-  const queue = tracked.filter((f) => f.startsWith("tools/loop/") && SOURCE.test(f));
+  const scripts = JSON.parse(read("package.json")).scripts;
+  const commands = [scripts["preloop:test"], scripts["loop:test"]].join(" ");
+  const loaded = [...commands.matchAll(/(?:\.\/)?([\w./-]+\.m?[jt]s)\b/g)].map((m) => m[1]);
+  const queue = [
+    ...tracked.filter((f) => f.startsWith("tools/loop/") && SOURCE.test(f)),
+    ...loaded.filter((f) => tracked.includes(f)),
+  ];
   while (queue.length) {
     const file = queue.pop()!;
     if (seen.has(file)) continue;

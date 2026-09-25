@@ -149,3 +149,25 @@ describe("the integration guard counts the files that ran, not only the skips", 
     assert.match(step, /\[ "\$expected" -lt \d{2} \]/);
   });
 });
+
+describe("loop:test fails when a test file never loaded", () => {
+  const scripts = JSON.parse(readRepoFile("package.json")).scripts;
+  const reporters = (script: string) => script.split(" ").filter((a) => a.startsWith("--test-reporter"));
+
+  test("it carries npm test's reporters", () => {
+    assert.deepEqual(reporters(scripts["loop:test"]), reporters(scripts.test));
+  });
+
+  test("a glob matching nothing fails it", () => {
+    const args = (scripts["loop:test"] as string).split(" ").slice(1, -1);
+    const env = { ...process.env };
+    delete env.NODE_TEST_CONTEXT;
+    const run = spawnSync(process.execPath, [...args, "tools/loop/tests/**/no-such-*.test.ts"], {
+      cwd: repoRoot,
+      env,
+      encoding: "utf8",
+    });
+    assert.notEqual(run.status, 0, run.stdout + run.stderr);
+    assert.match(run.stderr, /no test file loaded at all/);
+  });
+});
