@@ -134,7 +134,11 @@ export function ScorePill({
     boxShadow: `0px ${offsetY * u}px ${blur * u}px ${SHADOW_SPREAD * u}px ${SHADOW}`,
   });
   const chipStyle = useAnimatedStyle(() => ({ opacity: scorePillFades(progress.value, boardProgress.value).chip }));
-  const panelStyle = useAnimatedStyle(() => ({ opacity: scorePillFades(progress.value, boardProgress.value).panel }));
+  // Transparent is not enough: the rows would still be laid out past the pill, off the screen's right edge.
+  const panelStyle = useAnimatedStyle(() => {
+    const panel = scorePillFades(progress.value, boardProgress.value).panel;
+    return { opacity: panel, display: panel > 0 ? "flex" : "none" };
+  });
   const headerStyle = useAnimatedStyle(() => {
     const at = scorePillHeader(boardProgress.value, u);
     return { transform: [{ translateX: at.x }, { translateY: at.y }] };
