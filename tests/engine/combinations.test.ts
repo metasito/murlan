@@ -183,11 +183,24 @@ describe("beat hierarchy (canPlay)", () => {
     assert.equal(canPlay(bomb9, royalLow), false, "a bomb cannot beat a royal straight");
   });
 
-  test("royal straight beats anything; only a longer-or-equal higher royal beats it", () => {
+  test("royal straight beats anything; only a higher royal of the same card count beats it", () => {
     assert.equal(canPlay(royalLow, bomb9), true);
     assert.equal(canPlay(royalLow, straight5), true);
     assert.equal(canPlay(royalHigh, royalLow), true);
     assert.equal(canPlay(royalLow, royalHigh), false);
+
+    const royalLongLow = buildCombination([
+      c("3", "clubs"), c("4", "clubs"), c("5", "clubs"),
+      c("6", "clubs"), c("7", "clubs"), c("8", "clubs"),
+    ])!;
+    const royalLongHigh = buildCombination([
+      c("8", "hearts"), c("9", "hearts"), c("10", "hearts"),
+      c("J", "hearts"), c("Q", "hearts"), c("K", "hearts"),
+    ])!;
+    assert.equal(royalLongHigh.type, "royal_straight");
+    assert.ok(royalLongHigh.strength > royalLow.strength && royalHigh.strength > royalLongLow.strength);
+    assert.equal(canPlay(royalLongHigh, royalLow), false, "a longer royal does not beat a shorter one");
+    assert.equal(canPlay(royalHigh, royalLongLow), false, "a shorter royal does not beat a longer one");
   });
 
   test("normal plays cannot answer a bomb or a royal straight", () => {

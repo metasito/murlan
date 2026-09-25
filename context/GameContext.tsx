@@ -25,7 +25,7 @@ import {
   tallyRematchAnswers,
   canPlay,
 } from "@/lib/game/gameEngine";
-import { autoMoveForSeat, resolveStuckExchange } from "@/lib/game/autoMove";
+import { offlineBotMove, resolveStuckExchange } from "@/lib/game/autoMove";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   OFFLINE_SAVE_KEY,
@@ -317,9 +317,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
   const runAITurn = useCallback(() => {
     if (!gameState) return;
-    const seat = gameState.currentTurnIndex;
-    if (gameState.players[seat]?.type !== "ai") return;
-    const next = autoMoveForSeat(gameState, seat, true, {});
+    const next = offlineBotMove(gameState);
     if (next) commitState(next, gameState);
   }, [gameState, commitState]);
 

@@ -1,5 +1,6 @@
 import { test, before, after, describe, mock } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { io as ioClient, type Socket } from "socket.io-client";
 import { PROTOCOL_AUTH, reconnectAs, register, waitFor } from "../helpers/client.ts";
 import { eq } from "drizzle-orm";
@@ -100,10 +101,23 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
     const realGetFriends = friendStore.getFriends;
     let release = () => {};
     const gate = new Promise<void>((resolve) => (release = resolve));
+    let gated = false;
     friendStore.getFriends = async function (userId: string) {
-      if (userId === user.id) await gate;
+      if (userId === user.id && !gated) {
+        gated = true;
+        await gate;
+      }
       return realGetFriends.call(this, userId);
     };
+
+    const probes: Record<string, [event: string, ...args: unknown[]]> = {
+      registerRoomHandlers: ["room:create", { gameMode: "free_for_all", maxPlayers: 2 }],
+      registerGameplayHandlers: ["game:rejoin", { roomId: "no-such-room" }],
+      registerFriendHandlers: ["friend:get_online_list"],
+    };
+    const socketSource = readFileSync(new URL("../../server/socket/socket.ts", import.meta.url), "utf8");
+    const groups = [...socketSource.matchAll(/\b(register\w+Handlers)\(ctx\)/g)].map((m) => m[1]);
+    assert.deepEqual(groups.toSorted(), Object.keys(probes).toSorted(), "each handler group needs a probe");
 
     const socket: Socket = ioClient(server.url, {
       auth: { ...PROTOCOL_AUTH, ticket },
@@ -115,12 +129,19 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
       // Fired synchronously from within the "connect" handler itself —
       // no waiting for any other server event first, matching how
       // OnlineGameContext's attemptRejoin() fires game:rejoin on reconnect.
-      socket.once("connect", () => {
-        socket.emit("room:create", { gameMode: "free_for_all", maxPlayers: 2 });
+      const answers = new Promise<Record<string, unknown>[]>((resolve, reject) => {
+        socket.once("connect", () => {
+          Promise.all(
+            groups.map((group) => socket.timeout(3_000).emitWithAck(...probes[group]!) as Promise<Record<string, unknown>>)
+          ).then(resolve, reject);
+        });
       });
       const state = await response;
       assert.ok(state.roomId, "room:create emitted on connect must still get a reply");
       assert.equal(state.hostUserId, user.id);
+      // answerUnknownEvents answers an event nothing was listening for yet as CLIENT_OUTDATED.
+      const unheard = (await answers).flatMap((a, i) => (a.code === "CLIENT_OUTDATED" ? [groups[i]] : []));
+      assert.deepEqual(unheard, [], "registered after the connection handler's first await");
     } finally {
       release();
       friendStore.getFriends = realGetFriends;

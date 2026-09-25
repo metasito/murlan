@@ -138,3 +138,10 @@ export function autoMoveForSeat(
   return logged(null, processPass(state));
 }
 
+/** The offline table's bot turn: null unless a bot holds the turn, which it plays at full strength. */
+export function offlineBotMove(state: GameState, ctx: AutoMoveContext = {}): GameState | null {
+  const seat = state.currentTurnIndex;
+  if (state.players[seat]?.type !== "ai") return null;
+  return autoMoveForSeat(state, seat, true, ctx);
+}
+

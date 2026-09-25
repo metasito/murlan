@@ -3,12 +3,11 @@
 // a match started offline always reaches `match.over`, not just that each
 // manche it deals resolves.
 //
-// This mirrors context/GameContext.tsx's own manche->match wiring
-// (`applyHandToMatch`, `dealFrom`) rather than importing it: that file pulls
-// in `react` and AsyncStorage, which `node --test` cannot load, and every
-// other lib/*.ts here is kept free of those for the same reason. Drifting
-// from GameContext.tsx would mean this harness stops proving what it claims
-// to, so a change to either has to be carried to the other by hand.
+// A bot seat's turn is `offlineBotMove`, the function GameContext.tsx calls
+// (tests/engine/matchState.test.ts pins both callers). The manche->match
+// wiring (`applyHandToMatch`, `dealFrom`) is mirrored rather than imported:
+// that file pulls in `react` and AsyncStorage, which `node --test` cannot
+// load, so a change to either copy has to be carried to the other by hand.
 import {
   foldHandIntoMatch,
   initializeGame,
@@ -24,7 +23,7 @@ import {
   type MatchLength,
   type PlayerType,
 } from "../../lib/game/gameEngine.ts";
-import { autoMoveForSeat } from "../../lib/game/autoMove.ts";
+import { autoMoveForSeat, offlineBotMove, type AutoMoveContext } from "../../lib/game/autoMove.ts";
 import { comboKey } from "../../components/flightPhysics.ts";
 import { mulberry32 } from "../engine/helpers.ts";
 import type { BotPersonalityId } from "../../lib/game/botPersonalities.ts";
@@ -138,8 +137,9 @@ export interface SimulateMatchOptions {
   /** Moves (plays + passes + exchange choices) in one manche before that manche is a stall. */
   maxMovesPerManche?: number;
   /**
-   * Per-seat AI choice, indexed like `players`. Defaults to every seat using
-   * the real AI (`aiChoosePlay`). `false` plays the forced-minimum move
+   * Per-seat AI choice for a seat that is not `"ai"` (a bot seat always plays
+   * through `offlineBotMove`), indexed like `players`. Defaults to the real
+   * AI (`aiChoosePlay`). `false` plays the forced-minimum move
    * instead — the floor `autoMoveForSeat` gives an AFK human, which always
    * passes once it is not leading a round (`lib/game/autoMove.ts`). That is not
    * what an engaged human or `tests/e2e/helpers/bot.ts`'s own bot look like:
@@ -460,14 +460,17 @@ export function simulateOfflineMatch(opts: SimulateMatchOptions): SimulateMatchR
           playedCombo = combo;
           next = combo ? processPlay(state, combo) : processPass(state);
         } else {
-          const useAiForSeat = opts.useAi?.[seat] ?? true;
-          next = autoMoveForSeat(state, seat, useAiForSeat, {
+          const ctx: AutoMoveContext = {
             onMove: (_s, combo) => {
               comboSeen = true;
               playedCombo = combo;
             },
             rng: aiRng,
-          });
+          };
+          next =
+            !isExchangeTurn && state.players[seat]?.type === "ai"
+              ? offlineBotMove(state, ctx)
+              : autoMoveForSeat(state, seat, opts.useAi?.[seat] ?? true, ctx);
         }
         if (!next) {
           throw new MatchStallError(
