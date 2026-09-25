@@ -75,9 +75,11 @@ export default defineConfig({
     // locale, which would otherwise steer the app to whichever of it/en/sq
     // best matches the CI environment.
     locale: "it-IT",
-    trace: "retain-on-failure",
+    // Recording is the cost, not keeping: `retain-on-failure` records every test. On CI a failure
+    // is retried (above), and the retry is recorded; locally there is no retry to record.
+    trace: process.env.CI ? "on-first-retry" : "retain-on-failure",
     screenshot: "only-on-failure",
-    video: "retain-on-failure",
+    video: process.env.CI ? "on-first-retry" : "retain-on-failure",
   },
   projects: [
     { name: "chromium", use: { ...devices["Desktop Chrome"] } },
