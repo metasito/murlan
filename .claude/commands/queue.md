@@ -292,8 +292,9 @@ The review is `mattpocock-skills:code-review`'s two axes, dispatched as below. `
    this head inside the round, before the verdict: a CI or device run not yet run, a question the
    ticket asked. HOLD only for what needs a commit. A HOLD is final for its head
    (`loop-derive.mjs` `verdictFor`), so the next LAND needs a new commit. Every round's verdict
-   comes from that round's own reviewers (rule 29); never write a round's review yourself. Where
-   you disagree with a finding, one line in the commit body.
+   comes from that round's own reviewers (rule 29); never write a round's review yourself. The
+   one exception is the cap, where `--review-round` asks for your own `VERDICT: LAND` (**Rounds**).
+   Where you disagree with a finding, one line in the commit body.
 
 **Rounds.** Before each round after the first, run `node tools/loop/loop-gate.mjs --review-round`;
 it exits non-zero at the cap and prints what to do next. **Stop before the cap when a round earns
