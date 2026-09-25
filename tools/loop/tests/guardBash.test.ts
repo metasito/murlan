@@ -441,6 +441,19 @@ describe("loop sessions only", () => {
   test("queue.md's rebuild of the ticket's own worktree is allowed", () => {
     assert.equal(check("git worktree add -B agent/12-x .worktrees/agent-12 origin/agent/12-x", () => null, repo,true), null);
   });
+  test("gh run watch is refused in the loop and names the helper", () => {
+    assert.match(String(check("gh run watch 123 --exit-status", () => null, repo, true)), /await-run\.mjs/);
+    assert.equal(check("gh run watch 123", () => null, repo, false), null);
+    assert.equal(check("gh run view 123 --json status", () => null, repo, true), null);
+  });
+  test("a timeout in front of a command does not hide it", () => {
+    assert.match(String(check("timeout 1480 gh run watch 123 > /dev/null", () => null, repo, true)), /await-run\.mjs/);
+    assert.notEqual(check("timeout -k 5s --preserve-status 60 gh pr merge 12", () => null, repo, false), null);
+    assert.equal(check("timeout 60 gh run view 123", () => null, repo, true), null);
+    for (const opts of ["--signal KILL", "--kill-after 5", "--signal=KILL --kill-after=5"]) {
+      assert.notEqual(check(`timeout ${opts} 60 gh pr merge 12`, () => null, repo, false), null, opts);
+    }
+  });
 });
 
 describe("the entrypoint fails open on a payload it cannot read", () => {

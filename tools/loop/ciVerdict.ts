@@ -92,8 +92,8 @@ export function decideVerdict(run: RunRow | undefined, jobs: JobRow[] = []): Ver
   }
 
   // A skipped job reports zero steps too, and it means the opposite: its gate answered, rather
-  // than the runner never starting. `android-build`/`ios-build` skip on every run but the weekly
-  // schedule, so counting them here would call every genuinely red run infrastructure and stop
+  // than the runner never starting. `android-build`/`ios-build` skip on every run that does not
+  // need them, so counting them here would call every genuinely red run infrastructure and stop
   // `driveToGreen` from ever sending a fix agent. `cancelled` is the same: the run was stopped
   // from outside, so the job says nothing about the runner either. `null` is a job that never
   // started, which is the same: it is not evidence that the runner failed.
