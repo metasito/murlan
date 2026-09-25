@@ -107,7 +107,8 @@ describe("the web bundle's size budget", () => {
     // commit and gets raised reflexively.
     assert.ok(BUDGET_BYTES > 753 * 1024, `budget ${BUDGET_BYTES} is not above 753 KB`);
     assert.ok(BUDGET_BYTES <= 1024 * 1024, `budget ${BUDGET_BYTES} exceeds #95's ~1 MB ceiling`);
-    assert.ok(DEFERRED_BUDGET_BYTES > 158 * 1024 && DEFERRED_BUDGET_BYTES < BUDGET_BYTES / 2);
+    assert.ok(DEFERRED_BUDGET_BYTES > 158 * 1024, `deferred budget ${DEFERRED_BUDGET_BYTES} is not above #1257's 158 KB`);
+    assert.ok(DEFERRED_BUDGET_BYTES <= 250_000, `deferred budget ${DEFERRED_BUDGET_BYTES} exceeds #1257's 250 KB ceiling`);
   });
 });
 
