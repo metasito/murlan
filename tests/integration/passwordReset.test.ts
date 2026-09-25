@@ -16,14 +16,17 @@
 // both name.
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFile } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 import { startTestServer, hasDatabase, skipMessage, type TestServer } from "../helpers/testServer.ts";
 import { dropped, reconnectWith, register } from "../helpers/client.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const script = path.join(repoRoot, "scripts", "reset-password.mjs");
+const resetPassword = (username: string, env: NodeJS.ProcessEnv) =>
+  promisify(execFile)("node", [script, username], { encoding: "utf8", env }).then((r) => r.stdout);
 
 // One server for the whole file, shared by both describe blocks below —
 // server/store/db.ts's pool is a module-level singleton created on first import;
@@ -45,10 +48,7 @@ describe("owner password reset", { skip: hasDatabase() ? false : skipMessage() }
   test("a reset password logs in, and the old one stops working", async () => {
     await register(server, "LockedOut");
 
-    const out = execFileSync("node", [script, "LockedOut"], {
-      encoding: "utf8",
-      env: { ...process.env, DATABASE_URL: process.env.DATABASE_URL, ALLOW_RESET: "1" },
-    });
+    const out = await resetPassword("LockedOut", { ...process.env, DATABASE_URL: process.env.DATABASE_URL, ALLOW_RESET: "1" });
     const match = out.match(/temporary password: (\S+)/);
     assert.ok(match, `the script printed no password:\n${out}`);
     const temporary = match[1];
@@ -62,37 +62,18 @@ describe("owner password reset", { skip: hasDatabase() ? false : skipMessage() }
 
   test("the username is matched case-insensitively, like login", async () => {
     await register(server, "CaseLocked");
-    const out = execFileSync("node", [script, "caselocked"], {
-      encoding: "utf8",
-      env: { ...process.env, ALLOW_RESET: "1" },
-    });
+    const out = await resetPassword("caselocked", { ...process.env, ALLOW_RESET: "1" });
     const temporary = out.match(/temporary password: (\S+)/)![1];
     const res = await login("CaseLocked", temporary);
     assert.equal(res.status, 200, await res.text());
   });
 
-  test("an unknown username is refused, and changes nothing", () => {
-    assert.throws(
-      () =>
-        execFileSync("node", [script, "NoSuchPerson"], {
-          encoding: "utf8",
-          env: { ...process.env, ALLOW_RESET: "1" },
-          stdio: "pipe",
-        }),
-      /no account named/i
-    );
+  test("an unknown username is refused, and changes nothing", async () => {
+    await assert.rejects(resetPassword("NoSuchPerson", { ...process.env, ALLOW_RESET: "1" }), /no account named/i);
   });
 
-  test("it refuses to run without the opt-in", () => {
-    assert.throws(
-      () =>
-        execFileSync("node", [script, "LockedOut"], {
-          encoding: "utf8",
-          env: { ...process.env, ALLOW_RESET: undefined },
-          stdio: "pipe",
-        }),
-      /ALLOW_RESET/
-    );
+  test("it refuses to run without the opt-in", async () => {
+    await assert.rejects(resetPassword("LockedOut", { ...process.env, ALLOW_RESET: undefined }), /ALLOW_RESET/);
   });
 });
 
