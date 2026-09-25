@@ -377,8 +377,11 @@ test.describe("mockup parity", () => {
           const again = await capture(side);
           expect.soft(again.trace.frames.length, `${side}: frames traced`).toBeGreaterThan(m.windowMs / STEP_MS);
           expect.soft(again.trace, `${side}: the trace replays`).toEqual(first[side].trace);
-          const differing = again.frames.filter((f, i) => !f.jpeg.equals(first[side].frames[i].jpeg)).map((f) => f.t);
-          expect.soft(differing, `${side}: frames that did not replay byte for byte`).toEqual([]);
+          const differing = again.frames.filter((f, i) => !f.jpeg.equals(first[side].frames[i].jpeg));
+          for (const f of differing) {
+            await test.info().attach(`${parity.moment}/replay/${side}-${String(f.t).padStart(5, "0")}.jpg`, { body: f.jpeg, contentType: "image/jpeg" });
+          }
+          expect.soft(differing.map((f) => f.t), `${side}: frames that did not replay byte for byte`).toEqual([]);
           expect.soft([...movingFields(first[side].trace)].sort(), `${side}: fields that move over the window`).toEqual(
             [...m.moves![side]].sort()
           );
