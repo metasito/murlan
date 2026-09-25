@@ -425,21 +425,21 @@ describe("a workflow lookup that fails is announced, not swallowed", () => {
 
 describe("a dispatch ref through a variable", () => {
   test("a literal assignment earlier on the line is read", () => {
-    assert.equal(check('B=agent/12-x && gh workflow run ios.yml --ref "$B"', () => null, null, false), null);
+    assert.equal(check('B=agent/12-x && gh workflow run ios.yml --ref "$B"', () => null, repo,false), null);
   });
   test("a variable it cannot read is still refused", () => {
-    assert.notEqual(check("B=$(git branch --show-current) && gh workflow run ios.yml --ref $B", () => null, null, false), null);
-    assert.notEqual(check("B=main && gh workflow run ios.yml --ref $B", () => null, null, false), null);
+    assert.notEqual(check("B=$(git branch --show-current) && gh workflow run ios.yml --ref $B", () => null, repo,false), null);
+    assert.notEqual(check("B=main && gh workflow run ios.yml --ref $B", () => null, repo,false), null);
   });
 });
 
 describe("loop sessions only", () => {
   for (const cmd of ["sed -i 's/a/b/' tools/loop/guard-bash.mjs", "perl -pi -e 's/a/b/' x.ts", "git worktree add -b side/x ../murlan-side-1 origin/main"]) {
-    test(`refuses in the loop: ${cmd}`, () => assert.notEqual(check(cmd, () => null, null, true), null));
-    test(`allows outside the loop: ${cmd}`, () => assert.equal(check(cmd, () => null, null, false), null));
+    test(`refuses in the loop: ${cmd}`, () => assert.notEqual(check(cmd, () => null, repo,true), null));
+    test(`allows outside the loop: ${cmd}`, () => assert.equal(check(cmd, () => null, repo,false), null));
   }
   test("queue.md's rebuild of the ticket's own worktree is allowed", () => {
-    assert.equal(check("git worktree add -B agent/12-x .worktrees/agent-12 origin/agent/12-x", () => null, null, true), null);
+    assert.equal(check("git worktree add -B agent/12-x .worktrees/agent-12 origin/agent/12-x", () => null, repo,true), null);
   });
 });
 

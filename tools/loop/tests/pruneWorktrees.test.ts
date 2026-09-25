@@ -350,7 +350,7 @@ describe("pruneCandidates", () => {
     e(path.join(root, WORKTREE_DIR, "agent-13"), "agent/13-y"),
   ];
   test("only the loop's own .worktrees/ entries, and never the caller's", () => {
-    assert.deepEqual(pruneCandidates(entries, path.join(root, WORKTREE_DIR, "agent-13")).map((c) => c.path), [own]);
+    assert.deepEqual(pruneCandidates(entries, path.join(root, WORKTREE_DIR, "agent-13")).map((c: { path: string }) => c.path), [own]);
   });
   test("porcelain's forward slashes and another case still match on win32", { skip: process.platform !== "win32" }, () => {
     const porcelain = [e(root.replace(/\\/g, "/"), "main"), e(own.toUpperCase().replace(/\\/g, "/"), "agent/12-x")];
