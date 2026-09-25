@@ -45,16 +45,16 @@ const key = (line, isComment) => {
  * This is not a line diff and neither bounds the other, in either column. The tests are what say
  * what it does; do not reason from the two being close.
  */
-export function addedCounts(before, after) {
+export function addedCounts(before, after, path) {
   const pool = new Map();
-  for (const { text, kind } of classify(before)) {
+  for (const { text, kind } of classify(before, path)) {
     if (kind === "blank") continue;
     const k = key(text, kind === "comment");
     pool.set(k, (pool.get(k) ?? 0) + 1);
   }
   let comment = 0;
   let code = 0;
-  for (const { text, kind } of classify(after)) {
+  for (const { text, kind } of classify(after, path)) {
     if (kind === "blank") continue;
     const k = key(text, kind === "comment");
     const held = pool.get(k) ?? 0;
@@ -73,9 +73,9 @@ export function addedCounts(before, after) {
  * A reword removes as many comment lines as it adds, so it nets to zero; only real growth costs.
  * Code stays the forward count, so a comment cannot hide behind an unrelated code deletion.
  */
-export function netCounts(before, after) {
-  const added = addedCounts(before, after);
-  const removed = addedCounts(after, before);
+export function netCounts(before, after, path) {
+  const added = addedCounts(before, after, path);
+  const removed = addedCounts(after, before, path);
   return { comment: Math.max(0, added.comment - removed.comment), code: added.code };
 }
 
@@ -118,7 +118,7 @@ export function budget(base) {
     // No skip on a read failure: `AMR` never emits a deletion and `-M` emits a rename's
     // destination, so every path here exists. A swallowed read is a check that passes by not
     // looking at the one file it could not open.
-    const added = netCounts(show(from, source), readFileSync(join(root, file), "utf8"));
+    const added = netCounts(show(from, source), readFileSync(join(root, file), "utf8"), file);
     if (over(added, file)) named.push([file, added]);
     total.comment += added.comment;
     total.code += added.code;

@@ -56,7 +56,16 @@ describe("decide", () => {
   });
 
   test("a file type with no comments of this shape passes", () => {
-    assert.deepEqual(write("# previously this was yaml", "docs/x.md"), { deny: false });
+    assert.deepEqual(write("# previously this was markdown", "docs/x.md"), { deny: false });
+  });
+
+  test("a workflow's # comment is judged for history", () => {
+    assert.equal(write(["# previously this ran twice", "on: push"].join("\n"), ".github/workflows/ci.yml").deny, true);
+  });
+
+  test("a shell script's # comments are judged for their ratio", () => {
+    const script = ["#!/usr/bin/env bash", ...Array.from({ length: 7 }, (_, i) => `# why ${i}`), "set -e"];
+    assert.match(write(script.join("\n"), "scripts/x.sh").reason ?? "", /7 comment lines to 2 of code/);
   });
 
   test("a malformed payload never disturbs the tool call", () => {

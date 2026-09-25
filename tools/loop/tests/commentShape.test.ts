@@ -3,8 +3,8 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { ARCHEOLOGY, HISTORY, classify, floorFor, violations } from "../commentShape.ts";
 
-const kinds = (text: string) => classify(text).map((l) => l.kind);
-const rules = (text: string) => violations(text).map((v) => v.rule);
+const kinds = (text: string, path = "src/x.ts") => classify(text, path).map((l) => l.kind);
+const rules = (text: string) => violations(text, "src/x.ts").map((v) => v.rule);
 
 describe("classify", () => {
   test("names each line comment, code or blank", () => {
@@ -43,7 +43,13 @@ describe("classify", () => {
   });
 
   test("text is trimmed, and the line number is one-based", () => {
-    assert.deepEqual(classify("\n   const x = 1;")[1], { n: 2, text: "const x = 1;", kind: "code" });
+    assert.deepEqual(classify("\n   const x = 1;", "src/x.ts")[1], { n: 2, text: "const x = 1;", kind: "code" });
+  });
+
+  test("a workflow and a script take # as their comment marker, blank lines included", () => {
+    assert.deepEqual(kinds(["#!/bin/sh", "# why", "", "on: push"].join("\n"), "ci.yml"), ["code", "comment", "blank", "code"]);
+    assert.deepEqual(kinds("# why", "x.yaml"), ["comment"]);
+    assert.deepEqual(kinds("# why", "x.sh"), ["comment"]);
   });
 });
 

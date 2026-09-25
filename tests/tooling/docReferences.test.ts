@@ -100,7 +100,7 @@ test("every docs/ path a comment in tracked source, or a workflow prompt, names 
     .filter((f) => !EXCLUDED_DIRS.some((dir) => f.startsWith(dir)))
     .filter((f) => f !== "tests/tooling/docReferences.test.ts");
   for (const file of sourceFiles) {
-    const lines = classify(readFileSync(file, "utf8"));
+    const lines = classify(readFileSync(file, "utf8"), file);
     for (const line of lines) {
       if (line.kind !== "comment" && !PROMPT_SOURCES.some((dir) => file.startsWith(dir))) continue;
       for (const [raw] of line.text.matchAll(SOURCE_DOC_PATH)) {

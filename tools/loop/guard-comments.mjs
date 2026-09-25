@@ -86,14 +86,14 @@ export function decide(payload, { committed = io.committed, disk = io.disk } = {
   const text = whole ? input.content : input.new_string;
   if (typeof text !== "string" || !text) return { deny: false };
 
-  const found = violations(text);
+  const found = violations(text, path);
 
   const before = disk(path);
   const after = whole ? text : typeof input.old_string === "string" && before !== null
     ? applied(before, input)
     : null;
   if (after !== null) {
-    const added = netCounts(committed(path), after);
+    const added = netCounts(committed(path), after, path);
     // `comment-budget.mjs`'s floor, deliberately without its prose-only one: net already lets a
     // same-size reword through free, so what is left over here is real growth on an unattended
     // ticket, and CI is where a miss costs a report rather than a turn.
