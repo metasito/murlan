@@ -12,6 +12,10 @@ test("a tracked file in the shared checkout is refused", () => {
   assert.match(String(verdict(path.join(root, ".github", "workflows", "ios.yml"), root)), /shared checkout/);
   assert.notEqual(verdict("components/x.tsx", root), null);
 });
+test("a relative path resolves against the call's cwd, not the root", () => {
+  assert.equal(verdict("components/x.tsx", root, path.join(root, ".worktrees", "agent-12")), null);
+  assert.notEqual(verdict("components/x.tsx", root, root), null);
+});
 test("the worktree, .loop-logs and anything outside the repo are allowed", () => {
   for (const p of [path.join(root, ".worktrees", "agent-12", "app", "x.ts"), path.join(root, ".loop-logs", "pr-12.md"), path.resolve("/tmp/pr.md")])
     assert.equal(verdict(p, root), null, p);
