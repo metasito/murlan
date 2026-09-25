@@ -11,13 +11,14 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import type { Server as SocketServer } from "socket.io";
-import { vacateSeat, autoMoveForSeat } from "../../server/game/gameTurn.ts";
-import { gameOverWriters } from "../../server/game/gamePersistence.ts";
+import { vacateSeat, autoMoveForSeat, armTurn } from "../../server/game/gameTurn.ts";
+import { autoMoveForSeat as chooseMove } from "../../lib/game/autoMove.ts";
+import { gameOverWriters, persistence } from "../../server/game/gamePersistence.ts";
 import { activeGames } from "../../server/game/gameRoom.ts";
 import { clearRoomTimers } from "../../server/game/gameTimers.ts";
 import type { OnlineGameState } from "../../server/game/gameRoom.ts";
 import { emptyRankTally, sortHand } from "../../lib/game/gameEngine.ts";
-import type { GameState, Player } from "../../lib/game/gameEngine.ts";
+import type { Card, GameState, Player } from "../../lib/game/gameEngine.ts";
 import type { GameOverWriters } from "../../server/game/gameOver.ts";
 
 const ROOM = "weak-seat-room";
@@ -128,6 +129,66 @@ describe("a mid-hand takeover is weak only for the hand it happened on (#850 cla
       clearRoomTimers(ROOM);
       activeGames.delete(ROOM);
     }
+  });
+});
+
+describe("runBotTurn plays a weak seat at the floor and a bot seat with the AI", () => {
+  const card = (id: string, rank: Card["rank"], suit: Card["suit"]): Card => ({ id, rank, suit, isJoker: false });
+
+  // A pair that empties the hand: the AI always finishes, the floor leads one card.
+  function leadingPair(): GameState {
+    return {
+      players: [
+        player("p0", "Vacant", [card("9s", "9", "spades"), card("9h", "9", "hearts")]),
+        player("p1", "Bob", [card("4s", "4", "spades")]),
+        player("p2", "Carl", [card("5s", "5", "spades")]),
+        player("p3", "Drita", [card("6s", "6", "spades")]),
+      ],
+      currentTurnIndex: 0,
+      lastPlayedCombination: null,
+      lastPlayedBy: -1,
+      passCount: 0,
+      gameMode: "free_for_all",
+      roundWinner: null,
+      gameOver: false,
+      rankings: [],
+      firstPlayMade: true,
+      playedRanks: emptyRankTally(),
+    };
+  }
+
+  async function botPlays(weak: boolean) {
+    const state = leadingPair();
+    const game = baseGame({
+      gameState: state,
+      playerMap: { 1: "bob", 2: "carl", 3: "drita" },
+      weakSeats: new Set(weak ? [0] : []),
+    });
+    activeGames.set(ROOM, game);
+    try {
+      armTurn(io, ROOM, 0);
+      await new Promise((r) => setTimeout(r, 30));
+      return { state, played: game.gameState.lastPlayedCombination?.cards.map((c) => c.id) };
+    } finally {
+      clearRoomTimers(ROOM);
+      activeGames.delete(ROOM);
+    }
+  }
+
+  test("a weak seat plays exactly the minimum legal move", async (t) => {
+    t.mock.method(persistence, "writeActiveGame", async () => {});
+    const { state, played } = await botPlays(true);
+    const floor = chooseMove(state, 0, false, {})!.lastPlayedCombination!.cards.map((c) => c.id);
+    assert.equal(floor.length, 1);
+    assert.deepEqual(played, floor, "runBotTurn must read weakSeats and play the seat at the floor");
+  });
+
+  test("a seat that is not weak plays the AI's own choice, which differs from the floor", async (t) => {
+    t.mock.method(persistence, "writeActiveGame", async () => {});
+    const { state, played } = await botPlays(false);
+    const ai = chooseMove(state, 0, true, {})!.lastPlayedCombination!.cards.map((c) => c.id);
+    assert.equal(ai.length, 2);
+    assert.deepEqual(played, ai);
   });
 });
 
