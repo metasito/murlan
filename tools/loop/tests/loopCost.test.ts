@@ -3,7 +3,7 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { killedLine, lastStamp, ledgerSummary, mismatchedModel, priceOf, readTicket, report, shaTable, sinceWindow, wanted } from "../loop-cost.mjs";
+import { killedLine, lastStamp, ledgerSummary, mismatchedModel, priceOf, readTicket, report, shaTable, sinceWindow, turnHeadroom, wanted } from "../loop-cost.mjs";
 
 const at = (min: number) => new Date(Date.UTC(2026, 8, 14, 10, min)).toISOString();
 const say = (text: string, min: number, model = "claude-opus-5", parent: string | null = null) =>
@@ -340,6 +340,30 @@ describe("ledgerSummary", () => {
     const out = ledgerSummary([blind, row(9, "landed", 1, { E: 60 }, { "claude-opus-5": 1 })]);
     assert.equal(out.unjudged, 1);
     assert.deepEqual(out.mismatches.map((r: { n: number }) => r.n), [9]);
+  });
+});
+
+describe("turnHeadroom", () => {
+  const rows = [
+    { size: "size:S", turns: 80, outcome: "handoff" },
+    { size: "size:S", turns: 121, outcome: "parked", park_reason: "the session ran out of turns" },
+    { size: "size:M", turns: 60, outcome: "pushed" },
+    { size: "size:M", turns: 140, outcome: "diagnosed" },
+  ];
+
+  test("turn headroom flags a size whose busiest healthy process is over half its cap", () => {
+    const got = turnHeadroom(rows, { "size:S": 120, "size:M": 200 });
+    assert.deepEqual(got, [
+      { size: "size:S", most: 80, cap: 120, short: true },
+      { size: "size:M", most: 60, cap: 200, short: false },
+    ]);
+  });
+
+  test("the report names the short size and stays quiet about the rest", () => {
+    const busy = [{ size: "size:S", turns: 90, outcome: "handoff" }, { size: "size:M", turns: 60, outcome: "pushed" }];
+    const out = report([readTicket([say("PHASE C", 0), result(1)], "1")], busy);
+    assert.match(out, /turn cap under 2× the busiest process: size:S busiest 90, cap 160/);
+    assert.doesNotMatch(out, /size:M busiest/);
   });
 });
 

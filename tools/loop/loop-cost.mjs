@@ -26,6 +26,33 @@ export const MODEL_BY_PHASE = { A: "opus", B: "opus", C: "opus", D: "opus", E: "
 export const EFFORT_BY_PHASE = { A: "high", B: "high", C: "high", D: "high", E: "medium", F: "medium" };
 
 /**
+ * The real bound is turns. A dollar cap is checked only after a turn settles, so where it stops
+ * moves with the model and the context — measured 8x to 42x over a small cap — and with subagents
+ * in flight it stops the *subagents* and lets the session carry on. The dollar figure stays as a
+ * backstop against one pathological turn, well above what a healthy ticket reaches.
+ *
+ * Each cap stays above twice the busiest healthy process of its size; `loop-cost` prints any size
+ * where it does not.
+ */
+export const TURNS_BY_SIZE = {
+  "size:XS": 60,
+  "size:S": 160,
+  "size:M": 270,
+  "size:L": 320,
+  "size:XL": 400,
+};
+export const TURNS_DEFAULT = 150;
+
+export function turnHeadroom(rows, caps = TURNS_BY_SIZE) {
+  const busiest = {};
+  for (const r of rows) {
+    if (!r.size || !r.turns || r.outcome === "parked" || r.outcome === "diagnosed") continue;
+    busiest[r.size] = Math.max(busiest[r.size] ?? 0, r.turns);
+  }
+  return Object.entries(busiest).map(([size, most]) => ({ size, most, cap: caps[size], short: 2 * most > (caps[size] ?? Infinity) }));
+}
+
+/**
  * $/MTok by family: base input, 5-minute cache write, cache read, output, 1-hour cache write.
  *
  * Keyed on the family word rather than on a full id, because the logs carry four spellings of two
@@ -286,6 +313,9 @@ export function report(tickets, ledgerRows = []) {
             ? [`model mismatch: ${ledger.mismatches.map((r) => `#${r.n}`).join(", ")}`]
             : []),
           ...(ledger.unjudged ? [`model unjudged: ${ledger.unjudged} rows predate the reading`] : []),
+          ...turnHeadroom(ledgerRows)
+            .filter((h) => h.short)
+            .map((h) => `turn cap under 2× the busiest process: ${h.size} busiest ${h.most}, cap ${h.cap}`),
         ]
       : []),
   ].join("\n");
