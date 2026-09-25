@@ -1823,6 +1823,16 @@ describe("an unrecognised stop is diagnosed, once per head", () => {
     assert.match(ledger.find((x) => x.outcome === "diagnosed").park_reason, /^the diagnosis failed: /);
   });
 
+  test("a failed diagnosis keeps the tail of what it wrote", async () => {
+    const ledger: any[] = [];
+    const reply = `${"x".repeat(400)}\n\nDIAGNOSIS: none (ticket complete)`;
+    const failed = async () => ({ ok: false, error: "it gave no DIAGNOSIS line", reply, run: { result: null, ms: 0, log: "l", phases: {} } });
+    await runOnce(io({ spawn: silent, pushedPr: () => null, diagnose: failed }, ledger));
+    const said = ledger.find((x) => x.outcome === "diagnosed").park_reason;
+    assert.match(said, /^the diagnosis failed: it gave no DIAGNOSIS line — it ended: "x+ DIAGNOSIS: none \(ticket complete\)"$/);
+    assert.ok(said.length < 400, said);
+  });
+
   test("an API 5xx never reaches diagnosis", async () => {
     const overloaded = readFileSync(path.join(import.meta.dirname, "fixtures", "api-529.jsonl"), "utf8").trim().split("\n").map(readLine).find((f: any) => f?.kind === "result");
     let diagnoses = 0;

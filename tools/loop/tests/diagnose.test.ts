@@ -28,6 +28,33 @@ describe("parseDiagnosis", () => {
   });
 });
 
+describe("parseDiagnosis reads the forms a model writes", () => {
+  const ok: [string, string][] = [
+    ["**DIAGNOSIS:** park\n**CAUSE:** only the owner can choose.", "park"],
+    ["`DIAGNOSIS: park`\nCAUSE: only the owner can choose.", "park"],
+    ["DIAGNOSIS: park.\nCAUSE: only the owner can choose.", "park"],
+    ["DIAGNOSIS: park — only the owner can choose\nCAUSE: the host is undecided.", "park"],
+    ["DIAGNOSIS: resume C\nCAUSE:\nThe build left a red test.", "resume"],
+    ["## DIAGNOSIS: rerun\nCAUSE: the runner died.", "rerun"],
+  ];
+  for (const [text, action] of ok) test(JSON.stringify(text), () => {
+    const d = parseDiagnosis(text, 7);
+    assert.equal(d.ok && d.action, action);
+  });
+  test("an echoed options line is named as that", () => {
+    const d = parseDiagnosis("DIAGNOSIS: resume B | resume C | resume D | rerun | park\nCAUSE: x", null);
+    assert.equal(d.ok, false);
+    assert.match(!d.ok ? d.error : "", /copied the options line/);
+    const template = diagnosisPrompt({ ticket: 1, phase: "E", why: "w" }).split("\n").find((l) => l.startsWith("DIAGNOSIS:"));
+    const echoed = parseDiagnosis(`${template}\nCAUSE: x`, null);
+    assert.match(!echoed.ok ? echoed.error : "", /copied the options line/);
+  });
+  test("a missing CAUSE is named alone", () => {
+    const d = parseDiagnosis("DIAGNOSIS: park", null);
+    assert.match(!d.ok ? d.error : "", /no CAUSE line/);
+  });
+});
+
 test("the session is Sonnet, read-mostly and bounded, and the prompt carries the stop", () => {
   const args = diagnosisArgs();
   const at = (flag: string) => args[args.indexOf(flag) + 1];
@@ -58,6 +85,12 @@ describe("diagnose", () => {
   test("returns the decision with its cost", async () => {
     const d: any = await diagnose(stop, { spawnFn: () => child(reply("DIAGNOSIS: rerun\nCAUSE: 403")), state: () => "same" });
     assert.deepEqual([d.ok, d.action, d.cause, d.run.result], [true, "rerun", "403", { cost: 0.4, turns: 7 }]);
+  });
+
+  test("keeps the reply, so a failed parse can say what the session wrote", async () => {
+    const d: any = await diagnose(stop, { spawnFn: () => child(reply("I looked.\nDIAGNOSIS: none")), state: () => "same" });
+    assert.equal(d.ok, false);
+    assert.equal(d.reply, "I looked.\nDIAGNOSIS: none");
   });
 
   test("a session that changed the tree, errored or said nothing parseable is a failure", async () => {
