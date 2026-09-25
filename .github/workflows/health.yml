@@ -1,3 +1,6 @@
+# Disabled in GitHub until Murlan is live: before launch there is no production to probe
+# (owner, 2026-09-25). Re-enabling it is #1303.
+#
 # Production's /health, asked on a schedule. Red when PROD_URL is unset too:
 # a probe with nowhere to point is not a passing probe.
 name: Production health

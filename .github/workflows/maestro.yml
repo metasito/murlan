@@ -33,6 +33,7 @@ concurrency:
 
 permissions:
   contents: read
+  issues: write
 
 jobs:
   android:
@@ -342,34 +343,18 @@ jobs:
       # passes, and the failure surfaces a step later against whatever is on
       # screen by then - once, the emulator's own launcher. The step name is
       # then actively misleading, and the only honest record is the tombstone,
-      # twenty minutes into an artefact nobody downloads. So the run says it
-      # itself (#629). Not gated on failure: a crash that did not manage to
-      # fail the run is worth knowing about more, not less.
-      - name: Say if the app died rather than failed
+      # twenty minutes into an artefact nobody downloads. So the run fails on
+      # it itself (#629, #1293). Not gated on failure: a crash that did not
+      # manage to fail the run is the one this exists for.
+      - name: Fail if the app died of a native crash
         id: crash
         if: always()
+        # The streamed logcat is the only log that exists when the device died
+        # before Maestro could pull its own (#185). Without `APP_ID` the build
+        # never ran, and there is no app to have crashed.
         run: |
-          # Every command here is `|| true`-ed or pipelined on purpose. This step
-          # runs under `bash -e`, and a grep that matches nothing exits non-zero:
-          # a step that dies here emits no warning at all, which is the failure
-          # this one exists to prevent, in its own implementation.
-          # Our own package, which is what makes this check worth more than it
-          # was: a tombstone under it is our crash rather than the host's. On
-          # `always()` this step also runs when the build never set `APP_ID`,
-          # and the grep would then be `>>> ` - every tombstone on the device,
-          # reported as ours.
           [ -n "$APP_ID" ] || exit 0
-          # The streamed logcat is searched alongside Maestro's own, and is the
-          # only one of the two that exists when the device died before Maestro
-          # could pull it (#185).
-          tombstone=$(grep -rl ">>> $APP_ID" "$HOME/.maestro/tests" "$RUNNER_TEMP/logcat.txt" 2>/dev/null | head -1 || true)
-          [ -n "$tombstone" ] || exit 0
-          echo "found=true" >> "$GITHUB_OUTPUT"
-          # Scoped to the block the file was selected by. A bare match would take
-          # the first fatal signal anywhere in the logcat, which can belong to
-          # another process on the emulator and would be reported as ours.
-          signal=$(grep -A6 ">>> $APP_ID" "$tombstone" | grep -m1 -o "signal [0-9]* ([A-Z]*)" || echo "an unknown signal")
-          echo "::warning::The app died of a native crash during this run ($signal). Maestro asserts against a stale hierarchy afterwards, so the step that failed is not where the problem is - read the screenshot beside it. Tombstone: ${tombstone#$HOME/.maestro/tests/}."
+          node tools/ci/find-native-crash.mjs android "$APP_ID" "$HOME/.maestro/tests" "$RUNNER_TEMP/logcat.txt"
 
       # #941: run 34101806375's host-vitals showed `used` fall ~3.4GB in the
       # 90s before a device-server death, consistent with the kernel OOM
@@ -449,3 +434,12 @@ jobs:
             ${{ runner.temp }}/journal.txt
             ${{ runner.temp }}/coredump.txt
           if-no-files-found: ignore
+
+      # `cancelled()` is the timeout: it skips every `failure()` step.
+      - name: Report a red scheduled run to the tracker
+        if: (failure() || cancelled()) && github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: bash tools/ci/report-device-run.sh maestro.yml

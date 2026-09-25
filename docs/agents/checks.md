@@ -26,7 +26,7 @@ instead of sitting unguarded in prose.
 | An effect under #1252 (a moment, a sound, a haptic, the lamp, the shake) | the `mockupParity*.spec.ts` file running its moment alone (rule 3), the moment registered in `MOMENTS` in `tests/e2e/helpers/mockupParity.ts`. Each test records in real time on one worker, so iterate on one variant's file and run the whole `mockupParity` set exactly once, before pushing — never all of it for a single tweak; `node scripts/mockupParityPage.mjs <report> <out>` builds the side-by-side page, and CI publishes it as the `mockup-parity` artifact | the app's trace against the picked mockup's on one virtual clock: onsets, particle counts, lamp, shake, region brightness (`tests/e2e/helpers/traceDiff.ts`) | Docker + a built web bundle | ~2.5 min |
 | Tokens, contrast, roles | `node --test tests/ui-rules/{contrast,tokenRoles,cosmetics}.test.ts` | AA floors | nothing | ~1s |
 | Must **boot and stay drivable on iOS** | `.github/workflows/ios.yml`, dispatched, and twice a week on `main` (below) | a crash, a screen that never renders, a control the flows tap going missing — on a real simulator | a device dispatch | ~23 min warm, ~28–46 min cold |
-| Must **boot and stay drivable on Android** | `.github/workflows/maestro.yml`, same trigger policy | same, on a virtual device — the only one that logs a native crash | a device dispatch | not yet green in the release-APK shape; #1206 landed the build-time and emulator fixes |
+| Must **boot and stay drivable on Android** | `.github/workflows/maestro.yml`, same trigger policy | same, on a virtual device | a device dispatch | not yet green in the release-APK shape; #1206 landed the build-time and emulator fixes |
 | The ticket loop (`tools/loop/`) | `npm run loop:test` | the supervisor, the gate, the picker, the workspace tools | nothing | ~40s |
 
 `node --test` over `tests/**/*.test.ts` is one command for both rows above it — `tests/integration/`
@@ -79,7 +79,8 @@ emulator. A ticket dispatches them from its own branch when its work needs a dev
 (`gh workflow run ios.yml --ref agent/<n>-<slug>`), and both run on `main` twice a week: a branch
 can read only its own cache and main's, so a branch's first run restores main's native build
 instead of compiling it cold, and a cache unread for 7 days is evicted. By the owner's decision; a
-red run is diagnosed from its artifacts, never rerun. `gh run list --workflow=ios.yml --branch
+red run is diagnosed from its artifacts, never rerun. A red scheduled run files or comments on
+that workflow's open `device-run` issue. `gh run list --workflow=ios.yml --branch
 agent/<n>-<slug>` (or `maestro.yml`) is a ticket's current status — without `--branch` the list
 mixes in main's scheduled runs. Wait on runs with `node tools/loop/await-run.mjs <run-id>
 [<run-id>…]`, which exits 0 when all passed, 1 when one did not, 2 when `gh` cannot find a run id,
@@ -122,8 +123,9 @@ them** — measuring beats eyeballing, every time (#209).
   `waitToSettleTimeoutMs: 500` on every `tapOn` there.
 - A Maestro step name is not evidence of what was on screen when it ran — the next assertion can
   pass against whatever hierarchy Maestro already read if the app died mid-flow; the screenshot
-  beside a failing step is the evidence. `maestro.yml` annotates a run whose logcat holds a
-  tombstone for the app's own package (#629), Android only. `node tools/ci/analyze-maestro-run.mjs
+  beside a failing step is the evidence. Both device workflows fail a run in which the app itself
+  died of a native crash — a tombstone in the logcat, a report in the simulator host's
+  DiagnosticReports (`tools/ci/find-native-crash.mjs`, #629, #1293). `node tools/ci/analyze-maestro-run.mjs
   <maestro.log> <logcat.txt>` separates a command starved by animation from one paying a flat
   per-fetch cost (#823), from the `maestro-debug`/`maestro-debug-ios` artefact.
 

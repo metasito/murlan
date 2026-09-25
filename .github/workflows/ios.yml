@@ -27,6 +27,7 @@ concurrency:
 
 permissions:
   contents: read
+  issues: write
 
 jobs:
   ios:
@@ -245,6 +246,23 @@ jobs:
             .maestro/smoke.yaml .maestro/offline-game.yaml .maestro/exchange-phase.yaml \
             .maestro/rematch-prompt.yaml
 
+      # A simulator app's crash report lands in the host's own DiagnosticReports. Not gated on
+      # failure: an app that died mid-flow can still pass the flows (see maestro.yml's crash step).
+      - name: Fail if the app died of a native crash
+        if: always()
+        run: |
+          [ -n "$APP_ID" ] || exit 0
+          node tools/ci/find-native-crash.mjs ios "$APP_ID" --copy-to "$RUNNER_TEMP/crash-reports" \
+            "$HOME/Library/Logs/DiagnosticReports"
+
+      - name: Upload crash reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: crash-reports-ios
+          path: ${{ runner.temp }}/crash-reports/
+          if-no-files-found: ignore
+
       # `inputs.force-upload-debug`, never `github.event.inputs.`: the latter reads a
       # boolean as the string "false", which is truthy, and uploads on every run.
       - name: Upload Maestro debug output
@@ -254,3 +272,12 @@ jobs:
           name: maestro-debug-ios
           path: ~/.maestro/tests/
           if-no-files-found: ignore
+
+      # `cancelled()` is the timeout: it skips every `failure()` step.
+      - name: Report a red scheduled run to the tracker
+        if: (failure() || cancelled()) && github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: bash tools/ci/report-device-run.sh ios.yml

@@ -253,7 +253,7 @@ describe("the Android job drives this app, not Expo Go", () => {
   test("the crash check looks for our own package", () => {
     // Grepping the host's process name finds nothing once the host is gone,
     // and a check that can no longer match reports nothing rather than failing.
-    assert.match(workflow, /grep -rl ">>> \$APP_ID"/);
+    assert.match(workflow, /find-native-crash\.mjs android "\$APP_ID"/);
   });
 });
 
