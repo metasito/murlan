@@ -7,6 +7,8 @@
  * the selector — a translation edit used to break these and report it as a game bug.
  */
 export const TABLE = '[data-testid="game-table"]';
+/** The whole table screen: the felt's parent also holds the top bar and the HUD, which `TABLE` does not. */
+export const TABLE_SCREEN = ':has(> [data-testid="table-felt"])';
 
 /** The table's own screen-reader sentence (`describeTableForA11y`). */
 export const TABLE_STATE = "data-table-state";
