@@ -34,7 +34,8 @@ derives it from git and the tracker.
   Never ask the user a question while a run is live.
 - **The turn budget** is `$LOOP_TURNS`. Past two thirds of it with nothing committed, commit what
   works and narrow the slice.
-- **On the context notice**, commit and declare `handoff` = your phase.
+- **On the context notice**, commit and declare `handoff` = your phase, with `"why"` saying what is
+  left.
 - **Only an `agent:check` run passes the Bash tool its maximum `timeout`**: the default is shorter
   than the check.
 
@@ -213,7 +214,7 @@ Only then declare handoff D and exit. The supervisor re-gates it: a failing one 
 passing one becomes a draft pull request so CI runs while D reviews.
 
 ```
-LOOP-RESULT {"ticket":<n>,"branch":"agent/<n>-slug","phase":"C","handoff":"D"}
+LOOP-RESULT {"ticket":<n>,"branch":"agent/<n>-slug","phase":"C","handoff":"D","why":"<what the next process must do first, one sentence>"}
 ```
 
 ## D — Review
@@ -300,7 +301,7 @@ comment. Park only for a decision only the owner can make.
 phase C's steps 1–5, and hand off:
 
 ```
-LOOP-RESULT {"ticket":<n>,"branch":"agent/<n>-slug","phase":"D","handoff":"D"}
+LOOP-RESULT {"ticket":<n>,"branch":"agent/<n>-slug","phase":"D","handoff":"D","why":"<what is left, one sentence>"}
 ```
 
 After a `LAND`, go straight on to phase E and F in this process.
@@ -331,7 +332,7 @@ Phase D's LAND continues here; a process starts at E only when resuming one.
    hoping for a different answer.
 
    ```
-   LOOP-RESULT {"ticket":<n>,"branch":"agent/<n>-slug","phase":"E","handoff":"C"}
+   LOOP-RESULT {"ticket":<n>,"branch":"agent/<n>-slug","phase":"E","handoff":"C","why":"<what agent:check named, one sentence>"}
    ```
 
 3. Push and write the PR body:
@@ -373,7 +374,7 @@ C, with the log in a `CI-RED` comment and in `.loop-logs/ci-<n>.log`.
    none. A ticket whose work is verification only posts its DOD-CHECK, closes the issue with
    `gh issue close <n> --reason completed`, and declares no `pr`: the supervisor records it closed.
    A branch with commits and no pull request is parked instead. `stoodDown` is true when you gave the ticket up, and then `"why"` says which in one
-   sentence. Phase F never sets `handoff`. A session that exits without it is recorded as an
+   sentence — and on a handoff, where it becomes the next process's brief. Phase F never sets `handoff`. A session that exits without it is recorded as an
    error, so emit it even when the news is bad.
 5. **Exit.** Do not loop back to phase A in this session.
 

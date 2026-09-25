@@ -383,9 +383,9 @@ export function typicalMs(rows) {
 /** Only for rows before schema 6, which carried a handoff as prose. */
 const HANDOFF_RE = /phase\s+([A-Za-z])\s+next(?: — (.+))?/;
 
-/** @param {{handoff?: {phase: string, why: string|null}|null, park_reason?: string|null}} row */
+/** @param {{handoff?: {phase: string, why: string|null, said?: string|null}|null, park_reason?: string|null}} row */
 export function handoffIn(row) {
-  if (row.handoff) return { phase: row.handoff.phase, why: row.handoff.why ?? null };
+  if (row.handoff) return { phase: row.handoff.phase, why: row.handoff.why ?? row.handoff.said ?? null };
   const m = HANDOFF_RE.exec(row.park_reason ?? "");
   return m ? { phase: m[1], why: m[2] ?? null } : null;
 }

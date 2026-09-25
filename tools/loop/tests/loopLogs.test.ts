@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import {
   ARTEFACTS,
   errorOf,
+  handoffIn,
   killedStarts,
   ledger,
   parkReasonOf,
@@ -432,6 +433,11 @@ describe("ticketTally", () => {
   test("reads a structured handoff first, and the prose only on a row that has none", () => {
     const t = ticketTally(1, [row({ outcome: "handoff", park_reason: "phase D next", handoff: { phase: "C", why: "red", said: null } })]);
     assert.deepEqual([t.lastHandoff, t.handoffWhy], ["C", "red"]);
+  });
+
+  test("a declared handoff's own why reaches the next process when the supervisor gave none", () => {
+    assert.deepEqual(handoffIn({ handoff: { phase: "D", why: null, said: "round 1 HOLD: model the Modal root" } }), { phase: "D", why: "round 1 HOLD: model the Modal root" });
+    assert.deepEqual(handoffIn({ handoff: { phase: "C", why: "the D handoff had no local pass", said: "x" } }), { phase: "C", why: "the D handoff had no local pass" });
   });
 
   test("a start row is a spawn, not a session", () => {

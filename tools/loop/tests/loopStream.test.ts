@@ -320,6 +320,8 @@ describe("the session's closing declaration", () => {
 
   test("a declaration carries the phase it hands off at", () => {
     assert.equal(said('LOOP-RESULT {"ticket":7,"phase":"C","handoff":"D"}').declared.handoff, "D");
+    const told = said('LOOP-RESULT {"ticket":7,"phase":"D","handoff":"D","why":"round 1 HOLD: model the Modal root"}').declared;
+    assert.deepEqual([told.handoff, told.why], ["D", "round 1 HOLD: model the Modal root"]);
   });
 
   test("a settle declaration keeps its phase", () => {

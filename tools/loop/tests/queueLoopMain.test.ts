@@ -505,6 +505,10 @@ describe("runOnce", () => {
       if (reason) assert.match(String(got), reason);
       else assert.equal(got ?? null, null);
     }
+    const ledger: any[] = [];
+    const told = async () => ({ ...(await handingOff("D", "D")()), declared: { ticket: 42, phase: "D", handoff: "D", stoodDown: false, why: "round 1 HOLD: model the Modal root" } });
+    await runOnce(io({ spawn: told }, ledger));
+    assert.equal(await next(ledger, "D"), "round 1 HOLD: model the Modal root", "a session's own handoff why is the next process's brief");
   });
 
   test("a session on the wrong model parks with the reason", async () => {
