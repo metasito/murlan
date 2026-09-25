@@ -31,7 +31,12 @@ const TAIL =
   "are not reported.";
 
 const diff = (wt, base) => `\`git -C ${wt} diff ${base}...HEAD\``;
-const issue = (n) => `\`gh issue view ${n} --comments\``;
+/** Rule 25's read, keeping only owner and collaborator comments: a later comment overrides the body. */
+export const readIssue = (n) =>
+  `gh issue view ${n} --json title,body,comments ` +
+  `--jq '.title, .body, (.comments[]|select(.authorAssociation=="OWNER" or .authorAssociation=="COLLABORATOR")` +
+  `|"--- "+.author.login+": "+.body)'`;
+const issue = (n) => `\`${readIssue(n)}\``;
 
 const BODIES = {
   scope: ({ n, worktree }) =>
@@ -40,8 +45,8 @@ const BODIES = {
     "existing patterns worth reusing, the same way; the risks; and whether the ticket makes sense " +
     "at all. If it is ambiguous, its premise is wrong, or the codebase already does it, say so " +
     "plainly. Then list the ticket's independent feature groups: sets of Definition-of-done boxes " +
-    "that share no file and no behaviour with any other set, each as its box texts. Around 30 " +
-    "lines. Do not run `npm run agent:check`.",
+    "that share no file and no behaviour with any other set, each as its box texts. Do not run " +
+    "`npm run agent:check`.",
   completeness: ({ n, worktree, base }) =>
     `Read issue #${n} with ${issue(n)} (a later comment overrides the body) and the change with ` +
     `${diff(worktree, base)}. For each Definition-of-done box, answer done, partial or missing. ` +
@@ -51,17 +56,17 @@ const BODIES = {
     "caller of a changed function the diff did not update. Then list every name the diff removes " +
     "or renames — identifier, export, env var, file path, npm script, locale key, testID, CLI " +
     `flag, workflow or job name — run \`git -C ${worktree} grep -n -F <name>\` for each, and ` +
-    "report every remaining mention outside the diff's own deleted lines. Around 25 lines.",
+    "report every remaining mention outside the diff's own deleted lines.",
   standards: ({ worktree, base }) =>
     `Review the change ${diff(worktree, base)} against \`docs/agents/RULES.md\` (read it in the ` +
     "worktree) and the smell baseline below. Report only what affects correctness or breaks a " +
     "documented rule, by number, quoted. Skip what tooling enforces. A baseline smell alone is a " +
-    "judgement call, never a hard violation. Around 15 lines.\n\n" +
+    "judgement call, never a hard violation.\n\n" +
     baseline(),
   spec: ({ n, worktree, base }) =>
     `Review the change ${diff(worktree, base)} against issue #${n} (${issue(n)}, body and ` +
     "comments; a later comment overrides the body). Report requirements missing or partial, " +
-    "behaviour not asked for, and anything implemented but wrong, quoting the issue. Around 15 lines.",
+    "behaviour not asked for, and anything implemented but wrong, quoting the issue.",
   refute: ({ worktree, base }) =>
     `The change is ${diff(worktree, base)}. For each finding below, try to kill it. A finding ` +
     "survives only if you can state the input or the sequence that makes the code wrong, or quote " +
@@ -72,7 +77,7 @@ const BODIES = {
     `the newest \`CI-RED\` comment in ${issue(n)}. Review it on two axes, reported under ` +
     "`## Standards` and `## Spec`: Standards against `docs/agents/RULES.md`, only what affects " +
     "correctness or breaks a rule by number; Spec against the issue and the CI-RED — does the fix " +
-    "answer every failing test it names, without changing what the ticket asked for. Around 20 lines.",
+    "answer every failing test it names, without changing what the ticket asked for.",
 };
 
 /** @param {string} kind @param {{n: number, worktree: string, base?: string}} opts */

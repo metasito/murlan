@@ -2,7 +2,7 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { brief, parseHeader, KINDS } from "../brief.mjs";
+import { brief, parseHeader, readIssue, KINDS } from "../brief.mjs";
 
 const SCRIPT = fileURLToPath(new URL("../brief.mjs", import.meta.url));
 const WT = "C:/Users/roton/murlan/.worktrees/agent-42";
@@ -24,9 +24,19 @@ describe("brief", () => {
     for (const kind of KINDS) assert.match(brief(kind, { n: 1, worktree: WT }), /Do not spawn any subagent/);
   });
 
+  test("every brief that names the issue reads its body and only trusted comments", () => {
+    assert.match(readIssue(5), /^gh issue view 5 --json title,body,comments --jq '\.title, \.body, /);
+    assert.match(readIssue(5), /select\(\.authorAssociation=="OWNER" or \.authorAssociation=="COLLABORATOR"\)/);
+    for (const kind of KINDS) {
+      const text = brief(kind, { n: 5, worktree: WT });
+      assert.doesNotMatch(text, /--comments/, kind);
+      if (["scope", "completeness", "spec", "fix"].includes(kind)) assert.ok(text.includes(readIssue(5)), kind);
+    }
+  });
+
   test("the completeness brief sweeps every removed or renamed name", () => {
     const text = brief("completeness", { n: 1103, worktree: WT });
-    assert.match(text, /gh issue view 1103 --comments/);
+    assert.match(text, /gh issue view 1103 --json title,body,comments/);
     assert.match(text, /git -C \S+ diff origin\/main\.\.\.HEAD/);
     for (const kind of ["env var", "npm script", "locale key", "testID", "file path"]) assert.ok(text.includes(kind), kind);
     assert.match(text, /git -C \S+ grep/);

@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
 import { diagnose, diagnosisArgs, diagnosisPrompt, parseDiagnosis } from "../diagnose.mjs";
+import { readIssue } from "../brief.mjs";
 
 describe("parseDiagnosis", () => {
   test("reads each action, and the cause up to the end of its paragraph", () => {
@@ -70,6 +71,8 @@ test("the session is Sonnet, read-mostly and bounded, and the prompt carries the
   for (const part of ["#42", "phase E", "CI failed at Browser test report", "CI run: 9", "boom", "DIAGNOSIS:", "CAUSE:"]) {
     assert.ok(prompt.includes(part), part);
   }
+  assert.ok(prompt.includes(readIssue(42)));
+  assert.doesNotMatch(prompt, /--comments/);
 });
 
 describe("diagnose", () => {

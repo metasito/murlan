@@ -11,8 +11,8 @@ export const meta = {
   ],
 }
 
-const { sha, openIssues, webUrl } = args
-const REPO = 'C:/Users/roton/murlan'
+const { repo: REPO, sha, openIssues, webUrl } = args
+if (!REPO || !sha) throw new Error('args.repo and args.sha are required: audit.md Step 1 resolves both.')
 const SEVERITIES = ['info', 'low', 'medium', 'high', 'critical']
 const SIZES = ['XS', 'S', 'M', 'L', 'XL']
 const MAX_GAP_ROUNDS = 3
@@ -71,7 +71,7 @@ Invariants to confirm:
     refs: 'node-postgres pooling (max, idleTimeoutMillis, connectionTimeoutMillis, one shared pool); GDPR data minimisation, export and erasure (Usercentrics mobile-games checklist).',
     ask: `- Every query has an index for its WHERE and ORDER BY.
 - Multi-row writes run in a transaction. Races on unique constraints.
-- Pool sizing fits the current host's connection limit (ADR-0006: no longer Replit).
+- Pool sizing: no host is chosen yet (ADR-0006, #1105), so state the Postgres connections one instance opens (pool, adapter, ownership) for the host choice to check against max_connections.
 - Unbounded tables have retention.
 - DDL is additive and idempotent (DEDUPE_ON_BOOT).
 - The session table is handled correctly.
@@ -115,7 +115,7 @@ Quote measured numbers from the docs, and name what is still unmeasured.`,
 - Event-loop blocking: sync crypto, large JSON.
 - Compression and cache headers on the static web.
 - Timers per room. Adapter overhead.
-Estimate how many concurrent tables one server instance can carry on the current host (see the \`infra\` lens for what that is), and state what that estimate rests on.`,
+Estimate how many concurrent tables one server instance can carry per unit of CPU and memory — no host is chosen yet (ADR-0006, #1105) — and state what that estimate rests on.`,
   },
   {
     key: 'ui-visual', model: 'opus', skills: ['expo-design-system', 'game-ui-design', 'frontend-design:frontend-design'],
@@ -160,7 +160,7 @@ For each one:
 - what happens today, with path:line;
 - what would make it land like a top-tier card or casino game: easing, anticipation, stagger, sound layering and variation, haptics, particles and light, music cues, microcopy.
 Every proposal must respect Motion tokens, motionMs() under reduced motion, impactDelayMs() timing and the a11y invariants, and must name the assets it needs.
-Return 20-40 concrete, buildable proposals, ranked by impact per size.`,
+Return up to 40 concrete, buildable proposals that clear FEEL-BAR, ranked by impact per size; each one costs a judge.`,
   },
   {
     key: 'a11y', model: 'sonnet', skills: ['accessibility'],
@@ -240,7 +240,7 @@ Run at most one node --test file.`,
   {
     key: 'docs', model: 'sonnet', skills: ['mattpocock-skills:writing-for-agents'],
     start: 'CLAUDE.md, README.md, CONTEXT.md, docs/*.md, docs/agents/, docs/adr/, .claude/commands/',
-    refs: 'The CLAUDE.md premise "the database holds real accounts" is known stale (not live).',
+    refs: 'Murlan is not live: a doc implying real accounts or player data to preserve is stale.',
     ask: `Check each factual claim against the code. List the stale, contradicted and unverifiable ones.
 Also check:
 - rules restated outside docs/agents/RULES.md;
@@ -292,8 +292,9 @@ const kindOf = lens => lens.kind || 'findings'
 
 const COMMON = `You are one specialist in a READ-ONLY audit of Murlan (${REPO}) at commit ${sha}.
 - Change nothing: no edits, commits, branch or worktree changes, and spawn no subagents.
-- Read files whole with Read; search with Grep. If the checkout has moved, read with \`git -C ${REPO} show ${sha}:<path>\`.
-- Allowed commands: npx tsc --noEmit, npx eslint <paths>, npm audit --omit=dev, npx expo install --check, one node --test <file>, git log/blame, gh issue view.
+- First run \`git -C ${REPO} rev-parse HEAD\`. If it prints ${sha}, read files whole with Read and search with Grep.
+  Otherwise the checkout is not the audited commit: read with \`git -C ${REPO} show ${sha}:<path>\` and search with \`git -C ${REPO} grep -n <pattern> ${sha}\`.
+- Allowed commands: npx tsc --noEmit, npx eslint <paths>, npm audit --omit=dev, npx expo install --check, one node --test <file>, git rev-parse/show/grep/log/blame, gh issue view.
   Nothing wider: rule 2 holds here too, and another session may be sharing this machine.
 - Load every skill named for your lens with the Skill tool first, and apply its checklist.
 - Every finding cites path:line with the quoted line and is marked measured (you ran it or traced the full path) or inferred.
@@ -510,7 +511,7 @@ ${JSON.stringify(platform)}`, {
 phase('Map')
 const map = await agent(`${COMMON}
 
-You are the cartographer. Write a system map, in markdown and at most 400 lines, that the specialists will read instead of rediscovering the repo. Include:
+You are the cartographer. Write a system map in markdown, at most 400 lines, that the specialists will read instead of rediscovering the repo. Every lens pays for all of it, so give path:line pointers rather than prose. Include:
 - screens and routes;
 - what each context owns;
 - server modules, grouped by role;
@@ -582,7 +583,7 @@ const refuted = judged.filter(f => f.verdict === 'refuted')
 const kept = judgedOpportunities.filter(o => o && o.keep)
 const report = await agent(`Write the Murlan audit report in markdown, for commit ${sha}. Use only the data below; invent nothing.
 Sections:
-1. Executive summary, at most 8 lines.
+1. Executive summary: what the owner should act on first.
 2. Scorecard: every lens with its score and a one-line rationale.
 3. Top 15 findings by risk x reach, each with path:line.
 4. Findings by lens. Label each confirmed or unverified.
