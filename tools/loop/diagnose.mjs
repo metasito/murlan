@@ -94,9 +94,11 @@ export function diagnosisPrompt({ ticket, phase, why, stderr = "", log = null, r
   ].join("\n");
 }
 
-const DECISION = /^[#>*`\s]*DIAGNOSIS[*`]*:[*`\s]*(resume\s+([A-Za-z])\b|rerun\b|park\b)(?![^\n]*\|)/im;
-const ECHOED = /^[#>*`\s]*DIAGNOSIS[^\n]*[|<]/im;
-const CAUSE = /^[#>*`\s]*CAUSE[*`]*:[*`]*[ \t]*\n?(.+(?:\n(?![#>*`\s]*DIAGNOSIS)(?!\s*$).+)*)/im;
+const HEADER = /^[#>*`\s]*DIAGNOSIS[*`]*:([^\n]*)/gim;
+const CHOICE = /^[*`\s]*(resume\s+([A-Za-z])\b|rerun\b|park\b)/i;
+const OPTION = /\b(?:resume\s+[A-Za-z]\b|rerun\b|park\b)/gi;
+const echoed = (line) => (line.match(OPTION) ?? []).length > 1;
+const CAUSE = /^[#>*`\s]*CAUSE[*`]*:[*`]*\s*(.+(?:\n(?![#>*`\s]*DIAGNOSIS)(?!\s*$).+)*)/im;
 
 /**
  * @param {string|null|undefined} text the session's final reply
@@ -105,9 +107,10 @@ const CAUSE = /^[#>*`\s]*CAUSE[*`]*:[*`]*[ \t]*\n?(.+(?:\n(?![#>*`\s]*DIAGNOSIS)
  */
 export function parseDiagnosis(text, runId = null) {
   const t = text ?? "";
-  const decision = DECISION.exec(t);
+  const lines = [...t.matchAll(HEADER)].map((m) => m[1]);
+  const decision = lines.filter((l) => !echoed(l)).map((l) => CHOICE.exec(l)).find(Boolean);
   if (!decision)
-    return { ok: false, error: ECHOED.test(t) ? "it copied the options line instead of choosing one" : "it gave no DIAGNOSIS line" };
+    return { ok: false, error: lines.some(echoed) ? "it copied the options line instead of choosing one" : "it gave no DIAGNOSIS line" };
   const cause = CAUSE.exec(t)?.[1].replace(/`{3,}/g, "").replace(/\s+/g, " ").trim().slice(0, DIAGNOSIS.CAUSE_CHARS);
   if (!cause) return { ok: false, error: "it gave no CAUSE line" };
   if (decision[2]) {

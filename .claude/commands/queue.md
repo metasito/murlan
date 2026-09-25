@@ -34,8 +34,9 @@ derives it from git and the tracker.
   Never ask the user a question while a run is live.
 - **The turn budget** is `$LOOP_TURNS`. Past two thirds of it with nothing committed, commit what
   works and narrow the slice.
-- **On the context notice**, commit and declare `handoff` = your phase, with `"why"` saying what is
-  left.
+- **On the context notice**, commit and declare `handoff` = your phase.
+- **Every handoff carries `"why"`**: what is left, in one sentence. It becomes the next process's
+  brief.
 - **Only an `agent:check` run passes the Bash tool its maximum `timeout`**: the default is shorter
   than the check.
 
@@ -214,7 +215,7 @@ Only then declare handoff D and exit. The supervisor re-gates it: a failing one 
 passing one becomes a draft pull request so CI runs while D reviews.
 
 ```
-LOOP-RESULT {"ticket":<n>,"branch":"agent/<n>-slug","phase":"C","handoff":"D","why":"<what the next process must do first, one sentence>"}
+LOOP-RESULT {"ticket":<n>,"branch":"agent/<n>-slug","phase":"C","handoff":"D","why":"<what is left, one sentence>"}
 ```
 
 ## D — Review
@@ -332,7 +333,7 @@ Phase D's LAND continues here; a process starts at E only when resuming one.
    hoping for a different answer.
 
    ```
-   LOOP-RESULT {"ticket":<n>,"branch":"agent/<n>-slug","phase":"E","handoff":"C","why":"<what agent:check named, one sentence>"}
+   LOOP-RESULT {"ticket":<n>,"branch":"agent/<n>-slug","phase":"E","handoff":"C","why":"<what is red, one sentence>"}
    ```
 
 3. Push and write the PR body:
@@ -373,9 +374,9 @@ C, with the log in a `CI-RED` comment and in `.loop-logs/ci-<n>.log`.
    Valid JSON after the marker, in the same message as any command. Omit `pr` only if you pushed
    none. A ticket whose work is verification only posts its DOD-CHECK, closes the issue with
    `gh issue close <n> --reason completed`, and declares no `pr`: the supervisor records it closed.
-   A branch with commits and no pull request is parked instead. `stoodDown` is true when you gave the ticket up, and then `"why"` says which in one
-   sentence — and on a handoff, where it becomes the next process's brief. Phase F never sets `handoff`. A session that exits without it is recorded as an
-   error, so emit it even when the news is bad.
+   A branch with commits and no pull request is parked instead. `stoodDown` is true when you gave
+   the ticket up, and then `"why"` says which in one sentence. Phase F never sets `handoff`. A
+   session that exits without it is recorded as an error, so emit it even when the news is bad.
 5. **Exit.** Do not loop back to phase A in this session.
 
 ## Compaction

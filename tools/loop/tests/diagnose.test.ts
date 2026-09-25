@@ -36,10 +36,16 @@ describe("parseDiagnosis reads the forms a model writes", () => {
     ["DIAGNOSIS: park — only the owner can choose\nCAUSE: the host is undecided.", "park"],
     ["DIAGNOSIS: resume C\nCAUSE:\nThe build left a red test.", "resume"],
     ["## DIAGNOSIS: rerun\nCAUSE: the runner died.", "rerun"],
+    ["DIAGNOSIS: park — the owner must choose A | B\nCAUSE: two designs are open.", "park"],
+    ["DIAGNOSIS: resume C\nCAUSE:\n\nThe build left a red test.", "resume"],
   ];
   for (const [text, action] of ok) test(JSON.stringify(text), () => {
     const d = parseDiagnosis(text, 7);
     assert.equal(d.ok && d.action, action);
+  });
+  test("a cause after a blank line is read in full", () => {
+    const d = parseDiagnosis("DIAGNOSIS: resume C\nCAUSE:\n\nThe build left\na red test.", null);
+    assert.equal(d.ok && d.cause, "The build left a red test.");
   });
   test("an echoed options line is named as that", () => {
     const d = parseDiagnosis("DIAGNOSIS: resume B | resume C | resume D | rerun | park\nCAUSE: x", null);

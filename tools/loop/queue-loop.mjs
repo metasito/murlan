@@ -13,7 +13,7 @@
  *
  * Usage: node tools/loop/queue-loop.mjs
  */
-import { execFileSync, spawn, spawnSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import fs, { createWriteStream, mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -2148,7 +2148,7 @@ export async function runOnce(io, pinned = null, at = null) {
   if (!io.syncCheckout(pinned)) return { outcome: "stop", why: "the shared checkout is not usable" };
   // Exit 2 is "this machine cannot start a ticket *now*" — drift, a peer's dirt, memory. Every one
   // of those clears on its own, including the drift the loop's own merge of a lockfile creates.
-  const pre = io.queuePre();
+  const pre = await io.queuePre();
   if (pre.status === 2) return { outcome: "hold", why: "queue-pre is not ready for a ticket yet" };
   if (pre.status !== 0) {
     const rows = pre.said.split("\n").map((l) => l.trim()).filter(Boolean);
@@ -2440,6 +2440,21 @@ export async function runOnce(io, pinned = null, at = null) {
   return { outcome: "landed", ticket: route.number };
 }
 
+export function queuePreStreamed({ spawnFn = spawn, out = process.stderr } = {}) {
+  return new Promise((resolve) => {
+    const child = spawnFn(process.execPath, [HERE + "/queue-pre.mjs"], { stdio: ["ignore", "inherit", "pipe"] });
+    let said = "";
+    child.stderr.setEncoding?.("utf8");
+    child.stderr.on("data", (chunk) => {
+      out.write(chunk);
+      said += chunk;
+    });
+    const done = (status) => resolve({ status: status ?? 1, said: said.replace(/\x1b\[[0-9;]*m/g, "") });
+    child.on("error", (err) => ((said += `queue-pre ✗ could not start — ${err.message}\n`), done(1)));
+    child.on("close", done);
+  });
+}
+
 /** The real IO, bound once so `runOnce` can be driven without git, the tracker or a binary. */
 function realIo(book, screen) {
   // The queue as the *previous* pick read it. The direction is what a night is made of, and this
@@ -2449,11 +2464,7 @@ function realIo(book, screen) {
   return {
     stopFile: () => takeStopFile(fs, STOP_FILE),
     syncCheckout: (pinned) => syncCheckout(git, (m) => screen.notice("checkout", m), undefined, { pinned }),
-    queuePre: () => {
-      const r = spawnSync(process.execPath, [HERE + "/queue-pre.mjs"], { stdio: ["ignore", "inherit", "pipe"], encoding: "utf8" });
-      process.stderr.write(r.stderr ?? "");
-      return { status: r.status ?? 1, said: (r.stderr ?? "").replace(/\x1b\[[0-9;]*m/g, "") };
-    },
+    queuePre: () => queuePreStreamed(),
     issueState: (n) => {
       const f = ticketFacts(n);
       return { state: f.state ?? null, stateReason: f.stateReason ?? null };
@@ -2884,8 +2895,8 @@ export async function main({
     pinned = null;
     if (pass.outcome === "landed" || pass.outcome === "closed") {
       failures = 0;
-      // Only a landing clears the refusal counter. Cleared on any non-refused outcome, refusals
-      // interleaved with parks never reach the ceiling — a suspend knob with no floor under it.
+      // Only a finished ticket clears the refusal counter. Cleared on any non-refused outcome,
+      // refusals interleaved with parks never reach the ceiling: a suspend knob with no floor.
       waits = 0;
     } else {
       failures += 1;

@@ -589,6 +589,12 @@ describe("closing", () => {
     assert.match(out, /23:44 · \$3\.90 · 132 turns · 9 files/);
   });
 
+  test("a ticket closed as done carries the same facts, not its reason", () => {
+    const out = strip(closing({ ...landed, outcome: "closed", why: "closed as done" }, tPlain));
+    assert.match(out, /23:44 · \$3\.90 · 132 turns · 9 files/);
+    assert.doesNotMatch(out, /closed as done/);
+  });
+
   test("a parked one carries the reason instead, and its log", () => {
     const out = strip(closing({ outcome: "parked", number: 1003, ms: 1, cost: 0, why: "needs device pixels", log: ".loop-logs/park.md" }, tPlain));
     assert.match(out, /parked/);

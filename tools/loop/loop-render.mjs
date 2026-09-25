@@ -682,7 +682,7 @@ const OUTCOME = {
  */
 export function closing({ outcome, number, files, turns, ms, cost, why, log }, t) {
   const [glyph, colour] = OUTCOME[outcome] ?? ["·", "faint"];
-  const landed = outcome === "landed" || outcome === "merged";
+  const landed = outcome === "landed" || outcome === "merged" || outcome === "closed";
   const facts = landed
     ? `${elapsed(ms)} · ${money(cost)} · ${plural(turns, "turn")} · ${plural(files, "file")}`
     : (why ?? "");
