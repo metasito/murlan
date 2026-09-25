@@ -29,7 +29,7 @@ const CH = CARD_H(1);
 
 // Declarations, not uses: `width: CARD_W` and `CARD_W_SMALL` do not match.
 const CARD_DIMENSION_DECL =
-  /(?<![\w$])(?:(?:const|let|var|class|enum|as)\s+|function(?:\s*\*\s*|\s+))(?:CARD_W|CARD_H)(?![\w$])/g;
+  /(?<![\w$])(?:(?:const|let|var|class|enum|as|import)\s+|function(?:\s*\*\s*|\s+))(?:CARD_W|CARD_H)(?![\w$])/g;
 
 // A fan's spread, written out instead of asked for: an `overlap`/`maxAngle`/
 // `maxTilt` binding, or the step ternary itself. The ternary is matched on any
@@ -134,6 +134,7 @@ describe("layout constants (pinned here; this test is the authority)", () => {
           "class CARD_W {}",
           "enum CARD_H { A }",
           'import { cardWidth as CARD_W } from "./x";',
+          'import CARD_H from "./y";',
           "const box = { width: CARD_W(1), h: CARD_H_SMALL };",
         ].join("\n"),
       ],
@@ -144,6 +145,7 @@ describe("layout constants (pinned here; this test is the authority)", () => {
       "components/handLayout.ts: enum CARD_H",
       "components/handLayout.ts: function CARD_W",
       "components/handLayout.ts: function* CARD_H",
+      "components/handLayout.ts: import CARD_H",
     ]);
   });
 

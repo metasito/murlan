@@ -74,7 +74,11 @@ function rnModalImports(src: string): string[] {
     }
     for (const part of clause.replace(/\{[^}]*\}/, "").split(",")) {
       const ns = part.trim().match(/^(?:\*\s*as\s+)?([\w$]+)$/)?.[1];
-      if (ns && new RegExp(`(?<![\\w$])${ns.replace(/\$/g, "\\$")}\\s*\\.\\s*Modal(?![\\w$])`).test(src)) {
+      const n = ns?.replace(/\$/g, "\\$");
+      const reached = new RegExp(
+        `(?<![\\w$])${n}\\s*\\.\\s*Modal(?![\\w$])|\\{[^}]*(?<![\\w$])Modal(?![\\w$])[^}]*\\}\\s*=\\s*${n}(?![\\w$])`
+      );
+      if (ns && reached.test(src)) {
         hits.push(`${ns}.Modal`);
       }
     }
@@ -143,8 +147,10 @@ describe("orientation is never narrowed behind the player's back", () => {
       'import { type ModalProps, Pressable } from "react-native";',
       'import { Modal as Other } from "./Modal";',
       'import * as Unused from "react-native";',
+      'import * as N from "react-native";',
+      "const { View, Modal: M } = N;",
     ].join("\n");
-    assert.deepEqual(rnModalImports(planted), ["Modal as Sheet", "RN.Modal", "Modal", "Modal"]);
+    assert.deepEqual(rnModalImports(planted), ["Modal as Sheet", "RN.Modal", "Modal", "Modal", "N.Modal"]);
   });
 
   test("only the game table forces an orientation", () => {

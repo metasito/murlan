@@ -17,12 +17,13 @@ import path from "node:path";
 const NATIVE = path.resolve(import.meta.dirname, "../native");
 
 /**
- * Line numbers falling inside an `act(…)` callback. A `fireEvent` in there is
- * already covered by the enclosing flush, and is the common existing form —
- * without this the scan names every one of them.
+ * Lines reaching inside an `act(…)` callback, each to the column its enclosed
+ * part starts at. A `fireEvent` in there is already covered by the enclosing
+ * flush, and is the common existing form — without this the scan names every
+ * one of them.
  */
-function insideAct(lines: string[]): Set<number> {
-  const inside = new Set<number>();
+function insideAct(lines: string[]): Map<number, number> {
+  const inside = new Map<number, number>();
   for (let i = 0; i < lines.length; i++) {
     const opener = /\bact\(/.exec(lines[i]);
     if (!opener) continue;
@@ -35,7 +36,7 @@ function insideAct(lines: string[]): Set<number> {
           open = true;
         } else if (ch === "}") depth--;
       }
-      if (open) inside.add(j);
+      if (open) inside.set(j, Math.min(inside.get(j) ?? Infinity, j === i ? opener.index : 0));
       if (open && depth <= 0) break;
     }
   }
@@ -59,30 +60,37 @@ const FLUSH = /\bawait\s+(?:act\(|[\w.]+\.(?:unmount|rerender)\()/;
  */
 function poisonedLines(source: string): number[] {
   const lines = source.split("\n");
-  const skippable = (l: string) => l.trim() === "" || /^\s*(\/\/|\/\*|\*)/.test(l);
-  const enclosed = insideAct(lines);
-  const hits: number[] = [];
-
-  for (let i = 0; i < lines.length; i++) {
-    if (!/\bfireEvent(?:\.\w+)?\(/.test(lines[i])) continue;
-    // `act(` on the line itself covers the brace-less arrow form, which the
-    // block tracker cannot see because it never opens one.
-    if (/\bawait\s+fireEvent\b/.test(lines[i]) || /\bact\(/.test(lines[i])) continue;
-    if (enclosed.has(i)) continue;
-
-    for (let j = i + 1; j < lines.length; j++) {
-      const line = lines[j];
-      if (skippable(line)) continue;
-      // A later test's flush is that test's business, not this one's.
-      if (/\b(it|test)\(/.test(line)) break;
-      if (FLUSH.test(line)) {
-        hits.push(i + 1);
-        break;
+  return bareFireEvents(lines)
+    .filter(([i, rest]) => {
+      for (const line of [rest, ...lines.slice(i + 1)]) {
+        if (skippable(line)) continue;
+        // A later test's flush is that test's business, not this one's.
+        if (/\b(it|test)\(/.test(line)) return false;
+        if (FLUSH.test(line)) return true;
+        if (/\bawait\b/.test(line)) return false;
       }
-      if (/\bawait\b/.test(line)) break;
-    }
+      return false;
+    })
+    .map(([i]) => i + 1);
+}
+
+const skippable = (l: string) => l.trim() === "" || /^\s*(\/\/|\/\*|\*)/.test(l);
+
+/** Each bare `fireEvent…(…)` as [its line, what follows its statement on that line]. */
+function bareFireEvents(lines: string[]): [number, string][] {
+  const enclosed = insideAct(lines);
+  const found: [number, string][] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const at = lines[i].search(/\bfireEvent(?:\.\w+)?\(/);
+    if (at < 0 || (enclosed.get(i) ?? Infinity) <= at) continue;
+    const before = lines[i].slice(0, at);
+    // `act(` before it covers the brace-less arrow form, which the block
+    // tracker cannot see because it never opens one.
+    if (/\bawait\s+$/.test(before) || /\bact\(/.test(before)) continue;
+    const end = lines[i].indexOf(";", at);
+    found.push([i, end < 0 ? "" : lines[i].slice(end + 1)]);
   }
-  return hits;
+  return found;
 }
 
 /**
@@ -92,26 +100,16 @@ function poisonedLines(source: string): number[] {
  */
 function staleAssertLines(source: string): number[] {
   const lines = source.split("\n");
-  const skippable = (l: string) => l.trim() === "" || /^\s*(\/\/|\/\*|\*)/.test(l);
-  const enclosed = insideAct(lines);
-  const hits: number[] = [];
-
-  for (let i = 0; i < lines.length; i++) {
-    if (!/\bfireEvent(?:\.\w+)?\(/.test(lines[i])) continue;
-    if (/\bawait\s+fireEvent\b/.test(lines[i]) || /\bact\(/.test(lines[i])) continue;
-    if (enclosed.has(i)) continue;
-
-    for (let j = i + 1; j < lines.length; j++) {
-      const line = lines[j];
-      if (skippable(line)) continue;
-      if (/\b(it|test)\(/.test(line) || /\bawait\b/.test(line)) break;
-      if (/\bexpect\(/.test(line)) {
-        hits.push(i + 1);
-        break;
+  return bareFireEvents(lines)
+    .filter(([i, rest]) => {
+      for (const line of [rest, ...lines.slice(i + 1)]) {
+        if (skippable(line)) continue;
+        if (/\b(it|test)\(/.test(line) || /\bawait\b/.test(line)) return false;
+        if (/\bexpect\(/.test(line)) return true;
       }
-    }
-  }
-  return hits;
+      return false;
+    })
+    .map(([i]) => i + 1);
 }
 
 const nativeSources: { name: string; source: string }[] = readdirSync(NATIVE, {
@@ -131,6 +129,7 @@ describe("no native test pairs a bare fireEvent with an act flush", () => {
     assert.deepEqual(poisonedLines("fireEvent.press(x);\nawait act(async () => {});"), [1]);
     assert.deepEqual(poisonedLines("fireEvent.press(x);\n\n  await act(async () => {});"), [1]);
     assert.deepEqual(poisonedLines("fireEvent(x, 'press');\nawait act(async () => {});"), [1]);
+    assert.deepEqual(poisonedLines("fireEvent.press(x); await act(async () => {});"), [1]);
     assert.deepEqual(poisonedLines("fireEvent.press(x);\n// flush it\nawait act(async () => {});"), [1]);
     // Not adjacency: any run of synchronous statements between the two still pairs.
     assert.deepEqual(
@@ -180,6 +179,7 @@ describe("no native test pairs a bare fireEvent with an act flush", () => {
 describe("no native test asserts on the tree a bare fireEvent has not re-rendered yet", () => {
   test("the pattern names a press read back before anything is awaited, and only that", () => {
     assert.deepEqual(staleAssertLines("fireEvent.press(x);\nexpect(spy).toHaveBeenCalled();"), [1]);
+    assert.deepEqual(staleAssertLines("fireEvent.press(x); expect(spy).toHaveBeenCalled();"), [1]);
     assert.deepEqual(staleAssertLines("fireEvent(x, 'press');\n\n// read it\nexpect(a).toBe(b);"), [1]);
     assert.deepEqual(staleAssertLines("fireEvent.press(\n  x\n);\nconst n = 1;\nexpect(a).toBe(n);"), [1]);
     assert.deepEqual(staleAssertLines("await fireEvent.press(x);\nexpect(a).toBe(b);"), []);

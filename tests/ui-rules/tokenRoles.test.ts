@@ -15,6 +15,7 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import ts from "typescript";
 import { Colors, Scrim, Highlight, Lantern, Layer, Type } from "../../lib/tokens.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -302,8 +303,6 @@ describe("design tokens are used in the role they were designed for", () => {
 // cannot be checked against the one three files away; a `Layer` role can.
 describe("stacking order is stated as a role", () => {
   const BARE = /^-?\d+$/;
-  const DECLARED =
-    /^[ \t]*(?:export[ \t]+)?(?:const|let|var)[ \t]+([A-Za-z_$][\w$]*)[ \t]*(?::[^;\r\n]*?)?=(?![>=])[ \t]*([^;\r\n]+);/gm;
   const USED = /zIndex\s*[:=]\s*\{?\s*([A-Za-z_$][\w$]*|-?\d+)/g;
 
   /**
@@ -317,7 +316,13 @@ describe("stacking order is stated as a role", () => {
    */
   function stackingValues(source: string): [string, string][] {
     const declared = new Map<string, string>();
-    for (const [, name, rhs] of source.matchAll(DECLARED)) declared.set(name, rhs.trim());
+    const visit = (n: ts.Node): void => {
+      if (ts.isVariableDeclaration(n) && ts.isIdentifier(n.name) && n.initializer) {
+        declared.set(n.name.text, n.initializer.getText());
+      }
+      ts.forEachChild(n, visit);
+    };
+    visit(ts.createSourceFile("s.tsx", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX));
     return [...source.matchAll(USED)].map(([, expr]): [string, string] => [
       expr,
       BARE.test(expr) ? expr : (declared.get(expr) ?? expr),
@@ -351,6 +356,8 @@ describe("stacking order is stated as a role", () => {
       "const B_Z: number = 50;",
       "export const B_Z = 50;",
       "let B_Z: (n: number) => number = 50;",
+      "const A_Z = 1, B_Z = 50;",
+      "const B_Z =\n  50;",
     ]) {
       assert.deepEqual(stackingValues(`${decl}\nx = { zIndex: B_Z };`), [["B_Z", "50"]], decl);
     }

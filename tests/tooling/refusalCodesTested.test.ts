@@ -176,7 +176,8 @@ function comparedArgs(call: ts.CallExpression): readonly ts.Expression[] | null 
     const method = callee.name.text;
     if (ACTUAL_ONLY.has(method)) return args.slice(0, 1);
     if (ACTUAL_AND_EXPECTED.has(method)) return args.slice(0, 2);
-    if (EXPECTED_ONLY.has(method)) return args.slice(1, 2);
+    // A string there is the failure message, not a matcher (Node's assert.throws docs).
+    if (EXPECTED_ONLY.has(method)) return args.slice(1, 2).filter((a) => !ts.isStringLiteralLike(a));
     return [];
   }
   let subject: ts.Expression = callee.expression;
@@ -221,6 +222,8 @@ test("an assertion's message names nothing it compared", () => {
        assert.deepEqual(body, { code: "DEEP" }, "DEEP_MESSAGE");
        assert.ok(body.code === "COMPARED_IN_OK", "OK_MESSAGE");
        await assert.rejects(call("INPUT"), { code: "REJECTED" }, "REJECTS_MESSAGE");
+       await assert.rejects(call(), "TWO_ARG_REJECTS");
+       assert.throws(() => run(), "TWO_ARG_THROWS");
        assert.fail("FAIL_MESSAGE");
        expect(body.code).not.toBe("MATCHED");
        await expect(p).rejects.toMatchObject({ code: "CHAINED" });`,
