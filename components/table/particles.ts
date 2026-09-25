@@ -3,6 +3,7 @@
 // 874 × 402 points. It draws nothing, and game information never passes through it.
 //
 // JSX-free, runtime imports relative — docs/agents/checks.md, "Node's TypeScript loader".
+import { Dust } from "../../lib/tokens.ts";
 
 export type ParticleShape = "dot" | "spark" | "soft";
 export const SHAPES: readonly ParticleShape[] = ["dot", "spark", "soft"];
@@ -130,13 +131,13 @@ export function landDust(cards: number, count: number, x0: number, y0: number, r
     const a = side ? R(-0.4, 0.4) + (x < x0 ? Math.PI * 0.95 : Math.PI * 0.05) : R(0, TAU);
     const s = R(18, 70);
     const vy = Math.sin(a) * s * 0.4 - R(4, 14);
-    out.push({ x, y, vx: Math.cos(a) * s, vy, g: -6, drag: 0.92, life: R(0.5, 1.1), size: R(0.35, 1.1), col: "#ffe2a8" });
+    out.push({ x, y, vx: Math.cos(a) * s, vy, g: -6, drag: 0.92, life: R(0.5, 1.1), size: R(0.35, 1.1), col: Dust.mote });
   }
   for (let i = 0; i < puffs; i++) {
     const x = x0 + R(-w / 2, w / 2);
     const vx = R(-20, 20);
     const vy = R(-10, 0);
-    out.push({ x, y: y0 + 44, vx, vy, drag: 0.95, life: R(0.7, 1.1), size: R(10, 18), col: "rgba(230,215,180,.1)", shape: "soft" });
+    out.push({ x, y: y0 + 44, vx, vy, drag: 0.95, life: R(0.7, 1.1), size: R(10, 18), col: Dust.puff, shape: "soft" });
   }
   return out;
 }

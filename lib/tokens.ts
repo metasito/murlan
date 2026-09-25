@@ -178,6 +178,12 @@ export const Lantern = {
   flatFoot:  'rgba(24,20,12,0.13)',
 } as const;
 
+// What a card landing throws up off the felt: the mockup's `landDust` (#1242).
+export const Dust = {
+  mote: '#FFE2A8',
+  puff: 'rgba(230,215,180,0.1)',
+} as const;
+
 // PASSA is garnet, not alarm red: GIOCA's construction — a lit top lip, a face
 // darkening downward, a seated shadow — at lower luminance with the hue pulled
 // across, and no glow. The only lit object on the table is GIOCA, and only on
