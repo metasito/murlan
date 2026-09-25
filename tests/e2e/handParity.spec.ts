@@ -17,7 +17,11 @@
 import { test, expect } from "@playwright/test";
 import { DEAL_SIZE, openSeededGame } from "./helpers/offlineSeed";
 import { PHONES } from "./helpers/phones";
+import { HAND_ZONE, TABLE } from "./helpers/selectors";
+import { atRest } from "./helpers/settle";
 import { HAND_NEAR_RATIO } from "../../components/cardFaceModel";
+
+const HAND = `${TABLE} ${HAND_ZONE}`;
 
 const SEATS = [2, 3, 4] as const;
 
@@ -132,7 +136,7 @@ test.describe("the hand a player holds", () => {
           await openSeededGame(page, baseURL!, seats, dealt, turn.seat, turn.hold);
           // Past the deal: every card flies in from the middle of the table, so
           // until the stagger has run the row is a pack rather than a hand.
-          await page.waitForTimeout(2_500);
+          await atRest(page, HAND);
 
           const hand = await handGeometry(page);
 
@@ -180,11 +184,11 @@ test.describe("the hand a player holds", () => {
     await page.setViewportSize({ width: phone.width, height: phone.height });
 
     await openSeededGame(page, baseURL!, 4, DEAL_SIZE[4], 1, true);
-    await page.waitForTimeout(2_500);
+    await atRest(page, HAND);
     const away = await handGeometry(page);
 
     await openSeededGame(page, baseURL!, 4, DEAL_SIZE[4], 0);
-    await page.waitForTimeout(2_500);
+    await atRest(page, HAND);
     const near = await handGeometry(page);
 
     const grew = near.cardW / away.cardW;

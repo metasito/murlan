@@ -40,8 +40,9 @@ test("menu screens render every icon glyph, across the states reachable with no 
   await page.goto(`${baseURL}/rules`);
   await page.waitForLoadState("networkidle");
   await assertAllGlyphsRender(page, "rules — FAQ collapsed (chevron-down)", 27);
-  await page.getByRole("button", { name: "Qual è l'obiettivo del gioco?" }).click();
-  await page.waitForTimeout(400); // the answer's height animates open
+  const question = page.getByRole("button", { name: "Qual è l'obiettivo del gioco?" });
+  await question.click();
+  await expect(question).toHaveAttribute("aria-expanded", "true");
   await assertAllGlyphsRender(page, "rules — FAQ expanded (chevron-up)", 27);
 
   await page.goto(`${baseURL}/auth`);
@@ -75,7 +76,7 @@ test("online screens render every icon glyph, across the states reachable once s
   // (selectedMode.icon) only exists after a card is tapped.
   await assertAllGlyphsRender(page, "quickmatch — mode list, nothing selected", 5);
   await page.getByText("1 vs 1", { exact: true }).click();
-  await page.waitForTimeout(300);
+  await expect(page.getByText("Cerco giocatori")).toBeVisible();
   await assertAllGlyphsRender(page, "quickmatch — mode selected", 6);
   // Selecting a mode starts matchmaking immediately (quickmatch.tsx
   // handleSelectMode) rather than just toggling a display state, so a full
@@ -85,7 +86,8 @@ test("online screens render every icon glyph, across the states reachable once s
   await page.waitForLoadState("networkidle");
 
   await page.getByRole("button", { name: "Il mio profilo" }).click();
-  await page.waitForTimeout(1500);
+  await expect(page.getByText("Ancora nessuna partita", { exact: true })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText("Nessuna partita ancora", { exact: true })).toBeVisible({ timeout: 15_000 });
   await assertAllGlyphsRender(page, "profile — empty state", 15);
 
   expect(consoleErrors.entries, "no console errors/warnings across the online screens").toEqual([]);
@@ -129,7 +131,6 @@ test("the replay screen renders the correct transport icon in both its paused an
   // its replay still pairs — there is no separate replays list to click.
   await page.getByRole("button", { name: /^Guarda:/ }).first().click({ timeout: 15_000 });
   await page.waitForURL(/replay/, { timeout: 15_000 });
-  await page.waitForTimeout(500);
 
   await expect(page.getByRole("button", { name: "Riproduci" })).toBeVisible();
   await assertAllGlyphsRender(page, "replay — paused (play)", 8);

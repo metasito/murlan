@@ -12,8 +12,11 @@ import { openApp, startOfflineGame } from "./helpers/navigation";
 import { openSeededGame, offlineGameSave, resumeSaved, DEAL_SIZE } from "./helpers/offlineSeed";
 import { buildCombination } from "../../lib/game/gameEngine";
 import { GIOCA_VALID_LABEL, YOUR_TURN_PREFIX } from "./helpers/labels";
-import { HAND_ZONE, TABLE_STATE } from "./helpers/selectors.ts";
+import { HAND_ZONE, TABLE_SCREEN, TABLE_STATE } from "./helpers/selectors.ts";
 import { tap } from "./helpers/press";
+import { atRest } from "./helpers/settle";
+
+const TOP_BAR = '[data-testid="game-top-bar"]';
 
 const VIEWPORTS = [
   { name: "small phone landscape", width: 667, height: 375 },
@@ -35,7 +38,7 @@ test.describe("the table fits the screen", () => {
         // table, and four clicks and a deal animation are not part of that. On
         // a loaded runner they were the whole test budget (#152).
         await openSeededGame(page, baseURL!, playerCount);
-        await page.waitForTimeout(2_000);
+        await atRest(page, TABLE_SCREEN);
 
         // Laid-out boxes only, and only ones nothing clips. An SVG's bounding
         // box can be far wider than the ink it paints, and a big hand's card
@@ -104,8 +107,8 @@ test.describe("the top-left chip's player name", () => {
 
   async function topBar(page: Page, baseURL: string, name: string) {
     await resumeSaved(page, baseURL, nameSave(name));
-    await page.waitForTimeout(1_000);
-    return page.locator('[data-testid="game-top-bar"]');
+    await atRest(page, TOP_BAR);
+    return page.locator(TOP_BAR);
   }
 
   for (const vp of VIEWPORTS) {
@@ -172,7 +175,7 @@ test.describe("the felt", () => {
     const vp = { width: 844, height: 390 };
     await page.setViewportSize(vp);
     await openSeededGame(page, baseURL!, 4);
-    await page.waitForTimeout(2_000);
+    await atRest(page, TABLE_SCREEN);
 
     const felt = await page.locator('[data-testid="table-felt"]').boundingBox();
     if (!felt) throw new Error("the felt never rendered");
@@ -239,7 +242,7 @@ test.describe("the table's bands", () => {
     test.setTimeout(120_000);
     await page.setViewportSize({ width: 844, height: 390 });
     await openSeededGame(page, baseURL!, 4);
-    await page.waitForTimeout(1_000);
+    await atRest(page, TABLE_SCREEN);
 
     const table = await page.locator('[data-testid="game-table"]').boundingBox();
     const seat = await page.locator('[data-testid="top-seat"]').boundingBox();
@@ -297,14 +300,18 @@ interface Box {
  */
 async function settledBox(page: Page, selector: string): Promise<Box> {
   const locator = page.locator(selector);
-  let previous: Box | null = null;
-  for (let attempt = 0; attempt < 60; attempt++) {
-    const box = await locator.boundingBox();
-    if (box && previous && box.y === previous.y && box.height === previous.height) return box;
-    previous = box;
-    await page.waitForTimeout(100);
-  }
-  throw new Error(`${selector} never settled into a stable position`);
+  let previous = null as Box | null;
+  let box = null as Box | null;
+  await expect
+    .poll(
+      async () => {
+        [previous, box] = [box, await locator.boundingBox()];
+        return !!box && !!previous && box.y === previous.y && box.height === previous.height;
+      },
+      { message: `${selector} never settled into a stable position`, timeout: 10_000, intervals: [100] }
+    )
+    .toBe(true);
+  return box!;
 }
 
 /**
@@ -317,9 +324,8 @@ async function settledBox(page: Page, selector: string): Promise<Box> {
 async function waitForAnswerableTurn(page: Page): Promise<void> {
   const table = page.locator('[data-testid="game-table"]');
   const gioca = page.locator('[data-testid="btn-gioca"]');
-  const deadline = Date.now() + 120_000;
 
-  while (Date.now() < deadline) {
+  await expect(async () => {
     const desc = (await table.getAttribute(TABLE_STATE)) ?? "";
     if (desc.startsWith(YOUR_TURN_PREFIX) && desc.includes(OPPONENT_PLAYED)) return;
 
@@ -340,9 +346,8 @@ async function waitForAnswerableTurn(page: Page): Promise<void> {
         await tap(page, card).catch(() => {});
       }
     }
-    await page.waitForTimeout(200);
-  }
-  throw new Error("never reached a turn with a combination to answer");
+    throw new Error("never reached a turn with a combination to answer");
+  }).toPass({ timeout: 120_000, intervals: [200] });
 }
 
 test.describe("the notification banner over the game table", () => {

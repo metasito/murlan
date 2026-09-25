@@ -9,10 +9,12 @@
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { openSeededGame } from "./helpers/offlineSeed";
-import { HAND_CARDS, TABLE } from "./helpers/selectors";
+import { HAND_CARDS, HAND_ZONE, TABLE } from "./helpers/selectors";
 import { PAST_HOLD_MS, tapPoint } from "./helpers/press";
+import { atRest } from "./helpers/settle";
 
 const VIEWPORT = { width: 844, height: 390 };
+const HAND = `${TABLE} ${HAND_ZONE}`;
 
 interface HandCard {
   label: string;
@@ -39,13 +41,13 @@ const labels = (row: HandCard[]) => row.map((c) => c.label);
 async function dragCard(page: Page, from: HandCard, toX: number): Promise<void> {
   await page.mouse.move(from.x, from.y);
   await page.mouse.down();
-  await page.waitForTimeout(PAST_HOLD_MS);
+  await page.waitForTimeout(PAST_HOLD_MS); // fixed wait on purpose: the hold's length is what the app reads
   // In steps, not in one jump: the drop slot is read from where the finger is,
   // and a single move gives the gesture one sample to decide on.
   await page.mouse.move(toX, from.y, { steps: 16 });
-  await page.waitForTimeout(100);
+  await atRest(page, HAND);
   await page.mouse.up();
-  await page.waitForTimeout(400);
+  await atRest(page, HAND);
 }
 
 test.describe("arranging your own hand", () => {
@@ -57,7 +59,7 @@ test.describe("arranging your own hand", () => {
     await page.setViewportSize(VIEWPORT);
     await openSeededGame(page, baseURL!, 2);
     await page.locator(TABLE).waitFor({ timeout: 30_000 });
-    await page.waitForTimeout(1_500);
+    await atRest(page, HAND);
 
     const before = await handRow(page);
     expect(before.length, "the seeded hand rendered no cards").toBeGreaterThan(4);
@@ -83,7 +85,7 @@ test.describe("arranging your own hand", () => {
     // …and it is an arrangement, not a one-frame animation: the engine's own
     // order is reapplied on every render, so a card that only appeared to move
     // is back where it started by the next one.
-    await page.waitForTimeout(1_000);
+    await page.waitForTimeout(1_000); // fixed wait on purpose: nothing marks the next render, so this watches a window
     expect(labels(await handRow(page))).toEqual(labels(after));
   });
 
@@ -94,7 +96,7 @@ test.describe("arranging your own hand", () => {
     await page.setViewportSize(VIEWPORT);
     await openSeededGame(page, baseURL!, 2, undefined, 1, true);
     await page.locator(TABLE).waitFor({ timeout: 30_000 });
-    await page.waitForTimeout(1_500);
+    await atRest(page, HAND);
 
     const before = await handRow(page);
     expect(before.length, "the seeded hand rendered no cards").toBeGreaterThan(4);
@@ -116,7 +118,7 @@ test.describe("arranging your own hand", () => {
     await page.setViewportSize(VIEWPORT);
     await openSeededGame(page, baseURL!, 2);
     await page.locator(TABLE).waitFor({ timeout: 30_000 });
-    await page.waitForTimeout(1_500);
+    await atRest(page, HAND);
 
     const before = await handRow(page);
     expect(before.length, "the seeded hand rendered no cards").toBeGreaterThan(4);
@@ -124,7 +126,7 @@ test.describe("arranging your own hand", () => {
     const target = before[0].label;
     await page.locator(`${HAND_CARDS}[aria-label="${target}"]`).focus();
     await page.keyboard.press("ArrowRight");
-    await page.waitForTimeout(400);
+    await atRest(page, HAND);
 
     const after = labels(await handRow(page));
     expect(after, "a card was lost or duplicated").toHaveLength(before.length);
@@ -140,11 +142,11 @@ test.describe("arranging your own hand", () => {
     await page.setViewportSize(VIEWPORT);
     await openSeededGame(page, baseURL!, 2);
     await page.locator(TABLE).waitFor({ timeout: 30_000 });
-    await page.waitForTimeout(1_500);
+    await atRest(page, HAND);
 
     const before = await handRow(page);
     await tapPoint(page, before[0].x, before[0].y);
-    await page.waitForTimeout(400);
+    await atRest(page, HAND);
 
     expect(labels(await handRow(page)), "a tap moved a card").toEqual(labels(before));
     // A card is a toggle button rather than a listbox option, so selection
@@ -167,15 +169,15 @@ test.describe("arranging your own hand", () => {
     await page.setViewportSize(VIEWPORT);
     await openSeededGame(page, baseURL!, 2);
     await page.locator(TABLE).waitFor({ timeout: 30_000 });
-    await page.waitForTimeout(1_500);
+    await atRest(page, HAND);
 
     const before = await handRow(page);
     const target = before[2];
     await page.mouse.move(target.x, target.y);
     await page.mouse.down();
-    await page.waitForTimeout(PAST_HOLD_MS + 400);
+    await page.waitForTimeout(PAST_HOLD_MS + 400); // fixed wait on purpose: the press's length is what the app reads
     await page.mouse.up();
-    await page.waitForTimeout(500);
+    await atRest(page, HAND);
 
     const after = await handRow(page);
     expect(labels(after), "a press with no travel rearranged the hand").toEqual(labels(before));
@@ -192,21 +194,21 @@ test.describe("arranging your own hand", () => {
     await page.setViewportSize(VIEWPORT);
     await openSeededGame(page, baseURL!, 2);
     await page.locator(TABLE).waitFor({ timeout: 30_000 });
-    await page.waitForTimeout(1_500);
+    await atRest(page, HAND);
 
     const before = await handRow(page);
     const target = before[2];
     await tapPoint(page, target.x, target.y);
-    await page.waitForTimeout(400);
+    await atRest(page, HAND);
     await expect(page.locator(`${HAND_CARDS}[aria-pressed="true"]`)).toHaveCount(1);
 
     // Where it sits now — selection lifts the card out of the row.
     const lifted = (await handRow(page)).find((c) => c.label === target.label)!;
     await page.mouse.move(lifted.x, lifted.y);
     await page.mouse.down();
-    await page.waitForTimeout(PAST_HOLD_MS + 400);
+    await page.waitForTimeout(PAST_HOLD_MS + 400); // fixed wait on purpose: the press's length is what the app reads
     await page.mouse.up();
-    await page.waitForTimeout(500);
+    await atRest(page, HAND);
 
     await expect(
       page.locator(`${HAND_CARDS}[aria-pressed="true"]`),
