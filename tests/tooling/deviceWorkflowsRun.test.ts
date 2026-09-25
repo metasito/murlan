@@ -30,6 +30,46 @@ for (const name of ["ios.yml", "maestro.yml"]) {
   });
 }
 
+const step = (source: string, name: string) => {
+  const start = source.indexOf(`- name: ${name}`);
+  assert.notEqual(start, -1, `no step named "${name}"`);
+  const end = source.indexOf("\n      - ", start);
+  return source.slice(start, end === -1 ? undefined : end);
+};
+
+for (const [name, platform] of [
+  ["ios.yml", "ios"],
+  ["maestro.yml", "android"],
+]) {
+  test(`${name}: a native crash of the app fails the run (#1293)`, () => {
+    const crash = step(workflow(name), "Fail if the app died of a native crash");
+    assert.match(crash, /if: always\(\)/, "gating this on failure() hides a crash that did not manage to fail the run");
+    const lastCommand = crash.trimEnd().split("\n").reverse().find((line) => !line.trim().startsWith('"$'));
+    assert.match(lastCommand ?? "", new RegExp(`^ +node tools/ci/find-native-crash\\.mjs ${platform} "\\$APP_ID"`));
+    for (const escape of ["::warning::", "|| true", "continue-on-error"]) {
+      assert.ok(!crash.includes(escape), `${escape} lets a crash pass`);
+    }
+  });
+
+  test(`${name}: a red scheduled run, and only a scheduled one, files in the tracker (#1293)`, () => {
+    const source = workflow(name);
+    const report = step(source, "Report a red scheduled run to the tracker");
+    assert.match(report, /if: \(failure\(\) \|\| cancelled\(\)\) && github\.event_name == 'schedule'\n/);
+    assert.match(report, new RegExp(`run: bash tools/ci/report-device-run\\.sh ${name.replace(".", "\\.")}\n?$`));
+    assert.match(source, /^permissions:\n(?: {2}.*\n)* {2}issues: write$/m);
+    assert.equal(source.trimEnd().endsWith(report.trimEnd()), true, "a step after the report can fail without being reported");
+  });
+}
+
+test("ios.yml uploads the crash reports it failed on", () => {
+  const source = workflow("ios.yml");
+  const copyTo = /--copy-to "\$RUNNER_TEMP\/([\w-]+)"/.exec(step(source, "Fail if the app died of a native crash"))?.[1];
+  assert.ok(copyTo, "the crash step no longer copies the reports out");
+  const upload = step(source, "Upload crash reports");
+  assert.match(upload, /if: always\(\)/);
+  assert.match(upload, new RegExp(`path: \\$\\{\\{ runner\\.temp \\}\\}/${copyTo}/`));
+});
+
 test("eas-build.yml waits for the build it starts", () => {
   const source = workflow("eas-build.yml");
   assert.match(source, /eas build /);

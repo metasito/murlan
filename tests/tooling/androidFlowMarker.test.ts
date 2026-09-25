@@ -285,39 +285,6 @@ describe("maestro.yml reads that marker", () => {
     );
   });
 
-  test("a run whose app died says so itself", () => {
-    // Without this the only record is a tombstone in an artefact, and the step
-    // that failed is a step later than the one that broke (#629).
-    // Our own package, from the built APK. Against the host's process name this
-    // grep would match nothing once the host is gone, and a check that cannot
-    // match reports nothing rather than failing.
-    assert.match(src, /grep -rl ">>> \$APP_ID"/);
-    assert.match(
-      src,
-      /Say if the app died[\s\S]{0,80}if: always\(\)/,
-      "gating this on failure() hides a crash that did not manage to fail the run",
-    );
-  });
-
-  test("no grep in that step can kill it before it warns", () => {
-    // It runs under `bash -e`, where a grep matching nothing exits non-zero. A
-    // step that dies there emits no warning at all — the exact failure it exists
-    // to prevent, committed by its own implementation, and only on the path a
-    // runner has never executed.
-    const step = src.slice(src.indexOf("id: crash"), src.indexOf("Upload Maestro debug output"));
-    const commands = step
-      .split("\n")
-      .map((l) => l.trim())
-      .filter((l) => l.includes("grep") && !l.startsWith("#"));
-    assert.ok(commands.length > 0, "the step no longer looks for a tombstone at all");
-    for (const line of commands) {
-      assert.ok(
-        line.includes("|| true") || line.includes("|| echo") || /\|\s*head/.test(line),
-        `a grep whose failure is not absorbed: ${line}`,
-      );
-    }
-  });
-
   test("a green run carrying a tombstone still uploads what the warning points at", () => {
     // `always()` exists for the crash that did not fail the run. If the artefact
     // steps stay on failure() alone, that warning names a path nobody can reach.
@@ -422,7 +389,7 @@ describe("maestro.yml reads that marker", () => {
     const step = src.slice(src.indexOf("id: crash"), src.indexOf("Upload Maestro debug output"));
     assert.match(
       step,
-      /grep -rl ">>> \$APP_ID"[^\n]*logcat\.txt/,
+      /find-native-crash\.mjs android "\$APP_ID"[^\n]*"\$RUNNER_TEMP\/logcat\.txt"/,
       "the crash check reads only Maestro's own logcat, which does not exist when " +
         "the device died before Maestro could pull it",
     );

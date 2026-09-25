@@ -24,6 +24,7 @@ comments are not shown to an agent.
 | `loop` | The loop's own machinery: `tools/loop`, the supervisor, its guards | — |
 | `main-red` | Filed by the supervisor when main's CI is red (`tools/loop/mainHealth.ts`) | — |
 | `soak` | Filed by the nightly soak (`.github/workflows/soak.yml`) | — |
+| `device-run` | Filed by a red scheduled `ios.yml` or `maestro.yml` run (`tools/ci/report-device-run.sh`), one open per workflow; closed by hand once diagnosed | — |
 | `gauntlet` | A piece in a gauntlet round, critiqued blind against a named bar | — |
 
 - **`blocked` sits alongside `ready-for-agent`, never instead of it.** That label carries a
