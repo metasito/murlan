@@ -8,7 +8,7 @@ import { resolve } from "node:path";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import { parseHeader } from "./brief.mjs";
 import { commands } from "./guard-bash.mjs";
-import { native } from "./guard-read.mjs";
+import { located, native } from "./guard-read.mjs";
 import { PHASE } from "./loop-stream.mjs";
 
 const LAND = /(^|["'])[ \t]*VERDICT:[ \t]*LAND\b/m;
@@ -25,11 +25,11 @@ const readOr = (read, file) => {
 
 export function landOn(payload, read = (p) => readFileSync(p, "utf8")) {
   const raw = String(payload?.tool_input?.command ?? "");
-  for (const c of commands(raw)) {
+  for (const { c, at: dir } of located(raw, payload.cwd ?? process.cwd())) {
     if (c.cmd !== "gh" || c.args[0] !== "issue" || c.args[1] !== "comment") continue;
     const at = c.args.findIndex((a) => a === "--body-file" || a === "-F" || a.startsWith("--body-file="));
     const file = at < 0 ? null : c.args[at].startsWith("--body-file=") ? c.args[at].slice(12) : c.args[at + 1];
-    const body = file && file !== "-" ? readOr(read, resolve(payload.cwd ?? process.cwd(), native(file))) : "";
+    const body = file && file !== "-" ? readOr(read, resolve(dir, native(file))) : "";
     if (LAND.test(`${raw}\n${body}`)) return Number(c.args.slice(2).find((a) => /^\d+$/.test(a)) ?? NaN) || null;
   }
   return null;

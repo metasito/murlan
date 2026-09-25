@@ -76,6 +76,12 @@ describe("a LAND follows this round's own reviewers", () => {
     assert.ok(denied(run([say("PHASE D")], "gh issue comment 7 --body-file v.md")));
   });
 
+  test("a body file is read from where a leading cd left the call", () => {
+    fs.mkdirSync(path.join(dir, "wt7"), { recursive: true });
+    fs.writeFileSync(path.join(dir, "wt7", "only-here.md"), "VERDICT: LAND abc1234\n");
+    assert.ok(denied(run([say("PHASE D")], "cd wt7 && gh issue comment 7 --body-file only-here.md")));
+  });
+
   test("Git Bash's /tmp body file is read on win32", { skip: process.platform !== "win32" }, () => {
     const file = path.join(os.tmpdir(), `guard-verdict-${process.pid}.md`);
     fs.writeFileSync(file, "VERDICT: LAND abc1234\n");
