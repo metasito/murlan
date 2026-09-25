@@ -109,16 +109,13 @@ function testsListingTheRepo(): string[] {
 /** The CI jobs whose command's glob loads `file`, with the scope outputs that gate each. */
 function jobsRunning(file: string, workflow: string): { job: string; gate: string[] }[] {
   const scripts = JSON.parse(read("package.json")).scripts;
-  return STEPS.filter((s: { where: string; job?: string }) => s.job)
-    .filter((s: { args: string[] }) => {
-      const glob = /"([^"]+\*[^"]*)"\s*$/.exec(scripts[s.args.at(-1)!] ?? "")?.[1];
-      return glob !== undefined && path.posix.matchesGlob(file, glob);
-    })
-    .map((s: { job: string }) => {
-      const job = new RegExp(`\\n {2}${s.job}:\\n[\\s\\S]*?\\n {4}if: (.*)\\n`).exec(workflow);
-      assert.ok(job, `ci.yml has no job ${s.job} with an if:`);
-      return { job: s.job, gate: [...job[1].matchAll(/needs\.scope\.outputs\.(\w+) == 'true'/g)].map((m) => m[1]) };
-    });
+  return STEPS.flatMap((s) => {
+    const glob = /"([^"]+\*[^"]*)"\s*$/.exec(scripts[s.args.at(-1)!] ?? "")?.[1];
+    if (!s.job || glob === undefined || !path.posix.matchesGlob(file, glob)) return [];
+    const job = new RegExp(`\\n {2}${s.job}:\\n[\\s\\S]*?\\n {4}if: (.*)\\n`).exec(workflow);
+    assert.ok(job, `ci.yml has no job ${s.job} with an if:`);
+    return [{ job: s.job, gate: [...job[1].matchAll(/needs\.scope\.outputs\.(\w+) == 'true'/g)].map((m) => m[1]) }];
+  });
 }
 
 describe("ci.yml's scope runs the suite that reads a change", () => {
