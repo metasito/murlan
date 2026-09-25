@@ -11,7 +11,7 @@ import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
 import pg from "pg";
 import { io as ioClient, type Socket } from "socket.io-client";
-import { PROTOCOL_AUTH } from "../helpers/client.ts";
+import { PROTOCOL_AUTH, waitFor } from "../helpers/client.ts";
 import { hasDatabase, skipMessage } from "../helpers/testServer.ts";
 import { boot, type Instance } from "../helpers/instance.ts";
 import { driveHumansToGameOver } from "../helpers/gameDriver.ts";
@@ -41,16 +41,6 @@ function connectSocket(port: number, cookie: string): Promise<Socket> {
     });
     s.once("connect", () => resolve(s));
     s.once("connect_error", reject);
-  });
-}
-
-function waitFor<T>(socket: Socket, event: string, ms = 6_000): Promise<T | null> {
-  return new Promise((resolve) => {
-    const timer = setTimeout(() => resolve(null), ms);
-    socket.once(event, (payload: T) => {
-      clearTimeout(timer);
-      resolve(payload);
-    });
   });
 }
 

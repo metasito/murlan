@@ -20,7 +20,7 @@ import assert from "node:assert/strict";
 import { spawn, type ChildProcess } from "node:child_process";
 import pg from "pg";
 import { io as ioClient, type Socket } from "socket.io-client";
-import { PROTOCOL_AUTH } from "../helpers/client.ts";
+import { PROTOCOL_AUTH, waitFor, waitForOrNull } from "../helpers/client.ts";
 import { hasDatabase, skipMessage } from "../helpers/testServer.ts";
 
 const PORT = 5571;
@@ -111,16 +111,6 @@ function listen(client: Client): void {
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
-function waitFor<T>(socket: Socket, event: string, ms = 10_000): Promise<T | null> {
-  return new Promise((resolve) => {
-    const timer = setTimeout(() => resolve(null), ms);
-    socket.once(event, (payload: T) => {
-      clearTimeout(timer);
-      resolve(payload);
-    });
-  });
-}
 
 /**
  * The `seats` block of the `active_games` row a replacement instance rehydrates
@@ -330,7 +320,7 @@ describe(
       for (const c of [l1, l2, l3]) c.socket.emit("room:rejoin", { code: lobby.code });
 
       const refused = await Promise.all(
-        [t1, t2].map((c) => waitFor<{ roomId: string }>(c.socket, "game:rejoin_failed", 2_000))
+        [t1, t2].map((c) => waitForOrNull<{ roomId: string }>(c.socket, "game:rejoin_failed", 2_000))
       );
       assert.deepEqual(
         refused.filter(Boolean),
@@ -473,7 +463,7 @@ describe(
       // and the match stays live. `endMatchVoteAction` refuses with
       // NO_VACANCY_TO_END before it tallies anything when `vacatedSeats` is
       // empty, so a tally arriving at all is the restored map being read.
-      const tally = waitFor<{ votes: string[] }>(a.socket, "game:end_match_vote_state");
+      const tally = waitFor<{ votes: string[] }>(a.socket, "game:end_match_vote_state", 10_000);
       a.socket.emit("game:end_match_vote", { wants: true });
       assert.equal(
         (await tally)?.votes.length,
@@ -489,7 +479,7 @@ describe(
 
       const stranger = await connect(await register(`rvx${Date.now().toString(36)}`));
       try {
-        const failed = waitFor<{ code: string }>(stranger, "game:rejoin_failed");
+        const failed = waitFor<{ code: string }>(stranger, "game:rejoin_failed", 10_000);
         stranger.emit("game:rejoin", { roomId: table.roomId });
         assert.equal((await failed)?.code, "UNAUTHORIZED");
         // Spectating never revives a table, so it is admitted only if the refused rejoin restored one.

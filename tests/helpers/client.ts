@@ -217,6 +217,11 @@ export function waitFor<T = unknown>(socket: Socket, event: string, ms = 5000): 
   });
 }
 
+/** `waitFor` for an event that may rightly never come: null once the scaled window passes. */
+export function waitForOrNull<T = unknown>(socket: Socket, event: string, ms = 5000): Promise<T | null> {
+  return waitFor<T>(socket, event, ms).catch(() => null);
+}
+
 /**
  * register() replies before it mints (#897), and its mint replaces every
  * pending code — so a test minting its own must wait for register's to land,
