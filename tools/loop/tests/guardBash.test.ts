@@ -498,10 +498,11 @@ describe("the hooks settings.json registers", () => {
     for (const source of ["startup", "resume", "compact", "clear"]) {
       assert.ok(matched("SessionStart", "loop-status.mjs").includes(source), source);
     }
+    for (const tool of ["Write", "Edit", "NotebookEdit"]) assert.ok(matched("PreToolUse", "guard-write.mjs").includes(tool), tool);
     for (const tool of ["Agent", "Task"]) assert.ok(matched("PreToolUse", "guard-agent-model.mjs").includes(tool), tool);
     assert.deepEqual(
       matched("PostToolUse", "guard-context.mjs"),
-      ["Bash", "Read", "Grep", "Glob", "Agent", "Task", "WebFetch"],
+      ["Bash", "Read", "Grep", "Glob", "Agent", "Task", "WebFetch", "Edit", "Write"],
       "the tools whose output grows context; every other call would start node for nothing",
     );
   });

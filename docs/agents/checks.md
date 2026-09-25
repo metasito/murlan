@@ -360,6 +360,9 @@ via `git diff`, so an uncommitted edit counts but an untracked file doesn't show
 every hook):
 - `tools/loop/guard-bash.mjs` also refuses `sed -i`/`perl -i` (rule 44) and a `git worktree add`
   anywhere but `.worktrees/agent-<n>` (rules 7 and 32).
+- `tools/loop/guard-write.mjs` refuses a Write, Edit or NotebookEdit into the shared checkout;
+  the worktrees under `.worktrees/`, `.loop-logs/` and paths outside the repo stay writable
+  (rules 8 and 31).
 
 ## Owner decisions
 
