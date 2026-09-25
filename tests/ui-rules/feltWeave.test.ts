@@ -4,14 +4,13 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import path from "node:path";
 import { createRequire } from "node:module";
 import { CLOTH_BODY, CLOTH_SKSL, TWILL } from "../../components/table/feltShader.ts";
 import { paintRail, RAIL, type RingPainter } from "../../components/table/rail.ts";
 import { fixtureBlock, fixtureLine, runFixture } from "../helpers/lanternFixture.ts";
+import { CANVASKIT_VERSION } from "../../lib/canvaskit.ts";
 
 const require = createRequire(import.meta.url);
-const ROOT = path.resolve(import.meta.dirname, "..", "..");
 
 const MOCKUP_ONLY: [string, string][] = [
   ["void main(){\n vec2 p=uO+vec2(gl_FragCoord.x,uRes.y-gl_FragCoord.y)/uK;", "vec4 cloth(vec2 p){"],
@@ -47,8 +46,7 @@ describe("the felt is the mockup's cloth", () => {
 
   test("CanvasKit compiles it, at the version @shopify/react-native-skia depends on", async () => {
     const skia = JSON.parse(fs.readFileSync(require.resolve("@shopify/react-native-skia/package.json"), "utf8"));
-    const boundary = fs.readFileSync(path.join(ROOT, "components/table/feltSkiaBoundary.tsx"), "utf8");
-    assert.equal(/CANVASKIT_VERSION = "([^"]+)"/.exec(boundary)?.[1], skia.dependencies["canvaskit-wasm"]);
+    assert.equal(CANVASKIT_VERSION, skia.dependencies["canvaskit-wasm"]);
 
     const init = require("canvaskit-wasm/bin/full/canvaskit.js");
     const ck = await init({ locateFile: (f: string) => require.resolve(`canvaskit-wasm/bin/full/${f}`) });
