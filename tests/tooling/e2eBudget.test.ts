@@ -60,15 +60,6 @@ test("a test a helper declares is charged to the spec file that calls the helper
   assert.deepEqual(Object.keys(reporter.ms), [priced]);
 });
 
-test("a retried test is charged its last attempt, as timings.json prices it", () => {
-  const reporter = new BudgetReporter();
-  reporter.onBegin({ projects: [{ testDir }] });
-  const flaky = { location: { file: path.join(testDir, priced) } };
-  reporter.onTestEnd(flaky, { status: "failed", duration: (seconds * RATIO + SLACK_S + 5) * 1000 });
-  reporter.onTestEnd(flaky, { status: "passed", duration: seconds * 1000 });
-  assert.deepEqual(reporter.ms, { [priced]: seconds * 1000 });
-});
-
 test("the reporter leaves a spec within budget, a skipping spec and an already red run alone", () => {
   assert.equal(run({ [priced]: [seconds * 1000] }).verdict, undefined);
   assert.equal(run({ [priced]: [1e9] }, "passed", [priced]).verdict, undefined);
