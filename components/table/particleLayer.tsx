@@ -35,7 +35,7 @@ function bakeSheet(): SkImage | null {
   for (const cell of CELLS) {
     const x = cell.x + cell.cx;
     const y = cell.y + cell.cy;
-    // A canvas `shadowBlur` of b is a Gaussian of σ b/2 under the crisp shape.
+    // A canvas `shadowBlur` of b is a Gaussian of sigma b/2 under the crisp shape.
     for (const sigma of cell.glow ? [(cell.glow * SPRITE_R) / 2, 0] : [0]) {
       const paint = Skia.Paint();
       paint.setAntiAlias(true);
