@@ -12,6 +12,7 @@ export const meta = {
 }
 
 const { repo: REPO, sha, openIssues, webUrl } = args
+if (!REPO || !sha) throw new Error('args.repo and args.sha are required: audit.md Step 1 resolves both.')
 const SEVERITIES = ['info', 'low', 'medium', 'high', 'critical']
 const SIZES = ['XS', 'S', 'M', 'L', 'XL']
 const MAX_GAP_ROUNDS = 3
@@ -70,7 +71,7 @@ Invariants to confirm:
     refs: 'node-postgres pooling (max, idleTimeoutMillis, connectionTimeoutMillis, one shared pool); GDPR data minimisation, export and erasure (Usercentrics mobile-games checklist).',
     ask: `- Every query has an index for its WHERE and ORDER BY.
 - Multi-row writes run in a transaction. Races on unique constraints.
-- Pool sizing against max_connections: no host is chosen yet (ADR-0006, #1105), so state the connections one instance opens and which Postgres tiers the \`infra\` lens compares would fit it.
+- Pool sizing: no host is chosen yet (ADR-0006, #1105), so state the Postgres connections one instance opens (pool, adapter, ownership) for the host choice to check against max_connections.
 - Unbounded tables have retention.
 - DDL is additive and idempotent (DEDUPE_ON_BOOT).
 - The session table is handled correctly.
@@ -159,7 +160,7 @@ For each one:
 - what happens today, with path:line;
 - what would make it land like a top-tier card or casino game: easing, anticipation, stagger, sound layering and variation, haptics, particles and light, music cues, microcopy.
 Every proposal must respect Motion tokens, motionMs() under reduced motion, impactDelayMs() timing and the a11y invariants, and must name the assets it needs.
-Return every concrete, buildable proposal that clears FEEL-BAR, ranked by impact per size.`,
+Return up to 40 concrete, buildable proposals that clear FEEL-BAR, ranked by impact per size; each one costs a judge.`,
   },
   {
     key: 'a11y', model: 'sonnet', skills: ['accessibility'],
@@ -291,8 +292,9 @@ const kindOf = lens => lens.kind || 'findings'
 
 const COMMON = `You are one specialist in a READ-ONLY audit of Murlan (${REPO}) at commit ${sha}.
 - Change nothing: no edits, commits, branch or worktree changes, and spawn no subagents.
-- Read files whole with Read; search with Grep. If the checkout has moved, read with \`git -C ${REPO} show ${sha}:<path>\`.
-- Allowed commands: npx tsc --noEmit, npx eslint <paths>, npm audit --omit=dev, npx expo install --check, one node --test <file>, git log/blame, gh issue view.
+- First run \`git -C ${REPO} rev-parse HEAD\`. If it prints ${sha}, read files whole with Read and search with Grep.
+  Otherwise the checkout is not the audited commit: read with \`git -C ${REPO} show ${sha}:<path>\` and search with \`git -C ${REPO} grep -n <pattern> ${sha}\`.
+- Allowed commands: npx tsc --noEmit, npx eslint <paths>, npm audit --omit=dev, npx expo install --check, one node --test <file>, git rev-parse/show/grep/log/blame, gh issue view.
   Nothing wider: rule 2 holds here too, and another session may be sharing this machine.
 - Load every skill named for your lens with the Skill tool first, and apply its checklist.
 - Every finding cites path:line with the quoted line and is marked measured (you ran it or traced the full path) or inferred.
@@ -509,7 +511,7 @@ ${JSON.stringify(platform)}`, {
 phase('Map')
 const map = await agent(`${COMMON}
 
-You are the cartographer. Write a system map in markdown that the specialists will read instead of rediscovering the repo. Every lens reads all of it, so give path:line pointers rather than prose. Include:
+You are the cartographer. Write a system map in markdown, at most 400 lines, that the specialists will read instead of rediscovering the repo. Every lens pays for all of it, so give path:line pointers rather than prose. Include:
 - screens and routes;
 - what each context owns;
 - server modules, grouped by role;

@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
+import { readIssue } from "./brief.mjs";
 import { BRANCH, ticketOf, worktrees } from "./loop-derive.mjs";
 
 const SIZE_ORDER = ["size:XS", "size:S", "size:M", "size:L", "size:XL"];
@@ -221,11 +222,7 @@ function printDetail(ticket, comments) {
     // prints the thread instead of the body.
     console.log(`  gh issue edit ${n} --add-label in-progress`);
     console.log(`  gh issue comment ${n} --body-file <file>   # holding: Claimed by \`<branch>\`.`);
-    console.log(
-      `  gh issue view ${n} --json title,body,comments ` +
-        `--jq '.title, .body, (.comments[]|select(.authorAssociation=="OWNER" or .authorAssociation=="COLLABORATOR")` +
-        `|"--- "+.author.login+": "+.body)'`
-    );
+    console.log(`  ${readIssue(n)}`);
   }
 }
 

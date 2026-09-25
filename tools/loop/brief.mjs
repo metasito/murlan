@@ -31,8 +31,12 @@ const TAIL =
   "are not reported.";
 
 const diff = (wt, base) => `\`git -C ${wt} diff ${base}...HEAD\``;
-const issue = (n) =>
-  `\`gh issue view ${n} --json title,body,comments --jq '.title, .body, (.comments[]|"--- "+.author.login+": "+.body)'\``;
+/** Rule 25's read, keeping only owner and collaborator comments: a later comment overrides the body. */
+export const readIssue = (n) =>
+  `gh issue view ${n} --json title,body,comments ` +
+  `--jq '.title, .body, (.comments[]|select(.authorAssociation=="OWNER" or .authorAssociation=="COLLABORATOR")` +
+  `|"--- "+.author.login+": "+.body)'`;
+const issue = (n) => `\`${readIssue(n)}\``;
 
 const BODIES = {
   scope: ({ n, worktree }) =>

@@ -6,6 +6,7 @@
 import { execFileSync, spawn as spawnChild } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { readIssue } from "./brief.mjs";
 
 const HERE = import.meta.dirname;
 const ROOT = path.resolve(HERE, "..", "..");
@@ -68,7 +69,7 @@ export function diagnosisPrompt({ ticket, phase, why, stderr = "", log = null, r
     `The queue loop stopped on ticket #${ticket} in phase ${phase}, for a reason it has no rule for: ${why}`,
     "",
     "Find the root cause. Use the evidence below, the worktree you are in, git, and gh" +
-      ` (\`gh issue view ${ticket} --json title,body,comments --jq '.title, .body, (.comments[]|"--- "+.author.login+": "+.body)'\`, \`gh run view <id> --log-failed\`).` +
+      ` (\`${readIssue(ticket)}\`, \`gh run view <id> --log-failed\`).` +
       " Change nothing — no edit, commit, push, comment or rerun. The loop acts on your answer.",
     "",
     `CI run: ${runId ?? "none"}`,

@@ -2,7 +2,7 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { brief, parseHeader, KINDS } from "../brief.mjs";
+import { brief, parseHeader, readIssue, KINDS } from "../brief.mjs";
 
 const SCRIPT = fileURLToPath(new URL("../brief.mjs", import.meta.url));
 const WT = "C:/Users/roton/murlan/.worktrees/agent-42";
@@ -22,6 +22,16 @@ describe("brief", () => {
 
   test("every brief forbids spawning a subagent", () => {
     for (const kind of KINDS) assert.match(brief(kind, { n: 1, worktree: WT }), /Do not spawn any subagent/);
+  });
+
+  test("every brief that names the issue reads its body and only trusted comments", () => {
+    assert.match(readIssue(5), /^gh issue view 5 --json title,body,comments --jq '\.title, \.body, /);
+    assert.match(readIssue(5), /select\(\.authorAssociation=="OWNER" or \.authorAssociation=="COLLABORATOR"\)/);
+    for (const kind of KINDS) {
+      const text = brief(kind, { n: 5, worktree: WT });
+      assert.doesNotMatch(text, /--comments/, kind);
+      if (["scope", "completeness", "spec", "fix"].includes(kind)) assert.ok(text.includes(readIssue(5)), kind);
+    }
   });
 
   test("the completeness brief sweeps every removed or renamed name", () => {
