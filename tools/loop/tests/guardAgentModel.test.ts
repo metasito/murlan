@@ -66,6 +66,13 @@ describe("a loop dispatch of a brief passes it verbatim", () => {
     }
   });
 
+  test("a review dispatch worded any other way still needs its brief", () => {
+    for (const d of ["Review: Standards axis", "spec compliance review", "refute the findings"]) {
+      assert.match(run(agent(d, "Review the diff")), /must start with its brief/, d);
+    }
+    assert.equal(run(agent("Implement the settings sheet", "anything")), "");
+  });
+
   test("the brief arriving with CRLF line endings, or with its final newline stripped, is allowed", () => {
     assert.equal(run(agent("Completeness check #42", exact.replace(/\n/g, "\r\n"))), "");
     assert.equal(run(agent("Completeness check #42", exact.trimEnd())), "");

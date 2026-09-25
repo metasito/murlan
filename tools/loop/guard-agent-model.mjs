@@ -9,6 +9,8 @@ import { readFileSync } from "node:fs";
 import { brief, parseHeader } from "./brief.mjs";
 
 const NAMED = /\b(completeness check|standards review|spec review|refut\w* (?:review )?findings|fix review|scope issue)\b/i;
+const KIND = /\b(completeness|standards|spec|refut\w*|scope)\b/i;
+const ROLE = /\b(review\w*|check|axis|findings?|issue)\b/i;
 const unix = (text) => text.replace(/\r\n/g, "\n");
 
 function denial(payload) {
@@ -24,7 +26,8 @@ function denial(payload) {
       : "This brief was edited. Pass the output of `node tools/loop/brief.mjs <kind> <n> <worktree> <base>` " +
           "verbatim as the start of the prompt; add anything else (the reports to refute, the contract clause) after it.";
   }
-  const named = NAMED.exec(String(input.description ?? ""));
+  const d = String(input.description ?? "");
+  const named = NAMED.exec(d) ?? (KIND.test(d) && ROLE.test(d) ? [d, KIND.exec(d)[1]] : null);
   return named
     ? `A ${named[1]} dispatch must start with its brief: run \`node tools/loop/brief.mjs <kind> <n> <worktree> [base]\` ` +
         "and pass its output verbatim, then anything you add after it."
