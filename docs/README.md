@@ -30,6 +30,7 @@ row is the condition that should send you to that file, not just its subject.
 |---|---|
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | You need the layers, data flow, socket lifecycle or persistence model before changing how a system fits together. |
 | [`WEB-PERF.md`](WEB-PERF.md) | You're chasing a frame-rate or jank complaint on the web build, where no first-party profiler exists. |
+| [`research/2026-09-25-ci-speed.md`](research/2026-09-25-ci-speed.md) | CI got slower, or you're changing how the browser suite is split — where the time went, per job, step and spec, and what each fix bought. |
 | [`BUNDLE.md`](BUNDLE.md) | You're adding a dependency or asset and want to know what it costs the bundle. |
 | [`BETA-PLAYTEST.md`](BETA-PLAYTEST.md) | You're running the beta playtest script with real devices and real people. |
 | [`PRIVACY.md`](PRIVACY.md) | You're changing what data the app collects or how it's disclosed to a player. |

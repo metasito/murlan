@@ -55,6 +55,9 @@ jobs:
     outputs:
       app: ${{ steps.scope.outputs.app }}
       harness: ${{ steps.scope.outputs.harness }}
+      shards: ${{ steps.plan.outputs.shards }}
+      shard-count: ${{ steps.plan.outputs.shard-count }}
+      timings: ${{ steps.plan.outputs.timings }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -138,6 +141,32 @@ jobs:
           else
             echo "app=true" >> "$GITHUB_OUTPUT"
           fi
+
+      # Every shard must split the suite from the same numbers, so they are settled once, here.
+      # Only a run whose every browser shard passed uploads `e2e-timings` (browser-report), so
+      # none of these is a red run's.
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - id: plan
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ github.head_ref || github.ref_name }}
+        run: |
+          artifacts=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=e2e-timings&per_page=100" || echo '{"artifacts":[]}')
+          for branch in main "$BRANCH"; do
+            id=$(jq -r --arg b "$branch" '[.artifacts[] | select((.expired | not) and .workflow_run.head_branch == $b
+              and .workflow_run.head_repository_id == .workflow_run.repository_id)] | sort_by(.created_at) | last | .id // empty' <<< "$artifacts")
+            if [ -n "$id" ] && gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$id/zip" > "$RUNNER_TEMP/$id.zip"; then
+              unzip -p "$RUNNER_TEMP/$id.zip" timings.json > "$RUNNER_TEMP/timings-$id.json"
+              layers+=("$RUNNER_TEMP/timings-$id.json")
+              echo "Timings for $branch: artifact $id."
+            else
+              echo "::warning::No green run of $branch has left e2e-timings; its specs keep the older numbers."
+            fi
+          done
+          node tools/ci/e2e-shard.mjs plan "${layers[@]}"
 
   # Runs unconditionally rather than depending on `scope`: `scope` exempts
   # doc-only changes (docs/, .claude/, *.md), but a secret can land in exactly
@@ -478,7 +507,7 @@ jobs:
             build
 
   browser:
-    name: Browser tests ${{ matrix.shard }}/6
+    name: Browser tests ${{ matrix.shard }}/${{ strategy.job-total }}
     needs: scope
     if: needs.scope.outputs.app == 'true'
     runs-on: ubuntu-latest
@@ -497,7 +526,7 @@ jobs:
       # the first failing shard hides what the rest would have found.
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4, 5, 6]
+        shard: ${{ fromJSON(needs.scope.outputs.shards) }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
@@ -532,6 +561,16 @@ jobs:
       # count, and this suite's tests run from under a second to ninety-four
       # (tools/ci/e2e-shard.mjs). 20 minutes was a ceiling for the unsharded
       # suite and is left alone: it is a hang detector, not a budget.
+      - name: The split the scope job settled
+        env:
+          TIMINGS: ${{ needs.scope.outputs.timings }}
+        run: printf '%s' "$TIMINGS" > tests/e2e/timings.json
+      # The transform cache is keyed on its inputs (metro.config.js), so a stale entry is never read.
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: /tmp/metro-cache
+          key: metro-${{ hashFiles('package-lock.json', 'metro.config.js', 'babel.config.js') }}-${{ github.sha }}
+          restore-keys: metro-${{ hashFiles('package-lock.json', 'metro.config.js', 'babel.config.js') }}-
       - name: Browser tests
         timeout-minutes: 20
         run: npm run test:e2e -- $(node tools/ci/e2e-shard.mjs ${{ matrix.shard }} ${{ strategy.job-total }})
@@ -567,13 +606,13 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-  # Six shards produce six partial reports; this is what puts the one report
+  # Each shard produces a partial report; this is what puts the one report
   # the run publishes back together. It carries the floor the browser job used
   # to: a run that reaches the end and publishes no report is a run that tested
   # nothing, and `if-no-files-found: error` is what says so.
   browser-report:
     name: Browser test report
-    needs: browser
+    needs: [scope, browser]
     # Not `success()`: a red shard is exactly when the report is worth reading.
     if: ${{ !cancelled() && needs.browser.result != 'skipped' }}
     runs-on: ubuntu-latest
@@ -604,8 +643,8 @@ jobs:
       - name: Every shard reported
         run: |
           found=$(find all-blob-reports -name '*.zip' | wc -l)
-          if [ "$found" -ne 6 ]; then
-            echo "::error::$found of 6 shard reports arrived — the merged report would be missing a sixth of the suite per absent shard."
+          if [ "$found" -ne "${{ needs.scope.outputs.shard-count }}" ]; then
+            echo "::error::$found of ${{ needs.scope.outputs.shard-count }} shard reports arrived — the merged report is missing every absent shard's specs."
             exit 1
           fi
 
@@ -645,8 +684,25 @@ jobs:
       - name: Name the tests that passed only on a retry
         run: node tools/ci/e2e-flaky.mjs merged-report.json
 
+      # Over the numbers this run split by, so a spec this run could not price keeps the latest
+      # measurement rather than the committed one.
       - name: Regenerate tests/e2e/timings.json
-        run: node tools/ci/e2e-timings.mjs merged-report.json
+        env:
+          TIMINGS: ${{ needs.scope.outputs.timings }}
+        run: |
+          printf '%s' "$TIMINGS" > tests/e2e/timings.json
+          node tools/ci/e2e-timings.mjs merged-report.json
+
+      # What the next run on this branch, or on any branch after main, splits by (scope's plan),
+      # so balance follows the suite without a commit per merge. A red shard is not a measurement.
+      - name: Keep the timings for the next run
+        if: ${{ needs.browser.result == 'success' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: e2e-timings
+          path: tests/e2e/timings.json
+          if-no-files-found: error
+          retention-days: 90
 
       # On the weekly schedule only, never per-merge. `main` has no branch
       # protection blocking a direct push, and a push authored with the default
