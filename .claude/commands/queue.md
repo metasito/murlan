@@ -220,7 +220,7 @@ LOOP-RESULT {"ticket":<n>,"branch":"agent/<n>-slug","phase":"C","handoff":"D"}
 
 `PHASE D`
 
-The review is `mattpocock-skills:code-review`'s two axes, dispatched as below. `<base>` is
+The review is `mattpocock-skills:code-review`'s two axes. `<base>` is
 `origin/main` in round 1; every later round's is the sha the previous round reviewed.
 
 1. **Size the round.** A `CI-RED` comment newer than the last `VERDICT: LAND <landSha>` makes this
@@ -238,11 +238,8 @@ The review is `mattpocock-skills:code-review`'s two axes, dispatched as below. `
    node tools/loop/brief.mjs fix <n> .worktrees/agent-<n> <landSha>
    ```
 
-   Otherwise, the full review in step 2.
-
-2. **The full review**: two fresh `sonnet` subagents (rule 29's independent reviewers),
-   dispatched in one message so they run at once, each whose prompt starts with the output of one
-   of these, verbatim:
+2. **The full review**: two fresh `sonnet` subagents, dispatched in one message, each whose prompt
+   starts with the output of one of these, verbatim:
 
    ```sh
    node tools/loop/brief.mjs standards <n> .worktrees/agent-<n> <base>
@@ -253,15 +250,14 @@ The review is `mattpocock-skills:code-review`'s two axes, dispatched as below. `
    to the Spec brief: `The diff changes this promise: <old> → <new>. Find every caller that still
    assumes the old one, and every test that would pass either way.`
 
-   Then one more `sonnet` subagent, given both reports, whose prompt starts with the output of
-   this, verbatim:
+   Then a `sonnet` refuter, given both reports, whose prompt starts with the output of this,
+   verbatim:
 
    ```sh
    node tools/loop/brief.mjs refute <n> .worktrees/agent-<n> <base>
    ```
 
-3. **Post the reports** as one comment, unmerged, first line naming the head they read. Each round
-   posts its own comment for its own head.
+3. **Post the reports** as one comment, unmerged, first line naming the head they read.
 
    ```
    REVIEW <sha>
@@ -272,8 +268,7 @@ The review is `mattpocock-skills:code-review`'s two axes, dispatched as below. `
    ...
    ```
 
-4. **CI has been running on this head since the handoff.** If it has already failed, its failure
-   is a finding too:
+4. **CI has run on this head since the handoff**; a failure is a finding too:
 
    ```sh
    gh run list --branch agent/<n>-<slug> --commit <full sha> --limit 1 --json databaseId,conclusion
@@ -288,18 +283,15 @@ The review is `mattpocock-skills:code-review`'s two axes, dispatched as below. `
    ```
 
    or `VERDICT: HOLD <sha> — <one sentence>`. HOLD on any hard Standards violation or any missing
-   or wrong Spec finding; a baseline smell alone is a note. Close what evidence alone can close on
-   this head inside the round, before the verdict: a CI or device run not yet run, a question the
-   ticket asked. HOLD only for what needs a commit. A HOLD is final for its head
-   (`loop-derive.mjs` `verdictFor`), so the next LAND needs a new commit. Every round's verdict
-   comes from that round's own reviewers (rule 29); never write a round's review yourself. The
-   one exception is the cap, where `--review-round` asks for your own `VERDICT: LAND` (**Rounds**).
-   Where you disagree with a finding, one line in the commit body.
+   or wrong Spec finding; a baseline smell alone is a note. Close evidence gaps (an unrun CI or
+   device job, an open question) before the verdict; HOLD only for what needs a commit: a HOLD is
+   final for its head (`loop-derive.mjs` `verdictFor`). Never write a round's review yourself
+   (rule 29); only the cap's LAND has no new review. Where you disagree with a finding, one line
+   in the commit body.
 
-**Rounds.** Before each round after the first, run `node tools/loop/loop-gate.mjs --review-round`;
-it exits non-zero at the cap and prints what to do next. **Stop before the cap when a round earns
-nothing**: a round raising no finding the previous one did not already raise ends the review, and
-you post `VERDICT: LAND`. At the cap, fix any actual blocker without spending a round; for the
+**Rounds.** Before each later round, run `node tools/loop/loop-gate.mjs --review-round`;
+it exits non-zero at the cap, with guidance. **Stop before the cap when a round earns nothing**: a
+round raising nothing new ends the review with `VERDICT: LAND`. At the cap, fix any actual blocker without spending a round; for the
 rest, follow its printed guidance and say what you accepted in phase F's Definition-of-done
 comment. Park only for a decision only the owner can make.
 
@@ -324,7 +316,8 @@ Phase D's LAND continues here; a process starts at E only when resuming one.
    node tools/loop/loop-gate.mjs
    ```
 
-   **A non-zero exit means redo that phase, never push past it**; it prints why.
+   **A non-zero exit means redo that phase under its `PHASE` line, never push past it**; it prints
+   why.
 
 2. In the worktree — it judges the tree it is invoked from:
 
@@ -332,10 +325,9 @@ Phase D's LAND continues here; a process starts at E only when resuming one.
    npm run agent:check
    ```
 
-   Say its headline and any `NOT run` suites in the PR body. **If it is red, do not fix it here.**
-   Hand off to C, which fixes it and goes round again through D. The same holds when `loop-gate`
-   refuses: never fix code under `PHASE E`. Never push a red check, and never re-run it hoping for
-   a different answer.
+   Say its headline and any `NOT run` suites in the PR body. **If it is red, hand off to C**,
+   which fixes it and goes round again through D. Never push a red check, and never re-run it
+   hoping for a different answer.
 
    ```
    LOOP-RESULT {"ticket":<n>,"branch":"agent/<n>-slug","phase":"E","handoff":"C"}
