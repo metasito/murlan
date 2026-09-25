@@ -23,7 +23,8 @@ const POOL: Record<Seat, [number, number]> = {
 export function regionsFor(seatOnMove: Seat): Record<string, Region> {
   const [px, py] = POOL[seatOnMove];
   return {
-    pool: { x: px - 20, y: py - 12, w: 40, h: 24 },
+    // Between the mockup's pile chip and the hand's shadow, which cross the pool at `you`.
+    pool: { x: px - 20, y: py - 2, w: 40, h: 8 },
     rim: { x: 64, y: 180, w: 8, h: 40 },
     rightBand: { x: 640, y: 150, w: 60, h: 100 },
     pile: { x: 427, y: 202, w: 60, h: 40 },
