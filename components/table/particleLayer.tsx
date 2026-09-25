@@ -1,6 +1,6 @@
 // The native particle layer: one Skia <Atlas> over the felt, its simulation stepped on the UI
 // thread in one frame callback. The web's is `particleLayer.web.tsx`.
-import { useImperativeHandle, useState, type Ref } from "react";
+import { useCallback, useImperativeHandle, useState, type Ref } from "react";
 import { StyleSheet } from "react-native";
 import {
   Atlas,
@@ -17,6 +17,7 @@ import {
   type SkImage,
 } from "@shopify/react-native-skia";
 import { useFrameCallback, useSharedValue, type FrameInfo, type SharedValue } from "react-native-reanimated";
+import { useTraceSource } from "@/lib/e2eTrace";
 import { createParticles, PARTICLE_BUDGET, spawn, step, type ParticleEmitter, type Particles } from "./particles";
 import { CELLS, D, DRAW_STRIDE, layout, SHEET, SPARK_LEN, SPRITE_R } from "./particleSprites";
 
@@ -77,6 +78,8 @@ export function ParticleLayer({ ref, sx, sy }: { ref: Ref<ParticleEmitter>; sx: 
   // The compiler drops a `useCallback` around a worklet — useLampRig.ts.
   const [onFrame] = useState(() => stepper(field));
   useFrameCallback(onFrame);
+  useTraceSource("live", useCallback(() => field.value.s.live, [field]));
+  useTraceSource("dropped", useCallback(() => field.value.s.dropped, [field]));
 
   useImperativeHandle(ref, () => ({
     emit(spawns) {
