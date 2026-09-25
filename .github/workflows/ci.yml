@@ -171,17 +171,23 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           BRANCH: ${{ github.head_ref || github.ref_name }}
+          RUNS: 5
         run: |
           artifacts=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=e2e-timings&per_page=100" || echo '{"artifacts":[]}')
           branches=(main)
           [ "$BRANCH" != main ] && branches+=("$BRANCH")
           for branch in "${branches[@]}"; do
-            id=$(jq -r --arg b "$branch" '[.artifacts[] | select((.expired | not) and .workflow_run.head_branch == $b
-              and .workflow_run.head_repository_id == .workflow_run.repository_id)] | sort_by(.created_at) | last | .id // empty' <<< "$artifacts")
-            if [ -n "$id" ] && gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$id/zip" > "$RUNNER_TEMP/$id.zip" \
-              && unzip -p "$RUNNER_TEMP/$id.zip" timings.json > "$RUNNER_TEMP/timings-$id.json"; then
-              layers+=("$RUNNER_TEMP/timings-$id.json")
-              echo "Timings for $branch: artifact $id."
+            group=()
+            for id in $(jq -r --arg b "$branch" --argjson RUNS "$RUNS" '[.artifacts[] | select((.expired | not) and .workflow_run.head_branch == $b
+              and .workflow_run.head_repository_id == .workflow_run.repository_id)] | sort_by(.created_at) | .[-$RUNS:] | .[].id' <<< "$artifacts"); do
+              if gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$id/zip" > "$RUNNER_TEMP/$id.zip" \
+                && unzip -p "$RUNNER_TEMP/$id.zip" timings.json > "$RUNNER_TEMP/timings-$id.json"; then
+                group+=("$RUNNER_TEMP/timings-$id.json")
+              fi
+            done
+            if [ ${#group[@]} -gt 0 ]; then
+              layers+=("$(IFS=,; echo "${group[*]}")")
+              echo "Timings for $branch: the median of ${#group[@]} green runs."
             else
               echo "::warning::No green run of $branch has left e2e-timings; its specs keep the older numbers."
             fi
