@@ -31,6 +31,8 @@ export default class BudgetReporter {
   ms = {};
   /** @type {Set<string>} */
   skipped = new Set();
+  /** Keyed by the test object, which Playwright hands every retry of one test. @type {WeakMap<object, number>} */
+  lastAttempt = new WeakMap();
   testDir = "";
 
   printsToStdio() {
@@ -48,7 +50,8 @@ export default class BudgetReporter {
     while (suite && suite.type !== "file") suite = suite.parent;
     const file = path.relative(this.testDir, suite?.location?.file ?? test.location.file).split(path.sep).join("/");
     if (result.status === "skipped") this.skipped.add(file);
-    this.ms[file] = (this.ms[file] ?? 0) + result.duration;
+    this.ms[file] = (this.ms[file] ?? 0) + result.duration - (this.lastAttempt.get(test) ?? 0);
+    this.lastAttempt.set(test, result.duration);
   }
 
   /** @param {any} result */

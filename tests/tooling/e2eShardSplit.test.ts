@@ -14,6 +14,7 @@ import {
   specFilesIn,
   UNMEASURED_SECONDS,
 } from "../../tools/ci/e2e-shard.mjs";
+import { timingsFromReport } from "../../tools/ci/e2e-timings.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const E2E_DIR = path.join(repoRoot, "tests", "e2e");
@@ -206,6 +207,22 @@ describe("the plan prices each spec by its latest green run", () => {
     const guessed = planned({}).shards.length;
     assert.equal(guessed, shardsNeeded(files, {}), "nine unmeasured specs at the guess");
     assert.ok(guessed < light && light < heavy);
+  });
+});
+
+describe("a retry in the run that priced the suite", () => {
+  test("does not leave the retried spec's shard light on the next run", () => {
+    const real: Record<string, number> = { "big.spec.ts": 80, "flaky.spec.ts": 26 };
+    for (let i = 0; i < 12; i++) real[`small${i}.spec.ts`] = 12;
+    const specs = Object.keys(real).map((file) => ({
+      file,
+      title: file,
+      specs: [{ title: "t", tests: [{ status: "expected", results: file === "flaky.spec.ts" ? [{ duration: 67_000 }, { duration: 26_000 }] : [{ duration: real[file] * 1000 }] }] }],
+    }));
+    const { seconds } = timingsFromReport({ suites: specs });
+
+    const actual = assignShards(Object.keys(real), seconds, 3).map((s) => s.files.reduce((sum, f) => sum + real[f], 0));
+    assert.ok(Math.max(...actual) <= Math.min(...actual) * 1.2, `real shard seconds ${actual.join(", ")} spread past 20%`);
   });
 });
 

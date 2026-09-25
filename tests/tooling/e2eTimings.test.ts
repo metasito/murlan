@@ -33,10 +33,10 @@ describe("reading a run's durations", () => {
     assert.deepEqual(seconds, { "a.spec.ts": 4.6 });
   });
 
-  test("counts a retried test's every attempt, which is what the shard spent", () => {
-    const { seconds } = timingsFromReport(report({ "a.spec.ts": [{ title: "flaky", ms: [5000, 4000] }] }));
+  test("prices a retried test at its last attempt: the next run is not expected to retry it", () => {
+    const { seconds } = timingsFromReport(report({ "a.spec.ts": [{ title: "flaky", ms: [67000, 25600] }] }));
 
-    assert.deepEqual(seconds, { "a.spec.ts": 9 });
+    assert.deepEqual(seconds, { "a.spec.ts": 25.6 });
   });
 
   test("finds specs however deeply describe blocks nest them", () => {
