@@ -21,7 +21,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import pg from "pg";
 import { io as ioClient, type Socket } from "socket.io-client";
 import { PROTOCOL_AUTH, waitFor, waitForOrNull } from "../helpers/client.ts";
-import { hasDatabase, skipMessage } from "../helpers/testServer.ts";
+import { dropSchema, hasDatabase, scopedDatabaseUrl, skipMessage } from "../helpers/testServer.ts";
 
 const PORT = 5571;
 /**
@@ -217,7 +217,7 @@ describe(
   () => {
     const schema = `restart_${Date.now()}_${Math.floor(Math.random() * 1e6)}`;
     const baseUrl = process.env.DATABASE_URL!;
-    const scoped = `${baseUrl}${baseUrl.includes("?") ? "&" : "?"}options=-c%20search_path%3D${schema}`;
+    const scoped = scopedDatabaseUrl(baseUrl, schema);
     const clients: Client[] = [];
     let server: ChildProcess;
     /** The table with a hand in progress, and the lobby nobody has started. */
@@ -245,12 +245,7 @@ describe(
     after(async () => {
       for (const c of clients) c.socket.close();
       server?.kill("SIGKILL");
-      const admin = new pg.Pool({ connectionString: baseUrl });
-      try {
-        await admin.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
-      } finally {
-        await admin.end();
-      }
+      await dropSchema(baseUrl, schema);
     });
 
     test("a hand in progress and a lobby both survive the process that held them", async () => {
@@ -359,7 +354,7 @@ describe(
   () => {
     const schema = `restart_vacated_${Date.now()}_${Math.floor(Math.random() * 1e6)}`;
     const baseUrl = process.env.DATABASE_URL!;
-    const scoped = `${baseUrl}${baseUrl.includes("?") ? "&" : "?"}options=-c%20search_path%3D${schema}`;
+    const scoped = scopedDatabaseUrl(baseUrl, schema);
     /**
      * The wait between the leaver's socket closing and its seat being vacated.
      * Every boot in this block carries it, the replacements included: the
@@ -394,12 +389,7 @@ describe(
     after(async () => {
       for (const c of clients) c.socket.close();
       server?.kill("SIGKILL");
-      const admin = new pg.Pool({ connectionString: baseUrl });
-      try {
-        await admin.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
-      } finally {
-        await admin.end();
-      }
+      await dropSchema(baseUrl, schema);
     });
 
     test("the reclaim, the end-match vote and the forfeit all survive the restart", async () => {
