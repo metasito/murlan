@@ -1,8 +1,10 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { checkBootEnv } from "../../server/http/bootEnv.ts";
+import { DEADLINE_SCALE } from "../helpers/client.ts";
 
 const repoRoot = path.resolve(import.meta.dirname, "..", "..");
 
@@ -48,5 +50,23 @@ describe("checkBootEnv", () => {
     assert.throws(() => checkBootEnv({ ...base, SESSION_SECRET: undefined }), /SESSION_SECRET/);
     assert.throws(() => checkBootEnv({ ...base, DATABASE_URL: undefined }), /DATABASE_URL/);
     assert.doesNotThrow(() => checkBootEnv({ ...base, PORT: undefined }));
+  });
+
+  test("the real entry exits non-zero without SESSION_SECRET, before serving", () => {
+    const env: NodeJS.ProcessEnv = {
+      ...process.env,
+      NODE_ENV: "development",
+      DATABASE_URL: "postgres://postgres:postgres@127.0.0.1:1/unreachable",
+      PORT: "0",
+    };
+    delete env.SESSION_SECRET;
+    const run = spawnSync(process.execPath, [path.join(repoRoot, "server", "index.ts")], {
+      env,
+      encoding: "utf8",
+      timeout: 20_000 * DEADLINE_SCALE,
+    });
+    assert.equal(run.signal, null, `server/index.ts was still running at the deadline:\n${run.stderr}`);
+    assert.notEqual(run.status, 0);
+    assert.match(run.stderr, /Missing required secret: SESSION_SECRET/);
   });
 });
