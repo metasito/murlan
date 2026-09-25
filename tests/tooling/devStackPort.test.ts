@@ -166,6 +166,13 @@ test("a port the daemon accepts but Postgres cannot be reached on is walked past
   assert.deepEqual(discarded, [55432], "the useless container is removed, not left holding the name");
 });
 
+test("a span this process can bind nowhere in says so, and names the way out", () => {
+  assert.throws(
+    () => startOnFreePort({ start: 55432, canBind: () => false, verify: () => true, run: () => OK }),
+    /could not bind any.*excludedportrange.*MURLAN_DEV_PG_PORT/s
+  );
+});
+
 test("a port this process cannot bind is never offered to docker at all", () => {
   const tried: number[] = [];
   const port = startOnFreePort({

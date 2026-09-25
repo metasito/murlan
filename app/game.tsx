@@ -73,9 +73,13 @@ export default function GameScreen() {
   // tests/e2e/helpers/mockupParity.ts times each bot's turn to the mockup's hand-offs.
   useEffect(() => {
     if (!AI_SUSPENDED) return;
-    const e2e = globalThis as { murlanPass?: () => void };
+    const e2e = globalThis as { murlanPass?: () => void; murlanBotMove?: () => void };
     e2e.murlanPass = () => passTurnRef.current();
-    return () => void delete e2e.murlanPass;
+    e2e.murlanBotMove = () => runAITurnRef.current();
+    return () => {
+      delete e2e.murlanPass;
+      delete e2e.murlanBotMove;
+    };
   }, []);
 
   // Pass and play seats several humans at one device, so the table belongs to

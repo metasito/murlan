@@ -17,40 +17,29 @@ import Animated, {
 import { scheduleOnRN } from "react-native-worklets";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { CardView } from "@/components/CardView";
-import { Colors, FontSize, Hold, Motion, motionMs, Radius, Scrim, Shadow, Spacing, Layer } from "@/lib/theme";
+import { Colors, FontSize, Motion, motionMs, Radius, Scrim, Shadow, Spacing, Layer } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
+import { traceOnset } from "@/lib/e2eTrace";
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
 import type { Card, Combination } from "@/lib/game/gameEngine";
 import { CARD_W, CARD_H, FIELD_SCALE, cardRadius } from "@/components/cardFaceModel";
 import { type FlyDirection } from "@/components/seatLayout";
-import { COMBO_MAX_TILT, advancePile, anticipationOffset, cardTilt, collectPile, comboKey, EMPTY_PILE, FLIGHT_MS, flinchFor, impactDelayMs, landingHoldMs, landingTier, landSquashScale, NO_PILE, readThrownPlay, roundClosedWithWinner, settleForMotion, seatPoint, type ImpactTier, type PileLayers, type PileState, type ThrownPlayInput } from "@/components/flightPhysics";
+import { COMBO_MAX_TILT, advancePile, anticipationOffset, cardTilt, collectPile, comboKey, EMPTY_PILE, FLIGHT_MS, flinchFor, impactDelayMs, landingHoldMs, landingTier, LAND_WOBBLE_MS, landWobble, NO_PILE, readThrownPlay, roundClosedWithWinner, settleForMotion, seatPoint, type ImpactTier, type PileLayers, type PileState, type ThrownPlayInput } from "@/components/flightPhysics";
 import { FIELD_ARC, solveArc } from "@/components/tableArc";
 import { Sweep } from "@/components/table/moments";
 
 const FLY_ROTS: Record<FlyDirection, number> = {
   bottom: -12, top: 12, left: -18, right: 18,
 };
-// The settle's overshoot rock, not a resting pose: the flight always comes to
-// rest at 0deg, the same group rotation PileComboCards draws at, so the two
-// views hand off without a jump (#828). This only shapes how far the card
-// rocks past that mark before it gets there.
-const SETTLE_ROCK_ROTS: Record<FlyDirection, number> = {
-  bottom: -4, top: 5, left: -7, right: 7,
-};
-// How high the throw arcs and how far it drives into the felt before rocking
-// back. The flight's duration lives in flightPhysics, because the table times
-// its impact sound and shake against it.
+// How high the throw arcs. The flight's duration lives in flightPhysics,
+// because the table times its impact sound and shake against it.
 const ARC_PEAK = 22;
-const LAND_DIP = 5;
 /**
- * The longest a flight may hold the felt. The throw is `FLIGHT_MS`, the table
- * holds still, and the landing settles for a spring after that; this is well
- * past all three, so it never cuts a flight that is running — it only ends one
- * that has stopped reporting. The hold is a term rather than slack it happens
- * to fit inside: a longer hold pushes the settle later, and a floor that fired
+ * The longest a flight may hold the felt: well past the throw and the wobble after it, so it never
+ * cuts a flight that is running — it only ends one that has stopped reporting. A floor that fired
  * first would run `onDone` twice.
  */
-const FLIGHT_LIMIT_MS = FLIGHT_MS * 3 + Hold.land;
+const FLIGHT_LIMIT_MS = impactDelayMs(false) + LAND_WOBBLE_MS + FLIGHT_MS;
 
 /**
  * Where a combination's cards sit on the felt. A combination mid-throw and the
@@ -92,7 +81,6 @@ export function FlyingCards({
 }) {
   const { dx, dy } = origin;
   const startRot = FLY_ROTS[direction];
-  const rockRot = SETTLE_ROCK_ROTS[direction];
   const reduceMotion = usePrefersReducedMotion();
 
   // A ref rather than the prop, so a caller handing over a fresh closure
@@ -112,15 +100,13 @@ export function FlyingCards({
   const opacity = useSharedValue(0);
   // Parabolic arc — peak at mid-flight, then land
   const arcY = useSharedValue(0);
-  // Overshoot past the pile and rock back, so the card lands with weight
-  // instead of stopping dead on its mark.
-  const settle = useSharedValue(0);
+  const wobble = useSharedValue(0);
   const lifted = useSharedValue(1);
 
   useEffect(() => {
     // Runs on every entry to this effect, including a toggle mid-flight —
     // see settleForMotion for why that matters.
-    settle.value = settleForMotion(reduceMotion, settle.value);
+    wobble.value = settleForMotion(reduceMotion, wobble.value);
     if (reduceMotion) {
       // The pile is about to show these cards anyway; skip the flight entirely
       // and hand control straight back rather than jumping them across.
@@ -148,16 +134,12 @@ export function FlyingCards({
         withTiming(0, { duration: FLIGHT_MS * 0.5, easing: Easing.in(Easing.quad) })
       )
     );
-    // The card is down at `impactDelayMs()`, then the table sits still for the
-    // hold before the settle — and the pile bounce riding its callback — runs.
-    settle.value = withDelay(
-      impactDelayMs(reduceMotion) + landingHoldMs(reduceMotion),
-      withSequence(
-        withTiming(1, { duration: Motion.duration.flash }),
-        withSpring(0, Motion.spring.land, (finished) => {
-          if (finished) scheduleOnRN(notifyDone);
-        })
-      )
+    // On the landing onset: the tick usePileFlight fires the dust and the cue on.
+    wobble.value = withDelay(
+      impactDelayMs(reduceMotion),
+      withTiming(1, { duration: LAND_WOBBLE_MS, easing: Easing.linear }, (finished) => {
+        if (finished) scheduleOnRN(notifyDone);
+      })
     );
 
     lifted.value = withDelay(
@@ -180,22 +162,21 @@ export function FlyingCards({
       cancelAnimation(rot);
       cancelAnimation(opacity);
       cancelAnimation(arcY);
-      cancelAnimation(settle);
+      cancelAnimation(wobble);
       cancelAnimation(lifted);
     };
     // Every entry is stable for the life of one flight — the caller remounts
     // this component via `key` for each new one — so this runs once per flight.
-  }, [reduceMotion, notifyDone, dx, dy, startRot, tx, ty, rot, opacity, arcY, settle, lifted]);
+  }, [reduceMotion, notifyDone, dx, dy, startRot, tx, ty, rot, opacity, arcY, wobble, lifted]);
 
   const aStyle = useAnimatedStyle(() => {
-    const squash = landSquashScale(settle.value);
+    const w = landWobble(wobble.value);
     return {
       transform: [
         { translateX: tx.value },
-        { translateY: ty.value + arcY.value + settle.value * LAND_DIP * scale },
-        { rotate: `${rot.value + settle.value * rockRot * 0.4}deg` },
-        { scaleX: squash.x },
-        { scaleY: squash.y },
+        { translateY: ty.value + arcY.value },
+        { rotate: `${rot.value + w.rotate}deg` },
+        { scale: w.scale },
       ],
       opacity: opacity.value,
     };
@@ -569,7 +550,12 @@ export function PlayedPile({
       </View>
 
       {comboLabel && (
-        <View style={pileStyles.comboLabel}>
+        <View
+          style={[
+            pileStyles.comboLabel,
+            { marginTop: fieldArc(comboLabel.cards, cardScale, roomW).box.h / 2 + Spacing.snug },
+          ]}
+        >
           <ComboChip isPower={!!isPower}>
             <TableText style={[pileStyles.comboChipText, isPower && pileStyles.comboChipTextPower]}>
               {isPower ? "✦ " : ""}
@@ -657,6 +643,8 @@ export interface PileFlightInput extends Omit<ThrownPlayInput, "combo" | "played
    * where the audio native module has no JS implementation to import.
    */
   playImpact: (heavy: boolean, dir: FlyDirection, cards: number) => void;
+  /** The dust, at the pile's centre in window points; never asked for under reduced motion. */
+  land: (cards: number, at: { x: number; y: number }) => void;
   shake: (tier: ImpactTier) => void;
   burst: (tier: ImpactTier) => void;
   celebrateFlush: () => void;
@@ -688,6 +676,7 @@ export function usePileFlight({
   bottomPad,
   handCardH,
   playImpact,
+  land,
   shake,
   burst,
   celebrateFlush,
@@ -865,7 +854,9 @@ export function usePileFlight({
         handOver: gameOver,
         matchOver: matchOverRef.current,
       });
+      traceOnset("moment", "landing");
       playImpact(thrown.heavy, thrown.dir, combo.cards.length);
+      if (!reduceMotion) land(combo.cards.length, thrown.pile);
       shake(tier);
       clearFeltDim();
       burst(tier);
@@ -894,6 +885,7 @@ export function usePileFlight({
     players.length,
     reduceMotion,
     playImpact,
+    land,
     shake,
     burst,
     celebrateFlush,
@@ -1036,7 +1028,9 @@ const pileStyles = StyleSheet.create({
     position: "absolute",
     opacity: 0.3,
   },
-  comboLabel: { marginTop: Spacing.snug },
+  // Out of the flow and hung off the centre: in it, the chip's arrival would lift the cards the
+  // flight has just set down.
+  comboLabel: { position: "absolute", top: "50%", left: 0, right: 0, alignItems: "center" },
   comboChip: {
     backgroundColor: Scrim.heavy,
     borderRadius: Radius.sm,

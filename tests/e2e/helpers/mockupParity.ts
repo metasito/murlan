@@ -24,7 +24,7 @@ import {
 } from "./traceDiff";
 import { regionBrightness, regionsFor, TABLE, type Seat } from "./parityRegions";
 import { E2E_SUSPEND_AI_KEY, OFFLINE_SAVE_KEY, TUTORIAL_SEEN_KEY } from "../../../lib/storageKeys";
-import { handOffDelayMs } from "../../../components/flightPhysics";
+import { handOffDelayMs, impactDelayMs } from "../../../components/flightPhysics";
 
 const FIXTURE = pathToFileURL(path.resolve(__dirname, "..", "fixtures", "lantern-table", "index.html")).href;
 const DPR = 2;
@@ -56,6 +56,10 @@ interface Moment {
   /** Parity mode: the fields held to the mockup, and the regions whose brightness is. */
   fields?: Field[];
   regions?: string[];
+  /** Parity mode: the only times the regions are sampled, where a moment holds them only there. */
+  regionsAt?: number[];
+  /** Parity mode: the onsets held, where not every one either side fires. */
+  onsets?: string[];
   /** The mockup's chapter, where it is not `key`. */
   chapter?: string;
   mockupScript?: string;
@@ -70,7 +74,19 @@ interface Moment {
 /** The mockup's `BASE`, by the seat each name sits at: luan right, besnik across, gent left. */
 const MOCKUP_SCORES = { player_0: 15, player_1: 11, player_2: 16, player_3: 10 };
 
-export const heldTurnTable = async (page: Page, baseURL: string) => {
+export const heldTurnTable = (page: Page, baseURL: string) => seatTable(page, baseURL, offlineGameSave(4, 13, 0, MOCKUP_SCORES));
+
+/** The mockup's `trick`: a pair of fives in your hand, nines at the next seat on move (the left) and queens at the last. */
+const TRICK_HANDS = [
+  ["5_clubs", "5_diamonds", "6_hearts", "6_spades", "7_clubs", "8_diamonds", "10_spades", "J_hearts", "Q_spades", "K_clubs", "A_diamonds", "A_spades", "2_hearts"],
+  ["Q_diamonds", "Q_hearts", "3_hearts", "4_clubs", "6_diamonds", "7_hearts", "8_hearts", "9_clubs", "10_hearts", "J_diamonds", "K_spades", "A_clubs", "2_clubs"],
+  ["3_clubs", "3_diamonds", "4_diamonds", "4_spades", "5_hearts", "5_spades", "7_spades", "8_spades", "9_diamonds", "10_clubs", "J_spades", "K_hearts", "2_spades"],
+  ["9_hearts", "9_spades", "3_spades", "4_hearts", "6_clubs", "7_diamonds", "8_clubs", "10_diamonds", "J_clubs", "Q_clubs", "K_diamonds", "A_hearts", "2_diamonds"],
+];
+const pairsTable = (page: Page, baseURL: string) =>
+  seatTable(page, baseURL, offlineGameSave(4, 13, 0, MOCKUP_SCORES, TRICK_HANDS));
+
+const seatTable = async (page: Page, baseURL: string, save: ReturnType<typeof offlineGameSave>) => {
   await skiaOnSoftware(page);
   await page.addInitScript(
     (entries) => {
@@ -79,7 +95,7 @@ export const heldTurnTable = async (page: Page, baseURL: string) => {
     [
       [TUTORIAL_SEEN_KEY, "1"],
       [E2E_SUSPEND_AI_KEY, "1"],
-      [OFFLINE_SAVE_KEY, JSON.stringify(offlineGameSave(4, 13, 0, MOCKUP_SCORES))],
+      [OFFLINE_SAVE_KEY, JSON.stringify(save)],
     ]
   );
   await page.goto(baseURL);
@@ -92,10 +108,16 @@ export const heldTurnTable = async (page: Page, baseURL: string) => {
 
 const pass = (page: Page) => page.evaluate(() => (globalThis as unknown as { murlanPass: () => void }).murlanPass());
 
-const playLowest = async (page: Page) => {
-  await page.locator('[data-hand-state] [data-testid="card-box"]').first().click({ force: true });
-  await page.getByRole("button", { name: GIOCA_VALID_LABEL }).click({ force: true });
+const botMove = (page: Page) => page.evaluate(() => (globalThis as unknown as { murlanBotMove: () => void }).murlanBotMove());
+
+const playLowest = (cards: number) => async (page: Page) => {
+  const hand = page.locator('[data-hand-state] [data-testid="card-box"]');
+  for (let i = 0; i < cards; i++) await hand.nth(i).click({ force: true, position: { x: 8, y: 30 } });
+  await page.getByRole("button", { name: GIOCA_VALID_LABEL }).click({ force: true, timeout: 10_000 });
 };
+
+/** The mockup's three landings in `trick`, as its sampled frames carry them. */
+const TRICK_LANDINGS = [1584, 3040, 5792];
 
 const MOMENTS: Moment[] = [
   {
@@ -124,11 +146,42 @@ const MOMENTS: Moment[] = [
     fields: ["lamp", "level"],
     regions: [],
     actions: [
-      { atMs: 1750 - handOffDelayMs(false), app: playLowest },
+      { atMs: 1750 - handOffDelayMs(false), app: playLowest(1) },
       { atMs: 3250, app: pass },
       { atMs: 4550, app: pass },
       { atMs: 5950, app: pass },
     ],
+  },
+  {
+    // The app holds 50 ms after contact where the mockup holds 175–225, so its landings cannot align
+    // in the run whose hand-offs do; this one aligns on the landings and holds no lamp.
+    key: "trick-landings",
+    chapter: "trick",
+    windowMs: 6992,
+    checkpoints: [1040, ...TRICK_LANDINGS.flatMap((t) => [t + 160, t + 1200])],
+    mockupScript: `Object.assign(POOL, { luan: POOL.gent, gent: POOL.luan });
+      lamp.m.length = 0;
+      ember = () => {};
+      const wobble = landWobble;
+      landWobble = (g) => { window.__parityOnsets.push("moment:landing"); wobble(g); };`,
+    seatOnMove: "you",
+    appTrigger: pairsTable,
+    appOnset: (f) => f.lamp !== null,
+    mode: "parity",
+    fields: ["onset", "live", "dropped", "brightness"],
+    regions: ["pile"],
+    // At rest only: after the onset the app's cards are still on their arc and its lamp leaves ~125 ms
+    // early (#1259 rules on both), and the mockup's nines are down before the first landing's rest.
+    regionsAt: [1040, ...TRICK_LANDINGS.slice(1).map((t) => t + 1200)],
+    onsets: ["moment:landing", "sound:combo"],
+    actions: [
+      { atMs: TRICK_LANDINGS[0] - impactDelayMs(false), app: playLowest(2) },
+      { atMs: TRICK_LANDINGS[1] - impactDelayMs(false), app: botMove },
+      { atMs: 4150, app: pass },
+      { atMs: TRICK_LANDINGS[2] - impactDelayMs(false), app: botMove },
+    ],
+    // The particle canvas never touches CanvasKit, and a second variant would take the browser suite past MAX_SHARDS.
+    variants: ["skia"],
   },
   {
     key: "score-open",
@@ -226,11 +279,15 @@ async function strip(
     const frame = await stepTo(t);
     if (t < (m.fromMs ?? 0)) continue;
     if (frame) traced.push({ ...frame, t });
-    if (k % STRIP_STEPS === 0) {
-      const jpeg = await jpegOf(cdp, { x: clip.x, y: clip.y });
-      frames.push({ t, jpeg });
-      regions.push({ t, regions: Object.keys(shape).length ? await regionBrightness(decoder, jpeg, DPR, shape) : {} });
-    }
+    const stripped = k % STRIP_STEPS === 0;
+    const sampled = m.regionsAt ? m.regionsAt.includes(t) : stripped;
+    if (!stripped && !sampled) continue;
+    const jpeg = await jpegOf(cdp, { x: clip.x, y: clip.y });
+    if (stripped) frames.push({ t, jpeg });
+    if (sampled) regions.push({ t, regions: Object.keys(shape).length ? await regionBrightness(decoder, jpeg, DPR, shape) : {} });
+  }
+  if (m.regionsAt) {
+    expect(regions.map((r) => r.t), "a region sample at every time asked for").toEqual(m.regionsAt.filter((t) => t >= (m.fromMs ?? 0)));
   }
   await cdp.detach();
   return { trace: { frames: traced, regions }, frames };
@@ -362,7 +419,11 @@ function bundle(m: Moment, variant: Variant, runs: Record<SideName, Capture>, pi
     };
   }
   const held = new Set<Field>(["frames", ...(m.fields ?? [])]);
-  const traced = diffTraces(runs.mockup.trace, runs.app.trace, m.checkpoints).filter((f) => m.mode === "determinism" || held.has(f.field));
+  const heldOnsets = (t: Trace): Trace =>
+    m.onsets ? { ...t, frames: t.frames.map((f) => ({ ...f, onsets: f.onsets.filter((o) => m.onsets!.includes(o)) })) } : t;
+  const traced = diffTraces(heldOnsets(runs.mockup.trace), heldOnsets(runs.app.trace), m.checkpoints).filter(
+    (f) => m.mode === "determinism" || held.has(f.field)
+  );
   const failures = [...traced, ...pillFailures];
   const moment = `${m.key}-${variant}`;
   const parity = { murlanParity: 1, moment, mode: m.mode, stepMs: STEP_MS, checkpoints: m.checkpoints, sides, failures };

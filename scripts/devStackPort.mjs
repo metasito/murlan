@@ -67,8 +67,10 @@ export function startOnFreePort({
   span = PORT_SPAN,
 }) {
   const ports = explicit ? [start] : Array.from({ length: span }, (_, i) => start + i);
+  let bound = 0;
   for (const port of ports) {
     if (!canBind(port)) continue;
+    bound++;
     const r = run(port);
     if (r.status !== 0) {
       if (!isAddressInUse(r.stderr)) {
@@ -87,9 +89,15 @@ export function startOnFreePort({
         `Free it, or unset MURLAN_DEV_PG_PORT to let the container pick its own port.`
     );
   }
-  throw new Error(
-    `no usable port for the dev Postgres in ${start}..${ports[ports.length - 1] ?? start}`
-  );
+  const range = `${start}..${ports[ports.length - 1] ?? start}`;
+  if (bound === 0) {
+    throw new Error(
+      `no usable port for the dev Postgres: this process could not bind any of ${range}. ` +
+        `On Windows a reserved range does that — \`netsh interface ipv4 show excludedportrange protocol=tcp\` ` +
+        `lists them; set MURLAN_DEV_PG_PORT to a port outside them.`
+    );
+  }
+  throw new Error(`no usable port for the dev Postgres in ${range}`);
 }
 
 /**

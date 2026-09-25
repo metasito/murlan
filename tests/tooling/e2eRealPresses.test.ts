@@ -83,7 +83,7 @@ const namesGestureSurface = (text: string): boolean =>
  */
 function gestureLocals(source: string): Set<string> {
   const out = new Set<string>();
-  for (const m of source.matchAll(/\b(?:const|let)\s+(\w+)\s*=\s*([^;]{0,400})/g)) {
+  for (const m of source.matchAll(/\b(?:const|let)\s+(\w+)\s*=\s*(?=([^;]{0,400}))/g)) {
     if (namesGestureSurface(m[2])) out.add(m[1]);
   }
   return out;
@@ -148,6 +148,9 @@ test("the scan recognises a synthetic press and leaves an honest one alone", () 
   // one reached through a selector built somewhere else.
   assert.ok(namesGestureSurface('getByRole("button", { name: FIVE_SPOKEN })'), "a spoken card");
   assert.ok(namesGestureSurface("giveCandidates(page).nth(i)"), "a card the bot presses");
+
+  const nested = "const play = (n) => async (page) => {\n  const hand = page.locator('[data-testid=\"card-box\"]');\n";
+  assert.ok(gestureLocals(nested).has("hand"), "a local declared inside another's initialiser");
 });
 
 // The other half of the floor: a name renamed out from under either list takes
