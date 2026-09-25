@@ -15,6 +15,11 @@ export const ROOM = "#040605";
 /** How dark the lamp's level takes the table at level 0: the mockup's `#shade`. */
 export const SHADE_MAX = 0.85;
 
+export function levelShade(level: number): number {
+  "worklet";
+  return (1 - level) * SHADE_MAX;
+}
+
 /** The band the rail fills, from the table's outer edge to the felt. */
 export const RAIL_BAND = RAIL.wood.w + RAIL.line.w;
 

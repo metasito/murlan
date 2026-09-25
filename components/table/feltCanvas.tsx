@@ -21,7 +21,7 @@ import { useDerivedValue, type SharedValue } from "react-native-reanimated";
 import type { FeltStops } from "@/lib/cosmetics";
 import { DESIGN, type Lamp } from "./lampRig";
 import { CLOTH_SKSL, clothUniforms } from "./feltShader";
-import { paintRail, RAIL_BAND, RAIL_LIGHT, ringRect, ROOM, SHADE_MAX, type RingPainter } from "./rail";
+import { levelShade, paintRail, RAIL_BAND, RAIL_LIGHT, ringRect, ROOM, type RingPainter } from "./rail";
 
 export interface FeltCanvasProps {
   lamp: SharedValue<Lamp>;
@@ -71,7 +71,7 @@ export function FeltCanvas({ lamp, sx, sy, stops, onReady }: FeltCanvasProps) {
   const light = useDerivedValue(() => ({ x: lamp.value.lx, y: lamp.value.ly }));
   const soft = useDerivedValue(() => RAIL_LIGHT.soft(lamp.value.f));
   const coat = useDerivedValue(() => RAIL_LIGHT.coat(lamp.value.f));
-  const shade = useDerivedValue(() => (1 - lamp.value.level) * SHADE_MAX);
+  const shade = useDerivedValue(() => levelShade(lamp.value.level));
 
   useEffect(() => {
     if (!onReady) return;

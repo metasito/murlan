@@ -3,8 +3,10 @@
 // Skia has drawn.
 import { Component, lazy, Suspense, useEffect, useState, type ReactNode } from "react";
 import { StyleSheet, View } from "react-native";
+import Animated, { useAnimatedStyle } from "react-native-reanimated";
 import { FeltFallback } from "./feltFallback";
 import { useFeltReady, type FeltProps } from "./feltReady";
+import { levelShade } from "./rail";
 
 const SkiaFelt = lazy(() => import("./feltSkiaBoundary"));
 
@@ -22,6 +24,7 @@ export class SkiaLoadFailed extends Component<{ children: ReactNode }, { failed:
 export function Felt({ rig, stops, target }: FeltProps) {
   const [painted, setPainted] = useState(false);
   const [ready, onReady] = useFeltReady();
+  const shadeStyle = useAnimatedStyle(() => ({ opacity: levelShade(rig.lamp.value.level) }));
 
   useEffect(() => {
     const id = requestAnimationFrame(() => setPainted(true));
@@ -31,6 +34,7 @@ export function Felt({ rig, stops, target }: FeltProps) {
   return (
     <View style={StyleSheet.absoluteFill}>
       {!ready && <FeltFallback stops={stops} target={target} sx={rig.sx} sy={rig.sy} />}
+      {!ready && <Animated.View testID="felt-level-shade" style={[StyleSheet.absoluteFill, styles.shade, shadeStyle]} />}
       {painted && (
         <SkiaLoadFailed>
           <Suspense fallback={null}>
@@ -41,3 +45,5 @@ export function Felt({ rig, stops, target }: FeltProps) {
     </View>
   );
 }
+
+const styles = StyleSheet.create({ shade: { backgroundColor: "black" } });
