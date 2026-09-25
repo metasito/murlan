@@ -63,6 +63,19 @@ describe("linesRequested", () => {
     [bash("sed -n '1,100p;200,260p' big.ts"), 161],
     [bash("git show HEAD:big.ts"), 400],
     [bash("git -C wt show HEAD:only.ts"), 400],
+    [bash('grep -n "" big.ts'), 400],
+    [bash("grep -n foo big.ts"), 0],
+    [bash('grep -n "foo" big.ts'), 0],
+    [bash("grep -c '' big.ts"), 0],
+    [bash("cat big.ts | grep -v zzz"), 400],
+    [bash("grep -n '' big.ts | sed -n 1,130p"), 130],
+    [bash("sed -n '1,$p' big.ts"), 400],
+    [bash("sed -n '100,$p' big.ts"), 301],
+    [bash("sed '' big.ts"), 400],
+    [bash("sed 's/a/b/' big.ts"), 400],
+    [bash("sed -i 's/a/b/' big.ts"), 0],
+    [bash("cat big.ts | sed 's/a/b/'"), 400],
+    [bash("git log | sed 's/a/b/'"), 0],
   ];
   for (const [payload, want] of cases) {
     test(JSON.stringify((payload as { tool_input: object }).tool_input), () => {

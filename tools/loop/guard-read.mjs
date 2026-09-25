@@ -46,12 +46,58 @@ function fileArgs(args) {
   return args.filter((a) => !a.startsWith("-") && !/^\d+$/.test(a) && !/^[<>]/.test(a));
 }
 
-function sedLines(args) {
-  return args.flatMap((a) => a.split(";")).reduce((sum, a) => {
-    const m = /^(\d+)(?:,(\d+))?p$/.exec(a.trim());
-    return m ? sum + (m[2] ? Number(m[2]) - Number(m[1]) + 1 : 1) : sum;
+function sedParts(args) {
+  const s = { quiet: false, inPlace: false, scripts: [], files: [] };
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (/^(-e|--expression|-f|--file)$/.test(a)) s.scripts.push(args[++i] ?? "");
+    else if (/^--(quiet|silent)$/.test(a)) s.quiet = true;
+    else if (/^(-i|--in-place)/.test(a)) s.inPlace = true;
+    else if (/^-[A-Za-z]+$/.test(a)) {
+      s.quiet ||= a.includes("n");
+      s.inPlace ||= a.includes("i");
+    } else if (!a.startsWith("-")) (s.scripts.length ? s.files : s.scripts).push(a);
+  }
+  return s;
+}
+
+/** `$` is the last line of the whole input, so `A,$p` needs how long that input is. */
+function sedLines(scripts, inputLines) {
+  return scripts.flatMap((a) => a.split(";")).reduce((sum, a) => {
+    const m = /^(\d+)(?:,(\d+|\$))?p$/.exec(a.trim());
+    if (!m) return sum;
+    const last = m[2] === "$" ? inputLines : Number(m[2] ?? m[1]);
+    return sum + Math.max(0, last - Number(m[1]) + 1);
   }, 0);
 }
+
+const MATCH_ALL = new Set(["", "^", "$", ".*", "^.*", ".*$", "^.*$"]);
+
+function grepParts(args) {
+  const g = { patterns: [], files: [], invert: false, counts: false };
+  let explicit = false;
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (/^(-e|--regexp)$/.test(a) || /^-[A-Za-z]*e$/.test(a)) {
+      g.invert ||= /^-[A-Za-z]*v/.test(a);
+      g.patterns.push(args[++i] ?? "");
+      explicit = true;
+    } else if (/^(-[fmABCd]|--(file|max-count|after-context|before-context|context))$/.test(a)) i += 1;
+    else if (a === "--invert-match") g.invert = true;
+    else if (/^--(count|files-with-matches|files-without-match|quiet|silent)$/.test(a)) g.counts = true;
+    else if (/^-[A-Za-z]+$/.test(a)) {
+      g.invert ||= a.includes("v");
+      g.counts ||= /[clLq]/.test(a);
+    } else if (!a.startsWith("-")) (explicit || g.patterns.length ? g.files : g.patterns).push(a);
+  }
+  return g;
+}
+
+const grepsAll = (c) => {
+  if (c.cmd.toLowerCase() !== "grep") return false;
+  const g = grepParts(c.args);
+  return !g.counts && (g.invert || g.patterns.some((p) => MATCH_ALL.has(p)));
+};
 
 function headLines(args) {
   const bytes = flagValue(args, ["-c", "--bytes"], false);
@@ -62,7 +108,11 @@ function headLines(args) {
 function bound(c) {
   const name = c.cmd.toLowerCase();
   if (name === "head" || name === "tail") return headLines(c.args);
-  if (name === "sed" && c.args.includes("-n")) return sedLines(c.args) || null;
+  if (name === "sed") {
+    const s = sedParts(c.args);
+    const most = s.quiet ? sedLines(s.scripts, Infinity) : Infinity;
+    return Number.isFinite(most) ? most || null : null;
+  }
   if (name === "select-object") return flagValue(c.args, ["-first", "-last"]);
   return null;
 }
@@ -70,7 +120,12 @@ function bound(c) {
 function fromCommand(c, cwd, count) {
   const name = c.cmd.toLowerCase();
   const at = (f) => count(resolve(cwd, native(f))) ?? 0;
-  if (name === "sed" && c.args.includes("-n")) return sedLines(c.args);
+  if (name === "sed") {
+    const s = sedParts(c.args);
+    const input = s.files.reduce((sum, f) => sum + at(f), 0);
+    return s.inPlace ? 0 : s.quiet ? sedLines(s.scripts, input) : input;
+  }
+  if (grepsAll(c)) return grepParts(c.args).files.reduce((sum, f) => sum + at(f), 0);
   if (name === "head" || name === "tail") {
     const files = fileArgs(c.args);
     return files.length ? headLines(c.args) * files.length : 0;
@@ -92,7 +147,7 @@ function fromCommand(c, cwd, count) {
 function pipeline(stages, cwd, count) {
   const first = fromCommand(stages[0], cwd, count);
   if (stages.length === 1) return first;
-  if (stages.slice(1).some((s) => NARROWS.has(s.cmd.toLowerCase()))) return 0;
+  if (stages.slice(1).some((s) => NARROWS.has(s.cmd.toLowerCase()) && !grepsAll(s))) return 0;
   const most = bound(stages.at(-1));
   if (most === null) return first;
   return first ? Math.min(first, most) : most;
@@ -107,21 +162,31 @@ export function linesRequested(payload, count = realCount) {
     return Math.min(left, input.limit ?? left);
   }
   if (payload?.tool_name !== "Bash" && payload?.tool_name !== "PowerShell") return 0;
-  let at = cwd;
+  let from = cwd;
   let total = 0;
   let stages = [];
-  for (const c of commands(withoutQuotedBodies(String(input.command ?? "")))) {
-    if (MOVES.test(c.cmd.toLowerCase())) {
-      const to = c.args.find((a) => !a.startsWith("-"));
-      if (to) at = resolve(at, native(to));
-      continue;
-    }
+  for (const { c, at } of located(withoutQuotedBodies(String(input.command ?? "")), cwd)) {
+    if (!stages.length) from = at;
     stages.push(c);
     if (c.piped) continue;
-    total += pipeline(stages, at, count);
+    total += pipeline(stages, from, count);
     stages = [];
   }
-  return total + (stages.length ? pipeline(stages, at, count) : 0);
+  return total + (stages.length ? pipeline(stages, from, count) : 0);
+}
+
+/** Each command of the line, with the directory the `cd`s before it left the call in. */
+export function located(command, cwd) {
+  let at = cwd;
+  const out = [];
+  for (const c of commands(command)) {
+    if (!MOVES.test(c.cmd.toLowerCase())) out.push({ c, at });
+    else {
+      const to = c.args.find((a) => !a.startsWith("-"));
+      if (to) at = resolve(at, native(to));
+    }
+  }
+  return out;
 }
 
 export function verdict(payload, count = realCount) {
