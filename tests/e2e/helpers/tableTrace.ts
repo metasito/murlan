@@ -3,6 +3,11 @@ import type { TraceFrame } from "../../../lib/e2eTrace";
 
 type Recorder = { start(): void; frames: TraceFrame[] };
 
+/** This browser draws WebGL on SwiftShader, where the table keeps its fallback felt: a spec of Skia's pixels asks for them. */
+export async function skiaOnSoftware(page: Page): Promise<void> {
+  await page.addInitScript(() => void ((window as unknown as { murlanSkiaOnSoftware: boolean }).murlanSkiaOnSoftware = true));
+}
+
 /** Starts the table's trace and waits until it has drawn the Skia felt, so a pixel read is of that felt. */
 export async function untilSkiaFelt(page: Page, timeout = 60_000): Promise<void> {
   await page.evaluate(() => (window as unknown as { murlanTrace: Recorder }).murlanTrace.start());

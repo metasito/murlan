@@ -7,7 +7,7 @@
 // louder on the lit side. `feltNap.spec.ts` holds the weave's relief to the mockup's.
 import { test, expect, type Locator, type Page } from "@playwright/test";
 import { openCaptureState } from "./helpers/offlineSeed";
-import { tracedLamp, untilSkiaFelt } from "./helpers/tableTrace";
+import { skiaOnSoftware, tracedLamp, untilSkiaFelt } from "./helpers/tableTrace";
 import {
   CAPTURE_STATES,
   CAPTURE_VIEWER_SEAT,
@@ -223,6 +223,7 @@ test.describe("the lamp and the cloth everywhere, not just at one seating", () =
       const cells = grid();
       const rows: string[] = [];
       const offenders: string[] = [];
+      await skiaOnSoftware(page);
 
       for (const cell of cells) {
         await page.setViewportSize({ width: viewport.width, height: viewport.height });

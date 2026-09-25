@@ -8,7 +8,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { test, expect, type Browser, type Page } from "@playwright/test";
 import { openCaptureState } from "./helpers/offlineSeed";
-import { untilSkiaFelt } from "./helpers/tableTrace";
+import { skiaOnSoftware, untilSkiaFelt } from "./helpers/tableTrace";
 import { CAPTURE_STATES } from "../../lib/captureStates";
 
 const VIEWPORT = { width: 874, height: 402 };
@@ -77,6 +77,7 @@ async function sample(page: Page, png: Buffer, width: number): Promise<Cloth> {
 
 async function appCloth(page: Page, baseURL: string, id: string): Promise<Cloth> {
   await page.setViewportSize(VIEWPORT);
+  await skiaOnSoftware(page);
   await openCaptureState(page, baseURL, stateById(id));
   await page.waitForTimeout(DEALT_MS);
   await untilSkiaFelt(page);

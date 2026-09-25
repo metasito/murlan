@@ -48,6 +48,8 @@ export interface Lamp {
   ly: number;
   level: number;
   f: number;
+  /** `lx`, `ly`, `level`, `f` as the last frame `lampMoved` passed drew them. */
+  shown: number[];
 }
 
 export function lampTarget(target: LampTarget): readonly [number, number] {
@@ -74,7 +76,20 @@ export function restingLamp(target: LampTarget, level = 1): Lamp {
     ly: y - LIGHT_ABOVE,
     level,
     f: 0,
+    shown: [x, y - LIGHT_ABOVE, level, 0],
   };
+}
+
+/** A hundredth of a point, and half a step of 8-bit light. */
+const SHOWN_STEP = [0.01, 0.01, 1 / 512, 1 / 512];
+
+/** Whether this frame draws anything the last one shown did not; the felt redraws only then. */
+export function lampMoved(s: Lamp): boolean {
+  "worklet";
+  const now = [s.lx, s.ly, s.level, s.f];
+  if (now.every((v, i) => Math.abs(v - s.shown[i]) <= SHOWN_STEP[i])) return false;
+  s.shown = now;
+  return true;
 }
 
 const clamp01 = (v: number) => {

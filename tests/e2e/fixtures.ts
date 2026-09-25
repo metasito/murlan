@@ -21,8 +21,12 @@ import { test as base, expect } from "@playwright/test";
  * URL has to come from the console message's own location instead.
  */
 export function isExpectedNoise(text: string, url: string): boolean {
-  return text.includes("401") && url.endsWith("/api/auth/me");
+  return (text.includes("401") && url.endsWith("/api/auth/me")) || READBACK_NOISE.test(text);
 }
+
+// SwiftShader's own: a bare WebGL canvas, with no app, logs it too (#1257).
+const READBACK_NOISE =
+  /^\[\.WebGL-0x[0-9a-f]+\]GL Driver Message \(OpenGL, Performance, GL_CLOSE_PATH_NV, High\): GPU stall due to ReadPixels( \(this message will no longer repeat\))?$/;
 
 export interface ConsoleErrors {
   entries: string[];

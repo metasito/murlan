@@ -4,7 +4,7 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { lampControls, lampTarget, restingLamp, stepLamp, type Lamp, type LampTarget } from "../../components/table/lampRig.ts";
+import { lampControls, lampMoved, lampTarget, restingLamp, stepLamp, type Lamp, type LampTarget } from "../../components/table/lampRig.ts";
 import { seatDirection } from "../../components/seatLayout.ts";
 import { fixtureBlock, fixtureLine, runFixture } from "../helpers/lanternFixture.ts";
 
@@ -104,6 +104,27 @@ describe("the lamp rig", () => {
     lampControls.setLevel(s, 1.6, 2.2);
     for (let i = 0; i < 600; i++) stepLamp(s, DT, false);
     assert.ok(s.level > 0.99 && s.level <= 1, `level ${s.level}`);
+  });
+
+  test("a lamp that has come to rest asks for no frame, and a swaying one asks for every frame", () => {
+    const still = restingLamp("bottom", 0.75);
+    lampControls.setTarget(still, "right", true);
+    lampControls.setLevel(still, 1, 2.2);
+    const asked: boolean[] = [];
+    for (let i = 0; i < 600; i++) {
+      stepLamp(still, DT, true);
+      asked.push(lampMoved(still));
+    }
+    assert.ok(asked.slice(0, 5).every(Boolean), "the jump and the level's rise are drawn");
+    assert.deepEqual(asked.slice(-300).filter(Boolean), [], "a resting lamp asked for a frame");
+
+    const swaying = restingLamp("bottom");
+    let frames = 0;
+    for (let i = 0; i < 600; i++) {
+      stepLamp(swaying, DT, false);
+      if (lampMoved(swaying)) frames++;
+    }
+    assert.ok(frames > 570,`the sway asked for ${frames} of 600 frames`);
   });
 });
 

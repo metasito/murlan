@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useFrameCallback, useSharedValue, type FrameInfo, type SharedValue } from "react-native-reanimated";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTraceSource } from "@/lib/e2eTrace";
-import { designScale, lampControls, restingLamp, stepLamp, type Lamp, type LampTarget } from "./lampRig";
+import { designScale, lampControls, lampMoved, restingLamp, stepLamp, type Lamp, type LampTarget } from "./lampRig";
 
 /** The mockup's `deal` chapter: the lamp comes up from 75% as the cards fly. */
 const BREATH_FROM = 0.75;
@@ -23,12 +23,9 @@ export interface LampRig {
 function lampStepper(lamp: SharedValue<Lamp>, reduced: SharedValue<boolean>) {
   return (frame: FrameInfo) => {
     "worklet";
-    const dt = (frame.timeSincePreviousFrame ?? 0) / 1000;
-    lamp.modify((s) => {
-      "worklet";
-      stepLamp(s, dt, reduced.value);
-      return s;
-    }, true);
+    const s = lamp.value;
+    stepLamp(s, (frame.timeSincePreviousFrame ?? 0) / 1000, reduced.value);
+    if (lampMoved(s)) lamp.modify(undefined, true);
   };
 }
 

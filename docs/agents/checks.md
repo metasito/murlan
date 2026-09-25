@@ -331,6 +331,12 @@ the spec count, not the colour).
   and is green; delete the file locally.
 - **No unit test can see a layout bug** — `react-test-renderer` never runs flexbox. A green `jest`
   run on a fan rendered off-screen is the normal outcome; only Playwright sees it.
+- **The browser suite draws WebGL on SwiftShader, on the CPU**, here and on CI. The web table keeps
+  its fallback felt on a software rasteriser (`components/table/feltSkia.web.tsx`), because a
+  swaying Skia lamp there took the main thread and timed out the whole suite. A spec of Skia's
+  own pixels calls `skiaOnSoftware(page)` first (`tests/e2e/helpers/tableTrace.ts`);
+  `tests/e2e/feltIdle.spec.ts` pins both halves. SwiftShader's `GPU stall due to ReadPixels`
+  warning is its own, not the app's: `isExpectedNoise` drops exactly that text.
 
 ## The loop is a second product, with its own gate
 

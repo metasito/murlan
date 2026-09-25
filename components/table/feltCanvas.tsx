@@ -34,11 +34,13 @@ export interface FeltCanvasProps {
 
 function ring(d: number): SkPath {
   const r = ringRect(d);
-  return Skia.Path.Make().addRRect(Skia.RRectXY(Skia.XYWHRect(r.x, r.y, r.w, r.h), r.r, r.r));
+  return Skia.Path.RRect(Skia.RRectXY(Skia.XYWHRect(r.x, r.y, r.w, r.h), r.r, r.r));
 }
 
+// A raster surface: on web an offscreen one is a WebGL context of its own per bake, read back
+// with a GPU stall.
 function bakeRail(k: number): SkImage | null {
-  const surface = Skia.Surface.MakeOffscreen(Math.round(DESIGN.width * k), Math.round(DESIGN.height * k));
+  const surface = Skia.Surface.Make(Math.round(DESIGN.width * k), Math.round(DESIGN.height * k));
   if (!surface) return null;
   const canvas = surface.getCanvas();
   canvas.scale(k, k);
@@ -55,15 +57,17 @@ function bakeRail(k: number): SkImage | null {
   };
   paintRail(painter);
   surface.flush();
-  const image = surface.makeImageSnapshot();
-  return image.makeNonTextureImage() ?? image;
+  return surface.makeImageSnapshot();
 }
 
 export function FeltCanvas({ lamp, sx, sy, stops, onReady }: FeltCanvasProps) {
   const k = PixelRatio.get() * Math.min(sx, sy);
   const effect = useMemo(() => Skia.RuntimeEffect.Make(CLOTH_SKSL), []);
   const rail = useMemo(() => bakeRail(k), [k]);
-  const band = useMemo(() => ring(0).addPath(ring(RAIL_BAND)).setFillType(FillType.EvenOdd), []);
+  const band = useMemo(
+    () => Skia.PathBuilder.Make().addPath(ring(0)).addPath(ring(RAIL_BAND)).setFillType(FillType.EvenOdd).build(),
+    []
+  );
   const coatPath = useMemo(() => ring(RAIL_LIGHT.coatInset), []);
   const base = useMemo(() => clothUniforms(stops, k), [stops, k]);
 
