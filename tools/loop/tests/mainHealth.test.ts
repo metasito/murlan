@@ -54,13 +54,20 @@ function fakeGh(runs: MainRun[], seed: FiledIssue[] = []) {
     if (verb === "issue" && noun === "create") {
       const number = (next += 1);
       const url = `https://github.com/metasito/murlan/issues/${number}`;
-      issues.push({ number, title: args[args.indexOf("--title") + 1], url });
+      issues.push({ number, title: args[args.indexOf("--title") + 1], url, state: "OPEN" });
       return `${url}\n`;
+    }
+    if (verb === "issue" && noun === "close") {
+      const issue = issues.find((i) => i.number === Number(args[2]));
+      if (!issue) throw new Error(`no issue ${args[2]}`);
+      issue.state = "CLOSED";
+      return "";
     }
     throw new Error(`unexpected gh call: ${args.join(" ")}`);
   };
   const created = () => calls.filter((c) => c[0] === "issue" && c[1] === "create");
-  return { gh, calls, created, issues };
+  const closed = () => calls.filter((c) => c[0] === "issue" && c[1] === "close");
+  return { gh, calls, created, closed, issues };
 }
 
 describe("the DoD path, off a fixture gh payload", () => {
@@ -133,6 +140,76 @@ describe("the DoD path, off a fixture gh payload", () => {
   });
 });
 
+describe("a green main closes the main-red issues it filed", () => {
+  const REPO = "metasito/murlan";
+  const filed = (number: number, runId: number, state = "OPEN"): FiledIssue => ({ number, title: titleFor(runId), state });
+  const closedNumbers = (hub: ReturnType<typeof fakeGh>) => hub.closed().map((c) => Number(c[2]));
+
+  test("green closes an open older main-red issue, with a comment naming the green run", () => {
+    const hub = fakeGh([GREEN], [filed(5, GREEN.databaseId - 3)]);
+    assert.equal(checkMain({ repo: REPO, gh: hub.gh }).state, "green");
+    const [args] = hub.closed();
+    assert.equal(args?.[2], "5");
+    assert.equal(args[args.indexOf("--repo") + 1], REPO);
+    assert.equal(args[args.indexOf("--comment") + 1], `main is green again: ci.yml run ${GREEN.databaseId}.`);
+    assert.equal(hub.issues[0].state, "CLOSED");
+  });
+
+  test("an issue naming a newer run stays open", () => {
+    const hub = fakeGh([GREEN], [filed(5, GREEN.databaseId - 3), filed(6, GREEN.databaseId + 1)]);
+    checkMain({ repo: REPO, gh: hub.gh });
+    assert.deepEqual(closedNumbers(hub), [5]);
+  });
+
+  test("an already-closed issue is not closed again", () => {
+    const hub = fakeGh([GREEN], [filed(4, GREEN.databaseId - 9, "CLOSED"), filed(5, GREEN.databaseId - 3)]);
+    checkMain({ repo: REPO, gh: hub.gh });
+    assert.deepEqual(closedNumbers(hub), [5]);
+  });
+
+  test("an issue with no run id in its title is left alone", () => {
+    const hub = fakeGh([GREEN], [{ number: 3, title: "main is unhappy", state: "OPEN" }, filed(5, GREEN.databaseId - 3)]);
+    checkMain({ repo: REPO, gh: hub.gh });
+    assert.deepEqual(closedNumbers(hub), [5]);
+  });
+
+  test("unknown closes nothing; the same issue closes once main is really green", () => {
+    const runs: MainRun[] = [];
+    const hub = fakeGh(runs, [filed(5, GREEN.databaseId - 3)]);
+    for (const status of [undefined, "in_progress", "queued"]) {
+      runs.splice(0, 1, ...(status ? [{ ...GREEN, status, conclusion: null }] : []));
+      assert.equal(checkMain({ repo: REPO, gh: hub.gh }).state, "unknown");
+    }
+    assert.deepEqual(closedNumbers(hub), []);
+    runs[0] = GREEN;
+    checkMain({ repo: REPO, gh: hub.gh });
+    assert.deepEqual(closedNumbers(hub), [5]);
+  });
+
+  test("a gh issue close that throws still returns green, and the next close is still tried", () => {
+    const hub = fakeGh([GREEN], [filed(5, GREEN.databaseId - 3), filed(6, GREEN.databaseId - 2)]);
+    const gh = (args: string[]) => {
+      if (args[1] === "close" && args[2] === "6") throw new Error("HTTP 403");
+      return hub.gh(args);
+    };
+    assert.equal(checkMain({ repo: REPO, gh }).state, "green");
+    assert.deepEqual(closedNumbers(hub), [5]);
+  });
+
+  test("the close is decided as data, before any gh call", () => {
+    const health = decideMainHealth(GREEN, [], [filed(5, GREEN.databaseId - 3), filed(6, GREEN.databaseId + 1)]);
+    assert.deepEqual(health, { state: "green", why: "ci.yml passed", runId: GREEN.databaseId, close: [5] });
+  });
+
+  test("closing does not make the same red run file twice", () => {
+    const hub = fakeGh([RED]);
+    checkMain({ repo: REPO, gh: hub.gh });
+    hub.issues[0].state = "CLOSED";
+    checkMain({ repo: REPO, gh: hub.gh });
+    assert.equal(hub.created().length, 1);
+  });
+});
+
 describe("decideMainHealth", () => {
   const none: FiledIssue[] = [];
 
@@ -199,6 +276,7 @@ describe("the gh arguments", () => {
     assert.equal(args.includes("--search"), false, "search trails its own writes by minutes");
     assert.equal(Number(args[args.indexOf("--limit") + 1]), WINDOW);
     assert.equal(args[args.indexOf("--state") + 1], "all", "a closed issue still means this run was reported");
+    assert.ok(args[args.indexOf("--json") + 1].split(",").includes("state"), "an issue already closed must not be closed again");
   });
 });
 

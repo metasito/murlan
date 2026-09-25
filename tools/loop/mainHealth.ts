@@ -18,10 +18,12 @@ export interface FiledIssue {
   number: number;
   title: string;
   url?: string;
+  state?: string;
 }
 
 export type MainHealth =
-  | { state: "green" | "unknown"; why: string }
+  | { state: "green"; why: string; runId: number; close: number[] }
+  | { state: "unknown"; why: string }
   | { state: "file"; runId: number; failedStep?: string; url?: string; title: string; why: string }
   | { state: "filed"; runId: number; title: string; why: string; url?: string };
 
@@ -48,8 +50,15 @@ export const WINDOW = 10;
  * can come round twice is the newest — and the issue naming it is the newest this module wrote.
  * Issues ageing out of `WINDOW` name runs that can never be asked about again.
  */
+const runOf = (issue: FiledIssue) => Number(RUN_IN_TITLE.exec(issue.title ?? "")?.[1]);
+
 export function alreadyFiled(runId: number, issues: FiledIssue[]): FiledIssue | undefined {
-  return issues.find((i) => Number(RUN_IN_TITLE.exec(i.title ?? "")?.[1]) === runId);
+  return issues.find((i) => runOf(i) === runId);
+}
+
+/** Only issues naming an older run: run ids only climb, so one naming a newer run is news this green predates. */
+export function staleIssues(greenRunId: number, issues: FiledIssue[]): number[] {
+  return issues.filter((i) => i.state === "OPEN" && runOf(i) < greenRunId).map((i) => i.number);
 }
 
 /**
@@ -63,7 +72,9 @@ export function decideMainHealth(
   issues: FiledIssue[],
 ): MainHealth {
   const verdict = decideVerdict(run, jobs);
-  if (verdict.pass) return { state: "green", why: verdict.reason };
+  if (verdict.pass && run) {
+    return { state: "green", why: verdict.reason, runId: run.databaseId, close: staleIssues(run.databaseId, issues) };
+  }
   if (!run || verdict.infrastructure || verdict.waiting || verdict.runId === undefined) {
     return { state: "unknown", why: verdict.reason };
   }
@@ -94,8 +105,12 @@ export function filedIssueArgs(repo: string): string[] {
   // prettier-ignore
   return [
     "issue", "list", "--repo", repo, "--label", MAIN_RED_LABEL,
-    "--state", "all", "--limit", String(WINDOW), "--json", "number,title,url",
+    "--state", "all", "--limit", String(WINDOW), "--json", "number,title,url,state",
   ];
+}
+
+export function closeArgs(repo: string, issue: number, greenRunId: number): string[] {
+  return ["issue", "close", String(issue), "--repo", repo, "--comment", `main is green again: ci.yml run ${greenRunId}.`];
 }
 
 export function jobArgs(repo: string, runId: number): string[] {
@@ -166,6 +181,15 @@ export function checkMain({ repo, gh = ghCli }: { repo: string; gh?: Gh }): Main
   try {
     const { run, jobs } = readMain(gh, repo);
     const health = decideMainHealth(run, jobs, parse<FiledIssue[]>(gh(filedIssueArgs(repo)), []));
+    if (health.state === "green") {
+      for (const issue of health.close) {
+        try {
+          gh(closeArgs(repo, issue, health.runId));
+        } catch {
+          // A close that fails is retried by the next green read; it must not make green read as unknown.
+        }
+      }
+    }
     if (health.state !== "file") return health;
     const url = gh(issueArgs(repo, health, run?.headSha, MAIN_RED_LABELS)).trim().split("\n").at(-1);
     return { state: "filed", runId: health.runId, title: health.title, why: health.why, url };
