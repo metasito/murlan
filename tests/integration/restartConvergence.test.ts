@@ -448,16 +448,21 @@ describe(
 
       server = await replaceServer(server, [a, b], scoped, SHORT_GRACE);
 
+      const rejoinTallies: Promise<unknown>[] = [];
       for (const client of [a, b]) {
         client.socket = await connect(client.cookie);
         client.game = null;
         listen(client);
+        rejoinTallies.push(waitFor(client.socket, "game:end_match_vote_state", 10_000));
         client.socket.emit("game:rejoin", { roomId: table.roomId });
       }
       await until(
         "the replacement instance restored the table without the vacated seat",
         () => [a, b].every((client) => vacatedAt(client, cSeat) === true)
       );
+      // A rejoin is answered with the tally as it stands, after the state: one still in flight
+      // would be read below as the vote's own.
+      await Promise.all(rejoinTallies);
 
       // One vote of the two seats a human still holds, so the tally comes back
       // and the match stays live. `endMatchVoteAction` refuses with
