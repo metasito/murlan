@@ -251,7 +251,7 @@ describe("a CI fix round is a documented path, not an improvisation", () => {
 
   test("a HOLD fix is checked locally before it goes back to review, as the supervisor requires", () => {
     const d = read(QUEUE).split("## D — Review")[1]?.split("## E — Land")[0] ?? "";
-    assert.match(d, /After a `HOLD`, fix what it named, then leave through phase C's steps 1–5/);
+    assert.match(d, /After a `HOLD`, say `PHASE C`, fix what it named, then leave through\s+phase C's steps 1–5/);
   });
 
   test("no session marks the draft ready: that is the supervisor's, behind the LAND check", () => {

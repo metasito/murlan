@@ -288,8 +288,12 @@ The review is `mattpocock-skills:code-review`'s two axes, dispatched as below. `
    ```
 
    or `VERDICT: HOLD <sha> — <one sentence>`. HOLD on any hard Standards violation or any missing
-   or wrong Spec finding; a baseline smell alone is a note. Where you disagree with a finding, one
-   line in the commit body.
+   or wrong Spec finding; a baseline smell alone is a note. Close what evidence alone can close on
+   this head inside the round, before the verdict: a CI or device run not yet run, a question the
+   ticket asked. HOLD only for what needs a commit. A HOLD is final for its head
+   (`loop-derive.mjs` `verdictFor`), so the next LAND needs a new commit. Every round's verdict
+   comes from that round's own reviewers (rule 29); never write a round's review yourself. Where
+   you disagree with a finding, one line in the commit body.
 
 **Rounds.** Before each round after the first, run `node tools/loop/loop-gate.mjs --review-round`;
 it exits non-zero at the cap and prints what to do next. **Stop before the cap when a round earns
@@ -298,8 +302,8 @@ you post `VERDICT: LAND`. At the cap, fix any actual blocker without spending a 
 rest, follow its printed guidance and say what you accepted in phase F's Definition-of-done
 comment. Park only for a decision only the owner can make.
 
-**A round is a process.** After a `HOLD`, fix what it named, then leave through phase C's steps 1–5,
-and hand off:
+**A round is a process.** After a `HOLD`, say `PHASE C`, fix what it named, then leave through
+phase C's steps 1–5, and hand off:
 
 ```
 LOOP-RESULT {"ticket":<n>,"branch":"agent/<n>-slug","phase":"D","handoff":"D"}
@@ -328,8 +332,9 @@ Phase D's LAND continues here; a process starts at E only when resuming one.
    ```
 
    Say its headline and any `NOT run` suites in the PR body. **If it is red, do not fix it here.**
-   Hand off to C, which fixes it and goes round again through D. Never push a red check, and never
-   re-run it hoping for a different answer.
+   Hand off to C, which fixes it and goes round again through D. The same holds when `loop-gate`
+   refuses: never fix code under `PHASE E`. Never push a red check, and never re-run it hoping for
+   a different answer.
 
    ```
    LOOP-RESULT {"ticket":<n>,"branch":"agent/<n>-slug","phase":"E","handoff":"C"}
