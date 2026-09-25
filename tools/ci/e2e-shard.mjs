@@ -26,7 +26,7 @@ export const UNMEASURED_SECONDS = 60;
 
 /** The slowest browser job's wall clock, setup included (#1285). */
 export const TARGET_JOB_SECONDS = 300;
-/** A shard's time outside its specs — npm ci, the browser, the bundle, Postgres, the boot — measured in docs/research/2026-09-25-ci-speed.md. */
+/** A shard's time outside its specs — install, the browser, the bundle, Postgres, the boot — as the shards of run 36124176280 spent it (#1285). */
 export const SHARD_OVERHEAD_SECONDS = 90;
 /** Every shard is a concurrent job, and a public repository's runners allow 20 at once across every run. */
 export const MAX_SHARDS = 12;

@@ -33,12 +33,22 @@ const PORT = process.env.E2E_PORT ?? (PLAY ? "5000" : "5199");
 const DEV_STACK = path.join(ROOT, "scripts", "dev-stack.mjs");
 const DIST = PLAY ? "dist" : "dist-e2e";
 
+const children = new Set();
+// Two steps run at once, so one failing must not leave the other running with nobody waiting on it.
+process.on("exit", () => children.forEach((c) => c.kill()));
+
 function run(cmd, args, useShell) {
-  return new Promise((resolve, reject) =>
-    spawn(cmd, args, { cwd: ROOT, stdio: "inherit", shell: useShell })
+  return new Promise((resolve, reject) => {
+    const child = spawn(cmd, args, { cwd: ROOT, stdio: "inherit", shell: useShell });
+    children.add(child);
+    child
       .on("error", reject)
-      .on("exit", (code) => (code === 0 ? resolve() : reject(new Error(`${cmd} ${args.join(" ")} exited with code ${code}`))))
-  );
+      .on("exit", (code) => {
+        children.delete(child);
+        if (code === 0) resolve();
+        else reject(new Error(`${cmd} ${args.join(" ")} exited with code ${code}`));
+      });
+  });
 }
 
 /**

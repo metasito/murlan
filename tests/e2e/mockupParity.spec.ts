@@ -5,7 +5,7 @@ import { step, stepUntil } from "./helpers/virtualClock";
 test.describe("mockup parity", () => {
   parityTests("rest");
 
-  const lastFelt = async (page: Page) => (await recorded(page)).at(-1)?.felt;
+  const lastFelt = async (page: Page) => (await recorded(page, -1))[0]?.felt;
 
   test("the table plays before Skia is ready, then shows the Skia felt", async ({ browser, baseURL }) => {
     test.setTimeout(5 * 60_000);

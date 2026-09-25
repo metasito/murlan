@@ -155,11 +155,13 @@ jobs:
           BRANCH: ${{ github.head_ref || github.ref_name }}
         run: |
           artifacts=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=e2e-timings&per_page=100" || echo '{"artifacts":[]}')
-          for branch in main "$BRANCH"; do
+          branches=(main)
+          [ "$BRANCH" != main ] && branches+=("$BRANCH")
+          for branch in "${branches[@]}"; do
             id=$(jq -r --arg b "$branch" '[.artifacts[] | select((.expired | not) and .workflow_run.head_branch == $b
               and .workflow_run.head_repository_id == .workflow_run.repository_id)] | sort_by(.created_at) | last | .id // empty' <<< "$artifacts")
-            if [ -n "$id" ] && gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$id/zip" > "$RUNNER_TEMP/$id.zip"; then
-              unzip -p "$RUNNER_TEMP/$id.zip" timings.json > "$RUNNER_TEMP/timings-$id.json"
+            if [ -n "$id" ] && gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$id/zip" > "$RUNNER_TEMP/$id.zip" \
+              && unzip -p "$RUNNER_TEMP/$id.zip" timings.json > "$RUNNER_TEMP/timings-$id.json"; then
               layers+=("$RUNNER_TEMP/timings-$id.json")
               echo "Timings for $branch: artifact $id."
             else
@@ -290,11 +292,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: ./.github/actions/install
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-      - run: npm ci
 
       # tests/server/backupDb.test.ts restores a real dump — needs the same client
       # tools scripts/backup-db.mjs itself depends on, matched to the service
@@ -529,11 +529,19 @@ jobs:
         shard: ${{ fromJSON(needs.scope.outputs.shards) }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: ./.github/actions/install
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-      - run: npm ci
+      - name: The split the scope job settled
+        env:
+          TIMINGS: ${{ needs.scope.outputs.timings }}
+        run: printf '%s' "$TIMINGS" > tests/e2e/timings.json
+      # Keyed on the dependencies alone, so it is written once and never grows: node_modules is
+      # most of the bundle's 2078 modules, and metro.config.js keys each entry on its inputs.
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: /tmp/metro-cache
+          key: metro-${{ hashFiles('package-lock.json', 'patches/**', 'metro.config.js', 'babel.config.js') }}
 
       # No `--with-deps`: every package it asks for is already the newest
       # version on this image, and it spends an 11.4 MB apt index fetch to say
@@ -561,16 +569,6 @@ jobs:
       # count, and this suite's tests run from under a second to ninety-four
       # (tools/ci/e2e-shard.mjs). 20 minutes was a ceiling for the unsharded
       # suite and is left alone: it is a hang detector, not a budget.
-      - name: The split the scope job settled
-        env:
-          TIMINGS: ${{ needs.scope.outputs.timings }}
-        run: printf '%s' "$TIMINGS" > tests/e2e/timings.json
-      # The transform cache is keyed on its inputs (metro.config.js), so a stale entry is never read.
-      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
-        with:
-          path: /tmp/metro-cache
-          key: metro-${{ hashFiles('package-lock.json', 'metro.config.js', 'babel.config.js') }}-${{ github.sha }}
-          restore-keys: metro-${{ hashFiles('package-lock.json', 'metro.config.js', 'babel.config.js') }}-
       - name: Browser tests
         timeout-minutes: 20
         run: npm run test:e2e -- $(node tools/ci/e2e-shard.mjs ${{ matrix.shard }} ${{ strategy.job-total }})
@@ -624,11 +622,9 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: ./.github/actions/install
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-      - run: npm ci
 
       - name: Collect every shard's report
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0

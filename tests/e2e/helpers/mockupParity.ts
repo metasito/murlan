@@ -198,7 +198,7 @@ export async function newSidePage(browser: Browser, baseURL?: string): Promise<P
   return page;
 }
 
-/** Playwright's own capture yields the same bytes, at twice the cost in round trips per frame. */
+/** The same bytes `page.screenshot` yields, in about 60% of its time (#1285). */
 async function jpegOf(cdp: CDPSession, clip: { x: number; y: number }): Promise<Buffer> {
   const { data } = await cdp.send("Page.captureScreenshot", { format: "jpeg", quality: 80, clip: { ...clip, ...TABLE, scale: DPR } });
   return Buffer.from(data, "base64");
@@ -268,10 +268,10 @@ async function captureMockup(browser: Browser, decoder: Page, m: Moment, preRoll
   return capture;
 }
 
-export const recorded = (page: Page) =>
-  page.evaluate(() => (window as unknown as { murlanTrace: { frames: TraceFrame[] } }).murlanTrace.frames);
+/** The frames traced from index `from` on: the trace grows every step, and carrying all of it out each time is quadratic. */
+export const recorded = (page: Page, from = 0) =>
+  page.evaluate((from) => (window as unknown as { murlanTrace: { frames: TraceFrame[] } }).murlanTrace.frames.slice(from), from);
 
-/** The frame traced at `t`, found in the page: the whole trace grows every step, and carrying it out each time is quadratic. */
 const tracedAt = (page: Page, t: number) =>
   page.evaluate(
     ({ t, half }) => (window as unknown as { murlanTrace: { frames: TraceFrame[] } }).murlanTrace.frames.find((f) => Math.abs(f.t - t) < half) ?? null,
@@ -279,8 +279,18 @@ const tracedAt = (page: Page, t: number) =>
   );
 
 export async function traced(page: Page, accept: (f: TraceFrame) => boolean, what: string): Promise<number> {
+  let seen = 0;
   let t = -1;
-  await stepUntil(page, async () => (t = (await recorded(page)).find(accept)?.t ?? -1) >= 0, what, { chunkMs: STEP_MS });
+  await stepUntil(
+    page,
+    async () => {
+      const fresh = await recorded(page, seen);
+      seen += fresh.length;
+      return (t = fresh.find(accept)?.t ?? -1) >= 0;
+    },
+    what,
+    { chunkMs: STEP_MS }
+  );
   return t;
 }
 
@@ -305,13 +315,17 @@ function trackLoads(page: Page): () => Promise<string[]> {
 async function skiaOnset(page: Page, mounted: number, loading: () => Promise<string[]>): Promise<number> {
   const deadline = Date.now() + 90_000;
   const isSkia = (f: TraceFrame) => f.t > mounted && f.felt === "skia";
-  while (!(await recorded(page)).some(isSkia)) {
+  let seen = 0;
+  let onset: number | undefined;
+  for (;;) {
+    const fresh = await recorded(page, seen);
+    seen += fresh.length;
+    if ((onset = fresh.find(isSkia)?.t) !== undefined) break;
     const waiting = await loading();
     if (Date.now() > deadline) throw new Error(`Skia never drew; still loading: ${waiting.join(", ") || "nothing"}`);
     if (waiting.length === 0) await step(page);
     await new Promise((r) => setTimeout(r, 20));
   }
-  const onset = (await recorded(page)).find(isSkia)!.t;
   expect(onset - mounted, "Skia's first frame, after the table's").toBeLessThanOrEqual(MAX_PRE_ROLL_MS);
   return onset;
 }

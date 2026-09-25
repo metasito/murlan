@@ -1,0 +1,25 @@
+name: Install dependencies
+description: >
+  Node, and node_modules restored whole when the lockfile and patches match;
+  `npm ci` only on a miss. setup-node's own npm cache keeps ~/.npm, so `npm ci`
+  still spent ~20 s unpacking it into every job.
+
+inputs:
+  node-version:
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      with:
+        node-version: ${{ inputs.node-version }}
+    - id: modules
+      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      with:
+        path: node_modules
+        # patch-package rewrites node_modules at postinstall, so the patches are an input too.
+        key: node-modules-${{ runner.os }}-node${{ inputs.node-version }}-${{ hashFiles('package-lock.json', 'patches/**') }}
+    - if: steps.modules.outputs.cache-hit != 'true'
+      shell: bash
+      run: npm ci
