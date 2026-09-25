@@ -135,7 +135,7 @@ function normalize(words, depth) {
     } else if (REDIRECT.test(words[i])) {
       if (!REDIRECT.exec(words[i])[1]) i += 1;
     } else if (commandName(words[i]) === "timeout") {
-      while (words[i + 1]?.startsWith("-")) i += /^-[sk]$/.test(words[i + 1]) ? 2 : 1;
+      while (words[i + 1]?.startsWith("-")) i += /^(-[sk]|--signal|--kill-after)$/.test(words[i + 1]) ? 2 : 1;
       i += 1;
     } else if (WRAPPER.has(commandName(words[i]))) {
       while (words[i + 1]?.startsWith("-")) i += WRAPPER_TAKES_A_VALUE.test(words[i + 1]) ? 2 : 1;
@@ -611,8 +611,8 @@ const RULES = [
   {
     test: (c, { loop }) => loop && c.cmd === "gh" && c.args[0] === "run" && c.args[1] === "watch",
     message:
-      "gh run watch blocks until the run ends, and a device run outlasts the Bash ceiling: the call is killed and returns nothing.\n" +
-      "Wait with `node tools/loop/await-run.mjs <run-id> [<run-id>…]`. It returns before the ceiling; exit 3 means run the same command again.",
+      "gh run watch blocks until the run ends, and a device run outlasts any Bash timeout: the call is killed and returns nothing.\n" +
+      "Wait with `node tools/loop/await-run.mjs <run-id> [<run-id>…]`. It returns before the default Bash timeout; exit 3 means run the same command again.",
   },
 ];
 

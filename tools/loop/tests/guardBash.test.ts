@@ -450,6 +450,9 @@ describe("loop sessions only", () => {
     assert.match(String(check("timeout 1480 gh run watch 123 > /dev/null", () => null, repo, true)), /await-run\.mjs/);
     assert.notEqual(check("timeout -k 5s --preserve-status 60 gh pr merge 12", () => null, repo, false), null);
     assert.equal(check("timeout 60 gh run view 123", () => null, repo, true), null);
+    for (const opts of ["--signal KILL", "--kill-after 5", "--signal=KILL --kill-after=5"]) {
+      assert.notEqual(check(`timeout ${opts} 60 gh pr merge 12`, () => null, repo, false), null, opts);
+    }
   });
 });
 
