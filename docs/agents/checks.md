@@ -322,6 +322,8 @@ the spec count, not the colour).
   points at `worktrees:remove` (rule 39);
   `tools/loop/tests/worktreeRemoveCommand.test.ts` plants the defect. `npm run worktrees:prune`
   (`-- --dry-run` to only classify) cleans up one left by a killed/crashed session the same way.
+  It only ever removes worktrees directly under `.worktrees/`; one registered anywhere else is a
+  person's, and only `worktrees:remove` takes it.
   Never hand-create the junction either — it is actively harmful: `node --test` fails every file
   with `Cannot find package 'typescript'` through one, while `tsc`/`eslint` keep working, which
   reads exactly like a broken branch.

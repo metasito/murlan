@@ -2,10 +2,10 @@
  * Removes worktrees an interrupted session left behind. The ticket pipeline
  * tears its own worktree down on landing; this is the recovery for the
  * sessions that were killed, crashed or context-cleared before reaching
- * that teardown, and for anything left by hand. See #292.
+ * that teardown. See #292.
  *
- * Every worktree but the primary (always the first `git worktree list`
- * prints) and the one this script is running from is classified:
+ * Every worktree directly under `.worktrees/` but the one this script runs
+ * from is classified:
  *
  *   merged - its branch is merged into origin/main, or its pull request is
  *            closed or merged.
@@ -291,6 +291,12 @@ function samePath(a, b) {
   return process.platform === "win32" ? ra.toLowerCase() === rb.toLowerCase() : ra === rb;
 }
 
+/** The loop's namespace only: any other worktree registered here is a person's, whatever its branch says. */
+export function pruneCandidates(entries, cwd) {
+  const own = path.join(entries[0]?.path ?? cwd, WORKTREE_DIR);
+  return entries.slice(1).filter((e) => !samePath(e.path, cwd) && samePath(path.dirname(e.path), own));
+}
+
 /** [] both when the directory is empty and when it does not exist at all. */
 export function listWorktreeDirNames(worktreesDir) {
   try {
@@ -448,9 +454,7 @@ if (invokedDirectly && process.argv.includes("--remove")) {
   const primary = entries[0];
   const cwd = process.cwd();
 
-  const candidates = entries
-    .slice(1)
-    .filter((e) => !samePath(e.path, cwd));
+  const candidates = pruneCandidates(entries, cwd);
 
   console.log(`Primary: ${primary?.path ?? "(none found)"}`);
 
