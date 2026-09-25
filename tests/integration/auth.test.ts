@@ -15,6 +15,8 @@ let server: TestServer;
 before(async () => { if (hasDatabase()) server = await startTestServer(); });
 after(async () => { if (server) await server.stop(); });
 
+const NOT_AUTHENTICATED = "Not authenticated";
+
 describe("socket authentication", { skip: hasDatabase() ? false : skipMessage() }, () => {
   // Local wrapper: this suite only cares about accept/reject, not the raw
   // socket, and always closes on success so sockets never leak across cases.
@@ -27,12 +29,14 @@ describe("socket authentication", { skip: hasDatabase() ? false : skipMessage() 
   test("a socket with no credentials is rejected", async () => {
     const r = await connect({});
     assert.equal(r.ok, false);
+    assert.equal(r.err, NOT_AUTHENTICATED);
   });
 
   test("a bare userId is rejected — this was a full impersonation vector", async () => {
     const { user } = await register(server, "victim_a");
     const r = await connect({ userId: user.id });
     assert.equal(r.ok, false, "connecting with only a victim's userId must fail");
+    assert.equal(r.err, NOT_AUTHENTICATED, "refused for having no credential, not for any other reason");
   });
 
   test("a valid ticket is accepted", async () => {
@@ -52,6 +56,7 @@ describe("socket authentication", { skip: hasDatabase() ? false : skipMessage() 
     assert.ok(first.ok, first.err ?? "the socket was rejected with no reason given");
     const second = await connect({ ticket });
     assert.equal(second.ok, false, "a consumed ticket must not authenticate a second socket");
+    assert.equal(second.err, NOT_AUTHENTICATED);
   });
 
   test("a bundle below the protocol floor is refused as CLIENT_OUTDATED, and keeps its ticket", async () => {
