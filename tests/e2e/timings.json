@@ -51,7 +51,7 @@
   "playedHand.spec.ts": 25.7,
   "profileSignedOut.spec.ts": 6.4,
   "reconnect.spec.ts": 33.8,
-  "reducedMotionSquashReset.spec.ts": 2.1,
+  "reducedMotionWobbleReset.spec.ts": 2.1,
   "reorderHand.spec.ts": 30.7,
   "resultActions.spec.ts": 40.5,
   "resultCutout.spec.ts": 30.6,

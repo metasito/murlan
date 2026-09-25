@@ -1,10 +1,5 @@
-// tests/native/landSquash.test.tsx — the squash-and-stretch on a card's
-// landing (#731) is driven by the same `settle` shared value the pile's own
-// overshoot spring (`Motion.spring.land`) already runs. Under reduced motion
-// `FlyingCards` never advances `settle` past its initial 0 — that is the
-// existing, already-pinned contract `landSquashScale(0)` answers with no
-// deformation — so a player who asked for less motion gets none here either,
-// with no second flag of its own to read.
+// tests/native/landWobble.test.tsx — under reduced motion `FlyingCards` holds the wobble's `k` at 0,
+// where `landWobble` is at rest, so a player who asked for less motion gets no wobble.
 import { describe, it, expect, afterEach, jest } from '@jest/globals';
 import React from 'react';
 import { render } from '@testing-library/react-native';
@@ -28,10 +23,10 @@ function flattenTransform(style: unknown): Record<string, unknown>[] {
   return Array.isArray(flat.transform) ? (flat.transform as Record<string, unknown>[]) : [];
 }
 
-describe('a landed card under reduced motion carries no deformation', () => {
+describe('a landed combination under reduced motion does not wobble', () => {
   afterEach(() => setMotionPreference('system'));
 
-  it('the flying card renders a scale transform, and it is exactly 1 on both axes', async () => {
+  it('the flying cards render the wobble scale, and it is exactly 1', async () => {
     setMotionPreference('on');
     const r = await render(
       <FlyingCards
@@ -45,14 +40,9 @@ describe('a landed card under reduced motion carries no deformation', () => {
     );
 
     const transform = flattenTransform(r.getByTestId('flying-cards').props.style);
-    const scaleEntries = transform.filter((t) => 'scaleX' in t || 'scaleY' in t);
-    // Pins that a scale transform actually exists — the squash this ticket
-    // adds — rather than passing vacuously because none was ever wired up.
-    expect(scaleEntries.length).toBeGreaterThan(0);
-    for (const entry of scaleEntries) {
-      if ('scaleX' in entry) expect(entry.scaleX).toBe(1);
-      if ('scaleY' in entry) expect(entry.scaleY).toBe(1);
-    }
+    const scales = transform.filter((t) => 'scale' in t);
+    expect(scales).toEqual([{ scale: 1 }]);
+    expect(transform.filter((t) => 'scaleX' in t || 'scaleY' in t)).toEqual([]);
 
     await r.unmount();
   });

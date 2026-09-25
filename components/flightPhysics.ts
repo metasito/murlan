@@ -96,8 +96,7 @@ export function handOffDelayMs(reduceMotion: boolean): number {
 }
 
 /**
- * The beat the table sits still on at contact, before the aftermath — the
- * settle spring, and the pile bounce riding its callback — runs.
+ * The beat the table sits still on at contact, before the turn is handed on.
  *
  * A hold marks a landing, so it is asked of the landing rather than of
  * `reduceMotion`: reading the flag here as well is the second derivation the
@@ -107,33 +106,24 @@ export function landingHoldMs(reduceMotion: boolean): number {
   return impactDelayMs(reduceMotion) === 0 ? 0 : Hold.land;
 }
 
-/**
- * How far a card compresses on the axis it fell, at the peak of contact —
- * `settle` at 1. Shy of `LAND_DIP`'s bounce: a card is a face, not a ball, so
- * the deformation reads as pressed rather than squashed flat.
- */
-export const LAND_SQUASH = 0.92;
+/** The landed combination's wobble, from contact: the mockup's `landWobble` (#1242). */
+export const LAND_WOBBLE_MS = 400;
 
 /**
- * The card's squash-and-stretch at contact, riding the pile's own `settle`
- * value rather than a timeline of its own — the squash rides `Motion.spring.land`
- * because `settle` is what that spring drives; a second derivation is the
- * thing that could drift from it. `x * y` is 1 for every input, so
- * compressing one axis always expands the other by exactly as much — a
- * uniform scale-down would be a card shrinking, not a card landing.
- *
- * At `settle` 0 both axes are 1: no deformation. That covers the whole of
- * reduced motion for free as long as `settle` is actually 0 there —
- * `settleForMotion` is what keeps that true.
+ * Its scale and rotation in degrees, `k` of the way through. Both are at rest at 0 and at 1, so
+ * reduced motion needs only `k` held at 0 — `settleForMotion` is what keeps that true.
  */
-export function landSquashScale(settle: number): { x: number; y: number } {
+export function landWobble(k: number): { scale: number; rotate: number } {
   "worklet";
-  const y = 1 - (1 - LAND_SQUASH) * settle;
-  return { x: 1 / y, y };
+  const t = (k * LAND_WOBBLE_MS) / 1000;
+  return {
+    scale: 1 + 0.035 * Math.sin(50.8 * t) * Math.pow(1 - k, 3),
+    rotate: 0.6 * Math.sin(40.8 * t) * Math.pow(1 - k, 2),
+  };
 }
 
 /**
- * What `settle` should read the moment a flight's motion preference is
+ * What the wobble's `k` should read the moment a flight's motion preference is
  * decided — at mount, and again if the player toggles reduced motion while a
  * flight is up. Reanimated's `cancelAnimation` (run by the effect's own
  * cleanup on that toggle) freezes a shared value at its current number

@@ -51,8 +51,8 @@ import {
   handOffDelayMs,
   impactDelayMs,
   landingHoldMs,
-  landSquashScale,
-  LAND_SQUASH,
+  landWobble,
+  LAND_WOBBLE_MS,
   settleForMotion,
   comboImpactTier,
   landingTier,
@@ -675,23 +675,17 @@ describe("the table holds still at the landing frame", () => {
     assert.equal(landingHoldMs(true), 0);
   });
 
-  test("the settle waits out the landing and then the hold", () => {
+  test("the wobble starts on the landing onset, the tick the dust and the cue fire on", () => {
     const src = readPile();
     assert.ok(
       !/FLIGHT_MS\s*\*\s*LANDING_FRACTION/.test(src),
       "pile.tsx must call impactDelayMs(), not recompute the landing"
     );
-    // Both terms, in one expression: a call that reaches the hold and discards
-    // it leaves the aftermath running on the frame of contact, which is the
-    // whole defect.
-    const settle = calls(src, "withDelay").filter((c) =>
-      /settle\.value\s*=\s*$/.test(src.slice(0, c.start))
+    const wobble = calls(src, "withDelay").filter((c) =>
+      /wobble\.value\s*=\s*$/.test(src.slice(0, c.start))
     );
-    assert.deepEqual(
-      settle.map((c) => c.args[0]),
-      ["impactDelayMs(reduceMotion) + landingHoldMs(reduceMotion)"],
-      "the settle must be delayed by the landing plus the hold"
-    );
+    assert.deepEqual(wobble.map((c) => c.args[0]), ["impactDelayMs(reduceMotion)"], "the wobble must start on contact");
+    assert.match(wobble[0].args[1], /^withTiming\(1, \{ duration: LAND_WOBBLE_MS, easing: Easing\.linear \}/);
   });
 
   test("the call reader takes a timer's delay from the call, never from a comment beside it", () => {
@@ -710,46 +704,34 @@ describe("the table holds still at the landing frame", () => {
     );
   });
 
-  test("the flight's safety floor clears the hold it now delays", () => {
-    // `FLIGHT_LIMIT_MS` also calls `onDone`. If a longer hold pushed the settle
-    // spring past it — which #101's bomb tier is meant to do — the floor would
-    // fire first and the pile would advance twice.
+  test("the flight's safety floor clears the wobble", () => {
     const src = readFileSync(path.join(repoRoot, "components", "table", "pile.tsx"), "utf8");
-    assert.match(src, /const FLIGHT_LIMIT_MS = .*Hold\.land/);
+    assert.match(src, /const FLIGHT_LIMIT_MS = impactDelayMs\(false\) \+ LAND_WOBBLE_MS \+ FLIGHT_MS;/);
   });
 });
 
-describe("a landed card squashes on the spring that lands it", () => {
-  test("at rest — settle 0, including the whole of reduced motion — there is no deformation", () => {
-    const { x, y } = landSquashScale(0);
-    assert.equal(x, 1);
-    assert.equal(y, 1);
+describe("a landed combination wobbles for 400 ms, the mockup's landWobble", () => {
+  test("at rest before contact and after the wobble, including the whole of reduced motion", () => {
+    assert.deepEqual(landWobble(0), { scale: 1, rotate: 0 });
+    const end = landWobble(1);
+    assert.equal(end.scale, 1);
+    assert.equal(Math.abs(end.rotate), 0);
+    assert.equal(LAND_WOBBLE_MS, 400);
   });
 
-  test("the peak squash is the named constant, not a literal at the call site", () => {
-    assert.ok(LAND_SQUASH < 1, "a squash compresses; it does not grow");
-    const { y } = landSquashScale(1);
-    assert.equal(y, LAND_SQUASH);
+  test("scale 1 + 0.035·sin(50.8t)·(1−k)³ and rotation 0.6°·sin(40.8t)·(1−k)², t = 0.4k s", () => {
+    // k = 0.25: t = 0.1 s, sin(5.08) = −0.933189, sin(4.08) = −0.806618.
+    const w = landWobble(0.25);
+    assert.ok(Math.abs(w.scale - 0.986221) < 1e-5, `scale ${w.scale}`);
+    assert.ok(Math.abs(w.rotate - -0.272233) < 1e-5, `rotate ${w.rotate}`);
+    const peak = Math.max(...Array.from({ length: 401 }, (_, i) => landWobble(i / 400).scale));
+    assert.ok(peak > 1.02 && peak < 1.035, `peak scale ${peak}`);
   });
 
-  test("compressing one axis expands the other — volume never drifts, at any point on the spring", () => {
-    // Includes a value past 1: `Motion.spring.land` overshoots past 0 once, and
-    // that overshoot is the recovery this rides rather than a second timeline.
-    for (const settle of [0, 0.25, 0.5, 0.75, 1, -0.07]) {
-      const { x, y } = landSquashScale(settle);
-      assert.ok(
-        Math.abs(x * y - 1) < 1e-9,
-        `x*y must stay 1 at settle=${settle}, got ${x * y}`
-      );
-    }
-  });
-
-  test("pile.tsx rides the same settle value Motion.spring.land drives, not a timeline of its own", () => {
+  test("pile.tsx draws the flying cards at the wobble's scale and rotation", () => {
     const src = readFileSync(path.join(repoRoot, "components", "table", "pile.tsx"), "utf8");
-    assert.ok(
-      src.includes("landSquashScale(settle.value)"),
-      "the flying card's squash must read off `settle`, the value the landing spring already drives"
-    );
+    assert.ok(src.includes("const w = landWobble(wobble.value);"));
+    assert.match(src, /\{ rotate: `\$\{rot\.value \+ w\.rotate\}deg` \},\s*\{ scale: w\.scale \}/);
   });
 });
 
@@ -790,7 +772,7 @@ describe("settleForMotion", () => {
     );
     assert.match(
       src,
-      /useEffect\(\(\) => \{\s*settle\.value = settleForMotion\(reduceMotion, settle\.value\);/
+      /useEffect\(\(\) => \{\s*wobble\.value = settleForMotion\(reduceMotion, wobble\.value\);/
     );
   });
 });
@@ -1112,11 +1094,10 @@ describe("the beaten pile's flinch (#764)", () => {
     );
   });
 
-  // The critique found this exact defect twice more in the same file: the
-  // pile's own land-spring overshoot (the ordinary tier's whole effect) and
-  // FlyingCards' own settle dip were both fixed pixel counts too. Fixed
-  // alongside the flinch rather than left as the next instance of the class.
-  test("the pile's own bounce and FlyingCards' own land dip scale with the table too — the same defect class, fixed alongside the flinch", () => {
+  // The critique found this exact defect again in the same file: the pile's
+  // own land-spring overshoot (the ordinary tier's whole effect) was a fixed
+  // pixel count too.
+  test("the pile's own bounce scales with the table too — the same defect class, fixed alongside the flinch", () => {
     const src = blankComments(
       readFileSync(path.join(repoRoot, "components", "table", "pile.tsx"), "utf8")
     );
@@ -1124,11 +1105,6 @@ describe("the beaten pile's flinch (#764)", () => {
       src,
       /-PILE_BOUNCE_DIP \* scale/,
       "PlayedPile's own bounce (the ordinary tier's whole effect) must scale with the table"
-    );
-    assert.match(
-      src,
-      /settle\.value \* LAND_DIP \* scale/,
-      "FlyingCards' own settle dip must scale with the table"
     );
   });
 });
