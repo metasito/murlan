@@ -9,7 +9,7 @@ import {
   type TestServer,
 } from "../helpers/testServer.ts";
 import { MATCH_TARGETS, targetsFor } from "../../lib/game/gameEngine.ts";
-import { lobbyGraceMs } from "../../server/game/gameTimers.ts";
+import { lobbyGraceMs, usersInLobbyGrace } from "../../server/game/gameTimers.ts";
 import { Reading } from "../../lib/tokens.ts";
 import { connectAs, reconnectAs, waitFor } from "../helpers/client.ts";
 import {
@@ -68,10 +68,11 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
    * the whole file — the timer would then fire against a stopped server.
    */
   async function closeTable(clients: { socket: Socket }[]) {
-    for (const client of clients) {
-      if (client.socket.connected) client.socket.emit("room:leave");
-    }
-    await new Promise((resolve) => setTimeout(resolve, 250));
+    await Promise.all(
+      clients
+        .filter((client) => client.socket.connected)
+        .map((client) => client.socket.timeout(5_000).emitWithAck("room:leave"))
+    );
     for (const client of clients) client.socket.close();
   }
 
@@ -181,6 +182,15 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
     assert.fail(message);
   }
 
+  /** Arming the lobby grace is the last thing the server does with a drop from a waiting room. */
+  function lobbyGraceArmed(roomId: string, client: Client): Promise<void> {
+    return waitUntil(
+      () => usersInLobbyGrace(roomId).includes(client.user.id),
+      `${client.user.username}'s drop never armed the lobby grace`,
+      5_000
+    );
+  }
+
   /** Re-emits `game:rejoin` several times per AFK window until stopped. */
   function rejoinOnALoop(client: Client, roomId: string): () => void {
     const handle = setInterval(() => {
@@ -249,8 +259,9 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
     const carolGone = waitFor<{ seatIndex: number }>(alice.socket, "game:player_disconnected", 5_000);
     carol.socket.disconnect();
     const carolSeat = (await carolGone).seatIndex;
+    const bobGone = waitFor(alice.socket, "game:player_disconnected", 5_000);
     bob.socket.disconnect();
-    await new Promise((resolve) => setTimeout(resolve, 250));
+    await bobGone;
 
     const back = await reconnectAs(server, bob);
     const table = [alice, { ...bob, socket: back }];
@@ -899,7 +910,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
       // socketRoomMap entry until it rejoins — without that, every later room
       // event resolves to no room and returns silently.
       bob.socket.disconnect();
-      await new Promise((r) => setTimeout(r, 300));
+      await lobbyGraceArmed(room.roomId, bob);
 
       const back = await reconnectAs(server, bob);
       table[1] = { ...bob, socket: back };
@@ -934,7 +945,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
       // The room does not change hands over a dropped connection: the seat
       // row survives the grace, so carol is still the host throughout.
       carol.socket.disconnect();
-      await new Promise((r) => setTimeout(r, 300));
+      await lobbyGraceArmed(room.roomId, carol);
 
       const back = await reconnectAs(server, carol);
       table[0] = { ...carol, socket: back };
@@ -1022,7 +1033,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
       );
 
       mia.socket.disconnect();
-      await new Promise((r) => setTimeout(r, 300));
+      await lobbyGraceArmed(room.roomId, mia);
 
       const back = await reconnectAs(server, mia);
       mia = { ...mia, socket: back };
