@@ -61,9 +61,12 @@ export function offlineGameSave(
   playerCount: 2 | 3 | 4,
   handSize: number = 13,
   turn: number = 0,
-  scores: Record<string, number> = {}
+  scores: Record<string, number> = {},
+  /** Card ids per seat, in place of the round-robin deal. */
+  holding?: string[][]
 ) {
-  const dealt = hands(playerCount, handSize);
+  const deck = new Map(createDeck().map((c) => [c.id, c]));
+  const dealt = holding?.map((ids) => ids.map((id) => deck.get(id)!)) ?? hands(playerCount, handSize);
   const players = Array.from({ length: playerCount }, (_, i) => ({
     id: `player_${i}`,
     name: i === 0 ? "Ana" : BOTS[i - 1].name,
