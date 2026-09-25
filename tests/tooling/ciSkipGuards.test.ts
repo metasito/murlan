@@ -191,6 +191,13 @@ describe("the loop tests that skip off win32 run on Windows", () => {
     assert.deepEqual(selected, gated);
   });
 
+  test("it runs them with loop:test's own flags", () => {
+    const flags = (JSON.parse(readRepoFile("package.json")).scripts["loop:test"] as string)
+      .split(" ")
+      .filter((a) => /^--test-(timeout|force-exit)/.test(a));
+    for (const flag of flags) assert.ok(job.includes(` ${flag} `), `the Windows leg drops ${flag}`);
+  });
+
   test("it fails on a skip, and on a run that passed nothing", () => {
     assert.match(job, /grep -qE '\^# skipped 0\$' win32\.tap \|\| \{[^}]*exit 1; \}/);
     assert.match(job, /grep -qE '\^# pass \[1-9\]' win32\.tap \|\| \{[^}]*exit 1; \}/);
