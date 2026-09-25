@@ -11,18 +11,25 @@ import { installVirtualClock, takeOver, step, stepUntil } from "./helpers/virtua
 import { diffTraces, movingFields, STEP_MS, type Field, type Trace, type TraceFrame } from "./helpers/traceDiff";
 import { regionBrightness, regionsFor, TABLE, type Seat } from "./helpers/parityRegions";
 import { E2E_SUSPEND_AI_KEY, OFFLINE_SAVE_KEY, TUTORIAL_SEEN_KEY } from "../../lib/storageKeys";
+import { handOffDelayMs } from "../../components/flightPhysics";
 
 const FIXTURE = pathToFileURL(path.resolve(__dirname, "fixtures", "lantern-table", "index.html")).href;
 const DPR = 2;
 const SEED = 1255;
 const STRIP_STEPS = 2;
+const CANVASKIT_ROUTE = "**/canvaskit-wasm@*/**";
+/** Skia's first frame, in virtual time after the table's: later than this and the lamps no longer start together. */
+const MAX_PRE_ROLL_MS = 10 * STEP_MS;
 
 type SideName = "mockup" | "app";
+/** `fallback` holds the CanvasKit request, so the web fallback felt is what is measured. */
+type Variant = "skia" | "fallback";
 
 interface Moment {
   /** The mockup's chapter key, `window.T.go`'s. */
   key: string;
   windowMs: number;
+  /** In the chapter's time, which both sides label their frames with. */
   checkpoints: number[];
   seatOnMove: Seat;
   /** Brings the app to the instant before its onset; the onset is the first traced frame `appOnset` accepts. */
@@ -31,6 +38,11 @@ interface Moment {
   mode: "determinism" | "parity";
   /** Determinism mode: exactly the fields each side must move over the window; every other must hold still. */
   moves?: Record<SideName, Field[]>;
+  /** Parity mode: the fields held to the mockup, and the regions whose brightness is. */
+  fields?: Field[];
+  regions?: string[];
+  /** What the mockup's own script does to the table, done to the app at the same chapter time. */
+  appActions?: { atMs: number; run: (page: Page) => Promise<void> }[];
 }
 
 const heldTurnTable = async (page: Page, baseURL: string) => {
@@ -52,19 +64,42 @@ const heldTurnTable = async (page: Page, baseURL: string) => {
   await resume.click({ force: true });
 };
 
+const pass = (page: Page) => page.evaluate(() => (globalThis as unknown as { murlanPass: () => void }).murlanPass());
+
+const playLowest = async (page: Page) => {
+  await page.locator('[data-hand-state] [data-testid="card-box"]').first().click({ force: true });
+  await page.getByRole("button", { name: "Gioca le carte selezionate" }).click({ force: true });
+};
+
 const MOMENTS: Moment[] = [
   {
     key: "rest",
     windowMs: 2400,
-    checkpoints: [0, 480, 960, 1440, 1920, 2400],
+    checkpoints: [MAX_PRE_ROLL_MS, 480, 960, 1440, 1920, 2400],
     seatOnMove: "you",
     appTrigger: heldTurnTable,
     appOnset: (f) => f.lamp !== null,
-    mode: "determinism",
-    moves: {
-      mockup: ["lamp", "brightness"],
-      app: ["onset", "lamp", "brightness"],
-    },
+    mode: "parity",
+    fields: ["lamp", "level", "flare", "brightness"],
+    regions: ["pool", "rim", "rightBand"],
+  },
+  {
+    key: "trick",
+    windowMs: 6800,
+    // Each 750 ms after a hand-off, where the lamp's glide covers under 2 pt a frame.
+    checkpoints: [MAX_PRE_ROLL_MS, 1000, 2500, 4000, 5300, 6700],
+    seatOnMove: "you",
+    appTrigger: heldTurnTable,
+    appOnset: (f) => f.lamp !== null,
+    mode: "parity",
+    fields: ["lamp", "level"],
+    regions: [],
+    appActions: [
+      { atMs: 1750 - handOffDelayMs(false), run: playLowest },
+      { atMs: 3250, run: pass },
+      { atMs: 4550, run: pass },
+      { atMs: 5950, run: pass },
+    ],
   },
 ];
 
@@ -96,14 +131,22 @@ async function newSidePage(browser: Browser, baseURL?: string): Promise<Page> {
   return page;
 }
 
-async function strip(page: Page, clip: { x: number; y: number }, decoder: Page, m: Moment, stepAfterOnset: () => Promise<TraceFrame | null>): Promise<Capture> {
+async function strip(
+  page: Page,
+  clip: { x: number; y: number },
+  decoder: Page,
+  m: Moment,
+  startMs: number,
+  stepTo: (t: number) => Promise<TraceFrame | null>
+): Promise<Capture> {
   const frames: Capture["frames"] = [];
   const traced: TraceFrame[] = [];
   const regions: Trace["regions"] = [];
-  const shape = regionsFor(m.seatOnMove);
-  for (let k = 0; k * STEP_MS <= m.windowMs; k++) {
-    const t = k * STEP_MS;
-    const frame = await stepAfterOnset();
+  const all = regionsFor(m.seatOnMove);
+  const shape = m.regions ? Object.fromEntries(m.regions.map((r) => [r, all[r]])) : all;
+  for (let k = 0; startMs + k * STEP_MS <= m.windowMs; k++) {
+    const t = startMs + k * STEP_MS;
+    const frame = await stepTo(t);
     if (frame) traced.push({ ...frame, t });
     if (k % STRIP_STEPS === 0) {
       const jpeg = await page.screenshot({ type: "jpeg", quality: 80, clip: { ...clip, ...TABLE } });
@@ -114,7 +157,7 @@ async function strip(page: Page, clip: { x: number; y: number }, decoder: Page, 
   return { trace: { frames: traced, regions }, frames };
 }
 
-async function captureMockup(browser: Browser, decoder: Page, m: Moment): Promise<Capture> {
+async function captureMockup(browser: Browser, decoder: Page, m: Moment, preRollMs: number): Promise<Capture> {
   const page = await newSidePage(browser);
   await page.goto(FIXTURE);
   await page.evaluate(() => document.fonts.ready.then(() => undefined));
@@ -136,7 +179,8 @@ async function captureMockup(browser: Browser, decoder: Page, m: Moment): Promis
     requestAnimationFrame(() => { paused = false; });
     start(CH.findIndex((c) => c.key === ${JSON.stringify(m.key)}));
   })()`);
-  const capture = await strip(page, box, decoder, m, async () => {
+  for (let rolled = 0; rolled < preRollMs; rolled += STEP_MS) await step(page);
+  const capture = await strip(page, box, decoder, m, preRollMs, async () => {
     await step(page);
     return { t: 0, ...((await page.evaluate(MOCKUP_SAMPLE)) as Omit<TraceFrame, "t">) };
   });
@@ -144,32 +188,48 @@ async function captureMockup(browser: Browser, decoder: Page, m: Moment): Promis
   return capture;
 }
 
-async function captureApp(browser: Browser, baseURL: string, decoder: Page, m: Moment): Promise<Capture> {
-  const page = await newSidePage(browser, baseURL);
-  const recorded = () =>
-    page.evaluate(() => (window as unknown as { murlanTrace: { frames: TraceFrame[] } }).murlanTrace.frames);
-  await m.appTrigger(page, baseURL);
-  let onset = 0;
-  await stepUntil(
-    page,
-    async () => {
-      onset = (await recorded()).find(m.appOnset)?.t ?? -1;
-      return onset >= 0;
-    },
-    `the app's onset of ${m.key}`,
-    { chunkMs: STEP_MS }
-  );
-  let t = onset - STEP_MS;
-  const capture = await strip(page, { x: 0, y: 0 }, decoder, m, async () => {
-    t += STEP_MS;
-    if (t > onset) await step(page);
-    return (await recorded()).find((f) => Math.abs(f.t - t) < STEP_MS / 2) ?? null;
-  });
-  await page.context().close();
-  return capture;
+const recorded = (page: Page) =>
+  page.evaluate(() => (window as unknown as { murlanTrace: { frames: TraceFrame[] } }).murlanTrace.frames);
+
+async function traced(page: Page, accept: (f: TraceFrame) => boolean, what: string): Promise<number> {
+  let t = -1;
+  await stepUntil(page, async () => (t = (await recorded(page)).find(accept)?.t ?? -1) >= 0, what, { chunkMs: STEP_MS });
+  return t;
 }
 
-function bundle(m: Moment, runs: Record<SideName, Capture>, dir: string) {
+/** Skia's felt, with CanvasKit loaded in real time while the virtual clock stands still. */
+async function skiaOnset(page: Page, mounted: number): Promise<number> {
+  await step(page);
+  const deadline = Date.now() + 60_000;
+  while (!(await page.evaluate(() => "CanvasKit" in globalThis))) {
+    if (Date.now() > deadline) throw new Error("CanvasKit never loaded");
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  const onset = await traced(page, (f) => f.t > mounted && f.felt === "skia", "Skia's first frame");
+  expect(onset - mounted, "Skia's first frame, after the table's").toBeLessThanOrEqual(MAX_PRE_ROLL_MS);
+  return onset;
+}
+
+async function captureApp(browser: Browser, baseURL: string, decoder: Page, m: Moment, variant: Variant) {
+  const page = await newSidePage(browser, baseURL);
+  if (variant === "fallback") await page.route(CANVASKIT_ROUTE, () => undefined);
+  await m.appTrigger(page, baseURL);
+  const mounted = await traced(page, m.appOnset, `the app's onset of ${m.key}`);
+  const onset = variant === "skia" ? await skiaOnset(page, mounted) : mounted;
+  const preRollMs = Math.ceil((onset - mounted) / STEP_MS) * STEP_MS;
+  const actions = [...(m.appActions ?? [])];
+  const capture = await strip(page, { x: 0, y: 0 }, decoder, m, preRollMs, async (t) => {
+    while (actions.length && actions[0].atMs <= t) await actions.shift()!.run(page);
+    if (t > preRollMs) await step(page);
+    return (await recorded(page)).find((f) => Math.abs(f.t - (onset + t - preRollMs)) < STEP_MS / 2) ?? null;
+  });
+  const felts = new Set(capture.trace.frames.map((f) => f.felt));
+  expect([...felts], `the felt on screen through ${m.key}`).toEqual([variant]);
+  await page.context().close();
+  return { capture, preRollMs };
+}
+
+function bundle(m: Moment, variant: Variant, runs: Record<SideName, Capture>, dir: string) {
   fs.mkdirSync(path.join(dir, "frames"), { recursive: true });
   const sides = {} as Record<SideName, { trace: Trace; frames: { t: number; file: string; sha1: string }[] }>;
   for (const side of ["mockup", "app"] as const) {
@@ -182,36 +242,42 @@ function bundle(m: Moment, runs: Record<SideName, Capture>, dir: string) {
       }),
     };
   }
-  const failures = diffTraces(runs.mockup.trace, runs.app.trace, m.checkpoints);
-  const parity = { murlanParity: 1, moment: m.key, mode: m.mode, stepMs: STEP_MS, checkpoints: m.checkpoints, sides, failures };
+  const held = new Set<Field>(["frames", ...(m.fields ?? [])]);
+  const failures = diffTraces(runs.mockup.trace, runs.app.trace, m.checkpoints).filter((f) => m.mode === "determinism" || held.has(f.field));
+  const moment = `${m.key}-${variant}`;
+  const parity = { murlanParity: 1, moment, mode: m.mode, stepMs: STEP_MS, checkpoints: m.checkpoints, sides, failures };
   fs.writeFileSync(path.join(dir, "parity.json"), JSON.stringify(parity));
   return parity;
 }
 
 test.describe("mockup parity", () => {
   for (const m of MOMENTS) {
-    test(`${m.key} (${m.mode} mode)`, async ({ browser, baseURL }) => {
-      test.setTimeout(15 * 60_000);
-      const decoder = await browser.newPage();
-      const capture = (side: SideName) =>
-        side === "mockup" ? captureMockup(browser, decoder, m) : captureApp(browser, baseURL!, decoder, m);
-      const first = { mockup: await capture("mockup"), app: await capture("app") };
+    for (const variant of ["skia", "fallback"] as const) {
+      test(`${m.key} with the ${variant} felt (${m.mode} mode)`, async ({ browser, baseURL }) => {
+        test.setTimeout(15 * 60_000);
+        const decoder = await browser.newPage();
+        const app = await captureApp(browser, baseURL!, decoder, m, variant);
+        const capture = async (side: SideName) =>
+          side === "mockup"
+            ? captureMockup(browser, decoder, m, app.preRollMs)
+            : (await captureApp(browser, baseURL!, decoder, m, variant)).capture;
+        const first = { mockup: await capture("mockup"), app: app.capture };
 
-      const dir = test.info().outputPath(m.key);
-      const parity = bundle(m, first, dir);
-      await test.info().attach(`${m.key}/parity.json`, { path: path.join(dir, "parity.json"), contentType: "application/json" });
-      for (const side of ["mockup", "app"] as const) {
-        for (const f of parity.sides[side].frames) {
-          await test.info().attach(`${m.key}/${f.file}`, { path: path.join(dir, f.file), contentType: "image/jpeg" });
+        const dir = test.info().outputPath(`${m.key}-${variant}`);
+        const parity = bundle(m, variant, first, dir);
+        await test.info().attach(`${parity.moment}/parity.json`, { path: path.join(dir, "parity.json"), contentType: "application/json" });
+        for (const side of ["mockup", "app"] as const) {
+          for (const f of parity.sides[side].frames) {
+            await test.info().attach(`${parity.moment}/${f.file}`, { path: path.join(dir, f.file), contentType: "image/jpeg" });
+          }
         }
-      }
 
-      if (m.mode === "parity") {
-        expect(parity.failures, "the app's trace against the mockup's").toEqual([]);
-        return;
-      }
-      for (const side of ["mockup", "app"] as const) {
-        const again = await capture(side);
+        if (m.mode === "parity") {
+          expect(parity.failures, "the app's trace against the mockup's").toEqual([]);
+          return;
+        }
+        for (const side of ["mockup", "app"] as const) {
+          const again = await capture(side);
         expect.soft(again.trace.frames.length, `${side}: frames traced`).toBeGreaterThan(m.windowMs / STEP_MS);
         expect.soft(again.trace, `${side}: the trace replays`).toEqual(first[side].trace);
         const differing = again.frames.filter((f, i) => !f.jpeg.equals(first[side].frames[i].jpeg)).map((f) => f.t);
@@ -219,7 +285,43 @@ test.describe("mockup parity", () => {
         expect.soft([...movingFields(first[side].trace)].sort(), `${side}: fields that move over the window`).toEqual(
           [...m.moves![side]].sort()
         );
-      }
-    });
+        }
+      });
+    }
   }
+
+  const lastFelt = async (page: Page) => (await recorded(page)).at(-1)?.felt;
+
+  test("the table plays before Skia is ready, then shows the Skia felt", async ({ browser, baseURL }) => {
+    test.setTimeout(5 * 60_000);
+    const page = await newSidePage(browser, baseURL);
+    let release = () => {};
+    const held = new Promise<void>((r) => (release = r));
+    await page.route(CANVASKIT_ROUTE, async (route) => {
+      await held;
+      await route.continue();
+    });
+    await heldTurnTable(page, baseURL!);
+    await traced(page, (f) => f.felt === "fallback", "the fallback felt");
+    await page.locator('[data-hand-state] [data-testid="card-box"]').first().click({ force: true });
+    await stepUntil(page, async () => (await page.locator('[data-hand-state] [aria-selected="true"]').count()) === 1, "a card selected");
+    expect(await lastFelt(page), "the felt when the card was taken").toBe("fallback");
+    release();
+    await stepUntil(page, async () => (await lastFelt(page)) === "skia", "the Skia felt");
+    await page.context().close();
+  });
+
+  test("a CanvasKit that cannot load leaves the fallback felt under a live table", async ({ browser, baseURL }) => {
+    test.setTimeout(5 * 60_000);
+    const page = await newSidePage(browser, baseURL);
+    await page.route(CANVASKIT_ROUTE, (route) => route.abort());
+    const failed = page.waitForEvent("requestfailed", (r) => r.url().includes("canvaskit-wasm@"));
+    await heldTurnTable(page, baseURL!);
+    await traced(page, (f) => f.felt === "fallback", "the fallback felt");
+    await failed;
+    for (let i = 0; i < 30; i++) await step(page);
+    expect(await lastFelt(page)).toBe("fallback");
+    await expect(page.locator('[data-hand-state] [data-testid="card-box"]').first()).toBeVisible();
+    await page.context().close();
+  });
 });
