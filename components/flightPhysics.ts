@@ -106,7 +106,7 @@ export function landingHoldMs(reduceMotion: boolean): number {
   return impactDelayMs(reduceMotion) === 0 ? 0 : Hold.land;
 }
 
-/** The landed combination's wobble, from contact: the mockup's `landWobble` (#1242). */
+/** The mockup's `landWobble` (#1242), off the Motion scale: its sine rates are set against this span. */
 export const LAND_WOBBLE_MS = 400;
 
 /**
