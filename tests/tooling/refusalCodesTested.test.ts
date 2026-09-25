@@ -150,14 +150,50 @@ test("a payload is a refusal only as an error status's body, a *:error emit or a
   assert.deepEqual(unread, []);
 });
 
-/** The string literals a test asserts on; one in a fixture or a log line is data, not a provoked refusal. */
+const ACTUAL_ONLY = new Set(["ok", "ifError"]);
+const ACTUAL_AND_EXPECTED = new Set([
+  "equal",
+  "notEqual",
+  "strictEqual",
+  "notStrictEqual",
+  "deepEqual",
+  "notDeepEqual",
+  "deepStrictEqual",
+  "notDeepStrictEqual",
+  "partialDeepStrictEqual",
+  "match",
+  "doesNotMatch",
+]);
+const EXPECTED_ONLY = new Set(["throws", "rejects", "doesNotThrow", "doesNotReject"]);
+
+/** The arguments of an `assert*` or `expect(…)` call that are compared; never its message. Null for any other call. */
+function comparedArgs(call: ts.CallExpression): readonly ts.Expression[] | null {
+  const callee = call.expression;
+  const args = call.arguments;
+  if (ts.isIdentifier(callee) && callee.text === "assert") return args.slice(0, 1);
+  if (!ts.isPropertyAccessExpression(callee)) return null;
+  if (ts.isIdentifier(callee.expression) && callee.expression.text === "assert") {
+    const method = callee.name.text;
+    if (ACTUAL_ONLY.has(method)) return args.slice(0, 1);
+    if (ACTUAL_AND_EXPECTED.has(method)) return args.slice(0, 2);
+    // A string there is the failure message, not a matcher (Node's assert.throws docs).
+    if (EXPECTED_ONLY.has(method)) return args.slice(1, 2).filter((a) => !ts.isStringLiteralLike(a));
+    return [];
+  }
+  let subject: ts.Expression = callee.expression;
+  while (ts.isPropertyAccessExpression(subject)) subject = subject.expression;
+  const fromExpect = ts.isCallExpression(subject) && ts.isIdentifier(subject.expression) && subject.expression.text === "expect";
+  return fromExpect ? args : null;
+}
+
+/** The string literals a test compares against; one in a fixture, a log line or an assertion's message is not a provoked refusal. */
 function assertedLiterals(files: [string, string][]): Set<string> {
   const named = new Set<string>();
   for (const [file, source] of files) {
     const collect = (n: ts.Node, asserted: boolean) => {
       if (asserted && ts.isStringLiteralLike(n)) named.add(n.text);
-      const asserts = ts.isCallExpression(n) && /^(assert\b|expect\()/.test(n.expression.getText());
-      ts.forEachChild(n, (c) => collect(c, asserted || asserts));
+      const compared = ts.isCallExpression(n) ? comparedArgs(n) : null;
+      ts.forEachChild(n, (c) => collect(c, compared ? compared.includes(c as ts.Expression) : asserted));
     };
     collect(ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true), false);
   }
@@ -174,6 +210,26 @@ test("a code counts as tested only where an assertion names it", () => {
     ],
   ]);
   assert.deepEqual([...named].sort(), ["ASSERTED", "EXPECTED"]);
+});
+
+test("an assertion's message names nothing it compared", () => {
+  const named = assertedLiterals([
+    [
+      "a.test.ts",
+      `assert.ok(true, "SESSION_REVOKED");
+       assert(ok, "BARE_MESSAGE");
+       assert.equal(res.status, 409, "EQUAL_MESSAGE");
+       assert.deepEqual(body, { code: "DEEP" }, "DEEP_MESSAGE");
+       assert.ok(body.code === "COMPARED_IN_OK", "OK_MESSAGE");
+       await assert.rejects(call("INPUT"), { code: "REJECTED" }, "REJECTS_MESSAGE");
+       await assert.rejects(call(), "TWO_ARG_REJECTS");
+       assert.throws(() => run(), "TWO_ARG_THROWS");
+       assert.fail("FAIL_MESSAGE");
+       expect(body.code).not.toBe("MATCHED");
+       await expect(p).rejects.toMatchObject({ code: "CHAINED" });`,
+    ],
+  ]);
+  assert.deepEqual([...named].sort(), ["CHAINED", "COMPARED_IN_OK", "DEEP", "MATCHED", "REJECTED"]);
 });
 
 test("every refusal code the server returns is asserted by a test", () => {

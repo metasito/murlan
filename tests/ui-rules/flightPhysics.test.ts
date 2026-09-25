@@ -83,11 +83,80 @@ import {
   type GameState,
   type Player,
 } from "../engine/helpers.ts";
-import { blankComments, clientSources, scanSources } from "../helpers/sourceScan.ts";
+import {
+  blankComments,
+  blankCommentsAndStrings,
+  clientSources,
+  scanSources,
+} from "../helpers/sourceScan.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 const scan = (pattern: RegExp) => scanSources(pattern, clientSources(repoRoot));
+
+const readPile = () =>
+  blankCommentsAndStrings(readFileSync(path.join(repoRoot, "components", "table", "pile.tsx"), "utf8"));
+
+/** Every call to `callee` in `src`: its span and its top-level arguments. */
+function calls(src: string, callee: string): { start: number; end: number; args: string[] }[] {
+  const out: { start: number; end: number; args: string[] }[] = [];
+  for (const m of src.matchAll(new RegExp(`(?<![\\w$.])${callee}\\(`, "g"))) {
+    const open = m.index! + m[0].length - 1;
+    const args: string[] = [];
+    let depth = 0;
+    let from = open + 1;
+    for (let i = open; i < src.length; i++) {
+      if ("([{".includes(src[i])) depth++;
+      else if (",".includes(src[i]) && depth === 1) {
+        args.push(src.slice(from, i).replace(/\s+/g, " ").trim());
+        from = i + 1;
+      } else if (")]}".includes(src[i]) && --depth === 0) {
+        args.push(src.slice(from, i).replace(/\s+/g, " ").trim());
+        out.push({ start: m.index!, end: i + 1, args: args.filter((a) => a !== "") });
+        break;
+      }
+    }
+  }
+  return out;
+}
+
+const IMPACT_FEEDBACK = [
+  "playImpact",
+  "shake",
+  "burst",
+  "setFlinchTier",
+  "setFlinchTrigger",
+  "celebrateFlush",
+  "setFlightLanded(true)",
+];
+
+/**
+ * Each impact-feedback call as `name: delay of the innermost timeout around it`,
+ * or `name: no timeout`. `setFlightLanded(true)` outside a timeout is the early
+ * end of a flight, not its landing, so only the timed ones are reported.
+ */
+function impactFeedbackTimers(src: string): string[] {
+  const timers = calls(src, "setTimeout");
+  const out: string[] = [];
+  for (const name of IMPACT_FEEDBACK) {
+    const callee = name.replace(/\(.*$/, "");
+    for (const call of calls(src, callee)) {
+      if (name.includes("(") && `${callee}(${call.args.join(", ")})` !== name) continue;
+      const around = timers
+        .filter((t) => t.start < call.start && call.end <= t.end)
+        .sort((a, b) => b.start - a.start)[0];
+      if (!around && name.includes("(")) continue;
+      out.push(`${name}: ${around ? around.args.at(-1) : "no timeout"}`);
+    }
+  }
+  return out;
+}
+
+/** Every timer — a `setTimeout` or a `withDelay` — whose delay is `FLIGHT_MS` and nothing else. */
+const bareFlightTimers = (src: string): string[] => [
+  ...calls(src, "setTimeout").map((c) => `setTimeout: ${c.args.at(-1)}`),
+  ...calls(src, "withDelay").map((c) => `withDelay: ${c.args[0]}`),
+].filter((t) => t.endsWith(": FLIGHT_MS"));
 
 
 const combo = (ids: string[]): any => ({
@@ -150,10 +219,18 @@ describe("advancePile", () => {
 
   test("a card is never in both layers at once", () => {
     const a = combo(["a"]);
-    const s = advancePile(advancePile(EMPTY_PILE, a, 0), combo(["b"]), 1);
-    const prevIds = (s.prev?.cards ?? []).map((c: any) => c.id);
-    const curIds = (s.current?.cards ?? []).map((c: any) => c.id);
-    assert.deepEqual(prevIds.filter((id: string) => curIds.includes(id)), []);
+    const first = advancePile(EMPTY_PILE, a, 0);
+    const states = {
+      beaten: advancePile(first, combo(["b"]), 1),
+      "first play": first,
+      "same play again": advancePile(first, a, 0),
+    };
+    for (const [name, s] of Object.entries(states)) {
+      const prevIds = (s.prev?.cards ?? []).map((c: any) => c.id);
+      const curIds = (s.current?.cards ?? []).map((c: any) => c.id);
+      assert.deepEqual(prevIds.filter((id: string) => curIds.includes(id)), [], name);
+    }
+    assert.deepEqual(states["same play again"], first);
   });
 
   test("the input state is not mutated", () => {
@@ -599,7 +676,7 @@ describe("the table holds still at the landing frame", () => {
   });
 
   test("the settle waits out the landing and then the hold", () => {
-    const src = readFileSync(path.join(repoRoot, "components", "table", "pile.tsx"), "utf8");
+    const src = readPile();
     assert.ok(
       !/FLIGHT_MS\s*\*\s*LANDING_FRACTION/.test(src),
       "pile.tsx must call impactDelayMs(), not recompute the landing"
@@ -607,9 +684,29 @@ describe("the table holds still at the landing frame", () => {
     // Both terms, in one expression: a call that reaches the hold and discards
     // it leaves the aftermath running on the frame of contact, which is the
     // whole defect.
-    assert.ok(
-      src.includes("impactDelayMs(reduceMotion) + landingHoldMs(reduceMotion)"),
+    const settle = calls(src, "withDelay").filter((c) =>
+      /settle\.value\s*=\s*$/.test(src.slice(0, c.start))
+    );
+    assert.deepEqual(
+      settle.map((c) => c.args[0]),
+      ["impactDelayMs(reduceMotion) + landingHoldMs(reduceMotion)"],
       "the settle must be delayed by the landing plus the hold"
+    );
+  });
+
+  test("the call reader takes a timer's delay from the call, never from a comment beside it", () => {
+    const planted = blankCommentsAndStrings(
+      [
+        "// impactDelayMs(reduceMotion) + landingHoldMs(reduceMotion)",
+        "settle.value = withDelay(",
+        "  impactDelayMs(reduceMotion),",
+        "  withSequence(withTiming(1, { duration: 2 }), withSpring(0, cfg, (f) => {})),",
+        ");",
+      ].join("\n")
+    );
+    assert.deepEqual(
+      calls(planted, "withDelay").map((c) => c.args),
+      [["impactDelayMs(reduceMotion)", "withSequence(withTiming(1, { duration: 2 }), withSpring(0, cfg, (f) => {}))"]]
     );
   });
 
@@ -925,6 +1022,40 @@ describe("the beaten pile's flinch (#764)", () => {
       /setFlinchTrigger/,
       "the flinch must be triggered from this same landing, not a later one"
     );
+  });
+
+  test("every impact the table feels waits for the landing, and nothing waits for the throw's end instead", () => {
+    const src = readPile();
+    assert.deepEqual(
+      impactFeedbackTimers(src),
+      IMPACT_FEEDBACK.map((name) => `${name}: impactDelayMs(reduceMotion)`)
+    );
+    assert.deepEqual(bareFlightTimers(src), []);
+  });
+
+  test("the impact reader sees feedback fired at the throw, and a landing timed by FLIGHT_MS", () => {
+    const planted = blankCommentsAndStrings(
+      [
+        "playImpact(heavy, dir, n);",
+        "impactTimerRef.current = setTimeout(() => {",
+        "  shake(tier); burst(tier); setFlinchTier(tier); setFlinchTrigger((t) => t + 1);",
+        "  if (x) celebrateFlush();",
+        "}, impactDelayMs(reduceMotion));",
+        "const clearLanding = () => setFlightLanded(true);",
+        "setFlightLanded(false);",
+        "landTimerRef.current = setTimeout(() => { setFlightLanded(true); }, FLIGHT_MS);",
+      ].join("\n")
+    );
+    assert.deepEqual(impactFeedbackTimers(planted), [
+      "playImpact: no timeout",
+      "shake: impactDelayMs(reduceMotion)",
+      "burst: impactDelayMs(reduceMotion)",
+      "setFlinchTier: impactDelayMs(reduceMotion)",
+      "setFlinchTrigger: impactDelayMs(reduceMotion)",
+      "celebrateFlush: impactDelayMs(reduceMotion)",
+      "setFlightLanded(true): FLIGHT_MS",
+    ]);
+    assert.deepEqual(bareFlightTimers(planted), ["setTimeout: FLIGHT_MS"]);
   });
 
   // A second blind critique defeated a source-scan version of this same check

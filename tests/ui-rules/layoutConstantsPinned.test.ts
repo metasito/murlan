@@ -28,7 +28,8 @@ const scan = (pattern: RegExp) => scanSources(pattern, clientSources(repoRoot));
 const CH = CARD_H(1);
 
 // Declarations, not uses: `width: CARD_W` and `CARD_W_SMALL` do not match.
-const CARD_DIMENSION_DECL = /(?<![\w$])(?:const|let|var)\s+(?:CARD_W|CARD_H)(?![\w$])/g;
+const CARD_DIMENSION_DECL =
+  /(?<![\w$])(?:(?:const|let|var|class|enum|as|import)\s+|function(?:\s*\*\s*|\s+))(?:CARD_W|CARD_H)(?![\w$])/g;
 
 // A fan's spread, written out instead of asked for: an `overlap`/`maxAngle`/
 // `maxTilt` binding, or the step ternary itself. The ternary is matched on any
@@ -120,6 +121,31 @@ describe("layout constants (pinned here; this test is the authority)", () => {
     ];
     assert.deepEqual(scanSources(ARC_BUDGET_DECL, planted), [
       "components/table/example.tsx: const MY_ARC: ArcBudget",
+    ]);
+  });
+
+  test("the card-dimension scan fires on every way to declare the name, never on a use", () => {
+    const planted: [string, string][] = [
+      [
+        "components/handLayout.ts",
+        [
+          "export function CARD_W(s: number) { return 64 * s; }",
+          "function* CARD_H() {}",
+          "class CARD_W {}",
+          "enum CARD_H { A }",
+          'import { cardWidth as CARD_W } from "./x";',
+          'import CARD_H from "./y";',
+          "const box = { width: CARD_W(1), h: CARD_H_SMALL };",
+        ].join("\n"),
+      ],
+    ];
+    assert.deepEqual(scanSources(CARD_DIMENSION_DECL, planted), [
+      "components/handLayout.ts: as CARD_W",
+      "components/handLayout.ts: class CARD_W",
+      "components/handLayout.ts: enum CARD_H",
+      "components/handLayout.ts: function CARD_W",
+      "components/handLayout.ts: function* CARD_H",
+      "components/handLayout.ts: import CARD_H",
     ]);
   });
 
