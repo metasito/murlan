@@ -1,10 +1,11 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { unloaded } from "../helpers/filesRunReporter.mjs";
 
 /**
  * A suite that skips still exits 0, so ci.yml reads the test log for the
@@ -88,6 +89,47 @@ describe("the integration guard counts the files that ran, not only the skips", 
       delete env.NODE_TEST_CONTEXT;
       const run = spawnSync(process.execPath, [...args, path.join(dir, "one.test.mjs")], { cwd: repoRoot, env, encoding: "utf8" });
       assert.match(run.stdout + run.stderr, /^test files run in .+: 1$/m);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a file whose tests all skipped, or that declares none, is not counted as run", () => {
+    const script = JSON.parse(readRepoFile("package.json")).scripts.test as string;
+    const reporter = script.split(" ").filter((a) => a.startsWith("--test-reporter")).slice(-2);
+    const dir = mkdtempSync(path.join(tmpdir(), "files-run-"));
+    try {
+      const files = {
+        "real.test.mjs": 'import test from "node:test";\ntest("x", () => {});\ntest("y", { skip: true }, () => {});\n',
+        "suite.test.mjs": 'import { describe, it } from "node:test";\ndescribe.skip("s", () => { it("x", () => {}); });\n',
+        "option.test.mjs": 'import test from "node:test";\ntest("x", { skip: "no database" }, () => {});\n',
+        "todo.test.mjs": 'import test from "node:test";\ntest.todo("x");\n',
+        "empty.test.mjs": "// nothing here\n",
+      };
+      for (const [name, src] of Object.entries(files)) writeFileSync(path.join(dir, name), src);
+      const env = { ...process.env };
+      delete env.NODE_TEST_CONTEXT;
+      const run = spawnSync(process.execPath, ["--test", ...reporter, ...Object.keys(files).map((f) => path.join(dir, f))], {
+        cwd: repoRoot,
+        env,
+        encoding: "utf8",
+      });
+      assert.match(run.stderr, /^test files run in .+: 1$/m, run.stderr);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a test file the run never loaded fails it by name", () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "files-run-"));
+    try {
+      mkdirSync(path.join(dir, "tests", "engine"), { recursive: true });
+      mkdirSync(path.join(dir, "tools", "loop", "tests"), { recursive: true });
+      for (const f of ["tests/a.test.ts", "tests/engine/b.test.ts", "tests/engine/c.test.tsx", "tools/loop/tests/d.test.ts"]) {
+        writeFileSync(path.join(dir, f), "");
+      }
+      assert.deepEqual(unloaded([path.join(dir, "tests", "a.test.ts")], dir), ["tests/engine/b.test.ts"]);
+      assert.deepEqual(unloaded([path.join(dir, "tools", "loop", "tests", "d.test.ts")], dir), []);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

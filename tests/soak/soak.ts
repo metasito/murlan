@@ -22,7 +22,7 @@ import {
   type Card,
   type Combination,
 } from "../../lib/game/gameEngine.ts";
-import { checkAll, checkTeardown, type SeatView, type Violation } from "./invariants.ts";
+import { checkAll, checkTeardown, progressViolations, type SeatView, type Violation } from "./invariants.ts";
 import { SETTLE_CAP_MS } from "./gateBudget.ts";
 
 interface SanitizedPlayer {
@@ -803,6 +803,7 @@ async function main() {
     return;
   }
   const result = await runSoak(opts);
+  result.violations.push(...progressViolations(result));
 
   console.log(
     `soak: ${result.moves} rounds of moves, ${result.manches} manches, ` +

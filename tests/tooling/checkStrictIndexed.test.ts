@@ -6,7 +6,7 @@
 // forbids.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import path from "node:path";
 import { REPO_ROOT, areasOf, runStrictIndexedCheck } from "../../scripts/checkStrictIndexed.mjs";
 
@@ -27,6 +27,13 @@ describe("noUncheckedIndexedAccess ratchet", () => {
     ]);
     assert.deepEqual(areasOf({ include: [] }), []);
     assert.deepEqual(areasOf({}), []);
+  });
+
+  test("the real config still covers every area it has ever proven clean", () => {
+    const config = JSON.parse(readFileSync(path.join(REPO_ROOT, "tsconfig.strictIndexed.json"), "utf8"));
+    for (const glob of ["server/**/*.ts", "context/**/*.tsx"]) assert.ok(config.include.includes(glob), `${glob} left the ratchet`);
+    assert.equal(config.exclude, undefined, "an exclude narrows an area without leaving the include list");
+    assert.equal(config.files, undefined);
   });
 
   test("the real config passes today", () => {
