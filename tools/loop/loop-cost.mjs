@@ -43,6 +43,7 @@ export const TURNS_BY_SIZE = {
 };
 export const TURNS_DEFAULT = 150;
 
+/** @param {{size?: string, turns?: number, outcome?: string}[]} rows @param {Record<string, number>} [caps] */
 export function turnHeadroom(rows, caps = TURNS_BY_SIZE) {
   const busiest = {};
   for (const r of rows) {
@@ -378,7 +379,11 @@ export function shaTable(rows, killed = []) {
   ].join("\n");
 }
 
-/** `--since <time>` / `--until <time>`: the tickets with a ledger row started in [since, until), and those rows. */
+/**
+ * `--since <time>` / `--until <time>`: the tickets with a ledger row started in [since, until),
+ * and those rows.
+ * @param {{n: number, started?: string}[]} rows @param {string} since @param {string|null} [until]
+ */
 export function sinceWindow(rows, since, until = null) {
   const from = since ? Date.parse(since) : -Infinity;
   const to = until ? Date.parse(until) : Infinity;
