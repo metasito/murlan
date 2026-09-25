@@ -22,7 +22,7 @@ comments are not shown to an agent.
 | `blocked` | Ready and approved, but waiting on something external — a dead CI, an unreleased dependency | skipped |
 | `size:XS` … `size:XL` | A promise about the diff; the supervisor sets the session's turn budget from it | — |
 | `loop` | The loop's own machinery: `tools/loop`, the supervisor, its guards | — |
-| `main-red` | Filed by the supervisor when main's CI is red (`tools/loop/mainHealth.ts`) | — |
+| `main-red` | Filed by the supervisor when main's CI is red (`tools/loop/mainHealth.ts`); closed by the same module once a later `ci.yml` run on main is green | — |
 | `soak` | Filed by the nightly soak (`.github/workflows/soak.yml`) | — |
 | `device-run` | Filed by a red scheduled `ios.yml` or `maestro.yml` run (`tools/ci/report-device-run.sh`), one open per workflow; closed by hand once diagnosed | — |
 | `gauntlet` | A piece in a gauntlet round, critiqued blind against a named bar | — |
