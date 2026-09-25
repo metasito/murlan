@@ -44,7 +44,7 @@ test("the CLI warns once per flaky test and writes them to the step summary", ()
 
 test("the browser report job runs it on the merged report", () => {
   const ci = readFileSync(path.join(import.meta.dirname, "..", "..", ".github", "workflows", "ci.yml"), "utf8");
-  assert.match(ci, /PLAYWRIGHT_JSON_OUTPUT_NAME: merged-report\.json\s+run: npx playwright merge-reports --reporter html,json \.\/all-blob-reports[\s\S]*run: node tools\/ci\/e2e-flaky\.mjs merged-report\.json/);
+  assert.match(ci, /PLAYWRIGHT_JSON_OUTPUT_NAME: merged-report\.json\s+run: npx --yes -p "\$PW" playwright merge-reports --reporter html,json \.\/all-blob-reports[\s\S]*run: node tools\/ci\/e2e-flaky\.mjs merged-report\.json/);
 });
 
 test("a report holding no spec file is refused rather than read as clean", () => {

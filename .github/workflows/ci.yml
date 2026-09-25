@@ -634,9 +634,13 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      - uses: ./.github/actions/install
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: ${{ env.NODE_VERSION }}
+      # This job's own scripts import only `node:` modules; the one package it runs is Playwright's
+      # CLI, pinned to the lockfile's version because a blob report is read by the version that wrote it.
+      - name: Playwright's CLI
+        run: echo "PW=@playwright/test@$(node -p "require('./package-lock.json').packages['node_modules/@playwright/test'].version")" >> "$GITHUB_ENV"
 
       - name: Collect every shard's report
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
@@ -661,7 +665,7 @@ jobs:
       - name: Merge into one report
         env:
           PLAYWRIGHT_JSON_OUTPUT_NAME: merged-report.json
-        run: npx playwright merge-reports --reporter html,json ./all-blob-reports
+        run: npx --yes -p "$PW" playwright merge-reports --reporter html,json ./all-blob-reports
 
       - name: Keep the Playwright report
         if: ${{ !cancelled() }}
