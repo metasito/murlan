@@ -76,7 +76,7 @@ function rnModalImports(src: string): string[] {
       const ns = part.trim().match(/^(?:\*\s*as\s+)?([\w$]+)$/)?.[1];
       const n = ns?.replace(/\$/g, "\\$");
       const reached = new RegExp(
-        `(?<![\\w$])${n}\\s*\\.\\s*Modal(?![\\w$])|\\{[^}]*(?<![\\w$])Modal(?![\\w$])[^}]*\\}\\s*=\\s*${n}(?![\\w$])`
+        `(?<![\\w$])${n}\\s*(?:\\.\\s*Modal(?![\\w$])|\\[\\s*["'\`]Modal["'\`]\\s*\\])|\\{[^}]*(?<![\\w$])Modal(?![\\w$])[^}]*\\}\\s*=\\s*${n}(?![\\w$])`
       );
       if (ns && reached.test(src)) {
         hits.push(`${ns}.Modal`);
@@ -149,8 +149,10 @@ describe("orientation is never narrowed behind the player's back", () => {
       'import * as Unused from "react-native";',
       'import * as N from "react-native";',
       "const { View, Modal: M } = N;",
+      'import * as B from "react-native";',
+      'const Sheet = B["Modal"];',
     ].join("\n");
-    assert.deepEqual(rnModalImports(planted), ["Modal as Sheet", "RN.Modal", "Modal", "Modal", "N.Modal"]);
+    assert.deepEqual(rnModalImports(planted), ["Modal as Sheet", "RN.Modal", "Modal", "Modal", "N.Modal", "B.Modal"]);
   });
 
   test("only the game table forces an orientation", () => {
