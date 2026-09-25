@@ -14,7 +14,7 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { blankComments } from "../helpers/sourceScan.ts";
+import { blankComments, sourcesUnder } from "../helpers/sourceScan.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -62,6 +62,26 @@ function modalOpeningTags(src: string): string[] {
   return tags;
 }
 
+const FROM_RN = /\b(?:import|export)\s+(?:type\s+)?([^;'"`]*?)\s*from\s*["']react-native["']/g;
+
+/** Every name under which `src` reaches react-native's own `Modal`: named, aliased, re-exported or via a namespace. */
+function rnModalImports(src: string): string[] {
+  const hits: string[] = [];
+  for (const [, clause] of src.matchAll(FROM_RN)) {
+    for (const spec of clause.match(/\{([^}]*)\}/)?.[1].split(",") ?? []) {
+      const m = spec.trim().match(/^(?:type\s+)?Modal(?:\s+as\s+([\w$]+))?$/);
+      if (m) hits.push(m[1] ? `Modal as ${m[1]}` : "Modal");
+    }
+    for (const part of clause.replace(/\{[^}]*\}/, "").split(",")) {
+      const ns = part.trim().match(/^(?:\*\s*as\s+)?([\w$]+)$/)?.[1];
+      if (ns && new RegExp(`(?<![\\w$])${ns.replace(/\$/g, "\\$")}\\s*\\.\\s*Modal(?![\\w$])`).test(src)) {
+        hits.push(`${ns}.Modal`);
+      }
+    }
+  }
+  return hits;
+}
+
 describe("orientation is never narrowed behind the player's back", () => {
   test("every <Modal> declares supportedOrientations including landscape", () => {
     const offenders: string[] = [];
@@ -102,6 +122,29 @@ describe("orientation is never narrowed behind the player's back", () => {
       `render <AppModal> instead — a second <Modal> is a second place to get ` +
         `supportedOrientations, statusBarTranslucent and onRequestClose wrong: ${declaring.join(", ")}`
     );
+  });
+
+  test("components/AppModal.tsx is the only file that imports react-native's Modal, under any name", () => {
+    const reaching = sourcesUnder(repoRoot, ["app", "components", "lib"]).flatMap(([file, src]) =>
+      rnModalImports(blankComments(src)).map((how) => `${file}: ${how}`)
+    );
+    assert.deepEqual(reaching, ["components/AppModal.tsx: Modal"]);  });
+
+  test("the import scan sees Modal renamed, re-exported or behind a namespace, and nothing else", () => {
+    const planted = [
+      'import { View, Modal as Sheet } from "react-native";',
+      'import * as RN from "react-native";',
+      "const x = <RN.Modal visible />;",
+      'export { Modal } from "react-native";',
+      "import {",
+      "  Text,",
+      "  Modal,",
+      '} from "react-native";',
+      'import { type ModalProps, Pressable } from "react-native";',
+      'import { Modal as Other } from "./Modal";',
+      'import * as Unused from "react-native";',
+    ].join("\n");
+    assert.deepEqual(rnModalImports(planted), ["Modal as Sheet", "RN.Modal", "Modal", "Modal"]);
   });
 
   test("only the game table forces an orientation", () => {

@@ -302,7 +302,8 @@ describe("design tokens are used in the role they were designed for", () => {
 // cannot be checked against the one three files away; a `Layer` role can.
 describe("stacking order is stated as a role", () => {
   const BARE = /^-?\d+$/;
-  const DECLARED = /^[ \t]*const ([A-Za-z_$][\w$]*)[ \t]*=[ \t]*([^;\r\n]+);/gm;
+  const DECLARED =
+    /^[ \t]*(?:export[ \t]+)?(?:const|let|var)[ \t]+([A-Za-z_$][\w$]*)[ \t]*(?::[^;\r\n]*?)?=(?![>=])[ \t]*([^;\r\n]+);/gm;
   const USED = /zIndex\s*[:=]\s*\{?\s*([A-Za-z_$][\w$]*|-?\d+)/g;
 
   /**
@@ -346,6 +347,13 @@ describe("stacking order is stated as a role", () => {
     assert.deepEqual(stackingValues("const B_Z = Layer.band;\nx = { zIndex: B_Z };"), [
       ["B_Z", "Layer.band"],
     ]);
+    for (const decl of [
+      "const B_Z: number = 50;",
+      "export const B_Z = 50;",
+      "let B_Z: (n: number) => number = 50;",
+    ]) {
+      assert.deepEqual(stackingValues(`${decl}\nx = { zIndex: B_Z };`), [["B_Z", "50"]], decl);
+    }
     // `0` is a role (Layer.felt), not the absence of one: a view falling back
     // to a bare 0 is the regression this scan exists to refuse.
     assert.deepEqual(stackingValues("x = { zIndex: 0 };"), [["0", "0"]]);
