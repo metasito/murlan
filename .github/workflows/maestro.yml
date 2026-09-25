@@ -156,7 +156,7 @@ jobs:
           # `ONLY_ACTIVE_ARCH=YES` and for the same reason.
           #
           # This is not a loss of compile coverage: `ci.yml`'s `android-build`
-          # still assembles every architecture on every pull request. It is the
+          # still assembles every architecture whenever it runs. It is the
           # gate for "the arm64 slice builds"; this job is the gate for "the app
           # runs", and it only ever runs one slice.
           #

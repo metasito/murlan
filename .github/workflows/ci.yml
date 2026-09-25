@@ -10,7 +10,13 @@ on:
   # A branch with no open PR yet has no other way to get a real run —
   # `gh workflow run ci.yml --ref <branch>`.
   workflow_dispatch:
-  # The only trigger of the two device compiles (`android-build`, `ios-build`).
+    inputs:
+      native:
+        description: Also compile for Android and iOS
+        type: boolean
+        default: false
+  # Runs the two device compiles (`android-build`, `ios-build`) weekly; a change
+  # to native dependencies and `-f native=true` above run them too.
   schedule:
     - cron: "17 4 * * 1"
 
@@ -55,6 +61,7 @@ jobs:
     outputs:
       app: ${{ steps.scope.outputs.app }}
       harness: ${{ steps.scope.outputs.harness }}
+      native: ${{ steps.scope.outputs.native }}
       shards: ${{ steps.plan.outputs.shards }}
       shard-count: ${{ steps.plan.outputs.shard-count }}
       timings: ${{ steps.plan.outputs.timings }}
@@ -106,6 +113,7 @@ jobs:
           fi
           changed=$(git diff --name-only "$base" HEAD)
           echo "Changed files:"; echo "$changed"
+          echo "native=$(node tools/ci/nativeScope.mjs "$base")" >> "$GITHUB_OUTPUT"
           # Prose the suite asserts *on* is not prose to this filter.
           # `tests/tooling/rulesAreSingleSourced.test.ts` reads RULES.md, CLAUDE.md, the
           # command files and docs/agents/ — so a change to exactly those paths
@@ -436,11 +444,14 @@ jobs:
   # `android/` and `ios/` are gitignored: this project is CNG, so both jobs
   # generate the native project from app.json before compiling it.
   #
-  # Weekly only: about 15 minutes each against 5 for the rest of the workflow,
-  # and the owner chose that wait off every pull request.
+  # They run weekly, on a change to the app's libraries or native config
+  # (`tools/ci/nativeScope.mjs`), and on request (`gh workflow run ci.yml --ref
+  # <branch> -f native=true`). That is about 15 minutes each, against 5 for the
+  # rest, so the owner kept them off every other pull request.
   android-build:
     name: Android compiles
-    if: github.event_name == 'schedule'
+    needs: scope
+    if: ${{ !cancelled() && (github.event_name == 'schedule' || inputs.native || needs.scope.outputs.native == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
@@ -467,7 +478,8 @@ jobs:
 
   ios-build:
     name: iOS compiles
-    if: github.event_name == 'schedule'
+    needs: scope
+    if: ${{ !cancelled() && (github.event_name == 'schedule' || inputs.native || needs.scope.outputs.native == 'true') }}
     runs-on: macos-latest
     timeout-minutes: 60
     steps:

@@ -134,6 +134,9 @@ function normalize(words, depth) {
       env[assign[1]] = assign[2];
     } else if (REDIRECT.test(words[i])) {
       if (!REDIRECT.exec(words[i])[1]) i += 1;
+    } else if (commandName(words[i]) === "timeout") {
+      while (words[i + 1]?.startsWith("-")) i += /^(-[sk]|--signal|--kill-after)$/.test(words[i + 1]) ? 2 : 1;
+      i += 1;
     } else if (WRAPPER.has(commandName(words[i]))) {
       while (words[i + 1]?.startsWith("-")) i += WRAPPER_TAKES_A_VALUE.test(words[i + 1]) ? 2 : 1;
     } else {
@@ -604,6 +607,12 @@ const RULES = [
       "A loop session works only in the worktree the supervisor made (RULES.md rules 7 and 32).\n" +
       "Rebuilding it? `git worktree add -B agent/<n>-<slug> .worktrees/agent-<n> origin/agent/<n>-<slug>`, as queue.md says.\n" +
       "Blocked on a change to the loop itself? Say so on the issue and park it for the owner.",
+  },
+  {
+    test: (c, { loop }) => loop && c.cmd === "gh" && c.args[0] === "run" && c.args[1] === "watch",
+    message:
+      "gh run watch blocks until the run ends, and a device run outlasts any Bash timeout: the call is killed and returns nothing.\n" +
+      "Wait with `node tools/loop/await-run.mjs <run-id> [<run-id>…]`. It returns before the default Bash timeout; exit 3 means run the same command again.",
   },
 ];
 

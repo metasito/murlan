@@ -81,7 +81,13 @@ can read only its own cache and main's, so a branch's first run restores main's 
 instead of compiling it cold, and a cache unread for 7 days is evicted. By the owner's decision; a
 red run is diagnosed from its artifacts, never rerun. `gh run list --workflow=ios.yml --branch
 agent/<n>-<slug>` (or `maestro.yml`) is a ticket's current status — without `--branch` the list
-mixes in main's scheduled runs. **These two release builds are the only device path**: a release build carries its
+mixes in main's scheduled runs. Wait on runs with `node tools/loop/await-run.mjs <run-id>
+[<run-id>…]`, which exits 0 when all passed, 1 when one did not, 2 when `gh` cannot find a run id,
+and 3 when some are still going: then run the same command again. It returns before the default
+Bash timeout, so it needs no `timeout` of its own; a loop session's `gh run watch` is refused
+because a device run outlasts any Bash timeout. `ios.yml` and `maestro.yml` run side by side,
+so dispatch both and wait on both run ids at once; a second dispatch of the same workflow on one
+branch cancels the first. **These two release builds are the only device path**: a release build carries its
 own bundle, so no packager, dev server or `adb reverse` is involved, and the flows take the app id
 from `MAESTRO_APP_ID` with no default. No host client can stand in for them: a host's dev-menu
 window sits above the app's own and eats the touch — `tapOn` reports `COMPLETED` regardless
@@ -90,6 +96,11 @@ installed binary, so a version drift is a named failure (`tests/tooling/realAppN
 holds both to it). Reproducing locally needs the same pin: `export MAESTRO_VERSION=2.10.0` before
 `curl -Ls https://get.maestro.mobile.dev | bash` — read from the installer's own environment, so
 it must be exported above the pipe.
+
+CI compiles the Android and iOS projects on a pull request that changes `package.json`'s
+`dependencies` or the app config (`tools/ci/nativeScope.mjs`), and weekly. When a ticket asks for
+a native build otherwise, request one: `gh workflow run ci.yml --ref agent/<n>-<slug> -f
+native=true`, then wait on it with `await-run.mjs`.
 
 A device job proves the flows still run and the app renders *something* — it does not replace
 looking at the device (rule 36); a green Chromium run closed #602 while the owner still saw the
@@ -363,8 +374,9 @@ via `git diff`, so an uncommitted edit counts but an untracked file doesn't show
 
 **Some hooks act only in a loop session** (`LOOP_TURNS` set; `.claude/settings.json` registers
 every hook):
-- `tools/loop/guard-bash.mjs` also refuses `sed -i`/`perl -i` (rule 44) and a `git worktree add`
-  anywhere but `.worktrees/agent-<n>` (rules 7 and 32).
+- `tools/loop/guard-bash.mjs` also refuses `sed -i`/`perl -i` (rule 44), a `git worktree add`
+  anywhere but `.worktrees/agent-<n>` (rules 7 and 32), and `gh run watch`, which § Device runs
+  replaces with `await-run.mjs`.
 - `tools/loop/guard-write.mjs` refuses a Write, Edit or NotebookEdit into the shared checkout;
   the worktrees under `.worktrees/`, `.loop-logs/` and paths outside the repo stay writable
   (rules 8 and 31).
