@@ -1,6 +1,6 @@
 // tests/e2e/feltParityGrid.spec.ts — the felt and the lamp across the whole grid.
 //
-// `mockupParity.spec.ts` holds the table to the Lantern mockup at the one seating and viewport the
+// `helpers/mockupParity.ts` holds the table to the Lantern mockup at the one seating and viewport the
 // mockup draws: four players, 874x402. Ours seats 2, 3 or 4 at any window size, and the lamp's
 // targets map by seat direction and scale with the table frame (#1257), so this walks every seating
 // at a phone and a tablet: the lamp over the seat on move, and the Skia cloth brighter and its weave
