@@ -705,8 +705,10 @@ export function comboKey(combo: Combination, playedBy: number): string {
   return combo.cards.map((c) => c.id).join(",") + "_" + playedBy;
 }
 
-/** The old current becomes the faded layer; the new combination takes the top. */
+/** The old current becomes the faded layer; the new combination takes the top. The same play again changes nothing. */
 export function advancePile(state: PileState, combo: Combination, playedBy: number): PileState {
+  const same = state.current && comboKey(state.current, state.playedBy ?? -1) === comboKey(combo, playedBy);
+  if (same) return state;
   return { prev: state.current, current: combo, playedBy };
 }
 
