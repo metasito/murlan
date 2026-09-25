@@ -206,11 +206,31 @@ export function withoutQuotedBodies(command) {
 /** Both device workflows are named for Maestro, and the iOS one's file is `ios.yml`. */
 const DEVICE_WORKFLOW = /maestro|\bios\b/i;
 
+/** `B=agent/12-x && … --ref $B`: literal assignments on the line, which `commands()` drops. */
+export function literalAssignments(text) {
+  const vars = {};
+  for (const m of text.matchAll(/(?:^|[\s;&|(])([A-Za-z_]\w*)=(["']?)([^\s"'$`;&|()]+)\2(?=[\s;&|)]|$)/g)) vars[m[1]] = m[3];
+  return vars;
+}
+
 /** `gh workflow run … --ref agent/<n>-…` (or `--ref=`, `-r`): a ticket dispatching on its own branch. */
-function dispatchesOnTicketBranch(c) {
+function dispatchesOnTicketBranch(c, vars = {}) {
   const at = c.args.findIndex((a) => a === "-r" || a === "--ref");
-  const ref = at >= 0 ? (c.args[at + 1] ?? "") : (c.args.find((a) => a.startsWith("--ref=")) ?? "").slice(6);
+  const raw = at >= 0 ? (c.args[at + 1] ?? "") : (c.args.find((a) => a.startsWith("--ref=")) ?? "").slice(6);
+  const name = /^\$\{?(\w+)\}?$/.exec(raw)?.[1];
+  const ref = name ? (vars[name] ?? "") : raw;
   return c.cmd === "gh" && c.args[0] === "workflow" && /^agent\/\d+-/.test(ref);
+}
+
+/** The path operand of `git worktree add`, or null when it names none. */
+function worktreeAddPath(c) {
+  if (c.cmd !== "git" || c.args[0] !== "worktree" || c.args[1] !== "add") return null;
+  const rest = c.args.slice(2);
+  for (let i = 0; i < rest.length; i++) {
+    if (/^(-b|-B|--reason)$/.test(rest[i])) i += 1;
+    else if (!rest[i].startsWith("-")) return rest[i];
+  }
+  return "";
 }
 const HTTP_CLIENT = /^(gh|curl|wget|invoke-restmethod|invoke-webrequest|irm|iwr)$/;
 
@@ -499,9 +519,9 @@ const RULES = [
   },
   {
     // A numeric workflow id cannot be read, so it is treated as the device one.
-    test: (c, { workflowOf }) => {
+    test: (c, { workflowOf, vars }) => {
       const dispatched = dispatchOf(c);
-      if (dispatched !== null) return (DEVICE_WORKFLOW.test(dispatched) || /^\d*$/.test(dispatched)) && !dispatchesOnTicketBranch(c);
+      if (dispatched !== null) return (DEVICE_WORKFLOW.test(dispatched) || /^\d*$/.test(dispatched)) && !dispatchesOnTicketBranch(c, vars);
       const t = rerunOf(c);
       return Boolean(t && (t.run || t.job) && DEVICE_WORKFLOW.test(workflowOf(t) ?? ""));
     },
@@ -566,6 +586,25 @@ const RULES = [
       "Or send the output to a file outside the repo, then read its `N passed / N failed` line:\n" +
       "  npx playwright test ... > <file> 2>&1; echo \"exit $?\"",
   },
+  {
+    test: (c, { loop }) =>
+      loop &&
+      ((c.cmd === "sed" && has(c.args, /^(-[A-Za-z]*i|--in-place)/)) || (c.cmd === "perl" && has(c.args, /^-[A-HJ-Za-z]*i/))),
+    message:
+      "An in-place rewrite skips the Write|Edit hooks (RULES.md rule 44).\n" +
+      "Change the file with the Edit or Write tool.",
+  },
+  {
+    test: (c, { loop }) => {
+      const where = worktreeAddPath(c);
+      const own = /(^|[\\/])\.worktrees[\\/]agent-\d+[\\/]?$/.test(where ?? "") && !where.split(/[\\/]/).includes("..");
+      return loop && where !== null && !own;
+    },
+    message:
+      "A loop session works only in the worktree the supervisor made (RULES.md rules 7 and 32).\n" +
+      "Rebuilding it? `git worktree add -B agent/<n>-<slug> .worktrees/agent-<n> origin/agent/<n>-<slug>`, as queue.md says.\n" +
+      "Blocked on a change to the loop itself? Say so on the issue and park it for the owner.",
+  },
 ];
 
 /**
@@ -573,9 +612,10 @@ const RULES = [
  * asked wrongly — allows and says so, instead of taking the whole hook down with it. Logged
  * once per call to `check()` even when a rule asks more than once for one command line.
  */
-export function check(command, workflowOfRun = askGitHub, repo = gitAt(process.cwd())) {
+export function check(command, workflowOfRun = askGitHub, repo = gitAt(process.cwd()), loop = Boolean(process.env.LOOP_TURNS)) {
   const runnable = withoutQuotedBodies(command);
   const parsed = commands(runnable);
+  const vars = literalAssignments(runnable);
   // The payload's cwd is where the line starts, not where a `cd` in it leaves git.
   const moved = parsed.some((c) => /^(cd|chdir|pushd|popd|set-location|sl|push-location)$/.test(c.cmd));
   let warned = false;
@@ -593,7 +633,7 @@ export function check(command, workflowOfRun = askGitHub, repo = gitAt(process.c
     }
   };
   for (const rule of RULES) {
-    if (rule.text?.(runnable) || parsed.some((c) => rule.test(c, { workflowOf, repo, moved }))) return rule.message;
+    if (rule.text?.(runnable) || parsed.some((c) => rule.test(c, { workflowOf, repo, moved, vars, loop }))) return rule.message;
   }
   return null;
 }
