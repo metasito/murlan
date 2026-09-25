@@ -56,8 +56,8 @@ interface Moment {
   /** Parity mode: the fields held to the mockup, and the regions whose brightness is. */
   fields?: Field[];
   regions?: string[];
-  /** Parity mode: sample the regions at the checkpoints only, where a moment holds them only there. */
-  regionsAt?: "checkpoints";
+  /** Parity mode: the only times the regions are sampled, where a moment holds them only there. */
+  regionsAt?: number[];
   /** Parity mode: the onsets held, where not every one either side fires. */
   onsets?: string[];
   /** The mockup's chapter, where it is not `key`. */
@@ -112,8 +112,8 @@ const botMove = (page: Page) => page.evaluate(() => (globalThis as unknown as { 
 
 const playLowest = (cards: number) => async (page: Page) => {
   const hand = page.locator('[data-hand-state] [data-testid="card-box"]');
-  for (let i = 0; i < cards; i++) await hand.nth(i).click({ force: true });
-  await page.getByRole("button", { name: GIOCA_VALID_LABEL }).click({ force: true });
+  for (let i = 0; i < cards; i++) await hand.nth(i).click({ force: true, position: { x: 8, y: 30 } });
+  await page.getByRole("button", { name: GIOCA_VALID_LABEL }).click({ force: true, timeout: 10_000 });
 };
 
 /** The mockup's three landings in `trick`, as its sampled frames carry them. */
@@ -170,7 +170,9 @@ const MOMENTS: Moment[] = [
     mode: "parity",
     fields: ["onset", "live", "dropped", "brightness"],
     regions: ["pile"],
-    regionsAt: "checkpoints",
+    // At rest only: after the onset the app's cards are still on their arc and its lamp leaves ~125 ms
+    // early (#1259 rules on both), and the mockup's nines are down before the first landing's rest.
+    regionsAt: [1040, ...TRICK_LANDINGS.slice(1).map((t) => t + 1200)],
     onsets: ["moment:landing", "sound:combo"],
     actions: [
       { atMs: TRICK_LANDINGS[0] - impactDelayMs(false), app: playLowest(2) },
@@ -275,13 +277,15 @@ async function strip(
     const frame = await stepTo(t);
     if (t < (m.fromMs ?? 0)) continue;
     if (frame) traced.push({ ...frame, t });
-    if (k % STRIP_STEPS === 0) {
-      const jpeg = await jpegOf(cdp, { x: clip.x, y: clip.y });
-      frames.push({ t, jpeg });
-      if (m.regionsAt !== "checkpoints" || m.checkpoints.includes(t)) {
-        regions.push({ t, regions: Object.keys(shape).length ? await regionBrightness(decoder, jpeg, DPR, shape) : {} });
-      }
-    }
+    const stripped = k % STRIP_STEPS === 0;
+    const sampled = m.regionsAt ? m.regionsAt.includes(t) : stripped;
+    if (!stripped && !sampled) continue;
+    const jpeg = await jpegOf(cdp, { x: clip.x, y: clip.y });
+    if (stripped) frames.push({ t, jpeg });
+    if (sampled) regions.push({ t, regions: Object.keys(shape).length ? await regionBrightness(decoder, jpeg, DPR, shape) : {} });
+  }
+  if (m.regionsAt) {
+    expect(regions.map((r) => r.t), "a region sample at every time asked for").toEqual(m.regionsAt.filter((t) => t >= (m.fromMs ?? 0)));
   }
   await cdp.detach();
   return { trace: { frames: traced, regions }, frames };

@@ -550,7 +550,12 @@ export function PlayedPile({
       </View>
 
       {comboLabel && (
-        <View style={pileStyles.comboLabel}>
+        <View
+          style={[
+            pileStyles.comboLabel,
+            { marginTop: fieldArc(comboLabel.cards, cardScale, roomW).box.h / 2 + Spacing.snug },
+          ]}
+        >
           <ComboChip isPower={!!isPower}>
             <TableText style={[pileStyles.comboChipText, isPower && pileStyles.comboChipTextPower]}>
               {isPower ? "✦ " : ""}
@@ -1023,7 +1028,9 @@ const pileStyles = StyleSheet.create({
     position: "absolute",
     opacity: 0.3,
   },
-  comboLabel: { marginTop: Spacing.snug },
+  // Out of the flow and hung off the centre: in it, the chip's arrival would lift the cards the
+  // flight has just set down.
+  comboLabel: { position: "absolute", top: "50%", left: 0, right: 0, alignItems: "center" },
   comboChip: {
     backgroundColor: Scrim.heavy,
     borderRadius: Radius.sm,
