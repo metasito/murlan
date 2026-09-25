@@ -70,16 +70,16 @@ const PLATFORMS = {
   },
 };
 
-function* files(root) {
+function* files(target) {
   let stat;
   try {
-    stat = statSync(root);
+    stat = statSync(target);
   } catch {
     return;
   }
-  if (stat.isFile()) yield root;
+  if (stat.isFile()) yield target;
   if (!stat.isDirectory()) return;
-  for (const entry of readdirSync(root)) yield* files(path.join(root, entry));
+  for (const entry of readdirSync(target)) yield* files(path.join(target, entry));
 }
 
 function main([platform, appId, ...rest]) {
@@ -92,7 +92,7 @@ function main([platform, appId, ...rest]) {
   const copyTo = copyAt === -1 ? null : rest.splice(copyAt, 2)[1];
   let read = 0;
   const found = [];
-  for (const file of rest.flatMap((root) => [...files(root)])) {
+  for (const file of rest.flatMap((target) => [...files(target)])) {
     if (!spec.reads(file)) continue;
     read++;
     const crash = spec.find(appId, readFileSync(file, "latin1"));
