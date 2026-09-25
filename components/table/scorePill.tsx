@@ -43,7 +43,6 @@ import {
 // the standings. Drawn 23.7 pt tall, pressed through a box at least TOUCH_TARGET_MIN tall
 // around it. The mockup's `#score` is the specification (#1265).
 
-const OPEN_MS = 240;
 const OPEN_EASING = Easing.out(Easing.back(1.70158));
 const CLOSE_EASING = Easing.out(Easing.cubic);
 const SHADOW = withAlpha(Colors.shadow, 0.85);
@@ -109,7 +108,7 @@ export function ScorePill({
 
   useEffect(() => {
     progress.value = withTiming(open ? 1 : 0, {
-      duration: open && !reduce ? OPEN_MS : motionMs("shift", reduce),
+      duration: motionMs("shift", reduce),
       easing: open ? OPEN_EASING : CLOSE_EASING,
     });
   }, [open, reduce, progress]);
