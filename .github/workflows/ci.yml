@@ -411,6 +411,32 @@ jobs:
       # a step of a job that a loop-tests-only change does not run.
       - run: npm run check:comments
 
+  # Linux skips the loop tests that only win32 can run, so this is the one place they are heard from.
+  harness-windows:
+    name: Loop harness on Windows
+    needs: scope
+    if: needs.scope.outputs.harness == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Identify the runner to git
+        run: |
+          git config --global user.email "ci@example.com"
+          git config --global user.name "CI"
+      - name: The Win32-only loop tests run, and none skips
+        shell: bash
+        run: |
+          set -o pipefail
+          files=$(grep -lE 'process\.platform [!=]== "win32"|onWindows' tools/loop/tests/*.test.ts)
+          [ -n "$files" ] || { echo "::error::No loop test branches on win32 — the selection pattern is stale."; exit 1; }
+          node --test --test-timeout=30000 --test-reporter=tap $files | tee win32.tap
+          grep -qE '^# skipped 0$' win32.tap || { echo "::error::A loop test skipped on Windows, the one runner meant to run it."; exit 1; }
+          grep -qE '^# pass [1-9]' win32.tap || { echo "::error::No loop test passed on Windows."; exit 1; }
+
   lint:
     name: Lint
     needs: scope

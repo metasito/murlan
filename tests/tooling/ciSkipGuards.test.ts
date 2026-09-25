@@ -171,3 +171,29 @@ describe("loop:test fails when a test file never loaded", () => {
     assert.match(run.stderr, /no test file loaded at all/);
   });
 });
+
+describe("the loop tests that skip off win32 run on Windows", () => {
+  const job = /\n {2}harness-windows:\n[\s\S]*?(?=\n {2}[\w-]+:\n)/.exec(readRepoFile(".github", "workflows", "ci.yml"))?.[0] ?? "";
+  const dir = path.join(repoRoot, "tools", "loop", "tests");
+  const loopTests = readdirSync(dir).filter((f) => f.endsWith(".test.ts"));
+  const lines = (f: string) => readFileSync(path.join(dir, f), "utf8").split("\n");
+
+  test("the Windows leg selects every one of them", () => {
+    assert.match(job, /runs-on: windows-latest/);
+    const pattern = /grep -lE '([^']+)' tools\/loop\/tests\/\*\.test\.ts/.exec(job)?.[1];
+    assert.ok(pattern, "the Windows leg no longer selects its files with grep");
+    const selected = loopTests.filter((f) => lines(f).some((l) => new RegExp(pattern).test(l)));
+    const code = (f: string) => lines(f).filter((l) => !/^\s*(\/\/|\/?\*)/.test(l));
+    const gated = loopTests.filter((f) =>
+      code(f).some((l) => /process\.platform\s*[!=]==?\s*["']win32["']|\bonWindows\b|\bskip\b.*\bwin32\b/.test(l)),
+    );
+    assert.ok(gated.length >= 5, `only ${gated.length} loop test files branch on win32`);
+    assert.deepEqual(selected, gated);
+  });
+
+  test("it fails on a skip, and on a run that passed nothing", () => {
+    assert.match(job, /grep -qE '\^# skipped 0\$' win32\.tap \|\| \{[^}]*exit 1; \}/);
+    assert.match(job, /grep -qE '\^# pass \[1-9\]' win32\.tap \|\| \{[^}]*exit 1; \}/);
+    assert.match(job, /\[ -n "\$files" \] \|\| \{[^}]*exit 1; \}/);
+  });
+});

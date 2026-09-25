@@ -363,7 +363,9 @@ sets `app=true`; the protocol files (`docs/agents/`, `.claude/`, `CLAUDE.md`) se
 both `tests/tooling/rulesAreSingleSourced.test.ts` and
 `tools/loop/tests/loopDocsAreExecutable.test.ts` read them. The harness job also runs `typecheck`
 and `eslint tools/loop`, since the game's jobs that would otherwise do that are skipped on a
-loop-only change.
+loop-only change. Beside it, `harness-windows` runs every loop test file that branches on `win32`
+on a Windows runner and fails if any test in them skips: Linux skips those branches, so this is
+the only place they run.
 
 **Run `npm run loop:test` from the repo root, never `npm --prefix tools/loop`** — its tests read
 the repository itself, so npm's cwd sends every one of them looking in the wrong place. **Move by
