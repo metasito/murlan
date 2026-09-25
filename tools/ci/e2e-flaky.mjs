@@ -68,7 +68,12 @@ if (isInvokedDirectly(process.argv[1], import.meta.url)) {
   if (!report) throw new Error("usage: node tools/ci/e2e-flaky.mjs <merged-report.json>");
 
   const flaky = flakyFromReport(JSON.parse(readFileSync(report, "utf8")));
-  const { excused, failed } = await verdict(flaky, KNOWN_FLAKY, issueIsOpen);
+  const { excused, failed } = await verdict(flaky, KNOWN_FLAKY, (issue) =>
+    issueIsOpen(issue).catch((/** @type {Error} */ err) => {
+      process.stdout.write(`::error::${err.message}; give this step GITHUB_TOKEN\n`);
+      return false;
+    })
+  );
   for (const [name, issue] of excused) process.stdout.write(`::warning::Flaky, passed on retry (owned by #${issue}): ${name}\n`);
   for (const name of failed) {
     process.stdout.write(

@@ -52,47 +52,67 @@ const LEGACY: Record<string, number> = {
 
 type Site = { file: string; line: number; justified: boolean };
 
-const PROMISE_SLEEP = String.raw`new\s+Promise\s*(?:<[^>]*>)?\s*\(\s*\(?\s*(\w+)\s*(?::[^)]*)?\)?\s*=>\s*\{?\s*(?:window\.|globalThis\.)?setTimeout\(\s*(?:\1\b|\(\)\s*=>\s*\1\()`;
+/** A promise resolved by a timer: arrow or function executor, the resolver passed or called. */
+const PROMISE_SLEEP = String.raw`new\s+Promise\s*(?:<[^>]*>)?\s*\(\s*(?:async\s+)?(?:function\s*)?\(?\s*(\w+)\s*(?::[^),]*)?\)?\s*(?:=>)?\s*\{?\s*(?:return\s+)?(?:window\.|globalThis\.)?setTimeout\s*\(\s*(?:\1\b|\(\)\s*=>\s*\1\(|function\s*\(\)\s*\{\s*\1\()`;
 
-const WRAPPER = new RegExp(
-  String.raw`(?:function\s+(\w+)\s*\([^)]*\)[^{]*\{\s*return|(?:const|let)\s+(\w+)\s*=\s*(?:async\s*)?\([^)]*\)[^=]*=>\s*\{?\s*(?:return\s+)?)\s*` +
-    PROMISE_SLEEP.replace(/\\1/g, "\\3"),
-  "g"
-);
+const sleepCall = (names: string[]) =>
+  new RegExp(
+    [String.raw`(?:\.waitForTimeout|\[\s*["'\x60]waitForTimeout["'\x60]\s*\])\s*\(`, PROMISE_SLEEP, ...names.map((n) => String.raw`(?<![\w.$]|function\s+)${n}\s*\(`)].join("|"),
+    "g"
+  );
 
-/** Names that sleep when called: a function returning a promise sleep, or `timers/promises`' `setTimeout`. */
-function sleepers(code: string): string[] {
-  const names: string[] = [];
-  for (const m of code.matchAll(WRAPPER)) names.push((m[1] ?? m[2])!);
-  const timers = /import\s*\{([^}]*)\}\s*from\s*["'](?:node:)?timers\/promises["']/g;
-  for (const m of code.matchAll(timers)) {
-    for (const spec of m[1]!.split(",")) {
-      const [imported, local] = spec.trim().split(/\s+as\s+/);
-      if (imported === "setTimeout") names.push(local ?? imported);
-    }
+/** Declarations whose whole body is one sleep, as `[name, body start, body end]`. */
+function wrappers(code: string, known: string[]): [string, number, number][] {
+  const found: [string, number, number][] = [];
+  const header = /(?:function\s+(\w+)\s*\([^)]*\)[^{;]*\{|(?:const|let)\s+(\w+)\s*(?::[^=]*)?=\s*(?:async\s*)?(?:\([^)]*\)|\w+)\s*(?::[^=]*)?=>\s*)/g;
+  for (const m of code.matchAll(header)) {
+    const start = m.index + m[0].length;
+    let end = start;
+    if (m[0].endsWith("{") || code[start] === "{") {
+      let depth = 0;
+      for (end = m[0].endsWith("{") ? start - 1 : start; end < code.length; end++) {
+        if (code[end] === "{") depth++;
+        else if (code[end] === "}" && --depth === 0) break;
+      }
+    } else end = code.indexOf("\n", start) === -1 ? code.length : code.indexOf("\n", start);
+    const body = code.slice(start, end).replace(/^\s*\{/, "").trim();
+    const call = sleepCall(known.filter((n) => n !== (m[1] ?? m[2]))).exec(body.replace(/^(?:return|await)\s+/, ""));
+    if (call?.index === 0 && !/;\s*\S/.test(body.replace(/;?\s*$/, ""))) found.push([(m[1] ?? m[2])!, start, end]);
   }
-  return names;
+  return found;
+}
+
+/** Names that sleep when called: wrappers of a sleep (to any depth), `timers/promises`, a promisified timer. */
+function sleepers(files: string[]): string[] {
+  const names = new Set<string>();
+  for (const code of files) {
+    for (const m of code.matchAll(/import\s*\{([^}]*)\}\s*from\s*["'](?:node:)?timers\/promises["']/g)) {
+      for (const spec of m[1]!.split(",")) {
+        const [imported, local] = spec.trim().split(/\s+as\s+/);
+        if (imported === "setTimeout") names.add(local ?? imported);
+      }
+    }
+    for (const m of code.matchAll(/(?:const|let)\s+(\w+)\s*=\s*(?:\w+\.)?promisify\(\s*setTimeout\s*\)/g)) names.add(m[1]!);
+  }
+  for (let size = -1; size !== names.size; ) {
+    size = names.size;
+    for (const code of files) for (const [name] of wrappers(code, [...names])) names.add(name);
+  }
+  return [...names];
 }
 
 /** Every fixed real-time wait in `files`, as `[repo-relative path, source]`. */
 export function fixedSleeps(files: [string, string][]): Site[] {
   const code = new Map(files.map(([f, src]) => [f, blankComments(src)]));
-  const exported = new Set([...code.values()].flatMap(sleepers));
+  const names = sleepers([...code.values()]);
   const sites: Site[] = [];
   for (const [file, src] of files) {
     const text = code.get(file)!;
     const lines = src.split("\n");
-    const own = sleepers(text);
-    const reachable = [...exported].filter((n) => own.includes(n) || new RegExp(String.raw`import[^;]*\b${n}\b`).test(text));
-    const patterns = [
-      /\.waitForTimeout\s*\(/g,
-      ...reachable.map((n) => new RegExp(String.raw`(?<![\w.]|function\s)${n}\s*\(`, "g")),
-    ];
-    const wrapperBodies = new Set([...text.matchAll(WRAPPER)].map((m) => m.index + m[0].search(/new\s+Promise/)));
-    const hits = [
-      ...patterns.flatMap((p) => [...text.matchAll(p)].map((m) => m.index)),
-      ...[...text.matchAll(new RegExp(PROMISE_SLEEP, "g"))].map((m) => m.index).filter((i) => !wrapperBodies.has(i)),
-    ];
+    const bodies = wrappers(text, names).map(([, start, end]) => [start, end]);
+    const hits = [...text.matchAll(sleepCall(names))]
+      .map((m) => m.index)
+      .filter((i) => !bodies.some(([start, end]) => i >= start! && i < end!));
     for (const index of hits) {
       const line = text.slice(0, index).split("\n").length;
       const justified = MARKER.test(lines[line - 1] ?? "") || MARKER.test(lines[line - 2] ?? "");
@@ -119,11 +139,17 @@ test("the scan finds every shape of fixed wait, and a written reason excuses one
     ["d.spec.ts", 'import { nap } from "./c.ts";\nawait nap(40);\n'],
     ["e.spec.ts", 'import { setTimeout as wait } from "node:timers/promises";\nawait wait(30);\n'],
     ["f.spec.ts", "// fixed wait on purpose: a hold must last in real time\nawait page.waitForTimeout(800);\n"],
+    ["h.spec.ts", "await new Promise(function (resolve) { setTimeout(resolve, 500); });\nawait page['waitForTimeout'](5);\n"],
+    ["i.ts", 'import { promisify } from "node:util";\nconst later = promisify(setTimeout);\nexport const pause = (ms: number) => nap(ms);\nawait later(5);\nawait pause(7);\n'],
+    ["j.ts", "async function poll(read: () => boolean) {\n  while (!read()) await nap(50);\n}\nawait poll(() => true);\nawait new Promise((_, reject) => setTimeout(() => reject(new Error('late')), 9));\n"],
     ["g.spec.ts", "await expect(locator).toBeVisible();\npage.setDefaultTimeout(5);\n"],
   ]);
   assert.deepEqual(
     sites.map((s) => `${s.file}:${s.line}${s.justified ? " ok" : ""}`),
-    ["a.spec.ts:1", "b.spec.ts:1", "b.spec.ts:2", "c.ts:4", "d.spec.ts:2", "e.spec.ts:2", "f.spec.ts:2 ok"]
+    [
+      "a.spec.ts:1", "b.spec.ts:1", "b.spec.ts:2", "c.ts:4", "d.spec.ts:2", "e.spec.ts:2", "f.spec.ts:2 ok",
+      "h.spec.ts:1", "h.spec.ts:2", "i.ts:4", "i.ts:5", "j.ts:2",
+    ]
   );
 });
 
