@@ -15,6 +15,7 @@ import {
   setUpRoom,
   waitForDeal,
   type Client,
+  type SanitizedState,
 } from "../helpers/table.ts";
 
 /**
@@ -40,9 +41,6 @@ process.env.MURLAN_LOBBY_GRACE_MS = "800";
  * rebuilt from it drops every bot seat and renumbers the survivors — which
  * moves seats under `playerMap`, the one thing deciding whose cards a viewer
  * is sent and which seats the turn arbiter drives with the AI.
- *
- * Separate from gameplay.test.ts only because `/api/auth/register` is rate
- * limited to 20 per process and that suite already registers exactly 20.
  */
 describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () => {
   let server: TestServer;
@@ -409,11 +407,16 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
     // Rotate case: the vote lands mid-match, so the deal moves one seat further.
     let dealt = waitForDeal(a.socket);
     for (const c of clients) c.socket.emit("game:rematch_vote");
-    await dealt;
+    const rotated = await dealt;
     assert.equal(
       matchSnapshot(room.roomId)?.dealFirstSeat,
       1,
       "a manche within a running match rotates the deal"
+    );
+    assert.deepEqual(
+      seatsDealtTheExtraCards(rotated),
+      [1, 2],
+      "the cards themselves were dealt from seat 1, not only the stored seat"
     );
 
     // Exactly one seat set to cross the target, the rest set far below it —
@@ -450,6 +453,7 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
       0,
       "a rematch after the match ends resets to seat 0, not a further rotation from seat 1"
     );
+    assert.deepEqual(seatsDealtTheExtraCards(next), [0, 1], "the cards themselves were dealt from seat 0");
     // `closeTable` disposes on one leave dropping the table below two seated
     // players — true at the two-seat rooms every other test in this file
     // uses, but not at four, where the host leaving still leaves three.
@@ -457,3 +461,20 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
     await closeTable(room.roomId, a);
   });
 });
+
+/**
+ * 54 cards round-robin over four seats leaves the first two seats of the deal
+ * one card up (`dealCards`). An open exchange has already moved the loser's
+ * card to the winner, so that move is undone first.
+ */
+function seatsDealtTheExtraCards(state: SanitizedState): number[] {
+  const dealt = state.players.map((p) => p.handCount);
+  const ex = state.exchangePhase;
+  if (ex?.active) {
+    dealt[ex.winnerIdx]!--;
+    dealt[ex.loserIdx]!++;
+  }
+  const most = Math.max(...dealt);
+  assert.deepEqual(dealt.toSorted(), [most - 1, most - 1, most, most], `a 14/14/13/13 deal, got ${dealt}`);
+  return dealt.flatMap((n, seat) => (n === most ? [seat] : []));
+}
