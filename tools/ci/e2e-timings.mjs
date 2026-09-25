@@ -1,6 +1,6 @@
 // Rewrites `tests/e2e/timings.json` from a merged Playwright JSON report, which is
 // the only place the real per-spec durations exist: every browser shard uploads a
-// blob report and the `Browser test report` job puts the six back together.
+// blob report and the `Browser test report` job puts them back together.
 //
 // Left to a hand scrape of six job logs it does not get done — the file measured 25
 // of 47 specs for months, and `tests/tooling/e2eShardSplit.test.ts` called the resulting

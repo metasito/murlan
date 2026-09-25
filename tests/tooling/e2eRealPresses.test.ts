@@ -33,6 +33,7 @@ const INSTANT_ON_PURPOSE: [string, string][] = [
     "tests/e2e/mockupParity.spec.ts",
     "the page's clock is paused (helpers/virtualClock.ts), so no app time passes between down and up however long the real wait: a held press would read exactly as this one does",
   ],
+  ["tests/e2e/helpers/mockupParity.ts", "the same paused clock, for the moments every mockupParity spec registers"],
 ];
 
 /**

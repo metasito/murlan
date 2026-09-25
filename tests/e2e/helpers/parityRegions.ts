@@ -1,4 +1,4 @@
-// The named regions tests/e2e/mockupParity.spec.ts reads brightness from, in table points of the
+// The named regions tests/e2e/helpers/mockupParity.ts reads brightness from, in table points of the
 // 874 × 402 table, placed on the Lantern Table mockup's own geometry (its POOL, PILE and #score).
 import type { Page } from "@playwright/test";
 

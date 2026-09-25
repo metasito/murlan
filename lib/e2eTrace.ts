@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 
-/** One animation frame of the table, as `tests/e2e/mockupParity.spec.ts` compares it with its mockup's. */
+/** One animation frame of the table, as `tests/e2e/helpers/mockupParity.ts` compares it with its mockup's. */
 export interface TraceFrame {
   t: number;
   /** `sound:<key>`, `haptic:<helper>` or `moment:<name>`, each in the frame it fired in. */

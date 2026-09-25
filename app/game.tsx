@@ -70,7 +70,7 @@ export default function GameScreen() {
     releaseStuckRef.current = releaseStuckExchange;
   });
 
-  // tests/e2e/mockupParity.spec.ts times each bot's turn to the mockup's hand-offs.
+  // tests/e2e/helpers/mockupParity.ts times each bot's turn to the mockup's hand-offs.
   useEffect(() => {
     if (!AI_SUSPENDED) return;
     const e2e = globalThis as { murlanPass?: () => void };

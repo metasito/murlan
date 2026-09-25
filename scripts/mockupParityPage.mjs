@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Builds the side-by-side page of tests/e2e/mockupParity.spec.ts (#1255): per moment, the mockup
+// Builds the side-by-side page of the tests/e2e/mockupParity*.spec.ts files (#1255): per moment, the mockup
 // and the real table in step, a scrubber by time since onset, a flip toggle, the traces overlaid
 // and the failing checkpoints marked.
 //   node scripts/mockupParityPage.mjs <input> <out-dir>
@@ -45,7 +45,7 @@ export function findMoments(input) {
     }
     moments.push(parity);
   }
-  if (moments.length === 0) throw new Error(`no parity.json under ${input} — run tests/e2e/mockupParity.spec.ts first`);
+  if (moments.length === 0) throw new Error(`no parity.json under ${input} — run the tests/e2e/mockupParity*.spec.ts files first`);
   return moments;
 }
 

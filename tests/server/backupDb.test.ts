@@ -6,7 +6,7 @@
 // having written nothing, or writing to a database that was never reachable.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { execFile, type ExecFileException, type ExecFileOptions } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { mkdtempSync, writeFileSync, readdirSync, rmSync } from "node:fs";
@@ -24,6 +24,26 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."
 const script = path.join(repoRoot, "scripts", "backup-db.mjs");
 const pruneScript = path.join(repoRoot, "scripts", "prune-backups.mjs");
 
+interface Ran {
+  status: number | null;
+  stdout: string;
+  stderr: string;
+  error?: ExecFileException;
+}
+
+function spawn(cmd: string, args: string[], options: ExecFileOptions = {}): Promise<Ran> {
+  return new Promise((resolve) =>
+    execFile(cmd, args, { ...options, encoding: "utf8" as const }, (err, stdout, stderr) =>
+      resolve({
+        status: err ? (typeof err.code === "number" ? err.code : null) : 0,
+        stdout,
+        stderr,
+        error: typeof err?.code === "string" ? err : undefined,
+      })
+    )
+  );
+}
+
 function urlFor(databaseUrl: string, database: string): string {
   const url = new URL(databaseUrl);
   url.pathname = `/${database}`;
@@ -31,10 +51,10 @@ function urlFor(databaseUrl: string, database: string): string {
 }
 
 /** The major of `pg_dump (PostgreSQL) 16.9`, or null when it is not on PATH. */
-function pgDumpMajor(): number | null {
-  const { stdout, error } = spawnSync("pg_dump", ["--version"], { encoding: "utf8" });
+async function pgDumpMajor(): Promise<number | null> {
+  const { stdout, error } = await spawn("pg_dump", ["--version"]);
   if (error) return null;
-  const major = /(\d+)\./.exec(stdout ?? "")?.[1];
+  const major = /(\d+)\./.exec(stdout)?.[1];
   return major ? Number(major) : null;
 }
 
@@ -59,15 +79,11 @@ async function onMaintenance(databaseUrl: string, sql: string): Promise<void> {
 
 function run(env: Record<string, string | undefined>) {
   const { DATABASE_URL, ...rest } = process.env;
-  return spawnSync(process.execPath, [script], {
-    env: { ...rest, ...env },
-    encoding: "utf8",
-    cwd: repoRoot,
-  });
+  return spawn(process.execPath, [script], { env: { ...rest, ...env }, cwd: repoRoot });
 }
 
-test("refuses without DATABASE_URL, non-zero and by name", () => {
-  const { status, stderr } = run({});
+test("refuses without DATABASE_URL, non-zero and by name", async () => {
+  const { status, stderr } = await run({});
   assert.equal(status, 1, "a backup script that exits 0 with no database is the failure mode");
   assert.match(stderr, /DATABASE_URL/);
   assert.match(stderr, /Nothing was written/);
@@ -75,8 +91,8 @@ test("refuses without DATABASE_URL, non-zero and by name", () => {
 
 // The floor: without this, the assertion above is equally satisfied by a script
 // that refuses unconditionally and can never take a backup at all.
-test("that refusal is conditional on DATABASE_URL being absent", () => {
-  const { stderr } = run({
+test("that refusal is conditional on DATABASE_URL being absent", async () => {
+  const { stderr } = await run({
     DATABASE_URL: "postgresql://nobody@127.0.0.1:1/nowhere",
     PGCONNECT_TIMEOUT: "2",
   });
@@ -95,13 +111,10 @@ function daysAgo(n: number): Date {
   return new Date(Date.now() - n * 24 * 60 * 60 * 1000);
 }
 function runPrune(dir: string, env: Record<string, string | undefined> = {}) {
-  return spawnSync(process.execPath, [pruneScript, dir], {
-    env: { ...process.env, ...env },
-    encoding: "utf8",
-  });
+  return spawn(process.execPath, [pruneScript, dir], { env: { ...process.env, ...env } });
 }
 
-test("prune deletes dumps past the retention window and keeps the rest", () => {
+test("prune deletes dumps past the retention window and keeps the rest", async () => {
   const dir = mkdtempSync(path.join(tmpdir(), "murlan-prune-"));
   try {
     const old = dumpName(daysAgo(30));
@@ -111,7 +124,7 @@ test("prune deletes dumps past the retention window and keeps the rest", () => {
       writeFileSync(path.join(dir, name), "not a real dump, just a name to prune by");
     }
 
-    const { status } = runPrune(dir, { BACKUP_RETENTION_DAYS: "7" });
+    const { status } = await runPrune(dir, { BACKUP_RETENTION_DAYS: "7" });
     assert.equal(status, 0);
 
     const remaining = readdirSync(dir).sort();
@@ -122,14 +135,14 @@ test("prune deletes dumps past the retention window and keeps the rest", () => {
 });
 
 // The floor named in #39.
-test("prune never deletes the most recent dump, however old it is", () => {
+test("prune never deletes the most recent dump, however old it is", async () => {
   const dir = mkdtempSync(path.join(tmpdir(), "murlan-prune-"));
   try {
     const names = [1000, 999, 998].map((n) => dumpName(daysAgo(n)));
     for (const name of names) writeFileSync(path.join(dir, name), "x");
     const mostRecent = [...names].sort().at(-1)!;
 
-    const { status } = runPrune(dir, { BACKUP_RETENTION_DAYS: "1" });
+    const { status } = await runPrune(dir, { BACKUP_RETENTION_DAYS: "1" });
     assert.equal(status, 0);
 
     const remaining = readdirSync(dir);
@@ -143,17 +156,17 @@ test("prune never deletes the most recent dump, however old it is", () => {
   }
 });
 
-test("prune is a no-op, not a failure, against a directory that does not exist yet", () => {
+test("prune is a no-op, not a failure, against a directory that does not exist yet", async () => {
   const dir = path.join(mkdtempSync(path.join(tmpdir(), "murlan-prune-")), "never-created");
-  const { status } = runPrune(dir);
+  const { status } = await runPrune(dir);
   assert.equal(status, 0);
 });
 
-test("prune refuses a nonsensical retention window rather than silently pruning nothing or everything", () => {
+test("prune refuses a nonsensical retention window rather than silently pruning nothing or everything", async () => {
   const dir = mkdtempSync(path.join(tmpdir(), "murlan-prune-"));
   try {
     writeFileSync(path.join(dir, dumpName(new Date())), "x");
-    const { status, stderr } = runPrune(dir, { BACKUP_RETENTION_DAYS: "not-a-number" });
+    const { status, stderr } = await runPrune(dir, { BACKUP_RETENTION_DAYS: "not-a-number" });
     assert.notEqual(status, 0);
     assert.match(stderr, /BACKUP_RETENTION_DAYS/);
   } finally {
@@ -165,7 +178,7 @@ test("prune refuses a nonsensical retention window rather than silently pruning 
 // so the default is the retention production actually gets. A default with no
 // test on it can drift to a value that never deletes anything (e.g. beyond
 // any real dump's age) and stay green.
-test("prune's default retention (BACKUP_RETENTION_DAYS unset) deletes past 14 days and keeps within it", () => {
+test("prune's default retention (BACKUP_RETENTION_DAYS unset) deletes past 14 days and keeps within it", async () => {
   const dir = mkdtempSync(path.join(tmpdir(), "murlan-prune-"));
   try {
     const old = dumpName(daysAgo(20));
@@ -176,10 +189,7 @@ test("prune's default retention (BACKUP_RETENTION_DAYS unset) deletes past 14 da
     }
 
     const { BACKUP_RETENTION_DAYS: _unused, ...envWithoutRetention } = process.env;
-    const { status } = spawnSync(process.execPath, [pruneScript, dir], {
-      env: envWithoutRetention,
-      encoding: "utf8",
-    });
+    const { status } = await spawn(process.execPath, [pruneScript, dir], { env: envWithoutRetention });
     assert.equal(status, 0);
 
     const remaining = readdirSync(dir).sort();
@@ -201,7 +211,7 @@ test("a dump restores into an empty database with matching account and rating ro
   const configuredUrl = process.env.DATABASE_URL!;
   // A newer pg_dump emits settings the older server restoring them rejects, so
   // a mismatch proves nothing either way. ci.yml fails on this skip.
-  const client = pgDumpMajor();
+  const client = await pgDumpMajor();
   const database = await serverMajor(configuredUrl);
   if (client !== null && client !== database) {
     t.skip(`pg_dump ${client} against a Postgres ${database} server — client majors must match`);
@@ -271,15 +281,11 @@ test("a dump restores into an empty database with matching account and rating ro
       // No explicit outfile: this is what proves the pruner's DUMP_NAME regex
       // actually matches what backup-db.mjs writes by default, not just what
       // this test's own fixtures are named.
-      const dump = spawnSync(process.execPath, [script], {
-        env: { ...process.env, DATABASE_URL: baseUrl },
-        encoding: "utf8",
-        cwd: dumpDir,
-      });
+      const dump = await spawn(process.execPath, [script], { env: { ...process.env, DATABASE_URL: baseUrl }, cwd: dumpDir });
       // The child here is node running backup-db.mjs, which itself spawns
       // pg_dump — so a missing pg_dump surfaces as backup-db.mjs's own exit 1
-      // and stderr message, not as this spawnSync's own `.error`.
-      if (dump.status !== 0 && /pg_dump is not on PATH/.test(dump.stderr ?? "")) {
+      // and stderr message, not as this spawn's own `.error`.
+      if (dump.status !== 0 && /pg_dump is not on PATH/.test(dump.stderr)) {
         t.skip("pg_dump not on PATH — cannot prove restore in this environment");
         return;
       }
@@ -298,10 +304,8 @@ test("a dump restores into an empty database with matching account and rating ro
       await onMaintenance(baseUrl, `CREATE DATABASE "${restoreDb}"`);
 
       const restoreUrl = urlFor(baseUrl, restoreDb);
-      const restore = spawnSync("psql", ["-v", "ON_ERROR_STOP=1", "-f", dumpFile, restoreUrl], {
-        encoding: "utf8",
-      });
-      if ((restore.error as NodeJS.ErrnoException | undefined)?.code === "ENOENT") {
+      const restore = await spawn("psql", ["-v", "ON_ERROR_STOP=1", "-f", dumpFile, restoreUrl]);
+      if (restore.error?.code === "ENOENT") {
         t.skip("psql not on PATH — cannot prove restore in this environment");
         return;
       }

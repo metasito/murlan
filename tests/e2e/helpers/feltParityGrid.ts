@@ -1,26 +1,26 @@
-// tests/e2e/feltParityGrid.spec.ts — the felt and the lamp across the whole grid.
+// The felt and the lamp across the whole grid, one `feltParityGrid*.spec.ts` file per viewport.
 //
-// `mockupParity.spec.ts` holds the table to the Lantern mockup at the one seating and viewport the
+// `mockupParity.ts` holds the table to the Lantern mockup at the one seating and viewport the
 // mockup draws: four players, 874x402. Ours seats 2, 3 or 4 at any window size, and the lamp's
 // targets map by seat direction and scale with the table frame (#1257), so this walks every seating
 // at a phone and a tablet: the lamp over the seat on move, and the Skia cloth brighter and its weave
 // louder on the lit side. `feltNap.spec.ts` holds the weave's relief to the mockup's.
 import { test, expect, type Locator, type Page } from "@playwright/test";
-import { openCaptureState } from "./helpers/offlineSeed";
-import { skiaOnSoftware, tracedLamp, untilSkiaFelt } from "./helpers/tableTrace";
+import { openCaptureState } from "./offlineSeed";
+import { skiaOnSoftware, tracedLamp, untilSkiaFelt } from "./tableTrace";
 import {
   CAPTURE_STATES,
   CAPTURE_VIEWER_SEAT,
   type CaptureState,
-} from "../../lib/captureStates";
-import { seatDirection } from "../../components/seatLayout";
-import { DESIGN, LIGHT_ABOVE, lampTarget } from "../../components/table/lampRig";
+} from "../../../lib/captureStates";
+import { seatDirection } from "../../../components/seatLayout";
+import { DESIGN, LIGHT_ABOVE, lampTarget } from "../../../components/table/lampRig";
 
 /** The table's scale comes from the window's short edge, so a tablet is a different weave-to-card ratio. */
-const VIEWPORTS = [
-  { name: "phone", width: 874, height: 402 },
-  { name: "tablet", width: 1194, height: 834 },
-] as const;
+const VIEWPORTS = {
+  phone: { width: 874, height: 402 },
+  tablet: { width: 1194, height: 834 },
+} as const;
 
 /**
  * The felt, not `game-table`: `game-table` is inset by the control rail on one side and the safe
@@ -186,41 +186,43 @@ function line(id: string, side: string, row: Row, patches: Patch[]): string {
  * The grid the app can actually seat: what varies with the count is which turns there are, and
  * `pile` is carried across from the state that has one.
  */
-function grid(): CaptureState[] {
+function grid(playerCount: PlayerCount): CaptureState[] {
   const pileState = CAPTURE_STATES.find((s) => s.pile);
   if (!pileState) throw new Error("no capture state carries a pile");
 
   const cells: CaptureState[] = [];
-  for (const playerCount of [2, 3, 4] as const) {
-    for (let turn = 0; turn < playerCount; turn++) {
-      cells.push({
-        id: `p${playerCount}-turn${turn}`,
-        label: `${playerCount} players, seat ${turn} on move`,
-        playerCount,
-        turn,
-        side: seatDirection(turn, CAPTURE_VIEWER_SEAT, playerCount),
-        pile: false,
-      });
-    }
-    const pileTurn = Math.min(pileState.turn, playerCount - 1);
+  for (let turn = 0; turn < playerCount; turn++) {
     cells.push({
-      ...pileState,
-      id: `p${playerCount}-pile`,
-      label: `${playerCount} players, a combination on the felt`,
+      id: `p${playerCount}-turn${turn}`,
+      label: `${playerCount} players, seat ${turn} on move`,
       playerCount,
-      turn: pileTurn,
-      side: seatDirection(pileTurn, CAPTURE_VIEWER_SEAT, playerCount),
+      turn,
+      side: seatDirection(turn, CAPTURE_VIEWER_SEAT, playerCount),
+      pile: false,
     });
   }
+  const pileTurn = Math.min(pileState.turn, playerCount - 1);
+  cells.push({
+    ...pileState,
+    id: `p${playerCount}-pile`,
+    label: `${playerCount} players, a combination on the felt`,
+    playerCount,
+    turn: pileTurn,
+    side: seatDirection(pileTurn, CAPTURE_VIEWER_SEAT, playerCount),
+  });
   return cells;
 }
 
-test.describe("the lamp and the cloth everywhere, not just at one seating", () => {
-  for (const viewport of VIEWPORTS) {
-    test(`${viewport.name}: every seating, every lamp position`, async ({ page, baseURL }) => {
+type PlayerCount = 2 | 3 | 4;
+
+/** One viewport and one player count per spec file, so no file outgrows a shard. */
+export function gridTest(name: keyof typeof VIEWPORTS, playerCount: PlayerCount) {
+  const viewport = { name, ...VIEWPORTS[name] };
+  test.describe("the lamp and the cloth everywhere, not just at one seating", () => {
+    test(`${viewport.name}, ${playerCount} players: every seating, every lamp position`, async ({ page, baseURL }) => {
       test.setTimeout(600_000);
 
-      const cells = grid();
+      const cells = grid(playerCount);
       const rows: string[] = [];
       const offenders: string[] = [];
       await skiaOnSoftware(page);
@@ -279,9 +281,9 @@ test.describe("the lamp and the cloth everywhere, not just at one seating", () =
       // The floor: a grid that sampled nothing reports no offenders, which is
       // indistinguishable from a clean table.
       expect(rows.length).toBe(cells.length);
-      expect(cells.length).toBeGreaterThan(10);
+      expect(cells.length).toBe(playerCount + 1);
 
       expect(offenders, offenders.join("\n")).toEqual([]);
     });
-  }
-});
+  });
+}

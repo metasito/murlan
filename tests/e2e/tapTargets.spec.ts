@@ -22,13 +22,14 @@
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { openApp, registerNewAccount, startOfflineGame, uniqueUsername } from "./helpers/navigation";
-import { createRoom, fillWithBotsAndStart, goToOnlineLobby } from "./helpers/online";
+import { createRoom, goToOnlineLobby } from "./helpers/online";
 import { driveGameToCompletion } from "./helpers/bot";
 import { offlineGameSave, resumeSaved } from "./helpers/offlineSeed";
 import { settled } from "./helpers/settle";
 import { TABLE, TABLE_DEALING } from "./helpers/selectors";
+import { sweepSizes, UNDERSIZED_BY_DESIGN } from "./helpers/tapTargets";
 import { CLOSING_HAND_CARDS } from "../../lib/game/gameEngine";
-import { Reading, TOUCH_TARGET_MIN } from "../../lib/tokens";
+import { Reading } from "../../lib/tokens";
 import { it as copy } from "../../locales/it";
 
 const BANNER = '[data-testid="notification-banner"]';
@@ -156,54 +157,6 @@ async function expectNoBuriedControls(page: Page, where: string, minControls: nu
   expect(considered, `${where}: swept ${considered} controls, expected at least ${minControls}`)
     .toBeGreaterThanOrEqual(minControls);
 }
-
-/**
- * Controls smaller than the 44pt floor, measured rather than declared.
- *
- * react-native-web reads `hitSlop` on nothing but the legacy Touchable, so on
- * this platform a control's own box is the whole target.
- */
-async function sweepSizes(page: Page, where: string, allow: string[] = []): Promise<void> {
-  // The floor crosses into the page as an argument: this callback runs in the
-  // browser, where nothing this file imports exists.
-  const undersized = await page.evaluate(({ allowed, MIN }) => {
-    const out: string[] = [];
-    const nameOf = (el: Element): string =>
-      (el.getAttribute("aria-label") || el.textContent || "").trim().slice(0, 50);
-
-    const controls = Array.from(
-      document.querySelectorAll<HTMLElement>('button, [role="button"], [role="radio"], [role="switch"]')
-    );
-
-    for (const el of controls) {
-      if (el.getAttribute("aria-disabled") === "true") continue;
-      // A control nested inside another is part of that control's target.
-      if (el.parentElement?.closest('button, [role="button"]')) continue;
-      const r = el.getBoundingClientRect();
-      if (r.width < 4 || r.height < 4) continue;
-      if (r.bottom < 0 || r.top > window.innerHeight) continue;
-      if (r.right < 0 || r.left > window.innerWidth) continue;
-
-      const { width, height } = r;
-      const name = nameOf(el) || "(unnamed)";
-      if (allowed.some((a) => name.includes(a))) continue;
-      if (width >= MIN && height >= MIN) continue;
-      out.push(`${name} — ${Math.round(width)}x${Math.round(height)}`);
-    }
-    return out;
-  }, { allowed: allow, MIN: TOUCH_TARGET_MIN });
-  expect(undersized, where).toEqual([]);
-}
-
-/**
- * The hand's cards: the fan exposes `step` pixels of each card, and 44pt at 14
- * cards needs ~630px of hand width the table does not have. components/
- * handLayout.ts holds them at WCAG 2.2 SC 2.5.8's 24px instead.
- *
- * Matched against the Italian labels the whole suite is written against and
- * playwright.config.ts pins.
- */
-const UNDERSIZED_BY_DESIGN = ["di Fiori", "di Cuori", "di Quadri", "di Picche", "Jolly"];
 
 const SIZES = [
   { name: "phone portrait", width: 390, height: 844 },
@@ -400,43 +353,7 @@ for (const size of SIZES.filter((s) => s.width > s.height)) {
   });
 }
 
-// One size: an online match played out is minutes of bot play, and the overlay,
-// the breakdown and the replay only exist after one.
-test("no control is undersized after an online hand — phone landscape", async ({ page, baseURL }) => {
-  test.setTimeout(8 * 60_000);
-  await page.setViewportSize({ width: 844, height: 390 });
-
-  await openApp(page, baseURL!);
-  await registerNewAccount(page, uniqueUsername("tapover"));
-  await goToOnlineLobby(page);
-  await createRoom(page, { playerCount: 2, gameMode: "free_for_all" });
-  await page.getByRole("radio", { name: /Manche secca/ }).first().click();
-  await fillWithBotsAndStart(page);
-  await driveGameToCompletion(page, {
-    isFinished: (p) => p.getByRole("button", { name: "Esci dalla partita" }).isVisible(),
-  });
-  await settled(page, 2500);
-  await sweepSizes(page, "match over", UNDERSIZED_BY_DESIGN);
-
-  await page.getByRole("button", { name: copy["handBreakdown.toggleA11yLabel"] }).click();
-  await expect(page.getByRole("button", { name: copy["handBreakdown.openReplayA11yLabel"] })).toBeVisible({
-    timeout: 15_000,
-  });
-  await settled(page, 1500);
-  await sweepSizes(page, "hand breakdown", UNDERSIZED_BY_DESIGN);
-
-  await page.goto(`${baseURL!}/profile`);
-  const replayRow = page.getByRole("button", { name: /^Guarda:/ }).first();
-  await expect(replayRow).toBeVisible({ timeout: 15_000 });
-  await settled(page, 2500);
-  await sweepSizes(page, "profile, after a hand");
-
-  await replayRow.click();
-  await page.waitForURL(/replay/, { timeout: 15_000 });
-  await expect(page.getByRole("button", { name: "Riproduci" })).toBeVisible();
-  await settled(page, 2500);
-  await sweepSizes(page, "replay", UNDERSIZED_BY_DESIGN);
-});
+// After an online hand: tapTargetsOnlineHand.spec.ts.
 
 // UI-01: a plain View with no ScrollView/maxHeight overflowed the backdrop on
 // any viewport shorter than ~725pt — every phone in landscape, an iPhone SE

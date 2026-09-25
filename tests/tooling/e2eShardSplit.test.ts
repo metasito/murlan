@@ -7,7 +7,10 @@ import { fileURLToPath } from "node:url";
 import {
   assignShards,
   filesForShard,
+  MAX_SHARDS,
+  plan,
   readTimings,
+  shardsNeeded,
   specFilesIn,
   UNMEASURED_SECONDS,
 } from "../../tools/ci/e2e-shard.mjs";
@@ -15,9 +18,7 @@ import {
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const E2E_DIR = path.join(repoRoot, "tests", "e2e");
 const ciYml = readFileSync(path.join(repoRoot, ".github", "workflows", "ci.yml"), "utf8");
-const matrix = /^\s*shard: \[([\d, ]+)\]$/m.exec(ciYml);
-assert.ok(matrix, "ci.yml has no `shard:` matrix");
-const SHARDS = matrix[1].split(",").length;
+const SHARDS = plan([path.join(E2E_DIR, "timings.json")]).shards.length;
 
 const config = readFileSync(path.join(E2E_DIR, "playwright.config.ts"), "utf8");
 const ignore = /testIgnore: \/(.+)\/,$/m.exec(config);
@@ -41,10 +42,17 @@ describe("every browser spec reaches exactly one shard", () => {
   test("the splitter sees every spec Playwright would run, under a floor", () => {
     const files = playwrightRuns(E2E_DIR);
     assert.ok(files.length >= 40, `only ${files.length} specs found`);
-    assert.ok(SHARDS >= 2, `ci.yml runs ${SHARDS} shard`);
-    assert.match(ciYml, new RegExp(String.raw`if \[ "\$found" -ne ${SHARDS} \]`), "the report job counts another shard total");
-    assert.match(ciYml, /e2e-shard\.mjs \$\{\{ matrix\.shard \}\} \$\{\{ strategy\.job-total \}\}/);
+    assert.ok(SHARDS >= 2, `the plan runs ${SHARDS} shard`);
     assert.deepEqual(specFilesIn(E2E_DIR), files);
+  });
+
+  test("ci.yml runs the shards the scope job planned, and counts that many back", () => {
+    assert.match(ciYml, /node tools\/ci\/e2e-shard\.mjs plan /);
+    assert.match(ciYml, /shard: \$\{\{ fromJSON\(needs\.scope\.outputs\.shards\) \}\}/);
+    assert.match(ciYml, /TIMINGS: \$\{\{ needs\.scope\.outputs\.timings \}\}\n\s+run: printf '%s' "\$TIMINGS" > tests\/e2e\/timings\.json/);
+    assert.match(ciYml, /e2e-shard\.mjs \$\{\{ matrix\.shard \}\} \$\{\{ strategy\.job-total \}\}/);
+    assert.match(ciYml, /if \[ "\$found" -ne "\$\{\{ needs\.scope\.outputs\.shard-count \}\}" \]/);
+    assert.match(ciYml, /if: \$\{\{ needs\.browser\.result == 'success' \}\}\n.*\n\s+with:\n\s+name: e2e-timings\n/);
   });
 
   test("a spec in a subdirectory is placed, as Playwright would run it", () => {
@@ -133,11 +141,71 @@ describe("the split is stable and even", () => {
     );
   });
 
+  test("no spec is larger than a shard's fair share", () => {
+    const files = specFilesIn(E2E_DIR);
+    const timings = readTimings();
+    const seconds = (f: string) => timings[f] ?? UNMEASURED_SECONDS;
+    const fair = files.reduce((sum, f) => sum + seconds(f), 0) / SHARDS;
+    const over = files.filter((f) => seconds(f) > fair).map((f) => `${f} ${seconds(f)}s`);
+
+    assert.deepEqual(over, [], `over the ${fair.toFixed(0)}s each of ${SHARDS} shards gets; split them`);
+  });
+
+  test("the suite fits the target within the shards a run may have", () => {
+    const needed = shardsNeeded(specFilesIn(E2E_DIR), readTimings());
+
+    assert.ok(needed <= MAX_SHARDS, `${needed} shards to meet the target, over the ${MAX_SHARDS} allowed`);
+  });
+
   test("timings.json describes specs that exist", () => {
     const known = specFilesIn(E2E_DIR);
     const stale = Object.keys(readTimings()).filter((f) => !known.includes(f));
 
     assert.deepEqual(stale, [], "timings.json names specs that are gone");
+  });
+});
+
+describe("the plan prices each spec by its latest green run", () => {
+  const files = ["heavy.spec.ts", ...Array.from({ length: 8 }, (_, i) => `light${i}.spec.ts`)];
+  const even = Object.fromEntries(files.map((f) => [f, 100]));
+
+  const planned = (layers: Record<string, Record<string, number>>, missing: string[] = []) => {
+    const dir = mkdtempSync(path.join(tmpdir(), "e2e-plan-"));
+    try {
+      const paths = Object.entries(layers).map(([name, timings]) => {
+        writeFileSync(path.join(dir, name), JSON.stringify(timings));
+        return path.join(dir, name);
+      });
+      return plan([...paths, ...missing.map((m) => path.join(dir, m))], files);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  };
+
+  test("a spec heavier on the branch is priced as the branch runs it", () => {
+    const { timings, shards } = planned({ committed: even, main: even, branch: { "heavy.spec.ts": 600 } });
+
+    assert.equal(timings["heavy.spec.ts"], 600);
+    assert.equal(timings["light0.spec.ts"], 100);
+    assert.equal(shards.length, shardsNeeded(files, timings));
+    const alone = assignShards(files, timings, shards.length).find((s) => s.files.includes("heavy.spec.ts"));
+    assert.deepEqual(alone?.files, ["heavy.spec.ts"]);
+  });
+
+  test("with no branch run, main's numbers win over the committed ones", () => {
+    const { timings } = planned({ committed: even, main: { ...even, "heavy.spec.ts": 300 } }, ["branch"]);
+
+    assert.equal(timings["heavy.spec.ts"], 300);
+  });
+
+  test("the count is arithmetic on the numbers, not a constant", () => {
+    const light = planned({ committed: even }).shards.length;
+    const heavy = planned({ committed: Object.fromEntries(files.map((f) => [f, 250])) }).shards.length;
+
+    assert.ok(heavy > light, `${light} shards for 900s of specs and ${heavy} for 2250s`);
+    const guessed = planned({}).shards.length;
+    assert.equal(guessed, shardsNeeded(files, {}), "nine unmeasured specs at the guess");
+    assert.ok(guessed < light && light < heavy);
   });
 });
 

@@ -19,7 +19,7 @@
  * `--play` (`npm run play`) boots the same stack with production pacing, into
  * dist/ on port 5000, to play it locally — on a phone, at http://<pc-ip>:5000.
  */
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
 import path from "node:path";
@@ -33,11 +33,22 @@ const PORT = process.env.E2E_PORT ?? (PLAY ? "5000" : "5199");
 const DEV_STACK = path.join(ROOT, "scripts", "dev-stack.mjs");
 const DIST = PLAY ? "dist" : "dist-e2e";
 
+const children = new Set();
+// Two steps run at once, so one failing must not leave the other running with nobody waiting on it.
+process.on("exit", () => children.forEach((c) => c.kill()));
+
 function run(cmd, args, useShell) {
-  const result = spawnSync(cmd, args, { cwd: ROOT, stdio: "inherit", shell: useShell });
-  if (result.status !== 0) {
-    throw new Error(`${cmd} ${args.join(" ")} exited with code ${result.status}`);
-  }
+  return new Promise((resolve, reject) => {
+    const child = spawn(cmd, args, { cwd: ROOT, stdio: "inherit", shell: useShell });
+    children.add(child);
+    child
+      .on("error", reject)
+      .on("exit", (code) => {
+        children.delete(child);
+        if (code === 0) resolve();
+        else reject(new Error(`${cmd} ${args.join(" ")} exited with code ${code}`));
+      });
+  });
 }
 
 /**
@@ -63,16 +74,16 @@ if (!PLAY) {
   process.env.MURLAN_DISCONNECT_GRACE_MS ??= "5000";
 }
 
-run(process.execPath, [DEV_STACK, "up"]);
-
-if (process.env.E2E_SKIP_BUILD !== "1" || !existsSync(path.join(ROOT, DIST, "index.html"))) {
-  run(
-    process.platform === "win32" ? "npx.cmd" : "npx",
-    // Metro caches the inlined EXPO_PUBLIC_E2E_FAST, so an unflagged build after a flagged one needs --clear.
-    ["expo", "export", "--platform", "web", "--output-dir", DIST, ...(PLAY ? ["--clear"] : [])],
-    process.platform === "win32"
-  );
-}
+const build =
+  process.env.E2E_SKIP_BUILD !== "1" || !existsSync(path.join(ROOT, DIST, "index.html"))
+    ? run(
+        process.platform === "win32" ? "npx.cmd" : "npx",
+        // Metro caches the inlined EXPO_PUBLIC_E2E_FAST, so an unflagged build after a flagged one needs --clear.
+        ["expo", "export", "--platform", "web", "--output-dir", DIST, ...(PLAY ? ["--clear"] : [])],
+        process.platform === "win32"
+      )
+    : Promise.resolve();
+await Promise.all([run(process.execPath, [DEV_STACK, "up"]), build]);
 
 assertBundleHasRoutes(path.join(ROOT, DIST), path.join(ROOT, "app"));
 assertMark(PLAY ? "--absent" : "--present", [path.join(ROOT, DIST)]);
@@ -83,7 +94,7 @@ process.env.SESSION_SECRET = PLAY ? randomBytes(32).toString("hex") : "e2e-test-
 process.env.PORT = PORT;
 process.env.MURLAN_WEB_DIST = DIST;
 
-run(
+await run(
   process.platform === "win32" ? "npx.cmd" : "npx",
   ["tsx", path.join(ROOT, "server", "index.ts")],
   process.platform === "win32"
