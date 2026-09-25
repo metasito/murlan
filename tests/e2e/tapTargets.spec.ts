@@ -254,7 +254,10 @@ for (const size of SIZES) {
 
     await openApp(page, baseURL!);
     await startOfflineGame(page, { playerCount: 4, gameMode: "free_for_all", format: "match" });
-    await expect(page.locator('[data-testid="game-table"]')).toBeVisible();
+    const table = page.getByTestId("game-table");
+    await expect(table).toHaveAttribute("data-dealing", "true");
+    // The table holds still through its entry beat before the deal, long enough to pass for settled.
+    await expect(table).toHaveAttribute("data-dealing", "false", { timeout: 15_000 });
     await settled(page, 5000);
 
     const pill = page.getByTestId("score-pill");

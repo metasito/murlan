@@ -48,6 +48,7 @@ export function useDeal({
   cards: DealtCard[];
   arrivalsFor: (seat: number) => number[] | undefined;
   handOffsetMs: number;
+  dealing: boolean;
 } {
   const { players, opponents, viewerSeat } = geometry;
   const newDeal = (key: number, offsetMs: number): Deal => ({
@@ -92,6 +93,7 @@ export function useDeal({
     cards,
     arrivalsFor: (seat) => arrivals?.[seat],
     handOffsetMs: deal ? deal.offsetMs + dealLeaveMs(0, viewerSeat, players.length) : 0,
+    dealing: deal !== null,
   };
 }
 

@@ -1133,7 +1133,7 @@ export function GameTable({
             Players get the same sentence from the A11yStatus node above. */}
         <View
           testID="game-table"
-          {...harnessState({ tableState: tableA11yLabel })}
+          {...harnessState({ tableState: tableA11yLabel, dealing: String(deal.dealing) })}
           {...behindVeil}
           style={[
             sharedTableStyles.tableOverlay,
