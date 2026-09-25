@@ -21,13 +21,15 @@ const DECLARED = /^[ \t]*LOOP-RESULT (\{.*\})[ \t]*$/m;
 export const COMMITTING = /\bgit\b[^\n|;&]*\bcommit\b/;
 
 const EDITS = new Set(["Edit", "Write", "NotebookEdit"]);
+const SCRATCH = /(^|[\\/])\.[^\\/]+$|^\/tmp\/|[\\/]Temp[\\/]|[\\/]\.loop-logs[\\/]/i;
 
 /**
- * Where B ends with no `PHASE C` (#1098): the first edit or commit — late, never before the build.
- * @param {{name: string, command?: string, parent?: string|null}[]} calls
+ * Where a phase that does not build ends in the build with no `PHASE C` (#1098): the first edit
+ * outside a scratch file, or commit — late, never before the build.
+ * @param {{name: string, command?: string, file?: string, parent?: string|null}[]} calls
  */
 export const scopeEnds = (calls) =>
-  calls.some((c) => !c.parent && (EDITS.has(c.name) || (c.name === "Bash" && COMMITTING.test(c.command ?? ""))));
+  calls.some((c) => !c.parent && ((EDITS.has(c.name) && !SCRATCH.test(c.file ?? "")) || (c.name === "Bash" && COMMITTING.test(c.command ?? ""))));
 
 /** A handoff names the phase the next process starts at, so an unknown letter is no handoff. */
 export const HANDOFF = /^[A-F]$/;

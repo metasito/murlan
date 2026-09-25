@@ -5,7 +5,7 @@
  * `total_cost_usd` on a `result` record is cumulative for its `session_id`: a ticket's spend is the
  * max per session, summed across sessions. Summing the records double-counts, by a lot.
  *
- * Usage: node tools/loop/loop-cost.mjs [<n> | <n>+ ...] [--since <time>] [--by-sha]
+ * Usage: node tools/loop/loop-cost.mjs [<n> | <n>+ ...] [--since <time>] [--until <time>] [--by-sha]
  */
 import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
@@ -53,19 +53,22 @@ export const priceOf = (model, u) => {
 
 const bucket = () => ({ turns: 0, tokens: 0, usd: 0, minutes: 0, toolTurns: 0, batched: 0 });
 
-/** Sessions whose first stamped line is before `since`, which a `--since` window leaves out whole. */
-function sinceOnly(lines, since) {
+/** Sessions whose first stamped line is outside [since, until), which a window leaves out whole. */
+function inWindow(lines, since, until) {
   const parsed = lines.map((l) => { try { return JSON.parse(l); } catch { return null; } });
   const firstAt = new Map();
   for (const j of parsed) {
     if (j?.session_id && j.timestamp && !firstAt.has(j.session_id)) firstAt.set(j.session_id, new Date(j.timestamp).toISOString());
   }
-  return lines.filter((_, i) => !(firstAt.get(parsed[i]?.session_id) < since));
+  return lines.filter((_, i) => {
+    const at = firstAt.get(parsed[i]?.session_id);
+    return !(since && at < since) && !(until && at >= until);
+  });
 }
 
-/** @param {string[]} allLines @param {string} [ticket] @param {string|null} [since] an ISO time */
-export function readTicket(allLines, ticket = "", since = null) {
-  const lines = since ? sinceOnly(allLines, since) : allLines;
+/** @param {string[]} allLines @param {string} [ticket] @param {string|null} [since] @param {string|null} [until] ISO times */
+export function readTicket(allLines, ticket = "", since = null, until = null) {
+  const lines = since || until ? inWindow(allLines, since, until) : allLines;
   /** @type {Record<string, ReturnType<typeof bucket>>} */
   const phases = {};
   const sessions = new Map();
@@ -121,8 +124,10 @@ export function readTicket(allLines, ticket = "", since = null) {
       const blocks = j.message.content ?? [];
       const marked = blocks.map((b) => (b.type === "text" ? PHASE.exec(b.text ?? "") : null)).find(Boolean);
       if (marked) advance(marked[1], t);
-      else if (phase === "B") {
-        const calls = blocks.filter((b) => b.type === "tool_use").map((b) => ({ name: b.name, command: b.input?.command }));
+      else if (phase === "B" || phase === "D" || phase === "E") {
+        const calls = blocks
+          .filter((b) => b.type === "tool_use")
+          .map((b) => ({ name: b.name, command: b.input?.command, file: b.input?.file_path ?? b.input?.notebook_path }));
         if (scopeEnds(calls)) advance("C", t);
       }
     }
@@ -140,6 +145,7 @@ export function readTicket(allLines, ticket = "", since = null) {
 
     const u = j.message.usage;
     const model = j.message.model ?? "";
+    if (model === "<synthetic>") continue;
     if (!familyOf(model)) unpriced.add(model);
     const row = (phases[phase] ??= bucket());
     row.turns++;
@@ -342,30 +348,47 @@ export function shaTable(rows, killed = []) {
   ].join("\n");
 }
 
-/** `--since <time>`: the tickets with a ledger row started then or later, and those rows. */
-export function sinceWindow(rows, since) {
-  const inside = rows.filter((r) => String(r.started ?? "") >= since);
+/** `--since <time>` / `--until <time>`: the tickets with a ledger row started in [since, until), and those rows. */
+export function sinceWindow(rows, since, until = null) {
+  const from = since ? Date.parse(since) : -Infinity;
+  const to = until ? Date.parse(until) : Infinity;
+  const inside = rows.filter((r) => {
+    const t = Date.parse(r.started ?? "");
+    return t >= from && t < to;
+  });
   return { tickets: [...new Set(inside.map((r) => String(r.n)))], rows: inside };
 }
 
 if (isInvokedDirectly(process.argv[1], import.meta.url)) {
   const grouped = process.argv.includes("--by-sha");
   const argv = process.argv.slice(2).filter((a) => a !== "--by-sha");
-  const at = argv.indexOf("--since");
-  const since = at >= 0 ? new Date(argv[at + 1]).toISOString() : null;
+  const stamp = (flag) => {
+    const at = argv.indexOf(flag);
+    if (at < 0) return null;
+    const t = new Date(argv[at + 1] ?? "");
+    if (Number.isNaN(t.getTime())) {
+      console.error(`loop-cost: ${flag} needs a time, e.g. ${flag} 2026-09-24T16:33Z`);
+      process.exit(2);
+    }
+    return t.toISOString();
+  };
+  const since = stamp("--since");
+  const until = stamp("--until");
+  const args = argv.filter((a, i) => !["--since", "--until"].includes(a) && !["--since", "--until"].includes(argv[i - 1]));
   const withStarts = readLedger(undefined, { starts: true });
   const ledger = withStarts.filter((r) => r.outcome !== "started");
-  const window = since ? sinceWindow(ledger, since) : null;
-  const picks = window ? window.tickets : argv;
+  const window = since || until ? sinceWindow(ledger, since ?? "", until) : null;
+  const picks = window ? window.tickets : args;
   const files = window && !picks.length ? [] : wanted(existsSync(DIR) ? readdirSync(DIR) : [], picks);
   // Unfiltered, fix-round share was the whole directory's however narrow the window asked for.
   const asked = new Set(files.map((f) => Number.parseInt(f, 10)));
   const rows = (window ? window.rows : ledger).filter((r) => asked.has(r.n));
   const lastSeen = (row, until) => lastStamp(existsSync(join(DIR, `${row.n}.jsonl`)) ? readFileSync(join(DIR, `${row.n}.jsonl`), "utf8") : "", Date.parse(row.started), until);
   // A ticket whose one session in the window was killed has no row there, so `asked` never has it.
-  const killed = killedStarts(withStarts, lastSeen).filter((k) => (since ? k.started >= since : asked.has(k.n)));
+  const killed = killedStarts(withStarts, lastSeen).filter((k) =>
+    window ? k.started >= (since ?? "") && (!until || k.started < until) : asked.has(k.n));
   console.log(report(
-    files.map((f) => readTicket(readFileSync(join(DIR, f), "utf8").split("\n"), f.replace(".jsonl", ""), since)),
+    files.map((f) => readTicket(readFileSync(join(DIR, f), "utf8").split("\n"), f.replace(".jsonl", ""), since, until)),
     rows,
   ));
   const died = killedLine(killed);

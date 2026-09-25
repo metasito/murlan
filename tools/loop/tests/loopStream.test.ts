@@ -1,7 +1,13 @@
 // tools/loop/tests/loopStream.test.ts
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { readLine } from "../loop-stream.mjs";
+import { readLine, scopeEnds } from "../loop-stream.mjs";
+
+test("a scratch write is not the build", () => {
+  for (const file of ["/repo/.worktrees/agent-1/.dod-1.md", "/tmp/pr-1.md", "C:\\Users\\x\\AppData\\Local\\Temp\\pr.md", "/repo/.loop-logs/pr-1.md"])
+    assert.equal(scopeEnds([{ name: "Write", file }]), false, file);
+  assert.equal(scopeEnds([{ name: "Edit", file: "/repo/.worktrees/agent-1/tests/native/setup.ts" }]), true);
+});
 
 describe("readLine", () => {
   test("returns null for a line that is not JSON, rather than throwing", () => {

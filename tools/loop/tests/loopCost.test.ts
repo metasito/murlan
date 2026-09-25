@@ -1,6 +1,8 @@
 // tools/loop/tests/loopCost.test.ts
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { killedLine, lastStamp, ledgerSummary, mismatchedModel, priceOf, readTicket, report, shaTable, sinceWindow, wanted } from "../loop-cost.mjs";
 
 const at = (min: number) => new Date(Date.UTC(2026, 8, 14, 10, min)).toISOString();
@@ -60,8 +62,14 @@ describe("readTicket", () => {
   });
 
   test("an id belonging to no family is named rather than quietly charged as opus", () => {
-    assert.deepEqual(readTicket([say("PHASE D", 0, "<synthetic>")]).unpriced, ["<synthetic>"]);
+    assert.deepEqual(readTicket([say("PHASE D", 0, "claude-mystery-9")]).unpriced, ["claude-mystery-9"]);
     assert.deepEqual(readTicket([say("PHASE D", 0, "claude-haiku-4-5-20251001")]).unpriced, []);
+  });
+
+  test("a synthetic session-limit notice is no turn and no unpriced model", () => {
+    const t = readTicket([say("PHASE D", 0), say("You've hit your session limit", 1, "<synthetic>")]);
+    assert.equal(t.phases.D.turns, 1);
+    assert.deepEqual(t.unpriced, []);
   });
 
   test("a log with no phase markers is read, not dropped", () => {
@@ -132,6 +140,23 @@ describe("sinceWindow", () => {
     assert.deepEqual(out.tickets, ["70", "1090"]);
     assert.equal(out.rows.length, 2);
   });
+
+  test("an until closes the window before a later change", () => {
+    const rows = [
+      { n: 1, started: "2026-09-21T23:59:00.000Z" },
+      { n: 2, started: "2026-09-22T09:00:00.000Z" },
+      { n: 3, started: "2026-09-23T00:00:00.000Z" },
+    ];
+    const out = sinceWindow(rows, "2026-09-22T00:00Z", "2026-09-23T00:00Z");
+    assert.deepEqual(out.tickets, ["2"]);
+  });
+
+  test("a time that does not parse exits 2 with usage, not a RangeError", () => {
+    const cli = fileURLToPath(new URL("../loop-cost.mjs", import.meta.url));
+    const run = spawnSync(process.execPath, [cli, "--since", "nonsense"], { encoding: "utf8" });
+    assert.equal(run.status, 2, run.stderr);
+    assert.match(run.stderr, /--since needs a time/);
+  });
 });
 
 describe("readTicket, across processes and stream lines", () => {
@@ -144,6 +169,7 @@ describe("readTicket, across processes and stream lines", () => {
     });
   const text = (t: string) => ({ type: "text", text: t });
   const call = (name: string, command = "") => ({ type: "tool_use", name, input: { command } });
+  const edit = (name: string, file: string) => ({ type: "tool_use", name, input: { file_path: file } });
 
   test("a message written as one line per block is one turn, priced once", () => {
     const t = readTicket([msg("m1", [text("PHASE D")], 0), msg("m1", [call("Bash", "ls")], 0), msg("m1", [call("Bash", "pwd")], 0)]);
@@ -172,11 +198,25 @@ describe("readTicket, across processes and stream lines", () => {
     assert.deepEqual([t.phases.B.turns, t.phases.C.turns], [1, 1]);
   });
 
+  for (const phase of ["D", "E"]) {
+    test(`a build under PHASE ${phase} is billed to C from its first edit, and a verdict file is not one`, () => {
+      const t = readTicket([
+        msg("m1", [text(`PHASE ${phase}`)], 0),
+        msg("m2", [edit("Write", "/repo/.worktrees/agent-1/.loop-verdict-1.md")], 1),
+        msg("m3", [edit("Edit", "/repo/.worktrees/agent-1/tests/x.ts")], 2),
+        msg("m4", [call("Bash", "npx jest tests/x.ts")], 3),
+      ]);
+      assert.deepEqual([t.phases[phase].turns, t.phases.C?.turns], [2, 2]);
+    });
+  }
+
   test("since leaves out a whole earlier process of the same ticket", () => {
     const early = msg("m1", [text("PHASE C")], 0, "old");
     const late = line({ ...JSON.parse(msg("m2", [text("PHASE D")], 0, "new")), timestamp: "2026-09-21T11:00:00.000Z" });
     const t = readTicket([early, line({ type: "result", session_id: "old", total_cost_usd: 9 }), late], "", "2026-09-21T10:18:00.000Z");
     assert.deepEqual([t.phases.C, t.phases.D.turns, t.usd], [undefined, 1, 0]);
+    const before = readTicket([early, late], "", null, "2026-09-21T10:18:00.000Z");
+    assert.deepEqual([before.phases.C?.turns, before.phases.D], [1, undefined]);
   });
 });
 
