@@ -367,9 +367,9 @@ other scans that list the repository from its root reach every tracked path, pro
 doc-only change skips the browser, build and lint jobs but never the Node suite
 (`tests/tooling/ciScope.test.ts`). The harness job also runs `typecheck`
 and `eslint tools/loop`, since the game's jobs that would otherwise do that are skipped on a
-loop-only change. Beside it, `harness-windows` runs every loop test file that branches on `win32`
-on a Windows runner and fails if any test in them skips: Linux skips those branches, so this is
-the only place they run.
+loop-only change. Beside it, `harness-windows` runs every loop test file with a test that skips off
+`win32` on a Windows runner and fails if any test in them skips: Linux skips those tests, so this
+is the only place they run.
 
 **Run `npm run loop:test` from the repo root, never `npm --prefix tools/loop`** — its tests read
 the repository itself, so npm's cwd sends every one of them looking in the wrong place. **Move by
