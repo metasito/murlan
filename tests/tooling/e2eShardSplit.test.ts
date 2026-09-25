@@ -206,9 +206,11 @@ describe("the plan prices each spec by its latest green run", () => {
     assert.equal(timings["heavy.spec.ts"], 100);
   });
 
-  test("ci.yml hands the plan several of each branch's runs, not only the latest", () => {
+  test("ci.yml hands the plan several of main's runs, and only the branch's latest", () => {
     assert.doesNotMatch(ciYml, /sort_by\(\.created_at\) \| last \| \.id/);
     assert.match(ciYml, /sort_by\(\.created_at\) \| \.\[-\$RUNS:\]/);
+    assert.match(ciYml, /runs=\$RUNS; \[ "\$branch" != main \] && runs=1/);
+    assert.match(ciYml, /--argjson RUNS "\$runs"/);
   });
 
   test("a spec heavier on the branch is priced as the branch runs it", () => {
