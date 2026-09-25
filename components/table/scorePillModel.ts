@@ -110,8 +110,10 @@ export function scorePillHeader(board: number, unit: number): { x: number; y: nu
   };
 }
 
-export function scorePillLift(open: number, board: number): { offsetY: number; blur: number } {
+export const PILL_SHADOW = { rest: { offsetY: 4, blur: 10 }, lifted: { offsetY: 18, blur: 36 } };
+
+/** How far the lifted shadow has faded in over the resting one. */
+export function scorePillLift(open: number, board: number): number {
   "worklet";
-  const lift = Math.max(clamp01(open), board);
-  return { offsetY: 4 + 14 * lift, blur: 10 + 26 * lift };
+  return Math.max(clamp01(open), board);
 }

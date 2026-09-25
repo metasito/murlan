@@ -28,6 +28,7 @@ import { tableFontSize } from "@/components/cardFaceModel";
 import {
   PILL_HEADER,
   PILL_ROW,
+  PILL_SHADOW,
   scorePillBox,
   scorePillFades,
   scorePillHeader,
@@ -126,14 +127,11 @@ export function ScorePill({
   const pillStyle = useAnimatedStyle(() => {
     const box = scorePillBox(progress.value, boardProgress.value, anchor);
     const hit = scorePillHitBox(progress.value, boardProgress.value, anchor, TOUCH_TARGET_MIN);
-    const lift = scorePillLift(progress.value, boardProgress.value);
-    return {
-      top: box.y - hit.y,
-      width: box.w,
-      height: box.h,
-      borderRadius: box.radius,
-      boxShadow: `0px ${lift.offsetY * u}px ${lift.blur * u}px ${SHADOW_SPREAD * u}px ${SHADOW}`,
-    };
+    return { top: box.y - hit.y, width: box.w, height: box.h, borderRadius: box.radius };
+  });
+  const liftStyle = useAnimatedStyle(() => ({ opacity: scorePillLift(progress.value, boardProgress.value) }));
+  const shadowOf = ({ offsetY, blur }: { offsetY: number; blur: number }) => ({
+    boxShadow: `0px ${offsetY * u}px ${blur * u}px ${SHADOW_SPREAD * u}px ${SHADOW}`,
   });
   const chipStyle = useAnimatedStyle(() => ({ opacity: scorePillFades(progress.value, boardProgress.value).chip }));
   const panelStyle = useAnimatedStyle(() => ({ opacity: scorePillFades(progress.value, boardProgress.value).panel }));
@@ -165,6 +163,8 @@ export function ScorePill({
         {...a11yState({ role: "button", expanded: open })}
         style={StyleSheet.absoluteFill}
       />
+      <Animated.View pointerEvents="none" style={[styles.shadow, shadowOf(PILL_SHADOW.rest), pillStyle]} />
+      <Animated.View pointerEvents="none" style={[styles.shadow, shadowOf(PILL_SHADOW.lifted), pillStyle, liftStyle]} />
       <Animated.View pointerEvents="none" style={[styles.pill, pillStyle]}>
         <LinearGradient
           colors={[Colors.scorePillTop, Colors.scorePillFoot, Colors.scorePillFoot]}
@@ -367,6 +367,7 @@ function Chevron({ up, unit }: { up: boolean; unit: number }) {
 
 const styles = StyleSheet.create({
   hit: { position: "absolute", zIndex: Layer.moment },
+  shadow: { position: "absolute", right: 0 },
   pill: {
     position: "absolute",
     right: 0,

@@ -41,6 +41,7 @@ test("a row stands at its place, and moves and grows toward the board", () => {
 });
 
 test("the shadow lifts with whichever of open and board is further along", () => {
-  close(scorePillLift(0, 0), { offsetY: 4, blur: 10 });
-  close(scorePillLift(0.5, 1), { offsetY: 18, blur: 36 });
+  assert.equal(scorePillLift(0, 0), 0);
+  assert.equal(scorePillLift(0.5, 1), 1);
+  assert.equal(scorePillLift(1.1, 0), 1);
 });
