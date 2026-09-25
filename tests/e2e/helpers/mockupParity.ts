@@ -397,10 +397,12 @@ async function captureApp(browser: Browser, baseURL: string, decoder: Page, m: M
     path: path.join(CANVASKIT_DIR, path.basename(new URL(route.request().url()).pathname)),
     headers: { "access-control-allow-origin": "*" },
   }));
+  const started = Date.now();
   await m.appTrigger(page, baseURL);
   const mounted = await traced(page, m.appOnset, `the app's onset of ${m.key}`);
   const onset = variant === "skia" ? await skiaOnset(page, mounted, loading) : mounted;
   const preRollMs = Math.ceil((onset - mounted) / STEP_MS) * STEP_MS;
+  const stripped = Date.now();
   const capture = await strip(page, { x: 0, y: 0 }, decoder, m, preRollMs, (a) => a.app?.(page), async (t) => {
     if (t > preRollMs) await step(page);
     return tracedAt(page, onset + t - preRollMs);
@@ -408,7 +410,7 @@ async function captureApp(browser: Browser, baseURL: string, decoder: Page, m: M
   const felts = new Set(capture.trace.frames.map((f) => f.felt));
   expect([...felts], `the felt on screen through ${m.key}`).toEqual([variant]);
   await page.context().close();
-  return { capture, preRollMs };
+  return { capture, preRollMs, onsetMs: stripped - started, stripMs: Date.now() - stripped };
 }
 
 function bundle(m: Moment, variant: Variant, runs: Record<SideName, Capture>, pillFailures: Failure[], dir: string) {
@@ -450,7 +452,11 @@ export function parityTests(key: string, only?: Variant) {
         side === "mockup"
           ? captureMockup(browser, decoder, m, app.preRollMs)
           : (await captureApp(browser, baseURL!, decoder, m, variant)).capture;
+      const mockupStarted = Date.now();
       const first = { mockup: await capture("mockup"), app: app.capture };
+      const timing = `app onset ${app.onsetMs} ms, app strip ${app.stripMs} ms, mockup ${Date.now() - mockupStarted} ms`;
+      test.info().annotations.push({ type: "parity timing", description: timing });
+      process.stdout.write(`parity timing ${m.key}-${variant}: ${timing}\n`);
 
       let pillFailures: Failure[] = [];
       if (m.pillAtProgress) {
