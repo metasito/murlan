@@ -12,7 +12,7 @@ import assert from "node:assert/strict";
 import pg from "pg";
 import { io as ioClient, type Socket } from "socket.io-client";
 import { PROTOCOL_AUTH, waitFor } from "../helpers/client.ts";
-import { hasDatabase, skipMessage } from "../helpers/testServer.ts";
+import { dropSchema, hasDatabase, scopedDatabaseUrl, skipMessage } from "../helpers/testServer.ts";
 import { boot, type Instance } from "../helpers/instance.ts";
 import { driveHumansToGameOver } from "../helpers/gameDriver.ts";
 
@@ -51,7 +51,7 @@ describe("broadcasts cross server instances", {
 }, () => {
   const schema = `xinst_${Date.now()}_${Math.floor(Math.random() * 1e6)}`;
   const baseUrl = process.env.DATABASE_URL!;
-  const scoped = `${baseUrl}${baseUrl.includes("?") ? "&" : "?"}options=-c%20search_path%3D${schema}`;
+  const scoped = scopedDatabaseUrl(baseUrl, schema);
   const instances: Instance[] = [];
   const sockets: Socket[] = [];
   let aCookie = "";
@@ -88,12 +88,7 @@ describe("broadcasts cross server instances", {
   after(async () => {
     for (const s of sockets) s.close();
     for (const i of instances) i.child.kill("SIGKILL");
-    const admin = new pg.Pool({ connectionString: baseUrl });
-    try {
-      await admin.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
-    } finally {
-      await admin.end();
-    }
+    await dropSchema(baseUrl, schema);
   });
 
   test("a room broadcast reaches the player on the other instance", async () => {

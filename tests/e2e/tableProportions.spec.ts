@@ -9,6 +9,8 @@
 // react-test-renderer never runs (CLAUDE.md, *Known pitfalls*). #340.
 import { test, expect, type Page } from "@playwright/test";
 import { openSeededGame } from "./helpers/offlineSeed";
+import { TABLE_SCREEN } from "./helpers/selectors";
+import { atRest } from "./helpers/settle";
 import { CHIP_H, SEAT_DISC, actionBtnSize } from "../../components/seatLayout";
 import { cardScale } from "../../components/cardFaceModel";
 
@@ -77,7 +79,7 @@ for (const phone of PHONES) {
     test.setTimeout(120_000);
     await page.setViewportSize({ width: phone.width, height: phone.height });
     await openSeededGame(page, baseURL!, 4);
-    await page.waitForTimeout(2_500);
+    await atRest(page, TABLE_SCREEN);
 
     const s = cardScale(Math.min(phone.width, phone.height));
     const b = await boxes(page);
@@ -130,7 +132,7 @@ for (const phone of PHONES) {
     test.setTimeout(120_000);
     await page.setViewportSize({ width: phone.width, height: phone.height });
     await openSeededGame(page, baseURL!, seats);
-    await page.waitForTimeout(2_500);
+    await atRest(page, TABLE_SCREEN);
 
     const b = await boxes(page);
     if (!b.pile || !b.hand) throw new Error("the table never rendered");

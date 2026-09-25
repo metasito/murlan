@@ -120,10 +120,18 @@ export interface TestServer {
   stop(): Promise<void>;
 }
 
-async function dropSchema(baseUrl: string, schema: string): Promise<void> {
+/** DATABASE_URL pointed at `schema`, its connections named after it so `dropSchema` can end them. */
+export function scopedDatabaseUrl(baseUrl: string, schema: string): string {
+  return `${baseUrl}${baseUrl.includes("?") ? "&" : "?"}options=-c%20search_path%3D${schema}&application_name=${schema}`;
+}
+
+export async function dropSchema(baseUrl: string, schema: string): Promise<void> {
   const cleanup = new pg.Pool({ connectionString: baseUrl });
   try {
-    await cleanup.query(`DROP SCHEMA "${schema}" CASCADE`);
+    // A SIGKILLed server's backend runs on until its query ends, holding locks the DROP needs:
+    // the two deadlock (40P01), and Postgres may abort the DROP.
+    await cleanup.query("SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE application_name = $1", [schema]);
+    await cleanup.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
   } finally {
     await cleanup.end();
   }
@@ -163,7 +171,7 @@ export async function startTestServer(
     // Point every connection at the throwaway schema via search_path, and at
     // an ephemeral port, before importing the server (module scope reads
     // these — see server/store/db.ts, which builds its Pool at import time).
-    const scopedUrl = `${baseUrl}${baseUrl.includes("?") ? "&" : "?"}options=-c%20search_path%3D${schema}`;
+    const scopedUrl = scopedDatabaseUrl(baseUrl, schema);
     process.env.DATABASE_URL = scopedUrl;
     process.env.PORT = "0";
     process.env.SESSION_SECRET ??= "test-secret-not-for-production";
