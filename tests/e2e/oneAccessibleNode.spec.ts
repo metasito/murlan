@@ -29,10 +29,19 @@ interface AxNode {
   childIds?: string[];
 }
 
-async function axTree(page: Page): Promise<AxNode[]> {
+/**
+ * The browser's tree once `ready` holds of it. Chrome rebuilds the tree after the DOM changes,
+ * so a single read right after a navigation can predate the screen it is meant to describe.
+ */
+async function axTree(page: Page, ready: (nodes: AxNode[]) => boolean): Promise<AxNode[]> {
   const cdp = await page.context().newCDPSession(page);
   await cdp.send("Accessibility.enable");
-  const { nodes } = (await cdp.send("Accessibility.getFullAXTree")) as { nodes: AxNode[] };
+  let nodes: AxNode[] = [];
+  await expect
+    .poll(async () => ready((nodes = ((await cdp.send("Accessibility.getFullAXTree")) as { nodes: AxNode[] }).nodes)), {
+      message: "the accessibility tree never showed the screen this check reads",
+    })
+    .toBe(true);
   return nodes;
 }
 
@@ -53,10 +62,11 @@ for (const screen of SCREENS) {
     await page.goto(`${baseURL}${screen}`);
     await page.waitForSelector('[role="button"]');
 
-    const nodes = await axTree(page);
+    const isWidget = (n: AxNode) => !n.ignored && WIDGETS.has(n.role?.value ?? "");
+    const nodes = await axTree(page, (all) => all.some(isWidget));
     const byId = new Map(nodes.map((n) => [n.nodeId, n]));
 
-    const widgets = nodes.filter((n) => !n.ignored && WIDGETS.has(n.role?.value ?? ""));
+    const widgets = nodes.filter(isWidget);
     // A screen with no control would pass every assertion below by having
     // nothing to assert about.
     expect(widgets.length).toBeGreaterThan(0);
@@ -95,7 +105,7 @@ test("a grouped container reaches the browser as a named group", async ({ page, 
   const spoken = (await topBar.getAttribute("aria-label")) ?? "";
   expect(spoken, "the top bar has to carry a name at all").not.toEqual("");
 
-  const nodes = await axTree(page);
+  const nodes = await axTree(page, (all) => all.some((n) => !n.ignored && n.name?.value === spoken));
   const named = nodes.filter(
     (n) => !n.ignored && n.role?.value === "group" && n.name?.value === spoken
   );
@@ -169,14 +179,11 @@ test("a revisited room screen carries the room code on exactly one accessible no
   // finds two) but is inert: it never appears in the accessibility tree at
   // all, not merely marked ignored on it.
   expect(await page.getByText("CODICE STANZA").count()).toBe(2);
-  const nodes = await axTree(page);
-  expect(nodes.filter((n) => n.name?.value === "Inserisci codice stanza")).toEqual([]);
-
   // The caption itself is a single reachable node — `StaticText`, Chrome's
   // own role for one run of text; its `InlineTextBox` child carries the same
   // name and is that one run's glyphs, not a second copy of it.
-  const caption = nodes.filter(
-    (n) => !n.ignored && n.name?.value === "CODICE STANZA" && n.role?.value === "StaticText"
-  );
-  expect(caption).toHaveLength(1);
+  const isCaption = (n: AxNode) => !n.ignored && n.name?.value === "CODICE STANZA" && n.role?.value === "StaticText";
+  const nodes = await axTree(page, (all) => all.some(isCaption));
+  expect(nodes.filter((n) => n.name?.value === "Inserisci codice stanza")).toEqual([]);
+  expect(nodes.filter(isCaption)).toHaveLength(1);
 });
