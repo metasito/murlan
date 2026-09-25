@@ -17,7 +17,7 @@ test("a library added, removed or re-versioned needs them", () => {
 
 test("a devDependency, a script or anything else does not", () => {
   assert.equal(needsNative(["package.json"], base, pkg({ expo: "54.0.1", "react-native-svg": "15.1.0" }, { jest: "30.0.0" })), false);
-  assert.equal(needsNative(["components/Card.tsx", "package-lock.json", "tests/a.test.ts"], "", ""), false);
+  assert.equal(needsNative(["components/Card.tsx", "package-lock.json", "README.md"], "", ""), false);
 });
 
 test("an unreadable package.json runs them", () => {
