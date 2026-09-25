@@ -5,7 +5,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { READ_CAP, linesRequested, verdict } from "../guard-read.mjs";
+import { READ_CAP, linesRequested, native, verdict } from "../guard-read.mjs";
 
 const SCRIPT = fileURLToPath(new URL("../guard-read.mjs", import.meta.url));
 let dir = "";
@@ -13,6 +13,8 @@ before(() => {
   dir = fs.mkdtempSync(path.join(os.tmpdir(), "guard-read-"));
   fs.writeFileSync(path.join(dir, "big.ts"), "x\n".repeat(400));
   fs.writeFileSync(path.join(dir, "small.ts"), "x\n".repeat(40));
+  fs.mkdirSync(path.join(dir, "wt"));
+  fs.writeFileSync(path.join(dir, "wt", "only.ts"), "x\n".repeat(400));
 });
 after(() => fs.rmSync(dir, { recursive: true, force: true }));
 
@@ -32,10 +34,10 @@ describe("linesRequested", () => {
     [bash("sed -n 10,40p big.ts"), 31],
     [bash("head -n 300 big.ts"), 300],
     [bash("tail -200 big.ts"), 200],
-    [bash("git log | head -n 500"), 0],
+    [bash("git log | head -n 500"), 500],
     [bash("cat big.ts"), 400],
     [bash("cat big.ts | grep -n foo"), 0],
-    [bash("sed -n 1,400p big.ts | head"), 0],
+    [bash("sed -n 1,400p big.ts | head"), 10],
     [bash("head -c 20000 big.ts"), 500],
     [bash("nl big.ts"), 400],
     [bash("cat small.ts"), 40],
@@ -48,12 +50,47 @@ describe("linesRequested", () => {
     [read("big.ts", { limit: 300 }), 300],
     [read("small.ts"), 40],
     [read("missing.ts"), 0],
+    [bash("cat big.ts | head -200"), 200],
+    [bash("cat small.ts | head -200"), 40],
+    [bash("git log --oneline | head -20"), 20],
+    [bash("gh issue view 1 --comments | tail -80"), 80],
+    [bash("cat big.ts | grep -n foo | head -300"), 0],
+    [bash("cat big.ts || true"), 400],
+    [bash("cat big.ts 2>/dev/null || find . -name x"), 400],
+    [bash("cat big.ts; echo 'a|b'"), 400],
+    [bash("cd wt && cat only.ts"), 400],
+    [bash("cat only.ts"), 0],
+    [bash("sed -n '1,100p;200,260p' big.ts"), 161],
+    [bash("git show HEAD:big.ts"), 400],
+    [bash("git -C wt show HEAD:only.ts"), 400],
+    [bash('grep -n "" big.ts'), 400],
+    [bash("grep -n foo big.ts"), 0],
+    [bash('grep -n "foo" big.ts'), 0],
+    [bash("grep -c '' big.ts"), 0],
+    [bash("cat big.ts | grep -v zzz"), 400],
+    [bash("grep -n '' big.ts | sed -n 1,130p"), 130],
+    [bash("sed -n '1,$p' big.ts"), 400],
+    [bash("sed -n '100,$p' big.ts"), 301],
+    [bash("sed '' big.ts"), 400],
+    [bash("sed 's/a/b/' big.ts"), 400],
+    [bash("sed -i 's/a/b/' big.ts"), 0],
+    [bash("cat big.ts | sed 's/a/b/'"), 400],
+    [bash("git log | sed 's/a/b/'"), 0],
   ];
   for (const [payload, want] of cases) {
     test(JSON.stringify((payload as { tool_input: object }).tool_input), () => {
       assert.equal(linesRequested(payload, count), want);
     });
   }
+
+  test("a Git Bash /c/… cd resolves on win32", { skip: process.platform !== "win32" }, () => {
+    const msys = dir.replace(/^([A-Za-z]):/, (_, d) => `/${d.toLowerCase()}`).replace(/\\/g, "/");
+    assert.equal(linesRequested(bash(`cd ${msys}/wt && cat only.ts`), count), 400);
+  });
+
+  test("Git Bash's /tmp is the OS temp dir on win32", { skip: process.platform !== "win32" }, () => {
+    assert.equal(native("/tmp/v.md"), `${os.tmpdir().replace(/\\/g, "/")}/v.md`);
+  });
 });
 
 describe("verdict", () => {
@@ -61,6 +98,7 @@ describe("verdict", () => {
     const why = verdict(bash("sed -n 330,700p big.ts"), count);
     assert.match(String(why), /371 lines/);
     assert.match(String(why), /sonnet subagent/);
+    assert.match(String(why), /head -n 150/);
   });
   test("at the cap allows", () => {
     assert.equal(verdict(bash(`sed -n 1,${READ_CAP}p big.ts`), count), null);
@@ -80,6 +118,10 @@ describe("the hook", () => {
   test("allows a subagent, and a session outside the loop", () => {
     assert.equal(run({ ...bash("sed -n 1,400p big.ts"), agent_id: "a1" }), "");
     assert.equal(run(bash("sed -n 1,400p big.ts"), {}), "");
+  });
+  test("a directory operand does not fail the hook open", () => {
+    const out = JSON.parse(run(bash("cat wt big.ts")));
+    assert.equal(out.hookSpecificOutput.permissionDecision, "deny");
   });
   for (const payload of ["", "not json", "{}", "null"]) {
     test(`fails open on: ${payload || "(empty)"}`, () => assert.equal(run(payload), ""));

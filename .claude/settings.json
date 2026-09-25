@@ -8,6 +8,11 @@
             "type": "command",
             "command": "node",
             "args": ["${CLAUDE_PROJECT_DIR}/tools/loop/guard-bash.mjs"]
+          },
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["${CLAUDE_PROJECT_DIR}/tools/loop/guard-verdict.mjs"]
           }
         ]
       },
@@ -22,7 +27,7 @@
         ]
       },
       {
-        "matcher": "Write|Edit",
+        "matcher": "Write|Edit|NotebookEdit",
         "hooks": [
           {
             "type": "command",
@@ -33,6 +38,11 @@
             "type": "command",
             "command": "node",
             "args": ["${CLAUDE_PROJECT_DIR}/tools/loop/guard-comments.mjs"]
+          },
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["${CLAUDE_PROJECT_DIR}/tools/loop/guard-write.mjs"]
           }
         ]
       },
@@ -49,7 +59,7 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "Bash|Read|Grep|Glob|Agent|Task|WebFetch",
+        "matcher": "Bash|Read|Grep|Glob|Agent|Task|WebFetch|Edit|Write",
         "hooks": [
           {
             "type": "command",

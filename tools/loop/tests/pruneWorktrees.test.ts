@@ -19,6 +19,7 @@ import {
   listWorktreeDirNames,
   findOrphanedWorktreeDirs,
   newsCount,
+  pruneCandidates,
   removable,
 } from "../prune-worktrees.mjs";
 
@@ -333,6 +334,27 @@ describe("findOrphanedWorktreeDirs", () => {
       ["C:/Users/roton/murlan/.worktrees/agent-12"],
     );
     assert.deepEqual(result, process.platform === "win32" ? [] : ["Agent-12"]);
+  });
+});
+
+describe("pruneCandidates", () => {
+  const root = path.resolve("/repo");
+  const e = (p: string, branch: string | null = null) => ({ path: p, branch, locked: false });
+  const own = path.join(root, WORKTREE_DIR, "agent-12");
+  const entries = [
+    e(root, "main"),
+    e(own, "agent/12-x"),
+    e(path.join(root, ".claude", "worktrees", "foo"), "claude/foo"),
+    e(path.join(root, ".claude", "worktrees", "bar")),
+    e(path.resolve("/murlan-side-1206"), "side/1206-x"),
+    e(path.join(root, WORKTREE_DIR, "agent-13"), "agent/13-y"),
+  ];
+  test("only the loop's own .worktrees/ entries, and never the caller's", () => {
+    assert.deepEqual(pruneCandidates(entries, path.join(root, WORKTREE_DIR, "agent-13")).map((c: { path: string }) => c.path), [own]);
+  });
+  test("porcelain's forward slashes and another case still match on win32", { skip: process.platform !== "win32" }, () => {
+    const porcelain = [e(root.replace(/\\/g, "/"), "main"), e(own.toUpperCase().replace(/\\/g, "/"), "agent/12-x")];
+    assert.equal(pruneCandidates(porcelain, root).length, 1);
   });
 });
 

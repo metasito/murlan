@@ -321,6 +321,8 @@ the spec count, not the colour).
   points at `worktrees:remove` (rule 39);
   `tools/loop/tests/worktreeRemoveCommand.test.ts` plants the defect. `npm run worktrees:prune`
   (`-- --dry-run` to only classify) cleans up one left by a killed/crashed session the same way.
+  It only ever removes worktrees directly under `.worktrees/`; one registered anywhere else is a
+  person's, and only `worktrees:remove` takes it.
   Never hand-create the junction either — it is actively harmful: `node --test` fails every file
   with `Cannot find package 'typescript'` through one, while `tsc`/`eslint` keep working, which
   reads exactly like a broken branch.
@@ -358,6 +360,16 @@ asserts the game's React contexts stay a partition, so it stays on the game's si
 **`check:comments` rides both the `Lint` job and the `Loop harness` job**, never `npm run lint`
 itself — it's first heard from on CI unless you run it yourself. It diffs against the merge base
 via `git diff`, so an uncommitted edit counts but an untracked file doesn't show at all.
+
+**Some hooks act only in a loop session** (`LOOP_TURNS` set; `.claude/settings.json` registers
+every hook):
+- `tools/loop/guard-bash.mjs` also refuses `sed -i`/`perl -i` (rule 44) and a `git worktree add`
+  anywhere but `.worktrees/agent-<n>` (rules 7 and 32).
+- `tools/loop/guard-write.mjs` refuses a Write, Edit or NotebookEdit into the shared checkout;
+  the worktrees under `.worktrees/`, `.loop-logs/` and paths outside the repo stay writable
+  (rules 8 and 31).
+- `tools/loop/guard-verdict.mjs` refuses a `VERDICT: LAND` until that round's own reviewers have
+  run, or until `loop-gate --review-round` has said the cap is reached (rule 29).
 
 ## Owner decisions
 

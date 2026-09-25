@@ -423,6 +423,26 @@ describe("a workflow lookup that fails is announced, not swallowed", () => {
   });
 });
 
+describe("a dispatch ref through a variable", () => {
+  test("a literal assignment earlier on the line is read", () => {
+    assert.equal(check('B=agent/12-x && gh workflow run ios.yml --ref "$B"', () => null, repo,false), null);
+  });
+  test("a variable it cannot read is still refused", () => {
+    assert.notEqual(check("B=$(git branch --show-current) && gh workflow run ios.yml --ref $B", () => null, repo,false), null);
+    assert.notEqual(check("B=main && gh workflow run ios.yml --ref $B", () => null, repo,false), null);
+  });
+});
+
+describe("loop sessions only", () => {
+  for (const cmd of ["sed -i 's/a/b/' tools/loop/guard-bash.mjs", "perl -pi -e 's/a/b/' x.ts", "git worktree add -b side/x ../murlan-side-1 origin/main"]) {
+    test(`refuses in the loop: ${cmd}`, () => assert.notEqual(check(cmd, () => null, repo,true), null));
+    test(`allows outside the loop: ${cmd}`, () => assert.equal(check(cmd, () => null, repo,false), null));
+  }
+  test("queue.md's rebuild of the ticket's own worktree is allowed", () => {
+    assert.equal(check("git worktree add -B agent/12-x .worktrees/agent-12 origin/agent/12-x", () => null, repo,true), null);
+  });
+});
+
 describe("the entrypoint fails open on a payload it cannot read", () => {
   for (const [what, stdin] of [
     ["text that is not JSON", "not json"],
@@ -474,14 +494,16 @@ describe("the hooks settings.json registers", () => {
 
   test("cover every tool and every session start they guard", () => {
     for (const tool of ["Bash", "PowerShell"]) assert.ok(matched("PreToolUse", "guard-bash.mjs").includes(tool), tool);
+    for (const tool of ["Bash", "PowerShell"]) assert.ok(matched("PreToolUse", "guard-verdict.mjs").includes(tool), tool);
     for (const tool of ["Write", "Edit"]) assert.ok(matched("PreToolUse", "guard-comments.mjs").includes(tool), tool);
     for (const source of ["startup", "resume", "compact", "clear"]) {
       assert.ok(matched("SessionStart", "loop-status.mjs").includes(source), source);
     }
+    for (const tool of ["Write", "Edit", "NotebookEdit"]) assert.ok(matched("PreToolUse", "guard-write.mjs").includes(tool), tool);
     for (const tool of ["Agent", "Task"]) assert.ok(matched("PreToolUse", "guard-agent-model.mjs").includes(tool), tool);
     assert.deepEqual(
       matched("PostToolUse", "guard-context.mjs"),
-      ["Bash", "Read", "Grep", "Glob", "Agent", "Task", "WebFetch"],
+      ["Bash", "Read", "Grep", "Glob", "Agent", "Task", "WebFetch", "Edit", "Write"],
       "the tools whose output grows context; every other call would start node for nothing",
     );
   });
