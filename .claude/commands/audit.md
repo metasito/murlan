@@ -18,9 +18,8 @@ What it must deliver:
 
 ## Step 1 — Preflight (inline)
 
-1. Pin the commit:
-   `git -C C:/Users/roton/murlan fetch origin && git -C C:/Users/roton/murlan rev-parse origin/main`
-   → `sha`.
+1. Pin the checkout and the commit, from the checkout you are in:
+   `git fetch origin && git rev-parse --show-toplevel origin/main` → `repo`, then `sha`.
 2. Load the open tracker, so that known issues come back marked `tracked`:
    `gh issue list --repo metasito/murlan --state open --limit 300 --json number,title --jq '[.[]|{n:.number,t:.title}]'`
    → `openIssues`.
@@ -30,12 +29,12 @@ What it must deliver:
 4. `webUrl`: the URL of a web build that is **already** being served, or `null`. Do not start a
    build for the audit.
 
-**Done when:** you hold `sha`, `openIssues` and `webUrl`.
+**Done when:** you hold `repo`, `sha`, `openIssues` and `webUrl`.
 
 ## Step 2 — Run the workflow
 
 Call `Workflow` with `scriptPath: ".claude/workflows/audit.mjs"` and pass
-`args: { sha, openIssues, webUrl }` as a real JSON object, not a JSON-encoded string. Follow
+`args: { repo, sha, openIssues, webUrl }` as a real JSON object, not a JSON-encoded string. Follow
 progress in `/workflows`. If a run dies, resume it with `resumeFromRunId`; do not restart it.
 
 **Done when:** it returns `{ report, confirmed, opportunities, infra, refuted, failedLenses, coverage }`.

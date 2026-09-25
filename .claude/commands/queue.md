@@ -157,7 +157,7 @@ Phase C is a fix round when `loop-status.mjs` says `fix round`. Skip the plannin
    npm run agent:check -- --also test:native   # or loop:test, comments; `test` always runs
    ```
 
-5. Post what this round ruled out, at most 15 lines, each hypothesis and its evidence.
+5. Post what this round ruled out: each hypothesis on one line, with its evidence.
    `<sha>` is `git rev-parse --short HEAD`, taken after the fix is committed:
 
    ```sh

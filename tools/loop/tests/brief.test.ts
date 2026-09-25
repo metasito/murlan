@@ -26,7 +26,7 @@ describe("brief", () => {
 
   test("the completeness brief sweeps every removed or renamed name", () => {
     const text = brief("completeness", { n: 1103, worktree: WT });
-    assert.match(text, /gh issue view 1103 --comments/);
+    assert.match(text, /gh issue view 1103 --json title,body,comments/);
     assert.match(text, /git -C \S+ diff origin\/main\.\.\.HEAD/);
     for (const kind of ["env var", "npm script", "locale key", "testID", "file path"]) assert.ok(text.includes(kind), kind);
     assert.match(text, /git -C \S+ grep/);
