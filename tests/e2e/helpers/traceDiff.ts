@@ -25,7 +25,8 @@ export type Field =
   | "level"
   | "flare"
   | "shake"
-  | "brightness";
+  | "brightness"
+  | "scorePill";
 
 export interface Failure {
   field: Field;
@@ -33,7 +34,10 @@ export interface Failure {
   mockup: unknown;
   app: unknown;
   message: string;
+  region?: string;
 }
+
+export type PillBox =Omit<NonNullable<TraceFrame["scorePill"]>, "open">;
 
 /** The #1250 findings' proposal; the owner confirms them on the owner-review ticket. */
 export const TOLERANCES = {
@@ -44,7 +48,14 @@ export const TOLERANCES = {
   shakePeakRatio: 0.1,
   shakeEndMs: STEP_MS,
   brightness: 6,
+  pillPt: 1,
 };
+
+const PILL_OPEN = 0.999;
+
+function pillOff(a: PillBox, m: PillBox): number {
+  return Math.max(Math.abs(a.x - m.x), Math.abs(a.y - m.y), Math.abs(a.w - m.w), Math.abs(a.h - m.h));
+}
 
 const SHAKE_REST = 0.01;
 
@@ -124,6 +135,12 @@ export function diffTraces(
       }
     }
     if (!m.shake !== !a.shake) fail("shake", t, m.shake, a.shake, "a shake on one side only");
+    if (!m.scorePill || !a.scorePill) {
+      if (m.scorePill !== a.scorePill) fail("scorePill", t, m.scorePill, a.scorePill, "a score pill on one side only");
+    } else {
+      const d = pillOff(a.scorePill, m.scorePill);
+      if (d > tol.pillPt) fail("scorePill", t, m.scorePill, a.scorePill, `score pill ${d.toFixed(1)} pt off`);
+    }
   }
 
   for (const field of ["live", "dropped"] as const) {
@@ -148,8 +165,30 @@ export function diffTraces(
     for (const [name, mv] of Object.entries(m.regions)) {
       const av = a?.regions[name];
       if (av === undefined || Math.abs(av - mv) > tol.brightness) {
-        fail("brightness", m.t, mv, av, `${name} ${av?.toFixed(1)} against ${mv.toFixed(1)}`);
+        out.push({ field: "brightness", t: m.t, mockup: mv, app: av, message: `${name} ${av?.toFixed(1)} against ${mv.toFixed(1)}`, region: name });
       }
+    }
+  }
+  return out;
+}
+
+/** Each app frame's pill box against the mockup's `renderScore` at that frame's own open progress. */
+export function diffPillAtProgress(
+  app: Trace,
+  mockupAt: (open: number) => PillBox,
+  tol: typeof TOLERANCES = TOLERANCES
+): Failure[] {
+  const out: Failure[] = [];
+  const traced = app.frames.filter((f) => f.scorePill);
+  const widest = Math.max(-Infinity, ...traced.map((f) => f.scorePill!.open));
+  if (!(widest >= PILL_OPEN)) {
+    out.push({ field: "scorePill", t: 0, mockup: 1, app: widest, message: `the pill opened only to ${widest}` });
+  }
+  for (const f of traced) {
+    const m = mockupAt(f.scorePill!.open);
+    const d = pillOff(f.scorePill!, m);
+    if (d > tol.pillPt) {
+      out.push({ field: "scorePill", t: f.t, mockup: m, app: f.scorePill, message: `score pill ${d.toFixed(1)} pt off at open ${f.scorePill!.open}` });
     }
   }
   return out;
@@ -169,6 +208,7 @@ export function movingFields(trace: Trace): Set<Field> {
     if (differs((f) => f.lamp?.level)) moved.add("level");
     if (differs((f) => f.lamp?.flare)) moved.add("flare");
     if (differs((f) => f.shake)) moved.add("shake");
+    if (differs((f) => f.scorePill && [f.scorePill.x, f.scorePill.y, f.scorePill.w, f.scorePill.h])) moved.add("scorePill");
   }
   const [r0] = trace.regions;
   if (r0 && trace.regions.some((r) => JSON.stringify(r.regions) !== JSON.stringify(r0.regions))) moved.add("brightness");

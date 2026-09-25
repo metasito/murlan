@@ -2,6 +2,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import {
+  diffPillAtProgress,
   diffTraces,
   movingFields,
   STEP_MS,
@@ -22,6 +23,7 @@ function reference(): Trace {
       dropped: t < 200 ? 0 : 10,
       lamp: { x: 457 + t / 10, y: 292, level: 1 - t / 1000, flare: t / 1000 },
       shake: t <= 256 ? { x: 9 - t / 32, y: 4, rotate: 1.3 } : { x: 0, y: 0, rotate: 0 },
+      scorePill: { x: 722.2, y: 13.4, w: 124, h: 23.7, open: 0 },
     });
   }
   const regions = CHECKPOINTS.map((t) => ({
@@ -101,6 +103,17 @@ describe("diffTraces", () => {
     assert.deepEqual(fieldsOf(planted((tr) => (tr.regions[2].regions.pile -= 5))), new Set());
   });
 
+  test("a failing region is named on its failure", () => {
+    const failures = diffTraces(reference(), planted((tr) => (tr.regions[1].regions.scorePill += 7)), CHECKPOINTS);
+    assert.deepEqual(failures.map((f) => f.region), ["scorePill"]);
+  });
+
+  test("a score pill 1.5 pt off at a checkpoint fails; 0.5 pt passes; one side only fails", () => {
+    assert.deepEqual(fieldsOf(planted((tr) => (at(tr, 160).scorePill!.w += 1.5))), new Set(["scorePill"]));
+    assert.deepEqual(fieldsOf(planted((tr) => (at(tr, 160).scorePill!.x -= 0.5))), new Set());
+    assert.deepEqual(fieldsOf(planted((tr) => (at(tr, 480).scorePill = null))), new Set(["scorePill"]));
+  });
+
   test("a checkpoint the app never reached fails rather than passing on nothing", () => {
     const short = planted((tr) => (tr.frames = tr.frames.filter((f) => f.t < 300)));
     assert.ok(fieldsOf(short).has("frames"));
@@ -115,7 +128,33 @@ describe("diffTraces", () => {
       shakePeakRatio: 0.1,
       shakeEndMs: STEP_MS,
       brightness: 6,
+      pillPt: 1,
     });
+  });
+});
+
+describe("diffPillAtProgress", () => {
+  const box = (open: number) => ({ x: 846.2 - (124 + 112 * open), y: 13.4, w: 124 + 112 * open, h: 23.7 + 104.3 * open });
+  const opening = (): Trace => ({
+    frames: [0, 0, 0.4, 0.9, 1.08, 1].map((open, i) => ({ ...reference().frames[i], scorePill: { ...box(open), open } })),
+    regions: [],
+  });
+  const mockupAt = (open: number) => box(open);
+
+  test("an app box on the mockup's at every progress it passed through passes", () => {
+    assert.deepEqual(diffPillAtProgress(opening(), mockupAt), []);
+  });
+
+  test("a box 1.5 pt off at one progress fails there", () => {
+    const off = opening();
+    off.frames[3].scorePill!.h += 1.5;
+    assert.deepEqual(diffPillAtProgress(off, mockupAt).map((f) => [f.field, f.t]), [["scorePill", off.frames[3].t]]);
+  });
+
+  test("a pill that never opened fails rather than passing at rest", () => {
+    const shut = opening();
+    for (const f of shut.frames) f.scorePill = { ...box(0), open: 0 };
+    assert.equal(diffPillAtProgress(shut, mockupAt).length, 1);
   });
 });
 
@@ -125,6 +164,8 @@ describe("movingFields", () => {
       movingFields(reference()),
       new Set(["onset", "live", "dropped", "lamp", "level", "flare", "shake", "brightness"])
     );
+    const opened = planted((tr) => (at(tr, 480).scorePill!.w = 236));
+    assert.ok(movingFields(opened).has("scorePill"));
   });
 
   test("a still trace moves nothing", () => {

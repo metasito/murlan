@@ -13,6 +13,7 @@ import {
   Platform,
   useWindowDimensions,
   type AccessibilityProps,
+  type GestureResponderEvent,
   type ViewProps,
   type ViewStyle,
 } from "react-native";
@@ -48,7 +49,17 @@ import { useExchangeTrips } from "@/components/table/ExchangeFlight";
 import { canPassNow as canPassNowOf, turnTimerActive } from "@/components/turnTimerUi";
 import { computeTableFrame } from "@/components/tableFrame";
 import { describeTableForA11y, type TableA11yExchange, type TableA11yLastPlay, type TableA11yOpponent } from "@/components/tableA11y";
-import { CARD_H, cardScale, FIELD_SCALE, HAND_SCALE, physicalTouchTarget } from "@/components/cardFaceModel";
+import {
+  BASE_SHORT_EDGE,
+  CARD_H,
+  cardScale,
+  FIELD_SCALE,
+  HAND_SCALE,
+  physicalTouchTarget,
+} from "@/components/cardFaceModel";
+import { ScorePill } from "@/components/table/scorePill";
+import { MOCKUP_SHORT_EDGE, scorePillHitBox } from "@/components/table/scorePillModel";
+import { scorePillStandings } from "@/lib/game/scorePill";
 import { useTranslation } from "@/lib/i18n";
 import {
   CHIP_NAME_MAX_W,
@@ -93,7 +104,18 @@ import { playRoundStart, playRoundWin, holdSounds, preloadSounds } from "@/lib/d
 import { hapticLight, hapticSelection } from "@/lib/device/haptics";
 import { playCue } from "@/lib/device/playCue";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
-import { Colors, FontSize, Motion, motionMs, Radius, Reading, Scrim, Spacing, Layer } from "@/lib/theme";
+import {
+  Colors,
+  FontSize,
+  Motion,
+  motionMs,
+  Radius,
+  Reading,
+  Scrim,
+  Spacing,
+  Layer,
+  TOUCH_TARGET_MIN,
+} from "@/lib/theme";
 import { useTableFelt } from "@/lib/cosmetics";
 import { A11yStatus, A11yVeil, a11yGroup, a11yHidden, a11yVeiled } from "@/lib/a11y";
 
@@ -222,6 +244,11 @@ export interface GameTableProps {
    * read, the sting simply stays silent rather than guessing.
    */
   handScores?: Record<string, number>;
+  /**
+   * The partita's running points by engine player id, and the target they race to — what
+   * the score pill shows. Absent where there is no partita: a single manche, a replay.
+   */
+  matchScore?: { scores: Record<string, number>; target: number };
   /** Seat the table is drawn from. Always rendered at the bottom. */
   viewerSeat: number;
   /**
@@ -277,6 +304,7 @@ export function GameTable({
   gameState,
   matchOver = false,
   handScores = {},
+  matchScore,
   viewerSeat,
   spectating = false,
   selectedIds,
@@ -316,6 +344,7 @@ export function GameTable({
   // session's own choice, not a stored preference — sound, music and
   // vibration are the persisted ones, which the sheet reads for itself.
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [scoreOpen, setScoreOpen] = useState(false);
   // Who opens the manche, held over the table for as long as that opening has
   // yet to be played. The opening ending is what turns the sentence into a
   // statement about the past, so it is a condition of showing it at all rather
@@ -495,6 +524,35 @@ export function GameTable({
   );
 
   const frame = computeTableFrame({ width: W, height: H, insets, scale });
+
+  const pillAnchor = {
+    right: W - frame.tableRight - frame.pad,
+    top: frame.tableTop,
+    restH: CHIP_H(scale),
+    centreX: (frame.tableLeft + W - frame.tableRight) / 2,
+    unit: (scale * BASE_SHORT_EDGE) / MOCKUP_SHORT_EDGE,
+  };
+  const pillStandings =
+    matchScore &&
+    scorePillStandings({
+      players,
+      teams: gameState.gameMode === "teams",
+      scores: matchScore.scores,
+      handScores,
+      rankings: gameState.rankings,
+      viewerId: spectating ? undefined : viewer?.id,
+    });
+  // Capture, returning false: every touch on the table closes the pill on its way to
+  // whatever it was for, so the pill never costs a play. The pill's own box is left to
+  // the pill, whose press toggles it.
+  const closeScoreElsewhere = (e: GestureResponderEvent) => {
+    if (scoreOpen) {
+      const hit = scorePillHitBox(1, 0, pillAnchor, TOUCH_TARGET_MIN);
+      const { pageX: x, pageY: y } = e.nativeEvent;
+      if (x < hit.x || x > hit.x + hit.w || y < hit.y || y > hit.y + hit.h) setScoreOpen(false);
+    }
+    return false;
+  };
 
   const seatGeometry = {
     viewerSeat,
@@ -895,7 +953,7 @@ export function GameTable({
   const exchangeTrips = useExchangeTrips(exchangeAnnouncement?.data, seatGeometry);
 
   return (
-    <View style={[styles.root, WEB_CLIP]}>
+    <View style={[styles.root, WEB_CLIP]} onStartShouldSetResponderCapture={closeScoreElsewhere}>
       {/* Felt — decoration only: one canvas that never carries game
           information (#1244), lit by the one lamp rig. */}
       <View
@@ -915,9 +973,9 @@ export function GameTable({
       <Animated.View style={[styles.kick, WEB_CLIP, TABLE_Z, kickStyle]}>
         <Sweep trigger={flushTrigger} width={W} height={H} />
         <A11yStatus label={tableA11yLabel} veiled={tableWithdrawn} />
-        {/* Two chips over the felt, at the corners the cards never reach — the
-            combination in play at the head of the field, whose turn it is at the
-            far side. Anything wider would be chrome drawn where a card lands. */}
+        {/* Chips over the felt where the cards never reach — the combination in
+            play at the head of the field, whose turn it is at the top centre, the
+            score at the far corner. Anything wider would be chrome drawn where a card lands. */}
         <Animated.View
           testID="game-top-bar"
           {...a11yGroup(topBarA11yLabel)}
@@ -946,11 +1004,11 @@ export function GameTable({
 
         <Animated.View
           testID="game-hud-stack"
-          pointerEvents={focusMode ? "none" : undefined}
+          pointerEvents={focusMode ? "none" : "box-none"}
           {...clockVeil}
           style={[
-            styles.hudRight,
-            { right: frame.tableRight + frame.pad, top: frame.tableTop, gap: frame.pad },
+            styles.hudCentre,
+            { left: frame.tableLeft, right: frame.tableRight, top: frame.tableTop },
             holdingForStart && HELD_CLOCK_Z,
             focusFadeStyle,
           ]}
@@ -974,6 +1032,18 @@ export function GameTable({
             />
           </A11yVeil>
         </Animated.View>
+
+        {pillStandings && matchScore && (
+          <View {...behindVeil} pointerEvents="box-none" style={styles.pillLayer}>
+            <ScorePill
+              standings={pillStandings}
+              target={matchScore.target}
+              open={scoreOpen}
+              onPress={() => setScoreOpen((open) => !open)}
+              anchor={pillAnchor}
+            />
+          </View>
+        )}
 
         {/* Over the whole table rather than inside the mid band: it holds the
             table as well as saying something, so the first tap is spent clearing
@@ -1052,7 +1122,7 @@ export function GameTable({
             Players get the same sentence from the A11yStatus node above. */}
         <View
           testID="game-table"
-          {...harnessState({ tableState: tableA11yLabel })}
+          {...harnessState({ tableState: tableA11yLabel, dealing: String(deal.dealing) })}
           {...behindVeil}
           style={[
             sharedTableStyles.tableOverlay,
@@ -1387,7 +1457,8 @@ const styles = StyleSheet.create({
   },
 
   hudLeft: { position: "absolute", zIndex: Layer.moment },
-  hudRight: { position: "absolute", alignItems: "flex-end", zIndex: Layer.moment },
+  hudCentre: { position: "absolute", alignItems: "center", zIndex: Layer.moment },
+  pillLayer: { position: "absolute", left: 0, top: 0, right: 0, bottom: 0, zIndex: Layer.moment },
   handSectionReversed: { flexDirection: "row-reverse" },
 
 

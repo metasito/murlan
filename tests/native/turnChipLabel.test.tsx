@@ -21,6 +21,7 @@ import { hapticSelection } from '@/lib/device/haptics';
 import { playClockRunningOut, stopClockRunningOut } from '@/lib/device/sounds';
 import { CLOCK_RUNNING_OUT_SECONDS } from '@/components/turnTimerUi';
 import { tn } from '@/lib/i18n';
+import { Colors } from '@/lib/theme';
 
 const CLOCK_SECONDS = 30;
 /** What `gameTable.a11yYourTurn` and `gameShared.yourTurn` are to this chip. */
@@ -29,13 +30,13 @@ const DRAWN_SEAT = 'Your turn';
 
 const secondsLeft = (n: number) => tn('gameTable.a11ySecondsLeft', n);
 
-const chip = (active = true) => (
+const chip = (active = true, lit = true) => (
   <TurnChip
     seconds={CLOCK_SECONDS}
     active={active}
     resetKey="turn-1"
     scale={1}
-    lit
+    lit={lit}
     chipText={DRAWN_SEAT}
     spokenSeat={SPOKEN_SEAT}
   />
@@ -105,6 +106,31 @@ describe('the turn chip', () => {
     }
     expect(jest.mocked(playClockRunningOut)).toHaveBeenCalledTimes(1);
     expect(jest.mocked(hapticSelection)).not.toHaveBeenCalled();
+    await r.unmount();
+  });
+
+  it.each([
+    [true, true],
+    [false, false],
+  ])('turns ember at CLOCK_RUNNING_OUT_SECONDS left when lit (%s), with the sound', async (lit, ember) => {
+    jest.mocked(playClockRunningOut).mockClear();
+    const dotIsEmber = () =>
+      JSON.stringify(screen.getByTestId('turn-chip-dot', { includeHiddenElements: true }).props.style).includes(
+        Colors.emberDot
+      );
+    const r = await render(chip(true, lit));
+    for (let i = 0; i < CLOCK_SECONDS - CLOCK_RUNNING_OUT_SECONDS - 1; i++) {
+      await act(async () => {
+        jest.advanceTimersByTime(1000);
+      });
+    }
+    expect(dotIsEmber()).toBe(false);
+    expect(jest.mocked(playClockRunningOut)).not.toHaveBeenCalled();
+    await act(async () => {
+      jest.advanceTimersByTime(1000);
+    });
+    expect(dotIsEmber()).toBe(ember);
+    expect(jest.mocked(playClockRunningOut)).toHaveBeenCalledTimes(1);
     await r.unmount();
   });
 

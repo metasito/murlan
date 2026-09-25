@@ -10,7 +10,17 @@ import { GIOCA_VALID_LABEL } from "./helpers/labels";
 import { offlineGameSave } from "./helpers/offlineSeed";
 import { skiaOnSoftware } from "./helpers/tableTrace";
 import { installVirtualClock, takeOver, step, stepUntil } from "./helpers/virtualClock";
-import { diffTraces, movingFields, STEP_MS, type Field, type Trace, type TraceFrame } from "./helpers/traceDiff";
+import {
+  diffPillAtProgress,
+  diffTraces,
+  movingFields,
+  STEP_MS,
+  type Failure,
+  type Field,
+  type PillBox,
+  type Trace,
+  type TraceFrame,
+} from "./helpers/traceDiff";
 import { regionBrightness, regionsFor, TABLE, type Seat } from "./helpers/parityRegions";
 import { E2E_SUSPEND_AI_KEY, OFFLINE_SAVE_KEY, TUTORIAL_SEEN_KEY } from "../../lib/storageKeys";
 import { handOffDelayMs } from "../../components/flightPhysics";
@@ -45,10 +55,19 @@ interface Moment {
   /** Parity mode: the fields held to the mockup, and the regions whose brightness is. */
   fields?: Field[];
   regions?: string[];
-  /** What the mockup's own script does to the table, done to the app at the same chapter time. */
-  appActions?: { atMs: number; run: (page: Page) => Promise<void> }[];
+  /** The mockup's chapter, where it is not `key`. */
+  chapter?: string;
   mockupScript?: string;
+  /** Done on each side at `atMs` in chapter time: the app's by Playwright, the mockup's as a script. A side
+   *  without one leaves it to the mockup's own chapter script. */
+  actions?: { atMs: number; app?: (page: Page) => Promise<unknown>; mockup?: string }[];
+  /** Gates the app's pill box against the mockup's `renderScore` at each progress the app traced. */
+  pillAtProgress?: boolean;
+  variants?: Variant[];
 }
+
+/** The mockup's `BASE`, by the seat each name sits at: luan right, besnik across, gent left. */
+const MOCKUP_SCORES = { player_0: 15, player_1: 11, player_2: 16, player_3: 10 };
 
 const heldTurnTable = async (page: Page, baseURL: string) => {
   await skiaOnSoftware(page);
@@ -59,7 +78,7 @@ const heldTurnTable = async (page: Page, baseURL: string) => {
     [
       [TUTORIAL_SEEN_KEY, "1"],
       [E2E_SUSPEND_AI_KEY, "1"],
-      [OFFLINE_SAVE_KEY, JSON.stringify(offlineGameSave(4, 13, 0))],
+      [OFFLINE_SAVE_KEY, JSON.stringify(offlineGameSave(4, 13, 0, MOCKUP_SCORES))],
     ]
   );
   await page.goto(baseURL);
@@ -87,8 +106,8 @@ const MOMENTS: Moment[] = [
     appTrigger: heldTurnTable,
     appOnset: (f) => f.lamp !== null,
     mode: "parity",
-    fields: ["lamp", "level", "flare", "brightness"],
-    regions: ["pool", "rim", "rightBand"],
+    fields: ["lamp", "level", "flare", "brightness", "scorePill"],
+    regions: ["pool", "rim", "rightBand", "scorePill"],
   },
   {
     key: "trick",
@@ -103,12 +122,32 @@ const MOMENTS: Moment[] = [
     mode: "parity",
     fields: ["lamp", "level"],
     regions: [],
-    appActions: [
-      { atMs: 1750 - handOffDelayMs(false), run: playLowest },
-      { atMs: 3250, run: pass },
-      { atMs: 4550, run: pass },
-      { atMs: 5950, run: pass },
+    actions: [
+      { atMs: 1750 - handOffDelayMs(false), app: playLowest },
+      { atMs: 3250, app: pass },
+      { atMs: 4550, app: pass },
+      { atMs: 5950, app: pass },
     ],
+  },
+  {
+    key: "score-open",
+    chapter: "rest",
+    windowMs: 960,
+    checkpoints: [0, 480, 960],
+    seatOnMove: "you",
+    appTrigger: heldTurnTable,
+    appOnset: (f) => f.lamp !== null,
+    mode: "determinism",
+    moves: {
+      mockup: ["onset", "lamp", "brightness", "scorePill"],
+      app: ["onset", "lamp", "level", "brightness", "scorePill"],
+    },
+    actions: [
+      { atMs: 320, app: (page) => page.getByTestId("score-pill").click({ force: true }), mockup: "toggleScore(true)" },
+    ],
+    pillAtProgress: true,
+    // The pill, not the felt: Skia's real-time load would take the window and the byte-for-byte replay.
+    variants: ["fallback"],
   },
 ];
 
@@ -116,6 +155,11 @@ interface Capture {
   trace: Trace;
   frames: { t: number; jpeg: Buffer }[];
 }
+
+const PILL_BOX = `(() => {
+  const s = scoreEl.style;
+  return { x: parseFloat(s.left), y: parseFloat(s.top), w: parseFloat(s.width), h: parseFloat(s.height) };
+})()`;
 
 const MOCKUP_SAMPLE = `(() => {
   const m = getComputedStyle(document.getElementById("world")).transform;
@@ -130,8 +174,21 @@ const MOCKUP_SAMPLE = `(() => {
     dropped: 0,
     lamp: { x: lamp.lx, y: lamp.ly, level: lamp.L, flare: lamp.f },
     shake,
+    scorePill: { ...(${PILL_BOX}), open: SC.o },
   };
 })()`;
+
+async function mockupPillAt(browser: Browser, opens: number[]): Promise<Map<number, PillBox>> {
+  const page = await newSidePage(browser);
+  await page.goto(FIXTURE);
+  await page.evaluate("paused = true");
+  const boxes = new Map<number, PillBox>();
+  for (const o of new Set(opens)) {
+    boxes.set(o, await page.evaluate(`(() => { SC.o = ${o}; SC.b = 0; renderScore(); return ${PILL_BOX}; })()`));
+  }
+  await page.context().close();
+  return boxes;
+}
 
 async function newSidePage(browser: Browser, baseURL?: string): Promise<Page> {
   const context = await browser.newContext({ viewport: TABLE, deviceScaleFactor: DPR, locale: "it-IT", baseURL });
@@ -146,6 +203,7 @@ async function strip(
   decoder: Page,
   m: Moment,
   startMs: number,
+  act: (action: NonNullable<Moment["actions"]>[number]) => Promise<unknown> | undefined,
   stepTo: (t: number) => Promise<TraceFrame | null>
 ): Promise<Capture> {
   const frames: Capture["frames"] = [];
@@ -153,8 +211,10 @@ async function strip(
   const regions: Trace["regions"] = [];
   const all = regionsFor(m.seatOnMove);
   const shape = m.regions ? Object.fromEntries(m.regions.map((r) => [r, all[r]])) : all;
+  const due = [...(m.actions ?? [])];
   for (let k = 0; startMs + k * STEP_MS <= m.windowMs; k++) {
     const t = startMs + k * STEP_MS;
+    while (due.length && due[0].atMs <= t) await act(due.shift()!);
     const frame = await stepTo(t);
     if (t < (m.fromMs ?? 0)) continue;
     if (frame) traced.push({ ...frame, t });
@@ -188,10 +248,10 @@ async function captureMockup(browser: Browser, decoder: Page, m: Moment, preRoll
     paused = true;
     ${m.mockupScript ?? ""}
     requestAnimationFrame(() => { paused = false; });
-    start(CH.findIndex((c) => c.key === ${JSON.stringify(m.key)}));
+    start(CH.findIndex((c) => c.key === ${JSON.stringify(m.chapter ?? m.key)}));
   })()`);
   for (let rolled = 0; rolled < preRollMs; rolled += STEP_MS) await step(page);
-  const capture = await strip(page, box, decoder, m, preRollMs, async () => {
+  const capture = await strip(page, box, decoder, m, preRollMs, (a) => (a.mockup ? page.evaluate(a.mockup) : undefined), async () => {
     await step(page);
     return { t: 0, ...((await page.evaluate(MOCKUP_SAMPLE)) as Omit<TraceFrame, "t">) };
   });
@@ -248,9 +308,7 @@ async function captureApp(browser: Browser, baseURL: string, decoder: Page, m: M
   const mounted = await traced(page, m.appOnset, `the app's onset of ${m.key}`);
   const onset = variant === "skia" ? await skiaOnset(page, mounted, loading) : mounted;
   const preRollMs = Math.ceil((onset - mounted) / STEP_MS) * STEP_MS;
-  const actions = [...(m.appActions ?? [])];
-  const capture = await strip(page, { x: 0, y: 0 }, decoder, m, preRollMs, async (t) => {
-    while (actions.length && actions[0].atMs <= t) await actions.shift()!.run(page);
+  const capture = await strip(page, { x: 0, y: 0 }, decoder, m, preRollMs, (a) => a.app?.(page), async (t) => {
     if (t > preRollMs) await step(page);
     return (await recorded(page)).find((f) => Math.abs(f.t - (onset + t - preRollMs)) < STEP_MS / 2) ?? null;
   });
@@ -260,7 +318,7 @@ async function captureApp(browser: Browser, baseURL: string, decoder: Page, m: M
   return { capture, preRollMs };
 }
 
-function bundle(m: Moment, variant: Variant, runs: Record<SideName, Capture>, dir: string) {
+function bundle(m: Moment, variant: Variant, runs: Record<SideName, Capture>, pillFailures: Failure[], dir: string) {
   fs.mkdirSync(path.join(dir, "frames"), { recursive: true });
   const sides = {} as Record<SideName, { trace: Trace; frames: { t: number; file: string; sha1: string }[] }>;
   for (const side of ["mockup", "app"] as const) {
@@ -274,7 +332,8 @@ function bundle(m: Moment, variant: Variant, runs: Record<SideName, Capture>, di
     };
   }
   const held = new Set<Field>(["frames", ...(m.fields ?? [])]);
-  const failures = diffTraces(runs.mockup.trace, runs.app.trace, m.checkpoints).filter((f) => m.mode === "determinism" || held.has(f.field));
+  const traced = diffTraces(runs.mockup.trace, runs.app.trace, m.checkpoints).filter((f) => m.mode === "determinism" || held.has(f.field));
+  const failures = [...traced, ...pillFailures];
   const moment = `${m.key}-${variant}`;
   const parity = { murlanParity: 1, moment, mode: m.mode, stepMs: STEP_MS, checkpoints: m.checkpoints, sides, failures };
   fs.writeFileSync(path.join(dir, "parity.json"), JSON.stringify(parity));
@@ -283,7 +342,7 @@ function bundle(m: Moment, variant: Variant, runs: Record<SideName, Capture>, di
 
 test.describe("mockup parity", () => {
   for (const m of MOMENTS) {
-    for (const variant of ["skia", "fallback"] as const) {
+    for (const variant of m.variants ?? (["skia", "fallback"] as const)) {
       test(`${m.key} with the ${variant} felt (${m.mode} mode)`, async ({ browser, baseURL }) => {
         test.setTimeout(15 * 60_000);
         const decoder = await browser.newPage();
@@ -294,8 +353,14 @@ test.describe("mockup parity", () => {
             : (await captureApp(browser, baseURL!, decoder, m, variant)).capture;
         const first = { mockup: await capture("mockup"), app: app.capture };
 
+        let pillFailures: Failure[] = [];
+        if (m.pillAtProgress) {
+          const opens = first.app.trace.frames.flatMap((f) => (f.scorePill ? [f.scorePill.open] : []));
+          const boxes = await mockupPillAt(browser, opens);
+          pillFailures = diffPillAtProgress(first.app.trace, (open) => boxes.get(open)!);
+        }
         const dir = test.info().outputPath(`${m.key}-${variant}`);
-        const parity = bundle(m, variant, first, dir);
+        const parity = bundle(m, variant, first, pillFailures, dir);
         await test.info().attach(`${parity.moment}/parity.json`, { path: path.join(dir, "parity.json"), contentType: "application/json" });
         for (const side of ["mockup", "app"] as const) {
           for (const f of parity.sides[side].frames) {
@@ -307,15 +372,16 @@ test.describe("mockup parity", () => {
           expect(parity.failures, "the app's trace against the mockup's").toEqual([]);
           return;
         }
+        expect.soft(pillFailures, "the app's pill against renderScore at the same progress").toEqual([]);
         for (const side of ["mockup", "app"] as const) {
           const again = await capture(side);
-        expect.soft(again.trace.frames.length, `${side}: frames traced`).toBeGreaterThan(m.windowMs / STEP_MS);
-        expect.soft(again.trace, `${side}: the trace replays`).toEqual(first[side].trace);
-        const differing = again.frames.filter((f, i) => !f.jpeg.equals(first[side].frames[i].jpeg)).map((f) => f.t);
-        expect.soft(differing, `${side}: frames that did not replay byte for byte`).toEqual([]);
-        expect.soft([...movingFields(first[side].trace)].sort(), `${side}: fields that move over the window`).toEqual(
-          [...m.moves![side]].sort()
-        );
+          expect.soft(again.trace.frames.length, `${side}: frames traced`).toBeGreaterThan(m.windowMs / STEP_MS);
+          expect.soft(again.trace, `${side}: the trace replays`).toEqual(first[side].trace);
+          const differing = again.frames.filter((f, i) => !f.jpeg.equals(first[side].frames[i].jpeg)).map((f) => f.t);
+          expect.soft(differing, `${side}: frames that did not replay byte for byte`).toEqual([]);
+          expect.soft([...movingFields(first[side].trace)].sort(), `${side}: fields that move over the window`).toEqual(
+            [...m.moves![side]].sort()
+          );
         }
       });
     }

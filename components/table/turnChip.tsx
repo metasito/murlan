@@ -83,6 +83,7 @@ export function TurnChip({
   }, [active, resetKey, seconds]);
 
   const threshold = urgentThresholdSeconds(seconds);
+  const ember = lit && active && timeLeft > 0 && timeLeft <= CLOCK_RUNNING_OUT_SECONDS;
   // A live region speaks every time its text changes, so seconds in its label
   // are an interruption a second for the length of the manche. Two moments in a
   // turn are worth one; between them an empty label and an unchanged one are
@@ -107,13 +108,13 @@ export function TurnChip({
       <View {...a11yGroup(label)}>
         {/* The chip draws the words the group's name already says. */}
         <View {...a11yHidden()}>
-          <TableChip scale={scale} lit={lit}>
-            <ChipDot testID="turn-chip-dot" scale={scale} lit={lit} />
-            <ChipText scale={scale} lit={lit}>
+          <TableChip scale={scale} lit={lit} ember={ember}>
+            <ChipDot testID="turn-chip-dot" scale={scale} lit={lit} ember={ember} />
+            <ChipText scale={scale} lit={lit} ember={ember}>
               {chipText}
             </ChipText>
             {active && (
-              <ChipText scale={scale} strong urgent={timeLeft <= threshold}>
+              <ChipText scale={scale} strong urgent={timeLeft <= threshold} ember={ember}>
                 {timeLeft}
               </ChipText>
             )}

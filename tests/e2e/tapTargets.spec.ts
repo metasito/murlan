@@ -26,6 +26,7 @@ import { createRoom, fillWithBotsAndStart, goToOnlineLobby } from "./helpers/onl
 import { driveGameToCompletion } from "./helpers/bot";
 import { offlineGameSave, resumeSaved } from "./helpers/offlineSeed";
 import { settled } from "./helpers/settle";
+import { TABLE, TABLE_DEALING } from "./helpers/selectors";
 import { CLOSING_HAND_CARDS } from "../../lib/game/gameEngine";
 import { Reading, TOUCH_TARGET_MIN } from "../../lib/tokens";
 import { it as copy } from "../../locales/it";
@@ -253,12 +254,23 @@ for (const size of SIZES) {
     await page.setViewportSize({ width: size.width, height: size.height });
 
     await openApp(page, baseURL!);
-    await startOfflineGame(page, { playerCount: 4, gameMode: "free_for_all", format: "single" });
-    await expect(page.locator('[data-testid="game-table"]')).toBeVisible();
+    await startOfflineGame(page, { playerCount: 4, gameMode: "free_for_all", format: "match" });
+    const table = page.locator(TABLE);
+    await expect(table).toHaveAttribute(TABLE_DEALING, "true");
+    // The table holds still through its entry beat before the deal, long enough to pass for settled.
+    await expect(table).toHaveAttribute(TABLE_DEALING, "false", { timeout: 15_000 });
     await settled(page, 5000);
 
+    const pill = page.getByTestId("score-pill");
+    await expect(pill).toHaveAttribute("aria-expanded", "false");
     await expectNoBuriedControls(page, "game table, 4 players", 10);
     await sweepSizes(page, "game table", UNDERSIZED_BY_DESIGN);
+
+    await pill.click();
+    await expect(pill).toHaveAttribute("aria-expanded", "true");
+    await settled(page, 500);
+    await expectNoBuriedControls(page, "game table, the score pill open", 10);
+    await sweepSizes(page, "game table, the score pill open", UNDERSIZED_BY_DESIGN);
   });
 }
 

@@ -57,7 +57,12 @@ function hands(playerCount: number, handSize: number) {
  * photographed at the bottom edge. The felt, the seats and the action buttons
  * all key off whose turn it is, so a seat count is only half a state.
  */
-export function offlineGameSave(playerCount: 2 | 3 | 4, handSize: number = 13, turn: number = 0) {
+export function offlineGameSave(
+  playerCount: 2 | 3 | 4,
+  handSize: number = 13,
+  turn: number = 0,
+  scores: Record<string, number> = {}
+) {
   const dealt = hands(playerCount, handSize);
   const players = Array.from({ length: playerCount }, (_, i) => ({
     id: `player_${i}`,
@@ -85,7 +90,7 @@ export function offlineGameSave(playerCount: 2 | 3 | 4, handSize: number = 13, t
     match: {
       length: "match",
       target: 21,
-      scores: {},
+      scores,
       hands: [],
       // isResumable() refuses a finished match, and a refused save silently
       // leaves the home screen with no Resume button at all.

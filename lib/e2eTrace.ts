@@ -11,6 +11,8 @@ export interface TraceFrame {
   shake: { x: number; y: number; rotate: number } | null;
   /** Which felt is on screen: the web fallback until Skia has drawn its first frame. */
   felt?: "skia" | "fallback" | null;
+  /** The score pill's box and its open progress, which may overshoot 1. */
+  scorePill: { x: number; y: number; w: number; h: number; open: number } | null;
 }
 
 interface Sources {
@@ -19,6 +21,7 @@ interface Sources {
   lamp: () => NonNullable<TraceFrame["lamp"]>;
   shake: () => NonNullable<TraceFrame["shake"]>;
   felt: () => "skia" | "fallback";
+  scorePill: () => NonNullable<TraceFrame["scorePill"]>;
 }
 
 export interface TraceRecorder {
@@ -33,6 +36,7 @@ const sources: { [K in keyof Sources]: Set<Sources[K]> } = {
   lamp: new Set(),
   shake: new Set(),
   felt: new Set(),
+  scorePill: new Set(),
 };
 let recording = false;
 let pending: string[] = [];
@@ -61,6 +65,7 @@ if (process.env.EXPO_PUBLIC_E2E_FAST === "1") {
       lamp: last(sources.lamp),
       shake: last(sources.shake),
       felt: last(sources.felt),
+      scorePill: last(sources.scorePill),
     });
     requestAnimationFrame(tick);
   };
