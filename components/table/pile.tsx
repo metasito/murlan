@@ -19,6 +19,7 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { CardView } from "@/components/CardView";
 import { Colors, FontSize, Motion, motionMs, Radius, Scrim, Shadow, Spacing, Layer } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
+import { traceOnset } from "@/lib/e2eTrace";
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
 import type { Card, Combination } from "@/lib/game/gameEngine";
 import { CARD_W, CARD_H, FIELD_SCALE, cardRadius } from "@/components/cardFaceModel";
@@ -637,6 +638,8 @@ export interface PileFlightInput extends Omit<ThrownPlayInput, "combo" | "played
    * where the audio native module has no JS implementation to import.
    */
   playImpact: (heavy: boolean, dir: FlyDirection, cards: number) => void;
+  /** The dust, at the pile's centre in window points; never asked for under reduced motion. */
+  land: (cards: number, at: { x: number; y: number }) => void;
   shake: (tier: ImpactTier) => void;
   burst: (tier: ImpactTier) => void;
   celebrateFlush: () => void;
@@ -668,6 +671,7 @@ export function usePileFlight({
   bottomPad,
   handCardH,
   playImpact,
+  land,
   shake,
   burst,
   celebrateFlush,
@@ -845,7 +849,9 @@ export function usePileFlight({
         handOver: gameOver,
         matchOver: matchOverRef.current,
       });
+      traceOnset("moment", "landing");
       playImpact(thrown.heavy, thrown.dir, combo.cards.length);
+      if (!reduceMotion) land(combo.cards.length, thrown.pile);
       shake(tier);
       clearFeltDim();
       burst(tier);
@@ -874,6 +880,7 @@ export function usePileFlight({
     players.length,
     reduceMotion,
     playImpact,
+    land,
     shake,
     burst,
     celebrateFlush,

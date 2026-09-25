@@ -887,6 +887,8 @@ interface ThrownPlay {
   cards: Card[];
   /** Where the throw starts, relative to where it lands. */
   origin: { dx: number; dy: number };
+  /** Where it lands: the pile's centre, in window points. */
+  pile: { x: number; y: number };
   /** Impact reads heavier for these. */
   heavy: boolean;
   /** The throw emptied the hand it came from, so the flush is owed. */
@@ -929,7 +931,7 @@ export type SeatGeometry = Omit<ThrownPlayInput, "combo" | "playedBy">;
  */
 export function readThrownPlay(input: ThrownPlayInput): ThrownPlay {
   const { combo, playedBy, players } = input;
-  const { dir, origin } = seatOrigin(input, playedBy, combo.cards.length);
+  const { dir, origin, pile } = seatOrigin(input, playedBy, combo.cards.length);
   const thrower = players[playedBy];
   return {
     dir,
@@ -937,6 +939,7 @@ export function readThrownPlay(input: ThrownPlayInput): ThrownPlay {
     heavy: combo.type === "bomb" || combo.type === "royal_straight",
     emptiedHand: !!thrower && handCountOf(thrower) === 0,
     origin,
+    pile,
   };
 }
 
@@ -949,7 +952,7 @@ function seatOrigin(
   input: SeatGeometry,
   seat: number,
   leaving: number
-): { dir: FlyDirection; origin: { dx: number; dy: number } } {
+): { dir: FlyDirection; origin: { dx: number; dy: number }; pile: { x: number; y: number } } {
   const { players, opponents } = input;
   const dir = seatDirection(seat, input.viewerSeat, players.length);
 
@@ -962,22 +965,21 @@ function seatOrigin(
     ? displayedHandCount(handCountOf(sidePlayer), leaving)
     : 0;
 
-  return {
+  const geometry: FlightOriginInput = {
     dir,
-    origin: flightOrigin({
-      dir,
-      scale: input.scale,
-      windowWidth: input.windowWidth,
-      windowHeight: input.windowHeight,
-      tableLeft: input.tableLeft,
-      tableRight: input.tableRight,
-      tableTop: input.tableTop,
-      surplus: input.surplus,
-      handZoneH: HAND_ZONE_H(input.handCardH, input.bottomPad),
-      topDisplayedCount,
-      sideDisplayedCount,
-    }),
+    scale: input.scale,
+    windowWidth: input.windowWidth,
+    windowHeight: input.windowHeight,
+    tableLeft: input.tableLeft,
+    tableRight: input.tableRight,
+    tableTop: input.tableTop,
+    surplus: input.surplus,
+    handZoneH: HAND_ZONE_H(input.handCardH, input.bottomPad),
+    topDisplayedCount,
+    sideDisplayedCount,
   };
+  const { centerX, centerY } = pileGeometry(geometry);
+  return { dir, origin: flightOrigin(geometry), pile: { x: centerX, y: centerY } };
 }
 
 interface ExchangeTripsInput extends SeatGeometry {

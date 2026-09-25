@@ -39,6 +39,11 @@ export interface Particles {
 
 export type Rng = () => number;
 
+/** What a draw layer hands its owner: the one way into its simulation. */
+export interface ParticleEmitter {
+  emit(spawns: readonly ParticleSpawn[]): void;
+}
+
 export function createParticles(budget: number = PARTICLE_BUDGET): Particles {
   return { live: 0, dropped: 0, f: new Float32Array(budget * STRIDE) };
 }

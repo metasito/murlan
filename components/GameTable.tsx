@@ -87,6 +87,8 @@ import { GiocaButton, PassaButton } from "@/components/table/actions";
 import { RematchPromptPanel, type RematchAnswers } from "@/components/table/rematchPrompt";
 import { Felt } from "@/components/table/feltSkia";
 import { useLampRig } from "@/components/table/useLampRig";
+import { ParticleLayer } from "@/components/table/particleLayer";
+import { landDust, landingDustCount, type ParticleEmitter } from "@/components/table/particles";
 import { StraightHand, useHandArrival } from "@/components/table/hand";
 import { RotateOverlay } from "@/components/table/rotateOverlay";
 import { GameSettingsSheet } from "@/components/table/settingsSheet";
@@ -700,6 +702,12 @@ export function GameTable({
     height: H,
   });
   const { flare, kick } = rig;
+  const particles = useRef<ParticleEmitter>(null);
+  const land = useCallback(
+    (cards: number, at: { x: number; y: number }) =>
+      particles.current?.emit(landDust(cards, landingDustCount(cards), at.x / rig.sx, at.y / rig.sy, Math.random)),
+    [rig.sx, rig.sy]
+  );
   useEffect(() => {
     if (!boomTrigger) return;
     flare();
@@ -730,6 +738,7 @@ export function GameTable({
     matchOver,
     ...seatGeometry,
     playImpact,
+    land,
     shake,
     burst,
     celebrateFlush,
@@ -964,6 +973,7 @@ export function GameTable({
       >
         <Felt rig={rig} stops={felt} target={lampTarget} />
         <LampLift trigger={lampLiftTrigger} scale={scale} rig={rig} />
+        <ParticleLayer ref={particles} sx={rig.sx} sy={rig.sy} />
         <FeltScrim dim={feltDim} />
       </View>
 

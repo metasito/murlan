@@ -1965,6 +1965,13 @@ describe("readThrownPlay", () => {
     assert.notDeepEqual(seatPoint(geometry, 3), seatPoint(geometry, 2));
   });
 
+  test("every throw lands on the pile's one centre, midway between the table's edges", () => {
+    const [right, left] = [read(table(1), 1).pile, read(table(3), 3).pile];
+    assert.deepEqual(right, left);
+    assert.equal(right.x, 20 + (844 - 20 - 20) / 2);
+    assert.ok(right.y > 12 && right.y < 390 - 90, `pile centre ${right.y} outside the band between the top seat and the hand`);
+  });
+
   test("a bomb and a royal straight land heavier than anything else", () => {
     assert.equal(read(table(2), 2, BOMB).heavy, true);
     assert.equal(
