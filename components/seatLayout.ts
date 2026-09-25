@@ -182,36 +182,6 @@ export function seatDirection(
   return getOpponentPosition(steps, playerCount - 1);
 }
 
-// ─── The lamp ─────────────────────────────────────────────────────────────────
-
-export interface LightPosition {
-  /** Fractions of the felt box, not pixels. */
-  x: number;
-  y: number;
-}
-
-/**
- * The lamp swung off every seat and onto the middle of the felt, for a moment
- * that belongs to the table rather than to one player — the announcement of who
- * opens the manche. The same rig, pointed somewhere else; nothing new is drawn.
- */
-export const LAMP_CENTRE: LightPosition = { x: 0.5, y: 0.5 };
-
-/**
- * Where the lamp hangs when a given seat is on move, so half the table falls
- * into shadow when it is not your turn. Just off the edge on that seat's own
- * side: a lamp centred on a seat lights the seat rather than the table it is
- * leaning over.
- */
-export function lightPosition(dir: FlyDirection): LightPosition {
-  switch (dir) {
-    case "bottom": return { x: 0.5, y: 0.98 };
-    case "top":    return { x: 0.5, y: 0.02 };
-    case "left":   return { x: 0.02, y: 0.48 };
-    case "right":  return { x: 0.98, y: 0.48 };
-  }
-}
-
 export interface SeatedPlayer<T> {
   player: T;
   seat: number;

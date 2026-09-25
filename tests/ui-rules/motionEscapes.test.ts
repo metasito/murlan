@@ -29,7 +29,7 @@ describe("a duration off the scale is a counted decision, not a silent drift", (
     const hits = scanSources(MOTION_ESCAPE_DECL, componentSources(repoRoot));
     assert.equal(
       hits.length,
-      25,
+      24,
       "a `_MS` constant was added to (or removed from) components/ — fold it onto " +
         "Motion/Reading/Hold, or update this pin with a comment at the constant saying " +
         "why it stays a one-off:\n" + hits.join("\n")

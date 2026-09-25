@@ -8,6 +8,22 @@ import { assertWholeNumbers } from './fabricIntProps';
 // render rather than reporting a real failure.
 require('react-native-reanimated').setUpTests?.();
 
+// Each UI job here is its own setTimeout, so a test that swaps back to real timers drops a
+// frame callback's queued registration and then runs its unregistration against nothing.
+type FrameRegistry = { frameCallbackRegistry: Map<number, unknown>; manageStateFrameCallback(id: number, on: boolean): void };
+let frameRegistry: FrameRegistry | undefined;
+Object.defineProperty(globalThis, '_frameCallbackRegistry', {
+  configurable: true,
+  get: () => frameRegistry,
+  set(registry: FrameRegistry) {
+    const manage = registry.manageStateFrameCallback;
+    registry.manageStateFrameCallback = function (this: FrameRegistry, id, on) {
+      if (this.frameCallbackRegistry.has(id)) manage.call(this, id, on);
+    };
+    frameRegistry = registry;
+  },
+});
+
 // AsyncStorage is a native module with no JS fallback; its own in-memory mock
 // is the vendor-supported substitute.
 jest.mock('@react-native-async-storage/async-storage', () =>
@@ -36,6 +52,21 @@ jest.mock('@/components/AppModal', () => {
     AppModal: (props: React.ComponentProps<typeof AppModal>) =>
       React.createElement(AppModal, props, React.createElement(RootContext, { value: false }, props.children)),
   };
+});
+
+// Skia is a native renderer with nothing to draw into here, and its own mock needs CanvasKit
+// loaded by a test environment of its own. The felt carries no game information (#1244), so
+// every drawing call stands in as a no-op and every element renders only its children.
+jest.mock('@shopify/react-native-skia', () => {
+  const React = require('react') as typeof import('react');
+  const call: object = new Proxy(function () {}, {
+    get: (_, key) => (key === 'then' ? undefined : call),
+    apply: () => call,
+  });
+  const element = ({ children }: { children?: React.ReactNode }) => React.createElement(React.Fragment, null, children);
+  return new Proxy({ Skia: call, PaintStyle: {} } as Record<string | symbol, unknown>, {
+    get: (known, key) => (key === '__esModule' ? true : key in known ? known[key] : element),
+  });
 });
 
 // expo/fetch extends a native Response that does not exist here, so `import`ing

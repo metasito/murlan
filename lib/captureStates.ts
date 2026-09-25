@@ -59,7 +59,7 @@ export interface CaptureState {
 export const CAPTURE_STATES: readonly CaptureState[] = [
   {
     id: "lamp-bottom",
-    label: "Your turn — lamp at the bottom edge, over your own hand",
+    label: "Your turn — the lamp over your own hand",
     playerCount: 4,
     turn: 0,
     side: "bottom",
@@ -67,7 +67,7 @@ export const CAPTURE_STATES: readonly CaptureState[] = [
   },
   {
     id: "lamp-right",
-    label: "Luan's turn — lamp at the right edge",
+    label: "Luan's turn — the lamp over the right seat",
     playerCount: 4,
     turn: 1,
     side: "right",
@@ -75,7 +75,7 @@ export const CAPTURE_STATES: readonly CaptureState[] = [
   },
   {
     id: "lamp-top",
-    label: "Drita's turn — lamp at the top edge",
+    label: "Drita's turn — the lamp over the top seat",
     playerCount: 4,
     turn: 2,
     side: "top",
@@ -83,7 +83,7 @@ export const CAPTURE_STATES: readonly CaptureState[] = [
   },
   {
     id: "lamp-left",
-    label: "Besnik's turn — lamp at the left edge",
+    label: "Besnik's turn — the lamp over the left seat",
     playerCount: 4,
     turn: 3,
     side: "left",

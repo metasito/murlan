@@ -39,8 +39,6 @@ import {
   actionBtnSize,
   HAND_ZONE_GAP,
   arrangeOpponents,
-  LAMP_CENTRE,
-  lightPosition,
   seatDirection,
   viewerOwnsSeat,
   type OpponentSide,
@@ -87,7 +85,8 @@ import { readStagedPlay } from "@/components/table/stagedPlay";
 import { TurnChip } from "@/components/table/turnChip";
 import { GiocaButton, PassaButton } from "@/components/table/actions";
 import { RematchPromptPanel, type RematchAnswers } from "@/components/table/rematchPrompt";
-import { FeltPool } from "@/components/table/felt";
+import { Felt } from "@/components/table/feltSkia";
+import { useLampRig } from "@/components/table/useLampRig";
 import { StraightHand, useHandArrival } from "@/components/table/hand";
 import { RotateOverlay } from "@/components/table/rotateOverlay";
 import { GameSettingsSheet } from "@/components/table/settingsSheet";
@@ -577,10 +576,6 @@ export function GameTable({
     entryMs,
     reduceMotion,
   });
-  // The felt box the lamp lives in. The pool is drawn oversized and slid under
-  // this box's own clipping, so it needs the box rather than the screen.
-  const feltW = W;
-  const feltH = H;
 
   // ── Screen-reader table description ─────────────────────────────────────────
   //
@@ -697,9 +692,19 @@ export function GameTable({
   // The owner's own remedy for an announcement nobody noticed: swing the lamp
   // off the seat and onto the middle, where the words are. The table's existing
   // attention mechanism, pointed somewhere else — not a second device.
-  const light = holdingForStart
-    ? LAMP_CENTRE
-    : lightPosition(seatDirection(shownTurnIndex, viewerSeat, players.length));
+  const lampTarget = holdingForStart ? "centre" : seatDirection(shownTurnIndex, viewerSeat, players.length);
+  const rig = useLampRig({
+    target: lampTarget,
+    fresh: !gameState.firstPlayMade && !gameState.gameOver,
+    width: W,
+    height: H,
+  });
+  const { flare, kick } = rig;
+  useEffect(() => {
+    if (!boomTrigger) return;
+    flare();
+    if (flareKind === "brief") kick();
+  }, [boomTrigger, flareKind, flare, kick]);
 
   const handLiftStyle = useHandLift(
     (isMyTurn && !isFinished && !exchange.active) || exchangeIsMine,
@@ -949,32 +954,16 @@ export function GameTable({
 
   return (
     <View style={[styles.root, WEB_CLIP]} onStartShouldSetResponderCapture={closeScoreElsewhere}>
-      {/* Felt — decoration only, and edge to edge: a framed table draws a lit
-          rectangle in a dark room, which is the one thing a single overhead
-          lamp cannot produce. The pool tracks whose turn it is, so half the
-          cloth falls into shadow when it is not yours. */}
+      {/* Felt — decoration only: one canvas that never carries game
+          information (#1244), lit by the one lamp rig. */}
       <View
         testID="table-felt"
         style={[StyleSheet.absoluteFill, FELT_Z]}
         pointerEvents="none"
         {...a11yHidden()}
       >
-        <FeltPool
-          width={feltW}
-          height={feltH}
-          stops={felt}
-          lightX={light.x}
-          lightY={light.y}
-        />
-        {/* The manche rung (#765): the lamp itself brightens rather than
-            flaring, at the point it is already standing — never a second
-            position computation, `light` is the one `FeltPool` just drew at. */}
-        <LampLift
-          trigger={lampLiftTrigger}
-          scale={scale}
-          x={light.x * feltW}
-          y={light.y * feltH}
-        />
+        <Felt rig={rig} stops={felt} target={lampTarget} />
+        <LampLift trigger={lampLiftTrigger} scale={scale} rig={rig} />
         <FeltScrim dim={feltDim} />
       </View>
 

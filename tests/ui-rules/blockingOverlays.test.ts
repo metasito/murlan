@@ -43,7 +43,6 @@ const BLOCKING_OVERLAYS: [string, string][] = [
  * level up.
  */
 const NOT_A_BLOCKER: [string, number, string][] = [
-  ["components/table/felt.tsx", 1, "the table's own paint at zIndex 0 — the surface the game is drawn on, not a layer over it"],
   ["components/GameTable.tsx", 2, "the game itself at Layer.table, over the felt it is dealt on — the whole table rather than a layer across it, and the one thing a landing displaces; and the score pill's box-none layer, which takes no touch and holds only the pill"],
   ["components/table/scorePill.tsx", 2, "the pill's press target and its open panel, each absolute within the pill's own box, never the table"],
   ["components/table/chrome.tsx", 1, "the rail is a fixed-width strip down one edge: full-height, never full-screen, and the table is laid out beside it"],

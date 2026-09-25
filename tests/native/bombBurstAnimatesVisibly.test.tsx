@@ -11,9 +11,12 @@ import { describe, it, expect, jest } from "@jest/globals";
 import React from "react";
 import { act, render, screen } from "@testing-library/react-native";
 import { StyleSheet } from "react-native";
-import { getAnimatedStyle } from "react-native-reanimated";
+import { getAnimatedStyle, makeMutable } from "react-native-reanimated";
 import { SPARK_COUNT } from "@/components/flightPhysics";
 import { BombBurst, LampLift } from "@/components/table/moments";
+import { restingLamp } from "@/components/table/lampRig";
+
+const RIG = { lamp: makeMutable(restingLamp("bottom")), sx: 1, sy: 1 };
 
 function transformOf(testID: string): Record<string, unknown>[] {
   const node = screen.getByTestId(testID);
@@ -75,7 +78,7 @@ describe("the bomb burst and the lamp lift actually move once fired (#765)", () 
 
   it("the lamp's own lift leaves its rest scale and opacity once it fires", async () => {
     jest.useFakeTimers();
-    const r = await render(<LampLift trigger={1} scale={1} x={100} y={100} />);
+    const r = await render(<LampLift trigger={1} scale={1} rig={RIG} />);
 
     // Partway through the lift's own 900ms window — the opacity ramp's first
     // leg is 30% of it (270ms); the scale tween runs the whole window.

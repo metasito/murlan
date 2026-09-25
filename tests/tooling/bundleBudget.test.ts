@@ -7,11 +7,22 @@
 // the whole thing worthless: measuring an empty directory and reporting success.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync, rmSync } from "node:fs";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import zlib from "node:zlib";
-import { BUDGET_BYTES, gzippedJsSize, report } from "../../scripts/bundle-budget.mjs";
+import {
+  BUDGET_BYTES,
+  CANVASKIT_MARK,
+  canvasKitCheck,
+  DEFERRED_BUDGET_BYTES,
+  firstLoadFiles,
+  gzippedJsSize,
+  report,
+} from "../../scripts/bundle-budget.mjs";
+
+const require = createRequire(import.meta.url);
 
 function tempBundle(files: Record<string, string>): string {
   const dir = mkdtempSync(path.join(tmpdir(), "murlan-bundle-"));
@@ -96,5 +107,48 @@ describe("the web bundle's size budget", () => {
     // commit and gets raised reflexively.
     assert.ok(BUDGET_BYTES > 753 * 1024, `budget ${BUDGET_BYTES} is not above 753 KB`);
     assert.ok(BUDGET_BYTES <= 1024 * 1024, `budget ${BUDGET_BYTES} exceeds #95's ~1 MB ceiling`);
+    assert.ok(DEFERRED_BUDGET_BYTES > 158 * 1024 && DEFERRED_BUDGET_BYTES < BUDGET_BYTES / 2);
+  });
+});
+
+describe("CanvasKit stays out of the web first load", () => {
+  const html = (...srcs: string[]) =>
+    `<!doctype html><script>var x=1</script>${srcs.map((s) => `<script src="/_expo/static/js/web/${s}" defer></script>`).join("")}`;
+
+  test("the first load is the scripts index.html names, and nothing else", () => {
+    const dir = tempBundle({ "index.html": html("entry-a.js", "__common-b.js") });
+    try {
+      assert.deepEqual([...firstLoadFiles(dir)], ["entry-a.js", "__common-b.js"]);
+      writeFileSync(path.join(dir, "index.html"), "<!doctype html><script>var x=1</script>");
+      assert.throws(() => firstLoadFiles(dir), /nothing was checked/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("fails when a first-load file carries it, passes when only a lazy chunk does", () => {
+    const dir = tempBundle({ "entry-a.js": `x("${CANVASKIT_MARK}")`, "felt-b.js": "y()" });
+    try {
+      const early = canvasKitCheck(dir, new Set(["entry-a.js"]));
+      assert.equal(early.ok, false);
+      assert.match(early.message, /first load.*entry-a\.js/);
+      assert.equal(canvasKitCheck(dir, new Set(["felt-b.js"])).ok, true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("fails when no file carries it, so a renamed loader cannot pass by vanishing", () => {
+    const dir = tempBundle({ "entry-a.js": "x()", "felt-b.js": "y()" });
+    try {
+      assert.equal(canvasKitCheck(dir, new Set(["entry-a.js"])).ok, false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("the mark is a string canvaskit-wasm's loader really carries", () => {
+    const loader = require.resolve("canvaskit-wasm/bin/full/canvaskit.js");
+    assert.ok(readFileSync(loader, "utf8").includes(CANVASKIT_MARK));
   });
 });

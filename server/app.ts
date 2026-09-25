@@ -16,6 +16,7 @@ import { allowedOrigins, isAllowedOrigin, trustProxySetting } from "./http/cors.
 import { checkMailConfigOnBoot } from "./http/mail.ts";
 import { ANSWERED_BY_SHELL, CONTENT_HASHED } from "./http/staticPaths.ts";
 import { testOnlyEnv } from "./http/testOnlyEnv.ts";
+import { CANVASKIT_URL } from "../lib/canvaskit.ts";
 import { createHash } from "node:crypto";
 import * as fs from "fs";
 import * as path from "path";
@@ -66,11 +67,11 @@ function socketOrigins(): string[] {
 // http dev server.
 const cspDirectives = () => ({
   "default-src": ["'self'"],
-  "script-src": ["'self'", ...inlineScriptHashes()],
+  "script-src": ["'self'", "'wasm-unsafe-eval'", ...inlineScriptHashes()],
   "style-src": ["'self'", "'unsafe-inline'"],
   "img-src": ["'self'", "data:", "blob:"],
   "font-src": ["'self'", "data:"],
-  "connect-src": ["'self'", ...socketOrigins()],
+  "connect-src": ["'self'", CANVASKIT_URL, ...socketOrigins()],
   "worker-src": ["'self'", "blob:"],
   "object-src": ["'none'"],
   "base-uri": ["'self'"],
