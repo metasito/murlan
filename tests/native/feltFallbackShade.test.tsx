@@ -1,4 +1,4 @@
-import { describe, it, expect, jest } from '@jest/globals';
+import { afterEach, beforeEach, describe, it, expect, jest } from '@jest/globals';
 import React from 'react';
 import { render, screen } from '@testing-library/react-native';
 import { getAnimatedStyle, makeMutable } from 'react-native-reanimated';
@@ -13,6 +13,15 @@ import { restingLamp } from '@/components/table/lampRig';
 import { SHADE_MAX } from '@/components/table/rail';
 import type { LampRig } from '@/components/table/useLampRig';
 import { FeltGradients } from '@/lib/tokens';
+
+beforeEach(() => {
+  // A browser whose WebGL cannot draw on the GPU: the fallback is the felt for good.
+  (globalThis as Record<string, unknown>).document = { createElement: () => ({ getContext: () => null }) };
+});
+
+afterEach(() => {
+  delete (globalThis as Record<string, unknown>).document;
+});
 
 describe('the web fallback felt', () => {
   it('darkens with the lamp level, as the Skia felt does', async () => {
