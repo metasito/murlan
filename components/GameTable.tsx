@@ -984,9 +984,9 @@ export function GameTable({
       <Animated.View style={[styles.kick, WEB_CLIP, TABLE_Z, kickStyle]}>
         <Sweep trigger={flushTrigger} width={W} height={H} />
         <A11yStatus label={tableA11yLabel} veiled={tableWithdrawn} />
-        {/* Two chips over the felt, at the corners the cards never reach — the
-            combination in play at the head of the field, whose turn it is at the
-            far side. Anything wider would be chrome drawn where a card lands. */}
+        {/* Chips over the felt where the cards never reach — the combination in
+            play at the head of the field, whose turn it is at the top centre, the
+            score at the far corner. Anything wider would be chrome drawn where a card lands. */}
         <Animated.View
           testID="game-top-bar"
           {...a11yGroup(topBarA11yLabel)}

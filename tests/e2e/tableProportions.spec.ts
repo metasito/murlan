@@ -44,6 +44,10 @@ async function boxes(page: Page) {
       passa: one('[data-testid="btn-passa"]'),
       topBar: one('[data-testid="game-top-bar"]'),
       scorePill: one('[data-testid="score-pill"]'),
+      turnChip: (() => {
+        const b = document.querySelector('[data-testid="turn-chip-dot"]')?.parentElement?.getBoundingClientRect();
+        return b ? { x: b.left, y: b.top, w: b.width, h: b.height } : null;
+      })(),
       rings: many('[data-testid="seat-ring"]'),
       pile: one('[data-testid="pile-area"]'),
       hand: one("[data-hand-state]"),
@@ -81,6 +85,12 @@ for (const phone of PHONES) {
     if (!b.scorePill) throw new Error("a partita's table drew no score pill");
     expect(b.scorePill.x, "the score pill stands right of centre").toBeGreaterThan(phone.width / 2);
     expect(b.scorePill.x + b.scorePill.w, "the score pill stays on screen").toBeLessThanOrEqual(phone.width);
+    if (!b.turnChip || !b.pile) throw new Error("the table drew no turn chip or no pile");
+    expect(b.turnChip.x + b.turnChip.w / 2, "the turn chip is centred over the pile").toBeCloseTo(
+      b.pile.x + b.pile.w / 2,
+      SUB_PIXEL
+    );
+    expect(b.turnChip.y + b.turnChip.h, "the turn chip sits above the pile").toBeLessThan(b.pile.y);
 
     // The floor: an element that laid out as an empty box would satisfy no
     // equality below, but say so clearly if it happens.
