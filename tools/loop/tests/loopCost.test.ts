@@ -327,6 +327,12 @@ describe("ledgerSummary", () => {
     assert.equal(ledgerSummary(rows).processesMedian, 1);
   });
 
+  test("a closed row ends its window, and counts as landed per loop commit", () => {
+    const rows = [row(1, "closed", 1, {}, {}), row(1, "handoff", 1, {}, {})];
+    assert.equal(ledgerSummary(rows).processesMedian, 1);
+    assert.match(shaTable(rows), /^unknown\s+2\s+2\.00\s+1\s+0\s+0$/m);
+  });
+
   test("names every row whose model family does not match its phase", () => {
     assert.deepEqual(
       ledgerSummary([row(9, "landed", 1, { E: 60 }, { "claude-opus-5": 1 })]).mismatches.map((r: { n: number }) => r.n),

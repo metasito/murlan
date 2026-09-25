@@ -326,7 +326,7 @@ export function ledger(io = {}) {
       totals.ms += entry.ms;
       if (counts) {
         totals.tickets += 1;
-        if (entry.outcome === "landed") totals.landed += 1;
+        if (entry.outcome === "landed" || entry.outcome === "closed") totals.landed += 1;
         else totals.parked += 1;
         tickets.push(report);
       }
@@ -392,7 +392,7 @@ export function handoffIn(row) {
 
 /** @param {string} outcome @param {string|null|undefined} why @param {object|null} [error] */
 export const parkReasonOf = (outcome, why, error = null) =>
-  outcome === "landed" || outcome === "retry" || outcome === "pushed"
+  outcome === "landed" || outcome === "closed" || outcome === "retry" || outcome === "pushed"
     ? null
     : outcome === "parked" && error && why
       ? `${why} — ${errorLine(error)}`
@@ -411,8 +411,8 @@ export function windowCost({ n, outcome, own }, rows) {
 
 /**
  * A ticket's rounds, spend and handoffs, rebuilt from the rows a restart cannot otherwise see:
- * everything for `n` since its last `landed` or `parked` row, which is where the tally must have
- * read zero even before this session existed.
+ * everything for `n` since its last `landed`, `closed` or `parked` row, which is where the tally
+ * must have read zero even before this session existed.
  *
  * @param {number} n @param {object[]} rows
  */
@@ -420,7 +420,7 @@ export function ticketTally(n, rows) {
   const forTicket = rows.filter((r) => r.n === n && r.outcome !== "started");
   let start = 0;
   forTicket.forEach((r, i) => {
-    if (r.outcome === "landed" || r.outcome === "parked") start = i + 1;
+    if (r.outcome === "landed" || r.outcome === "closed" || r.outcome === "parked") start = i + 1;
   });
   const since = forTicket.slice(start);
 

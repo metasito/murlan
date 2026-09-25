@@ -370,7 +370,9 @@ C, with the log in a `CI-RED` comment and in `.loop-logs/ci-<n>.log`.
    ```
 
    Valid JSON after the marker, in the same message as any command. Omit `pr` only if you pushed
-   none. `stoodDown` is true when you gave the ticket up, and then `"why"` says which in one
+   none. A ticket whose work is verification only posts its DOD-CHECK, closes the issue with
+   `gh issue close <n> --reason completed`, and declares no `pr`: the supervisor records it closed.
+   A branch with commits and no pull request is parked instead. `stoodDown` is true when you gave the ticket up, and then `"why"` says which in one
    sentence. Phase F never sets `handoff`. A session that exits without it is recorded as an
    error, so emit it even when the news is bad.
 5. **Exit.** Do not loop back to phase A in this session.

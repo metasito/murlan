@@ -318,6 +318,14 @@ describe("ledger", () => {
     assert.equal(book.totals.tickets, 1);
   });
 
+  test("a ticket closed as done counts as landed, not parked", () => {
+    const { io } = spy();
+    const book = ledger(io);
+    book.record(session({ outcome: "closed", merged: false }), { runId: "2026-09-13-04-12", report: { ...report("x"), outcome: "closed" } });
+    assert.equal(book.totals.landed, 1);
+    assert.equal(book.totals.parked, 0);
+  });
+
   // Two sessions on one ticket used to overwrite each other's reading, and a `counted` flag
   // existed to zero the second one's money rather than let the file hold both.
   test("two sessions on one ticket are two rows, and their costs add", () => {
@@ -529,6 +537,12 @@ describe("ticketTally", () => {
     assert.equal(t.retries, 1);
   });
 
+  test("so does a closed row", () => {
+    const t = ticketTally(1, [row({ outcome: "retry" }), row({ outcome: "closed" }), row({ outcome: "retry" })]);
+    assert.equal(t.sessions, 1);
+    assert.equal(t.retries, 1);
+  });
+
   test("spend sums every row, including retry and refused rows", () => {
     const t = ticketTally(1, [
       row({ outcome: "retry", cost: 1 }),
@@ -605,7 +619,7 @@ describe("windowCost", () => {
 
 describe("parkReasonOf", () => {
   test("a landed, retry or pushed row carries no park reason", () => {
-    for (const outcome of ["landed", "retry", "pushed"]) assert.equal(parkReasonOf(outcome, "CI next"), null);
+    for (const outcome of ["landed", "closed", "retry", "pushed"]) assert.equal(parkReasonOf(outcome, "CI next"), null);
     assert.equal(parkReasonOf("parked", "held twice"), "held twice");
     assert.equal(parkReasonOf("parked", undefined), null);
   });

@@ -82,6 +82,7 @@ const io = (over: Record<string, unknown> = {}, ledger: any[] = []) => ({
   announce: () => {},
   diagnose: async () => ({ ok: false, error: "no diagnosis here", run: { result: null, ms: 0, log: "l", phases: {} } }),
   rerun: () => {},
+  issueState: () => ({ state: "OPEN", stateReason: null }),
   ...over,
 });
 
@@ -1011,6 +1012,7 @@ describe("afterSession", () => {
     assert.equal(a.ticket, 42);
     assert.equal(a.branch, "agent/42-x");
     assert.equal(a.cwd, null, "there is no worktree left to point at");
+    assert.equal(a.commits, null, "no worktree read is not a count of zero commits");
   });
 
   test("derive alone still answers, for a session that declared nothing", () => {
@@ -1018,6 +1020,7 @@ describe("afterSession", () => {
     assert.equal(a.ticket, 42);
     assert.equal(a.cwd, ".worktrees/agent-42");
     assert.equal(a.dirty, true);
+    assert.equal(of(null, null, { ...derived, commits: 0 }).commits, 0);
   });
 
   // derive computes a phase from commit count and verdict, so it answers C, D, E or ? and never
@@ -1032,6 +1035,51 @@ describe("afterSession", () => {
   test("the worktree's own readings are never taken from the declaration", () => {
     const a = of({ ticket: 42, branch: "agent/42-x" }, "F", derived);
     assert.deepEqual(a.changed, ["a.ts"], "what changed is git's answer, not the session's");
+  });
+});
+
+const closedIo = (over: Record<string, unknown> = {}) => {
+  const calls: string[] = [];
+  const fake = io({
+    pushedPr: () => null,
+    standing: () => ({ ticket: 42, branch: "agent/42-x", cwd: ".worktrees/agent-42", head: "a", commits: 0, changed: [], dirty: false, phase: "F" }),
+    spawn: async () => ({ status: 0, blocked: false, result: { cost: 1, turns: 9 }, ms: 1000, log: "l", phase: "F",
+      declared: { ticket: 42, branch: "agent/42-x", pr: null, phase: "F", stoodDown: false, why: null } }),
+    issueState: () => ({ state: "CLOSED", stateReason: "COMPLETED" }),
+    diagnose: async () => (calls.push("diagnose"), { ok: false, error: "x", run: { result: null, ms: 0, log: null, phases: {} } }),
+    park: () => calls.push("park"),
+    ...over,
+  });
+  return { fake, calls };
+};
+
+describe("a ticket closed as done with no diff", () => {
+  test("is recorded closed, with no diagnosis and no park", async () => {
+    const ledger: any[] = [];
+    const { fake, calls } = closedIo({ record: (x: unknown) => ledger.push(rowOf(x)) });
+    assert.equal((await runOnce(fake)).outcome, "closed");
+    assert.deepEqual(calls, []);
+    assert.deepEqual(ledger.map((r) => r.outcome), ["closed"]);
+  });
+  test("with commits of its own it still parks", async () => {
+    const { fake, calls } = closedIo({ standing: () => ({ ticket: 42, branch: "agent/42-x", cwd: ".worktrees/agent-42", head: "a", commits: 2, changed: ["a.ts"], dirty: false, phase: "F" }) });
+    assert.notEqual((await runOnce(fake)).outcome, "closed");
+    assert.ok(calls.includes("diagnose"));
+  });
+  test("closed as not planned still parks", async () => {
+    const { fake, calls } = closedIo({ issueState: () => ({ state: "CLOSED", stateReason: "NOT_PLANNED" }) });
+    assert.notEqual((await runOnce(fake)).outcome, "closed");
+    assert.ok(calls.includes("park"));
+  });
+  test("a stood-down session is never asked about the issue", async () => {
+    let asked = 0;
+    const { fake } = closedIo({
+      issueState: () => (asked++, { state: "CLOSED", stateReason: "COMPLETED" }),
+      spawn: async () => ({ status: 0, blocked: false, result: {}, ms: 1, log: "l", phase: "F",
+        declared: { ticket: 42, branch: "agent/42-x", pr: null, phase: "F", stoodDown: true, why: "lost the race" } }),
+    });
+    assert.equal((await runOnce(fake)).outcome, "parked");
+    assert.equal(asked, 0);
   });
 });
 
@@ -1136,6 +1184,24 @@ describe("main", () => {
     });
     assert.equal(code, 0, "alternating park and land never reaches three in a row");
     assert.equal(n, outcomes.length + 1);
+  });
+
+  test("a ticket closed as done clears the breaker as a landing does", async () => {
+    let n = 0;
+    const done = () => n % 2 === 0;
+    const { fake } = closedIo({
+      pick: () => {
+        n += 1;
+        if (n > 7) return { skill: "handoff", number: 0, title: "queue empty" };
+        return { skill: "implement", number: n, title: "t", size: null, queue: null };
+      },
+      spawn: async () => ({ status: done() ? 0 : 1, blocked: false, result: {}, ms: 1, log: "l", phase: "F",
+        declared: done() ? { ticket: n, branch: `agent/${n}-x`, pr: null, phase: "F", stoodDown: false, why: null } : null }),
+      standing: () => (done() ? { ticket: n, branch: `agent/${n}-x`, cwd: null, head: "a", commits: 0, changed: [], dirty: false, phase: "F" } : null),
+    });
+    const code = await main({ io: fake, book: book(), screen: screen(), install: () => {}, runId: "t" });
+    assert.equal(code, 0, "alternating park and close never reaches three in a row");
+    assert.equal(n, 8);
   });
 });
 

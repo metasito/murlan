@@ -1097,6 +1097,14 @@ describe("outcomeOf", () => {
     assert.match(String(o.why), /stood down/);
   });
 
+  test("an issue closed as done with no commits and no pull request is closed, not parked", () => {
+    const closed = { state: "CLOSED", stateReason: "COMPLETED" };
+    assert.equal(outcomeOf({ pr: null, reason: fine, issue: closed, commits: 0 }).action, "closed");
+    assert.equal(outcomeOf({ pr: null, reason: fine, issue: closed, commits: 1 }).action, "park");
+    assert.equal(outcomeOf({ pr: null, reason: fine, issue: closed, commits: null }).action, "park");
+    assert.equal(outcomeOf({ pr: null, reason: fine, issue: { ...closed, stateReason: "NOT_PLANNED" }, commits: 0 }).action, "park");
+  });
+
   test("a soft reason is what a pull-request-less park is named after", () => {
     const o = outcomeOf({ pr: null, reason: { why: "the session ran out of turns", hard: false } });
     assert.equal(o.action, "park");

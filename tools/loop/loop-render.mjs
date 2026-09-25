@@ -426,7 +426,7 @@ const hhmm = (ms, utc) => {
 export function runRecap({ startedAt, now, totals, tickets, ciMs, waitMs, utc = false }, t) {
   const wall = now - startedAt;
   const head = (text) => row([{ t: ` ${clamp(text, t.width - 1)}`, c: "text", b: true }], null, t);
-  const stuck = tickets.filter((r) => r.outcome !== "landed");
+  const stuck = tickets.filter((r) => r.outcome !== "landed" && r.outcome !== "closed");
   const working = Math.max(0, wall - ciMs - waitMs);
   return [
     head(`run   ${hhmm(startedAt, utc)} → ${hhmm(now, utc)} · ${elapsed(wall)}`),
@@ -666,6 +666,7 @@ export function bell(out = process.stderr) {
 const OUTCOME = {
   landed: ["✓", "good"],
   merged: ["✓", "good"],
+  closed: ["✓", "good"],
   parked: ["!", "warn"],
   stalled: ["!", "warn"],
   rate_limited: ["⏸", "warn"],
