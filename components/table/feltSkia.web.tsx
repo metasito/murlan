@@ -12,16 +12,19 @@ const SkiaFelt = lazy(() => import("./feltSkiaBoundary"));
 
 const SOFTWARE_GL = /SwiftShader|llvmpipe|softpipe|Software|Basic Render/i;
 
+let onGpu: boolean | undefined;
+
 /** The felt's shader covers the table: on a software rasteriser a swaying lamp takes the main thread. */
 function drawsOnGpu(): boolean {
+  if (onGpu !== undefined) return onGpu;
   const e2e = globalThis as { murlanSkiaOnSoftware?: boolean };
-  if (process.env.EXPO_PUBLIC_E2E_FAST === "1" && e2e.murlanSkiaOnSoftware) return true;
+  if (process.env.EXPO_PUBLIC_E2E_FAST === "1" && e2e.murlanSkiaOnSoftware) return (onGpu = true);
   const gl = document.createElement("canvas").getContext("webgl", { failIfMajorPerformanceCaveat: true });
-  if (!gl) return false;
+  if (!gl) return (onGpu = false);
   const info = gl.getExtension("WEBGL_debug_renderer_info");
   const renderer = String(gl.getParameter(info ? info.UNMASKED_RENDERER_WEBGL : gl.RENDERER));
   gl.getExtension("WEBGL_lose_context")?.loseContext();
-  return !SOFTWARE_GL.test(renderer);
+  return (onGpu = !SOFTWARE_GL.test(renderer));
 }
 
 /** CanvasKit is fetched from jsDelivr: when that fails, the fallback felt stays and the table plays on. */
@@ -36,13 +39,12 @@ export class SkiaLoadFailed extends Component<{ children: ReactNode }, { failed:
 }
 
 export function Felt({ rig, stops, target }: FeltProps) {
-  const [painted, setPainted] = useState(false);
-  const [gpu] = useState(drawsOnGpu);
+  const [skia, setSkia] = useState(false);
   const [ready, onReady] = useFeltReady();
   const shadeStyle = useAnimatedStyle(() => ({ opacity: levelShade(rig.lamp.value.level) }));
 
   useEffect(() => {
-    const id = requestAnimationFrame(() => setPainted(true));
+    const id = requestAnimationFrame(() => setSkia(drawsOnGpu()));
     return () => cancelAnimationFrame(id);
   }, []);
 
@@ -50,7 +52,7 @@ export function Felt({ rig, stops, target }: FeltProps) {
     <View style={StyleSheet.absoluteFill} pointerEvents="none">
       {!ready && <FeltFallback stops={stops} target={target} sx={rig.sx} sy={rig.sy} />}
       {!ready && <Animated.View testID="felt-level-shade" style={[StyleSheet.absoluteFill, styles.shade, shadeStyle]} />}
-      {painted && gpu && (
+      {skia && (
         <SkiaLoadFailed>
           <Suspense fallback={null}>
             <SkiaFelt lamp={rig.lamp} sx={rig.sx} sy={rig.sy} stops={stops} onReady={onReady} />
