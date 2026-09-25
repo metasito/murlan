@@ -518,10 +518,6 @@ export function GameTable({
     entryMs,
     reduceMotion,
   });
-  // The felt box the lamp lives in. The pool is drawn oversized and slid under
-  // this box's own clipping, so it needs the box rather than the screen.
-  const feltW = W;
-  const feltH = H;
 
   // ── Screen-reader table description ─────────────────────────────────────────
   //
@@ -642,8 +638,8 @@ export function GameTable({
   const rig = useLampRig({
     target: lampTarget,
     fresh: !gameState.firstPlayMade && !gameState.gameOver,
-    width: feltW,
-    height: feltH,
+    width: W,
+    height: H,
   });
   useEffect(() => {
     if (!boomTrigger) return;
