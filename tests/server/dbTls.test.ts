@@ -60,7 +60,7 @@ describe("checkBootEnv", () => {
       PORT: "0",
     };
     delete env.SESSION_SECRET;
-    const run = spawnSync(process.execPath, [path.join(repoRoot, "server", "index.ts")], {
+    const run = spawnSync(process.execPath, ["--experimental-strip-types", path.join(repoRoot, "server", "index.ts")], {
       env,
       encoding: "utf8",
       timeout: 20_000 * DEADLINE_SCALE,
