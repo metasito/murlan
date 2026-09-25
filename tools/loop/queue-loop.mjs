@@ -76,7 +76,7 @@ import { DIAGNOSED, diagnose } from "./diagnose.mjs";
 import { checkLockDrift } from "./preflight.mjs";
 import { listWorktreeDirNames } from "./prune-worktrees.mjs";
 import { buildReady, MAX_REVIEW_ROUNDS, mergeCleared } from "./loop-gate.mjs";
-import { EFFORT_BY_PHASE, familyOf, MODEL_BY_PHASE } from "./loop-cost.mjs";
+import { EFFORT_BY_PHASE, familyOf, MODEL_BY_PHASE, TURNS_BY_SIZE, TURNS_DEFAULT } from "./loop-cost.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import { createRequire } from "node:module";
 
@@ -207,18 +207,7 @@ export function nextRoute(pinned = null, at = null, { read = derive, facts = tic
  * moves with the model and the context — measured 8x to 42x over a small cap — and with subagents
  * in flight it stops the *subagents* and lets the session carry on. The dollar figure stays as a
  * backstop against one pathological turn, well above what a healthy ticket reaches.
- *
- * Derived from `tickets.jsonl` (`turns` per row, rows since 2026-09-21T10:18Z): the busiest process
- * used 37 on S and 79 on M, so each cap stays above twice the most a healthy process has needed.
  */
-export const TURNS_BY_SIZE = {
-  "size:XS": 60,
-  "size:S": 120,
-  "size:M": 200,
-  "size:L": 320,
-  "size:XL": 400,
-};
-export const TURNS_DEFAULT = 150;
 const TICKET_BUDGET_USD = "40";
 
 /**

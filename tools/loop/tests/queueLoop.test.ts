@@ -8,13 +8,12 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 import { LAND } from "../loop-render.mjs";
+import { TURNS_BY_SIZE, TURNS_DEFAULT } from "../loop-cost.mjs";
 import {
   parseRoute,
   pushedPr,
   shouldStop,
   queueLoopArgs,
-  TURNS_BY_SIZE,
-  TURNS_DEFAULT,
   liveRoute,
   syncCheckout,
   reinstall,
