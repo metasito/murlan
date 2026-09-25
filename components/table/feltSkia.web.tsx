@@ -32,7 +32,7 @@ export function Felt({ rig, stops, target }: FeltProps) {
   }, []);
 
   return (
-    <View style={StyleSheet.absoluteFill}>
+    <View style={StyleSheet.absoluteFill} pointerEvents="none">
       {!ready && <FeltFallback stops={stops} target={target} sx={rig.sx} sy={rig.sy} />}
       {!ready && <Animated.View testID="felt-level-shade" style={[StyleSheet.absoluteFill, styles.shade, shadeStyle]} />}
       {painted && (

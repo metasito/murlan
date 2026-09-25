@@ -83,7 +83,7 @@ export function FeltCanvas({ lamp, sx, sy, stops, onReady }: FeltCanvasProps) {
 
   const { width, height } = DESIGN;
   return (
-    <Canvas style={StyleSheet.absoluteFill} testID="felt-skia">
+    <Canvas style={StyleSheet.absoluteFill} testID="felt-skia" pointerEvents="none">
       <Group transform={[{ scaleX: sx }, { scaleY: sy }]}>
         <Rect x={0} y={0} width={width} height={height} color={ROOM} />
         {rail && <Image image={rail} x={0} y={0} width={width} height={height} />}
