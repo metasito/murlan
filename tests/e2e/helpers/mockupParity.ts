@@ -31,6 +31,7 @@ const DPR = 2;
 const SEED = 1255;
 const STRIP_STEPS = 2;
 export const CANVASKIT_ROUTE = "**/canvaskit-wasm@*/**";
+const CANVASKIT_DIR = path.dirname(require.resolve("canvaskit-wasm/bin/full/canvaskit.js"));
 /** Skia's first frame after the table's, in virtual time: two nested Suspense reveals, each throttled by React. */
 const MAX_PRE_ROLL_MS = 60 * STEP_MS;
 
@@ -391,6 +392,11 @@ async function captureApp(browser: Browser, baseURL: string, decoder: Page, m: M
   const page = await newSidePage(browser, baseURL);
   const loading = trackLoads(page);
   if (variant === "fallback") await page.route(CANVASKIT_ROUTE, () => undefined);
+  // The CDN's own bytes (feltWeave.test.ts pins the version), without a download inside the measured run.
+  else await page.route(CANVASKIT_ROUTE, (route) => route.fulfill({
+    path: path.join(CANVASKIT_DIR, path.basename(new URL(route.request().url()).pathname)),
+    headers: { "access-control-allow-origin": "*" },
+  }));
   await m.appTrigger(page, baseURL);
   const mounted = await traced(page, m.appOnset, `the app's onset of ${m.key}`);
   const onset = variant === "skia" ? await skiaOnset(page, mounted, loading) : mounted;
