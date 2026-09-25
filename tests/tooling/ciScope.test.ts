@@ -4,6 +4,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { STEPS } from "../../tools/loop/check-steps.mjs";
 
 /**
  * The `scope` step decides which suites a change runs, so a path it wrongly
@@ -24,16 +25,17 @@ function scopeChains(workflow: string) {
   const step = /- id: scope\n[\s\S]*?(?=\n\n {2}\S)/.exec(workflow);
   assert.ok(step, "ci.yml has no `scope` step");
   const branch =
-    /(?:if|elif) (?:\[ -n "\$changed" \] && )?(!? ?)grep -q(v?)E '([^']+)' <<< "\$changed"; then\n(?:(?!\s*(?:if|elif|else|fi)\b).*\n)*?\s*echo "(app|harness)=(true|false)"/g;
+    /(?:if|elif) (?:\[ -n "\$changed" \] && )?(!? ?)grep -q(v?)E '([^']+)' <<< "\$changed"; then\n(?:(?!\s*(?:if|elif|else|fi)\b).*\n)*?\s*echo "(app|harness|scans)=(true|false)"/g;
   const chains: Record<string, { branches: Branch[]; otherwise?: boolean }> = {
     app: { branches: [] },
     harness: { branches: [] },
+    scans: { branches: [] },
   };
   for (const [, not, invert, source, key, value] of step[0].matchAll(branch)) {
     assert.equal(Boolean(not.trim()), invert === "v", `unhandled grep form: ${source}`);
     chains[key].branches.push({ re: new RegExp(source), value: value === "true" });
   }
-  for (const [, key, value] of step[0].matchAll(/\n\s*else\n\s*echo "(app|harness)=(true|false)"/g)) {
+  for (const [, key, value] of step[0].matchAll(/\n\s*else\n\s*echo "(app|harness|scans)=(true|false)"/g)) {
     chains[key].otherwise = value === "true";
   }
   return chains;
@@ -88,6 +90,37 @@ function reachedFromLoop(): string[] {
   return [...seen].filter((f) => !f.startsWith("tools/loop/"));
 }
 
+const ROOT_LISTING =
+  /\bls-files\b|\btracked(?:Root)?Files\(|\b(?:readdirSync|sourceFiles|walk)\(\s*(?:["']\.\/?["']|repoRoot|REPO_ROOT|ROOT|root|process\.cwd\(\))\s*[,)]/;
+
+/** Every test file that lists the repository from its root, in its own source or in a module it imports. */
+function testsListingTheRepo(): string[] {
+  return tracked
+    .filter((f) => /\.(test|spec)\.m?[jt]sx?$/.test(f))
+    .filter((file) => {
+      const specs = [...read(file).matchAll(/(?:from\s+|import\s*\(\s*)["'](\.{1,2}\/[^"']+)["']/g)];
+      const imported = specs
+        .map(([, spec]) => path.posix.normalize(path.posix.join(path.posix.dirname(file), spec)))
+        .filter((f) => tracked.includes(f));
+      return [file, ...imported].some((f) => ROOT_LISTING.test(read(f)));
+    });
+}
+
+/** The CI jobs whose command's glob loads `file`, with the scope outputs that gate each. */
+function jobsRunning(file: string, workflow: string): { job: string; gate: string[] }[] {
+  const scripts = JSON.parse(read("package.json")).scripts;
+  return STEPS.filter((s: { where: string; job?: string }) => s.job)
+    .filter((s: { args: string[] }) => {
+      const glob = /"([^"]+\*[^"]*)"\s*$/.exec(scripts[s.args.at(-1)!] ?? "")?.[1];
+      return glob !== undefined && path.posix.matchesGlob(file, glob);
+    })
+    .map((s: { job: string }) => {
+      const job = new RegExp(`\\n {2}${s.job}:\\n[\\s\\S]*?\\n {4}if: (.*)\\n`).exec(workflow);
+      assert.ok(job, `ci.yml has no job ${s.job} with an if:`);
+      return { job: s.job, gate: [...job[1].matchAll(/needs\.scope\.outputs\.(\w+) == 'true'/g)].map((m) => m[1]) };
+    });
+}
+
 describe("ci.yml's scope runs the suite that reads a change", () => {
   const chains = scopeChains(read(".github/workflows/ci.yml"));
 
@@ -105,8 +138,24 @@ describe("ci.yml's scope runs the suite that reads a change", () => {
     assert.deepEqual(skipped, [], "a change to only these skips loop:test");
   });
 
-  test("prose nothing reads still skips the app suites", () => {
-    assert.equal(scopeOf("docs/design/unread-note.md", chains.app), false);
+  test("a test that lists the repository runs on a change to any tracked path", () => {
+    const workflow = read(".github/workflows/ci.yml");
+    const listers = testsListingTheRepo();
+    for (const known of ["docReferences", "handBuiltNodeModulesPaths", "licence", "ciScope"]) {
+      assert.ok(listers.includes(`tests/tooling/${known}.test.ts`), `${known} is not seen to list the repo`);
+    }
+    const skipped = listers.flatMap((lister) => {
+      const jobs = jobsRunning(lister, workflow);
+      if (jobs.length === 0) return [`${lister}: no CI job runs it`];
+      const runs = (f: string) => jobs.some(({ gate }) => gate.some((key) => chains[key] && scopeOf(f, chains[key])));
+      return tracked.filter((f) => !runs(f)).map((f) => `${f} skips ${lister}`);
+    });
+    assert.deepEqual(skipped.slice(0, 20), [], `${skipped.length} path/scan pairs skip the scan`);
+  });
+
+  test("a doc-only change skips the app suites and still runs the scans", () => {
+    assert.equal(scopeOf("docs/research/a-note.md", chains.app), false);
+    assert.equal(scopeOf("docs/research/a-note.md", chains.scans), true);
     assert.equal(scopeOf("app/index.tsx", chains.app), true);
     assert.equal(scopeOf("app/index.tsx", chains.harness), false);
   });

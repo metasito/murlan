@@ -61,6 +61,7 @@ jobs:
     outputs:
       app: ${{ steps.scope.outputs.app }}
       harness: ${{ steps.scope.outputs.harness }}
+      scans: ${{ steps.scope.outputs.scans }}
       native: ${{ steps.scope.outputs.native }}
       shards: ${{ steps.plan.outputs.shards }}
       shard-count: ${{ steps.plan.outputs.shard-count }}
@@ -96,6 +97,7 @@ jobs:
               echo "Identical tree to #$num at $head, which this workflow already passed."
               echo "app=false" >> "$GITHUB_OUTPUT"
               echo "harness=false" >> "$GITHUB_OUTPUT"
+              echo "scans=false" >> "$GITHUB_OUTPUT"
               exit 0
             fi
             echo "No green pull-request run covers this tree — running everything."
@@ -109,6 +111,7 @@ jobs:
             echo "No usable base commit — running everything."
             echo "app=true" >> "$GITHUB_OUTPUT"
             echo "harness=true" >> "$GITHUB_OUTPUT"
+            echo "scans=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           changed=$(git diff --name-only "$base" HEAD)
@@ -148,6 +151,13 @@ jobs:
             echo "app=false" >> "$GITHUB_OUTPUT"
           else
             echo "app=true" >> "$GITHUB_OUTPUT"
+          fi
+          # `docReferences.test.ts` and the other scans that list the repository from its root reach
+          # every tracked path, prose included, so no change is too small to run the job holding them.
+          if grep -qE '.' <<< "$changed"; then
+            echo "scans=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "scans=false" >> "$GITHUB_OUTPUT"
           fi
 
       # Every shard must split the suite from the same numbers, so they are settled once, here.
@@ -268,7 +278,7 @@ jobs:
   verify:
     name: Typecheck and tests
     needs: scope
-    if: needs.scope.outputs.app == 'true'
+    if: needs.scope.outputs.app == 'true' || needs.scope.outputs.scans == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
