@@ -216,6 +216,43 @@ describe("the budget's floors", () => {
   });
 });
 
+describe("workflow YAML and shell scripts", () => {
+  const yaml = (...lines: string[]) => addedCounts("", lines.join("\n"), ".github/workflows/ci.yml");
+  const shell = (...lines: string[]) => addedCounts("", lines.join("\n"), "scripts/x.sh");
+
+  test("a line opening with # is a comment", () => {
+    assert.deepEqual(yaml("# why", "on: push", "  # indented why"), { comment: 2, code: 1 });
+  });
+
+  test("a run: | block counts as code", () => {
+    assert.deepEqual(yaml("steps:", "  - run: |", "      npm ci", "      npm test"), { comment: 0, code: 4 });
+  });
+
+  test("a # line inside a run: | block is still a comment", () => {
+    assert.deepEqual(yaml("  - run: |", "      # why", "      npm test"), { comment: 1, code: 2 });
+  });
+
+  test("a shebang is not a comment", () => {
+    assert.deepEqual(shell("#!/usr/bin/env bash", "set -e"), { comment: 0, code: 2 });
+  });
+
+  test("only line 1 can be a shebang", () => {
+    assert.deepEqual(shell("set -e", "#!/usr/bin/env bash"), { comment: 1, code: 1 });
+  });
+
+  test("a # after code or inside quotes is code", () => {
+    assert.deepEqual(shell('echo "# not prose"', "set -e # nor this", "x='#'"), { comment: 0, code: 3 });
+  });
+
+  test("// in a script is not a comment marker", () => {
+    assert.deepEqual(shell("// not prose", "/* nor this"), { comment: 0, code: 2 });
+  });
+
+  test("# in a TypeScript file is not a comment marker", () => {
+    assert.deepEqual(addedCounts("", "#field = 1;", "src/x.ts"), { comment: 0, code: 1 });
+  });
+});
+
 describe("budget", () => {
   // The caller's own git config reaches a temp repo: a global `commit.gpgsign` or `core.hooksPath`
   // fails or hangs the commits below.
@@ -263,13 +300,15 @@ describe("budget", () => {
     }
   });
 
-  const onBranch = (files: Record<string, string>) => {
+  const onBranch = (files: Record<string, string>, base: Record<string, string> = {}) => {
     const dir = mkdtempSync(join(tmpdir(), "comment-budget-"));
     const cwd = process.cwd();
     try {
       run(dir, "init", "-q", "-b", "main");
       run(dir, "config", "user.email", "t@example.com");
       run(dir, "config", "user.name", "t");
+      for (const [name, text] of Object.entries(base)) writeFileSync(join(dir, name), text);
+      run(dir, "add", "-A");
       run(dir, "commit", "-q", "--allow-empty", "-m", "base");
       run(dir, "checkout", "-qb", "branch");
       for (const [name, text] of Object.entries(files)) writeFileSync(join(dir, name), text);
@@ -319,5 +358,35 @@ describe("budget", () => {
       ["a.cjs", { comment: 7, code: 1 }],
       ["(branch total)", { comment: 7, code: 1 }],
     ]);
+  });
+
+  const hashed = (tag: string, comments: number, code: number) =>
+    [
+      ...Array.from({ length: comments }, (_, i) => `# ${tag} why ${i}`),
+      ...Array.from({ length: code }, (_, i) => `${tag}${i}: ${i}`),
+    ].join("\n");
+
+  test("a workflow whose added lines are over budget is named", () => {
+    assert.deepEqual(onBranch({ "ci.yml": hashed("a", 7, 1) }), [
+      ["ci.yml", { comment: 7, code: 1 }],
+      ["(branch total)", { comment: 7, code: 1 }],
+    ]);
+  });
+
+  test("a workflow whose added lines are under budget passes", () => {
+    assert.deepEqual(onBranch({ "ci.yml": hashed("a", 7, 8) }), []);
+  });
+
+  test(".yaml and .sh files are judged too", () => {
+    assert.deepEqual(onBranch({ "a.yaml": hashed("a", 3, 0), "b.sh": hashed("b", 3, 0) }), [
+      ["a.yaml", { comment: 3, code: 0 }],
+      ["b.sh", { comment: 3, code: 0 }],
+      ["(branch total)", { comment: 6, code: 0 }],
+    ]);
+  });
+
+  test("an unchanged comment-heavy workflow adds nothing", () => {
+    const heavy = hashed("a", 40, 2);
+    assert.deepEqual(onBranch({ "ci.yml": `${heavy}\nb: 1` }, { "ci.yml": heavy }), []);
   });
 });

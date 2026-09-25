@@ -34,7 +34,9 @@ export const ARCHEOLOGY = [
 export const HISTORY = new RegExp(`\\b(${ARCHEOLOGY.join("|")})\\b`, "i");
 
 /** What both the write hook and the branch check judge; one list, or a file one sees slips the other. */
-export const JUDGED_EXTENSIONS = ["mjs", "cjs", "js", "jsx", "ts", "tsx"];
+export const JUDGED_EXTENSIONS = ["mjs", "cjs", "js", "jsx", "ts", "tsx", "yml", "yaml", "sh"];
+
+const HASH_COMMENTED = /\.(ya?ml|sh)$/;
 
 const TEST_PATH =/(^|[\\/])tests?[\\/]|\.(test|spec)\.[jt]sx?$/;
 
@@ -54,7 +56,19 @@ export function floorFor(path: string): number {
  */
 const blankStrings = (line: string) => line.replace(/(["'`])(?:\\.|(?!\1)[^\\])*\1/g, '""');
 
-export function classify(text: string): Line[] {
+/**
+ * Owner's decision on #1294: a YAML key and the shell in a `run: |` block are both code, and a line
+ * opening with `#` is a comment wherever it sits. A shebang names the interpreter; it is not prose.
+ */
+const classifyHashed = (text: string): Line[] =>
+  text.split("\n").map((raw, i) => {
+    const line = raw.trim();
+    const prose = line.startsWith("#") && !(i === 0 && line.startsWith("#!"));
+    return { n: i + 1, text: line, kind: !line ? "blank" : prose ? "comment" : "code" };
+  });
+
+export function classify(text: string, path: string): Line[] {
+  if (HASH_COMMENTED.test(path)) return classifyHashed(text);
   const out: Line[] = [];
   let block = false;
   text.split("\n").forEach((raw, i) => {
@@ -83,8 +97,8 @@ export function classify(text: string): Line[] {
  * `floorFor`. A whole-file ratio computed here would be a third reading of one rule, and the two
  * that can be reached would not be the one under test.
  */
-export function violations(text: string): Violation[] {
-  return classify(text)
+export function violations(text: string, path: string): Violation[] {
+  return classify(text, path)
     .filter((l) => l.kind === "comment" && HISTORY.test(l.text))
     .map((c) => ({
       rule: "history" as const,
