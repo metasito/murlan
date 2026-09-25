@@ -223,6 +223,8 @@ const SHEET = sourceArray("SHEET_GRADIENT");
 const START_REASON = { plate: "startReasonStyles.card" };
 const CHIP = { plate: "chipStyles.chip" };
 const REMATCH = { plate: "styles.rematchPanel" };
+const SCORE_PILL = { gradient: [Colors.scorePillTop, Colors.scorePillFoot] };
+const SCORE_ROW = { ...SCORE_PILL, plate: "styles.rowMine" };
 const ON_TABLE: Record<string, Backdrop> = {
   "ExchangeAnnouncement.tsx:styles.noSwap": { plate: SELF },
   "GameTable.tsx:styles.finishedText": { plate: SELF },
@@ -240,6 +242,21 @@ const ON_TABLE: Record<string, Backdrop> = {
   "table/chrome.tsx:chipStyles.chipLabelStrong": CHIP,
   "table/chrome.tsx:chipStyles.chipLabelLit": CHIP,
   "table/chrome.tsx:chipStyles.chipLabelUrgent": CHIP,
+  "table/chrome.tsx:chipStyles.chipLabelEmber": CHIP,
+  "table/chrome.tsx:chipStyles.chipCountEmber": CHIP,
+  "table/scorePill.tsx:styles.you": SCORE_PILL,
+  "table/scorePill.tsx:styles.total": SCORE_PILL,
+  "table/scorePill.tsx:styles.of": SCORE_PILL,
+  "table/scorePill.tsx:styles.badgeText": { gradient: Gradient.playButton },
+  "table/scorePill.tsx:styles.head": SCORE_PILL,
+  "table/scorePill.tsx:styles.sub": SCORE_PILL,
+  "table/scorePill.tsx:styles.place": SCORE_ROW,
+  "table/scorePill.tsx:styles.discText": { gradient: [Colors.seatDisc, Colors.seatDiscDeep] },
+  "table/scorePill.tsx:styles.name": SCORE_ROW,
+  "table/scorePill.tsx:styles.nameMine": SCORE_ROW,
+  "table/scorePill.tsx:styles.gain": SCORE_ROW,
+  "table/scorePill.tsx:styles.gainNone": SCORE_ROW,
+  "table/scorePill.tsx:styles.rowTotal": SCORE_ROW,
   "table/chrome.tsx:startCardStyles.glyph": { plate: "startCardStyles.banner" },
   "table/chrome.tsx:startCardStyles.text": { plate: "startCardStyles.banner" },
   "table/ExchangeFlight.tsx:styles.tag": { plate: SELF },

@@ -435,6 +435,14 @@ export const sq: Record<keyof typeof en, string> = {
   "gameTable.a11yCardMoved": "{{card}} u zhvendos në pozicionin {{position}} nga {{total}}.",
   "gameTable.a11yHandSelected_one": "{{count}} e zgjedhur.",
   "gameTable.a11yHandSelected_other": "{{count}} të zgjedhura.",
+  "scorePill.you": "Ti",
+  "scorePill.place": "#{{place}}",
+  "scorePill.standings": "Renditja",
+  "scorePill.race": "Loja deri në {{target}}",
+  "scorePill.a11yLabel_one": "Pikët e tua: {{count}} pikë nga {{target}}, vendi {{place}}.",
+  "scorePill.a11yLabel_other": "Pikët e tua: {{count}} pikë nga {{target}}, vendi {{place}}.",
+  "scorePill.a11yRow_one": "{{place}}. {{name}}, {{count}} pikë.",
+  "scorePill.a11yRow_other": "{{place}}. {{name}}, {{count}} pikë.",
 
   // ----------------------------------------------------- gameSettingsSheet.*
   "gameSettingsSheet.title": "Cilësimet",

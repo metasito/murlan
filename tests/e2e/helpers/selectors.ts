@@ -10,6 +10,8 @@ export const TABLE = '[data-testid="game-table"]';
 
 /** The table's own screen-reader sentence (`describeTableForA11y`). */
 export const TABLE_STATE = "data-table-state";
+/** "true" from the table's entry until the last dealt card lands. */
+export const TABLE_DEALING = "data-dealing";
 export const HAND_ZONE = "[data-hand-state]";
 
 /**

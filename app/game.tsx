@@ -161,6 +161,7 @@ export default function GameScreen() {
       gameState={gameState}
       matchOver={match.over}
       handScores={lastHandScores}
+      matchScore={match.length === "single" ? undefined : { scores: match.scores, target: match.target }}
       viewerSeat={humanIdx}
       selectedIds={selectedCards}
       onSelectCard={selectCard}

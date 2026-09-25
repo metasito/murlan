@@ -428,6 +428,14 @@ export const it: Record<keyof typeof en, string> = {
   "gameTable.a11yCardMoved": "{{card}} spostata in posizione {{position}} di {{total}}.",
   "gameTable.a11yHandSelected_one": "{{count}} selezionata.",
   "gameTable.a11yHandSelected_other": "{{count}} selezionate.",
+  "scorePill.you": "Tu",
+  "scorePill.place": "{{place}}°",
+  "scorePill.standings": "Classifica",
+  "scorePill.race": "Partita a {{target}}",
+  "scorePill.a11yLabel_one": "Il tuo punteggio: {{count}} punto su {{target}}, {{place}}° posto.",
+  "scorePill.a11yLabel_other": "Il tuo punteggio: {{count}} punti su {{target}}, {{place}}° posto.",
+  "scorePill.a11yRow_one": "{{place}}° {{name}}, {{count}} punto.",
+  "scorePill.a11yRow_other": "{{place}}° {{name}}, {{count}} punti.",
 
   // ----------------------------------------------------- gameSettingsSheet.*
   "gameSettingsSheet.title": "Impostazioni",
