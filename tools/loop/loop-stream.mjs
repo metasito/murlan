@@ -18,10 +18,11 @@ export const PHASE = /^[ \t]*`?PHASE ([A-F])`?[ \t]*$/m;
 const DECLARED = /^[ \t]*LOOP-RESULT (\{.*\})[ \t]*$/m;
 
 /** What a `git commit` looks like in a `Bash` call, whatever else is on the line. */
-export const COMMITTING = /\bgit\b[^\n|;&]*\bcommit\b/;
+export const COMMITTING = /\bgit(?:\s+(?:-[Cc]\s+(?:"[^"]*"|'[^']*'|\S+)|--[\w-]+(?:=\S+)?))*\s+commit(?![\w-])/;
 
 const EDITS = new Set(["Edit", "Write", "NotebookEdit"]);
-const SCRATCH = /(^|[\\/])\.[^\\/]+$|^\/tmp\/|[\\/]Temp[\\/]|[\\/]\.loop-logs[\\/]/i;
+const SCRATCH =
+  /(^|[\\/])\.[^\\/]+\.md$|^\/tmp\/|[\\/]Temp[\\/]|[\\/]\.loop-logs[\\/]|[\\/]\.worktrees[\\/][^\\/]+[\\/][^\\/]+\.(md|txt|log|tsv)$/;
 
 /**
  * Where a phase that does not build ends in the build with no `PHASE C` (#1098): the first edit

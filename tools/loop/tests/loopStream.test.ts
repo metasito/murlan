@@ -1,12 +1,26 @@
 // tools/loop/tests/loopStream.test.ts
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { readLine, scopeEnds } from "../loop-stream.mjs";
+import { COMMITTING, readLine, scopeEnds } from "../loop-stream.mjs";
 
 test("a scratch write is not the build", () => {
-  for (const file of ["/repo/.worktrees/agent-1/.dod-1.md", "/tmp/pr-1.md", "C:\\Users\\x\\AppData\\Local\\Temp\\pr.md", "/repo/.loop-logs/pr-1.md"])
+  for (const file of [
+    "/repo/.worktrees/agent-1/.dod-1.md", "/tmp/pr-1.md", "C:\\Users\\x\\AppData\\Local\\Temp\\pr.md", "/repo/.loop-logs/pr-1.md",
+    "C:\\repo\\.worktrees\\agent-1187\\verdict-1187.md", "/repo/.worktrees/agent-1187/review-1187.md",
+  ])
     assert.equal(scopeEnds([{ name: "Write", file }]), false, file);
-  assert.equal(scopeEnds([{ name: "Edit", file: "/repo/.worktrees/agent-1/tests/native/setup.ts" }]), true);
+  for (const file of [
+    "/repo/.worktrees/agent-1/tests/native/setup.ts", "/repo/.worktrees/agent-1/.gitignore",
+    "/repo/.worktrees/agent-1/.eslintrc.cjs", "/repo/.worktrees/agent-1/components/temp/x.ts",
+  ])
+    assert.equal(scopeEnds([{ name: "Edit", file }]), true, file);
+});
+
+test("COMMITTING is the commit subcommand, after any global options, and no history read", () => {
+  for (const command of ["git commit -m x", "git add -- a.ts && git commit -m x", "git -C .worktrees/agent-1 commit -m x", "git -c core.hooksPath=x commit"])
+    assert.equal(COMMITTING.test(command), true, command);
+  for (const command of ["git diff-tree --no-commit-id -r HEAD", "git log --format='%h commit %s'", "git commit-tree HEAD^{tree}"])
+    assert.equal(COMMITTING.test(command), false, command);
 });
 
 describe("readLine", () => {
