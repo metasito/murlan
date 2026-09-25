@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { awaitRuns, BUDGET_MS } from "../await-run.mjs";
-import { CHECK_BASH_TIMEOUT_MS } from "../queue-loop.mjs";
+import { awaitRuns, BUDGET_MS, EVERY_MS } from "../await-run.mjs";
+import { BASH_DEFAULT_TIMEOUT_MS } from "../queue-loop.mjs";
 
 const quiet = () => {};
 function clock() {
@@ -16,7 +16,7 @@ test("0 once every run succeeded, polling the one still going", async () => {
   const c = clock();
   const view = scripted({ 1: [going, going, done("success")], 2: [done("success")] });
   assert.equal(await awaitRuns(["1", "2"], { view, ...c, say: quiet }), 0);
-  assert.equal(c.now(), 120_000);
+  assert.equal(c.now(), 2 * EVERY_MS);
 });
 
 test("1 as soon as one run failed, without waiting on the other", async () => {
@@ -48,6 +48,20 @@ test("a gh failure counts as still going, not as a crash", async () => {
   assert.equal(await awaitRuns(["1"], { view, ...c, say: quiet }), 0);
 });
 
-test("the default budget leaves a poll's headroom under the Bash ceiling", () => {
-  assert.ok(BUDGET_MS + 2 * 60_000 <= CHECK_BASH_TIMEOUT_MS);
+test("a run gh cannot find is 2, naming the id, not a wait forever", async () => {
+  const said: string[] = [];
+  const missing = Object.assign(new Error("Command failed: gh run view 9"), {
+    stderr: "failed to get run: HTTP 404: Not Found (https://api.github.com/repos/o/r/actions/runs/9)\n",
+  });
+  const view = (id: string) => {
+    if (id === "9") throw missing;
+    return going;
+  };
+  assert.equal(await awaitRuns(["1", "9"], { view, ...clock(), say: (s: string) => said.push(s) }), 2);
+  assert.match(said.join("\n"), /\b9\b.*404/);
+  assert.equal(await awaitRuns(["9"], { view: () => { throw new Error("could not find any workflow run with ID 9"); }, ...clock(), say: quiet }), 2);
+});
+
+test("the default budget returns with a poll's headroom under the default Bash timeout", () => {
+  assert.ok(BUDGET_MS + EVERY_MS <= BASH_DEFAULT_TIMEOUT_MS);
 });
