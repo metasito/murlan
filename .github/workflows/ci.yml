@@ -656,8 +656,12 @@ jobs:
             exit 1
           fi
 
+      # JSON as well as HTML: the per-spec durations `tools/ci/e2e-timings.mjs` needs are otherwise
+      # computed by this job and discarded with the runner (#841).
       - name: Merge into one report
-        run: npx playwright merge-reports --reporter html ./all-blob-reports
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_NAME: merged-report.json
+        run: npx playwright merge-reports --reporter html,json ./all-blob-reports
 
       - name: Keep the Playwright report
         if: ${{ !cancelled() }}
@@ -680,14 +684,6 @@ jobs:
           path: mockup-parity/
           if-no-files-found: error
           retention-days: 30
-
-      # The same merge, read out as JSON instead of thrown away as HTML — the
-      # per-spec durations `tools/ci/e2e-timings.mjs` needs are otherwise
-      # computed by this job and discarded with the runner (#841). Runs
-      # unconditionally, on PR branches too, so a merge failure here is caught
-      # on the branch that broke it rather than surfacing only on `main`.
-      - name: Merge into one report — JSON, for timings
-        run: npx playwright merge-reports --reporter json ./all-blob-reports > merged-report.json
 
       - name: Name the tests that passed only on a retry
         run: node tools/ci/e2e-flaky.mjs merged-report.json
