@@ -45,7 +45,7 @@ describe('a hand card carries the drag as two discrete actions', () => {
     await render(
       <CardView card={CARD} onPress={() => {}} a11yActions={ACTIONS} onA11yAction={taken} />
     );
-    fireEvent(screen.getByRole('button'), 'accessibilityAction', {
+    await fireEvent(screen.getByRole('button'), 'accessibilityAction', {
       nativeEvent: { actionName: 'moveCardRight' },
     });
     expect(taken).toHaveBeenCalledWith('moveCardRight');

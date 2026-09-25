@@ -173,7 +173,7 @@ describe('leaving a replay', () => {
     const onExit = jest.fn();
     const view = await transport({ onExit });
 
-    fireEvent.press(view.getByLabelText(t('replay.back')));
+    await fireEvent.press(view.getByLabelText(t('replay.back')));
     expect(onExit).toHaveBeenCalledTimes(1);
   });
 });

@@ -64,10 +64,10 @@ function poisonedLines(source: string): number[] {
   const hits: number[] = [];
 
   for (let i = 0; i < lines.length; i++) {
-    if (!/\bfireEvent\.\w+\(/.test(lines[i])) continue;
+    if (!/\bfireEvent(?:\.\w+)?\(/.test(lines[i])) continue;
     // `act(` on the line itself covers the brace-less arrow form, which the
     // block tracker cannot see because it never opens one.
-    if (/\bawait\s+fireEvent\./.test(lines[i]) || /\bact\(/.test(lines[i])) continue;
+    if (/\bawait\s+fireEvent\b/.test(lines[i]) || /\bact\(/.test(lines[i])) continue;
     if (enclosed.has(i)) continue;
 
     for (let j = i + 1; j < lines.length; j++) {
@@ -80,6 +80,35 @@ function poisonedLines(source: string): number[] {
         break;
       }
       if (/\bawait\b/.test(line)) break;
+    }
+  }
+  return hits;
+}
+
+/**
+ * A bare `fireEvent` whose test asserts before it awaits anything: the handler
+ * ran, but the re-render it caused has not, so the `expect` reads the tree as
+ * it was before the press (docs/agents/checks.md, *The native harness is async*).
+ */
+function staleAssertLines(source: string): number[] {
+  const lines = source.split("\n");
+  const skippable = (l: string) => l.trim() === "" || /^\s*(\/\/|\/\*|\*)/.test(l);
+  const enclosed = insideAct(lines);
+  const hits: number[] = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    if (!/\bfireEvent(?:\.\w+)?\(/.test(lines[i])) continue;
+    if (/\bawait\s+fireEvent\b/.test(lines[i]) || /\bact\(/.test(lines[i])) continue;
+    if (enclosed.has(i)) continue;
+
+    for (let j = i + 1; j < lines.length; j++) {
+      const line = lines[j];
+      if (skippable(line)) continue;
+      if (/\b(it|test)\(/.test(line) || /\bawait\b/.test(line)) break;
+      if (/\bexpect\(/.test(line)) {
+        hits.push(i + 1);
+        break;
+      }
     }
   }
   return hits;
@@ -101,6 +130,7 @@ describe("no native test pairs a bare fireEvent with an act flush", () => {
   test("the pattern names the shape, and only that shape", () => {
     assert.deepEqual(poisonedLines("fireEvent.press(x);\nawait act(async () => {});"), [1]);
     assert.deepEqual(poisonedLines("fireEvent.press(x);\n\n  await act(async () => {});"), [1]);
+    assert.deepEqual(poisonedLines("fireEvent(x, 'press');\nawait act(async () => {});"), [1]);
     assert.deepEqual(poisonedLines("fireEvent.press(x);\n// flush it\nawait act(async () => {});"), [1]);
     // Not adjacency: any run of synchronous statements between the two still pairs.
     assert.deepEqual(
@@ -144,5 +174,24 @@ describe("no native test pairs a bare fireEvent with an act flush", () => {
     const offenders = nativeSources
       .flatMap(({ name, source }) => poisonedLines(source).map((n) => `${name}:${n}`));
     assert.deepEqual(offenders, [], "these leave every later test in their file unable to find anything");
+  });
+});
+
+describe("no native test asserts on the tree a bare fireEvent has not re-rendered yet", () => {
+  test("the pattern names a press read back before anything is awaited, and only that", () => {
+    assert.deepEqual(staleAssertLines("fireEvent.press(x);\nexpect(spy).toHaveBeenCalled();"), [1]);
+    assert.deepEqual(staleAssertLines("fireEvent(x, 'press');\n\n// read it\nexpect(a).toBe(b);"), [1]);
+    assert.deepEqual(staleAssertLines("fireEvent.press(\n  x\n);\nconst n = 1;\nexpect(a).toBe(n);"), [1]);
+    assert.deepEqual(staleAssertLines("await fireEvent.press(x);\nexpect(a).toBe(b);"), []);
+    assert.deepEqual(staleAssertLines("await fireEvent(x, 'press');\nexpect(a).toBe(b);"), []);
+    assert.deepEqual(staleAssertLines("fireEvent.press(x);\nawait waitFor(() => expect(a).toBe(b));"), []);
+    assert.deepEqual(staleAssertLines("await act(async () => {\n  fireEvent.press(x);\n});\nexpect(a).toBe(b);"), []);
+    assert.deepEqual(staleAssertLines("fireEvent.press(x);\n});\nit('next', () => {\nexpect(a).toBe(b);"), []);
+  });
+
+  test("none of them does", () => {
+    const offenders = nativeSources
+      .flatMap(({ name, source }) => staleAssertLines(source).map((n) => `${name}:${n}`));
+    assert.deepEqual(offenders, [], "write `await fireEvent…(…)`: the expect below it reads the pre-press tree");
   });
 });
