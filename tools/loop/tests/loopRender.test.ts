@@ -451,6 +451,12 @@ describe("runRecap", () => {
     assert.match(strip(runRecap(utc, tPlain)[0]), /run\s+21:40 → 08:44/);
   });
 
+  test("a ticket closed as done does not need the owner, and has the landed glyph", () => {
+    const out = runRecap({ ...run, tickets: [{ number: 1214, outcome: "closed", why: "closed as done" }] }, tPlain).join("\n");
+    assert.ok(!out.includes("#1214"), out);
+    assert.equal(strip(closing({ outcome: "closed", number: 1214, ms: 0, cost: 0, why: "x" }, tPlain)).trim()[0], "✓");
+  });
+
   test("a run with nothing parked has no needs-you heading", () => {
     assert.ok(!runRecap({ ...run, tickets: [] }, tPlain).join("\n").includes("needs you"));
   });
@@ -581,6 +587,12 @@ describe("closing", () => {
     const out = strip(closing(landed, tPlain));
     assert.match(out, /#998/);
     assert.match(out, /23:44 · \$3\.90 · 132 turns · 9 files/);
+  });
+
+  test("a ticket closed as done carries the same facts, not its reason", () => {
+    const out = strip(closing({ ...landed, outcome: "closed", why: "closed as done" }, tPlain));
+    assert.match(out, /23:44 · \$3\.90 · 132 turns · 9 files/);
+    assert.doesNotMatch(out, /closed as done/);
   });
 
   test("a parked one carries the reason instead, and its log", () => {

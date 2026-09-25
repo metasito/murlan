@@ -85,7 +85,7 @@ export function diagnosisPrompt({ ticket, phase, why, stderr = "", log = null, r
     ...(ci.length ? ["", `The failed CI log, last ${ci.length} lines (${ciLog}):`, "```", ...ci, "```"] : []),
     "",
     "End your reply with exactly these two lines:",
-    "DIAGNOSIS: resume B | resume C | resume D | rerun | park",
+    "DIAGNOSIS: <one of: resume B, resume C, resume D, rerun, park>",
     "CAUSE: the root cause in one paragraph, and what the next session or the owner must do",
     "",
     "- resume <phase>: the ticket's own work can fix it. A fresh session resumes there with CAUSE as its brief: B scopes, C builds, D reviews.",
@@ -94,8 +94,11 @@ export function diagnosisPrompt({ ticket, phase, why, stderr = "", log = null, r
   ].join("\n");
 }
 
-const DECISION = /^DIAGNOSIS:\s*(resume\s+([A-Za-z])|rerun|park)\s*$/im;
-const CAUSE = /^CAUSE:[ \t]*(.+(?:\n(?!DIAGNOSIS:).+)*)/im;
+const HEADER = /^[#>*`\s]*DIAGNOSIS[*`]*:([^\n]*)/gim;
+const CHOICE = /^[*`\s]*(resume\s+([A-Za-z])\b|rerun\b|park\b)/i;
+const OPTION = /\b(?:resume\s+[A-Za-z]\b|rerun\b|park\b)/gi;
+const echoed = (line) => (line.match(OPTION) ?? []).length > 1;
+const CAUSE = /^[#>*`\s]*CAUSE[*`]*:[*`]*\s*(.+(?:\n(?![#>*`\s]*DIAGNOSIS)(?!\s*$).+)*)/im;
 
 /**
  * @param {string|null|undefined} text the session's final reply
@@ -103,9 +106,13 @@ const CAUSE = /^CAUSE:[ \t]*(.+(?:\n(?!DIAGNOSIS:).+)*)/im;
  * @returns {{ok: true, action: "resume"|"rerun"|"park", phase?: string, cause: string}|{ok: false, error: string}}
  */
 export function parseDiagnosis(text, runId = null) {
-  const decision = DECISION.exec(text ?? "");
-  const cause = CAUSE.exec(text ?? "")?.[1].replace(/\s+/g, " ").trim().slice(0, DIAGNOSIS.CAUSE_CHARS);
-  if (!decision || !cause) return { ok: false, error: "it gave no DIAGNOSIS and CAUSE lines" };
+  const t = text ?? "";
+  const lines = [...t.matchAll(HEADER)].map((m) => m[1]);
+  const decision = lines.filter((l) => !echoed(l)).map((l) => CHOICE.exec(l)).find(Boolean);
+  if (!decision)
+    return { ok: false, error: lines.some(echoed) ? "it copied the options line instead of choosing one" : "it gave no DIAGNOSIS line" };
+  const cause = CAUSE.exec(t)?.[1].replace(/`{3,}/g, "").replace(/\s+/g, " ").trim().slice(0, DIAGNOSIS.CAUSE_CHARS);
+  if (!cause) return { ok: false, error: "it gave no CAUSE line" };
   if (decision[2]) {
     const phase = decision[2].toUpperCase();
     return RESUMABLE.has(phase)
@@ -130,7 +137,7 @@ export function treeState(cwd, run = (args) => execFileSync("git", ["-C", cwd, .
  * @param {{ticket: number, phase: string, why: string, cwd?: string|null, log?: string|null,
  *   stderr?: string, runId?: number|null, ciLog?: string|null}} stop
  * @returns {Promise<({ok: true, action: string, phase?: string, cause: string}|{ok: false, error: string})
- *   & {run: {result: {cost: number, turns: number}|null, ms: number, log: string|null, phases: {}}}>}
+ *   & {reply?: string, run: {result: {cost: number, turns: number}|null, ms: number, log: string|null, phases: {}}}>}
  */
 export function diagnose(stop, { spawnFn = spawnChild, state = treeState, timeoutMs = DIAGNOSIS.TIMEOUT_MS } = {}) {
   const cwd = stop.cwd ?? ROOT;
@@ -178,7 +185,7 @@ export function diagnose(stop, { spawnFn = spawnChild, state = treeState, timeou
       run.result = { cost: json.total_cost_usd ?? 0, turns: json.num_turns ?? 0 };
       if (state(cwd) !== before) return done({ ok: false, error: "it changed the worktree it was only to read" });
       if (json.is_error) return done({ ok: false, error: `it ended ${json.subtype ?? "in an error"}` });
-      done(parseDiagnosis(json.result, stop.runId ?? null));
+      done({ ...parseDiagnosis(json.result, stop.runId ?? null), reply: String(json.result ?? "") });
     });
     child.stdin.on("error", () => {});
     child.stdin.end(diagnosisPrompt(stop));

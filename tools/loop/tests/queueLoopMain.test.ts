@@ -7,8 +7,11 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { EventEmitter } from "node:events";
+import { PassThrough } from "node:stream";
 import {
   parkAsked,
+  queuePreStreamed,
   runOnce,
   afterSession,
   main,
@@ -41,7 +44,7 @@ const rowOf = (x: any) => ({
 const io = (over: Record<string, unknown> = {}, ledger: any[] = []) => ({
   stopFile: () => false,
   syncCheckout: () => true,
-  queuePre: () => 0,
+  queuePre: () => ({ status: 0, said: "" }),
   pick: () => ({
     skill: "implement",
     number: 42,
@@ -82,6 +85,7 @@ const io = (over: Record<string, unknown> = {}, ledger: any[] = []) => ({
   announce: () => {},
   diagnose: async () => ({ ok: false, error: "no diagnosis here", run: { result: null, ms: 0, log: "l", phases: {} } }),
   rerun: () => {},
+  issueState: () => ({ state: "OPEN", stateReason: null }),
   ...over,
 });
 
@@ -314,8 +318,35 @@ describe("runOnce", () => {
   // The loop's own merges move package-lock.json, and preflight refuses to start on an install
   // that has drifted from it. Read as "stop", the first such ticket ended the night.
   test("queue-pre exit 2 holds; anything else still stops", async () => {
-    assert.equal((await runOnce(io({ queuePre: () => 2 }))).outcome, "hold");
-    assert.equal((await runOnce(io({ queuePre: () => 1 }))).outcome, "stop");
+    assert.equal((await runOnce(io({ queuePre: () => ({ status: 2, said: "" }) }))).outcome, "hold");
+    assert.equal((await runOnce(io({ queuePre: () => ({ status: 1, said: "…" }) }))).outcome, "stop");
+  });
+
+  test("a refusal carries queue-pre's refused row into why", async () => {
+    const out = await runOnce(io({ queuePre: () => ({ status: 1, said: "memory   ✓ 6.1 GB free\nworktrees ✗ 1 not made by the loop — remove to start\n" }) }));
+    assert.equal(out.outcome, "stop");
+    assert.match(String(out.why), /1 not made by the loop/);
+    assert.doesNotMatch(String(out.why), /GB free/);
+  });
+
+  test("a queue-pre that answers later is waited for", async () => {
+    assert.equal((await runOnce(io({ queuePre: async () => ({ status: 0, said: "" }) }))).outcome, "landed");
+    assert.equal((await runOnce(io({ queuePre: async () => ({ status: 2, said: "" }) }))).outcome, "hold");
+  });
+
+  test("queue-pre's rows reach the terminal as they are written, and the refusal is kept", async () => {
+    const child: any = new EventEmitter();
+    child.stderr = new PassThrough();
+    const shown: string[] = [];
+    const out = { write: (s: string) => shown.push(String(s)) };
+    const pending = queuePreStreamed({ spawnFn: () => child, out: out as never });
+    child.stderr.write("memory   \x1b[32m✓\x1b[0m 6.1 GB free\n");
+    await new Promise((r) => setImmediate(r));
+    assert.deepEqual(shown, ["memory   \x1b[32m✓\x1b[0m 6.1 GB free\n"], "the first row is on screen before queue-pre exits");
+    child.stderr.end("worktrees ✗ 1 not made by the loop\n");
+    await new Promise((r) => setImmediate(r));
+    child.emit("close", 1);
+    assert.deepEqual(await pending, { status: 1, said: "memory   ✓ 6.1 GB free\nworktrees ✗ 1 not made by the loop\n" });
   });
 
   test("a pinned ticket is what the picker is asked for", async () => {
@@ -497,6 +528,10 @@ describe("runOnce", () => {
       if (reason) assert.match(String(got), reason);
       else assert.equal(got ?? null, null);
     }
+    const ledger: any[] = [];
+    const told = async () => ({ ...(await handingOff("D", "D")()), declared: { ticket: 42, phase: "D", handoff: "D", stoodDown: false, why: "round 1 HOLD: model the Modal root" } });
+    await runOnce(io({ spawn: told }, ledger));
+    assert.equal(await next(ledger, "D"), "round 1 HOLD: model the Modal root", "a session's own handoff why is the next process's brief");
   });
 
   test("a session on the wrong model parks with the reason", async () => {
@@ -540,7 +575,7 @@ describe("runOnce", () => {
     const order: string[] = [];
     await runOnce(
       io({
-        queuePre: () => (order.push("pre"), 0),
+        queuePre: () => (order.push("pre"), { status: 0, said: "" }),
         pick: () => (order.push("pick"), { skill: "implement", number: 42, title: "t", size: null, queue: null }),
       }),
     );
@@ -1011,6 +1046,7 @@ describe("afterSession", () => {
     assert.equal(a.ticket, 42);
     assert.equal(a.branch, "agent/42-x");
     assert.equal(a.cwd, null, "there is no worktree left to point at");
+    assert.equal(a.commits, null, "no worktree read is not a count of zero commits");
   });
 
   test("derive alone still answers, for a session that declared nothing", () => {
@@ -1018,6 +1054,7 @@ describe("afterSession", () => {
     assert.equal(a.ticket, 42);
     assert.equal(a.cwd, ".worktrees/agent-42");
     assert.equal(a.dirty, true);
+    assert.equal(of(null, null, { ...derived, commits: 0 }).commits, 0);
   });
 
   // derive computes a phase from commit count and verdict, so it answers C, D, E or ? and never
@@ -1032,6 +1069,51 @@ describe("afterSession", () => {
   test("the worktree's own readings are never taken from the declaration", () => {
     const a = of({ ticket: 42, branch: "agent/42-x" }, "F", derived);
     assert.deepEqual(a.changed, ["a.ts"], "what changed is git's answer, not the session's");
+  });
+});
+
+const closedIo = (over: Record<string, unknown> = {}) => {
+  const calls: string[] = [];
+  const fake = io({
+    pushedPr: () => null,
+    standing: () => ({ ticket: 42, branch: "agent/42-x", cwd: ".worktrees/agent-42", head: "a", commits: 0, changed: [], dirty: false, phase: "F" }),
+    spawn: async () => ({ status: 0, blocked: false, result: { cost: 1, turns: 9 }, ms: 1000, log: "l", phase: "F",
+      declared: { ticket: 42, branch: "agent/42-x", pr: null, phase: "F", stoodDown: false, why: null } }),
+    issueState: () => ({ state: "CLOSED", stateReason: "COMPLETED" }),
+    diagnose: async () => (calls.push("diagnose"), { ok: false, error: "x", run: { result: null, ms: 0, log: null, phases: {} } }),
+    park: () => calls.push("park"),
+    ...over,
+  });
+  return { fake, calls };
+};
+
+describe("a ticket closed as done with no diff", () => {
+  test("is recorded closed, with no diagnosis and no park", async () => {
+    const ledger: any[] = [];
+    const { fake, calls } = closedIo({ record: (x: unknown) => ledger.push(rowOf(x)) });
+    assert.equal((await runOnce(fake)).outcome, "closed");
+    assert.deepEqual(calls, []);
+    assert.deepEqual(ledger.map((r) => r.outcome), ["closed"]);
+  });
+  test("with commits of its own it still parks", async () => {
+    const { fake, calls } = closedIo({ standing: () => ({ ticket: 42, branch: "agent/42-x", cwd: ".worktrees/agent-42", head: "a", commits: 2, changed: ["a.ts"], dirty: false, phase: "F" }) });
+    assert.notEqual((await runOnce(fake)).outcome, "closed");
+    assert.ok(calls.includes("diagnose"));
+  });
+  test("closed as not planned still parks", async () => {
+    const { fake, calls } = closedIo({ issueState: () => ({ state: "CLOSED", stateReason: "NOT_PLANNED" }) });
+    assert.notEqual((await runOnce(fake)).outcome, "closed");
+    assert.ok(calls.includes("park"));
+  });
+  test("a stood-down session is never asked about the issue", async () => {
+    let asked = 0;
+    const { fake } = closedIo({
+      issueState: () => (asked++, { state: "CLOSED", stateReason: "COMPLETED" }),
+      spawn: async () => ({ status: 0, blocked: false, result: {}, ms: 1, log: "l", phase: "F",
+        declared: { ticket: 42, branch: "agent/42-x", pr: null, phase: "F", stoodDown: true, why: "lost the race" } }),
+    });
+    assert.equal((await runOnce(fake)).outcome, "parked");
+    assert.equal(asked, 0);
   });
 });
 
@@ -1136,6 +1218,24 @@ describe("main", () => {
     });
     assert.equal(code, 0, "alternating park and land never reaches three in a row");
     assert.equal(n, outcomes.length + 1);
+  });
+
+  test("a ticket closed as done clears the breaker as a landing does", async () => {
+    let n = 0;
+    const done = () => n % 2 === 0;
+    const { fake } = closedIo({
+      pick: () => {
+        n += 1;
+        if (n > 7) return { skill: "handoff", number: 0, title: "queue empty" };
+        return { skill: "implement", number: n, title: "t", size: null, queue: null };
+      },
+      spawn: async () => ({ status: done() ? 0 : 1, blocked: false, result: {}, ms: 1, log: "l", phase: "F",
+        declared: done() ? { ticket: n, branch: `agent/${n}-x`, pr: null, phase: "F", stoodDown: false, why: null } : null }),
+      standing: () => (done() ? { ticket: n, branch: `agent/${n}-x`, cwd: null, head: "a", commits: 0, changed: [], dirty: false, phase: "F" } : null),
+    });
+    const code = await main({ io: fake, book: book(), screen: screen(), install: () => {}, runId: "t" });
+    assert.equal(code, 0, "alternating park and close never reaches three in a row");
+    assert.equal(n, 8);
   });
 });
 
@@ -1252,7 +1352,7 @@ describe("the run recap", () => {
       },
     };
     const book = { totals: { tickets: 0, landed: 0, parked: 0, cost: 0, ms: 0 }, tickets: [], record: () => {}, close: () => {} };
-    const spy = { ...(io() as any), stopFile: () => passes++ > 0, queuePre: () => 2 };
+    const spy = { ...(io() as any), stopFile: () => passes++ > 0, queuePre: () => ({ status: 2, said: "" }) };
     await main({ io: spy, book, screen: board as never, install: () => {}, runId: "t" });
     assert.match(shown, /working 0:00 · CI 0:00 · waiting 1:00:00/);
   });
@@ -1755,6 +1855,16 @@ describe("an unrecognised stop is diagnosed, once per head", () => {
     );
     assert.deepEqual(whys, ["the branch conflicts with main"]);
     assert.match(ledger.find((x) => x.outcome === "diagnosed").park_reason, /^the diagnosis failed: /);
+  });
+
+  test("a failed diagnosis keeps the tail of what it wrote", async () => {
+    const ledger: any[] = [];
+    const reply = `${"x".repeat(400)}\n\nDIAGNOSIS: none (ticket complete)`;
+    const failed = async () => ({ ok: false, error: "it gave no DIAGNOSIS line", reply, run: { result: null, ms: 0, log: "l", phases: {} } });
+    await runOnce(io({ spawn: silent, pushedPr: () => null, diagnose: failed }, ledger));
+    const said = ledger.find((x) => x.outcome === "diagnosed").park_reason;
+    assert.match(said, /^the diagnosis failed: it gave no DIAGNOSIS line — it ended: "x+ DIAGNOSIS: none \(ticket complete\)"$/);
+    assert.ok(said.length < 400, said);
   });
 
   test("an API 5xx never reaches diagnosis", async () => {

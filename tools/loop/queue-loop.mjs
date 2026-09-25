@@ -13,7 +13,7 @@
  *
  * Usage: node tools/loop/queue-loop.mjs
  */
-import { execFileSync, spawn, spawnSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import fs, { createWriteStream, mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -581,11 +581,14 @@ export function settleOutcome({ action }) {
  * worked a different one. Both make its branch not this ticket's answer, so neither yields.
  *
  * @param {{pr: {number: number, state: string}|null,
- *   reason: {why: string|null, hard: boolean}}} run
- * @returns {{action: "settle"|"landed"|"park", pr?: number, why?: string}}
+ *   reason: {why: string|null, hard: boolean},
+ *   issue?: {state: string|null, stateReason: string|null}|null, commits?: number|null}} run
+ * @returns {{action: "settle"|"landed"|"closed"|"park", pr?: number, why?: string}}
  */
-export function outcomeOf({ pr, reason }) {
+export function outcomeOf({ pr, reason, issue = null, commits = null }) {
   if (reason.hard && reason.why) return { action: "park", why: reason.why, pr: pr?.number };
+  if (!pr && commits === 0 && issue?.state === "CLOSED" && issue?.stateReason === "COMPLETED")
+    return { action: "closed", why: "the session closed the issue as done, with no diff to land" };
   if (pr?.state === "MERGED")
     return { action: "landed", pr: pr.number, why: `pull request #${pr.number} was already merged` };
   if (pr?.state === "OPEN") return { action: "settle", pr: pr.number };
@@ -1318,7 +1321,7 @@ function toClipboard(text) {
 export function ticketFacts(number, exec = execFileSync) {
   try {
     const issue = JSON.parse(
-      exec("gh",["issue", "view", String(number), "--json", "title,labels,url,comments,state"], {
+      exec("gh",["issue", "view", String(number), "--json", "title,labels,url,comments,state,stateReason"], {
         encoding: "utf8",
         stdio: ["ignore", "pipe", "ignore"],
         maxBuffer: SH_MAX_BUFFER,
@@ -1333,6 +1336,7 @@ export function ticketFacts(number, exec = execFileSync) {
       reviewRounds: reviewRounds(issue.comments ?? []),
       ciRounds: ciRedRounds(issue.comments ?? []),
       state: issue.state,
+      stateReason: issue.stateReason ?? null,
     };
   } catch {
     return { title: `ticket #${number}`, url: "", size: null, labels: null, reviewRounds: null, ciRounds: 0 };
@@ -2081,6 +2085,7 @@ export function afterSession(run, derived) {
     head: derived?.head ?? null,
     dirty: derived?.dirty ?? false,
     changed: derived?.changed ?? [],
+    commits: derived?.commits ?? null,
     // The session's own marker, not derive()'s: derive computes a phase from commit count and
     // verdict, so it can only ever answer C, D, E or ?.
     phase: said?.phase ?? run.phase ?? derived?.phase ?? "?",
@@ -2134,7 +2139,7 @@ export function parkAndRecord(io, number, { run = null, pr = null, files = 0, ..
  * @param {object} io
  * @param {number|null} [pinned] a ticket a previous pass handed back unfinished
  * @param {string|null} [at] the phase a handoff said the next process starts at
- * @returns {Promise<{outcome: "landed"|"parked"|"stop"|"hold"|"retry"|"refused"|"overloaded"|"handoff",
+ * @returns {Promise<{outcome: "landed"|"closed"|"parked"|"stop"|"hold"|"retry"|"refused"|"overloaded"|"handoff",
  *   ticket?: number, why?: string, until?: number, cwd?: string|null, branch?: string|null,
  *   pr?: number, files?: number, phase?: string, run?: any, size?: string|null, tally?: any}>}
  */
@@ -2143,9 +2148,13 @@ export async function runOnce(io, pinned = null, at = null) {
   if (!io.syncCheckout(pinned)) return { outcome: "stop", why: "the shared checkout is not usable" };
   // Exit 2 is "this machine cannot start a ticket *now*" — drift, a peer's dirt, memory. Every one
   // of those clears on its own, including the drift the loop's own merge of a lockfile creates.
-  const pre = io.queuePre();
-  if (pre === 2) return { outcome: "hold", why: "queue-pre is not ready for a ticket yet" };
-  if (pre !== 0) return { outcome: "stop", why: "a pre-flight check refused — see the row above" };
+  const pre = await io.queuePre();
+  if (pre.status === 2) return { outcome: "hold", why: "queue-pre is not ready for a ticket yet" };
+  if (pre.status !== 0) {
+    const rows = pre.said.split("\n").map((l) => l.trim()).filter(Boolean);
+    const refused = rows.filter((l) => l.includes("✗")).join("; ") || rows.at(-1) || "queue-pre printed nothing";
+    return { outcome: "stop", why: `a pre-flight check refused: ${refused}` };
+  }
 
   let route = io.pick(pinned, at);
   if (route.skill === "closed") {
@@ -2282,7 +2291,8 @@ export async function runOnce(io, pinned = null, at = null) {
     settling && !pr
       ? { why: "phase G found no open pull request for the pushed head", hard: false }
       : reasonFor(run, after, route.number);
-  const decided = outcomeOf({ pr, reason });
+  const declaredDone = !pr && run.declared?.phase === "F" && !run.declared?.stoodDown;
+  const decided = outcomeOf({ pr, reason, issue: declaredDone ? io.issueState(route.number) : null, commits: after?.commits ?? null });
   // The pull request's own count when derive() read no worktree.
   const files = after?.changed?.length || pr?.changedFiles || 0;
 
@@ -2316,7 +2326,8 @@ export async function runOnce(io, pinned = null, at = null) {
     if (tally.diagnosed.includes(head)) return { pass: handBack(why, phase) };
     const cwd = after?.cwd ?? null;
     const d = await io.diagnose({ ticket: route.number, phase, why, cwd, log: run.log, stderr: run.stderr ?? "", runId, ciLog });
-    const said = d.ok ? `${d.action}${d.phase ? ` ${d.phase}` : ""} — ${d.cause}` : `the diagnosis failed: ${d.error}`;
+    const tail = d.reply ? ` — it ended: "${d.reply.slice(-300).replace(/\s+/g, " ").trim()}"` : "";
+    const said = d.ok ? `${d.action}${d.phase ? ` ${d.phase}` : ""} — ${d.cause}` : `the diagnosis failed: ${d.error}${tail}`;
     io.record({ number: route.number, outcome: "diagnosed", why: said, run: d.run, counts: false, head });
     if (!d.ok) return { pass: handBack(why, phase) };
     if (d.action === "park") return { pass: handBack(d.cause, phase) };
@@ -2328,6 +2339,12 @@ export async function runOnce(io, pinned = null, at = null) {
     }
     return { pass: handTo("G", `rerun of ${runId}: ${d.cause}`) };
   };
+
+  if (decided.action === "closed") {
+    io.teardown(after?.cwd ?? null, route.number);
+    io.record({ number: route.number, outcome: "closed", why: decided.why, run, files });
+    return { outcome: "closed", ticket: route.number };
+  }
 
   if (decided.action === "park") {
     if (reason.hard || exhausted(run)) return handBack(decided.why, after?.phase ?? "?");
@@ -2423,6 +2440,21 @@ export async function runOnce(io, pinned = null, at = null) {
   return { outcome: "landed", ticket: route.number };
 }
 
+export function queuePreStreamed({ spawnFn = spawn, out = process.stderr } = {}) {
+  return new Promise((resolve) => {
+    const child = spawnFn(process.execPath, [HERE + "/queue-pre.mjs"], { stdio: ["ignore", "inherit", "pipe"] });
+    let said = "";
+    child.stderr.setEncoding?.("utf8");
+    child.stderr.on("data", (chunk) => {
+      out.write(chunk);
+      said += chunk;
+    });
+    const done = (status) => resolve({ status: status ?? 1, said: said.replace(/\x1b\[[0-9;]*m/g, "") });
+    child.on("error", (err) => ((said += `queue-pre ✗ could not start — ${err.message}\n`), done(1)));
+    child.on("close", done);
+  });
+}
+
 /** The real IO, bound once so `runOnce` can be driven without git, the tracker or a binary. */
 function realIo(book, screen) {
   // The queue as the *previous* pick read it. The direction is what a night is made of, and this
@@ -2432,8 +2464,11 @@ function realIo(book, screen) {
   return {
     stopFile: () => takeStopFile(fs, STOP_FILE),
     syncCheckout: (pinned) => syncCheckout(git, (m) => screen.notice("checkout", m), undefined, { pinned }),
-    queuePre: () =>
-      spawnSync(process.execPath, [HERE + "/queue-pre.mjs"], { stdio: "inherit" }).status ?? 1,
+    queuePre: () => queuePreStreamed(),
+    issueState: (n) => {
+      const f = ticketFacts(n);
+      return { state: f.state ?? null, stateReason: f.stateReason ?? null };
+    },
     pick: (pinned, at) => {
       const route = nextRoute(pinned, at);
       picked = route;
@@ -2564,7 +2599,7 @@ function realIo(book, screen) {
       const rows = readLedger();
       const cost = windowCost({ n: number, outcome, own: run.result?.cost ?? 0 }, rows);
       // The merged row is the ticket's whole bill; the land session alone has no turns and no spend.
-      const whole = outcome === "landed" ? ticketTally(number, rows) : null;
+      const whole = outcome === "landed" || outcome === "closed" ? ticketTally(number, rows) : null;
       const bill = whole
         ? { ms: whole.ms + run.ms, turns: whole.turns + (run.result?.turns ?? 0), cost: whole.spend + (run.result?.cost ?? 0) }
         : { ms: run.ms, turns: run.result?.turns ?? 0, cost };
@@ -2858,10 +2893,10 @@ export async function main({
       continue;
     }
     pinned = null;
-    if (pass.outcome === "landed") {
+    if (pass.outcome === "landed" || pass.outcome === "closed") {
       failures = 0;
-      // Only a landing clears the refusal counter. Cleared on any non-refused outcome, refusals
-      // interleaved with parks never reach the ceiling — a suspend knob with no floor under it.
+      // Only a finished ticket clears the refusal counter. Cleared on any non-refused outcome,
+      // refusals interleaved with parks never reach the ceiling: a suspend knob with no floor.
       waits = 0;
     } else {
       failures += 1;

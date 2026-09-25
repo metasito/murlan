@@ -210,7 +210,7 @@ export function mismatchedModel(row) {
 /** A row from before `mainModels` was recorded, which this flag cannot speak about either way. */
 const unjudgeable = (row) => !row.usage?.mainModels || Object.keys(row.usage.mainModels).length === 0;
 
-/** A ticket's rows since its last `landed`/`parked` close — an open window still counts. */
+/** A ticket's rows since its last `landed`/`closed`/`parked` close — an open window still counts. */
 function windows(rows) {
   const byTicket = new Map();
   for (const r of rows) (byTicket.get(r.n) ?? byTicket.set(r.n, []).get(r.n)).push(r);
@@ -219,7 +219,7 @@ function windows(rows) {
     let win = [];
     for (const r of forTicket) {
       win.push(r);
-      if (r.outcome === "landed" || r.outcome === "parked") {
+      if (r.outcome === "landed" || r.outcome === "closed" || r.outcome === "parked") {
         out.push(win);
         win = [];
       }
@@ -362,7 +362,7 @@ export function shaTable(rows, killed = []) {
     const g = of(r.loop_sha);
     g.sessions += 1;
     g.cost += r.cost ?? 0;
-    if (r.outcome === "landed") g.landed += 1;
+    if (r.outcome === "landed" || r.outcome === "closed") g.landed += 1;
     if (r.outcome === "parked") g.parked += 1;
   }
   for (const k of killed) of(k.loop_sha).killed += 1;

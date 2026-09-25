@@ -17,8 +17,8 @@ derives it from git and the tracker.
 ## In every phase
 
 - **Report the phase** on a line of its own, in the same message as that phase's first command —
-  the `PHASE <letter>` line at the top of each section below. Never send it alone: in print mode a
-  turn that ends in text and no tool call is the final answer.
+  each section's `PHASE <letter>` line. Never send it alone: in print mode a turn that ends in
+  text and no tool call is the final answer.
 - **Never stall.** Answerable from the repo: look it up, or test it. A default exists in
   `docs/agents/RULES.md`, `CLAUDE.md`, an ADR or a ticket comment: follow it. Only the owner can decide:
   comment the option space on the issue (what each option costs), park it, declare, and **exit**:
@@ -35,6 +35,7 @@ derives it from git and the tracker.
 - **The turn budget** is `$LOOP_TURNS`. Past two thirds of it with nothing committed, commit what
   works and narrow the slice.
 - **On the context notice**, commit and declare `handoff` = your phase.
+- **A handoff's `"why"`** is the next process's brief, in one sentence.
 - **Only an `agent:check` run passes the Bash tool its maximum `timeout`**: the default is shorter
   than the check.
 
@@ -209,11 +210,11 @@ Then leave through **Leaving C**.
    and then the ticket is not done: keep building, or park it (**Never stall**).
 5. `node tools/loop/loop-gate.mjs --build` must exit 0. It prints what is missing.
 
-Only then declare handoff D and exit. The supervisor re-gates it: a failing one goes back to C, a
-passing one becomes a draft pull request so CI runs while D reviews.
+Only then declare handoff D and exit. The supervisor re-gates it: failing returns to C; passing
+opens a draft pull request so CI runs while D reviews.
 
 ```
-LOOP-RESULT {"ticket":<n>,"branch":"agent/<n>-slug","phase":"C","handoff":"D"}
+LOOP-RESULT {"ticket":<n>,"branch":"agent/<n>-slug","phase":"C","handoff":"D","why":"<what-is-left>"}
 ```
 
 ## D — Review
@@ -300,7 +301,7 @@ comment. Park only for a decision only the owner can make.
 phase C's steps 1–5, and hand off:
 
 ```
-LOOP-RESULT {"ticket":<n>,"branch":"agent/<n>-slug","phase":"D","handoff":"D"}
+LOOP-RESULT {"ticket":<n>,"branch":"agent/<n>-slug","phase":"D","handoff":"D","why":"<what-is-left>"}
 ```
 
 After a `LAND`, go straight on to phase E and F in this process.
@@ -331,7 +332,7 @@ Phase D's LAND continues here; a process starts at E only when resuming one.
    hoping for a different answer.
 
    ```
-   LOOP-RESULT {"ticket":<n>,"branch":"agent/<n>-slug","phase":"E","handoff":"C"}
+   LOOP-RESULT {"ticket":<n>,"branch":"agent/<n>-slug","phase":"E","handoff":"C","why":"<what-is-red>"}
    ```
 
 3. Push and write the PR body:
@@ -356,13 +357,12 @@ C, with the log in a `CI-RED` comment and in `.loop-logs/ci-<n>.log`.
 
 `PHASE F`
 
-1. Re-read the issue, body and thread in one read (rule 25's command).
-2. Tick the Definition of done against the code actually written, as a comment. A box you did not
-   close is named there, with why. In that comment, one line on the effective diff in plain
-   language.
-3. **Leave your worktree standing**; the supervisor removes it once the ticket lands or parks.
+1. Re-read the issue and its thread (rule 25's command).
+2. Comment the Definition of done ticked against the code actually written, naming each box you
+   did not close and why, plus one plain line on the effective diff.
+3. **Leave your worktree standing**; the supervisor removes it once the ticket ends.
    `git -C .worktrees/agent-<n> status --short` should print nothing — commit and push anything it
-   names, or say on the issue what it is.
+   names, or explain it on the issue.
 4. **Say what you did, on one line, as the last thing you emit.**
 
    ```
@@ -370,10 +370,11 @@ C, with the log in a `CI-RED` comment and in `.loop-logs/ci-<n>.log`.
    ```
 
    Valid JSON after the marker, in the same message as any command. Omit `pr` only if you pushed
-   none. `stoodDown` is true when you gave the ticket up, and then `"why"` says which in one
-   sentence. Phase F never sets `handoff`. A session that exits without it is recorded as an
-   error, so emit it even when the news is bad.
-5. **Exit.** Do not loop back to phase A in this session.
+   none. Verification-only work posts its DOD-CHECK, runs `gh issue close <n> --reason completed`
+   and omits `pr`: it is recorded closed. Commits with no pull request park. `stoodDown` means
+   you gave the ticket up, with `"why"` in one sentence. Phase F never sets `handoff`. Exiting
+   without it records an error, so emit it even on bad news.
+5. **Exit.** Never loop back to phase A.
 
 ## Compaction
 

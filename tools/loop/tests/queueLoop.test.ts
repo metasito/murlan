@@ -54,7 +54,7 @@ import {
 const stubIo = () => ({
   stopFile: () => false,
   syncCheckout: () => true,
-  queuePre: () => 0,
+  queuePre: () => ({ status: 0, said: "" }),
   pick: () => ({ skill: "implement", number: 42, title: "t", size: "size:S", queue: null }),
   spawn: async () => ({ status: 0, blocked: false, result: { cost: 1 }, ms: 1, log: "l", declared: null }),
   standing: () => null,
@@ -1095,6 +1095,14 @@ describe("outcomeOf", () => {
     assert.equal(o.action, "park");
     assert.equal(o.pr, 984);
     assert.match(String(o.why), /stood down/);
+  });
+
+  test("an issue closed as done with no commits and no pull request is closed, not parked", () => {
+    const closed = { state: "CLOSED", stateReason: "COMPLETED" };
+    assert.equal(outcomeOf({ pr: null, reason: fine, issue: closed, commits: 0 }).action, "closed");
+    assert.equal(outcomeOf({ pr: null, reason: fine, issue: closed, commits: 1 }).action, "park");
+    assert.equal(outcomeOf({ pr: null, reason: fine, issue: closed, commits: null }).action, "park");
+    assert.equal(outcomeOf({ pr: null, reason: fine, issue: { ...closed, stateReason: "NOT_PLANNED" }, commits: 0 }).action, "park");
   });
 
   test("a soft reason is what a pull-request-less park is named after", () => {
