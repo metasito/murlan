@@ -2149,8 +2149,12 @@ export async function runOnce(io, pinned = null, at = null) {
   // Exit 2 is "this machine cannot start a ticket *now*" — drift, a peer's dirt, memory. Every one
   // of those clears on its own, including the drift the loop's own merge of a lockfile creates.
   const pre = io.queuePre();
-  if (pre === 2) return { outcome: "hold", why: "queue-pre is not ready for a ticket yet" };
-  if (pre !== 0) return { outcome: "stop", why: "a pre-flight check refused — see the row above" };
+  if (pre.status === 2) return { outcome: "hold", why: "queue-pre is not ready for a ticket yet" };
+  if (pre.status !== 0) {
+    const rows = pre.said.split("\n").map((l) => l.trim()).filter(Boolean);
+    const refused = rows.filter((l) => l.includes("✗")).join("; ") || rows.at(-1) || "queue-pre printed nothing";
+    return { outcome: "stop", why: `a pre-flight check refused: ${refused}` };
+  }
 
   let route = io.pick(pinned, at);
   if (route.skill === "closed") {
@@ -2445,8 +2449,11 @@ function realIo(book, screen) {
   return {
     stopFile: () => takeStopFile(fs, STOP_FILE),
     syncCheckout: (pinned) => syncCheckout(git, (m) => screen.notice("checkout", m), undefined, { pinned }),
-    queuePre: () =>
-      spawnSync(process.execPath, [HERE + "/queue-pre.mjs"], { stdio: "inherit" }).status ?? 1,
+    queuePre: () => {
+      const r = spawnSync(process.execPath, [HERE + "/queue-pre.mjs"], { stdio: ["ignore", "inherit", "pipe"], encoding: "utf8" });
+      process.stderr.write(r.stderr ?? "");
+      return { status: r.status ?? 1, said: (r.stderr ?? "").replace(/\x1b\[[0-9;]*m/g, "") };
+    },
     issueState: (n) => {
       const f = ticketFacts(n);
       return { state: f.state ?? null, stateReason: f.stateReason ?? null };

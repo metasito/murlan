@@ -41,7 +41,7 @@ const rowOf = (x: any) => ({
 const io = (over: Record<string, unknown> = {}, ledger: any[] = []) => ({
   stopFile: () => false,
   syncCheckout: () => true,
-  queuePre: () => 0,
+  queuePre: () => ({ status: 0, said: "" }),
   pick: () => ({
     skill: "implement",
     number: 42,
@@ -315,8 +315,15 @@ describe("runOnce", () => {
   // The loop's own merges move package-lock.json, and preflight refuses to start on an install
   // that has drifted from it. Read as "stop", the first such ticket ended the night.
   test("queue-pre exit 2 holds; anything else still stops", async () => {
-    assert.equal((await runOnce(io({ queuePre: () => 2 }))).outcome, "hold");
-    assert.equal((await runOnce(io({ queuePre: () => 1 }))).outcome, "stop");
+    assert.equal((await runOnce(io({ queuePre: () => ({ status: 2, said: "" }) }))).outcome, "hold");
+    assert.equal((await runOnce(io({ queuePre: () => ({ status: 1, said: "…" }) }))).outcome, "stop");
+  });
+
+  test("a refusal carries queue-pre's refused row into why", async () => {
+    const out = await runOnce(io({ queuePre: () => ({ status: 1, said: "memory   ✓ 6.1 GB free\nworktrees ✗ 1 not made by the loop — remove to start\n" }) }));
+    assert.equal(out.outcome, "stop");
+    assert.match(String(out.why), /1 not made by the loop/);
+    assert.doesNotMatch(String(out.why), /GB free/);
   });
 
   test("a pinned ticket is what the picker is asked for", async () => {
@@ -541,7 +548,7 @@ describe("runOnce", () => {
     const order: string[] = [];
     await runOnce(
       io({
-        queuePre: () => (order.push("pre"), 0),
+        queuePre: () => (order.push("pre"), { status: 0, said: "" }),
         pick: () => (order.push("pick"), { skill: "implement", number: 42, title: "t", size: null, queue: null }),
       }),
     );
@@ -1318,7 +1325,7 @@ describe("the run recap", () => {
       },
     };
     const book = { totals: { tickets: 0, landed: 0, parked: 0, cost: 0, ms: 0 }, tickets: [], record: () => {}, close: () => {} };
-    const spy = { ...(io() as any), stopFile: () => passes++ > 0, queuePre: () => 2 };
+    const spy = { ...(io() as any), stopFile: () => passes++ > 0, queuePre: () => ({ status: 2, said: "" }) };
     await main({ io: spy, book, screen: board as never, install: () => {}, runId: "t" });
     assert.match(shown, /working 0:00 · CI 0:00 · waiting 1:00:00/);
   });
