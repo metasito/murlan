@@ -48,8 +48,8 @@ export interface Lamp {
   ly: number;
   level: number;
   f: number;
-  /** `lx`, `ly`, `level`, `f` as the last frame `lampMoved` passed drew them. */
-  shown: number[];
+  /** What the last frame `lampMoved` passed drew. */
+  drawn: { lx: number; ly: number; level: number; f: number };
 }
 
 export function lampTarget(target: LampTarget): readonly [number, number] {
@@ -76,19 +76,28 @@ export function restingLamp(target: LampTarget, level = 1): Lamp {
     ly: y - LIGHT_ABOVE,
     level,
     f: 0,
-    shown: [x, y - LIGHT_ABOVE, level, 0],
+    drawn: { lx: x, ly: y - LIGHT_ABOVE, level, f: 0 },
   };
 }
 
-/** A hundredth of a point, and half a step of 8-bit light. */
-const SHOWN_STEP = [0.01, 0.01, 1 / 512, 1 / 512];
+const POINT_STEP = 0.01;
+/** Half a step of 8-bit light. */
+const LIGHT_STEP = 1 / 512;
 
-/** Whether this frame draws anything the last one shown did not; the felt redraws only then. */
+/** Whether this frame draws anything the last one drawn did not; the felt redraws only then. */
 export function lampMoved(s: Lamp): boolean {
   "worklet";
-  const now = [s.lx, s.ly, s.level, s.f];
-  if (now.every((v, i) => Math.abs(v - s.shown[i]) <= SHOWN_STEP[i])) return false;
-  s.shown = now;
+  const d = s.drawn;
+  const still =
+    Math.abs(s.lx - d.lx) <= POINT_STEP &&
+    Math.abs(s.ly - d.ly) <= POINT_STEP &&
+    Math.abs(s.level - d.level) <= LIGHT_STEP &&
+    Math.abs(s.f - d.f) <= LIGHT_STEP;
+  if (still) return false;
+  d.lx = s.lx;
+  d.ly = s.ly;
+  d.level = s.level;
+  d.f = s.f;
   return true;
 }
 

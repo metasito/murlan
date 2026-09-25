@@ -5,17 +5,16 @@ import { useEffect, useMemo } from "react";
 import { PixelRatio, StyleSheet } from "react-native";
 import {
   Canvas,
-  FillType,
   Group,
   Image,
   PaintStyle,
-  Path,
   RadialGradient,
   Rect,
+  RoundedRect,
   Shader,
   Skia,
   type SkImage,
-  type SkPath,
+  type SkRRect,
 } from "@shopify/react-native-skia";
 import { useDerivedValue, type SharedValue } from "react-native-reanimated";
 import type { FeltStops } from "@/lib/cosmetics";
@@ -32,10 +31,16 @@ export interface FeltCanvasProps {
   onReady?: () => void;
 }
 
-function ring(d: number): SkPath {
+const CLOTH = Skia.RuntimeEffect.Make(CLOTH_SKSL);
+
+function ring(d: number): SkRRect {
   const r = ringRect(d);
-  return Skia.Path.RRect(Skia.RRectXY(Skia.XYWHRect(r.x, r.y, r.w, r.h), r.r, r.r));
+  return { rect: { x: r.x, y: r.y, width: r.w, height: r.h }, rx: r.r, ry: r.r };
 }
+
+const OUTER = ring(0);
+const FELT_EDGE = ring(RAIL_BAND);
+const COAT = ring(RAIL_LIGHT.coatInset);
 
 // A raster surface: on web an offscreen one is a WebGL context of its own per bake, read back
 // with a GPU stall.
@@ -44,31 +49,32 @@ function bakeRail(k: number): SkImage | null {
   if (!surface) return null;
   const canvas = surface.getCanvas();
   canvas.scale(k, k);
+  const paint = Skia.Paint();
+  paint.setAntiAlias(true);
+  paint.setStyle(PaintStyle.Stroke);
   const painter: RingPainter = {
     ring(d, width, colour, dash) {
-      const paint = Skia.Paint();
-      paint.setAntiAlias(true);
-      paint.setStyle(PaintStyle.Stroke);
+      const dashes = dash ? Skia.PathEffect.MakeDash(dash.intervals, dash.phase) : null;
       paint.setStrokeWidth(width);
       paint.setColor(Skia.Color(colour));
-      if (dash) paint.setPathEffect(Skia.PathEffect.MakeDash(dash.intervals, dash.phase));
-      canvas.drawPath(ring(d), paint);
+      paint.setPathEffect(dashes);
+      canvas.drawRRect(ring(d), paint);
+      dashes?.dispose();
     },
   };
   paintRail(painter);
   surface.flush();
-  return surface.makeImageSnapshot();
+  const image = surface.makeImageSnapshot();
+  paint.dispose();
+  surface.dispose();
+  return image;
 }
 
 export function FeltCanvas({ lamp, sx, sy, stops, onReady }: FeltCanvasProps) {
   const k = PixelRatio.get() * Math.min(sx, sy);
-  const effect = useMemo(() => Skia.RuntimeEffect.Make(CLOTH_SKSL), []);
   const rail = useMemo(() => bakeRail(k), [k]);
-  const band = useMemo(
-    () => Skia.PathBuilder.Make().addPath(ring(0)).addPath(ring(RAIL_BAND)).setFillType(FillType.EvenOdd).build(),
-    []
-  );
-  const coatPath = useMemo(() => ring(RAIL_LIGHT.coatInset), []);
+  // CanvasKit frees nothing itself. Skia commits the new image in a layout effect, before this cleanup.
+  useEffect(() => () => rail?.dispose(), [rail]);
   const base = useMemo(() => clothUniforms(stops, k), [stops, k]);
 
   const uniforms = useDerivedValue(() => ({ ...base, uLamp: [lamp.value.lx, lamp.value.ly], uFlare: lamp.value.f }));
@@ -91,17 +97,19 @@ export function FeltCanvas({ lamp, sx, sy, stops, onReady }: FeltCanvasProps) {
       <Group transform={[{ scaleX: sx }, { scaleY: sy }]}>
         <Rect x={0} y={0} width={width} height={height} color={ROOM} />
         {rail && <Image image={rail} x={0} y={0} width={width} height={height} />}
-        <Group clip={band}>
-          <Rect x={0} y={0} width={width} height={height} blendMode="softLight">
-            <RadialGradient c={light} r={RAIL_LIGHT.softRadius} colors={soft} positions={RAIL_LIGHT.softStops} />
-          </Rect>
+        <Group clip={OUTER}>
+          <Group clip={FELT_EDGE} invertClip>
+            <Rect x={0} y={0} width={width} height={height} blendMode="softLight">
+              <RadialGradient c={light} r={RAIL_LIGHT.softRadius} colors={soft} positions={RAIL_LIGHT.softStops} />
+            </Rect>
+          </Group>
         </Group>
-        <Path path={coatPath} style="stroke" strokeWidth={RAIL_LIGHT.coatWidth}>
+        <RoundedRect rect={COAT} style="stroke" strokeWidth={RAIL_LIGHT.coatWidth}>
           <RadialGradient c={light} r={RAIL_LIGHT.coatRadius} colors={coat} />
-        </Path>
-        {effect && (
+        </RoundedRect>
+        {CLOTH && (
           <Rect x={0} y={0} width={width} height={height}>
-            <Shader source={effect} uniforms={uniforms} />
+            <Shader source={CLOTH} uniforms={uniforms} />
           </Rect>
         )}
         <Rect x={0} y={0} width={width} height={height} color="black" opacity={shade} />

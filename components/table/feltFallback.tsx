@@ -1,5 +1,5 @@
 // What the web table shows until CanvasKit is ready (#1252 § Rendering platform): the same cloth
-// and rail, baked once per lamp target into one DOM canvas, with no per-frame lighting.
+// and rail, lit once per lamp target into one DOM canvas, with no per-frame lighting.
 import { useEffect, useRef } from "react";
 import type { FeltStops } from "@/lib/cosmetics";
 import { DESIGN, LIGHT_ABOVE, lampTarget, type LampTarget } from "./lampRig";
@@ -15,12 +15,35 @@ function ringPath(c: CanvasRenderingContext2D, d: number) {
   c.roundRect(r.x, r.y, r.w, r.h, r.r);
 }
 
-function drawCloth(out: HTMLCanvasElement, uniforms: Record<string, number | number[]>, px: [number, number]) {
+function ringPainter(c: CanvasRenderingContext2D): RingPainter {
+  return {
+    ring(d, width, colour, dash) {
+      c.beginPath();
+      ringPath(c, d);
+      c.lineWidth = width;
+      c.strokeStyle = colour;
+      c.setLineDash(dash?.intervals ?? []);
+      c.lineDashOffset = dash?.phase ?? 0;
+      c.stroke();
+    },
+  };
+}
+
+interface ClothRenderer {
+  cv: HTMLCanvasElement;
+  gl: WebGLRenderingContext;
+  p: WebGLProgram;
+}
+
+let renderer: ClothRenderer | null | undefined;
+
+/** One WebGL context for every bake: a page may hold only a few, and the cloth compiles once. */
+function clothRenderer(): ClothRenderer | null {
+  if (renderer?.gl.isContextLost()) renderer = undefined;
+  if (renderer !== undefined) return renderer;
   const cv = document.createElement("canvas");
-  cv.width = out.width;
-  cv.height = out.height;
   const gl = cv.getContext("webgl", { premultipliedAlpha: true, antialias: false });
-  if (!gl) return null;
+  if (!gl) return (renderer = null);
   const shader = (type: number, src: string) => {
     const s = gl.createShader(type)!;
     gl.shaderSource(s, src);
@@ -31,14 +54,23 @@ function drawCloth(out: HTMLCanvasElement, uniforms: Record<string, number | num
   gl.attachShader(p, shader(gl.VERTEX_SHADER, VERTEX));
   gl.attachShader(p, shader(gl.FRAGMENT_SHADER, CLOTH_GLSL));
   gl.linkProgram(p);
-  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) return null;
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) return (renderer = null);
   gl.useProgram(p);
   gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(QUAD), gl.STATIC_DRAW);
   const a = gl.getAttribLocation(p, "a");
   gl.enableVertexAttribArray(a);
   gl.vertexAttribPointer(a, 2, gl.FLOAT, false, 0, 0);
-  const all = { ...uniforms, uRes: [cv.width, cv.height], uPx: px };
+  return (renderer = { cv, gl, p });
+}
+
+function drawCloth(width: number, height: number, uniforms: Record<string, number | number[]>, px: [number, number]) {
+  const r = clothRenderer();
+  if (!r) return null;
+  const { cv, gl, p } = r;
+  cv.width = width;
+  cv.height = height;
+  const all = { ...uniforms, uRes: [width, height], uPx: px };
   for (const [name, v] of Object.entries(all)) {
     const at = gl.getUniformLocation(p, name);
     if (typeof v === "number") gl.uniform1f(at, v);
@@ -52,16 +84,35 @@ function drawCloth(out: HTMLCanvasElement, uniforms: Record<string, number | num
   return cv;
 }
 
+let grain: { key: string; cv: HTMLCanvasElement } | undefined;
+
+/** The rail's wood, which no lamp moves: painted once per device scale, in the bake's own pixels. */
+function grainLayer(width: number, height: number, ax: number, ay: number): HTMLCanvasElement | null {
+  const key = `${width}x${height}@${ax},${ay}`;
+  if (grain?.key === key) return grain.cv;
+  const cv = document.createElement("canvas");
+  cv.width = width;
+  cv.height = height;
+  const c = cv.getContext("2d");
+  if (!c) return null;
+  c.setTransform(ax, 0, 0, ay, 0, 0);
+  paintRail(ringPainter(c));
+  grain = { key, cv };
+  return cv;
+}
+
 function bake(out: HTMLCanvasElement, stops: FeltStops, target: LampTarget, sx: number, sy: number) {
   const dpr = window.devicePixelRatio || 1;
-  out.width = Math.round(DESIGN.width * sx * dpr);
-  out.height = Math.round(DESIGN.height * sy * dpr);
+  const ax = dpr * sx;
+  const ay = dpr * sy;
+  out.width = Math.round(DESIGN.width * ax);
+  out.height = Math.round(DESIGN.height * ay);
   const c = out.getContext("2d");
   if (!c) return;
   const [tx, ty] = lampTarget(target);
   const lx = tx;
   const ly = ty - LIGHT_ABOVE;
-  c.setTransform(dpr * sx, 0, 0, dpr * sy, 0, 0);
+  c.setTransform(ax, 0, 0, ay, 0, 0);
   c.fillStyle = ROOM;
   c.fillRect(0, 0, DESIGN.width, DESIGN.height);
 
@@ -72,19 +123,12 @@ function bake(out: HTMLCanvasElement, stops: FeltStops, target: LampTarget, sx: 
   c.fillStyle = pool;
   c.fill();
 
-  const painter: RingPainter = {
-    ring(d, width, colour, dash) {
-      c.beginPath();
-      ringPath(c, d);
-      c.lineWidth = width;
-      c.strokeStyle = colour;
-      c.setLineDash(dash?.intervals ?? []);
-      c.lineDashOffset = dash?.phase ?? 0;
-      c.stroke();
-    },
-  };
-  paintRail(painter);
-  c.setLineDash([]);
+  const wood = grainLayer(out.width, out.height, ax, ay);
+  if (wood) {
+    c.setTransform(1, 0, 0, 1, 0, 0);
+    c.drawImage(wood, 0, 0);
+    c.setTransform(ax, 0, 0, ay, 0, 0);
+  }
 
   c.save();
   c.beginPath();
@@ -107,7 +151,7 @@ function bake(out: HTMLCanvasElement, stops: FeltStops, target: LampTarget, sx: 
   c.restore();
 
   const k = dpr * Math.min(sx, sy);
-  const cloth = drawCloth(out, { ...clothUniforms(stops, k), uLamp: [lx, ly], uFlare: 0 }, [dpr * sx, dpr * sy]);
+  const cloth = drawCloth(out.width, out.height, { ...clothUniforms(stops, k), uLamp: [lx, ly], uFlare: 0 }, [ax, ay]);
   if (cloth) {
     c.setTransform(1, 0, 0, 1, 0, 0);
     c.drawImage(cloth, 0, 0);
