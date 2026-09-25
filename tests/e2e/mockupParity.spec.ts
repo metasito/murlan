@@ -51,6 +51,9 @@ interface Moment {
   pillAtProgress?: boolean;
 }
 
+/** The mockup's `BASE`, by the seat each name sits at: luan right, besnik across, gent left. */
+const MOCKUP_SCORES = { player_0: 15, player_1: 11, player_2: 16, player_3: 10 };
+
 const heldTurnTable = async (page: Page, baseURL: string) => {
   await page.addInitScript(
     (entries) => {
@@ -59,7 +62,7 @@ const heldTurnTable = async (page: Page, baseURL: string) => {
     [
       [TUTORIAL_SEEN_KEY, "1"],
       [E2E_SUSPEND_AI_KEY, "1"],
-      [OFFLINE_SAVE_KEY, JSON.stringify(offlineGameSave(4, 13, 0))],
+      [OFFLINE_SAVE_KEY, JSON.stringify(offlineGameSave(4, 13, 0, MOCKUP_SCORES))],
     ]
   );
   await page.goto(baseURL);

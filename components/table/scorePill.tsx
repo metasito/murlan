@@ -376,7 +376,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.goldStrong,
   },
   chip: { position: "absolute", left: 0, top: 0, right: 0, flexDirection: "row", alignItems: "center" },
-  you: { fontFamily: "Rajdhani_600SemiBold", color: Colors.textMuted, textTransform: "uppercase" },
+  you: { fontFamily: "Rajdhani_600SemiBold", color: Colors.textMuted },
   total: { fontFamily: "Rajdhani_700Bold", color: Colors.goldLit, fontVariant: ["tabular-nums"] },
   of: { fontFamily: "Rajdhani_600SemiBold", color: Colors.textMuted },
   sep: { width: StyleSheet.hairlineWidth, backgroundColor: Colors.goldBorder },
