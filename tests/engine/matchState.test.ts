@@ -9,6 +9,8 @@ import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { celebration, isDrawnHand, handOutcomeFor } from "../../lib/game/matchState.ts";
+import { autoMoveForSeat, offlineBotMove } from "../../lib/game/autoMove.ts";
+import { emptyRankTally, type Card, type GameState, type PlayerType } from "../../lib/game/gameEngine.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -193,6 +195,50 @@ test("one module chooses a bot's move", () => {
     `${CHOOSER} is how a seat's move is chosen, so a second caller is a second ` +
       `bot. Route it through ${HOME} instead: ${callers.join(", ")}`
   );
+});
+
+test("the offline table and its harness both take a bot's turn from offlineBotMove", () => {
+  const calls = (rel: string, fn: string) =>
+    new RegExp(String.raw`\b${fn}\s*\(`).test(readFileSync(path.join(repoRoot, rel), "utf8"));
+  const callers = ["context/GameContext.tsx", "tests/helpers/offlineMatch.ts"];
+
+  assert.deepEqual(callers.filter((rel) => !calls(rel, "offlineBotMove")), [], "must call offlineBotMove");
+  assert.ok(
+    !calls("context/GameContext.tsx", "autoMoveForSeat"),
+    "GameContext.tsx choosing a move itself is a second offline bot the harness never plays"
+  );
+});
+
+describe("offlineBotMove", () => {
+  const card = (id: string): Card => ({ id, rank: "9", suit: id === "9s" ? "spades" : "hearts", isJoker: false });
+  const leading = (type: PlayerType): GameState => ({
+    players: [
+      { id: "player_0", name: "Bot", type, hand: [card("9s"), card("9h")] },
+      { id: "player_1", name: "You", type: "human", hand: [{ ...card("4s"), rank: "4" }] },
+    ],
+    currentTurnIndex: 0,
+    lastPlayedCombination: null,
+    lastPlayedBy: -1,
+    passCount: 0,
+    gameMode: "free_for_all",
+    roundWinner: null,
+    gameOver: false,
+    rankings: [],
+    firstPlayMade: true,
+    playedRanks: emptyRankTally(),
+  });
+
+  test("plays a bot at full strength, not the floor an AFK human gets", () => {
+    const state = leading("ai");
+    const floor = autoMoveForSeat(state, 0, false, {})!.lastPlayedCombination!.cards.map((c) => c.id);
+    const played = offlineBotMove(state)?.lastPlayedCombination?.cards.map((c) => c.id);
+    assert.equal(floor.length, 1);
+    assert.deepEqual(played?.toSorted(), ["9h", "9s"], "the AI finishes with the pair; the floor would lead one card");
+  });
+
+  test("leaves a human's turn alone", () => {
+    assert.equal(offlineBotMove(leading("human")), null);
+  });
 });
 
 test("only lib/game/autoMove.ts reaches the bot heuristics in lib/game/ai.ts", () => {
