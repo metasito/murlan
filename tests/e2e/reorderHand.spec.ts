@@ -37,17 +37,43 @@ async function handRow(page: Page): Promise<HandCard[]> {
 
 const labels = (row: HandCard[]) => row.map((c) => c.label);
 
+/**
+ * Once the row holds `count` cards in one order and no centre has moved more
+ * than a pixel between readings. Centres, not `atRest`'s exact boxes: a
+ * selected card rises and tilts on `Motion.spring.pickup`, which rings on long
+ * after the card has landed, and a held card is out of the row altogether.
+ */
+async function rowAtRest(page: Page, count: number): Promise<void> {
+  let previous: HandCard[] = [];
+  let still = 0;
+  await expect
+    .poll(
+      async () => {
+        const row = await handRow(page);
+        const same =
+          row.length === count &&
+          previous.length === count &&
+          row.every((c, i) => c.label === previous[i].label && Math.abs(c.x - previous[i].x) <= 1 && Math.abs(c.y - previous[i].y) <= 1);
+        still = same ? still + 1 : 0;
+        previous = row;
+        return still >= 2;
+      },
+      { message: `the hand never came to rest holding ${count} cards`, timeout: 15_000, intervals: [100] }
+    )
+    .toBe(true);
+}
+
 /** Presses at `from`, holds past the threshold, drags to `toX` and lets go. */
-async function dragCard(page: Page, from: HandCard, toX: number): Promise<void> {
+async function dragCard(page: Page, row: HandCard[], from: HandCard, toX: number): Promise<void> {
   await page.mouse.move(from.x, from.y);
   await page.mouse.down();
   await page.waitForTimeout(PAST_HOLD_MS); // fixed wait on purpose: the hold's length is what the app reads
   // In steps, not in one jump: the drop slot is read from where the finger is,
   // and a single move gives the gesture one sample to decide on.
   await page.mouse.move(toX, from.y, { steps: 16 });
-  await atRest(page, HAND);
+  await rowAtRest(page, row.length - 1);
   await page.mouse.up();
-  await atRest(page, HAND);
+  await rowAtRest(page, row.length);
 }
 
 test.describe("arranging your own hand", () => {
@@ -66,7 +92,7 @@ test.describe("arranging your own hand", () => {
 
     const first = before[0];
     const last = before[before.length - 1];
-    await dragCard(page, first, last.x + 40);
+    await dragCard(page, before, first, last.x + 40);
 
     const after = await handRow(page);
     expect(
@@ -100,7 +126,7 @@ test.describe("arranging your own hand", () => {
 
     const before = await handRow(page);
     expect(before.length, "the seeded hand rendered no cards").toBeGreaterThan(4);
-    await dragCard(page, before[0], before[before.length - 1].x + 40);
+    await dragCard(page, before, before[0], before[before.length - 1].x + 40);
 
     const after = await handRow(page);
     expect(
@@ -126,7 +152,7 @@ test.describe("arranging your own hand", () => {
     const target = before[0].label;
     await page.locator(`${HAND_CARDS}[aria-label="${target}"]`).focus();
     await page.keyboard.press("ArrowRight");
-    await atRest(page, HAND);
+    await rowAtRest(page, before.length);
 
     const after = labels(await handRow(page));
     expect(after, "a card was lost or duplicated").toHaveLength(before.length);
@@ -146,7 +172,7 @@ test.describe("arranging your own hand", () => {
 
     const before = await handRow(page);
     await tapPoint(page, before[0].x, before[0].y);
-    await atRest(page, HAND);
+    await rowAtRest(page, before.length);
 
     expect(labels(await handRow(page)), "a tap moved a card").toEqual(labels(before));
     // A card is a toggle button rather than a listbox option, so selection
@@ -177,7 +203,7 @@ test.describe("arranging your own hand", () => {
     await page.mouse.down();
     await page.waitForTimeout(PAST_HOLD_MS + 400); // fixed wait on purpose: the press's length is what the app reads
     await page.mouse.up();
-    await atRest(page, HAND);
+    await rowAtRest(page, before.length);
 
     const after = await handRow(page);
     expect(labels(after), "a press with no travel rearranged the hand").toEqual(labels(before));
@@ -199,7 +225,7 @@ test.describe("arranging your own hand", () => {
     const before = await handRow(page);
     const target = before[2];
     await tapPoint(page, target.x, target.y);
-    await atRest(page, HAND);
+    await rowAtRest(page, before.length);
     await expect(page.locator(`${HAND_CARDS}[aria-pressed="true"]`)).toHaveCount(1);
 
     // Where it sits now — selection lifts the card out of the row.
@@ -208,7 +234,7 @@ test.describe("arranging your own hand", () => {
     await page.mouse.down();
     await page.waitForTimeout(PAST_HOLD_MS + 400); // fixed wait on purpose: the press's length is what the app reads
     await page.mouse.up();
-    await atRest(page, HAND);
+    await rowAtRest(page, before.length);
 
     await expect(
       page.locator(`${HAND_CARDS}[aria-pressed="true"]`),
