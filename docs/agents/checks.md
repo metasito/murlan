@@ -96,6 +96,11 @@ holds both to it). Reproducing locally needs the same pin: `export MAESTRO_VERSI
 `curl -Ls https://get.maestro.mobile.dev | bash` — read from the installer's own environment, so
 it must be exported above the pipe.
 
+CI compiles the Android and iOS projects on a pull request that changes `package.json`'s
+`dependencies` or the app config (`tools/ci/nativeScope.mjs`), and weekly. When a ticket asks for
+a native build otherwise, request one: `gh workflow run ci.yml --ref agent/<n>-<slug> -f
+native=true`, then wait on it with `await-run.mjs`.
+
 A device job proves the flows still run and the app renders *something* — it does not replace
 looking at the device (rule 36); a green Chromium run closed #602 while the owner still saw the
 same broken screen.
