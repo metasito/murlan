@@ -8,6 +8,7 @@ import { designScale, lampControls, restingLamp, stepLamp, type Lamp, type LampT
 const BREATH_FROM = 0.75;
 const BREATH_RATE = 2.2;
 
+/** The controls keep their identities while the size changes, so an effect firing one can depend on them. */
 export interface LampRig {
   lamp: SharedValue<Lamp>;
   /** Design points to the felt box's own. */
@@ -83,7 +84,7 @@ export function useLampRig({
     }, [lamp, sx, sy])
   );
 
-  return useMemo(() => {
+  const controls = useMemo((): Pick<LampRig, "flare" | "kick" | "setLevel" | "freeze"> => {
     const control = (apply: (s: Lamp, r: boolean) => void) => () =>
       lamp.modify((s) => {
         "worklet";
@@ -91,9 +92,6 @@ export function useLampRig({
         return s;
       }, true);
     return {
-      lamp,
-      sx,
-      sy,
       flare: control((s, r) => {
         "worklet";
         lampControls.flare(s, r);
@@ -113,5 +111,7 @@ export function useLampRig({
           lampControls.freeze(s, amount);
         })(),
     };
-  }, [lamp, reduced, sx, sy]);
+  }, [lamp, reduced]);
+
+  return useMemo(() => ({ lamp, sx, sy, ...controls }), [lamp, sx, sy, controls]);
 }

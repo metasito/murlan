@@ -641,12 +641,12 @@ export function GameTable({
     width: W,
     height: H,
   });
+  const { flare, kick } = rig;
   useEffect(() => {
     if (!boomTrigger) return;
-    rig.flare();
-    if (flareKind === "brief") rig.kick();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- one flare per burst, never per re-render
-  }, [boomTrigger]);
+    flare();
+    if (flareKind === "brief") kick();
+  }, [boomTrigger, flareKind, flare, kick]);
 
   const handLiftStyle = useHandLift(
     (isMyTurn && !isFinished && !exchange.active) || exchangeIsMine,

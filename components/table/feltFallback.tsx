@@ -1,6 +1,6 @@
 // What the web table shows until CanvasKit is ready (#1252 § Rendering platform): the same cloth
 // and rail, baked once per lamp target into one DOM canvas, with no per-frame lighting.
-import { createElement, useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 import type { FeltStops } from "@/lib/cosmetics";
 import { DESIGN, LIGHT_ABOVE, lampTarget, type LampTarget } from "./lampRig";
 import { CLOTH_GLSL, clothUniforms } from "./feltShader";
@@ -129,9 +129,11 @@ export function FeltFallback({
   useEffect(() => {
     if (ref.current) bake(ref.current, stops, target, sx, sy);
   }, [stops, target, sx, sy]);
-  return createElement("canvas", {
-    ref,
-    "data-testid": "felt-fallback",
-    style: { position: "absolute", left: 0, top: 0, width: "100%", height: "100%" },
-  });
+  return (
+    <canvas
+      ref={ref}
+      data-testid="felt-fallback"
+      style={{ position: "absolute", left: 0, top: 0, width: "100%", height: "100%" }}
+    />
+  );
 }
