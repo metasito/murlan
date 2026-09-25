@@ -6,6 +6,7 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { GIOCA_VALID_LABEL } from "./helpers/labels";
 import { offlineGameSave } from "./helpers/offlineSeed";
 import { installVirtualClock, takeOver, step, stepUntil } from "./helpers/virtualClock";
 import { diffTraces, movingFields, STEP_MS, type Field, type Trace, type TraceFrame } from "./helpers/traceDiff";
@@ -71,7 +72,7 @@ const pass = (page: Page) => page.evaluate(() => (globalThis as unknown as { mur
 
 const playLowest = async (page: Page) => {
   await page.locator('[data-hand-state] [data-testid="card-box"]').first().click({ force: true });
-  await page.getByRole("button", { name: "Gioca le carte selezionate" }).click({ force: true });
+  await page.getByRole("button", { name: GIOCA_VALID_LABEL }).click({ force: true });
 };
 
 const MOMENTS: Moment[] = [
