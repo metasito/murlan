@@ -189,10 +189,13 @@ const startReasonStyles = StyleSheet.create({
 export function TableChip({
   scale,
   lit = false,
+  ember = false,
   children,
 }: {
   scale: number;
   lit?: boolean;
+  /** The last seconds of the viewer's own clock; outranks `lit`. */
+  ember?: boolean;
   children: ReactNode;
 }) {
   return (
@@ -204,8 +207,10 @@ export function TableChip({
           paddingHorizontal: CHIP_PAD_H * scale,
           gap: CHIP_GAP * scale,
         },
-        lit && chipStyles.chipLit,
-        lit && makeShadow(Colors.goldLit, 0, 0, 0.32, CHIP_GLOW * scale, 0),
+        lit && !ember && chipStyles.chipLit,
+        lit && !ember && makeShadow(Colors.goldLit, 0, 0, 0.32, CHIP_GLOW * scale, 0),
+        ember && chipStyles.chipEmber,
+        ember && makeShadow(Colors.emberGlow, 0, 0, 0.5, EMBER_GLOW * scale, 0),
       ]}
     >
       {children}
@@ -219,6 +224,7 @@ export function ChipText({
   strong = false,
   lit = false,
   urgent = false,
+  ember = false,
   maxWidth,
   testID,
   children,
@@ -227,6 +233,7 @@ export function ChipText({
   strong?: boolean;
   lit?: boolean;
   urgent?: boolean;
+  ember?: boolean;
   /** Caps this run so an unbounded value (a username) ellipsizes instead of widening the chip. */
   maxWidth?: number;
   testID?: string;
@@ -250,6 +257,7 @@ export function ChipText({
         strong && chipStyles.chipLabelStrong,
         lit && chipStyles.chipLabelLit,
         urgent && chipStyles.chipLabelUrgent,
+        ember && (strong ? chipStyles.chipCountEmber : chipStyles.chipLabelEmber),
         maxWidth !== undefined && { maxWidth: maxWidth * scale },
       ]}
     >
@@ -259,7 +267,17 @@ export function ChipText({
 }
 
 /** The lit dot beside the turn chip's label. */
-export function ChipDot({ scale, lit, testID }: { scale: number; lit: boolean; testID?: string }) {
+export function ChipDot({
+  scale,
+  lit,
+  ember = false,
+  testID,
+}: {
+  scale: number;
+  lit: boolean;
+  ember?: boolean;
+  testID?: string;
+}) {
   const size = CHIP_DOT * scale;
   return (
     <View
@@ -267,8 +285,10 @@ export function ChipDot({ scale, lit, testID }: { scale: number; lit: boolean; t
       style={[
         chipStyles.chipDot,
         { width: size, height: size, borderRadius: size / 2 },
-        lit && chipStyles.chipDotLit,
-        lit && makeShadow(Colors.goldLit, 0, 0, 0.7, CHIP_DOT_GLOW * scale, 0),
+        lit && !ember && chipStyles.chipDotLit,
+        lit && !ember && makeShadow(Colors.goldLit, 0, 0, 0.7, CHIP_DOT_GLOW * scale, 0),
+        ember && chipStyles.chipDotEmber,
+        ember && makeShadow(Colors.emberDot, 0, 0, 1, CHIP_DOT_GLOW * scale, 0),
       ]}
     />
   );
@@ -279,6 +299,7 @@ const CHIP_GAP = 7;
 const CHIP_DOT = 6;
 const CHIP_GLOW = 20;
 const CHIP_DOT_GLOW = 9;
+const EMBER_GLOW = 18;
 // `.15em` and `.06em` of the chip's own `10 * s` type.
 const CHIP_TRACKING = 1.5;
 const CHIP_TRACKING_STRONG = 0.6;
@@ -314,6 +335,10 @@ const chipStyles = StyleSheet.create({
   chipLabelUrgent: { color: Colors.dangerDim },
   chipDot: { backgroundColor: Colors.textMuted },
   chipDotLit: { backgroundColor: Colors.goldLit },
+  chipEmber: { borderColor: Colors.ember },
+  chipLabelEmber: { color: Colors.emberLabel },
+  chipCountEmber: { color: Colors.emberCount },
+  chipDotEmber: { backgroundColor: Colors.emberDot },
 });
 
 // ─── Control rail ─────────────────────────────────────────────────────────────

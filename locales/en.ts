@@ -435,6 +435,14 @@ export const en = {
   "gameTable.a11yCardMoved": "{{card}} moved to position {{position}} of {{total}}.",
   "gameTable.a11yHandSelected_one": "{{count}} selected.",
   "gameTable.a11yHandSelected_other": "{{count}} selected.",
+  "scorePill.you": "You",
+  "scorePill.place": "#{{place}}",
+  "scorePill.standings": "Standings",
+  "scorePill.race": "Race to {{target}}",
+  "scorePill.a11yLabel_one": "Your score: {{count}} point of {{target}}, place {{place}}.",
+  "scorePill.a11yLabel_other": "Your score: {{count}} points of {{target}}, place {{place}}.",
+  "scorePill.a11yRow_one": "{{place}}. {{name}}, {{count}} point.",
+  "scorePill.a11yRow_other": "{{place}}. {{name}}, {{count}} points.",
 
   // ----------------------------------------------------- gameSettingsSheet.*
   "gameSettingsSheet.title": "Settings",

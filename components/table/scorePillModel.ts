@@ -13,6 +13,7 @@ const OPEN_RADIUS = 12;
 const BOARD_W = 440;
 const BOARD_H = 252;
 const BOARD_RADIUS = 16;
+const BOARD_DROP = 58.6;
 const BOARD_ROW_SCALE = 1.2;
 
 export const PILL_ROW = { x: 8, y: 26, step: 24, w: 220, h: 22 };
@@ -24,8 +25,8 @@ export interface PillAnchor {
   right: number;
   top: number;
   restH: number;
-  boardLeft: number;
-  boardTop: number;
+  /** The felt's centre line, which the turn chip and the board are both centred on. */
+  centreX: number;
   unit: number;
 }
 
@@ -53,8 +54,8 @@ export function scorePillBox(open: number, board: number, a: PillAnchor): PillBo
   const u = a.unit;
   if (board > 0) {
     return {
-      x: lerp(a.right - OPEN_W * u, a.boardLeft, board),
-      y: lerp(a.top, a.boardTop, board),
+      x: lerp(a.right - OPEN_W * u, a.centreX - (BOARD_W / 2) * u, board),
+      y: lerp(a.top, a.top + BOARD_DROP * u, board),
       w: lerp(OPEN_W, BOARD_W, board) * u,
       h: lerp(OPEN_H, BOARD_H, board) * u,
       radius: lerp(OPEN_RADIUS, BOARD_RADIUS, board) * u,
@@ -67,6 +68,21 @@ export function scorePillBox(open: number, board: number, a: PillAnchor): PillBo
     w,
     h: lerp(a.restH, OPEN_H * u, open),
     radius: lerp(a.restH / 2, OPEN_RADIUS * u, clamp01(open)),
+  };
+}
+
+/** What a press lands on: the drawn box, grown to `minTarget` tall around the pill at rest. */
+export function scorePillHitBox(open: number, board: number, a: PillAnchor, minTarget: number): PillBox {
+  "worklet";
+  const box = scorePillBox(open, board, a);
+  const restMid = a.top + a.restH / 2;
+  const y = Math.min(box.y, restMid - minTarget / 2);
+  return {
+    x: box.x,
+    y,
+    w: Math.max(box.w, minTarget),
+    h: Math.max(box.y + box.h, restMid + minTarget / 2) - y,
+    radius: box.radius,
   };
 }
 
@@ -83,6 +99,14 @@ export function scorePillRow(pos: number, board: number, unit: number): { x: num
     x: lerp(PILL_ROW.x, BOARD_ROW.x, board) * unit,
     y: lerp(PILL_ROW.y + pos * PILL_ROW.step, BOARD_ROW.y + pos * BOARD_ROW.step, board) * unit,
     scale: lerp(1, BOARD_ROW_SCALE, board),
+  };
+}
+
+export function scorePillHeader(board: number, unit: number): { x: number; y: number } {
+  "worklet";
+  return {
+    x: lerp(PILL_HEADER.x, PILL_HEADER.boardX, board) * unit,
+    y: lerp(PILL_HEADER.y, PILL_HEADER.boardY, board) * unit,
   };
 }
 

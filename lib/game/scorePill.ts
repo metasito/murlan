@@ -18,6 +18,7 @@ export interface PillRow {
 }
 
 export interface PillStandings {
+  teams: boolean;
   rows: PillRow[];
   mine: { total: number; place: number } | null;
 }
@@ -76,5 +77,5 @@ export function scorePillStandings({
     })
   );
   const mine = rows.find((r) => r.mine);
-  return { rows, mine: mine ? { total: mine.total, place: mine.place } : null };
+  return { teams, rows, mine: mine ? { total: mine.total, place: mine.place } : null };
 }

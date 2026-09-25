@@ -52,6 +52,12 @@ export const Colors = {
   dangerDim:    '#E8857E',              // the same alarm below that bar
   dangerScrim:  'rgba(229,57,53,0.92)', // error toast over the felt
   redMuted:     'rgba(239,68,68,0.15)', // the error box's wash, bordered by dangerDim
+  // The turn chip in the last seconds of the viewer's own clock.
+  ember:        '#FF8A5C',              // border
+  emberGlow:    '#FF6E3C',
+  emberDot:     '#FF7A45',
+  emberLabel:   '#FFD2B8',
+  emberCount:   '#FFB08A',
 
   cardBg:       '#FAFAF8',
   cardBorder:   'rgba(255,255,255,0.08)',
@@ -84,6 +90,10 @@ export const Colors = {
   // stop (tests/ui-rules/contrast.test.ts). The extra opacity buys back what the blur
   // was doing.
   chipFill:     'rgba(3,14,9,0.72)',
+  scorePillTop: 'rgba(18,36,26,0.95)',
+  scorePillFoot:'rgba(3,14,9,0.93)',
+  track:        'rgba(240,234,214,0.08)', // an empty progress line
+  badgeInk:     '#241A06',                // text on a gold badge
   // A seat is a chip on the cloth, and its own dark disc rather than a patch of
   // the felt behind it — a seat that took the felt's colour disappeared into it
   // wherever the lamp happened to be standing. Lit corner first.

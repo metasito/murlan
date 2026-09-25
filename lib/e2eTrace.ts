@@ -9,6 +9,8 @@ export interface TraceFrame {
   dropped: number;
   lamp: { x: number; y: number; level: number | null; flare: number | null } | null;
   shake: { x: number; y: number; rotate: number } | null;
+  /** The score pill's box and its open progress, which may overshoot 1. */
+  scorePill: { x: number; y: number; w: number; h: number; open: number } | null;
 }
 
 interface Sources {
@@ -16,6 +18,7 @@ interface Sources {
   dropped: () => number;
   lamp: () => NonNullable<TraceFrame["lamp"]>;
   shake: () => NonNullable<TraceFrame["shake"]>;
+  scorePill: () => NonNullable<TraceFrame["scorePill"]>;
 }
 
 export interface TraceRecorder {
@@ -29,6 +32,7 @@ const sources: { [K in keyof Sources]: Set<Sources[K]> } = {
   dropped: new Set(),
   lamp: new Set(),
   shake: new Set(),
+  scorePill: new Set(),
 };
 let recording = false;
 let pending: string[] = [];
@@ -56,6 +60,7 @@ if (process.env.EXPO_PUBLIC_E2E_FAST === "1") {
       dropped: sum(sources.dropped),
       lamp: last(sources.lamp),
       shake: last(sources.shake),
+      scorePill: last(sources.scorePill),
     });
     requestAnimationFrame(tick);
   };

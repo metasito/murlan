@@ -22,6 +22,7 @@ function reference(): Trace {
       dropped: t < 200 ? 0 : 10,
       lamp: { x: 457 + t / 10, y: 292, level: 1 - t / 1000, flare: t / 1000 },
       shake: t <= 256 ? { x: 9 - t / 32, y: 4, rotate: 1.3 } : { x: 0, y: 0, rotate: 0 },
+      scorePill: null,
     });
   }
   const regions = CHECKPOINTS.map((t) => ({
