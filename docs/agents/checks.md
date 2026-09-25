@@ -81,7 +81,12 @@ can read only its own cache and main's, so a branch's first run restores main's 
 instead of compiling it cold, and a cache unread for 7 days is evicted. By the owner's decision; a
 red run is diagnosed from its artifacts, never rerun. `gh run list --workflow=ios.yml --branch
 agent/<n>-<slug>` (or `maestro.yml`) is a ticket's current status — without `--branch` the list
-mixes in main's scheduled runs. **These two release builds are the only device path**: a release build carries its
+mixes in main's scheduled runs. Wait on runs with `node tools/loop/await-run.mjs <run-id>
+[<run-id>…]`, which exits 0 when all passed, 1 when one did not, and 3 when some are still going:
+then run the same command again. It returns before the Bash ceiling; a loop session's `gh run
+watch` is refused because a device run outlasts it. `ios.yml` and `maestro.yml` run side by side,
+so dispatch both and wait on both run ids at once; a second dispatch of the same workflow on one
+branch cancels the first. **These two release builds are the only device path**: a release build carries its
 own bundle, so no packager, dev server or `adb reverse` is involved, and the flows take the app id
 from `MAESTRO_APP_ID` with no default. No host client can stand in for them: a host's dev-menu
 window sits above the app's own and eats the touch — `tapOn` reports `COMPLETED` regardless
