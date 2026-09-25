@@ -632,6 +632,7 @@ jobs:
     # the only step that commits is gated on `push`.
     permissions:
       contents: write
+      issues: read
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
@@ -690,6 +691,8 @@ jobs:
           retention-days: 30
 
       - name: Name the tests that passed only on a retry
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: node tools/ci/e2e-flaky.mjs merged-report.json
 
       # Over the numbers this run split by, so a spec this run could not price keeps the latest
