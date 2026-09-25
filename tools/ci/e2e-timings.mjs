@@ -30,9 +30,8 @@ const TIMINGS = path.join(repoRoot, "tests", "e2e", "timings.json");
  * `workers: 1, fullyParallel: false` (tests/e2e/playwright.config.ts), so within a
  * shard the sum is what the shard spends, which is what the split needs.
  *
- * A retried test counts only its last attempt. The price is a forecast for the next
- * run, and a retry is this run's event: summed, one retry priced `resultActions` at
- * 93 s against a real 26 s and left its shard idle for a minute (#1285).
+ * A retried test counts only its last attempt: the price is a forecast for the next
+ * run, and a retry is this run's event, not the spec's cost.
  *
  * Two kinds of file come back unpriced rather than cheap, because a small number
  * here is indistinguishable from a measured one and `assignShards` reads `0` as
