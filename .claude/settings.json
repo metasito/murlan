@@ -8,6 +8,11 @@
             "type": "command",
             "command": "node",
             "args": ["${CLAUDE_PROJECT_DIR}/tools/loop/guard-bash.mjs"]
+          },
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["${CLAUDE_PROJECT_DIR}/tools/loop/guard-verdict.mjs"]
           }
         ]
       },

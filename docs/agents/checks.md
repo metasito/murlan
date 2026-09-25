@@ -363,6 +363,8 @@ every hook):
 - `tools/loop/guard-write.mjs` refuses a Write, Edit or NotebookEdit into the shared checkout;
   the worktrees under `.worktrees/`, `.loop-logs/` and paths outside the repo stay writable
   (rules 8 and 31).
+- `tools/loop/guard-verdict.mjs` refuses a `VERDICT: LAND` until that round's own reviewers have
+  run, or until `loop-gate --review-round` has said the cap is reached (rule 29).
 
 ## Owner decisions
 

@@ -494,6 +494,7 @@ describe("the hooks settings.json registers", () => {
 
   test("cover every tool and every session start they guard", () => {
     for (const tool of ["Bash", "PowerShell"]) assert.ok(matched("PreToolUse", "guard-bash.mjs").includes(tool), tool);
+    for (const tool of ["Bash", "PowerShell"]) assert.ok(matched("PreToolUse", "guard-verdict.mjs").includes(tool), tool);
     for (const tool of ["Write", "Edit"]) assert.ok(matched("PreToolUse", "guard-comments.mjs").includes(tool), tool);
     for (const source of ["startup", "resume", "compact", "clear"]) {
       assert.ok(matched("SessionStart", "loop-status.mjs").includes(source), source);
