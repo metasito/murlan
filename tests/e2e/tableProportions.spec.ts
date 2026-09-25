@@ -43,6 +43,7 @@ async function boxes(page: Page) {
       gioca: one('[data-testid="btn-gioca"]'),
       passa: one('[data-testid="btn-passa"]'),
       topBar: one('[data-testid="game-top-bar"]'),
+      scorePill: one('[data-testid="score-pill"]'),
       rings: many('[data-testid="seat-ring"]'),
       pile: one('[data-testid="pile-area"]'),
       hand: one("[data-hand-state]"),
@@ -56,6 +57,7 @@ async function boxes(page: Page) {
         ...many('[data-testid="seat-card-count"]').map((r) => ({ what: "a seat badge", r })),
         ...many('[data-testid="game-top-bar"]').map((r) => ({ what: "the top bar", r })),
         ...many('[data-testid="game-hud-stack"]').map((r) => ({ what: "the HUD stack", r })),
+        ...many('[data-testid="score-pill"]').map((r) => ({ what: "the score pill", r })),
         ...many('[data-testid="btn-gioca"]').map((r) => ({ what: "GIOCA", r })),
         ...many('[data-testid="btn-passa"]').map((r) => ({ what: "PASSA", r })),
       ],
@@ -76,6 +78,9 @@ for (const phone of PHONES) {
     const s = cardScale(Math.min(phone.width, phone.height));
     const b = await boxes(page);
     if (!b.gioca || !b.passa || !b.topBar) throw new Error("the table never rendered");
+    if (!b.scorePill) throw new Error("a partita's table drew no score pill");
+    expect(b.scorePill.x, "the score pill stands right of centre").toBeGreaterThan(phone.width / 2);
+    expect(b.scorePill.x + b.scorePill.w, "the score pill stays on screen").toBeLessThanOrEqual(phone.width);
 
     // The floor: an element that laid out as an empty box would satisfy no
     // equality below, but say so clearly if it happens.

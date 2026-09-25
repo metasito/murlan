@@ -90,6 +90,7 @@ svg{background:#111814;border:1px solid #2a332e;margin:4px 8px 4px 0}svg text{fi
     "lamp x": (f) => f.lamp && f.lamp.x, "lamp y": (f) => f.lamp && f.lamp.y,
     level: (f) => f.lamp && f.lamp.level, flare: (f) => f.lamp && f.lamp.flare,
     shake: (f) => f.shake && Math.hypot(f.shake.x, f.shake.y),
+    scorePill: (f) => f.scorePill && f.scorePill.w,
   };
   function chart(name, sides, read, span, fails) {
     const W = 280, H = 90, pts = {};

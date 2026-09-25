@@ -8,7 +8,17 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { offlineGameSave } from "./helpers/offlineSeed";
 import { installVirtualClock, takeOver, step, stepUntil } from "./helpers/virtualClock";
-import { diffTraces, movingFields, STEP_MS, type Field, type Trace, type TraceFrame } from "./helpers/traceDiff";
+import {
+  diffPillAtProgress,
+  diffTraces,
+  movingFields,
+  STEP_MS,
+  type Failure,
+  type Field,
+  type PillBox,
+  type Trace,
+  type TraceFrame,
+} from "./helpers/traceDiff";
 import { regionBrightness, regionsFor, TABLE, type Seat } from "./helpers/parityRegions";
 import { E2E_SUSPEND_AI_KEY, OFFLINE_SAVE_KEY, TUTORIAL_SEEN_KEY } from "../../lib/storageKeys";
 
@@ -31,6 +41,14 @@ interface Moment {
   mode: "determinism" | "parity";
   /** Determinism mode: exactly the fields each side must move over the window; every other must hold still. */
   moves?: Record<SideName, Field[]>;
+  /** The mockup's chapter, where it is not `key`. */
+  chapter?: string;
+  /** A tap each side makes `atMs` after onset: the app's by Playwright, the mockup's as a script. */
+  tap?: { atMs: number; app: (page: Page) => Promise<void>; mockup: string };
+  /** Determinism mode: the failures against the mockup that still fail the moment. */
+  gate?: (f: Failure) => boolean;
+  /** Gates the app's pill box against the mockup's `renderScore` at each progress the app traced. */
+  pillAtProgress?: boolean;
 }
 
 const heldTurnTable = async (page: Page, baseURL: string) => {
@@ -65,6 +83,27 @@ const MOMENTS: Moment[] = [
       mockup: ["lamp", "brightness"],
       app: ["onset", "lamp", "brightness"],
     },
+    gate: (f) => f.field === "scorePill" || f.region === "scorePill",
+  },
+  {
+    key: "score-open",
+    chapter: "rest",
+    windowMs: 960,
+    checkpoints: [0, 480, 960],
+    seatOnMove: "you",
+    appTrigger: heldTurnTable,
+    appOnset: (f) => f.lamp !== null,
+    mode: "determinism",
+    moves: {
+      mockup: ["onset", "lamp", "brightness", "scorePill"],
+      app: ["onset", "lamp", "brightness", "scorePill"],
+    },
+    tap: {
+      atMs: 320,
+      app: (page) => page.getByTestId("score-pill").click({ force: true }),
+      mockup: "toggleScore(true)",
+    },
+    pillAtProgress: true,
   },
 ];
 
@@ -72,6 +111,11 @@ interface Capture {
   trace: Trace;
   frames: { t: number; jpeg: Buffer }[];
 }
+
+const PILL_BOX = `(() => {
+  const s = scoreEl.style;
+  return { x: parseFloat(s.left), y: parseFloat(s.top), w: parseFloat(s.width), h: parseFloat(s.height) };
+})()`;
 
 const MOCKUP_SAMPLE = `(() => {
   const m = getComputedStyle(document.getElementById("world")).transform;
@@ -86,8 +130,21 @@ const MOCKUP_SAMPLE = `(() => {
     dropped: 0,
     lamp: { x: lamp.lx, y: lamp.ly, level: lamp.L, flare: lamp.f },
     shake,
+    scorePill: { ...(${PILL_BOX}), open: SC.o },
   };
 })()`;
+
+async function mockupPillAt(browser: Browser, opens: number[]): Promise<Map<number, PillBox>> {
+  const page = await newSidePage(browser);
+  await page.goto(FIXTURE);
+  await page.evaluate("paused = true");
+  const boxes = new Map<number, PillBox>();
+  for (const o of new Set(opens)) {
+    boxes.set(o, await page.evaluate(`(() => { SC.o = ${o}; SC.b = 0; renderScore(); return ${PILL_BOX}; })()`));
+  }
+  await page.context().close();
+  return boxes;
+}
 
 async function newSidePage(browser: Browser, baseURL?: string): Promise<Page> {
   const context = await browser.newContext({ viewport: TABLE, deviceScaleFactor: DPR, locale: "it-IT", baseURL });
@@ -96,13 +153,21 @@ async function newSidePage(browser: Browser, baseURL?: string): Promise<Page> {
   return page;
 }
 
-async function strip(page: Page, clip: { x: number; y: number }, decoder: Page, m: Moment, stepAfterOnset: () => Promise<TraceFrame | null>): Promise<Capture> {
+async function strip(
+  page: Page,
+  clip: { x: number; y: number },
+  decoder: Page,
+  m: Moment,
+  tap: () => Promise<unknown>,
+  stepAfterOnset: () => Promise<TraceFrame | null>
+): Promise<Capture> {
   const frames: Capture["frames"] = [];
   const traced: TraceFrame[] = [];
   const regions: Trace["regions"] = [];
   const shape = regionsFor(m.seatOnMove);
   for (let k = 0; k * STEP_MS <= m.windowMs; k++) {
     const t = k * STEP_MS;
+    if (t === m.tap?.atMs) await tap();
     const frame = await stepAfterOnset();
     if (frame) traced.push({ ...frame, t });
     if (k % STRIP_STEPS === 0) {
@@ -134,9 +199,9 @@ async function captureMockup(browser: Browser, decoder: Page, m: Moment): Promis
     window.sfx = (k) => { window.__parityOnsets.push("sound:" + k); sound(k); };
     paused = true;
     requestAnimationFrame(() => { paused = false; });
-    start(CH.findIndex((c) => c.key === ${JSON.stringify(m.key)}));
+    start(CH.findIndex((c) => c.key === ${JSON.stringify(m.chapter ?? m.key)}));
   })()`);
-  const capture = await strip(page, box, decoder, m, async () => {
+  const capture = await strip(page, box, decoder, m, () => page.evaluate(m.tap!.mockup), async () => {
     await step(page);
     return { t: 0, ...((await page.evaluate(MOCKUP_SAMPLE)) as Omit<TraceFrame, "t">) };
   });
@@ -160,7 +225,7 @@ async function captureApp(browser: Browser, baseURL: string, decoder: Page, m: M
     { chunkMs: STEP_MS }
   );
   let t = onset - STEP_MS;
-  const capture = await strip(page, { x: 0, y: 0 }, decoder, m, async () => {
+  const capture = await strip(page, { x: 0, y: 0 }, decoder, m, () => m.tap!.app(page), async () => {
     t += STEP_MS;
     if (t > onset) await step(page);
     return (await recorded()).find((f) => Math.abs(f.t - t) < STEP_MS / 2) ?? null;
@@ -169,7 +234,7 @@ async function captureApp(browser: Browser, baseURL: string, decoder: Page, m: M
   return capture;
 }
 
-function bundle(m: Moment, runs: Record<SideName, Capture>, dir: string) {
+function bundle(m: Moment, runs: Record<SideName, Capture>, pillFailures: Failure[], dir: string) {
   fs.mkdirSync(path.join(dir, "frames"), { recursive: true });
   const sides = {} as Record<SideName, { trace: Trace; frames: { t: number; file: string; sha1: string }[] }>;
   for (const side of ["mockup", "app"] as const) {
@@ -182,7 +247,7 @@ function bundle(m: Moment, runs: Record<SideName, Capture>, dir: string) {
       }),
     };
   }
-  const failures = diffTraces(runs.mockup.trace, runs.app.trace, m.checkpoints);
+  const failures = [...diffTraces(runs.mockup.trace, runs.app.trace, m.checkpoints), ...pillFailures];
   const parity = { murlanParity: 1, moment: m.key, mode: m.mode, stepMs: STEP_MS, checkpoints: m.checkpoints, sides, failures };
   fs.writeFileSync(path.join(dir, "parity.json"), JSON.stringify(parity));
   return parity;
@@ -197,8 +262,14 @@ test.describe("mockup parity", () => {
         side === "mockup" ? captureMockup(browser, decoder, m) : captureApp(browser, baseURL!, decoder, m);
       const first = { mockup: await capture("mockup"), app: await capture("app") };
 
+      let pillFailures: Failure[] = [];
+      if (m.pillAtProgress) {
+        const opens = first.app.trace.frames.flatMap((f) => (f.scorePill ? [f.scorePill.open] : []));
+        const boxes = await mockupPillAt(browser, opens);
+        pillFailures = diffPillAtProgress(first.app.trace, (open) => boxes.get(open)!);
+      }
       const dir = test.info().outputPath(m.key);
-      const parity = bundle(m, first, dir);
+      const parity = bundle(m, first, pillFailures, dir);
       await test.info().attach(`${m.key}/parity.json`, { path: path.join(dir, "parity.json"), contentType: "application/json" });
       for (const side of ["mockup", "app"] as const) {
         for (const f of parity.sides[side].frames) {
@@ -210,6 +281,8 @@ test.describe("mockup parity", () => {
         expect(parity.failures, "the app's trace against the mockup's").toEqual([]);
         return;
       }
+      expect.soft(pillFailures, "the app's pill against renderScore at the same progress").toEqual([]);
+      expect.soft(parity.failures.filter(m.gate ?? (() => false)), "the gated fields against the mockup").toEqual([]);
       for (const side of ["mockup", "app"] as const) {
         const again = await capture(side);
         expect.soft(again.trace.frames.length, `${side}: frames traced`).toBeGreaterThan(m.windowMs / STEP_MS);
