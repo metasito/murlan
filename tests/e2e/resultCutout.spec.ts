@@ -18,9 +18,11 @@ import { test, expect } from "./fixtures";
 import { openApp, startOfflineGame } from "./helpers/navigation";
 import { driveGameToCompletion } from "./helpers/bot";
 import { settled } from "./helpers/settle";
+import { seedRandomness } from "./helpers/seededRandomness";
 
 const RESULT_URL = /\/result/;
 const VIEWPORT = { width: 844, height: 390 };
+const DEAL_SEED = 1;
 
 /**
  * The vertical span a landscape cutout occupies — a centred bar on the short
@@ -113,6 +115,7 @@ test("the result screen keeps its own headline out of the cutout, on either edge
 }) => {
   test.setTimeout(5 * 60_000);
   await page.setViewportSize(VIEWPORT);
+  await seedRandomness(page, DEAL_SEED);
   await openApp(page, baseURL!);
   await startOfflineGame(page, {
     playerCount: 2,
