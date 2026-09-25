@@ -98,7 +98,7 @@ interface OnlineGameContextValue {
   /** Seats mid disconnect grace, by seat — the countdown for the whole 60 s window. */
   disconnectedSeats: Record<number, { seconds: number; resetKey: string }>;
   cumulativeScores: Record<string, number>;
-  /** What the manche just played awarded, by display name. */
+  /** What the manche just played awarded, by engine player id. */
   handScores: Record<string, number>;
   /** What the hand just played did to each seat's rating, by user id. Empty when the hand rated nobody. */
   ratingDeltas: Record<string, number>;
