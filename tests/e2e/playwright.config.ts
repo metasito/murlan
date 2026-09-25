@@ -65,7 +65,7 @@ export default defineConfig({
   // intermediate form instead and `merge-reports` makes the one report the
   // workflow uploads. Locally there is nothing to merge.
   reporter: process.env.CI
-    ? [["list"], ["blob", { outputDir: "blob-report" }]]
+    ? [["list"], ["blob", { outputDir: "blob-report" }], [resolve(__dirname, "../../tools/ci/e2e-budget.mjs")]]
     : [["list"], ["html", { open: "never", outputFolder: "playwright-report" }]],
   forbidOnly: !!process.env.CI,
   use: {
