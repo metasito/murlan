@@ -28,7 +28,12 @@ const GESTURE_TESTIDS = ["card-box", "btn-gioca", "btn-passa"];
  * claim about one file, and the test below fails on one that no longer matches
  * anything — an allowance nobody needs is an allowance nobody has checked.
  */
-const INSTANT_ON_PURPOSE: [string, string][] = [];
+const INSTANT_ON_PURPOSE: [string, string][] = [
+  [
+    "tests/e2e/mockupParity.spec.ts",
+    "the page's clock is paused (helpers/virtualClock.ts), so no app time passes between down and up however long the real wait: a held press would read exactly as this one does",
+  ],
+];
 
 /**
  * Every file that can press something: the specs and the helpers they press
