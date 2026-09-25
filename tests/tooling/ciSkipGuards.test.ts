@@ -125,10 +125,15 @@ describe("the integration guard counts the files that ran, not only the skips", 
     try {
       mkdirSync(path.join(dir, "tests", "engine"), { recursive: true });
       mkdirSync(path.join(dir, "tools", "loop", "tests"), { recursive: true });
-      for (const f of ["tests/a.test.ts", "tests/engine/b.test.ts", "tests/engine/c.test.tsx", "tools/loop/tests/d.test.ts"]) {
-        writeFileSync(path.join(dir, f), "");
+      for (const f of [
+        ["tests", "a.test.ts"],
+        ["tests", "engine", "b.test.ts"],
+        ["tests", "engine", "c.test.tsx"],
+        ["tools", "loop", "tests", "d.test.ts"],
+      ]) {
+        writeFileSync(path.join(dir, ...f), "");
       }
-      assert.deepEqual(unloaded([path.join(dir, "tests", "a.test.ts")], dir), ["tests/engine/b.test.ts"]);
+      assert.deepEqual(unloaded([path.join(dir, "tests", "a.test.ts")], dir), [["tests", "engine", "b.test.ts"].join("/")]);
       assert.deepEqual(unloaded([path.join(dir, "tools", "loop", "tests", "d.test.ts")], dir), []);
     } finally {
       rmSync(dir, { recursive: true, force: true });
