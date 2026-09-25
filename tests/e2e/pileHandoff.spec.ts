@@ -4,6 +4,7 @@
 // their layout is a jump the moment the flight hands over; only a browser runs the flexbox.
 import { test, expect } from "@playwright/test";
 import { openSeededGame } from "./helpers/offlineSeed";
+import { settled } from "./helpers/settle";
 
 const VIEWPORT = { width: 844, height: 390 };
 const OPPONENT_TURN = 1;
@@ -34,7 +35,8 @@ test("a bot's thrown cards come to rest where the pile then draws them", async (
   await page.evaluate(() => (globalThis as unknown as { murlanBotMove: () => void }).murlanBotMove());
   await page.locator('[data-testid="flying-cards"]').waitFor({ state: "attached", timeout: 15_000 });
   await page.locator('[data-testid="flying-cards"]').waitFor({ state: "detached", timeout: 15_000 });
-  await page.waitForTimeout(1_500);
+  await page.getByTestId("combo-chip").waitFor({ state: "visible", timeout: 5_000 });
+  await settled(page, 1_500, '[data-testid="pile-area"]');
 
   const { flight, pile } = await page.evaluate(() => ({
     flight: (window as unknown as { __lastFlight: Centre[] | null }).__lastFlight,

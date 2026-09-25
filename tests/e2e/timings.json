@@ -37,6 +37,7 @@
   "mockupParity.spec.ts": 116.4,
   "mockupParityScoreOpen.spec.ts": 56.2,
   "mockupParityTrickFallback.spec.ts": 121.6,
+  "mockupParityTrickLandingsSkia.spec.ts": 144.7,
   "mockupParityTrickSkia.spec.ts": 144.7,
   "musicLoops.spec.ts": 6,
   "offline.spec.ts": 88.2,

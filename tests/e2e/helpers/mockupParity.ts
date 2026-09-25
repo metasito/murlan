@@ -180,6 +180,8 @@ const MOMENTS: Moment[] = [
       { atMs: 4150, app: pass },
       { atMs: TRICK_LANDINGS[2] - impactDelayMs(false), app: botMove },
     ],
+    // The particle canvas never touches CanvasKit, and a second variant would take the browser suite past MAX_SHARDS.
+    variants: ["skia"],
   },
   {
     key: "score-open",
