@@ -286,8 +286,17 @@ export function classifyOrSkip(entry, probe = realProbe) {
   }
 }
 
+/** `native`, not the JS walk: only it expands a Windows 8.3 name like `RUNNER~1` into the long one git reports. */
+function canonical(p) {
+  try {
+    return fs.realpathSync.native(p);
+  } catch {
+    return path.resolve(p);
+  }
+}
+
 function samePath(a, b) {
-  const [ra, rb] = [path.resolve(a), path.resolve(b)];
+  const [ra, rb] = [canonical(a), canonical(b)];
   return process.platform === "win32" ? ra.toLowerCase() === rb.toLowerCase() : ra === rb;
 }
 
@@ -340,7 +349,7 @@ export function newsCount({ removed, orphansFound }) {
 
 /** Whether `child` is `parent` itself or sits underneath it. */
 function isAtOrUnder(child, parent) {
-  const [c, p] = [path.resolve(child), path.resolve(parent)];
+  const [c, p] = [canonical(child), canonical(parent)];
   const [cc, pp] = process.platform === "win32" ? [c.toLowerCase(), p.toLowerCase()] : [c, p];
   return cc === pp || cc.startsWith(pp + path.sep);
 }

@@ -62,6 +62,21 @@ function makeJunctionedWorktree() {
 }
 
 describe("removing one named worktree", () => {
+  test("a worktree named by another spelling of its path is still found", () => {
+    const t = makeJunctionedWorktree();
+    if (!t) return;
+    const alias = path.join(root!, "alias");
+    fs.symlinkSync(t.repo, alias, "junction");
+
+    execFileSync(process.execPath, [SCRIPT, "--remove", path.join(alias, ".worktrees", "w1")], {
+      cwd: t.repo,
+      encoding: "utf8",
+      stdio: "pipe",
+    });
+
+    assert.equal(fs.existsSync(t.worktree), false);
+  });
+
   test("detaches the link, removes the worktree, and leaves the install untouched", () => {
     const t = makeJunctionedWorktree();
     if (!t) return;

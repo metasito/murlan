@@ -361,9 +361,15 @@ test` but the repository. `ci.yml`'s `scope` job sets `app`/`harness` outputs: a
 `tools/loop/` (plus a short list of shared scripts) sets `harness=true, app=false`; anything else
 sets `app=true`; the protocol files (`docs/agents/`, `.claude/`, `CLAUDE.md`) set **both**, since
 both `tests/tooling/rulesAreSingleSourced.test.ts` and
-`tools/loop/tests/loopDocsAreExecutable.test.ts` read them. The harness job also runs `typecheck`
+`tools/loop/tests/loopDocsAreExecutable.test.ts` read them. A third output, `scans`, is true for
+any change at all and runs `verify` (`npm test`) even when `app` is false: `docReferences` and the
+other scans that list the repository from its root reach every tracked path, prose included, so a
+doc-only change skips the browser, build and lint jobs but never the Node suite
+(`tests/tooling/ciScope.test.ts`). The harness job also runs `typecheck`
 and `eslint tools/loop`, since the game's jobs that would otherwise do that are skipped on a
-loop-only change.
+loop-only change. Beside it, `harness-windows` runs every loop test file with a test that skips off
+`win32` on a Windows runner and fails if any test in them skips: Linux skips those tests, so this
+is the only place they run.
 
 **Run `npm run loop:test` from the repo root, never `npm --prefix tools/loop`** — its tests read
 the repository itself, so npm's cwd sends every one of them looking in the wrong place. **Move by

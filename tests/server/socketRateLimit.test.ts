@@ -53,11 +53,14 @@ describe("allowSocketAction", () => {
     assert.equal(allowSocketAction(s, "friend:invite", 1, 10_000), true);
   });
 
-  test("the window expires and the allowance comes back", async () => {
+  test("the window expires and the allowance comes back", (t) => {
+    t.mock.timers.enable({ apis: ["Date"] });
     const s = fakeSocket("u1");
     assert.equal(allowSocketAction(s, "room:create", 1, 5), true);
     assert.equal(allowSocketAction(s, "room:create", 1, 5), false);
-    await new Promise((r) => setTimeout(r, 15));
+    t.mock.timers.tick(4);
+    assert.equal(allowSocketAction(s, "room:create", 1, 5), false);
+    t.mock.timers.tick(1);
     assert.equal(allowSocketAction(s, "room:create", 1, 5), true);
   });
 

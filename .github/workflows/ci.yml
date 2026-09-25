@@ -61,6 +61,7 @@ jobs:
     outputs:
       app: ${{ steps.scope.outputs.app }}
       harness: ${{ steps.scope.outputs.harness }}
+      scans: ${{ steps.scope.outputs.scans }}
       native: ${{ steps.scope.outputs.native }}
       shards: ${{ steps.plan.outputs.shards }}
       shard-count: ${{ steps.plan.outputs.shard-count }}
@@ -96,6 +97,7 @@ jobs:
               echo "Identical tree to #$num at $head, which this workflow already passed."
               echo "app=false" >> "$GITHUB_OUTPUT"
               echo "harness=false" >> "$GITHUB_OUTPUT"
+              echo "scans=false" >> "$GITHUB_OUTPUT"
               exit 0
             fi
             echo "No green pull-request run covers this tree — running everything."
@@ -109,6 +111,7 @@ jobs:
             echo "No usable base commit — running everything."
             echo "app=true" >> "$GITHUB_OUTPUT"
             echo "harness=true" >> "$GITHUB_OUTPUT"
+            echo "scans=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           changed=$(git diff --name-only "$base" HEAD)
@@ -127,7 +130,7 @@ jobs:
           # files, `.claude/settings.json`'s hook paths, package.json's script names, and this
           # workflow, whose job names `check-steps.mjs` pins each delegated step to. Both lists are
           # derived by `tests/tooling/ciScope.test.ts`, which reds on a path they miss.
-          if grep -qE '^(tools/loop/|scripts/lib/(checkoutRoot|entry)\.mjs$|tools/ci/preflightMemory\.mjs$|tests/helpers/importShellGuard\.ts$|docs/agents/|\.claude/|CLAUDE\.md$|package\.json$|\.github/workflows/ci\.yml$)' <<< "$changed"; then
+          if grep -qE '^(tools/loop/|scripts/lib/(checkoutRoot|entry)\.mjs$|tools/ci/preflightMemory\.mjs$|tests/helpers/(importShellGuard\.ts|filesRunReporter\.mjs)$|docs/agents/|\.claude/|CLAUDE\.md$|package\.json$|\.github/workflows/ci\.yml$)' <<< "$changed"; then
             echo "harness=true" >> "$GITHUB_OUTPUT"
           else
             echo "harness=false" >> "$GITHUB_OUTPUT"
@@ -148,6 +151,13 @@ jobs:
             echo "app=false" >> "$GITHUB_OUTPUT"
           else
             echo "app=true" >> "$GITHUB_OUTPUT"
+          fi
+          # `docReferences.test.ts` and the other scans that list the repository from its root reach
+          # every tracked path, prose included, so no change is too small to run the job holding them.
+          if grep -qE '.' <<< "$changed"; then
+            echo "scans=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "scans=false" >> "$GITHUB_OUTPUT"
           fi
 
       # Every shard must split the suite from the same numbers, so they are settled once, here.
@@ -268,7 +278,7 @@ jobs:
   verify:
     name: Typecheck and tests
     needs: scope
-    if: needs.scope.outputs.app == 'true'
+    if: needs.scope.outputs.app == 'true' || needs.scope.outputs.scans == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -410,6 +420,32 @@ jobs:
       # Rides here as well as on `lint` for the same reason as the two above: the comment budget is
       # a step of a job that a loop-tests-only change does not run.
       - run: npm run check:comments
+
+  # Linux skips the loop tests that only win32 can run, so this is the one place they are heard from.
+  harness-windows:
+    name: Loop harness on Windows
+    needs: scope
+    if: needs.scope.outputs.harness == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Identify the runner to git
+        run: |
+          git config --global user.email "ci@example.com"
+          git config --global user.name "CI"
+      - name: The Win32-only loop tests run, and none skips
+        shell: bash
+        run: |
+          set -o pipefail
+          files=$(grep -lE 'skip: .*(win32|onWindows)' tools/loop/tests/*.test.ts)
+          [ -n "$files" ] || { echo "::error::No loop test skips off win32 — the selection pattern is stale."; exit 1; }
+          node --test --test-timeout=30000 --test-force-exit --test-reporter=tap $files | tee win32.tap
+          grep -qE '^# skipped 0$' win32.tap || { echo "::error::A loop test skipped on Windows, the one runner meant to run it."; exit 1; }
+          grep -qE '^# pass [1-9]' win32.tap || { echo "::error::No loop test passed on Windows."; exit 1; }
 
   lint:
     name: Lint
@@ -632,6 +668,7 @@ jobs:
     # the only step that commits is gated on `push`.
     permissions:
       contents: write
+      issues: read
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
@@ -690,6 +727,8 @@ jobs:
           retention-days: 30
 
       - name: Name the tests that passed only on a retry
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: node tools/ci/e2e-flaky.mjs merged-report.json
 
       # Over the numbers this run split by, so a spec this run could not price keeps the latest
