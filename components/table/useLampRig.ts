@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo } from "react";
-import { runOnUI, useFrameCallback, useSharedValue, type FrameInfo, type SharedValue } from "react-native-reanimated";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useFrameCallback, useSharedValue, type FrameInfo, type SharedValue } from "react-native-reanimated";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTraceSource } from "@/lib/e2eTrace";
 import { designScale, lampControls, restingLamp, stepLamp, type Lamp, type LampTarget } from "./lampRig";
@@ -17,6 +17,18 @@ export interface LampRig {
   kick(): void;
   setLevel(to: number, rate: number): void;
   freeze(amount: number): void;
+}
+
+function lampStepper(lamp: SharedValue<Lamp>, reduced: SharedValue<boolean>) {
+  return (frame: FrameInfo) => {
+    "worklet";
+    const dt = (frame.timeSincePreviousFrame ?? 0) / 1000;
+    lamp.modify((s) => {
+      "worklet";
+      stepLamp(s, dt, reduced.value);
+      return s;
+    }, true);
+  };
 }
 
 export function useLampRig({
@@ -39,43 +51,27 @@ export function useLampRig({
     reduced.value = reduceMotion;
   }, [reduceMotion, reduced]);
 
-  useFrameCallback(
-    useCallback(
-      (frame: FrameInfo) => {
-        "worklet";
-        const dt = (frame.timeSincePreviousFrame ?? 0) / 1000;
-        lamp.modify((s) => {
-          "worklet";
-          stepLamp(s, dt, reduced.value);
-          return s;
-        }, true);
-      },
-      [lamp, reduced]
-    )
-  );
+  // The compiler drops a `useCallback` around a worklet, and `useFrameCallback` re-registers
+  // on every new identity, stepping one frame with dt 0 each render.
+  const [step] = useState(() => lampStepper(lamp, reduced));
+  useFrameCallback(step);
 
   useEffect(() => {
-    runOnUI((to: LampTarget) => {
+    lamp.modify((s) => {
       "worklet";
-      lamp.modify((s) => {
-        "worklet";
-        lampControls.setTarget(s, to, reduced.value);
-        return s;
-      }, true);
-    })(target);
+      lampControls.setTarget(s, target, reduced.value);
+      return s;
+    }, true);
   }, [target, lamp, reduced]);
 
   useEffect(() => {
     if (!fresh) return;
-    runOnUI(() => {
+    lamp.modify((s) => {
       "worklet";
-      lamp.modify((s) => {
-        "worklet";
-        s.lvl = BREATH_FROM;
-        lampControls.setLevel(s, 1, BREATH_RATE);
-        return s;
-      }, true);
-    })();
+      s.lvl = BREATH_FROM;
+      lampControls.setLevel(s, 1, BREATH_RATE);
+      return s;
+    }, true);
   }, [fresh, lamp]);
 
   const { sx, sy } = designScale(width, height);
@@ -89,14 +85,11 @@ export function useLampRig({
 
   return useMemo(() => {
     const control = (apply: (s: Lamp, r: boolean) => void) => () =>
-      runOnUI(() => {
+      lamp.modify((s) => {
         "worklet";
-        lamp.modify((s) => {
-          "worklet";
-          apply(s, reduced.value);
-          return s;
-        }, true);
-      })();
+        apply(s, reduced.value);
+        return s;
+      }, true);
     return {
       lamp,
       sx,
