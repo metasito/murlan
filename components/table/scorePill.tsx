@@ -16,7 +16,6 @@ import {
   Gradient,
   Layer,
   motionMs,
-  TABLE_FONT_SCALE_MAX,
   TOUCH_TARGET_MIN,
   withAlpha,
 } from "@/lib/theme";
@@ -53,7 +52,7 @@ const SHADOW_SPREAD = -8;
 // The mockup's px, multiplied by `anchor.unit`.
 const PX = {
   padH: 10,
-  gap: 6,
+  between: 6,
   icon: 11,
   youTracking: 1.6,
   sepH: 11,
@@ -175,7 +174,7 @@ export function ScorePill({
         />
         <Animated.View
           {...a11yHidden()}
-          style={[styles.chip, { height: anchor.restH - 2, paddingHorizontal: PX.padH * u, gap: PX.gap * u }, chipStyle]}
+          style={[styles.chip, { height: anchor.restH - 2, paddingHorizontal: PX.padH * u, gap: PX.between * u }, chipStyle]}
         >
           <Svg width={PX.icon * u} height={PX.icon * u} viewBox="0 0 11 11" fill={Colors.gold}>
             <Rect x={0} y={5} width={3} height={6} rx={0.6} />
@@ -240,7 +239,7 @@ export function ScorePill({
             <TableText style={[styles.head, { fontSize: small, letterSpacing: PX.headTracking * u }]}>
               {t("scorePill.standings")}
             </TableText>
-            <View style={[styles.headSub, { gap: PX.gap * u }]}>
+            <View style={[styles.headSub, { gap: PX.between * u }]}>
               <TableText style={[styles.sub, { fontSize: small, letterSpacing: PX.subTracking * u }]}>
                 {t("scorePill.race", { target })}
               </TableText>
@@ -310,7 +309,7 @@ function StandingRowView({
       {...a11yHidden()}
       style={[
         styles.row,
-        { width: w, height: h, borderRadius: PX.rowRadius * u, paddingLeft: PX.rowPadL * u, paddingRight: PX.rowPadR * u, gap: PX.gap * u },
+        { width: w, height: h, borderRadius: PX.rowRadius * u, paddingLeft: PX.rowPadL * u, paddingRight: PX.rowPadR * u, gap: PX.between * u },
         row.mine && styles.rowMine,
         placed,
       ]}
@@ -339,12 +338,13 @@ function StandingRowView({
         />
         <View style={[styles.tick, { height: PX.tickH * u, top: ((PX.barH - PX.tickH) / 2) * u }]} />
       </View>
-      <Animated.Text
-        maxFontSizeMultiplier={TABLE_FONT_SCALE_MAX}
-        style={[styles.gain, row.gain === 0 && styles.gainNone, { width: PX.cell * u, fontSize: tableFontSize(FontSize.xxs, u) }, shown]}
-      >
-        +{row.gain}
-      </Animated.Text>
+      <Animated.View style={shown}>
+        <TableText
+          style={[styles.gain, row.gain === 0 && styles.gainNone, { width: PX.cell * u, fontSize: tableFontSize(FontSize.xxs, u) }]}
+        >
+          +{row.gain}
+        </TableText>
+      </Animated.View>
       <TableText style={[styles.rowTotal, { width: PX.cell * u, fontSize: tableFontSize(FontSize.sm, u) }]}>
         {row.total}
       </TableText>
@@ -392,7 +392,7 @@ const styles = StyleSheet.create({
   row: { position: "absolute", left: 0, top: 0, flexDirection: "row", alignItems: "center", overflow: "hidden" },
   rowMine: { backgroundColor: Colors.goldMuted },
   rowMineBar: { position: "absolute", left: 0, top: 0, bottom: 0, backgroundColor: Colors.gold },
-  place: { fontFamily: "Rajdhani_700Bold", color: Colors.textMuted, textAlign: "center" },
+  place: { fontFamily: "Rajdhani_700Bold", color: Colors.textSecondary, textAlign: "center" },
   disc: { alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: Colors.goldBorder },
   discText: { fontFamily: "Rajdhani_700Bold", color: Colors.text },
   name: { flex: 1, fontFamily: "Rajdhani_600SemiBold", color: Colors.textSecondary, textTransform: "uppercase" },
@@ -401,6 +401,6 @@ const styles = StyleSheet.create({
   barFill: { position: "absolute", left: 0, top: 0, bottom: 0 },
   tick: { position: "absolute", right: -1, width: 1, backgroundColor: Colors.goldStrong },
   gain: { fontFamily: "Rajdhani_700Bold", color: Colors.goldLit, textAlign: "right" },
-  gainNone: { color: Colors.textMuted },
+  gainNone: { color: Colors.textSecondary },
   rowTotal: { fontFamily: "Rajdhani_700Bold", color: Colors.text, textAlign: "right", fontVariant: ["tabular-nums"] },
 });

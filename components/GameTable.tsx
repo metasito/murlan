@@ -526,16 +526,13 @@ export function GameTable({
 
   const frame = computeTableFrame({ width: W, height: H, insets, scale });
 
-  const pillAnchor = React.useMemo(
-    () => ({
-      right: W - frame.tableRight - frame.pad,
-      top: frame.tableTop,
-      restH: CHIP_H(scale),
-      centreX: (frame.tableLeft + W - frame.tableRight) / 2,
-      unit: (scale * BASE_SHORT_EDGE) / MOCKUP_SHORT_EDGE,
-    }),
-    [W, frame.tableRight, frame.pad, frame.tableTop, frame.tableLeft, scale]
-  );
+  const pillAnchor = {
+    right: W - frame.tableRight - frame.pad,
+    top: frame.tableTop,
+    restH: CHIP_H(scale),
+    centreX: (frame.tableLeft + W - frame.tableRight) / 2,
+    unit: (scale * BASE_SHORT_EDGE) / MOCKUP_SHORT_EDGE,
+  };
   const pillStandings =
     matchScore &&
     scorePillStandings({
