@@ -1,3 +1,3 @@
 import { gridTest } from "./helpers/feltParityGrid";
 
-gridTest("phone");
+gridTest("tablet", 4);

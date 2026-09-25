@@ -204,10 +204,11 @@ test("every control's touch size has been ruled on", () => {
 
 // A label only counts where the spec passes it as `sweepSizes`'s own argument, outside a comment.
 test("every control whose width comes from layout is measured by a named sweep", () => {
-  const spec = blankComments(read("tests/e2e/tapTargets.spec.ts"));
+  const specs = ["tests/e2e/tapTargets.spec.ts", "tests/e2e/tapTargetsOnlineHand.spec.ts"];
+  const spec = specs.map((f) => blankComments(read(f))).join("\n");
   const swept = new Set([...spec.matchAll(/\bsweepSizes\(\s*page\s*,\s*"([^"]+)"/g)].map((m) => m[1]));
   const unswept = WIDTH_FROM_LAYOUT.filter(([, , , screen]) => !swept.has(screen)).map(
-    ([file, , , screen]) => `${file}: no sweepSizes(page, "${screen}", …) in tapTargets.spec.ts`
+    ([file, , , screen]) => `${file}: no sweepSizes(page, "${screen}", …) in ${specs.join(" or ")}`
   );
   assert.deepEqual(unswept, []);
 });

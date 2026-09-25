@@ -203,7 +203,9 @@ describe("the plan prices each spec by its latest green run", () => {
     const heavy = planned({ committed: Object.fromEntries(files.map((f) => [f, 250])) }).shards.length;
 
     assert.ok(heavy > light, `${light} shards for 900s of specs and ${heavy} for 2250s`);
-    assert.deepEqual(planned({}).shards, [1, 2, 3], "nine unmeasured specs at the guess");
+    const guessed = planned({}).shards.length;
+    assert.equal(guessed, shardsNeeded(files, {}), "nine unmeasured specs at the guess");
+    assert.ok(guessed < light && light < heavy);
   });
 });
 

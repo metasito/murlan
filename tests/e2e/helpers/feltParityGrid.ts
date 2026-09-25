@@ -186,42 +186,43 @@ function line(id: string, side: string, row: Row, patches: Patch[]): string {
  * The grid the app can actually seat: what varies with the count is which turns there are, and
  * `pile` is carried across from the state that has one.
  */
-function grid(): CaptureState[] {
+function grid(playerCount: PlayerCount): CaptureState[] {
   const pileState = CAPTURE_STATES.find((s) => s.pile);
   if (!pileState) throw new Error("no capture state carries a pile");
 
   const cells: CaptureState[] = [];
-  for (const playerCount of [2, 3, 4] as const) {
-    for (let turn = 0; turn < playerCount; turn++) {
-      cells.push({
-        id: `p${playerCount}-turn${turn}`,
-        label: `${playerCount} players, seat ${turn} on move`,
-        playerCount,
-        turn,
-        side: seatDirection(turn, CAPTURE_VIEWER_SEAT, playerCount),
-        pile: false,
-      });
-    }
-    const pileTurn = Math.min(pileState.turn, playerCount - 1);
+  for (let turn = 0; turn < playerCount; turn++) {
     cells.push({
-      ...pileState,
-      id: `p${playerCount}-pile`,
-      label: `${playerCount} players, a combination on the felt`,
+      id: `p${playerCount}-turn${turn}`,
+      label: `${playerCount} players, seat ${turn} on move`,
       playerCount,
-      turn: pileTurn,
-      side: seatDirection(pileTurn, CAPTURE_VIEWER_SEAT, playerCount),
+      turn,
+      side: seatDirection(turn, CAPTURE_VIEWER_SEAT, playerCount),
+      pile: false,
     });
   }
+  const pileTurn = Math.min(pileState.turn, playerCount - 1);
+  cells.push({
+    ...pileState,
+    id: `p${playerCount}-pile`,
+    label: `${playerCount} players, a combination on the felt`,
+    playerCount,
+    turn: pileTurn,
+    side: seatDirection(pileTurn, CAPTURE_VIEWER_SEAT, playerCount),
+  });
   return cells;
 }
 
-export function gridTest(name: keyof typeof VIEWPORTS) {
+type PlayerCount = 2 | 3 | 4;
+
+/** One viewport and one player count per spec file, so no file outgrows a shard. */
+export function gridTest(name: keyof typeof VIEWPORTS, playerCount: PlayerCount) {
   const viewport = { name, ...VIEWPORTS[name] };
   test.describe("the lamp and the cloth everywhere, not just at one seating", () => {
-    test(`${viewport.name}: every seating, every lamp position`, async ({ page, baseURL }) => {
+    test(`${viewport.name}, ${playerCount} players: every seating, every lamp position`, async ({ page, baseURL }) => {
       test.setTimeout(600_000);
 
-      const cells = grid();
+      const cells = grid(playerCount);
       const rows: string[] = [];
       const offenders: string[] = [];
       await skiaOnSoftware(page);
@@ -280,7 +281,7 @@ export function gridTest(name: keyof typeof VIEWPORTS) {
       // The floor: a grid that sampled nothing reports no offenders, which is
       // indistinguishable from a clean table.
       expect(rows.length).toBe(cells.length);
-      expect(cells.length).toBeGreaterThan(10);
+      expect(cells.length).toBe(playerCount + 1);
 
       expect(offenders, offenders.join("\n")).toEqual([]);
     });

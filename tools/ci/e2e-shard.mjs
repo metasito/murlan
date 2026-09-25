@@ -24,12 +24,16 @@ const TIMINGS = path.join(E2E_DIR, "timings.json");
  */
 export const UNMEASURED_SECONDS = 60;
 
-/** The slowest browser job's wall clock, setup included (#1285). */
-export const TARGET_JOB_SECONDS = 300;
-/** A shard's time outside its specs — install, the browser, the bundle, Postgres, the boot — as the shards of run 36124176280 spent it (#1285). */
-export const SHARD_OVERHEAD_SECONDS = 90;
-/** Every shard is a concurrent job, and a public repository's runners allow 20 at once across every run. */
-export const MAX_SHARDS = 12;
+/** The whole CI run's wall clock, first job to last (#1285). */
+export const TARGET_RUN_SECONDS = 300;
+/** What the run spends outside the shards on the path through them: the scope job before, the report after. Run 36126540767: 14 s and 37 s. */
+export const AROUND_SHARDS_SECONDS = 50;
+/** A shard's time outside its specs: install, the browser, the bundle, Postgres, the boot. Run 36126540767, warm caches: about 45 s. */
+export const SHARD_OVERHEAD_SECONDS = 45;
+/** How far a shard's real specs overran their LPT estimate in run 36126540767, at worst: 225 s against 197. */
+export const SHARD_NOISE = 1.2;
+/** A public repository's runners take 20 jobs at once, and six other jobs run beside the shards. */
+export const MAX_SHARDS = 14;
 
 const CONFIG = path.join(E2E_DIR, "playwright.config.ts");
 
@@ -106,7 +110,8 @@ export const resolveTimings = (...layers) => Object.assign({}, ...layers);
  */
 export function shardsNeeded(files, timings) {
   const total = files.reduce((sum, f) => sum + (timings[f] ?? UNMEASURED_SECONDS), 0);
-  return Math.max(2, Math.ceil(total / (TARGET_JOB_SECONDS - SHARD_OVERHEAD_SECONDS)));
+  const budget = (TARGET_RUN_SECONDS - AROUND_SHARDS_SECONDS - SHARD_OVERHEAD_SECONDS) / SHARD_NOISE;
+  return Math.max(2, Math.ceil(total / budget));
 }
 
 /**
