@@ -268,7 +268,7 @@ The review is `mattpocock-skills:code-review`'s two axes. `<base>` is
    ...
    ```
 
-4. **CI has run on this head since the handoff**; a failure is a finding too:
+4. **CI has been running on this head since the handoff**; if it already failed, that is a finding:
 
    ```sh
    gh run list --branch agent/<n>-<slug> --commit <full sha> --limit 1 --json databaseId,conclusion
@@ -291,7 +291,8 @@ The review is `mattpocock-skills:code-review`'s two axes. `<base>` is
 
 **Rounds.** Before each later round, run `node tools/loop/loop-gate.mjs --review-round`;
 it exits non-zero at the cap, with guidance. **Stop before the cap when a round earns nothing**: a
-round raising nothing new ends the review with `VERDICT: LAND`. At the cap, fix any actual blocker without spending a round; for the
+round raising nothing new ends the review with `VERDICT: LAND`. At the cap, fix any actual blocker
+without spending a round; for the
 rest, follow its printed guidance and say what you accepted in phase F's Definition-of-done
 comment. Park only for a decision only the owner can make.
 
