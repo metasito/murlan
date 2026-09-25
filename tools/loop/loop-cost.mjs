@@ -26,11 +26,6 @@ export const MODEL_BY_PHASE = { A: "opus", B: "opus", C: "opus", D: "opus", E: "
 export const EFFORT_BY_PHASE = { A: "high", B: "high", C: "high", D: "high", E: "medium", F: "medium" };
 
 /**
- * The real bound is turns. A dollar cap is checked only after a turn settles, so where it stops
- * moves with the model and the context — measured 8x to 42x over a small cap — and with subagents
- * in flight it stops the *subagents* and lets the session carry on. The dollar figure stays as a
- * backstop against one pathological turn, well above what a healthy ticket reaches.
- *
  * Each cap stays above twice the busiest healthy process of its size; `loop-cost` prints any size
  * where it does not.
  */

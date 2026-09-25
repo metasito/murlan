@@ -202,6 +202,12 @@ export function nextRoute(pinned = null, at = null, { read = derive, facts = tic
   return { ...parseRoute(stdout), queue: parseStatus(stdout), resuming: false };
 }
 
+/**
+ * The real bound is turns. A dollar cap is checked only after a turn settles, so where it stops
+ * moves with the model and the context — measured 8x to 42x over a small cap — and with subagents
+ * in flight it stops the *subagents* and lets the session carry on. The dollar figure stays as a
+ * backstop against one pathological turn, well above what a healthy ticket reaches.
+ */
 const TICKET_BUDGET_USD = "40";
 
 /**
