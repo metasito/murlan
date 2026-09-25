@@ -140,7 +140,7 @@ const MOMENTS: Moment[] = [
     mode: "determinism",
     moves: {
       mockup: ["onset", "lamp", "brightness", "scorePill"],
-      app: ["onset", "lamp", "level", "brightness", "scorePill"],
+      app: ["onset", "lamp", "brightness", "scorePill"],
     },
     actions: [
       { atMs: 320, app: (page) => page.getByTestId("score-pill").click({ force: true }), mockup: "toggleScore(true)" },
