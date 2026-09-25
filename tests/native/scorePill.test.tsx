@@ -1,9 +1,10 @@
 // tests/native/scorePill.test.tsx — the score pill is one button naming your points and place,
 // opens into the standings on a tap, and never costs a play (#1265).
-import { describe, it, expect, jest, beforeEach } from '@jest/globals';
+import { describe, it, expect, jest, beforeEach, afterEach } from '@jest/globals';
 import React from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { getAnimatedStyle } from 'react-native-reanimated';
 
 jest.mock('@/lib/device/sounds', () => ({
   ensureAudioMode: jest.fn(async () => {}),
@@ -37,6 +38,7 @@ jest.mock('@/lib/accessibility', () => ({
 import { GameTable } from '@/components/GameTable';
 import { cardSpokenName } from '@/lib/cardNames';
 import { t, tn } from '@/lib/i18n';
+import { motionMs } from '@/lib/tokens';
 import type { Card, GameState, Player } from '@/lib/game/gameEngine';
 
 const METRICS = {
@@ -84,16 +86,31 @@ const table = (opts: { teams?: boolean; onSelectCard?: (id: string) => void; par
   </SafeAreaProvider>
 );
 
+const FRAME_MS = 16;
 const pill = () => screen.getByTestId('score-pill');
 const press = async (node: ReturnType<typeof screen.getByTestId>) => {
   await fireEvent.press(node);
+  await act(async () => {
+    jest.advanceTimersByTime(motionMs('shift', true) + FRAME_MS);
+  });
 };
 const row = (place: number, name: string, points: number) => tn('scorePill.a11yRow', points, { place, name });
 const standingsSaying = (rows: string[]) => [t('scorePill.standings'), ...rows].join(' ');
+// RNTL judges hiddenness by the mount-time style; the panel's `display` is animated, so read it live.
+const shownStandings = (label: string) => {
+  const panels = screen.getAllByLabelText(label, { includeHiddenElements: true });
+  expect(panels).toHaveLength(1);
+  expect(getAnimatedStyle(panels[0]).display).toBe('flex');
+  return panels[0];
+};
 
 describe('the score pill', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    jest.useFakeTimers();
+  });
+  afterEach(() => {
+    jest.useRealTimers();
   });
 
   it('is one button naming your points and place, closed', async () => {
@@ -110,11 +127,12 @@ describe('the score pill', () => {
     await press(pill());
     expect(pill().props.accessibilityState).toEqual(expect.objectContaining({ expanded: true }));
     const you = t('scorePill.you');
-    expect(
-      screen.getAllByLabelText(standingsSaying([row(1, 'Besi', 12), row(2, 'Cimi', 9), row(3, you, 7), row(4, 'Drin', 3)]))
-    ).toHaveLength(1);
+    const panel = shownStandings(
+      standingsSaying([row(1, 'Besi', 12), row(2, 'Cimi', 9), row(3, you, 7), row(4, 'Drin', 3)])
+    );
     await press(pill());
     expect(pill().props.accessibilityState).toEqual(expect.objectContaining({ expanded: false }));
+    expect(getAnimatedStyle(panel).display).toBe('none');
     await r.unmount();
   });
 
@@ -123,7 +141,7 @@ describe('the score pill', () => {
     expect(pill().props.accessibilityLabel).toBe(tn('scorePill.a11yLabel', 16, { target: 21, place: 1 }));
     await press(pill());
     const team = (x: string) => t('lobby.team', { team: x });
-    expect(screen.getAllByLabelText(standingsSaying([row(1, team('A'), 16), row(2, team('B'), 15)]))).toHaveLength(1);
+    shownStandings(standingsSaying([row(1, team('A'), 16), row(2, team('B'), 15)]));
     await r.unmount();
   });
 
