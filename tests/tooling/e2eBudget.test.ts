@@ -51,6 +51,15 @@ test("the reporter fails a green shard whose spec blew its budget, and names it"
   assert.match(out, new RegExp(`::error::${priced.replace(/\./g, "\\.")} took`));
 });
 
+test("a test a helper declares is charged to the spec file that calls the helper", () => {
+  const reporter = new BudgetReporter();
+  reporter.onBegin({ projects: [{ testDir }] });
+  const fileSuite = { type: "file", location: { file: path.join(testDir, priced) } };
+  const declared = { location: { file: path.join(testDir, "helpers", "grid.ts") }, parent: { type: "describe", parent: fileSuite } };
+  reporter.onTestEnd(declared, { status: "passed", duration: 1 });
+  assert.deepEqual(Object.keys(reporter.ms), [priced]);
+});
+
 test("the reporter leaves a spec within budget, a skipping spec and an already red run alone", () => {
   assert.equal(run({ [priced]: [seconds * 1000] }).verdict, undefined);
   assert.equal(run({ [priced]: [1e9] }, "passed", [priced]).verdict, undefined);

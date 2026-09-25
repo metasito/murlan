@@ -44,7 +44,9 @@ export default class BudgetReporter {
 
   /** @param {any} test @param {any} result */
   onTestEnd(test, result) {
-    const file = path.relative(this.testDir, test.location.file).split(path.sep).join("/");
+    let suite = test.parent;
+    while (suite && suite.type !== "file") suite = suite.parent;
+    const file = path.relative(this.testDir, suite?.location?.file ?? test.location.file).split(path.sep).join("/");
     if (result.status === "skipped") this.skipped.add(file);
     this.ms[file] = (this.ms[file] ?? 0) + result.duration;
   }
