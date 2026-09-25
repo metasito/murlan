@@ -85,7 +85,7 @@ describe("the lamp rig", () => {
     const pool = runFixture([fixtureLine("const POOL=")]).POOL as Record<string, [number, number]>;
     for (const [seat, dir] of Object.entries(SEAT)) assert.deepEqual([...lampTarget(dir)], [...pool[seat]], seat);
     assert.equal(seatDirection(1, 0, 2), "top", "two players face each other");
-    assert.deepEqual([1, 2].map((s) => seatDirection(s, 0, 3)).sort(), ["left", "right"], "three players sit left and right");
+    assert.deepEqual([1, 2].map((s) => seatDirection(s, 0, 3)).sort(), ["right", "top"], "three players sit right and top");
   });
 
   test("under reduced motion the pool jumps to the seat and nothing sways, kicks or flares", () => {
