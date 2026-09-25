@@ -32,7 +32,7 @@ export const EFFORT_BY_PHASE = { A: "high", B: "high", C: "high", D: "high", E: 
 export const TURNS_BY_SIZE = {
   "size:XS": 60,
   "size:S": 160,
-  "size:M": 270,
+  "size:M": 320,
   "size:L": 320,
   "size:XL": 400,
 };
