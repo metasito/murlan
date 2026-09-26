@@ -4,8 +4,9 @@ import { execFile } from "node:child_process";
 import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { deadlineMs, FILE_DEADLINE_MS } from "../helpers/fileDeadline.mjs";
+import { RUN_IDLE_MS, runIdleMs } from "../helpers/filesRunReporter.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const script = JSON.parse(readFileSync(path.join(repoRoot, "package.json"), "utf8")).scripts.test as string;
@@ -44,6 +45,39 @@ describe("a test file that never finishes fails npm test by name", () => {
     assert.equal(deadlineMs({ MURLAN_TEST_FILE_DEADLINE_MS: "2000" }), 2000);
     for (const asked of [String(FILE_DEADLINE_MS * 10), "0", "-1", "off", undefined]) {
       assert.equal(deadlineMs({ MURLAN_TEST_FILE_DEADLINE_MS: asked }), FILE_DEADLINE_MS);
+    }
+  });
+});
+
+describe("a run that stops hearing from its files fails by name", () => {
+  test("a runner whose own loop stops is killed, naming the files it had in flight", async () => {
+    const reporter = pathToFileURL(path.join(repoRoot, "tests", "helpers", "filesRunReporter.mjs")).href;
+    const file = path.join(repoRoot, "tests", "fake.test.ts");
+    const blocked = [
+      `import filesRun from ${JSON.stringify(reporter)};`,
+      "async function* source() {",
+      `  yield { type: "test:dequeue", data: { nesting: 0, name: ${JSON.stringify(file)}, file: ${JSON.stringify(file)} } };`,
+      "  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0);",
+      "}",
+      "for await (const line of filesRun(source())) process.stdout.write(line);",
+    ].join("\n");
+    const env = { ...process.env };
+    env.MURLAN_TEST_RUN_IDLE_MS = "2000";
+    delete env.NODE_TEST_CONTEXT;
+    const run = await new Promise<{ signal: unknown; out: string }>((resolve) =>
+      execFile(process.execPath, ["--input-type=module", "-e", blocked], { cwd: repoRoot, env, timeout: 30_000 }, (err, stdout, stderr) =>
+        resolve({ signal: err?.killed ? "timed out" : err?.signal, out: stdout + stderr })
+      )
+    );
+    assert.equal(run.signal, "SIGKILL", run.out);
+    assert.match(run.out, /nothing reported for 2s; still running: tests\/fake\.test\.ts/);
+  });
+
+  test("its idle limit outlasts a file's own deadline, and can only be shortened", () => {
+    assert.ok(RUN_IDLE_MS > FILE_DEADLINE_MS, "a stuck file is named by its own guard first");
+    assert.equal(runIdleMs({ MURLAN_TEST_RUN_IDLE_MS: "2000" }), 2000);
+    for (const asked of [String(RUN_IDLE_MS * 10), "0", "-1", "off", undefined]) {
+      assert.equal(runIdleMs({ MURLAN_TEST_RUN_IDLE_MS: asked }), RUN_IDLE_MS);
     }
   });
 });
