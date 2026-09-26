@@ -130,7 +130,7 @@ jobs:
           # files, `.claude/settings.json`'s hook paths, package.json's script names, and this
           # workflow, whose job names `check-steps.mjs` pins each delegated step to. Both lists are
           # derived by `tests/tooling/ciScope.test.ts`, which reds on a path they miss.
-          if grep -qE '^(tools/loop/|scripts/lib/(checkoutRoot|entry)\.mjs$|tools/ci/preflightMemory\.mjs$|tests/helpers/(importShellGuard\.ts|filesRunReporter\.mjs)$|docs/agents/|\.claude/|CLAUDE\.md$|package\.json$|\.github/workflows/ci\.yml$)' <<< "$changed"; then
+          if grep -qE '^(tools/loop/|scripts/lib/(checkoutRoot|entry)\.mjs$|tools/ci/preflightMemory\.mjs$|tests/helpers/(importShellGuard\.ts|filesRunReporter\.mjs|fileDeadline\.mjs|runWatch\.mjs)$|docs/agents/|\.claude/|CLAUDE\.md$|package\.json$|\.github/workflows/ci\.yml$)' <<< "$changed"; then
             echo "harness=true" >> "$GITHUB_OUTPUT"
           else
             echo "harness=false" >> "$GITHUB_OUTPUT"
