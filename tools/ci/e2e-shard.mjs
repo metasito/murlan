@@ -95,12 +95,32 @@ export function filesForShard(index, total, files = specFilesIn(), timings = rea
 }
 
 /**
- * Oldest first: the committed file, then main's latest green run, then this branch's. A later
+ * Oldest first: the committed file, then main's recent green runs, then this branch's. A later
  * measurement wins, so a spec the branch made heavier is priced as the branch runs it.
  * @param {(Record<string, number> | null)[]} layers
  * @returns {Record<string, number>}
  */
 export const resolveTimings = (...layers) => Object.assign({}, ...layers);
+
+/**
+ * One branch's recent runs as one layer: each spec at the median of the runs that measured it.
+ * The latest run alone is one sample of specs whose own time swings 26–93 s, and it moved whole
+ * shards by a minute (docs/research/2026-09-25-ci-speed.md § Shard balance).
+ * @param {Record<string, number>[]} runs
+ * @returns {Record<string, number>}
+ */
+export function medianTimings(runs) {
+  /** @type {Record<string, number[]>} */
+  const samples = {};
+  for (const run of runs) for (const [file, s] of Object.entries(run)) (samples[file] ??= []).push(s);
+  return Object.fromEntries(
+    Object.entries(samples).map(([file, list]) => {
+      const sorted = list.sort((a, b) => a - b);
+      const mid = sorted.length >> 1;
+      return [file, sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2];
+    })
+  );
+}
 
 /**
  * As many shards as it takes for the suite to fit the target, overhead and all. Unclamped:
@@ -115,17 +135,19 @@ export function shardsNeeded(files, timings) {
 }
 
 /**
- * @param {string[]} layerFiles JSON timings files, oldest first; a missing one is skipped
+ * @param {(string | string[])[]} layers JSON timings files, oldest first; a list is one branch's
+ *   runs, priced by `medianTimings`; a missing file is skipped
  * @returns {{ shards: number[], timings: Record<string, number> }}
  */
-export function plan(layerFiles, files = specFilesIn()) {
-  const timings = resolveTimings(...layerFiles.filter((f) => existsSync(f)).map((f) => readTimings(f)));
+export function plan(layers, files = specFilesIn()) {
+  const read = (/** @type {string[]} */ group) => group.filter((f) => existsSync(f)).map((f) => readTimings(f));
+  const timings = resolveTimings(...layers.map((layer) => (Array.isArray(layer) ? medianTimings(read(layer)) : read([layer])[0] ?? null)));
   const count = Math.min(MAX_SHARDS, shardsNeeded(files, timings));
   return { shards: Array.from({ length: count }, (_, i) => i + 1), timings };
 }
 
 if (isInvokedDirectly(process.argv[1], import.meta.url) && process.argv[2] === "plan") {
-  const { shards, timings } = plan([TIMINGS, ...process.argv.slice(3)]);
+  const { shards, timings } = plan([TIMINGS, ...process.argv.slice(3).map((arg) => arg.split(","))]);
   const out = `shards=${JSON.stringify(shards)}\nshard-count=${shards.length}\ntimings=${JSON.stringify(timings)}\n`;
   if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, out);
   process.stdout.write(out);

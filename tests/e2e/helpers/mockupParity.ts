@@ -31,6 +31,7 @@ const DPR = 2;
 const SEED = 1255;
 const STRIP_STEPS = 2;
 export const CANVASKIT_ROUTE = "**/canvaskit-wasm@*/**";
+const CANVASKIT_DIR = path.dirname(require.resolve("canvaskit-wasm/bin/full/canvaskit.js"));
 /** Skia's first frame after the table's, in virtual time: two nested Suspense reveals, each throttled by React. */
 const MAX_PRE_ROLL_MS = 60 * STEP_MS;
 
@@ -387,14 +388,25 @@ async function skiaOnset(page: Page, mounted: number, loading: () => Promise<str
   return onset;
 }
 
-async function captureApp(browser: Browser, baseURL: string, decoder: Page, m: Moment, variant: Variant) {
+async function openAppSide(browser: Browser, baseURL: string, m: Moment, variant: Variant) {
   const page = await newSidePage(browser, baseURL);
   const loading = trackLoads(page);
   if (variant === "fallback") await page.route(CANVASKIT_ROUTE, () => undefined);
+  // The CDN's own bytes (feltWeave.test.ts pins the version), without a download inside the measured run.
+  else await page.route(CANVASKIT_ROUTE, (route) => route.fulfill({
+    path: path.join(CANVASKIT_DIR, path.basename(new URL(route.request().url()).pathname)),
+    headers: { "access-control-allow-origin": "*" },
+  }));
+  const started = Date.now();
   await m.appTrigger(page, baseURL);
   const mounted = await traced(page, m.appOnset, `the app's onset of ${m.key}`);
   const onset = variant === "skia" ? await skiaOnset(page, mounted, loading) : mounted;
   const preRollMs = Math.ceil((onset - mounted) / STEP_MS) * STEP_MS;
+  return { page, onset, preRollMs, onsetMs: Date.now() - started };
+}
+
+async function stripAppSide(side: Awaited<ReturnType<typeof openAppSide>>, decoder: Page, m: Moment, variant: Variant) {
+  const { page, onset, preRollMs } = side;
   const capture = await strip(page, { x: 0, y: 0 }, decoder, m, preRollMs, (a) => a.app?.(page), async (t) => {
     if (t > preRollMs) await step(page);
     return tracedAt(page, onset + t - preRollMs);
@@ -402,8 +414,13 @@ async function captureApp(browser: Browser, baseURL: string, decoder: Page, m: M
   const felts = new Set(capture.trace.frames.map((f) => f.felt));
   expect([...felts], `the felt on screen through ${m.key}`).toEqual([variant]);
   await page.context().close();
-  return { capture, preRollMs };
+  return capture;
 }
+
+const timed = async <T,>(work: Promise<T>): Promise<[T, number]> => {
+  const started = Date.now();
+  return [await work, Date.now() - started];
+};
 
 function bundle(m: Moment, variant: Variant, runs: Record<SideName, Capture>, pillFailures: Failure[], dir: string) {
   fs.mkdirSync(path.join(dir, "frames"), { recursive: true });
@@ -439,12 +456,20 @@ export function parityTests(key: string, only?: Variant) {
     test(`${m.key} with the ${variant} felt (${m.mode} mode)`, async ({ browser, baseURL }) => {
       test.setTimeout(15 * 60_000);
       const decoder = await browser.newPage();
-      const app = await captureApp(browser, baseURL!, decoder, m, variant);
+      const opened = await openAppSide(browser, baseURL!, m, variant);
       const capture = async (side: SideName) =>
         side === "mockup"
-          ? captureMockup(browser, decoder, m, app.preRollMs)
-          : (await captureApp(browser, baseURL!, decoder, m, variant)).capture;
-      const first = { mockup: await capture("mockup"), app: app.capture };
+          ? captureMockup(browser, decoder, m, opened.preRollMs)
+          : stripAppSide(await openAppSide(browser, baseURL!, m, variant), decoder, m, variant);
+      // Side by side once the app's onset fixes the pre-roll: each side steps its own virtual clock.
+      const [[app, appMs], [mockup, mockupMs]] = await Promise.all([
+        timed(stripAppSide(opened, decoder, m, variant)),
+        timed(capture("mockup")),
+      ]);
+      const first = { mockup, app };
+      const timing = `app onset ${opened.onsetMs} ms, then side by side: app ${appMs} ms, mockup ${mockupMs} ms`;
+      test.info().annotations.push({ type: "parity timing", description: timing });
+      process.stdout.write(`parity timing ${m.key}-${variant}: ${timing}\n`);
 
       let pillFailures: Failure[] = [];
       if (m.pillAtProgress) {

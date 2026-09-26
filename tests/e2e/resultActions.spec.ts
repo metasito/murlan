@@ -19,8 +19,12 @@ import { test, expect } from "./fixtures";
 import { openApp, startOfflineGame } from "./helpers/navigation";
 import { driveGameToCompletion } from "./helpers/bot";
 import { settled } from "./helpers/settle";
+import { seedRandomness } from "./helpers/seededRandomness";
 
 const RESULT_URL = /\/result/;
+
+/** Nothing here reads the hand, only the screen after it; a fixed deal holds its length steady. */
+const DEAL_SEED = 1;
 
 /** The ticket's own list — real devices, both orientations, phone and tablet. */
 const VIEWPORTS = [
@@ -81,6 +85,7 @@ test("the result screen's actions read as a pair, below the rankings, at every s
   baseURL,
 }) => {
   test.setTimeout(5 * 60_000);
+  await seedRandomness(page, DEAL_SEED);
   await openApp(page, baseURL!);
   // A match rather than a single hand: `continueAction` is null once a match is
   // over and nobody has asked for a rematch, and a spec measuring a button that

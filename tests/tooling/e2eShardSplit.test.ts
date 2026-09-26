@@ -169,18 +169,49 @@ describe("the plan prices each spec by its latest green run", () => {
   const files = ["heavy.spec.ts", ...Array.from({ length: 8 }, (_, i) => `light${i}.spec.ts`)];
   const even = Object.fromEntries(files.map((f) => [f, 100]));
 
-  const planned = (layers: Record<string, Record<string, number>>, missing: string[] = []) => {
+  type Layer = Record<string, number> | Record<string, number>[];
+  const planned = (layers: Record<string, Layer>, missing: string[] = []) => {
     const dir = mkdtempSync(path.join(tmpdir(), "e2e-plan-"));
+    const write = (name: string, timings: Record<string, number>) => {
+      writeFileSync(path.join(dir, name), JSON.stringify(timings));
+      return path.join(dir, name);
+    };
     try {
-      const paths = Object.entries(layers).map(([name, timings]) => {
-        writeFileSync(path.join(dir, name), JSON.stringify(timings));
-        return path.join(dir, name);
-      });
+      const paths = Object.entries(layers).map(([name, layer]) =>
+        Array.isArray(layer) ? layer.map((timings, i) => write(`${name}${i}`, timings)) : write(name, layer)
+      );
       return plan([...paths, ...missing.map((m) => path.join(dir, m))], files);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
   };
+
+  test("a spec is priced at the median of a branch's recent runs, so one slow run does not move it", () => {
+    const runs = [100, 95, 105, 100, 300].map((s) => ({ ...even, "heavy.spec.ts": s }));
+    const { timings } = planned({ committed: { ...even, "heavy.spec.ts": 500 }, main: runs });
+
+    assert.equal(timings["heavy.spec.ts"], 100);
+  });
+
+  test("an even count of runs prices a spec between its two middle runs", () => {
+    const { timings } = planned({ main: [90, 110, 400, 100].map((s) => ({ ...even, "heavy.spec.ts": s })) });
+
+    assert.equal(timings["heavy.spec.ts"], 105);
+  });
+
+  test("a run that did not measure a spec leaves it to the runs that did", () => {
+    const { timings } = planned({ committed: { "light0.spec.ts": 50 }, main: [{ "heavy.spec.ts": 80 }, { "heavy.spec.ts": 120 }] });
+
+    assert.equal(timings["light0.spec.ts"], 50);
+    assert.equal(timings["heavy.spec.ts"], 100);
+  });
+
+  test("ci.yml hands the plan several of main's runs, and only the branch's latest", () => {
+    assert.doesNotMatch(ciYml, /sort_by\(\.created_at\) \| last \| \.id/);
+    assert.match(ciYml, /sort_by\(\.created_at\) \| \.\[-\$RUNS:\]/);
+    assert.match(ciYml, /runs=\$RUNS; \[ "\$branch" != main \] && runs=1/);
+    assert.match(ciYml, /--argjson RUNS "\$runs"/);
+  });
 
   test("a spec heavier on the branch is priced as the branch runs it", () => {
     const { timings, shards } = planned({ committed: even, main: even, branch: { "heavy.spec.ts": 600 } });
