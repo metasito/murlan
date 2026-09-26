@@ -50,27 +50,33 @@ describe("a test file that never finishes fails npm test by name", () => {
 });
 
 describe("a run that stops hearing from its files fails by name", () => {
-  test("a runner whose own loop stops is killed, naming the files it had in flight", async () => {
-    const reporter = pathToFileURL(path.join(repoRoot, "tests", "helpers", "filesRunReporter.mjs")).href;
-    const file = path.join(repoRoot, "tests", "fake.test.ts");
-    const blocked = [
-      `import filesRun from ${JSON.stringify(reporter)};`,
-      "async function* source() {",
-      `  yield { type: "test:dequeue", data: { nesting: 0, name: ${JSON.stringify(file)}, file: ${JSON.stringify(file)} } };`,
-      "  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0);",
-      "}",
-      "for await (const line of filesRun(source())) process.stdout.write(line);",
-    ].join("\n");
+  const reporter = pathToFileURL(path.join(repoRoot, "tests", "helpers", "filesRunReporter.mjs")).href;
+  const file = JSON.stringify(path.join(tmpdir(), "fake.test.ts"));
+  const dequeued = `{ type: "test:dequeue", data: { nesting: 0, name: ${file}, file: ${file} } }`;
+  const drive = (source: string, after: string, idleMs: string) => {
+    const script = `import filesRun from ${JSON.stringify(reporter)};\nasync function* source() {\n${source}\n}\n` +
+      `for await (const line of filesRun(source())) process.stdout.write(line);\n${after}`;
     const env = { ...process.env };
-    env.MURLAN_TEST_RUN_IDLE_MS = "2000";
+    env.MURLAN_TEST_RUN_IDLE_MS = idleMs;
     delete env.NODE_TEST_CONTEXT;
-    const run = await new Promise<{ signal: unknown; out: string }>((resolve) =>
-      execFile(process.execPath, ["--input-type=module", "-e", blocked], { cwd: repoRoot, env, timeout: 30_000 }, (err, stdout, stderr) =>
-        resolve({ signal: err?.killed ? "timed out" : err?.signal, out: stdout + stderr })
+    return new Promise<{ signal: unknown; out: string }>((resolve) =>
+      execFile(process.execPath, ["--input-type=module", "-e", script], { cwd: repoRoot, env, timeout: 30_000 }, (err, stdout, stderr) =>
+        resolve({ signal: err?.killed ? "timed out" : err?.signal ?? err?.code ?? null, out: stdout + stderr })
       )
     );
+  };
+
+  test("a runner whose own loop stops is killed, naming the files it had in flight", async () => {
+    const run = await drive(`yield ${dequeued};\nAtomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0);`, "", "2000");
     assert.equal(run.signal, "SIGKILL", run.out);
-    assert.match(run.out, /nothing reported for 2s; still running: tests\/fake\.test\.ts/);
+    assert.match(run.out, /nothing reported for 2s; still running: \S*fake\.test\.ts/);
+  });
+
+  test("a run that keeps reporting, and then ends, is never killed", async () => {
+    const steady = `for (let i = 0; i < 15; i++) { yield ${dequeued}; await new Promise((r) => setTimeout(r, 200)); }`;
+    const run = await drive(steady, "await new Promise((r) => setTimeout(r, 2500));", "1000");
+    assert.equal(run.signal, null, run.out);
+    assert.doesNotMatch(run.out, /nothing reported/);
   });
 
   test("its idle limit outlasts a file's own deadline, and can only be shortened", () => {
