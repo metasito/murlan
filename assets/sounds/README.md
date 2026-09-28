@@ -34,7 +34,7 @@ are regenerated from these prompts on a paid plan and re-listened before the gam
 
 ## The built effects
 
-`round_start`, `round_win`, `reject`, `seat_fill` and `room_full`, each a recipe in
+`round_start`, `round_win`, `reject`, `seat_fill`, `room_full` and `manche_neutral`, each a recipe in
 `scripts/build-sounds.mjs`: one or more source clips, each with a gain, a start offset and a playback
 rate. All are CC0 1.0; no attribution is required, and it is given here because the work deserves it.
 
@@ -52,6 +52,8 @@ gives decoding, gain, pitch and overlap with no native binary.
 **`room_full`** is one struck glass note at a third and a fifth, two quick notes for the last seat of
 the lobby filling; each seat before it is `seat_fill`, a single *Casino Audio* chip laid down.
 **`reject`**, a refused GIOCA, is *Interface Sounds* `error_004.wav`.
+**`manche_neutral`** is a drawn manche (D6): two glass notes a major second apart, under both verdict
+stings; built by `node scripts/build-sounds.mjs manche_neutral`, which rebuilds only the recipes it names.
 
 Every built output is then:
 
@@ -60,7 +62,8 @@ Every built output is then:
    idempotent — trimming the quiet tail shrinks the total it is a proportion of, so each rebuild eats
    further into the sound.
 2. **Normalised** to a sample peak of 0.89, except `round_start` (0.79, which keeps its true peak
-   under −1 dBTP once encoded) and `round_win` (0.3, which puts a trick won under the manche won).
+   under −1 dBTP once encoded), `round_win` (0.3, which puts a trick won under the manche won) and
+   `manche_neutral` (0.25, under both verdicts).
 3. **Encoded to MP3** at 96 kbps mono with `lamejs`.
 
 ## What the test holds

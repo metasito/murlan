@@ -26,6 +26,7 @@ const PACKAGE_OWNERS = {
 const GROUP_OWNERS = [
   { group: ["**/modules/murlan-audio-session", "**/modules/murlan-audio-session/*"], owner: "lib/device/audioEngine.ts" },
   { group: ["**/modules/murlan-diagnostics", "**/modules/murlan-diagnostics/*"], owner: "lib/diagnostics/probe.ts" },
+  { group: ["**/audioEngine", "**/hapticsEngine"], owner: "lib/device/feedback.ts" },
 ];
 const audioLayers = (file) => [
   "error",
@@ -118,7 +119,7 @@ module.exports = defineConfig([
     files: ["app/**/*.{ts,tsx}", "components/**/*.{ts,tsx}", "context/**/*.{ts,tsx}", "lib/**/*.{ts,tsx}"],
     rules: { "@typescript-eslint/no-restricted-imports": audioLayers(null) },
   },
-  ...["lib/device/audioEngine.ts", "lib/device/hapticsEngine.ts", "lib/diagnostics/probe.ts"].map((file) => ({
+  ...["lib/device/audioEngine.ts", "lib/device/hapticsEngine.ts", "lib/device/feedback.ts", "lib/diagnostics/probe.ts"].map((file) => ({
     files: [file],
     rules: { "@typescript-eslint/no-restricted-imports": audioLayers(file) },
   })),

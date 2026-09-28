@@ -42,3 +42,11 @@ export const settle = (ms = 0) =>
 
 export const hapticCalls = () => turboHapticsState().calls;
 export const haptics = () => hapticCalls().map((c) => c.type);
+
+export async function bootFeedback(): Promise<void> {
+  const feedback = require('@/lib/device/feedback') as typeof import('@/lib/device/feedback');
+  feedback.resetFeedback();
+  await act(() => feedback.startFeedback());
+  require('../mocks/audioApi').newEpoch();
+  hapticCalls().length = 0;
+}
