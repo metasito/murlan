@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { PassThrough, Writable } from "node:stream";
-import { lanAddress, needsInstall, parseDevices, pickRun, readHidden } from "../../scripts/ios-device.mjs";
+import { errorLine, lanAddress, needsInstall, parseDevices, pickRun, readHidden } from "../../scripts/ios-device.mjs";
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -29,11 +29,20 @@ test("the LAN address skips virtual adapters and public addresses", () => {
 });
 
 test("usbmuxd's device list yields each UDID, USB before Wi-Fi", () => {
-  const device = (type: string, udid: string) =>
-    `<dict><key>DeviceID</key><integer>1</integer><key>Properties</key><dict><key>ConnectionType</key><string>${type}</string><key>SerialNumber</key><string>${udid}</string></dict></dict>`;
-  const xml = `<plist><dict><key>DeviceList</key><array>${device("Network", "WIFI")}${device("USB", "CABLE")}</array></dict></plist>`;
-  assert.deepEqual(parseDevices(xml).map((d: { udid: string }) => d.udid), ["CABLE", "WIFI"]);
+  const device = (type: string, id: number, udid: string) =>
+    `<dict><key>DeviceID</key><integer>${id}</integer><key>MessageType</key><string>Attached</string><key>Properties</key><dict><key>ConnectionType</key><string>${type}</string><key>DeviceID</key><integer>${id}</integer><key>LocationID</key><integer>0</integer><key>SerialNumber</key><string>${udid}</string></dict></dict>`;
+  const xml = `<plist><dict><key>DeviceList</key><array>${device("Network", 12, "WIFI")}${device("USB", 397, "CABLE")}</array></dict></plist>`;
+  assert.deepEqual(
+    parseDevices(xml).map((d: { udid: string; id: string }) => [d.udid, d.id]),
+    [["CABLE", "397"], ["WIFI", "12"]],
+  );
   assert.deepEqual(parseDevices("<plist><dict><key>DeviceList</key><array/></dict></plist>"), []);
+});
+
+test("only plumesign's closing Error: line counts as the failure", () => {
+  const log = "[INFO plumesign::commands::account] Restoring session for a@b.c...\nError: Other error: Device ID 397 not found\n";
+  assert.equal(errorLine(log), "Error: Other error: Device ID 397 not found");
+  assert.equal(errorLine("[INFO] Restoring session for a@b.c...\n"), "");
 });
 
 test("a running build is waited for; otherwise the newest green one is used", () => {
