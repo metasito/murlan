@@ -32,9 +32,9 @@ const SOUNDS = [
 ];
 
 const TRACKS = [
-  require("@/assets/music/menu.flac"),
-  require("@/assets/music/hand.flac"),
-  require("@/assets/music/cue.flac"),
+  require("@/assets/music/flac/menu.flac"),
+  require("@/assets/music/flac/hand.flac"),
+  require("@/assets/music/flac/cue.flac"),
 ];
 
 const PLAY_EVERY_MS = 1250;
