@@ -149,7 +149,8 @@ Real device/web divergences, verifiable only on hardware:
 
 ## Manual device checklist
 
-Run by hand on a real phone before a release — nothing above can see these:
+Run by hand on a real phone before a release — nothing above can see these. The owner's iPhone
+gets the dev build from `npm run ios:device` (README, #1316):
 
 1. Landscape lock holds on game screens; menus rotate freely.
 2. Card lift and the exchange animation land smooth (the exactly-once invariant is unit-tested,

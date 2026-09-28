@@ -112,20 +112,17 @@ async function waitForIphone() {
     } catch {
       fail('Windows cannot talk to iPhones. Install "Apple Devices" from the Microsoft Store, open it once, and rerun.');
     }
-    const device = devices[0];
-    const trusted = device && (await usbmuxd({ MessageType: "ReadPairRecord", PairRecordID: device.udid })).includes("PairRecordData");
-    if (trusted) return device.udid;
+    if (devices[0]) return devices[0].udid;
     if (!told) {
       console.log(
-        device
-          ? "• iPhone found but not trusted yet: unlock it, open the Apple Devices app, and tap Trust on the phone."
-          : "• Waiting for the iPhone: plug it in by USB (a data cable, not charge-only) and unlock it.",
+        "• Waiting for the iPhone: plug it in by USB (a data cable, not charge-only), unlock it,\n" +
+          "  open the Apple Devices app, and tap Trust on the phone if it asks.",
       );
       told = true;
     }
     await new Promise((r) => setTimeout(r, 2000));
   }
-  fail("No trusted iPhone after five minutes.");
+  fail("No iPhone after five minutes.");
 }
 
 async function ensurePlumesign(home) {
@@ -149,12 +146,12 @@ function runsOf(ref) {
 
 function watch(id) {
   console.log(`• Waiting for build ${id} (a native change compiles in ~20 min, anything else ~4)…`);
-  const r = spawnSync("gh", ["run", "watch", String(id), "--exit-status", "--compact", "--interval", "30"], {
-    cwd: ROOT,
-    stdio: "inherit",
-  });
-  if (r.status !== 0) fail(`Build ${id} failed: gh run view ${id} --log-failed`);
-  return id;
+  return new Promise((resolve) =>
+    spawn("gh", ["run", "watch", String(id), "--exit-status", "--compact", "--interval", "30"], { cwd: ROOT, stdio: ["ignore", "ignore", "inherit"] }).on(
+      "exit",
+      (code) => (code === 0 ? resolve(id) : fail(`Build ${id} failed: gh run view ${id} --log-failed`)),
+    ),
+  );
 }
 
 async function latestBuild(home, ref) {
@@ -170,7 +167,7 @@ async function latestBuild(home, ref) {
     }
     if (!pick) fail("The dispatched build never showed up in gh run list.");
   }
-  const id = pick.use ?? watch(pick.wait);
+  const id = pick.use ?? (await watch(pick.wait));
   const buildsDir = path.join(home, "builds");
   const dir = path.join(buildsDir, String(id));
   if (!existsSync(path.join(dir, "murlan-dev.ipa"))) {
@@ -224,6 +221,9 @@ async function install(home, plumesign, build, udid, forceLogin) {
   if (!result.ok && /login|session|authenticat|token|password|No account/i.test(result.log)) {
     await login(plumesign);
     result = await sign(plumesign, build.ipa, udid);
+  }
+  if (!result.ok && /pair|trust|password protected|locked/i.test(result.log)) {
+    fail("The iPhone has not trusted this PC: unlock it, open the Apple Devices app, tap Trust on the phone, then rerun.");
   }
   if (!result.ok) fail("Install failed (log above). Keep the iPhone unlocked; if a free-account limit is named, delete an old sideloaded app.");
   const first = !existsSync(path.join(home, "state.json"));
