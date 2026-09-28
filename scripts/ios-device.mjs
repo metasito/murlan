@@ -30,8 +30,8 @@ const RESIGN_AFTER_MS = 6 * 24 * 60 * 60 * 1000;
 const SERVER_PORT = 5000;
 const USBMUXD_PORT = 27015;
 
-export function needsInstall(state, { udid, fingerprint, now }) {
-  return !state || state.udid !== udid || state.fingerprint !== fingerprint || now - state.installedAt > RESIGN_AFTER_MS;
+export function needsInstall(state, { fingerprint, now }) {
+  return !state || state.fingerprint !== fingerprint || now - state.installedAt > RESIGN_AFTER_MS;
 }
 
 /** The first private IPv4 address on a physical adapter: the one the phone on the same Wi-Fi reaches. */
@@ -265,7 +265,7 @@ async function sign(plumesign, ipa) {
   });
 }
 
-async function install(home, plumesign, build, udid, forceLogin) {
+async function install(home, plumesign, build, forceLogin) {
   const accounts = path.join(process.env.APPDATA ?? "", "PlumeImpactor", "accounts.json");
   if (forceLogin || !existsSync(accounts)) await login(plumesign);
   console.log("• Signing and installing on the iPhone…");
@@ -279,7 +279,7 @@ async function install(home, plumesign, build, udid, forceLogin) {
   }
   if (!result.ok) fail("Install failed (log above). Keep the iPhone unlocked; if a free-account limit is named, delete an old sideloaded app.");
   const first = !existsSync(path.join(home, "state.json"));
-  writeFileSync(path.join(home, "state.json"), JSON.stringify({ udid, fingerprint: build.fingerprint, installedAt: Date.now() }));
+  writeFileSync(path.join(home, "state.json"), JSON.stringify({ fingerprint: build.fingerprint, installedAt: Date.now() }));
   if (first) {
     console.log(
       "\n  First install, on the iPhone once:\n" +
@@ -315,11 +315,15 @@ async function serve(home) {
       stdio: ["ignore", out, out],
       env: { ...process.env, E2E_SKIP_BUILD: "1" },
     });
-    server.on("exit", (code) =>
-      code && console.error(`\n✖ Game server exited (${code}); see ${logFile}. A stale web bundle is rebuilt by \`npm run play\`.`),
-    );
+    const exited = new Promise((resolve) => server.on("exit", (code, signal) => resolve(code ?? signal)));
     process.on("exit", () => killTree(server));
     process.on("SIGINT", () => process.exit(130));
+    while (!(await portOpen(SERVER_PORT))) {
+      const code = await Promise.race([exited, new Promise((r) => setTimeout(() => r(null), 2000))]);
+      if (code !== null) fail(`The game server exited (${code}) before it came up; see ${logFile}.`);
+    }
+    exited.then((code) => console.error(`\n✖ The game server stopped (${code}); online play is down. See ${logFile}.`));
+    console.log("• Game server up.");
   }
   console.log(`• Metro for the dev build at http://${ip}:8081. First time: scan the QR code with the iPhone camera.\n`);
   const metro = spawn("npx expo start --dev-client --lan", {
@@ -345,11 +349,11 @@ async function main() {
   const home = path.join(process.env.LOCALAPPDATA ?? os.homedir(), "murlan-ios");
   mkdirSync(path.join(home, "builds"), { recursive: true });
 
-  const [plumesign, { udid }, build] = await Promise.all([ensurePlumesign(home), waitForIphone(), latestBuild(home, ref)]);
+  const [plumesign, build] = await Promise.all([ensurePlumesign(home), latestBuild(home, ref)]);
   const statePath = path.join(home, "state.json");
   const state = existsSync(statePath) ? JSON.parse(readFileSync(statePath, "utf8")) : null;
-  if (args.includes("--reinstall") || args.includes("--login") || needsInstall(state, { udid, fingerprint: build.fingerprint, now: Date.now() })) {
-    await install(home, plumesign, build, udid, args.includes("--login"));
+  if (args.includes("--reinstall") || args.includes("--login") || needsInstall(state, { fingerprint: build.fingerprint, now: Date.now() })) {
+    await install(home, plumesign, build, args.includes("--login"));
   } else {
     console.log(`• The installed build is current (signed ${((Date.now() - state.installedAt) / 86400000).toFixed(1)} days ago).`);
   }
