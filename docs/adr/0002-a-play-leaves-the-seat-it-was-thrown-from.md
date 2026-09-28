@@ -1,6 +1,6 @@
 # 0002. A play leaves the seat it was thrown from
 
-**Status:** Accepted
+**Status:** Superseded by ADR-0008
 **Date:** 2026-08-25
 
 ## Context

@@ -92,6 +92,25 @@ The items marked *(verified)* were re-checked against source or data after the r
 The sections below keep their original wording where the review did not break them. §Open
 questions lists what must be settled, and how.
 
+## Settled in the design session (2026-09-28)
+
+The owner ran no phone experiments in this session and asked for checks on the phone only at the
+end. Each open question was settled from the existing device data, from source read by two
+independent reviews, or turned into a gate the unattended device bench runs
+(`docs/plans/2026-09-28-1259-design.md` §8).
+
+| Q | Answer | How |
+|---|---|---|
+| 1 stall mechanism | No longer decides the design: the replacement puts no per-play audio work on main and fires haptics from cached generators. The tap A/B becomes the gate. | design §1; bench gate |
+| 2 pacing vs blocking | **Blocking.** Release: 122 of 146 one-second windows at 120 Hz, no steadily paced window, 54 of 58 frames over 100 ms within 400 ms of a haptic call (30 % of the session's time). The governor stays on; the gate counts blocking stalls, with pacing reported apart. | re-analysis of `ios-mulc7jn9`/Release rows |
+| 3 audible latency | Gate, measured outside the engine by ReplayKit app-audio capture on the bench. | design §8 |
+| 4 landing sync | **Predictive**, anchored on the flight's first UI frame, contact from the sampled pose, per the owner: "time it to when the card touches table". | ADR-0008; design §2 |
+| 5 lamp cost | Gate on the bench (frozen vs swaying); card shadows are unmasked either way. | design §5 |
+| 6 engine | **Both libraries, guarded.** Two source reviews found react-native-audio-api 0.13.6 places a sound only to one IO buffer (10–21 ms), restarts its engine on resume and replays queued plays; turbo-haptics drops its generators on resign-active. An owned C++ engine was designed; the owner chose the libraries, with each defect guarded in our code. The memory soak runs on CI for both platforms before any caller moves. | ADR-0009; design §1 |
+| 7 music death | Named from source; the engine never deactivates the session in the foreground and switches by crossfade, so both mechanisms go. The bench's 40 switches are the gate. | design §1 |
+| 8 device pixels | Bench gates (ring centres through a manche; lamp variants picked by eye). | design §3, §4 |
+| 9 the bar for #14 | Owner decision page, the mockup against today per difference. `FEEL-BAR.md` lives at `docs/FEEL-BAR.md`. | design §9 |
+
 ## The headline
 
 Three classes explain most of what the owner felt:
@@ -333,7 +352,7 @@ before the card arrives. On web, at 253 ms the card is still 11.5–14.8 pt from
 the app's plays at `TRICK_LANDINGS − impactDelayMs`, so the landing-onset comparison is green by
 construction. It is a self-defeating safeguard (CLAUDE.md invariant).
 
-**Stale documentation:** `docs/design/FEEL-BAR.md:16` and `pile.tsx:836` say 213 ms; the value is
+**Stale documentation:** `docs/FEEL-BAR.md:16` and `pile.tsx:836` say 213 ms; the value is
 253. `FEEL-BAR.md:427` checks the landing against `impactDelayMs` itself.
 
 **The throw (#4).** Measured against the mockup, `tests/e2e/fixtures/lantern-table/index.html:513-521`,
@@ -785,7 +804,7 @@ number that decides it. Review sections are cited.
    - #12: four screenshots, one per seat on move, sampled in a ring around each seat. The floor
      comes from the owner's pick between two tuned builds, not an arbitrary 3×.
    - #13: one device session confirming the ring centre, not the top of the box.
-9. **The bar for #14 (review §14).** Name the ceiling references (`docs/design/FEEL-BAR.md`), and
+9. **The bar for #14 (review §14).** Name the ceiling references (`docs/FEEL-BAR.md`), and
    mock the notice shapes via `/design`, including the "panel", which has no mockup reference.
 
 ## Owner decisions this research needs
