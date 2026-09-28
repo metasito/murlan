@@ -38,13 +38,68 @@ here has been fixed yet.
   the main thread. Every main-thread attribution below comes from a controlled A/B on the device,
   and says so.
 
+## Corrections from the contrarian review (read first)
+
+An independent review attacked this document: `docs/research/2026-09-28-contrarian-review.md`.
+Where it disagrees with the sections below, **the review wins until the question is settled.**
+The items marked *(verified)* were re-checked against source or data after the review.
+
+- **Threads.** expo-audio's `play()` is an Expo sync `Function`. `setActive(true)`,
+  `playImmediately` and the observer re-registration all run on the **JS** thread, not main
+  *(verified)*. On the main thread there are only:
+  - expo-audio's periodic time-observer callbacks;
+  - expo-haptics' generator work.
+- **The tap stall is an interaction, not "audio work on main".** Counting distinct stalls (the
+  400 ms window credited one stall to several taps):
+
+  | Condition | Taps | Distinct >100 ms stalls |
+  |---|---|---|
+  | sound + haptics | 91 | 35 |
+  | sound only | 74 | 2 |
+  | haptics only | 85 | 0 |
+
+  Why the pair is superadditive is **not measured**. So haptics are half the cause, not
+  secondary.
+- **"Silent" effects are mostly late effects** *(verified)*. 37 of the 38 "silent" select plays
+  were reported playing within 1.5 s. Trigger → playing is p50 174 ms and p90 299 ms. Late,
+  variable onsets are themselves what makes sounds bunch.
+- **#5: the sting was not cancelled; it played** *(verified)*. `stingTimerRef` is never cleared
+  after the timer fires, so the probe logged "cancelled" on every unmount. The real cause of "no
+  win/loss sound" is unmeasured. Candidates:
+  - the late onset;
+  - the `/result` navigation and the `cue` music switch 0.34 s later;
+  - the sting's level against the music;
+  - no sting on a neutral manche, and none at a partita's end.
+- **Release is equal to Debug per tap, not worse.** The per-minute figures divided by whole
+  sessions (menus included), and the sessions differed in music, tap rate and probes.
+- **The worklets frame-rate governor was missed** *(verified: `IOS_DYNAMIC_FRAMERATE_ENABLED`
+  defaults to true)*. It paces the display link down to 60, 30 or 24 Hz when frame callbacks
+  average over 8, 16 or 33 ms, so part of the "long frames" is pacing, not blocking. It confounds
+  every fps figure here.
+- **Reduce Motion → lamp is unsupported.** That segment followed 21 s in the background, and fps
+  had already been falling with the lamp on. Release reaches 120 fps with the sway running.
+- **Music deaths are at least 5 of 12 switches, with two candidate mechanisms:**
+  - the seek race on a looping queue player;
+  - a session deactivation after an *effect* ends.
+
+  The engine swap removes both.
+- **#12 is modelled, not measured, and #13 was measured on web.** Both need device pixels before
+  the fix is tuned.
+- **Weak checks.** Several proposed checks can pass without the property being true (review §9),
+  and the two documents disagree on landing sync: reactive `onLanded` against a predictive
+  `start(when)` (review §7). The plan must fix both.
+
+The sections below keep their original wording where the review did not break them. §Open
+questions lists what must be settled, and how.
+
 ## The headline
 
 Three classes explain most of what the owner felt:
 
-1. **The native audio and haptics layer does per-event work on the iOS main thread.** It stalls
-   the UI thread for 100–700 ms, drops 29–50% of effects, and kills the music after a track
-   switch. This is #1, #2, #5, #7 and #10, and it is the same in Debug and Release.
+1. **The native audio and haptics layer.** A sound and a haptic fired together stall the UI
+   thread for 100–700 ms. Effects start 140–340 ms late. The music dies after a track switch. This
+   is #1, #2, #5, #7 and #10, and the same per tap in Debug and Release. (This point was corrected
+   after the review: see above.)
 2. **Effects are timed by guessed delays on clocks separate from the animation they describe.**
    This is #3, #4, #9, and the landing/turn/pass pile-ups.
 3. **Layout and light are derived from content that changes during play.** This is #12 and #13.
@@ -682,6 +737,56 @@ and web. On web it wraps the browser's own `AudioContext`, which the app already
   - turbo-haptics has one maintainer and no web or jest support. The fallback is to vendor its
     roughly 200 MIT-licensed lines as a local Expo module.
 - **Tests:** 52 `tests/native` files mock expo-audio or expo-haptics. Centralize the mocks.
+
+## Open questions to settle, and how
+
+Each item below changes the plan's design. None needs guessing: each has an experiment with a
+number that decides it. Review sections are cited.
+
+1. **What makes sound and haptics together stall the main thread (review §1).**
+   - Run a factorial on the phone, 3 × 30-tap bursts per arm:
+     - expo-audio with `keepAudioSessionActive: true`;
+     - a cached, prepared haptic generator;
+     - both;
+     - neither.
+   - Also capture one iOS hang log (Settings › Developer › Hang Detection) naming the blocked
+     call.
+   - The decider is distinct >100 ms stalls per 90 taps; today it is 35.
+   - It decides whether haptics may fire from UI worklets at all.
+2. **Pacing against blocking (review §2).**
+   - Log the display link's frame-rate range, so pacing can be told from blocking.
+   - Repeat the Release session with `IOS_DYNAMIC_FRAMERATE_ENABLED` off.
+   - It decides whether the governor stays on, and it defines the device gate's metric: distinct
+     *blocking* stalls, not frames over 34 ms.
+3. **Audible latency, measured outside the engine (review §4, §3).**
+   - Take an iOS screen recording with app audio, aligned to the probe log by a visible and
+     audible marker.
+   - Cover 60 taps, 20 bot plays and four manche ends.
+   - Report tap → audible latency p50 and p90, the plays with no onset within 500 ms, and the
+     sting level against the music.
+   - This is the baseline, and later the gate, for #2, #5 and #10.
+4. **Landing sync architecture (review §7).**
+   - Decide between reactive (`onLanded` → play now) and predictive (`start(when)` at the throw
+     with a calibrated offset).
+   - Measure a 240 fps slow-motion video of the dust frame against the audible onset.
+   - The rest time must come from sampling the pose, not from the constants.
+5. **The lamp's cost (review §6).**
+   - Add a dev toggle that freezes only the sway, on Release, alternating 30 s on and 30 s off,
+     four times.
+   - The lamp matters only if quiet-window fps is ≥115 frozen and ≤100 swaying.
+6. **Engine memory (review §8, upstream #1263).**
+   - Run 30-minute soaks on iOS and Android, one source per play.
+   - Pass is an RSS slope under 1 MB/min. Run this before committing to the library, next to a
+     costed owned-module alternative (review §13).
+7. **Music death mechanism (review §10).**
+   - 20 cue→hand switches with `keepAudioSessionActive`, then 20 with an awaited seek.
+   - It names the class. The swap removes both mechanisms either way.
+8. **Device pixels for #12 and device positions for #13 (review §11, §12).**
+   - #12: four screenshots, one per seat on move, sampled in a ring around each seat. The floor
+     comes from the owner's pick between two tuned builds, not an arbitrary 3×.
+   - #13: one device session confirming the ring centre, not the top of the box.
+9. **The bar for #14 (review §14).** Name the ceiling references (`docs/design/FEEL-BAR.md`), and
+   mock the notice shapes via `/design`, including the "panel", which has no mockup reference.
 
 ## Owner decisions this research needs
 
