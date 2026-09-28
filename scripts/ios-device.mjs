@@ -314,7 +314,7 @@ async function serve(home) {
     process.on("SIGINT", () => process.exit(130));
   }
   console.log(`• Metro for the dev build at http://${ip}:8081. First time: scan the QR code with the iPhone camera.\n`);
-  const metro = spawn("npx", ["expo", "start", "--dev-client", "--lan"], {
+  const metro = spawn("npx expo start --dev-client --lan", {
     cwd: ROOT,
     stdio: "inherit",
     shell: true,
@@ -332,7 +332,7 @@ async function main() {
     createRequire(path.join(ROOT, "package.json")).resolve("expo-dev-client/package.json");
   } catch {
     console.log("• Installing dependencies (expo-dev-client is missing)…");
-    if (spawnSync("npm", ["install"], { cwd: ROOT, stdio: "inherit", shell: true }).status !== 0) fail("npm install failed.");
+    if (spawnSync("npm install", { cwd: ROOT, stdio: "inherit", shell: true }).status !== 0) fail("npm install failed.");
   }
   const home = path.join(process.env.LOCALAPPDATA ?? os.homedir(), "murlan-ios");
   mkdirSync(path.join(home, "builds"), { recursive: true });
