@@ -89,6 +89,7 @@ describe('signing out', () => {
     }
     expect(calls.sort()).toEqual([
       'context/SocketContext.tsx:qc',
+      'lib/device/audioEngine.ts:lastVoice',
       'lib/errorReporting.ts:reportedSignatures',
       'lib/reactions.ts:timers',
     ]);
