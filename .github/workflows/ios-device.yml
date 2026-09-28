@@ -5,11 +5,12 @@ name: iOS device build (sideload)
 on:
   workflow_dispatch:
   push:
-    branches: [main, claude/ios-device-sideload]
+    branches: [main]
     paths:
       - package.json
       - package-lock.json
       - app.json
+      - assets/images/**
       - .github/workflows/ios-device.yml
 
 concurrency:

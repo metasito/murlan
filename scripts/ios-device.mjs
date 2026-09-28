@@ -10,7 +10,7 @@
  */
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, openSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
@@ -44,7 +44,6 @@ export function lanAddress(interfaces) {
   return candidates.find((ip) => /^(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/.test(ip)) ?? null;
 }
 
-/** Devices in a usbmuxd `ListDevices` reply, USB first. */
 export function parseDevices(xml) {
   return xml
     .split("<key>Properties</key>")
@@ -62,7 +61,32 @@ export function pickRun(runs) {
   const newest = runs[0];
   if (newest && newest.status !== "completed") return { wait: newest.databaseId };
   const ok = runs.find((r) => r.conclusion === "success");
-  return ok ? { use: ok.databaseId } : null;
+  if (!ok) return null;
+  return ok === newest ? { use: ok.databaseId } : { use: ok.databaseId, newerFailed: newest.databaseId };
+}
+
+/** Reads a line from a raw-mode TTY without echoing it; Backspace edits, Ctrl+C exits. */
+export function readHidden(input, output, prompt) {
+  output.write(prompt);
+  return new Promise((resolve) => {
+    let line = "";
+    const onData = (chunk) => {
+      for (const ch of String(chunk)) {
+        if (ch === "\u0003") process.exit(130);
+        if (ch === "\r" || ch === "\n") {
+          input.off("data", onData);
+          input.setRawMode(false);
+          input.pause();
+          output.write("\n");
+          return resolve(line);
+        }
+        line = ch === "\u007f" || ch === "\b" ? line.slice(0, -1) : line + ch;
+      }
+    };
+    input.setRawMode(true);
+    input.on("data", onData);
+    input.resume();
+  });
 }
 
 function fail(message) {
@@ -110,8 +134,11 @@ async function waitForIphone() {
     let devices;
     try {
       devices = parseDevices(await usbmuxd({ MessageType: "ListDevices" }));
-    } catch {
-      fail('Windows cannot talk to iPhones. Install "Apple Devices" from the Microsoft Store, open it once, and rerun.');
+    } catch (error) {
+      if (error.code === "ECONNREFUSED") {
+        fail('Windows cannot talk to iPhones. Install "Apple Devices" from the Microsoft Store, open it once, and rerun.');
+      }
+      fail(`The Apple Mobile Device service failed: ${error.message}. Reopen the Apple Devices app and rerun.`);
     }
     if (devices[0]) return devices[0].udid;
     if (!told) {
@@ -134,7 +161,8 @@ async function ensurePlumesign(home) {
   const bytes = Buffer.from(await res.arrayBuffer());
   const digest = createHash("sha256").update(bytes).digest("hex");
   if (digest !== PLUMESIGN.sha256) fail(`plumesign checksum mismatch (${digest}); refusing to run it.`);
-  writeFileSync(exe, bytes);
+  writeFileSync(`${exe}.part`, bytes);
+  renameSync(`${exe}.part`, exe);
   return exe;
 }
 
@@ -155,9 +183,16 @@ function watch(id) {
 }
 
 async function latestBuild(home, ref) {
-  let pick = pickRun(runsOf(ref));
+  const runs = runsOf(ref);
+  let pick = pickRun(runs);
+  if (pick?.newerFailed) {
+    console.log(
+      `⚠ The newest build (${pick.newerFailed}) failed; using ${pick.use}. If the failed one carried a native change,\n` +
+        `  the app can crash on a missing native module: gh run view ${pick.newerFailed} --log-failed`,
+    );
+  }
   if (!pick) {
-    const before = new Set(runsOf(ref).map((r) => r.databaseId));
+    const before = new Set(runs.map((r) => r.databaseId));
     console.log(`• No build of ${ref} yet: starting one.`);
     gh(["workflow", "run", WORKFLOW, "--ref", ref]);
     for (let i = 0; i < 30 && !pick?.wait; i++) {
@@ -178,24 +213,33 @@ async function latestBuild(home, ref) {
   return { ipa: path.join(dir, "murlan-dev.ipa"), fingerprint: readFileSync(path.join(dir, "fingerprint.txt"), "utf8").trim() };
 }
 
-function ask(question, hidden = false) {
-  const rl = readline.createInterface({ input: process.stdin, output: process.stdout, terminal: true });
-  if (hidden) rl._writeToOutput = (s) => rl.output.write(s.startsWith(question) ? s : "");
+function ask(question) {
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
   return new Promise((resolve) =>
     rl.question(question, (answer) => {
       rl.close();
-      if (hidden) console.log();
       resolve(answer.trim());
     }),
   );
 }
 
 async function login(plumesign) {
+  if (!process.stdin.isTTY) fail("Signing in needs an interactive terminal: run npm run ios:device in one.");
   console.log("• Sign in with your Apple ID (free is fine). It stays saved; Apple may send a 2FA code.");
   const email = await ask("  Apple ID email: ");
-  const password = await ask("  Password (hidden): ", true);
-  const r = spawnSync(plumesign, ["account", "login", "-u", email, "-p", password], { stdio: "inherit", env: { ...process.env, RUST_LOG: "info" } });
-  if (r.status !== 0) fail("Apple ID sign-in failed.");
+  const password = await readHidden(process.stdin, process.stdout, "  Password (hidden): ");
+  // The password goes over stdin, never argv, where any process of this user could read it.
+  const child = spawn(plumesign, ["account", "login", "-u", email], {
+    stdio: ["pipe", "inherit", "inherit"],
+    env: { ...process.env, RUST_LOG: "info" },
+  });
+  child.stdin.write(`${password}\n`);
+  process.stdin.pipe(child.stdin);
+  process.stdin.resume();
+  const code = await new Promise((resolve) => child.on("exit", resolve));
+  process.stdin.unpipe(child.stdin);
+  process.stdin.pause();
+  if (code !== 0) fail("Apple ID sign-in failed.");
 }
 
 function sign(plumesign, ipa, udid) {

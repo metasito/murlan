@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { lanAddress, needsInstall, parseDevices, pickRun } from "../../scripts/ios-device.mjs";
+import { PassThrough, Writable } from "node:stream";
+import { lanAddress, needsInstall, parseDevices, pickRun, readHidden } from "../../scripts/ios-device.mjs";
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -31,14 +32,26 @@ test("usbmuxd's device list yields each UDID, USB before Wi-Fi", () => {
   const device = (type: string, udid: string) =>
     `<dict><key>DeviceID</key><integer>1</integer><key>Properties</key><dict><key>ConnectionType</key><string>${type}</string><key>SerialNumber</key><string>${udid}</string></dict></dict>`;
   const xml = `<plist><dict><key>DeviceList</key><array>${device("Network", "WIFI")}${device("USB", "CABLE")}</array></dict></plist>`;
-  assert.deepEqual(parseDevices(xml).map((d) => d.udid), ["CABLE", "WIFI"]);
+  assert.deepEqual(parseDevices(xml).map((d: { udid: string }) => d.udid), ["CABLE", "WIFI"]);
   assert.deepEqual(parseDevices("<plist><dict><key>DeviceList</key><array/></dict></plist>"), []);
 });
 
 test("a running build is waited for; otherwise the newest green one is used", () => {
   const run = (databaseId: number, status: string, conclusion = "") => ({ databaseId, status, conclusion });
   assert.deepEqual(pickRun([run(3, "in_progress"), run(2, "completed", "success")]), { wait: 3 });
-  assert.deepEqual(pickRun([run(3, "completed", "failure"), run(2, "completed", "success")]), { use: 2 });
+  assert.deepEqual(pickRun([run(2, "completed", "success"), run(1, "completed", "success")]), { use: 2 });
+  assert.deepEqual(pickRun([run(3, "completed", "failure"), run(2, "completed", "success")]), { use: 2, newerFailed: 3 });
   assert.equal(pickRun([run(3, "completed", "failure")]), null);
   assert.equal(pickRun([]), null);
+});
+
+test("the password prompt never echoes what is typed, even while editing it", async () => {
+  const input = Object.assign(new PassThrough(), { setRawMode: () => {} });
+  let shown = "";
+  const output = new Writable({ write: (chunk, _enc, done) => ((shown += chunk), done()) });
+  const answer = readHidden(input, output, "Password: ");
+  input.write("secrex\u007f");
+  input.write("t\r");
+  assert.equal(await answer, "secret");
+  assert.equal(shown, "Password: \n");
 });
