@@ -315,11 +315,15 @@ async function serve(home) {
       stdio: ["ignore", out, out],
       env: { ...process.env, E2E_SKIP_BUILD: "1" },
     });
-    server.on("exit", (code) =>
-      code && console.error(`\n✖ Game server exited (${code}); see ${logFile}. A stale web bundle is rebuilt by \`npm run play\`.`),
-    );
+    const exited = new Promise((resolve) => server.on("exit", (code, signal) => resolve(code ?? signal)));
     process.on("exit", () => killTree(server));
     process.on("SIGINT", () => process.exit(130));
+    while (!(await portOpen(SERVER_PORT))) {
+      const code = await Promise.race([exited, new Promise((r) => setTimeout(() => r(null), 2000))]);
+      if (code !== null) fail(`The game server exited (${code}) before it came up; see ${logFile}.`);
+    }
+    exited.then((code) => console.error(`\n✖ The game server stopped (${code}); online play is down. See ${logFile}.`));
+    console.log("• Game server up.");
   }
   console.log(`• Metro for the dev build at http://${ip}:8081. First time: scan the QR code with the iPhone camera.\n`);
   const metro = spawn("npx expo start --dev-client --lan", {
