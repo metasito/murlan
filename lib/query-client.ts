@@ -13,7 +13,7 @@ export function getApiUrl(): string {
     throw new Error("EXPO_PUBLIC_DOMAIN is not set");
   }
 
-  return new URL(`https://${host}`).href;
+  return new URL(host.includes("://") ? host : `https://${host}`).href;
 }
 
 async function throwIfResNotOk(res: Response) {
