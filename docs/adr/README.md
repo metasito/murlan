@@ -14,6 +14,7 @@ An ADR is history and is never rewritten. A decision that no longer holds gets
 | [0005](0005-the-compiler-is-not-the-enforcer-of-the-adopted-rules.md) | The React Compiler is not the enforcer of the three rules #891 adopted | Accepted | `eslintSuppressionRules` stays unset: the compiler's penalty is an unmemoized component in production, which is a worse answer than the lint error two source scans already give. |
 | [0006](0006-the-host-is-no-longer-replit.md) | The host is no longer Replit, and the next one is still to be chosen | Accepted | Supersedes ADR-0001's "Stay on Replit for now": the subscription ended, the dev-sync machinery is deleted, and the new host is #1107's to choose. |
 | [0007](0007-account-recovery-email-verification-and-password-reset.md) | Account recovery: email verification and password reset | Accepted | Six boxes (migration, token storage, sender, rate limiting, enumeration-safety, session clearing) shipped across #861–#864; `server/http/routes.ts` and related source cite them by number. |
+| [0009](0009-audio-and-haptics-libraries.md) | Audio is react-native-audio-api and haptics are react-native-turbo-haptics | Accepted | expo-audio and expo-haptics go; the libraries' known defects are guarded in our code, and adoption waits for CI builds and a soak on both platforms. |
 
 ## Writing one
 
