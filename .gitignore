@@ -28,8 +28,8 @@ coverage/
 /diagnostics/
 
 # Native
-ios/
-android/
+/ios/
+/android/
 *.orig.*
 *.jks
 *.p8

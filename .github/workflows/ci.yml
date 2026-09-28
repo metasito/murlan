@@ -551,6 +551,9 @@ jobs:
           if find "$lib/android/src/main" "$lib/common/cpp/audioapi/external" \( -name "*.xcframework" -o -name "*.so" -o -name "*.a" \) | grep -q .; then
             echo "::error::A prebuilt binary was downloaded."; exit 1
           fi
+          list=$(find android node_modules/expo/android -name ExpoModulesPackageList.java 2>/dev/null | head -1)
+          [ -n "$list" ] || { echo "::error::No ExpoModulesPackageList.java was generated."; exit 1; }
+          grep -q "MurlanDiagnosticsModule" "$list"
 
   ios-build:
     name: iOS compiles
@@ -586,6 +589,11 @@ jobs:
         run: |
           grep -qF "RNAudioAPI (0.13.6)" ios/Podfile.lock
           grep -qF "TurboHaptics (1.2.0)" ios/Podfile.lock
+      - name: The diagnostics module is registered
+        run: |
+          provider=$(find ios/Pods -name ExpoModulesProvider.swift | head -1)
+          [ -n "$provider" ] || { echo "::error::No ExpoModulesProvider.swift was generated."; exit 1; }
+          grep -q "MurlanDiagnosticsModule" "$provider"
       # The workspace and scheme are named from app.json rather than fixed here,
       # so renaming the app does not silently stop compiling anything.
       - name: Compile

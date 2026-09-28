@@ -11,6 +11,7 @@ import { benchScenarios, type BenchContext } from "@/lib/diagnostics/bench";
 import { benchBuild } from "@/lib/diagnostics/build";
 import { FrameProbe } from "@/lib/diagnostics/FrameProbe";
 import { startJsLag } from "@/lib/diagnostics/jsLag";
+import { probe } from "@/lib/diagnostics/probe";
 import "@/lib/diagnostics/scenarios";
 
 const COPY = { runAll: "Run all" } as const;
@@ -34,6 +35,8 @@ export function BenchScreen() {
       if (running.current) return;
       running.current = true;
       recorder.postTo(collectorHost(params.host));
+      const capturing = params.capture !== "0" && probe.canCapture() && (await probe.startCapture(true).catch(() => false));
+      const drain = setInterval(() => probe.drain(), 1000);
       diag({ k: "build", t: performance.now(), ...benchBuild() });
       const ctx: BenchContext = {
         params,
@@ -52,10 +55,14 @@ export function BenchScreen() {
       for (const [name, scenario] of benchScenarios()) {
         if (only && only !== name) continue;
         diag({ k: "scenario", t: performance.now(), name, phase: "start" });
+        diag({ k: "latency", t: performance.now(), outputMs: probe.outputLatencyMs(), ioMs: probe.ioBufferMs(), inputMs: probe.inputLatencyMs() });
         const error = await scenario(ctx).then(() => null, (e: unknown) => String(e));
         diag({ k: "scenario", t: performance.now(), name, phase: "end", error });
         setResults((r) => ({ ...r, [name]: error ?? "done" }));
       }
+      clearInterval(drain);
+      probe.drain();
+      if (capturing) await probe.stopCapture().catch(() => false);
       running.current = false;
     },
     [params]

@@ -23,3 +23,8 @@ test("a devDependency, a script or anything else does not", () => {
 test("an unreadable package.json runs them", () => {
   assert.equal(needsNative(["package.json"], "", base), true);
 });
+
+test("a local native module's sources need the native builds; other sources do not", () => {
+  assert.equal(needsNative(["modules/murlan-diagnostics/ios/MurlanDiagnosticsModule.swift"], "", ""), true);
+  assert.equal(needsNative(["lib/diagnostics/probe.ts"], "", ""), false);
+});

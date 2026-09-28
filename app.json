@@ -57,7 +57,8 @@
           "disableFFmpeg": true,
           "disableStaticExternalLibs": true
         }
-      ]
+      ],
+      "./modules/murlan-diagnostics/app.plugin.js"
     ],
     "experiments": {
       "typedRoutes": true,
