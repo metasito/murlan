@@ -18,7 +18,7 @@
  *      that catches a mapping the daemon reported and did not deliver.
  *
  * The base port still wins whenever it can, so the common case is the
- * documented one and a reader looking for the container finds it at 55432.
+ * documented one and a reader looking for the container finds it at 45432.
  */
 
 /** Twenty containers on one machine is a leak, not a queue. */
