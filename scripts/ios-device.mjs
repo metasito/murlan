@@ -326,7 +326,8 @@ async function serve(home) {
     console.log("• Game server up.");
   }
   console.log(`• Metro for the dev build at http://${ip}:8081. First time: scan the QR code with the iPhone camera.\n`);
-  const metro = spawn("npx expo start --dev-client --lan", {
+  // Production JS, as a player runs it: dev-mode JS drops the table well under 60 fps.
+  const metro = spawn("npx expo start --dev-client --lan --no-dev --minify", {
     cwd: ROOT,
     stdio: "inherit",
     shell: true,
