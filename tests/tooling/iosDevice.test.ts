@@ -5,13 +5,12 @@ import { errorLine, lanAddress, needsInstall, parseDevices, pickRun, readHidden 
 
 const DAY = 24 * 60 * 60 * 1000;
 
-test("reinstalls only on a new phone, a native change, or a certificate near its 7-day expiry", () => {
-  const state = { udid: "A", fingerprint: "f1", installedAt: 0 };
-  assert.equal(needsInstall(null, { udid: "A", fingerprint: "f1", now: 0 }), true);
-  assert.equal(needsInstall(state, { udid: "A", fingerprint: "f1", now: 5 * DAY }), false);
-  assert.equal(needsInstall(state, { udid: "A", fingerprint: "f2", now: DAY }), true);
-  assert.equal(needsInstall(state, { udid: "B", fingerprint: "f1", now: DAY }), true);
-  assert.equal(needsInstall(state, { udid: "A", fingerprint: "f1", now: 6 * DAY + 1 }), true);
+test("reinstalls only on a first run, a native change, or a certificate near its 7-day expiry", () => {
+  const state = { fingerprint: "f1", installedAt: 0 };
+  assert.equal(needsInstall(null, { fingerprint: "f1", now: 0 }), true);
+  assert.equal(needsInstall(state, { fingerprint: "f1", now: 5 * DAY }), false);
+  assert.equal(needsInstall(state, { fingerprint: "f2", now: DAY }), true);
+  assert.equal(needsInstall(state, { fingerprint: "f1", now: 6 * DAY + 1 }), true);
 });
 
 test("the LAN address skips virtual adapters and public addresses", () => {
