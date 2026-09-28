@@ -1,4 +1,4 @@
-// tests/tooling/musicAssets.test.ts — assets/music and lib/device/musicTracks{,.ios}.ts
+// tests/tooling/musicAssets.test.ts — assets/music and lib/device/musicTracks{,.web}.ts
 // still agree.
 //
 // Metro bundles what a `require` names, so a file added here without one is
@@ -10,44 +10,71 @@ import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { moduleEdges } from "../helpers/moduleEdges.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
-function tracksFor(file: string, ext: "webm" | "m4a"): string[] {
-  const source = readFileSync(path.join(repoRoot, "lib", "device", file), "utf8");
-  const pattern = new RegExp(`assets/music/([a-z]+)\\.${ext}`, "g");
-  return [...source.matchAll(pattern)].map((m) => m[1]).sort();
-}
-
-function onDiskFor(ext: "webm" | "m4a"): string[] {
-  return readdirSync(path.join(repoRoot, "assets", "music"))
-    .filter((f) => f.endsWith(`.${ext}`))
-    .map((f) => f.replace(new RegExp(`\\.${ext}$`), ""))
+function tracksFor(file: string, ext: "webm" | "flac"): string[] {
+  const rel = `lib/device/${file}`;
+  return moduleEdges(rel, readFileSync(path.join(repoRoot, rel), "utf8"))
+    .filter((e) => e.via === "require" && e.to.endsWith(`.${ext}`))
+    .map((e) => path.posix.basename(e.to, `.${ext}`))
     .sort();
 }
 
-test("assets/music holds exactly the tracks lib/device/musicTracks.ts and lib/device/musicTracks.ios.ts require", () => {
-  const requiredWebm = tracksFor("musicTracks.ts", "webm");
-  const requiredM4a = tracksFor("musicTracks.ios.ts", "m4a");
+function onDiskFor(dir: string, ext: "webm" | "flac"): string[] {
+  return readdirSync(path.join(repoRoot, dir))
+    .filter((f) => f.endsWith(`.${ext}`))
+    .map((f) => f.slice(0, -ext.length - 1))
+    .sort();
+}
 
-  assert.ok(requiredWebm.length > 0, "lib/device/musicTracks.ts requires no WebM music at all");
-  assert.deepEqual(
-    onDiskFor("webm"),
-    requiredWebm,
-    "a .webm music file was added or removed without lib/device/musicTracks.ts following it"
-  );
+interface StreamInfo {
+  sampleRate: number;
+  channels: number;
+  bits: number;
+  samples: number;
+}
 
-  // Why iOS needs its own encode at all: assets/music/README.md, "The iOS encode".
-  assert.deepEqual(
-    requiredM4a,
-    requiredWebm,
-    "lib/device/musicTracks.ios.ts requires a different track list than lib/device/musicTracks.ts"
-  );
-  assert.deepEqual(
-    onDiskFor("m4a"),
-    requiredM4a,
-    "a .m4a music file was added or removed without lib/device/musicTracks.ios.ts following it"
-  );
+export function streamInfo(buf: Buffer): StreamInfo {
+  assert.equal(buf.toString("ascii", 0, 4), "fLaC", "not a FLAC file");
+  assert.equal(buf[4] & 0x7f, 0, "the first metadata block is not STREAMINFO");
+  const b = buf.subarray(8, 42);
+  return {
+    sampleRate: (b[10] << 12) | (b[11] << 4) | (b[12] >> 4),
+    channels: ((b[12] >> 1) & 0x07) + 1,
+    bits: (((b[12] & 0x01) << 4) | (b[13] >> 4)) + 1,
+    samples: (b[13] & 0x0f) * 2 ** 32 + b.readUInt32BE(14),
+  };
+}
+
+test("web requires exactly the WebM on disk, native exactly the FLAC, and the two name the same tracks", () => {
+  const webm = tracksFor("musicTracks.web.ts", "webm");
+  const flac = tracksFor("musicTracks.ts", "flac");
+  assert.ok(webm.length > 0, "musicTracks.web.ts requires no WebM — the scan reads nothing");
+  assert.deepEqual(onDiskFor("assets/music", "webm"), webm);
+  assert.deepEqual(onDiskFor("assets/music/native", "flac"), flac);
+  assert.deepEqual(flac, webm);
+});
+
+test("the STREAMINFO reader reads a planted header", () => {
+  const b = Buffer.alloc(42);
+  b.write("fLaC", 0, "ascii");
+  b[4] = 0x80;
+  b.writeUIntBE(34, 5, 3);
+  b[18] = 0x0b; b[19] = 0xb8; b[20] = (1 << 1) | 0;
+  b[21] = 0xf0 | 0x00; b.writeUInt32BE(1315611, 22);
+  assert.deepEqual(streamInfo(b), { sampleRate: 48000, channels: 2, bits: 16, samples: 1315611 });
+});
+
+test("each FLAC is 48 kHz 16-bit stereo, the WebM's length, and not a silent stub", () => {
+  for (const track of tracksFor("musicTracks.ts", "flac")) {
+    const bytes = readFileSync(path.join(repoRoot, "assets", "music", "native", `${track}.flac`));
+    const info = streamInfo(bytes);
+    assert.deepEqual({ ...info, samples: undefined }, { sampleRate: 48000, channels: 2, bits: 16, samples: undefined }, track);
+    assert.equal(info.samples, 1315611, `${track}.flac is not the loop's 27.408562 s at 48 kHz`);
+    assert.ok(bytes.length / info.samples > 0.3, `${track}.flac compresses like silence`);
+  }
 });
 
 /** The track names `trackForRoute` can return — the one place a track is chosen. */

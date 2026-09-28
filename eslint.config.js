@@ -165,4 +165,11 @@ module.exports = defineConfig([
       "react-hooks/rules-of-hooks": "off",
     },
   },
+  {
+    // Expo's allow-list is Metro's default assetExts, which lack the FLAC metro.config.js adds.
+    files: ["lib/device/musicTracks.ts"],
+    rules: {
+      "@typescript-eslint/no-require-imports": ["warn", { allow: ["\\.flac$"] }],
+    },
+  },
 ]);

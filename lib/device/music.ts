@@ -5,13 +5,10 @@ import { TRACKS } from "@/lib/device/musicTracks";
 
 /**
  * Four loops, all one composition — Abstraction's *Retro Lounge*, CC0 (#113).
- * WebM Opus at 48 kHz for web and Android: MP3 cannot loop seamlessly, and
- * Safari has decoded WebM Opus since 17.0 against Ogg Opus's 18.4 (#121).
- * AVFoundation cannot demux WebM at all, so iOS resolves lib/device/musicTracks.ios.ts
- * instead of lib/device/musicTracks.ts — the same audio losslessly re-encoded to ALAC
- * in an M4A container (#178); every other iOS-playable option that was tried
- * lost the loop's gaplessness somewhere in the container (see
- * assets/music/README.md), where ALAC cannot by construction. Metro's
+ * WebM Opus at 48 kHz on web (lib/device/musicTracks.web.ts): MP3 cannot loop
+ * seamlessly, and Safari has decoded WebM Opus since 17.0 against Ogg Opus's 18.4
+ * (#121). iOS and Android play the same audio losslessly re-encoded to 48 kHz FLAC
+ * (lib/device/musicTracks.ts, assets/music/README.md). Metro's
  * platform-specific module resolution keeps the container the current
  * platform doesn't use out of its bundle entirely; tests/tooling/musicAssets.test.ts
  * pins both files against the tracks on disk.

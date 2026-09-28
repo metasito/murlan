@@ -1,8 +1,8 @@
 // tests/native/musicPlatform.test.tsx — music on native, Android and iOS.
 //
-// Why iOS needs its own container: assets/music/README.md, "The iOS encode".
-// lib/device/music.ts resolves lib/device/musicTracks.ios.ts on iOS and lib/device/musicTracks.ts
-// everywhere else (#178).
+// Why native needs its own container: assets/music/README.md, "The native encode".
+// lib/device/music.ts resolves lib/device/musicTracks.web.ts on web and lib/device/musicTracks.ts
+// on iOS and Android.
 //
 // This suite runs once per platform, which is the only way to see Metro
 // actually resolve the two differently: react-native-web takes neither side
@@ -49,8 +49,8 @@ afterAll(() => {
 });
 
 describe(`music on ${Platform.OS}`, () => {
-  it('resolves the container this platform can decode', () => {
-    expect(CONTAINER).toBe(Platform.OS === 'ios' ? 'm4a' : 'webm');
+  it('resolves FLAC, the container react-native-audio-api decodes on both platforms', () => {
+    expect(CONTAINER).toBe('flac');
   });
 
   // The test above pins that Metro resolves the right file per platform, but
