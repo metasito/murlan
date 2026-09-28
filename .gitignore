@@ -25,6 +25,7 @@ sourcemaps/
 
 # Coverage
 coverage/
+/diagnostics/
 
 # Native
 ios/

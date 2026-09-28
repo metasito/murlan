@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { PassThrough, Writable } from "node:stream";
-import { errorLine, lanAddress, needsInstall, parseDevices, pickRun, readHidden } from "../../scripts/ios-device.mjs";
+import { artifactFor, benchUrl, errorLine, lanAddress, metroEnv, needsInstall, parseDevices, pickRun, readHidden } from "../../scripts/ios-device.mjs";
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -62,4 +62,18 @@ test("the password prompt never echoes what is typed, even while editing it", as
   input.write("t\r");
   assert.equal(await answer, "secret");
   assert.equal(shown, "Password: \n");
+});
+
+test("--diagnostics turns the diagnostics build on for Metro, and only then", () => {
+  const on = metroEnv({ PATH: "p" }, "192.168.1.5", true);
+  assert.equal(on.EXPO_PUBLIC_DIAGNOSTICS, "1");
+  assert.equal(on.EXPO_PUBLIC_DOMAIN, "http://192.168.1.5:5000");
+  assert.equal(on.REACT_NATIVE_PACKAGER_HOSTNAME, "192.168.1.5");
+  assert.equal(metroEnv({ PATH: "p" }, "192.168.1.5", false).EXPO_PUBLIC_DIAGNOSTICS, undefined);
+});
+
+test("--bench fetches the Release bench build, never the dev client", () => {
+  assert.deepEqual(artifactFor(true), { workflow: "ios-bench.yml", name: "murlan-ios-bench", ipa: "murlan-bench.ipa" });
+  assert.deepEqual(artifactFor(false), { workflow: "ios-device.yml", name: "murlan-ios-dev", ipa: "murlan-dev.ipa" });
+  assert.equal(benchUrl("192.168.1.5"), "murlan://bench?host=192.168.1.5&scenario=all");
 });

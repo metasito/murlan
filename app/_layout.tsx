@@ -22,6 +22,7 @@ import { bindWebAudioUnlock } from "@/lib/device/sounds";
 import { installGlobalErrorHandlers, setCurrentScreen } from "@/lib/errorReporting";
 import { playMusic, type MusicTrack } from "@/lib/device/music";
 import { UpdateRequired } from "@/components/UpdateRequired";
+import { DIAGNOSTICS } from "@/lib/diagnostics";
 import "@/lib/e2eBuildMark";
 
 SplashScreen.preventAutoHideAsync();
@@ -54,9 +55,10 @@ export function RootLayoutNav() {
   // backgrounded is lib/device/music.ts's own concern (its AppState listener), not
   // this route effect's.
   const track = trackForRoute(pathname);
+  const benchOwnsAudio = DIAGNOSTICS && pathname === "/bench";
   useEffect(() => {
-    void playMusic(track);
-  }, [track]);
+    if (!benchOwnsAudio) void playMusic(track);
+  }, [track, benchOwnsAudio]);
 
   return (
     <View style={{ flex: 1 }}>
@@ -81,6 +83,9 @@ export function RootLayoutNav() {
             Screen and every production render warns about it. */}
         <Stack.Protected guard={__DEV__}>
           <Stack.Screen name="capture" />
+        </Stack.Protected>
+        <Stack.Protected guard={DIAGNOSTICS}>
+          <Stack.Screen name="bench" />
         </Stack.Protected>
       </Stack>
       <NotificationBanner

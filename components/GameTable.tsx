@@ -120,6 +120,7 @@ import {
 } from "@/lib/theme";
 import { useTableFelt } from "@/lib/cosmetics";
 import { A11yStatus, A11yVeil, a11yGroup, a11yHidden, a11yVeiled } from "@/lib/a11y";
+import { useBenchHandle } from "@/lib/diagnostics";
 
 // Whole-pixel travel, mirroring components/MenuButton.tsx: PASSA/GIOCA hold
 // text labels, and React Native rasterises text before transforming it, so a
@@ -827,6 +828,7 @@ export function GameTable({
     },
     [isFinished, spectating, onSelectCard, exchangeIsMine, setExchangePick]
   );
+  useBenchHandle("cardPress", handleCardPress);
   // The button stays pressable while it is unavailable so a refusal has a
   // channel: a rigid haptic, a shake, and the reason in words. It keeps
   // reporting itself as disabled to assistive tech.

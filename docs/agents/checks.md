@@ -42,6 +42,7 @@ none sits at the top of `tests/` (`tests/tooling/repoLayout.test.ts`).
 | `5000` | The Express server (`PORT`) | `server/index.ts` |
 | `8081` | Metro (`npx expo start` / `npm start`) | Metro's own default |
 | `5561`, `5562`, `5571`, `5581` | One `tests/integration/` file's own spawned server each | pinned by `tests/tooling/integrationPorts.test.ts` |
+| `5099` | The diagnostics collector the bench posts to | `scripts/diagnostics-collector.mjs` |
 | `5199`+ | Playwright's e2e webServer (`E2E_PORT`) — first free port at/above the base | `tools/ci/e2ePort.mjs`; a leftover is freed by `tools/loop/reap.mjs` |
 | `45432`+ | The dev-stack's disposable Postgres (`MURLAN_DEV_PG_PORT`) — ask `dev-stack env`, don't assume 45432 | `scripts/dev-stack.mjs`, `scripts/devStackPort.mjs` |
 
@@ -128,6 +129,19 @@ them** — measuring beats eyeballing, every time (#209).
   DiagnosticReports (`tools/ci/find-native-crash.mjs`, #629, #1293). `node tools/ci/analyze-maestro-run.mjs
   <maestro.log> <logcat.txt>` separates a command starved by animation from one paying a flat
   per-fetch cost (#823), from the `maestro-debug`/`maestro-debug-ios` artefact.
+
+### Device bench (diagnostics builds)
+
+- The bench (`app/bench.tsx`, `components/BenchScreen.tsx`, `lib/diagnostics/`) and
+  `modules/murlan-diagnostics` are reachable only when `EXPO_PUBLIC_DIAGNOSTICS=1`.
+- `npm run ios:device -- --ref <branch> --bench` installs the Release bench build
+  (`ios-bench.yml`) and starts the collector on :5099, whose NDJSON lands in `diagnostics/`.
+  `--diagnostics` serves Metro JS on the dev client instead, for iterating on a scenario.
+- `node scripts/diagnostics-verdict.mjs <file> all` computes every gate from the raw rows, and
+  reports `pass: null` with `unrun` for any run not on a Release build with an embedded bundle:
+  Debug and Release differ 2.6–3× on JS-thread stall (the lantern review, #1259), so a Debug
+  verdict would fail for work no player runs.
+- ci.yml `build` checks that production carries no recorder, and that a diagnostics export does.
 
 ## What no automated layer here covers
 

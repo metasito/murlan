@@ -871,6 +871,14 @@ jobs:
       - name: The production web bundle carries no test-only flag
         run: node scripts/e2eBuildMark.mjs --absent dist
 
+      - name: The production web bundle carries no diagnostics recorder
+        run: node scripts/e2eBuildMark.mjs --absent dist --mark diagnostics
+
+      - name: A diagnostics build carries the recorder
+        env:
+          EXPO_PUBLIC_DIAGNOSTICS: "1"
+        run: npx expo export --platform web --output-dir dist-diag && node scripts/e2eBuildMark.mjs --present dist-diag --mark diagnostics
+
       # The bundle esbuild produces is otherwise first executed by a production
       # deploy. /health answers only once the pool has reached Postgres.
       - name: The built server boots and reaches the database
