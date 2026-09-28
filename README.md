@@ -25,13 +25,15 @@ only in production, `PORT`'s default).
 
 ### On a real iPhone, from Windows
 
-`npm run ios:device` fetches the dev build CI made (`.github/workflows/ios-device.yml`), signs
-it with a free Apple ID, installs it, and starts the server and Metro so edits reload on the
-phone. It installs only on the first run, after a native dependency changes, and when the free
-7-day certificate is near expiry; only then does the iPhone need the USB cable, otherwise the app
-loads over Wi-Fi. `-- --ref <branch>` uses a branch's build, `-- --reinstall` forces an install
-(or puts it on another iPhone), `-- --login` signs in again. Needs Docker, `gh`, and the Apple
-Devices app; the phone and PC on the same Wi-Fi.
+`npm run ios:device` fetches the Release app CI made (`.github/workflows/ios-device.yml`), puts
+this checkout's JS into it as Hermes bytecode, signs it with a free Apple ID, installs it, and
+starts the game server: the phone runs the game as a player gets it, so judge speed and feel
+here. A code change needs a rerun, which reinstalls. `-- --dev` installs the Debug dev client
+instead and starts Metro, so edits reload live, at several times the cost per frame. It installs
+only when the native build or the JS changed, or the free 7-day certificate is near expiry; only
+then does the iPhone need the USB cable. `-- --ref <branch>` uses a branch's build,
+`-- --reinstall` forces an install (or puts it on another iPhone), `-- --login` signs in again.
+Needs Docker, `gh`, and the Apple Devices app; the phone and PC on the same Wi-Fi.
 
 ## Deploying it
 
