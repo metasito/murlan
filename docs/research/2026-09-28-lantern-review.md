@@ -618,9 +618,70 @@ claims the lamp scales with the frame, which it does not.
 
 ## Engine choice (audio and haptics)
 
-*Filled in from the primary-source library review (scratchpad `audio-research.md`), which is
-still running at the time of writing. The requirements it is judged against are in §Audio and
-haptics → Fix direction.*
+The full primary-source review is `docs/research/2026-09-28-audio-engine.md`. It is judged against
+the requirements in §Audio and haptics → Fix direction.
+
+### Audio: react-native-audio-api 0.13.6 (Software Mansion)
+
+It is the Web Audio API on native, with one `AudioContext` for music and effects on iOS, Android
+and web. On web it wraps the browser's own `AudioContext`, which the app already uses.
+
+**Why each measured defect goes away:**
+
+- **No per-play session or main-thread work.**
+  - `start()` queues work for the audio thread.
+  - The session is activated once and cached, and re-armed only after an interruption or route
+    change.
+  - It is deactivated only by an explicit call.
+- **No seek:** each play is a fresh one-shot source, so the silent race cannot happen.
+- **Buffers are decoded off the JS thread at preload.**
+- **`start(when)` is sample-accurate**, which gives the landing sync.
+- **Gain automation** gives crossfades and ducking, so a track switch never pauses a player.
+
+**Rejected:**
+
+- **expo-audio with `keepAudioSessionActive` and an awaited seek** fixes the silent plays only;
+  the per-play `setActive`, the observers, the cold starts, scheduling and ramps all remain.
+- **react-native-track-player** covers music only.
+- **react-native-sound** is one AVAudioPlayer per sound.
+- **A custom AVAudioEngine + Oboe module** re-implements this library without its web path. It is
+  kept as the fallback if the device verification fails.
+
+### Haptics: react-native-turbo-haptics 1.2.0
+
+- Generators are long-lived and cached, triggered and then re-prepared (Apple's recommended
+  order).
+- It runs directly on main when called from a UI worklet, so landing and bomb pulses can fire on
+  the exact animation frame.
+- On Android it uses the system haptic constants.
+- **Rejected:** expo-haptics, react-native-haptic-feedback and react-native-nitro-haptics, all of
+  which allocate per call. Pulsar is correct but far larger than seven tap types need.
+
+### Corrections the review made to the premises here
+
+- **The music tracks are 27.41 s loops of 1.6–2.0 MB each, not long tracks.** Decoding one into
+  memory (about 10.5 MB of PCM) and looping it is the right model, and nothing needs streaming.
+- **The library cannot decode the WebM that Android plays today.** Native music moves to FLAC,
+  converted losslessly from the current ALAC.
+
+### Adoption constraints
+
+- **Pins:** both libraries exactly; remove expo-audio and expo-haptics.
+- **Config plugin:** turn off its defaults (background audio, the Android foreground service and
+  its permissions), and disable the FFmpeg and static-lib downloads.
+- **One owner module,** `lib/device/audioEngine.ts`, pinned by a test.
+- **Lifecycle:** create the context at launch and `resume()` it, which avoids iOS #1238 and moves
+  the driver start off the tap. Suspend and resume from `AppState`.
+- **Watchdog:** recreate the context if it is not running after `resume()` (Android #1230).
+- **Don't attach `onEnded` to effects** (#1285).
+- **Android release decode:** pass an `expo-asset` `localUri`, not base64.
+- **Risks to prove in our own CI:**
+  - RN 0.86 was never built by the library's CI (0.85 and 0.87 were);
+  - the worklets build coupling;
+  - Android crackle and memory on a low-end device (#1231, #1263);
+  - turbo-haptics has one maintainer and no web or jest support. The fallback is to vendor its
+    roughly 200 MIT-licensed lines as a local Expo module.
+- **Tests:** 52 `tests/native` files mock expo-audio or expo-haptics. Centralize the mocks.
 
 ## Owner decisions this research needs
 
@@ -629,6 +690,9 @@ haptics → Fix direction.*
 3. **#11:** `OfflineBanner` survives as its own surface (spec), or becomes a `TableNotice`.
 4. **#4:** a new ADR adopting the mockup's throw, superseding #126 and ADR-0002 §1 / §4.
 5. **#5:** does a neutral manche get a sound of its own?
+6. **iOS mixing policy for the always-on session.** Today expo-audio silently applies
+   `duckOthers` on iOS as well. Once the session stays active for the whole run, that would duck
+   the player's own music (Spotify) the whole time. `mixWithOthers` is the suggestion.
 
 ## Reproducing the measurements
 
