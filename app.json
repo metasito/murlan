@@ -47,7 +47,17 @@
       ],
       "expo-audio",
       "expo-localization",
-      "expo-notifications"
+      "expo-notifications",
+      [
+        "react-native-audio-api",
+        {
+          "iosBackgroundMode": false,
+          "androidForegroundService": false,
+          "androidPermissions": [],
+          "disableFFmpeg": true,
+          "disableStaticExternalLibs": true
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
