@@ -21,7 +21,8 @@ import {
 } from "./devStackPort.mjs";
 
 const NAME = "murlan-dev-pg";
-const DEFAULT_PORT = 55432;
+// Below 49152: Windows carves its dynamic port reservations (Hyper-V, WSL) out of 49152-65535 only.
+const DEFAULT_PORT = 45432;
 const requested = process.env.MURLAN_DEV_PG_PORT;
 const BASE_PORT = Number(requested ?? DEFAULT_PORT);
 const urlFor = (port) => `postgres://postgres:postgres@127.0.0.1:${port}/murlan_dev`;
