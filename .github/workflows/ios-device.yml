@@ -1,0 +1,106 @@
+name: iOS device build (sideload)
+
+# An unsigned Debug .ipa with the dev client, which `npm run ios:device` signs with a free Apple ID
+# and installs (#1316). JS comes from Metro, so only a change to the native inputs needs a new build.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - package.json
+      - package-lock.json
+      - app.json
+      - assets/images/**
+      - .github/workflows/ios-device.yml
+
+concurrency:
+  group: ios-device-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build the unsigned dev-client .ipa
+    runs-on: macos-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Fingerprint the native build
+        id: native
+        run: |
+          sdk=$(node -p "require('expo/package.json').version.split('.')[0]")
+          hash=$(npx --yes "@expo/fingerprint@sdk-$sdk" fingerprint:generate --platform ios \
+            | node -p "JSON.parse(require('fs').readFileSync(0, 'utf8')).hash")
+          xcode=$(xcodebuild -version | shasum | cut -c1-12)
+          echo "hash=$hash" >> "$GITHUB_OUTPUT"
+          echo "key=ios-device-${{ runner.arch }}-$xcode-${{ hashFiles('.github/workflows/ios-device.yml') }}-$hash" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        id: cached
+        with:
+          path: ${{ runner.temp }}/ios-device-app
+          key: ${{ steps.native.outputs.key }}
+
+      - name: Build the app
+        if: steps.cached.outputs.cache-hit != 'true'
+        run: |
+          npx expo prebuild --platform ios --no-install
+          pod install --project-directory=ios
+          workspace=""
+          for candidate in ios/*.xcworkspace; do
+            [ -d "$candidate" ] && { workspace="$candidate"; break; }
+          done
+          [ -n "$workspace" ] || { echo "::error::expo prebuild produced no ios/*.xcworkspace."; exit 1; }
+          scheme=$(basename "$workspace" .xcworkspace)
+          # Plain http to the PC's LAN address: Metro on 8081 and the game server on 5000.
+          plutil -replace NSAppTransportSecurity.NSAllowsLocalNetworking -bool YES "ios/$scheme/Info.plist"
+          xcodebuild \
+            -workspace "$workspace" \
+            -scheme "$scheme" \
+            -configuration Debug \
+            -sdk iphoneos \
+            -destination generic/platform=iOS \
+            -derivedDataPath "$RUNNER_TEMP/DerivedData" \
+            COMPILER_INDEX_STORE_ENABLE=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+          app=""
+          for candidate in "$RUNNER_TEMP/DerivedData/Build/Products/Debug-iphoneos/"*.app; do
+            [ -d "$candidate" ] && { app="$candidate"; break; }
+          done
+          [ -n "$app" ] || { echo "::error::xcodebuild produced no .app."; exit 1; }
+          mkdir -p "$RUNNER_TEMP/ios-device-app"
+          cp -R "$app" "$RUNNER_TEMP/ios-device-app/"
+
+      - uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        if: steps.cached.outputs.cache-hit != 'true'
+        with:
+          path: ${{ runner.temp }}/ios-device-app
+          key: ${{ steps.native.outputs.key }}
+
+      - name: Package the .ipa
+        run: |
+          out="$RUNNER_TEMP/ipa"
+          mkdir -p "$out/Payload"
+          cp -R "$RUNNER_TEMP"/ios-device-app/*.app "$out/Payload/"
+          (cd "$out" && zip -qry murlan-dev.ipa Payload && rm -rf Payload)
+          echo "${{ steps.native.outputs.hash }}" > "$out/fingerprint.txt"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: murlan-ios-dev
+          path: ${{ runner.temp }}/ipa/
+          if-no-files-found: error
+          retention-days: 90

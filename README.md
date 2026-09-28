@@ -23,6 +23,15 @@ Needs `DATABASE_URL` and `SESSION_SECRET` in the environment — the server fail
 without them. `server/CLAUDE.md`'s Production section has the full env contract (what's needed
 only in production, `PORT`'s default).
 
+### On a real iPhone, from Windows
+
+`npm run ios:device` with the iPhone plugged in: it fetches the dev build CI made
+(`.github/workflows/ios-device.yml`), signs it with a free Apple ID, installs it, and starts the
+server and Metro so edits reload on the phone. Rerun it weekly (the free certificate lasts 7
+days) and after a native dependency changes. `-- --ref <branch>` uses a branch's build,
+`-- --reinstall` forces an install, `-- --login` signs in again. Needs Docker, `gh`, and the
+Apple Devices app; the phone and PC on the same Wi-Fi.
+
 ## Deploying it
 
 Starting the built server (`npm run server:build && npm run server:prod`) serves both the
