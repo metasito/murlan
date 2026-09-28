@@ -115,6 +115,8 @@ jest.mock('@/modules/murlan-audio-session', () => require('./mocks/audioApi').au
 jest.mock('@/lib/device/assetFiles', () => ({
   localFiles: async (modules: number[]) => modules.map((_, i) => `file:///asset-${i}`),
 }));
+jest.mock('react-native-turbo-haptics', () => require('./mocks/turboHaptics').turboHapticsModule());
 beforeEach(() => {
   require('./mocks/audioApi').newEpoch();
+  require('./mocks/turboHaptics').turboHapticsState().calls.length = 0;
 });

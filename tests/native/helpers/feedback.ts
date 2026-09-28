@@ -3,6 +3,7 @@ import { act } from '@testing-library/react-native';
 import { AppState } from 'react-native';
 import { SOUNDS, SOUND_FILES, type SoundId } from '@/lib/device/soundAssets';
 import { TRACKS } from '@/lib/device/musicTracks';
+import { turboHapticsState } from '../mocks/turboHaptics';
 import { audioApiState, type MockNode } from '../mocks/audioApi';
 
 const KEYS = [...Object.keys(SOUND_FILES), ...Object.keys(TRACKS)];
@@ -38,3 +39,6 @@ export const settle = (ms = 0) =>
   act(async () => {
     jest.advanceTimersByTime(ms);
   });
+
+export const hapticCalls = () => turboHapticsState().calls;
+export const haptics = () => hapticCalls().map((c) => c.type);

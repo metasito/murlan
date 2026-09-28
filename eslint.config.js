@@ -21,6 +21,7 @@ const {
 const ONLY_OWNERS = "ADR-0009: one owner per audio layer (tests/tooling/audioOwners.test.ts).";
 const PACKAGE_OWNERS = {
   "react-native-audio-api": "lib/device/audioEngine.ts",
+  "react-native-turbo-haptics": "lib/device/hapticsEngine.ts",
 };
 const GROUP_OWNERS = [
   { group: ["**/modules/murlan-audio-session", "**/modules/murlan-audio-session/*"], owner: "lib/device/audioEngine.ts" },
@@ -117,7 +118,7 @@ module.exports = defineConfig([
     files: ["app/**/*.{ts,tsx}", "components/**/*.{ts,tsx}", "context/**/*.{ts,tsx}", "lib/**/*.{ts,tsx}"],
     rules: { "@typescript-eslint/no-restricted-imports": audioLayers(null) },
   },
-  ...["lib/device/audioEngine.ts", "lib/diagnostics/probe.ts"].map((file) => ({
+  ...["lib/device/audioEngine.ts", "lib/device/hapticsEngine.ts", "lib/diagnostics/probe.ts"].map((file) => ({
     files: [file],
     rules: { "@typescript-eslint/no-restricted-imports": audioLayers(file) },
   })),
