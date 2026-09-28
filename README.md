@@ -26,8 +26,9 @@ only in production, `PORT`'s default).
 ### On a real iPhone, from Windows
 
 `npm run ios:device` fetches the dev build CI made (`.github/workflows/ios-device.yml`), signs
-it with a free Apple ID, installs it, and starts the server and Metro so edits reload on the
-phone. It installs only on the first run, after a native dependency changes, and when the free
+it with a free Apple ID, installs it, and starts the server and Metro serving production JS
+(`--no-dev --minify`), so the game runs as a player's does; press `r` in Metro to load an edit.
+It installs only on the first run, after a native dependency changes, and when the free
 7-day certificate is near expiry; only then does the iPhone need the USB cable, otherwise the app
 loads over Wi-Fi. `-- --ref <branch>` uses a branch's build, `-- --reinstall` forces an install
 (or puts it on another iPhone), `-- --login` signs in again. Needs Docker, `gh`, and the Apple
