@@ -1,17 +1,16 @@
 #!/usr/bin/env node
 /**
- * `npm run ios:device` — Murlan on a real iPhone from Windows, with a free Apple ID (#1316).
+ * `npm run ios:device` — the dev build on a real iPhone from Windows, with a free Apple ID (#1316).
  *
- * Fetches the newest `ios-device.yml` build (dispatching one if there is none). By default that is
- * the Release app, into which it puts this checkout's JS as optimised Hermes bytecode, so the phone
- * runs what a player gets; `--dev` takes the Debug dev client and serves Metro instead. It signs
- * and installs with plumesign when the native build or the JS changed or the 7-day certificate is
- * near expiry, then serves the game on :5000. Flags: `--ref <branch>` builds from another branch,
- * `--reinstall` forces a fresh install, `--login` signs in to the Apple ID again.
+ * Waits for the phone, fetches the newest `ios-device.yml` build (dispatching one if there is
+ * none), signs and installs it with plumesign when the native fingerprint changed or the 7-day
+ * certificate is near expiry, then serves the game on :5000 and Metro on the LAN address.
+ * Flags: `--ref <branch>` builds from another branch, `--reinstall` forces a fresh install,
+ * `--login` signs in to the Apple ID again.
  */
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { cpSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
@@ -26,23 +25,13 @@ const PLUMESIGN = {
   sha256: "2311ed3090253bcc63ebb96a92ebca5f373f5344e8462ed089cf3bec6a75186b",
 };
 const WORKFLOW = "ios-device.yml";
-const ARTIFACTS = { release: "murlan-ios-release", dev: "murlan-ios-dev" };
+const ARTIFACT = "murlan-ios-dev";
 const RESIGN_AFTER_MS = 6 * 24 * 60 * 60 * 1000;
 const SERVER_PORT = 5000;
 const USBMUXD_PORT = 27015;
 
-export function needsInstall(state, { build, now }) {
-  return !state || state.build !== build || now - state.installedAt > RESIGN_AFTER_MS;
-}
-
-/** One hash over every file's path and bytes, so a changed, added or removed file changes it. */
-export function hashTree(dir) {
-  const hash = createHash("sha256");
-  for (const rel of readdirSync(dir, { recursive: true }).map(String).sort()) {
-    const file = path.join(dir, rel);
-    if (statSync(file).isFile()) hash.update(`${rel.replaceAll("\\", "/")}\0`).update(readFileSync(file));
-  }
-  return hash.digest("hex").slice(0, 16);
+export function needsInstall(state, { fingerprint, now }) {
+  return !state || state.fingerprint !== fingerprint || now - state.installedAt > RESIGN_AFTER_MS;
 }
 
 /** The first private IPv4 address on a physical adapter: the one the phone on the same Wi-Fi reaches. */
@@ -194,7 +183,7 @@ function watch(id) {
   );
 }
 
-async function latestBuild(home, ref, artifact) {
+async function latestBuild(home, ref) {
   const runs = runsOf(ref);
   let pick = pickRun(runs);
   if (pick?.newerFailed) {
@@ -216,52 +205,13 @@ async function latestBuild(home, ref, artifact) {
   }
   const id = pick.use ?? (await watch(pick.wait));
   const buildsDir = path.join(home, "builds");
-  const name = `${id}-${artifact}`;
-  const dir = path.join(buildsDir, name);
-  if (!existsSync(path.join(dir, "fingerprint.txt"))) {
-    console.log(`• Downloading ${artifact} from build ${id}…`);
-    gh(["run", "download", String(id), "-n", artifact, "-D", dir]);
+  const dir = path.join(buildsDir, String(id));
+  if (!existsSync(path.join(dir, "murlan-dev.ipa"))) {
+    console.log(`• Downloading build ${id}…`);
+    gh(["run", "download", String(id), "-n", ARTIFACT, "-D", dir]);
   }
-  for (const old of readdirSync(buildsDir)) if (old !== name) rmSync(path.join(buildsDir, old), { recursive: true, force: true });
-  const ipa = readdirSync(dir).find((f) => f.endsWith(".ipa"));
-  return { ipa: path.join(dir, ipa), fingerprint: readFileSync(path.join(dir, "fingerprint.txt"), "utf8").trim() };
-}
-
-async function bundle(home, ip) {
-  const dir = path.join(home, "bundle");
-  rmSync(dir, { recursive: true, force: true });
-  mkdirSync(dir, { recursive: true });
-  console.log("• Building the JS as a player gets it: a release bundle compiled to Hermes bytecode…");
-  const js = path.join(home, "main.js");
-  const code = await new Promise((resolve) =>
-    spawn(
-      `npx expo export:embed --platform ios --dev false --minify false --bundle-output "${js}" --assets-dest "${dir}"`,
-      { cwd: ROOT, stdio: ["ignore", "ignore", "inherit"], shell: true, env: { ...process.env, EXPO_PUBLIC_DOMAIN: `http://${ip}:${SERVER_PORT}` } },
-    ).on("exit", resolve),
-  );
-  if (code !== 0) fail("Building the JS bundle failed (log above).");
-  // react-native-xcode.sh's Release step. hermesc directly, not export:embed --bytecode: that one's output differs run to run, which would reinstall every time.
-  const hermes = createRequire(createRequire(path.join(ROOT, "package.json")).resolve("react-native/package.json")).resolve("hermes-compiler/package.json");
-  const hermesc = path.join(path.dirname(hermes), "hermesc", "win64-bin", "hermesc.exe");
-  if (spawnSync(hermesc, ["-emit-binary", "-O", "-w", "-out", path.join(dir, "main.jsbundle"), js], { stdio: "inherit" }).status !== 0) {
-    fail("Compiling the bundle to Hermes bytecode failed (log above).");
-  }
-  return { dir, hash: hashTree(dir) };
-}
-
-/** Unpacks the Release .ipa and puts the bundle and its assets where Xcode's bundling phase would. */
-function withBundle(home, ipa, bundleDir) {
-  const work = path.join(home, "app");
-  rmSync(work, { recursive: true, force: true });
-  mkdirSync(work, { recursive: true });
-  // Windows' own bsdtar reads zip; Git's GNU tar, earlier on some PATHs, does not.
-  const tar = path.join(process.env.SystemRoot ?? "C:\\Windows", "System32", "tar.exe");
-  if (spawnSync(tar, ["-xf", ipa, "-C", work], { stdio: "inherit" }).status !== 0) fail(`Unpacking ${ipa} failed.`);
-  const payload = path.join(work, "Payload");
-  const app = path.join(payload, readdirSync(payload).find((f) => f.endsWith(".app")));
-  rmSync(path.join(app, "assets"), { recursive: true, force: true });
-  cpSync(bundleDir, app, { recursive: true });
-  return app;
+  for (const old of readdirSync(buildsDir)) if (old !== String(id)) rmSync(path.join(buildsDir, old), { recursive: true, force: true });
+  return { ipa: path.join(dir, "murlan-dev.ipa"), fingerprint: readFileSync(path.join(dir, "fingerprint.txt"), "utf8").trim() };
 }
 
 function ask(question) {
@@ -315,21 +265,21 @@ async function sign(plumesign, ipa) {
   });
 }
 
-async function install(home, plumesign, pkg, build, forceLogin) {
+async function install(home, plumesign, build, forceLogin) {
   const accounts = path.join(process.env.APPDATA ?? "", "PlumeImpactor", "accounts.json");
   if (forceLogin || !existsSync(accounts)) await login(plumesign);
   console.log("• Signing and installing on the iPhone…");
-  let result = await sign(plumesign, pkg);
+  let result = await sign(plumesign, build.ipa);
   if (!result.ok && /login|session|authenticat|token|No account/i.test(result.error)) {
     await login(plumesign);
-    result = await sign(plumesign, pkg);
+    result = await sign(plumesign, build.ipa);
   }
   if (!result.ok && /pair|trust|password protected|locked/i.test(result.error)) {
     fail("The iPhone has not trusted this PC: unlock it, open the Apple Devices app, tap Trust on the phone, then rerun.");
   }
   if (!result.ok) fail("Install failed (log above). Keep the iPhone unlocked; if a free-account limit is named, delete an old sideloaded app.");
   const first = !existsSync(path.join(home, "state.json"));
-  writeFileSync(path.join(home, "state.json"), JSON.stringify({ build, installedAt: Date.now() }));
+  writeFileSync(path.join(home, "state.json"), JSON.stringify({ fingerprint: build.fingerprint, installedAt: Date.now() }));
   if (first) {
     console.log(
       "\n  First install, on the iPhone once:\n" +
@@ -350,7 +300,9 @@ function killTree(child) {
   if (child.pid && child.exitCode === null) spawnSync("taskkill", ["/pid", String(child.pid), "/T", "/F"], { stdio: "ignore" });
 }
 
-async function serve(home, ip, variant) {
+async function serve(home) {
+  const ip = lanAddress(os.networkInterfaces());
+  if (!ip) fail("No Wi-Fi/LAN address on this PC; the phone must share a network with it.");
   let server;
   if (await portOpen(SERVER_PORT)) {
     console.log(`• Game server already running on :${SERVER_PORT}; using it.`);
@@ -372,13 +324,6 @@ async function serve(home, ip, variant) {
     }
     exited.then((code) => console.error(`\n✖ The game server stopped (${code}); online play is down. See ${logFile}.`));
     console.log("• Game server up.");
-  }
-  if (variant === "release") {
-    console.log(
-      "\n• Open Murlan on the iPhone. It runs the JS built above; after a code change, rerun npm run ios:device." +
-        (server ? "\n  The game server runs until Ctrl+C." : ""),
-    );
-    return;
   }
   console.log(`• Metro for the dev build at http://${ip}:8081. First time: scan the QR code with the iPhone camera.\n`);
   const metro = spawn("npx expo start --dev-client --lan", {
@@ -404,20 +349,15 @@ async function main() {
   const home = path.join(process.env.LOCALAPPDATA ?? os.homedir(), "murlan-ios");
   mkdirSync(path.join(home, "builds"), { recursive: true });
 
-  const ip = lanAddress(os.networkInterfaces());
-  if (!ip) fail("No Wi-Fi/LAN address on this PC; the phone must share a network with it.");
-  const variant = args.includes("--dev") ? "dev" : "release";
-  const bundled = variant === "release" ? bundle(home, ip) : null;
-  const [plumesign, build, js] = await Promise.all([ensurePlumesign(home), latestBuild(home, ref, ARTIFACTS[variant]), bundled]);
-  const id = [variant, build.fingerprint, js?.hash].filter(Boolean).join(":");
+  const [plumesign, build] = await Promise.all([ensurePlumesign(home), latestBuild(home, ref)]);
   const statePath = path.join(home, "state.json");
   const state = existsSync(statePath) ? JSON.parse(readFileSync(statePath, "utf8")) : null;
-  if (args.includes("--reinstall") || args.includes("--login") || needsInstall(state, { build: id, now: Date.now() })) {
-    await install(home, plumesign, js ? withBundle(home, build.ipa, js.dir) : build.ipa, id, args.includes("--login"));
+  if (args.includes("--reinstall") || args.includes("--login") || needsInstall(state, { fingerprint: build.fingerprint, now: Date.now() })) {
+    await install(home, plumesign, build, args.includes("--login"));
   } else {
     console.log(`• The installed build is current (signed ${((Date.now() - state.installedAt) / 86400000).toFixed(1)} days ago).`);
   }
-  await serve(home, ip, variant);
+  await serve(home);
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) await main();

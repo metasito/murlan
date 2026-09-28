@@ -1,36 +1,16 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from "node:fs";
-import os from "node:os";
-import path from "node:path";
 import { PassThrough, Writable } from "node:stream";
-import { errorLine, hashTree, lanAddress, needsInstall, parseDevices, pickRun, readHidden } from "../../scripts/ios-device.mjs";
+import { errorLine, lanAddress, needsInstall, parseDevices, pickRun, readHidden } from "../../scripts/ios-device.mjs";
 
 const DAY = 24 * 60 * 60 * 1000;
 
-test("reinstalls only on a first run, a changed build, or a certificate near its 7-day expiry", () => {
-  const state = { build: "b1", installedAt: 0 };
-  assert.equal(needsInstall(null, { build: "b1", now: 0 }), true);
-  assert.equal(needsInstall(state, { build: "b1", now: 5 * DAY }), false);
-  assert.equal(needsInstall(state, { build: "b2", now: DAY }), true);
-  assert.equal(needsInstall(state, { build: "b1", now: 6 * DAY + 1 }), true);
-});
-
-test("the bundle hash moves with a file's bytes, its path, and an added file", () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "ios-hash-"));
-  mkdirSync(path.join(dir, "assets"));
-  writeFileSync(path.join(dir, "main.jsbundle"), "a");
-  writeFileSync(path.join(dir, "assets", "x.png"), "b");
-  const first = hashTree(dir);
-  assert.equal(hashTree(dir), first);
-  writeFileSync(path.join(dir, "assets", "x.png"), "c");
-  const edited = hashTree(dir);
-  assert.notEqual(edited, first);
-  renameSync(path.join(dir, "assets", "x.png"), path.join(dir, "assets", "y.png"));
-  assert.notEqual(hashTree(dir), edited);
-  writeFileSync(path.join(dir, "assets", "z.png"), "");
-  assert.notEqual(hashTree(dir), edited);
-  rmSync(dir, { recursive: true, force: true });
+test("reinstalls only on a first run, a native change, or a certificate near its 7-day expiry", () => {
+  const state = { fingerprint: "f1", installedAt: 0 };
+  assert.equal(needsInstall(null, { fingerprint: "f1", now: 0 }), true);
+  assert.equal(needsInstall(state, { fingerprint: "f1", now: 5 * DAY }), false);
+  assert.equal(needsInstall(state, { fingerprint: "f2", now: DAY }), true);
+  assert.equal(needsInstall(state, { fingerprint: "f1", now: 6 * DAY + 1 }), true);
 });
 
 test("the LAN address skips virtual adapters and public addresses", () => {

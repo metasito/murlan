@@ -1,8 +1,7 @@
 name: iOS device build (sideload)
 
-# Two unsigned .ipas, which `npm run ios:device` signs with a free Apple ID and installs (#1316):
-# Debug with the dev client, whose JS comes from Metro, and Release with no JS in it, into which
-# the script puts a bundle it builds on the PC. Only a change to the native inputs needs a new build.
+# An unsigned Debug .ipa with the dev client, which `npm run ios:device` signs with a free Apple ID
+# and installs (#1316). JS comes from Metro, so only a change to the native inputs needs a new build.
 on:
   workflow_dispatch:
   push:
@@ -23,17 +22,9 @@ permissions:
 
 jobs:
   build:
-    name: Build the unsigned ${{ matrix.configuration }} .ipa
+    name: Build the unsigned dev-client .ipa
     runs-on: macos-latest
     timeout-minutes: 60
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - configuration: Debug
-            artifact: murlan-ios-dev
-          - configuration: Release
-            artifact: murlan-ios-release
 
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -54,7 +45,7 @@ jobs:
             | node -p "JSON.parse(require('fs').readFileSync(0, 'utf8')).hash")
           xcode=$(xcodebuild -version | shasum | cut -c1-12)
           echo "hash=$hash" >> "$GITHUB_OUTPUT"
-          echo "key=ios-device-${{ runner.arch }}-${{ matrix.configuration }}-$xcode-${{ hashFiles('.github/workflows/ios-device.yml') }}-$hash" >> "$GITHUB_OUTPUT"
+          echo "key=ios-device-${{ runner.arch }}-$xcode-${{ hashFiles('.github/workflows/ios-device.yml') }}-$hash" >> "$GITHUB_OUTPUT"
 
       - uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         id: cached
@@ -75,20 +66,18 @@ jobs:
           scheme=$(basename "$workspace" .xcworkspace)
           # Plain http to the PC's LAN address: Metro on 8081 and the game server on 5000.
           plutil -replace NSAppTransportSecurity.NSAllowsLocalNetworking -bool YES "ios/$scheme/Info.plist"
-          plutil -replace NSLocalNetworkUsageDescription -string "Murlan reaches the game server on this network." "ios/$scheme/Info.plist"
           xcodebuild \
             -workspace "$workspace" \
             -scheme "$scheme" \
-            -configuration ${{ matrix.configuration }} \
+            -configuration Debug \
             -sdk iphoneos \
             -destination generic/platform=iOS \
             -derivedDataPath "$RUNNER_TEMP/DerivedData" \
             COMPILER_INDEX_STORE_ENABLE=NO \
             CODE_SIGNING_ALLOWED=NO \
-            SKIP_BUNDLING=${{ matrix.configuration == 'Release' && '1' || '' }} \
             build
           app=""
-          for candidate in "$RUNNER_TEMP/DerivedData/Build/Products/${{ matrix.configuration }}-iphoneos/"*.app; do
+          for candidate in "$RUNNER_TEMP/DerivedData/Build/Products/Debug-iphoneos/"*.app; do
             [ -d "$candidate" ] && { app="$candidate"; break; }
           done
           [ -n "$app" ] || { echo "::error::xcodebuild produced no .app."; exit 1; }
@@ -106,12 +95,12 @@ jobs:
           out="$RUNNER_TEMP/ipa"
           mkdir -p "$out/Payload"
           cp -R "$RUNNER_TEMP"/ios-device-app/*.app "$out/Payload/"
-          (cd "$out" && zip -qry murlan.ipa Payload && rm -rf Payload)
+          (cd "$out" && zip -qry murlan-dev.ipa Payload && rm -rf Payload)
           echo "${{ steps.native.outputs.hash }}" > "$out/fingerprint.txt"
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: ${{ matrix.artifact }}
+          name: murlan-ios-dev
           path: ${{ runner.temp }}/ipa/
           if-no-files-found: error
           retention-days: 90
