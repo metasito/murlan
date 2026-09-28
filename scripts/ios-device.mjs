@@ -14,6 +14,7 @@ import { existsSync, mkdirSync, openSync, readFileSync, readdirSync, rmSync, wri
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
+import { createRequire } from "node:module";
 import readline from "node:readline";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -105,7 +106,7 @@ function usbmuxd(message) {
 
 async function waitForIphone() {
   let told = false;
-  for (const deadline = Date.now() + 5 * 60 * 1000; Date.now() < deadline; ) {
+  for (;;) {
     let devices;
     try {
       devices = parseDevices(await usbmuxd({ MessageType: "ListDevices" }));
@@ -122,7 +123,6 @@ async function waitForIphone() {
     }
     await new Promise((r) => setTimeout(r, 2000));
   }
-  fail("No iPhone after five minutes.");
 }
 
 async function ensurePlumesign(home) {
@@ -218,7 +218,7 @@ async function install(home, plumesign, build, udid, forceLogin) {
   if (forceLogin || !existsSync(accounts)) await login(plumesign);
   console.log("• Signing and installing on the iPhone…");
   let result = await sign(plumesign, build.ipa, udid);
-  if (!result.ok && /login|session|authenticat|token|password|No account/i.test(result.log)) {
+  if (!result.ok && /login|session|authenticat|token|No account/i.test(result.log)) {
     await login(plumesign);
     result = await sign(plumesign, build.ipa, udid);
   }
@@ -263,7 +263,9 @@ async function serve(home) {
       stdio: ["ignore", out, out],
       env: { ...process.env, E2E_SKIP_BUILD: "1" },
     });
-    server.on("exit", (code) => code && console.error(`\n✖ Game server exited (${code}); see ${logFile}`));
+    server.on("exit", (code) =>
+      code && console.error(`\n✖ Game server exited (${code}); see ${logFile}. A stale web bundle is rebuilt by \`npm run play\`.`),
+    );
     process.on("exit", () => killTree(server));
     process.on("SIGINT", () => process.exit(130));
   }
@@ -282,6 +284,12 @@ async function main() {
   const args = process.argv.slice(2);
   const refAt = args.indexOf("--ref");
   const ref = refAt === -1 ? "main" : args[refAt + 1];
+  try {
+    createRequire(path.join(ROOT, "package.json")).resolve("expo-dev-client/package.json");
+  } catch {
+    console.log("• Installing dependencies (expo-dev-client is missing)…");
+    if (spawnSync("npm", ["install"], { cwd: ROOT, stdio: "inherit", shell: true }).status !== 0) fail("npm install failed.");
+  }
   const home = path.join(process.env.LOCALAPPDATA ?? os.homedir(), "murlan-ios");
   mkdirSync(path.join(home, "builds"), { recursive: true });
 
