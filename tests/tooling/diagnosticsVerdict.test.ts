@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import type { AddressInfo } from "node:net";
 import { createCollector } from "../../scripts/diagnostics-collector.mjs";
-import { verdict } from "../../scripts/diagnostics-verdict.mjs";
+import { flingerUnderruns, flingerVerdict, verdict } from "../../scripts/diagnostics-verdict.mjs";
 
 const RELEASE = { k: "build", t: 0, dev: false, scriptURL: "file:///var/containers/Bundle/Application/X/murlan.app/main.jsbundle" };
 
@@ -61,4 +61,55 @@ test("a verdict stands only on a Release build with an embedded bundle; anything
     assert.equal(v?.metrics.frames, 1);
     assert.equal(typeof v?.metrics.unrun, "string");
   }
+});
+
+function soakRows(opts: { minutes: number; mbPerMin: number; lateSteps?: number; state?: string; playsPerMin?: number; rate?: number; name?: string }) {
+  const rows: object[] = [];
+  const end = opts.minutes * 60000;
+  for (let t = 0; t <= end; t += 10000) {
+    const late = opts.lateSteps && t > end / 2 && t % 60000 === 0 ? 30 : 0;
+    rows.push({ k: "engine", t, state: opts.state ?? "running", audioMs: t * (opts.rate ?? 1) + 5 + late, plays: 0 });
+    rows.push({ k: "footprint", t, mb: 150 + (opts.mbPerMin * t) / 60000 });
+  }
+  const plays = Math.round(opts.minutes * (opts.playsPerMin ?? 50));
+  for (let i = 0; i < plays; i++) rows.push({ k: "play", t: (i * end) / plays, id: "turn", at: (i * end) / plays, bus: "sfx", dropped: false, lead: 0 });
+  const name = opts.name ?? "soak";
+  return [
+    { session: "s", k: "build", t: 0, dev: false, scriptURL: "assets://index.android.bundle" },
+    { session: "s", k: "scenario", t: 0, name, phase: "start" },
+    ...rows.map((r) => ({ session: "s", ...r })),
+    { session: "s", k: "scenario", t: end, name, phase: "end", error: null },
+  ];
+}
+
+test("a flat half-hour soak passes, and so does one whose audio clock runs 1% fast", () => {
+  assert.equal(verdict(soakRows({ minutes: 30, mbPerMin: 0.2 }), "soak")?.pass, true);
+  assert.equal(verdict(soakRows({ minutes: 30, mbPerMin: 0.2, rate: 1.01 }), "soak")?.pass, true);
+});
+
+test("the smoke passes a running clock, and fails a clock that stands still as 'no audio device'", () => {
+  assert.equal(verdict(soakRows({ minutes: 1, mbPerMin: 0, name: "smoke" }), "smoke")?.pass, true);
+  const still = verdict(soakRows({ minutes: 1, mbPerMin: 0, rate: 0, name: "smoke" }), "smoke");
+  assert.equal(still?.pass, false);
+  assert.equal(still?.metrics.error, "no audio device");
+  assert.equal(verdict(soakRows({ minutes: 1, mbPerMin: 0, state: "suspended", name: "smoke" }), "smoke")?.pass, false);
+});
+
+const FLINGER = (partial: number, empty: number) =>
+  `Output thread 0x7b2c type 0 (MIXER):\n  Normal mixer raw underrun counters: partial=${partial} empty=${empty}\nOutput thread 0x7b40 type 0 (MIXER):\n  Normal mixer raw underrun counters: partial=1 empty=0\n`;
+
+test("underruns are summed over every output thread, and a dump without the counters is no reading", () => {
+  assert.equal(flingerUnderruns(FLINGER(3, 4)), 8);
+  assert.equal(flingerUnderruns("Output thread 0x7b2c type 0 (MIXER):\n  Standby: no\n"), null);
+  assert.equal(flingerVerdict(FLINGER(3, 4), FLINGER(20, 30)).pass, true);
+  assert.equal(flingerVerdict(FLINGER(3, 4), FLINGER(40, 40)).pass, false);
+  assert.equal(flingerVerdict(FLINGER(3, 4), "no counters").pass, false);
+});
+
+test("a soak fails on a 2 MB/min leak, growing lag jumps, a stopped context, too few plays, or too short a run", () => {
+  assert.equal(verdict(soakRows({ minutes: 30, mbPerMin: 2 }), "soak")?.pass, false);
+  assert.equal(verdict(soakRows({ minutes: 30, mbPerMin: 0.2, lateSteps: 1 }), "soak")?.pass, false);
+  assert.equal(verdict(soakRows({ minutes: 30, mbPerMin: 0.2, state: "suspended" }), "soak")?.pass, false);
+  assert.equal(verdict(soakRows({ minutes: 30, mbPerMin: 0.2, playsPerMin: 20 }), "soak")?.pass, false);
+  assert.equal(verdict(soakRows({ minutes: 10, mbPerMin: 0.2 }), "soak")?.pass, false);
 });

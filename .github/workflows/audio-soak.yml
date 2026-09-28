@@ -1,0 +1,171 @@
+# The 30-minute engine soak (#1259). Not on pull_request: 30 minutes a platform.
+name: Audio soak
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 3 * * 1"
+
+concurrency:
+  group: audio-soak-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "24"
+  EXPO_PUBLIC_DIAGNOSTICS: "1"
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - name: Generate the native project, on the NDK React Native pins
+        run: |
+          npx expo prebuild --platform android --no-install
+          want=$(sed -n 's/^ndkVersion = "\(.*\)"$/\1/p' node_modules/react-native/gradle/libs.versions.toml)
+          have=$(ls "$ANDROID_HOME/ndk" | grep "^${want%%.*}\." | sort -V | tail -1)
+          [ -n "$have" ] || { echo "::error::No NDK ${want%%.*}.x under $ANDROID_HOME/ndk."; exit 1; }
+          sed -i "1i ext.ndkVersion = \"$have\"" android/build.gradle
+          grep -q 'usesCleartextTraffic="true"' android/app/src/main/AndroidManifest.xml
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+      - name: Build a diagnostics release
+        run: |
+          ./android/gradlew -p android assembleRelease -PreactNativeArchitectures=x86_64 -x lintVitalRelease --no-daemon
+          apk=$(ls android/app/build/outputs/apk/release/*.apk | head -1)
+          [ -n "$apk" ] || { echo "::error::assembleRelease produced no APK."; exit 1; }
+          unzip -q "$apk" -d "$RUNNER_TEMP/apk"
+          node scripts/e2eBuildMark.mjs --present "$RUNNER_TEMP/apk" --mark diagnostics
+          aapt=$(find "$ANDROID_HOME/build-tools" -name aapt2 | sort | tail -1)
+          echo "APP_APK=$GITHUB_WORKSPACE/$apk" >> "$GITHUB_ENV"
+          echo "APP_ID=$("$aapt" dump packagename "$apk")" >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/soak"
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Start the collector
+        run: |
+          nohup node scripts/diagnostics-collector.mjs "$RUNNER_TEMP/soak/android.ndjson" > "$RUNNER_TEMP/soak/collector.log" 2>&1 &
+          for _ in $(seq 1 20); do curl -sf http://127.0.0.1:5099/ >/dev/null && break; sleep 1; done
+          curl -sf http://127.0.0.1:5099/
+      - name: Soak on the emulator
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          emulator-options: -no-window -no-boot-anim -gpu swangle_indirect -camera-back none
+          disable-animations: false
+          emulator-boot-timeout: 900
+          script: |
+            timeout 300 adb wait-for-device
+            i=0; until adb shell "getprop init.svc.bootanim | grep -q stopped && cmd package list packages > /dev/null 2>&1"; do i=$((i+1)); [ $i -lt 150 ] || { echo "::error::The framework never began serving."; exit 1; }; sleep 2; done
+            adb shell settings put global hide_error_dialogs 1
+            timeout 300 adb install -r "$APP_APK"
+            adb shell dumpsys media.audio_flinger > "$RUNNER_TEMP/soak/audio-flinger-start.txt" 2>&1 || true
+            adb shell "am start -W -a android.intent.action.VIEW -d 'murlan://bench?host=10.0.2.2&scenario=smoke,soak&minutes=30&capture=0' $APP_ID"
+            i=0; until grep -q '"name":"smoke","phase":"end"' "$RUNNER_TEMP/soak/android.ndjson" 2>/dev/null; do i=$((i+1)); [ $i -lt 90 ] || { echo "::error::The bench never finished the smoke."; exit 1; }; sleep 2; done
+            node scripts/diagnostics-verdict.mjs "$RUNNER_TEMP/soak/android.ndjson" smoke || { echo "::error::No audio device on this emulator: the engine's clock did not advance in the one-minute smoke."; exit 1; }
+            i=0; until grep -q '"name":"soak","phase":"start"' "$RUNNER_TEMP/soak/android.ndjson" 2>/dev/null; do i=$((i+1)); [ $i -lt 60 ] || { echo "::error::The bench never started the soak."; exit 1; }; sleep 2; done
+            nohup sh -c 'while true; do date -u +%H:%M:%S; adb shell dumpsys meminfo "$APP_ID" | grep -E "Native Heap|TOTAL PSS|TOTAL RSS"; sleep 60; done' > "$RUNNER_TEMP/soak/meminfo-series.txt" 2>&1 &
+            i=0; until grep -q '"name":"soak","phase":"end"' "$RUNNER_TEMP/soak/android.ndjson" 2>/dev/null; do i=$((i+1)); [ $i -lt 1140 ] || { echo "::error::The soak never ended."; exit 1; }; sleep 2; done
+            sleep 3
+            adb shell dumpsys media.audio_flinger > "$RUNNER_TEMP/soak/audio-flinger-end.txt" 2>&1 || true
+      - name: The soak gate
+        run: node scripts/diagnostics-verdict.mjs "$RUNNER_TEMP/soak/android.ndjson" soak
+      - name: The underrun gate (#1231)
+        run: node scripts/diagnostics-verdict.mjs --flinger "$RUNNER_TEMP/soak/audio-flinger-start.txt" "$RUNNER_TEMP/soak/audio-flinger-end.txt"
+      - name: Upload the soak record
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: audio-soak-android
+          path: ${{ runner.temp }}/soak/
+
+  ios:
+    runs-on: macos-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - name: Find and boot an iPhone simulator
+        run: |
+          udid=$(xcrun simctl list devices available -j | node tools/ci/pick-simulator.mjs)
+          echo "SIMULATOR_UDID=$udid" >> "$GITHUB_ENV"
+          xcrun simctl boot "$udid"
+      - run: npm ci
+      - name: Build a diagnostics release for the simulator
+        run: |
+          npx expo prebuild --platform ios --no-install
+          pod install --project-directory=ios
+          workspace=$(ls -d ios/*.xcworkspace | head -1)
+          scheme=$(basename "$workspace" .xcworkspace)
+          xcodebuild -workspace "$workspace" -scheme "$scheme" -configuration Release -sdk iphonesimulator \
+            -derivedDataPath "$RUNNER_TEMP/DerivedData" ONLY_ACTIVE_ARCH=YES CODE_SIGNING_ALLOWED=NO build
+          app=$(ls -d "$RUNNER_TEMP/DerivedData/Build/Products/Release-iphonesimulator/"*.app | head -1)
+          [ -n "$app" ] || { echo "::error::xcodebuild produced no .app."; exit 1; }
+          node scripts/e2eBuildMark.mjs --present "$app" --mark diagnostics
+          echo "APP_BUNDLE=$app" >> "$GITHUB_ENV"
+          echo "APP_ID=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Info.plist")" >> "$GITHUB_ENV"
+          echo "APP_EXE=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app/Info.plist")" >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/soak"
+      - name: Install the app and start the collector
+        run: |
+          xcrun simctl bootstatus "$SIMULATOR_UDID"
+          xcrun simctl install "$SIMULATOR_UDID" "$APP_BUNDLE"
+          nohup node scripts/diagnostics-collector.mjs "$RUNNER_TEMP/soak/ios.ndjson" > "$RUNNER_TEMP/soak/collector.log" 2>&1 &
+          for _ in $(seq 1 20); do curl -sf http://127.0.0.1:5099/ >/dev/null && break; sleep 1; done
+          curl -sf http://127.0.0.1:5099/
+      - name: Install Maestro
+        run: |
+          export MAESTRO_VERSION=2.10.0
+          curl -Ls "https://get.maestro.mobile.dev" | bash
+          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+          "$HOME/.maestro/bin/maestro" --version 2>&1 | tee /dev/stderr | grep -q "$MAESTRO_VERSION"
+      - name: Open the bench by its deep link
+        env:
+          MAESTRO_DRIVER_STARTUP_TIMEOUT: "300000"
+        run: maestro --device "$SIMULATOR_UDID" test -e MAESTRO_APP_ID="$APP_ID" .maestro/audio-soak.yaml
+      - name: The one-minute smoke, which tells a missing audio device from a broken engine
+        run: |
+          i=0; until grep -q '"name":"smoke","phase":"end"' "$RUNNER_TEMP/soak/ios.ndjson" 2>/dev/null; do i=$((i+1)); [ $i -lt 90 ] || { echo "::error::The bench never finished the smoke."; exit 1; }; sleep 2; done
+          node scripts/diagnostics-verdict.mjs "$RUNNER_TEMP/soak/ios.ndjson" smoke || { echo "::error::No audio device on this runner: the engine's clock did not advance in the one-minute smoke. The iOS soak is then G6 on the phone."; exit 1; }
+      - name: Soak
+        run: |
+          i=0; until grep -q '"name":"soak","phase":"start"' "$RUNNER_TEMP/soak/ios.ndjson" 2>/dev/null; do i=$((i+1)); [ $i -lt 60 ] || { echo "::error::The bench never started the soak."; exit 1; }; sleep 2; done
+          i=0; until grep -q '"name":"soak","phase":"end"' "$RUNNER_TEMP/soak/ios.ndjson" 2>/dev/null; do
+            i=$((i+1)); [ $i -lt 38 ] || { echo "::error::The soak never ended."; exit 1; }
+            pid=$(pgrep -x "$APP_EXE" | head -1)
+            echo "$(date -u +%H:%M:%S) pid=${pid:-none} rss_kb=$( [ -n "$pid" ] && ps -o rss= -p "$pid" | tr -d ' ')" >> "$RUNNER_TEMP/soak/host-rss.txt"
+            sleep 60
+          done
+          sleep 3
+      - name: The soak gate
+        run: node scripts/diagnostics-verdict.mjs "$RUNNER_TEMP/soak/ios.ndjson" soak
+      - name: Collect crash reports
+        if: always()
+        run: cp "$HOME/Library/Logs/DiagnosticReports/"*"$APP_EXE"* "$RUNNER_TEMP/soak/" 2>/dev/null || true
+      - name: Upload the soak record
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: audio-soak-ios
+          path: ${{ runner.temp }}/soak/

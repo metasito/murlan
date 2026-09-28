@@ -31,7 +31,7 @@ export function BenchScreen() {
   const stopJs = useRef<(() => void) | null>(null);
 
   const run = useCallback(
-    async (only?: string) => {
+    async (only?: string[]) => {
       if (running.current) return;
       running.current = true;
       recorder.postTo(collectorHost(params.host));
@@ -53,7 +53,7 @@ export function BenchScreen() {
         },
       };
       for (const [name, scenario] of benchScenarios()) {
-        if (only && only !== name) continue;
+        if (only && !only.includes(name)) continue;
         diag({ k: "scenario", t: performance.now(), name, phase: "start" });
         diag({ k: "latency", t: performance.now(), outputMs: probe.outputLatencyMs(), ioMs: probe.ioBufferMs(), inputMs: probe.inputLatencyMs() });
         const error = await scenario(ctx).then(() => null, (e: unknown) => String(e));
@@ -74,7 +74,7 @@ export function BenchScreen() {
   useEffect(() => {
     if (!params.scenario || autoRan.current) return;
     autoRan.current = true;
-    void run(params.scenario === "all" ? undefined : params.scenario);
+    void run(params.scenario === "all" ? undefined : params.scenario.split(","));
   }, [params.scenario, run]);
 
   return (
