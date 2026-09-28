@@ -1,0 +1,9 @@
+{
+  "platforms": ["apple", "android"],
+  "apple": {
+    "modules": ["Rss1259Module"]
+  },
+  "android": {
+    "modules": ["expo.modules.rss1259.Rss1259Module"]
+  }
+}

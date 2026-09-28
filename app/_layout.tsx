@@ -54,9 +54,11 @@ export function RootLayoutNav() {
   // backgrounded is lib/device/music.ts's own concern (its AppState listener), not
   // this route effect's.
   const track = trackForRoute(pathname);
+  // [RESEARCH-1259] never merged: the soak owns all audio.
+  const soak = pathname.startsWith("/soak1259");
   useEffect(() => {
-    void playMusic(track);
-  }, [track]);
+    if (!soak) void playMusic(track);
+  }, [track, soak]);
 
   return (
     <View style={{ flex: 1 }}>
