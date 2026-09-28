@@ -50,6 +50,7 @@ export function parseDevices(xml) {
     .slice(1)
     .map((chunk) => ({
       udid: /<key>SerialNumber<\/key>\s*<string>([^<]+)<\/string>/.exec(chunk)?.[1],
+      id: /<key>DeviceID<\/key>\s*<integer>(\d+)<\/integer>/.exec(chunk)?.[1],
       connection: /<key>ConnectionType<\/key>\s*<string>([^<]+)<\/string>/.exec(chunk)?.[1],
     }))
     .filter((d) => d.udid)
@@ -140,7 +141,7 @@ async function waitForIphone() {
       }
       fail(`The Apple Mobile Device service failed: ${error.message}. Reopen the Apple Devices app and rerun.`);
     }
-    if (devices[0]) return devices[0].udid;
+    if (devices[0]) return devices[0];
     if (!told) {
       console.log(
         "• Waiting for the iPhone: plug it in by USB (a data cable, not charge-only), unlock it,\n" +
@@ -242,10 +243,17 @@ async function login(plumesign) {
   if (code !== 0) fail("Apple ID sign-in failed.");
 }
 
-function sign(plumesign, ipa, udid) {
+/** The `Error:` line plumesign exits with; its info lines ("Restoring session…") must not be read as failures. */
+export function errorLine(log) {
+  return log.split(/\r?\n/).findLast((l) => l.startsWith("Error:")) ?? "";
+}
+
+async function sign(plumesign, ipa) {
+  // plumesign's `--udid` matches usbmuxd's DeviceID, which changes on every reconnect, so it is read at the last moment.
+  const { id } = await waitForIphone();
   return new Promise((resolve) => {
     let log = "";
-    const child = spawn(plumesign, ["sign", "--package", ipa, "--apple-id", "--register-and-install", "--udid", udid], {
+    const child = spawn(plumesign, ["sign", "--package", ipa, "--apple-id", "--register-and-install", "--udid", id], {
       stdio: ["inherit", "inherit", "pipe"],
       env: { ...process.env, RUST_LOG: "info" },
     });
@@ -253,7 +261,7 @@ function sign(plumesign, ipa, udid) {
       log += d;
       process.stderr.write(d);
     });
-    child.on("exit", (code) => resolve({ ok: code === 0, log }));
+    child.on("exit", (code) => resolve({ ok: code === 0, error: errorLine(log) }));
   });
 }
 
@@ -261,12 +269,12 @@ async function install(home, plumesign, build, udid, forceLogin) {
   const accounts = path.join(process.env.APPDATA ?? "", "PlumeImpactor", "accounts.json");
   if (forceLogin || !existsSync(accounts)) await login(plumesign);
   console.log("• Signing and installing on the iPhone…");
-  let result = await sign(plumesign, build.ipa, udid);
-  if (!result.ok && /login|session|authenticat|token|No account/i.test(result.log)) {
+  let result = await sign(plumesign, build.ipa);
+  if (!result.ok && /login|session|authenticat|token|No account/i.test(result.error)) {
     await login(plumesign);
-    result = await sign(plumesign, build.ipa, udid);
+    result = await sign(plumesign, build.ipa);
   }
-  if (!result.ok && /pair|trust|password protected|locked/i.test(result.log)) {
+  if (!result.ok && /pair|trust|password protected|locked/i.test(result.error)) {
     fail("The iPhone has not trusted this PC: unlock it, open the Apple Devices app, tap Trust on the phone, then rerun.");
   }
   if (!result.ok) fail("Install failed (log above). Keep the iPhone unlocked; if a free-account limit is named, delete an old sideloaded app.");
@@ -337,7 +345,7 @@ async function main() {
   const home = path.join(process.env.LOCALAPPDATA ?? os.homedir(), "murlan-ios");
   mkdirSync(path.join(home, "builds"), { recursive: true });
 
-  const [plumesign, udid, build] = await Promise.all([ensurePlumesign(home), waitForIphone(), latestBuild(home, ref)]);
+  const [plumesign, { udid }, build] = await Promise.all([ensurePlumesign(home), waitForIphone(), latestBuild(home, ref)]);
   const statePath = path.join(home, "state.json");
   const state = existsSync(statePath) ? JSON.parse(readFileSync(statePath, "utf8")) : null;
   if (args.includes("--reinstall") || args.includes("--login") || needsInstall(state, { udid, fingerprint: build.fingerprint, now: Date.now() })) {
