@@ -7,7 +7,8 @@ import { moduleEdges } from "../helpers/moduleEdges.ts";
 import { sourcesUnder } from "../helpers/sourceScan.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-const DIRS = ["app", "components", "context", "lib", "modules"].filter((d) => existsSync(path.join(repoRoot, d)));
+const inDevice = (p: string) => `lib/device/${p}`;
+const DIRS =["app", "components", "context", "lib", "modules"].filter((d) => existsSync(path.join(repoRoot, d)));
 
 const OWNERS: Record<string, string[]> = {
   "react-native-audio-api": ["lib/device/audioEngine.ts"],
@@ -29,12 +30,12 @@ function importers(sources: [string, string][]): Map<string, string[]> {
 test("the scan sees a value import, a relative require and a package, and skips a type-only import", () => {
   const found = importers([
     ["components/x.tsx", 'import { play } from "@/lib/device/audioEngine";'],
-    ["lib/device/y.ts", 'import type { Bus } from "./audioEngine";'],
-    ["lib/device/w.ts", 'import { type Bus } from "./audioEngine";'],
-    ["lib/device/z.ts", 'const m = require("react-native-audio-api");'],
+    [inDevice("y.ts"), 'import type { Bus } from "./audioEngine";'],
+    [inDevice("w.ts"), 'import { type Bus } from "./audioEngine";'],
+    [inDevice("z.ts"), 'const m = require("react-native-audio-api");'],
   ]);
   assert.deepEqual(found.get("lib/device/audioEngine"), ["components/x.tsx"]);
-  assert.deepEqual(found.get("react-native-audio-api"), ["lib/device/z.ts"]);
+  assert.deepEqual(found.get("react-native-audio-api"), [inDevice("z.ts")]);
 });
 
 test("each audio layer is imported by its one owner and nothing else", () => {
