@@ -1,4 +1,4 @@
-import { afterEach, jest } from '@jest/globals';
+import { afterEach, beforeEach, jest } from '@jest/globals';
 
 import { assertWholeNumbers } from './fabricIntProps';
 
@@ -108,3 +108,13 @@ afterEach(() => {
 const testingLibrary = require('@testing-library/react-native') as {
   screen: { toJSON: () => unknown };
 };
+
+// The one mock of each audio layer: every other test reads what it recorded.
+jest.mock('react-native-audio-api', () => require('./mocks/audioApi').audioApiModule());
+jest.mock('@/modules/murlan-audio-session', () => require('./mocks/audioApi').audioSessionModule());
+jest.mock('@/lib/device/assetFiles', () => ({
+  localFiles: async (modules: number[]) => modules.map((_, i) => `file:///asset-${i}`),
+}));
+beforeEach(() => {
+  require('./mocks/audioApi').newEpoch();
+});

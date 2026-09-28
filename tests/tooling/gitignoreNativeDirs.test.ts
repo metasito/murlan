@@ -12,4 +12,5 @@ test("the generated native projects are ignored, and a local module's native sou
   assert.equal(ignored("android/app/build.gradle"), true);
   assert.equal(ignored("modules/murlan-diagnostics/ios/MurlanDiagnosticsModule.swift"), false);
   assert.equal(ignored("modules/murlan-diagnostics/android/build.gradle"), false);
+  assert.equal(ignored("modules/murlan-audio-session/ios/MurlanAudioSessionModule.swift"), false);
 });

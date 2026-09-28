@@ -18,6 +18,24 @@ const {
   HIT_SLOP_LITERAL_MESSAGE,
 } = require('./eslint.selectors.cjs');
 
+const ONLY_OWNERS = "ADR-0009: one owner per audio layer (tests/tooling/audioOwners.test.ts).";
+const PACKAGE_OWNERS = {
+  "react-native-audio-api": "lib/device/audioEngine.ts",
+};
+const GROUP_OWNERS = [
+  { group: ["**/modules/murlan-audio-session", "**/modules/murlan-audio-session/*"], owner: "lib/device/audioEngine.ts" },
+  { group: ["**/modules/murlan-diagnostics", "**/modules/murlan-diagnostics/*"], owner: "lib/diagnostics/probe.ts" },
+];
+const audioLayers = (file) => [
+  "error",
+  {
+    paths: Object.entries(PACKAGE_OWNERS)
+      .filter(([, owner]) => owner !== file)
+      .map(([name]) => ({ name, allowTypeImports: true, message: ONLY_OWNERS })),
+    patterns: GROUP_OWNERS.filter((g) => g.owner !== file).map(({ group }) => ({ group, allowTypeImports: true, message: ONLY_OWNERS })),
+  },
+];
+
 module.exports = defineConfig([
   expoConfig,
   {
@@ -95,6 +113,14 @@ module.exports = defineConfig([
       ],
     },
   },
+  {
+    files: ["app/**/*.{ts,tsx}", "components/**/*.{ts,tsx}", "context/**/*.{ts,tsx}", "lib/**/*.{ts,tsx}"],
+    rules: { "@typescript-eslint/no-restricted-imports": audioLayers(null) },
+  },
+  ...["lib/device/audioEngine.ts", "lib/diagnostics/probe.ts"].map((file) => ({
+    files: [file],
+    rules: { "@typescript-eslint/no-restricted-imports": audioLayers(file) },
+  })),
   {
     // `eslint-config-expo` registers `@typescript-eslint` only for TS files, and
     // a flat-config block may only name a rule from a plugin registered for the
