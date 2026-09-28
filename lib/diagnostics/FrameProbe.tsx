@@ -1,10 +1,9 @@
-import { useEffect } from "react";
-import { useFrameCallback, useSharedValue } from "react-native-reanimated";
+import { useEffect, useState } from "react";
+import { useFrameCallback, useSharedValue, type FrameInfo, type SharedValue } from "react-native-reanimated";
 import { diag, jsFromWall } from "./index";
 
-export function FrameProbe({ on }: { on: boolean }) {
-  const samples = useSharedValue<number[]>([]);
-  useFrameCallback((frame) => {
+function sampler(samples: SharedValue<number[]>) {
+  return (frame: FrameInfo) => {
     "worklet";
     const dt = frame.timeSincePreviousFrame;
     if (dt === null) return;
@@ -13,7 +12,13 @@ export function FrameProbe({ on }: { on: boolean }) {
       a.push(Date.now(), dt);
       return a;
     }, false);
-  }, on);
+  };
+}
+
+export function FrameProbe({ on }: { on: boolean }) {
+  const samples = useSharedValue<number[]>([]);
+  const [onFrame] = useState(() => sampler(samples));
+  useFrameCallback(onFrame, on);
   useEffect(() => {
     if (on) return;
     const a = samples.value;

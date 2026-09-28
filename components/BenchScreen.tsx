@@ -4,7 +4,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import { useKeepAwake } from "expo-keep-awake";
 import { GameTable } from "@/components/GameTable";
 import type { GameState } from "@/lib/game/gameEngine";
-import { Colors, FontSize, Spacing, Type } from "@/lib/theme";
+import { Colors, FontSize, Spacing, TOUCH_TARGET_MIN, Type } from "@/lib/theme";
 import { diag } from "@/lib/diagnostics";
 import { recorder } from "@/lib/diagnostics/recorder";
 import { benchScenarios, type BenchContext } from "@/lib/diagnostics/bench";
@@ -100,6 +100,6 @@ export function BenchScreen() {
 
 const styles = StyleSheet.create({
   page: { padding: Spacing.lg, gap: Spacing.md, backgroundColor: Colors.bg },
-  button: { padding: Spacing.md, backgroundColor: Colors.bgSurface },
+  button: { minWidth: TOUCH_TARGET_MIN, minHeight: TOUCH_TARGET_MIN, padding: Spacing.md, backgroundColor: Colors.bgSurface },
   text: { ...Type.bodyStrong, fontSize: FontSize.sm },
 });
