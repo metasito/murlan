@@ -21,6 +21,7 @@ import { APP_FONTS } from "@/lib/device/fonts";
 import { bindWebAudioUnlock } from "@/lib/device/sounds";
 import { installGlobalErrorHandlers, setCurrentScreen } from "@/lib/errorReporting";
 import { playMusic, type MusicTrack } from "@/lib/device/music";
+import { startFeedback } from "@/lib/device/feedback";
 import { UpdateRequired } from "@/components/UpdateRequired";
 import { DIAGNOSTICS } from "@/lib/diagnostics";
 import "@/lib/e2eBuildMark";
@@ -111,6 +112,9 @@ export default function RootLayout() {
   // catch. Here rather than on the game screen so the tap that opens a menu
   // already counts.
   useEffect(bindWebAudioUnlock, []);
+  useEffect(() => {
+    void startFeedback();
+  }, []);
 
   // A React error boundary sees render, lifecycle and commit errors and nothing
   // else. Rejected promises, socket callbacks and timers throw past it.

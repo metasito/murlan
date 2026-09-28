@@ -9,43 +9,11 @@ import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals
 import React from 'react';
 import { act, render } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-
-jest.mock('@/lib/device/sounds', () => ({
-  playCardSelect: jest.fn(async () => {}),
-  playCardPlay: jest.fn(async () => {}),
-  playCombo: jest.fn(async () => {}),
-  playCardPass: jest.fn(async () => {}),
-  playTurn: jest.fn(async () => {}),
-  playRoundStart: jest.fn(async () => {}),
-  playRoundWin: jest.fn(async () => {}),
-  playClockRunningOut: jest.fn(async () => {}),
-  stopClockRunningOut: jest.fn(async () => {}),
-  playBomb: jest.fn(async () => {}),
-  playMancheWon: jest.fn(async () => {}),
-  playMancheLost: jest.fn(async () => {}),
-  playDeal: jest.fn(async () => {}),
-  playExchange: jest.fn(async () => {}),
-  preloadSounds: jest.fn(async () => {}),
-  holdSounds: jest.fn(() => () => {}),
-  setSoundsMasterEnabled: jest.fn(() => {}),
-  setSoundsMasterVolume: jest.fn(() => {}),
-  ensureAudioMode: jest.fn(async () => {}),
-}));
-
-jest.mock('expo-haptics', () => ({
-  selectionAsync: jest.fn(async () => {}),
-  impactAsync: jest.fn(async () => {}),
-  notificationAsync: jest.fn(async () => {}),
-  ImpactFeedbackStyle: { Light: 'light', Medium: 'medium', Heavy: 'heavy' },
-  NotificationFeedbackType: { Success: 'success', Error: 'error', Warning: 'warning' },
-}));
-
-import * as Haptics from 'expo-haptics';
-import { playMancheWon, playMancheLost } from '@/lib/device/sounds';
 import { GameTable } from '@/components/GameTable';
 import { handOffDelayMs } from '@/components/flightPhysics';
 import { motionMs } from '@/lib/theme';
 import type { GameState, Player } from '@/lib/game/gameEngine';
+import { bootFeedback, ctxAt, haptics, settle as advance, sounds, startsOf } from './helpers/feedback';
 
 const METRICS = {
   frame: { x: 0, y: 0, width: 844, height: 390 },
@@ -69,11 +37,20 @@ const finished = (rankings: string[]): GameState => ({
 });
 
 const noop = () => {};
+const scoresFor = (rankings: string[]) => Object.fromEntries(rankings.map((id, i) => [id, rankings.length - 1 - i]));
 
-const table = (rankings: string[], viewerSeat: number, gameOver = true) => (
+const table = (
+  rankings: string[],
+  viewerSeat: number,
+  gameOver = true,
+  { matchOver = false, matchWinners = [] as string[] } = {}
+) => (
   <SafeAreaProvider initialMetrics={METRICS}>
     <GameTable
       gameState={{ ...finished(rankings), gameOver }}
+      handScores={scoresFor(rankings)}
+      matchOver={matchOver}
+      matchWinners={matchWinners}
       viewerSeat={viewerSeat}
       selectedIds={[]}
       onSelectCard={noop}
@@ -172,96 +149,86 @@ const wonTeamsTable = (viewerSeat: number) => (
 );
 
 const STING_MS = handOffDelayMs(false) + motionMs('shift', false);
-const settle = (ms = STING_MS) => act(async () => jest.advanceTimersByTime(ms));
+const settle = (ms = STING_MS) => advance(ms);
 
 describe('the end-of-hand sting', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
+  beforeEach(async () => {
     jest.useFakeTimers();
+    await bootFeedback();
   });
   afterEach(() => {
     jest.useRealTimers();
   });
 
-  it('waits for the deciding card to land and hold before it plays', async () => {
+  it('schedules the win sting in the engine at the landing and its hold', async () => {
+    const t0 = performance.now();
     const r = await render(table(ID_RANKINGS, 0));
-    await settle(STING_MS - 1);
-    expect(playMancheWon).not.toHaveBeenCalled();
-    expect(jest.mocked(Haptics.notificationAsync)).not.toHaveBeenCalledWith(
-      Haptics.NotificationFeedbackType.Success
-    );
-    await settle(1);
-    expect(playMancheWon).toHaveBeenCalledTimes(1);
+    await advance();
+    expect(startsOf('mancheWon')).toEqual([expect.closeTo(ctxAt(t0 + STING_MS), 2)]);
     await r.unmount();
   });
 
-  it('drops a pending sting when the table unmounts before it lands', async () => {
+  it('a sting already in the engine survives the table unmounting (#5)', async () => {
     const r = await render(table(ID_RANKINGS, 0));
+    await advance();
     await r.unmount();
-    jest.advanceTimersByTime(STING_MS);
-    expect(playMancheWon).not.toHaveBeenCalled();
+    expect(startsOf('mancheWon')).toHaveLength(1);
   });
 
-  it('drops a pending sting when a rematch starts before it lands', async () => {
-    const r = await render(table(ID_RANKINGS, 0));
-    await act(async () => r.rerender(table(ID_RANKINGS, 0, false)));
-    await settle();
-    expect(playMancheWon).not.toHaveBeenCalled();
+  it('a finished partita sounds its own sting, with the haptic leading by 300 ms', async () => {
+    const r = await render(table(ID_RANKINGS, 0, true, { matchOver: true, matchWinners: ['player_0'] }));
+    await advance(STING_MS);
+    expect(sounds()).toContain('partitaWon');
+    expect(sounds()).not.toContain('mancheWon');
+    expect(haptics()).toEqual(['impactMedium', 'notificationSuccess']);
     await r.unmount();
   });
 
   it('plays the win sting for the seat that placed first', async () => {
     const r = await render(table(ID_RANKINGS, 0));
     await settle();
-    expect(playMancheWon).toHaveBeenCalledTimes(1);
-    expect(playMancheLost).not.toHaveBeenCalled();
-    expect(jest.mocked(Haptics.notificationAsync)).toHaveBeenCalledWith(
-      Haptics.NotificationFeedbackType.Success
-    );
+    expect(sounds()).toContain('mancheWon');
+    expect(sounds()).not.toContain('mancheLost');
+    expect(haptics()).toContain('notificationSuccess');
     await r.unmount();
   });
 
   it('plays the lose sting for the seat that placed last', async () => {
     const r = await render(table(ID_RANKINGS, 1));
     await settle();
-    expect(playMancheLost).toHaveBeenCalledTimes(1);
-    expect(playMancheWon).not.toHaveBeenCalled();
+    expect(sounds()).toContain('mancheLost');
+    expect(sounds()).not.toContain('mancheWon');
     await r.unmount();
   });
 
   it('does not hand the last-placed seat the winner’s haptic', async () => {
     const r = await render(table(ID_RANKINGS, 1));
     await settle();
-    expect(jest.mocked(Haptics.notificationAsync)).not.toHaveBeenCalledWith(
-      Haptics.NotificationFeedbackType.Success
-    );
+    expect(haptics()).not.toContain('notificationSuccess');
     await r.unmount();
   });
 
   it('stays silent when rankings hold display names, which is not a placement', async () => {
     const r = await render(table(['Ana', 'Besi'], 0));
     await settle();
-    expect(playMancheWon).not.toHaveBeenCalled();
-    expect(playMancheLost).not.toHaveBeenCalled();
+    expect(sounds()).not.toContain('mancheWon');
+    expect(sounds()).not.toContain('mancheLost');
     await r.unmount();
   });
 
-  it('stays silent for a 3-3 drawn teams manche, even for the seat that placed first', async () => {
+  it('sounds the neutral sting for a 3-3 drawn teams manche, with no haptic, even for the seat that placed first', async () => {
     const r = await render(drawnTeamsTable(0));
     await settle();
-    expect(playMancheWon).not.toHaveBeenCalled();
-    expect(playMancheLost).not.toHaveBeenCalled();
-    expect(jest.mocked(Haptics.notificationAsync)).not.toHaveBeenCalledWith(
-      Haptics.NotificationFeedbackType.Success
-    );
+    expect(sounds().filter((s) => s !== 'deal')).toEqual(['mancheNeutral']);
+    expect(haptics()).toEqual([]);
     await r.unmount();
   });
 
-  it('stays silent for a 3-3 drawn teams manche for the seat that placed last too', async () => {
+  it('sounds the neutral sting for a 3-3 drawn teams manche, with no haptic, for the seat that placed last too', async () => {
     const r = await render(drawnTeamsTable(3));
     await settle();
-    expect(playMancheWon).not.toHaveBeenCalled();
-    expect(playMancheLost).not.toHaveBeenCalled();
+    expect(sounds().filter((s) => s !== 'deal')).toEqual(['mancheNeutral']);
+    expect(haptics()).toEqual([]);
     await r.unmount();
   });
 
@@ -271,11 +238,9 @@ describe('the end-of-hand sting', () => {
   it('credits the win sting to a third-placed partner on the winning team', async () => {
     const r = await render(wonTeamsTable(3));
     await settle();
-    expect(playMancheWon).toHaveBeenCalledTimes(1);
-    expect(playMancheLost).not.toHaveBeenCalled();
-    expect(jest.mocked(Haptics.notificationAsync)).toHaveBeenCalledWith(
-      Haptics.NotificationFeedbackType.Success
-    );
+    expect(sounds()).toContain('mancheWon');
+    expect(sounds()).not.toContain('mancheLost');
+    expect(haptics()).toContain('notificationSuccess');
     await r.unmount();
   });
 
@@ -285,8 +250,8 @@ describe('the end-of-hand sting', () => {
   it('credits the lose sting to a second-placed partner on the losing team', async () => {
     const r = await render(wonTeamsTable(1));
     await settle();
-    expect(playMancheLost).toHaveBeenCalledTimes(1);
-    expect(playMancheWon).not.toHaveBeenCalled();
+    expect(sounds()).toContain('mancheLost');
+    expect(sounds()).not.toContain('mancheWon');
     await r.unmount();
   });
 
@@ -363,14 +328,14 @@ describe('the end-of-hand sting', () => {
     // but the scores that decide won/lost/drawn haven't arrived yet.
     await act(async () => r.rerender(stateArrived({})));
     await settle();
-    expect(playMancheWon).not.toHaveBeenCalled();
-    expect(playMancheLost).not.toHaveBeenCalled();
+    expect(sounds()).not.toContain('mancheWon');
+    expect(sounds()).not.toContain('mancheLost');
 
     // `game:over`: the real scores land, same gameOver, same rankings.
     await act(async () => r.rerender(stateArrived(WON_TEAMS_SCORES)));
     await settle();
-    expect(playMancheWon).toHaveBeenCalledTimes(1);
-    expect(playMancheLost).not.toHaveBeenCalled();
+    expect(sounds()).toContain('mancheWon');
+    expect(sounds()).not.toContain('mancheLost');
 
     await r.unmount();
   });

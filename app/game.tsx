@@ -172,6 +172,7 @@ export default function GameScreen() {
     <GameTable
       gameState={gameState}
       matchOver={match.over}
+      matchWinners={match.winners}
       handScores={lastHandScores}
       matchScore={match.length === "single" ? undefined : { scores: match.scores, target: match.target }}
       viewerSeat={humanIdx}

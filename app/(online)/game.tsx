@@ -297,6 +297,7 @@ export default function OnlineGameScreen() {
     <GameTable
       gameState={gameState}
       matchOver={matchState.over}
+      matchWinners={matchState.winners}
       handScores={handScores}
       matchScore={
         matchState.length === "single" ? undefined : { scores: cumulativeScores, target: matchState.target }
